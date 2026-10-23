@@ -24,6 +24,7 @@
 #include "bootguard.h"
 #include "chip_ctl.h"
 #include "chip_mix.h"
+#include "chip_spread.h"
 #include "chip_view.h"
 #include "credits.h"
 #include "demo_song.h"

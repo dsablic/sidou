@@ -1346,9 +1346,14 @@ static void song_pass(void) {
  * in them given back to the song (song_taken). */
 static void commit_pass(void) {
     static uint16_t master_sent = 0xffffu; /* (a pass at idle does this compare and the take's) */
+    static uint8_t spread_sent = 0u;          /* mono at boot, as the interrupt starts */
     if (instrument.master != master_sent) {
         master_sent = instrument.master;
         audio_set_master(master_sent);
+    }
+    if (instrument.spread != spread_sent) {
+        spread_sent = instrument.spread;
+        audio_set_spread(spread_sent);
     }
     audio_commit();
     uint8_t taken = keys_route_voices_taken(&keys_router);

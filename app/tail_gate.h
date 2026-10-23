@@ -41,6 +41,9 @@ typedef struct {
 /* The mono block `s` (TAIL_BLOCK samples: chip A's, chip B's mixed in) of chip a, and of chip b
  * if it rendered (else NULL). Run after every block that may be quiet. */
 void tail_gate_run(tail_gate* t, const sid* a, const sid* b, int16_t* s);
+/* What tail_gate_run did to its block, done to another block of the same samples' (the chip
+ * spread's side, app/chip_spread.h), after it. */
+void tail_gate_also(const tail_gate* t, int16_t* s);
 
 /* 1 if chip a's first voice is sounding and the gate is at rest: tail_gate_run would change
  * nothing, so the call may be skipped (a voice that is sounding has a nonzero envelope counter or

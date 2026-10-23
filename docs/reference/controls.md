@@ -81,6 +81,23 @@ key is held. LIVE says **KEYS:B** in its bottom band while the keys play chip B;
 screen shows both chips and marks the keys'. Until M2c plays songs, nothing starts one, so the
 keys always play chip A. KEYS persists with the settings.
 
+### SPREAD
+
+**SPREAD** in SETTINGS sets the two chips apart in stereo, as on a two-SID (HardSID, 2SID)
+setup: chip A to the left, chip B to the right. **OFF** (0, the default) is mono, the sound as
+it always was; ALGORITHM steps it by 10 % to **100%**, where chip A is on the left alone and
+chip B on the right alone. Between, each chip moves out from the centre at equal power (it is
+as loud at every setting; at 100 % its side is +3 dB, the other silent). A song on both chips,
+or a song on A with the keys on B, then sits apart; with chip B out of use (no song, the keys
+on A) chip A alone moves left. CC 117 and NRPN 0/4 set it from MIDI, 0..100 % at full
+resolution ([MIDI](midi.md)); it is saved with the settings (schema 6), not with a preset.
+
+The effect slots keep it: their dry sound stays spread, and their wet sound is made from both
+chips together (as the FX slot's always was: [decision record 0004](../decisions/0004-effect-algorithms.md),
+"The output stage: CHIP SPREAD"), so a reverb or a delay adds its own stereo tail around the spread pair,
+and a slot at Mix 127 hears the two chips as one (a fully wet distortion is mono). The chips'
+thump stays in the centre.
+
 ## UI sounds
 
 **SOUNDS** in SETTINGS (OFF by default, restored with the settings) turns
@@ -118,7 +135,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SELECT (encoder 0)**, in the menu or SETTINGS | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
 | **SAVE**, in the menu | the menu's **OK**: opens the item under the selection: CHIP the CHIP view, TRACKER the song views, SCENE the generative pieces, SONG the [song-file actions](#song), SETTINGS the settings page, STATUS the status screen, MIDI the MIDI page, CHARSET the glyph sheet, ABOUT the credits. On PRE or OCTAVE it does nothing (and saves nothing: the settings save themselves) |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE; turned clockwise on a view's item opens it, as SAVE does |
-| **ALGORITHM (encoder 1)**, in SETTINGS | changes the item under the selection, which the popup also says in full: KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME, REC QUANTISE (REC) |
+| **ALGORITHM (encoder 1)**, in SETTINGS | changes the item under the selection, which the popup also says in full: KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME, REC QUANTISE (REC), [SPREAD](#spread) |
 | **ARP (button 10)**, on LIVE | the [chord arpeggio](#chord-arpeggio) on or off, when ARP is let go; **held**, K1..K3 turn its rate, order and span instead (the knob row shows ARP's page), and the release then switches nothing |
 | **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
 | **ALGORITHM (encoder 1)**, on LIVE | steps the chip's profile on TONE (R2, R3, R4AR, R5, WORN; it stops at either end; the band's profile word shows the change), or the selected slot's algorithm on a slot's page or with EDIT held |
@@ -155,7 +172,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
 | MASTER | VOLUME (0-100%, the bar the pot's travel), in every view |
 | ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
-| ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE` |
+| ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE`, `SPREAD` (`OFF`, `10%` .. `100%`) |
 
 **LIVE and CHIP show a turned knob where it is instead of opening the popup over it** (the popup
 would hide the very controls and meters being tuned): the knob's label (on LIVE, in row 15; on
@@ -879,7 +896,7 @@ range.
 
 ## Settings and STORE
 
-Settings load at power-on: CARDS, KEYS, SOUNDS, TRACKER ROWS, the preset and its edits, the keys' chip
+Settings load at power-on: CARDS, KEYS, SOUNDS, TRACKER ROWS, THEME, SPREAD, the preset and its edits, the keys' chip
 model, profile and character, the effect slots, envelope mode, MIDI-learn bindings and the
 last firmware version booted. Missing or unreadable settings use the defaults. Octave,
 held notes, controllers and the view on screen are not restored; volume follows MASTER.

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "settings.h"
 
+#include "chip_spread.h"
+
 #include <string.h>
 
 _Static_assert(LIVE_PARAM_EXPERT == SETTINGS_PARAMS_V1 && LIVE_PARAM_COUNT == LIVE_PARAM_EXPERT_END,
@@ -74,6 +76,7 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     for (uint32_t e = 0; e < SID_EXPERT_COUNT; e++) {
         out[n++] = s->ml ? midi_learn_cc_of(s->ml, LIVE_PARAM_EXPERT + e) : (uint8_t)MIDI_MAP_NO_CC;
     }
+    out[n++] = l->spread;
     return n;
 }
 
@@ -92,6 +95,9 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         }
         experts = rec[SETTINGS_V4_BYTES];
         if (experts < SID_EXPERT_COUNT || len < SETTINGS_V4_BYTES + 1u + 2u * experts) {
+            return 0;
+        }
+        if (rec[0] >= 6u && len < SETTINGS_V4_BYTES + 2u + 2u * experts) {
             return 0;
         }
     }
@@ -150,6 +156,9 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         }
     }
     l->expert_version += (uint32_t)expert_changed;
+    /* SPREAD: mono in an older record, and for a value this firmware does not know. */
+    uint8_t spread = rec[0] >= 6u ? rec[SETTINGS_V4_BYTES + 1u + 2u * experts] : 0u;
+    chip_spread_set(l, spread <= CHIP_SPREAD_MAX ? spread : 0u);
     l->expert_dirty = 1;
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS; i++) {
         char c = s->version[i];

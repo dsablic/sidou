@@ -454,3 +454,66 @@ fn full_feedback_never_reaches_a_rail() {
         );
     }
 }
+
+/// The slots' dry gain (sid_slots_dry), the share the chip spread's side takes: 1 with every
+/// slot off or at an algorithm of NONE, the product of 1 - Mix of those in the path once their
+/// Mix has settled, 0 with a slot fully wet; and it moves smoothly while a slot switches.
+#[test]
+fn the_dry_gain_is_the_product_of_the_slots_dry_paths() {
+    let dry = |s: &Slots| unsafe { sid_slots_dry(&*s.s) };
+    let input = sine(110.0, 0.3, FS as usize / 2);
+    let mut s = Slots::new(1);
+    assert_eq!(dry(&s), 1.0);
+    s.set(DIST, params(0, 1.0, 1.0, 1.0, 1.0));
+    s.run(&input);
+    assert_eq!(dry(&s), 1.0, "NONE's wet path is its dry one");
+    s.set(DIST, params(SID_DIST_TAPE, 0.5, 0.0, 0.0, 0.5));
+    s.set(FX, params(SID_FXSLOT_DELAY, 0.5, 0.5, 0.0, 0.5));
+    s.run(&input);
+    assert!((dry(&s) - 0.25).abs() < 1e-4, "{}", dry(&s));
+    s.set(FX, params(SID_FXSLOT_REVERB_LUSH, 0.5, 0.5, 0.5, 1.0));
+    let mut last = dry(&s);
+    let mut most = 0.0f32;
+    for b in input.chunks(128) {
+        s.process(b);
+        most = most.max((dry(&s) - last).abs());
+        last = dry(&s);
+    }
+    println!("switching to a fully wet lush: the dry gain steps by {most} a block at most");
+    assert_eq!(dry(&s), 0.0, "fully wet");
+    assert!(most < 0.15, "a step of {most}"); // the stage ramps it over each block
+}
+
+/// sid_slots_process_float is sid_slots_process_wide before its conversion: the same slots on the
+/// same input (a sum, with its excess: here none), its floats through sid_fx_to_i16_limited are
+/// the int16 output bit for bit, with the slots in the path and out of it.
+#[test]
+fn the_float_output_is_the_int16_one_before_its_conversion() {
+    let input = test_noise(FS as usize / 2, 9);
+    let none = vec![0i16; 128];
+    for p in [off(), params(SID_FXSLOT_REVERB_LUSH, 1.0, 0.5, 0.5, 0.7)] {
+        let (mut a, mut b) = (Slots::new(3), Slots::new(3));
+        a.set(FX, p);
+        b.set(FX, p);
+        for block in input.chunks(128) {
+            let n = block.len() as u32;
+            let mut want = vec![0i16; 2 * block.len()];
+            let mut f = vec![0.0f32; 2 * block.len()];
+            unsafe {
+                sid_slots_process_wide(
+                    &mut *a.s,
+                    block.as_ptr(),
+                    none.as_ptr(),
+                    want.as_mut_ptr(),
+                    n,
+                );
+                sid_slots_process_float(&mut *b.s, block.as_ptr(), none.as_ptr(), f.as_mut_ptr(), n)
+            };
+            let got: Vec<i16> = f
+                .iter()
+                .map(|&x| unsafe { sid_fx_to_i16_limited(x) })
+                .collect();
+            assert_eq!(got, want);
+        }
+    }
+}

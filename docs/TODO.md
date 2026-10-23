@@ -540,3 +540,8 @@ card (HOME held) is the only on-device explanation. Done:
   with the settings; a CC/NRPN like the other settings; on the SETTINGS help card.
 - **When:** after the help-card track merges (both touch SETTINGS and the cards). Then a video
   moment (two SIDs, left and right).
+- **Done** (2026-10-23): after the slots, not before them (each slot's wet path takes the two
+  chips together, the dry paths keep the spread: Distortion and Modulation on a stereo input
+  would cost about 300 instructions a sample at their heaviest); [decision record
+  0004](decisions/0004-effect-algorithms.md), "The output stage: CHIP SPREAD". The video moment is still to
+  do; docs/hardware-test.md section 15 for the unit.

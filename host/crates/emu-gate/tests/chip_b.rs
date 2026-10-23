@@ -377,3 +377,165 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
     // Chip B stayed in use through its release: out of use only from the block it was asked to.
     assert!(events[3].block > events[2].block + 10);
 }
+
+/// CHIP SPREAD's stage (app/chip_spread.c: the side, the stage, which converts the slots' output
+/// in their place, and the slots' dry gain), its own instructions a sample (a stereo frame) with
+/// two chips at their worst, every slot's heaviest at full and SPREAD 100: measured 50.56 on
+/// this image (a bound set from the measurement: new code). The interrupt's mean rises by about
+/// 33 to 35: the slots' own conversion, about 17, does not run.
+const SPREAD_PER_SAMPLE: f64 = 51.0;
+
+/// The mean of the audio interrupt's blocks from `from` on, and the worst, a sample.
+fn block_costs(m: &Machine, from: usize) -> (f64, f64) {
+    let blocks = &m.alnk_blocks[from..];
+    let mean = blocks.iter().sum::<u64>() as f64 / blocks.len() as f64 / BLOCK_FRAMES;
+    let worst = blocks.iter().copied().max().unwrap() as f64 / BLOCK_FRAMES;
+    (mean, worst)
+}
+
+fn rms(x: &[i16]) -> f64 {
+    (x.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / x.len() as f64).sqrt()
+}
+
+/// SPREAD on the device (CC 117, SETTINGS' SPREAD; app/chip_spread.h): at 100 a saw on chip A
+/// plays on the left alone and one on chip B on the right alone; at 0 both sides are the same
+/// (mono, as ever). Then the cost: two chips at their worst with every slot's heaviest at full,
+/// SPREAD 100 against SPREAD 0: the worst block within the audio target, the stage within its
+/// bound.
+#[test]
+fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
+    use sidou_sys::{
+        LIVE_CC_SLOT_FIRST, LIVE_SLOT_FIELDS, MIDI_MAP_CC_SPREAD, SID_DIST_COUNT,
+        SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS,
+        SID_MOD_COUNT,
+    };
+    let Some(fw) = fixture("the spread test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    let spread = |m: &mut Machine, v: u8| m.midi(&[0xB0, MIDI_MAP_CC_SPREAD as u8, v]);
+    m.run_ms(300);
+    settle(&mut m, &fw);
+    // Chip B's volume (chip A's register 24 is live's: its filter mode), and B in use.
+    push(&mut m, &fw, &with_b(&[(0x18, 0x0f)]));
+    chip_b_use(&mut m, &fw, true);
+    m.run_ms(200);
+    // Chip A as the keys play it (a MIDI note), chip B from the ring, as in the tests above.
+    let sides = |m: &mut Machine, a: bool| {
+        if a {
+            m.midi(&[0x90, 57, 100]);
+        } else {
+            settle(m, &fw);
+            push(m, &fw, &with_b(&note(0, 0x15ed, 0x21)));
+        }
+        m.run_ms(150);
+        let n = m.left().len();
+        let (l, r) = (
+            m.left()[n - 4096..].to_vec(),
+            m.right()[n - 4096..].to_vec(),
+        );
+        if a {
+            m.midi(&[0x80, 57, 0]);
+        } else {
+            settle(m, &fw);
+            push(m, &fw, &with_b(&[(0x04, 0x20)]));
+        }
+        m.run_ms(600); // the release
+        (rms(&l), rms(&r))
+    };
+    let mono = sides(&mut m, true);
+    println!("SPREAD 0, chip A's saw: L {:.0} R {:.0}", mono.0, mono.1);
+    assert!(
+        mono.0 > 200.0 && mono.0 == mono.1,
+        "mono: both sides the same"
+    );
+    spread(&mut m, 127);
+    m.run_ms(50);
+    let (al, ar) = sides(&mut m, true);
+    let (bl, br) = sides(&mut m, false);
+    println!(
+        "SPREAD 100: chip A's saw L {al:.0} R {ar:.0} ({:.2} of mono's left), chip B's L {bl:.0} \
+         R {br:.0}",
+        al / mono.0
+    );
+    // The other side has only the other chip's own quiet output (chip A's leak while B plays:
+    // the tail gate mutes it only with both chips quiet), -40 dB under.
+    assert!(
+        ar < al / 100.0 && bl < br / 100.0,
+        "the other side is silent"
+    );
+    assert!(
+        (al / mono.0 - std::f64::consts::SQRT_2).abs() < 0.05,
+        "A's side is +3 dB: equal power"
+    );
+    // The cost: both chips at their worst, every slot's heaviest at full.
+    let alg = |a: u32, n: u32| ((2 * a + 1) * 128 / (2 * n)) as u8;
+    for (slot, a, n) in [
+        (0, SID_DIST_OVERDRIVE, SID_DIST_COUNT),
+        (1, SID_MOD_CHORUS, SID_MOD_COUNT),
+        (2, SID_FXSLOT_REVERB_LUSH, SID_FXSLOT_COUNT),
+    ] {
+        let cc = |f: u32| (LIVE_CC_SLOT_FIRST + slot * LIVE_SLOT_FIELDS + f) as u8;
+        m.midi(&[0xB0, cc(0), alg(a, n)]);
+        for f in 1..5 {
+            m.midi(&[0xB0, cc(f), 127]);
+        }
+    }
+    m.run_ms(500); // the switches
+    let worst: Vec<(u8, u8)> = (0..3u8).flat_map(|v| note(v, 0x0800, 0x95)).collect();
+    settle(&mut m, &fw);
+    let mut both = worst.clone();
+    both.extend(with_b(&worst));
+    push(&mut m, &fw, &both);
+    // From the push, as two_chips_at_their_worst... measures it at SPREAD 0 (2,387.4 there).
+    let from = m.alnk_blocks.len();
+    m.run_ms(1000);
+    let (_, worst_block) = block_costs(&m, from);
+    // The stage's cost: the steady blocks at SPREAD 0, then at 100 again.
+    spread(&mut m, 0);
+    m.run_ms(100);
+    let from = m.alnk_blocks.len();
+    m.run_ms(1000);
+    let (mono_mean, mono_worst) = block_costs(&m, from);
+    spread(&mut m, 127);
+    m.run_ms(100);
+    let from = m.alnk_blocks.len();
+    m.run_ms(1000);
+    let (mean, steady_worst) = block_costs(&m, from);
+    // The stage's own instructions: the side and the stage (adjacent in SRAM, app.ld), then the
+    // dry gain, each a window of its own.
+    let span = |a: &str, b: &str| {
+        let (x, y) = (function(&fw, a), function(&fw, b));
+        x.start.min(y.start)..x.end.max(y.end)
+    };
+    let mut stage = 0.0;
+    for range in [
+        span("chip_spread_side", "chip_spread_apply"),
+        span("sid_slots_dry", "slot_dry"),
+    ] {
+        m.alnk_pcs_inside = 0;
+        m.watch_alnk_pcs(range);
+        let from = m.alnk_blocks.len();
+        m.run_ms(300);
+        stage += m.alnk_pcs_inside as f64 / ((m.alnk_blocks.len() - from) as f64 * BLOCK_FRAMES);
+    }
+    let report = serde_json::json!({
+        "spread_0_steady_mean": mono_mean,
+        "spread_0_steady_worst_block": mono_worst,
+        "spread_100_steady_mean": mean,
+        "spread_100_steady_worst_block": steady_worst,
+        "spread_100_worst_block_from_the_notes": worst_block,
+        "spread_100_less_spread_0_mean": mean - mono_mean,
+        "spread_instructions_per_sample": stage,
+        "audio_target": AUDIO_TARGET,
+    });
+    println!("{report}");
+    assert!(
+        worst_block <= AUDIO_TARGET,
+        "two chips at their worst, every slot's heaviest and SPREAD 100: {worst_block:.1}"
+    );
+    assert!(
+        stage <= SPREAD_PER_SAMPLE,
+        "SPREAD's stage costs {stage:.2} a sample"
+    );
+}

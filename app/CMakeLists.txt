@@ -10,6 +10,7 @@ add_library(sidou_live STATIC
     boot.c
     bootguard.c
     chip_mix.c
+    chip_spread.c
     chip_ctl.c
     chip_view.c
     credits.c

@@ -44,6 +44,10 @@ impl Row {
     fn steps(&self) -> bool {
         self.curve == MIDI_CURVE_STEPS
     }
+    /// A setting's row (SPREAD): not a live parameter; midi_map_cc reaches it, live_cc does not.
+    fn setting(&self) -> bool {
+        u32::from(self.param) == MIDI_MAP_SPREAD
+    }
 }
 
 fn text(p: *const std::ffi::c_char) -> String {
@@ -105,7 +109,7 @@ fn nrpn(msb: u8, lsb: u8) -> u16 {
 }
 
 fn get(rig: &Rig, param: u32) -> u32 {
-    unsafe { live_param_get(&*rig.live, param) }
+    unsafe { midi_map_param_get(&*rig.live, param) }
 }
 
 fn set(rig: &mut Rig, param: u32, value: u32) {
@@ -148,7 +152,7 @@ fn every_parameter_has_exactly_one_row() {
     assert!(unsafe { midi_map_for_param(LIVE_PARAM_COUNT) }.is_null());
     for r in &rows {
         assert!(
-            r.reserved() || u32::from(r.param) < LIVE_PARAM_COUNT,
+            r.reserved() || r.setting() || u32::from(r.param) < LIVE_PARAM_COUNT,
             "{}: parameter {}",
             r.name,
             r.param
@@ -244,7 +248,12 @@ fn full_resolution_cutoff_and_pulse_width_have_nrpns() {
 fn ranges_match_the_instrument() {
     for r in rows().iter().filter(|r| !r.reserved()) {
         let p = u32::from(r.param);
-        assert_eq!(u32::from(r.max), unsafe { live_param_max(p) }, "{}", r.name);
+        assert_eq!(
+            u32::from(r.max),
+            unsafe { midi_map_param_max(p) },
+            "{}",
+            r.name
+        );
         assert!(r.max > 0, "{}", r.name);
         assert!(r.def <= r.max, "{}: default {} > {}", r.name, r.def, r.max);
         if r.steps() {
@@ -326,7 +335,11 @@ fn lookups_find_each_row_by_cc_and_by_nrpn() {
 
 #[test]
 fn each_entry_round_trips_through_its_cc() {
-    for r in rows().iter().filter(|r| r.has_cc() && !r.reserved()) {
+    // live_cc's rows; SPREAD's CC goes through midi_map_cc (chip_spread.rs).
+    for r in rows()
+        .iter()
+        .filter(|r| r.has_cc() && !r.reserved() && !r.setting())
+    {
         let e = ptr_for(u32::from(r.param));
         let mut rig = Rig::new(SID_MODEL_6581);
         fill_users(&mut rig);
@@ -1109,9 +1122,11 @@ attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alo
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
 mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
-character layer in 85..87 and 89..90, the effect slots in 102..116. NRPNs are grouped by
-MSB: 0 the performance controls, 1 the SID, 2 the character layer, 3..5 the effect slots,
-6 expression.
+character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
+117. NRPNs are grouped by MSB: 0 the performance controls and the spread, 1 the SID, 2 the
+character layer, 3..5 the effect slots, 6 expression. The spread (SETTINGS' SPREAD) is a
+setting, not the instrument's: no preset holds it, MIDI learn does not bind it and SIDOU does
+not send it (Output, below).
 
 CC 71..78 are absolute here, like every CC of the map: the value sets the parameter
 across its range. General MIDI 2 makes its sound controllers relative instead, moving the

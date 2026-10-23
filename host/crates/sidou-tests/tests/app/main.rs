@@ -6,6 +6,7 @@ mod about;
 mod boot;
 mod bootguard;
 mod chip_mix;
+mod chip_spread;
 mod chip_view;
 mod credits;
 mod demo_song;

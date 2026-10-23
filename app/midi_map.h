@@ -37,6 +37,10 @@ extern "C" {
 #define MIDI_MAP_NO_NRPN 0xffffu
 /* The param of a row whose numbers are kept for a parameter not implemented yet. */
 #define MIDI_MAP_RESERVED 0xffu
+/* The param of SETTINGS' SPREAD's row (app/chip_spread.h): a setting, not a live parameter, so
+ * MIDI learn does not bind it and MIDI out does not send it; midi_map_param_* reach it. */
+#define MIDI_MAP_SPREAD 0xfeu
+#define MIDI_MAP_CC_SPREAD 117u
 #define MIDI_MAP_NRPN(msb, lsb) ((uint16_t)((msb) << 7 | (lsb)))
 /* NRPN and RPN 127/127: no parameter selected. */
 #define MIDI_MAP_NULL 127u
@@ -64,7 +68,7 @@ typedef struct {
     uint8_t curve;      /* a midi_map_curve, for the CC */
 } midi_map_entry;
 
-enum { MIDI_MAP_ROWS = 42u + SID_EXPERT_COUNT };
+enum { MIDI_MAP_ROWS = 43u + SID_EXPERT_COUNT };
 
 /* Row i in table order, or NULL past the last (MIDI learn keeps its bindings as row indexes,
  * midi_learn.h). */
@@ -78,6 +82,12 @@ uint32_t midi_map_from_cc(const midi_map_entry* e, uint8_t value);
 /* A parameter value as a CC value, round(value * 127 / max) (clamped): midi_map_from_cc
  * gives it back exactly for STEPS, and as near as 7 bits can for LINEAR. */
 uint8_t midi_map_to_cc(const midi_map_entry* e, uint32_t value);
+
+/* A row's parameter as the map sets it: a live parameter (live_param_get, _set, _max) or
+ * SPREAD (MIDI_MAP_SPREAD, chip_spread_set). */
+uint32_t midi_map_param_get(const live* l, uint32_t param);
+void midi_map_param_set(live* l, uint32_t param, uint32_t value);
+uint32_t midi_map_param_max(uint32_t param);
 
 /* One channel's running NRPN/RPN state. */
 typedef struct {

@@ -24,6 +24,11 @@ void tail_gate_run(tail_gate* t, const sid* a, const sid* b, int16_t* s) {
     if (n < TAIL_HOLD_BLOCKS + 2u) {
         t->n = ++n;
     }
+    tail_gate_also(t, s);
+}
+
+void tail_gate_also(const tail_gate* t, int16_t* s) {
+    uint32_t n = t->n;
     if (n > TAIL_HOLD_BLOCKS) {
         /* The block after the hold ramps to 0, later ones stay there: the mono block as 64
          * frames, whose gain is the same for both samples of a pair. */

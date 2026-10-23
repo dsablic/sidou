@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 
+#include "chip_spread.h"
 #include "fx/fx_slots.h"
 #include "midi_learn.h"
 
@@ -174,6 +175,11 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
     EXPERT_ROW(SID_EXPERT_EXTERNAL_LP, "6581 external low-pass", "0..127 = 1000..20000 Hz", 81),
     EXPERT_ROW(SID_EXPERT_EXTERNAL_HP, "External high-pass", "0..127 = 0..100 Hz", 20),
     EXPERT_ROW(SID_EXPERT_VOICE_DC, "Voice DC offset", "0..127 = 0..0.6 voice-DAC units", 60),
+
+    ROW("Output", "Spread",
+        "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "
+        "saved with the settings (not a preset's, not learned, not sent)",
+        MIDI_MAP_SPREAD, MIDI_MAP_CC_SPREAD, NRPN(NRPN_LIVE, 4), CHIP_SPREAD_MAX, 0, STEPS),
 };
 /* clang-format on */
 
@@ -221,6 +227,7 @@ static const uint8_t cc_rows[128] = {
     [LIVE_CC_VIBRATO_RATE] = 40u, /* after the Expression rows without a CC */
     [LIVE_CC_VIBRATO_DEPTH] = 41u,
     [LIVE_CC_VIBRATO_DELAY] = 42u,
+    [MIDI_MAP_CC_SPREAD] = MIDI_MAP_ROWS, /* the last row */
     SLOT_CC(0),  SLOT_CC(1),  SLOT_CC(2),  SLOT_CC(3),  SLOT_CC(4),
     SLOT_CC(5),  SLOT_CC(6),  SLOT_CC(7),  SLOT_CC(8),  SLOT_CC(9),
     SLOT_CC(10), SLOT_CC(11), SLOT_CC(12), SLOT_CC(13), SLOT_CC(14),
@@ -264,6 +271,22 @@ uint8_t midi_map_to_cc(const midi_map_entry* e, uint32_t value) {
         return (uint8_t)value;
     }
     return (uint8_t)((value * 127u + max / 2u) / max);
+}
+
+uint32_t midi_map_param_get(const live* l, uint32_t param) {
+    return param == MIDI_MAP_SPREAD ? l->spread : live_param_get(l, param);
+}
+
+void midi_map_param_set(live* l, uint32_t param, uint32_t value) {
+    if (param == MIDI_MAP_SPREAD) {
+        chip_spread_set(l, value);
+    } else {
+        live_param_set(l, param, value);
+    }
+}
+
+uint32_t midi_map_param_max(uint32_t param) {
+    return param == MIDI_MAP_SPREAD ? CHIP_SPREAD_MAX : live_param_max(param);
 }
 
 static void deselect(midi_map_channel* c) {
@@ -319,7 +342,7 @@ static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t valu
     if (!e) {
         return;
     }
-    uint32_t now = live_param_get(p->l, e->param);
+    uint32_t now = midi_map_param_get(p->l, e->param);
     uint32_t v;
     switch (cc) {
     case CC_DATA_MSB:
@@ -343,7 +366,7 @@ static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t valu
         v = now ? now - 1u : 0u;
         break;
     }
-    live_param_set(p->l, e->param, v > e->max ? e->max : v);
+    midi_map_param_set(p->l, e->param, v > e->max ? e->max : v);
 }
 
 void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
@@ -389,8 +412,11 @@ void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
     default: {
         /* A learned CC wins over the map's (midi_learn.h), CC 1's wheel included. */
         const midi_map_entry* e = p->learn ? midi_learn_route(p->learn, cc) : NULL;
+        if (!e && cc == MIDI_MAP_CC_SPREAD) {
+            e = midi_map_for_cc(cc); /* a setting's CC: live_cc does not know it */
+        }
         if (e) {
-            live_param_set(p->l, e->param, midi_map_from_cc(e, value));
+            midi_map_param_set(p->l, e->param, midi_map_from_cc(e, value));
         } else {
             live_cc(p->l, cc, value);
         }

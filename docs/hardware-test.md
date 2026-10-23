@@ -1341,6 +1341,24 @@ silent three-pattern song at tempo 6, so what you hear is what you made). Contro
   the playing pattern (the notes show as they land) and its cursor comes back when the song
   stops. Write down which of NEAREST and OFF you prefer and whether a fixed offset is wanted.
 
+## 15. The output stage: SPREAD and the soft limiter (v0.3.0)
+
+Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](reference/controls.md#spread).
+
+- [ ] **SPREAD.** With a song playing on chip A and the keys on chip B (KEYS AUTO), menu,
+  SETTINGS, SPREAD: OFF is mono, as before. Step it to 100%: the song is on the left alone, the
+  keys on the right alone, neither louder nor quieter than at OFF; between, they move apart
+  smoothly, with no click as you step. Stop the song and play the keys (chip A): at 100% they
+  are on the left. Power off and on: SPREAD is as you left it. CC 117 from a sequencer sets it
+  too (0..127 over OFF..100%).
+- [ ] **Effects on a spread pair.** At SPREAD 100% put a reverb (FX: REVERB or LUSH) at its
+  default Mix: the dry song stays left and the keys right, with a tail across both sides. A
+  distortion at Mix 127 makes the two one (mono); at a lower Mix the dry part stays apart.
+- [ ] **No setting clips.** MASTER full, two loud chords on both chips at once (a song and the
+  keys), FLANGER with its feedback (B) at 127, then PHASER the same, then REVERB and LUSH with
+  Amount at 127: loud, but no hard crackle of clipping on the peaks (the soft limiter rounds
+  them). Note anything that still sounds clipped, and at which setting.
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1361,3 +1379,4 @@ silent three-pattern song at tempo 6, so what you hear is what you made). Contro
 | 12 Flash timing spike | | |
 | 13 Songs on the store | | |
 | 14 Make a song on the device | | |
+| 15 SPREAD and the soft limiter | | |

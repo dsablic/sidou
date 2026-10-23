@@ -187,6 +187,17 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
  * coming into the path at Mix 0 changes nothing. */
 void sid_slots_process_wide(sid_slots* s, const int16_t* in, const int16_t* over, int16_t* out,
                             uint32_t n);
+/* The same, the output as floats (int16 / 32768) before the int16 conversion and its soft limiter
+ * (fx_limit.h): for a stage after the slots that changes the gain first (the chip spread,
+ * app/chip_spread.h) and converts once. */
+void sid_slots_process_float(sid_slots* s, const int16_t* in, const int16_t* over, float* out,
+                             uint32_t n);
+/* The gain the slots' dry paths give their input as the last sample processed left them: the
+ * product over the slots in the path of 1 - Mix x the wet path's switch gain (a slot at rest,
+ * with no algorithm or one waking up passes its input whole: 1). Every wet path takes the mono
+ * input (the FX slot's takes (L + R) / 2), so a signal beside it that should take the slots'
+ * dry paths only (the chip spread's side, app/chip_spread.h) takes this gain. */
+float sid_slots_dry(const sid_slots* s);
 
 #ifdef __cplusplus
 }

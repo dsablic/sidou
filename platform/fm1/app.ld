@@ -58,7 +58,8 @@ SECTIONS
         *(.text.fm1_alnk0_irq)                      /* main.c */
         *(.text.audio_fill .text.audio_ramp)        /* audio.c */
         *(.text.chip_mix .text.mix_past)                /* app/chip_mix.c: chip B into chip A */
-        *(.text.tail_gate_run .text.tail_busy)          /* app/tail_gate.c: the tail muted after notes */
+        *(.text.tail_gate_run .text.tail_gate_also .text.tail_busy)          /* app/tail_gate.c: the tail muted after notes */
+        *(.text.chip_spread_side .text.chip_spread_apply .text.spread_out) /* app/chip_spread.c: SPREAD */
         *(.text.master_gain_apply .text.master_scaled)         /* app/master_gain.c: MASTER's gain */
         *(.text.thump_out_take .text.thump_out_drop .text.thump_out_apply .text.thump_add .text.thump_run) /* app/thump_out.c: the chips' thump */
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip .text.reg_ring_chip_of)   /* app/reg_ring.c */
@@ -78,7 +79,8 @@ SECTIONS
          * still runs (the cheap ones; sid_slots_init, in flash, builds the others' templates).
          * The patterns for functions the compiler inlines today stay as a safety net. The two
          * reverbs' ticks. live's way in: the drain's pseudo-register handler (app/fx_live.c). */
-        *(.text.sid_slots_process_wide .text.slots_bypass)
+        *(.text.sid_slots_dry .text.slot_dry .text.slots_run .text.slots_bypass)
+        *(.text.sid_slots_process_wide .text.sid_slots_process_float)
         *(.text.sid_slots_process .text.sid_slots_set .text.slot_start .text.step_switch .text.slot_copy)
         *(.text.dist_tick_any .text.mod_tick_any .text.fx_tick_any)
         *(.text.sid_fx_*_tick .text.sid_fx_*_lfo)

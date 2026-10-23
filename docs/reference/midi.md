@@ -22,9 +22,11 @@ attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alo
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
 mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
-character layer in 85..87 and 89..90, the effect slots in 102..116. NRPNs are grouped by
-MSB: 0 the performance controls, 1 the SID, 2 the character layer, 3..5 the effect slots,
-6 expression.
+character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
+117. NRPNs are grouped by MSB: 0 the performance controls and the spread, 1 the SID, 2 the
+character layer, 3..5 the effect slots, 6 expression. The spread (SETTINGS' SPREAD) is a
+setting, not the instrument's: no preset holds it, MIDI learn does not bind it and SIDOU does
+not send it (Output, below).
 
 CC 71..78 are absolute here, like every CC of the map: the value sets the parameter
 across its range. General MIDI 2 makes its sound controllers relative instead, moving the
@@ -372,6 +374,7 @@ In NRPN order.
 | Live | Resonance | 71 | 0/1 (1) | 0..15 | steps | 6 | 0..15 |
 | Live | Pulse width | 1 | 0/2 (2) | 0..4095 | linear | 2048 | 0..4095, the SID's 12 bits; the PWM presets move around it; CC 1 while it is the mod wheel's target (the default) |
 | Live | Volume | 7 | 0/3 (3) | 0..1023 | linear | 1023 | 0..1023 as the MASTER pot, the final output's digital gain |
+| Output | Spread | 117 | 0/4 (4) | 0..100 | steps | 0 | SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; saved with the settings (not a preset's, not learned, not sent) |
 | SID | Waveform | 20 | 1/0 (128) | 0..15 | steps | 2 | sum of 1 triangle, 2 saw, 4 pulse, 8 noise; 0 silent |
 | SID | Ring modulation | 21 | 1/1 (129) | 0..1 | steps | 0 | 0 off, 1 on (by the voice before) |
 | SID | Sync | 22 | 1/2 (130) | 0..1 | steps | 0 | 0 off, 1 on (to the voice before) |
@@ -471,3 +474,4 @@ In NRPN order.
 | 114 | FX A |
 | 115 | FX B |
 | 116 | FX Mix |
+| 117 | Output Spread |

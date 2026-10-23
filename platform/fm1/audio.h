@@ -60,6 +60,9 @@ void audio_chip_b_use(uint32_t user, int on);
  * slots, so it scales the keys, a song on either chip and the UI sounds alike. Before the
  * interrupt runs it takes effect at once. Main.c passes live's value when it changes. */
 void audio_set_master(uint32_t master);
+/* SETTINGS' SPREAD, 0..100 % (app/chip_spread.h), from the main loop: the gains move over the
+ * next block. */
+void audio_set_spread(uint32_t spread);
 /* The chip the LIVE view's tap reads (0 A, 1 B; the keys' chip), from the next block. While
  * chip B is out of use the tap reads chip A. */
 void audio_tap_chip(uint32_t chip);

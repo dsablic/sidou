@@ -6,7 +6,7 @@
  * keys' chip model, profile and character, the effect slots, the envelope mode and the
  * preset's edits: the instrument as it was left; not the MASTER volume, which is the pot),
  * MIDI learn's bindings, the firmware version last booted (for the full boot once after
- * an install), TRACKER ROWS, THEME and the last song. Not the octave, held notes, controllers
+ * an install), TRACKER ROWS, THEME, the last song and SPREAD. Not the octave, held notes, controllers
  * or view on screen.
  *
  * The record, little-endian bytes (SETTINGS_BYTES; docs/reference/settings-format.md):
@@ -24,6 +24,7 @@
  * 107  THEME (0 HIGH CONTRAST, 1 C64; schema 3)
  * 108  last song's filename, 16 NUL-padded bytes (schema 4); absent: built-in song
  * 124  expert count, then raw expert overrides, then their learned CCs (schema 5)
+ * 125 + 2 x the expert count  SPREAD, 0..100 (schema 6; app/chip_spread.h)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -53,7 +54,7 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 5u
+#define SETTINGS_VERSION 6u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
@@ -62,7 +63,8 @@ extern "C" {
 #define SETTINGS_V4_BYTES (SETTINGS_V3_BYTES + STORE_NAME_MAX)
 enum {
     SETTINGS_V5_BYTES = SETTINGS_V4_BYTES + 1u + 2u * SID_EXPERT_COUNT,
-    SETTINGS_BYTES = SETTINGS_V5_BYTES
+    SETTINGS_V6_BYTES = SETTINGS_V5_BYTES + 1u,
+    SETTINGS_BYTES = SETTINGS_V6_BYTES
 };
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u

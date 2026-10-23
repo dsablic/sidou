@@ -5,6 +5,7 @@
 #include "fm1_time.h"
 
 #include "chip_mix.h"
+#include "chip_spread.h"
 #include "fx/fx_slots.h"
 #include "fx_live.h"
 #include "live.h"
@@ -55,6 +56,13 @@ static uint32_t master_now = 0;
 /* The two chips' sum's excess past int16 in a block where every sum fits (app/chip_mix.h):
  * none. */
 static int16_t no_over[AUDIO_HALF_FRAMES]; /* RAM: the interrupt reads it */
+/* CHIP SPREAD (app/chip_spread.h): the main loop writes the gains (mid, side) it sets into the
+ * pair the interrupt does not read, then points it there; the interrupt keeps the mid gain the
+ * last block ended on and the side's with the slots' dry gain then. The stage runs while either
+ * mid gain is not 1 (SPREAD 0). */
+static float spread_gains[2][2] = {{1.0f, 0.0f}, {1.0f, 0.0f}};
+static volatile uint8_t spread_pick;
+static float spread_now[2] = {1.0f, 0.0f};
 /* The tail gate's state (app/tail_gate.h): the interrupt's. */
 static tail_gate tail_state;
 /* The chips' thump on the output (app/thump_out.h): the interrupt's. */
@@ -234,6 +242,16 @@ void audio_set_master(uint32_t master) {
     }
 }
 
+void audio_set_spread(uint32_t spread) {
+    uint8_t j = (uint8_t)(spread_pick ^ 1u);
+    chip_spread_gains(spread, &spread_gains[j][0], &spread_gains[j][1]);
+    spread_pick = j;
+    if (!running) { /* before the interrupt runs: no ramp, the first block has it */
+        spread_now[0] = spread_gains[j][0];
+        spread_now[1] = spread_gains[j][1];
+    }
+}
+
 /* Part of chip A's block: with the LIVE view's tap (tapped) or without. */
 static void render_part(sid* a, int16_t* s, uint32_t n, int tapped) {
     if (tapped) {
@@ -332,6 +350,13 @@ void audio_fill(int32_t* buf) {
                           : 0u;
     uint8_t want = (uint8_t)((b_want || tails) && b->sample_rate);
     const sid* b_rendered = 0;
+    /* CHIP SPREAD's side (app/chip_spread.h): chip A's own output while B is out of use, else
+     * A - B halved (its gain doubled to match). */
+    const float* spread_to = spread_gains[spread_pick];
+    int spread = spread_to[0] != 1.0f || spread_now[0] != 1.0f;
+    int16_t side_ab[AUDIO_HALF_FRAMES];
+    const int16_t* side = s;
+    float side_w = 1.0f;
     if (!want && !b_on) {
         /* Chip A alone, as M1: sid_render's samples, and the tap's points while LIVE shows. */
         render_a(a, s, 1);
@@ -344,10 +369,13 @@ void audio_fill(int32_t* buf) {
             render_a(a, s, 1);
             sid_render(b, sb, AUDIO_HALF_FRAMES);
         }
-        sum_over = chip_mix(s, sb, over, AUDIO_HALF_FRAMES,
-                            want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT)
-                       ? over
-                       : no_over;
+        chip_mix_fade fade = want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT;
+        if (spread) {
+            chip_spread_side(side_ab, s, sb, fade);
+            side = side_ab;
+            side_w = 2.0f;
+        }
+        sum_over = chip_mix(s, sb, over, AUDIO_HALF_FRAMES, fade) ? over : no_over;
         b_on = want;
         b_rendered = b;
     }
@@ -355,12 +383,27 @@ void audio_fill(int32_t* buf) {
      * a while. One compare while a note sounds. */
     if (!tail_gate_sounding(&tail_state, a)) {
         tail_gate_run(&tail_state, a, b_rendered, s);
+        if (side != s) {
+            tail_gate_also(&tail_state, side_ab);
+        }
     }
     song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
     /* With every slot off this writes chip A's output to both sides unchanged; with chip B the
      * whole sum, through the soft limiter (core/fx/fx_limit.h) as the slots' output goes. The
-     * tail gate leaves the sum's excess as it is: with both chips quiet there is none. */
-    sid_slots_process_wide(&slots, s, sum_over, lr, AUDIO_HALF_FRAMES);
+     * tail gate leaves the sum's excess as it is: with both chips quiet there is none. CHIP
+     * SPREAD takes the slots' output before its conversion and adds the side at the slots' dry
+     * gain; at SPREAD 0 (mono) the slots alone. */
+    if (spread) {
+        float lrf[2u * AUDIO_HALF_FRAMES];
+        sid_slots_process_float(&slots, s, sum_over, lrf, AUDIO_HALF_FRAMES);
+        float k = spread_to[1] * sid_slots_dry(&slots);
+        chip_spread_apply(lr, lrf, side, spread_now[0], spread_to[0], spread_now[1] * side_w,
+                          k * side_w);
+        spread_now[0] = spread_to[0];
+        spread_now[1] = k;
+    } else {
+        sid_slots_process_wide(&slots, s, sum_over, lr, AUDIO_HALF_FRAMES);
+    }
     /* The chips' thump, fitted into the room the slots' output leaves (app/thump_out.h): one
      * check a block while none sounds. A chip B that did not render was not heard. */
     thump_out_take(&thump, 0, a);

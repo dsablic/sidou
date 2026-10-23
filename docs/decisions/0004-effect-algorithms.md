@@ -477,3 +477,37 @@ two chips at their loudest steady level (20,274 each) by 3.3 dB.
   Measured: chip B's mix 8.11 a sample (8.08 before), a held chord on one chip 397.29 (397.19),
   every slot's heaviest on one chip 1,194 worst block (1,195), two chips at their worst with every
   slot's heaviest 2,388.8 (2,389.5). RAMTEXT +416 bytes, RAM +256 (a block of no excess).
+
+## The output stage: CHIP SPREAD (2026-10-23)
+
+SETTINGS' SPREAD (`app/chip_spread.h`) pans chip A left and chip B right, 0 (mono) to 100 %,
+equal power: the mid (A + B, the slots' input as ever) takes cos phi and the side (A - B)
+sin phi, phi = SPREAD x pi / 400, so L = mid cos + side sin, R = mid cos - side sin.
+
+- **After the slots, not before them.** Before them every slot would need a stereo input:
+  Distortion and Modulation run once on the mono mix today, and a second channel costs their
+  algorithm again, about 144 (overdrive) plus 150 (chorus, less its frame) a sample at their
+  heaviest: the heaviest of each together would go from 839 to about 1,130, over the slots'
+  900, and the 6502's ISR share would go. After them, every slot's wet path takes the mid (the
+  FX slot's wet path always took (L + R) / 2) and the side takes the slots' dry paths only: their
+  gain is the product of 1 - Mix x the switch gain over the slots in the path
+  (`sid_slots_dry`), taken at each block's end and ramped linearly over the block. Exact for
+  the dry paths; a wet path hears the chips as one, so a reverb or a delay adds its own stereo
+  tail around the spread pair, and a fully wet distortion is mono.
+- **One conversion.** The stage takes the slots' output before its int16 conversion
+  (`sid_slots_process_float`) and converts it once through the soft limiter, as the slots
+  convert: at SPREAD 0 nothing runs (mono, bit for bit), and at a gain of 1 the stage gives what
+  the slots alone give, so it starts and ends without a step. The gains ramp over the block a
+  change lands in. The thump stays in the centre (it is added after, as before).
+- **The side:** chip A's own output while chip B is out of use (A moves left), else
+  (A - B x chip_mix's fade weight) / 2, its gain doubled; the tail gate mutes it with the mix.
+- **Cost** (`chip_b.rs`, two chips at their worst, every slot's heaviest at full, SPREAD
+  100): the stage's own instructions 50.56 a sample (bound 51), of which the slots' own
+  conversion, about 17, no longer runs: the interrupt's mean rises by about 35. The worst block
+  from the notes' start is 2,418.1 (2,387.8 at SPREAD 0; 2,389.5 before the output stage),
+  within 2,700. At SPREAD 0 a held chord on one chip costs 397.56 a sample (397.19 before; M1's
+  bound 398.87), every slot's heaviest on one chip 1,193 worst block (1,195 before). The
+  interrupt's frame holds the slots' float block (1 KiB) and the side (256 bytes): the system
+  stack's deepest use is 3,416 bytes (2,096 before), within half of its 7,936. RAMTEXT +752
+  bytes (48,704 of 49,152 with the limiter's 416: 448 free; M3 asks for 2,048 free at its
+  start, 1,616 before this, so the RAMTEXT win-back M3's plan lists now has 1,600 to find).

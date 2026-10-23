@@ -153,8 +153,9 @@ fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
         (2, 107),
         (3, 108),
         (4, 124),
-        (5, SETTINGS_BYTES),
+        (5, SETTINGS_V5_BYTES),
         (6, SETTINGS_BYTES),
+        (7, SETTINGS_BYTES),
     ] {
         let mut rec = Set::blank().gather();
         rec[0] = schema;
@@ -394,7 +395,7 @@ fn schema_four_last_song_migrates_without_becoming_expert_values() {
         1
     );
     let migrated = s.gather();
-    assert_eq!(migrated[0], 5);
+    assert_eq!(migrated[0], SETTINGS_VERSION as u8);
     assert_eq!(&migrated[1..124], &rec[1..]);
     assert!(s
         .rig
@@ -407,16 +408,17 @@ fn schema_four_last_song_migrates_without_becoming_expert_values() {
         MIDI_MAP_NO_CC as u8
     );
     assert_eq!(migrated[124], SID_EXPERT_COUNT as u8);
-    assert_eq!(migrated.len(), 125 + 2 * SID_EXPERT_COUNT as usize);
+    assert_eq!(migrated.len(), 126 + 2 * SID_EXPERT_COUNT as usize);
+    assert_eq!(migrated[migrated.len() - 1], 0, "SPREAD: mono");
 }
 
 #[test]
-fn the_record_is_v5s_layout_with_the_original_offsets_and_raw_expert_defaults() {
+fn the_record_is_v6s_layout_with_the_original_offsets_and_raw_expert_defaults() {
     let s = Set::blank();
     let rec = s.gather();
     assert_eq!(rec.len(), SETTINGS_BYTES as usize);
-    assert_eq!(rec.len(), 125 + 2 * SID_EXPERT_COUNT as usize);
-    assert_eq!(rec[..6], [5, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(rec.len(), 126 + 2 * SID_EXPERT_COUNT as usize);
+    assert_eq!(rec[..6], [6, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -446,7 +448,9 @@ fn the_record_is_v5s_layout_with_the_original_offsets_and_raw_expert_defaults() 
     assert_eq!(rec[124], SID_EXPERT_COUNT as u8);
     let end = 125 + SID_EXPERT_COUNT as usize;
     assert!(rec[125..end].iter().all(|&v| v == SID_EXPERT_DEFAULT as u8));
-    assert!(rec[end..].iter().all(|&v| v == MIDI_MAP_NO_CC as u8));
+    let learned = end + SID_EXPERT_COUNT as usize;
+    assert!(rec[end..learned].iter().all(|&v| v == MIDI_MAP_NO_CC as u8));
+    assert_eq!(rec[learned..], [0], "SPREAD: mono, last");
 }
 
 #[test]
@@ -569,7 +573,53 @@ fn the_v5_fixture_preserves_the_v4_prefix_and_raw_expert_values() {
         1
     );
     assert_eq!(&s.rig.live.expert[..3], &[SID_EXPERT_DEFAULT as u8, 0, 127]);
-    assert_eq!(s.gather(), rec);
+    // Schema 6 keeps every byte and appends SPREAD, mono for a schema 5 record.
+    let mut v6 = rec.clone();
+    v6[0] = 6;
+    v6.push(0);
+    assert_eq!(s.gather(), v6);
+}
+
+fn hex(text: &str) -> Vec<u8> {
+    text.lines()
+        .filter(|line| !line.starts_with('#'))
+        .flat_map(str::split_whitespace)
+        .map(|v| u8::from_str_radix(v, 16).unwrap())
+        .collect()
+}
+
+/// Schema 6 (SPREAD) migrates: a schema 5 record loads SPREAD as 0 (mono) whatever it was; the
+/// v6 fixture (schema 5's bytes and SPREAD 70) loads it and saves the same bytes; a SPREAD this
+/// firmware does not know (over 100) loads as 0.
+#[test]
+fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
+    let v5 = hex(include_str!("../data/settings-v5.hex"));
+    let v6 = hex(include_str!("../data/settings-v6.hex"));
+    assert_eq!(&v6[1..v5.len()], &v5[1..], "schema 5's bytes kept");
+    assert_eq!((v6[0], v6.len()), (6, SETTINGS_BYTES as usize));
+    let mut s = Set::blank();
+    unsafe { chip_spread_set(&mut *s.rig.live, 40) };
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, v5.as_ptr(), v5.len() as u32) },
+        1
+    );
+    assert_eq!(s.rig.live.spread, 0, "schema 5: mono");
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, v6.as_ptr(), v6.len() as u32) },
+        1
+    );
+    assert_eq!(s.rig.live.spread, 70);
+    assert_eq!(s.gather(), v6);
+    for bad in [101u8, 255] {
+        let mut rec = v6.clone();
+        *rec.last_mut().unwrap() = bad;
+        unsafe { chip_spread_set(&mut *s.rig.live, 40) };
+        assert_eq!(
+            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert_eq!(s.rig.live.spread, 0, "SPREAD {bad}: mono");
+    }
 }
 
 #[test]
@@ -634,7 +684,13 @@ fn tracker_rows_round_trips_both_modes() {
 
 #[test]
 fn invalid_tracker_rows_falls_back_to_bar() {
-    for (schema, len) in [(2, 107), (3, 108), (4, 124), (5, SETTINGS_BYTES as usize)] {
+    for (schema, len) in [
+        (2, 107),
+        (3, 108),
+        (4, 124),
+        (5, SETTINGS_V5_BYTES as usize),
+        (6, SETTINGS_BYTES as usize),
+    ] {
         for rows in [2, 255] {
             let mut s = Set::blank();
             let mut rec = s.gather();
@@ -1048,10 +1104,12 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
         MIDI_MAP_NO_CC as u8,
         SID_EXPERT_COUNT as usize,
     ));
+    again.push(0); // SPREAD
     assert_eq!(
         s.gather(),
         again,
-        "schema 5 preserves schema 2's bytes and appends default theme, song and expert fields"
+        "schema 6 preserves schema 2's bytes and appends default theme, song, expert fields and \
+         SPREAD"
     );
     s.rig.tick();
     let mut want = Set::blank();

@@ -550,9 +550,18 @@ enum Ctl {
 /// K1..K4 (K1-K4, K1 K2, K3/K4; K the four), PRESETS (PRE), KEYS..., the buttons; E+ or EDIT+
 /// with EDIT held. Another modifier (STEP+, GLO+, SAVE+, ARP+) names a gesture no probe makes:
 /// nothing.
-/// None for a line that names no control but tells something (SETTINGS KEPT, MACROS RESET).
+/// None for a line that names no control but tells something (SETTINGS KEPT, MACROS RESET,
+/// SPREAD A/B L/R).
 fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
-    const INFO: [&str; 6] = ["SETTINGS", "SETUP", "MACROS", "WIPES", "QUANT", "HOLD HOME"];
+    const INFO: [&str; 7] = [
+        "SETTINGS",
+        "SETUP",
+        "MACROS",
+        "WIPES",
+        "QUANT",
+        "HOLD HOME",
+        "SPREAD",
+    ];
     if INFO.contains(&key) {
         return None;
     }

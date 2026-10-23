@@ -37,9 +37,9 @@ static const char* const LIVE_SLOT_LINES[] = {
 static const char* const MENU_LINES[] = {"SELECT\0MOVE", "SAVE\0OPEN", "ALG\0CHANGE",
                                          "ALG\0OPEN",    "HOME\0BACK", "HOLD HOME\0HELP"};
 /* SETTINGS: values only; they save themselves a few seconds after a change. On STORE, ALG arms
- * the format of a foreign store and SAVE confirms it. */
+ * the format of a foreign store and SAVE confirms it. SPREAD puts chip A left, chip B right. */
 static const char* const SETTINGS_LINES[] = {"SELECT\0MOVE",  "ALG\0CHANGE", "SETTINGS\0KEPT",
-                                             "HOME\0BACK",    "HOLD HOME\0HELP"};
+                                             "SPREAD\0A/B L/R", "HOME\0BACK", "HOLD HOME\0HELP"};
 static const char* const STORE_LINES[] = {"SELECT\0MOVE", "ALG\0ARM FORMAT", "SAVE\0FORMAT",
                                           "WIPES\0ALL DATA", "HOME\0BACK"};
 /* The MIDI page has no actions, and its setup is RAM-only (not part of the saved settings). */

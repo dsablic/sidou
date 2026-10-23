@@ -521,15 +521,18 @@ static void fx_run(sid_slots* s, float* l, float* r, uint32_t len) {
     SAVE(sl);
 }
 
-void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n) {
-    sid_slots_process_wide(s, in, NULL, out, n);
-}
-
 /* Every slot out of the path: the input to both sides; the whole sum, with over, through the
- * limiter as the path's output would go. Out of line, so its loops keep their pointers in
- * registers. */
+ * limiter as the path's output would go; or, into fout, as floats before the conversion. Out of
+ * line, so its loops keep their pointers in registers. */
 __attribute__((noinline, unused)) static void slots_bypass(const int16_t* in, const int16_t* over,
-                                                           int16_t* out, uint32_t n) {
+                                                           int16_t* out, float* fout, uint32_t n) {
+    if (fout) {
+        for (uint32_t i = 0; i < n; ++i) {
+            int32_t v = (int32_t)in[i] + (over ? over[i] : 0);
+            fout[2 * i] = fout[2 * i + 1] = (float)v * (1.0f / 32768.0f);
+        }
+        return;
+    }
     if (over) {
         for (uint32_t i = 0; i < n; ++i) {
             out[2 * i] = out[2 * i + 1] = sid_fx_limit_i32((int32_t)in[i] + over[i]);
@@ -542,9 +545,11 @@ __attribute__((noinline, unused)) static void slots_bypass(const int16_t* in, co
     }
 }
 
-__attribute__((noinline)) void sid_slots_process_wide(sid_slots* s, const int16_t* in,
-                                                      const int16_t* over, int16_t* out,
-                                                      uint32_t n) {
+/* The slots on in (+ over, or NULL) into out (int16) or fout (float), the other NULL. Out of
+ * line: one copy for every entry below. */
+__attribute__((noinline, unused)) static void slots_run(sid_slots* s, const int16_t* in,
+                                                        const int16_t* over, int16_t* out,
+                                                        float* fout, uint32_t n) {
     uint32_t live = 0;
     uint32_t awake = 0;
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
@@ -561,7 +566,7 @@ __attribute__((noinline)) void sid_slots_process_wide(sid_slots* s, const int16_
         awake |= sl->awake << k;
     }
     if (!live) {
-        slots_bypass(in, over, out, n);
+        slots_bypass(in, over, out, fout, n);
         return;
     }
     if (!awake) {
@@ -628,9 +633,16 @@ __attribute__((noinline)) void sid_slots_process_wide(sid_slots* s, const int16_
         if (live & 4u) {
             fx_run(s, l, r, len);
         }
-        for (uint32_t i = 0; i < len; ++i) {
-            out[2 * (done + i)] = sid_fx_to_i16_limited(l[i]);
-            out[2 * (done + i) + 1] = sid_fx_to_i16_limited(r[i]);
+        if (fout) {
+            for (uint32_t i = 0; i < len; ++i) {
+                fout[2 * (done + i)] = l[i];
+                fout[2 * (done + i) + 1] = r[i];
+            }
+        } else {
+            for (uint32_t i = 0; i < len; ++i) {
+                out[2 * (done + i)] = sid_fx_to_i16_limited(l[i]);
+                out[2 * (done + i) + 1] = sid_fx_to_i16_limited(r[i]);
+            }
         }
         done += len;
         s->clock += len;
@@ -638,4 +650,37 @@ __attribute__((noinline)) void sid_slots_process_wide(sid_slots* s, const int16_
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         s->slot[k].awake = live >> k & 1u;
     }
+}
+
+void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n) {
+    slots_run(s, in, NULL, out, NULL, n);
+}
+
+void sid_slots_process_wide(sid_slots* s, const int16_t* in, const int16_t* over, int16_t* out,
+                            uint32_t n) {
+    slots_run(s, in, over, out, NULL, n);
+}
+
+void sid_slots_process_float(sid_slots* s, const int16_t* in, const int16_t* over, float* out,
+                             uint32_t n) {
+    slots_run(s, in, over, NULL, out, n);
+}
+
+/* A slot's share of sid_slots_dry. Out of line: one copy for the three (SRAM is scarce). */
+__attribute__((noinline, unused)) static float slot_dry(const sid_slot* sl) {
+    if (!sl->awake || sl->algorithm == 0u || sl->algorithm == SID_SLOT_WAKING) {
+        return 1.0f; /* out of the path, or its wet path is its dry one */
+    }
+    float g = 1.0f; /* RUN */
+    if (sl->phase == SID_SLOT_CLEAR || (sl->phase == SID_SLOT_FADE_IN && sl->warm > 0u)) {
+        g = 0.0f;
+    } else if (sl->phase != SID_SLOT_RUN) {
+        g = sid_fx_smoothstep(sl->fade);
+    }
+    return 1.0f - sl->mix * g;
+}
+
+float sid_slots_dry(const sid_slots* s) {
+    _Static_assert(SID_SLOT_COUNT == 3, "three slots");
+    return slot_dry(&s->slot[0]) * slot_dry(&s->slot[1]) * slot_dry(&s->slot[2]);
 }

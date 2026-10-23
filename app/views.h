@@ -153,8 +153,8 @@ extern "C" {
 #define VIEWS_MENU_CHARSET 9u
 #define VIEWS_MENU_ABOUT 10u
 /* The SETTINGS page's items (the set-and-forget settings): KEYS, SOUNDS, ROWS (TRACKER ROWS),
- * CARDS (the title cards' option), STORE, THEME and REC (REC QUANTISE). */
-#define VIEWS_SETTINGS_ITEMS 7u
+ * CARDS (the title cards' option), STORE, THEME, REC (REC QUANTISE) and SPREAD. */
+#define VIEWS_SETTINGS_ITEMS 8u
 #define VIEWS_SETTINGS_KEYS 0u
 #define VIEWS_SETTINGS_SOUNDS 1u
 #define VIEWS_SETTINGS_ROWS 2u
@@ -162,9 +162,10 @@ extern "C" {
 #define VIEWS_SETTINGS_STORE 4u
 #define VIEWS_SETTINGS_THEME 5u
 #define VIEWS_SETTINGS_REC 6u
-/* What it shows: KEYS, SOUNDS, ROWS, CARDS, the store's state and kilobytes, THEME, REC, the
- * cursor and the first row. */
-#define VIEWS_SETTINGS_LOOK 10u
+#define VIEWS_SETTINGS_SPREAD 7u
+/* What it shows: KEYS, SOUNDS, ROWS, CARDS, the store's state and kilobytes, THEME, REC, SPREAD,
+ * the cursor and the first row. */
+#define VIEWS_SETTINGS_LOOK 11u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u

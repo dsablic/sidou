@@ -457,6 +457,9 @@ typedef struct {
     /* The screens' theme (app/theme.h THEME_*; the menu's THEME, persisted). Not an
      * instrument setting: it is here for every view to reach through its `live`. At the end. */
     uint8_t theme;
+    /* SETTINGS' SPREAD, 0..100 % (app/chip_spread.h: chip A left, chip B right; persisted). Not an
+     * instrument setting either: here for the menu, MIDI's map and the settings to reach. */
+    uint8_t spread;
     uint8_t expert[SID_EXPERT_COUNT];
     uint8_t expert_sent[SID_EXPERT_COUNT];
     uint8_t user_expert[LIVE_USER_PROFILES][SID_EXPERT_COUNT];

@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "chip_spread.h"
 #include "font.h"
 
 /* The status screen's version: right-aligned to end before this column. */
@@ -518,6 +519,23 @@ static void theme_turn(void* ctx, int32_t steps) {
     }
 }
 
+/* SPREAD (app/chip_spread.h): OFF, then 10% .. 100%. */
+static void spread_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    char num[4];
+    number_text(num, v->l->spread);
+    join(buf, MENU_VALUE_CHARS, v->l->spread ? num : "OFF", v->l->spread ? "%" : "");
+}
+
+/* In steps of 10 % (a value MIDI set between them goes to the next step), clamped at both ends. */
+static void spread_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    int32_t s = ((int32_t)v->l->spread + (steps > 0 ? 0 : 9)) / 10 + (steps > 0 ? 1 : -1);
+    if (steps != 0) {
+        chip_spread_set(v->l, (uint32_t)(s < 0 ? 0 : s > 10 ? 10 : s) * 10u);
+    }
+}
+
 static const view* shows(const views* v);
 
 /* While ABOUT's tune is the player's song (song_io about, until its close has read the user's
@@ -1007,12 +1025,12 @@ static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
     {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
-    {"REC", quant_value, quant_turn},
+    {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
                    VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
-                   VIEWS_SETTINGS_REC == 6u,
+                   VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u,
                "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1446,8 +1464,9 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[5] = (uint8_t)kb;
     out[6] = l->theme;
     out[7] = v->song.quant;
-    out[8] = v->setup.cursor;
-    out[9] = v->setup.top;
+    out[8] = l->spread;
+    out[9] = v->setup.cursor;
+    out[10] = v->setup.top;
 }
 
 /* As the menu's: SELECT moves, ALGORITHM changes the value; STORE's format is two steps (store_turn
@@ -1493,8 +1512,8 @@ static int settings_changed(screen* s, void* state) {
  * the next frames, MIDI_LINES at a time. */
 static void settings_compose(screen* s, void* state, grid* g) {
     views* v = state;
-    uint8_t cursor = v->setup_drawn[8];
-    uint8_t top = v->setup_drawn[9];
+    uint8_t cursor = v->setup_drawn[9];
+    uint8_t top = v->setup_drawn[10];
     settings_look(v, v->setup_drawn);
     uint32_t parts = MENU_PART_LINES;
     if (s->redraw) {
@@ -1502,7 +1521,7 @@ static void settings_compose(screen* s, void* state, grid* g) {
         if (s->redraw_rows == (1u << GRID_ROWS) - 1u) {
             parts &= ~MENU_PART_LINES;
         }
-    } else if (cursor != v->setup_drawn[8] || top != v->setup_drawn[9]) {
+    } else if (cursor != v->setup_drawn[9] || top != v->setup_drawn[10]) {
         parts |= MENU_PART_TITLE;
     }
     big_menu_compose(s, v, &v->setup, "SETTINGS", g, parts);
