@@ -93,6 +93,22 @@ the 6502 study below.
      packages in the Firmware Hub's catalogue on 2026-10-23, 17 ship `FM-1_900` and the rest
      picked a number (several collide: 950, 910, 955, 985, 700); none uses 964;
    - a submission to the FM-1 Firmware Hub (thefirmwarehub.com) for the release, not before.
+6a. **v0.3.2: SETTINGS → RESET and the button LEDs** (the user, 2026-10-23). v0.3.1 shipped the
+   first-boot fix alone. RESET is in [TODO.md](../TODO.md). The LEDs show what is latched and what
+   moves in time, using the hardware's dim glow as well as full light: dim = available or set,
+   full = active now. Today they show held keys, the octave (OCT-/OCT+), FX for the 8580, EDIT
+   for an effect slot in use, PLAY while playing and GLO while latched.
+   - **ARP:** lit while ARP is on, flashing on each arpeggio step; at the fastest rates (1-2
+     frames) once per cycle, as faster reads as flicker.
+   - **PLAY:** full on each beat, dim between, while the song plays.
+   - **REC:** lit while recording, blinking through the count-in.
+   - **GLO:** lit while latched; with GLO held or latched, note keys 1-6 show the voices (lit
+     sounding, dark muted, blinking solo).
+   - **STEP:** the 16 keys show the page (lit a set step, dim an empty one) and the playhead
+     moving along them, in place of the held-key lights in that view.
+   - **SAVE:** blinks while a question waits for SAVE to confirm.
+   - Host tests for every state (`panel_get_leds` grows the inputs it needs); the flash hold's
+     dark LEDs stay as they are; controls.md says what each LED means.
 7. **M3, leaner.** `.sid` playback as [decision record 0008](../decisions/0008-m3-6502-and-fm1-sid.md)
    sets it: SIDOU's own 6502 (about ten times fewer instructions than FM-1 SID's m6502.h in
    the study), run a frame ahead with cycle-stamped SID writes, on one core; FM-1 SID's
