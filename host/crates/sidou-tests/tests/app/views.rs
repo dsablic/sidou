@@ -419,6 +419,70 @@ fn the_load_list_names_its_files_at_2x() {
     assert_eq!(&ui.big(10, 2, 2, 13), "SIXTEEN CHARS");
 }
 
+unsafe extern "C" fn builtin_none(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
+    0
+}
+
+/// A fresh install's LOAD has something to load: the built-in SIDOU LOOP, first and marked
+/// built-in (a dot after its name), loaded as a file is (song_io_load_builtin); DELETE does not
+/// list it. It takes the first place of the first page: the store's files follow, eight entries a
+/// page. Unnamed after it, SAVE AS offers its name, and saving makes a store copy.
+#[test]
+fn load_lists_the_builtin_song_first_and_delete_does_not() {
+    let mut ui = Ui::without_cards();
+    let mut flash = crate::store::fresh(810, STORE_WINDOW_MAX);
+    for i in (0..8).rev() {
+        assert_eq!(flash.file_now(&format!("SONG {i:02}"), &[0]), STORE_OK);
+    }
+    let mut io = Box::new(song_io {
+        st: &mut *flash.st,
+        ..Default::default()
+    });
+    io.hooks.builtin = Some(builtin_none);
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    let first = ui.big(6, 2, 2, 12);
+    assert_eq!(&first[..11], "SIDOU LOOP ", "{first:?}");
+    assert_eq!(u32::from(ui.g.src[6 * COLS + 24]), FONT_MIDDOT, "the mark");
+    assert!(ui.row(8).contains("SONG 00"));
+    assert!(ui.row(20).contains("SONG 06"));
+    ui.turn(PANEL_ENC_SELECT, 8);
+    song_frames(&mut ui);
+    assert!(
+        ui.row(6).contains("SONG 07"),
+        "the next page: {}",
+        ui.row(6)
+    );
+    ui.turn(PANEL_ENC_SELECT, -1);
+    song_frames(&mut ui);
+    assert!(ui.row(6).contains("SIDOU LOOP"));
+    ui.turn(PANEL_ENC_SELECT, -8);
+    ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(io.state, SONG_IO_STOP as u8, "the built-in loads");
+    assert_eq!(io.target[0], 0, "no file");
+    assert_eq!(ui.top(), "SONG");
+    // DELETE: the store's files only.
+    ui.turn(PANEL_ENC_SELECT, 3);
+    io.state = SONG_IO_IDLE as u8;
+    ui.press(SAVE_KEY_BUTTON);
+    song_frames(&mut ui);
+    assert!(ui.row(2).contains("DELETE"));
+    assert!(ui.row(6).contains("SONG 00"), "{}", ui.row(6));
+    // Unnamed and unchanged, the song is the built-in: SAVE AS offers its name.
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, -1);
+    ui.press(SAVE_KEY_BUTTON);
+    song_frames(&mut ui);
+    assert_eq!(
+        format!("{}{}", ui.big(8, 2, 2, 8), ui.big(12, 2, 2, 8)),
+        "SIDOU LOOP      "
+    );
+}
+
 #[test]
 fn model_revision_alone_requires_new_confirmation() {
     let mut ui = Ui::without_cards();

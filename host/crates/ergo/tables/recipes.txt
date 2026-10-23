@@ -101,8 +101,8 @@ journey save-and-load | Save a song and load it back
   step name | Give it a *name* | SELECT moves the cursor, ALGORITHM changes the letter: BEAT 1. | turn ALGORITHM -12; turn SELECT 2; turn ALGORITHM -22; turn SELECT 1; turn ALGORITHM 52; turn SELECT 1; turn ALGORITHM -51; turn SELECT 1; turn ALGORITHM -30; turn SELECT 1; turn ALGORITHM -46; turn SELECT 1; turn ALGORITHM -39; wait 1500 | text BEAT 1; screen 0 6 30 12; callout SELECT + ALGORITHM
   step write | *Save* it | SAVE writes it to the store: SONG SAVED. | press SAVE; wait 2500 | toast; text SAVED; callout PRESS SAVE
   step new | Start *another* | HOME back to SONG, then NEW: the beat is gone from the song views. | press HOME; wait 900; turn SELECT -3; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; rows 3 0; screen 0 6 30 12; callout NEW
-  step load | *LOAD* it back | LOAD lists the songs in the store. BEAT 1 is there. | turn SELECT -1; wait 300; turn ALGORITHM 1; wait 1500 | text BEAT 1; screen 0 6 30 12; callout LOAD
-  step loaded | And it is *back* | ALGORITHM loads it. It asks first, as the new song was never saved: SELECT YES, ALGORITHM, done. | turn ALGORITHM 1; wait 1500; turn SELECT 1; wait 600; turn ALGORITHM 1; wait 1500 | absent BUSY; rows 3 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 42 44 46 48 50 52 54 56 58 60 62; screen 0 0 30 15; callout ALGORITHM, SELECT YES
+  step load | *LOAD* it back | LOAD lists SIDOU LOOP, built in, then the songs in the store. BEAT 1 is there. | turn SELECT -1; wait 300; turn ALGORITHM 1; wait 1500 | text BEAT 1; screen 0 6 30 12; callout LOAD
+  step loaded | And it is *back* | SELECT down to it, ALGORITHM loads it. It asks first, as the new song was never saved: SELECT YES, ALGORITHM, done. | turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500; turn SELECT 1; wait 600; turn ALGORITHM 1; wait 1500 | absent BUSY; rows 3 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 42 44 46 48 50 52 54 56 58 60 62; screen 0 0 30 15; callout ALGORITHM, SELECT YES
   step play-it | The same *beat* | SEQ and PLAY: BEAT 1, as you left it. | press SEQ; wait 1000; press PLAY; wait 4000 | sound; view step; screen 0 2 30 13; callout SEQ, PLAY
 
 journey chip-character | Shape the chip's character
@@ -169,7 +169,7 @@ journey play-over-a-song | Play over a song
   skills loading a song; PLAY; KEYS AUTO; K1; effects; GLO; REC
   related mute-and-solo; add-an-effect; rec-over-loop
   songs neon-highway
-  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD: the store's songs. ALGORITHM on one loads it. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD: SIDOU LOOP, built in, then the store's songs. SELECT to one, ALGORITHM loads it. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
   step play | *PLAY*: chip A | E minor at 125 BPM, on the first SID. | press PLAY; wait 3000; press HOME; wait 400; press HOME; wait 2500 | sound; view live; screen 0 0 30 2; callout PLAY, HOME
   step jam | *Jam* on chip B | The keys play the second SID on top. LIVE says KEYS:B. | sync; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | sound; screen 0 22 30 8; callout PLAY THE KEYS
   step shape | *K1* on your sound | The knobs shape the keys' sound, not the song's. | sweep K1 -36 1500; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:4 | sound; value cutoff 0 1300; screen 0 15 30 7; callout TURN K1
@@ -183,7 +183,7 @@ journey remix-a-song | Remix a showcase song
   skills SONG LOAD; STEP; GLO; SAVE AS
   related play-over-a-song; save-and-load
   songs paper-lanterns
-  step load | Load *PAPER LANTERNS* | HOME, SONG, LOAD, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step load | Load *PAPER LANTERNS* | HOME, SONG, LOAD, SELECT past the built-in SIDOU LOOP, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
   step open | Open it in *STEP* | SEQ, then PLAY: its patterns light up as they play. | press SEQ; wait 900; press PLAY; wait 4000 | view step; sound; screen 0 2 30 13; callout SEQ, PLAY
   step change | *Change* a pattern | Tap steps to add or take away notes, while it plays. | sync; taps G3 B3 D#4 G4 250; wait 3500 | change; sound; screen 0 2 30 13; callout TAP THE STEPS
   step instrument | Another *instrument* | PRESETS gives the lane a new instrument; the steps you tap next play it. | turn PRESETS 1; wait 600; taps A3 C#4 250; wait 3000 | sound; screen 0 2 30 13; callout PRESETS, TAP
@@ -198,7 +198,7 @@ journey chip-spread | Two SIDs, left and right
   skills loading a song; KEYS AUTO; SETTINGS; SPREAD
   related play-over-a-song; first-sound
   songs neon-highway
-  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn ALGORITHM 1; wait 3000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD, SELECT past the built-in SIDOU LOOP, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 3000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
   step play | *PLAY* and jam | The song plays chip A; the keys play chip B on top of it. Both are in the middle: SPREAD is OFF. | press PLAY; wait 2000; press HOME; wait 400; press HOME; wait 1200; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 | sound; view live; text KEYS:B; screen 0 22 30 8; callout PLAY, THE KEYS
   step spread | *SPREAD* to 100% | HOME, SETTINGS, SPREAD: ALGORITHM steps it by 10%. The song moves to the left, your keys to the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 125 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | view settings; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
   step half | Halfway: *50%* | Back by five steps: both chips are nearer the centre, at the same loudness. | turn ALGORITHM -5; wait 400; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 | text 50%; sound; screen 0 2 30 14; focus ALGORITHM; callout ALGORITHM -5
@@ -227,7 +227,7 @@ journey sidou-intro | SIDOU in a minute | poweron
   related first-sound; mute-and-solo; play-over-a-song
   songs chrome-comet
   step boot | *SIDOU* for the FM-1 | SIDOU: GPL firmware that makes the M-VAVE FM-1 a C64 SID music machine. | hold HOME 2500; wait 3500 | change; focus screen; callout LOAD"SIDOU",8,1
-  step load | Songs are *GoatTracker 2* files | SONG, LOAD: the store holds GoatTracker 2 .sng files. | press HOME; wait 600; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; turn ALGORITHM 1; wait 900; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step load | Songs are *GoatTracker 2* files | SONG, LOAD: the store holds GoatTracker 2 .sng files. | press HOME; wait 600; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
   step tracker | Write C64 songs in a *tracker* | SEQ twice: the TRACKER, GoatTracker's layout. PLAY, then REC: what you play goes into the pattern. | press SEQ; wait 600; press SEQ; wait 600; press PLAY; wait 1800; press REC; play 150 D5:2 C5:2 A4:4 G4:2 A4:2 F4:4; press REC; wait 800 | view tracker; sound; screen 0 2 30 24; focus REC; callout SEQ, PLAY, REC
   step goattracker | The same *.sng*, both ways | It opens in GoatTracker 2.77 and comes back; the player matches GoatTracker's, register for register. | wait 5500 | sound; focus card; callout SIDOU TRACKER <> CHROME COMET.SNG <> GOATTRACKER 2
   step step-locks | STEP, with *locks* | SEQ round the pages to STEP. Hold a step and turn K1: a cutoff LOCK on that step alone. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 1300; down F3; turn K1 12; wait 1000; up F3; wait 1500 | view step; sound; screen 0 15 30 15; focus K1; callout HOLD A STEP + TURN K1

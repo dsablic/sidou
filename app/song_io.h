@@ -92,6 +92,10 @@ int song_io_load(song_io* io, const char* name, int confirmed);
  * Refuses unsaved edits; advances one directory entry per poll. A newer program may replace
  * an unfinished lookup; a missing index reports SONG NOT FOUND without stopping. */
 int song_io_program(song_io* io, uint32_t program);
+/* 1 accepted, 0 refused (message): the built-in song (hooks.builtin, SIDOU LOOP in the image)
+ * loaded as a file is, stopped; unnamed and unchanged after it, nothing remembered for the next
+ * power-on (which plays the built-in anyway) and no stored file a SAVE would replace. */
+int song_io_load_builtin(song_io* io, int confirmed);
 int song_io_new(song_io* io, int confirmed);
 int song_io_save(song_io* io, const char* name, uint32_t now_ms);
 int song_io_delete(song_io* io, const char* name, int confirmed);

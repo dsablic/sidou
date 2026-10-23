@@ -602,21 +602,43 @@ static void song_menu_changed(views* v) {
     v->songs.built = 0;
 }
 
+/* LOAD's first entry: the built-in song (song_io's hooks.builtin, SIDOU LOOP in the image), its
+ * name and a dot that marks it built-in. No stored name has the dot (they are 0x20..0x5F): the
+ * entry chosen is told by its text. */
+static const char SONG_BUILTIN[] = {'S', 'I', 'D', 'O', 'U', ' ', 'L', 'O', 'O', 'P', ' ',
+                                    (char)FONT_MIDDOT, 0};
+#define SONG_BUILTIN_NAME "SIDOU LOOP"
+
+/* LOAD lists the built-in song (when there is one) before the store's files. */
+static int song_builtin_listed(const views* v) {
+    return v->songs.action == SONG_MENU_LOAD && v->song.io && v->song.io->hooks.builtin;
+}
+
 static void song_directory(views* v, uint8_t page) {
     views_song_menu* m = &v->songs;
+    uint32_t builtin = (uint32_t)song_builtin_listed(v);
     m->page = SONG_MENU_DIR;
     m->directory_page = page;
     m->cursor = 0;
     m->count = 0;
     m->after[0] = 0;
-    m->skip = (uint8_t)(page * VIEWS_SONG_FILES);
+    /* the built-in is the first page's first entry: the files after it move on by one */
+    m->skip = (uint8_t)(page * VIEWS_SONG_FILES - (page ? builtin : 0u));
+    if (builtin && !page) {
+        join(m->files[m->count++], sizeof m->files[0], SONG_BUILTIN, "");
+    }
     m->scanning = 1;
     song_menu_changed(v);
 }
 
 static void song_name(views* v, int direct) {
     views_song_menu* m = &v->songs;
-    const char* name = v->song.io && v->song.io->name[0] ? v->song.io->name : "NEW SONG";
+    /* Unnamed: the built-in song while it is unchanged since the boot or its LOAD (NEW and a
+     * lost file mark the song changed), else a new one. */
+    const song_io* io = v->song.io;
+    const char* name = io && io->name[0] ? io->name
+                       : io && io->hooks.builtin && !io->dirty ? SONG_BUILTIN_NAME
+                                                               : "NEW SONG";
     uint32_t n = 0;
     while (name[n] && n < STORE_NAME_MAX) {
         m->name[n] = name[n];
@@ -676,7 +698,10 @@ static void song_menu_execute(views* v, int confirmed) {
     }
     int accepted;
     switch (m->action) {
-    case SONG_MENU_LOAD: accepted = song_io_load(io, m->name, confirmed); break;
+    case SONG_MENU_LOAD:
+        accepted = strcmp(m->name, SONG_BUILTIN) == 0 ? song_io_load_builtin(io, confirmed)
+                                                      : song_io_load(io, m->name, confirmed);
+        break;
     case SONG_MENU_NEW: accepted = song_io_new(io, confirmed); break;
     case SONG_MENU_SAVE: accepted = song_io_save(io, m->name, v->s.now); break;
     case SONG_MENU_DELETE: accepted = song_io_delete(io, m->name, confirmed); break;

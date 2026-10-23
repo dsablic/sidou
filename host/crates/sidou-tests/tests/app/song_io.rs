@@ -604,6 +604,49 @@ fn abouts_tune_and_its_restore_are_returning_reads_and_a_load_is_not() {
     assert_eq!(ret.seen[3..], [0, 1, 0], "NEW, ABOUT's tune, the stand-in");
 }
 
+/// LOAD's built-in song (SIDOU LOOP, in the firmware image): loaded like a file, it is the
+/// song, unnamed and unchanged, nothing remembered for the next power-on (which plays the
+/// built-in anyway) and no stored file it would replace: a SAVE writes a store copy. Unsaved
+/// edits ask first, as a file's load does; a failed read gives the previous file back.
+#[test]
+fn the_builtin_song_loads_like_a_file_and_saving_it_makes_a_store_copy() {
+    let mut r = Rig::new();
+    r.save(c"NIGHT");
+    let night = r.song.write(true);
+    let builtin = Box::new(sidou_tests::song_embed::sng());
+    r.io.hooks.ctx = (&*builtin as *const Vec<u8>).cast_mut().cast();
+    r.io.hooks.builtin = Some(builtin_read);
+    r.io.dirty = 1;
+    assert_eq!(unsafe { song_io_load_builtin(&mut *r.io, 0) }, 0);
+    assert_eq!(r.message(), "DISCARD CHANGES?");
+    assert_eq!(unsafe { song_io_load_builtin(&mut *r.io, 1) }, 1);
+    r.finish();
+    assert_ne!(r.song.write(true), night, "the built-in is the song");
+    assert_eq!(r.io.name[0], 0, "unnamed");
+    assert_eq!(r.io.fid, 0, "no stored file");
+    assert_eq!(unsafe { song_io_changed(&*r.io) }, 0);
+    assert_eq!(r.io.builtin, 1);
+    // SAVE AS: a store copy, the built-in left as it is.
+    r.save(c"MY LOOP");
+    let mut f = store_file::default();
+    assert_eq!(
+        unsafe { store_file_open(&mut *r.store.st, c"MY LOOP".as_ptr(), &mut f) },
+        STORE_OK
+    );
+    // A built-in that fails to read: the previous file comes back.
+    assert_eq!(unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) }, 1);
+    r.finish();
+    let broken: Box<Vec<u8>> = Box::new(b"GTS5".to_vec());
+    r.io.hooks.ctx = (&*broken as *const Vec<u8>).cast_mut().cast();
+    assert_eq!(unsafe { song_io_load_builtin(&mut *r.io, 1) }, 1);
+    r.finish();
+    assert_eq!(r.song.write(true), night);
+    assert_eq!(
+        unsafe { std::ffi::CStr::from_ptr(r.io.name.as_ptr()) },
+        c"NIGHT"
+    );
+}
+
 #[test]
 fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_three_instrument_template() {
     let mut r = Rig::new();

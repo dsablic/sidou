@@ -939,9 +939,13 @@ as in the menu: it opens the highlighted action, chooses the highlighted file, o
 confirmation (NO goes back a page, as HOME); ALGORITHM clockwise does the same, and HOME goes
 back a page.
 
-- **LOAD** lists the store's songs. Loading stops the transport. Unsaved changes
-  require confirmation before they can be discarded. If a file is refused, its
-  reason appears in a toast and the previous file is reloaded, stopped.
+- **LOAD** lists the built-in **SIDOU LOOP** first (in the firmware, marked
+  built-in by a dot after its name: `SIDOU LOOP ·`), then the store's songs, at 2×
+  eight a page. Loading stops the transport. Unsaved changes require confirmation
+  before they can be discarded. If a file is refused, its reason appears in a toast
+  and the previous file is reloaded, stopped. The built-in loads as a file does but
+  stays unnamed: SAVE AS (which offers its name) makes a store copy, and it is not
+  in DELETE's list. A fresh install's LOAD so always has a song to load.
 - **NEW** creates one subtune, three one-pattern orderlists and three 64-row
   patterns, with pulse-lead, bass and noise-drum instruments at tempo 6.
 - **SAVE AS** edits an upper-case filename of up to 16 characters: SELECT moves

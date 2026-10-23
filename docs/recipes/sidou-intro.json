@@ -65,7 +65,7 @@
     },
     {
       "caption": "SONG, LOAD: the store holds GoatTracker 2 .sng files.",
-      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
       "expect": [
         {
           "kind": "view",
@@ -132,6 +132,15 @@
         },
         {
           "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
           "op": "wait"
         },
         {

@@ -289,7 +289,7 @@
       "title": "Start *another*"
     },
     {
-      "caption": "LOAD lists the songs in the store. BEAT 1 is there.",
+      "caption": "LOAD lists SIDOU LOOP, built in, then the songs in the store. BEAT 1 is there.",
       "control": "turn SELECT counter-clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
       "expect": [
         {
@@ -340,8 +340,8 @@
       "title": "*LOAD* it back"
     },
     {
-      "caption": "ALGORITHM loads it. It asks first, as the new song was never saved: SELECT YES, ALGORITHM, done.",
-      "control": "turn ALGORITHM clockwise by 1 detent, then wait 1.5 s, then turn SELECT clockwise by 1 detent, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "caption": "SELECT down to it, ALGORITHM loads it. It asks first, as the new song was never saved: SELECT YES, ALGORITHM, done.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s, then turn SELECT clockwise by 1 detent, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
       "expect": [
         {
           "kind": "text_absent",
@@ -407,6 +407,15 @@
       },
       "id": "loaded",
       "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
         {
           "detents": 1,
           "encoder": "ALGORITHM",

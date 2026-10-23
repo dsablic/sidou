@@ -8,7 +8,7 @@
 
 _Static_assert(GT2_SAVED_MAX == STORE_FILE_MAX, "device song edits keep the store's file cap");
 
-enum { LOAD_FILE = 1, LOAD_NEW, LOAD_ABOUT, LOAD_RESTORE };
+enum { LOAD_FILE = 1, LOAD_NEW, LOAD_ABOUT, LOAD_RESTORE, LOAD_BUILTIN };
 enum { ROLLBACK_SNAPSHOT = 1, ROLLBACK_APPLIED = 2 };
 
 static void text(char out[32], const char* in) {
@@ -97,6 +97,22 @@ int song_io_load(song_io* io, const char* name, int confirmed) {
         return 0;
     }
     io->action = LOAD_FILE;
+    io->restoring = 0;
+    io->failure[0] = 0;
+    io->state = SONG_IO_STOP;
+    return 1;
+}
+
+int song_io_load_builtin(song_io* io, int confirmed) {
+    if (!ready(io, confirmed)) {
+        return 0;
+    }
+    if (!io->hooks.builtin) {
+        text(io->message, "SONG NOT FOUND");
+        return 0;
+    }
+    memset(io->target, 0, sizeof io->target); /* read_done names it: none */
+    io->action = LOAD_BUILTIN;
     io->restoring = 0;
     io->failure[0] = 0;
     io->state = SONG_IO_STOP;
@@ -332,7 +348,7 @@ static void start_read(song_io* io) {
     io->builtin = 0;
     if (io->action == LOAD_NEW) {
         read = read_template;
-    } else if (io->action == LOAD_ABOUT) {
+    } else if (io->action == LOAD_ABOUT || io->action == LOAD_BUILTIN) {
         read = io->hooks.builtin;
         ctx = io->hooks.ctx;
         io->builtin = 1;
