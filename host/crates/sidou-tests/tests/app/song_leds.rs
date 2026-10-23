@@ -24,40 +24,70 @@ const fn bit(b: u32) -> u32 {
     1 << b
 }
 
+/// The song plays `row` of voice 1, `calls` calls into it (the row began at call `began`).
+fn at_row(s: &mut Song, row: u8, began: u16, calls: u16) {
+    s.f.st.row = [row, SONG_T_NOWHERE as u8, SONG_T_NOWHERE as u8];
+    s.f.st.row_call = [began, 0, 0];
+    s.f.st.now_call = began.wrapping_add(calls);
+    s.f.st.now_frac = 0;
+}
+
+fn play_lit(s: &mut Song) -> bool {
+    let l = leds(s, 0);
+    let (lit, dim) = (
+        l.buttons >> PANEL_BTN_PLAY & 1,
+        l.buttons_dim >> PANEL_BTN_PLAY & 1,
+    );
+    assert_eq!(lit + dim, 1, "lit or dim while playing");
+    lit == 1
+}
+
 #[test]
-fn the_beat_comes_from_the_players_clock_in_any_view() {
+fn play_is_lit_on_the_beat_rows_wherever_the_song_starts_or_jumps() {
     let mut s = Song::new();
     s.ui.frame();
     assert_eq!(s.ui.top(), "LIVE", "not a song view");
     s.f.st.state = SONG_T_PLAYING as u8;
     s.ui.press(PANEL_BTN_OCT_UP); // an event: the views know the panel
     s.ui.p.playing = 1;
-    // 4 rows a beat of speed 6: 24 calls; the first quarter is 6 calls.
-    for (calls, lit) in [
-        (0, true),
-        (5, true),
-        (6, false),
-        (23, false),
-        (24, true),
-        (30, false),
-    ] {
-        s.f.clock_calls = calls;
-        let l = leds(&mut s, 0);
-        assert_eq!(l.buttons >> PANEL_BTN_PLAY & 1, lit as u32, "call {calls}");
-        assert_eq!(
-            l.buttons_dim >> PANEL_BTN_PLAY & 1,
-            !lit as u32,
-            "call {calls}"
-        );
+    // Before a row event: playing, no beat yet.
+    assert_eq!(inputs(&mut s, 0).beat, PANEL_BEAT_NONE as u8);
+    // 4 rows a beat of 6 calls: a play from the middle of a pattern, on the off-beat row 6,
+    // reaches the beat at row 8, whatever call it is on.
+    for (row, lit) in [(6, false), (7, false), (8, true), (9, false), (12, true)] {
+        at_row(&mut s, row, 1000 + u16::from(row) * 6, 0);
+        assert_eq!(play_lit(&mut s), lit, "row {row}");
     }
-    // Funktempo 5/7: a beat is 4 rows of 6 on average, still 24 calls.
+    // Into the beat's row: the first quarter is 6 calls, the first row.
+    at_row(&mut s, 8, 5000, 5);
+    assert!(play_lit(&mut s), "5 calls into the beat's row");
+    at_row(&mut s, 9, 5006, 0);
+    assert!(!play_lit(&mut s), "the next row");
+    // A jump (ORDER, a song-position pointer): the row and the row's start change at once, and
+    // the call counter wraps.
+    at_row(&mut s, 3, 100, 2);
+    assert!(!play_lit(&mut s));
+    at_row(&mut s, 32, 65530, 3);
+    assert_eq!(s.f.st.now_call, 65530u16.wrapping_add(3));
+    assert!(play_lit(&mut s), "after the jump to row 32");
+    at_row(&mut s, 37, 7, 0);
+    assert!(!play_lit(&mut s), "row 37");
+    // Another voice's rows count while the first has none yet.
+    s.f.st.row = [SONG_T_NOWHERE as u8, 16, SONG_T_NOWHERE as u8];
+    s.f.st.row_call = [0, 40, 0];
+    s.f.st.now_call = 41;
+    assert!(play_lit(&mut s), "voice 2's row 16");
+    // Funktempo 5/7: a row is 6 calls on average, the beat as before.
     s.f.st.speed = [5, 7];
-    s.f.clock_calls = 24;
-    assert_eq!(inputs(&mut s, 0).beat, 0);
-    // The rows a beat are the views' (the song's setup).
+    s.f.st.row = [4, 0, 0];
+    s.f.st.row_call = [90, 0, 0];
+    s.f.st.now_call = 92;
+    assert!(play_lit(&mut s));
+    // The rows a beat are the views' (the song's setup): 8 rows, row 4 is mid-beat.
     s.ui.v.song.rows_beat = 8;
-    s.f.clock_calls = 24;
-    assert_eq!(inputs(&mut s, 0).beat, 128);
+    assert!(!play_lit(&mut s));
+    at_row(&mut s, 16, 200, 0);
+    assert!(play_lit(&mut s));
     // Stopped: no beat, no light.
     s.ui.p.playing = 0;
     s.f.st.state = SONG_T_STOPPED as u8;

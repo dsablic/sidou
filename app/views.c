@@ -2947,21 +2947,30 @@ static int save_asked(const views* v) {
     return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
 }
 
-/* The song's place in its beat, 0..255 (rows_beat rows of the speed's calls), from the player's
- * clock (the calls since the play), PANEL_BEAT_NONE without one. */
+/* The song's place in its beat, 0..255, from the player's row position (the first voice with a
+ * row event: its row in the pattern, so a play from mid-pattern, an ORDER jump, a song-position
+ * seek or an external clock all stay on the beat) and how far into the row it is (the calls
+ * since the row began and the fraction of the current one): rows_beat rows make a beat.
+ * PANEL_BEAT_NONE before a row event, or without a player. Integer only. */
 static uint32_t beat_phase(const views* v) {
     const song_transport* t = v->song.t;
-    song_clock c;
-    if (!t || !t->clock) {
+    song_status st;
+    if (!t) {
         return PANEL_BEAT_NONE;
     }
-    t->clock(t->ctx, &c);
+    t->status(t->ctx, &st);
+    uint32_t n = 0;
+    while (n < SONG_T_VOICES && st.row[n] == SONG_T_NOWHERE) {
+        n++;
+    }
     uint32_t rb = v->song.rows_beat ? v->song.rows_beat : 4u;
-    uint32_t len = (rb * ((uint32_t)c.speed[0] + c.speed[1]) + 1u) / 2u;
-    if (c.state != SONG_T_PLAYING || len == 0u) {
+    uint32_t len = ((uint32_t)st.speed[0] + st.speed[1]) * 128u; /* a row, in 256ths of a call */
+    if (st.state != SONG_T_PLAYING || n == SONG_T_VOICES || len == 0u) {
         return PANEL_BEAT_NONE;
     }
-    return c.calls % len * 256u / len;
+    uint32_t in_row = ((uint32_t)(uint16_t)(st.now_call - st.row_call[n]) << 8) + st.now_frac;
+    uint32_t pos = st.row[n] % rb * len + (in_row < len ? in_row : len - 1u);
+    return pos * 256u / (rb * len);
 }
 
 void views_leds(views* v, uint32_t now_ms, panel_led_in* out) {
