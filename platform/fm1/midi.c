@@ -556,9 +556,24 @@ static uint32_t ota_now_ms(void) {
     return ms;
 }
 
-/* The TIMER5 interrupt keeps polling USB while the session waits for the host. */
+/* The TIMER5 interrupt keeps polling USB while the session waits for the host. The session
+ * runs in place of the main loop, which is what empties SIDOU's MIDI-in ring (midi_drain), and
+ * every packet of the installer's answers goes into that ring too (usb_raw_in): unemptied, two
+ * 512-byte answers fill it, usb_raw_in holds EP1 back (ep1_hold) and the host is NAKed for
+ * good. ota_read's three tries then time out, step 1 fails and the firmware restarts: what
+ * 0.3.0's candidate did after four reads on the device. So the session drops what reaches the
+ * ring (its frames come through usb.c's SysEx assembler, not the ring, and after a session the
+ * firmware always restarts, never back to the parser) and lets EP1 go (usb_in_pump). */
+static void ota_drop_input(void) {
+    midi_ring_entry e;
+    while (midi_ring_pop(&in_ring, &e)) {
+    }
+    usb_in_pump();
+}
+
 static void ota_idle(void) {
     fm1_wdt_feed();
+    ota_drop_input();
 }
 
 /* ota_in_area, flash_write_allowed, ota_erase, ota_prog, ota_fread (host-tested). */

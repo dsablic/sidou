@@ -1404,3 +1404,173 @@ fn a_usb_put_with_a_song_playing_waits_out_a_collection_and_is_accepted() {
 fn a_usb_put_with_midi_notes_held_waits_out_a_collection_and_is_accepted() {
     put_while_the_store_waits(Pending::Collection, Sound::Notes);
 }
+
+/// fm1_install.py's logical image: the package without the marker byte after each of its
+/// first 20 blocks of 0x30.
+fn logical_image(package: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for i in 0..20 {
+        out.extend_from_slice(&package[i * 0x30..i * 0x30 + 0x2F]);
+    }
+    out.extend_from_slice(&package[20 * 0x30..]);
+    out
+}
+
+/// fm1_install.py's answer to a read request (`response`): the request's flags, address and
+/// length, then the data.
+fn read_response(flags: u8, addr: u32, data: &[u8]) -> Vec<u8> {
+    let n = data.len();
+    let mut body = vec![0, 0x59, 0x30, (n + 8) as u8, ((n + 8) >> 8) as u8, 0, flags];
+    body.extend_from_slice(&addr.to_le_bytes());
+    body.extend_from_slice(&[n as u8, (n >> 8) as u8, 0]);
+    body.extend_from_slice(data);
+    let sum = body[6..].iter().fold(0u8, |s, &b| s.wrapping_add(b));
+    body.push(!sum);
+    let mut sx = vec![0xF0];
+    sx.extend(pack7(&body));
+    sx.push(0xF7);
+    sx
+}
+
+/// Step 1 of an update as fm1_install.py runs it against the running firmware: the upgrade
+/// request, then every read request answered from the package's logical image (10 ms after
+/// it, the installer's DELAY["reply"]), until the device asks for the host's "success"
+/// (FINISH_CHECK). The host's OUT packets queue as the host's MIDI driver queues them: one a
+/// frame, a NAKed one again the next. Returns the reads served and whether the device asked
+/// for the "success"; panics when the device NAKs the host for longer than
+/// `STEP_ONE_NAK_MS`, which step 1 never needs (the session takes each frame at once).
+fn installer_step_one(m: &mut Machine, fw: &Firmware, image: &[u8]) -> (Vec<(u32, u32)>, bool) {
+    const FINISH_CHECK: u32 = 0xE000_0000;
+    const STEP_ONE_NAK_MS: u64 = 1_000;
+    host(m).in1.clear();
+    let mut out: std::collections::VecDeque<Vec<u8>> =
+        sysex_packets(&[0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
+            .chunks(64)
+            .map(<[u8]>::to_vec)
+            .collect();
+    let mut served = Vec::new();
+    let (mut taken, mut idle, mut naked) = (0usize, 0u64, 0u64);
+    // fm1_install.py's idle_check: 8 s without a request ends step 1.
+    while idle < 8_000 {
+        if let Some(chunk) = out.front() {
+            let usb = m.usb.as_mut().expect("a host");
+            if usb.out1(&mut m.soc, chunk) {
+                out.pop_front();
+                naked = 0;
+            } else {
+                naked += 1;
+                assert!(
+                    naked <= STEP_ONE_NAK_MS,
+                    "the device NAKed the installer for {naked} ms after {} reads \
+                     ({} packets unsent; pc in {})",
+                    served.len(),
+                    out.len(),
+                    fw.function_at(m.cpu.pc)
+                );
+            }
+        }
+        m.usb_frames(1);
+        idle += 1;
+        let at = fw.function_at(m.cpu.pc);
+        assert!(
+            !at.starts_with("fm1_reboot") && !at.starts_with("fm1_cstart"),
+            "the device restarted ({at}) after {} reads",
+            served.len()
+        );
+        // Only the packets read since the last look: a request is whole in them, as the
+        // device sends one whole (usb.c ep1_tx, SysEx first).
+        let fresh = host(m).in1.len();
+        if fresh == taken {
+            continue;
+        }
+        let r = replies(&host(m).in1[taken..fresh]);
+        taken = fresh;
+        for d in &r {
+            if d[0] != 0x30 || d.len() != 13 {
+                continue;
+            }
+            let flags = d[4];
+            let addr = u32::from_le_bytes([d[5], d[6], d[7], d[8]]);
+            let n = u32::from_le_bytes([d[9], d[10], d[11], 0]);
+            idle = 0;
+            if addr == FINISH_CHECK {
+                return (served, true);
+            }
+            assert!(
+                n <= 512 && (addr + n) as usize <= image.len(),
+                "a read outside the package: {addr:#x}+{n}"
+            );
+            m.usb_frames(10);
+            let answer = read_response(flags, addr, &image[addr as usize..(addr + n) as usize]);
+            out.extend(sysex_packets(&answer).chunks(64).map(<[u8]>::to_vec));
+            served.push((addr, n));
+        }
+    }
+    (served, false)
+}
+
+/// The update's step 1 through the running firmware, every read of it, then step 2's hand-off,
+/// as on the device (fm1_install.py): the package's head and loader read, the loader staged in
+/// flash, the host's "success", the UPDATA_PARM record in flash and RAM, the restart into the
+/// loader. On 0.3.0's candidate the device stopped after four reads on the device (the first
+/// read and three tries of the second; here, the host NAKed for good after two answers): the
+/// session never emptied SIDOU's MIDI-in ring, which the answers filled until it held EP1 back.
+/// The machine's stack check (common::Machine's Drop) covers the session's depth.
+#[test]
+fn the_running_firmware_serves_an_updates_whole_step_one() {
+    /// fm1_sys.h FM1_UPDATA_PARM, and ota.c OTA_AREA and OTA_RES.
+    const UPDATA_PARM: u32 = 0x01C7_FD88;
+    const OTA_AREA: usize = 0xE0000;
+    const OTA_RES: usize = 0xE4F00;
+    let Some(fw) = fixture("the update's step 1") else {
+        return;
+    };
+    let Some(build) = build_dir() else {
+        return;
+    };
+    let package = std::fs::read(build.join("sidou.fwsc"))
+        .expect("sidou.fwsc in the fm1 build directory: run sidou-pack (TESTING.md)");
+    let image = logical_image(&package);
+    let mut m = usb_machine(&fw);
+    let (served, finished) = installer_step_one(&mut m, &fw, &image);
+    println!("step 1: {} reads, {served:x?}", served.len());
+    assert!(
+        finished,
+        "the device stopped asking after {} reads (pc in {})",
+        served.len(),
+        fw.function_at(m.cpu.pc)
+    );
+    // The head (two reads), the loader's head twice (ota.c steps 2 and 4), then its body: every
+    // byte of it staged as the package holds it.
+    let ota_off = served[2].0;
+    assert_eq!(served[3].0, ota_off);
+    let body = &served[4..];
+    assert_eq!(body[0].0, ota_off + 0x20);
+    for &(addr, n) in body {
+        let at = OTA_AREA + 32 + (addr - ota_off - 0x20) as usize;
+        assert_eq!(
+            m.soc.flash.mem[at..at + n as usize],
+            image[addr as usize..(addr + n) as usize],
+            "the staged loader at {addr:#x}"
+        );
+    }
+    // The staged loader's JLFS head (ota.c ota_stage_head), written last.
+    assert_eq!(
+        &m.soc.flash.mem[OTA_AREA + 16..OTA_AREA + 26],
+        b"LOADER.BIN"
+    );
+    // Step 2's hand-off: the host's "success" (fm1_install.py serve), then the record, flash
+    // copy first, and the core reset into the loader.
+    let answer = read_response(0, 0xE000_0000, b"success\0");
+    send(&mut m, &sysex_packets(&answer));
+    let identity = b"ota-FM-1_015";
+    let mut ms = 0;
+    while (0..12u32).any(|i| m.soc.read8(UPDATA_PARM + 8 + i) != identity[i as usize]) {
+        assert!(ms < 2_000, "no UPDATA_PARM record 2 s after the success");
+        m.usb_frames(1);
+        ms += 1;
+    }
+    assert_eq!(&m.soc.flash.mem[OTA_RES + 8..OTA_RES + 20], identity);
+    let (user, system) = m.stack_use();
+    println!("step 1's stacks: user {user}, system {system}");
+}

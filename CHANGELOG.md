@@ -24,7 +24,8 @@ All notable changes are documented here. The format follows
   while the song follows a clock no longer throws the song off the beat (review 4.4).
 - **USB-MIDI in no longer drops input in a long main-loop pass:** the device NAKs the host
   while SIDOU's MIDI-in ring is nearly full, so a long SysEx dump waits instead of being cut,
-  which released every note (review 4.5).
+  which released every note (review 4.5). An update's first step, which runs in place of the
+  main loop, empties that ring itself, so the hold never stalls the installer's answers.
 - **CLOCK OUT's song position no longer cuts a SysEx reply:** it waits for the reply's end
   (review 4.2).
 - **A MIDI continue (FB) with no song position, for a song never played, starts it** on the
