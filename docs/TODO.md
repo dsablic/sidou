@@ -545,3 +545,16 @@ card (HOME held) is the only on-device explanation. Done:
   would cost about 300 instructions a sample at their heaviest); [decision record
   0004](decisions/0004-effect-algorithms.md), "The output stage: CHIP SPREAD". The video moment is still to
   do; docs/hardware-test.md section 15 for the unit.
+
+## From the v0.3.0 device session (2026-10-23)
+
+- **ARP's state:** a held chord at the default 1F sounds like a wobble, and the 1x `ARP 1F UP 1OCT`
+  line is easy to miss: default rate 3F, and a 2x ARP badge on LIVE while it is on.
+- **SAVE as OK everywhere:** the SONG actions, the LOAD list and the confirmations still open with
+  ALGORITHM only; SAVE opens the highlighted item on every list screen.
+- **A fresh install's LOAD list is empty:** decide how a new user gets songs (starter songs on the
+  store at first boot, a page that uploads them, or SIDOU LOOP listed as a built-in).
+- **Catch this class automatically:** a test that SAVE opens and HOME goes back on every list
+  screen; the ergonomics harness in the merge check, failing on any new finding against the last
+  accepted run; first-run and per-feature recipes (a fresh install has something to LOAD; a
+  feature that is on shows it readably).
