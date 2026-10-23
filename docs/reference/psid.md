@@ -122,6 +122,16 @@ the chip count; the warnings; and the three strings. Every value satisfies
 
 ## The environment
 
+`core/psid/psid_env.c` (tests: `host/crates/sidou-tests/tests/psid_env.rs`, on tunes built by
+the test, `src/psid_fixtures.rs`).
+
+### Memory
+
+Loading a tune zeroes the 6502's 64 KiB, sets the 6510's port to its power-on state (`$00` =
+`$2F`, `$01` = `$37`) and copies the data to its load address. Starting a song does not reload
+it: a player that changes subtunes loads the tune again first, as a C64 player does, so init
+finds memory as the file left it.
+
 ### Calls
 
 Init runs with A = song - 1, X = Y = 0, the I flag set and D clear, S = `$FF` after a
@@ -130,6 +140,17 @@ A play address of 0 calls the tune's own interrupt handler (`$0314` when `$01` m
 KERNAL in, else `$FFFE`) with P pushed as an interrupt does. A call ends at a return to
 `$0000` or `$0001`, or a jump to the KERNAL's interrupt exits `$EA31`, `$EA81`, `$FEBC` (no
 ROM is emulated; those addresses stand for them).
+
+What the implementation fixes beyond that:
+- A play address of 0 leaves `$01` as the tune set it (its init chose the vector by it). The
+  stack is what the interrupt leaves: P pushed (B and I clear, as the interrupted program's).
+  Through `$0314` it is also what the KERNAL's entry (`$FF48`) leaves: A, X and Y pushed, and
+  X = S, so a handler may end with the KERNAL exit's own `PLA`, `TAY`, `PLA`, `TAX`, `PLA`,
+  `RTI` instead of jumping to `$EA31`; S is `$F9` there and `$FC` through `$FFFE`. The
+  interrupt sequence's and the KERNAL entry's own cycles are not counted: a call's first
+  cycle is the routine's.
+- A call whose address is `$0000`, `$0001` or a KERNAL exit (an interrupt vector the tune
+  never set, say) returns at once, with nothing run.
 
 ### The bank register
 
@@ -143,13 +164,23 @@ Init may run 5 s of 6502 time (the clock's rate times 5); past that the tune sto
 `INIT TOO LONG`. A play call that runs past its period is an overrun (counted and shown); the
 next call then starts when it returns, as a C64's next interrupt waits for the handler's
 RTI. A play call that has not returned after one second of 6502 time stops the tune with
-`PLAY HUNG`. A JAM stops it with `6502 JAM AT $xxxx`.
+`PLAY HUNG`. A JAM stops it with `6502 JAM AT $xxxx`. The 6502 runs whole instructions, so a
+stop comes at the first instruction boundary at or past its limit (init's from cycle 0, a
+play call's from its start).
 
 ### Time
 
 Cycle 0 is init's first cycle. The first play call is at the first period boundary after
 init returns, `(init_end / P + 1) * P`; call n + 1 is due one period after call n was due, or
 at call n's return if that is later.
+
+Precisely, as a C64's interrupts behave: each call has its interrupt's cycle, and the next
+interrupt is one period after it. A call that returns after that interrupt is an overrun:
+the next call starts at its return, and every interrupt it missed is one pending interrupt
+(the IRQ line stays low until acknowledged), so the next call's interrupt is the last one
+that passed, and the one after it comes a period later, on the same grid. A call that
+returns exactly on the next interrupt is not an overrun. The time is a 32-bit count compared
+with wrapping arithmetic, so it runs past 2^32 cycles (72 minutes) unharmed.
 
 ### The period
 

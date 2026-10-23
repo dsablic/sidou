@@ -74,6 +74,13 @@ unsafe extern "C" {
         out_len: *mut usize,
     ) -> c_int;
     fn gt2ref_free(p: *mut c_void);
+    fn gt2ref_assemble(
+        src: *const u8,
+        len: usize,
+        strict: c_int,
+        out: *mut *mut u8,
+        out_len: *mut usize,
+    ) -> c_int;
 }
 
 impl Default for Options {
@@ -165,6 +172,37 @@ pub fn canonical(sng: &[u8]) -> Result<Vec<u8>, String> {
     Ok(take(p, len))
 }
 
+/// SIDOU's assembler (`shim/gt2ref_asm.c`) on a source of its own: the bytes from the first
+/// statement on (no load address). Not strict, it is the dialect GoatTracker's player is
+/// written in, both of its quirks included (`ldy abs,y` assembles as `$BC`, LDY abs,X, and
+/// BVS as `$B0`). Strict, for the 6502 programs SIDOU's tests write (M3's PSID fixtures): the
+/// quirks are off (`ldy abs,x` is `$BC`, `ldy abs,y` an error, BVS `$70`), and BIT, BRK, CLD,
+/// CLV, RTI and SED are there too; illegal opcodes go in through `.BYTE`. An error is printed
+/// to stderr with its line.
+pub fn assemble(src: &str, strict: bool) -> Result<Vec<u8>, String> {
+    let mut p = std::ptr::null_mut();
+    let mut len = 0usize;
+    let r = unsafe {
+        gt2ref_assemble(
+            src.as_ptr(),
+            src.len(),
+            c_int::from(strict),
+            &mut p,
+            &mut len,
+        )
+    };
+    if r != 0 {
+        if !p.is_null() {
+            unsafe { gt2ref_free(p.cast()) };
+        }
+        return Err("assembly failed (the error is on stderr)".into());
+    }
+    if p.is_null() {
+        return Ok(Vec::new());
+    }
+    Ok(take(p, len))
+}
+
 /// `third_party/goattracker2/examples`, the songs GoatTracker 2.77 ships.
 pub fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../third_party/goattracker2/examples")
@@ -189,4 +227,35 @@ pub fn examples() -> Vec<(String, Vec<u8>)> {
 /// The subtune count a song's header gives.
 pub fn subtunes(sng: &[u8]) -> u32 {
     sng.get(100).copied().unwrap_or(0) as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assemble;
+
+    #[test]
+    fn the_dialect_keeps_goattrackers_two_quirks() {
+        let src = ".ORG ($1000)\nldy $2000,y\nbvs l\nl: rts\n";
+        assert_eq!(
+            assemble(src, false).unwrap(),
+            [0xbc, 0x00, 0x20, 0xb0, 0x00, 0x60]
+        );
+        assert!(assemble(".ORG ($1000)\nldy $2000,x\n", false).is_err());
+        assert!(assemble(".ORG ($1000)\nrti\n", false).is_err());
+    }
+
+    #[test]
+    fn strict_mode_assembles_what_is_written() {
+        let src = ".ORG ($1000)\nldy $2000,x\nbvs l\nl: rti\nbit <$fb\nbit $d011\n\
+                   brk\ncld\nclv\nsed\n.BYTE ($02)\n";
+        assert_eq!(
+            assemble(src, true).unwrap(),
+            [
+                0xbc, 0x00, 0x20, 0x70, 0x00, 0x40, 0x24, 0xfb, 0x2c, 0x11, 0xd0, 0x00, 0xd8, 0xb8,
+                0xf8, 0x02
+            ]
+        );
+        assert!(assemble(".ORG ($1000)\nldy $2000,y\n", true).is_err());
+        assert!(assemble(".ORG ($1000)\nlda undefined\n", true).is_err());
+    }
 }

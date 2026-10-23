@@ -23,6 +23,7 @@ const SOURCES: &[&str] = &[
     "core/song/gt2_ins.c",
     "core/song/song_ext.c",
     "core/psid/psid_file.c",
+    "core/psid/psid_env.c",
     "core/player/gt2_play.c",
     "core/player/gt2_shape.c",
     "core/player/song_ctl.c",
@@ -195,6 +196,10 @@ fn main() {
     );
     println!(
         "cargo:rerun-if-changed={}",
+        root.join("core/psid").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
         root.join("bench/workload.h").display()
     );
     println!("cargo:rerun-if-changed={}", root.join("app").display());
@@ -271,7 +276,7 @@ fn main() {
             "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
             "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",
             "title_card|help_view|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
-            "midi_route|midi_sync|midi_clock|sysex",
+            "midi_route|midi_sync|midi_clock|sysex|psid_env",
         ))
         .generate()
         .expect("bindgen (ILP32 layout) failed")

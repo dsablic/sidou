@@ -9,6 +9,7 @@
 #include "player/gt2_play.h"
 #include "player/gt2_shape.h"
 #include "player/song_ctl.h"
+#include "psid/psid_env.h"
 #include "psid/psid_file.h"
 #include "sid/sid.h"
 #include "sid/sid_character.h"
