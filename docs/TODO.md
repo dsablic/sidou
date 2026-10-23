@@ -554,6 +554,10 @@ card (HOME held) is the only on-device explanation. Done:
   ALGORITHM only; SAVE opens the highlighted item on every list screen.
 - **A fresh install's LOAD list is empty:** decide how a new user gets songs (starter songs on the
   store at first boot, a page that uploads them, or SIDOU LOOP listed as a built-in).
+- **DAC is inaudible on the device** (the user, on PWM BASS, NOISE PERC and soft notes too): make it
+  clearly audible on every sound, a worn-chip grit (bit errors that step the waveform, a little
+  intermodulation) past the physical model if need be; 0 stays bit-identical. THUMP works (it
+  acts at note starts, as its card says); BLEED works.
 - **SPREAD with one chip:** a song alone (chip A) moves to one ear at SPREAD 100. Proposed: a chip
   sounding alone stays centred; SPREAD applies while both chips sound, gliding about 0.1 s as the
   second comes in or goes quiet (the user, 2026-10-23: yes; "SPREAD should do channel separation").
