@@ -12,6 +12,23 @@ the firmware's own, played in the emulator; a recipe that stops working fails
 The songs the videos play (CHROME COMET, IRON RITE, NEON HIGHWAY, PAPER LANTERNS) go onto a real
 FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), over USB.
 
+## Watch
+
+Each plays in the browser; they are attached to the [v0.3.0 release](https://github.com/dsablic/sidou/releases/tag/v0.3.0).
+
+- [Sidou intro](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-sidou-intro.mp4)
+- [Whats new](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-whats-new.mp4)
+- [Rec over loop](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-rec-over-loop.mp4)
+- [Mute and solo](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-mute-and-solo.mp4)
+- [Step a beat](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-step-a-beat.mp4)
+- [Save and load](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-save-and-load.mp4)
+- [Track bass](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-track-bass.mp4)
+- [Track lead](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-track-lead.mp4)
+- [Play over a song](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-play-over-a-song.mp4)
+- [Remix a song](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-remix-a-song.mp4)
+- [Chip spread](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-chip-spread.mp4)
+- [Chord arpeggio](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-chord-arpeggio.mp4)
+
 ## The videos
 
 Durations are of the wide cut; each comes as `ID.mp4` (1920 x 1080), `ID-square.mp4`

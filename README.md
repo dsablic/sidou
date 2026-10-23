@@ -17,6 +17,10 @@ and you can play the chip live from the keys or over MIDI.
 *The boot title, LIVE, TRACKER, STEP, CHIP, the RED MOON RITE scene, ORDER and INSTR, from the
 screenshots the tests check.*
 
+
+[![SIDOU in 77 seconds](docs/media/videos/sidou-intro.webp)](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-sidou-intro.mp4)
+
+**Watch:** [SIDOU in 77 seconds](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-sidou-intro.mp4) · [What's new in 0.3.0](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-whats-new.mp4) · [all the how-to videos](docs/videos.md#watch)
 ## What you can do
 
 - **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,
