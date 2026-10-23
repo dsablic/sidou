@@ -28,15 +28,14 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # The build image, as ci.yml (the same digest as tools/docker/image.digest): the toolchains,
+    # Node and Playwright's Chromium are in it, so nothing is installed here.
+    container:
+      image: ghcr.io/dsablic/sidou-build@sha256:c5d6a1d204a635f2b698ade0f07deb5843e6e001d5f74684bbc92a5d974766cf
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Install libclang (bindgen)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -47,9 +46,6 @@ jobs:
         with:
           path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Build the site and smoke-test it (tools/web-demo --check)
         run: tools/web-demo --check
       # The videos: GitHub serves release assets only as downloads, so the latest release's MP4s are
@@ -57,7 +53,13 @@ jobs:
       - name: The videos from the latest release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download --repo "${{ github.repository }}" --pattern 'video-*.mp4' --dir build/web/videos --clobber || echo "no videos in the latest release"
+        run: |
+          mkdir -p build/web/videos
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+            | jq -r '.assets[] | select(.name | test("^video-.*\\.mp4$")) | "\(.name) \(.browser_download_url)"' \
+            | while read -r name url; do curl -fsSL --retry 3 -o "build/web/videos/$name" "$url"; done
+          ls build/web/videos | grep -c '^video-' || echo "no videos in the latest release"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

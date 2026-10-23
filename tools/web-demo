@@ -56,7 +56,8 @@ git -C "$emu" checkout -q -f --detach "$rev"   # (also undoes any edit to a trac
 
 # ---- the wasm and upstream's page files, by upstream's own build script
 say "fm1-web to wasm (fm1-emu's web/build.sh)"
-if command -v rustup >/dev/null; then
+# (The build image has its toolchain with the target already, and no "stable".)
+if command -v rustup >/dev/null && [ -z "${SIDOU_BUILD_IMAGE:-}" ]; then
     rustup target add --toolchain stable wasm32-unknown-unknown >/dev/null
 fi
 "$emu/web/build.sh" "$out" >/dev/null
