@@ -1381,6 +1381,25 @@ Headphones or the line out. Controls: [controls.md, STEP](reference/controls.md#
 - [ ] **In GoatTracker.** SAVE the song, copy it off (Live Link or SysEx) and open it in
   GoatTracker 2.77: it loads and plays, the digi lanes as the chip kit's drums.
 
+## 17. Code in Felucca's old debug area (v0.4.0)
+
+Since v0.4.0 the code that runs from SRAM (RAMTEXT) reaches up to RAM, over the 8 KB below it
+(0x01C0C000..0x01C0E000) that Felucca keeps for RAM-run debug images and where SIDOU's start
+code used to leave five boot words ([hardware.md, Code in SRAM](hardware.md#code-in-sram)).
+Nothing else is known to use that SRAM once the app runs, and the update loader runs from the
+SPL after a reset, never beside the app; these confirm it on the device. Do them on a build
+whose `.ram_text` reaches past 0x01C0C000 (the emulator's `ram_audio` test prints its size:
+over 49,152 bytes).
+
+- [ ] **Boot.** Install it (section 1). It boots to the title card and LIVE, the first boot
+  and ten power cycles after it (section 3), and a held chord plays clean for a minute on both
+  chip models (the audio interrupt runs from that SRAM).
+- [ ] **A store write.** Change a setting and SAVE (section 7.1), and SAVE a song (section 13):
+  both survive a power cycle. (The flash driver runs from RAMTEXT with XIP off.)
+- [ ] **A USB update round trip.** Install the same package again over USB (section 1), then
+  the previous release, then this one: each install finishes and boots, and the settings and
+  songs are still there.
+
 ## Result
 
 | Section | Pass / fail | Notes |
