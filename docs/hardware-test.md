@@ -828,6 +828,9 @@ USB replug:
   monitor shows:
 - [ ] The same after deleting the device from the OS's MIDI setup (macOS:
   Audio MIDI Setup) and replugging.
+- [ ] *(Since USB audio out.)* The unit is one USB device with an audio input
+  beside its MIDI port (section 16); `--info` and the reinstall above pass with
+  it, also while a DAW records from it.
 
 If an item fails, record it, and get back to a working firmware with the
 power-on gesture (section 0) rather than the installer.
@@ -1362,6 +1365,54 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
   Amount at 127: loud, but no hard crackle of clipping on the peaks (the soft limiter rounds
   them). Note anything that still sounds clipped, and at which setting.
 
+## 16. USB audio out
+
+What it is: [README, What you can do](../README.md#what-you-can-do). The unit is one USB
+device, the MIDI port and a class-compliant audio input "SIDOU FM-1" (2 channels, 16-bit,
+44.1 or 48 kHz), Felucca's `usb.c` audio input. fm1-emu has no USB controller: the host tests
+(`host/crates/sidou-pack/tests/usb_audio.rs`, and Felucca's own `uac_test.c`) and a modelled
+host in emu-gate (`tests/usb.rs`) check the firmware's side; only the unit shows the chip's.
+A note held (or a song playing) throughout unless an item says otherwise.
+
+- [ ] **macOS:** plug in. Audio MIDI Setup lists "SIDOU FM-1" with 2 input channels and the
+  formats 44,100 and 48,000 Hz, and the MIDI port "SIDOU FM-1" as before (no driver install,
+  no prompt). Record what the Format menu shows:
+- [ ] **Windows 10/11:** Sound settings, Input lists the unit (its name may be "Microphone
+  (SIDOU FM-1)" or "Line (...)"); its Properties, Advanced lists 2 channel 16 bit at 44100
+  and 48000 Hz. The MIDI port still shows in a DAW or MIDI-OX. Record the names:
+- [ ] **Linux:** `arecord -l` lists the card; `arecord -D hw:<card> -f S16_LE -c 2 -r 44100
+  -d 10 a.wav` and the same with `-r 48000` record 10 s each that play back clean; `amidi -l`
+  still lists the MIDI port.
+- [ ] **iPad (USB-C, or a Lightning camera adapter):** a recording app (GarageBand, AUM)
+  offers the unit as an input and records it; the MIDI port works in the same app.
+- [ ] **44.1 kHz in a DAW:** project at 44.1 kHz, the unit as the input, record a minute of a
+  song: no clicks, gaps or pitch drift; the recording sounds like the headphone out.
+- [ ] **48 kHz in a DAW:** the same at 48 kHz (the unit resamples): no clicks or gaps, no
+  audible aliasing on a bright patch (noise or a high pulse).
+- [ ] **No dropouts while the screen works:** record two minutes while you move through the
+  views fast (SCENE, the CHIP view, the song editor), scroll lists, and turn K1..K4: the
+  recording has no clicks. Then the same with the effect slots at their heaviest (FLANGER,
+  PHASER, REVERB on, two chips playing).
+- [ ] **Level:** MASTER turns the recording's level as it turns the speaker's (USB takes the
+  output after MASTER). At full MASTER, two loud chords: the recording's peaks are where the
+  line out's are, no harder clipping than on the line out.
+- [ ] **Saving while recording:** record while you SAVE a song or a setting (a flash write):
+  the sound pauses in the recording exactly as on the speaker (the store's hold), then goes
+  on; note any click beyond the speaker's.
+- [ ] **USB-MIDI beside it:** while recording, the MIDI items of section 8 pass (notes in, K1's
+  CC 74 out, a SysEx file put and get, section 8c).
+- [ ] **Updates beside it:** `fm1_install.py --info` and a reinstall over SIDOU pass while the
+  DAW has the input open (section 8.1); after the update the unit enumerates with its audio
+  input again.
+- [ ] **Stop and start:** stop the recording and start it again ten times, close and reopen the
+  DAW, unplug and replug mid-recording: the stream comes back every time, the MIDI port too.
+- [ ] **Host asleep:** record, put the computer to sleep, wake it: the sound never stops on the
+  speaker; recording works again after the wake.
+- [ ] *(If you can measure it.)* The unit's current while recording against idle, at 44.1 and
+  48 kHz:
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1383,3 +1434,4 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
 | 13 Songs on the store | | |
 | 14 Make a song on the device | | |
 | 15 SPREAD and the soft limiter | | |
+| 16 USB audio out | | |

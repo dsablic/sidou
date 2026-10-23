@@ -49,6 +49,7 @@
 #include "ui.h"
 #include "ui_sound.h"
 #include "update.h"
+#include "usb_audio.h"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
@@ -125,7 +126,7 @@ void fm1_alnk0_irq(void) {
 #define MIDI_POLL_TICKS 5u
 
 void fm1_timer5_irq(void) {
-    static uint32_t last, acc, sub;
+    static uint32_t last, acc, sub, block_seen;
     static uint8_t usb_owed;
     uint32_t now = fm1_ticks();
     fm1_timer5_ack();
@@ -139,7 +140,21 @@ void fm1_timer5_irq(void) {
     if (usb_owed && !in_audio) {
         usb_owed = 0;
         midi_usb_isr();
+    } else if (sub == 0u && in_audio) {
+        usb_audio_isr(); /* USB audio's packet, one a USB frame (usb_audio.h) */
     }
+    /* USB audio out (usb_audio.h): a block rendered since the last tick is in the free half
+     * buffer until the DMA moves on, which raises the half's pending flag. */
+    uint32_t block_end = audio_block_end;
+    if (block_end != block_seen && !in_audio) {
+        block_seen = block_end;
+        if (fm1_audio_pending() & FM1_AUDIO_HALF) {
+            usb_audio_skip();
+        } else {
+            usb_audio_take(&abuf[fm1_audio_free_half() * AUDIO_HALF_WORDS]);
+        }
+    }
+    usb_audio_tick();
     if (++sub == MIDI_POLL_TICKS) {
         sub = 0;
     }

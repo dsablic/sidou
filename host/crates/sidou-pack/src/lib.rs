@@ -1058,6 +1058,58 @@ pub mod harness {
         pub fn ldr_h_session(h: *mut OtaHost) -> i32;
         pub fn ldr_h_writes() -> u32;
     }
+
+    /// harness/uac_harness.c's view of USB audio out: TIMER5's block (platform/fm1/usb_audio.h)
+    /// and usb.c's audio input state and constants.
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct UacState {
+        pub want: u32,
+        pub left: u32,
+        pub blocks: u32,
+        pub skipped: u32,
+        pub go: u32,
+        pub feed: u32,
+        pub r48: u32,
+        pub fill_min: u32,
+        pub fill_lo: u32,
+        pub fill_hi: u32,
+        pub underruns: u32,
+        pub overruns: u32,
+        pub adj_up: u32,
+        pub adj_down: u32,
+        pub pkts: u32,
+        pub frames: u32,
+        pub ring_w: u32,
+        pub ring_r: u32,
+        pub maxf: u32,
+        pub prime: u32,
+        pub prime48: u32,
+        pub lo: u32,
+        pub hi: u32,
+        pub lo48: u32,
+        pub hi48: u32,
+        pub ring_n: u32,
+    }
+
+    // USB audio out (harness/uac_harness.c) and Felucca's own test of usb.c's audio input
+    // (harness/felucca/uac_test.c). Both keep static state: one test at a time.
+    extern "C" {
+        pub fn uac_h_desc(wvalue: u32, d: *mut *const u8) -> u32;
+        pub fn uac_h_reset();
+        pub fn uac_h_stream(alt: u32);
+        pub fn uac_h_rate(hz: u32);
+        pub fn uac_h_flowing(on: u32);
+        pub fn uac_h_take(half: *const i32);
+        pub fn uac_h_skip();
+        pub fn uac_h_tick();
+        pub fn uac_h_packet(d: *mut u32) -> u32;
+        pub fn uac_h_direct_start();
+        pub fn uac_h_direct_tap(out: *const i32, n: u32);
+        pub fn uac_h_get() -> UacState;
+        pub fn uac_h_drain(d: *mut u32, max: u32) -> u32;
+        pub fn felucca_uac_test_main() -> i32;
+    }
 }
 
 #[cfg(test)]
