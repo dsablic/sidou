@@ -6,7 +6,9 @@
 // makes sound, and press PLAY (Space, button 12) and check the song sounds and PLAY again
 // stops it. Then save, reload and Start again, and check the boot got the saved flash back
 // (fm1-emu's persistence.js: the sectors SIDOU wrote, kept in IndexedDB per package). Exits
-// non-zero on any failure. Run by web/check.sh (tools/web-demo --check).
+// non-zero on any failure. Then the Songs page (songs.html) against a simulated FM-1 in a fake
+// Web MIDI: Connect, Send all, and the frames it sent (web/sysex.js's own decoder checks them
+// against the site's .sng files), and nothing sent to the other port. Run by web/check.sh (tools/web-demo --check).
 //   node check.mjs http://127.0.0.1:8642/ [screenshot.png]
 import { chromium } from "playwright";
 
@@ -64,6 +66,51 @@ function watch() {
     }
     return Math.sqrt(sum / n);
   };
+}
+
+
+// The Songs page's fake Web MIDI: two port pairs, "Other Synth" (must stay silent) and "SIDOU FM-1",
+// a simulated device behind the second that follows docs/reference/sysex.md (INQ, DIR, PUT/DATA/END).
+function fakeMidi() {
+  const log = (window.__midi = { other: [], fm1: [], requested: null });
+  const inputs = new Map([["i1", { id: "i1", name: "Other Synth", onmidimessage: null }],
+    ["i2", { id: "i2", name: "SIDOU FM-1", onmidimessage: null }]]);
+  let chain = Promise.resolve();
+  const reply = async (command, sequence, data = []) => {
+    const { encodeFrame } = await import("./sysex.js");
+    inputs.get("i2").onmidimessage?.({ data: encodeFrame(command, sequence, Uint8Array.from(data)) });
+  };
+  const u32 = (v) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  let upload = null, listing = null, dirSeq = 0;
+  const dirNext = async () => {
+    if (!listing) return;
+    const e = listing.shift();
+    const seq = dirSeq;
+    dirSeq = (dirSeq + 1) & 127;
+    if (!e) { listing = null; return reply(6, seq); }
+    const name = new Array(16).fill(0);
+    [...e.name].forEach((c, i) => { name[i] = c.charCodeAt(0); });
+    return reply(2, seq, [...name, 1, ...u32(e.length), ...u32(e.crc)]);
+  };
+  const device = async (bytes) => {
+    const { decodeFrame } = await import("./sysex.js");
+    log.fm1.push(Array.from(bytes));
+    const f = decodeFrame(bytes);
+    if (f.command === 1) return reply(1, f.sequence, [1, 0, 2, 0, 0, 1, 0, ...u32(30000), 6, 1]);
+    if (f.command === 2) { listing = [{ name: "IRON RITE", length: 10, crc: 1 }]; dirSeq = f.sequence; return dirNext(); }
+    if (f.command === 0x7e) return dirNext();
+    if (f.command === 4) {
+      const d = f.data;
+      upload = { name: String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, ""), data: [] };
+      log.puts = [...(log.puts || [])];
+      return reply(0x7e, f.sequence);
+    }
+    if (f.command === 5) { upload.data.push(...f.data); return reply(0x7e, f.sequence); }
+    if (f.command === 6) { log.puts.push(upload); upload = null; return reply(0x7e, f.sequence); }
+  };
+  const outputs = new Map([["o1", { id: "o1", name: "Other Synth", send: (b) => log.other.push(Array.from(b)) }],
+    ["o2", { id: "o2", name: "SIDOU FM-1", send: (b) => { chain = chain.then(() => device(b)); } }]]);
+  navigator.requestMIDIAccess = async (opts) => { log.requested = opts; return { inputs, outputs, onstatechange: null }; };
 }
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -170,6 +217,52 @@ try {
   if (!(kept > 0)) fail("the reload booted without the saved flash");
   const again = await page.evaluate(() => window.__sidou);
   if (again.last?.halted) fail("the emulated CPU halted after the reload");
+
+  // the Songs page, against the simulated FM-1
+  const songs = await browser.newPage({ viewport: { width: 900, height: 900 } });
+  songs.on("console", (m) => { if (m.type() === "error") fail(`songs page console error: ${m.text()}`); });
+  songs.on("pageerror", (e) => fail(`songs page error: ${e.message}`));
+  songs.on("requestfailed", (r) => fail(`songs page request failed: ${r.url()}`));
+  songs.on("response", (r) => { if (r.status() >= 400) fail(`songs page HTTP ${r.status()}: ${r.url()}`); });
+  const asked = [];
+  songs.on("dialog", (d) => { asked.push(d.message()); d.accept(); });
+  await songs.addInitScript(fakeMidi);
+  await songs.goto(new URL("songs.html", url).href);
+  if (await songs.locator("#songs .song").count() !== 4) fail("the Songs page does not list four songs");
+  if (!(await songs.locator("#send-all").isDisabled())) fail("Send all is enabled before connecting");
+  await songs.waitForTimeout(300);
+  const sentEarly = await songs.evaluate(() => window.__midi.fm1.length + window.__midi.other.length);
+  if (sentEarly !== 0) fail("the Songs page sent MIDI before Connect");
+  await songs.locator("#connect").click();
+  try {
+    await songs.waitForFunction(() => /SIDOU 0\.2\.0 .* 30000 bytes free/.test(document.getElementById("device").textContent), null, { timeout: 10_000 });
+    await songs.waitForFunction(() => !document.getElementById("send-all").disabled, null, { timeout: 5_000 });
+  } catch {
+    fail(`the Songs page did not find the FM-1: ${await songs.locator("#device").textContent()}`);
+  }
+  if (!/IRON RITE/.test(await songs.locator("#files").textContent())) fail("the Songs page does not list the device's files");
+  await songs.locator("#send-all").click();
+  try {
+    await songs.waitForFunction(() => /4 sent/.test(document.getElementById("all-state").textContent), null, { timeout: 20_000 });
+  } catch {
+    fail(`Send all did not finish: ${await songs.locator("#all-state").textContent()} / ${await songs.locator(".state").allTextContents()}`);
+  }
+  if (asked.length !== 1 || !/IRON RITE/.test(asked[0])) fail(`expected one replace question about IRON RITE, got ${JSON.stringify(asked)}`);
+  const sent = await songs.evaluate(async () => {
+    const { crc32 } = await import("./sysex.js");
+    const out = [];
+    for (const put of window.__midi.puts || []) {
+      const file = put.name.toLowerCase().replace(/ /g, "-") + ".sng";
+      const want = new Uint8Array(await (await fetch(`songs/${file}`)).arrayBuffer());
+      out.push({ name: put.name, same: put.data.length === want.length && crc32(Uint8Array.from(put.data)) === crc32(want), length: want.length });
+    }
+    return { out, other: window.__midi.other.length, requested: window.__midi.requested };
+  });
+  console.log(`songs page: sent ${sent.out.map((o) => `${o.name} (${o.length} B)`).join(", ")}`);
+  if (sent.out.length !== 4 || sent.out.some((o) => !o.same)) fail(`the PUTs do not carry the site's songs: ${JSON.stringify(sent.out)}`);
+  if (sent.other !== 0) fail("the Songs page sent to the other port");
+  if (!sent.requested?.sysex) fail("Web MIDI was not asked for SysEx");
+  await songs.close();
 } finally {
   await browser.close();
 }

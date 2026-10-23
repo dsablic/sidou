@@ -98,6 +98,11 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
   item loads, creates, saves under a name and deletes songs.
 - **Over USB:** SysEx GET reads a song from the device and PUT writes one to it
   ([protocol](docs/reference/sysex.md)).
+- **The showcase songs:** a fresh install lists only the built-in SIDOU LOOP. The
+  [Songs page](https://dsablic.github.io/sidou/songs.html) of the browser demo sends
+  CHROME COMET, IRON RITE, NEON HIGHWAY and PAPER LANTERNS ([`assets/songs`](assets/songs/)) to a
+  connected FM-1 in one click (Chrome or Edge: Web MIDI with SysEx; Safari has none). Run locally,
+  `tools/web-demo` serves it at `http://localhost:8642/songs.html`.
 - **On your computer:** the `.sng` opens in GoatTracker 2, and a GoatTracker 2 song put on the
   device plays there if it fits the device's limits. The device refuses one it cannot play, with
   a message.

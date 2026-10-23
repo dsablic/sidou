@@ -552,8 +552,8 @@ card (HOME held) is the only on-device explanation. Done:
   line is easy to miss: default rate 3F, and a 2x ARP badge on LIVE while it is on.
 - **SAVE as OK everywhere:** the SONG actions, the LOAD list and the confirmations still open with
   ALGORITHM only; SAVE opens the highlighted item on every list screen.
-- **A fresh install's LOAD list is empty:** decide how a new user gets songs (starter songs on the
-  store at first boot, a page that uploads them, or SIDOU LOOP listed as a built-in).
+- **A fresh install's LOAD list is empty:** decided 2026-10-23: SIDOU LOOP is listed as a built-in
+  and the demo's Songs page (`web/songs.html`) sends the showcase songs to a connected FM-1.
 - **DAC is inaudible on the device** (the user, on PWM BASS, NOISE PERC and soft notes too): make it
   clearly audible on every sound, a worn-chip grit (bit errors that step the waveform, a little
   intermodulation) past the physical model if need be; 0 stays bit-identical. THUMP works (it

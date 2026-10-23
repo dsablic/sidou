@@ -9,6 +9,9 @@ ergonomics harness captures every frame of the screen and the sound
 the firmware's own, played in the emulator; a recipe that stops working fails
 `--check-recipes`, so a video cannot show something the firmware no longer does.
 
+The songs the videos play (CHROME COMET, IRON RITE, NEON HIGHWAY, PAPER LANTERNS) go onto a real
+FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), over USB.
+
 ## The videos
 
 Durations are of the wide cut; each comes as `ID.mp4` (1920 x 1080), `ID-square.mp4`

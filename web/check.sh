@@ -11,6 +11,8 @@ site=$(cd "$1" && pwd)
 shot="${2:-${SIDOU_WEB_SCREENSHOT:-$root/build/web-check/screenshot.png}}"
 playwright=1.63.0
 dir="$root/build/web-check"
+# the SysEx code in plain Node first (no browser, no MIDI): web/sysex.test.mjs
+node "$root/web/sysex.test.mjs"
 mkdir -p "$dir"
 if [ "$(node -p 'require(process.argv[1]).version' "$dir/node_modules/playwright/package.json" 2>/dev/null)" != "$playwright" ]; then
     (cd "$dir" && npm install --no-audit --no-fund --silent "playwright@$playwright")

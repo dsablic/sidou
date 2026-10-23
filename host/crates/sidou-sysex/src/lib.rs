@@ -281,6 +281,44 @@ mod tests {
         frame
     }
 
+    fn unhex(text: &str) -> Vec<u8> {
+        if text == "-" {
+            return Vec::new();
+        }
+        (0..text.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// web/sysex-vectors.txt: the frames the browser's Songs page (web/sysex.js) must produce.
+    #[test]
+    fn web_vectors_match_the_canonical_encoder_and_decoder() {
+        let mut checked = 0;
+        for line in include_str!("../../../../web/sysex-vectors.txt")
+            .lines()
+            .filter(|line| !line.starts_with('#') && !line.is_empty())
+        {
+            let [label, command, sequence, data, frame] = line.split(' ').collect::<Vec<_>>()[..]
+            else {
+                panic!("bad vector line: {line}");
+            };
+            let packet = Packet {
+                command: u8::from_str_radix(command, 16).unwrap(),
+                sequence: sequence.parse().unwrap(),
+                data: unhex(data),
+            };
+            assert_eq!(packet.encode().unwrap(), unhex(frame), "{label}: encode");
+            assert_eq!(
+                Packet::decode(&unhex(frame)).unwrap(),
+                packet,
+                "{label}: decode"
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 11);
+    }
+
     #[test]
     fn packing_all_lengths_matches_independent_bit_positions() {
         for len in 0_usize..=256 {

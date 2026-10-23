@@ -70,7 +70,13 @@ Community"`, then install as above.
 4. **The audio checks [hands]**: the note keys and their LEDs, MASTER (a playing song follows
    it), the knob ranges, the quiet floor after a release, no clicks while the screen redraws
    ([sections 4 to 6](hardware-test.md#4-note-keys-and-their-leds)).
-5. **The ergonomics recipes [hands]**: `docs/recipes/*.json` on the device, step by step as
+5. **The Songs page [hands]**: in Chrome or Edge open `http://localhost:8642/songs.html`
+   (`tools/web-demo --skip-firmware`), press Connect, allow MIDI with SysEx. The page names the
+   firmware and the free bytes (INQ) and lists the files (DIR); Send all puts the four showcase
+   songs on the unit (each one's progress bar fills, then "Sent"); a second Send all leaves them
+   alone ("identical"). On the FM-1: SONG, LOAD lists them; each plays. Note any NAK message.
+   Never run it with the updater (Felucca) showing: it is for SIDOU.
+6. **The ergonomics recipes [hands]**: `docs/recipes/*.json` on the device, step by step as
    the ergonomics harness records them. Note every place where the device and the harness
    disagree.
 

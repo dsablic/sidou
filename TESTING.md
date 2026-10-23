@@ -31,6 +31,7 @@ lists the prerequisites.
 | Flash timing spike (a test firmware, M2a Task 3b) | build it with `-DSIDOU_FLASH_SPIKE=ON` into `build/fm1-spike` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike cargo test --release -p emu-gate --test flash_spike -- --nocapture`; its bounds `cargo test --release -p sidou-pack --test flash_spike_guard` | `crates/emu-gate/tests/flash_spike.rs`, `crates/sidou-pack/tests/flash_spike_guard.rs` |
 | Ergonomics harness (readability, knob feel, effort per task, feedback speed, consistency, journeys; a report for review, not a gate) | `cargo run --release -p ergo -- --out ../build/ergo` (needs the fm1 build); its unit tests run with the workspace | `crates/ergo/`, [the section below](#the-ergonomics-harness-ergo) |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
+| Songs page's SysEx code, in Node (no browser, no MIDI) | `node web/sysex.test.mjs` (`tools/web-demo --check` runs it first) | `web/sysex.test.mjs`, `web/sysex.js`, `web/sysex-vectors.txt` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -1508,6 +1509,23 @@ its browser into `build/web-check/` on first use). It fails when:
 - PLAY (Space, button 12) does not raise the RMS above four times its level
   before (SIDOU's first song), or PLAY again does not bring it down to a
   quarter of the song's within 1.5 s.
+
+The same run covers the Songs page (`web/songs.html`, which sends the showcase songs to an
+FM-1 over Web MIDI): it loads the page with a fake `navigator.requestMIDIAccess` holding two
+port pairs, "Other Synth" and "SIDOU FM-1", the second backed by a simulated device that
+follows docs/reference/sysex.md. It fails when the page sends anything before Connect, sends to
+the other port, does not ask for SysEx, does not find the device (INQ and DIR), asks anything but
+one replace question (the simulated store has a different IRON RITE), or the PUTs it sent do not
+carry the four `.sng` files byte for byte (CRC included).
+
+Before the browser, `web/check.sh` runs `node web/sysex.test.mjs`, which needs no browser: the
+page's SysEx encoder and decoder (`web/sysex.js`) against `web/sysex-vectors.txt` (the frames
+Rust's `sidou-sysex` also encodes and decodes: its test `web_vectors_match_the_canonical_encoder_and_decoder`
+fails when the file and the crate disagree), the packing at every payload length, a PUT's three
+frames against Python's reference encoder (`tools/sysex_roundtrip.py`'s packing) byte for byte,
+and whole INQ, DIR and multi-packet PUT runs against a simulated device that checks what it
+receives (checksum, sequence, 16-byte alignment, exact length, CRC), including BUSY, FULL and
+I/O NAKs (messages, no ABORT after a NAK) and a silent device (timeout, then ABORT).
 
 It saves a screenshot with the note held to
 `build/web-check/screenshot.png` (`SIDOU_WEB_SCREENSHOT` overrides). The
