@@ -563,3 +563,9 @@ card (HOME held) is the only on-device explanation. Done:
   screen; the ergonomics harness in the merge check, failing on any new finding against the last
   accepted run; first-run and per-feature recipes (a fresh install has something to LOAD; a
   feature that is on shows it readably).
+
+## After v0.3.0: bump fm1-emu past its fixes for our reports
+
+fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementing block load, PR
+#67) on 2026-10-23. Bump the pin past them, remove `step_block_load_dec` from the emulator tests'
+`common/mod.rs`, and check the gate is unchanged.
