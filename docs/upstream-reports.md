@@ -53,6 +53,12 @@ ERROR: AddressSanitizer: heap-buffer-overflow
 READ of size 1 ... in psid_load psid.c:145
 ```
 
+SIDOU's fixtures (added after filing) include a second file that reaches the same read with a
+valid data offset: 124 bytes (`dataOffset = 0x7C`, `loadAddress = 0`, songs 1, start song 1, the
+rest zero) leaves no byte for the load address, so `b[off]` and `b[off + 1]` are past the end. SIDOU
+refuses both (and its fuzz cuts files at every length of the header), in
+`host/crates/sidou-tests/tests/psid_file.rs` (`fm1_sids_bounds_bug_files_are_refused`).
+
 On the FM-1 this is an out-of-bounds read of flash or RAM when a damaged or crafted `.sid`
 is packed in. It's probably harmless in practice, but cheap to close.
 

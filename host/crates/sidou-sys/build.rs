@@ -22,6 +22,7 @@ const SOURCES: &[&str] = &[
     "core/song/gt2_stream.c",
     "core/song/gt2_ins.c",
     "core/song/song_ext.c",
+    "core/psid/psid_file.c",
     "core/player/gt2_play.c",
     "core/player/gt2_shape.c",
     "core/player/song_ctl.c",
@@ -220,18 +221,18 @@ fn main() {
         .clang_arg(format!("-D{RACE_HOOK}"))
         .allowlist_function(
             concat!(
-                "sid_.*|sidou_.*|cpu6502_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
+                "sid_.*|sidou_.*|cpu6502_.*|psid_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|chip_spread_.*|master_.*|tail_gate_.*|thump_out_.*|chip_ctl_.*|chip_setup_.*|",
                 "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*",
             ),
         )
         .allowlist_type(
-            "sid.*|cpu6502.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|theme.*|help_.*",
+            "sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|theme.*|help_.*",
         )
         .allowlist_var(
             concat!(
-                "SID_.*|SIDOU_.*|CPU6502_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|",
+                "SID_.*|SIDOU_.*|CPU6502_.*|PSID_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|",
                 "live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|",
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
