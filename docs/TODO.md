@@ -569,3 +569,10 @@ card (HOME held) is the only on-device explanation. Done:
 fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementing block load, PR
 #67) on 2026-10-23. Bump the pin past them, remove `step_block_load_dec` from the emulator tests'
 `common/mod.rs`, and check the gate is unchanged.
+
+## SETTINGS → RESET (the user, 2026-10-23; for v0.3.1)
+
+One reset for everything that isn't a song: every preset's edits and all settings back to factory,
+with a SAVE-confirmed question (RESET ALL SOUNDS AND SETTINGS?); songs and USER chip profiles stay.
+Today the only whole reset is a STORE format, which erases the songs too; per preset it is EDIT
+held + PRESETS. A help-card line, controls.md, and a test that songs survive it.
