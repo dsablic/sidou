@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **The emulator is fm1-emu `c1c045fc`** (was `db8d472e`), for the emulator gate and the browser
+  demo: it runs the decrementing block load `{r1, r3} = [-r1]` (fm1-emu #67, our report #64) and
+  `psid_load` checks its bounds (#68, our report #63), so the gate's own stand-in for that load,
+  `step_block_load_dec`, is gone and with it the `emulated_block_loads` count in the gate's
+  reports.
+
 ## [0.3.1] - 2026-10-23
 
 ### Fixed

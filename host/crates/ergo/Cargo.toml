@@ -15,8 +15,8 @@ workspace = true
 # The emulator helpers are emu-gate's tests/common/mod.rs, included by path (src/lib.rs), so
 # its dependencies are ours.
 [dependencies]
-fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "db8d472e62f35d18e392e3abc66474daed65ffe9" }
-fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "db8d472e62f35d18e392e3abc66474daed65ffe9" }
+fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }
 object = { version = "0.36", default-features = false, features = ["read", "elf", "std"] }
 png = "0.18"
 residfp-sys = { path = "../residfp-sys" }

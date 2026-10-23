@@ -30,47 +30,11 @@ pub fn read(path: &Path, what: &str) -> Vec<u8> {
         .unwrap_or_else(|e| panic!("read {what} {}: {e}; build the fm1 preset", path.display()))
 }
 
-/// fm1-core at the pinned rev decodes the decrement-before block load `{rA, rB, ..} = [-rN]`
-/// (`4x eb`, fm1-isa class `r_4_mov_r_4`) but has no semantics for it, and faults. clang
-/// emitted it in `sid_cutoff_hz` to load a curve point until M1b Task 5 made that a table
-/// lookup; nothing emits it now (the gates report emulated_block_loads). Run it here with
-/// the convention fm1-core uses for the `[rN+]` block moves: base in bits 0-3, register mask in bits 16-31, lowest register
-/// at the lowest address; `-rN` starts 4 bytes per register below the base and does not write
-/// it back (`--rN` is a separate class). The emulator gate's host comparison checks the result.
-/// Returns false, doing nothing, for any other instruction.
-pub fn step_block_load_dec(cpu: &mut Cpu, soc: &mut Soc) -> bool {
-    let raw = soc.read32(cpu.pc);
-    if raw & 0x0804_fff0 != 0x0000_eb40 {
-        return false;
-    }
-    assert!(
-        cpu.rep_end == 0
-            && cpu.pred_skips.is_empty()
-            && cpu.pair_pending.is_none()
-            && cpu.hold_irq == 0,
-        "block load at {:#010x} inside a rep, predicated or paired construct",
-        cpu.pc
-    );
-    let mask = raw >> 16;
-    let mut addr = cpu.regs[(raw & 0xf) as usize].wrapping_sub(4 * mask.count_ones());
-    for r in (0..16).filter(|r| mask >> r & 1 != 0) {
-        cpu.regs[r] = soc.read32(addr);
-        addr = addr.wrapping_add(4);
-    }
-    cpu.pc += 4;
-    cpu.insn_count += 1;
-    true
-}
-
-/// One instruction: the block load above, or fm1-core's step. Panics on a fault.
-pub fn step(cpu: &mut Cpu, soc: &mut Soc) -> bool {
+/// One instruction through fm1-core's step. Panics on a fault.
+pub fn step(cpu: &mut Cpu, soc: &mut Soc) {
     let pc = cpu.pc;
-    if step_block_load_dec(cpu, soc) {
-        return true;
-    }
     cpu.step(soc)
         .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
-    false
 }
 
 /// Where the SPL maps app.bin, and enters it.
@@ -206,8 +170,6 @@ pub struct Machine {
     pub steps: u64,
     /// Instructions run inside interrupts.
     pub isr_steps: u64,
-    /// Instructions run by `step_block_load_dec` instead of fm1-core.
-    pub emulated_block_loads: u64,
     /// The instructions of each ALNK0 interrupt (one audio block), nested ones included.
     pub alnk_blocks: Vec<u64>,
     alnk_open: Option<(usize, u64)>,
@@ -464,7 +426,6 @@ impl Machine {
             cpu,
             steps: 0,
             isr_steps: 0,
-            emulated_block_loads: 0,
             alnk_blocks: Vec::new(),
             alnk_open: None,
             watched_calls: Vec::new(),
@@ -557,7 +518,7 @@ impl Machine {
     /// Runs `ms` milliseconds through fm1-soc's own loop (`machine::run_blocks`) with fm1-core's
     /// JIT, several times faster than `run_ms`, for a run whose only result is the machine it
     /// leaves (the settled flash). It keeps none of this Machine's counts (steps, the ALNK0
-    /// blocks, the watches), has no `step_block_load_dec` and no USB host, and it stops within a
+    /// blocks, the watches), has no USB host, and it stops within a
     /// block of the end rather than on it. The JIT runs the same guest instructions as the
     /// interpreter (fm1-emu stops both at the same one), so the flash it leaves is the stepped
     /// run's, byte for byte: `boot.rs` checks that.
@@ -700,9 +661,7 @@ impl Machine {
             }
             feed_trs(&mut self.trs_at, soc);
             let (pc, skipped) = (cpu.pc, soc.periph.skipped);
-            if step(cpu, soc) {
-                self.emulated_block_loads += 1;
-            }
+            step(cpu, soc);
             if !in_isr && soc.periph.skipped != skipped {
                 *self.idles.entry(pc).or_insert(0) += 1;
             }
@@ -1528,8 +1487,6 @@ pub struct Run {
     /// Instructions between consecutive `bench_mark` calls.
     pub phases: Vec<u64>,
     pub samples: Vec<i16>,
-    /// Instructions run by `step_block_load_dec` instead of fm1-core.
-    pub emulated_block_loads: u64,
     /// The result area's first words (0 the magic, 1 the samples, then the image's own).
     pub words: [u32; 8],
 }
@@ -1570,14 +1527,11 @@ pub fn run_with(build: &Path, name: &str, marks: usize, setup: impl FnOnce(&mut 
     let mut cpu = Cpu::new(fm1_soc::XIP_BASE);
     let mut seen = Vec::new();
     let mut steps: u64 = 0;
-    let mut emulated_block_loads: u64 = 0;
     while bench_u32(&soc, BENCH_RESULT_ADDR) != BENCH_RESULT_MAGIC {
         if cpu.pc == mark {
             seen.push(steps);
         }
-        if step(&mut cpu, &mut soc) {
-            emulated_block_loads += 1;
-        }
+        step(&mut cpu, &mut soc);
         steps += 1;
         assert!(
             steps < BENCH_MAX_STEPS,
@@ -1604,7 +1558,6 @@ pub fn run_with(build: &Path, name: &str, marks: usize, setup: impl FnOnce(&mut 
     Run {
         phases: seen.windows(2).map(|w| w[1] - w[0]).collect(),
         samples,
-        emulated_block_loads,
         words,
     }
 }

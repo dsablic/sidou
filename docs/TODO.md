@@ -381,7 +381,9 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
   build/fm1/sidou.fwsc`). Remove it once upstream supports the instruction.
 - **Recheck at `db8d472e` (2026-10-22):** still not executed: fm1-isa decodes `41 eb 0a 00` as
   `r_4_mov_r_4` and `Cpu::step` returns `Unsupported { name: "r_4_mov_r_4" }`, as at
-  `7ca5b96c`. The workaround stays.
+  `7ca5b96c`. The workaround stayed.
+- **Fixed upstream (2026-10-23):** fm1-emu PR #67 runs `eb 40..70` (`-R`, `--R`, loads and stores),
+  base in the list taking its loaded word; the pin is `c1c045fc` and `step_block_load_dec` is gone.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.
 
@@ -569,11 +571,11 @@ card (HOME held) is the only on-device explanation. Done:
   accepted run; first-run and per-feature recipes (a fresh install has something to LOAD; a
   feature that is on shows it readably).
 
-## After v0.3.0: bump fm1-emu past its fixes for our reports
+## After v0.3.0: bump fm1-emu past its fixes for our reports (done 2026-10-23)
 
 fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementing block load, PR
-#67) on 2026-10-23. Bump the pin past them, remove `step_block_load_dec` from the emulator tests'
-`common/mod.rs`, and check the gate is unchanged.
+#67) on 2026-10-23. Done: the pin is `c1c045fc` (upstream master that day, with #69 to #72),
+`step_block_load_dec` and the `emulated_block_loads` count are gone from the emulator tests.
 
 ## SETTINGS → RESET (the user, 2026-10-23; after v0.3.1)
 
