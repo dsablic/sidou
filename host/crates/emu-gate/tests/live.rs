@@ -384,9 +384,9 @@ fn voices_a(m: &mut Machine, fw: &Firmware) -> [(u32, u8, u8); 3] {
 }
 
 /// The chord arpeggio (app/live.h live_arp_set) from the panel: ARP tapped, a three-note chord
-/// held is one voice of chip A cycling the chord's three frequencies, a note a frame (20 ms) and
-/// with ARP held and K1 turned two detents, a note every three frames (60 ms); its gate held
-/// throughout, every other voice silent.
+/// held is one voice of chip A cycling the chord's three frequencies, a note every three frames
+/// (60 ms, the default rate, 3F) and with ARP held and K1 turned two detents back, a note a frame
+/// (20 ms); its gate held throughout, every other voice silent.
 #[test]
 fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
     let Some((_, fw)) = fixture("the live test") else {
@@ -400,7 +400,7 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
         .map(|&n| u32::from(table[usize::from(n)]))
         .collect();
     let mut report = serde_json::Map::new();
-    for (rate_turn, frames) in [(0, 1u64), (2, 3)] {
+    for (rate_turn, frames) in [(0, 3u64), (-2, 1)] {
         if rate_turn != 0 {
             m.key(ARP, true);
             m.run_ms(30);
@@ -428,7 +428,17 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
             }
             let f = vs[v].0;
             if seen.last().map(|&(_, g)| g) != Some(f) {
-                seen.push((t, f));
+                // A value for a single millisecond that is no chord note is the frequency's two
+                // registers read half written (the sample fell inside the audio interrupt's
+                // writes: the low byte the next note's, the high the last's), not a step.
+                if let Some(&(at, g)) = seen.last() {
+                    if at + 1 == t && !want.contains(&g) {
+                        seen.pop();
+                    }
+                }
+                if seen.last().map(|&(_, g)| g) != Some(f) {
+                    seen.push((t, f));
+                }
             }
             m.run_ms(1);
         }

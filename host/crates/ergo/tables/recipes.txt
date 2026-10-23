@@ -39,15 +39,15 @@ journey shape-a-sound | Shape a sound with K1 to K4
   step let-go | Let *go* | Let go of the keys: the release rings out. | up A3; up C4; up E4; wait 1500 | silent; do Let go of the note keys; callout LET GO
 
 journey chord-arpeggio | Chord arpeggios with ARP
-  goal Play a chord as C64 tunes do: one voice stepping through its notes fifty times a second.
+  goal Play a chord as C64 tunes do: one voice stepping through its notes, up to fifty times a second.
   prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
   skills ARP; holding a chord; ARP held with K1, K2 and K3
   related first-sound; shape-a-sound
-  step arp-on | Press *ARP* | ARP switches the chord arpeggio on. Row 20 says so: a note a frame, up, one octave. | press ARP; wait 800 | text 1F UP 1OCT; value arp_on 1 1; do Press ARP; screen 0 20 30 1; focus ARP; callout PRESS ARP
-  step hold-a-chord | Hold a *chord* | One voice plays all three notes in turn, fifty a second: the C64's buzzy chord. The other two voices stay free. | down C4; down E4; down G4; wait 2500 | sound; do Hold the note keys C, E and G down; screen 0 2 30 12; callout HOLD A CHORD
-  step slower | *ARP* + K1: the rate | Hold ARP and turn K1: a note every three frames, an arpeggio you hear note by note. | holdturn ARP K1 2; wait 2500 | value arp_rate 2 2; text 3F UP 1OCT; sound; do Hold ARP and turn K1 two clicks clockwise; screen 0 14 30 7; focus K1; callout HOLD ARP + TURN K1
-  step order | *ARP* + K2: the order | K2 turns it round: down, up and down, or as you played it. | holdturn ARP K2 2; wait 2500 | value arp_order 2 2; text 3F UD 1OCT; sound; do Hold ARP and turn K2 two clicks clockwise; screen 0 14 30 7; focus K2; callout HOLD ARP + TURN K2
-  step span | *ARP* + K3: two octaves | K3 spreads the chord over two octaves. | holdturn ARP K3 1; wait 2500 | value arp_span 2 2; text 3F UD 2OCT; sound; do Hold ARP and turn K3 a click clockwise; screen 0 14 30 7; focus K3; callout HOLD ARP + TURN K3
+  step arp-on | Press *ARP* | ARP switches the chord arpeggio on. The badge under the band says so, large: a note every three frames, up, one octave. | press ARP; wait 800 | text ARP; text 3F UP 1OCT; value arp_on 1 1; do Press ARP; screen 0 27 30 2; focus ARP; callout PRESS ARP
+  step hold-a-chord | Hold a *chord* | One voice plays all three notes in turn, one you can follow. The other two voices stay free. | down C4; down E4; down G4; wait 2500 | sound; do Hold the note keys C, E and G down; screen 0 2 30 12; callout HOLD A CHORD
+  step faster | *ARP* + K1: the rate | Hold ARP and turn K1 back to 1F: a note every frame, fifty a second, the C64's buzzy chord. | holdturn ARP K1 -2; wait 2500 | value arp_rate 0 0; text 1F UP 1OCT; sound; do Hold ARP and turn K1 two clicks counter-clockwise; screen 0 14 30 7; focus K1; callout HOLD ARP + TURN K1
+  step order | *ARP* + K2: the order | K2 turns it round: down, up and down, or as you played it. | holdturn ARP K2 2; wait 2500 | value arp_order 2 2; text 1F UD 1OCT; sound; do Hold ARP and turn K2 two clicks clockwise; screen 0 14 30 7; focus K2; callout HOLD ARP + TURN K2
+  step span | *ARP* + K3: two octaves | K3 spreads the chord over two octaves. | holdturn ARP K3 1; wait 2500 | value arp_span 2 2; text 1F UD 2OCT; sound; do Hold ARP and turn K3 a click clockwise; screen 0 14 30 7; focus K3; callout HOLD ARP + TURN K3
   step let-go | Let *go* | Let go of the keys: the one voice's release rings out. | up C4; up E4; up G4; wait 1500 | silent; do Let go of the note keys; callout LET GO
   step arp-off | *ARP* again: off | The keys play chords on three voices again. ARP's settings stay with the preset. | press ARP; wait 800; note C4 E4 G4 1500 | absent ARP; value arp_on 0 0; sound; do Press ARP, then hold a chord; screen 0 2 30 19; focus ARP; callout PRESS ARP
 

@@ -694,7 +694,8 @@ starts from 0 again).
 The C64's signature sound, playable: **hold a chord and one voice steps through its notes at the
 frame rate**, the buzzy arpeggio C64 tunes play a major chord as (0, 4, 7) because the chip has
 three voices and the tune needs the other two. **ARP** on LIVE switches it on and off (on its
-release); row 20 says `ARP 1F UP 1OCT` while it is on (the rate, the order and the span).
+release); while it is on a badge at 2× under LIVE's band says so, readable at arm's length:
+`ARP 3F UP 1OCT` (ARP in yellow, then the rate, the order and the span in white).
 
 - **One voice.** The first key held starts a voice on the cycle's first note (an attack as
   usual); each key after it joins the cycle at once, keeping its time, and every note change is
@@ -704,8 +705,9 @@ release); row 20 says `ARP 1F UP 1OCT` while it is on (the rate, the order and t
   the last releases the voice with the preset's release, at the pitch it had. The other two
   voices are free: nothing else plays on them, and over a song on chip A (KEYS A) the arpeggio
   takes one voice from it, not three. Its lane on LIVE shows the note it steps to.
-- **ARP held + K1: the rate**, the frames a note: `1F` (50 Hz, the default, a C64 player's
-  frame), `2F` (25 Hz), `3F` (16.7 Hz), `4F`, `6F`, `8F` (6.25 Hz); then the clock's, `/32`,
+- **ARP held + K1: the rate**, the frames a note: `1F` (50 Hz, a C64 player's frame), `2F`
+  (25 Hz), `3F` (16.7 Hz, the default: each note of a held chord is heard, where 1F sounds like a
+  wobble), `4F`, `6F`, `8F` (6.25 Hz); then the clock's, `/32`,
   `/16`, `/8`: a note every 32nd, 16th or 8th of a MIDI clock while one comes in (a start, FA,
   puts the next note a whole step away), and as many frames as the clocks (3, 6, 12: a 125 BPM
   clock) while none does.
@@ -1111,8 +1113,8 @@ four periods (more for higher notes). **EDIT held** turns the selected slot's fo
 on K1..K4 and the knob row says so: the page's name is the slot's (`DIST`) and the labels are
 the controls' own names (`DRIVE`, `TONE`, `BIAS`, `MIX`; one the algorithm does not use is dim),
 and the slot's algorithm at 2× in the band is in reverse video. **ARP held** shows ARP's page the
-same way (RATE, ORDER, SPAN: `1F`, `UP`, `1`), and while the [chord arpeggio](#chord-arpeggio) is
-on, row 20 names it with its settings (`ARP 1F UP 1OCT`, ARP in yellow).
+same way (RATE, ORDER, SPAN: `3F`, `UP`, `1`), and while the [chord arpeggio](#chord-arpeggio) is
+on, a badge at 2× on rows 27-28 names it with its settings (`ARP 3F UP 1OCT`, ARP in yellow).
 
 The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's

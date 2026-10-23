@@ -601,7 +601,7 @@ static void load_preset(live* l, uint8_t index) {
     l->lfo_phase = LFO_CENTRE;
     /* The arpeggio: the factory's, off, with every note released below. */
     l->arp_on = 0;
-    l->arp_rate = 0;
+    l->arp_rate = LIVE_ARP_RATE_DEFAULT;
     l->arp_order = LIVE_ARP_UP;
     l->arp_span = 1;
     l->arp_n = 0;
@@ -1215,7 +1215,7 @@ uint32_t live_preset_edited(const live* l) {
            l->velocity_target != p->velocity_target || l->mod_target != p->mod_target ||
            l->pressure_target != p->pressure_target || l->vibrato_rate != p->vibrato_rate ||
            l->vibrato_depth != p->vibrato_depth || l->vibrato_delay != p->vibrato_delay ||
-           l->sync_semis != 0 || l->arp_on || l->arp_rate || l->arp_order != LIVE_ARP_UP ||
+           l->sync_semis != 0 || l->arp_on || l->arp_rate != LIVE_ARP_RATE_DEFAULT || l->arp_order != LIVE_ARP_UP ||
            l->arp_span != 1u);
 }
 

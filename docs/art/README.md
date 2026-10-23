@@ -624,9 +624,8 @@ playing, one colour per voice and per knob, black behind it
   the selected slot's four controls, and the row says so: the page tag is the slot's and the
   labels its controls' names (`DRIVE`, `TONE`, `BIAS`, `MIX`), dim where the algorithm has no use
   for them. ARP held shows the chord arpeggio's page the same way: `ARP`, then RATE, ORDER and
-  SPAN (`1F`, `UP`, `1`), K4's `-` dim.
-- **Row 20:** while the chord arpeggio is on, **ARP** in yellow from column 8 and its settings
-  small after it (`1F UP 1OCT`), between the song's tempo and the voices' badges.
+  SPAN (`3F`, `UP`, `1`), K4's `-` dim.
+- **Row 20:** the song's tempo and the voices' badges.
 - **Rows 21-26, the bottom band:** FILTER's label, **CHIP 6581** (the model) and **KEYS:B** in
   yellow on the right while the keys play chip B; the **mode at 2×** (LP, BP, LP+BP, HP, NOTCH,
   BP+HP, ALL, or OFF in dark grey) and the chip's **profile at 2×** (`R4AR`, `WORN`, `USR3`, in
@@ -637,6 +636,10 @@ playing, one colour per voice and per knob, black behind it
   in yellow while the knob row shows the slot, and for a second after ALGORITHM changes it);
   and **VU**, a bar for each voice in its colour and the output's left and right peaks after the
   effect slots in white, 6 dB a cell, its labels in the legend colour.
+- **Rows 27-28, the arpeggio's badge:** while the chord arpeggio is on, **ARP** at 2× in yellow
+  (the hot role) and its settings at 2× in white (the value role) after it, `ARP 3F UP 1OCT`:
+  readable at arm's length, where the 1× line on row 20 it replaces was missed (the v0.3.0
+  device session). Blank while it is off.
 
 **What moved or went.** LIVE had more on it than the 23 mm screen can show at a readable size.
 Each item below moved to the place that shows it better, or is gone:

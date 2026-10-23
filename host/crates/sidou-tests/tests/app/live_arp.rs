@@ -20,8 +20,11 @@ fn turn(rig: &mut Rig, field: u32, detents: i32) {
     unsafe { live_arp_turn(&mut *rig.live, field, detents) }
 }
 
+/// On, at a step a frame (1F): the pace these tests count their ticks in (the default, 3F, is
+/// off_at_power_on_and_on_every_preset_load's).
 fn on(rig: &mut Rig) {
     arp(rig, LIVE_ARP_ON, 1);
+    arp(rig, LIVE_ARP_RATE, 0);
 }
 
 fn hz(note: u8) -> u16 {
@@ -76,7 +79,12 @@ fn chord(rig: &mut Rig, ns: &[u8]) {
 fn off_at_power_on_and_on_every_preset_load() {
     let mut rig = Rig::new(SID_MODEL_6581);
     assert_eq!(rig.live.arp_on, 0);
-    assert_eq!(rig.live.arp_rate, 0, "a step a frame");
+    assert_eq!(
+        u32::from(rig.live.arp_rate),
+        LIVE_ARP_RATE_DEFAULT,
+        "3F: a held chord heard note by note, not a wobble"
+    );
+    assert_eq!(unsafe { live_arp_steps }[LIVE_ARP_RATE_DEFAULT as usize], 3);
     assert_eq!(rig.live.arp_order, LIVE_ARP_UP as u8);
     assert_eq!(rig.live.arp_span, 1);
     assert_eq!(rig.live.arp_voice, LIVE_ARP_NO_VOICE as u8);
@@ -303,7 +311,15 @@ fn the_settings_are_kept_with_the_presets_edits() {
     );
     // A revert, or a program change, loads the factory's: off.
     unsafe { live_preset_step(&mut *rig.live, 0, 1) };
-    assert_eq!((rig.live.arp_on, rig.live.arp_rate), (0, 0));
+    assert_eq!(
+        (rig.live.arp_on, u32::from(rig.live.arp_rate)),
+        (0, LIVE_ARP_RATE_DEFAULT)
+    );
+    assert_eq!(
+        unsafe { live_preset_edited(&*rig.live) },
+        0,
+        "the default rate is no edit"
+    );
 }
 
 #[test]

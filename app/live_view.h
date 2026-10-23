@@ -19,15 +19,16 @@
  *   just turned has its label reversed for a second (the popup does not open over LIVE for
  *   it); a control the slot's algorithm does not use is dim;
  * - row 20: while a song plays its tempo (`125 BPM`), and, while it plays or a voice is muted or
- *   soloed, the voices' badges 1 2 3 (dark grey muted, reversed yellow soloed); while the chord
- *   arpeggio is on, ARP and its rate, order and span between them (`ARP 1F UP 1OCT`). Its voice's
- *   lane shows the note it steps to;
+ *   soloed, the voices' badges 1 2 3 (dark grey muted, reversed yellow soloed);
  * - rows 21-26: FILTER's mode at 2x with the chip's model and profile (KEYS:B while the keys play
  *   chip B), the three effect slots' names (the selected one reversed) and the selected slot's
  *   algorithm at 2x, and VU: each voice's level in its colour and the output's left and right
  *   peaks after the effect slots, 6 dB a cell. While GLO's layer is on (held or latched) these
  *   rows are the layer instead: `GLO  MUTE SOLO` (or `GLO LATCHED`) and six boxes at 2x,
- *   M1 M2 M3 S1 S2 S3, lit red when a mute and yellow when a solo is on.
+ *   M1 M2 M3 S1 S2 S3, lit red when a mute and yellow when a solo is on;
+ * - rows 27-28, under the band: while the chord arpeggio is on, its badge at 2x, read at arm's
+ *   length: ARP in yellow (the hot role) and its rate, order and span in white (the value role),
+ *   `ARP 3F UP 1OCT`. Its voice's lane shows the note it steps to.
  * The colours are the theme's roles (app/theme.h).
  *
  * The scopes come from the audio interrupt's tap (app/scope.h): the newest points, folded by
@@ -108,8 +109,8 @@ extern "C" {
  * 4, each voice's lane 6, the song's strip with the arpeggio's 6, the knob row 11, the bottom
  * band 11 and the meters. */
 #define LIVE_VIEW_LOOK (1u + 4u + 6u * SCOPE_VOICES + 6u + 11u + 11u + LIVE_VIEW_METERS)
-/* Row 20's arpeggio, while it is on: from this column, `ARP 1F UP 1OCT`. */
-#define LIVE_VIEW_ARP_COL 8u
+/* The arpeggio's badge, while it is on: at 2x on this row and the next, `ARP 3F UP 1OCT`. */
+#define LIVE_VIEW_ARP_ROW 27u
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {

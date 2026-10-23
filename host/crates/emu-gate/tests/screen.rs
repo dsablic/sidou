@@ -2605,8 +2605,9 @@ const ARP: u8 = 10;
 const LIVE_ARP_PER_FRAME: f64 = 65_000.0;
 
 /// ARP on LIVE: held, the knob row is ARP's page, RATE, ORDER, SPAN (golden live-arp-page); let
-/// go, the arpeggio is on and row 20 names it (golden live-arp); a chord held then steps one
-/// voice within LIVE's frame budgets.
+/// go, the arpeggio is on and its 2x badge under the band names it, at the default rate, 3F
+/// (golden live-arp); ARP + K1 back to 1F, a chord held then steps one voice a note a frame (the
+/// busiest rate) within LIVE's frame budgets.
 #[test]
 fn live_shows_the_arpeggio_and_stays_within_its_budgets() {
     let Some((build, fw)) = fixture("the LIVE arpeggio test") else {
@@ -2624,6 +2625,13 @@ fn live_shows_the_arpeggio_and_stays_within_its_budgets() {
     m.run_ms(200);
     common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "live-arp", &m.soc.lcd.fb, &[]);
+    // 1F, a note a frame: ARP held and K1 two detents back (its release then switches nothing).
+    m.key(ARP, true);
+    m.run_ms(60);
+    m.turn(K1_CUTOFF, -2);
+    m.run_ms(60);
+    m.key(ARP, false);
+    m.run_ms(1200);
     let arp = measure(&mut m, &fw, 75, |m| {
         for k in CHORD {
             m.key(k, true);

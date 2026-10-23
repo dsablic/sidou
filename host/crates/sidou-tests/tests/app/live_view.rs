@@ -951,23 +951,33 @@ fn the_octave_shows_at_2x_when_not_0() {
     assert_eq!(small(&ui, 0, 26, 4), "    ", "nothing at 0");
 }
 
-/// ARP on LIVE (app/live_view.h): a press and release switches the chord arpeggio, which row 20
-/// then names with its settings; held, the knob row is ARP's (RATE, ORDER, SPAN) and K1..K3 turn
-/// them, and its release then switches nothing. K4 does nothing while it is held.
+/// ARP on LIVE (app/live_view.h): a press and release switches the chord arpeggio, which a 2x
+/// badge under the band then names with its settings (`ARP 3F UP 1OCT`, read at arm's length:
+/// ARP in the hot role, its settings in the value role); held, the knob row is ARP's (RATE,
+/// ORDER, SPAN) and K1..K3 turn them, and its release then switches nothing. K4 does nothing
+/// while it is held. Off, the badge's rows are blank.
 #[test]
 fn arp_switches_the_arpeggio_and_held_turns_its_settings() {
     let mut ui = Ui::without_cards();
     ui.settle();
     assert_eq!(ui.top(), "LIVE");
-    assert!(!ui.row(LIVE_VIEW_STRIP_ROW as usize).contains("ARP"));
+    let badge = LIVE_VIEW_ARP_ROW as usize;
+    let blank = |ui: &Ui| ui.row(badge).trim().is_empty() && ui.row(badge + 1).trim().is_empty();
+    assert!(blank(&ui), "{:?}", ui.row(badge));
     ui.press(PANEL_BTN_ARP);
     assert_eq!(ui.rig.live.arp_on, 1, "the release switched it on");
     ui.settle();
+    assert_eq!(
+        ui.big(badge, 0, 2, 14),
+        "ARP 3F UP 1OCT",
+        "the default rate: 3F"
+    );
+    let t = unsafe { &*theme_get(u32::from(ui.rig.live.theme)) };
+    assert_eq!(ui.g.attr[badge * 30], (t.bg << 4) | t.hot, "ARP");
+    assert_eq!(ui.g.attr[badge * 30 + 8], (t.bg << 4) | t.value, "3F");
     assert!(
-        ui.row(LIVE_VIEW_STRIP_ROW as usize)
-            .contains("ARP 1F UP 1OCT"),
-        "row 20: {:?}",
-        ui.row(LIVE_VIEW_STRIP_ROW as usize)
+        !ui.row(LIVE_VIEW_STRIP_ROW as usize).contains("ARP"),
+        "the badge alone says it"
     );
     // Held: the knob row is ARP's.
     ui.down(PANEL_BTN_ARP);
@@ -978,7 +988,7 @@ fn arp_switches_the_arpeggio_and_held_turns_its_settings() {
         assert!(labels.contains(w), "{labels:?}");
     }
     let cutoff = ui.rig.live.cutoff;
-    ui.turn(PANEL_ENC_K1, 6);
+    ui.turn(PANEL_ENC_K1, 4);
     ui.turn(PANEL_ENC_K1 + 1, 1);
     ui.turn(PANEL_ENC_K1 + 2, 1);
     ui.turn(PANEL_ENC_K4, 1);
@@ -994,12 +1004,10 @@ fn arp_switches_the_arpeggio_and_held_turns_its_settings() {
         "a knob turned: the release kept it on"
     );
     ui.settle();
-    assert!(ui
-        .row(LIVE_VIEW_STRIP_ROW as usize)
-        .contains("ARP /32 DN 2OCT"));
+    assert_eq!(ui.big(badge, 0, 2, 15), "ARP /32 DN 2OCT");
     assert!(ui.row(LIVE_VIEW_PAGE_ROW as usize).starts_with("TONE"));
     ui.press(PANEL_BTN_ARP);
     assert_eq!(ui.rig.live.arp_on, 0);
     ui.settle();
-    assert!(!ui.row(LIVE_VIEW_STRIP_ROW as usize).contains("ARP"));
+    assert!(blank(&ui), "{:?}", ui.row(badge));
 }

@@ -148,6 +148,9 @@ typedef enum {
 /* Rates from here count MIDI clocks (live_arp_steps: a 32nd, a 16th, an 8th) while a clock comes
  * (one in the last LIVE_ARP_CLOCK_TICKS ticks), else as many frames (a clock a frame: 125 BPM). */
 #define LIVE_ARP_RATE_CLOCK 6u
+/* A fresh preset's rate (load_preset): 3F, three frames a note. At 1F a held chord sounds like a
+ * wobble (the v0.3.0 device session); at 3F each note is heard, still a C64 arpeggio. */
+#define LIVE_ARP_RATE_DEFAULT 2u
 #define LIVE_ARP_CLOCK_TICKS 30u
 #define LIVE_ARP_SPAN_MAX 2u
 #define LIVE_ARP_NO_VOICE 0xffu

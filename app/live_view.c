@@ -47,6 +47,9 @@ _Static_assert(LIVE_VIEW_ALG_ROW + 2u <= LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROW
                    LIVE_VIEW_METER_ROW + LIVE_VIEW_METERS <= LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS,
                "the slots and the meters are inside the bottom band");
 _Static_assert(VU_METER_COL + VU_METER_CELLS <= GRID_COLS, "the meters fit the row");
+_Static_assert(LIVE_VIEW_ARP_ROW >= LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS &&
+                   LIVE_VIEW_ARP_ROW + 2u <= GRID_ROWS,
+               "the arpeggio's badge is under the band");
 _Static_assert(SCOPE_VOICES == LIVE_VOICES, "a scope per voice");
 
 static const char* const NOTE_NAMES[12] = {"C-", "C#", "D-", "D#", "E-", "F-",
@@ -870,9 +873,11 @@ __attribute__((noinline, unused)) LIVE_COLD static void profile_word(const live*
 }
 
 /* Row 20 in the canvas: while a song plays its tempo ("125 BPM"), and while it plays or a voice is
- * muted or soloed the voices' badges (muted: dark grey, soloed: reversed yellow). */
+ * muted or soloed the voices' badges (muted: dark grey, soloed: reversed yellow); and the
+ * arpeggio's badge's rows blank (its large text: arp_big). */
 LIVE_COLD static void strip(const live_view* lv, canvas* cv, const theme* th) {
     fill(cv, 0, LIVE_VIEW_STRIP_ROW, GRID_COLS, 1, ' ', THEME_ATTR(th, value));
+    fill(cv, 0, LIVE_VIEW_ARP_ROW, GRID_COLS, 2, ' ', THEME_ATTR(th, value));
     if (lv->playing && lv->bpm) {
         char b[4];
         uint32_t n = 0;
@@ -883,30 +888,35 @@ LIVE_COLD static void strip(const live_view* lv, canvas* cv, const theme* th) {
         text(cv, text(cv, 0, LIVE_VIEW_STRIP_ROW, b, THEME_ATTR(th, label)), LIVE_VIEW_STRIP_ROW,
              " BPM", THEME_ATTR(th, label));
     }
-    if (lv->l->arp_on) {
-        /* ARP 1F UP 1OCT: the rate, the order and the span as its knobs say them */
-        char w[16];
-        uint32_t n = 0;
-        for (uint32_t k = 0; k < 3u; k++) {
-            live_view_arp_text(lv->l, k, &w[n]);
-            while (w[n]) {
-                n++;
-            }
-            w[n++] = ' ';
-        }
-        w[n - 1u] = 'O'; /* the span's: 1OCT */
-        w[n++] = 'C';
-        w[n++] = 'T';
-        w[n] = 0;
-        uint32_t col = text(cv, LIVE_VIEW_ARP_COL, LIVE_VIEW_STRIP_ROW, "ARP", THEME_ATTR(th, hot));
-        text(cv, col + 1u, LIVE_VIEW_STRIP_ROW, w, THEME_ATTR(th, label));
-    }
     for (uint32_t v = 0; v < SCOPE_VOICES && (lv->playing || lv->mutes); v++) {
         put(cv, BADGE_COL + 2u * v, LIVE_VIEW_STRIP_ROW, (uint8_t)('1' + v),
             lv->mutes >> (3u + v) & 1u ? GRID_ATTR(th->bg, th->hot)
             : muted(lv, v)             ? THEME_ATTR(th, dim)
                                        : THEME_ATTR(th, label));
     }
+}
+
+/* The arpeggio's badge at 2x, while it is on: ARP in the hot role, then the rate, the order and
+ * the span as its knobs say them in the value role (`ARP 3F UP 1OCT`, `ARP /32 DN 2OCT`). */
+__attribute__((noinline, unused)) LIVE_COLD static void arp_big(const live_view* lv, grid* g, const theme* th) {
+    if (!lv->l->arp_on) {
+        return;
+    }
+    char w[16];
+    uint32_t n = 0;
+    for (uint32_t k = 0; k < 3u; k++) {
+        live_view_arp_text(lv->l, k, &w[n]);
+        while (w[n]) {
+            n++;
+        }
+        w[n++] = ' ';
+    }
+    w[n - 1u] = 'O'; /* the span's: 1OCT */
+    w[n++] = 'C';
+    w[n++] = 'T';
+    w[n] = 0;
+    grid_text_big(g, 0, LIVE_VIEW_ARP_ROW, 2, "ARP", THEME_ATTR(th, hot));
+    grid_text_big(g, 8, LIVE_VIEW_ARP_ROW, 2, w, THEME_ATTR(th, value));
 }
 
 /* The bottom band in the canvas, but for the large text: FILTER's label, the chip's model and
@@ -1094,7 +1104,7 @@ static uint32_t parts(live_view* lv, canvas* cv, const theme* th,
     }
     if (differs(lv, now, KEY_STRIP, 6u)) {
         strip(lv, cv, th);
-        rows |= ROWS(LIVE_VIEW_STRIP_ROW, 1u);
+        rows |= ROWS(LIVE_VIEW_STRIP_ROW, 1u) | ROWS(LIVE_VIEW_ARP_ROW, 2u);
     }
     if (differs(lv, now, KEY_KNOBS, 11u)) {
         knobs(lv, cv, th, now[KEY_KNOBS + 1u]);
@@ -1113,9 +1123,9 @@ static void build(live_view* lv, canvas* cv, const theme* th, const uint8_t now[
     fill(cv, 0, LIVE_VIEW_LANE_ROW + SCOPE_VOICES * LIVE_VIEW_LANE_ROWS,
          GRID_COLS, LIVE_VIEW_PAGE_ROW - LIVE_VIEW_LANE_ROW - SCOPE_VOICES * LIVE_VIEW_LANE_ROWS, ' ',
          THEME_ATTR(th, value));
-    strip(lv, cv, th);
     fill(cv, 0, LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS, GRID_COLS,
          GRID_ROWS - LIVE_VIEW_BAND_ROW - LIVE_VIEW_BAND_ROWS, ' ', THEME_ATTR(th, value));
+    strip(lv, cv, th); /* row 20 and the arpeggio's badge, under the band */
     header(lv, cv, th);
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         lane(lv, cv, th, v);
@@ -1140,6 +1150,9 @@ static void big_items(const live_view* lv, grid* g, const theme* th, uint32_t ro
     }
     if (rows & (ROWS(LIVE_VIEW_MODE_ROW, 2u) | ROWS(LIVE_VIEW_ALG_ROW, 2u))) {
         band_big(lv, g, th, hl);
+    }
+    if (rows & ROWS(LIVE_VIEW_ARP_ROW, 2u)) {
+        arp_big(lv, g, th);
     }
 }
 

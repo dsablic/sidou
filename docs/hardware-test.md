@@ -25,8 +25,9 @@
 
 ## Chord arpeggio (ARP on LIVE)
 
-- [ ] On LIVE press and release ARP: row 20 reads `ARP 1F UP 1OCT`. Hold C, E and G: one voice
-  buzzes through the three notes (the C64's arpeggio chord), no click between them, the other
+- [ ] On LIVE press and release ARP: the badge under the band reads `ARP 3F UP 1OCT` at 2×,
+  readable at arm's length. Hold C, E and G: one voice steps through the three notes, each one
+  heard (ARP + K1 back to 1F: the C64's buzzy arpeggio chord), no click between them, the other
   two lanes stay dark. Let go: one release rings out.
 - [ ] Hold ARP and turn K1 two clicks: the knob row shows ARP's page and RATE reads `3F`; the
   notes are now separate. K2 steps ORDER (UP, DN, UD, AS), K3 SPAN (1, 2 octaves). Let go of
