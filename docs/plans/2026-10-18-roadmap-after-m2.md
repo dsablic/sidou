@@ -125,6 +125,11 @@ the 6502 study below.
    - **pattern DICE,** next to the ergonomics pass's patch DICE.
    Everything stays plain GoatTracker 2 data, so a generated song opens in GoatTracker. Its
    own plan when we get there; first candidate: per-step chance plus MUTATE in STEP.
+   **Started (branch gen-step, 2026-10-23), STEP's parts done:** per-step chance (a lock,
+   parameter 9 of the LOCK chunk, rolled by the main loop, dropped by the player), MUTATE
+   (EDIT + ARP) and pattern DICE (EDIT + SCL), all as ordinary cell edits. Still open: the same
+   in TRACKER, the C64 idioms (arpeggio chords, multiplexed drums, filter sweeps), a
+   per-lane scale choice (the minor pentatonic on the lane's note is the only one).
 10. **BLE MIDI, a user-built variant (after v0.3.0).** The user's decision (2026-10-18), after the
    licence audit of the app image: published SIDOU links only code whose owners allow it,
    and about a third of the image is others' copyleft (Felucca's HAL, USB and update code,

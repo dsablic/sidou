@@ -1280,7 +1280,7 @@ static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t patter
     uint32_t n = 0u;
     const uint8_t* rec = empty ? 0 : song_locks_row(sc->song, pattern, source, &n);
     for (uint32_t i = 0u; i < n && set->n < SONG_ROW_LOCKS; i++, rec += SONG_LOCK_BYTES) {
-        if (rec[2] > SONG_LOCK_PULSE)
+        if (rec[2] > SONG_LOCK_PULSE && rec[2] != SONG_LOCK_CHANCE)
             continue; /* the character's: the hook's */
         song_row_lock* l = &set->e[set->n++];
         l->pattern = rec[0];
@@ -1292,7 +1292,8 @@ static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t patter
     if (edit) {
         for (uint32_t i = 0u; i < sc->edit_restore_n && set->n < SONG_ROW_LOCKS; i++) {
             rec = sc->edit_restore + i * SONG_LOCK_BYTES;
-            if (rec[0] != pattern || rec[1] != row || rec[2] > SONG_LOCK_PULSE)
+            if (rec[0] != pattern || rec[1] != row ||
+                (rec[2] > SONG_LOCK_PULSE && rec[2] != SONG_LOCK_CHANCE))
                 continue;
             song_row_lock* l = &set->e[set->n++];
             l->pattern = rec[0];
@@ -1331,6 +1332,17 @@ static void lock_resolve(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t r
     lock_build(sc, ch, pattern, row, ord, first, 0);
     COMPILER_FENCE(); /* the table before the index that publishes it */
     sc->lock_pub[ch] = (uint8_t)(sc->lock_pub[ch] ^ 1u);
+    /* the chances of the steps it holds: a roll each, the losers' keys to the player */
+    const song_lock_set* set = &sc->lock_next[ch][sc->lock_pub[ch] & 1u];
+    gt2_channel* c = &sc->player.chn[ch];
+    uint32_t k = 0u;
+    c->skip[0] = c->skip[1] = 0u;
+    for (uint32_t i = 0u; i < set->n && k < 2u; i++) {
+        const song_row_lock* l = &set->e[i];
+        if (l->param == SONG_LOCK_CHANCE &&
+            !song_chance_plays(sc->chance_seed, sc->chance_n++, l->lo))
+            c->skip[k++] = (uint16_t)((l->pattern + 1u) << 8 | l->row);
+    }
 }
 
 static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e) {
@@ -1382,6 +1394,7 @@ static void lock_refresh_edit(song_ctl* sc) {
 
 /* At PLAY: each channel's first row, from the play's entry. */
 static void lock_prime(song_ctl* sc) {
+    sc->chance_n = 0u;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
         int p = next_pattern(sc, ch, (uint32_t)sc->start_pos - 1u, 0);
         sc->lock_next[ch][(sc->lock_pub[ch] & 1u) ^ 1u].n = 0u;

@@ -18,9 +18,9 @@ use crate::song_view::{attr, ch, Song};
 /// The song view whole on the grid, the knob's popup gone from over it, and what the view
 /// holds for the editor written (a frame runs one of its actions).
 pub(crate) fn settle(ui: &mut crate::views::Ui) {
-    for _ in 0..100 {
+    for _ in 0..400 {
         let st = &ui.v.step;
-        if st.qn == 0 && st.follow == 0 && ui.v.editor.pending == 0 {
+        if st.qn == 0 && st.follow == 0 && st.run == 0 && ui.v.editor.pending == 0 {
             break;
         }
         ui.frame();
@@ -1045,4 +1045,188 @@ fn a_lock_made_on_a_held_step_holds_for_its_row_only_in_the_players_output() {
             == sidou_tests::transport::player_state(&t0.sc.player),
         "the player itself plays as without the lock"
     );
+}
+
+// ---- generative play: chance, MUTATE and DICE ----
+
+/// EDIT + button, as the panel reports it, until the edits it makes are written.
+fn edit_press(s: &mut Song, b: u32) {
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.press(b);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+}
+
+fn is_note(n: u8) -> bool {
+    (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n)
+}
+
+/// The root C-3 and its minor pentatonic, as semitones above the root.
+fn in_scale(note: u8) -> bool {
+    [0, 3, 5, 7, 10].contains(&((note - C3) % 12))
+}
+
+fn pattern_ok(p: &[[u8; 4]]) {
+    for (r, c) in p.iter().enumerate() {
+        let n = c[0];
+        let ok = n == GT2_REST as u8
+            || n == GT2_KEYOFF as u8
+            || (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n);
+        assert!(ok, "row {r}: {c:?} is no GT2 note column");
+        if n == GT2_KEYOFF as u8 && c[2] == 0 {
+            // (a key off sharing a row with a command stays, as taking a note away leaves it)
+            assert!(r > 0 && is_note(p[r - 1][0]), "row {r}: an orphan key off");
+        }
+    }
+}
+
+#[test]
+fn algorithm_with_a_step_held_is_its_chance_a_lock_that_is_gone_at_one_hundred() {
+    let mut s = step();
+    hold(&mut s, 3);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    settle(&mut s.ui);
+    assert_eq!(locks(&s), [(0, 3, SONG_LOCK_CHANCE as u8, 95)]);
+    assert_eq!(s.ui.small(17, 22, 3), "95%");
+    assert_eq!(
+        popup(&s, PANEL_ENC_ALGORITHM, false),
+        Some(("CHANCE".into(), "95%".into(), 95, 100))
+    );
+    s.ui.turn(PANEL_ENC_ALGORITHM, -5);
+    settle(&mut s.ui);
+    assert_eq!(locks(&s), [(0, 3, SONG_LOCK_CHANCE as u8, 70)]);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -100);
+    settle(&mut s.ui);
+    assert_eq!(locks(&s)[0].3, 0, "never plays: the floor");
+    s.ui.turn(PANEL_ENC_ALGORITHM, 100);
+    settle(&mut s.ui);
+    assert!(locks(&s).is_empty(), "100 is the default: no lock kept");
+    assert_eq!(s.ui.v.step.page, 0, "ALGORITHM paged nothing");
+    release(&mut s);
+    assert_eq!(
+        pattern(&s, 0)[3],
+        R,
+        "no toggle: a knob was turned on the key"
+    );
+    let popup_free = popup(&s, PANEL_ENC_ALGORITHM, false);
+    assert_eq!(popup_free.map(|p| p.0), Some("PAGE".into()));
+}
+
+#[test]
+fn dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits() {
+    let mut s = step();
+    let before = pattern(&s, 0);
+    s.ui.v.step.seed = 7;
+    edit_press(&mut s, PANEL_BTN_SCL);
+    assert_eq!(s.ui.v.step.run, 0, "the run is over");
+    let p = pattern(&s, 0);
+    pattern_ok(&p);
+    assert_eq!(p.len(), before.len());
+    let notes: Vec<usize> = (0..p.len()).filter(|&r| is_note(p[r][0])).collect();
+    assert!(
+        notes.len() > 8,
+        "{} notes: a pattern, not a rest",
+        notes.len()
+    );
+    for &r in &notes {
+        assert_eq!(r % 2, 0, "row {r}: off the eighth grid");
+        assert!(
+            in_scale(p[r][0]),
+            "row {r}: {} is out of the scale",
+            p[r][0]
+        );
+        assert_eq!(p[r][1], 1, "the lane's instrument");
+    }
+    assert_eq!(p[5][2..], [4, 0x22], "the row's command stays");
+    assert!(s.f.cell_writes > 0, "the player applied them as edits");
+    // Plain GT2 data: the song writes and reads back with it.
+    let file = snapshot(&s).write(false);
+    let mut back = Model::host();
+    back.read(&file, 0).unwrap();
+    assert_eq!(back.write(false), file);
+    // One undo steps back one cell, as for any edit.
+    let again = p.clone();
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.press(PANEL_BTN_LFO);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_ne!(pattern(&s, 0), again);
+    // The same seed, the same pattern: a second song with the same start.
+    let mut t = step();
+    t.ui.v.step.seed = 7;
+    edit_press(&mut t, PANEL_BTN_SCL);
+    assert_eq!(pattern(&t, 0), again);
+}
+
+#[test]
+fn dice_on_a_drum_lane_keeps_its_note_and_hits_on_the_sixteenths_the_downbeat_most() {
+    let mut s = step();
+    let scene = song_scene {
+        count: 3,
+        role: [SONG_ROLE_DRUMS as u8, 0, 0, 0, 0, 0],
+        ..Default::default()
+    };
+    assert_eq!(
+        unsafe { song_ext_set_scene(s.ui.v.song.song.cast_mut(), &scene) },
+        0
+    );
+    edit_press(&mut s, PANEL_BTN_SCL);
+    let p = pattern(&s, 0);
+    pattern_ok(&p);
+    let hits: Vec<usize> = (0..p.len()).filter(|&r| is_note(p[r][0])).collect();
+    assert!(hits.iter().all(|&r| p[r][0] == C3), "one note: the lane's");
+    let at = |m: usize| hits.iter().filter(|&&r| r % 4 == m).count();
+    assert!(
+        at(0) > at(1) && at(0) > at(3),
+        "{} {} {} {}",
+        at(0),
+        at(1),
+        at(2),
+        at(3)
+    );
+    assert!(at(1) + at(2) + at(3) > 0, "the sixteenths hit too");
+}
+
+#[test]
+fn mutate_changes_a_little_stays_in_the_scale_and_valid_every_time() {
+    let mut s = step();
+    edit_press(&mut s, PANEL_BTN_SCL);
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..30 {
+        let before = pattern(&s, 0);
+        edit_press(&mut s, PANEL_BTN_ARP);
+        assert_eq!(s.ui.v.step.run, 0);
+        let after = pattern(&s, 0);
+        pattern_ok(&after);
+        let changed: Vec<usize> = (0..after.len())
+            .filter(|&r| before[r] != after[r])
+            .collect();
+        // two changes at most, each a note and its key off
+        assert!(changed.len() <= 4, "{changed:?}");
+        for &r in &changed {
+            if is_note(after[r][0]) {
+                assert!(in_scale(after[r][0]), "row {r}: out of the scale");
+            }
+        }
+        assert_eq!(after[5][2..], [4, 0x22]);
+        seen.insert(after);
+    }
+    assert!(
+        seen.len() > 15,
+        "{} different patterns in 30 presses",
+        seen.len()
+    );
+}
+
+#[test]
+fn mutate_and_dice_wait_for_a_step_to_be_let_go_and_leave_rec_alone() {
+    let mut s = step();
+    hold(&mut s, 2);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.press(PANEL_BTN_SCL);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.step.run, 0, "a held step: not a pattern action");
+    release(&mut s);
+    assert_eq!(pattern(&s, 0)[0][0], C3 + 7, "nothing was diced");
 }

@@ -28,7 +28,11 @@
  * that step. SELECT selects the lane, ALGORITHM pages (while the song plays the page follows
  * the playing step), PRESETS sets the lane's instrument or with a step held that step's note,
  * ARP switches the lane between staccato (a key off on the next empty row, the default) and
- * legato, LFO with a step held clears its locks and its waveform command.
+ * legato, LFO with a step held clears its locks and its waveform command. Held with a knob,
+ * ALGORITHM is the step's chance to play (a lock; the player drops the note of a pass that
+ * loses its roll). EDIT + ARP is MUTATE (a few small changes to the lane's pattern), EDIT +
+ * SCL is DICE (a new pattern for the lane, notes of a scale on a rhythm grid): both are plain
+ * cell writes through the editor.
  *
  * Two kinds, one meaning each: LOCK (K1 cutoff, K2 resonance, K3 pulse width; with EDIT held
  * K1-K4 the character, song_ext.h SONG_LOCK_*) holds for that row only and lives in the LOCK
@@ -102,6 +106,10 @@ typedef struct {
     uint8_t follow_cell[4];
     uint8_t qn;
     step_act q[STEP_VIEW_QUEUE];
+    /* MUTATE or DICE at work (step_view.c, "generative play"): the run's kind (0: none), where,
+     * how far, whether the lane is the song's drums, and the seed its random is made from. */
+    uint8_t run, gen_pattern, gen_voice, gen_row, gen_drums;
+    uint32_t seed;
     uint8_t drawn[STEP_VIEW_LOOK];
 } step_view;
 

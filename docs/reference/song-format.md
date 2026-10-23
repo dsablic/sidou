@@ -193,7 +193,7 @@ After the GT2 part, a reader looks for the magic at E:
 - a GT2-part CRC that does not match (a tool changed the song but kept the bytes): the
   position-bound chunks (`LOCK`) are dropped (`SNG: LOCKS DROPPED`) and the rest kept;
 - a version-1 `LOCK` chunk with a record out of range (a pattern past 207, a row past 127, a
-  parameter past 8, a value past the parameter's range below) or out of order (not strictly
+  parameter past 9, a value past the parameter's range below) or out of order (not strictly
   increasing by pattern, row, parameter), or with a count past 512 or past its length: the
   chunk is dropped whole (`SNG: LOCKS DROPPED`) and the rest kept;
 - bytes after L are ignored.
@@ -291,6 +291,19 @@ player's own state is not changed, so its tables run on underneath.
 | 3 routing | 0-1: the row's voice into the filter | `$D417`'s bit for the voice |
 | 4 pulse width | 0-4095 | the row's voice's `$D402`, `$D403`'s low nybble |
 | 5-8 age/heat, DAC sloppiness, thump, bleed | 0-127 | chip A's character, with chip_ctl's glide (0.32 s end to end: coarse by nature) |
+| 9 chance | 0-100 | no register: the step's chance to play, in percent (a step with no record plays always) |
+
+**Chance.** A chance lock (parameter 9) gives its row a probability to play on each pass; the
+value is a percent, 100 is the default and STEP keeps no record for it. The roll is the main
+loop's, made as the row before the step starts (the look-ahead that resolves its locks) and
+deterministic: `song_chance_plays(seed, n, chance)` mixes the seed and the count of rolls since
+PLAY, so one seed gives one run of passes, and PLAY takes a new seed (the time) on the device. A
+step that loses its roll plays as a rest: its note and its instrument column are dropped when
+the player reads the row (the row's command, and its row event, stay), so a staccato lane's key
+off after it still runs and the song's timing never changes. The song's first step (read before
+the look-ahead can roll) always plays. GoatTracker ignores the chunk and plays the step always;
+an older SIDOU, which knows only parameters 0-8, drops the LOCK chunk whole (`SNG: LOCKS
+DROPPED`) and plays everything. The pattern's data and the rest of the chunk are as without it.
 
 **Locks and the waveform command.** The STEP view (M2d) writes both kinds, and each means one
 thing. A **lock** (K1 cutoff, K2 resonance, K3 pulse width; with EDIT the character) lives in this

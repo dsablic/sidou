@@ -1362,6 +1362,27 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
   Amount at 127: loud, but no hard crackle of clipping on the peaks (the soft limiter rounds
   them). Note anything that still sounds clipped, and at which setting.
 
+## 16. Generative play in STEP (chance, MUTATE, DICE)
+
+By ear; no device risk beyond the usual song editing.
+
+1. In STEP on a song with a steady pattern on V1, hold a step with a note and turn ALGORITHM
+   anticlockwise: the popup says `CHANCE 95%` and counts down by 5. Let go, press PLAY: at 50 % the
+   step should play about every other pass, never in a pattern you can predict; at 0 it is silent;
+   at 100 (turn back up) the notch is gone and it always plays. A skipped step must leave the
+   notes around it, the key-off rows and the timing alone.
+2. Stop and PLAY again: the passes differ from the first run (a new seed each PLAY).
+3. EDIT + SCL (DICE) on V1: a new eighth-note pattern in a minor pentatonic around the lane's note
+   appears row by row (the edits are written one at a time; about a second for 64 rows). Press it
+   again for another. Does it sound musical on your instrument? Note what you would change
+   (density, range, the scale).
+4. EDIT + ARP (MUTATE) a few times on a pattern you like: each press should change it a little (two
+   notes at most) and stay in key. Play while pressing.
+5. On a song whose SCNE chunk gives a voice the role DRUMS, DICE on that
+   lane keeps its one note and puts hits on the sixteenths with a heavy downbeat.
+6. Save, reopen the song in GoatTracker 2: the pattern is plain; every step plays (GoatTracker
+   ignores chance).
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1383,3 +1404,4 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
 | 13 Songs on the store | | |
 | 14 Make a song on the device | | |
 | 15 SPREAD and the soft limiter | | |
+| 16 Generative play in STEP | | |

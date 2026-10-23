@@ -674,6 +674,11 @@ static void getnewnote(out* o, gt2_channel* c, uint32_t x) {
         row[2] = r[2];
         row[3] = r[3];
     }
+    uint16_t key = (uint16_t)((c->pattnum + 1u) << 8 | c->pattptr);
+    if (key == c->skip[0] || key == c->skip[1]) {
+        row[0] = REST; /* a step that lost its roll: no note, no instrument */
+        row[1] = 0u;
+    }
     c->ev_pending = 1u;
     c->ev_pattern = c->pattnum;
     c->ev_row = c->pattptr;

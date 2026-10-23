@@ -305,7 +305,10 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + K3 | pulse width LOCK, 64 of 4095 a detent from the middle (2048) |
 | Step held + K4 | waveform **SET**: OFF, TRI, SAW, PULSE, NOISE |
 | Step held + EDIT + K1-K4 | the character's LOCKs: age/heat, DAC, thump, bleed (0-127) |
-| Step held + LFO | clears that step's locks and its SET |
+| Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
+| Step held + LFO | clears that step's locks, its chance and its SET |
+| EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED` |
+| EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN` |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO) |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
@@ -318,6 +321,21 @@ notch. A **LOCK** is SIDOU's: one parameter replaced for that row only (the `LOC
 [song format](song-format.md#sidous-trailer)); the song's own value is back at the next row. It
 shows as `LOCK` in yellow, and on the step as a yellow notch (both: the yellow one, and the
 frame says both). A persistent cutoff change is TRACKER's `CXY` command.
+
+**Chance, MUTATE and DICE (generative play).** A step with a chance below 100 plays that often
+on each pass of the pattern: the roll is made as the row before it starts, from a seed PLAY takes
+anew, and a step that loses it plays as a rest (its note is dropped; commands, timing and the
+gate rows stay). The chance is a lock of the `LOCK` chunk (parameter 9), so it moves with its row
+under row inserts and deletes, undo restores it, and GoatTracker plays the step always. MUTATE and
+DICE write ordinary cells through the editor, one row a turn like every STEP edit, so the lane's
+pattern stays plain GoatTracker data (undo steps back one cell at a time, as for any edit); both
+need no step held and no REC, and they stop if STEP is left before they finish. The notes are the
+**minor pentatonic** on the lane's note (the one PRESETS sets with a step held, C-3 by default) and
+the octave above; a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it
+hits. DICE puts hits on the eighths for a melodic lane (the beat 85 %, the offbeat 55 %) and on the
+sixteenths for a drum lane (90, 15, 50, 25 % through the beat), a key off after each hit on a
+staccato lane; a row's command and data stay. The seed comes from the time of the press, so each
+press is another pattern.
 
 **Gate.** A staccato lane writes a key off on the next row if that row has no note, and takes
 it away with the note; where the row before a removed note holds a note, the removed note's row

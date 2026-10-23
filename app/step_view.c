@@ -25,8 +25,8 @@ _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
 #define LOWER_ROWS 0x3FFF0000u
 
 /* What a knob steps a lock by, its value when the step has none, its range's top. */
-static const uint16_t LOCK_STEP[SONG_LOCK_PARAMS] = {32, 1, 1, 1, 64, 2, 2, 2, 2};
-static const uint16_t LOCK_START[SONG_LOCK_PARAMS] = {1024, 8, 0, 0, 2048, 64, 64, 64, 64};
+static const uint16_t LOCK_STEP[SONG_LOCK_PARAMS] = {32, 1, 1, 1, 64, 2, 2, 2, 2, 5};
+static const uint16_t LOCK_START[SONG_LOCK_PARAMS] = {1024, 8, 0, 0, 2048, 64, 64, 64, 64, 100};
 /* SET's choices: none, then triangle, sawtooth, pulse and noise, gate on. */
 static const uint8_t WAVES[STEP_VIEW_WAVES] = {0u, 0x11u, 0x21u, 0x41u, 0x81u};
 static const char* const WAVE_NAMES[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PULSE", "NOISE"};
@@ -514,6 +514,12 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
             note_name(cell[0] - GT2_FIRSTNOTE, nn);
             small(c, 17, 17u, nn, THEME_ATTR(th, value));
         }
+        char pc[6];
+        uint32_t chance = 100u;
+        if (lock_get(s, ln->pattern, at, SONG_LOCK_CHANCE, &chance)) {
+            pc[decimal(chance, pc)] = '%';
+            small(c, 22, 17u, pc, THEME_ATTR(th, hot));
+        }
     }
     for (uint32_t k = 0; k < 4u; k++) {
         knob_cell(st, ln, at, held, k, 18u + 2u * (k >> 1));
@@ -624,8 +630,8 @@ __attribute__((noinline, unused)) static int write_cell(screen* s, step_view* st
     return ok;
 }
 
-/* Step t's note on or off on its lane. */
-static void toggle_now(screen* s, step_view* st, const target* t) {
+/* Step t's note on or off on its lane (on: note, the lane's default for a key). */
+static void toggle_now(screen* s, step_view* st, const target* t, uint32_t note) {
     song_view* sv = st->sv;
     uint8_t cell[4], other[4];
     if (!read_cell(st, t, t->row, cell)) {
@@ -636,7 +642,7 @@ static void toggle_now(screen* s, step_view* st, const target* t) {
     int note_on = !is_note(cell[0]);
     int has_next;
     if (note_on) {
-        cell[0] = (uint8_t)(GT2_FIRSTNOTE + st->note[t->voice]);
+        cell[0] = (uint8_t)(GT2_FIRSTNOTE + note);
         cell[1] = st->instr[t->voice];
     } else {
         /* A rest, or the key off the note before it still wants. */
@@ -713,6 +719,123 @@ static void unset_now(screen* s, step_view* st, const target* t) {
     }
 }
 
+/* ---- generative play: MUTATE and DICE (E+ARP, E+SCL) ----
+ * Both are runs of ordinary cell writes through the editor, one a turn of drain, so each is an
+ * edit as any other (the pattern stays plain GT2 data; undo steps back a cell at a time). The
+ * notes come from a scale on the lane's own note (PRESETS with a step held): minor pentatonic;
+ * a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it hits. What
+ * "random" means is song_mix of the seed and the row: the same seed makes the same pattern. */
+enum { GEN_MUTATE = 1, GEN_DICE };
+static const uint8_t PENTATONIC[5] = {0, 3, 5, 7, 10};
+/* DICE's grid: the chance in percent of a hit on a row's place in its beat. A melodic lane hits
+ * on the eighths, a drum lane on the sixteenths with a heavy first one. */
+static const uint8_t GRID_MELODIC[4] = {85, 0, 55, 0};
+static const uint8_t GRID_DRUMS[4] = {90, 15, 50, 25};
+#define GEN_PHI 0x9e3779b9u
+
+static int in_scale(uint32_t root, uint32_t note) {
+    for (uint32_t i = 0; i < 5u; i++) {
+        if ((note + 120u - root) % 12u == PENTATONIC[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* The note of a random value h on the lane: its own for a drum lane, else a degree of the
+ * scale in the octave from the lane's note or the next. */
+static uint32_t gen_note(const step_view* st, uint32_t voice, uint32_t h) {
+    uint32_t root = st->note[voice];
+    if (st->gen_drums) {
+        return root;
+    }
+    uint32_t n = root + PENTATONIC[h % 5u] + 12u * (h >> 8 & 1u);
+    while (n > GT2_NOTE_MAX) {
+        n -= 12u;
+    }
+    return n;
+}
+
+static int dice_hit(const step_view* st, uint32_t row) {
+    uint32_t h = song_mix(st->seed + row * GEN_PHI);
+    return (h >> 8) % 100u < (st->gen_drums ? GRID_DRUMS : GRID_MELODIC)[row & 3u];
+}
+
+/* DICE's row: its note, or what follows one (a key off on a staccato lane), or a rest; only a
+ * row that differs is written (its command and data stay). 1: written, or the run is over. */
+static int dice_row(screen* s, step_view* st, const target* t) {
+    uint8_t cell[4];
+    uint32_t r = t->row;
+    if (!read_cell(st, t, r, cell)) {
+        feedback(s, st->sv);
+        st->run = 0u;
+        return 1;
+    }
+    int hit = dice_hit(st, r);
+    uint8_t want = hit ? (uint8_t)(GT2_FIRSTNOTE + gen_note(st, t->voice, song_mix(st->seed ^ r)))
+                       : r && !(st->gate >> t->voice & 1u) && dice_hit(st, r - 1u) ? GT2_KEYOFF
+                                                                                      : GT2_REST;
+    uint8_t instr = hit ? st->instr[t->voice] : 0u;
+    if (cell[0] == want && cell[1] == instr) {
+        return 0;
+    }
+    cell[0] = want;
+    cell[1] = instr;
+    if (!write_cell(s, st, t, r, cell)) {
+        st->run = 0u;
+    }
+    return 1;
+}
+
+/* One of MUTATE's two changes at a random row: a note is nudged to the next note of the scale
+ * up or down, or goes; a rest gets a note of the scale (a ghost step). */
+static void mutate_now(screen* s, step_view* st, target* t) {
+    uint8_t cell[4];
+    uint32_t h = song_mix(st->seed + st->gen_row * GEN_PHI);
+    t->row = (uint8_t)(h % t->rows);
+    if (!read_cell(st, t, t->row, cell)) {
+        feedback(s, st->sv);
+        st->run = 0u;
+        return;
+    }
+    h = song_mix(h);
+    if (!is_note(cell[0]) || st->gen_drums || h >> 9 & 1u) {
+        toggle_now(s, st, t, gen_note(st, t->voice, h));
+        return;
+    }
+    uint32_t root = st->note[t->voice], n = cell[0] - GT2_FIRSTNOTE;
+    int up = (int)(h >> 10 & 1u);
+    for (uint32_t i = 0; i < 12u; i++) {
+        n = up ? (n < GT2_NOTE_MAX ? n + 1u : n) : (n ? n - 1u : n);
+        if (in_scale(root, n)) {
+            break;
+        }
+    }
+    cell[0] = (uint8_t)(GT2_FIRSTNOTE + n);
+    (void)write_cell(s, st, t, t->row, cell);
+}
+
+/* The next write of the run MUTATE or DICE is on: one a turn of drain. */
+__attribute__((noinline, unused)) static void gen_now(screen* s, step_view* st) {
+    song_view* sv = st->sv;
+    target t = {st->gen_pattern, 0u, st->gen_voice, st->gen_row};
+    t.rows = sv->song ? (uint8_t)(gt2_pattern_rows(sv->song, t.pattern) - 1u) : 0u;
+    if (!t.rows) {
+        st->run = 0u;
+    } else if (st->run == GEN_MUTATE) {
+        mutate_now(s, st, &t);
+        st->run = ++st->gen_row < 2u ? st->run : 0u;
+    } else {
+        while (st->run && st->gen_row < t.rows) {
+            t.row = st->gen_row++;
+            if (dice_row(s, st, &t)) {
+                return;
+            }
+        }
+        st->run = 0u;
+    }
+}
+
 /* What a cell write waits for: the editor takes one at a time, and the first after a key
  * starts the audition, which holds edits for a while. The actions wait here, in order. */
 enum { ACT_TOGGLE = 1, ACT_WAVE, ACT_NOTE, ACT_UNSET };
@@ -737,6 +860,9 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
         return;
     }
     if (!st->qn) {
+        if (st->run) {
+            gen_now(s, st);
+        }
         return;
     }
     step_act a = st->q[0];
@@ -747,7 +873,7 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
     target t = {a.pattern, 0u, a.voice, a.row};
     t.rows = sv->song ? (uint8_t)(gt2_pattern_rows(sv->song, a.pattern) - 1u) : 0u;
     if (a.kind == ACT_TOGGLE) {
-        toggle_now(s, st, &t);
+        toggle_now(s, st, &t, st->note[t.voice]);
     } else if (a.kind == ACT_WAVE) {
         wave_now(s, st, &t, a.steps);
     } else if (a.kind == ACT_NOTE) {
@@ -860,8 +986,9 @@ static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, 
     int32_t v = (int32_t)value + steps * (int32_t)LOCK_STEP[param];
     int32_t max = (int32_t)song_lock_max(param);
     v = v < 0 ? 0 : v > max ? max : v;
-    int r = song_lock_put(song, t->pattern, t->row, param, (uint32_t)v);
-    if (r == 0) {
+    int r = param == SONG_LOCK_CHANCE && v == 100 ? song_lock_remove(song, t->pattern, t->row, param)
+                                                  : song_lock_put(song, t->pattern, t->row, param, (uint32_t)v);
+    if (r >= 0) {
         st->rev++;
     } else {
         refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
@@ -883,6 +1010,30 @@ static void clear_step(screen* s, step_view* st, const target* t) {
     act(s, st, ACT_UNSET, t, 0);
 }
 
+/* MUTATE or DICE on the selected lane: the run starts, its writes follow in drain. */
+static void gen_start(screen* s, step_view* st, uint32_t kind) {
+    song_view* sv = st->sv;
+    target t;
+    song_scene scene;
+    if (!target_of(st, 0u, &t) || !sv->editor) {
+        feedback(s, sv);
+        return;
+    }
+    if (st->run) {
+        refuse(s, "WAITING");
+        return;
+    }
+    st->seed = song_mix(st->seed ^ s->now ^ s->frame);
+    st->gen_drums = (uint8_t)(song_ext_get_scene(sv->song, &scene) && t.voice < scene.count &&
+                              scene.role[t.voice] == SONG_ROLE_DRUMS);
+    st->gen_pattern = t.pattern;
+    st->gen_voice = t.voice;
+    st->gen_row = 0u;
+    st->run = (uint8_t)kind;
+    refuse(s, kind == GEN_MUTATE ? "MUTATED" : "NEW PATTERN");
+    drain(s, st);
+}
+
 static int input(screen* s, void* state, const screen_event* e) {
     step_view* st = state;
     song_view* sv = st->sv;
@@ -896,6 +1047,11 @@ static int input(screen* s, void* state, const screen_event* e) {
                 sv->edit_pending = sv->editor->pending;
             }
             feedback(s, sv);
+            return 1;
+        }
+        if (edit && st->held == STEP_VIEW_NONE && !song_view_recording(sv) &&
+            (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_SCL)) {
+            gen_start(s, st, e->id == PANEL_BTN_ARP ? GEN_MUTATE : GEN_DICE);
             return 1;
         }
         if (e->id == PANEL_BTN_LFO && st->held != STEP_VIEW_NONE) {
@@ -918,6 +1074,11 @@ static int input(screen* s, void* state, const screen_event* e) {
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
         sv->instr = st->instr[sv->voice];
+        return 1;
+    }
+    if (e->id == PANEL_ENC_ALGORITHM && st->held != STEP_VIEW_NONE && target_of(st, st->held, &t)) {
+        st->touched = st->down; /* a step held: ALGORITHM is its chance, not the page */
+        set_lock(s, st, &t, SONG_LOCK_CHANCE, e->steps);
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
@@ -992,7 +1153,13 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     uint32_t cur = 0u, top = 0u;
     int held = st->held != STEP_VIEW_NONE;
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
-    if (encoder == PANEL_ENC_ALGORITHM) {
+    if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
+        label = "CHANCE";
+        cur = 100u;
+        (void)lock_get(sv->song, ln->pattern, at, SONG_LOCK_CHANCE, &cur);
+        top = 100u;
+        text[decimal(cur, text)] = '%';
+    } else if (encoder == PANEL_ENC_ALGORITHM) {
         label = "PAGE";
         uint32_t pages = pages_of(ln->rows);
         cur = page;
@@ -1077,6 +1244,7 @@ static void enter(screen* s, void* state) {
     st->sv->edit_screen = s;
     st->held = STEP_VIEW_NONE;
     st->zones = 0u;
+    st->run = 0u;
     st->down = st->touched = 0u;
     st->sv->instr = st->instr[st->sv->voice];
 }
@@ -1086,7 +1254,7 @@ static void leave(screen* s, void* state) {
     if (st->follow | st->qn) {
         drain(s, st);
     }
-    st->qn = 0u;
+    st->qn = st->run = 0u;
     st->sv->built = 0;
     st->held = STEP_VIEW_NONE;
     st->down = st->touched = 0u;
@@ -1101,7 +1269,7 @@ static void leave(screen* s, void* state) {
 static int changed(screen* s, void* state) {
     step_view* st = state;
     song_view* sv = st->sv;
-    if (st->follow | st->qn) {
+    if (st->follow | st->qn | st->run) {
         drain(s, st);
     }
     if (model_loading(sv)) {

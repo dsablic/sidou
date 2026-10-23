@@ -168,7 +168,7 @@ enum {
  * holds row 0 of the pattern and of the next one, each with up to one lock of each of the five
  * filter and pulse parameters (a row holds one lock a parameter; an undo's restored locks are
  * the cut row's, which the model then has none of). */
-#define SONG_ROW_LOCKS (2u * (SONG_LOCK_PULSE + 1u))
+#define SONG_ROW_LOCKS (2u * (SONG_LOCK_PULSE + 2u)) /* and a chance's roll */
 typedef struct {
     uint8_t pattern, row, param, lo, hi;
 } song_row_lock;
@@ -225,6 +225,10 @@ typedef struct song_ctl {
     uint8_t lock_n[GT2_PLAY_CHANNELS];
     song_row_lock lock_cur[GT2_PLAY_CHANNELS][SONG_ROW_LOCKS];
     uint32_t lock_regs;           /* the registers the last call wrote over (bit r) */
+    /* Per-step chance (SONG_LOCK_CHANCE): the main loop rolls for the steps a channel may read
+     * next, as it resolves their locks, and tells the player the ones that lose (gt2_channel.skip).
+     * The seed is the app's (a time at PLAY); the roll's count restarts at each PLAY. */
+    uint32_t chance_seed, chance_n;
     uint32_t next;                /* samples from this block's start to the next call */
     uint32_t rem;
     song_period period;
