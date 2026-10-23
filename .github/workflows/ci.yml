@@ -35,6 +35,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      # The README names the newest release as released (and a tag is that release).
+      - name: README is current
+        run: tools/readme-check
       # tools/fm1-docker sees it is inside the image and runs the toolchain directly.
       - name: Configure
         run: tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=${SIDOU_PRODUCT}

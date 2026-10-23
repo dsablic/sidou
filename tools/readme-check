@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The README keeps up with the releases (the user, 2026-10-23: "keep the readme always up to
+date"). The newest release in CHANGELOG.md must be in the README's status as released, never as
+next, and on a release tag (GITHUB_REF refs/tags/vX.Y.Z) the tag must be that release.
+  tools/readme-check        exit 0 when the README is current, else 1 with what is stale
+Run by the merge check (every change, docs-only ones too) and by ci.yml on a tag."""
+import os
+import re
+import sys
+from pathlib import Path
+
+root = Path(__file__).resolve().parent.parent
+changelog = (root / "CHANGELOG.md").read_text()
+readme = (root / "README.md").read_text()
+
+m = re.search(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})$", changelog, re.M)
+if not m:
+    sys.exit("readme-check: no released version in CHANGELOG.md")
+version, date = m.groups()
+errors = []
+if f"**v{version}** is released" not in readme:
+    errors.append(f"README.md's status does not say \"**v{version}** is released\" (CHANGELOG.md: {version}, {date})")
+if re.search(rf"\*\*v{re.escape(version)}\*\* is (next|upcoming|coming)", readme):
+    errors.append(f"README.md still calls v{version} upcoming")
+ref = os.environ.get("GITHUB_REF", "")
+if ref.startswith("refs/tags/v") and ref != f"refs/tags/v{version}":
+    errors.append(f"the tag {ref[10:]} is not CHANGELOG.md's newest release v{version}")
+for e in errors:
+    print(f"readme-check: {e}", file=sys.stderr)
+if errors:
+    sys.exit(1)
+print(f"readme-check: README.md is current (v{version}, {date})")
