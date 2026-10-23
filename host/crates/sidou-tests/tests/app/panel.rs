@@ -37,7 +37,7 @@ impl Panel {
     }
 
     fn leds(&self) -> panel_leds {
-        unsafe { panel_get_leds(&*self.p, &*self.rig.live) }
+        unsafe { panel_get_leds(&*self.p, &*self.rig.live, std::ptr::null()) }
     }
 
     /// Voices gated at the note's frequency.
@@ -398,4 +398,270 @@ fn quiet_keys_sound_nothing_until_they_go_up() {
     p.keys(0, 0);
     p.keys(key(4), key(4));
     assert_eq!(p.gated(), 1);
+}
+
+fn led_in() -> panel_led_in {
+    panel_led_in {
+        beat: PANEL_BEAT_NONE as u8,
+        step_head: PANEL_NO_STEP as u8,
+        ..Default::default()
+    }
+}
+
+impl Panel {
+    fn leds_in(&self, i: &panel_led_in) -> panel_leds {
+        unsafe { panel_get_leds(&*self.p, &*self.rig.live, i) }
+    }
+}
+
+const fn btn(b: u32) -> u32 {
+    1 << b
+}
+
+/// A lit LED is not also dim, and no input at all shows only the panel's own lights.
+#[test]
+fn no_input_shows_the_panels_own_lights_and_lit_hides_dim() {
+    let mut p = Panel::new();
+    p.rig.live.arp_on = 1;
+    p.p.playing = 1;
+    let l = p.leds();
+    assert_eq!(l.buttons, 0, "no input: no beat, no step");
+    assert_eq!(l.buttons_dim, btn(PANEL_BTN_ARP) | btn(PANEL_BTN_PLAY));
+    let mut i = led_in();
+    i.beat = 0;
+    let l = p.leds_in(&i);
+    assert_eq!(l.buttons, btn(PANEL_BTN_PLAY));
+    assert_eq!(l.buttons_dim & l.buttons, 0);
+}
+
+#[test]
+fn arp_is_dim_while_on_and_lit_in_the_first_half_of_each_step() {
+    let mut p = Panel::new();
+    let l = &mut p.rig.live;
+    l.arp_voice = 0;
+    l.arp_rate = 2; // 3 frames a step: 6 ticks
+    assert_eq!(p.leds().buttons_dim, 0, "off: dark");
+    p.rig.live.arp_on = 1;
+    for (wait, lit) in [(6, true), (5, true), (4, true), (3, false), (1, false)] {
+        p.rig.live.arp_wait = wait;
+        let l = p.leds();
+        assert_eq!(l.buttons >> PANEL_BTN_ARP & 1, lit as u32, "wait {wait}");
+        assert_eq!(
+            (l.buttons | l.buttons_dim) >> PANEL_BTN_ARP & 1,
+            1,
+            "on is always at least dim"
+        );
+    }
+    // On with nothing held: dim, never lit.
+    p.rig.live.arp_voice = LIVE_ARP_NO_VOICE as u8;
+    p.rig.live.arp_wait = 6;
+    let l = p.leds();
+    assert_eq!(l.buttons, 0);
+    assert_eq!(l.buttons_dim, btn(PANEL_BTN_ARP));
+}
+
+#[test]
+fn arp_at_one_or_two_frames_a_step_lights_once_a_cycle() {
+    for rate in [0u8, 1] {
+        let mut p = Panel::new();
+        let l = &mut p.rig.live;
+        l.arp_on = 1;
+        l.arp_voice = 0;
+        l.arp_rate = rate;
+        l.arp_wait = (rate + 1) * 2; // a step just began
+        for pos in 0..4 {
+            p.rig.live.arp_pos = pos;
+            let lit = p.leds().buttons >> PANEL_BTN_ARP & 1;
+            assert_eq!(lit, u32::from(pos == 0), "rate {rate} pos {pos}");
+        }
+    }
+}
+
+#[test]
+fn arp_on_a_midi_clock_counts_clocks() {
+    let mut p = Panel::new();
+    let l = &mut p.rig.live;
+    l.arp_on = 1;
+    l.arp_voice = 0;
+    l.arp_rate = LIVE_ARP_RATE_CLOCK as u8 + 1; // a 16th: 6 clocks
+    l.arp_clock_seen = 1;
+    l.arp_wait = 1; // the frame count is not what steps it now
+    for (clocks, lit) in [(6, 1), (4, 1), (3, 0), (1, 0)] {
+        p.rig.live.arp_clocks = clocks;
+        assert_eq!(
+            p.leds().buttons >> PANEL_BTN_ARP & 1,
+            lit,
+            "clocks {clocks}"
+        );
+    }
+}
+
+#[test]
+fn play_is_lit_on_each_beats_first_quarter_dim_between_and_dark_stopped() {
+    let mut p = Panel::new();
+    let mut i = led_in();
+    assert_eq!(
+        p.leds_in(&i).buttons | p.leds_in(&i).buttons_dim,
+        0,
+        "stopped"
+    );
+    p.p.playing = 1;
+    for (beat, lit) in [(0, true), (63, true), (64, false), (200, false)] {
+        i.beat = beat;
+        let l = p.leds_in(&i);
+        assert_eq!(l.buttons >> PANEL_BTN_PLAY & 1, lit as u32, "beat {beat}");
+        assert_eq!(
+            l.buttons_dim >> PANEL_BTN_PLAY & 1,
+            !lit as u32,
+            "beat {beat}"
+        );
+    }
+    i.beat = PANEL_BEAT_NONE as u8; // starting: no clock yet
+    let l = p.leds_in(&i);
+    assert_eq!(
+        (l.buttons, l.buttons_dim),
+        (0, btn(PANEL_BTN_PLAY)),
+        "playing but no beat: dim"
+    );
+}
+
+#[test]
+fn rec_is_dim_armed_blinks_in_the_count_in_and_lit_recording() {
+    let p = Panel::new();
+    let mut i = led_in();
+    let rec = btn(PANEL_BTN_REC);
+    let l = p.leds_in(&i);
+    assert_eq!((l.buttons, l.buttons_dim), (0, 0));
+    i.rec = PANEL_REC_ARMED as u8;
+    let l = p.leds_in(&i);
+    assert_eq!((l.buttons, l.buttons_dim), (0, rec));
+    i.rec = PANEL_REC_ON as u8;
+    assert_eq!(p.leds_in(&i).buttons, rec);
+    i.rec = PANEL_REC_COUNT as u8;
+    let mut seen = [false; 2];
+    for ms in (0..2000).step_by(10) {
+        i.ms = ms;
+        let l = p.leds_in(&i);
+        assert_eq!(l.buttons_dim, 0, "a blink is lit or dark");
+        seen[usize::from(l.buttons == rec)] = true;
+        let again = {
+            i.ms = ms + 2 * PANEL_BLINK_HALF_MS;
+            p.leds_in(&i).buttons
+        };
+        assert_eq!(again, l.buttons, "one period on");
+    }
+    assert_eq!(seen, [true, true], "it blinks");
+}
+
+#[test]
+fn save_blinks_while_a_question_waits() {
+    let p = Panel::new();
+    let mut i = led_in();
+    let save = btn(PANEL_BTN_SAVE);
+    for ms in (0..1000).step_by(50) {
+        i.ms = ms;
+        assert_eq!(p.leds_in(&i).buttons, 0, "no question");
+    }
+    i.ask = 1;
+    let on = (0..1000)
+        .step_by(10)
+        .filter(|&ms| {
+            i.ms = ms;
+            p.leds_in(&i).buttons == save
+        })
+        .count();
+    assert!(
+        (40..=60).contains(&on),
+        "lit about half of 100 samples: {on}"
+    );
+}
+
+#[test]
+fn glo_layer_shows_the_voices_while_held_or_latched() {
+    let mut p = Panel::new();
+    let mut i = led_in();
+    i.silent = 0b010; // voice 2 muted
+    i.solo = 0b100; // voice 3 soloed
+                    // Not held: the keys are the player's.
+    p.keys(key(7), key(7));
+    assert_eq!(p.leds_in(&i).notes, key(7));
+    p.keys(0, 0);
+    for latch in [false, true] {
+        p.p.held = if latch { 0 } else { btn(PANEL_BTN_GLO) };
+        p.p.glo_latch = u8::from(latch);
+        let mut on = [false; 2];
+        for ms in (0..1000).step_by(10) {
+            i.ms = ms;
+            let l = p.leds_in(&i);
+            let layer = l.notes & 0x3f;
+            assert_eq!(
+                layer & 0b101,
+                0b101,
+                "voices 1 and 3 sound: keys 1 and 3 lit"
+            );
+            assert_eq!(layer & 0b010, 0, "voice 2 muted: key 2 dark");
+            // Solo keys: voices 1 and 2 not soloed, dim; voice 3's blinks.
+            assert_eq!(l.notes_dim & 0b111000, 0b011000);
+            on[usize::from(layer & 0b100000 != 0)] = true;
+        }
+        assert_eq!(on, [true, true], "the solo blinks");
+    }
+    // The other keys still play and light.
+    p.p.held = btn(PANEL_BTN_GLO);
+    p.keys(key(9) | key(1), key(9) | key(1));
+    let l = p.leds_in(&i);
+    assert_eq!(l.notes & key(9), key(9));
+    assert_eq!(
+        l.notes & key(1),
+        0,
+        "a GLO key sounds nothing and shows the voice"
+    );
+}
+
+#[test]
+fn step_page_shows_set_steps_lit_empty_ones_dim_and_the_playhead_flicks() {
+    let mut p = Panel::new();
+    let mut i = led_in();
+    i.step_on = 1;
+    i.step_rows = 0x00ff; // a short last page: 8 steps
+    i.step_set = 0b0001_0001;
+    i.ms = 1000;
+    i.head_ms = 0;
+    // Held keys no longer light in this view, but the keys above the 16 do.
+    p.keys(key(2) | key(20), key(2) | key(20));
+    let l = p.leds_in(&i);
+    assert_eq!(l.notes, 0b0001_0001 | key(20));
+    assert_eq!(l.notes_dim, 0x00ff & !0b0001_0001);
+    // The playhead on a set step: dark for PANEL_FLICK_MS, then lit again.
+    i.step_head = 4;
+    i.head_ms = 1000 - 10;
+    let l = p.leds_in(&i);
+    assert_eq!(l.notes & key(4), 0, "a set step goes dark");
+    assert_eq!(l.notes_dim & key(4), 0);
+    i.head_ms = 1000 - PANEL_FLICK_MS - 1;
+    assert_eq!(p.leds_in(&i).notes & key(4), key(4));
+    // On an empty one: lit, then dim.
+    i.step_head = 5;
+    i.head_ms = 1000 - 10;
+    let l = p.leds_in(&i);
+    assert_eq!((l.notes & key(5), l.notes_dim & key(5)), (key(5), 0));
+    i.head_ms = 0;
+    let l = p.leds_in(&i);
+    assert_eq!((l.notes & key(5), l.notes_dim & key(5)), (0, key(5)));
+    // Not on a step that does not exist.
+    i.step_head = 12;
+    i.head_ms = 1000;
+    assert_eq!(p.leds_in(&i).notes & key(12), 0);
+    // GLO's layer is over the first six keys of the page.
+    p.p.glo_latch = 1;
+    i.silent = 0b111;
+    i.head_ms = 0;
+    let l = p.leds_in(&i);
+    assert_eq!(l.notes & 0x3f, 0, "all muted");
+    assert_eq!(l.notes_dim & 0x3f, 0b111000, "solo keys available");
+    assert_eq!(
+        l.notes_dim & 0xc0,
+        0xc0 & 0x00ff,
+        "steps 7 and 8 still the page's"
+    );
 }

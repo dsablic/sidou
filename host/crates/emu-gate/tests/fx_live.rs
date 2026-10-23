@@ -395,3 +395,34 @@ fn env_on_live_is_heard() {
     let got: Vec<u8> = (0..5).map(|i| m.soc.read8(slot + i)).collect();
     assert_eq!(got, [1, 80, 0, 0, 127], "TAPE at its musical start");
 }
+
+/// A dim LED glows, a thirtieth as bright as a lit one (the HAL's dim pulse, which the LEDs'
+/// panel_leds.*_dim reach through fm1_led_dim): ARP is dark with the arpeggio off, dim with it on
+/// and nothing held, against OCT+ lit at full.
+#[test]
+fn a_dim_led_is_lit_but_far_less_than_a_full_one() {
+    let Some(fw) = fixture("the dim LED test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    const ARP: usize = 10;
+    const OCT_UP: u8 = 1;
+    m.run_ms(100);
+    m.soc.periph.led_take();
+    m.run_ms(100);
+    let off = m.soc.periph.led_take();
+    assert_eq!(off[ARP], 0.0, "ARP off: dark");
+    m.midi(&[0xB0, 27, 127]); // LIVE_CC_ARP: on
+    m.run_ms(100);
+    m.soc.periph.led_take();
+    m.run_ms(100);
+    let dim = m.soc.periph.led_take()[ARP];
+    tap(&mut m, OCT_UP);
+    m.run_ms(100);
+    m.soc.periph.led_take();
+    m.run_ms(100);
+    let full = m.soc.periph.led_take()[usize::from(OCT_UP)];
+    println!("ARP dim {dim:e}, OCT+ lit {full:e}");
+    assert!(dim > 0.0, "ARP on and nothing held: a glow");
+    assert!(full > 5.0 * dim, "lit {full} against dim {dim}");
+}

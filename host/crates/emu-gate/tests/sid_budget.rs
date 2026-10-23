@@ -36,8 +36,6 @@ struct Run {
     init: u64,
     render: u64,
     samples: Vec<i16>,
-    /// Instructions run by `step_block_load_dec` instead of fm1-core.
-    emulated_block_loads: u64,
     /// Render instructions per function, when profiling.
     profile: Vec<(String, u64)>,
     /// The same for the most expensive block alone.
@@ -103,7 +101,6 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
     let mut cpu = Cpu::new(XIP_BASE);
     let mut marks = Vec::new();
     let mut steps: u64 = 0;
-    let mut emulated_block_loads: u64 = 0;
     while read_u32(&soc, RESULT_ADDR) != RESULT_MAGIC {
         if cpu.pc == mark {
             marks.push(steps);
@@ -127,9 +124,7 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
                 block_counts[b][slot] += 1;
             }
         }
-        if step(&mut cpu, &mut soc) {
-            emulated_block_loads += 1;
-        }
+        step(&mut cpu, &mut soc);
         steps += 1;
         assert!(
             steps < MAX_STEPS,
@@ -205,7 +200,6 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
         init: marks[1] - marks[0],
         render: marks[2] - marks[1],
         samples,
-        emulated_block_loads,
         profile: profile_all,
         worst_block_profile,
         blocks,
@@ -278,7 +272,6 @@ fn check_scenario(
         "percent_of_240mhz_core": per_sample * SAMPLE_RATE / CORE_HZ * 100.0,
         "init_instructions": r.init,
         "max_sample_diff_vs_host": worst,
-        "emulated_block_loads": r.emulated_block_loads,
     });
     if !r.profile.is_empty() {
         let n = r.samples.len() as f64;

@@ -120,7 +120,7 @@ impl Panel {
     }
 
     fn leds(&self) -> panel_leds {
-        unsafe { panel_get_leds(&*self.p, &*self.rig.live) }
+        unsafe { panel_get_leds(&*self.p, &*self.rig.live, std::ptr::null()) }
     }
 }
 

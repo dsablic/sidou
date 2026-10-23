@@ -1553,7 +1553,7 @@ are in [controls](../reference/controls.md#help)). It is drawn in the menu's sty
   `CHIP`, `SCENE`, `STEP`, `TRACKER`, `ORDER`, `INSTR`, `TABLE`, `STATUS`, `ABOUT`, `CHARSET`,
   `SONG`, SONG's pages `FILES`, `SAVE AS`, `CONFIRM`, and the views' states `LIVE SLOT`,
   `CHIP TABS`, `CHIP SLOT`, `EXPERT`, `HELD STEP`, `STEP REC`, `TRACK EDIT`, `TRACK REC`,
-  `STORE`) right-aligned.
+  `STORE`, `ARP`) right-aligned.
 - **Rows 4-27:** up to eight lines, one every three rows (two of text, one blank): the control
   on the left in `hot`, what it does right-aligned in `value`, on the screen's own background;
   the rows a card does not use stay blank. A slot's card names K1..K4 for the slot's algorithm

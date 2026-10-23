@@ -108,8 +108,12 @@ static const char* const INSTR_LINES[] = {
     "E+SEQ\0TABLE",   "KEYS\0AUDITION", "SEQ\0NEXT VIEW", "SAVE\0SONG",
     "HOME\0BACK"};
 static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "ALG\0TABLE",      "K1\0LEFT BYTE",
-                                          "K2\0RIGHT BYTE",   "KEYS\0AUDITION",  "SEQ\0NEXT VIEW",
-                                          "SAVE\0SONG",       "HOME\0BACK"};
+                                          "K2\0RIGHT BYTE",   "ARP\0ARPEGGIO",   "KEYS\0AUDITION",
+                                          "SEQ\0NEXT VIEW",   "SAVE\0SONG",      "HOME\0BACK"};
+/* TABLE's ARP helper: the arpeggio's steps, each a semitone offset, written as wavetable rows. */
+static const char* const ARP_LINES[] = {"SELECT\0STEP",    "ALG\0STEPS",     "K1 K2\0OFFSET",
+                                        "K3\0SPEED",       "K4\0LOOP",       "KEYS\0AUDITION",
+                                        "SEQ\0NEXT VIEW",  "SAVE\0WRITE",    "HOME\0CANCEL"};
 static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\0MOOD",
                                           "KEYS\0PLAY",    "HOME\0BACK"};
 /* The SONG menu's actions; its pages have their own cards (below). SAVE is each page's OK, as
@@ -155,11 +159,14 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_TRACKER_EDIT] = CARD("TRACK EDIT", TRACKER_EDIT_LINES),
     [HELP_CARD_TRACKER_REC] = CARD("TRACK REC", TRACKER_REC_LINES),
     [HELP_CARD_STORE] = CARD("STORE", STORE_LINES),
+    [HELP_CARD_ARP] = CARD("ARP", ARP_LINES),
     [HELP_CARD_RESET] = CARD("RESET", RESET_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&
-                   sizeof TRACKER_REC_LINES / sizeof TRACKER_REC_LINES[0] <= HELP_LINES * HELP_PAGES,
+                   sizeof TRACKER_REC_LINES / sizeof TRACKER_REC_LINES[0] <= HELP_LINES * HELP_PAGES &&
+                   sizeof TABLE_LINES / sizeof TABLE_LINES[0] <= HELP_LINES * HELP_PAGES &&
+                   sizeof ARP_LINES / sizeof ARP_LINES[0] <= HELP_LINES * HELP_PAGES,
                "two pages at most");
 
 /* The text rows: the title bar's three and the row after it (unit 0), then a line every three

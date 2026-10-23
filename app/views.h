@@ -259,6 +259,9 @@ typedef struct {
     /* The SETTINGS page (views_settings_view): its menu, and what it showed at its last compose. */
     menu setup;
     uint8_t setup_drawn[VIEWS_SETTINGS_LOOK];
+    /* The step view's playhead as the LEDs last saw it, and when it came there (views_leds). */
+    uint8_t led_head;
+    uint32_t led_head_ms;
 } views;
 
 extern const view views_status;
@@ -333,6 +336,10 @@ int views_idle(views* v);
 /* Once a main-loop pass: the song control (NULL: none) and the events its ring gave this
  * pass (platform/fm1/main.c drains it, the ring's one reader, and hands each reader them). */
 void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n);
+/* The LEDs' inputs beyond the panel and live (panel_get_leds), at now_ms: the song's beat (from
+ * the player's clock, whichever view shows), REC, the voices GLO's layer shows, a question that
+ * waits for SAVE, and while STEP shows its page. Main loop. */
+void views_leds(views* v, uint32_t now_ms, panel_led_in* out);
 /* The flow step of a frame (views_frame runs it when HOME is down or a help card is up; the host
  * tests run it alone, after a tap of HOME, as the next frame would): HOME let go goes home (the
  * menu from LIVE, back one view elsewhere), HOME held 600 ms opens the help card of the view

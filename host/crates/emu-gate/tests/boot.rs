@@ -88,7 +88,6 @@ fn boots_and_plays_a_held_key_sample_exact() {
         "instructions": m.steps,
         "isr_instructions": m.isr_steps,
         "max_block_instructions": m.alnk_blocks.iter().max(),
-        "emulated_block_loads": m.emulated_block_loads,
         "silent_halves": best.map(|b| b.0),
         "note_block": best.map(|b| b.1),
         "min_max_sample_diff_vs_host": min_diff,
@@ -170,7 +169,7 @@ fn the_audio_and_the_keys_start_before_the_display() {
 /// The flash from 0x93000 up is mapped as a plain (unencrypted) XIP window at boot
 /// (platform/fm1/midi.c `flash_plain_window`, Felucca's `fl_plain_window_init`), before the
 /// audio starts, so the store (app/store_layout.h) reads through XIP as stored. fm1-emu does
-/// not decrypt XIP, so here the window's registers show it was set up, and a byte written into
+/// not decrypt a bare image's XIP, so here the window's registers show it was set up, and a byte written into
 /// the flash chip at the store's first byte reads back through XIP.
 #[test]
 fn the_store_reads_through_a_plain_xip_window() {
@@ -185,23 +184,19 @@ fn the_store_reads_through_a_plain_xip_window() {
     m.soc.flash.mem[lo..lo + 4].copy_from_slice(&[0x53, 0x49, 0xD0, 0x0A]);
     let xip = |off: u32| 0x0200_0000 + off - 0x4000;
     // Before the audio starts (the LCD's delays come first): the window is set up by then.
-    // SFCENC_UNENC_L/H and SFCENC_CON (fm1_flash.h), write-only on the chip: fm1-emu logs them
-    // as unknown accesses, keeping only the last 8,192 to 16,384, and the window's own cache
-    // invalidation and the store's boot after it log more than that: looked for as they come.
-    let (mut low, mut high, mut on) = (false, false, false);
+    // SFCENC_UNENC_L/H and SFCENC_CON (fm1_flash.h) read back since fm1-emu models SFCENC (it
+    // used to log them as unknown accesses, a log that kept only the last 8,192 to 16,384).
     let mut audio_at = None;
     let cycles = m.soc.periph.cycle_of_ms(1) / 10;
     while m.ms() < BOOT_MS_MAX && audio_at.is_none() {
         m.run_cycles(cycles);
-        for a in m.soc.unknown_accesses().iter().filter(|a| a.is_write) {
-            low |= a.addr == 0x4030C && a.value == xip(0x93000);
-            high |= a.addr == 0x40308 && a.value == 0x07FF_FFFF;
-            on |= a.addr == 0x40300 && a.value & 2 != 0;
-        }
         if !m.soc.periph.audio.is_empty() {
             audio_at = Some(m.ms());
         }
     }
+    let low = m.soc.read32(0x4030C) == xip(0x93000);
+    let high = m.soc.read32(0x40308) == 0x07FF_FFFF;
+    let on = m.soc.read32(0x40300) & 2 != 0;
     assert!(audio_at.is_some(), "the audio did not start");
     assert!(low, "the window's low end is not flash 0x93000");
     assert!(high, "the window's high end");

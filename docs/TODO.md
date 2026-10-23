@@ -96,6 +96,11 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## A soft knee on the two chips' mix (if two loud chips clip)
 
+- **Closed (2026-10-23): covered by the output's soft limiter** (v0.3.0, `core/fx/fx_limit.h`,
+  [decision record 0004](decisions/0004-effect-algorithms.md), "The output's soft limiter"), which
+  bends everything above -2.5 dBFS (24,576) where the output used to clamp, the two chips' sum
+  included. The proposal below is kept for the record.
+
 - **Where:** `app/chip_mix.c` (`chip_mix`), decision record 0004 ("M2b Task 3").
 - **Problem:** two chips at their loudest and in phase clip at the mix by up to 3.3 dB (one
   chip's loudest steady sample on the bench is 20,274). A gain on the mix would change chip
@@ -193,14 +198,12 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
   decide: full RSID support, a common subset (CIA-timed tunes without cycle-exact NMI
   digis), or keeping the polite rejection.
 
-## A friendlier ARP editor in TRACKER (M2d)
+## ~~A friendlier ARP editor in TRACKER (M2d)~~
 
-- **Where:** M2d's TRACKER view (`docs/plans/2026-10-15-m2d-step-tracker.md`).
-- **Problem:** GoatTracker's wavetable already does arpeggios (relative note steps with a
-  loop), but entering one by hand as raw wavetable rows is fiddly.
-- **Action:** an ARP helper that writes the wavetable rows from a list of semitone offsets
-  with a speed and a loop point, and shows an existing arpeggio in that form. No new
-  engine is needed, and the files stay plain GT2.
+- **Done:** TABLE's ARP helper on the WAVE table writes the wavetable rows from semitone offsets, a
+  speed and a loop step (plain GT2) and reads such rows back ([controls](reference/controls.md#arp-helper)).
+- **Open, small:** the waveform is kept, not chosen in the helper (K1 on the table's first row
+  changes it); no audition of the draft before SAVE; at most 8 steps.
 
 ## Generate the active profile's combined-waveform rows into POOL (M2/M3 fallback)
 
@@ -376,7 +379,9 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
   build/fm1/sidou.fwsc`). Remove it once upstream supports the instruction.
 - **Recheck at `db8d472e` (2026-10-22):** still not executed: fm1-isa decodes `41 eb 0a 00` as
   `r_4_mov_r_4` and `Cpu::step` returns `Unsupported { name: "r_4_mov_r_4" }`, as at
-  `7ca5b96c`. The workaround stays.
+  `7ca5b96c`. The workaround stayed.
+- **Fixed upstream (2026-10-23):** fm1-emu PR #67 runs `eb 40..70` (`-R`, `--R`, loads and stores),
+  base in the list taking its loaded word; the pin is `c1c045fc` and `step_block_load_dec` is gone.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.
 
@@ -499,8 +504,9 @@ working.
 
 - ~~**STEP's pads 10-16** show only their last digit at 2x~~: numbered by beat now (1 2 3 4
   four times; the user, 2026-10-23).
-- **Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY) show on CHIP and the LIVE band only,
-  1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
+- ~~**Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY)~~: show on CHIP and the LIVE band
+  (1x beside LIVE's 2x revision name), and now on STATUS and the PROFILE popup with the model
+  ("6581 CLASSIC"; the popup at 2x).
 - **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
 
 ## SysEx over USB while a chord sounds (the user's call)
@@ -564,8 +570,8 @@ card (HOME held) is the only on-device explanation. Done:
   accepted run; first-run and per-feature recipes (a fresh install has something to LOAD; a
   feature that is on shows it readably).
 
-## After v0.3.0: bump fm1-emu past its fixes for our reports
+## After v0.3.0: bump fm1-emu past its fixes for our reports (done 2026-10-23)
 
 fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementing block load, PR
-#67) on 2026-10-23. Bump the pin past them, remove `step_block_load_dec` from the emulator tests'
-`common/mod.rs`, and check the gate is unchanged.
+#67) on 2026-10-23. Done: the pin is `c1c045fc` (upstream master that day, with #69 to #72),
+`step_block_load_dec` and the `emulated_block_loads` count are gone from the emulator tests.

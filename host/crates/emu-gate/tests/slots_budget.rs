@@ -118,7 +118,6 @@ fn check(chips: u32) {
         "audio_rest_at_worst_plus_switch_instructions_per_sample": AUDIO_REST_AT_WORST + switch_worst,
         "headroom_for_6502_instructions_per_sample": AUDIO_TARGET - AUDIO_REST_AT_WORST - switch_worst,
         "samples_differing_from_host": diffs,
-        "emulated_block_loads": r.emulated_block_loads,
     });
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
     let out = build.join(format!("slots_budget_{chips}.json"));

@@ -53,6 +53,7 @@ mod settings;
 mod song_audition_shape;
 mod song_edit;
 mod song_io;
+mod song_leds;
 mod song_order_locks;
 mod song_pages;
 mod song_pattern_at;

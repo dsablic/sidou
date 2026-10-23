@@ -9,11 +9,34 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The button LEDs show more, in two levels:** the hardware's dim glow means set or available,
+  full light active now. ARP is dim while on and flashes on each arpeggio step (once a cycle at
+  1-2 frames a step); PLAY is lit on each beat and dim between while the song plays; REC is dim
+  while armed, blinks through the count-in and is lit while recording; SAVE blinks while a
+  question waits for it. With GLO held or latched, note keys 1-6 show the voices (lit sounding,
+  dark muted, blinking solo), and in STEP the 16 step keys show the page (lit a note, dim an
+  empty step) with the playhead's key flicking as it moves.
+- **An ARP helper on TABLE's WAVE table:** press ARP on an arpeggio's first row (or a blank one)
+  and set its steps as semitone offsets (SELECT, K1 octave, K2 semitone), the number of steps
+  (ALGORITHM), the speed (K3) and the loop step or HOLD (K4); SAVE writes plain GoatTracker 2
+  wavetable rows, and rows written by it or by hand in the same shape open as the arpeggio. No new
+  engine; GoatTracker's own packed player plays the rows as the helper says (a host test).
 - **SETTINGS → RESET:** one reset for everything that is not a song. ALGORITHM clockwise asks
   (RESET?), SAVE alone does it: every preset's edits and all the saved settings go back to
   factory and are stored at once (toast RESET AND SAVED). Songs, USER chip profiles and MIDI learn mappings stay;
   HOME or moving away cancels with nothing written. Before, the only whole reset was a STORE
   format, which erased the songs too.
+
+### Changed
+- **The profile's word everywhere:** STATUS names the chip as its model and the profile's word
+  (`6581 CLASSIC`, `8580 CLEAN`; both chips on a two-chip setup) and the PROFILE popup says the
+  same at 2x, where they said `6581 R4AR`; the ergonomics readability table counts the new names
+  as read while playing.
+- **The emulator is fm1-emu `c1c045fc`** (was `db8d472e`), for the emulator gate and the browser
+  demo: it runs the decrementing block load `{r1, r3} = [-r1]` (fm1-emu #67, our report #64) and
+  `psid_load` checks its bounds (#68, our report #63), so the gate's own stand-in for that load,
+  `step_block_load_dec`, is gone and with it the `emulated_block_loads` count in the gate's
+  reports.
 
 ## [0.3.1] - 2026-10-23
 
