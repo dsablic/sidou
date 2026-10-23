@@ -2015,6 +2015,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
     }
+    if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
+        return; /* out of the ARP helper, back to the table */
+    }
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
     } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
@@ -2085,7 +2088,8 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     if (top == &song_pages_instr_view) {
         return HELP_CARD_INSTR;
     }
-    return top == &song_pages_table_view ? HELP_CARD_TABLE : HELP_CARD_STATUS;
+    return top == &song_pages_table_view ? (v->pages.arp ? HELP_CARD_ARP : HELP_CARD_TABLE)
+                                         : HELP_CARD_STATUS;
 }
 
 /* ---- the first-run tour: three toasts after the full boot an install plays ---- */
@@ -2477,6 +2481,10 @@ static void save(views* v) {
     }
     if (shows(v) == &views_song_menu_view) {
         song_menu_ok(v); /* the page's OK: the highlighted item, SAVE AS's name */
+        return;
+    }
+    if (shows(v) == &song_pages_table_view && v->pages.arp) {
+        song_pages_arp_save(&v->pages, &v->s); /* the ARP helper's rows, not the song */
         return;
     }
     if (song_view_is(shows(v))) {

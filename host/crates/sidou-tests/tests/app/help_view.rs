@@ -623,7 +623,7 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 30] = [
+const CONTEXTS: [&str; 31] = [
     "LIVE",
     "LIVE SLOT",
     "MENU",
@@ -644,6 +644,7 @@ const CONTEXTS: [&str; 30] = [
     "ORDER",
     "INSTR",
     "TABLE",
+    "ARP",
     "STATUS",
     "ABOUT",
     "CHARSET",
@@ -731,6 +732,11 @@ fn open_ctx(name: &str) -> Ctx {
         "ORDER" => seq(ui, 3),
         "INSTR" => seq(ui, 4),
         "TABLE" => seq(ui, 5),
+        "ARP" => {
+            seq(ui, 5);
+            ui.press(PANEL_BTN_ARP);
+            ui.settle();
+        }
         "STEP FULL" => {
             ui.press(PANEL_BTN_HOME);
             ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
@@ -933,6 +939,7 @@ fn saves(name: &str) -> bool {
             | "ORDER"
             | "INSTR"
             | "TABLE"
+            | "ARP"
             | "STEP FULL"
     )
 }
@@ -1340,4 +1347,21 @@ fn keys_under_a_help_card_play_the_view_under_it() {
         s.ui.live().voice.iter().all(|v| v.gate == 0),
         "LIVE's instrument stays silent"
     );
+}
+
+/// HOME in TABLE's ARP helper closes the helper (the table stays); SAVE writes the rows, not the
+/// song, and closes it; held HOME shows the helper's card.
+#[test]
+fn home_and_save_in_the_arp_helper_close_it_and_never_leave_the_table() {
+    let mut c = open_ctx("ARP");
+    let ui = &mut c.s.ui;
+    assert_eq!(ui.v.pages.arp, 1);
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_eq!((ui.top().as_str(), ui.v.pages.arp), ("TABLE", 0));
+    ui.press(PANEL_BTN_ARP);
+    assert_eq!(ui.v.pages.arp, 1);
+    ui.press(PANEL_BTN_SAVE);
+    assert_eq!((ui.top().as_str(), ui.v.pages.arp), ("TABLE", 0));
+    assert_eq!(ui.toast().as_deref(), Some("ARP SAVED"));
 }

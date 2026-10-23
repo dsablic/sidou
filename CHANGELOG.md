@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **An ARP helper on TABLE's WAVE table:** press ARP on an arpeggio's first row (or a blank one)
+  and set its steps as semitone offsets (SELECT, K1 octave, K2 semitone), the number of steps
+  (ALGORITHM), the speed (K3) and the loop step or HOLD (K4); SAVE writes plain GoatTracker 2
+  wavetable rows, and rows written by it or by hand in the same shape open as the arpeggio. No new
+  engine; GoatTracker's own packed player plays the rows as the helper says (a host test).
+
 ### Changed
 - **The profile's word everywhere:** STATUS names the chip as its model and the profile's word
   (`6581 CLASSIC`, `8580 CLEAN`; both chips on a two-chip setup) and the PROFILE popup says the
