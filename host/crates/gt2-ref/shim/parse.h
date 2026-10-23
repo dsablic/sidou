@@ -10,4 +10,11 @@
 
 int assemble(struct membuf* src, struct membuf* dest);
 
+#include <stddef.h>
+
+/* The same for SIDOU's tests: text in, a malloc'd buffer out (gt2ref_free), strict or not
+ * (gt2ref_asm.c). */
+int gt2ref_assemble(const unsigned char* text, size_t len, int strict, unsigned char** out,
+                    size_t* out_len);
+
 #endif

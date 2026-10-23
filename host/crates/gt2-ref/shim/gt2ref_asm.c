@@ -21,7 +21,10 @@
  * - output is every byte from the first statement on, in order; an operand out of range
  *   is an error (a .BYTE value out of range is written as its low byte);
  * - two quirks of the original are kept, so the bytes are the same: LDY's absolute indexed
- *   form is written `,y` and assembles as $BC (LDY abs,X), and BVS assembles as $B0.
+ *   form is written `,y` and assembles as $BC (LDY abs,X), and BVS assembles as $B0;
+ * - gt2ref_assemble's strict mode, for the 6502 programs SIDOU's tests write (M3's PSID
+ *   fixtures), turns both quirks off (`ldy abs,x` is $BC, `ldy abs,y` an error, BVS $70) and
+ *   adds BIT, BRK, CLD, CLV, RTI and SED; assemble() is never strict.
  * The gt2-ref tests check it byte for byte against GoatTracker's own assembler over every
  * example song and option set (tests/assembler.rs, with GoatTracker's release fetched
  * into build/). */
@@ -81,6 +84,7 @@ typedef struct {
     int32_t pc;
     int pc_set;
     int failed;
+    int strict;
     int lineno;
     const char *line_start, *line_end;
 } asm_state;
@@ -438,6 +442,31 @@ static const mnemonic MNEMONICS[] = {
     {"dey", {0x88, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
 };
 
+/* Strict mode's table, looked up before the dialect's: the quirks off, and what player.s
+ * never needed. */
+static const mnemonic STRICT_MNEMONICS[] = {
+    /*        IMP   IMM   ZP    ZPX   ZPY   ABS   ABSX  ABSY  INDX  INDY  REL */
+    {"ldy", {NO, 0xa0, 0xa4, 0xb4, NO, 0xac, 0xbc, NO, NO, NO, NO}},
+    {"bvs", {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, 0x70}},
+    {"bit", {NO, NO, 0x24, NO, NO, 0x2c, NO, NO, NO, NO, NO}},
+    {"brk", {0x00, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
+    {"cld", {0xd8, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
+    {"clv", {0xb8, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
+    {"rti", {0x40, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
+    {"sed", {0xf8, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
+};
+
+static const mnemonic* find_mnemonic(const asm_state* s, const char* name) {
+    if (s->strict)
+        for (size_t i = 0; i < sizeof STRICT_MNEMONICS / sizeof STRICT_MNEMONICS[0]; i++)
+            if (strcasecmp(STRICT_MNEMONICS[i].name, name) == 0)
+                return &STRICT_MNEMONICS[i];
+    for (size_t i = 0; i < sizeof MNEMONICS / sizeof MNEMONICS[0]; i++)
+        if (strcasecmp(MNEMONICS[i].name, name) == 0)
+            return &MNEMONICS[i];
+    return NULL;
+}
+
 static void emit(asm_state* s, int kind, int code, expr* e, int size) {
     s->atoms = grow(s->atoms, &s->capatoms, s->natoms + 1, sizeof *s->atoms);
     atom* a = &s->atoms[s->natoms++];
@@ -554,10 +583,11 @@ static int32_t resolve_now(asm_state* s, expr* e) {
     return v;
 }
 
-int assemble(struct membuf* src, struct membuf* dest) {
+static int assemble_mode(struct membuf* src, struct membuf* dest, int strict) {
     asm_state st;
     asm_state* s = &st;
     memset(s, 0, sizeof *s);
+    s->strict = strict;
     int ifs[256], depth = 0;
     const char* p = (const char*)membuf_get(src);
     const char* end = p + membuf_memlen(src);
@@ -656,10 +686,7 @@ int assemble(struct membuf* src, struct membuf* dest) {
                 continue;
             }
             if (t->kind == T_SYM) {
-                const mnemonic* m = NULL;
-                for (size_t i = 0; i < sizeof MNEMONICS / sizeof MNEMONICS[0]; i++)
-                    if (strcasecmp(MNEMONICS[i].name, t->text) == 0)
-                        m = &MNEMONICS[i];
+                const mnemonic* m = find_mnemonic(s, t->text);
                 if (m) {
                     l.at++;
                     instruction(s, &l, m);
@@ -725,4 +752,28 @@ int assemble(struct membuf* src, struct membuf* dest) {
     free(s->syms);
     free(s->atoms);
     return failed;
+}
+
+int assemble(struct membuf* src, struct membuf* dest) {
+    return assemble_mode(src, dest, 0);
+}
+
+/* The source text src[0..len), assembled (strict or the dialect) into a malloc'd buffer the
+ * caller frees with gt2ref_free: 0, or nonzero on an error (printed to stderr). */
+int gt2ref_assemble(const unsigned char* text, size_t len, int strict, unsigned char** out,
+                    size_t* out_len) {
+    struct membuf src = STATIC_MEMBUF_INIT, dest = STATIC_MEMBUF_INIT;
+    membuf_append(&src, text, (int)len);
+    int r = assemble_mode(&src, &dest, strict);
+    *out_len = (size_t)membuf_memlen(&dest);
+    *out = malloc(*out_len ? *out_len : 1);
+    if (*out == NULL) {
+        fprintf(stderr, "gt2ref asm: out of memory\n");
+        exit(1);
+    }
+    if (*out_len)
+        memcpy(*out, membuf_get(&dest), *out_len);
+    membuf_free(&src);
+    membuf_free(&dest);
+    return r;
 }
