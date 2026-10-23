@@ -8,6 +8,22 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-23
+
+### Fixed
+- **The first boot after another firmware no longer detours through UBOOT.** Installed over
+  Felucca 1.6.1, SIDOU's first boot went to the chip's USB boot (WL80UBOOT1.00) for 45 s before
+  starting, and the installer said "did not come back". Felucca's reset-surviving RAM lies over
+  SIDOU's boot-loop guard (its crash record is 4 bytes longer), and its words read as two failed
+  boots. The guard now carries a check word, so only counts SIDOU wrote can send a boot to UBOOT.
+  On the unit, Felucca → SIDOU is back in under a second.
+- **A store full of another firmware's sectors no longer holds up the boot:** the boot does at
+  most 100 ms of flash work and starts USB; reclaiming the rest goes on in the background.
+
+### Changed
+- The browser demo's site has a [videos page](https://dsablic.github.io/sidou/videos.html) that
+  plays the how-to videos in the browser.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added

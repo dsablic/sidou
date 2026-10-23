@@ -55,8 +55,8 @@ flash.
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
 
-1. Download the `.fwsc` file (for example `sidou-0.3.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou-0.3.0.fwsc`). The unit then shows
+1. Download the `.fwsc` file (for example `sidou-0.3.1.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-0.3.1.fwsc`). The unit then shows
    up on USB as "SIDOU FM-1", and later versions install over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
 4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
@@ -146,14 +146,14 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 
 ## Status and roadmap
 
-- **v0.3.0** is released (2026-10-23, [release notes](docs/release-notes/v0.3.0.md),
-  [CHANGELOG.md](CHANGELOG.md)), the first wider public release: GoatTracker 2 songs written
+- **v0.3.1** is released (2026-10-23, [release notes](docs/release-notes/v0.3.1.md)): an
+  install over Felucca boots straight into SIDOU (it detoured through UBOOT for 45 s).
+- **v0.3.0** (2026-10-23, [release notes](docs/release-notes/v0.3.0.md),
+  [CHANGELOG.md](CHANGELOG.md)) was the first wider public release: GoatTracker 2 songs written
   and played on the FM-1, two SIDs (6581 and 8580) with the chip's character dialled in, STEP
   with parameter locks, REC over a loop, CHIP SPREAD, chord arpeggios, MIDI and SysEx over USB,
   help cards on the device. v0.2.0 (2026-10-22) was the first version to run on a real FM-1.
-- **v0.3.1** is next: the first boot after Felucca no longer detours through UBOOT (the
-  installer then said "did not come back"), and SETTINGS → RESET brings sounds and settings back
-  to factory while keeping the songs.
+- **Next:** SETTINGS → RESET, sounds and settings back to factory with the songs kept.
 - **M3** follows: `.sid` playback.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views and REC have run on a real unit; the first-run tour is still to be checked there. See the
