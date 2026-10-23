@@ -452,6 +452,13 @@ mod tests {
             ("chip", "K1 K2 K3 K4", Class::Hint),
             ("live", "SELECT MOVE", Class::Hint),
             ("tracker", "A-4 02", Class::Play),
+            // The menu's kin: LOAD's files and SETTINGS' values are read as the menu's lines
+            // (the v0.3.0 device session found LOAD's names at 1x), and the arpeggio's badge.
+            ("song_menu", "BEAT 1", Class::Play),
+            ("song_menu", "SAVE CHOOSE", Class::Play),
+            ("song_menu", "HOME BACK", Class::Hint),
+            ("settings", "THEME", Class::Play),
+            ("live", "ARP", Class::Play),
         ] {
             assert_eq!(classify(&rules, view, text), want, "{view}: {text}");
         }

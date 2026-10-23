@@ -1,0 +1,227 @@
+{
+  "goal": "Find something to play on a fresh install, whose store is empty: LOAD lists SIDOU LOOP, built in.",
+  "id": "first-run",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot of a fresh install: nothing in the store."
+  },
+  "related": [
+    "mute-and-solo",
+    "save-and-load"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SONG LOAD",
+    "SAVE as the OK",
+    "PLAY"
+  ],
+  "steps": [
+    {
+      "caption": "HOME, then SONG in the menu: SAVE opens it, as every list's OK.",
+      "control": "Press HOME, turn SELECT to SONG and press SAVE",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_large",
+          "value": "LOAD"
+        }
+      ],
+      "focus": {
+        "callout": "HOME, SONG, SAVE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "song",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SONG"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Open *SONG*"
+    },
+    {
+      "caption": "SAVE on LOAD: the songs to load. The store is empty, and SIDOU LOOP, built in, is there all the same.",
+      "control": "Press SAVE",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_large",
+          "value": "SIDOU LOOP"
+        },
+        {
+          "kind": "text_absent",
+          "value": "NO SONGS"
+        }
+      ],
+      "focus": {
+        "callout": "SAVE: LOAD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 4,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load-list",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*LOAD*'s songs"
+    },
+    {
+      "caption": "SAVE again loads the highlighted song, and SONG's actions come back.",
+      "control": "Press SAVE",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "kind": "text_absent",
+          "value": "SNG:"
+        },
+        {
+          "kind": "text_large",
+          "value": "NEW"
+        }
+      ],
+      "focus": {
+        "callout": "SAVE: LOAD IT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Load* it"
+    },
+    {
+      "caption": "SEQ opens the song views, and PLAY plays SIDOU LOOP.",
+      "control": "Press SEQ, then PLAY",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ, PLAY",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*PLAY* it"
+    }
+  ],
+  "title": "A fresh install has a song to play"
+}

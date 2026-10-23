@@ -25,6 +25,12 @@ learn   | glance | any
 tracker | glance | hex
 *       | hint   | words SELECT,ALGORITHM,ALG,HOME,MOVE,STEP,CHANGE,BACK,CANCEL,VOICE,MODEL,PROFILE,BPM,OL,K1
 menu    | play   | any
+# The menu's kin: SETTINGS' values and the SONG pages' actions, files and names are read as the
+# menu's are (the v0.3.0 device session found LOAD's names at 1x).
+settings | play  | any
+song_menu | play | any
+# The chord arpeggio's state on LIVE: read at arm's length while playing.
+live    | play   | words ARP
 *       | play   | note
 *       | play   | value
 *       | play   | words SAW LEAD,PWM BASS,SYNC LEAD,NOISE PERC,6581 R2,6581 R3,6581 R4AR,8580 R5,WORN 6581,USER

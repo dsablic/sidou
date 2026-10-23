@@ -67,6 +67,9 @@ pub enum Expect {
     Popup,
     Toast,
     Text(String),
+    /// This text is on the screen at 2x or larger: readable at arm's length (the play-time
+    /// minimum of the readability check, docs/TESTING.md).
+    BigText(String),
     /// The remembered parameters are what they were.
     Recalled,
     /// A parameter (a name of `Params::named`) within a range.
@@ -607,6 +610,7 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                     "popup" => s.expects.push(Expect::Popup),
                     "toast" => s.expects.push(Expect::Toast),
                     "text" => s.expects.push(Expect::Text(v.to_uppercase())),
+                    "big" => s.expects.push(Expect::BigText(v.to_uppercase())),
                     "recalled" => s.expects.push(Expect::Recalled),
                     "absent" => s.expects.push(Expect::Absent(v.to_uppercase())),
                     "brighter" => s.expects.push(Expect::Brighter),
@@ -950,6 +954,7 @@ fn expect_name(e: &Expect) -> String {
         Expect::Popup => "popup".into(),
         Expect::Toast => "toast".into(),
         Expect::Text(t) => format!("text {t}"),
+        Expect::BigText(t) => format!("text {t} at 2x or larger"),
         Expect::Recalled => "recalled parameters".into(),
         Expect::Value(n, lo, hi) => format!("{n} in {lo}..{hi}"),
         Expect::Absent(t) => format!("no text {t}"),
@@ -1227,6 +1232,12 @@ fn check(d: &mut Dev, e: &Expect, cx: &CheckCtx, cfg: &Config) -> bool {
             text_runs(&s.cells)
                 .iter()
                 .any(|r| r.text.to_uppercase().contains(t.as_str()))
+        }
+        Expect::BigText(t) => {
+            let s = d.shot();
+            text_runs(&s.cells)
+                .iter()
+                .any(|r| r.scale >= 2 && r.text.to_uppercase().contains(t.as_str()))
         }
         Expect::Recalled => remembered.as_ref().is_some_and(|p| *p == d.params()),
         Expect::Notes(v, e, want) => d

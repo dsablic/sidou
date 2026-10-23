@@ -210,6 +210,7 @@ pub fn expect_json(e: &Expect) -> Value {
     match e {
         Expect::View(v) => json!({"kind": "view", "value": v}),
         Expect::Text(t) => json!({"kind": "text", "value": t}),
+        Expect::BigText(t) => json!({"kind": "text_large", "value": t}),
         Expect::Absent(t) => json!({"kind": "text_absent", "value": t}),
         Expect::Value(n, lo, hi) => json!({"kind": "param", "name": n, "min": lo, "max": hi}),
         Expect::Popup => json!({"kind": "popup"}),
@@ -233,6 +234,7 @@ pub fn expect_from_json(v: &Value, at: &str) -> Result<Expect, String> {
     Ok(match get_str(v, "kind", at)? {
         "view" => Expect::View(get_str(v, "value", at)?.to_string()),
         "text" => Expect::Text(get_str(v, "value", at)?.to_uppercase()),
+        "text_large" => Expect::BigText(get_str(v, "value", at)?.to_uppercase()),
         "text_absent" => Expect::Absent(get_str(v, "value", at)?.to_uppercase()),
         "param" => Expect::Value(
             get_str(v, "name", at)?.to_string(),

@@ -89,7 +89,8 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
 - `expect` (at least one): what must hold when the step is done; the harness waits up to about
   3.5 s for it. Screen:
   `{"kind": "view", "value": "tracker"}` (the firmware's view name), `{"kind": "text", "value": "M2"}`
-  and `text_absent` (case-insensitive, anywhere on the screen), `{"kind": "param", "name": "cutoff",
+  and `text_absent` (case-insensitive, anywhere on the screen), `text_large` (the text at 2x or
+  larger: readable at arm's length, the readability check's play-time minimum), `{"kind": "param", "name": "cutoff",
   "min": 0, "max": 1100}` (a live parameter: cutoff 0-2047, resonance 0-15, pulse_width 0-4095,
   master 0-1023, preset, octave, profile, age, dac, thump, bleed, `dist.algorithm`, `mod.amount`, ...),
   `popup`, `toast`, `screen_changes`, `recalled`. Audio:

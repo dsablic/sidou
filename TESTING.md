@@ -1560,7 +1560,12 @@ severity is high, medium, low or info.
 `crates/ergo/tables/journeys.txt` is the journeys table (its header documents the grammar:
 one line a step with actions, a caption and flags). Add a journey or a step and run again;
 `--journeys FILE` runs another table. Steps tagged `task NAME` are the common tasks for the
-effort check, and the same journeys are the screens for readability. A step names a feature it
+effort check, and the same journeys are the screens for readability. The `tour` journey only
+visits screens for it: LIVE (at rest, with a chord, a popup, a toast, and with the chord
+arpeggio's badge), the menu, STATUS, the glyph sheet, About, the MIDI page, CHIP, SCENE, the help
+card, the five song views (STEP, TRACKER, ORDER, INSTR, TABLE), SETTINGS and SONG's pages (its
+actions, LOAD's files, a confirmation and SAVE AS), so their text size and contrast are measured.
+A step names a feature it
 `needs` (`theme undo help order_view instr_view pattern_edit new_song song_save`): features are
 detected from the firmware (strings, symbols, and for `pattern_edit` a probe of REC in TRACKER),
 so a step that main cannot do yet is recorded as not yet possible and starts to run when the
@@ -1571,8 +1576,10 @@ feature lands, with no edit. `tables/readability.txt` classifies the text (see i
 A journey is also a **recipe**: a goal, a starting state, skills taught, related recipes, and
 steps that each carry the physical control in panel terms, a caption and the outcome the harness
 checks (a view, text on the screen, a parameter in a range, sounding or silent, brighter or
-darker, a level). `tables/recipes.txt` holds the example recipes (first sound, shape a sound
-with K1 to K4, mute and solo while a song plays); `--export-recipes ../docs/recipes` writes them
+darker, a level, text at 2x or larger). `tables/recipes.txt` holds the example recipes (first
+sound, shape a sound with K1 to K4, mute and solo while a song plays) and the per-feature checks
+the v0.3.0 device session asked for: `first-run` (a fresh install's LOAD lists something to load,
+and PLAY plays it) and `arp-visible` (ARP on shows a badge at 2x, readable at arm's length); `--export-recipes ../docs/recipes` writes them
 as JSON, one file each, in the schema of [docs/reference/recipe-schema.md](docs/reference/recipe-schema.md);
 `--check-recipes ../docs/recipes` runs every JSON recipe in fm1-emu and exits 1 when one no
 longer runs (a step the firmware cannot do) or no longer meets its expectations, naming the

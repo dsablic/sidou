@@ -32,7 +32,8 @@
 #               powercycle                switch off and on again over the same flash
 #   flags     `;`-separated:
 #               setup                     set-up step: two hands allowed (not JOUR.hands)
-#               view V | sound | silent | change | popup | toast | text T | recalled
+#               view V | sound | silent | change | popup | toast | text T | big T | recalled
+#                                         (big T: the text at 2x or larger, readable at arm's length)
 #                                         what must hold when the step is done (else a dead end)
 #               needs F                   a feature (theme undo help order_view instr_view
 #                                         pattern_edit new_song song_save); missing: the step is
@@ -177,3 +178,20 @@ journey tour | Screens for the readability check | tour
   step tracker-stop | TRACKER stopped | - | press PLAY; wait 500 | -
   step learn | MIDI learn frame | - | holdturn SAVE K1 1 | view learn
   step learn-cancel | Cancel | - | press HOME | view tracker
+  step order | ORDER | - | press SEQ; wait 800 | view song_pages_order
+  step instr | INSTR | - | press SEQ; wait 800 | view song_pages_instr
+  step table | TABLE | - | press SEQ; wait 800 | view song_pages_table
+  step step | STEP | - | press SEQ; wait 800 | view step
+  step step-toggled | STEP, a step toggled: the song unsaved | - | note F3 200; wait 400 | change
+  step song-views-home | Back to LIVE | - | press HOME; wait 1500 | view live
+  step settings | SETTINGS | - | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 800 | view settings
+  step settings-home | Back to the menu | - | press HOME; wait 400 | view menu
+  step song | SONG's actions | - | select-item SONG; press SAVE; wait 800 | view song_menu; text LOAD
+  step song-load | LOAD's files | - | press SAVE; wait 1500 | view song_menu; text SIDOU LOOP
+  step song-confirm | A confirmation | - | press SAVE; wait 800 | view song_menu; text DISCARD
+  step song-confirm-back | Back to the files | - | press HOME; wait 500 | view song_menu; text SIDOU LOOP
+  step song-save-as | SAVE AS | - | press HOME; wait 500; turn SELECT 2; press SAVE; wait 1000 | view song_menu; text CURSOR
+  step song-home | Back to the menu | - | press HOME; wait 500; press HOME; wait 500 | view menu
+  step live-arp | LIVE with ARP on | - | press HOME; wait 1500; press ARP; wait 800 | view live; text 3F UP 1OCT
+  step live-arp-chord | ARP stepping a chord | - | down C4; down E4; down G4; wait 1500 | sound
+  step live-arp-off | ARP off | - | up C4; up E4; up G4; wait 300; press ARP; wait 800 | absent 1OCT

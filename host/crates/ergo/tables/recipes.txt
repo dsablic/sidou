@@ -9,6 +9,7 @@
 #   do TEXT                  the control in panel terms, for the manual
 #   value NAME MIN MAX       a parameter in a range (cutoff resonance pulse_width preset master ...)
 #   absent TEXT              text not on the screen
+#   big TEXT                 the text at 2x or larger: readable at arm's length
 #   brighter darker louder quieter
 #                            the sound against the 400 ms before the step
 #   level MIN MAX            the last 400 ms's RMS in dBFS
@@ -237,3 +238,23 @@ journey sidou-intro | SIDOU in a minute | poweron
   step arp | *Chords* as C64 arpeggios | ARP on LIVE, a chord held: one voice steps through its notes fifty times a second, as C64 tunes do, and the other two voices stay free. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 600; down C4; down E4; down G4; wait 3200; up C4; up E4; up G4; wait 600 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD
   step scene | A *scene* that plays along | RED MOON RITE duels to the song's drums and bass. | press HOME; wait 500; turn SELECT 2; turn ALGORITHM 1; wait 2800; turn SELECT 5; wait 3500 | view scene; sound; focus screen; callout SCENE > RED MOON RITE
   step next | Next: *.sid* files on SIDOU | Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases | wait 5000 | sound; focus card
+
+journey first-run | A fresh install has a song to play
+  goal Find something to play on a fresh install, whose store is empty: LOAD lists SIDOU LOOP, built in.
+  prereq On LIVE after the boot of a fresh install: nothing in the store.
+  skills SONG LOAD; SAVE as the OK; PLAY
+  related mute-and-solo; save-and-load
+  step song | Open *SONG* | HOME, then SONG in the menu: SAVE opens it, as every list's OK. | press HOME; wait 500; select-item SONG; press SAVE; wait 700 | view song_menu; big LOAD; do Press HOME, turn SELECT to SONG and press SAVE; screen 0 0 30 30; callout HOME, SONG, SAVE
+  step load-list | *LOAD*'s songs | SAVE on LOAD: the songs to load. The store is empty, and SIDOU LOOP, built in, is there all the same. | press SAVE; wait 1500 | view song_menu; big SIDOU LOOP; absent NO SONGS; do Press SAVE; screen 0 4 30 4; callout SAVE: LOAD
+  step load | *Load* it | SAVE again loads the highlighted song, and SONG's actions come back. | press SAVE; wait 2500 | view song_menu; absent BUSY; absent SNG:; big NEW; do Press SAVE; callout SAVE: LOAD IT
+  step play | *PLAY* it | SEQ opens the song views, and PLAY plays SIDOU LOOP. | press SEQ; wait 900; press PLAY; wait 3000 | view step; sound; do Press SEQ, then PLAY; screen 0 0 30 15; callout SEQ, PLAY
+
+journey arp-visible | ARP on, seen at a glance
+  goal See from arm's length that the chord arpeggio is on, and how it is set.
+  prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
+  skills ARP; reading LIVE
+  related chord-arpeggio
+  step off | ARP *off* | Off, LIVE says nothing of the arpeggio. | wait 300 | view live; absent 1OCT; do Look at LIVE; screen 0 26 30 4
+  step on | Press *ARP* | On, a badge under the band says so, large: ARP and its rate, order and span. | press ARP; wait 800 | big ARP; big 3F UP 1OCT; value arp_on 1 1; do Press ARP; screen 0 26 30 4; focus ARP; callout PRESS ARP
+  step chord | Hold a *chord* | The badge stays while the chord steps. | note C4 E4 G4 1500 | sound; big 3F UP 1OCT; do Hold the note keys C, E and G down; screen 0 26 30 4; callout HOLD A CHORD
+  step off-again | *ARP* again | Off again, the badge goes. | press ARP; wait 800 | absent 1OCT; value arp_on 0 0; do Press ARP; screen 0 26 30 4; focus ARP; callout PRESS ARP

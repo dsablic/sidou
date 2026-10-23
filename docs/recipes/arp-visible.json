@@ -1,0 +1,205 @@
+{
+  "goal": "See from arm's length that the chord arpeggio is on, and how it is set.",
+  "id": "arp-visible",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, with the first preset (SAW LEAD) playing."
+  },
+  "related": [
+    "chord-arpeggio"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "ARP",
+    "reading LIVE"
+  ],
+  "steps": [
+    {
+      "caption": "Off, LIVE says nothing of the arpeggio.",
+      "control": "Look at LIVE",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "live"
+        },
+        {
+          "kind": "text_absent",
+          "value": "1OCT"
+        }
+      ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "off",
+      "inputs": [
+        {
+          "ms": 300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "ARP *off*"
+    },
+    {
+      "caption": "On, a badge under the band says so, large: ARP and its rate, order and span.",
+      "control": "Press ARP",
+      "expect": [
+        {
+          "kind": "text_large",
+          "value": "ARP"
+        },
+        {
+          "kind": "text_large",
+          "value": "3F UP 1OCT"
+        },
+        {
+          "kind": "param",
+          "max": 1,
+          "min": 1,
+          "name": "arp_on"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "on",
+      "inputs": [
+        {
+          "button": "ARP",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Press *ARP*"
+    },
+    {
+      "caption": "The badge stays while the chord steps.",
+      "control": "Hold the note keys C, E and G down",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "text_large",
+          "value": "3F UP 1OCT"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD A CHORD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "chord",
+      "inputs": [
+        {
+          "ms": 1500,
+          "notes": [
+            "C4",
+            "E4",
+            "G4"
+          ],
+          "op": "note"
+        }
+      ],
+      "needs": [],
+      "title": "Hold a *chord*"
+    },
+    {
+      "caption": "Off again, the badge goes.",
+      "control": "Press ARP",
+      "expect": [
+        {
+          "kind": "text_absent",
+          "value": "1OCT"
+        },
+        {
+          "kind": "param",
+          "max": 0,
+          "min": 0,
+          "name": "arp_on"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "off-again",
+      "inputs": [
+        {
+          "button": "ARP",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*ARP* again"
+    }
+  ],
+  "title": "ARP on, seen at a glance"
+}
