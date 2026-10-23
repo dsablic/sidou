@@ -297,7 +297,9 @@ typedef struct song_ctl {
      * instrument is a digi drum (digi_hold, from the events from digi_ev on), whose own sound is
      * muted while its sample plays */
     uint8_t mute_user, mute_sent, digi_hold;
+    uint8_t digi_any;  /* the map marks an instrument */
     uint32_t digi_ev;
+    uint32_t digi_ext; /* the extension area's size the map was built from */
     /* --- the digi drums, last (the interrupt's other fields keep their short offsets) --- */
     /* the digi drums (decision record 0009, song_ctl_block_end): the playing sample's next code
      * and its end (NULL: none), the code's level and the samples it has left */

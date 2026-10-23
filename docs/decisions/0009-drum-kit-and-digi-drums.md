@@ -119,8 +119,10 @@ slots, clamped to int16. The chip's volume register stays the song's. One digi p
   instrument right after a digi drum on that voice so starts a few milliseconds late. Done in
   the interrupt this would cost about 130 more bytes of SRAM (the sink's, the rewrite's and the
   mutes' tests, and the note's): there are none.
-- **The map**: the main loop turns the chunk into an instrument-to-sample table each pass,
-  writing only the bytes that change; 256 entries, so any instrument byte indexes it with no
+- **The map**: the main loop turns the chunk into an instrument-to-sample table when a play,
+  a continue or an audition starts and when the extension area's size changes (not every pass:
+  a MIDI flood makes passes many, and the main-loop budgets in emu-gate's midi.rs hold), writing
+  only the bytes that change; a song with no digi drum skips the event reading; 256 entries, so any instrument byte indexes it with no
   test in the interrupt (the reader refuses instruments past 63, and those entries stay 0).
 - **Cost**: 10.42 instructions a sample while a digi plays without a break (emu-gate
   `a_playing_digi_drum_costs_the_interrupt_its_bound`, bound `DIGI_PER_SAMPLE` 10.5), one
