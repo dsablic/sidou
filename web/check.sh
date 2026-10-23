@@ -18,7 +18,8 @@ if [ "$(node -p 'require(process.argv[1]).version' "$dir/node_modules/playwright
     (cd "$dir" && npm install --no-audit --no-fund --silent "playwright@$playwright")
 fi
 deps=()
-[ -z "${CI:-}" ] || deps=(--with-deps)
+# On CI the system libraries too, unless the build image already has them (tools/docker/Dockerfile).
+[ -z "${CI:-}" ] || [ -n "${SIDOU_BUILD_IMAGE:-}" ] || deps=(--with-deps)
 (cd "$dir" && npx --no-install playwright install "${deps[@]}" --only-shell chromium)
 cp "$root/web/check.mjs" "$dir/check.mjs"
 
