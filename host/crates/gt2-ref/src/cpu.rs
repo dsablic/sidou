@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A host 6502 behind a small trait, so M3's own 6502 can later run the same traces and be
-//! checked against this one. [`Mos6502`] is the `mos6502` crate's NMOS core (0.10.1,
+//! A host 6502 behind a small trait, so SIDOU's own 6502 runs the same traces and is checked
+//! against the other (M3 Task 3). [`Mos6502`] is the `mos6502` crate's NMOS core (0.10.1,
 //! BSD-3-Clause) over [`Ram`]: 64 KiB whose writes to the SID's 25 registers are logged in
-//! order.
+//! order. [`Sidou6502`] is `core/cpu6502` over the same [`Ram`]: its hooks read and write
+//! the bytes and log the same writes.
+
+use std::ffi::c_void;
 
 use mos6502::cpu::CPU;
 use mos6502::instruction::Nmos6502;
@@ -73,16 +76,28 @@ pub trait Cpu6502 {
     fn step(&mut self) -> bool;
     fn ram(&self) -> &Ram;
     fn ram_mut(&mut self) -> &mut Ram;
+    /// The cycles run since the core was made, if it counts them.
+    fn cycles(&self) -> Option<u64>;
 }
 
 pub struct Mos6502 {
     cpu: CPU<Ram, Nmos6502>,
+    /// Cycles `mos6502` counts that the NMOS 6502 does not take; see [`RMW_ABSOLUTE_X`].
+    overcount: u64,
 }
+
+/// ASL, ROL, LSR, ROR, DEC and INC with absolute,X: always 7 cycles on the NMOS 6502 (the
+/// read-modify-write has its dummy read whether or not the index crosses a page), where
+/// `mos6502` 0.10.1 takes 8 when it does (found by Task 3's cross-check, in
+/// `everlasting.sng` under `-B1`: INC $1xxx,X at $1214; Tom Harte's tests agree with SIDOU's
+/// core). [`Mos6502`] takes the extra cycle back so that its counts are the NMOS 6502's.
+pub const RMW_ABSOLUTE_X: [u8; 6] = [0x1e, 0x3e, 0x5e, 0x7e, 0xde, 0xfe];
 
 impl Mos6502 {
     pub fn new(ram: Ram) -> Mos6502 {
         Mos6502 {
             cpu: CPU::new(ram, Nmos6502),
+            overcount: 0,
         }
     }
 }
@@ -111,9 +126,14 @@ impl Cpu6502 for Mos6502 {
     }
 
     fn step(&mut self) -> bool {
+        let opcode = self.cpu.memory.bytes[self.cpu.registers.program_counter as usize];
+        let before = self.cpu.cycles;
         match self.cpu.fetch_next_and_decode() {
             Some(d) => {
                 self.cpu.execute_instruction(d);
+                if RMW_ABSOLUTE_X.contains(&opcode) && self.cpu.cycles - before == 8 {
+                    self.overcount += 1;
+                }
                 true
             }
             None => false,
@@ -126,6 +146,111 @@ impl Cpu6502 for Mos6502 {
 
     fn ram_mut(&mut self) -> &mut Ram {
         &mut self.cpu.memory
+    }
+
+    fn cycles(&self) -> Option<u64> {
+        Some(self.cpu.cycles - self.overcount)
+    }
+}
+
+/// How [`Sidou6502`] reaches the SID's registers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    /// `cpu6502_run_hook_all`: every operand access goes through the hooks, wherever it is
+    /// (any `-L` address works).
+    HookAll,
+    /// `cpu6502_run`, the device's build (CPU6502_SMALL): only `$D000-$DFFF` goes through
+    /// the hooks, while `$01` maps I/O in (the harness sets `$01` to `$35`). The SID must be
+    /// in that page.
+    Device,
+    /// `cpu6502_run_hook_inline`: as `HookAll`, with the I/O accesses inline.
+    HookInline,
+}
+
+/// SIDOU's 6502 (`core/cpu6502`), over [`Ram`].
+pub struct Sidou6502 {
+    c: sidou_sys::cpu6502,
+    ram: Ram,
+    access: Access,
+}
+
+unsafe extern "C" fn hook_rd(user: *mut c_void, addr: u32, _cycle: u32) -> u8 {
+    // SAFETY: `user` is the `Ram` of the `Sidou6502` being stepped (set before each run).
+    let ram = unsafe { &*(user as *const Ram) };
+    ram.bytes[addr as usize]
+}
+
+unsafe extern "C" fn hook_wr(user: *mut c_void, addr: u32, value: u32, _cycle: u32) {
+    // SAFETY: as `hook_rd`.
+    let ram = unsafe { &mut *(user as *mut Ram) };
+    ram.set_sid(addr as u16, value as u8);
+}
+
+impl Sidou6502 {
+    pub fn new(mut ram: Ram, access: Access) -> Sidou6502 {
+        assert!(
+            access != Access::Device || (0xd000..=0xd7ff).contains(&ram.sid),
+            "the device build reaches the SID only in the I/O page"
+        );
+        // The 6510's port: I/O in (bits 0-1 set, bit 2 set).
+        ram.bytes[1] = 0x35;
+        let c = sidou_sys::cpu6502 {
+            rd: Some(hook_rd),
+            wr: Some(hook_wr),
+            io: u8::from(access == Access::Device),
+            ..sidou_sys::cpu6502::default()
+        };
+        Sidou6502 { c, ram, access }
+    }
+}
+
+impl Cpu6502 for Sidou6502 {
+    fn regs(&self) -> Regs {
+        Regs {
+            a: self.c.a,
+            x: self.c.x,
+            y: self.c.y,
+            sp: self.c.s,
+            p: self.c.p,
+            pc: self.c.pc,
+        }
+    }
+
+    fn set_regs(&mut self, r: Regs) {
+        self.c.a = r.a;
+        self.c.x = r.x;
+        self.c.y = r.y;
+        self.c.s = r.sp;
+        self.c.p = r.p;
+        self.c.pc = r.pc;
+        self.c.state = sidou_sys::CPU6502_RUN as u8;
+    }
+
+    fn step(&mut self) -> bool {
+        self.c.mem = self.ram.bytes.as_mut_ptr();
+        self.c.user = (&mut self.ram as *mut Ram).cast();
+        let limit = self.c.cycles.wrapping_add(1);
+        // SAFETY: `mem` is the 64 KiB `Ram` owns, `user` is that `Ram`, both valid for the call.
+        let state = unsafe {
+            match self.access {
+                Access::Device => sidou_sys::cpu6502_run(&mut self.c, limit, 0),
+                Access::HookAll => sidou_sys::cpu6502_run_hook_all(&mut self.c, limit, 0),
+                Access::HookInline => sidou_sys::cpu6502_run_hook_inline(&mut self.c, limit, 0),
+            }
+        };
+        state != sidou_sys::CPU6502_JAM as i32
+    }
+
+    fn ram(&self) -> &Ram {
+        &self.ram
+    }
+
+    fn ram_mut(&mut self) -> &mut Ram {
+        &mut self.ram
+    }
+
+    fn cycles(&self) -> Option<u64> {
+        Some(u64::from(self.c.cycles))
     }
 }
 
