@@ -246,8 +246,10 @@ float sid_base_output_gain(const sid* s) {
 /* A curve setting's cutoff and damping tables: the cutoff (clamped to 30 Hz .. 0.45 fs) as
  * the SVF's g (the first tables) or as its angle (the second's). */
 static void build_filter_row(const sid* s, uint32_t curve, int angles, float* g, float* k) {
+    sid_cutoff_seq q;
+    sid_cutoff_seq_init(&q, s->model, curve);
     for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
-        float hz = sid_cutoff_hz(s->model, curve, fc);
+        float hz = sid_cutoff_seq_hz(&q, fc);
         g[fc] = angles ? cutoff_x(s, hz) : cutoff_g(s, hz);
     }
     for (uint32_t r = 0; r < 16u; ++r) {
@@ -259,8 +261,10 @@ static void build_filter_row(const sid* s, uint32_t curve, int angles, float* g,
  * sid_set_filter_curve's) one pass: each FC's lookup and angle once, for both tables. */
 static void build_filter_tables(sid* s, uint32_t curve, uint32_t toward) {
     if (toward == curve) {
+        sid_cutoff_seq q;
+        sid_cutoff_seq_init(&q, s->model, curve);
         for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
-            float x = cutoff_x(s, sid_cutoff_hz(s->model, curve, fc));
+            float x = cutoff_x(s, sid_cutoff_seq_hz(&q, fc));
             s->filter_rows[0].cutoff[fc] = sidou_tanf(x);
             s->filter_rows[1].cutoff[fc] = x;
         }
@@ -348,8 +352,10 @@ void sid_filter_row_part(sid* s, int second, uint32_t curve, uint32_t from, uint
     if (to > SID_FC_STEPS) {
         to = SID_FC_STEPS;
     }
+    sid_cutoff_seq q;
+    sid_cutoff_seq_init(&q, s->model, curve);
     for (uint32_t fc = from; fc < to; ++fc) {
-        float hz = sid_cutoff_hz(s->model, curve, fc);
+        float hz = sid_cutoff_seq_hz(&q, fc);
         row[fc] = second ? cutoff_x(s, hz) : cutoff_g(s, hz);
     }
     if (to == SID_FC_STEPS) {

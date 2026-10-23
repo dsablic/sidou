@@ -504,8 +504,57 @@ fn cutoff_code(hz: f64) -> u16 {
     code
 }
 
-/// gen/filter.h: per model and curve setting, the cutoff code for each FC value and the
-/// damping k = 1/Q for each resonance value.
+/// FC values in one block of the delta-coded cutoff codes (gen/filter.h).
+pub const CUTOFF_BLOCK: usize = 32;
+/// The byte in a block that escapes an absolute code (a delta of -128 is not coded).
+pub const CUTOFF_ESCAPE: u8 = 0x80;
+
+/// One model's cutoff codes, delta-coded as gen/filter.h holds them: per curve, a block of
+/// CUTOFF_BLOCK codes starts at its offset in the stream (`at`, u16s, one a block) with its
+/// first code (two bytes, big-endian); every further code is a signed byte, its difference
+/// from the code before, or CUTOFF_ESCAPE and the code itself (two bytes) when the difference
+/// is out of a signed byte's range. Returns the offsets, curve by curve, and the stream.
+pub fn delta_code_cutoffs(curves: &[Vec<u16>]) -> (Vec<u16>, Vec<u8>) {
+    let (mut at, mut run) = (Vec::new(), Vec::new());
+    for codes in curves {
+        assert_eq!(codes.len(), 2048);
+        for block in codes.chunks(CUTOFF_BLOCK) {
+            at.push(u16::try_from(run.len()).expect("the cutoff stream beyond a u16 offset"));
+            run.extend_from_slice(&block[0].to_be_bytes());
+            for w in block.windows(2) {
+                let d = i32::from(w[1]) - i32::from(w[0]);
+                if (-127..=127).contains(&d) {
+                    run.push(d as i8 as u8);
+                } else {
+                    run.push(CUTOFF_ESCAPE);
+                    run.extend_from_slice(&w[1].to_be_bytes());
+                }
+            }
+        }
+    }
+    (at, run)
+}
+
+/// The cutoff code for FC value fc of a curve, decoded from delta_code_cutoffs' offsets
+/// and stream as sid_cutoff_seq_hz (sid_filter.h) does.
+pub fn cutoff_code_at(at: &[u16], run: &[u8], curve: usize, fc: usize) -> u16 {
+    let mut p = usize::from(at[curve * (2048 / CUTOFF_BLOCK) + fc / CUTOFF_BLOCK]);
+    let mut code = u16::from_be_bytes([run[p], run[p + 1]]);
+    p += 2;
+    for _ in 0..fc % CUTOFF_BLOCK {
+        if run[p] == CUTOFF_ESCAPE {
+            code = u16::from_be_bytes([run[p + 1], run[p + 2]]);
+            p += 3;
+        } else {
+            code = code.wrapping_add(run[p] as i8 as u16);
+            p += 1;
+        }
+    }
+    code
+}
+
+/// gen/filter.h: per model and curve setting, the cutoff code for each FC value
+/// (delta-coded, delta_code_cutoffs) and the damping k = 1/Q for each resonance value.
 pub fn filter_header(fits: &[FilterFit]) -> Generated {
     let mut s = String::new();
     // REUSE-IgnoreStart
@@ -528,14 +577,19 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
          \x20* state-variable filter fitted to each around its cutoff. Data derived from\n\
          \x20* reSIDfp's output, so under its licence.\n\
          \x20*\n\
-         \x20* SID_CUTOFF_HZ_*[curve][fc]: uint16_t cutoff codes for each FC value, interpolated\n\
+         \x20* The cutoff codes, uint16_t for each FC value of each curve setting, interpolated\n\
          \x20* between the measured ones along what the chip's cutoff DAC outputs, so it is\n\
          \x20* monotonic where reSIDfp's is (the 6581's DAC is kinked: 1023 -> 1024 drops).\n\
          \x20* Out of the measurement's reach (below about 40 Hz, above about 15 kHz) it is\n\
          \x20* extrapolated. Float bits, rounded to the top 12 mantissa bits, with the exponent\n\
          \x20* rebased to 0.5 Hz (smaller cutoffs clamp there; the filter clamps below 30 Hz):\n\
          \x20* bits = (code << 11) + (SID_CUTOFF_CODE_BIAS << 23), within 2.5e-4 relative.\n\
-         \x20* Decoded in the main loop, never the audio interrupt.\n\
+         \x20* Delta-coded in blocks of 32 FC values: block b of curve c starts at byte\n\
+         \x20* SID_CUTOFF_AT_*[c][b] of SID_CUTOFF_RUN_*, with its first code (big-endian), then\n\
+         \x20* each next code as a signed byte, its difference from the code before, or 0x80 and\n\
+         \x20* the code itself (big-endian) where the difference is beyond a signed byte.\n\
+         \x20* Decoded in the main loop (sid_filter.h, sid_cutoff_seq_hz), never the audio\n\
+         \x20* interrupt.\n\
          \x20* SID_RES_K_*[curve][res]: k = 1/Q for each resonance value.\n\
          \x20* Curve settings, by index:"
     )
@@ -554,19 +608,35 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
     for (model, name) in [(Model::Mos6581, "6581"), (Model::Csg8580, "8580")] {
         let mine: Vec<&FilterFit> = fits.iter().filter(|f| f.setting.model == model).collect();
         writeln!(s, "#define SID_FILTER_CURVES_{name} {}\n", mine.len()).unwrap();
+        let codes: Vec<Vec<u16>> = mine
+            .iter()
+            .map(|f| f.cutoff_hz.iter().map(|&hz| cutoff_code(hz)).collect())
+            .collect();
+        let (at, run) = delta_code_cutoffs(&codes);
         writeln!(
             s,
-            "static const uint16_t SID_CUTOFF_HZ_{name}[SID_FILTER_CURVES_{name}][2048] = {{"
+            "static const uint16_t SID_CUTOFF_AT_{name}[SID_FILTER_CURVES_{name}][{}] = {{",
+            2048 / CUTOFF_BLOCK
         )
         .unwrap();
-        for f in &mine {
+        for (f, offsets) in mine.iter().zip(at.chunks(2048 / CUTOFF_BLOCK)) {
             writeln!(s, "    /* {} */ {{", f.setting.describe()).unwrap();
-            for line in f.cutoff_hz.chunks(8) {
-                let codes: Vec<String> =
-                    line.iter().map(|&hz| cutoff_code(hz).to_string()).collect();
-                writeln!(s, "        {},", codes.join(", ")).unwrap();
+            for line in offsets.chunks(16) {
+                let v: Vec<String> = line.iter().map(u16::to_string).collect();
+                writeln!(s, "        {},", v.join(", ")).unwrap();
             }
             writeln!(s, "    }},").unwrap();
+        }
+        writeln!(s, "}};\n").unwrap();
+        writeln!(
+            s,
+            "static const uint8_t SID_CUTOFF_RUN_{name}[{}] = {{",
+            run.len()
+        )
+        .unwrap();
+        for line in run.chunks(16) {
+            let v: Vec<String> = line.iter().map(|b| format!("0x{b:02x}")).collect();
+            writeln!(s, "    {},", v.join(", ")).unwrap();
         }
         writeln!(s, "}};\n").unwrap();
         writeln!(
@@ -661,6 +731,25 @@ mod tests {
         assert_eq!(cutoff_code(8191.5), 57344);
         assert_eq!(cutoff_code(8192.0), 57344);
         assert_eq!(cutoff_code(8193.0), 57345);
+    }
+
+    /// The delta coding reads back every code: steps within a byte's range, escapes beyond
+    /// it in both directions, and a jump right at a block's start.
+    #[test]
+    fn delta_coded_cutoffs_read_back() {
+        let mut a: Vec<u16> = (0..2048).map(|i| (i * 13 % 251) as u16 + 1000).collect();
+        a[40] = 60000;
+        a[41] = 3;
+        a[64] = 65535;
+        a[65] = 65408;
+        let b: Vec<u16> = (0..2048).map(|i| 30000 - (i as u16) * 7).collect();
+        let (at, run) = delta_code_cutoffs(&[a.clone(), b.clone()]);
+        assert_eq!(at.len(), 2 * 2048 / CUTOFF_BLOCK);
+        for (c, codes) in [a, b].iter().enumerate() {
+            for (fc, &want) in codes.iter().enumerate() {
+                assert_eq!(cutoff_code_at(&at, &run, c, fc), want, "curve {c} FC {fc}");
+            }
+        }
     }
 
     #[test]

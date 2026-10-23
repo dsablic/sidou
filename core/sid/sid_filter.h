@@ -74,6 +74,54 @@ void sid_svf_reset(sid_svf* f);
  * until M1c Task 3 adds its profiles), and a curve out of range reads curve 0. */
 uint32_t sid_filter_curves(sid_model model);
 float sid_cutoff_hz(sid_model model, uint32_t curve, uint32_t fc);
+
+/* A curve's cutoffs read FC value after FC value: the codes are delta-coded in blocks of
+ * 32 (gen/filter.h), so sid_cutoff_hz walks up to 31 deltas from its block's start, while
+ * this reader keeps its place and the next FC value costs one step. Any other FC value
+ * reads as sid_cutoff_hz does. The loops that fill a filter row (sid_init, the character
+ * jobs) go through it. */
+typedef struct {
+    const uint8_t* run; /* the model's code stream */
+    const uint16_t* at; /* the curve's block offsets in it */
+    const uint8_t* p;   /* the code after the one read last */
+    uint32_t fc;        /* the FC value read last; 0xffffffff for none */
+    uint32_t code;      /* its code */
+} sid_cutoff_seq;
+
+void sid_cutoff_seq_init(sid_cutoff_seq* q, sid_model model, uint32_t curve);
+/* The code of any FC value (fc < 2048), from its block's start: the reader's slow path. */
+uint32_t sid_cutoff_seq_seek(sid_cutoff_seq* q, uint32_t fc);
+
+/* A code's cutoff in Hz: float bits, the code's 16 bits above an 11-bit mantissa tail, the
+ * exponent rebased by SID_CUTOFF_CODE_BIAS (gen/filter.h, which defines it the same). */
+#define SID_CUTOFF_CODE_BIAS 126u
+
+/* The cutoff of FC value fc (its low 11 bits) on the reader's curve. Inline: the row loops
+ * keep the reader in registers, and the next FC value costs a byte and an add. */
+static inline float sid_cutoff_seq_hz(sid_cutoff_seq* q, uint32_t fc) {
+    uint32_t code;
+    fc &= 2047u;
+    if (fc == q->fc + 1u && (fc & 31u)) {
+        const uint8_t* p = q->p;
+        int32_t d = (int8_t)*p++;
+        if (d == -128) {
+            code = (uint32_t)p[0] << 8 | p[1];
+            p += 2;
+        } else {
+            code = (q->code + (uint32_t)d) & 0xffffu;
+        }
+        q->p = p;
+        q->fc = fc;
+        q->code = code;
+    } else {
+        code = sid_cutoff_seq_seek(q, fc);
+    }
+    union {
+        uint32_t bits;
+        float hz;
+    } value = {(code << 11) + (SID_CUTOFF_CODE_BIAS << 23)};
+    return value.hz;
+}
 float sid_resonance_k(sid_model model, uint32_t curve, uint32_t res);
 
 /* Inline: sid_write (the audio path, in SRAM on the device) and sid_init (in flash) both call
