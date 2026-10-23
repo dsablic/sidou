@@ -1336,7 +1336,7 @@ fn the_status_view_shows_the_instrument() {
         "V1.2.3",
         "the version ends before column 28"
     );
-    assert_eq!(&ui.row(5)[2..13], "CHIP   6581");
+    assert_eq!(&ui.row(5)[2..21], "CHIP   6581 CLASSIC");
     // The parameters: the name small, the number at 2x, a bar; two rows each from row 10.
     for (i, (name, num)) in [
         ("CUTOFF", ui.live().cutoff.to_string()),
@@ -1374,18 +1374,18 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
         "LIVE's bottom band with the keys on chip B"
     );
     open_status(&mut ui);
-    assert_eq!(&ui.row(5)[2..24], "CHIP A 8580 R5        ");
-    assert_eq!(&ui.row(6)[2..24], "CHIP B 6581 R4AR  KEYS");
+    assert_eq!(&ui.row(5)[2..26], "CHIP A 8580 CLEAN       ");
+    assert_eq!(&ui.row(6)[2..26], "CHIP B 6581 CLASSIC KEYS");
     assert_eq!(&ui.row(7)[2..17], "PRESET SAW LEAD");
     ui.rig.live.keys_chip = 0;
     ui.frame();
-    assert_eq!(&ui.row(5)[2..24], "CHIP A 6581 R4AR  KEYS");
-    assert_eq!(&ui.row(6)[2..24], "CHIP B 8580 R5        ");
+    assert_eq!(&ui.row(5)[2..26], "CHIP A 6581 CLASSIC KEYS");
+    assert_eq!(&ui.row(6)[2..26], "CHIP B 8580 CLEAN       ");
     ui.rig.live.other_profile = LIVE_PROFILE_NONE as u8;
     ui.frame();
     assert_eq!(
-        &ui.row(6)[2..24],
-        "CHIP B --             ",
+        &ui.row(6)[2..26],
+        "CHIP B --               ",
         "chip B not made yet"
     );
     // The menu's KEYS (HOME from the status screen goes back to the menu): clockwise A,

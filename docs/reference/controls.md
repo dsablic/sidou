@@ -1120,7 +1120,9 @@ and the slot's algorithm at 2× in the band is in reverse video. **ARP held** sh
 same way (RATE, ORDER, SPAN: `3F`, `UP`, `1`), and while the [chord arpeggio](#chord-arpeggio) is
 on, a badge at 2× on rows 27-28 names it with its settings (`ARP 3F UP 1OCT`, ARP in yellow).
 
-The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
+The **status screen** (STATUS in the menu) shows the numbers: the chip (its model and the
+profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play),
+preset, octave,
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 

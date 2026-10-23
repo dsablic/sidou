@@ -8,6 +8,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **The profile's word everywhere:** STATUS names the chip as its model and the profile's word
+  (`6581 CLASSIC`, `8580 CLEAN`; both chips on a two-chip setup) and the PROFILE popup says the
+  same at 2x, where they said `6581 R4AR`; the ergonomics readability table counts the new names
+  as read while playing.
+
 ## [0.3.1] - 2026-10-23
 
 ### Fixed

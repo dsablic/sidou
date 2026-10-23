@@ -499,8 +499,9 @@ working.
 
 - ~~**STEP's pads 10-16** show only their last digit at 2x~~: numbered by beat now (1 2 3 4
   four times; the user, 2026-10-23).
-- **Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY) show on CHIP and the LIVE band only,
-  1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
+- ~~**Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY)~~: show on CHIP and the LIVE band
+  (1x beside LIVE's 2x revision name), and now on STATUS and the PROFILE popup with the model
+  ("6581 CLASSIC"; the popup at 2x).
 - **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
 
 ## SysEx over USB while a chord sounds (the user's call)
