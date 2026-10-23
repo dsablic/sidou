@@ -1116,16 +1116,14 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
         }
     }
     // A confirmation's NO: SAVE goes back a page, as HOME does, and does nothing else.
-    for n in ["CONFIRM"] {
-        let mut c = open_ctx(n);
-        c.s.ui.press(SAVE_KEY_BUTTON);
-        c.s.ui.settle();
-        let by_save = place(&c.s.ui);
-        let mut c = open_ctx(n);
-        c.s.ui.press(PANEL_BTN_HOME);
-        c.s.ui.settle();
-        assert_eq!(by_save, place(&c.s.ui), "{n}: SAVE on NO is HOME");
-    }
+    let mut c = open_ctx("CONFIRM");
+    c.s.ui.press(SAVE_KEY_BUTTON);
+    c.s.ui.settle();
+    let by_save = place(&c.s.ui);
+    let mut c = open_ctx("CONFIRM");
+    c.s.ui.press(PANEL_BTN_HOME);
+    c.s.ui.settle();
+    assert_eq!(by_save, place(&c.s.ui), "CONFIRM: SAVE on NO is HOME");
     for want in ["MENU", "SONG", "FILES", "CONFIRM YES"] {
         assert!(lists.contains(&want), "{want} is a list screen: {lists:?}");
     }

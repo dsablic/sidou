@@ -630,7 +630,7 @@ fn the_builtin_song_loads_like_a_file_and_saving_it_makes_a_store_copy() {
     r.save(c"MY LOOP");
     let mut f = store_file::default();
     assert_eq!(
-        unsafe { store_file_open(&mut *r.store.st, c"MY LOOP".as_ptr(), &mut f) },
+        unsafe { store_file_open(&*r.store.st, c"MY LOOP".as_ptr(), &mut f) },
         STORE_OK
     );
     // A built-in that fails to read: the previous file comes back.
