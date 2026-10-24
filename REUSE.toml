@@ -39,6 +39,21 @@ path = ["web/songmidi-fixtures/*.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# The starter pack (assets/starter, LICENSING.md "The starter pack"): the .sid tunes, written by
+# host/crates/sidou-tests/tests/starter.rs from the .sng in assets/songs (SIDOU's, GPL-3.0-or-later)
+# and in third_party/goattracker2/examples (Cadaver's, GPL-2.0-or-later), each with
+# GoatTracker's playroutine (LicenseRef-GoatTracker-Playroutine, "use it, or song binaries
+# created from it freely for any purpose"). Each tune's .md names its licence.
+[[annotations]]
+path = ["assets/starter/chrome-comet.sid", "assets/starter/iron-rite.sid", "assets/starter/neon-highway.sid", "assets/starter/paper-lanterns.sid", "assets/starter/sidou-loop.sid"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later AND LicenseRef-GoatTracker-Playroutine"
+
+[[annotations]]
+path = ["assets/starter/sanction.sid", "assets/starter/consultant.sid", "assets/starter/dojo.sid", "assets/starter/transylvanian.sid", "assets/starter/unleash.sid", "assets/starter/2xtest.sid"]
+SPDX-FileCopyrightText = ["Cadaver (Lasse Öörni): the song (its header and examples/goatcompo.txt)", "Lasse Öörni: the playroutine"]
+SPDX-License-Identifier = "GPL-2.0-or-later AND LicenseRef-GoatTracker-Playroutine"
+
 # The look-and-feel prototypes (self-contained HTML pages made for SIDOU):
 # reference art and code for M2's STEP/TRACKER views and SCENE pieces.
 [[annotations]]

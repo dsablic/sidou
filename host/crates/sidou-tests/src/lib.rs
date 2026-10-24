@@ -27,5 +27,6 @@ pub mod showcase;
 pub mod signal_metrics;
 pub mod song;
 pub mod song_embed;
+pub mod starter;
 pub mod title_card;
 pub mod transport;

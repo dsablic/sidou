@@ -181,3 +181,77 @@ fn the_cli_writes_one_syx_a_tune_and_refuses_the_rest_by_name() {
     assert_eq!(usage.status.code(), Some(2));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// `--pack`: one `pack.syx` of the tunes' uploads end to end under one set of store names (a
+/// repeated title gets `-2`), a refused tune named on stderr and left out, a directory standing
+/// for its `.sid` files by name; and the starter pack (`assets/starter`) as the real case.
+#[test]
+fn pack_writes_one_syx_with_one_set_of_names() {
+    let dir = std::env::temp_dir().join(format!("sidou-sysex-pack-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let tunes = dir.join("tunes");
+    let out = dir.join("out");
+    std::fs::create_dir_all(&tunes).unwrap();
+    std::fs::create_dir_all(&out).unwrap();
+    let a = tune(b"Same Title");
+    let b = tune(b"same title");
+    let c = psid(b"Other", &[0x60; 300]);
+    let mut rsid = tune(b"Real");
+    rsid[..4].copy_from_slice(b"RSID");
+    for (n, f) in [("a", &a), ("b", &b), ("c", &c), ("d", &rsid)] {
+        std::fs::write(tunes.join(format!("{n}.sid")), f).unwrap();
+    }
+    std::fs::write(tunes.join("notes.txt"), b"not a tune").unwrap();
+    let run = Command::new(env!("CARGO_BIN_EXE_sidou-sysex"))
+        .args(["sid", "--pack", "--out"])
+        .arg(&out)
+        .arg(&tunes)
+        .output()
+        .unwrap();
+    assert!(!run.status.success(), "a refusal fails the run");
+    assert!(String::from_utf8_lossy(&run.stderr).contains("d.sid: refused: RSID: NOT YET"));
+    assert_eq!(std::fs::read_dir(&out).unwrap().count(), 1);
+    let mut want = sid::syx("SAME TITLE", &a).unwrap();
+    want.extend(sid::syx("SAME TITLE-2", &b).unwrap());
+    want.extend(sid::syx("OTHER", &c).unwrap());
+    assert_eq!(std::fs::read(out.join("pack.syx")).unwrap(), want);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn pack_makes_the_starter_pack_one_syx() {
+    let starter = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/starter");
+    let dir = std::env::temp_dir().join(format!("sidou-sysex-starter-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let run = Command::new(env!("CARGO_BIN_EXE_sidou-sysex"))
+        .args(["sid", "--pack", "--out"])
+        .arg(&dir)
+        .arg(&starter)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let pack = std::fs::read(dir.join("pack.syx")).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    let mut sids: Vec<_> = std::fs::read_dir(&starter)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "sid"))
+        .collect();
+    sids.sort();
+    assert_eq!(sids.len(), 11);
+    let mut taken = HashSet::new();
+    let mut want = Vec::new();
+    for p in &sids {
+        let file = std::fs::read(p).unwrap();
+        let h = sid::check(&file).unwrap();
+        let stem = p.file_stem().unwrap().to_string_lossy();
+        let name = sid::store_name(&sid::title(&h), &stem, &mut taken);
+        want.extend(sid::syx(&name, &file).unwrap());
+    }
+    assert_eq!(taken.len(), 11, "eleven store names");
+    assert_eq!(pack, want);
+}

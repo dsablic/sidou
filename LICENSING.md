@@ -104,11 +104,55 @@ restores that song afterwards.
 The original showcase songs **CHROME COMET**, **IRON RITE**, **NEON HIGHWAY** and
 **PAPER LANTERNS**, also by SIDOU contributors under GPL-3.0-or-later, live in
 `assets/songs/`, each with adjacent metadata; they are store/demo/starter-pack files,
-not embedded firmware tunes. GoatTracker's example songs remain host test fixtures,
-credited to their own authors above and in [CREDITS.md](CREDITS.md).
-Every starter-pack tune needs metadata recording its composer, licence or written
-permission, and source. SIDOU does not redistribute HVSC tunes; users load them from
+not embedded firmware tunes. GoatTracker's example songs are also host test fixtures
+(`third_party/goattracker2/examples`), credited to their own authors above and in
+[CREDITS.md](CREDITS.md). SIDOU does not redistribute HVSC tunes; users load them from
 their own copy.
+
+### The starter pack
+
+`assets/starter/` holds the tunes SIDOU ships for the device's store: each a PSID `.sid`
+(`sidou-sysex sid --pack assets/starter` makes them one `.syx`, [how to put them on the
+FM-1](docs/manual/sid-tunes.md#the-starter-pack)) with an adjacent `.md` of its title,
+composer, licence, source, SHA-256, chip, clock and songs, and "in the firmware: no (the
+store)": no tune is built into the firmware. `host/crates/sidou-tests/tests/starter.rs` keeps
+each file in step with its source (`SIDOU_STARTER_UPDATE=1` writes them), and refuses a tune
+whose licence is not on the allowlist, below.
+
+**What may go in:** a tune whose licence allows redistribution, commercial redistribution
+included, or whose composer has given written permission for it (a file in
+`docs/permissions/`, naming the tune). The allowlist the test enforces: GPL-3.0-or-later,
+GPL-2.0-or-later, BSD-2-Clause, CC0-1.0, CC-BY-4.0, CC-BY-SA-4.0, or `written permission`.
+Anything "non-commercial" is refused.
+
+**The tiers** (the first pack, signed off by the project's owner on 2026-10-24):
+
+| Tier | Tunes | Composer | Licence | Why it may go in |
+|---|---|---|---|---|
+| 1. SIDOU's own | CHROME COMET, IRON RITE, NEON HIGHWAY, PAPER LANTERNS, SIDOU LOOP | SIDOU contributors | GPL-3.0-or-later | written for SIDOU; each `.sid` is built from the `.sng` in `assets/songs/` |
+| 2. GoatTracker 2.77's example songs by Cadaver | On a sanction from CIA (`sanction`), The Consultant, Dojo, Transylvanian Whipping, Unleash The F****** Fury, MW Title Remix, 2x-speed (`2xtest`) | Cadaver (Lasse Öörni) | GPL-2.0-or-later | the songs ship with GoatTracker under its GPL (no version named, so any version may be chosen: [VENDORED.md](third_party/goattracker2/VENDORED.md)); each `.sid` is built from the `.sng` in `third_party/goattracker2/examples/`, which is the source the GPL asks for |
+
+Each `.sid` holds its song's data with GoatTracker's playroutine, whose own notice
+(`LicenseRef-GoatTracker-Playroutine`: "Use it, or song binaries created from it freely for any
+purpose, commercial or noncommercial") covers it. The song's licence is the `.sid`'s.
+
+**Left out, and why:**
+
+- GoatTracker's feature tests `tempo2test`, `wavecmdtest` and `funktest`: demonstrations of the
+  tracker's commands, not music.
+- The compo entries by other composers, `cabrinigreen` (Randall), `everlasting` (Richard
+  Bayliss), `ghosttrackers` (Hein), `hyperspace` (Jammer) and `sixpack` (No-XS, a cover of a song
+  by beek): they ship with GoatTracker's GPL, but their composers have not confirmed that
+  licence for redistribution in a device's store, and `sixpack` is also based on beek's song.
+  Each can be added when its composer confirms a licence (see below).
+- *Pocket Sync* (Joakim Eriksson): BSD-2-Clause was proposed, but fm1-emu's root licence is MIT,
+  so the author is asked which he means before it is added.
+
+**Adding more later:** a tune from a third party (the compo entries above, Pocket Sync, tunes
+commissioned from SID composers) goes in with its composer's licence, if it is on the allowlist,
+or with a permission file in `docs/permissions/` that names the tune, the composer, what they
+allow (redistribution with SIDOU, commercially) and the date; then a line in the test's list
+(`host/crates/sidou-tests/src/starter.rs`), `SIDOU_STARTER_UPDATE=1`, and CREDITS.md.
 
 ## The drum kit and the digi drums
 

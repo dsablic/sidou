@@ -44,6 +44,12 @@ SIDOU builds on, or learns from, the work of these people and projects.
   and its [player's reference](third_party/goattracker2/VENDORED.md)
 - **Cadaver, Randall, Richard Bayliss, Hein, Jammer and No-XS**: GoatTracker's
   [example songs](LICENSING.md#music-and-content)
+- **The starter pack's composers** ([the pack](LICENSING.md#the-starter-pack)): **Cadaver**
+  (Lasse Öörni), who wrote *On a sanction from CIA*, *The Consultant*, *Dojo*, *Transylvanian
+  Whipping*, *Unleash The F****** Fury* and *MW Title Remix, 2x-speed*, GoatTracker 2.77's
+  example songs, which SIDOU ships as `.sid` tunes under the GPL-2.0-or-later they came with;
+  and **SIDOU contributors**, who wrote *CHROME COMET*, *IRON RITE*, *NEON HIGHWAY*,
+  *PAPER LANTERNS* and *SIDOU LOOP*
 - **Klaus Dormann**: the [6502 functional test](third_party/6502-tests/VENDORED.md)
 - **Tom Harte and SingleStepTests' contributors**: the
   [6502 single-step tests](third_party/6502-tests/VENDORED.md)

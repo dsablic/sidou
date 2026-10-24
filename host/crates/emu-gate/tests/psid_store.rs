@@ -8,7 +8,9 @@
 //! their toasts before any flash program; the largest file the store holds (a 64 KiB tune) goes
 //! in and plays, every sid_io_poll and sid_io_open within the store's share of a pass
 //! (STORE_POLL_WORST) and every pass within POLL_INSTRUCTIONS; with the store's keys used up,
-//! a tune's PUT is refused (STORE FULL) before any program.
+//! a tune's PUT is refused (STORE FULL) before any program; and the starter pack (Task 13,
+//! assets/starter), `sidou-sysex sid --pack`'s one `.syx`, goes in over TRS whole with room to
+//! spare (the bytes and keys it uses are printed) and its tunes play from the browser.
 
 mod common;
 
@@ -268,6 +270,99 @@ fn a_64_kib_tune_goes_in_and_loads_within_the_stores_pass_share() {
         m.watched_calls.clear();
     }
     check_passes(&m, "64 KiB loaded and played");
+}
+
+/// The starter pack's tunes as `sidou-sysex sid --pack assets/starter` makes them: the store
+/// name and the file, in file-name order.
+fn starter() -> Vec<(String, Vec<u8>)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/starter");
+    let mut paths: Vec<_> = std::fs::read_dir(&dir)
+        .expect("assets/starter")
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "sid"))
+        .collect();
+    paths.sort();
+    let mut taken = Default::default();
+    paths
+        .iter()
+        .map(|p| {
+            let file = std::fs::read(p).unwrap();
+            let h = sidou_sysex::sid::check(&file).expect("a starter tune checks");
+            let stem = p.file_stem().unwrap().to_string_lossy();
+            let name =
+                sidou_sysex::sid::store_name(&sidou_sysex::sid::title(&h), &stem, &mut taken);
+            (name, file)
+        })
+        .collect()
+}
+
+#[test]
+fn the_starter_pack_goes_into_the_store_over_trs_whole_with_room_to_spare() {
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    let before = u32::from(mount_dump(&mut m.soc.flash.mem.clone()).nkeys);
+    let tunes = starter();
+    assert_eq!(tunes.len(), 11);
+    // `pack.syx` as a SysEx tool sends it over TRS: every message, a second after the last.
+    let syx: Vec<u8> = tunes
+        .iter()
+        .flat_map(|(name, file)| sidou_sysex::sid::syx(name, file).unwrap())
+        .collect();
+    let start = m.ms();
+    send_paced(&mut m, &syx, TRS_GAP_MS);
+    for (name, file) in &tunes {
+        let got = stored(&m, name);
+        assert!(
+            got.as_ref() == Some(&(STORE_FILE_SID as u8, file.clone())),
+            "{name}: stored {:?} bytes",
+            got.map(|g| g.1.len())
+        );
+    }
+    let bytes: usize = tunes.iter().map(|(_, f)| f.len()).sum();
+    let keys = u32::from(mount_dump(&mut m.soc.flash.mem.clone()).nkeys);
+    println!(
+        "the starter pack: {} tunes, {bytes} bytes (the store holds {STORE_CAPACITY}), {} of the \
+         store's {STORE_KEYS_MAX} keys used ({before} before, {} for the tunes), {} frames in {} \
+         ms of device time",
+        tunes.len(),
+        keys,
+        keys - before,
+        frames(&syx).len(),
+        m.ms() - start
+    );
+    for (name, file) in &tunes {
+        println!("  {name}: {} bytes", file.len());
+    }
+    assert!(
+        bytes as u32 * 4 <= STORE_CAPACITY,
+        "the pack takes over a quarter of the store"
+    );
+    assert!(
+        keys + 20 <= STORE_KEYS_MAX,
+        "the pack leaves {} keys",
+        STORE_KEYS_MAX - keys
+    );
+    // The browser lists them by name, eight a page: the first and the eighth play.
+    for index in [0, 7] {
+        let audio = m.soc.periph.audio.len();
+        ui_play_tune(&mut m, &fw, index);
+        until(&mut m, "the tune on", |m| tune_state(m, &fw) == TUNE_ON);
+        m.run_ms(2_000);
+        assert_eq!(tune_state(&mut m, &fw), TUNE_ON, "tune {index} stopped");
+        let ctl = fw.symbol("player_isr");
+        let late = m.soc.read32(ctl + ilp32::psid_ctl::late as u32);
+        let peak = m.soc.periph.audio[audio..]
+            .iter()
+            .map(|&v| i32::from(v).abs())
+            .max()
+            .unwrap_or(0);
+        println!("tune {index} of the browser: {late} late, peak {peak}");
+        assert!(peak > 1000, "tune {index}: silent");
+        assert_eq!(late, 0, "tune {index}: writes applied late");
+        ui_end_tune(&mut m, &fw);
+        until(&mut m, "the song back", |m| tune_state(m, &fw) == TUNE_OFF);
+    }
+    check_passes(&m, "the starter pack over TRS");
 }
 
 unsafe extern "C" fn dump_map(ctx: *mut std::ffi::c_void, off: u32) -> *const u8 {

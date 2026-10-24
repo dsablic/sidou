@@ -66,6 +66,25 @@ cargo run --release -p sidou-sysex -- sid first.sid --out syx --trs
 A refusal over TRS shows on the screen and the rest of that upload is ignored; send the file
 again from its start.
 
+## The starter pack
+
+The repository's `assets/starter/` has eleven tunes, openly licensed, for the store: SIDOU's
+five songs and six of GoatTracker's example songs by Cadaver ([the licences](../../LICENSING.md#the-starter-pack)).
+One command makes them one upload:
+
+```sh
+cargo run --release -p sidou-sysex -- sid --pack ../assets/starter --out syx --trs
+```
+
+`syx/pack.syx` holds all eleven, each under its title (`CHROME COMET`, `DOJO`, `IRON RITE`, ...;
+a title longer than 16 characters is cut, as `ON A SANCTION FR`). Send it as in 2 or 3: with a
+second after each message it is 143 messages, a little over two and a half minutes, and the
+screen shows **RECEIVING** and **SAVED** for each tune in turn. The pack is about 29 KB of the
+store's 190 KB and 11 of its 48 entries, so about 20 more tunes fit next to it. A tune of
+the pack that is already on the FM-1 is replaced by the same tune; to send one alone, name it:
+`sidou-sysex sid ../assets/starter/dojo.sid`. A directory on the command line stands for its `.sid`
+files, and `--pack` writes any set of tunes as one file, not only this one.
+
 ## How many fit
 
 The store holds about 190 KB of songs and tunes, and 48 entries in all (settings, maps, chip

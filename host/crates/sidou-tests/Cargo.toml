@@ -16,6 +16,7 @@ workspace = true
 gt2-ref = { path = "../gt2-ref" }
 png = "0.18"
 residfp-sys = { path = "../residfp-sys" }
+sha2 = "0.10"
 sidou-sys = { path = "../sidou-sys" }
 sidou-tablegen = { path = "../sidou-tablegen" }
 

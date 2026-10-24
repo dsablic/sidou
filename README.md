@@ -52,7 +52,9 @@ screenshots the tests check.*
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
-Coming next: the rest of M3 (a starter pack of openly licensed tunes, the device's 6502 meter).
+Coming next: the rest of M3 (the device's 6502 meter). Eleven openly licensed tunes for the
+store, a starter pack, are in [assets/starter](assets/starter) now, and one `sidou-sysex sid --pack`
+command makes them a single upload ([the manual](docs/manual/sid-tunes.md#the-starter-pack)).
 
 ## Try it in your browser
 

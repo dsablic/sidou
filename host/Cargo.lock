@@ -719,6 +719,7 @@ dependencies = [
  "gt2-ref",
  "png",
  "residfp-sys",
+ "sha2",
  "sidou-pack",
  "sidou-sys",
  "sidou-sysex",
