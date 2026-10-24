@@ -94,12 +94,16 @@ typedef struct {
                     * gives it to the player (song_on | player) */
     uint8_t song_on; /* keys_route_set_song's */
     uint8_t player;  /* keys_route_set_player's */
+    uint8_t tune;    /* keys_route_set_tune's: the player is a .sid tune (KEYS A acts as AUTO) */
+    uint8_t silent;  /* keys_route_set_silent's: chip B is the tune's too, the keys are silent */
     uint8_t stale; /* 1 while chip A, the keys' under KEYS A, holds a song's setup */
     uint8_t under; /* 1 while the keys play under a song (on chip A) */
     uint8_t taken; /* the voices the keys held at the last write under a song */
     /* During a song: the setup chip A should have (the song's CHPA or an edit on the CHIP
      * view's A tab, after its edit callback); chip A follows it. */
     chip_setup song_want;
+    /* While silent: the setup chip B should have (a 2SID tune's second chip); it follows it. */
+    chip_setup tune_b_want;
     uint8_t song_seen; /* song as the last tick saw it (a song's start sets song_want) */
     uint8_t song_user; /* USER slot n + 1 that supplied song_want, or 0 */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
@@ -132,10 +136,24 @@ void keys_route_set_song(keys_route* kr, int playing);
  * WHOLE-CHIP modes (app/midi_route.h). Treated as a song playing, so the keys move to chip B
  * (KEYS AUTO) and chip A follows song_want. */
 void keys_route_set_player(keys_route* kr, int owns);
+/* A .sid tune is the player (M3; docs/plans/2026-10-19-m3-sid-files.md, "The keys, chip B and
+ * the rest of the firmware while a tune plays"), on top of keys_route_set_song: KEYS A acts as
+ * AUTO (no voice can be taken from a tune), so the keys go to chip B and chip A follows
+ * song_want, the tune's setup. */
+void keys_route_set_tune(keys_route* kr, int on);
+/* A 2SID tune takes chip B as well (on 1): the keys are silent (live's writes go nowhere, its
+ * preparations are not made) and stay on the chip they play, chip A follows song_want and chip
+ * B tune_b_want. Off (the tune stopped): the keys' own chip goes back to the keys' setup and
+ * their registers (as after a song under KEYS A), the other follows it or the song. */
+void keys_route_set_silent(keys_route* kr, int on);
+/* The chip (0 A, 1 B) is reset to the setup it follows at its next follow, even if it has it
+ * already: a tune starts on a chip as from power-on. */
+void keys_route_fresh(keys_route* kr, uint32_t chip);
 /* The voices of chip A the keys hold while a song plays with the keys on chip A (bit v: voice
  * v; under mono sync voice 3 with voice 1), for the song player to leave alone; 0 otherwise. */
 uint8_t keys_route_voices_taken(const keys_route* kr);
-/* 1 once a song may start on chip A: the keys play chip B, or KEYS is A. */
+/* 1 once a song may start on chip A: the keys play chip B, or KEYS is A (not during a tune), or
+ * the keys are silent. */
 int keys_route_ready_for_song(const keys_route* kr);
 /* Runtime setup chip A is to have during a song: the one writer of song_want. Chip A is
  * brought to it in the background (prepared, a slice a tick); the latest call wins. Explicit

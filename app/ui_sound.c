@@ -35,6 +35,7 @@ void ui_sound_init(ui_sound* us, live* l, live_sink_fn sink, void* sink_ctx) {
     us->sink = sink;
     us->sink_ctx = sink_ctx;
     us->on = 0;
+    us->hush = 0;
     us->id = UI_SOUND_NONE;
     us->voice = UI_SOUND_NONE;
     us->pos = 0;
@@ -102,6 +103,13 @@ void ui_sound_set(ui_sound* us, int on) {
     }
 }
 
+void ui_sound_hush(ui_sound* us, int on) {
+    us->hush = on ? 1u : 0u;
+    if (us->hush && us->voice != UI_SOUND_NONE) {
+        give_back(us);
+    }
+}
+
 int ui_sound_busy(const ui_sound* us) {
     return us->voice != UI_SOUND_NONE;
 }
@@ -153,7 +161,7 @@ static void step(ui_sound* us) {
 
 void ui_sound_play(ui_sound* us, ui_sound_id id) {
     live* l = us->l;
-    if (!us->on || (uint32_t)id >= UI_SOUND_COUNT) {
+    if (!us->on || us->hush || (uint32_t)id >= UI_SOUND_COUNT) {
         return;
     }
     if (us->voice == UI_SOUND_NONE) {

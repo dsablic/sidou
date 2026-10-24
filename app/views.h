@@ -256,6 +256,9 @@ typedef struct {
     /* The song view that showed last (views_frame), which SEQ reopens from outside them; NULL
      * until one has shown since power-on (SEQ then opens STEP). Not saved. */
     const view* song_last;
+    /* A .sid tune has the song's memory (views_tune): the song views, the SONG menu and ABOUT
+     * do not open. */
+    uint8_t tune;
     /* The SETTINGS page (views_settings_view): its menu, and what it showed at its last compose. */
     menu setup;
     uint8_t setup_drawn[VIEWS_SETTINGS_LOOK];
@@ -312,6 +315,10 @@ void views_learn(views* v, midi_learn* ml);
 /* The song's player (app/song_transport.h) for the song views; NULL: none (the host tests'
  * default; the device binds song_ctl, platform/fm1/main.c). */
 void views_set_song(views* v, const song_transport* t);
+/* A .sid tune has the song's memory (on 1; M3, platform/fm1/main.c), or the song has it back:
+ * while on, the song views, the SONG menu and ABOUT refuse to open (SID PLAYING: STOP TO EDIT).
+ * The caller unbinds the song views' transport first (views_set_song NULL). */
+void views_tune(views* v, int on);
 /* The song files' controller; NULL until the platform binds it. */
 void views_song_io(views* v, song_io* io);
 /* The note keys, as panel_note_keys takes them, after the frame's buttons (views_buttons):

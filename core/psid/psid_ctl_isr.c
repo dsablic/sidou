@@ -24,17 +24,20 @@ static void psid_isr_ramp(int16_t* x, int down)
 }
 
 /* Chip k's block into out: its writes from its cursor on, each at its cycle, while the block's
- * renders last (PSID_SPLITS), then late at the block's end. The ring is in cycle order (one
- * 6502), so the first entry of either chip at or past the block's last cycle ends the scan.
- * The block's cycles are the samples' Q16 steps summed, which no sid_advance changes (it moves
- * cycles from the next sample to before it), so they are known at the start. */
+ * renders last (PSID_SPLITS), then late at the block's end; of at most `window` entries from
+ * its cursor (its own and the other chip's: the rest wait for the next block). The ring is in
+ * cycle order (one 6502), so the first entry of either chip at or past the block's last cycle
+ * ends the scan. The block's cycles are the samples' Q16 steps summed, which no sid_advance
+ * changes (it moves cycles from the next sample to before it), so they are known at the start. */
 static void psid_isr_chip(psid_ctl* c, uint32_t k, sid* s, int16_t* out, int tapped,
-                          psid_render_fn render, uint32_t head)
+                          psid_render_fn render, uint32_t head, uint32_t window)
 {
     const uint32_t cps = s->cycles_per_sample_q16;
     uint32_t now = c->clock[k];
     const uint32_t end = now + ((s->cycle_frac_q16 + PSID_BLOCK * cps) >> 16);
     uint32_t n = PSID_BLOCK, parts = 0, late = 0, i;
+    if ((uint32_t)(head - c->cur[k]) > window)
+        head = c->cur[k] + window; /* the entries a block looks at */
     for (i = c->cur[k]; i != head; i++) {
         uint32_t j = i & (PSID_RING - 1u);
         uint32_t x = c->ring_cycle[j];
@@ -132,11 +135,13 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
     if (c->mode == PSID_ISR_PLAY) {
         uint32_t head = c->head;
         COMPILER_FENCE(); /* the head before the entries it publishes */
-        psid_isr_chip(c, 0, a, sa, (int)(tapped & 1u), render, head);
+        /* The entries a chip's block looks at: a 2SID tune's chips each half of them. */
+        const uint32_t window = two ? PSID_BLOCK_ENTRIES / 2u : PSID_BLOCK_ENTRIES;
+        psid_isr_chip(c, 0, a, sa, (int)(tapped & 1u), render, head, window);
         rendered = 1;
         uint32_t t = c->cur[0];
         if (two) {
-            psid_isr_chip(c, 1, b, sb, (int)(tapped >> 1 & 1u), render, head);
+            psid_isr_chip(c, 1, b, sb, (int)(tapped >> 1 & 1u), render, head, window);
             rendered = 3;
             if ((int32_t)(c->cur[1] - t) < 0)
                 t = c->cur[1];

@@ -411,42 +411,6 @@ fn the_voice_shadow_costs_the_main_loop_little() {
     assert!(worst_slice <= SHADOW_SLICE_WORST);
 }
 
-/// A tune whose init puts every voice of its chips (chip A, and B at `$D420` for a 2SID tune) on
-/// `control` at frequency `$FFFF` (the shadow's dearest, as `shadow_slices`), then for ever
-/// makes an access every 4 cycles with `op` on register `reg` of each chip in turn (`STA`
-/// writes the same `$FF`, so the voices stay as they are; voice 3's registers latch OSC3), or
-/// with `op` empty spins in a `JMP` loop.
-fn worst_tune(two: bool, control: u8, op: &str, reg: u32) -> Vec<u8> {
-    use sidou_tests::psid_fixtures::{Psid, INIT};
-    let mut init = String::new();
-    for chip in 0..if two { 2 } else { 1 } {
-        for v in 0..3 {
-            let r = 0xD400 + 0x20 * chip + 7 * v;
-            for (off, value) in [
-                (0, 0xff),
-                (1, 0xff),
-                (2, 0x00),
-                (3, 0x08),
-                (5, 0x00),
-                (6, 0xf0),
-            ] {
-                init += &format!("lda #${value:02x}\nsta ${:04x}\n", r + off);
-            }
-            init += &format!("lda #${control:02x}\nsta ${:04x}\n", r + 4);
-        }
-    }
-    init += "lda #$ff\nloop:\n";
-    if !op.is_empty() {
-        for k in 0..240 {
-            let chip = if two && k % 2 == 1 { 0x20 } else { 0 };
-            init += &format!("{op} ${:04x}\n", 0xD400 + chip + reg);
-        }
-    }
-    init += "jmp loop\n";
-    let psid = Psid::new(&[(INIT, &init), (0x8000, "rts\n")]);
-    if two { psid.sid2(0x42) } else { psid }.bytes()
-}
-
 /// What one look-ahead run gave: each pass's instructions and the 6502 cycles it ran.
 fn look_ahead(build: &std::path::Path, file: &[u8], passes: usize, model: u32) -> Vec<(u64, u32)> {
     const FILE_ADDR: u32 = PARAM_ADDR + 0x100;

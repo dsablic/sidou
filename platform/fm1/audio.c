@@ -11,6 +11,7 @@
 #include "live.h"
 #include "master_gain.h"
 #include "player/song_ctl.h"
+#include "psid/psid_ctl.h"
 #include "reg_ring.h"
 #include "scope.h"
 #include "tail_gate.h"
@@ -73,18 +74,43 @@ static thump_out thump;
 static volatile uint8_t tap_chip;
 
 /* The song (M2c Task 6). Its content region (decision record 0007): one 64 KiB block, 4 KiB
- * aligned, first in POOL (app.ld, __song_region), which M3's 6502 memory will overlay. The
- * player's state, its shadow and the rings (song_ctl) and the two shapes it reads are the
- * interrupt's: RAM. The main loop's work space (two analyses, a fast-forward player, the edits
- * in flight) is big and the main loop's only: POOL. */
+ * aligned, first in POOL (app.ld, __song_region), which a .sid tune's 6502 memory overlays (M3
+ * Task 9). The player's state, its shadow and the rings (song_ctl) and the two shapes it reads
+ * are the interrupt's: RAM. The main loop's work space (two analyses, a fast-forward player, the
+ * edits in flight) is big and the main loop's only: POOL. */
 static uint32_t song_region[SONG_REGION_BYTES / 4u]
     __attribute__((section(".pool.song_region"), aligned(4096)));
+_Static_assert(SONG_REGION_BYTES == 0x10000u, "the song's region is the 6502's 64 KiB");
 /* Not zeroed by the boot (app.ld keeps them out of the zeroed ranges): audio_song_boot sets
  * them up in the LCD's reset wait, so the song costs the boot's timeline nothing. The
- * interrupt's in the RAM region, the main loop's work space in POOL. */
-static gt2_shape song_shapes[2] __attribute__((section(".song_noinit")));
-static song_ctl song_transport __attribute__((section(".song_noinit")));
+ * interrupt's in the RAM region, the main loop's work space in POOL. A .sid tune's state
+ * (audio_player) is a union with the interrupt's: the write ring and the interrupt's state
+ * (psid_ctl), and beside them the main loop's environment, its two voice shadows (psid_work)
+ * and the header, which together still fit the song transport and its shapes, so a tune takes
+ * no RAM of its own. The transport is the union's first member: emu-gate's tests read
+ * `song_transport` there. */
+static union {
+    struct {
+        song_ctl transport;
+        gt2_shape shapes[2];
+    } song;
+    struct {
+        psid_ctl ctl;
+        psid_work work;
+        psid_header header;
+    } psid;
+} player_isr __attribute__((section(".song_noinit")));
 static song_work song_space __attribute__((section(".pool.song_noinit")));
+_Static_assert(sizeof player_isr.psid <= sizeof player_isr.song,
+               "a tune's state fits the song transport's and its shapes'");
+#define song_transport (player_isr.song.transport)
+#define song_shapes (player_isr.song.shapes)
+#define tune_ctl (player_isr.psid.ctl)
+/* The symbol the emulator tests read the transport at (the union's start). */
+__asm__(".set song_transport, player_isr");
+/* The player the interrupt runs (audio_player): the main loop's ask and the interrupt's own. */
+static volatile uint8_t player_want = AUDIO_SONG;
+static volatile uint8_t player_now = AUDIO_SONG;
 /* The LIVE view's tap (app/scope.h): the voices every SCOPE_DECIMATE samples, the envelopes
  * and the output's peaks, while the view shows. */
 static scope tap;
@@ -144,6 +170,61 @@ void audio_init(void) {
     chips.swapped_ctx = &song_transport;
 }
 
+void audio_player(uint32_t player) {
+    player_want = (uint8_t)player;
+}
+
+uint32_t audio_player_now(void) {
+    return player_now;
+}
+
+/* The sid chip k renders, for the main loop's code (reg_ring_chip_of is in SRAM). */
+static inline sid* chip_now(uint32_t k) {
+    return &chips.chip[chips.active[k & 1u]];
+}
+
+/* psid_ctl's hooks: the sid a chip renders, and a chip's voice mute through its writer, so it
+ * reaches the chip at a block's start (app/reg_ring.h REG_RING_MUTE). */
+static sid* psid_hook_chip(void* ctx, uint32_t chip) {
+    (void)ctx;
+    return chip_now(chip);
+}
+
+static void psid_hook_mute(void* ctx, uint32_t chip, uint32_t mask) {
+    (void)ctx;
+    reg_ring_sink(chip ? &out_b : &out, REG_RING_MUTE, (uint8_t)mask);
+}
+
+psid_ctl* audio_psid_init(void) {
+    psid_ctl_hooks hooks = {psid_hook_chip, psid_hook_mute, 0};
+    psid_ctl_init(&tune_ctl, &player_isr.psid.work, (uint8_t*)song_region, &hooks);
+    return &tune_ctl;
+}
+
+psid_ctl* audio_psid(void) {
+    return &tune_ctl;
+}
+
+psid_header* audio_psid_header(void) {
+    return &player_isr.psid.header;
+}
+
+int audio_psid_poll(void) {
+    if (chips.prep_pass || chips.build_pass) {
+        return 0;
+    }
+    int ran = psid_ctl_poll(&tune_ctl);
+    if (ran) {
+        chips.prep_pass = 1; /* the pass's slice: no preparation in it */
+        out.sliced = 1;      /* nor the store's work */
+    }
+    return ran;
+}
+
+sid* audio_chip(uint32_t chip) {
+    return chip_now(chip);
+}
+
 void* audio_sink_ctx_b(void) {
     return &out_b;
 }
@@ -166,6 +247,12 @@ void audio_tap_chip(uint32_t chip) {
 
 gt2_song* audio_song_boot(void) {
     gt2_song* s = gt2_song_init(song_region, SONG_REGION_BYTES);
+    song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space);
+    return s;
+}
+
+gt2_song* audio_song_remake(void) {
+    gt2_song* s = gt2_song_init_wiped(song_region, SONG_REGION_BYTES);
     song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space);
     return s;
 }
@@ -211,7 +298,9 @@ void* audio_sink_ctx(void) {
 
 void audio_commit(void) {
     reg_ring_commit(&ring);
-    song_ctl_commit(&song_transport); /* the pass's song commands with its register writes */
+    if (player_want == AUDIO_SONG && player_now == AUDIO_SONG) {
+        song_ctl_commit(&song_transport); /* the pass's song commands with its register writes */
+    }
     reg_ring_pass_end(&chips); /* one slice of a chip's preparation a pass */
 }
 
@@ -259,6 +348,46 @@ static void render_part(sid* a, int16_t* s, uint32_t n, int tapped) {
     }
 }
 
+/* A chip's registers into another sid, as the one it replaces has them: the 25 a tune writes,
+ * from the voices' and the filter's state (a reset sid has none of them). In .ram_text with
+ * audio_fill (app.ld), built for size: it runs at a chip's swap only. */
+__attribute__((minsize)) static void psid_rewrite(sid* to, const sid* from) {
+    uint8_t r[25];
+    for (uint32_t v = 0; v < 3u; v++) {
+        const sid_osc* o = &from->osc[v];
+        const sid_env* e = &from->env[v];
+        uint8_t* q = &r[7u * v];
+        q[0] = (uint8_t)o->freq;
+        q[1] = (uint8_t)(o->freq >> 8);
+        q[2] = (uint8_t)o->pw;
+        q[3] = (uint8_t)(o->pw >> 8);
+        q[4] = o->control;
+        q[5] = (uint8_t)(e->attack << 4 | e->decay);
+        q[6] = (uint8_t)((e->sustain & 0xf0u) | e->release);
+    }
+    r[21] = (uint8_t)(from->fc & 7u);
+    r[22] = (uint8_t)(from->fc >> 3);
+    r[23] = (uint8_t)(from->res << 4 | from->routing);
+    r[24] = from->mode_vol;
+    for (uint32_t i = 0; i < 25u; i++) {
+        sid_write(to, (uint8_t)i, r[i]);
+    }
+}
+
+/* chips.swapped while a tune is the player: a model or profile change of one of its chips
+ * (CHIP's A tab) swaps in a reset sid, which gets the tune's clock and registers from the sid
+ * it replaces (the spare now, which nothing has touched since the drain swapped it) before the
+ * block renders. Before the tune plays (its chips made fresh for it) and after, nothing. */
+__attribute__((minsize)) static void psid_swapped(void* ctx, uint32_t chip, sid* s) {
+    const psid_ctl* c = ctx;
+    if (c->mode == PSID_ISR_OFF || (chip && c->chips != 2u)) {
+        return;
+    }
+    const sid* was = &chips.chip[3u - chips.active[0] - chips.active[1]];
+    s->cycles_per_sample_q16 = was->cycles_per_sample_q16;
+    psid_rewrite(s, was);
+}
+
 /* Chip A's block, split at the song's call, whose writes go straight into chip A
  * (song_ctl.h; decision record 0005's split render). */
 static void render_a(sid* a, int16_t* s, int tapped) {
@@ -271,6 +400,20 @@ static void render_a(sid* a, int16_t* s, int tapped) {
         render_part(a, s + at, AUDIO_HALF_FRAMES - at, tapped);
     } else {
         render_part(a, s, AUDIO_HALF_FRAMES, tapped);
+    }
+}
+
+/* Chip A's block from the player: the tune's writes placed at their cycles (and chip B's with
+ * them for a 2SID tune, b and sb not NULL), the song's split at its call, or with neither the
+ * chip alone. One copy for audio_fill's three paths (in .ram_text). */
+__attribute__((noinline)) static void play_a(uint32_t player, sid* a, sid* b, int16_t* s,
+                                             int16_t* sb, uint32_t tapped) {
+    if (player == AUDIO_PSID) {
+        (void)psid_ctl_block(&tune_ctl, a, b, s, sb, tapped, render_part);
+    } else if (player == AUDIO_SONG) {
+        render_a(a, s, (int)(tapped & 1u));
+    } else {
+        render_part(a, s, AUDIO_HALF_FRAMES, (int)(tapped & 1u));
     }
 }
 
@@ -332,14 +475,28 @@ void audio_fill(int32_t* buf) {
         quiet_blocks += peak_on;
         return;
     }
+    /* The player the main loop asks for, at this block's start (audio_player), with its swap
+     * hook. */
+    uint8_t player = player_now;
+    if (player_want != player) {
+        player = player_want;
+        player_now = player;
+        chips.swapped = player == AUDIO_SONG ? song_ctl_chip_swapped :
+                        player == AUDIO_PSID ? psid_swapped : 0;
+        chips.swapped_ctx = player == AUDIO_SONG ? (void*)&song_transport : (void*)&tune_ctl;
+    }
     reg_ring_drain(&ring, &chips);
     sid* a = reg_ring_chip_of(&chips, 0);
     sid* b = reg_ring_chip_of(&chips, 1);
-    song_ctl_block(&song_transport, a);
-    anchor_seq++;
-    anchor_ticks = fm1_ticks();
-    anchor_samples = song_transport.samples;
-    anchor_seq++;
+    const int song = player == AUDIO_SONG;
+    const int two = player == AUDIO_PSID && tune_ctl.chips == 2u; /* chip B the tune's too */
+    if (song) {
+        song_ctl_block(&song_transport, a);
+        anchor_seq++;
+        anchor_ticks = fm1_ticks();
+        anchor_samples = song_transport.samples;
+        anchor_seq++;
+    }
     /* Chip B is in use while it has a user, and after its last one let go until its three
      * envelopes are at 0 (the keys' release tails play out, and nothing is frozen to come
      * back later); only once its boot reset has made it (a zeroed sid has a sample rate of 0,
@@ -360,14 +517,17 @@ void audio_fill(int32_t* buf) {
     float side_w = 1.0f;
     if (!want && !b_on) {
         /* Chip A alone, as M1: sid_render's samples, and the tap's points while LIVE shows. */
-        render_a(a, s, 1);
+        play_a(player, a, 0, s, 0, 1u);
     } else {
         int16_t sb[AUDIO_HALF_FRAMES];
-        if (tap_chip) {
-            render_a(a, s, 0);
+        if (two) {
+            /* Both chips the tune's: its writes placed on each, the tap on the keys' chip. */
+            play_a(player, a, b, s, sb, tap_chip ? 2u : 1u);
+        } else if (tap_chip) {
+            play_a(player, a, 0, s, 0, 0u);
             scope_render(&tap, b, sb, AUDIO_HALF_FRAMES);
         } else {
-            render_a(a, s, 1);
+            play_a(player, a, 0, s, 0, 1u);
             sid_render(b, sb, AUDIO_HALF_FRAMES);
         }
         chip_mix_fade fade = want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT;
@@ -391,7 +551,9 @@ void audio_fill(int32_t* buf) {
     /* With the song's digi drums (decision record 0009): after the tail gate, so a digi in a
      * quiet song is not muted with the chips' leak; in the middle (CHIP SPREAD's side is the
      * chips'). */
-    song_ctl_block_end(&song_transport, s, AUDIO_HALF_FRAMES);
+    if (song) {
+        song_ctl_block_end(&song_transport, s, AUDIO_HALF_FRAMES);
+    }
     /* With every slot off this writes chip A's output to both sides unchanged; with chip B the
      * whole sum, through the soft limiter (core/fx/fx_limit.h) as the slots' output goes. The
      * tail gate leaves the sum's excess as it is: with both chips quiet there is none. CHIP

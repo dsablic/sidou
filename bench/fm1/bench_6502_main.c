@@ -31,6 +31,13 @@
  *      taking every entry off the ring and putting the chips' clocks at the 6502's time, so
  *      every pass runs a slice. Marks: two around each pass's psid_ctl_poll; samples: the 6502
  *      cycles each pass ran (-1: none). [6] the player's state at the end, [7] its writes.
+ *   6  psid_ctl's interrupt half (M3 Task 9; psid_ctl_block): mode 5's tune and chips for [2]
+ *      blocks, before each main-loop passes until the 6502 is ahead (PSID_AHEAD_CYCLES) or the
+ *      ring is out of room, at most [4] (the device makes about 30 a block), then the block,
+ *      psid_ctl_block rendering it with its writes placed (the emulator test tells the chips'
+ *      own work in it from the .sid path's by the functions it runs). Marks: 2 a block. [6] the
+ *      writes applied late, [7] the most renders a chip's block took; samples: the writes
+ *      pushed, low and high halves, then each block's entries taken.
  * RESULT_ADDR [2] the outcome (mode 0: 1 success; mode 1: 1 all calls returned; mode 2: 1),
  * [3] the 6502 cycles, [4] the sum of the written values, [5] the writes, [6] the plays over
  * their frame, [7] the PC at the end or at the call that did not return. */
@@ -306,6 +313,48 @@ static void look_ahead(volatile uint32_t* result, volatile uint32_t* param,
     result[7] = ctl.writes;
 }
 
+static int16_t block_a[PSID_BLOCK], block_b[PSID_BLOCK];
+
+/* The interrupt's render pointer: the plain render (the device's tapped one renders the same
+ * samples; the tap's cost is TAP_PER_SAMPLE's). */
+static void bench_render(sid* s, int16_t* out, uint32_t n, int tapped) {
+    (void)tapped;
+    sid_render(s, out, n);
+}
+
+static void isr_blocks(volatile uint32_t* result, volatile uint32_t* param,
+                       volatile int16_t* out) {
+    const uint8_t* file = (const uint8_t*)FILE_ADDR;
+    sid_model model = param[3] ? SID_MODEL_8580 : SID_MODEL_6581;
+    psid_ctl_hooks hooks = {bench_chip, 0, 0};
+    result[2] = 0;
+    if (psid_parse(file, param[1], &header) != PSID_OK) {
+        return;
+    }
+    sid_init(&chip, model, SID_CLOCK_PAL, 44118u);
+    sid_init(&chip_b, model, SID_CLOCK_PAL, 44118u);
+    psid_ctl_init(&ctl, &work, (uint8_t*)MEM_ADDR, &hooks);
+    if (!psid_ctl_load(&ctl, &header, file) || !psid_ctl_play(&ctl, 1)) {
+        return;
+    }
+    uint32_t blocks = param[2], passes = param[4];
+    for (uint32_t i = 0; i < blocks; i++) {
+        for (uint32_t k = 0; k < passes && psid_ctl_poll(&ctl); k++) {
+        }
+        uint32_t tail = ctl.tail;
+        bench_mark();
+        (void)psid_ctl_block(&ctl, &chip, &chip_b, block_a, block_b, 0, bench_render);
+        bench_mark();
+        out[2u + i] = (int16_t)(ctl.tail - tail);
+    }
+    out[0] = (int16_t)(ctl.writes & 0xffffu);
+    out[1] = (int16_t)(ctl.writes >> 16);
+    result[1] = 2u + blocks;
+    result[2] = 1;
+    result[6] = ctl.late;
+    result[7] = ctl.splits_max;
+}
+
 int main(void) {
     for (uint32_t *d = __data_start, *s = __data_load; d < __data_end;) {
         *d++ = *s++;
@@ -339,6 +388,9 @@ int main(void) {
         break;
     case 5:
         look_ahead(result, param, out);
+        break;
+    case 6:
+        isr_blocks(result, param, out);
         break;
     default:
         opcodes(result, out);

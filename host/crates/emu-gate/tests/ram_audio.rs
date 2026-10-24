@@ -115,6 +115,64 @@ fn the_audio_interrupt_runs_only_from_sram() {
     );
 }
 
+/// And while a .sid tune plays (M3 Task 9: psid_ctl's interrupt half, sid_advance, audio.c's
+/// player paths), one chip and two, LIVE showing: the tune's writes placed at their cycles run
+/// only from SRAM too.
+#[test]
+fn the_audio_interrupt_runs_only_from_sram_while_a_tune_plays() {
+    let Some((_, fw)) = fixture("the SRAM audio test") else {
+        return;
+    };
+    let example = gt2_ref::examples()
+        .into_iter()
+        .find(|(n, _)| n == "dojo.sng")
+        .unwrap()
+        .1;
+    for sid in [0xD400, 0xD420] {
+        let file = sidou_tests::psid::packed(&example, sid);
+        let mut flash = common::settled_flash(&fw.image);
+        common::put_file(&mut flash, "TUNE", sidou_sys::STORE_FILE_SID, &file);
+        let mut m = Machine::boot_blank(&fw.image);
+        m.soc.flash.mem.copy_from_slice(&flash);
+        common::run_past_boot(&mut m, &fw);
+        // the hook (platform/fm1/main.c psid_test_req: op, song, name[17], result)
+        let hook = fw.symbol("psid_test_hook");
+        for (i, b) in b"TUNE\0".iter().enumerate() {
+            m.soc.write8(hook + 8 + i as u32, *b);
+        }
+        m.soc.write32(hook, 1);
+        m.run_ms(700); // the song let go, the chips made fresh, the tune's init and its start
+        m.watch_alnk_pcs(ram_text(&fw));
+        m.run_ms(400);
+        let ctl = fw.symbol("player_isr");
+        let writes = m
+            .soc
+            .read32(ctl + sidou_sys::ilp32::psid_ctl::writes as u32);
+        let blocks = m
+            .soc
+            .read32(ctl + sidou_sys::ilp32::psid_ctl::blocks as u32);
+        assert!(
+            writes > 100 && blocks > 100,
+            "the tune did not play ({writes} writes)"
+        );
+        let outside: Vec<String> = m
+            .alnk_pcs_outside
+            .iter()
+            .map(|&pc| fw.function_at(pc))
+            .collect();
+        println!(
+            "a tune at ${sid:04X}: {blocks} blocks, {} instructions at the ALNK0 level from SRAM, \
+             {} distinct PCs elsewhere",
+            m.alnk_pcs_inside,
+            outside.len()
+        );
+        assert!(
+            outside.is_empty(),
+            "the audio interrupt runs code outside .ram_text while a tune plays: {outside:?}"
+        );
+    }
+}
+
 /// pi32v2 ELF relocation types (JieLi's binutils; the numbers checked against
 /// `objdump -r` names on the build's objects).
 const R_LONG_JUMP_23M2: u32 = 2; // call and goto: PC-relative, about +-4 MB

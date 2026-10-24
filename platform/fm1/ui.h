@@ -35,6 +35,10 @@ void ui_set_panel(panel* p);
 /* The song's player for the song views (app/song_transport.h, main.c's binding over
  * song_ctl). */
 void ui_set_song(const song_transport* t);
+/* A .sid tune takes the song's memory (on 1; M3, main.c): the song views lose their transport
+ * and refuse to open (app/views.h views_tune). 0 while they cannot let it go now (an edit in
+ * flight): ask again. Off: the transport ui_set_song gave back, the views open again. */
+int ui_tune(int on);
 /* A song read; back: song_io_returning's (the song views keep their places). */
 void ui_song_loaded(int back);
 void ui_set_song_io(song_io* io);
