@@ -249,9 +249,10 @@ static const uint8_t template_orders[] = {1, 2, 0, 255, 0, 2, 1, 255, 0, 2, 2, 2
 static const uint8_t template_lead[2][GT2_INSTR_BYTES] = {
     {0x09, 0xa8, LEAD_WAVE, 1, 0, 0, 0, 2, 0x41, 'P', 'U', 'L', 'S', 'E'},
     {0x02, 0x98, LEAD_WAVE + 2u, 1, 0, 0, 0, 2, 0x41, 'B', 'A', 'S', 'S'}};
-/* The lead's and the bass's rows: a pulse held, each looping on itself. */
-static const uint8_t template_lead_wave[2][4] = {{0x41, 255, 0x41, 255},
-                                                {0x80, LEAD_WAVE, 0x80, LEAD_WAVE + 2u}};
+/* The lead's and the bass's rows: a gated pulse at the note played (the right column's
+ * relative note 0; $80 there would keep the frequency unchanged, so never set it: silence),
+ * then a jump to 0, which stops the table and leaves the pitch to the pattern's commands. */
+static const uint8_t template_lead_wave[2][4] = {{0x41, 255, 0x41, 255}, {0, 0, 0, 0}};
 static const uint8_t template_counts[] = {2u + GT2_KIT_DRUMS + DIGI_DRUMS,
                                           GT2_KIT_WAVE_ROWS + 4u,
                                           GT2_KIT_PULSE_ROWS,

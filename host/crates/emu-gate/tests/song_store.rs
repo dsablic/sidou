@@ -840,3 +840,56 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
     assert_eq!(name(&mut m, &fw), "NIGHT");
     assert_eq!(song(&mut m, &fw).write(true), bytes);
 }
+
+/// Zero crossings and RMS of a stretch of the audio: a pitched note crosses zero hundreds of
+/// times a second, an envelope on a frozen oscillator (a frequency never set) only thumps.
+fn tone(audio: &[i16]) -> (usize, f64) {
+    let zc = audio
+        .windows(2)
+        .filter(|w| (w[0] < 0) != (w[1] < 0))
+        .count();
+    let sum: f64 = audio.iter().map(|&x| f64::from(x).powi(2)).sum();
+    (zc, (sum / audio.len().max(1) as f64).sqrt())
+}
+
+/// NEW right after SIDOU LOOP: STEP's audition and PLAY sound the template's lead at its
+/// pitch. Its wavetable once kept the frequency unchanged ($80 on the right), so a note
+/// never set it and the voice stayed at 0 Hz: an envelope's thump, no tone.
+#[test]
+fn a_new_song_plays_and_auditions_its_lead_at_pitch() {
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    complete(&mut m, &fw, NEW, "");
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(SETTLE_MS);
+    assert_eq!(
+        top_view(&mut m, &fw),
+        fw.symbol("step_view_view"),
+        "STEP is up"
+    );
+    let before = m.soc.periph.audio.len();
+    press(&mut m, PANEL_KEY_ID0 as u8);
+    m.run_ms(400);
+    let (zc, rms) = tone(&m.soc.periph.audio[before..]);
+    println!("audition: {zc} zero crossings, rms {rms:.0}");
+    assert!(
+        zc > 40 && rms > 200.0,
+        "the audition is silent: {zc} crossings, rms {rms:.0}"
+    );
+    for k in [4u8, 8, 12] {
+        press(&mut m, PANEL_KEY_ID0 as u8 + k);
+        m.run_ms(400);
+    }
+    let before = m.soc.periph.audio.len();
+    press(&mut m, PANEL_BTN_PLAY as u8);
+    m.run_ms(3000);
+    let (zc, rms) = tone(&m.soc.periph.audio[before..]);
+    println!("play: {zc} zero crossings, rms {rms:.0}");
+    assert!(
+        zc > 200 && rms > 300.0,
+        "PLAY is silent: {zc} crossings, rms {rms:.0}"
+    );
+    press(&mut m, PANEL_BTN_PLAY as u8);
+    m.run_ms(500);
+    check_passes(&m, "a NEW song's steps played");
+}

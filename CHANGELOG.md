@@ -93,6 +93,14 @@ All notable changes are documented here. The format follows
   The digi drums cost the audio interrupt less than before (9.47 instructions a sample, was
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 
+### Fixed
+- **A NEW song's lead and bass sound at their notes.** Their wavetable rows kept the frequency
+  unchanged (`$80` on the right, GoatTracker's "keep frequency"), so no note ever set it: STEP's
+  and TRACKER's auditions and PLAY gave only a faint thump on a voice stuck at 0 Hz (since NEW
+  came in, 0.2.0). The rows now play the note (relative note `00`) and end with `FF 00`
+  (the table stops, so the pattern's slides and vibrato still move the pitch). Songs saved
+  from NEW before keep their rows: set the lead's and bass's WAVE right column to `00` in TABLE.
+
 ## [0.3.1] - 2026-10-23
 
 ### Fixed
