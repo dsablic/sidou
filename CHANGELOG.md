@@ -100,6 +100,11 @@ All notable changes are documented here. The format follows
   came in, 0.2.0). The rows now play the note (relative note `00`) and end with `FF 00`
   (the table stops, so the pattern's slides and vibrato still move the pitch). Songs saved
   from NEW before keep their rows: set the lead's and bass's WAVE right column to `00` in TABLE.
+- **The first tap after picking an instrument auditions it in full.** An instrument the song
+  does not use yet waits a few calls for the player to take its tables in; a step key let go
+  meanwhile released the note right after its first call, so the first tap after PRESETS (or any
+  audition of a new instrument) gave a click of its first wave step instead of the instrument,
+  and the drums all sounded alike. The note now sounds as long as the key was held.
 
 ## [0.3.1] - 2026-10-23
 

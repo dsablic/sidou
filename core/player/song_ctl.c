@@ -622,7 +622,7 @@ static uint8_t cancel_jams(song_ctl* sc) {
             mask |= (uint8_t)(1u << ch);
         sc->jam_wait[ch][0] = 0u;
     }
-    sc->jam_release = 0u;
+    sc->jam_release = sc->jam_timed = 0u;
     return mask;
 }
 
@@ -731,9 +731,19 @@ int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
     if (voice >= GT2_PLAY_CHANNELS || (note > 95u && note != SONG_JAM_RELEASE) ||
         instr > GT2_MAX_INSTR)
         return 0;
+    uint8_t bit = (uint8_t)(1u << voice);
     if (note == SONG_JAM_RELEASE && sc->jam_wait[voice][0]) {
-        sc->jam_release |= (uint8_t)(1u << voice);
+        if (!(sc->jam_release & bit)) /* sounding: due after its lateness; else its hold */
+            sc->jam_at[voice] = (sc->jam_timed & bit) ? sc->samples + sc->jam_at[voice]
+                                                      : sc->samples - sc->jam_at[voice];
+        sc->jam_release |= bit;
         return 1;
+    }
+    if (sc->jam_wait[voice][0] == 2u && ((sc->jam_release | sc->jam_timed) & bit)) {
+        /* a retained note that sounds (or its release waits): the new note takes the voice */
+        sc->jam_wait[voice][0] = 0u;
+        sc->jam_release &= (uint8_t)~bit;
+        sc->jam_timed &= (uint8_t)~bit;
     }
     if (sc->jam_wait[voice][0])
         return 0;
@@ -762,6 +772,8 @@ int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
             sc->jam_wait[voice][0] = 1u;
             sc->jam_wait[voice][1] = (uint8_t)note;
             sc->jam_wait[voice][2] = (uint8_t)instr;
+            sc->jam_at[voice] = sc->samples;
+            sc->jam_timed &= (uint8_t)~bit;
             return 1;
         }
     } else if (room(sc) < 1u) {
@@ -918,16 +930,24 @@ static void poll_jams(song_ctl* sc) {
         if (wait[0] != 2u || (int32_t)(applied - sc->jam_seq[ch]) < 0 ||
             sc->jam[ch][0] || sc->player.chn[ch].newnote)
             continue;
-        if ((sc->jam_release >> ch) & 1u) {
-            if (room(sc) < 1u)
-                continue;
-            song_cmd c;
-            cmd_init(&c, SONG_CMD_JAM);
-            c.a = (uint8_t)ch;
-            c.b = SONG_JAM_RELEASE;
-            push(sc, &c);
-            sc->jam_release &= (uint8_t)~(1u << ch);
+        /* It sounds. Its release goes as long after it as its key was held: a retained note
+         * sounds late, and a release at once would cut it to a call. jam_at: the sample it was
+         * asked at, its hold (released) or its lateness (held); then the release's sample. */
+        uint8_t bit = (uint8_t)(1u << ch);
+        uint8_t off = (uint8_t)(sc->jam_release & bit);
+        if (!(sc->jam_timed & bit)) {
+            sc->jam_at[ch] = off ? sc->samples + sc->jam_at[ch] : sc->samples - sc->jam_at[ch];
+            sc->jam_timed |= bit;
         }
+        if (!off || (int32_t)(sc->samples - sc->jam_at[ch]) < 0 || room(sc) < 1u)
+            continue;
+        song_cmd c;
+        cmd_init(&c, SONG_CMD_JAM);
+        c.a = (uint8_t)ch;
+        c.b = SONG_JAM_RELEASE;
+        push(sc, &c);
+        sc->jam_release &= (uint8_t)~bit;
+        sc->jam_timed &= (uint8_t)~bit;
         wait[0] = 0u;
     }
     if (!sc->jam_live || sc->state == SONG_LOADING || sc->state == SONG_IDLE ||

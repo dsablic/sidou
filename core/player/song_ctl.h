@@ -320,6 +320,12 @@ typedef struct song_ctl {
     uint8_t digi_ok;
     uint8_t digi_of[256];
     uint16_t digi_from[SONG_DIGI_KINDS];
+    /* A retained jam's timing (the main loop's, after the interrupt's fields): the sample it
+     * was asked at, or how long its key was held once let go; once it sounds (bit v of
+     * jam_timed), how late it sounds, or the sample its release is due once let go. A retained
+     * note sounds as long as its key was held, not a call. */
+    uint32_t jam_at[GT2_PLAY_CHANNELS];
+    uint8_t jam_timed;
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
