@@ -428,8 +428,8 @@ fn speed_bit(h: &psid_header, n: u32) -> bool {
 
 /// E8: SIDOU's call times against the period rule (`docs/reference/psid.md`, "Time", "The
 /// period", "The clock"), restated here from the format and the C64: a VBI song's period is
-/// the frame of its clock (PAL 19,656 cycles, NTSC 17,095), a CIA song's CIA 1 timer A's latch
-/// + 1 as the tune last wrote it before the previous call returned (from the KERNAL's `$4025`
+/// the frame of its clock (PAL 19,656 cycles, NTSC 17,095), a CIA song's CIA 1 timer A's
+/// latch plus 1 as the tune last wrote it before the previous call returned (from the KERNAL's `$4025`
 /// PAL, `$4295` NTSC), with no floor. The first play call is at the first period boundary
 /// after init's return; each next one's interrupt a period after the last one's; a call that
 /// returns after it (not on it) is an overrun, the next call starts at its return, and the
