@@ -17,6 +17,7 @@ lists the prerequisites.
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes; **the cross-check**: the same packed player on SIDOU's own 6502 (`core/cpu6502`, three builds), every call's ordered SID writes, cycles and return registers equal to `mos6502`'s, over every example, subtune and option set (`--test sidou_cpu`) and the showcase songs (`cargo test --release -p sidou-tests --test showcase_cpu`) | `crates/gt2-ref/`, `crates/sidou-tests/tests/showcase_cpu.rs` |
 | The PSID environment (calls, the bank register, periods and speed bits, PAL/NTSC, late calls, the limits, slicing at every size 1-5,000, the count's wrap), on tunes assembled at test time | `cargo test --release -p sidou-tests --test psid_env` | `crates/sidou-tests/tests/psid_env.rs`, `src/psid_fixtures.rs` (strict-mode `gt2_ref::assemble`), [docs/reference/psid.md](docs/reference/psid.md) |
+| The PSID oracle: SIDOU's PSID environment against m6502.h + FM-1 SID's `psid.c`, call by call, with the expected differences (GoatTracker's examples and SIDOU's songs, every subtune, at `$D400` and as 2SID at `$D420`; Task 6's fixtures; the vendored files and the derived copy) | `cargo test --release -p psid-ref`; the user's tunes with `SIDOU_PSID_DIR=<dir> ... --test oracle -- --ignored` (report in `build/psid-ref/report.txt`) | `crates/psid-ref/`, [the section below](#the-psid-oracle-m3) |
 | SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks; on fm1-emu: Dormann, the cost per cycle: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget -- --nocapture`) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
@@ -470,6 +471,65 @@ goes through the hooks with the cycle stamp the device gives an I/O access.
 Instructions are not device cycles: flash day measures the difference (`docs/hardware.md`,
 "Open checks"). `flash_budget.rs` also holds M3's stage (`("M3", 534,000)`, `M3_START` plus
 M3's 28,000), which `IMAGE_CEILING` takes over when Task 9 merges device code.
+
+### The PSID oracle (M3)
+
+`crates/psid-ref` (M3 Task 7) runs a tune on SIDOU's PSID environment (`core/psid/psid_env.c` on
+`core/cpu6502`, voice shadows of fresh chips answering the SID reads) and on an oracle built
+from floooh/chips' `m6502.h` and FM-1 SID's `psid.c` (`third_party/chips`,
+`third_party/fm1-sid-player`, both vendored unmodified, test-only), and compares them call by
+call. The oracle is `c/psid_oracle.c`, a derived copy of `psid.c` whose only additions, between
+`psid-ref: begin` and `end` markers, are its notice, a log of the I/O page's reads and a
+memory read-back for `$01`; a test checks the vendored files' SHA-256s and that the copy
+without those blocks is the original byte for byte.
+
+- **Each side's calls** (`psid_ref::run`, `psid_ref::sidou::run`): init, then play calls, each
+  with its start, its length, `$01` at its start, its SID writes (cycle in the call, register,
+  value; SIDOU's with the chip and the address) and its I/O reads (cycle, address, value). The
+  oracle is scheduled as `psidlog.c` schedules it (PAL, a frame boundary after init, then
+  `psid_period`); SIDOU's side as the player will run it (its clock, the period rule).
+- **The comparison** is by call index, so the two sides' different periods do not shift the
+  calls. In each call, in time order: `$01` mapping the I/O page the same way, every read
+  SIDOU made also made by the oracle at the same cycle and address with the same value
+  (m6502.h's dummy reads, which SIDOU's core does not send to the I/O page, are not compared),
+  the writes equal (cycle, register, value; the chip aside, since `psid.c` folds every SID into
+  one), the lengths equal. SIDOU's chip is checked against each write's address separately. The
+  first difference must be one of these, and ends that tune's comparison with the rule named;
+  anything else fails the test:
+
+  | # | Expected difference | SIDOU | `psid.c` |
+  |---|---|---|---|
+  | E1 | the bank register at a call's start | per call, from its address | `$37` once at load; a value that maps the I/O page the same way (`$36`/`$35`/`$37`: neither side has ROMs) shows only to a tune reading `$01`, so the comparison goes on and E1 explains a later difference no other rule does |
+  | E2 | a SID read (OSC3, ENV3, the POTs, a write-only register) | the voice shadow | random OSC3, 0 for the rest |
+  | E3 | a raster read (`$D011`, `$D012`) | the absolute cycle, PAL or NTSC geometry (one jump at the 32-bit wrap) | from the call's start, PAL |
+  | E4 | a CIA 1 timer A read (`$DC04`, `$DC05`) | the counter | the latch |
+  | E5 | an interrupt flag read (`$D019`, `$DC0D`, `$DD0D`) | the flags | 0 |
+  | E6 | any other I/O read | the last write | 0 |
+  | E7 | a call cut at `psid.c`'s cap (2 frames for play, 5 PAL seconds for init) | runs on to its return, or its own limit | stopped |
+  | E9 | a third SID's registers | writes dropped (counted), reads 0 | folded into its one SID inside `$D400-$D7FF` (OSC3 random), dropped outside (the expansion areas read 0 on both) |
+  | E10 | a JAM | the tune stops (`6502 JAM AT`) | m6502.h stays busy: runs to the cap |
+  | E11 | an interrupt call (play address 0) | the IRQ's stack (and the KERNAL entry's through `$0314`: S `$F9`, X = S), P pushed `$20` | S `$FC`, X 0, P pushed as the last call left it |
+  | E12 | a second SID outside `$D400-$D7FF` (`$DE00-$DFFF`) | chip B | writes dropped, reads 0 |
+
+  **E8**, the timing between calls (CIA periods under 1,000, the speed bit for songs above 32,
+  NTSC frames and the NTSC latch, late calls after an overrun), is checked separately:
+  SIDOU's call times against the period rule (`compare::check_timing`, restated from the format
+  and the C64), by assertion; the oracle's times are not used.
+- **The corpus** (`tests/oracle.rs`): every GoatTracker 2 example and SIDOU's songs
+  (`assets/songs/*.sng`), every subtune, packed by `gt2-ref` into PSID v2 at the default options
+  and at `$D420` as a 2SID tune (v3, the second SID there), 60 s each in release (10 s in debug):
+  44 songs and subtunes, 132,352 calls and 1,987,572 writes, all equal with no difference at
+  all. Task 6's fixtures (`sidou_tests::psid_fixtures`), 3 s each, each with the rule and the
+  call its first difference must be. Task 4's crafted headers are SIDOU's alone: `psid.c` reads
+  past its buffer on them, so the oracle refuses any file SIDOU's parser refuses.
+- **The user's tunes** (`--ignored the_users_tunes_against_the_oracle`, `SIDOU_PSID_DIR` naming a
+  directory; `SIDOU_PSID_SECONDS`, 60 by default): every `.sid` under it, every subtune, the same
+  comparison and timing check, a table of the tunes, the calls compared and what ended each in
+  `build/psid-ref/report.txt` (never committed). Measured 2026-10-24 on the M3 study's 24 tunes:
+  16 PSID tunes, 88 subtunes, every one equal for its 60 s; the 8 RSID tunes refused.
+- **A planted bug is caught:** with `STA abs,X`'s write stamped a cycle early (a scratch change
+  to `core/cpu6502/cpu6502.c`'s `W_ABX`), the corpus fails at `2xtest.sng`'s first play call
+  (`$D404` at cycle 489 against the oracle's 490).
 
 ### Song player register match
 

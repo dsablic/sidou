@@ -2,10 +2,11 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Compiles every C file the host tests build (the SOURCES of host/crates/sidou-sys/build.rs,
-# the gt2-ref shim and the sidou-pack harnesses) with GCC 13 in the build image, with the same
-# flags as the cc crate's release build and warnings as errors. macOS's clang hides some errors
-# that GCC reports; this is what CI's old `gcc` job caught, in seconds. Run it from the
-# repository root or anywhere; it starts Docker through tools/fm1-docker.
+# the gt2-ref shim, the PSID oracle and the sidou-pack harnesses) with GCC 13 in the build
+# image, with the same flags as the cc crate's release build and warnings as errors. macOS's
+# clang hides some errors that GCC reports; this is what CI's old `gcc` job caught, in
+# seconds. Run it from the repository root or anywhere; it starts Docker through
+# tools/fm1-docker.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 if [ -z "${SIDOU_BUILD_IMAGE:-}" ]; then exec "$root/tools/fm1-docker" sh "$root/tools/gcc-check" "$@"; fi
@@ -47,9 +48,14 @@ for f in gt2ref_shim.c gt2ref_asm.c gt2ref.c; do
         -I$shim -I$gt -DGT2REF_SRC_DIR='"x"' -c "$shim/$f" -o /dev/null
 done
 
+# The PSID oracle (host/crates/psid-ref): the derived copy of FM-1 SID's psid.c with
+# m6502.h, warnings on, as in its build.rs.
+gcc -O3 -std=c11 -Wall -Wextra -Werror -Ithird_party/fm1-sid-player -Ithird_party/chips \
+    -c host/crates/psid-ref/c/psid_oracle.c -o /dev/null
+
 # The packager's harnesses: warnings on, as in their build.rs.
 for f in ota_harness flash_hooks flash_spike_guard; do
     gcc -std=c11 -Wall -Wextra -Wno-unused-function -Iplatform/fm1/src -Iplatform/fm1 \
         -c "host/crates/sidou-pack/harness/$f.c" -o /dev/null
 done
-echo "gcc-check: $n firmware sources, the gt2-ref shim and the harnesses compiled by GCC 13"
+echo "gcc-check: $n firmware sources, the gt2-ref shim, the PSID oracle and the harnesses compiled by GCC 13"

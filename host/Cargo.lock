@@ -534,6 +534,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "psid-ref"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "gt2-ref",
+ "sha2",
+ "sidou-sys",
+ "sidou-tests",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
