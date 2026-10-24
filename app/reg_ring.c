@@ -364,6 +364,14 @@ __attribute__((noinline, unused)) static int free_filter(reg_ring_chips* c, sid_
     return 0;
 }
 
+/* reg_ring.h. Set, not clocked or rendered through: rendering the release (about 450
+ * samples) took one main-loop pass past its instruction budget (song_store.rs). */
+void reg_ring_power_on(sid* s) {
+    for (int v = 0; v < 3; ++v) {
+        sid_env_power_on_done(&s->env[v]);
+    }
+}
+
 /* Initialises the spare for chip x for model with its character, at once (sid_init resets
  * it); the ring must be empty (no swap or stage queued). Any ramp still running on the chip
  * ends there: the spare has every control as asked. */
@@ -390,6 +398,9 @@ static void prepare_spare(reg_ring_chips* c, uint32_t x, uint8_t model) {
         table = c->prep.table;
     }
     sid_character_ramp_reset(&c->ramp[x], &c->ramp[x].target, table);
+    if (x) {
+        reg_ring_power_on(s);
+    }
     c->next[x] = spare;
     c->spare_model = (uint8_t)m;
     c->spare_for = (uint8_t)x;
@@ -409,6 +420,9 @@ static int take_prepared(reg_ring_chips* c, uint32_t x, uint8_t model) {
     sid_character want = ramp->target;
     sid_character_ramp_reset(ramp, &c->prep.c, c->prep.table);
     ramp->target = want;
+    if (x) {
+        reg_ring_power_on(c->prep.s);
+    }
     c->next[x] = third(c->next);
     c->spare_model = model;
     c->spare_for = (uint8_t)x;

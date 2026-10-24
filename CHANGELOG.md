@@ -120,6 +120,11 @@ All notable changes are documented here. The format follows
   meanwhile released the note right after its first call, so the first tap after PRESETS (or any
   audition of a new instrument) gave a click of its first wave step instead of the instrument,
   and the drums all sounded alike. The note now sounds as long as the key was held.
+- **PLAY is quiet until the song's first note.** The first PLAY after power-on gave a thud
+  (a DC bump that died away over about 150 ms) before the music: chip B, which renders only
+  while in use, played the power-on release of its envelopes only when the keys moved to it, at
+  their volume and filter (since chip B came in, 0.2.0). Chip B's power-on now plays out where
+  the chip is made, silently.
 
 ## [0.3.1] - 2026-10-23
 

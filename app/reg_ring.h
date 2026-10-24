@@ -215,6 +215,17 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
 sid* reg_ring_chip(reg_ring_chips* c);
 /* The sid chip (0 A, 1 B) renders now. */
 sid* reg_ring_chip_of(reg_ring_chips* c, uint32_t chip);
+/* A fresh sid's envelopes release from SID_ENV_POWER_ON (sid_init, as reSIDfp's power-on):
+ * on chip A that plays out at once, as it renders all the time, but chip B renders only while
+ * in use (platform/fm1/audio.c), so its release would wait for its first use and play then,
+ * under the registers its user has just written: with the keys' setup at PLAY, a DC that
+ * decayed over 150 ms, a thud before the first note. So each sid made for chip B (the spare
+ * its reset takes) plays its power-on out first, as a chip powered since its reset would
+ * have: its envelopes where their release from SID_ENV_POWER_ON ends (sid_env.h
+ * sid_env_power_on_done), at once, before any write; at sid_init's volume 0 nothing of it was
+ * ever heard. The main loop's, on a sid nothing renders; the host's models of the firmware
+ * call it where they make chip B. */
+void reg_ring_power_on(sid* s);
 
 /* Consumer: applies every committed entry in order, each to the chip it names. A SID register
  * goes to sid_write on that chip's sid; a LIVE_REG_RESET swaps the spare in for the chip (it
