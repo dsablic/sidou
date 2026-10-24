@@ -829,7 +829,7 @@ USB replug:
 - [ ] The same after deleting the device from the OS's MIDI setup (macOS:
   Audio MIDI Setup) and replugging.
 - [ ] *(Since USB audio out.)* The unit is one USB device with an audio input
-  beside its MIDI port (section 16); `--info` and the reinstall above pass with
+  beside its MIDI port (section 19); `--info` and the reinstall above pass with
   it, also while a DAW records from it.
 
 If an item fails, record it, and get back to a working firmware with the

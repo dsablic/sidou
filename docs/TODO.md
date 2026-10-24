@@ -136,7 +136,7 @@ Follow-ups that aren't tied to a milestone task yet.
   POOL +3,088. Host tests: Felucca's `uac_test.c` as it is and
   `host/crates/sidou-pack/tests/usb_audio.rs`; emu-gate `tests/usb.rs` records the DAC's output
   through a modelled EP4. Open: the hardware checks, [hardware-test.md](hardware-test.md)
-  section 16.
+  section 19.
 - **Where:** `platform/fm1/midi.c` (`FELUCCA_UAC 0` before it includes
   `src/usb.c`) and `platform/fm1/audio.c`.
 - **Problem:** SIDOU's USB is MIDI only. `midi.c` builds Felucca's
