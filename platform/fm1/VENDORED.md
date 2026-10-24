@@ -143,12 +143,18 @@ without the hooks (checked 2026-10-20).
 ### Use
 
 - **Including it:** `midi.c` defines the hooks, then includes `src/usb.c`,
-  SIDOU's `usb/midi_uart.c` and `src/ota.c` into one translation unit. The
-  hooks are:
+  SIDOU's `usb_audio.c` (below), SIDOU's `usb/midi_uart.c` and `src/ota.c` into
+  one translation unit. The hooks are:
   - `RING_PUBLISH()`, `FELUCCA_OTA 1` and `FELUCCA_ID`;
-  - `FELUCCA_CDC 0` and `FELUCCA_UAC 0`: Felucca's own switches, MIDI
-    streaming alone on EP1, with no CDC console and no USB audio;
+  - `FELUCCA_CDC 0` and `FELUCCA_UAC 1`: Felucca's own switches, MIDI
+    streaming on EP1 and the USB audio input on EP4 (since 2026-10-23, below), with
+    no CDC console; `FELUCCA_UAC_48K` and `FELUCCA_UAC_AS_FIRST` at `usb.c`'s
+    defaults (on); `HALF_FRAMES`, Felucca's block, is SIDOU's (128);
   - the two above.
+
+  The switches and the two string hooks are in `usb_config.h`, which the host
+  harness includes too (`host/crates/sidou-pack/harness/uac_harness.c`), so the
+  descriptors it tests are the device's.
 
   `usb.c`'s `sysex_byte` is renamed to `ota_sysex_byte` by a macro around the
   include, because `app/sysex.h` has a `sysex_byte` too. `fm1_delay_ms` goes to
@@ -196,6 +202,66 @@ without the hooks (checked 2026-10-20).
 - **MIDI out:** `midi_send` and the SysEx replies call `midi_out_event` from
   the main loop. `ep1_tx` fills IN packets of up to 64 bytes, SysEx before
   MIDI, as Felucca does.
+
+### USB audio out (`FELUCCA_UAC`, since 2026-10-23)
+
+`usb.c`'s audio input is on, as in Felucca's own firmware: a class-compliant
+UAC1 input, 16-bit stereo at 44.1 kHz or 48 kHz (the host's choice, SET_CUR),
+on an isochronous asynchronous IN endpoint (EP4), beside USB-MIDI in one
+device (bcdDevice 3.28; the configuration descriptor grows from 101 to 178
+bytes). Nothing in `usb.c` changed: its producer (`uac_render_start`, then
+`uac_tap` a block at a time, which at 48 kHz resamples through
+`src/uac_fir.h`'s polyphase FIR) fills a ring that its consumer
+(`uac_service`, one packet a USB frame) empties.
+
+- **`src/uac_fir.h`**, the resampler's table, which `usb.c` includes with
+  `FELUCCA_UAC_48K`: Felucca's file as it is, from Felucca's tree at `5738617`
+  (2026-10-16, the copy at hand; its changes after 1.6.1 do not touch it, nor
+  `usb.c`, which is byte-identical there but for SIDOU's hooks). Felucca's own
+  test (below) checks every tap against the prototype computed in double
+  precision.
+- **Who calls the producer.** Felucca calls it from its audio interrupt
+  (`audio.c`: `uac_render_start` before a render, `uac_tap` after each 32-frame
+  block). SIDOU's audio interrupt runs from `.ram_text` and reads no flash
+  (`app.ld`; emu-gate `tests/ram_audio.rs`), and the producer does not fit
+  there: it is about 800 bytes of code (432 of them the resampler) against
+  RAMTEXT's last bytes, and its 7,680-byte table would have to move to RAM. Nothing
+  of it must run during a flash operation (those mask every interrupt). So the
+  audio interrupt does nothing for USB audio, and SIDOU's `usb_audio.c`
+  (included after `usb.c`, its interface `usb_audio.h`) runs the producer from
+  the TIMER5 interrupt, from flash:
+  - at the first tick after a render (`main.c`, `audio_block_end` moved and no
+    render open), the block is still in the I2S half buffer the render wrote,
+    the DMA's free half, until the DMA moves on (which raises the half's
+    pending flag; then the block is counted as skipped). While a host records,
+    `usb_audio_take` copies it (int16 << 8 back to int16) into a buffer in POOL;
+  - `usb_audio_tick`, every tick, runs `usb.c`'s producer on it:
+    `uac_render_start`, then `uac_tap` on a quarter of the block (32 frames,
+    Felucca's own block size) a tick, so no tick is long (at 48 kHz about
+    11,000 instructions);
+  - TIMER5 calls `uac_service` nested in a render at the USB poll's tick
+    (`usb_audio_isr`), as Felucca's `fm1_timer5_irq` does: `usb_poll` waits for
+    the render's end, and a render can outlast a USB frame.
+
+  The block is what the DAC plays (after the effects, the limiter, MASTER and the
+  hold's ramps; a held block is silence). The ring's fill is taken when the block
+  goes in, its lowest point, so it moves with the render's length from block to
+  block (Felucca's taps spread over the render move it less). Within SIDOU's audio
+  budget the ring never runs dry (host-tested,
+  `host/crates/sidou-pack/tests/usb_audio.rs`).
+- **RAM:** in POOL the ring (2,048 bytes, placed by `app.ld`) and the block
+  (1,036); in the RAM region the resampler's history (264), EP4's IN buffer (196)
+  and `uac` (72), which the compiler merges into globals no linker rule can name
+  (emu-gate `tests/usb.rs` checks EP4's buffer is on an 8-byte boundary, as EP1's
+  must be). RAMTEXT: none. The table stays in flash.
+- **Tests.** Felucca's `tests/uac_test.c`, as it is, from the same tree
+  (`host/crates/sidou-pack/harness/felucca/uac_test.c`; only its `main` is
+  renamed, by a define), runs on SIDOU's `usb.c` without CDC: the descriptors as
+  a host parses them, the ring against packets, the rates, the resampler against
+  a double-precision one, the 48 kHz stream. SIDOU's own (`tests/usb_audio.rs`)
+  check SIDOU's descriptors and the hand-over in time against Felucca's producer
+  fed directly; emu-gate `tests/usb.rs` records the DAC's output through a model
+  of EP4, bit for bit at 44.1 kHz.
 
 ### How `midi.c` is built (the flags rule)
 

@@ -138,11 +138,19 @@ enum {
     SONG_LOCK_DAC,
     SONG_LOCK_THUMP,
     SONG_LOCK_BLEED,
+    SONG_LOCK_CHANCE,      /* 0..100: the step's chance to play, in percent (none: 100); not
+                            * a register: the step's note is dropped on a pass that loses the
+                            * roll (song_chance_plays), the row's commands run on */
     SONG_LOCK_PARAMS
 };
 #define SONG_LOCK_BYTES 5u /* a record: pattern, row, parameter, value (u16) */
 /* A parameter's largest value, 0 for none. */
 uint32_t song_lock_max(uint32_t param);
+/* A 32-bit mix (a multiply-xorshift): the generative play's random, as seedable as its input. */
+uint32_t song_mix(uint32_t x);
+/* The roll for a step with chance percent (0-100): 1 if pass n of seed plays it. The same
+ * seed and n always give the same answer; over many n a chance of c plays c in 100. */
+int song_chance_plays(uint32_t seed, uint32_t n, uint32_t chance);
 /* A file's LOCK chunk (version 1) checked as it is read (gt2_sng_read, gt2_stream): every
  * record's pattern, row, parameter and value in range (song_lock_max) and the records in
  * strictly increasing (pattern, row, parameter) order, as song_lock_put keeps them. A chunk

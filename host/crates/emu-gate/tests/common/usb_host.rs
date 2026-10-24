@@ -9,17 +9,20 @@
 //! What it models, from platform/fm1/hal/fm1_usb.h and src/usb.c (Felucca's driver):
 //! - the SIE behind CON1 (MUSB's byte map): a write `(r << 8) | v` or a read
 //!   `(r << 8) | 0x4000` while CON0 bit 2 (USB_NRST) is set, done with bit 15 and, for a read,
-//!   the byte in bits 0..7; the indexed endpoint registers 16..23 of EP0 and EP1;
+//!   the byte in bits 0..7; the indexed endpoint registers 16..23 of EP0, EP1 and EP4;
 //! - the interrupt flags INTRTX1, INTRRX1 and INTRUSB, cleared by their read;
 //! - SOF (CON0 bit 13, cleared by writing bit 12) and the frame number, once a frame;
 //! - the endpoint DMA: an IN packet (EP0's data stage, EP1 IN) is read from RAM at the address
 //!   and count registers when the host takes it, at the next frame after TxPktRdy, as the
-//!   controller reads it when the host's IN token comes; a SETUP or an EP1 OUT packet is
-//!   written to RAM at EP0's address or EP1's RX address.
+//!   controller reads it when the host's IN token comes; a SETUP, an EP0 OUT data stage or an
+//!   EP1 OUT packet is written to RAM at EP0's address or EP1's RX address;
+//! - EP4 IN, the USB audio stream (isochronous): while the host records (`ep4_reading`), the
+//!   packet the device readied is read from RAM at EP4's own address and count registers once a
+//!   frame, and a frame that finds none sets TXCSR1's UnderRun, as the chip does.
 //!
 //! What it does not: timing below a frame, NAKs other than EP1 OUT's while its last packet is
-//! unread, data toggles, stalls beyond counting them, EP2..4, the PHY. The chip's own behaviour
-//! is what docs/hardware-test.md checks; this is the firmware's side of it.
+//! unread, data toggles, stalls beyond counting them, EP2 and EP3, the PHY. The chip's own
+//! behaviour is what docs/hardware-test.md checks; this is the firmware's side of it.
 
 use fm1_core::Bus;
 use fm1_soc::Soc;
@@ -27,6 +30,8 @@ use fm1_soc::Soc;
 const CON0: u32 = 0x11800;
 const CON1: u32 = 0x11804;
 const EP0_ADR: u32 = 0x11818;
+const EP4_CNT: u32 = 0x11834;
+const EP4_TADR: u32 = 0x11838;
 
 fn cnt(ep: u32) -> u32 {
     0x11808 + 4 * ep
@@ -44,9 +49,9 @@ fn radr(ep: u32) -> u32 {
 pub struct UsbHost {
     /// FADDR..INDEX (0..15), as written.
     regs: [u8; 16],
-    /// EP0's and EP1's indexed registers 16..23 (CSR0 / TXCSR1 at 17, RXCSR1 at 20, the
-    /// RX count at 22 and 23).
-    ep: [[u8; 8]; 2],
+    /// EP0's, EP1's and EP4's indexed registers 16..23 (CSR0 / TXCSR1 at 17, RXCSR1 at 20,
+    /// the RX count at 22 and 23); EP2 and EP3's slots unused.
+    ep: [[u8; 8]; 5],
     intr_tx: u8,
     intr_rx: u8,
     intr_usb: u8,
@@ -57,6 +62,13 @@ pub struct UsbHost {
     pub in0: Vec<Vec<u8>>,
     /// EP1 IN packets the host has taken.
     pub in1: Vec<Vec<u8>>,
+    /// The host reads EP4 IN once a frame (an audio recorder with the stream selected).
+    pub ep4_reading: bool,
+    ep4_in: bool,
+    /// EP4 IN packets the host has taken.
+    pub in4: Vec<Vec<u8>>,
+    /// Frames whose EP4 IN token found no packet (UnderRun).
+    pub ep4_empty: u32,
     /// STALL handshakes the device asked for on EP0.
     pub stalls: u32,
     /// SIE accesses made while an ALNK0 interrupt was open (nested interrupts included).
@@ -78,7 +90,9 @@ impl UsbHost {
             12 => self.frame as u8,
             13 => (self.frame >> 8) as u8,
             0..=15 => self.regs[r as usize],
-            16..=23 if self.index() < 2 => self.ep[self.index()][(r - 16) as usize],
+            16..=23 if matches!(self.index(), 0 | 1 | 4) => {
+                self.ep[self.index()][(r - 16) as usize]
+            }
             _ => 0,
         }
     }
@@ -115,8 +129,17 @@ impl UsbHost {
                     self.ep1_in = v & 0x01 != 0;
                 }
             }
+            17 if i == 4 => {
+                if v & 0x08 != 0 {
+                    self.ep[4][1] = v & !0x09; // FlushFIFO: nothing pending
+                    self.ep4_in = false;
+                } else {
+                    self.ep[4][1] = v; // TxPktRdy, and UnderRun cleared by the write
+                    self.ep4_in = v & 0x01 != 0;
+                }
+            }
             20 if i == 1 => self.ep[1][4] = v & !0x01, // the packet is released
-            16..=23 if i < 2 => self.ep[i][(r - 16) as usize] = v,
+            16..=23 if matches!(i, 0 | 1 | 4) => self.ep[i][(r - 16) as usize] = v,
             _ => {}
         }
     }
@@ -164,6 +187,17 @@ impl UsbHost {
         self.intr_tx |= 0x01;
     }
 
+    /// EP0's OUT data stage after a SETUP that announced one (SET_CUR's 3 bytes).
+    pub fn out0(&mut self, soc: &mut Soc, data: &[u8]) {
+        let a = soc.read32(EP0_ADR);
+        for (i, b) in data.iter().enumerate() {
+            soc.write8(a + i as u32, *b);
+        }
+        self.ep[0][1] |= 0x01;
+        self.ep[0][6] = data.len() as u8;
+        self.intr_tx |= 0x01;
+    }
+
     /// One EP1 OUT packet; false (NAK) while the last one is still unread.
     pub fn out1(&mut self, soc: &mut Soc, data: &[u8]) -> bool {
         if self.ep[1][4] & 0x01 != 0 {
@@ -201,6 +235,17 @@ impl UsbHost {
             self.ep[1][1] &= !0x01;
             self.intr_tx |= 0x02;
             self.ep1_in = false;
+        }
+        if self.ep4_reading {
+            if self.ep4_in {
+                let (a, n) = (soc.read32(EP4_TADR), soc.read32(EP4_CNT).min(1023));
+                self.in4.push((0..n).map(|i| soc.read8(a + i)).collect());
+                self.ep[4][1] &= !0x01;
+                self.ep4_in = false;
+            } else {
+                self.ep[4][1] |= 0x04; // UnderRun: the IN token found nothing
+                self.ep4_empty += 1;
+            }
         }
     }
 

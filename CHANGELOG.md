@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-24
+
 ### Added
 - **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
   one of the four showcase songs) into a Standard MIDI File in the browser: a track and a MIDI
@@ -19,6 +21,13 @@ All notable changes are documented here. The format follows
   followed), which the page says. `web/songmidi.test.mjs` compares every note's start, end and pitch
   with GoatTracker 2.77's packed player on the showcase songs, SIDOU LOOP and GoatTracker's
   examples (19,853 runs of the gate; fixtures made by `host/crates/gt2-ref/tests/midi_walk.rs`).
+- **Generative play in STEP:** a held step plus ALGORITHM sets the step's **chance** to play on each
+  pass (100 % down to 0, a lock in the LOCK chunk, parameter 9; GoatTracker plays the step always);
+  the roll is seeded and made by the main loop a row ahead, so the audio interrupt only drops the
+  note of a step that lost it. **EDIT + ARP is MUTATE** (two small changes to the lane's pattern:
+  a note nudged within the scale or taken away, or a ghost step added) and **EDIT + SCL is DICE**
+  (a new pattern for the lane, minor pentatonic notes on the eighth grid, or on the sixteenths for
+  a SCNE drum lane): ordinary cell edits, plain GoatTracker 2 data.
 - **The button LEDs show more, in two levels:** the hardware's dim glow means set or available,
   full light active now. ARP is dim while on and flashes on each arpeggio step (once a cycle at
   1-2 frames a step); PLAY is lit on each beat and dim between while the song plays; REC is dim
@@ -53,6 +62,15 @@ All notable changes are documented here. The format follows
   while a digi drum plays, its voice's own sound is muted. They sound the same on either chip
   model (an 8580 plays them as one with the "digi boost"). The samples are synthesized by
   SIDOU's table generator, no recorded material.
+- **Record SIDOU over the USB cable:** the FM-1 is also a class-compliant USB audio input (UAC1,
+  no driver on macOS, Windows, Linux or iPad), beside its USB-MIDI port in one device. A DAW
+  records what the line out plays (after the effects, the limiter and MASTER), 16-bit stereo at
+  44.1 kHz, or 48 kHz resampled, the host's choice. It is Felucca's USB audio input from the
+  same `usb.c`, on as Felucca's firmware has it. The TIMER5 interrupt takes each block from the
+  I2S buffer and feeds it, so the audio interrupt and its SRAM code are unchanged; recording costs
+  the interrupts about 42 instructions a sample at 44.1 kHz and 335 at 48 (the resampler), and
+  nothing while no host records. The installer's updates and SysEx work as before, still over the
+  MIDI port.
 
 ### Changed
 - **The profile's word everywhere:** STATUS names the chip as its model and the profile's word

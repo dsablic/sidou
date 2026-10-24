@@ -58,4 +58,7 @@ for f in ota_harness flash_hooks flash_spike_guard; do
     gcc -std=c11 -Wall -Wextra -Wno-unused-function -Iplatform/fm1/src -Iplatform/fm1 \
         -c "host/crates/sidou-pack/harness/$f.c" -o /dev/null
 done
+# (at -O2, as its build.rs builds it: usb.c's unused SIE functions hold pi32v2 instructions)
+gcc -O2 -std=c11 -Wall -Wextra -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
+    -Iplatform/fm1 -c host/crates/sidou-pack/harness/uac_harness.c -o /dev/null
 echo "gcc-check: $n firmware sources, the gt2-ref shim, the PSID oracle and the harnesses compiled by GCC 13"

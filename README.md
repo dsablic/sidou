@@ -34,7 +34,7 @@ screenshots the tests check.*
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
   its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
   the rest. REC records the keys and the filter knobs while the song plays, and parameter locks
-  are on STEP.
+  are on STEP, with a chance for each step, MUTATE and DICE.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
@@ -42,6 +42,9 @@ screenshots the tests check.*
   GoatTracker's player puts them.
 - **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for
   presets and songs ([midi.md](docs/reference/midi.md)).
+- **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an
+  iPad: a DAW records what the line out plays, in stereo at 44.1 or 48 kHz, over the same cable
+  as USB-MIDI.
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
@@ -60,8 +63,8 @@ flash.
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
 
-1. Download the `.fwsc` file (for example `sidou-0.3.1.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou-0.3.1.fwsc`). The unit then shows
+1. Download the `.fwsc` file (for example `sidou-0.4.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-0.4.0.fwsc`). The unit then shows
    up on USB as "SIDOU FM-1", and later versions install over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
 4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
@@ -151,15 +154,14 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 
 ## Status and roadmap
 
-- **v0.3.1** is released (2026-10-23, [release notes](docs/release-notes/v0.3.1.md)): an
-  install over Felucca boots straight into SIDOU (it detoured through UBOOT for 45 s).
-- **v0.3.0** (2026-10-23, [release notes](docs/release-notes/v0.3.0.md),
-  [CHANGELOG.md](CHANGELOG.md)) was the first wider public release: GoatTracker 2 songs written
-  and played on the FM-1, two SIDs (6581 and 8580) with the chip's character dialled in, STEP
-  with parameter locks, REC over a loop, CHIP SPREAD, chord arpeggios, MIDI and SysEx over USB,
-  help cards on the device. v0.2.0 (2026-10-22) was the first version to run on a real FM-1.
-- **Next:** SETTINGS → RESET, sounds and settings back to factory with the songs kept.
-- **M3** follows: `.sid` playback.
+- **v0.4.0** is released (2026-10-24, [release notes](docs/release-notes/v0.4.0.md),
+  [CHANGELOG.md](CHANGELOG.md)): a SID drum kit and digi drums, generative STEP (chance per
+  step, MUTATE, DICE), recording over the USB cable, the button LEDs in two levels, an ARP
+  helper in TABLE, SETTINGS → RESET, and songs to MIDI on the site.
+- **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
+  (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
+  release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
+- **Next: M3, `.sid` playback** (v0.5.0), in progress: SIDOU's own 6502 plays PSID tunes on the chips.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views and REC have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the

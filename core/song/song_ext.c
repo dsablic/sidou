@@ -372,8 +372,18 @@ int song_ext_set_locks(gt2_song* s, const song_lock* locks, uint32_t n) {
 
 uint32_t song_lock_max(uint32_t param) {
     static const uint16_t max[SONG_LOCK_PARAMS] = {2047u, 15u, 7u, 1u, 4095u,
-                                                   127u,  127u, 127u, 127u};
+                                                   127u,  127u, 127u, 127u, 100u};
     return param < SONG_LOCK_PARAMS ? max[param] : 0u;
+}
+
+uint32_t song_mix(uint32_t x) {
+    x = (x ^ x >> 16) * 0x7feb352du;
+    x = (x ^ x >> 15) * 0x846ca68bu;
+    return x ^ x >> 16;
+}
+
+int song_chance_plays(uint32_t seed, uint32_t n, uint32_t chance) {
+    return (song_mix(seed + n * 0x9e3779b9u) >> 8) % 100u < chance;
 }
 
 /* The LOCK chunk's data (version 1) and its record count; NULL if none or malformed. */

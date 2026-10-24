@@ -25,11 +25,13 @@ const SWITCH_BLOCK_ALLOWANCE: f64 = 1000.0;
 /// changes: ~30 ms each).
 const SWITCH_BLOCKS_OVER_BUDGET: usize = 80;
 /// What the audio target holds today besides the slots, block by block: two chips at the
-/// SID's worst block, the LIVE view's tap (on at power-on) and the ISR's overhead. What is
-/// left of the target is the headroom for the 6502 (M3), which does not exist yet (decision
-/// record 0004, "Worst blocks").
-const AUDIO_REST_AT_WORST: f64 =
-    common::SID_WORST_BLOCK_TWO_CHIPS + common::TAP_PER_SAMPLE + common::ISR_OVERHEAD;
+/// SID's worst block, the LIVE view's tap (on at power-on), the ISR's overhead and a computer
+/// recording over USB audio (usb.rs). What is left of the target is the headroom for the 6502
+/// (M3), which does not exist yet (decision record 0004, "Worst blocks").
+const AUDIO_REST_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS
+    + common::TAP_PER_SAMPLE
+    + common::ISR_OVERHEAD
+    + common::USB_AUDIO_PER_SAMPLE;
 /// Two chips at the SID's worst block, with the LIVE view's tap.
 const TWO_CHIPS_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS + common::TAP_PER_SAMPLE;
 
@@ -165,12 +167,13 @@ fn check(chips: u32) {
     println!("switching: worst block {switch_worst:.0}, {over} blocks above {SLOTS_BUDGET}");
     println!(
         "headroom for the 6502 (M3): {:.0} instructions/sample (target {AUDIO_TARGET} - two \
-         chips' worst block {} - the LIVE tap {} - ISR {} - worst switching block \
-         {switch_worst:.0})",
+         chips' worst block {} - the LIVE tap {} - ISR {} - USB audio {} - worst switching \
+         block {switch_worst:.0})",
         AUDIO_TARGET - AUDIO_REST_AT_WORST - switch_worst,
         common::SID_WORST_BLOCK_TWO_CHIPS,
         common::TAP_PER_SAMPLE,
-        common::ISR_OVERHEAD
+        common::ISR_OVERHEAD,
+        common::USB_AUDIO_PER_SAMPLE
     );
     assert!(
         switch_worst <= SWITCH_BLOCK_ALLOWANCE,
@@ -182,8 +185,8 @@ fn check(chips: u32) {
     );
     assert!(
         AUDIO_REST_AT_WORST + switch_worst <= AUDIO_TARGET,
-        "a switch with two chips at their worst block, the tap and the ISR would cost {:.0}, \
-         over the audio target {AUDIO_TARGET}",
+        "a switch with two chips at their worst block, the tap, the ISR and USB audio would \
+         cost {:.0}, over the audio target {AUDIO_TARGET}",
         AUDIO_REST_AT_WORST + switch_worst
     );
     // Two chips at the SID's worst block and the LIVE view's tap plus every slot's heaviest (the

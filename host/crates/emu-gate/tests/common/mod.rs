@@ -803,6 +803,14 @@ pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1426.0;
 /// chord).
 pub const TAP_PER_SAMPLE: f64 = 4.5;
 
+/// Instructions a sample recording over USB audio adds to the audio interrupt (usb.rs fails
+/// above it): the audio interrupt itself does nothing for it (platform/fm1/usb_audio.h), but
+/// TIMER5's work (a packet, a quarter of the producer) nests in a render now and then. Measured
+/// 0.87 at 44.1 kHz and 1.11 at 48 (a chord held, three turns each). The rest runs in TIMER5
+/// outside renders: every interrupt together gains 41.83 a sample recording at 44.1 kHz and
+/// 335.31 at 48, where it resamples.
+pub const USB_AUDIO_PER_SAMPLE: f64 = 2.0;
+
 /// The audio target, instructions per sample for everything the audio interrupt does (design
 /// doc section 8): slots_budget.rs splits it, latency.rs holds the render allowance to it.
 pub const AUDIO_TARGET: f64 = 2700.0;
@@ -859,9 +867,14 @@ pub const FREE_RAM_MIN: u64 = 10_000;
 /// bytes plus a margin.
 pub const REGION_FREE_MIN: u64 = 5_120;
 // A song plays with two chips at their worst, the effects at their cap, the ISR, the tap, the
-// player and a digi drum: within the audio target.
+// player and a digi drum, while a computer records over USB: within the audio target.
 const _: () = assert!(
-    TWO_CHIPS_PLUS_EFFECTS + TAP_PER_SAMPLE + ISR_OVERHEAD + PLAYER_WORST_BLOCK + DIGI_PER_SAMPLE
+    TWO_CHIPS_PLUS_EFFECTS
+        + TAP_PER_SAMPLE
+        + ISR_OVERHEAD
+        + PLAYER_WORST_BLOCK
+        + DIGI_PER_SAMPLE
+        + USB_AUDIO_PER_SAMPLE
         <= AUDIO_TARGET
 );
 

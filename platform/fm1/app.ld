@@ -122,24 +122,9 @@ SECTIONS
     } > XIP
     .data : ALIGN(4) { _data_start = .; *(.data*) *(.sdata*) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
     _data_load = LOADADDR(.data);
-    /* The core's shared voice DAC tables (core/sid/sid_dac.c, 17,408 bytes per chip model)
-     * are big zero-initialised buffers: POOL, not RAM. The pattern depends on CMake's object
-     * naming (sid_dac.c.obj); an assert below catches the tables falling back into .bss. */
-    .bss (NOLOAD) : {
-        _bss_start = .;
-        /* usb.c's USB DMA buffers (midi.c is built with -fdata-sections): usb.c declares them
-         * aligned(4), and on the FM-1 an EP1 IN buffer at 4 mod 8 sends nothing
-         * (docs/hardware-results/usb-out-diagnosis.md). EP1 IN's on a 64-byte boundary, as on
-         * the device test, the other two right after it on 8-byte ones, packed: RAM is tight. */
-        . = ALIGN(64); *(.bss.ep1tx)
-        . = ALIGN(8); *(.bss.ep0buf)
-        . = ALIGN(8); *(.bss.ep1rx)
-        *(EXCLUDE_FILE(*sid_dac.c.obj) .bss*) *(.sbss*) *(COMMON)
-        . = ALIGN(4);
-        _bss_end = .;
-    } > RAM
-    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c). */
-    .song_ram (NOLOAD) : ALIGN(4) { *(.song_noinit) . = ALIGN(4); } > RAM
+    /* POOL's rules come before .bss's: the first rule that matches an input section places it,
+     * and these take a few .bss sections out of the RAM region (the regions are separate, so
+     * the order of the two statements moves nothing else). */
     .pool (NOLOAD) : {
         /* The song's region and its transport first, outside the zeroed range (_pool_start
          * on): platform/fm1/audio.c sets them up in the LCD's reset wait. */
@@ -150,6 +135,10 @@ SECTIONS
         *(.pool.song_noinit)
         . = ALIGN(4);
         _pool_start = .;
+        /* USB audio out's ring from usb.c (midi.c, -fdata-sections), 2 KiB: zeroed with POOL,
+         * as .bss would have it. (Its smaller buffers are in the compiler's merged globals,
+         * which no rule can name: they stay in .bss.) */
+        *midi.c.obj(.bss.ua_ring)
         *(.pool*)
         _pool_dac_start = .;
         *sid_dac.c.obj(.bss*)
@@ -157,6 +146,26 @@ SECTIONS
         . = ALIGN(4);
         _pool_end = .;
     } > POOL
+    /* The core's shared voice DAC tables (core/sid/sid_dac.c, 17,408 bytes per chip model)
+     * are big zero-initialised buffers: POOL, not RAM. The pattern depends on CMake's object
+     * naming (sid_dac.c.obj); an assert below catches the tables falling back into .bss. */
+    .bss (NOLOAD) : {
+        _bss_start = .;
+        /* usb.c's USB DMA buffers (midi.c is built with -fdata-sections): usb.c declares them
+         * aligned(4), and on the FM-1 an EP1 IN buffer at 4 mod 8 sends nothing
+         * (docs/hardware-results/usb-out-diagnosis.md). EP1 IN's on a 64-byte boundary, as on
+         * the device test, the other two right after it on 8-byte ones, packed: RAM is tight.
+         * EP4 IN's (USB audio, ep4tx) is in the compiler's merged globals, which no rule can
+         * name: emu-gate tests/usb.rs checks it lands on an 8-byte boundary. */
+        . = ALIGN(64); *(.bss.ep1tx)
+        . = ALIGN(8); *(.bss.ep0buf)
+        . = ALIGN(8); *(.bss.ep1rx)
+        *(EXCLUDE_FILE(*sid_dac.c.obj) .bss*) *(.sbss*) *(COMMON)
+        . = ALIGN(4);
+        _bss_end = .;
+    } > RAM
+    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c). */
+    .song_ram (NOLOAD) : ALIGN(4) { *(.song_noinit) . = ALIGN(4); } > RAM
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
     _guard0 = 0x01C77F00; _ustack_lo = 0x01C78000; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;

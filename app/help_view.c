@@ -68,14 +68,14 @@ static const char* const EXPERT_LINES[] = {"SELECT\0FOCUS", "ALG\0PAGE",     "K1
  * undo one step (EDIT + LFO, E+LFO: the line's 14 characters; the ergonomics review's E32). */
 static const char* const STEP_LINES[] = {
     "KEYS 1-16\0STEP", "STEP+K\0LOCK",   "SELECT\0LANE",    "ALG\0PAGE",
-    "PRESETS\0INSTR",  "ARP\0GATE",      "E+LFO\0ONE UNDO", "KEYS 17+\0PLAY",
-    "GLO+KEY\0MUTE",   "REC\0RECORD",    "PLAY\0PLAY/STOP", "SEQ\0NEXT VIEW",
-    "SAVE\0SONG",      "HOME\0BACK"};
+    "PRESETS\0INSTR",  "ARP\0GATE",      "E+LFO\0ONE UNDO", "E+ARP\0MUTATE",
+    "E+SCL\0DICE",     "KEYS 17+\0PLAY", "GLO+KEY\0MUTE",   "REC\0RECORD",
+    "PLAY\0PLAY/STOP", "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
 /* A step held: its locks, its note; let go with no knob turned, it toggles. */
 static const char* const STEP_HELD_LINES[] = {
     "K1\0CUTOFF LOCK", "K2\0RESO LOCK",  "K3\0PULSE LOCK", "K4\0WAVE SET",
     "E+K\0CHARACTER",  "PRESETS\0NOTE",  "LFO\0CLEAR LOCK", "KEY UP\0TOGGLE",
-    "SELECT\0LANE",    "ALG\0PAGE",      "ARP\0GATE",      "E+LFO\0ONE UNDO",
+    "SELECT\0LANE",    "ALG\0CHANCE",    "ARP\0GATE",      "E+LFO\0ONE UNDO",
     "SEQ\0NEXT VIEW",  "SAVE\0SONG",     "HOME\0BACK"};
 /* REC on while the song plays: the pads record, K1 and K2 lock on the row they turn in. */
 static const char* const STEP_REC_LINES[] = {

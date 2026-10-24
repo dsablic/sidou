@@ -828,6 +828,9 @@ USB replug:
   monitor shows:
 - [ ] The same after deleting the device from the OS's MIDI setup (macOS:
   Audio MIDI Setup) and replugging.
+- [ ] *(Since USB audio out.)* The unit is one USB device with an audio input
+  beside its MIDI port (section 19); `--info` and the reinstall above pass with
+  it, also while a DAW records from it.
 
 If an item fails, record it, and get back to a working firmware with the
 power-on gesture (section 0) rather than the installer.
@@ -1400,6 +1403,75 @@ over 49,152 bytes).
   the previous release, then this one: each install finishes and boots, and the settings and
   songs are still there.
 
+## 18. Generative play in STEP (chance, MUTATE, DICE)
+
+By ear; no device risk beyond the usual song editing.
+
+1. In STEP on a song with a steady pattern on V1, hold a step with a note and turn ALGORITHM
+   anticlockwise: the popup says `CHANCE 95%` and counts down by 5. Let go, press PLAY: at 50 % the
+   step should play about every other pass, never in a pattern you can predict; at 0 it is silent;
+   at 100 (turn back up) the notch is gone and it always plays. A skipped step must leave the
+   notes around it, the key-off rows and the timing alone.
+2. Stop and PLAY again: the passes differ from the first run (a new seed each PLAY).
+3. EDIT + SCL (DICE) on V1: a new eighth-note pattern in a minor pentatonic around the lane's note
+   appears row by row (the edits are written one at a time; about a second for 64 rows). Press it
+   again for another. Does it sound musical on your instrument? Note what you would change
+   (density, range, the scale).
+4. EDIT + ARP (MUTATE) a few times on a pattern you like: each press should change it a little (two
+   notes at most) and stay in key. Play while pressing.
+5. On a song whose SCNE chunk gives a voice the role DRUMS, DICE on that
+   lane keeps its one note and puts hits on the sixteenths with a heavy downbeat.
+6. Save, reopen the song in GoatTracker 2: the pattern is plain; every step plays (GoatTracker
+   ignores chance).
+
+## 19. USB audio out
+
+What it is: [README, What you can do](../README.md#what-you-can-do). The unit is one USB
+device, the MIDI port and a class-compliant audio input "SIDOU FM-1" (2 channels, 16-bit,
+44.1 or 48 kHz), Felucca's `usb.c` audio input. fm1-emu has no USB controller: the host tests
+(`host/crates/sidou-pack/tests/usb_audio.rs`, and Felucca's own `uac_test.c`) and a modelled
+host in emu-gate (`tests/usb.rs`) check the firmware's side; only the unit shows the chip's.
+A note held (or a song playing) throughout unless an item says otherwise.
+
+- [ ] **macOS:** plug in. Audio MIDI Setup lists "SIDOU FM-1" with 2 input channels and the
+  formats 44,100 and 48,000 Hz, and the MIDI port "SIDOU FM-1" as before (no driver install,
+  no prompt). Record what the Format menu shows:
+- [ ] **Windows 10/11:** Sound settings, Input lists the unit (its name may be "Microphone
+  (SIDOU FM-1)" or "Line (...)"); its Properties, Advanced lists 2 channel 16 bit at 44100
+  and 48000 Hz. The MIDI port still shows in a DAW or MIDI-OX. Record the names:
+- [ ] **Linux:** `arecord -l` lists the card; `arecord -D hw:<card> -f S16_LE -c 2 -r 44100
+  -d 10 a.wav` and the same with `-r 48000` record 10 s each that play back clean; `amidi -l`
+  still lists the MIDI port.
+- [ ] **iPad (USB-C, or a Lightning camera adapter):** a recording app (GarageBand, AUM)
+  offers the unit as an input and records it; the MIDI port works in the same app.
+- [ ] **44.1 kHz in a DAW:** project at 44.1 kHz, the unit as the input, record a minute of a
+  song: no clicks, gaps or pitch drift; the recording sounds like the headphone out.
+- [ ] **48 kHz in a DAW:** the same at 48 kHz (the unit resamples): no clicks or gaps, no
+  audible aliasing on a bright patch (noise or a high pulse).
+- [ ] **No dropouts while the screen works:** record two minutes while you move through the
+  views fast (SCENE, the CHIP view, the song editor), scroll lists, and turn K1..K4: the
+  recording has no clicks. Then the same with the effect slots at their heaviest (FLANGER,
+  PHASER, REVERB on, two chips playing).
+- [ ] **Level:** MASTER turns the recording's level as it turns the speaker's (USB takes the
+  output after MASTER). At full MASTER, two loud chords: the recording's peaks are where the
+  line out's are, no harder clipping than on the line out.
+- [ ] **Saving while recording:** record while you SAVE a song or a setting (a flash write):
+  the sound pauses in the recording exactly as on the speaker (the store's hold), then goes
+  on; note any click beyond the speaker's.
+- [ ] **USB-MIDI beside it:** while recording, the MIDI items of section 8 pass (notes in, K1's
+  CC 74 out, a SysEx file put and get, section 8c).
+- [ ] **Updates beside it:** `fm1_install.py --info` and a reinstall over SIDOU pass while the
+  DAW has the input open (section 8.1); after the update the unit enumerates with its audio
+  input again.
+- [ ] **Stop and start:** stop the recording and start it again ten times, close and reopen the
+  DAW, unplug and replug mid-recording: the stream comes back every time, the MIDI port too.
+- [ ] **Host asleep:** record, put the computer to sleep, wake it: the sound never stops on the
+  speaker; recording works again after the wake.
+- [ ] *(If you can measure it.)* The unit's current while recording against idle, at 44.1 and
+  48 kHz:
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1422,3 +1494,6 @@ over 49,152 bytes).
 | 14 Make a song on the device | | |
 | 15 SPREAD and the soft limiter | | |
 | 16 The drum kit and the digi drums | | |
+| 17 Code in Felucca's old debug area | | |
+| 18 Generative play in STEP | | |
+| 19 USB audio out | | |
