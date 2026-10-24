@@ -88,8 +88,8 @@ All notable changes are documented here. The format follows
   at boot into POOL (2,980 of flash, 3,140 of the RAM region), the digi drums' codes are two a
   byte (2,412 of both), and the store is built at `-Oz` (1,568). `song_ctl.c` is built at `-Oz`
   (112 bytes of RAMTEXT), so the code that runs from SRAM stays in its 48 KB, below
-  Felucca's 8 KB debug area: a release candidate that ran code there lost STEP's edits on the
-  device ([hardware-test.md section 17](docs/hardware-test.md#17-code-in-feluccas-debug-area-v040)).
+  Felucca's 8 KB debug area, which is kept free until a device check shows it is the app's
+  ([hardware-test.md section 17](docs/hardware-test.md#17-code-in-feluccas-debug-area-v040)).
   The digi drums cost the audio interrupt less than before (9.47 instructions a sample, was
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 

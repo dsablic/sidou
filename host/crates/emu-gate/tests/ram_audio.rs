@@ -22,7 +22,7 @@ use common::{build_dir, Firmware, Machine, APP_BASE, TAP_PER_SAMPLE};
 use fm1_core::Bus;
 
 /// RAMTEXT's size in app.ld: 48 KB, ending at Felucca's RAM-run debug area (0x01C0C000), which
-/// code must not reach (on the device, code there misbehaved: app.ld).
+/// code does not reach until a device check shows that SRAM is the app's (app.ld).
 const RAMTEXT_BYTES: u32 = 48 * 1024;
 /// Where Felucca's RAM-run debug area starts: RAMTEXT ends here (app.ld).
 const DEBUG_AREA: u32 = 0x01C0_C000;
@@ -69,7 +69,7 @@ fn the_boot_copies_the_audio_path_to_sram() {
     assert!(
         rt.end <= DEBUG_AREA,
         ".ram_text ends at {:#010x}, in Felucca's RAM-run debug area ({DEBUG_AREA:#010x}..): \
-         on the device code there misbehaved (STEP's edits were never applied)",
+         code stays out of it until a device check shows it is the app's (app.ld)",
         rt.end
     );
     assert!(

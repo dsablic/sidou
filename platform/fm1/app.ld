@@ -9,10 +9,10 @@
  * RAMTEXT: .ram_text, code that runs from SRAM: the audio path (no I-cache misses on flash
  *          in the audio interrupt) and code that runs while XIP is off (the flash driver).
  *          0x01C0C000..0x01C0E000, Felucca's RAM-run debug area, stays out of RAMTEXT and
- *          unused but for crt0.S's boot words. v0.4.0's release candidate ran RAMTEXT up to
- *          RAM, and on the device (2026-10-24) the code it put there misbehaved: the tail of
- *          gt2_edit_apply, past 0x01C0C000, and STEP's edits were never applied (the emulator
- *          ran them fine). Whatever uses or clobbers that SRAM at run time, code stays below.
+ *          unused but for crt0.S's boot words, as in Felucca's layout. A release candidate of
+ *          v0.4.0 ran RAMTEXT up to RAM; nothing showed that SRAM failing (a device report
+ *          blamed on it turned out to be a misread view), but nothing proved it safe on the
+ *          device either, so code stays below until a device check does.
  * RAM    : .data/.bss, what the interrupts touch and small variables.
  * POOL   : big zero-initialised buffers (section .pool): first the song's content region
  *          (__song_region, 64 KiB, 4 KiB aligned: M3's 6502 memory overlays it), then the rest.
@@ -180,7 +180,7 @@ ASSERT(LOADADDR(.ram_text) == ADDR(.entry) + SIZEOF(.entry), "app.ld: .ram_text 
 ASSERT(ADDR(.text) == LOADADDR(.ram_text) + SIZEOF(.ram_text), "app.ld: .text must follow .ram_text's image")
 ASSERT(LOADADDR(.data) == ADDR(.text) + SIZEOF(.text), "app.ld: .data must load right after .text")
 ASSERT(_data_start == ADDR(.data) && _data_end == ADDR(.data) + SIZEOF(.data), "app.ld: _data_* must bound .data")
-ASSERT(_rt_end <= 0x01C0C000, "app.ld: .ram_text runs into Felucca's RAM-run debug area (0x01C0C000..0x01C0E000): code there misbehaved on the device (v0.4.0 RC, STEP's edits never applied)")
+ASSERT(_rt_end <= 0x01C0C000, "app.ld: .ram_text runs into Felucca's RAM-run debug area (0x01C0C000..0x01C0E000): code stays out of it until a device check shows it is the app's")
 ASSERT(SIZEOF(.ram_text) <= 48K, "app.ld: .ram_text is over RAMTEXT's 48 KB")
 ASSERT(ADDR(.ram_text) == ORIGIN(RAMTEXT), "app.ld: .ram_text must start at RAMTEXT")
 ASSERT(__song_region == ORIGIN(POOL) && __song_region % 4096 == 0, "app.ld: the song's region must start POOL, 4 KiB aligned")

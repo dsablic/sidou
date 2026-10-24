@@ -7,10 +7,10 @@ and the MIDI export): the lossless set below, measured on the FM-1_900 build as 
 builds it. Outputs are bit-identical (no golden changed; the device plays sample for sample as the
 host renders it), and every instruction gate the changes reach passes.
 
-**S1 reverted (2026-10-24, on the device): RAMTEXT does not use the debug area.** With S1 the
-tail of `gt2_edit_apply` (the interrupt's application of STEP's edits) sat past 0x01C0C000, and
-on the FM-1 STEP's toggles never landed in the pattern, though the emulator applied them from
-the same image. Code stays out of 0x01C0C000..0x01C0E000: RAMTEXT is 48 KB again, `app.ld`
+**S1 reverted (2026-10-24): RAMTEXT does not use the debug area yet.** It was reverted when a
+device report (STEP's toggles not landing) was blamed on it; the report was a misread view, not
+the SRAM, so S1 is unproven rather than failed: a device check of code in that area (hardware-test
+section 17) would bring its 8 KB back. Code stays out of 0x01C0C000..0x01C0E000: RAMTEXT is 48 KB again, `app.ld`
 asserts `_rt_end <= 0x01C0C000` (`ram_audio.rs` checks it too), and crt0.S saves Felucca's five
 boot words there again. The 80 bytes RAMTEXT was over came back from `core/player/song_ctl.c` at `-Oz` (112 bytes
 less than `-Os`; the digi drums' loop still costs 9.47 a sample): RAMTEXT 49,120 of 49,152. (The

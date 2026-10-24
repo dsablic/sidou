@@ -1386,14 +1386,12 @@ Headphones or the line out. Controls: [controls.md, STEP](reference/controls.md#
 
 ## 17. Code in Felucca's debug area (v0.4.0)
 
-**Found on the device, 2026-10-24: code there does not work.** v0.4.0's release candidate let
-the code that runs from SRAM (RAMTEXT) reach up to RAM, over the 8 KB below it
-(0x01C0C000..0x01C0E000) that Felucca keeps for RAM-run debug images. The only code that landed
-there was the tail of `gt2_edit_apply`, which the audio interrupt runs to apply STEP's edits. On
-the FM-1, in STEP on a new song, a step key showed its note in the HELD STEP box and auditioned it
-faintly, but the toggle never reached the pattern (no toast, nothing); LIVE was fine, and the
-emulator applied the same edits from the same image. Whatever uses or clobbers that SRAM at run
-time, the release keeps code out of it: RAMTEXT ends at 0x01C0C000 again (48 KB), `app.ld`
+**Not used by v0.4.0.** A release candidate let the code that runs from SRAM (RAMTEXT) reach up
+to RAM, over the 8 KB below it (0x01C0C000..0x01C0E000) that Felucca keeps for RAM-run debug
+images. In its device session (2026-10-24) STEP's edits seemed not to land and this area was
+suspected; that was a misread view (TRACKER, where a key only auditions without REC), and the
+faint sound was NEW's silent lead (fixed separately). The area was never shown to fail, and never
+proved safe either, so the release keeps code out of it: RAMTEXT ends at 0x01C0C000 again (48 KB), `app.ld`
 asserts `_rt_end <= 0x01C0C000` and emu-gate `ram_audio.rs` checks it, and crt0.S saves its five
 boot words there as Felucca's does ([hardware.md, Code in SRAM](hardware.md#code-in-sram)).
 

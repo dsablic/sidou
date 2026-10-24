@@ -218,12 +218,12 @@ the 24 KB: it was Felucca's inherited layout. SRAM is not cached, the SDK
 treats all of `ram0` as rwx, and the update loader at 0x01C0A800 runs only
 from the SPL after a reset, never next to the app.
 
-**Code must not reach Felucca's 8 KB RAM-run debug area** (0x01C0C000–0x01C0E000, between
-RAMTEXT and RAM). v0.4.0's release candidate ran RAMTEXT up to RAM, over that area; on the
-device (2026-10-24) the only code it put there, the tail of `gt2_edit_apply` (the interrupt's
-application of STEP's edits), did not work: STEP's toggles never landed in the pattern, while
-the emulator ran the same image correctly. What uses or clobbers that SRAM at run time is not
-known. RAMTEXT ends at 0x01C0C000 again: `app.ld` asserts `_rt_end <= 0x01C0C000`, and emu-gate
+**Code stays out of Felucca's 8 KB RAM-run debug area** (0x01C0C000–0x01C0E000, between
+RAMTEXT and RAM). A release candidate of v0.4.0 ran RAMTEXT up to RAM, over that area. During
+its device session (2026-10-24) STEP's edits seemed not to land and the area was suspected; it
+was a misread view (TRACKER, where keys only audition without REC), not the SRAM. Nothing shows
+the area failing, but nothing proved it safe on the device either, so the release keeps code
+below it until a device check does (it would give RAMTEXT 8 KB). RAMTEXT ends at 0x01C0C000: `app.ld` asserts `_rt_end <= 0x01C0C000`, and emu-gate
 `ram_audio.rs` checks it too. crt0.S saves its five boot words there as Felucca's does
 ([hardware-test.md section 17](hardware-test.md#17-code-in-feluccas-debug-area-v040)). The layout:
 
