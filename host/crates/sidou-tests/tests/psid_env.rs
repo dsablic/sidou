@@ -271,7 +271,10 @@ fn load_over_leaves_the_memory_to_the_caller_but_the_port() {
     let mut mem = vec![0x55u8; 0x10000];
     unsafe { psid_env_load_over(&mut *env, mem.as_mut_ptr(), &*h) };
     assert_eq!(&mem[..2], &mem_whole[..2], "the port as at power-on");
-    assert!(mem[2..].iter().all(|&b| b == 0x55), "the rest is the caller's");
+    assert!(
+        mem[2..].iter().all(|&b| b == 0x55),
+        "the rest is the caller's"
+    );
     mem[2..].fill(0);
     unsafe { psid_env_load_part(&mut *env, 0, file.as_ptr(), file.len() as u32) };
     assert!(mem == mem_whole);

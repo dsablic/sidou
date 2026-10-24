@@ -98,6 +98,10 @@ void ui_set_song(const song_transport* t) {
     views_set_song(&ui, t);
 }
 
+void ui_set_tune(const sid_transport* t) {
+    views_set_tune(&ui, t);
+}
+
 int ui_tune(int on) {
     if (!on) {
         views_tune(&ui, 0);

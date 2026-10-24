@@ -3,8 +3,8 @@
 //! .sid files on the store (M3 Task 10, docs/plans/2026-10-19-m3-sid-files.md), in fm1-emu
 //! over the emulated TRS jack (no physical MIDI or USB device): the `.syx` `sidou-sysex sid`
 //! writes, sent a frame a second as docs/manual/sid-tunes.md says, stores the tune byte for
-//! byte, and it loads (app/sid_io.c) and plays through the firmware's test hook (main.c
-//! `psid_test_hook`, until Task 11's views); an RSID, a MUS and a crafted file are refused with
+//! byte, and it loads (app/sid_io.c) and plays from the panel (the menu's SIDS: Task 11's views,
+//! common::ui_play_tune); an RSID, a MUS and a crafted file are refused with
 //! their toasts before any flash program; the largest file the store holds (a 64 KiB tune) goes
 //! in and plays, every sid_io_poll and sid_io_open within the store's share of a pass
 //! (STORE_POLL_WORST) and every pass within POLL_INSTRUCTIONS; with the store's keys used up,
@@ -24,12 +24,6 @@ const TRS_GAP_MS: u64 = 1_000;
 const WAIT_MS: u64 = 20_000;
 /// store_fm1_counts: programs.
 const PROGS: u32 = 0;
-/// The tune hook's ops (main.c psid_test_req) and layout: op, song, name[17], result.
-const OP_PLAY: u32 = 1;
-const OP_END: u32 = 3;
-const HOOK_SONG: u32 = 4;
-const HOOK_NAME: u32 = 8;
-const HOOK_RESULT: u32 = 28;
 /// main.c's tune states: TUNE_OFF, TUNE_ON.
 const TUNE_OFF: u8 = 0;
 const TUNE_ON: u8 = 5;
@@ -133,30 +127,15 @@ fn toast(m: &mut Machine, fw: &Firmware) -> String {
         .collect()
 }
 
-/// A request to the firmware's tune hook: its result.
-fn request(m: &mut Machine, fw: &Firmware, op: u32, name: &str) -> i32 {
-    let hook = fw.symbol("psid_test_hook");
-    for i in 0..=STORE_NAME_MAX {
-        let b = name.as_bytes().get(i as usize).copied().unwrap_or(0);
-        m.soc.write8(hook + HOOK_NAME + i, b);
-    }
-    m.soc.write32(hook + HOOK_SONG, 0);
-    m.soc.write32(hook + HOOK_RESULT, u32::MAX);
-    m.soc.write32(hook, op);
-    until(m, "the main loop takes the tune request", |m| {
-        m.soc.read32(hook) == 0
-    });
-    m.soc.read32(hook + HOOK_RESULT) as i32
-}
-
 fn tune_state(m: &mut Machine, fw: &Firmware) -> u8 {
     m.soc.read8(fw.symbol("sid_tune"))
 }
 
-/// Plays the store's tune `name` through the hook for 3 s: it is on, it sounds, nothing late.
+/// Plays the store's tune `name` (its only one) from the panel for 3 s: it is on, it sounds,
+/// nothing late; then it ends for good through the panel.
 fn plays(m: &mut Machine, fw: &Firmware, name: &str) {
     let audio = m.soc.periph.audio.len();
-    assert_eq!(request(m, fw, OP_PLAY, name), 1, "{name}: refused");
+    ui_play_tune(m, fw, 0);
     until(m, "the tune on", |m| tune_state(m, fw) == TUNE_ON);
     m.run_ms(3_000);
     assert_eq!(tune_state(m, fw), TUNE_ON, "{name}: the tune stopped");
@@ -171,7 +150,7 @@ fn plays(m: &mut Machine, fw: &Firmware, name: &str) {
     println!("{name}: {writes} writes, {late} late, peak {peak}");
     assert!(writes > 100 && peak > 1000, "{name}: silent");
     assert_eq!(late, 0, "{name}: writes applied late");
-    assert_eq!(request(m, fw, OP_END, ""), 1);
+    ui_end_tune(m, fw);
     until(m, "the song back", |m| tune_state(m, fw) == TUNE_OFF);
 }
 

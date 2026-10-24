@@ -2473,7 +2473,10 @@ fn theme_and_back_to_live(m: &mut Machine, fw: &Firmware, theme_turn: i32) {
     open_menu(m, fw);
     common::settings_item(m, sidou_sys::VIEWS_SETTINGS_THEME);
     m.turn(ALGORITHM, theme_turn);
-    m.run_ms(100);
+    // 40 ms: the walk's turns wait out the menu's and SETTINGS' items (M3's SIDS and SID MODEL
+    // added 60 ms to them, cards_off's and this walk's), so the frame below is 139 as the golden
+    // has it
+    m.run_ms(40);
     press(m, HOME); // SETTINGS, then the menu
     m.run_ms(100);
     m.turn(SELECT, -MENU_ITEMS);
@@ -2485,7 +2488,7 @@ fn theme_and_back_to_live(m: &mut Machine, fw: &Firmware, theme_turn: i32) {
     // The existing C64 golden starts its note on frame 139, independent of the menu order.
     for _ in 0..SETTLE_MS {
         let phase = m.soc.read32(phase_at);
-        assert!(phase <= 139);
+        assert!(phase <= 139, "frame {phase}");
         if phase == 139 {
             break;
         }

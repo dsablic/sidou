@@ -229,23 +229,6 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
     assert!(dearest <= PSID_ISR_WORST, "{which}: {dearest:.1} a sample");
 }
 
-/// psid_test_req (platform/fm1/main.c): op, song, name[17], result.
-fn play_hook(m: &mut Machine, fw: &Firmware, name: &str) {
-    let hook = fw.symbol("psid_test_hook");
-    for i in 0..=STORE_NAME_MAX {
-        let b = name.as_bytes().get(i as usize).copied().unwrap_or(0);
-        m.soc.write8(hook + 8 + i, b);
-    }
-    m.soc.write32(hook + 4, 0);
-    m.soc.write32(hook, 1);
-    let start = m.ms();
-    while m.soc.read32(hook) != 0 {
-        assert!(m.ms() - start < 1000, "the hook's request was not taken");
-        m.run_ms(1);
-    }
-    assert_eq!(m.soc.read32(hook + 28), 1, "{name}: refused");
-}
-
 /// A tune playing with LIVE showing: each psid_ctl_poll (the pass's slice, or a wake's) within
 /// PSID_SLICE_WORST, every main-loop pass within POLL_INSTRUCTIONS; for GoatTracker tunes and the
 /// look-ahead's dearest (cpu6502_budget.rs: the shadow's noisy voices, an access every 4 cycles).
@@ -279,10 +262,12 @@ fn a_playing_tune_holds_the_main_loops_budgets() {
         let mut m = Machine::boot_blank(&fw.image);
         m.soc.flash.mem.copy_from_slice(&flash);
         run_past_boot(&mut m, &fw);
-        assert!(tap_on(&mut m, &fw), "LIVE is not showing");
         m.watch_calls(fw.symbol("psid_ctl_poll"));
         m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-        play_hook(&mut m, &fw, "TUNE");
+        // Played from the panel, then LIVE again, the busiest view (its tap on): the tune on.
+        ui_play_tune(&mut m, &fw, 0);
+        ui_back_to(&mut m, &fw, "live_view_view");
+        assert!(tap_on(&mut m, &fw), "LIVE is not showing");
         m.run_ms(4000);
         let writes = m
             .soc

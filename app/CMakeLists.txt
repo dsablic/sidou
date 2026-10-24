@@ -56,6 +56,7 @@ add_library(sidou_live STATIC
     screen.c
     settings.c
     sid_io.c
+    sid_view.c
     sine.c
     song_view.c
     song_pages.c
@@ -92,7 +93,7 @@ if(CMAKE_CROSSCOMPILING)
     # view's worst pass tied to POLL_INSTRUCTIONS (emu-gate screen.rs): the size build keeps
     # every view's gate (the flash win-back before M3, docs/plans/2026-10-19-m3-sid-files.md).
     # Not live_view.c: LIVE's frame is the instrument's, nearest its noise-chord gate.
-    set_source_files_properties(views.c chip_view.c learn_view.c tracker_view.c
+    set_source_files_properties(views.c chip_view.c learn_view.c tracker_view.c sid_view.c
         PROPERTIES COMPILE_OPTIONS -Os)
     # These editors run bounded main-loop work. Keep their rendering and edit helpers outlined
     # rather than duplicating them into the page/input paths.

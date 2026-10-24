@@ -37,6 +37,10 @@ screenshots the tests check.*
   are on STEP, with a chance for each step, MUTATE and DICE.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
+- **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
+  the device's flash: the menu's SIDS lists them, NOW PLAYING shows the tune, its songs and its
+  voices, with mute and solo, pause and stop, and MIDI start, stop and continue
+  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
   page turns any GoatTracker 2 `.sng` into a `.mid`, a MIDI channel a SID voice, with the notes where
   GoatTracker's player puts them.
@@ -48,7 +52,7 @@ screenshots the tests check.*
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
-Coming next: `.sid` file playback (M3).
+Coming next: the rest of M3 (a starter pack of openly licensed tunes, the device's 6502 meter).
 
 ## Try it in your browser
 
@@ -92,7 +96,7 @@ On LIVE:
 | SCL / ENV | the next effect slot / its next algorithm |
 | MASTER | volume |
 | SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
-| PLAY / REC | play and stop the song / record mode |
+| PLAY / REC | play and stop the song (with a `.sid` tune loaded, the tune; EDIT held pauses it) / record mode |
 | SAVE | in the menu: opens the highlighted item; in a song view: saves the song |
 | HOME | the menu from LIVE, back one view elsewhere (settings are under SETTINGS in the menu) |
 

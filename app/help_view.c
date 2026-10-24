@@ -138,6 +138,20 @@ static const char* const NAME_LINES[] = {"SELECT\0CURSOR", "ALG\0CHARACTER", "SA
 static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "SAVE\0CHOOSE", "ALG\0CONFIRM",
                                             "HOME\0BACK",    "HOLD HOME\0HELP"};
 
+/* The SID views (app/sid_view.h): SAVE is the browser's OK, as SONG's LOAD's; PLAY and EDIT +
+ * PLAY are the tune's while one is loaded. NOW PLAYING's ALG steps the song; the keys play chip
+ * B (the keys' chip under a tune). */
+static const char* const SIDS_LINES[] = {"SELECT\0TUNE",    "SAVE\0CHOOSE",  "ALG\0CHOOSE",
+                                         "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "HOME\0BACK",
+                                         "HOLD HOME\0HELP"};
+static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE",
+                                            "GLO+KEY\0MUTE",  "KEYS\0PLAY",      "HOME\0BACK",
+                                            "HOLD HOME\0HELP"};
+/* The question before a tune takes the song's memory: SAVE saves the song, ALG again discards
+ * its changes, HOME keeps both. */
+static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "HOME\0CANCEL",
+                                            "HOLD HOME\0HELP"};
+
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
 const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LIVE] = CARD("LIVE", LIVE_LINES),       [HELP_CARD_MENU] = CARD("MENU", MENU_LINES),
@@ -161,6 +175,9 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_STORE] = CARD("STORE", STORE_LINES),
     [HELP_CARD_ARP] = CARD("ARP", ARP_LINES),
     [HELP_CARD_RESET] = CARD("RESET", RESET_LINES),
+    [HELP_CARD_SIDS] = CARD("SIDS", SIDS_LINES),
+    [HELP_CARD_PLAYING] = CARD("PLAYING", PLAYING_LINES),
+    [HELP_CARD_UNSAVED] = CARD("UNSAVED", UNSAVED_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&

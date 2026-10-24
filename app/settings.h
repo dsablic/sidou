@@ -6,7 +6,7 @@
  * keys' chip model, profile and character, the effect slots, the envelope mode and the
  * preset's edits: the instrument as it was left; not the MASTER volume, which is the pot),
  * MIDI learn's bindings, the firmware version last booted (for the full boot once after
- * an install), TRACKER ROWS, THEME, the last song and SPREAD. Not the octave, held notes, controllers
+ * an install), TRACKER ROWS, THEME, the last song, SPREAD and SID MODEL. Not the octave, held notes, controllers
  * or view on screen.
  *
  * The record, little-endian bytes (SETTINGS_BYTES; docs/reference/settings-format.md):
@@ -25,6 +25,7 @@
  * 108  last song's filename, 16 NUL-padded bytes (schema 4); absent: built-in song
  * 124  expert count, then raw expert overrides, then their learned CCs (schema 5)
  * 125 + 2 x the expert count  SPREAD, 0..100 (schema 6; app/chip_spread.h)
+ * 126 + 2 x the expert count  SID MODEL (SETTINGS_SID_*; schema 7; app/sid_view.h)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -54,7 +55,7 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 6u
+#define SETTINGS_VERSION 7u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
@@ -64,8 +65,14 @@ extern "C" {
 enum {
     SETTINGS_V5_BYTES = SETTINGS_V4_BYTES + 1u + 2u * SID_EXPERT_COUNT,
     SETTINGS_V6_BYTES = SETTINGS_V5_BYTES + 1u,
-    SETTINGS_BYTES = SETTINGS_V6_BYTES
+    SETTINGS_V7_BYTES = SETTINGS_V6_BYTES + 1u,
+    SETTINGS_BYTES = SETTINGS_V7_BYTES
 };
+/* SID MODEL: a .sid tune's chips as its header names them (AUTO, the default: a named model plays
+ * reSIDfp's profile of it, "unknown" and "both" the keys' setup), or the keys' setup for every
+ * tune (KEYS). */
+#define SETTINGS_SID_AUTO 0u
+#define SETTINGS_SID_KEYS 1u
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u
 
@@ -98,6 +105,7 @@ typedef struct {
     uint8_t started;
     uint8_t errors; /* the store's error count (its low byte) when it took the explicit save */
     char last_song[STORE_NAME_MAX + 1u];
+    uint8_t sid_model; /* SID MODEL: SETTINGS_SID_* */
 } settings;
 
 void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t* tracker_rows, ui_sound* snd,

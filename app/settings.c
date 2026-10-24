@@ -77,6 +77,7 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
         out[n++] = s->ml ? midi_learn_cc_of(s->ml, LIVE_PARAM_EXPERT + e) : (uint8_t)MIDI_MAP_NO_CC;
     }
     out[n++] = l->spread;
+    out[n++] = s->sid_model;
     return n;
 }
 
@@ -98,6 +99,9 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             return 0;
         }
         if (rec[0] >= 6u && len < SETTINGS_V4_BYTES + 2u + 2u * experts) {
+            return 0;
+        }
+        if (rec[0] >= 7u && len < SETTINGS_V4_BYTES + 3u + 2u * experts) {
             return 0;
         }
     }
@@ -159,6 +163,9 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     /* SPREAD: mono in an older record, and for a value this firmware does not know. */
     uint8_t spread = rec[0] >= 6u ? rec[SETTINGS_V4_BYTES + 1u + 2u * experts] : 0u;
     chip_spread_set(l, spread <= CHIP_SPREAD_MAX ? spread : 0u);
+    /* SID MODEL: AUTO in an older record, and for a value this firmware does not know. */
+    uint8_t model = rec[0] >= 7u ? rec[SETTINGS_V4_BYTES + 2u + 2u * experts] : SETTINGS_SID_AUTO;
+    s->sid_model = model == SETTINGS_SID_KEYS ? SETTINGS_SID_KEYS : SETTINGS_SID_AUTO;
     l->expert_dirty = 1;
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS; i++) {
         char c = s->version[i];
@@ -307,7 +314,8 @@ void settings_reset(settings* s) {
     rec[SETTINGS_V1_BYTES] = 0u;                         /* TRACKER ROWS: BAR */
     rec[SETTINGS_V2_BYTES] = 0u;                         /* THEME: HIGH CONTRAST */
     memset(rec + SETTINGS_V4_BYTES + 1u, SID_EXPERT_DEFAULT, SID_EXPERT_COUNT);
-    rec[len - 1u] = 0u; /* SPREAD: mono */
+    rec[len - 2u] = 0u; /* SPREAD: mono */
+    rec[len - 1u] = SETTINGS_SID_AUTO;
     for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; i++) {
         s->l->edits[i].valid = 0; /* every preset's edits: the factory's */
     }

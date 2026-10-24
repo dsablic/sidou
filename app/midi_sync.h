@@ -56,6 +56,12 @@
  * ticks' own time line (in samples) and its times turned into the player's samples, as
  * heard, by the latest anchor; the commands and clock out are in the player's samples.
  *
+ * **A .sid tune** (M3; app/sid_transport.h): while one is loaded (midi_sync_tune's hook says
+ * so) the song has no player: start, stop and continue are the tune's (the hook: start restarts
+ * its song from init, stop holds it where it is, continue goes on), and clock, song position and
+ * song select are ignored. CLOCK OFF ignores them for a tune too; clock out sends nothing (a
+ * PSID has no tempo: the song's transport answers as stopped).
+ *
  * The player is the song views' transport (app/song_transport.h, M2d) with its clock members
  * (hold, align, period, seek, seek_further, clock), bound over song control in
  * platform/fm1/main.c; the host tests bind it over the real song_ctl. Song select's subtune is
@@ -111,6 +117,11 @@ enum {
     MIDI_SYNC_WANT_FREE = 16u
 };
 
+/* A .sid tune's transport (midi_sync_tune): the message, or MIDI_SYNC_TUNE_ASK, which only asks
+ * whether a tune is loaded. 1: a tune is loaded (it took the message). */
+#define MIDI_SYNC_TUNE_ASK 0u
+typedef int (*midi_sync_tune_fn)(void* ctx, uint32_t realtime);
+
 typedef struct midi_sync {
     midi_clock clock;
     const song_transport* t; /* the player (midi_sync_bind), or NULL: nothing happens */
@@ -146,6 +157,9 @@ typedef struct midi_sync {
     uint32_t sent;       /* packets written */
     /* counters, for the tests */
     uint32_t aligns, periods, lost;
+    /* A .sid tune's transport (midi_sync_tune), or NULL. */
+    midi_sync_tune_fn tune;
+    void* tune_ctx;
 } midi_sync;
 
 /* Nothing bound; AUTO, CLOCK OUT off, 4 rows a beat, subtune 0. */
@@ -153,6 +167,9 @@ void midi_sync_init(midi_sync* s);
 /* The player: the song views' transport (app/song_transport.h) with its clock members; one
  * without them, or NULL, leaves clock and transport doing nothing. */
 void midi_sync_bind(midi_sync* s, const song_transport* t);
+/* A .sid tune's transport: fn(ctx, MIDI_SYNC_TUNE_ASK) is 1 while a tune is loaded, and start,
+ * stop and continue (0xFA, 0xFC, 0xFB) go to fn then, not to the song; NULL: none. */
+void midi_sync_tune(midi_sync* s, midi_sync_tune_fn fn, void* ctx);
 /* A new stopped song: cancel the old song's pending transport, retaining clock fit/settings. */
 void midi_sync_song_changed(midi_sync* s);
 /* The settings (clamped). */

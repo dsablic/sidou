@@ -8,22 +8,26 @@
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
  * - MENU (HOME), at 2 times the font, six of its items at a time: the views and the playing
- *   values: CHIP, TRACKER, SCENE, SONG, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI, CHARSET
- *   and ABOUT. SELECT moves the selection (a line in reverse video; the list scrolls with it, a
+ *   values: CHIP, TRACKER, SCENE, SONG, SIDS, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI,
+ *   CHARSET and ABOUT. SELECT moves the selection (a line in reverse video; the list scrolls with it, a
  *   line or two a frame), ALGORITHM changes the value under it or, clockwise, opens the view;
  *   SAVE is its OK: it opens the view under the selection (on a value it does nothing).
  * - SETTINGS (from the menu), a page like it of the set-and-forget settings: KEYS (AUTO or A:
  *   which chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip
  *   B's spare voice, OFF by default, app/ui_sound.h), ROWS (TRACKER ROWS: BAR, the moving bar,
  *   or SCROLL: app/tracker_view.h), CARDS, STORE (the store's free kilobytes, or FOREIGN:
- *   another firmware's data, which ALGORITHM clockwise arms and SAVE formats), THEME and REC
- *   (REC QUANTISE, not saved). CARDS, KEYS, SOUNDS, ROWS and THEME persist (app/settings.h).
+ *   another firmware's data, which ALGORITHM clockwise arms and SAVE formats), THEME, REC
+ *   (REC QUANTISE, not saved), SPREAD, SID MODEL (AUTO: a .sid tune's chips as its header
+ *   names them; KEYS: the keys' setup for every tune) and RESET. CARDS, KEYS, SOUNDS, ROWS,
+ *   THEME, SPREAD and SID MODEL persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
  * - STATUS (from the menu): the chip (with two chips both, KEYS marking the keys'), preset,
- *   octave, the sound parameters, the notes and the
- *   effect slots with every control, in numbers.
+ *   octave, the sound parameters (while a .sid tune is loaded, the 6502's rows in their place:
+ *   app/sid_view.h), the notes and the effect slots with every control, in numbers.
+ * - SIDS (from the menu) and NOW PLAYING: the store's .sid tunes and the one playing
+ *   (app/sid_view.h).
  * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
  *   SELECT steps between them. The tap on the audio runs while it shows, as for LIVE.
  * - MIDI (from the menu): MIDI's mode and its options (app/midi_route.h), a menu like the
@@ -71,7 +75,9 @@
  *    (views_flow), opens the menu on the root view and goes back one view anywhere else; held
  *    600 ms it opens the help card of the view that shows instead (app/help_view.h), and the
  *    release then does nothing; SEQ opens the song views or steps through them, PLAY plays or
- *    stops the song (EDIT held: goes on), REC turns record mode on and off (app/song_view.h);
+ *    stops the song (EDIT held: goes on), or while a .sid tune is loaded its song (EDIT held:
+ *    pauses and resumes; app/sid_view.h sid_view_play), REC turns record mode on and off
+ *    (app/song_view.h);
  * 3. the view on top;
  * 4. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
  *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT shortcut (EDIT held +
@@ -119,6 +125,7 @@
 #include "save_key.h"
 #include "scene_view.h"
 #include "settings.h"
+#include "sid_view.h"
 #include "ui_sound.h"
 #include "user_profile.h"
 #include "scope.h"
@@ -138,23 +145,25 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items: the views to open and the playing values. */
-#define VIEWS_MENU_ITEMS 11u
+#define VIEWS_MENU_ITEMS 12u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_SCENE 2u
 #define VIEWS_MENU_SONG 3u
+#define VIEWS_MENU_SIDS 4u
 /* PRESET (the item that shows PRE), and the items the menu shows at once. */
-#define VIEWS_MENU_PRESET 4u
-#define VIEWS_MENU_OCTAVE 5u
+#define VIEWS_MENU_PRESET 5u
+#define VIEWS_MENU_OCTAVE 6u
 #define VIEWS_MENU_SHOWN 6u
-#define VIEWS_MENU_SETTINGS 6u
-#define VIEWS_MENU_STATUS 7u
-#define VIEWS_MENU_MIDI 8u
-#define VIEWS_MENU_CHARSET 9u
-#define VIEWS_MENU_ABOUT 10u
+#define VIEWS_MENU_SETTINGS 7u
+#define VIEWS_MENU_STATUS 8u
+#define VIEWS_MENU_MIDI 9u
+#define VIEWS_MENU_CHARSET 10u
+#define VIEWS_MENU_ABOUT 11u
 /* The SETTINGS page's items (the set-and-forget settings): KEYS, SOUNDS, ROWS (TRACKER ROWS),
- * CARDS (the title cards' option), STORE, THEME, REC (REC QUANTISE), SPREAD and RESET. */
-#define VIEWS_SETTINGS_ITEMS 9u
+ * CARDS (the title cards' option), STORE, THEME, REC (REC QUANTISE), SPREAD, SID MODEL and
+ * RESET. */
+#define VIEWS_SETTINGS_ITEMS 10u
 #define VIEWS_SETTINGS_KEYS 0u
 #define VIEWS_SETTINGS_SOUNDS 1u
 #define VIEWS_SETTINGS_ROWS 2u
@@ -163,10 +172,11 @@ extern "C" {
 #define VIEWS_SETTINGS_THEME 5u
 #define VIEWS_SETTINGS_REC 6u
 #define VIEWS_SETTINGS_SPREAD 7u
-#define VIEWS_SETTINGS_RESET 8u
+#define VIEWS_SETTINGS_SID_MODEL 8u
+#define VIEWS_SETTINGS_RESET 9u
 /* What it shows: KEYS, SOUNDS, ROWS, CARDS, the store's state and kilobytes, THEME, REC, SPREAD,
- * the cursor, the first row and RESET's arm. */
-#define VIEWS_SETTINGS_LOOK 12u
+ * the cursor, the first row, RESET's arm and SID MODEL. */
+#define VIEWS_SETTINGS_LOOK 13u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u
@@ -265,6 +275,9 @@ typedef struct {
     /* The step view's playhead as the LEDs last saw it, and when it came there (views_leds). */
     uint8_t led_head;
     uint32_t led_head_ms;
+    /* The SID views (app/sid_view.h), and STATUS's 6502 rows as its last compose drew them. */
+    sid_view sids;
+    uint8_t tune_drawn[SID_VIEW_STATUS_LOOK];
 } views;
 
 extern const view views_status;
@@ -319,6 +332,9 @@ void views_set_song(views* v, const song_transport* t);
  * while on, the song views, the SONG menu and ABOUT refuse to open (SID PLAYING: STOP TO EDIT).
  * The caller unbinds the song views' transport first (views_set_song NULL). */
 void views_tune(views* v, int on);
+/* The .sid player (app/sid_transport.h) for the SID views, GLO and STATUS; NULL: none (the host
+ * tests' default; the device binds main.c's tune). */
+void views_set_tune(views* v, const sid_transport* t);
 /* The song files' controller; NULL until the platform binds it. */
 void views_song_io(views* v, song_io* io);
 /* The note keys, as panel_note_keys takes them, after the frame's buttons (views_buttons):

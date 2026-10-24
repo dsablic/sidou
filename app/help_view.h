@@ -59,7 +59,10 @@ typedef enum {
     HELP_CARD_STORE = 26,        /* SETTINGS on STORE */
     HELP_CARD_ARP = 27,          /* TABLE's ARP helper */
     HELP_CARD_RESET = 28,        /* SETTINGS on RESET */
-    HELP_CARDS = 29
+    HELP_CARD_SIDS = 29,         /* the SIDS browser (app/sid_view.h) */
+    HELP_CARD_PLAYING = 30,      /* NOW PLAYING */
+    HELP_CARD_UNSAVED = 31,      /* the browser's SONG NOT SAVED */
+    HELP_CARDS = 32
 } help_card_id;
 
 /* Lines a page of a card has at most and the pages, characters of a line (the control, a space

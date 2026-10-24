@@ -205,7 +205,8 @@ static int looks_changed(const views* v, uint32_t blink) {
 
 static int status_changed(screen* s, void* state) {
     (void)s;
-    return looks_changed(state, 0);
+    views* v = state;
+    return looks_changed(v, 0) || sid_view_status_look(&v->sids, v->tune_drawn, 0);
 }
 
 /* The notes held, on the NOTES row from column 9. */
@@ -255,8 +256,16 @@ static void status_compose(screen* s, void* state, grid* g) {
     for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
         v->drawn[i] = now[i];
     }
-    if (!other && !s->redraw) {
+    /* A .sid tune loaded: the 6502's rows in the parameters' place (their numbers alone when only
+     * they moved; the screen when the tune comes or goes). */
+    int tune_was = v->tune_drawn[0] != SID_T_NONE;
+    int tune_moved = sid_view_status_look(&v->sids, v->tune_drawn, 1);
+    int tune = v->tune_drawn[0] != SID_T_NONE;
+    if (!other && !s->redraw && tune == tune_was) {
         status_notes(g, a, l);
+        if (tune_moved) {
+            sid_view_status_draw(&v->sids, g, th, STATUS_PARAM_ROW);
+        }
         return;
     }
     /* The ring of full blocks in the dim colour, and the blank every view shares inside it: each
@@ -299,11 +308,16 @@ static void status_compose(screen* s, void* state, grid* g) {
     put(g, lbl, top + 1u, 2, "OCTAVE");
     widget_number(g, 9, top + 1u, 2, l->octave, 1, a);
 
-    status_param(g, th, STATUS_PARAM_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
-    status_param(g, th, STATUS_PARAM_ROW + 2u, "RESO", l->resonance, LIVE_RESONANCE_MAX, th->knob[1]);
-    status_param(g, th, STATUS_PARAM_ROW + 4u, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX,
-                 th->knob[2]);
-    status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 100, th->value);
+    if (tune) {
+        sid_view_status_draw(&v->sids, g, th, STATUS_PARAM_ROW);
+    } else {
+        status_param(g, th, STATUS_PARAM_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
+        status_param(g, th, STATUS_PARAM_ROW + 2u, "RESO", l->resonance, LIVE_RESONANCE_MAX,
+                     th->knob[1]);
+        status_param(g, th, STATUS_PARAM_ROW + 4u, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX,
+                     th->knob[2]);
+        status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 100, th->value);
+    }
 
     put(g, lbl, STATUS_NOTES_ROW, 2, "NOTES");
     status_notes(g, a, l);
@@ -574,14 +588,38 @@ static void spread_turn(void* ctx, int32_t steps) {
     }
 }
 
+/* SID MODEL (app/settings.h): AUTO, a tune's chips as its header names them; KEYS, the keys'
+ * setup for every tune. */
+static void sid_model_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, !v->set ? "-" : v->set->sid_model ? "KEYS" : "AUTO", "");
+}
+
+/* Clockwise KEYS, counter-clockwise AUTO; from the next tune that loads. */
+static void sid_model_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    uint8_t to = (uint8_t)(steps > 0 ? SETTINGS_SID_KEYS : SETTINGS_SID_AUTO);
+    if (steps != 0 && v->set && v->set->sid_model != to) {
+        v->set->sid_model = to;
+        v->l->settings_dirty = 1;
+    }
+}
+
 static const view* shows(const views* v);
 
 /* While ABOUT's tune is the player's song (song_io about, until its close has read the user's
  * song back), the song views would edit ABOUT's tune and its close would lose the edits: they
  * do not open, and a toast says why. 1: refused. */
 static int song_refused(views* v) {
-    if (v->tune) {
-        screen_toast(&v->s, "SID PLAYING: STOP TO EDIT", SCREEN_TOAST_MS);
+    uint32_t tune = sid_view_state(&v->sids);
+    if (v->tune || tune != SID_T_NONE) {
+        if (tune == SID_T_STOPPED || tune == SID_T_FAILED || tune == SID_T_ENDING) {
+            /* a stopped tune gives way: the song comes back for the next press */
+            (void)v->sids.t->end(v->sids.t->ctx);
+            screen_toast(&v->s, "LOADING", SCREEN_TOAST_MS);
+        } else {
+            screen_toast(&v->s, "SID PLAYING: STOP TO EDIT", SCREEN_TOAST_MS);
+        }
         return 1;
     }
     if (!v->song.io || !v->song.io->about) {
@@ -1120,6 +1158,12 @@ static void about_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &about_view, &v->about, SCREEN_WIPE_DOWN);
 }
 
+static void sids_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    sid_view_open(&v->sids, &v->s);
+}
+
 static void midi_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -1138,15 +1182,17 @@ static void settings_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
     {"SCENE", NULL, scene_open},           {"SONG", NULL, song_open},
-    {"PRE", preset_value, preset_turn},    {"OCTAVE", octave_value, octave_turn},
+    {"SIDS", NULL, sids_open},             {"PRE", preset_value, preset_turn},
+    {"OCTAVE", octave_value, octave_turn},
     {"SETTINGS", NULL, settings_open},     {"STATUS", NULL, status_open},
     {"MIDI", NULL, midi_open},             {"CHARSET", NULL, charset_open},
     {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_SCENE == 2u &&
-                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_PRESET == 4u && VIEWS_MENU_OCTAVE == 5u &&
-                   VIEWS_MENU_SETTINGS == 6u && VIEWS_MENU_STATUS == 7u &&
-                   VIEWS_MENU_MIDI == 8u && VIEWS_MENU_CHARSET == 9u && VIEWS_MENU_ABOUT == 10u,
+                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_SIDS == 4u && VIEWS_MENU_PRESET == 5u &&
+                   VIEWS_MENU_OCTAVE == 6u && VIEWS_MENU_SETTINGS == 7u &&
+                   VIEWS_MENU_STATUS == 8u && VIEWS_MENU_MIDI == 9u &&
+                   VIEWS_MENU_CHARSET == 10u && VIEWS_MENU_ABOUT == 11u,
                "the menu's items");
 /* SETTINGS: ROWS is TRACKER ROWS and REC REC QUANTISE; STORE's value (FOREIGN, FORMAT?, ERASE
  * 20; 123K, the kilobytes free) fits beside its name. The popup (below) says the whole names. */
@@ -1155,13 +1201,14 @@ static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
     {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
+    {"SID MODEL", sid_model_value, sid_model_turn},
     {"RESET", reset_value, reset_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
                    VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
                    VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u &&
-                   VIEWS_SETTINGS_RESET == 8u,
+                   VIEWS_SETTINGS_SID_MODEL == 8u && VIEWS_SETTINGS_RESET == 9u,
                "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1247,10 +1294,15 @@ static void big_menu_compose(screen* s, views* v, menu* m, const char* title, gr
         }
         head[n] = 0;
         append(head, sizeof head, pos);
-        /* the arrows from column 6, or after a longer title (SETTINGS) */
+        /* the arrows from column 6, or after a longer title (SETTINGS), where the position leaves
+         * room (SETTINGS' 10/10: none below it then) */
         uint32_t at = length(title) > 6u ? length(title) : 6u;
-        head[at] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
-        head[at + 1u] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
+        if (at < n) {
+            head[at] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
+        }
+        if (at + 1u < n) {
+            head[at + 1u] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
+        }
         grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head_attr);
         grid_text_big(g, 1, 1, 2, head, head_attr);
     }
@@ -1599,6 +1651,7 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[9] = v->setup.cursor;
     out[10] = v->setup.top;
     out[11] = v->format_arm;
+    out[12] = v->set ? v->set->sid_model : 0xffu;
 }
 
 /* As the menu's: SELECT moves, ALGORITHM changes the value; STORE's format is two steps (store_turn
@@ -1778,7 +1831,10 @@ static int global(void* ctx, const screen_event* e) {
         return 1;
     }
     if (e->id == PANEL_BTN_PLAY) {
-        song_view_play(&v->song, (int)(e->held >> PANEL_BTN_EDIT & 1u));
+        int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
+        if (!sid_view_play(&v->sids, edit, sid_view_is(shows(v)))) { /* a .sid tune's, first */
+            song_view_play(&v->song, edit);
+        }
         return 1;
     }
     if (e->id == PANEL_BTN_REC) {
@@ -1824,6 +1880,11 @@ void views_set_song(views* v, const song_transport* t) {
 
 void views_tune(views* v, int on) {
     v->tune = (uint8_t)(on != 0);
+    song_view_away(&v->song, on);
+}
+
+void views_set_tune(views* v, const sid_transport* t) {
+    sid_view_set_transport(&v->sids, t);
 }
 
 static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
@@ -1954,6 +2015,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->songs.scanning = 0;
     v->song.editor = &v->editor;
     song_edit_init(&v->editor, NULL);
+    sid_view_init(&v->sids, &v->song);
+    memset(v->tune_drawn, 0, sizeof v->tune_drawn);
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
     screen_popup_source(&v->s, &v->popup, popup_text, v);
@@ -1969,6 +2032,7 @@ void views_learn(views* v, midi_learn* ml) {
 
 void views_settings(views* v, settings* set) {
     v->set = set;
+    v->sids.st = set ? set->st : NULL;
     v->users.st = set ? set->st : NULL;
     user_profiles_load(&v->users);
 }
@@ -2062,6 +2126,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
     }
+    if (from == &sid_view_browser && sid_view_home(&v->sids)) {
+        return; /* the question cancelled */
+    }
     if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
         return; /* out of the ARP helper, back to the table */
     }
@@ -2103,6 +2170,12 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     }
     if (top == &about_view) {
         return HELP_CARD_ABOUT;
+    }
+    if (top == &sid_view_browser) {
+        return v->sids.asking ? HELP_CARD_UNSAVED : HELP_CARD_SIDS;
+    }
+    if (top == &sid_view_playing) {
+        return HELP_CARD_PLAYING;
     }
     if (top == &views_charset) {
         return HELP_CARD_CHARSET;
@@ -2533,6 +2606,14 @@ static void save(views* v) {
     }
     if (shows(v) == &views_song_menu_view) {
         song_menu_ok(v); /* the page's OK: the highlighted item, SAVE AS's name */
+        return;
+    }
+    if (shows(v) == &sid_view_browser) {
+        /* the page's OK, or the question's SAVE: an unnamed song first through SAVE AS */
+        if (sid_view_save(&v->sids, &v->s) == SID_VIEW_SAVE_AS) {
+            song_name(v, 1);
+            screen_push(&v->s, &views_song_menu_view, v, SCREEN_WIPE_DOWN);
+        }
         return;
     }
     if (shows(v) == &song_pages_table_view && v->pages.arp) {
@@ -2973,6 +3054,9 @@ void views_frame(views* v, uint32_t now_ms) {
         }
     }
     toast_hold(v);
+    if (v->sids.saving) {
+        sid_view_frame(&v->sids, &v->s); /* the question's song saved: the tune */
+    }
     v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);
@@ -3005,7 +3089,7 @@ void views_update(views* v, uint32_t step, int32_t code) {
 }
 
 /* 1 while a question waits for SAVE: MIDI learn's clear-all, the song menu's confirmation, the
- * SETTINGS store's format once armed. */
+ * SIDS browser's SONG NOT SAVED, the SETTINGS store's format once armed. */
 static int save_asked(const views* v) {
     if (learn_view_is_open(&v->learn)) {
         return v->learn.ml && v->learn.ml->state == MIDI_LEARN_CONFIRM;
@@ -3013,6 +3097,9 @@ static int save_asked(const views* v) {
     const view* top = shows(v);
     if (top == &views_song_menu_view) {
         return v->songs.page == SONG_MENU_CONFIRM;
+    }
+    if (top == &sid_view_browser) {
+        return v->sids.asking; /* SONG NOT SAVED: SAVE saves it */
     }
     return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
 }

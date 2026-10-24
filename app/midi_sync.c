@@ -38,6 +38,11 @@ void midi_sync_bind(midi_sync* s, const song_transport* t) {
     s->t = t;
 }
 
+void midi_sync_tune(midi_sync* s, midi_sync_tune_fn fn, void* ctx) {
+    s->tune = fn;
+    s->tune_ctx = ctx;
+}
+
 void midi_sync_song_changed(midi_sync* s) {
     s->want = 0;
     s->held = s->aligning = s->synced = s->seek_on = s->fresh = 0;
@@ -115,7 +120,23 @@ int midi_sync_following(const midi_sync* s) {
     return s->mode != MIDI_SYNC_OFF && s->clock.active;
 }
 
+/* While a .sid tune is loaded: its transport, and nothing else (no clock, no seek, no subtune). */
+__attribute__((noinline, unused)) static int tune_msg(midi_sync* s, const midi_msg* msg) {
+    if (!s->tune(s->tune_ctx, MIDI_SYNC_TUNE_ASK)) {
+        return 0;
+    }
+    uint32_t b = msg->data1;
+    if (s->mode != MIDI_SYNC_OFF && msg->kind == MIDI_REALTIME &&
+        (b == START || b == STOP || b == CONTINUE)) {
+        (void)s->tune(s->tune_ctx, b);
+    }
+    return 1;
+}
+
 void midi_sync_msg(midi_sync* s, const midi_msg* msg, uint32_t ticks) {
+    if (s->tune && tune_msg(s, msg)) {
+        return;
+    }
     if (msg->kind == MIDI_SONG_SELECT) {
         s->subtune = msg->data1;
         return;

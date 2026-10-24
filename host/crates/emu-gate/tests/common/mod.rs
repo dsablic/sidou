@@ -1562,6 +1562,9 @@ pub struct PsidPlay<'a> {
     /// keys' registers on it (live_rewrite; a 1SID tune).
     pub b_use_block: Option<usize>,
     pub b_rewrite_block: Option<usize>,
+    /// GLO's mutes (app/sid_transport.h: psid_ctl_mute's mask) and the block whose drain puts
+    /// them on the tune's chips (REG_RING_MUTE).
+    pub mute_block: Option<(usize, u32)>,
 }
 
 /// The firmware playing a .sid tune, rendered by the host build: the instrument and chip B at
@@ -1686,6 +1689,11 @@ pub fn render_host_psid(frames: usize, p: &PsidPlay) -> Vec<i16> {
             let fresh_a = p.fresh_block[0].is_some_and(|f| i >= f);
             let fresh_b = two && p.fresh_block[1].is_some_and(|f| i >= f);
             let tune_on = i >= p.start_block;
+            if let Some((at, mask)) = p.mute_block {
+                if i == at {
+                    assert!(player.mute(mask), "the host's psid_ctl_mute");
+                }
+            }
             let (mut sa, mut sb) = ([0i16; HALF_FRAMES], [0i16; HALF_FRAMES]);
             if tune_on {
                 // main-loop passes until the 6502 is ahead (the device's many passes a block)
@@ -2032,6 +2040,103 @@ pub fn open_status(m: &mut Machine, fw: &Firmware) {
         "the menu's STATUS did not open the status screen"
     );
     to_mid_frame(m, fw);
+}
+
+/// app/panel.h PLAY; app/views.h SIDS in the menu.
+const PLAY: u8 = 12;
+const MENU_SIDS: i32 = sidou_sys::VIEWS_MENU_SIDS as i32;
+/// How long the SID views' steps may take (a wipe, the browser's scan a file a frame).
+const SIDS_WAIT_MS: u64 = 4_000;
+
+fn tap(m: &mut Machine, id: u8) {
+    m.key(id, true);
+    m.run_ms(30);
+    m.key(id, false);
+    m.run_ms(30);
+}
+
+fn wait_for(m: &mut Machine, what: &str, mut done: impl FnMut(&mut Machine) -> bool) {
+    let start = m.ms();
+    while !done(m) {
+        assert!(m.ms() - start < SIDS_WAIT_MS, "timed out: {what}");
+        m.run_ms(1);
+    }
+}
+
+/// The SIDS browser (app/sid_view.h) from LIVE or the menu: HOME (from LIVE), SELECT to SIDS,
+/// ALGORITHM clockwise; its wipe over and its page read.
+pub fn open_sids(m: &mut Machine, fw: &Firmware) {
+    if top_view(m, fw) != fw.symbol("views_menu") {
+        tap(m, HOME);
+        wait_for(m, "the menu", |m| {
+            top_view(m, fw) == fw.symbol("views_menu")
+        });
+    }
+    m.turn(SELECT, -MENU_ITEMS);
+    m.run_ms(10 * MENU_ITEMS as u64);
+    m.turn(SELECT, MENU_SIDS);
+    m.run_ms(10 * MENU_SIDS as u64 + 10);
+    m.turn(ALGORITHM, 1);
+    let scanning = fw.symbol("ui")
+        + (sidou_sys::ilp32::views::sids + sidou_sys::ilp32::sid_view::scanning) as u32;
+    wait_for(m, "the SIDS browser and its page", |m| {
+        top_view(m, fw) == fw.symbol("sid_view_browser")
+            && !screen_animating(m, fw)
+            && m.soc.read8(scanning) == 0
+    });
+}
+
+/// The store's tune `index` in the browser's name order (of its first page) played from it: the
+/// browser (open_sids), SELECT to it, ALGORITHM clockwise; NOW PLAYING on top, the tune asked
+/// for (no question: the song unchanged).
+pub fn ui_play_tune(m: &mut Machine, fw: &Firmware, index: u32) {
+    open_sids(m, fw);
+    m.turn(SELECT, -(sidou_sys::SID_VIEW_FILES as i32));
+    m.run_ms(80);
+    m.turn(SELECT, index as i32);
+    m.run_ms(10 * u64::from(index) + 10);
+    m.turn(ALGORITHM, 1);
+    wait_for(m, "NOW PLAYING", |m| {
+        top_view(m, fw) == fw.symbol("sid_view_playing")
+    });
+}
+
+/// HOME, a view at a time, until the view `name` (its `view` table's symbol) is on top: from the
+/// SID views a playing tune plays on.
+pub fn ui_back_to(m: &mut Machine, fw: &Firmware, name: &str) {
+    let want = fw.symbol(name);
+    for _ in 0..4 {
+        if top_view(m, fw) == want {
+            return;
+        }
+        let from = top_view(m, fw);
+        tap(m, HOME);
+        wait_for(m, "HOME back a view", |m| {
+            top_view(m, fw) != from && !screen_animating(m, fw)
+        });
+    }
+    assert_eq!(top_view(m, fw), want, "not back on {name}");
+}
+
+/// The tune ended for good through the panel, from the SID views or LIVE: PLAY stops it if it
+/// plays or is paused (in NOW PLAYING or the browser), HOME back to the browser and out of it
+/// (a stopped tune ends there), HOME to LIVE. The song's return is the caller's to wait for.
+pub fn ui_end_tune(m: &mut Machine, fw: &Firmware) {
+    let state = fw.symbol("player_isr") + sidou_sys::ilp32::psid_ctl::state as u32;
+    if top_view(m, fw) == fw.symbol("live_view_view") {
+        open_sids(m, fw);
+    }
+    let st = u32::from(m.soc.read8(state));
+    if [
+        sidou_sys::PSID_INIT,
+        sidou_sys::PSID_PLAYING,
+        sidou_sys::PSID_PAUSED,
+    ]
+    .contains(&st)
+    {
+        tap(m, PLAY);
+    }
+    ui_back_to(m, fw, "live_view_view");
 }
 
 /// The tap's `on` (platform/fm1/audio.c `tap`), checked against the pi32v2 layout.

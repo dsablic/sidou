@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! .sid tunes on the device (M3 Task 9, docs/plans/2026-10-19-m3-sid-files.md), end to end in
-//! fm1-emu: a tune put into the store's flash before the boot plays through the firmware's
-//! test hook (platform/fm1/main.c `psid_test_hook`, until Task 11's views) over the song's
+//! fm1-emu: a tune put into the store's flash before the boot plays from the panel (the menu's
+//! SIDS, the tune, ALGORITHM clockwise: Task 11's views, common::ui_play_tune) over the song's
 //! memory, and the firmware's audio equals the host build's render of the same tune through the
 //! same chain (common::render_host_psid: psid_ctl, a frame ahead, each write at its cycle)
 //! sample for sample, for a VBI, a CIA, an NTSC and a 2SID tune, with LIVE showing (the tap)
-//! and without; the switch between the song and a tune both ways, 20 times, the song back from
-//! the store byte for byte each time; the keys on chip B during a 1SID tune, silent during a
-//! 2SID tune and back after; a tune whose play never returns stops with PLAY HUNG and the
-//! device stays responsive.
+//! and without; the switch between the song and a tune both ways, 20 times (the tune ended for
+//! good through the panel: PLAY, HOME out of the browser), the song back from the store byte for
+//! byte each time; the keys on chip B during a 1SID tune, silent during a 2SID tune and back
+//! after; a tune whose play never returns stops with PLAY HUNG and the device stays responsive.
 
 mod common;
 
@@ -24,14 +24,6 @@ use sidou_tests::song::Song;
 const PLAY_MS: u64 = 10_000;
 /// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
-const HOME: u8 = PANEL_BTN_HOME as u8;
-/// The hook's ops (main.c psid_test_req): play, and end for good.
-const OP_PLAY: u32 = 1;
-const OP_END: u32 = 3;
-/// psid_test_req's layout: op, song, name[17], result.
-const HOOK_SONG: u32 = 4;
-const HOOK_NAME: u32 = 8;
-const HOOK_RESULT: u32 = 28;
 /// audio.h AUDIO_SONG, AUDIO_PSID, AUDIO_NONE.
 const AUDIO_SONG: u8 = 0;
 const AUDIO_PSID: u8 = 1;
@@ -85,23 +77,6 @@ fn until(m: &mut Machine, what: &str, mut done: impl FnMut(&mut Machine) -> bool
         assert!(m.ms() - start < WAIT_MS, "timed out: {what}");
         m.run_ms(1);
     }
-}
-
-/// A request to the firmware's tune hook, taken by the main loop: its result.
-fn request(m: &mut Machine, fw: &Firmware, op: u32, name: &str, song: u32) -> i32 {
-    let hook = fw.symbol("psid_test_hook");
-    assert_eq!(m.soc.read32(hook), 0, "a request still pending");
-    for i in 0..=STORE_NAME_MAX {
-        let b = name.as_bytes().get(i as usize).copied().unwrap_or(0);
-        m.soc.write8(hook + HOOK_NAME + i, b);
-    }
-    m.soc.write32(hook + HOOK_SONG, song);
-    m.soc.write32(hook + HOOK_RESULT, u32::MAX);
-    m.soc.write32(hook, op);
-    until(m, "the main loop takes the tune request", |m| {
-        m.soc.read32(hook) == 0
-    });
-    m.soc.read32(hook + HOOK_RESULT) as i32
 }
 
 /// A request to the song-I/O hook (main.c song_io_test_hook), and its wait for song_io's idle.
@@ -178,15 +153,9 @@ struct Played {
     writes: u32,
 }
 
-/// Boots with `file` in the store, `before` run past the boot (a view opened, say), plays it
-/// through the hook for `ms`.
-fn play(
-    fw: &Firmware,
-    file: &[u8],
-    song: u32,
-    ms: u64,
-    before: impl FnOnce(&mut Machine),
-) -> Played {
+/// Boots with `file` in the store, plays it from the panel (its start song, 1 here) and runs
+/// `after` once it is asked for (HOME back to a view, say), for `ms` in all.
+fn play(fw: &Firmware, file: &[u8], ms: u64, after: impl FnOnce(&mut Machine)) -> Played {
     let flash = flash_with(fw, &[("TUNE", file)]);
     let mut m = Machine::boot_blank(&fw.image);
     m.soc.flash.mem.copy_from_slice(&flash);
@@ -202,13 +171,10 @@ fn play(
     m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
     run_past_boot(&mut m, fw);
     song_idle(&mut m, fw);
-    before(&mut m);
-    assert_eq!(
-        request(&mut m, fw, OP_PLAY, "TUNE", song),
-        1,
-        "the tune refused"
-    );
-    m.run_ms(ms);
+    let start = m.ms();
+    ui_play_tune(&mut m, fw, 0);
+    after(&mut m);
+    m.run_ms(ms.saturating_sub(m.ms() - start));
     assert_eq!(tune_state(&mut m, fw), TUNE_ON, "the tune is not on");
     let snaps = &m.buffer_snapshots;
     let psid_block = snaps
@@ -263,6 +229,7 @@ fn matches(p: &Played, file: &[u8], song: u32, two: bool) -> Result<usize, i32> 
                     start_block: p.start_block,
                     b_use_block: p.b_use,
                     b_rewrite_block: r,
+                    mute_block: None,
                 },
             );
             let d = max_diff(played, &want);
@@ -275,9 +242,9 @@ fn matches(p: &Played, file: &[u8], song: u32, two: bool) -> Result<usize, i32> 
     Err(closest)
 }
 
-fn check(name: &str, fw: &Firmware, file: &[u8], before: impl FnOnce(&mut Machine)) {
+fn check(name: &str, fw: &Firmware, file: &[u8], after: impl FnOnce(&mut Machine)) {
     let two = sidou_tests::psid::header(file).sid2 != 0;
-    let p = play(fw, file, 1, PLAY_MS, before);
+    let p = play(fw, file, PLAY_MS, after);
     let peak = p
         .audio
         .iter()
@@ -314,6 +281,7 @@ fn a_vbi_tune_plays_bit_exact_with_the_host_while_live_shows() {
         &fw,
         &tune("dojo.sng", 0xD400, false, false),
         |m| {
+            ui_back_to(m, &fw, "live_view_view");
             assert!(tap_on(m, &fw), "LIVE's tap is off");
         },
     );
@@ -329,8 +297,7 @@ fn a_vbi_tune_plays_bit_exact_with_the_host_under_the_menu() {
         &fw,
         &tune("dojo.sng", 0xD400, false, false),
         |m| {
-            press(m, HOME);
-            m.run_ms(500);
+            ui_back_to(m, &fw, "views_menu");
             assert!(!tap_on(m, &fw), "the tap runs under the menu");
         },
     );
@@ -471,12 +438,9 @@ fn the_song_and_a_tune_switch_both_ways_twenty_times() {
             m.run_ms(600);
         }
         assert!(tap_on(&mut m, &fw), "round {round}: LIVE's tap is off");
-        let name = if two_sid { "TWO" } else { "ONE" };
-        assert_eq!(
-            request(&mut m, &fw, OP_PLAY, name, 0),
-            1,
-            "round {round}: refused"
-        );
+        // the browser's order: ONE, TWO
+        ui_play_tune(&mut m, &fw, u32::from(two_sid));
+        ui_back_to(&mut m, &fw, "live_view_view"); // the tune asked for over LIVE: it plays on
         let start = m.ms();
         while !(m.soc.read8(fw.symbol("sid_tune")) == TUNE_ON
             && ctl32(&mut m, &fw, ilp32::psid_ctl::writes) > 500)
@@ -541,7 +505,7 @@ fn the_song_and_a_tune_switch_both_ways_twenty_times() {
                 "round {round}: the keys not on chip B"
             );
         }
-        assert_eq!(request(&mut m, &fw, OP_END, "", 0), 1);
+        ui_end_tune(&mut m, &fw);
         until(&mut m, "the tune ends", |m| {
             m.soc.read8(fw.symbol("sid_tune")) == TUNE_OFF
         });
@@ -585,7 +549,7 @@ fn a_tune_whose_play_hangs_stops_with_play_hung() {
     song_io(&mut m, &fw, IO_LOAD, "NIGHT");
     let song = song_file(&mut m, &fw);
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    assert_eq!(request(&mut m, &fw, OP_PLAY, "HUNG", 0), 1);
+    ui_play_tune(&mut m, &fw, 0);
     until(&mut m, "the tune fails", |m| {
         ctl8(m, &fw, ilp32::psid_ctl::state) == PSID_FAILED as u8
     });
@@ -612,7 +576,7 @@ fn a_tune_whose_play_hangs_stops_with_play_hung() {
         "a key does not sound on chip B"
     );
     m.key(A4_KEY, false);
-    assert_eq!(request(&mut m, &fw, OP_END, "", 0), 1);
+    ui_end_tune(&mut m, &fw);
     until(&mut m, "the tune ends", |m| {
         m.soc.read8(fw.symbol("sid_tune")) == TUNE_OFF
     });

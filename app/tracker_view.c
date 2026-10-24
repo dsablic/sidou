@@ -729,6 +729,9 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
 
 static int input(screen* s, void* state, const screen_event* e) {
     song_view* sv = state;
+    if (sv->away) {
+        return song_view_away_input(s, e);
+    }
     int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
     if (sv->rec) {
         finish_ready_edit(sv);
@@ -870,6 +873,9 @@ static int model_loading(const song_view* sv) {
 static int changed(screen* s, void* state) {
     (void)s;
     const song_view* sv = state;
+    if (sv->away) {
+        return song_view_away_changed(sv);
+    }
     if (model_loading(sv)) {
         return sv->which == SONG_VIEW_TRACKER && sv->dirty != 0;
     }
@@ -879,6 +885,10 @@ static int changed(screen* s, void* state) {
 
 static void compose(screen* s, void* state, grid* g) {
     song_view* sv = state;
+    if (sv->away) {
+        song_view_away_compose(sv, s, g);
+        return;
+    }
     if (model_loading(sv)) {
         if (sv->which == SONG_VIEW_TRACKER) {
             song_view_copy(sv, s, g);

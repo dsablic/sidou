@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Put a .sid tune on the FM-1
+# Put a .sid tune on the FM-1, and play it
 
 SIDOU plays PSID `.sid` tunes from its store, the flash it keeps songs and settings in. A tune
 goes there over MIDI, as a SysEx upload (the protocol's `PUT`,
@@ -10,8 +10,8 @@ only SIDOU software needed is the command that turns a tune into that upload.
 What plays: PSID tunes, one or two SID chips, PAL or NTSC, up to 65,536 bytes a file (every
 PSID fits). What does not: RSID tunes (`RSID: NOT YET`: they need a real C64's interrupts and
 ROMs), MUS files (`MUS: NOT SUPPORTED`), and damaged files (`BROKEN .SID`, `TOO LONG`).
-[docs/reference/psid.md](../reference/psid.md) has the details. Playing them from the panel
-comes with the SIDS browser, M3's next step; this build stores them.
+[docs/reference/psid.md](../reference/psid.md) has the details. Once a tune is on the store, the
+menu's **SIDS** plays it ([4. Play it](#4-play-it)).
 
 ## 1. Make the .syx
 
@@ -72,3 +72,28 @@ The store holds about 190 KB of songs and tunes, and 48 entries in all (settings
 profiles, songs and tunes together): about 30 tunes next to a few songs. When either runs out,
 the upload is refused with **STORE FULL** and nothing is written; delete a tune or a song
 first (the protocol's `DEL`).
+
+## 4. Play it
+
+On the FM-1, press **HOME** for the menu, turn **SELECT** to **SIDS** and turn **ALGORITHM**
+clockwise (or press SAVE). The browser lists the store's tunes by their names, eight a page;
+**SELECT** moves through them and **ALGORITHM** clockwise (or SAVE) plays the highlighted one and
+opens **NOW PLAYING**: the tune's title, author and year, which of its songs plays (**SONG 1/3**),
+the time, PAL or NTSC, its chips, and its three voices.
+
+- **ALGORITHM** in NOW PLAYING steps to the next or the previous song, from its start.
+- **PLAY** stops the tune, and plays it again from the start; **EDIT held + PLAY** pauses it and
+  goes on.
+- **GLO held + the first three keys** mutes a voice, **+ the next three** solos one, as for a song.
+- **HOME** goes back to the browser and on to the menu with the tune still playing; the keys
+  play the second chip meanwhile (a tune for two chips silences them). HOME out of the browser
+  with the tune stopped ends it, and your song comes back.
+- From a sequencer, MIDI start plays the song from its start, stop holds it, continue goes on.
+
+A tune takes the memory your song uses. If the song has changes that are not saved, the
+browser asks first, **SONG NOT SAVED**: SAVE saves the song (an unnamed one asks for its name),
+ALGORITHM again throws the changes away, HOME keeps both. When the tune ends, your song comes
+back as it was last saved.
+
+**SETTINGS → SID MODEL**: **AUTO** (the default) plays each tune on the chip its file names (a
+6581 or an 8580), **KEYS** on the chip the keys play, with its profile and character.

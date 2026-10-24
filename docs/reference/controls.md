@@ -49,7 +49,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
 2. **global:** HOME's press only starts it, and on its release it opens the menu from LIVE and goes back one view anywhere else (held 600 ms it opens the [help card](#help) and the release does nothing); SAVE
    saves on a clean release, or held with a knob opens MIDI learn over any view; SAVE held
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
-   in every view;
+   in every view, but for PLAY while a `.sid` tune is loaded: it is the tune's
+   ([SIDS and NOW PLAYING](#sids-and-now-playing));
 3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT;
    LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
@@ -58,7 +59,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    MIDI learn's frame), LIVE's knobs in every other view.
 
 The note keys and MASTER always play, whichever view shows, but for two layers before the
-panel: **GLO held** (or latched) turns the leftmost six keys into the song's mutes and solos, and in a **song
+panel: **GLO held** (or latched) turns the leftmost six keys into the song's mutes and solos (a
+`.sid` tune's while one is loaded), and in a **song
 view** the keys audition the song's instrument ([Song views](#song-views)). The effect-slot shortcut (EDIT,
 SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays).
 
@@ -247,6 +249,7 @@ GoatTracker does). TRACKER ROWS is saved with the settings.
 | **SEQ** | from any view, opens the song view used last over it (STEP the first time after power-on; HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER. Not over [ABOUT](#song)'s tune |
 | **PLAY** | in every view: plays the song from the orderlist entry the song views show (the cursor's), or stops it (releases ring on). While it starts (the keys moving off chip A, [which chip the keys play](#which-chip-the-keys-play)) it shows as playing; PLAY again stops it |
 | **EDIT held + PLAY** | goes on from where the song stopped (from the cursor if it never played) |
+| **PLAY**, **EDIT held + PLAY**, a `.sid` tune loaded | the tune's: see [SIDS and NOW PLAYING](#sids-and-now-playing). The song views do not open while it plays (`SID PLAYING: STOP TO EDIT`); one that showed when the tune took the song's memory says **SID PLAYING / STOP TO EDIT** and takes no edits. With the tune stopped, SEQ or the menu's TRACKER gives it up for the song (`LOADING`: press again once it is back) |
 | **REC** | record mode on and off: REC in red on the song views' top line. In TRACKER with the song stopped it enables note entry ([Editing TRACKER](#editing-tracker)); with the song playing, the keys and K1 and K2 are recorded ([below](#recording-while-the-song-plays)). STEP needs no REC to edit; REC there records |
 | **SELECT**, in TRACKER | moves the row; with EDIT held, 8 rows (a page) |
 | **ALGORITHM**, in TRACKER | steps the voice shown, V1, V2, V3 and round; with EDIT held, the edit step (below) |
@@ -519,8 +522,9 @@ what it does on the right. It is the one explanation on the device (the views dr
 of their own), so every view and page the panel reaches has a card of its own: LIVE, the menu,
 SETTINGS, the MIDI page (its setup is RAM-only), CHIP, SCENE, each of the five song views (STEP,
 TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), STATUS, ABOUT, the
-glyph sheet (CHARSET), and the SONG menu's actions and each of its pages: the list of files LOAD
-and DELETE browse (**FILES**), SAVE AS's name and a confirmation.
+glyph sheet (CHARSET), the SONG menu's actions and each of its pages: the list of files LOAD
+and DELETE browse (**FILES**), SAVE AS's name and a confirmation; and the SID views: the browser
+(**SIDS**), **NOW PLAYING** (its card is **PLAYING**) and the browser's question (**UNSAVED**).
 
 **The card is the one for the state the view is in when HOME has been held**, where a control
 means something else there:
@@ -538,6 +542,7 @@ means something else there:
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
 | SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
 | SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
+| SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
 it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
@@ -567,8 +572,9 @@ plays it (over a song view its instrument, and REC records it), and the card sta
 - On SONG's pages HOME acts on its release as everywhere (back a page; a hold shows the page's
   card).
 - **SAVE is the OK of every list.** Wherever ALGORITHM clockwise opens or chooses the highlighted
-  item (the menu, SONG's actions, LOAD's and DELETE's files, a confirmation's YES), a clean SAVE
-  does the same, and HOME goes back. A host test (`help_view.rs`,
+  item (the menu, SONG's actions, LOAD's and DELETE's files, a confirmation's YES, SIDS' tunes), a
+  clean SAVE does the same, and HOME goes back. The one exception is SIDS' question (UNSAVED),
+  where the two are its two answers: SAVE saves the song, ALGORITHM discards it. A host test (`help_view.rs`,
   `save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`) walks every state
   above and checks both, so a new list is covered without being named.
 - Over the boot, a title card and MIDI learn's frame HOME keeps its own meaning (it ends the
@@ -990,7 +996,7 @@ range.
 
 ## Settings and STORE
 
-Settings load at power-on: CARDS, KEYS, SOUNDS, TRACKER ROWS, THEME, SPREAD, the preset and its edits, the keys' chip
+Settings load at power-on: CARDS, KEYS, SOUNDS, TRACKER ROWS, THEME, SPREAD, SID MODEL, the preset and its edits, the keys' chip
 model, profile and character, the effect slots, envelope mode, MIDI-learn bindings and the
 last firmware version booted. Missing or unreadable settings use the defaults. Octave,
 held notes, controllers and the view on screen are not restored; volume follows MASTER.
@@ -1014,9 +1020,16 @@ all 73 sectors and can interrupt the sound. STORE shows **ERASE n**, then the to
 **STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
 is never automatic; ALGORITHM does not format a SIDOU store.
 
+SETTINGS' **SID MODEL** decides the chips a `.sid` tune plays on ([SIDS and NOW PLAYING](#sids-and-now-playing)):
+**AUTO** (the default) plays a tune whose header names a model on reSIDfp's profile of it (the
+6581 R4AR or the 8580 R5, at character 0), and one that says "unknown" or "both" on the keys'
+setup; **KEYS** plays every tune on the keys' setup (the chip, profile and character the keys
+have). ALGORITHM clockwise is KEYS, counter-clockwise AUTO; it counts from the next tune that
+loads (or restarts), and is saved with the settings (schema 7).
+
 SETTINGS' last item, **RESET**, puts everything that is not a song back to factory: every
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting
-that is saved (KEYS, SOUNDS, TRACKER ROWS, CARDS, THEME, SPREAD, the playing preset, the chip
+that is saved (KEYS, SOUNDS, TRACKER ROWS, CARDS, THEME, SPREAD, SID MODEL, the playing preset, the chip
 model, profile and character, the EXPERT overrides, the effect slots, and the envelope mode).
 **Songs, USER chip profiles and MIDI learn mappings stay**, and so does the last song that boots. Turn **ALGORITHM clockwise**: the item says **RESET?** and the popup **SAVE
 RESETS** under the name **RESET ALL?** (the question: reset all sounds and settings?). Then
@@ -1090,6 +1103,57 @@ silent and the scroller says **SAVE YOUR SONG FOR MUSIC**. While ABOUT's tune is
 the song, SEQ and the menu's TRACKER do not open the song views (the toast **LEAVE
 ABOUT FIRST**, or **LOADING** while its close reads the song back), so nothing edits
 ABOUT's tune.
+
+## SIDS and NOW PLAYING
+
+The menu's **SIDS** (after SONG) is the store's PSID `.sid` tunes (M3: SIDOU's own 6502 plays them
+on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). `app/sid_view.h`.
+
+| Control | In the browser (SIDS) | In NOW PLAYING |
+|---|---|---|
+| **SELECT** | moves through the tunes, eight a page at 2× by their store names (a longer one ends in an arrow); past the eighth the next page, before the first the one before | nothing |
+| **ALGORITHM** clockwise, or **SAVE** | plays the highlighted tune from its start song and opens NOW PLAYING; on the tune that is loaded, opens NOW PLAYING as it is | turned either way: the song before or after (clamped at 1 and the last), which plays from its init |
+| **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
+| **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
+| **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune |
+| **HOME** | back to the menu; with the tune stopped (or failed) it ends for good there, and the song comes back from the store | back to the browser, the tune playing on |
+
+An empty store says **NO TUNES: SEE MANUAL**. The loaded tune keeps its place in the browser:
+a play mark at its left while it plays, a square while it is paused or stopped. The tune plays
+on whatever view shows: HOME leaves NOW PLAYING and the browser with it playing, and LIVE,
+SCENE and STATUS follow it. **PLAY in another view** stops a playing tune, and gives a stopped
+one up for the song (it ends for good, so the next PLAY is the song's); with no tune loaded PLAY
+is the song's, as always.
+
+**Before a tune takes the song's memory**: the song and a tune share it, so a tune loaded over
+a song with unsaved changes asks first, **SONG NOT SAVED** and the song's name (NEW SONG for one
+never named): **SAVE** saves it (in place, or through SAVE AS for an unnamed song, back to the
+question after), and the tune plays once it is saved; **ALGORITHM** clockwise again discards
+the changes and plays the tune; **HOME** cancels. When the tune ends for good, the song comes
+back from the store (the last one opened, by name), stopped.
+
+**NOW PLAYING** shows the tune's title at 2× on two lines (broken at a space), its author and
+released at 1×, **SONG 2/5**, the time since the song started and its state (PLAYING,
+PAUSED, STOPPED, FAILED, LOADING), PAL or NTSC and each chip's model (as SID MODEL gives it,
+in SETTINGS), **2SID** for a tune of two chips, **3SID: 3RD SILENT** for one of three (the third's
+writes are dropped), the three voices with GLO's mutes and solos (as TRACKER's header: the voice's
+colour, dark grey while silent, reversed while soloed, MUT and SOL) and chip A's envelopes as
+bars, and the overruns (play calls that ran past their frame) and late writes when not zero.
+
+While a tune plays: a 1SID tune takes chip A and the keys play chip B, KEYS A acting as AUTO
+(no voice can be taken from a tune); a 2SID tune takes chip B too, and the keys and UI sounds
+are silent (`KEYS OFF: 2SID TUNE`, once). The CHIP view's A tab changes the tune's chip A.
+**MIDI** (TRS and USB): **start** restarts its song from init, **stop** holds it where it is
+(paused), **continue** goes on (a stopped tune: from init); clock, song position, song select
+and program change are ignored, and clock out sends nothing (a PSID has no tempo); CLOCK OFF
+ignores the transport, as for a song. **STATUS** shows the 6502's rows in the sound's
+parameters' place: its state, cycles a second, the main loop's share (`--` until the device's
+meter), overruns, late writes, the voice shadow (ON: OSC3 and ENV3 read as on a C64) and a third
+SID's dropped writes.
+
+Refusals are toasts: `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID`, `TOO LONG`, `SID NOT
+FOUND`, `SID: READ ERROR` (the file went while it loaded), `INIT TOO LONG`, `PLAY HUNG`,
+`6502 JAM AT $xxxx`, `MIDI MODE HAS CHIP A` (MULTITIMBRAL and WHOLE-CHIP keep chip A).
 
 ## SAVE
 

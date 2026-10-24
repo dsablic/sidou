@@ -135,12 +135,9 @@ fn the_audio_interrupt_runs_only_from_sram_while_a_tune_plays() {
         let mut m = Machine::boot_blank(&fw.image);
         m.soc.flash.mem.copy_from_slice(&flash);
         common::run_past_boot(&mut m, &fw);
-        // the hook (platform/fm1/main.c psid_test_req: op, song, name[17], result)
-        let hook = fw.symbol("psid_test_hook");
-        for (i, b) in b"TUNE\0".iter().enumerate() {
-            m.soc.write8(hook + 8 + i as u32, *b);
-        }
-        m.soc.write32(hook, 1);
+        // played from the panel (the menu's SIDS), then LIVE again (its tap)
+        common::ui_play_tune(&mut m, &fw, 0);
+        common::ui_back_to(&mut m, &fw, "live_view_view");
         m.run_ms(700); // the song let go, the chips made fresh, the tune's init and its start
         m.watch_alnk_pcs(ram_text(&fw));
         m.run_ms(400);
