@@ -4,7 +4,7 @@
   "prerequisites": {
     "after": "step-a-beat",
     "start": "live",
-    "text": "The beat from A beat in STEP, on STEP, playing."
+    "text": "The beat from A beat with the drum kit, on STEP, playing."
   },
   "related": [
     "step-a-beat"
@@ -359,6 +359,7 @@
             10,
             12,
             14,
+            15,
             16,
             18,
             20,
@@ -367,6 +368,7 @@
             26,
             28,
             30,
+            31,
             32,
             34,
             36,
@@ -375,6 +377,7 @@
             42,
             44,
             46,
+            47,
             48,
             50,
             52,
@@ -382,7 +385,8 @@
             56,
             58,
             60,
-            62
+            62,
+            63
           ],
           "voice": 3
         }

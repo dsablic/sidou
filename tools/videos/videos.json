@@ -12,7 +12,7 @@
   "whats-new": {
     "teaser": false,
     "bpm": 125,
-    "preview_step": "character"
+    "preview_step": "kit"
   },
   "rec-over-loop": {
     "bpm": 125
@@ -21,7 +21,8 @@
     "bpm": 125
   },
   "step-a-beat": {
-    "bpm": 125
+    "bpm": 125,
+    "preview_step": "digi"
   },
   "save-and-load": {
     "bpm": 125
@@ -44,5 +45,15 @@
   },
   "chord-arpeggio": {
     "preview_step": "hold-a-chord"
+  },
+  "step-generative": {
+    "bpm": 125,
+    "preview_step": "dice"
+  },
+  "first-run": {
+    "video": false
+  },
+  "arp-visible": {
+    "video": false
   }
 }

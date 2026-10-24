@@ -1,261 +1,55 @@
 {
-  "goal": "See the release's highlights, one at a time, to SIDOU LOOP.",
+  "goal": "See the release's highlights, one at a time, over a beat made with the new drum kit.",
   "id": "whats-new",
   "prerequisites": {
+    "after": "step-a-beat",
     "start": "live",
-    "text": "On LIVE after the boot. SIDOU LOOP is the song loaded."
+    "text": "The beat from A beat with the drum kit, on STEP, playing."
   },
   "related": [
-    "sidou-intro",
-    "rec-over-loop",
-    "chip-character"
+    "step-a-beat",
+    "step-generative",
+    "sidou-intro"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "MIDI clock",
-    "REC",
-    "the song pages",
-    "STEP",
-    "CHIP",
-    "SPREAD",
-    "chord arpeggios",
-    "the limiter",
-    "help",
-    "SysEx"
+    "the drum kit",
+    "digi drums",
+    "chance",
+    "DICE",
+    "MUTATE",
+    "the ARP helper",
+    "the LEDs",
+    "RESET",
+    "USB audio",
+    "Songs to MIDI"
   ],
   "steps": [
     {
-      "caption": "A MIDI start and clock on the TRS jack: the song follows it, and keeps the tempo.",
-      "control": "press SEQ, then wait 0.6 s, then press SEQ, then wait 0.6 s, then send MIDI clock at 125 BPM, then wait 0.6 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "tracker"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "MIDI CLOCK IN",
-        "control": "screen",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 0,
-          "rows": 3
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "clock",
-      "inputs": [
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "bpm": 125,
-          "ms": 5000,
-          "op": "clock",
-          "start": true
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A steady *MIDI clock*"
-    },
-    {
-      "caption": "REC on while the song plays: the keys are written where the song is.",
-      "control": "press REC, then wait for the song's next pattern, then play 6 notes at 125 BPM, then press REC, then wait 1.2 s",
-      "expect": [
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "REC, PLAY THE KEYS",
-        "control": "REC",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 2,
-          "rows": 24
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "rec",
-      "inputs": [
-        {
-          "button": "REC",
-          "op": "press"
-        },
-        {
-          "op": "sync"
-        },
-        {
-          "bpm": 125,
-          "events": [
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E5"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "D5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
-        },
-        {
-          "button": "REC",
-          "op": "press"
-        },
-        {
-          "ms": 1200,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*REC* over a loop"
-    },
-    {
-      "caption": "SEQ goes round ORDER, INSTR and TABLE: the whole song on the device.",
-      "control": "press SEQ, then wait 1.8 s, then press SEQ, then wait 1.8 s, then press SEQ, then wait 1.8 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "song_pages_table"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "SEQ: ORDER, INSTR, TABLE",
-        "control": "SEQ"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "pages",
-      "inputs": [
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 1800,
-          "op": "wait"
-        },
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 1800,
-          "op": "wait"
-        },
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 1800,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "The *tracker* pages"
-    },
-    {
-      "caption": "SEQ again: STEP. Sixteen keys, sixteen steps, the page following the song.",
-      "control": "press SEQ, then wait 3.5 s",
+      "caption": "A NEW song has eight drums on the chip's own voices, picked by name in STEP: KICK, SNARE, the hats, CLAP, the toms and RIM.",
+      "control": "turn PRESETS counter-clockwise by 10 detents, then wait 0.8 s, then turn PRESETS clockwise by 2 detents, then wait 0.8 s, then turn PRESETS clockwise by 2 detents, then wait 0.8 s, then turn PRESETS clockwise by 2 detents, then wait 0.8 s, then turn PRESETS clockwise by 1 detent, then wait 1.2 s",
       "expect": [
         {
           "kind": "view",
           "value": "step"
         },
         {
+          "kind": "text",
+          "value": "I0A"
+        },
+        {
           "assert": "sounding",
           "kind": "audio"
         }
       ],
       "focus": {
-        "callout": "SEQ: STEP",
-        "control": "SEQ",
+        "callout": "PRESETS: THE DRUMS BY NAME",
+        "control": "PRESETS",
         "screen": {
           "col": 0,
           "cols": 30,
-          "row": 0,
-          "rows": 15
+          "row": 2,
+          "rows": 13
         }
       },
       "harness": {
@@ -267,42 +61,405 @@
         "remember": false,
         "task": null
       },
-      "id": "step",
+      "id": "kit",
+      "inputs": [
+        {
+          "detents": -10,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A SID *drum kit*"
+    },
+    {
+      "caption": "And four digi drums, DG KICK to DG HAT: samples, played as C64 tunes play them. The clap on 16 is one.",
+      "control": "turn PRESETS clockwise by 1 detent, then wait 0.8 s, then turn PRESETS clockwise by 1 detent, then wait 0.8 s, then turn PRESETS clockwise by 1 detent, then wait 0.8 s, then turn PRESETS clockwise by 1 detent, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "I0E"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESETS: 0B-0E",
+        "control": "PRESETS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "digi",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Digi* drums"
+    },
+    {
+      "caption": "Hold a step and turn ALGORITHM: CHANCE 50%. That hat now plays one pass in two.",
+      "control": "hold note key G3, then turn ALGORITHM counter-clockwise by 10 detents, then wait 1.0 s, then let go of note key G3, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD A STEP + TURN ALGORITHM",
+        "control": "ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "chance",
+      "inputs": [
+        {
+          "note": "G3",
+          "op": "down"
+        },
+        {
+          "detents": -10,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "note": "G3",
+          "op": "up"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *chance* to play"
+    },
+    {
+      "caption": "On the lead's lane, EDIT + SCL: a new pattern, minor pentatonic notes on the eighths.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 1.2 s, then hold EDIT and press SCL, then wait 0.1 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "NEW PATTERN"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SELECT V1, HOLD EDIT + SCL",
+        "control": "SCL",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "dice",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "SCL"
+        },
+        {
+          "ms": 100,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*DICE* a lead"
+    },
+    {
+      "caption": "EDIT + ARP: two small changes to the pattern, a note nudged, taken away or added.",
+      "control": "wait 3.4 s, then hold EDIT and press ARP, then wait 0.1 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "MUTATED"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mutate",
+      "inputs": [
+        {
+          "ms": 3400,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "ARP"
+        },
+        {
+          "ms": 100,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "And *MUTATE* it"
+    },
+    {
+      "caption": "SEQ round to TABLE, ARP on a WAVE row: an arpeggio as semitone steps, its speed and loop. SAVE writes plain GoatTracker rows.",
+      "control": "press SEQ, then wait 0.3 s, then press SEQ, then wait 0.3 s, then press SEQ, then wait 0.3 s, then press SEQ, then wait 0.9 s, then turn SELECT clockwise by 60 detents, then wait 0.7 s, then press ARP, then wait 1.8 s, then turn K3 clockwise by 1 detent, then wait 2.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_pages_table"
+        },
+        {
+          "kind": "text",
+          "value": "WAVE 41"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TABLE, ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "arp-helper",
       "inputs": [
         {
           "button": "SEQ",
           "op": "press"
         },
         {
-          "ms": 3500,
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 60,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "button": "ARP",
+          "op": "press"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "K3",
+          "op": "turn"
+        },
+        {
+          "ms": 2000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*STEP*, the drum machine"
+      "title": "An *ARP* helper"
     },
     {
-      "caption": "On CHIP the song's chip gets DAC grit, a thump on each note and the filter's bleed.",
-      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.8 s, then turn K2 slowly clockwise by 90 detents over 1.2 s, then turn K3 slowly clockwise by 100 detents over 1.2 s, then turn K4 slowly clockwise by 90 detents over 1.2 s, then wait 0.6 s",
+      "caption": "A dim glow is set or available, full light active now: PLAY lights on the beat, ARP flashes with the arpeggio, REC counts in, and with GLO the keys show the voices.",
+      "control": "press HOME, then wait 5.0 s",
       "expect": [
-        {
-          "kind": "view",
-          "value": "chip"
-        },
         {
           "assert": "sounding",
           "kind": "audio"
         }
       ],
       "focus": {
-        "callout": "K2 DAC, K3 THUMP, K4 BLEED",
-        "control": "K3",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 8,
-          "rows": 8
-        }
+        "callout": "PLAY ON THE BEAT <> ARP WITH ITS STEPS <> GLO: THE VOICES",
+        "control": "card"
       },
       "harness": {
         "clip_ms": null,
@@ -313,62 +470,23 @@
         "remember": false,
         "task": null
       },
-      "id": "character",
+      "id": "leds",
       "inputs": [
         {
           "button": "HOME",
           "op": "press"
         },
         {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "button": "HOME",
-          "op": "press"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 2800,
-          "op": "wait"
-        },
-        {
-          "detents": 90,
-          "encoder": "K2",
-          "ms": 1200,
-          "op": "sweep"
-        },
-        {
-          "detents": 100,
-          "encoder": "K3",
-          "ms": 1200,
-          "op": "sweep"
-        },
-        {
-          "detents": 90,
-          "encoder": "K4",
-          "ms": 1200,
-          "op": "sweep"
-        },
-        {
-          "ms": 600,
+          "ms": 5000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Character you can *hear*"
+      "title": "*LEDs* that tell"
     },
     {
-      "caption": "SETTINGS, SPREAD: chip A to the left, chip B to the right, 0 to 100%. Here the song is on A and the keys on B.",
-      "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until SPREAD is selected, then turn ALGORITHM clockwise by 10 detents, then wait 0.5 s, then play 6 notes at 125 BPM",
+      "caption": "One reset for everything that is not a song: ALGORITHM asks RESET?, SAVE would put every sound and setting back to factory. Songs stay; HOME says no.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until RESET is selected, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.0 s",
       "expect": [
         {
           "kind": "view",
@@ -376,7 +494,7 @@
         },
         {
           "kind": "text",
-          "value": "100%"
+          "value": "RESET?"
         },
         {
           "assert": "sounding",
@@ -384,13 +502,13 @@
         }
       ],
       "focus": {
-        "callout": "SETTINGS > SPREAD",
+        "callout": "SETTINGS > RESET, ALGORITHM",
         "control": "ALGORITHM",
         "screen": {
           "col": 0,
           "cols": 30,
           "row": 2,
-          "rows": 14
+          "rows": 26
         }
       },
       "harness": {
@@ -402,8 +520,16 @@
         "remember": false,
         "task": null
       },
-      "id": "spread",
+      "id": "reset",
       "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
         {
           "button": "HOME",
           "op": "press"
@@ -426,166 +552,28 @@
         },
         {
           "op": "select_item",
-          "text": "SPREAD"
+          "text": "RESET"
         },
         {
-          "detents": 10,
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
           "encoder": "ALGORITHM",
           "op": "turn"
         },
         {
-          "ms": 500,
-          "op": "wait"
-        },
-        {
-          "bpm": 125,
-          "events": [
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E5"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "D5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
-        }
-      ],
-      "needs": [],
-      "title": "*SPREAD*: two SIDs apart"
-    },
-    {
-      "caption": "ARP on LIVE: a held chord becomes one voice stepping through its notes, fifty a second.",
-      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press ARP, then wait 0.5 s, then hold note key A3, then hold note key C4, then hold note key E4, then wait 2.6 s, then let go of note key A3, then let go of note key C4, then let go of note key E4, then wait 0.4 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "live"
-        },
-        {
-          "kind": "param",
-          "max": 1,
-          "min": 1,
-          "name": "arp_on"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "PRESS ARP, HOLD A CHORD",
-        "control": "ARP",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 2,
-          "rows": 19
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "arp",
-      "inputs": [
-        {
-          "button": "HOME",
-          "op": "press"
-        },
-        {
-          "ms": 500,
-          "op": "wait"
-        },
-        {
-          "button": "HOME",
-          "op": "press"
-        },
-        {
-          "ms": 900,
-          "op": "wait"
-        },
-        {
-          "button": "ARP",
-          "op": "press"
-        },
-        {
-          "ms": 500,
-          "op": "wait"
-        },
-        {
-          "note": "A3",
-          "op": "down"
-        },
-        {
-          "note": "C4",
-          "op": "down"
-        },
-        {
-          "note": "E4",
-          "op": "down"
-        },
-        {
-          "ms": 2600,
-          "op": "wait"
-        },
-        {
-          "note": "A3",
-          "op": "up"
-        },
-        {
-          "note": "C4",
-          "op": "up"
-        },
-        {
-          "note": "E4",
-          "op": "up"
-        },
-        {
-          "ms": 400,
+          "ms": 2000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*Chords* as C64 arpeggios"
+      "title": "SETTINGS, *RESET*"
     },
     {
-      "caption": "Turn it all up. Nothing clips.",
-      "control": "wait 3.0 s",
+      "caption": "The FM-1 is a USB audio input too: plug it in and a DAW records SIDOU, no driver.",
+      "control": "press HOME, then wait 4.5 s",
       "expect": [
         {
           "assert": "sounding",
@@ -593,7 +581,7 @@
         }
       ],
       "focus": {
-        "callout": "LOUD CHORDS + EFFECTS <> ONE SOFT LIMITER <> NOTHING CLIPS",
+        "callout": "SIDOU <> ONE USB CABLE <> YOUR DAW",
         "control": "card"
       },
       "harness": {
@@ -605,66 +593,23 @@
         "remember": false,
         "task": null
       },
-      "id": "limiter",
-      "inputs": [
-        {
-          "ms": 3000,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A soft *limiter*"
-    },
-    {
-      "caption": "Hold HOME on any screen: what its controls do.",
-      "control": "hold HOME for 0.9 s, then wait 2.5 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "help"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "HOLD HOME",
-        "control": "HOME",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 0,
-          "rows": 30
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "help",
+      "id": "usb-audio",
       "inputs": [
         {
           "button": "HOME",
-          "ms": 900,
-          "op": "hold"
+          "op": "press"
         },
         {
-          "ms": 2500,
+          "ms": 4500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*Help* on HOME"
+      "title": "Record it over *USB*"
     },
     {
-      "caption": "Over USB: the store's files, the current song and GoatTracker instruments, both ways.",
-      "control": "wait 3.5 s",
+      "caption": "On the site: a GoatTracker .sng in, a MIDI file out, a track for each voice, timed as GoatTracker plays it.",
+      "control": "wait 4.5 s",
       "expect": [
         {
           "assert": "sounding",
@@ -672,7 +617,7 @@
         }
       ],
       "focus": {
-        "callout": "COMPUTER <> USB SYSEX <> SIDOU",
+        "callout": "SONG.SNG <> DSABLIC.GITHUB.IO/SIDOU/MIDI.HTML <> SONG.MID",
         "control": "card"
       },
       "harness": {
@@ -684,15 +629,15 @@
         "remember": false,
         "task": null
       },
-      "id": "sysex",
+      "id": "midi",
       "inputs": [
         {
-          "ms": 3500,
+          "ms": 4500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Songs over *SysEx*"
+      "title": "Songs to *MIDI*"
     },
     {
       "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",

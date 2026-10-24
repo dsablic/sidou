@@ -1,0 +1,412 @@
+{
+  "goal": "Let the song play itself a little differently: a step's chance, a new pattern with DICE, small changes with MUTATE.",
+  "id": "step-generative",
+  "prerequisites": {
+    "after": "track-lead",
+    "start": "live",
+    "text": "The song from Record a lead with REC: drums, bass and lead, playing."
+  },
+  "related": [
+    "track-lead",
+    "step-a-beat",
+    "mute-and-solo"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "STEP",
+    "GLO mutes",
+    "a step's chance",
+    "DICE",
+    "MUTATE",
+    "a held step's note"
+  ],
+  "steps": [
+    {
+      "caption": "SEQ round the song pages to STEP: lane V1, the lead you recorded.",
+      "control": "press SEQ, then wait 0.4 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ TO STEP",
+        "control": "SEQ",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open-step",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The lead in *STEP*"
+    },
+    {
+      "caption": "GLO + key 2 and GLO + key 3 mute the bass and the drums, so the lead is heard alone.",
+      "control": "hold GLO and press note key F#3, then wait 0.4 s, then hold GLO and press note key G3, then wait 2.5 s",
+      "expect": [
+        {
+          "assert": "quieter",
+          "kind": "audio"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEYS 2, 3",
+        "control": "GLO",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mute",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "GLO",
+          "note": "G3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Just the *lead*"
+    },
+    {
+      "caption": "Hold step 1: PRESETS moves its note to an A, the song's key, and ALGORITHM sets its chance, 50%: it plays one pass in two.",
+      "control": "wait for the song's next pattern, then hold note key F3, then turn PRESETS counter-clockwise by 7 detents, then turn ALGORITHM counter-clockwise by 10 detents, then wait 0.9 s, then let go of note key F3, then wait 3.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD 1 + PRESETS, ALGORITHM",
+        "control": "ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "chance",
+      "inputs": [
+        {
+          "op": "sync"
+        },
+        {
+          "note": "F3",
+          "op": "down"
+        },
+        {
+          "detents": -7,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "detents": -10,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "note": "F3",
+          "op": "up"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *chance* to play"
+    },
+    {
+      "caption": "EDIT + SCL: a new pattern for the lane, the minor pentatonic on its A, on the eighths. Each press is another.",
+      "control": "hold EDIT and press SCL, then wait 0.1 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "NEW PATTERN"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + SCL",
+        "control": "SCL",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "dice",
+      "inputs": [
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "SCL"
+        },
+        {
+          "ms": 100,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*DICE*"
+    },
+    {
+      "caption": "The pattern is written one row at a time, as plain GoatTracker notes, and plays at once.",
+      "control": "wait 5.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "THE NEW PATTERN",
+        "control": "screen",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "new-lead",
+      "inputs": [
+        {
+          "ms": 5000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A new *lead*"
+    },
+    {
+      "caption": "EDIT + ARP: two small changes each time, a note nudged, taken away or added.",
+      "control": "hold EDIT and press ARP, then wait 2.5 s, then hold EDIT and press ARP, then wait 0.1 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "MUTATED"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mutate",
+      "inputs": [
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "ARP"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "ARP"
+        },
+        {
+          "ms": 100,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*MUTATE*"
+    },
+    {
+      "caption": "GLO + 2 and GLO + 3 again: the drums and the bass under the new lead.",
+      "control": "hold GLO and press note key F#3, then wait 0.4 s, then hold GLO and press note key G3, then wait 6.0 s",
+      "expect": [
+        {
+          "assert": "louder",
+          "kind": "audio"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEYS 2, 3",
+        "control": "GLO",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "all-in",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "GLO",
+          "note": "G3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 6000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Everyone *back*"
+    }
+  ],
+  "title": "Generative STEP: chance, DICE and MUTATE"
+}

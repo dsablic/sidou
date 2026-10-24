@@ -20,7 +20,7 @@ screenshots the tests check.*
 
 [![SIDOU in 77 seconds](docs/media/videos/sidou-intro.webp)](https://dsablic.github.io/sidou/videos.html#sidou-intro)
 
-**Watch:** [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 0.3.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html)
+**Watch:** [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 0.4.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html)
 ## What you can do
 
 - **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,

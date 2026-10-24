@@ -1,26 +1,27 @@
 {
-  "goal": "Program a drum beat on STEP's sixteen keys, from a new song, and lock an accent.",
+  "goal": "Program a drum beat on STEP's sixteen keys with SIDOU's drum kit, from a new song, and add a digi drum.",
   "id": "step-a-beat",
   "prerequisites": {
     "start": "live",
     "text": "On LIVE after the boot."
   },
   "related": [
-    "rec-over-loop",
+    "track-bass",
     "save-and-load",
-    "mute-and-solo"
+    "step-generative"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
     "a new song",
     "STEP",
     "step keys",
-    "a lane's instrument and note",
-    "a parameter lock"
+    "a drum picked by name",
+    "the pages",
+    "digi drums"
   ],
   "steps": [
     {
-      "caption": "In the menu, SONG and NEW: three empty voices, with a lead, a bass and a drum instrument.",
+      "caption": "In the menu, SONG and NEW: three empty voices, with a lead, a bass and a drum kit.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.2 s",
       "expect": [
         {
@@ -96,7 +97,7 @@
       "title": "A *new* song"
     },
     {
-      "caption": "SEQ opens STEP. SELECT picks lane V3, PRESETS its instrument: 03, the drums.",
+      "caption": "SEQ opens STEP. SELECT picks lane V3, PRESETS its instrument, by name: 03 KICK.",
       "control": "press SEQ, then wait 1.0 s, then turn SELECT clockwise by 2 detents, then wait 0.6 s, then turn PRESETS clockwise by 2 detents, then wait 1.5 s",
       "expect": [
         {
@@ -160,7 +161,7 @@
     },
     {
       "caption": "The sixteen leftmost keys are the steps. Tap 1 and 9: a kick on each.",
-      "control": "tap F3, C#4, then wait 2.0 s",
+      "control": "tap F3, C#4, then wait 1.5 s",
       "expect": [
         {
           "entry": 0,
@@ -201,7 +202,7 @@
           "op": "taps"
         },
         {
-          "ms": 2000,
+          "ms": 1500,
           "op": "wait"
         }
       ],
@@ -209,8 +210,8 @@
       "title": "Kicks on *1* and *9*"
     },
     {
-      "caption": "Hold step 5 and turn PRESETS: its note goes up to a snare. Then tap 13.",
-      "control": "hold note key A3, then turn PRESETS clockwise by 12 detents, then let go of note key A3, then wait 0.6 s, then tap F4, then wait 1.5 s",
+      "caption": "PRESETS one on: 04 SNARE. The steps you tap now play it: 5 and 13.",
+      "control": "turn PRESETS clockwise by 1 detent, then wait 0.9 s, then tap A3, F4, then wait 1.2 s",
       "expect": [
         {
           "entry": 0,
@@ -222,10 +223,14 @@
             12
           ],
           "voice": 3
+        },
+        {
+          "kind": "text",
+          "value": "I04"
         }
       ],
       "focus": {
-        "callout": "HOLD 5 + TURN PRESETS",
+        "callout": "PRESETS, TAP 5 AND 13",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -245,31 +250,24 @@
       "id": "snares",
       "inputs": [
         {
-          "note": "A3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
+          "detents": 1,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "A3",
-          "op": "up"
-        },
-        {
-          "ms": 600,
+          "ms": 900,
           "op": "wait"
         },
         {
           "ms": 300,
           "notes": [
+            "A3",
             "F4"
           ],
           "op": "taps"
         },
         {
-          "ms": 1500,
+          "ms": 1200,
           "op": "wait"
         }
       ],
@@ -277,8 +275,8 @@
       "title": "A *snare* on 5 and 13"
     },
     {
-      "caption": "Higher again for a hat on 3, then tap 7, 11 and 15.",
-      "control": "hold note key G3, then turn PRESETS clockwise by 12 detents, then let go of note key G3, then wait 0.6 s, then tap B3, D#4, G4, then wait 1.5 s",
+      "caption": "05 CL HAT on 3, 7 and 11, and 06 OP HAT, the open one, on 15.",
+      "control": "turn PRESETS clockwise by 1 detent, then wait 0.7 s, then tap G3, B3, D#4, then turn PRESETS clockwise by 1 detent, then wait 0.7 s, then tap G4, then wait 1.2 s",
       "expect": [
         {
           "entry": 0,
@@ -294,10 +292,14 @@
             14
           ],
           "voice": 3
+        },
+        {
+          "kind": "text",
+          "value": "I06"
         }
       ],
       "focus": {
-        "callout": "HOLD 3 + PRESETS, TAP",
+        "callout": "PRESETS, TAP THE HATS",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -317,33 +319,41 @@
       "id": "hats",
       "inputs": [
         {
-          "note": "G3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
+          "detents": 1,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "G3",
-          "op": "up"
-        },
-        {
-          "ms": 600,
+          "ms": 700,
           "op": "wait"
         },
         {
           "ms": 300,
           "notes": [
+            "G3",
             "B3",
-            "D#4",
+            "D#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "ms": 300,
+          "notes": [
             "G4"
           ],
           "op": "taps"
         },
         {
-          "ms": 1500,
+          "ms": 1200,
           "op": "wait"
         }
       ],
@@ -351,8 +361,8 @@
       "title": "*Hats* in between"
     },
     {
-      "caption": "A pattern is 64 steps: ALGORITHM pages through them. The same beat on pages 2, 3 and 4.",
-      "control": "turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap F3, then hold note key F3, then turn PRESETS counter-clockwise by 24 detents, then let go of note key F3, then tap C#4, A3, then hold note key A3, then turn PRESETS clockwise by 12 detents, then let go of note key A3, then tap F4, G3, then hold note key G3, then turn PRESETS clockwise by 12 detents, then let go of note key G3, then tap B3, D#4, G4, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap F3, then hold note key F3, then turn PRESETS counter-clockwise by 24 detents, then let go of note key F3, then tap C#4, A3, then hold note key A3, then turn PRESETS clockwise by 12 detents, then let go of note key A3, then tap F4, G3, then hold note key G3, then turn PRESETS clockwise by 12 detents, then let go of note key G3, then tap B3, D#4, G4, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap F3, then hold note key F3, then turn PRESETS counter-clockwise by 24 detents, then let go of note key F3, then tap C#4, A3, then hold note key A3, then turn PRESETS clockwise by 12 detents, then let go of note key A3, then tap F4, G3, then hold note key G3, then turn PRESETS clockwise by 12 detents, then let go of note key G3, then tap B3, D#4, G4, then wait 0.3 s, then turn ALGORITHM counter-clockwise by 3 detents, then wait 1.2 s",
+      "caption": "A pattern is 64 steps: ALGORITHM pages through them. The beat again on pages 2 and 3, and a fill on the toms to end.",
+      "control": "turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap G4, then turn PRESETS counter-clockwise by 1 detent, then tap G3, B3, D#4, then turn PRESETS counter-clockwise by 1 detent, then tap A3, F4, then turn PRESETS counter-clockwise by 1 detent, then tap F3, C#4, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap F3, C#4, then turn PRESETS clockwise by 1 detent, then tap A3, F4, then turn PRESETS clockwise by 1 detent, then tap G3, B3, D#4, then turn PRESETS clockwise by 1 detent, then tap G4, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then turn PRESETS counter-clockwise by 1 detent, then tap G3, B3, D#4, then turn PRESETS counter-clockwise by 1 detent, then tap A3, then turn PRESETS clockwise by 5 detents, then tap F4, then turn PRESETS counter-clockwise by 1 detent, then tap G4, then turn PRESETS counter-clockwise by 5 detents, then tap F3, C#4, then wait 0.3 s, then turn ALGORITHM counter-clockwise by 3 detents, then wait 1.2 s",
       "expect": [
         {
           "entry": 0,
@@ -392,6 +402,10 @@
             62
           ],
           "voice": 3
+        },
+        {
+          "kind": "text",
+          "value": "I03"
         }
       ],
       "focus": {
@@ -424,72 +438,108 @@
           "op": "wait"
         },
         {
-          "ms": 200,
+          "ms": 150,
           "notes": [
-            "F3"
+            "G4"
           ],
           "op": "taps"
         },
         {
-          "note": "F3",
-          "op": "down"
-        },
-        {
-          "detents": -24,
+          "detents": -1,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "F3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
+          "ms": 150,
           "notes": [
-            "C#4",
-            "A3"
-          ],
-          "op": "taps"
-        },
-        {
-          "note": "A3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
-          "encoder": "PRESETS",
-          "op": "turn"
-        },
-        {
-          "note": "A3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
-          "notes": [
-            "F4",
-            "G3"
-          ],
-          "op": "taps"
-        },
-        {
-          "note": "G3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
-          "encoder": "PRESETS",
-          "op": "turn"
-        },
-        {
-          "note": "G3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
-          "notes": [
+            "G3",
             "B3",
-            "D#4",
+            "D#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "detents": -1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "A3",
+            "F4"
+          ],
+          "op": "taps"
+        },
+        {
+          "detents": -1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "F3",
+            "C#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "F3",
+            "C#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "A3",
+            "F4"
+          ],
+          "op": "taps"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "G3",
+            "B3",
+            "D#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 150,
+          "notes": [
             "G4"
           ],
           "op": "taps"
@@ -508,157 +558,65 @@
           "op": "wait"
         },
         {
-          "ms": 200,
-          "notes": [
-            "F3"
-          ],
-          "op": "taps"
-        },
-        {
-          "note": "F3",
-          "op": "down"
-        },
-        {
-          "detents": -24,
+          "detents": -1,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "F3",
-          "op": "up"
+          "ms": 150,
+          "notes": [
+            "G3",
+            "B3",
+            "D#4"
+          ],
+          "op": "taps"
         },
         {
-          "ms": 200,
+          "detents": -1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 150,
           "notes": [
-            "C#4",
             "A3"
           ],
           "op": "taps"
         },
         {
-          "note": "A3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
+          "detents": 5,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "A3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
+          "ms": 150,
           "notes": [
-            "F4",
-            "G3"
+            "F4"
           ],
           "op": "taps"
         },
         {
-          "note": "G3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
+          "detents": -1,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "G3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
+          "ms": 150,
           "notes": [
-            "B3",
-            "D#4",
             "G4"
           ],
           "op": "taps"
         },
         {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 400,
-          "op": "wait"
-        },
-        {
-          "ms": 200,
-          "notes": [
-            "F3"
-          ],
-          "op": "taps"
-        },
-        {
-          "note": "F3",
-          "op": "down"
-        },
-        {
-          "detents": -24,
+          "detents": -5,
           "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "note": "F3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
+          "ms": 150,
           "notes": [
-            "C#4",
-            "A3"
-          ],
-          "op": "taps"
-        },
-        {
-          "note": "A3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
-          "encoder": "PRESETS",
-          "op": "turn"
-        },
-        {
-          "note": "A3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
-          "notes": [
-            "F4",
-            "G3"
-          ],
-          "op": "taps"
-        },
-        {
-          "note": "G3",
-          "op": "down"
-        },
-        {
-          "detents": 12,
-          "encoder": "PRESETS",
-          "op": "turn"
-        },
-        {
-          "note": "G3",
-          "op": "up"
-        },
-        {
-          "ms": 200,
-          "notes": [
-            "B3",
-            "D#4",
-            "G4"
+            "F3",
+            "C#4"
           ],
           "op": "taps"
         },
@@ -680,8 +638,8 @@
       "title": "*Four* pages"
     },
     {
-      "caption": "There it is. The lit step runs along the keys.",
-      "control": "press PLAY, then wait 4.0 s",
+      "caption": "The kit on one voice, as C64 songs play their drums. The lit step runs along the keys.",
+      "control": "press PLAY, then wait 4.5 s",
       "expect": [
         {
           "assert": "sounding",
@@ -712,7 +670,7 @@
           "op": "press"
         },
         {
-          "ms": 4000,
+          "ms": 4500,
           "op": "wait"
         }
       ],
@@ -720,24 +678,68 @@
       "title": "Press *PLAY*"
     },
     {
-      "caption": "Hold step 1 and turn K1: a cutoff LOCK for that step alone, the yellow notch.",
-      "control": "hold note key F3, then turn K1 clockwise by 10 detents, then wait 0.8 s, then let go of note key F3, then wait 3.5 s",
+      "caption": "0B to 0E are digi drums, samples played as C64 tunes play them. PRESETS to 0D DG CLAP, then tap 16 on each page as it plays.",
+      "control": "turn PRESETS clockwise by 10 detents, then wait 0.9 s, then wait for the song's next pattern, then wait 0.3 s, then tap G#4, then wait 1.7 s, then tap G#4, then wait 1.7 s, then tap G#4, then wait 1.7 s, then tap G#4, then wait 3.5 s",
       "expect": [
         {
           "assert": "sounding",
           "kind": "audio"
         },
         {
-          "kind": "screen_changes"
+          "entry": 0,
+          "kind": "pattern_rows",
+          "rows": [
+            0,
+            2,
+            4,
+            6,
+            8,
+            10,
+            12,
+            14,
+            15,
+            16,
+            18,
+            20,
+            22,
+            24,
+            26,
+            28,
+            30,
+            31,
+            32,
+            34,
+            36,
+            38,
+            40,
+            42,
+            44,
+            46,
+            47,
+            48,
+            50,
+            52,
+            54,
+            56,
+            58,
+            60,
+            62,
+            63
+          ],
+          "voice": 3
+        },
+        {
+          "kind": "text",
+          "value": "I0D"
         }
       ],
       "focus": {
-        "callout": "HOLD 1 + TURN K1",
+        "callout": "PRESETS 0D, TAP 16",
         "screen": {
           "col": 0,
           "cols": 30,
-          "row": 15,
-          "rows": 15
+          "row": 2,
+          "rows": 13
         }
       },
       "harness": {
@@ -749,24 +751,63 @@
         "remember": false,
         "task": null
       },
-      "id": "accent",
+      "id": "digi",
       "inputs": [
         {
-          "note": "F3",
-          "op": "down"
-        },
-        {
           "detents": 10,
-          "encoder": "K1",
+          "encoder": "PRESETS",
           "op": "turn"
         },
         {
-          "ms": 800,
+          "ms": 900,
           "op": "wait"
         },
         {
-          "note": "F3",
-          "op": "up"
+          "op": "sync"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "G#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 1710,
+          "op": "wait"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "G#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 1710,
+          "op": "wait"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "G#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 1710,
+          "op": "wait"
+        },
+        {
+          "ms": 150,
+          "notes": [
+            "G#4"
+          ],
+          "op": "taps"
         },
         {
           "ms": 3500,
@@ -774,8 +815,8 @@
         }
       ],
       "needs": [],
-      "title": "An *accent*"
+      "title": "A *digi* drum"
     }
   ],
-  "title": "A beat in STEP"
+  "title": "A beat with the drum kit"
 }

@@ -156,6 +156,9 @@ def events_of(steps: list) -> list:
             elif op == "hold_key":
                 ev.append((a["button"], "hold", t0, t1, 0))
                 ev.append((a["note"], "key", t0 + 30, t0 + 180, 0))
+            elif op == "hold_press":
+                ev.append((a["button"], "hold", t0, t1, 0))
+                ev.append((a["press"], "press", t0 + 30, max(t1 - 30, t0 + 31), 0))
             elif op == "note":
                 for n in a["notes"]:
                     ev.append((n, "key", t0, t0 + a["ms"], 0))
@@ -202,6 +205,8 @@ def default_callout(step: dict) -> str:
         return f"HOLD {a['button']} + TURN {a['encoder']}"
     if op == "hold_key":
         return f"HOLD {a['button']} + KEY {panel.note_number(a['note']) - 52}"
+    if op == "hold_press":
+        return f"HOLD {a['button']} + {a['press']}"
     if op == "taps":
         return "TAP THE STEP KEYS"
     if op in ("note", "down", "play"):
@@ -623,7 +628,10 @@ def main() -> None:
     for f in formats:
         if f not in T.LAYOUTS:
             sys.exit(f"make-videos: no format {f}")
-    ids = a.recipe or sorted(p.stem for p in RECIPES.glob("*.json"))
+    # Every recipe is a video but the checks marked `"video": false` in videos.json.
+    cfg = json.loads(VIDEOS.read_text())
+    ids = a.recipe or sorted(p.stem for p in RECIPES.glob("*.json")
+                             if cfg.get(p.stem, {}).get("video", True))
     # The captures first, several at once (each is one emulator on one core); then the renders,
     # each on every core.
     from concurrent.futures import ThreadPoolExecutor
