@@ -47,4 +47,61 @@ fn main() {
         .flag_if_supported("-Wno-unused-function");
     sanitize::apply_sanitizer(&mut build);
     build.compile("ota_harness");
+    uac_harnesses(&manifest, &fm1);
+}
+
+/// USB audio out: SIDOU's harness (harness/uac_harness.c: usb.c as midi.c builds it, with
+/// usb_audio.c's hand-over) and Felucca's own test of usb.c's audio input, as it is
+/// (harness/felucca/uac_test.c, from Felucca's tests/, run by tests/usb_audio.rs: its `main`
+/// renamed). That test includes `../firmware/src/usb.c`: OUT_DIR gets Felucca's layout, a
+/// `firmware` link to platform/fm1 (whose src/ and hal/ are Felucca's) beside the `tests` the
+/// include is looked up from.
+fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
+    let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("felucca");
+    let tests = out.join("tests");
+    std::fs::create_dir_all(&tests).unwrap();
+    let firmware = out.join("firmware");
+    if std::fs::read_link(&firmware).ok().as_deref() != Some(fm1) {
+        let _ = std::fs::remove_file(&firmware);
+        std::os::unix::fs::symlink(fm1, &firmware).unwrap();
+    }
+    for f in ["harness/uac_harness.c", "harness/felucca/uac_test.c"] {
+        println!("cargo:rerun-if-changed={f}");
+    }
+    for f in [
+        "src/usb.c",
+        "src/uac_fir.h",
+        "hal/fm1_usb.h",
+        "usb_config.h",
+        "usb_audio.h",
+        "usb_audio.c",
+    ] {
+        println!("cargo:rerun-if-changed={}", fm1.join(f).display());
+    }
+    let mut sidou = cc::Build::new();
+    sidou
+        .file(manifest.join("harness/uac_harness.c"))
+        .include(fm1)
+        .flag("-std=c11")
+        // Optimised in every profile, as Felucca builds its own test: usb.c's SIE functions,
+        // unused here, hold pi32v2 instructions, and GCC emits unused static functions at -O0.
+        .opt_level(2)
+        .warnings(true)
+        .flag_if_supported("-Wno-unused-function")
+        .flag_if_supported("-Wno-unused-variable")
+        .flag_if_supported("-Wno-unused-parameter");
+    sanitize::apply_sanitizer(&mut sidou);
+    sidou.compile("uac_harness");
+    let mut felucca = cc::Build::new();
+    felucca
+        .file(manifest.join("harness/felucca/uac_test.c"))
+        .flag(format!("-iquote{}", tests.display()))
+        .define("T_CDC", "0")
+        .define("HALF_FRAMES", "128")
+        .define("main", "felucca_uac_test_main")
+        .opt_level(2)
+        .warnings(false);
+    sanitize::apply_sanitizer(&mut felucca);
+    felucca.compile("felucca_uac_test");
+    println!("cargo:rustc-link-lib=m");
 }

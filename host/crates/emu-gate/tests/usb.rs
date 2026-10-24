@@ -15,13 +15,17 @@
 //!   to the next tick (main.c wait_for_interrupt), so it runs nearly every cycle the
 //!   interrupts leave it; with no host it sleeps as before.
 //!
+//! - a host that records (USB audio out: platform/fm1/usb_audio.h) gets the DAC's samples, bit
+//!   for bit at 44.1 kHz and resampled at 48, a packet each frame, and recording costs the audio
+//!   interrupt little.
+//!
 //! The chip's own behaviour (the DMA against a sleeping core, the host's IN tokens) is not
 //! modelled; only the device can confirm the fix (docs/hardware-test.md).
 
 mod common;
 
 use common::usb_host::UsbHost;
-use common::{build_dir, run_past_boot, skip_message, Firmware, Machine};
+use common::{build_dir, run_past_boot, skip_message, Firmware, Machine, USB_AUDIO_PER_SAMPLE};
 use fm1_core::Bus;
 
 /// Felucca's ids: K1 (cutoff, CC 74) and PRESETS (the preset, a program change).
@@ -32,8 +36,9 @@ const CC_CUTOFF: u8 = 74;
 const IDENTITY: &str = "FM-1_900";
 /// src/usb.c ep1_tx: one full-speed bulk packet.
 const IN_MAX: usize = 64;
-/// The config descriptor's length (src/usb.c CFG_LEN_PLAIN).
-const CONFIG_LEN: usize = 101;
+/// The config descriptor's length (src/usb.c CFG_LEN_PLAIN): USB-MIDI and the audio input
+/// (FELUCCA_UAC, 44.1 and 48 kHz), 9 + 92 + 63 + 14.
+const CONFIG_LEN: usize = 178;
 
 fn fixture(what: &str) -> Option<Firmware> {
     let Some(build) = build_dir() else {
@@ -1726,5 +1731,290 @@ fn a_first_boot_over_another_firmwares_sectors_answers_usb_at_once() {
             assert_eq!(common::stored_value(&f, 0x20), Some(vec![0x5A; 16]));
             assert!(common::stored_value(&f, sidou_sys::SETTINGS_KEY).is_some());
         }
+    }
+}
+
+// ---- USB audio out (platform/fm1/usb_audio.h) ----
+
+/// src/usb.c's `uac` (FELUCCA_UAC), by its fields' offsets on pi32v2: nine bytes of flags, then
+/// fill_min and the counters, each a word.
+#[derive(Debug, Clone, Copy)]
+struct Uac {
+    alt: u8,
+    r48: u8,
+    go: u8,
+    flowing: u8,
+    pkts: u32,
+    underruns: u32,
+    overruns: u32,
+    missed: u32,
+    stalls: u32,
+    fill_lo: u32,
+    fill_hi: u32,
+    rate_sets: u32,
+}
+
+fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
+    let a = fw.symbol("uac");
+    let w = |m: &mut Machine, i: u32| m.soc.read32(a + 12 + 4 * i);
+    Uac {
+        alt: m.soc.read8(a),
+        r48: m.soc.read8(a + 1),
+        go: m.soc.read8(a + 3),
+        flowing: m.soc.read8(a + 4),
+        pkts: w(m, 4),
+        underruns: w(m, 6),
+        overruns: w(m, 7),
+        missed: w(m, 8),
+        stalls: w(m, 9),
+        fill_lo: w(m, 12),
+        fill_hi: w(m, 13),
+        rate_sets: w(m, 14),
+    }
+}
+
+/// usb_audio.c's block (`usb_audio_in`): want, left (after the 256 sample words), blocks,
+/// skipped.
+fn hand_over(m: &mut Machine, fw: &Firmware) -> (u8, u8, u32, u32) {
+    let a = fw.symbol("usb_audio_in") + 1024;
+    (
+        m.soc.read8(a),
+        m.soc.read8(a + 1),
+        m.soc.read32(a + 4),
+        m.soc.read32(a + 8),
+    )
+}
+
+/// SET_INTERFACE on the audio streaming interface (2): alt 1 starts the stream, and the host
+/// reads it from the frame after; alt 0 stops it, the host's reading first.
+fn record(m: &mut Machine, on: bool) {
+    if !on {
+        host(m).ep4_reading = false;
+    }
+    setup(m, [0x01, 0x0B, u8::from(on), 0, 2, 0, 0, 0]);
+    host(m).ep4_reading = on;
+}
+
+/// SET_CUR sampling frequency on EP 0x84: the SETUP, then its 3-byte data stage.
+fn set_rate(m: &mut Machine, hz: u32) {
+    setup(m, [0x22, 0x01, 0x00, 0x01, 0x84, 0x00, 0x03, 0x00]);
+    let usb = m.usb.as_mut().expect("a host");
+    usb.out0(&mut m.soc, &hz.to_le_bytes()[..3]);
+    m.usb_frames(3);
+    assert_eq!(host(m).stalls, 0, "SET_CUR {hz} stalled");
+}
+
+/// The EP4 packets' frames as (L, R).
+fn frames(packets: &[Vec<u8>]) -> Vec<(i16, i16)> {
+    packets
+        .concat()
+        .chunks(4)
+        .map(|f| {
+            (
+                i16::from_le_bytes([f[0], f[1]]),
+                i16::from_le_bytes([f[2], f[3]]),
+            )
+        })
+        .collect()
+}
+
+fn packet_sizes(packets: &[Vec<u8>]) -> (usize, usize, f64) {
+    let n: Vec<usize> = packets.iter().map(|p| p.len() / 4).collect();
+    let mean = n.iter().sum::<usize>() as f64 / n.len() as f64;
+    (*n.iter().min().unwrap(), *n.iter().max().unwrap(), mean)
+}
+
+fn rms(x: impl Iterator<Item = i16>) -> f64 {
+    let (mut s, mut n) = (0.0, 0usize);
+    for v in x {
+        s += f64::from(v) * f64::from(v);
+        n += 1;
+    }
+    (s / n as f64).sqrt()
+}
+
+/// A4's key id (14 + note - 53), held so the chip sounds.
+const A4_KEY: u8 = 30;
+
+/// A host records what the DAC plays: at 44.1 kHz the same samples, bit for bit, a packet of 44
+/// or 45 frames each frame (one more or fewer while the ring's fill is held in its band); at 48
+/// kHz (SET_CUR) packets of 47..49 at the same level. No frame is repeated or dropped, and no IN
+/// token finds an empty endpoint. When the host stops, the hand-over stops too.
+#[test]
+fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
+    let Some(fw) = fixture("the USB audio test") else {
+        return;
+    };
+    // usb.c's EP4 IN buffer on an 8-byte boundary, as EP1's must be (app.ld: it is in the
+    // compiler's merged globals, where no rule places it).
+    assert_eq!(fw.symbol("ep4tx") % 8, 0, "ep4tx at 4 mod 8");
+    let mut m = usb_machine(&fw);
+    assert_eq!(hand_over(&mut m, &fw).0, 0, "no host records yet");
+    m.key(A4_KEY, true);
+    m.usb_frames(300);
+
+    record(&mut m, true);
+    m.usb_frames(1000);
+    let u = uac(&mut m, &fw);
+    let packets = host(&mut m).in4.clone();
+    let (lo, hi, mean) = packet_sizes(&packets[100..]);
+    println!(
+        "44.1 kHz: {} packets, {lo}..{hi} frames (mean {mean:.4}); fill {}..{}; {:?}",
+        packets.len(),
+        u.fill_lo,
+        u.fill_hi,
+        hand_over(&mut m, &fw)
+    );
+    assert_eq!((u.alt, u.r48, u.go, u.flowing), (1, 0, 1, 1));
+    assert!(
+        packets.len() >= 995,
+        "{} packets in 1000 frames",
+        packets.len()
+    );
+    assert!(lo >= 43 && hi <= 46, "packet sizes {lo}..{hi}");
+    assert!((mean - 44.1).abs() < 0.1, "mean packet {mean}");
+    assert_eq!(
+        (u.underruns, u.overruns, u.stalls, u.missed),
+        (0, 0, 0, 0),
+        "a glitch at 44.1 kHz"
+    );
+    assert_eq!(host(&mut m).ep4_empty, 0, "an IN token found no packet");
+    assert_eq!(hand_over(&mut m, &fw).3, 0, "a block skipped");
+    // The DAC's samples, bit for bit: the recording from its first sound on is a run of what
+    // the DAC played.
+    let usb = frames(&packets);
+    let dac: Vec<(i16, i16)> = m.left().into_iter().zip(m.right()).collect();
+    let first = usb
+        .iter()
+        .position(|&f| f != (0, 0))
+        .expect("silence over USB");
+    let probe = &usb[first..first + 256];
+    let at = dac
+        .windows(256)
+        .position(|w| w == probe)
+        .expect("the recording is not the DAC's output");
+    let same = usb[first..]
+        .iter()
+        .zip(&dac[at..])
+        .take_while(|(a, b)| a == b)
+        .count();
+    println!(
+        "44.1 kHz: {} frames recorded, {same} of them the DAC's in order from frame {first}",
+        usb.len()
+    );
+    assert!(
+        same + first + 64 >= usb.len(),
+        "only {same} frames match the DAC"
+    );
+    assert!(same > 40_000);
+    assert!(
+        rms(usb[first..].iter().map(|f| f.0)) > 500.0,
+        "no sound recorded"
+    );
+
+    set_rate(&mut m, 48_000);
+    host(&mut m).in4.clear();
+    let dac_from = m.left().len();
+    m.usb_frames(1000);
+    let u48 = uac(&mut m, &fw);
+    let packets = host(&mut m).in4.clone();
+    let (lo, hi, mean) = packet_sizes(&packets[100..]);
+    let usb = frames(&packets[100..]);
+    let dac = m.left();
+    let (level, dac_level) = (
+        rms(usb.iter().map(|f| f.0)),
+        rms(dac[dac_from + 4410..].iter().copied()),
+    );
+    println!(
+        "48 kHz: {} packets, {lo}..{hi} frames (mean {mean:.4}); fill {}..{}; level {level:.0} \
+         against the DAC's {dac_level:.0}",
+        packets.len(),
+        u48.fill_lo,
+        u48.fill_hi
+    );
+    assert_eq!((u48.r48, u48.rate_sets, u48.go), (1, u.rate_sets + 1, 1));
+    assert!(lo >= 47 && hi <= 49, "packet sizes {lo}..{hi}");
+    assert!((mean - 48.0).abs() < 0.1, "mean packet {mean}");
+    assert!(
+        (level / dac_level - 1.0).abs() < 0.03,
+        "48 kHz level {level:.0}, the DAC's {dac_level:.0}"
+    );
+    assert_eq!(
+        (u48.underruns, u48.overruns, u48.stalls, u48.missed),
+        (0, 0, 0, 0),
+        "a glitch at 48 kHz"
+    );
+    assert!(u48.pkts >= 995, "{} packets counted at 48 kHz", u48.pkts);
+    assert_eq!(host(&mut m).ep4_empty, 0, "an IN token found no packet");
+    assert_eq!(hand_over(&mut m, &fw).3, 0, "a block skipped");
+
+    record(&mut m, false);
+    host(&mut m).in4.clear();
+    m.usb_frames(50);
+    assert!(host(&mut m).in4.is_empty(), "packets after alt 0");
+    let (want, left, ..) = hand_over(&mut m, &fw);
+    assert_eq!((want, left), (0, 0), "the hand-over goes on after alt 0");
+}
+
+/// What recording costs the interrupts, a chord held, recording and not by turns: the audio
+/// interrupt (the TIMER5 work that nests in a render: packets, the producer's quarters), and
+/// every interrupt together (TIMER5's copy of the block, the producer, 48 kHz's resampler, and
+/// the packets).
+#[test]
+fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
+    let Some(fw) = fixture("the USB audio cost test") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    for k in [18, 25, 37] {
+        m.key(k, true);
+    }
+    m.usb_frames(1500); // to the sustain level: the chip's cost steady
+    let measure = |m: &mut Machine, ms: u64| {
+        let (from, isr) = (m.alnk_blocks.len(), m.isr_steps);
+        m.usb_frames(ms);
+        let b = &m.alnk_blocks[from..];
+        let samples = b.len() as f64 * 128.0;
+        (
+            b.iter().sum::<u64>() as f64 / samples,
+            (m.isr_steps - isr) as f64 / samples,
+        )
+    };
+    let mut rows = Vec::new();
+    for hz in [44_100, 48_000] {
+        let (mut on, mut off) = (Vec::new(), Vec::new());
+        for _ in 0..3 {
+            record(&mut m, true);
+            set_rate(&mut m, hz);
+            m.usb_frames(50);
+            on.push(measure(&mut m, 400));
+            record(&mut m, false);
+            m.usb_frames(50);
+            off.push(measure(&mut m, 400));
+        }
+        let mean = |v: &[(f64, f64)], f: fn(&(f64, f64)) -> f64| {
+            v.iter().map(f).sum::<f64>() / v.len() as f64
+        };
+        let alnk = mean(&on, |x| x.0) - mean(&off, |x| x.0);
+        let all = mean(&on, |x| x.1) - mean(&off, |x| x.1);
+        println!(
+            "{hz} Hz: the audio interrupt {:.2} recording, {:.2} not: +{alnk:.2} a sample; every \
+             interrupt +{all:.2} a sample ({on:?} / {off:?})",
+            mean(&on, |x| x.0),
+            mean(&off, |x| x.0)
+        );
+        rows.push((hz, alnk, all));
+    }
+    let (user, system) = m.stack_use();
+    println!("stacks: user {user} bytes, system {system}");
+    for (hz, alnk, _) in rows {
+        assert!(
+            alnk > 0.0,
+            "{hz} Hz: recording costs nothing: is it running?"
+        );
+        assert!(
+            alnk <= USB_AUDIO_PER_SAMPLE,
+            "{hz} Hz: recording adds {alnk:.2} instructions a sample to the audio interrupt"
+        );
     }
 }

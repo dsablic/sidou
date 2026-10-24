@@ -60,6 +60,15 @@ All notable changes are documented here. The format follows
   while a digi drum plays, its voice's own sound is muted. They sound the same on either chip
   model (an 8580 plays them as one with the "digi boost"). The samples are synthesized by
   SIDOU's table generator, no recorded material.
+- **Record SIDOU over the USB cable:** the FM-1 is also a class-compliant USB audio input (UAC1,
+  no driver on macOS, Windows, Linux or iPad), beside its USB-MIDI port in one device. A DAW
+  records what the line out plays (after the effects, the limiter and MASTER), 16-bit stereo at
+  44.1 kHz, or 48 kHz resampled, the host's choice. It is Felucca's USB audio input from the
+  same `usb.c`, on as Felucca's firmware has it. The TIMER5 interrupt takes each block from the
+  I2S buffer and feeds it, so the audio interrupt and its SRAM code are unchanged; recording costs
+  the interrupts about 42 instructions a sample at 44.1 kHz and 335 at 48 (the resampler), and
+  nothing while no host records. The installer's updates and SysEx work as before, still over the
+  MIDI port.
 
 ### Changed
 - **The profile's word everywhere:** STATUS names the chip as its model and the profile's word

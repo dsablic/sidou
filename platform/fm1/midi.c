@@ -119,16 +119,8 @@ static struct {
 
 /* ---- the hooks of the vendored code ---- */
 
-/* The ring's index stores are ordered by midi_ring.c itself; this orders usb.c's own rings. */
-#define RING_PUBLISH() __asm__ volatile("" ::: "memory")
-/* The update protocol's SysEx frames and TX queue in usb.c (ota.c below). usb.c also sets
- * usb.uboot_req on the stock UBOOT soft key F0 22 24 35 7D F7; nothing here reads it, and SIDOU
- * never sends it. */
-#define FELUCCA_OTA 1
-/* Felucca's build switches as its default firmware leaves them, but without the CDC console and
- * the USB audio input: MIDI streaming alone on EP1. */
-#define FELUCCA_CDC 0
-#define FELUCCA_UAC 0
+/* usb.c's build switches and the device's strings, which the host harness builds with too. */
+#include "usb_config.h"
 /* The identity the protocol answers (cmd 0x11), == the package's (sidou-pack --product):
  * "FM-1_900" for development builds, as every community firmware's; CMakeLists.txt. */
 #define FELUCCA_ID SIDOU_PRODUCT
@@ -143,14 +135,6 @@ static void usb_reset_wait(uint32_t ms) {
     }
 }
 
-/* usb.c's two SIDOU hooks (platform/fm1/VENDORED.md). The device presents as "SIDOU FM-1" by
- * "SIDOU contributors" (string descriptors: bLength, 3, UTF-16LE). "FM-1" in the name is what
- * the installers look for (Felucca's fm1_install.py and fm1ota.js, the Firmware Hub), as
- * Melodee 1.4.5 found. */
-#define FELUCCA_USB_MANUFACTURER                                                                   \
-    38, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'c', 0, 'o', 0, 'n', 0, 't', 0, 'r', 0, \
-        'i', 0, 'b', 0, 'u', 0, 't', 0, 'o', 0, 'r', 0, 's', 0
-#define FELUCCA_USB_PRODUCT 22, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0
 /* Every USB-MIDI event packet, as it came (TIMER5 interrupt, usb_poll), into SIDOU's ring
  * (defined after the include: it uses usb.c's ring). */
 static void usb_raw_in(uint32_t pkt);
@@ -165,6 +149,8 @@ static void usb_raw_in(uint32_t pkt);
 #undef sysex_byte
 #undef fm1_delay_ms
 /* clang-format on */
+/* USB audio out's entry points, around usb.c's audio input (usb_audio.h). */
+#include "usb_audio.c"
 
 /* SIDOU's parser (app/midi_usb.c) takes system common, every real-time byte and SysEx too,
  * which usb.c's own ring leaves out. EP1's back-pressure follows SIDOU's ring too: usb.c's

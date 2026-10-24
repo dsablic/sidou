@@ -122,8 +122,21 @@ Follow-ups that aren't tied to a milestone task yet.
   qualifies) and set it in the descriptor. The update loader enumerates as
   0x1209:0x0002 (as Felucca's loader) and needs its own PID too.
 
-## USB audio out, so a computer can record SIDOU over the cable
+## USB audio out, so a computer can record SIDOU over the cable: done (2026-10-23)
 
+- **Done:** `FELUCCA_UAC 1` (`platform/fm1/usb_config.h`), Felucca's audio input from
+  `usb.c` as it is, both rates. The TIMER5 interrupt takes each block from the I2S half buffer
+  and runs `usb.c`'s producer on it (`platform/fm1/usb_audio.h`;
+  [VENDORED.md](../platform/fm1/VENDORED.md), "USB audio out"), so no RAMTEXT and no audio
+  interrupt code. Recording adds 0.87 instructions a sample to the audio interrupt at 44.1 kHz
+  and 1.11 at 48 (TIMER5 nested in renders; emu-gate `USB_AUDIO_PER_SAMPLE`, 2, in the 2,700
+  sum and the 6502's headroom), and every interrupt together 42 a sample at 44.1 kHz, 335 at 48
+  (the resampler): about 6 % of a 240 MHz core while a host records at 48 kHz. Not recording
+  costs nothing measurable. Image +9,904 bytes (7,680 the resampler's table), RAM region +560,
+  POOL +3,088. Host tests: Felucca's `uac_test.c` as it is and
+  `host/crates/sidou-pack/tests/usb_audio.rs`; emu-gate `tests/usb.rs` records the DAC's output
+  through a modelled EP4. Open: the hardware checks, [hardware-test.md](hardware-test.md)
+  section 16.
 - **Where:** `platform/fm1/midi.c` (`FELUCCA_UAC 0` before it includes
   `src/usb.c`) and `platform/fm1/audio.c`.
 - **Problem:** SIDOU's USB is MIDI only. `midi.c` builds Felucca's

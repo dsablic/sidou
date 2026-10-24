@@ -203,7 +203,9 @@ The emulator's real two-chip ISR with every slot at its heaviest measures 2,387.
 instructions/sample against 2,700. The conservative 6502 allowance is about **185.07
 instructions/sample** after the measured slot-switch peak (964.28125), mix (8.05946)
 and MASTER gain (12.0625 steady, 12.08567 with one pot move), not the earlier mix-only
-197.44 or fixed-964-slot estimate of 185.35. Song playback and a future
+197.44 or fixed-964-slot estimate of 185.35. Recording over USB audio takes up to 2 of
+them while a computer records (TIMER5's work nested in a render: emu-gate
+`USB_AUDIO_PER_SAMPLE`; slots_budget.rs counts it). Song playback and a future
 6502 do not run together. The SID-only worst blocks are 705.3516 / 1,419.5469 for one/two
 chips against 711 / 1,426; audio remains bit-exact with the host. These are instruction
 counts, not hardware cycle measurements. Listening, clock/cache costs and the real LCD
