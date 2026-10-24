@@ -200,6 +200,45 @@ fn a_gate_reset_entry_sets_the_option_on_the_active_chip_only() {
 }
 
 #[test]
+fn a_mute_entry_reaches_the_chip_it_names_and_a_swap_keeps_it() {
+    const MUTE: u8 = REG_RING_MUTE as u8;
+    let mut r = ring();
+    let mut c = chips(SID_MODEL_6581);
+    unsafe { sid_init(&mut c.chip[2], SID_MODEL_8580, SID_CLOCK_PAL, RATE) };
+    c.spare_model = SID_MODEL_8580 as u8;
+    c.spare_ready = 1;
+    c.spare_for = 0;
+    push(&mut r, 0x17, 0x01); // voice 1 into the filter
+    push(&mut r, MUTE, 0x05);
+    push(&mut r, MUTE | REG_RING_CHIP_B as u8, 0x02);
+    commit(&mut r);
+    assert_eq!(unsafe { reg_ring_drain(&mut *r, &mut *c) }, 3);
+    assert_eq!(c.chip[0].mute, 0x05);
+    // voice 1 routed but muted, voice 3 muted: only voice 2 on the direct path
+    render(&mut c.chip[0], 0);
+    assert_eq!(c.chip[0].voice_path, (0x02 * SID_PATH_DIRECT) as u8);
+    assert_eq!(c.chip[1].mute, 0x02, "chip B's entry, chip B's sid");
+    assert_eq!(c.chip[0].osc[0].freq, 0, "never a SID write");
+    // A model change swaps chip A to the spare: the mute is the chip's, so it goes along.
+    push(&mut r, RESET, SID_MODEL_8580 as u8);
+    push(&mut r, 0x17, 0x03);
+    commit(&mut r);
+    unsafe { reg_ring_drain(&mut *r, &mut *c) };
+    assert_eq!(c.active[0], 2);
+    assert_eq!(c.chip[2].mute, 0x05);
+    render(&mut c.chip[2], 0);
+    assert_eq!(c.chip[2].voice_path, (0x02 * SID_PATH_FILTER) as u8);
+    push(&mut r, MUTE, 0);
+    commit(&mut r);
+    unsafe { reg_ring_drain(&mut *r, &mut *c) };
+    render(&mut c.chip[2], 0);
+    assert_eq!(
+        (c.chip[2].mute, c.chip[2].voice_path),
+        (0, (0x03 * SID_PATH_FILTER + 0x04 * SID_PATH_DIRECT) as u8)
+    );
+}
+
+#[test]
 fn a_reset_for_another_model_than_the_spare_is_not_taken() {
     let mut r = ring();
     let mut c = chips(SID_MODEL_6581);

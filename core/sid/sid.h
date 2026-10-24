@@ -107,7 +107,19 @@ typedef struct {
     sid_filter_row filter_rows[2];
     uint32_t noise_wb[2][16];
     uint8_t noise_writeback;
+    /* The voice mute (sid_set_mute), and the two masks the render tests each voice against, in
+     * one byte (one load a sample), which each render computes as it starts from the routing
+     * ($17), $18 and the mute: route_on (SID_PATH_FILTER << v), the voices routed into the
+     * filter and not muted (routing & ~mute), and direct_on (SID_PATH_DIRECT << v), the voices
+     * on the direct path (neither routed, nor muted, nor voice 3 while $18 bit 7, 3OFF, is
+     * set). A voice in neither adds nothing. In what was the struct's tail padding: the chip
+     * is no larger. */
+    uint8_t mute;
+    uint8_t voice_path;
 } sid;
+
+#define SID_PATH_FILTER 0x01u /* voice_path's route_on, bits 0-2 */
+#define SID_PATH_DIRECT 0x10u /* its direct_on, bits 4-6 */
 
 #define SID_GRIT_ONE 16384u
 #define SID_GRIT_SLEW 48u /* grit_now's units: 0 to SID_GRIT_ONE in 43,691 samples, 1 s */
@@ -335,6 +347,39 @@ void sid_set_filter_nonlinearity(sid* s, float amount);
  * chip at it here (through the register ring on the device); reuse the old one only
  * once no chip points at it. */
 void sid_set_dac(sid* s, const sid_dac* dac);
+
+/* The cycles the next rendered sample clocks the voices (1 to 256; sid_init's limit): the Q16
+ * accumulator's whole part once the sample's step is added, as the render takes it. */
+static inline uint32_t sid_next_cycles(const sid* s) {
+    return (s->cycle_frac_q16 + s->cycles_per_sample_q16) >> 16;
+}
+
+/* Clocks the voices k cycles into the next sample, for a write inside it (M3's stamped writes,
+ * docs/plans/2026-10-19-m3-sid-files.md): the oscillators and envelopes run k cycles as the
+ * render runs them (clock_voices, the same code), the filter and the output stage do not, and
+ * the k cycles come off the next sample (cycle_frac_q16 -= k << 16), so that sample clocks only
+ * the rest and the samples stay where they were: a block renders as many samples, at the same
+ * cycles, however many advances it takes. k must be less than sid_next_cycles (checked in host
+ * builds), so the sample still clocks at least one; any number of advances may come between
+ * two samples while their sum stays under it. 0 changes nothing. To place a write at chip cycle
+ * X: render whole samples while the next one ends at or before X, then sid_advance by what is
+ * left and sid_write. The voices then reach the state sid_clock reaches with the write at X,
+ * with hard sync's difference (sid_clock, below); the filter sees the write from the next
+ * sample, as it sees every write. In SRAM on the device (platform/fm1/app.ld): the audio
+ * interrupt places a tune's writes (M3's psid_ctl). */
+void sid_advance(sid* s, uint32_t k);
+
+/* Mutes voices (bit v for voice v; bits 3-7 are ignored): a muted voice's output adds nothing
+ * to the filter's input or the direct path (nor the bleed), so it leaves the mix. Its
+ * oscillator, envelope, OSC3, ENV3 and the sync and ring modulation it drives go on as before,
+ * and so does the 6581's DC load of the voices routed into the filter (dc_in), which follows
+ * the routing register, not the mute: a mute is a fader on the chip's output, not a write. With
+ * mask 0, what sid_init sets, the samples are bit for bit those of a chip without it. From
+ * where register writes are applied (the register ring's drain, REG_RING_MUTE, in the audio
+ * interrupt on the device), between renders. Inline: the drain runs in SRAM. */
+static inline void sid_set_mute(sid* s, uint8_t mask) {
+    s->mute = (uint8_t)(mask & 7u); /* the render takes it into voice_path as it starts */
+}
 
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without
  * producing output; the filter and the output stage do not run. sid_render advances

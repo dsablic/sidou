@@ -33,6 +33,10 @@ for small in -DCPU6502_SMALL -UCPU6502_SMALL; do
     gcc $cflags $small -DCPU6502_HOOK_ALL -c core/cpu6502/cpu6502.c -o /dev/null
 done
 
+# The chip's test-only build for the mute's reference (SID_TEST_ZERO_VOICE).
+# shellcheck disable=SC2086
+gcc $cflags -DSID_TEST_ZERO_VOICE -c core/sid/sid.c -o /dev/null
+
 # bindgen's wrappers for the static inline functions are compiled in the host build; the
 # header-only ones are compiled here as part of the files that include them.
 

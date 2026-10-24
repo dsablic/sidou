@@ -169,6 +169,18 @@ static inline void update_mix(sid* s) {
     s->svf.load_at = s->nl.load_ref - s->dc_in;
 }
 
+/* The render's voice masks from the routing, $18's 3OFF and the mute (sid.h, voice_path), at
+ * the start of each render: once a render, not at every $17 and $18 write (a song's frame
+ * writes them several times a call). */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void update_voice_masks(sid* s) {
+    uint32_t off = s->routing | s->mute | ((s->mode_vol & 0x80u) ? 4u : 0u);
+    s->voice_path = (uint8_t)((s->routing & 7u & ~(uint32_t)s->mute) * SID_PATH_FILTER |
+                              (~off & 7u) * SID_PATH_DIRECT);
+}
+
 /* exp(-x) for x >= 0, without libm: (Taylor series of exp(-x / 16))^16. For sid_init's
  * output pole, x = 2 pi OUT_LP_HZ / fs: within 5e-6 relative from 22.05 kHz up (x < 3.75),
  * 3e-5 at 16 kHz, 0.3% at 8 kHz, and 27% low at sid_init's lowest rate, 4 kHz (x = 20.7),
@@ -578,13 +590,16 @@ uint8_t sid_read(sid* s, uint8_t reg) {
 
 static inline void clock_voices(sid* s, uint32_t cycles) {
     s->osc3_held = 0;
-    s->control_age = (uint8_t)(s->control_age + cycles > 2u ? 2u : s->control_age + cycles);
+    if (s->control_age < 2u) { /* 2 from the third cycle on: no store once it is there */
+        s->control_age = (uint8_t)(s->control_age + cycles > 2u ? 2u : s->control_age + cycles);
+    }
     sid_osc* o = s->osc;
     /* Each voice's sync and ring modulation source is the voice before it. */
     uint32_t acc2 = o[2].acc;
-    /* Voices 2 and 3 see their source after its MSB pull (reSIDfp's output order). */
-    o[2].src_mask = o[1].pull_low ? 0x7fffffu : 0xffffffu;
-    o[1].src_mask = o[0].pull_low ? 0x7fffffu : 0xffffffu;
+    /* Voices 2 and 3 see their source after its MSB pull (reSIDfp's output order): its lower
+     * half while it pulls every rise low (pull_low is 0 or 1, so a shift, not a select). */
+    o[2].src_mask = 0xffffffu >> o[1].pull_low;
+    o[1].src_mask = 0xffffffu >> o[0].pull_low;
     sid_osc_advance(&o[2], cycles, o[1].acc, o[1].freq);
     sid_osc_advance(&o[1], cycles, o[0].acc, o[0].freq);
     sid_osc_advance(&o[0], cycles, acc2, o[2].freq);
@@ -611,7 +626,23 @@ static inline void clock_voices(sid* s, uint32_t cycles) {
 }
 
 
+#ifdef SID_TEST_ZERO_VOICE
+/* Host tests only (sidou-sys build.rs compiles sid.c a second time with it, under other
+ * names): the voices whose output is 0 (bit v, voice v), the reference the mute
+ * (sid_set_mute) is checked against. The device and the core's own build never define it. */
+static _Thread_local uint32_t sid_test_zero_voices; /* per thread: the tests run in parallel */
+void sid_test_set_zero_voices(uint32_t mask);
+void sid_test_set_zero_voices(uint32_t mask) {
+    sid_test_zero_voices = mask;
+}
+#endif
+
 static inline float voice_out(const sid* s, int v) {
+#ifdef SID_TEST_ZERO_VOICE
+    if ((sid_test_zero_voices >> v) & 1u) {
+        return 0.0f;
+    }
+#endif
     return s->dac->wave[s->osc[v].out] * s->dac->env[s->env[v].counter];
 }
 
@@ -643,6 +674,15 @@ void sid_clock(sid* s, uint32_t cycles) {
     }
 }
 
+void sid_advance(sid* s, uint32_t k) {
+    SID_DEBUG_ASSERT(k < sid_next_cycles(s));
+    if (k == 0u) {
+        return; /* clock_voices(0) would still end the step: the pulse latches, OSC3's */
+    }
+    clock_voices(s, k);
+    s->cycle_frac_q16 -= k << 16; /* the next sample's add brings it back: k < its cycles */
+}
+
 /* render_8580's loop, in chunks of `every` samples with a tap after each (sid_render_tap;
  * sid_render's is one chunk and no tap): M0's linear filter and mix, unchanged. With
  * bleed_on (a constant: each model's render has a copy with it and one without, so a chip
@@ -666,11 +706,12 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
             clock_voices(s, cycles);
 
             float filt_in = 0.0f, direct = 0.0f;
+            const uint32_t path = s->voice_path;
             for (int v = 0; v < 3; ++v) {
                 float x = voice_out(s, v);
-                if (s->routing & (1u << v)) {
+                if (path & (SID_PATH_FILTER << v)) {
                     filt_in += x;
-                } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
+                } else if (path & (SID_PATH_DIRECT << v)) {
                     direct += x;
                 }
             }
@@ -744,11 +785,12 @@ static inline void render_6581_body(sid* s, int16_t* out, uint32_t frames, uint3
             clock_voices(s, cycles);
 
             float filt_in = 0.0f, direct = 0.0f;
+            const uint32_t path = s->voice_path;
             for (int v = 0; v < 3; ++v) {
                 float x = voice_out(s, v);
-                if (s->routing & (1u << v)) {
+                if (path & (SID_PATH_FILTER << v)) {
                     filt_in += x;
-                } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
+                } else if (path & (SID_PATH_DIRECT << v)) {
                     direct += x;
                 }
             }
@@ -860,6 +902,7 @@ void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_t
         s->filter_dirty = 0;
         update_filter(s);
     }
+    update_voice_masks(s);
     int bleed = s->bleed != 0.0f;
     if (s->model == SID_MODEL_6581) {
         if (bleed) {

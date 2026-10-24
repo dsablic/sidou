@@ -312,4 +312,48 @@ fn main() {
         }
         build.compile(name);
     }
+
+    // The chip again for the mute's reference (core/sid/sid.c, SID_TEST_ZERO_VOICE): the
+    // voices sid_test_set_zero_voices names output 0 (on the calling thread). Each of its
+    // symbols under a `_zero_voice` name, beside the real one; it shares the other files'
+    // (the DACs, the filter curves).
+    let mut zero = c_build(&root);
+    zero.file(root.join("core/sid/sid.c"))
+        .define("SID_TEST_ZERO_VOICE", None);
+    for symbol in ZERO_VOICE_SYMBOLS {
+        zero.define(symbol, format!("{symbol}_zero_voice").as_str());
+    }
+    zero.compile("sid_zero_voice");
 }
+
+/// core/sid/sid.c's external symbols, renamed in its zero-voice build (above).
+const ZERO_VOICE_SYMBOLS: &[&str] = &[
+    "SID_NOISE_JUMP",
+    "SID_NOISE_WB",
+    "SID_NOISE_WB_BYTE",
+    "SID_PD_ROWS",
+    "sid_advance",
+    "sid_base_output_gain",
+    "sid_clock",
+    "sid_combined_table",
+    "sid_external_coefficients",
+    "sid_filter_refresh",
+    "sid_filter_row_part",
+    "sid_init",
+    "sid_init_begin",
+    "sid_init_end",
+    "sid_noise_tables_init",
+    "sid_nonlin_for",
+    "sid_nonlin_for_rows",
+    "sid_read",
+    "sid_render",
+    "sid_render_tap",
+    "sid_set_combined_profile",
+    "sid_set_dac",
+    "sid_set_filter_blend",
+    "sid_set_filter_curve",
+    "sid_set_filter_nonlinearity",
+    "sid_set_filter_toward",
+    "sid_set_gate_reset",
+    "sid_write",
+];

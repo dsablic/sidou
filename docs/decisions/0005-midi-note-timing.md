@@ -261,6 +261,12 @@ render, so none of the ring's invariants above change. Notes from the keys and M
 this record's block-start placement. Songs default to AUTHENTIC envelopes (the gate reset
 off), set on chip A when a song starts.
 
+**Inside a sample (M3 Task 5a, 2026-10-24):** a `.sid` tune's writes are stamped with
+their 6502 cycle, so M3 splits the render at a cycle, not a sample: `sid_advance` (core/sid/sid.h)
+clocks the voices the rest of the way into the next sample and takes those cycles off it,
+then the write goes in; the samples stay where they were, and the voices reach the state
+`sid_clock` reaches with the write at that cycle. The render loop is the song's.
+
 ## Amendment: MIDI clock and transport place the song's calls (M2e Task 2, 2026-10-17)
 
 The record's revisit "with M2's clock and transport" is done for the song: a sequencer's

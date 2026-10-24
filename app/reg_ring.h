@@ -100,6 +100,12 @@ int reg_ring_pop(reg_ring* r, reg_ring_entry* out);
 #define REG_RING_CHARACTER 0x88u
 #define REG_RING_NO_STAGE 0xffu
 
+/* The voice mute (M3: a tune's mutes and solos act on the chip, not on its writes): the value
+ * is the mask of muted voices (bit v, voice v) for the chip the entry names, which the drain
+ * gives it with sid_set_mute, so the main loop's mute reaches the chip at a block's start. A
+ * reset's swap carries the mute to the chip's new sid. */
+#define REG_RING_MUTE 0x89u
+
 /* Gets the pseudo-registers the drain does not handle itself (the effect slots',
  * app/fx_live.h), from the audio interrupt. */
 typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
@@ -221,7 +227,8 @@ sid* reg_ring_chip_of(reg_ring_chips* c, uint32_t chip);
  * never reaches sid_write, which would alias it to register 0x00), its old sid the spare from
  * then on; a LIVE_REG_GATE_RESET goes to sid_set_gate_reset on the chip's sid, so after a
  * reset the new one; a REG_RING_CHARACTER counts a tick (ticks) and commits the stage it names
- * to the chip's sid (sid_character_commit); any other pseudo-register (the slots') goes to the
+ * to the chip's sid (sid_character_commit); a REG_RING_MUTE sets the chip's mute (sid_set_mute;
+ * a swap gives the new sid the old one's); any other pseudo-register (the slots') goes to the
  * pseudo handler, if there is one; then, for a chip it swapped, the swap hook. Returns the
  * entries applied. */
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c);

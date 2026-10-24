@@ -33,6 +33,17 @@ extern "C" {
     ) -> core::ffi::c_int;
 }
 
+// The chip's test-only build for the mute's reference (build.rs, core/sid/sid.c's
+// SID_TEST_ZERO_VOICE): the voices `sid_test_set_zero_voices` names (bit v) output 0, on the
+// calling thread.
+extern "C" {
+    pub fn sid_test_set_zero_voices(mask: u32);
+    pub fn sid_init_zero_voice(s: *mut sid, model: sid_model, clock_hz: u32, sample_rate: u32);
+    pub fn sid_write_zero_voice(s: *mut sid, reg: u8, value: u8);
+    pub fn sid_render_zero_voice(s: *mut sid, out: *mut i16, frames: u32);
+    pub fn sid_read_zero_voice(s: *mut sid, reg: u8) -> u8;
+}
+
 /// Field offsets and sizes of the core's and the app's structs as the pi32v2 firmware lays
 /// them out (ILP32), for reading them from an emulated device's RAM: `ilp32::sid::fc`,
 /// `ilp32::sid::SIZE`. The host's layout differs wherever a struct holds a pointer.
