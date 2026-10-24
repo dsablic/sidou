@@ -120,6 +120,12 @@ All notable changes are documented here. The format follows
   meanwhile released the note right after its first call, so the first tap after PRESETS (or any
   audition of a new instrument) gave a click of its first wave step instead of the instrument,
   and the drums all sounded alike. The note now sounds as long as the key was held.
+- **The MASTER popup stays away while the pot is untouched.** The pot's reading wanders by
+  more than the 4 counts (0.4 % of the travel) that moved the volume, so the VOLUME popup came
+  up on its own. The reading is now the mean of four conversions, the popup needs a turn of
+  16 counts (1.6 %) from where the pot rested, and the last 8 counts at either end read as
+  that end (0 % and 100 % hold through the noise). The volume still follows a small turn,
+  without the popup; once a turn shows it, the popup follows the turn to its last value.
 - **PLAY is quiet until the song's first note.** The first PLAY after power-on gave a thud
   (a DC bump that died away over about 150 ms) before the music: chip B, which renders only
   while in use, played the power-on release of its envelopes only when the keys moved to it, at

@@ -84,8 +84,21 @@ uint32_t input_frame(void) {
     return fm1_in.frames;
 }
 
+/* MASTER: the mean of INPUT_MASTER_READS conversions, which halves the pot's noise before
+ * panel_master's thresholds see it (a timeout in any of them is the reading's: -1). Called once
+ * a live tick; a conversion is a few tens of microseconds, so four cost well under 1 % of it. */
+#define INPUT_MASTER_READS 4
+
 int32_t input_master(void) {
-    return fm1_adc_read(FM1_ADC_MASTER);
+    int32_t sum = 0;
+    for (uint32_t i = 0; i < INPUT_MASTER_READS; i++) {
+        int32_t v = fm1_adc_read(FM1_ADC_MASTER);
+        if (v < 0) {
+            return -1;
+        }
+        sum += v;
+    }
+    return (sum + INPUT_MASTER_READS / 2) / INPUT_MASTER_READS;
 }
 
 void input_poll(panel* p, live* l) {
