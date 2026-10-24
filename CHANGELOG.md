@@ -50,7 +50,12 @@ All notable changes are documented here. The format follows
   are plain GoatTracker 2 instruments and table rows (a falling triangle for the kick and the
   toms, a tonal attack and noise for the snare, short and long noise for the hats, three noise
   bursts for the clap), so a song made with them plays the same in GoatTracker; each was tuned
-  by rendering it on both chip models, and the kick keeps its weight on the 8580. STEP's and
+  by rendering it on both chip models, and the kick keeps its weight on the 8580. Each drum
+  sounds one frame (20 ms) after its row, every hit alike (its first frame resets the
+  oscillator), with an 8 ms attack, and fades the same held or staccato (at tempo 5 and up);
+  its instrument's SR is `00` and a wavetable `F6` row (command 6, sustain/release) sets its
+  release in its second or third frame, which keeps the chip's ADSR delay bug from holding the
+  hit back 33 ms. STEP's and
   TRACKER's PRESETS popup names the instrument (`03 KICK`), so a lane's drum is picked by name.
   Decision record 0009.
 - **Digi drums:** short 4-bit samples (KICK, SNARE, CLAP, HAT) played through chip A's output
@@ -104,6 +109,12 @@ All notable changes are documented here. The format follows
   came in, 0.2.0). The rows now play the note (relative note `00`) and end with `FF 00`
   (the table stops, so the pattern's slides and vibrato still move the pitch). Songs saved
   from NEW before keep their rows: set the lead's and bass's WAVE right column to `00` in TABLE.
+- **A NEW song's lead and bass start on their row.** Their attack 0 met the chip's ADSR delay
+  bug one time in nine (the envelope's rate counter, compared with the decay's rate for a cycle
+  as the gate goes on, ran past attack 0's and waited out its wrap): the note then started
+  33 ms late, a flam against the drums, as GoatTracker plays it on reSIDfp too. Their attack is
+  now 1 (8 ms to the top: AD `19` for the lead, `12` for the bass). Songs saved from NEW
+  before keep `09` and `02`: set the attack to 1 in INSTR for the same fix.
 - **The first tap after picking an instrument auditions it in full.** An instrument the song
   does not use yet waits a few calls for the player to take its tables in; a step key let go
   meanwhile released the note right after its first call, so the first tap after PRESETS (or any

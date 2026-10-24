@@ -6,10 +6,10 @@
  *
  * The kit's table pointers assume its rows start at row 1 of the wavetable and of the pulse
  * table: a song that holds the kit holds its rows first (the NEW song, app/song_io.c). Every
- * drum starts with GoatTracker's default first-frame waveform, $09 (the test bit and the
- * gate), which resets the oscillator and the noise register, so every hit is the same; its
- * sound starts at the next frame, from its wavetable's absolute notes, whatever the row's
- * note. None uses the filter: the song's filter stays the song's.
+ * drum's first-frame waveform is $08 (the test bit, the gate off), which resets the
+ * oscillator and the noise register, so every hit is the same; its sound starts at the next
+ * frame, from its wavetable's absolute notes, whatever the row's note. None uses the filter:
+ * the song's filter stays the song's.
  *
  * Portable C11, constant data. */
 #ifndef SIDOU_GT2_KIT_H
@@ -39,7 +39,7 @@ _Static_assert(sizeof(gt2_kit_drum) == GT2_INSTR_BYTES, "a kit drum is an instru
 /* The drums, in GT2_KIT_* order. */
 extern const gt2_kit_drum gt2_kit_instr[GT2_KIT_DRUMS];
 /* The kit's wavetable and pulse table rows, from row 1: left bytes, then right bytes. */
-#define GT2_KIT_WAVE_ROWS 38u
+#define GT2_KIT_WAVE_ROWS 45u
 #define GT2_KIT_PULSE_ROWS 2u
 extern const uint8_t gt2_kit_wave[2][GT2_KIT_WAVE_ROWS];
 extern const uint8_t gt2_kit_pulse[2][GT2_KIT_PULSE_ROWS];

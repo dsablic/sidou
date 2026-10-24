@@ -2074,7 +2074,7 @@ Headphones or the line out. Controls: [controls.md, STEP](reference/controls.md#
   toms (low and a fifth higher, both falling) and RIM. Do it again with chip A an 8580 (CHIP
   view): the kick still has its low end. Note any drum that sounds weak, harsh or out of time.
   *Emulator:* `emu-gate/tests/first_use.rs::every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_own` (PRESETS names each instrument, each is heard, KICK's body at A#1, the toms at C#3 and G#3, each told apart), `sidou-tests/tests/app/step_view.rs::presets_names_the_lanes_instrument`, `emu-gate/tests/song.rs::the_drum_kit_and_a_digi_drum_play_bit_exact_with_the_host`.
-  *Emulator:* `emu-gate/tests/first_use.rs::every_template_instrument_on_steps_plays_heard_and_on_time` (the kit's drums within the first 80 ms of their row); `emu-gate/tests/first_use.rs::the_kits_drums_sound_one_frame_after_their_row` (ignored: fails, the drums are late: they sound about 55 ms after their row, not one frame).
+  *Emulator:* `emu-gate/tests/first_use.rs::every_template_instrument_on_steps_plays_heard_and_on_time` (the kit's drums within the first 80 ms of their row); `emu-gate/tests/first_use.rs::the_kits_drums_sound_one_frame_after_their_row` (each drum one frame after its row), `sidou-tests/tests/kit.rs::every_new_instrument_starts_on_time` (the kit, the lead and the bass on time at every phase of the chip's rate counter, on reSIDfp as on SIDOU's chip), `sidou-tests/tests/kit.rs::a_staccato_drum_sounds_as_a_held_one`.
   *Emulator (no test yet):* the kick keeps its low end with chip A an 8580 (level in the kick's band on both models).
   *Device-only:* whether a drum sounds weak, harsh or out of time to the ear, the kick's weight and the snare's crack (speaker, feel and musicality).
 - [ ] **Digi drums.** On the same song set a lane to `0B DG KICK`, `0C DG SNARE`, `0D DG CLAP`
@@ -2083,7 +2083,7 @@ Headphones or the line out. Controls: [controls.md, STEP](reference/controls.md#
   GLO-mute the digi lane: it goes silent. A digi drum and a chip drum on the same lane in turn:
   the chip drum after a digi one comes a few milliseconds late at most (listen for a flam).
   *Emulator:* `sidou-tests/tests/digi.rs::a_digi_note_plays_its_sample_and_holds_its_voice_off` (the sample from the call on, the chip copy not heard, the 8580 at the 6581's level), `sidou-tests/tests/digi.rs::a_muted_voice_plays_no_digi` (GLO mute silences it), `emu-gate/tests/first_use.rs::every_template_instrument_on_steps_plays_heard_and_on_time` (digi drums on time with their row).
-  *Emulator (no test yet):* a chip drum after a digi one on the same lane starts at most a few milliseconds late (the flam); the ignored `emu-gate/tests/first_use.rs::the_kits_drums_sound_one_frame_after_their_row` shows the chip drums are late already.
+  *Emulator (no test yet):* a chip drum after a digi one on the same lane starts at most a few milliseconds late (the flam); `emu-gate/tests/first_use.rs::the_kits_drums_sound_one_frame_after_their_row` checks a chip drum after a chip drum or a note only.
   *Device-only:* the gritty C64 character by ear (speaker).
 - [ ] **In GoatTracker.** SAVE the song, copy it off (Live Link or SysEx) and open it in
   GoatTracker 2.77: it loads and plays, the digi lanes as the chip kit's drums.

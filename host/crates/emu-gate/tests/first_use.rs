@@ -10,9 +10,10 @@
 //!
 //! v0.4.0's device session found what these would have: a NEW song silent since v0.2.0 (its
 //! lead at 0 Hz), NEW's PULSE and BASS sounding the same, and the first step press after
-//! PRESETS auditioning the previous instrument. They found two more: the chip kit's drums sound
-//! about 55 ms after their row, not one frame (the_kits_drums_sound_one_frame_after_their_row),
-//! and PLAY thuds before its first note (play_is_quiet_until_the_first_note).
+//! PRESETS auditioning the previous instrument. They found two more: the chip kit's drums sounded
+//! about 55 ms after their row, not one frame (the_kits_drums_sound_one_frame_after_their_row;
+//! the ADSR delay bug, decision record 0009), and PLAY thuds before its first note
+//! (play_is_quiet_until_the_first_note).
 
 mod common;
 
@@ -513,7 +514,7 @@ struct Sound {
     waves: Vec<u8>,
     pw: Option<u32>,
     /// AD and SR while gated (not part of telling sounds apart: an ear hardly hears PULSE's
-    /// 09 A8 from BASS's 02 98 on a short note; the first-press test reads them).
+    /// 19 A8 from BASS's 12 98 on a short note; the first-press test reads them).
     adsr: Vec<(u8, u8)>,
 }
 
@@ -947,11 +948,10 @@ fn every_template_instrument_on_steps_plays_heard_and_on_time() {
 }
 
 /// The chip kit's drums sound one frame after their row (decision record 0009: their first
-/// frame is the test bit with the gate off, "so every drum sounds one frame after its row"):
-/// in PLAY after another note on the lane they sound about 55 ms after it, the pulse click of
-/// KICK's first gated frame lost, a flam against a lead note on the same row.
+/// frame is the test bit with the gate off, "so every drum sounds one frame after its row").
+/// With a release of their own in that frame they sounded about 55 ms after it (the ADSR
+/// delay bug), KICK's first gated frame lost, a flam against a lead note on the same row.
 #[test]
-#[ignore = "bug: the kit's drums sound about 55 ms after their row, not one frame (20 ms)"]
 fn the_kits_drums_sound_one_frame_after_their_row() {
     let Some(fw) = fixture() else { return };
     let (_, played) = play_every_instrument(&fw);
