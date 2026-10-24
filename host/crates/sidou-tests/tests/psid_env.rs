@@ -260,6 +260,26 @@ fn load_in_pieces_equals_load_whole_with_a_load_address_prefix() {
 }
 
 #[test]
+fn load_over_leaves_the_memory_to_the_caller_but_the_port() {
+    // Task 10's loading: the caller clears the 64 KiB in parts and brings the data in.
+    let file = vbi().bytes();
+    let h = header(&file);
+    let mut whole = Box::<psid_env>::default();
+    let mut mem_whole = vec![0x33u8; 0x10000];
+    unsafe { psid_env_load(&mut *whole, mem_whole.as_mut_ptr(), &*h, file.as_ptr()) };
+    let mut env = Box::<psid_env>::default();
+    let mut mem = vec![0x55u8; 0x10000];
+    unsafe { psid_env_load_over(&mut *env, mem.as_mut_ptr(), &*h) };
+    assert_eq!(&mem[..2], &mem_whole[..2], "the port as at power-on");
+    assert!(mem[2..].iter().all(|&b| b == 0x55), "the rest is the caller's");
+    mem[2..].fill(0);
+    unsafe { psid_env_load_part(&mut *env, 0, file.as_ptr(), file.len() as u32) };
+    assert!(mem == mem_whole);
+    assert_eq!(env.clock, whole.clock);
+    assert_eq!(env.frame, whole.frame);
+}
+
+#[test]
 fn a_vbi_tune_plays_every_frame_from_the_first_boundary_after_init() {
     let mut t = Tune::load(&vbi());
     assert_eq!(t.start(1), 0);

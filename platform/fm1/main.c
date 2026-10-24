@@ -43,6 +43,7 @@
 #include "psid/psid_ctl.h"
 #include "psid/psid_file.h"
 #include "reg_ring.h"
+#include "sid_io.h"
 #include "song/gt2_sng.h"
 #include "song/gt2_stream.h"
 #include "song/gt2_ins.h"
@@ -873,6 +874,10 @@ static void midi_sysex_toast(void* ctx, uint8_t reason) {
     case SYSEX_TIMEOUT: text = "MIDI: TIMEOUT"; break;
     case SYSEX_ABORTED: text = "MIDI: ABORTED"; break;
     case SYSEX_IO: text = "MIDI: FILE ERROR"; break;
+    case SYSEX_RSID: text = sid_io_message(SID_IO_RSID); break; /* a .sid's refusals */
+    case SYSEX_MUS: text = sid_io_message(SID_IO_MUS); break;
+    case SYSEX_BROKEN: text = sid_io_message(SID_IO_BROKEN); break;
+    case SYSEX_TOO_LONG: text = sid_io_message(SID_IO_TOO_LONG); break;
     default: break;
     }
     if (reason == SYSEX_BUSY && midi_object.staging_busy) {
@@ -1452,29 +1457,24 @@ static void song_pass(void) {
  * idle and the interrupt has left it (AUDIO_NONE), on chips made fresh for it with its setup and
  * clock, the keys on chip B (a 2SID tune: silent); it ends for good once its stop has played out,
  * the interrupt has left it, the song's memory is the song's again and the song is read back
- * from the store (song_io_away). Until Task 11's browser and NOW PLAYING, only the emulator
- * tests' hook below starts one. --- */
+ * from the store (song_io_away). Its file is read by sid_io (app/sid_io.h, Task 10): the header
+ * checked at the request and again once the song has let go, then the 64 KiB cleared and the
+ * data read in, a part a pass in passes the store does no work in. Until Task 11's browser and
+ * NOW PLAYING, only the emulator tests' hook below starts one. --- */
 
 enum {
     TUNE_OFF,        /* the song has its memory */
     TUNE_SONG_STOP,  /* asked for: the song stops and goes idle, its views and files let go */
     TUNE_TO_NONE,    /* the interrupt leaves the song */
     TUNE_TO_PSID,    /* the tune's state made; the interrupt takes the tune */
-    TUNE_PREP,       /* the data from the store, a part a pass; the keys leave the tune's chips,
-                      * which are made fresh with its setup */
+    TUNE_PREP,       /* the memory and the data from the store, a part a pass (sid_io_poll); the
+                      * keys leave the tune's chips, which are made fresh with its setup */
     TUNE_ON,         /* psid_ctl has it: playing, paused, stopped or failed */
     TUNE_END,        /* ending for good: its stop plays out */
     TUNE_BACK_NONE,  /* the interrupt leaves the tune */
     TUNE_BACK_SONG,  /* the song's state made again; the interrupt takes the song */
     TUNE_BACK_READ   /* the song read back from the store; then its views have it again */
 };
-/* The header's first bytes, which psid_parse reads (to $7D at most: a v2+ header and a data
- * load address); the file's length bounds the rest. */
-#define TUNE_HEAD_BYTES 0x80u
-/* The data a pass brings in from the store (in reads of TUNE_PART bytes). */
-#define TUNE_PART 256u
-#define TUNE_PASS_BYTES 2048u
-
 static struct {
     uint8_t state;
     uint8_t chips;   /* the tune's: 1, or 2 for a 2SID tune */
@@ -1483,8 +1483,8 @@ static struct {
     uint8_t clocked; /* the chips have the tune's sample step (theirs again at the end) */
     uint16_t song;   /* the song asked for, 0 the header's start song */
     int16_t told;    /* the failure last shown */
-    store_file file;
-    uint32_t offset; /* TUNE_PREP: the file's bytes brought in */
+    uint8_t turn;    /* TUNE_PREP: a part every other pass, the store's work in the others */
+    sid_io io;       /* the file, and its loading */
     uint32_t pal_q16; /* the chips' sample step at the PAL clock */
     /* each chip's sid before its fresh reset; from the start on, the one its shadow follows */
     sid* was[2];
@@ -1514,18 +1514,11 @@ static void tune_setup(chip_setup* out, uint32_t model) {
     out->gate_reset = 0;
 }
 
-/* The header of the store's file into h: 1, or 0 with a toast. */
-static int tune_header(psid_header* h) {
-    uint8_t head[TUNE_HEAD_BYTES];
-    uint32_t n = sid_tune.file.length < TUNE_HEAD_BYTES ? sid_tune.file.length : TUNE_HEAD_BYTES;
-    if (store_file_read(store_fm1(), &sid_tune.file, 0, head, n) != (int)n) {
-        ui_toast("SID: READ ERROR", 2000u);
-        return 0;
-    }
-    int r = psid_parse(head, sid_tune.file.length, h);
-    if (r != PSID_OK) {
-        ui_toast(r == PSID_E_RSID ? "RSID: NOT YET" : r == PSID_E_MUS ? "MUS: NOT SUPPORTED" :
-                 r == PSID_E_TOO_LONG ? "TOO LONG" : "BROKEN .SID", 2000u);
+/* The store's .sid file `name` opened and its header parsed into h: 1, or 0 with a toast. */
+static int tune_open(const char* name, psid_header* h) {
+    int r = sid_io_open(&sid_tune.io, store_fm1(), name, h);
+    if (r != SID_IO_OK) {
+        ui_toast(sid_io_message(r), 2000u);
         return 0;
     }
     return 1;
@@ -1535,15 +1528,7 @@ static int tune_header(psid_header* h) {
  * goes (the song stops first), 0 with a toast if it cannot. */
 static int tune_play(const char* name, uint32_t song) {
     psid_header h;
-    if (sid_tune.state != TUNE_OFF) {
-        return 0;
-    }
-    if (store_file_open(store_fm1(), name, &sid_tune.file) != STORE_OK ||
-        sid_tune.file.type != STORE_FILE_SID) {
-        ui_toast("SID NOT FOUND", 2000u);
-        return 0;
-    }
-    if (!tune_header(&h)) {
+    if (sid_tune.state != TUNE_OFF || !tune_open(name, &h)) {
         return 0;
     }
     if (keys_router.player) {
@@ -1591,21 +1576,18 @@ static void tune_tell(const psid_ctl* c) {
     }
 }
 
-/* TUNE_PREP's pass: a part of the data, the chips' fresh resets once the keys have left them,
- * and the start once both are done. */
+/* TUNE_PREP's pass: a part of the loading (every other pass, and only in a pass no chip's
+ * preparation ran in: the store does no work in it, audio_work_slice), the chips' fresh resets
+ * once the keys have left them, and the start once both are done. */
 static void tune_prep(psid_ctl* c) {
     const psid_header* h = audio_psid_header();
-    uint32_t end = h->data_off + h->data_len;
-    for (uint32_t k = 0; k < TUNE_PASS_BYTES && sid_tune.offset < end; k += TUNE_PART) {
-        uint8_t part[TUNE_PART];
-        uint32_t n = end - sid_tune.offset < TUNE_PART ? end - sid_tune.offset : TUNE_PART;
-        if (store_file_read(store_fm1(), &sid_tune.file, sid_tune.offset, part, n) != (int)n) {
-            ui_toast("SID: READ ERROR", 2000u);
+    if (sid_io_busy(&sid_tune.io) && (sid_tune.turn++ & 1u) && audio_work_slice()) {
+        int r = sid_io_poll(&sid_tune.io);
+        if (r < 0) {
+            ui_toast(sid_io_message(-r), 2000u); /* the file went: the song back */
             tune_end();
             return;
         }
-        psid_ctl_load_part(c, sid_tune.offset, part, n);
-        sid_tune.offset += n;
     }
     if (!sid_tune.fresh) {
         if (!keys_route_ready_for_song(&keys_router)) {
@@ -1617,7 +1599,7 @@ static void tune_prep(psid_ctl* c) {
         }
         sid_tune.fresh = 1;
     }
-    if (sid_tune.offset < end) {
+    if (sid_io_busy(&sid_tune.io)) {
         return;
     }
     for (uint32_t k = 0; k < sid_tune.chips; k++) {
@@ -1671,13 +1653,15 @@ static void tune_pass(void) {
         return;
     }
     case TUNE_TO_NONE: {
-        if (audio_player_now() != AUDIO_NONE) {
+        if (audio_player_now() != AUDIO_NONE || !audio_work_slice()) {
             return;
         }
-        /* The song's state is free: the tune's is made over it. */
+        /* The song's state is free: the tune's is made over it, its header read again. */
         c = audio_psid_init();
         psid_header* h = audio_psid_header();
-        if (!tune_header(h)) {
+        char name[STORE_NAME_MAX + 1u];
+        memcpy(name, sid_tune.io.file.name, sizeof name);
+        if (!tune_open(name, h)) {
             sid_tune.state = TUNE_END; /* the file changed under it: the song back */
             return;
         }
@@ -1695,8 +1679,8 @@ static void tune_pass(void) {
                 sid_tune.toasted = 1;
             }
         }
-        (void)psid_ctl_load(c, h, NULL); /* the 64 KiB as at power-on; the data follows */
-        sid_tune.offset = 0;
+        (void)sid_io_load(&sid_tune.io, c, h); /* the memory and the data follow, in parts */
+        sid_tune.turn = 0;
         sid_tune.fresh = 0;
         sid_tune.clocked = 0;
         audio_player(AUDIO_PSID);

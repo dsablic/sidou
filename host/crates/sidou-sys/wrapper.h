@@ -70,6 +70,7 @@
 #include "screen.h"
 #include "sine.h"
 #include "song_transport.h"
+#include "sid_io.h"
 #include "song_io.h"
 #include "song_view.h"
 #include "song_pages.h"

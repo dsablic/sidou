@@ -55,6 +55,7 @@ add_library(sidou_live STATIC
     thump_out.c
     screen.c
     settings.c
+    sid_io.c
     sine.c
     song_view.c
     song_pages.c
@@ -80,10 +81,11 @@ target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)
     # The store runs in the main loop, never the audio path, and its polls are bounded by work
     # (STORE_POLL_WORK), not speed: built for size (about a third smaller than -O2). The
-    # settings, which run a few times a second in the UI's frame, too. The store itself at -Oz,
+    # settings, which run a few times a second in the UI's frame, too, and a tune's loading, a
+    # part a pass (sid_io.c). The store itself at -Oz,
     # another 1,562 bytes (docs/plans/2026-10-24-flash-space.md): its gates bound work, not time.
     set_source_files_properties(store.c PROPERTIES COMPILE_OPTIONS -Oz)
-    set_source_files_properties(settings.c user_profile.c song_io.c sysex.c PROPERTIES COMPILE_OPTIONS -Os)
+    set_source_files_properties(settings.c user_profile.c song_io.c sysex.c sid_io.c PROPERTIES COMPILE_OPTIONS -Os)
     # Cold routing and song-view controls: each file's size build keeps every emulator gate.
     set_source_files_properties(midi_route.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
     # The views' compose and input code runs once a frame or a key in the main loop, each

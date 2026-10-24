@@ -196,6 +196,9 @@ void psid_ctl_init(psid_ctl* c, psid_work* w, uint8_t* mem, const psid_ctl_hooks
  * change is the caller's (psid_ctl_load again, then psid_ctl_play). Stops nothing: 0 while a
  * tune plays or a stop has not played out yet. */
 int psid_ctl_load(psid_ctl* c, const psid_header* h, const uint8_t* file);
+/* As psid_ctl_load with file NULL, but the 64 KiB is the caller's to clear (psid_env_load_over:
+ * $0002-$FFFF zeroed, then the data, before psid_ctl_play), in parts (app/sid_io.c). */
+int psid_ctl_load_over(psid_ctl* c, const psid_header* h);
 void psid_ctl_load_part(psid_ctl* c, uint32_t offset, const uint8_t* bytes, uint32_t n);
 /* Starts song (1..songs, 0 the header's start song): init at cycle 0, the shadows from the
  * chips (psid_ctl_hooks.chip). From LOADED, or from STOPPED or FAILED when the file was kept

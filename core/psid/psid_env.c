@@ -149,7 +149,8 @@ static void io_write(void* user, uint32_t addr, uint32_t value, uint32_t cycle)
 
 /* --- Loading ------------------------------------------------------------------------------ */
 
-void psid_env_load(psid_env* e, uint8_t* mem, const psid_header* h, const uint8_t* file)
+/* Everything but the memory's clear and the data. */
+static void env_setup(psid_env* e, uint8_t* mem, const psid_header* h)
 {
     int ntsc = h->clock == 2u;
     memset(e, 0, sizeof *e);
@@ -164,11 +165,21 @@ void psid_env_load(psid_env* e, uint8_t* mem, const psid_header* h, const uint8_
     e->frame = (uint16_t)(ntsc ? PSID_FRAME_NTSC : PSID_FRAME_PAL);
     e->line = (uint8_t)(ntsc ? PSID_LINE_NTSC : PSID_LINE_PAL);
     e->latch = (uint16_t)(ntsc ? PSID_LATCH_NTSC : PSID_LATCH_PAL);
-    memset(mem, 0, MEM_SIZE);
     mem[0] = PORT_DDR_POWER_ON;
     mem[1] = PORT_POWER_ON;
+}
+
+void psid_env_load(psid_env* e, uint8_t* mem, const psid_header* h, const uint8_t* file)
+{
+    memset(mem, 0, MEM_SIZE);
+    env_setup(e, mem, h);
     if (file)
         psid_env_load_part(e, 0, file, h->data_off + h->data_len);
+}
+
+void psid_env_load_over(psid_env* e, uint8_t* mem, const psid_header* h)
+{
+    env_setup(e, mem, h);
 }
 
 void psid_env_load_part(psid_env* e, uint32_t offset, const uint8_t* bytes, uint32_t n)

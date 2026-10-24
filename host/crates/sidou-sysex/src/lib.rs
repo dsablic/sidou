@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Host-only SIDOU SysEx packets. This crate does not open MIDI or USB devices.
+//! [`put_frames`] writes a store file's whole upload (PUT, DATA, END) and [`sid`] checks a
+//! `.sid` tune with the device's own parser and names it (the `sidou-sysex sid` CLI's work).
 //!
 //! [`Packet`] accepts the request and response forms documented by the protocol.
 //! It validates individual packets, not transfer sequencing, file contents or CRCs.
@@ -11,6 +13,8 @@
 //! cannot know the final file offset, so it accepts every nonempty packet length.
 
 use std::fmt;
+
+pub mod sid;
 
 pub const INQ: u8 = 0x01;
 pub const DIR: u8 = 0x02;
@@ -24,6 +28,17 @@ pub const ACK: u8 = 0x7e;
 pub const NAK: u8 = 0x7f;
 
 pub const MAX_DATA_LEN: usize = 256;
+/// The largest store file (app/store.h STORE_FILE_MAX).
+pub const MAX_FILE_LEN: usize = 65_536;
+/// Store file types (app/store.h STORE_FILE_*): a GoatTracker 2 song, a PSID `.sid` tune.
+pub const FILE_SONG: u8 = 1;
+pub const FILE_SID: u8 = 2;
+/// NAK reasons (docs/reference/sysex.md): 1-9, and a `.sid`'s refusals 12-15 (10 and 11 are
+/// the device's own toasts, never sent).
+pub const NAK_RSID: u8 = 12;
+pub const NAK_MUS: u8 = 13;
+pub const NAK_BROKEN: u8 = 14;
+pub const NAK_TOO_LONG: u8 = 15;
 const HEADER: [u8; 4] = [0xf0, 0x7d, 0x53, 0x44];
 const MAX_PACKED_LEN: usize = MAX_DATA_LEN + MAX_DATA_LEN.div_ceil(7);
 
@@ -154,11 +169,65 @@ impl Packet {
             DATA if !data.is_empty() => Ok(()),
             END | ABORT | ACK if data.is_empty() => Ok(()),
             DEL if data.len() == 16 => validate_name(data),
-            NAK if data.len() == 2 && (1..=9).contains(&data[0]) => Ok(()),
+            NAK if data.len() == 2
+                && ((1..=9).contains(&data[0]) || (12..=15).contains(&data[0])) =>
+            {
+                Ok(())
+            }
             INQ | DIR | GET | PUT | DATA | END | DEL | ABORT | ACK | NAK => Err(Error::Payload),
             _ => Err(Error::UnknownCommand),
         }
     }
+}
+
+/// The whole upload of `data` as the store file `name` (target 0) of `file_type`, one frame a
+/// packet: PUT at sequence 0 (the length and CRC), DATA of 256 bytes (the last one shorter),
+/// then END, each sequence one more than the last, modulo 128.
+pub fn put_frames(name: &str, file_type: u8, data: &[u8]) -> Result<Vec<Vec<u8>>, Error> {
+    if data.len() > MAX_FILE_LEN {
+        return Err(Error::TooLong);
+    }
+    if name.len() > 16 {
+        return Err(Error::Name);
+    }
+    let mut put = vec![0, 0];
+    put.extend((0..16).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
+    put.push(file_type);
+    put.extend((data.len() as u32).to_le_bytes());
+    put.extend(crc32(data).to_le_bytes());
+    let mut frames = Vec::with_capacity(data.len().div_ceil(MAX_DATA_LEN) + 2);
+    let mut sequence = 0u8;
+    let mut push = |command, data: Vec<u8>| -> Result<(), Error> {
+        frames.push(
+            Packet {
+                command,
+                sequence,
+                data,
+            }
+            .encode()?,
+        );
+        sequence = (sequence + 1) & 0x7f;
+        Ok(())
+    };
+    push(PUT, put)?;
+    for chunk in data.chunks(MAX_DATA_LEN) {
+        push(DATA, chunk.to_vec())?;
+    }
+    push(END, Vec::new())?;
+    Ok(frames)
+}
+
+/// CRC-32 (IEEE 802.3, reflected, as zlib's and the store's `store_crc32`).
+pub fn crc32(data: &[u8]) -> u32 {
+    !data.iter().fold(!0u32, |crc, &byte| {
+        (0..8).fold(crc ^ u32::from(byte), |c, _| {
+            if c & 1 != 0 {
+                (c >> 1) ^ 0xedb8_8320
+            } else {
+                c >> 1
+            }
+        })
+    })
 }
 
 /// Pack zero to 256 raw bytes into canonical seven-bit groups, mask first.
@@ -389,6 +458,8 @@ mod tests {
             (ABORT, vec![]),
             (ACK, vec![]),
             (NAK, vec![9, 20]),
+            (NAK, vec![NAK_RSID, 20]),
+            (NAK, vec![NAK_TOO_LONG, 0]),
         ] {
             let mut packet = packet(command, data);
             packet.sequence = 127;
@@ -468,6 +539,8 @@ mod tests {
             (ACK, vec![0]),
             (NAK, vec![0, 0]),
             (NAK, vec![10, 0]),
+            (NAK, vec![11, 0]),
+            (NAK, vec![16, 0]),
         ] {
             assert!(packet(command, invalid.clone()).encode().is_err());
             if let Ok(packed) = pack(&invalid) {

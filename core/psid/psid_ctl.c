@@ -81,25 +81,38 @@ static int quiet(const psid_ctl* c)
 
 /* The environment over the tune again: memory as at power-on, the data from `file` (if kept),
  * the sink and the shadows. */
-static void env_load(psid_ctl* c)
+static void env_load(psid_ctl* c, int over)
 {
     psid_env* e = &c->w->env;
-    psid_env_load(e, c->mem, c->h, c->file);
+    if (over)
+        psid_env_load_over(e, c->mem, c->h);
+    else
+        psid_env_load(e, c->mem, c->h, c->file);
     psid_env_set_sink(e, ring_sink, c);
     psid_env_set_shadows(e, &c->w->shadow[0], c->chips == 2u ? &c->w->shadow[1] : NULL);
 }
 
-int psid_ctl_load(psid_ctl* c, const psid_header* h, const uint8_t* file)
+static int load(psid_ctl* c, const psid_header* h, const uint8_t* file, int over)
 {
     if (!quiet(c))
         return 0;
     c->h = h;
     c->file = file;
     c->chips = (uint8_t)(h->sid2 ? 2u : 1u);
-    env_load(c);
+    env_load(c, over);
     c->state = PSID_LOADED;
     c->error = 0;
     return 1;
+}
+
+int psid_ctl_load(psid_ctl* c, const psid_header* h, const uint8_t* file)
+{
+    return load(c, h, file, 0);
+}
+
+int psid_ctl_load_over(psid_ctl* c, const psid_header* h)
+{
+    return load(c, h, NULL, 1);
 }
 
 void psid_ctl_load_part(psid_ctl* c, uint32_t offset, const uint8_t* bytes, uint32_t n)
@@ -140,7 +153,7 @@ int psid_ctl_play(psid_ctl* c, uint32_t song)
     if (c->state != PSID_LOADED) {
         if (!c->file)
             return 0; /* the caller loads the tune again */
-        env_load(c);
+        env_load(c, 0);
     }
     if (song == 0u)
         song = c->h->start;

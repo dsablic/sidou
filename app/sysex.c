@@ -4,6 +4,8 @@
 
 #include <string.h>
 
+#include "psid/psid_file.h"
+
 enum {
     IDLE, UPLOAD, PROGRAM, COMMIT, DELETE, PREPASS, META, DOWNLOAD, FINISH, DIRECTORY, WAIT,
     DRAIN, IMPORT, IMPORT_DRAIN, OPEN, UNLINK
@@ -55,6 +57,7 @@ static int zeroes(const uint8_t* p, unsigned n) {
 
 static void release(sysex* s) {
     s->tx_wait = 0;
+    s->checking = s->held = 0;
     if (s->state == OPEN || s->state == UNLINK) store_file_wait(s->storage, 0);
     if (s->state == IMPORT || s->state == IMPORT_DRAIN) {
         s->state = IMPORT_DRAIN;
@@ -139,14 +142,47 @@ static void wait_record(sysex* s, uint8_t state) {
     s->last = s->now;
 }
 
-/* A PUT's sectors claimed (store_file_begin said yes): ACK its metadata. */
+/* A PUT's sectors claimed (store_file_begin said yes): ACK its metadata; a .sid's first DATA,
+ * held in buffer, is programmed (its ACK once it is). */
 static void claim(sysex* s) {
     uint8_t seq = s->sequence;
     s->claimed = 1;
     s->file.fid = s->storage->f.fid;
+    if (s->held) {
+        s->held = 0;
+        s->state = PROGRAM;
+        return;
+    }
     s->state = UPLOAD;
     s->sequence = (seq + 1) & 0x7F;
     acknowledge(s, seq);
+}
+
+/* A .sid's first DATA (n bytes from the file's start, in buffer): the header checked by
+ * psid_parse (the first 128 bytes and the declared length are all it reads), then the sectors
+ * claimed as a PUT's are and the packet programmed. A refusal comes before any claim, so
+ * nothing of a refused tune is ever programmed. */
+static void sid_first(sysex* s, unsigned n, uint8_t seq) {
+    psid_header h;
+    s->checking = 0;
+    if (n < (s->length < 128u ? s->length : 128u)) {
+        fail(s, SYSEX_MALFORMED, seq);
+        return;
+    }
+    int why = psid_parse(s->buffer, s->length, &h);
+    if (why != PSID_OK) {
+        fail(s, why == PSID_E_RSID ? SYSEX_RSID : why == PSID_E_MUS ? SYSEX_MUS :
+                why == PSID_E_TOO_LONG ? SYSEX_TOO_LONG : SYSEX_BROKEN, seq);
+        return;
+    }
+    int result = store_file_begin(s->storage, s->file.name, s->file.type, s->length);
+    s->held = 1;
+    if (record_busy(s, result)) wait_record(s, OPEN);
+    else if (result) fail(s, reason(result), seq);
+    else {
+        program_owner(s);
+        claim(s);
+    }
 }
 
 static void accept(sysex* s) {
@@ -324,7 +360,8 @@ static void command(sysex* s, sysex_parser* p) {
             s->written = 0;
             s->crc = store_crc32(s->crc, s->buffer, n);
             s->offset += n;
-            s->state = PROGRAM;
+            if (s->checking) sid_first(s, n, seq);
+            else s->state = PROGRAM;
             return;
         }
         if (cmd == END && !n && s->offset == s->length && s->crc == s->expected_crc) {
@@ -382,7 +419,20 @@ static void command(sysex* s, sysex_parser* p) {
         s->expected_crc = crc;
         if (writing) {
             /* GTI5 staging must not appear among the store's playable songs. */
-            s->file.type = s->target == 1 ? 2 : type;
+            s->file.type = s->target == 1 ? STORE_FILE_GTI : type;
+            if (!s->target && type == STORE_FILE_SID) {
+                /* A .sid: acknowledged now, claimed once its first DATA's header checks. */
+                if (length < PSID_HEADER_SIZE_V1) {
+                    fail(s, SYSEX_BROKEN, seq);
+                    return;
+                }
+                s->checking = 1;
+                s->state = UPLOAD;
+                s->sequence = (seq + 1) & 0x7F;
+                acknowledge(s, seq);
+                s->last = s->now;
+                return;
+            }
             result = store_file_begin(s->storage, s->file.name, s->file.type, length);
             if (record_busy(s, result)) wait_record(s, OPEN);
             else if (result) {
@@ -434,7 +484,7 @@ static void packed_byte(sysex* s, sysex_parser* p, uint8_t byte) {
         p->bad = SYSEX_MALFORMED;
         return;
     }
-    if (!s->tx_active && s->state != PROGRAM && s->state != COMMIT)
+    if (!s->tx_active && s->state != PROGRAM && s->state != COMMIT && !s->held)
         s->buffer[p->length] = byte | (uint8_t)((p->mask & 1) << 7);
     else p->bad = SYSEX_BUSY;
     ++p->length;

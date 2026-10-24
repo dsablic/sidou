@@ -441,3 +441,32 @@ pub fn songs() -> Vec<(String, Vec<u8>)> {
     v.extend(own);
     v
 }
+
+/// The largest file the store holds (app/store.h STORE_FILE_MAX).
+pub const FILE_MAX: usize = 65_536;
+
+/// `file` (a PSID v2+ tune, its data right after a `$7C`-byte header) grown to the store's
+/// largest file: the data from `$007C` to `$FFFF`, the tune's own bytes at their addresses, the
+/// zero page above `$7C` zero and the rest a pattern (memory the tune does not use: a C64's RAM
+/// holds something there too). It plays as `file` does.
+pub fn full_size(file: &[u8]) -> Vec<u8> {
+    let h = header(file);
+    assert_eq!(h.data_off, 0x7C, "a v2+ header with the load address in it");
+    let load = 0x7Cusize;
+    let mut out = file[..0x7C].to_vec();
+    out[8..10].copy_from_slice(&(load as u16).to_be_bytes());
+    let mut mem: Vec<u8> = (load..0x10000)
+        .map(|a| {
+            if a < 0x100 {
+                0
+            } else {
+                (a * 7 + (a >> 8)) as u8
+            }
+        })
+        .collect();
+    let from = usize::from(h.load) - load;
+    mem[from..from + h.data_len as usize].copy_from_slice(&file[0x7C..0x7C + h.data_len as usize]);
+    out.extend(mem);
+    assert_eq!(out.len(), FILE_MAX);
+    out
+}

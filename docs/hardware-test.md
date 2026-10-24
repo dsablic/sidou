@@ -905,7 +905,8 @@ These are manual acceptance checks, not recorded hardware passes. USB-MIDI outpu
 works since v0.2.0 (section 8.1 passed on 2026-10-21 and on v0.2.0's package), so USB
 replies can carry a dump or an upload. The protocol and exact payloads are
 in [SysEx protocol, version 1](reference/sysex.md). `sidou-sysex` is a host-only
-packet library, not a CLI or a MIDI transport. Use a SysEx utility that supports
+packet library, not a MIDI transport; its one command writes `.sid` tunes as `.syx` files
+(section 20). Use a SysEx utility that supports
 per-frame ACK handling for USB and an explicit frame gap for TRS.
 
 Use a writable store (section 7.1), back up wanted songs and choose disposable
@@ -1472,6 +1473,45 @@ A note held (or a song playing) throughout unless an item says otherwise.
 
 Notes:
 
+## 20. .sid tunes over SysEx PUT (M3 Task 10)
+
+What it is: [Put a .sid tune on the FM-1](manual/sid-tunes.md); the protocol's type 2 in
+[SysEx protocol, version 1](reference/sysex.md#sid-tunes-type-2). fm1-emu checked it over TRS
+(`host/crates/emu-gate/tests/psid_store.rs`); the unit has not run it. The build stores tunes
+but has no panel view that plays one yet (M3 Task 11): these checks end at the store. Use
+disposable tune names, a writable store (section 7.1) and tunes you may copy; keep a backup of
+songs you want. Make the files first, from `host/`, with a tune of your own (`a.sid`) and a
+second one:
+
+`cargo run --release -p sidou-sysex -- sid a.sid b.sid --out ../build/syx`
+
+- [ ] **The files:** each tune prints its store name, title, songs and chips and `N messages`;
+  `../build/syx/a.syx` and `b.syx` exist. A copy of `a.sid` with its first four bytes changed to
+  `RSID` (a hex editor) is refused (`refused: RSID: NOT YET`) and gets no `.syx`. Record the
+  names:
+- [ ] **Over USB, a pause between messages:** in the SysEx tool (manual, section 2) send `a.syx`
+  to the port "SIDOU FM-1" with one second after each message. RECEIVING, then SAVED. Record the
+  tool, the time taken and the toasts:
+- [ ] **It is on the store:** INQ and DIR as in section 8c: DIR lists the tune's name with type
+  2 and the `.sid`'s length; GET it (section 8c) and compare it with `a.sid` byte for byte.
+- [ ] **Over USB, too fast:** send `b.syx` with no pause. The upload is refused (STORE BUSY:
+  RESEND or MIDI: BAD PACKET) and DIR does not list `b`'s name, or lists it whole if the
+  computer happened to be slow enough. Send it again with the pause: SAVED.
+- [ ] **Refusals:** the command refuses an RSID, a MUS or a broken file before there is a
+  `.syx`, so there is nothing of one to send from a SysEx tool; fm1-emu checks the device's own
+  refusals (each toast at the first DATA, no flash program). Here, check only that a `.syx` of a
+  song (any `.syx` of section 8c's PUT of a type-1 file) still goes in as before.
+- [ ] **Over TRS:** from a MIDI interface's OUT to the TRS MIDI IN, send `a.syx` again with one
+  second after each message (`--trs` prints the time): RECEIVING, then SAVED; DIR over USB still
+  lists one file of that name (replaced, not doubled), same length.
+- [ ] **A song beside it:** the SONG view's browser lists the songs only, never the tune; a
+  song loads and plays as before.
+- [ ] **Store full:** only if the store already holds many files (do not fill it for this):
+  a tune's upload when INQ's free bytes are fewer than its length is refused with STORE FULL
+  (USB: NAK 5 at its first DATA) and nothing changes.
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1497,3 +1537,4 @@ Notes:
 | 17 Code in Felucca's old debug area | | |
 | 18 Generative play in STEP | | |
 | 19 USB audio out | | |
+| 20 .sid tunes over SysEx PUT | | |

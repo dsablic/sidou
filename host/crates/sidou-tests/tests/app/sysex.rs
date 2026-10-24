@@ -852,8 +852,12 @@ fn current_source_crc_prepass_restarts_and_always_releases_hooks() {
         };
         assert_eq!(e.rig.file(reserved), Some(vec![0xa7; 700]));
         assert_eq!(
-            e.rig.file_open(reserved).unwrap().type_,
-            if target == 1 { 2 } else { 1 }
+            u32::from(e.rig.file_open(reserved).unwrap().type_),
+            if target == 1 {
+                STORE_FILE_GTI
+            } else {
+                STORE_FILE_SONG
+            }
         );
         e.request(3, 1, &named(reserved));
         e.nak(1, SYSEX_MALFORMED);
@@ -1180,5 +1184,277 @@ fn deterministic_random_and_mutated_streams_recover() {
     e.request(1, 127, &[]);
     let (cmd, seq, _) = e.response();
     assert_eq!((cmd, seq), (1, 127));
+    e.rig.assert_clean();
+}
+
+// ---- .sid files (M3 Task 10): the header checked at the first DATA, before any claim ----
+
+fn sid_metadata(name: &str, data: &[u8]) -> Vec<u8> {
+    let mut p = upload_metadata(named(name), data);
+    p[18] = STORE_FILE_SID as u8;
+    p
+}
+
+fn sid_tune() -> Vec<u8> {
+    let (_, sng) = gt2_ref::examples().into_iter().next().unwrap();
+    sidou_tests::psid::packed(&sng, 0xD400)
+}
+
+/// A tune whose header psid_parse refuses with `reason`, and that reason.
+fn refused_tunes() -> Vec<(&'static str, Vec<u8>, u32)> {
+    let good = sid_tune();
+    let mut rsid = good.clone();
+    rsid[..4].copy_from_slice(b"RSID");
+    let mut mus = good.clone();
+    mus[0x77] |= 1;
+    // FM-1 SID's bounds bug's fixture (docs/upstream-reports.md, 1): a data offset past the
+    // file's end, in a file of a header and one 16-byte packet.
+    let mut crafted = good[..0x80].to_vec();
+    crafted[6..8].copy_from_slice(&0x0200u16.to_be_bytes());
+    let mut long = good.clone();
+    long[8..10].copy_from_slice(&0xFF00u16.to_be_bytes());
+    let mut wav = b"RIFF\0\0\0\0WAVEfmt ".to_vec();
+    wav.resize(300, 0);
+    vec![
+        ("RSID", rsid, SYSEX_RSID),
+        ("MUS", mus, SYSEX_MUS),
+        ("CRAFTED", crafted, SYSEX_BROKEN),
+        ("LONG", long, SYSEX_TOO_LONG),
+        ("WAV", wav, SYSEX_BROKEN),
+    ]
+}
+
+#[test]
+fn a_sid_put_is_acknowledged_before_its_claim_and_claimed_at_its_first_data() {
+    let mut e = Engine::new(true);
+    let tune = sid_tune();
+    let programs = e.rig.sim.progs;
+    e.request(4, 40, &sid_metadata("TUNE", &tune));
+    e.ack(40);
+    // Nothing claimed or owned yet: the header has not come.
+    assert_eq!(e.engine.claimed, 0);
+    assert_eq!(e.rig.st.f.phase, 0);
+    assert!(e.hooks.writing.is_empty());
+    assert!(e.hooks.toasts.is_empty());
+    assert_eq!(e.rig.sim.progs, programs);
+    let mut seq = 41;
+    for (i, part) in tune.chunks(256).enumerate() {
+        e.request(5, seq, part);
+        if i == 0 {
+            assert_eq!(e.hooks.writing, [true]);
+            assert_eq!(e.hooks.toasts, [SYSEX_RECEIVING as u8]);
+        }
+        e.ack(seq);
+        seq += 1;
+    }
+    e.request(6, seq, &[]);
+    e.ack(seq);
+    assert!(!e.active());
+    assert_eq!(e.hooks.writing, [true, false]);
+    assert_eq!(e.hooks.toasts.last(), Some(&(SYSEX_SAVED as u8)));
+    assert_eq!(e.rig.file("TUNE"), Some(tune.clone()));
+    let f = e.rig.file_open("TUNE").unwrap();
+    assert_eq!(u32::from(f.type_), STORE_FILE_SID);
+    // Over TRS, the same without replies.
+    e.bytes(1, &frame(4, 0, &sid_metadata("TRS TUNE", &tune)));
+    for (i, part) in tune.chunks(256).enumerate() {
+        e.bytes(1, &frame(5, i as u8 + 1, part));
+        for _ in 0..2000 {
+            e.poll();
+        }
+    }
+    e.bytes(1, &frame(6, tune.len().div_ceil(256) as u8 + 1, &[]));
+    for _ in 0..2000 {
+        e.poll();
+    }
+    assert!(e.wire().is_empty());
+    assert_eq!(e.rig.file("TRS TUNE"), Some(tune));
+    e.rig.assert_clean();
+}
+
+#[test]
+fn rsid_mus_and_broken_sid_puts_are_refused_before_any_claim_or_program() {
+    let mut e = Engine::new(true);
+    assert_eq!(e.rig.file_now("KEEP", &[9, 8, 7]), STORE_OK);
+    e.rig.maintain();
+    for (name, file, reason) in refused_tunes() {
+        for port in [SYSEX_USB, SYSEX_TRS] {
+            let programs = e.rig.sim.progs;
+            let pool = e.rig.stats().pool;
+            e.hooks.toasts.clear();
+            e.hooks.writing.clear();
+            if port == SYSEX_USB {
+                e.request(4, 7, &sid_metadata(name, &file));
+                e.ack(7);
+                e.request(5, 8, &file[..file.len().min(256)]);
+                e.nak(8, reason);
+            } else {
+                e.bytes(1, &frame(4, 7, &sid_metadata(name, &file)));
+                for (i, part) in file.chunks(256).enumerate() {
+                    e.bytes(1, &frame(5, i as u8 + 8, part));
+                    e.poll();
+                }
+                e.bytes(1, &frame(6, file.len().div_ceil(256) as u8 + 8, &[]));
+                e.poll();
+                // The refusal's toast stands: the tail was dropped.
+                assert_eq!(e.hooks.toasts, [reason as u8], "{name} over TRS");
+                assert!(e.wire().is_empty());
+            }
+            assert!(!e.active(), "{name}");
+            assert!(e.hooks.writing.is_empty(), "{name}: no program owner");
+            assert_eq!(e.rig.sim.progs, programs, "{name}: programmed");
+            assert_eq!(e.rig.stats().pool, pool, "{name}: claimed");
+            assert!(e.rig.file(name).is_none());
+        }
+    }
+    // Shorter than any header: refused at PUT.
+    e.request(4, 20, &sid_metadata("TINY", &[0x50; 0x75]));
+    e.nak(20, SYSEX_BROKEN);
+    // The first DATA must hold the first 128 bytes (or the whole of a shorter file).
+    let tune = sid_tune();
+    e.request(4, 21, &sid_metadata("SPLIT", &tune));
+    e.ack(21);
+    e.request(5, 22, &tune[..16]);
+    e.nak(22, SYSEX_MALFORMED);
+    assert!(e.rig.file("SPLIT").is_none());
+    assert_eq!(e.rig.file("KEEP"), Some(vec![9, 8, 7]));
+    // A song (type 1) is never checked as a tune, and an RSID's bytes go in as one.
+    let rsid = refused_tunes().remove(0).1;
+    e.upload(named("NOT A TUNE"), &rsid, 256);
+    assert_eq!(e.rig.file("NOT A TUNE"), Some(rsid));
+    e.rig.assert_clean();
+}
+
+#[test]
+fn a_sid_put_with_the_store_keys_used_up_answers_full_at_its_first_data() {
+    let mut e = Engine::new(true);
+    assert_eq!(e.rig.file_now("OLD", &[5; 32]), STORE_OK);
+    let mut key = 1;
+    while e.rig.st.nkeys < STORE_KEYS_MAX as u8 {
+        assert_eq!(e.rig.put_now(key, &[key as u8; 8]), STORE_OK);
+        key += 1;
+    }
+    let tune = sid_tune();
+    let programs = e.rig.sim.progs;
+    e.request(4, 3, &sid_metadata("NO KEY", &tune));
+    e.ack(3);
+    e.request(5, 4, &tune[..256]);
+    e.nak(4, SYSEX_FULL);
+    assert_eq!(e.rig.sim.progs, programs);
+    assert!(e.rig.file("NO KEY").is_none());
+    // A song's PUT says so at its metadata.
+    e.request(4, 5, &upload_metadata(named("NO KEY"), &[1; 32]));
+    e.nak(5, SYSEX_FULL);
+    // A file deleted: its key is free again, and the tune goes in.
+    assert_eq!(e.rig.file_delete("OLD"), STORE_OK);
+    e.rig.settle();
+    e.rig.maintain();
+    e.request(4, 6, &sid_metadata("ONE KEY", &tune));
+    e.ack(6);
+    let mut seq = 7;
+    for part in tune.chunks(256) {
+        e.request(5, seq, part);
+        e.ack(seq);
+        seq += 1;
+    }
+    e.request(6, seq, &[]);
+    e.ack(seq);
+    assert_eq!(e.rig.file("ONE KEY"), Some(tune));
+}
+
+#[test]
+fn a_sid_put_whose_claim_waits_for_a_record_programs_its_held_first_data() {
+    let mut e = Engine::new(true);
+    let tune = sid_tune();
+    e.request(4, 9, &sid_metadata("HELD", &tune));
+    e.ack(9);
+    // A settings save in flight: the claim waits for it as the transfer's (OPEN).
+    assert_eq!(e.rig.put(77, &[0x77; 64]), STORE_OK);
+    e.request(5, 10, &tune[..256]);
+    assert_eq!(e.engine.held, 1, "the first DATA held for the claim");
+    assert_eq!(e.engine.claimed, 0);
+    // A byte of another frame while it is held is BUSY, never written over the held packet.
+    e.ack(10);
+    assert_eq!(e.engine.held, 0);
+    let mut seq = 11;
+    for part in tune[256..].chunks(256) {
+        e.request(5, seq, part);
+        e.ack(seq);
+        seq += 1;
+    }
+    e.request(6, seq, &[]);
+    e.ack(seq);
+    assert_eq!(e.rig.file("HELD"), Some(tune));
+    assert_eq!(e.rig.get(77), Some(vec![0x77; 64]));
+}
+
+/// The fuzz of M2e's, with .sid uploads: mutated headers (any byte of the first 128, the
+/// declared length) and corrupted frames over both ports. A file is stored only if its header
+/// checks and its bytes arrived whole; a header psid_parse refuses programs nothing.
+#[test]
+fn mutated_sid_uploads_store_only_tunes_and_refusals_program_nothing() {
+    let mut e = Engine::new(true);
+    let mut rng = Rng::new(0x5349_445f_465a_5a31);
+    let good = sid_tune();
+    let (mut stored, mut refused) = (0, 0);
+    for i in 0..300 {
+        let mut file = good.clone();
+        for _ in 0..1 + rng.below(4) {
+            let at = rng.below(0x80) as usize;
+            file[at] = rng.next() as u8;
+        }
+        if rng.chance(10) {
+            file.truncate(rng.below(file.len() as u64) as usize);
+        }
+        let mut h = psid_header::default();
+        let parsed = unsafe { psid_parse(file.as_ptr(), file.len() as u32, &mut h) };
+        let port = (i % 2) as u8;
+        let corrupt = rng.chance(20);
+        let programs = e.rig.sim.progs;
+        let mut frames = vec![frame(4, 0, &sid_metadata("FUZZ", &file))];
+        for (k, part) in file.chunks(256).enumerate() {
+            frames.push(frame(5, k as u8 + 1, part));
+        }
+        frames.push(frame(6, file.len().div_ceil(256) as u8 + 1, &[]));
+        if corrupt {
+            let f = rng.below(frames.len() as u64) as usize;
+            let at = rng.below(frames[f].len() as u64) as usize;
+            frames[f][at] ^= 1 + rng.below(255) as u8;
+        }
+        for f in &frames {
+            e.bytes(port, f);
+            for _ in 0..200 {
+                e.poll();
+                e.hooks.packets.clear();
+            }
+        }
+        for _ in 0..200 {
+            e.poll();
+        }
+        e.hooks.packets.clear();
+        let got = e.rig.file("FUZZ");
+        if parsed != PSID_OK as i32 || file.len() < PSID_HEADER_SIZE_V1 as usize {
+            assert!(got.is_none(), "{i}: a refused header was stored");
+            assert_eq!(
+                e.rig.sim.progs, programs,
+                "{i}: a refused header programmed"
+            );
+            refused += 1;
+        } else if !corrupt {
+            assert_eq!(got.as_deref(), Some(&file[..]), "{i}: a tune not stored");
+        }
+        if let Some(bytes) = got {
+            assert_eq!(bytes, file, "{i}: stored bytes not the sent ones");
+            stored += 1;
+            assert_eq!(e.rig.file_delete("FUZZ"), STORE_OK);
+            e.rig.settle();
+        }
+        unsafe { sysex_reset(&mut *e.engine) };
+        e.hooks.packets.clear();
+        e.rig.maintain();
+        assert!(!e.active());
+    }
+    println!("{stored} stored, {refused} refused at their header");
+    assert!(stored > 50 && refused > 50, "the fuzz reaches both sides");
     e.rig.assert_clean();
 }

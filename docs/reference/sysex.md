@@ -48,13 +48,36 @@ CRC-32, the same as the store and zlib.
 
 Targets are 0: named store file, 1: instrument 1–63 of the current song, and
 2: current song. Unused instrument/name fields are zero. Files are at most
-65,536 bytes. A file's type is 1–127 (1 is a song); targets 1 and 2 use type 1.
+65,536 bytes. A file's type is 1–127 (1 is a song, 2 a PSID `.sid` tune, below); targets 1
+and 2 use type 1.
 Target 1 is GoatTracker's GTI5
 instrument format, including its four tables; table references are relocated
 on import. Target 2 is a canonical GTS5 song including SIDOU's trailer.
 Temporary imports use the reserved names `MIDI INSTRUMENT` and `MIDI SONG`;
 ordinary file operations cannot use those names, and DIR omits them. Type 1
 on target 0 labels a file as a song; it does not validate its contents or load it.
+
+### `.sid` tunes (type 2)
+
+A PUT of type 2 to target 0 is a PSID tune, and SIDOU checks its header before anything of it
+is stored, with the parser that plays it ([psid.md](psid.md#what-sidou-refuses-and-why)):
+
+- The PUT is acknowledged without claiming the store's sectors. Its first DATA must hold the
+  file's first 128 bytes (a file shorter than that in one DATA); a shorter first DATA is
+  refused as malformed (1). A declared length under 118 bytes (`$76`, the smallest header) is
+  refused at the PUT (14).
+- That DATA's header is checked against the declared length: an RSID file is refused with 12,
+  a MUS file (Compute!'s Sidplayer data) with 13, a broken header (not a PSID, a version, data
+  offset or song count the file does not hold, data over `$0000-$0001`) with 14, and data that
+  runs past `$FFFF` with 15. Nothing is claimed or programmed for a refused tune.
+- Then the sectors are claimed as for any PUT, and BUSY (4) or FULL (5, also when the store's
+  48 keys are used up) answers this first DATA rather than the PUT. From there it is any PUT:
+  each DATA's ACK once it is programmed, END's once the file commits.
+
+The data and the rest of the file are not checked at PUT (a tune that runs wild is stopped when
+it plays). Type 2 means a tune only on target 0; a tune stored under any other type is never
+offered as one. `sidou-sysex sid` writes a tune's PUT as a `.syx` (below), and
+[the manual](../manual/sid-tunes.md) says how to send one.
 
 For PUT, each DATA begins at a 16-byte-aligned file offset. Every nonfinal
 payload is 16, 32, …, 256 bytes; the final payload may be any length from 1 to
@@ -71,7 +94,9 @@ and revision, each 0–127. Free bytes are advisory: fragmentation, pool state
 and concurrent writes can prevent a claim even when that number is sufficient.
 
 NAK reasons are 1: malformed/range, 2: checksum, 3: sequence, 4: BUSY,
-5: FULL, 6: not found, 7: I/O or invalid content, 8: timeout, 9: aborted.
+5: FULL, 6: not found, 7: I/O or invalid content, 8: timeout, 9: aborted, and for a `.sid`
+12: RSID, 13: MUS, 14: broken header, 15: data past `$FFFF` (10 and 11 are never sent).
+The toasts for 12-15 are `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID` and `TOO LONG`.
 Errors end the transfer and release its resources after any irrevocable store
 commit or already-started object import drains. A USB error produces a NAK; both ports report a toast. Unknown USB
 commands are malformed; TRS ignores commands outside its upload-only subset.
@@ -90,7 +115,8 @@ out-of-order DATA packets abort rather than being written twice; retry the
 whole transfer after a NAK or a lost ACK.
 
 For incoming PUT, the initial packet declares exact length and CRC. SIDOU claims
-all store sectors with `store_file_begin` before acknowledging it. If the clean
+all store sectors with `store_file_begin` before acknowledging it (a `.sid`'s at its first
+DATA, above). If the clean
 pool cannot cover the file, it answers BUSY with the current pool size; FULL
 means the file cannot fit. No transfer waits for an erase. A record the store is
 writing when PUT or DEL arrives (a settings save, or a maintenance collection's
@@ -172,6 +198,13 @@ remains an open acceptance item until its separate transport fix is validated.
 
 An empty INQ at sequence zero is `F0 7D 53 44 01 00 7F F7`.
 The host-only `sidou-sysex` library encodes/decodes packets and packing; it opens
-no MIDI or USB device and provides no CLI. It validates individual packet shapes,
-not transfer sequencing, file CRCs or contents. Use a SysEx utility that can wait
+no MIDI or USB device. It validates individual packet shapes,
+not transfer sequencing, file CRCs or contents. Its one command,
+`sidou-sysex sid FILE.sid... [--out DIR] [--trs]`, writes each tune's whole upload (PUT,
+DATA, END, one SysEx message a packet) as a `.syx`, after checking it with SIDOU's own PSID
+parser, and names it in the store from its title: uppercase, characters `20`-`5F` (others
+`?`), 16 at most, `-2`, `-3`, ... on a clash within the run (HVSC's `<?>` or no title: the
+file's name). It reports a refused tune with the device's reason and writes no `.syx` for it.
+`--trs` changes no byte (the frames are the same on both ports); it prints TRS's pacing
+instead of USB's. Use a SysEx utility that can wait
 for USB ACKs (or apply the TRS frame gap) for hardware checks.

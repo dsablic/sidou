@@ -50,6 +50,7 @@ mod scene_song;
 mod scope;
 mod screen;
 mod settings;
+mod sid_io;
 mod song_audition_shape;
 mod song_edit;
 mod song_io;

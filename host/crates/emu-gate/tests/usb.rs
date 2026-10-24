@@ -481,12 +481,16 @@ fn name16(name: &str) -> Vec<u8> {
         .collect()
 }
 
-/// PUT `data` as a named file (type 2), stop-and-wait from sequence 10; returns the metadata
+/// A store type nothing on the device reads (app/store.h: 1 a song, 2 a .sid, whose header a PUT
+/// checks, 3 SysEx's instrument staging): the transfers' disposable files.
+const OTHER_TYPE: u8 = 0x7F;
+
+/// PUT `data` as a named file (OTHER_TYPE), stop-and-wait from sequence 10; returns the metadata
 /// and the emulated ms a DATA packet and its ACK took, on average.
 fn put_file(m: &mut Machine, link: &mut Link, name: &str, data: &[u8]) -> (Vec<u8>, f64) {
     let mut meta = vec![0, 0];
     meta.extend(name16(name));
-    meta.push(2);
+    meta.push(OTHER_TYPE);
     meta.extend((data.len() as u32).to_le_bytes());
     // SAFETY: data is valid for its length; the CRC routine does not retain it.
     let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };
@@ -1257,7 +1261,7 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
     let mut link = Link::default();
     let mut meta = vec![0, 0];
     meta.extend(name16("USB WAITS"));
-    meta.push(2);
+    meta.push(OTHER_TYPE);
     meta.extend((data.len() as u32).to_le_bytes());
     // SAFETY: data is valid for its length; the CRC routine does not retain it.
     let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };

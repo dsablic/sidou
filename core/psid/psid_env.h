@@ -119,6 +119,11 @@ typedef struct psid_env {
  * read it) unless `file` is NULL, when psid_env_load_part brings it in. Everything in *e is
  * reset, the sink included (set it after loading). The tune waits for psid_env_start. */
 void psid_env_load(psid_env* e, uint8_t* mem, const psid_header* h, const uint8_t* file);
+/* As psid_env_load with file NULL, but mem is the caller's to make as at power-on: only $00/$01
+ * are set, and the caller zeroes the rest ($0002-$FFFF) before the tune starts, for a caller
+ * that clears the 64 KiB in parts (app/sid_io.c: the whole clear is more than a main-loop pass's
+ * share on the device, 32,938 instructions). */
+void psid_env_load_over(psid_env* e, uint8_t* mem, const psid_header* h);
 
 /* Copies the part of the file's bytes [offset, offset + n) that is the tune's data to its
  * place in memory; bytes outside the data (the header, a load-address prefix, a v5 song-length

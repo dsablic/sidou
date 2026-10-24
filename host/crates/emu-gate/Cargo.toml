@@ -23,5 +23,6 @@ object = { version = "0.36", default-features = false, features = ["read", "elf"
 png = "0.18"
 residfp-sys = { path = "../residfp-sys" }
 serde_json = "1"
+sidou-sysex = { path = "../sidou-sysex" }
 sidou-tests = { path = "../sidou-tests" }
 sidou-tablegen = { path = "../sidou-tablegen" }
