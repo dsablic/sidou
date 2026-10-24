@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-24
+
 ### Added
 - **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
   one of the four showcase songs) into a Standard MIDI File in the browser: a track and a MIDI
