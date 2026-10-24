@@ -266,8 +266,8 @@ fn an_advance_of_zero_changes_nothing() {
     render(&mut s, 10);
     unsafe { sid_write(&mut *s, 0x12, 0x41) };
     let before = (
-        s.osc3_held,
-        s.written,
+        s.vf.osc3_held,
+        s.vf.written,
         s.osc[2].pulse_held,
         s.cycle_frac_q16,
     );
@@ -275,8 +275,8 @@ fn an_advance_of_zero_changes_nothing() {
     assert_eq!(
         before,
         (
-            s.osc3_held,
-            s.written,
+            s.vf.osc3_held,
+            s.vf.written,
             s.osc[2].pulse_held,
             s.cycle_frac_q16
         )

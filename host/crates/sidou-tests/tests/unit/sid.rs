@@ -168,7 +168,7 @@ fn read(s: &mut sid, reg: u8) -> u8 {
 /// the accumulators directly instead of running cycles.
 fn write_control(s: &mut sid, value: u8) {
     write(s, 0x12, value);
-    s.osc3_held = 0;
+    s.vf.osc3_held = 0;
 }
 
 fn clock(s: &mut sid, cycles: u32) {
