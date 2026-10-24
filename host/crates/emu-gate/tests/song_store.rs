@@ -880,9 +880,7 @@ fn a_new_song_plays_and_auditions_its_lead_at_pitch() {
     m.run_ms(600);
     m.turn(6, 1);
     m.run_ms(100);
-    press(&mut m, PANEL_KEY_ID0 as u8);
-    m.run_ms(1500);
-    press(&mut m, PANEL_KEY_ID0 as u8);
+    press(&mut m, PANEL_KEY_ID0 as u8 + 2); // an empty step, the first press after PRESETS
     let rec = record(&mut m, 400);
     println!(
         "rms {:.0}",
