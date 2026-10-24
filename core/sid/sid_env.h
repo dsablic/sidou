@@ -613,6 +613,24 @@ static inline void sid_env_reset_settled(sid_env* e) {
     e->rate_pos = sid_env_rate_pos(0);
 }
 
+/* An envelope just reset (sid_init's, at SID_ENV_POWER_ON: releasing at rate 0, nothing
+ * written since) as its release ends: the counter at 0 and stopped there, the divider's period
+ * back to 1, nothing in the pipelines, as sid_env_step leaves it at 0 one cycle on (about 6,000
+ * cycles of release at once). The LFSR stays where the reset left it, the one difference from
+ * clocking it through, which only moves where the next rate period starts, as an unknown
+ * power-on phase would. For a chip that plays its power-on out before anything hears it
+ * (app/reg_ring.h reg_ring_power_on). */
+static inline void sid_env_power_on_done(sid_env* e) {
+    e->counter = 0;
+    e->env3 = 0;
+    e->counter_enabled = 0;
+    e->exp_counter = 0;
+    e->exp_period = 1;
+    e->new_exp_period = 0;
+    e->envelope_pipeline = 0;
+    e->exponential_pipeline = 0;
+}
+
 static inline void sid_env_reset(sid_env* e) {
     sid_env_settle(e);
     sid_env_reset_settled(e);

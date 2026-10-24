@@ -1101,6 +1101,8 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
             sink_b(LIVE_REG_CHAR_FIRST + f, 0);
         }
         sink_b(LIVE_REG_RESET, SID_MODEL_6581);
+        // the reset's new sid plays its power-on out first, as the device's (app/reg_ring.h)
+        reg_ring_power_on((*tb).chip);
         sink_b(LIVE_REG_GATE_RESET, 1);
         for (i, half) in r.out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             for e in events.iter().filter(|e| e.block == i) {
@@ -1332,6 +1334,8 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
             sink_b(LIVE_REG_CHAR_FIRST + f, 0);
         }
         sink_b(LIVE_REG_RESET, SID_MODEL_6581);
+        // the reset's new sid plays its power-on out first, as the device's (app/reg_ring.h)
+        reg_ring_power_on((*tb).chip);
         sink_b(LIVE_REG_GATE_RESET, 1);
         sink.reset = false;
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {

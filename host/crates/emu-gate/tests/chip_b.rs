@@ -272,8 +272,9 @@ const SLOTS_WORST_SWITCH: f64 = 964.0;
 type Step = (u64, Vec<(u8, u8)>, Vec<(u8, u8)>, Option<bool>);
 
 /// Chip B in and out of use with both chips playing, against the host's render
-/// (render_host_chips) sample for sample: chip B goes in use with only its volume written (its
-/// own level, the volume step's, faded in over the block), a note on each chip, B's release,
+/// (render_host_chips) sample for sample: chip B goes in use with a note just started on it
+/// (its attack, faded in over the block; its level there was once its power-on release's, gone
+/// since chip B plays that out where it is made, app/reg_ring.h), a note on chip A, B's release,
 /// and B out of use once its envelopes are at 0 (a DC-only chip faded out), then A's release.
 /// Neither fade steps the output by more than B's own step, 1/128 of its sample and 1 (the
 /// rounding) at any sample, the block's boundaries included (a click test, on the host's render
@@ -287,8 +288,8 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
     m.run_ms(300);
     let halves = |m: &Machine| m.soc.periph.audio.len() / (2 * HALF_FRAMES);
     let script: Vec<Step> = vec![
-        (0, vec![], vec![(0x18, 0x0f)], Some(true)),
-        (150, note(0, 0x1cd6, 0x41), note(0, 0x1167, 0x21), None),
+        (0, vec![], note(0, 0x1167, 0x21), Some(true)),
+        (150, note(0, 0x1cd6, 0x41), vec![], None),
         (200, vec![], vec![(0x04, 0x20)], None),
         (600, vec![], vec![], Some(false)),
         (100, vec![(0x04, 0x40)], vec![], None),

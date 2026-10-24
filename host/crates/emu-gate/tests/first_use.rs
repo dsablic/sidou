@@ -12,7 +12,7 @@
 //! lead at 0 Hz), NEW's PULSE and BASS sounding the same, and the first step press after
 //! PRESETS auditioning the previous instrument. They found two more: the chip kit's drums sound
 //! about 55 ms after their row, not one frame (the_kits_drums_sound_one_frame_after_their_row),
-//! and PLAY thuds before its first note (play_is_quiet_until_the_first_note).
+//! and PLAY thudded before its first note (play_is_quiet_until_the_first_note; since fixed).
 
 mod common;
 
@@ -1428,11 +1428,11 @@ fn every_note_key_sounds_its_note_and_lights_while_held() {
 }
 
 /// PLAY on a fresh boot (SIDOU LOOP, from LIVE) is quiet until the song's first note: nothing
-/// in the 140 ms the player takes to sound row 0. In fm1-emu a bump of about -930 LSB starts
-/// 9 ms after the press, as chip B goes in use for the keys (b_on), and decays over 150 ms
-/// (an RMS of about 700 over 10 ms; the thump stage's levels stay 0): a thud before the music.
+/// in the 140 ms the player takes to sound row 0. It thudded before (an RMS of about 700 over
+/// 10 ms, from 9 ms after the press): chip B, never rendered since its boot reset, played its
+/// power-on envelope release (sid_init's 0xaa) when the keys moved to it, under their setup;
+/// chip B's new sid now plays it out at once (app/reg_ring.c power_on_out).
 #[test]
-#[ignore = "bug: PLAY thuds about 140 ms before the first note (a DC bump as chip B goes in use)"]
 fn play_is_quiet_until_the_first_note() {
     let Some(fw) = fixture() else { return };
     let mut m = booted(&fw);

@@ -1500,9 +1500,13 @@ fn writes_to_both_chips_in_one_pass_apply_in_order() {
     );
 }
 
-/// The host's reference for one chip: live_sid_sink straight into a chip, with a spare.
+/// The host's reference for chip B: live_sid_sink straight into a chip, with a spare, its
+/// power-on played out as the ring's chip B has it (app/reg_ring.h reg_ring_power_on; the
+/// live's setup writes leave what it sets alone, so after them is as before).
 fn reference() -> Host {
-    Host::new(SID_MODEL_6581)
+    let mut h = Host::new(SID_MODEL_6581);
+    unsafe { reg_ring_power_on(&mut *h.chip) };
+    h
 }
 
 /// Chip A steps its profile (prepared over ticks, then the swap) and back, while chip B plays
