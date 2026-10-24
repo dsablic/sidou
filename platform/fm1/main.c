@@ -966,6 +966,7 @@ static int st_play_from(void* ctx, uint32_t sub, uint32_t pos) {
     if (!song_ctl_play(sc, sub, pos)) {
         return 0;
     }
+    sc->chance_seed = uptime_ms; /* each PLAY rolls its chances afresh */
     song_warned = 0;
     song_setup_on = 0;
     for (uint32_t v = 0; v < SONG_T_VOICES; v++) {

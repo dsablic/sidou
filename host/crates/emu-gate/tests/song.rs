@@ -916,10 +916,30 @@ fn budget_songs() -> Vec<(String, Song, u32)> {
             }
             if sub == 0 {
                 v.push((format!("{name} {sub} locked"), locked(&sng), sub));
+                v.push((format!("{name} {sub} chance"), chanced(&sng), sub));
             }
         }
     }
     v
+}
+
+/// A song with a 50 % chance on as many of its rows as SONG_LOCKS_MAX allows: the main loop's
+/// rolls and the player's dropped notes at their most (a roll for every row a channel reads).
+fn chanced(sng: &[u8]) -> Song {
+    let mut song = device_song(sng, None);
+    let mut n = 0;
+    for p in 0..GT2_MAX_PATTERNS {
+        let rows = unsafe { gt2_pattern_rows(song.ptr(), p) };
+        for row in 0..rows.saturating_sub(1) {
+            if n == SONG_LOCKS_MAX {
+                return song;
+            }
+            if unsafe { song_lock_put(song.ptr_mut(), p, row, SONG_LOCK_CHANCE, 50) } == 0 {
+                n += 1;
+            }
+        }
+    }
+    song
 }
 
 /// A song with locks on as many of its rows as SONG_LOCKS_MAX allows: every filter and pulse

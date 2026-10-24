@@ -84,6 +84,9 @@ typedef struct {
     /* not player.s's: the row fetched for the next tick 0, for its row event */
     uint8_t orderpos;  /* the orderlist entry the playing pattern came from, $FF: elsewhere */
     uint8_t ev_pending, ev_pattern, ev_row, ev_orderpos;
+    /* Steps whose note is dropped when read, (pattern + 1) << 8 | row, 0: none. The main
+     * loop's (song_ctl's chance rolls), up to the two rows a pattern's end may lead to. */
+    uint16_t skip[2];
     uint16_t encoding; /* retained pulse/wave packing, or 0: follow the shape */
 } gt2_channel;
 

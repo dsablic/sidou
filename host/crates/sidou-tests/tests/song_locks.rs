@@ -505,3 +505,147 @@ fn a_chip_swapped_on_a_locked_row_gets_the_locked_registers_at_once() {
         assert_eq!(fresh.osc[v].pw, t.chip.osc[v].pw, "voice {v}: the song's");
     }
 }
+
+// ---- per-step chance (SONG_LOCK_CHANCE) ----
+
+#[test]
+fn a_chance_is_a_lock_that_round_trips_and_leaves_the_gt2_bytes_alone() {
+    let mut s = song();
+    let plain = s.write(false);
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 50);
+    put(&mut s, 0, 4, SONG_LOCK_CUTOFF, 900);
+    put(&mut s, 1, 0, SONG_LOCK_CHANCE, 0);
+    assert_eq!(s.write(false), plain, "the GT2 part is what it was");
+    let want = vec![
+        (0, 4, SONG_LOCK_CUTOFF as u8, 900),
+        (0, 4, SONG_LOCK_CHANCE as u8, 50),
+        (1, 0, SONG_LOCK_CHANCE as u8, 0),
+    ];
+    assert_eq!(locks(&s), want);
+    let file = s.write(true);
+    assert_eq!(
+        file[..plain.len()],
+        plain[..],
+        "GoatTracker's part first, unchanged"
+    );
+    let mut back = Song::host();
+    assert_eq!(back.read(&file, 0).unwrap().msg, "");
+    assert_eq!(locks(&back), want);
+    assert_eq!(stream_load(&mut Song::host(), &file), (1, String::new()));
+    assert_eq!(
+        unsafe { song_lock_put(s.ptr_mut(), 0, 4, SONG_LOCK_CHANCE, 101) },
+        -1,
+        "past 100"
+    );
+    assert_eq!(
+        unsafe { song_lock_remove(s.ptr_mut(), 0, 4, SONG_LOCK_CHANCE) },
+        1
+    );
+}
+
+#[test]
+fn a_chance_past_100_is_dropped_with_its_chunk_as_any_bad_lock_is() {
+    let mut s = song();
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 50);
+    lock_records(&mut s)[3..5].copy_from_slice(&101u16.to_le_bytes());
+    let file = s.write(true);
+    let mut back = Song::host();
+    assert_eq!(back.read(&file, 0).unwrap().msg, "SNG: LOCKS DROPPED");
+    assert!(locks(&back).is_empty());
+    let mut streamed = Song::host();
+    assert_eq!(
+        stream_load(&mut streamed, &file),
+        (1, "SNG: LOCKS DROPPED".into())
+    );
+}
+
+#[test]
+fn the_roll_is_seedable_and_a_chance_of_c_plays_about_c_in_100() {
+    let rolls = |seed: u32, c: u32| -> Vec<bool> {
+        (0..40_000)
+            .map(|n| unsafe { song_chance_plays(seed, n, c) } != 0)
+            .collect()
+    };
+    assert_eq!(rolls(5, 40), rolls(5, 40), "the same seed, the same passes");
+    assert_ne!(rolls(5, 40), rolls(6, 40), "another seed, other passes");
+    assert!(rolls(9, 0).iter().all(|&p| !p), "0 never plays");
+    assert!(rolls(9, 100).iter().all(|&p| p), "100 always plays");
+    for c in [10u32, 25, 50, 75, 90] {
+        let r = rolls(1234, c);
+        let got = r.iter().filter(|&&p| p).count() as f64 / r.len() as f64 * 100.0;
+        assert!((got - f64::from(c)).abs() < 1.0, "{c}%: played {got:.2}%");
+        // and no streaks that read as a pattern: a run of 12 equal rolls is rare at 50%
+        if c == 50 {
+            let longest = r.chunk_by(|a, b| a == b).map(<[bool]>::len).max().unwrap();
+            assert!(longest < 24, "a run of {longest}");
+        }
+    }
+}
+
+/// How the pattern 0 row `row` of the first channel played over `passes` passes of its 8 rows
+/// (6 calls a row): true for a pass whose row played its note.
+fn played(s: &mut Song, seed: u32, row: u8, passes: usize) -> Vec<bool> {
+    let mut t = Transport::new(s);
+    t.sc.chance_seed = seed;
+    assert!(t.play(0, 0));
+    let mut out = Vec::new();
+    while out.len() < passes {
+        t.pass();
+        t.block_silent();
+        for e in t.events() {
+            if (e.flags >> 5) & 3 == 0 && e.pattern == 0 && e.row == row {
+                let f = e.flags & 0x1f;
+                if f & GT2_EV_ROW as u8 != 0 {
+                    out.push(f & GT2_EV_NOTE as u8 != 0);
+                }
+            }
+        }
+        assert!(t.calls() < 100_000, "the song stalled");
+    }
+    out.truncate(passes);
+    out
+}
+
+#[test]
+fn a_step_with_a_chance_plays_by_its_roll_and_the_player_otherwise_plays_as_ever() {
+    let mut s = song();
+    assert!(
+        played(&mut s, 1, 4, 20).iter().all(|&p| p),
+        "no chance: always"
+    );
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 100);
+    assert!(played(&mut s, 1, 4, 20).iter().all(|&p| p), "100: always");
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 0);
+    assert!(played(&mut s, 1, 4, 30).iter().all(|&p| !p), "0: never");
+    assert!(
+        played(&mut s, 1, 0, 30).iter().all(|&p| p),
+        "another step is not touched"
+    );
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 50);
+    let a = played(&mut s, 77, 4, 300);
+    assert_eq!(
+        a,
+        played(&mut s, 77, 4, 300),
+        "the same seed: the same passes"
+    );
+    assert_ne!(a, played(&mut s, 78, 4, 300), "another seed: other passes");
+    let n = a.iter().filter(|&&p| p).count();
+    assert!((110..=190).contains(&n), "{n} of 300 at 50%");
+}
+
+#[test]
+fn the_main_loop_tells_the_player_the_steps_that_lose_their_roll() {
+    let mut s = song();
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 0);
+    let mut t = Transport::new(&mut s);
+    assert!(t.play(0, 0));
+    let mut skipped_rows = 0;
+    while t.calls() < 400 {
+        t.pass();
+        t.block_silent();
+        if t.sc.player.chn[0].skip[0] != 0 || t.sc.player.chn[0].skip[1] != 0 {
+            skipped_rows += 1;
+        }
+    }
+    assert!(skipped_rows > 0, "the main loop told the player");
+}

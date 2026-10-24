@@ -34,7 +34,7 @@ screenshots the tests check.*
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
   its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
   the rest. REC records the keys and the filter knobs while the song plays, and parameter locks
-  are on STEP.
+  are on STEP, with a chance for each step, MUTATE and DICE.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
