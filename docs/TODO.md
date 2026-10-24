@@ -601,3 +601,8 @@ around the lane's note; the user wants to steer it. Planned for 0.5.x, after M3:
 - **Saved per song** (SIDOU's own chunk, as the locks and the scene are), so a song keeps its
   DICE; MUTATE keeps to the same scale.
 - Open: a note-length setting, and how often a roll repeats a note.
+- **Shown on the view** (the user: "all of these make sense and should somehow be accessible from
+  the view"): today CHANCE, DICE and MUTATE are found only on the help card. While EDIT is held
+  in STEP, the HELD STEP frame lists `SCL DICE`, `ARP MUTATE` and `LFO UNDO` (and DICE's four
+  settings on K1-K4); a held step's frame names ALGORITHM's `CHANCE` beside the four knobs with
+  the step's value.
