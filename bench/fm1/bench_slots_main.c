@@ -7,6 +7,7 @@
  * of its blocks. The stereo outputs follow each other at RESULT_ADDR. */
 #include <stdint.h>
 
+#include "sid/sid_osc.h" /* sid_noise_tables_init */
 #include "workload.h"
 #include "workload_slots.h"
 
@@ -26,6 +27,7 @@ int main(void) {
     for (uint32_t* b = __bss_start; b < __bss_end;) {
         *b++ = 0;
     }
+    sid_noise_tables_init();
     volatile uint32_t* result = (volatile uint32_t*)RESULT_ADDR;
     int16_t* samples = (int16_t*)(RESULT_ADDR + 0x40u);
 

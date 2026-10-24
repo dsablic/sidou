@@ -246,7 +246,7 @@ uint8_t sid_read(sid* s, uint8_t reg);
  * sid_render. */
 void sid_set_combined_profile(sid* s, int profile);
 /* Main-context table selection, shared with character-stage preparation. */
-const uint16_t (*sid_combined_table(sid_model model, uint32_t profile))[256];
+const uint16_t* const* sid_combined_table(sid_model model, uint32_t profile);
 
 /* Gate reset, an option the real chip does not have: with it on, each gate edge restarts
  * the voice's envelope rate counter, so the attack (rising) or the release (falling) takes

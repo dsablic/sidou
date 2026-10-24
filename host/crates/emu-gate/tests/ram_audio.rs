@@ -21,8 +21,9 @@ use std::path::PathBuf;
 use common::{build_dir, Firmware, Machine, APP_BASE, TAP_PER_SAMPLE};
 use fm1_core::Bus;
 
-/// RAMTEXT's size in app.ld.
-const RAMTEXT_BYTES: u32 = 48 * 1024;
+/// RAMTEXT's size in app.ld (48 KB, and Felucca's 8 KB RAM-run debug area below RAM since
+/// docs/plans/2026-10-24-flash-space.md).
+const RAMTEXT_BYTES: u32 = 56 * 1024;
 /// A4's key id, held so the render has a voice to run.
 const A4_KEY: u8 = 30;
 /// PLAY (app/panel.h PANEL_BTN_PLAY): the song player runs in the interrupt too.

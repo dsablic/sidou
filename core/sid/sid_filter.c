@@ -19,25 +19,50 @@ uint32_t sid_filter_curves(sid_model model) {
     return model == SID_MODEL_6581 ? SID_FILTER_CURVES_6581 : SID_FILTER_CURVES_8580;
 }
 
-float sid_cutoff_hz(sid_model model, uint32_t curve, uint32_t fc) {
-    /* Separate model branches pay for decoding with cheaper bounds and address selection. */
-    uint32_t code;
+#define CUTOFF_BLOCK 32u
+_Static_assert(sizeof SID_CUTOFF_AT_6581[0] / sizeof SID_CUTOFF_AT_6581[0][0] ==
+                   2048u / CUTOFF_BLOCK,
+               "gen/filter.h's cutoff blocks are 32 FC values");
+
+void sid_cutoff_seq_init(sid_cutoff_seq* q, sid_model model, uint32_t curve) {
     if (model == SID_MODEL_6581) {
-        if (curve >= SID_FILTER_CURVES_6581) {
-            curve = 0;
-        }
-        code = SID_CUTOFF_HZ_6581[curve][fc & 2047u];
+        q->run = SID_CUTOFF_RUN_6581;
+        q->at = SID_CUTOFF_AT_6581[curve < SID_FILTER_CURVES_6581 ? curve : 0u];
     } else {
-        if (curve >= SID_FILTER_CURVES_8580) {
-            curve = 0;
-        }
-        code = SID_CUTOFF_HZ_8580[curve][fc & 2047u];
+        q->run = SID_CUTOFF_RUN_8580;
+        q->at = SID_CUTOFF_AT_8580[curve < SID_FILTER_CURVES_8580 ? curve : 0u];
     }
-    union {
-        uint32_t bits;
-        float hz;
-    } value = {(code << 11) + (SID_CUTOFF_CODE_BIAS << 23)};
-    return value.hz;
+    q->p = q->run;
+    q->fc = 0xffffffffu;
+    q->code = 0;
+}
+
+uint32_t sid_cutoff_seq_seek(sid_cutoff_seq* q, uint32_t fc) {
+    fc &= 2047u;
+    if (fc != q->fc) {
+        const uint8_t* p = q->run + q->at[fc / CUTOFF_BLOCK];
+        uint32_t code = (uint32_t)p[0] << 8 | p[1];
+        p += 2;
+        for (uint32_t n = fc & (CUTOFF_BLOCK - 1u); n; --n) {
+            int32_t d = (int8_t)*p++;
+            if (d == -128) {
+                code = (uint32_t)p[0] << 8 | p[1];
+                p += 2;
+            } else {
+                code = (code + (uint32_t)d) & 0xffffu;
+            }
+        }
+        q->p = p;
+        q->fc = fc;
+        q->code = code;
+    }
+    return q->code;
+}
+
+float sid_cutoff_hz(sid_model model, uint32_t curve, uint32_t fc) {
+    sid_cutoff_seq q;
+    sid_cutoff_seq_init(&q, model, curve);
+    return sid_cutoff_seq_hz(&q, fc);
 }
 
 float sid_resonance_k(sid_model model, uint32_t curve, uint32_t res) {

@@ -7,6 +7,7 @@
 //! `cargo run --release -p sidou-tablegen` (from `host/`) rewrites them; the drift test
 //! fails when the checked-in files differ from what this produces.
 
+pub mod digi;
 pub mod filter_fit;
 pub mod profiles;
 
@@ -136,46 +137,120 @@ impl Default for PulldownSource {
     }
 }
 
-/// SID_PD's bytes as the device holds them (gen/pulldown.h): each row's index, PD_INDEX_BYTES
-/// of little-endian u16s, then the pool of distinct blocks, PD_BLOCK_BYTES each. Index
-/// entry k of row r is the offset from the row's first byte to the block holding the
-/// row's entries 16k .. 16k + 15, so the audio path needs no other base address.
+/// SID_PD's bytes as the device holds them (gen/pulldown.h): each distinct row's index,
+/// PD_INDEX_BYTES of little-endian u16s, then the pool of distinct blocks, PD_BLOCK_BYTES
+/// each. Index entry k of index row r is the offset from that row's first byte to the block
+/// holding the row's entries 16k .. 16k + 15, so the audio path needs no other base address.
+/// Rows with the same entries share one index row (the 6581's three NP rows are alike, and
+/// so are the 8580's): `row_map` gives each compiled row's. The pool is one string in which
+/// the blocks overlap wherever one ends with the bytes another begins with (greedy, longest
+/// overlap first), since the offsets are byte offsets.
 pub struct PulldownLayout {
     pub rows: usize,
     pub blocks: usize,
+    pub row_map: Vec<usize>,
     pub bytes: Vec<u8>,
+}
+
+/// The blocks laid out as one string, each overlapping the one before it as far as their
+/// bytes agree: greedy merging of chains, the longest overlap first (ties in block order).
+/// Returns the string and each block's offset in it.
+fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
+    let n = blocks.len();
+    let len = PD_BLOCK_BYTES;
+    let mut next: Vec<Option<(usize, usize)>> = vec![None; n]; // (block, overlap)
+    let mut has_prev = vec![false; n];
+    // For a chain's tail, its head; for a chain's head, its tail.
+    let mut head_of: Vec<usize> = (0..n).collect();
+    let mut tail_of: Vec<usize> = (0..n).collect();
+    for l in (1..len).rev() {
+        let mut by_prefix: std::collections::HashMap<&[u8], Vec<usize>> =
+            std::collections::HashMap::new();
+        for j in (0..n).rev() {
+            if !has_prev[j] {
+                by_prefix.entry(&blocks[j][..l]).or_default().push(j);
+            }
+        }
+        for i in 0..n {
+            if next[i].is_some() {
+                continue;
+            }
+            let Some(heads) = by_prefix.get_mut(&blocks[i][len - l..]) else {
+                continue;
+            };
+            // The first free head that is not this chain's own (no cycles); the others stay.
+            let pos = heads.iter().rposition(|&j| !has_prev[j] && j != head_of[i]);
+            let Some(pos) = pos else {
+                continue;
+            };
+            let j = heads.remove(pos);
+            next[i] = Some((j, l));
+            has_prev[j] = true;
+            let (h, t) = (head_of[i], tail_of[j]);
+            tail_of[h] = t;
+            head_of[t] = h;
+        }
+    }
+    let mut out = Vec::new();
+    let mut at = vec![0; n];
+    for h in (0..n).filter(|&h| !has_prev[h]) {
+        at[h] = out.len();
+        out.extend_from_slice(&blocks[h]);
+        let mut b = h;
+        while let Some((c, l)) = next[b] {
+            at[c] = out.len() - l;
+            out.extend_from_slice(&blocks[c][l..]);
+            b = c;
+        }
+    }
+    (out, at)
 }
 
 impl PulldownLayout {
     pub fn new(rows: &[[u16; 4096]]) -> Self {
-        let mut pool: Vec<u8> = Vec::new();
+        // The distinct rows, and the distinct blocks in the order they first appear.
+        let mut unique: Vec<&[u16; 4096]> = Vec::new();
+        let mut row_map = Vec::with_capacity(rows.len());
+        for row in rows {
+            let r = unique.iter().position(|u| *u == row).unwrap_or_else(|| {
+                unique.push(row);
+                unique.len() - 1
+            });
+            row_map.push(r);
+        }
+        let mut blocks: Vec<Vec<u8>> = Vec::new();
         let mut seen = std::collections::HashMap::new();
-        let mut index = Vec::with_capacity(rows.len() * PD_INDEX_BYTES);
-        let pool_at = rows.len() * PD_INDEX_BYTES;
-        for (r, row) in rows.iter().enumerate() {
+        let mut uses = Vec::with_capacity(unique.len() * 256);
+        for row in &unique {
             for block in row.chunks(PD_BLOCK) {
-                let at = *seen.entry(block.to_vec()).or_insert_with(|| {
-                    let at = pool.len();
+                let b = *seen.entry(block.to_vec()).or_insert_with(|| {
                     let mut full = [0u16; 4096];
                     full[..PD_BLOCK].copy_from_slice(block);
-                    pool.extend_from_slice(&pack12(&full)[..PD_BLOCK_BYTES]);
-                    at
+                    blocks.push(pack12(&full)[..PD_BLOCK_BYTES].to_vec());
+                    blocks.len() - 1
                 });
-                let offset = pool_at + at - r * PD_INDEX_BYTES;
-                let offset = u16::try_from(offset).expect("a pulldown block beyond a u16 offset");
-                index.extend_from_slice(&offset.to_le_bytes());
+                uses.push(b);
             }
         }
-        let blocks = pool.len() / PD_BLOCK_BYTES;
-        index.extend_from_slice(&pool);
+        let (pool, at) = overlap_blocks(&blocks);
+        let pool_at = unique.len() * PD_INDEX_BYTES;
+        let mut bytes = Vec::with_capacity(pool_at + pool.len());
+        for (k, &b) in uses.iter().enumerate() {
+            let r = k / 256;
+            let offset = pool_at + at[b] - r * PD_INDEX_BYTES;
+            let offset = u16::try_from(offset).expect("a pulldown block beyond a u16 offset");
+            bytes.extend_from_slice(&offset.to_le_bytes());
+        }
+        bytes.extend_from_slice(&pool);
         Self {
-            rows: rows.len(),
-            blocks,
-            bytes: index,
+            rows: unique.len(),
+            blocks: blocks.len(),
+            row_map,
+            bytes,
         }
     }
 
-    /// Index entry k of row r.
+    /// Index entry k of index row r.
     pub fn index(&self, r: usize, k: usize) -> u16 {
         let at = r * PD_INDEX_BYTES + k * 2;
         u16::from_le_bytes([self.bytes[at], self.bytes[at + 1]])
@@ -187,7 +262,7 @@ impl PulldownLayout {
     }
 }
 
-/// Entry x of row r of SID_PD's bytes, as sid_pulldown() in sid_osc.h reads it.
+/// Entry x of index row r of SID_PD's bytes, as sid_pulldown() in sid_osc.h reads it.
 pub fn pulldown_entry(sid_pd: &[u8], r: usize, x: usize) -> u16 {
     let row = r * PD_INDEX_BYTES;
     let k = row + (x >> 4) * 2;
@@ -227,10 +302,13 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
          \x20* SID_PD_8580_ROW.\n\
          \x20*\n\
          \x20* Lossless and shared: a row is 256 blocks of 16 entries, and every distinct block\n\
-         \x20* is stored once, in `pool`, {PD_BLOCK_BYTES} bytes packing its entries two to three bytes.\n\
-         \x20* Entry x of row r is in the block that starts idx[r][x >> 4] bytes after\n\
-         \x20* &idx[r][0]; sid_pulldown() in sid_osc.h unpacks it. Unshared, a profile would\n\
-         \x20* take {PROFILE_BYTES} bytes a model. By the models' flags:",
+         \x20* is stored once, in `pool`, {PD_BLOCK_BYTES} bytes packing its entries two to three bytes;\n\
+         \x20* the blocks overlap there wherever one ends with the bytes the next begins with.\n\
+         \x20* Entry x of index row r is in the block that starts idx[r][x >> 4] bytes after\n\
+         \x20* &idx[r][0]; sid_pulldown() in sid_osc.h unpacks it. Rows with the same entries\n\
+         \x20* share an index row (each model's NP rows): SID_PD_ROWS_INIT lists each compiled\n\
+         \x20* row's, five a profile, for SID_PD_ROWS (sid.c). Unshared, a profile would take\n\
+         \x20* {PROFILE_BYTES} bytes a model. By the models' flags:",
         PULLDOWN_ROWS.join(", "),
     )
     .unwrap();
@@ -251,12 +329,13 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
     for (&set, l) in PULLDOWN_SETS.iter().zip(&layouts) {
         writeln!(
             s,
-            " *   {}: {} rows, {} blocks, {} bytes ({} unshared)",
+            " *   {}: {} rows ({} index rows), {} blocks, {} bytes ({} unshared)",
             condition(set),
+            l.row_map.len(),
             l.rows,
             l.blocks,
             l.bytes.len(),
-            l.rows / 5 * PROFILE_BYTES
+            l.row_map.len() / 5 * PROFILE_BYTES
         )
         .unwrap();
     }
@@ -264,7 +343,7 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
         s,
         " */\n#ifndef SIDOU_GEN_PULLDOWN_H\n#define SIDOU_GEN_PULLDOWN_H\n\n\
          #include <stdint.h>\n\n#include \"grid.h\"\n\n\
-         /* The 8580's first row. */\n\
+         /* The 8580's first row in SID_PD_ROWS_INIT. */\n\
          #define SID_PD_8580_ROW (5 * SID_COMBINED_TABLES_6581)\n"
     )
     .unwrap();
@@ -292,6 +371,21 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
             writeln!(s, "        {},", bytes.join(", ")).unwrap();
         }
         writeln!(s, "    }},\n}};").unwrap();
+        let rows: Vec<String> = l
+            .row_map
+            .iter()
+            .map(|r| format!("SID_PD.idx[{r}]"))
+            .collect();
+        writeln!(s, "#define SID_PD_ROWS_INIT \\").unwrap();
+        for (n, line) in rows.chunks(5).enumerate() {
+            let open = if n == 0 { "{" } else { " " };
+            let close = if (n + 1) * 5 >= rows.len() {
+                "}"
+            } else {
+                ", \\"
+            };
+            writeln!(s, "    {open}{}{close}", line.join(", ")).unwrap();
+        }
     }
     writeln!(s, "#endif\n\n#endif").unwrap();
     Generated {
@@ -358,42 +452,15 @@ fn noise_shift(sr: u32) -> u32 {
     (sr >> 1) | (((sr ^ (sr >> 5)) & 1) << 22)
 }
 
-/// The 2^k-shift maps of the noise register for k = 0..22, as GF(2) matrices: column i
-/// is where bit i ends up. Our own derivation from the shift, no reSIDfp data.
-fn noise_jump_header() -> Generated {
+/// The 2^k-shift maps of the noise register for k = 0..22, as GF(2) matrices: entry [k][i] is
+/// the register after 2^k shifts of bit i alone. Our own derivation from the shift, no
+/// reSIDfp data. The device builds the same table at boot (SID_NOISE_JUMP, core/sid/sid.c);
+/// this is the oracle the host tests hold it to (unit/sid_noise.rs).
+pub fn noise_jump_matrices() -> [[u32; 23]; 23] {
+    let mut m = [[0u32; 23]; 23];
     let mut cols: Vec<u32> = (0..23).map(|i| noise_shift(1 << i)).collect();
-    let mut s = String::new();
-    // REUSE-IgnoreStart
-    s.push_str(
-        "// SPDX-FileCopyrightText: 2026 SIDOU contributors\n\
-         // SPDX-License-Identifier: GPL-3.0-or-later\n",
-    );
-    // REUSE-IgnoreEnd
-    s.push_str(
-        "/* Generated by sidou-tablegen; do not edit. To regenerate, from host/:\n\
-         \x20*   cargo run --release -p sidou-tablegen\n\
-         \x20* The noise register's shift applied 2^k times, k = 0..22, as GF(2) matrices:\n\
-         \x20* SID_NOISE_JUMP[k][i] is the register after 2^k shifts of bit i alone, so the\n\
-         \x20* register after 2^k shifts is the XOR of the columns of its set bits\n\
-         \x20* (sid_noise_jump in sid_osc.h). The audio path reads it (a control write after\n\
-         \x20* deferred shifts): RAM on the device, not flash (emu-gate tests/ram_audio.rs). */\n\
-         #ifndef SIDOU_GEN_NOISE_JUMP_H\n#define SIDOU_GEN_NOISE_JUMP_H\n\n#include <stdint.h>\n\n\
-         #ifdef __PI32V2__\n__attribute__((section(\".data.sid_noise_jump\")))\n#endif\n\
-         static const uint32_t SID_NOISE_JUMP[23][23] = {\n",
-    );
-    for _ in 0..23 {
-        let line: Vec<String> = cols.iter().map(|c| format!("0x{c:06x}")).collect();
-        for chunk in line.chunks(8) {
-            if chunk.as_ptr() == line.as_ptr() {
-                s.push_str("    {");
-            } else {
-                s.push_str("     ");
-            }
-            s.push_str(&chunk.join(", "));
-            s.push_str(",\n");
-        }
-        s.truncate(s.len() - 2);
-        s.push_str("},\n");
+    for row in &mut m {
+        row.copy_from_slice(&cols);
         // Square: apply the map to each column again.
         let apply = |m: &[u32], v: u32| -> u32 {
             (0..23)
@@ -402,11 +469,7 @@ fn noise_jump_header() -> Generated {
         };
         cols = cols.iter().map(|&c| apply(&cols, c)).collect();
     }
-    s.push_str("};\n\n#endif\n");
-    Generated {
-        path: "core/sid/gen/noise_jump.h",
-        contents: s,
-    }
+    m
 }
 
 /// The filter curve settings fitted, in table order per model (index 0 is the one
@@ -441,8 +504,57 @@ fn cutoff_code(hz: f64) -> u16 {
     code
 }
 
-/// gen/filter.h: per model and curve setting, the cutoff code for each FC value and the
-/// damping k = 1/Q for each resonance value.
+/// FC values in one block of the delta-coded cutoff codes (gen/filter.h).
+pub const CUTOFF_BLOCK: usize = 32;
+/// The byte in a block that escapes an absolute code (a delta of -128 is not coded).
+pub const CUTOFF_ESCAPE: u8 = 0x80;
+
+/// One model's cutoff codes, delta-coded as gen/filter.h holds them: per curve, a block of
+/// CUTOFF_BLOCK codes starts at its offset in the stream (`at`, u16s, one a block) with its
+/// first code (two bytes, big-endian); every further code is a signed byte, its difference
+/// from the code before, or CUTOFF_ESCAPE and the code itself (two bytes) when the difference
+/// is out of a signed byte's range. Returns the offsets, curve by curve, and the stream.
+pub fn delta_code_cutoffs(curves: &[Vec<u16>]) -> (Vec<u16>, Vec<u8>) {
+    let (mut at, mut run) = (Vec::new(), Vec::new());
+    for codes in curves {
+        assert_eq!(codes.len(), 2048);
+        for block in codes.chunks(CUTOFF_BLOCK) {
+            at.push(u16::try_from(run.len()).expect("the cutoff stream beyond a u16 offset"));
+            run.extend_from_slice(&block[0].to_be_bytes());
+            for w in block.windows(2) {
+                let d = i32::from(w[1]) - i32::from(w[0]);
+                if (-127..=127).contains(&d) {
+                    run.push(d as i8 as u8);
+                } else {
+                    run.push(CUTOFF_ESCAPE);
+                    run.extend_from_slice(&w[1].to_be_bytes());
+                }
+            }
+        }
+    }
+    (at, run)
+}
+
+/// The cutoff code for FC value fc of a curve, decoded from delta_code_cutoffs' offsets
+/// and stream as sid_cutoff_seq_hz (sid_filter.h) does.
+pub fn cutoff_code_at(at: &[u16], run: &[u8], curve: usize, fc: usize) -> u16 {
+    let mut p = usize::from(at[curve * (2048 / CUTOFF_BLOCK) + fc / CUTOFF_BLOCK]);
+    let mut code = u16::from_be_bytes([run[p], run[p + 1]]);
+    p += 2;
+    for _ in 0..fc % CUTOFF_BLOCK {
+        if run[p] == CUTOFF_ESCAPE {
+            code = u16::from_be_bytes([run[p + 1], run[p + 2]]);
+            p += 3;
+        } else {
+            code = code.wrapping_add(run[p] as i8 as u16);
+            p += 1;
+        }
+    }
+    code
+}
+
+/// gen/filter.h: per model and curve setting, the cutoff code for each FC value
+/// (delta-coded, delta_code_cutoffs) and the damping k = 1/Q for each resonance value.
 pub fn filter_header(fits: &[FilterFit]) -> Generated {
     let mut s = String::new();
     // REUSE-IgnoreStart
@@ -465,14 +577,19 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
          \x20* state-variable filter fitted to each around its cutoff. Data derived from\n\
          \x20* reSIDfp's output, so under its licence.\n\
          \x20*\n\
-         \x20* SID_CUTOFF_HZ_*[curve][fc]: uint16_t cutoff codes for each FC value, interpolated\n\
+         \x20* The cutoff codes, uint16_t for each FC value of each curve setting, interpolated\n\
          \x20* between the measured ones along what the chip's cutoff DAC outputs, so it is\n\
          \x20* monotonic where reSIDfp's is (the 6581's DAC is kinked: 1023 -> 1024 drops).\n\
          \x20* Out of the measurement's reach (below about 40 Hz, above about 15 kHz) it is\n\
          \x20* extrapolated. Float bits, rounded to the top 12 mantissa bits, with the exponent\n\
          \x20* rebased to 0.5 Hz (smaller cutoffs clamp there; the filter clamps below 30 Hz):\n\
          \x20* bits = (code << 11) + (SID_CUTOFF_CODE_BIAS << 23), within 2.5e-4 relative.\n\
-         \x20* Decoded in the main loop, never the audio interrupt.\n\
+         \x20* Delta-coded in blocks of 32 FC values: block b of curve c starts at byte\n\
+         \x20* SID_CUTOFF_AT_*[c][b] of SID_CUTOFF_RUN_*, with its first code (big-endian), then\n\
+         \x20* each next code as a signed byte, its difference from the code before, or 0x80 and\n\
+         \x20* the code itself (big-endian) where the difference is beyond a signed byte.\n\
+         \x20* Decoded in the main loop (sid_filter.h, sid_cutoff_seq_hz), never the audio\n\
+         \x20* interrupt.\n\
          \x20* SID_RES_K_*[curve][res]: k = 1/Q for each resonance value.\n\
          \x20* Curve settings, by index:"
     )
@@ -491,19 +608,35 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
     for (model, name) in [(Model::Mos6581, "6581"), (Model::Csg8580, "8580")] {
         let mine: Vec<&FilterFit> = fits.iter().filter(|f| f.setting.model == model).collect();
         writeln!(s, "#define SID_FILTER_CURVES_{name} {}\n", mine.len()).unwrap();
+        let codes: Vec<Vec<u16>> = mine
+            .iter()
+            .map(|f| f.cutoff_hz.iter().map(|&hz| cutoff_code(hz)).collect())
+            .collect();
+        let (at, run) = delta_code_cutoffs(&codes);
         writeln!(
             s,
-            "static const uint16_t SID_CUTOFF_HZ_{name}[SID_FILTER_CURVES_{name}][2048] = {{"
+            "static const uint16_t SID_CUTOFF_AT_{name}[SID_FILTER_CURVES_{name}][{}] = {{",
+            2048 / CUTOFF_BLOCK
         )
         .unwrap();
-        for f in &mine {
+        for (f, offsets) in mine.iter().zip(at.chunks(2048 / CUTOFF_BLOCK)) {
             writeln!(s, "    /* {} */ {{", f.setting.describe()).unwrap();
-            for line in f.cutoff_hz.chunks(8) {
-                let codes: Vec<String> =
-                    line.iter().map(|&hz| cutoff_code(hz).to_string()).collect();
-                writeln!(s, "        {},", codes.join(", ")).unwrap();
+            for line in offsets.chunks(16) {
+                let v: Vec<String> = line.iter().map(u16::to_string).collect();
+                writeln!(s, "        {},", v.join(", ")).unwrap();
             }
             writeln!(s, "    }},").unwrap();
+        }
+        writeln!(s, "}};\n").unwrap();
+        writeln!(
+            s,
+            "static const uint8_t SID_CUTOFF_RUN_{name}[{}] = {{",
+            run.len()
+        )
+        .unwrap();
+        for line in run.chunks(16) {
+            let v: Vec<String> = line.iter().map(|b| format!("0x{b:02x}")).collect();
+            writeln!(s, "    {},", v.join(", ")).unwrap();
         }
         writeln!(s, "}};\n").unwrap();
         writeln!(
@@ -530,9 +663,9 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
 pub fn generate_computed() -> Vec<Generated> {
     vec![
         grid_header(),
-        noise_jump_header(),
         profiles::profiles_header(),
         pulldown_header(&PulldownSource::new()),
+        digi::digi_header(),
     ]
 }
 
@@ -600,6 +733,25 @@ mod tests {
         assert_eq!(cutoff_code(8193.0), 57345);
     }
 
+    /// The delta coding reads back every code: steps within a byte's range, escapes beyond
+    /// it in both directions, and a jump right at a block's start.
+    #[test]
+    fn delta_coded_cutoffs_read_back() {
+        let mut a: Vec<u16> = (0..2048).map(|i| (i * 13 % 251) as u16 + 1000).collect();
+        a[40] = 60000;
+        a[41] = 3;
+        a[64] = 65535;
+        a[65] = 65408;
+        let b: Vec<u16> = (0..2048).map(|i| 30000 - (i as u16) * 7).collect();
+        let (at, run) = delta_code_cutoffs(&[a.clone(), b.clone()]);
+        assert_eq!(at.len(), 2 * 2048 / CUTOFF_BLOCK);
+        for (c, codes) in [a, b].iter().enumerate() {
+            for (fc, &want) in codes.iter().enumerate() {
+                assert_eq!(cutoff_code_at(&at, &run, c, fc), want, "curve {c} FC {fc}");
+            }
+        }
+    }
+
     #[test]
     fn float_tables_compare_up_to_the_last_digit() {
         let a = "    /* 0: x */ {\n        440.1f, 2.0000f, -0.5f,\n";
@@ -619,43 +771,68 @@ mod tests {
     }
 
     /// SID_PD is lossless: under every combination of the flags, each compiled row of
-    /// each profile and model reads back, entry for entry, as reSIDfp's table; the
-    /// device's set holds the 6581's three profiles and the 8580's AVERAGE, and every
-    /// block in a pool is one a row uses.
+    /// each profile and model reads back, entry for entry, as reSIDfp's table, through its
+    /// index row; the device's set holds the 6581's three profiles and the 8580's AVERAGE;
+    /// every block in a pool is one a row uses, and every index row one a compiled row uses.
     #[test]
     fn shared_pulldown_blocks_read_back_as_residfps_tables() {
         let src = PulldownSource::new();
         for (all_6581, all_8580) in PULLDOWN_SETS {
             let l = PulldownLayout::new(&src.compiled_rows(all_6581, all_8580));
             let mut r = 0;
-            let mut used = std::collections::HashSet::new();
             for (model, all) in [(Model::Mos6581, all_6581), (Model::Csg8580, all_8580)] {
                 for (cws, label) in compiled_profiles(all) {
                     for (row, row_label) in src.profile(model, cws).iter().zip(PULLDOWN_ROWS) {
                         for (x, &want) in row.iter().enumerate() {
                             assert_eq!(
-                                pulldown_entry(&l.bytes, r, x),
+                                pulldown_entry(&l.bytes, l.row_map[r], x),
                                 want,
                                 "{model:?} {label} {row_label} entry {x} ({all_6581}, {all_8580})"
                             );
-                        }
-                        for k in 0..256 {
-                            used.insert(r * PD_INDEX_BYTES + usize::from(l.index(r, k)));
                         }
                         r += 1;
                     }
                 }
             }
-            assert_eq!(r, l.rows);
+            assert_eq!(r, l.row_map.len());
+            let index_rows: std::collections::HashSet<usize> = l.row_map.iter().copied().collect();
+            assert_eq!(index_rows.len(), l.rows, "an index row no row uses");
+            let used: std::collections::HashSet<usize> = (0..l.rows)
+                .flat_map(|r| (0..256).map(move |k| (r, k)))
+                .map(|(r, k)| r * PD_INDEX_BYTES + usize::from(l.index(r, k)))
+                .collect();
             assert_eq!(used.len(), l.blocks, "a block no row uses");
+            let end = used.iter().max().unwrap() + PD_BLOCK_BYTES;
+            assert_eq!(end, l.bytes.len(), "pool bytes past the last block");
         }
         let device = PulldownLayout::new(&src.compiled_rows(true, false));
-        assert_eq!(device.rows, 20);
+        assert_eq!(device.row_map.len(), 20);
         assert!(
             device.bytes.len() < 4 * PROFILE_BYTES / 2,
             "{}",
             device.bytes.len()
         );
+    }
+
+    /// Overlapping blocks: each block starts where the layout says, in a string no longer
+    /// than the blocks laid end to end, and chains never close on themselves.
+    #[test]
+    fn overlapped_blocks_are_where_their_offsets_say() {
+        let blocks: Vec<Vec<u8>> = (0..200u32)
+            .map(|b| {
+                (0..PD_BLOCK_BYTES as u32)
+                    .map(|i| ((b * 7 + i) % 13) as u8)
+                    .collect()
+            })
+            .collect();
+        let mut distinct = blocks.clone();
+        distinct.sort();
+        distinct.dedup();
+        let (pool, at) = overlap_blocks(&distinct);
+        assert!(pool.len() < distinct.len() * PD_BLOCK_BYTES);
+        for (b, &a) in distinct.iter().zip(&at) {
+            assert_eq!(&pool[a..a + PD_BLOCK_BYTES], &b[..]);
+        }
     }
 
     #[test]

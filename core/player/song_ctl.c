@@ -4,6 +4,10 @@
  * device app.ld puts them (and only them) in SRAM, one section a function. */
 #include "song_ctl.h"
 
+#include <stddef.h>
+
+#include "gen/digi.h"
+
 /* The compiler keeps the stores before it before the ones after (one core: the interrupt
  * either runs before a store or after, never beside it). */
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
@@ -20,6 +24,7 @@
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
 _Static_assert(sizeof(gt2_player) % 4u == 0u, "a hand-over copies the player in words");
+_Static_assert(SONG_DIGI_SAMPLES == SONG_DIGI_KINDS - 1u, "a built-in sample for each DIGI kind");
 
 /* --- The audio interrupt ---------------------------------------------------------------- */
 
@@ -395,10 +400,52 @@ void song_ctl_call(song_ctl* sc) {
     }
 }
 
-void song_ctl_block_end(song_ctl* sc, uint32_t n) {
+void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
+    /* The digi drums (song_ctl.h). A note in this block's call (its sample is in the block)
+     * whose instrument is a digi drum starts its sample: the samples before the call are a
+     * silent code's, the sample's codes follow. */
+    uint32_t at = sc->call_sample - sc->samples;
     if (sc->isr_playing || sc->audition)
         sc->next -= n;
     sc->samples += n;
+    if (at < n) {
+        const gt2_event* e = sc->player.ev;
+        for (uint32_t ok = sc->digi_ok; ok != 0u; ok >>= 1, e++) {
+            uint32_t kind = sc->digi_of[e->instr];
+            if ((ok & 1u) && (e->flags & GT2_EV_NOTE) && kind) {
+                sc->digi_at = sc->digi_from[kind - 1u];
+                sc->digi_end = sc->digi_from[kind];
+                sc->digi_left = (uint8_t)at;
+                sc->digi_level = 0;
+            }
+        }
+    }
+    uint32_t i = sc->digi_at;
+    if (i == 0u)
+        return;
+    const uint32_t end = sc->digi_end;
+    int32_t level = sc->digi_level;
+    int16_t* const last = out + n;
+    int16_t* next = out + sc->digi_left; /* where the next code starts */
+    do {
+        if (out == next) {
+            if (i == end) {
+                i = 0u;
+                next = last;
+                break;
+            }
+            uint32_t two = SONG_DIGI_DATA[i >> 1];
+            level = ((int32_t)((two >> ((i & 1u) << 2)) & 15u) - 8) * SONG_DIGI_LEVEL;
+            i++;
+            next = out + SONG_DIGI_SPAN;
+        }
+        int32_t x = *out + level;
+        x = x < -32768 ? -32768 : x;
+        *out = (int16_t)(x > 32767 ? 32767 : x);
+    } while (++out < last);
+    sc->digi_at = (uint16_t)i;
+    sc->digi_left = (uint8_t)(next - last);
+    sc->digi_level = (int16_t)level;
 }
 
 void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
@@ -431,6 +478,7 @@ void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
 /* --- The main loop ---------------------------------------------------------------------- */
 
 static void lock_prime(song_ctl* sc);
+static void digi_map(song_ctl* sc);
 static void lock_character(song_ctl* sc);
 static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e);
 static void lock_refresh_edit(song_ctl* sc);
@@ -450,6 +498,15 @@ static int same(const void* a, const void* b, uint32_t n) {
     return 1;
 }
 
+uint32_t song_digi_sample(uint32_t kind, uint8_t* codes) {
+    if (kind == SONG_DIGI_NONE || kind >= SONG_DIGI_KINDS)
+        return 0u;
+    uint32_t from = SONG_DIGI_START[kind - 1u], to = SONG_DIGI_START[kind];
+    for (uint32_t i = from; codes != NULL && i < to; i++)
+        codes[i - from] = (uint8_t)((SONG_DIGI_DATA[i >> 1] >> ((i & 1u) << 2)) & 15u);
+    return to - from;
+}
+
 void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* shape1,
                    song_work* w) {
     zero(sc, sizeof *sc);
@@ -461,6 +518,9 @@ void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* s
     sc->song_gate = NO_GATE;
     sc->period = song_period_of(1u, 0u);
     sc->jam_lo = 96u;
+    sc->digi_ok = 7u;
+    for (uint32_t k = 0u; k < SONG_DIGI_KINDS; k++)
+        sc->digi_from[k] = SONG_DIGI_START[k];
     for (uint32_t f = 0u; f < 4u; f++)
         sc->char_told[f] = -1;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
@@ -567,6 +627,7 @@ static uint8_t cancel_jams(song_ctl* sc) {
 }
 
 int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
+    digi_map(sc);
     song_work* w = sc->w;
     if (sc->state == SONG_LOADING || sc->inflight_n || sc->ff_on || sc->spare_wait ||
         sc->deriving || room(sc) < 2u)
@@ -588,6 +649,7 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
     }
     sc->subtune = (uint8_t)subtune;
     sc->start_pos = (uint8_t)pos;
+    sc->digi_hold = 0u; /* a new start: no voice holds a digi drum yet */
     sc->bg_on = 0u;
     sc->chip_ready = 0u;
     sc->loading_done = 0u;
@@ -625,6 +687,7 @@ static void retake_chip(song_ctl* sc, uint8_t then) {
 }
 
 int song_ctl_continue(song_ctl* sc) {
+    digi_map(sc);
     if (sc->state != SONG_STOPPED || room(sc) < 1u)
         return 0;
     sc->auditioning = 0u;
@@ -643,13 +706,19 @@ int song_ctl_continue(song_ctl* sc) {
     return 1;
 }
 
+static void push_mute(song_ctl* sc, uint8_t mask) {
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_MUTE);
+    c.a = mask;
+    push(sc, &c);
+    sc->mute_sent = mask;
+}
+
 int song_ctl_mute(song_ctl* sc, uint32_t mask) {
     if (room(sc) < 1u)
         return 0;
-    song_cmd c;
-    cmd_init(&c, SONG_CMD_MUTE);
-    c.a = (uint8_t)(mask & 7u);
-    push(sc, &c);
+    sc->mute_user = (uint8_t)(mask & 7u);
+    push_mute(sc, (uint8_t)(sc->mute_user | sc->digi_hold)); /* the digi drums' voices too */
     return 1;
 }
 
@@ -738,6 +807,7 @@ uint32_t song_ctl_again(const song_ctl* sc) {
 }
 
 int song_ctl_audition(song_ctl* sc) {
+    digi_map(sc);
     if (sc->state == SONG_PLAYING || sc->state == SONG_LOADING || sc->auditioning)
         return 1;
     if (sc->state == SONG_IDLE) {
@@ -1437,8 +1507,52 @@ static void poll_locks(song_ctl* sc) {
     lock_character(sc);
 }
 
+/* The DIGI chunk's map for the interrupt (song_ctl.digi_of), the bytes that changed only: an
+ * entry the interrupt reads is never 0 on its way to its new value. Built when a play, a
+ * continue or an audition starts, and when the extension area's size changes (a NEW load adds
+ * the chunk): not every pass, which a MIDI flood makes many. */
+static void digi_map(song_ctl* sc) {
+    uint8_t map[GT2_MAX_INSTR + 1u];
+    song_ext_digi_map(sc->song, map);
+    uint8_t any = 0u;
+    for (uint32_t i = 0u; i <= GT2_MAX_INSTR; i++) {
+        if (sc->digi_of[i] != map[i])
+            sc->digi_of[i] = map[i];
+        any |= map[i];
+    }
+    sc->digi_any = any;
+    sc->digi_ext = sc->song->ext_used;
+}
+
+/* The digi drums' main-loop side (song_ctl.h, song_ctl_block_end), once a poll: the voices
+ * whose digi drums may sound, and the mute of the voices whose instrument is a digi drum, from
+ * the notes the interrupt reports (a second reader of the event ring, which leaves
+ * song_ctl_events' alone). A song with no digi drum skips the events: a few loads a pass. */
+static void digi_poll(song_ctl* sc) {
+    if (sc->song->ext_used != sc->digi_ext)
+        digi_map(sc);
+    uint32_t head = sc->ev_head;
+    COMPILER_FENCE(); /* the head before the events it publishes */
+    if (sc->digi_any) {
+        uint32_t t = head - sc->digi_ev > SONG_EVENT_RING ? head - SONG_EVENT_RING : sc->digi_ev;
+        for (; t != head; t++) {
+            const song_event* e = &sc->ev[t & EV_MASK];
+            if (SONG_EV_FLAGS(e) & GT2_EV_NOTE) {
+                uint8_t bit = (uint8_t)(1u << SONG_EV_CHANNEL(e));
+                sc->digi_hold = (uint8_t)(sc->digi_of[e->instr] ? sc->digi_hold | bit
+                                                               : sc->digi_hold & ~bit);
+            }
+        }
+    }
+    sc->digi_ev = head;
+    sc->digi_ok = (uint8_t)(~(sc->mute_user | sc->take) & 7u);
+    if ((uint8_t)(sc->mute_user | sc->digi_hold) != sc->mute_sent && room(sc) >= 1u)
+        push_mute(sc, (uint8_t)(sc->mute_user | sc->digi_hold));
+}
+
 void song_ctl_poll(song_ctl* sc, uint32_t flags) {
     int may_slice = (flags & SONG_POLL_SLICE) != 0;
+    digi_poll(sc);
     poll_applied(sc, (flags & SONG_POLL_RING) != 0);
     poll_jams(sc);
     if (sc->quiet < 0xffffffffu)

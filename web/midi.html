@@ -1,0 +1,132 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's Songs to MIDI page: a GoatTracker 2 .sng as a Standard MIDI File, made in the browser
+     (nothing is uploaded; no MIDI port is opened). midi.js is the page, songmidi.js the code, which
+     web/songmidi.test.mjs compares note by note with GoatTracker's own player. Same palette as songs.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU songs to MIDI</title>
+<meta name="description" content="Turn a GoatTracker 2 song (.sng), SIDOU's showcase songs or your own, into a Standard MIDI File, one MIDI channel per SID voice, in the browser.">
+<link rel="icon" href="data:,">
+<style>
+  :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
+          --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --ok: #9ad284; --bad: #d98c80; --yellow: #b8c76f; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+  p { margin: 0 0 10px; color: #c4c0de; max-width: 72ch; }
+  b { color: var(--ink); }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, select:focus-visible, label.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  section { border-top: 1px solid var(--rule); padding-top: 14px; }
+  nav { color: var(--dim); }
+  button, a.button { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; text-decoration: none; display: inline-block; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
+  select { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+  label.drop { display: block; border: 2px dashed var(--line); border-radius: 10px; background: var(--card); padding: 18px 14px; text-align: center; color: var(--dim); cursor: pointer; }
+  label.drop.over { border-color: var(--accent); color: var(--ink); }
+  label.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  ul.songs { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+  .song { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+          display: grid; gap: 4px 16px; grid-template-columns: 1fr auto; align-items: start; }
+  .song h3 { margin: 0; font-size: 15px; }
+  .song p { margin: 0; }
+  .song .act { grid-row: 1 / span 2; grid-column: 2; }
+  #result { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  #result[hidden] { display: none; }
+  #result h3 { margin: 0 0 4px; font-size: 15px; }
+  #result dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 8px 0 12px; }
+  #result dt { color: var(--dim); }
+  #result dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  #error { color: var(--bad); margin: 8px 0 0; }
+  #error:empty { display: none; }
+  ul.limits { margin: 0; padding-left: 20px; color: #c4c0de; max-width: 72ch; }
+  ul.limits li { margin-bottom: 6px; }
+  footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  @media (max-width: 600px) { .brand img { width: 160px; } .song { grid-template-columns: 1fr; } .song .act { grid-row: auto; grid-column: 1; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
+      <h1>Songs to MIDI</h1>
+    </div>
+    <nav><a href="./">Play it in the browser</a> · <a href="songs.html">Songs for your FM-1</a> · <a href="videos.html">Videos</a></nav>
+  </header>
+
+  <p>Turn a GoatTracker 2 song into a Standard MIDI File: one MIDI channel for each SID voice, the notes
+    where GoatTracker's player puts them. Play the file with any synth, or drop it into a DAW and give the
+    voices new sounds. The song is read and converted in your browser; nothing is uploaded.</p>
+
+  <section>
+    <h2>1. Pick a song</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".sng,application/octet-stream">
+      <b>Drop a <code>.sng</code> here</b>, or press to choose one (GoatTracker 2 and SIDOU songs; the FM-1's
+      songs are the same files).
+    </label>
+    <p style="margin-top:12px">Or one of SIDOU's four showcase songs:</p>
+    <ul class="songs" id="songs"></ul>
+    <p id="error" role="alert"></p>
+  </section>
+
+  <section id="result" hidden aria-live="polite">
+    <h2>2. Download</h2>
+    <h3 id="r-name"></h3>
+    <dl id="r-info"></dl>
+    <div class="row">
+      <a class="button primary" id="download" download="song.mid" href="#">Download .mid</a>
+      <label id="sub" hidden>Subtune <select id="subtune" aria-label="Subtune"></select></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>What is in the file, and what is not</h2>
+    <ul class="limits">
+      <li><b>Voices:</b> one track and one MIDI channel for each SID voice, channels 1 to 3 (1 to 6 for a
+        GoatTracker Stereo song, whose second chip has voices 4 to 6). Every note has velocity 100: the SID
+        has no velocity, and an instrument's volume is its envelope, which is not exported.</li>
+      <li><b>Pitch:</b> a note is the row's note plus the orderlist's transpose, as the tracker shows it.
+        What an instrument's wavetable does to the pitch (arpeggios, fixed notes such as a drum's pitch
+        sweep) and the pattern commands that move it (vibrato, slides) are <b>not</b> followed. A drum
+        written as noise at a fixed pitch shows up as the note on its row.</li>
+      <li><b>Timing:</b> the player's own: speed (ticks a row), funktempo, tempo commands (the global and
+        the voice's own), the orderlist's repeats and loop, and the gate timers. A note starts on the call
+        where the player starts it and ends where the gate falls: on a key off, or one gate timer before the
+        next note's row (GoatTracker's hard restart), so a note is a little shorter than its row. A legato
+        instrument or a tone portamento changes the pitch without a new gate: the file ends the old note
+        and starts the new one at the same tick.</li>
+      <li><b>One pass:</b> each voice plays its orderlist once and the file stops where it comes round to its
+        loop point. A song with several subtunes has a menu; each is its own file.</li>
+      <li><b>Tempo:</b> one tempo for the whole file, so that every note lands on a whole MIDI tick
+        exactly (a MIDI tick is a twentieth of a player call, 1 ms at 50 Hz). A beat is the song's rows per
+        beat (4, or what the song says) of its average row length: 6 ticks a row at 4 rows a beat is
+        125 BPM. A song that changes speed keeps its notes in time, but its rows no longer sit on the
+        DAW's grid after the change; the changes are written as markers in the first track.</li>
+      <li><b>Not exported:</b> the sounds (waveforms, envelopes, pulse width, filter), the chips' setup, the
+        effect slots, the parameter locks and the rest of SIDOU's own settings. The file is the score of
+        the song, not the sound.</li>
+    </ul>
+  </section>
+
+  <footer>
+    SIDOU · <a href="https://github.com/dsablic/sidou">github.com/dsablic/sidou</a> · the song format:
+    <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/song-format.md">docs/reference/song-format.md</a> ·
+    songs: GPL-3.0-or-later, <a href="https://github.com/dsablic/sidou/tree/main/assets/songs">assets/songs</a>
+  </footer>
+</main>
+<script type="module" src="midi.js"></script>
+</body>
+</html>

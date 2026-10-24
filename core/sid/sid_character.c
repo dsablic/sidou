@@ -594,13 +594,16 @@ int sid_character_filter_job_step(sid_character_filter_job* job) {
     }
     float fs = (float)job->sample_rate;
     sid_filter_row row = job->rows[job->phase];
+    sid_cutoff_seq seq, base_seq;
+    sid_cutoff_seq_init(&seq, model, curve_id);
+    sid_cutoff_seq_init(&base_seq, model, p->curve);
     for (uint32_t fc = job->at; fc < end; ++fc) {
         if (job->transition && job->phase == 0u) {
             row.cutoff[fc] = sid_filter_cutoff(job->source_rows, fc, job->source_t);
             continue;
         }
         float hz = edited ? sid_character_expert_cutoff_hz(model, curve, range, fc) :
-                            sid_cutoff_hz(model, curve_id, fc);
+                            sid_cutoff_seq_hz(&seq, fc);
         if (hz < 30.0f) {
             hz = 30.0f;
         }
@@ -609,7 +612,7 @@ int sid_character_filter_job_step(sid_character_filter_job* job) {
         }
         float x = SIDOU_PI * hz / fs;
         if (job->transition && !edited) {
-            float base = sid_cutoff_hz(model, p->curve, fc);
+            float base = sid_cutoff_seq_hz(&base_seq, fc);
             if (base < 30.0f) {
                 base = 30.0f;
             }

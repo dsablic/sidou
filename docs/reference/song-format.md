@@ -191,7 +191,8 @@ After the GT2 part, a reader looks for the magic at E:
   a trailer CRC that does not match: the trailer is dropped whole and the song loads
   without it (`SNG: EXTRAS DROPPED`);
 - a GT2-part CRC that does not match (a tool changed the song but kept the bytes): the
-  position-bound chunks (`LOCK`) are dropped (`SNG: LOCKS DROPPED`) and the rest kept;
+  position-bound chunks (`LOCK`) are dropped (`SNG: LOCKS DROPPED`) and the rest kept (a `DIGI`
+  chunk too: it names instruments, which a tool that kept the trailer has likely kept);
 - a version-1 `LOCK` chunk with a record out of range (a pattern past 207, a row past 127, a
   parameter past 8, a value past the parameter's range below) or out of order (not strictly
   increasing by pattern, row, parameter), or with a count past 512 or past its length: the
@@ -221,6 +222,7 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | `MIDI` | MIDI mode, channels, rows per beat | no | M2c Task 2; semantics M2e |
 | `SCNE` | the SCENE piece, the voices' roles and the drums | no | M2c Task 2; semantics M2f Task 4 |
 | `KEYS` | the keys' live preset and setup | no | M2c Task 2 |
+| `DIGI` | the digi drums: instruments that play a built-in sample | no | decision record 0009 |
 | `PAD ` | padding (a space ends the tag) | no | skipped, never kept |
 | `TRKB` | reserved: chip B's tracks (M5) | | |
 | `RIPD` | reserved: rip data (M5) | | |
@@ -355,6 +357,23 @@ character are among them).
 The preset is applied before its edited parameters. Older readers ignore the
 appended byte. SIDOU writes it when saving a device song, since the preset's
 voice-allocation mode is not recoverable from oscillator parameters alone.
+
+**`DIGI`** (2 + 2 × k bytes): the digi drums ([decision record 0009](../decisions/0009-drum-kit-and-digi-drums.md)).
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | k, the entries, at most 16 |
+| 2 | 2 × k | per entry: an instrument (1-63) and a built-in sample: 1 KICK, 2 SNARE, 3 CLAP, 4 HAT |
+
+An instrument an entry names is a **digi drum**: where it plays a note, SIDOU plays the sample
+through chip A's output as a 6581's volume register plays it, and mutes the instrument's own
+sound on that voice (until a note of another instrument there). The instrument's GT2 content
+is what GoatTracker, which skips the trailer, plays instead: a NEW song's digi drums (`DG KICK`,
+`DG SNARE`, `DG CLAP`, `DG HAT`, instruments 0B-0E) are copies of the chip kit's drums. An
+entry with an instrument out of 1-63 or an unknown sample is left out (the chunk is kept as
+written), and of two entries for one instrument the later counts. A chunk of another version,
+or shorter than its count says, marks nothing.
 
 **`PAD `** (1 + p bytes): version 1, then p bytes of `$00`.
 

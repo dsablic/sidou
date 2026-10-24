@@ -298,7 +298,7 @@ HELD STEP frame (`HELD STEP 22`).
 | Step key 1-16, pressed and let go | toggles a note at that step on the selected lane: the lane's note (C-3 until PRESETS with a step held changes it) and instrument; off writes a rest. The key also auditions the step's note, as TRACKER's keys do. A key held with a knob turned on it is a lock (below) and toggles nothing |
 | SELECT | selects the lane, V1, V2, V3 and round |
 | ALGORITHM | pages through the pattern; while the song plays the page follows the playing step |
-| PRESETS | the lane's instrument, 01-3F; with a step held, that step's note (and the lane's note for the steps toggled after it) |
+| PRESETS | the lane's instrument, 01-3F, its name in the popup (`03 KICK`: a NEW song's drum kit, [SONG](#song)); with a step held, that step's note (and the lane's note for the steps toggled after it) |
 | ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane |
 | Step held + K1 | cutoff **LOCK** on that step: 32 of 2047 a detent, from the middle (1024) |
 | Step held + K2 | resonance LOCK, 0-15 |
@@ -344,7 +344,7 @@ field expands to 2× in reverse yellow. Other voices remain activity strips.
 | K1 | instrument number, 00–3F (00 leaves the playing instrument unchanged) |
 | K2 | command, 0–F |
 | K3 / K4 | data's high / low nibble, independently clamped to 0–F |
-| PRESETS | current instrument for note entry and audition, 01–3F |
+| PRESETS | current instrument for note entry and audition, 01–3F, its name in the popup |
 | EDIT + PRESETS | clockwise inserts an empty row and drops the tail; counter-clockwise removes this row and appends a rest; pattern length stays fixed and locks follow their rows |
 | EDIT + ALGORITHM | edit step, 0–16; 0 stays on the same row |
 
@@ -1029,7 +1029,20 @@ back a page.
   stays unnamed: SAVE AS (which offers its name) makes a store copy, and it is not
   in DELETE's list. A fresh install's LOAD so always has a song to load.
 - **NEW** creates one subtune, three one-pattern orderlists and three 64-row
-  patterns, with pulse-lead, bass and noise-drum instruments at tempo 6.
+  patterns at tempo 6, with a pulse lead (instrument 01), a bass (02) and the **SID drum kit**
+  (03-0A): KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI and RIM, plain GoatTracker
+  instruments on the chip's own voices ([decision record 0009](../decisions/0009-drum-kit-and-digi-drums.md)),
+  so a song made with them plays the same in GoatTracker. Each drum sounds one frame (20 ms)
+  after its row, whatever the row's note. On STEP, PRESETS picks a lane's drum by name.
+  Instruments 0B-0E are the **digi drums**, `DG KICK`, `DG SNARE`, `DG CLAP` and `DG HAT`:
+  short 4-bit samples played through chip A's output as a C64 tune plays them through the
+  6581's volume register, at the sample of their note, one at a time (a hit cuts the last);
+  while one plays, its voice's own sound is muted. The song's `DIGI` chunk marks them
+  ([song format](song-format.md#version-1-of-each-chunk)), which GoatTracker skips: there they
+  play their chip-kit copies. A digi drum sounds the same whichever model chip A is (as a 6581,
+  or an 8580 with the "digi boost"), goes through the effect slots, and plays in the middle of
+  CHIP SPREAD's stereo. A note of another instrument right after a digi drum on the same voice
+  starts a few milliseconds late (the voice's mute is the main loop's).
 - **SAVE AS** edits an upper-case filename of up to 16 characters: SELECT moves
   the cursor and ALGORITHM steps its character. The page's save action commits it.
 - **DELETE** requires confirmation before removing a file.

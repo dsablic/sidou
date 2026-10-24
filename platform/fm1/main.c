@@ -1505,6 +1505,14 @@ static void boot_feed(void) {
     fm1_wdt_feed();
 }
 
+/* During the panel's reset wait (lcd_init's 150 ms): the audio path's noise tables, built in
+ * POOL (core/sid/sid.c; about 0.2 ms, before anything plays), then the song's region. In the
+ * wait, so the boot's timeline stays as it was. */
+static void while_lcd_resets(void) {
+    sid_noise_tables_init();
+    song_load();
+}
+
 static void while_lcd_wakes(void) {
     flash_plain_window();
     store_fm1_boot(boot_feed);
@@ -1513,9 +1521,9 @@ static void while_lcd_wakes(void) {
 
 static void sidou_main(void) {
     /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. The
-     * song's region loads in the panel's reset wait, the store in its wake-up wait
-     * (while_lcd_wakes). */
-    lcd_init(song_load, while_lcd_wakes);
+     * noise tables are built and the song's region loads in the panel's reset wait
+     * (while_lcd_resets), the store in its wake-up wait (while_lcd_wakes). */
+    lcd_init(while_lcd_resets, while_lcd_wakes);
     audio_init();
     /* The keys play chip A, as in M1; chip B is made with the keys' setup from the first
      * ticks, prepared in the background (its first reset at boot only: app/reg_ring.h). */

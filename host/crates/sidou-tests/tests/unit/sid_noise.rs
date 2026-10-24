@@ -284,6 +284,32 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
     }
 }
 
+/// The noise tables the firmware builds at boot (sid_noise_tables_init, a constructor) are
+/// the ones it used to load from the image: SID_NOISE_JUMP is sidou-tablegen's 2^k-shift
+/// matrices (the old gen/noise_jump.h, generated the same way), and SID_NOISE_WB_BYTE[h]
+/// is the writeback of the output's bits 4..11, SID_WB_HI(h >> 4) | SID_WB_LO(h & 15).
+#[test]
+fn boot_built_noise_tables_match_the_generated_ones() {
+    let built = unsafe { &*std::ptr::addr_of!(SID_NOISE_JUMP) };
+    assert_eq!(*built, sidou_tablegen::noise_jump_matrices());
+    let bits = |n: u32, at: [u32; 4]| -> u32 {
+        (0..4)
+            .filter(|b| n & (8 >> b) != 0)
+            .fold(0, |acc, b| acc | 1 << at[b as usize])
+    };
+    let wb_byte = unsafe { &*std::ptr::addr_of!(SID_NOISE_WB_BYTE) };
+    for (h, &got) in wb_byte.iter().enumerate() {
+        let h = h as u32;
+        let want = bits(h >> 4, [2, 4, 8, 11]) | bits(h & 15, [13, 17, 20, 22]);
+        assert_eq!(got, want, "SID_NOISE_WB_BYTE[{h:#04x}]");
+    }
+    // Every entry of the byte table is an output bit's writeback, so no two bytes agree.
+    let mut seen: Vec<u32> = wb_byte.to_vec();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), 256);
+}
+
 /// sid_noise_jump is that many plain shifts, across the table's range and past the
 /// register's period.
 #[test]

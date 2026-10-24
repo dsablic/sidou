@@ -65,11 +65,11 @@ copyrighted, so we link to them rather than copy them into this repo.
 - **On-chip SRAM:** about 512 KB of general RAM (`ram0`
   0x01C00000–0x01C7FE00). The "578 KB" figure includes the cache arrays.
   SIDOU's linker script (`platform/fm1/app.ld`) uses Felucca's regions,
-  except that RAMTEXT is 48 KB instead of 24 KB (see "Code in SRAM").
+  except that RAMTEXT is 56 KB instead of 24 KB (see "Code in SRAM").
 - **Execution from flash:** code runs XIP from the in-package flash through
   the I-cache, over dual-I/O SPI with the SFC at about 90 MHz (at a 360 MHz
   system clock). An I-cache miss is estimated at **400–600 CPU cycles**.
-  Hot audio code therefore runs from SRAM (`.ram_text`, a 48 KB region in
+  Hot audio code therefore runs from SRAM (`.ram_text`, a 56 KB region in
   `app.ld`; see "Code in SRAM" below).
 - **Call range:** a direct `call` or `goto` reaches about ±4 MB
   (relocation `R_PI32V2_LONG_JUMP_23M2`), and SRAM code at 0x01C0xxxx is
@@ -214,12 +214,15 @@ pipeline) brings `.ram_text` to about 32 KB, so RAMTEXT is now **48 KB**
 (0x01C00000–0x01C0C000), twice Felucca's 24 KB. Nothing on the hardware set
 the 24 KB: it was Felucca's inherited layout. SRAM is not cached, the SDK
 treats all of `ram0` as rwx, and the update loader at 0x01C0A800 runs only
-from the SPL after a reset, never next to the app. The layout:
+from the SPL after a reset, never next to the app. Since v0.4.0 RAMTEXT is **56 KB**: it also
+takes Felucca's 8 KB RAM-run debug area below RAM (0x01C0C000–0x01C0E000), where crt0.S used to
+save five boot words for a probe that nothing read
+([flash and RAMTEXT space](plans/2026-10-24-flash-space.md); the device check is
+[hardware-test.md section 17](hardware-test.md#17-code-in-feluccas-old-debug-area-v040)). The layout:
 
 | Region | Range | Size |
 |---|---|---|
-| RAMTEXT | 0x01C00000–0x01C0C000 | 48 KiB |
-| RAM-run debug area (crt0.S's boot words at 0x01C0DF20) | 0x01C0C000–0x01C0E000 | 8 KiB |
+| RAMTEXT | 0x01C00000–0x01C0E000 | 56 KiB |
 | RAM | 0x01C0E000–0x01C1E000 | 64 KiB |
 | POOL | 0x01C1E000–0x01C74000 | 344 KiB |
 
@@ -282,11 +285,10 @@ isolated row-accounting instructions = 5,662/block**, **44.234375/sample** again
 the unchanged **60** gate. The song test's 161.3/sample remainder includes the player
 but excludes mix/MASTER; it must not be mistaken for M3's no-player reserve.
 
-Headroom beyond 48 KB, if the audio path ever needs it:
+Headroom beyond 56 KB, if the audio path ever needs it:
 - `-Os` for `core/fx` (about 3.3 KB smaller, at a cycle cost not yet
   measured);
-- RAMTEXT further up, taking from POOL (RAM and the debug area move with
-  it);
+- RAMTEXT further up, taking from POOL (RAM moves with it);
 - ~~moving the flash driver out of RAMTEXT~~: retired by M2a. The store
   (see "Flash map") programs and erases while the firmware runs, so the
   flash driver (`fl_*_ram`, about 2.8 KB) stays in RAMTEXT for good.
@@ -322,14 +324,16 @@ The rules for keeping it that way:
   audio interrupt can miss the D-cache and wait on the flash. So a table that
   `.ram_text` code reads goes to `.data` on the device
   (`__attribute__((section(".data.<name>")))` under `__PI32V2__`, as
-  `SID_NOISE_WB`, `SID_NOISE_JUMP`, `SID_ENV_RATE_POS`,
-  `SID_ENV_THRESHOLDS` and the slots' `ALGORITHMS`). `ram_audio.rs` checks
-  every address the `.ram_text` code loads. Other constant tables stay in
-  flash.
+  `SID_NOISE_WB`, `SID_ENV_RATE_POS`, `SID_ENV_THRESHOLDS` and the slots'
+  `ALGORITHMS`), or is built at boot in POOL (`SID_NOISE_JUMP` and
+  `SID_NOISE_WB_BYTE`, computed by `sid_noise_tables_init`, which the boot
+  calls in the LCD's reset wait: no copy in the image). `ram_audio.rs` checks every address the
+  `.ram_text` code loads. Other constant tables stay in flash.
 - **One flash read remains, by design:** the combined waveforms' pulldown
   rows (`gen/pulldown.h`, three strengths on each model since M2b's expert selector:
-  184,320 bytes before packing, 58,488 after sharing their 16-entry blocks;
-  a lookup reads the row's index, then the block), which the
+  184,320 bytes before packing, 52,407 after sharing and overlapping their
+  16-entry blocks and sharing the rows that are alike; a lookup reads the
+  row's index, then the block), which the
   oscillator reads through `sid_osc.pulldown` while a combined waveform
   plays. They are too big for RAM, and the relocation check cannot see a
   read through a pointer. Whether they cost cache misses in the audio

@@ -77,7 +77,7 @@ cat >"$out/version.json" <<EOF
 EOF
 sed "s/@VERSION@/$version/" "$root/web/firmwares.json" >"$out/firmwares.json"
 cp "$root/build/fm1/sidou.fwsc" "$out/sidou.fwsc"
-cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web/songs.js" "$root/web/sysex.js" "$out/"
+cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web/songs.js" "$root/web/sysex.js" "$root/web/midi.html" "$root/web/midi.js" "$root/web/songmidi.js" "$out/"
 mkdir -p "$out/songs"
 cp "$root"/assets/songs/*.sng "$out/songs/"
 cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"

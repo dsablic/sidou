@@ -828,3 +828,38 @@ int song_ext_set_keys(gt2_song* s, const song_keys* v) {
         b[len++] = v->preset;
     return song_ext_set(s, SONG_TAG_KEYS, b, len);
 }
+
+/* DIGI */
+
+int song_ext_get_digi(const gt2_song* s, song_digi* v) {
+    uint32_t len = 0;
+    memset(v, 0, sizeof *v);
+    const uint8_t* d = get_v1(s, SONG_TAG_DIGI, 2u, &len);
+    if (d == NULL || d[1] > SONG_DIGI_MAX || len < 2u + 2u * d[1])
+        return 0;
+    v->count = d[1];
+    memcpy(v->entry, d + 2, 2u * v->count);
+    return 1;
+}
+
+int song_ext_set_digi(gt2_song* s, const song_digi* v) {
+    uint8_t b[2u + 2u * SONG_DIGI_MAX];
+    if (v->count > SONG_DIGI_MAX)
+        return -1;
+    b[0] = 1u;
+    b[1] = v->count;
+    memcpy(b + 2, v->entry, 2u * v->count);
+    return song_ext_set(s, SONG_TAG_DIGI, b, 2u + 2u * v->count);
+}
+
+void song_ext_digi_map(const gt2_song* s, uint8_t map[GT2_MAX_INSTR + 1u]) {
+    song_digi v;
+    memset(map, 0, GT2_MAX_INSTR + 1u);
+    if (s->ext_used > SONG_EXT_BYTES || !song_ext_get_digi(s, &v))
+        return; /* (an area being read in: nothing yet) */
+    for (uint32_t i = 0; i < v.count; i++) {
+        uint32_t instr = v.entry[i][0], kind = v.entry[i][1];
+        if (instr >= 1u && instr <= GT2_MAX_INSTR && kind > SONG_DIGI_NONE && kind < SONG_DIGI_KINDS)
+            map[instr] = (uint8_t)kind;
+    }
+}

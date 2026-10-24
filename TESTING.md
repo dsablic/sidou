@@ -771,7 +771,7 @@ cargo run --release -p sidou-tablegen -- fit-filter  # gen/filter.h, with the fi
 The drift tests (`tests/drift.rs`) fail when the checked-in files differ
 from what the generator produces:
 - `checked_in_tables_match_the_generator`, in every job: the computed tables
-  (`grid.h`, `noise_jump.h`, `profiles.h`, `pulldown.h`), exactly. If it fails on a new
+  (`grid.h`, `profiles.h`, `pulldown.h`, `player/gen/digi.h`), exactly. If it fails on a new
   platform with nothing changed, that is a libm difference (reSIDfp builds
   the pulldown tables with `pow`, and some entries sit on a threshold), not
   stale tables: keep the checked-in headers.

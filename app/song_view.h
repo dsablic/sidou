@@ -229,6 +229,10 @@ void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32
 void song_view_copy(song_view* sv, screen* s, grid* g);
 /* GLO's state for LIVE's header: the mutes in bits 0-2, the solos in bits 3-5. */
 uint32_t song_view_mutes(const song_view* sv);
+/* An instrument as PRESETS' popup shows it: its number in hex and its name, as far as the
+ * popup's width and the name's printable characters go ("03 KICK"); the number alone with no
+ * song or no name. */
+void song_view_instr_text(const song_view* sv, uint32_t instr, char out[SCREEN_POPUP_TEXT]);
 
 #ifdef __cplusplus
 }

@@ -714,9 +714,13 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
     do {
         *name++ = *label;
     } while (*label++);
-    value[0] = HEX[v >> 4 & 15u];
-    value[1] = HEX[v & 15u];
-    value[2] = 0;
+    if (encoder == 6u) {
+        song_view_instr_text(sv, v, value); /* PRESETS: the instrument's name too */
+    } else {
+        value[0] = HEX[v >> 4 & 15u];
+        value[1] = HEX[v & 15u];
+        value[2] = 0;
+    }
     *fill = v;
     *max = encoder == PANEL_ENC_ALGORITHM ? 16u : encoder == PANEL_ENC_K1 || encoder == 6u
                          ? GT2_MAX_INSTR : encoder == PANEL_ENC_K1 + 1u ? 15u : 255u;

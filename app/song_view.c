@@ -743,3 +743,26 @@ void song_view_copy_large(song_view* sv, screen* s, grid* g, uint32_t big_rows) 
     }
     sv->dirty = 0;
 }
+
+void song_view_instr_text(const song_view* sv, uint32_t instr, char out[SCREEN_POPUP_TEXT]) {
+    static const char hex[] = "0123456789ABCDEF";
+    uint32_t n = 0;
+    out[n++] = hex[instr >> 4 & 15u];
+    out[n++] = hex[instr & 15u];
+    if (sv->song && instr >= 1u && instr <= GT2_MAX_INSTR) {
+        const uint8_t* name = sv->song->instr[instr - 1u] + GT2_INS_NAME;
+        if (name[0] > 0x20u && name[0] < 0x60u) {
+            out[n++] = ' ';
+            for (uint32_t i = 0; i < GT2_INSTR_NAME && n < SCREEN_POPUP_TEXT - 1u; i++) {
+                if (name[i] < 0x20u || name[i] >= 0x60u) {
+                    break;
+                }
+                out[n++] = (char)name[i];
+            }
+            while (out[n - 1u] == ' ') {
+                n--;
+            }
+        }
+    }
+    out[n] = 0;
+}

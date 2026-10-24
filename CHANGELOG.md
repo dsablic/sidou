@@ -9,6 +9,16 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
+  one of the four showcase songs) into a Standard MIDI File in the browser: a track and a MIDI
+  channel a voice (six for a GoatTracker Stereo song), one pass to the orderlist's loop point,
+  the notes where GoatTracker's player puts them: speed, funktempo, `F` and `E` commands,
+  repeats, transposes, key offs and gate timers, legato and tone portamento as tied notes. One
+  constant tempo and a tick that is a twentieth of a player call, so every start and end lands on
+  a whole tick. The notes are the rows' (wavetable arpeggios, vibrato and slides are not
+  followed), which the page says. `web/songmidi.test.mjs` compares every note's start, end and pitch
+  with GoatTracker 2.77's packed player on the showcase songs, SIDOU LOOP and GoatTracker's
+  examples (19,853 runs of the gate; fixtures made by `host/crates/gt2-ref/tests/midi_walk.rs`).
 - **The button LEDs show more, in two levels:** the hardware's dim glow means set or available,
   full light active now. ARP is dim while on and flashes on each arpeggio step (once a cycle at
   1-2 frames a step); PLAY is lit on each beat and dim between while the song plays; REC is dim
@@ -26,6 +36,23 @@ All notable changes are documented here. The format follows
   factory and are stored at once (toast RESET AND SAVED). Songs, USER chip profiles and MIDI learn mappings stay;
   HOME or moving away cancels with nothing written. Before, the only whole reset was a STORE
   format, which erased the songs too.
+- **A SID drum kit:** a NEW song holds eight drums on the chip's own voices after its lead and
+  bass, as instruments 03-0A: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI and RIM. They
+  are plain GoatTracker 2 instruments and table rows (a falling triangle for the kick and the
+  toms, a tonal attack and noise for the snare, short and long noise for the hats, three noise
+  bursts for the clap), so a song made with them plays the same in GoatTracker; each was tuned
+  by rendering it on both chip models, and the kick keeps its weight on the 8580. STEP's and
+  TRACKER's PRESETS popup names the instrument (`03 KICK`), so a lane's drum is picked by name.
+  Decision record 0009.
+- **Digi drums:** short 4-bit samples (KICK, SNARE, CLAP, HAT) played through chip A's output
+  as a C64 tune plays them through the 6581's volume register, at about 8.8 kHz, from the
+  sample of their note, one at a time. A new `DIGI` chunk in SIDOU's trailer marks the
+  instruments that play them; GoatTracker skips it and plays the instruments' own GT2 content
+  instead, so a song with digi drums still opens and plays there. A NEW song has them as
+  instruments 0B-0E (`DG KICK`, `DG SNARE`, `DG CLAP`, `DG HAT`), copies of the chip kit's drums;
+  while a digi drum plays, its voice's own sound is muted. They sound the same on either chip
+  model (an 8580 plays them as one with the "digi boost"). The samples are synthesized by
+  SIDOU's table generator, no recorded material.
 
 ### Changed
 - **The profile's word everywhere:** STATUS names the chip as its model and the profile's word
@@ -37,6 +64,16 @@ All notable changes are documented here. The format follows
   `psid_load` checks its bounds (#68, our report #63), so the gate's own stand-in for that load,
   `step_block_load_dec`, is gone and with it the `emulated_block_loads` count in the gate's
   reports.
+- **24,952 bytes of flash, 8 KB of RAMTEXT and 5.4 KB of the RAM region won back, nothing heard
+  differently:** the filter's cutoff codes are delta-coded (11,984 bytes), the combined
+  waveforms' blocks overlap and alike rows are stored once (5,976), the noise tables are built
+  at boot into POOL (2,980 of flash, 3,140 of the RAM region), the digi drums' codes are two a
+  byte (2,412 of both), and the store is built at `-Oz` (1,568). Code that runs from SRAM may
+  now use Felucca's 8 KB debug area below RAM (RAMTEXT 56 KB, 8,160 bytes free), whose only
+  use, five boot words nothing read, is gone; [hardware-test.md section
+  17](docs/hardware-test.md#17-code-in-feluccas-old-debug-area-v040) checks it on the device.
+  The digi drums cost the audio interrupt less than before (9.47 instructions a sample, was
+  10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 
 ## [0.3.1] - 2026-10-23
 

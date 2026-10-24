@@ -1362,6 +1362,44 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
   Amount at 127: loud, but no hard crackle of clipping on the peaks (the soft limiter rounds
   them). Note anything that still sounds clipped, and at which setting.
 
+## 16. The drum kit and the digi drums
+
+Headphones or the line out. Controls: [controls.md, STEP](reference/controls.md#step) and
+[SONG](reference/controls.md#song); [decision record 0009](decisions/0009-drum-kit-and-digi-drums.md).
+
+- [ ] **The kit.** Menu, SONG, NEW. On STEP, PRESETS on each lane names the instrument
+  (`03 KICK` ... `0A RIM`). Put KICK on V1 (steps 1, 5, 9, 13), SNARE on V2 (5, 13), CL HAT on
+  V3 (every other step) and play: a kick with weight (a falling thump, not a click), a snare
+  with a tonal crack and noise, short bright hats. Try OP HAT, CLAP (three quick bursts), the
+  toms (low and a fifth higher, both falling) and RIM. Do it again with chip A an 8580 (CHIP
+  view): the kick still has its low end. Note any drum that sounds weak, harsh or out of time.
+- [ ] **Digi drums.** On the same song set a lane to `0B DG KICK`, `0C DG SNARE`, `0D DG CLAP`
+  or `0E DG HAT`: sampled drums, gritty as a C64's, on the beat with the chip drums (no flam);
+  the chip copy of the drum is not heard under them. On an 8580 they are as loud as on a 6581.
+  GLO-mute the digi lane: it goes silent. A digi drum and a chip drum on the same lane in turn:
+  the chip drum after a digi one comes a few milliseconds late at most (listen for a flam).
+- [ ] **In GoatTracker.** SAVE the song, copy it off (Live Link or SysEx) and open it in
+  GoatTracker 2.77: it loads and plays, the digi lanes as the chip kit's drums.
+
+## 17. Code in Felucca's old debug area (v0.4.0)
+
+Since v0.4.0 the code that runs from SRAM (RAMTEXT) reaches up to RAM, over the 8 KB below it
+(0x01C0C000..0x01C0E000) that Felucca keeps for RAM-run debug images and where SIDOU's start
+code used to leave five boot words ([hardware.md, Code in SRAM](hardware.md#code-in-sram)).
+Nothing else is known to use that SRAM once the app runs, and the update loader runs from the
+SPL after a reset, never beside the app; these confirm it on the device. Do them on a build
+whose `.ram_text` reaches past 0x01C0C000 (the emulator's `ram_audio` test prints its size:
+over 49,152 bytes).
+
+- [ ] **Boot.** Install it (section 1). It boots to the title card and LIVE, the first boot
+  and ten power cycles after it (section 3), and a held chord plays clean for a minute on both
+  chip models (the audio interrupt runs from that SRAM).
+- [ ] **A store write.** Change a setting and SAVE (section 7.1), and SAVE a song (section 13):
+  both survive a power cycle. (The flash driver runs from RAMTEXT with XIP off.)
+- [ ] **A USB update round trip.** Install the same package again over USB (section 1), then
+  the previous release, then this one: each install finishes and boots, and the settings and
+  songs are still there.
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1383,3 +1421,4 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
 | 13 Songs on the store | | |
 | 14 Make a song on the device | | |
 | 15 SPREAD and the soft limiter | | |
+| 16 The drum kit and the digi drums | | |
