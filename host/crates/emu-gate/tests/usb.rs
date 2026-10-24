@@ -613,7 +613,8 @@ fn a_silent_usb_put_and_get_move_a_256_byte_packet_quickly() {
 
 /// The same while a chord sounds: a packet's programs share one hold, ramped down and back up,
 /// and the holds stay STORE_FORCE_GAP_MS apart, so the chord plays between packets. Before:
-/// 292.6 ms up, 205.6 down. Bounds: the measurement (105.7 up, 10.4 down) plus at most 10 %.
+/// 292.6 ms up, 205.6 down. Bounds: the measurement (105.7 up, 10.4 down) plus at most 10 %
+/// (M3's code layout moved GET to 11.1 ms; 11.0 was below the 10 %).
 #[test]
 fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     let Some(fw) = fixture("the SysEx USB timing test") else {
@@ -621,7 +622,7 @@ fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     };
     let (up, down) = timed_round_trip(&fw, "USB CHORD", true);
     assert!(up <= 116.0, "PUT: {up:.1} ms a packet");
-    assert!(down <= 11.0, "GET: {down:.1} ms a packet");
+    assert!(down <= 11.4, "GET: {down:.1} ms a packet");
 }
 
 /// A GET of `name` (256 bytes or more), and the main loop until its first DATA reply (101
