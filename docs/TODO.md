@@ -606,3 +606,12 @@ around the lane's note; the user wants to steer it. Planned for 0.5.x, after M3:
   in STEP, the HELD STEP frame lists `SCL DICE`, `ARP MUTATE` and `LFO UNDO` (and DICE's four
   settings on K1-K4); a held step's frame names ALGORITHM's `CHANCE` beside the four knobs with
   the step's value.
+
+## STEP: a held step's audition plays its locks (the user, 2026-10-24, v0.4.0 device session)
+
+Holding a step and turning K1-K4 (cutoff, resonance, pulse width, waveform; EDIT: the character)
+stores the lock, and playback has it, but the audition under the key plays the lane's instrument
+without the step's locks, so the turn is not heard while turning. Planned with DICE's settings
+(0.5.x): while a step is held, its audition takes the step's locks and follows each turn live,
+as on a hardware step sequencer. It goes through the song's jam path (song_ctl's interrupt side,
+RAMTEXT: mind its 32 bytes free).
