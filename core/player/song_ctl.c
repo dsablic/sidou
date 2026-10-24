@@ -478,6 +478,7 @@ void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
 /* --- The main loop ---------------------------------------------------------------------- */
 
 static void lock_prime(song_ctl* sc);
+static void digi_map(song_ctl* sc);
 static void lock_character(song_ctl* sc);
 static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e);
 static void lock_refresh_edit(song_ctl* sc);
@@ -626,6 +627,7 @@ static uint8_t cancel_jams(song_ctl* sc) {
 }
 
 int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
+    digi_map(sc);
     song_work* w = sc->w;
     if (sc->state == SONG_LOADING || sc->inflight_n || sc->ff_on || sc->spare_wait ||
         sc->deriving || room(sc) < 2u)
@@ -685,6 +687,7 @@ static void retake_chip(song_ctl* sc, uint8_t then) {
 }
 
 int song_ctl_continue(song_ctl* sc) {
+    digi_map(sc);
     if (sc->state != SONG_STOPPED || room(sc) < 1u)
         return 0;
     sc->auditioning = 0u;
@@ -804,6 +807,7 @@ uint32_t song_ctl_again(const song_ctl* sc) {
 }
 
 int song_ctl_audition(song_ctl* sc) {
+    digi_map(sc);
     if (sc->state == SONG_PLAYING || sc->state == SONG_LOADING || sc->auditioning)
         return 1;
     if (sc->state == SONG_IDLE) {
@@ -1503,29 +1507,44 @@ static void poll_locks(song_ctl* sc) {
     lock_character(sc);
 }
 
-/* The digi drums' main-loop side (song_ctl.h, song_ctl_block_end), once a poll: the DIGI
- * chunk's map for the interrupt (the bytes that changed only: an entry the interrupt reads is
- * never 0 on its way to its new value), the voices whose digi drums may sound, and the mute of
- * the voices whose instrument is a digi drum, from the notes the interrupt reports (a second
- * reader of the event ring, which leaves song_ctl_events' alone). */
-static void digi_poll(song_ctl* sc) {
+/* The DIGI chunk's map for the interrupt (song_ctl.digi_of), the bytes that changed only: an
+ * entry the interrupt reads is never 0 on its way to its new value. Built when a play, a
+ * continue or an audition starts, and when the extension area's size changes (a NEW load adds
+ * the chunk): not every pass, which a MIDI flood makes many. */
+static void digi_map(song_ctl* sc) {
     uint8_t map[GT2_MAX_INSTR + 1u];
     song_ext_digi_map(sc->song, map);
-    for (uint32_t i = 0u; i <= GT2_MAX_INSTR; i++)
+    uint8_t any = 0u;
+    for (uint32_t i = 0u; i <= GT2_MAX_INSTR; i++) {
         if (sc->digi_of[i] != map[i])
             sc->digi_of[i] = map[i];
+        any |= map[i];
+    }
+    sc->digi_any = any;
+    sc->digi_ext = sc->song->ext_used;
+}
+
+/* The digi drums' main-loop side (song_ctl.h, song_ctl_block_end), once a poll: the voices
+ * whose digi drums may sound, and the mute of the voices whose instrument is a digi drum, from
+ * the notes the interrupt reports (a second reader of the event ring, which leaves
+ * song_ctl_events' alone). A song with no digi drum skips the events: a few loads a pass. */
+static void digi_poll(song_ctl* sc) {
+    if (sc->song->ext_used != sc->digi_ext)
+        digi_map(sc);
     uint32_t head = sc->ev_head;
     COMPILER_FENCE(); /* the head before the events it publishes */
-    uint32_t t = head - sc->digi_ev > SONG_EVENT_RING ? head - SONG_EVENT_RING : sc->digi_ev;
-    for (; t != head; t++) {
-        const song_event* e = &sc->ev[t & EV_MASK];
-        if (SONG_EV_FLAGS(e) & GT2_EV_NOTE) {
-            uint8_t bit = (uint8_t)(1u << SONG_EV_CHANNEL(e));
-            sc->digi_hold = (uint8_t)(e->instr <= GT2_MAX_INSTR && map[e->instr]
-                                          ? sc->digi_hold | bit : sc->digi_hold & ~bit);
+    if (sc->digi_any) {
+        uint32_t t = head - sc->digi_ev > SONG_EVENT_RING ? head - SONG_EVENT_RING : sc->digi_ev;
+        for (; t != head; t++) {
+            const song_event* e = &sc->ev[t & EV_MASK];
+            if (SONG_EV_FLAGS(e) & GT2_EV_NOTE) {
+                uint8_t bit = (uint8_t)(1u << SONG_EV_CHANNEL(e));
+                sc->digi_hold = (uint8_t)(sc->digi_of[e->instr] ? sc->digi_hold | bit
+                                                               : sc->digi_hold & ~bit);
+            }
         }
     }
-    sc->digi_ev = t;
+    sc->digi_ev = head;
     sc->digi_ok = (uint8_t)(~(sc->mute_user | sc->take) & 7u);
     if ((uint8_t)(sc->mute_user | sc->digi_hold) != sc->mute_sent && room(sc) >= 1u)
         push_mute(sc, (uint8_t)(sc->mute_user | sc->digi_hold));
