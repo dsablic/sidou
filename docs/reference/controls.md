@@ -1021,7 +1021,7 @@ model, profile and character, the EXPERT overrides, the effect slots, and the en
 **Songs, USER chip profiles and MIDI learn mappings stay**, and so does the last song that boots. Turn **ALGORITHM clockwise**: the item says **RESET?** and the popup **SAVE
 RESETS** under the name **RESET ALL?** (the question: reset all sounds and settings?). Then
 press **SAVE**, without leaving the item, to do it: the settings are saved at once and the
-toast says **RESET AND SAVED**. Further turns never confirm, and counter-clockwise, moving
+toast says **RESET AND SAVED** (**RESET AND SAVED (GAPS)** when the save had to be forced). Further turns never confirm, and counter-clockwise, moving
 SETTINGS' cursor or leaving SETTINGS (HOME) cancels it with nothing written. REC QUANTISE and
 the MIDI page's setup are RAM-only and are not part of it.
 

@@ -99,6 +99,8 @@ All notable changes are documented here. The format follows
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 
 ### Fixed
+- **A forced RESET says it reset.** When RESET's save had to be forced (the device was never
+  quiet), the toast said SAVED (GAPS); it now says RESET AND SAVED (GAPS).
 - **A NEW song's bass differs from its lead.** Both were the same pulse at the same pitch. The
   bass (instrument 02) now plays an octave down (WAVE right column `74`, relative note -12) with
   a thinner pulse, a quarter width (`$400`, its own PULSE row 03 after the kit's); the lead keeps
