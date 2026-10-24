@@ -116,3 +116,19 @@ SPDX-License-Identifier = "OFL-1.1"
 path = ["docs/media/videos/*.webp", "tools/videos/videos.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# floooh/chips' m6502.h, vendored unmodified for the PSID oracle, test-only
+# (third_party/chips/VENDORED.md); its notice is in its header comment.
+[[annotations]]
+path = ["third_party/chips/m6502.h"]
+SPDX-FileCopyrightText = "2018 Andre Weissflog"
+SPDX-License-Identifier = "Zlib"
+
+# FM-1 SID's PSID player, vendored unmodified for the PSID oracle, test-only
+# (third_party/fm1-sid-player/VENDORED.md): each file carries its SPDX-License-Identifier;
+# the copyright line is fm1-emu's LICENSE's.
+[[annotations]]
+path = ["third_party/fm1-sid-player/psid.c", "third_party/fm1-sid-player/psid.h", "third_party/fm1-sid-player/psidlog.c"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Joakim Eriksson"
+SPDX-License-Identifier = "BSD-2-Clause"
