@@ -712,7 +712,6 @@ fn the_first_step_press_after_presets_auditions_the_instrument_picked() {
 /// NEW's BASS is heard as a bass, not as the lead again: on the same step an octave below
 /// PULSE, and thinner (a quarter pulse, $400, against the lead's square).
 #[test]
-#[ignore = "needs branch new-bass"]
 fn new_bass_sounds_an_octave_below_the_lead_and_thinner() {
     let Some(fw) = fixture() else { return };
     let mut m = new_song_on_step(&fw);
