@@ -40,6 +40,8 @@
 #include "midi.h"
 #include "panel.h"
 #include "player/song_ctl.h"
+#include "psid/psid_ctl.h"
+#include "psid/psid_file.h"
 #include "reg_ring.h"
 #include "song/gt2_sng.h"
 #include "song/gt2_stream.h"
@@ -177,6 +179,12 @@ static void fm1_fault(const fm1_crash_t* c) {
 /* --- The song (M2c Task 6): SIDOU's first song, played by the song views' transport
  * (app/song_view.h, bound below). --- */
 
+/* 1 while a .sid tune has the song's memory (M3 Task 9, "A .sid tune" below): song control's
+ * state, the song's model and its work space are the tune's, so nothing here reads them (the
+ * transport's members answer as a stopped song's, the song views have none, song_io refuses
+ * everything, the MIDI objects are busy) until the song is made again and read back. */
+static uint8_t song_away;
+
 /* The first song (app/demo_song.h) from flash into the song's region: the audio interrupt never
  * reads flash. */
 static uint32_t read_demo(void* ctx, uint32_t offset, uint8_t* buf, uint32_t len) {
@@ -292,6 +300,28 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
 static const midi_sync* sync_state; /* midi_synced(), for play()'s look at CLOCK OUT */
 static int song_chip_edit(void* ctx, const chip_setup* setup, uint32_t fields) {
     keys_route* kr = ctx;
+    if (song_away) {
+        /* A tune's chip A: the edit straight to what it follows (no song base, no locks). */
+        chip_setup want = kr->song_want;
+        if (fields & KEYS_ROUTE_EDIT_PROFILE) {
+            want.profile = setup->profile;
+        }
+        if (fields & KEYS_ROUTE_EDIT_ENVELOPE) {
+            want.gate_reset = setup->gate_reset;
+        }
+        for (uint32_t f = 0; f < 4u; f++) {
+            if (fields >> f & 1u) {
+                chip_setup_control(&want, f, setup->controls[f]);
+            }
+        }
+        for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+            if (fields & (1u << (KEYS_ROUTE_EDIT_EXPERT_FIRST + f))) {
+                want.expert[f] = setup->expert[f];
+            }
+        }
+        keys_route_song_wants(kr, &want);
+        return 1;
+    }
     if (audio_song()->song->frozen) {
         ui_toast("SAVING", 2000u);
         return 0;
@@ -336,7 +366,7 @@ static void song_boot(void) {
 static midi_route* route_state;
 
 __attribute__((noinline, unused)) static void song_mode_setup(void) {
-    if (!keys_router.player || !song_base_valid) {
+    if (!keys_router.player || !song_base_valid || song_away) {
         return;
     }
     chip_setup want = song_char_base;
@@ -688,6 +718,9 @@ static int midi_object_open(void* ctx, uint8_t target, uint8_t index, int writin
                             uint32_t length) {
     (void)ctx;
     (void)length;
+    if (song_away) {
+        return SYSEX_BUSY;
+    }
     song_ctl* sc = audio_song();
     gt2_song* s = sc->song;
     if (writing && target == 2u && memcmp(songs.name, "MIDI SONG", 10u) == 0) {
@@ -719,6 +752,9 @@ static int midi_object_open(void* ctx, uint8_t target, uint8_t index, int writin
 
 static int midi_object_available(void* ctx) {
     (void)ctx;
+    if (song_away) {
+        return SYSEX_BUSY;
+    }
     return song_io_busy(&songs) || songs.external || audio_song()->song->frozen ? SYSEX_BUSY : 0;
 }
 
@@ -760,6 +796,9 @@ static uint32_t midi_file_read(void* ctx, uint32_t offset, uint8_t* buf, uint32_
 
 static int midi_object_complete(void* ctx, const store_file* file) {
     (void)ctx;
+    if (song_away) {
+        return SYSEX_BUSY;
+    }
     song_ctl* sc = audio_song();
     if (midi_object.target == 1u) {
         if (midi_object.offset != UINT32_MAX && !midi_object_stopped(sc)) {
@@ -972,6 +1011,9 @@ static uint32_t jam_last_ms;  /* the last jam's time */
 
 static int st_play_from(void* ctx, uint32_t sub, uint32_t pos) {
     song_ctl* sc = ctx;
+    if (song_away) {
+        return 1; /* a tune has the song's memory: nothing to play (Task 11 routes PLAY) */
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -996,11 +1038,17 @@ static int st_play(void* ctx, uint32_t pos) {
 }
 
 static int st_stop(void* ctx) {
+    if (song_away) {
+        return 1;
+    }
     return song_ctl_stop(ctx); /* 0 while it starts: asked again until it plays */
 }
 
 static int st_resume(void* ctx) {
     song_ctl* sc = ctx;
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1012,6 +1060,9 @@ static int st_resume(void* ctx) {
 }
 
 static int st_mute(void* ctx, uint32_t mask) {
+    if (song_away) {
+        return 1;
+    }
     return song_ctl_mute(ctx, mask);
 }
 
@@ -1019,6 +1070,9 @@ static int st_mute(void* ctx, uint32_t mask) {
  * take a few ticks to start (chip A taken for the song): the note waits for it. */
 static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
     song_ctl* sc = ctx;
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1065,6 +1119,13 @@ static void song_seen_rows(const song_event* ev, uint32_t n) {
 
 static void st_status(void* ctx, song_status* out) {
     song_ctl* sc = ctx;
+    if (song_away) {
+        memset(out, 0, sizeof *out); /* a song that has not played */
+        for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
+            out->order_pos[v] = out->row[v] = SONG_T_NOWHERE;
+        }
+        return;
+    }
     *out = song_seen; /* the rows song_events has heard, up to this pass */
     out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
@@ -1120,6 +1181,9 @@ static void st_status(void* ctx, song_status* out) {
 /* M2e's MIDI clock (app/midi_sync.h): the held start, the align, the period, the seeks and
  * the calls' samples, through the same transport as the song views'. */
 static int st_hold(void* ctx, uint32_t on) {
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1131,6 +1195,9 @@ static int st_hold(void* ctx, uint32_t on) {
 }
 
 static int st_align(void* ctx, uint32_t sample) {
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1141,6 +1208,9 @@ static int st_align(void* ctx, uint32_t sample) {
 }
 
 static int st_period(void* ctx, uint32_t q16) {
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1160,6 +1230,9 @@ static int st_period(void* ctx, uint32_t q16) {
 }
 
 static int st_seek(void* ctx, uint32_t call) {
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1170,6 +1243,9 @@ static int st_seek(void* ctx, uint32_t call) {
 }
 
 static int st_seek_further(void* ctx, uint32_t call) {
+    if (song_away) {
+        return 1;
+    }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
@@ -1181,6 +1257,11 @@ static int st_seek_further(void* ctx, uint32_t call) {
 
 static void st_clock(void* ctx, song_clock* out) {
     const volatile song_ctl* sc = ctx;
+    if (song_away) {
+        memset(out, 0, sizeof *out); /* stopped, no tempo: MIDI's clock out sends nothing */
+        out->state = SONG_IDLE;
+        return;
+    }
     uint32_t samples;
     do {
         samples = sc->samples;
@@ -1206,7 +1287,7 @@ static void st_clock(void* ctx, song_clock* out) {
 
 static int st_edit(void* ctx, const gt2_edit* edit, uint32_t* ticket) {
     song_ctl* sc = ctx;
-    if (!song_ctl_edit(sc, edit))
+    if (song_away || !song_ctl_edit(sc, edit))
         return 0;
     *ticket = sc->edits_submitted;
     return 1;
@@ -1214,13 +1295,16 @@ static int st_edit(void* ctx, const gt2_edit* edit, uint32_t* ticket) {
 
 static int st_edit_done(void* ctx, uint32_t ticket) {
     const song_ctl* sc = ctx;
+    if (song_away) {
+        return 1;
+    }
     return (int32_t)(sc->edits_completed - ticket) >= 0;
 }
 
 static int st_edit_with_locks(void* ctx, const gt2_edit* edit, const uint8_t* locks,
                                uint32_t nlocks, uint32_t* ticket) {
     song_ctl* sc = ctx;
-    if (!song_ctl_edit_with_locks(sc, edit, locks, nlocks))
+    if (song_away || !song_ctl_edit_with_locks(sc, edit, locks, nlocks))
         return 0;
     *ticket = sc->edits_submitted;
     return 1;
@@ -1231,7 +1315,7 @@ static int st_edit_with_locks(void* ctx, const gt2_edit* edit, const uint8_t* lo
 static int st_song_edit_saving_and_size_guard(void* ctx, const song_edit_request* request) {
     (void)request;
     const song_ctl* sc = ctx;
-    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+    if (song_away || (song_io_busy(&songs) && !song_io_saving(&songs))) {
         return SONG_EDIT_GUARD_BUSY;
     }
     if (song_io_saving(&songs) || sc->song->frozen) {
@@ -1273,6 +1357,9 @@ static uint8_t song_taken;
 
 static void song_keys_take(void* ctx, uint32_t voices) {
     (void)ctx;
+    if (song_away) {
+        return; /* a tune's voices are never the keys' (KEYS A acts as AUTO) */
+    }
     song_taken = (uint8_t)(song_taken | voices);
     (void)song_ctl_take(audio_song(), song_taken);
 }
@@ -1357,6 +1444,383 @@ static void song_pass(void) {
     front.playing = st == SONG_PLAYING || st == SONG_LOADING;
 }
 
+
+/* --- A .sid tune (M3 Task 9; docs/plans/2026-10-19-m3-sid-files.md, "Memory" and "The keys,
+ * chip B and the rest of the firmware while a tune plays"): the tune over the song's memory,
+ * its 6502 a frame ahead in the main loop (psid_ctl, a slice a pass at most), its writes placed
+ * at their cycles by the audio interrupt (audio.c). It starts once the song has stopped and gone
+ * idle and the interrupt has left it (AUDIO_NONE), on chips made fresh for it with its setup and
+ * clock, the keys on chip B (a 2SID tune: silent); it ends for good once its stop has played out,
+ * the interrupt has left it, the song's memory is the song's again and the song is read back
+ * from the store (song_io_away). Until Task 11's browser and NOW PLAYING, only the emulator
+ * tests' hook below starts one. --- */
+
+enum {
+    TUNE_OFF,        /* the song has its memory */
+    TUNE_SONG_STOP,  /* asked for: the song stops and goes idle, its views and files let go */
+    TUNE_TO_NONE,    /* the interrupt leaves the song */
+    TUNE_TO_PSID,    /* the tune's state made; the interrupt takes the tune */
+    TUNE_PREP,       /* the data from the store, a part a pass; the keys leave the tune's chips,
+                      * which are made fresh with its setup */
+    TUNE_ON,         /* psid_ctl has it: playing, paused, stopped or failed */
+    TUNE_END,        /* ending for good: its stop plays out */
+    TUNE_BACK_NONE,  /* the interrupt leaves the tune */
+    TUNE_BACK_SONG,  /* the song's state made again; the interrupt takes the song */
+    TUNE_BACK_READ   /* the song read back from the store; then its views have it again */
+};
+/* The header's first bytes, which psid_parse reads (to $7D at most: a v2+ header and a data
+ * load address); the file's length bounds the rest. */
+#define TUNE_HEAD_BYTES 0x80u
+/* The data a pass brings in from the store (in reads of TUNE_PART bytes). */
+#define TUNE_PART 256u
+#define TUNE_PASS_BYTES 2048u
+
+static struct {
+    uint8_t state;
+    uint8_t chips;   /* the tune's: 1, or 2 for a 2SID tune */
+    uint8_t fresh;   /* TUNE_PREP: the chips' resets asked for */
+    uint8_t toasted; /* KEYS OFF: 2SID TUNE shown since power-on */
+    uint8_t clocked; /* the chips have the tune's sample step (theirs again at the end) */
+    uint16_t song;   /* the song asked for, 0 the header's start song */
+    int16_t told;    /* the failure last shown */
+    store_file file;
+    uint32_t offset; /* TUNE_PREP: the file's bytes brought in */
+    uint32_t pal_q16; /* the chips' sample step at the PAL clock */
+    /* each chip's sid before its fresh reset; from the start on, the one its shadow follows */
+    sid* was[2];
+    chip_setup want[2]; /* the tune's chip A and chip B setups */
+} sid_tune;
+
+/* A chip's sample step at `clock` (sid.c sid_init_begin's, at the device's rate). */
+static uint32_t tune_step_q16(uint32_t clock) {
+    return ((clock / AUDIO_SAMPLE_RATE) << 16) |
+           (((clock % AUDIO_SAMPLE_RATE) << 16) / AUDIO_SAMPLE_RATE);
+}
+
+/* A chip's setup for the header's 2-bit model code (SID MODEL at AUTO, Task 11's setting): a
+ * named model plays reSIDfp's default profile of it at character 0, "unknown" and "both" the
+ * keys' setup; a tune's envelopes are always the chip's own (AUTHENTIC). */
+static void tune_setup(chip_setup* out, uint32_t model) {
+    chip_setup_of(&instrument, out);
+    if (model == 1u || model == 2u) {
+        out->profile = (uint8_t)sid_chip_default(model == 2u ? SID_MODEL_8580 : SID_MODEL_6581);
+        for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
+            out->controls[f] = 0;
+        }
+        for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+            out->expert[f] = SID_EXPERT_DEFAULT;
+        }
+    }
+    out->gate_reset = 0;
+}
+
+/* The header of the store's file into h: 1, or 0 with a toast. */
+static int tune_header(psid_header* h) {
+    uint8_t head[TUNE_HEAD_BYTES];
+    uint32_t n = sid_tune.file.length < TUNE_HEAD_BYTES ? sid_tune.file.length : TUNE_HEAD_BYTES;
+    if (store_file_read(store_fm1(), &sid_tune.file, 0, head, n) != (int)n) {
+        ui_toast("SID: READ ERROR", 2000u);
+        return 0;
+    }
+    int r = psid_parse(head, sid_tune.file.length, h);
+    if (r != PSID_OK) {
+        ui_toast(r == PSID_E_RSID ? "RSID: NOT YET" : r == PSID_E_MUS ? "MUS: NOT SUPPORTED" :
+                 r == PSID_E_TOO_LONG ? "TOO LONG" : "BROKEN .SID", 2000u);
+        return 0;
+    }
+    return 1;
+}
+
+/* Asks for the store's file `name` to play, song `song` (0 the header's start song): 1 if it
+ * goes (the song stops first), 0 with a toast if it cannot. */
+static int tune_play(const char* name, uint32_t song) {
+    psid_header h;
+    if (sid_tune.state != TUNE_OFF) {
+        return 0;
+    }
+    if (store_file_open(store_fm1(), name, &sid_tune.file) != STORE_OK ||
+        sid_tune.file.type != STORE_FILE_SID) {
+        ui_toast("SID NOT FOUND", 2000u);
+        return 0;
+    }
+    if (!tune_header(&h)) {
+        return 0;
+    }
+    if (keys_router.player) {
+        ui_toast("MIDI MODE HAS CHIP A", 2000u); /* MULTITIMBRAL, WHOLE-CHIP: chip A is theirs */
+        return 0;
+    }
+    sid_tune.song = (uint16_t)song;
+    sid_tune.chips = (uint8_t)(h.sid2 ? 2u : 1u);
+    sid_tune.told = 0;
+    sid_tune.state = TUNE_SONG_STOP;
+    return 1;
+}
+
+static void tune_stop(void) {
+    if (sid_tune.state == TUNE_ON) {
+        (void)psid_ctl_stop(audio_psid());
+    }
+}
+
+/* Ends the tune for good: the song back. Before the song let go of its memory, nothing more. */
+static void tune_end(void) {
+    if (sid_tune.state == TUNE_SONG_STOP) {
+        sid_tune.state = TUNE_OFF;
+    } else if (sid_tune.state != TUNE_OFF && sid_tune.state < TUNE_END) {
+        sid_tune.state = TUNE_END;
+    }
+}
+
+/* A failure psid_ctl stopped the tune with, as a toast, once. */
+static void tune_tell(const psid_ctl* c) {
+    if (psid_ctl_state(c) != PSID_FAILED || c->error == sid_tune.told) {
+        return;
+    }
+    sid_tune.told = c->error;
+    if (c->error == PSID_RUN_JAM) {
+        static const char hex[] = "0123456789ABCDEF";
+        char t[] = "6502 JAM AT $0000";
+        uint32_t pc = c->w->env.cpu.pc;
+        for (uint32_t k = 0; k < 4u; k++) {
+            t[13u + k] = hex[pc >> (12u - 4u * k) & 15u];
+        }
+        ui_toast(t, 2000u);
+    } else {
+        ui_toast(c->error == PSID_RUN_INIT_TOO_LONG ? "INIT TOO LONG" : "PLAY HUNG", 2000u);
+    }
+}
+
+/* TUNE_PREP's pass: a part of the data, the chips' fresh resets once the keys have left them,
+ * and the start once both are done. */
+static void tune_prep(psid_ctl* c) {
+    const psid_header* h = audio_psid_header();
+    uint32_t end = h->data_off + h->data_len;
+    for (uint32_t k = 0; k < TUNE_PASS_BYTES && sid_tune.offset < end; k += TUNE_PART) {
+        uint8_t part[TUNE_PART];
+        uint32_t n = end - sid_tune.offset < TUNE_PART ? end - sid_tune.offset : TUNE_PART;
+        if (store_file_read(store_fm1(), &sid_tune.file, sid_tune.offset, part, n) != (int)n) {
+            ui_toast("SID: READ ERROR", 2000u);
+            tune_end();
+            return;
+        }
+        psid_ctl_load_part(c, sid_tune.offset, part, n);
+        sid_tune.offset += n;
+    }
+    if (!sid_tune.fresh) {
+        if (!keys_route_ready_for_song(&keys_router)) {
+            return; /* the keys still play chip A */
+        }
+        for (uint32_t k = 0; k < sid_tune.chips; k++) {
+            sid_tune.was[k] = audio_chip(k);
+            keys_route_fresh(&keys_router, k);
+        }
+        sid_tune.fresh = 1;
+    }
+    if (sid_tune.offset < end) {
+        return;
+    }
+    for (uint32_t k = 0; k < sid_tune.chips; k++) {
+        if (audio_chip(k) == sid_tune.was[k] || !chip_ctl_has(&keys_router.ctl[k], &sid_tune.want[k])) {
+            return; /* its reset has not reached the interrupt yet */
+        }
+    }
+    /* The chips the tune starts on, fresh, at its clock (the interrupt renders neither now). */
+    uint32_t q16 = tune_step_q16(h->clock == 2u ? PSID_CLOCK_NTSC : PSID_CLOCK_PAL);
+    sid_tune.pal_q16 = audio_chip(0)->cycles_per_sample_q16;
+    for (uint32_t k = 0; k < sid_tune.chips; k++) {
+        sid_tune.was[k] = audio_chip(k);
+        sid_tune.was[k]->cycles_per_sample_q16 = q16;
+    }
+    sid_tune.clocked = 1;
+    if (!psid_ctl_play(c, sid_tune.song)) {
+        ui_toast("SID: NO SUCH SONG", 2000u);
+    }
+    sid_tune.state = TUNE_ON;
+}
+
+/* Once a pass, where the song's pass runs: the tune's steps (above), and while it plays its
+ * slice, its shadows following a chip swapped under it, its failures told. */
+static void tune_pass(void) {
+    psid_ctl* c = audio_psid();
+    switch (sid_tune.state) {
+    case TUNE_OFF:
+        return;
+    case TUNE_SONG_STOP: {
+        song_ctl* sc = audio_song();
+        if (song_ctl_state(sc) == SONG_PLAYING || song_ctl_state(sc) == SONG_LOADING) {
+            (void)song_ctl_stop(sc);
+            return;
+        }
+        if (sc->auditioning) {
+            song_ctl_audition_end(sc);
+            return;
+        }
+        if (!midi_object_stopped(sc) || song_mine || midi_object.owned || jam_wait[0] ||
+            !ui_tune(1)) {
+            return; /* the song's own pass brings it there */
+        }
+        if (!song_io_away(&songs, 1)) {
+            (void)ui_tune(0); /* a load or a save in hand: again next pass */
+            return;
+        }
+        song_away = 1;
+        front.playing = 0;
+        audio_player(AUDIO_NONE);
+        sid_tune.state = TUNE_TO_NONE;
+        return;
+    }
+    case TUNE_TO_NONE: {
+        if (audio_player_now() != AUDIO_NONE) {
+            return;
+        }
+        /* The song's state is free: the tune's is made over it. */
+        c = audio_psid_init();
+        psid_header* h = audio_psid_header();
+        if (!tune_header(h)) {
+            sid_tune.state = TUNE_END; /* the file changed under it: the song back */
+            return;
+        }
+        tune_setup(&sid_tune.want[0], h->model1);
+        tune_setup(&sid_tune.want[1], h->model2);
+        keys_route_set_song(&keys_router, 1);
+        keys_route_set_tune(&keys_router, 1);
+        keys_route_song_wants(&keys_router, &sid_tune.want[0]);
+        if (sid_tune.chips == 2u) {
+            ui_sound_hush(&ui_sounds, 1);
+            keys_router.tune_b_want = sid_tune.want[1];
+            keys_route_set_silent(&keys_router, 1);
+            if (!sid_tune.toasted) {
+                ui_toast("KEYS OFF: 2SID TUNE", 2000u);
+                sid_tune.toasted = 1;
+            }
+        }
+        (void)psid_ctl_load(c, h, NULL); /* the 64 KiB as at power-on; the data follows */
+        sid_tune.offset = 0;
+        sid_tune.fresh = 0;
+        sid_tune.clocked = 0;
+        audio_player(AUDIO_PSID);
+        sid_tune.state = TUNE_TO_PSID;
+        return;
+    }
+    case TUNE_TO_PSID:
+        if (audio_player_now() != AUDIO_PSID) {
+            return;
+        }
+        if (sid_tune.chips == 2u) {
+            audio_chip_b_use(AUDIO_B_TUNE, 1); /* the interrupt renders it with chip A */
+        }
+        sid_tune.state = TUNE_PREP;
+        return;
+    case TUNE_PREP:
+        tune_prep(c);
+        return;
+    case TUNE_ON: {
+        uint32_t st = psid_ctl_state(c);
+        if (st == PSID_INIT || st == PSID_PLAYING || st == PSID_PAUSED) {
+            for (uint32_t k = 0; k < sid_tune.chips; k++) {
+                sid* s = audio_chip(k);
+                if (s != sid_tune.was[k]) {
+                    /* A model or profile change swapped the chip (its registers came with it,
+                     * audio.c psid_swapped): its reads follow the new one from here. */
+                    sid_tune.was[k] = s;
+                    sid_shadow_init(&c->w->shadow[k], s, psid_env_now(&c->w->env));
+                }
+            }
+        }
+        (void)audio_psid_poll();
+        tune_tell(c);
+        st = psid_ctl_state(c);
+        front.playing = st == PSID_INIT || st == PSID_PLAYING;
+        return;
+    }
+    case TUNE_END:
+        (void)psid_ctl_stop(c);
+        (void)psid_ctl_poll(c); /* sees the stop played out; runs nothing once stopped */
+        if (c->stop_wait) {
+            return;
+        }
+        if (sid_tune.clocked) {
+            for (uint32_t k = 0; k < sid_tune.chips; k++) {
+                audio_chip(k)->cycles_per_sample_q16 = sid_tune.pal_q16;
+            }
+            sid_tune.clocked = 0;
+        }
+        audio_chip_b_use(AUDIO_B_TUNE, 0);
+        front.playing = 0;
+        audio_player(AUDIO_NONE);
+        sid_tune.state = TUNE_BACK_NONE;
+        return;
+    case TUNE_BACK_NONE:
+        if (audio_player_now() != AUDIO_NONE) {
+            return;
+        }
+        (void)audio_song_remake(); /* the song's region and transport, the song wiped */
+        song_boot();
+        audio_player(AUDIO_SONG);
+        sid_tune.state = TUNE_BACK_SONG;
+        return;
+    case TUNE_BACK_SONG:
+        if (audio_player_now() != AUDIO_SONG) {
+            return;
+        }
+        if (sid_tune.chips == 2u) {
+            keys_route_set_silent(&keys_router, 0);
+            ui_sound_hush(&ui_sounds, 0);
+        }
+        keys_route_set_tune(&keys_router, 0);
+        keys_route_set_song(&keys_router, 0);
+        song_away = 0;
+        (void)song_io_away(&songs, 0); /* the song read back, by song_io's own passes */
+        sid_tune.state = TUNE_BACK_READ;
+        return;
+    case TUNE_BACK_READ:
+        /* The song views get their transport back once the song is whole again. */
+        if (song_io_busy(&songs)) {
+            return;
+        }
+        (void)ui_tune(0);
+        sid_tune.state = TUNE_OFF;
+        return;
+    default:
+        return;
+    }
+}
+
+/* A wake that ran no pass (play runs at the key scan's frames and the ticks, about 1.1 kHz, three
+ * passes a block): a slice of the tune's 6502 all the same, so it keeps ahead of the audio at
+ * the interrupts' pace (a slice is at most PSID_SLICE_CYCLES, about a third of a block's). No
+ * chip preparation or store work runs in such a wake, so the slice is the wake's only one. */
+static void tune_idle(void) {
+    if (sid_tune.state == TUNE_ON) {
+        (void)psid_ctl_poll(audio_psid());
+    }
+}
+
+/* fm1-emu's tests only (emu-gate tests/psid.rs, psid_budget.rs, ram_audio.rs), TEMPORARY until
+ * Task 11's browser and NOW PLAYING play tunes: requests a test writes into RAM. op 1 plays the
+ * store's .sid file `name`, song `song` (0 the header's start song); 2 stops it (it stays
+ * loaded); 3 ends it for good (the song back from the store). result: 1 accepted, 0 refused; the
+ * main loop clears op once it has taken it. Nothing on the device writes it. */
+typedef struct {
+    volatile uint32_t op;
+    uint32_t song;
+    char name[STORE_NAME_MAX + 1u];
+    int32_t result;
+} psid_test_req;
+psid_test_req psid_test_hook;
+
+static void psid_test(void) {
+    psid_test_req* r = &psid_test_hook;
+    switch (r->op) {
+    case 1: r->result = tune_play(r->name, r->song); break;
+    case 2: tune_stop(); r->result = 1; break;
+    case 3: tune_end(); r->result = 1; break;
+    default: break;
+    }
+    r->op = 0;
+}
+
 /* The end of a pass: MASTER (the pot or MIDI's volume) to the audio path as its output gain,
  * the pass's register writes made visible to the interrupt, then the voices the keys let go
  * in them given back to the song (song_taken). */
@@ -1373,7 +1837,7 @@ static void commit_pass(void) {
     }
     audio_commit();
     uint8_t taken = keys_route_voices_taken(&keys_router);
-    if (taken != song_taken) {
+    if (taken != song_taken && !song_away) {
         song_taken = taken; /* the voices let go (the gate-offs are in), or held at a start */
         (void)song_ctl_take(audio_song(), taken);
     }
@@ -1383,11 +1847,11 @@ static void commit_pass(void) {
  * register writes go to the audio interrupt in one batch. The panel only changes when the
  * key scan finishes a frame (~1.1 ms), so a wake-up from the 10 kHz tick in between does
  * nothing here. */
-static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
+static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     uint32_t frame = input_frame();
     int tick_due = (int32_t)(now - *next_tick) >= 0;
     if (frame == *last_frame && !tick_due) {
-        return;
+        return 0;
     }
     *last_frame = frame;
     input_poll(&front, &instrument);
@@ -1407,7 +1871,13 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
             (void)song_io_program(&songs, (uint32_t)program);
         }
     }
-    song_pass();
+    if (psid_test_hook.op) {
+        psid_test();
+    }
+    tune_pass();
+    if (!song_away) {
+        song_pass();
+    }
     if (tick_due) {
         /* Once a pass, after its live ticks: the keys' chip has had its turn, then the other
          * chip follows the keys' setup (chip B's first reset at boot among it) and the keys
@@ -1431,6 +1901,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     }
     commit_pass();
     input_leds(&front, &instrument, now);
+    return 1;
 }
 
 #if defined(SIDOU_TEST_DEATH_MS)
@@ -1608,7 +2079,9 @@ static void sidou_main(void) {
         if (midi_drain()) {
             commit_pass();
         }
-        play(now, &next_tick, &last_frame);
+        if (!play(now, &next_tick, &last_frame)) {
+            tune_idle();
+        }
         ui_poll(now);
         midi_service(now);
         bootguard_poll(&boot_guard, now);

@@ -351,6 +351,69 @@ pub fn stored_value(flash: &[u8], key: u32) -> Option<Vec<u8>> {
     })
 }
 
+// ---- files into a flash dump before a boot (the store core on the host, writing) ----
+
+unsafe extern "C" fn copy_map(ctx: *mut std::ffi::c_void, off: u32) -> *const u8 {
+    unsafe { ctx.cast::<u8>().add(off as usize) }
+}
+
+unsafe extern "C" fn copy_prog(
+    ctx: *mut std::ffi::c_void,
+    off: u32,
+    data: *const std::ffi::c_void,
+    n: u32,
+) -> i32 {
+    for i in 0..n as usize {
+        unsafe { *ctx.cast::<u8>().add(off as usize + i) &= *data.cast::<u8>().add(i) };
+    }
+    sidou_sys::STORE_OK
+}
+
+unsafe extern "C" fn copy_erase(ctx: *mut std::ffi::c_void, off: u32) -> i32 {
+    for i in 0..sidou_sys::STORE_SECTOR as usize {
+        unsafe { *ctx.cast::<u8>().add(off as usize + i) = 0xff };
+    }
+    sidou_sys::STORE_OK
+}
+
+/// A file of `file_type` (app/store.h STORE_FILE_*) named `name` written into a flash dump's
+/// store by the same C core as the firmware's, as a device holds it before it boots.
+pub fn put_file(flash: &mut [u8], name: &str, file_type: u32, bytes: &[u8]) {
+    use sidou_sys::*;
+    let hooks = store_flash {
+        map: Some(copy_map),
+        prog: Some(copy_prog),
+        erase: Some(copy_erase),
+        ctx: flash.as_mut_ptr().cast(),
+    };
+    let mut st = Box::<store>::default();
+    let name = std::ffi::CString::new(name).unwrap();
+    unsafe {
+        store_init(&mut *st, &hooks, STORE_WINDOW_MAX);
+        store_mount(&mut *st);
+        store_quiet(&mut *st, 1);
+        while store_poll(&mut *st) != 0 {}
+        assert_eq!(
+            store_file_begin(&mut *st, name.as_ptr(), file_type as u8, bytes.len() as u32),
+            STORE_OK
+        );
+        let mut offset = 0;
+        while offset < bytes.len() {
+            offset += store_file_write(
+                &mut *st,
+                bytes.as_ptr().add(offset).cast(),
+                (bytes.len() - offset) as u32,
+            ) as usize;
+            store_poll(&mut *st);
+        }
+        assert_eq!(store_file_end(&mut *st), STORE_OK);
+        while store_file_result(&*st) == STORE_BUSY {
+            store_poll(&mut *st);
+        }
+        assert_eq!(store_file_result(&*st), STORE_OK);
+    }
+}
+
 /// Emulated ms the first boot on a blank flash runs before its settings are stored: the debounce
 /// (app/settings.h, 5 s from the load at the screen's start) and the held programs' wait for
 /// quiet, with room.
@@ -843,6 +906,12 @@ pub const SHADOW_SLICE_WORST: u64 = 42_690;
 /// "Budgets"): psid_ctl_poll's look-ahead slice, the 6502 with the voice shadows and the write
 /// ring (cpu6502_budget.rs fails above it; Task 9 holds the firmware's pass to it).
 pub const PSID_SLICE_WORST: u64 = 40_000;
+/// A .sid tune's worst 128-sample block in the audio interrupt, in instructions a sample over
+/// the chips' own render (psid_budget.rs fails above it): its stamped writes (the ring's pops,
+/// the split renders' steps and calls, sid_advance and sid_write), the mutes and the fades
+/// (docs/plans/2026-10-19-m3-sid-files.md, "Budgets"). The song player's PLAYER_WORST_BLOCK and
+/// this never run together.
+pub const PSID_ISR_WORST: f64 = 120.0;
 /// The digi drums' cost in the audio interrupt (core/player/song_ctl.c song_ctl_block_end: its
 /// trigger and its mix; decision record 0009), instructions a sample while a digi drum plays
 /// without a break (song.rs: a hit every row, each 220 ms long); measured 10.42, then 9.47 with
@@ -860,12 +929,18 @@ pub const SLOTS_SWITCH_WORST: f64 = 964.0;
 /// budget once, and M2a's 2,000 is already spent inside M2c's 22,000, so the plans on top of
 /// it are M2d (6,000), M2e (2,000) and M2f (5,000): 22,000 - 13,000 = 9,000, and the table's
 /// slack makes 10,000. (It was 7,000 until the end-of-M2 review, which counted M2a twice.)
-/// M3's Task 9 lowers it by the 512 bytes M3 takes.
-pub const FREE_RAM_MIN: u64 = 10_000;
+/// Less M3's 512 bytes (docs/plans/2026-10-19-m3-sid-files.md, "Budgets": a tune's state
+/// overlays the song's, and the rest is its own; Task 9).
+pub const FREE_RAM_MIN: u64 = 10_000 - 512;
 /// Each region (the RAM region, POOL) keeps this free: M3's start target in
 /// docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
 /// bytes plus a margin.
 pub const REGION_FREE_MIN: u64 = 5_120;
+// A .sid tune plays with two chips at their worst, the effects at their cap, the ISR and the
+// tap: within the audio target, as a song does (below).
+const _: () = assert!(
+    TWO_CHIPS_PLUS_EFFECTS + TAP_PER_SAMPLE + ISR_OVERHEAD + PSID_ISR_WORST <= AUDIO_TARGET
+);
 // A song plays with two chips at their worst, the effects at their cap, the ISR, the tap, the
 // player and a digi drum, while a computer records over USB: within the audio target.
 const _: () = assert!(
@@ -1470,6 +1545,239 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
     out
 }
 
+/// A .sid tune as the firmware played it (platform/fm1/main.c's tune, audio.c's AUDIO_PSID),
+/// for render_host_psid: the file, the song, and the blocks the device's events reached the
+/// interrupt at (each a block index from the first the interrupt rendered).
+pub struct PsidPlay<'a> {
+    pub file: &'a [u8],
+    pub song: u32,
+    /// The first block on AUDIO_PSID: chip A is no longer rendered as the instrument's.
+    pub psid_block: usize,
+    /// The blocks each chip of the tune was swapped for its fresh one (chip B only for 2SID).
+    pub fresh_block: [Option<usize>; 2],
+    /// The tune's first rendered block (psid_ctl's audio start).
+    pub start_block: usize,
+    /// The keys' move to chip B (a 1SID tune; app/keys_route.h) or a 2SID tune's chip B taken
+    /// (AUDIO_B_TUNE): the block chip B goes in use, and the block whose drain applies the
+    /// keys' registers on it (live_rewrite; a 1SID tune).
+    pub b_use_block: Option<usize>,
+    pub b_rewrite_block: Option<usize>,
+}
+
+/// The firmware playing a .sid tune, rendered by the host build: the instrument and chip B at
+/// boot as render_host_song has them, chip A the instrument's until the interrupt takes the
+/// tune (not rendered from then: AUDIO_NONE renders it as the song's idle transport does, the
+/// same samples), each of the tune's chips made fresh with the tune's setup and clock (an
+/// unknown model plays the keys' setup, the envelopes AUTHENTIC: main.c tune_setup) at the
+/// device's block, and from the tune's first block psid_ctl's render (sidou_tests::psid's
+/// Player, main-loop passes until it is ahead before each block), then the device's mix,
+/// tail gate, slots, thump and MASTER. Interleaved L, R.
+pub fn render_host_psid(frames: usize, p: &PsidPlay) -> Vec<i16> {
+    use sidou_sys::*;
+    use sidou_tests::psid::{header, Player};
+    let h = Box::new(header(p.file));
+    let two = h.sid2 != 0;
+    let clock = if h.clock == 2 {
+        PSID_CLOCK_NTSC
+    } else {
+        PSID_CLOCK_PAL
+    };
+    let mut chip = Box::<sid>::default();
+    let mut spare = Box::<sid>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
+    let mut chip_b = Box::<sid>::default();
+    let mut dacs_b = Box::<[sid_dac; 2]>::default();
+    let mut pool = Box::<sid_slot_pool>::default();
+    let mut slots = Box::<sid_slots>::default();
+    let mut fx = Box::<fx_live>::default();
+    let mut target = Box::new(fx_live_target {
+        sid: live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: SAMPLE_RATE,
+            dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
+            ..Default::default()
+        },
+        fx: &mut *fx,
+    });
+    let mut target_b = Box::new(live_sid_target {
+        chip: &mut *chip_b,
+        clock_hz: SID_CLOCK_PAL,
+        sample_rate: SAMPLE_RATE,
+        dacs: dacs_b.as_mut_ptr(),
+        ..Default::default()
+    });
+    let tb: *mut live_sid_target = &mut *target_b;
+    // The tune's chips, made fresh as the device's reset makes them: the keys' setup for an
+    // unknown model (the 6581 R4AR at character 0 at boot), a named one reSIDfp's profile of it.
+    let mut fresh = Box::new([sid::default(), sid::default()]);
+    let mut fresh_dacs = Box::<[[sid_dac; 2]; 2]>::default();
+    for (k, model) in [h.model1, h.model2].into_iter().enumerate() {
+        let profile = if model == 2 {
+            SID_CHIP_8580_R5
+        } else {
+            SID_CHIP_6581_R4AR
+        };
+        let mut t = Box::new(live_sid_target {
+            chip: &mut fresh[k],
+            clock_hz: clock,
+            sample_rate: SAMPLE_RATE,
+            dacs: fresh_dacs[k].as_mut_ptr(),
+            ..Default::default()
+        });
+        let tp: *mut live_sid_target = &mut *t;
+        let sink =
+            |reg: u32, value: u32| unsafe { live_sid_sink(tp.cast(), reg as u8, value as u8) };
+        sink(LIVE_REG_CHAR_FIRST, profile);
+        for f in 1..LIVE_CHAR_FIELDS {
+            sink(LIVE_REG_CHAR_FIRST + f, 0);
+        }
+        sink(
+            LIVE_REG_RESET,
+            if model == 2 {
+                SID_MODEL_8580
+            } else {
+                SID_MODEL_6581
+            },
+        );
+        sink(LIVE_REG_GATE_RESET, 0);
+    }
+    let mut player = Player::with_chips(p.file, h, fresh);
+    assert!(player.play(p.song), "the host's psid_ctl_play");
+    let mut mono_b = vec![0i16; HALF_FRAMES];
+    let mut over = vec![0i16; HALF_FRAMES];
+    let (mut b_on, mut b_want) = (false, false);
+    let mut l = Box::<live>::default();
+    let mut out = vec![0i16; 2 * frames];
+    let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
+    let mut thump = thump_out::default();
+    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
+    // hold the samples asked for.
+    unsafe {
+        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
+        fx_live_init(&mut *fx, &mut *slots);
+        let t: *mut fx_live_target = &mut *target;
+        live_init(&mut *l, Some(fx_live_sid_sink), t.cast(), SID_MODEL_6581);
+        let sid_target: *mut live_sid_target = &mut (*t).sid;
+        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
+        live_set_master(&mut *l, POT);
+        let sink_b = |reg: u32, value: u32| live_sid_sink(tb.cast(), reg as u8, value as u8);
+        sink_b(LIVE_REG_CHAR_FIRST, SID_CHIP_6581_R4AR);
+        for f in 1..LIVE_CHAR_FIELDS {
+            sink_b(LIVE_REG_CHAR_FIRST + f, 0);
+        }
+        sink_b(LIVE_REG_RESET, SID_MODEL_6581);
+        sink_b(LIVE_REG_GATE_RESET, 1);
+        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
+            let n = half.len() / 2;
+            if p.b_rewrite_block == Some(i) {
+                let (s0, c0) = (l.sink, l.sink_ctx);
+                l.sink = Some(live_sid_sink);
+                l.sink_ctx = tb.cast();
+                live_rewrite(&mut *l);
+                l.sink = s0;
+                l.sink_ctx = c0;
+            }
+            if p.b_use_block == Some(i) {
+                b_want = true;
+            }
+            let fresh_a = p.fresh_block[0].is_some_and(|f| i >= f);
+            let fresh_b = two && p.fresh_block[1].is_some_and(|f| i >= f);
+            let tune_on = i >= p.start_block;
+            let (mut sa, mut sb) = ([0i16; HALF_FRAMES], [0i16; HALF_FRAMES]);
+            if tune_on {
+                // main-loop passes until the 6502 is ahead (the device's many passes a block)
+                for _ in 0..400 {
+                    if !player.pass() {
+                        break;
+                    }
+                }
+                if i == p.start_block {
+                    assert!(player.ctl.started != 0, "the host's tune has not started");
+                }
+                let (a, b, _) = player.block();
+                sa = a;
+                sb = b;
+            } else {
+                // before its start the tune's 6502 runs too (its init's first period): the
+                // samples do not depend on when, only on the cycles
+                if i + 1 == p.start_block {
+                    for _ in 0..4000 {
+                        player.pass();
+                        if player.ctl.started != 0 {
+                            break;
+                        }
+                    }
+                }
+            }
+            let a: *mut sid = if fresh_a {
+                &mut player.chips[0]
+            } else {
+                &mut *chip
+            };
+            let b: *mut sid = if fresh_b {
+                &mut player.chips[1]
+            } else {
+                &mut *chip_b
+            };
+            if i < p.psid_block {
+                sid_render(a, mono.as_mut_ptr(), n as u32);
+            } else {
+                mono[..n].copy_from_slice(&sa[..n]);
+            }
+            let tails = b_on && (*b).env.iter().any(|e| e.counter != 0);
+            let b_in = b_want || tails;
+            let b_rendered = b_in || b_on;
+            if b_rendered {
+                if two && i >= p.psid_block {
+                    mono_b[..n].copy_from_slice(&sb[..n]);
+                } else {
+                    sid_render(b, mono_b.as_mut_ptr(), n as u32);
+                }
+                let fade = if b_in == b_on {
+                    CHIP_MIX_FULL
+                } else if b_in {
+                    CHIP_MIX_IN
+                } else {
+                    CHIP_MIX_OUT
+                };
+                if chip_mix(
+                    mono.as_mut_ptr(),
+                    mono_b.as_ptr(),
+                    over.as_mut_ptr(),
+                    n as u32,
+                    fade,
+                ) == 0
+                {
+                    over.fill(0);
+                }
+                b_on = b_in;
+            }
+            tail_stage(&mut gate, &*a, b_rendered.then_some(&*b), &mut mono, n);
+            sid_slots_process_wide(
+                &mut *slots,
+                mono.as_ptr(),
+                if b_rendered {
+                    over.as_ptr()
+                } else {
+                    std::ptr::null()
+                },
+                half.as_mut_ptr(),
+                n as u32,
+            );
+            if !b_rendered {
+                thump_out_drop(b);
+            }
+            thump_stage(&mut thump, &mut *a, b_rendered.then_some(&mut *b), half, n);
+            master_stage(half, POT);
+        }
+    }
+    assert_eq!(player.late(), 0, "the host's tune played a write late");
+    out
+}
+
 /// The largest difference between two interleaved renders, in LSB.
 pub fn max_diff(a: &[i16], b: &[i16]) -> i32 {
     a.iter()
@@ -1516,6 +1824,42 @@ pub fn power_above(x: &[f32], hz: f64) -> f64 {
 /// The largest absolute sample.
 pub fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0.0, |m, &s| m.max(s.abs()))
+}
+
+/// A tune whose init puts every voice of its chips (chip A, and B at `$D420` for a 2SID tune) on
+/// `control` at frequency `$FFFF` (the shadow's dearest, as `shadow_slices`), then for ever
+/// makes an access every 4 cycles with `op` on register `reg` of each chip in turn (`STA`
+/// writes the same `$FF`, so the voices stay as they are; voice 3's registers latch OSC3), or
+/// with `op` empty spins in a `JMP` loop.
+pub fn worst_tune(two: bool, control: u8, op: &str, reg: u32) -> Vec<u8> {
+    use sidou_tests::psid_fixtures::{Psid, INIT};
+    let mut init = String::new();
+    for chip in 0..if two { 2 } else { 1 } {
+        for v in 0..3 {
+            let r = 0xD400 + 0x20 * chip + 7 * v;
+            for (off, value) in [
+                (0, 0xff),
+                (1, 0xff),
+                (2, 0x00),
+                (3, 0x08),
+                (5, 0x00),
+                (6, 0xf0),
+            ] {
+                init += &format!("lda #${value:02x}\nsta ${:04x}\n", r + off);
+            }
+            init += &format!("lda #${control:02x}\nsta ${:04x}\n", r + 4);
+        }
+    }
+    init += "lda #$ff\nloop:\n";
+    if !op.is_empty() {
+        for k in 0..240 {
+            let chip = if two && k % 2 == 1 { 0x20 } else { 0 };
+            init += &format!("{op} ${:04x}\n", 0xD400 + chip + reg);
+        }
+    }
+    init += "jmp loop\n";
+    let psid = Psid::new(&[(INIT, &init), (0x8000, "rts\n")]);
+    if two { psid.sid2(0x42) } else { psid }.bytes()
 }
 
 // ---- benchmark images (bench/fm1): the effects gates ----

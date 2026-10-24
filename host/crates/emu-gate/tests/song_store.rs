@@ -5,7 +5,7 @@
 
 mod common;
 
-use std::ffi::{c_void, CString};
+use std::ffi::CString;
 
 use common::*;
 use fm1_core::Bus;
@@ -469,64 +469,6 @@ fn saving_during_playback_forces_progress_even_with_a_settings_save() {
     check_passes(&m, "song and settings saves during playback");
 }
 
-unsafe extern "C" fn copy_map(ctx: *mut c_void, off: u32) -> *const u8 {
-    unsafe { ctx.cast::<u8>().add(off as usize) }
-}
-
-unsafe extern "C" fn copy_prog(ctx: *mut c_void, off: u32, data: *const c_void, n: u32) -> i32 {
-    for i in 0..n as usize {
-        unsafe { *ctx.cast::<u8>().add(off as usize + i) &= *data.cast::<u8>().add(i) };
-    }
-    STORE_OK
-}
-
-unsafe extern "C" fn copy_erase(ctx: *mut c_void, off: u32) -> i32 {
-    for i in 0..STORE_SECTOR as usize {
-        unsafe { *ctx.cast::<u8>().add(off as usize + i) = 0xff };
-    }
-    STORE_OK
-}
-
-fn put_file(flash: &mut [u8], name: &str, bytes: &[u8]) {
-    let hooks = store_flash {
-        map: Some(copy_map),
-        prog: Some(copy_prog),
-        erase: Some(copy_erase),
-        ctx: flash.as_mut_ptr().cast(),
-    };
-    let mut st = Box::<store>::default();
-    let name = CString::new(name).unwrap();
-    unsafe {
-        store_init(&mut *st, &hooks, STORE_WINDOW_MAX);
-        store_mount(&mut *st);
-        store_quiet(&mut *st, 1);
-        while store_poll(&mut *st) != 0 {}
-        assert_eq!(
-            store_file_begin(
-                &mut *st,
-                name.as_ptr(),
-                STORE_FILE_SONG as u8,
-                bytes.len() as u32
-            ),
-            STORE_OK
-        );
-        let mut offset = 0;
-        while offset < bytes.len() {
-            offset += store_file_write(
-                &mut *st,
-                bytes.as_ptr().add(offset).cast(),
-                (bytes.len() - offset) as u32,
-            ) as usize;
-            store_poll(&mut *st);
-        }
-        assert_eq!(store_file_end(&mut *st), STORE_OK);
-        while store_file_result(&*st) == STORE_BUSY {
-            store_poll(&mut *st);
-        }
-        assert_eq!(store_file_result(&*st), STORE_OK);
-    }
-}
-
 #[test]
 fn refused_corrupt_and_oversized_files_restore_the_previous_saved_song() {
     let Some(fw) = fixture() else { return };
@@ -537,7 +479,12 @@ fn refused_corrupt_and_oversized_files_restore_the_previous_saved_song() {
     let mut flash = m.soc.flash.mem.clone();
     let plain = song(&mut m, &fw).write(false);
     // Truncation after valid headers forces failure after the reader has overwritten RAM.
-    put_file(&mut flash, "BROKEN", &plain[..plain.len() - 17]);
+    put_file(
+        &mut flash,
+        "BROKEN",
+        STORE_FILE_SONG,
+        &plain[..plain.len() - 17],
+    );
     let mut spec = SngSpec::new();
     spec.orders[0][0].0 = (0..120).collect();
     spec.patterns = (0..120)
@@ -557,7 +504,7 @@ fn refused_corrupt_and_oversized_files_restore_the_previous_saved_song() {
         .read(&large, SONG_MULTISPEED_MAX as u8)
         .unwrap_err();
     assert!(refusal.msg.contains("TOO BIG"), "{}", refusal.msg);
-    put_file(&mut flash, "TOO BIG", &large);
+    put_file(&mut flash, "TOO BIG", STORE_FILE_SONG, &large);
     let mut bad_setup = Song::device();
     bad_setup
         .read(&expected, SONG_MULTISPEED_MAX as u8)
@@ -570,7 +517,12 @@ fn refused_corrupt_and_oversized_files_restore_the_previous_saved_song() {
         unsafe { song_ext_set_chip(bad_setup.ptr_mut(), sidou_tests::song::TAG_CHPA, &chip) },
         0
     );
-    put_file(&mut flash, "BAD SETUP", &bad_setup.write(true));
+    put_file(
+        &mut flash,
+        "BAD SETUP",
+        STORE_FILE_SONG,
+        &bad_setup.write(true),
+    );
     let mut m = boot(&fw, Some(&flash));
     for (file, reason) in [
         ("BROKEN", "SNG:"),

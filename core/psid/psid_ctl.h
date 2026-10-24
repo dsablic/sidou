@@ -25,8 +25,9 @@
  * clocks the voices the rest of the way into the next sample and the write goes in with
  * sid_write (sid.h; decision record 0005's split render, inside a sample). A chip's block is at
  * most PSID_SPLITS renders; the writes past that are applied in order at the block's end, and
- * counted late, as is a write whose cycle the chip has passed already (the 6502 fell behind):
- * the audio never waits for the 6502. The render loop is the chip's own, so the samples are
+ * counted late, as is a write whose cycle the chip has passed already (the 6502 fell behind); a
+ * block looks at no more than PSID_BLOCK_ENTRIES entries (the rest wait for the next): the audio
+ * never waits for the 6502, and its worst block is bounded however fast a tune writes. The render loop is the chip's own, so the samples are
  * the ones a render clocked write by write at the stamps gives, whenever no write was late.
  *
  * The audio starts at the first block after the 6502 has run one period of init (or init has
@@ -90,9 +91,15 @@ extern "C" {
  * cycle apart, but the instruction takes 6), with one instruction's overshoot (2 more). */
 #define PSID_SLICE_ROOM (PSID_SLICE_WORK / PSID_WORK_ACCESS + 1u + PSID_SUB_CYCLES / 3u + 2u)
 /* A chip's renders a block at most (writes that would split it further go at the block's end,
- * late). Set from the device's split cost by Task 9 (psid_budget.rs) so that the worst block
- * holds PSID_ISR_WORST. */
-#define PSID_SPLITS 32u
+ * late), and the ring entries a block looks at: PSID_BLOCK_ENTRIES from a 1SID tune's cursor, a
+ * half of them from each chip's of a 2SID tune (its own entries and the other chip's); the rest
+ * wait for the next block (late, and the ring fills, so the 6502 waits). Set by Task 9 from the
+ * device's costs (emu-gate psid_budget.rs: a write about 95 instructions with its pop and
+ * sid_write, an entry skipped about 10, a render part about 95 with its sid_advance) so that the
+ * worst block, a write every 4 cycles (about 700 a block), holds PSID_ISR_WORST: the corpus'
+ * tunes need at most 15 renders and 18 entries a block, so they lose nothing. */
+#define PSID_SPLITS 16u
+#define PSID_BLOCK_ENTRIES 100u
 
 /* A ring entry's 16 bits: chip << 13 | register << 8 | value (register 0-31). */
 #define PSID_RING_ENTRY(chip, reg, value) \

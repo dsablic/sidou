@@ -1033,6 +1033,7 @@ fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
 static gt2_song song;
 static song_ctl ctl;
 static unsigned toasts;
+static uint8_t song_away;
 static song_ctl* audio_song(void) {{ return &ctl; }}
 static void ui_toast(const char* text, uint32_t ms) {{
     assert(strcmp(text, "SAVING") == 0 && ms == 2000u);
@@ -1183,6 +1184,17 @@ int main(void) {{
     assert(song_char_base.profile == 2 && kr.song_want.profile == 2 && kr.song_user == 0);
     assert(memcmp(song_char_base.expert, edit.expert, sizeof edit.expert) == 0);
     assert(memcmp(kr.song_want.expert, edit.expert, sizeof edit.expert) == 0);
+
+    /* A .sid tune has the song's memory (M3): the edit goes straight to chip A's setup, the
+     * song's base and the frozen song untouched. */
+    song_away = 1;
+    song.frozen = 1;
+    saved_base = song_char_base;
+    edit = kr.song_want;
+    edit.profile = 3;
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_PROFILE) == 1);
+    assert(kr.song_want.profile == 3 && toasts == 4);
+    assert(memcmp(&song_char_base, &saved_base, sizeof saved_base) == 0);
     return 0;
 }}
 "#,
@@ -1222,4 +1234,95 @@ int main(void) {{
         "{}",
         String::from_utf8_lossy(&run.stderr)
     );
+}
+
+/// A .sid tune (M3 Task 9): KEYS A acts as AUTO (no voice can be taken from a tune), so the
+/// keys go to chip B, take no voice of chip A, and the tune may start once they are there.
+#[test]
+fn under_a_tune_keys_a_acts_as_auto() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    k.live.keys_mode = LIVE_KEYS_A as u8;
+    k.song(true);
+    unsafe { keys_route_set_tune(&mut *k.kr, 1) };
+    assert_eq!(
+        unsafe { keys_route_ready_for_song(&*k.kr) },
+        0,
+        "the keys still on A"
+    );
+    k.ticks(2);
+    assert_eq!(k.live.keys_chip, 1, "the keys moved to chip B");
+    assert_eq!(unsafe { keys_route_ready_for_song(&*k.kr) }, 1);
+    unsafe { live_note_on(&mut *k.live, 60, 100) };
+    k.tick();
+    assert_eq!(
+        unsafe { keys_route_voices_taken(&*k.kr) },
+        0,
+        "no voice of the tune's"
+    );
+    assert_eq!(gates(k.chip(1))[0], 1, "the key sounds on B");
+    assert_eq!(gates(k.chip(0)), [0, 0, 0]);
+    unsafe { live_note_off(&mut *k.live, 60) };
+    unsafe { keys_route_set_tune(&mut *k.kr, 0) };
+    k.song(false);
+    k.ticks(30);
+    assert_eq!(k.live.keys_chip, 0, "back on A after the tune");
+    assert_eq!(k.chips.lost_resets, 0);
+}
+
+/// A 2SID tune: the keys are silent, both chips are made fresh with the tune's setups (one at a
+/// time: two requests in a tick would take the shared spare from each other for ever), and after
+/// it the keys' chip has the keys' setup and registers back.
+#[test]
+fn a_2sid_tune_silences_the_keys_and_makes_both_chips_fresh() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    let mut want = chip_setup::default();
+    unsafe { chip_setup_of(&*k.live, &mut want) };
+    want.gate_reset = 0;
+    let was = [k.chips.active[0], k.chips.active[1]];
+    k.song(true);
+    unsafe {
+        keys_route_set_tune(&mut *k.kr, 1);
+        keys_route_song_wants(&mut *k.kr, &want);
+        k.kr.tune_b_want = want;
+        keys_route_set_silent(&mut *k.kr, 1);
+        assert_eq!(
+            keys_route_ready_for_song(&*k.kr),
+            1,
+            "silent: ready at once"
+        );
+        keys_route_fresh(&mut *k.kr, 0);
+        keys_route_fresh(&mut *k.kr, 1);
+        live_note_on(&mut *k.live, 60, 100);
+    }
+    let mut n = 0;
+    while k.chips.active[0] == was[0]
+        || k.chips.active[1] == was[1]
+        || unsafe {
+            chip_ctl_has(&k.kr.ctl[0], &want) == 0 || chip_ctl_has(&k.kr.ctl[1], &want) == 0
+        }
+    {
+        k.tick();
+        n += 1;
+        assert!(
+            n < 200,
+            "the chips were not made fresh: {:?}",
+            k.chips.active
+        );
+    }
+    assert_eq!(gates(k.chip(0)), [0, 0, 0], "the keys are silent on A");
+    assert_eq!(gates(k.chip(1)), [0, 0, 0], "and on B");
+    assert_eq!(k.live.keys_chip, 0, "they stay where they were");
+    unsafe {
+        live_note_off(&mut *k.live, 60);
+        keys_route_set_silent(&mut *k.kr, 0);
+        keys_route_set_tune(&mut *k.kr, 0);
+    }
+    k.song(false);
+    k.ticks(30);
+    unsafe { live_note_on(&mut *k.live, 64, 100) };
+    k.tick();
+    assert!(gates(k.chip(0)).contains(&1), "the keys sound on A again");
+    assert_eq!(k.chips.lost_resets, 0);
 }

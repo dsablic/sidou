@@ -77,6 +77,9 @@ typedef struct {
     uint8_t data[SONG_IO_BUFFER_BYTES];
     /* A main-loop workspace lease: internal loading advances, new file actions refuse. */
     uint8_t external;
+    /* The model's memory is a .sid tune's (song_io_away): every action refused, nothing read.
+     * 1, or 2 for NEW's song, which comes back as NEW's. */
+    uint8_t away;
 } song_io;
 
 void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* workspace,
@@ -109,6 +112,14 @@ int song_io_save(song_io* io, const char* name, uint32_t now_ms);
 int song_io_delete(song_io* io, const char* name, int confirmed);
 /* 1 if About's music starts; 0 if it must stay silent. Closing always restores stopped. */
 int song_io_about(song_io* io, int opening);
+/* A .sid tune takes the song's memory (on 1; M3, platform/fm1/main.c): 1 accepted, 0 while
+ * anything is in hand (ABOUT, a load, a save, a lease, a freeze). From then on every action is
+ * refused ("SID PLAYING"), the song counts as unchanged (its edits are lost with the model) and
+ * song_io_poll does nothing. Off (the tune stopped for good, the song's model and transport made
+ * again): the song is read back, its file by name or the built-in it was (as ABOUT's close; the
+ * song the boot reads is the built-in), or NEW's empty song if it was that, never saved; the
+ * loaded hook runs as for any read. */
+int song_io_away(song_io* io, int on);
 /* From the loaded hook: 1 when this read is About's tune or the song it stood in for coming
  * back from its file (About's close, or a failed load's rollback), so the song views keep their
  * places; 0 for a song that replaces the player's (a load, NEW, a fallback to the built-in). */

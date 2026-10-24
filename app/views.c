@@ -580,6 +580,10 @@ static const view* shows(const views* v);
  * song back), the song views would edit ABOUT's tune and its close would lose the edits: they
  * do not open, and a toast says why. 1: refused. */
 static int song_refused(views* v) {
+    if (v->tune) {
+        screen_toast(&v->s, "SID PLAYING: STOP TO EDIT", SCREEN_TOAST_MS);
+        return 1;
+    }
     if (!v->song.io || !v->song.io->about) {
         return 0;
     }
@@ -1089,6 +1093,10 @@ const view views_song_menu_view = {"SONG", song_menu_enter, song_menu_exit, NULL
 static void song_open(void* ctx, int32_t steps) {
     (void)steps;
     views* v = ctx;
+    if (v->tune) {
+        (void)song_refused(v);
+        return;
+    }
     v->songs.page = SONG_MENU_ROOT;
     v->songs.cursor = 0;
     v->songs.direct = 0;
@@ -1099,6 +1107,10 @@ static void song_open(void* ctx, int32_t steps) {
 static void about_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
+    if (v->tune) {
+        (void)song_refused(v);
+        return;
+    }
     about_init(&v->about, v->version);
     v->about.io = v->song.io;
     v->about.silent = (uint8_t)(v->song.io && song_io_changed(v->song.io));
@@ -1810,6 +1822,10 @@ void views_set_song(views* v, const song_transport* t) {
     song_view_set_transport(&v->song, t);
 }
 
+void views_tune(views* v, int on) {
+    v->tune = (uint8_t)(on != 0);
+}
+
 static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
                       uint32_t* max, uint32_t* accent);
 
@@ -1904,6 +1920,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->tour = 0;
     v->toast_held = 0;
     v->song_last = NULL;
+    v->tune = 0;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;

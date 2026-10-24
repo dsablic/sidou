@@ -233,6 +233,27 @@ POOL starts with the song's content region: `__song_region` to `__song_region_en
 pool and the rest follow it. M3 overlays this same region with the C64's 64 KiB
 address space: a song and a `.sid` never play together.
 
+**The overlays as built (M3 Task 9;
+[the plan's Task 9 status](plans/2026-10-19-m3-sid-files.md#task-9-sid-on-the-device-the-audio-path-the-overlays-the-mode-switch-the-main-loop-pass)):**
+
+| A `.sid` tune's | Over the song's | Where | Bytes |
+|---|---|---|---|
+| the 6502's 64 KiB | the content region (`__song_region`) | POOL | 65,536 |
+| the write ring and the interrupt's state (`psid_ctl`), the environment and the two voice shadows (`psid_work`), the header | the song transport and its two shapes (`.song_noinit`, `player_isr` in `platform/fm1/audio.c`) | RAM (`.song_ram`) | 8,096 of 8,456 |
+
+The song's work space in POOL (`.pool.song_noinit`) is not overlaid: the tune's main-loop state
+fits beside its ring in the RAM region's union, so a tune takes no RAM of its own beyond the
+mode and the main loop's control (176 bytes of `.bss`, the emulator's test hook among them).
+`audio_player` says which plays (`AUDIO_SONG`, `AUDIO_PSID`, or `AUDIO_NONE` between them, the
+interrupt touching neither union member); the interrupt takes a change at a block's start, and
+the main loop builds the incoming state only once the interrupt is on `AUDIO_NONE`. After a
+tune the song's region is wiped (`gt2_song_init_wiped`, not clearsong: about 100,000
+instructions less, within a pass) and `song_io` reads the song back from the store.
+RAMTEXT for M3: psid_ctl's interrupt half (`psid_ctl_block` 522 bytes, `psid_isr_chip` 382),
+`sid_advance` (24), `audio.c`'s player paths (`play_a` 162, `render_part` 34 out of line now,
+`audio_fill` +142) and the swap hook with its register rewrite (`psid_swapped` 270, `-Oz`):
+1,408 bytes more `.ram_text` in all (50,800), of M3's 1,536.
+
 M2c Task 6 moved the RAM/POOL boundary 8 KiB down (from 0x01C20000) so POOL holds
 the song's 64 KiB content region beside chip B. The original standalone M2c floor
 was 22,000 bytes free across RAM and POOL (M2a's 2,000 already spent in it). With M2d, M2e and

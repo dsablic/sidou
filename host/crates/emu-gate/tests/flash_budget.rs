@@ -13,17 +13,16 @@
 //! | M2d | 440,000 |
 //! | M2e | 452,000 |
 //! | M2f | 512,000 |
-//! | M3 | 534,000 (M3_START + M3's 28,000; becomes `IMAGE_CEILING` when Task 9 merges device code) |
+//! | M3 | 534,000 (M3_START + M3's 28,000; `IMAGE_CEILING` since Task 9 merged device code) |
 //!
-//! M2 is closed (the end-of-M2 review is done) and M3 has not started, so `IMAGE_CEILING` is
-//! M3's start target: 506,000 bytes, the image won back at M2's close
+//! M3's start target was 506,000 bytes, the image won back at M2's close
 //! (docs/plans/2026-10-19-m3-sid-files.md, "Before M3"), which M3's own 28,000 then takes to
 //! at most 534,000 and leaves at least 47,564 bytes of the slot for M4 and M5. M3's stage is
 //! `("M3", M3_START + 28,000)` after the M2 schedule: the plan writes it as `start + 28,000`
 //! with `start` the image measured at M3's start (at most 506,000), but the image moves under
 //! the other 0.4.0 branches and the space reclaim, so the stage's start is the documented
-//! `M3_START`, a fixed number. `IMAGE_CEILING` moves to M3's stage when Task 9 merges device
-//! code (the image then holds the 6502); until then it is M3's start target.
+//! `M3_START`, a fixed number. Since M3's Task 9 (the image holds the 6502, the environment,
+//! the voice shadow and the player) `IMAGE_CEILING` is M3's stage.
 //! The M2 schedule above is history
 //! (the plans landed in parallel, so each ceiling was the latest stage merged, not the next
 //! by sub-milestone order): it only rises, ends at or below 512,000 bytes and leaves at least
@@ -43,13 +42,13 @@ const SCHEDULE: [(&str, usize); 6] = [
     ("M2f", 512_000),
 ];
 
-/// What the image must hold now that M2 is closed and M3 not started: M3's start target.
+/// M3's start target: the image M3's budget counts from.
 const M3_START: usize = 506_000;
 /// M3's own flash budget (its plan's ceiling), and what M4 and M5 keep of the slot after it.
 const M3_BUDGET: usize = 28_000;
 const M4_M5_RESERVE: usize = 47_564;
-const PLAN: &str = "M3's start";
-const IMAGE_CEILING: usize = M3_START;
+const PLAN: &str = "M3";
+const IMAGE_CEILING: usize = M3_STAGE.1;
 /// M3's stage of the schedule: the image's ceiling once M3 is in.
 const M3_STAGE: (&str, usize) = ("M3", M3_START + M3_BUDGET);
 /// What the plan holds the slot to keep for M4 and M5 after M3's ceiling (M4_M5_RESERVE above
@@ -87,7 +86,7 @@ fn the_schedule_only_rises_and_leaves_m3_its_share() {
 }
 
 #[test]
-fn the_image_fits_the_ceiling_of_m3s_start() {
+fn the_image_fits_the_ceiling_of_m3() {
     let Some(build) = build_dir() else {
         common::skip_message("the flash budget");
         return;

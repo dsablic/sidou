@@ -106,8 +106,16 @@ SECTIONS
         *(.text.song_set_gate_reset .text.song_apply .text.song_voices .text.song_handover)
         *(.text.song_push_events)
         *(.text.song_lock_row .text.song_lock_apply)
-        *(.text.render_a .text.render_part)         /* audio.c: chip A split at the call */
+        *(.text.render_a .text.render_part .text.play_a) /* audio.c: chip A split at the call */
         *(.text.gt2_edit_apply)
+        /* A .sid tune (M3 Task 9): psid_ctl's interrupt half (core/psid/psid_ctl_isr.c: the
+         * block, each chip's placed writes, the fades and the stop's clear, whichever the
+         * compiler keeps out of line), which calls sid_advance and sid_write (above) and the
+         * render pointer; the swap hook that gives a tune's chip its registers back (audio.c,
+         * through reg_ring_chips' swap hook). Its main half, the 6502, the environment and the
+         * voice shadows run from flash. */
+        *(.text.psid_ctl_block .text.psid_isr_chip .text.psid_isr_ramp .text.psid_isr_clear)
+        *(.text.psid_swapped .text.psid_rewrite)
         . = ALIGN(16);
         _rt_end = .;
     } > RAMTEXT AT > XIP
@@ -164,7 +172,8 @@ SECTIONS
         . = ALIGN(4);
         _bss_end = .;
     } > RAM
-    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c). */
+    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c), or a .sid
+     * tune's over it (its write ring, environment, voice shadows and header: M3 Task 9). */
     .song_ram (NOLOAD) : ALIGN(4) { *(.song_noinit) . = ALIGN(4); } > RAM
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
     _guard0 = 0x01C77F00; _ustack_lo = 0x01C78000; _ustack_top = 0x01C7A000;

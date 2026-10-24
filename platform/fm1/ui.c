@@ -90,8 +90,29 @@ void ui_set_panel(panel* p) {
     views_set_panel(&ui, p);
 }
 
+/* The song views' transport, as main.c bound it (ui_tune takes it away and gives it back). */
+static const song_transport* song_bound;
+
 void ui_set_song(const song_transport* t) {
+    song_bound = t;
     views_set_song(&ui, t);
+}
+
+int ui_tune(int on) {
+    if (!on) {
+        views_tune(&ui, 0);
+        views_set_song(&ui, song_bound);
+        return 1;
+    }
+    if (ui.pages.pending) {
+        return 0;
+    }
+    views_set_song(&ui, NULL);
+    if (ui.song.t) {
+        return 0; /* an edit in flight keeps it: views_set_song did nothing */
+    }
+    views_tune(&ui, 1);
+    return 1;
 }
 
 void ui_song_loaded(int back) {

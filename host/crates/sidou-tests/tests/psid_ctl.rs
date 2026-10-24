@@ -513,22 +513,22 @@ fn endless_writer(gap: u32) -> Vec<u8> {
 
 #[test]
 fn the_ring_carries_writes_across_its_wrap() {
-    // A write every 120 cycles for 3 s (24 a block, within the split budget): the ring wraps 24
+    // A write every 240 cycles for 3 s (12 a block, within the split budget): the ring wraps 12
     // times, and its indexes cross 2^32.
-    let file = endless_writer(120);
+    let file = endless_writer(240);
     let mut p = Player::new(&file);
     assert!(p.play(1));
     let x = 0u32.wrapping_sub(3000);
     p.ring_from(x);
     let (a, b) = p.run(blocks_for(3), PASSES);
     assert!(
-        p.ctl.tail < x && p.ctl.tail > 20_000,
+        p.ctl.tail < x && p.ctl.tail > 9_000,
         "the indexes wrapped: {}",
         p.ctl.tail
     );
     assert_eq!(p.ctl.dropped, 0);
     assert_eq!(p.late(), 0);
-    assert!(p.log.len() > 24_000);
+    assert!(p.log.len() > 12_000);
     assert_same_writes(
         &p.log,
         &stream(&file, 1, p.log.last().unwrap().cycle + 1),
@@ -540,7 +540,8 @@ fn the_ring_carries_writes_across_its_wrap() {
 #[test]
 fn a_write_every_four_cycles_never_overflows_the_ring() {
     // The ring's worst: a write every 4 cycles (STA abs, unrolled): the 6502 waits for room,
-    // nothing is dropped, and every block spends its split budget.
+    // nothing is dropped, every block spends its split budget and takes PSID_BLOCK_ENTRIES
+    // entries (the rest late, the next block's).
     let mut init = String::from("lda #$11\nsta $d404\nloop:\n");
     for _ in 0..200 {
         init += "sta $d400\n";
@@ -549,9 +550,15 @@ fn a_write_every_four_cycles_never_overflows_the_ring() {
     let file = Psid::new(&[(INIT, &init), (LATE_PLAY, "rts\n")]).bytes();
     let mut p = Player::new(&file);
     assert!(p.play(1));
-    p.run(blocks_for(1), PASSES);
+    let blocks = blocks_for(1);
+    p.run(blocks, PASSES);
     assert_eq!(p.ctl.dropped, 0);
-    assert!(p.ctl.writes > 100_000, "{}", p.ctl.writes);
+    let taken = p.ctl.tail;
+    assert!(
+        taken <= blocks as u32 * PSID_BLOCK_ENTRIES
+            && taken > (blocks as u32 - 8) * PSID_BLOCK_ENTRIES,
+        "{taken} entries in {blocks} blocks"
+    );
     assert!(p.late() > 0, "the budget is spent in every block");
     assert_eq!(p.ctl.splits_max, PSID_SPLITS);
 }

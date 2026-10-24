@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "player/song_ctl.h"
+#include "psid/psid_ctl.h"
 #include "scope.h"
 #include "sid/sid.h"
 
@@ -28,8 +29,39 @@ scope* audio_scope(void);
 /* Before audio_init (main.c runs it in the LCD's reset wait): the song's region formatted and
  * the song transport made; the empty song. */
 gt2_song* audio_song_boot(void);
+/* After a .sid tune, the interrupt on AUDIO_NONE: the song's region and transport made again,
+ * the song wiped (core/song/gt2_song.h gt2_song_init_wiped) for song_io to read it back. Within
+ * a pass's share, unlike audio_song_boot's clearsong. */
+gt2_song* audio_song_remake(void);
 /* The song transport (core/player/song_ctl.h): its main-loop side, the song's region in POOL. */
 song_ctl* audio_song(void);
+/* The player the audio interrupt runs (M3 Task 9; docs/plans/2026-10-19-m3-sid-files.md,
+ * "Memory"): the song (song_ctl) or a .sid tune (core/psid/psid_ctl.h), never both, since the
+ * tune's state overlays the song's (the 6502's 64 KiB is the song's region, its write ring the
+ * song transport and shapes in the RAM region, its environment and voice shadows the song's
+ * work space in POOL); or neither, the one way between them. audio_player asks for one from the
+ * main loop; the interrupt takes it at its next block's start and says so (audio_player_now).
+ * The main loop may ask only once the outgoing player has stopped (the song: stopped and idle in
+ * the interrupt; the tune: its stop played out), asks for AUDIO_NONE first, and sets up the
+ * incoming player's state (audio_song_boot, audio_psid_init) only once the interrupt is on
+ * AUDIO_NONE: with neither, the interrupt renders chip A as the song's stopped transport does and
+ * reads neither state. A chip swap (reg_ring_chips.swapped) goes to the player's hook: the song's
+ * register shadow, or the tune's registers from the sid it replaces. */
+enum { AUDIO_SONG = 0, AUDIO_PSID = 1, AUDIO_NONE = 2 };
+void audio_player(uint32_t player);
+uint32_t audio_player_now(void);
+/* The .sid player over the song's memory, nothing loaded (from AUDIO_NONE on, the interrupt
+ * there or on AUDIO_PSID), its hooks the chips' (reg_ring_chip_of, REG_RING_MUTE through each
+ * chip's writer), and the header it keeps (POOL, beside the environment). */
+psid_ctl* audio_psid_init(void);
+psid_ctl* audio_psid(void);
+psid_header* audio_psid_header(void);
+/* psid_ctl_poll, as a slice of the pass: none in a pass that ran a chip preparation or a
+ * character table's slice; one that runs counts as the pass's slice (audio_work_slice, the
+ * store's quiet pass), and a preparation waits for the next pass. Returns psid_ctl_poll's. */
+int audio_psid_poll(void);
+/* The sid chip (0 A, 1 B) renders now (it changes at a swap). */
+sid* audio_chip(uint32_t chip);
 /* The latest block's anchor for MIDI's clock (app/midi_sync.h, midi_sync_anchor): the tick
  * its render started at and its first sample on the song's count (song_ctl.samples). */
 void audio_song_anchor(uint32_t* ticks, uint32_t* samples);
@@ -49,6 +81,7 @@ void audio_keys(void* ctx, uint32_t chip);
 /* Chip B's users, or'd: the keys while they play it, M2b Task 7's UI sounds. */
 #define AUDIO_B_KEYS 1u
 #define AUDIO_B_UI 2u
+#define AUDIO_B_TUNE 4u /* a 2SID tune's second chip (M3) */
 /* A user takes chip B (on 1) or lets it go (0). Chip B is in use while it has a user and,
  * after the last let go, until its three envelopes are at 0: from the next block audio_fill
  * renders it beside chip A and mixes it in before the slots (app/chip_mix.h), fading it in or

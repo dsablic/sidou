@@ -19,6 +19,7 @@ lists the prerequisites.
 | The PSID environment (calls, the bank register, periods and speed bits, PAL/NTSC, late calls, the limits, slicing at every size 1-5,000, the count's wrap), on tunes assembled at test time | `cargo test --release -p sidou-tests --test psid_env` | `crates/sidou-tests/tests/psid_env.rs`, `src/psid_fixtures.rs` (strict-mode `gt2_ref::assemble`), [docs/reference/psid.md](docs/reference/psid.md) |
 | The PSID oracle: SIDOU's PSID environment against m6502.h + FM-1 SID's `psid.c`, call by call, with the expected differences (GoatTracker's examples and SIDOU's songs, every subtune, at `$D400` and as 2SID at `$D420`; Task 6's fixtures; the vendored files and the derived copy) | `cargo test --release -p psid-ref`; the user's tunes with `SIDOU_PSID_DIR=<dir> ... --test oracle -- --ignored` (report in `build/psid-ref/report.txt`) | `crates/psid-ref/`, [the section below](#the-psid-oracle-m3) |
 | The .sid player (`core/psid/psid_ctl.h`: the look-ahead, the write ring, each write placed at its cycle; against a reference render clocked write by write at the stamps over the oracle's corpus, with skipped main-loop passes, the split budget, a slow init, pause, stop, song changes, 2SID and mutes, the ring's wrap; on fm1-emu each look-ahead pass within `PSID_SLICE_WORST`: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget a_look_ahead -- --nocapture`) | `cargo test --release -p sidou-tests --test psid_ctl` | `crates/sidou-tests/tests/psid_ctl.rs`, `src/psid.rs` (the host render) |
+| .sid tunes on the device (M3 Task 9: a tune put into the store's flash before the boot, played through the firmware's test hook over the song's memory; the firmware's audio equal to the host's render through the same chain, sample for sample, for a VBI, a CIA, an NTSC and a 2SID tune, with LIVE showing and without; the song and a tune switched both ways 20 times, the song back from the store byte for byte; the keys on chip B under a 1SID tune, silent under a 2SID tune; PLAY HUNG; the interrupt only in SRAM; the .sid path's worst block within `PSID_ISR_WORST` over the corpus and a write every 4 cycles, each slice within `PSID_SLICE_WORST` and every pass within `POLL_INSTRUCTIONS` with LIVE showing, the RAM, RAMTEXT and image budgets) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid --test psid_budget -- --nocapture`; the interrupt's SRAM check with `--test ram_audio` | `crates/emu-gate/tests/psid.rs`, `psid_budget.rs` (bench/fm1/bench_6502_main.c mode 6), `common/mod.rs` (`render_host_psid`, `put_file`) |
 | SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks; on fm1-emu: Dormann, the cost per cycle: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget -- --nocapture`) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
@@ -531,6 +532,35 @@ without those blocks is the original byte for byte.
 - **A planted bug is caught:** with `STA abs,X`'s write stamped a cycle early (a scratch change
   to `core/cpu6502/cpu6502.c`'s `W_ABX`), the corpus fails at `2xtest.sng`'s first play call
   (`$D404` at cycle 489 against the oracle's 490).
+
+### .sid tunes on the device (M3 Task 9)
+
+In fm1-emu, `crates/emu-gate/tests/psid.rs` puts a tune into the store's flash dump before the
+boot (`common::put_file`, type `STORE_FILE_SID`) and plays it through the firmware's test hook
+(`platform/fm1/main.c` `psid_test_hook`: play, stop, end for good; until Task 11's views). The
+firmware's audio from power-on equals `common::render_host_psid`: the instrument and chip B as at
+boot, chip A no longer rendered from the block the interrupt took the tune (`player_now`), each
+of the tune's chips fresh from the block its reset reached the interrupt (`reg_ring_chips.active`),
+and from psid_ctl's first block (`psid_ctl.blocks`) sidou_tests::psid's `Player` on those chips,
+then the mix, tail gate, slots, thump and MASTER, sample for sample (the blocks read from the
+buffer snapshots, the DMA's leading silence searched as `song.rs` does). The tunes: GoatTracker's
+`dojo` (VBI, with LIVE's tap and under the menu), `funktest` with song 1 on CIA 1's timer,
+`wavecmdtest` at the NTSC clock, `dojo` as 2SID at `$D420`; none may have a late write. The switch
+test plays a 1SID and a 2SID tune by turns, 20 times, from LIVE and over a playing song, and each
+time the song (saved and loaded as `NIGHT` first) comes back from the store byte for byte (its
+file form) and plays again; the keys play chip B under the 1SID tune and are silent under the
+2SID one. A tune whose play never returns fails with `PLAY HUNG` (the toast) and a key still
+plays.
+
+`psid_budget.rs` measures the audio interrupt's .sid path in the 6502 bench (mode 6, the device
+build of psid_ctl_block), each instruction told by its function: the chips' own work (the render
+loops and the voices' clocking) aside, the rest of each block (the ring, the render parts'
+setup and steps, sid_advance's own code, sid_write and what a write runs) within
+`PSID_ISR_WORST`, over the corpus 2 s each and over tunes that write a voice, the cutoff or the
+volume every 4 cycles; then the firmware with a tune playing and LIVE showing (each
+`psid_ctl_poll` within `PSID_SLICE_WORST`, every pass within `POLL_INSTRUCTIONS`, every audio block
+within `AUDIO_TARGET`); then the memory (the tune's state inside the song's union, free RAM,
+M3's RAMTEXT, the image within M3's ceiling).
 
 ### Song player register match
 

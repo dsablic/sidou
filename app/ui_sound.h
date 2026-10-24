@@ -55,6 +55,7 @@ typedef struct {
     live_sink_fn sink; /* chip B's */
     void* sink_ctx;
     uint8_t on;    /* the SOUNDS setting: 0 at init */
+    uint8_t hush;  /* ui_sound_hush: nothing plays, whatever SOUNDS says */
     uint8_t id;    /* the sound playing, UI_SOUND_NONE */
     uint8_t pos;   /* its next byte */
     uint8_t voice; /* the voice it holds, UI_SOUND_NONE */
@@ -72,7 +73,11 @@ typedef struct {
 void ui_sound_init(ui_sound* us, live* l, live_sink_fn sink, void* sink_ctx);
 /* SOUNDS on (1) or off (0); off stops a sound playing (its voice given back). */
 void ui_sound_set(ui_sound* us, int on);
-/* Plays a sound, if SOUNDS is on and a voice is free (above); nothing otherwise. */
+/* Chip B is not the keys' for now (M3: a 2SID tune plays on it, platform/fm1/main.c): on stops
+ * a sound playing (its voice given back) and plays none until off. SOUNDS is left as it is. */
+void ui_sound_hush(ui_sound* us, int on);
+/* Plays a sound, if SOUNDS is on, nothing hushes it and a voice is free (above); nothing
+ * otherwise. */
 void ui_sound_play(ui_sound* us, ui_sound_id id);
 /* Once a live_tick, after it: the voices' releases, the sound's next frame (at 50 Hz), its
  * end and its release. */

@@ -252,7 +252,8 @@ int gt2_song_clear(gt2_song* s) {
     return 0;
 }
 
-gt2_song* gt2_song_init(void* region, uint32_t bytes) {
+/* The region's layout, nothing else of the song set. */
+static gt2_song* region_init(void* region, uint32_t bytes) {
     if (region == NULL || ((uintptr_t)region & 3u) != 0u || bytes < gt2_region_min() ||
         bytes > GT2_REGION_MAX)
         return NULL;
@@ -270,7 +271,20 @@ gt2_song* gt2_song_init(void* region, uint32_t bytes) {
     s->bitmap_offset = hdr;
     s->arena_offset = hdr + ((units + 31u) / 32u) * 4u;
     s->arena_units = units;
-    song_clear(s);
+    return s;
+}
+
+gt2_song* gt2_song_init(void* region, uint32_t bytes) {
+    gt2_song* s = region_init(region, bytes);
+    if (s)
+        song_clear(s);
+    return s;
+}
+
+gt2_song* gt2_song_init_wiped(void* region, uint32_t bytes) {
+    gt2_song* s = region_init(region, bytes);
+    if (s)
+        gt2_song_wipe(s);
     return s;
 }
 
