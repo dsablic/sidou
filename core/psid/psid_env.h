@@ -99,6 +99,7 @@ typedef struct psid_env {
     uint32_t overruns;   /* play calls that ran past their period */
     uint32_t late;       /* SID writes the player applied late (psid_ctl counts them here) */
     uint32_t sid3_dropped; /* a third SID's writes, dropped */
+    uint32_t sid_accesses; /* SID reads and writes, the costly accesses (psid_ctl's slices) */
     sid_shadow* shadow[2]; /* chip A's and B's voice shadows (psid_env_set_shadows) */
     uint16_t frame;        /* PSID_FRAME_PAL or _NTSC */
     uint16_t latch;        /* CIA 1 timer A's latch */

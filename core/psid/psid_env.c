@@ -91,10 +91,12 @@ static uint8_t io_read(void* user, uint32_t addr, uint32_t cycle)
     uint32_t reg = addr & CIA_MIRROR_MASK;
     int w = sid_window(e, addr);
     uint8_t v;
-    if (w >= 0)
+    if (w >= 0) {
+        e->sid_accesses++;
         return w < 2 && e->shadow[w] ? (uint8_t)sid_shadow_read(e->shadow[w], cycle,
                                                                  addr & SID_REG_MASK)
                                      : 0;
+    }
     if (addr < SID_FIRST)
         return vic_read(e, addr & VIC_MASK, cycle);
     if (addr >= CIA1_FIRST && addr < CIA1_FIRST + CIA_SIZE) {
@@ -120,6 +122,7 @@ static void io_write(void* user, uint32_t addr, uint32_t value, uint32_t cycle)
     uint32_t reg = addr & CIA_MIRROR_MASK;
     int w = sid_window(e, addr);
     if (w >= 0) {
+        e->sid_accesses++;
         if (w == 2) {
             e->sid3_dropped++;
             return;

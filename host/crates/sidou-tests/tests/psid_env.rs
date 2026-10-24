@@ -731,8 +731,9 @@ fn time_wraps_past_two_to_the_32() {
 fn the_environment_fits_its_share_of_the_overlay() {
     // The plan's "Memory and flash": the environment is about 400 bytes of the main loop's
     // overlay with the I/O page's shadows. As the pi32v2 lays it out (ILP32): Task 6a's 92
-    // bytes, the two shadow pointers, the VIC's 64 bytes, the CIAs' 32 and two flags.
-    assert_eq!(ilp32::psid_env::SIZE, 196);
+    // bytes, the two shadow pointers, the VIC's 64 bytes, the CIAs' 32 and two flags; Task 8's
+    // count of SID accesses.
+    assert_eq!(ilp32::psid_env::SIZE, 200);
     assert_eq!(ilp32::cpu6502::SIZE, 32);
 }
 

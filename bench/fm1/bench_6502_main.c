@@ -25,12 +25,20 @@
  *   4  the shadow's worst slices: [1] the model, [2] voice 3's control and [3] the frequency
  *      every voice gets ([4] voices 1 and 2's control), then [5] slices of [6] cycles clocked
  *      one by one (sid_shadow_clock). Marks: two around each slice.
+ *   5  psid_ctl's look-ahead slices (M3 Task 8; core/psid/psid_ctl.h): the PSID file at
+ *      FILE_ADDR, [1] its length, played from song 1 for [2] main-loop passes, the chips (and so
+ *      the shadows) [3] 8580s, else 6581s. After each pass the interrupt's side is played by
+ *      taking every entry off the ring and putting the chips' clocks at the 6502's time, so
+ *      every pass runs a slice. Marks: two around each pass's psid_ctl_poll; samples: the 6502
+ *      cycles each pass ran (-1: none). [6] the player's state at the end, [7] its writes.
  * RESULT_ADDR [2] the outcome (mode 0: 1 success; mode 1: 1 all calls returned; mode 2: 1),
  * [3] the 6502 cycles, [4] the sum of the written values, [5] the writes, [6] the plays over
  * their frame, [7] the PC at the end or at the call that did not return. */
 #include <stdint.h>
 
 #include "cpu6502/cpu6502.h"
+#include "psid/psid_ctl.h"
+#include "psid/psid_file.h"
 #include "sid/sid.h"
 #include "sid/sid_shadow.h"
 
@@ -38,6 +46,7 @@
 #define RESULT_MAGIC 0x53494442u /* "SIDB" */
 #define PARAM_ADDR 0x01CB0000u
 #define MEM_ADDR 0x01CC0000u /* 64 KiB */
+#define FILE_ADDR (PARAM_ADDR + 0x100u) /* mode 5's PSID file, up to MEM_ADDR */
 
 #define DORMANN_SUCCESS 0x3469u
 #define DORMANN_CAP 150000000u
@@ -254,6 +263,49 @@ static void shadow_slices(volatile uint32_t* result, volatile uint32_t* param) {
     result[2] = 1;
 }
 
+static sid chip_b;
+static psid_ctl ctl;
+static psid_work work;
+static psid_header header;
+
+static sid* bench_chip(void* ctx, uint32_t k) {
+    (void)ctx;
+    return k ? &chip_b : &chip;
+}
+
+static void look_ahead(volatile uint32_t* result, volatile uint32_t* param,
+                       volatile int16_t* out) {
+    const uint8_t* file = (const uint8_t*)FILE_ADDR;
+    sid_model model = param[3] ? SID_MODEL_8580 : SID_MODEL_6581;
+    psid_ctl_hooks hooks = {bench_chip, 0, 0};
+    result[2] = 0;
+    if (psid_parse(file, param[1], &header) != PSID_OK) {
+        return;
+    }
+    sid_init(&chip, model, SID_CLOCK_PAL, 44118u);
+    sid_init(&chip_b, model, SID_CLOCK_PAL, 44118u);
+    psid_ctl_init(&ctl, &work, (uint8_t*)MEM_ADDR, &hooks);
+    if (!psid_ctl_load(&ctl, &header, file) || !psid_ctl_play(&ctl, 1)) {
+        return;
+    }
+    uint32_t passes = param[2];
+    for (uint32_t i = 0; i < passes; i++) {
+        uint32_t before = psid_env_now(&work.env);
+        bench_mark();
+        int ran = psid_ctl_poll(&ctl);
+        bench_mark();
+        uint32_t now = psid_env_now(&work.env);
+        out[i] = ran ? (int16_t)(now - before) : (int16_t)-1;
+        ctl.tail = ctl.head;
+        ctl.clock[0] = now;
+        ctl.clock[1] = now;
+    }
+    result[1] = passes;
+    result[2] = 1;
+    result[6] = ctl.state;
+    result[7] = ctl.writes;
+}
+
 int main(void) {
     for (uint32_t *d = __data_start, *s = __data_load; d < __data_end;) {
         *d++ = *s++;
@@ -284,6 +336,9 @@ int main(void) {
         break;
     case 4:
         shadow_slices(result, param);
+        break;
+    case 5:
+        look_ahead(result, param, out);
         break;
     default:
         opcodes(result, out);

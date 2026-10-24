@@ -17,7 +17,10 @@
 //!
 //! * The voice shadow (M3 Task 5b, core/sid/sid_shadow.h) beside the same players: what a
 //!   tune's writes and a frame's catch-up cost on average (SHADOW_FRAME_MEAN), and its dearest
-//!   catch-up of a look-ahead slice (SHADOW_SLICE_WORST).
+//!   catch-up of a 1,500-cycle slice (SHADOW_SLICE_WORST).
+//! * The .sid player's look-ahead slices (M3 Task 8, core/psid/psid_ctl.h): a main-loop pass
+//!   that runs one, the 6502, the shadows and the write ring together, on the shadow's worst
+//!   voices with a write every 4 cycles, within PSID_SLICE_WORST.
 //!
 //! Instructions are not device cycles (docs/hardware.md, "Open checks").
 
@@ -377,7 +380,8 @@ fn shadow_slices(build: &std::path::Path, model: u32, control: u32, others: u32,
     worst
 }
 
-/// The look-ahead's slice (docs/plans/2026-10-19-m3-sid-files.md, Task 8 confirms it).
+/// The slice the shadow's catch-up was measured over: the plan's first estimate of the
+/// look-ahead's (Task 8 set psid_ctl's PSID_SLICE_CYCLES to 1,000 from it).
 const PSID_SLICE_CYCLES: u32 = 1_500;
 
 #[test]
@@ -405,4 +409,140 @@ fn the_voice_shadow_costs_the_main_loop_little() {
     );
     assert!(worst_mean <= SHADOW_FRAME_MEAN);
     assert!(worst_slice <= SHADOW_SLICE_WORST);
+}
+
+/// A tune whose init puts every voice of its chips (chip A, and B at `$D420` for a 2SID tune) on
+/// `control` at frequency `$FFFF` (the shadow's dearest, as `shadow_slices`), then for ever
+/// makes an access every 4 cycles with `op` on register `reg` of each chip in turn (`STA`
+/// writes the same `$FF`, so the voices stay as they are; voice 3's registers latch OSC3), or
+/// with `op` empty spins in a `JMP` loop.
+fn worst_tune(two: bool, control: u8, op: &str, reg: u32) -> Vec<u8> {
+    use sidou_tests::psid_fixtures::{Psid, INIT};
+    let mut init = String::new();
+    for chip in 0..if two { 2 } else { 1 } {
+        for v in 0..3 {
+            let r = 0xD400 + 0x20 * chip + 7 * v;
+            for (off, value) in [
+                (0, 0xff),
+                (1, 0xff),
+                (2, 0x00),
+                (3, 0x08),
+                (5, 0x00),
+                (6, 0xf0),
+            ] {
+                init += &format!("lda #${value:02x}\nsta ${:04x}\n", r + off);
+            }
+            init += &format!("lda #${control:02x}\nsta ${:04x}\n", r + 4);
+        }
+    }
+    init += "lda #$ff\nloop:\n";
+    if !op.is_empty() {
+        for k in 0..240 {
+            let chip = if two && k % 2 == 1 { 0x20 } else { 0 };
+            init += &format!("{op} ${:04x}\n", 0xD400 + chip + reg);
+        }
+    }
+    init += "jmp loop\n";
+    let psid = Psid::new(&[(INIT, &init), (0x8000, "rts\n")]);
+    if two { psid.sid2(0x42) } else { psid }.bytes()
+}
+
+/// What one look-ahead run gave: each pass's instructions and the 6502 cycles it ran.
+fn look_ahead(build: &std::path::Path, file: &[u8], passes: usize, model: u32) -> Vec<(u64, u32)> {
+    const FILE_ADDR: u32 = PARAM_ADDR + 0x100;
+    assert!(FILE_ADDR as usize + file.len() <= MEM_ADDR as usize);
+    let r = run_with(build, "sid_bench_6502", 2 * passes, |soc| {
+        for (i, &b) in file.iter().enumerate() {
+            soc.write8(FILE_ADDR + i as u32, b);
+        }
+        load(soc, &[], &[5, file.len() as u32, passes as u32, model]);
+    });
+    assert_eq!(r.words[2], 1, "the tune did not start");
+    (0..passes)
+        .map(|k| (r.phases[2 * k], r.samples[k] as u16 as u32))
+        .collect()
+}
+
+/// The look-ahead's passes (core/psid/psid_ctl.h: a slice's runs while its work estimate lasts)
+/// on the device build, each pass running a slice: the shadow's dearest voices (noise with
+/// triangle from power-on, until the noise register locks up) on one chip and two, an access
+/// every 4 cycles (writes to voice 3 and to the volume, reads of OSC3), and a GoatTracker tune.
+/// Every pass within PSID_SLICE_WORST; the first passes and the means are reported.
+#[test]
+fn a_look_ahead_slice_holds_its_budget() {
+    let Some(build) = build() else { return };
+    let song = sidou_tests::psid::packed(&example("wavecmdtest.sng"), 0xD400);
+    let runs: Vec<(&str, Vec<u8>, u32)> = vec![
+        (
+            "8580, noise and triangle, a write every 4 cycles",
+            worst_tune(false, 0x91, "sta", 0x0f),
+            1,
+        ),
+        (
+            "6581, noise and triangle, a write every 4 cycles",
+            worst_tune(false, 0x91, "sta", 0x0f),
+            0,
+        ),
+        (
+            "8580, noise and triangle, a volume write every 4 cycles",
+            worst_tune(false, 0x91, "sta", 0x18),
+            1,
+        ),
+        (
+            "8580, noise and triangle, an OSC3 read every 4 cycles",
+            worst_tune(false, 0x91, "lda", 0x1b),
+            1,
+        ),
+        (
+            "8580, saw, a write every 4 cycles",
+            worst_tune(false, 0x21, "sta", 0x0f),
+            1,
+        ),
+        (
+            "8580, noise and triangle, no accesses",
+            worst_tune(false, 0x91, "", 0),
+            1,
+        ),
+        (
+            "8580, 2SID, noise and triangle, a write every 4 cycles",
+            worst_tune(true, 0x91, "sta", 0x0f),
+            1,
+        ),
+        (
+            "8580, 2SID, noise and triangle, an OSC3 read every 4 cycles",
+            worst_tune(true, 0x91, "lda", 0x1b),
+            1,
+        ),
+        (
+            "8580, 2SID, noise and triangle, no accesses",
+            worst_tune(true, 0x91, "", 0),
+            1,
+        ),
+        ("6581, wavecmdtest", song, 0),
+    ];
+    let mut worst = 0;
+    for (name, file, model) in &runs {
+        let passes = look_ahead(&build, file, 300, *model);
+        assert!(
+            passes.iter().all(|p| p.1 != 0xffff),
+            "{name}: a pass ran no slice"
+        );
+        let most = *passes.iter().max_by_key(|p| p.0).unwrap();
+        let cycles = passes.iter().map(|p| u64::from(p.1)).sum::<u64>();
+        let total = passes.iter().map(|p| p.0).sum::<u64>();
+        println!(
+            "{name}: the dearest pass {} instructions ({} cycles, pass {}); {:.1} a 6502 cycle \
+             on average; the first passes {:?}",
+            most.0,
+            most.1,
+            passes.iter().position(|p| *p == most).unwrap(),
+            total as f64 / cycles as f64,
+            &passes[..6]
+        );
+        worst = worst.max(most.0);
+    }
+    println!(
+        "the dearest look-ahead pass {worst} instructions (PSID_SLICE_WORST {PSID_SLICE_WORST})"
+    );
+    assert!(worst <= PSID_SLICE_WORST);
 }

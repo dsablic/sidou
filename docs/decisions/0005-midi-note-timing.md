@@ -267,6 +267,23 @@ clocks the voices the rest of the way into the next sample and takes those cycle
 then the write goes in; the samples stay where they were, and the voices reach the state
 `sid_clock` reaches with the write at that cycle. The render loop is the song's.
 
+**Stamped writes, a frame ahead (M3 Task 8, 2026-10-24):** a `.sid` tune's 6502 runs in the
+main loop up to two PAL frames ahead of the audio (`core/psid/psid_ctl.h`), and its writes
+reach the interrupt through a ring of their own, each with its cycle on the tune's count, not
+through the register ring. `psid_ctl_block` renders each chip's block split at every write:
+the whole samples that end at or before its cycle (stepping the chip's Q16 accumulator, no
+division), then `sid_advance` and `sid_write`. So the split render now serves a whole tune's
+writes, inside samples, where the song's served one call a block. Two bounds keep the
+interrupt's cost: a chip's block is at most `PSID_SPLITS` (32) renders, and the writes past
+them go in, in order, at the block's end; a write the chip has already passed (the main loop
+fell behind) goes in at once. Both are counted as late, and the audio never waits for the
+6502. With no late write the samples are those of a render that clocks the chip write by write
+at the stamps (`tests/psid_ctl.rs`: every GoatTracker example and SIDOU song, every subtune,
+as 1SID and 2SID tunes, about 650,000 writes, sample for sample). The register ring and its
+invariants are again untouched: the keys and MIDI keep block-start placement, and a tune's
+mutes go through the register ring (`REG_RING_MUTE`) at a block's start, as everything else
+that is not the tune's own does.
+
 ## Amendment: MIDI clock and transport place the song's calls (M2e Task 2, 2026-10-17)
 
 The record's revisit "with M2's clock and transport" is done for the song: a sequencer's

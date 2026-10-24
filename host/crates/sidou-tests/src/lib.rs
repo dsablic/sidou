@@ -7,7 +7,7 @@
 //! model's Rust side (`song`), the song player's (`player`) and its transport's
 //! (`transport`), the first song (`song_embed`) and the showcase songs (`showcase`); the
 //! converter and reader of Tom Harte's 6502 tests (`harte`); and PSID tunes built at test
-//! time (`psid_fixtures`).
+//! time (`psid_fixtures`) and the .sid player's host render (`psid`).
 
 pub mod bitmap_codec;
 pub mod credits;
@@ -17,6 +17,7 @@ pub mod font;
 pub mod harte;
 pub mod logo;
 pub mod player;
+pub mod psid;
 pub mod psid_fixtures;
 pub mod register_probe;
 pub mod render;

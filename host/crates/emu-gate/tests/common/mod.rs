@@ -831,6 +831,10 @@ pub const CPU6502_INSTR_PER_CYCLE: f64 = 9.33;
 /// sizes the slice with it.
 pub const SHADOW_FRAME_MEAN: f64 = 49_250.0;
 pub const SHADOW_SLICE_WORST: u64 = 42_690;
+/// A main-loop pass's 6502 work in the .sid player (docs/plans/2026-10-19-m3-sid-files.md,
+/// "Budgets"): psid_ctl_poll's look-ahead slice, the 6502 with the voice shadows and the write
+/// ring (cpu6502_budget.rs fails above it; Task 9 holds the firmware's pass to it).
+pub const PSID_SLICE_WORST: u64 = 40_000;
 /// The digi drums' cost in the audio interrupt (core/player/song_ctl.c song_ctl_block_end: its
 /// trigger and its mix; decision record 0009), instructions a sample while a digi drum plays
 /// without a break (song.rs: a hit every row, each 220 ms long); measured 10.42, then 9.47 with
