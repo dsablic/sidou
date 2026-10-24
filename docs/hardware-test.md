@@ -1384,24 +1384,29 @@ Headphones or the line out. Controls: [controls.md, STEP](reference/controls.md#
 - [ ] **In GoatTracker.** SAVE the song, copy it off (Live Link or SysEx) and open it in
   GoatTracker 2.77: it loads and plays, the digi lanes as the chip kit's drums.
 
-## 17. Code in Felucca's old debug area (v0.4.0)
+## 17. Code in Felucca's debug area (v0.4.0)
 
-Since v0.4.0 the code that runs from SRAM (RAMTEXT) reaches up to RAM, over the 8 KB below it
-(0x01C0C000..0x01C0E000) that Felucca keeps for RAM-run debug images and where SIDOU's start
-code used to leave five boot words ([hardware.md, Code in SRAM](hardware.md#code-in-sram)).
-Nothing else is known to use that SRAM once the app runs, and the update loader runs from the
-SPL after a reset, never beside the app; these confirm it on the device. Do them on a build
-whose `.ram_text` reaches past 0x01C0C000 (the emulator's `ram_audio` test prints its size:
-over 49,152 bytes).
+**Found on the device, 2026-10-24: code there does not work.** v0.4.0's release candidate let
+the code that runs from SRAM (RAMTEXT) reach up to RAM, over the 8 KB below it
+(0x01C0C000..0x01C0E000) that Felucca keeps for RAM-run debug images. The only code that landed
+there was the tail of `gt2_edit_apply`, which the audio interrupt runs to apply STEP's edits. On
+the FM-1, in STEP on a new song, a step key showed its note in the HELD STEP box and auditioned it
+faintly, but the toggle never reached the pattern (no toast, nothing); LIVE was fine, and the
+emulator applied the same edits from the same image. Whatever uses or clobbers that SRAM at run
+time, the release keeps code out of it: RAMTEXT ends at 0x01C0C000 again (48 KB), `app.ld`
+asserts `_rt_end <= 0x01C0C000` and emu-gate `ram_audio.rs` checks it, and crt0.S saves its five
+boot words there as Felucca's does ([hardware.md, Code in SRAM](hardware.md#code-in-sram)).
 
-- [ ] **Boot.** Install it (section 1). It boots to the title card and LIVE, the first boot
-  and ten power cycles after it (section 3), and a held chord plays clean for a minute on both
-  chip models (the audio interrupt runs from that SRAM).
-- [ ] **A store write.** Change a setting and SAVE (section 7.1), and SAVE a song (section 13):
-  both survive a power cycle. (The flash driver runs from RAMTEXT with XIP off.)
-- [ ] **A USB update round trip.** Install the same package again over USB (section 1), then
-  the previous release, then this one: each install finishes and boots, and the settings and
-  songs are still there.
+Check on the release build (the emulator's `ram_audio` test prints `.ram_text`'s size: at most
+49,152 bytes):
+
+- [ ] **STEP's edits land.** On a new song, in STEP, press and release a step key on V1: the
+  step toggles on (a note in the pattern), and again toggles it off. Do it for a short tap and a
+  held press, on a few steps and lanes; PLAY plays what the pattern shows.
+- [ ] **Boot.** It boots to the title card and LIVE, the first boot and a few power cycles after
+  it (section 3), and a held chord plays clean on both chip models.
+- [ ] **A store write.** SAVE the song (section 13) and a setting (section 7.1): both survive a
+  power cycle. (The flash driver runs from RAMTEXT with XIP off.)
 
 ## 18. Generative play in STEP (chance, MUTATE, DICE)
 
@@ -1494,6 +1499,6 @@ Notes:
 | 14 Make a song on the device | | |
 | 15 SPREAD and the soft limiter | | |
 | 16 The drum kit and the digi drums | | |
-| 17 Code in Felucca's old debug area | | |
+| 17 Code in Felucca's debug area | | |
 | 18 Generative play in STEP | | |
 | 19 USB audio out | | |

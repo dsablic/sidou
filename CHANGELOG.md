@@ -82,14 +82,14 @@ All notable changes are documented here. The format follows
   `psid_load` checks its bounds (#68, our report #63), so the gate's own stand-in for that load,
   `step_block_load_dec`, is gone and with it the `emulated_block_loads` count in the gate's
   reports.
-- **24,952 bytes of flash, 8 KB of RAMTEXT and 5.4 KB of the RAM region won back, nothing heard
+- **About 25 KB of flash and 5.4 KB of the RAM region won back, nothing heard
   differently:** the filter's cutoff codes are delta-coded (11,984 bytes), the combined
   waveforms' blocks overlap and alike rows are stored once (5,976), the noise tables are built
   at boot into POOL (2,980 of flash, 3,140 of the RAM region), the digi drums' codes are two a
-  byte (2,412 of both), and the store is built at `-Oz` (1,568). Code that runs from SRAM may
-  now use Felucca's 8 KB debug area below RAM (RAMTEXT 56 KB, 8,160 bytes free), whose only
-  use, five boot words nothing read, is gone; [hardware-test.md section
-  17](docs/hardware-test.md#17-code-in-feluccas-old-debug-area-v040) checks it on the device.
+  byte (2,412 of both), and the store is built at `-Oz` (1,568). `song_ctl.c` is built at `-Oz`
+  (112 bytes of RAMTEXT), so the code that runs from SRAM stays in its 48 KB, below
+  Felucca's 8 KB debug area: a release candidate that ran code there lost STEP's edits on the
+  device ([hardware-test.md section 17](docs/hardware-test.md#17-code-in-feluccas-debug-area-v040)).
   The digi drums cost the audio interrupt less than before (9.47 instructions a sample, was
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 
