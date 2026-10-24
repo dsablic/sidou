@@ -821,6 +821,16 @@ pub const PLAYER_WORST_BLOCK: f64 = 60.0;
 /// rounded up. The study's prototype measured 10.1 on average at -Os (decision record 0008).
 pub const CPU6502_INSTR_PER_CYCLE: f64 = 9.33;
 
+/// The voice shadow (M3 Task 5b, core/sid/sid_shadow.h) in the main loop, in instructions
+/// (cpu6502_budget.rs fails above them), set from Task 5b's measurement plus 10 %: its mean a
+/// PAL frame over the 6502 workload's songs (a tune's writes and the frame's catch-up; 44,828,
+/// funktest, 0.93 % of the core at 50 frames a second), and its dearest PSID_SLICE_CYCLES-cycle
+/// catch-up (38,809: the 8580, every voice on noise and triangle at $FFFF, the first slice from
+/// power-on, while the noise register shifts towards its lock-up cycle by cycle). The second is
+/// most of PSID_SLICE_WORST (40,000, the 6502's slice with the shadow and the sink): Task 8
+/// sizes the slice with it.
+pub const SHADOW_FRAME_MEAN: f64 = 49_250.0;
+pub const SHADOW_SLICE_WORST: u64 = 42_690;
 /// The digi drums' cost in the audio interrupt (core/player/song_ctl.c song_ctl_block_end: its
 /// trigger and its mix; decision record 0009), instructions a sample while a digi drum plays
 /// without a break (song.rs: a hit every row, each 220 ms long); measured 10.42, then 9.47 with

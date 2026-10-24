@@ -23,8 +23,8 @@ typedef struct {
 } sid_filter_row;
 
 /* What the voices keep between steps besides the oscillators and envelopes: the flags each
- * step (sid_voices_clock, sid_voices.h) clears or ages, and OSC3's latch. In a struct of their
- * own so that the voice shadow (sid_shadow.h) runs the same code on its own copy. */
+ * step (sid_voices.h) clears or ages, and OSC3's latch. In a struct of their own, which the
+ * voice shadow (sid_shadow.h) keeps too, to run the same code on its own copy. */
 typedef struct {
     uint8_t osc3_held;   /* a write since the last cycle: OSC3 is osc3_latch */
     uint8_t written;     /* a voice write since the last step: clear the pulse latches */
@@ -247,7 +247,7 @@ void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_t
  * ENV3 (voice 3's envelope counter at the start of the last cycle). Like the chip, every
  * read or write leaves its value on the data bus, and the write-only registers read
  * back whatever is there. On the chip that value fades after a while; that is not
- * modelled. */
+ * modelled here (the voice shadow, sid_shadow.h, which answers a tune's reads, models it). */
 uint8_t sid_read(sid* s, uint8_t reg);
 /* sid_write latches OSC3 (read_osc3, a few dozen instructions) before the first write
  * to voice 2 or 3 after each cycle, so a read before the next cycle sees the old value.

@@ -61,8 +61,9 @@ typedef enum { SID_ENV_ATTACK, SID_ENV_DECAY_SUSTAIN, SID_ENV_RELEASE } sid_env_
 
 /* Shifts from 0x7fff to reSIDfp's adsrtable[] values: reSID's periods minus one. This and
  * SID_ENV_THRESHOLDS are read by the audio path: RAM on the device, not flash
- * (emu-gate tests/ram_audio.rs). */
-#ifdef __PI32V2__
+ * (emu-gate tests/ram_audio.rs). A file whose voice code runs only from flash (the voice shadow,
+ * sid_shadow.c) defines SID_ENV_TABLES_IN_FLASH first, and its copies stay in flash. */
+#if defined(__PI32V2__) && !defined(SID_ENV_TABLES_IN_FLASH)
 __attribute__((section(".data.sid_env_rate_pos")))
 #endif
 static const uint16_t SID_ENV_RATE_POS[16] = {8,   31,  62,   94,   148,   219,   266,   312,
@@ -107,7 +108,7 @@ static inline uint32_t sid_env_rate_pos(uint8_t rate) { return SID_ENV_RATE_POS[
 
 /* Counter values whose step sets a new divider period (0x00, 0x06, 0x0e, 0x1a, 0x36,
  * 0x5d, 0xff), as a 256-bit set. */
-#ifdef __PI32V2__
+#if defined(__PI32V2__) && !defined(SID_ENV_TABLES_IN_FLASH)
 __attribute__((section(".data.sid_env_thresholds")))
 #endif
 static const uint32_t SID_ENV_THRESHOLDS[8] = {0x04004041u, 0x00400000u, 0x20000000u, 0, 0,

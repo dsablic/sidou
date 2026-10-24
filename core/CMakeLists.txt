@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 add_library(sidou_core STATIC
     sid/sid.c
+    sid/sid_shadow.c
     sid/sid_character.c
     sid/sid_dac.c
     sid/sid_filter.c
@@ -47,6 +48,11 @@ set_source_files_properties(cpu6502/cpu6502.c PROPERTIES
 # The PSID environment (M3; psid_env.h) runs with the 6502 in the main loop, from flash, at a
 # call's start and return and on the I/O page's accesses: built for size.
 set_source_files_properties(psid/psid_env.c PROPERTIES COMPILE_OPTIONS -Os)
+# The voice shadow (M3; sid_shadow.h) runs with the 6502 in the main loop, from flash: built for
+# size, and in one section, so that none of the voice code it instantiates from the headers
+# (sid_osc.h's and sid_env.h's out-of-line helpers) has a name app.ld's .ram_text patterns take
+# into SRAM.
+set_source_files_properties(sid/sid_shadow.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-function-sections")
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)

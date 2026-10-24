@@ -15,6 +15,10 @@
 //! * Each of the 256 opcodes alone, the call's own cost taken off: instructions an opcode, by
 //!   its cycle count and by opcode, and the I/O page's accesses through the hooks.
 //!
+//! * The voice shadow (M3 Task 5b, core/sid/sid_shadow.h) beside the same players: what a
+//!   tune's writes and a frame's catch-up cost on average (SHADOW_FRAME_MEAN), and its dearest
+//!   catch-up of a look-ahead slice (SHADOW_SLICE_WORST).
+//!
 //! Instructions are not device cycles (docs/hardware.md, "Open checks").
 
 mod common;
@@ -288,4 +292,117 @@ fn each_opcode_alone_and_the_io_page() {
     let ram = |op: usize| one[op].0;
     // The out-of-line hook costs more than the inline memory access of the same opcode.
     assert!(one[256].0 > ram(0xAD) && one[257].0 > ram(0x8D) && one[258].0 > ram(0xEE));
+}
+
+/// The voice shadow (M3 Task 5b, core/sid/sid_shadow.h) on the device build: the instructions a
+/// tune's SID writes and a frame's catch-up cost the main loop. Each SONGS player runs 10 s
+/// twice, without the shadow and with it (bench mode 3: every write also into a 6581's shadow at
+/// its cycle, and the shadow clocked to each frame's end as the look-ahead's idle slices will);
+/// the difference over the calls, plus the catch-ups, is the shadow's. Reported per frame and as
+/// a share of the 240 MHz core at 50 frames a second.
+fn shadow_cost(build: &std::path::Path, name: &str) -> (f64, u64) {
+    let o = Options::default();
+    let packed = pack(&example(name), &o).expect("pack");
+    let setup = Setup::of(&packed, &o);
+    let mut image = vec![0u8; 0x10000];
+    image[packed.load as usize..packed.load as usize + packed.code.len()]
+        .copy_from_slice(&packed.code);
+    let params = |mode| {
+        [
+            mode,
+            u32::from(setup.init),
+            u32::from(setup.play),
+            0,
+            FRAMES,
+            PAL_FRAME_CYCLES,
+        ]
+    };
+    let plain = run_with(build, "sid_bench_6502", 2 * (1 + FRAMES as usize), |soc| {
+        load(soc, &image, &params(1))
+    });
+    let shadowed = run_with(build, "sid_bench_6502", 2 + 4 * FRAMES as usize, |soc| {
+        load(soc, &image, &params(3))
+    });
+    assert_eq!(plain.words[2], 1);
+    assert_eq!(shadowed.words[2], 1);
+    assert_eq!(plain.words[5], shadowed.words[5], "{name}: the same writes");
+    let mut per_frame = Vec::with_capacity(FRAMES as usize);
+    for f in 0..FRAMES as usize {
+        let call = shadowed.phases[2 + 4 * f] - plain.phases[2 * (f + 1)];
+        let catch_up = shadowed.phases[4 + 4 * f];
+        per_frame.push(call + catch_up);
+    }
+    let writes = (shadowed.phases[0] - plain.phases[0]) as f64;
+    let mean = per_frame.iter().sum::<u64>() as f64 / f64::from(FRAMES);
+    let worst = *per_frame.iter().max().unwrap();
+    println!(
+        "{name}: the shadow costs {mean:.0} instructions a frame on average ({:.2} % of the core \
+         at 50 frames a second), {worst} in the dearest frame; init's {writes:.0} more",
+        mean * 50.0 / CPU_HZ as f64 * 100.0,
+    );
+    (mean, worst)
+}
+
+/// The shadow's dearest catch-up: every voice on a combined waveform with noise (the voices run
+/// cycle by cycle while the register shifts towards its lock-up: the chip's worst block,
+/// decision record 0004), clocked in slices of the look-ahead's PSID_SLICE_CYCLES.
+fn shadow_slices(build: &std::path::Path, model: u32, control: u32, others: u32, freq: u32) -> u64 {
+    const SLICES: usize = 40;
+    let r = run_with(build, "sid_bench_6502", 2 * SLICES, |soc| {
+        load(
+            soc,
+            &[],
+            &[
+                4,
+                model,
+                control,
+                freq,
+                others,
+                SLICES as u32,
+                PSID_SLICE_CYCLES,
+            ],
+        )
+    });
+    assert_eq!(r.words[2], 1);
+    let slices: Vec<u64> = (0..SLICES).map(|k| r.phases[2 * k]).collect();
+    let worst = *slices.iter().max().unwrap();
+    println!(
+        "model {model}, voice 3 {control:#04x}, voices 1-2 {others:#04x}, freq {freq:#06x}: the \
+         dearest {PSID_SLICE_CYCLES}-cycle slice {worst} instructions ({:.2} a cycle), the \
+         first {}, the last {}",
+        worst as f64 / f64::from(PSID_SLICE_CYCLES),
+        slices[0],
+        slices[SLICES - 1]
+    );
+    worst
+}
+
+/// The look-ahead's slice (docs/plans/2026-10-19-m3-sid-files.md, Task 8 confirms it).
+const PSID_SLICE_CYCLES: u32 = 1_500;
+
+#[test]
+fn the_voice_shadow_costs_the_main_loop_little() {
+    let Some(build) = build() else { return };
+    let mut worst_mean = 0f64;
+    for name in SONGS {
+        let (mean, _) = shadow_cost(&build, name);
+        worst_mean = worst_mean.max(mean);
+    }
+    let mut worst_slice = 0;
+    for (model, control, others, freq) in [
+        (0, 0x91, 0x91, 0xffff),
+        (0, 0xb1, 0x91, 0xffff),
+        (0, 0xd1, 0xd1, 0x0800),
+        (1, 0x91, 0x91, 0xffff),
+        (0, 0x21, 0x21, 0xffff),
+    ] {
+        worst_slice = worst_slice.max(shadow_slices(&build, model, control, others, freq));
+    }
+    println!(
+        "the shadow: {worst_mean:.0} instructions a frame at most on average \
+         (SHADOW_FRAME_MEAN {SHADOW_FRAME_MEAN}), the dearest slice {worst_slice} \
+         (SHADOW_SLICE_WORST {SHADOW_SLICE_WORST})"
+    );
+    assert!(worst_mean <= SHADOW_FRAME_MEAN);
+    assert!(worst_slice <= SHADOW_SLICE_WORST);
 }

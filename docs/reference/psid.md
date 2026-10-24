@@ -228,11 +228,37 @@ as it does during a song.
 
 ### SID reads
 
-`$1B` (OSC3) and `$1C` (ENV3) come from an exact copy of voice 3 that the main loop clocks
-with the 6502; `$19` and `$1A` (the POTs) read `$FF`; every other register reads the bus's
-last value, which decays to 0 after reSIDfp's time (`0x1d00` cycles on a 6581, `0xa2000` on an
-8580), and every access leaves its value on the bus. A tune with two SIDs has a shadow per
-chip.
+A tune's reads of a SID are answered by that chip's **voice shadow** (`core/sid/sid_shadow.h`):
+a copy of the chip's three voices that the main loop clocks with the 6502, since the audio
+chip runs a frame or two behind the 6502 and cannot answer. The shadow sees every write the
+chip sees, at the same cycle, and runs the chip's own voice code, so it is the chip's voices
+at the read's cycle (hard sync aside, below). A tune with two SIDs has a shadow per chip.
+
+- **`$1B`, OSC3:** the top 8 bits of voice 3's waveform output as reSIDfp latches it, every
+  waveform and combination, ring modulation and sync included. A read in the same cycle as a
+  write to voice 2 or 3 returns the value from before the write, as on the chip.
+- **`$1C`, ENV3:** voice 3's envelope counter, exactly as reSIDfp's (the ADSR delay bug
+  included), so a tune that waits for its envelope to reach a level waits as long as on a C64.
+- **`$19`, `$1A`, the paddles:** `$FF` (nothing connected).
+- **Every other register,** the write-only ones and the three unused: the data bus, which
+  holds the last value written to any register or read from `$19`-`$1C`, as reSIDfp keeps it
+  (`SID.cpp`). Each write, and each read of `$19`-`$1C`, leaves its value there for `0x1d00`
+  cycles on a 6581 and `0xa2000` on an 8580; after that the bus reads `$00`. A read of any
+  other register halves what is left of that time (the read discharges the bus faster); a time
+  halved to 0 from 1 then never runs out, as in reSIDfp, until the next write or read of
+  `$19`-`$1C`. The bus starts at `$00`.
+
+Where OSC3 is not reSIDfp's (the shadow's test, `tests/sid_shadow.rs`, skips and counts these
+reads; every other read matches reSIDfp's, on both models and every combined-waveform profile):
+- **No waveform selected:** SIDOU reads `$00`; reSIDfp holds the last output on its floating
+  DAC and fades it after 54,000 (6581) or 800,000 (8580) cycles.
+- **One or two cycles after a write** to voice 3's frequency, pulse width or control, or to
+  voice 2's frequency: the old values drove those cycles.
+- **Hard sync:** a synced voice's own noise clocks and MSB rise earlier in a step are not
+  recomputed, so with SYNC set the voices can part from reSIDfp's, and from the audio chip's
+  (which steps a sample at a time, the shadow at most 16 cycles while any voice has SYNC set).
+  On random streams with sync, 0.2 % to 5 % of OSC3's reads differ from reSIDfp's, no more
+  than the audio chip's own at the same cycles.
 
 ## Known limits
 

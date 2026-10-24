@@ -17,6 +17,7 @@
 #include "sid/sid_filter.h"
 #include "sid/sid_math.h"
 #include "sid/sid_osc.h"
+#include "sid/sid_shadow.h"
 #include "song/gt2_kit.h"
 #include "song/gt2_sng.h"
 #include "song/gt2_stream.h"

@@ -18,12 +18,21 @@
  *      nothing: the call's own cost) and a run with the limit one cycle on (executes one
  *      instruction). Marks: 4 a opcode and 4 more a I/O-page access (LDA, STA and INC of
  *      $D400, through the hooks); samples: the cycles the one instruction took.
+ *   3  mode 1 with the voice shadow (M3 Task 5b; core/sid/sid_shadow.h): each write also goes to a
+ *      shadow of a 6581 (sid_init's), at its cycle, and each frame the shadow is clocked to the
+ *      frame's end as the look-ahead's idle slices will (a mark pair around that too: 4 marks a
+ *      frame, 2 for init). Samples as mode 1.
+ *   4  the shadow's worst slices: [1] the model, [2] voice 3's control and [3] the frequency
+ *      every voice gets ([4] voices 1 and 2's control), then [5] slices of [6] cycles clocked
+ *      one by one (sid_shadow_clock). Marks: two around each slice.
  * RESULT_ADDR [2] the outcome (mode 0: 1 success; mode 1: 1 all calls returned; mode 2: 1),
  * [3] the 6502 cycles, [4] the sum of the written values, [5] the writes, [6] the plays over
  * their frame, [7] the PC at the end or at the call that did not return. */
 #include <stdint.h>
 
 #include "cpu6502/cpu6502.h"
+#include "sid/sid.h"
+#include "sid/sid_shadow.h"
 
 #define RESULT_ADDR 0x01C80000u
 #define RESULT_MAGIC 0x53494442u /* "SIDB" */
@@ -47,10 +56,21 @@ static uint8_t hook_rd(void* user, uint32_t addr, uint32_t cycle) {
     return 0;
 }
 
+static sid chip;
+static sid_shadow shadow;
+
 static void hook_wr(void* user, uint32_t addr, uint32_t value, uint32_t cycle) {
     (void)user;
     (void)addr;
     (void)cycle;
+    write_sum += value;
+    write_count++;
+}
+
+/* Mode 3's: the write into the shadow too (mode 1's hook stays as it was, so its count is the
+ * 6502's alone). */
+static void hook_wr_shadow(void* user, uint32_t addr, uint32_t value, uint32_t cycle) {
+    sid_shadow_write((sid_shadow*)user, cycle, addr, value);
     write_sum += value;
     write_count++;
 }
@@ -124,6 +144,48 @@ static void workload(volatile uint32_t* result, volatile uint32_t* param, volati
     result[6] = over;
 }
 
+/* Mode 3: workload with the shadow (a function of its own, so mode 1's code and count stay as
+ * they were). */
+static void workload_shadowed(volatile uint32_t* result, volatile uint32_t* param,
+                              volatile int16_t* out) {
+    uint8_t* mem = cpu.mem;
+    mem[1] = 0x35;
+    cpu.io = 1;
+    sid_init(&chip, SID_MODEL_6581, SID_CLOCK_PAL, 44118u);
+    sid_shadow_init(&shadow, &chip, cpu.cycles);
+    cpu.user = &shadow;
+    cpu.wr = hook_wr_shadow;
+    uint32_t frames = param[4], frame_cycles = param[5], over = 0, ok = 1;
+    for (uint32_t i = 0; i <= frames && ok; i++) {
+        uint32_t routine = i == 0u ? param[1] : param[2];
+        if (i > 0u) {
+            uint32_t start = i * frame_cycles;
+            if ((int32_t)(cpu.cycles - start) < 0) {
+                cpu.cycles = start; /* the idle time */
+            } else {
+                over++;
+            }
+        }
+        uint32_t before = cpu.cycles;
+        bench_mark();
+        int state = call(routine, i == 0u ? param[3] : 0u);
+        bench_mark();
+        if (i > 0u) {
+            bench_mark();
+            sid_shadow_clock(&shadow, (i + 1u) * frame_cycles);
+            bench_mark();
+        }
+        out[i] = (int16_t)(cpu.cycles - before);
+        if (state != CPU6502_RET) {
+            ok = 0;
+            result[7] = cpu.pc;
+        }
+    }
+    result[1] = frames + 1u;
+    result[2] = ok;
+    result[6] = over;
+}
+
 static void opcodes(volatile uint32_t* result, volatile int16_t* out) {
     uint8_t* mem = cpu.mem;
     cpu.io = 0;
@@ -168,6 +230,30 @@ static void opcodes(volatile uint32_t* result, volatile int16_t* out) {
     result[2] = 1;
 }
 
+static void shadow_slices(volatile uint32_t* result, volatile uint32_t* param) {
+    sid_init(&chip, param[1] ? SID_MODEL_8580 : SID_MODEL_6581, SID_CLOCK_PAL, 44118u);
+    sid_shadow_init(&shadow, &chip, 0);
+    for (uint32_t v = 0; v < 3u; v++) {
+        uint32_t r = 7u * v;
+        sid_shadow_write(&shadow, 0, r + 0u, param[3] & 0xffu);
+        sid_shadow_write(&shadow, 0, r + 1u, param[3] >> 8);
+        sid_shadow_write(&shadow, 0, r + 2u, 0x00);
+        sid_shadow_write(&shadow, 0, r + 3u, 0x08);
+        sid_shadow_write(&shadow, 0, r + 5u, 0x00);
+        sid_shadow_write(&shadow, 0, r + 6u, 0xf0);
+        sid_shadow_write(&shadow, 0, r + 4u, v == 2u ? param[2] : param[4]);
+    }
+    uint32_t at = 0;
+    for (uint32_t k = 0; k < param[5]; k++) {
+        at += param[6];
+        bench_mark();
+        sid_shadow_clock(&shadow, at);
+        bench_mark();
+    }
+    result[1] = 0;
+    result[2] = 1;
+}
+
 int main(void) {
     for (uint32_t *d = __data_start, *s = __data_load; d < __data_end;) {
         *d++ = *s++;
@@ -183,12 +269,21 @@ int main(void) {
     cpu.wr = hook_wr;
     cpu.user = 0;
     result[1] = 0;
+    if (param[0] >= 3u) {
+        sid_noise_tables_init(); /* the voices' noise tables (sid.c), as the firmware's boot */
+    }
     switch (param[0]) {
     case 0:
         dormann(result);
         break;
     case 1:
         workload(result, param, out);
+        break;
+    case 3:
+        workload_shadowed(result, param, out);
+        break;
+    case 4:
+        shadow_slices(result, param);
         break;
     default:
         opcodes(result, out);
