@@ -274,3 +274,30 @@ fn the_new_song_holds_the_kit_and_goattracker_keeps_it() {
     );
     assert_eq!(song.write(false), sng, "SIDOU saves NEW's song differently");
 }
+
+/// NEW's bass is the lead an octave down (a wavetable right column of -12, $74) with a
+/// quarter-width pulse of its own row after the kit's; the lead keeps the square's $800.
+#[test]
+fn the_new_bass_is_an_octave_down_with_a_thinner_pulse() {
+    let sng = template();
+    let mut song = Song::host();
+    song.read(&sng, 0).unwrap();
+    let raw = song.raw();
+    let (lead, bass) = (&raw.instr[0], &raw.instr[1]);
+    let pulse_row = |i: &[u8; 25]| usize::from(i[3]) - 1;
+    assert_eq!(
+        raw.ltable[1][pulse_row(lead)],
+        0x88,
+        "the lead's width $800"
+    );
+    assert_eq!(
+        raw.ltable[1][pulse_row(bass)],
+        0x84,
+        "the bass's width $400"
+    );
+    assert_eq!(raw.ltable[1][pulse_row(bass) + 1], 0xff, "the pulse stops");
+    let wave_row = |i: &[u8; 25]| usize::from(i[2]) - 1;
+    assert_eq!(raw.rtable[0][wave_row(lead)], 0x00, "the lead at the note");
+    assert_eq!(raw.rtable[0][wave_row(bass)], 0x74, "the bass at -12");
+    assert_eq!(raw.ltable[0][wave_row(bass) + 1], 0xff, "the wave stops");
+}

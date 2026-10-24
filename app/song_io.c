@@ -244,18 +244,22 @@ static uint8_t template_digi(uint32_t at) {
     b -= GT2_INS_NAME;
     return b < sizeof template_digi_name[0] ? (uint8_t)template_digi_name[d][b] : 0u;
 }
+/* The bass's pulse rows after the kit's: the width $400 (a quarter), then the table stops. */
+#define BASS_PULSE_ROWS 2u
+static const uint8_t template_bass_pulse[2][BASS_PULSE_ROWS] = {{0x84, 255}, {0x00, 0}};
 #define LEAD_WAVE (GT2_KIT_WAVE_ROWS + 1u)
 static const uint8_t template_orders[] = {1, 2, 0, 255, 0, 2, 1, 255, 0, 2, 2, 255, 0};
 static const uint8_t template_lead[2][GT2_INSTR_BYTES] = {
     {0x09, 0xa8, LEAD_WAVE, 1, 0, 0, 0, 2, 0x41, 'P', 'U', 'L', 'S', 'E'},
-    {0x02, 0x98, LEAD_WAVE + 2u, 1, 0, 0, 0, 2, 0x41, 'B', 'A', 'S', 'S'}};
+    {0x02, 0x98, LEAD_WAVE + 2u, GT2_KIT_PULSE_ROWS + 1u, 0, 0, 0, 2, 0x41, 'B', 'A', 'S', 'S'}};
 /* The lead's and the bass's rows: a gated pulse at the note played (the right column's
  * relative note 0; $80 there would keep the frequency unchanged, so never set it: silence),
- * then a jump to 0, which stops the table and leaves the pitch to the pattern's commands. */
-static const uint8_t template_lead_wave[2][4] = {{0x41, 255, 0x41, 255}, {0, 0, 0, 0}};
+ * then a jump to 0, which stops the table and leaves the pitch to the pattern's commands. The
+ * bass's relative note is -12 ($74: GoatTracker's $60-$7F are negative), an octave down. */
+static const uint8_t template_lead_wave[2][4] = {{0x41, 255, 0x41, 255}, {0, 0, 0x74, 0}};
 static const uint8_t template_counts[] = {2u + GT2_KIT_DRUMS + DIGI_DRUMS,
                                           GT2_KIT_WAVE_ROWS + 4u,
-                                          GT2_KIT_PULSE_ROWS,
+                                          GT2_KIT_PULSE_ROWS + BASS_PULSE_ROWS,
                                           0, 0, 3}; /* filter, speed; the patterns */
 typedef struct {
     const uint8_t* p;
@@ -274,12 +278,15 @@ static const template_piece template_pieces[] = {
     {gt2_kit_wave[1], GT2_KIT_WAVE_ROWS},
     {template_lead_wave[1], 4},
     {template_counts + 2, 1},
-    PIECE(gt2_kit_pulse),
+    {gt2_kit_pulse[0], GT2_KIT_PULSE_ROWS},
+    {template_bass_pulse[0], BASS_PULSE_ROWS},
+    {gt2_kit_pulse[1], GT2_KIT_PULSE_ROWS},
+    {template_bass_pulse[1], BASS_PULSE_ROWS},
     {template_counts + 3, 3},
 };
 #define TEMPLATE_HEAD 100u
 #define TEMPLATE_PATTERNS (13u + 1u + (2u + GT2_KIT_DRUMS + DIGI_DRUMS) * GT2_INSTR_BYTES + 1u + \
-                           2u * (GT2_KIT_WAVE_ROWS + 4u) + 1u + 2u * GT2_KIT_PULSE_ROWS + 3u)
+                           2u * (GT2_KIT_WAVE_ROWS + 4u) + 1u + 2u * (GT2_KIT_PULSE_ROWS + BASS_PULSE_ROWS) + 3u)
 #define TEMPLATE_BYTES (TEMPLATE_HEAD + TEMPLATE_PATTERNS + 3u * (1u + (GT2_DEFAULT_ROWS + 1u) * 4u))
 
 static uint8_t template_byte(uint32_t at) {

@@ -869,13 +869,33 @@ fn a_new_song_plays_and_auditions_its_lead_at_pitch() {
     );
     let before = m.soc.periph.audio.len();
     press(&mut m, PANEL_KEY_ID0 as u8);
-    m.run_ms(400);
+    let lead_f0 = pitch(&record(&mut m, 400));
     let (zc, rms) = tone(&m.soc.periph.audio[before..]);
     println!("audition: {zc} zero crossings, rms {rms:.0}");
     assert!(
         zc > 40 && rms > 200.0,
         "the audition is silent: {zc} crossings, rms {rms:.0}"
     );
+    // Instrument 02 (BASS) on the same key: half the lead's frequency.
+    m.run_ms(600);
+    m.turn(6, 1);
+    m.run_ms(100);
+    press(&mut m, PANEL_KEY_ID0 as u8);
+    m.run_ms(1500);
+    press(&mut m, PANEL_KEY_ID0 as u8);
+    let rec = record(&mut m, 400);
+    println!(
+        "rms {:.0}",
+        (rec.iter().map(|x| x * x).sum::<f32>() / rec.len() as f32).sqrt()
+    );
+    let bass_f0 = pitch(&rec);
+    println!("lead {lead_f0:.1} Hz, bass {bass_f0:.1} Hz");
+    assert!(
+        (bass_f0 * 2.0 / lead_f0 - 1.0).abs() < 0.03,
+        "the bass is not an octave under the lead: {bass_f0:.1} vs {lead_f0:.1} Hz"
+    );
+    m.turn(6, -1);
+    m.run_ms(100);
     for k in [4u8, 8, 12] {
         press(&mut m, PANEL_KEY_ID0 as u8 + k);
         m.run_ms(400);

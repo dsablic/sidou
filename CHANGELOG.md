@@ -94,6 +94,10 @@ All notable changes are documented here. The format follows
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 
 ### Fixed
+- **A NEW song's bass differs from its lead.** Both were the same pulse at the same pitch. The
+  bass (instrument 02) now plays an octave down (WAVE right column `74`, relative note -12) with
+  a thinner pulse, a quarter width (`$400`, its own PULSE row 03 after the kit's); the lead keeps
+  the square. Songs saved from NEW before keep their sound.
 - **A NEW song's lead and bass sound at their notes.** Their wavetable rows kept the frequency
   unchanged (`$80` on the right, GoatTracker's "keep frequency"), so no note ever set it: STEP's
   and TRACKER's auditions and PLAY gave only a faint thump on a voice stuck at 0 Hz (since NEW
