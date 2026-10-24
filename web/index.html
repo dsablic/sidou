@@ -159,7 +159,10 @@
       <p><b>SIDOU</b> is free firmware that turns the M-VAVE FM-1 pocket synth into a Commodore 64 SID
         instrument: an emulated SID chip (6581 or 8580) played from the FM-1's keys and knobs and over MIDI,
         with three effect slots after the chip. It also plays and edits GoatTracker 2 songs with a step
-        sequencer and a tracker (<kbd>0</kbd> SEQ, <kbd>Space</kbd> PLAY). <code>.sid</code> playback is planned.</p>
+        sequencer and a tracker (<kbd>0</kbd> SEQ, <kbd>Space</kbd> PLAY): a new song comes with a SID drum
+        kit and sampled digi drums, and STEP can play a step by chance, roll a new pattern (DICE) or vary
+        one (MUTATE). On a real FM-1 the sound also goes out over USB as an audio input a computer can
+        record. <code>.sid</code> playback is planned.</p>
       <p>This page runs the <b>newest build of SIDOU's main branch</b>, rebuilt whenever the firmware or this page changes, so it can be ahead of the latest release; the build line under the player names it (run locally: your own build) in <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a>,
         an emulator of the FM-1's chip, in WebAssembly: the same update package (<code>sidou.fwsc</code>) a
         real FM-1 would take. SIDOU runs on a real FM-1 too: see the
@@ -203,7 +206,7 @@
         <tr><td><kbd>0</kbd> SEQ</td><td>the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE, round</td></tr>
         <tr><td><kbd>Space</kbd> PLAY / <kbd>R</kbd> REC</td><td>plays SIDOU's song (SIDOU LOOP) and stops it / record mode</td></tr>
         <tr><td>MASTER</td><td>volume (drag the knob at the top left)</td></tr>
-        <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC: they save themselves</td></tr>
+        <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC, SPREAD, RESET: they save themselves (but REC; RESET and STORE ask first)</td></tr>
       </table>
       <p>The mouse or a touch screen plays the panel directly (<kbd>4</kbd> LFO, <kbd>6</kbd> GLO and <kbd>9</kbd> ARP
         are the other buttons). All controls:
