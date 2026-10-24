@@ -34,8 +34,12 @@
  * Time is the 6502's running cycle count (cpu.cycles): 0 is init's first cycle, and every
  * comparison is wrapping ((int32_t)(a - b)). A call starts at its due cycle; between calls the
  * 6502 idles (time passes, nothing runs). One caller, the main loop; portable C11, no
- * allocation. Task 6a's I/O page is a stub (psid_env.c says what it keeps); Task 6b replaces
- * it. */
+ * allocation.
+ *
+ * The I/O page (docs/reference/psid.md, "The I/O page") while $01 maps it in: SID writes go to
+ * the sink and to the chip's voice shadow, SID reads are the shadow's, at the access's cycle
+ * (sid_shadow.h); the VIC and the CIAs keep what is written to them, and answer the raster
+ * line, CIA 1 timer A's counter and the interrupt flags from the absolute cycle. */
 #ifndef SIDOU_PSID_ENV_H
 #define SIDOU_PSID_ENV_H
 
@@ -43,6 +47,7 @@
 
 #include "cpu6502/cpu6502.h"
 #include "psid/psid_file.h"
+#include "sid/sid_shadow.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,13 +98,18 @@ typedef struct psid_env {
     uint32_t calls;      /* play calls started since psid_env_start */
     uint32_t overruns;   /* play calls that ran past their period */
     uint32_t late;       /* SID writes the player applied late (psid_ctl counts them here) */
-    uint32_t sid3_dropped; /* a third SID's writes, dropped (Task 6b) */
+    uint32_t sid3_dropped; /* a third SID's writes, dropped */
+    sid_shadow* shadow[2]; /* chip A's and B's voice shadows (psid_env_set_shadows) */
     uint16_t frame;        /* PSID_FRAME_PAL or _NTSC */
     uint16_t latch;        /* CIA 1 timer A's latch */
     uint16_t song;         /* 1..songs */
     uint8_t line;          /* cycles a raster line: PSID_LINE_PAL or _NTSC */
     uint8_t phase;         /* PSID_PHASE_* */
     uint8_t stop;          /* PSID_PHASE_STOP: the PSID_RUN_* code it stopped with */
+    uint8_t vic_irq;       /* $D019: $81 from a VBI play call's start until written */
+    uint8_t cia1_icr;      /* $DC0D: $81 from a CIA play call's start until read */
+    uint8_t vic[64];       /* the VIC's registers, as last written */
+    uint8_t cia[2][16];    /* CIA 1's and 2's, as last written */
 } psid_env;
 
 /* Sets the environment up for the tune h (parsed and accepted by psid_parse) over mem, its
@@ -113,6 +123,12 @@ void psid_env_load(psid_env* e, uint8_t* mem, const psid_header* h, const uint8_
  * place in memory; bytes outside the data (the header, a load-address prefix, a v5 song-length
  * table) are skipped. For a file read in pieces (Task 10). */
 void psid_env_load_part(psid_env* e, uint32_t offset, const uint8_t* bytes, uint32_t n);
+
+/* The voice shadows that answer a tune's SID reads: chip A's, and B's for a 2SID tune (NULL:
+ * reads return 0). The caller owns them (Task 8), initialises them from the chips at cycle 0
+ * after psid_env_start, and keeps them as long as the tune is loaded; every SID write also
+ * goes to its shadow, at its cycle. Set them after psid_env_load, which clears them. */
+void psid_env_set_shadows(psid_env* e, sid_shadow* a, sid_shadow* b);
 
 /* Where SID writes go (NULL: nowhere). */
 void psid_env_set_sink(psid_env* e, psid_sink sink, void* ctx);

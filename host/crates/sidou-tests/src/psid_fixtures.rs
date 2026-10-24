@@ -32,6 +32,9 @@ pub struct Psid {
     pub start: u16,
     pub speed: u32,
     pub flags: u16,
+    /// The second and third SID's address bytes (`$Dxx0` as `xx`; 0 for none).
+    pub sid2: u8,
+    pub sid3: u8,
     pub data: Vec<u8>,
 }
 
@@ -49,6 +52,8 @@ impl Psid {
             start: 1,
             speed: 0,
             flags: CLOCK_PAL,
+            sid2: 0,
+            sid3: 0,
             data,
         }
     }
@@ -65,6 +70,20 @@ impl Psid {
 
     pub fn flags(mut self, flags: u16) -> Psid {
         self.flags = flags;
+        self
+    }
+
+    /// A second SID at `$Dxx0` (`xx` $42-$7F or $E0-$FE, even), and with `sid3` a third; a
+    /// PSID v3 file, v4 with a third.
+    pub fn sid2(mut self, sid2: u8) -> Psid {
+        self.sid2 = sid2;
+        self.version = self.version.max(3);
+        self
+    }
+
+    pub fn sid3(mut self, sid3: u8) -> Psid {
+        self.sid3 = sid3;
+        self.version = 4;
         self
     }
 
@@ -97,7 +116,7 @@ impl Psid {
         b.extend_from_slice(&meta);
         if self.version > 1 {
             b.extend_from_slice(&self.flags.to_be_bytes());
-            b.extend_from_slice(&[0, 0, 0, 0]);
+            b.extend_from_slice(&[0, 0, self.sid2, self.sid3]);
         }
         b.extend_from_slice(&self.data);
         b
@@ -284,4 +303,168 @@ pub fn busy_init() -> Psid {
         "{INIT_RECORD}ldx #$00\nb_loop: stx $d400\nldy #$10\nb_wait: dey\nbne b_wait\ninx\nbne b_loop\nrts\n"
     );
     Psid::new(&[(INIT, &init), (PLAY, &play_src())])
+}
+
+/// Code that takes exactly `n` cycles (0, or 2 and up: no instruction takes 1): rounds of
+/// 1,286 cycles (plus 1), a countdown loop of `5k + 1`, and padding of NOPs and one `BIT <$FC`.
+/// Uses X and Y, not A.
+pub fn exact(n: u32) -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static LABELS: AtomicU32 = AtomicU32::new(0);
+    assert!(n != 1, "one cycle is not an instruction");
+    let mut out = String::new();
+    let mut rem = n;
+    // Rounds of up to 256 delays (329,217 cycles), as many as it takes, the last leaving at
+    // least 2 cycles and not 1.
+    while rem >= 1294 {
+        let id = LABELS.fetch_add(1, Ordering::Relaxed);
+        let mut m = ((rem - 8) / 1286).min(256);
+        if rem - (1286 * m + 1) == 1 {
+            m -= 1;
+        }
+        out += &format!(
+            "ldy #${:02x}\nr{id}o: ldx #$00\nr{id}i: dex\nbne r{id}i\ndey\nbne r{id}o\n",
+            m & 0xFF
+        );
+        rem -= 1286 * m + 1;
+    }
+    if rem >= 6 {
+        let id = LABELS.fetch_add(1, Ordering::Relaxed);
+        let mut k = ((rem - 1) / 5).min(256);
+        if rem - (5 * k + 1) == 1 {
+            k -= 1;
+        }
+        if k > 0 {
+            out += &format!("ldx #${:02x}\nr{id}l: dex\nbne r{id}l\n", k & 0xFF);
+            rem -= 5 * k + 1;
+        }
+    }
+    assert!(rem != 1);
+    if rem % 2 == 1 {
+        out += "bit <$fc\n";
+        rem -= 3;
+    }
+    out + &"nop\n".repeat((rem / 2) as usize)
+}
+
+/// Init sets voice 3 to noise at full pitch, then eight times reads OSC3 into voice 1's
+/// frequency: each `STA $D400` writes the value 4 cycles after the `LDA`'s read.
+pub fn osc3_noise() -> Psid {
+    let init = "lda #$ff\nsta $d40e\nsta $d40f\nlda #$81\nsta $d412\nldx #$08\n\
+                o_loop: lda $d41b\nsta $d400\nldy #$20\no_wait: dey\nbne o_wait\ndex\nbne o_loop\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, &play_src())])
+}
+
+/// Init gates voice 3 with the fastest attack and decay and a sustain of 0, waits for ENV3 to
+/// rise, then to come back to 0 (a loop that never ends if ENV3 reads 0 or never falls), and
+/// writes X (0) to register 0: that write is 6 cycles after the last read.
+pub fn env3_wait() -> Psid {
+    let init = "lda #$00\nsta $d413\nsta $d414\nldx #$00\nlda #$11\nsta $d412\n\
+                w1: lda $d41c\nbeq w1\nw2: lda $d41c\nbne w2\nstx $d400\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, &play_src())])
+}
+
+/// Init waits for the raster to reach `line` (low eight bits, `$D012`) and writes X (0) to
+/// register 0: 8 cycles after the read that saw it (`LDA`, `CMP`, `BNE`, `STA`).
+pub fn raster_wait(line: u8) -> Psid {
+    let init =
+        format!("ldx #$00\nr_loop: lda $d012\ncmp #${line:02x}\nbne r_loop\nstx $d400\nrts\n");
+    Psid::new(&[(INIT, &init), (PLAY, &play_src())])
+}
+
+/// Init waits for bit 7 of `$D011` (the raster's ninth bit) and writes X (0) to register 0:
+/// 6 cycles after the `BIT`'s read.
+pub fn raster_high_wait() -> Psid {
+    let init = "ldx #$00\nh_loop: bit $d011\nbpl h_loop\nstx $d400\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, &play_src())])
+}
+
+/// A CIA tune (latch `latch`) whose play call writes `$D012`'s value to register 0, the read
+/// 4 cycles before the write, the first instruction.
+pub fn raster_in_play(latch: u16) -> Psid {
+    let play = "lda $d012\nsta $d400\nrts\n";
+    let init = format!(
+        "lda #${:02x}\nsta $dc04\nlda #${:02x}\nsta $dc05\nrts\n",
+        latch & 0xFF,
+        latch >> 8
+    );
+    Psid::new(&[(INIT, &init), (PLAY, play)]).speed(1)
+}
+
+/// A CIA tune: init sets the latch to `$0900`, then reads timer A's counter, low then high
+/// byte, into registers 0 and 1 (each write 4 cycles after its read); play reads high then low
+/// byte into registers 2 and 3 the same way.
+pub fn cia_counter() -> Psid {
+    let init = "lda #$00\nsta $dc04\nlda #$09\nsta $dc05\nlda $dc04\nsta $d400\nlda $dc05\nsta $d401\nrts\n";
+    let play = "lda $dc05\nsta $d402\nlda $dc04\nsta $d403\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, play)]).speed(1)
+}
+
+/// Init reads `$D019`, `$DC0D` and `$DD0D` into registers 0-2; play writes `$D019` as it
+/// reads it into register 3, reads it again into 4, then `$DC0D` twice into 5 and 6 and
+/// `$DD0D` into 7. A CIA tune with `cia`.
+pub fn irq_flags(cia: bool) -> Psid {
+    let init = "lda $d019\nsta $d400\nlda $dc0d\nsta $d401\nlda $dd0d\nsta $d402\nrts\n";
+    let play = "lda $d019\nsta $d403\nsta $d019\nlda $d019\nsta $d404\n\
+                lda $dc0d\nsta $d405\nlda $dc0d\nsta $d406\nlda $dd0d\nsta $d407\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, play)]).speed(u32::from(cia))
+}
+
+/// Init writes `$A5` to register 5 and, `d` cycles later, reads register 5 back into
+/// register 0 (the read is the `LDA`'s last cycle; `d` is 4 or more, not 5).
+pub fn bus_read(d: u32) -> Psid {
+    let init = format!(
+        "lda #$a5\nsta $d405\n{}lda $d405\nsta $d400\nrts\n",
+        exact(d - 4)
+    );
+    Psid::new(&[(INIT, &init), (PLAY, &play_src())])
+}
+
+/// Init stores `A` to each of `addrs` in turn, the value being 1, 2, 3 ...
+pub fn stores(addrs: &[u16]) -> Psid {
+    let mut init = String::new();
+    for (i, a) in addrs.iter().enumerate() {
+        init += &format!("lda #${:02x}\nsta ${a:04x}\n", i + 1);
+    }
+    init += "rts\n";
+    Psid::new(&[(INIT, &init), (PLAY, &play_src())])
+}
+
+/// Init writes `$11` to chip A's register 5 and `$22` to the second SID's (at `$D420`), reads
+/// register 13 (write-only: the bus) of each, A's into register 0 and B's into register 1.
+pub fn two_sid_buses() -> Psid {
+    let init = "lda #$11\nsta $d405\nlda #$22\nsta $d425\nlda $d40d\nldx $d42d\n\
+                sta $d400\nstx $d401\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, &play_src())]).sid2(0x42)
+}
+
+/// Init writes the VIC, CIA and colour RAM and reads them back into registers 0-7: `$D021`
+/// through its mirror at `$D061`, colour RAM `$D800` and `$DBFF` (0), `$DC02` and `$DD02`
+/// (separately), `$DC02` through its mirror `$DC12`, `$DD0D` after a write (0), `$D011` after
+/// a write of `$9B` (`$1B`: the raster's ninth bit is the line's, 0 so early).
+pub fn io_readback() -> Psid {
+    let init = "lda #$11\nsta $d021\nlda #$22\nsta $d061\nlda $d021\nsta $d400\n\
+                lda #$77\nsta $d800\nsta $dbff\nlda $d800\nsta $d401\nlda $dbff\nsta $d402\n\
+                lda #$33\nsta $dc02\nlda #$44\nsta $dd02\nlda $dc02\nsta $d403\nlda $dd02\nsta $d404\n\
+                lda #$55\nsta $dc12\nlda $dc02\nsta $d405\n\
+                lda #$81\nsta $dd0d\nlda $dd0d\nsta $d406\n\
+                lda #$9b\nsta $d011\nlda $d011\nsta $d407\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, &play_src())])
+}
+
+/// Init maps RAM in (`$01 = $34`) and writes `$77` to `$D021`, `$D400`, `$DC02` and `$D800`,
+/// reads them back into zero page `$F0`-`$F3` and `$D012` into `$F4`, and returns.
+pub fn io_ram() -> Psid {
+    let init = "lda #$34\nsta <$01\nlda #$77\nsta $d021\nsta $d400\nsta $dc02\nsta $d800\n\
+                lda $d021\nsta <$f0\nlda $d400\nsta <$f1\nlda $dc02\nsta <$f2\n\
+                lda $d800\nsta <$f3\nlda $d012\nsta <$f4\nrts\n";
+    Psid::new(&[(INIT, init), (PLAY, &play_src())])
+}
+
+/// Init does a read-modify-write of a SID register: `ASL $D405` of `$05`.
+pub fn rmw() -> Psid {
+    Psid::new(&[
+        (INIT, "lda #$05\nsta $d405\nasl $d405\nrts\n"),
+        (PLAY, &play_src()),
+    ])
 }

@@ -16,12 +16,22 @@
 #define HW_IRQ_VECTOR 0xFFFEu
 #define PORT_HIRAM 0x02u   /* $01 bit 1: the KERNAL ROM at $E000 */
 #define IRQ_PUSHED_P 0x20u /* an IRQ's pushed P: B clear, I clear (it was taken) */
-#define SID_FIRST 0xD400u
+#define SID_FIRST 0xD400u /* chip A: $D400-$D7FF, every 32 bytes a mirror */
 #define SID_END 0xD800u
+#define SID_WINDOW 0x20u /* a SID's registers */
 #define SID_REG_MASK 0x1Fu
-#define CIA1_TA_LO 0xDC04u /* every 16 bytes a mirror */
-#define CIA1_TA_HI 0xDC05u
-#define CIA1_MIRROR_MASK 0xFF0Fu
+#define VIC_MASK 0x3Fu /* $D000-$D3FF, every 64 bytes a mirror */
+#define VIC_CTRL1 0x11u
+#define VIC_RASTER 0x12u
+#define VIC_IRQ_FLAGS 0x19u
+#define CIA1_FIRST 0xDC00u /* $DC00-$DCFF and $DD00-$DDFF, every 16 bytes a mirror */
+#define CIA2_FIRST 0xDD00u
+#define CIA_SIZE 0x100u
+#define CIA_MIRROR_MASK 0x0Fu
+#define CIA_TA_LO 0x04u
+#define CIA_TA_HI 0x05u
+#define CIA_ICR 0x0Du
+#define IRQ_FLAGS_SET 0x81u /* an interrupt flag and its summary bit */
 
 /* Where a call ends: the sentinel's $0000/$0001 and the KERNAL's interrupt exits, as
  * cpu6502_run's `stops` (a call that starts there has nothing to run). */
@@ -31,28 +41,106 @@ static int is_stop(uint32_t addr)
            addr == CPU6502_KERNAL_IRQ_EXIT_SHORT || addr == CPU6502_KERNAL_NMI_EXIT;
 }
 
-/* --- The I/O page, Task 6a's stub ---------------------------------------------------------
- * A SID write anywhere in $D400-$D7FF goes to chip A (its register the address's low five
- * bits); CIA 1 timer A's latch keeps its writes, for the period; reads return 0 and every
- * other write is dropped. Task 6b replaces both hooks. */
+/* --- The I/O page ------------------------------------------------------------------------
+ * While $01 maps it in (the CPU checks), $D000-$DFFF goes here (docs/reference/psid.md, "The
+ * I/O page"): the SIDs, VIC, CIA 1 and 2; colour RAM and the expansion areas keep nothing. */
+
+/* Which SID a $D000-$DFFF address belongs to: 0 chip A, 1 chip B (a second SID's window, which
+ * takes priority over A's mirrors), 2 a third SID's, -1 none. */
+static int sid_window(const psid_env* e, uint32_t addr)
+{
+    const psid_header* h = e->h;
+    if (h->sid2 && addr - h->sid2 < SID_WINDOW)
+        return 1;
+    if (h->sid3 && addr - h->sid3 < SID_WINDOW)
+        return 2;
+    return addr >= SID_FIRST && addr < SID_END ? 0 : -1;
+}
+
+/* CIA 1 timer A's counter: counting down from the latch, a period of latch + 1, from the
+ * last underflow: a CIA song's play interrupt (call_due), else cycle 0. FM-1 SID returns the
+ * latch itself. */
+static uint32_t cia1_counter(const psid_env* e, uint32_t cycle)
+{
+    uint32_t len = (uint32_t)e->latch + 1u;
+    uint32_t ref = psid_speed_bit(e->h, e->song) ? e->call_due : 0u;
+    return e->latch - (cycle - ref) % len;
+}
+
+static uint8_t vic_read(psid_env* e, uint32_t reg, uint32_t cycle)
+{
+    uint32_t line;
+    switch (reg) {
+    case VIC_CTRL1:
+    case VIC_RASTER:
+        /* The raster line from the absolute cycle (FM-1 SID counts from each call's start). */
+        line = cycle % e->frame / e->line;
+        return reg == VIC_RASTER
+                   ? (uint8_t)line
+                   : (uint8_t)((e->vic[VIC_CTRL1] & 0x7Fu) | (line >> 1 & 0x80u));
+    case VIC_IRQ_FLAGS:
+        return e->vic_irq;
+    default:
+        return e->vic[reg];
+    }
+}
+
 static uint8_t io_read(void* user, uint32_t addr, uint32_t cycle)
 {
-    (void)user;
-    (void)addr;
-    (void)cycle;
-    return 0;
+    psid_env* e = (psid_env*)user;
+    uint32_t reg = addr & CIA_MIRROR_MASK;
+    int w = sid_window(e, addr);
+    uint8_t v;
+    if (w >= 0)
+        return w < 2 && e->shadow[w] ? (uint8_t)sid_shadow_read(e->shadow[w], cycle,
+                                                                 addr & SID_REG_MASK)
+                                     : 0;
+    if (addr < SID_FIRST)
+        return vic_read(e, addr & VIC_MASK, cycle);
+    if (addr >= CIA1_FIRST && addr < CIA1_FIRST + CIA_SIZE) {
+        if (reg == CIA_TA_LO)
+            return (uint8_t)cia1_counter(e, cycle);
+        if (reg == CIA_TA_HI)
+            return (uint8_t)(cia1_counter(e, cycle) >> 8);
+        if (reg == CIA_ICR) {
+            v = e->cia1_icr; /* a read acknowledges */
+            e->cia1_icr = 0;
+            return v;
+        }
+        return e->cia[0][reg];
+    }
+    if (addr >= CIA2_FIRST && addr < CIA2_FIRST + CIA_SIZE)
+        return reg == CIA_ICR ? 0 : e->cia[1][reg];
+    return 0; /* colour RAM, the expansion areas */
 }
 
 static void io_write(void* user, uint32_t addr, uint32_t value, uint32_t cycle)
 {
     psid_env* e = (psid_env*)user;
-    if (addr >= SID_FIRST && addr < SID_END) {
+    uint32_t reg = addr & CIA_MIRROR_MASK;
+    int w = sid_window(e, addr);
+    if (w >= 0) {
+        if (w == 2) {
+            e->sid3_dropped++;
+            return;
+        }
+        if (e->shadow[w])
+            sid_shadow_write(e->shadow[w], cycle, addr & SID_REG_MASK, value);
         if (e->sink)
-            e->sink(e->sink_ctx, cycle, 0, addr & SID_REG_MASK, value);
-    } else if ((addr & CIA1_MIRROR_MASK) == CIA1_TA_LO) {
-        e->latch = (uint16_t)((e->latch & 0xFF00u) | value);
-    } else if ((addr & CIA1_MIRROR_MASK) == CIA1_TA_HI) {
-        e->latch = (uint16_t)((e->latch & 0x00FFu) | value << 8);
+            e->sink(e->sink_ctx, cycle, (uint32_t)w, addr & SID_REG_MASK, value);
+    } else if (addr < SID_FIRST) {
+        reg = addr & VIC_MASK;
+        e->vic[reg] = (uint8_t)value;
+        if (reg == VIC_IRQ_FLAGS)
+            e->vic_irq = 0; /* any write acknowledges */
+    } else if (addr >= CIA1_FIRST && addr < CIA1_FIRST + CIA_SIZE) {
+        e->cia[0][reg] = (uint8_t)value;
+        if (reg == CIA_TA_LO)
+            e->latch = (uint16_t)((e->latch & 0xFF00u) | value);
+        else if (reg == CIA_TA_HI)
+            e->latch = (uint16_t)((e->latch & 0x00FFu) | value << 8);
+    } else if (addr >= CIA2_FIRST && addr < CIA2_FIRST + CIA_SIZE) {
+        e->cia[1][reg] = (uint8_t)value;
     }
 }
 
@@ -100,6 +188,12 @@ void psid_env_load_part(psid_env* e, uint32_t offset, const uint8_t* bytes, uint
         offset = lo;
     }
     memcpy(e->cpu.mem + h->load + (offset - lo), bytes, n);
+}
+
+void psid_env_set_shadows(psid_env* e, sid_shadow* a, sid_shadow* b)
+{
+    e->shadow[0] = a;
+    e->shadow[1] = b;
 }
 
 void psid_env_set_sink(psid_env* e, psid_sink sink, void* ctx)
@@ -180,6 +274,10 @@ int psid_env_start(psid_env* e, uint32_t song)
     e->overruns = 0;
     e->late = 0;
     e->sid3_dropped = 0;
+    memset(e->vic, 0, sizeof e->vic);
+    memset(e->cia, 0, sizeof e->cia);
+    e->vic_irq = 0;
+    e->cia1_icr = 0;
     e->cpu.cycles = 0;
     e->call_due = 0;
     e->next_due = 0;
@@ -247,6 +345,11 @@ int psid_env_run(psid_env* e, uint32_t cycles)
             e->calls++;
             e->phase = PSID_PHASE_PLAY;
             begin(e, e->h->play, 0, e->h->play == 0u);
+            /* The interrupt that started the call: CIA 1 timer A's or the frame's (VIC's). */
+            if (psid_speed_bit(e->h, e->song))
+                e->cia1_icr = IRQ_FLAGS_SET;
+            else
+                e->vic_irq = IRQ_FLAGS_SET;
             continue;
         case PSID_PHASE_INIT:
         case PSID_PHASE_PLAY:

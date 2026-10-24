@@ -586,6 +586,8 @@ fn stamped(song: &[u8], frames: u32) -> Stamped {
         start: 1,
         speed: 0,
         flags: CLOCK_PAL,
+        sid2: 0,
+        sid3: 0,
         data: packed.code.clone(),
     };
     let file = p.bytes();

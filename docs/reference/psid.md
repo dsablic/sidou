@@ -214,17 +214,34 @@ as it does during a song.
 ### The I/O page (while `$01` maps it in)
 
 - **SID:** `$D400-$D7FF` is chip A (every 32 bytes a mirror), except a second SID's 32-byte
-  window, which is chip B and takes priority. A third SID's writes are dropped and counted.
-- **VIC:** `$D012` and bit 7 of `$D011` give the raster line from the absolute cycle,
-  `(t % frame) / line_cycles`; `$D019` reads `$81` from the start of a VBI play call until the
-  tune writes it, else `$00`; the other VIC registers read back what was last written to
-  them (a 64-byte shadow).
-- **CIA 1:** timer A's latch (`$DC04`, `$DC05` writes) and its counter (reads, computed from
-  the absolute cycle and the latch); `$DC0D` reads `$81` at the start of a CIA play call until
-  read, then `$00`; CIA 2's `$DD0D` reads `$00`. The other CIA registers read back what was
-  last written (16 bytes each).
-- **Colour RAM** (`$D800-$DBFF`) is not kept: writes are dropped and reads return `$00`.
-- Everything outside the I/O page, and all of it while `$01` maps RAM, is RAM.
+  window (`secondSIDAddress`, so `$D420-$D7E0` or `$DE00-$DFE0`), which is chip B and takes
+  priority over A's mirrors. A third SID's writes are dropped and counted (`sid3_dropped`)
+  and its reads are `$00`. Every write goes to the write sink and to its chip's voice shadow
+  at the write's cycle (a read-modify-write is two writes, on its last two cycles); every
+  read is the shadow's (below), at the read's cycle. With no shadow set for a chip
+  (`psid_env_set_shadows`) its reads are `$00`.
+- **VIC:** `$D000-$D3FF`, every 64 bytes a mirror. `$D012` and bit 7 of `$D011` give the
+  raster line from the absolute cycle, `(t % frame) / line_cycles` (PAL 312 lines of 63,
+  NTSC 263 of 65); FM-1 SID counts from each call's start. The raster jumps once when the
+  32-bit cycle count wraps, after 72 minutes. `$D019` reads `$81` from the start of a VBI play
+  call until the tune writes it (any value: the flag is acknowledged), else `$00`, and an
+  init call sees `$00`. Every other VIC register reads back what was last written to it (a
+  64-byte shadow, all `$00` at the tune's start), `$D011`'s bit 7 aside.
+- **CIA 1:** `$DC00-$DCFF`, every 16 bytes a mirror. Timer A's latch is set by writes to
+  `$DC04` and `$DC05`; reads of them are the counter: it counts down from the latch, a period
+  of latch + 1 cycles, from the last underflow, which is a CIA song's play interrupt (the
+  call's due cycle) and cycle 0 for a VBI song and init. A call therefore starts with the
+  counter at the latch, as on a C64 (FM-1 SID returns the latch). A write to the latch in
+  mid-count moves the counter at once, where a C64 reloads at the next underflow. `$DC0D`
+  reads `$81` at the start of a CIA play call until it is read, then `$00` (and `$00` in a VBI
+  song and in init). The other registers read back what was last written (16 bytes).
+- **CIA 2:** `$DD00-$DDFF`, every 16 bytes a mirror; `$DD0D` reads `$00`, the rest what was
+  last written (16 bytes).
+- **Colour RAM** (`$D800-$DBFF`) is not kept: writes are dropped and reads return `$00`. The
+  expansion areas (`$DE00-$DFFF`, outside a SID's window) are the same.
+- Everything outside the I/O page, and all of it while `$01` maps RAM (`$34`), is RAM.
+- The VIC and CIA shadows and the flags are cleared by `psid_env_start`; the voice shadows
+  are the player's, started from the chips at cycle 0 after it.
 
 ### SID reads
 
@@ -265,6 +282,10 @@ reads; every other read matches reSIDfp's, on both models and every combined-wav
 - **No ROMs.** The KERNAL, BASIC and character ROMs are not there (they are Commodore's).
   Calls end at the KERNAL's interrupt exits instead of running them.
 - **No colour RAM.** Reads return 0.
+- **The VIC and CIAs are registers only:** nothing but the raster line, CIA 1 timer A's
+  counter and the two interrupt flags answers from the clock; the other registers read back
+  what was written, so a tune that polls a flag or timer other than these waits forever (and
+  stops with `PLAY HUNG` or `INIT TOO LONG`).
 - **No NMI,** no CIA timer B or time-of-day, no VIC interrupts: only the speed bit's frame or
   CIA timer A drives the tune.
 - **No RSID.** Those tunes need a cycle-scheduled CIA 1 and 2, VIC raster interrupts, the C64's
