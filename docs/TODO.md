@@ -587,3 +587,17 @@ fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementin
   walk compared to the player the way the gates are now; the pitch of tied notes is not compared
   (the fixtures hold each gate run's first note's frequency only); tempo commands in a
   wavetable (command `F`) are not followed, as GoatTracker's editor player does not either; a subtune's export of both chips on a SIDOU two-chip song waits for `TRKB` (M5).
+
+## DICE's settings (the user, 2026-10-24, from the v0.4.0 device session)
+
+DICE (EDIT + SCL in STEP) works on the device but always rolls eighth notes in a minor pentatonic
+around the lane's note; the user wants to steer it. Planned for 0.5.x, after M3:
+
+- **EDIT + SCL held, K1-K4 turned:** the parameters; EDIT + SCL alone rolls with them, as now.
+  - K1 **density**: how many steps get a note, sparse to every step.
+  - K2 **range**: how far the notes go from the lane's note, a fifth to two octaves.
+  - K3 **scale**: minor and major pentatonic, minor, major, dorian, chromatic.
+  - K4 **rhythm**: sixteenths, eighths, a syncopated or off-beat feel.
+- **Saved per song** (SIDOU's own chunk, as the locks and the scene are), so a song keeps its
+  DICE; MUTATE keeps to the same scale.
+- Open: a note-length setting, and how often a roll repeats a note.
