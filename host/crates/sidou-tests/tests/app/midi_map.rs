@@ -1266,8 +1266,8 @@ jack, which is MIDI IN only.
   (after a program change), so CC 1 is never read with the old target. An NRPN is {nrpn} CCs, without running status: 99 and 98 its
   number, 6 and 38 the value's MSB and LSB (value / 128, value % 128), which is the
   order the input above takes; no null NRPN follows.
-- **Channel:** 1 by default. Until M2 stores settings, the channel and the
-  high-resolution option are build options (CMake `SIDOU_MIDI_OUT_CHANNEL`, 1..16, and
+- **Channel:** 1 by default. The channel and the
+  high-resolution option are build options, not settings (CMake `SIDOU_MIDI_OUT_CHANNEL`, 1..16, and
   `SIDOU_MIDI_OUT_NRPN`). The input follows MIDI's mode (Modes, below).
 - **No echo:** a MIDI-only change, from either port, is never sent back:
   the sender has it, and a DAW recording with MIDI thru on would otherwise loop. If
@@ -1498,9 +1498,9 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
 \n- Any other bank, or a program past a bank's range, does nothing. The bank is kept per
   channel for both ports together, and across a gap in the input.
 - **Songs:** a load takes a few passes; a second request before it is done replaces the
-  first. Until the device keeps songs (M2c), the request waits and nothing loads.
-- **USER profiles:** until the device keeps them (M2a), the request waits and nothing
-  changes.
+  first. A program past the store's songs keeps the current song, and unsaved changes
+  refuse the load ([controls.md](controls.md), SONG).
+- **USER profiles:** programs 5..12 recall the saved USER 1..8; an empty slot does nothing.
 - **Out:** a preset from the panel goes out as its program change in bank 0, with CC 0 and 32
   first when the last bank sent was another (and then the parameters of its kept edits); a song loaded from the SONG menu goes out as
   CC 0 = 0, CC 32 = 1 and its program.
