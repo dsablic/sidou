@@ -651,3 +651,17 @@ where you go to dig in, and never gets in LIVE's way.
   Golana, SID-1, Duell, JIANT, Noiz Demons, Melodee and others).
 - **The controls today:** [the button audit](plans/2026-10-25-button-audit.md) (every control in every
   view: used, weak, free; label fit; hidden combos; constraints for LAB).
+
+## .sid: more render parts a block, so dense players write on time (the flash day, 2026-10-25)
+
+LATE on STATUS counts writes the interrupt applied at the end of their 128-sample block (at most
+2.9 ms after their cycle, in order, nothing dropped): a block renders in at most `PSID_SPLITS - 1`
+= 15 parts, one a distinct write position, and a frame's burst of 23-26 writes over 16-19 samples
+overflows it. Not the device's speed: fm1-emu counts the same with the 6502 two frames ahead
+(the flash day: Thomkat 385, Kill Me 88, The Last Ninja about 5,200, Sound Test 260,000 in 60 s;
+nothing heard but in Sound Test, if anywhere). Planned for 0.5.x (the user agreed): `PSID_SPLITS`
+24, which clears all but Sound Test, about 3-6 interrupt instructions a sample and no RAM; it needs
+a new synthetic bench tune of one write a sample (the current one, a write every 4 cycles, never
+uses more parts) proving `PSID_ISR_WORST` (today's dearest block 105 of 120 a sample; the most
+SPLITS can grow is about 36). Sound Test would need 61, over the budget: cheaper render parts first.
+
