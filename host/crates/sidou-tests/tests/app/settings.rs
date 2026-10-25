@@ -235,6 +235,8 @@ struct Set {
     now: u32,
     /// Writes the settings' ticks began.
     writes: u32,
+    /// The unsaved edit's writes the ticks began.
+    edit_writes: u32,
     /// The store is quiet: maintenance runs (else only writes).
     quiet: bool,
 }
@@ -257,6 +259,7 @@ impl Set {
             st,
             now: 1000,
             writes: 0,
+            edit_writes: 0,
             quiet: true,
         };
         unsafe {
@@ -298,7 +301,12 @@ impl Set {
         let busy = self.st.busy();
         unsafe { settings_tick(&mut *self.set, self.now) };
         if !busy && self.st.busy() {
-            self.writes += 1;
+            // the settings record's writes; the unsaved edit's (app/user_sound.h) apart
+            if self.st.st.w.key == USER_SOUND_EDIT_KEY {
+                self.edit_writes += 1;
+            } else {
+                self.writes += 1;
+            }
         }
         unsafe {
             store_quiet(

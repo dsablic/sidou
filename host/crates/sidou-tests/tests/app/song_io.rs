@@ -1036,3 +1036,32 @@ fn away_from_an_unsaved_new_song_comes_back_new() {
     assert_eq!(r.song.write(true), fresh);
     assert_eq!(r.io.name[0], 0, "unnamed, as NEW leaves it");
 }
+
+/// LAB's USER sounds' file (app/user_sound.h) is no song's: SAVE AS, a load and a delete refuse
+/// its name, and SONG's list leaves it out.
+#[test]
+fn save_as_refuses_the_user_sounds_name() {
+    let mut r = Rig::new();
+    let bytes = vec![0x5a; USER_SOUND_FILE_BYTES as usize];
+    r.typed_file(c"USER SOUNDS", STORE_FILE_SOUNDS as u8, &bytes);
+    r.io.dirty = 1;
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"USER SOUNDS".as_ptr(), r.now) },
+        0
+    );
+    assert_eq!(r.message(), "SONG: BAD NAME");
+    assert_eq!(
+        unsafe { song_io_load(&mut *r.io, c"USER SOUNDS".as_ptr(), 1) },
+        0
+    );
+    assert_eq!(
+        unsafe { song_io_delete(&mut *r.io, c"USER SOUNDS".as_ptr(), 1) },
+        0
+    );
+    r.store.settle();
+    assert_eq!(r.store.file("USER SOUNDS"), Some(bytes), "untouched");
+    let f = r.store.file_open("USER SOUNDS").unwrap();
+    assert_eq!(unsafe { song_io_listed(&f) }, 0);
+    // a name that only starts like it is a song's
+    r.save(c"USER SOUNDS 2");
+}

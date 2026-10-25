@@ -87,6 +87,7 @@
 #include "tracker_view.h"
 #include "ui_sound.h"
 #include "user_profile.h"
+#include "user_sound.h"
 #include "views.h"
 #include "widget.h"
 #include "workload_fx.h"

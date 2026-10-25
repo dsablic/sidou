@@ -1014,6 +1014,7 @@ LIVE_COLD static void arp_stop(live* l) {
 }
 
 LIVE_COLD void live_arp_set(live* l, uint32_t field, uint32_t value) {
+    l->settings_dirty = 1; /* the sound's: the unsaved edit keeps it */
     switch (field) {
     case LIVE_ARP_ON: {
         uint8_t want = value ? 1u : 0u;
@@ -1401,7 +1402,18 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     update_pws(l);
 }
 
+LIVE_COLD void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND_BYTES],
+                              const char* name) {
+    l->settings_dirty = 1;
+    load_preset(l, 0); /* the frame: the voices released, the edits kept for SAW LEAD stay */
+    live_sound_apply(l, sound);
+    live_sound_set_base(l, sound, name);
+    l->user_sound = (uint8_t)(n + 1u);
+    write_all(l);
+}
+
 LIVE_COLD void live_sound_set_base(live* l, const uint8_t in[LAB_SOUND_BYTES], const char* name) {
+    l->settings_dirty = 1; /* the unsaved edit holds the name and the mark */
     if (in != l->base) {
         memcpy(l->base, in, LAB_SOUND_BYTES);
     }
@@ -1439,6 +1451,7 @@ __attribute__((noinline, unused)) LIVE_COLD static void tone_turn(live* l, int32
         l->sync_semis = (int8_t)semis;
         l->sync_q8 = (uint16_t)((l->sync_base_q8 * live_ratio_q16[semis + LIVE_RATIO_SEMIS] +
                                  32768u) >> 16);
+        l->settings_dirty = 1; /* the sound's: the unsaved edit keeps it */
         update_freq(l, 0);
         break;
     }

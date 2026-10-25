@@ -351,6 +351,25 @@ pub fn stored_value(flash: &[u8], key: u32) -> Option<Vec<u8>> {
     })
 }
 
+/// The file named `name` in a flash dump's store, if it is SIDOU's and holds it: its type and
+/// bytes.
+pub fn stored_file(flash: &[u8], name: &str) -> Option<(u8, Vec<u8>)> {
+    use sidou_sys::*;
+    let mut flash = flash.to_vec();
+    let st = mount_any(&mut flash);
+    if st.state != STORE_STATE_SIDOU as u8 {
+        return None;
+    }
+    let name = std::ffi::CString::new(name).unwrap();
+    let mut f = store_file::default();
+    if unsafe { store_file_open(&*st, name.as_ptr(), &mut f) } != STORE_OK {
+        return None;
+    }
+    let mut buf = vec![0u8; f.length as usize];
+    let n = unsafe { store_file_read(&*st, &f, 0, buf.as_mut_ptr().cast(), f.length) };
+    (n == f.length as i32).then_some((f.type_, buf))
+}
+
 // ---- files into a flash dump before a boot (the store core on the host, writing) ----
 
 unsafe extern "C" fn copy_map(ctx: *mut std::ffi::c_void, off: u32) -> *const u8 {

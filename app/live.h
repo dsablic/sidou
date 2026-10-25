@@ -767,6 +767,11 @@ void live_arp_realtime(live* l, uint8_t status);
 void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]);
 void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);
 void live_sound_set_base(live* l, const uint8_t in[LAB_SOUND_BYTES], const char* name);
+/* USER sound n (0..15; app/user_sound.h reads it from the store) loaded as a preset is: every
+ * voice released, the instrument's settings and the controllers kept, the sound set, its slots
+ * included, as its base under its name; live.user_sound n + 1. live.preset is SAW LEAD's, the
+ * frame a USER sound loads over. */
+void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND_BYTES], const char* name);
 
 /* Effect slots. The number of algorithms slot has (its NONE included). */
 uint32_t live_slot_algorithms(uint32_t slot);

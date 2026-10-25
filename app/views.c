@@ -558,6 +558,7 @@ static int store_confirm(views* v) {
     store_format(st);
     settings_forget(v->set);
     user_profiles_forget(&v->users);
+    user_sounds_forget(&v->sounds);
     v->formatting = 1;
     if (v->set->force) {
         v->set->force(1);
@@ -2070,6 +2071,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     chip_view_init(&v->chip, l, &v->song);
     user_profiles_init(&v->users, l, NULL);
     chip_view_set_users(&v->chip, &v->users);
+    user_sounds_init(&v->sounds, l, NULL);
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
     song_view_init(&v->song, l);
@@ -2099,6 +2101,11 @@ void views_settings(views* v, settings* set) {
     v->sids.st = set ? set->st : NULL;
     v->users.st = set ? set->st : NULL;
     user_profiles_load(&v->users);
+}
+
+void views_sounds(views* v, store* st) {
+    v->sounds.st = st;
+    user_sounds_load(&v->sounds);
 }
 
 /* The first-run tour's steps (tour_frame, below). */
@@ -2918,6 +2925,24 @@ __attribute__((noinline, unused)) static void users_frame(views* v, uint32_t now
     }
 }
 
+/* A USER sound's write: handed to the store, committed; keeps the frame awake while it has
+ * work. Its result is LAB's SAVE's to say (docs/plans/2026-10-25-lab-plan.md, Task 8): until
+ * then it is taken here, the store's refusals toasted as the USER profiles' are. */
+__attribute__((noinline, unused)) static void sounds_frame(views* v, uint32_t now_ms) {
+    user_sounds_tick(&v->sounds, now_ms, v->set->force);
+    user_sound_result r = user_sounds_take(&v->sounds, NULL);
+    if (r == USER_SOUND_FOREIGN || r == USER_SOUND_FAILED || r == USER_SOUND_FULL) {
+        screen_toast(&v->s, r == USER_SOUND_FAILED  ? "STORE ERROR: NOT SAVED"
+                            : r == USER_SOUND_FULL ? "STORE FULL: NOT SAVED"
+                                                   : "STORE FOREIGN: NOT SAVED",
+                     SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_BUZZ);
+    }
+    if (user_sounds_busy(&v->sounds)) {
+        v->l->settings_dirty |= 2u;
+    }
+}
+
 /* The settings' debounce and an explicit save's toast; a format's end. */
 __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now_ms) {
     if (!v->set) {
@@ -2926,6 +2951,9 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
     settings_tick(v->set, now_ms);
     if (user_profiles_busy(&v->users)) {
         users_frame(v, now_ms);
+    }
+    if (user_sounds_busy(&v->sounds)) {
+        sounds_frame(v, now_ms);
     }
     /* Peek at settings' result directly to save idle-frame cycles. */
     if (!v->set->result && !v->formatting) {

@@ -48,6 +48,9 @@ void ui_song_loaded(int back);
 void ui_set_song_io(song_io* io);
 void ui_song_rows(uint8_t rows_per_beat);
 settings* ui_settings(void);
+/* The sound playing kept in USER sound slot (0..15) under name (app/user_sound.h's
+ * user_sound_save): for the emulator tests' store hook (STORE_FM1_KEEP) until LAB's SAVE. */
+int ui_keep_sound(uint32_t slot, const char* name);
 /* Independent force ownership: a settings save cannot release a song save's holds. */
 void ui_song_force(int on);
 /* Main loop. Every UI_PERIOD_MS it runs a frame (views_frame: the view composes if what it

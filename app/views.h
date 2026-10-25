@@ -129,6 +129,7 @@
 #include "sid_view.h"
 #include "ui_sound.h"
 #include "user_profile.h"
+#include "user_sound.h"
 #include "scope.h"
 #include "screen.h"
 #include "song_view.h"
@@ -281,6 +282,9 @@ typedef struct {
     /* The SID views (app/sid_view.h), and STATUS's 6502 rows as its last compose drew them. */
     sid_view sids;
     uint8_t tune_drawn[SID_VIEW_STATUS_LOOK];
+    /* LAB's USER sounds on the store (app/user_sound.h): views_sounds loads them, the frame
+     * ticks their write. */
+    user_sounds sounds;
 } views;
 
 extern const view views_status;
@@ -348,6 +352,9 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed);
  * ticks them, the menu's STORE shows their store. NULL (views_init's default): SAVE saves
  * nothing and STORE reads NONE. */
 void views_settings(views* v, settings* set);
+/* The USER sounds on st (NULL: none), loaded: at boot, once the store is mounted and before the
+ * settings are loaded (a settings record's preset may be one of them: settings_sounds). */
+void views_sounds(views* v, store* st);
 /* Button press edges and the held buttons, as panel_buttons takes them: routed as above, and
  * what nobody consumed goes on to panel_buttons. */
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);

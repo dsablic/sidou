@@ -37,7 +37,12 @@ void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t
 
 /* Setters write 1; 2 keeps the debounce, retry or unconsumed toast awake without gathering. */
 static void pending(settings* s) {
-    s->l->settings_dirty = (s->seen != s->saved || s->asked || s->result) ? 2u : 0u;
+    s->l->settings_dirty =
+        (s->seen != s->saved || s->edit_seen != s->edit_saved || s->asked || s->result) ? 2u : 0u;
+}
+
+void settings_sounds(settings* s, user_sounds* sounds) {
+    s->sounds = sounds;
 }
 
 uint32_t settings_gather(const settings* s, uint8_t* out) {
@@ -47,7 +52,7 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     out[n++] = *s->cards;
     out[n++] = (uint8_t)(s->snd && s->snd->on);
     out[n++] = l->keys_mode;
-    out[n++] = l->preset;
+    out[n++] = user_sound_preset_byte(l);
     out[n++] = SETTINGS_PARAMS_V1;
     for (uint32_t p = 0; p < SETTINGS_PARAMS_V1; p++) {
         uint32_t v = p == LIVE_PARAM_VOLUME ? 0u : live_param_get(l, p); /* the pot's */
@@ -124,7 +129,14 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         ui_sound_set(s->snd, rec[2] != 0);
     }
     live_set_keys_mode(l, rec[3]);
-    live_set_preset(l, rec[4]); /* first: a preset resets its edits */
+    /* first: a preset resets its edits. A USER sound's from the store (an empty slot: SAW LEAD);
+     * past the USER sounds, clamped to DICE as an older firmware does. */
+    uint32_t user = (uint32_t)rec[4] - LIVE_PRESET_SLOTS;
+    if (user >= USER_SOUNDS) {
+        live_set_preset(l, rec[4]);
+    } else if (!user_sound_load(s->sounds, user)) {
+        live_set_preset(l, 0);
+    }
     uint32_t n = 6;
     for (uint32_t p = 0; p < SETTINGS_PARAMS_V1; p++) {
         uint32_t v = rec[n++];
@@ -205,11 +217,21 @@ int settings_load(settings* s, uint32_t now_ms) {
         int n = store_get(s->st, SETTINGS_KEY, rec, sizeof rec, 0);
         same = n > 0 && settings_apply(s, rec, (uint32_t)n);
     }
+    /* The unsaved edit over what they loaded, when it is of the sound they loaded. */
+    int edit = 0;
+    if (s->st) {
+        int n = store_get(s->st, USER_SOUND_EDIT_KEY, rec, sizeof rec, 0);
+        edit = n > 0 && user_sound_edit_apply(s->l, rec, (uint32_t)n > sizeof rec ? sizeof rec
+                                                                                  : (uint32_t)n);
+    }
     /* What was loaded counts as saved; a new version differs, and the debounce stores it. */
     uint8_t now[SETTINGS_BYTES];
     uint32_t len = settings_gather(s, now);
     s->seen = store_crc32(0, now, len);
     s->saved = same ? s->seen : 0u;
+    len = user_sound_edit_gather(s->l, now);
+    s->edit_seen = store_crc32(0, now, len);
+    s->edit_saved = edit ? s->edit_seen : 0u;
     s->changed_at = now_ms;
     s->started = 1;
     pending(s);
@@ -244,17 +266,52 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
     return 0;
 }
 
+/* The unsaved edit to the store, once it is free (the settings record goes first): 1 if it
+ * took it. */
+static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
+    if (!s->st) {
+        s->edit_saved = crc;
+        return 1;
+    }
+    if (store_busy(s->st)) {
+        return 0;
+    }
+    memcpy(s->edit, rec, len);
+    int rc = store_put(s->st, USER_SOUND_EDIT_KEY, USER_SOUND_EDIT_TYPE, s->edit, len);
+    if (rc == STORE_OK || rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID ||
+        rc == STORE_ERROR) {
+        s->edit_saved = crc; /* taken, or nothing to wait for */
+    }
+    return rc == STORE_OK;
+}
+
+/* The unsaved edit once the settings record is saved and no explicit save waits on it: by the
+ * same debounce, or right after an explicit save (its result is the settings record's). */
+static void edit_due(settings* s, const uint8_t* edit, uint32_t len, uint32_t crc, int explicit,
+                     uint32_t now_ms) {
+    if (!s->asked && s->seen == s->saved && crc != s->edit_saved &&
+        (explicit || now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
+        (void)write_edit(s, edit, len, crc);
+    }
+    pending(s);
+}
+
 /* Gather a changed record, save when due, and finish an explicit save. */
 __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_ms) {
     uint8_t rec[SETTINGS_BYTES];
     uint32_t len = settings_gather(s, rec);
     uint32_t crc = store_crc32(0, rec, len);
+    uint8_t edit[USER_SOUND_EDIT_BYTES];
+    uint32_t edit_len = user_sound_edit_gather(s->l, edit);
+    uint32_t edit_crc = store_crc32(0, edit, edit_len);
+    int explicit = s->asked != 0;
     s->l->settings_dirty = 0;
     if (s->ml) {
         s->ml->settings_dirty = 0;
     }
-    if (crc != s->seen) {
+    if (crc != s->seen || edit_crc != s->edit_seen) {
         s->seen = crc;
+        s->edit_seen = edit_crc;
         s->changed_at = now_ms;
     }
     if (s->asked == 1) {
@@ -265,7 +322,7 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         (void)write(s, rec, len, crc);
     }
     if (!s->asked) {
-        pending(s);
+        edit_due(s, edit, edit_len, edit_crc, explicit, now_ms);
         return;
     }
     if (s->asked == 2 && (!s->st || !store_busy(s->st))) {
@@ -287,7 +344,7 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         s->forcing = 0;
         s->force(0);
     }
-    pending(s);
+    edit_due(s, edit, edit_len, edit_crc, explicit, now_ms);
 }
 
 void settings_tick(settings* s, uint32_t now_ms) {
@@ -296,7 +353,8 @@ void settings_tick(settings* s, uint32_t now_ms) {
     }
     int dirty = (s->l->settings_dirty & 1u) || (s->ml && s->ml->settings_dirty);
     if (dirty || s->asked ||
-        (s->seen != s->saved && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
+        ((s->seen != s->saved || s->edit_seen != s->edit_saved) &&
+         now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
         update(s, now_ms);
     }
 }
@@ -344,6 +402,7 @@ void settings_reset(settings* s) {
 
 void settings_forget(settings* s) {
     s->saved = 0;
+    s->edit_saved = 0;
     s->l->settings_dirty |= 2u;
 }
 

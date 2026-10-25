@@ -1458,3 +1458,35 @@ fn mutated_sid_uploads_store_only_tunes_and_refusals_program_nothing() {
     assert!(stored > 50 && refused > 50, "the fuzz reaches both sides");
     e.rig.assert_clean();
 }
+
+/// LAB's USER sounds' file (app/user_sound.h) is the firmware's own: SysEx never lists, fetches,
+/// replaces or deletes it.
+#[test]
+fn sysex_refuses_the_user_sounds_name() {
+    let mut e = Engine::new(true);
+    let bytes = vec![0x3c; USER_SOUND_FILE_BYTES as usize];
+    e.rig.maintain();
+    let name = c"USER SOUNDS";
+    assert_eq!(
+        e.rig.api(|st| unsafe {
+            store_file_begin(
+                st,
+                name.as_ptr(),
+                STORE_FILE_SOUNDS as u8,
+                bytes.len() as u32,
+            )
+        }),
+        STORE_OK
+    );
+    assert_eq!(e.rig.file_stream(&bytes, 256, None), STORE_OK);
+    e.request(2, 1, &[]);
+    assert_eq!(e.response(), (6, 1, vec![]), "DIR lists nothing");
+    e.request(0x7e, 1, &[]);
+    e.request(3, 2, &named("USER SOUNDS"));
+    e.nak(2, SYSEX_MALFORMED);
+    e.request(7, 3, &named("USER SOUNDS")[2..]);
+    e.nak(3, SYSEX_MALFORMED);
+    e.request(4, 4, &upload_metadata(named("USER SOUNDS"), &[1; 16]));
+    e.nak(4, SYSEX_MALFORMED);
+    assert_eq!(e.rig.file("USER SOUNDS"), Some(bytes), "untouched");
+}

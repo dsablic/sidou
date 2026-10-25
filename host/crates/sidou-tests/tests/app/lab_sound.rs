@@ -8,7 +8,7 @@ use sidou_sys::*;
 use crate::{preset, preset_name, Rig};
 
 const BYTES: usize = LAB_SOUND_BYTES as usize;
-type Sound = [u8; BYTES];
+pub(crate) type Sound = [u8; BYTES];
 
 fn sound_of(rig: &Rig) -> Sound {
     let mut s = [0u8; BYTES];
@@ -49,10 +49,10 @@ fn base_name(rig: &Rig) -> String {
 }
 
 /// A xorshift32 for the random sounds (the same numbers on every run).
-struct Xs(u32);
+pub(crate) struct Xs(pub u32);
 
 impl Xs {
-    fn next(&mut self) -> u32 {
+    pub fn next(&mut self) -> u32 {
         let mut x = self.0;
         x ^= x << 13;
         x ^= x >> 17;
@@ -61,13 +61,13 @@ impl Xs {
         x
     }
 
-    fn below(&mut self, n: u32) -> u32 {
+    pub fn below(&mut self, n: u32) -> u32 {
         self.next() % n
     }
 }
 
 /// A sound with every field drawn within its range.
-fn random_sound(r: &mut Xs) -> Sound {
+pub(crate) fn random_sound(r: &mut Xs) -> Sound {
     let mut s = [0u8; BYTES];
     s[LAB_SOUND_CONTROL as usize] = (r.below(16) << 4 | r.below(2) << 2 | r.below(2) << 1) as u8;
     s[LAB_SOUND_AD as usize] = r.below(256) as u8;

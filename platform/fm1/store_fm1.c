@@ -12,6 +12,7 @@
 #include "input.h"
 #include "midi.h"
 #include "store_layout.h"
+#include "ui.h"
 
 /* ALNK0's pending register: a free half (a block due) is bit 7 (hal/fm1_audio.h, which only
  * main.c includes). */
@@ -280,6 +281,10 @@ static void test_hook(keys_route* kr) {
         break;
     case STORE_FM1_FORCE:
         store_fm1_force(t->len != 0);
+        break;
+    case STORE_FM1_KEEP:
+        t->data[STORE_FM1_DATA - 1u] = 0;
+        t->result = ui_keep_sound(t->key, (const char*)t->data);
         break;
     default:
         t->result = STORE_INVALID;

@@ -21,7 +21,7 @@ depth, PWM rate and the fine tune: LAB's sound).
 | 1 | 1 | CARDS: `0` OFF, `1` ONCE (the default), `2` ALWAYS |
 | 2 | 1 | SOUNDS: `0` off, `1` on |
 | 3 | 1 | KEYS: `0` AUTO, `1` A |
-| 4 | 1 | Preset index |
+| 4 | 1 | Preset: `0..4` a built-in or DICE, `5 + n` LAB's USER sound `n + 1` ([sound-format.md](sound-format.md); an empty slot loads SAW LEAD, an older firmware clamps it to DICE) |
 | 5 | 1 | Parameter count, `42` |
 | 6 | 44 | Parameters in LIVE_PARAM order (app/live.h) |
 | 50 | 42 | Learned CC for each parameter; `255` means no binding |
@@ -75,7 +75,10 @@ stored firmware version selects the full boot; the current version is then saved
 An unchanged version selects the short boot, unless HOME is held at power-on.
 
 Persisted setters mark changes for the background save. Five seconds after the
-last changed value, one whole record is submitted to the store. Unchanged frames
+last changed value, one whole record is submitted to the store, and once it is taken LAB's
+[unsaved edit](sound-format.md#the-unsaved-edit) (key `0x109`) after it, when that changed;
+an explicit SAVE's result is the settings record's, and the unsaved edit follows it at once.
+At boot the unsaved edit is applied after the settings record. Unchanged frames
 do not gather or CRC the record. Returning to the already-saved values requires no
 background write. An explicit SAVE skips the debounce; a busy store retries, and
 after two seconds an explicit save may force held operations and report

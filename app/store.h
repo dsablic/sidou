@@ -131,6 +131,9 @@
 #define STORE_FILE_SONG 1u         /* file types: 1..STORE_TYPE_MAX; a GoatTracker 2 song (M2c) */
 #define STORE_FILE_SID 2u          /* a PSID .sid tune (M3) */
 #define STORE_FILE_GTI 3u          /* SysEx's GTI5 instrument staging (MIDI INSTRUMENT, private) */
+#define STORE_FILE_SOUNDS 4u       /* LAB's 16 USER sounds (app/user_sound.h, private) */
+/* The USER sounds' file name: SAVE AS and SysEx refuse it, no list shows it. */
+#define STORE_SOUNDS_NAME "USER SOUNDS"
 #define STORE_WINDOW_MAX 256u      /* the most one program writes: a page */
 #define STORE_FILE_MAX 65536u      /* the largest file */
 #define STORE_CHUNK 1248u          /* a file chunk's data: three chunk records fill a sector */

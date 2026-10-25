@@ -88,6 +88,8 @@ enum {
     STORE_FM1_COLLECT,     /* store_collect */
     STORE_FM1_SONG,        /* len 1: a song plays on chip A (keys_route_set_song), 0: none */
     STORE_FM1_FORCE,       /* len 1: store_fm1_force on, 0 off */
+    STORE_FM1_KEEP,        /* key: the sound playing kept in that USER sound slot (ui_keep_sound),
+                            * named by data (NUL-terminated); result user_sound_save's */
 };
 #define STORE_FM1_DATA 16u
 typedef struct {
