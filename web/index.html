@@ -21,23 +21,29 @@
           --yellow: #b8c76f; color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
-  main { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 12px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 12px;
+         grid-template-columns: minmax(0, 1fr); }
   header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
   .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
   h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
   #status { color: var(--dim); font-variant-numeric: tabular-nums; }
   .stage { position: relative; }
-  /* the whole synth in view on a laptop (upstream's rule; --above and --aspect come from main.js) */
-  canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; margin: 0 auto;
-           max-width: max(560px, calc((100svh - var(--above, 140px) - 52px) * var(--aspect, 1.56))); }
-  #start { position: absolute; inset: 0; margin: auto; width: clamp(110px, 30%, 220px); height: clamp(36px, 9vw, 56px);
+  /* the whole synth in view on a laptop (upstream's rule; --above and --aspect come from main.js);
+     the box is the canvas's size, so Start can sit on the LCD */
+  .panel-box { position: relative; margin: 0 auto;
+               max-width: min(100%, max(560px, calc((100svh - var(--above, 140px) - 52px) * var(--aspect, 1.56)))); }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+  /* the LCD's centre: 480 x 480 at (370, 42) on fm1-emu's 1280 x 820 panel (fm1-live/src/panel.rs) */
+  #start { position: absolute; left: 47.656%; top: 34.390%; transform: translate(-50%, -50%);
+           width: clamp(110px, 30%, 220px); height: clamp(36px, 9vw, 56px);
            border: 0; border-radius: 28px; background: var(--accent); color: #0f0c22; font-size: clamp(14px, 3.5vw, 17px);
            font-weight: 700; letter-spacing: .04em; cursor: pointer; }
   #start:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   #start[disabled] { opacity: .7; cursor: wait; }
   @media (orientation: landscape) and (max-height: 560px) {
     main { padding-block: 8px 16px; gap: 8px; }
+    .panel-box { width: fit-content; max-width: 100%; }
     canvas { width: auto; max-width: 100%; height: calc(100svh - 12px); }
   }
   .bar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
@@ -59,6 +65,7 @@
   code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .hint { margin: 0; color: var(--dim); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .hint span { white-space: nowrap; }
+  @media (max-width: 600px) { .hint span { white-space: normal; } }
   .guide { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 20px; display: grid; gap: 24px 40px;
            grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
   .guide > * { min-width: 0; }
@@ -141,8 +148,10 @@
     </div>
   </div>
   <div class="stage">
-    <canvas id="panel" aria-label="FM-1 front panel"></canvas>
-    <button id="start" disabled>Start</button>
+    <div class="panel-box">
+      <canvas id="panel" aria-label="FM-1 front panel"></canvas>
+      <button id="start" disabled>Start</button>
+    </div>
   </div>
   <p class="hint">
     <span><kbd>A</kbd>…<kbd>'</kbd> play C4–F5</span>
@@ -159,7 +168,10 @@
       <p><b>SIDOU</b> is free firmware that turns the M-VAVE FM-1 pocket synth into a Commodore 64 SID
         instrument: an emulated SID chip (6581 or 8580) played from the FM-1's keys and knobs and over MIDI,
         with three effect slots after the chip. It also plays and edits GoatTracker 2 songs with a step
-        sequencer and a tracker (<kbd>0</kbd> SEQ, <kbd>Space</kbd> PLAY). <code>.sid</code> playback is planned.</p>
+        sequencer and a tracker (<kbd>0</kbd> SEQ, <kbd>Space</kbd> PLAY): a new song comes with a SID drum
+        kit and sampled digi drums, and STEP can play a step by chance, roll a new pattern (DICE) or vary
+        one (MUTATE). On a real FM-1 the sound also goes out over USB as an audio input a computer can
+        record. <code>.sid</code> playback is planned.</p>
       <p>This page runs the <b>newest build of SIDOU's main branch</b>, rebuilt whenever the firmware or this page changes, so it can be ahead of the latest release; the build line under the player names it (run locally: your own build) in <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a>,
         an emulator of the FM-1's chip, in WebAssembly: the same update package (<code>sidou.fwsc</code>) a
         real FM-1 would take. SIDOU runs on a real FM-1 too: see the
@@ -169,7 +181,7 @@
         (Chrome or Edge).</p>
       <p><a href="midi.html">Turn a song into a MIDI file</a>: any GoatTracker 2 song, one MIDI channel a SID voice,
         made in the browser.</p>
-      <p><a href="videos.html">The how-to videos</a>: seventeen short ones, from the first sound to MIDI learn.</p>
+      <p><a href="videos.html">The how-to videos</a>: eighteen short ones, from the first sound to the drum kit and generative STEP.</p>
       <p><a href="https://github.com/dsablic/sidou">Source, docs and status: github.com/dsablic/sidou</a></p>
     </section>
 
@@ -203,7 +215,7 @@
         <tr><td><kbd>0</kbd> SEQ</td><td>the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE, round</td></tr>
         <tr><td><kbd>Space</kbd> PLAY / <kbd>R</kbd> REC</td><td>plays SIDOU's song (SIDOU LOOP) and stops it / record mode</td></tr>
         <tr><td>MASTER</td><td>volume (drag the knob at the top left)</td></tr>
-        <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC: they save themselves</td></tr>
+        <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC, SPREAD, RESET: they save themselves (but REC; RESET and STORE ask first)</td></tr>
       </table>
       <p>The mouse or a touch screen plays the panel directly (<kbd>4</kbd> LFO, <kbd>6</kbd> GLO and <kbd>9</kbd> ARP
         are the other buttons). All controls:
@@ -216,7 +228,9 @@
     <section>
       <h2>The emulator's limits</h2>
       <ul>
-        <li><b>No USB.</b> fm1-emu has no USB device, so no USB-MIDI in or out: MIDI from this page reaches
+        <li><b>No USB on this page.</b> A real FM-1 running SIDOU has USB-MIDI in and out and sends its
+          sound to a computer as a USB audio input; this page's player has no USB (fm1-emu emulates the
+          FM-1's USB only in its desktop player, <code>fm1-live --usb</code>). MIDI from this page reaches
           SIDOU through the emulated TRS MIDI IN jack, and the panel's MIDI out goes nowhere.</li>
         <li><b>No watchdog.</b> The power and reset block's registers (P33) keep what SIDOU writes, but
           nothing acts on them, so a hang is not reset as it would be on the chip.</li>

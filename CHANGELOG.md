@@ -8,7 +8,7 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-24
+## [0.4.0] - 2026-10-25
 
 ### Added
 - **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
@@ -50,7 +50,12 @@ All notable changes are documented here. The format follows
   are plain GoatTracker 2 instruments and table rows (a falling triangle for the kick and the
   toms, a tonal attack and noise for the snare, short and long noise for the hats, three noise
   bursts for the clap), so a song made with them plays the same in GoatTracker; each was tuned
-  by rendering it on both chip models, and the kick keeps its weight on the 8580. STEP's and
+  by rendering it on both chip models, and the kick keeps its weight on the 8580. Each drum
+  sounds one frame (20 ms) after its row, every hit alike (its first frame resets the
+  oscillator), with an 8 ms attack, and fades the same held or staccato (at tempo 5 and up);
+  its instrument's SR is `00` and a wavetable `F6` row (command 6, sustain/release) sets its
+  release in its second or third frame, which keeps the chip's ADSR delay bug from holding the
+  hit back 33 ms. STEP's and
   TRACKER's PRESETS popup names the instrument (`03 KICK`), so a lane's drum is picked by name.
   Decision record 0009.
 - **Digi drums:** short 4-bit samples (KICK, SNARE, CLAP, HAT) played through chip A's output
@@ -82,16 +87,52 @@ All notable changes are documented here. The format follows
   `psid_load` checks its bounds (#68, our report #63), so the gate's own stand-in for that load,
   `step_block_load_dec`, is gone and with it the `emulated_block_loads` count in the gate's
   reports.
-- **24,952 bytes of flash, 8 KB of RAMTEXT and 5.4 KB of the RAM region won back, nothing heard
+- **About 25 KB of flash and 5.4 KB of the RAM region won back, nothing heard
   differently:** the filter's cutoff codes are delta-coded (11,984 bytes), the combined
   waveforms' blocks overlap and alike rows are stored once (5,976), the noise tables are built
   at boot into POOL (2,980 of flash, 3,140 of the RAM region), the digi drums' codes are two a
-  byte (2,412 of both), and the store is built at `-Oz` (1,568). Code that runs from SRAM may
-  now use Felucca's 8 KB debug area below RAM (RAMTEXT 56 KB, 8,160 bytes free), whose only
-  use, five boot words nothing read, is gone; [hardware-test.md section
-  17](docs/hardware-test.md#17-code-in-feluccas-old-debug-area-v040) checks it on the device.
+  byte (2,412 of both), and the store is built at `-Oz` (1,568). `song_ctl.c` is built at `-Oz`
+  (112 bytes of RAMTEXT), so the code that runs from SRAM stays in its 48 KB, below
+  Felucca's 8 KB debug area, which is kept free until a device check shows it is the app's
+  ([hardware-test.md section 17](docs/hardware-test.md#17-code-in-feluccas-debug-area-v040)).
   The digi drums cost the audio interrupt less than before (9.47 instructions a sample, was
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
+
+### Fixed
+- **A forced RESET says it reset.** When RESET's save had to be forced (the device was never
+  quiet), the toast said SAVED (GAPS); it now says RESET AND SAVED (GAPS).
+- **A NEW song's bass differs from its lead.** Both were the same pulse at the same pitch. The
+  bass (instrument 02) now plays an octave down (WAVE right column `74`, relative note -12) with
+  a thinner pulse, a quarter width (`$400`, its own PULSE row 03 after the kit's); the lead keeps
+  the square. Songs saved from NEW before keep their sound.
+- **A NEW song's lead and bass sound at their notes.** Their wavetable rows kept the frequency
+  unchanged (`$80` on the right, GoatTracker's "keep frequency"), so no note ever set it: STEP's
+  and TRACKER's auditions and PLAY gave only a faint thump on a voice stuck at 0 Hz (since NEW
+  came in, 0.2.0). The rows now play the note (relative note `00`) and end with `FF 00`
+  (the table stops, so the pattern's slides and vibrato still move the pitch). Songs saved
+  from NEW before keep their rows: set the lead's and bass's WAVE right column to `00` in TABLE.
+- **A NEW song's lead and bass start on their row.** Their attack 0 met the chip's ADSR delay
+  bug one time in nine (the envelope's rate counter, compared with the decay's rate for a cycle
+  as the gate goes on, ran past attack 0's and waited out its wrap): the note then started
+  33 ms late, a flam against the drums, as GoatTracker plays it on reSIDfp too. Their attack is
+  now 1 (8 ms to the top: AD `19` for the lead, `12` for the bass). Songs saved from NEW
+  before keep `09` and `02`: set the attack to 1 in INSTR for the same fix.
+- **The first tap after picking an instrument auditions it in full.** An instrument the song
+  does not use yet waits a few calls for the player to take its tables in; a step key let go
+  meanwhile released the note right after its first call, so the first tap after PRESETS (or any
+  audition of a new instrument) gave a click of its first wave step instead of the instrument,
+  and the drums all sounded alike. The note now sounds as long as the key was held.
+- **The MASTER popup stays away while the pot is untouched.** The pot's reading wanders by
+  more than the 4 counts (0.4 % of the travel) that moved the volume, so the VOLUME popup came
+  up on its own. The reading is now the mean of four conversions, the popup needs a turn of
+  16 counts (1.6 %) from where the pot rested, and the last 8 counts at either end read as
+  that end (0 % and 100 % hold through the noise). The volume still follows a small turn,
+  without the popup; once a turn shows it, the popup follows the turn to its last value.
+- **PLAY is quiet until the song's first note.** The first PLAY after power-on gave a thud
+  (a DC bump that died away over about 150 ms) before the music: chip B, which renders only
+  while in use, played the power-on release of its envelopes only when the keys moved to it, at
+  their volume and filter (since chip B came in, 0.2.0). Chip B's power-on now plays out where
+  the chip is made, silently.
 
 ## [0.3.1] - 2026-10-23
 

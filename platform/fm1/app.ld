@@ -2,16 +2,17 @@
  * SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-only
  * SIDOU memory map: Felucca's firmware/app.ld, without the second core's .c1_text, and with
- * RAMTEXT at 56 KB instead of Felucca's 24 KB (RAM moved up, POOL starts higher, and Felucca's
- * 8 KB RAM-run debug area below RAM given to RAMTEXT; docs/hardware.md, "Code in SRAM"), and
- * the RAM/POOL boundary 8 KiB down from
+ * RAMTEXT at 48 KB instead of Felucca's 24 KB (RAM and the debug area moved up, POOL starts
+ * higher; docs/hardware.md, "Code in SRAM"), and the RAM/POOL boundary 8 KiB down from
  * Felucca's 0x01C20000 for the song's 64 KiB content region (M2c Task 6).
  * XIP    : code and constants, executed in place; app.bin offset 0 = 0x02000120.
  * RAMTEXT: .ram_text, code that runs from SRAM: the audio path (no I-cache misses on flash
  *          in the audio interrupt) and code that runs while XIP is off (the flash driver).
- *          It runs up to RAM: Felucca's RAM-run debug area (0x01C0C000..0x01C0E000) is its
- *          last 8 KB (nothing of the app's used it but a boot probe nothing read; the update
- *          loader at 0x01C0A800 runs from the SPL after a reset, never beside the app).
+ *          0x01C0C000..0x01C0E000, Felucca's RAM-run debug area, stays out of RAMTEXT and
+ *          unused but for crt0.S's boot words, as in Felucca's layout. A release candidate of
+ *          v0.4.0 ran RAMTEXT up to RAM; nothing showed that SRAM failing (a device report
+ *          blamed on it turned out to be a misread view), but nothing proved it safe on the
+ *          device either, so code stays below until a device check does.
  * RAM    : .data/.bss, what the interrupts touch and small variables.
  * POOL   : big zero-initialised buffers (section .pool): first the song's content region
  *          (__song_region, 64 KiB, 4 KiB aligned: M3's 6502 memory overlays it), then the rest.
@@ -24,7 +25,7 @@
 MEMORY
 {
     XIP     (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
-    RAMTEXT (rwx) : ORIGIN = 0x01C00000, LENGTH = 56K
+    RAMTEXT (rwx) : ORIGIN = 0x01C00000, LENGTH = 48K
     RAM     (rwx) : ORIGIN = 0x01C0E000, LENGTH = 64K
     POOL    (rw)  : ORIGIN = 0x01C1E000, LENGTH = 0x59F00
     NOINIT  (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
@@ -189,15 +190,16 @@ ASSERT(LOADADDR(.ram_text) == ADDR(.entry) + SIZEOF(.entry), "app.ld: .ram_text 
 ASSERT(ADDR(.text) == LOADADDR(.ram_text) + SIZEOF(.ram_text), "app.ld: .text must follow .ram_text's image")
 ASSERT(LOADADDR(.data) == ADDR(.text) + SIZEOF(.text), "app.ld: .data must load right after .text")
 ASSERT(_data_start == ADDR(.data) && _data_end == ADDR(.data) + SIZEOF(.data), "app.ld: _data_* must bound .data")
-ASSERT(_rt_end <= ORIGIN(RAM), "app.ld: .ram_text runs into RAM")
-ASSERT(SIZEOF(.ram_text) <= 56K, "app.ld: .ram_text is over RAMTEXT's 56 KB")
+ASSERT(_rt_end <= 0x01C0C000, "app.ld: .ram_text runs into Felucca's RAM-run debug area (0x01C0C000..0x01C0E000): code stays out of it until a device check shows it is the app's")
+ASSERT(SIZEOF(.ram_text) <= 48K, "app.ld: .ram_text is over RAMTEXT's 48 KB")
 ASSERT(ADDR(.ram_text) == ORIGIN(RAMTEXT), "app.ld: .ram_text must start at RAMTEXT")
 ASSERT(__song_region == ORIGIN(POOL) && __song_region % 4096 == 0, "app.ld: the song's region must start POOL, 4 KiB aligned")
 ASSERT(__song_region_end - __song_region == 65536, "app.ld: the song's region (audio.c song_region) must be 64 KiB")
 ASSERT(_pool_dac_end - _pool_dac_start >= 2 * 17408, "app.ld: the DAC tables (sid_dac.c's .bss) are not in POOL: does *sid_dac.c.obj still match its object?")
 /* The region lengths already keep each section inside its region; these guard the constants
  * above against an edit that moves a region or a stack into its neighbour. */
-ASSERT(ORIGIN(RAMTEXT) + LENGTH(RAMTEXT) <= ORIGIN(RAM), "app.ld: RAMTEXT overlaps RAM")
+ASSERT(ORIGIN(RAMTEXT) + LENGTH(RAMTEXT) <= 0x01C0C000, "app.ld: RAMTEXT overlaps the RAM-run debug area")
+ASSERT(0x01C0E000 <= ORIGIN(RAM), "app.ld: RAM overlaps the RAM-run debug area")
 ASSERT(ORIGIN(RAM) + LENGTH(RAM) <= ORIGIN(POOL), "app.ld: RAM overlaps POOL")
 ASSERT(ORIGIN(POOL) + LENGTH(POOL) <= _guard0, "app.ld: POOL overlaps the user stack's guard band")
 ASSERT(_ustack_top <= _guard1 && _sstack_top <= ORIGIN(NOINIT), "app.ld: the stacks overlap")

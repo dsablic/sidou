@@ -20,7 +20,7 @@ screenshots the tests check.*
 
 [![SIDOU in 77 seconds](docs/media/videos/sidou-intro.webp)](https://dsablic.github.io/sidou/videos.html#sidou-intro)
 
-**Watch:** [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 0.3.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html)
+**Watch:** [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 0.4.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html)
 ## What you can do
 
 - **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,
@@ -160,7 +160,7 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 
 ## Status and roadmap
 
-- **v0.4.0** is released (2026-10-24, [release notes](docs/release-notes/v0.4.0.md),
+- **v0.4.0** is released (2026-10-25, [release notes](https://github.com/dsablic/sidou/releases/tag/v0.4.0),
   [CHANGELOG.md](CHANGELOG.md)): a SID drum kit and digi drums, generative STEP (chance per
   step, MUTATE, DICE), recording over the USB cable, the button LEDs in two levels, an ARP
   helper in TABLE, SETTINGS → RESET, and songs to MIDI on the site.

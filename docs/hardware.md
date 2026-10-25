@@ -65,11 +65,11 @@ copyrighted, so we link to them rather than copy them into this repo.
 - **On-chip SRAM:** about 512 KB of general RAM (`ram0`
   0x01C00000–0x01C7FE00). The "578 KB" figure includes the cache arrays.
   SIDOU's linker script (`platform/fm1/app.ld`) uses Felucca's regions,
-  except that RAMTEXT is 56 KB instead of 24 KB (see "Code in SRAM").
+  except that RAMTEXT is 48 KB instead of 24 KB (see "Code in SRAM").
 - **Execution from flash:** code runs XIP from the in-package flash through
   the I-cache, over dual-I/O SPI with the SFC at about 90 MHz (at a 360 MHz
   system clock). An I-cache miss is estimated at **400–600 CPU cycles**.
-  Hot audio code therefore runs from SRAM (`.ram_text`, a 56 KB region in
+  Hot audio code therefore runs from SRAM (`.ram_text`, a 48 KB region in
   `app.ld`; see "Code in SRAM" below).
 - **Call range:** a direct `call` or `goto` reaches about ±4 MB
   (relocation `R_PI32V2_LONG_JUMP_23M2`), and SRAM code at 0x01C0xxxx is
@@ -216,15 +216,21 @@ pipeline) brings `.ram_text` to about 32 KB, so RAMTEXT is now **48 KB**
 (0x01C00000–0x01C0C000), twice Felucca's 24 KB. Nothing on the hardware set
 the 24 KB: it was Felucca's inherited layout. SRAM is not cached, the SDK
 treats all of `ram0` as rwx, and the update loader at 0x01C0A800 runs only
-from the SPL after a reset, never next to the app. Since v0.4.0 RAMTEXT is **56 KB**: it also
-takes Felucca's 8 KB RAM-run debug area below RAM (0x01C0C000–0x01C0E000), where crt0.S used to
-save five boot words for a probe that nothing read
-([flash and RAMTEXT space](plans/2026-10-24-flash-space.md); the device check is
-[hardware-test.md section 17](hardware-test.md#17-code-in-feluccas-old-debug-area-v040)). The layout:
+from the SPL after a reset, never next to the app.
+
+**Code stays out of Felucca's 8 KB RAM-run debug area** (0x01C0C000–0x01C0E000, between
+RAMTEXT and RAM). A release candidate of v0.4.0 ran RAMTEXT up to RAM, over that area. During
+its device session (2026-10-24) STEP's edits seemed not to land and the area was suspected; it
+was a misread view (TRACKER, where keys only audition without REC), not the SRAM. Nothing shows
+the area failing, but nothing proved it safe on the device either, so the release keeps code
+below it until a device check does (it would give RAMTEXT 8 KB). RAMTEXT ends at 0x01C0C000: `app.ld` asserts `_rt_end <= 0x01C0C000`, and emu-gate
+`ram_audio.rs` checks it too. crt0.S saves its five boot words there as Felucca's does
+([hardware-test.md section 17](hardware-test.md#17-code-in-feluccas-debug-area-v040)). The layout:
 
 | Region | Range | Size |
 |---|---|---|
-| RAMTEXT | 0x01C00000–0x01C0E000 | 56 KiB |
+| RAMTEXT | 0x01C00000–0x01C0C000 | 48 KiB |
+| RAM-run debug area: no code (crt0.S's boot words at 0x01C0DF20) | 0x01C0C000–0x01C0E000 | 8 KiB |
 | RAM | 0x01C0E000–0x01C1E000 | 64 KiB |
 | POOL | 0x01C1E000–0x01C74000 | 344 KiB |
 
@@ -308,10 +314,12 @@ isolated row-accounting instructions = 5,662/block**, **44.234375/sample** again
 the unchanged **60** gate. The song test's 161.3/sample remainder includes the player
 but excludes mix/MASTER; it must not be mistaken for M3's no-player reserve.
 
-Headroom beyond 56 KB, if the audio path ever needs it:
+Headroom beyond 48 KB, if the audio path ever needs it (not the debug area, above):
 - `-Os` for `core/fx` (about 3.3 KB smaller, at a cycle cost not yet
   measured);
-- RAMTEXT further up, taking from POOL (RAM moves with it);
+- `-Oz` for `gt2_play.c` (336 bytes, but a fast-forward's slice then goes over
+  `SONG_SLICE_INSTRUCTIONS`: emu-gate `song.rs`);
+- RAMTEXT moved above the debug area, taking from POOL (RAM and the debug area move up);
 - ~~moving the flash driver out of RAMTEXT~~: retired by M2a. The store
   (see "Flash map") programs and erases while the firmware runs, so the
   flash driver (`fl_*_ram`, about 2.8 KB) stays in RAMTEXT for good.

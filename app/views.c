@@ -2873,7 +2873,8 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
         sound(v, UI_SOUND_CHUNK);
         break;
     case SETTINGS_SAVED_GAPS:
-        screen_toast(&v->s, "SAVED (GAPS)", SCREEN_TOAST_MS);
+        screen_toast(&v->s, v->resetting ? "RESET AND SAVED (GAPS)" : "SAVED (GAPS)",
+                     SCREEN_TOAST_MS);
         sound(v, UI_SOUND_CHUNK);
         break;
     case SETTINGS_FOREIGN:

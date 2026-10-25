@@ -27,10 +27,12 @@ add_library(sidou_core STATIC
     cpu6502/cpu6502.c)
 target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # The song player's frame path and song_ctl run once a frame (a call), not once a sample: -Os
-# keeps their SRAM small (platform/fm1/app.ld; M2c Task 6). No jump tables: a switch's table
-# would be read from flash (.rodata) by the audio interrupt.
-set_source_files_properties(player/gt2_play.c player/song_ctl.c PROPERTIES
-    COMPILE_OPTIONS "-Os;-fno-jump-tables")
+# keeps their SRAM small (platform/fm1/app.ld; M2c Task 6), and song_ctl -Oz (112 bytes less
+# than -Os: RAMTEXT must end below Felucca's debug area, app.ld; the player at -Oz would save
+# 336 but puts a fast-forward's slice over SONG_SLICE_INSTRUCTIONS, emu-gate song.rs). No jump
+# tables: a switch's table would be read from flash (.rodata) by the audio interrupt.
+set_source_files_properties(player/gt2_play.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
+set_source_files_properties(player/song_ctl.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
 set_source_files_properties(song/gt2_stream.c song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
 # The whole-file .sng reader (the boot reads its song in the LCD's reset wait) and its helpers:
 # boot and main-loop work, never the interrupt.

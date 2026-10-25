@@ -14,19 +14,20 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v0.3.0 release](https://github.com/dsablic/sidou/releases/tag/v0.3.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v0.4.0 release](https://github.com/dsablic/sidou/releases/tag/v0.4.0).
 
 - [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 0.3.0](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 0.4.0](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Chord arpeggios](https://dsablic.github.io/sidou/videos.html#chord-arpeggio)
 - [Add an effect](https://dsablic.github.io/sidou/videos.html#add-an-effect)
 - [The chip's character](https://dsablic.github.io/sidou/videos.html#chip-character)
 - [CHIP SPREAD](https://dsablic.github.io/sidou/videos.html#chip-spread)
-- [A beat in STEP](https://dsablic.github.io/sidou/videos.html#step-a-beat)
+- [A beat with the drum kit](https://dsablic.github.io/sidou/videos.html#step-a-beat)
 - [A bassline in TRACKER](https://dsablic.github.io/sidou/videos.html#track-bass)
 - [A lead in TRACKER](https://dsablic.github.io/sidou/videos.html#track-lead)
+- [Generative STEP](https://dsablic.github.io/sidou/videos.html#step-generative)
 - [Record over a loop](https://dsablic.github.io/sidou/videos.html#rec-over-loop)
 - [Mute and solo](https://dsablic.github.io/sidou/videos.html#mute-and-solo)
 - [Play over a song](https://dsablic.github.io/sidou/videos.html#play-over-a-song)
@@ -43,23 +44,24 @@ marks.
 
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
-| [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE | 77.4 s, 8.0 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The release's highlights: a steady MIDI clock, REC over a loop, the tracker pages, STEP, character you can hear, SPREAD, chord arpeggios, the soft limiter, help on HOME, songs over SysEx | 57.8 s, 5.1 MB |
+| [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE | 77.6 s, 8.0 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The release's highlights: the SID drum kit and digi drums, a step's chance, DICE and MUTATE, the ARP helper in TABLE, LEDs that show state, SETTINGS' RESET, recording over USB audio, Songs to MIDI on the site | 52.5 s, 4.0 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [mute-and-solo](recipes/mute-and-solo.json) | ![mute-and-solo](media/videos/mute-and-solo.webp) | PLAY the built-in loop, GLO + a key mutes or solos a voice | 27.0 s, 2.8 MB |
-| [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a drum lane on STEP, kicks, snares and hats on four pages, PLAY, a cutoff lock | 44.8 s, 3.7 MB |
-| [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.5 MB |
-| [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 34.6 s, 2.4 MB |
+| [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a lane on STEP, KICK, SNARE and the hats picked by name, four pages with a tom fill, PLAY, a digi clap on every page | 51.2 s, 4.1 MB |
+| [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.6 MB |
+| [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 35.0 s, 2.6 MB |
 | [chord-arpeggio](recipes/chord-arpeggio.json) | ![chord-arpeggio](media/videos/chord-arpeggio.webp) | ARP on LIVE: a held chord as one voice stepping through its notes, ARP + K1, K2 and K3 for rate, order and span | 21.9 s, 2.1 MB |
-| [chip-spread](recipes/chip-spread.json) | ![chip-spread](media/videos/chip-spread.webp) | A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right | 27.8 s, 2.3 MB |
+| [chip-spread](recipes/chip-spread.json) | ![chip-spread](media/videos/chip-spread.webp) | A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right | 28.1 s, 2.3 MB |
 | [chip-character](recipes/chip-character.json) | ![chip-character](media/videos/chip-character.webp) | CHIP: AGE, DAC, THUMP and BLEED, each heard on a riff | 28.5 s, 2.9 MB |
 | [add-an-effect](recipes/add-an-effect.json) | ![add-an-effect](media/videos/add-an-effect.webp) | SCL picks the FX slot, ENV its algorithm (DELAY, REVERB), EDIT + K1/K4 its amount and mix | 19.0 s, 2.1 MB |
 | [midi-learn](recipes/midi-learn.json) | ![midi-learn](media/videos/midi-learn.webp) | SAVE + K1 opens MIDI LEARN; a controller's CC 21 then turns the cutoff | 17.6 s, 1.8 MB |
-| [track-bass](recipes/track-bass.json) | ![track-bass](media/videos/track-bass.webp) | After the beat: TRACKER, REC with the song stopped, a bassline note by note (Am F C G) | 32.0 s, 2.7 MB |
-| [track-lead](recipes/track-lead.json) | ![track-lead](media/videos/track-lead.webp) | After the bassline: REC while it plays, a four-bar lead recorded in time | 30.0 s, 2.4 MB |
-| [play-over-a-song](recipes/play-over-a-song.json) | ![play-over-a-song](media/videos/play-over-a-song.webp) | Load NEON HIGHWAY, play it on chip A, jam on chip B, K1, DELAY, a mute, REC the jam | 46.0 s, 4.0 MB |
-| [remix-a-song](recipes/remix-a-song.json) | ![remix-a-song](media/videos/remix-a-song.webp) | Load PAPER LANTERNS, change it in STEP, a new instrument, a mute, SAVE AS PAPER LANTERNS 2 | 41.1 s, 3.1 MB |
+| [track-bass](recipes/track-bass.json) | ![track-bass](media/videos/track-bass.webp) | After the beat: TRACKER, REC with the song stopped, a bassline note by note (Am F C G) | 32.1 s, 2.7 MB |
+| [track-lead](recipes/track-lead.json) | ![track-lead](media/videos/track-lead.webp) | After the bassline: REC while it plays, a four-bar lead recorded in time | 30.0 s, 2.6 MB |
+| [step-generative](recipes/step-generative.json) | ![step-generative](media/videos/step-generative.webp) | After the lead: GLO mutes the bass and drums, a held step's chance (50%), DICE a new lead, MUTATE it, everyone back | 32.3 s, 3.0 MB |
+| [play-over-a-song](recipes/play-over-a-song.json) | ![play-over-a-song](media/videos/play-over-a-song.webp) | Load NEON HIGHWAY, play it on chip A, jam on chip B, K1, DELAY, a mute, REC the jam | 46.4 s, 4.0 MB |
+| [remix-a-song](recipes/remix-a-song.json) | ![remix-a-song](media/videos/remix-a-song.webp) | Load PAPER LANTERNS, change it in STEP, a new instrument, a mute, SAVE AS PAPER LANTERNS 2 | 41.4 s, 3.0 MB |
 
 ## What a video is
 
@@ -79,7 +81,8 @@ marks.
 The look lives in `tools/videos/template.py` (layouts, colours, fonts, wipes, cards), the
 panel's geometry in `tools/videos/panel.py` (after fm1-emu's panel drawing, MIT), what happens
 when in `tools/videos/make.py`, and per-video settings (no teaser, the soundtrack under some
-steps, the tempo for the beat glow, where the preview is taken) in `tools/videos/videos.json`.
+steps, the tempo for the beat glow, where the preview is taken, `"video": false` for a recipe that
+is a check rather than a video, as `first-run` and `arp-visible`) in `tools/videos/videos.json`.
 A recipe step's optional `focus` (the control, a screen region, the callout) and `chapter`
 steer it ([recipe-schema.md](reference/recipe-schema.md)); without them the step's first input
 gives the control and the label.
@@ -87,7 +90,7 @@ gives the control and the label.
 ## Regenerating
 
 ```
-tools/make-videos                       # every recipe, all three cuts, into build/videos
+tools/make-videos                       # every video's recipe, all three cuts, into build/videos
 tools/make-videos --recipe step-a-beat  # one (repeatable)
 tools/make-videos --fast                # half resolution, fast x264: a quick look
 tools/make-videos --formats wide        # only some cuts

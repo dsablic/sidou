@@ -792,3 +792,135 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
     assert_eq!(name(&mut m, &fw), "NIGHT");
     assert_eq!(song(&mut m, &fw).write(true), bytes);
 }
+
+/// Zero crossings and RMS of a stretch of the audio: a pitched note crosses zero hundreds of
+/// times a second, an envelope on a frozen oscillator (a frequency never set) only thumps.
+fn tone(audio: &[i16]) -> (usize, f64) {
+    let zc = audio
+        .windows(2)
+        .filter(|w| (w[0] < 0) != (w[1] < 0))
+        .count();
+    let sum: f64 = audio.iter().map(|&x| f64::from(x).powi(2)).sum();
+    (zc, (sum / audio.len().max(1) as f64).sqrt())
+}
+
+/// NEW right after SIDOU LOOP: STEP's audition and PLAY sound the template's lead at its
+/// pitch. Its wavetable once kept the frequency unchanged ($80 on the right), so a note
+/// never set it and the voice stayed at 0 Hz: an envelope's thump, no tone.
+#[test]
+fn a_new_song_plays_and_auditions_its_lead_at_pitch() {
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    complete(&mut m, &fw, NEW, "");
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(SETTLE_MS);
+    assert_eq!(
+        top_view(&mut m, &fw),
+        fw.symbol("step_view_view"),
+        "STEP is up"
+    );
+    let before = m.soc.periph.audio.len();
+    press(&mut m, PANEL_KEY_ID0 as u8);
+    let lead_f0 = pitch(&record(&mut m, 400));
+    let (zc, rms) = tone(&m.soc.periph.audio[before..]);
+    println!("audition: {zc} zero crossings, rms {rms:.0}");
+    assert!(
+        zc > 40 && rms > 200.0,
+        "the audition is silent: {zc} crossings, rms {rms:.0}"
+    );
+    // Instrument 02 (BASS) on the same key: half the lead's frequency.
+    m.run_ms(600);
+    m.turn(6, 1);
+    m.run_ms(100);
+    press(&mut m, PANEL_KEY_ID0 as u8 + 2); // an empty step, the first press after PRESETS
+    let rec = record(&mut m, 400);
+    println!(
+        "rms {:.0}",
+        (rec.iter().map(|x| x * x).sum::<f32>() / rec.len() as f32).sqrt()
+    );
+    let bass_f0 = pitch(&rec);
+    println!("lead {lead_f0:.1} Hz, bass {bass_f0:.1} Hz");
+    assert!(
+        (bass_f0 * 2.0 / lead_f0 - 1.0).abs() < 0.03,
+        "the bass is not an octave under the lead: {bass_f0:.1} vs {lead_f0:.1} Hz"
+    );
+    m.turn(6, -1);
+    m.run_ms(100);
+    for k in [4u8, 8, 12] {
+        press(&mut m, PANEL_KEY_ID0 as u8 + k);
+        m.run_ms(400);
+    }
+    let before = m.soc.periph.audio.len();
+    press(&mut m, PANEL_BTN_PLAY as u8);
+    m.run_ms(3000);
+    let (zc, rms) = tone(&m.soc.periph.audio[before..]);
+    println!("play: {zc} zero crossings, rms {rms:.0}");
+    assert!(
+        zc > 200 && rms > 300.0,
+        "PLAY is silent: {zc} crossings, rms {rms:.0}"
+    );
+    press(&mut m, PANEL_BTN_PLAY as u8);
+    m.run_ms(500);
+    check_passes(&m, "a NEW song's steps played");
+}
+
+/// STEP on a NEW song: PRESETS (no step held) picks the lane's instrument, and the first tap
+/// of an empty step after it auditions that instrument for as long as the key was held. Its
+/// tables were not in the player's shape yet, so the note waited for the shape (a few calls);
+/// the key's release, which came meanwhile, went right after it and cut the audition to a
+/// call: a kick or a snare (test bit first, then the pulse) sounded as a click of their
+/// pulse, the same for every drum, while the taps after it played the instrument in full.
+/// Then across the kit's drums.
+#[test]
+fn a_tap_after_presets_auditions_the_new_instrument_for_its_hold() {
+    const TAP_MS: u64 = 40;
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    complete(&mut m, &fw, NEW, "");
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(SETTLE_MS);
+    let ctl = fw.symbol("song_transport");
+    let chn = ctl + ilp32::song_ctl::player as u32 + ilp32::gt2_player::chn as u32;
+    let key = PANEL_KEY_ID0 as u8;
+    press(&mut m, key); // 01 PULSE, the lane's own
+    m.run_ms(400);
+    let mut k = 1u8;
+    for (turn, instr) in [(2, 3u8), (1, 4), (1, 5), (2, 7), (-3, 4)] {
+        m.turn(PANEL_ENC_PRESETS as u8, turn);
+        m.run_ms(400);
+        for tap in 0..2 {
+            // the jam's start (its instrument on the channel, the gate on) and its release
+            let before = m.soc.periph.audio.len();
+            let (mut start, mut end) = (None, None);
+            m.key(key + k, true);
+            for ms in 0..300u64 {
+                if ms == TAP_MS {
+                    m.key(key + k, false);
+                }
+                let i = m.soc.read8(chn + ilp32::gt2_channel::instr as u32);
+                let gate = m.soc.read8(chn + ilp32::gt2_channel::gate as u32);
+                if start.is_none() && i == instr && gate == 0xff {
+                    start = Some(ms);
+                }
+                if start.is_some() && end.is_none() && gate == 0xfe {
+                    end = Some(ms);
+                }
+                m.run_ms(1);
+            }
+            m.run_ms(200);
+            let what = format!("instrument {instr:02X}, tap {tap}");
+            let start = start.unwrap_or_else(|| panic!("{what}: the audition never started"));
+            let end = end.unwrap_or_else(|| panic!("{what}: the audition was never released"));
+            let (zc, rms) = tone(&m.soc.periph.audio[before..]);
+            println!("{what}: {start}..{end} ms, {zc} crossings, rms {rms:.0}");
+            assert!(
+                end - start + 10 >= TAP_MS,
+                "{what}: sounded {} ms of a {TAP_MS} ms tap",
+                end - start
+            );
+            assert!(rms > 50.0, "{what}: the audition is silent (rms {rms:.0})");
+            k += 1;
+        }
+    }
+    check_passes(&m, "taps after PRESETS");
+}

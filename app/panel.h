@@ -67,8 +67,22 @@ extern "C" {
 #define PANEL_ENC_PRESETS 6u
 #define PANEL_ENCODERS 7u
 
-/* The MASTER pot moves the volume only when it changed by at least this much (ADC noise). */
+/* The MASTER pot (panel_master), in its 0..1023 counts (platform/fm1 averages 4 conversions).
+ * The gain follows a change of PANEL_MASTER_HYSTERESIS (0.4 % of the travel: no audible step
+ * on the audio taper); the popup only a turn of PANEL_MASTER_POPUP (1.6 %) from where the pot
+ * last rested, so a reading that wanders by up to 15 counts at rest may nudge the gain but never
+ * shows it. The last PANEL_MASTER_END counts at either end read as that end: 0 and 1023 land
+ * exactly, and a pot resting there holds them through the noise. A real turn asks for the popup
+ * and for PANEL_MASTER_FOLLOW calls (a second at LIVE_TICK_HZ, renewed by each further 1.6 %)
+ * every change it lands asks again, so the popup says the value the turn ends at. The asks are
+ * at least PANEL_MASTER_ASK_GAP calls apart (120 ms at LIVE_TICK_HZ, three 40 ms frames): the
+ * screen opens the popup only in a frame without an ask, so a turn that landed a change every
+ * frame kept it shut. A change landed in the gap is asked for when it ends. */
 #define PANEL_MASTER_HYSTERESIS 4
+#define PANEL_MASTER_POPUP 16
+#define PANEL_MASTER_END 8
+#define PANEL_MASTER_FOLLOW 100u
+#define PANEL_MASTER_ASK_GAP 12u
 
 /* What K1..K4 turn without EDIT held (panel.page): the views set it for the view that shows
  * (app/views.h), so the panel and MIDI learn, which both ask panel_knob_param, agree. */
@@ -87,7 +101,11 @@ typedef struct {
     /* The note each key sent at key-down, LIVE_NO_NOTE while it is up: key-up releases that
      * note even when the octave changed in between. */
     uint8_t key_note[PANEL_NOTE_KEYS];
-    int16_t master_raw; /* the last pot value applied, -1 for none */
+    int16_t master_raw;   /* the last pot value applied, -1 for none */
+    int16_t master_shown; /* where the turn the popup follows was last real, -1 for none */
+    uint8_t master_follow; /* calls left in which a landed change asks the popup again */
+    uint8_t master_wait;    /* calls left before the popup may be asked again */
+    uint8_t master_pending; /* 1: a landed change waits for its ask */
     uint32_t held;      /* the debounced buttons (bit i: button i), for the EDIT layer */
     /* A PANEL_PAGE_*, PANEL_PAGE_LIVE from panel_init. Derived, not state: the views
      * (views_buttons, views_encoder) set it from the view that shows before every event and

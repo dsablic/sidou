@@ -7,18 +7,30 @@ and the MIDI export): the lossless set below, measured on the FM-1_900 build as 
 builds it. Outputs are bit-identical (no golden changed; the device plays sample for sample as the
 host renders it), and every instruction gate the changes reach passes.
 
+**S1 reverted (2026-10-24): RAMTEXT does not use the debug area yet.** It was reverted when a
+device report (STEP's toggles not landing) was blamed on it; the report was a misread view, not
+the SRAM, so S1 is unproven rather than failed: a device check of code in that area (hardware-test
+section 17) would bring its 8 KB back. Code stays out of 0x01C0C000..0x01C0E000: RAMTEXT is 48 KB again, `app.ld`
+asserts `_rt_end <= 0x01C0C000` (`ram_audio.rs` checks it too), and crt0.S saves Felucca's five
+boot words there again. The 80 bytes RAMTEXT was over came back from `core/player/song_ctl.c` at `-Oz` (112 bytes
+less than `-Os`; the digi drums' loop still costs 9.47 a sample): RAMTEXT 49,120 of 49,152. (The
+player, `gt2_play.c`, at `-Oz` would save 336 but puts a fast-forward's six calls at 39,432
+instructions, over the 39,000 slice.) The S1 rows,
+the debug-area section and the recommendation below are the study as it was; where they say
+RAMTEXT gains 7,936 or 8,192 bytes, that gain does not exist.
+
 | Change | Image | RAMTEXT used (of) | RAM region free | POOL free |
 |---|---:|---:|---:|---:|
 | Base, `dde85461` | 497,176 | 49,152 (49,152) | 6,548 | 12,160 |
 | S2: noise tables built at boot into POOL | 494,196 (−2,980) | 49,152 | 9,688 (+3,140) | 9,024 (−3,136) |
 | 6: `store.c` at `-Oz` | 492,628 (−1,568) | 49,152 | 9,688 | 9,024 |
 | 4: pulldown repacked (overlapping blocks, shared NP rows) | 486,652 (−5,976) | 49,152 | 9,552 (−136: `SID_PD_ROWS`, 120, and alignment) | 9,024 |
-| S1: RAMTEXT over the debug area, crt0's boot words dropped | 486,620 (−32) | 49,152 (57,344) | 9,552 | 9,024 |
+| S1: RAMTEXT over the debug area, crt0's boot words dropped (reverted: see above) | 486,620 (−32) | 49,152 (57,344) | 9,552 | 9,024 |
 | 1: cutoff tables delta-coded, an inline sequential reader | 474,636 (−11,984) | 49,152 (57,344) | 9,552 | 9,024 |
 | S3: digi codes two a byte | **472,224** (−2,412) | **49,184** (57,344; +32) | **11,992** (+2,440) | **9,024** |
 
-In all: the image **−24,952** (33,776 under the 506,000 ceiling), RAMTEXT **8,160 bytes free**
-(was 0), the RAM region **+5,444**, POOL −3,136, free RAM together 21,016. The pulldown tables are
+In all: the image **−24,952** (33,776 under the 506,000 ceiling), RAMTEXT 8,160 bytes free
+(was 0; with S1 reverted it is 48 KB and `song_ctl.c` at `-Oz` leaves 32 free), the RAM region **+5,444**, POOL −3,136, free RAM together 21,016. The pulldown tables are
 52,407 bytes (was 58,488), the cutoff codes 15,978 (was 28,672), the digi codes 2,431 (was 4,860).
 
 What moved against the study's estimates: the cutoff reader is inline (`sid_cutoff_seq_hz` in
@@ -192,7 +204,7 @@ words into `.noinit` (NOINIT has 0x3D00 bytes spare) gains the full 8,192.
 
 | # | Candidate | Gains | Risk | Cost |
 |---|---|---|:-:|---|
-| S1 | **Release the debug area to RAMTEXT** (`LENGTH = 0xDF00`, the `_rt_end` and size asserts, `ram_audio.rs`'s `RAMTEXT_BYTES`, hardware.md) | **RAMTEXT +7,936** (+8,192 with the probe words in `.noinit`) | 1 | Built: links, RAMTEXT 49,152 of 57,088. No code or cycle change. A boot, store write and update check on the device belongs in hardware-test.md. Part of it could hold interrupt tables instead of code (S2/S3 put them in POOL instead). |
+| S1 | **Release the debug area to RAMTEXT** (reverted: code there failed on the device) (`LENGTH = 0xDF00`, the `_rt_end` and size asserts, `ram_audio.rs`'s `RAMTEXT_BYTES`, hardware.md) | **RAMTEXT +7,936** (+8,192 with the probe words in `.noinit`) | 1 | Built: links, RAMTEXT 49,152 of 57,088. No code or cycle change. A boot, store write and update check on the device belongs in hardware-test.md. Part of it could hold interrupt tables instead of code (S2/S3 put them in POOL instead). |
 | S2 | **Noise tables built at boot into POOL** (`SID_NOISE_JUMP`, `SID_NOISE_WB_BYTE` in a `.pool.*` section instead of `.data`) | **RAM region +3,140**, POOL −3,140, flash −2,980 | 1 | Candidate 3 above, placed in POOL. Bit-exact (0 mismatches). POOL stays at 9,024 free. |
 | S3 | **Digi codes packed two to a byte** (drums: 4-bit codes, one a byte today) | **RAM region +2,430**, flash −2,430 | 2 | The interrupt's digi read gets a shift and a mask, once every `SONG_DIGI_SPAN` samples; `song_ctl.c`'s two code pointers become an index. `tablegen digi` packs the codes. The digi tests and goldens stay as they are (same codes). |
 | S4 | Digi codes into POOL instead of RAM (a load-and-copy section like `.data`) | RAM region +2,430 more (after S3) | 2 | An `app.ld` output section with `AT > XIP` and a copy loop in `fm1_cstart`. |

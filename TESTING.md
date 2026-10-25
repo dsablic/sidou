@@ -45,6 +45,42 @@ Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
 signal analysis.
 
+## Emulator first, and the first-use tests
+
+**The rule.** Whatever the emulator can check, it checks before a unit is touched: a device
+session starts only when the emulator-marked checks of [docs/hardware-test.md](docs/hardware-test.md)
+pass, and it asks the user only for the device-only ones (the speaker and the room, the feel,
+the real LCD and LEDs as seen, the printed controls and their timing, real USB hosts and
+operating systems, the real flash chip, SRAM and power cycles, install and recovery). Each check
+there says which it is: *Emulator* with the test that covers it, *Device-only* with why, or
+*Emulator (no test yet)*, a test still to write before the next session. A bug found on the device
+that the emulator could have seen gets an emulator test, not another device check.
+
+**The first-use tests** (`crates/emu-gate/tests/first_use.rs`) are that rule for a new user's
+first hour. v0.4.0's device session found three bugs a scripted run would have caught (a NEW song
+silent since v0.2.0, whose test checked a peak level that a click passes; NEW's PULSE and BASS
+alike; the first STEP press after PRESETS sounding the previous instrument). Each test drives the
+panel as a user does (the menu's SONG pages, STEP, TRACKER, PLAY, GLO, the generative gestures, a
+power cycle with the flash kept) and judges the output as a listener would, not sample for
+sample (the bit-exact tests are `song.rs`'s and `song_store.rs`'s):
+- **heard**: the loudest 10 ms RMS over a floor (`AUDIBLE_RMS`), and silence as every 10 ms
+  under `SILENT_RMS`; never a peak;
+- **at its pitch**: the chip's frequency register where the note settles and the audio's own
+  fundamental (past the onset's thump), within 25 cents;
+- **on time**: onsets (a rise in the 10 ms RMS) within `ON_TIME_MS` of their row's time, rows
+  480 ms apart at a NEW song's tempo;
+- **told apart**: two instruments differ in loudness, length, spectral centroid, zero crossings,
+  pitch, the waveforms they go through or their pulse width (`tell_apart`; the envelope's AD and
+  SR alone do not count: an ear hardly hears them on a short note).
+
+They cover NEW's fourteen instruments auditioned on STEP and played with PLAY, GLO's mutes,
+TRACKER's REC note entry and SEQ through every song view, SONG's LOAD of SIDOU LOOP, SAVE AS and a
+power cycle, and STEP's chance, DICE and MUTATE. A test written for a bug fixed on another branch
+is `#[ignore = "needs branch ..."]` until that branch merges; one for a bug found and not fixed yet
+is `#[ignore = "bug: ..."]`. Run them alone with
+`SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate --test first_use` (about
+a minute on every core; `--run-ignored all` adds the ignored ones).
+
 ## Test layers
 
 ### Unit tests

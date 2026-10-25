@@ -203,7 +203,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | K1-K4 on CHIP's EXPERT section | the named expert control in its units: percent, DAC ratio `R`, voice-DAC DC units `DC`, Hz, WEAK / MED / STRONG, or noise write-back tap count |
 | EDIT held + K1-K4 with the focus on CHIP's chip section | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) (the slot is not on that page) |
 | EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
-| MASTER | VOLUME (0-100%, the bar the pot's travel), in every view |
+| MASTER | VOLUME (0-100%, the bar the pot's travel), in every view, once the pot turns by about 1.5 % of its travel (a pot at rest never shows it) |
 | ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
 | ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE`, `SPREAD` (`OFF`, `10%` .. `100%`), `RESET ALL?` (`SAVE RESETS` once asked) |
 
@@ -1034,7 +1034,7 @@ model, profile and character, the EXPERT overrides, the effect slots, and the en
 **Songs, USER chip profiles and MIDI learn mappings stay**, and so does the last song that boots. Turn **ALGORITHM clockwise**: the item says **RESET?** and the popup **SAVE
 RESETS** under the name **RESET ALL?** (the question: reset all sounds and settings?). Then
 press **SAVE**, without leaving the item, to do it: the settings are saved at once and the
-toast says **RESET AND SAVED**. Further turns never confirm, and counter-clockwise, moving
+toast says **RESET AND SAVED** (**RESET AND SAVED (GAPS)** when the save had to be forced). Further turns never confirm, and counter-clockwise, moving
 SETTINGS' cursor or leaving SETTINGS (HOME) cancels it with nothing written. REC QUANTISE and
 the MIDI page's setup are RAM-only and are not part of it.
 

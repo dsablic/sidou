@@ -9,6 +9,10 @@ void panel_init(panel* p) {
         p->key_note[k] = LIVE_NO_NOTE;
     }
     p->master_raw = -1;
+    p->master_shown = -1;
+    p->master_follow = 0;
+    p->master_wait = 0;
+    p->master_pending = 0;
     p->held = 0;
     p->page = PANEL_PAGE_LIVE;
     p->playing = 0;
@@ -202,15 +206,38 @@ void panel_master(panel* p, live* l, int32_t raw) {
     if (raw < 0) {
         return;
     }
-    if (raw > (int32_t)LIVE_MASTER_MAX) {
+    if (raw > (int32_t)LIVE_MASTER_MAX - PANEL_MASTER_END) {
         raw = LIVE_MASTER_MAX;
+    } else if (raw < PANEL_MASTER_END) {
+        raw = 0;
     }
+    int first = p->master_raw < 0;
     int32_t d = raw - p->master_raw;
+    if (p->master_follow && !--p->master_follow) {
+        p->master_shown = p->master_raw; /* the turn is over: the next is measured from here */
+    }
+    if (p->master_wait) {
+        p->master_wait--;
+    }
     /* the ends always land, so the volume can reach 0 and 15 */
-    if (p->master_raw < 0 || d >= PANEL_MASTER_HYSTERESIS || d <= -PANEL_MASTER_HYSTERESIS ||
+    if (first || d >= PANEL_MASTER_HYSTERESIS || d <= -PANEL_MASTER_HYSTERESIS ||
         ((raw == 0 || raw == (int32_t)LIVE_MASTER_MAX) && d != 0)) {
         p->master_raw = (int16_t)raw;
         live_set_master(l, (uint16_t)raw);
+        int32_t turn = raw - p->master_shown;
+        if (first || turn >= PANEL_MASTER_POPUP || turn <= -PANEL_MASTER_POPUP) {
+            p->master_shown = (int16_t)raw;
+            p->master_follow = first ? 0u : (uint8_t)PANEL_MASTER_FOLLOW;
+            p->master_pending = 1;
+        } else if (p->master_follow) {
+            p->master_pending = 1;
+        }
+    }
+    /* An ask at most every PANEL_MASTER_ASK_GAP calls, the last value asked once it is free:
+     * the screen opens the popup only in frames that bring no ask (app/screen.c popup_step). */
+    if (p->master_pending && !p->master_wait) {
+        p->master_pending = 0;
+        p->master_wait = first ? 0u : (uint8_t)PANEL_MASTER_ASK_GAP;
         if (p->master_hook) {
             p->master_hook(p->master_ctx);
         }

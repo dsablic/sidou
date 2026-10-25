@@ -65,6 +65,9 @@ pub fn act_json(a: &Act) -> Value {
         Act::HoldKey(b, n) => {
             json!({"op": "hold_key", "button": button_name(*b), "note": note_name(*n)})
         }
+        Act::HoldPress(b, o) => {
+            json!({"op": "hold_press", "button": button_name(*b), "press": button_name(*o)})
+        }
         Act::Note(n, ms) => {
             json!({"op": "note", "notes": n.iter().map(|x| note_name(*x)).collect::<Vec<_>>(), "ms": ms})
         }
@@ -124,6 +127,10 @@ pub fn act_from_json(v: &Value, at: &str) -> Result<Act, String> {
             get_i64(v, "detents", at)? as i32,
         ),
         "hold_key" => Act::HoldKey(by_name(&BUTTONS, get_str(v, "button", at)?)?, note("note")?),
+        "hold_press" => Act::HoldPress(
+            by_name(&BUTTONS, get_str(v, "button", at)?)?,
+            by_name(&BUTTONS, get_str(v, "press", at)?)?,
+        ),
         "note" => Act::Note(
             v.get("notes")
                 .and_then(Value::as_array)
@@ -347,6 +354,7 @@ pub fn describe(acts: &[Act]) -> String {
             button_name(*b),
             note_name(*n)
         ),
+        Act::HoldPress(b, o) => format!("hold {} and press {}", button_name(*b), button_name(*o)),
         Act::Note(n, ms) => format!(
             "play {} for {:.1} s",
             n.iter()

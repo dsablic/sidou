@@ -21,9 +21,11 @@ use std::path::PathBuf;
 use common::{build_dir, Firmware, Machine, APP_BASE, TAP_PER_SAMPLE};
 use fm1_core::Bus;
 
-/// RAMTEXT's size in app.ld (48 KB, and Felucca's 8 KB RAM-run debug area below RAM since
-/// docs/plans/2026-10-24-flash-space.md).
-const RAMTEXT_BYTES: u32 = 56 * 1024;
+/// RAMTEXT's size in app.ld: 48 KB, ending at Felucca's RAM-run debug area (0x01C0C000), which
+/// code does not reach until a device check shows that SRAM is the app's (app.ld).
+const RAMTEXT_BYTES: u32 = 48 * 1024;
+/// Where Felucca's RAM-run debug area starts: RAMTEXT ends here (app.ld).
+const DEBUG_AREA: u32 = 0x01C0_C000;
 /// A4's key id, held so the render has a voice to run.
 const A4_KEY: u8 = 30;
 /// PLAY (app/panel.h PANEL_BTN_PLAY): the song player runs in the interrupt too.
@@ -64,6 +66,12 @@ fn the_boot_copies_the_audio_path_to_sram() {
     );
     assert!(size > 0, ".ram_text is empty: nothing runs from SRAM");
     assert!(size <= RAMTEXT_BYTES);
+    assert!(
+        rt.end <= DEBUG_AREA,
+        ".ram_text ends at {:#010x}, in Felucca's RAM-run debug area ({DEBUG_AREA:#010x}..): \
+         code stays out of it until a device check shows it is the app's (app.ld)",
+        rt.end
+    );
     assert!(
         ram == image,
         "SRAM at .ram_text does not hold the image's copy: fm1_cstart did not copy it"

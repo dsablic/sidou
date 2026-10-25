@@ -20,6 +20,7 @@
 #               turn ENC N                an encoder, N detents (negative: counter-clockwise)
 #               holdturn BTN ENC N        a button held while an encoder turns (two hands)
 #               holdkey BTN NOTE          a button held while a note key is pressed (GLO + key)
+#               holdpress BTN BTN         a button held while another button is pressed (EDIT + SCL)
 #               note NOTE [NOTE..] MS     keys held together (F3..G5, C4 = middle C)
 #               down NOTE / up NOTE       a key held down / let go (to play while turning)
 #               select-item TEXT          the menu's (or SETTINGS') selection onto the line starting with TEXT, read from

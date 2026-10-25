@@ -36,6 +36,8 @@ pub enum Act {
     HoldTurn(u8, u8, i32),
     /// A button held while a note key is pressed (GLO + key).
     HoldKey(u8, u8),
+    /// A button held while another button is pressed (EDIT + SCL).
+    HoldPress(u8, u8),
     /// Note keys (MIDI note numbers) held together for ms.
     Note(Vec<u8>, u64),
     /// Moves the menu's selection onto the item showing this text; one turn.
@@ -386,6 +388,10 @@ fn parse_act(text: &str) -> Result<Act, String> {
             need(3)?;
             Act::HoldKey(button(w[1])?, note_number(w[2])?)
         }
+        "holdpress" => {
+            need(3)?;
+            Act::HoldPress(button(w[1])?, button(w[2])?)
+        }
         "note" => {
             need(3)?;
             let ms = num(w[w.len() - 1])?;
@@ -715,7 +721,7 @@ pub fn effort_of(a: &Act) -> Effort {
         Act::Hold(..) => Effort::Hold,
         Act::Turn(_, n) | Act::Sweep(_, n, _) => Effort::Turn(n.unsigned_abs()),
         Act::HoldTurn(_, _, n) => Effort::HoldTurn(n.unsigned_abs()),
-        Act::HoldKey(..) => Effort::HoldKey,
+        Act::HoldKey(..) | Act::HoldPress(..) => Effort::HoldKey,
         Act::Note(..) | Act::Down(_) | Act::Play(..) | Act::Taps(..) => Effort::Note,
         Act::Pot(_) => Effort::Turn(1),
         Act::Midi(_) | Act::Clock(..) => Effort::Midi,
@@ -1047,6 +1053,13 @@ fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) -> boo
             d.key_down(*b);
             d.run(30);
             d.note(key_of_note(*note), 150);
+            d.key_up(*b);
+            d.run(30);
+        }
+        Act::HoldPress(b, other) => {
+            d.key_down(*b);
+            d.run(30);
+            d.press(*other);
             d.key_up(*b);
             d.run(30);
         }

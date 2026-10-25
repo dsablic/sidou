@@ -587,3 +587,31 @@ fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementin
   walk compared to the player the way the gates are now; the pitch of tied notes is not compared
   (the fixtures hold each gate run's first note's frequency only); tempo commands in a
   wavetable (command `F`) are not followed, as GoatTracker's editor player does not either; a subtune's export of both chips on a SIDOU two-chip song waits for `TRKB` (M5).
+
+## DICE's settings (the user, 2026-10-24, from the v0.4.0 device session)
+
+DICE (EDIT + SCL in STEP) works on the device but always rolls eighth notes in a minor pentatonic
+around the lane's note; the user wants to steer it. Planned for 0.5.x, after M3:
+
+- **EDIT + SCL held, K1-K4 turned:** the parameters; EDIT + SCL alone rolls with them, as now.
+  - K1 **density**: how many steps get a note, sparse to every step.
+  - K2 **range**: how far the notes go from the lane's note, a fifth to two octaves.
+  - K3 **scale**: minor and major pentatonic, minor, major, dorian, chromatic.
+  - K4 **rhythm**: sixteenths, eighths, a syncopated or off-beat feel.
+- **Saved per song** (SIDOU's own chunk, as the locks and the scene are), so a song keeps its
+  DICE; MUTATE keeps to the same scale.
+- Open: a note-length setting, and how often a roll repeats a note.
+- **Shown on the view** (the user: "all of these make sense and should somehow be accessible from
+  the view"): today CHANCE, DICE and MUTATE are found only on the help card. While EDIT is held
+  in STEP, the HELD STEP frame lists `SCL DICE`, `ARP MUTATE` and `LFO UNDO` (and DICE's four
+  settings on K1-K4); a held step's frame names ALGORITHM's `CHANCE` beside the four knobs with
+  the step's value.
+
+## STEP: a held step's audition plays its locks (the user, 2026-10-24, v0.4.0 device session)
+
+Holding a step and turning K1-K4 (cutoff, resonance, pulse width, waveform; EDIT: the character)
+stores the lock, and playback has it, but the audition under the key plays the lane's instrument
+without the step's locks, so the turn is not heard while turning. Planned with DICE's settings
+(0.5.x): while a step is held, its audition takes the step's locks and follows each turn live,
+as on a hardware step sequencer. It goes through the song's jam path (song_ctl's interrupt side,
+RAMTEXT: mind its 32 bytes free).

@@ -4,7 +4,7 @@
   "prerequisites": {
     "after": "step-a-beat",
     "start": "live",
-    "text": "The beat from A beat in STEP."
+    "text": "The beat from A beat with the drum kit."
   },
   "related": [
     "step-a-beat",
@@ -83,7 +83,7 @@
     },
     {
       "caption": "REC on: the keys write notes. EDIT + ALGORITHM sets the step to 2, PRESETS the bass instrument, OCT- the octave.",
-      "control": "press REC, then wait 0.5 s, then hold EDIT and turn ALGORITHM clockwise by 1 detents, then wait 0.4 s, then turn PRESETS counter-clockwise by 1 detent, then wait 0.4 s, then press OCT-, then wait 1.5 s",
+      "control": "press REC, then wait 0.5 s, then hold EDIT and turn ALGORITHM clockwise by 1 detents, then wait 0.4 s, then turn PRESETS counter-clockwise by 11 detents, then wait 0.4 s, then press OCT-, then wait 1.5 s",
       "expect": [
         {
           "kind": "text",
@@ -129,7 +129,7 @@
           "op": "wait"
         },
         {
-          "detents": -1,
+          "detents": -11,
           "encoder": "PRESETS",
           "op": "turn"
         },

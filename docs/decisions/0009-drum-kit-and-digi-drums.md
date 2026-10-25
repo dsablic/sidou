@@ -22,16 +22,21 @@ song that uses them opens and plays in GoatTracker unchanged
 (`host/crates/sidou-tests/tests/gt2_match.rs`, `the_drum_kit_matches`, plays a beat of all
 eight against GoatTracker's packed player, register for register, at 1x and 2x).
 
-| Drum | AD SR | Wavetable, a row a frame (notes absolute) | Measured (tests/kit.rs) |
+| Drum | AD, SR row | Wavetable, a row a frame (notes absolute; SR the `F6` row, holding the row before) | Measured (tests/kit.rs) |
 |---|---|---|---|
-| KICK | 09 09 | pulse C-4, triangle C-3, F-2, D-2, C-2, B-1, A#1 held | 99 Hz falling to 58 Hz; the band below 120 Hz is -2.4 dB of it on the 6581, -2.7 dB on the 8580 |
-| SNARE | 06 06 | pulse D-4, noise F#7, A#6, E-6 held | |
-| CL HAT | 02 02 | noise B-7 | -24 dB in 40 ms (6581), 30 ms (8580) |
-| OP HAT | 08 08 | noise G#7 | -24 dB in 200 ms |
-| CLAP | 05 05 | noise C-7, silence, noise, silence, noise A#6 | three bursts, a dip of 10 dB or more between them |
-| TOM LO | 08 08 | triangle A-3, F#3, E-3, D-3, C#3 held | 167 Hz falling to 139 Hz |
-| TOM HI | 07 07 | triangle E-4, C#4, B-3, A-3, G#3 held | 251 Hz falling to 208 Hz: a fifth above |
-| RIM | 02 01 | pulse A#5, noise E-7 | |
+| KICK | 19, 09 | triangle C-4, F-2, SR, D-2, C-2, B-1, A#1 held | 262 Hz falling to 58 Hz; the band below 120 Hz is -3.1 dB of it on the 6581, -3.5 dB on the 8580 |
+| SNARE | 16, 06 | pulse D-4, noise F#7, SR, A#6, E-6 held | |
+| CL HAT | 12, 02 | noise B-7, SR | -24 dB in 40 ms on both models |
+| OP HAT | 18, 08 | noise G#7, SR | -24 dB in 220 ms (6581), 200 ms (8580) |
+| CLAP | 15, 05 | noise C-7, SR, silence, noise, silence, noise A#6 | three bursts (the first two frames), a dip of 20 dB or more between them |
+| TOM LO | 18, 08 | triangle A-3, F#3, SR, E-3, D-3, C#3 held | 221 Hz falling to 139 Hz |
+| TOM HI | 17, 07 | triangle E-4, C#4, SR, B-3, A-3, G#3 held | 330 Hz falling to 208 Hz: a fifth above |
+| RIM | 12, 01 | pulse A#5, noise E-7, SR | |
+
+Every instrument's SR is `00`; its SR row (`F6`, the wavetable's command 6 with the SR byte)
+sets sustain 0 and the release. The measurements above are the kit as of 2026-10-24 (see
+"The ADSR delay bug at the gate" below: the first measurements were of drums that sounded
+33 ms late, their first gated frame lost).
 
 Choices, each measured on both models by rendering through the song transport:
 
@@ -39,16 +44,54 @@ Choices, each measured on both models by rendering through the song transport:
   oscillator and the noise register, so every hit is the same; with the gate off the envelope
   starts whole at the wavetable's first row. GoatTracker's default first wave, `$09`, gates
   on in that silent frame: a short drum's envelope had decayed half its length before it
-  sounded (the closed hat peaked at -37 dB, against -24 dB now). Every drum so sounds one
-  frame after its row, and its sound does not depend on the row's note.
-- **The kick's body is a triangle near 58 Hz** reached in five frames; a pulse frame first
-  gives the click. Its share of energy under 120 Hz is the same on both models (the test
+  sounded (the closed hat peaked at -37 dB, against -24 dB now), and on the chip the voice's
+  DC rises with the envelope in that frame, a thump 20 ms before the drum (in reSIDfp, for
+  the closed hat on the 8580, -7 dB of the hat's first frame). Every drum so sounds one frame
+  after its row, and its sound does not depend on the row's note.
+- **The kick's body is a triangle near 58 Hz** reached by frame 7; a frame of triangle at C-4
+  first gives the click (a pulse there, heard once the drums sounded on time, took the low
+  band to -4.9 dB of the kick on the 6581). Its share of energy under 120 Hz is the same on both models (the test
   holds it within 2 dB), so it has weight on the 8580 as on the 6581.
 - **The clap's gaps are the inaudible waveform `$E1`** (gate held, no waveform), not a gate off
   and on: switching from release back to attack hits the ADSR delay bug (the rate counter
   wraps, about 33 ms), and the bursts merged into one.
+- **Attack 1 (8 ms to the top), SR `00` until the SR row**: see the next section.
 - **No filter**: the filter is the chip's, one for the three voices, and a drum that set it
   would change the song's lead.
+
+### The ADSR delay bug at the gate (2026-10-24)
+
+The first-use emulator tests (emu-gate `first_use.rs`,
+`the_kits_drums_sound_one_frame_after_their_row`) found every chip drum sounding about 53 ms
+after its row, not 20: a flam against a lead note on the same row, KICK's click frame lost.
+It is the instruments, not SIDOU's player or chip: GoatTracker 2.77's own packed player
+(gt2-ref) driving reSIDfp gives the same ENV3, cycle for cycle, as SIDOU's chip, on both
+models (`tests/kit.rs`, `every_new_instrument_starts_on_time`). Two ways the envelope's rate
+counter (a 15-bit LFSR, compared for equality with the rate's period) ran past the attack's
+period, so the attack waited for it to wrap, 32,767 cycles (33 ms):
+
+1. **The release in the gate-off first frame.** The hard restart's `$0F00` (release 0, period
+   9) leaves the counter below 9; the note's first frame then writes the drum's own SR with the
+   gate off, and the counter ran at the release's period (up to 977 cycles at release 9). At the
+   gate, attack 0's period 9 was behind it nearly always: 20 + 33 ms. Fix: every SR is `00`
+   (the counter stays below 9) and a wavetable SR row sets the release in frame 2 or 3, before
+   STEP's staccato key off at tempo 5 and up (the key off comes the gate-off timer's two frames
+   before the next row, frame 4 at tempo 6), so a staccato drum fades as a held one
+   (`a_staccato_drum_sounds_as_a_held_one`). At tempo 4 and below a staccato drum other than the
+   hats and the clap releases fast from frame 2. The SR row's frame holds the row before it,
+   which the table above shows.
+2. **The decay's rate for a cycle at the gate.** As the gate goes on, the chip (reSIDfp's state
+   pipeline, from sampling ENV3) compares the counter with the decay's period for one cycle; if
+   the counter sits at attack 0's 8 then, it steps to 9 and the attack waits out the wrap: one
+   phase of the counter in nine, 33 ms late, whatever the instrument before. GoatTracker's usual
+   attack-0 instruments share it. NEW's lead (AD `09`) hit it in the first-use tests once a fix
+   to the auditions' release (`14711ace`) moved the phase: PULSE 33 ms after its row. Fix: the
+   attack is 1 (period 32, 8 ms to the top), which a counter below 10 always reaches: the kit's
+   drums and NEW's lead and bass (`19` and `12`). The test checks nine frame lengths, every
+   phase.
+
+The SID model keeps both behaviours (they are reSIDfp's and the chip's). Songs saved from NEW
+before keep the old bytes. The kit is 45 wavetable rows (was 38).
 
 **How STEP gets them: NEW's song holds the kit.** A NEW song is a pulse lead (01), a bass (02),
 then the eight drums (03-0A), the kit's table rows first (its pointers are rows from 1). STEP's

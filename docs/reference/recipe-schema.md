@@ -73,6 +73,7 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
   | `turn` | encoder, detents | turned (negative: counter-clockwise) |
   | `hold_turn` | button, encoder, detents | a button held while an encoder turns |
   | `hold_key` | button, note | a button held while a note key is pressed (GLO + key) |
+  | `hold_press` | button, press | a button held while another button is pressed (EDIT + SCL) |
   | `note` | notes[], ms | keys held together, then let go |
   | `down`, `up` | note | a key held across steps, then let go |
   | `select_item` | text | the menu's selection moved onto the line showing the text |
