@@ -930,8 +930,10 @@ pub const SLOTS_SWITCH_WORST: f64 = 964.0;
 /// it are M2d (6,000), M2e (2,000) and M2f (5,000): 22,000 - 13,000 = 9,000, and the table's
 /// slack makes 10,000. (It was 7,000 until the end-of-M2 review, which counted M2a twice.)
 /// Less M3's 512 bytes (docs/plans/2026-10-19-m3-sid-files.md, "Budgets": a tune's state
-/// overlays the song's, and the rest is its own; Task 9).
-pub const FREE_RAM_MIN: u64 = 10_000 - 512;
+/// overlays the song's, and the rest is its own; Task 9), and less LAB's 512
+/// (docs/plans/2026-10-25-lab-plan.md, Task 1's decisions: option A, the USER sounds as a store
+/// file, 16 undo steps, `midi_out`'s rows by index).
+pub const FREE_RAM_MIN: u64 = 10_000 - 512 - 512;
 /// Each region (the RAM region, POOL) keeps this free: M3's start target in
 /// docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
 /// bytes plus a margin.

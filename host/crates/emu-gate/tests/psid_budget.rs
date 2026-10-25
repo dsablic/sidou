@@ -17,7 +17,7 @@
 //!   PSID_SLICE_WORST, every pass within POLL_INSTRUCTIONS;
 //! * the memory: free RAM within FREE_RAM_MIN and each region within REGION_FREE_MIN, M3's
 //!   RAMTEXT (psid_ctl's interrupt half, sid_advance, audio.c's player paths and swap hook)
-//!   within its 1,536 bytes, the image within M3's ceiling.
+//!   within its 1,536 bytes, the image within the flash stage (M3's, then LAB's).
 //!
 //! Instructions are not device cycles (docs/hardware.md, "Open checks").
 
@@ -35,8 +35,9 @@ const MEM_ADDR: u32 = 0x01CC_0000;
 const PASSES: u32 = 40;
 /// RAMTEXT M3 may take (the plan's "Budgets").
 const M3_RAMTEXT: u64 = 1_536;
-/// M3's flash stage (flash_budget.rs M3_STAGE).
-const M3_CEILING: u64 = 534_000;
+/// The image's flash stage: flash_budget.rs `IMAGE_CEILING`, LAB's stage since LAB's Task 1b
+/// (M3's was 534,000).
+const IMAGE_CEILING: u64 = 541_000;
 
 fn build() -> Option<std::path::PathBuf> {
     let b = build_dir();
@@ -301,7 +302,7 @@ fn a_playing_tune_holds_the_main_loops_budgets() {
 
 /// The memory a tune takes: none of its own state outside the song's (audio.c's union fits the
 /// song transport's, the 6502's 64 KiB is the song's region), so free RAM holds FREE_RAM_MIN and
-/// each region REGION_FREE_MIN; M3's code in SRAM within its share; the image within M3's stage.
+/// each region REGION_FREE_MIN; M3's code in SRAM within its share; the image within the stage.
 #[test]
 fn a_tunes_memory_fits_m3s_budgets() {
     use object::{Object, ObjectSection, ObjectSymbol};
@@ -356,7 +357,7 @@ fn a_tunes_memory_fits_m3s_budgets() {
     println!(
         "free RAM {} (RAM region {ram_free}, POOL {pool_free}; FREE_RAM_MIN {FREE_RAM_MIN}); \
          the tune's state {} bytes in the song's {union}; RAMTEXT {} bytes, M3's {m3_text} \
-         ({m3:?}, of {M3_RAMTEXT}); the image {image} of M3's {M3_CEILING}",
+         ({m3:?}, of {M3_RAMTEXT}); the image {image} of the stage's {IMAGE_CEILING}",
         ram_free + pool_free,
         ilp32::psid_ctl::SIZE + ilp32::psid_work::SIZE + ilp32::psid_header::SIZE,
         size(".ram_text")
@@ -364,5 +365,5 @@ fn a_tunes_memory_fits_m3s_budgets() {
     assert!(ram_free >= REGION_FREE_MIN && pool_free >= REGION_FREE_MIN);
     assert!(ram_free + pool_free >= FREE_RAM_MIN);
     assert!(m3_text <= M3_RAMTEXT, "M3's RAMTEXT {m3_text}");
-    assert!(image <= M3_CEILING);
+    assert!(image <= IMAGE_CEILING);
 }
