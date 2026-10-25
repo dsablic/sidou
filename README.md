@@ -21,6 +21,23 @@ screenshots the tests check.*
 [![SIDOU in 77 seconds](docs/media/videos/sidou-intro.webp)](https://dsablic.github.io/sidou/videos.html#sidou-intro)
 
 **Watch:** [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 0.4.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html) · [the cheat sheet](https://dsablic.github.io/sidou/cheatsheet.html)
+
+## What's new in 0.5.0
+
+- **`.sid` tunes on the FM-1.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC)
+  from the device's flash, each SID write timed to its cycle. Menu → SIDS lists them; NOW PLAYING
+  shows the title, author, song, time and voices, with mute and solo, pause and stop, and MIDI
+  start, stop and continue.
+- **Tunes over SysEx,** from `sidou-sysex sid`, and an openly licensed **starter pack** of eleven
+  tunes ([put a tune on the FM-1](docs/manual/sid-tunes.md)).
+- **SETTINGS → SID MODEL:** AUTO plays each tune on the chip its file names.
+- **STATUS is readable:** 2× text on three pages that SELECT turns, with the 6502's share of the
+  CPU on page 1 while a tune plays.
+
+Measured on a real FM-1: the 6502 takes 4-12 % of the CPU on the heaviest tunes tried. All of it
+is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) and the
+[CHANGELOG](CHANGELOG.md).
+
 ## What you can do
 
 - **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,

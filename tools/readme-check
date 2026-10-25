@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The README keeps up with the releases (the user, 2026-10-23: "keep the readme always up to
 date"). The newest release in CHANGELOG.md must be in the README's status as released, never as
-next, and on a release tag (GITHUB_REF refs/tags/vX.Y.Z) the tag must be that release.
+next, with a "What's new in X.Y.Z" section and its package in the install steps (the user,
+2026-10-25: "we should keep the readme in sync with the releases"), and on a release tag
+(GITHUB_REF refs/tags/vX.Y.Z) the tag must be that release.
   tools/readme-check        exit 0 when the README is current, else 1 with what is stale
 Run by the merge check (every change, docs-only ones too) and by ci.yml on a tag."""
 import os
@@ -24,6 +26,10 @@ if f"**v{version}** is released" not in readme:
     errors.append(f"README.md's status does not say \"**v{version}** is released\" (CHANGELOG.md: {version}, {date})")
 if re.search(rf"\*\*v{re.escape(version)}\*\* is (next|upcoming|coming)", readme):
     errors.append(f"README.md still calls v{version} upcoming")
+if f"## What's new in {version}" not in readme:
+    errors.append(f"README.md has no \"## What's new in {version}\" section for the newest release")
+if f"sidou-{version}.fwsc" not in readme:
+    errors.append(f"README.md's install steps do not name sidou-{version}.fwsc")
 ref = os.environ.get("GITHUB_REF", "")
 if ref.startswith("refs/tags/v") and ref != f"refs/tags/v{version}":
     errors.append(f"the tag {ref[10:]} is not CHANGELOG.md's newest release v{version}")
