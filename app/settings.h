@@ -138,7 +138,8 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len);
  * boot, a new version, no record): the full boot once, and the version is saved. */
 int settings_load(settings* s, uint32_t now_ms);
 /* Main loop, once a tick: the debounce, and an explicit save's progress; the unsaved edit is
- * written by the same debounce, after the settings record. Persisted setters
+ * written by the same debounce, before the settings record (a cut between them leaves the new
+ * sound, never an older edit over a newer record). Persisted setters
  * mark live.settings_dirty or midi_learn.settings_dirty; unchanged ticks gather no record.
  * live.settings_dirty stays nonzero through the debounce, retries and an unconsumed result,
  * so a frame caller can skip the call entirely when it is zero. */

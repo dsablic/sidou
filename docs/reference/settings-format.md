@@ -75,10 +75,12 @@ stored firmware version selects the full boot; the current version is then saved
 An unchanged version selects the short boot, unless HOME is held at power-on.
 
 Persisted setters mark changes for the background save. Five seconds after the
-last changed value, one whole record is submitted to the store, and once it is taken LAB's
-[unsaved edit](sound-format.md#the-unsaved-edit) (key `0x109`) after it, when that changed;
-an explicit SAVE's result is the settings record's, and the unsaved edit follows it at once.
-At boot the unsaved edit is applied after the settings record. Unchanged frames
+last changed value, LAB's [unsaved edit](sound-format.md#the-unsaved-edit) (key `0x109`) is
+submitted to the store when it changed, and once the store has programmed it one whole record;
+an explicit SAVE writes both the same way, and says SAVED once the settings record is kept.
+At boot the unsaved edit is applied after the settings record. The edit goes first because it
+holds all of the sound: a power cut between the two leaves the new sound over the old settings,
+never an older edit over a newer record (which would bring back the sound before the SAVE). Unchanged frames
 do not gather or CRC the record. Returning to the already-saved values requires no
 background write. An explicit SAVE skips the debounce; a busy store retries, and
 after two seconds an explicit save may force held operations and report

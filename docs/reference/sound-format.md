@@ -64,7 +64,7 @@ byte is not `1`, whose name has a character out of the range or whose sound is n
 ## The unsaved edit
 
 A store value, key `0x109`, type `4`, 61 bytes: the sound playing, written by the settings'
-debounce after the [settings record](settings-format.md) and applied at boot after it.
+debounce before the [settings record](settings-format.md) and applied at boot after it.
 
 | Offset | Bytes | Value |
 |---|---|---|

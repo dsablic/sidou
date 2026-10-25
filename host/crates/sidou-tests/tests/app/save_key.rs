@@ -160,6 +160,11 @@ impl Saving {
         self.ui.press(SAVE);
         for _ in 0..25 {
             self.frame();
+            // a save of the settings says its result once both records are kept (the unsaved
+            // edit goes first): until then a toast showing before it is not its answer
+            if self.set.asked != 0 {
+                continue;
+            }
             if let Some(t) = self.ui.toast() {
                 return Some(t);
             }

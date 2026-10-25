@@ -266,8 +266,7 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
     return 0;
 }
 
-/* The unsaved edit to the store, once it is free (the settings record goes first): 1 if it
- * took it. */
+/* The unsaved edit to the store, once it is free: 1 if it took it. */
 static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
     if (!s->st) {
         s->edit_saved = crc;
@@ -285,17 +284,6 @@ static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t cr
     return rc == STORE_OK;
 }
 
-/* The unsaved edit once the settings record is saved and no explicit save waits on it: by the
- * same debounce, or right after an explicit save (its result is the settings record's). */
-static void edit_due(settings* s, const uint8_t* edit, uint32_t len, uint32_t crc, int explicit,
-                     uint32_t now_ms) {
-    if (!s->asked && s->seen == s->saved && crc != s->edit_saved &&
-        (explicit || now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
-        (void)write_edit(s, edit, len, crc);
-    }
-    pending(s);
-}
-
 /* Gather a changed record, save when due, and finish an explicit save. */
 __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_ms) {
     uint8_t rec[SETTINGS_BYTES];
@@ -304,7 +292,6 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
     uint8_t edit[USER_SOUND_EDIT_BYTES];
     uint32_t edit_len = user_sound_edit_gather(s->l, edit);
     uint32_t edit_crc = store_crc32(0, edit, edit_len);
-    int explicit = s->asked != 0;
     s->l->settings_dirty = 0;
     if (s->ml) {
         s->ml->settings_dirty = 0;
@@ -314,15 +301,22 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         s->edit_seen = edit_crc;
         s->changed_at = now_ms;
     }
-    if (s->asked == 1) {
-        if (write(s, rec, len, crc)) {
-            s->asked = 2;
+    /* The unsaved edit first, then the settings record: a cut between them leaves the new
+     * sound over the old settings (it holds all of the sound), never the old edit over a newer
+     * record, and SAVE says SAVED once both are kept. */
+    if (s->asked == 1 || now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS) {
+        if (edit_crc != s->edit_saved) {
+            (void)write_edit(s, edit, edit_len, edit_crc);
+        } else if (s->asked == 1) {
+            if (write(s, rec, len, crc)) {
+                s->asked = 2;
+            }
+        } else if (crc != s->saved) {
+            (void)write(s, rec, len, crc);
         }
-    } else if (crc != s->saved && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS) {
-        (void)write(s, rec, len, crc);
     }
     if (!s->asked) {
-        edit_due(s, edit, edit_len, edit_crc, explicit, now_ms);
+        pending(s);
         return;
     }
     if (s->asked == 2 && (!s->st || !store_busy(s->st))) {
@@ -344,7 +338,7 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         s->forcing = 0;
         s->force(0);
     }
-    edit_due(s, edit, edit_len, edit_crc, explicit, now_ms);
+    pending(s);
 }
 
 void settings_tick(settings* s, uint32_t now_ms) {
@@ -352,11 +346,11 @@ void settings_tick(settings* s, uint32_t now_ms) {
         return;
     }
     int dirty = (s->l->settings_dirty & 1u) || (s->ml && s->ml->settings_dirty);
-    /* The unsaved edit waits for the store the settings record keeps busy (seconds while the
-     * keys play): it is gathered again only once the store can take it, not every frame. */
-    int edit = s->edit_seen != s->edit_saved && !(s->st && store_busy(s->st));
-    if (dirty || s->asked ||
-        ((s->seen != s->saved || edit) && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
+    /* A record waiting for the store (seconds while the keys play: the other record programs)
+     * is gathered again once the store can take it, not every frame. */
+    int waiting = (s->seen != s->saved || s->edit_seen != s->edit_saved) &&
+                  !(s->st && store_busy(s->st));
+    if (dirty || s->asked || (waiting && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
         update(s, now_ms);
     }
 }

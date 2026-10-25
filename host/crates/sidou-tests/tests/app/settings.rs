@@ -1132,15 +1132,25 @@ fn save_now_skips_the_debounce_and_tells_when_it_commits() {
     *s.cards = 0;
     unsafe { settings_save_now(&mut *s.set, s.now) };
     assert_eq!(s.result(), SETTINGS_NOTHING, "not committed yet");
+    // the unsaved edit first (a blank store has none), then the record, then its commit
     s.tick();
+    s.tick();
+    assert_eq!(
+        s.result(),
+        SETTINGS_NOTHING,
+        "the record waits for the edit"
+    );
     s.tick();
     assert_eq!(s.result(), SETTINGS_SAVED);
     assert_eq!(s.result(), SETTINGS_NOTHING, "said once");
     assert_eq!(s.stored(), Some(s.gather()));
     assert_eq!(forced(), (0, 0), "a store with its pool needs no force");
+    // the record went in a tick, after the edit SAVE wrote at once
+    assert_eq!((s.writes, s.edit_writes), (1, 0));
     s.ticks(2 * SETTINGS_DEBOUNCE_MS);
     assert_eq!(
-        s.writes, 0,
+        (s.writes, s.edit_writes),
+        (1, 0),
         "the debounce has nothing left (the version is in that save)"
     );
     // Nothing changed: an explicit save still says SAVED.

@@ -3,7 +3,7 @@
 /* LAB's USER sounds on the store (docs/reference/sound-format.md): sixteen slots, USER 1..16, each
  * a sound (app/lab_sound.h) and its name, in one private store file (STORE_SOUNDS_NAME, type
  * STORE_FILE_SOUNDS); and the unsaved edit, one small record (USER_SOUND_EDIT_KEY) the settings'
- * debounce writes after the settings record and settings_load applies after it.
+ * debounce writes before the settings record and settings_load applies after it.
  *
  * The slots are not cached in RAM: live.sounds_valid says which hold a sound (user_sounds_load,
  * at boot), and a slot is read from the store when it is loaded (user_sound_read). A keep

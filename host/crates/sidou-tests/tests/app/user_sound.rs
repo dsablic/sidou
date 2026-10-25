@@ -421,6 +421,89 @@ fn the_edit_comes_back_after_a_power_cycle() {
     u.st.assert_clean();
 }
 
+/// SAVE, then the power cut at every program of it: the sound comes back whole, the old one or
+/// the new, and the new once SAVE said SAVED. The edit record of the boot (the sound before the
+/// turn) never comes back over a settings record saved after it: the edit goes first.
+#[test]
+fn a_cut_during_save_never_brings_back_an_older_sound() {
+    let mut u = Unit::blank();
+    u.ticks(SETTINGS_DEBOUNCE_MS + 500); // the boot's settings and edit on the store
+    assert!(u.st.get(USER_SOUND_EDIT_KEY).is_some());
+    let region = u.st.sim.region().to_vec();
+    let old = u.sound();
+    let on_region = |seed| {
+        let mut st = Store::new(
+            Sim::with_region(seed, &region, [false; STORE_SECTORS as usize]),
+            256,
+        );
+        assert_eq!(st.mount(), STORE_STATE_SIDOU);
+        st.maintain();
+        let mut u = Unit::new(st);
+        u.boot();
+        u
+    };
+    let turn = |u: &mut Unit| unsafe {
+        let c = live_param_get(&*u.rig.live, LIVE_PARAM_CUTOFF);
+        live_param_set(&mut *u.rig.live, LIVE_PARAM_CUTOFF, c - 200);
+    };
+    // SAVE to SAVED, uncut: its operations
+    let mut clean = on_region(1);
+    turn(&mut clean);
+    let new = clean.sound();
+    assert_ne!(new, old);
+    let ops = clean.st.sim.ops;
+    unsafe { settings_save_now(&mut *clean.set, clean.now) };
+    let mut saved = false;
+    for _ in 0..1000 {
+        clean.tick();
+        if unsafe { settings_take_result(&mut *clean.set) } == SETTINGS_SAVED {
+            saved = true;
+            break;
+        }
+    }
+    assert!(saved, "SAVE never said SAVED");
+    let n = clean.st.sim.ops - ops;
+    let (mut olds, mut news) = (0, 0);
+    for k in 0..=n + 4 {
+        let mut u = on_region(200 + k);
+        turn(&mut u);
+        u.st.sim.cut_at = Some(u.st.sim.ops + k);
+        unsafe { settings_save_now(&mut *u.set, u.now) };
+        let mut said = false;
+        for _ in 0..1000 {
+            if u.st.sim.dead {
+                break;
+            }
+            u.tick();
+            said |= unsafe { settings_take_result(&mut *u.set) } == SETTINGS_SAVED;
+        }
+        let mut st = u.st;
+        st.sim.dead = false;
+        st.sim.cut_at = None;
+        st.reset();
+        assert_eq!(st.mount(), STORE_STATE_SIDOU, "cut {k}");
+        st.maintain();
+        let mut after = Unit::new(st);
+        after.boot();
+        let got = after.sound();
+        assert!(
+            got == old || got == new,
+            "cut {k}: a sound neither old nor new"
+        );
+        assert!(
+            !said || got == new,
+            "cut {k}: SAVED, and the old sound came back"
+        );
+        if got == old {
+            olds += 1;
+        } else {
+            news += 1;
+        }
+    }
+    println!("SAVE in {n} operations: a cut left the old sound {olds} times, the new {news}");
+    assert!(olds > 0 && news > 0, "{olds} old, {news} new");
+}
+
 #[test]
 fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
     let s = sounds(41, 3);
