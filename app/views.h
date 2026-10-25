@@ -8,7 +8,7 @@
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
  * - MENU (HOME), at 2 times the font, six of its items at a time: the views and the playing
- *   values: CHIP, TRACKER, SCENE, SONG, SIDS, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI,
+ *   values: CHIP, TRACKER, SCENE, SONG, LAB, SIDS, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI,
  *   CHARSET and ABOUT. SELECT moves the selection (a line in reverse video; the list scrolls with it, a
  *   line or two a frame), ALGORITHM changes the value under it or, clockwise, opens the view;
  *   SAVE is its OK: it opens the view under the selection (on a value it does nothing).
@@ -20,6 +20,8 @@
  *   (REC QUANTISE, not saved), SPREAD, SID MODEL (AUTO: a .sid tune's chips as its header
  *   names them; KEYS: the keys' setup for every tune) and RESET. CARDS, KEYS, SOUNDS, ROWS,
  *   THEME, SPREAD and SID MODEL persist (app/settings.h).
+ * - LAB (from the menu's LAB, which it replaces: HOME goes back to LIVE): one LIVE sound shaped
+ *   on five pages, its shape drawn above four cards for K1..K4 (app/lab_view.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
@@ -117,6 +119,7 @@
 #include "chip_view.h"
 #include "grid.h"
 #include "help_view.h"
+#include "lab_view.h"
 #include "learn_view.h"
 #include "live.h"
 #include "live_view.h"
@@ -147,21 +150,22 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items: the views to open and the playing values. */
-#define VIEWS_MENU_ITEMS 12u
+#define VIEWS_MENU_ITEMS 13u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_SCENE 2u
 #define VIEWS_MENU_SONG 3u
-#define VIEWS_MENU_SIDS 4u
+#define VIEWS_MENU_LAB 4u
+#define VIEWS_MENU_SIDS 5u
 /* PRESET (the item that shows PRE), and the items the menu shows at once. */
-#define VIEWS_MENU_PRESET 5u
-#define VIEWS_MENU_OCTAVE 6u
+#define VIEWS_MENU_PRESET 6u
+#define VIEWS_MENU_OCTAVE 7u
 #define VIEWS_MENU_SHOWN 6u
-#define VIEWS_MENU_SETTINGS 7u
-#define VIEWS_MENU_STATUS 8u
-#define VIEWS_MENU_MIDI 9u
-#define VIEWS_MENU_CHARSET 10u
-#define VIEWS_MENU_ABOUT 11u
+#define VIEWS_MENU_SETTINGS 8u
+#define VIEWS_MENU_STATUS 9u
+#define VIEWS_MENU_MIDI 10u
+#define VIEWS_MENU_CHARSET 11u
+#define VIEWS_MENU_ABOUT 12u
 /* The SETTINGS page's items (the set-and-forget settings): KEYS, SOUNDS, ROWS (TRACKER ROWS),
  * CARDS (the title cards' option), STORE, THEME, REC (REC QUANTISE), SPREAD, SID MODEL and
  * RESET. */
@@ -285,6 +289,8 @@ typedef struct {
     /* LAB's USER sounds on the store (app/user_sound.h): views_sounds loads them, the frame
      * ticks their write. */
     user_sounds sounds;
+    /* LAB (app/lab_view.h): its page and what it showed. */
+    lab_view lab;
 } views;
 
 extern const view views_status;

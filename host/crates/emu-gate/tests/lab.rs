@@ -158,3 +158,243 @@ fn the_edit_comes_back_at_power_on() {
     assert_eq!(base[LAB_SOUND_TUNE as usize], 0);
     assert_eq!(base_name(&mut m, &fw), "SAW LEAD");
 }
+
+// ---- LAB's view (Task 5 on): opened from the menu, its inputs and frames ----
+
+const HOME: u8 = PANEL_BTN_HOME as u8;
+const SELECT: u8 = PANEL_ENC_SELECT as u8;
+const ALGORITHM: u8 = PANEL_ENC_ALGORITHM as u8;
+const K1: u8 = PANEL_ENC_K1 as u8;
+const KEY0: u8 = PANEL_KEY_ID0 as u8;
+/// platform/fm1/ui.c's frame period.
+const FRAME_MS: u64 = 40;
+/// A ui_poll that composes LAB's frame while a key sounds and a card turns every frame: what the
+/// drawings may spend. The input's call and the busiest pass after it within the poll allowance
+/// together, as every view's (common::POLL_INSTRUCTIONS).
+const LAB_WORST_POLL: u64 = common::POLL_INSTRUCTIONS;
+
+fn tap(m: &mut Machine, id: u8) {
+    m.key(id, true);
+    m.run_ms(30);
+    m.key(id, false);
+    m.run_ms(30);
+}
+
+fn wait_for(m: &mut Machine, what: &str, mut done: impl FnMut(&mut Machine) -> bool) {
+    let start = m.ms();
+    while !done(m) {
+        assert!(m.ms() - start < 4_000, "timed out: {what}");
+        m.run_ms(1);
+    }
+}
+
+/// LAB from LIVE through the menu: HOME, SELECT to LAB, ALGORITHM clockwise; its wipe over.
+pub fn open_lab(m: &mut Machine, fw: &Firmware) {
+    tap(m, HOME);
+    wait_for(m, "the menu", |m| {
+        common::top_view(m, fw) == fw.symbol("views_menu") && !common::screen_animating(m, fw)
+    });
+    let items = VIEWS_MENU_ITEMS as i32;
+    m.turn(SELECT, -items);
+    m.run_ms(10 * items as u64);
+    m.turn(SELECT, VIEWS_MENU_LAB as i32);
+    m.run_ms(10 * u64::from(VIEWS_MENU_LAB) + 10);
+    m.turn(ALGORITHM, 1);
+    wait_for(m, "LAB", |m| {
+        common::top_view(m, fw) == fw.symbol("lab_view_view") && !common::screen_animating(m, fw)
+    });
+    m.run_ms(400);
+}
+
+fn lab_page(m: &mut Machine, fw: &Firmware) -> u8 {
+    m.soc
+        .read8(fw.symbol("ui") + (ilp32::views::lab + ilp32::lab_view::page) as u32)
+}
+
+fn depth(m: &mut Machine, fw: &Firmware) -> u8 {
+    m.soc.read8(fw.symbol("ui") + ilp32::screen::depth as u32)
+}
+
+#[test]
+fn lab_opens_from_the_menu_and_home_goes_back_to_live() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    assert_eq!(depth(&mut m, &fw), 2, "LAB in the menu's place, over LIVE");
+    assert_eq!(lab_page(&mut m, &fw), LAB_PAGE_OSC as u8);
+    m.turn(SELECT, 2);
+    m.run_ms(100);
+    assert_eq!(lab_page(&mut m, &fw), LAB_PAGE_FILTER as u8);
+    tap(&mut m, PANEL_BTN_ENV as u8);
+    assert_eq!(
+        lab_page(&mut m, &fw),
+        LAB_PAGE_ENVELOPE as u8,
+        "ENV: ENVELOPE"
+    );
+    tap(&mut m, HOME);
+    wait_for(&mut m, "LIVE", |m| {
+        common::top_view(m, &fw) == fw.symbol("live_view_view") && !common::screen_animating(m, &fw)
+    });
+    assert_eq!(depth(&mut m, &fw), 1);
+}
+
+/// The inputs' calls and the busiest pass after each (from midi_drain to midi_service).
+fn start_cost(m: &mut Machine, ms: u64, act: impl FnOnce(&mut Machine)) -> (u64, u64) {
+    let (calls, passes) = (m.watched_calls.len(), m.passes.len());
+    act(m);
+    m.run_ms(ms);
+    let input = m.watched_calls[calls..].iter().copied().max().unwrap_or(0);
+    let pass = m.passes[passes..].iter().copied().max().unwrap_or(0);
+    (input, pass)
+}
+
+/// platform/fm1/lcd.h lcd_count: windows and bytes sent so far.
+fn sent(m: &mut Machine, fw: &Firmware) -> (u32, u32) {
+    let base = fw.symbol("lcd_count");
+    (m.soc.read32(base), m.soc.read32(base + 4))
+}
+
+/// `frames` frames from half way between two, `act(m, f)` at the start of frame f: the cells each
+/// sent, and the worst ui_poll (ui_poll watched).
+pub fn frames(
+    m: &mut Machine,
+    fw: &Firmware,
+    n: u64,
+    mut act: impl FnMut(&mut Machine, u64),
+) -> (Vec<u32>, u64) {
+    common::to_mid_frame(m, fw);
+    let from = m.watched_calls.len();
+    let mut cells = Vec::new();
+    for f in 0..n {
+        act(m, f);
+        let (w0, b0) = sent(m, fw);
+        m.run_ms(FRAME_MS);
+        let (w1, b1) = sent(m, fw);
+        cells.push(((b1 - b0) - (w1 - w0) * 11) / 128);
+    }
+    let worst = m.watched_calls[from..].iter().copied().max().unwrap_or(0);
+    (cells, worst)
+}
+
+/// Every LAB input (SELECT, each card and the choice both ways on every page, ENV, LFO and FX)
+/// with the busiest pass after it, within the poll allowance; and every frame, a key held and a
+/// card turned every frame on each page, within LAB_VIEW_FRAME_CELLS and its ui_poll within
+/// LAB_WORST_POLL.
+#[test]
+fn every_lab_input_and_pass_stays_within_poll_instructions() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut over = Vec::new();
+    let mut worst_input = 0;
+    for page in 0..LAB_PAGES {
+        if page > 0 {
+            let (i, p) = start_cost(&mut m, 300, |m| m.turn(SELECT, 1));
+            println!("LAB SELECT to page {page}: the input {i}, the busiest pass {p}");
+            if i + p > common::POLL_INSTRUCTIONS {
+                over.push(format!("SELECT to {page}: {i} + {p}"));
+            }
+        }
+        for (what, enc) in [
+            ("K1", K1),
+            ("K2", K1 + 1),
+            ("K3", K1 + 2),
+            ("K4", K1 + 3),
+            ("ALGORITHM", ALGORITHM),
+        ] {
+            for steps in [1, -1] {
+                let (i, p) = start_cost(&mut m, 300, |m| m.turn(enc, steps));
+                println!("LAB page {page} {what} {steps:+}: the input {i}, the busiest pass {p}");
+                worst_input = worst_input.max(i);
+                if i + p > common::POLL_INSTRUCTIONS {
+                    over.push(format!("page {page} {what} {steps:+}: {i} + {p}"));
+                }
+            }
+        }
+    }
+    m.watch_calls(fw.symbol("ui_buttons"));
+    for (what, b) in [
+        ("ENV", PANEL_BTN_ENV),
+        ("LFO", PANEL_BTN_LFO),
+        ("FX", PANEL_BTN_FX),
+    ] {
+        let (i, p) = start_cost(&mut m, 300, |m| tap(m, b as u8));
+        println!("LAB {what}: the input {i}, the busiest pass {p}");
+        if i + p > common::POLL_INSTRUCTIONS {
+            over.push(format!("{what}: {i} + {p}"));
+        }
+    }
+    println!("LAB's worst encoder input: {worst_input}");
+    // The frames: a key held, a card turned every frame, on each page.
+    m.watch_calls(fw.symbol("ui_poll"));
+    m.key(KEY0 + 12, true);
+    let mut most = 0;
+    let mut worst = 0;
+    for page in 0..LAB_PAGES {
+        m.turn(SELECT, -(LAB_PAGES as i32));
+        m.run_ms(60);
+        m.turn(SELECT, page as i32);
+        let (cells, poll) = frames(&mut m, &fw, 40, |m, f| {
+            m.turn(K1 + (f % 4) as u8, if f % 8 < 4 { 1 } else { -1 })
+        });
+        let page_most = cells.iter().copied().max().unwrap_or(0);
+        println!("LAB page {page}, a key held, a card a frame: most cells {page_most}, worst ui_poll {poll}");
+        most = most.max(page_most);
+        worst = worst.max(poll);
+    }
+    m.key(KEY0 + 12, false);
+    assert!(over.is_empty(), "{over:#?}");
+    assert!(most <= LAB_VIEW_FRAME_CELLS, "a frame sent {most} cells");
+    assert!(
+        worst <= LAB_WORST_POLL,
+        "a ui_poll took {worst} instructions"
+    );
+}
+
+/// In LAB the keys play (a voice gates) and PLAY plays the song, which plays on while the cards
+/// turn.
+#[test]
+fn the_keys_play_and_a_song_plays_on_in_lab() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    let instrument = fw.symbol("instrument");
+    let gated = |m: &mut Machine| {
+        (0..LIVE_VOICES as usize).any(|v| {
+            m.soc.read8(
+                instrument
+                    + (ilp32::live::voice + v * ilp32::live_voice::SIZE + ilp32::live_voice::gate)
+                        as u32,
+            ) != 0
+        })
+    };
+    m.key(KEY0 + 12, true);
+    m.run_ms(60);
+    assert!(gated(&mut m), "a key in LAB gates a voice");
+    m.key(KEY0 + 12, false);
+    m.run_ms(60);
+    let playing = |m: &mut Machine| {
+        m.soc
+            .read8(fw.symbol("song_transport") + ilp32::song_ctl::isr_playing as u32)
+            != 0
+    };
+    tap(&mut m, PANEL_BTN_PLAY as u8);
+    m.run_ms(500);
+    assert!(playing(&mut m), "PLAY in LAB plays the song");
+    for k in 0..4 {
+        m.turn(K1 + k, 2);
+        m.run_ms(100);
+    }
+    m.run_ms(500);
+    assert!(playing(&mut m), "and it plays on while the cards turn");
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("lab_view_view"),
+        "LAB still shows"
+    );
+}

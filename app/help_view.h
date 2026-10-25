@@ -62,7 +62,8 @@ typedef enum {
     HELP_CARD_SIDS = 29,         /* the SIDS browser (app/sid_view.h) */
     HELP_CARD_PLAYING = 30,      /* NOW PLAYING */
     HELP_CARD_UNSAVED = 31,      /* the browser's SONG NOT SAVED */
-    HELP_CARDS = 32
+    HELP_CARD_LAB = 32,          /* LAB (app/lab_view.h): one card for its pages until each has its own */
+    HELP_CARDS = 33
 } help_card_id;
 
 /* Lines a page of a card has at most and the pages, characters of a line (the control, a space

@@ -625,8 +625,9 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 35] = [
+const CONTEXTS: [&str; 36] = [
     "LIVE",
+    "LAB",
     "LIVE SLOT",
     "MENU",
     "SETTINGS",
@@ -693,6 +694,7 @@ fn open_ctx(name: &str) -> Ctx {
         "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
         "RESET" => crate::views::open_setting(ui, VIEWS_SETTINGS_RESET),
         "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
+        "LAB" => menu_item(ui, VIEWS_MENU_LAB),
         "SCENE" => menu_item(ui, VIEWS_MENU_SCENE),
         "STATUS" => menu_item(ui, VIEWS_MENU_STATUS),
         "ABOUT" => menu_item(ui, VIEWS_MENU_ABOUT),

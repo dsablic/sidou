@@ -694,6 +694,41 @@ what they turn). The CHIP view is where the slots are seen and named in full. M2
 and ENV the jobs their names suggest (a scale, an envelope); then the shortcut keeps EDIT +
 K1..K4 and the view keeps the rest.
 
+## LAB
+
+LAB (the menu's LAB, after SONG; `app/lab_view.h`; [the art page](../art/README.md#lab) draws
+it) is where one LIVE sound is shaped with every parameter in sight
+([LAB's design](../plans/2026-10-25-lab-design.md)). The menu's LAB takes the menu's place, so
+**HOME** goes back to LIVE, the sound kept as edited. It opens at OSC.
+
+**SELECT** steps the five pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**MOD**, **FX**. **ENV**, **LFO** and **FX** open ENVELOPE, MOD and FX (in LAB they are pages:
+the panel's next algorithm and chip toggle do not run there). On every page:
+
+| Rows | Shows |
+|---|---|
+| 0-1 | the page's name at 2× in yellow, its place (`2/5`) on the right |
+| 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded |
+| 4-17 | the page's drawing |
+| 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
+| 22-27 | the four cards in the knobs' places, as LIVE's knob row: the card's name small in the knob's colour, its value at 3× in white (2× when it takes three characters), a bar and the knob's name |
+| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`) |
+
+A card or the choice that turns is lit (its name in reverse video) for a second instead of the
+value popup; PRESETS opens no popup either (the header names the sound).
+
+| Page | K1 | K2 | K3 | K4 | ALGORITHM |
+|---|---|---|---|---|---|
+| OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
+| ENVELOPE | ATTACK | DECAY | SUS (the sustain level) | RELEASE (0..15, a step a detent) | INSTANT, AUTHENTIC: the envelope mode, the instrument's for every sound (ALL SOUNDS) |
+| FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | free | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
+| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | VELO: the velocity target (OFF, SUS, CUT, PW) | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
+| FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
+
+EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
+page follows it). The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, REC, GLO,
+MASTER and PRESETS do what they do in every view.
+
 ## SCENE
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a

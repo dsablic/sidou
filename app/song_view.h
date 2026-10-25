@@ -76,6 +76,8 @@ extern "C" {
 #define SONG_VIEW_CANVAS_SIDS 0xfcu
 #define SONG_VIEW_CANVAS_PLAYING 0xfbu
 #define SONG_VIEW_CANVAS_AWAY 0xfau
+/* LAB's (app/lab_view.h). */
+#define SONG_VIEW_CANVAS_LAB 0xf9u
 /* Rows a beat by default (the BPM). */
 #define SONG_VIEW_ROWS_A_BEAT 4u
 /* No key: song_view.jam_key. */

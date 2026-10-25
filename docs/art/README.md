@@ -259,8 +259,9 @@ does not take plays the instrument (`app/views.h`,
   with the selected item's number, a reverse-video selected line and help in the hint
   colour. It has no border, version, READY. prompt or blinking cursor.
 
-  The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, SIDS, then PRE, OCTAVE,
-  SETTINGS, STATUS, MIDI, CHARSET and ABOUT (twelve: the ergonomics review's E31, and M3's SIDS).
+  The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, LAB, SIDS, then PRE,
+  OCTAVE, SETTINGS, STATUS, MIDI, CHARSET and ABOUT (thirteen: the ergonomics review's E31, M3's
+  SIDS and LAB's LAB).
 - **SETTINGS** is a page drawn as the MIDI page is (a line or two a frame, the SETTINGS title
   bar with the arrows after the longer title, as far as the position leaves room: at 10/10
   only the up arrow): the set-and-forget settings KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC,
@@ -814,6 +815,42 @@ what they did (the profile change is the chip reset, decision record 0006, "Cost
 
 RAM: the view's state 2,780 bytes (1,880 before), most of it the canvas (cells, colours and the
 characters of the large text's pieces: 2,700 bytes).
+
+## LAB
+
+LAB (`app/lab_view.h`, from the menu's LAB) is one LIVE sound on five pages, OSC, ENVELOPE,
+FILTER, MOD and FX, each with what it shapes drawn above four cards for K1..K4, on the theme's
+colours ([the theme](#theme)). What is read while playing is at 2× or 3×: the sound's name, the
+choice, the cards' values.
+
+![LAB's OSC page](../../tests/golden/lcd/lab-osc.png)
+![LAB's ENVELOPE page](../../tests/golden/lcd/lab-envelope.png)
+![LAB's FILTER page](../../tests/golden/lcd/lab-filter.png)
+![LAB's MOD page](../../tests/golden/lcd/lab-mod.png)
+![LAB's FX page](../../tests/golden/lcd/lab-fx.png)
+
+- **Rows 0-1:** the page's name at 2× in yellow (the `hot` role: the page in focus), and its
+  place `2/5` at 2× in the hint colour on the right.
+- **Rows 2-3:** the sound's name at 2× in white, with `*` while it differs from its base (the
+  sound as loaded or kept). Yellow over white keeps the page and the sound apart where the two
+  2× lines meet.
+- **Rows 4-17:** the page's drawing (112 pixels of the 240 × 240), framed in dark grey until the
+  drawings come.
+- **Rows 19-20:** ALGORITHM's choice at 2× in white (dark grey while it is off: the filter, ARP, a
+  slot), in reverse video for a second after it turns; **ALG** small on the right in the hint
+  colour, and on ENVELOPE **ALL SOUNDS** under it (the envelope mode is the instrument's).
+- **Rows 22-27, the cards:** the columns of LIVE's knob row (8, 7, 7, 8 cells): the card's name
+  small in the knob's text colour (reversed for a second after a turn; dark grey for a card the
+  page has no use for), its value at 3× in white, 2× when it takes three characters (`50%`,
+  `0.5`, `127`), a bar in the knob's colour on dark grey, and K1..K4 in the hint colour. Names
+  keep to a column: ENVELOPE's K3 is **SUS**, since SUSTAIN would run into RELEASE.
+- **Row 29, the hint line:** LAB's gestures in the hint colour, a phrase every 2 s, each at most
+  30 characters (never cut): a toast (rows 27-28) leaves it in sight.
+
+LAB composes as CHIP does: the text is built in the song views' shared canvas when a hash of
+what it shows changes (the sound, its name and mark, the page, the theme, what is lit, the hint's
+phrase, the cutoff the chip has now), and the canvas's changed cells are copied within 200 cells
+a frame. RAM: 28 bytes of state (the canvas is the song views').
 
 ## SONG
 

@@ -979,8 +979,8 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
             format!("{:<13}#", "TRACKER"),
             format!("{:<13}#", "SCENE"),
             format!("{:<13}#", "SONG"),
+            format!("{:<13}#", "LAB"),
             format!("{:<13}#", "SIDS"),
-            format!("{:<3}{:>11}", "PRE", "SAW LEAD"),
         ]
     );
     // The arrow of an item that opens a view, in the line's last character (2 cells).
@@ -1100,8 +1100,8 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     let labels = [
-        "CHIP", "TRACKER", "SCENE", "SONG", "SIDS", "PRE", "OCTAVE", "SETTINGS", "STATUS", "MIDI",
-        "CHARSET", "ABOUT",
+        "CHIP", "TRACKER", "SCENE", "SONG", "LAB", "SIDS", "PRE", "OCTAVE", "SETTINGS", "STATUS",
+        "MIDI", "CHARSET", "ABOUT",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {

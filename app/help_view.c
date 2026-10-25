@@ -153,6 +153,12 @@ static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP",
 static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "HOME\0CANCEL",
                                             "HOLD HOME\0HELP"};
 
+/* LAB: SELECT its pages, ALG each page's choice, K1-K4 its cards, ENV, LFO and FX open their
+ * pages; HOME goes back to LIVE. */
+static const char* const LAB_LINES[] = {"SELECT\0PAGE",  "ALG\0CHOICE",  "K1-K4\0CARDS",
+                                        "ENV\0ENVELOPE", "LFO\0MODULATION", "FX\0EFFECTS",
+                                        "HOME\0LIVE",    "HOLD HOME\0HELP"};
+
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
 const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LIVE] = CARD("LIVE", LIVE_LINES),       [HELP_CARD_MENU] = CARD("MENU", MENU_LINES),
@@ -179,6 +185,7 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_SIDS] = CARD("SIDS", SIDS_LINES),
     [HELP_CARD_PLAYING] = CARD("PLAYING", PLAYING_LINES),
     [HELP_CARD_UNSAVED] = CARD("UNSAVED", UNSAVED_LINES),
+    [HELP_CARD_LAB] = CARD("LAB", LAB_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&
