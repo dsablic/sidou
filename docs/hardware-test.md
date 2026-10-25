@@ -977,8 +977,10 @@ them passed. Use a moderate headphone level. Keep the USB-output release gate in
   `sidou-tests/tests/app/ui_sound.rs::a_note_takes_the_voice_back_from_a_sound`,
   `sidou-tests/tests/app/ui_sound.rs::the_voice_is_given_back_with_lives_registers`.
 - [ ] Song plus keys at a loud setting: listen for clipping at the shared mix and record
-  the profiles/notes/MASTER level if heard. Two loud, in-phase chips can clip; the build
-  does not apply automatic attenuation or a soft knee. Also listen during expert edits,
+  the profiles/notes/MASTER level if heard. Two loud, in-phase chips are soft limited, not
+  clipped: the output has a soft limiter where it used to clamp, before MASTER
+  ([decision record 0004](decisions/0004-effect-algorithms.md), The output's soft limiter), and
+  the build applies no automatic attenuation. Also listen during expert edits,
   screen transitions and a USB replug; record any click, dropout or late note.
   *Emulator:*
   `sidou-tests/tests/app/chip_mix.rs::two_loud_chips_through_the_slots_are_soft_limited_never_on_a_rail`,
@@ -1315,13 +1317,13 @@ Notes:
 - [ ] **MIDI out (M1d):** in a DAW (or a MIDI monitor) on the SIDOU input, turn K1:
   CC 74 on channel 1 follows the knob, at most a message every 10 ms, and stops when
   the knob stops. K2 sends CC 71, K3 CC 1, MASTER CC 7, FX CC 25 (127 for the 8580,
-  0 for the 6581), K4 a program change 0..3 and nothing else, and EDIT held with K1..K4
+  0 for the 6581), K4 CC 72 (the release), PRESETS a program change 0..3 and nothing else, and EDIT held with K1..K4
   CCs 103..106 for the Distortion slot (SCL moves to 108..111 and 113..116). On the CHIP
   view K1..K4 on CHIP send CC 86, 87, 89 and 90, ALGORITHM on CHIP CC 85, on a slot its
   algorithm's CC (102, 107, 112). Record
   what the monitor shows for one K1 turn:
   *Emulator:* `emu-gate/tests/usb.rs::a_host_gets_the_identity_and_the_knobs_over_usb` (the emulated host reads CC 74 on channel 1 from K1 and a program change from PRESETS), `emu-gate/tests/midi.rs::the_panel_goes_out_over_usb_and_midi_in_is_not_echoed` (nothing sent at rest, at most one CC a 10 ms tick ending on the latest value, FX gives CC 25 = 127 for the 8580 with CC 85), `sidou-tests/tests/app/chip_view.rs::midi_out_sends_the_chip_views_knobs` (the CHIP view's knobs and a slot's algorithm CC).
-  *Emulator (no test yet):* the CC numbers the panel itself sends for K2 (71), K3 (1), MASTER (7), K4 and EDIT held with K1..K4 (103..106, SCL 108..111 and 113..116), turned through the panel into the emulated host; `sidou-tests/tests/app/midi_out.rs::the_rate_is_bounded_and_nothing_starves` checks the numbers on parameters, not through the knobs. Note that the item says K4 sends a program change, while section 8.1 and `midi.rs` have PRESETS sending it and K4 sending CC 72.
+  *Emulator (no test yet):* the CC numbers the panel itself sends for K2 (71), K3 (1), MASTER (7), K4 and EDIT held with K1..K4 (103..106, SCL 108..111 and 113..116), turned through the panel into the emulated host; `sidou-tests/tests/app/midi_out.rs::the_rate_is_bounded_and_nothing_starves` checks the numbers on parameters, not through the knobs.
   *Device-only:* what the real monitor shows for one K1 turn (the record, on a real host and OS).
 - [ ] Record K1 as automation in the DAW, then play it back into SIDOU over USB: the
   cutoff moves as recorded, and the monitor shows no CCs coming back from SIDOU while
