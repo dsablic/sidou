@@ -42,6 +42,8 @@
 #include "sid/sid.h"
 #include "sid/sid_character.h"
 
+#include "lab_sound.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -80,6 +82,12 @@ extern "C" {
 #define LIVE_CHIP_VOLUME 15u
 /* live_tick is called this often; the PWM and vibrato rates assume it. */
 #define LIVE_TICK_HZ 100u
+/* The pulse-width LFO (live.pwm_depth, live.pwm_rate): its depth at most, in pulse-width steps,
+ * and its phase step a tick at most (255 x 0.05 Hz: round(255 * 65536 * 0.05 / LIVE_TICK_HZ)). */
+#define LIVE_PWM_DEPTH_MAX 2048u
+#define LIVE_PWM_STEP_MAX 8356u
+/* The fine tune (live.tune), cents each way. */
+#define LIVE_TUNE_CENTS 50
 
 /* Pitch offsets are in 1/8192 semitone (Q13): a 14-bit pitch bend times the range in
  * semitones is exact at every range. */
@@ -372,6 +380,8 @@ typedef struct {
     int8_t sync_semis;
     uint8_t arp_on, arp_rate, arp_order, arp_span; /* the chord arpeggio's settings */
     uint8_t valid;
+    uint16_t pwm_depth, pwm_rate; /* the pulse-width LFO's, as live's */
+    int8_t tune;                  /* the fine tune, cents */
 } live_edit;
 
 /* The whole instrument; fields are read-only for callers (the UI shows them). */
@@ -497,6 +507,26 @@ typedef struct {
     uint8_t arp_wait;
     uint8_t arp_clocks;
     uint8_t arp_clock_seen;
+    /* The sound's fields a preset sets and nothing else did until LAB (the preset's, copied by a
+     * load; live_tick, the allocator and live_freq_at read these): the pulse-width LFO's depth
+     * (pulse-width steps, 0 off) and its phase step a tick (65536 a cycle); the sync ratio's
+     * base in 1/256 (sync_q8 is it times the semitones' ratio); 1 for SYNC LEAD's one-voice sync;
+     * the fine tune in cents, -LIVE_TUNE_CENTS..LIVE_TUNE_CENTS, in every voice's pitch (0 on
+     * every built-in). */
+    uint16_t pwm_depth;
+    uint16_t pwm_rate;
+    uint16_t sync_base_q8;
+    uint8_t mono_sync;
+    int8_t tune;
+    /* The USER sounds (app/user_sound.h keeps them on the store): bit n, USER n + 1 holds one;
+     * and the current sound's: 0 a built-in or DICE, n + 1 USER n + 1. */
+    uint16_t sounds_valid;
+    uint8_t user_sound;
+    /* The current sound's base (lab_sound.h): the sound as loaded (a built-in's from its preset,
+     * with the slots as they were; DICE's from its roll) or as last kept, and its name. The
+     * edited mark `*` is the sound differing from it (live_preset_edited). */
+    uint8_t base[LAB_SOUND_BYTES];
+    char base_name[LAB_SOUND_NAME + 1u];
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -618,11 +648,12 @@ void live_preset_step(live* l, int32_t steps, int revert);
  * factory settings loaded and q's stored edits (if it has any) applied over them. live_set_preset
  * (a MIDI program change, the settings) is the factory's: it loads q's settings over any edits. */
 void live_recall_preset(live* l, uint8_t q);
-/* 1 when the current preset's settings differ from its factory ones (the fields of live_edit; the
- * sync ratio from 0; a bend range that RPN 0 set does not count). */
+/* 1 when the current sound differs from its base (live.base: the preset as loaded, the effect
+ * slots included; a bend range that RPN 0 set does not count). Never on DICE, whose every turn is
+ * a new sound. */
 uint32_t live_preset_edited(const live* l);
-/* The current preset's name into buf (at least LIVE_PRESET_NAME_CHARS bytes), then `*` while
- * live_preset_edited. */
+/* The current sound's name (live.base_name) into buf (at least LIVE_PRESET_NAME_CHARS bytes), then
+ * `*` while live_preset_edited; DICE's with its roll's number. */
 #define LIVE_PRESET_NAME_CHARS 12u
 void live_preset_name(const live* l, char* buf);
 /* What live_set_preset sets for preset `index` (live_set_preset's loaded parameters; the others of
@@ -675,8 +706,9 @@ void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]);
 void live_bend_range_rpn(live* l, uint32_t semitones);
 /* Loads a preset: releases every voice and resets cutoff, resonance and pulse width, the
  * five SID settings the parameters edit (waveform with ring and sync, attack/decay,
- * sustain/release, filter routing, filter mode) and the expression settings (bend range,
- * targets, vibrato), to the preset's. Loading the preset already loaded does the same, so it
+ * sustain/release, filter routing, filter mode), the expression settings (bend range,
+ * targets, vibrato) and the sound's own (the PWM, the fine tune, the sync), to the preset's;
+ * the base (live.base) is the preset so loaded. Loading the preset already loaded does the same, so it
  * discards those edits. Volume, octave, chip model, envelope mode, the effect slots, the
  * controllers (bend, wheel, pressure) and a bend range set by RPN 0 are kept. An index past
  * the last is clamped. */
@@ -705,6 +737,17 @@ void live_arp_turn(live* l, uint32_t field, int32_t detents);
 /* A MIDI real-time byte (0xF8 clock, 0xFA start): a clock rate steps on the clocks while they
  * come; a start puts the next step a whole step away. Others do nothing. */
 void live_arp_realtime(live* l, uint8_t status);
+
+/* The sound (lab_sound.h). live_sound_get packs the current sound into out. live_sound_apply sets
+ * in's on the instrument as a MIDI edit would, every field through its setter (live_param_set,
+ * live_arp_set, live_slot_set: the registers, the arpeggio and the slots written as they change;
+ * a change of the one-voice sync releases the notes first), clamped; the base stays.
+ * live_sound_set_base makes in the base, and name (up to LAB_SOUND_NAME characters) its name
+ * unless NULL: nothing sounds different, only `*` may. in is checked by lab_sound_valid first
+ * where it comes from outside (the store). */
+void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]);
+void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);
+void live_sound_set_base(live* l, const uint8_t in[LAB_SOUND_BYTES], const char* name);
 
 /* Effect slots. The number of algorithms slot has (its NONE included). */
 uint32_t live_slot_algorithms(uint32_t slot);

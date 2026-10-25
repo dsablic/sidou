@@ -41,4 +41,5 @@ void live_dice_roll(live* l, uint32_t seed) {
     }
     uint32_t r = next(&s);
     live_param_set(l, LIVE_PARAM_VIBRATO_DEPTH, r % 8u == 0u ? 8u + r % 33u : 0u);
+    live_sound_get(l, l->base); /* DICE's base is its roll */
 }
