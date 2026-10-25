@@ -662,6 +662,7 @@ where you go to dig in, and never gets in LIVE's way.
 - **Costs:** the view is flash code (room there); the audio path does not change, so RAMTEXT is
   not touched. The design (pages, what is drawn, how saving sits with PRESETS) is done with the
   user, with the ergo harness's journeys, before any code.
+- **The design (agreed 2026-10-25):** [LAB's design](plans/2026-10-25-lab-design.md).
 - **Inspiration:** [what other firmwares do](plans/2026-10-25-lab-inspiration.md) (Clipper,
   Golana, SID-1, Duell, JIANT, Noiz Demons, Melodee and others).
 - **The controls today:** [the button audit](plans/2026-10-25-button-audit.md) (every control in every
