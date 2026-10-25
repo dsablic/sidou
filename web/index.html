@@ -219,7 +219,9 @@
     <section>
       <h2>The emulator's limits</h2>
       <ul>
-        <li><b>No USB.</b> fm1-emu has no USB device, so no USB-MIDI in or out: MIDI from this page reaches
+        <li><b>No USB on this page.</b> A real FM-1 running SIDOU has USB-MIDI in and out and sends its
+          sound to a computer as a USB audio input; this page's player has no USB (fm1-emu emulates the
+          FM-1's USB only in its desktop player, <code>fm1-live --usb</code>). MIDI from this page reaches
           SIDOU through the emulated TRS MIDI IN jack, and the panel's MIDI out goes nowhere.</li>
         <li><b>No watchdog.</b> The power and reset block's registers (P33) keep what SIDOU writes, but
           nothing acts on them, so a hang is not reset as it would be on the chip.</li>
