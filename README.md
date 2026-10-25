@@ -52,9 +52,10 @@ screenshots the tests check.*
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
-Coming next: the rest of M3 (the device's 6502 meter). Eleven openly licensed tunes for the
-store, a starter pack, are in [assets/starter](assets/starter) now, and one `sidou-sysex sid --pack`
-command makes them a single upload ([the manual](docs/manual/sid-tunes.md#the-starter-pack)).
+Eleven openly licensed tunes for the store, a starter pack, are in [assets/starter](assets/starter),
+and one `sidou-sysex sid --pack` command makes them a single upload
+([the manual](docs/manual/sid-tunes.md#the-starter-pack)). STATUS shows how much of the CPU the
+6502 takes.
 
 ## Try it in your browser
 
@@ -167,7 +168,9 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: M3, `.sid` playback** (v0.5.0), in progress: SIDOU's own 6502 plays PSID tunes on the chips.
+- **Next: v0.5.0, `.sid` playback** (M3): built and tested in the emulator, in the
+  [CHANGELOG](CHANGELOG.md)'s Unreleased list; it waits for its first run on a real FM-1 (the
+  [flash-day checklist](docs/hardware-test.md)), then the release.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views and REC have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the

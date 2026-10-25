@@ -1147,9 +1147,10 @@ are silent (`KEYS OFF: 2SID TUNE`, once). The CHIP view's A tab changes the tune
 (paused), **continue** goes on (a stopped tune: from init); clock, song position, song select
 and program change are ignored, and clock out sends nothing (a PSID has no tempo); CLOCK OFF
 ignores the transport, as for a song. **STATUS** shows the 6502's rows in the sound's
-parameters' place: its state, cycles a second, the main loop's share (`--` until the device's
-meter), overruns, late writes, the voice shadow (ON: OSC3 and ENV3 read as on a C64) and a third
-SID's dropped writes.
+parameters' place: its state, cycles a second, `CPU` (the share of the CPU the 6502's slices took
+over the last second, to a tenth of a percent, and the 24 MHz ticks a thousand 6502 cycles took:
+`3.2% 412T/KC`; `--` while nothing runs), overruns, late writes, the voice shadow (ON: OSC3 and
+ENV3 read as on a C64) and a third SID's dropped writes.
 
 Refusals are toasts: `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID`, `TOO LONG`, `SID NOT
 FOUND`, `SID: READ ERROR` (the file went while it loaded), `INIT TOO LONG`, `PLAY HUNG`,

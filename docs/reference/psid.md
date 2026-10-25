@@ -9,7 +9,7 @@ environment a tune runs in, and the known limits. The format itself is HVSC's
 SIDOU relies on in its own words and names every place SIDOU's plan differs from it. The
 parser is `core/psid/psid_file.c`; its tests are
 `host/crates/sidou-tests/tests/psid_file.rs`. The environment (calls, period, I/O page) is
-built by M3's Tasks 6a and 6b; this page fixes what they build.
+`core/psid/psid_env.c`; the player that runs it ahead of the audio is `core/psid/psid_ctl.c`.
 
 All numbers in the file are big-endian, except the two bytes of a load address in the data,
 which are little-endian (the 6502's order).
