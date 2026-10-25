@@ -615,3 +615,29 @@ without the step's locks, so the turn is not heard while turning. Planned with D
 (0.5.x): while a step is held, its audition takes the step's locks and follows each turn live,
 as on a hardware step sequencer. It goes through the song's jam path (song_ctl's interrupt side,
 RAMTEXT: mind its 32 bytes free).
+
+## LAB: a view for shaping one sound, and keeping it (the user, 2026-10-25)
+
+Today a LIVE sound can be shaped but not kept: edits stay per preset until a power cycle (the
+`*` marker), USER 1-8 keep only the chip's character, and INSTR edits a song's instruments in
+tracker rows. LAB is a view for experimenting with one sound and saving it. Planned after M3,
+beside DICE's settings (they share DICE's scale and range and MUTATE's small moves).
+
+**The focus is ergonomics and ease of use** (the user): you see what you are tweaking and what it
+does; everything is logical and clearly visible. LIVE stays the fast, playable screen; LAB is
+where you go to dig in, and never gets in LIVE's way.
+
+- **One sound, every parameter, visible:** waveform and pulse, ADSR, filter, the effect slots, ARP
+  and the character, on knob pages named on screen, the value and its effect drawn (the
+  envelope's shape, the filter's curve, the pulse width), nothing behind hidden EDIT
+  combinations. The keys keep playing, so every turn is heard as it is made.
+- **Saved sounds:** USER sound slots (about 16) loaded and saved in LAB (SAVE, asking before
+  overwriting), and offered by PRESETS on LIVE after the built-ins. A store chunk with a format
+  version, as the USER profiles have.
+- **The bridge to songs:** a LAB sound saved as a GoatTracker instrument into the current song, a
+  song's instrument pulled into LAB to tweak; with M3, instruments pulled out of a `.sid`.
+- **Experimenting:** a variation roll (small moves, as MUTATE), A/B against the saved version,
+  undo.
+- **Costs:** the view is flash code (room there); the audio path does not change, so RAMTEXT is
+  not touched. The design (pages, what is drawn, how saving sits with PRESETS) is done with the
+  user, with the ergo harness's journeys, before any code.
