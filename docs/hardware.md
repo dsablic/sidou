@@ -260,6 +260,31 @@ RAMTEXT for M3: psid_ctl's interrupt half (`psid_ctl_block` 522 bytes, `psid_isr
 `audio_fill` +142) and the swap hook with its register rewrite (`psid_swapped` 270, `-Oz`):
 1,408 bytes more `.ram_text` in all (50,800), of M3's 1,536.
 
+Merged with main (`c57eddae`), `.ram_text` was 50,688 bytes, 1,536 over RAMTEXT. Two changes
+win back 1,952 of them, for **48,736 of 49,152 (416 free)**; no code that the audio interrupt runs
+moved to flash:
+- **Every effect algorithm's start copies a template** (`core/fx/fx_slots.c`): `slot_start`
+  1,538 → 84 bytes. The inits it still ran in the interrupt (crush, lo-fi's noise, tremolo and
+  autopan, and the chorus, flanger and wow headers after their lines) run once in
+  `sid_slots_init`, in flash, at boot, beside the other templates (all but their lines' samples:
+  `sid_fx_*_setup`); a start is one entry of a constant table (`STARTS`, in `.data`: clear a
+  line's floats, copy a template's bytes) and its warm-up, the same loops as before. The new
+  templates and warm-ups take 368 bytes of POOL (5,552 free), the table 192 of the RAM region.
+- **The drain's character commit leaves the filter's coefficients to the render**
+  (`sid_character_commit_later`, `app/reg_ring.c`): it marks the filter, as a `$15-$17` write
+  does, and `sid_render_tap` recomputes before the block's first sample, so the update has one
+  copy in SRAM, not two (`reg_ring_drain` 1,622 → 1,110). Bit for bit the same: the
+  coefficients are a function of the registers and the stage, and a render reads them only at
+  its start.
+
+Nothing in RAMTEXT runs while the flash is programmed or erased but the flash driver: every
+program and erase (`store_fm1.c` `operate`, `ota_flash.h`) runs with interrupts masked and calls
+only `fl_*_ram`, so the audio interrupt is in SRAM for its cycles and its branch reach, not for
+the flash windows. The call graph of the linked image (its emitted relocations, every address
+taken counted as a call) is the same as before but for the inits: everything in RAMTEXT is
+reachable from `isr_alnk0` or is the flash driver, and `ram_audio.rs` checks that the interrupt
+executes only SRAM.
+
 M2c Task 6 moved the RAM/POOL boundary 8 KiB down (from 0x01C20000) so POOL holds
 the song's 64 KiB content region beside chip B. The original standalone M2c floor
 was 22,000 bytes free across RAM and POOL (M2a's 2,000 already spent in it). With M2d, M2e and

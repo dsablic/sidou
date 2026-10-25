@@ -49,12 +49,11 @@ static inline void sid_fx_flanger_set_rate(sid_fx_flanger* f, float rate) {
     f->inc = (uint32_t)(int32_t)(hz * f->hz_inc) << 1;
 }
 
-static inline void sid_fx_flanger_init(sid_fx_flanger* f, uint32_t sample_rate) {
+/* sid_fx_flanger_init but for the line's samples, which it leaves as they are (the effect
+ * slots keep this part as a template and clear the line at a start: fx_slots.c). */
+static inline void sid_fx_flanger_setup(sid_fx_flanger* f, uint32_t sample_rate) {
     float fs = (float)sample_rate;
     sid_fx_delay_init(&f->line, SID_FX_FLANGER_LEN);
-    for (uint32_t i = 0; i < SID_FX_FLANGER_LEN; ++i) {
-        f->buf[i] = 0.0f;
-    }
     f->phase = 0;
     f->hz_inc = 2147483648.0f / fs;
     f->min_delay = SID_FX_FLANGER_MIN_MS * 0.001f * fs;
@@ -79,6 +78,13 @@ static inline void sid_fx_flanger_init(sid_fx_flanger* f, uint32_t sample_rate) 
     f->depth_coef = 1.0f - keep;
     f->left = 0;
     sid_fx_flanger_set_rate(f, 0.5f);
+}
+
+static inline void sid_fx_flanger_init(sid_fx_flanger* f, uint32_t sample_rate) {
+    for (uint32_t i = 0; i < SID_FX_FLANGER_LEN; ++i) {
+        f->buf[i] = 0.0f;
+    }
+    sid_fx_flanger_setup(f, sample_rate);
 }
 
 /* x is normalised; depth, rate and feedback are in [0, 1]. */

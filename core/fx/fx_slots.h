@@ -27,6 +27,7 @@
  *
  * What Amount, A and B do per algorithm is listed with the enums below. */
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "fx_chorus.h"
@@ -117,15 +118,17 @@ typedef struct {
     float fade;         /* 0 .. 1 position of the wet path's fade */
 } sid_slot;
 
+typedef struct {
+    sid_fx_crt crt;
+    sid_fx_noise noise;
+} sid_slot_lofi;
+
 typedef union {
     sid_fx_tape tape;
     sid_fx_overdrive overdrive;
     sid_fx_fuzz fuzz;
     sid_fx_crush crush;
-    struct {
-        sid_fx_crt crt;
-        sid_fx_noise noise;
-    } lofi;
+    sid_slot_lofi lofi;
 } sid_slot_dist_state;
 
 typedef union {
@@ -142,18 +145,38 @@ typedef union {
     sid_fx_plate plate;
 } sid_slot_fx_state;
 
-/* Algorithms whose initial state takes real computing (tables, line layouts), initialised
- * once by sid_slots_init in the caller's context; starting one copies its template, so the
- * audio context never runs those inits. */
+/* The bytes of a state from its member `first` to its end. */
+#define SID_SLOT_TAIL(type, first) (sizeof(type) - offsetof(type, first))
+/* Room for every slot's algorithms (SID_DIST_COUNT, SID_MOD_COUNT, SID_FXSLOT_COUNT). */
+#define SID_SLOT_ALGS 8u
+
+/* How an algorithm starts (fx_slots.c's table): `n` bytes of its template (at `src` in the
+ * sid_slots) copied to its running state (at `dst`), and the `clear` floats just before `dst`
+ * (a delay line) cleared. */
+typedef struct {
+    uint16_t dst, src, n, clear;
+} sid_slot_start;
+
+/* Every algorithm's initial state, initialised once by sid_slots_init in the caller's context
+ * (a pure function of the sample rate and the seed); starting one copies its template, so the
+ * audio context never runs an init (on the device the inits stay out of SRAM, app.ld). The
+ * delay-line algorithms keep only what follows their line: a start clears the line and copies
+ * the rest. */
 typedef struct {
     sid_fx_tape tape;
     sid_fx_overdrive overdrive;
     sid_fx_fuzz fuzz;
-    sid_fx_crt crt;
+    sid_fx_crush crush;
+    sid_slot_lofi lofi;
     sid_fx_phaser phaser;
+    sid_fx_tremolo tremolo;
     sid_fx_echo delay, pingpong;
     sid_fx_reverb reverb;
     sid_fx_plate plate;
+    unsigned char chorus[SID_SLOT_TAIL(sid_fx_chorus, line)];
+    unsigned char flanger[SID_SLOT_TAIL(sid_fx_flanger, line)];
+    unsigned char wow[SID_SLOT_TAIL(sid_fx_wow, line)];
+    uint16_t warm[SID_SLOT_COUNT][SID_SLOT_ALGS]; /* samples run silently before fading in */
 } sid_slot_templates;
 
 /* Fields are private to fx_slots.c; the struct is public so callers can allocate it. */

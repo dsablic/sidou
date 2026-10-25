@@ -91,11 +91,10 @@ static inline float sid_fx_wow_depth(float cents, float hz, uint32_t sample_rate
     return ratio * (float)sample_rate / (2.0f * SIDOU_PI * hz);
 }
 
-static inline void sid_fx_wow_init(sid_fx_wow* w, uint32_t sample_rate, uint32_t seed) {
+/* sid_fx_wow_init but for the line's samples, which it leaves as they are (the effect
+ * slots keep this part as a template and clear the line at a start: fx_slots.c). */
+static inline void sid_fx_wow_setup(sid_fx_wow* w, uint32_t sample_rate, uint32_t seed) {
     sid_fx_delay_init(&w->line, SID_FX_WOW_LEN);
-    for (uint32_t i = 0; i < SID_FX_WOW_LEN; ++i) {
-        w->buf[i] = 0.0f;
-    }
     float fs = (float)sample_rate;
     w->rng = sid_fx_rng_seed(seed);
     w->wow_inc = sid_fx_phase_inc(SID_FX_WOW_HZ, sample_rate);
@@ -123,6 +122,13 @@ static inline void sid_fx_wow_init(sid_fx_wow* w, uint32_t sample_rate, uint32_t
     w->fade_step = 1000.0f / (SID_FX_WOW_FADE_MS * fs);
     w->fade_accel = w->fade_step / SID_FX_WOW_FADE_TURN;
     sid_fx_wow_reset(w);
+}
+
+static inline void sid_fx_wow_init(sid_fx_wow* w, uint32_t sample_rate, uint32_t seed) {
+    for (uint32_t i = 0; i < SID_FX_WOW_LEN; ++i) {
+        w->buf[i] = 0.0f;
+    }
+    sid_fx_wow_setup(w, sample_rate, seed);
 }
 
 /* True while the block still changes the signal with both depths at 0. */

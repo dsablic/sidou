@@ -133,9 +133,9 @@ typedef void (*reg_ring_swap_fn)(void* ctx, uint32_t chip, sid* s);
  *   ticks, at a time), and so does one while the spare is prepared;
  * - a tick's stage goes into whichever of `stage` is not queued (stage_pending), and the
  *   sink pushes REG_RING_CHARACTER with its index, at which the drain copies it into the
- *   rendered chip (sid_character_commit) and clears its flag; with both queued (two ticks in
- *   one pass, then a third before the interrupt drained either) the tick waits, counted in
- *   reg_ring_out.character_defers.
+ *   rendered chip (sid_character_commit_later) and clears its flag; with both queued (two
+ *   ticks in one pass, then a third before the interrupt drained either) the tick waits,
+ *   counted in reg_ring_out.character_defers.
  * The producer writes a stage only while its flag is clear, sets the flag before the entry
  * that names it is committed (reg_ring_commit's fence orders the stores), and the drain
  * clears it only after the copy (a fence between): one core, the interrupt runs to its end
@@ -238,10 +238,10 @@ void reg_ring_power_on(sid* s);
  * never reaches sid_write, which would alias it to register 0x00), its old sid the spare from
  * then on; a LIVE_REG_GATE_RESET goes to sid_set_gate_reset on the chip's sid, so after a
  * reset the new one; a REG_RING_CHARACTER counts a tick (ticks) and commits the stage it names
- * to the chip's sid (sid_character_commit); a REG_RING_MUTE sets the chip's mute (sid_set_mute;
- * a swap gives the new sid the old one's); any other pseudo-register (the slots') goes to the
- * pseudo handler, if there is one; then, for a chip it swapped, the swap hook. Returns the
- * entries applied. */
+ * to the chip's sid (sid_character_commit_later); a REG_RING_MUTE sets the chip's mute
+ * (sid_set_mute; a swap gives the new sid the old one's); any other pseudo-register (the
+ * slots') goes to the pseudo handler, if there is one; then, for a chip it swapped, the swap
+ * hook. Returns the entries applied. */
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c);
 
 /* The producer's side, the context of reg_ring_sink: one for each writer, bound to a chip

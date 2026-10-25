@@ -227,15 +227,13 @@ void sid_character_filter(sid* s, const sid_character* c);
 void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac* dac,
                              sid_character_stage* out);
 
-/* Copies the stage into the chip and recomputes the filter's coefficients for its age
- * (sid_update_filter): constants, borrowed row/table pointers and a coefficient update;
- * the 32-word noise LUT only when its mask changes (16 integer ORs). It is safe where
- * register writes are applied (the audio interrupt draining the register ring). Inline:
- * called from the drain's SRAM code (platform/fm1/app.ld) and from flash. */
+/* Copies the stage into the chip, but for the filter's coefficients (sid_character_commit and
+ * sid_character_commit_later). Inline: called from the drain's SRAM code (platform/fm1/app.ld)
+ * and from flash. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
-static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
+static inline void sid_character_copy(sid* s, const sid_character_stage* st) {
     s->nl.level = st->nl.level;
     s->nl.level_off = st->nl.level_off;
     s->nl.load = st->nl.load;
@@ -276,7 +274,32 @@ static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
             sid_osc_update_mode(&s->osc[v]);
         }
     }
+}
+
+/* Copies the stage into the chip and recomputes the filter's coefficients for its age
+ * (sid_update_filter): constants, borrowed row/table pointers and a coefficient update;
+ * the 32-word noise LUT only when its mask changes (16 integer ORs). It is safe where
+ * register writes are applied (the audio interrupt draining the register ring). */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
+    sid_character_copy(s, st);
     sid_update_filter(s);
+}
+
+/* sid_character_commit, the coefficients left to the chip's next render: it marks the filter
+ * (filter_dirty), as a write to $15-$17 does, and sid_render_tap recomputes them before its
+ * first sample. Bit for bit sid_character_commit as far as a render can tell: the coefficients
+ * depend only on the chip's registers and stage, and a render reads them only at its start
+ * (sid.h, sid_update_filter). For the register ring's drain, which applies a block's writes
+ * before the block renders: one copy of the update in the audio path's SRAM, the render's. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void sid_character_commit_later(sid* s, const sid_character_stage* st) {
+    sid_character_copy(s, st);
+    s->filter_dirty = 1;
 }
 
 /* Everything at once, on a chip fresh from sid_init and not rendering (the spare chip before

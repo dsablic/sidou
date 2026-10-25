@@ -7,6 +7,14 @@ and the MIDI export): the lossless set below, measured on the FM-1_900 build as 
 builds it. Outputs are bit-identical (no golden changed; the device plays sample for sample as the
 host renders it), and every instruction gate the changes reach passes.
 
+**M3's merge (2026-10-25, `m3-base`):** merged with main, `.ram_text` was 50,688 bytes, 1,536 over.
+S6's aim, the switch path out of SRAM, came without moving it: every effect algorithm's start
+copies a template (the inits `slot_start` still ran in the interrupt now run in `sid_slots_init`,
+in flash; `slot_start` 1,538 → 84), and the drain's character commit leaves the filter's
+coefficients to the render (`reg_ring_drain` 1,622 → 1,110). RAMTEXT **48,736 of 49,152** (416
+free), POOL −368 (5,552 free), the RAM region −192, the image −1,072 (525,984, FM-1_900). Bit-exact; nothing the audio
+interrupt runs moved to flash (docs/hardware.md, "Code in SRAM").
+
 **S1 reverted (2026-10-24): RAMTEXT does not use the debug area yet.** It was reverted when a
 device report (STEP's toggles not landing) was blamed on it; the report was a misread view, not
 the SRAM, so S1 is unproven rather than failed: a device check of code in that area (hardware-test

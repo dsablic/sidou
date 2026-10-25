@@ -17,6 +17,71 @@ __attribute__((section(".data.sid_slots_algorithms")))
 static const uint32_t ALGORITHMS[SID_SLOT_COUNT] = {SID_DIST_COUNT, SID_MOD_COUNT,
                                                     SID_FXSLOT_COUNT};
 
+/* A running state's bytes into a template (char copies: well defined whatever the types).
+ * The switch path's own copy is slot_copy: the device runs this one from flash, that one from
+ * SRAM (app.ld), and no call crosses between the two. */
+static void tpl_keep(void* dst, const void* src, uint32_t n) {
+    unsigned char* d = dst;
+    const unsigned char* q = src;
+    for (uint32_t i = 0; i < n; ++i) {
+        d[i] = q[i];
+    }
+}
+
+/* Samples an algorithm must run before it is heard: its longest tap delay, `ms`. */
+static uint32_t warm_up(uint32_t sample_rate, float ms) {
+    return (uint32_t)(int32_t)(ms * 0.001f * (float)sample_rate) + 4u;
+}
+
+_Static_assert(SID_DIST_COUNT <= SID_SLOT_ALGS && SID_MOD_COUNT <= SID_SLOT_ALGS &&
+                   SID_FXSLOT_COUNT <= SID_SLOT_ALGS,
+               "every algorithm has a start");
+_Static_assert(sizeof(sid_slots) <= 0xffffu, "a start's offsets fit 16 bits");
+/* A start clears the `clear` floats just before its state's `line`: the line's samples. */
+#define LINE_FIRST(type, len)                                                                \
+    (offsetof(type, buf) == 0 && offsetof(type, line) == (len) * sizeof(float))
+_Static_assert(LINE_FIRST(sid_fx_chorus, SID_FX_CHORUS_LEN) &&
+                   LINE_FIRST(sid_fx_flanger, SID_FX_FLANGER_LEN) &&
+                   LINE_FIRST(sid_fx_wow, SID_FX_WOW_LEN),
+               "the delay lines' samples come just before their line");
+#undef LINE_FIRST
+
+/* Every algorithm's start: its running state, its template and the line it clears (none
+ * for the algorithms without one, and nothing at all for NONE). Read by slot_start in the
+ * audio path: RAM on the device, not flash (emu-gate tests/ram_audio.rs). */
+#define START(state, tpl, clear)                                                              \
+    {offsetof(sid_slots, state), offsetof(sid_slots, tpl), sizeof(((sid_slots*)0)->tpl), clear}
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_slot_starts")))
+#endif
+static const sid_slot_start STARTS[SID_SLOT_COUNT][SID_SLOT_ALGS] = {
+    [SID_SLOT_DIST] =
+        {
+            [SID_DIST_TAPE] = START(dist.tape, tpl.tape, 0),
+            [SID_DIST_OVERDRIVE] = START(dist.overdrive, tpl.overdrive, 0),
+            [SID_DIST_FUZZ] = START(dist.fuzz, tpl.fuzz, 0),
+            [SID_DIST_CRUSH] = START(dist.crush, tpl.crush, 0),
+            [SID_DIST_LOFI] = START(dist.lofi, tpl.lofi, 0),
+        },
+    [SID_SLOT_MOD] =
+        {
+            [SID_MOD_CHORUS] = START(mod.chorus.line, tpl.chorus, SID_FX_CHORUS_LEN),
+            [SID_MOD_FLANGER] = START(mod.flanger.line, tpl.flanger, SID_FX_FLANGER_LEN),
+            [SID_MOD_PHASER] = START(mod.phaser, tpl.phaser, 0),
+            [SID_MOD_TREMOLO] = START(mod.tremolo, tpl.tremolo, 0),
+            [SID_MOD_AUTOPAN] = START(mod.tremolo, tpl.tremolo, 0),
+            [SID_MOD_WOW] = START(mod.wow.line, tpl.wow, SID_FX_WOW_LEN),
+        },
+    [SID_SLOT_FX] =
+        {
+            [SID_FXSLOT_DELAY] = START(fx.echo, tpl.delay, 0),
+            [SID_FXSLOT_PINGPONG] = START(fx.echo, tpl.pingpong, 0),
+            [SID_FXSLOT_REVERB_LIGHT] = START(fx.reverb, tpl.reverb, 0),
+            [SID_FXSLOT_REVERB_LUSH] = START(fx.plate, tpl.plate, 0),
+        },
+};
+#undef START
+
 void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_pool* pool) {
     sid_slot_params off = {0, 0.0f, 0.0f, 0.0f, 0.0f};
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
@@ -54,12 +119,35 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_
     sid_fx_tape_init(&t->tape, sample_rate);
     sid_fx_overdrive_init(&t->overdrive, sample_rate);
     sid_fx_fuzz_init(&t->fuzz, sample_rate);
-    sid_fx_crt_init(&t->crt, sample_rate);
     sid_fx_phaser_init(&t->phaser, sample_rate);
     sid_fx_echo_init(&t->delay, sample_rate, SID_SLOT_POOL_LEN, 0);
     sid_fx_echo_init(&t->pingpong, sample_rate, SID_SLOT_POOL_LEN, 1);
     sid_fx_reverb_init(&t->reverb, sample_rate);
     sid_fx_plate_init(&t->plate, sample_rate);
+    sid_fx_crush_init(&t->crush, sample_rate);
+    sid_fx_crt_init(&t->lofi.crt, sample_rate);
+    sid_fx_noise_init(&t->lofi.noise, seed);
+    sid_fx_tremolo_init(&t->tremolo, sample_rate);
+    /* The delay-line algorithms are set up in their running state (no algorithm runs yet), all
+     * but their lines' samples, and what follows the line kept. */
+    sid_slot_mod_state* m = &s->mod;
+    sid_fx_chorus_setup(&m->chorus, sample_rate);
+    tpl_keep(t->chorus, &m->chorus.line, sizeof t->chorus);
+    sid_fx_flanger_setup(&m->flanger, sample_rate);
+    tpl_keep(t->flanger, &m->flanger.line, sizeof t->flanger);
+    sid_fx_wow_setup(&m->wow, sample_rate, seed * 0x9e3779b9u + 1u);
+    tpl_keep(t->wow, &m->wow.line, sizeof t->wow);
+    for (uint32_t slot = 0; slot < SID_SLOT_COUNT; ++slot) {
+        for (uint32_t alg = 0; alg < SID_SLOT_ALGS; ++alg) {
+            float ms = 0.0f;
+            if (slot == SID_SLOT_MOD && alg == SID_MOD_CHORUS) {
+                ms = SID_FX_CHORUS_CENTRE_MS + SID_FX_CHORUS_SLOW_MS + SID_FX_CHORUS_FAST_MS;
+            } else if (slot == SID_SLOT_MOD && alg == SID_MOD_FLANGER) {
+                ms = SID_FX_FLANGER_MAX_MS;
+            }
+            t->warm[slot][alg] = (uint16_t)warm_up(sample_rate, ms);
+        }
+    }
 }
 
 void sid_slots_set(sid_slots* s, uint32_t slot, const sid_slot_params* p) {
@@ -92,19 +180,10 @@ static void slot_copy(void* dst, const void* src, uint32_t n) {
     }
 }
 
-static void dist_start(sid_slots* s, uint32_t alg) {
-    sid_slot_dist_state* d = &s->dist;
-    const sid_slot_templates* t = &s->tpl;
-    switch (alg) {
-    case SID_DIST_TAPE: slot_copy(&d->tape, &t->tape, sizeof d->tape); break;
-    case SID_DIST_OVERDRIVE: slot_copy(&d->overdrive, &t->overdrive, sizeof d->overdrive); break;
-    case SID_DIST_FUZZ: slot_copy(&d->fuzz, &t->fuzz, sizeof d->fuzz); break;
-    case SID_DIST_CRUSH: sid_fx_crush_init(&d->crush, s->sample_rate); break;
-    case SID_DIST_LOFI:
-        slot_copy(&d->lofi.crt, &t->crt, sizeof d->lofi.crt);
-        sid_fx_noise_init(&d->lofi.noise, s->seed);
-        break;
-    default: break;
+/* A delay line's samples to silence, as the line's init leaves them. */
+static void slot_clear(float* buf, uint32_t n) {
+    for (uint32_t i = 0; i < n; ++i) {
+        buf[i] = 0.0f;
     }
 }
 
@@ -120,19 +199,6 @@ static float dist_tick(sid_slots* s, uint32_t alg, float x, float amount, float 
         return sid_fx_noise_tick(&d->lofi.noise, y, b);
     }
     default: return x;
-    }
-}
-
-static void mod_start(sid_slots* s, uint32_t alg) {
-    sid_slot_mod_state* m = &s->mod;
-    switch (alg) {
-    case SID_MOD_CHORUS: sid_fx_chorus_init(&m->chorus, s->sample_rate); break;
-    case SID_MOD_FLANGER: sid_fx_flanger_init(&m->flanger, s->sample_rate); break;
-    case SID_MOD_PHASER: slot_copy(&m->phaser, &s->tpl.phaser, sizeof m->phaser); break;
-    case SID_MOD_TREMOLO:
-    case SID_MOD_AUTOPAN: sid_fx_tremolo_init(&m->tremolo, s->sample_rate); break;
-    case SID_MOD_WOW: sid_fx_wow_init(&m->wow, s->sample_rate, s->seed * 0x9e3779b9u + 1u); break;
-    default: break;
     }
 }
 
@@ -167,18 +233,6 @@ static int fx_uses_pool(uint32_t alg) {
     return alg != SID_FXSLOT_NONE;
 }
 
-static void fx_start(sid_slots* s, uint32_t alg) {
-    sid_slot_fx_state* f = &s->fx;
-    const sid_slot_templates* t = &s->tpl;
-    switch (alg) {
-    case SID_FXSLOT_DELAY: slot_copy(&f->echo, &t->delay, sizeof f->echo); break;
-    case SID_FXSLOT_PINGPONG: slot_copy(&f->echo, &t->pingpong, sizeof f->echo); break;
-    case SID_FXSLOT_REVERB_LIGHT: slot_copy(&f->reverb, &t->reverb, sizeof f->reverb); break;
-    case SID_FXSLOT_REVERB_LUSH: slot_copy(&f->plate, &t->plate, sizeof f->plate); break;
-    default: break;
-    }
-}
-
 /* Wet output from the stereo input in *l, *r (which stays the wet when NONE). `in` scales
  * the wet path's input. */
 static void fx_tick(sid_slots* s, uint32_t alg, float in, float amount, float a, float b,
@@ -200,24 +254,15 @@ static void fx_tick(sid_slots* s, uint32_t alg, float in, float amount, float a,
     }
 }
 
-/* Samples an algorithm must run before it is heard: its longest tap delay. */
-static uint32_t warm_up(const sid_slots* s, uint32_t k, uint32_t alg) {
-    float ms = 0.0f;
-    if (k == SID_SLOT_MOD && alg == SID_MOD_CHORUS) {
-        ms = SID_FX_CHORUS_CENTRE_MS + SID_FX_CHORUS_SLOW_MS + SID_FX_CHORUS_FAST_MS;
-    } else if (k == SID_SLOT_MOD && alg == SID_MOD_FLANGER) {
-        ms = SID_FX_FLANGER_MAX_MS;
-    }
-    return (uint32_t)(int32_t)(ms * 0.001f * (float)s->sample_rate) + 4u;
-}
-
-static void slot_start(sid_slots* s, uint32_t k, uint32_t alg) {
-    s->slot[k].warm = warm_up(s, k, alg);
-    switch (k) {
-    case SID_SLOT_DIST: dist_start(s, alg); break;
-    case SID_SLOT_MOD: mod_start(s, alg); break;
-    default: fx_start(s, alg); break;
-    }
+/* An algorithm into its running state as its init leaves it (STARTS). Out of
+ * line: one copy for step_switch's two starts. */
+__attribute__((noinline)) static void slot_start(sid_slots* s, uint32_t k, uint32_t alg) {
+    alg = alg < SID_SLOT_ALGS ? alg : 0u;
+    const sid_slot_start* st = &STARTS[k][alg];
+    unsigned char* base = (unsigned char*)s;
+    s->slot[k].warm = s->tpl.warm[k][alg];
+    slot_clear((float*)(void*)(base + st->dst) - st->clear, st->clear);
+    slot_copy(base + st->dst, base + st->src, st->n);
 }
 
 /* ---- switching ---- */

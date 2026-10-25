@@ -227,7 +227,7 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
         sid_set_gate_reset(s, e.value);
     } else if (bare == REG_RING_CHARACTER) {
         if (e.value < 2u) {
-            sid_character_commit(s, &c->stage[x][e.value]);
+            sid_character_commit_later(s, &c->stage[x][e.value]);
             COMPILER_FENCE(); /* the stage is read before the producer may write it again */
             c->stage_pending[x][e.value] = 0;
         }

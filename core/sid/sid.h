@@ -184,8 +184,9 @@ static inline float sid_blended_cutoff(const sid* s, uint32_t fc, float t) {
  * That is what recomputing at every write would play, bit for bit: the coefficients depend
  * only on the registers and tables, a render reads them only at its start, and the drain
  * applies a block's writes before it. Inline: sid_render_tap (the audio path, in SRAM on the
- * device), the main context and sid_character_commit in the register ring's drain (SRAM) all
- * call it, and no direct call may cross between SRAM and flash (platform/fm1/app.ld). */
+ * device) and the main context (sid_character_commit among them) call it, and no direct call may
+ * cross between SRAM and flash (platform/fm1/app.ld). The register ring's drain only marks the
+ * filter (sid_character_commit_later): the render's copy is the one in SRAM. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif

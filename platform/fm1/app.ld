@@ -79,19 +79,19 @@ SECTIONS
         *(.text.sid_noise_clock .text.sid_noise_fade .text.sid_noise_settle_deferred)  /* sid_osc.h */
         *(.text.sid_env_advance_slow .text.sid_env_run .text.sid_env_settle)    /* sid_env.h */
         /* The effect slots (core/fx/fx_slots.c): the render, the settings, the switch path
-         * (slot_start, slot_copy; distinctive names, so no other file's function matches),
-         * every algorithm tick and LFO the compiler kept out of line, and the inits slot_start
-         * still runs (the cheap ones; sid_slots_init, in flash, builds the others' templates).
+         * (slot_start, slot_copy, slot_clear; distinctive names, so no other file's function
+         * matches), every algorithm tick and LFO the compiler kept out of line. A start only
+         * copies a template: every algorithm's init runs once, in sid_slots_init, in flash, and
+         * none is named here (an init listed here would be a call from flash into SRAM).
          * The patterns for functions the compiler inlines today stay as a safety net. The two
          * reverbs' ticks. live's way in: the drain's pseudo-register handler (app/fx_live.c). */
         *(.text.sid_slots_dry .text.slot_dry .text.slots_run .text.slots_bypass)
         *(.text.sid_slots_process_wide .text.sid_slots_process_float)
-        *(.text.sid_slots_process .text.sid_slots_set .text.slot_start .text.step_switch .text.slot_copy)
+        *(.text.sid_slots_process .text.sid_slots_set .text.slot_start .text.step_switch)
+        *(.text.slot_copy .text.slot_clear)
         *(.text.dist_tick_any .text.mod_tick_any .text.fx_tick_any)
         *(.text.sid_fx_*_tick .text.sid_fx_*_lfo)
         *(.text.sid_fx_limit_round)                 /* core/fx/fx_limit.c: the soft limiter */
-        *(.text.sid_fx_crush_init .text.sid_fx_noise_init .text.sid_fx_chorus_init)
-        *(.text.sid_fx_flanger_init .text.sid_fx_tremolo_init .text.sid_fx_wow_init)
         *(.text.fx_live_pseudo .text.fx_live_apply)
         /* The LIVE view's tap (app/scope.c): the tapped render, its points (called through a
          * pointer from sid_render_tap: no branch check sees it) and the output's peaks. */

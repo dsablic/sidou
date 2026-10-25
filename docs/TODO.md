@@ -614,4 +614,4 @@ stores the lock, and playback has it, but the audition under the key plays the l
 without the step's locks, so the turn is not heard while turning. Planned with DICE's settings
 (0.5.x): while a step is held, its audition takes the step's locks and follows each turn live,
 as on a hardware step sequencer. It goes through the song's jam path (song_ctl's interrupt side,
-RAMTEXT: mind its 32 bytes free).
+RAMTEXT: mind its 416 bytes free).

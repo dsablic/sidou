@@ -79,12 +79,11 @@ static inline void sid_fx_chorus_plan(sid_fx_chorus* c, float depth, float rate,
     c->left = SID_FX_MOD_SEGMENT;
 }
 
-static inline void sid_fx_chorus_init(sid_fx_chorus* c, uint32_t sample_rate) {
+/* sid_fx_chorus_init but for the line's samples, which it leaves as they are (the effect
+ * slots keep this part as a template and clear the line at a start: fx_slots.c). */
+static inline void sid_fx_chorus_setup(sid_fx_chorus* c, uint32_t sample_rate) {
     float fs = (float)sample_rate;
     sid_fx_delay_init(&c->line, SID_FX_CHORUS_LEN);
-    for (uint32_t i = 0; i < SID_FX_CHORUS_LEN; ++i) {
-        c->buf[i] = 0.0f;
-    }
     c->slow_phase = 0;
     c->fast_phase = 0x2aaaaaabu; /* start the two LFOs out of step */
     c->slow_hz_inc = SID_FX_CHORUS_SLOW_HZ / fs * 2147483648.0f;
@@ -106,6 +105,13 @@ static inline void sid_fx_chorus_init(sid_fx_chorus* c, uint32_t sample_rate) {
     c->depth_coef = 1.0f - keep;
     c->left = 0;
     sid_fx_chorus_set_rate(c, 2.0f / 3.0f);
+}
+
+static inline void sid_fx_chorus_init(sid_fx_chorus* c, uint32_t sample_rate) {
+    for (uint32_t i = 0; i < SID_FX_CHORUS_LEN; ++i) {
+        c->buf[i] = 0.0f;
+    }
+    sid_fx_chorus_setup(c, sample_rate);
 }
 
 /* x is normalised; depth, rate and ensemble are in [0, 1]. */
