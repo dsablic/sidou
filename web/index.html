@@ -21,23 +21,29 @@
           --yellow: #b8c76f; color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
-  main { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 12px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 12px;
+         grid-template-columns: minmax(0, 1fr); }
   header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
   .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
   h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
   #status { color: var(--dim); font-variant-numeric: tabular-nums; }
   .stage { position: relative; }
-  /* the whole synth in view on a laptop (upstream's rule; --above and --aspect come from main.js) */
-  canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; margin: 0 auto;
-           max-width: max(560px, calc((100svh - var(--above, 140px) - 52px) * var(--aspect, 1.56))); }
-  #start { position: absolute; inset: 0; margin: auto; width: clamp(110px, 30%, 220px); height: clamp(36px, 9vw, 56px);
+  /* the whole synth in view on a laptop (upstream's rule; --above and --aspect come from main.js);
+     the box is the canvas's size, so Start can sit on the LCD */
+  .panel-box { position: relative; margin: 0 auto;
+               max-width: min(100%, max(560px, calc((100svh - var(--above, 140px) - 52px) * var(--aspect, 1.56)))); }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+  /* the LCD's centre: 480 x 480 at (370, 42) on fm1-emu's 1280 x 820 panel (fm1-live/src/panel.rs) */
+  #start { position: absolute; left: 47.656%; top: 34.390%; transform: translate(-50%, -50%);
+           width: clamp(110px, 30%, 220px); height: clamp(36px, 9vw, 56px);
            border: 0; border-radius: 28px; background: var(--accent); color: #0f0c22; font-size: clamp(14px, 3.5vw, 17px);
            font-weight: 700; letter-spacing: .04em; cursor: pointer; }
   #start:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   #start[disabled] { opacity: .7; cursor: wait; }
   @media (orientation: landscape) and (max-height: 560px) {
     main { padding-block: 8px 16px; gap: 8px; }
+    .panel-box { width: fit-content; max-width: 100%; }
     canvas { width: auto; max-width: 100%; height: calc(100svh - 12px); }
   }
   .bar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
@@ -59,6 +65,7 @@
   code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .hint { margin: 0; color: var(--dim); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .hint span { white-space: nowrap; }
+  @media (max-width: 600px) { .hint span { white-space: normal; } }
   .guide { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 20px; display: grid; gap: 24px 40px;
            grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
   .guide > * { min-width: 0; }
@@ -141,8 +148,10 @@
     </div>
   </div>
   <div class="stage">
-    <canvas id="panel" aria-label="FM-1 front panel"></canvas>
-    <button id="start" disabled>Start</button>
+    <div class="panel-box">
+      <canvas id="panel" aria-label="FM-1 front panel"></canvas>
+      <button id="start" disabled>Start</button>
+    </div>
   </div>
   <p class="hint">
     <span><kbd>A</kbd>…<kbd>'</kbd> play C4–F5</span>
