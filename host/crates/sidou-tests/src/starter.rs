@@ -216,6 +216,8 @@ pub fn md(t: &Tune, sid: &[u8]) -> String {
     } else {
         "the repository's song, packed"
     };
+    // The generated file's own licence header; reuse must not read it as this file's.
+    // REUSE-IgnoreStart
     format!(
         "<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->\n\
          <!-- SPDX-License-Identifier: GPL-3.0-or-later -->\n\
@@ -246,6 +248,7 @@ pub fn md(t: &Tune, sid: &[u8]) -> String {
         source = t.source,
         sha = sha256(sid),
     )
+    // REUSE-IgnoreEnd
 }
 
 /// The pack's files that are not as their sources make them (or, with `update`, that were
