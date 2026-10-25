@@ -352,9 +352,11 @@ void settings_tick(settings* s, uint32_t now_ms) {
         return;
     }
     int dirty = (s->l->settings_dirty & 1u) || (s->ml && s->ml->settings_dirty);
+    /* The unsaved edit waits for the store the settings record keeps busy (seconds while the
+     * keys play): it is gathered again only once the store can take it, not every frame. */
+    int edit = s->edit_seen != s->edit_saved && !(s->st && store_busy(s->st));
     if (dirty || s->asked ||
-        ((s->seen != s->saved || s->edit_seen != s->edit_saved) &&
-         now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
+        ((s->seen != s->saved || edit) && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
         update(s, now_ms);
     }
 }
