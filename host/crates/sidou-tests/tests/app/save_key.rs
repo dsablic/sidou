@@ -603,6 +603,36 @@ fn reset_asks_first_only_save_confirms_and_cancels_write_nothing() {
     assert_ne!(s.stored(), before);
 }
 
+/// A RESET whose save had to be forced (the device was never quiet) still says it reset.
+#[test]
+fn a_forced_reset_says_reset_and_saved_with_gaps() {
+    let mut s = Saving::new();
+    for _ in 0..150 {
+        s.frame();
+    }
+    unsafe { live_param_set(&mut *s.ui.rig.live, LIVE_PARAM_CUTOFF, 1500) };
+    s.ui.rig.tick();
+    s.frame();
+    s.ticks_for_the_debounce();
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_RESET);
+    s.frame();
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.frame();
+    assert_eq!(s.store_popup(), "SAVE RESETS");
+    s.ui.press(SAVE);
+    // The save is past SETTINGS_FORCE_MS: forced.
+    s.set.forcing = 1;
+    let mut toast = None;
+    for _ in 0..40 {
+        s.frame();
+        toast = s.ui.toast();
+        if toast.is_some() {
+            break;
+        }
+    }
+    assert_eq!(toast.as_deref(), Some("RESET AND SAVED (GAPS)"));
+}
+
 /// Ergonomics review E01 (M2 review 1.5): a fast spin of ALGORITHM on a foreign store, in one
 /// event or in many, arms the format and never formats; nor does SAVE away from STORE.
 #[test]

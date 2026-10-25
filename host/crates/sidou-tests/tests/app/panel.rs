@@ -272,6 +272,94 @@ fn master_follows_the_pot_with_hysteresis() {
     assert_eq!(p.rig.live.master, 1023);
 }
 
+unsafe extern "C" fn count_hook(ctx: *mut std::ffi::c_void) {
+    unsafe { *ctx.cast::<u32>() += 1 };
+}
+
+/// A panel whose MASTER hook (the views' popup ask) counts into `asks`.
+fn counted(asks: &mut u32) -> Panel {
+    let mut p = Panel::new();
+    p.p.master_hook = Some(count_hook);
+    p.p.master_ctx = (asks as *mut u32).cast();
+    p
+}
+
+/// A reading of a pot resting at `at` with up to `n` counts of noise either way (an LCG).
+fn noisy(seed: &mut u32, at: i32, n: i32) -> i32 {
+    *seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+    (at + (*seed >> 16) as i32 % (2 * n + 1) - n).clamp(0, 1023)
+}
+
+#[test]
+fn a_noisy_pot_at_rest_never_asks_for_the_popup() {
+    for at in [0, 3, 512, 1020, 1023] {
+        for n in [1, 2, 4, 6, 7] {
+            let mut asks = 0u32;
+            let mut p = counted(&mut asks);
+            p.master(at);
+            let first = asks;
+            let mut seed = (at * 31 + n) as u32;
+            for _ in 0..20_000 {
+                p.master(noisy(&mut seed, at, n));
+            }
+            assert_eq!(asks, first, "pot at {at}, noise +-{n}");
+            let g = i32::from(p.rig.live.master);
+            assert!(
+                (g - at).abs() <= n + PANEL_MASTER_END as i32,
+                "gain {g} at {at}"
+            );
+            if at <= 3 || at >= 1020 {
+                assert!(g == 0 || g == 1023, "an end holds through the noise: {g}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_real_turn_asks_and_its_gain_reaches_the_target() {
+    // slow (a count a tick), fast (40 a tick), to either end and back to the middle
+    for (step, path) in [(1, [512, 0, 1023, 600]), (40, [512, 1023, 0, 300])] {
+        let mut asks = 0u32;
+        let mut p = counted(&mut asks);
+        let mut seed = 7u32;
+        let mut at = path[0];
+        p.master(at);
+        for &to in &path[1..] {
+            let before = asks;
+            while at != to {
+                at += (to - at).clamp(-step, step);
+                p.master(noisy(&mut seed, at, 2));
+            }
+            for _ in 0..5 {
+                p.master(at); // the turn ends: the reading settles
+            }
+            assert!(
+                asks > before,
+                "a turn to {to} (step {step}) asks for the popup"
+            );
+            let g = i32::from(p.rig.live.master);
+            if to == 0 || to == 1023 {
+                assert_eq!(g, to, "an end lands exactly");
+            } else {
+                assert!(
+                    (g - to).abs() < PANEL_MASTER_HYSTERESIS as i32,
+                    "gain {g} for {to}"
+                );
+            }
+            // the popup asked again for the landed value, inside the follow window
+            assert!(p.p.master_follow > 0, "the popup follows the turn to {to}");
+        }
+        for _ in 0..PANEL_MASTER_FOLLOW {
+            p.master(at);
+        }
+        let rest = asks;
+        for _ in 0..5_000 {
+            p.master(noisy(&mut seed, at, 6));
+        }
+        assert_eq!(asks, rest, "at rest after the turn: no popup");
+    }
+}
+
 #[test]
 fn leds_show_held_keys_the_octave_and_the_8580() {
     let mut p = Panel::new();

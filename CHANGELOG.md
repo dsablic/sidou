@@ -99,6 +99,8 @@ All notable changes are documented here. The format follows
   10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
 
 ### Fixed
+- **A forced RESET says it reset.** When RESET's save had to be forced (the device was never
+  quiet), the toast said SAVED (GAPS); it now says RESET AND SAVED (GAPS).
 - **A NEW song's bass differs from its lead.** Both were the same pulse at the same pitch. The
   bass (instrument 02) now plays an octave down (WAVE right column `74`, relative note -12) with
   a thinner pulse, a quarter width (`$400`, its own PULSE row 03 after the kit's); the lead keeps
@@ -120,6 +122,12 @@ All notable changes are documented here. The format follows
   meanwhile released the note right after its first call, so the first tap after PRESETS (or any
   audition of a new instrument) gave a click of its first wave step instead of the instrument,
   and the drums all sounded alike. The note now sounds as long as the key was held.
+- **The MASTER popup stays away while the pot is untouched.** The pot's reading wanders by
+  more than the 4 counts (0.4 % of the travel) that moved the volume, so the VOLUME popup came
+  up on its own. The reading is now the mean of four conversions, the popup needs a turn of
+  16 counts (1.6 %) from where the pot rested, and the last 8 counts at either end read as
+  that end (0 % and 100 % hold through the noise). The volume still follows a small turn,
+  without the popup; once a turn shows it, the popup follows the turn to its last value.
 - **PLAY is quiet until the song's first note.** The first PLAY after power-on gave a thud
   (a DC bump that died away over about 150 ms) before the music: chip B, which renders only
   while in use, played the power-on release of its envelopes only when the keys moved to it, at

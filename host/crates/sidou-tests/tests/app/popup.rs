@@ -441,7 +441,10 @@ fn the_master_pot_asks_for_the_volume_when_it_moves() {
         .map(|i| u32::from(ui.g.src[BAR * COLS + 3 + i]) - FONT_H0)
         .sum();
     assert_eq!(bar, px);
-    unsafe { panel_master(&mut *ui.p, &mut *ui.rig.live, 0) };
+    // the pot at rest at 0 for a few ticks: the next ask waits PANEL_MASTER_ASK_GAP ticks
+    for _ in 0..PANEL_MASTER_ASK_GAP {
+        unsafe { panel_master(&mut *ui.p, &mut *ui.rig.live, 0) };
+    }
     ui.frame();
     assert_eq!(says(&ui), ("VOLUME".to_owned(), "0%".to_owned()));
 }
@@ -1041,4 +1044,58 @@ fn a_toast_closes_an_open_popup() {
         ui.frame();
     }
     assert!(ui.row(ROW + 4).trim_end().chars().all(|c| c != '%'));
+}
+
+/// The device's boot and a turn, a tick at a time (LIVE_TICK_HZ, four ticks a 40 ms frame): the
+/// pot read at power-on before the views hook it (the first reading odd or not), resting with
+/// noise, then a slow turn mid-travel whose landed changes come every frame. Each frame asked
+/// for the popup and the screen opens it only in a frame without an ask (screen.c popup_step):
+/// on the FM-1 the popup stayed shut until an end, where the reading stops changing.
+#[test]
+fn a_turn_after_boot_opens_the_master_popup_mid_travel() {
+    for (boot, noise) in [(500, 0), (0, 3), (1023, 3), (500, 10), (500, 20)] {
+        let mut ui = Ui::without_cards();
+        let mut seed = 1u32;
+        let mut rnd = |n: i32| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            (seed >> 16) as i32 % (2 * n + 1) - n
+        };
+        let mut tick = |ui: &mut Ui, at: i32, n: i32| unsafe {
+            panel_master(&mut *ui.p, &mut *ui.rig.live, (at + rnd(n)).clamp(0, 1023));
+        };
+        tick(&mut ui, boot, 0); // main.c's reading at power-on: no hook yet
+        ui.settle();
+        unsafe { views_set_panel(&mut *ui.v, &mut *ui.p) };
+        for _ in 0..300 {
+            tick(&mut ui, 500, noise);
+            ui.frame();
+        }
+        ui.popup_gone();
+        let mut at = 500;
+        let mut opened = None;
+        for f in 0..100 {
+            for _ in 0..4 {
+                at -= 1;
+                tick(&mut ui, at, noise);
+            }
+            ui.frame();
+            if opened.is_none() && rows(&ui) == SCREEN_POPUP_ROWS as usize {
+                opened = Some(f);
+            }
+        }
+        let f = opened.unwrap_or_else(|| panic!("boot {boot}, noise {noise}: no popup mid-travel"));
+        assert!(
+            f < 15,
+            "boot {boot}, noise {noise}: the popup opened only at frame {f}"
+        );
+        for _ in 0..PANEL_MASTER_ASK_GAP {
+            tick(&mut ui, at, 0);
+        }
+        ui.frame();
+        assert_eq!(
+            says(&ui).1,
+            format!("{}%", ui.live().volume),
+            "it ends on the value"
+        );
+    }
 }
