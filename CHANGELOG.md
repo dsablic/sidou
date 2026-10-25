@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-25
+
 ### Added
 - **`.sid` playback:** PSID tunes (one or two SID chips, PAL or NTSC, up to 65,536 bytes) play on
   the FM-1 from the store. SIDOU's own 6502 runs a frame ahead of the audio in the main loop and

@@ -70,8 +70,8 @@ flash.
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
 
-1. Download the `.fwsc` file (for example `sidou-0.4.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou-0.4.0.fwsc`). The unit then shows
+1. Download the `.fwsc` file (for example `sidou-0.5.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-0.5.0.fwsc`). The unit then shows
    up on USB as "SIDOU FM-1", and later versions install over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
 4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
@@ -161,18 +161,21 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 
 ## Status and roadmap
 
-- **v0.4.0** is released (2026-10-25, [release notes](https://github.com/dsablic/sidou/releases/tag/v0.4.0),
-  [CHANGELOG.md](CHANGELOG.md)): a SID drum kit and digi drums, generative STEP (chance per
-  step, MUTATE, DICE), recording over the USB cable, the button LEDs in two levels, an ARP
-  helper in TABLE, SETTINGS → RESET, and songs to MIDI on the site.
+- **v0.5.0** is released (2026-10-25, [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0),
+  [CHANGELOG.md](CHANGELOG.md)): `.sid` playback. SIDOU's own 6502 plays PSID tunes on the chips,
+  each write timed to its cycle, from the store (SIDS and NOW PLAYING); tunes go on over SysEx,
+  with an openly licensed starter pack; STATUS, now at 2× on three pages, shows the 6502's share
+  of the CPU.
+- **v0.4.0** (2026-10-25): a SID drum kit and digi drums, generative STEP (chance per step,
+  MUTATE, DICE), recording over the USB cable, the button LEDs in two levels, an ARP helper in
+  TABLE, SETTINGS → RESET, and songs to MIDI on the site.
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: v0.5.0, `.sid` playback** (M3): built and tested in the emulator, in the
-  [CHANGELOG](CHANGELOG.md)'s Unreleased list; it waits for its first run on a real FM-1 (the
-  [flash-day checklist](docs/hardware-test.md)), then the release.
+- **Next: LAB**, a view for shaping one sound and keeping it, made for experimenting on the go
+  ([docs/TODO.md](docs/TODO.md)); then DICE's settings and more render parts for dense `.sid` players.
 
-Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views and REC have run on a real unit; the first-run tour is still to be checked there. See the
+Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the
 [design document](docs/plans/2026-10-14-sidou-design.md).
 
