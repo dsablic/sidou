@@ -134,6 +134,9 @@ _Static_assert(0x18u < REG_RING_CHIP_B && (0x18u | REG_RING_CHIP_B) < 0x80u,
 _Static_assert(LIVE_REG_RESET == 0x80u && LIVE_REG_GATE_RESET == 0x81u &&
                    LIVE_REG_CHAR_TICK == 0x87u && REG_RING_CHARACTER == 0x88u,
                "chip A's pseudo-registers are 0x80..0x88");
+_Static_assert(REG_RING_MUTE == 0x89u && REG_RING_MUTE < LIVE_REG_EXPERT_FIRST &&
+                   !REG_RING_IS_SLOT(REG_RING_MUTE | REG_RING_CHIP_B),
+               "the mute, 0x89 (chip B's 0xC9), is apart from the expert's and the slots'");
 _Static_assert(!REG_RING_IS_SLOT(REG_RING_CHARACTER) &&
                    !REG_RING_IS_SLOT(REG_RING_CHARACTER | REG_RING_CHIP_B) &&
                    !REG_RING_IS_SLOT(LIVE_REG_RESET | REG_RING_CHIP_B),
@@ -224,16 +227,19 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
         sid_set_gate_reset(s, e.value);
     } else if (bare == REG_RING_CHARACTER) {
         if (e.value < 2u) {
-            sid_character_commit(s, &c->stage[x][e.value]);
+            sid_character_commit_later(s, &c->stage[x][e.value]);
             COMPILER_FENCE(); /* the stage is read before the producer may write it again */
             c->stage_pending[x][e.value] = 0;
         }
         c->ticks[x]++;
+    } else if (bare == REG_RING_MUTE) {
+        sid_set_mute(s, e.value);
     } else if (bare == LIVE_REG_RESET) {
         if (c->spare_ready && c->spare_for == x && c->spare_model == e.value) {
             /* the spare (third), written out: apply runs from SRAM and calls nothing in flash */
             c->active[x] = (uint8_t)(3u - c->active[0] - c->active[1]);
             c->spare_ready = 0;
+            sid_set_mute(&c->chip[c->active[x]], s->mute); /* the chip's mute, not the sid's */
         } else {
             c->lost_resets++;
         }

@@ -8,16 +8,18 @@
 #include "chip_spread.h"
 #include "font.h"
 
-/* The status screen's version: right-aligned to end before this column. */
-#define VERSION_END_COL 28u
-/* STATUS: the parameters' rows (two each from STATUS_PARAM_ROW), the notes', the effects' header and
- * the prompt's; the bars after their number at 2x. LOOK_NOTES is where the notes are in `look`. */
-#define STATUS_PARAM_ROW 10u
-#define STATUS_NOTES_ROW 19u
-#define STATUS_SLOTS_ROW 21u
-#define STATUS_READY_ROW 27u
-#define STATUS_BAR_COL 18u
-#define STATUS_BAR_CELLS 10u
+/* The status screen's version: right-aligned to end before this column (row 2, after SIDOU). */
+#define VERSION_END_COL 21u
+/* STATUS: three pages, SELECT turns them, all at 2x with a line every STATUS_LINE_ROWS rows from
+ * STATUS_ROW (sid_view.h): 1 the sound's knobs (each with its bar, STATUS_KNOB_ROWS apart) or,
+ * while a .sid tune is loaded, the 6502's rows; 2 the chip(s), preset, octave and the notes held;
+ * 3 the effect slots. The prompt is 1x on STATUS_READY_ROW. LOOK_NOTES is where the notes are in
+ * `look`. */
+#define STATUS_PAGES 3u
+#define STATUS_ROW 5u
+#define STATUS_KNOB_ROWS 6u
+#define STATUS_READY_ROW 28u
+#define STATUS_PAGE_COL 22u
 #define LOOK_NOTES 13u
 /* The menu: large text over the whole width, 14 characters a line with a cell of margin either
  * side. The title bar in rows 0-2 (its text in rows 1-2: the position, and an arrow up and down
@@ -205,38 +207,143 @@ static int looks_changed(const views* v, uint32_t blink) {
 
 static int status_changed(screen* s, void* state) {
     (void)s;
-    return looks_changed(state, 0);
+    views* v = state;
+    return looks_changed(v, 0) || sid_view_status_look(&v->sids, v->tune_drawn, 0);
 }
 
-/* The notes held, on the NOTES row from column 9. */
+/* The row of the notes held (page 2): after the chip(s) and the preset, a label's line above. */
+static uint32_t status_notes_row(const live* l) {
+    return STATUS_ROW + (l->two_chips ? 7u : 5u) * STATUS_LINE_ROWS;
+}
+
+/* The notes held, 2x on the notes' row from column 2: a name and its octave, a cell between. */
 static void status_notes(grid* g, uint8_t attr, const live* l) {
-    grid_fill(g, 9, STATUS_NOTES_ROW, GRID_COLS - 10u, 1, ' ', attr);
-    uint32_t col = 9;
+    uint32_t row = status_notes_row(l);
+    grid_fill(g, 2, row, GRID_COLS - 4u, 2, ' ', attr);
+    uint32_t col = 2;
     for (int k = 0; k < LIVE_VOICES; k++) {
         uint8_t n = l->voice[k].note;
         if (!l->voice[k].gate || n == LIVE_NO_NOTE) {
             continue;
         }
-        const char* name = NOTE_NAMES[n % 12u];
-        put(g, attr, STATUS_NOTES_ROW, col, name);
-        uint32_t oc = col + (name[1] ? 2u : 1u);
-        if (n < 12u) {
-            put(g, attr, STATUS_NOTES_ROW, oc, "-1");
-        } else {
-            widget_number(g, oc, STATUS_NOTES_ROW, 1, n / 12 - 1, 0, attr);
+        char t[5];
+        uint32_t len = 0;
+        for (const char* c = NOTE_NAMES[n % 12u]; *c; c++) {
+            t[len++] = *c;
         }
-        col += 5u;
+        if (n < 12u) {
+            t[len++] = '-';
+            t[len++] = '1';
+        } else {
+            t[len++] = (char)('0' + n / 12 - 1);
+        }
+        t[len] = 0;
+        if (col + 2u * len > GRID_COLS - 2u) {
+            break;
+        }
+        grid_text_big(g, col, row, 2, t, attr);
+        col += 2u * len + 2u;
     }
 }
 
-/* One parameter of the sound, two rows: its name small, its number at 2x, its bar. */
+/* A line at 2x: the label from column 2, the value ending at column 28 (sid_view.c's too). */
+static void status_line(grid* g, uint8_t lbl, uint8_t val, uint32_t row, const char* label,
+                        const char* value) {
+    grid_text_big(g, 2, row, 2, label, lbl);
+    grid_text_big(g, GRID_COLS - 2u - 2u * length(value), row, 2, value, val);
+}
+
+/* One knob of the sound: its name and number, its bar under them. */
 static void status_param(grid* g, const theme* th, uint32_t row, const char* label, uint32_t value,
                          uint32_t max, uint8_t color) {
     char num[6];
     number_text(num, value);
-    put(g, THEME_ATTR(th, label), row + 1u, 2, label);
-    grid_text_big(g, 9, row, 2, num, THEME_ATTR(th, value));
-    widget_bar(g, STATUS_BAR_COL, row + 1u, STATUS_BAR_CELLS, value, max, GRID_ATTR(color, th->dim));
+    status_line(g, THEME_ATTR(th, label), THEME_ATTR(th, value), row, label, num);
+    widget_bar(g, 2, row + 2u, GRID_COLS - 4u, value, max, GRID_ATTR(color, th->dim));
+}
+
+/* A chip's line: CHIP (A, B) with KEYS when it is the keys', its profile under it. */
+static void status_chip(grid* g, const theme* th, uint32_t row, const char* label, const char* name,
+                        int keys) {
+    status_line(g, THEME_ATTR(th, label), THEME_ATTR(th, hot), row, label, keys ? "KEYS" : "");
+    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, name, THEME_ATTR(th, value));
+}
+
+/* Page 2: the chip(s) (with two chips both, KEYS marking the keys'), the preset and octave, the notes. */
+static void status_page_setup(grid* g, const theme* th, const live* l) {
+    const uint8_t a = THEME_ATTR(th, value);
+    const uint8_t lbl = THEME_ATTR(th, label);
+    uint32_t row = STATUS_ROW;
+    if (l->two_chips) {
+        /* Both chips' profiles (their model in the name); KEYS marks the one the keys play
+         * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
+        for (uint32_t x = 0; x < 2u; x++, row += 2u * STATUS_LINE_ROWS) {
+            uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
+            char name[SCREEN_POPUP_TEXT] = "--"; /* not made yet */
+            if (sid_chip_profile_get(id)) {
+                profile_label(name, id);
+            }
+            status_chip(g, th, row, x ? "CHIP B" : "CHIP A", name, x == l->keys_chip);
+        }
+    } else {
+        char name[SCREEN_POPUP_TEXT];
+        profile_label(name, l->profile_req);
+        status_chip(g, th, row, "CHIP", name, 0);
+        row += 2u * STATUS_LINE_ROWS;
+    }
+    const live_preset* p = live_preset_get(l->preset);
+    char oct[3];
+    octave_text(oct, l->octave);
+    grid_text_big(g, 2, row, 2, "PRESET", lbl);
+    grid_text_big(g, 16, row, 2, "OCT", lbl);
+    grid_text_big(g, 24, row, 2, oct, a);
+    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, p ? p->name : "?", a);
+    row += 2u * STATUS_LINE_ROWS;
+    grid_text_big(g, 2, row, 2, "NOTES", lbl);
+    status_notes(g, a, l);
+}
+
+/* Page 3: the effect slots: name (> marks the selected one) and Mix, the algorithm under it, then
+ * the selected slot's Amount, A and B. */
+static void status_page_effects(grid* g, const theme* th, const live* l) {
+    const uint8_t a = THEME_ATTR(th, value);
+    const uint8_t lbl = THEME_ATTR(th, label);
+    char num[6];
+    uint32_t row = STATUS_ROW;
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++, row += 2u * STATUS_LINE_ROWS) {
+        if (k == l->fx_select) {
+            grid_text_big(g, 2, row, 2, ">", THEME_ATTR(th, hot));
+        }
+        grid_text_big(g, 4, row, 2, SLOT_NAMES[k], lbl);
+        number_text(num, l->slot[k][LIVE_SLOT_MIX]);
+        grid_text_big(g, GRID_COLS - 2u - 2u * length(num), row, 2, num, a);
+        grid_text_big(g, 14, row, 2, "MIX", lbl);
+        grid_text_big(g, 4, row + STATUS_LINE_ROWS, 2,
+                      views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]), a);
+    }
+    const uint8_t* sel = l->slot[l->fx_select];
+    grid_text_big(g, 2, row, 2, SLOT_NAMES[l->fx_select], lbl);
+    grid_text_big(g, 12, row, 2, "AMT", lbl);
+    number_text(num, sel[LIVE_SLOT_AMOUNT]);
+    grid_text_big(g, GRID_COLS - 2u - 2u * length(num), row, 2, num, a);
+    row += STATUS_LINE_ROWS;
+    number_text(num, sel[LIVE_SLOT_A]);
+    grid_text_big(g, 2, row, 2, "A", lbl);
+    grid_text_big(g, 6, row, 2, num, a);
+    number_text(num, sel[LIVE_SLOT_B]);
+    grid_text_big(g, 14, row, 2, "B", lbl);
+    grid_text_big(g, 18, row, 2, num, a);
+}
+
+/* SELECT turns the page, either way round the three. */
+static int status_input(screen* s, void* state, const screen_event* e) {
+    views* v = state;
+    if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_SELECT) {
+        return 0;
+    }
+    v->status_page = (uint8_t)((v->status_page + (e->steps > 0 ? 1u : STATUS_PAGES - 1u)) % STATUS_PAGES);
+    screen_redraw(s);
+    return 1;
 }
 
 static void status_compose(screen* s, void* state, grid* g) {
@@ -245,6 +352,7 @@ static void status_compose(screen* s, void* state, grid* g) {
     const theme* th = theme_get(l->theme);
     const uint8_t a = THEME_ATTR(th, value);
     const uint8_t lbl = THEME_ATTR(th, label);
+    const uint32_t page = v->status_page;
     /* Only the notes changed: their row alone (a held key costs a row, not the screen). */
     uint8_t now[VIEWS_LOOK];
     look(v, 0, now);
@@ -255,8 +363,17 @@ static void status_compose(screen* s, void* state, grid* g) {
     for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
         v->drawn[i] = now[i];
     }
-    if (!other && !s->redraw) {
-        status_notes(g, a, l);
+    /* A .sid tune loaded: the 6502's rows in the knobs' place (their numbers alone when only
+     * they moved; the screen when the tune comes or goes). */
+    int tune_was = v->tune_drawn[0] != SID_T_NONE;
+    int tune_moved = sid_view_status_look(&v->sids, v->tune_drawn, 1);
+    int tune = v->tune_drawn[0] != SID_T_NONE;
+    if (!other && !s->redraw && tune == tune_was) {
+        if (page == 1u) {
+            status_notes(g, a, l);
+        } else if (page == 0u && tune && tune_moved) {
+            sid_view_status_draw(&v->sids, g, th, STATUS_ROW);
+        }
         return;
     }
     /* The ring of full blocks in the dim colour, and the blank every view shares inside it: each
@@ -269,70 +386,30 @@ static void status_compose(screen* s, void* state, grid* g) {
     grid_fill(g, 1, 1, GRID_COLS - 2u, GRID_ROWS - 2u, ' ', a);
     grid_text_big(g, 2, 2, 2, "SIDOU", THEME_ATTR(th, hot));
     put(g, lbl, 2, VERSION_END_COL - length(v->version), v->version);
+    const char pages[4] = {(char)('1' + page), '/', (char)('0' + STATUS_PAGES), 0};
+    grid_text_big(g, STATUS_PAGE_COL, 2, 2, pages, a);
 
-    uint32_t top = 5;
-    if (l->two_chips) {
-        /* Both chips' profiles (their model in the name); KEYS marks the one the keys play
-         * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
-        for (uint32_t x = 0; x < 2u; x++, top++) {
-            uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
-            char name[SCREEN_POPUP_TEXT] = "--"; /* not made yet */
-            if (sid_chip_profile_get(id)) {
-                profile_label(name, id);
-            }
-            put(g, lbl, top, 2, x ? "CHIP B" : "CHIP A");
-            put(g, a, top, 9, name);
-            if (x == l->keys_chip) {
-                put(g, THEME_ATTR(th, hot), top, 22, "KEYS");
-            }
+    if (page == 0u) {
+        if (tune) {
+            sid_view_status_draw(&v->sids, g, th, STATUS_ROW);
+        } else {
+            status_param(g, th, STATUS_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
+            status_param(g, th, STATUS_ROW + STATUS_KNOB_ROWS, "RESO", l->resonance,
+                         LIVE_RESONANCE_MAX, th->knob[1]);
+            status_param(g, th, STATUS_ROW + 2u * STATUS_KNOB_ROWS, "PULSE", l->pulse_width,
+                         LIVE_PULSE_WIDTH_MAX, th->knob[2]);
+            status_param(g, th, STATUS_ROW + 3u * STATUS_KNOB_ROWS, "VOLUME", l->volume, 100,
+                         th->value);
         }
+    } else if (page == 1u) {
+        status_page_setup(g, th, l);
     } else {
-        char name[SCREEN_POPUP_TEXT];
-        profile_label(name, l->profile_req);
-        put(g, lbl, 5, 2, "CHIP");
-        put(g, a, 5, 9, name);
-        top = 6;
+        status_page_effects(g, th, l);
     }
-    put(g, lbl, top, 2, "PRESET");
-    const live_preset* p = live_preset_get(l->preset);
-    put(g, a, top, 9, p ? p->name : "?");
-    put(g, lbl, top + 1u, 2, "OCTAVE");
-    widget_number(g, 9, top + 1u, 2, l->octave, 1, a);
-
-    status_param(g, th, STATUS_PARAM_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
-    status_param(g, th, STATUS_PARAM_ROW + 2u, "RESO", l->resonance, LIVE_RESONANCE_MAX, th->knob[1]);
-    status_param(g, th, STATUS_PARAM_ROW + 4u, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX,
-                 th->knob[2]);
-    status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 100, th->value);
-
-    put(g, lbl, STATUS_NOTES_ROW, 2, "NOTES");
-    status_notes(g, a, l);
-
-    /* The effect slots: '>' marks the one EDIT + K1-K4 and ENV act on (SCL moves it). */
-    put(g, lbl, STATUS_SLOTS_ROW, 2, "EFFECTS");
-    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        uint32_t row = STATUS_SLOTS_ROW + 1u + k;
-        if (k == l->fx_select) {
-            put(g, THEME_ATTR(th, hot), row, 2, ">");
-        }
-        put(g, lbl, row, 3, SLOT_NAMES[k]);
-        put(g, a, row, 8, views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
-        put(g, lbl, row, 19, "MIX");
-        widget_number(g, 23, row, 3, l->slot[k][LIVE_SLOT_MIX], 0, a);
-    }
-    const uint8_t* sel = l->slot[l->fx_select];
-    uint32_t arow = STATUS_SLOTS_ROW + 1u + LIVE_SLOTS;
-    put(g, lbl, arow, 3, "AMT");
-    widget_number(g, 7, arow, 3, sel[LIVE_SLOT_AMOUNT], 0, a);
-    put(g, lbl, arow, 12, "A");
-    widget_number(g, 14, arow, 3, sel[LIVE_SLOT_A], 0, a);
-    put(g, lbl, arow, 19, "B");
-    widget_number(g, 21, arow, 3, sel[LIVE_SLOT_B], 0, a);
-
     put(g, lbl, STATUS_READY_ROW, 2, "READY.");
 }
 
-const view views_status = {"STATUS", NULL, NULL, NULL, status_compose, status_changed};
+const view views_status = {"STATUS", NULL, NULL, status_input, status_compose, status_changed};
 
 /* ---- MENU ---- */
 
@@ -574,12 +651,40 @@ static void spread_turn(void* ctx, int32_t steps) {
     }
 }
 
+/* SID MODEL (app/settings.h): AUTO, a tune's chips as its header names them; KEYS, the keys'
+ * setup for every tune. */
+static void sid_model_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, !v->set ? "-" : v->set->sid_model ? "KEYS" : "AUTO", "");
+}
+
+/* Clockwise KEYS, counter-clockwise AUTO; from the next tune that loads. */
+static void sid_model_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    uint8_t to = (uint8_t)(steps > 0 ? SETTINGS_SID_KEYS : SETTINGS_SID_AUTO);
+    if (steps != 0 && v->set && v->set->sid_model != to) {
+        v->set->sid_model = to;
+        v->l->settings_dirty = 1;
+    }
+}
+
 static const view* shows(const views* v);
 
 /* While ABOUT's tune is the player's song (song_io about, until its close has read the user's
  * song back), the song views would edit ABOUT's tune and its close would lose the edits: they
  * do not open, and a toast says why. 1: refused. */
 static int song_refused(views* v) {
+    uint32_t tune = sid_view_state(&v->sids);
+    if (v->tune || tune != SID_T_NONE) {
+        if (tune == SID_T_STOPPED || tune == SID_T_FAILED || tune == SID_T_ENDING) {
+            /* a stopped tune gives way: the song comes back for the next press */
+            (void)v->sids.t->end(v->sids.t->ctx);
+            screen_toast(&v->s, "LOADING", SCREEN_TOAST_MS);
+        } else {
+            screen_toast(&v->s, "SID PLAYING: STOP TO EDIT", SCREEN_TOAST_MS);
+        }
+        return 1;
+    }
     if (!v->song.io || !v->song.io->about) {
         return 0;
     }
@@ -600,6 +705,7 @@ static void tracker_open(void* ctx, int32_t steps) {
 static void status_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
+    v->status_page = 0; /* opens on its first page, as a help card does */
     screen_push(&v->s, &views_status, v, SCREEN_WIPE_DOWN);
 }
 
@@ -1089,6 +1195,10 @@ const view views_song_menu_view = {"SONG", song_menu_enter, song_menu_exit, NULL
 static void song_open(void* ctx, int32_t steps) {
     (void)steps;
     views* v = ctx;
+    if (v->tune) {
+        (void)song_refused(v);
+        return;
+    }
     v->songs.page = SONG_MENU_ROOT;
     v->songs.cursor = 0;
     v->songs.direct = 0;
@@ -1099,6 +1209,10 @@ static void song_open(void* ctx, int32_t steps) {
 static void about_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
+    if (v->tune) {
+        (void)song_refused(v);
+        return;
+    }
     about_init(&v->about, v->version);
     v->about.io = v->song.io;
     v->about.silent = (uint8_t)(v->song.io && song_io_changed(v->song.io));
@@ -1106,6 +1220,12 @@ static void about_open(void* ctx, int32_t steps) {
         song_io_about(v->song.io, 1);
     }
     screen_push(&v->s, &about_view, &v->about, SCREEN_WIPE_DOWN);
+}
+
+static void sids_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    sid_view_open(&v->sids, &v->s);
 }
 
 static void midi_open(void* ctx, int32_t steps) {
@@ -1126,15 +1246,17 @@ static void settings_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
     {"SCENE", NULL, scene_open},           {"SONG", NULL, song_open},
-    {"PRE", preset_value, preset_turn},    {"OCTAVE", octave_value, octave_turn},
+    {"SIDS", NULL, sids_open},             {"PRE", preset_value, preset_turn},
+    {"OCTAVE", octave_value, octave_turn},
     {"SETTINGS", NULL, settings_open},     {"STATUS", NULL, status_open},
     {"MIDI", NULL, midi_open},             {"CHARSET", NULL, charset_open},
     {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_SCENE == 2u &&
-                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_PRESET == 4u && VIEWS_MENU_OCTAVE == 5u &&
-                   VIEWS_MENU_SETTINGS == 6u && VIEWS_MENU_STATUS == 7u &&
-                   VIEWS_MENU_MIDI == 8u && VIEWS_MENU_CHARSET == 9u && VIEWS_MENU_ABOUT == 10u,
+                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_SIDS == 4u && VIEWS_MENU_PRESET == 5u &&
+                   VIEWS_MENU_OCTAVE == 6u && VIEWS_MENU_SETTINGS == 7u &&
+                   VIEWS_MENU_STATUS == 8u && VIEWS_MENU_MIDI == 9u &&
+                   VIEWS_MENU_CHARSET == 10u && VIEWS_MENU_ABOUT == 11u,
                "the menu's items");
 /* SETTINGS: ROWS is TRACKER ROWS and REC REC QUANTISE; STORE's value (FOREIGN, FORMAT?, ERASE
  * 20; 123K, the kilobytes free) fits beside its name. The popup (below) says the whole names. */
@@ -1143,13 +1265,14 @@ static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
     {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
+    {"SID MODEL", sid_model_value, sid_model_turn},
     {"RESET", reset_value, reset_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
                    VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
                    VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u &&
-                   VIEWS_SETTINGS_RESET == 8u,
+                   VIEWS_SETTINGS_SID_MODEL == 8u && VIEWS_SETTINGS_RESET == 9u,
                "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1235,10 +1358,15 @@ static void big_menu_compose(screen* s, views* v, menu* m, const char* title, gr
         }
         head[n] = 0;
         append(head, sizeof head, pos);
-        /* the arrows from column 6, or after a longer title (SETTINGS) */
+        /* the arrows from column 6, or after a longer title (SETTINGS), where the position leaves
+         * room (SETTINGS' 10/10: none below it then) */
         uint32_t at = length(title) > 6u ? length(title) : 6u;
-        head[at] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
-        head[at + 1u] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
+        if (at < n) {
+            head[at] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
+        }
+        if (at + 1u < n) {
+            head[at + 1u] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
+        }
         grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head_attr);
         grid_text_big(g, 1, 1, 2, head, head_attr);
     }
@@ -1587,6 +1715,7 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[9] = v->setup.cursor;
     out[10] = v->setup.top;
     out[11] = v->format_arm;
+    out[12] = v->set ? v->set->sid_model : 0xffu;
 }
 
 /* As the menu's: SELECT moves, ALGORITHM changes the value; STORE's format is two steps (store_turn
@@ -1766,7 +1895,10 @@ static int global(void* ctx, const screen_event* e) {
         return 1;
     }
     if (e->id == PANEL_BTN_PLAY) {
-        song_view_play(&v->song, (int)(e->held >> PANEL_BTN_EDIT & 1u));
+        int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
+        if (!sid_view_play(&v->sids, edit, sid_view_is(shows(v)))) { /* a .sid tune's, first */
+            song_view_play(&v->song, edit);
+        }
         return 1;
     }
     if (e->id == PANEL_BTN_REC) {
@@ -1808,6 +1940,15 @@ void views_set_song(views* v, const song_transport* t) {
     if (v->pages.pending)
         return;
     song_view_set_transport(&v->song, t);
+}
+
+void views_tune(views* v, int on) {
+    v->tune = (uint8_t)(on != 0);
+    song_view_away(&v->song, on);
+}
+
+void views_set_tune(views* v, const sid_transport* t) {
+    sid_view_set_transport(&v->sids, t);
 }
 
 static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
@@ -1904,6 +2045,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->tour = 0;
     v->toast_held = 0;
     v->song_last = NULL;
+    v->tune = 0;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
@@ -1937,6 +2079,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->songs.scanning = 0;
     v->song.editor = &v->editor;
     song_edit_init(&v->editor, NULL);
+    sid_view_init(&v->sids, &v->song);
+    memset(v->tune_drawn, 0, sizeof v->tune_drawn);
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
     screen_popup_source(&v->s, &v->popup, popup_text, v);
@@ -1952,6 +2096,7 @@ void views_learn(views* v, midi_learn* ml) {
 
 void views_settings(views* v, settings* set) {
     v->set = set;
+    v->sids.st = set ? set->st : NULL;
     v->users.st = set ? set->st : NULL;
     user_profiles_load(&v->users);
 }
@@ -2045,6 +2190,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
     }
+    if (from == &sid_view_browser && sid_view_home(&v->sids)) {
+        return; /* the question cancelled */
+    }
     if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
         return; /* out of the ARP helper, back to the table */
     }
@@ -2086,6 +2234,12 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     }
     if (top == &about_view) {
         return HELP_CARD_ABOUT;
+    }
+    if (top == &sid_view_browser) {
+        return v->sids.asking ? HELP_CARD_UNSAVED : HELP_CARD_SIDS;
+    }
+    if (top == &sid_view_playing) {
+        return HELP_CARD_PLAYING;
     }
     if (top == &views_charset) {
         return HELP_CARD_CHARSET;
@@ -2516,6 +2670,14 @@ static void save(views* v) {
     }
     if (shows(v) == &views_song_menu_view) {
         song_menu_ok(v); /* the page's OK: the highlighted item, SAVE AS's name */
+        return;
+    }
+    if (shows(v) == &sid_view_browser) {
+        /* the page's OK, or the question's SAVE: an unnamed song first through SAVE AS */
+        if (sid_view_save(&v->sids, &v->s) == SID_VIEW_SAVE_AS) {
+            song_name(v, 1);
+            screen_push(&v->s, &views_song_menu_view, v, SCREEN_WIPE_DOWN);
+        }
         return;
     }
     if (shows(v) == &song_pages_table_view && v->pages.arp) {
@@ -2957,6 +3119,9 @@ void views_frame(views* v, uint32_t now_ms) {
         }
     }
     toast_hold(v);
+    if (v->sids.saving) {
+        sid_view_frame(&v->sids, &v->s); /* the question's song saved: the tune */
+    }
     v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);
@@ -2989,7 +3154,7 @@ void views_update(views* v, uint32_t step, int32_t code) {
 }
 
 /* 1 while a question waits for SAVE: MIDI learn's clear-all, the song menu's confirmation, the
- * SETTINGS store's format once armed. */
+ * SIDS browser's SONG NOT SAVED, the SETTINGS store's format once armed. */
 static int save_asked(const views* v) {
     if (learn_view_is_open(&v->learn)) {
         return v->learn.ml && v->learn.ml->state == MIDI_LEARN_CONFIRM;
@@ -2997,6 +3162,9 @@ static int save_asked(const views* v) {
     const view* top = shows(v);
     if (top == &views_song_menu_view) {
         return v->songs.page == SONG_MENU_CONFIRM;
+    }
+    if (top == &sid_view_browser) {
+        return v->sids.asking; /* SONG NOT SAVED: SAVE saves it */
     }
     return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
 }

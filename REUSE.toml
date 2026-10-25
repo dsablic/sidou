@@ -39,6 +39,21 @@ path = ["web/songmidi-fixtures/*.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# The starter pack (assets/starter, LICENSING.md "The starter pack"): the .sid tunes, written by
+# host/crates/sidou-tests/tests/starter.rs from the .sng in assets/songs (SIDOU's, GPL-3.0-or-later)
+# and in third_party/goattracker2/examples (Cadaver's, GPL-2.0-or-later), each with
+# GoatTracker's playroutine (LicenseRef-GoatTracker-Playroutine, "use it, or song binaries
+# created from it freely for any purpose"). Each tune's .md names its licence.
+[[annotations]]
+path = ["assets/starter/chrome-comet.sid", "assets/starter/iron-rite.sid", "assets/starter/neon-highway.sid", "assets/starter/paper-lanterns.sid", "assets/starter/sidou-loop.sid"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later AND LicenseRef-GoatTracker-Playroutine"
+
+[[annotations]]
+path = ["assets/starter/sanction.sid", "assets/starter/consultant.sid", "assets/starter/dojo.sid", "assets/starter/transylvanian.sid", "assets/starter/unleash.sid", "assets/starter/2xtest.sid"]
+SPDX-FileCopyrightText = ["Cadaver (Lasse Öörni): the song (its header and examples/goatcompo.txt)", "Lasse Öörni: the playroutine"]
+SPDX-License-Identifier = "GPL-2.0-or-later AND LicenseRef-GoatTracker-Playroutine"
+
 # The look-and-feel prototypes (self-contained HTML pages made for SIDOU):
 # reference art and code for M2's STEP/TRACKER views and SCENE pieces.
 [[annotations]]
@@ -90,6 +105,13 @@ path = ["third_party/6502-tests/6502_functional_test.bin", "third_party/6502-tes
 SPDX-FileCopyrightText = "2012-2015 Klaus Dormann"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# A subset of Tom Harte's SingleStepTests (6502 v1), test data only, in SIDOU's binary
+# encoding (third_party/6502-tests/VENDORED.md).
+[[annotations]]
+path = ["third_party/6502-tests/harte/*.bin"]
+SPDX-FileCopyrightText = "Tom Harte and SingleStepTests' contributors"
+SPDX-License-Identifier = "MIT"
+
 # The README's screens montage: SIDOU's own LCD goldens (tests/golden/lcd/), scaled 2x and
 # tiled by a script, so it is SIDOU's own output.
 [[annotations]]
@@ -109,3 +131,19 @@ SPDX-License-Identifier = "OFL-1.1"
 path = ["docs/media/videos/*.webp", "tools/videos/videos.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# floooh/chips' m6502.h, vendored unmodified for the PSID oracle, test-only
+# (third_party/chips/VENDORED.md); its notice is in its header comment.
+[[annotations]]
+path = ["third_party/chips/m6502.h"]
+SPDX-FileCopyrightText = "2018 Andre Weissflog"
+SPDX-License-Identifier = "Zlib"
+
+# FM-1 SID's PSID player, vendored unmodified for the PSID oracle, test-only
+# (third_party/fm1-sid-player/VENDORED.md): each file carries its SPDX-License-Identifier;
+# the copyright line is fm1-emu's LICENSE's.
+[[annotations]]
+path = ["third_party/fm1-sid-player/psid.c", "third_party/fm1-sid-player/psid.h", "third_party/fm1-sid-player/psidlog.c"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Joakim Eriksson"
+SPDX-License-Identifier = "BSD-2-Clause"

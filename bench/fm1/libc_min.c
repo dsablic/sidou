@@ -18,3 +18,15 @@ void* memcpy(void* dst, const void* src, size_t n) {
     }
     return dst;
 }
+
+/* psid_parse's magic (the 6502 bench's mode 5 parses its tune). */
+int memcmp(const void* a, const void* b, size_t n) {
+    const unsigned char* x = a;
+    const unsigned char* y = b;
+    for (; n--; x++, y++) {
+        if (*x != *y) {
+            return *x - *y;
+        }
+    }
+    return 0;
+}

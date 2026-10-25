@@ -71,6 +71,7 @@ SECTIONS
         *(.text.render_6581 .text.render_8580)     /* sid.c, from sid_render_tap; and with */
         *(.text.render_6581_bleed .text.render_8580_bleed)  /* the bleed (sid.h) */
         *(.text.sid_set_gate_reset)                 /* sid.c, from reg_ring_drain */
+        *(.text.sid_advance)                        /* sid.c: M3's stamped writes (psid_ctl) */
         *(.text.sid_read .text.read_osc3 .text.clock_voices .text.fold_owed)    /* sid.c */
         *(.text.sid_osc_advance_slow .text.sid_osc_cycle .text.sid_osc_run_combined)   /* sid_osc.h */
         *(.text.sid_osc_bulk_commit .text.sid_osc_bulk_limit .text.sid_osc_quiet_step)  /* sid_osc.h, */
@@ -78,19 +79,19 @@ SECTIONS
         *(.text.sid_noise_clock .text.sid_noise_fade .text.sid_noise_settle_deferred)  /* sid_osc.h */
         *(.text.sid_env_advance_slow .text.sid_env_run .text.sid_env_settle)    /* sid_env.h */
         /* The effect slots (core/fx/fx_slots.c): the render, the settings, the switch path
-         * (slot_start, slot_copy; distinctive names, so no other file's function matches),
-         * every algorithm tick and LFO the compiler kept out of line, and the inits slot_start
-         * still runs (the cheap ones; sid_slots_init, in flash, builds the others' templates).
+         * (slot_start, slot_copy, slot_clear; distinctive names, so no other file's function
+         * matches), every algorithm tick and LFO the compiler kept out of line. A start only
+         * copies a template: every algorithm's init runs once, in sid_slots_init, in flash, and
+         * none is named here (an init listed here would be a call from flash into SRAM).
          * The patterns for functions the compiler inlines today stay as a safety net. The two
          * reverbs' ticks. live's way in: the drain's pseudo-register handler (app/fx_live.c). */
         *(.text.sid_slots_dry .text.slot_dry .text.slots_run .text.slots_bypass)
         *(.text.sid_slots_process_wide .text.sid_slots_process_float)
-        *(.text.sid_slots_process .text.sid_slots_set .text.slot_start .text.step_switch .text.slot_copy)
+        *(.text.sid_slots_process .text.sid_slots_set .text.slot_start .text.step_switch)
+        *(.text.slot_copy .text.slot_clear)
         *(.text.dist_tick_any .text.mod_tick_any .text.fx_tick_any)
         *(.text.sid_fx_*_tick .text.sid_fx_*_lfo)
         *(.text.sid_fx_limit_round)                 /* core/fx/fx_limit.c: the soft limiter */
-        *(.text.sid_fx_crush_init .text.sid_fx_noise_init .text.sid_fx_chorus_init)
-        *(.text.sid_fx_flanger_init .text.sid_fx_tremolo_init .text.sid_fx_wow_init)
         *(.text.fx_live_pseudo .text.fx_live_apply)
         /* The LIVE view's tap (app/scope.c): the tapped render, its points (called through a
          * pointer from sid_render_tap: no branch check sees it) and the output's peaks. */
@@ -106,8 +107,16 @@ SECTIONS
         *(.text.song_set_gate_reset .text.song_apply .text.song_voices .text.song_handover)
         *(.text.song_push_events)
         *(.text.song_lock_row .text.song_lock_apply)
-        *(.text.render_a .text.render_part)         /* audio.c: chip A split at the call */
+        *(.text.render_a .text.render_part .text.play_a) /* audio.c: chip A split at the call */
         *(.text.gt2_edit_apply)
+        /* A .sid tune (M3 Task 9): psid_ctl's interrupt half (core/psid/psid_ctl_isr.c: the
+         * block, each chip's placed writes, the fades and the stop's clear, whichever the
+         * compiler keeps out of line), which calls sid_advance and sid_write (above) and the
+         * render pointer; the swap hook that gives a tune's chip its registers back (audio.c,
+         * through reg_ring_chips' swap hook). Its main half, the 6502, the environment and the
+         * voice shadows run from flash. */
+        *(.text.psid_ctl_block .text.psid_isr_chip .text.psid_isr_ramp .text.psid_isr_clear)
+        *(.text.psid_swapped .text.psid_rewrite)
         . = ALIGN(16);
         _rt_end = .;
     } > RAMTEXT AT > XIP
@@ -164,7 +173,8 @@ SECTIONS
         . = ALIGN(4);
         _bss_end = .;
     } > RAM
-    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c). */
+    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c), or a .sid
+     * tune's over it (its write ring, environment, voice shadows and header: M3 Task 9). */
     .song_ram (NOLOAD) : ALIGN(4) { *(.song_noinit) . = ALIGN(4); } > RAM
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
     _guard0 = 0x01C77F00; _ustack_lo = 0x01C78000; _ustack_top = 0x01C7A000;

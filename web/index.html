@@ -171,7 +171,8 @@
         sequencer and a tracker (<kbd>0</kbd> SEQ, <kbd>Space</kbd> PLAY): a new song comes with a SID drum
         kit and sampled digi drums, and STEP can play a step by chance, roll a new pattern (DICE) or vary
         one (MUTATE). On a real FM-1 the sound also goes out over USB as an audio input a computer can
-        record. <code>.sid</code> playback is planned.</p>
+        record. It plays PSID <code>.sid</code> tunes too, from the unit's flash, on its own 6502
+        (the menu's SIDS: one or two SID chips, PAL or NTSC, with mute and solo for the voices).</p>
       <p>This page runs the <b>newest build of SIDOU's main branch</b>, rebuilt whenever the firmware or this page changes, so it can be ahead of the latest release; the build line under the player names it (run locally: your own build) in <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a>,
         an emulator of the FM-1's chip, in WebAssembly: the same update package (<code>sidou.fwsc</code>) a
         real FM-1 would take. SIDOU runs on a real FM-1 too: see the
@@ -215,6 +216,7 @@
         <tr><td><kbd>8</kbd> SAVE</td><td>in the menu: opens the highlighted item (CHIP, TRACKER, SETTINGS, SONG …); in a song view: saves the song; held while you turn a knob: MIDI learn</td></tr>
         <tr><td><kbd>0</kbd> SEQ</td><td>the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE, round</td></tr>
         <tr><td><kbd>Space</kbd> PLAY / <kbd>R</kbd> REC</td><td>plays SIDOU's song (SIDOU LOOP) and stops it / record mode</td></tr>
+        <tr><td>Menu → SIDS</td><td>the <code>.sid</code> tunes on the flash, eight a page (<kbd>←</kbd> <kbd>→</kbd> move, ALGORITHM clockwise or <kbd>8</kbd> SAVE plays one). NOW PLAYING: ↑ ↓ the song before or after, <kbd>Space</kbd> stops the tune, <kbd>5</kbd> held + <kbd>Space</kbd> pauses it, <kbd>6</kbd> GLO held + the first three note keys mute a voice, the next three solo one, <kbd>7</kbd> HOME back to the list with the tune still playing</td></tr>
         <tr><td>MASTER</td><td>volume (drag the knob at the top left)</td></tr>
         <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC, SPREAD, RESET: they save themselves (but REC; RESET and STORE ask first)</td></tr>
       </table>
@@ -229,6 +231,10 @@
     <section>
       <h2>The emulator's limits</h2>
       <ul>
+        <li><b>No tunes to play here.</b> This page's flash starts with no <code>.sid</code> tunes (SIDS says
+          NO TUNES), and with no USB it cannot take one: tunes go onto a real FM-1 over USB-MIDI or the TRS jack
+          as a SysEx upload (<a href="https://github.com/dsablic/sidou/blob/main/docs/manual/sid-tunes.md">the
+          manual</a>, with eleven openly licensed ones to start from).</li>
         <li><b>No USB on this page.</b> A real FM-1 running SIDOU has USB-MIDI in and out and sends its
           sound to a computer as a USB audio input; this page's player has no USB (fm1-emu emulates the
           FM-1's USB only in its desktop player, <code>fm1-live --usb</code>). MIDI from this page reaches

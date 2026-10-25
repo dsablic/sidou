@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 const SOURCES: &[&str] = &[
     "core/sid/sid.c",
+    "core/sid/sid_shadow.c",
     "core/sid/sid_character.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -23,9 +24,14 @@ const SOURCES: &[&str] = &[
     "core/song/gt2_ins.c",
     "core/song/gt2_kit.c",
     "core/song/song_ext.c",
+    "core/psid/psid_file.c",
+    "core/psid/psid_env.c",
+    "core/psid/psid_ctl.c",
+    "core/psid/psid_ctl_isr.c",
     "core/player/gt2_play.c",
     "core/player/gt2_shape.c",
     "core/player/song_ctl.c",
+    "core/cpu6502/cpu6502.c",
     "bench/workload.c",
     "app/about.c",
     "app/boot.c",
@@ -79,6 +85,8 @@ const SOURCES: &[&str] = &[
     "app/sine.c",
     "app/song_view.c",
     "app/song_pages.c",
+    "app/sid_io.c",
+    "app/sid_view.c",
     "app/song_io.c",
     "app/song_edit.c",
     "app/step_view.c",
@@ -190,6 +198,14 @@ fn main() {
     );
     println!(
         "cargo:rerun-if-changed={}",
+        root.join("core/cpu6502").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("core/psid").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
         root.join("bench/workload.h").display()
     );
     println!("cargo:rerun-if-changed={}", root.join("app").display());
@@ -216,24 +232,25 @@ fn main() {
         .clang_arg(format!("-D{RACE_HOOK}"))
         .allowlist_function(
             concat!(
-                "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
+                "sid_.*|sidou_.*|cpu6502_.*|psid_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|chip_spread_.*|master_.*|tail_gate_.*|thump_out_.*|chip_ctl_.*|chip_setup_.*|",
-                "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*",
+                "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*|",
+                "sid_view_.*",
             ),
         )
         .allowlist_type(
-            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|theme.*|help_.*",
+            "sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport",
         )
         .allowlist_var(
             concat!(
-                "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|",
+                "SID_.*|SIDOU_.*|CPU6502_.*|PSID_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|",
                 "live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|",
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
                 "demo_song_.*|gt2_kit_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
-                "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
+                "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*",
             ),
         )
         // `static const` tables private to the headers; they have no symbol to link to.
@@ -263,10 +280,10 @@ fn main() {
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
         .allowlist_type(concat!(
-            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
+            "sid|sid_osc|sid_env|sid_shadow|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
             "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",
             "title_card|help_view|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
-            "midi_route|midi_sync|midi_clock|sysex",
+            "midi_route|midi_sync|midi_clock|sysex|psid_env|psid_ctl|psid_work|sid_view|song_view",
         ))
         .generate()
         .expect("bindgen (ILP32 layout) failed")
@@ -277,5 +294,72 @@ fn main() {
         .files(SOURCES.iter().map(|s| root.join(s)))
         .file(static_fns.with_extension("c"))
         .include(&manifest)
+        // The 6502's device variant (core/cpu6502/cpu6502.h); nothing else reads it.
+        .define("CPU6502_SMALL", None)
         .compile("sidou");
+
+    // The 6502 again for the tests only: every operand access through the hooks
+    // (CPU6502_HOOK_ALL), so Tom Harte's tests check each one's cycle stamp. Once as the
+    // device builds it (the I/O accesses out of line) and once with them inline, under
+    // their own names.
+    let cpu = root.join("core/cpu6502/cpu6502.c");
+    for (name, small) in [
+        ("cpu6502_run_hook_all", true),
+        ("cpu6502_run_hook_inline", false),
+    ] {
+        let mut build = c_build(&root);
+        build
+            .file(&cpu)
+            .define("CPU6502_HOOK_ALL", None)
+            .define("cpu6502_run", name)
+            .define("cpu6502_reset_regs", format!("{name}_reset_regs").as_str());
+        if small {
+            build.define("CPU6502_SMALL", None);
+        }
+        build.compile(name);
+    }
+
+    // The chip again for the mute's reference (core/sid/sid.c, SID_TEST_ZERO_VOICE): the
+    // voices sid_test_set_zero_voices names output 0 (on the calling thread). Each of its
+    // symbols under a `_zero_voice` name, beside the real one; it shares the other files'
+    // (the DACs, the filter curves).
+    let mut zero = c_build(&root);
+    zero.file(root.join("core/sid/sid.c"))
+        .define("SID_TEST_ZERO_VOICE", None);
+    for symbol in ZERO_VOICE_SYMBOLS {
+        zero.define(symbol, format!("{symbol}_zero_voice").as_str());
+    }
+    zero.compile("sid_zero_voice");
 }
+
+/// core/sid/sid.c's external symbols, renamed in its zero-voice build (above).
+const ZERO_VOICE_SYMBOLS: &[&str] = &[
+    "SID_NOISE_JUMP",
+    "SID_NOISE_WB",
+    "SID_NOISE_WB_BYTE",
+    "SID_PD_ROWS",
+    "sid_advance",
+    "sid_base_output_gain",
+    "sid_clock",
+    "sid_combined_table",
+    "sid_external_coefficients",
+    "sid_filter_refresh",
+    "sid_filter_row_part",
+    "sid_init",
+    "sid_init_begin",
+    "sid_init_end",
+    "sid_noise_tables_init",
+    "sid_nonlin_for",
+    "sid_nonlin_for_rows",
+    "sid_read",
+    "sid_render",
+    "sid_render_tap",
+    "sid_set_combined_profile",
+    "sid_set_dac",
+    "sid_set_filter_blend",
+    "sid_set_filter_curve",
+    "sid_set_filter_nonlinearity",
+    "sid_set_filter_toward",
+    "sid_set_gate_reset",
+    "sid_write",
+];

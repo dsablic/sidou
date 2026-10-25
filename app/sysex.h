@@ -12,7 +12,10 @@ enum { SYSEX_PENDING = -1 };
 enum {
     SYSEX_MALFORMED = 1, SYSEX_CHECKSUM, SYSEX_SEQUENCE, SYSEX_BUSY,
     SYSEX_FULL, SYSEX_NOT_FOUND, SYSEX_IO, SYSEX_TIMEOUT, SYSEX_ABORTED,
-    SYSEX_RECEIVING = 10, SYSEX_SAVED = 11
+    SYSEX_RECEIVING = 10, SYSEX_SAVED = 11,
+    /* A .sid's refusals (type STORE_FILE_SID, its header checked by psid_parse at its first
+     * DATA, before anything is claimed or written): RSID, MUS, a broken header, data past $FFFF. */
+    SYSEX_RSID = 12, SYSEX_MUS, SYSEX_BROKEN, SYSEX_TOO_LONG
 };
 
 /* All hooks run in the main loop. Errors use the positive SYSEX_* reasons.
@@ -73,6 +76,9 @@ typedef struct {
     uint8_t tx_command, tx_sequence, tx_sum, tx_active, tx_identity, tx_wait;
     uint8_t packet[4], packet_length, packet_final;
     uint8_t error, error_sequence, refused;
+    /* A .sid's PUT: checking, its first DATA (the header) not yet in; held, that DATA waiting in
+     * buffer for its sectors' claim (a record being written: OPEN). */
+    uint8_t checking, held;
 } sysex;
 
 _Static_assert(sizeof(sysex) <= 1024, "SysEx state includes its one packet buffer");
@@ -87,6 +93,11 @@ _Static_assert(sizeof(sysex) <= 1024, "SysEx state includes its one packet buffe
  * Sender idle time starts at the accepted final USB ACK packet (TRS: completion);
  * storage/import work and transmit backpressure do not consume that interval.
  * Feed raw MIDI bytes, including F0/F7; real-time bytes are ignored everywhere.
+ * A PUT of type STORE_FILE_SID to target 0 is acknowledged before any claim: its first DATA
+ * must hold the file's first 128 bytes (all of a shorter file), whose header psid_parse checks
+ * against the declared length. A refusal (SYSEX_RSID, _MUS, _BROKEN, _TOO_LONG) comes before
+ * store_file_begin, so nothing of the tune is programmed; the claim's BUSY or FULL answers that
+ * DATA, and from there it is any PUT.
  */
 void sysex_init(sysex* s, store* storage, const sysex_hooks* hooks,
                 const uint8_t version[4], int windows);

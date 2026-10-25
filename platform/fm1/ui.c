@@ -14,10 +14,10 @@
 #define SIDOU_VERSION "0.0.0"
 #endif
 
-/* "V" SIDOU_VERSION ends before column 28 (app/views.c) and must stay inside the 14 cells from
- * column 14 that host/crates/emu-gate/tests/screen.rs (VERSION_CELLS) leaves out of the golden
- * images; longer, its start column would also wrap below zero. */
-#define VERSION_CELLS 14u
+/* "V" SIDOU_VERSION ends before column 21 (app/views.c), after SIDOU, and must stay inside the 9
+ * cells from column 12 that host/crates/emu-gate/tests/screen.rs (VERSION_CELLS) leaves out of the
+ * golden images. */
+#define VERSION_CELLS 9u
 _Static_assert(sizeof SIDOU_VERSION <= VERSION_CELLS, "SIDOU_VERSION is too long for row 2");
 
 /* A run (one row of up to GRID_COLS cells) is rendered into one LCD buffer. */
@@ -90,8 +90,33 @@ void ui_set_panel(panel* p) {
     views_set_panel(&ui, p);
 }
 
+/* The song views' transport, as main.c bound it (ui_tune takes it away and gives it back). */
+static const song_transport* song_bound;
+
 void ui_set_song(const song_transport* t) {
+    song_bound = t;
     views_set_song(&ui, t);
+}
+
+void ui_set_tune(const sid_transport* t) {
+    views_set_tune(&ui, t);
+}
+
+int ui_tune(int on) {
+    if (!on) {
+        views_tune(&ui, 0);
+        views_set_song(&ui, song_bound);
+        return 1;
+    }
+    if (ui.pages.pending) {
+        return 0;
+    }
+    views_set_song(&ui, NULL);
+    if (ui.song.t) {
+        return 0; /* an edit in flight keeps it: views_set_song did nothing */
+    }
+    views_tune(&ui, 1);
+    return 1;
 }
 
 void ui_song_loaded(int back) {

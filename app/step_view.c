@@ -1037,6 +1037,9 @@ static void gen_start(screen* s, step_view* st, uint32_t kind) {
 static int input(screen* s, void* state, const screen_event* e) {
     step_view* st = state;
     song_view* sv = st->sv;
+    if (sv->away) {
+        return song_view_away_input(s, e);
+    }
     int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
     drain(s, st);
     target t;
@@ -1268,6 +1271,9 @@ static void leave(screen* s, void* state) {
 static int changed(screen* s, void* state) {
     step_view* st = state;
     song_view* sv = st->sv;
+    if (sv->away) {
+        return song_view_away_changed(sv);
+    }
     if (st->follow | st->qn | st->run) {
         drain(s, st);
     }
@@ -1306,6 +1312,10 @@ static void zone(step_view* st, uint32_t bit, uint32_t first_row, uint32_t reach
 static void compose(screen* s, void* state, grid* g) {
     step_view* st = state;
     song_view* sv = st->sv;
+    if (sv->away) {
+        song_view_away_compose(sv, s, g);
+        return;
+    }
     if (model_loading(sv)) {
         if (sv->which == SONG_VIEW_STEP) {
             song_view_copy(sv, s, g);

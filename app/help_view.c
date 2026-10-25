@@ -120,10 +120,11 @@ static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\
  * the menu's: the highlighted action, file or answer (NO goes back a page). */
 static const char* const SONG_LINES[] = {"SELECT\0ACTION", "SAVE\0OPEN", "ALG\0OPEN",
                                          "SEQ\0SONG VIEWS", "HOME\0BACK"};
-/* STATUS, ABOUT and CHARSET show and take no encoder: the keys and the knobs play as on LIVE. */
-static const char* const STATUS_LINES[] = {"KEYS\0PLAY",    "K1-K4\0SOUND",  "SAVE\0KEEP",
-                                           "SEQ\0SONG",     "GLO+KEY\0MUTE", "HOME\0BACK",
-                                           "HOLD HOME\0HELP"};
+/* STATUS's SELECT turns its three pages; ABOUT and CHARSET take no encoder, and on all three the keys and
+ * the knobs play as on LIVE. */
+static const char* const STATUS_LINES[] = {"SELECT\0PAGE",  "KEYS\0PLAY",    "K1-K4\0SOUND",
+                                           "SAVE\0KEEP",    "SEQ\0SONG",     "GLO+KEY\0MUTE",
+                                           "HOME\0BACK",    "HOLD HOME\0HELP"};
 /* (SEQ is refused over ABOUT's tune: no SEQ line) */
 static const char* const ABOUT_LINES[] = {"KEYS\0PLAY", "SAVE\0KEEP", "HOME\0BACK",
                                           "HOLD HOME\0HELP"};
@@ -137,6 +138,20 @@ static const char* const NAME_LINES[] = {"SELECT\0CURSOR", "ALG\0CHARACTER", "SA
                                          "HOME\0BACK",    "HOLD HOME\0HELP"};
 static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "SAVE\0CHOOSE", "ALG\0CONFIRM",
                                             "HOME\0BACK",    "HOLD HOME\0HELP"};
+
+/* The SID views (app/sid_view.h): SAVE is the browser's OK, as SONG's LOAD's; PLAY and EDIT +
+ * PLAY are the tune's while one is loaded. NOW PLAYING's ALG steps the song; the keys play chip
+ * B (the keys' chip under a tune). */
+static const char* const SIDS_LINES[] = {"SELECT\0TUNE",    "SAVE\0CHOOSE",  "ALG\0CHOOSE",
+                                         "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "HOME\0BACK",
+                                         "HOLD HOME\0HELP"};
+static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE",
+                                            "GLO+KEY\0MUTE",  "KEYS\0PLAY",      "HOME\0BACK",
+                                            "HOLD HOME\0HELP"};
+/* The question before a tune takes the song's memory: SAVE saves the song, ALG again discards
+ * its changes, HOME keeps both. */
+static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "HOME\0CANCEL",
+                                            "HOLD HOME\0HELP"};
 
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
 const help_card help_cards[HELP_CARDS] = {
@@ -161,6 +176,9 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_STORE] = CARD("STORE", STORE_LINES),
     [HELP_CARD_ARP] = CARD("ARP", ARP_LINES),
     [HELP_CARD_RESET] = CARD("RESET", RESET_LINES),
+    [HELP_CARD_SIDS] = CARD("SIDS", SIDS_LINES),
+    [HELP_CARD_PLAYING] = CARD("PLAYING", PLAYING_LINES),
+    [HELP_CARD_UNSAVED] = CARD("UNSAVED", UNSAVED_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&

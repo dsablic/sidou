@@ -118,6 +118,8 @@ void song_view_init(song_view* sv, live* l) {
     sv->rec_cut = 0;
     sv->rec_res = 0;
     sv->rec_n = 0;
+    sv->tune = NULL;
+    sv->away = 0;
 }
 
 uint32_t song_view_mute_mask(const song_view* sv) {
@@ -128,10 +130,15 @@ uint32_t song_view_mutes(const song_view* sv) {
     return (uint32_t)sv->mute | (uint32_t)sv->solo << SONG_T_VOICES;
 }
 
-/* The mutes to the player, if it has others. */
+/* The mutes to the player, if it has others: the song's, or while a tune has the song's memory
+ * the tune's. */
 static void send_mutes(song_view* sv) {
     uint32_t m = song_view_mute_mask(sv);
-    if (sv->t && m != sv->sent && sv->t->mute(sv->t->ctx, m)) {
+    if (m == sv->sent) {
+        return;
+    }
+    if (sv->t ? sv->t->mute(sv->t->ctx, m)
+              : sv->away && sv->tune && sv->tune->mute(sv->tune->ctx, m)) {
         sv->sent = (uint8_t)m;
     }
 }
@@ -765,4 +772,45 @@ void song_view_instr_text(const song_view* sv, uint32_t instr, char out[SCREEN_P
         }
     }
     out[n] = 0;
+}
+
+/* ---- while a .sid tune has the song's memory ---- */
+
+void song_view_away(song_view* sv, int on) {
+    sv->away = (uint8_t)(on != 0);
+    sv->built = 0;
+    sv->sent = 0xffu; /* GLO's mutes to whichever player has the chips now */
+    send_mutes(sv);
+}
+
+int song_view_away_changed(const song_view* sv) {
+    return sv->which != SONG_VIEW_CANVAS_AWAY || !sv->built || sv->dirty ||
+           sv->drawn[0] != sv->l->theme;
+}
+
+/* SID PLAYING and STOP TO EDIT at 2x, on the canvas (the view's own rows are not drawn). */
+void song_view_away_compose(song_view* sv, screen* s, grid* g) {
+    (void)song_view_acquire_canvas(sv, SONG_VIEW_CANVAS_AWAY);
+    if (!sv->built || sv->drawn[0] != sv->l->theme) {
+        const theme* th = theme_get(sv->l->theme);
+        for (uint32_t r = 0; r < GRID_ROWS; r++) {
+            memset(sv->cv.ch[r], ' ', GRID_COLS);
+            memset(sv->cv.attr[r], THEME_ATTR(th, value), GRID_COLS);
+        }
+        (void)grid_canvas_text_big(&sv->cv, 4, 12, 2, "SID PLAYING", THEME_ATTR(th, alert));
+        (void)grid_canvas_text_big(&sv->cv, 4, 15, 2, "STOP TO EDIT", THEME_ATTR(th, hint));
+        sv->drawn[0] = sv->l->theme;
+        sv->dirty = (1u << GRID_ROWS) - 1u;
+        sv->built = 1;
+    }
+    song_view_copy(sv, s, g);
+}
+
+int song_view_away_input(screen* s, const screen_event* e) {
+    if (e->kind == SCREEN_TURN && e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
+        return 0;
+    }
+    screen_toast(s, "SID PLAYING: STOP TO EDIT", SCREEN_TOAST_MS);
+    s->popup_ask = 0;
+    return 1;
 }

@@ -49,6 +49,7 @@
 #include "live.h"
 #include "panel.h"
 #include "screen.h"
+#include "sid_transport.h"
 #include "song_transport.h"
 #include "song_io.h"
 #include "song_edit.h"
@@ -70,6 +71,11 @@ extern "C" {
 #define SONG_VIEW_CANVAS_NONE 0xfdu
 #define SONG_VIEW_CANVAS_CHIP 0xfeu
 #define SONG_VIEW_CANVAS_MENU 0xffu
+/* The SID views' (app/sid_view.h): the browser, NOW PLAYING; and the song views' SID PLAYING
+ * while a .sid tune has the song's memory (song_view_away). */
+#define SONG_VIEW_CANVAS_SIDS 0xfcu
+#define SONG_VIEW_CANVAS_PLAYING 0xfbu
+#define SONG_VIEW_CANVAS_AWAY 0xfau
 /* Rows a beat by default (the BPM). */
 #define SONG_VIEW_ROWS_A_BEAT 4u
 /* No key: song_view.jam_key. */
@@ -141,6 +147,11 @@ typedef struct {
     uint8_t rec_res;
     uint8_t rec_n;
     uint8_t rec_q[SONG_VIEW_REC_QUEUE][4];
+    /* The .sid player (app/sid_transport.h; NULL: none), which GLO's mutes and solos reach while
+     * a tune has the song's memory (away: the transport is unbound, and the song views show SID
+     * PLAYING: STOP TO EDIT and take no input but the views' global keys). */
+    const sid_transport* tune;
+    uint8_t away;
 } song_view;
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */
@@ -227,6 +238,14 @@ void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32
  * SONG_VIEW_FRAME_CELLS less what the screen's layers take, leaving what is covered this
  * frame and the border under the raster; the rows not finished stay dirty for the next. */
 void song_view_copy(song_view* sv, screen* s, grid* g);
+/* A .sid tune has the song's memory (on), or the song has it back: GLO's mutes go to the tune
+ * (song_view.tune) from now on, and the song views draw SID PLAYING. */
+void song_view_away(song_view* sv, int on);
+/* The song views while away: their changed, compose and input (K1..K4 go on to the panel, the
+ * keys' sound; anything else is a toast and consumed). */
+int song_view_away_changed(const song_view* sv);
+void song_view_away_compose(song_view* sv, screen* s, grid* g);
+int song_view_away_input(screen* s, const screen_event* e);
 /* GLO's state for LIVE's header: the mutes in bits 0-2, the solos in bits 3-5. */
 uint32_t song_view_mutes(const song_view* sv);
 /* An instrument as PRESETS' popup shows it: its number in hex and its name, as far as the

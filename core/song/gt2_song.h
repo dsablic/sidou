@@ -199,6 +199,11 @@ typedef enum {
  * it. NULL if the region is outside [gt2_region_min(), GT2_REGION_MAX] or the patterns do
  * not fit. */
 gt2_song* gt2_song_init(void* region, uint32_t bytes);
+/* As gt2_song_init, but the song left wiped (gt2_song_wipe: no subtune, no pattern, nothing
+ * counted), without clearsong's patterns and their count (about 100,000 instructions on the
+ * device): for a region a reader fills next (gt2_stream_read_begin), once its other contents
+ * were not a song's (M3: a .sid tune's 6502 memory, platform/fm1/audio.c). */
+gt2_song* gt2_song_init_wiped(void* region, uint32_t bytes);
 /* Empties an existing song in place (its region kept), as gt2_song_init leaves it. 0, or
  * -1 (nothing done) while any edit is pending. */
 int gt2_song_clear(gt2_song* s);

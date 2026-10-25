@@ -415,6 +415,8 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
 static int order_input(screen* s, void* state, const screen_event* e) {
     song_pages* p = state;
     p->page = SONG_VIEW_ORDER;
+    if (p->sv->away)
+        return song_view_away_input(s, e);
     if (p->sent)
         (void)song_pages_poll(p);
     song_view* sv = p->sv;
@@ -474,6 +476,8 @@ static int order_input(screen* s, void* state, const screen_event* e) {
 static int instr_input(screen* s, void* state, const screen_event* e) {
     song_pages* p = state;
     p->page = SONG_VIEW_INSTR;
+    if (p->sv->away)
+        return song_view_away_input(s, e);
     if (p->sent)
         (void)song_pages_poll(p);
     song_view* sv = p->sv;
@@ -505,6 +509,8 @@ static int arp_input(song_pages* p, const screen_event* e);
 static int table_input(screen* s, void* state, const screen_event* e) {
     song_pages* p = state;
     p->page = SONG_VIEW_TABLE;
+    if (p->sv->away)
+        return song_view_away_input(s, e);
     if (p->sent)
         (void)song_pages_poll(p);
     if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_ARP && !p->arp) {
@@ -1116,6 +1122,8 @@ static int model_loading(const song_view* sv) {
 static int changed(screen* s, void* state) {
     (void)s;
     song_pages* p = state;
+    if (p->sv->away)
+        return song_view_away_changed(p->sv);
     if (model_loading(p->sv))
         return p->sv->which == p->page && p->sv->dirty != 0;
     uint8_t now[SONG_PAGES_LOOK];
@@ -1127,6 +1135,10 @@ static int changed(screen* s, void* state) {
 static void compose(screen* s, void* state, grid* g) {
     song_pages* p = state;
     song_view* sv = p->sv;
+    if (sv->away) {
+        song_view_away_compose(sv, s, g);
+        return;
+    }
     if (model_loading(sv)) {
         if (sv->which == p->page)
             song_view_copy(sv, s, g);

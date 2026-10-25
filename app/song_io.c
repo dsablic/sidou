@@ -59,6 +59,9 @@ void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* wo
 }
 
 int song_io_changed(const song_io* io) {
+    if (io->away) {
+        return 0; /* the model is a tune's memory: nothing of the song's is there to lose */
+    }
     return io->dirty || (io->ctl && io->ctl->song->revision != io->saved_revision) ||
            (io->hooks.generation && io->hooks.generation(io->hooks.ctx) != io->saved_live);
 }
@@ -76,6 +79,10 @@ int song_io_listed(const store_file* file) {
 }
 
 static int ready(song_io* io, int confirmed) {
+    if (io->away) {
+        text(io->message, "SID PLAYING");
+        return 0;
+    }
     if (song_io_busy(io) || io->about || io->external || (io->ctl && io->ctl->song->frozen)) {
         text(io->message, song_io_saving(io) ? "SAVING" : "LOADING");
         return 0;
@@ -121,6 +128,10 @@ int song_io_load_builtin(song_io* io, int confirmed) {
 }
 
 int song_io_program(song_io* io, uint32_t program) {
+    if (io->away) {
+        text(io->message, "SID PLAYING");
+        return 0;
+    }
     if ((song_io_busy(io) && io->state != SONG_IO_INDEX) || io->about || io->external ||
         (io->ctl && io->ctl->song->frozen)) {
         text(io->message, song_io_saving(io) ? "SAVING" : "LOADING");
@@ -152,6 +163,10 @@ int song_io_new(song_io* io, int confirmed) {
 }
 
 int song_io_save(song_io* io, const char* name, uint32_t now_ms) {
+    if (io->away) {
+        text(io->message, "SID PLAYING");
+        return 0;
+    }
     if (song_io_busy(io) || io->about || io->external || (io->ctl && io->ctl->song->frozen)) {
         text(io->message, song_io_saving(io) ? "SAVING" : "LOADING");
         return 0;
@@ -176,8 +191,8 @@ int song_io_delete(song_io* io, const char* name, int confirmed) {
         text(io->message, "DELETE SONG?");
         return 0;
     }
-    if (song_io_busy(io) || io->about || io->external || (io->ctl && io->ctl->song->frozen) ||
-        !io->st || !name_copy(io->target, name)) {
+    if (io->away || song_io_busy(io) || io->about || io->external ||
+        (io->ctl && io->ctl->song->frozen) || !io->st || !name_copy(io->target, name)) {
         return 0;
     }
     io->state = SONG_IO_DELETE;
@@ -186,7 +201,7 @@ int song_io_delete(song_io* io, const char* name, int confirmed) {
 
 int song_io_about(song_io* io, int opening) {
     if (opening) {
-        if (!io->ctl || io->external || io->ctl->song->frozen || song_io_busy(io) || song_io_changed(io) ||
+        if (io->away || !io->ctl || io->external || io->ctl->song->frozen || song_io_busy(io) || song_io_changed(io) ||
             song_ctl_state(io->ctl) == SONG_PLAYING || song_ctl_state(io->ctl) == SONG_LOADING ||
             io->ctl->auditioning || !io->hooks.builtin) {
             return 0;
@@ -206,6 +221,35 @@ int song_io_about(song_io* io, int opening) {
             io->state = SONG_IO_STOP;
         }
     }
+    return 1;
+}
+
+int song_io_away(song_io* io, int on) {
+    if (on) {
+        if (io->away) {
+            return 1;
+        }
+        if (song_io_busy(io) || io->about || io->external || !io->ctl || io->ctl->song->frozen) {
+            return 0;
+        }
+        /* 2: NEW's song, never saved (no name, unsaved from its start); 1 a file's or the
+         * built-in (the one the boot reads has no name either, and no unsaved start) */
+        io->away = (uint8_t)(!io->name[0] && !io->builtin && io->dirty ? 2u : 1u);
+        io->dirty = 0; /* its edits go with the model */
+        return 1;
+    }
+    if (!io->away) {
+        return 1;
+    }
+    /* The song back as ABOUT's close brings it (its file by name, or the built-in it was), or
+     * NEW's empty song. */
+    io->action = io->away == 2u ? LOAD_NEW : LOAD_RESTORE;
+    io->away = 0;
+    io->message[0] = 0; /* a refusal while away is old news */
+    io->restoring = 0;
+    io->rollback = 0;
+    io->failure[0] = 0;
+    io->state = SONG_IO_STOP;
     return 1;
 }
 
@@ -496,7 +540,7 @@ static void read_done(song_io* io) {
 
 void song_io_poll(song_io* io, uint32_t now_ms) {
     song_ctl* sc = io->ctl;
-    if (!sc) {
+    if (!sc || io->away) {
         return;
     }
     if (song_io_saving(io) && !io->forcing && now_ms - io->asked_at >= SETTINGS_FORCE_MS &&

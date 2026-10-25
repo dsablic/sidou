@@ -216,6 +216,16 @@ parameters, and the macro controls below move several at once.
   2. *`.sid` file*: the PSID player code runs in the 6502. The voice
      mute/solo and the chip profile still apply, because they act on the
      emulated chip.
+     - **Amended (M3 plan, 2026-10-19):** the 6502 does not run in the audio
+       interrupt. It runs a frame ahead in the main loop (`psid_ctl`, a slice a
+       pass), and each SID write carries the 6502 cycle it was made at; the
+       interrupt renders each chip and places the write at that cycle (the
+       stamped writes, `sid_advance`), so a tune's samples equal a render
+       clocked write by write. The voice mutes act on the chips, not on the
+       tune's writes. The transport as built: PLAY stops, EDIT + PLAY pauses,
+       MIDI stop pauses a tune (it keeps its place; start restarts it, continue
+       goes on), and a stopped tune gives way to the song when another view's
+       PLAY or the song views ask. A tune takes the song's memory.
 - **Live view:** chip B, a chosen instrument, and the keys.
   - **Amended (M2 plan, 2026-10-16):** the keys play chip B while a song
     plays on chip A; with no song playing they play chip A, as in M1; a KEYS
@@ -243,6 +253,11 @@ parameters, and the macro controls below move several at once.
   9) and fails with a clear message on the screen, never a crash.
 - `.sid` support is PSID v1–v4 only. RSID files, and tunes that need CIA
   timing beyond the basic timer, are detected and rejected politely.
+  - **Amended (M3 plan, 2026-10-19):** the PSID row is built as the plan
+    says; RSID's rejection is now decided for M3 (`RSID: NOT YET`, with the
+    reasons in `docs/reference/psid.md` and in the plan's "RSID: rejected
+    politely in M3"), and MUS files are refused too. PSID versions 1 to 5 are
+    read (`docs/reference/psid.md`); a third SID's writes are dropped.
 
 ## 7. User interface
 
@@ -375,6 +390,14 @@ At 240 MHz and 44.1 kHz, one core has about 5,400 cycles per stereo sample.
   always-on additions (chip B's second render call and mix, the song command
   ring) about 195-200. The shortfall predates M2; docs/TODO.md ("The 6502
   must fit the audio headroom the gates leave") keeps the levers for M3.
+- **Amended (M3 plan, 2026-10-19):** the 6502 runs in the main loop, a frame
+  ahead (decision record 0008), so it does not use the table's 400. Its share
+  of the audio interrupt is the stamped writes' placement, capped at 120
+  instructions a sample (`PSID_ISR_WORST`; 105.0 measured at a write every 4
+  cycles). The 6502's own cost is main-loop time, about 1.3 % of the CPU in
+  the study and about 1.2 % in fm1-emu on the tune measured there; the device's
+  figure is read on STATUS and decided on flash day (`docs/hardware-test.md`,
+  section 21: above 15 %, the fallbacks in order).
 
 ## 9. Testing
 
@@ -399,6 +422,15 @@ Layers (all run in CI):
      never in the firmware). M3's device 6502 is later checked against it.
      "Frame for frame" means each frame's ordered list of SID writes
      (decision record 0007).
+   - **Amended (M3 plan, 2026-10-19):** the 6502 of M3 is SIDOU's own
+     (`core/cpu6502`). It is tested with Tom Harte's per-opcode tests (a
+     committed subset in the everyday run, the full set on demand) and Klaus
+     Dormann's functional test, on the host and on fm1-emu; against GoatTracker's
+     packed player under `gt2-ref` (the writes, their cycles and the return
+     registers equal over the examples and SIDOU's songs); and its PSID
+     environment against `psid-ref`, an oracle built on FM-1 SID's player and
+     floooh's `m6502.h` (the same stream of writes, with a table of
+     expected differences in `TESTING.md`).
 4. **Golden renders:** an FNV-1a hash of every preset, demo song and starter
    tune. `GOLDEN_UPDATE=1` is the deliberate way to accept new output.
    Sanity checks for clipping and DC.
@@ -494,6 +526,10 @@ Layers (all run in CI):
 | Klaus Dormann / Tom Harte 6502 test suites | own licences | test data |
 | GoatTracker 2 (`gt2reloc`, `player.s`, example songs) (amended, M2) | GPL-2.0-or-later | test-only reference; SIDOU's player follows `player.s` and credits it |
 | `mos6502` crate (amended, M2) | BSD-3-Clause | test-only (the host 6502 for the register-match tests) |
+| floooh/chips `m6502.h` (amended, M3) | zlib | test-only: the 6502 of the `psid-ref` oracle; no code of it in SIDOU's 6502 |
+| FM-1 SID's PSID player (`psid.c`) (amended, M3) | BSD-2-Clause | test-only: the `psid-ref` oracle's derived copy; SIDOU's PSID environment follows its design, checked against the format |
+| Tom Harte's SingleStepTests, Klaus Dormann's tests (amended, M3) | MIT, GPL-3.0-or-later | test data for SIDOU's 6502 |
+| SIDOU's 6502 (`core/cpu6502`) (amended, M3) | GPL-3.0-or-later | linked; its own code, from the study's prototype |
 
 - **Attribution:** `CREDITS.md` credits the people and projects whose work
   we build on or learn from (reSID/reSIDfp authors, Felucca and its forks,
@@ -591,6 +627,15 @@ Each kind of document has one job:
    - starter pack (openly licensed and commissioned tunes);
    - user import of chiptunes (`.sid`, `.sng`, SID-Wizard) through the
      companion, with optional playlists for the user's own HVSC copy.
+   - **Amended (M3 plan, 2026-10-19), as built:** SIDOU's own 6502 and the
+     PSID environment (RSID and MUS refused); the look-ahead player with
+     stamped writes; the voice shadow for OSC3 and ENV3; mute and solo on the
+     chips; the SIDS browser and NOW PLAYING; `.sid` files on the store by
+     SysEx `PUT` (`sidou-sysex sid`); the starter pack (eleven tunes); the
+     6502's meter on STATUS. The companion's import of `.sng` and SID-Wizard
+     files, and playlists, are not in M3 (`.sng` files go by SysEx already;
+     SID-Wizard stays in M5). The flash day (`docs/hardware-test.md`,
+     section 21) decides the 6502's speed on the device before v0.5.0.
 5. **M4, showcase and release:**
    - WASM demo, installer, manual;
    - release-video pipeline (demo scripts, emulator capture, composition);

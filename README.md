@@ -37,6 +37,10 @@ screenshots the tests check.*
   are on STEP, with a chance for each step, MUTATE and DICE.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
+- **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
+  the device's flash: the menu's SIDS lists them, NOW PLAYING shows the tune, its songs and its
+  voices, with mute and solo, pause and stop, and MIDI start, stop and continue
+  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
   page turns any GoatTracker 2 `.sng` into a `.mid`, a MIDI channel a SID voice, with the notes where
   GoatTracker's player puts them.
@@ -48,7 +52,10 @@ screenshots the tests check.*
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
-Coming next: `.sid` file playback (M3).
+Eleven openly licensed tunes for the store, a starter pack, are in [assets/starter](assets/starter),
+and one `sidou-sysex sid --pack` command makes them a single upload
+([the manual](docs/manual/sid-tunes.md#the-starter-pack)). STATUS shows how much of the CPU the
+6502 takes.
 
 ## Try it in your browser
 
@@ -92,7 +99,7 @@ On LIVE:
 | SCL / ENV | the next effect slot / its next algorithm |
 | MASTER | volume |
 | SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
-| PLAY / REC | play and stop the song / record mode |
+| PLAY / REC | play and stop the song (with a `.sid` tune loaded, the tune; EDIT held pauses it) / record mode |
 | SAVE | in the menu: opens the highlighted item; in a song view: saves the song |
 | HOME | the menu from LIVE, back one view elsewhere (settings are under SETTINGS in the menu) |
 
@@ -161,7 +168,9 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: M3, `.sid` playback** (v0.5.0), in progress: SIDOU's own 6502 plays PSID tunes on the chips.
+- **Next: v0.5.0, `.sid` playback** (M3): built and tested in the emulator, in the
+  [CHANGELOG](CHANGELOG.md)'s Unreleased list; it waits for its first run on a real FM-1 (the
+  [flash-day checklist](docs/hardware-test.md)), then the release.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views and REC have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the

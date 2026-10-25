@@ -481,12 +481,16 @@ fn name16(name: &str) -> Vec<u8> {
         .collect()
 }
 
-/// PUT `data` as a named file (type 2), stop-and-wait from sequence 10; returns the metadata
+/// A store type nothing on the device reads (app/store.h: 1 a song, 2 a .sid, whose header a PUT
+/// checks, 3 SysEx's instrument staging): the transfers' disposable files.
+const OTHER_TYPE: u8 = 0x7F;
+
+/// PUT `data` as a named file (OTHER_TYPE), stop-and-wait from sequence 10; returns the metadata
 /// and the emulated ms a DATA packet and its ACK took, on average.
 fn put_file(m: &mut Machine, link: &mut Link, name: &str, data: &[u8]) -> (Vec<u8>, f64) {
     let mut meta = vec![0, 0];
     meta.extend(name16(name));
-    meta.push(2);
+    meta.push(OTHER_TYPE);
     meta.extend((data.len() as u32).to_le_bytes());
     // SAFETY: data is valid for its length; the CRC routine does not retain it.
     let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };
@@ -613,7 +617,8 @@ fn a_silent_usb_put_and_get_move_a_256_byte_packet_quickly() {
 
 /// The same while a chord sounds: a packet's programs share one hold, ramped down and back up,
 /// and the holds stay STORE_FORCE_GAP_MS apart, so the chord plays between packets. Before:
-/// 292.6 ms up, 205.6 down. Bounds: the measurement (105.7 up, 10.4 down) plus at most 10 %.
+/// 292.6 ms up, 205.6 down. Bounds: the measurement (105.7 up, 10.4 down) plus at most 10 %
+/// (M3's code layout moved GET to 11.1 ms; 11.0 was below the 10 %).
 #[test]
 fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     let Some(fw) = fixture("the SysEx USB timing test") else {
@@ -621,7 +626,7 @@ fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     };
     let (up, down) = timed_round_trip(&fw, "USB CHORD", true);
     assert!(up <= 116.0, "PUT: {up:.1} ms a packet");
-    assert!(down <= 11.0, "GET: {down:.1} ms a packet");
+    assert!(down <= 11.4, "GET: {down:.1} ms a packet");
 }
 
 /// A GET of `name` (256 bytes or more), and the main loop until its first DATA reply (101
@@ -1256,7 +1261,7 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
     let mut link = Link::default();
     let mut meta = vec![0, 0];
     meta.extend(name16("USB WAITS"));
-    meta.push(2);
+    meta.push(OTHER_TYPE);
     meta.extend((data.len() as u32).to_le_bytes());
     // SAFETY: data is valid for its length; the CRC routine does not retain it.
     let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };

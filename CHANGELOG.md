@@ -8,6 +8,44 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **`.sid` playback:** PSID tunes (one or two SID chips, PAL or NTSC, up to 65,536 bytes) play on
+  the FM-1 from the store. SIDOU's own 6502 runs a frame ahead of the audio in the main loop and
+  stamps each SID write with its cycle; the audio interrupt places it at that cycle, so the timing
+  is exact (and the tune never makes the audio wait). OSC3 and ENV3 reads see the chip's real
+  voices (a shadow of them), as on a C64. Every GoatTracker 2 example and SIDOU song plays sample for
+  sample the same as the host's reference, and the 6502 itself matches Tom Harte's and Klaus
+  Dormann's tests. RSID tunes and MUS files are refused by name, never played wrongly
+  ([docs/reference/psid.md](docs/reference/psid.md)).
+- **SIDS and NOW PLAYING:** the menu's SIDS (after SONG) lists the tunes on the store by name,
+  eight a page; ALGORITHM or SAVE plays one and opens NOW PLAYING: title, author, year, the song
+  (ALGORITHM changes it), the time, PAL or NTSC, each chip's model and the three voices with envelope
+  bars. PLAY stops, EDIT + PLAY pauses; GLO mutes and solos the voices on the chip; MIDI start, stop
+  (pauses) and continue follow. A tune takes the song's memory: with unsaved changes SIDS asks first
+  (SAVE, discard or cancel), and the song comes back when the tune ends. The keys play chip B under a
+  1SID tune.
+- **SETTINGS → SID MODEL:** AUTO plays each tune on the chip model its file names, KEYS on the chip
+  the keys play, with its profile and character.
+- **`.sid` files on the store, over SysEx:** a tune goes in as a SysEx `PUT` of type 2, checked at its
+  first data message before anything is written, over USB-MIDI or the TRS jack. `sidou-sysex sid`
+  makes the `.syx`, with the same parser as the FM-1 and the same refusals
+  ([the manual](docs/manual/sid-tunes.md)); `--pack` makes one upload of a whole set.
+- **A starter pack:** eleven openly licensed tunes (five of SIDOU's songs and six of GoatTracker's
+  example songs), in `assets/starter`, each with a note on its licence and source
+  ([LICENSING.md](LICENSING.md#the-starter-pack)).
+- **STATUS shows the 6502:** while a tune is loaded, STATUS's rows are the 6502's state, cycles a
+  second, its share of the CPU and the ticks a thousand cycles took (timed with TIMER4), overruns,
+  late writes, the voice shadow and a third SID's dropped writes. The flash day's checklist and its
+  decision rule are in [docs/hardware-test.md](docs/hardware-test.md), section 21.
+
+### Changed
+- **STATUS is readable:** it draws at 2× on three pages that SELECT turns (`1/3` in the title): the
+  knobs (the 6502's rows while a `.sid` tune is loaded), the chip, preset, octave and notes, the
+  effect slots. Its help card names SELECT.
+- MENU: SIDS comes after SONG, so PRE and OCTAVE each move down one item.
+- The store holds `.sid` tunes beside songs (file type 2); a tune and the song share the song's
+  memory, so the song views say `SID PLAYING: STOP TO EDIT` while one plays.
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

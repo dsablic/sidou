@@ -235,7 +235,7 @@ does not take plays the instrument (`app/views.h`,
 - **Menus:** a list of items, each a label and a value right-aligned against
   the edge (an arrow for an item that opens a view), SELECT moves the selection, ALGORITHM
   changes the value. The main menu (HOME) is drawn at **2× text** with six items of the
-  eleven showing: a title bar (MENU, an arrow up and down for the items out
+  twelve showing: a title bar (MENU, an arrow up and down for the items out
   of sight, the item's number of the count; light grey on black in HIGH CONTRAST, reverse video in C64)
   in rows 0-2, a line of 14 characters every 3 rows
   from row 4 (a cell of margin each side: a panel's bezel hides its edge), the items white with
@@ -259,11 +259,12 @@ does not take plays the instrument (`app/views.h`,
   with the selected item's number, a reverse-video selected line and help in the hint
   colour. It has no border, version, READY. prompt or blinking cursor.
 
-  The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, then PRE, OCTAVE,
-  SETTINGS, STATUS, MIDI, CHARSET and ABOUT (eleven: the ergonomics review's E31).
+  The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, SIDS, then PRE, OCTAVE,
+  SETTINGS, STATUS, MIDI, CHARSET and ABOUT (twelve: the ergonomics review's E31, and M3's SIDS).
 - **SETTINGS** is a page drawn as the MIDI page is (a line or two a frame, the SETTINGS title
-  bar with the arrows after the longer title): the set-and-forget settings KEYS, SOUNDS, ROWS,
-  CARDS, STORE, THEME and REC.
+  bar with the arrows after the longer title, as far as the position leaves room: at 10/10
+  only the up arrow): the set-and-forget settings KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC,
+  SPREAD, SID MODEL and RESET.
 - **Toast:** reverse-video text (black on yellow; C64 blue on light blue) in **2× text** on rows 27-28 for 1.5 s,
   saying what changed: up to 13 characters; a longer one breaks at a space into two lines
   (rows 25-28, up to 26 characters), and one whose words fit neither (`SNG: A-4 PITCH NOT
@@ -1082,6 +1083,45 @@ instructions**, busiest passes **22,596/22,580**, and redraw polls **16,215/16,1
 the test checks that both edits actually changed the orderlist length. Existing bounds stay
 input <4,600, pass <55,000, poll <33,000, 200 cells and 20 ms.
 
+## SIDS and NOW PLAYING
+
+The SID views (`app/sid_view.c`, M3) draw into the song views' shared canvas, as SONG's pages do,
+and copy what changed within the 200 cells a frame (`SONG_VIEW_FRAME_CELLS`) less what a toast or
+the wipe takes; under a wipe only what it reveals is built.
+
+![SIDS, a full page](../../tests/golden/lcd/sids-full.png)
+![NOW PLAYING](../../tests/golden/lcd/playing-pal.png)
+
+- **SIDS**, the browser, is SONG's LOAD for tunes: **SIDS** at 2× in the title roles (row 2),
+  **SAVING** or **BUSY** under it at 2× in `hot` while the song saves (the question's SAVE), the
+  store's tunes at 2× from row 6, a line every two rows, eight a page (`menu_item`; the selected
+  one a reverse bar of 14 cells, `sel_fg` on `sel_bg`; a name past 14 characters ends in an
+  arrow), the loaded tune's mark at 2× in `hot` in columns 0-1 (a play mark while it plays, a
+  square while it waits), **READING** (the scan, a file a frame, never under the wipe) or **PAGE
+  2** with its arrows at 2× in `label` on rows 22-23, **SAVE CHOOSE** and **HOME BACK** at 2× in
+  `hint` on rows 24-27. An empty store: **NO TUNES:** / **SEE MANUAL** at 2× in `label` (rows
+  6-9). The references are `sids-empty`, `sids-one`, `sids-full` and `sids-scrolled`.
+- **The question** (`sids-unsaved`): **SONG NOT SAVED** at 2× in `alert` (row 6), the song's name
+  at 2× in `value` (row 8), and the answers at 2× in `hint`: `SAVE   SAVE IT`, `ALG    DISCARD`,
+  `HOME    CANCEL` (rows 12-17).
+- **NOW PLAYING** is built in four zones, each when what it shows changes, so a playing tune
+  sends its time and its envelopes, not the screen: the title at 2× in `value` on rows 1-4 (two
+  lines of 14, broken at a space; a longer second line ends in an arrow), the author and
+  released at 1× in `label` (rows 6-7; characters outside ASCII as `?`); **SONG 2/3** at 2× in
+  `value` (rows 9-10), the time (M:SS) at 2× in `value` and the state at 2× right-aligned (rows
+  12-13: PLAYING in `hot`, PAUSED in `value`, STOPPED and LOADING in `label`, FAILED in `alert`),
+  the clock in `label` and each chip's model in `value` at 1× on row 15, **2SID** in `hot`, and
+  **3SID: 3RD SILENT** in `alert` on row 16; the voices on rows 18-23, a lane at 2× each: the
+  number in the voice's colour (`voice`; `dim` while GLO silences it, `hot` reversed while
+  soloed), **MUT** in `alert` or **SOL** in `value`, and chip A's envelope as a bar of seven 2×
+  characters (`FONT_BAR0..8`) in the voice's colour (`dim` while silent); the overruns and late
+  writes at 1× in `alert` on row 25 when not zero. The references are `playing-pal`,
+  `playing-ntsc`, `playing-2sid`, `playing-3sid`, `playing-counts` and `playing-mutes`.
+- **SID PLAYING** (`song-sid-playing`): a song view that shows while a tune has the song's memory
+  draws only **SID PLAYING** in `alert` and **STOP TO EDIT** in `hint`, at 2× on rows 12 and 15.
+- The goldens are the host's (`host/crates/sidou-tests/tests/app/sid_view.rs`: the views on the
+  host's grid, rendered as the panel draws it), with `status-tune` (STATUS's 6502 rows).
+
 ## STATUS
 
 STATUS (`app/views.c`, the menu's item after SETTINGS) is the numbers: what the instrument has,
@@ -1094,7 +1134,11 @@ in the theme's colours ([the theme](#theme)) with the titles and the key numbers
   octave: small, the names grey and the values white.
 - **Rows 10-17, the four parameters of the sound**, two rows each: the name small, **the number at
   2×** (the cutoff register 0..2047, the resonance, the pulse width, the volume), and a bar in
-  the knob's colour (K1 yellow, K2 cyan, K3 light green; the volume white).
+  the knob's colour (K1 yellow, K2 cyan, K3 light green; the volume white). **While a `.sid`
+  tune is loaded, the 6502's rows** take their place (`status-tune`): **6502** in `hot` and its
+  state on row 10, then at 1× the names in `label` and the numbers in `value` from column 12:
+  CYCLES/S, CPU (the main loop's share, `--` until the device's meter), OVERRUNS, LATE, SHADOW
+  and 3RD SID. When only a number moved, its rows alone are drawn.
 - **Row 19:** the notes held. **Rows 21-26:** the effect slots (`>` in yellow at the one EDIT +
   K1..K4 acts on), their algorithms and Mix, and the selected slot's Amount, A and B.
   **Row 27:** READY.

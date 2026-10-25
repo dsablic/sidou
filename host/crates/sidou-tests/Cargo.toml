@@ -13,13 +13,14 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+gt2-ref = { path = "../gt2-ref" }
 png = "0.18"
 residfp-sys = { path = "../residfp-sys" }
+sha2 = "0.10"
 sidou-sys = { path = "../sidou-sys" }
 sidou-tablegen = { path = "../sidou-tablegen" }
 
 [dev-dependencies]
-gt2-ref = { path = "../gt2-ref" }
 sidou-sysex = { path = "../sidou-sysex" }
 # The store's layout against the package's region descriptors (tests/app/store_layout.rs).
 fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }
@@ -28,6 +29,10 @@ sidou-pack = { path = "../sidou-pack" }
 [[bin]]
 name = "sidou-compare"
 path = "src/bin/sidou_compare.rs"
+
+[[bin]]
+name = "harte-subset"
+path = "src/bin/harte_subset.rs"
 
 [[test]]
 name = "unit"

@@ -969,3 +969,70 @@ fn an_unchanged_save_after_a_load_writes_once_the_loaded_file_was_replaced() {
     assert_eq!(r.message(), "SONG SAVED");
     assert_eq!(r.store.file("FOO"), Some(song));
 }
+
+/// A .sid tune takes the song's memory (song_io_away, M3 Task 9): every action is refused, the
+/// song counts as unchanged and nothing is read; when the tune is done the song comes back from
+/// its file, by name, as it was saved (the memory was overwritten meanwhile), its edits gone.
+#[test]
+fn away_refuses_everything_and_back_reads_the_song_from_its_file() {
+    let mut r = Rig::new();
+    r.save(c"NIGHT");
+    let saved = r.song.write(true);
+    r.io.dirty = 1; // an unsaved edit, lost with the model
+    assert_eq!(unsafe { song_io_away(&mut *r.io, 1) }, 1);
+    assert_eq!(
+        unsafe { song_io_changed(&*r.io) },
+        0,
+        "away, nothing to lose"
+    );
+    unsafe {
+        assert_eq!(song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1), 0);
+        assert_eq!(r.message(), "SID PLAYING");
+        assert_eq!(song_io_new(&mut *r.io, 1), 0);
+        assert_eq!(song_io_save(&mut *r.io, c"OTHER".as_ptr(), r.now), 0);
+        assert_eq!(song_io_delete(&mut *r.io, c"NIGHT".as_ptr(), 1), 0);
+        assert_eq!(song_io_program(&mut *r.io, 0), 0);
+        assert_eq!(song_io_about(&mut *r.io, 1), 0);
+    }
+    // The tune overwrites the model: the song's region is the 6502's memory.
+    unsafe {
+        let s = r.song.ptr_mut();
+        let bytes = (*s).region_bytes;
+        std::ptr::write_bytes(s.cast::<u8>(), 0xA5, bytes as usize);
+        assert!(!gt2_song_init_wiped(s.cast(), bytes).is_null());
+    }
+    for _ in 0..100 {
+        r.step();
+    }
+    assert_eq!(r.io.state, SONG_IO_IDLE as u8, "nothing runs while away");
+    assert_eq!(unsafe { song_io_away(&mut *r.io, 0) }, 1);
+    r.finish();
+    assert_eq!(r.song.write(true), saved, "the song back from its file");
+    assert_eq!(unsafe { song_io_changed(&*r.io) }, 0);
+    assert_eq!(
+        unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) },
+        1,
+        "and its actions back"
+    );
+    r.finish();
+}
+
+/// NEW's song, never saved, comes back as NEW's empty song.
+#[test]
+fn away_from_an_unsaved_new_song_comes_back_new() {
+    let mut r = Rig::new();
+    assert_eq!(unsafe { song_io_new(&mut *r.io, 1) }, 1);
+    r.finish();
+    let fresh = r.song.write(true);
+    assert_eq!(unsafe { song_io_away(&mut *r.io, 1) }, 1);
+    unsafe {
+        let s = r.song.ptr_mut();
+        let bytes = (*s).region_bytes;
+        std::ptr::write_bytes(s.cast::<u8>(), 0x5A, bytes as usize);
+        gt2_song_init_wiped(s.cast(), bytes);
+    }
+    assert_eq!(unsafe { song_io_away(&mut *r.io, 0) }, 1);
+    r.finish();
+    assert_eq!(r.song.write(true), fresh);
+    assert_eq!(r.io.name[0], 0, "unnamed, as NEW leaves it");
+}

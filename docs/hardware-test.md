@@ -363,6 +363,7 @@ which printed control did it.
 | SAVE (button 9), in the menu | the menu's OK: opens the item under the selection (CHIP, TRACKER, SCENE, SONG, SETTINGS, STATUS, MIDI, CHARSET, ABOUT); on PRE or OCTAVE nothing happens and no SAVED toast shows | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::save_opens_the_menus_item_and_does_nothing_on_a_value`, `sidou-tests/tests/app/help_view.rs::save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`, `sidou-tests/tests/app/save_key.rs::saves_press_saves_the_settings_in_scene_status_and_chip_not_in_the_menu` (no SAVED toast) |
 | ALGORITHM (encoder 1), in SETTINGS | changes the item under the selection (KEYS, SOUNDS, ROWS, CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; STORE; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, SETTINGS included, changes colours at once; REC); HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::settings_draws_its_seven_items_like_the_menu_and_home_goes_back`, `sidou-tests/tests/app/title_card.rs::the_cards_option_steps_off_once_always` (CARDS), `sidou-tests/tests/app/theme.rs::the_menu_item_turns_the_theme_and_the_menu_follows_it` (THEME), `emu-gate/tests/screen.rs::live_matches_its_golden_image_in_the_c64_theme_and_back`, `sidou-tests/tests/app/tracker_view.rs::scroll_keeps_the_bar_on_the_windows_row_5` (ROWS), `sidou-tests/tests/app/save_key.rs::reset_asks_first_only_save_confirms_and_cancels_write_nothing`; *emulator (no test yet):* KEYS, SOUNDS, STORE and REC stepping one value a detent in one test; *device-only:* the colours of the C64 theme on the real LCD |
 | ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_menu_changes_the_preset_and_octave`, `sidou-tests/tests/app/chip_view.rs::chip_opens_from_the_menu_behind_the_chip_card`, `emu-gate/tests/screen.rs::the_glyph_sheet_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::entering_scene_names_the_piece`, `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`; *device-only:* the About scroller and fades as seen on the LCD |
+| SELECT (encoder 0), on STATUS | turns its three pages, either way round (`1/3`, `2/3`, `3/3` in the title): 1 the knobs with their bars (the 6502's rows with a tune loaded), 2 the chip, preset, octave and notes, 3 the effect slots; all at 2×; a new opening starts on page 1; the help card (hold HOME) names SELECT | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`, `sidou-tests/tests/app/sid_view.rs::status_shows_the_6502s_rows_while_a_tune_is_loaded`, `emu-gate/tests/screen.rs::the_status_screen_matches_its_golden_image`; *device-only:* the 2× text readable on the LCD |
 | SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves tabs, CHIP, DIST, MOD, FX, EXPERT and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] | *Emulator:* `sidou-tests/tests/app/chip_view.rs::select_moves_the_focus_and_selects_the_slot` (CHIP, DIST, MOD, FX, EXPERT, clamped, the slot follows), `sidou-tests/tests/app/chip_view.rs::expert_is_one_more_select_stop_without_changing_the_selected_slot`; *emulator (no test yet):* the toast SLOT DIST, MOD, FX on a slot change and none for the slot already selected |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, at 3× under the tabs | | [ ] | *Emulator:* `sidou-tests/tests/app/chip_view.rs::algorithm_steps_the_profile_and_the_model_follows` (every profile in order, MODEL follows), `sidou-tests/tests/app/chip_view.rs::algorithm_steps_the_focused_slots_algorithm`, `sidou-tests/tests/app/live_instrument.rs::a_profile_change_reattacks_the_held_notes_on_the_new_chip`, `emu-gate/tests/screen.rs::chip_matches_its_golden_images`; *emulator (no test yet):* the filled USER slots after WORN 6581 in the same walk |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (values at 3× with bars, in the knob's colour; the sound darkens with AGE; DAC adds a worn chip's grit, heard on SAW LEAD, PWM BASS, NOISE PERC and soft notes alike from its first detents, rougher to the top, and a released note whispers with it); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] | *Emulator:* `sidou-tests/tests/app/chip_view.rs::the_knobs_turn_the_character_on_the_chip`, `sidou-tests/tests/app/chip_view.rs::the_knobs_turn_the_focused_slot`, `emu-gate/tests/character.rs::the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact`, `emu-gate/tests/screen.rs::chip_matches_its_golden_images`; *emulator (no test yet):* the sound darkening with AGE and DAC's grit on each preset as measured audio; *device-only:* how the worn chip sounds |
@@ -586,8 +587,10 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in S
   drawn page and its colour roles); *device-only:* readable from arm's length, and values in
   knob order matching the knobs under the fingers (look on the real LCD; which physical knob is
   which).
-- [ ] **STATUS and ABOUT**: the 2× title and the key numbers are readable; the small lines are
-  as before.
+- [ ] **STATUS and ABOUT**: STATUS is all 2× on three pages and readable at arm's length: SELECT
+  turns them (either way round; `1/3` in the title; the first page on each opening): 1 the
+  knobs with their bars, 2 the chip, preset, octave and the notes, 3 the effect slots. ABOUT's
+  2× title and the key numbers are readable; its small lines are as before.
   *Emulator:* `emu-gate/tests/screen.rs::the_status_screen_matches_its_golden_image`,
   `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back` (what is drawn);
   *Device-only:* readable on the real LCD.
@@ -1496,7 +1499,8 @@ These are manual acceptance checks, not recorded hardware passes. USB-MIDI outpu
 works since v0.2.0 (section 8.1 passed on 2026-10-21 and on v0.2.0's package), so USB
 replies can carry a dump or an upload. The protocol and exact payloads are
 in [SysEx protocol, version 1](reference/sysex.md). `sidou-sysex` is a host-only
-packet library, not a CLI or a MIDI transport. Use a SysEx utility that supports
+packet library, not a MIDI transport; its one command writes `.sid` tunes as `.syx` files
+(section 20). Use a SysEx utility that supports
 per-frame ACK handling for USB and an explicit frame gap for TRS.
 
 Use a writable store (section 7.1), back up wanted songs and choose disposable
@@ -2228,6 +2232,109 @@ A note held (or a song playing) throughout unless an item says otherwise.
 
 Notes:
 
+## 20. .sid tunes over SysEx PUT (M3 Task 10)
+
+What it is: [Put a .sid tune on the FM-1](manual/sid-tunes.md); the protocol's type 2 in
+[SysEx protocol, version 1](reference/sysex.md#sid-tunes-type-2). fm1-emu checked it over TRS
+(`host/crates/emu-gate/tests/psid_store.rs`); the unit has not run it. The build stores tunes
+but these checks end at the store (section 21 plays them). Use
+disposable tune names, a writable store (section 7.1) and tunes you may copy; keep a backup of
+songs you want. Make the files first, from `host/`, with a tune of your own (`a.sid`) and a
+second one:
+
+`cargo run --release -p sidou-sysex -- sid a.sid b.sid --out ../build/syx`
+
+- [ ] **The files:** each tune prints its store name, title, songs and chips and `N messages`;
+  `../build/syx/a.syx` and `b.syx` exist. A copy of `a.sid` with its first four bytes changed to
+  `RSID` (a hex editor) is refused (`refused: RSID: NOT YET`) and gets no `.syx`. Record the
+  names:
+- [ ] **Over USB, a pause between messages:** in the SysEx tool (manual, section 2) send `a.syx`
+  to the port "SIDOU FM-1" with one second after each message. RECEIVING, then SAVED. Record the
+  tool, the time taken and the toasts:
+- [ ] **It is on the store:** INQ and DIR as in section 8c: DIR lists the tune's name with type
+  2 and the `.sid`'s length; GET it (section 8c) and compare it with `a.sid` byte for byte.
+- [ ] **Over USB, too fast:** send `b.syx` with no pause. The upload is refused (STORE BUSY:
+  RESEND or MIDI: BAD PACKET) and DIR does not list `b`'s name, or lists it whole if the
+  computer happened to be slow enough. Send it again with the pause: SAVED.
+- [ ] **Refusals:** the command refuses an RSID, a MUS or a broken file before there is a
+  `.syx`, so there is nothing of one to send from a SysEx tool; fm1-emu checks the device's own
+  refusals (each toast at the first DATA, no flash program). Here, check only that a `.syx` of a
+  song (any `.syx` of section 8c's PUT of a type-1 file) still goes in as before.
+- [ ] **Over TRS:** from a MIDI interface's OUT to the TRS MIDI IN, send `a.syx` again with one
+  second after each message (`--trs` prints the time): RECEIVING, then SAVED; DIR over USB still
+  lists one file of that name (replaced, not doubled), same length.
+- [ ] **A song beside it:** the SONG view's browser lists the songs only, never the tune; a
+  song loads and plays as before.
+- [ ] **Store full:** only if the store already holds many files (do not fill it for this):
+  a tune's upload when INQ's free bytes are fewer than its length is refused with STORE FULL
+  (USB: NAK 5 at its first DATA) and nothing changes.
+
+Notes:
+
+## 21. .sid playback and the 6502's meter (M3 Task 12: the flash day)
+
+What it decides: whether the 6502 that plays a `.sid` fits the CPU on the unit. fm1-emu counts
+instructions, not cycles; it does not model the I-cache that the 6502's flash code runs through
+(docs/hardware.md, "Open checks"). **Run this on the flash day, with the user: nothing is
+changed on guesses.** Tune and chip behaviour that fm1-emu already proves (bit-exact with the
+host, the look-ahead, the stamped writes) is not re-tested here, only the device's speed and
+sound.
+
+**What the meter is.** The main loop's pass that runs the 6502 (a slice of at most 1,000 of its
+cycles: the code, the voice shadows, the write ring) is timed with TIMER4 (24 MHz). STATUS,
+while a tune is loaded, shows on its `CPU` row `S.S% T/KC`: the share of the CPU those slices
+took over the last second (to a tenth of a percent), and the 24 MHz ticks a thousand 6502 cycles
+took. `CYCLES/S` is the 6502 cycles a second (985,248 at the PAL clock, when it is not behind),
+`LATE` the writes the audio applied after their cycle, `OVERRUNS` the play calls that ran past
+their period. An audio interrupt that lands inside a slice counts in it, so the share reads a
+little high: it is the pessimistic side. In fm1-emu the rows read from the same counters (the
+emulator's TIMER4); the dojo tune there reads about 1.2 % and 296 ticks a thousand cycles, which
+is the figure to set the unit's beside.
+
+Set up: the build with the starter pack on the store (`sidou-sysex sid ../assets/starter --pack`,
+section 20's way of sending), the unit's clock noted (docs/hardware.md: 360 MHz as M-VAVE's head
+leaves it, 240 MHz if a unit or build changes it; the budgets assume 240), a tune of the
+user's heaviest HVSC set: the study's `Sound_Test`, `Thomkat_with_Strange_End`, `Kill_Me` and
+`Last_Ninja`, sent as in section 20. fm1-emu's figures for each tune (run on the host first:
+`LATE` and the instruction counts) go in the same table.
+
+For each tune, 60 s of play, once with LIVE showing (HOME back to the keyboard view while it
+plays) and once with STATUS (or NOW PLAYING) showing; read STATUS's rows (page 1, the first on opening: SELECT turns the pages) at the start, after 30 s
+and after 60 s, and listen for clicks, dropouts, a tune that stops early or hangs (`PLAY HUNG`,
+`INIT TOO LONG`):
+
+- [ ] **Starter pack, every tune:** each plays from the start to a minute without a late write
+  or a glitch you can hear; record `CPU` and `T/KC` (the largest of the three reads), `LATE`,
+  `OVERRUNS`:
+- [ ] **Sound_Test:** `CPU` / `T/KC` / `LATE` / `OVERRUNS` with LIVE showing, then with STATUS:
+- [ ] **Thomkat_with_Strange_End:** the same:
+- [ ] **Kill_Me:** the same:
+- [ ] **Last_Ninja:** the same:
+- [ ] **A 2SID tune** (if one is at hand): the same, and the second chip is heard:
+- [ ] **The song views while it plays:** open SONG, STEP, TRACKER: each says `SID PLAYING: STOP
+  TO EDIT`; the tune does not glitch as the views change. STATUS's `CPU` with the song views
+  not drawn, and with the LCD redrawing the most (NOW PLAYING):
+- [ ] **Stop and back:** PLAY stops the tune to silence and returns the song; the next tune
+  starts from silence. `CPU` reads `--` when no tune runs:
+- [ ] **At the unit's other clock,** only if the first run is over the rule below: the same
+  tune, the same reads, at the other clock. Record the clock:
+
+**The decision rule.** Take the worst tune's `CPU` of all the reads. If it is **above 15 %** of
+the CPU, or **any late write** shows in a 60 s run of a tune that has none in fm1-emu, then the
+fallbacks are, in this order:
+
+1. `cpu6502.c` at `-O2` (+2.6 KB of flash, about 7 % fewer instructions);
+2. the dispatch loop in RAMTEXT (it needs the room: only 416 bytes of RAMTEXT's 48 KB are free, so
+   room is made first);
+3. last, OSC3 and ENV3 read from the audio chip a frame late instead of the voice shadow (a tune
+   that waits on ENV3 then hangs to the play cap, so this one only the user may choose).
+
+At or under 15 % with no late write: M3 ships as built. The controller brings the numbers to the
+user; nothing is changed on guesses. The results go in `docs/hardware-results/` (one file for
+the day, as the earlier flash days').
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2253,3 +2360,5 @@ Notes:
 | 17 Code in Felucca's debug area | | |
 | 18 Generative play in STEP | | |
 | 19 USB audio out | | |
+| 20 .sid tunes over SysEx PUT | | |
+| 21 .sid playback and the 6502's meter | | |

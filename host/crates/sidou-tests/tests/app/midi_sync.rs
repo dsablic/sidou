@@ -758,3 +758,81 @@ fn song_select_picks_the_subtune_and_names_fit() {
         assert!(!n.is_empty() && n.to_bytes().len() <= 9);
     }
 }
+
+/// A .sid tune's transport (midi_sync_tune, M3 Task 11): what it was given, and whether a tune is
+/// loaded.
+struct TuneHook {
+    loaded: bool,
+    got: Vec<u32>,
+    asked: u32,
+}
+
+unsafe extern "C" fn tune_hook(ctx: *mut std::ffi::c_void, b: u32) -> i32 {
+    let h = unsafe { &mut *ctx.cast::<TuneHook>() };
+    if b == MIDI_SYNC_TUNE_ASK {
+        h.asked += 1;
+    } else {
+        h.got.push(b);
+    }
+    i32::from(h.loaded)
+}
+
+/// While a tune is loaded, start, stop and continue are its own and the song gets nothing (no
+/// play, no clock followed, no seek, no song select); CLOCK OFF ignores them for the tune too;
+/// with no tune, the song has them back.
+#[test]
+fn a_loaded_tune_takes_start_stop_and_continue_and_the_song_gets_nothing() {
+    let mut r = Rig::new();
+    let mut hook = Box::new(TuneHook {
+        loaded: true,
+        got: Vec::new(),
+        asked: 0,
+    });
+    let hp: *mut TuneHook = &mut *hook;
+    unsafe { midi_sync_tune(&mut *r.sync, Some(tune_hook), hp.cast()) };
+    r.run(10);
+    let t0 = r.samples() * TPS;
+    r.midi.extend(clock(t0, 120.0, 4, |_| 0));
+    for (at, b) in [(1u32, 0xFAu8), (2, 0xFC), (3, 0xFB)] {
+        r.midi.push(rt(t0 + at * 1_000_000, b));
+    }
+    r.midi.push(At {
+        ticks: t0 + 4_000_000,
+        bytes: [0xF2, 0x10, 0x00],
+        len: 3,
+    });
+    r.midi.push(At {
+        ticks: t0 + 4_100_000,
+        bytes: [0xF3, 0x02, 0x00],
+        len: 2,
+    });
+    r.run((2.5 * FS / BLOCK as f64) as u32);
+    assert_eq!(hook.got, [0xFA, 0xFC, 0xFB], "the tune's transport");
+    assert!(hook.asked > 96, "every message asked first");
+    assert_eq!(
+        r.status().state,
+        MIDI_SYNC_IDLE as u8,
+        "the song never played"
+    );
+    assert_eq!(r.sync.clock.active, 0, "no clock followed");
+    assert_eq!(
+        (r.sync.want, r.sync.subtune),
+        (0, 0),
+        "no request, no subtune"
+    );
+    // CLOCK OFF: the tune's transport is ignored too
+    unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_OFF, 0) };
+    let t1 = r.samples() * TPS;
+    r.midi.push(rt(t1 + 100_000, 0xFA));
+    r.run(20);
+    assert_eq!(hook.got, [0xFA, 0xFC, 0xFB]);
+    // no tune: the song's again
+    unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_AUTO, 0) };
+    hook.loaded = false;
+    let t2 = r.samples() * TPS;
+    r.midi.extend(clock(t2, 120.0, 2, |_| 0));
+    start_at(&mut r, t2 + 500_000);
+    r.run((1.5 * FS / BLOCK as f64) as u32);
+    assert_eq!(hook.got, [0xFA, 0xFC, 0xFB]);
+    assert_eq!(r.status().state, MIDI_SYNC_PLAYING as u8, "the song plays");
+}

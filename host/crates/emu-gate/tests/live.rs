@@ -202,7 +202,12 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
         "the screen was redrawn without a change"
     );
 
-    // A note changes the notes line: only its cells go out, as one or two runs (windows).
+    // A note changes the notes line (page 2, SELECT turns to it): only its cells go out, as one
+    // or two runs (windows).
+    m.turn(sidou_sys::PANEL_ENC_SELECT as u8, 1);
+    m.run_ms(300);
+    let fb = m.soc.lcd.fb.clone();
+    let windows = m.soc.lcd.frames;
     m.key(key_id(A4), true);
     m.run_ms(200);
     let sent = m.soc.lcd.frames - windows;

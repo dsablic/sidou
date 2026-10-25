@@ -2,10 +2,11 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Compiles every C file the host tests build (the SOURCES of host/crates/sidou-sys/build.rs,
-# the gt2-ref shim and the sidou-pack harnesses) with GCC 13 in the build image, with the same
-# flags as the cc crate's release build and warnings as errors. macOS's clang hides some errors
-# that GCC reports; this is what CI's old `gcc` job caught, in seconds. Run it from the
-# repository root or anywhere; it starts Docker through tools/fm1-docker.
+# the gt2-ref shim, the PSID oracle and the sidou-pack harnesses) with GCC 13 in the build
+# image, with the same flags as the cc crate's release build and warnings as errors. macOS's
+# clang hides some errors that GCC reports; this is what CI's old `gcc` job caught, in
+# seconds. Run it from the repository root or anywhere; it starts Docker through
+# tools/fm1-docker.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 if [ -z "${SIDOU_BUILD_IMAGE:-}" ]; then exec "$root/tools/fm1-docker" sh "$root/tools/gcc-check" "$@"; fi
@@ -23,9 +24,19 @@ n=$(wc -l < "$out/list")
 # The firmware's own C, as the host tests build it.
 cflags="-O3 -std=c11 -ffp-contract=off -Wall -Wextra -Wshadow -Werror -fPIC -ffunction-sections -fdata-sections"
 cflags="$cflags -DSIDOU_ALL_COMBINED_PROFILES -DSIDOU_ALL_COMBINED_PROFILES_8580 -DSIDOU_MIDI_MAP_DOC -DSIDOU_REG_RING_RACE_HOOK"
-cflags="$cflags -Icore -Ibench -Iapp -Ihost/crates/sidou-sys"
+cflags="$cflags -Icore -Ibench -Iapp -Ihost/crates/sidou-sys -DCPU6502_SMALL"
 # shellcheck disable=SC2086
 xargs -P "$jobs" -I{} sh -c 'gcc '"$cflags"' -c "$1" -o /dev/null || { echo "gcc-check: $1 failed" >&2; exit 255; }' _ {} < "$out/list"
+# The 6502's test-only builds (sidou-sys's build.rs): CPU6502_HOOK_ALL, with and without the
+# I/O accesses out of line.
+for small in -DCPU6502_SMALL -UCPU6502_SMALL; do
+    # shellcheck disable=SC2086
+    gcc $cflags $small -DCPU6502_HOOK_ALL -c core/cpu6502/cpu6502.c -o /dev/null
+done
+
+# The chip's test-only build for the mute's reference (SID_TEST_ZERO_VOICE).
+# shellcheck disable=SC2086
+gcc $cflags -DSID_TEST_ZERO_VOICE -c core/sid/sid.c -o /dev/null
 
 # bindgen's wrappers for the static inline functions are compiled in the host build; the
 # header-only ones are compiled here as part of the files that include them.
@@ -37,6 +48,11 @@ for f in gt2ref_shim.c gt2ref_asm.c gt2ref.c; do
         -I$shim -I$gt -DGT2REF_SRC_DIR='"x"' -c "$shim/$f" -o /dev/null
 done
 
+# The PSID oracle (host/crates/psid-ref): the derived copy of FM-1 SID's psid.c with
+# m6502.h, warnings on, as in its build.rs.
+gcc -O3 -std=c11 -Wall -Wextra -Werror -Ithird_party/fm1-sid-player -Ithird_party/chips \
+    -c host/crates/psid-ref/c/psid_oracle.c -o /dev/null
+
 # The packager's harnesses: warnings on, as in their build.rs.
 for f in ota_harness flash_hooks flash_spike_guard; do
     gcc -std=c11 -Wall -Wextra -Wno-unused-function -Iplatform/fm1/src -Iplatform/fm1 \
@@ -45,4 +61,4 @@ done
 # (at -O2, as its build.rs builds it: usb.c's unused SIE functions hold pi32v2 instructions)
 gcc -O2 -std=c11 -Wall -Wextra -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
     -Iplatform/fm1 -c host/crates/sidou-pack/harness/uac_harness.c -o /dev/null
-echo "gcc-check: $n firmware sources, the gt2-ref shim and the harnesses compiled by GCC 13"
+echo "gcc-check: $n firmware sources, the gt2-ref shim, the PSID oracle and the harnesses compiled by GCC 13"

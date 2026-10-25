@@ -15,7 +15,16 @@ lists the prerequisites.
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
 | App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets, the store and its layout) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
-| Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
+| Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes; **the cross-check**: the same packed player on SIDOU's own 6502 (`core/cpu6502`, three builds), every call's ordered SID writes, cycles and return registers equal to `mos6502`'s, over every example, subtune and option set (`--test sidou_cpu`) and the showcase songs (`cargo test --release -p sidou-tests --test showcase_cpu`) | `crates/gt2-ref/`, `crates/sidou-tests/tests/showcase_cpu.rs` |
+| The PSID environment (calls, the bank register, periods and speed bits, PAL/NTSC, late calls, the limits, slicing at every size 1-5,000, the count's wrap), on tunes assembled at test time | `cargo test --release -p sidou-tests --test psid_env` | `crates/sidou-tests/tests/psid_env.rs`, `src/psid_fixtures.rs` (strict-mode `gt2_ref::assemble`), [docs/reference/psid.md](docs/reference/psid.md) |
+| The PSID oracle: SIDOU's PSID environment against m6502.h + FM-1 SID's `psid.c`, call by call, with the expected differences (GoatTracker's examples and SIDOU's songs, every subtune, at `$D400` and as 2SID at `$D420`; Task 6's fixtures; the vendored files and the derived copy) | `cargo test --release -p psid-ref`; the user's tunes with `SIDOU_PSID_DIR=<dir> ... --test oracle -- --ignored` (report in `build/psid-ref/report.txt`) | `crates/psid-ref/`, [the section below](#the-psid-oracle-m3) |
+| The .sid player (`core/psid/psid_ctl.h`: the look-ahead, the write ring, each write placed at its cycle; against a reference render clocked write by write at the stamps over the oracle's corpus, with skipped main-loop passes, the split budget, a slow init, pause, stop, song changes, 2SID and mutes, the ring's wrap; on fm1-emu each look-ahead pass within `PSID_SLICE_WORST`: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget a_look_ahead -- --nocapture`) | `cargo test --release -p sidou-tests --test psid_ctl` | `crates/sidou-tests/tests/psid_ctl.rs`, `src/psid.rs` (the host render) |
+| .sid tunes on the device (M3 Task 9: a tune put into the store's flash before the boot, played from the panel (the menu's SIDS, Task 11) over the song's memory; the firmware's audio equal to the host's render through the same chain, sample for sample, for a VBI, a CIA, an NTSC and a 2SID tune, with LIVE showing and without; the song and a tune switched both ways 20 times, the song back from the store byte for byte; the keys on chip B under a 1SID tune, silent under a 2SID tune; PLAY HUNG; the interrupt only in SRAM; the .sid path's worst block within `PSID_ISR_WORST` over the corpus and a write every 4 cycles, each slice within `PSID_SLICE_WORST` and every pass within `POLL_INSTRUCTIONS` with LIVE showing, the RAM, RAMTEXT and image budgets) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid --test psid_budget -- --nocapture`; the interrupt's SRAM check with `--test ram_audio` | `crates/emu-gate/tests/psid.rs`, `psid_budget.rs` (bench/fm1/bench_6502_main.c mode 6), `common/mod.rs` (`render_host_psid`, `put_file`) |
+| .sid files on the store (M3 Task 10: the browser's list, the header's refusals, the loading in parts equal to a whole load, the largest file too, within the store's share of a pass; SysEx `PUT` of type 2 checked at its first DATA before any claim or program, `NAK FULL`, the fuzz with type-2 headers; `sidou-sysex sid`, the CLI; in fm1-emu the CLI's `.syx` over TRS stored byte for byte and played, the refusals with no flash program, a 64 KiB tune, the keys used up) | `cargo test --release -p sidou-tests --test app -- sid_io sysex`; `cargo test --release -p sidou-sysex`; `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid_store -- --nocapture` | `crates/sidou-tests/tests/app/sid_io.rs`, `tests/app/sysex.rs`, `crates/sidou-sysex/tests/sid.rs`, `crates/emu-gate/tests/psid_store.rs`, [the section below](#sid-files-on-the-store-m3-task-10) |
+| The SID views (M3 Task 11, `app/sid_view.h`: the SIDS browser, the unsaved-song question each way, NOW PLAYING, PLAY and EDIT + PLAY with a tune, GLO's mutes to the tune, the song views' SID PLAYING, STATUS's 6502 rows, SID MODEL and its settings schema 7, MIDI start, stop and continue to a tune; host LCD goldens `sids-*`, `playing-*`, `song-sid-playing`, `status-tune`, written with `SIDOU_LCD_GOLDEN_UPDATE=1`; in fm1-emu the menu's SIDS, a tune, GLO's mute of voice 2 sample for sample against the host's render muted at the same block, solo, a song step, pause, resume and stop, the question each way, MIDI over TRS, every ui_poll within `SIDS_WORST_POLL`, every pass within `POLL_INSTRUCTIONS`, every frame within 200 cells) | `cargo test --release -p sidou-tests --test app -- sid_view help_view settings midi_sync`; `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid_views -- --nocapture` | `crates/sidou-tests/tests/app/sid_view.rs`, `crates/emu-gate/tests/psid_views.rs`, `common/mod.rs` (`ui_play_tune`, `ui_end_tune`) |
+| The 6502's meter (M3 Task 12: the main loop's slices timed with TIMER4; STATUS's `CPU` row shows the share and the ticks a thousand cycles: in fm1-emu non-zero while a tune plays in `psid_views`' budget test, read from STATUS's look, 0 once it is stopped; the host's golden `status-tune`; the flash day's checklist is [docs/hardware-test.md](docs/hardware-test.md) section 21) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid_views the_sid_views_stay -- --nocapture`; `cargo test --release -p sidou-tests --test app -- sid_view` | `crates/emu-gate/tests/psid_views.rs`, `crates/sidou-tests/tests/app/sid_view.rs` |
+| The starter pack (M3 Task 13, `assets/starter`: the signed-off eleven tunes and nothing else; each with its `.md`, a licence on the allowlist and the file's SHA-256; each parses, is not RSID and the device accepts it; every song of every tune 10 s in the host render on its chip with no overrun, no late write, no clipping; the files in step with their `.sng` sources; `sidou-sysex sid --pack` on the pack equal to the tunes' uploads end to end; in fm1-emu the pack's one `.syx` over TRS a second a message into the store, byte for byte, with its bytes and keys printed, and the first and eighth tune of the browser playing) | `SIDOU_STARTER_UPDATE=1 cargo test --release -p sidou-tests --test starter` writes the files; `cargo test --release -p sidou-tests --test starter`; `cargo test --release -p sidou-sysex`; `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid_store starter -- --nocapture` (about a minute) | `crates/sidou-tests/tests/starter.rs`, `src/starter.rs` (the list and the generator), `crates/sidou-sysex/tests/sid.rs`, `crates/emu-gate/tests/psid_store.rs`, [LICENSING.md](LICENSING.md#the-starter-pack) |
+| SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks; on fm1-emu: Dormann, the cost per cycle: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget -- --nocapture`) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
@@ -449,6 +458,175 @@ remain in [the hardware checklist](docs/hardware-test.md#63-two-chips-routing-an
 then one line a frame, `register=value` in hex, for comparing a player against the
 reference by hand. Its flags are strict: a value out of range, a value on `-N` or `-P`, an
 unknown flag or a second song is an error.
+
+### SIDOU's 6502 (M3)
+
+`tests/cpu6502.rs` checks `core/cpu6502` (decision record 0008) in three builds of the same
+file (`sidou-sys`'s `build.rs`): the device's (`CPU6502_SMALL`), and the test-only
+`CPU6502_HOOK_ALL` as the device builds it and with the I/O accesses inline. With
+`HOOK_ALL` every operand access (the zero page's, the I/O page's, the others) and every push
+goes through the hooks with the cycle stamp the device gives an I/O access.
+- **Tom Harte's SingleStepTests** (`third_party/6502-tests/harte/`: the first 100 tests of
+  each opcode, `VENDORED.md`): the final registers (P with bits 4 and 5 masked) and memory
+  for all 256 opcodes; the cycle count for the 244 that do not JAM; the 12 JAMs stop with
+  `CPU6502_JAM` and the PC on the opcode (Harte's final PC is the byte after it). Each
+  hooked access must be the test's bus cycle at its stamp (a load's on its last cycle, a
+  read-modify-write's read on its third last and its writes, old then new, on its last
+  two, JSR's and BRK's pushes where the real CPU makes them), and with `HOOK_ALL` the
+  writes must be all of the test's writes. Half the tests start 4 cycles before the
+  32-bit count wraps. The device's build runs with and without its I/O page on ($01 at
+  `$37` unless the test sets it), so its own out-of-line accesses are checked where a test
+  touches `$D000-$DFFF`.
+- **The full set** (`--ignored harte_full_set`, `SIDOU_HARTE_DIR` naming a directory of
+  the 256 JSON files, about 80 s): the same over 2,560,000 tests. Measured 2026-10-23: the
+  final state 2,560,000 of 2,560,000 on every build, the cycles 2,440,000 (every non-JAM
+  test), every stamp of the 1,690,000 hooked tests.
+- **The subset's converter** (`src/harte.rs`, `src/bin/harte_subset.rs`):
+  `cargo run --release -p sidou-tests --bin harte-subset -- <json dir> <out dir> [count]`
+  writes each opcode's first tests in the binary the test reads (`VENDORED.md` has the
+  command for the committed files).
+- **Klaus Dormann's functional test** (`third_party/6502-tests`, decimal mode included)
+  reaches its success trap on every build, in the same cycle count.
+- **Slicing:** Dormann's first 100,000 cycles run in slices of every length from 1 to 300
+  cycles give the same registers, count, memory and hooked stream as one run; so does a run
+  across the 32-bit count's wrap.
+- **The stops:** a return to the sentinel (`$0000`/`$0001`) and a jump, return or RTI to the
+  KERNAL's interrupt exits (`$EA31`, `$EA81`, `$FEBC`) end a call only when `stops` is set.
+- **The I/O page:** the device's build hooks `$D000-$DFFF` only while `io` is set and `$01`
+  maps I/O in, with the stamps above.
+
+**On fm1-emu** (Task 2), `crates/emu-gate/tests/cpu6502_budget.rs` runs the device build
+(`CPU6502_SMALL`, `-Os`) as pi32v2 code in the bench image `sid_bench_6502`
+(`bench/fm1/bench_6502_main.c`; its modes and result words are in the file's header):
+- **Dormann's functional test** reaches its success trap `$3469` (96,241,955 cycles). This is
+  the decoder check: fm1-emu stops on an encoding it cannot decode, so a finished run means
+  the compiler's dispatch and everything else in the core decodes at the pinned emulator.
+- **A 10 s workload** from three GoatTracker examples (the three costliest per cycle of the 14;
+  `every_example_song`, `--ignored`, measures all) packed by `gt2-ref`'s `pack` with its default
+  options: init, then a play call every PAL frame (19,656 cycles, 501 of them), `$01` at `$35`,
+  a write hook summing the writes. The writes' count and sum must equal the host 6502's trace,
+  no play may run past its frame, and the instructions per 6502 cycle must stay within
+  `CPU6502_INSTR_PER_CYCLE` (`common/mod.rs`: the worst song's average plus 5 %).
+- **Each opcode alone**: a run that executes nothing (the call's own cost) and a run that
+  executes one instruction, per opcode; printed by cycle count, and for `LDA`, `STA` and `INC`
+  of `$D400` through the hooks.
+Instructions are not device cycles: flash day measures the difference (`docs/hardware.md`,
+"Open checks"). `flash_budget.rs` also holds M3's stage (`("M3", 534,000)`, `M3_START` plus
+M3's 28,000), which is `IMAGE_CEILING` since Task 9 merged device code (the image at M3's close:
+526,192 bytes).
+
+### The PSID oracle (M3)
+
+`crates/psid-ref` (M3 Task 7) runs a tune on SIDOU's PSID environment (`core/psid/psid_env.c` on
+`core/cpu6502`, voice shadows of fresh chips answering the SID reads) and on an oracle built
+from floooh/chips' `m6502.h` and FM-1 SID's `psid.c` (`third_party/chips`,
+`third_party/fm1-sid-player`, both vendored unmodified, test-only), and compares them call by
+call. The oracle is `c/psid_oracle.c`, a derived copy of `psid.c` whose only additions, between
+`psid-ref: begin` and `end` markers, are its notice, a log of the I/O page's reads and a
+memory read-back for `$01`; a test checks the vendored files' SHA-256s and that the copy
+without those blocks is the original byte for byte.
+
+- **Each side's calls** (`psid_ref::run`, `psid_ref::sidou::run`): init, then play calls, each
+  with its start, its length, `$01` at its start, its SID writes (cycle in the call, register,
+  value; SIDOU's with the chip and the address) and its I/O reads (cycle, address, value). The
+  oracle is scheduled as `psidlog.c` schedules it (PAL, a frame boundary after init, then
+  `psid_period`); SIDOU's side as the player will run it (its clock, the period rule).
+- **The comparison** is by call index, so the two sides' different periods do not shift the
+  calls. In each call, in time order: `$01` mapping the I/O page the same way, every read
+  SIDOU made also made by the oracle at the same cycle and address with the same value
+  (m6502.h's dummy reads, which SIDOU's core does not send to the I/O page, are not compared),
+  the writes equal (cycle, register, value; the chip aside, since `psid.c` folds every SID into
+  one), the lengths equal. SIDOU's chip is checked against each write's address separately. The
+  first difference must be one of these, and ends that tune's comparison with the rule named;
+  anything else fails the test:
+
+  | # | Expected difference | SIDOU | `psid.c` |
+  |---|---|---|---|
+  | E1 | the bank register at a call's start | per call, from its address | `$37` once at load; a value that maps the I/O page the same way (`$36`/`$35`/`$37`: neither side has ROMs) shows only to a tune reading `$01`, so the comparison goes on and E1 explains a later difference no other rule does |
+  | E2 | a SID read (OSC3, ENV3, the POTs, a write-only register) | the voice shadow | random OSC3, 0 for the rest |
+  | E3 | a raster read (`$D011`, `$D012`) | the absolute cycle, PAL or NTSC geometry (one jump at the 32-bit wrap) | from the call's start, PAL |
+  | E4 | a CIA 1 timer A read (`$DC04`, `$DC05`) | the counter | the latch |
+  | E5 | an interrupt flag read (`$D019`, `$DC0D`, `$DD0D`) | the flags | 0 |
+  | E6 | any other I/O read | the last write | 0 |
+  | E7 | a call cut at `psid.c`'s cap (2 frames for play, 5 PAL seconds for init) | runs on to its return, or its own limit | stopped |
+  | E9 | a third SID's registers | writes dropped (counted), reads 0 | folded into its one SID inside `$D400-$D7FF` (OSC3 random), dropped outside (the expansion areas read 0 on both) |
+  | E10 | a JAM | the tune stops (`6502 JAM AT`) | m6502.h stays busy: runs to the cap |
+  | E11 | an interrupt call (play address 0) | the IRQ's stack (and the KERNAL entry's through `$0314`: S `$F9`, X = S), P pushed `$20` | S `$FC`, X 0, P pushed as the last call left it |
+  | E12 | a second SID outside `$D400-$D7FF` (`$DE00-$DFFF`) | chip B | writes dropped, reads 0 |
+
+  **E8**, the timing between calls (CIA periods under 1,000, the speed bit for songs above 32,
+  NTSC frames and the NTSC latch, late calls after an overrun), is checked separately:
+  SIDOU's call times against the period rule (`compare::check_timing`, restated from the format
+  and the C64), by assertion; the oracle's times are not used.
+- **The corpus** (`tests/oracle.rs`): every GoatTracker 2 example and SIDOU's songs
+  (`assets/songs/*.sng`), every subtune, packed by `gt2-ref` into PSID v2 at the default options
+  and at `$D420` as a 2SID tune (v3, the second SID there), 60 s each in release (10 s in debug):
+  44 songs and subtunes, 132,352 calls and 1,987,572 writes, all equal with no difference at
+  all. Task 6's fixtures (`sidou_tests::psid_fixtures`), 3 s each, each with the rule and the
+  call its first difference must be. Task 4's crafted headers are SIDOU's alone: `psid.c` reads
+  past its buffer on them, so the oracle refuses any file SIDOU's parser refuses.
+- **The user's tunes** (`--ignored the_users_tunes_against_the_oracle`, `SIDOU_PSID_DIR` naming a
+  directory; `SIDOU_PSID_SECONDS`, 60 by default): every `.sid` under it, every subtune, the same
+  comparison and timing check, a table of the tunes, the calls compared and what ended each in
+  `build/psid-ref/report.txt` (never committed). Measured 2026-10-24 on the M3 study's 24 tunes:
+  16 PSID tunes, 88 subtunes, every one equal for its 60 s; the 8 RSID tunes refused.
+- **A planted bug is caught:** with `STA abs,X`'s write stamped a cycle early (a scratch change
+  to `core/cpu6502/cpu6502.c`'s `W_ABX`), the corpus fails at `2xtest.sng`'s first play call
+  (`$D404` at cycle 489 against the oracle's 490).
+
+### .sid tunes on the device (M3 Task 9)
+
+In fm1-emu, `crates/emu-gate/tests/psid.rs` puts a tune into the store's flash dump before the
+boot (`common::put_file`, type `STORE_FILE_SID`) and plays it through the firmware's test hook
+(`platform/fm1/main.c` `psid_test_hook`: play, stop, end for good; until Task 11's views). The
+firmware's audio from power-on equals `common::render_host_psid`: the instrument and chip B as at
+boot, chip A no longer rendered from the block the interrupt took the tune (`player_now`), each
+of the tune's chips fresh from the block its reset reached the interrupt (`reg_ring_chips.active`),
+and from psid_ctl's first block (`psid_ctl.blocks`) sidou_tests::psid's `Player` on those chips,
+then the mix, tail gate, slots, thump and MASTER, sample for sample (the blocks read from the
+buffer snapshots, the DMA's leading silence searched as `song.rs` does). The tunes: GoatTracker's
+`dojo` (VBI, with LIVE's tap and under the menu), `funktest` with song 1 on CIA 1's timer,
+`wavecmdtest` at the NTSC clock, `dojo` as 2SID at `$D420`; none may have a late write. The switch
+test plays a 1SID and a 2SID tune by turns, 20 times, from LIVE and over a playing song, and each
+time the song (saved and loaded as `NIGHT` first) comes back from the store byte for byte (its
+file form) and plays again; the keys play chip B under the 1SID tune and are silent under the
+2SID one. A tune whose play never returns fails with `PLAY HUNG` (the toast) and a key still
+plays.
+
+`psid_budget.rs` measures the audio interrupt's .sid path in the 6502 bench (mode 6, the device
+build of psid_ctl_block), each instruction told by its function: the chips' own work (the render
+loops and the voices' clocking) aside, the rest of each block (the ring, the render parts'
+setup and steps, sid_advance's own code, sid_write and what a write runs) within
+`PSID_ISR_WORST`, over the corpus 2 s each and over tunes that write a voice, the cutoff or the
+volume every 4 cycles; then the firmware with a tune playing and LIVE showing (each
+`psid_ctl_poll` within `PSID_SLICE_WORST`, every pass within `POLL_INSTRUCTIONS`, every audio block
+within `AUDIO_TARGET`); then the memory (the tune's state inside the song's union, free RAM,
+M3's RAMTEXT, the image within M3's ceiling).
+
+### .sid files on the store (M3 Task 10)
+
+`crates/sidou-tests/tests/app/sid_io.rs` (app/sid_io.c over the simulated store): the browser's
+list holds only `.sid` files, in name order, never SysEx's staging; RSID, MUS, broken and too
+long headers are refused with their toasts and touch nothing; a tune loaded in parts (the
+64 KiB cleared, a pass at a time, then the data read straight into it) equals `psid_ctl_load` of
+the whole file in its memory and its writes, for a tune with a load-address prefix and for the
+largest file the store holds (`sidou_tests::psid::full_size`, 65,536 bytes); a song change loads
+it again; a file replaced or deleted under a loading stops it. `tests/app/sysex.rs`: a `.sid`'s
+PUT acknowledged before its claim and claimed at its first DATA (USB and TRS); RSID, MUS,
+crafted, too long and non-PSID files refused at that DATA with no claim, owner or program, the
+TRS tail dropped; the keys used up (`NAK FULL`); a claim that waits for a record programs the
+held DATA; the fuzz of mutated headers and frames over both ports (a file stored only if its
+header checks and its bytes came whole; a refused header programs nothing).
+`cargo test --locked --release -p sidou-sysex`: `sidou-sysex sid`'s checks (the device's parser),
+its store names, its frames, and the CLI on files in a scratch directory.
+
+In fm1-emu, `crates/emu-gate/tests/psid_store.rs` (`SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo
+test --release -p emu-gate --test psid_store -- --nocapture`): the CLI's `.syx` sent over the
+TRS jack a frame a second stores the tune byte for byte, and it loads and plays through the test
+hook; an RSID, a MUS and a crafted file are refused with their toasts and no flash program; a
+64 KiB tune goes in and plays, each `sid_io_poll` and `sid_io_open` within `STORE_POLL_WORST`
+(30,000) and every pass within `POLL_INSTRUCTIONS`; with the store's 48 keys used up, a tune's
+PUT is refused (`STORE FULL`) with no program.
 
 ### Song player register match
 
@@ -933,7 +1111,10 @@ ceiling of `sidou_app.bin` after each plan, M2a 372,000 bytes up to M2f
 (`IMAGE_CEILING`): the latest stage whose code is merged (the plans land in
 parallel). A raise is a change to the schedule's table, so it reads
 as a change to the plan; a test checks the table only rises and leaves M3 at
-least 69,564 bytes of the 581,564-byte slot. It prints the image's size and
+least 69,564 bytes of the 581,564-byte slot. M3's stage (`M3_START` 506,000 plus M3's 28,000,
+534,000) follows the schedule; it is not yet the image's ceiling (`IMAGE_CEILING` is
+`M3_START` until Task 9 merges device code), and a test keeps at least 40,000 bytes of the
+slot after it for M4 and M5. It prints the image's size and
 what is left; it skips without `SIDOU_FM1_BUILD`.
 
 ### The store on the device
@@ -1118,7 +1299,8 @@ SIDOU_LCD_GOLDEN_UPDATE=1 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release
 
 ### MIDI on the host
 
-`sidou-sysex` is a dependency-free packet library, not a MIDI transport or CLI.
+`sidou-sysex` is a packet library, not a MIDI transport; its one command writes `.sid` tunes as
+`.syx` files (above, "`.sid` files on the store").
 `cargo test --locked --release -p sidou-sysex` covers every packing length through
 256, canonical high-bit masks, checksums and all command payloads. The app tests
 in `sysex.rs` send those frames to the C state machine through a simulated store,

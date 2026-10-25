@@ -15,7 +15,11 @@ NAME = b"FLASHDAY TEST"
 HDR = [0x7D, 0x53, 0x44]
 INQ, DIR, GET, PUT, DATA, END, DEL, ABORT, ACK, NAK = 1, 2, 3, 4, 5, 6, 7, 8, 0x7E, 0x7F
 NAKS = {1: "malformed", 2: "checksum", 3: "sequence", 4: "BUSY", 5: "FULL", 6: "not found",
-        7: "I/O", 8: "timeout", 9: "aborted"}
+        7: "I/O", 8: "timeout", 9: "aborted", 12: "RSID", 13: "MUS", 14: "broken .sid",
+        15: "too long"}
+# The disposable file's store type: one nothing on the device reads (1 is a song, 2 a .sid,
+# whose header the device checks, 3 SysEx's instrument staging; app/store.h).
+TYPE = 0x7F
 
 
 def pack(b):
@@ -101,7 +105,7 @@ def main():
 
     data = os.urandom(SIZE); crc = zlib.crc32(data)
     seq = 10
-    L.send(PUT, seq, bytes([0, 0]) + name16(NAME) + struct.pack("<BII", 2, SIZE, crc)); expect_ack(L, seq)
+    L.send(PUT, seq, bytes([0, 0]) + name16(NAME) + struct.pack("<BII", TYPE, SIZE, crc)); expect_ack(L, seq)
     t = time.time()
     for off in range(0, SIZE, 256):
         seq += 1; L.send(DATA, seq, data[off:off + 256]); expect_ack(L, seq)

@@ -199,17 +199,15 @@ structure), `sid_character.h` (SIDOU's design), `gen/grid.h` (macros and enum na
 `gen/profiles.h` (parameter values, which are facts). The byte-identical Felucca copies keep
 their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 
-## Decide on RSID playback (M3 plan)
+## RSID playback: decided for M3, rejected; a later plan if wanted
 
-- **Update, 2026-10-18:** with the look-ahead of decision record 0008, the 6502's audio
-  headroom is no longer the limit; CIA and NMI timing within a frame is.
-- **Where:** M3's 6502 and `.sid` player (design doc section 5 currently rejects RSID).
-- **Problem:** RSID tunes need CIA timer and NMI emulation, and some need cycle-exact
-  interrupt timing. The 6502 has only about 200 instructions a sample of headroom (see
-  "The 6502 must fit the audio headroom" below). SLICE64-FM claims RSID playback.
-- **Action:** when writing M3's plan, measure what CIA, IRQ and NMI emulation costs, and
-  decide: full RSID support, a common subset (CIA-timed tunes without cycle-exact NMI
-  digis), or keeping the polite rejection.
+- **Decided (M3 plan, 2026-10-19; built):** M3 keeps the polite rejection (`RSID: NOT YET`, at
+  `PUT` and in the browser); the reasons and what a later plan would need (a cycle-scheduled CIA
+  1 and 2, VIC raster interrupts, a SIDOU KERNAL stub, libsidplayfp as the oracle, the digi path
+  checked; BASIC tunes stay refused) are in [the plan](plans/2026-10-19-m3-sid-files.md#rsid-rejected-politely-in-m3-a-later-plan-if-wanted).
+- **Update, 2026-10-18:** with the look-ahead of decision record 0008, the 6502's audio headroom
+  is no longer the limit; CIA and NMI timing within a frame is, and it costs main-loop time.
+- **Action:** none for M3. If the user wants RSID, it is its own plan after M3.
 
 ## ~~A friendlier ARP editor in TRACKER (M2d)~~
 
@@ -228,6 +226,16 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
   without it: the tables are 52,407 bytes since their blocks overlap and the rows that are
   alike are stored once. Whether the interrupt's reads from flash cost anything stays
   M1b's hardware check ([hardware.md](hardware.md), "Combined waveforms from flash").
+
+## The store's 48 keys limit how many tunes it holds
+
+- **Where:** `app/store.h` (`STORE_KEYS_MAX`), the starter pack (`assets/starter`).
+- **Problem:** songs, settings, maps, chip profiles and `.sid` tunes share 48 keys and about 190
+  KB. The starter pack of eleven tunes takes 11 keys (12 with the settings'), 29,604 bytes; about
+  20 more tunes fit next to it and a few songs, then `PUT` answers `NAK FULL` (STORE FULL). M3
+  leaves the store's format as it is.
+- **Action:** if users' tunes press on it, a store format change (several small files to one key,
+  or more keys) is its own plan; the flash day shows whether 20 is enough.
 
 ## The GitHub avatar and social preview are set by hand
 
@@ -419,7 +427,14 @@ a profiled hot spot needs one of them in hand-written assembly, add support
 upstream first, so the emulator gate's bit-exact host-vs-target check keeps
 working.
 
-## The 6502 must fit the audio headroom the gates leave
+## ~~The 6502 must fit the audio headroom the gates leave~~
+
+- **Closed (M3, 2026-10-24):** the look-ahead removed the question. The 6502 runs in the main loop,
+  outside the interrupt; the interrupt only places the stamped writes, and its worst block at a
+  write every 4 cycles is 105.0 instructions a sample (`PSID_ISR_WORST` 120), with two chips at
+  1,658.5 a sample against `AUDIO_TARGET` 2,700 (`psid_budget.rs`). What stays open is the 6502's
+  real cost on the device: STATUS's meter and [hardware-test.md](hardware-test.md) section 21
+  decide it on the flash day. The history of the headroom follows.
 
 - **Update, 2026-10-18:** [decision record 0008](decisions/0008-m3-6502-and-fm1-sid.md)
   runs the 6502 a frame ahead outside the ISR, with cycle-stamped SID writes, so it no
@@ -614,7 +629,7 @@ stores the lock, and playback has it, but the audition under the key plays the l
 without the step's locks, so the turn is not heard while turning. Planned with DICE's settings
 (0.5.x): while a step is held, its audition takes the step's locks and follows each turn live,
 as on a hardware step sequencer. It goes through the song's jam path (song_ctl's interrupt side,
-RAMTEXT: mind its 32 bytes free).
+RAMTEXT: mind its 416 bytes free).
 
 ## LAB: a view for shaping one sound, and keeping it (the user, 2026-10-25)
 

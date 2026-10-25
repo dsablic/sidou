@@ -621,10 +621,11 @@ fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
 struct Ctx {
     s: crate::song_view::Song,
     _io: Box<song_io>,
+    _tune: Option<(Box<crate::sid_view::Tune>, crate::sid_view::Bound)>,
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 32] = [
+const CONTEXTS: [&str; 35] = [
     "LIVE",
     "LIVE SLOT",
     "MENU",
@@ -654,6 +655,9 @@ const CONTEXTS: [&str; 32] = [
     "FILES",
     "SAVE AS",
     "CONFIRM",
+    "SIDS",
+    "PLAYING",
+    "UNSAVED",
     // The same cards reached another way: STEP on a full stack, CHIP's slots MOD and FX.
     "STEP FULL",
     "CHIP MOD",
@@ -677,6 +681,7 @@ fn open_ctx(name: &str) -> Ctx {
     let ui = &mut s.ui;
     ui.settle();
     let seq = |ui: &mut Ui, n: u32| open(ui, &Open::Seq(n));
+    let mut tune = None;
     match name {
         "LIVE" => {}
         "LIVE SLOT" => {
@@ -740,6 +745,19 @@ fn open_ctx(name: &str) -> Ctx {
             ui.press(PANEL_BTN_ARP);
             ui.settle();
         }
+        "SIDS" | "PLAYING" | "UNSAVED" => {
+            // The SID views over the fake player, a store of two tunes; the song unsaved.
+            let bound = crate::sid_view::bind(ui, &["ALPHA", "BETA"]);
+            crate::sid_view::open_sids(ui);
+            if name != "SIDS" {
+                ui.turn(PANEL_ENC_ALGORITHM, 1); // the question
+            }
+            if name == "PLAYING" {
+                ui.turn(PANEL_ENC_ALGORITHM, 1); // discarded: NOW PLAYING
+            }
+            ui.settle();
+            tune = Some(bound);
+        }
         "STEP FULL" => {
             ui.press(PANEL_BTN_HOME);
             ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
@@ -751,7 +769,11 @@ fn open_ctx(name: &str) -> Ctx {
         }
         _ => panic!("no context {name}"),
     }
-    Ctx { s, _io: io }
+    Ctx {
+        s,
+        _io: io,
+        _tune: tune,
+    }
 }
 
 /// A built-in song of no bytes: the walk never reads it (the song is unsaved, so LOAD asks first).
@@ -945,6 +967,8 @@ fn saves(name: &str) -> bool {
             | "TABLE"
             | "ARP"
             | "STEP FULL"
+            | "SIDS"
+            | "UNSAVED"
     )
 }
 
@@ -1092,6 +1116,11 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
     let mut wrong = Vec::new();
     let names: Vec<&str> = CONTEXTS.iter().copied().chain(["CONFIRM YES"]).collect();
     for name in names {
+        if name == "UNSAVED" {
+            // The question's own answers (docs/plans/2026-10-19-m3-sid-files.md, "Memory"): SAVE
+            // saves the song first, ALGORITHM again discards it; sid_view.rs checks both.
+            continue;
+        }
         let ctx = |n: &str| {
             let mut c = open_ctx(if n == "CONFIRM YES" { "CONFIRM" } else { n });
             if n == "CONFIRM YES" {

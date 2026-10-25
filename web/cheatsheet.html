@@ -123,6 +123,7 @@
         <tr><td>Menu: SELECT</td><td>move: CHIP, TRACKER, SCENE, SONG, PRE, OCTAVE, SETTINGS, STATUS, MIDI, CHARSET, ABOUT</td></tr>
         <tr><td>Menu: SAVE</td><td>OK: opens the highlighted item (ALGORITHM clockwise does too)</td></tr>
         <tr><td>Menu: ALGORITHM</td><td>on PRE / OCTAVE changes the value</td></tr>
+        <tr><td>STATUS: SELECT</td><td>turns its 3 pages: knobs (6502 with a tune), chip + preset + notes, effects</td></tr>
         <tr><td>SEQ</td><td>opens the song view used last; again: STEP → TRACKER → ORDER → INSTR → TABLE → STEP</td></tr>
         <tr><td>Any control</td><td>skips the boot or a title card (a note skips and plays)</td></tr>
       </table>
@@ -220,6 +221,23 @@
         <tr><td>GLO + key 1–3 · 4–6</td><td>mute · solo voice 1–3 (again: back)</td></tr>
         <tr><td>Keys in a song view</td><td>audition the current instrument on the cursor's voice</td></tr>
       </table>
+    </section>
+
+    <section>
+      <h2>SIDS: .sid tunes</h2>
+      <table>
+        <tr><td>Menu → SIDS</td><td>the store's PSID tunes, eight a page (NO TUNES: SEE MANUAL when empty)</td></tr>
+        <tr><td>SELECT</td><td>move through the tunes</td></tr>
+        <tr><td>ALG clockwise · SAVE</td><td>play the tune from its start song and open NOW PLAYING</td></tr>
+        <tr><td>NOW PLAYING ALG</td><td>the song before / after, from its init</td></tr>
+        <tr><td>PLAY · E+ PLAY</td><td>stop or play from init · pause and resume</td></tr>
+        <tr><td>GLO + key 1–3 · 4–6</td><td>mute · solo the tune's voices</td></tr>
+        <tr><td>HOME</td><td>back, the tune playing on; from SIDS with it stopped, the song comes back</td></tr>
+        <tr><td>PLAY in another view</td><td>stops the tune; again: the song's</td></tr>
+        <tr><td>Over an unsaved song</td><td>SONG NOT SAVED: SAVE saves first · ALG discards · HOME cancels</td></tr>
+        <tr><td>While it plays</td><td>1SID: chip A, the keys play chip B · 2SID: both chips, keys off · MIDI start / stop / continue</td></tr>
+      </table>
+      <p class="note">STATUS shows the 6502 on its first page: CPU share, overruns, late writes. RSID and MUS tunes are refused.</p>
     </section>
 
     <section>

@@ -11,7 +11,14 @@
  * ready, which M2c's transport waits out: keys_route_ready_for_song): chip A keeps the song's
  * setup, filter, volume and the voices the keys do not hold. */
 static int keys_under_song(const keys_route* kr) {
-    return kr->song && kr->l->keys_chip == 0u;
+    return kr->song && kr->l->keys_chip == 0u && !kr->tune;
+}
+
+/* live's sink while a 2SID tune has both chips: nothing reaches either. */
+static void silent_sink(void* ctx, uint8_t reg, uint8_t value) {
+    (void)ctx;
+    (void)reg;
+    (void)value;
 }
 
 /* The voices the keys hold (bit v): the gated ones, and under mono sync voice 3, which the
@@ -35,7 +42,10 @@ static uint8_t held_voices(const live* l) {
  * song keeps. */
 static void retarget(keys_route* kr) {
     live* l = kr->l;
-    if (keys_under_song(kr)) {
+    if (kr->silent) {
+        l->sink = silent_sink;
+        l->sink_ctx = kr;
+    } else if (keys_under_song(kr)) {
         l->sink = keys_route_sink;
         l->sink_ctx = kr;
     } else {
@@ -56,6 +66,8 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     kr->song = 0;
     kr->song_on = 0;
     kr->player = 0;
+    kr->tune = 0;
+    kr->silent = 0;
     kr->stale = 0;
     kr->under = 0;
     kr->taken = 0;
@@ -65,6 +77,7 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
         kr->song_want.expert[f] = SID_EXPERT_DEFAULT;
     }
+    kr->tune_b_want = kr->song_want;
     kr->moved = 0;
     kr->moved_ctx = 0;
     kr->taking = 0;
@@ -113,8 +126,8 @@ void keys_route_sink(void* ctx, uint8_t reg, uint8_t value) {
 
 int keys_route_prepare(void* ctx, uint8_t profile) {
     keys_route* kr = ctx;
-    if (keys_under_song(kr)) {
-        return 1; /* the song's chip keeps its setup: nothing to prepare */
+    if (keys_under_song(kr) || kr->silent) {
+        return 1; /* the song's (or the tune's) chip keeps its setup: nothing to prepare */
     }
     return kr->prepare(kr->out[kr->l->keys_chip & 1u], profile);
 }
@@ -154,12 +167,30 @@ void keys_route_set_player(keys_route* kr, int owns) {
     update_under(kr);
 }
 
+void keys_route_set_tune(keys_route* kr, int on) {
+    kr->tune = on ? 1u : 0u;
+    update_under(kr);
+}
+
+void keys_route_set_silent(keys_route* kr, int on) {
+    uint8_t was = kr->silent;
+    kr->silent = on ? 1u : 0u;
+    if (was && !kr->silent) {
+        kr->stale = 1; /* the keys' chip holds the tune's setup: back to theirs (keys_route_tick) */
+    }
+    retarget(kr);
+}
+
+void keys_route_fresh(keys_route* kr, uint32_t chip) {
+    kr->ctl[chip & 1u].made = 0;
+}
+
 uint8_t keys_route_voices_taken(const keys_route* kr) {
     return keys_under_song(kr) ? held_voices(kr->l) : 0u;
 }
 
 int keys_route_ready_for_song(const keys_route* kr) {
-    return kr->l->keys_chip == 1u || kr->l->keys_mode == LIVE_KEYS_A;
+    return kr->l->keys_chip == 1u || (kr->l->keys_mode == LIVE_KEYS_A && !kr->tune) || kr->silent;
 }
 
 void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {
@@ -243,10 +274,20 @@ static void tell(keys_route* kr) {
 void keys_route_tick(keys_route* kr) {
     live* l = kr->l;
     update_under(kr); /* the KEYS setting may have changed */
+    if (kr->silent) {
+        /* A 2SID tune: each chip follows its setup, the keys stay where they are. Chip A only
+         * once chip B has its own: the two share the spare, and two requests in a tick would
+         * take it from each other for ever (the keys' chip drops the other's preparation). */
+        if (chip_ctl_follow(&kr->ctl[1], &kr->tune_b_want)) {
+            chip_ctl_follow(&kr->ctl[0], &kr->song_want);
+        }
+        tell(kr);
+        return;
+    }
     chip_setup want;
     chip_setup_of(l, &want);
     uint32_t keys = l->keys_chip & 1u;
-    uint32_t target = kr->song && l->keys_mode == LIVE_KEYS_AUTO ? 1u : 0u;
+    uint32_t target = kr->song && (l->keys_mode == LIVE_KEYS_AUTO || kr->tune) ? 1u : 0u;
     uint32_t other = keys ^ 1u;
     /* To chip B once it has the keys' setup; to chip A once it has it again and no key is
      * held, or, during a song with KEYS A, with no key held whatever its setup (the keys play

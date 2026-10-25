@@ -239,6 +239,52 @@ POOL starts with the song's content region: `__song_region` to `__song_region_en
 pool and the rest follow it. M3 overlays this same region with the C64's 64 KiB
 address space: a song and a `.sid` never play together.
 
+**The overlays as built (M3 Task 9;
+[the plan's Task 9 status](plans/2026-10-19-m3-sid-files.md#task-9-sid-on-the-device-the-audio-path-the-overlays-the-mode-switch-the-main-loop-pass)):**
+
+| A `.sid` tune's | Over the song's | Where | Bytes |
+|---|---|---|---|
+| the 6502's 64 KiB | the content region (`__song_region`) | POOL | 65,536 |
+| the write ring and the interrupt's state (`psid_ctl`), the environment and the two voice shadows (`psid_work`), the header | the song transport and its two shapes (`.song_noinit`, `player_isr` in `platform/fm1/audio.c`) | RAM (`.song_ram`) | 8,096 of 8,456 |
+
+The song's work space in POOL (`.pool.song_noinit`) is not overlaid: the tune's main-loop state
+fits beside its ring in the RAM region's union, so a tune takes no RAM of its own beyond the
+mode and the main loop's control (176 bytes of `.bss`, the emulator's test hook among them).
+`audio_player` says which plays (`AUDIO_SONG`, `AUDIO_PSID`, or `AUDIO_NONE` between them, the
+interrupt touching neither union member); the interrupt takes a change at a block's start, and
+the main loop builds the incoming state only once the interrupt is on `AUDIO_NONE`. After a
+tune the song's region is wiped (`gt2_song_init_wiped`, not clearsong: about 100,000
+instructions less, within a pass) and `song_io` reads the song back from the store.
+RAMTEXT for M3: psid_ctl's interrupt half (`psid_ctl_block` 522 bytes, `psid_isr_chip` 382),
+`sid_advance` (24), `audio.c`'s player paths (`play_a` 162, `render_part` 34 out of line now,
+`audio_fill` +142) and the swap hook with its register rewrite (`psid_swapped` 270, `-Oz`):
+1,408 bytes more `.ram_text` in all (50,800), of M3's 1,536.
+
+Merged with main (`c57eddae`), `.ram_text` was 50,688 bytes, 1,536 over RAMTEXT. Two changes
+win back 1,952 of them, for **48,736 of 49,152 (416 free)**; no code that the audio interrupt runs
+moved to flash:
+- **Every effect algorithm's start copies a template** (`core/fx/fx_slots.c`): `slot_start`
+  1,538 → 84 bytes. The inits it still ran in the interrupt (crush, lo-fi's noise, tremolo and
+  autopan, and the chorus, flanger and wow headers after their lines) run once in
+  `sid_slots_init`, in flash, at boot, beside the other templates (all but their lines' samples:
+  `sid_fx_*_setup`); a start is one entry of a constant table (`STARTS`, in `.data`: clear a
+  line's floats, copy a template's bytes) and its warm-up, the same loops as before. The new
+  templates and warm-ups take 368 bytes of POOL (5,552 free), the table 192 of the RAM region.
+- **The drain's character commit leaves the filter's coefficients to the render**
+  (`sid_character_commit_later`, `app/reg_ring.c`): it marks the filter, as a `$15-$17` write
+  does, and `sid_render_tap` recomputes before the block's first sample, so the update has one
+  copy in SRAM, not two (`reg_ring_drain` 1,622 → 1,110). Bit for bit the same: the
+  coefficients are a function of the registers and the stage, and a render reads them only at
+  its start.
+
+Nothing in RAMTEXT runs while the flash is programmed or erased but the flash driver: every
+program and erase (`store_fm1.c` `operate`, `ota_flash.h`) runs with interrupts masked and calls
+only `fl_*_ram`, so the audio interrupt is in SRAM for its cycles and its branch reach, not for
+the flash windows. The call graph of the linked image (its emitted relocations, every address
+taken counted as a call) is the same as before but for the inits: everything in RAMTEXT is
+reachable from `isr_alnk0` or is the flash driver, and `ram_audio.rs` checks that the interrupt
+executes only SRAM.
+
 M2c Task 6 moved the RAM/POOL boundary 8 KiB down (from 0x01C20000) so POOL holds
 the song's 64 KiB content region beside chip B. The original standalone M2c floor
 was 22,000 bytes free across RAM and POOL (M2a's 2,000 already spent in it). With M2d, M2e and
@@ -666,6 +712,7 @@ TRS input ring's 40.96 ms capacity), pending the spike and listening/TRS checks.
 | Legible part-number line | Confirms AC7911B8 beyond the pin and photo evidence. | A sharper photo of the chip (6 screws, one under the sticker). |
 | Actual CPU clock | Melodee measured 360 MHz; the budget assumes 240. | Time a dependent-add loop against TIMER4, or read the `TL_CKCNT` counter. |
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Read the per-core counters around an audio block; compare `.text` with `.ram_text`. |
+| The 6502's cost on the device (M3 Task 2) | fm1-emu counts instructions: SIDOU's 6502 costs 8.4 to 8.9 per 6502 cycle on GoatTracker tunes (`CPU6502_INSTR_PER_CYCLE` 9.33; 63 for a call's entry and exit, 21 for a NOP, 14-17 per cycle for an I/O-page access), but each is a flash (XIP) fetch from `cpu6502_run`'s 11 KB, a jump-table read and a data access into the 64 KB, so the device's time a 6502 cycle is unknown. | Task 12's meter is built: TIMER4 times the main loop's slices, and STATUS shows the share of the CPU and the ticks a thousand 6502 cycles (fm1-emu reads the same rows). [hardware-test.md](hardware-test.md) section 21 is the flash day's checklist (the starter pack and the heaviest HVSC tunes, LIVE and a song view showing) and its decision rule: above 15 % of the CPU at the worst tune, or a late write fm1-emu does not have, and the fallbacks follow in order (`cpu6502.c` at `-O2`; the dispatch in RAMTEXT; OSC3 and ENV3 from the audio chip a frame late, the user's choice). |
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
 | Combined waveforms from flash | The pulldown rows (`SID_PD`, `.rodata`: a row's index entry, then its 16-entry block) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
 | The USB retry's probe | Without a cable, `usb_probe` runs once a second: the attach and one SIE write given 2000 polls (8,040 instructions in fm1-emu). | Time `usb_probe` against TIMER4 on a unit powered on without a cable, and check that a cable plugged in later still enumerates (the probe's 2000 polls are enough for an SIE that answers). |

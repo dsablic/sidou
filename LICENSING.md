@@ -33,6 +33,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | Voice DACs (`core/sid/sid_dac.c`, `sid_dac.h`) | a port of libresidfp @ `c1791383` `Dac.cpp` (the R-2R ladder) and the constants `SID.cpp`/`FilterModelConfig6581.cpp` build the voice output from, © Leandro Nini, Antti Lankila, Dag Lem | GPL-2.0-or-later | compiled into the firmware; it builds one 17,408-byte table per chip model in RAM | in use |
 | Oscillator and envelope (`core/sid/sid_osc.h`, `core/sid/sid_env.h`) | follow libresidfp @ `c1791383` `WaveformGenerator` (noise output, writeback, phase-2 shift, bit fade) and `EnvelopeGenerator::clock()` (statement for statement, the power-on value and the rate table), © Leandro Nini, Antti Lankila, Dag Lem, the VICE Project | GPL-2.0-or-later | compiled into the firmware | in use |
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
+| The PSID header parser and environment (`core/psid/psid_file.c`/`.h`, `psid_env.c`/`.h`) | SIDOU, following the design of FM-1 SID's player (`fm1-sid/player/psid.c` in fm1-emu @ `7ca5b96c`, [0008](docs/decisions/0008-m3-6502-and-fm1-sid.md)), © 2026 Joakim Eriksson; each header carries its BSD notice | GPL-3.0-or-later AND BSD-2-Clause | compiled into the core library; not linked into the image until M3's Task 9 | in use |
 | font8x8_basic @ `8e279d2d` (`host/crates/sidou-tests/tests/data/font8x8_basic.h`) | font8x8, Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts | public domain (`LICENSES/LicenseRef-PublicDomain.txt`) | host tests only: the reference SIDOU's own font must not copy; never built into the firmware | in use |
 | GoatTracker 2.77 (`third_party/goattracker2`, unmodified, see [VENDORED.md](third_party/goattracker2/VENDORED.md)): the C sources of its song model and packer, its readme and example songs | Lasse Öörni and GoatTracker's contributors; the songs by their authors | GPL-2.0-or-later | host tests only (`host/crates/gt2-ref`, the song player's reference); never built into the firmware. SIDOU's song code (`core/song`) follows its format and transliterates `gsong.c`'s save counts; it stays GPL-3.0-or-later, which GPL-2.0-or-later's "any later version" permits | in use |
 | The song player (`core/player/gt2_play.c`, `gt2_play.h`) | SIDOU, carrying forward GoatTracker 2.77's `gplay.c` (the frequency table) and `greloc.c`/`gtable.c` (the packer's song analysis: `relocator()`'s counts, `exectable`), © Lasse Öörni and GoatTracker 2's contributors; written routine for routine from `player.s`/`altplayer.s`, © Lasse Öörni | GPL-2.0-or-later code carried forward as GPL-3.0-or-later ("any later version"); `player.s`'s own notice (`LicenseRef-GoatTracker-Playroutine`: "use it ... freely for any purpose") for what follows the playroutine | **compiled into the firmware** (M2c Task 6 runs it in the audio interrupt); both files carry Lasse Öörni's and GoatTracker 2's contributors' copyright line | in use |
@@ -40,7 +41,10 @@ component. "Use" says whether a component ends up in the firmware image.
 | GoatTracker 2.77's playroutines (`third_party/goattracker2/src/player.s`, `altplayer.s`) | Lasse Öörni | `LicenseRef-GoatTracker-Playroutine` (`LICENSES/`): "use it ... freely for any purpose, commercial or noncommercial" | assembled by the host tests' packer only; SIDOU's player is written from them, not compiled from them | in use |
 | `host/crates/gt2-ref/shim/` (BME and assembler stand-ins, files in memory, the 6502 assembler `gt2ref_asm.c`) | SIDOU | GPL-3.0-or-later | host tests only | in use |
 | Exomizer 2 beta's 6502 assembler, as GoatTracker 2.77 ships it (`src/asm/`) | Magnus Lind | non-commercial use only: **not free, not in SIDOU's tree** | fetched with GoatTracker's release into `build/goattracker2-2.77/` (never committed) only by the `--ignored` cross-check that SIDOU's assembler packs identically (`crates/gt2-ref/tests/assembler.rs`) | test tool, not taken in |
-| Klaus Dormann's 6502 functional test @ `7954e2db` (`third_party/6502-tests`, see [VENDORED.md](third_party/6502-tests/VENDORED.md)) | Klaus Dormann | GPL-3.0-or-later | host tests only: test data for the reference's 6502 | in use |
+| Klaus Dormann's 6502 functional test @ `7954e2db` (`third_party/6502-tests`, see [VENDORED.md](third_party/6502-tests/VENDORED.md)) | Klaus Dormann | GPL-3.0-or-later | host tests only: test data for the reference's 6502 and SIDOU's (`core/cpu6502`) | in use |
+| Tom Harte's SingleStepTests, 6502 v1: the first 100 tests of each opcode, in SIDOU's binary encoding (`third_party/6502-tests/harte/`, see [VENDORED.md](third_party/6502-tests/VENDORED.md)) | Tom Harte and SingleStepTests' contributors | MIT | host tests only: test data for SIDOU's 6502 (`host/crates/sidou-tests/tests/cpu6502.rs`); never built into the firmware | in use |
+| floooh/chips `m6502.h` @ `ee88c35a` (`third_party/chips/`, unmodified, see [VENDORED.md](third_party/chips/VENDORED.md)) | Andre Weissflog | Zlib (`LICENSES/Zlib.txt`) | host tests only: the 6502 of the PSID oracle (`host/crates/psid-ref`), built by that crate's `build.rs` and nothing else; never built into the firmware. SIDOU's 6502 (`core/cpu6502`) takes no code from it | in use |
+| FM-1 SID's PSID player (`psid.c`, `psid.h`, `psidlog.c` from fm1-emu's `fm1-sid/player/` @ `7ca5b96c`; `third_party/fm1-sid-player/`, unmodified, see [VENDORED.md](third_party/fm1-sid-player/VENDORED.md)) | © 2026 Joakim Eriksson | BSD-2-Clause | host tests only: the PSID oracle (`host/crates/psid-ref`) builds a **derived copy**, `host/crates/psid-ref/c/psid_oracle.c` (BSD-2-Clause, © 2026 Joakim Eriksson and, for its added lines, SIDOU contributors: a log of the I/O page's reads and a memory read-back, between marked lines; a test checks the original's SHA-256 and that the copy is the original plus those lines); never built into the firmware. `fm1-sid/firmware/` (GPL-3.0-only) is not vendored | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests and the table generator (`sidou-tablegen`) only; git submodule, never linked into firmware (the tables generated from it are listed above) | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `c1c045fc` (`db8d472e` in 0.2.0 to 0.3.1) | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
 | fm1-emu `fm1-web` crate and web frontend (`web/main.js`, `persistence.js`, `worklet.js`, `jit.js`, `fwsc.js`, `fm1-emu-report.pdf`) @ `c1c045fc` | Joakim Eriksson | MIT (its `LICENSE` ships with the site as `licenses/fm1-emu-MIT.txt`) | browser demo only (`tools/web-demo`, GitHub Pages); fetched into `build/fm1-emu` at build time, `main.js` patched there by `web/patch-main.sh`, never committed | in use |
@@ -56,6 +60,13 @@ component. "Use" says whether a component ends up in the firmware image.
 The Rust crates above are the direct dependencies of the `host/` workspace.
 Their transitive dependencies are pinned in `host/Cargo.lock`; none of them
 ends up in the firmware.
+
+### The 6502 (M3)
+
+SIDOU's 6502 (`core/cpu6502/`) is SIDOU's own code, GPL-3.0-or-later: written in this
+project, from the prototype of M3's 6502 study ([decision record 0008](docs/decisions/0008-m3-6502-and-fm1-sid.md)).
+No other 6502 core's code is in it. Tom Harte's and Klaus Dormann's tests (above) are test
+data the host tests run it on; neither is built into the firmware.
 
 ### Song engine attribution (M2c)
 
@@ -93,11 +104,55 @@ restores that song afterwards.
 The original showcase songs **CHROME COMET**, **IRON RITE**, **NEON HIGHWAY** and
 **PAPER LANTERNS**, also by SIDOU contributors under GPL-3.0-or-later, live in
 `assets/songs/`, each with adjacent metadata; they are store/demo/starter-pack files,
-not embedded firmware tunes. GoatTracker's example songs remain host test fixtures,
-credited to their own authors above and in [CREDITS.md](CREDITS.md).
-Every starter-pack tune needs metadata recording its composer, licence or written
-permission, and source. SIDOU does not redistribute HVSC tunes; users load them from
+not embedded firmware tunes. GoatTracker's example songs are also host test fixtures
+(`third_party/goattracker2/examples`), credited to their own authors above and in
+[CREDITS.md](CREDITS.md). SIDOU does not redistribute HVSC tunes; users load them from
 their own copy.
+
+### The starter pack
+
+`assets/starter/` holds the tunes SIDOU ships for the device's store: each a PSID `.sid`
+(`sidou-sysex sid --pack assets/starter` makes them one `.syx`, [how to put them on the
+FM-1](docs/manual/sid-tunes.md#the-starter-pack)) with an adjacent `.md` of its title,
+composer, licence, source, SHA-256, chip, clock and songs, and "in the firmware: no (the
+store)": no tune is built into the firmware. `host/crates/sidou-tests/tests/starter.rs` keeps
+each file in step with its source (`SIDOU_STARTER_UPDATE=1` writes them), and refuses a tune
+whose licence is not on the allowlist, below.
+
+**What may go in:** a tune whose licence allows redistribution, commercial redistribution
+included, or whose composer has given written permission for it (a file in
+`docs/permissions/`, naming the tune). The allowlist the test enforces: GPL-3.0-or-later,
+GPL-2.0-or-later, BSD-2-Clause, CC0-1.0, CC-BY-4.0, CC-BY-SA-4.0, or `written permission`.
+Anything "non-commercial" is refused.
+
+**The tiers** (the first pack, signed off by the project's owner on 2026-10-24):
+
+| Tier | Tunes | Composer | Licence | Why it may go in |
+|---|---|---|---|---|
+| 1. SIDOU's own | CHROME COMET, IRON RITE, NEON HIGHWAY, PAPER LANTERNS, SIDOU LOOP | SIDOU contributors | GPL-3.0-or-later | written for SIDOU; each `.sid` is built from the `.sng` in `assets/songs/` |
+| 2. GoatTracker 2.77's example songs by Cadaver | On a sanction from CIA (`sanction`), The Consultant, Dojo, Transylvanian Whipping, Unleash The F****** Fury, MW Title Remix, 2x-speed (`2xtest`) | Cadaver (Lasse Öörni) | GPL-2.0-or-later | the songs ship with GoatTracker under its GPL (no version named, so any version may be chosen: [VENDORED.md](third_party/goattracker2/VENDORED.md)); each `.sid` is built from the `.sng` in `third_party/goattracker2/examples/`, which is the source the GPL asks for |
+
+Each `.sid` holds its song's data with GoatTracker's playroutine, whose own notice
+(`LicenseRef-GoatTracker-Playroutine`: "Use it, or song binaries created from it freely for any
+purpose, commercial or noncommercial") covers it. The song's licence is the `.sid`'s.
+
+**Left out, and why:**
+
+- GoatTracker's feature tests `tempo2test`, `wavecmdtest` and `funktest`: demonstrations of the
+  tracker's commands, not music.
+- The compo entries by other composers, `cabrinigreen` (Randall), `everlasting` (Richard
+  Bayliss), `ghosttrackers` (Hein), `hyperspace` (Jammer) and `sixpack` (No-XS, a cover of a song
+  by beek): they ship with GoatTracker's GPL, but their composers have not confirmed that
+  licence for redistribution in a device's store, and `sixpack` is also based on beek's song.
+  Each can be added when its composer confirms a licence (see below).
+- *Pocket Sync* (Joakim Eriksson): BSD-2-Clause was proposed, but fm1-emu's root licence is MIT,
+  so the author is asked which he means before it is added.
+
+**Adding more later:** a tune from a third party (the compo entries above, Pocket Sync, tunes
+commissioned from SID composers) goes in with its composer's licence, if it is on the allowlist,
+or with a permission file in `docs/permissions/` that names the tune, the composer, what they
+allow (redistribution with SIDOU, commercially) and the date; then a line in the test's list
+(`host/crates/sidou-tests/src/starter.rs`), `SIDOU_STARTER_UPDATE=1`, and CREDITS.md.
 
 ## The drum kit and the digi drums
 
