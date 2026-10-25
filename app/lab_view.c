@@ -6,6 +6,7 @@
 
 #include "chip_view.h"
 #include "font.h"
+#include "lab_draw.h"
 #include "live_view.h"
 #include "panel.h"
 #include "theme.h"
@@ -361,25 +362,6 @@ static void draw_card(const lab_view* lv, canvas* c, const theme* th, uint32_t k
     text(c, col, LAB_VIEW_TAG_ROW, tag, THEME_ATTR(th, hint));
 }
 
-/* The drawing's area: a frame in the theme's dim colour (the drawings come in its place). */
-static void draw_art_frame(canvas* c, const theme* th) {
-    uint8_t a = THEME_ATTR(th, dim);
-    uint32_t r0 = LAB_VIEW_ART_ROW;
-    uint32_t r1 = LAB_VIEW_ART_ROW + LAB_VIEW_ART_ROWS - 1u;
-    for (uint32_t col = 1; col + 1u < GRID_COLS; col++) {
-        put(c, col, r0, FONT_BOX_H, a);
-        put(c, col, r1, FONT_BOX_H, a);
-    }
-    for (uint32_t row = r0 + 1u; row < r1; row++) {
-        put(c, 0, row, FONT_BOX_V, a);
-        put(c, GRID_COLS - 1u, row, FONT_BOX_V, a);
-    }
-    put(c, 0, r0, FONT_BOX_TL, a);
-    put(c, GRID_COLS - 1u, r0, FONT_BOX_TR, a);
-    put(c, 0, r1, FONT_BOX_BL, a);
-    put(c, GRID_COLS - 1u, r1, FONT_BOX_BR, a);
-}
-
 /* The hint phrase that shows at now (ms). */
 static uint32_t hint_phase(uint32_t now) {
     return now / LAB_VIEW_HINT_MS % LAB_VIEW_HINTS;
@@ -430,7 +412,7 @@ static void build(lab_view* lv, uint32_t now) {
     char name[LIVE_PRESET_NAME_CHARS + 2u];
     live_preset_name(l, name);
     (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ROW, 2, name, THEME_ATTR(th, value));
-    draw_art_frame(c, th);
+    lab_draw_guides(c, l, lv->page, lv->hl, th, LAB_VIEW_ART_ROW);
     /* The choice at 2x (lit in reverse video), ALG small on the right. */
     char choice[LAB_VIEW_TEXT];
     lab_view_choice(lv, lv->page, choice);
@@ -634,13 +616,19 @@ static void enter(screen* s, void* state) {
     lv->built = 0;
     lv->cursor = 0;
     lv->hl = 0;
+    lv->art_done = 0; /* a switch cleared the overlays */
+}
+
+/* The drawing's look, and whether it is drawn whole. */
+static int art_stale(const lab_view* lv) {
+    return !lv->art_done || lab_draw_look(lv->l, lv->sc, lv->page, lv->hl) != lv->art;
 }
 
 static int changed(screen* s, void* state) {
     lab_view* lv = state;
     expire(lv, s);
     return lv->canvas->which != SONG_VIEW_CANVAS_LAB || !lv->built || lv->copying ||
-           look(lv, s->now) != lv->look;
+           look(lv, s->now) != lv->look || art_stale(lv);
 }
 
 /* 1 for a cell of the screen's outer ring. */
@@ -658,7 +646,17 @@ static void compose(screen* s, void* state, grid* g) {
         lv->cursor = 0;
     }
     expire(lv, s);
-    if (!lv->built || look(lv, s->now) != lv->look) {
+    int text = !lv->built || look(lv, s->now) != lv->look;
+    int art = art_stale(lv);
+    if (text && art && lv->built) { /* one a frame, by turns */
+        if (lv->art_turn) {
+            text = 0;
+        } else {
+            art = 0;
+        }
+        lv->art_turn ^= 1u;
+    }
+    if (text) {
         build(lv, s->now);
     }
     const canvas* c = &lv->canvas->cv;
@@ -695,6 +693,13 @@ static void compose(screen* s, void* state, grid* g) {
         left--;
     }
     lv->copying = 0;
+    /* The drawing, in what is left of the frame's cells. */
+    if (art) {
+        lv->art = lab_draw_look(lv->l, lv->sc, lv->page, lv->hl);
+        lv->art_done = (uint8_t)lab_draw_page(lv->l, lv->sc, lv->page, lv->hl,
+                                              theme_get(lv->l->theme), g, s, LAB_VIEW_ART_ROW,
+                                              &left);
+    }
 }
 
 const view lab_view_view = {"LAB", enter, NULL, input, compose, changed};

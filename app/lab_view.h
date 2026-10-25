@@ -7,7 +7,8 @@
  * - rows 0-1, the header at 2x: the page's name in yellow, and its place `2/5` on the right;
  * - rows 2-3, the sound's name at 2x in white with `*` while it differs from its base
  *   (live_preset_name);
- * - rows 4-17, the drawing's area (LAB_VIEW_ART_ROW..);
+ * - rows 4-17, the page's drawing (LAB_VIEW_ART_ROW..; app/lab_draw.h): what it shapes, from the
+ *   live values, the part the turned card shapes lit;
  * - rows 19-20, ALGORITHM's choice at 2x (`SAW SYNC`, `AUTHENTIC`, `NOTCH`, `ARP UP`, `DELAY`),
  *   `ALG` small on the right in the legend colour (ENVELOPE's also says ALL SOUNDS: the envelope
  *   mode is the instrument's, not the sound's);
@@ -41,7 +42,10 @@
  * It composes as CHIP does (app/chip_view.h): the text is built in the song views' shared canvas
  * (SONG_VIEW_CANVAS_LAB) when what it shows changed (a hash of it, lab_view.look), and the
  * canvas's changed cells are copied onto the grid within LAB_VIEW_FRAME_CELLS a frame less what
- * the screen's layers take. LAB composes under MIDI learn's frame too.
+ * the screen's layers take; the drawing (app/lab_draw.h) then takes what is left of the budget,
+ * drawn again when what it shows changed (lab_view.art) or until it is whole. When both changed
+ * (a card turned while a note sounds), a frame builds one of them, by turns, so that no frame's
+ * ui_poll pays for both. LAB composes under MIDI learn's frame too.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_LAB_VIEW_H
@@ -99,6 +103,9 @@ typedef struct {
     uint8_t built;     /* the canvas shows drawn */
     uint8_t copying;   /* the canvas has cells the grid does not have yet (the budget) */
     uint8_t hl;        /* 1..4 the card lit, LAB_VIEW_HL_CHOICE the choice, 0 none */
+    uint8_t art_done;  /* the grid shows the whole drawing of `art` (app/lab_draw.h) */
+    uint8_t art_turn;  /* text and drawing both stale: 1 the drawing's frame next */
+    uint32_t art;      /* the hash of what the drawing shows (lab_draw_look) */
 } lab_view;
 
 extern const view lab_view_view;

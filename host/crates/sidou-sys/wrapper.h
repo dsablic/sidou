@@ -42,6 +42,7 @@
 #include "grid.h"
 #include "learn_view.h"
 #include "keys_route.h"
+#include "lab_draw.h"
 #include "lab_sound.h"
 #include "live.h"
 #include "live_dice.h"

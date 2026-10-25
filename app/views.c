@@ -3132,8 +3132,8 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
 __attribute__((noinline, unused)) LIVE_COLD static void lab_frame(views* v, uint32_t now_ms) {
     uint32_t ask = v->s.popup_ask;
     uint32_t enc = ask & 7u;
-    if ((ask & (ASK_BASE | ASK_PARAM)) != ASK_BASE) {
-        return;
+    if ((ask & (ASK_BASE | ASK_PARAM)) != ASK_BASE || v->s.popup_view != &lab_view_view) {
+        return; /* not LAB's control (the menu's ALGORITHM that opened it): the screen drops it */
     }
     if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
         lab_view_flash(&v->lab, enc - PANEL_ENC_K1, now_ms);

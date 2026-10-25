@@ -22,6 +22,7 @@ add_library(sidou_live STATIC
     help_view.c
     learn_view.c
     keys_route.c
+    lab_draw.c
     lab_sound.c
     lab_view.c
     live.c
@@ -100,9 +101,9 @@ if(CMAKE_CROSSCOMPILING)
     # Not live_view.c: LIVE's frame is the instrument's, nearest its noise-chord gate.
     set_source_files_properties(views.c chip_view.c learn_view.c tracker_view.c sid_view.c
         PROPERTIES COMPILE_OPTIONS -Os)
-    # LAB's view (docs/plans/2026-10-25-lab-plan.md): its compose, a turn and its input, once a
+    # LAB's view and its drawings (docs/plans/2026-10-25-lab-plan.md): its compose, a turn and its input, once a
     # frame or a detent, inside the LAB flash stage.
-    set_source_files_properties(lab_view.c PROPERTIES COMPILE_OPTIONS -Oz)
+    set_source_files_properties(lab_view.c lab_draw.c PROPERTIES COMPILE_OPTIONS -Oz)
     # These editors run bounded main-loop work. Keep their rendering and edit helpers outlined
     # rather than duplicating them into the page/input paths.
     set_source_files_properties(song_pages.c step_view.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")

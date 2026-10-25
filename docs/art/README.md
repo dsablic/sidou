@@ -834,8 +834,8 @@ choice, the cards' values.
 - **Rows 2-3:** the sound's name at 2× in white, with `*` while it differs from its base (the
   sound as loaded or kept). Yellow over white keeps the page and the sound apart where the two
   2× lines meet.
-- **Rows 4-17:** the page's drawing (112 pixels of the 240 × 240), framed in dark grey until the
-  drawings come.
+- **Rows 4-17:** the page's drawing (240 × 112 pixels, `app/lab_draw.h`), from the instrument as it
+  sounds now; the part the turned card shapes is lit in that knob's colour for a second.
 - **Rows 19-20:** ALGORITHM's choice at 2× in white (dark grey while it is off: the filter, ARP, a
   slot), in reverse video for a second after it turns; **ALG** small on the right in the hint
   colour, and on ENVELOPE **ALL SOUNDS** under it (the envelope mode is the instrument's).
@@ -847,10 +847,37 @@ choice, the cards' values.
 - **Row 29, the hint line:** LAB's gestures in the hint colour, a phrase every 2 s, each at most
   30 characters (never cut): a toast (rows 27-28) leaves it in sight.
 
+**The drawings** are pixel overlays on the area's cells (as LIVE's scopes), no bitmap kept: a
+drawing is sampled every 2 pixels into 2-pixel-thick traces, a band of 8 columns at a time on the
+stack, and only the cells whose overlay changes are set, within what the frame's 200 cells leave.
+A cell shows one colour: a marker's, else the lit colour, else the first trace's, else the second's.
+Guides that do not move are glyphs under the traces, in the canvas.
+
+![OSC: a triangle](../../tests/golden/lcd/lab-osc-tri.png)
+![OSC: a pulse at 25 %](../../tests/golden/lcd/lab-osc-pul25.png)
+![OSC: PWM BASS, the PWM's band](../../tests/golden/lcd/lab-osc-pwm.png)
+![OSC: SAW SYNC, the modulator in grey](../../tests/golden/lcd/lab-osc-sync.png)
+![OSC: TRI RING](../../tests/golden/lcd/lab-osc-ring.png)
+![OSC: noise](../../tests/golden/lcd/lab-osc-noise.png)
+![ENVELOPE with a note's dot](../../tests/golden/lcd/lab-envelope-dot.png)
+
+| Drawing | Shows | Colours |
+|---|---|---|
+| OSC | one cycle (224 pixels at the note's pitch; the fine tune makes it shorter or longer) of the waveform at the pulse width a sounding voice has now (the PWM's LFO moves the edge); the combined waveforms as the 6581's AND of the shapes; noise as a fixed scribble about the middle; with ring or sync, one cycle of the modulator with the carrier at the sync ratio (SYNC LEAD's, 1.5 on a sound whose modulator is another key's) | the waveform's colour, as LIVE's lanes (saw yellow, pulse cyan, triangle light green, noise light grey, combined white); the modulator light grey; the PWM's range a dotted dark grey band behind the edge; lit: K1 the pulse's edge, K2 and K3 the band, K4 the note's own cycle end (a line) |
+| ENVELOPE | the ADSR to scale from the SID's rate periods on a time axis of decades (1 ms to a minute, 48 pixels a decade; 10MS, 0.1S, 1S, 10S under it): the attack linear, the decay and release by the envelope's exponential steps; the key let go (a dark grey line) at the middle, or once the sustain is reached and held half as long again, so every segment is in sight; while a key sounds, the voice's envelope (the tap's) is a white block on the curve at its level | the curve light grey; lit: the turned card's segment in its knob's colour |
+
 LAB composes as CHIP does: the text is built in the song views' shared canvas when a hash of
 what it shows changes (the sound, its name and mark, the page, the theme, what is lit, the hint's
 phrase, the cutoff the chip has now), and the canvas's changed cells are copied within 200 cells
-a frame. RAM: 28 bytes of state (the canvas is the song views').
+a frame; the drawing takes what is left. When both change in a frame (a card turned while a note
+sounds) they go by turns, a frame each, so no `ui_poll` pays for both. RAM: 32 bytes of state (the
+canvas is the song views').
+
+| LAB, a key held and a card turned every frame (fm1-emu, `lab.rs`) | Most cells a frame | Busiest `ui_poll` |
+|---|---|---|
+| OSC, SAW LEAD / PWM BASS (its LFO moving the edge) | 66 / 200 | 59.4k / 61.3k |
+| ENVELOPE, the dot moving | 85 | 74.7k (the drawing about 45k) |
+| A page without a drawing yet | 136 | 44.9k |
 
 ## SONG
 

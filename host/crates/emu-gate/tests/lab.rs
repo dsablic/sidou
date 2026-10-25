@@ -168,10 +168,12 @@ const K1: u8 = PANEL_ENC_K1 as u8;
 const KEY0: u8 = PANEL_KEY_ID0 as u8;
 /// platform/fm1/ui.c's frame period.
 const FRAME_MS: u64 = 40;
-/// A ui_poll that composes LAB's frame while a key sounds and a card turns every frame: what the
-/// drawings may spend. The input's call and the busiest pass after it within the poll allowance
-/// together, as every view's (common::POLL_INSTRUCTIONS).
-const LAB_WORST_POLL: u64 = common::POLL_INSTRUCTIONS;
+/// The worst ui_poll that composes LAB's frame while a key sounds and a card turns every frame
+/// (the canvas and the drawing by turns, app/lab_view.h). Measured at Task 6: ENVELOPE 74.7k (its
+/// drawing about 45k), OSC 61.3k, a page without a drawing 44.9k; the bound keeps room under the
+/// poll allowance (common::POLL_INSTRUCTIONS, 120k) for the inputs and MIDI.
+const LAB_WORST_POLL: u64 = 90_000;
+const _: () = assert!(LAB_WORST_POLL <= common::POLL_INSTRUCTIONS);
 
 fn tap(m: &mut Machine, id: u8) {
     m.key(id, true);
@@ -397,4 +399,54 @@ fn the_keys_play_and_a_song_plays_on_in_lab() {
         fw.symbol("lab_view_view"),
         "LAB still shows"
     );
+}
+
+/// A page's frames, a key held (the envelope running, the PWM moving) and a card turned every
+/// frame: the most cells a frame sent and the worst ui_poll.
+fn page_frames(m: &mut Machine, fw: &Firmware, page: u32, frames_n: u64) -> (u32, u64) {
+    m.turn(SELECT, -(LAB_PAGES as i32));
+    m.run_ms(60);
+    m.turn(SELECT, page as i32);
+    m.run_ms(200);
+    m.key(KEY0 + 12, true);
+    let (cells, poll) = frames(m, fw, frames_n, |m, f| {
+        m.turn(K1 + (f % 4) as u8, if f % 8 < 4 { 1 } else { -1 });
+        if f % 20 == 10 {
+            m.key(KEY0 + 12, false); // the release runs, then a new note
+        } else if f % 20 == 15 {
+            m.key(KEY0 + 12, true);
+        }
+    });
+    m.key(KEY0 + 12, false);
+    (cells.iter().copied().max().unwrap_or(0), poll)
+}
+
+/// OSC (on SAW LEAD, and on PWM BASS with its LFO moving the edge) and ENVELOPE (its dot moving
+/// as the note runs): every frame within LAB_VIEW_FRAME_CELLS, every ui_poll within
+/// LAB_WORST_POLL.
+#[test]
+fn lab_osc_and_envelope_draw_within_their_budgets() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    m.watch_calls(fw.symbol("ui_poll"));
+    let mut over = Vec::new();
+    for (what, page, preset) in [
+        ("OSC, SAW LEAD", LAB_PAGE_OSC, 0),
+        ("ENVELOPE, SAW LEAD", LAB_PAGE_ENVELOPE, 0),
+        ("OSC, PWM BASS", LAB_PAGE_OSC, 1),
+        ("ENVELOPE, PWM BASS", LAB_PAGE_ENVELOPE, 1),
+    ] {
+        if preset == 1 {
+            m.turn(PANEL_ENC_PRESETS as u8, 1);
+            m.run_ms(300);
+        }
+        let (most, poll) = page_frames(&mut m, &fw, page, 60);
+        println!("LAB {what}: most cells {most}, worst ui_poll {poll}");
+        if most > LAB_VIEW_FRAME_CELLS || poll > LAB_WORST_POLL {
+            over.push(format!("{what}: {most} cells, {poll} instructions"));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
 }

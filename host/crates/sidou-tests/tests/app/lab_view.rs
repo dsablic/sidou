@@ -30,6 +30,7 @@ pub(crate) fn settle(ui: &mut Ui) {
             && unsafe { screen_popup_shows(&ui.v.s) } == 0
             && ui.v.lab.copying == 0
             && ui.v.lab.hl == 0
+            && (ui.top() != "LAB" || ui.v.lab.art_done == 1)
         {
             step(ui);
             return;
@@ -296,6 +297,15 @@ fn algorithm_steps_each_pages_choice() {
 
 #[test]
 fn a_turn_lights_its_card_and_opens_no_popup() {
+    // The menu's ALGORITHM that opens LAB is the menu's: LAB's choice is not lit by it.
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_LAB as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    step(&mut ui);
+    step(&mut ui);
+    assert_eq!((ui.top().as_str(), ui.v.lab.hl), ("LAB", 0));
     let mut ui = lab_ui();
     to_page(&mut ui, LAB_PAGE_ENVELOPE);
     let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
@@ -497,13 +507,379 @@ fn the_pages_match_their_goldens() {
     }
 }
 
-/// On to the hint line's first phrase, settled.
+/// Settled, then on to the hint line's first phrase, drawn.
 pub(crate) fn settle_hint(ui: &mut Ui) {
+    settle(ui);
     for _ in 0..(LAB_VIEW_HINTS * LAB_VIEW_HINT_MS / 40 + 2) {
-        if ui.v.s.now % (LAB_VIEW_HINTS * LAB_VIEW_HINT_MS) < LAB_VIEW_HINT_MS - 400 {
+        if ui.v.s.now % (LAB_VIEW_HINTS * LAB_VIEW_HINT_MS) < 100 {
             break;
         }
         step(ui);
     }
-    settle(ui);
+    for _ in 0..4 {
+        step(ui);
+    }
+    assert!(ui.row(LAB_VIEW_HINT_ROW as usize).starts_with("EDIT A/B"));
+}
+
+// ---- the drawings (Task 6 on) ----
+
+const ROW0: usize = LAB_VIEW_ART_ROW as usize;
+const COLS: usize = GRID_COLS as usize;
+
+/// The overlay of grid cell (col, row): its mask and colour, or None.
+fn overlay(g: &grid, col: usize, row: usize) -> Option<([u8; 8], u8)> {
+    let slot = usize::from(g.ovl[row * COLS + col]);
+    (slot != 0).then(|| (g.ovl_mask[slot - 1], g.ovl_color[slot - 1]))
+}
+
+/// The area's inked pixels as rows of 240 booleans, from the overlays.
+fn ink(g: &grid) -> Vec<Vec<bool>> {
+    let mut out = vec![vec![false; LAB_DRAW_W as usize]; LAB_DRAW_H as usize];
+    for r in 0..LAB_DRAW_ROWS as usize {
+        for c in 0..COLS {
+            if let Some((m, _)) = overlay(g, c, ROW0 + r) {
+                for (y, bits) in m.iter().enumerate() {
+                    for j in 0..8 {
+                        if bits >> (7 - j) & 1 != 0 {
+                            out[r * 8 + y][c * 8 + j] = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The cells of the area whose overlay is in colour `c`.
+fn cells_in(g: &grid, c: u8) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for r in 0..LAB_DRAW_ROWS as usize {
+        for col in 0..COLS {
+            if overlay(g, col, ROW0 + r).is_some_and(|(_, k)| k == c) {
+                out.push((col, r));
+            }
+        }
+    }
+    out
+}
+
+unsafe extern "C" fn synthetic(ctx: *const std::ffi::c_void, x: u32, out: *mut lab_draw_col) {
+    let kind = unsafe { *(ctx as *const u32) };
+    let y = synthetic_y(kind, x);
+    let out = unsafe { &mut *out };
+    out.lo = [y, LAB_DRAW_NONE as u8, LAB_DRAW_NONE as u8];
+    out.hi = [y, 0, 0];
+    out.lit = 0;
+}
+
+fn synthetic_y(kind: u32, x: u32) -> u8 {
+    (match kind {
+        0 => x * (LAB_DRAW_H - 2) / (LAB_DRAW_W - 1), // a diagonal
+        1 => {
+            if x < 120 {
+                20
+            } else {
+                80
+            }
+        } // a step
+        _ => 50,                                      // a flat line
+    }) as u8
+}
+
+/// The kit's overlays against a reference rasteriser: each column's point joined to the one
+/// before and a pixel thicker below, on the cells it crosses only.
+#[test]
+fn the_kit_draws_a_line_as_overlays_on_the_cells_it_crosses() {
+    for kind in 0..3u32 {
+        let mut g = Box::<grid>::default();
+        let s = Box::<screen>::default();
+        unsafe { grid_init(&mut *g, b' ', 0) };
+        let d = lab_draw {
+            fn_: Some(synthetic),
+            ctx: (&kind as *const u32).cast(),
+            color: [GRID_WHITE as u8, GRID_CYAN as u8, GRID_YELLOW as u8],
+            lit_color: GRID_RED as u8,
+        };
+        let mut left = 1000;
+        let whole = unsafe { lab_draw_apply(&d, &mut *g, &*s, ROW0 as u32, &mut left) };
+        assert_eq!(whole, 1, "kind {kind}: drawn whole");
+        // A sample every LAB_DRAW_STEP columns, as wide, joined to the one before.
+        let mut want = vec![vec![false; LAB_DRAW_W as usize]; LAB_DRAW_H as usize];
+        let mut prev: Option<u8> = None;
+        for x in (0..LAB_DRAW_W).step_by(LAB_DRAW_STEP as usize) {
+            let y = synthetic_y(kind, x);
+            let (a, b) = match prev {
+                Some(p) => (y.min(p), y.max(p)),
+                None => (y, y),
+            };
+            prev = Some(y);
+            let b = (u32::from(b) + 1).min(LAB_DRAW_H - 1) as u8;
+            for row in a..=b {
+                for dx in 0..LAB_DRAW_STEP {
+                    want[usize::from(row)][(x + dx) as usize] = true;
+                }
+            }
+        }
+        assert_eq!(ink(&g), want, "kind {kind}: the pixels");
+        let crossed: usize = (0..LAB_DRAW_ROWS as usize)
+            .map(|r| {
+                (0..COLS)
+                    .filter(|&c| (0..8).any(|y| (0..8).any(|j| want[r * 8 + y][c * 8 + j])))
+                    .count()
+            })
+            .sum();
+        assert_eq!(
+            cells_in(&g, GRID_WHITE as u8).len(),
+            crossed,
+            "kind {kind}: only the cells it crosses"
+        );
+        assert_eq!(1000 - left, crossed as u32, "each counted once");
+        // Again: the same drawing changes nothing.
+        let mut again = 1000;
+        unsafe { lab_draw_apply(&d, &mut *g, &*s, ROW0 as u32, &mut again) };
+        assert_eq!(again, 1000, "kind {kind}: nothing changed");
+        // A budget of 5: five cells, then the rest at the next call.
+        let mut g2 = Box::<grid>::default();
+        unsafe { grid_init(&mut *g2, b' ', 0) };
+        let mut five = 5;
+        let first = unsafe { lab_draw_apply(&d, &mut *g2, &*s, ROW0 as u32, &mut five) };
+        assert_eq!((first, five), (0, 0), "kind {kind}: cut short");
+        let mut rest = 1000;
+        assert_eq!(
+            unsafe { lab_draw_apply(&d, &mut *g2, &*s, ROW0 as u32, &mut rest) },
+            1
+        );
+        assert_eq!(ink(&g2), want, "kind {kind}: the rest, the next call");
+    }
+}
+
+/// OSC's drawing for each waveform (SAW LEAD's other settings): goldens.
+#[test]
+fn osc_draws_each_waveform() {
+    let mut ui = lab_ui();
+    let choose = |ui: &mut Ui, i: i32| {
+        ui.turn(PANEL_ENC_ALGORITHM, -20);
+        ui.turn(PANEL_ENC_ALGORITHM, i);
+    };
+    for (i, name) in [
+        (0, "lab-osc-tri"),
+        (1, "lab-osc-saw"),
+        (2, "lab-osc-pul25"),
+        (3, "lab-osc-noise"),
+        (9, "lab-osc-sync"),
+        (8, "lab-osc-ring"),
+    ] {
+        choose(&mut ui, i);
+        if i == 2 {
+            set(&mut ui, LIVE_PARAM_PULSE_WIDTH, 1024);
+        }
+        settle_hint(&mut ui);
+        golden(&ui, name);
+    }
+    // PWM BASS: the PWM's band behind the pulse's edge.
+    let mut ui = Ui::without_cards();
+    unsafe { live_set_preset(&mut *ui.rig.live, 1) };
+    open_lab(&mut ui);
+    settle_hint(&mut ui);
+    golden(&ui, "lab-osc-pwm");
+    let band = (ROW0..ROW0 + 13)
+        .flat_map(|r| (0..COLS).map(move |c| (r, c)))
+        .filter(|&(r, c)| ui.g.ch[r * COLS + c] == FONT_D2 as u8)
+        .count();
+    assert!(band > 0, "the band");
+}
+
+/// The envelope to scale: the attack's corner at its time on the axis (attack 0 and 15), the
+/// plateau at the sustain's level (0 and 15), against the SID's rate table.
+#[test]
+fn envelope_draws_to_scale() {
+    // The datasheet's times, within 20 %.
+    let near = |got: u32, ms: u32| {
+        let want = ms * 1000;
+        got >= want * 8 / 10 && got <= want * 12 / 10
+    };
+    unsafe {
+        assert!(near(lab_draw_attack_us(0), 2));
+        assert!(near(lab_draw_attack_us(15), 8000));
+        assert!(near(lab_draw_decay_us(0), 6));
+        assert!(near(lab_draw_decay_us(15), 24000));
+        for (ms, x) in [(10, 54), (100, 100), (1000, 148), (10_000, 196)] {
+            let got = lab_draw_x_of_us(ms * 1000);
+            assert!(got.abs_diff(x) <= 1, "{ms} ms at x {got}, not {x}");
+        }
+    }
+    let top = |g: &grid, x: usize| -> Option<usize> {
+        let ink = ink(g);
+        (0..LAB_DRAW_H as usize).find(|&y| ink[y][x])
+    };
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_ENVELOPE);
+    for (attack, sustain) in [(0u32, 0u32), (0, 15), (15, 0), (15, 15)] {
+        set(&mut ui, LIVE_PARAM_ATTACK, attack);
+        set(&mut ui, LIVE_PARAM_SUSTAIN, sustain);
+        set(&mut ui, LIVE_PARAM_DECAY, 2);
+        settle(&mut ui);
+        let (ad, sr) = (ui.live().attack_decay, ui.live().sustain_release);
+        // The key goes at the middle, or once the sustain is reached and held half as long again.
+        let gate = unsafe { lab_draw_gate_us(ad, sr) };
+        let reached = unsafe { lab_draw_attack_us(attack) };
+        assert!(gate >= unsafe { lab_draw_time_us(LAB_DRAW_GATE_X) });
+        assert!(
+            gate >= reached,
+            "A{attack}: the attack is whole before the key goes"
+        );
+        let step = LAB_DRAW_STEP as usize;
+        let y_at = |x: usize| {
+            let t = unsafe { lab_draw_time_us(x as u32) };
+            let mut level = unsafe { lab_draw_level(ad, sr, gate, t) };
+            if t < reached && t < gate {
+                // rising: the sample's top is where its time ends
+                let end = unsafe { lab_draw_time_us((x + step) as u32) }
+                    .min(reached)
+                    .min(gate);
+                level = level.max(unsafe { lab_draw_level(ad, sr, gate, end) });
+            }
+            (4 + (255 - level) * 96 / 255) as usize
+        };
+        for x in [10usize, 40, 80, 118, 130, 200] {
+            // a sample is joined to the one before: its top is the higher of the two
+            let y = y_at(x).min(y_at(x - step));
+            let got = top(&ui.g, x).expect("a column of the curve");
+            assert!(
+                got.abs_diff(y) <= 1,
+                "A{attack} S{sustain}: x {x} at row {got}, wants {y}"
+            );
+        }
+        // The corner: the first column at the top is the attack's time on the axis.
+        let corner = (0..LAB_DRAW_W as usize)
+            .find(|&x| top(&ui.g, x) == Some(4))
+            .unwrap();
+        let want = unsafe { lab_draw_x_of_us(reached) } as usize / step * step;
+        assert!(
+            corner.abs_diff(want) <= step,
+            "A{attack}: the corner at {corner}, not {want}"
+        );
+        if sustain == 15 && attack == 0 {
+            assert_eq!(
+                top(&ui.g, 110),
+                Some(4),
+                "no decay at S15: the plateau at the top"
+            );
+        }
+        if sustain == 0 && attack == 0 {
+            assert_eq!(
+                top(&ui.g, 110),
+                Some(100),
+                "S0: down to nothing before the key goes"
+            );
+        }
+    }
+}
+
+/// The card turned lights its part of the drawing: ENVELOPE's segments, OSC's pulse edge and band
+/// and the tuned cycle's end.
+#[test]
+fn a_turned_card_lights_its_part() {
+    let mut ui = lab_ui();
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    to_page(&mut ui, LAB_PAGE_ENVELOPE);
+    set(&mut ui, LIVE_PARAM_ATTACK, 6);
+    set(&mut ui, LIVE_PARAM_DECAY, 6);
+    set(&mut ui, LIVE_PARAM_SUSTAIN, 8);
+    set(&mut ui, LIVE_PARAM_RELEASE, 6);
+    settle(&mut ui);
+    let gate_col = (LAB_DRAW_GATE_X / 8) as usize;
+    let attack_end = unsafe { lab_draw_x_of_us(lab_draw_attack_us(6)) } as usize / 8;
+    for k in 0..4u32 {
+        ui.turn(K1 + k, 1);
+        ui.turn(K1 + k, -1);
+        step(&mut ui);
+        step(&mut ui);
+        let lit = cells_in(&ui.g, th.knob[k as usize]);
+        assert!(!lit.is_empty(), "K{}: its segment lit", k + 1);
+        let cols: Vec<usize> = lit.iter().map(|&(c, _)| c).collect();
+        let (lo, hi) = (*cols.iter().min().unwrap(), *cols.iter().max().unwrap());
+        match k {
+            0 => assert!(hi <= attack_end + 1, "the attack: {lo}..{hi}"),
+            1 | 2 => assert!(
+                lo + 1 >= attack_end && hi <= gate_col,
+                "decay/sustain: {lo}..{hi}"
+            ),
+            _ => assert!(lo >= gate_col, "the release: {lo}..{hi}"),
+        }
+        settle(&mut ui);
+        assert!(cells_in(&ui.g, th.knob[k as usize]).is_empty(), "and back");
+    }
+    // OSC on a pulse: K1 the edge, K2 the band (glyphs in its colour), K4 the note's cycle end.
+    let mut ui = Ui::without_cards();
+    unsafe { live_set_preset(&mut *ui.rig.live, 1) };
+    open_lab(&mut ui);
+    ui.turn(K1, 1);
+    step(&mut ui);
+    step(&mut ui);
+    assert!(
+        !cells_in(&ui.g, th.knob[0]).is_empty(),
+        "K1: the pulse's edge"
+    );
+    settle(&mut ui);
+    ui.turn(K1 + 1, 1);
+    step(&mut ui);
+    step(&mut ui);
+    let band = (ROW0..ROW0 + 13)
+        .flat_map(|r| (0..COLS).map(move |c| r * COLS + c))
+        .filter(|&i| ui.g.ch[i] == FONT_D2 as u8 && ui.g.attr[i] & 15 == th.knob[1])
+        .count();
+    assert!(band > 0, "K2: the band in its colour");
+    settle(&mut ui);
+    ui.turn(K1 + 3, 1);
+    step(&mut ui);
+    step(&mut ui);
+    let end = cells_in(&ui.g, th.knob[3]);
+    assert!(
+        end.iter().all(|&(c, _)| c == 28),
+        "K4: the note's cycle end {end:?}"
+    );
+    assert!(end.len() >= 10, "a line down the area");
+}
+
+/// While a key sounds the tap's envelope is a dot on ENVELOPE's curve at its level, and it moves
+/// with it.
+#[test]
+fn the_envelope_dot_follows_the_tap() {
+    let mut ui = lab_ui();
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    to_page(&mut ui, LAB_PAGE_ENVELOPE);
+    set(&mut ui, LIVE_PARAM_ATTACK, 10); // 500 ms
+    settle(&mut ui);
+    assert!(cells_in(&ui.g, th.value).is_empty(), "no dot at rest");
+    let mut xs = Vec::new();
+    for level in [60u8, 120, 180] {
+        ui.sc.env[1] = level;
+        ui.sc.state[1] = 0; // SID_ENV_ATTACK
+        step(&mut ui);
+        step(&mut ui);
+        let dot = cells_in(&ui.g, th.value);
+        assert!(!dot.is_empty(), "the dot at {level}");
+        let x = dot.iter().map(|&(c, _)| c).min().unwrap();
+        let attack = unsafe { lab_draw_attack_us(10) };
+        let want = unsafe { lab_draw_x_of_us(attack * u32::from(level) / 255) } as usize / 8;
+        assert!(
+            x.abs_diff(want) <= 1,
+            "level {level}: the dot at cell {x}, not {want}"
+        );
+        xs.push(x);
+    }
+    assert!(
+        xs.windows(2).all(|w| w[0] < w[1]),
+        "it moves up the attack: {xs:?}"
+    );
+    golden(&ui, "lab-envelope-dot");
+    ui.sc.env[1] = 0;
+    settle(&mut ui);
+    assert!(
+        cells_in(&ui.g, th.value).is_empty(),
+        "gone when the voice is silent"
+    );
 }
