@@ -81,7 +81,7 @@ cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web
 mkdir -p "$out/songs"
 cp "$root"/assets/songs/*.sng "$out/songs/"
 cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"
-mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && cp "$root/web/videos.html" "$out/"
+mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && cp "$root/web/videos.html" "$root/web/cheatsheet.html" "$out/"
 mkdir -p "$out/licenses"
 cp "$root/LICENSES/GPL-3.0-only.txt" "$root/LICENSES/Apache-2.0.txt" "$out/licenses/"
 cp "$emu/LICENSE" "$out/licenses/fm1-emu-MIT.txt"
