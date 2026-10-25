@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The SID views (M3 Task 11; docs/plans/2026-10-19-m3-sid-files.md, "The browser and the
+/* The SID views (M3 Task 11; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "The browser and the
  * transport"; docs/reference/controls.md "SIDS"): the browser of the store's .sid tunes and NOW
  * PLAYING, over the tune's player (app/sid_transport.h).
  *

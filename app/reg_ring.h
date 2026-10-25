@@ -63,7 +63,7 @@ extern "C" {
  * pseudo-registers live's 0x80..0x87 (live.h) and REG_RING_CHARACTER (0x88); chip B's are
  * the same with REG_RING_CHIP_B set, 0x40..0x58 and 0xC0..0xC8. The effect slots'
  * pseudo-registers (0xA0..0xB7, app/fx_live.h) name no chip: one chain on the mix of both
- * (docs/plans/2026-10-15-m2-overview.md, decision 9). */
+ * (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md, decision 9). */
 #define REG_RING_CHIPS 2u
 #define REG_RING_CHIP_B 0x40u
 /* The chip an entry's register names (0 A, 1 B), and the register without it. */

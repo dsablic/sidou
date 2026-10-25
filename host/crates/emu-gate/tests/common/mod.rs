@@ -238,7 +238,7 @@ pub struct Machine {
 }
 
 /// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
-/// use stays within half of it (docs/plans/2026-10-19-m3-sid-files.md, Before M3 item 5: the
+/// use stays within half of it (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, Before M3 item 5: the
 /// user stack is sized at twice its deepest use). With SIDOU_STACK_LOG set to a file, each
 /// machine appends its test's name and both depths to it (the measurement the sizes come from).
 impl Drop for Machine {
@@ -859,7 +859,7 @@ pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1426.0;
 
 /// Instructions a sample the LIVE view's tap (app/scope.h) adds to the audio interrupt
 /// (ram_audio.rs fails above it). LIVE is the view at power-on, so the tap runs by default
-/// and the effect gates count it with the chips. docs/plans/2026-10-15-m1e-look-and-feel.md
+/// and the effect gates count it with the chips. https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m1e-look-and-feel.md
 /// asks for under about 10. M1e Task 4 measured 4.8, with sid_render called once per
 /// 16-sample point. The points now come from inside one render a block
 /// (sid_render_tap), and M1b Task 6's 6581 measures 4.44 (406.71 against 402.27, a held
@@ -884,7 +884,7 @@ pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 
 /// The song player's worst 128-sample block in instructions a sample (song.rs fails above
 /// it): its call and SONG_EDITS_PER_BLOCK of the costliest edit command, with the block's
-/// command handling (M2c Task 6; the plan's budget, docs/plans/2026-10-15-m2c-song-engine.md).
+/// command handling (M2c Task 6; the plan's budget, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2c-song-engine.md).
 pub const PLAYER_WORST_BLOCK: f64 = 60.0;
 /// SIDOU's 6502 (core/cpu6502, CPU6502_SMALL at -Os) on the device, in pi32v2 instructions
 /// per 6502 cycle on a GoatTracker workload (cpu6502_budget.rs fails above it): the worst of
@@ -902,14 +902,14 @@ pub const CPU6502_INSTR_PER_CYCLE: f64 = 9.33;
 /// sizes the slice with it.
 pub const SHADOW_FRAME_MEAN: f64 = 49_250.0;
 pub const SHADOW_SLICE_WORST: u64 = 42_690;
-/// A main-loop pass's 6502 work in the .sid player (docs/plans/2026-10-19-m3-sid-files.md,
+/// A main-loop pass's 6502 work in the .sid player (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md,
 /// "Budgets"): psid_ctl_poll's look-ahead slice, the 6502 with the voice shadows and the write
 /// ring (cpu6502_budget.rs fails above it; Task 9 holds the firmware's pass to it).
 pub const PSID_SLICE_WORST: u64 = 40_000;
 /// A .sid tune's worst 128-sample block in the audio interrupt, in instructions a sample over
 /// the chips' own render (psid_budget.rs fails above it): its stamped writes (the ring's pops,
 /// the split renders' steps and calls, sid_advance and sid_write), the mutes and the fades
-/// (docs/plans/2026-10-19-m3-sid-files.md, "Budgets"). The song player's PLAYER_WORST_BLOCK and
+/// (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Budgets"). The song player's PLAYER_WORST_BLOCK and
 /// this never run together.
 pub const PSID_ISR_WORST: f64 = 120.0;
 /// The digi drums' cost in the audio interrupt (core/player/song_ctl.c song_ctl_block_end: its
@@ -925,15 +925,15 @@ pub const DIGI_PER_SAMPLE: f64 = 9.5;
 /// a preset change switches the slots.
 pub const SLOTS_SWITCH_WORST: f64 = 964.0;
 /// Free RAM (the RAM region and POOL): the last row of the overview's gate table
-/// (docs/plans/2026-10-15-m2-overview.md, "RAM"), M2f's: 10,000. The table counts each plan's
+/// (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md, "RAM"), M2f's: 10,000. The table counts each plan's
 /// budget once, and M2a's 2,000 is already spent inside M2c's 22,000, so the plans on top of
 /// it are M2d (6,000), M2e (2,000) and M2f (5,000): 22,000 - 13,000 = 9,000, and the table's
 /// slack makes 10,000. (It was 7,000 until the end-of-M2 review, which counted M2a twice.)
-/// Less M3's 512 bytes (docs/plans/2026-10-19-m3-sid-files.md, "Budgets": a tune's state
+/// Less M3's 512 bytes (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Budgets": a tune's state
 /// overlays the song's, and the rest is its own; Task 9).
 pub const FREE_RAM_MIN: u64 = 10_000 - 512;
 /// Each region (the RAM region, POOL) keeps this free: M3's start target in
-/// docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
+/// https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
 /// bytes plus a margin.
 pub const REGION_FREE_MIN: u64 = 5_120;
 // A .sid tune plays with two chips at their worst, the effects at their cap, the ISR and the

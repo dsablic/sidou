@@ -304,7 +304,7 @@ clock now places the player's calls, not the notes of the keys or MIDI.
   song starting; the dense four-channel stream 25k).
 - **Jam notes (TIGHT):** the option the record sketched for notes that drive the player
   (Task 3's jam notes: their stamp carried through song control and placed at a fixed delay)
-  waits for song control's jam binding (docs/plans/2026-10-15-m2e-midi.md, Task 3's results):
+  waits for song control's jam binding (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2e-midi.md, Task 3's results):
   there are no jam notes on the device to measure yet. The mechanism is the one above (an
   aligned command at the stamp plus the delay), so its cost is the align's. Decided: not
   now; live notes to the keys' chip stay as M1 decided (block-start placement, 3.0 to 6.7 ms).

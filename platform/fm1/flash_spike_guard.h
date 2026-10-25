@@ -5,7 +5,7 @@
  * Only the spike build (CMake SIDOU_FLASH_SPIKE) includes this; the default image has none of
  * it (emu-gate tests/flash_spike.rs checks the ELF's symbols).
  *
- * The spike works on the store's last two sectors only (docs/plans/2026-10-15-m2a-storage.md,
+ * The spike works on the store's last two sectors only (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2a-storage.md,
  * the flash map): 0xDE000, where it leaves a pattern for the stock round trip, and 0xDF000,
  * where it measures. Never the flash head [0, 0x4000), the app area [0x4000, 0x93000), the
  * VM region's head [0x93000, 0x97000), the update staging area [0xE0000, 0xE5000) or
@@ -67,7 +67,7 @@ _Static_assert((FLASH_SPIKE_LO & (FLASH_SPIKE_SECTOR - 1u)) == 0u, "whole sector
                                          : FLASH_SPIKE_PROG_OK(off, n))
 
 /* Every sector the spike erases gets this first, at offset 0: the spike's own mark. Not the
- * store's sector magic ("SIDOUSTR", docs/plans/2026-10-15-m2a-storage.md Task 2), so the store
+ * store's sector magic ("SIDOUSTR", https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2a-storage.md Task 2), so the store
  * sees a spike sector as dirty and erases it. */
 #define FLASH_SPIKE_MARK "SIDOU FLASHSPIKE"
 #define FLASH_SPIKE_MARK_LEN 16u

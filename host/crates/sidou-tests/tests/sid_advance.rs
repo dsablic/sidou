@@ -115,7 +115,7 @@ fn stream(rng: &mut Rng, n: usize, sync: bool) -> Vec<(u64, u8, u8)> {
 
 /// Renders `s` up to chip cycle `x` (`clocked` is its cycles so far) with whole samples, then
 /// advances it the rest of the way into the next sample: as the audio interrupt will place a
-/// write (docs/plans/2026-10-19-m3-sid-files.md, the stamped writes). Returns the samples.
+/// write (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, the stamped writes). Returns the samples.
 fn render_to(s: &mut sid, clocked: &mut u64, x: u64) -> Vec<i16> {
     let mut out = Vec::new();
     loop {

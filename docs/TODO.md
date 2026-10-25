@@ -162,7 +162,7 @@ Follow-ups that aren't tied to a milestone task yet.
 ## A browser editor and librarian over USB (after M2e)
 
 - **Where:** a new page under `web/`, using M2e's SysEx dump protocol
-  (`docs/plans/2026-10-15-m2e-midi.md`) and design doc section 11's web companion.
+  (`https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2e-midi.md`) and design doc section 11's web companion.
 - **Problem:** tracking on four knobs and a 240×240 screen is slow. A computer
   keyboard and a large screen make song and instrument editing far quicker. SLICE64-FM
   (an FM-1 tracker on fm1-editor.com's watch list) shows the value of such an editor.
@@ -204,7 +204,7 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 - **Decided (M3 plan, 2026-10-19; built):** M3 keeps the polite rejection (`RSID: NOT YET`, at
   `PUT` and in the browser); the reasons and what a later plan would need (a cycle-scheduled CIA
   1 and 2, VIC raster interrupts, a SIDOU KERNAL stub, libsidplayfp as the oracle, the digi path
-  checked; BASIC tunes stay refused) are in [the plan](plans/2026-10-19-m3-sid-files.md#rsid-rejected-politely-in-m3-a-later-plan-if-wanted).
+  checked; BASIC tunes stay refused) are in [the plan](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md#rsid-rejected-politely-in-m3-a-later-plan-if-wanted).
 - **Update, 2026-10-18:** with the look-ahead of decision record 0008, the 6502's audio headroom
   is no longer the limit; CIA and NMI timing within a frame is, and it costs main-loop time.
 - **Action:** none for M3. If the user wants RSID, it is its own plan after M3.

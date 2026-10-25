@@ -1117,7 +1117,7 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
     let names: Vec<&str> = CONTEXTS.iter().copied().chain(["CONFIRM YES"]).collect();
     for name in names {
         if name == "UNSAVED" {
-            // The question's own answers (docs/plans/2026-10-19-m3-sid-files.md, "Memory"): SAVE
+            // The question's own answers (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Memory"): SAVE
             // saves the song first, ALGORITHM again discards it; sid_view.rs checks both.
             continue;
         }

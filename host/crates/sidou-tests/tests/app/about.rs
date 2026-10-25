@@ -493,7 +493,7 @@ fn the_cracktro_stays_within_the_budget() {
         sent.len(),
         worst.spi_ms()
     );
-    // docs/plans/2026-10-15-m1e-look-and-feel.md: trimmed from the prototype's 240 cells a
+    // https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m1e-look-and-feel.md: trimmed from the prototype's 240 cells a
     // frame to about 120.
     assert!(avg <= 120.0, "{avg:.1} cells a frame on average");
     assert!(

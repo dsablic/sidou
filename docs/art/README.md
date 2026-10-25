@@ -998,7 +998,7 @@ it composes nothing (the song views' table in `tests/screen.rs`: 8.0k instructio
 
 RAM: the song views' state 2,824 bytes (1,920 before), most of it their shared canvas (with the
 characters of the large text's pieces). The two canvases and the characters they keep are
-1,788 bytes of the views' 17,280; free RAM went from 14,544 to 12,752 bytes (the gate keeps 9,000). At the end of M2d the RAM region and POOL together have 8,520 bytes free (4,256 and 4,264; the gate keeps 7,000, each region 4,096) and the image is 493,840 bytes ([the plan](../plans/2026-10-15-m2d-step-tracker.md#status-m2d-complete-tasks-1-7-2026-10-22)).
+1,788 bytes of the views' 17,280; free RAM went from 14,544 to 12,752 bytes (the gate keeps 9,000). At the end of M2d the RAM region and POOL together have 8,520 bytes free (4,256 and 4,264; the gate keeps 7,000, each region 4,096) and the image is 493,840 bytes ([the plan](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2d-step-tracker.md#status-m2d-complete-tasks-1-7-2026-10-22)).
 
 ### TRACKER, edited and recording
 

@@ -363,7 +363,7 @@ static inline uint32_t sid_next_cycles(const sid* s) {
 }
 
 /* Clocks the voices k cycles into the next sample, for a write inside it (M3's stamped writes,
- * docs/plans/2026-10-19-m3-sid-files.md): the oscillators and envelopes run k cycles as the
+ * https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md): the oscillators and envelopes run k cycles as the
  * render runs them (clock_voices, the same code), the filter and the output stage do not, and
  * the k cycles come off the next sample (cycle_frac_q16 -= k << 16), so that sample clocks only
  * the rest and the samples stay where they were: a block renders as many samples, at the same

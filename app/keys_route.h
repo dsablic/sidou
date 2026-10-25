@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* Which chip the keys play (M2b Task 4; docs/plans/2026-10-15-m2b-chip-b.md, the user's
+/* Which chip the keys play (M2b Task 4; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2b-chip-b.md, the user's
  * decision of 2026-10-16), and the two chips' setups.
  *
  * live plays the instrument through this sink, which sends its writes to the chip the keys
@@ -136,7 +136,7 @@ void keys_route_set_song(keys_route* kr, int playing);
  * WHOLE-CHIP modes (app/midi_route.h). Treated as a song playing, so the keys move to chip B
  * (KEYS AUTO) and chip A follows song_want. */
 void keys_route_set_player(keys_route* kr, int owns);
-/* A .sid tune is the player (M3; docs/plans/2026-10-19-m3-sid-files.md, "The keys, chip B and
+/* A .sid tune is the player (M3; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "The keys, chip B and
  * the rest of the firmware while a tune plays"), on top of keys_route_set_song: KEYS A acts as
  * AUTO (no voice can be taken from a tune), so the keys go to chip B and chip A follows
  * song_want, the tune's setup. */

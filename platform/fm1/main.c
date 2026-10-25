@@ -1451,7 +1451,7 @@ static void song_pass(void) {
 }
 
 
-/* --- A .sid tune (M3 Task 9; docs/plans/2026-10-19-m3-sid-files.md, "Memory" and "The keys,
+/* --- A .sid tune (M3 Task 9; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Memory" and "The keys,
  * chip B and the rest of the firmware while a tune plays"): the tune over the song's memory,
  * its 6502 a frame ahead in the main loop (psid_ctl, a slice a pass at most), its writes placed
  * at their cycles by the audio interrupt (audio.c). It starts once the song has stopped and gone

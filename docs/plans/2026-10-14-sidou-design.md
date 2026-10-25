@@ -608,7 +608,7 @@ Each kind of document has one job:
      - boot intro, themed menus, About cracktro;
      - scopes, envelope bars and VU in the LIVE view.
 3. **M2, songs** (amended by the M2 plan, 2026-10-15; the plans are
-   `docs/plans/2026-10-15-m2-overview.md` and its m2a-m2f files):
+   `https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md` and its m2a-m2f files):
    - GoatTracker 2 `.sng` as the native song file (read and written, with
      SIDOU's trailer), and the player, with the register-match tests against
      GoatTracker's own player (was: "native format and player" and "GT2

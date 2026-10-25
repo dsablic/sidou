@@ -24,7 +24,7 @@
 void midi_init(live* l, keys_route* kr);
 /* MIDI's mode, which the MIDI page edits (platform/fm1/ui.c). In RAM, OMNI at power-on, until
  * the settings persist (M2a). Its player side is unbound until song control has jam release,
- * take-over and bend (docs/plans/2026-10-15-m2e-midi.md, Task 3's results): chip A's channels
+ * take-over and bend (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2e-midi.md, Task 3's results): chip A's channels
  * are routed and tracked, and play nothing yet. */
 midi_route* midi_routed(void);
 /* Main loop, once per live tick, after live_tick: the mode's bends, filter and ARP steps. */

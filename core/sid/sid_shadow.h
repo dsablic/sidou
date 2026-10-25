@@ -3,7 +3,7 @@
 #ifndef SIDOU_SID_SHADOW_H
 #define SIDOU_SID_SHADOW_H
 
-/* The voice shadow (M3 Task 5b, docs/plans/2026-10-19-m3-sid-files.md): a copy of a chip's three
+/* The voice shadow (M3 Task 5b, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md): a copy of a chip's three
  * voices that the main loop clocks with a tune's 6502, so that the tune's reads of the SID are
  * real. The 6502 runs up to two frames ahead of the audio chip (the look-ahead), which therefore
  * cannot answer them; the shadow sees the same writes at the same cycles and answers at the

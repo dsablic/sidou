@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! .sid tunes on the device (M3 Task 9, docs/plans/2026-10-19-m3-sid-files.md), end to end in
+//! .sid tunes on the device (M3 Task 9, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md), end to end in
 //! fm1-emu: a tune put into the store's flash before the boot plays from the panel (the menu's
 //! SIDS, the tune, ALGORITHM clockwise: Task 11's views, common::ui_play_tune) over the song's
 //! memory, and the firmware's audio equals the host build's render of the same tune through the

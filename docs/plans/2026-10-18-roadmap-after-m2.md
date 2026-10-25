@@ -69,7 +69,7 @@ the 6502 study below.
    (`host/crates/ergo`, `build/ergo/`); the accepted ones become the fix list. Knob ranges and
    curves, gestures, consistency, readability, workflow.
 6. **v0.3.0, the first public release** (numbered after v0.2.0, the M2 release; the user, 2026-10-21), which ships with **no known bug**: everything spotted by then is fixed first,
-   from the ergonomics review (`docs/plans/2026-10-18-ergonomics-pass.md`, including its
+   from the ergonomics review (`https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-ergonomics-pass.md`, including its
    deferred TRACKER and CHIP items), flash day, the testers and `docs/TODO.md`'s bug entries.
    The harness is re-run on the release candidate, and every finding it reports is fixed or
    shown to be a false positive by a harness fix. Added 2026-10-21, from the community's

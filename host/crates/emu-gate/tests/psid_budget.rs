@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A .sid tune's budgets on fm1-emu (M3 Task 9, docs/plans/2026-10-19-m3-sid-files.md,
+//! A .sid tune's budgets on fm1-emu (M3 Task 9, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md,
 //! "Budgets"):
 //!
 //! * the audio interrupt's .sid path (psid_ctl_block: the ring's pops, the split renders'

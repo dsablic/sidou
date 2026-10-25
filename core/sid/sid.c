@@ -90,7 +90,7 @@ static const float THUMP_ATTACK[16] = {0.9059f, 0.6871f, 0.4972f, 0.3773f, 0.256
 /* The 6581's filter and output path, fitted to reSIDfp's 6581 at 44.1 kHz (M1b Task 6:
  * filter sweeps at small and full scale and with three loud voices, cutoffs and damping
  * measured from reSIDfp with one to three voices at two envelope levels, passband gains
- * and the volume register's DC steps; docs/plans/2026-10-14-m1b-sound-accuracy.md).
+ * and the volume register's DC steps; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-14-m1b-sound-accuracy.md).
  * The non-linearity (sid_filter.h, sid_nonlin), at amount 1: */
 #define NL_LEVEL 0.055f     /* g per unit |hp|, at 44.1 kHz */
 #define NL_LEVEL_REF 0.13875f

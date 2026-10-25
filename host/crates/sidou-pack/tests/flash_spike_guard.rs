@@ -18,7 +18,7 @@ use sidou_pack::harness::{
 const FLASH: u32 = 1 << 20;
 const SECTOR: u32 = 0x1000;
 const PAGE: u32 = 0x100;
-/// The plan's flash map (docs/plans/2026-10-15-m2a-storage.md).
+/// The plan's flash map (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2a-storage.md).
 const STORE_LO: u32 = 0x97000;
 const STORE_HI: u32 = 0xE0000;
 const APP_HI: u32 = 0x93000;
