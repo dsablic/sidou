@@ -69,11 +69,14 @@ extern "C" {
 #define MIDI_OUT_TICK_PACKETS 16u
 /* Packets per message: a CC or program change is one, an NRPN four. */
 #define MIDI_OUT_NRPN_PACKETS 4u
+/* midi_out.row of a parameter with no map row (midi_map_row gives NULL for it). */
+#define MIDI_OUT_NO_ROW 0xffu
 
 typedef struct {
-    const midi_map_entry* row[LIVE_PARAM_COUNT]; /* each parameter's map row, or NULL */
     uint16_t seen[LIVE_PARAM_COUNT]; /* each parameter's value at the last look */
     uint16_t wire[LIVE_PARAM_COUNT]; /* its value as last sent, or received from MIDI */
+    uint8_t row[LIVE_PARAM_COUNT];   /* each parameter's map row (midi_map_row's index), or
+                                      * MIDI_OUT_NO_ROW: a byte, not a pointer, a quarter the RAM */
     uint8_t pending[LIVE_PARAM_COUNT];
     uint8_t preset_seen;
     uint8_t preset_pending; /* a program change to send */

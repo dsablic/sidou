@@ -70,6 +70,8 @@ typedef struct {
 
 enum { MIDI_MAP_ROWS = 43u + SID_EXPERT_COUNT };
 
+/* The table (midi_map_row's rows), for a caller that indexes it in a hot path (midi_out). */
+extern const midi_map_entry midi_map_rows[MIDI_MAP_ROWS];
 /* Row i in table order, or NULL past the last (MIDI learn keeps its bindings as row indexes,
  * midi_learn.h). */
 const midi_map_entry* midi_map_row(uint32_t i);

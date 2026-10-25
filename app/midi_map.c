@@ -62,7 +62,7 @@
         NRPN(NRPN_CHARACTER, 5u + (field)), SID_CHARACTER_MAX, def, LINEAR)
 
 /* clang-format off */
-static const midi_map_entry rows[MIDI_MAP_ROWS] = {
+const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     ROW("Live", "Cutoff", "0..2047, the SID's 11 bits", LIVE_PARAM_CUTOFF,
         LIVE_CC_CUTOFF, NRPN(NRPN_LIVE, 0), LIVE_CUTOFF_MAX, 1200, LINEAR),
     ROW("Live", "Resonance", "0..15", LIVE_PARAM_RESONANCE,
@@ -188,13 +188,13 @@ _Static_assert(SID_DIST_COUNT == 6 && SID_MOD_COUNT == 7 && SID_FXSLOT_COUNT == 
                "the algorithm lists above name every algorithm");
 
 const midi_map_entry* midi_map_row(uint32_t i) {
-    return i < MIDI_MAP_ROWS ? &rows[i] : NULL;
+    return i < MIDI_MAP_ROWS ? &midi_map_rows[i] : NULL;
 }
 
 const midi_map_entry* midi_map_for_param(uint32_t param) {
     for (uint32_t i = 0; i < MIDI_MAP_ROWS; ++i) {
-        if (rows[i].param == param && param != MIDI_MAP_RESERVED) {
-            return &rows[i];
+        if (midi_map_rows[i].param == param && param != MIDI_MAP_RESERVED) {
+            return &midi_map_rows[i];
         }
     }
     return NULL;
@@ -240,13 +240,13 @@ _Static_assert(LIVE_CC_SLOT_LAST - LIVE_CC_SLOT_FIRST == 14u, "SLOT_CC covers ev
 
 const midi_map_entry* midi_map_for_cc(uint8_t cc) {
     uint8_t r = cc < 128u ? cc_rows[cc] : 0u;
-    return r ? &rows[r - 1u] : NULL;
+    return r ? &midi_map_rows[r - 1u] : NULL;
 }
 
 const midi_map_entry* midi_map_for_nrpn(uint16_t nrpn) {
     for (uint32_t i = 0; i < MIDI_MAP_ROWS; ++i) {
-        if (rows[i].nrpn == nrpn && nrpn != MIDI_MAP_NO_NRPN) {
-            return &rows[i];
+        if (midi_map_rows[i].nrpn == nrpn && nrpn != MIDI_MAP_NO_NRPN) {
+            return &midi_map_rows[i];
         }
     }
     return NULL;

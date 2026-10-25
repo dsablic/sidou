@@ -20,6 +20,7 @@ _Static_assert(MIDI_OUT_TICK_PACKETS / 2u >= MIDI_OUT_NRPN_PACKETS, "a cold expe
 _Static_assert(LIVE_PARAM_COUNT <= 64u, "PRESET_LOADS is a uint64_t");
 _Static_assert(LIVE_PARAM_EXPERT % 2u == 0, "the frozen legacy snapshot consists of parameter pairs");
 _Static_assert(offsetof(midi_out, seen) % 4u == 0, "snapshot parameter pairs are word-aligned");
+_Static_assert(MIDI_MAP_ROWS <= MIDI_OUT_NO_ROW, "midi_out.row is a uint8_t index, MIDI_OUT_NO_ROW none");
 
 #define BIT(p) ((uint64_t)1 << (p))
 /* Exactly the parameters live_set_preset sets (live.h): not the volume, the chip model or the
@@ -203,7 +204,8 @@ static int look(midi_out* o, const live* l, int remote) {
 
 void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires) {
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
-        o->row[p] = midi_map_for_param(p);
+        const midi_map_entry* e = midi_map_for_param(p);
+        o->row[p] = e ? (uint8_t)(e - midi_map_rows) : (uint8_t)MIDI_OUT_NO_ROW;
     }
     resync(o, l);
     o->preset_seen = l->preset;
@@ -258,17 +260,23 @@ void midi_out_remote(midi_out* o, const live* l) {
  * send; 0: no room, it stays pending. */
 static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_t* out,
                 uint32_t* n) {
-    const midi_map_entry* e = o->row[p]; /* midi_map_for_param searches the table */
     uint32_t v = o->seen[p]; /* the latest: look just ran */
     uint32_t wire = o->wire[p];
     if (v == wire || (p >= LIVE_PARAM_EXPERT && v == SID_EXPERT_DEFAULT)) {
         o->pending[p] = 0; /* back where it was: nothing new however it would go */
         return 1;
     }
-    uint32_t on = e ? wire_cc(o, l, p, e) : MIDI_MAP_NO_CC;
+    /* Looked up once something may go (midi_map_for_param searches the table). */
+    uint32_t r = o->row[p];
+    if (r >= MIDI_MAP_ROWS) {
+        o->pending[p] = 0; /* no row: nothing to send it as */
+        return 1;
+    }
+    const midi_map_entry* e = &midi_map_rows[r];
+    uint32_t on = wire_cc(o, l, p, e);
     int nrpn = on == MIDI_MAP_NO_CC;
     /* CC encoding is injective over a bounded 0..127 native range. */
-    if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
+    if ((nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
         (!nrpn && !(p >= LIVE_PARAM_EXPERT && wire == SID_EXPERT_DEFAULT) &&
          (e->max > 127u || v > e->max || wire > e->max) &&
          midi_map_to_cc(e, v) == midi_map_to_cc(e, wire))) {
