@@ -1,7 +1,5 @@
-<!--
-SPDX-FileCopyrightText: 2026 SIDOU contributors
-SPDX-License-Identifier: GPL-3.0-or-later
--->
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # LAB: what other firmwares do (inspiration, 2026-10-25)
 
 Input for the LAB design session (docs/TODO.md, "LAB"). Read from cheat sheets and READMEs, not
