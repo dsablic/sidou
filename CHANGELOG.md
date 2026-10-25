@@ -8,7 +8,7 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-24
+## [0.4.0] - 2026-10-25
 
 ### Added
 - **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
