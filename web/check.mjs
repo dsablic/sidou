@@ -290,6 +290,20 @@ try {
   if (mid.head !== "MThd" || mid.tracks !== 4 || mid.name !== "chrome-comet.mid" || mid.size < 5000) fail(`the MIDI page's download is wrong: ${JSON.stringify(mid)}`);
   if (!mid.wide) fail("the MIDI page scrolls sideways at phone width");
   await midi.close();
+
+  // the cheat sheet: it loads (the logo too), names its version and fits a phone's width
+  const sheet = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  sheet.on("pageerror", (e) => fail(`cheat sheet error: ${e.message}`));
+  sheet.on("requestfailed", (r) => fail(`cheat sheet request failed: ${r.url()}`));
+  sheet.on("response", (r) => { if (r.status() >= 400) fail(`cheat sheet HTTP ${r.status()}: ${r.url()}`); });
+  await sheet.goto(new URL("cheatsheet.html", url).href, { waitUntil: "load" });
+  const cs = await sheet.evaluate(() => ({ sections: document.querySelectorAll("section h2").length,
+    footer: document.querySelector("footer")?.textContent || "", logo: document.querySelector("img")?.naturalWidth || 0,
+    wide: document.documentElement.scrollWidth <= window.innerWidth }));
+  console.log(`cheat sheet: ${cs.sections} sections`);
+  if (cs.sections < 8 || !/SIDOU \d+\.\d+\.\d+/.test(cs.footer) || !cs.logo) fail(`the cheat sheet is incomplete: ${JSON.stringify(cs)}`);
+  if (!cs.wide) fail("the cheat sheet scrolls sideways at phone width");
+  await sheet.close();
 } finally {
   await browser.close();
 }

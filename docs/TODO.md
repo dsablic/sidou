@@ -630,3 +630,39 @@ without the step's locks, so the turn is not heard while turning. Planned with D
 (0.5.x): while a step is held, its audition takes the step's locks and follows each turn live,
 as on a hardware step sequencer. It goes through the song's jam path (song_ctl's interrupt side,
 RAMTEXT: mind its 416 bytes free).
+
+## LAB: a view for shaping one sound, and keeping it (the user, 2026-10-25)
+
+Today a LIVE sound can be shaped but not kept: edits stay per preset until a power cycle (the
+`*` marker), USER 1-8 keep only the chip's character, and INSTR edits a song's instruments in
+tracker rows. LAB is a view for experimenting with one sound and saving it. **The first thing
+after M3, ahead of DICE's settings** (the user: "a really important feature - the fm1 is an ideal
+device for experimenting on the go"); DICE's settings follow and share its ideas (scale, range,
+MUTATE's small moves).
+
+**The focus is ergonomics and ease of use** (the user): you see what you are tweaking and what it
+does; everything is logical and clearly visible. LIVE stays the fast, playable screen; LAB is
+where you go to dig in, and never gets in LIVE's way.
+
+- **One sound, every parameter, visible:** waveform and pulse, ADSR, filter, the effect slots, ARP
+  and the character, on knob pages named on screen, the value and its effect drawn (the
+  envelope's shape, the filter's curve, the pulse width), nothing behind hidden EDIT
+  combinations. The keys keep playing, so every turn is heard as it is made.
+- **Saved sounds:** USER sound slots (about 16) loaded and saved in LAB (SAVE, asking before
+  overwriting), and offered by PRESETS on LIVE after the built-ins. A store chunk with a format
+  version, as the USER profiles have.
+- **The bridge to songs:** a LAB sound saved as a GoatTracker instrument into the current song, a
+  song's instrument pulled into LAB to tweak; with M3, instruments pulled out of a `.sid`.
+- **On the go:** nothing needs a computer (save, name, compare, send to a song, all on the
+  device); a happy accident is kept with one press (the next free slot, an automatic name, renamed
+  later); the screen explains the sound without the manual; LAB opens where it was left (the last
+  sound and page).
+- **Experimenting:** a variation roll (small moves, as MUTATE), A/B against the saved version,
+  undo.
+- **Costs:** the view is flash code (room there); the audio path does not change, so RAMTEXT is
+  not touched. The design (pages, what is drawn, how saving sits with PRESETS) is done with the
+  user, with the ergo harness's journeys, before any code.
+- **Inspiration:** [what other firmwares do](plans/2026-10-25-lab-inspiration.md) (Clipper,
+  Golana, SID-1, Duell, JIANT, Noiz Demons, Melodee and others).
+- **The controls today:** [the button audit](plans/2026-10-25-button-audit.md) (every control in every
+  view: used, weak, free; label fit; hidden combos; constraints for LAB).

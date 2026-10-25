@@ -51,7 +51,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view, but for PLAY while a `.sid` tune is loaded: it is the tune's
    ([SIDS and NOW PLAYING](#sids-and-now-playing));
-3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT;
+3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT and ALGORITHM;
    LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
@@ -62,7 +62,11 @@ The note keys and MASTER always play, whichever view shows, but for two layers b
 panel: **GLO held** (or latched) turns the leftmost six keys into the song's mutes and solos (a
 `.sid` tune's while one is loaded), and in a **song
 view** the keys audition the song's instrument ([Song views](#song-views)). The effect-slot shortcut (EDIT,
-SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays).
+SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays), except where
+a view takes the knobs for itself: TRACKER with REC on (K1-K4 edit the cell under the cursor, and
+record the filter while the song plays), STEP with a step held (the step's locks), and K1 and K2 on
+the ORDER, INSTR and TABLE pages (the entry's value). STEP's EDIT + SCL and EDIT + ARP are DICE and
+MUTATE ([STEP](#step)).
 
 ## Which chip the keys play
 
@@ -80,8 +84,9 @@ so a key sounds the same on either chip. FX, the CHIP view's profile and charact
 chip CCs change the keys' setup. When a song starts the keys move to chip B (held keys sound
 again there); when it stops they move back to chip A once it has the keys' setup again and no
 key is held. LIVE says **KEYS:B** in its bottom band while the keys play chip B; the status
-screen shows both chips and marks the keys'. Until M2c plays songs, nothing starts one, so the
-keys always play chip A. KEYS persists with the settings.
+screen shows both chips and marks the keys'. With KEYS **AUTO** (the default) the keys play chip B
+while a song plays and chip A otherwise; with KEYS **A** they stay on chip A. KEYS persists with
+the settings.
 
 ### SPREAD
 
@@ -126,9 +131,9 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
 | K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
-| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC), clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view (TRACKER takes it with REC on) |
+| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC), clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
-| **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
+| **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last); it starts from a musical setting, so it is heard at once ([Effect slots](#effect-slots)) |
 | **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, SETTINGS, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing; a toast raised meanwhile waits and shows once the card closes |
@@ -332,7 +337,7 @@ gate rows stay). The chance is a lock of the `LOCK` chunk (parameter 9), so it m
 under row inserts and deletes, undo restores it, and GoatTracker plays the step always. MUTATE and
 DICE write ordinary cells through the editor, one row a turn like every STEP edit, so the lane's
 pattern stays plain GoatTracker data (undo steps back one cell at a time, as for any edit); both
-need no step held and no REC, and they stop if STEP is left before they finish. The notes are the
+need no step held and no REC (they do nothing while recording: REC on, the song playing and any count-in over), and they stop if STEP is left before they finish. The notes are the
 **minor pentatonic** on the lane's note (the one PRESETS sets with a step held, C-3 by default) and
 the octave above; a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it
 hits. DICE puts hits on the eighths for a melodic lane (the beat 85 %, the offbeat 55 %) and on the
@@ -970,7 +975,7 @@ sounds. The measured latencies are in
 
 **MIDI out (USB only):** what you change on the panel goes out over USB on channel 1, so
 a DAW can record it as automation: each knob, MASTER, FX and the effect-slot controls as
-the parameter's CC (above), K4 as a program change. At most one message per parameter
+the parameter's CC (above) (K4 is the release, CC 72), and PRESETS as a program change. At most one message per parameter
 every 10 ms, with its latest value. A change that came in over MIDI (TRS or USB) is never
 sent back, so recording with the DAW's MIDI thru on does not loop, and TRS input is not
 passed on to USB. The channel and 14-bit NRPNs for cutoff, pulse width and volume are
@@ -1055,11 +1060,12 @@ back a page.
 - **LOAD** lists the built-in **SIDOU LOOP** first (in the firmware, marked
   built-in by a dot after its name: `SIDOU LOOP ·`), then the store's songs, at 2×
   eight a page. Loading stops the transport. Unsaved changes require confirmation
-  before they can be discarded. If a file is refused, its reason appears in a toast
+  before they can be discarded, as for NEW. If a file is refused, its reason appears in a toast
   and the previous file is reloaded, stopped. The built-in loads as a file does but
   stays unnamed: SAVE AS (which offers its name) makes a store copy, and it is not
   in DELETE's list. A fresh install's LOAD so always has a song to load.
-- **NEW** creates one subtune, three one-pattern orderlists and three 64-row
+- **NEW** asks first when the song has unsaved changes (DISCARD UNSAVED SONG?, as LOAD does), then
+  creates one subtune, three one-pattern orderlists and three 64-row
   patterns at tempo 6, with a pulse lead (instrument 01), a bass (02) and the **SID drum kit**
   (03-0A): KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI and RIM, plain GoatTracker
   instruments on the chip's own voices ([decision record 0009](../decisions/0009-drum-kit-and-digi-drums.md)),
@@ -1306,7 +1312,7 @@ generative pieces), SONG (the song-file actions), PRE (the preset), OCTAVE, SETT
 MIDI, CHARSET (the glyph sheet) and ABOUT. **SAVE opens the item under the selection** (the
 menu's OK; ALGORITHM clockwise does too), and the help under the items says so (SAVE OPEN).
 **SETTINGS** is a page like it of the set-and-forget settings: KEYS, SOUNDS, ROWS (TRACKER
-ROWS), CARDS (title cards), STORE, THEME and REC (REC QUANTISE); ALGORITHM changes them (its
+ROWS), CARDS (title cards), STORE, THEME, REC (REC QUANTISE), SPREAD and RESET; ALGORITHM changes them (its
 help says ALG CHANGE) and HOME goes back to the menu. A line is 14 characters:
 PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, NEWER, FORMAT?, `ERASE 20`) are short so that the
 longest preset name (NOISE PERC) and value fit beside their labels; the

@@ -1,0 +1,315 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's cheat sheet: every control on one page, checked against the firmware (app/help_view.c's
+     cards, the views' input code) and docs/reference/controls.md and midi.md. Keep it true for the
+     version the footer names. Same palette as index.html; prints light on one or two pages. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU cheat sheet</title>
+<meta name="description" content="Every control of SIDOU 0.4.0, the C64 SID firmware for the M-VAVE FM-1, on one page: playing, sound, songs, saving, MIDI and USB.">
+<link rel="icon" href="data:,">
+<style>
+  :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
+          --ink: #e8e6f4; --dim: #9a94c4; --text: #c4c0de; --accent: #70a4b2; --yellow: #b8c76f;
+          color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.45 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 16px 16px 32px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .intro { color: var(--text); margin: 0 0 16px; max-width: 90ch; }
+  .intro b, td b, li b { color: var(--ink); }
+  .sheet { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); align-items: start; }
+  section { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+  h3 { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 3px 0; vertical-align: top; color: var(--text); border-top: 1px solid var(--rule); overflow-wrap: anywhere; }
+  tr:first-child td { border-top: 0; }
+  td:first-child { width: 36%; padding-right: 10px; color: var(--ink); font-weight: 600; overflow-wrap: normal; }
+  .cols { display: grid; gap: 0 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+  ul { margin: 4px 0 0; padding-left: 18px; color: var(--text); font-size: 13px; }
+  li { margin: 2px 0; }
+  code { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
+  .note { color: var(--dim); font-size: 12.5px; margin: 6px 0 0; }
+  footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 16px; }
+  footer p { margin: 0 0 6px; }
+  .print { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  @media (max-width: 600px) {
+    .brand img { width: 160px; }
+    td:first-child { width: 40%; }
+  }
+  @media print {
+    @page { size: A4; margin: 9mm; }
+    :root { --room: #fff; --card: #fff; --rule: #ccc; --ink: #000; --dim: #444; --text: #111; --accent: #000; --yellow: #2b2b80; color-scheme: light; }
+    html, body { background: #fff; font-size: 8pt; line-height: 1.3; }
+    main { max-width: none; padding: 0; }
+    header nav, .print { display: none; }
+    header { margin-bottom: 4px; }
+    .brand img { width: 120px; filter: none; }
+    .intro { margin-bottom: 6px; }
+    .sheet { display: block; columns: 3; column-gap: 5mm; }
+    section, section.wide { border: 0; border-radius: 0; padding: 0; margin: 0 0 5px; break-inside: auto; }
+    h2 { font-size: 8.5pt; margin: 0 0 2px; border-bottom: 1px solid #000; break-after: avoid; }
+    h3 { font-size: 8pt; margin: 4px 0 1px; break-after: avoid; }
+    table { font-size: 7.5pt; }
+    td { padding: 1px 0; }
+    td:first-child { width: 38%; padding-right: 4px; }
+    tr { break-inside: avoid; }
+    .cols { display: block; }
+    ul, .note { font-size: 7.5pt; }
+    code { font-size: 7pt; }
+    footer a::after { content: " (" attr(href) ")"; }
+    a { text-decoration: none; }
+    footer { font-size: 7pt; margin-top: 4px; padding-top: 4px; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
+      <h1>Cheat sheet · SIDOU 0.4.0</h1>
+    </div>
+    <nav><a href="./">Play it in the browser</a> · <a href="videos.html">Videos</a> · <a href="songs.html">Songs for your FM-1</a> · <a href="midi.html">Songs to MIDI</a> · <a href="https://github.com/dsablic/sidou">Source</a> · <button type="button" class="print" onclick="print()">Print</button></nav>
+  </header>
+  <p class="intro"><b>SIDOU</b> turns the M-VAVE FM-1 into a C64 SID instrument: two emulated SID chips (6581 or 8580) played
+    from the keys and over MIDI, three effect slots, and GoatTracker 2 songs made on STEP and TRACKER.
+    <b>Hold HOME on any screen</b> for its help card: what each control does there, right now.
+    <b>E+</b> means EDIT held; <b>+</b> means held together.</p>
+
+  <div class="sheet">
+
+    <section class="wide">
+      <h2>The panel on LIVE (the screen at power-on)</h2>
+      <div class="cols">
+        <table>
+          <tr><td>Note keys</td><td>play the chip, F3–G5 at the current octave (always velocity 127)</td></tr>
+          <tr><td>OCT− / OCT+</td><td>octave −3…+3; their LEDs show the direction</td></tr>
+          <tr><td>FX</td><td>chip model 6581 / 8580 (lit for the 8580)</td></tr>
+          <tr><td>K1 · K2</td><td>cutoff · resonance</td></tr>
+          <tr><td>K3</td><td>the sound's own control: PULSE (pulse width), RATIO (SYNC LEAD's sync ratio) or DECAY</td></tr>
+          <tr><td>K4</td><td>release, 0–15</td></tr>
+          <tr><td>PRESETS (big knob)</td><td>the sound: SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC, DICE</td></tr>
+          <tr><td>MASTER</td><td>volume of everything (keys, songs, UI sounds)</td></tr>
+        </table>
+        <table>
+          <tr><td>SELECT</td><td>pages the knob row: TONE, DIST, MOD, FX</td></tr>
+          <tr><td>ALGORITHM</td><td>on TONE the chip profile; on a slot's page that slot's algorithm</td></tr>
+          <tr><td>E+ K1–K4</td><td>the selected effect slot's Amount, A, B, Mix (any view)</td></tr>
+          <tr><td>SCL · ENV</td><td>next effect slot · its next algorithm (any view)</td></tr>
+          <tr><td>ARP</td><td>chord arpeggio on/off; held + K1–K3 its rate, order, span</td></tr>
+          <tr><td>GLO + key 1–3 / 4–6</td><td>mute / solo song voice 1–3 (any view)</td></tr>
+          <tr><td>SEQ · PLAY · REC</td><td>song views · play/stop the song · record mode</td></tr>
+          <tr><td>HOME · SAVE</td><td>tap: the menu · hold: help card · SAVE: saves the settings now</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Getting around</h2>
+      <table>
+        <tr><td>tap HOME</td><td>the menu from LIVE; back one view anywhere else</td></tr>
+        <tr><td>hold HOME (0.6 s)</td><td>help card of this view in its current state; SELECT turns a 2-page card; any other control closes it</td></tr>
+        <tr><td>Menu: SELECT</td><td>move: CHIP, TRACKER, SCENE, SONG, PRE, OCTAVE, SETTINGS, STATUS, MIDI, CHARSET, ABOUT</td></tr>
+        <tr><td>Menu: SAVE</td><td>OK: opens the highlighted item (ALGORITHM clockwise does too)</td></tr>
+        <tr><td>Menu: ALGORITHM</td><td>on PRE / OCTAVE changes the value</td></tr>
+        <tr><td>SEQ</td><td>opens the song view used last; again: STEP → TRACKER → ORDER → INSTR → TABLE → STEP</td></tr>
+        <tr><td>Any control</td><td>skips the boot or a title card (a note skips and plays)</td></tr>
+      </table>
+      <h3>Lights</h3>
+      <ul>
+        <li>Lit = active now, dim = set. ARP dim while on, flashes on its steps · PLAY pulses on the beat · REC dim armed, blinking count-in, lit recording · SAVE blinks while a question waits · GLO lit while latched.</li>
+        <li>GLO held/latched: keys 1–3 lit while the voice sounds (dark muted), 4–6 blink for a solo. On STEP the 16 step keys show the page (lit a note, dim empty).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Playing</h2>
+      <table>
+        <tr><td>PRESETS clockwise</td><td>next preset; past NOISE PERC, <b>DICE</b> rolls a new random sound each turn (<code>DICE 07</code>); back and forth returns the last roll</td></tr>
+        <tr><td>E+ PRESETS</td><td>this preset back to factory (DICE: back to its base)</td></tr>
+        <tr><td><code>SAW LEAD*</code></td><td>* = edited; each preset keeps its edits while you play another (not over a power cycle, except the current one)</td></tr>
+        <tr><td>tap ARP</td><td>chord arpeggio: hold a chord, one voice steps through it (badge <code>ARP 3F UP 1OCT</code>)</td></tr>
+        <tr><td>ARP + K1</td><td>rate: 1F 2F 3F 4F 6F 8F (frames a note), /32 /16 /8 of MIDI clock</td></tr>
+        <tr><td>ARP + K2 · K3</td><td>order UP DN UD AS (as played) · span 1 or 2 octaves</td></tr>
+        <tr><td>FX</td><td>6581 ↔ 8580 (back to the last 6581 profile)</td></tr>
+        <tr><td>Two chips</td><td>no song: keys on chip A; a song playing: keys on chip B on top (<code>KEYS:B</code>). SETTINGS KEYS A keeps them on A</td></tr>
+        <tr><td>CHIP SPREAD</td><td>SETTINGS → SPREAD OFF…100 %: chip A left, chip B right, while both sound</td></tr>
+        <tr><td>GLO tapped twice</td><td>latches the mute/solo layer (<code>GLO LATCHED</code>); tap GLO to end</td></tr>
+      </table>
+      <p class="note">ARP settings are per preset and off at power-on.</p>
+    </section>
+
+    <section>
+      <h2>Sound</h2>
+      <table>
+        <tr><td>TONE page</td><td>K1 cutoff · K2 reso · K3 own control · K4 release</td></tr>
+        <tr><td>DIST / MOD / FX page</td><td>K1–K4 that slot's Amount · A · B · Mix (named for the algorithm, e.g. DRIVE TONE BIAS MIX)</td></tr>
+        <tr><td>ALGORITHM on TONE</td><td>profile: R2 (bright), R3 (dark), R4AR (classic, power-on), R5 (8580, clean), WORN (gritty)</td></tr>
+        <tr><td>SCL / E+ K / ENV</td><td>pick a slot / turn it / step its algorithm; a new algorithm starts from a setting you hear at once</td></tr>
+      </table>
+      <h3>Effect slots (in this order, stereo)</h3>
+      <table>
+        <tr><td>Distortion</td><td>TAPE, OVERDRIVE, FUZZ, CRUSH, LO-FI</td></tr>
+        <tr><td>Modulation</td><td>CHORUS, FLANGER, PHASER, TREMOLO, AUTO-PAN, WOW</td></tr>
+        <tr><td>FX</td><td>DELAY, PING-PONG, REVERB, LUSH</td></tr>
+      </table>
+      <h3>CHIP view (menu → CHIP)</h3>
+      <table>
+        <tr><td>SELECT</td><td>focus: A/B tabs, CHIP, DIST, MOD, FX, EXPERT</td></tr>
+        <tr><td>ALGORITHM</td><td>tab · profile (built-ins, then USER 1–8) · slot algorithm · EXPERT page 1–4</td></tr>
+        <tr><td>K1–K4 on CHIP</td><td>character: AGE, DAC, THUMP (note thump), BLEED</td></tr>
+        <tr><td>E+ ALGORITHM, SAVE</td><td>pick USER 1–8 (<code>SAVE TO USER 3</code>), SAVE stores the profile (asks before overwriting)</td></tr>
+      </table>
+      <p class="note">ENV = next algorithm, LFO = clear (in STEP and TRACKER), GLO = mutes and solos. LFO does nothing on LIVE.</p>
+    </section>
+
+    <section>
+      <h2>STEP (song as a drum machine)</h2>
+      <table>
+        <tr><td>Step key 1–16</td><td>toggle a note on that step of the lane (no REC needed)</td></tr>
+        <tr><td>SELECT · ALGORITHM</td><td>lane V1 V2 V3 · page of 16 steps</td></tr>
+        <tr><td>PRESETS</td><td>the lane's instrument, by name (<code>03 KICK</code>)</td></tr>
+        <tr><td>ARP</td><td>the lane's gate: STACCATO / LEGATO</td></tr>
+        <tr><td>step held + K1 · K2 · K3</td><td>LOCK cutoff · resonance · pulse width on that step</td></tr>
+        <tr><td>step held + K4</td><td>waveform SET: OFF TRI SAW PULSE NOISE</td></tr>
+        <tr><td>step held + E+ K1–K4</td><td>character LOCKs: age, DAC, thump, bleed</td></tr>
+        <tr><td>step held + ALGORITHM</td><td><b>CHANCE</b> 100 %…0 in steps of 5</td></tr>
+        <tr><td>step held + PRESETS</td><td>that step's note (and the lane's next notes)</td></tr>
+        <tr><td>step held + LFO</td><td>clear the step's locks, chance and SET</td></tr>
+        <tr><td>E+ SCL</td><td><b>DICE</b>: a new pattern for the lane (<code>NEW PATTERN</code>)</td></tr>
+        <tr><td>E+ ARP</td><td><b>MUTATE</b>: two small changes (<code>MUTATED</code>)</td></tr>
+        <tr><td>E+ LFO</td><td>one undo (again: redo)</td></tr>
+        <tr><td>Keys 17+</td><td>audition</td></tr>
+      </table>
+      <h3>A NEW song's instruments</h3>
+      <ul>
+        <li><b>01</b> lead · <b>02</b> bass · <b>03–0A</b> SID drum kit: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI, RIM</li>
+        <li><b>0B–0E</b> digi drums (4-bit samples): DG KICK, DG SNARE, DG CLAP, DG HAT. GoatTracker plays chip-kit copies instead.</li>
+        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the minor pentatonic on the lane's note; a drum lane keeps its note.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>TRACKER, ORDER, INSTR, TABLE</h2>
+      <table>
+        <tr><td>TRACKER SELECT</td><td>row (E+: 8 rows)</td></tr>
+        <tr><td>TRACKER ALGORITHM</td><td>voice shown, V1 V2 V3 (E+: edit step 0–16)</td></tr>
+        <tr><td>REC on, song stopped</td><td>keys write notes · ARP key off · LFO clears (twice: whole row) · K1 instr · K2 command · K3/K4 data · PRESETS current instr · E+ PRESETS insert/delete row · E+ LFO one undo</td></tr>
+        <tr><td>ORDER</td><td>SELECT entry · ALG subtune/voice · K1 value · K2 kind (pattern, repeat, transpose) · E+ PRESETS insert/delete · ARP restart · PLAY from here</td></tr>
+        <tr><td>INSTR</td><td>PRESETS instrument · SELECT parameter / name letter · K1 coarse · K2 fine · E+ SEQ opens its table</td></tr>
+        <tr><td>TABLE</td><td>ALG WAVE/PULSE/FILTER/SPEED · SELECT row · K1/K2 left/right byte · ARP opens the ARP helper (WAVE)</td></tr>
+        <tr><td>ARP helper</td><td>SELECT step · ALG steps 1–8 · K1/K2 octave/semitone · K3 speed · K4 loop or HOLD · SAVE writes · HOME cancels</td></tr>
+      </table>
+      <h3>Play, record, mute</h3>
+      <table>
+        <tr><td>PLAY</td><td>play from the cursor's order entry / stop (any view)</td></tr>
+        <tr><td>E+ PLAY</td><td>continue from where it stopped</td></tr>
+        <tr><td>REC + PLAY</td><td>in TRACKER or STEP: the keys record in time, K1/K2 record cutoff/reso locks</td></tr>
+        <tr><td>SETTINGS → REC</td><td>quantise: NEAREST, OFF, COUNT-IN (one bar first)</td></tr>
+        <tr><td>GLO + key 1–3 · 4–6</td><td>mute · solo voice 1–3 (again: back)</td></tr>
+        <tr><td>Keys in a song view</td><td>audition the current instrument on the cursor's voice</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>SIDS: .sid tunes</h2>
+      <table>
+        <tr><td>Menu → SIDS</td><td>the store's PSID tunes, eight a page (NO TUNES: SEE MANUAL when empty)</td></tr>
+        <tr><td>SELECT</td><td>move through the tunes</td></tr>
+        <tr><td>ALG clockwise · SAVE</td><td>play the tune from its start song and open NOW PLAYING</td></tr>
+        <tr><td>NOW PLAYING ALG</td><td>the song before / after, from its init</td></tr>
+        <tr><td>PLAY · E+ PLAY</td><td>stop or play from init · pause and resume</td></tr>
+        <tr><td>GLO + key 1–3 · 4–6</td><td>mute · solo the tune's voices</td></tr>
+        <tr><td>HOME</td><td>back, the tune playing on; from SIDS with it stopped, the song comes back</td></tr>
+        <tr><td>PLAY in another view</td><td>stops the tune; again: the song's</td></tr>
+        <tr><td>Over an unsaved song</td><td>SONG NOT SAVED: SAVE saves first · ALG discards · HOME cancels</td></tr>
+        <tr><td>While it plays</td><td>1SID: chip A, the keys play chip B · 2SID: both chips, keys off · MIDI start / stop / continue</td></tr>
+      </table>
+      <p class="note">STATUS shows the 6502: CPU share, overruns, late writes. RSID and MUS tunes are refused.</p>
+    </section>
+
+    <section>
+      <h2>Saving &amp; loading</h2>
+      <table>
+        <tr><td>SAVE in a song view</td><td>saves the song (unnamed: SAVE AS). <b>Songs are not autosaved.</b></td></tr>
+        <tr><td>SAVE elsewhere</td><td>settings now (<code>SAVED</code>); they also save themselves 5 s after a change</td></tr>
+        <tr><td>Menu → SONG</td><td>LOAD (built-in SIDOU LOOP first) · NEW · SAVE AS (16 letters: SELECT cursor, ALG letter) · DELETE (asks)</td></tr>
+        <tr><td>Unsaved song</td><td>LOAD and NEW ask before discarding it</td></tr>
+        <tr><td>Power-on</td><td>the last song loads, stopped</td></tr>
+      </table>
+      <h3>SETTINGS (menu → SETTINGS, ALGORITHM changes)</h3>
+      <table>
+        <tr><td>KEYS</td><td>AUTO (chip B during a song) / A</td></tr>
+        <tr><td>SOUNDS</td><td>UI sounds OFF / ON</td></tr>
+        <tr><td>ROWS</td><td>TRACKER rows: BAR / SCROLL</td></tr>
+        <tr><td>CARDS</td><td>title cards OFF / ONCE / ALWAYS</td></tr>
+        <tr><td>STORE</td><td>free space (<code>193K</code>); FOREIGN / NEWER: ALG clockwise arms, SAVE <b>formats: wipes all data</b></td></tr>
+        <tr><td>THEME</td><td>HIGH (contrast) / C64</td></tr>
+        <tr><td>REC</td><td>record quantise (not saved)</td></tr>
+        <tr><td>SPREAD</td><td>OFF, 10 %…100 %</td></tr>
+        <tr><td>RESET</td><td>ALG clockwise asks (<code>RESET?</code>), SAVE resets every preset and setting. Keeps songs, USER profiles, MIDI learn</td></tr>
+      </table>
+      <p class="note">Only STORE and RESET ask first; HOME or moving away cancels. The rest save themselves.</p>
+    </section>
+
+    <section>
+      <h2>MIDI</h2>
+      <table>
+        <tr><td>Notes</td><td>every channel (OMNI) on TRS and USB; menu → MIDI sets MODE (LIVE, MULTI, WHOLE A/B, OMNI), CHANNEL, CLOCK, CLOCK OUT… (not saved)</td></tr>
+        <tr><td>Program change</td><td>0–3 the presets (bank 0); bank 1 (CC 0=0, 32=1) loads song <i>n</i> in name order; bank 2 picks the profile 0–12</td></tr>
+        <tr><td>Main CCs</td><td>74 cutoff · 71 reso · 1 pulse width · 7 volume · 73/75/79/72 A D S R · 25 chip model · 85 profile · 86 87 89 90 age DAC thump bleed · 117 spread</td></tr>
+        <tr><td>More CCs</td><td>20 wave · 21 ring · 22 sync · 23 filter mode · 24 routing · 26 envelope mode · 27–30 arp on/rate/order/span · 76–78 vibrato · 120/123 all notes off</td></tr>
+        <tr><td>Effect slots</td><td>Dist 102–106 · Mod 107–111 · FX 112–116 (algorithm, Amount, A, B, Mix)</td></tr>
+        <tr><td>SAVE + turn a knob</td><td>MIDI learn: send a CC to bind it (<code>LEARNED CC 21 → CUTOFF</code>); SAVE again in the frame forgets it; HOME cancels</td></tr>
+        <tr><td>MIDI out</td><td>USB only, channel 1: the panel's knobs, MASTER, FX and slots as CCs, PRESETS as a program change; MIDI input is never echoed</td></tr>
+        <tr><td>Clock</td><td>the song follows MIDI clock and start/stop (CLOCK AUTO); CLOCK OUT ON sends it over USB</td></tr>
+      </table>
+      <p class="note">Every parameter also has an NRPN: the full map is <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">midi.md</a>.</p>
+    </section>
+
+    <section>
+      <h2>USB</h2>
+      <table>
+        <tr><td>USB-MIDI</td><td>shows up as <b>SIDOU FM-1</b>: notes and CCs in, the panel out</td></tr>
+        <tr><td>USB audio</td><td>a class-compliant audio input (no driver; macOS, Windows, Linux, iPad): records the line out, 16-bit stereo, 44.1 kHz or 48 kHz</td></tr>
+        <tr><td>Send songs</td><td>the <a href="songs.html">Songs page</a> sends the showcase songs over USB (Chrome or Edge)</td></tr>
+        <tr><td>Song → MIDI file</td><td>the <a href="midi.html">Songs to MIDI</a> page turns any <code>.sng</code> into a <code>.mid</code></td></tr>
+        <tr><td>Install / update</td><td>Felucca's installer: <code>fm1_install.py sidou-0.4.0.fwsc</code>; back to stock: M-VAVE's <code>FM-1.fwsc</code></td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Power-on</h2>
+      <table>
+        <tr><td>any button</td><td>skips the boot animation (a note skips and plays)</td></tr>
+        <tr><td>hold HOME</td><td>plays the full boot sequence</td></tr>
+        <tr><td>hold OCT− alone (~1 s)</td><td><b>recovery</b>: the chip's ROM boot mode, screen black, USB <code>WL82 UBOOT1.00</code>; restore a package with <code>tools/fm1-unbrick-mac</code> or MvaveFM1Unbricker. Switch off and on to leave it, nothing written</td></tr>
+        <tr><td>crash at every boot</td><td>after two failed boots the next one goes to ROM boot mode by itself</td></tr>
+      </table>
+      <p class="note">Before switching off: let the settings save finish (5 s after a change), or press SAVE and wait for <code>SAVED</code>.</p>
+    </section>
+
+  </div>
+
+  <footer>
+    <p>More: <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/controls.md">every control (controls.md)</a> ·
+      <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">the MIDI map</a> ·
+      <a href="https://dsablic.github.io/sidou/">play it in the browser</a> · <a href="https://dsablic.github.io/sidou/videos.html">the how-to videos</a> ·
+      <a href="https://github.com/dsablic/sidou/releases/latest">latest release</a></p>
+    <p>Checked against SIDOU 0.4.0. SIDOU · github.com/dsablic/sidou · the firmware is
+      GPL-3.0-only, this page GPL-3.0-or-later · an independent project, not affiliated with M-VAVE or Commodore trademark holders.</p>
+  </footer>
+</main>
+</body>
+</html>
