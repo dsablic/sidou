@@ -782,7 +782,7 @@ fn the_song_views_show_sid_playing_while_a_tune_has_the_song() {
 }
 
 /// STATUS's 6502 rows in the sound's parameters' place while a tune is loaded: the state, cycles a
-/// second, the main loop's share (Task 12's meter: --), overruns, late writes, the shadow and a
+/// second, the main loop's share (Task 12's meter: tenths of a percent and ticks a thousand cycles), overruns, late writes, the shadow and a
 /// third SID's dropped writes; the parameters back once it has ended.
 #[test]
 fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
@@ -801,10 +801,14 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     s.tune.st.shadow = 1;
     s.tune.st.chips = 1;
     s.ui.settle();
+    assert_eq!(s.ui.small(12, 12, 2), "--"); // no meter reading yet
+    s.tune.st.load = 32;
+    s.tune.st.ticks_k = 412;
+    s.ui.settle();
     assert_eq!(s.ui.small(10, 2, 4), "6502");
     assert_eq!(s.ui.small(10, 9, 7), "PLAYING");
     assert_eq!(s.ui.small(11, 12, 6), "985248");
-    assert_eq!(s.ui.small(12, 12, 2), "--");
+    assert_eq!(s.ui.small(12, 12, 12), "3.2% 412T/KC");
     assert_eq!(s.ui.small(13, 12, 1), "3");
     assert_eq!(s.ui.small(15, 12, 2), "ON");
     golden(&s.ui, "status-tune");

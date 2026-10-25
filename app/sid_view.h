@@ -55,7 +55,7 @@ extern "C" {
 #define SID_VIEW_NAME_CELLS 14u
 /* What NOW PLAYING showed at its last build (sid_view.drawn), and STATUS's rows. */
 #define SID_VIEW_LOOK 28u
-#define SID_VIEW_STATUS_LOOK 12u
+#define SID_VIEW_STATUS_LOOK 16u
 /* The envelope bars: 2x characters of 8 pixels' fill each. */
 #define SID_VIEW_BAR_CHARS 7u
 /* sid_view_save: an unnamed song to save first (the views open SAVE AS). */

@@ -2232,7 +2232,7 @@ Notes:
 What it is: [Put a .sid tune on the FM-1](manual/sid-tunes.md); the protocol's type 2 in
 [SysEx protocol, version 1](reference/sysex.md#sid-tunes-type-2). fm1-emu checked it over TRS
 (`host/crates/emu-gate/tests/psid_store.rs`); the unit has not run it. The build stores tunes
-but has no panel view that plays one yet (M3 Task 11): these checks end at the store. Use
+but these checks end at the store (section 21 plays them). Use
 disposable tune names, a writable store (section 7.1) and tunes you may copy; keep a backup of
 songs you want. Make the files first, from `host/`, with a tune of your own (`a.sid`) and a
 second one:
@@ -2266,6 +2266,70 @@ second one:
 
 Notes:
 
+## 21. .sid playback and the 6502's meter (M3 Task 12: the flash day)
+
+What it decides: whether the 6502 that plays a `.sid` fits the CPU on the unit. fm1-emu counts
+instructions, not cycles; it does not model the I-cache that the 6502's flash code runs through
+(docs/hardware.md, "Open checks"). **Run this on the flash day, with the user: nothing is
+changed on guesses.** Tune and chip behaviour that fm1-emu already proves (bit-exact with the
+host, the look-ahead, the stamped writes) is not re-tested here, only the device's speed and
+sound.
+
+**What the meter is.** The main loop's pass that runs the 6502 (a slice of at most 1,000 of its
+cycles: the code, the voice shadows, the write ring) is timed with TIMER4 (24 MHz). STATUS,
+while a tune is loaded, shows on its `CPU` row `S.S% T/KC`: the share of the CPU those slices
+took over the last second (to a tenth of a percent), and the 24 MHz ticks a thousand 6502 cycles
+took. `CYCLES/S` is the 6502 cycles a second (985,248 at the PAL clock, when it is not behind),
+`LATE` the writes the audio applied after their cycle, `OVERRUNS` the play calls that ran past
+their period. An audio interrupt that lands inside a slice counts in it, so the share reads a
+little high: it is the pessimistic side. In fm1-emu the rows read from the same counters (the
+emulator's TIMER4); the dojo tune there reads about 1.2 % and 296 ticks a thousand cycles, which
+is the figure to set the unit's beside.
+
+Set up: the build with the starter pack on the store (`sidou-sysex sid ../assets/starter --pack`,
+section 20's way of sending), the unit's clock noted (docs/hardware.md: 360 MHz as M-VAVE's head
+leaves it, 240 MHz if a unit or build changes it; the budgets assume 240), a tune of the
+user's heaviest HVSC set: the study's `Sound_Test`, `Thomkat_with_Strange_End`, `Kill_Me` and
+`Last_Ninja`, sent as in section 20. fm1-emu's figures for each tune (run on the host first:
+`LATE` and the instruction counts) go in the same table.
+
+For each tune, 60 s of play, once with LIVE showing (HOME back to the keyboard view while it
+plays) and once with STATUS (or NOW PLAYING) showing; read STATUS's rows at the start, after 30 s
+and after 60 s, and listen for clicks, dropouts, a tune that stops early or hangs (`PLAY HUNG`,
+`INIT TOO LONG`):
+
+- [ ] **Starter pack, every tune:** each plays from the start to a minute without a late write
+  or a glitch you can hear; record `CPU` and `T/KC` (the largest of the three reads), `LATE`,
+  `OVERRUNS`:
+- [ ] **Sound_Test:** `CPU` / `T/KC` / `LATE` / `OVERRUNS` with LIVE showing, then with STATUS:
+- [ ] **Thomkat_with_Strange_End:** the same:
+- [ ] **Kill_Me:** the same:
+- [ ] **Last_Ninja:** the same:
+- [ ] **A 2SID tune** (if one is at hand): the same, and the second chip is heard:
+- [ ] **The song views while it plays:** open SONG, STEP, TRACKER: each says `SID PLAYING: STOP
+  TO EDIT`; the tune does not glitch as the views change. STATUS's `CPU` with the song views
+  not drawn, and with the LCD redrawing the most (NOW PLAYING):
+- [ ] **Stop and back:** PLAY stops the tune to silence and returns the song; the next tune
+  starts from silence. `CPU` reads `--` when no tune runs:
+- [ ] **At the unit's other clock,** only if the first run is over the rule below: the same
+  tune, the same reads, at the other clock. Record the clock:
+
+**The decision rule.** Take the worst tune's `CPU` of all the reads. If it is **above 15 %** of
+the CPU, or **any late write** shows in a 60 s run of a tune that has none in fm1-emu, then the
+fallbacks are, in this order:
+
+1. `cpu6502.c` at `-O2` (+2.6 KB of flash, about 7 % fewer instructions);
+2. the dispatch loop in RAMTEXT (it needs the room: only 416 bytes of RAMTEXT's 48 KB are free, so
+   room is made first);
+3. last, OSC3 and ENV3 read from the audio chip a frame late instead of the voice shadow (a tune
+   that waits on ENV3 then hangs to the play cap, so this one only the user may choose).
+
+At or under 15 % with no late write: M3 ships as built. The controller brings the numbers to the
+user; nothing is changed on guesses. The results go in `docs/hardware-results/` (one file for
+the day, as the earlier flash days').
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2292,3 +2356,4 @@ Notes:
 | 18 Generative play in STEP | | |
 | 19 USB audio out | | |
 | 20 .sid tunes over SysEx PUT | | |
+| 21 .sid playback and the 6502's meter | | |

@@ -1505,6 +1505,12 @@ static struct {
     char next[STORE_NAME_MAX + 1u];
     uint32_t cycles;   /* the 6502's cycles over the last second (STATUS) */
     uint32_t cycles_from, cycles_ms;
+    /* The meter (Task 12): TIMER4 ticks the passes' slices took (a pass that ran one), over a
+     * window of about a second; the window's start. An audio interrupt landing in a slice counts
+     * in it, so the share reads at most a little high (the pessimistic side of the 15 % rule). */
+    uint32_t busy, window_t;
+    uint16_t load;    /* the 6502's share of the CPU over the last window, in tenths of a percent */
+    uint16_t ticks_k; /* ticks a thousand 6502 cycles took */
 } sid_tune;
 
 /* A chip's sample step at `clock` (sid.c sid_init_begin's, at the device's rate). */
@@ -1617,6 +1623,17 @@ static uint32_t tune_mutes(void) {
     return sid_tune.chips == 2u ? (uint32_t)sid_tune.mute * 9u : sid_tune.mute;
 }
 
+/* The meter's window ends: the share of the CPU the slices took (their ticks over the window's)
+ * and the ticks a thousand 6502 cycles took, both 0 while the tune ran nothing. */
+static void tune_meter(uint32_t cycles) {
+    uint32_t now = fm1_ticks(), span = (now - sid_tune.window_t) / 1000u, busy = sid_tune.busy;
+    uint32_t k = cycles / 1000u;
+    sid_tune.load = (uint16_t)(span && busy ? busy / span : 0u);
+    sid_tune.ticks_k = (uint16_t)(k && busy ? busy / k : 0u);
+    sid_tune.busy = 0;
+    sid_tune.window_t = now;
+}
+
 /* A failure psid_ctl stopped the tune with, as a toast, once. */
 static void tune_tell(const psid_ctl* c) {
     if (psid_ctl_state(c) != PSID_FAILED || c->error == sid_tune.told) {
@@ -1691,6 +1708,10 @@ static void tune_prep(psid_ctl* c) {
     sid_tune.cycles = 0;
     sid_tune.cycles_from = 0;
     sid_tune.cycles_ms = uptime_ms;
+    sid_tune.busy = 0;
+    sid_tune.window_t = fm1_ticks();
+    sid_tune.load = 0;
+    sid_tune.ticks_k = 0;
     sid_tune.state = TUNE_ON;
 }
 
@@ -1837,7 +1858,10 @@ static void tune_pass(void) {
             sid_tune.state = TUNE_RELOAD;
             return;
         }
-        (void)audio_psid_poll();
+        uint32_t t0 = fm1_ticks();
+        if (audio_psid_poll()) {
+            sid_tune.busy += fm1_ticks() - t0;
+        }
         tune_tell(c);
         st = psid_ctl_state(c);
         front.playing = st == PSID_INIT || st == PSID_PLAYING;
@@ -1845,6 +1869,7 @@ static void tune_pass(void) {
             /* STATUS's cycles a second (none while it stands still) */
             uint32_t now = st == PSID_INIT || st == PSID_PLAYING ? psid_env_now(&c->w->env) : 0u;
             sid_tune.cycles = sid_tune.cycles_from && now ? now - sid_tune.cycles_from : 0u;
+            tune_meter(sid_tune.cycles);
             sid_tune.cycles_from = now;
             sid_tune.cycles_ms = uptime_ms;
         }
@@ -1916,7 +1941,10 @@ static void tune_pass(void) {
  * chip preparation or store work runs in such a wake, so the slice is the wake's only one. */
 static void tune_idle(void) {
     if (sid_tune.state == TUNE_ON) {
-        (void)psid_ctl_poll(audio_psid());
+        uint32_t t0 = fm1_ticks();
+        if (psid_ctl_poll(audio_psid())) {
+            sid_tune.busy += fm1_ticks() - t0;
+        }
     }
 }
 
@@ -1981,6 +2009,8 @@ static void tb_status(void* ctx, sid_status* out) {
         out->late = c->late;
         out->dropped = c->w->env.sid3_dropped;
         out->cycles = sid_tune.cycles;
+        out->load = sid_tune.load;
+        out->ticks_k = sid_tune.ticks_k;
     }
     out->chips = sid_tune.chips;
     out->shadow = 1u;

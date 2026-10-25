@@ -519,6 +519,25 @@ fn the_sid_views_stay_within_their_budgets() {
     m.turn(ALGORITHM, 1);
     frames(&mut m, &fw, 2_500, &mut cells);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("views_status"));
+    // Task 12's meter: the share of the CPU and the ticks a thousand cycles, as STATUS drew them
+    // (the last four bytes of its look), read while the tune plays and again once it is stopped
+    let meter = |m: &mut Machine| {
+        let look = ui_field(&fw, ilp32::views::tune_drawn);
+        (m.soc.read16(look + 12), m.soc.read16(look + 14))
+    };
+    let (load, ticks_k) = meter(&mut m);
+    eprintln!("the meter: {load} tenths of a percent, {ticks_k} ticks a thousand cycles");
+    assert!(
+        load > 0 && ticks_k > 0,
+        "the meter reads while a tune plays"
+    );
+    press(&mut m, PLAY); // another view's PLAY stops a playing tune
+    frames(&mut m, &fw, 2_500, &mut cells);
+    assert_eq!(
+        meter(&mut m),
+        (0, 0),
+        "the meter reads 0 while no tune runs"
+    );
     ui_back_to(&mut m, &fw, "live_view_view");
     frames(&mut m, &fw, 1_000, &mut cells);
     check_budgets(&m, &fw, &cells, "SIDS' pages, NOW PLAYING, STATUS");

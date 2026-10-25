@@ -73,7 +73,7 @@ static void copy_name(char* out, const char* in) {
 }
 
 /* n (any) in decimal into buf (11 characters). */
-static void decimal(char* buf, uint32_t n) {
+static uint32_t decimal(char* buf, uint32_t n) {
     char d[10];
     uint32_t k = 0;
     do {
@@ -84,6 +84,7 @@ static void decimal(char* buf, uint32_t n) {
         buf[i] = d[k - 1u - i];
     }
     buf[k] = 0;
+    return k;
 }
 
 static void small(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
@@ -777,6 +778,10 @@ int sid_view_status_look(const sid_view* sd, uint8_t drawn[SID_VIEW_STATUS_LOOK]
     now[9] = (uint8_t)(drop >> 8);
     now[10] = st.shadow;
     now[11] = st.chips;
+    now[12] = (uint8_t)st.load;
+    now[13] = (uint8_t)(st.load >> 8);
+    now[14] = (uint8_t)st.ticks_k;
+    now[15] = (uint8_t)(st.ticks_k >> 8);
     int changed = memcmp(now, drawn, SID_VIEW_STATUS_LOOK) != 0;
     if (update) {
         memcpy(drawn, now, SID_VIEW_STATUS_LOOK);
@@ -800,7 +805,23 @@ void sid_view_status_draw(const sid_view* sd, grid* g, const theme* th, uint32_t
         uint32_t n = i == 0u ? st.cycles : i == 2u ? capped(st.overruns) : i == 3u ? capped(st.late)
                                                                                   : capped(st.dropped);
         decimal(t, n);
-        /* the main loop's share: the device's meter (Task 12) */
-        grid_text(g, 12, row + 1u + i, i == 1u ? "--" : i == 4u ? (st.shadow ? "ON" : "OFF") : t, a);
+        if (i == 1u) {
+            /* the main loop's share (tenths of a percent) and the ticks a thousand cycles took */
+            if (st.load) {
+                char m[24];
+                uint32_t k = decimal(m, st.load / 10u);
+                m[k++] = '.';
+                m[k++] = (char)('0' + st.load % 10u);
+                m[k++] = '%';
+                m[k++] = ' ';
+                k += decimal(m + k, st.ticks_k);
+                memcpy(m + k, "T/KC", 5);
+                grid_text(g, 12, row + 1u + i, m, a);
+            } else {
+                grid_text(g, 12, row + 1u + i, "--", a);
+            }
+            continue;
+        }
+        grid_text(g, 12, row + 1u + i, i == 4u ? (st.shadow ? "ON" : "OFF") : t, a);
     }
 }

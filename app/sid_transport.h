@@ -53,6 +53,8 @@ typedef struct {
     uint16_t song;     /* the song playing, or asked for (1..songs); 0 none yet */
     uint32_t seconds;  /* the audio's time since the song started */
     uint32_t cycles;   /* the 6502's cycles over the last second */
+    uint16_t load;     /* the 6502's share of the CPU over the last second, tenths of a percent */
+    uint16_t ticks_k;  /* 24 MHz ticks a thousand 6502 cycles took (0 with load: not measured) */
     uint32_t overruns; /* play calls that ran past their period */
     uint32_t late;     /* SID writes applied after their cycle */
     uint32_t dropped;  /* a third SID's writes, dropped */
