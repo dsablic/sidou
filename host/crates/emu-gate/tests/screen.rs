@@ -359,10 +359,10 @@ fn compare_golden_cells(build: &Path, name: &str, fb: &[u16], cells: &[(usize, u
 /// LIVE's first voice: its note's cells (app/live_view.c, at 2x on the lane's middle rows).
 const VOICE1_NOTE: [(usize, usize, usize); 2] = [(24, 3, 6), (24, 4, 6)];
 
-/// The status screen's version (row 2, right-aligned before column 28): it changes with
-/// every release, so the comparison leaves it out. platform/fm1/ui.c asserts at compile time
+/// The status screen's version (row 2, right-aligned before column 21, after SIDOU): it changes
+/// with every release, so the comparison leaves it out. platform/fm1/ui.c asserts at compile time
 /// that "V" and the version fit these cells.
-const VERSION_CELLS: (usize, usize, usize) = (14, 2, 14);
+const VERSION_CELLS: (usize, usize, usize) = (12, 2, 9);
 
 #[test]
 fn the_status_screen_matches_its_golden_image() {
@@ -373,10 +373,30 @@ fn the_status_screen_matches_its_golden_image() {
     assert!(m.soc.lcd.display_on, "DISPON was not sent");
     common::open_status(&mut m, &fw);
     compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
-    // A held note shows on the notes line.
+    // SELECT turns the pages: 2 has the chip, preset, octave and the notes (a held note shows on
+    // its line), 3 the effect slots; the first again round the three, and either way.
+    m.turn(SELECT, 1);
+    m.run_ms(600);
+    compare_golden(&build, "status-setup", &m.soc.lcd.fb, &[VERSION_CELLS]);
     m.key(A4_KEY, true);
     m.run_ms(200);
     compare_golden(&build, "status-a4", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    m.key(A4_KEY, false);
+    m.turn(SELECT, 1);
+    m.run_ms(600);
+    compare_golden(&build, "status-effects", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    m.turn(SELECT, 1);
+    m.run_ms(600);
+    let first = indexed(&m.soc.lcd.fb);
+    m.turn(SELECT, -1);
+    m.run_ms(600);
+    compare_golden(&build, "status-effects", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    m.turn(SELECT, 1);
+    m.run_ms(600);
+    assert!(
+        indexed(&m.soc.lcd.fb) == first,
+        "SELECT round the three pages does not come back to the first"
+    );
 }
 
 #[test]
@@ -1619,6 +1639,9 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
     // budget (live_stays_within_its_budgets).
     common::open_status(&mut m, &fw);
     let idle = measure(&mut m, &fw, 10, |_| {});
+    // The notes are on its second page (SELECT turns the pages).
+    m.turn(SELECT, 1);
+    settle(&mut m, &fw);
     let note = measure(&mut m, &fw, 10, |m| m.key(A4_KEY, true));
     m.key(A4_KEY, false);
     m.run_ms(200);

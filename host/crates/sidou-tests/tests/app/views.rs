@@ -1326,33 +1326,82 @@ fn a_chip_change_shows_a_toast_and_runs_the_raster() {
     assert!(ui.v.s.raster_frames > 0);
 }
 
+/// STATUS reads at 2x on three pages (SELECT turns them, either way round): the knobs with their
+/// bars, the chip with the preset, octave and notes, the effect slots.
 #[test]
 fn the_status_view_shows_the_instrument() {
     let mut ui = Ui::new();
     open_status(&mut ui);
     assert_eq!(ui.big(2, 2, 2, 5), "SIDOU", "the title at 2x");
+    assert_eq!(ui.big(2, 22, 2, 3), "1/3", "the page");
     assert_eq!(
-        ui.small(2, 22, 6),
+        ui.small(2, 15, 6),
         "V1.2.3",
-        "the version ends before column 28"
+        "the version ends before column 21"
     );
-    assert_eq!(&ui.row(5)[2..21], "CHIP   6581 CLASSIC");
-    // The parameters: the name small, the number at 2x, a bar; two rows each from row 10.
+    // Page 1: each knob's name and number at 2x, the number ending at column 28, its bar under.
     for (i, (name, num)) in [
         ("CUTOFF", ui.live().cutoff.to_string()),
         ("RESO", "6".into()),
+        ("PULSE", ui.live().pulse_width.to_string()),
+        ("VOLUME", ui.live().volume.to_string()),
     ]
     .into_iter()
     .enumerate()
     {
-        let row = 10 + 2 * i;
-        assert_eq!(ui.small(row + 1, 2, name.len()), name);
-        assert_eq!(ui.big(row, 9, 2, num.len()), num);
+        let row = 5 + 6 * i;
+        assert_eq!(ui.big(row, 2, 2, name.len()), name);
+        assert_eq!(ui.big(row, 28 - 2 * num.len(), 2, num.len()), num);
     }
-    assert_eq!(&ui.row(27)[2..8], "READY.");
+    assert_eq!(&ui.row(28)[2..8], "READY.");
+    // Page 2: the chip and its profile, the preset and octave, the notes.
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.settle();
+    assert_eq!(ui.big(2, 22, 2, 3), "2/3");
+    assert_eq!(ui.big(5, 2, 2, 4), "CHIP");
+    assert_eq!(ui.big(8, 2, 2, 12), "6581 CLASSIC");
+    assert_eq!(ui.big(11, 2, 2, 6), "PRESET");
+    assert_eq!(ui.big(11, 16, 2, 3), "OCT");
+    assert_eq!(ui.big(11, 24, 2, 2), "+0");
+    assert_eq!(ui.big(14, 2, 2, 8), "SAW LEAD");
+    assert_eq!(ui.big(17, 2, 2, 5), "NOTES");
+    assert_eq!(&ui.row(28)[2..8], "READY.");
+    ui.rig.note_on(60);
+    ui.settle();
+    assert_eq!(ui.big(20, 2, 2, 2), "C4", "a held note on the notes line");
+    ui.rig.note_off(60);
+    ui.settle();
+    assert_eq!(ui.small(20, 2, 4), "    ", "the note is off");
+    // Page 3: the slots (> marks the selected one), the selected slot's Amount, A and B.
+    ui.turn(PANEL_ENC_SELECT, 1);
     ui.press(PANEL_BTN_ENV);
-    ui.frame();
-    assert_eq!(ui.small(22, 2, 10), ">DIST TAPE");
+    ui.settle();
+    assert_eq!(ui.big(2, 22, 2, 3), "3/3");
+    assert_eq!(ui.big(5, 2, 2, 5), ">DIST");
+    assert_eq!(ui.big(5, 14, 2, 3), "MIX");
+    assert_eq!(ui.big(8, 4, 2, 4), "TAPE");
+    assert_eq!(ui.big(11, 4, 2, 3), "MOD");
+    assert_eq!(ui.big(17, 4, 2, 2), "FX");
+    assert_eq!(ui.big(23, 12, 2, 3), "AMT");
+    assert_eq!(ui.big(26, 2, 2, 1), "A");
+    assert_eq!(ui.big(26, 14, 2, 1), "B");
+    // SELECT either way round the three, and the page is the first again on the next opening.
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.settle();
+    assert_eq!(ui.big(2, 22, 2, 3), "1/3", "round to the first");
+    ui.turn(PANEL_ENC_SELECT, -1);
+    ui.settle();
+    assert_eq!(ui.big(2, 22, 2, 3), "3/3", "back round to the last");
+    ui.press(PANEL_BTN_HOME); // the menu's cursor is on STATUS still
+    ui.settle();
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(
+        ui.big(2, 22, 2, 3),
+        "1/3",
+        "a new opening starts on the first page"
+    );
 }
 
 /// With two chips (app/keys_route.h sets live.two_chips): the status screen shows both
@@ -1374,20 +1423,39 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
         "LIVE's bottom band with the keys on chip B"
     );
     open_status(&mut ui);
-    assert_eq!(&ui.row(5)[2..26], "CHIP A 8580 CLEAN       ");
-    assert_eq!(&ui.row(6)[2..26], "CHIP B 6581 CLASSIC KEYS");
-    assert_eq!(&ui.row(7)[2..17], "PRESET SAW LEAD");
+    ui.turn(PANEL_ENC_SELECT, 1); // STATUS's second page: the chips
+    ui.settle();
+    let chips = |ui: &Ui| [5, 8, 11, 14].map(|r| ui.big(r, 2, 2, if r % 6 == 5 { 6 } else { 12 }));
+    let named = |got: [String; 4], want: [&str; 4]| {
+        for (g, w) in got.iter().zip(want) {
+            assert!(g.starts_with(w), "{g:?} for {w:?}");
+        }
+    };
+    let keys = |ui: &Ui, row: usize| {
+        if ui.g.ch[row * COLS + 20] == 32 {
+            "    ".to_string()
+        } else {
+            ui.big(row, 20, 2, 4)
+        }
+    };
+    named(
+        chips(&ui),
+        ["CHIP A", "8580 CLEAN", "CHIP B", "6581 CLASSIC"],
+    );
+    assert_eq!(keys(&ui, 11), "KEYS", "the keys' chip is marked");
+    assert_eq!(keys(&ui, 5), "    ");
+    assert_eq!(ui.big(17, 2, 2, 6), "PRESET");
+    assert_eq!(ui.big(20, 2, 2, 8), "SAW LEAD");
     ui.rig.live.keys_chip = 0;
     ui.frame();
-    assert_eq!(&ui.row(5)[2..26], "CHIP A 6581 CLASSIC KEYS");
-    assert_eq!(&ui.row(6)[2..26], "CHIP B 8580 CLEAN       ");
+    named(
+        chips(&ui),
+        ["CHIP A", "6581 CLASSIC", "CHIP B", "8580 CLEAN"],
+    );
+    assert_eq!(keys(&ui, 5), "KEYS");
     ui.rig.live.other_profile = LIVE_PROFILE_NONE as u8;
     ui.frame();
-    assert_eq!(
-        &ui.row(6)[2..26],
-        "CHIP B --               ",
-        "chip B not made yet"
-    );
+    assert!(chips(&ui)[3].starts_with("--"), "chip B not made yet");
     // The menu's KEYS (HOME from the status screen goes back to the menu): clockwise A,
     // counter-clockwise AUTO.
     ui.press(PANEL_BTN_HOME);
@@ -1446,7 +1514,8 @@ fn an_idle_view_is_not_composed_and_a_change_is() {
     }
     // A note changes the notes row alone, not the screen: a cell of that row is drawn again and
     // the probe, elsewhere, is not (a held key costs a row).
-    let notes = 19 * COLS + 25;
+    ui.turn(PANEL_ENC_SELECT, 1); // the notes are on STATUS's second page
+    let notes = 20 * COLS + 25;
     for (what, change) in [
         ("note on", (|ui| ui.rig.note_on(60)) as Change),
         ("note off", |ui| ui.rig.note_off(60)),
@@ -1462,7 +1531,8 @@ fn an_idle_view_is_not_composed_and_a_change_is() {
             "{what}: the whole screen was composed for a note"
         );
     }
-    assert_eq!(ui.small(19, 9, 3), "   ", "the note is off");
+    ui.settle();
+    assert_eq!(ui.small(20, 2, 6), "      ", "the note is off");
 }
 
 #[test]
@@ -1546,12 +1616,12 @@ fn the_update_box_shows_each_step_and_the_result() {
         unsafe { views_update(&mut *ui.v, step, code) };
         assert_eq!(update_line(&ui), text, "step {step}, code {code}");
         assert_eq!(&ui.row(18)[2..12], "# UPDATE #");
-        assert_eq!(&ui.row(27)[2..8], "      ", "READY. under the box");
+        assert_eq!(&ui.row(28)[2..8], "      ", "READY. under the box");
     }
     // Back in the main loop the next frame puts the view back.
     ui.frame();
-    assert_eq!(&ui.row(27)[2..8], "READY.");
-    assert_eq!(&ui.row(23)[3..6], "MOD");
+    assert_eq!(&ui.row(28)[2..8], "READY.");
+    assert_eq!(ui.big(5, 2, 2, 6), "CUTOFF");
 }
 
 /// M2e Task 3: the MIDI page edits MIDI's mode (app/midi_route.h) item by item, clamped at

@@ -789,39 +789,46 @@ int sid_view_status_look(const sid_view* sd, uint8_t drawn[SID_VIEW_STATUS_LOOK]
     return changed;
 }
 
+/* One of STATUS's lines at 2x: the label from column 2, the value ending at column 28. */
+static void status_line(grid* g, const theme* th, uint32_t row, const char* label, const char* value) {
+    uint32_t n = 0;
+    while (value[n]) {
+        n++;
+    }
+    grid_text_big(g, 2, row, 2, label, THEME_ATTR(th, label));
+    grid_text_big(g, 28u - 2u * n, row, 2, value, THEME_ATTR(th, value));
+}
+
 void sid_view_status_draw(const sid_view* sd, grid* g, const theme* th, uint32_t row) {
     sid_status st;
     status_of(sd, &st);
-    const uint8_t lbl = THEME_ATTR(th, label);
-    const uint8_t a = THEME_ATTR(th, value);
-    grid_fill(g, 1, row, GRID_COLS - 2u, 8, ' ', a);
+    grid_fill(g, 1, row, GRID_COLS - 2u, STATUS_LINES * STATUS_LINE_ROWS - 1u, ' ', THEME_ATTR(th, value));
     static const char* const WORD[] = {"", "LOADING", "PLAYING", "PAUSED", "STOPPED", "FAILED", "ENDING"};
-    grid_text(g, 2, row, "6502", THEME_ATTR(th, hot));
-    grid_text(g, 9, row, WORD[st.state < 7u ? st.state : 0u], a);
-    static const char* const LABEL[6] = {"CYCLES/S", "CPU", "OVERRUNS", "LATE", "SHADOW", "3RD SID"};
+    status_line(g, th, row, "", WORD[st.state < 7u ? st.state : 0u]);
+    grid_text_big(g, 2, row, 2, "6502", THEME_ATTR(th, hot));
     char t[12];
-    for (uint32_t i = 0; i < 6u; i++) {
-        grid_text(g, 2, row + 1u + i, LABEL[i], lbl);
-        uint32_t n = i == 0u ? st.cycles : i == 2u ? capped(st.overruns) : i == 3u ? capped(st.late)
-                                                                                  : capped(st.dropped);
-        decimal(t, n);
-        if (i == 1u) {
-            /* the main loop's share (tenths of a percent) and the ticks a thousand cycles took */
-            if (st.load) {
-                char m[24];
-                uint32_t k = decimal(m, st.load / 10u);
-                m[k++] = '.';
-                m[k++] = (char)('0' + st.load % 10u);
-                m[k++] = '%';
-                m[k++] = ' ';
-                k += decimal(m + k, st.ticks_k);
-                memcpy(m + k, "T/KC", 5);
-                grid_text(g, 12, row + 1u + i, m, a);
-            } else {
-                grid_text(g, 12, row + 1u + i, "--", a);
-            }
-            continue;
-        }
-        grid_text(g, 12, row + 1u + i, i == 4u ? (st.shadow ? "ON" : "OFF") : t, a);
+    char m[8];
+    /* the main loop's share (tenths of a percent) and the ticks a thousand cycles took */
+    if (st.load) {
+        uint32_t k = decimal(m, st.load / 10u);
+        m[k++] = '.';
+        m[k++] = (char)('0' + st.load % 10u);
+        m[k++] = '%';
+        m[k] = 0;
+        status_line(g, th, row + STATUS_LINE_ROWS, "CPU", m);
+        decimal(t, st.ticks_k);
+        status_line(g, th, row + 2u * STATUS_LINE_ROWS, "T/KC", t);
+    } else {
+        status_line(g, th, row + STATUS_LINE_ROWS, "CPU", "--");
+        status_line(g, th, row + 2u * STATUS_LINE_ROWS, "T/KC", "--");
     }
+    decimal(t, capped(st.late));
+    status_line(g, th, row + 3u * STATUS_LINE_ROWS, "LATE", t);
+    decimal(t, capped(st.overruns));
+    status_line(g, th, row + 4u * STATUS_LINE_ROWS, "OVERRUNS", t);
+    decimal(t, st.cycles);
+    status_line(g, th, row + 5u * STATUS_LINE_ROWS, "CYC/S", t);
+    status_line(g, th, row + 6u * STATUS_LINE_ROWS, "SHADOW", st.shadow ? "ON" : "OFF");
+    decimal(t, capped(st.dropped));
+    status_line(g, th, row + 7u * STATUS_LINE_ROWS, "3RD SID", t);
 }

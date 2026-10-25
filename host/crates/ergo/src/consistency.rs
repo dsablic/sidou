@@ -104,7 +104,6 @@ pub const CONTROLS: [(&str, u8); 8] = [
 /// documented to act. Views missing from the doc's lists are marked `?` and not compared.
 pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("tracker", "ALGORITHM"),
-    ("status", "SELECT"),
     ("status", "ALGORITHM"),
     ("about", "SELECT"),
     ("about", "ALGORITHM"),
@@ -388,8 +387,9 @@ mod tests {
     fn tracker_select_is_documented_and_read_only_views_do_not_count_as_inert() {
         let mut m = BTreeMap::new();
         m.insert(("tracker".into(), "SELECT".into()), fx(true, &[], false, 0));
+        m.insert(("status".into(), "SELECT".into()), fx(true, &[], false, 0));
+        m.insert(("about".into(), "SELECT".into()), fx(false, &[], false, 0));
         for view in ["status", "about"] {
-            m.insert((view.into(), "SELECT".into()), fx(false, &[], false, 0));
             m.insert((view.into(), "ALGORITHM".into()), fx(false, &[], false, 0));
         }
         m.insert(("menu".into(), "ALGORITHM".into()), fx(true, &[], false, 0));

@@ -52,7 +52,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    in every view, but for PLAY while a `.sid` tune is loaded: it is the tune's
    ([SIDS and NOW PLAYING](#sids-and-now-playing));
 3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT and ALGORITHM;
-   LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
+   LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen takes SELECT (its page); the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
    the page of the view that shows: CHIP's focused section on the CHIP view (on top or under
@@ -159,8 +159,8 @@ the sound. Off, they write nothing and chip B stays out of use.
 LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below), and STEP (ARP is the lane's gate,
 LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the restart) use them too;
 on LIVE, ARP is the [chord arpeggio](#chord-arpeggio); elsewhere LFO and ARP do nothing yet, and
-PRESETS steps the preset. SELECT does nothing on STATUS and
-ABOUT, ALGORITHM nothing on STATUS and ABOUT.
+PRESETS steps the preset. SELECT does nothing on ABOUT (on STATUS it turns the
+[page](#status-pages)), ALGORITHM nothing on STATUS and ABOUT.
 
 ## The button LEDs
 
@@ -1152,8 +1152,8 @@ are silent (`KEYS OFF: 2SID TUNE`, once). The CHIP view's A tab changes the tune
 **MIDI** (TRS and USB): **start** restarts its song from init, **stop** holds it where it is
 (paused), **continue** goes on (a stopped tune: from init); clock, song position, song select
 and program change are ignored, and clock out sends nothing (a PSID has no tempo); CLOCK OFF
-ignores the transport, as for a song. **STATUS** shows the 6502's rows in the sound's
-parameters' place: its state, cycles a second, `CPU` (the share of the CPU the 6502's slices took
+ignores the transport, as for a song. **STATUS** shows the 6502's rows on its first page, in the sound's
+knobs' place: its state, cycles a second, `CPU` (the share of the CPU the 6502's slices took
 over the last second, to a tenth of a percent, and the 24 MHz ticks a thousand 6502 cycles took:
 `3.2% 412T/KC`; `--` while nothing runs), overruns, late writes, the voice shadow (ON: OSC3 and
 ENV3 read as on a C64) and a third SID's dropped writes.
@@ -1298,11 +1298,17 @@ and the slot's algorithm at 2× in the band is in reverse video. **ARP held** sh
 same way (RATE, ORDER, SPAN: `3F`, `UP`, `1`), and while the [chord arpeggio](#chord-arpeggio) is
 on, a badge at 2× on rows 27-28 names it with its settings (`ARP 3F UP 1OCT`, ARP in yellow).
 
-The **status screen** (STATUS in the menu) shows the numbers: the chip (its model and the
-profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play),
-preset, octave,
-cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
-algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
+<a id="status-pages"></a>The **status screen** (STATUS in the menu) shows the numbers at 2×, on
+three pages that **SELECT** turns (either way, round the three); the title bar's `1/3` says which. It
+opens on the first page every time, as a help card does.
+
+| Page | Shows |
+|---|---|
+| 1 | the sound's knobs, each with its bar: CUTOFF, RESO, PULSE and VOLUME. While a `.sid` tune is loaded, the 6502's rows instead: `6502` and its state, `CPU` (its share), `T/KC`, `LATE`, `OVERRUNS`, then `CYC/S` (cycles a second), `SHADOW` and `3RD SID` (see [SIDS and NOW PLAYING](#sids-and-now-playing)) |
+| 2 | the chip (its model and the profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play), the preset and octave (`OCT +0`), and the held notes |
+| 3 | under the effect slots DIST, MOD and FX each slot's algorithm and Mix (`>` marks the selected slot), then the selected slot's Amount, A and B |
+
+The version number sits after SIDOU in the title.
 
 The menu (HOME) is drawn at 2 times the font, six items of the eleven at a time (the
 selected one a line in reverse video; the title bar says which it is of how many, and an arrow

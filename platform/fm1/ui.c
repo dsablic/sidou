@@ -14,10 +14,10 @@
 #define SIDOU_VERSION "0.0.0"
 #endif
 
-/* "V" SIDOU_VERSION ends before column 28 (app/views.c) and must stay inside the 14 cells from
- * column 14 that host/crates/emu-gate/tests/screen.rs (VERSION_CELLS) leaves out of the golden
- * images; longer, its start column would also wrap below zero. */
-#define VERSION_CELLS 14u
+/* "V" SIDOU_VERSION ends before column 21 (app/views.c), after SIDOU, and must stay inside the 9
+ * cells from column 12 that host/crates/emu-gate/tests/screen.rs (VERSION_CELLS) leaves out of the
+ * golden images. */
+#define VERSION_CELLS 9u
 _Static_assert(sizeof SIDOU_VERSION <= VERSION_CELLS, "SIDOU_VERSION is too long for row 2");
 
 /* A run (one row of up to GRID_COLS cells) is rendered into one LCD buffer. */

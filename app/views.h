@@ -23,9 +23,10 @@
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
- * - STATUS (from the menu): the chip (with two chips both, KEYS marking the keys'), preset,
- *   octave, the sound parameters (while a .sid tune is loaded, the 6502's rows in their place:
- *   app/sid_view.h), the notes and the effect slots with every control, in numbers.
+ * - STATUS (from the menu): at 2x on three pages, SELECT turns them (the first again on each
+ *   opening): 1 the sound parameters (while a .sid tune is loaded, the 6502's rows in their
+ *   place: app/sid_view.h), 2 the chip (with two chips both, KEYS marking the keys'), preset,
+ *   octave and the notes, 3 the effect slots with every control, in numbers.
  * - SIDS (from the menu) and NOW PLAYING: the store's .sid tunes and the one playing
  *   (app/sid_view.h).
  * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
@@ -269,6 +270,8 @@ typedef struct {
     /* A .sid tune has the song's memory (views_tune): the song views, the SONG menu and ABOUT
      * do not open. */
     uint8_t tune;
+    /* STATUS's page (SELECT turns it; 0 when it opens). */
+    uint8_t status_page;
     /* The SETTINGS page (views_settings_view): its menu, and what it showed at its last compose. */
     menu setup;
     uint8_t setup_drawn[VIEWS_SETTINGS_LOOK];

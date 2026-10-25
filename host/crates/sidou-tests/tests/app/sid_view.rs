@@ -794,23 +794,36 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.ui.settle();
     assert_eq!(s.ui.top(), "STATUS");
-    assert_eq!(s.ui.small(11, 2, 6), "CUTOFF");
+    assert_eq!(s.ui.big(5, 2, 2, 6), "CUTOFF");
     s.tune.st.state = SID_T_PLAYING as u8;
     s.tune.st.cycles = 985_248;
     s.tune.st.overruns = 3;
     s.tune.st.shadow = 1;
     s.tune.st.chips = 1;
     s.ui.settle();
-    assert_eq!(s.ui.small(12, 12, 2), "--"); // no meter reading yet
+    assert_eq!(s.ui.big(8, 24, 2, 2), "--"); // no meter reading yet
+    assert_eq!(s.ui.big(11, 24, 2, 2), "--");
     s.tune.st.load = 32;
     s.tune.st.ticks_k = 412;
     s.ui.settle();
-    assert_eq!(s.ui.small(10, 2, 4), "6502");
-    assert_eq!(s.ui.small(10, 9, 7), "PLAYING");
-    assert_eq!(s.ui.small(11, 12, 6), "985248");
-    assert_eq!(s.ui.small(12, 12, 12), "3.2% 412T/KC");
-    assert_eq!(s.ui.small(13, 12, 1), "3");
-    assert_eq!(s.ui.small(15, 12, 2), "ON");
+    // Page 1, at 2x a line every three rows: the label from column 2, the value ending at column 28.
+    assert_eq!(s.ui.big(2, 22, 2, 3), "1/3");
+    assert_eq!(s.ui.big(5, 2, 2, 4), "6502");
+    assert_eq!(s.ui.big(5, 14, 2, 7), "PLAYING");
+    assert_eq!(s.ui.big(8, 2, 2, 3), "CPU");
+    assert_eq!(s.ui.big(8, 20, 2, 4), "3.2%");
+    assert_eq!(s.ui.big(11, 2, 2, 4), "T/KC");
+    assert_eq!(s.ui.big(11, 22, 2, 3), "412");
+    assert_eq!(s.ui.big(14, 2, 2, 4), "LATE");
+    assert_eq!(s.ui.big(14, 26, 2, 1), "0");
+    assert_eq!(s.ui.big(17, 2, 2, 8), "OVERRUNS");
+    assert_eq!(s.ui.big(17, 26, 2, 1), "3");
+    assert_eq!(s.ui.big(20, 2, 2, 5), "CYC/S");
+    assert_eq!(s.ui.big(20, 16, 2, 6), "985248");
+    assert_eq!(s.ui.big(23, 2, 2, 6), "SHADOW");
+    assert_eq!(s.ui.big(23, 24, 2, 2), "ON");
+    assert_eq!(s.ui.big(26, 2, 2, 7), "3RD SID");
+    assert_eq!(s.ui.big(26, 26, 2, 1), "0");
     golden(&s.ui, "status-tune");
     // only a number moves: its rows alone
     drain(&mut s.ui.g);
@@ -824,7 +837,17 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     );
     s.tune.st.state = SID_T_NONE as u8;
     s.ui.settle();
-    assert_eq!(s.ui.small(11, 2, 6), "CUTOFF");
+    assert_eq!(s.ui.big(5, 2, 2, 6), "CUTOFF");
+    // the other pages show the rest as without a tune: the 6502's rows are page 1's alone
+    s.tune.st.state = SID_T_PLAYING as u8;
+    s.ui.settle();
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    s.ui.settle();
+    assert_eq!(s.ui.big(5, 2, 2, 4), "CHIP");
+    assert_eq!(s.ui.big(17, 2, 2, 5), "NOTES");
+    s.ui.turn(PANEL_ENC_SELECT, -1);
+    s.ui.settle();
+    assert_eq!(s.ui.big(5, 2, 2, 4), "6502");
 }
 
 /// SETTINGS' SID MODEL: AUTO (the default) and KEYS, clockwise and back, persisted (settings'

@@ -8,16 +8,18 @@
 #include "chip_spread.h"
 #include "font.h"
 
-/* The status screen's version: right-aligned to end before this column. */
-#define VERSION_END_COL 28u
-/* STATUS: the parameters' rows (two each from STATUS_PARAM_ROW), the notes', the effects' header and
- * the prompt's; the bars after their number at 2x. LOOK_NOTES is where the notes are in `look`. */
-#define STATUS_PARAM_ROW 10u
-#define STATUS_NOTES_ROW 19u
-#define STATUS_SLOTS_ROW 21u
-#define STATUS_READY_ROW 27u
-#define STATUS_BAR_COL 18u
-#define STATUS_BAR_CELLS 10u
+/* The status screen's version: right-aligned to end before this column (row 2, after SIDOU). */
+#define VERSION_END_COL 21u
+/* STATUS: three pages, SELECT turns them, all at 2x with a line every STATUS_LINE_ROWS rows from
+ * STATUS_ROW (sid_view.h): 1 the sound's knobs (each with its bar, STATUS_KNOB_ROWS apart) or,
+ * while a .sid tune is loaded, the 6502's rows; 2 the chip(s), preset, octave and the notes held;
+ * 3 the effect slots. The prompt is 1x on STATUS_READY_ROW. LOOK_NOTES is where the notes are in
+ * `look`. */
+#define STATUS_PAGES 3u
+#define STATUS_ROW 5u
+#define STATUS_KNOB_ROWS 6u
+#define STATUS_READY_ROW 28u
+#define STATUS_PAGE_COL 22u
 #define LOOK_NOTES 13u
 /* The menu: large text over the whole width, 14 characters a line with a cell of margin either
  * side. The title bar in rows 0-2 (its text in rows 1-2: the position, and an arrow up and down
@@ -209,35 +211,139 @@ static int status_changed(screen* s, void* state) {
     return looks_changed(v, 0) || sid_view_status_look(&v->sids, v->tune_drawn, 0);
 }
 
-/* The notes held, on the NOTES row from column 9. */
+/* The row of the notes held (page 2): after the chip(s) and the preset, a label's line above. */
+static uint32_t status_notes_row(const live* l) {
+    return STATUS_ROW + (l->two_chips ? 7u : 5u) * STATUS_LINE_ROWS;
+}
+
+/* The notes held, 2x on the notes' row from column 2: a name and its octave, a cell between. */
 static void status_notes(grid* g, uint8_t attr, const live* l) {
-    grid_fill(g, 9, STATUS_NOTES_ROW, GRID_COLS - 10u, 1, ' ', attr);
-    uint32_t col = 9;
+    uint32_t row = status_notes_row(l);
+    grid_fill(g, 2, row, GRID_COLS - 4u, 2, ' ', attr);
+    uint32_t col = 2;
     for (int k = 0; k < LIVE_VOICES; k++) {
         uint8_t n = l->voice[k].note;
         if (!l->voice[k].gate || n == LIVE_NO_NOTE) {
             continue;
         }
-        const char* name = NOTE_NAMES[n % 12u];
-        put(g, attr, STATUS_NOTES_ROW, col, name);
-        uint32_t oc = col + (name[1] ? 2u : 1u);
-        if (n < 12u) {
-            put(g, attr, STATUS_NOTES_ROW, oc, "-1");
-        } else {
-            widget_number(g, oc, STATUS_NOTES_ROW, 1, n / 12 - 1, 0, attr);
+        char t[5];
+        uint32_t len = 0;
+        for (const char* c = NOTE_NAMES[n % 12u]; *c; c++) {
+            t[len++] = *c;
         }
-        col += 5u;
+        if (n < 12u) {
+            t[len++] = '-';
+            t[len++] = '1';
+        } else {
+            t[len++] = (char)('0' + n / 12 - 1);
+        }
+        t[len] = 0;
+        if (col + 2u * len > GRID_COLS - 2u) {
+            break;
+        }
+        grid_text_big(g, col, row, 2, t, attr);
+        col += 2u * len + 2u;
     }
 }
 
-/* One parameter of the sound, two rows: its name small, its number at 2x, its bar. */
+/* A line at 2x: the label from column 2, the value ending at column 28 (sid_view.c's too). */
+static void status_line(grid* g, uint8_t lbl, uint8_t val, uint32_t row, const char* label,
+                        const char* value) {
+    grid_text_big(g, 2, row, 2, label, lbl);
+    grid_text_big(g, GRID_COLS - 2u - 2u * length(value), row, 2, value, val);
+}
+
+/* One knob of the sound: its name and number, its bar under them. */
 static void status_param(grid* g, const theme* th, uint32_t row, const char* label, uint32_t value,
                          uint32_t max, uint8_t color) {
     char num[6];
     number_text(num, value);
-    put(g, THEME_ATTR(th, label), row + 1u, 2, label);
-    grid_text_big(g, 9, row, 2, num, THEME_ATTR(th, value));
-    widget_bar(g, STATUS_BAR_COL, row + 1u, STATUS_BAR_CELLS, value, max, GRID_ATTR(color, th->dim));
+    status_line(g, THEME_ATTR(th, label), THEME_ATTR(th, value), row, label, num);
+    widget_bar(g, 2, row + 2u, GRID_COLS - 4u, value, max, GRID_ATTR(color, th->dim));
+}
+
+/* A chip's line: CHIP (A, B) with KEYS when it is the keys', its profile under it. */
+static void status_chip(grid* g, const theme* th, uint32_t row, const char* label, const char* name,
+                        int keys) {
+    status_line(g, THEME_ATTR(th, label), THEME_ATTR(th, hot), row, label, keys ? "KEYS" : "");
+    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, name, THEME_ATTR(th, value));
+}
+
+/* Page 2: the chip(s) (with two chips both, KEYS marking the keys'), the preset and octave, the notes. */
+static void status_page_setup(grid* g, const theme* th, const live* l) {
+    const uint8_t a = THEME_ATTR(th, value);
+    const uint8_t lbl = THEME_ATTR(th, label);
+    uint32_t row = STATUS_ROW;
+    if (l->two_chips) {
+        /* Both chips' profiles (their model in the name); KEYS marks the one the keys play
+         * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
+        for (uint32_t x = 0; x < 2u; x++, row += 2u * STATUS_LINE_ROWS) {
+            uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
+            char name[SCREEN_POPUP_TEXT] = "--"; /* not made yet */
+            if (sid_chip_profile_get(id)) {
+                profile_label(name, id);
+            }
+            status_chip(g, th, row, x ? "CHIP B" : "CHIP A", name, x == l->keys_chip);
+        }
+    } else {
+        char name[SCREEN_POPUP_TEXT];
+        profile_label(name, l->profile_req);
+        status_chip(g, th, row, "CHIP", name, 0);
+        row += 2u * STATUS_LINE_ROWS;
+    }
+    const live_preset* p = live_preset_get(l->preset);
+    char oct[3];
+    octave_text(oct, l->octave);
+    grid_text_big(g, 2, row, 2, "PRESET", lbl);
+    grid_text_big(g, 16, row, 2, "OCT", lbl);
+    grid_text_big(g, 24, row, 2, oct, a);
+    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, p ? p->name : "?", a);
+    row += 2u * STATUS_LINE_ROWS;
+    grid_text_big(g, 2, row, 2, "NOTES", lbl);
+    status_notes(g, a, l);
+}
+
+/* Page 3: the effect slots: name (> marks the selected one) and Mix, the algorithm under it, then
+ * the selected slot's Amount, A and B. */
+static void status_page_effects(grid* g, const theme* th, const live* l) {
+    const uint8_t a = THEME_ATTR(th, value);
+    const uint8_t lbl = THEME_ATTR(th, label);
+    char num[6];
+    uint32_t row = STATUS_ROW;
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++, row += 2u * STATUS_LINE_ROWS) {
+        if (k == l->fx_select) {
+            grid_text_big(g, 2, row, 2, ">", THEME_ATTR(th, hot));
+        }
+        grid_text_big(g, 4, row, 2, SLOT_NAMES[k], lbl);
+        number_text(num, l->slot[k][LIVE_SLOT_MIX]);
+        grid_text_big(g, GRID_COLS - 2u - 2u * length(num), row, 2, num, a);
+        grid_text_big(g, 14, row, 2, "MIX", lbl);
+        grid_text_big(g, 4, row + STATUS_LINE_ROWS, 2,
+                      views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]), a);
+    }
+    const uint8_t* sel = l->slot[l->fx_select];
+    grid_text_big(g, 2, row, 2, SLOT_NAMES[l->fx_select], lbl);
+    grid_text_big(g, 12, row, 2, "AMT", lbl);
+    number_text(num, sel[LIVE_SLOT_AMOUNT]);
+    grid_text_big(g, GRID_COLS - 2u - 2u * length(num), row, 2, num, a);
+    row += STATUS_LINE_ROWS;
+    number_text(num, sel[LIVE_SLOT_A]);
+    grid_text_big(g, 2, row, 2, "A", lbl);
+    grid_text_big(g, 6, row, 2, num, a);
+    number_text(num, sel[LIVE_SLOT_B]);
+    grid_text_big(g, 14, row, 2, "B", lbl);
+    grid_text_big(g, 18, row, 2, num, a);
+}
+
+/* SELECT turns the page, either way round the three. */
+static int status_input(screen* s, void* state, const screen_event* e) {
+    views* v = state;
+    if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_SELECT) {
+        return 0;
+    }
+    v->status_page = (uint8_t)((v->status_page + (e->steps > 0 ? 1u : STATUS_PAGES - 1u)) % STATUS_PAGES);
+    screen_redraw(s);
+    return 1;
 }
 
 static void status_compose(screen* s, void* state, grid* g) {
@@ -246,6 +352,7 @@ static void status_compose(screen* s, void* state, grid* g) {
     const theme* th = theme_get(l->theme);
     const uint8_t a = THEME_ATTR(th, value);
     const uint8_t lbl = THEME_ATTR(th, label);
+    const uint32_t page = v->status_page;
     /* Only the notes changed: their row alone (a held key costs a row, not the screen). */
     uint8_t now[VIEWS_LOOK];
     look(v, 0, now);
@@ -256,15 +363,16 @@ static void status_compose(screen* s, void* state, grid* g) {
     for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
         v->drawn[i] = now[i];
     }
-    /* A .sid tune loaded: the 6502's rows in the parameters' place (their numbers alone when only
+    /* A .sid tune loaded: the 6502's rows in the knobs' place (their numbers alone when only
      * they moved; the screen when the tune comes or goes). */
     int tune_was = v->tune_drawn[0] != SID_T_NONE;
     int tune_moved = sid_view_status_look(&v->sids, v->tune_drawn, 1);
     int tune = v->tune_drawn[0] != SID_T_NONE;
     if (!other && !s->redraw && tune == tune_was) {
-        status_notes(g, a, l);
-        if (tune_moved) {
-            sid_view_status_draw(&v->sids, g, th, STATUS_PARAM_ROW);
+        if (page == 1u) {
+            status_notes(g, a, l);
+        } else if (page == 0u && tune && tune_moved) {
+            sid_view_status_draw(&v->sids, g, th, STATUS_ROW);
         }
         return;
     }
@@ -278,75 +386,30 @@ static void status_compose(screen* s, void* state, grid* g) {
     grid_fill(g, 1, 1, GRID_COLS - 2u, GRID_ROWS - 2u, ' ', a);
     grid_text_big(g, 2, 2, 2, "SIDOU", THEME_ATTR(th, hot));
     put(g, lbl, 2, VERSION_END_COL - length(v->version), v->version);
+    const char pages[4] = {(char)('1' + page), '/', (char)('0' + STATUS_PAGES), 0};
+    grid_text_big(g, STATUS_PAGE_COL, 2, 2, pages, a);
 
-    uint32_t top = 5;
-    if (l->two_chips) {
-        /* Both chips' profiles (their model in the name); KEYS marks the one the keys play
-         * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
-        for (uint32_t x = 0; x < 2u; x++, top++) {
-            uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
-            char name[SCREEN_POPUP_TEXT] = "--"; /* not made yet */
-            if (sid_chip_profile_get(id)) {
-                profile_label(name, id);
-            }
-            put(g, lbl, top, 2, x ? "CHIP B" : "CHIP A");
-            put(g, a, top, 9, name);
-            if (x == l->keys_chip) {
-                put(g, THEME_ATTR(th, hot), top, 22, "KEYS");
-            }
+    if (page == 0u) {
+        if (tune) {
+            sid_view_status_draw(&v->sids, g, th, STATUS_ROW);
+        } else {
+            status_param(g, th, STATUS_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
+            status_param(g, th, STATUS_ROW + STATUS_KNOB_ROWS, "RESO", l->resonance,
+                         LIVE_RESONANCE_MAX, th->knob[1]);
+            status_param(g, th, STATUS_ROW + 2u * STATUS_KNOB_ROWS, "PULSE", l->pulse_width,
+                         LIVE_PULSE_WIDTH_MAX, th->knob[2]);
+            status_param(g, th, STATUS_ROW + 3u * STATUS_KNOB_ROWS, "VOLUME", l->volume, 100,
+                         th->value);
         }
+    } else if (page == 1u) {
+        status_page_setup(g, th, l);
     } else {
-        char name[SCREEN_POPUP_TEXT];
-        profile_label(name, l->profile_req);
-        put(g, lbl, 5, 2, "CHIP");
-        put(g, a, 5, 9, name);
-        top = 6;
+        status_page_effects(g, th, l);
     }
-    put(g, lbl, top, 2, "PRESET");
-    const live_preset* p = live_preset_get(l->preset);
-    put(g, a, top, 9, p ? p->name : "?");
-    put(g, lbl, top + 1u, 2, "OCTAVE");
-    widget_number(g, 9, top + 1u, 2, l->octave, 1, a);
-
-    if (tune) {
-        sid_view_status_draw(&v->sids, g, th, STATUS_PARAM_ROW);
-    } else {
-        status_param(g, th, STATUS_PARAM_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
-        status_param(g, th, STATUS_PARAM_ROW + 2u, "RESO", l->resonance, LIVE_RESONANCE_MAX,
-                     th->knob[1]);
-        status_param(g, th, STATUS_PARAM_ROW + 4u, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX,
-                     th->knob[2]);
-        status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 100, th->value);
-    }
-
-    put(g, lbl, STATUS_NOTES_ROW, 2, "NOTES");
-    status_notes(g, a, l);
-
-    /* The effect slots: '>' marks the one EDIT + K1-K4 and ENV act on (SCL moves it). */
-    put(g, lbl, STATUS_SLOTS_ROW, 2, "EFFECTS");
-    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        uint32_t row = STATUS_SLOTS_ROW + 1u + k;
-        if (k == l->fx_select) {
-            put(g, THEME_ATTR(th, hot), row, 2, ">");
-        }
-        put(g, lbl, row, 3, SLOT_NAMES[k]);
-        put(g, a, row, 8, views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
-        put(g, lbl, row, 19, "MIX");
-        widget_number(g, 23, row, 3, l->slot[k][LIVE_SLOT_MIX], 0, a);
-    }
-    const uint8_t* sel = l->slot[l->fx_select];
-    uint32_t arow = STATUS_SLOTS_ROW + 1u + LIVE_SLOTS;
-    put(g, lbl, arow, 3, "AMT");
-    widget_number(g, 7, arow, 3, sel[LIVE_SLOT_AMOUNT], 0, a);
-    put(g, lbl, arow, 12, "A");
-    widget_number(g, 14, arow, 3, sel[LIVE_SLOT_A], 0, a);
-    put(g, lbl, arow, 19, "B");
-    widget_number(g, 21, arow, 3, sel[LIVE_SLOT_B], 0, a);
-
     put(g, lbl, STATUS_READY_ROW, 2, "READY.");
 }
 
-const view views_status = {"STATUS", NULL, NULL, NULL, status_compose, status_changed};
+const view views_status = {"STATUS", NULL, NULL, status_input, status_compose, status_changed};
 
 /* ---- MENU ---- */
 
@@ -642,6 +705,7 @@ static void tracker_open(void* ctx, int32_t steps) {
 static void status_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
+    v->status_page = 0; /* opens on its first page, as a help card does */
     screen_push(&v->s, &views_status, v, SCREEN_WIPE_DOWN);
 }
 

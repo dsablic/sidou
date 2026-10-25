@@ -120,10 +120,11 @@ static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\
  * the menu's: the highlighted action, file or answer (NO goes back a page). */
 static const char* const SONG_LINES[] = {"SELECT\0ACTION", "SAVE\0OPEN", "ALG\0OPEN",
                                          "SEQ\0SONG VIEWS", "HOME\0BACK"};
-/* STATUS, ABOUT and CHARSET show and take no encoder: the keys and the knobs play as on LIVE. */
-static const char* const STATUS_LINES[] = {"KEYS\0PLAY",    "K1-K4\0SOUND",  "SAVE\0KEEP",
-                                           "SEQ\0SONG",     "GLO+KEY\0MUTE", "HOME\0BACK",
-                                           "HOLD HOME\0HELP"};
+/* STATUS's SELECT turns its three pages; ABOUT and CHARSET take no encoder, and on all three the keys and
+ * the knobs play as on LIVE. */
+static const char* const STATUS_LINES[] = {"SELECT\0PAGE",  "KEYS\0PLAY",    "K1-K4\0SOUND",
+                                           "SAVE\0KEEP",    "SEQ\0SONG",     "GLO+KEY\0MUTE",
+                                           "HOME\0BACK",    "HOLD HOME\0HELP"};
 /* (SEQ is refused over ABOUT's tune: no SEQ line) */
 static const char* const ABOUT_LINES[] = {"KEYS\0PLAY", "SAVE\0KEEP", "HOME\0BACK",
                                           "HOLD HOME\0HELP"};

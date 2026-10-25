@@ -101,7 +101,11 @@ int sid_view_save(sid_view* sd, screen* s);
 /* Once a frame: the question's save waited for (the tune loads once the song is saved). */
 void sid_view_frame(sid_view* sd, screen* s);
 /* STATUS's rows while a tune is loaded: 1 when they changed since `drawn` (SID_VIEW_STATUS_LOOK,
- * then updated). sid_view_status_draw draws them, rows from `row` (seven of them). */
+ * then updated). sid_view_status_draw draws them as STATUS's first page: STATUS_LINES lines at 2x,
+ * a line every STATUS_LINE_ROWS rows from `row` (state, CPU, T/KC, LATE, OVERRUNS, CYC/S, SHADOW,
+ * 3RD SID). */
+#define STATUS_LINES 8u
+#define STATUS_LINE_ROWS 3u
 int sid_view_status_look(const sid_view* sd, uint8_t drawn[SID_VIEW_STATUS_LOOK], int update);
 void sid_view_status_draw(const sid_view* sd, grid* g, const theme* th, uint32_t row);
 

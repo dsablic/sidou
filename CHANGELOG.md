@@ -39,6 +39,9 @@ All notable changes are documented here. The format follows
   decision rule are in [docs/hardware-test.md](docs/hardware-test.md), section 21.
 
 ### Changed
+- **STATUS is readable:** it draws at 2× on three pages that SELECT turns (`1/3` in the title): the
+  knobs (the 6502's rows while a `.sid` tune is loaded), the chip, preset, octave and notes, the
+  effect slots. Its help card names SELECT.
 - MENU: SIDS comes after SONG, so PRE and OCTAVE each move down one item.
 - The store holds `.sid` tunes beside songs (file type 2); a tune and the song share the song's
   memory, so the song views say `SID PLAYING: STOP TO EDIT` while one plays.
