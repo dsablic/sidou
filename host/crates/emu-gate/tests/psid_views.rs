@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The SID views on the device (M3 Task 11, docs/plans/2026-10-19-m3-sid-files.md, "The browser
+//! The SID views on the device (M3 Task 11, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "The browser
 //! and the transport"; app/sid_view.h), end to end in fm1-emu: the menu's SIDS, a tune, ALGORITHM
 //! clockwise plays it; GLO mutes voice 2 (the firmware's audio equal to the host's render with
 //! the mute at the same block, sample for sample, and unequal to the render without it), and

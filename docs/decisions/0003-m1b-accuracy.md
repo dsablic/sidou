@@ -7,7 +7,7 @@
 
 ## Context
 
-M1b ([plan](../plans/2026-10-14-m1b-sound-accuracy.md)) closes the gaps that
+M1b ([plan](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-14-m1b-sound-accuracy.md)) closes the gaps that
 M0 measured between SIDOU's SID core and reSIDfp
 ([decision record 0002](0002-m0-sid-cost.md)). It must stay inside the
 900 instructions per sample per chip budget. What reSIDfp builds as tables

@@ -61,7 +61,7 @@
  * - each returns 1, or 0 when it cannot go now (its command ring is full): a note that cannot
  *   go is dropped (counted in midi_route.dropped), a bend or a filter is sent again at the
  *   next tick. A NULL function does nothing (returns 1); the device leaves them NULL until
- *   song_ctl has them (docs/plans/2026-10-15-m2e-midi.md, Task 3's results).
+ *   song_ctl has them (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2e-midi.md, Task 3's results).
  *
  * Program change and bank select (M2e Task 4): CC 0 (MSB) and CC 32 (LSB) select a channel's
  * bank, MSB * 128 + LSB, held until changed (from either port; kept across lost input); a

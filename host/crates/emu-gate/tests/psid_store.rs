@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! .sid files on the store (M3 Task 10, docs/plans/2026-10-19-m3-sid-files.md), in fm1-emu
+//! .sid files on the store (M3 Task 10, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md), in fm1-emu
 //! over the emulated TRS jack (no physical MIDI or USB device): the `.syx` `sidou-sysex sid`
 //! writes, sent a frame a second as docs/manual/sid-tunes.md says, stores the tune byte for
 //! byte, and it loads (app/sid_io.c) and plays from the panel (the menu's SIDS: Task 11's views,

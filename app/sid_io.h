@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* .sid tunes on the store (M3 Task 10; docs/plans/2026-10-19-m3-sid-files.md, "How tunes reach
+/* .sid tunes on the store (M3 Task 10; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "How tunes reach
  * the device"): the files of type STORE_FILE_SID for the browser, in name order, and a tune's
  * loading into psid_ctl: its header checked first (the file's first SID_IO_HEAD bytes and its
  * length are all psid_parse reads), then the 6502's 64 KiB as at power-on and the data read

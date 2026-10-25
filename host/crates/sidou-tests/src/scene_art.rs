@@ -29,7 +29,7 @@ const RUN: usize = 16;
 /// every SEEK pixels.
 pub const SEEK: usize = 32;
 
-/// The flash ceiling for RED MOON RITE's art (docs/plans/2026-10-15-m2f-scene.md).
+/// The flash ceiling for RED MOON RITE's art (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2f-scene.md).
 pub const CEILING: usize = 48 * 1024;
 
 /// An image as palette indexes, row by row, `CLEAR` where transparent.

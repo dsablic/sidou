@@ -2079,7 +2079,7 @@ fn the_boot_and_about_stay_within_their_budgets() {
             c.worst_frame_ms()
         );
     }
-    // docs/plans/2026-10-15-m1e-look-and-feel.md: About trimmed from the prototype's 240
+    // https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m1e-look-and-feel.md: About trimmed from the prototype's 240
     // cells a frame to about 120.
     let n = about.frames.len() as f64;
     let avg = f64::from(about.frames.iter().map(cells).sum::<u32>()) / n;

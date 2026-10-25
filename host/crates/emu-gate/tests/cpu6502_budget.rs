@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's 6502 on fm1-emu (M3 Task 2, docs/plans/2026-10-19-m3-sid-files.md): the device
+//! SIDOU's 6502 on fm1-emu (M3 Task 2, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md): the device
 //! build of core/cpu6502 (CPU6502_SMALL, -Os) in a bench image (bench/fm1/bench_6502_main.c),
 //! stepped as pi32v2 code.
 //!

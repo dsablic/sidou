@@ -242,7 +242,7 @@ All notable changes are documented here. The format follows
   mutes or solos a voice; SAVE saves it, and it opens in GoatTracker. The song views' controls
   are in [controls.md](docs/reference/controls.md#song-views), their costs in
   [the art README](docs/art/README.md#tracker) and the plan's
-  [status](docs/plans/2026-10-15-m2d-step-tracker.md#status-m2d-complete-tasks-1-7-2026-10-22).
+  [status](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2d-step-tracker.md#status-m2d-complete-tasks-1-7-2026-10-22).
   The image is 493,840 bytes against M2f's 512,000; the RAM region and POOL have 4,256 and
   4,264 bytes free (8,520 together, against the gate's 7,000; each region keeps 4,096). Nothing
   of M2d has run on a unit yet: [hardware-test.md section 14](docs/hardware-test.md#14-make-a-song-on-the-device-m2d)
@@ -299,7 +299,7 @@ All notable changes are documented here. The format follows
   sound's own control (the pulse width in 31 positions, the decay, or the sync ratio in
   semitones) and **K4** the release (learnable); **GLO** latches with a double tap, its layer
   shows on LIVE, the keys beyond the leftmost six play under GLO, and LIVE shows the song's play
-  mark, tempo and the voices' badges. See [the ergo-live report](docs/plans/2026-10-18-ergonomics-pass.md#track-ergo-live)
+  mark, tempo and the voices' badges. See [the ergo-live report](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-ergonomics-pass.md#track-ergo-live)
   for the budgets. A toast now closes an open popup.
 - M2e Task 5: [version-1 SysEx](docs/reference/sysex.md) for inquiry, streamed
   directory/file GET and PUT, deletion, GTI5 instruments with table relocation,
@@ -320,12 +320,12 @@ All notable changes are documented here. The format follows
 - M2c song engine complete (Tasks 1-9): native GoatTracker `.sng` files with SIDOU's
   trailer, the host 6502 reference and register-matched C player, frame-exact interrupt
   playback with bounded live edits, parameter locks, SONG's store actions and About's
-  original music. [The M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status)
+  original music. [The M2c status](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2c-song-engine.md#m2c-status)
   records the remeasured costs, memory, image and coverage. The narrow RAM-region margin
   and the GoatTracker licence-audit findings remain open for the end-of-M2 review.
 - **M2b complete** (Tasks 1–8): sliced preparation, two SIDs, keys on B
   during a song, both CHIP tabs, expert controls and off-by-default UI sounds. The
-  [M2b status](docs/plans/2026-10-15-m2b-chip-b.md#m2b-status) records the integrated
+  [M2b status](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2b-chip-b.md#m2b-status) records the integrated
   image (497,120 bytes), RAMTEXT (46,016), free RAM + POOL (9,852), chip B's marginal
   state (35,216) and two-chip ISR/screen measurements. TESTING documents the
   new coverage; hardware checklist 6.3–6.4 adds two-chip routing, voice-safe sounds,
@@ -359,7 +359,7 @@ All notable changes are documented here. The format follows
   CRCs, power-loss recovery and an erase-ahead pool. Files up to 64 KiB claim
   space before writing and commit whole; torn-operation and faint-bit host
   tests complement the emulator's operation-boundary power cuts.
-  [`The M2a status`](docs/plans/2026-10-15-m2a-storage.md#m2a-status) records
+  [`The M2a status`](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2a-storage.md#m2a-status) records
   current measured RAM, RAMTEXT, image size and the outstanding hardware checks.
 - The flash timing spike (`-DSIDOU_FLASH_SPIKE=ON`, a test firmware, never
   released), confined to the store's last two sectors at 0xDE000; its checklist
@@ -512,7 +512,7 @@ All notable changes are documented here. The format follows
 A preview of M2 in progress, from `main` as it stood when the work paused: **untested on
 hardware, not for installing on an FM-1**. It is published so the songs can be heard in the
 browser demo; the first release proper comes after M3 and the hardware checklist. Where M2
-stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
+stands: "M2 status (preview)" below and `https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md`.
 
 ### Added
 - `docs/hardware-results/2026-10-17-first-flash.md`: SIDOU's first run on a real FM-1. It
@@ -780,7 +780,7 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   scene-rmr-song, -disarm and -stuck. On main `084fea9`, the free-RAM gate measures 15,756 bytes against
   the 9,000-byte gate (M2d, M2a and M2f); the image is 479,584 bytes against M2f's 512,000.
 - M2f complete: RED MOON RITE's plan marked done with its results against the budgets
-  (`docs/plans/2026-10-15-m2f-scene.md`); `TESTING.md` lists its tests.
+  (`https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2f-scene.md`); `TESTING.md` lists its tests.
 
 ### Changed
 - M2c Task 8: songs load and save on the store in bounded slices. SONG offers LOAD,
@@ -872,7 +872,7 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
 - The fm1-emu credit is reworded so that it fits one About page.
 
 ### M2 status (preview)
-M2 is partway through; see the progress table in `docs/plans/2026-10-15-m2-overview.md`.
+M2 is partway through; see the progress table in `https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md`.
 In this preview: chip B, the song player with parameter locks, TRACKER, RED MOON RITE,
 the store, settings and song saves from the panel, SONG's file actions and About's music.
 MIDI modes, banked program changes and clock/transport are included. Not yet:

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The .sid player (M3 Task 8; docs/plans/2026-10-19-m3-sid-files.md, "Look-ahead and the
+/* The .sid player (M3 Task 8; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Look-ahead and the
  * stamped writes"): the main loop runs a tune's 6502 (psid_env.h) ahead of the audio, and the
  * audio interrupt places each of its SID writes at the cycle the 6502 made it.
  *

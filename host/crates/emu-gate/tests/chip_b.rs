@@ -265,7 +265,7 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
 /// measures the same.
 const MASTER_PER_SAMPLE: f64 = 12.5;
 
-/// slots_budget.rs's worst switching block (docs/plans/2026-10-15-m2-overview.md: 964).
+/// slots_budget.rs's worst switching block (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md: 964).
 const SLOTS_WORST_SWITCH: f64 = 964.0;
 
 /// A step of a script: the ms after the last, chip A's writes, chip B's, chip B's use.

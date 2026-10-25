@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* What the SID views (app/sid_view.h) and the song views' GLO need of the .sid player (M3 Task
- * 11; docs/plans/2026-10-19-m3-sid-files.md, "The browser and the transport"): the tune's
+ * 11; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "The browser and the transport"): the tune's
  * transport, its mutes and what it is doing, as a table of functions, as song_transport.h is the
  * song's.
  *

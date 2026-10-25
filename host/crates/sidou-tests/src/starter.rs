@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The starter pack (M3 Task 13, docs/plans/2026-10-19-m3-sid-files.md): `assets/starter/`'s
+//! The starter pack (M3 Task 13, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md): `assets/starter/`'s
 //! `.sid` tunes, each GoatTracker's own packer's PSID v2 of a `.sng` that is in the
 //! repository, and one `.md` of metadata for each. The list is the user's (signed off
 //! 2026-10-24); what is left out, and why, is in LICENSING.md.

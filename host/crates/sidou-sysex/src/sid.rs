@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `.sid` tunes for the device's store (M3 Task 10, docs/plans/2026-10-19-m3-sid-files.md,
+//! `.sid` tunes for the device's store (M3 Task 10, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md,
 //! "How tunes reach the device"): a tune checked by the device's own header parser
 //! (`core/psid/psid_file.c`, through `sidou-sys`), so whatever the device would refuse is
 //! refused here with the same reason; its store name made from its title; its upload as one

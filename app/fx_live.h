@@ -8,7 +8,7 @@
  * field), value. On the device that is the register ring, so a slot change reaches the
  * audio interrupt in order with the SID writes of the same pass and is applied at the start
  * of a block, like them; reg_ring_drain hands the slots' pseudo-registers to fx_live_apply.
- * The slots are one chain on the mix of both chips (docs/plans/2026-10-15-m2-overview.md,
+ * The slots are one chain on the mix of both chips (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md,
  * decision 9), so their pseudo-registers name no chip: a sink bound to chip B sends them as
  * they are (app/reg_ring.h). On the host fx_live_sid_sink applies everything at once.
  *

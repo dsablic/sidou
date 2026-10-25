@@ -671,7 +671,7 @@ matrix on three examples, and 300 generated seeds (0..299). The canonicalisation
 test in `song.rs` prints how many shipped examples were already canonical and loads
 all of them into the device-sized region. The measured totals and the out-of-range
 pitch exception's counts are recorded in the
-[M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status).
+[M2c status](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2c-song-engine.md#m2c-status).
 
 To look at a mismatch by hand, `gt2-trace` prints the reference's writes for the same song
 and options.

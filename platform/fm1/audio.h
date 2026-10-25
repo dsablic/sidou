@@ -35,7 +35,7 @@ gt2_song* audio_song_boot(void);
 gt2_song* audio_song_remake(void);
 /* The song transport (core/player/song_ctl.h): its main-loop side, the song's region in POOL. */
 song_ctl* audio_song(void);
-/* The player the audio interrupt runs (M3 Task 9; docs/plans/2026-10-19-m3-sid-files.md,
+/* The player the audio interrupt runs (M3 Task 9; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md,
  * "Memory"): the song (song_ctl) or a .sid tune (core/psid/psid_ctl.h), never both, since the
  * tune's state overlays the song's (the 6502's 64 KiB is the song's region, its write ring the
  * song transport and shapes in the RAM region, its environment and voice shadows the song's

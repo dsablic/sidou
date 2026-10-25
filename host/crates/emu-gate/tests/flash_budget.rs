@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The firmware image's size (`sidou_app.bin`) against M2's flash schedule
-//! (docs/plans/2026-10-15-m2-overview.md, "Budgets"). The app slot is fixed: the app area ends
+//! (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md, "Budgets"). The app slot is fixed: the app area ends
 //! at 0x93000 whatever the store's size (docs/hardware.md, "Flash map"), so the image's
 //! ceilings are set here, plan by plan, and a raise reads as a change to the plan:
 //!
@@ -17,7 +17,7 @@
 //! | LAB | 541,000 (M3's ceiling + LAB's 7,000; `IMAGE_CEILING` since LAB's Task 1b) |
 //!
 //! M3's start target was 506,000 bytes, the image won back at M2's close
-//! (docs/plans/2026-10-19-m3-sid-files.md, "Before M3"), which M3's own 28,000 then takes to
+//! (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Before M3"), which M3's own 28,000 then takes to
 //! at most 534,000 and leaves at least 47,564 bytes of the slot for M4 and M5. M3's stage is
 //! `("M3", M3_START + 28,000)` after the M2 schedule: the plan writes it as `start + 28,000`
 //! with `start` the image measured at M3's start (at most 506,000), but the image moves under
