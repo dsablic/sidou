@@ -1676,6 +1676,8 @@ pub fn render_host_psid(frames: usize, p: &PsidPlay) -> Vec<i16> {
             sink_b(LIVE_REG_CHAR_FIRST + f, 0);
         }
         sink_b(LIVE_REG_RESET, SID_MODEL_6581);
+        // the reset's new sid plays its power-on out first, as the device's (app/reg_ring.h)
+        reg_ring_power_on((*tb).chip);
         sink_b(LIVE_REG_GATE_RESET, 1);
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             let n = half.len() / 2;
