@@ -6,7 +6,8 @@
 
 #include <string.h>
 
-_Static_assert(LIVE_PARAM_EXPERT == SETTINGS_PARAMS_V1 && LIVE_PARAM_COUNT == LIVE_PARAM_EXPERT_END,
+_Static_assert(LIVE_PARAM_EXPERT == SETTINGS_PARAMS_V1 &&
+                   LIVE_PARAM_COUNT == LIVE_PARAM_EXPERT_END + SETTINGS_PARAMS_V8,
                "a new live parameter: append it to the record in a new schema version");
 _Static_assert(LIVE_PARAM_EXPERT_END - LIVE_PARAM_EXPERT == SID_EXPERT_COUNT, "the expert parameter range");
 _Static_assert(SID_EXPERT_COUNT <= UINT8_MAX, "the expert count fits one byte");
@@ -78,6 +79,10 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     }
     out[n++] = l->spread;
     out[n++] = s->sid_model;
+    out[n++] = SETTINGS_PARAMS_V8;
+    for (uint32_t p = LIVE_PARAM_EXPERT_END; p < LIVE_PARAM_COUNT; p++) {
+        out[n++] = s->ml ? midi_learn_cc_of(s->ml, p) : (uint8_t)MIDI_MAP_NO_CC;
+    }
     return n;
 }
 
@@ -104,6 +109,14 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         if (rec[0] >= 7u && len < SETTINGS_V4_BYTES + 3u + 2u * experts) {
             return 0;
         }
+    }
+    /* Schema 8: the parameters past the experts, a count and each one's learned CC. */
+    uint32_t tail_at = SETTINGS_V4_BYTES + 3u + 2u * experts, tail = 0;
+    if (rec[0] >= 8u) {
+        if (len < tail_at + 1u || len < tail_at + 1u + rec[tail_at]) {
+            return 0;
+        }
+        tail = rec[tail_at];
     }
     live* l = s->l;
     *s->cards = rec[1] <= 2u ? rec[1] : 1u; /* an old record's 1 (ON) is ONCE */
@@ -160,6 +173,12 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         }
     }
     l->expert_version += (uint32_t)expert_changed;
+    for (uint32_t i = 0; s->ml && i < tail && i < SETTINGS_PARAMS_V8; i++) {
+        uint8_t cc = rec[tail_at + 1u + i];
+        if (cc != MIDI_MAP_NO_CC) {
+            (void)midi_learn_bind(s->ml, cc, LIVE_PARAM_EXPERT_END + i);
+        }
+    }
     /* SPREAD: mono in an older record, and for a value this firmware does not know. */
     uint8_t spread = rec[0] >= 6u ? rec[SETTINGS_V4_BYTES + 1u + 2u * experts] : 0u;
     chip_spread_set(l, spread <= CHIP_SPREAD_MAX ? spread : 0u);
@@ -296,7 +315,7 @@ void settings_save_now(settings* s, uint32_t now_ms) {
 void settings_reset(settings* s) {
     uint8_t rec[SETTINGS_BYTES];
     uint32_t len = settings_gather(s, rec); /* the version and the last song stay */
-    uint16_t factory[SETTINGS_PARAMS_V1] = {0};
+    uint16_t factory[LIVE_PARAM_COUNT] = {0};
     live_preset_params(0, factory);
     factory[LIVE_PARAM_ENVELOPE_MODE] = LIVE_ENVELOPE_INSTANT;
     factory[LIVE_PARAM_PROFILE] = (uint16_t)sid_chip_default(SID_MODEL_6581);
@@ -314,8 +333,8 @@ void settings_reset(settings* s) {
     rec[SETTINGS_V1_BYTES] = 0u;                         /* TRACKER ROWS: BAR */
     rec[SETTINGS_V2_BYTES] = 0u;                         /* THEME: HIGH CONTRAST */
     memset(rec + SETTINGS_V4_BYTES + 1u, SID_EXPERT_DEFAULT, SID_EXPERT_COUNT);
-    rec[len - 2u] = 0u; /* SPREAD: mono */
-    rec[len - 1u] = SETTINGS_SID_AUTO;
+    rec[SETTINGS_V5_BYTES] = 0u; /* SPREAD: mono */
+    rec[SETTINGS_V6_BYTES] = SETTINGS_SID_AUTO;
     for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; i++) {
         s->l->edits[i].valid = 0; /* every preset's edits: the factory's */
     }

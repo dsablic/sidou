@@ -66,6 +66,9 @@ void learn_view_param_name(uint32_t param, char* buf) {
         append(buf, LEARN_VIEW_NAME, FIELDS[i % LIVE_SLOT_FIELDS]);
     } else if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
         append(buf, LEARN_VIEW_NAME, chip_view_expert_name(param - LIVE_PARAM_EXPERT));
+    } else if (param >= LIVE_PARAM_EXPERT_END && param < LIVE_PARAM_COUNT) {
+        static const char* const TAIL[LIVE_PARAM_TAIL] = {"PWM DEPTH", "PWM RATE", "TUNE"};
+        append(buf, LEARN_VIEW_NAME, TAIL[param - LIVE_PARAM_EXPERT_END]);
     } else { /* not on a knob: the panel never picks it */
         append(buf, LEARN_VIEW_NAME, "PARAM ");
         append_number(buf, LEARN_VIEW_NAME, param);
@@ -87,7 +90,9 @@ static void lines(const learn_view* lv, char out[3][LEARN_VIEW_CHARS + 1u]) {
             "LEAK", "COMB", "NOISE", "THUMP", "EXT LP", "EXT HP", "VOICEDC"
         };
         const char* shown = ml->param >= LIVE_PARAM_EXPERT && ml->param < LIVE_PARAM_EXPERT_END
-                                ? EXPERT[ml->param - LIVE_PARAM_EXPERT] : name;
+                                ? EXPERT[ml->param - LIVE_PARAM_EXPERT]
+                            : ml->param == LIVE_PARAM_PWM_DEPTH ? "PW DEPTH" /* "LEARN " fits */
+                                                                : name;
         append(out[0], cap, "LEARN ");
         append(out[0], cap, shown);
         append(out[1], cap, "SEND A CC");

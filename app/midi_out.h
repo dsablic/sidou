@@ -93,6 +93,7 @@ typedef struct {
     uint32_t expert_seen;   /* live.expert_version at the last expert look */
     uint16_t expert_pending; /* explicit experts that need macro-before-expert ordering */
     uint16_t release_pending; /* macro-follow transitions not yet carried by an emitted message */
+    uint16_t pwm_step;        /* live.pwm_rate at the last look (LIVE_PARAM_PWM_RATE's field) */
 } midi_out;
 
 /* Nothing pending: the instrument's state now is what the other side is taken to have.

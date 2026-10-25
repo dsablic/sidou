@@ -520,3 +520,39 @@ fn an_invalid_sound_is_refused() {
     other[BYTES - 1] ^= 1;
     assert!(unsafe { lab_sound_equal(base.as_ptr(), other.as_ptr()) } == 0);
 }
+
+#[test]
+fn pwm_rate_10_is_pwm_bass() {
+    // 0.05 Hz a step: PWM BASS's 2 s cycle (a phase step of 328 a tick) is rate 10.
+    assert_eq!(unsafe { live_pwm_step(10) }, 328);
+    assert_eq!(u32::from(preset(1).pwm_rate), unsafe { live_pwm_step(10) });
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.preset_step(1);
+    let get = |rig: &Rig, p| unsafe { live_param_get(&*rig.live, p) };
+    assert_eq!(get(&rig, LIVE_PARAM_PWM_RATE), 10);
+    assert_eq!(
+        get(&rig, LIVE_PARAM_PWM_DEPTH),
+        u32::from(preset(1).pwm_depth)
+    );
+    assert_eq!(get(&rig, LIVE_PARAM_TUNE), LIVE_TUNE_CENTS, "in tune");
+    // Every rate's step reads back as that rate, and the top one is the sound's largest step.
+    for r in 0..=LIVE_PWM_RATE_MAX {
+        assert_eq!(unsafe { live_pwm_rate(live_pwm_step(r)) }, r, "rate {r}");
+    }
+    assert_eq!(
+        unsafe { live_pwm_step(LIVE_PWM_RATE_MAX) },
+        LIVE_PWM_STEP_MAX
+    );
+    // The parameters move the sound's fields and what sounds, at once.
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_PWM_RATE, 20) };
+    assert_eq!(rig.live.pwm_rate, 655);
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_PWM_DEPTH, 2048) };
+    assert_eq!(rig.live.pwm_depth, 2048);
+    rig.note_on(60);
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_TUNE, 100) };
+    assert_eq!(rig.live.tune, 50);
+    assert_eq!(rig.voice_freq(0), unsafe { live_freq_at(60, 4096) });
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_TUNE, 0) };
+    assert_eq!(rig.voice_freq(0), unsafe { live_freq_at(60, -4096) });
+    assert!(edited(&rig));
+}

@@ -1259,7 +1259,7 @@ LIVE_COLD void live_preset_name(const live* l, char* buf) {
     buf[n] = 0;
 }
 
-LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]) {
+LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_COUNT]) {
     const live_preset* p = &presets[index < LIVE_PRESET_COUNT ? index : LIVE_PRESET_COUNT - 1u];
     out[LIVE_PARAM_CUTOFF] = p->cutoff;
     out[LIVE_PARAM_RESONANCE] = p->resonance;
@@ -1280,6 +1280,9 @@ LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]
     out[LIVE_PARAM_VIBRATO_RATE] = p->vibrato_rate;
     out[LIVE_PARAM_VIBRATO_DEPTH] = p->vibrato_depth;
     out[LIVE_PARAM_VIBRATO_DELAY] = p->vibrato_delay;
+    out[LIVE_PARAM_PWM_DEPTH] = p->pwm_depth;
+    out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(p->pwm_rate);
+    out[LIVE_PARAM_TUNE] = LIVE_TUNE_CENTS;
 }
 
 static void put16(uint8_t* s, uint32_t at, uint32_t v) {
@@ -1717,6 +1720,9 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: return SID_CHARACTER_MAX;
+    case LIVE_PARAM_PWM_DEPTH: return LIVE_PWM_DEPTH_MAX;
+    case LIVE_PARAM_PWM_RATE: return LIVE_PWM_RATE_MAX;
+    case LIVE_PARAM_TUNE: return 2u * LIVE_TUNE_CENTS;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return SID_CHARACTER_MAX;
@@ -1905,6 +1911,18 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
             write_gate_reset(l);
         }
         break;
+    /* The sound's own: what they move is written at once, as a tick would write it. */
+    case LIVE_PARAM_PWM_DEPTH:
+        l->pwm_depth = (uint16_t)value;
+        update_pws(l);
+        break;
+    case LIVE_PARAM_PWM_RATE: l->pwm_rate = (uint16_t)live_pwm_step(value); break;
+    case LIVE_PARAM_TUNE:
+        l->tune = (int8_t)((int32_t)value - LIVE_TUNE_CENTS);
+        for (int v = 0; v < LIVE_VOICES; ++v) {
+            update_freq(l, v);
+        }
+        break;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             if (l->expert[param - LIVE_PARAM_EXPERT] != value) {
@@ -1950,6 +1968,9 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: return l->character[param - LIVE_PARAM_AGE];
+    case LIVE_PARAM_PWM_DEPTH: return l->pwm_depth;
+    case LIVE_PARAM_PWM_RATE: return live_pwm_rate(l->pwm_rate);
+    case LIVE_PARAM_TUNE: return (uint32_t)(l->tune + LIVE_TUNE_CENTS);
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return expert_get(l, param - LIVE_PARAM_EXPERT);
@@ -1996,11 +2017,18 @@ void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]) {
     }
 }
 
+void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+    out[LIVE_PARAM_PWM_DEPTH] = l->pwm_depth;
+    out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(l->pwm_rate);
+    out[LIVE_PARAM_TUNE] = (uint16_t)(l->tune + LIVE_TUNE_CENTS);
+}
+
 void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     live_params_base(l, out);
     for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
         out[LIVE_PARAM_EXPERT + f] = l->expert[f];
     }
+    live_params_tail(l, out);
 }
 
 void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
@@ -2008,6 +2036,17 @@ void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
         out[LIVE_PARAM_EXPERT + f] = (uint16_t)expert_get(l, f);
     }
+    live_params_tail(l, out);
+}
+
+uint32_t live_pwm_step(uint32_t rate) {
+    rate = rate < LIVE_PWM_RATE_MAX ? rate : LIVE_PWM_RATE_MAX;
+    return (rate * 32768u + 500u) / 1000u; /* 65536 x 0.05 / 100 = 32.768 a rate */
+}
+
+uint32_t live_pwm_rate(uint32_t step) {
+    uint32_t rate = (step * 1000u + 16384u) / 32768u;
+    return rate < LIVE_PWM_RATE_MAX ? rate : LIVE_PWM_RATE_MAX;
 }
 
 /* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8

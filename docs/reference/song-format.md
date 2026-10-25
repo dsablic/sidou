@@ -367,7 +367,9 @@ character are among them).
 | 2 | 2 × q | the parameters in `LIVE_PARAM_*` order, u16 each |
 | 2 + 2 × q | 1, optional | preset index; absent in older chunks: retain the current preset |
 
-The preset is applied before its edited parameters. Older readers ignore the
+The preset is applied before its edited parameters; a chunk with fewer parameters than
+this firmware has (q 56, written before the PWM depth, PWM rate and fine tune) leaves the
+rest the preset's. Older readers ignore the parameters past their own count and the
 appended byte. SIDOU writes it when saving a device song, since the preset's
 voice-allocation mode is not recoverable from oscillator parameters alone.
 

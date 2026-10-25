@@ -155,8 +155,9 @@ fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
         (4, 124),
         (5, SETTINGS_V5_BYTES),
         (6, SETTINGS_V6_BYTES),
-        (7, SETTINGS_BYTES),
+        (7, SETTINGS_V7_BYTES),
         (8, SETTINGS_BYTES),
+        (9, SETTINGS_BYTES),
     ] {
         let mut rec = Set::blank().gather();
         rec[0] = schema;
@@ -409,22 +410,39 @@ fn schema_four_last_song_migrates_without_becoming_expert_values() {
         MIDI_MAP_NO_CC as u8
     );
     assert_eq!(migrated[124], SID_EXPERT_COUNT as u8);
-    assert_eq!(migrated.len(), 127 + 2 * SID_EXPERT_COUNT as usize);
-    assert_eq!(migrated[migrated.len() - 2], 0, "SPREAD: mono");
+    assert_eq!(migrated.len(), 131 + 2 * SID_EXPERT_COUNT as usize);
+    let spread = 125 + 2 * SID_EXPERT_COUNT as usize;
+    assert_eq!(migrated[spread], 0, "SPREAD: mono");
     assert_eq!(
-        migrated[migrated.len() - 1],
+        migrated[spread + 1],
         SETTINGS_SID_AUTO as u8,
         "SID MODEL: AUTO"
     );
+    assert_eq!(
+        migrated[spread + 2..],
+        tail_defaults(),
+        "no bindings past the experts"
+    );
+}
+
+/// Schema 8's last bytes with nothing learned: the count of the parameters past the experts and
+/// each one's CC, none.
+fn tail_defaults() -> Vec<u8> {
+    let mut t = vec![SETTINGS_PARAMS_V8 as u8];
+    t.extend(std::iter::repeat_n(
+        MIDI_MAP_NO_CC as u8,
+        SETTINGS_PARAMS_V8 as usize,
+    ));
+    t
 }
 
 #[test]
-fn the_record_is_v7s_layout_with_the_original_offsets_and_raw_expert_defaults() {
+fn the_record_is_v8s_layout_with_the_original_offsets_and_raw_expert_defaults() {
     let s = Set::blank();
     let rec = s.gather();
     assert_eq!(rec.len(), SETTINGS_BYTES as usize);
-    assert_eq!(rec.len(), 127 + 2 * SID_EXPERT_COUNT as usize);
-    assert_eq!(rec[..6], [7, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(rec.len(), 131 + 2 * SID_EXPERT_COUNT as usize);
+    assert_eq!(rec[..6], [8, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -457,9 +475,14 @@ fn the_record_is_v7s_layout_with_the_original_offsets_and_raw_expert_defaults() 
     let learned = end + SID_EXPERT_COUNT as usize;
     assert!(rec[end..learned].iter().all(|&v| v == MIDI_MAP_NO_CC as u8));
     assert_eq!(
-        rec[learned..],
+        rec[learned..learned + 2],
         [0, SETTINGS_SID_AUTO as u8],
-        "SPREAD: mono, then SID MODEL: AUTO, last"
+        "SPREAD: mono, then SID MODEL: AUTO"
+    );
+    assert_eq!(
+        rec[learned + 2..],
+        tail_defaults(),
+        "then the count past the experts and their CCs, last"
     );
 }
 
@@ -540,8 +563,9 @@ fn future_expert_values_are_skipped_before_the_learn_bindings() {
     let end = 125 + SID_EXPERT_COUNT as usize;
     rec[0] = SETTINGS_VERSION as u8 + 1;
     rec[124] += 1;
+    // A later schema's 15th expert: its value after the 14, its learned CC after theirs.
     rec.insert(end, 19);
-    rec.push(MIDI_MAP_NO_CC as u8);
+    rec.insert(end + 1 + SID_EXPERT_COUNT as usize, MIDI_MAP_NO_CC as u8);
     let mut st = fresh(10, 256);
     assert_eq!(
         st.put_typed(SETTINGS_KEY, SETTINGS_TYPE as u8, &rec),
@@ -583,13 +607,14 @@ fn the_v5_fixture_preserves_the_v4_prefix_and_raw_expert_values() {
         1
     );
     assert_eq!(&s.rig.live.expert[..3], &[SID_EXPERT_DEFAULT as u8, 0, 127]);
-    // Schema 7 keeps every byte and appends SPREAD, mono for a schema 5 record, and SID MODEL,
-    // AUTO.
-    let mut v7 = rec.clone();
-    v7[0] = 7;
-    v7.push(0);
-    v7.push(SETTINGS_SID_AUTO as u8);
-    assert_eq!(s.gather(), v7);
+    // Schema 8 keeps every byte and appends SPREAD, mono for a schema 5 record, SID MODEL,
+    // AUTO, and no bindings past the experts.
+    let mut v8 = rec.clone();
+    v8[0] = 8;
+    v8.push(0);
+    v8.push(SETTINGS_SID_AUTO as u8);
+    v8.extend(tail_defaults());
+    assert_eq!(s.gather(), v8);
 }
 
 fn hex(text: &str) -> Vec<u8> {
@@ -622,10 +647,11 @@ fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
         1
     );
     assert_eq!(s.rig.live.spread, 70);
-    let mut v7 = v6.clone();
-    v7[0] = 7;
-    v7.push(SETTINGS_SID_AUTO as u8);
-    assert_eq!(s.gather(), v7, "saved as schema 7, SID MODEL at AUTO");
+    let mut v8 = v6.clone();
+    v8[0] = 8;
+    v8.push(SETTINGS_SID_AUTO as u8);
+    v8.extend(tail_defaults());
+    assert_eq!(s.gather(), v8, "saved as schema 8, SID MODEL at AUTO");
     for bad in [101u8, 255] {
         let mut rec = v6.clone();
         *rec.last_mut().unwrap() = bad;
@@ -646,7 +672,7 @@ fn schema_7_adds_sid_model_and_a_schema_6_record_loads_it_as_auto() {
     let v6 = hex(include_str!("../data/settings-v6.hex"));
     let v7 = hex(include_str!("../data/settings-v7.hex"));
     assert_eq!(&v7[1..v6.len()], &v6[1..], "schema 6's bytes kept");
-    assert_eq!((v7[0], v7.len()), (7, SETTINGS_BYTES as usize));
+    assert_eq!((v7[0], v7.len()), (7, SETTINGS_V7_BYTES as usize));
     let mut s = Set::blank();
     s.set.sid_model = SETTINGS_SID_KEYS as u8;
     assert_eq!(
@@ -663,7 +689,10 @@ fn schema_7_adds_sid_model_and_a_schema_6_record_loads_it_as_auto() {
         1
     );
     assert_eq!(u32::from(s.set.sid_model), SETTINGS_SID_KEYS);
-    assert_eq!(s.gather(), v7);
+    let mut v8 = v7.clone();
+    v8[0] = 8;
+    v8.extend(tail_defaults());
+    assert_eq!(s.gather(), v8, "saved as schema 8");
     for bad in [2u8, 255] {
         let mut rec = v7.clone();
         *rec.last_mut().unwrap() = bad;
@@ -681,6 +710,105 @@ fn schema_7_adds_sid_model_and_a_schema_6_record_loads_it_as_auto() {
     s.set.sid_model = SETTINGS_SID_KEYS as u8;
     unsafe { settings_reset(&mut *s.set) };
     assert_eq!(u32::from(s.set.sid_model), SETTINGS_SID_AUTO, "RESET: AUTO");
+}
+
+/// Schema 8 (the learned CCs of the parameters past the experts, LAB) migrates: the v7 fixture
+/// loads as before and saves as schema 8 with no bindings past the experts; the v8 fixture (the
+/// v7 fixture's bytes, then PWM depth, PWM rate and the fine tune learned on CC 44, 45 and 46)
+/// loads them and saves the same bytes; a later schema's longer list is read for the first three.
+#[test]
+fn a_v7_record_loads_into_schema_8() {
+    let v7 = hex(include_str!("../data/settings-v7.hex"));
+    let v8 = hex(include_str!("../data/settings-v8.hex"));
+    assert_eq!(&v8[1..v7.len()], &v7[1..], "schema 7's bytes kept");
+    assert_eq!((v8[0], v8.len()), (8, SETTINGS_BYTES as usize));
+    let tail = [LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE];
+    let mut s = Set::blank();
+    unsafe { midi_learn_bind(&mut *s.ml, 50, LIVE_PARAM_TUNE) };
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, v7.as_ptr(), v7.len() as u32) },
+        1
+    );
+    for p in tail {
+        assert_eq!(
+            unsafe { midi_learn_cc_of(&*s.ml, p) },
+            MIDI_MAP_NO_CC as u8,
+            "a v7 record clears {p}'s binding"
+        );
+    }
+    let mut want = v7.clone();
+    want[0] = 8;
+    want.extend(tail_defaults());
+    assert_eq!(s.gather(), want);
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, v8.as_ptr(), v8.len() as u32) },
+        1
+    );
+    for (p, cc) in tail.into_iter().zip([44u8, 45, 46]) {
+        assert_eq!(unsafe { midi_learn_cc_of(&*s.ml, p) }, cc);
+    }
+    assert_eq!(s.gather(), v8, "loaded and saved the same");
+    // A later schema with a fourth parameter past the experts: the three this firmware knows.
+    let mut later = v8.clone();
+    later[0] = 9;
+    let count = v7.len();
+    later[count] = 4;
+    later.push(47);
+    let mut t = Set::blank();
+    assert_eq!(
+        unsafe { settings_apply(&mut *t.set, later.as_ptr(), later.len() as u32) },
+        1
+    );
+    for (p, cc) in tail.into_iter().zip([44u8, 45, 46]) {
+        assert_eq!(unsafe { midi_learn_cc_of(&*t.ml, p) }, cc);
+    }
+    later.pop();
+    assert_eq!(
+        unsafe { settings_apply(&mut *t.set, later.as_ptr(), later.len() as u32) },
+        0,
+        "a list shorter than its count is not a record"
+    );
+}
+
+/// PWM depth, PWM rate and the fine tune learn a CC as the other parameters do, and the binding
+/// survives a power cycle; their values are the sound's, not the record's.
+#[test]
+fn the_new_parameters_learn_and_persist_their_cc() {
+    let mut a = Set::blank();
+    a.load();
+    for (p, cc) in [
+        (LIVE_PARAM_PWM_DEPTH, 44u8),
+        (LIVE_PARAM_PWM_RATE, 45),
+        (LIVE_PARAM_TUNE, 46),
+    ] {
+        assert!(
+            unsafe { midi_learn_bind(&mut *a.ml, u32::from(cc), p) } != 0,
+            "{p} is learnable"
+        );
+    }
+    a.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let mut st = a.st;
+    st.reset();
+    st.mount();
+    let mut b = Set::new(st, VERSION);
+    assert!(b.load());
+    for (p, cc) in [
+        (LIVE_PARAM_PWM_DEPTH, 44u8),
+        (LIVE_PARAM_PWM_RATE, 45),
+        (LIVE_PARAM_TUNE, 46),
+    ] {
+        assert_eq!(
+            unsafe { midi_learn_cc_of(&*b.ml, p) },
+            cc,
+            "{p} after a power cycle"
+        );
+    }
+    // A learned CC reaches its parameter's row, across its range.
+    let e = unsafe { midi_learn_for_cc(&*b.ml, 46) };
+    assert!(!e.is_null());
+    assert_eq!(u32::from(unsafe { (*e).param }), LIVE_PARAM_TUNE);
+    assert_eq!(unsafe { midi_map_from_cc(e, 127) }, 2 * LIVE_TUNE_CENTS);
+    assert_eq!(unsafe { midi_map_from_cc(e, 0) }, 0);
 }
 
 #[test]
@@ -878,6 +1006,17 @@ fn an_unchanged_frame_does_not_gather_and_a_setter_change_is_saved() {
 fn every_parameter_setter_marks_a_change_for_the_background_save() {
     for p in 0..LIVE_PARAM_COUNT {
         if p == LIVE_PARAM_VOLUME {
+            continue;
+        }
+        if p >= LIVE_PARAM_PWM_DEPTH {
+            // the sound's own past the experts: kept with the sound, not in this record
+            let mut s = Set::blank();
+            s.load();
+            s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+            let value = (s.param(p) + 1) % (unsafe { live_param_max(p) } + 1);
+            s.set_param(p, value);
+            s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+            assert_eq!(s.writes, 1, "parameter {p}: not in the settings record");
             continue;
         }
         let mut s = Set::blank();
@@ -1167,11 +1306,12 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
     ));
     again.push(0); // SPREAD
     again.push(SETTINGS_SID_AUTO as u8);
+    again.extend(tail_defaults());
     assert_eq!(
         s.gather(),
         again,
-        "schema 7 preserves schema 2's bytes and appends default theme, song, expert fields, \
-         SPREAD and SID MODEL"
+        "schema 8 preserves schema 2's bytes and appends default theme, song, expert fields, \
+         SPREAD, SID MODEL and the bindings past the experts"
     );
     s.rig.tick();
     let mut want = Set::blank();

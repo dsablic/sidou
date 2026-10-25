@@ -177,6 +177,15 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     EXPERT_ROW(SID_EXPERT_EXTERNAL_HP, "External high-pass", "0..127 = 0..100 Hz", 20),
     EXPERT_ROW(SID_EXPERT_VOICE_DC, "Voice DC offset", "0..127 = 0..0.6 voice-DAC units", 60),
 
+    ROW("Live", "PWM depth",
+        "0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed "
+        "near the ends so the pulse never closes); a preset's",
+        LIVE_PARAM_PWM_DEPTH, NO_CC, NRPN(NRPN_LIVE, 5), LIVE_PWM_DEPTH_MAX, 0, LINEAR),
+    ROW("Live", "PWM rate", "0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's",
+        LIVE_PARAM_PWM_RATE, NO_CC, NRPN(NRPN_LIVE, 6), LIVE_PWM_RATE_MAX, 0, LINEAR),
+    ROW("Live", "Fine tune", "0..100 = -50..+50 cents, 50 in tune; every voice; a preset's",
+        LIVE_PARAM_TUNE, NO_CC, NRPN(NRPN_LIVE, 7), 2 * LIVE_TUNE_CENTS, LIVE_TUNE_CENTS, STEPS),
+
     ROW("Output", "Spread",
         "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "
         "saved with the settings (not a preset's, not learned, not sent)",

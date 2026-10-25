@@ -3,7 +3,8 @@
 # Settings record
 
 The settings are one value in the [store](store-format.md), key `0x100`, type `1`.
-Schema 7 is `127 + 2 × SID_EXPERT_COUNT` bytes (155 bytes); schema 6 is
+Schema 8 is `131 + 2 × SID_EXPERT_COUNT` bytes (159 bytes); schema 7 is
+`127 + 2 × SID_EXPERT_COUNT` bytes (155 bytes); schema 6 is
 `126 + 2 × SID_EXPERT_COUNT` bytes (154 bytes); schema 5 is
 `125 + 2 × SID_EXPERT_COUNT` bytes (153 bytes); schema 4 is 124 bytes;
 schema 3 is 108 bytes;
@@ -11,11 +12,12 @@ schema 2 is 107 bytes; schema 1 is 106 bytes. Multibyte values are
 little-endian. Schema 2 keeps schema 1's field offsets and appends TRACKER ROWS; schema 3
 keeps schema 2's and appends THEME. Schema 4 appends the last song's filename;
 schema 5 appends the expert overrides and their learned CCs; schema 6 appends SPREAD; schema 7
-appends SID MODEL.
+appends SID MODEL; schema 8 appends the learned CCs of the parameters after the experts (PWM
+depth, PWM rate and the fine tune: LAB's sound).
 
 | Offset | Bytes | Value |
 |---|---|---|
-| 0 | 1 | Schema version, `7` |
+| 0 | 1 | Schema version, `8` |
 | 1 | 1 | CARDS: `0` OFF, `1` ONCE (the default), `2` ALWAYS |
 | 2 | 1 | SOUNDS: `0` off, `1` on |
 | 3 | 1 | KEYS: `0` AUTO, `1` A |
@@ -32,18 +34,22 @@ appends SID MODEL.
 | 125 + E | E | Learned CC for each expert parameter; `255` means no binding |
 | 125 + 2E | 1 | SPREAD: `0` mono (default) .. `100` chip A left, chip B right (schema 6) |
 | 126 + 2E | 1 | SID MODEL: `0` AUTO (default: a `.sid` tune's chips as its header names them), `1` KEYS (the keys' setup for every tune) (schema 7) |
+| 127 + 2E | 1 | Count of the parameters after the experts, `T = 3` (schema 8) |
+| 128 + 2E | T | Learned CC for each of them, in LIVE_PARAM order (`LIVE_PARAM_PWM_DEPTH`, `_PWM_RATE`, `_TUNE`); `255` means no binding |
 
 CUTOFF and PULSE WIDTH are two bytes each; every other parameter is one byte.
 The VOLUME parameter's byte is zero and is ignored when loading: MASTER belongs to
 the physical pot. Octave, held notes, controllers and the displayed view are not
 part of the record. The remaining parameters include the requested chip model,
-profile and character, envelope mode, preset edits and effect-slot settings.
+profile and character, envelope mode, preset edits and effect-slot settings. The values of
+the parameters after the experts are not in the record (they are the sound's and are kept
+with it); only their MIDI learn bindings are.
 
 A later schema appends fields. A newer record's schema-1 prefix remains readable;
 future readers fill fields absent from older schemas with their defaults. A short
 record (less than 106 bytes for schema 1, 107 for schema 2, 108 for schema 3,
-124 for schema 4, `125 + 2 × E` for schema 5, `126 + 2 × E` for schema 6, or `127 + 2 × E` for
-schema 7 or later), schema
+124 for schema 4, `125 + 2 × E` for schema 5, `126 + 2 × E` for schema 6, `127 + 2 × E` for
+schema 7, or `128 + 2 × E + T` for schema 8 or later), schema
 zero or fewer than 42 parameters is rejected. Schema 1 loads TRACKER ROWS as BAR; an
 out-of-range TRACKER ROWS byte also falls back to BAR. Schemas 1 and 2 load THEME as HIGH
 CONTRAST, and so does a THEME byte the firmware does not know. Schemas 1 through 3 default
@@ -56,6 +62,8 @@ expert MIDI learn unbound. Schema 5 restores raw overrides after the macro contr
 it does not store resolved values. An invalid override falls back to `255`.
 Schemas 1–5 load SPREAD as `0` (mono), and so does a SPREAD byte over `100`.
 Schemas 1–6 load SID MODEL as AUTO, and so does a SID MODEL byte the firmware does not know.
+Schemas 1–7 leave the parameters after the experts unbound. A later schema's longer list is
+read for the parameters this firmware has.
 The expert count must cover this firmware's parameters; additional counted expert
 values and mappings are skipped, with mappings starting after the stored count.
 The original 42 parameter IDs and their offsets never move.

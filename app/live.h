@@ -88,6 +88,8 @@ extern "C" {
 #define LIVE_PWM_STEP_MAX 8356u
 /* The fine tune (live.tune), cents each way. */
 #define LIVE_TUNE_CENTS 50
+/* LIVE_PARAM_PWM_RATE's largest value: 12.75 Hz. */
+#define LIVE_PWM_RATE_MAX 255u
 
 /* Pitch offsets are in 1/8192 semitone (Q13): a 14-bit pitch bend times the range in
  * semitones is exact at every range. */
@@ -581,7 +583,15 @@ typedef enum {
     LIVE_PARAM_THUMP = 40,
     LIVE_PARAM_BLEED = 41,
     LIVE_PARAM_EXPERT = 42,
-    LIVE_PARAM_COUNT = LIVE_PARAM_EXPERT + SID_EXPERT_COUNT
+    /* The sound's own, after the experts (LAB; LIVE_PARAM_EXPERT_END stays the experts' end):
+     * the pulse-width LFO's depth, 0..LIVE_PWM_DEPTH_MAX pulse-width steps each way (0 off); its
+     * rate, 0..255 in 0.05 Hz (live_pwm_step: PWM BASS's 10 is 0.5 Hz); and the fine tune,
+     * 0..100 for -50..+50 cents (50 in tune). Per preset, as the expression ones; not in the
+     * settings record (its learned CCs are). */
+    LIVE_PARAM_PWM_DEPTH = LIVE_PARAM_EXPERT + SID_EXPERT_COUNT,
+    LIVE_PARAM_PWM_RATE,
+    LIVE_PARAM_TUNE,
+    LIVE_PARAM_COUNT
 } live_param;
 
 /* One past the last slot parameter, i.e. LIVE_PARAM_BEND_RANGE (live.c asserts it). A macro,
@@ -597,6 +607,12 @@ typedef enum {
 #define LIVE_COLD
 #endif
 #define LIVE_PARAM_EXPERT_END (LIVE_PARAM_EXPERT + SID_EXPERT_COUNT)
+/* The parameters past the experts: LIVE_PARAM_PWM_DEPTH .. LIVE_PARAM_TUNE. */
+#define LIVE_PARAM_TAIL (LIVE_PARAM_COUNT - LIVE_PARAM_EXPERT_END)
+/* LIVE_PARAM_PWM_RATE's value (0..LIVE_PWM_RATE_MAX, 0.05 Hz) as the LFO's phase step a tick,
+ * round(rate * 65536 * 0.05 / LIVE_TICK_HZ), and a phase step back as the nearest rate. */
+uint32_t live_pwm_step(uint32_t rate);
+uint32_t live_pwm_rate(uint32_t step);
 
 /* Preset 0, octave 0, full volume, every effect slot off, the envelope instant, the model's
  * default profile (6581 R4AR, 8580 R5) and every character control at 0. Sends the
@@ -657,9 +673,9 @@ uint32_t live_preset_edited(const live* l);
 #define LIVE_PRESET_NAME_CHARS 12u
 void live_preset_name(const live* l, char* buf);
 /* What live_set_preset sets for preset `index` (live_set_preset's loaded parameters; the others of
- * out[] are not written), as live_param_get would read them: for MIDI out, whose program change
- * carries them. */
-void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]);
+ * out[] are not written: the experts' and the rest), as live_param_get would read them: for MIDI
+ * out, whose program change carries them. */
+void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_COUNT]);
 void live_button(live* l, live_button_id button);
 /* A CC through the published map (midi_map.h): the parameter's value from the CC's by its
  * curve. CC 1 is the modulation wheel: the pulse width's row while that is its target, else
@@ -696,6 +712,9 @@ uint32_t live_param_get(const live* l, uint32_t param);
 void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]);
 /* The original parameter prefix only, without resolving or copying the expert layer. */
 void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]);
+/* The parameters past the experts, into out[LIVE_PARAM_EXPERT_END..LIVE_PARAM_COUNT - 1] (the
+ * others of out[] are not written). */
+void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]);
 /* MIDI snapshots keep 255 for macro-following experts: the macro carries that change,
  * so it must not also emit a burst of independent NRPN edits that would freeze its path. */
 void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]);

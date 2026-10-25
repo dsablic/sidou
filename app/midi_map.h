@@ -68,7 +68,7 @@ typedef struct {
     uint8_t curve;      /* a midi_map_curve, for the CC */
 } midi_map_entry;
 
-enum { MIDI_MAP_ROWS = 43u + SID_EXPERT_COUNT };
+enum { MIDI_MAP_ROWS = 43u + SID_EXPERT_COUNT + LIVE_PARAM_TAIL };
 
 /* The table (midi_map_row's rows), for a caller that indexes it in a hot path (midi_out). */
 extern const midi_map_entry midi_map_rows[MIDI_MAP_ROWS];

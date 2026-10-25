@@ -1104,14 +1104,14 @@ edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 # MIDI: the CC and NRPN map
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
-the bend range, three expression targets and expert layer also have a fixed CC (7-bit).
-MIDI learn can bind a CC to any expert knob. The map uses the same numbers on every channel, on TRS and USB. Notes
+the bend range, three expression targets, the expert layer, the PWM and the fine tune also
+have a fixed CC (7-bit). MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..{last} selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
-the envelope, filter routing and mode) and expression settings (bend range, the targets,
-the vibrato) over any edits, even when it selects the preset already playing; volume, the
+the envelope, filter routing and mode), expression settings (bend range, the targets,
+the vibrato), the PWM and the fine tune over any edits, even when it selects the preset already playing; volume, the
 chip model and character, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
@@ -1123,10 +1123,10 @@ they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
 mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
 character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
-117. NRPNs are grouped by MSB: 0 the performance controls and the spread, 1 the SID, 2 the
-character layer, 3..5 the effect slots, 6 expression. The spread (SETTINGS' SPREAD) is a
-setting, not the instrument's: no preset holds it, MIDI learn does not bind it and SIDOU does
-not send it (Output, below).
+117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM and the fine
+tune, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
+(SETTINGS' SPREAD) is a setting, not the instrument's: no preset holds it, MIDI learn does not
+bind it and SIDOU does not send it (Output, below).
 
 CC 71..78 are absolute here, like every CC of the map: the value sets the parameter
 across its range. General MIDI 2 makes its sound controllers relative instead, moving the
@@ -1260,8 +1260,8 @@ jack, which is MIDI IN only.
   edits while another plays) go after it as the CCs of the parameters that differ.
 - **High resolution:** an option, off by default, sends the parameters of more than
   128 values (cutoff, pulse width, volume) as their NRPNs instead, at full resolution.
-  A parameter with no CC (the bend range, the expression targets) always goes as its
-  NRPN, and so does the pulse width while the mod wheel drives another target (CC 1 is
+  A parameter with no CC (the bend range, the expression targets, the PWM, the fine tune)
+  always goes as its NRPN, and so does the pulse width while the mod wheel drives another target (CC 1 is
   then the wheel). A change of the mod target goes before the tick's other parameters
   (after a program change), so CC 1 is never read with the old target. An NRPN is {nrpn} CCs, without running status: 99 and 98 its
   number, 6 and 38 the value's MSB and LSB (value / 128, value % 128), which is the
@@ -1837,6 +1837,7 @@ fn the_rows_without_a_cc_are_the_ones_the_reference_names() {
         LIVE_PARAM_PRESSURE_TARGET,
     ];
     expected.extend(LIVE_PARAM_EXPERT..LIVE_PARAM_EXPERT + SID_EXPERT_COUNT);
+    expected.extend([LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE]);
     assert_eq!(no_cc, expected);
-    assert!(intro().contains("expert layer also have a fixed CC"));
+    assert!(intro().contains("the expert layer, the PWM and the fine tune also\nhave a fixed CC"));
 }
