@@ -7,6 +7,7 @@
 #include "chip_view.h"
 #include "font.h"
 #include "lab_draw.h"
+#include "live_dice.h"
 #include "live_view.h"
 #include "panel.h"
 #include "theme.h"
@@ -762,6 +763,7 @@ static void choice_turn(lab_view* lv, int32_t steps) {
 }
 
 static void name_turn(lab_view* lv, uint32_t id, int32_t steps);
+static void roll(lab_view* lv, screen* s, int whole);
 
 /* SELECT the pages, K1..K4 the cards, ALGORITHM the choice; ENV, LFO and FX their pages. */
 static int input(screen* s, void* state, const screen_event* e) {
@@ -785,6 +787,10 @@ static int input(screen* s, void* state, const screen_event* e) {
         lv->run = LAB_VIEW_NO_RUN; /* another control: a run of turns ends */
         if (edit && e->id == PANEL_BTN_LFO) {
             undo(lv, s);
+            return 1;
+        }
+        if (edit && (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_SCL)) {
+            roll(lv, s, e->id == PANEL_BTN_SCL); /* consumed: SCL selects no slot */
             return 1;
         }
         uint32_t to = e->id == PANEL_BTN_ENV   ? LAB_PAGE_ENVELOPE
@@ -825,6 +831,100 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     return 0;
+}
+
+/* ---- the rolls ---- */
+
+static uint32_t rnd(lab_view* lv) {
+    uint32_t x = lv->rng | 1u;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    lv->rng = x;
+    return x;
+}
+
+/* The sound as it is: a roll's result to keep (heard, not the sound before it, not the last
+ * result)? */
+static int fresh(const lab_view* lv, const uint8_t before[LAB_EDIT_BYTES]) {
+    uint8_t now[LAB_SOUND_BYTES];
+    live_sound_get(lv->l, now);
+    return lab_audible(now, lv->l->model) && !lab_sound_equal(now, before) &&
+           lab_edit_hash(now) != lv->rolled;
+}
+
+/* 1 when the page's card k is one it uses. */
+static int card_used(const lab_view* lv, uint32_t k) {
+    char name[LAB_VIEW_TEXT], value[LAB_VIEW_TEXT];
+    uint32_t fill, max;
+    return lab_view_card(lv, lv->page, k, name, value, &fill, &max);
+}
+
+/* One variation of the page: each card it uses 1 to 3 detents either way, and one time in four
+ * (always when it uses no card: an effect slot that is off) the choice a step. */
+static void vary_once(lab_view* lv) {
+    uint32_t used = 0;
+    for (uint32_t k = 0; k < 4u; k++) {
+        uint32_t r = rnd(lv);
+        if (card_used(lv, k)) {
+            int32_t d = 1 + (int32_t)(r % 3u);
+            card_turn(lv, k, r & 8u ? d : -d);
+            used++;
+        }
+    }
+    uint32_t r = rnd(lv);
+    if (lv->page != LAB_PAGE_ENVELOPE && (r % 4u == 0u || !used)) {
+        choice_turn(lv, r & 8u ? 1 : -1);
+    }
+}
+
+/* EDIT + ARP (vary) or EDIT + SCL (roll): a result tried until it is fresh, as one undo step. */
+static void roll(lab_view* lv, screen* s, int whole) {
+    live* l = lv->l;
+    uint8_t before[LAB_EDIT_BYTES];
+    begin(lv, before);
+    lv->rng ^= s->now * 0x9E3779B9u;
+    int ok = 0;
+    uint32_t pw = (uint32_t)(before[LAB_SOUND_PULSE] | before[LAB_SOUND_PULSE + 1u] << 8);
+    for (uint32_t t = 0; t < (whole ? LAB_VIEW_ROLL_TRIES : LAB_VIEW_VARY_TRIES) && !ok; t++) {
+        if (whole) {
+            /* a roll sets all it sets each time but the pulse width (a pulse's): no more to put
+             * back between tries */
+            live_param_set(l, LIVE_PARAM_PULSE_WIDTH, pw);
+            live_dice_shape(l, rnd(lv));
+        } else {
+            if (t) {
+                live_sound_apply(l, before); /* back to try again */
+            }
+            vary_once(lv);
+        }
+        ok = fresh(lv, before);
+    }
+    /* A variation's last resort: the smallest moves, a card a detent either way, then the
+     * choice a step (not ENVELOPE's). */
+    for (uint32_t k = 0; k < 10u && !ok && !whole; k++) {
+        live_sound_apply(l, before);
+        int32_t d = k & 1u ? -1 : 1;
+        if (k >= 8u) {
+            if (lv->page != LAB_PAGE_ENVELOPE) {
+                choice_turn(lv, d);
+                ok = fresh(lv, before);
+            }
+        } else if (card_used(lv, k >> 1)) {
+            card_turn(lv, k >> 1, d);
+            ok = fresh(lv, before);
+        }
+    }
+    if (!ok) {
+        live_sound_apply(l, before);
+        screen_toast(s, "NOTHING AUDIBLE", SCREEN_TOAST_MS);
+        return;
+    }
+    uint8_t now[LAB_SOUND_BYTES];
+    live_sound_get(l, now);
+    lv->rolled = (uint16_t)lab_edit_hash(now);
+    record(lv, before, LAB_VIEW_NO_RUN);
+    screen_toast(s, whole ? "ROLLED" : "VARIED", SCREEN_TOAST_MS);
 }
 
 /* ---- keeping ---- */
@@ -1014,6 +1114,7 @@ void lab_view_init(lab_view* lv, live* l, user_sounds* us, song_view* shared, co
     lv->sc = sc;
     lv->loads = l->loads;
     lv->run = LAB_VIEW_NO_RUN;
+    lv->rng = 0x2545F491u;
 }
 
 void lab_view_page_set(lab_view* lv, uint32_t page) {

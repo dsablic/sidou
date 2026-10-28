@@ -39,7 +39,16 @@
  * UNDO`): a card's run of turns (until another control is used), a run of the choice, EDIT +
  * PRESETS (the revert, which LAB takes from the panel) and A becoming the edit are a step each;
  * another sound loading (PRESETS, a program change) forgets the steps, which otherwise last
- * across HOME and back. No redo. Everything
+ * across HOME and back. No redo. EDIT + ARP varies the page a little (as STEP's MUTATE): each
+ * card it uses moves 1 to 3 detents either way (clamped) and, one time in four, the choice a
+ * step (not ENVELOPE's, the instrument's mode); EDIT + SCL rolls the voice as DICE does
+ * (live_dice_shape: the waveform, the envelope, the filter, the pulse, the vibrato's depth; the
+ * slots, the arpeggio, the PWM and the tune left), the sound's base and name kept. Each is one
+ * undo step and toasts VARIED or ROLLED. A result is never silent (lab_audible on the chip's
+ * model) and never the sound before it or the last result (lab_view.rolled): such a result is
+ * tried again (LAB_VIEW_VARY_TRIES times and then the smallest move that passes, or
+ * LAB_VIEW_ROLL_TRIES rolls); when none passes the sound stays and the toast says NOTHING
+ * AUDIBLE. Everything
  * else goes on to the views' global handler and the panel (the keys play; OCT, PLAY, SEQ, REC,
  * GLO, MASTER, PRESETS and SCL as everywhere). HOME goes back to LIVE (the menu's LAB replaces
  * the menu: app/views.c lab_open).
@@ -119,6 +128,10 @@ extern "C" {
 #define LAB_VIEW_AB_COL 28u
 /* lab_view.run: no run of turns goes on. */
 #define LAB_VIEW_NO_RUN 0xFFu
+/* A variation tries this many results before the smallest moves (a detent of one card, a step of
+ * the choice); a roll this many before it gives up. */
+#define LAB_VIEW_VARY_TRIES 8u
+#define LAB_VIEW_ROLL_TRIES 16u
 /* The note keys that type: A..Z are keys 0..25 and key 26 is a space. */
 #define LAB_VIEW_NAME_KEYS 27u
 
@@ -150,6 +163,8 @@ typedef struct {
     uint8_t other[LAB_SOUND_BYTES]; /* B, the edit, while A plays */
     lab_edit undo; /* the steps EDIT + LFO undoes (app/lab_edit.h) */
     uint8_t run;   /* the control whose run of turns the newest step is, LAB_VIEW_NO_RUN none */
+    uint16_t rolled; /* the last roll's or variation's result (lab_edit_hash) */
+    uint32_t rng;    /* the rolls' xorshift state */
 } lab_view;
 
 extern const view lab_view_view;

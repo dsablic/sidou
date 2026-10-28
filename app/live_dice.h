@@ -15,5 +15,11 @@
  * then a vibrato. Every voice goes through the filter. The effect slots are the instrument's, not
  * a preset's: a roll leaves them. The roll is DICE's base (live.base). */
 void live_dice_roll(live* l, uint32_t seed);
+/* The roll itself, on the sound as it is (LAB's EDIT + SCL rolls with it, the sound's base and
+ * name left): from the xorshift state s, the parameters live_dice_roll lists, through
+ * live_param_set. What it does not set stays as it was (the effect slots, the arpeggio, the
+ * PWM, the fine tune, the sync, the vibrato's rate and delay, the bend and the targets); the
+ * pulse width only on a pulse. live_dice_roll is DICE's load and this, from its mixed seed. */
+void live_dice_shape(live* l, uint32_t s);
 
 #endif

@@ -2909,8 +2909,10 @@ static void tell(views* v) {
     char num[3];
     int changed = 0;
     int toast = 0;
-    /* LIVE says the slot and its algorithm in its bottom band at 2x: no toast for those there. */
-    int says = screen_top(&v->s) != &live_view_view;
+    /* LIVE says the slot and its algorithm in its bottom band at 2x, LAB's FX page as its choice:
+     * no toast for those there (LAB's own toast, VARIED or UNDO, stays). */
+    const view* top = screen_top(&v->s);
+    int says = top != &live_view_view && (top != &lab_view_view || v->lab.page != LAB_PAGE_FX);
     if (l->octave != v->octave) {
         octave_text(num, l->octave);
         join(buf, sizeof buf, "OCTAVE ", num);

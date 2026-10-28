@@ -15,7 +15,12 @@ static uint32_t next(uint32_t* s) {
 void live_dice_roll(live* l, uint32_t seed) {
     uint32_t s = (seed ^ ++l->dice_rolls * 0x9E3779B9u) | 1u;
     live_set_preset(l, LIVE_PRESET_DICE); /* the base, no edits kept over it */
+    live_dice_shape(l, s);
+    live_sound_get(l, l->base); /* DICE's base is its roll */
+}
 
+void live_dice_shape(live* l, uint32_t s) {
+    s |= 1u; /* xorshift's state is never 0 */
     /* waveform: 3 of 8 saw, 2 pulse, 2 triangle, 1 noise (live_param's bits) */
     static const uint8_t WAVES[8] = {2, 2, 2, 4, 4, 1, 1, 8};
     uint32_t wave = WAVES[next(&s) % 8u];
@@ -41,5 +46,4 @@ void live_dice_roll(live* l, uint32_t seed) {
     }
     uint32_t r = next(&s);
     live_param_set(l, LIVE_PARAM_VIBRATO_DEPTH, r % 8u == 0u ? 8u + r % 33u : 0u);
-    live_sound_get(l, l->base); /* DICE's base is its roll */
 }

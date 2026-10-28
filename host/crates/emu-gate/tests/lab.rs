@@ -841,3 +841,121 @@ fn edit_lfo_undoes_in_lab() {
         "LFO stayed on the page"
     );
 }
+
+/// The instrument's voice as LAB's rolls change it: the control, the envelope, the pulse width,
+/// the filter, the vibrato, the velocity target, the arpeggio, the PWM and the tune.
+fn voice_fields(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (f, n) in [
+        (ilp32::live::control, 1),
+        (ilp32::live::attack_decay, 1),
+        (ilp32::live::sustain_release, 1),
+        (ilp32::live::pulse_width, 2),
+        (ilp32::live::cutoff, 2),
+        (ilp32::live::resonance, 1),
+        (ilp32::live::filter_voices, 1),
+        (ilp32::live::filter_mode, 1),
+        (ilp32::live::vibrato_rate, 1),
+        (ilp32::live::vibrato_depth, 1),
+        (ilp32::live::vibrato_delay, 1),
+        (ilp32::live::velocity_target, 1),
+        (ilp32::live::arp_on, 1),
+        (ilp32::live::arp_order, 1),
+        (ilp32::live::pwm_depth, 2),
+        (ilp32::live::pwm_rate, 2),
+        (ilp32::live::tune, 1),
+    ] {
+        for i in 0..n {
+            out.push(m.soc.read8(live_at(fw, f) + i));
+        }
+    }
+    out
+}
+
+/// The device's output (the left channel) through the host test's DC blocker, in dBFS of the
+/// chips' own output: the MASTER gain at the pot's power-on reading divided out
+/// (common::boot_gain), so it reads as LAB_SILENT_DB's level does (the chip alone; the effect
+/// slots are off on the pages this test varies).
+fn heard_db(x: &[f32]) -> f64 {
+    let (mut x1, mut y, mut ms) = (0.0f64, 0.0f64, 0.0f64);
+    for &v in x {
+        let v = f64::from(v);
+        y = v - x1 + 0.995 * y;
+        x1 = v;
+        ms += y * y;
+    }
+    20.0 * ((ms / x.len() as f64).sqrt().max(1e-9) / 32768.0).log10()
+        - 20.0 * f64::from(common::boot_gain()).log10()
+}
+
+/// EDIT + ARP varies the page and EDIT + SCL rolls the sound in LAB, each within the poll
+/// allowance: every result, a C4 held LAB_SILENT_MS from its note-on, is heard on the device
+/// above LAB_SILENT_DB (the output's RMS through a DC blocker); each toasts, and EDIT + LFO
+/// undoes them one at a time, each back to the sound before it.
+#[test]
+fn edit_arp_and_edit_scl_change_the_sound_heard_and_undo() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    let c4 = KEY0 + (60 - PANEL_BASE_NOTE) as u8;
+    let start = voice_fields(&mut m, &fw);
+    assert_eq!(
+        m.soc.read8(live_at(&fw, ilp32::live::slot)),
+        0,
+        "the first slot is off: the chips' level is heard"
+    );
+    m.watch_calls(fw.symbol("ui_buttons"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut worst = (0, 0);
+    let mut results = vec![start.clone()];
+    for i in 0..12u32 {
+        if i % 3 == 0 {
+            m.turn(SELECT, if i == 0 { 0 } else { 1 });
+            m.run_ms(60);
+        }
+        let (b, what) = if i % 2 == 0 {
+            (PANEL_BTN_ARP, "VARIED")
+        } else {
+            (PANEL_BTN_SCL, "ROLLED")
+        };
+        let (input, pass) = start_cost(&mut m, 60, |m| edit_with(m, b));
+        if input + pass > worst.0 + worst.1 {
+            worst = (input, pass);
+        }
+        assert_eq!(toast_text(&mut m, &fw), what, "{i}");
+        let now = voice_fields(&mut m, &fw);
+        assert_ne!(Some(&now), results.last(), "{i}: the sound changed");
+        results.push(now);
+        m.key(c4, true);
+        let db = heard_db(&common::record(&mut m, u64::from(LAB_SILENT_MS)));
+        m.key(c4, false);
+        m.run_ms(300);
+        println!("{i} {what}: {db:.1} dB (the chips' dBFS)");
+        assert!(
+            db >= f64::from(LAB_SILENT_DB),
+            "{i} {what}: {db:.1} dB is silent"
+        );
+    }
+    println!(
+        "EDIT + ARP / SCL: the worst input {} and its busiest pass {}",
+        worst.0, worst.1
+    );
+    assert!(worst.0 + worst.1 <= common::POLL_INSTRUCTIONS, "{worst:?}");
+    // the undo, a step at a time, back through the results it holds (its 16 steps share
+    // LAB_EDIT_ENTRIES bytes: a roll takes about a dozen, so the oldest went)
+    let held = usize::from(lab_byte(
+        &mut m,
+        &fw,
+        ilp32::lab_view::undo + ilp32::lab_edit::steps,
+    ));
+    println!("undo holds {held} of the 12");
+    assert!(held >= 4, "{held} steps");
+    for k in 1..=held {
+        edit_with(&mut m, PANEL_BTN_LFO);
+        assert_eq!(voice_fields(&mut m, &fw), results[12 - k], "undone {k}");
+    }
+    assert_eq!(toast_text(&mut m, &fw), "UNDO (0)");
+    edit_with(&mut m, PANEL_BTN_LFO);
+    assert_eq!(toast_text(&mut m, &fw), "NOTHING TO UNDO");
+}

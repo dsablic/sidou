@@ -17,6 +17,7 @@ mod grid;
 mod gt2_ins;
 mod help_view;
 mod keys_route;
+mod lab_edit;
 mod lab_sound;
 mod lab_view;
 mod learn_view;

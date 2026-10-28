@@ -768,7 +768,24 @@ none are). A step is a card's run of turns (until another control is used: one d
 one step), a run of ALGORITHM (ENVELOPE's, the envelope mode, too), **EDIT + PRESETS** (the revert
 to the sound as kept or loaded) and A becoming the edit. The seventeenth step drops the oldest.
 The steps last across HOME and back; another sound loading forgets them (undoing past a load
-would mix two sounds). There is no redo. While A plays, EDIT + LFO gives B back.
+would mix two sounds). There is no redo. While A plays, EDIT + LFO gives B back. The steps share
+48 bytes, so sixteen card turns fit, but a roll takes about a dozen: after rolls fewer steps are
+kept.
+
+**EDIT + ARP** varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
+detents either way, and one time in four ALGORITHM's choice a step (not ENVELOPE's: the envelope
+mode is every sound's); on FX with the slot off, the choice. **EDIT + SCL** rolls the voice as
+DICE does (the waveform with its ring or sync, the envelope, the cutoff, resonance, mode and
+routing, a pulse's width, the vibrato's depth); the effect slots, the arpeggio, the PWM and the
+fine tune stay, and so do the sound's name and its base (it is still the sound being shaped, now
+with a `*`). Each is one undo step and toasts `VARIED` or `ROLLED`. A result is **never silent**:
+LAB holds every result to an estimate of what a C4 held for 500 ms would give on the chip
+(`lab_audible`, app/lab_edit.h: the waveform, the pulse's width, the envelope, the filter's mode
+and cutoff against the note), and refuses one under -38 dBFS, where -40 dBFS is silent; the host
+tests prove no sound it passes renders under -40. A result is **never the same twice**: not the
+sound before it, not the last result. A refused result is tried again (a variation 8 times, then
+the smallest moves; a roll 16 times); if none passes the sound stays and the toast says
+`NOTHING AUDIBLE` (a sound with no waveform varied on ENVELOPE, say).
 
 ## SCENE
 

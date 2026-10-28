@@ -181,3 +181,24 @@ fn program_changes_never_reach_dice() {
     assert_eq!(rig.live.preset, DICE, "clamped to the last slot");
     assert_eq!(LIVE_PRESET_COUNT, 4, "what a program change selects");
 }
+
+/// The rolls as DICE made them before its roll was split from its load (live_dice_shape, LAB's
+/// EDIT + SCL): the sounds of 2,000 rolls on each model, hashed, are what they were.
+#[test]
+fn dice_still_rolls_as_before() {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let mut rig = Rig::new(model);
+        for seed in 0..2000u32 {
+            roll(&mut rig, seed.wrapping_mul(2_654_435_761));
+            let mut s = [0u8; LAB_SOUND_BYTES as usize];
+            unsafe { live_sound_get(&*rig.live, s.as_mut_ptr()) };
+            for b in s.iter().chain(rig.live.base.iter()) {
+                h = (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3);
+            }
+        }
+    }
+    assert_eq!(h, DICE_HASH);
+}
+/// Measured on the firmware before the split (lab at 3249a4d6).
+const DICE_HASH: u64 = 0x69a6_da44_3c00_9ef5;
