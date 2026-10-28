@@ -2346,3 +2346,160 @@ fn lab_presets_loads_and_resets_undo() {
     assert_eq!(undo(&mut k.ui).as_deref(), Some("UNDO (0)"));
     assert_eq!(k.attack(), 6);
 }
+
+/// LAB over the views with MIDI learn wired (the frame composes LAB under it).
+fn learn_ui(preset: Option<u8>) -> (Ui, Box<midi_learn>) {
+    let mut ui = Ui::without_cards();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+        if let Some(p) = preset {
+            live_set_preset(&mut *ui.rig.live, p);
+        }
+    }
+    open_lab(&mut ui);
+    (ui, ml)
+}
+
+/// SAVE held + each card on each page: learn opens on the card's parameter (FX: the selected
+/// slot's control), over LAB; the two cards with none say so and open nothing.
+#[test]
+fn save_and_each_card_learns_its_parameter() {
+    let slot = |s: u32, f: u32| LIVE_PARAM_SLOT + s * LIVE_SLOT_FIELDS + f;
+    let none = LIVE_PARAM_COUNT;
+    let table: [(u32, [u32; 4]); 5] = [
+        (
+            LAB_PAGE_OSC,
+            [
+                LIVE_PARAM_PULSE_WIDTH,
+                LIVE_PARAM_PWM_DEPTH,
+                LIVE_PARAM_PWM_RATE,
+                LIVE_PARAM_TUNE,
+            ],
+        ),
+        (
+            LAB_PAGE_ENVELOPE,
+            [
+                LIVE_PARAM_ATTACK,
+                LIVE_PARAM_DECAY,
+                LIVE_PARAM_SUSTAIN,
+                LIVE_PARAM_RELEASE,
+            ],
+        ),
+        (
+            LAB_PAGE_FILTER,
+            [
+                LIVE_PARAM_CUTOFF,
+                LIVE_PARAM_RESONANCE,
+                LIVE_PARAM_FILTER_VOICES,
+                none,
+            ],
+        ),
+        (
+            LAB_PAGE_MOD,
+            [
+                LIVE_PARAM_VIBRATO_RATE,
+                LIVE_PARAM_VIBRATO_DEPTH,
+                LIVE_PARAM_VIBRATO_DELAY,
+                LIVE_PARAM_VELOCITY_TARGET,
+            ],
+        ),
+        (
+            LAB_PAGE_FX,
+            [
+                slot(1, LIVE_SLOT_AMOUNT),
+                slot(1, LIVE_SLOT_A),
+                slot(1, LIVE_SLOT_B),
+                slot(1, LIVE_SLOT_MIX),
+            ],
+        ),
+    ];
+    for (page, params) in table {
+        for (k, want) in params.into_iter().enumerate() {
+            let (mut ui, ml) = learn_ui(Some(1));
+            ui.rig.live.fx_select = 1;
+            to_page(&mut ui, page);
+            ui.learn_on(K1 + k as u32);
+            step(&mut ui);
+            if want == none {
+                assert_eq!(ui.top(), "LAB", "page {page} K{}: nothing to learn", k + 1);
+                assert_eq!(ml.state as u32, MIDI_LEARN_IDLE);
+                assert_eq!(ui.toast().as_deref(), Some("K4: NOTHING"));
+                continue;
+            }
+            assert_eq!(ui.top(), "LEARN", "page {page} K{}", k + 1);
+            assert_eq!(u32::from(ml.param), want, "page {page} K{}", k + 1);
+            assert_eq!(
+                ui.big(LEARN_VIEW_ROW as usize, 1, 2, 3),
+                "LEA",
+                "the frame, over LAB"
+            );
+            ui.press(PANEL_BTN_HOME);
+            assert_eq!(ui.top(), "LAB", "HOME cancels and stays");
+        }
+    }
+}
+
+/// Learn's frame and toast name each LAB parameter, the frame within its 14 characters.
+#[test]
+fn learn_names_every_lab_card() {
+    let names = [
+        (LIVE_PARAM_PWM_DEPTH, "PWM DEPTH"),
+        (LIVE_PARAM_PWM_RATE, "PWM RATE"),
+        (LIVE_PARAM_TUNE, "TUNE"),
+        (LIVE_PARAM_FILTER_VOICES, "VOICES"),
+        (LIVE_PARAM_VELOCITY_TARGET, "VELOCITY"),
+        (LIVE_PARAM_VIBRATO_RATE, "VIB RATE"),
+        (LIVE_PARAM_VIBRATO_DEPTH, "VIB AMT"),
+        (LIVE_PARAM_VIBRATO_DELAY, "VIB DLY"),
+    ];
+    for (p, name) in names {
+        let mut buf = [0 as std::os::raw::c_char; LEARN_VIEW_NAME as usize];
+        unsafe { learn_view_param_name(p, buf.as_mut_ptr()) };
+        let got = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_string_lossy();
+        assert_eq!(got, name);
+    }
+}
+
+/// A CC learned on PWM depth moves the card and OSC's band (the drawing above the cards).
+#[test]
+fn a_learned_cc_turns_the_card_and_the_drawing() {
+    let (mut ui, mut ml) = learn_ui(Some(1));
+    ui.learn_on(K1 + 1);
+    step(&mut ui);
+    assert_eq!(u32::from(ml.param), LIVE_PARAM_PWM_DEPTH);
+    let cc = 21u8;
+    let route = |ui: &mut Ui, ml: &mut midi_learn, value: u8| {
+        let e = unsafe { midi_learn_route(ml, cc) };
+        assert!(!e.is_null());
+        let e = unsafe { &*e };
+        unsafe {
+            live_param_set(
+                &mut *ui.rig.live,
+                u32::from(e.param),
+                midi_map_from_cc(e, value),
+            );
+        }
+    };
+    set(&mut ui, LIVE_PARAM_PWM_DEPTH, 0);
+    route(&mut ui, &mut ml, 0);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "LAB", "the frame closed");
+    assert_eq!(unsafe { midi_learn_cc_of(&*ml, LIVE_PARAM_PWM_DEPTH) }, cc);
+    let cols = GRID_COLS as usize;
+    let area = |ui: &Ui| ui.g.ch[3 * cols..20 * cols].to_vec(); // the band: the canvas's glyphs
+    let value = |ui: &Ui| {
+        ui.g.src[LAB_VIEW_VALUE_ROW as usize * cols..(LAB_VIEW_VALUE_ROW as usize + 2) * cols]
+            .to_vec()
+    };
+    let (drawing, card) = (area(&ui), value(&ui));
+    route(&mut ui, &mut ml, 100);
+    settle(&mut ui);
+    assert!(
+        param(&ui, LIVE_PARAM_PWM_DEPTH) > 0,
+        "the CC moved the parameter"
+    );
+    assert_ne!(value(&ui), card, "the card moved");
+    assert_ne!(area(&ui), drawing, "and the band");
+}

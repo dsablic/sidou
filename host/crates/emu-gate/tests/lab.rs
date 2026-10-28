@@ -959,3 +959,56 @@ fn edit_arp_and_edit_scl_change_the_sound_heard_and_undo() {
     edit_with(&mut m, PANEL_BTN_LFO);
     assert_eq!(toast_text(&mut m, &fw), "NOTHING TO UNDO");
 }
+
+/// MIDI learn on a LAB card, over TRS: SAVE held + K2 on OSC picks PWM depth (which has an NRPN
+/// and no CC), CC 14 binds to it and sets it through the map's curve, and the next CC follows;
+/// learn's frame closes over LAB and leaves it on top.
+#[test]
+fn midi_learn_on_a_lab_card_over_trs() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    let lab = fw.symbol("lab_view_view");
+    let learn = fw.symbol("learn_view_view");
+    let depth_of = |m: &mut Machine| {
+        let a = live_at(&fw, ilp32::live::pwm_depth);
+        u32::from(m.soc.read8(a)) | u32::from(m.soc.read8(a + 1)) << 8
+    };
+    let before = depth_of(&mut m);
+    let row = unsafe { midi_map_for_param(LIVE_PARAM_PWM_DEPTH) };
+    let from_cc = |v: u8| unsafe { midi_map_from_cc(row, v) };
+
+    m.key(PANEL_BTN_SAVE as u8, true);
+    m.run_ms(30);
+    m.turn(K1 + 1, 1);
+    m.run_ms(80);
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        learn,
+        "SAVE + K2 opened learn"
+    );
+    m.key(PANEL_BTN_SAVE as u8, false);
+    m.run_ms(80);
+    assert_eq!(depth_of(&mut m), before, "K2 picks, it does not turn");
+    let state = |m: &mut Machine| {
+        m.soc
+            .read8(fw.symbol("learned") + ilp32::midi_learn::state as u32)
+    };
+    assert_eq!(u32::from(state(&mut m)), MIDI_LEARN_CC);
+    m.midi(&[0xB0, 14, 64]);
+    m.run_ms(150);
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        lab,
+        "the frame closed over LAB"
+    );
+    assert_eq!(u32::from(state(&mut m)), MIDI_LEARN_IDLE);
+    assert_eq!(depth_of(&mut m), from_cc(64), "CC 14 set PWM depth");
+    m.midi(&[0xB3, 14, 127]);
+    m.run_ms(60);
+    assert_eq!(depth_of(&mut m), from_cc(127), "and the next CC follows");
+    m.midi(&[0xB0, 14, 0]);
+    m.run_ms(60);
+    assert_eq!(depth_of(&mut m), from_cc(0));
+}

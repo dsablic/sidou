@@ -69,8 +69,21 @@ void learn_view_param_name(uint32_t param, char* buf) {
     } else if (param >= LIVE_PARAM_EXPERT_END && param < LIVE_PARAM_COUNT) {
         static const char* const TAIL[LIVE_PARAM_TAIL] = {"PWM DEPTH", "PWM RATE", "TUNE"};
         append(buf, LEARN_VIEW_NAME, TAIL[param - LIVE_PARAM_EXPERT_END]);
-    } else { /* not on a knob: the panel never picks it */
-        append(buf, LEARN_VIEW_NAME, "PARAM ");
+    } else {
+        /* LAB's cards past the ones above (each at most 8 characters: "LEARN " fits) */
+        static const struct {
+            uint8_t param;
+            const char* name;
+        } MORE[] = {{LIVE_PARAM_FILTER_VOICES, "VOICES"},    {LIVE_PARAM_VELOCITY_TARGET, "VELOCITY"},
+                    {LIVE_PARAM_VIBRATO_RATE, "VIB RATE"}, {LIVE_PARAM_VIBRATO_DEPTH, "VIB AMT"},
+                    {LIVE_PARAM_VIBRATO_DELAY, "VIB DLY"}};
+        for (uint32_t i = 0; i < sizeof MORE / sizeof MORE[0]; i++) {
+            if (MORE[i].param == param) {
+                append(buf, LEARN_VIEW_NAME, MORE[i].name);
+                return;
+            }
+        }
+        append(buf, LEARN_VIEW_NAME, "PARAM "); /* not on a knob: the panel never picks it */
         append_number(buf, LEARN_VIEW_NAME, param);
     }
 }
@@ -243,6 +256,12 @@ static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_
         return 1;
     }
     int none = p && p->page == PANEL_PAGE_NONE && !(held & (1u << PANEL_BTN_EDIT));
+    if (p && p->page >= PANEL_PAGE_LAB_FIRST && (p->page != PANEL_PAGE_LAB_FIRST || enc != PANEL_ENC_K1)) {
+        char t[] = "K?: NOTHING"; /* a card no parameter is on yet (FILTER's K4) */
+        t[1] = (char)('1' + enc - PANEL_ENC_K1);
+        screen_toast(s, t, SCREEN_TOAST_MS);
+        return 0;
+    }
     screen_toast(s, none ? "SONG SETUP: NO CC" : "RATIO: NO CC", SCREEN_TOAST_MS);
     return 0;
 }

@@ -738,7 +738,11 @@ refusals read `STORE FOREIGN: NOT SAVED`, `STORE ERROR: NOT SAVED` and `STORE FU
 A second SAVE while one is being written toasts `SAVING: WAIT` and writes nothing. With all
 sixteen slots full, SAVE on a sound that is not a USER one toasts `USER FULL: EDIT+SAVE` and
 writes nothing (a USER sound still keeps in place). SAVE held while a knob turns is MIDI learn
-for that card's parameter, and SAVE + HOME is learn's clear, as everywhere.
+for that card's parameter on every page (on FX the selected slot's control; the toast names it:
+`LEARNED CC 21 -> PWM DEPTH`), and SAVE + HOME is learn's clear, as everywhere. OSC's K1 on a
+sync sound without pulse is the ratio, which has no CC (`RATIO: NO CC`); a card with no parameter
+yet (FILTER's K4) toasts `K4: NOTHING`. LAB composes under learn's frame; the frame forwards
+nothing to it.
 
 **EDIT + SAVE** (EDIT held first, as the help card teaches) opens the **name page**, a mode of
 LAB (`KEEP AS`, everything at 2x): the slot (`SLOT U03`, with `FREE` or `USED` and a used slot's

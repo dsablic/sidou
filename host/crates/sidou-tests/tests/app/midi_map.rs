@@ -1396,10 +1396,12 @@ the gesture, how to cancel and how to clear). What is learned:
   and gets its CC back when the binding is forgotten. CC 1 learned for a parameter no longer
   moves the modulation wheel.
 - **One each way:** a parameter has at most one learned CC and a CC at most one parameter;
-  learning again moves the binding. The gesture reaches the {knobs} parameters on the knobs
-  (the cutoff, resonance and pulse width, CHIP's Age, DAC, Thump and Bleed, and each
-  effect slot's Amount, A, B and Mix), so
-  there are at most {knobs} bindings.
+  learning again moves the binding. The gesture reaches every
+  parameter a knob turns: the cutoff, resonance, pulse width and release, CHIP's Age, DAC, Thump
+  and Bleed and expert controls, each effect slot's Amount, A, B and Mix, and every card of
+  LAB's pages (the envelope, the filter voices, the vibrato's rate, depth and delay, the
+  velocity target, PWM depth, PWM rate and fine tune: the last three have an NRPN and no CC of
+  their own, so a learned CC is their only CC).
 - **Values:** through the parameter's curve and range in the map below, as its own CC.
 - **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
   records what the controller sends and plays it back onto the same parameter. A parameter
@@ -1411,7 +1413,6 @@ the gesture, how to cancel and how to clear). What is learned:
 
 ",
         unlearnable = list(&unlearnable()),
-        knobs = 3 + (LIVE_CHAR_FIELDS - 1) + LIVE_SLOTS * (LIVE_SLOT_FIELDS - 1),
         timeout = MIDI_LEARN_TIMEOUT_MS / 1000,
     )
 }
