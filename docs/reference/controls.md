@@ -547,12 +547,15 @@ means something else there:
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
 | SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
 | SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
+| LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
+| LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
 it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
 as the card is, within the frame's 200 cells. LIVE, LIVE SLOT, CHIP, STEP and its states,
-TRACKER and its states, ORDER and INSTR have two.
+TRACKER and its states, ORDER and INSTR and each of LAB's pages have two (EDIT's tap, A/B, and
+PRESETS are on LAB's hint line, which has no room on the cards).
 
 **Every control a view takes is on its card.** A host test (`help_view.rs`,
 `every_control_a_view_takes_is_on_its_card`) opens each view in each state above, feeds the view's

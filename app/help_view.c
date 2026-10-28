@@ -153,13 +153,33 @@ static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP",
 static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "HOME\0CANCEL",
                                             "HOLD HOME\0HELP"};
 
-/* LAB: SELECT its pages, ALG each page's choice, K1-K4 its cards, ENV, LFO and FX open their
- * pages; SAVE keeps the sound; EDIT + LFO undoes, EDIT + PRESETS reverts (one undo step), EDIT +
- * ARP varies the page, EDIT + SCL rolls the sound; HOME goes back to LIVE. */
-static const char* const LAB_LINES[] = {"SELECT\0PAGE",  "ALG\0CHOICE",  "K1-K4\0CARDS",
-                                        "SAVE\0KEEP",   "ENV\0ENVELOPE", "LFO\0MODULATION", "FX\0EFFECTS",
-                                        "E+LFO\0UNDO",  "E+ARP\0VARY",   "E+SCL\0ROLL",
-                                        "E+PRE\0REVERT", "HOME\0LIVE",   "HOLD HOME\0HELP"};
+/* LAB's pages, a card each: the page's four cards and its choice first, then what every page
+ * takes (two pages at most, so no line is spared: SAVE+K is MIDI learn, EDIT's tap is the hint
+ * line's A/B). ENV, LFO and FX open their pages, EDIT + PRESETS reverts, HOME goes to LIVE. */
+#define LAB_TAIL_A "SELECT\0PAGE", "ENV LFO\0PAGES", "FX\0PAGE"
+#define LAB_TAIL_B "SAVE\0KEEP", "E+SAVE\0NAME", "E+LFO\0UNDO", "E+ARP\0VARY", "E+SCL\0ROLL", \
+                   "E+PRE\0REVERT"
+static const char* const LAB_OSC_LINES[] = {
+    "K1\0PULSE/RATIO", "K2\0PWM DEPTH", "K3\0PWM RATE", "K4\0TUNE",
+    "ALG\0WAVEFORM",   LAB_TAIL_A,      LAB_TAIL_B,     "SAVE+K\0LEARN", "HOME\0LIVE"};
+static const char* const LAB_ENVELOPE_LINES[] = {
+    "K1\0ATTACK", "K2\0DECAY", "K3\0SUSTAIN", "K4\0RELEASE",
+    "ALG\0ENV MODE", LAB_TAIL_A, LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
+static const char* const LAB_FILTER_LINES[] = {
+    "K1\0CUTOFF", "K2\0RESONANCE", "K3\0VOICES", "K4\0UNUSED",
+    "ALG\0FILTER", LAB_TAIL_A,      LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
+static const char* const LAB_MOD_LINES[] = {
+    "K1\0VIBRATO HZ", "K2\0VIB DEPTH", "K3\0VIB DELAY", "K4\0VELOCITY",
+    "ALG\0ARP",       LAB_TAIL_A,      LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
+/* FX: the selected slot's controls in its algorithm's words; SCL moves the slot (no room left
+ * for the learn line). */
+static const char* const LAB_FX_LINES[] = {
+    "K1\0\1",       "K2\0\2",  "K3\0\3",    "K4\0\4",
+    "ALG\0ALGORITHM", LAB_TAIL_A, LAB_TAIL_B, "SCL\0NEXT SLOT", "HOME\0LIVE"};
+/* The name page (EDIT + SAVE): the keys type, the three page buttons and K2-K4 do nothing. */
+static const char* const LAB_NAME_LINES[] = {
+    "KEYS\0LETTERS", "SELECT\0CURSOR", "ALG\0CHARACTER", "K1\0SLOT",
+    "SAVE\0WRITE",   "HOME\0BACK",     "K2-K4\0NOTHING", "ENV LFO FX\0OFF"};
 
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
 const help_card help_cards[HELP_CARDS] = {
@@ -187,13 +207,20 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_SIDS] = CARD("SIDS", SIDS_LINES),
     [HELP_CARD_PLAYING] = CARD("PLAYING", PLAYING_LINES),
     [HELP_CARD_UNSAVED] = CARD("UNSAVED", UNSAVED_LINES),
-    [HELP_CARD_LAB] = CARD("LAB", LAB_LINES),
+    [HELP_CARD_LAB_OSC] = CARD("LAB OSC", LAB_OSC_LINES),
+    [HELP_CARD_LAB_ENVELOPE] = CARD("LAB ENV", LAB_ENVELOPE_LINES),
+    [HELP_CARD_LAB_FILTER] = CARD("LAB FILTER", LAB_FILTER_LINES),
+    [HELP_CARD_LAB_MOD] = CARD("LAB MOD", LAB_MOD_LINES),
+    [HELP_CARD_LAB_FX] = CARD("LAB FX", LAB_FX_LINES),
+    [HELP_CARD_LAB_NAME] = CARD("LAB NAME", LAB_NAME_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_REC_LINES / sizeof TRACKER_REC_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TABLE_LINES / sizeof TABLE_LINES[0] <= HELP_LINES * HELP_PAGES &&
-                   sizeof ARP_LINES / sizeof ARP_LINES[0] <= HELP_LINES * HELP_PAGES,
+                   sizeof ARP_LINES / sizeof ARP_LINES[0] <= HELP_LINES * HELP_PAGES &&
+                   sizeof LAB_OSC_LINES / sizeof LAB_OSC_LINES[0] <= HELP_LINES * HELP_PAGES &&
+                   sizeof LAB_FX_LINES / sizeof LAB_FX_LINES[0] <= HELP_LINES * HELP_PAGES,
                "two pages at most");
 
 /* The text rows: the title bar's three and the row after it (unit 0), then a line every three

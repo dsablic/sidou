@@ -591,6 +591,7 @@ fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
             "ALG" => vec![Ctl::Encoder(PANEL_ENC_ALGORITHM)],
             "PRESETS" | "PRE" => vec![Ctl::Encoder(PANEL_ENC_PRESETS)],
             "K" | "K1-K4" => knobs(1..=4),
+            "K2-K4" => knobs(2..=4),
             "K1" => knobs(1..=1),
             "K2" => knobs(2..=2),
             "K3" => knobs(3..=3),
@@ -625,9 +626,14 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 36] = [
+const CONTEXTS: [&str; 41] = [
     "LIVE",
-    "LAB",
+    "LAB OSC",
+    "LAB ENV",
+    "LAB FILTER",
+    "LAB MOD",
+    "LAB FX",
+    "LAB NAME",
     "LIVE SLOT",
     "MENU",
     "SETTINGS",
@@ -694,7 +700,20 @@ fn open_ctx(name: &str) -> Ctx {
         "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
         "RESET" => crate::views::open_setting(ui, VIEWS_SETTINGS_RESET),
         "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
-        "LAB" => menu_item(ui, VIEWS_MENU_LAB),
+        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB MOD" | "LAB FX" | "LAB NAME" => {
+            menu_item(ui, VIEWS_MENU_LAB);
+            let page = ["LAB OSC", "LAB ENV", "LAB FILTER", "LAB MOD", "LAB FX"]
+                .iter()
+                .position(|n| *n == name);
+            crate::lab_view::to_page(ui, page.unwrap_or(0) as u32);
+            if page.is_none() {
+                ui.down(PANEL_BTN_EDIT); // EDIT + SAVE: the name page
+                ui.press(SAVE_KEY_BUTTON);
+                ui.up(PANEL_BTN_EDIT);
+                ui.settle();
+                assert_ne!(ui.v.lab.mode, 0, "the name page");
+            }
+        }
         "SCENE" => menu_item(ui, VIEWS_MENU_SCENE),
         "STATUS" => menu_item(ui, VIEWS_MENU_STATUS),
         "ABOUT" => menu_item(ui, VIEWS_MENU_ABOUT),
@@ -821,6 +840,44 @@ fn every_view_and_page_holds_home_to_its_own_card() {
         seen[id as usize] = true;
     }
     assert!(seen.iter().all(|&s| s), "a card no view opens: {seen:?}");
+}
+
+/// LAB's cards, each a golden: the pages (two pages each) and the name page. A page's card names
+/// the control of its sound as the page has it.
+#[test]
+fn lab_help_cards_match_their_goldens() {
+    for (name, golden_name, pages) in [
+        ("LAB OSC", "help-lab-osc", 2),
+        ("LAB ENV", "help-lab-envelope", 2),
+        ("LAB FILTER", "help-lab-filter", 2),
+        ("LAB MOD", "help-lab-mod", 2),
+        ("LAB FX", "help-lab-fx", 2),
+        ("LAB NAME", "help-lab-name", 1),
+    ] {
+        let mut c = open_ctx(name);
+        let ui = &mut c.s.ui;
+        if name == "LAB FX" {
+            ui.turn(PANEL_ENC_ALGORITHM, 2); // OVERDRIVE: its own names
+            ui.settle();
+        }
+        hold_until_card(ui);
+        for _ in 0..12 {
+            frame(ui);
+        }
+        assert_eq!(card_name(ui), name);
+        assert_page_drawn(ui, name);
+        crate::sid_view::golden(ui, golden_name);
+        if pages == 2 {
+            ui.turn(PANEL_ENC_SELECT, 1);
+            for _ in 0..12 {
+                frame(ui);
+            }
+            assert_eq!(ui.top(), "HELP", "SELECT turned the card");
+            assert_page_drawn(ui, name);
+            crate::sid_view::golden(ui, &format!("{golden_name}-2"));
+        }
+        close(ui);
+    }
 }
 
 /// The state's words: CHIP's slot card names its algorithm's controls (OVERDRIVE: DRIVE, TONE,
@@ -950,7 +1007,12 @@ fn saves(name: &str) -> bool {
     matches!(
         name,
         "CHIP"
-            | "LAB"
+            | "LAB OSC"
+            | "LAB ENV"
+            | "LAB FILTER"
+            | "LAB MOD"
+            | "LAB FX"
+            | "LAB NAME"
             | "EXPERT"
             | "MENU"
             | "SONG"

@@ -2273,7 +2273,7 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         return HELP_CARD_CHARSET;
     }
     if (top == &lab_view_view) {
-        return HELP_CARD_LAB;
+        return v->lab.mode ? HELP_CARD_LAB_NAME : HELP_CARD_LAB_OSC + v->lab.page;
     }
     if (top == &chip_view_view) {
         uint32_t f = chip_view_focus(&v->chip);
