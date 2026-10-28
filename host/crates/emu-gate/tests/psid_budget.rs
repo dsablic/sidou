@@ -35,9 +35,9 @@ const MEM_ADDR: u32 = 0x01CC_0000;
 const PASSES: u32 = 40;
 /// RAMTEXT M3 may take (the plan's "Budgets").
 const M3_RAMTEXT: u64 = 1_536;
-/// The image's flash stage: flash_budget.rs `IMAGE_CEILING`, LAB's stage since LAB's Task 1b
-/// (M3's was 534,000).
-const IMAGE_CEILING: u64 = 541_000;
+/// The image's flash stage: flash_budget.rs `IMAGE_CEILING`, 1.0's stage since LAB's Task 1b
+/// (M3's was 534,000; LAB's own 541,000, raised to 552,000 on 2026-10-28).
+const IMAGE_CEILING: u64 = 552_000;
 
 fn build() -> Option<std::path::PathBuf> {
     let b = build_dir();
