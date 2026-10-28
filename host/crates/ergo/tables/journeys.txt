@@ -143,6 +143,26 @@ journey explore | Explore the chip, the effects and the scene
   step scene-next | Next piece | SELECT picks the next piece | turn SELECT 1; wait 700; note A4 400 | toast; clip 300
   step scene-home | Back from SCENE | HOME | press HOME; press HOME; wait 400 | view live
 
+journey songs | Work with the song lists
+  goal Open SONG's pages (LOAD, NEW, SAVE AS, DELETE) and the SIDS list; HOME backs out of each, and a key still sounds at the end.
+  prereq On LIVE after the boot; no song of your own in the store.
+  skills SONG menu; LOAD; NEW; SAVE AS; DELETE; SIDS; HOME as the way back
+  related build; keep
+  step open-song-menu | Open SONG's actions | HOME, then SONG | press HOME; select-item SONG; press SAVE; wait 800; turn SELECT -5 | view song_menu; text LOAD
+  step load-list | Open LOAD's files | SAVE opens the list | press SAVE; wait 1500 | view song_menu; text SIDOU LOOP
+  step load-back | HOME from the files | HOME goes back a page | press HOME; wait 500 | view song_menu; text LOAD
+  step new-song | NEW | SELECT to NEW, SAVE starts a new song | turn SELECT 1; press SAVE; wait 800 | view song_menu; text LOAD
+  step save-as | SAVE AS | SELECT to SAVE AS, SAVE opens the name | turn SELECT -5; turn SELECT 2; press SAVE; wait 1000 | view song_menu; text CURSOR
+  step save-as-back | HOME from the name | HOME goes back a page | press HOME; wait 500 | view song_menu; text LOAD
+  step delete-list | DELETE's list | SELECT to DELETE, SAVE opens the list | turn SELECT -5; turn SELECT 3; press SAVE; wait 1500 | view song_menu; text NO SONGS
+  step delete-save | SAVE on the empty list | SAVE has nothing to choose here | press SAVE; wait 500 | view song_menu; text NO SONGS
+  step delete-back | HOME from the list | HOME goes back a page | press HOME; wait 500 | view song_menu; text LOAD
+  step to-menu | Back to the menu | HOME | press HOME; wait 500 | view menu
+  step sids-list | The SIDS list | SIDS in the menu | select-item SIDS; press SAVE; wait 1500 | view sid_view_browser
+  step sids-save | SAVE on the SIDS list | SAVE chooses the tune under the cursor | press SAVE; wait 800 | -
+  step sids-back | Back to the menu | HOME | press HOME; wait 500 | view menu
+  step live | Back to LIVE | HOME | press HOME; wait 1500 | view live; probe
+
 journey tour | Screens for the readability check | tour
   step live-idle | LIVE at rest | - | wait 100 | view live
   step live-chord | LIVE with a chord | - | down C4; down E4; down G4; wait 500 | sound

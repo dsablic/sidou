@@ -37,8 +37,8 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **Minimal DICE settings.** Density and scale, saved per song. M.
 - **Store health on STATUS.** A retired store sector is shown, and a background settings save
   that failed is detected and retried. S.
-- **More test coverage.** A gate that decodes every instruction of the image, and the ergo
-  harness walks LOAD and the SONG pages, checking SAVE and HOME on every list. S-M.
+- **More test coverage.** Done: a gate that decodes every instruction of the image, and the
+  ergo harness walks LOAD and the SONG pages, checking SAVE and HOME on every list.
 - **A SIDS how-to video and What's new in 1.0.** S-M.
 - **The GitHub look.** Avatar, social preview, the Firmware Hub card checked. S, by hand.
 
