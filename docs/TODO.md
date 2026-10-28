@@ -395,6 +395,8 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 
 ## A gate that decodes every instruction of the image
 
+- **Done (2026-10-28):** `emu-gate/tests/decode_gate.rs`, TESTING.md "Decode gate". The notes below are its background.
+
 - **Why:** a compiler idiom fm1-emu lacks stops the emulator only when a test happens to run
   its path (the and-not read-modify-write with r8-r15, `64 e8 5f bc`, stopped the keys test and
   the browser demo at the first key release in M2d Task 1; fixed upstream in fm1-emu #33, in the
