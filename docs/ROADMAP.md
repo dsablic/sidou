@@ -82,6 +82,24 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   over the USB cable, for the other FM-1 firmwares too. L; the design text is in the
   [old roadmap](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md).
 
+**Platform**
+
+- **Move to felucca-bsp (Felucca 1.7.0's board support).** Felucca 1.7.0 moved its chip and board
+  code (USB, flash, the second core) into [felucca-bsp](https://github.com/hugelton/felucca-bsp),
+  under MPL-2.0. SIDOU takes it as it takes Felucca's code today, byte for byte with its flags:
+  - its `chip/usb.c` in place of 1.6.1's, with its USB-name build settings instead of SIDOU's
+    hook, once [felucca-bsp#14](https://github.com/hugelton/felucca-bsp/issues/14) (the SIE
+    timing at `-O2`) and [#15](https://github.com/hugelton/felucca-bsp/issues/15) (a raw MIDI-in
+    hook) are settled;
+  - the update loader kept compatible: installs and updates from 0.x and from Felucca still work;
+  - its notes on the CPU (64-bit multiplies beside 16-bit loads) checked against SIDOU's audio
+    path;
+  - what MPL-2.0 changes: the second core's code becomes usable, and the BLE variant's licence
+    question (below) is worth asking again;
+  - fm1-emu bumped past its watchdog model, so the tests check that a hang recovers.
+
+  L; a device session (installs, updates, USB-MIDI, USB audio).
+
 **Quality**
 
 - **Knob curves for every parameter.** K1's cutoff, MASTER, K3 and K4 are done; the rest get
@@ -102,7 +120,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **BLE MIDI as a user-built variant.** Source only (`SIDOU_WIRELESS=ble`), never published or
   built by CI: M-VAVE's BLE library is closed, and linking it into a distributed image would
   need every copyleft owner in the image to agree; a private build is allowed by the GPL. L.
-  [Why](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md).
+  [Why](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md). To ask again once SIDOU is on felucca-bsp (MPL-2.0).
 - **Layer mode.** Two sounds on one key. L; audio interrupt.
 - **FM-1 Live Link extras:** a tray app, a share link, iOS.
 - **RSID playback.** Not now (see below); revisit if there is demand.
