@@ -267,6 +267,30 @@ fn writes_past_the_split_budget_go_in_order_at_the_blocks_end() {
 }
 
 #[test]
+fn dense_bursts_of_a_players_writes_land_on_time() {
+    // The flash day's dense players (docs/hardware-results/2026-10-25-m3-flash-day.md): Thomkat
+    // writes 23 to 26 times in 16 to 19 samples, Kill Me about as many. Each write here is at a
+    // sample of its own (15 and 18 cycles apart, a sample is 22.3: some share one), more than
+    // the 15 renders PSID_SPLITS = 16 allowed, so those writes came late before.
+    for (n, gap) in [(26, 15), (23, 18), (26, 17)] {
+        let file = writer(n, gap, |i| (i * 37 + 5) as u8);
+        let mut p = Player::new(&file);
+        assert!(p.play(1));
+        let (a, b) = p.run(blocks_for(1), PASSES);
+        assert!(
+            p.ctl.splits_max > 16,
+            "{n} writes {gap} cycles apart: {} renders a block, the burst is no more than 16 \
+             parts",
+            p.ctl.splits_max
+        );
+        assert!(p.ctl.splits_max <= PSID_SPLITS);
+        assert_eq!(p.late(), 0, "{n} writes {gap} cycles apart: late writes");
+        assert_eq!(p.log.len(), n as usize + 3, "the burst and init's setup");
+        assert_exact(&p, &file, &a, &b, "a dense burst");
+    }
+}
+
+#[test]
 fn a_slow_init_plays_in_real_time_from_the_audios_start() {
     // init runs about 2 s, writing voice 1's frequency every 30,000 cycles
     let init = format!(
@@ -560,7 +584,13 @@ fn a_write_every_four_cycles_never_overflows_the_ring() {
         "{taken} entries in {blocks} blocks"
     );
     assert!(p.late() > 0, "the budget is spent in every block");
-    assert_eq!(p.ctl.splits_max, PSID_SPLITS);
+    // 80 entries at 5 or 6 a sample take 14 to 17 samples, a render each (the render limit is
+    // for one write a sample, psid_budget.rs)
+    assert!(
+        (14..=PSID_SPLITS).contains(&p.ctl.splits_max),
+        "{} renders",
+        p.ctl.splits_max
+    );
 }
 
 #[test]

@@ -31,9 +31,9 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **ARP helper: audition and waveform choice.** Hear the draft before SAVE and pick its
   waveform in TABLE's helper. S.
 - **Readable small text.** TABLE's and STEP's small text at 2× where there is room. S-M.
-- **Fewer late writes for dense `.sid` players.** More render parts per block (`PSID_SPLITS`
-  16 to 24), proved by a one-write-a-sample bench: Thomkat, Kill Me and Last Ninja stop
-  counting late writes. S-M.
+- **Fewer late writes for dense `.sid` players.** Done: 24 render parts a block (from 16), 80
+  writes a block's window (from 100, to stay in the interrupt's budget), proved by a
+  one-write-a-sample bench and synthetic player bursts; Sound Test stays a known limit.
 - **Minimal DICE settings.** Density and scale, saved per song. M.
 - **Store health on STATUS.** A retired store sector is shown, and a background settings save
   that failed is detected and retried. S.

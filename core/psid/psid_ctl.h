@@ -96,10 +96,15 @@ extern "C" {
  * wait for the next block (late, and the ring fills, so the 6502 waits). Set by Task 9 from the
  * device's costs (emu-gate psid_budget.rs: a write about 95 instructions with its pop and
  * sid_write, an entry skipped about 10, a render part about 95 with its sid_advance) so that the
- * worst block, a write every 4 cycles (about 700 a block), holds PSID_ISR_WORST: the corpus'
- * tunes need at most 15 renders and 18 entries a block, so they lose nothing. */
-#define PSID_SPLITS 16u
-#define PSID_BLOCK_ENTRIES 100u
+ * worst blocks hold PSID_ISR_WORST: a write every 4 cycles (about 700 a block: the entries
+ * packed into 17 renders at 24 and 80, 94.9 instructions a sample; 123.1 at 24 and 100, over),
+ * and one write on every sample (the most renders a block can take: 87.2 at 24 and 80, 101.0 at
+ * 24 and 100, 94.8 at 16 and 100; 120 is the limit). The corpus' tunes need at most 15 renders
+ * and 18 entries a block. 24 renders (from 16, after the flash day) clear the dense players'
+ * bursts of 23-26 writes over 16-19 samples (Thomkat, Kill Me, The Last Ninja: no late
+ * writes) with 80 entries (from 100) for the cost of it; Sound Test needs 61. */
+#define PSID_SPLITS 24u
+#define PSID_BLOCK_ENTRIES 80u
 
 /* A ring entry's 16 bits: chip << 13 | register << 8 | value (register 0-31). */
 #define PSID_RING_ENTRY(chip, reg, value) \
