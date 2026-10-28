@@ -8,7 +8,7 @@
 
 ## Context
 
-The roadmap's "From the other SID firmwares" item (docs/plans/2026-10-18-roadmap-after-m2.md):
+The roadmap's "From the other SID firmwares" item (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md):
 drums on the chip's own voices for STEP's lanes, and short samples played through the 6581's
 volume register as C64 tunes do. Melodee's SID KIT and SID DIGI and SID-1's sample kit were
 the inspiration; none of their code or data is used (the "adopt, then improve" rule): the

@@ -12,6 +12,7 @@
 //!   2SID) and over synthetic worst tunes, an access every 4 cycles for whole frames (about 700
 //!   writes a block: PSID_SPLITS renders, PSID_BLOCK_ENTRIES entries, the rest late), to a
 //!   voice, the cutoff (each render part then recomputes the filter) and the volume;
+//!   and one write on every sample (a block at its PSID_SPLITS render limit);
 //! * the firmware's main loop with a tune playing (platform/fm1/main.c, the test hook) and LIVE
 //!   showing (the busiest view: its tap on, LIVE_WORST_POLL): each psid_ctl_poll within
 //!   PSID_SLICE_WORST, every pass within POLL_INSTRUCTIONS;
@@ -27,6 +28,7 @@ use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::psid::{packed, songs};
+use sidou_tests::psid_fixtures::{exact, Psid, INIT};
 
 const PARAM_ADDR: u32 = 0x01CB_0000;
 const FILE_ADDR: u32 = PARAM_ADDR + 0x100;
@@ -151,6 +153,45 @@ fn bench_blocks(build: &std::path::Path, file: &[u8], blocks: usize, model: u32)
     }
 }
 
+/// A tune whose init sets the voices up as `worst_tune` and then writes `reg` of chip A with a
+/// changing value, one write every 24 cycles (a sample is 22.3: each at its own sample, so a
+/// block has as many distinct positions as PSID_BLOCK_ENTRIES allows, the most renders: 80
+/// entries, 23 renders).
+fn one_write_a_sample_tune(reg: u32) -> Vec<u8> {
+    let mut init = String::new();
+    for v in 0..3 {
+        let r = 0xD400 + 7 * v;
+        for (off, value) in [
+            (0, 0xff),
+            (1, 0xff),
+            (2, 0),
+            (3, 8),
+            (5, 0),
+            (6, 0xf0),
+            (4, 0x91),
+        ] {
+            init += &format!("lda #${value:02x}\nsta ${:04x}\n", r + off);
+        }
+    }
+    init += "lda #$0f\nsta $d418\nloop:\n";
+    for k in 0..120u32 {
+        // the cutoff's low bits, a voice's frequency, the volume's low nibble: all change
+        let value = (k * 37 + 5) as u8;
+        let value = if reg == 0x18 {
+            0x10 | (value & 0x0f)
+        } else {
+            value
+        };
+        init += &format!(
+            "lda #${value:02x}\nsta ${:04x}\n{}",
+            0xD400 + reg,
+            exact(18)
+        );
+    }
+    init += "jmp loop\n";
+    Psid::new(&[(INIT, &init), (0x8000, "rts\n")]).bytes()
+}
+
 /// The worst block's .sid path in instructions a sample, and its index.
 fn worst(b: &Blocks) -> (f64, usize) {
     b.blocks
@@ -196,6 +237,25 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
             300,
         ));
     }
+    // One write on every sample (each block hits the render limit): a voice's, the cutoff's and
+    // the volume's.
+    for (what, reg) in [
+        ("voice 2's", 0x0f),
+        ("the cutoff", 0x16),
+        ("the volume", 0x18),
+    ] {
+        for model in [0u32, 1] {
+            runs.push((
+                format!(
+                    "{}, a write to {what} every sample",
+                    ["6581", "8580"][model as usize]
+                ),
+                one_write_a_sample_tune(reg),
+                model,
+                300,
+            ));
+        }
+    }
     // SIDOU_PSID_RUNS: only the runs whose name has it (a quick look at one).
     if let Some(only) = std::env::var_os("SIDOU_PSID_RUNS") {
         runs.retain(|r| r.0.contains(only.to_str().unwrap()));
@@ -215,7 +275,7 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
             b.blocks[at].1, b.blocks[at].0, b.writes, b.late, b.splits
         );
         assert!(b.writes > 0, "{name}: no writes");
-        if !name.contains("every 4 cycles") {
+        if !name.contains("every 4 cycles") && !name.contains("every sample") {
             assert_eq!(b.late, 0, "{name}: writes late with the main loop ahead");
         }
         if w > dearest {

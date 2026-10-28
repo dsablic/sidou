@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # LAB: what other firmwares do (inspiration, 2026-10-25)
 
-Input for the LAB design session (docs/TODO.md, "LAB"). Read from cheat sheets and READMEs, not
+Input for the LAB design session (https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md, "LAB"). Read from cheat sheets and READMEs, not
 source; ideas are adopted and improved, never copied (SIDOU's own design).
 
 ## FM-1 firmwares

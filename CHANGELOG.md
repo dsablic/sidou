@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Dense `.sid` players write on time:** a block of the audio now renders in up to 23 parts, not
+  15, so a player that writes 23-26 times within 16-19 samples (Thomkat, Kill Me, The Last Ninja)
+  no longer has writes land at the end of their 128-sample block (up to 2.9 ms late). LATE on
+  STATUS stays at 0 for them; Sound Test, with a write about every sample for a whole frame, still
+  shows some. No memory and no audible change elsewhere.
+
 ## [0.5.0] - 2026-10-25
 
 ### Added
@@ -255,7 +262,7 @@ All notable changes are documented here. The format follows
   K1 and K2 become cutoff and resonance locks on the row they were turned in. The menu's REC
   item chooses the mode (not saved). TRACKER's cursor stays where it is while recording, and a
   key's time is not compensated for latency: both are open for the unit
-  ([TODO](docs/TODO.md)).
+  ([TODO](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md)).
 - Ergonomics: **DICE**, a place after NOISE PERC on PRESETS: each turn rolls a new sound (waveform,
   envelope, cutoff, resonance, filter, pulse width, now and then a vibrato) and leaves the effect
   slots alone; turning back and forth brings the last roll back. MIDI program changes stay 0..3.

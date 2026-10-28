@@ -368,7 +368,7 @@ view's tap (on at power-on, 4.5; below):
 
 The former 400 for the 6502 is no longer in the sum: it does not exist yet (M3). The
 gate prints what is left of 2,700 instead, the 6502's headroom: **191** per sample
-(227 before M1b Task 6, below, without the tap). docs/TODO.md tracks what to do if the 6502 needs more.
+(227 before M1b Task 6, below, without the tap). https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md tracks what to do if the 6502 needs more.
 
 **M1b Task 6 (2026-10-15): the 6581's non-linear filter.** The 6581's filter now moves
 its cutoff with the signal and with the DC load of the voices routed into it, mixes its

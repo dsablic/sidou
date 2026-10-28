@@ -3,7 +3,7 @@
 # LAB: shape one sound and keep it (design, 2026-10-25)
 
 Agreed with the user in a design session after v0.5.0. Inputs:
-[docs/TODO.md](../TODO.md) "LAB", [what other firmwares do](2026-10-25-lab-inspiration.md),
+[https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md) "LAB", [what other firmwares do](2026-10-25-lab-inspiration.md),
 [the button audit](2026-10-25-button-audit.md).
 
 **The goal:** the FM-1 is an ideal device for experimenting on the go. LAB is where a LIVE sound
