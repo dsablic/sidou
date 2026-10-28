@@ -111,8 +111,9 @@ if(CMAKE_CROSSCOMPILING)
     # work or sit well clear of their budgets, built for size. Left out on purpose, each measured:
     # live.c (the input's instruction count: ui_encoder over CHIP_PICK_INPUT 400, K1 over POPUP_INPUT
     # 250) and title_card.c (THE CHIP's worst ui_poll 79,349 against 79,000).
-    # boot.c at -Os, not -Oz: the boot's timeline, which moves the SCENE and LIVE chip B goldens.
+    # boot.c, sid_character.c and sid_dac.c stay as they were: with LAB in, at -Os they moved the
+    # thump stage over its 31 a sample, the boot timeline (LIVE chip B's golden) and a tune's pause.
     set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c
         midi_learn.c about.c song_edit.c midi_map.c help_view.c logo.c PROPERTIES COMPILE_OPTIONS -Oz)
-    set_source_files_properties(boot.c screen.c chip_ctl.c keys_route.c panel.c PROPERTIES COMPILE_OPTIONS -Os)
+    set_source_files_properties(screen.c chip_ctl.c keys_route.c panel.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()

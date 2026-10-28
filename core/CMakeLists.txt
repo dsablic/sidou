@@ -64,12 +64,6 @@ set_source_files_properties(psid/psid_ctl_isr.c PROPERTIES COMPILE_OPTIONS "-O2;
 # (sid_osc.h's and sid_env.h's out-of-line helpers) has a name app.ld's .ram_text patterns take
 # into SRAM.
 set_source_files_properties(sid/sid_shadow.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-function-sections")
-# The character jobs and the DAC tables run in the main loop (and the boot); built for size, they
-# keep emu-gate character.rs and the goldens. Not -Oz: the thump's stage costs 32.14 a sample
-# against its 31, and a filter build's slice goes over REG_RING_PREPARE_SLICE.
-if(CMAKE_CROSSCOMPILING)
-    set_source_files_properties(sid/sid_character.c sid/sid_dac.c fx/fx_slots_init.c PROPERTIES COMPILE_OPTIONS -Os)
-endif()
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)
