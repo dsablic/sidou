@@ -771,7 +771,7 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
              (uint32_t)l->arp_on << 24) * 16777619u;
         h = (h ^ l->pwm_depth ^ (uint32_t)l->pwm_rate << 16) * 16777619u;
         h = (h ^ l->arp_rate ^ (uint32_t)l->arp_order << 8 ^ (uint32_t)l->arp_span << 16) * 16777619u;
-    } else {
+    } else if (page != LAB_DRAW_BLANK) {
         const uint8_t* s = l->slot[l->fx_select % LIVE_SLOTS];
         h = (h ^ l->fx_select ^ (uint32_t)s[0] << 8 ^ (uint32_t)s[1] << 16 ^ (uint32_t)s[2] << 24) *
             16777619u;
@@ -817,7 +817,7 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         d.color[0] = th->value;
         d.color[1] = l->control & 0x40u ? th->label : th->dim;
         d.color[LAB_DRAW_MARKER] = th->hot;
-    } else {
+    } else if (page != LAB_DRAW_BLANK) {
         fx_init(&x, l, hl);
         d.fn = x.kind == FX_NONE ? none_col : fx_col;
         d.ctx = &x;

@@ -1393,3 +1393,223 @@ fn a_second_keep_while_one_writes_is_refused_with_a_toast() {
     );
     assert_eq!(k.slot(0).unwrap().1, k.sound());
 }
+
+// ---- the name page (Task 9): EDIT + SAVE ----
+
+const EDIT: u32 = PANEL_BTN_EDIT;
+
+impl Stored {
+    /// EDIT held, SAVE pressed and let go (EDIT let go after): the name page.
+    fn edit_save(&mut self) {
+        self.ui.down(EDIT);
+        self.ui.press(SAVE);
+        self.ui.up(EDIT);
+        self.frames(3);
+    }
+
+    fn lab(&self) -> &lab_view {
+        &self.ui.v.lab
+    }
+
+    fn page_name(&self) -> String {
+        let n: Vec<u8> = self
+            .lab()
+            .name
+            .iter()
+            .take_while(|&&c| c != 0)
+            .map(|&c| c as u8)
+            .collect();
+        String::from_utf8(n).unwrap().trim_end().to_string()
+    }
+
+    /// The keys k (bit k of the key mask) pressed and let go.
+    fn type_keys(&mut self, keys: &[u32]) {
+        for &k in keys {
+            self.ui.note_keys(1 << k, 1 << k);
+            self.ui.note_keys(0, 0);
+        }
+        self.frames(3);
+    }
+
+    fn sounding(&self) -> bool {
+        self.ui.live().voice.iter().any(|v| v.gate != 0)
+    }
+}
+
+#[test]
+fn edit_save_opens_the_name_page_on_the_current_slot() {
+    let mut k = Stored::new();
+    k.edit_save();
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_NAME);
+    assert_eq!(k.lab().slot, 0, "the lowest free slot of a built-in");
+    assert_eq!(k.page_name(), "LAB 01");
+    assert_eq!(k.ui.v.sounds.state, 0, "nothing written by opening it");
+    assert_eq!(k.ui.live().sounds_valid, 0);
+    // K1 turns the slot, and the automatic name follows it
+    k.ui.turn(K1, 4);
+    k.frames(3);
+    assert_eq!(k.lab().slot, 4);
+    assert_eq!(k.page_name(), "LAB 05");
+    k.ui.turn(K1, 40);
+    assert_eq!(k.lab().slot, 15, "clamped");
+    k.ui.turn(K1, -40);
+    assert_eq!(k.lab().slot, 0);
+    // a USER sound opens on its own slot with its own name, which K1 leaves alone
+    k.ui.press(PANEL_BTN_HOME);
+    k.frames(3);
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_PAGES);
+    k.ui.turn(K1 + 1, 1);
+    k.ui.press(SAVE);
+    k.toast_within(2000, "KEPT").unwrap();
+    k.frames(60);
+    k.edit_save();
+    assert_eq!(k.lab().slot, 0);
+    assert_eq!(k.page_name(), "LAB 01");
+    k.ui.turn(K1, 2);
+    assert_eq!(k.page_name(), "LAB 01", "a USER sound's name stays");
+}
+
+#[test]
+fn keys_type_the_name_and_select_moves() {
+    let mut k = Stored::new();
+    k.edit_save();
+    k.type_keys(&[7, 8]); // H I
+    assert_eq!(
+        k.page_name(),
+        "HI",
+        "the first key starts a name of its own"
+    );
+    assert_eq!(k.lab().cursor_at, 2);
+    k.type_keys(&[26, 0]); // a space, A
+    assert_eq!(k.page_name(), "HI A");
+    assert_eq!(k.lab().cursor_at, 4);
+    // SELECT moves the cursor, clamped
+    k.ui.turn(PANEL_ENC_SELECT, -2);
+    assert_eq!(k.lab().cursor_at, 2);
+    k.ui.turn(PANEL_ENC_SELECT, -9);
+    assert_eq!(k.lab().cursor_at, 0);
+    k.ui.turn(PANEL_ENC_SELECT, 99);
+    assert_eq!(u32::from(k.lab().cursor_at), LAB_SOUND_NAME - 1);
+    // ALGORITHM changes the character under it: the SAVE AS alphabet, wrapping
+    k.ui.turn(PANEL_ENC_SELECT, -99);
+    k.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(k.page_name(), "II A", "H to I");
+    k.ui.turn(PANEL_ENC_ALGORITHM, -2);
+    assert_eq!(&k.page_name()[..1], "G");
+    k.ui.turn(PANEL_ENC_ALGORITHM, 64);
+    assert_eq!(&k.page_name()[..1], "G", "a lap of the alphabet");
+    // the last character: a key types it and the cursor stays
+    k.ui.turn(PANEL_ENC_SELECT, 99);
+    k.type_keys(&[25]);
+    assert_eq!(k.page_name().chars().last(), Some('Z'));
+    assert_eq!(u32::from(k.lab().cursor_at), LAB_SOUND_NAME - 1);
+    // the name written is the typed one, trimmed
+    k.ui.turn(PANEL_ENC_SELECT, -99);
+    k.ui.press(SAVE);
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT AS U01 GI A       Z")
+    );
+}
+
+#[test]
+fn a_used_slot_asks_once_more() {
+    let mut k = Stored::new();
+    k.shape_and_keep();
+    k.toast_within(2000, "KEPT").unwrap();
+    k.frames(60);
+    let kept = k.slot(0).unwrap();
+    unsafe { live_recall_preset(&mut *k.ui.rig.live, 1) };
+    k.ui.turn(K1 + 1, 3);
+    k.edit_save();
+    assert_eq!(k.lab().slot, 1, "the lowest free slot");
+    k.ui.turn(K1, -1);
+    assert_eq!(k.lab().slot, 0, "a used one");
+    k.type_keys(&[1, 2]); // BC: a name of the player's
+    k.ui.press(SAVE);
+    k.frames(3);
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_ASK);
+    assert_eq!(k.ui.v.sounds.state, 0, "asked, not written");
+    assert_eq!(k.slot(0).unwrap(), kept);
+    // another control cancels the question
+    k.ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_NAME);
+    k.ui.press(SAVE);
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_ASK);
+    assert_eq!(k.slot(0).unwrap(), kept, "still asking");
+    k.ui.press(SAVE);
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT AS U01 BC")
+    );
+    assert_eq!(
+        u32::from(k.lab().mode),
+        LAB_VIEW_MODE_PAGES,
+        "written: back to the pages"
+    );
+    let (name, sound) = k.slot(0).unwrap();
+    assert_eq!(name, "BC");
+    assert_eq!(sound, k.sound());
+    assert_ne!(sound, kept.1);
+}
+
+#[test]
+fn home_leaves_the_page_without_writing() {
+    let mut k = Stored::new();
+    k.edit_save();
+    k.type_keys(&[0, 1]);
+    k.ui.press(PANEL_BTN_HOME);
+    k.frames(3);
+    assert_eq!(k.ui.top(), "LAB", "HOME leaves the page, not LAB");
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_PAGES);
+    assert_eq!(k.ui.v.sounds.state, 0);
+    assert_eq!(k.ui.live().sounds_valid, 0);
+    k.frames(60);
+    assert!(k.slot(0).is_none());
+    // and the next HOME is LAB's: back to LIVE
+    k.ui.press(PANEL_BTN_HOME);
+    k.frames(30);
+    assert_eq!(k.ui.top(), "LIVE");
+}
+
+#[test]
+fn the_name_page_takes_the_keys_and_lets_them_go() {
+    let mut k = Stored::new();
+    k.ui.note_keys(1 << 12, 1 << 12);
+    k.frames(3);
+    assert!(k.sounding(), "a key plays on the pages");
+    k.ui.note_keys(0, 0);
+    k.frames(3);
+    k.edit_save();
+    assert!(!k.sounding(), "the sound stopped with the page");
+    k.type_keys(&[3]);
+    assert!(!k.sounding(), "a typing key makes no sound");
+    assert_eq!(&k.page_name()[..1], "D");
+    k.ui.press(PANEL_BTN_HOME);
+    k.frames(3);
+    k.ui.note_keys(1 << 12, 1 << 12);
+    k.frames(3);
+    assert!(k.sounding(), "a key plays again once the page is left");
+}
+
+#[test]
+fn the_name_page_matches_its_goldens() {
+    let mut k = Stored::new();
+    k.edit_save();
+    k.type_keys(&[2, 0, 18, 18]); // CASS
+    settle(&mut k.ui);
+    k.frames(10);
+    golden(&k.ui, "lab-name");
+    // a used slot, asked
+    k.ui.press(SAVE);
+    k.toast_within(3000, "KEPT").unwrap();
+    k.frames(80);
+    unsafe { live_recall_preset(&mut *k.ui.rig.live, 1) };
+    k.edit_save();
+    k.ui.turn(K1, -1);
+    k.ui.press(SAVE);
+    settle(&mut k.ui);
+    k.frames(10);
+    assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_ASK);
+    golden(&k.ui, "lab-name-overwrite");
+}

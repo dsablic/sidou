@@ -295,6 +295,29 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
 
 /* ---- the canvas ---- */
 
+/* "U03" for slot n (0..15) at out, the end. */
+static char* slot_label(char* out, uint32_t n) {
+    out[0] = 'U';
+    out[1] = (char)('0' + (n + 1u) / 10u);
+    out[2] = (char)('0' + (n + 1u) % 10u);
+    return out + 3;
+}
+
+static char* append(char* out, const char* s) {
+    while (*s) {
+        *out++ = *s++;
+    }
+    return out;
+}
+
+/* The automatic name for slot n: "LAB 03". */
+static void auto_name(char* out, uint32_t n) {
+    char* e = append(out, "LAB ");
+    e[0] = (char)('0' + (n + 1u) / 10u);
+    e[1] = (char)('0' + (n + 1u) % 10u);
+    e[2] = 0;
+}
+
 typedef grid_canvas canvas;
 
 static void put(canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
@@ -372,7 +395,7 @@ static uint32_t hint_phase(uint32_t now) {
  * besides it (the envelope mode, the selected slot, the cutoff the chip has now). */
 static uint32_t look(const lab_view* lv, uint32_t now) {
     const live* l = lv->l;
-    uint8_t b[LAB_SOUND_BYTES + LIVE_PRESET_NAME_CHARS + 12u];
+    uint8_t b[LAB_SOUND_BYTES + LIVE_PRESET_NAME_CHARS + 12u + 4u + LAB_SOUND_NAME];
     live_sound_get(l, b);
     uint32_t n = LAB_SOUND_BYTES;
     char name[LIVE_PRESET_NAME_CHARS + 2u];
@@ -389,11 +412,65 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     b[n++] = (uint8_t)l->model;
     b[n++] = (uint8_t)l->cutoff_out;
     b[n++] = (uint8_t)(l->cutoff_out >> 8);
+    if (lv->mode) { /* the name page: what it shows besides the sound */
+        b[n++] = lv->mode;
+        b[n++] = (uint8_t)(lv->slot | (l->sounds_valid >> lv->slot & 1u) << 7);
+        b[n++] = lv->cursor_at;
+        for (uint32_t i = 0; i < LAB_SOUND_NAME; i++) {
+            b[n++] = (uint8_t)lv->name[i];
+        }
+    }
     uint32_t h = 2166136261u;
     for (uint32_t i = 0; i < n; i++) {
         h = (h ^ b[i]) * 16777619u;
     }
     return h;
+}
+
+/* The name page, all at 2x: the slot and whether it holds a sound (and its name), the name with
+ * the cursor on its character, the keys' legend, and the question before an overwrite. */
+static void build_name(lab_view* lv, canvas* c, const theme* th) {
+    const live* l = lv->l;
+    uint32_t n = lv->slot;
+    uint8_t used = (uint8_t)(l->sounds_valid >> n & 1u);
+    (void)grid_canvas_text_big(c, 0, 0, 2, "KEEP AS", THEME_ATTR(th, hot));
+    (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_SLOT_ROW, 2, "SLOT", THEME_ATTR(th, label));
+    char slot[4];
+    (void)slot_label(slot, n);
+    slot[3] = 0;
+    (void)grid_canvas_text_big(c, 10, LAB_VIEW_NAME_SLOT_ROW, 2, slot, GRID_ATTR(th->knob[0], th->bg));
+    (void)grid_canvas_text_big(c, 18, LAB_VIEW_NAME_SLOT_ROW, 2, used ? "USED" : "FREE",
+                               used ? THEME_ATTR(th, alert) : THEME_ATTR(th, dim));
+    if (used) {
+        char old[LAB_SOUND_NAME + 1u];
+        uint8_t sound[LAB_SOUND_BYTES];
+        if (user_sound_read(lv->us, n, old, sound)) {
+            (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_USED_ROW, 2, old, THEME_ATTR(th, alert));
+        }
+    }
+    (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_LABEL_ROW, 2, "NAME", THEME_ATTR(th, label));
+    for (uint32_t i = 0; i < LAB_SOUND_NAME; i++) {
+        char ch[2] = {lv->name[i], 0};
+        (void)grid_canvas_text_big(c, 2u * i + 3u, LAB_VIEW_NAME_CHARS_ROW, 2, ch,
+                                   i == lv->cursor_at ? GRID_ATTR(th->bg, th->value)
+                                                      : THEME_ATTR(th, value));
+    }
+    static const char* const LEGEND[5] = {"KEYS TYPE", "SELECT CURSOR", "ALG CHARACTER",
+                                          "K1 SLOT", "SAVE WRITE"};
+    for (uint32_t i = 0; i < 5u; i++) {
+        (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_LEGEND_ROW + 2u * i, 2, LEGEND[i],
+                                   THEME_ATTR(th, hint));
+    }
+    (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_LEGEND_ROW + 10u, 2, "HOME BACK",
+                               THEME_ATTR(th, hint));
+    if (lv->mode == LAB_VIEW_MODE_ASK) {
+        char ask[16] = "OVERWRITE U00?";
+        (void)slot_label(&ask[10], n);
+        ask[13] = '?';
+        (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ASK_ROW, 2, ask, THEME_ATTR(th, alert));
+        (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ASK_ROW + 2u, 2, "SAVE AGAIN",
+                                   THEME_ATTR(th, alert));
+    }
 }
 
 /* The whole page into the canvas, and what it shows remembered. */
@@ -404,6 +481,12 @@ static void build(lab_view* lv, uint32_t now) {
     lv->look = look(lv, now);
     memset(c->ch, ' ', sizeof c->ch);
     memset(c->attr, THEME_ATTR(th, value), sizeof c->attr);
+    if (lv->mode) {
+        build_name(lv, c, th);
+        lv->built = 1;
+        lv->copying = 1;
+        return;
+    }
     /* The header: the page's name and its place, at 2x. */
     (void)grid_canvas_text_big(c, 0, 0, 2, PAGE_NAMES[lv->page], THEME_ATTR(th, hot));
     char place[4] = {(char)('1' + lv->page), '/', (char)('0' + LAB_PAGES), 0};
@@ -557,10 +640,22 @@ static void choice_turn(lab_view* lv, int32_t steps) {
     }
 }
 
+static void name_turn(lab_view* lv, uint32_t id, int32_t steps);
+
 /* SELECT the pages, K1..K4 the cards, ALGORITHM the choice; ENV, LFO and FX their pages. */
 static int input(screen* s, void* state, const screen_event* e) {
     (void)s;
     lab_view* lv = state;
+    if (lv->mode) { /* the name page takes every control but the ones that are not LAB's */
+        if (e->kind == SCREEN_PRESS) {
+            return e->id == PANEL_BTN_ENV || e->id == PANEL_BTN_LFO || e->id == PANEL_BTN_FX;
+        }
+        if (e->id == PANEL_ENC_SELECT || e->id == PANEL_ENC_ALGORITHM || e->id == PANEL_ENC_K1) {
+            name_turn(lv, e->id, e->steps);
+            return 1;
+        }
+        return e->id > PANEL_ENC_K1 && e->id <= PANEL_ENC_K4;
+    }
     if (e->kind == SCREEN_PRESS) {
         uint32_t to = e->id == PANEL_BTN_ENV   ? LAB_PAGE_ENVELOPE
                       : e->id == PANEL_BTN_LFO ? LAB_PAGE_MOD
@@ -589,62 +684,118 @@ static int input(screen* s, void* state, const screen_event* e) {
 
 /* ---- keeping ---- */
 
-/* "U03" for slot n (0..15) at out, the end. */
-static char* slot_label(char* out, uint32_t n) {
-    out[0] = 'U';
-    out[1] = (char)('0' + (n + 1u) / 10u);
-    out[2] = (char)('0' + (n + 1u) % 10u);
-    return out + 3;
-}
-
-static char* append(char* out, const char* s) {
-    while (*s) {
-        *out++ = *s++;
-    }
-    return out;
-}
-
-/* The automatic name for slot n: "LAB 03". */
-static void auto_name(char* out, uint32_t n) {
-    char* e = append(out, "LAB ");
-    e[0] = (char)('0' + (n + 1u) / 10u);
-    e[1] = (char)('0' + (n + 1u) % 10u);
-    e[2] = 0;
-}
-
-void lab_view_save(lab_view* lv, user_sounds* us, screen* s) {
+/* The sound as it is now into a keep of slot n under name: the toast of a refusal, or the keep
+ * queued (its toast follows its commit, at once without a store). 1 if it was queued. */
+static int keep(lab_view* lv, screen* s, uint32_t n, const char* name) {
     live* l = lv->l;
-    uint32_t n = l->user_sound ? l->user_sound - 1u : USER_SOUNDS;
-    char name[LAB_SOUND_NAME + 1u];
-    if (l->user_sound) {
-        memcpy(name, l->base_name, sizeof name);
-    } else {
-        for (n = 0; n < USER_SOUNDS && (l->sounds_valid >> n & 1u); n++) {
-        }
-        if (n == USER_SOUNDS) {
-            screen_toast(s, "USER FULL: EDIT+SAVE", SCREEN_TOAST_MS);
-            return;
-        }
-        auto_name(name, n);
-    }
     uint8_t sound[LAB_SOUND_BYTES];
     live_sound_get(l, sound);
     uint8_t fresh = l->user_sound != n + 1u;
-    int r = user_sound_save(us, n, name, sound, s->now);
+    int r = user_sound_save(lv->us, n, name, sound, s->now);
     if (r < 0) {
         screen_toast(s, "SAVING: WAIT", SCREEN_TOAST_MS);
-        return;
+        return 0;
     }
     lv->kept_new = fresh;
     if (r > 0) { /* no store: kept in RAM, nothing to wait for */
-        lab_view_kept(lv, us, n, 0, s);
+        lab_view_kept(lv, n, 0, s);
+    }
+    return 1;
+}
+
+/* The lowest free slot, USER_SOUNDS when all hold a sound. */
+static uint32_t free_slot(const live* l) {
+    uint32_t n = 0;
+    while (n < USER_SOUNDS && (l->sounds_valid >> n & 1u)) {
+        n++;
+    }
+    return n;
+}
+
+/* The name page's name: from, or the slot's automatic one (NULL), then spaces to the end. */
+static void name_set(lab_view* lv, const char* from) {
+    char auto_[LAB_SOUND_NAME + 1u];
+    if (!from) {
+        auto_name(auto_, lv->slot);
+        from = auto_;
+    }
+    uint32_t i = 0;
+    for (; i < LAB_SOUND_NAME && from[i]; i++) {
+        lv->name[i] = from[i];
+    }
+    for (; i < LAB_SOUND_NAME; i++) {
+        lv->name[i] = ' ';
+    }
+    lv->name[LAB_SOUND_NAME] = 0;
+}
+
+/* The name page opened: on the sound's own slot with its name, else on the lowest free slot (the
+ * first when all are full: K1 chooses) with that slot's automatic name. */
+static void name_open(lab_view* lv) {
+    const live* l = lv->l;
+    uint32_t n = l->user_sound ? l->user_sound - 1u : free_slot(l);
+    lv->slot = (uint8_t)(n < USER_SOUNDS ? n : 0u);
+    lv->cursor_at = 0;
+    lv->named = l->user_sound != 0;
+    name_set(lv, lv->named ? l->base_name : NULL);
+    lv->mode = LAB_VIEW_MODE_NAME;
+}
+
+/* SAVE on the name page: the name without its spaces (the slot's automatic one if there is none),
+ * a used slot asked once more. */
+static void name_write(lab_view* lv, screen* s) {
+    const char* first = lv->name;
+    uint32_t n = LAB_SOUND_NAME;
+    while (n && first[n - 1u] == ' ') {
+        n--;
+    }
+    while (n && *first == ' ') {
+        first++;
+        n--;
+    }
+    char name[LAB_SOUND_NAME + 1u];
+    memcpy(name, first, n);
+    name[n] = 0;
+    if (!n) {
+        auto_name(name, lv->slot);
+    }
+    if ((lv->l->sounds_valid >> lv->slot & 1u) &&
+        lv->mode != LAB_VIEW_MODE_ASK) {
+        lv->mode = LAB_VIEW_MODE_ASK;
+        return;
+    }
+    if (keep(lv, s, lv->slot, name)) {
+        lv->mode = LAB_VIEW_MODE_PAGES;
     }
 }
 
-void lab_view_kept(const lab_view* lv, const user_sounds* us, uint32_t slot, int gaps, screen* s) {
+void lab_view_save(lab_view* lv, screen* s, int edit) {
+    live* l = lv->l;
+    if (lv->mode) {
+        name_write(lv, s);
+        return;
+    }
+    if (edit) {
+        name_open(lv);
+        return;
+    }
+    uint32_t n = l->user_sound ? l->user_sound - 1u : free_slot(l);
+    char name[LAB_SOUND_NAME + 1u];
+    if (l->user_sound) {
+        memcpy(name, l->base_name, sizeof name);
+    } else if (n == USER_SOUNDS) {
+        screen_toast(s, "USER FULL: EDIT+SAVE", SCREEN_TOAST_MS);
+        return;
+    } else {
+        auto_name(name, n);
+    }
+    (void)keep(lv, s, n, name);
+}
+
+void lab_view_kept(const lab_view* lv, uint32_t slot, int gaps, screen* s) {
     char name[LAB_SOUND_NAME + 1u];
     uint8_t sound[LAB_SOUND_BYTES];
-    if (!user_sound_read(us, slot, name, sound)) { /* no store: the sound as live has it */
+    if (!user_sound_read(lv->us, slot, name, sound)) { /* no store: the sound as live has it */
         memcpy(name, lv->l->base_name, sizeof name);
     }
     char text[SCREEN_TOAST_CHARS + 8u];
@@ -659,16 +810,66 @@ void lab_view_kept(const lab_view* lv, const user_sounds* us, uint32_t slot, int
     screen_toast(s, text, SCREEN_TOAST_MS);
 }
 
+int lab_view_home(lab_view* lv) {
+    if (!lv->mode) {
+        return 0;
+    }
+    lv->mode = LAB_VIEW_MODE_PAGES;
+    return 1;
+}
+
+uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed) {
+    uint32_t keys = pressed & ((1u << LAB_VIEW_NAME_KEYS) - 1u);
+    if (!lv->mode || !keys) {
+        return 0;
+    }
+    if (!lv->named) { /* the slot's automatic name: typing starts a name of the player's */
+        memset(lv->name, ' ', LAB_SOUND_NAME);
+    }
+    for (uint32_t k = 0; k < LAB_VIEW_NAME_KEYS; k++) {
+        if (keys >> k & 1u) {
+            lv->name[lv->cursor_at] = k < 26u ? (char)('A' + k) : ' ';
+            if (lv->cursor_at + 1u < LAB_SOUND_NAME) {
+                lv->cursor_at++;
+            }
+        }
+    }
+    lv->named = 1;
+    lv->mode = LAB_VIEW_MODE_NAME;
+    return keys;
+}
+
+/* The name page's controls: K1 the slot, SELECT the cursor, ALGORITHM the character. Each
+ * cancels a question; the rest of the controls wait. */
+static void name_turn(lab_view* lv, uint32_t id, int32_t steps) {
+    lv->mode = LAB_VIEW_MODE_NAME;
+    if (id == PANEL_ENC_K1) {
+        lv->slot = (uint8_t)clamp((int32_t)lv->slot + steps, 0, USER_SOUNDS - 1);
+        if (!lv->named) {
+            name_set(lv, NULL);
+        }
+    } else if (id == PANEL_ENC_SELECT) {
+        lv->cursor_at = (uint8_t)clamp((int32_t)lv->cursor_at + steps, 0, LAB_SOUND_NAME - 1);
+    } else if (id == PANEL_ENC_ALGORITHM) {
+        /* SAVE AS's alphabet: space to underscore, wrapping */
+        int32_t ch = ((int32_t)lv->name[lv->cursor_at] - ' ' + steps) % 64;
+        lv->name[lv->cursor_at] = (char)(' ' + (ch < 0 ? ch + 64 : ch));
+        lv->named = 1;
+    }
+}
+
 /* ---- the view ---- */
 
-void lab_view_init(lab_view* lv, live* l, song_view* shared, const scope* sc) {
+void lab_view_init(lab_view* lv, live* l, user_sounds* us, song_view* shared, const scope* sc) {
     memset(lv, 0, sizeof *lv);
     lv->l = l;
+    lv->us = us;
     lv->canvas = shared;
     lv->sc = sc;
 }
 
 void lab_view_page_set(lab_view* lv, uint32_t page) {
+    lv->mode = LAB_VIEW_MODE_PAGES;
     lv->page = (uint8_t)(page < LAB_PAGES ? page : LAB_PAGE_OSC);
 }
 
@@ -691,9 +892,14 @@ static void enter(screen* s, void* state) {
     lv->art_done = 0; /* a switch cleared the overlays */
 }
 
+/* The page whose drawing shows: none on the name page. */
+static uint32_t art_page(const lab_view* lv) {
+    return lv->mode ? LAB_DRAW_BLANK : lv->page;
+}
+
 /* The drawing's look, and whether it is drawn whole. */
 static int art_stale(const lab_view* lv) {
-    return !lv->art_done || lab_draw_look(lv->l, lv->sc, lv->page, lv->hl) != lv->art;
+    return !lv->art_done || lab_draw_look(lv->l, lv->sc, art_page(lv), lv->hl) != lv->art;
 }
 
 static int changed(screen* s, void* state) {
@@ -767,8 +973,8 @@ static void compose(screen* s, void* state, grid* g) {
     lv->copying = 0;
     /* The drawing, in what is left of the frame's cells. */
     if (art) {
-        lv->art = lab_draw_look(lv->l, lv->sc, lv->page, lv->hl);
-        lv->art_done = (uint8_t)lab_draw_page(lv->l, lv->sc, lv->page, lv->hl,
+        lv->art = lab_draw_look(lv->l, lv->sc, art_page(lv), lv->hl);
+        lv->art_done = (uint8_t)lab_draw_page(lv->l, lv->sc, art_page(lv), lv->hl,
                                               theme_get(lv->l->theme), g, s, LAB_VIEW_ART_ROW,
                                               &left);
     }

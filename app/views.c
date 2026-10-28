@@ -2083,7 +2083,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
     chip_view_init(&v->chip, l, &v->song);
-    lab_view_init(&v->lab, l, &v->song, sc);
+    lab_view_init(&v->lab, l, &v->sounds, &v->song, sc);
     user_profiles_init(&v->users, l, NULL);
     chip_view_set_users(&v->chip, &v->users);
     user_sounds_init(&v->sounds, l, NULL);
@@ -2214,6 +2214,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     }
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
+    }
+    if (from == &lab_view_view && lab_view_home(&v->lab)) {
+        return; /* out of the name page, back to the pages */
     }
     if (from == &sid_view_browser && sid_view_home(&v->sids)) {
         return; /* the question cancelled */
@@ -2682,13 +2685,13 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
 /* SAVE's clean release (app/save_key.h): the precedence of views.h's routing. The help cards'
  * completeness test mirrors which views and states SAVE has a meaning of its own in (help_view.rs
  * saves()): a new one goes there too, and on its card. */
-static void save(views* v) {
+static void save(views* v, uint32_t held) {
     if (learn_view_is_open(&v->learn)) {
         learn_view_save(&v->learn); /* forget the picked CC, or confirm the clear */
         return;
     }
     if (shows(v) == &lab_view_view) {
-        lab_view_save(&v->lab, &v->sounds, &v->s); /* keep the sound (its toast: sounds_frame) */
+        lab_view_save(&v->lab, &v->s, (int)(held >> PANEL_BTN_EDIT & 1u)); /* keep, or EDIT + SAVE the name page */
         return;
     }
     if (shows(v) == &chip_view_view) {
@@ -2763,7 +2766,7 @@ __attribute__((noinline, unused)) static uint32_t save_buttons(views* v, uint32_
         (void)screen_input(&v->s, &e);
     }
     if (save_key_buttons(&v->key, pressed & ~(ends ? save_bit : 0u), held) == SAVE_KEY_SAVE) {
-        save(v);
+        save(v, held);
     }
     pressed &= ~save_bit; /* SAVE goes nowhere else */
     /* Read save_key's held bit directly to save input cycles. */
@@ -2825,8 +2828,9 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
             jam_down &= ~((1u << STEP_VIEW_STEPS) - 1u);
             jam_pressed &= ~((1u << STEP_VIEW_STEPS) - 1u);
         }
+        uint32_t typed = top == &lab_view_view ? lab_view_name_keys(&v->lab, pressed) : 0u;
         uint32_t owned = take ? panel_owned(p, jam_down & ~jam_pressed & ~sv->jam_keys) : 0u;
-        uint32_t taken = steps | song_view_keys(sv, jam_down, jam_pressed, owned, take,
+        uint32_t taken = steps | typed | song_view_keys(sv, jam_down, jam_pressed, owned, take,
                                         top == &tracker_view_view ? &v->s : NULL,
                                         top == &tracker_view_view || top == &step_view_view
                                             ? &v->s : NULL);
@@ -2966,7 +2970,7 @@ __attribute__((noinline, unused)) static void sounds_frame(views* v, uint32_t no
     uint32_t slot = 0;
     user_sound_result r = user_sounds_take(&v->sounds, &slot);
     if (r == USER_SOUND_SAVED || r == USER_SOUND_SAVED_GAPS) {
-        lab_view_kept(&v->lab, &v->sounds, slot, r == USER_SOUND_SAVED_GAPS, &v->s);
+        lab_view_kept(&v->lab, slot, r == USER_SOUND_SAVED_GAPS, &v->s);
         sound(v, UI_SOUND_CHUNK);
     } else if (r == USER_SOUND_FOREIGN || r == USER_SOUND_FAILED || r == USER_SOUND_FULL) {
         screen_toast(&v->s, r == USER_SOUND_FAILED  ? "STORE ERROR: NOT SAVED"

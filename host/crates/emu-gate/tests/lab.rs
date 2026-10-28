@@ -553,3 +553,117 @@ fn a_happy_accident_is_kept_with_one_press() {
     );
     assert_eq!(m.soc.read8(live_at(&fw, ilp32::live::user_sound)), 1);
 }
+
+fn lab_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
+    m.soc
+        .read8(fw.symbol("ui") + (ilp32::views::lab + field) as u32)
+}
+
+/// EDIT + SAVE opens the name page; the keys type, K1 chooses the slot, SAVE writes: USER 5 holds
+/// `HI` and the sound as it was; the keys made no sound.
+#[test]
+fn edit_save_names_and_writes_a_slot() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_ENV as u8);
+    m.turn(K1, 3); // the attack
+    m.run_ms(100);
+    m.key(PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    tap(&mut m, PANEL_BTN_SAVE as u8);
+    m.key(PANEL_BTN_EDIT as u8, false);
+    m.run_ms(100);
+    assert_eq!(
+        u32::from(lab_byte(&mut m, &fw, ilp32::lab_view::mode)),
+        LAB_VIEW_MODE_NAME,
+        "the name page"
+    );
+    assert_eq!(lab_byte(&mut m, &fw, ilp32::lab_view::slot), 0);
+    m.turn(K1, 4); // USER 5
+    m.run_ms(60);
+    for key in [7u8, 8u8] {
+        // H, I
+        m.key(KEY0 + key, true);
+        m.run_ms(40);
+        let instrument = fw.symbol("instrument");
+        let gated = (0..LIVE_VOICES as usize).any(|v| {
+            m.soc.read8(
+                instrument
+                    + (ilp32::live::voice + v * ilp32::live_voice::SIZE + ilp32::live_voice::gate)
+                        as u32,
+            ) != 0
+        });
+        assert!(!gated, "a typing key makes no sound");
+        m.key(KEY0 + key, false);
+        m.run_ms(40);
+    }
+    assert_eq!(lab_byte(&mut m, &fw, ilp32::lab_view::cursor_at), 2);
+    tap(&mut m, PANEL_BTN_SAVE as u8);
+    let mut toast = String::new();
+    let end = m.ms() + 20_000;
+    while !toast.starts_with("KEPT") {
+        assert!(m.ms() < end, "the keep never said so: {toast:?}");
+        m.run_ms(20);
+        toast = toast_text(&mut m, &fw);
+    }
+    assert_eq!(toast, "KEPT AS U05 HI");
+    assert_eq!(
+        u32::from(lab_byte(&mut m, &fw, ilp32::lab_view::mode)),
+        LAB_VIEW_MODE_PAGES
+    );
+    let (_, file) = stored_file(&m.soc.flash.mem, "USER SOUNDS").unwrap();
+    let at = USER_SOUND_HEADER as usize + 4 * STRIDE;
+    assert_eq!(file[at], 1, "USER 5 is used");
+    assert_eq!(&file[at + 1..at + 4], b"HI\0");
+    let sound = &file[at + 1 + LAB_SOUND_NAME as usize..at + STRIDE];
+    assert_eq!(sound[LAB_SOUND_AD as usize] >> 4, 3, "the attack kept");
+    assert_eq!(sound, base(&mut m, &fw).as_slice());
+    assert_eq!(file[USER_SOUND_HEADER as usize], 0, "USER 1 stays empty");
+}
+
+/// The name page's frames: a character or the slot changed every frame, and a typing key, within
+/// LAB_VIEW_FRAME_CELLS and LAB_WORST_POLL; and its inputs within the poll allowance.
+#[test]
+fn the_name_page_stays_within_the_frame_budget() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    m.key(PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    tap(&mut m, PANEL_BTN_SAVE as u8);
+    m.key(PANEL_BTN_EDIT as u8, false);
+    m.run_ms(100);
+    assert_eq!(
+        u32::from(lab_byte(&mut m, &fw, ilp32::lab_view::mode)),
+        LAB_VIEW_MODE_NAME
+    );
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    for (what, enc, steps) in [
+        ("K1", K1, 1),
+        ("SELECT", SELECT, 1),
+        ("ALGORITHM", ALGORITHM, 1),
+        ("ALGORITHM", ALGORITHM, -1),
+    ] {
+        let (i, p) = start_cost(&mut m, 300, |m| m.turn(enc, steps));
+        println!("LAB name page {what} {steps:+}: the input {i}, the busiest pass {p}");
+        assert!(i + p <= common::POLL_INSTRUCTIONS, "{what}: {i} + {p}");
+    }
+    m.watch_calls(fw.symbol("ui_poll"));
+    let (cells, worst) = frames(&mut m, &fw, 40, |m, f| match f % 4 {
+        0 => m.turn(K1, if f % 8 < 4 { 1 } else { -1 }),
+        1 => m.turn(ALGORITHM, 1),
+        2 => m.key(KEY0 + (f % 26) as u8, true),
+        _ => m.key(KEY0 + ((f - 1) % 26) as u8, false),
+    });
+    let most = cells.iter().copied().max().unwrap_or(0);
+    println!("LAB name page: most cells {most}, worst ui_poll {worst}");
+    assert!(most <= LAB_VIEW_FRAME_CELLS, "a frame sent {most} cells");
+    assert!(
+        worst <= LAB_WORST_POLL,
+        "a ui_poll took {worst} instructions"
+    );
+}

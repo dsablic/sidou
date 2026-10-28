@@ -105,6 +105,9 @@ typedef struct {
  * call. */
 int lab_draw_apply(const lab_draw* d, grid* g, const screen* s, uint32_t row0, uint32_t* left);
 
+/* The page that draws nothing and leaves the area clear (LAB's name page). */
+#define LAB_DRAW_BLANK 0xFFu
+
 /* A hash of what page's drawing shows now (the instrument's values it reads, the tap's envelope,
  * what is lit: hl, app/lab_view.h), so that an unchanged drawing costs this alone. */
 uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t hl);

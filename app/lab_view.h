@@ -92,9 +92,25 @@ extern "C" {
 #define LAB_VIEW_WAVES 11u
 /* A card's or the choice's text, terminator included ("TRI+SAW+PUL"). */
 #define LAB_VIEW_TEXT 14u
+/* lab_view.mode: the five pages, the name page (EDIT + SAVE), the name page asking once more
+ * before it overwrites a used slot. */
+#define LAB_VIEW_MODE_PAGES 0u
+#define LAB_VIEW_MODE_NAME 1u
+#define LAB_VIEW_MODE_ASK 2u
+/* The name page's rows (all at 2x): the header, the slot, the slot's used name, the name's label
+ * and the name, the legends, the question. */
+#define LAB_VIEW_NAME_SLOT_ROW 3u
+#define LAB_VIEW_NAME_USED_ROW 5u
+#define LAB_VIEW_NAME_LABEL_ROW 7u
+#define LAB_VIEW_NAME_CHARS_ROW 9u
+#define LAB_VIEW_NAME_LEGEND_ROW 12u
+#define LAB_VIEW_NAME_ASK_ROW 24u
+/* The note keys that type: A..Z are keys 0..25 and key 26 is a space. */
+#define LAB_VIEW_NAME_KEYS 27u
 
 typedef struct {
     live* l;
+    user_sounds* us;   /* the USER sounds (the name page reads a used slot's name, the keep writes) */
     song_view* canvas; /* borrows canvas->cv; nothing else of the song views' */
     const scope* sc;   /* the audio's tap (NULL: none) */
     uint32_t look;     /* the hash of what the canvas shows */
@@ -108,12 +124,17 @@ typedef struct {
     uint8_t art_turn;  /* text and drawing both stale: 1 the drawing's frame next */
     uint32_t art;      /* the hash of what the drawing shows (lab_draw_look) */
     uint8_t kept_new;  /* the keep being written took a slot of its own (its toast: KEPT AS) */
+    uint8_t mode;      /* LAB_VIEW_MODE_*: the name page while EDIT + SAVE has opened it */
+    uint8_t slot;      /* the name page's slot, 0..USER_SOUNDS - 1 */
+    uint8_t cursor_at; /* the name page's cursor, 0..LAB_SOUND_NAME - 1 */
+    uint8_t named;     /* the name is the player's, not the slot's automatic one */
+    char name[LAB_SOUND_NAME + 1u]; /* the name page's name, spaces after it */
 } lab_view;
 
 extern const view lab_view_view;
 
 /* On l, the page OSC; shared's canvas borrowed while it composes; sc the tap (NULL: none). */
-void lab_view_init(lab_view* lv, live* l, song_view* shared, const scope* sc);
+void lab_view_init(lab_view* lv, live* l, user_sounds* us, song_view* shared, const scope* sc);
 /* The page LAB shows (and opens at). */
 void lab_view_page_set(lab_view* lv, uint32_t page);
 /* What K1..K4 turn while it shows (app/panel.h panel.page): PANEL_PAGE_LAB_FIRST + the page. */
@@ -121,16 +142,29 @@ uint32_t lab_view_panel_page(const lab_view* lv);
 /* Knob k (0..3), or the choice (LAB_VIEW_HL_CHOICE - 1), just turned: lit for SCREEN_POPUP_MS
  * from now_ms, in place of the value popup (app/views.c). */
 void lab_view_flash(lab_view* lv, uint32_t k, uint32_t now_ms);
+/* The name page (EDIT + SAVE, lab_view_save with edit): a mode of LAB, not a view. K1 turns the
+ * slot (U01..U16; a slot that holds a sound says so and shows its name, and the name follows the
+ * slot as `LAB nn` until it has been typed), the note keys type (A..Z, key 27 a space) at the
+ * cursor and step it on, SELECT moves the cursor, ALGORITHM changes the character under it (the
+ * SAVE AS alphabet: space to underscore), SAVE writes, a used slot asks once more (`OVERWRITE
+ * U03?`, then SAVE again; any other control cancels the question), HOME (lab_view_home) leaves
+ * without writing. The other cards and pages wait while it shows. lab_view_name_keys takes the
+ * keys pressed this frame (bit k: key k) while it shows and returns the ones it used, which the
+ * panel then keeps quiet; 0 outside it. */
+uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
+/* HOME on the name page: back to the pages without writing. 1 if it was open (HOME did that). */
+int lab_view_home(lab_view* lv);
 /* SAVE's clean release in LAB: the sound is kept, in its own USER slot with its name or, if it
  * is not a USER sound, in the lowest free slot as `LAB nn` (user_sound_save: it becomes the base,
  * so the `*` goes, and the slot's sound). A write that runs refuses (a toast, nothing done); a
  * full set (and a sound that is not a USER one) toasts `USER FULL: EDIT+SAVE` and writes nothing.
- * The toast of a keep follows its commit (lab_view_kept, from app/views.c), at once without a
+ * With EDIT held (edit) it opens the name page instead, and on the page it writes (the name
+ * page's SAVE needs no EDIT). The toast of a keep follows its commit (lab_view_kept, from app/views.c), at once without a
  * store. */
-void lab_view_save(lab_view* lv, user_sounds* us, screen* s);
+void lab_view_save(lab_view* lv, screen* s, int edit);
 /* The toast of the keep that committed in slot: `KEPT AS U03 LAB 03` (a new slot) or `KEPT U03
  * LAB 03` (in place), with (GAPS) where it fits. */
-void lab_view_kept(const lab_view* lv, const user_sounds* us, uint32_t slot, int gaps, screen* s);
+void lab_view_kept(const lab_view* lv, uint32_t slot, int gaps, screen* s);
 /* The page's name ("ENVELOPE"). */
 const char* lab_view_page_name(uint32_t page);
 /* Card k (0..3) of the page as the page shows it: its name into name and its value into value

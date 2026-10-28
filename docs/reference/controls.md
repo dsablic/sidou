@@ -740,6 +740,19 @@ sixteen slots full, SAVE on a sound that is not a USER one toasts `USER FULL: ED
 writes nothing (a USER sound still keeps in place). SAVE held while a knob turns is MIDI learn
 for that card's parameter, and SAVE + HOME is learn's clear, as everywhere.
 
+**EDIT + SAVE** (EDIT held first, as the help card teaches) opens the **name page**, a mode of
+LAB (`KEEP AS`, everything at 2x): the slot (`SLOT U03`, with `FREE` or `USED` and a used slot's
+name under it) and the name, twelve characters with the cursor reversed. It opens on the sound's
+own slot with its own name, or on the lowest free slot as `LAB nn` (the first slot when all are
+full: K1 chooses). **K1** turns the slot (the automatic name follows it until the name is the
+player's); the **note keys** type at the cursor (the first 26 keys A to Z, the 27th a space) and
+step it on, making no sound; **SELECT** moves the cursor; **ALGORITHM** changes the character
+under it (space to underscore, as SAVE AS does); the first typed key on an automatic name starts
+a new one. **SAVE** writes it (the spaces around the name trimmed; none left, the automatic
+name): a slot that holds a sound asks once more (`OVERWRITE U03?`, `SAVE AGAIN`; any other
+control cancels the question). The toast is the keep's. **HOME** leaves the page without writing
+(the next HOME is LAB's: back to LIVE).
+
 ## SCENE
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a
