@@ -33,8 +33,11 @@ static uint8_t reason(int result) {
     }
 }
 
+/* The files SysEx keeps to itself, and LAB's USER sounds (app/user_sound.h): never listed,
+ * fetched, replaced or deleted over SysEx. */
 static int reserved(const char* name) {
-    return !strcmp(name, instrument_name) || !strcmp(name, song_name);
+    return !strcmp(name, instrument_name) || !strcmp(name, song_name) ||
+           !strcmp(name, STORE_SOUNDS_NAME);
 }
 
 static int name_read(const uint8_t* p, char* name) {

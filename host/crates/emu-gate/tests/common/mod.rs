@@ -351,6 +351,25 @@ pub fn stored_value(flash: &[u8], key: u32) -> Option<Vec<u8>> {
     })
 }
 
+/// The file named `name` in a flash dump's store, if it is SIDOU's and holds it: its type and
+/// bytes.
+pub fn stored_file(flash: &[u8], name: &str) -> Option<(u8, Vec<u8>)> {
+    use sidou_sys::*;
+    let mut flash = flash.to_vec();
+    let st = mount_any(&mut flash);
+    if st.state != STORE_STATE_SIDOU as u8 {
+        return None;
+    }
+    let name = std::ffi::CString::new(name).unwrap();
+    let mut f = store_file::default();
+    if unsafe { store_file_open(&*st, name.as_ptr(), &mut f) } != STORE_OK {
+        return None;
+    }
+    let mut buf = vec![0u8; f.length as usize];
+    let n = unsafe { store_file_read(&*st, &f, 0, buf.as_mut_ptr().cast(), f.length) };
+    (n == f.length as i32).then_some((f.type_, buf))
+}
+
 // ---- files into a flash dump before a boot (the store core on the host, writing) ----
 
 unsafe extern "C" fn copy_map(ctx: *mut std::ffi::c_void, off: u32) -> *const u8 {
@@ -930,8 +949,10 @@ pub const SLOTS_SWITCH_WORST: f64 = 964.0;
 /// it are M2d (6,000), M2e (2,000) and M2f (5,000): 22,000 - 13,000 = 9,000, and the table's
 /// slack makes 10,000. (It was 7,000 until the end-of-M2 review, which counted M2a twice.)
 /// Less M3's 512 bytes (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Budgets": a tune's state
-/// overlays the song's, and the rest is its own; Task 9).
-pub const FREE_RAM_MIN: u64 = 10_000 - 512;
+/// overlays the song's, and the rest is its own; Task 9), and less LAB's 512
+/// (docs/plans/2026-10-25-lab-plan.md, Task 1's decisions: option A, the USER sounds as a store
+/// file, 16 undo steps, `midi_out`'s rows by index).
+pub const FREE_RAM_MIN: u64 = 10_000 - 512 - 512;
 /// Each region (the RAM region, POOL) keeps this free: M3's start target in
 /// https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
 /// bytes plus a margin.

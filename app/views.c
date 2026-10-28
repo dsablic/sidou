@@ -297,7 +297,7 @@ static void status_page_setup(grid* g, const theme* th, const live* l) {
     grid_text_big(g, 2, row, 2, "PRESET", lbl);
     grid_text_big(g, 16, row, 2, "OCT", lbl);
     grid_text_big(g, 24, row, 2, oct, a);
-    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, p ? p->name : "?", a);
+    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, l->user_sound ? l->base_name : p ? p->name : "?", a);
     row += 2u * STATUS_LINE_ROWS;
     grid_text_big(g, 2, row, 2, "NOTES", lbl);
     status_notes(g, a, l);
@@ -558,6 +558,7 @@ static int store_confirm(views* v) {
     store_format(st);
     settings_forget(v->set);
     user_profiles_forget(&v->users);
+    user_sounds_forget(&v->sounds);
     v->formatting = 1;
     if (v->set->force) {
         v->set->force(1);
@@ -1234,6 +1235,18 @@ static void midi_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_midi, v, SCREEN_CUT);
 }
 
+/* The menu's LAB replaces the menu: LAB over LIVE, so HOME from LAB is always LIVE and the stack
+ * never holds the menu and LAB. It opens at OSC. */
+static void lab_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    lab_view_page_set(&v->lab, LAB_PAGE_OSC);
+    if (screen_top(&v->s) == &views_menu) {
+        (void)screen_pop(&v->s, SCREEN_CUT);
+    }
+    (void)screen_push(&v->s, &lab_view_view, &v->lab, SCREEN_WIPE_DOWN);
+}
+
 static void settings_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -1246,17 +1259,19 @@ static void settings_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
     {"SCENE", NULL, scene_open},           {"SONG", NULL, song_open},
-    {"SIDS", NULL, sids_open},             {"PRE", preset_value, preset_turn},
+    {"LAB", NULL, lab_open},               {"SIDS", NULL, sids_open},
+    {"PRE", preset_value, preset_turn},
     {"OCTAVE", octave_value, octave_turn},
     {"SETTINGS", NULL, settings_open},     {"STATUS", NULL, status_open},
     {"MIDI", NULL, midi_open},             {"CHARSET", NULL, charset_open},
     {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_SCENE == 2u &&
-                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_SIDS == 4u && VIEWS_MENU_PRESET == 5u &&
-                   VIEWS_MENU_OCTAVE == 6u && VIEWS_MENU_SETTINGS == 7u &&
-                   VIEWS_MENU_STATUS == 8u && VIEWS_MENU_MIDI == 9u &&
-                   VIEWS_MENU_CHARSET == 10u && VIEWS_MENU_ABOUT == 11u,
+                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_LAB == 4u && VIEWS_MENU_SIDS == 5u &&
+                   VIEWS_MENU_PRESET == 6u && VIEWS_MENU_OCTAVE == 7u &&
+                   VIEWS_MENU_SETTINGS == 8u && VIEWS_MENU_STATUS == 9u &&
+                   VIEWS_MENU_MIDI == 10u && VIEWS_MENU_CHARSET == 11u &&
+                   VIEWS_MENU_ABOUT == 12u,
                "the menu's items");
 /* SETTINGS: ROWS is TRACKER ROWS and REC REC QUANTISE; STORE's value (FOREIGN, FORMAT?, ERASE
  * 20; 123K, the kilobytes free) fits beside its name. The popup (below) says the whole names. */
@@ -2068,8 +2083,10 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
     chip_view_init(&v->chip, l, &v->song);
+    lab_view_init(&v->lab, l, &v->sounds, &v->song, sc);
     user_profiles_init(&v->users, l, NULL);
     chip_view_set_users(&v->chip, &v->users);
+    user_sounds_init(&v->sounds, l, NULL);
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
     song_view_init(&v->song, l);
@@ -2099,6 +2116,11 @@ void views_settings(views* v, settings* set) {
     v->sids.st = set ? set->st : NULL;
     v->users.st = set ? set->st : NULL;
     user_profiles_load(&v->users);
+}
+
+void views_sounds(views* v, store* st) {
+    v->sounds.st = st;
+    user_sounds_load(&v->sounds);
 }
 
 /* The first-run tour's steps (tour_frame, below). */
@@ -2163,7 +2185,10 @@ static const view* shows(const views* v) {
 
 /* What K1..K4 turn (app/panel.h panel.page): the CHIP view's page while it shows, LIVE's
  * anywhere else; and the panel MIDI learn reads it from. Before each event and after the views
- * took it, so the panel, which turns the knob, and learn, which picks it, read the same. */
+ * took it, so the panel, which turns the knob, and learn, which picks it, read the same. LAB turns
+ * its cards itself (app/lab_view.c), so the panel never turns a knob on its page: its page is set
+ * where it is read, learn's pick (views_encoder), and LIVE's input pays nothing for it (emu-gate
+ * screen.rs POPUP_INPUT: K1 on LIVE 244 of 250, 248 with a test here). */
 __attribute__((always_inline)) static inline void knob_page(views* v, panel* p) {
     v->p = p;
     p->page = (uint8_t)(shown(v) == &chip_view_view ? chip_view_page(&v->chip) : PANEL_PAGE_LIVE);
@@ -2189,6 +2214,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     }
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
+    }
+    if (from == &lab_view_view && lab_view_home(&v->lab)) {
+        return; /* out of the name page, back to the pages */
     }
     if (from == &sid_view_browser && sid_view_home(&v->sids)) {
         return; /* the question cancelled */
@@ -2243,6 +2271,9 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     }
     if (top == &views_charset) {
         return HELP_CARD_CHARSET;
+    }
+    if (top == &lab_view_view) {
+        return HELP_CARD_LAB;
     }
     if (top == &chip_view_view) {
         uint32_t f = chip_view_focus(&v->chip);
@@ -2654,9 +2685,13 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
 /* SAVE's clean release (app/save_key.h): the precedence of views.h's routing. The help cards'
  * completeness test mirrors which views and states SAVE has a meaning of its own in (help_view.rs
  * saves()): a new one goes there too, and on its card. */
-static void save(views* v) {
+static void save(views* v, uint32_t held) {
     if (learn_view_is_open(&v->learn)) {
         learn_view_save(&v->learn); /* forget the picked CC, or confirm the clear */
+        return;
+    }
+    if (shows(v) == &lab_view_view) {
+        lab_view_save(&v->lab, &v->s, (int)(held >> PANEL_BTN_EDIT & 1u)); /* keep, or EDIT + SAVE the name page */
         return;
     }
     if (shows(v) == &chip_view_view) {
@@ -2731,7 +2766,7 @@ __attribute__((noinline, unused)) static uint32_t save_buttons(views* v, uint32_
         (void)screen_input(&v->s, &e);
     }
     if (save_key_buttons(&v->key, pressed & ~(ends ? save_bit : 0u), held) == SAVE_KEY_SAVE) {
-        save(v);
+        save(v, held);
     }
     pressed &= ~save_bit; /* SAVE goes nowhere else */
     /* Read save_key's held bit directly to save input cycles. */
@@ -2793,8 +2828,9 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
             jam_down &= ~((1u << STEP_VIEW_STEPS) - 1u);
             jam_pressed &= ~((1u << STEP_VIEW_STEPS) - 1u);
         }
+        uint32_t typed = top == &lab_view_view ? lab_view_name_keys(&v->lab, pressed) : 0u;
         uint32_t owned = take ? panel_owned(p, jam_down & ~jam_pressed & ~sv->jam_keys) : 0u;
-        uint32_t taken = steps | song_view_keys(sv, jam_down, jam_pressed, owned, take,
+        uint32_t taken = steps | typed | song_view_keys(sv, jam_down, jam_pressed, owned, take,
                                         top == &tracker_view_view ? &v->s : NULL,
                                         top == &tracker_view_view || top == &step_view_view
                                             ? &v->s : NULL);
@@ -2805,6 +2841,14 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
     panel_note_keys(p, v->l, down, pressed);
     if (p->glo) {
         song_view_glo(sv, panel_take_glo(p));
+    }
+}
+
+/* SAVE held + a knob in LAB: learn picks the card's parameter (knob_page leaves LAB's page to
+ * here, out of the encoder's path). */
+__attribute__((noinline, unused)) LIVE_COLD static void learn_page(views* v, panel* p) {
+    if (shows(v) == &lab_view_view) {
+        p->page = (uint8_t)lab_view_panel_page(&v->lab);
     }
 }
 
@@ -2820,6 +2864,7 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
         save_key_spoil(&v->key); /* a knob while SAVE is down: its release saves nothing */
         if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 && !learn_view_is_open(&v->learn) &&
             !curtain(v) && v->learn.ml) {
+            learn_page(v, p);
             /* the knob picks; on a slot page of LIVE, the slot's control, as with EDIT held */
             uint32_t held = shows(v) == &live_view_view && v->live.page
                                 ? p->held | 1u << PANEL_BTN_EDIT
@@ -2918,6 +2963,27 @@ __attribute__((noinline, unused)) static void users_frame(views* v, uint32_t now
     }
 }
 
+/* A USER sound's write: handed to the store, committed; keeps the frame awake while it has
+ * work. Its result is LAB's keep's to say, as the USER profiles' are. */
+__attribute__((noinline, unused)) static void sounds_frame(views* v, uint32_t now_ms) {
+    user_sounds_tick(&v->sounds, now_ms, v->set->force);
+    uint32_t slot = 0;
+    user_sound_result r = user_sounds_take(&v->sounds, &slot);
+    if (r == USER_SOUND_SAVED || r == USER_SOUND_SAVED_GAPS) {
+        lab_view_kept(&v->lab, slot, r == USER_SOUND_SAVED_GAPS, &v->s);
+        sound(v, UI_SOUND_CHUNK);
+    } else if (r == USER_SOUND_FOREIGN || r == USER_SOUND_FAILED || r == USER_SOUND_FULL) {
+        screen_toast(&v->s, r == USER_SOUND_FAILED  ? "STORE ERROR: NOT SAVED"
+                            : r == USER_SOUND_FULL ? "STORE FULL: NOT SAVED"
+                                                   : "STORE FOREIGN: NOT SAVED",
+                     SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_BUZZ);
+    }
+    if (user_sounds_busy(&v->sounds)) {
+        v->l->settings_dirty |= 2u;
+    }
+}
+
 /* The settings' debounce and an explicit save's toast; a format's end. */
 __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now_ms) {
     if (!v->set) {
@@ -2926,6 +2992,9 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
     settings_tick(v->set, now_ms);
     if (user_profiles_busy(&v->users)) {
         users_frame(v, now_ms);
+    }
+    if (user_sounds_busy(&v->sounds)) {
+        sounds_frame(v, now_ms);
     }
     /* Peek at settings' result directly to save idle-frame cycles. */
     if (!v->set->result && !v->formatting) {
@@ -3068,6 +3137,26 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
     }
 }
 
+/* LAB shows a card's or the choice's change in its own place, as LIVE and CHIP do: the popup a
+ * K knob or ALGORITHM would open is dropped and the card or the choice is lit instead; the
+ * header says the sound PRESETS loads. */
+__attribute__((noinline, unused)) LIVE_COLD static void lab_frame(views* v, uint32_t now_ms) {
+    uint32_t ask = v->s.popup_ask;
+    uint32_t enc = ask & 7u;
+    if ((ask & (ASK_BASE | ASK_PARAM)) != ASK_BASE || v->s.popup_view != &lab_view_view) {
+        return; /* not LAB's control (the menu's ALGORITHM that opened it): the screen drops it */
+    }
+    if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
+        lab_view_flash(&v->lab, enc - PANEL_ENC_K1, now_ms);
+        v->s.popup_ask = 0;
+    } else if (enc == PANEL_ENC_ALGORITHM) {
+        lab_view_flash(&v->lab, LAB_VIEW_HL_CHOICE - 1u, now_ms);
+        v->s.popup_ask = 0;
+    } else if (enc == PANEL_ENC_PRESETS) {
+        v->s.popup_ask = 0;
+    }
+}
+
 /* Nothing draws over a help card: a toast raised while it shows (not the tour's: the card ends
  * the tour) waits, its time left kept, and shows once the card has closed. The card's frame
  * budget then holds (help_view.c counts the layers too). */
@@ -3102,7 +3191,7 @@ void views_frame(views* v, uint32_t now_ms) {
     if (v->l->settings_dirty) {
         store_frame(v, now_ms);
     }
-    /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
+    /* The tap runs while LIVE, SCENE or LAB shows: the audio interrupt pays for it only then. */
     const view* top = shows(v);
     int in_song = song_view_is(top);
     if (in_song) {
@@ -3126,10 +3215,13 @@ void views_frame(views* v, uint32_t now_ms) {
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);
     if (v->sc) {
-        v->sc->on = (uint8_t)(top == &live_view_view || top == &scene_view_view);
+        v->sc->on = (uint8_t)(top == &live_view_view || top == &scene_view_view ||
+                              top == &lab_view_view);
     }
     if (top == &live_view_view || top == &chip_view_view) {
         live_frame(v, top, now_ms);
+    } else if (top == &lab_view_view) {
+        lab_frame(v, now_ms);
     }
     screen_frame(&v->s, now_ms);
 }

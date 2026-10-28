@@ -62,7 +62,7 @@
         NRPN(NRPN_CHARACTER, 5u + (field)), SID_CHARACTER_MAX, def, LINEAR)
 
 /* clang-format off */
-static const midi_map_entry rows[MIDI_MAP_ROWS] = {
+const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     ROW("Live", "Cutoff", "0..2047, the SID's 11 bits", LIVE_PARAM_CUTOFF,
         LIVE_CC_CUTOFF, NRPN(NRPN_LIVE, 0), LIVE_CUTOFF_MAX, 1200, LINEAR),
     ROW("Live", "Resonance", "0..15", LIVE_PARAM_RESONANCE,
@@ -177,6 +177,15 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
     EXPERT_ROW(SID_EXPERT_EXTERNAL_HP, "External high-pass", "0..127 = 0..100 Hz", 20),
     EXPERT_ROW(SID_EXPERT_VOICE_DC, "Voice DC offset", "0..127 = 0..0.6 voice-DAC units", 60),
 
+    ROW("Live", "PWM depth",
+        "0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed "
+        "near the ends so the pulse never closes); a preset's",
+        LIVE_PARAM_PWM_DEPTH, NO_CC, NRPN(NRPN_LIVE, 5), LIVE_PWM_DEPTH_MAX, 0, LINEAR),
+    ROW("Live", "PWM rate", "0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's",
+        LIVE_PARAM_PWM_RATE, NO_CC, NRPN(NRPN_LIVE, 6), LIVE_PWM_RATE_MAX, 0, LINEAR),
+    ROW("Live", "Fine tune", "0..100 = -50..+50 cents, 50 in tune; every voice; a preset's",
+        LIVE_PARAM_TUNE, NO_CC, NRPN(NRPN_LIVE, 7), 2 * LIVE_TUNE_CENTS, LIVE_TUNE_CENTS, STEPS),
+
     ROW("Output", "Spread",
         "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "
         "saved with the settings (not a preset's, not learned, not sent)",
@@ -188,13 +197,13 @@ _Static_assert(SID_DIST_COUNT == 6 && SID_MOD_COUNT == 7 && SID_FXSLOT_COUNT == 
                "the algorithm lists above name every algorithm");
 
 const midi_map_entry* midi_map_row(uint32_t i) {
-    return i < MIDI_MAP_ROWS ? &rows[i] : NULL;
+    return i < MIDI_MAP_ROWS ? &midi_map_rows[i] : NULL;
 }
 
 const midi_map_entry* midi_map_for_param(uint32_t param) {
     for (uint32_t i = 0; i < MIDI_MAP_ROWS; ++i) {
-        if (rows[i].param == param && param != MIDI_MAP_RESERVED) {
-            return &rows[i];
+        if (midi_map_rows[i].param == param && param != MIDI_MAP_RESERVED) {
+            return &midi_map_rows[i];
         }
     }
     return NULL;
@@ -240,13 +249,13 @@ _Static_assert(LIVE_CC_SLOT_LAST - LIVE_CC_SLOT_FIRST == 14u, "SLOT_CC covers ev
 
 const midi_map_entry* midi_map_for_cc(uint8_t cc) {
     uint8_t r = cc < 128u ? cc_rows[cc] : 0u;
-    return r ? &rows[r - 1u] : NULL;
+    return r ? &midi_map_rows[r - 1u] : NULL;
 }
 
 const midi_map_entry* midi_map_for_nrpn(uint16_t nrpn) {
     for (uint32_t i = 0; i < MIDI_MAP_ROWS; ++i) {
-        if (rows[i].nrpn == nrpn && nrpn != MIDI_MAP_NO_NRPN) {
-            return &rows[i];
+        if (midi_map_rows[i].nrpn == nrpn && nrpn != MIDI_MAP_NO_NRPN) {
+            return &midi_map_rows[i];
         }
     }
     return NULL;

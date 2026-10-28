@@ -20,6 +20,7 @@ _Static_assert(MIDI_OUT_TICK_PACKETS / 2u >= MIDI_OUT_NRPN_PACKETS, "a cold expe
 _Static_assert(LIVE_PARAM_COUNT <= 64u, "PRESET_LOADS is a uint64_t");
 _Static_assert(LIVE_PARAM_EXPERT % 2u == 0, "the frozen legacy snapshot consists of parameter pairs");
 _Static_assert(offsetof(midi_out, seen) % 4u == 0, "snapshot parameter pairs are word-aligned");
+_Static_assert(MIDI_MAP_ROWS <= MIDI_OUT_NO_ROW, "midi_out.row is a uint8_t index, MIDI_OUT_NO_ROW none");
 
 #define BIT(p) ((uint64_t)1 << (p))
 /* Exactly the parameters live_set_preset sets (live.h): not the volume, the chip model or the
@@ -32,7 +33,11 @@ static const uint64_t PRESET_LOADS =
     BIT(LIVE_PARAM_RELEASE) | BIT(LIVE_PARAM_FILTER_MODE) | BIT(LIVE_PARAM_FILTER_VOICES) |
     BIT(LIVE_PARAM_BEND_RANGE) | BIT(LIVE_PARAM_VELOCITY_TARGET) | BIT(LIVE_PARAM_MOD_TARGET) |
     BIT(LIVE_PARAM_PRESSURE_TARGET) | BIT(LIVE_PARAM_VIBRATO_RATE) |
-    BIT(LIVE_PARAM_VIBRATO_DEPTH) | BIT(LIVE_PARAM_VIBRATO_DELAY);
+    BIT(LIVE_PARAM_VIBRATO_DEPTH) | BIT(LIVE_PARAM_VIBRATO_DELAY) | BIT(LIVE_PARAM_PWM_DEPTH) |
+    BIT(LIVE_PARAM_PWM_RATE) | BIT(LIVE_PARAM_TUNE);
+
+/* 1 for an expert parameter (they follow the profile's macros: SID_EXPERT_DEFAULT). */
+#define EXPERT(p) ((uint32_t)(p) - LIVE_PARAM_EXPERT < SID_EXPERT_COUNT)
 
 static const uint16_t macro_releases[LIVE_PARAM_EXPERT] = {
     [LIVE_PARAM_MODEL] = (1u << SID_EXPERT_COUNT) - 1u,
@@ -45,6 +50,8 @@ static const uint16_t macro_releases[LIVE_PARAM_EXPERT] = {
 };
 
 _Static_assert(SID_EXPERT_COUNT <= 16u, "pending experts fit their mask");
+_Static_assert(LIVE_PARAM_COUNT - LIVE_PARAM_EXPERT <= 32u,
+               "a parameter past the experts clears a bit of the mask no expert has, in range");
 
 static uint32_t packet(uint32_t cin, uint32_t status, uint32_t d1, uint32_t d2) {
     return MIDI_OUT_CABLE << 4 | cin | status << 8 | d1 << 16 | d2 << 24;
@@ -73,6 +80,7 @@ static uint32_t wire_cc(const midi_out* o, const live* l, uint32_t p, const midi
 
 static void resync(midi_out* o, const live* l) {
     live_params_wire(l, o->seen);
+    o->pwm_step = l->pwm_rate;
     o->expert_seen = l->expert_version;
     o->expert_pending = 0;
     o->release_pending = 0;
@@ -143,12 +151,33 @@ __attribute__((noinline, unused)) static void carry_releases(midi_out* o, const 
     }
 }
 
-/* Ordinary CC input compares only the original prefix. The raw expert layer is revisited
- * only after an edit or a macro that can release overrides at the receiver. */
+/* A parameter's value now, compared with the last look's: pending if it changed, or, from MIDI
+ * input, taken as on the wire. */
+static void look_one(midi_out* o, uint32_t p, uint16_t v, int remote) {
+    o->seen[p] = v;
+    if (remote) {
+        o->wire[p] = v;
+        o->pending[p] = 0;
+    } else {
+        o->pending[p] = 1;
+    }
+}
+
+/* Ordinary CC input compares only the original prefix and the few parameters past the experts.
+ * The raw expert layer is revisited only after an edit or a macro that can release overrides
+ * at the receiver. */
 static int look(midi_out* o, const live* l, int remote) {
-    _Alignas(4) uint16_t now[LIVE_PARAM_EXPERT];
+    _Alignas(4) uint16_t now[LIVE_PARAM_COUNT];
     uint32_t released = 0;
     live_params_base(l, now);
+    /* The parameters past the experts: their fields as live has them, compared first (a look at
+     * rest reads three), each one's value only once one moved. */
+    int tail = l->pwm_depth != o->seen[LIVE_PARAM_PWM_DEPTH] || l->pwm_rate != o->pwm_step ||
+               (uint32_t)(l->tune + LIVE_TUNE_CENTS) != o->seen[LIVE_PARAM_TUNE];
+    if (tail || l->preset != o->preset_seen) {
+        live_params_tail(l, now);
+        o->pwm_step = l->pwm_rate;
+    }
     if (l->preset != o->preset_seen) {
         /* A preset change: the program change carries every parameter it loaded. The rest
          * are diffed as usual below, so a pending change of one survives it. */
@@ -157,10 +186,10 @@ static int look(midi_out* o, const live* l, int remote) {
         /* The program change carries the preset's factory settings; what PRESETS brought back
          * of its edits goes after it as the CCs of the parameters that differ. (The bend range
          * is the one RPN 0 may have set: its wire is its value, as PRESET_LOADS says.) */
-        _Alignas(4) uint16_t factory[LIVE_PARAM_EXPERT];
+        _Alignas(4) uint16_t factory[LIVE_PARAM_COUNT];
         live_preset_params(l->preset, factory);
         /* DICE has no program change: its parameters are the diff's below, like a knob's */
-        for (uint32_t p = 0; p < LIVE_PARAM_EXPERT && l->preset != LIVE_PRESET_DICE; ++p) {
+        for (uint32_t p = 0; p < LIVE_PARAM_COUNT && l->preset != LIVE_PRESET_DICE; ++p) {
             if (PRESET_LOADS >> p & 1u) {
                 uint16_t carried = remote || p == LIVE_PARAM_BEND_RANGE ? now[p] : factory[p];
                 o->seen[p] = now[p];
@@ -182,16 +211,15 @@ static int look(midi_out* o, const live* l, int remote) {
             if (v == o->seen[p]) {
                 continue;
             }
-            o->seen[p] = v;
             if (p >= LIVE_PARAM_MODEL) {
                 released |= macro_releases[p];
             }
-            if (remote) {
-                o->wire[p] = v;
-                o->pending[p] = 0;
-            } else {
-                o->pending[p] = 1;
-            }
+            look_one(o, p, v, remote);
+        }
+    }
+    for (uint32_t p = LIVE_PARAM_EXPERT_END; tail && p < LIVE_PARAM_COUNT; ++p) {
+        if (now[p] != o->seen[p]) {
+            look_one(o, p, now[p], remote);
         }
     }
     int expert_work = o->expert_seen != l->expert_version || (released && l->expert_active);
@@ -203,7 +231,8 @@ static int look(midi_out* o, const live* l, int remote) {
 
 void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires) {
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
-        o->row[p] = midi_map_for_param(p);
+        const midi_map_entry* e = midi_map_for_param(p);
+        o->row[p] = e ? (uint8_t)(e - midi_map_rows) : (uint8_t)MIDI_OUT_NO_ROW;
     }
     resync(o, l);
     o->preset_seen = l->preset;
@@ -254,24 +283,45 @@ void midi_out_remote(midi_out* o, const live* l) {
     look(o, l, 1);
 }
 
+/* 1 when v and wire encode as the same CC value (midi_map_to_cc). Never for two values of a range
+ * of at most 128 values, the encoding being injective there; over a wider range two values in it
+ * at least max / 127 apart differ too (round(v * 127 / max)), so only closer ones pay for the two
+ * encodings. */
+static int same_cc(const midi_map_entry* e, uint32_t v, uint32_t wire) {
+    uint32_t max = e->max;
+    if (v <= max && wire <= max) {
+        if (max <= 127u) {
+            return 0;
+        }
+        uint32_t apart = v > wire ? v - wire : wire - v;
+        if (apart * 127u >= max) {
+            return 0;
+        }
+    }
+    return midi_map_to_cc(e, v) == midi_map_to_cc(e, wire);
+}
+
 /* Parameter p's pending change into out[*n..], within budget. 1: done, sent or with nothing to
  * send; 0: no room, it stays pending. */
 static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_t* out,
                 uint32_t* n) {
-    const midi_map_entry* e = o->row[p]; /* midi_map_for_param searches the table */
     uint32_t v = o->seen[p]; /* the latest: look just ran */
     uint32_t wire = o->wire[p];
-    if (v == wire || (p >= LIVE_PARAM_EXPERT && v == SID_EXPERT_DEFAULT)) {
+    if (v == wire || (v == SID_EXPERT_DEFAULT && EXPERT(p))) {
         o->pending[p] = 0; /* back where it was: nothing new however it would go */
         return 1;
     }
-    uint32_t on = e ? wire_cc(o, l, p, e) : MIDI_MAP_NO_CC;
+    /* Looked up once something may go (midi_map_for_param searches the table). */
+    uint32_t r = o->row[p];
+    if (r >= MIDI_MAP_ROWS) {
+        o->pending[p] = 0; /* no row: nothing to send it as */
+        return 1;
+    }
+    const midi_map_entry* e = &midi_map_rows[r];
+    uint32_t on = wire_cc(o, l, p, e);
     int nrpn = on == MIDI_MAP_NO_CC;
-    /* CC encoding is injective over a bounded 0..127 native range. */
-    if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
-        (!nrpn && !(p >= LIVE_PARAM_EXPERT && wire == SID_EXPERT_DEFAULT) &&
-         (e->max > 127u || v > e->max || wire > e->max) &&
-         midi_map_to_cc(e, v) == midi_map_to_cc(e, wire))) {
+    if ((nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
+        (!nrpn && !(wire == SID_EXPERT_DEFAULT && EXPERT(p)) && same_cc(e, v, wire))) {
         o->pending[p] = 0; /* nothing to send it as, or nothing new on the wire */
         return 1;
     }
@@ -368,7 +418,7 @@ uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
                 o->deferred++;
                 break;
             }
-            if (p >= LIVE_PARAM_EXPERT) {
+            if (p >= LIVE_PARAM_EXPERT) { /* past the experts, a bit no expert has */
                 o->expert_pending &= (uint16_t)~(1u << (p - LIVE_PARAM_EXPERT));
             }
         }

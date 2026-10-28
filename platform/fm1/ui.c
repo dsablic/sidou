@@ -140,6 +140,12 @@ settings* ui_settings(void) {
     return &persisted;
 }
 
+int ui_keep_sound(uint32_t slot, const char* name) {
+    uint8_t sound[LAB_SOUND_BYTES];
+    live_sound_get(ui.l, sound);
+    return user_sound_save(&ui.sounds, slot, name, sound, ui.s.now);
+}
+
 void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     for (uint32_t i = 0; i < 16u; i++) {
         palette[i] = LCD_SWAP(grid_palette[i]);
@@ -154,6 +160,9 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
      * boot once after an install: no record, or another version's. */
     settings_init(&persisted, l, midi_learned(), &ui.cards, &ui.song.scroll, us, store_fm1(), "V" SIDOU_VERSION,
                   settings_force);
+    /* LAB's USER sounds first: the settings' preset may be one of them. */
+    views_sounds(&ui, store_fm1());
+    settings_sounds(&persisted, &ui.sounds);
     int known = settings_load(&persisted, now_ms);
     views_settings(&ui, &persisted);
     views_boot(&ui, !known, home_held);

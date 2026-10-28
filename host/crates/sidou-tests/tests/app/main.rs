@@ -17,6 +17,8 @@ mod grid;
 mod gt2_ins;
 mod help_view;
 mod keys_route;
+mod lab_sound;
+mod lab_view;
 mod learn_view;
 mod live_arp;
 mod live_cutoff;
@@ -73,6 +75,7 @@ mod title_card_bitmap;
 mod tracker_view;
 mod ui_sound;
 mod user_profile;
+mod user_sound;
 mod views;
 mod widget;
 

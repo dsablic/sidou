@@ -33,8 +33,8 @@ static int name_copy(char out[STORE_NAME_MAX + 1u], const char* in) {
         }
         next[i] = in[i];
     }
-    if (in[i]) {
-        return 0;
+    if (in[i] || !strcmp(next, STORE_SOUNDS_NAME)) {
+        return 0; /* LAB's USER sounds' file is no song's to save, load or delete */
     }
     memcpy(out, next, sizeof next);
     return 1;

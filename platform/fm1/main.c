@@ -622,6 +622,12 @@ static void song_apply_keys(const uint16_t* param, uint32_t count, uint8_t prese
     }
     instrument.expert_dirty = 1;
     instrument.expert_version += changed != 0;
+    /* the sound's own past the experts (a song saved before them keeps the preset's) */
+    for (uint32_t p = LIVE_PARAM_EXPERT_END; p < count && p < LIVE_PARAM_COUNT; p++) {
+        if (param[p] <= live_param_max(p)) {
+            live_param_set(&instrument, p, param[p]);
+        }
+    }
 }
 
 static void song_apply_midi(const midi_route_setup* setup) {

@@ -94,6 +94,10 @@ extern "C" {
 #define PANEL_PAGE_NONE 3u
 #define PANEL_PAGE_EXPERT_FIRST 4u
 #define PANEL_PAGE_EXPERT_END (PANEL_PAGE_EXPERT_FIRST + (SID_EXPERT_COUNT + 3u) / 4u)
+/* LAB's pages (app/lab_view.h), OSC first: their cards' parameters (panel_lab_param). The view
+ * turns its cards itself; the page is for the popup's names and MIDI learn. */
+#define PANEL_PAGE_LAB_FIRST PANEL_PAGE_EXPERT_END
+#define PANEL_PAGE_LAB_END (PANEL_PAGE_LAB_FIRST + 5u)
 /* A detent moves a character control this many steps: 32 detents end to end, as a slot's. */
 #define PANEL_CHARACTER_DETENT 4
 
@@ -205,6 +209,13 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
  * panel_encoder turns what this names, and MIDI learn picks the knob's parameter here, so the
  * two cannot disagree. */
 uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc);
+/* Card k (0..3) of LAB's page `page` (0 OSC .. 4 FX, app/lab_view.h): OSC the pulse width (no
+ * parameter, LIVE_PARAM_COUNT, while it reads RATIO: a mono-sync sound without the pulse bit),
+ * the PWM's depth and rate and the fine tune; ENVELOPE the attack, decay, sustain and release;
+ * FILTER the cutoff, resonance and routing, and nothing for K4; MOD the vibrato's rate, depth and
+ * delay and the velocity target; FX the selected slot's Amount, A, B and Mix. What
+ * panel_knob_param names on a LAB page, EDIT held or not. LIVE_PARAM_COUNT past the pages. */
+uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k);
 /* Detent steps of encoder enc (+ = clockwise): what panel_knob_param names, a slot control by
  * LIVE_SLOT_DETENT a detent, a character control by PANEL_CHARACTER_DETENT, clamped at both
  * ends, and on PANEL_PAGE_LIVE live's knobs. */

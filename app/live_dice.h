@@ -13,7 +13,7 @@
  * triangle, sync on a saw or pulse, the envelope, the cutoff (an even step of K1's table, the
  * middle of its range), the resonance, the filter mode, the pulse width on a pulse and now and
  * then a vibrato. Every voice goes through the filter. The effect slots are the instrument's, not
- * a preset's: a roll leaves them. */
+ * a preset's: a roll leaves them. The roll is DICE's base (live.base). */
 void live_dice_roll(live* l, uint32_t seed);
 
 #endif

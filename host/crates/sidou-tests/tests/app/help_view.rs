@@ -625,8 +625,9 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 35] = [
+const CONTEXTS: [&str; 36] = [
     "LIVE",
+    "LAB",
     "LIVE SLOT",
     "MENU",
     "SETTINGS",
@@ -693,6 +694,7 @@ fn open_ctx(name: &str) -> Ctx {
         "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
         "RESET" => crate::views::open_setting(ui, VIEWS_SETTINGS_RESET),
         "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
+        "LAB" => menu_item(ui, VIEWS_MENU_LAB),
         "SCENE" => menu_item(ui, VIEWS_MENU_SCENE),
         "STATUS" => menu_item(ui, VIEWS_MENU_STATUS),
         "ABOUT" => menu_item(ui, VIEWS_MENU_ABOUT),
@@ -942,12 +944,13 @@ fn takes(ui: &mut Ui, e: &screen_event) -> bool {
 }
 
 /// What SAVE does on its own in a state (app/views.c save(), mirrored): a USER slot on CHIP's chip
-/// and EXPERT, the song in the song views, the menu's and SONG's pages' OK, SAVE AS's name,
+/// and EXPERT, the keep in LAB, the song in the song views, the menu's and SONG's pages' OK, SAVE AS's name,
 /// STORE's format and RESET.
 fn saves(name: &str) -> bool {
     matches!(
         name,
         "CHIP"
+            | "LAB"
             | "EXPERT"
             | "MENU"
             | "SONG"

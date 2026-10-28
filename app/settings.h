@@ -14,7 +14,8 @@
  *   1  CARDS (0 off, 1 on)
  *   2  SOUNDS (0 off, 1 on)
  *   3  KEYS (a live_keys_mode)
- *   4  the preset
+ *   4  the preset: 0..4 a built-in or DICE, 5 + n USER sound n + 1 (an older firmware clamps it
+ *      to DICE)
  *   5  the live parameters that follow (42 in v1)
  *   6  each live parameter in order, one byte each but the cutoff and the pulse width (two);
  *      the volume (the MASTER pot's) is 0 and ignored
@@ -26,6 +27,8 @@
  * 124  expert count, then raw expert overrides, then their learned CCs (schema 5)
  * 125 + 2 x the expert count  SPREAD, 0..100 (schema 6; app/chip_spread.h)
  * 126 + 2 x the expert count  SID MODEL (SETTINGS_SID_*; schema 7; app/sid_view.h)
+ * 127 + 2 x the expert count  the count of live parameters past the experts (3: PWM depth, PWM
+ *      rate, fine tune), then each one's learned CC (schema 8; their values are not here)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -46,6 +49,7 @@
 #include "midi_learn.h"
 #include "store.h"
 #include "ui_sound.h"
+#include "user_sound.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,9 +59,12 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 7u
+#define SETTINGS_VERSION 8u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
+/* The live parameters past the experts whose learned CCs schema 8 appends (their values are the
+ * sound's, kept with it, not here). */
+#define SETTINGS_PARAMS_V8 3u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
 #define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
 #define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)
@@ -66,7 +73,8 @@ enum {
     SETTINGS_V5_BYTES = SETTINGS_V4_BYTES + 1u + 2u * SID_EXPERT_COUNT,
     SETTINGS_V6_BYTES = SETTINGS_V5_BYTES + 1u,
     SETTINGS_V7_BYTES = SETTINGS_V6_BYTES + 1u,
-    SETTINGS_BYTES = SETTINGS_V7_BYTES
+    SETTINGS_V8_BYTES = SETTINGS_V7_BYTES + 1u + SETTINGS_PARAMS_V8,
+    SETTINGS_BYTES = SETTINGS_V8_BYTES
 };
 /* SID MODEL: a .sid tune's chips as its header names them (AUTO, the default: a named model plays
  * reSIDfp's profile of it, "unknown" and "both" the keys' setup), or the keys' setup for every
@@ -106,21 +114,32 @@ typedef struct {
     uint8_t errors; /* the store's error count (its low byte) when it took the explicit save */
     char last_song[STORE_NAME_MAX + 1u];
     uint8_t sid_model; /* SID MODEL: SETTINGS_SID_* */
+    /* The USER sounds (settings_sounds; NULL: none), which a preset byte of 5 + n loads from; the
+     * unsaved edit (app/user_sound.h's record) being written: the store programs it from here;
+     * its CRC as last gathered and as last written. */
+    user_sounds* sounds;
+    uint8_t edit[USER_SOUND_EDIT_BYTES];
+    uint32_t edit_seen;
+    uint32_t edit_saved;
 } settings;
 
 void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t* tracker_rows, ui_sound* snd,
                    store* st, const char* version, void (*force)(int on));
+/* The USER sounds a record's preset byte may name (5 + n): set before settings_load. */
+void settings_sounds(settings* s, user_sounds* sounds);
 /* The record as it stands now, into out (SETTINGS_BYTES); its length. */
 uint32_t settings_gather(const settings* s, uint8_t* out);
 /* Applies a record (of len bytes, any schema): every field it has, defaults for the fields a
  * later schema added. 1 if its firmware version is s->version, 0 if not (or if it is not a
  * record: nothing applied). */
 int settings_apply(settings* s, const uint8_t* rec, uint32_t len);
-/* At boot, after the store's mount and live_init, before the first tick: the stored record
- * applied, if any. 1 if it was there and of this firmware version: the short boot; 0 (a first
+/* At boot, after the store's mount, live_init and user_sounds_load, before the first tick: the
+ * stored record applied, if any, then the unsaved edit (app/user_sound.h) over it. 1 if it was there and of this firmware version: the short boot; 0 (a first
  * boot, a new version, no record): the full boot once, and the version is saved. */
 int settings_load(settings* s, uint32_t now_ms);
-/* Main loop, once a tick: the debounce, and an explicit save's progress. Persisted setters
+/* Main loop, once a tick: the debounce, and an explicit save's progress; the unsaved edit is
+ * written by the same debounce, before the settings record (a cut between them leaves the new
+ * sound, never an older edit over a newer record). Persisted setters
  * mark live.settings_dirty or midi_learn.settings_dirty; unchanged ticks gather no record.
  * live.settings_dirty stays nonzero through the debounce, retries and an unconsumed result,
  * so a frame caller can skip the call entirely when it is zero. */

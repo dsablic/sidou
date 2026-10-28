@@ -464,6 +464,40 @@ fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
     );
 }
 
+/// PWM depth, PWM rate and the fine tune are loaded by a preset, so its program change carries
+/// them: a panel preset sends none of them after it, and the edits PRESETS brings back go after
+/// it as their NRPNs (they have no CC), like any other parameter's.
+#[test]
+fn a_program_change_sends_the_new_parameters() {
+    let mut o = Out::new();
+    let pc = |n: u8| u32::from_le_bytes([0x0C, 0xC0, n, 0]);
+    o.rig.preset_step(1);
+    assert_ne!(o.get(LIVE_PARAM_PWM_DEPTH), 0, "PWM BASS has its PWM");
+    assert_eq!(o.tick(), [pc(1)], "carried by the program change");
+    o.set(LIVE_PARAM_PWM_DEPTH, 1000);
+    o.set(LIVE_PARAM_TUNE, 60);
+    let edits = [nrpn_packets(0, 5, 1000), nrpn_packets(0, 7, 60)].concat();
+    assert_eq!(o.tick(), edits, "their NRPNs, in the parameters' order");
+    o.rig.preset_step(1);
+    assert_eq!(o.tick(), [pc(2)], "SYNC LEAD's are its program change's");
+    o.rig.preset_step(-1);
+    assert_eq!(
+        o.tick(),
+        [vec![pc(1)], edits].concat(),
+        "PWM BASS's edits after it"
+    );
+    assert_eq!(o.tick(), []);
+    // From MIDI: never echoed.
+    o.usb(&[
+        u32::from_le_bytes([0xB, 0xB0, 99, 0]),
+        u32::from_le_bytes([0xB, 0xB0, 98, 6]),
+        u32::from_le_bytes([0xB, 0xB0, 6, 0]),
+        u32::from_le_bytes([0xB, 0xB0, 38, 20]),
+    ]);
+    assert_eq!(o.get(LIVE_PARAM_PWM_RATE), 20);
+    assert_eq!(o.tick(), []);
+}
+
 #[test]
 fn the_rate_is_bounded_and_nothing_starves() {
     let mut o = Out::with(0, 1);

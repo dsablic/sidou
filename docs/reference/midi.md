@@ -4,14 +4,14 @@
 # MIDI: the CC and NRPN map
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
-the bend range, three expression targets and expert layer also have a fixed CC (7-bit).
-MIDI learn can bind a CC to any expert knob. The map uses the same numbers on every channel, on TRS and USB. Notes
+the bend range, three expression targets, the expert layer, the PWM and the fine tune also
+have a fixed CC (7-bit). MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..3 selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
-the envelope, filter routing and mode) and expression settings (bend range, the targets,
-the vibrato) over any edits, even when it selects the preset already playing; volume, the
+the envelope, filter routing and mode), expression settings (bend range, the targets,
+the vibrato), the PWM and the fine tune over any edits, even when it selects the preset already playing; volume, the
 chip model and character, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
@@ -23,10 +23,10 @@ they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
 mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
 character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
-117. NRPNs are grouped by MSB: 0 the performance controls and the spread, 1 the SID, 2 the
-character layer, 3..5 the effect slots, 6 expression. The spread (SETTINGS' SPREAD) is a
-setting, not the instrument's: no preset holds it, MIDI learn does not bind it and SIDOU does
-not send it (Output, below).
+117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM and the fine
+tune, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
+(SETTINGS' SPREAD) is a setting, not the instrument's: no preset holds it, MIDI learn does not
+bind it and SIDOU does not send it (Output, below).
 
 CC 71..78 are absolute here, like every CC of the map: the value sets the parameter
 across its range. General MIDI 2 makes its sound controllers relative instead, moving the
@@ -160,8 +160,8 @@ jack, which is MIDI IN only.
   edits while another plays) go after it as the CCs of the parameters that differ.
 - **High resolution:** an option, off by default, sends the parameters of more than
   128 values (cutoff, pulse width, volume) as their NRPNs instead, at full resolution.
-  A parameter with no CC (the bend range, the expression targets) always goes as its
-  NRPN, and so does the pulse width while the mod wheel drives another target (CC 1 is
+  A parameter with no CC (the bend range, the expression targets, the PWM, the fine tune)
+  always goes as its NRPN, and so does the pulse width while the mod wheel drives another target (CC 1 is
   then the wheel). A change of the mod target goes before the tick's other parameters
   (after a program change), so CC 1 is never read with the old target. An NRPN is 4 CCs, without running status: 99 and 98 its
   number, 6 and 38 the value's MSB and LSB (value / 128, value % 128), which is the
@@ -375,6 +375,9 @@ In NRPN order.
 | Live | Pulse width | 1 | 0/2 (2) | 0..4095 | linear | 2048 | 0..4095, the SID's 12 bits; the PWM presets move around it; CC 1 while it is the mod wheel's target (the default) |
 | Live | Volume | 7 | 0/3 (3) | 0..1023 | linear | 1023 | 0..1023 as the MASTER pot, the final output's digital gain |
 | Output | Spread | 117 | 0/4 (4) | 0..100 | steps | 0 | SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; saved with the settings (not a preset's, not learned, not sent) |
+| Live | PWM depth | - | 0/5 (5) | 0..2048 | linear | 0 | 0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed near the ends so the pulse never closes); a preset's |
+| Live | PWM rate | - | 0/6 (6) | 0..255 | linear | 0 | 0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's |
+| Live | Fine tune | - | 0/7 (7) | 0..100 | steps | 50 | 0..100 = -50..+50 cents, 50 in tune; every voice; a preset's |
 | SID | Waveform | 20 | 1/0 (128) | 0..15 | steps | 2 | sum of 1 triangle, 2 saw, 4 pulse, 8 noise; 0 silent |
 | SID | Ring modulation | 21 | 1/1 (129) | 0..1 | steps | 0 | 0 off, 1 on (by the voice before) |
 | SID | Sync | 22 | 1/2 (130) | 0..1 | steps | 0 | 0 off, 1 on (to the voice before) |

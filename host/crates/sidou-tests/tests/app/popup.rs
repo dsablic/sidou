@@ -679,10 +679,15 @@ fn the_popup_covers_its_rows_and_guards_them_from_the_views_large_text() {
     for _ in 0..4 {
         ui.frame();
     }
-    // The menu is whole again under it: its lines read as before (K1 edited the preset: a star).
+    // The menu is whole again under it: its lines read as before (SONG's and LAB's were under
+    // the box).
     assert_eq!(
-        ui.menu_line(VIEWS_MENU_PRESET as usize).trim_end(),
-        format!("{:<3}{:>11}", "PRE", "SAW LEAD*")
+        ui.menu_line(VIEWS_MENU_SONG as usize),
+        format!("{:<13}#", "SONG")
+    );
+    assert_eq!(
+        ui.menu_line(VIEWS_MENU_LAB as usize),
+        format!("{:<13}#", "LAB")
     );
 }
 
@@ -922,8 +927,8 @@ fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popu
         .collect();
     for (n, steps) in turns.iter().enumerate() {
         ui.turn(PANEL_ENC_SELECT, *steps);
-        if n == 4 {
-            ui.turn(PANEL_ENC_ALGORITHM, 1); // OCTAVE
+        if n == VIEWS_MENU_PRESET as usize - 1 {
+            ui.turn(PANEL_ENC_ALGORITHM, 1); // PRE: a value item's popup
         }
         if n == 20 {
             ui.press(PANEL_BTN_OCT_UP);

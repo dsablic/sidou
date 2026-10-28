@@ -1854,7 +1854,7 @@ fn sectors_holding(region: &[u8], key: u32, typ: u8) -> Vec<usize> {
 // ---- format versions ----
 
 /// The fixture's values: key k's final value.
-fn fixture_value(k: u32, round: u32) -> Vec<u8> {
+pub(crate) fn fixture_value(k: u32, round: u32) -> Vec<u8> {
     let len = ((k * 37 + round * 11) % 120) as usize;
     (0..len)
         .map(|i| (i as u32 * 7 + k * 13 + round) as u8)
@@ -1862,22 +1862,22 @@ fn fixture_value(k: u32, round: u32) -> Vec<u8> {
 }
 
 /// The fixture's files' bytes.
-fn fixture_file(seed: u32, len: usize) -> Vec<u8> {
+pub(crate) fn fixture_file(seed: u32, len: usize) -> Vec<u8> {
     (0..len)
         .map(|i| (i as u32 * 31 + seed * 17 + (i as u32 >> 8)) as u8)
         .collect()
 }
 
 /// The files the fixture holds at the end: name, seed, length.
-const FIXTURE_FILES: [(&str, u32, usize); 3] =
+pub(crate) const FIXTURE_FILES: [(&str, u32, usize); 3] =
     [("NEW", 4, 400), ("SONG A", 1, 5000), ("SONG B", 3, 2600)];
 
-const FIXTURE_KEYS: u32 = 16;
-const FIXTURE_ROUNDS: u32 = 12;
+pub(crate) const FIXTURE_KEYS: u32 = 16;
+pub(crate) const FIXTURE_ROUNDS: u32 = 12;
 /// Deleted in the fixture's last round.
-const FIXTURE_DELETED: [u32; 3] = [3, 8, 13];
+pub(crate) const FIXTURE_DELETED: [u32; 3] = [3, 8, 13];
 
-fn fixture_path() -> std::path::PathBuf {
+pub(crate) fn fixture_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/store-v1.bin")
 }
 
@@ -1947,7 +1947,7 @@ fn encode_runs(region: &[u8]) -> Vec<u8> {
     out
 }
 
-fn decode_runs(file: &[u8]) -> Vec<u8> {
+pub(crate) fn decode_runs(file: &[u8]) -> Vec<u8> {
     let mut region = vec![0xFF; HI - LO];
     let mut i = 0;
     while i < file.len() {

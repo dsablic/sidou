@@ -256,16 +256,12 @@ const live_preset* live_preset_get(uint8_t index) {
     return index < LIVE_PRESET_SLOTS ? &presets[index] : NULL;
 }
 
-static const live_preset* cur(const live* l) {
-    return &presets[l->preset];
-}
-
 static void put(live* l, uint8_t reg, uint8_t value) {
     l->sink(l->sink_ctx, reg, value);
 }
 
 static uint8_t voice_count(const live* l) {
-    return cur(l)->mono_sync ? 1 : LIVE_VOICES;
+    return l->mono_sync ? 1 : LIVE_VOICES;
 }
 
 uint16_t live_freq_at(uint8_t note, int32_t offset) {
@@ -326,10 +322,13 @@ static uint32_t vibrato_depth(const live* l, int v) {
     return d > LIVE_EXPRESSION_MAX ? LIVE_EXPRESSION_MAX : d;
 }
 
-/* The voice's pitch offset in 1/8192 semitone: the bend and its vibrato, a triangle from 0
- * (up first) once the delay is over. */
+/* The voice's pitch offset in 1/8192 semitone: the bend, the fine tune and its vibrato, a
+ * triangle from 0 (up first) once the delay is over. */
 static int32_t pitch_offset(const live* l, int v) {
     int32_t off = ((int32_t)l->bend - (int32_t)LIVE_BEND_CENTRE) * (int32_t)l->bend_range;
+    if (l->tune) {
+        off += l->tune * LIVE_PITCH_SEMITONE / 100;
+    }
     const live_voice* x = &l->voice[v];
     uint32_t depth = vibrato_depth(l, v);
     if (depth && !x->vibrato_wait) {
@@ -341,16 +340,15 @@ static int32_t pitch_offset(const live* l, int v) {
 }
 
 static uint16_t voice_freq(const live* l, int v) {
-    const live_preset* p = cur(l);
-    int src = p->mono_sync ? 0 : v;
+    int src = l->mono_sync ? 0 : v;
     uint8_t note = l->voice[src].note;
-    if (note == LIVE_NO_NOTE || (p->mono_sync && v == 1)) {
+    if (note == LIVE_NO_NOTE || (l->mono_sync && v == 1)) {
         return 0;
     }
     /* The sync lead's voices 1 and 3 take the same pitch, so the ratio holds through a bend
      * and the vibrato. */
     uint32_t f = live_freq_at(note, pitch_offset(l, src));
-    if (p->mono_sync && v == 0) {
+    if (l->mono_sync && v == 0) {
         f = (f * l->sync_q8) >> 8;
         /* A known limit (docs/reference/controls.md, Presets): at 2.75 times the pitch the
          * register is full from note 90 (F#6) at rest, from lower notes bent or vibrato'd up
@@ -365,8 +363,7 @@ static uint16_t voice_freq(const live* l, int v) {
 }
 
 static uint8_t voice_control(const live* l, int v) {
-    const live_preset* p = cur(l);
-    if (p->mono_sync && v != 0) {
+    if (l->mono_sync && v != 0) {
         return 0; /* voice 3 only clocks the sync; voice 2 is unused */
     }
     return (uint8_t)(l->control | (l->voice[v].gate ? CTRL_GATE : 0u));
@@ -482,7 +479,7 @@ static void write_all(live* l) {
  * went silent for part of every cycle (PWM BASS at a 9 % width, a quarter of its 2 s cycle). */
 static uint16_t pw_effective(const live* l) {
     int32_t pw = l->pulse_width;
-    int32_t depth = cur(l)->pwm_depth;
+    int32_t depth = l->pwm_depth;
     int32_t room = pw - LIVE_PULSE_FIRST;
     int32_t top = (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - LIVE_PULSE_FIRST - pw;
     room = room < top ? room : top;
@@ -598,6 +595,11 @@ static void load_preset(live* l, uint8_t index) {
     l->vibrato_delay = p->vibrato_delay;
     l->sync_semis = 0;
     l->sync_q8 = p->sync_ratio_q8;
+    l->sync_base_q8 = p->sync_ratio_q8;
+    l->mono_sync = p->mono_sync;
+    l->pwm_depth = p->pwm_depth;
+    l->pwm_rate = p->pwm_rate;
+    l->tune = 0;
     l->lfo_phase = LFO_CENTRE;
     /* The arpeggio: the factory's, off, with every note released below. */
     l->arp_on = 0;
@@ -612,6 +614,11 @@ static void load_preset(live* l, uint8_t index) {
             l->voice[v].stamp = ++l->clock; /* released now, like a note-off */
         }
     }
+    /* The base: the preset as loaded, the slots as they are (a built-in has none of its own). */
+    l->user_sound = 0;
+    live_sound_get(l, l->base);
+    l->base[LAB_SOUND_BEND_RANGE] = p->bend_range; /* not RPN 0's, the channel's */
+    live_sound_set_base(l, l->base, p->name);
 }
 
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
@@ -630,6 +637,10 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->settings_dirty = 0;
     l->user_valid = 0;
     l->user_applied = 0;
+    l->sounds_valid = 0;
+    l->user_load = NULL;
+    l->user_ctx = NULL;
+    l->user_edit_slot = 0;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -677,6 +688,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->expert_dirty = 0;
     l->expert_active = 0;
     l->expert_version = 0;
+    memset(l->slot, 0, sizeof l->slot); /* for the base load_preset takes; sent below */
     load_preset(l, 0);
     reset_chip(l);
     write_all(l);
@@ -726,7 +738,7 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     update_pw(l, v);
     update_cutoff(l);
     write_freq(l, v);
-    if (cur(l)->mono_sync) {
+    if (l->mono_sync) {
         write_freq(l, 2);
     }
     write_control(l, v);
@@ -844,7 +856,7 @@ static void arp_sound(live* l) {
     int v = l->arp_voice;
     l->voice[v].note = arp_note_at(l, l->arp_pos);
     update_freq(l, v);
-    if (cur(l)->mono_sync) {
+    if (l->mono_sync) {
         update_freq(l, 2);
     }
 }
@@ -1005,6 +1017,7 @@ LIVE_COLD static void arp_stop(live* l) {
 }
 
 LIVE_COLD void live_arp_set(live* l, uint32_t field, uint32_t value) {
+    l->settings_dirty = 1; /* the sound's: the unsaved edit keeps it */
     switch (field) {
     case LIVE_ARP_ON: {
         uint8_t want = value ? 1u : 0u;
@@ -1157,6 +1170,9 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->arp_rate = l->arp_rate;
     e->arp_order = l->arp_order;
     e->arp_span = l->arp_span;
+    e->pwm_depth = l->pwm_depth;
+    e->pwm_rate = l->pwm_rate;
+    e->tune = l->tune;
     e->valid = 1;
 }
 
@@ -1188,8 +1204,23 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->arp_order = e->arp_order;
     l->arp_span = e->arp_span;
     l->sync_semis = e->sync_semis;
-    l->sync_q8 = (uint16_t)((cur(l)->sync_ratio_q8 *
-                                 live_ratio_q16[e->sync_semis + LIVE_RATIO_SEMIS] + 32768u) >> 16);
+    l->sync_q8 = (uint16_t)((l->sync_base_q8 * live_ratio_q16[e->sync_semis + LIVE_RATIO_SEMIS] +
+                             32768u) >> 16);
+    l->pwm_depth = e->pwm_depth;
+    l->pwm_rate = e->pwm_rate;
+    l->tune = e->tune;
+}
+
+/* A USER sound is left: its edit, if it has one, is kept for it (live.user_edit), over the one
+ * kept for the USER sound left before it. A USER sound's preset is SAW LEAD's (live_load_user):
+ * its edits are never SAW LEAD's. */
+static void user_leave(live* l) {
+    if (live_preset_edited(l)) {
+        live_sound_get(l, l->user_edit);
+        l->user_edit_slot = l->user_sound;
+    } else if (l->user_edit_slot == l->user_sound) {
+        l->user_edit_slot = 0;
+    }
 }
 
 LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
@@ -1197,30 +1228,35 @@ LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
         q = LIVE_PRESET_SLOTS - 1;
     }
     l->settings_dirty = 1;
-    edit_store(l, &l->edits[l->preset]);
+    if (l->user_sound) {
+        user_leave(l);
+    } else {
+        edit_store(l, &l->edits[l->preset]);
+    }
     load_preset(l, q);
     if (l->edits[q].valid) {
         edit_apply(l, &l->edits[q]);
+        if (q == LIVE_PRESET_DICE) {
+            live_sound_get(l, l->base); /* DICE's base is its roll, as it was left */
+        }
     }
     write_all(l);
 }
 
 uint32_t live_preset_edited(const live* l) {
-    const live_preset* p = cur(l);
-    return l->preset != LIVE_PRESET_DICE && (l->cutoff != p->cutoff || l->resonance != p->resonance ||
-           l->pulse_width != p->pulse_width || l->control != p->control ||
-           l->attack_decay != p->attack_decay || l->sustain_release != p->sustain_release ||
-           l->filter_voices != p->filter_voices || l->filter_mode != p->filter_mode ||
-           (!l->bend_range_rpn && l->bend_range != p->bend_range) ||
-           l->velocity_target != p->velocity_target || l->mod_target != p->mod_target ||
-           l->pressure_target != p->pressure_target || l->vibrato_rate != p->vibrato_rate ||
-           l->vibrato_depth != p->vibrato_depth || l->vibrato_delay != p->vibrato_delay ||
-           l->sync_semis != 0 || l->arp_on || l->arp_rate != LIVE_ARP_RATE_DEFAULT || l->arp_order != LIVE_ARP_UP ||
-           l->arp_span != 1u);
+    if (l->preset == LIVE_PRESET_DICE) {
+        return 0;
+    }
+    uint8_t now[LAB_SOUND_BYTES];
+    live_sound_get(l, now);
+    if (l->bend_range_rpn) {
+        now[LAB_SOUND_BEND_RANGE] = l->base[LAB_SOUND_BEND_RANGE]; /* the channel's, not the sound's */
+    }
+    return !lab_sound_equal(now, l->base);
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
-    const char* name = cur(l)->name;
+    const char* name = l->base_name;
     uint32_t n = 0;
     if (l->preset == LIVE_PRESET_DICE) {
         /* DICE and the number of the roll it holds, two digits */
@@ -1243,7 +1279,7 @@ LIVE_COLD void live_preset_name(const live* l, char* buf) {
     buf[n] = 0;
 }
 
-LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]) {
+LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_COUNT]) {
     const live_preset* p = &presets[index < LIVE_PRESET_COUNT ? index : LIVE_PRESET_COUNT - 1u];
     out[LIVE_PARAM_CUTOFF] = p->cutoff;
     out[LIVE_PARAM_RESONANCE] = p->resonance;
@@ -1264,6 +1300,149 @@ LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]
     out[LIVE_PARAM_VIBRATO_RATE] = p->vibrato_rate;
     out[LIVE_PARAM_VIBRATO_DEPTH] = p->vibrato_depth;
     out[LIVE_PARAM_VIBRATO_DELAY] = p->vibrato_delay;
+    out[LIVE_PARAM_PWM_DEPTH] = p->pwm_depth;
+    out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(p->pwm_rate);
+    out[LIVE_PARAM_TUNE] = LIVE_TUNE_CENTS;
+}
+
+static void put16(uint8_t* s, uint32_t at, uint32_t v) {
+    s[at] = (uint8_t)v;
+    s[at + 1u] = (uint8_t)(v >> 8);
+}
+
+static uint32_t get16(const uint8_t* s, uint32_t at) {
+    return (uint32_t)s[at] | (uint32_t)s[at + 1u] << 8;
+}
+
+/* Straight-line: live_preset_edited packs the sound for every look of LIVE's header. */
+void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
+    out[LAB_SOUND_CONTROL] = l->control;
+    out[LAB_SOUND_AD] = l->attack_decay;
+    out[LAB_SOUND_SR] = l->sustain_release;
+    put16(out, LAB_SOUND_PULSE, l->pulse_width);
+    put16(out, LAB_SOUND_CUTOFF, l->cutoff);
+    out[LAB_SOUND_RESONANCE] = l->resonance;
+    out[LAB_SOUND_FILTER_VOICES] = l->filter_voices;
+    out[LAB_SOUND_FILTER_MODE] = l->filter_mode;
+    out[LAB_SOUND_MONO_SYNC] = l->mono_sync;
+    put16(out, LAB_SOUND_SYNC_BASE, l->sync_base_q8);
+    out[LAB_SOUND_SYNC_SEMIS] = (uint8_t)l->sync_semis;
+    put16(out, LAB_SOUND_PWM_DEPTH, l->pwm_depth);
+    put16(out, LAB_SOUND_PWM_RATE, l->pwm_rate);
+    out[LAB_SOUND_TUNE] = (uint8_t)l->tune;
+    out[LAB_SOUND_BEND_RANGE] = l->bend_range;
+    out[LAB_SOUND_VELOCITY] = l->velocity_target;
+    out[LAB_SOUND_MOD] = l->mod_target;
+    out[LAB_SOUND_PRESSURE] = l->pressure_target;
+    out[LAB_SOUND_VIBRATO_RATE] = l->vibrato_rate;
+    out[LAB_SOUND_VIBRATO_DEPTH] = l->vibrato_depth;
+    out[LAB_SOUND_VIBRATO_DELAY] = l->vibrato_delay;
+    out[LAB_SOUND_ARP + LIVE_ARP_ON] = l->arp_on;
+    out[LAB_SOUND_ARP + LIVE_ARP_RATE] = l->arp_rate;
+    out[LAB_SOUND_ARP + LIVE_ARP_ORDER] = l->arp_order;
+    out[LAB_SOUND_ARP + LIVE_ARP_SPAN] = l->arp_span;
+    memcpy(&out[LAB_SOUND_SLOTS], l->slot, sizeof l->slot);
+}
+
+/* The parameters a sound sets through live_param_set, and where it holds each: (offset, mask,
+ * shift) of the byte or (offset, 0, 16) of a 16-bit field. */
+static const struct {
+    uint8_t param, at, mask, shift;
+} SOUND_PARAMS[] = {
+    {LIVE_PARAM_WAVEFORM, LAB_SOUND_CONTROL, 0xf0u, 4u},
+    {LIVE_PARAM_RING, LAB_SOUND_CONTROL, CTRL_RING, 2u},
+    {LIVE_PARAM_SYNC, LAB_SOUND_CONTROL, CTRL_SYNC, 1u},
+    {LIVE_PARAM_ATTACK, LAB_SOUND_AD, 0xf0u, 4u},
+    {LIVE_PARAM_DECAY, LAB_SOUND_AD, 0x0fu, 0u},
+    {LIVE_PARAM_SUSTAIN, LAB_SOUND_SR, 0xf0u, 4u},
+    {LIVE_PARAM_RELEASE, LAB_SOUND_SR, 0x0fu, 0u},
+    {LIVE_PARAM_PULSE_WIDTH, LAB_SOUND_PULSE, 0u, 16u},
+    {LIVE_PARAM_CUTOFF, LAB_SOUND_CUTOFF, 0u, 16u},
+    {LIVE_PARAM_RESONANCE, LAB_SOUND_RESONANCE, 0xffu, 0u},
+    {LIVE_PARAM_FILTER_MODE, LAB_SOUND_FILTER_MODE, 0x70u, 4u},
+    {LIVE_PARAM_FILTER_VOICES, LAB_SOUND_FILTER_VOICES, 0x07u, 0u},
+    {LIVE_PARAM_VELOCITY_TARGET, LAB_SOUND_VELOCITY, 0xffu, 0u},
+    {LIVE_PARAM_MOD_TARGET, LAB_SOUND_MOD, 0xffu, 0u},
+    {LIVE_PARAM_PRESSURE_TARGET, LAB_SOUND_PRESSURE, 0xffu, 0u},
+    {LIVE_PARAM_VIBRATO_RATE, LAB_SOUND_VIBRATO_RATE, 0xffu, 0u},
+    {LIVE_PARAM_VIBRATO_DEPTH, LAB_SOUND_VIBRATO_DEPTH, 0xffu, 0u},
+    {LIVE_PARAM_VIBRATO_DELAY, LAB_SOUND_VIBRATO_DELAY, 0xffu, 0u},
+};
+
+LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
+    l->settings_dirty = 1;
+    uint8_t mono = in[LAB_SOUND_MONO_SYNC] ? 1u : 0u;
+    if (mono != l->mono_sync) {
+        live_all_notes_off(l); /* the voices change roles: none is left sounding */
+        l->mono_sync = mono;
+        write_controls(l);
+    }
+    uint32_t base = get16(in, LAB_SOUND_SYNC_BASE);
+    int32_t semis = (int8_t)in[LAB_SOUND_SYNC_SEMIS];
+    semis = semis < -LIVE_RATIO_SEMIS ? -LIVE_RATIO_SEMIS
+            : semis > LIVE_RATIO_SEMIS ? LIVE_RATIO_SEMIS
+                                       : semis;
+    l->sync_base_q8 = (uint16_t)(base < LAB_SOUND_SYNC_BASE_MAX ? base : LAB_SOUND_SYNC_BASE_MAX);
+    l->sync_semis = (int8_t)semis;
+    l->sync_q8 = (uint16_t)((l->sync_base_q8 * live_ratio_q16[semis + LIVE_RATIO_SEMIS] +
+                             32768u) >> 16);
+    uint32_t depth = get16(in, LAB_SOUND_PWM_DEPTH), rate = get16(in, LAB_SOUND_PWM_RATE);
+    l->pwm_depth = (uint16_t)(depth < LIVE_PWM_DEPTH_MAX ? depth : LIVE_PWM_DEPTH_MAX);
+    l->pwm_rate = (uint16_t)(rate < LIVE_PWM_STEP_MAX ? rate : LIVE_PWM_STEP_MAX);
+    int32_t tune = (int8_t)in[LAB_SOUND_TUNE];
+    l->tune = (int8_t)(tune < -LIVE_TUNE_CENTS ? -LIVE_TUNE_CENTS
+                       : tune > LIVE_TUNE_CENTS ? LIVE_TUNE_CENTS
+                                                : tune);
+    for (uint32_t i = 0; i < sizeof SOUND_PARAMS / sizeof SOUND_PARAMS[0]; i++) {
+        uint32_t at = SOUND_PARAMS[i].at;
+        uint32_t v = SOUND_PARAMS[i].shift == 16u
+                         ? get16(in, at)
+                         : (uint32_t)(in[at] & SOUND_PARAMS[i].mask) >> SOUND_PARAMS[i].shift;
+        live_param_set(l, SOUND_PARAMS[i].param, v);
+    }
+    /* a bend range RPN 0 set holds unless the sound's differs (live_param_set ends it) */
+    if (in[LAB_SOUND_BEND_RANGE] != l->bend_range) {
+        live_param_set(l, LIVE_PARAM_BEND_RANGE, in[LAB_SOUND_BEND_RANGE]);
+    }
+    /* the arpeggio's settings, then on or off: a held chord goes into it at the sound's rate */
+    for (uint32_t f = LIVE_ARP_SPAN; f > LIVE_ARP_ON; f--) {
+        live_arp_set(l, f, in[LAB_SOUND_ARP + f]);
+    }
+    live_arp_set(l, LIVE_ARP_ON, in[LAB_SOUND_ARP + LIVE_ARP_ON]);
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
+            live_slot_set(l, k, f, in[LAB_SOUND_SLOTS + k * LIVE_SLOT_FIELDS + f]);
+        }
+    }
+    /* the pitch, the ratio and the LFO change no parameter: written as a tick writes them */
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        update_freq(l, v);
+    }
+    update_pws(l);
+}
+
+LIVE_COLD void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND_BYTES],
+                              const char* name) {
+    l->settings_dirty = 1;
+    load_preset(l, 0); /* the frame: the voices released, the edits kept for SAW LEAD stay */
+    live_sound_apply(l, sound);
+    live_sound_set_base(l, sound, name);
+    l->user_sound = (uint8_t)(n + 1u);
+    write_all(l);
+}
+
+LIVE_COLD void live_sound_set_base(live* l, const uint8_t in[LAB_SOUND_BYTES], const char* name) {
+    l->settings_dirty = 1; /* the unsaved edit holds the name and the mark */
+    if (in != l->base) {
+        memcpy(l->base, in, LAB_SOUND_BYTES);
+    }
+    if (name) {
+        uint32_t n = 0;
+        for (; name[n] && n < LAB_SOUND_NAME; n++) {
+            l->base_name[n] = name[n];
+        }
+        l->base_name[n] = 0;
+    }
 }
 
 const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1] = {
@@ -1273,7 +1452,7 @@ const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1] = {
 };
 
 uint32_t live_tone(const live* l) {
-    if (cur(l)->mono_sync) {
+    if (l->mono_sync) {
         return LIVE_TONE_RATIO;
     }
     return l->control & 0x40u ? LIVE_TONE_PULSE : LIVE_TONE_DECAY;
@@ -1289,8 +1468,9 @@ __attribute__((noinline, unused)) LIVE_COLD static void tone_turn(live* l, int32
                 : semis > LIVE_RATIO_SEMIS ? LIVE_RATIO_SEMIS
                                            : semis;
         l->sync_semis = (int8_t)semis;
-        l->sync_q8 = (uint16_t)((cur(l)->sync_ratio_q8 * live_ratio_q16[semis + LIVE_RATIO_SEMIS] +
+        l->sync_q8 = (uint16_t)((l->sync_base_q8 * live_ratio_q16[semis + LIVE_RATIO_SEMIS] +
                                  32768u) >> 16);
+        l->settings_dirty = 1; /* the sound's: the unsaved edit keeps it */
         update_freq(l, 0);
         break;
     }
@@ -1354,20 +1534,64 @@ static uint32_t dice_seed(const live* l) {
     return l->note_ons * 2654435761u ^ l->clock * 40503u ^ l->lfo_phase;
 }
 
+/* The sounds PRESETS steps through, in order: the built-ins and DICE (0..LIVE_PRESET_SLOTS - 1),
+ * then USER 1.. at LIVE_PRESET_SLOTS + n. */
+#define STEP_END (LIVE_PRESET_SLOTS + LIVE_SOUNDS)
+
 LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     if (revert) {
-        live_set_preset(l, l->preset);
+        if (l->user_sound) {
+            live_sound_apply(l, l->base); /* the sound as kept */
+            l->settings_dirty = 1;
+            if (l->user_edit_slot == l->user_sound) {
+                l->user_edit_slot = 0;
+            }
+        } else {
+            live_set_preset(l, l->preset);
+        }
         return;
     }
-    uint8_t p = (uint8_t)step_clamped(l->preset, steps, 1, LIVE_PRESET_SLOTS - 1);
-    if (p != l->preset) {
-        uint32_t fresh = p == LIVE_PRESET_DICE && !l->edits[p].valid;
-        live_recall_preset(l, p);
+    uint32_t at = l->user_sound ? LIVE_PRESET_SLOTS - 1u + l->user_sound : l->preset;
+    uint32_t to = at;
+    for (uint32_t i = steps < 0 ? (uint32_t)-steps : (uint32_t)steps; i; i--) {
+        uint32_t n = to;
+        do { /* a detent on, past the USER slots that hold nothing */
+            n = steps < 0 ? n - 1u : n + 1u;
+        } while (n >= LIVE_PRESET_SLOTS && n < STEP_END &&
+                 !(l->sounds_valid >> (n - LIVE_PRESET_SLOTS) & 1u));
+        if (n >= STEP_END) { /* the end, either way (below 0 wraps) */
+            break;
+        }
+        to = n;
+    }
+    if (to == at) {
+        if (at == LIVE_PRESET_DICE) {
+            live_dice_roll(l, dice_seed(l)); /* DICE again: a new roll */
+        }
+    } else if (to < LIVE_PRESET_SLOTS) {
+        uint32_t fresh = to == LIVE_PRESET_DICE && !l->edits[to].valid;
+        live_recall_preset(l, (uint8_t)to);
         if (fresh) {
             live_dice_roll(l, dice_seed(l));
         }
-    } else if (p == LIVE_PRESET_DICE) {
-        live_dice_roll(l, dice_seed(l)); /* DICE again: a new roll */
+    } else {
+        uint32_t n = to - LIVE_PRESET_SLOTS;
+        l->settings_dirty = 1;
+        if (l->user_sound) {
+            user_leave(l);
+        } else {
+            edit_store(l, &l->edits[l->preset]);
+        }
+        if (l->user_load && l->user_load(l->user_ctx, n)) {
+            if (l->user_edit_slot == n + 1u) {
+                live_sound_apply(l, l->user_edit); /* as it was left; the base stays */
+            }
+        } else { /* the store did not give it: not a sound, and the one playing stays */
+            l->sounds_valid = (uint16_t)(l->sounds_valid & ~(1u << n));
+            if (!l->user_sound) {
+                edit_apply(l, &l->edits[l->preset]);
+            }
+        }
     }
 }
 
@@ -1572,6 +1796,9 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: return SID_CHARACTER_MAX;
+    case LIVE_PARAM_PWM_DEPTH: return LIVE_PWM_DEPTH_MAX;
+    case LIVE_PARAM_PWM_RATE: return LIVE_PWM_RATE_MAX;
+    case LIVE_PARAM_TUNE: return 2u * LIVE_TUNE_CENTS;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return SID_CHARACTER_MAX;
@@ -1760,6 +1987,18 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
             write_gate_reset(l);
         }
         break;
+    /* The sound's own: what they move is written at once, as a tick would write it. */
+    case LIVE_PARAM_PWM_DEPTH:
+        l->pwm_depth = (uint16_t)value;
+        update_pws(l);
+        break;
+    case LIVE_PARAM_PWM_RATE: l->pwm_rate = (uint16_t)live_pwm_step(value); break;
+    case LIVE_PARAM_TUNE:
+        l->tune = (int8_t)((int32_t)value - LIVE_TUNE_CENTS);
+        for (int v = 0; v < LIVE_VOICES; ++v) {
+            update_freq(l, v);
+        }
+        break;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             if (l->expert[param - LIVE_PARAM_EXPERT] != value) {
@@ -1805,6 +2044,9 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: return l->character[param - LIVE_PARAM_AGE];
+    case LIVE_PARAM_PWM_DEPTH: return l->pwm_depth;
+    case LIVE_PARAM_PWM_RATE: return live_pwm_rate(l->pwm_rate);
+    case LIVE_PARAM_TUNE: return (uint32_t)(l->tune + LIVE_TUNE_CENTS);
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return expert_get(l, param - LIVE_PARAM_EXPERT);
@@ -1851,11 +2093,18 @@ void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]) {
     }
 }
 
+void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+    out[LIVE_PARAM_PWM_DEPTH] = l->pwm_depth;
+    out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(l->pwm_rate);
+    out[LIVE_PARAM_TUNE] = (uint16_t)(l->tune + LIVE_TUNE_CENTS);
+}
+
 void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     live_params_base(l, out);
     for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
         out[LIVE_PARAM_EXPERT + f] = l->expert[f];
     }
+    live_params_tail(l, out);
 }
 
 void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
@@ -1863,6 +2112,17 @@ void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
         out[LIVE_PARAM_EXPERT + f] = (uint16_t)expert_get(l, f);
     }
+    live_params_tail(l, out);
+}
+
+uint32_t live_pwm_step(uint32_t rate) {
+    rate = rate < LIVE_PWM_RATE_MAX ? rate : LIVE_PWM_RATE_MAX;
+    return (rate * 32768u + 500u) / 1000u; /* 65536 x 0.05 / 100 = 32.768 a rate */
+}
+
+uint32_t live_pwm_rate(uint32_t step) {
+    uint32_t rate = (step * 1000u + 16384u) / 32768u;
+    return rate < LIVE_PWM_RATE_MAX ? rate : LIVE_PWM_RATE_MAX;
 }
 
 /* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8
@@ -2023,9 +2283,8 @@ void live_tick(live* l) {
     }
     apply_profile(l);
     update_character(l);
-    const live_preset* p = cur(l);
-    if (p->pwm_depth) {
-        l->lfo_phase = (uint16_t)(l->lfo_phase + p->pwm_rate);
+    if (l->pwm_depth) {
+        l->lfo_phase = (uint16_t)(l->lfo_phase + l->pwm_rate);
     }
     /* The vibrato: rate / 10 Hz, 65536 a cycle, so 655.36 * rate / 100 per tick. */
     uint32_t step = ((uint32_t)l->vibrato_rate * 65536u + 500u) / 1000u;

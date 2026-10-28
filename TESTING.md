@@ -1675,6 +1675,44 @@ holds an earlier build.
 The hardware checklist, for a real FM-1, is
 [docs/hardware-test.md](docs/hardware-test.md).
 
+### Decode gate
+
+`crates/emu-gate/tests/decode_gate.rs` walks every instruction of the linked
+image and fails on one the pinned fm1-emu cannot decode or run. A compiler
+idiom fm1-emu lacks stops the emulator only when a test happens to run its
+path (the and-not read-modify-write with r8-r15 stopped the keys test and the
+browser demo at the first key release, fixed in fm1-emu #33); this finds the
+next one on the day the firmware is built, not on the day a test reaches it.
+
+It reads `build/fm1/platform/fm1/sidou_app.elf`: each sized function symbol of
+`.entry`, `.ram_text` and `.text`, and the code between them that has no
+sized symbol (Felucca's exception stubs, padding). Each instruction goes to
+`fm1_core::decode_info` (the decoder `fm1-emu --check-decode` uses; the
+vendor objdump is not the boundary: it shows the 6-byte compare-and-branch as
+unknown and disassembles jump tables as code), then is stepped once at its
+real address on a scratch machine holding the image, a dual-issue head with
+its tail. Two failures: nothing decodes it, or it decodes to a class with no
+semantics (`Unsupported`, as `--check-decode` reports it). A line names the
+address, the bytes, the class, the symbol and the offset. A function whose
+walk does not end on its last byte fails too (a length disagrees with the
+compiler's).
+
+Skipped, and named in the run's output: the jump tables the compiler leaves
+in `.text` (between its `.GJTIS`/`.GJTIL` and `.GJTIE` marker symbols; the
+names repeat per object file, so a start pairs with the next end above it);
+the read-only data after the last function (`.rodata` follows the code in
+`.text`, and 14 bytes of padding after `.ram_text`). Allowed: `trigger` in
+`fm1_fatal_common` (Felucca's `fm1_vec.S`, the fatal-exception stub: the chip
+halts there by design; the emulator stopping on it is the right behaviour).
+Faults from the scratch machine's registers (a bad address) are not gaps.
+
+```
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test decode_gate -- --nocapture
+```
+
+About 117,000 instructions, under a second once built. The second test in the
+file checks on instructions known to fail that the gate's two paths report.
+
 ### Boot-guard test
 
 `crates/emu-gate/tests/bootguard.rs` checks the boot-loop guard
@@ -1833,6 +1871,29 @@ A step names a feature it
 detected from the firmware (strings, symbols, and for `pattern_edit` a probe of REC in TRACKER),
 so a step that main cannot do yet is recorded as not yet possible and starts to run when the
 feature lands, with no edit. `tables/readability.txt` classifies the text (see its header).
+
+The `songs` journey (not a tour) walks SONG's pages and the SIDS list the way a player backs
+out of them: LOAD's files, NEW, SAVE AS, DELETE's list (empty, so SAVE has nothing to choose),
+then SIDS with SAVE, each page left by HOME, and a key still sounds on LIVE at the end. A page
+that does not take HOME, or lands on another view than the table says, is a dead end
+(`HARN.nav.songs.*`, `JOUR.dead`), and the ergonomics gate fails on it.
+
+`crates/ergo/tests/lists.rs` (needs `SIDOU_FM1_BUILD`) is the exhaustive form, for every list
+the menu opens: its lines CHIP, TRACKER, SCENE, SONG (the actions and the LOAD, NEW, SAVE AS,
+DELETE pages, DELETE with and without a song of one's own, and a confirmation), SIDS,
+SETTINGS, STATUS and MIDI. On each it checks the view and text reached, then tries HOME,
+SAVE, SAVE twice and SAVE then HOME, and asserts no crash (a CPU fault panics), HOME presses
+(at most 8) lead back to LIVE and A4 sounds there. One machine a list, the lists side by side
+(about a minute on a loaded machine, 4 CPU-minutes):
+
+```
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p ergo --test lists -- --nocapture
+```
+
+`--nocapture` prints each try's view before and after. The merge check does not run it (its
+workspace stage has no `SIDOU_FM1_BUILD`; the emulator stage runs only emu-gate): run it by
+hand when the menu's or SONG's pages change. The `songs` journey is in the merge check, in the
+ergonomics gate.
 
 ### Recipes: journeys as executable how-tos
 

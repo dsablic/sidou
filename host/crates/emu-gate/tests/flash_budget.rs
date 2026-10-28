@@ -13,7 +13,8 @@
 //! | M2d | 440,000 |
 //! | M2e | 452,000 |
 //! | M2f | 512,000 |
-//! | M3 | 534,000 (M3_START + M3's 28,000; `IMAGE_CEILING` since Task 9 merged device code) |
+//! | M3 | 534,000 (M3_START + M3's 28,000; `IMAGE_CEILING` from M3's Task 9 to LAB) |
+//! | 1.0 | 552,000 (M3's ceiling + 18,000: LAB's estimate and 1.0's small features; `IMAGE_CEILING` since LAB's Task 1b) |
 //!
 //! M3's start target was 506,000 bytes, the image won back at M2's close
 //! (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Before M3"), which M3's own 28,000 then takes to
@@ -22,7 +23,12 @@
 //! with `start` the image measured at M3's start (at most 506,000), but the image moves under
 //! the other 0.4.0 branches and the space reclaim, so the stage's start is the documented
 //! `M3_START`, a fixed number. Since M3's Task 9 (the image holds the 6502, the environment,
-//! the voice shadow and the player) `IMAGE_CEILING` is M3's stage.
+//! the voice shadow and the player) `IMAGE_CEILING` was M3's stage.
+//! 1.0's stage follows M3's: first LAB's 541,000 (docs/plans/2026-10-25-lab-plan.md, Task 1's
+//! decisions), raised by the user on 2026-10-28 to 552,000 (LAB's estimate plus 1.0's small
+//! features; another agent wins flash back on main, and what it saves stays as room for 1.x).
+//! The slot keeps 29,564 bytes (`X_RESERVE`), the room 1.x starts from; this replaces the
+//! 40,000-byte M4/M5 floor. `IMAGE_CEILING` is this stage since LAB's Task 1b.
 //! The M2 schedule above is history
 //! (the plans landed in parallel, so each ceiling was the latest stage merged, not the next
 //! by sub-milestone order): it only rises, ends at or below 512,000 bytes and leaves at least
@@ -47,12 +53,17 @@ const M3_START: usize = 506_000;
 /// M3's own flash budget (its plan's ceiling), and what M4 and M5 keep of the slot after it.
 const M3_BUDGET: usize = 28_000;
 const M4_M5_RESERVE: usize = 47_564;
-const PLAN: &str = "M3";
-const IMAGE_CEILING: usize = M3_STAGE.1;
+const PLAN: &str = "1.0";
+const IMAGE_CEILING: usize = V1_STAGE.1;
 /// M3's stage of the schedule: the image's ceiling once M3 is in.
 const M3_STAGE: (&str, usize) = ("M3", M3_START + M3_BUDGET);
-/// What the plan holds the slot to keep for M4 and M5 after M3's ceiling (M4_M5_RESERVE above
-/// is the exact share and is stricter).
+/// 1.0's flash budget on top of M3's ceiling, and its stage: the image's ceiling once 1.0 is in
+/// (LAB's own 7,000 raised to 18,000 by the user, 2026-10-28).
+const V1_BUDGET: usize = 18_000;
+const V1_STAGE: (&str, usize) = ("1.0", M3_STAGE.1 + V1_BUDGET);
+/// What 1.0's ceiling leaves of the slot: the room 1.x starts from.
+const X_RESERVE: usize = 29_564;
+/// What M3's ceiling must leave for M4 and M5 (the plans' floor then, before 1.0's raise).
 const M4_M5_FLOOR: usize = 40_000;
 // M3's start target is within M2's schedule, and M3's budget on top of it leaves M4 and M5
 // their share of the slot.
@@ -86,7 +97,7 @@ fn the_schedule_only_rises_and_leaves_m3_its_share() {
 }
 
 #[test]
-fn the_image_fits_the_ceiling_of_m3() {
+fn the_image_fits_the_ceiling_of_its_plan() {
     let Some(build) = build_dir() else {
         common::skip_message("the flash budget");
         return;
@@ -124,5 +135,23 @@ fn m3s_stage_follows_m2s_and_leaves_m4_and_m5_their_share() {
         "{} bytes of the slot left after M3's ceiling",
         APP_SLOT.saturating_sub(ceiling)
     );
-    assert!(IMAGE_CEILING <= ceiling);
+}
+
+#[test]
+fn v1s_stage_follows_m3s_and_leaves_1x_its_room() {
+    let (name, ceiling) = V1_STAGE;
+    assert_eq!(name, "1.0");
+    assert!(
+        ceiling > M3_STAGE.1,
+        "1.0's ceiling {ceiling} does not rise from M3's ({})",
+        M3_STAGE.1
+    );
+    assert_eq!(ceiling, 552_000);
+    assert!(
+        ceiling <= APP_SLOT && APP_SLOT - ceiling >= X_RESERVE,
+        "{} bytes of the slot left after 1.0's ceiling",
+        APP_SLOT.saturating_sub(ceiling)
+    );
+    assert_eq!(APP_SLOT - ceiling, X_RESERVE);
+    assert_eq!(IMAGE_CEILING, ceiling);
 }

@@ -123,6 +123,9 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
     }
     uint32_t k = enc - PANEL_ENC_K1;
     uint32_t page = p ? p->page : PANEL_PAGE_LIVE;
+    if (page >= PANEL_PAGE_LAB_FIRST) { /* LAB's cards, EDIT held or not */
+        return panel_lab_param(l, page - PANEL_PAGE_LAB_FIRST, k);
+    }
     if ((held & (1u << PANEL_BTN_EDIT)) || page == PANEL_PAGE_SLOT) {
         /* K1..K4: Amount, A, B, Mix */
         return LIVE_PARAM_SLOT + l->fx_select * LIVE_SLOT_FIELDS +
@@ -145,6 +148,30 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
                                          : LIVE_PARAM_COUNT;
     }
     return KNOBS[k];
+}
+
+uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
+    static const uint8_t CARDS[5][4] = {
+        {LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE},
+        {LIVE_PARAM_ATTACK, LIVE_PARAM_DECAY, LIVE_PARAM_SUSTAIN, LIVE_PARAM_RELEASE},
+        {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE, LIVE_PARAM_FILTER_VOICES, LIVE_PARAM_COUNT},
+        {LIVE_PARAM_VIBRATO_RATE, LIVE_PARAM_VIBRATO_DEPTH, LIVE_PARAM_VIBRATO_DELAY,
+         LIVE_PARAM_VELOCITY_TARGET},
+        {0, 0, 0, 0}, /* FX: the selected slot's */
+    };
+    _Static_assert(PANEL_PAGE_LAB_END - PANEL_PAGE_LAB_FIRST == sizeof CARDS / sizeof CARDS[0],
+                   "a row of cards a LAB page");
+    _Static_assert(LIVE_PARAM_COUNT <= 255u, "a card's parameter fits a byte");
+    if (page >= sizeof CARDS / sizeof CARDS[0] || k > 3u) {
+        return LIVE_PARAM_COUNT;
+    }
+    if (page == 4u) {
+        return LIVE_PARAM_SLOT + l->fx_select * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT + k;
+    }
+    if (page == 0u && k == 0u && l->mono_sync && !(l->control & 0x40u)) {
+        return LIVE_PARAM_COUNT; /* RATIO: the sync ratio's semitones, no parameter */
+    }
+    return CARDS[page][k];
 }
 
 _Static_assert(LIVE_PARAM_DAC == LIVE_PARAM_AGE + 1 && LIVE_PARAM_THUMP == LIVE_PARAM_AGE + 2 &&

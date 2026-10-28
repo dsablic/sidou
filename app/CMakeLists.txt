@@ -22,6 +22,9 @@ add_library(sidou_live STATIC
     help_view.c
     learn_view.c
     keys_route.c
+    lab_draw.c
+    lab_sound.c
+    lab_view.c
     live.c
     live_cutoff.c
     live_dice.c
@@ -71,12 +74,15 @@ add_library(sidou_live STATIC
     tracker_view.c
     ui_sound.c
     user_profile.c
+    user_sound.c
     views.c
     widget.c)
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # RED MOON RITE's music hooks and its state run once a pass or a frame, not once a tile: -Os
 # keeps them small in flash (M2f's code budget, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2f-scene.md).
 set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS "-Os")
+# LAB's sound (docs/plans/2026-10-25-lab-plan.md): checked and compared once a turn or a load.
+set_source_files_properties(lab_sound.c user_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)
@@ -95,6 +101,9 @@ if(CMAKE_CROSSCOMPILING)
     # Not live_view.c: LIVE's frame is the instrument's, nearest its noise-chord gate.
     set_source_files_properties(views.c chip_view.c learn_view.c tracker_view.c sid_view.c
         PROPERTIES COMPILE_OPTIONS -Os)
+    # LAB's view and its drawings (docs/plans/2026-10-25-lab-plan.md): its compose, a turn and its input, once a
+    # frame or a detent, inside the LAB flash stage.
+    set_source_files_properties(lab_view.c lab_draw.c PROPERTIES COMPILE_OPTIONS -Oz)
     # These editors run bounded main-loop work. Keep their rendering and edit helpers outlined
     # rather than duplicating them into the page/input paths.
     set_source_files_properties(song_pages.c step_view.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")

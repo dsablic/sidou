@@ -131,7 +131,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
 | K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
-| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC), clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry) |
+| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC, then the USER sounds [LAB kept](#lab), the empty slots skipped), clamped at both ends; with EDIT held it puts the current preset back to its factory settings (a USER sound, to the sound as kept); in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
@@ -694,6 +694,65 @@ what they turn). The CHIP view is where the slots are seen and named in full. M2
 and ENV the jobs their names suggest (a scale, an envelope); then the shortcut keeps EDIT +
 K1..K4 and the view keeps the rest.
 
+## LAB
+
+LAB (the menu's LAB, after SONG; `app/lab_view.h`; [the art page](../art/README.md#lab) draws
+it) is where one LIVE sound is shaped with every parameter in sight
+([LAB's design](../plans/2026-10-25-lab-design.md)). The menu's LAB takes the menu's place, so
+**HOME** goes back to LIVE, the sound kept as edited. It opens at OSC.
+
+**SELECT** steps the five pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**MOD**, **FX**. **ENV**, **LFO** and **FX** open ENVELOPE, MOD and FX (in LAB they are pages:
+the panel's next algorithm and chip toggle do not run there). On every page:
+
+| Rows | Shows |
+|---|---|
+| 0-1 | the page's name at 2× in yellow, its place (`2/5`) on the right |
+| 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded |
+| 4-17 | the page's drawing |
+| 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
+| 22-27 | the four cards in the knobs' places, as LIVE's knob row: the card's name small in the knob's colour, its value at 3× in white (2× when it takes three characters), a bar and the knob's name |
+| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`) |
+
+A card or the choice that turns is lit (its name in reverse video) for a second instead of the
+value popup; PRESETS opens no popup either (the header names the sound).
+
+| Page | K1 | K2 | K3 | K4 | ALGORITHM |
+|---|---|---|---|---|---|
+| OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
+| ENVELOPE | ATTACK | DECAY | SUS (the sustain level) | RELEASE (0..15, a step a detent) | INSTANT, AUTHENTIC: the envelope mode, the instrument's for every sound (ALL SOUNDS) |
+| FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | free | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
+| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | VELO: the velocity target (OFF, SUS, CUT, PW) | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
+| FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
+
+EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
+page follows it). The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, REC, GLO,
+MASTER and PRESETS do what they do in every view.
+
+**SAVE** keeps the sound with one press, whatever the page. A USER sound is kept in its own
+slot (its name stays); any other sound goes to the lowest free slot of the sixteen as `LAB 01`..
+(its number is the slot's), and from then on it is that USER sound: its `*` goes, it is the
+sound as loaded. The toast, once the store has written it: `KEPT AS U03 LAB 03` (a new slot) or
+`KEPT U03 LAB 03` (in place), with `(GAPS)` when held store operations were forced; the store's
+refusals read `STORE FOREIGN: NOT SAVED`, `STORE ERROR: NOT SAVED` and `STORE FULL: NOT SAVED`.
+A second SAVE while one is being written toasts `SAVING: WAIT` and writes nothing. With all
+sixteen slots full, SAVE on a sound that is not a USER one toasts `USER FULL: EDIT+SAVE` and
+writes nothing (a USER sound still keeps in place). SAVE held while a knob turns is MIDI learn
+for that card's parameter, and SAVE + HOME is learn's clear, as everywhere.
+
+**EDIT + SAVE** (EDIT held first, as the help card teaches) opens the **name page**, a mode of
+LAB (`KEEP AS`, everything at 2x): the slot (`SLOT U03`, with `FREE` or `USED` and a used slot's
+name under it) and the name, twelve characters with the cursor reversed. It opens on the sound's
+own slot with its own name, or on the lowest free slot as `LAB nn` (the first slot when all are
+full: K1 chooses). **K1** turns the slot (the automatic name follows it until the name is the
+player's); the **note keys** type at the cursor (the first 26 keys A to Z, the 27th a space) and
+step it on, making no sound; **SELECT** moves the cursor; **ALGORITHM** changes the character
+under it (space to underscore, as SAVE AS does); the first typed key on an automatic name starts
+a new one. **SAVE** writes it (the spaces around the name trimmed; none left, the automatic
+name): a slot that holds a sound asks once more (`OVERWRITE U03?`, `SAVE AGAIN`; any other
+control cancels the question). The toast is the keep's. **HOME** leaves the page without writing
+(the next HOME is LAB's: back to LIVE).
+
 ## SCENE
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a
@@ -762,6 +821,16 @@ saved: a power cycle brings back the preset that was current, with its edits as 
 keep them (the settings record is unchanged), and the other presets' edits are gone. On MIDI
 out, PRESETS sends the program change and then, as CCs, the restored parameters that differ
 from the preset's factory values.
+
+**The USER sounds** (the sounds [LAB keeps](#lab), U01..U16) follow DICE: PRESETS clockwise from
+DICE goes to the lowest USER sound, then the next, the empty slots skipped; anticlockwise goes
+back; the last one clamps (DICE alone still rolls again at its end). A USER sound loads as a
+preset: its sound, its three effect slots and its name (the header, the popup and the menu's PRE
+say it, `LAB 03` or what it was named, `*` once edited) and the voices released; a built-in or
+DICE after it leaves the slots as they are, as before. **EDIT held + PRESETS** puts a USER sound
+back to the sound as kept. The edits of the USER sound last left (one shared place, not one a
+slot) come back when it is loaded again, until another USER sound is left edited; a built-in's
+kept edits are never touched by it. A MIDI program change knows the built-ins only.
 
 **Known limit:** voice 1's frequency register tops out (0xFFFF, 3.85 kHz) from note 90
 (F#6), and from lower notes bent or with vibrato upward (note 88 at a bend of +2
