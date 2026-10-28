@@ -360,7 +360,7 @@ fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
     (errs.len(), last_minute, worst, wall.elapsed().as_secs_f64())
 }
 
-/// The clock-drift test (docs/plans/2026-10-18-roadmap-after-m2.md, item 6): ten minutes
+/// The clock-drift test (the old roadmap's item 6: https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md): ten minutes
 /// against a steady 120 BPM clock, and 133 BPM, whose clock (18.797 ms) is no whole number of
 /// samples or ticks. Every row stays within 1 ms of where rows sat in the first minute: the
 /// phase never drifts, far inside the one clock (20.8 and 18.8 ms) the plan allows. Measured

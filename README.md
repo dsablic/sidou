@@ -189,11 +189,12 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: LAB**, a view for shaping one sound and keeping it, made for experimenting on the go
-  ([docs/TODO.md](docs/TODO.md)); then DICE's settings and more render parts for dense `.sid` players.
+- **Next: 1.0, with LAB**, a view for shaping one sound and keeping it, made for experimenting on the go
+  ([docs/ROADMAP.md](docs/ROADMAP.md)), with the smaller things around it: DICE's settings, more
+  render parts for dense `.sid` players, and a device session.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
-[roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the
+[roadmap](docs/ROADMAP.md) and the
 [design document](docs/plans/2026-10-14-sidou-design.md).
 
 ## Credits and licence

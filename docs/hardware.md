@@ -121,7 +121,7 @@ pi32v2 has no packed SIMD. It does have:
 - read-modify-write to memory (`[p] += r`), register-pair loads,
   post-increment addressing and predicated blocks.
 
-fm1-emu does not yet execute every class (see `docs/TODO.md`); the
+fm1-emu does not yet execute every class (see [TESTING.md](../TESTING.md#fm1-emus-limits)); the
 memory-operand MAC is probably among them. Divide latency is not documented.
 
 ## Hardware blocks
@@ -422,16 +422,21 @@ These follow from the facts above. Each needs measuring before it's adopted.
   Felucca's, unmodified and byte-identical to Felucca's own build. Once
   step 1 commits, the SPL runs that loader at every power-on until an
   install completes. It writes only the app area `[0x4000, 0x93000)`, never
-  the flash head: a device keeps its own (M-VAVE's SPL and isd_config).
+  the flash head: a device keeps its own (M-VAVE's SPL and isd_config). Any future
+  SIDOU tool must keep the head unwritten.
 - **Identity:** SIDOU development builds answer `FM-1_900`, the same as
-  Felucca's development builds (docs/TODO.md).
+  Felucca's development builds. Release builds answer `FM-1_964` (`SIDOU_PRODUCT`,
+  `sidou-pack --product`; there is no registry, and none of the 80 Firmware Hub packages
+  checked used 964).
 - **Boot-loop guard:** two early deaths in a row send the third boot to
   UBOOT, with the watchdog stopped first.
-- **Recovery paths** if a unit no longer boots: FM-1-transporter
-  (<https://github.com/kurogedelic/FM-1-transporter>), and MvaveFM1Unbricker
-  with jl-uboot-tool, both community tools, to be confirmed on a unit
-  ([hardware-test.md](hardware-test.md)); back to stock with M-VAVE's
-  updater or "Return to official V15".
+- **Recovery paths** if a unit no longer boots: the OCT- gesture and the macOS unbricker
+  (`tools/fm1-unbrick-mac`), both proven on a unit
+  ([2026-10-17](hardware-results/2026-10-17-first-flash.md),
+  [2026-10-23](hardware-results/2026-10-23-v0.3.0-candidate.md)); the community tools
+  FM-1-transporter (<https://github.com/kurogedelic/FM-1-transporter>) and
+  MvaveFM1Unbricker with jl-uboot-tool; back to stock with M-VAVE's updater or
+  "Return to official V15" (proven too). See [flash-day.md](flash-day.md).
 
 ### First real-hardware run (2026-10-17)
 
@@ -715,7 +720,8 @@ TRS input ring's 40.96 ms capacity), pending the spike and listening/TRS checks.
 | The 6502's cost on the device (M3 Task 2) | fm1-emu counts instructions: SIDOU's 6502 costs 8.4 to 8.9 per 6502 cycle on GoatTracker tunes (`CPU6502_INSTR_PER_CYCLE` 9.33; 63 for a call's entry and exit, 21 for a NOP, 14-17 per cycle for an I/O-page access), but each is a flash (XIP) fetch from `cpu6502_run`'s 11 KB, a jump-table read and a data access into the 64 KB, so the device's time a 6502 cycle is unknown. | Task 12's meter is built: TIMER4 times the main loop's slices, and STATUS shows the share of the CPU and the ticks a thousand 6502 cycles (fm1-emu reads the same rows). [hardware-test.md](hardware-test.md) section 21 is the flash day's checklist (the starter pack and the heaviest HVSC tunes, LIVE and a song view showing) and its decision rule: above 15 % of the CPU at the worst tune, or a late write fm1-emu does not have, and the fallbacks follow in order (`cpu6502.c` at `-O2`; the dispatch in RAMTEXT; OSC3 and ENV3 from the audio chip a frame late, the user's choice).. **Measured 2026-10-25** ([results](hardware-results/2026-10-25-m3-flash-day.md)): 2.3-2.5 times fm1-emu's share, at worst 10-12 % (Sound Test); the late writes are fm1-emu's too; no fallback. |
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
 | Combined waveforms from flash | The pulldown rows (`SID_PD`, `.rodata`: a row's index entry, then its 16-entry block) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
-| The USB retry's probe | Without a cable, `usb_probe` runs once a second: the attach and one SIE write given 2000 polls (8,040 instructions in fm1-emu). | Time `usb_probe` against TIMER4 on a unit powered on without a cable, and check that a cable plugged in later still enumerates (the probe's 2000 polls are enough for an SIE that answers). |
+| The USB retry's probe | Without a cable, `usb_probe` runs once a second: the attach and one SIE write given 2000 polls (8,040 instructions in fm1-emu). | Time `usb_probe` against TIMER4 on a unit powered on without a cable, measure the supply current there (unmeasured; the controller is off between tries since `usb_retry_quiet`), and check that a cable plugged in later still enumerates within a few seconds (the probe's 2000 polls are enough for an SIE that answers). |
+| SIE timeouts inside TIMER5 | Felucca's `sie_wr`/`sie_rd` wait up to 20000 polls (about 0.6 ms at 240 MHz, longer than the 0.5 ms poll period) for the controller, called by `usb_poll` from TIMER5, which outranks the audio interrupt. If the SIE stops answering while USB is up (a dead clock, an unplug the stack does not notice), each poll spends several timeouts there until 50 in a row set `usb.up = 0`: audio blocks could drop for tens of milliseconds. | Unplug the cable during playback and while the host suspends (hardware-test.md section 8.1); listen for dropouts. If the SIE can die while up, shorten the in-interrupt timeout or give up after a poll's first timeout (vendored code: decide first). |
 | Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | The SPL and the VM descriptor | The package declares `[0x93000, 0xE9000)` as the SDK's VM region, which holds the store (see "Flash map"). Whether the stock SPL or stock V15 acts on it is not documented. | M2a Task 3b: a test pattern in the store survives a round trip through stock V15 and back. |

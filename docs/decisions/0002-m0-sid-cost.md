@@ -106,7 +106,7 @@ fm1-emu at `e52f4640` decodes but cannot execute `{R*4} = [-R]`, which clang
 emits when loading cutoff curve points. The gate steps that instruction
 itself (2,048 times per chip, all in `sid_init`), and the bit-exact host
 match confirms the semantics. It is to be reported upstream
-([docs/TODO.md](../TODO.md)).
+([https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md)).
 
 ## Decision
 

@@ -2036,7 +2036,7 @@ silent three-pattern song at tempo 6, so what you hear is what you made). Contro
   *Device-only:* opening the song in GoatTracker on a computer after a SysEx transfer (external gear).
 - [ ] **Feel (open question).** Note how recording feels at tempo 6 and at tempo 3: does a
   note you play on the beat land on that beat? Two things are not decided and the unit decides
-  them (docs/TODO.md, "REC from the keys"): **the key-to-row timing is uncompensated** (read
+  them ([ROADMAP.md](ROADMAP.md#1x), "REC from the keys, compensated"): **the key-to-row timing is uncompensated** (read
   at the audio block, about 3 ms, with no latency correction). While recording TRACKER follows
   the playing pattern (the notes show as they land) and its cursor comes back when the song
   stops. Write down which of NEAREST and OFF you prefer and whether a fixed offset is wanted.

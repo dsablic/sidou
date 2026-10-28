@@ -153,7 +153,7 @@ with the tap, 402.27 without), against a bound of 4.5 (`TAP_PER_SAMPLE`).
 
 **The 6502's headroom is 191 instructions per sample.** It was 227 before
 Task 6's 6581 filter and without the tap; the old budget reserved 400.
-[docs/TODO.md](../TODO.md) lists the ways back if M3's 6502 does not fit.
+[https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md) lists the ways back if M3's 6502 does not fit.
 
 ## What remains off, and why
 
@@ -289,6 +289,6 @@ tests hold their ceilings at the measured values.
   at all. The 8580's band-pass warping and the output low-pass belong
   with them, as one output-path change measured against every sweep.
 - The 6502 (M3) has 191 instructions per sample of audio headroom, not
-  400. [docs/TODO.md](../TODO.md) has the plan if it does not fit.
+  400. [https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md) has the plan if it does not fit.
 - Hardware must confirm what the emulator cannot measure: cycles against
   instructions, and the cost of the pulldown rows' flash reads.

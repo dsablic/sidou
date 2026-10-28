@@ -234,7 +234,7 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
   stay out (`SIDOU_ALL_COMBINED_PROFILES_8580`, off): its one profile, the R5, plays
   AVERAGE, and the first build carried them, 61,440 bytes no profile read. emu-gate's
   `character.rs` checks the tables the image holds. If M2 or M3 need the flash, the active
-  profile's rows can be generated into POOL instead (docs/TODO.md). Since M2 the rows
+  profile's rows can be generated into POOL instead (https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md). Since M2 the rows
   share 16-entry blocks (`gen/pulldown.h`): the four profiles' 122,880 bytes take 39,256
   (decision record 0003, Costs).
 - **RAM:** `chips` (POOL) grew from 17,880 to 69,368 bytes: two 17,408-byte DAC tables,

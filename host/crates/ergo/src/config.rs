@@ -77,7 +77,7 @@ pub struct Config {
     pub min_detents: usize,
 
     // ---- tasks and feedback ----
-    /// Most actions (presses, holds, turns) a common task may need (docs/TODO.md: the UX
+    /// Most actions (presses, holds, turns) a common task may need (the UX
     /// pass's "no path longer than two"; the user's brief allows three).
     pub task_max_actions: u32,
     /// Most menu levels (views pushed on the screen's stack) a common task may need.

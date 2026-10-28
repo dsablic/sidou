@@ -62,7 +62,7 @@ unit rebooted once its update session failed.
    This is probably the GT2 player writing the SID's volume register, which MASTER also
    uses.
 4. **The knob range is too small.** A full K1 sweep moves the cutoff only a little (see the
-   UX-pass entry in docs/TODO.md on knob ranges and curves).
+   UX-pass entry in https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md on knob ranges and curves).
 5. **macOS caches USB-MIDI devices by USB ID.** The Felucca family (ChoralRoot, Felucca,
    SIDOU's development builds) all use 1209:0001, so after switching firmware CoreMIDI kept
    the old device record: the port was still called "Felucca". Deleting the device in
