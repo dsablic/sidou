@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Dense `.sid` players write on time:** a block of the audio now renders in up to 23 parts, not
+  15, so a player that writes 23-26 times within 16-19 samples (Thomkat, Kill Me, The Last Ninja)
+  no longer has writes land at the end of their 128-sample block (up to 2.9 ms late). LATE on
+  STATUS stays at 0 for them; Sound Test, with a write about every sample for a whole frame, still
+  shows some. No memory and no audible change elsewhere.
+
 ## [0.5.0] - 2026-10-25
 
 ### Added

@@ -274,7 +274,7 @@ through the register ring. `psid_ctl_block` renders each chip's block split at e
 the whole samples that end at or before its cycle (stepping the chip's Q16 accumulator, no
 division), then `sid_advance` and `sid_write`. So the split render now serves a whole tune's
 writes, inside samples, where the song's served one call a block. Two bounds keep the
-interrupt's cost: a chip's block is at most `PSID_SPLITS` (32) renders, and the writes past
+interrupt's cost: a chip's block is at most `PSID_SPLITS` renders (32 when written; 16, then 24 from 0.5.x), and the writes past
 them go in, in order, at the block's end; a write the chip has already passed (the main loop
 fell behind) goes in at once. Both are counted as late, and the audio never waits for the
 6502. With no late write the samples are those of a render that clocks the chip write by write

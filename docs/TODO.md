@@ -670,6 +670,8 @@ where you go to dig in, and never gets in LIVE's way.
 
 ## .sid: more render parts a block, so dense players write on time (the flash day, 2026-10-25)
 
+**Done (0.5.x):** `PSID_SPLITS` is 24 (with `PSID_BLOCK_ENTRIES` 80); Sound Test (61) stays a known limit. The text below is the plan.
+
 LATE on STATUS counts writes the interrupt applied at the end of their 128-sample block (at most
 2.9 ms after their cycle, in order, nothing dropped): a block renders in at most `PSID_SPLITS - 1`
 = 15 parts, one a distinct write position, and a frame's burst of 23-26 writes over 16-19 samples
