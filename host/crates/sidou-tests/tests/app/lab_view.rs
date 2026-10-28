@@ -2088,3 +2088,261 @@ fn a_and_b_match_their_goldens() {
     settle_hint(&mut ui);
     golden(&ui, "lab-b");
 }
+
+// ---- undo on EDIT + LFO (Task 12) ----
+
+/// EDIT held, LFO pressed, EDIT let go; the toast it made.
+fn undo(ui: &mut Ui) -> Option<String> {
+    ui.down(EDIT);
+    ui.press(PANEL_BTN_LFO);
+    ui.up(EDIT);
+    step(ui);
+    ui.toast()
+}
+
+/// The sound and the envelope mode, as an undo step sees them.
+fn image(ui: &Ui) -> Vec<u8> {
+    let mut s = [0u8; LAB_EDIT_BYTES as usize];
+    unsafe { lab_edit_get(&*ui.rig.live, s.as_mut_ptr()) };
+    s.to_vec()
+}
+
+fn steps(ui: &Ui) -> u32 {
+    u32::from(ui.v.lab.undo.steps)
+}
+
+#[test]
+fn each_card_turn_undoes_to_the_value_before_the_run() {
+    let mut ui = lab_ui();
+    for page in 0..LAB_PAGES {
+        to_page(&mut ui, page);
+        for k in 0..4 {
+            for dir in [1, -1] {
+                let before = image(&ui);
+                let n = steps(&ui);
+                ui.turn(K1 + k, 2 * dir);
+                ui.turn(K1 + k, dir);
+                if image(&ui) == before {
+                    assert_eq!(
+                        steps(&ui),
+                        n,
+                        "page {page} K{}: nothing changed, no step",
+                        k + 1
+                    );
+                    continue;
+                }
+                assert_eq!(steps(&ui), n + 1, "page {page} K{}: one step", k + 1);
+                undo(&mut ui);
+                assert_eq!(image(&ui), before, "page {page} K{} {dir:+}", k + 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_run_of_detents_is_one_step() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_ENVELOPE);
+    let before = image(&ui);
+    for _ in 0..5 {
+        ui.turn(K1, 1);
+    }
+    ui.turn(K1, -2);
+    assert_eq!(steps(&ui), 1, "one card's run");
+    // another control ends the run: the same card again is a step of its own
+    ui.press(PANEL_BTN_ENV);
+    ui.turn(K1, 1);
+    assert_eq!(steps(&ui), 2);
+    ui.turn(K1 + 1, 1);
+    ui.turn(K1, 1);
+    assert_eq!(
+        steps(&ui),
+        4,
+        "K2 between: K1's next turn is a step of its own"
+    );
+    for left in (0..4).rev() {
+        assert_eq!(undo(&mut ui), Some(format!("UNDO ({left})")));
+    }
+    assert_eq!(image(&ui), before, "all of it undone");
+    assert_eq!(undo(&mut ui).as_deref(), Some("NOTHING TO UNDO"));
+}
+
+#[test]
+fn sixteen_steps_then_the_oldest_falls_off() {
+    assert_eq!(LAB_EDIT_STEPS, 16);
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_OSC);
+    let mut images = vec![image(&ui)];
+    for i in 0..18 {
+        ui.turn(K1 + 1 + 2 * (i % 2), 1); // the PWM depth and the tune, by turns: a step each
+        images.push(image(&ui));
+    }
+    assert_eq!(steps(&ui), LAB_EDIT_STEPS);
+    for n in (0..16).rev() {
+        undo(&mut ui);
+        assert_eq!(image(&ui), images[n + 2], "{n} steps left");
+    }
+    assert_eq!(
+        undo(&mut ui).as_deref(),
+        Some("NOTHING TO UNDO"),
+        "the two oldest fell off"
+    );
+    assert_eq!(image(&ui), images[2]);
+}
+
+#[test]
+fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
+    let mut e = Box::<lab_edit>::default();
+    let n = LAB_EDIT_BYTES as usize;
+    let zero = vec![0u8; n];
+    // ten steps of two bytes each
+    for i in 0..10u8 {
+        let mut b = zero.clone();
+        b[0] = i + 1;
+        b[1] = i + 1;
+        let mut before = zero.clone();
+        before[0] = i;
+        before[1] = i;
+        assert_eq!(
+            unsafe { lab_edit_push(&mut *e, before.as_ptr(), b.as_ptr(), 0) },
+            1
+        );
+    }
+    assert_eq!((e.steps, e.n), (10, 20));
+    // a step of every byte: room for it is made by dropping the oldest whole steps
+    let all = vec![0xAAu8; n];
+    unsafe { lab_edit_push(&mut *e, zero.as_ptr(), all.as_ptr(), 0) };
+    assert_eq!(
+        (u32::from(e.steps), u32::from(e.n)),
+        (2, 2 + LAB_EDIT_BYTES),
+        "the newest small step and the big one"
+    );
+    // a merge adds only what the newest step does not hold, keeping its old values
+    let mut more = all.clone();
+    more[3] = 0x55;
+    assert_eq!(
+        unsafe { lab_edit_push(&mut *e, all.as_ptr(), more.as_ptr(), 1) },
+        1
+    );
+    assert_eq!(
+        u32::from(e.n),
+        2 + LAB_EDIT_BYTES,
+        "nothing new: byte 3 is in the step"
+    );
+    // nothing changed and no merge: no step
+    assert_eq!(
+        unsafe { lab_edit_push(&mut *e, all.as_ptr(), all.as_ptr(), 0) },
+        0
+    );
+    assert_eq!(e.steps, 2);
+    // every entry's place is a byte of the image, the steps' first marked
+    let firsts = (0..e.n as usize)
+        .filter(|k| {
+            let i = (e.first as usize + k) % LAB_EDIT_ENTRIES as usize;
+            e.at[i] & LAB_EDIT_FIRST as u8 != 0
+        })
+        .count();
+    assert_eq!(firsts, 2);
+}
+
+#[test]
+fn an_algorithm_run_undoes_as_one_step() {
+    let mut ui = lab_ui();
+    let before = image(&ui);
+    for _ in 0..3 {
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+    }
+    assert_ne!(choice(&ui), "SAW");
+    assert_eq!(steps(&ui), 1);
+    undo(&mut ui);
+    assert_eq!(image(&ui), before);
+    assert_eq!(choice(&ui), "SAW");
+    // ENVELOPE's choice is the envelope mode, the instrument's: undone too
+    to_page(&mut ui, LAB_PAGE_ENVELOPE);
+    let mode = ui.live().envelope_mode;
+    ui.turn(PANEL_ENC_ALGORITHM, if mode == 0 { 1 } else { -1 });
+    assert_ne!(ui.live().envelope_mode, mode);
+    undo(&mut ui);
+    assert_eq!(ui.live().envelope_mode, mode);
+}
+
+#[test]
+fn a_revert_and_an_ab_edit_undo_as_one_step() {
+    let mut ui = edited_lab();
+    let edited = image(&ui);
+    ui.hold(EDIT, true);
+    ui.turn(PANEL_ENC_PRESETS, 1); // the revert
+    ui.hold(EDIT, false);
+    assert_eq!(attack(&ui), base_attack(&ui), "reverted");
+    assert_eq!(steps(&ui), 2, "the turn and the revert");
+    undo(&mut ui);
+    assert_eq!(image(&ui), edited, "the revert undone");
+    // A becomes the edit: B's difference is a step, and the turn on A another
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A);
+    let a = image(&ui);
+    ui.turn(K1 + 1, 1);
+    assert_eq!(steps(&ui), 3, "the first turn, B's step, the turn on A");
+    undo(&mut ui);
+    assert_eq!(image(&ui), a, "the turn on A undone");
+    undo(&mut ui);
+    assert_eq!(image(&ui), edited, "and B back");
+    // undo while A plays gives B back at once
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A);
+    undo(&mut ui);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    assert_eq!(image(&ui), edited);
+}
+
+#[test]
+fn undo_after_a_load_says_nothing_to_undo() {
+    let mut ui = edited_lab();
+    assert_eq!(steps(&ui), 1);
+    ui.turn(PANEL_ENC_PRESETS, 1); // PWM BASS
+    step(&mut ui);
+    let loaded = image(&ui);
+    assert_eq!(undo(&mut ui).as_deref(), Some("NOTHING TO UNDO"));
+    assert_eq!(image(&ui), loaded);
+    // a program change (MIDI) is a load too
+    ui.turn(K1, 1);
+    assert_eq!(steps(&ui), 1);
+    unsafe { live_set_preset(&mut *ui.rig.live, 0) };
+    assert_eq!(undo(&mut ui).as_deref(), Some("NOTHING TO UNDO"));
+}
+
+#[test]
+fn undo_survives_home_and_back() {
+    let mut ui = edited_lab();
+    let before = {
+        let mut b = image(&ui);
+        b[LAB_SOUND_AD as usize] = ui.live().base[LAB_SOUND_AD as usize];
+        b
+    };
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "LIVE");
+    open_lab(&mut ui);
+    assert_eq!(undo(&mut ui).as_deref(), Some("UNDO (0)"));
+    assert_eq!(image(&ui), before);
+}
+
+#[test]
+fn lab_presets_loads_and_resets_undo() {
+    let mut k = Stored::new();
+    k.put(2, "U THREE", 6, 3);
+    to_page(&mut k.ui, LAB_PAGE_ENVELOPE);
+    k.ui.turn(K1, 2);
+    k.ui.turn(K1 + 1, 2);
+    assert_eq!(steps(&k.ui), 2);
+    k.presets(5); // in LAB: the USER sound loads
+    k.frame();
+    assert_eq!(k.ui.live().user_sound, 3);
+    assert_eq!(k.attack(), 6);
+    assert_eq!(undo(&mut k.ui).as_deref(), Some("NOTHING TO UNDO"));
+    assert_eq!(k.attack(), 6, "the loaded sound stays");
+    // its own edits undo again
+    k.ui.turn(K1, 1);
+    assert_eq!(undo(&mut k.ui).as_deref(), Some("UNDO (0)"));
+    assert_eq!(k.attack(), 6);
+}

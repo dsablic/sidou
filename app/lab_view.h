@@ -34,7 +34,12 @@
  *   the slot's algorithm, OFF included. SCL selects the next slot, as everywhere.
  *
  * Input: SELECT steps the pages; K1..K4 turn the cards (EDIT held too: no hidden combination);
- * ALGORITHM steps the choice (clamped); ENV, LFO and FX open ENVELOPE, MOD and FX. Everything
+ * ALGORITHM steps the choice (clamped); ENV, LFO and FX open ENVELOPE, MOD and FX. EDIT + LFO
+ * undoes (app/lab_edit.h, LAB_EDIT_STEPS steps; toast `UNDO (3)`, the steps left, or `NOTHING TO
+ * UNDO`): a card's run of turns (until another control is used), a run of the choice, EDIT +
+ * PRESETS (the revert, which LAB takes from the panel) and A becoming the edit are a step each;
+ * another sound loading (PRESETS, a program change) forgets the steps, which otherwise last
+ * across HOME and back. No redo. Everything
  * else goes on to the views' global handler and the panel (the keys play; OCT, PLAY, SEQ, REC,
  * GLO, MASTER, PRESETS and SCL as everywhere). HOME goes back to LIVE (the menu's LAB replaces
  * the menu: app/views.c lab_open).
@@ -54,6 +59,7 @@
 #include <stdint.h>
 
 #include "grid.h"
+#include "lab_edit.h"
 #include "live.h"
 #include "scope.h"
 #include "screen.h"
@@ -111,6 +117,8 @@ extern "C" {
 #define LAB_VIEW_AB_A 1u
 #define LAB_VIEW_AB_B 2u
 #define LAB_VIEW_AB_COL 28u
+/* lab_view.run: no run of turns goes on. */
+#define LAB_VIEW_NO_RUN 0xFFu
 /* The note keys that type: A..Z are keys 0..25 and key 26 is a space. */
 #define LAB_VIEW_NAME_KEYS 27u
 
@@ -140,6 +148,8 @@ typedef struct {
     uint8_t ab;           /* LAB_VIEW_AB_*: comparing, and which sound plays */
     uint8_t loads;        /* live.loads as LAB last saw it: another sound ends A/B */
     uint8_t other[LAB_SOUND_BYTES]; /* B, the edit, while A plays */
+    lab_edit undo; /* the steps EDIT + LFO undoes (app/lab_edit.h) */
+    uint8_t run;   /* the control whose run of turns the newest step is, LAB_VIEW_NO_RUN none */
 } lab_view;
 
 extern const view lab_view_view;
@@ -169,7 +179,7 @@ uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
  * SAVE: app/save_key.h) compares: an edited sound's edit (B) is put aside and its base (A) plays,
  * the header showing A; the next tap plays B again, and so on. On a sound that is its base it
  * toasts NOTHING TO COMPARE. A turn of LAB's while A plays makes A the edit: comparing ends and
- * B goes. Comparing ends when another sound loads (live.loads). EDIT as a
+ * B's difference from it is one undo step (EDIT + LFO gives B back). Comparing ends when another sound loads (live.loads). EDIT as a
  * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. */
 void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, int top);
 /* HOME on the name page: back to the pages without writing. 1 if it was open (HOME did that). */

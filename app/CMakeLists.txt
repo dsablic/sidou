@@ -23,6 +23,7 @@ add_library(sidou_live STATIC
     learn_view.c
     keys_route.c
     lab_draw.c
+    lab_edit.c
     lab_sound.c
     lab_view.c
     live.c
@@ -81,8 +82,9 @@ target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # RED MOON RITE's music hooks and its state run once a pass or a frame, not once a tile: -Os
 # keeps them small in flash (M2f's code budget, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2f-scene.md).
 set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS "-Os")
-# LAB's sound (docs/plans/2026-10-25-lab-plan.md): checked and compared once a turn or a load.
-set_source_files_properties(lab_sound.c user_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
+# LAB's sound and its undo (docs/plans/2026-10-25-lab-plan.md): checked, compared and recorded once
+# a turn or a load.
+set_source_files_properties(lab_sound.c lab_edit.c user_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)

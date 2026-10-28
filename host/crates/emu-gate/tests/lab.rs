@@ -787,3 +787,57 @@ fn edit_tapped_swaps_the_sound_heard() {
         "B sounds as it did: {heard_b} and {heard_b2}"
     );
 }
+
+/// EDIT held, `b` tapped, EDIT let go.
+fn edit_with(m: &mut Machine, b: u32) {
+    m.key(PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    tap(m, b as u8);
+    m.key(PANEL_BTN_EDIT as u8, false);
+    m.run_ms(60);
+}
+
+/// EDIT + LFO in LAB undoes a step at a time, each within the poll allowance, and says so; a run
+/// of detents is one step.
+#[test]
+fn edit_lfo_undoes_in_lab() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_ENV as u8);
+    let ad = |m: &mut Machine| m.soc.read8(live_at(&fw, ilp32::live::attack_decay));
+    let start = ad(&mut m);
+    for _ in 0..3 {
+        m.turn(K1, 1); // the attack: a run
+        m.run_ms(60);
+    }
+    m.turn(K1 + 1, 2); // the decay
+    m.run_ms(100);
+    let turned = ad(&mut m);
+    assert_eq!(turned >> 4, (start >> 4) + 3);
+    m.watch_calls(fw.symbol("ui_buttons"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let (input, pass) = start_cost(&mut m, 100, |m| edit_with(m, PANEL_BTN_LFO));
+    println!("EDIT + LFO: the input {input}, the busiest pass {pass}");
+    assert!(
+        input + pass <= common::POLL_INSTRUCTIONS,
+        "{input} + {pass}"
+    );
+    assert_eq!(
+        ad(&mut m),
+        (turned & 0xF0) | (start & 15),
+        "the decay undone"
+    );
+    assert_eq!(toast_text(&mut m, &fw), "UNDO (1)");
+    edit_with(&mut m, PANEL_BTN_LFO);
+    assert_eq!(ad(&mut m), start, "the attack's run undone at once");
+    assert_eq!(toast_text(&mut m, &fw), "UNDO (0)");
+    edit_with(&mut m, PANEL_BTN_LFO);
+    assert_eq!(toast_text(&mut m, &fw), "NOTHING TO UNDO");
+    assert_eq!(
+        lab_page(&mut m, &fw),
+        LAB_PAGE_ENVELOPE as u8,
+        "LFO stayed on the page"
+    );
+}

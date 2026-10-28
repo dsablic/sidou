@@ -759,8 +759,16 @@ again (`B`), and so on. It acts when EDIT is let go, and only if nothing else wa
 turned while it was down (the note keys do not count, so a note can be played while it is held):
 EDIT + a knob, LFO, ARP, SCL, SAVE or PRESETS are combinations and never compare, and EDIT keeps
 its meaning everywhere else. On a sound that is its base it toasts `NOTHING TO COMPARE`. A card
-or the choice turned while A plays makes A the edit: comparing ends there. Comparing also ends
-when another sound loads (PRESETS, a program change).
+or the choice turned while A plays makes A the edit: comparing ends there, and B's difference
+from it is one undo step (below), so B is not lost. Comparing also ends when another sound loads
+(PRESETS, a program change).
+
+**EDIT + LFO** undoes, sixteen steps back (`UNDO (3)`: the steps left; `NOTHING TO UNDO` when
+none are). A step is a card's run of turns (until another control is used: one detent or twenty,
+one step), a run of ALGORITHM (ENVELOPE's, the envelope mode, too), **EDIT + PRESETS** (the revert
+to the sound as kept or loaded) and A becoming the edit. The seventeenth step drops the oldest.
+The steps last across HOME and back; another sound loading forgets them (undoing past a load
+would mix two sounds). There is no redo. While A plays, EDIT + LFO gives B back.
 
 ## SCENE
 

@@ -538,20 +538,63 @@ static void a_sound(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     }
 }
 
-/* Another sound loaded since LAB last looked: comparing ends. */
+/* Another sound loaded since LAB last looked: comparing ends, and the undo history goes (undoing
+ * past a load would mix two sounds). */
 static void sync(lab_view* lv) {
     if (lv->loads != lv->l->loads) {
         lv->loads = lv->l->loads;
         lv->ab = LAB_VIEW_AB_OFF;
+        lab_edit_clear(&lv->undo);
+        lv->run = LAB_VIEW_NO_RUN;
     }
 }
 
-/* A change of LAB's to the sound while A plays: A is the edit from now on, B goes. */
+/* The change from before (lab_edit_get's) to the sound as it is as one undo step: the newest
+ * step again when it continues run's run of turns (LAB_VIEW_NO_RUN: never). */
+static void record(lab_view* lv, const uint8_t before[LAB_EDIT_BYTES], uint32_t run) {
+    uint8_t after[LAB_EDIT_BYTES];
+    lab_edit_get(lv->l, after);
+    int merge = run != LAB_VIEW_NO_RUN && run == lv->run;
+    lv->run = lab_edit_push(&lv->undo, before, after, merge) ? (uint8_t)run : LAB_VIEW_NO_RUN;
+}
+
+/* A change of LAB's to the sound while A plays: A is the edit from now on, and B's difference
+ * from it one undo step. */
 static void a_becomes_edit(lab_view* lv) {
     sync(lv);
     if (lv->ab == LAB_VIEW_AB_A) {
+        uint8_t b[LAB_EDIT_BYTES];
+        memcpy(b, lv->other, LAB_SOUND_BYTES);
+        b[LAB_EDIT_MODE] = lv->l->envelope_mode;
+        record(lv, b, LAB_VIEW_NO_RUN);
         lv->ab = LAB_VIEW_AB_OFF;
     }
+}
+
+/* A change of LAB's begins: the sound before it into before. */
+static void begin(lab_view* lv, uint8_t before[LAB_EDIT_BYTES]) {
+    a_becomes_edit(lv);
+    lab_edit_get(lv->l, before);
+}
+
+/* EDIT + LFO: the newest step undone, and a toast of the steps left. */
+static void undo(lab_view* lv, screen* s) {
+    a_becomes_edit(lv); /* while A plays: B back */
+    lv->run = LAB_VIEW_NO_RUN;
+    if (!lab_edit_undo(&lv->undo, lv->l)) {
+        screen_toast(s, "NOTHING TO UNDO", SCREEN_TOAST_MS);
+        return;
+    }
+    char t[10] = "UNDO (";
+    uint32_t n = lv->undo.steps;
+    uint32_t k = 6;
+    if (n >= 10u) {
+        t[k++] = (char)('0' + n / 10u);
+    }
+    t[k++] = (char)('0' + n % 10u);
+    t[k++] = ')';
+    t[k] = 0;
+    screen_toast(s, t, SCREEN_TOAST_MS);
 }
 
 /* EDIT's tap: B aside and A, or B again. */
@@ -722,7 +765,6 @@ static void name_turn(lab_view* lv, uint32_t id, int32_t steps);
 
 /* SELECT the pages, K1..K4 the cards, ALGORITHM the choice; ENV, LFO and FX their pages. */
 static int input(screen* s, void* state, const screen_event* e) {
-    (void)s;
     lab_view* lv = state;
     if (e->kind == SCREEN_TURN && lv->edit_down) {
         lv->edit_spoiled = 1; /* a control turned while EDIT is down: no A/B at its release */
@@ -737,7 +779,14 @@ static int input(screen* s, void* state, const screen_event* e) {
         }
         return e->id > PANEL_ENC_K1 && e->id <= PANEL_ENC_K4;
     }
+    live* l = lv->l;
+    int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
     if (e->kind == SCREEN_PRESS) {
+        lv->run = LAB_VIEW_NO_RUN; /* another control: a run of turns ends */
+        if (edit && e->id == PANEL_BTN_LFO) {
+            undo(lv, s);
+            return 1;
+        }
         uint32_t to = e->id == PANEL_BTN_ENV   ? LAB_PAGE_ENVELOPE
                       : e->id == PANEL_BTN_LFO ? LAB_PAGE_MOD
                       : e->id == PANEL_BTN_FX  ? LAB_PAGE_FX
@@ -748,18 +797,31 @@ static int input(screen* s, void* state, const screen_event* e) {
         lv->page = (uint8_t)to;
         return 1;
     }
+    uint8_t before[LAB_EDIT_BYTES];
+    if (e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
+        begin(lv, before);
+        card_turn(lv, e->id - PANEL_ENC_K1, e->steps);
+        record(lv, before, e->id);
+        return 1;
+    }
+    if (e->id == PANEL_ENC_ALGORITHM) {
+        begin(lv, before);
+        choice_turn(lv, e->steps);
+        record(lv, before, e->id);
+        return 1;
+    }
+    lv->run = LAB_VIEW_NO_RUN; /* SELECT, PRESETS: another control */
     if (e->id == PANEL_ENC_SELECT) {
         lv->page = (uint8_t)clamp((int32_t)lv->page + e->steps, 0, LAB_PAGES - 1);
         return 1;
     }
-    if (e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
-        a_becomes_edit(lv);
-        card_turn(lv, e->id - PANEL_ENC_K1, e->steps);
-        return 1;
-    }
-    if (e->id == PANEL_ENC_ALGORITHM) {
-        a_becomes_edit(lv);
-        choice_turn(lv, e->steps);
+    if (e->id == PANEL_ENC_PRESETS && edit) {
+        /* EDIT + PRESETS, the panel's revert, as one undo step (a built-in's reloads it: not
+         * another sound) */
+        begin(lv, before);
+        live_preset_step(l, e->steps, 1);
+        lv->loads = l->loads;
+        record(lv, before, LAB_VIEW_NO_RUN);
         return 1;
     }
     return 0;
@@ -854,6 +916,7 @@ static void name_write(lab_view* lv, screen* s) {
 
 void lab_view_save(lab_view* lv, screen* s, int edit) {
     live* l = lv->l;
+    lv->run = LAB_VIEW_NO_RUN; /* another control */
     if (lv->mode) {
         name_write(lv, s);
         return;
@@ -950,6 +1013,7 @@ void lab_view_init(lab_view* lv, live* l, user_sounds* us, song_view* shared, co
     lv->canvas = shared;
     lv->sc = sc;
     lv->loads = l->loads;
+    lv->run = LAB_VIEW_NO_RUN;
 }
 
 void lab_view_page_set(lab_view* lv, uint32_t page) {
