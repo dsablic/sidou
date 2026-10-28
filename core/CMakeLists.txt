@@ -8,6 +8,7 @@ add_library(sidou_core STATIC
     sid/sid_filter.c
     fx/fx.c
     fx/fx_slots.c
+    fx/fx_slots_init.c
     fx/fx_reverb.c
     fx/fx_plate.c
     fx/fx_limit.c
@@ -67,7 +68,7 @@ set_source_files_properties(sid/sid_shadow.c PROPERTIES COMPILE_OPTIONS "-Os;-fn
 # keep emu-gate character.rs and the goldens. Not -Oz: the thump's stage costs 32.14 a sample
 # against its 31, and a filter build's slice goes over REG_RING_PREPARE_SLICE.
 if(CMAKE_CROSSCOMPILING)
-    set_source_files_properties(sid/sid_character.c sid/sid_dac.c PROPERTIES COMPILE_OPTIONS -Os)
+    set_source_files_properties(sid/sid_character.c sid/sid_dac.c fx/fx_slots_init.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
