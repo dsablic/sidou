@@ -28,7 +28,7 @@ jobs:
       # (the same digest as tools/docker/image.digest).
       image: ghcr.io/dsablic/sidou-build@sha256:c5d6a1d204a635f2b698ade0f07deb5843e6e001d5f74684bbc92a5d974766cf
     env:
-      # A release tag builds SIDOU's own identity, FM-1_964 (docs/TODO.md); anything else the
+      # A release tag builds SIDOU's own identity, FM-1_964 (docs/hardware.md, "Updates and recovery"); anything else the
       # development one, FM-1_900.
       SIDOU_PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'FM-1_964' || 'FM-1_900' }}
     steps:

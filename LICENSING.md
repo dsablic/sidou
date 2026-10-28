@@ -81,7 +81,7 @@ upstream authors. The firmware's combined GPL-3.0-only distribution terms are un
 
 The licence audit's missing GoatTracker copyright lines in `gt2_sng.h` and `gt2_song.h`
 remain open under the
-[licence audit](docs/TODO.md#licence-labels-that-dont-match-the-codes-origin-release-blocker)
+[licence audit](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md#licence-labels-that-dont-match-the-codes-origin-release-blocker)
 ("Licence labels that don't match the code's origin").
 Passing REUSE checks label coverage, not whether every label correctly reflects origin;
 M2c's documentation completion does not close that release blocker.

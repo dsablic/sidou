@@ -1070,7 +1070,7 @@ the budget (accepted in the M1b review).
 
 fm1-emu at the pinned revision cannot execute one instruction that clang
 emits (`{R*4} = [-R]`). The emulator tests step it themselves
-(`crates/emu-gate/tests/common/mod.rs`); see [docs/TODO.md](docs/TODO.md).
+(`crates/emu-gate/tests/common/mod.rs`; the history is in [upstream-reports.md](docs/upstream-reports.md), row 2).
 
 **A failure means** one of three things: the core got too slow for the
 budget, the target and host builds no longer compute the same thing (look
@@ -1437,10 +1437,37 @@ writes it into the fm1 build directory as `latency_<case>_<envelope>.json`.
 SIDOU_LATENCY_TRIALS=64 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate -E 'binary(latency)'
 ```
 
-fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
+fm1-emu does not emulate USB (see [its limits](#fm1-emus-limits)), so USB
 MIDI is covered by the host tests of the packet conversion
 (`tests/app/midi_usb.rs`), the ring (`midi_ring.rs`) and the input logic
 (`midi_rx.rs`), and by hardware testing.
+
+### fm1-emu's limits
+
+What fm1-emu does not do, so what only the device can tell. Each has a device check in
+[hardware-test.md](docs/hardware-test.md) and, where it is upstream's to fix, a line in
+[upstream-reports.md](docs/upstream-reports.md).
+
+- **No USB.** The USB0 registers (`0x11800..0x1183F`) are plain storage: the SIE never
+  reports a finished access, so unmodified firmware times out at boot, leaves USB off and
+  retries once a second. `usb_poll`'s cost with a host attached cannot be measured, and the
+  update protocol (USB only) cannot be driven. Covered instead by the host tests of the packet
+  conversion, the MIDI ring and the input logic; `step 1` (`ota.c`) against packages from
+  `sidou-pack` (`crates/sidou-pack/tests/ota_step1.rs`); and `crates/emu-gate/tests/usb.rs`,
+  which plays a host against a model of the controller (`tests/common/usb_host.rs`:
+  enumeration, the update handshake and first read, K1's and K4's MIDI out, the DAC's
+  output through a modelled EP4). The model is the firmware's side only: the chip's DMA and
+  timing are not in it. An install and USB timing are device checks (section 8 and 8.1).
+- **No watchdog.** The P33 interface (`P33_CON`, `P33_DAT`) keeps what is written and acts on
+  nothing: no watchdog and no reset through `PR_PWR`, so `fm1_wdt_arm`, `fm1_wdt_feed` and
+  `fm1_reboot` have no effect and the boot test cannot tell whether the firmware feeds it.
+  Filed upstream (fm1-emu#65). Device check: hardware-test.md section 10.
+- **Instruction classes.** It still stops on a few pi32v2 classes (saturating `R += R`
+  variants, register `&=`/`^=` masks, some FPU and accumulator classes). If a profiled hot
+  spot needs one in hand-written assembly, support goes upstream first, so the gate's
+  bit-exact host-versus-target check keeps working.
+- **No timing model.** It counts instructions, not cycles: flash fetches, divides and the
+  I-cache are unmeasured (hardware.md "Open checks on a real unit").
 
 ### Store layout
 

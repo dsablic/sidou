@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Button and knob audit (2026-10-25)
 
-Read from the code on main, for the LAB design (docs/TODO.md "LAB",
+Read from the code on main, for the LAB design (https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md "LAB",
 [inspiration](2026-10-25-lab-inspiration.md)). Paths are under `app/` unless stated.
 Docs: docs/reference/controls.md ("cm").
 

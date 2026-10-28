@@ -3,7 +3,7 @@
 # The browser demo on GitHub Pages: tools/web-demo builds the site (the firmware, its package,
 # fm1-emu's web frontend at the pinned revision) and smoke-tests it in headless Chromium;
 # only a build that passes is deployed. Pages must be enabled with "GitHub Actions" as its
-# source (docs/TODO.md).
+# source.
 name: pages
 # On every push to main that changes the firmware, the demo page or the README (the user,
 # 2026-10-23: the demo stays in step with the README and the newest firmware), on a release tag,
