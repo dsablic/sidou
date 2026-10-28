@@ -25,6 +25,17 @@ here.
 found against `e52f4640` and rechecked at the pin, `db8d472e` (2026-10-22), each instruction
 stepped in a scratch crate at `7ca5b96c` and at `db8d472e`.
 
+**Rechecked 2026-10-28.** fm1-emu: all three filed reports are fixed upstream, #63 and #64 at the
+pin `c1c045fc`, and #65 (the watchdog and PR_PWR reset) by [PR #92](https://github.com/joakimeriksson/fm1-emu/pull/92),
+merged 2026-10-27, after the pin. Felucca: #293, #294 and #295 were closed on 2026-10-28 **without
+a fix**: in Felucca 1.7.0 `usb.c` moved to [felucca-bsp](https://github.com/hugelton/felucca-bsp)
+(`chip/usb.c`, MPL-2.0), and the maintainer asked for the reports to be brought there. In
+felucca-bsp's `chip/usb.c` (pushed 2026-10-26) the DMA buffers are still `aligned(4)` (6), `sie_wr`
+and `sie_rd` carry no `noinline` (7), the USB names are build settings as plain ASCII strings
+(8.1: done, in another form), and there is no raw MIDI-in hook (8.2). The maintainer notes that in
+1.7.0 `ep1tx` sits at 4 mod 8 and EP1 IN works, so alignment may not be the whole story for 6.
+To file again in felucca-bsp after the user's review.
+
 **Offers rather than bugs** (also shown to the user first): SIDOU's USB host model for
 fm1-emu's tests ([TESTING.md](../TESTING.md#fm1-emus-limits)), more instruction classes in fm1-emu if profiling needs them (saturating `R += R`, register `&=`/`^=` masks, some FPU and accumulator classes), and macOS support for the FM-1's ROM-boot recovery
 (`tools/fm1-unbrick-mac`) for MvaveFM1Unbricker / jl-uboot-tool. Later: FM-1 Live Link (the roadmap's companion module) for the other FM-1 firmwares.
