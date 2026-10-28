@@ -14,6 +14,7 @@ const SOURCES: &[&str] = &[
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
     "core/fx/fx_slots.c",
+    "core/fx/fx_slots_init.c",
     "core/fx/fx_reverb.c",
     "core/fx/fx_plate.c",
     "core/fx/fx_limit.c",

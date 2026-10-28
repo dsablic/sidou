@@ -8,6 +8,7 @@ add_library(sidou_core STATIC
     sid/sid_filter.c
     fx/fx.c
     fx/fx_slots.c
+    fx/fx_slots_init.c
     fx/fx_reverb.c
     fx/fx_plate.c
     fx/fx_limit.c

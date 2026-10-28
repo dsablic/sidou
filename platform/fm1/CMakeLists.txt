@@ -75,6 +75,12 @@ target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshad
 # failure on a device.
 option(SIDOU_USB_FIX "midi.c (the USB stack) with Felucca's build flags" ON)
 set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -fdata-sections)
+# main.c (the main loop and the boot glue, 25 KB of code) for size, with -O2's inlining threshold:
+# plain -Os saved 4,256 bytes but the main loop ran 8.5 % more instructions in a CC flood (5.009M/s
+# against midi.rs's 5.0M bound). With the threshold it saves 2,208 bytes at +4.2 % (4.81M/s of 5.0M;
+# LIVE's full-speed flood 6.05M/s of 6.3M). fm1_alnk0_irq, the one function of main.c in SRAM, comes
+# out byte for byte the same (RAMTEXT is unchanged).
+set_property(SOURCE main.c APPEND PROPERTY COMPILE_OPTIONS -Os -mllvm -inline-threshold=225)
 if(SIDOU_USB_FIX)
     set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -mcpu=generic -mno-fprev1 -Os)
 else()

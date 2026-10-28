@@ -109,4 +109,13 @@ if(CMAKE_CROSSCOMPILING)
     # These editors run bounded main-loop work. Keep their rendering and edit helpers outlined
     # rather than duplicating them into the page/input paths.
     set_source_files_properties(song_pages.c step_view.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
+    # The flash win-back before 1.0 (docs/plans/2026-10-24-flash-space.md): files whose gates bound
+    # work or sit well clear of their budgets, built for size. Left out on purpose, each measured:
+    # live.c (the input's instruction count: ui_encoder over CHIP_PICK_INPUT 400, K1 over POPUP_INPUT
+    # 250) and title_card.c (THE CHIP's worst ui_poll 79,349 against 79,000).
+    # boot.c, sid_character.c and sid_dac.c stay as they were: with LAB in, at -Os they moved the
+    # thump stage over its 31 a sample, the boot timeline (LIVE chip B's golden) and a tune's pause.
+    set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c
+        midi_learn.c about.c song_edit.c midi_map.c help_view.c logo.c PROPERTIES COMPILE_OPTIONS -Oz)
+    set_source_files_properties(screen.c chip_ctl.c keys_route.c panel.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()

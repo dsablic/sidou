@@ -2,6 +2,50 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Flash and RAMTEXT space: where it goes, what to reclaim
 
+**Win-back before 1.0 (2026-10-28, branch `flashwin`):** the image **526,640 to 514,832 (-11,808)**,
+RAMTEXT 48,736 (`_rt_end` 0x01C0BE60, and the RAMTEXT bytes are identical with and without the main.c
+change below), RAM and POOL unchanged, audio and goldens bit-identical (`ram_audio`, the 93 `screen`
+tests with their goldens, `character`, `boot`, `live`, `midi`, `latency`, `song`, `psid_budget`,
+`first_use`, `keys`, `fx_budget`, `slots_budget`, `flash_budget` and `sidou-tests` on the final build;
+`sysex`, `settings`, `store`, `song_store`, `song_bank`, `psid`, `psid_store` and `psid_views` on the
+first change's files, which no later change touches). By change:
+
+| Change | Image |
+|---|---:|
+| `screen`, `chip_ctl`, `keys_route`, `panel`, `boot`, `sid_character`, `sid_dac` at `-Os`; `sid_io`, `song_io`, `sysex`, `song_view`, `scene_song`, `scene_rmr`, `midi_learn`, `about`, `song_edit`, `midi_map`, `help_view`, `logo` at `-Oz` | 518,128 (-8,512) |
+| `sid_slots_init` into `core/fx/fx_slots_init.c` at `-Os` (boot-only; the render stays `-O2` in SRAM) | 517,040 (-1,088) |
+| `main.c` at `-Os -mllvm -inline-threshold=225` | 514,832 (-2,208) |
+
+What was measured and left alone, and why (each against the gate that stopped it):
+
+- `live.c` at `-Os` (saves about 3 KB): the input's instruction count, `ui_encoder` on CHIP's
+  algorithm pick 405 against `CHIP_PICK_INPUT` 400 (333 at `-O2`) and a popup's K1 256 against
+  `POPUP_INPUT` 250 (244). `title_card.c` at `-Os`: THE CHIP's worst `ui_poll` 79,349 against 79,000
+  (71,245 at `-O2`).
+- `grid.c`, `scene.c`, `scene_px.c`, `scene_view.c`, `widget.c`, `live_view.c` at `-Os` (8,448 bytes
+  together): the worst-poll budgets of LIVE, SCENE, the song views, the popup and the screen changes
+  all fail; these are the views' shared render path.
+- `-Oz` instead of `-Os` on `sid_character.c` (the thump's stage 32.14 a sample against 31; a filter
+  build's slice over `REG_RING_PREPARE_SLICE`), `cpu6502.c`, `psid_ctl.c` and `psid_env.c`
+  (`cpu6502_budget` 11.34 instructions a cycle, `psid_budget`'s busiest pass over `POLL_INSTRUCTIONS`).
+- `-Oz` on the boot's files (`boot.c`, `sid_dac.c`, `gt2_sng.c`, `gt2_stream.c`, `gt2_ins.c`,
+  `song_ext.c`, `settings.c`, `user_profile.c`; together under 1 KB): the boot's timeline moves and
+  the SCENE stars and LIVE chip B goldens with it.
+- `main.c` at plain `-Os` would save 4,256, but the main loop runs 8.5 % more instructions in a CC
+  flood (5.009M/s against `midi.rs`'s 5.0M bound). With `-O2`'s inlining threshold it saves 2,208 at
+  +4.2 %: 4.81M/s of 5.0M (4.62M/s before), LIVE's full-speed flood 6.05M/s of 6.3M, idle 2.34M/s.
+  That spends 0.4M/s of the loop's headroom, which LAB's main-loop work will want; revert that one
+  commit (`main.c`'s line in `platform/fm1/CMakeLists.txt`) to take it back.
+- Dead code and duplicate tables: nothing found (`--gc-sections` already drops the unused; the
+  `UAC_FIR` 7,680 bytes are Felucca's vendored resampler). The bitmap codec's dictionary mode for
+  SCENE's art (about 4 KB) was not tried: it is the reader the SCENE instruction gate rejected before,
+  and the gains of this round already used up the safe flags.
+
+Budgets, as measured on the final build (bound in brackets): THE CHIP card's worst `ui_poll` 71,248
+(79,000); CHIP's algorithm pick input 333 (400) and its busiest pass 42,118 (`CHIP_PASS`); popup K1
+input 245 (250); SCENE fire's busiest `ui_poll` 58,513 (`SCENE_WORST_POLL` 62,000); CC flood 4.81M/s
+(5.0M); LIVE flood 6.05M/s (6.3M).
+
 **Done for 0.4.0** (branch `space-reclaim`, on `v040-batch2` at `dde85461`, which has the drums
 and the MIDI export): the lossless set below, measured on the FM-1_900 build as the merge check
 builds it. Outputs are bit-identical (no golden changed; the device plays sample for sample as the
