@@ -944,12 +944,13 @@ fn takes(ui: &mut Ui, e: &screen_event) -> bool {
 }
 
 /// What SAVE does on its own in a state (app/views.c save(), mirrored): a USER slot on CHIP's chip
-/// and EXPERT, the song in the song views, the menu's and SONG's pages' OK, SAVE AS's name,
+/// and EXPERT, the keep in LAB, the song in the song views, the menu's and SONG's pages' OK, SAVE AS's name,
 /// STORE's format and RESET.
 fn saves(name: &str) -> bool {
     matches!(
         name,
         "CHIP"
+            | "LAB"
             | "EXPERT"
             | "MENU"
             | "SONG"

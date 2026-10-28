@@ -2687,6 +2687,10 @@ static void save(views* v) {
         learn_view_save(&v->learn); /* forget the picked CC, or confirm the clear */
         return;
     }
+    if (shows(v) == &lab_view_view) {
+        lab_view_save(&v->lab, &v->sounds, &v->s); /* keep the sound (its toast: sounds_frame) */
+        return;
+    }
     if (shows(v) == &chip_view_view) {
         chip_view_save_result r = chip_view_save(&v->chip, v->s.now);
         if (r) { /* a USER slot: its toast now, or when the store commits (store_frame) */
@@ -2956,12 +2960,15 @@ __attribute__((noinline, unused)) static void users_frame(views* v, uint32_t now
 }
 
 /* A USER sound's write: handed to the store, committed; keeps the frame awake while it has
- * work. Its result is LAB's SAVE's to say (docs/plans/2026-10-25-lab-plan.md, Task 8): until
- * then it is taken here, the store's refusals toasted as the USER profiles' are. */
+ * work. Its result is LAB's keep's to say, as the USER profiles' are. */
 __attribute__((noinline, unused)) static void sounds_frame(views* v, uint32_t now_ms) {
     user_sounds_tick(&v->sounds, now_ms, v->set->force);
-    user_sound_result r = user_sounds_take(&v->sounds, NULL);
-    if (r == USER_SOUND_FOREIGN || r == USER_SOUND_FAILED || r == USER_SOUND_FULL) {
+    uint32_t slot = 0;
+    user_sound_result r = user_sounds_take(&v->sounds, &slot);
+    if (r == USER_SOUND_SAVED || r == USER_SOUND_SAVED_GAPS) {
+        lab_view_kept(&v->lab, &v->sounds, slot, r == USER_SOUND_SAVED_GAPS, &v->s);
+        sound(v, UI_SOUND_CHUNK);
+    } else if (r == USER_SOUND_FOREIGN || r == USER_SOUND_FAILED || r == USER_SOUND_FULL) {
         screen_toast(&v->s, r == USER_SOUND_FAILED  ? "STORE ERROR: NOT SAVED"
                             : r == USER_SOUND_FULL ? "STORE FULL: NOT SAVED"
                                                    : "STORE FOREIGN: NOT SAVED",

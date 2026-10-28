@@ -500,3 +500,56 @@ fn lab_filter_mod_and_fx_draw_within_their_budgets() {
     run(&mut m, "FX, DELAY", LAB_PAGE_FX);
     assert!(over.is_empty(), "{over:#?}");
 }
+
+/// The screen's toast text (app/screen.h).
+fn toast_text(m: &mut Machine, fw: &Firmware) -> String {
+    let at = fw.symbol("ui") + (ilp32::views::s + ilp32::screen::toast) as u32;
+    (0..SCREEN_TOAST_CHARS)
+        .map(|i| m.soc.read8(at + i))
+        .take_while(|&b| b != 0)
+        .map(char::from)
+        .collect()
+}
+
+/// LIVE, the menu's LAB, ENVELOPE, two turns, SAVE: one press keeps the sound in USER 1 as `LAB
+/// 01` with those values, and the toast says so once the store has it.
+#[test]
+fn a_happy_accident_is_kept_with_one_press() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_ENV as u8);
+    assert_eq!(lab_page(&mut m, &fw), LAB_PAGE_ENVELOPE as u8);
+    m.turn(K1, 2); // the attack 0 -> 2
+    m.turn(K1 + 3, -3); // the release
+    m.run_ms(100);
+    let release = m.soc.read8(live_at(&fw, ilp32::live::sustain_release)) & 15;
+    tap(&mut m, PANEL_BTN_SAVE as u8);
+    let mut toast = String::new();
+    let end = m.ms() + 20_000;
+    while !toast.starts_with("KEPT") {
+        assert!(m.ms() < end, "the keep never said so: {toast:?}");
+        m.run_ms(20);
+        toast = toast_text(&mut m, &fw);
+    }
+    assert_eq!(toast, "KEPT AS U01 LAB 01");
+    let (typ, file) = stored_file(&m.soc.flash.mem, "USER SOUNDS").expect("the file is stored");
+    assert_eq!(u32::from(typ), STORE_FILE_SOUNDS);
+    assert_eq!(file[USER_SOUND_HEADER as usize], 1, "USER 1 is used");
+    let at = USER_SOUND_HEADER as usize;
+    assert_eq!(&file[at + 1..at + 7], b"LAB 01");
+    let sound = &file[at + 1 + LAB_SOUND_NAME as usize..at + STRIDE];
+    assert_eq!(sound[LAB_SOUND_AD as usize] >> 4, 2, "the attack kept");
+    assert_eq!(
+        sound[LAB_SOUND_SR as usize] & 15,
+        release,
+        "the release kept"
+    );
+    assert_eq!(
+        sound,
+        base(&mut m, &fw).as_slice(),
+        "the base is what was kept"
+    );
+    assert_eq!(m.soc.read8(live_at(&fw, ilp32::live::user_sound)), 1);
+}

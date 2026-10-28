@@ -10,6 +10,7 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::sid_view::golden;
+use crate::store::{fresh, Rig as Store};
 use crate::views::Ui;
 use crate::{drain, Sent};
 
@@ -1110,4 +1111,285 @@ fn fx_draws_the_chain_and_the_slots_shape() {
     settle(&mut ui);
     assert_eq!(choice(&ui), "LO-FI");
     assert_eq!(ui.big(ROW0 + 9, 10, 2, 5), "LO-FI", "named, not drawn");
+}
+
+// ---- keeping (Task 8 on): LAB on a store ----
+
+const SAVE: u32 = SAVE_KEY_BUTTON;
+
+unsafe extern "C" fn no_force(_: i32) {}
+
+/// LAB over the views with the settings and the USER sounds on a store, the store's polls
+/// between frames (as platform/fm1/ui.c wires them).
+struct Stored {
+    ui: Ui,
+    st: Store,
+    _set: Box<settings>,
+    _ml: Box<midi_learn>,
+}
+
+impl Stored {
+    fn new() -> Self {
+        let mut ui = Ui::without_cards();
+        let mut set = Box::<settings>::default();
+        let mut ml = Box::<midi_learn>::default();
+        let mut st = fresh(7, 256);
+        unsafe {
+            midi_learn_init(&mut *ml);
+            views_learn(&mut *ui.v, &mut *ml);
+            settings_init(
+                &mut *set,
+                &mut *ui.rig.live,
+                &mut *ml,
+                &mut ui.v.cards,
+                &mut ui.v.song.scroll,
+                std::ptr::null_mut(),
+                &mut *st.st,
+                c"V1.2.3".as_ptr(),
+                Some(no_force),
+            );
+            settings_load(&mut *set, ui.now);
+            views_settings(&mut *ui.v, &mut *set);
+            views_sounds(&mut *ui.v, &mut *st.st);
+        }
+        let mut k = Stored {
+            ui,
+            st,
+            _set: set,
+            _ml: ml,
+        };
+        for _ in 0..140 {
+            k.frame(); // past the first settings save
+        }
+        open_lab(&mut k.ui);
+        k
+    }
+
+    fn frame(&mut self) {
+        unsafe { store_quiet(&mut *self.st.st, 1) };
+        for _ in 0..256 {
+            if unsafe { store_poll(&mut *self.st.st) } == 0 {
+                break;
+            }
+        }
+        step(&mut self.ui);
+    }
+
+    fn frames(&mut self, n: u32) {
+        for _ in 0..n {
+            self.frame();
+        }
+    }
+
+    /// Frames until a toast that starts with `prefix` shows (at most `ms`).
+    fn toast_within(&mut self, ms: u32, prefix: &str) -> Option<String> {
+        for _ in 0..ms / 40 {
+            self.frame();
+            if let Some(t) = self.ui.toast() {
+                if t.starts_with(prefix) {
+                    return Some(t);
+                }
+            }
+        }
+        None
+    }
+
+    /// Slot n as the store holds it: its name and sound.
+    fn slot(&self, n: u32) -> Option<(String, Vec<u8>)> {
+        let mut name = [0 as std::os::raw::c_char; LAB_SOUND_NAME as usize + 1];
+        let mut s = [0u8; LAB_SOUND_BYTES as usize];
+        (unsafe { user_sound_read(&self.ui.v.sounds, n, name.as_mut_ptr(), s.as_mut_ptr()) } != 0)
+            .then(|| {
+                let name = unsafe { CStr::from_ptr(name.as_ptr()) };
+                (name.to_str().unwrap().to_owned(), s.to_vec())
+            })
+    }
+
+    fn sound(&self) -> Vec<u8> {
+        let mut s = [0u8; LAB_SOUND_BYTES as usize];
+        unsafe { live_sound_get(&*self.ui.rig.live, s.as_mut_ptr()) };
+        s.to_vec()
+    }
+
+    fn name_row(&self) -> String {
+        self.ui
+            .row(LAB_VIEW_NAME_ROW as usize)
+            .trim_end()
+            .to_string()
+    }
+
+    /// A turn of ENVELOPE's attack (a sound of its own), and SAVE.
+    fn shape_and_keep(&mut self) {
+        to_page(&mut self.ui, LAB_PAGE_ENVELOPE);
+        self.ui.turn(K1, 1);
+        self.ui.press(SAVE);
+    }
+}
+
+#[test]
+fn save_keeps_a_built_in_in_the_next_free_slot_with_its_automatic_name() {
+    let mut k = Stored::new();
+    assert_eq!(k.ui.v.sounds.result, 0);
+    k.shape_and_keep();
+    assert_eq!(
+        k.ui.toast().as_deref(),
+        None,
+        "the toast waits for the commit"
+    );
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT AS U01 LAB 01")
+    );
+    for _ in 0..3 {
+        step(&mut k.ui); // the toast drawn whole
+    }
+    golden(&k.ui, "lab-kept");
+    let (name, sound) = k.slot(0).expect("USER 1 holds the sound");
+    assert_eq!(name, "LAB 01");
+    assert_eq!(sound, k.sound());
+    assert_eq!(sound[LAB_SOUND_AD as usize] >> 4, 1, "the attack turned");
+    assert_eq!(k.ui.live().user_sound, 1);
+    assert_eq!(k.ui.live().sounds_valid, 1);
+    k.frames(3);
+    assert_eq!(k.name_row(), "LAB 01", "kept: the star goes");
+    assert!(k.slot(1).is_none());
+    // a second keep of another built-in takes the next slot
+    k.frames(60);
+    unsafe { live_recall_preset(&mut *k.ui.rig.live, 1) };
+    k.shape_and_keep();
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT AS U02 LAB 02")
+    );
+    assert_eq!(k.slot(1).unwrap().0, "LAB 02");
+}
+
+#[test]
+fn save_updates_a_user_sound_in_place() {
+    let mut k = Stored::new();
+    k.shape_and_keep();
+    k.toast_within(2000, "KEPT").unwrap();
+    k.frames(60);
+    k.ui.turn(K1 + 1, 2); // DECAY
+    k.frames(3);
+    assert_eq!(k.name_row(), "LAB 01*", "edited again");
+    k.ui.press(SAVE);
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT U01 LAB 01")
+    );
+    let (name, sound) = k.slot(0).unwrap();
+    assert_eq!(name, "LAB 01", "its name kept");
+    assert_eq!(sound, k.sound());
+    assert_eq!(
+        sound[LAB_SOUND_AD as usize] & 15,
+        11,
+        "the decay (9 + 2) is in the slot"
+    );
+    assert!(k.slot(1).is_none(), "no second slot");
+    k.frames(3);
+    assert_eq!(k.name_row(), "LAB 01");
+}
+
+#[test]
+fn a_sixteenth_keep_and_then_a_full_set() {
+    let mut k = Stored::new();
+    for n in 0..16u32 {
+        unsafe { live_recall_preset(&mut *k.ui.rig.live, 1) };
+        k.shape_and_keep();
+        let want = format!("KEPT AS U{:02} LAB {:02}", n + 1, n + 1);
+        assert_eq!(k.toast_within(4000, "KEPT").as_deref(), Some(want.as_str()));
+        k.frames(60);
+    }
+    assert_eq!(k.ui.live().sounds_valid, 0xFFFF);
+    // a seventeenth, from a sound that is not a USER one: a toast, no write, nothing changed
+    unsafe { live_recall_preset(&mut *k.ui.rig.live, 2) };
+    let before = k.sound();
+    k.ui.press(SAVE);
+    assert_eq!(k.ui.toast().as_deref(), Some("USER FULL: EDIT+SAVE"));
+    assert_eq!(k.ui.v.sounds.state, 0, "no write");
+    k.frames(60);
+    for n in 0..16u32 {
+        assert_eq!(k.slot(n).unwrap().0, format!("LAB {:02}", n + 1));
+    }
+    assert_eq!(k.sound(), before);
+    assert_eq!(k.ui.live().user_sound, 0);
+    // a USER sound of the full set still keeps in place
+    unsafe { live_sound_apply(&mut *k.ui.rig.live, k.slot(4).unwrap().1.as_ptr()) };
+    let n = std::ffi::CString::new("LAB 05").unwrap();
+    unsafe {
+        live_load_user(
+            &mut *k.ui.rig.live,
+            4,
+            k.slot(4).unwrap().1.as_ptr(),
+            n.as_ptr(),
+        )
+    };
+    k.ui.turn(K1 + 1, 1);
+    k.ui.press(SAVE);
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT U05 LAB 05")
+    );
+}
+
+#[test]
+fn save_and_a_knob_is_still_learn() {
+    let mut k = Stored::new();
+    k.ui.learn_on(K1);
+    k.frames(3);
+    assert!(
+        unsafe { learn_view_is_open(&k.ui.v.learn) } != 0,
+        "learn opened"
+    );
+    assert_eq!(k.ui.live().sounds_valid, 0, "no keep");
+    assert_eq!(k.ui.v.sounds.state, 0);
+    // SAVE + HOME is learn's clear: no keep either
+    k.ui.down(SAVE);
+    k.ui.press(PANEL_BTN_HOME);
+    k.ui.up(SAVE);
+    k.frames(3);
+    assert_eq!(k.ui.live().sounds_valid, 0);
+    assert_eq!(k.ui.v.sounds.state, 0);
+}
+
+#[test]
+fn the_toast_waits_for_the_commit() {
+    let mut k = Stored::new();
+    k.shape_and_keep();
+    assert_ne!(k.ui.v.sounds.state, 0, "queued, not written");
+    assert_eq!(k.ui.toast().as_deref(), None);
+    let mut seen = 0;
+    for _ in 0..50 {
+        k.frame();
+        if k.ui.toast().is_some_and(|t| t.starts_with("KEPT")) {
+            seen += 1;
+            assert_eq!(k.ui.v.sounds.state, 0, "the write is over when it says so");
+            assert!(k.slot(0).is_some(), "and the slot reads back");
+            break;
+        }
+    }
+    assert_eq!(seen, 1);
+}
+
+#[test]
+fn a_second_keep_while_one_writes_is_refused_with_a_toast() {
+    let mut k = Stored::new();
+    k.shape_and_keep();
+    assert_ne!(k.ui.v.sounds.state, 0);
+    k.ui.turn(K1 + 1, 1);
+    k.ui.press(SAVE);
+    assert_eq!(k.ui.toast().as_deref(), Some("SAVING: WAIT"));
+    k.toast_within(2000, "KEPT AS").unwrap();
+    k.frames(60);
+    assert_eq!(k.ui.live().sounds_valid, 1, "one slot, one write");
+    // the refused keep wrote nothing: the slot holds the first sound
+    assert_ne!(k.slot(0).unwrap().1, k.sound());
+    // and now it keeps
+    k.ui.press(SAVE);
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT U01 LAB 01")
+    );
+    assert_eq!(k.slot(0).unwrap().1, k.sound());
 }

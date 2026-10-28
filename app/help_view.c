@@ -154,9 +154,9 @@ static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "
                                             "HOLD HOME\0HELP"};
 
 /* LAB: SELECT its pages, ALG each page's choice, K1-K4 its cards, ENV, LFO and FX open their
- * pages; HOME goes back to LIVE. */
+ * pages; SAVE keeps the sound; HOME goes back to LIVE. */
 static const char* const LAB_LINES[] = {"SELECT\0PAGE",  "ALG\0CHOICE",  "K1-K4\0CARDS",
-                                        "ENV\0ENVELOPE", "LFO\0MODULATION", "FX\0EFFECTS",
+                                        "SAVE\0KEEP",   "ENV\0ENVELOPE", "LFO\0MODULATION", "FX\0EFFECTS",
                                         "HOME\0LIVE",    "HOLD HOME\0HELP"};
 
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}

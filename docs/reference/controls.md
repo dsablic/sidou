@@ -729,6 +729,17 @@ EDIT held turns the cards as without it. **SCL** selects the next slot, as every
 page follows it). The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, REC, GLO,
 MASTER and PRESETS do what they do in every view.
 
+**SAVE** keeps the sound with one press, whatever the page. A USER sound is kept in its own
+slot (its name stays); any other sound goes to the lowest free slot of the sixteen as `LAB 01`..
+(its number is the slot's), and from then on it is that USER sound: its `*` goes, it is the
+sound as loaded. The toast, once the store has written it: `KEPT AS U03 LAB 03` (a new slot) or
+`KEPT U03 LAB 03` (in place), with `(GAPS)` when held store operations were forced; the store's
+refusals read `STORE FOREIGN: NOT SAVED`, `STORE ERROR: NOT SAVED` and `STORE FULL: NOT SAVED`.
+A second SAVE while one is being written toasts `SAVING: WAIT` and writes nothing. With all
+sixteen slots full, SAVE on a sound that is not a USER one toasts `USER FULL: EDIT+SAVE` and
+writes nothing (a USER sound still keeps in place). SAVE held while a knob turns is MIDI learn
+for that card's parameter, and SAVE + HOME is learn's clear, as everywhere.
+
 ## SCENE
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a

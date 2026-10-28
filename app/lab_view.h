@@ -58,6 +58,7 @@
 #include "scope.h"
 #include "screen.h"
 #include "song_view.h"
+#include "user_sound.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,6 +107,7 @@ typedef struct {
     uint8_t art_done;  /* the grid shows the whole drawing of `art` (app/lab_draw.h) */
     uint8_t art_turn;  /* text and drawing both stale: 1 the drawing's frame next */
     uint32_t art;      /* the hash of what the drawing shows (lab_draw_look) */
+    uint8_t kept_new;  /* the keep being written took a slot of its own (its toast: KEPT AS) */
 } lab_view;
 
 extern const view lab_view_view;
@@ -119,6 +121,16 @@ uint32_t lab_view_panel_page(const lab_view* lv);
 /* Knob k (0..3), or the choice (LAB_VIEW_HL_CHOICE - 1), just turned: lit for SCREEN_POPUP_MS
  * from now_ms, in place of the value popup (app/views.c). */
 void lab_view_flash(lab_view* lv, uint32_t k, uint32_t now_ms);
+/* SAVE's clean release in LAB: the sound is kept, in its own USER slot with its name or, if it
+ * is not a USER sound, in the lowest free slot as `LAB nn` (user_sound_save: it becomes the base,
+ * so the `*` goes, and the slot's sound). A write that runs refuses (a toast, nothing done); a
+ * full set (and a sound that is not a USER one) toasts `USER FULL: EDIT+SAVE` and writes nothing.
+ * The toast of a keep follows its commit (lab_view_kept, from app/views.c), at once without a
+ * store. */
+void lab_view_save(lab_view* lv, user_sounds* us, screen* s);
+/* The toast of the keep that committed in slot: `KEPT AS U03 LAB 03` (a new slot) or `KEPT U03
+ * LAB 03` (in place), with (GAPS) where it fits. */
+void lab_view_kept(const lab_view* lv, const user_sounds* us, uint32_t slot, int gaps, screen* s);
 /* The page's name ("ENVELOPE"). */
 const char* lab_view_page_name(uint32_t page);
 /* Card k (0..3) of the page as the page shows it: its name into name and its value into value

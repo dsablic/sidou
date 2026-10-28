@@ -587,6 +587,78 @@ static int input(screen* s, void* state, const screen_event* e) {
     return 0;
 }
 
+/* ---- keeping ---- */
+
+/* "U03" for slot n (0..15) at out, the end. */
+static char* slot_label(char* out, uint32_t n) {
+    out[0] = 'U';
+    out[1] = (char)('0' + (n + 1u) / 10u);
+    out[2] = (char)('0' + (n + 1u) % 10u);
+    return out + 3;
+}
+
+static char* append(char* out, const char* s) {
+    while (*s) {
+        *out++ = *s++;
+    }
+    return out;
+}
+
+/* The automatic name for slot n: "LAB 03". */
+static void auto_name(char* out, uint32_t n) {
+    char* e = append(out, "LAB ");
+    e[0] = (char)('0' + (n + 1u) / 10u);
+    e[1] = (char)('0' + (n + 1u) % 10u);
+    e[2] = 0;
+}
+
+void lab_view_save(lab_view* lv, user_sounds* us, screen* s) {
+    live* l = lv->l;
+    uint32_t n = l->user_sound ? l->user_sound - 1u : USER_SOUNDS;
+    char name[LAB_SOUND_NAME + 1u];
+    if (l->user_sound) {
+        memcpy(name, l->base_name, sizeof name);
+    } else {
+        for (n = 0; n < USER_SOUNDS && (l->sounds_valid >> n & 1u); n++) {
+        }
+        if (n == USER_SOUNDS) {
+            screen_toast(s, "USER FULL: EDIT+SAVE", SCREEN_TOAST_MS);
+            return;
+        }
+        auto_name(name, n);
+    }
+    uint8_t sound[LAB_SOUND_BYTES];
+    live_sound_get(l, sound);
+    uint8_t fresh = l->user_sound != n + 1u;
+    int r = user_sound_save(us, n, name, sound, s->now);
+    if (r < 0) {
+        screen_toast(s, "SAVING: WAIT", SCREEN_TOAST_MS);
+        return;
+    }
+    lv->kept_new = fresh;
+    if (r > 0) { /* no store: kept in RAM, nothing to wait for */
+        lab_view_kept(lv, us, n, 0, s);
+    }
+}
+
+void lab_view_kept(const lab_view* lv, const user_sounds* us, uint32_t slot, int gaps, screen* s) {
+    char name[LAB_SOUND_NAME + 1u];
+    uint8_t sound[LAB_SOUND_BYTES];
+    if (!user_sound_read(us, slot, name, sound)) { /* no store: the sound as live has it */
+        memcpy(name, lv->l->base_name, sizeof name);
+    }
+    char text[SCREEN_TOAST_CHARS + 8u];
+    char* e = append(text, lv->kept_new ? "KEPT AS " : "KEPT ");
+    e = slot_label(e, slot);
+    *e++ = ' ';
+    e = append(e, name);
+    if (gaps && e - text + 7 <= (int)SCREEN_TOAST_CHARS) {
+        e = append(e, " (GAPS)");
+    }
+    *e = 0;
+    screen_toast(s, text, SCREEN_TOAST_MS);
+}
+
 /* ---- the view ---- */
 
 void lab_view_init(lab_view* lv, live* l, song_view* shared, const scope* sc) {
