@@ -1845,6 +1845,29 @@ detected from the firmware (strings, symbols, and for `pattern_edit` a probe of 
 so a step that main cannot do yet is recorded as not yet possible and starts to run when the
 feature lands, with no edit. `tables/readability.txt` classifies the text (see its header).
 
+The `songs` journey (not a tour) walks SONG's pages and the SIDS list the way a player backs
+out of them: LOAD's files, NEW, SAVE AS, DELETE's list (empty, so SAVE has nothing to choose),
+then SIDS with SAVE, each page left by HOME, and a key still sounds on LIVE at the end. A page
+that does not take HOME, or lands on another view than the table says, is a dead end
+(`HARN.nav.songs.*`, `JOUR.dead`), and the ergonomics gate fails on it.
+
+`crates/ergo/tests/lists.rs` (needs `SIDOU_FM1_BUILD`) is the exhaustive form, for every list
+the menu opens: its lines CHIP, TRACKER, SCENE, SONG (the actions and the LOAD, NEW, SAVE AS,
+DELETE pages, DELETE with and without a song of one's own, and a confirmation), SIDS,
+SETTINGS, STATUS and MIDI. On each it checks the view and text reached, then tries HOME,
+SAVE, SAVE twice and SAVE then HOME, and asserts no crash (a CPU fault panics), HOME presses
+(at most 8) lead back to LIVE and A4 sounds there. One machine a list, the lists side by side
+(about a minute on a loaded machine, 4 CPU-minutes):
+
+```
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p ergo --test lists -- --nocapture
+```
+
+`--nocapture` prints each try's view before and after. The merge check does not run it (its
+workspace stage has no `SIDOU_FM1_BUILD`; the emulator stage runs only emu-gate): run it by
+hand when the menu's or SONG's pages change. The `songs` journey is in the merge check, in the
+ergonomics gate.
+
 ### Recipes: journeys as executable how-tos
 
 A journey is also a **recipe**: a goal, a starting state, skills taught, related recipes, and

@@ -6,9 +6,9 @@
 use ergo::device::{panel, Dev, FRAME_MS};
 use ergo::journeys::{menu_selected, run_script};
 
-const ITEMS: [&str; 11] = [
-    "CHIP", "TRACKER", "SCENE", "SONG", "PRE", "OCTAVE", "SETTINGS", "STATUS", "MIDI", "CHARSET",
-    "ABOUT",
+const ITEMS: [&str; 12] = [
+    "CHIP", "TRACKER", "SCENE", "SONG", "SIDS", "PRE", "OCTAVE", "SETTINGS", "STATUS", "MIDI",
+    "CHARSET", "ABOUT",
 ];
 
 fn walk(d: &mut Dev, theme: &str) {
