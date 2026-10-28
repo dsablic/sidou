@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+_Static_assert(USER_SOUNDS == LIVE_SOUNDS, "live.h counts the same sounds");
 _Static_assert(USER_SOUNDS <= 16u, "live.sounds_valid is 16 bits");
 _Static_assert(USER_SOUND_FILE_BYTES <= STORE_FILE_SECTOR_DATA, "the file is one sector's");
 _Static_assert(LIVE_PRESET_SLOTS + USER_SOUNDS <= 255u, "the preset byte holds every sound");
@@ -45,10 +46,14 @@ static int slot_of(const store* st, const store_file* f, uint32_t stride, uint32
     return (int)lab_sound_valid(&rec[1u + LAB_SOUND_NAME]);
 }
 
+static int load_hook(void* ctx, uint32_t n);
+
 void user_sounds_init(user_sounds* u, live* l, store* st) {
     memset(u, 0, sizeof *u);
     u->l = l;
     u->st = st;
+    l->user_load = load_hook; /* PRESETS steps on into the USER sounds (live_preset_step) */
+    l->user_ctx = u;
 }
 
 void user_sounds_load(user_sounds* u) {
@@ -69,6 +74,7 @@ void user_sounds_load(user_sounds* u) {
 
 void user_sounds_forget(user_sounds* u) {
     u->l->sounds_valid = 0;
+    u->l->user_edit_slot = 0;
     u->l->user_sound = 0;
     u->state = IDLE;
 }
@@ -96,6 +102,10 @@ int user_sound_load(user_sounds* u, uint32_t n) {
     }
     live_load_user(u->l, n, sound, name);
     return 1;
+}
+
+static int load_hook(void* ctx, uint32_t n) {
+    return user_sound_load(ctx, n);
 }
 
 int user_sound_save(user_sounds* u, uint32_t n, const char* name,

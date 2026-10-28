@@ -297,7 +297,7 @@ static void status_page_setup(grid* g, const theme* th, const live* l) {
     grid_text_big(g, 2, row, 2, "PRESET", lbl);
     grid_text_big(g, 16, row, 2, "OCT", lbl);
     grid_text_big(g, 24, row, 2, oct, a);
-    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, p ? p->name : "?", a);
+    grid_text_big(g, 2, row + STATUS_LINE_ROWS, 2, l->user_sound ? l->base_name : p ? p->name : "?", a);
     row += 2u * STATUS_LINE_ROWS;
     grid_text_big(g, 2, row, 2, "NOTES", lbl);
     status_notes(g, a, l);

@@ -667,3 +667,63 @@ fn the_name_page_stays_within_the_frame_budget() {
         "a ui_poll took {worst} instructions"
     );
 }
+
+/// PRESETS past DICE reaches a kept sound on LIVE and in LAB, and back.
+#[test]
+fn presets_reaches_the_user_sounds_on_live_and_in_lab() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_ENV as u8);
+    m.turn(K1, 5); // the attack
+    m.run_ms(100);
+    tap(&mut m, PANEL_BTN_SAVE as u8);
+    let mut toast = String::new();
+    let end = m.ms() + 20_000;
+    while !toast.starts_with("KEPT") {
+        assert!(m.ms() < end, "the keep never said so: {toast:?}");
+        m.run_ms(20);
+        toast = toast_text(&mut m, &fw);
+    }
+    let user = |m: &mut Machine| m.soc.read8(live_at(&fw, ilp32::live::user_sound));
+    let attack = |m: &mut Machine| m.soc.read8(live_at(&fw, ilp32::live::attack_decay)) >> 4;
+    assert_eq!((user(&mut m), attack(&mut m)), (1, 5), "USER 1 plays");
+    let presets = PANEL_ENC_PRESETS as u8;
+    // in LAB: back to DICE, on again to USER 1
+    m.turn(presets, -1);
+    m.run_ms(200);
+    assert_eq!(user(&mut m), 0, "DICE");
+    assert_eq!(
+        m.soc.read8(live_at(&fw, ilp32::live::preset)),
+        LIVE_PRESET_DICE as u8
+    );
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let (input, pass) = start_cost(&mut m, 200, |m| m.turn(presets, 1));
+    println!("PRESETS into a USER sound: the input {input}, the busiest pass {pass}");
+    assert!(
+        input + pass <= common::POLL_INSTRUCTIONS,
+        "{input} + {pass} over the poll allowance"
+    );
+    assert_eq!(
+        (user(&mut m), attack(&mut m)),
+        (1, 5),
+        "USER 1 again, in LAB"
+    );
+    assert_eq!(base_name(&mut m, &fw), "LAB 01");
+    // on LIVE
+    tap(&mut m, HOME);
+    wait_for(&mut m, "LIVE", |m| {
+        common::top_view(m, &fw) == fw.symbol("live_view_view") && !common::screen_animating(m, &fw)
+    });
+    m.turn(presets, -1);
+    m.run_ms(200);
+    assert_eq!(user(&mut m), 0);
+    m.turn(presets, 1);
+    m.run_ms(200);
+    assert_eq!((user(&mut m), attack(&mut m)), (1, 5), "USER 1 on LIVE");
+    m.turn(presets, 1);
+    m.run_ms(200);
+    assert_eq!(user(&mut m), 1, "the end clamps");
+}

@@ -638,6 +638,9 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->user_valid = 0;
     l->user_applied = 0;
     l->sounds_valid = 0;
+    l->user_load = NULL;
+    l->user_ctx = NULL;
+    l->user_edit_slot = 0;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -1208,12 +1211,28 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->tune = e->tune;
 }
 
+/* A USER sound is left: its edit, if it has one, is kept for it (live.user_edit), over the one
+ * kept for the USER sound left before it. A USER sound's preset is SAW LEAD's (live_load_user):
+ * its edits are never SAW LEAD's. */
+static void user_leave(live* l) {
+    if (live_preset_edited(l)) {
+        live_sound_get(l, l->user_edit);
+        l->user_edit_slot = l->user_sound;
+    } else if (l->user_edit_slot == l->user_sound) {
+        l->user_edit_slot = 0;
+    }
+}
+
 LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
     if (q >= LIVE_PRESET_SLOTS) {
         q = LIVE_PRESET_SLOTS - 1;
     }
     l->settings_dirty = 1;
-    edit_store(l, &l->edits[l->preset]);
+    if (l->user_sound) {
+        user_leave(l);
+    } else {
+        edit_store(l, &l->edits[l->preset]);
+    }
     load_preset(l, q);
     if (l->edits[q].valid) {
         edit_apply(l, &l->edits[q]);
@@ -1515,20 +1534,64 @@ static uint32_t dice_seed(const live* l) {
     return l->note_ons * 2654435761u ^ l->clock * 40503u ^ l->lfo_phase;
 }
 
+/* The sounds PRESETS steps through, in order: the built-ins and DICE (0..LIVE_PRESET_SLOTS - 1),
+ * then USER 1.. at LIVE_PRESET_SLOTS + n. */
+#define STEP_END (LIVE_PRESET_SLOTS + LIVE_SOUNDS)
+
 LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     if (revert) {
-        live_set_preset(l, l->preset);
+        if (l->user_sound) {
+            live_sound_apply(l, l->base); /* the sound as kept */
+            l->settings_dirty = 1;
+            if (l->user_edit_slot == l->user_sound) {
+                l->user_edit_slot = 0;
+            }
+        } else {
+            live_set_preset(l, l->preset);
+        }
         return;
     }
-    uint8_t p = (uint8_t)step_clamped(l->preset, steps, 1, LIVE_PRESET_SLOTS - 1);
-    if (p != l->preset) {
-        uint32_t fresh = p == LIVE_PRESET_DICE && !l->edits[p].valid;
-        live_recall_preset(l, p);
+    uint32_t at = l->user_sound ? LIVE_PRESET_SLOTS - 1u + l->user_sound : l->preset;
+    uint32_t to = at;
+    for (uint32_t i = steps < 0 ? (uint32_t)-steps : (uint32_t)steps; i; i--) {
+        uint32_t n = to;
+        do { /* a detent on, past the USER slots that hold nothing */
+            n = steps < 0 ? n - 1u : n + 1u;
+        } while (n >= LIVE_PRESET_SLOTS && n < STEP_END &&
+                 !(l->sounds_valid >> (n - LIVE_PRESET_SLOTS) & 1u));
+        if (n >= STEP_END) { /* the end, either way (below 0 wraps) */
+            break;
+        }
+        to = n;
+    }
+    if (to == at) {
+        if (at == LIVE_PRESET_DICE) {
+            live_dice_roll(l, dice_seed(l)); /* DICE again: a new roll */
+        }
+    } else if (to < LIVE_PRESET_SLOTS) {
+        uint32_t fresh = to == LIVE_PRESET_DICE && !l->edits[to].valid;
+        live_recall_preset(l, (uint8_t)to);
         if (fresh) {
             live_dice_roll(l, dice_seed(l));
         }
-    } else if (p == LIVE_PRESET_DICE) {
-        live_dice_roll(l, dice_seed(l)); /* DICE again: a new roll */
+    } else {
+        uint32_t n = to - LIVE_PRESET_SLOTS;
+        l->settings_dirty = 1;
+        if (l->user_sound) {
+            user_leave(l);
+        } else {
+            edit_store(l, &l->edits[l->preset]);
+        }
+        if (l->user_load && l->user_load(l->user_ctx, n)) {
+            if (l->user_edit_slot == n + 1u) {
+                live_sound_apply(l, l->user_edit); /* as it was left; the base stays */
+            }
+        } else { /* the store did not give it: not a sound, and the one playing stays */
+            l->sounds_valid = (uint16_t)(l->sounds_valid & ~(1u << n));
+            if (!l->user_sound) {
+                edit_apply(l, &l->edits[l->preset]);
+            }
+        }
     }
 }
 

@@ -1613,3 +1613,239 @@ fn the_name_page_matches_its_goldens() {
     assert_eq!(u32::from(k.lab().mode), LAB_VIEW_MODE_ASK);
     golden(&k.ui, "lab-name-overwrite");
 }
+
+// ---- PRESETS into the USER sounds (Task 10) ----
+
+const PRESETS: u32 = PANEL_ENC_PRESETS;
+
+impl Stored {
+    /// USER sound n kept under `name` with the attack `attack` and the first slot's algorithm
+    /// `alg`, as the sound playing; its write finished. The built-in it was made from is back.
+    fn put(&mut self, n: u32, name: &str, attack: u32, alg: u32) {
+        let live = &mut *self.ui.rig.live;
+        unsafe {
+            live_recall_preset(live, 1);
+            live_param_set(live, LIVE_PARAM_ATTACK, attack);
+            live_slot_pick(live, 0, alg);
+        }
+        let mut s = self.sound();
+        let c = std::ffi::CString::new(name).unwrap();
+        let r = unsafe {
+            user_sound_save(
+                &mut self.ui.v.sounds,
+                n,
+                c.as_ptr(),
+                s.as_mut_ptr(),
+                self.ui.v.s.now,
+            )
+        };
+        assert_eq!(r, 0, "queued");
+        for _ in 0..400 {
+            self.frame();
+            if self.ui.v.sounds.state == 0 && self.ui.v.sounds.result == 0 {
+                break;
+            }
+        }
+        assert_eq!(self.ui.v.sounds.state, 0, "written");
+        self.frames(60); // the keep's toast gone
+        unsafe { live_recall_preset(&mut *self.ui.rig.live, 0) };
+    }
+
+    fn preset(&self) -> String {
+        let mut buf = [0 as std::os::raw::c_char; LIVE_PRESET_NAME_CHARS as usize];
+        unsafe { live_preset_name(&*self.ui.rig.live, buf.as_mut_ptr()) };
+        unsafe { CStr::from_ptr(buf.as_ptr()) }
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn presets(&mut self, steps: i32) {
+        self.ui.turn(PRESETS, steps);
+    }
+
+    fn attack(&self) -> u32 {
+        unsafe { live_param_get(&*self.ui.rig.live, LIVE_PARAM_ATTACK) }
+    }
+
+    fn slot_alg(&self) -> u8 {
+        self.ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize]
+    }
+}
+
+#[test]
+fn presets_steps_from_dice_into_the_user_sounds_and_back() {
+    let mut k = Stored::new();
+    k.put(1, "AAA", 2, 3);
+    k.put(4, "BBB", 5, 3);
+    assert_eq!(k.ui.live().sounds_valid, 1 << 1 | 1 << 4);
+    k.presets(4);
+    assert_eq!(k.ui.live().preset, LIVE_PRESET_DICE as u8, "DICE");
+    assert_eq!(k.ui.live().user_sound, 0);
+    k.presets(1);
+    assert_eq!((k.ui.live().user_sound, k.preset().as_str()), (2, "AAA"));
+    assert_eq!(k.attack(), 2, "its sound");
+    k.presets(1);
+    assert_eq!((k.ui.live().user_sound, k.preset().as_str()), (5, "BBB"));
+    assert_eq!(k.attack(), 5);
+    k.presets(1);
+    assert_eq!(k.ui.live().user_sound, 5, "the end clamps");
+    k.presets(-1);
+    assert_eq!((k.ui.live().user_sound, k.preset().as_str()), (2, "AAA"));
+    k.presets(-1);
+    assert_eq!(k.ui.live().preset, LIVE_PRESET_DICE as u8);
+    assert_eq!(k.ui.live().user_sound, 0);
+    assert!(k.preset().starts_with("DICE"));
+    k.presets(-1);
+    assert_eq!(k.ui.live().preset, LIVE_PRESET_DICE as u8 - 1, "NOISE PERC");
+    // a run of detents at once goes the same way
+    k.presets(9);
+    assert_eq!(k.ui.live().user_sound, 5, "clamped at BBB");
+    k.presets(-9);
+    assert_eq!(k.ui.live().preset, 0, "and back to SAW LEAD");
+    // DICE with no USER sound after it still rolls again at the end
+    let mut k = Stored::new();
+    k.presets(4);
+    let roll = k.ui.live().dice_rolls;
+    k.presets(1);
+    assert_eq!(k.ui.live().preset, LIVE_PRESET_DICE as u8);
+    assert_ne!(k.ui.live().dice_rolls, roll, "a new roll");
+}
+
+#[test]
+fn empty_slots_are_skipped() {
+    let mut k = Stored::new();
+    k.put(15, "LAST", 4, 0);
+    k.presets(5);
+    assert_eq!(
+        (k.ui.live().user_sound, k.preset().as_str()),
+        (16, "LAST"),
+        "USER 16 is the first USER sound: the 15 empty slots before it are skipped"
+    );
+    k.presets(-1);
+    assert_eq!(k.ui.live().preset, LIVE_PRESET_DICE as u8);
+}
+
+#[test]
+fn a_user_sound_sets_the_slots_and_a_built_in_leaves_them() {
+    let mut k = Stored::new();
+    k.put(0, "SLOTTED", 3, 3);
+    // a built-in with the first slot off
+    unsafe { live_slot_pick(&mut *k.ui.rig.live, 0, 0) };
+    assert_eq!(k.slot_alg(), 0);
+    k.presets(5);
+    assert_eq!(k.ui.live().user_sound, 1);
+    assert_eq!(k.slot_alg(), 3, "the sound's own slot");
+    // a built-in leaves the slots as they are
+    unsafe { live_slot_pick(&mut *k.ui.rig.live, 0, 3) };
+    k.presets(-5);
+    assert_eq!(k.ui.live().preset, 0);
+    assert_eq!(k.ui.live().user_sound, 0);
+    assert_eq!(k.slot_alg(), 3, "the slots as they were");
+}
+
+#[test]
+fn edit_presets_reverts_a_user_sound() {
+    let mut k = Stored::new();
+    k.put(2, "KEPT", 4, 0);
+    k.presets(5);
+    k.frames(3);
+    assert_eq!((k.ui.live().user_sound, k.attack()), (3, 4));
+    k.ui.turn(K1, 3); // LAB's page is OSC: K1 is the pulse width; the attack on ENVELOPE
+    to_page(&mut k.ui, LAB_PAGE_ENVELOPE);
+    k.ui.turn(K1, 3);
+    k.frames(3);
+    assert_eq!(k.attack(), 7);
+    assert_eq!(k.preset(), "KEPT*");
+    k.ui.hold(EDIT, true);
+    k.ui.turn(PRESETS, 1);
+    k.ui.hold(EDIT, false);
+    k.frames(3);
+    assert_eq!(k.attack(), 4, "back to the sound as kept");
+    assert_eq!(k.preset(), "KEPT");
+    assert_eq!(k.ui.live().user_sound, 3, "still that sound");
+}
+
+#[test]
+fn the_user_sound_left_keeps_its_edit() {
+    let mut k = Stored::new();
+    k.put(0, "ONE", 1, 0);
+    k.put(1, "TWO", 2, 0);
+    k.presets(5);
+    assert_eq!(k.ui.live().user_sound, 1);
+    unsafe { live_param_set(&mut *k.ui.rig.live, LIVE_PARAM_ATTACK, 9) };
+    assert_eq!(k.preset(), "ONE*");
+    // away to DICE and back: the edit comes back, the sound still differs from its base
+    k.presets(-1);
+    assert_eq!(k.ui.live().user_sound, 0);
+    assert_eq!(
+        k.ui.live().preset,
+        LIVE_PRESET_DICE as u8,
+        "DICE, not SAW LEAD's edits"
+    );
+    k.presets(1);
+    assert_eq!((k.preset().as_str(), k.attack()), ("ONE*", 9));
+    // to the next USER sound: ONE's edit is kept, TWO is as kept
+    k.presets(1);
+    assert_eq!((k.preset().as_str(), k.attack()), ("TWO", 2));
+    k.presets(-1);
+    assert_eq!((k.preset().as_str(), k.attack()), ("ONE*", 9));
+    // SAW LEAD's own edits were never touched by it
+    k.presets(-5);
+    assert_eq!(k.ui.live().preset, 0);
+    assert_eq!(k.preset(), "SAW LEAD", "unedited");
+    // an edit of the second one takes the shared place from the first
+    k.presets(6);
+    assert_eq!(k.ui.live().user_sound, 2);
+    unsafe { live_param_set(&mut *k.ui.rig.live, LIVE_PARAM_ATTACK, 11) };
+    k.presets(-1);
+    assert_eq!(
+        (k.preset().as_str(), k.attack()),
+        ("ONE", 1),
+        "ONE's edit was replaced"
+    );
+    k.presets(1);
+    assert_eq!((k.preset().as_str(), k.attack()), ("TWO*", 11));
+}
+
+#[test]
+fn the_menus_pre_names_a_user_sound() {
+    let mut k = Stored::new();
+    k.put(6, "MENU ONE", 1, 0);
+    k.ui.press(PANEL_BTN_HOME); // LAB -> LIVE
+    settle(&mut k.ui);
+    k.ui.press(PANEL_BTN_HOME); // the menu
+    settle(&mut k.ui);
+    k.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    k.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_PRESET as i32);
+    k.ui.turn(PANEL_ENC_ALGORITHM, 5); // the menu's PRE steps on past DICE
+    for _ in 0..12 {
+        k.frame();
+    }
+    assert_eq!(k.ui.live().user_sound, 7);
+    let line = k.ui.menu_line(VIEWS_MENU_PRESET as usize);
+    assert!(line.contains("MENU ONE"), "{line:?}");
+}
+
+#[test]
+fn lab_presets_loads_and_live_shows_it() {
+    let mut k = Stored::new();
+    k.put(2, "U THREE", 6, 3);
+    // in LAB: PRESETS loads the USER sound, the header names it
+    k.presets(5);
+    settle(&mut k.ui);
+    assert_eq!(k.ui.live().user_sound, 3);
+    assert_eq!(k.name_row(), "U THREE");
+    assert_eq!(k.ui.toast(), None, "PRESETS opens no popup in LAB");
+    to_page(&mut k.ui, LAB_PAGE_ENVELOPE);
+    settle_hint(&mut k.ui);
+    golden(&k.ui, "lab-user");
+    // on LIVE the header names it too
+    k.ui.press(PANEL_BTN_HOME);
+    settle(&mut k.ui);
+    assert_eq!(k.ui.top(), "LIVE");
+    for _ in 0..10 {
+        k.frame();
+    }
+    assert_eq!(k.ui.big(0, 0, 2, 7), "U THREE");
+    golden(&k.ui, "live-user");
+}

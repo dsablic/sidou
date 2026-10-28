@@ -131,7 +131,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
 | K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
-| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC), clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry) |
+| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC, then the USER sounds [LAB kept](#lab), the empty slots skipped), clamped at both ends; with EDIT held it puts the current preset back to its factory settings (a USER sound, to the sound as kept); in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
@@ -821,6 +821,16 @@ saved: a power cycle brings back the preset that was current, with its edits as 
 keep them (the settings record is unchanged), and the other presets' edits are gone. On MIDI
 out, PRESETS sends the program change and then, as CCs, the restored parameters that differ
 from the preset's factory values.
+
+**The USER sounds** (the sounds [LAB keeps](#lab), U01..U16) follow DICE: PRESETS clockwise from
+DICE goes to the lowest USER sound, then the next, the empty slots skipped; anticlockwise goes
+back; the last one clamps (DICE alone still rolls again at its end). A USER sound loads as a
+preset: its sound, its three effect slots and its name (the header, the popup and the menu's PRE
+say it, `LAB 03` or what it was named, `*` once edited) and the voices released; a built-in or
+DICE after it leaves the slots as they are, as before. **EDIT held + PRESETS** puts a USER sound
+back to the sound as kept. The edits of the USER sound last left (one shared place, not one a
+slot) come back when it is loaded again, until another USER sound is left edited; a built-in's
+kept edits are never touched by it. A MIDI program change knows the built-ins only.
 
 **Known limit:** voice 1's frequency register tops out (0xFFFF, 3.85 kHz) from note 90
 (F#6), and from lower notes bent or with vibrato upward (note 88 at a bend of +2

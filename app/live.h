@@ -328,6 +328,8 @@ typedef struct {
  * and the menu's MIDI side know LIVE_PRESET_COUNT only. */
 #define LIVE_PRESET_SLOTS 5u
 #define LIVE_PRESET_DICE 4u
+/* The USER sounds (app/user_sound.h USER_SOUNDS). */
+#define LIVE_SOUNDS 16u
 /* NULL past DICE. */
 const live_preset* live_preset_get(uint8_t index);
 
@@ -529,6 +531,14 @@ typedef struct {
      * edited mark `*` is the sound differing from it (live_preset_edited). */
     uint8_t base[LAB_SOUND_BYTES];
     char base_name[LAB_SOUND_NAME + 1u];
+    /* PRESETS past DICE (app/user_sound.h sets the hook): user_load loads USER sound n (0..15) as
+     * the current sound, 1 if it did. user_edit is the edit of the USER sound last left while it
+     * differed from its base (the sound as edited, for USER user_edit_slot - 1; 0: none), given
+     * back when that sound is loaded again: one shared edit, not one a slot. */
+    int (*user_load)(void* ctx, uint32_t n);
+    void* user_ctx;
+    uint8_t user_edit_slot;
+    uint8_t user_edit[LAB_SOUND_BYTES];
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -656,9 +666,13 @@ void live_knob(live* l, live_knob_id knob, int32_t delta);
 uint32_t live_tone(const live* l);
 /* round(65536 * 2^((k - 12) / 12)) for k = 0..24: the sync ratio's semitones (live.c). */
 extern const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1];
-/* PRESETS: steps the preset a detent each (clockwise the next), clamped at both ends, as
- * live_recall_preset does; revert (EDIT held) puts the current preset back to its factory settings
- * instead (live_set_preset, which forgets its kept edits too). */
+/* PRESETS: steps the sound a detent each (clockwise the next), clamped at both ends: the
+ * built-ins and DICE as live_recall_preset does, then on past DICE into the USER sounds that hold
+ * one (live.sounds_valid; the empty slots are skipped; live.user_load loads one and the edit it
+ * was left with comes back, live.user_edit). Anticlockwise goes the same way back. DICE with no
+ * USER sound after it rolls again at the end, as it always has. Revert (EDIT held) puts the
+ * current sound back to its base instead: a built-in to its factory settings (live_set_preset,
+ * which forgets its kept edits too), a USER sound to the sound as kept. */
 void live_preset_step(live* l, int32_t steps, int revert);
 /* Goes to preset q (clamped) keeping what it was: the current preset's edits are stored, q's
  * factory settings loaded and q's stored edits (if it has any) applied over them. live_set_preset
