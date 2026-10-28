@@ -31,6 +31,25 @@
  *   as long again where that is later (at LAB_DRAW_GATE_MAX_X at the latest, so the release has
  *   room): every segment is in sight, a dim line marks the key's. Lit: the segment of the card
  *   turned. While a key sounds, the voice's envelope (the tap's) is a dot on the curve at its level.
+ * - FILTER: the mode's response (lowpass, bandpass, highpass, notch and the mixes) on a log axis of
+ *   FILT_PX_OCT columns an octave from 30 Hz (x FILT_X0) to 12 kHz, in dB (+6 at the top, -54 at
+ *   the foot), from the filter's own transfer function with the damping the chip has (the
+ *   resonance's 1 / Q, sid_resonance_k) and the cutoff the chip has now (cutoff_out through its
+ *   curve, sid_cutoff_hz): an LFO, the wheel or velocity move the line. The cutoff is a line down
+ *   the area; V1 V2 V3 under it at 2x in the voices' colours, dark when not routed. Lit: K1 the
+ *   cutoff's line, K2 the curve about it (the peak), K3 the voices.
+ * - MOD: one window of MOD_TICKS ticks (about 1.3 s) in three bands: the vibrato (its delay a flat
+ *   start; its rate, depth and delay as set), the PWM's wave (its rate, its depth as a swing; dark
+ *   without the pulse waveform) and, with ARP on, its staircase for a C major chord at its order,
+ *   span and rate (a step is a rate's frames; clock rates at one clock a frame, 125 BPM). Lit: K1
+ *   the vibrato's first cycle, K2 its whole trace, K3 its delay.
+ * - FX: the three slots as a chain at 2x (the selected one marked, a slot that is off dark) and,
+ *   under it, the selected slot's shape: the distortion's transfer curve against the straight line
+ *   (the drive's gain law, the clip's cubic; CRUSH's steps), the modulation's LFO over two seconds
+ *   at its rate and depth (the tremolo's and the auto-pan's shape from sine to square; WOW's slow
+ *   wave and flutter), the delay's taps over 1.5 s (alternating sides on PING-PONG) and the
+ *   reverbs' decay. A slot without a drawing (OFF, LO-FI) shows its name at 2x. Lit: K1..K3 the
+ *   shape, K4 the slot's mark.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_LAB_DRAW_H

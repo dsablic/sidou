@@ -450,3 +450,53 @@ fn lab_osc_and_envelope_draw_within_their_budgets() {
     }
     assert!(over.is_empty(), "{over:#?}");
 }
+
+/// FILTER (each mode, the cutoff turned every frame), MOD (the vibrato, PWM BASS's PWM and ARP's
+/// staircase) and FX (the distortion's curve, the modulation's wave, the delay's taps): every
+/// frame within LAB_VIEW_FRAME_CELLS, every ui_poll within LAB_WORST_POLL.
+#[test]
+fn lab_filter_mod_and_fx_draw_within_their_budgets() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    m.watch_calls(fw.symbol("ui_poll"));
+    let mut over = Vec::new();
+    let mut run = |m: &mut Machine, what: &str, page: u32| {
+        let (most, poll) = page_frames(m, &fw, page, 60);
+        println!("LAB {what}: most cells {most}, worst ui_poll {poll}");
+        if most > LAB_VIEW_FRAME_CELLS || poll > LAB_WORST_POLL {
+            over.push(format!("{what}: {most} cells, {poll} instructions"));
+        }
+    };
+    // FILTER: LP, then NOTCH (the response's two ends and its peak)
+    run(&mut m, "FILTER, LP", LAB_PAGE_FILTER);
+    m.turn(ALGORITHM, 3);
+    m.run_ms(100);
+    run(&mut m, "FILTER, NOTCH", LAB_PAGE_FILTER);
+    // MOD: the vibrato and the PWM on, then ARP up-down
+    for _ in 0..3 {
+        m.turn(K1 + 1, 40);
+    }
+    run(&mut m, "MOD, vibrato", LAB_PAGE_MOD);
+    m.turn(ALGORITHM, 3);
+    m.run_ms(100);
+    run(&mut m, "MOD, ARP", LAB_PAGE_MOD);
+    // FX: OVERDRIVE on the first slot, then CHORUS, then DELAY
+    m.turn(SELECT, -(LAB_PAGES as i32));
+    m.run_ms(60);
+    m.turn(SELECT, LAB_PAGE_FX as i32);
+    m.run_ms(100);
+    m.turn(ALGORITHM, 2);
+    m.run_ms(100);
+    run(&mut m, "FX, OVERDRIVE", LAB_PAGE_FX);
+    tap(&mut m, PANEL_BTN_SCL as u8);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    run(&mut m, "FX, CHORUS", LAB_PAGE_FX);
+    tap(&mut m, PANEL_BTN_SCL as u8);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    run(&mut m, "FX, DELAY", LAB_PAGE_FX);
+    assert!(over.is_empty(), "{over:#?}");
+}

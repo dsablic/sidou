@@ -860,11 +860,22 @@ Guides that do not move are glyphs under the traces, in the canvas.
 ![OSC: TRI RING](../../tests/golden/lcd/lab-osc-ring.png)
 ![OSC: noise](../../tests/golden/lcd/lab-osc-noise.png)
 ![ENVELOPE with a note's dot](../../tests/golden/lcd/lab-envelope-dot.png)
+![FILTER: a low pass](../../tests/golden/lcd/lab-filter-lp.png)
+![FILTER: a notch](../../tests/golden/lcd/lab-filter-notch.png)
+![FILTER: full resonance](../../tests/golden/lcd/lab-filter-reso15.png)
+![MOD: the vibrato after its delay](../../tests/golden/lcd/lab-mod-vibrato.png)
+![MOD: ARP's staircase](../../tests/golden/lcd/lab-mod-arp.png)
+![FX: the chain and OVERDRIVE's curve](../../tests/golden/lcd/lab-fx-chain.png)
+![FX: a hard drive](../../tests/golden/lcd/lab-fx-drive.png)
+![FX: a delay's taps](../../tests/golden/lcd/lab-fx-delay.png)
 
 | Drawing | Shows | Colours |
 |---|---|---|
 | OSC | one cycle (224 pixels at the note's pitch; the fine tune makes it shorter or longer) of the waveform at the pulse width a sounding voice has now (the PWM's LFO moves the edge); the combined waveforms as the 6581's AND of the shapes; noise as a fixed scribble about the middle; with ring or sync, one cycle of the modulator with the carrier at the sync ratio (SYNC LEAD's, 1.5 on a sound whose modulator is another key's) | the waveform's colour, as LIVE's lanes (saw yellow, pulse cyan, triangle light green, noise light grey, combined white); the modulator light grey; the PWM's range a dotted dark grey band behind the edge; lit: K1 the pulse's edge, K2 and K3 the band, K4 the note's own cycle end (a line) |
 | ENVELOPE | the ADSR to scale from the SID's rate periods on a time axis of decades (1 ms to a minute, 48 pixels a decade; 10MS, 0.1S, 1S, 10S under it): the attack linear, the decay and release by the envelope's exponential steps; the key let go (a dark grey line) at the middle, or once the sustain is reached and held half as long again, so every segment is in sight; while a key sounds, the voice's envelope (the tap's) is a white block on the curve at its level | the curve light grey; lit: the turned card's segment in its knob's colour |
+| FILTER | the mode's response on a log axis (30 Hz to 12 kHz, 26 pixels an octave; 100, 1K, 10K under it) in dB (+6 at the top, -54 at the foot), from the filter's own transfer function with the damping the chip has; the cutoff a line down the area, at the cutoff the chip has now (an LFO, the wheel or velocity move it); V1 V2 V3 at 2x under it | the curve white (dark when the filter is off); the cutoff's line grey; V1 V2 V3 in the voices' colours, dark when not routed; lit: K1 the line, K2 the curve about the cutoff, K3 the voices reversed |
+| MOD | a window of 1.3 s in three bands: the vibrato (its delay a flat start), the PWM's wave, and with ARP on its staircase for a C major chord (the order, span and rate as set); 0.5S and 1S under it | the vibrato white, the PWM grey (dark without the pulse waveform), ARP's staircase yellow; lit: K1 the vibrato's first cycle, K2 its trace, K3 its delay |
+| FX | the three slots as a chain at 2x (the selected one marked, a slot that is off dark) and the selected slot's shape under it: the distortion's transfer curve against the straight line, the modulation's LFO over 2 s, the delay's taps over 1.5 s (the echoes' sides alternate on PING-PONG), the reverbs' decay; a slot without a drawing (OFF, LO-FI) shows its name at 2x | the shape white, its reference dark grey, the delay's input yellow; lit: K1-K3 the shape, K4 the slot's mark |
 
 LAB composes as CHIP does: the text is built in the song views' shared canvas when a hash of
 what it shows changes (the sound, its name and mark, the page, the theme, what is lit, the hint's
@@ -877,7 +888,9 @@ canvas is the song views').
 |---|---|---|
 | OSC, SAW LEAD / PWM BASS (its LFO moving the edge) | 66 / 200 | 59.4k / 61.3k |
 | ENVELOPE, the dot moving | 85 | 74.7k (the drawing about 45k) |
-| A page without a drawing yet | 136 | 44.9k |
+| FILTER, LP / NOTCH | 55 / 89 | 65.7k / 66.0k |
+| MOD, the vibrato / ARP on | 70 / 72 | 69.4k / 77.8k |
+| FX, OVERDRIVE / CHORUS / DELAY | 60 / 68 / 66 | 48.3k / 54.5k / 49.7k |
 
 ## SONG
 

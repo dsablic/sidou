@@ -5,8 +5,12 @@
 #include <string.h>
 
 #include "font.h"
+#include "fx/fx_slots.h"
 #include "lab_view.h"
 #include "live_view.h"
+#include "sid/sid_filter.h"
+#include "sine.h"
+#include "views.h"
 
 _Static_assert(LAB_DRAW_ROWS == LAB_VIEW_ART_ROWS, "the drawing fills LAB's area");
 _Static_assert(LAB_DRAW_H <= LAB_DRAW_NONE, "a row of the area fits a byte, NONE apart");
@@ -408,6 +412,337 @@ static void env_dot(env_ctx* c, const scope* sc) {
     c->dot_y = y_of(level, ENV_TOP, ENV_SPAN);
 }
 
+/* ---- FILTER ---- */
+
+/* The response's columns: from FILT_X0 at 30 Hz, FILT_PX_OCT a octave, to 12 kHz at FILT_X1;
+ * its rows: +6 dB at the top to -54 dB at FILT_SPAN. */
+#define FILT_X0 8u
+#define FILT_X1 232u
+#define FILT_PX_OCT 26u
+#define FILT_SPAN 88u
+#define FILT_REACH 24u
+
+/* 2^(n / 26) in Q12 (n signed): a half a column's step of the axis, and the effects' rates. */
+static const uint16_t EXP2[26] = {4096, 4207, 4320, 4437, 4557, 4680, 4806, 4936, 5070,
+                                  5207, 5347, 5492, 5640, 5793, 5949, 6110, 6275, 6444,
+                                  6619, 6797, 6981, 7170, 7363, 7562, 7767, 7976};
+/* log2(1 + i / 16) in Q8. */
+static const uint16_t LOG2[17] = {0,   22,  44,  63,  82,  100, 118, 134, 150,
+                                  165, 179, 193, 207, 220, 232, 244, 256};
+
+static uint32_t exp2q(int32_t n) {
+    int32_t k = n >= 0 ? n / 26 : -((25 - n) / 26);
+    uint32_t t = EXP2[n - k * 26];
+    return k >= 0 ? t << (k < 18 ? k : 18) : -k < 32 ? t >> -k : 0u;
+}
+
+/* log2 v in Q8 (0 for 0). */
+static int32_t log2q8(uint64_t v) {
+    if (!v) {
+        return 0;
+    }
+    uint32_t p = 63u - (uint32_t)__builtin_clzll(v);
+    uint32_t m = (uint32_t)(p >= 8u ? v >> (p - 8u) : v << (8u - p)); /* 256..511 */
+    uint32_t i = (m - 256u) >> 4;
+    uint32_t f = m & 15u;
+    return (int32_t)(p * 256u + LOG2[i] + (LOG2[i + 1u] - LOG2[i]) * f / 16u);
+}
+
+typedef struct {
+    uint16_t xc;   /* the cutoff's column */
+    uint16_t invq; /* the damping 1 / Q in Q8 */
+    uint8_t mode;  /* $d418 bits 4-6 shifted down: 1 LP, 2 BP, 4 HP */
+    uint8_t hl;
+} filt_ctx;
+
+static void filt_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const filt_ctx* f = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = 0;
+    if (x < FILT_X0 || x > FILT_X1) {
+        return;
+    }
+    int32_t level = 0; /* log2 of the power gain, Q8 */
+    if (f->mode) {
+        int32_t d = ((int32_t)x - f->xc) * 2;
+        uint32_t w = exp2q(d); /* (f / fc)^2 in Q12 */
+        int64_t re = (f->mode & 1u ? 4096 : 0) - (f->mode & 4u ? (int64_t)w : 0);
+        uint64_t num = (uint64_t)(re * re) + (f->mode & 2u ? (uint64_t)w * 4096u : 0u);
+        int64_t one = 4096 - (int64_t)w;
+        uint64_t den = (uint64_t)(one * one) + (uint64_t)w * f->invq * f->invq / 16u;
+        level = num ? log2q8(num) - log2q8(den) : -20 * 256;
+    }
+    int32_t y = (512 - level) * (int32_t)FILT_SPAN / 5120;
+    y = y < 0 ? 0 : y > (int32_t)FILT_SPAN - 1 ? (int32_t)FILT_SPAN - 1 : y;
+    out->lo[0] = out->hi[0] = (uint8_t)y;
+    if (f->hl == 2u && x + FILT_REACH >= f->xc && x <= f->xc + FILT_REACH) {
+        out->lit = 1; /* the resonance: the curve about the cutoff */
+    }
+    if (f->mode && (x & ~1u) == (f->xc & ~1u)) {
+        out->lo[1] = 0; /* the cutoff: a line down the area */
+        out->hi[1] = FILT_SPAN - 2u;
+        out->lit |= (uint8_t)((f->hl == 1u) << 1);
+    }
+}
+
+static void filt_init(filt_ctx* f, const live* l, uint32_t hl) {
+    float hz = sid_cutoff_hz(l->model, 0, l->cutoff_out);
+    uint32_t h = (uint32_t)(hz < 30.0f ? 30.0f : hz > 12000.0f ? 12000.0f : hz);
+    f->xc = (uint16_t)(FILT_X0 + (uint32_t)(log2q8(h) - log2q8(30)) * FILT_PX_OCT / 256u);
+    float k = sid_resonance_k(l->model, 0, l->resonance) * 256.0f;
+    f->invq = (uint16_t)(k > 512.0f ? 512.0f : k);
+    f->mode = l->filter_mode >> 4 & 7u;
+    f->hl = (uint8_t)hl;
+}
+
+/* ---- MOD ---- */
+
+/* One window of LAB_DRAW_MOD_TICKS ticks (100 Hz) over the columns from MOD_X0: the vibrato
+ * (band A), the PWM (band B) and the arpeggio's staircase (band C), their centres and bases. */
+#define MOD_X0 32u
+#define MOD_W 204u
+#define MOD_TICKS 128u
+#define MOD_A_CY 18u
+#define MOD_B_CY 54u
+#define MOD_C_BASE 102u
+#define MOD_AMP 14u
+/* Most steps ARP has in the window: the fastest rate, 1 frame (32 in 1/16 ticks). */
+#define MOD_STEPS 65u
+
+typedef struct {
+    uint16_t vstep, pstep; /* LFO phase a tick (65536 a cycle) */
+    uint16_t cycle;        /* the vibrato's cycle in 1/16 ticks (0: none) */
+    uint16_t arp_inv;      /* 65536 / a step's 1/16 ticks, rounded up (0: ARP off) */
+    uint8_t vamp;          /* the vibrato's swing in pixels */
+    uint8_t pamp;          /* the PWM's */
+    uint8_t delay;         /* the vibrato's, in ticks */
+    uint8_t hl;
+    uint8_t stairs[MOD_STEPS]; /* the arpeggio's row at each of the window's steps */
+} mod_ctx;
+
+/* The LFO's triangle at a phase: -16384..16384, up first. */
+static int32_t tri(uint32_t phase) {
+    int32_t p = (int32_t)(phase & 0xFFFFu);
+    return p < 16384 ? p : p < 49152 ? 32768 - p : p - 65536;
+}
+
+/* The arpeggio's note at step idx, of a C major chord (played G C E), in semitones. */
+static uint32_t arp_semis(const live* l, uint32_t idx) {
+    static const uint8_t SORTED[3] = {0, 4, 7};
+    static const uint8_t PLAYED[3] = {7, 0, 4};
+    uint32_t n = 3u * (l->arp_span ? l->arp_span : 1u);
+    uint32_t order = l->arp_order & 3u;
+    uint32_t period = order == LIVE_ARP_UP_DOWN && n > 1u ? 2u * n - 2u : n;
+    uint32_t q = idx % period;
+    if (order == LIVE_ARP_UP_DOWN && q >= n) {
+        q = 2u * n - 2u - q;
+    } else if (order == LIVE_ARP_DOWN) {
+        q = n - 1u - q;
+    }
+    return (order == LIVE_ARP_PLAYED ? PLAYED : SORTED)[q % 3u] + 12u * (q / 3u);
+}
+
+static void mod_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const mod_ctx* m = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = 0;
+    if (x < MOD_X0 || x >= MOD_X0 + MOD_W) {
+        return;
+    }
+    uint32_t t16 = (x - MOD_X0) * 10u; /* ticks in 1/16: the window is 127.5 ticks */
+    uint32_t dq = (uint32_t)m->delay * 16u;
+    int32_t v = 0;
+    if (t16 >= dq) {
+        v = tri((t16 - dq) * m->vstep >> 4) * m->vamp >> 14;
+    }
+    out->lo[0] = out->hi[0] = (uint8_t)((int32_t)MOD_A_CY - v);
+    out->lit = (uint8_t)(m->hl == 2u || (m->hl == 3u && t16 < dq) ||
+                         (m->hl == 1u && t16 >= dq && t16 < dq + m->cycle));
+    out->lo[1] = out->hi[1] = (uint8_t)((int32_t)MOD_B_CY - (tri(t16 * m->pstep >> 4) * m->pamp >> 14));
+    if (m->arp_inv) {
+        uint32_t a = m->stairs[t16 * m->arp_inv >> 16];
+        uint32_t b = m->stairs[(t16 + 20u) * m->arp_inv >> 16]; /* two columns on */
+        out->lo[LAB_DRAW_MARKER] = (uint8_t)(a < b ? a : b);
+        out->hi[LAB_DRAW_MARKER] = (uint8_t)((a > b ? a : b) + 1u);
+    }
+}
+
+static void mod_init(mod_ctx* m, const live* l, uint32_t hl) {
+    m->vstep = (uint16_t)(((uint32_t)l->vibrato_rate * 65536u + 500u) / 1000u);
+    m->pstep = l->pwm_rate;
+    m->vamp = (uint8_t)(l->vibrato_depth * MOD_AMP / LIVE_EXPRESSION_MAX);
+    m->cycle = l->vibrato_rate ? (uint16_t)(1000u * 16u / l->vibrato_rate) : 0u;
+    m->pamp = (uint8_t)(l->pwm_depth * MOD_AMP / LIVE_PWM_DEPTH_MAX);
+    m->delay = l->vibrato_delay;
+    m->hl = (uint8_t)hl;
+    m->arp_inv = 0;
+    if (l->arp_on) {
+        uint32_t step = live_arp_steps[l->arp_rate % LIVE_ARP_RATES] * 2u * 16u;
+        m->arp_inv = (uint16_t)((65536u + step - 1u) / step);
+        for (uint32_t i = 0; i < MOD_STEPS; i++) {
+            m->stairs[i] = (uint8_t)(MOD_C_BASE - arp_semis(l, i) * 3u / 2u);
+        }
+    }
+}
+
+/* ---- FX ---- */
+
+/* The selected slot's shape in the rows from FX_Y0, FX_H high: a transfer curve in a square of
+ * FX_H + 1 columns from FX_PX0, a wave over the MOD window's columns, the delay's taps and the
+ * reverb's decay over the OSC's. */
+#define FX_Y0 48u
+#define FX_H 55u
+#define FX_PX0 92u
+#define FX_WAVE_MS 2000u
+#define FX_TAPS_MS 1500u
+#define FX_X0 8u
+#define FX_W 224u
+
+enum { FX_NONE, FX_XFER, FX_WAVE, FX_TAPS, FX_DECAY };
+
+typedef struct {
+    uint32_t hz_q8; /* a wave's rate, 1/256 Hz */
+    uint16_t gap;   /* the taps' distance, pixels */
+    uint8_t kind;
+    uint8_t slot, alg;
+    uint8_t amount, a, b;
+    uint8_t hl;
+} fx_ctx;
+
+/* The distortion's output (-256..256) for an input x of the same range. */
+static int32_t fx_xfer(const fx_ctx* f, int32_t x) {
+    int32_t a = f->amount * 256 / 127;
+    int32_t b = f->b * 256 / 127;
+    if (f->alg == SID_DIST_CRUSH) {
+        int32_t bits = 16 - 12 * a / 256;
+        int32_t n = bits >= 6 ? 64 : 1 << bits;
+        int32_t i = (x + 256) * n >> 9;
+        i = i < n - 1 ? i : n - 1;
+        return i * 512 / (n - 1) - 256;
+    }
+    int32_t g;
+    int32_t bias;
+    if (f->alg == SID_DIST_TAPE) {
+        g = 256 + 2 * a;
+        bias = a * 38 / 256;
+    } else { /* the overdrive's gain law (core/fx/fx_overdrive.h), the fuzz's alike */
+        int32_t a2 = a * a >> 8;
+        int32_t a3 = a2 * a >> 8;
+        int32_t a7 = (a3 * a2 >> 8) * a2 >> 8;
+        g = 256 + a / 2 + 24 * a7 - a3 / 2;
+        bias = b * 102 / 256;
+    }
+    int32_t v = g * x / 256 + bias;
+    v = v < -2048 ? -2048 : v > 2048 ? 2048 : v;
+    if (f->alg == SID_DIST_FUZZ || v >= 256 || v <= -256) {
+        return v < -256 ? -256 : v > 256 ? 256 : v;
+    }
+    return (3 * v - (v * v >> 8) * v / 256) / 2; /* the clip's cubic */
+}
+
+/* The rate of a modulation slot, in 1/256 Hz, from its A control (0..127). */
+static uint32_t fx_hz_q8(const fx_ctx* f) {
+    static const uint8_t MIN_Q8[SID_MOD_COUNT] = {0, 38, 13, 13, 26, 26, 0}; /* 0.15 .. 0.05 .. 0.1 */
+    static const uint8_t OCT26[SID_MOD_COUNT] = {0, 78, 172, 172, 172, 172, 0};
+    return (uint32_t)MIN_Q8[f->alg] * exp2q((int32_t)f->a * OCT26[f->alg] / 127) >> 12;
+}
+
+static void fx_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const fx_ctx* f = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = (uint8_t)(f->hl >= 1u && f->hl <= 3u);
+    uint32_t base = FX_Y0 + FX_H;
+    int32_t y;
+    switch (f->kind) {
+    case FX_XFER:
+        if (x < FX_PX0 || x > FX_PX0 + FX_H) {
+            return;
+        }
+        {
+            int32_t xi = ((int32_t)(x - FX_PX0) * 512 + 27) / (int32_t)FX_H - 256;
+            out->lo[0] = out->hi[0] = (uint8_t)(FX_Y0 + (256 - fx_xfer(f, xi)) * (int32_t)FX_H / 512);
+            out->lo[1] = out->hi[1] = (uint8_t)(FX_Y0 + (256 - xi) * (int32_t)FX_H / 512);
+            out->lit &= 1u;
+        }
+        return;
+    case FX_WAVE:
+        if (x < MOD_X0 || x >= MOD_X0 + MOD_W) {
+            return;
+        }
+        {
+            uint32_t ph = (x - MOD_X0) * f->hz_q8 * 643u >> 16;
+            int32_t s = sine_q7(ph);
+            int32_t amp = f->amount * 26 / 127;
+            if (f->alg == SID_MOD_TREMOLO || f->alg == SID_MOD_AUTOPAN) {
+                s += ((s < 0 ? -127 : 127) - s) * f->b / 127; /* the shape: sine to square */
+            } else if (f->alg == SID_MOD_WOW) { /* a slow wow with the flutter on it */
+                s = sine_q7((x - MOD_X0) * 128u * 643u >> 16);
+                s = (s * f->amount * 2 + sine_q7((x - MOD_X0) * 2048u * 643u >> 16) * f->a) / (3 * 127);
+                amp = 26;
+            }
+            y = (int32_t)(FX_Y0 + FX_H / 2u) - s * amp / 127;
+            out->lo[0] = out->hi[0] = (uint8_t)y;
+        }
+        return;
+    case FX_TAPS: {
+        if (x < FX_X0 || x >= FX_X0 + FX_W) {
+            return;
+        }
+        uint32_t mono = f->alg == SID_FXSLOT_DELAY;
+        uint32_t gap = f->gap;
+        uint32_t k = (x - FX_X0 + 1u) / gap; /* the tap in this sample's two columns */
+        if (x == FX_X0) { /* the input */
+            out->lo[LAB_DRAW_MARKER] = FX_Y0;
+            out->hi[LAB_DRAW_MARKER] = (uint8_t)base;
+        } else if (k && (x - FX_X0 + 1u) - k * gap < 2u) {
+            uint32_t fb = f->amount * 243u / 127u;
+            uint32_t amp = 205u;
+            for (uint32_t j = 1; j < k; j++) {
+                amp = amp * fb >> 8;
+            }
+            uint32_t l = mono ? 0u : 1u - (k & 1u);
+            out->lo[l] = (uint8_t)(base - amp * FX_H / 256u);
+            out->hi[l] = (uint8_t)base;
+            out->lit = (uint8_t)(out->lit << l);
+        }
+        return;
+    }
+    default: {
+        if (x < FX_X0 || x >= FX_X0 + FX_W) {
+            return;
+        }
+        uint32_t half = 100u + f->amount * 1400u / 127u;
+        uint32_t n = (x - FX_X0) * FX_WAVE_MS / FX_W * 26u / half;
+        n = n < 400u ? n : 400u;
+        out->lo[0] = out->hi[0] = (uint8_t)(base - exp2q(-(int32_t)n) * FX_H / 4096u);
+        return;
+    }
+    }
+}
+
+static void fx_init(fx_ctx* f, const live* l, uint32_t hl) {
+    f->slot = l->fx_select % LIVE_SLOTS;
+    const uint8_t* s = l->slot[f->slot];
+    f->alg = s[LIVE_SLOT_ALGORITHM];
+    f->amount = s[LIVE_SLOT_AMOUNT];
+    f->a = s[LIVE_SLOT_A];
+    f->b = s[LIVE_SLOT_B];
+    f->hl = (uint8_t)hl;
+    f->kind = FX_NONE;
+    if (f->slot == SID_SLOT_DIST && f->alg != SID_DIST_NONE && f->alg != SID_DIST_LOFI) {
+        f->kind = FX_XFER;
+    } else if (f->slot == SID_SLOT_MOD && f->alg != SID_MOD_NONE) {
+        f->kind = FX_WAVE;
+    } else if (f->slot == SID_SLOT_FX && f->alg != SID_FXSLOT_NONE) {
+        f->kind = f->alg <= SID_FXSLOT_PINGPONG ? FX_TAPS : FX_DECAY;
+    }
+    f->hz_q8 = f->kind == FX_WAVE ? fx_hz_q8(f) : 0u;
+    if (f->kind == FX_TAPS) { /* the time: 10 ms to the line's end, log */
+        uint32_t t = 10u * exp2q((int32_t)f->a * (f->alg == SID_FXSLOT_DELAY ? 188 : 161) / 127) >> 12;
+        f->gap = (uint16_t)(t * FX_W / FX_TAPS_MS < 2u ? 2u : t * FX_W / FX_TAPS_MS);
+    }
+}
+
 static void none_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     (void)ctx;
     (void)x;
@@ -428,6 +763,19 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
         if (v >= 0) {
             h = (h ^ sc->env[v] ^ (uint32_t)sc->state[v] << 8) * 16777619u;
         }
+    } else if (page == LAB_PAGE_FILTER) {
+        h = (h ^ l->cutoff_out ^ (uint32_t)l->resonance << 12 ^ (uint32_t)l->filter_mode << 16 ^
+             (uint32_t)l->model << 24) * 16777619u;
+    } else if (page == LAB_PAGE_MOD) {
+        h = (h ^ l->vibrato_rate ^ (uint32_t)l->vibrato_depth << 8 ^ (uint32_t)l->vibrato_delay << 16 ^
+             (uint32_t)l->arp_on << 24) * 16777619u;
+        h = (h ^ l->pwm_depth ^ (uint32_t)l->pwm_rate << 16) * 16777619u;
+        h = (h ^ l->arp_rate ^ (uint32_t)l->arp_order << 8 ^ (uint32_t)l->arp_span << 16) * 16777619u;
+    } else {
+        const uint8_t* s = l->slot[l->fx_select % LIVE_SLOTS];
+        h = (h ^ l->fx_select ^ (uint32_t)s[0] << 8 ^ (uint32_t)s[1] << 16 ^ (uint32_t)s[2] << 24) *
+            16777619u;
+        h = (h ^ s[3]) * 16777619u;
     }
     return h;
 }
@@ -437,6 +785,9 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
     lab_draw d = {none_col, NULL, {th->label, th->label, th->value}, th->hot};
     osc_ctx o;
     env_ctx e;
+    filt_ctx f;
+    mod_ctx m;
+    fx_ctx x;
     if (hl >= 1u && hl <= 4u) {
         d.lit_color = th->knob[hl - 1u];
     }
@@ -453,8 +804,94 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         env_dot(&e, sc);
         d.fn = env_col;
         d.ctx = &e;
+    } else if (page == LAB_PAGE_FILTER) {
+        filt_init(&f, l, hl);
+        d.fn = filt_col;
+        d.ctx = &f;
+        d.color[0] = f.mode ? th->value : th->dim;
+        d.color[1] = th->label;
+    } else if (page == LAB_PAGE_MOD) {
+        mod_init(&m, l, hl);
+        d.fn = mod_col;
+        d.ctx = &m;
+        d.color[0] = th->value;
+        d.color[1] = l->control & 0x40u ? th->label : th->dim;
+        d.color[LAB_DRAW_MARKER] = th->hot;
+    } else {
+        fx_init(&x, l, hl);
+        d.fn = x.kind == FX_NONE ? none_col : fx_col;
+        d.ctx = &x;
+        d.color[0] = th->value;
+        d.color[1] = th->dim;
+        d.color[LAB_DRAW_MARKER] = th->hot;
     }
     return lab_draw_apply(&d, g, s, row0, left);
+}
+
+/* s at (row, col) in attr, 1x. */
+static void gtext(grid_canvas* c, uint32_t row, uint32_t col, const char* s, uint8_t attr) {
+    for (; *s && col < GRID_COLS; s++, col++) {
+        c->ch[row][col] = (uint8_t)*s;
+        c->attr[row][col] = attr;
+    }
+}
+
+/* The words of FILTER's, MOD's and FX's drawings: FILTER's axis and the voices routed (V1 V2 V3
+ * at 2x, in the voices' colours, dark when not routed, reversed while K3 is turned), MOD's bands
+ * and times, FX's chain of slots (the selected one marked, a slot that is off dark) and the
+ * legend or the name of what its shape is. */
+static void guides_page(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, const theme* th,
+                        uint32_t row0) {
+    uint32_t last = row0 + LAB_DRAW_ROWS - 1u;
+    uint8_t hint = THEME_ATTR(th, hint);
+    if (page == LAB_PAGE_FILTER) {
+        gtext(c, last, 6, "100", hint);
+        gtext(c, last, 17, "1K", hint);
+        gtext(c, last, 27, "10K", hint);
+        for (uint32_t v = 0; v < 3u; v++) {
+            char s[3] = {'V', (char)('1' + v), 0};
+            uint8_t on = l->filter_voices >> v & 1u;
+            uint8_t fg = on ? th->voice_text[v] : th->dim;
+            (void)grid_canvas_text_big(c, v * 5u, row0 + 11u, 2, s,
+                                       hl == 3u && on ? GRID_ATTR(th->bg, fg) : GRID_ATTR(fg, th->bg));
+        }
+    } else if (page == LAB_PAGE_MOD) {
+        gtext(c, row0 + 2u, 0, "VIB", hint);
+        gtext(c, row0 + 6u, 0, "PWM", hint);
+        gtext(c, row0 + 10u, 0, "ARP", l->arp_on ? hint : THEME_ATTR(th, dim));
+        gtext(c, last, 14, "0.5S", hint);
+        gtext(c, last, 24, "1S", hint);
+    } else {
+        uint32_t sel = l->fx_select % LIVE_SLOTS;
+        for (uint32_t s = 0; s < LIVE_SLOTS; s++) {
+            uint32_t alg = l->slot[s][LIVE_SLOT_ALGORITHM];
+            uint32_t row = row0 + 2u * s;
+            uint8_t on = s == sel ? THEME_ATTR(th, value) : THEME_ATTR(th, label);
+            if (s == sel) {
+                for (uint32_t r = 0; r < 2u; r++) {
+                    c->ch[row + r][0] = FONT_FULL;
+                    c->attr[row + r][0] = hl == 4u ? GRID_ATTR(th->knob[3], th->bg) : THEME_ATTR(th, hot);
+                }
+            }
+            gtext(c, row, 2, views_slot_name(s), s == sel ? THEME_ATTR(th, hot) : hint);
+            (void)grid_canvas_text_big(c, 7, row, 2, views_algorithm_name(s, alg),
+                                       alg ? on : THEME_ATTR(th, dim));
+        }
+        fx_ctx f;
+        fx_init(&f, l, hl);
+        if (f.kind == FX_NONE) { /* no shape to draw: the slot's name, at 2x */
+            const char* n = views_algorithm_name(sel, f.alg);
+            uint32_t len = 0;
+            while (n[len]) {
+                len++;
+            }
+            (void)grid_canvas_text_big(c, (GRID_COLS - 2u * len) / 2u, row0 + 9u, 2, n, THEME_ATTR(th, dim));
+        } else {
+            static const char* const LEGEND[5] = {"", "INPUT TO OUTPUT", "2 SECONDS", "1.5 SECONDS",
+                                                  "2 SECONDS"};
+            gtext(c, last, 0, LEGEND[f.kind], hint);
+        }
+    }
 }
 
 void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, const theme* th,
@@ -476,6 +913,8 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
                 c->attr[row0 + r][col] = attr;
             }
         }
+    } else if (page == LAB_PAGE_FILTER || page == LAB_PAGE_MOD || page == LAB_PAGE_FX) {
+        guides_page(c, l, page, hl, th, row0);
     } else if (page == LAB_PAGE_ENVELOPE) {
         /* the key let go: a line at its column; the time's ticks under the curve */
         uint32_t x = lab_draw_x_of_us(lab_draw_gate_us(l->attack_decay, l->sustain_release));

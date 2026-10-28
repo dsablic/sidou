@@ -15,7 +15,7 @@ use crate::{drain, Sent};
 
 const K1: u32 = PANEL_ENC_K1;
 /// app/panel.h PANEL_PAGE_LAB_FIRST: after the EXPERT pages.
-const LAB_FIRST: u32 = PANEL_PAGE_EXPERT_FIRST + (SID_EXPERT_COUNT + 3) / 4;
+const LAB_FIRST: u32 = PANEL_PAGE_EXPERT_FIRST + SID_EXPERT_COUNT.div_ceil(4);
 
 fn step(ui: &mut Ui) -> Sent {
     ui.frame();
@@ -154,7 +154,7 @@ fn each_card_turns_its_parameter_by_its_detent() {
         assert_eq!(param(&ui, p) as i32, start as i32 - detent, "and back two");
         // panel_knob_param names the card's parameter on LAB's panel page (learn's pick sets
         // it), EDIT held or not.
-        let mut on_page = (*ui.p).clone();
+        let mut on_page = *ui.p;
         on_page.page = (LAB_FIRST + page) as u8;
         assert_eq!(unsafe { lab_view_panel_page(&ui.v.lab) }, LAB_FIRST + page);
         for held in [0, 1 << PANEL_BTN_EDIT] {
@@ -882,4 +882,232 @@ fn the_envelope_dot_follows_the_tap() {
         cells_in(&ui.g, th.value).is_empty(),
         "gone when the voice is silent"
     );
+}
+
+// ---- FILTER, MOD and FX (Task 7) ----
+
+/// The columns of the cells of the area in colour `c`.
+fn columns_in(g: &grid, c: u8) -> Vec<usize> {
+    let mut cols: Vec<usize> = cells_in(g, c).iter().map(|&(col, _)| col).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    cols
+}
+
+/// A page, settled, with the hint line's first phrase: a golden of it.
+fn page_golden(ui: &mut Ui, name: &str) {
+    settle_hint(ui);
+    golden(ui, name);
+}
+
+/// FILTER's response for each mode (LP, BP, HP, NOTCH) and at full resonance: goldens, with the
+/// shape each mode has: the low pass is up at the left, the high pass at the right, the band
+/// pass at neither end, the notch at both and down at the cutoff.
+#[test]
+fn filter_draws_each_mode() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    set(&mut ui, LIVE_PARAM_RESONANCE, 4);
+    set(&mut ui, LIVE_PARAM_CUTOFF, 400);
+    unsafe { live_tick(&mut *ui.rig.live) };
+    // the row of the curve (the lowest ink of the white trace) at pixel column x
+    let top_at = |ui: &Ui, x: usize| -> Option<usize> {
+        let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+        let mut best = None;
+        for r in 0..LAB_DRAW_ROWS as usize {
+            if let Some((m, k)) = overlay(&ui.g, x / 8, ROW0 + r) {
+                if k == th.value as u8 {
+                    for (y, bits) in m.iter().enumerate() {
+                        if bits >> (7 - x % 8) & 1 != 0 {
+                            best = best.or(Some(r * 8 + y));
+                        }
+                    }
+                }
+            }
+        }
+        best
+    };
+    for (i, name, left, right) in [
+        (0, "lab-filter-lp", true, false),
+        (1, "lab-filter-bp", false, false),
+        (2, "lab-filter-hp", false, true),
+        (3, "lab-filter-notch", true, true),
+    ] {
+        ui.turn(PANEL_ENC_ALGORITHM, -9);
+        ui.turn(PANEL_ENC_ALGORITHM, i);
+        settle(&mut ui);
+        let (l, r) = (top_at(&ui, 40).unwrap(), top_at(&ui, 226).unwrap());
+        assert_eq!(
+            l < 20,
+            left,
+            "{name}: the passband at the left, curve at {l}"
+        );
+        assert_eq!(
+            r < 20,
+            right,
+            "{name}: the passband at the right, curve at {r}"
+        );
+        page_golden(&mut ui, name);
+    }
+    // the resonance: a peak above the passband, and the reading lights where it is
+    ui.turn(PANEL_ENC_ALGORITHM, -9);
+    settle(&mut ui);
+    let flat = top_at(&ui, 40).unwrap();
+    set(&mut ui, LIVE_PARAM_RESONANCE, 15);
+    settle(&mut ui);
+    let cutoff_col = columns_in(
+        &ui.g,
+        unsafe { &*theme_get(u32::from(ui.live().theme)) }.label as u8,
+    );
+    assert_eq!(cutoff_col.len(), 1, "the cutoff is one line");
+    let peak = (cutoff_col[0] * 8 - 16..cutoff_col[0] * 8 + 16)
+        .filter_map(|x| top_at(&ui, x))
+        .min()
+        .unwrap();
+    assert!(
+        peak < flat,
+        "the peak {peak} rises above the passband {flat}"
+    );
+    page_golden(&mut ui, "lab-filter-reso15");
+}
+
+/// The filter's drawing is the cutoff the chip has now: the wheel on CUTOFF moves the line, at
+/// the column of the cutoff's Hz on the 30 Hz to 12 kHz axis.
+#[test]
+fn filter_follows_the_cutoff_the_chip_has() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    set(&mut ui, LIVE_PARAM_MOD_TARGET, LIVE_MOD_CUTOFF);
+    set(&mut ui, LIVE_PARAM_CUTOFF, 200);
+    let mut cols = Vec::new();
+    for wheel in [0u8, 40, 100] {
+        unsafe {
+            live_cc(&mut *ui.rig.live, LIVE_CC_MOD_WHEEL as u8, wheel);
+            live_tick(&mut *ui.rig.live);
+        }
+        settle(&mut ui);
+        let fc = u32::from(ui.live().cutoff_out);
+        assert_eq!(fc, 200 + 8 * u32::from(wheel), "the chip's cutoff");
+        let hz = unsafe { sid_cutoff_hz(ui.live().model, 0, fc) }.clamp(30.0, 12000.0);
+        let want = 8.0 + 26.0 * (hz / 30.0).log2();
+        let got = columns_in(&ui.g, th.label as u8);
+        assert_eq!(got.len(), 1, "wheel {wheel}: one line");
+        assert!(
+            (got[0] as f32 * 8.0 - want).abs() < 12.0,
+            "wheel {wheel}: the line at cell {}, {hz} Hz is column {want}",
+            got[0]
+        );
+        cols.push(got[0]);
+    }
+    assert!(cols.windows(2).all(|w| w[0] < w[1]), "it opens: {cols:?}");
+}
+
+/// MOD: the vibrato over its delay (a flat start), the PWM below it, and ARP's staircase as the
+/// order and the rate make it: goldens.
+#[test]
+fn mod_draws_the_vibrato_the_pwm_and_arp() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_MOD);
+    set(&mut ui, LIVE_PARAM_VIBRATO_RATE, 40);
+    set(&mut ui, LIVE_PARAM_VIBRATO_DEPTH, 100);
+    set(&mut ui, LIVE_PARAM_VIBRATO_DELAY, 40);
+    page_golden(&mut ui, "lab-mod-vibrato");
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    // the delay is a flat start: the first 40 ticks of 128 of the window's 204 columns
+    let ys: Vec<usize> = (36..(32 + 204 * 40 / 128))
+        .map(|x| {
+            ink(&ui.g)
+                .iter()
+                .position(|row| row[x])
+                .expect("the vibrato's ink")
+        })
+        .collect();
+    assert!(
+        ys.windows(2).all(|w| w[0].abs_diff(w[1]) <= 1),
+        "flat over the delay: {ys:?}"
+    );
+    // ARP up-down over two octaves: a staircase in the marker's colour
+    ui.turn(PANEL_ENC_ALGORITHM, 3);
+    unsafe { live_arp_set(&mut *ui.rig.live, LIVE_ARP_SPAN, 2) };
+    unsafe { live_arp_set(&mut *ui.rig.live, LIVE_ARP_RATE, 2) };
+    settle(&mut ui);
+    assert!(
+        !cells_in(&ui.g, th.hot as u8).is_empty(),
+        "ARP's staircase is drawn"
+    );
+    page_golden(&mut ui, "lab-mod-arp");
+    ui.turn(PANEL_ENC_ALGORITHM, -9);
+    settle(&mut ui);
+    assert!(cells_in(&ui.g, th.hot as u8).is_empty(), "ARP off: none");
+    // the lit part: K3 the delay, the flat start
+    ui.turn(K1 + 2, 1);
+    step(&mut ui);
+    step(&mut ui);
+    let lit = columns_in(&ui.g, th.knob[2] as u8);
+    assert!(
+        !lit.is_empty() && *lit.last().unwrap() <= 32 / 8 + 204 * 41 / 128 / 8 + 1,
+        "K3 lights the delay: {lit:?}"
+    );
+}
+
+/// FX: the chain (the slots, the selected one marked, one that is off dark) and the selected
+/// slot's shape: a transfer curve that bends with the drive, the delay's taps, a slot without a
+/// drawing named at 2x.
+#[test]
+fn fx_draws_the_chain_and_the_slots_shape() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FX);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    ui.turn(PANEL_ENC_ALGORITHM, 2);
+    page_golden(&mut ui, "lab-fx-chain");
+    assert_eq!(ui.big(ROW0, 7, 2, 9), "OVERDRIVE");
+    // drive: a harder drive carries the curve to its rail sooner (a quarter in, its lowest ink is lower)
+    let quarter = |ui: &Ui| {
+        let ink = ink(&ui.g);
+        (0..LAB_DRAW_H as usize)
+            .rev()
+            .find(|&y| ink[y][92 + 14])
+            .expect("the curve is drawn")
+    };
+    set(&mut ui, LIVE_PARAM_SLOT + LIVE_SLOT_AMOUNT, 20);
+    settle(&mut ui);
+    let soft = quarter(&ui);
+    set(&mut ui, LIVE_PARAM_SLOT + LIVE_SLOT_AMOUNT, 120);
+    settle(&mut ui);
+    page_golden(&mut ui, "lab-fx-drive");
+    let hard = quarter(&ui);
+    assert!(
+        hard > soft,
+        "the hard drive's curve is lower: {hard} against {soft}"
+    );
+    // the FX slot: DELAY's taps, in the layers' colours
+    ui.press(PANEL_BTN_SCL);
+    ui.press(PANEL_BTN_SCL);
+    settle(&mut ui);
+    assert_eq!(ui.live().fx_select, 2);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    set(
+        &mut ui,
+        LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT,
+        90,
+    );
+    set(
+        &mut ui,
+        LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS + LIVE_SLOT_A,
+        40,
+    );
+    settle(&mut ui);
+    assert_eq!(choice(&ui), "DELAY");
+    assert!(
+        !cells_in(&ui.g, th.value as u8).is_empty(),
+        "the echoes are drawn"
+    );
+    page_golden(&mut ui, "lab-fx-delay");
+    // LO-FI has no drawing: its name at 2x
+    ui.press(PANEL_BTN_SCL);
+    ui.turn(PANEL_ENC_ALGORITHM, 9);
+    settle(&mut ui);
+    assert_eq!(choice(&ui), "LO-FI");
+    assert_eq!(ui.big(ROW0 + 9, 10, 2, 5), "LO-FI", "named, not drawn");
 }
