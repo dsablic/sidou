@@ -37,8 +37,8 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **Minimal DICE settings.** Density and scale, saved per song. M.
 - **Store health on STATUS.** A retired store sector is shown, and a background settings save
   that failed is detected and retried. S.
-- **More test coverage.** A gate that decodes every instruction of the image, and the ergo
-  harness walks LOAD and the SONG pages, checking SAVE and HOME on every list. S-M.
+- **More test coverage.** Done: a gate that decodes every instruction of the image, and the
+  ergo harness walks LOAD and the SONG pages, checking SAVE and HOME on every list.
 - **A SIDS how-to video and What's new in 1.0.** S-M.
 - **The GitHub look.** Avatar, social preview, the Firmware Hub card checked. S, by hand.
 
@@ -49,7 +49,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   byte, on 0x1209:0x0002.
 - **The ergo baseline refreshed** after LAB, with the accepted findings reviewed.
 - **A device session gates 1.0.** USB audio recording, the first-run tour, unplugging the
-  cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune.
+  cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, and a long 48 kHz recording (the CPU erratum in Felucca's resampler, [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16); if it fails, 48 kHz goes off until a fix).
 
 ## 1.x
 

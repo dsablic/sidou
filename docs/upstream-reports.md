@@ -36,6 +36,13 @@ and `sie_rd` carry no `noinline` (7), the USB names are build settings as plain 
 1.7.0 `ep1tx` sits at 4 mod 8 and EP1 IN works, so alignment may not be the whole story for 6.
 Filed again on 2026-10-28 after the user's review: 6 and 7 as [felucca-bsp#14](https://github.com/hugelton/felucca-bsp/issues/14) (the SIE timing, with alignment as a side note and safeguard), 8.2 as [felucca-bsp#15](https://github.com/hugelton/felucca-bsp/issues/15) (the raw MIDI-in hook).
 
+**The CPU erratum in the 48 kHz resampler (2026-10-28).** felucca-bsp's docs/CPU.md documents that
+inlined 64-bit multiplies among 16-bit loads now and then corrupt a register on the FM-1. The one place
+in SIDOU's image with that pattern is the vendored `usb.c`'s `uac_tap48` (USB audio at 48 kHz only;
+SIDOU's own audio path has no 64-bit multiplies); felucca-bsp's own `chip/usb.c` at `5942e68` compiles to
+the same loop. Filed as [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16). Until a fix lands, 44.1 kHz recording
+is the safe setting; a long 48 kHz recording is part of 1.0's device session.
+
 **Offers rather than bugs** (also shown to the user first): SIDOU's USB host model for
 fm1-emu's tests ([TESTING.md](../TESTING.md#fm1-emus-limits)), more instruction classes in fm1-emu if profiling needs them (saturating `R += R`, register `&=`/`^=` masks, some FPU and accumulator classes), and macOS support for the FM-1's ROM-boot recovery
 (`tools/fm1-unbrick-mac`) for MvaveFM1Unbricker / jl-uboot-tool. Later: FM-1 Live Link (the roadmap's companion module) for the other FM-1 firmwares.
