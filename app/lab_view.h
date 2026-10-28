@@ -6,7 +6,7 @@
  * The pages, in SELECT's order (clamped at both ends): OSC, ENVELOPE, FILTER, MOD, FX. On each:
  * - rows 0-1, the header at 2x: the page's name in yellow, and its place `2/5` on the right;
  * - rows 2-3, the sound's name at 2x in white with `*` while it differs from its base
- *   (live_preset_name);
+ *   (live_preset_name), and A or B on the right while EDIT's tap compares (lab_view_buttons);
  * - rows 4-17, the page's drawing (LAB_VIEW_ART_ROW..; app/lab_draw.h): what it shapes, from the
  *   live values, the part the turned card shapes lit;
  * - rows 19-20, ALGORITHM's choice at 2x (`SAW SYNC`, `AUTHENTIC`, `NOTCH`, `ARP UP`, `DELAY`),
@@ -105,6 +105,12 @@ extern "C" {
 #define LAB_VIEW_NAME_CHARS_ROW 9u
 #define LAB_VIEW_NAME_LEGEND_ROW 12u
 #define LAB_VIEW_NAME_ASK_ROW 24u
+/* lab_view.ab: not comparing; A (the sound as kept or loaded, its base) plays and B (the edit)
+ * waits in lab_view.other; B plays. The header shows the letter at 2x from this column. */
+#define LAB_VIEW_AB_OFF 0u
+#define LAB_VIEW_AB_A 1u
+#define LAB_VIEW_AB_B 2u
+#define LAB_VIEW_AB_COL 28u
 /* The note keys that type: A..Z are keys 0..25 and key 26 is a space. */
 #define LAB_VIEW_NAME_KEYS 27u
 
@@ -129,6 +135,11 @@ typedef struct {
     uint8_t cursor_at; /* the name page's cursor, 0..LAB_SOUND_NAME - 1 */
     uint8_t named;     /* the name is the player's, not the slot's automatic one */
     char name[LAB_SOUND_NAME + 1u]; /* the name page's name, spaces after it */
+    uint8_t edit_down;    /* EDIT pressed while LAB showed, held since (its tap: A/B) */
+    uint8_t edit_spoiled; /* another control while it was: its release compares nothing */
+    uint8_t ab;           /* LAB_VIEW_AB_*: comparing, and which sound plays */
+    uint8_t loads;        /* live.loads as LAB last saw it: another sound ends A/B */
+    uint8_t other[LAB_SOUND_BYTES]; /* B, the edit, while A plays */
 } lab_view;
 
 extern const view lab_view_view;
@@ -152,6 +163,15 @@ void lab_view_flash(lab_view* lv, uint32_t k, uint32_t now_ms);
  * keys pressed this frame (bit k: key k) while it shows and returns the ones it used, which the
  * panel then keeps quiet; 0 outside it. */
 uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
+/* EDIT's tap (A/B), from the panel's buttons each input frame (pressed edges, held levels) while
+ * EDIT is down or pressed; top: LAB is the view on top. EDIT pressed and let go with no other
+ * button pressed and no control turned while it was down (the note keys do not count, as for
+ * SAVE: app/save_key.h) compares: an edited sound's edit (B) is put aside and its base (A) plays,
+ * the header showing A; the next tap plays B again, and so on. On a sound that is its base it
+ * toasts NOTHING TO COMPARE. A turn of LAB's while A plays makes A the edit: comparing ends and
+ * B goes. Comparing ends when another sound loads (live.loads). EDIT as a
+ * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. */
+void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, int top);
 /* HOME on the name page: back to the pages without writing. 1 if it was open (HOME did that). */
 int lab_view_home(lab_view* lv);
 /* SAVE's clean release in LAB: the sound is kept, in its own USER slot with its name or, if it

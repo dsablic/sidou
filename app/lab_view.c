@@ -412,6 +412,7 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     b[n++] = (uint8_t)l->model;
     b[n++] = (uint8_t)l->cutoff_out;
     b[n++] = (uint8_t)(l->cutoff_out >> 8);
+    b[n++] = lv->ab;
     if (lv->mode) { /* the name page: what it shows besides the sound */
         b[n++] = lv->mode;
         b[n++] = (uint8_t)(lv->slot | (l->sounds_valid >> lv->slot & 1u) << 7);
@@ -495,6 +496,11 @@ static void build(lab_view* lv, uint32_t now) {
     char name[LIVE_PRESET_NAME_CHARS + 2u];
     live_preset_name(l, name);
     (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ROW, 2, name, THEME_ATTR(th, value));
+    if (lv->ab) { /* comparing: which of the two plays, reversed */
+        char ab[2] = {lv->ab == LAB_VIEW_AB_A ? 'A' : 'B', 0};
+        (void)grid_canvas_text_big(c, LAB_VIEW_AB_COL, LAB_VIEW_NAME_ROW, 2, ab,
+                                   GRID_ATTR(th->bg, th->hot));
+    }
     lab_draw_guides(c, l, lv->page, lv->hl, th, LAB_VIEW_ART_ROW);
     /* The choice at 2x (lit in reverse video), ALG small on the right. */
     char choice[LAB_VIEW_TEXT];
@@ -519,6 +525,78 @@ static void build(lab_view* lv, uint32_t now) {
 static void expire(lab_view* lv, const screen* s) {
     if (lv->hl && (int32_t)(s->now - lv->hl_until) >= 0) {
         lv->hl = 0;
+    }
+}
+
+/* ---- A/B ---- */
+
+/* A: the sound's base, with a bend range RPN 0 set kept (the channel's, not the sound's). */
+static void a_sound(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
+    memcpy(out, l->base, LAB_SOUND_BYTES);
+    if (l->bend_range_rpn) {
+        out[LAB_SOUND_BEND_RANGE] = l->bend_range;
+    }
+}
+
+/* Another sound loaded since LAB last looked: comparing ends. */
+static void sync(lab_view* lv) {
+    if (lv->loads != lv->l->loads) {
+        lv->loads = lv->l->loads;
+        lv->ab = LAB_VIEW_AB_OFF;
+    }
+}
+
+/* A change of LAB's to the sound while A plays: A is the edit from now on, B goes. */
+static void a_becomes_edit(lab_view* lv) {
+    sync(lv);
+    if (lv->ab == LAB_VIEW_AB_A) {
+        lv->ab = LAB_VIEW_AB_OFF;
+    }
+}
+
+/* EDIT's tap: B aside and A, or B again. */
+static void ab_tap(lab_view* lv, screen* s) {
+    live* l = lv->l;
+    sync(lv);
+    uint8_t now[LAB_SOUND_BYTES];
+    uint8_t a[LAB_SOUND_BYTES];
+    live_sound_get(l, now);
+    a_sound(l, a);
+    if (lv->ab == LAB_VIEW_AB_A) {
+        if (lab_sound_equal(now, a)) {
+            live_sound_apply(l, lv->other);
+            lv->ab = LAB_VIEW_AB_B;
+            return;
+        }
+        a_becomes_edit(lv); /* A changed outside LAB (LIVE, MIDI): it is the edit now */
+    }
+    if (lab_sound_equal(now, a)) {
+        lv->ab = LAB_VIEW_AB_OFF;
+        screen_toast(s, "NOTHING TO COMPARE", SCREEN_TOAST_MS);
+        return;
+    }
+    memcpy(lv->other, now, LAB_SOUND_BYTES);
+    live_sound_apply(l, a);
+    lv->ab = LAB_VIEW_AB_A;
+}
+
+void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, int top) {
+    uint32_t bit = 1u << PANEL_BTN_EDIT;
+    if (pressed & bit) {
+        lv->edit_down = (uint8_t)(top != 0);
+        lv->edit_spoiled = (held & ~bit) != 0; /* EDIT after another button: a combination */
+    }
+    if (!lv->edit_down) {
+        return;
+    }
+    if (pressed & ~bit) {
+        lv->edit_spoiled = 1; /* another button while EDIT is down */
+    }
+    if (!(held & bit)) {
+        lv->edit_down = 0;
+        if (!lv->edit_spoiled && top && lv->mode == LAB_VIEW_MODE_PAGES) {
+            ab_tap(lv, s);
+        }
     }
 }
 
@@ -646,6 +724,9 @@ static void name_turn(lab_view* lv, uint32_t id, int32_t steps);
 static int input(screen* s, void* state, const screen_event* e) {
     (void)s;
     lab_view* lv = state;
+    if (e->kind == SCREEN_TURN && lv->edit_down) {
+        lv->edit_spoiled = 1; /* a control turned while EDIT is down: no A/B at its release */
+    }
     if (lv->mode) { /* the name page takes every control but the ones that are not LAB's */
         if (e->kind == SCREEN_PRESS) {
             return e->id == PANEL_BTN_ENV || e->id == PANEL_BTN_LFO || e->id == PANEL_BTN_FX;
@@ -672,10 +753,12 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     if (e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
+        a_becomes_edit(lv);
         card_turn(lv, e->id - PANEL_ENC_K1, e->steps);
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
+        a_becomes_edit(lv);
         choice_turn(lv, e->steps);
         return 1;
     }
@@ -866,6 +949,7 @@ void lab_view_init(lab_view* lv, live* l, user_sounds* us, song_view* shared, co
     lv->us = us;
     lv->canvas = shared;
     lv->sc = sc;
+    lv->loads = l->loads;
 }
 
 void lab_view_page_set(lab_view* lv, uint32_t page) {
@@ -905,6 +989,7 @@ static int art_stale(const lab_view* lv) {
 static int changed(screen* s, void* state) {
     lab_view* lv = state;
     expire(lv, s);
+    sync(lv);
     return lv->canvas->which != SONG_VIEW_CANVAS_LAB || !lv->built || lv->copying ||
            look(lv, s->now) != lv->look || art_stale(lv);
 }

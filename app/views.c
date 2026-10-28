@@ -2777,8 +2777,19 @@ __attribute__((noinline, unused)) static uint32_t save_buttons(views* v, uint32_
     return pressed;
 }
 
+/* EDIT's tap in LAB (app/lab_view.h lab_view_buttons): its press while LAB is on top, the
+ * buttons pressed while it is down, its release. Before SAVE's routing, which keeps SAVE's press
+ * from the views. */
+__attribute__((noinline, unused)) LIVE_COLD static void lab_buttons(views* v, uint32_t pressed,
+                                                                     uint32_t held) {
+    lab_view_buttons(&v->lab, &v->s, pressed, held, screen_top(&v->s) == &lab_view_view);
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     knob_page(v, p);
+    if (((pressed >> PANEL_BTN_EDIT) | v->lab.edit_down) & 1u) {
+        lab_buttons(v, pressed, held);
+    }
     /* Read save_key's held bit directly to save ordinary button-path cycles. */
     if ((pressed | v->key.down) & (1u << SAVE_KEY_BUTTON)) {
         pressed = save_buttons(v, pressed, held);

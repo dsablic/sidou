@@ -1849,3 +1849,242 @@ fn lab_presets_loads_and_live_shows_it() {
     assert_eq!(k.ui.big(0, 0, 2, 7), "U THREE");
     golden(&k.ui, "live-user");
 }
+
+// ---- A/B on EDIT's tap (Task 11) ----
+
+fn attack(ui: &Ui) -> u32 {
+    param(ui, LIVE_PARAM_ATTACK)
+}
+
+fn base_attack(ui: &Ui) -> u32 {
+    u32::from(ui.live().base[LAB_SOUND_AD as usize] >> 4)
+}
+
+/// LAB on ENVELOPE with the attack turned 3 detents: an edited sound, settled.
+fn edited_lab() -> Ui {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_ENVELOPE);
+    ui.turn(K1, 3);
+    settle(&mut ui);
+    assert_eq!(attack(&ui), base_attack(&ui) + 3);
+    ui
+}
+
+/// The letter the header shows while comparing ("" when not).
+fn ab_letter(ui: &Ui) -> String {
+    let k = LAB_VIEW_NAME_ROW as usize * COLS + LAB_VIEW_AB_COL as usize;
+    if u32::from(ui.g.ch[k]) == GRID_BIG_FIRST {
+        (ui.g.src[k] as char).to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// The sound's name as the header shows it, without the letter.
+fn name_row(ui: &Ui) -> String {
+    let row = ui.row(LAB_VIEW_NAME_ROW as usize);
+    let row = row.trim_end();
+    let letter = ab_letter(ui);
+    row.strip_suffix(letter.as_str())
+        .unwrap_or(row)
+        .trim_end()
+        .to_string()
+}
+
+#[test]
+fn a_tap_of_edit_compares_and_another_returns() {
+    let mut ui = edited_lab();
+    let a = base_attack(&ui);
+    assert_eq!(name_row(&ui), "SAW LEAD*");
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A);
+    assert_eq!(attack(&ui), a, "A: the sound as loaded");
+    settle(&mut ui);
+    assert_eq!(ab_letter(&ui), "A");
+    assert_eq!(name_row(&ui), "SAW LEAD", "A is the base: no star");
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_B);
+    assert_eq!(attack(&ui), a + 3, "B: the edit again");
+    settle(&mut ui);
+    assert_eq!(ab_letter(&ui), "B");
+    assert_eq!(name_row(&ui), "SAW LEAD*");
+    ui.press(EDIT);
+    assert_eq!(
+        (u32::from(ui.v.lab.ab), attack(&ui)),
+        (LAB_VIEW_AB_A, a),
+        "and A again"
+    );
+    // A turn of B's is still B's: the next tap puts it aside with the rest of the edit
+    ui.press(EDIT);
+    ui.turn(K1 + 1, 1); // the decay
+    let decay = param(&ui, LIVE_PARAM_DECAY);
+    ui.press(EDIT);
+    assert_eq!(attack(&ui), a);
+    assert_eq!(
+        u32::from(ui.live().base[LAB_SOUND_AD as usize] & 15),
+        param(&ui, LIVE_PARAM_DECAY)
+    );
+    ui.press(EDIT);
+    assert_eq!((attack(&ui), param(&ui, LIVE_PARAM_DECAY)), (a + 3, decay));
+}
+
+/// A control used while EDIT is held, and its name.
+type Combo = (&'static str, fn(&mut Ui));
+
+#[test]
+fn edit_as_a_modifier_never_compares() {
+    let combos: [Combo; 9] = [
+        ("EDIT + K2", |ui| ui.turn(K1 + 1, 1)),
+        ("EDIT + ALGORITHM", |ui| ui.turn(PANEL_ENC_ALGORITHM, 1)),
+        ("EDIT + SELECT", |ui| ui.turn(PANEL_ENC_SELECT, 1)),
+        ("EDIT + LFO", |ui| ui.press(PANEL_BTN_LFO)),
+        ("EDIT + ARP", |ui| ui.press(PANEL_BTN_ARP)),
+        ("EDIT + SCL", |ui| ui.press(PANEL_BTN_SCL)),
+        ("EDIT + PRESETS", |ui| ui.turn(PANEL_ENC_PRESETS, 1)),
+        ("EDIT + GLO", |ui| ui.press(PANEL_BTN_GLO)),
+        ("EDIT + SAVE", |ui| {
+            ui.press(SAVE);
+            assert_eq!(
+                u32::from(ui.v.lab.mode),
+                LAB_VIEW_MODE_NAME,
+                "the name page"
+            );
+        }),
+    ];
+    for (what, combo) in combos {
+        let mut ui = edited_lab();
+        ui.down(EDIT);
+        combo(&mut ui);
+        ui.up(EDIT);
+        step(&mut ui);
+        assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "{what} compared");
+        assert_ne!(
+            ui.toast().as_deref(),
+            Some("NOTHING TO COMPARE"),
+            "{what} tapped"
+        );
+    }
+    // SAVE down first, then EDIT: a combination too
+    let mut ui = edited_lab();
+    ui.down(SAVE);
+    ui.down(EDIT);
+    ui.up(EDIT);
+    ui.up(SAVE);
+    assert_eq!(
+        u32::from(ui.v.lab.ab),
+        LAB_VIEW_AB_OFF,
+        "SAVE + EDIT compared"
+    );
+    // EDIT's layer elsewhere is as it was: on LIVE, EDIT + K2 turns the slot's A, and a tap
+    // there compares nothing
+    let mut ui = edited_lab();
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "LIVE");
+    let slot_a = ui.live().slot[0][LIVE_SLOT_A as usize];
+    ui.down(EDIT);
+    ui.turn(K1 + 1, 1);
+    ui.up(EDIT);
+    assert_ne!(
+        ui.live().slot[0][LIVE_SLOT_A as usize],
+        slot_a,
+        "EDIT + K2 on LIVE"
+    );
+    let sound = attack(&ui);
+    ui.press(EDIT);
+    step(&mut ui);
+    assert_eq!(
+        (u32::from(ui.v.lab.ab), attack(&ui), ui.toast()),
+        (LAB_VIEW_AB_OFF, sound, None),
+        "a tap on LIVE"
+    );
+}
+
+#[test]
+fn a_note_while_edit_is_down_still_compares() {
+    let mut ui = edited_lab();
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(
+        u32::from(ui.v.lab.ab),
+        LAB_VIEW_AB_A,
+        "the note keys do not spoil the tap"
+    );
+}
+
+#[test]
+fn a_turn_on_a_makes_a_the_edit() {
+    let mut ui = edited_lab();
+    let a = base_attack(&ui);
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A);
+    let decay = param(&ui, LIVE_PARAM_DECAY);
+    ui.turn(K1 + 1, 1);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "comparing ends");
+    assert_eq!(
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a, decay + 1),
+        "A with the turn is the edit"
+    );
+    settle(&mut ui);
+    assert_eq!(ab_letter(&ui), "");
+    // the next tap compares the new edit with the base
+    ui.press(EDIT);
+    assert_eq!(param(&ui, LIVE_PARAM_DECAY), decay);
+    ui.press(EDIT);
+    assert_eq!((attack(&ui), param(&ui, LIVE_PARAM_DECAY)), (a, decay + 1));
+}
+
+#[test]
+fn nothing_to_compare_on_an_unedited_sound() {
+    let mut ui = lab_ui();
+    ui.press(EDIT);
+    step(&mut ui);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    assert_eq!(ui.toast().as_deref(), Some("NOTHING TO COMPARE"));
+    // nor on B made the base by a revert
+    let mut ui = edited_lab();
+    ui.press(EDIT);
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_B);
+    ui.hold(EDIT, true);
+    ui.turn(PANEL_ENC_PRESETS, 1); // EDIT + PRESETS: back to the base
+    ui.hold(EDIT, false);
+    ui.press(EDIT);
+    step(&mut ui);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    assert_eq!(ui.toast().as_deref(), Some("NOTHING TO COMPARE"));
+}
+
+#[test]
+fn a_load_ends_comparing() {
+    let mut ui = edited_lab();
+    ui.press(EDIT);
+    settle(&mut ui);
+    assert_eq!(ab_letter(&ui), "A");
+    ui.turn(PANEL_ENC_PRESETS, 1); // PWM BASS
+    settle(&mut ui);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    assert_eq!(ab_letter(&ui), "");
+    assert_eq!(name_row(&ui), "PWM BASS");
+    ui.press(EDIT);
+    step(&mut ui);
+    assert_eq!(
+        ui.toast().as_deref(),
+        Some("NOTHING TO COMPARE"),
+        "the other sound's edit is not B"
+    );
+}
+
+#[test]
+fn a_and_b_match_their_goldens() {
+    let mut ui = edited_lab();
+    ui.press(EDIT);
+    settle_hint(&mut ui);
+    golden(&ui, "lab-a");
+    ui.press(EDIT);
+    settle_hint(&mut ui);
+    golden(&ui, "lab-b");
+}

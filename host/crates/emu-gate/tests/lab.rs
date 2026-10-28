@@ -727,3 +727,63 @@ fn presets_reaches_the_user_sounds_on_live_and_in_lab() {
     m.run_ms(200);
     assert_eq!(user(&mut m), 1, "the end clamps");
 }
+
+/// The instrument's cutoff (live.cutoff, the sound's, before the wheel or an LFO).
+fn cutoff(m: &mut Machine, fw: &Firmware) -> u16 {
+    let a = live_at(fw, ilp32::live::cutoff);
+    u16::from(m.soc.read8(a)) | u16::from(m.soc.read8(a + 1)) << 8
+}
+
+/// EDIT tapped in LAB swaps the sound heard: a held note with the cutoff turned well down (B)
+/// against the sound as loaded (A), each tap within the poll allowance; the swap is heard (the
+/// share of the power above 2 kHz) and is the instrument's (its cutoff), both ways and back.
+#[test]
+fn edit_tapped_swaps_the_sound_heard() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    let a = cutoff(&mut m, &fw);
+    m.turn(SELECT, LAB_PAGE_FILTER as i32);
+    m.run_ms(100);
+    m.turn(K1, -30);
+    m.key(KEY0 + 12, true);
+    m.run_ms(600);
+    let bright = |x: &[f32]| common::power_above(x, 2000.0);
+    let heard_b = bright(&common::record(&mut m, 200));
+    let b = cutoff(&mut m, &fw);
+    assert!(b < a / 2, "the cutoff well down: {a} -> {b}");
+    m.watch_calls(fw.symbol("ui_buttons"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let edit = PANEL_BTN_EDIT as u8;
+    let (input, pass) = start_cost(&mut m, 100, |m| tap(m, edit));
+    println!("EDIT's tap: the input {input}, the busiest pass {pass}");
+    assert!(
+        input + pass <= common::POLL_INSTRUCTIONS,
+        "{input} + {pass}"
+    );
+    assert_eq!(cutoff(&mut m, &fw), a, "A: the sound as loaded");
+    assert_eq!(
+        u32::from(lab_byte(&mut m, &fw, ilp32::lab_view::ab)),
+        LAB_VIEW_AB_A
+    );
+    let heard_a = bright(&common::record(&mut m, 200));
+    let (input, pass) = start_cost(&mut m, 100, |m| tap(m, edit));
+    println!("EDIT's tap back: the input {input}, the busiest pass {pass}");
+    assert!(
+        input + pass <= common::POLL_INSTRUCTIONS,
+        "{input} + {pass}"
+    );
+    assert_eq!(cutoff(&mut m, &fw), b, "B: the edit again");
+    let heard_b2 = bright(&common::record(&mut m, 200));
+    m.key(KEY0 + 12, false);
+    println!("the power above 2 kHz: B {heard_b:.4}, A {heard_a:.4}, B again {heard_b2:.4}");
+    assert!(
+        heard_a > 4.0 * heard_b && heard_a > 4.0 * heard_b2,
+        "A is heard brighter than B: {heard_a} against {heard_b}, {heard_b2}"
+    );
+    assert!(
+        (heard_b2 - heard_b).abs() <= 0.5 * heard_b.max(heard_b2),
+        "B sounds as it did: {heard_b} and {heard_b2}"
+    );
+}

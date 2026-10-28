@@ -539,6 +539,9 @@ typedef struct {
     void* user_ctx;
     uint8_t user_edit_slot;
     uint8_t user_edit[LAB_SOUND_BYTES];
+    /* The sounds loaded so far (load_preset counts them; wraps): LAB ends its A/B and its undo
+     * history when another sound loads (app/lab_view.h). Not saved. */
+    uint8_t loads;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */

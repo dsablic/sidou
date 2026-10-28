@@ -573,6 +573,7 @@ static void update_cutoff(live* l) {
 static void load_preset(live* l, uint8_t index) {
     const live_preset* p = &presets[index];
     l->preset = index;
+    l->loads++;
     l->cutoff = p->cutoff;
     l->resonance = p->resonance;
     l->pulse_width = p->pulse_width;
