@@ -34,7 +34,7 @@ felucca-bsp's `chip/usb.c` (pushed 2026-10-26) the DMA buffers are still `aligne
 and `sie_rd` carry no `noinline` (7), the USB names are build settings as plain ASCII strings
 (8.1: done, in another form), and there is no raw MIDI-in hook (8.2). The maintainer notes that in
 1.7.0 `ep1tx` sits at 4 mod 8 and EP1 IN works, so alignment may not be the whole story for 6.
-To file again in felucca-bsp after the user's review.
+Filed again on 2026-10-28 after the user's review: 6 and 7 as [felucca-bsp#14](https://github.com/hugelton/felucca-bsp/issues/14) (the SIE timing, with alignment as a side note and safeguard), 8.2 as [felucca-bsp#15](https://github.com/hugelton/felucca-bsp/issues/15) (the raw MIDI-in hook).
 
 **Offers rather than bugs** (also shown to the user first): SIDOU's USB host model for
 fm1-emu's tests ([TESTING.md](../TESTING.md#fm1-emus-limits)), more instruction classes in fm1-emu if profiling needs them (saturating `R += R`, register `&=`/`^=` masks, some FPU and accumulator classes), and macOS support for the FM-1's ROM-boot recovery
