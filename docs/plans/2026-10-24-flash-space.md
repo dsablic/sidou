@@ -102,7 +102,7 @@ add little: `--gc-sections` already drops 114 unused sections, and no kept funct
 debug-only beyond a few hundred bytes (`fm1_fault_c`, `usb_probe`). Dead code is not a lever.
 
 Two documents are out of date: LICENSING.md gives the pulldown tables as 39,256 bytes (they
-are 58,488 since the 8580's three profiles), and docs/TODO.md's "generate the active profile's
+are 58,488 since the 8580's three profiles), and https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md's "generate the active profile's
 rows into POOL" assumes about 115 KB of POOL free. POOL has 12,160 bytes free and RAM 11,696,
 so a 30,720-byte row set for each model in use does not fit; the item should be closed.
 

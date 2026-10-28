@@ -5,7 +5,7 @@
 //! power-on gesture into UBOOT (main.c power_on_uboot): OCT- alone, held a second.
 //!
 //! fm1-emu does not model a reset (no P33, so neither the watchdog nor `fm1_reboot` resets
-//! the chip; docs/TODO.md). Each reset is played here by booting a fresh machine that keeps
+//! the chip; TESTING.md, "fm1-emu's limits"). Each reset is played here by booting a fresh machine that keeps
 //! the guard's .noinit words, as the chip's RAM keeps them; a boot "dies" by being cut off
 //! before it is stable. What UBOOT does next is the mask ROM's: the test checks the firmware's
 //! request, the boot-state mailbox, and that it went no further (no audio).

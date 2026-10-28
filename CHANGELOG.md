@@ -262,7 +262,7 @@ All notable changes are documented here. The format follows
   K1 and K2 become cutoff and resonance locks on the row they were turned in. The menu's REC
   item chooses the mode (not saved). TRACKER's cursor stays where it is while recording, and a
   key's time is not compensated for latency: both are open for the unit
-  ([TODO](docs/TODO.md)).
+  ([TODO](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md)).
 - Ergonomics: **DICE**, a place after NOISE PERC on PRESETS: each turn rolls a new sound (waveform,
   envelope, cutoff, resonance, filter, pulse width, now and then a vibrato) and leaves the effect
   slots alone; turning back and forth brings the last roll back. MIDI program changes stay 0..3.

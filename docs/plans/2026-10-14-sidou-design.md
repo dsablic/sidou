@@ -388,7 +388,7 @@ At 240 MHz and 44.1 kHz, one core has about 5,400 cycles per stereo sample.
   what the gates leave. Two chips at their worst block, the tap, the ISR and
   the effect slots' worst switch leave about 205 a sample (M1), and M2's
   always-on additions (chip B's second render call and mix, the song command
-  ring) about 195-200. The shortfall predates M2; docs/TODO.md ("The 6502
+  ring) about 195-200. The shortfall predates M2; https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md ("The 6502
   must fit the audio headroom the gates leave") keeps the levers for M3.
 - **Amended (M3 plan, 2026-10-19):** the 6502 runs in the main loop, a frame
   ahead (decision record 0008), so it does not use the table's 400. Its share

@@ -119,12 +119,12 @@ Effort: S under half a day, M about a day, L several days. "Review 5.x" means `d
 | R2 | Toasts over CHIP's footer legend and LIVE's band | A one-second toast covers part of a legend. | `journeys/tour/20-chip-dist.png`, `05-live-toast.png` | - | **R**: transient, and it names what you just changed. |
 | R3 | K1 on LIVE, lowest 9 of 64 detents | Brightness moves only 4 % over the first 9 detents (cutoff 253 to 364 Hz). | `knobs/K1.live.json` | - | **R**: a closed filter passes only the fundamental; the table is even in pitch on purpose. |
 | R4 | K2 resonance, lowest third | The first 5 of 15 detents change little at the default cutoff. | `knobs/K2.live.json` | - | **R**: resonance is heard where the cutoff meets a partial; a sweep on one note at one cutoff understates it. |
-| R5 | TODO "suggested automations" | Toast offers such as "record this knob move as locks?" | `docs/TODO.md` "A UX pass" | L | **R** for v0.3.0: a feature, not a finding; revisit after the release. |
-| R6 | TODO "a friendlier ARP editor in TRACKER" | Arpeggios are raw wavetable rows. | `docs/TODO.md:209` | L | **R** for v0.3.0: a feature; GoatTracker files still work. |
+| R5 | TODO "suggested automations" | Toast offers such as "record this knob move as locks?" | `https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md` "A UX pass" | L | **R** for v0.3.0: a feature, not a finding; revisit after the release. |
+| R6 | TODO "a friendlier ARP editor in TRACKER" | Arpeggios are raw wavetable rows. | `https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md:209` | L | **R** for v0.3.0: a feature; GoatTracker files still work. |
 
 ### Not in this list
 
-The review's non-UX items (2.4, 2.5, 3.6, 6.x, 7.x, the stale-CMake check) change no screen or gesture; they stay on the v0.3.0 list in `docs/TODO.md` and the roadmap. Nothing is recorded yet in `docs/hardware-test.md` from players on a device; flash day (roadmap 4) is where E10, E11, E19 and E20 get their verdicts. I confirmed the rest of the ergonomics plan's coverage table gone by the harness's numbers or by screens I looked at (profile on LIVE, `*` mark on an edited preset, GLO strip, help cards, the new menu order, the idle SCENE flame). Not looked at on screen: EDIT-held relabelling of the knob row and DICE beyond one screen (E18).
+The review's non-UX items (2.4, 2.5, 3.6, 6.x, 7.x, the stale-CMake check) change no screen or gesture; they stay on the v0.3.0 list in `https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md` and the roadmap. Nothing is recorded yet in `docs/hardware-test.md` from players on a device; flash day (roadmap 4) is where E10, E11, E19 and E20 get their verdicts. I confirmed the rest of the ergonomics plan's coverage table gone by the harness's numbers or by screens I looked at (profile on LIVE, `*` mark on an edited preset, GLO strip, help cards, the new menu order, the idle SCENE flame). Not looked at on screen: EDIT-held relabelling of the knob row and DICE beyond one screen (E18).
 
 ## 3. Harness false positives (21 of the 26 reported ids)
 
@@ -159,7 +159,7 @@ Suggested order if you accept: E01, E02, E03 and E04 first (work can be lost), t
   note leaves the range. **Done.**
 - Taken with the review's recommendation, not asked: **E20** fixes ABOUT's first heading only (**done**);
   **E32** keeps one undo step and says so on the help card (**done**).
-- From the device session: E10, E11, E19, the readability calls in TODO.md, and the SysEx gap
+- From the device session: E10, E11, E19, the readability calls in https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md, and the SysEx gap
   while sound plays.
 
 ## From the device session (2026-10-23)
