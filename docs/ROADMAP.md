@@ -41,6 +41,11 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   ergo harness walks LOAD and the SONG pages, checking SAVE and HOME on every list.
 - **A SIDS how-to video and What's new in 1.0.** S-M.
 - **The GitHub look.** Avatar, social preview, the Firmware Hub card checked. S, by hand.
+  Made: `docs/media/avatar.png` (576 x 576, Metal Chrome's S, `docs/art/avatar.png` scaled 12x by nearest
+  neighbour) and `docs/media/social-preview.png` (1280 x 640, the logo, the tagline, five golden screens).
+  To set them: Settings, General, Social preview, Edit, Upload an image (the preview); the avatar is the
+  owner's account or organisation picture (profile Settings, Public profile, Profile picture). Redo
+  both if the logo changes. Still by hand, and the Hub card is still to be checked.
 
 **Hygiene before the tag**
 
