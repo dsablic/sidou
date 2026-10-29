@@ -157,6 +157,8 @@ typedef struct {
     uint8_t named;     /* the name is the player's, not the slot's automatic one */
     char name[LAB_SOUND_NAME + 1u]; /* the name page's name, spaces after it */
     uint8_t scl_alone;    /* SCL pressed with no EDIT, still down: EDIT now makes it the roll */
+    uint8_t chord;        /* ARP or LFO pressed alone (its id + 1; 0 none): EDIT pressed while it
+                           * is still down is EDIT + ARP or EDIT + LFO, whichever landed first */
     uint8_t edit_down;    /* EDIT pressed while LAB showed, held since (its tap: A/B) */
     uint8_t edit_spoiled; /* another control while it was: its release compares nothing */
     uint8_t ab;           /* LAB_VIEW_AB_*: comparing, and which sound plays */

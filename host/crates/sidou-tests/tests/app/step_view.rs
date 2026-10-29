@@ -1488,6 +1488,63 @@ fn scl_alone_on_step_selects_the_next_slot() {
     assert_eq!(dice_chunk(&s).2, 0, "nothing of DICE's set");
 }
 
+/// EDIT + ARP is MUTATE whichever finger lands first: ARP a few milliseconds before EDIT mutates
+/// the lane's pattern as EDIT first does, and ARP's own action (the lane's gate) is spoilt.
+#[test]
+fn arp_landing_before_edit_is_mutate_and_leaves_the_gate() {
+    let mut s = step();
+    let before = notes_col(&s);
+    let gate = s.ui.v.step.gate;
+    s.ui.down(PANEL_BTN_ARP);
+    assert_eq!(s.ui.v.step.gate, gate, "it waits for EDIT");
+    s.ui.down(PANEL_BTN_EDIT);
+    s.ui.up(PANEL_BTN_ARP);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    assert_ne!(notes_col(&s), before, "mutated");
+    assert_eq!(s.ui.v.step.gate, gate, "ARP's gate left alone");
+}
+
+/// ARP alone on STEP still switches the lane's gate: when it is let go, or as soon as another
+/// control is used while it is down.
+#[test]
+fn arp_alone_on_step_switches_the_gate() {
+    let mut s = step();
+    let before = notes_col(&s);
+    let gate = s.ui.v.step.gate;
+    s.ui.press(PANEL_BTN_ARP);
+    assert_eq!(s.ui.v.step.gate, gate ^ 1, "at its release");
+    s.ui.down(PANEL_BTN_ARP);
+    s.ui.turn(PANEL_ENC_SELECT, 1); // a knob while it is down: the gate first
+    assert_eq!(s.ui.v.step.gate, gate, "switched back on voice 1");
+    s.ui.down(PANEL_BTN_EDIT); // EDIT after the knob: no chord any more
+    s.ui.up(PANEL_BTN_ARP);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.step.gate, gate);
+    assert_eq!(notes_col(&s), before, "no MUTATE");
+}
+
+/// EDIT + LFO is undo whichever finger lands first: LFO a few milliseconds before EDIT undoes
+/// what EDIT first does, on a twin song.
+#[test]
+fn lfo_landing_before_edit_is_the_same_undo_on_step() {
+    let mut s = step();
+    let mut twin = step();
+    edit_press(&mut s, PANEL_BTN_ARP);
+    edit_press(&mut twin, PANEL_BTN_ARP);
+    let mutated = notes_col(&s);
+    assert_eq!(notes_col(&twin), mutated, "the same MUTATE");
+    s.ui.down(PANEL_BTN_LFO);
+    s.ui.down(PANEL_BTN_EDIT);
+    s.ui.up(PANEL_BTN_LFO);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    edit_press(&mut twin, PANEL_BTN_LFO);
+    assert_ne!(notes_col(&s), mutated, "undone");
+    assert_eq!(notes_col(&s), notes_col(&twin), "as EDIT + LFO undoes");
+}
+
 #[test]
 fn another_button_while_scl_is_held_spoils_the_roll_too_and_k2_k4_are_left_alone() {
     let mut s = step();

@@ -1368,6 +1368,37 @@ fn scl_before_edit_is_dices_chord_too() {
     assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
 }
 
+/// EDIT + ARP is MUTATE whichever finger lands first: ARP 5 ms before EDIT mutates the diced
+/// lane and leaves the lane's gate (ARP alone's) as it was; LFO 5 ms before EDIT undoes an edit.
+#[test]
+fn arp_or_lfo_before_edit_mutate_and_undo_on_step() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    chord(&mut m, EDIT, SCL);
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    let diced = song(&mut m, &fw).pattern(0).unwrap();
+    let gate = fw.symbol("ui") + (ilp32::views::step + ilp32::step_view::gate) as u32;
+    let lanes = m.soc.read8(gate);
+    let lead = |m: &mut Machine, first: u8| {
+        m.key(first, true);
+        m.run_ms(5);
+        m.key(EDIT, true);
+        m.run_ms(60);
+        m.key(first, false);
+        m.key(EDIT, false);
+        m.run_ms(400);
+        step_settled(m, &fw);
+    };
+    lead(&mut m, ARP);
+    assert_eq!(toast(&mut m, &fw), "MUTATED");
+    let mutated = song(&mut m, &fw).pattern(0).unwrap();
+    assert_ne!(mutated, diced, "mutated");
+    assert_eq!(m.soc.read8(gate), lanes, "ARP's gate left alone");
+    lead(&mut m, PANEL_BTN_LFO as u8);
+    assert_ne!(song(&mut m, &fw).pattern(0).unwrap(), mutated, "an edit undone");
+}
+
 /// NEW, STEP: a step with a note held and ALGORITHM turned back five detents: the popup says
 /// CHANCE 75%, the step keeps its note and the song holds the lock. EDIT + SCL (DICE): NEW
 /// PATTERN, the lane's notes on the eighths, all in key (C minor pentatonic over two octaves),

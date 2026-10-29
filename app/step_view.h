@@ -117,6 +117,10 @@ typedef struct {
      * waits for EDIT, and selects the next effect slot as everywhere at its release, or at once
      * when another control is used first. */
     uint8_t scl_down, scl_spoiled;
+    /* ARP or LFO pressed alone, still down: EDIT pressed now is the chord (EDIT + ARP MUTATE,
+     * EDIT + LFO undo) whichever lands first. ARP alone switches the lane's gate at its release,
+     * or at once when another control is used first; LFO alone does what it did at its press. */
+    uint8_t arp_alone, lfo_alone;
     uint32_t seed;
     uint8_t drawn[STEP_VIEW_LOOK];
 } step_view;

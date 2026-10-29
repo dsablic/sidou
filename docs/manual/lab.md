@@ -33,8 +33,8 @@ The full table of cards is in [controls.md](../reference/controls.md#lab).
 | Do | Gets you |
 |---|---|
 | tap **EDIT** | A/B: the sound as kept or loaded (A), then back to your edit (B) |
-| **EDIT + LFO** | undo, up to 16 steps back (`UNDO (3)`) |
-| **EDIT + ARP** | vary the page a little, never silent, never the same twice |
+| **EDIT + LFO** | undo, up to 16 steps back (`UNDO (3)`); either finger may land first |
+| **EDIT + ARP** | vary the page a little, never silent, never the same twice; either finger may land first |
 | **EDIT + SCL** | roll the whole voice, as DICE does, also never silent and undoable; either finger may land first (SCL alone selects the next effect slot when it is let go) |
 | **EDIT + PRESETS** | back to the sound as kept or loaded |
 

@@ -1032,6 +1032,37 @@ fn scl_before_edit_rolls_in_lab_too() {
     assert_ne!(m.soc.read8(fx), slot, "SCL alone: the next slot");
 }
 
+/// EDIT + ARP and EDIT + LFO are their chords whichever finger lands first: ARP 5 ms before EDIT
+/// varies the page; LFO 5 ms before EDIT (its page already shown, harmless) undoes the
+/// variation, and EDIT's release compares nothing.
+#[test]
+fn arp_or_lfo_before_edit_vary_and_undo_in_lab_too() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    m.turn(SELECT, 2); // FILTER
+    m.run_ms(200);
+    let before = voice_fields(&mut m, &fw);
+    let lead = |m: &mut Machine, first: u32| {
+        m.key(first as u8, true);
+        m.run_ms(5);
+        m.key(PANEL_BTN_EDIT as u8, true);
+        m.run_ms(60);
+        m.key(first as u8, false);
+        m.key(PANEL_BTN_EDIT as u8, false);
+        m.run_ms(200);
+    };
+    lead(&mut m, PANEL_BTN_ARP);
+    assert_eq!(toast_text(&mut m, &fw), "VARIED");
+    assert_ne!(voice_fields(&mut m, &fw), before, "varied");
+    lead(&mut m, PANEL_BTN_LFO);
+    assert_eq!(toast_text(&mut m, &fw), "UNDO (0)");
+    assert_eq!(voice_fields(&mut m, &fw), before, "undone");
+    let ab = fw.symbol("ui") + (ilp32::views::lab + ilp32::lab_view::ab) as u32;
+    assert_eq!(m.soc.read8(ab), LAB_VIEW_AB_OFF as u8, "no A/B tap");
+}
+
 /// MIDI learn on a LAB card, over TRS: SAVE held + K2 on OSC picks PWM depth (which has an NRPN
 /// and no CC), CC 14 binds to it and sets it through the map's curve, and the next CC follows;
 /// learn's frame closes over LAB and leaves it on top.

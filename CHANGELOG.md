@@ -9,6 +9,10 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as
+  EDIT + SCL is. ARP a few milliseconds before EDIT varies LAB's page or MUTATEs STEP's lane (on
+  STEP, ARP alone now switches the lane's gate when it is let go, so the chord leaves the gate as
+  it was); LFO first undoes (in LAB it shows MOD on the way, which is harmless).
 - LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before
   EDIT (two fingers pressed together) used to select the next effect slot and lose the roll; SCL
   alone now waits for EDIT and selects the slot when it is let go, or as soon as another control

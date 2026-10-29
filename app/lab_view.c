@@ -806,14 +806,23 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     live* l = lv->l;
     int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
+    uint32_t chord = lv->chord;
+    lv->chord = 0;
     if (e->kind == SCREEN_PRESS) {
         lv->run = LAB_VIEW_NO_RUN; /* another control: a run of turns ends */
-        if (edit && e->id == PANEL_BTN_LFO) {
+        uint32_t id = e->id;
+        if (id == PANEL_BTN_EDIT && chord && (e->held >> (chord - 1u) & 1u)) {
+            id = chord - 1u; /* EDIT after ARP or LFO: the same chord (LFO's page is no matter) */
+        } else if (!edit && (id == PANEL_BTN_ARP || id == PANEL_BTN_LFO)) {
+            lv->chord = (uint8_t)(id + 1u); /* EDIT may land after it */
+        }
+        edit |= id != e->id;
+        if (edit && id == PANEL_BTN_LFO) {
             undo(lv, s);
             return 1;
         }
-        if (edit && (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_SCL)) {
-            roll(lv, s, e->id == PANEL_BTN_SCL); /* consumed: SCL selects no slot */
+        if (edit && (id == PANEL_BTN_ARP || id == PANEL_BTN_SCL)) {
+            roll(lv, s, id == PANEL_BTN_SCL); /* consumed: SCL selects no slot */
             return 1;
         }
         if (e->id == PANEL_BTN_SCL) {

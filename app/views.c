@@ -2835,8 +2835,8 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if (v->lab.scl_alone) {
         lab_view_scl(&v->lab, held); /* SCL alone on LAB waits for EDIT: its release */
     }
-    if (v->step.scl_down) {
-        step_view_buttons(&v->step, &v->s, held); /* SCL's release: DICE rolls */
+    if (v->step.scl_down | v->step.arp_alone) {
+        step_view_buttons(&v->step, &v->s, held); /* SCL's release: DICE rolls; ARP's: the gate */
     }
     if (v->live.arp_down) {
         live_view_buttons(&v->live, held); /* ARP's release on LIVE: the arpeggio on or off */

@@ -307,7 +307,7 @@ HELD STEP frame (`HELD STEP 22`).
 | SELECT | selects the lane, V1, V2, V3 and round |
 | ALGORITHM | pages through the pattern; while the song plays the page follows the playing step |
 | PRESETS | the lane's instrument, 01-3F, its name in the popup (`03 KICK`: a NEW song's drum kit, [SONG](#song)); with a step held, that step's note (and the lane's note for the steps toggled after it) |
-| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane as `STAC` or `LEG` |
+| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane as `STAC` or `LEG`. It switches when ARP is let go, or as soon as another control is used while it is down: EDIT pressed while it is down is MUTATE instead |
 | Step held + K1 | cutoff **LOCK** on that step: 32 of 2047 a detent, from the middle (1024) |
 | Step held + K2 | resonance LOCK, 0-15 |
 | Step held + K3 | pulse width LOCK, 64 of 4095 a detent from the middle (2048) |
@@ -315,11 +315,11 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + EDIT + K1-K4 | the character's LOCKs: age/heat, DAC, thump, bleed (0-127) |
 | Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
 | Step held + LFO | clears that step's locks, its chance and its SET |
-| EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED` |
+| EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED`. Either finger may land first (ARP first leaves the lane's gate as it was) |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
 | EDIT + SCL held + K3 | DICE's **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. K2 and K4 are unbound here (range and rhythm are for 1.x: they act as in LIVE) |
-| EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO) |
+| EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO); either finger may land first |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
 
@@ -786,7 +786,7 @@ from it is one undo step (below), so B is not lost. Comparing also ends when ano
 (PRESETS, a program change).
 
 **EDIT + LFO** undoes, sixteen steps back (`UNDO (3)`: the steps left; `NOTHING TO UNDO` when
-none are). A step is a card's run of turns (until another control is used: one detent or twenty,
+none are), whichever finger lands first (LFO first shows MOD on the way, which is harmless). A step is a card's run of turns (until another control is used: one detent or twenty,
 one step), a run of ALGORITHM (ENVELOPE's, the envelope mode, too), **EDIT + PRESETS** (the revert
 to the sound as kept or loaded) and A becoming the edit. The seventeenth step drops the oldest.
 The steps last across HOME and back; another sound loading forgets them (undoing past a load
@@ -794,7 +794,7 @@ would mix two sounds). There is no redo. While A plays, EDIT + LFO gives B back.
 48 bytes, so sixteen card turns fit, but a roll takes about a dozen: after rolls fewer steps are
 kept.
 
-**EDIT + ARP** varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
+**EDIT + ARP** (whichever lands first) varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
 detents either way, and one time in four ALGORITHM's choice a step (not ENVELOPE's: the envelope
 mode is every sound's); on FX with the slot off, the choice. **EDIT + SCL** (whichever lands first) rolls the voice as
 DICE does (the waveform with its ring or sync, the envelope, the cutoff, resonance, mode and
