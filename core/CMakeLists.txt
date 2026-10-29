@@ -55,6 +55,8 @@ set_source_files_properties(cpu6502/cpu6502.c PROPERTIES
 # The PSID environment (M3; psid_env.h) runs with the 6502 in the main loop, from flash, at a
 # call's start and return and on the I/O page's accesses: built for size.
 set_source_files_properties(psid/psid_env.c PROPERTIES COMPILE_OPTIONS -Os)
+# The PSID header parser runs once a file is loaded, in the main loop: -Oz (1.1 flash win-back, 1,344 bytes).
+set_source_files_properties(psid/psid_file.c PROPERTIES COMPILE_OPTIONS -Oz)
 # The .sid player (M3; psid_ctl.h): its main half runs once a pass in the main loop, from
 # flash, built for size; its interrupt half (psid_ctl_block) places a tune's writes in the audio
 # interrupt, from SRAM (platform/fm1/app.ld, Task 9), built for speed as the render's callers
