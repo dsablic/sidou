@@ -568,7 +568,7 @@ fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
     }
     let (edit, rest) = match key.split_once('+') {
         Some(("E" | "EDIT", rest)) => (true, rest),
-        Some(("STEP" | "GLO" | "SAVE" | "ARP", _)) => return Some(Vec::new()),
+        Some(("STEP" | "GLO" | "SAVE" | "ARP" | "SCL", _)) => return Some(Vec::new()),
         _ => (false, key),
     };
     if rest.starts_with("KEY") {

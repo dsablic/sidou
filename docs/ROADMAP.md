@@ -36,7 +36,9 @@ the unreleased 1.0; the help cards, the ergonomics journey and the manual page
 - **Fewer late writes for dense `.sid` players.** Done: 24 render parts a block (from 16), 80
   writes a block's window (from 100, to stay in the interrupt's budget), proved by a
   one-write-a-sample bench and synthetic player bursts; Sound Test stays a known limit.
-- **Minimal DICE settings.** Density and scale, saved per song. M.
+- **Minimal DICE settings.** Done: EDIT + SCL held, K1 turned is the density (sparse to every
+  step) and K3 the scale (six), saved per song in a `DICE` chunk, shown on STEP while held; range
+  and rhythm stay in 1.x.
 - **Store health on STATUS.** Done: STATUS's bottom row shows the store's retired sectors and
   flash errors, and a background settings save that failed is detected, retried at each debounce,
   and said once by a toast.
@@ -63,7 +65,8 @@ the unreleased 1.0; the help cards, the ergonomics journey and the manual page
 
 **Sound and play**
 
-- **The rest of DICE's settings:** range and rhythm. M.
+- **The rest of DICE's settings:** range (K2) and rhythm (K4), left unbound beside the minimal
+  density and scale. M.
 - **The ARP helper's audition.** Hear the draft arpeggio before SAVE: the player reads the
   helper's draft rows as an overlay (the song-control jam plays only the song's own tables).
   M; the audio path and RAMTEXT (moved from 1.0, the user, 2026-10-29).

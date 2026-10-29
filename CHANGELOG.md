@@ -31,6 +31,19 @@ All notable changes are documented here. The format follows
   refuse its name and no list shows it) and the unsaved edit is one more key. The settings record
   is schema 8; old records load as before. The PWM depth, PWM rate and fine tune are MIDI
   parameters (NRPN, no CC).
+- **DICE's settings on STEP:** with EDIT + SCL held, K1 sets the density (SPARSE, LIGHT, MEDIUM,
+  BUSY, FULL: how many steps get a note) and K3 the scale (MIN PENT, MAJ PENT, MINOR, MAJOR,
+  DORIAN, CHROMATIC); the frame shows both at 2x while SCL is held. Letting go of SCL with no
+  knob turned rolls, as before, now at the release; MUTATE keeps to the chosen scale. The
+  settings are saved with the song in SIDOU's `DICE` chunk (GoatTracker skips it), and a song
+  with none rolls exactly as before (MEDIUM, MIN PENT). STEP's help card gained SCL+K1 and
+  SCL+K3 where PLAY and KEYS 17+ were.
+- **The ARP helper's waveform:** PRESETS in TABLE's ARP helper chooses the waveform the rows
+  carry (TRI, SAW, PULSE, NOISE and the combined ones), shown on the helper's page; the rows stay
+  plain GoatTracker 2 wavetable rows, and the host test plays each waveform in GoatTracker's own
+  player.
+- **Store health on STATUS:** the bottom row shows `STORE ERR n` (flash errors since boot) and, when
+  the store retired sectors for the session, `RETIRED n ERR n`; nothing while it is healthy.
 
 ### Changed
 - **ENV, LFO and FX open LAB.** On LIVE, ENV

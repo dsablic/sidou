@@ -839,6 +839,21 @@ int song_ext_set_keys(gt2_song* s, const song_keys* v) {
     return song_ext_set(s, SONG_TAG_KEYS, b, len);
 }
 
+/* DICE */
+
+int song_ext_get_dice(const gt2_song* s, uint8_t* density, uint8_t* scale) {
+    uint32_t len = 0;
+    const uint8_t* d = get_v1(s, SONG_TAG_DICE, 3u, &len);
+    *density = d != NULL && d[1] < SONG_DICE_DENSITIES ? d[1] : SONG_DICE_DENSITY_DEFAULT;
+    *scale = d != NULL && d[2] < SONG_DICE_SCALES ? d[2] : 0u;
+    return d != NULL;
+}
+
+int song_ext_set_dice(gt2_song* s, uint32_t density, uint32_t scale) {
+    uint8_t b[3] = {1u, (uint8_t)density, (uint8_t)scale};
+    return song_ext_set(s, SONG_TAG_DICE, b, 3u);
+}
+
 /* DIGI */
 
 int song_ext_get_digi(const gt2_song* s, song_digi* v) {

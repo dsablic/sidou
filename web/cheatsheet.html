@@ -201,7 +201,8 @@
         <tr><td>step held + ALGORITHM</td><td><b>CHANCE</b> 100 %…0 in steps of 5</td></tr>
         <tr><td>step held + PRESETS</td><td>that step's note (and the lane's next notes)</td></tr>
         <tr><td>step held + LFO</td><td>clear the step's locks, chance and SET</td></tr>
-        <tr><td>E+ SCL</td><td><b>DICE</b>: a new pattern for the lane (<code>NEW PATTERN</code>)</td></tr>
+        <tr><td>E+ SCL</td><td><b>DICE</b>: a new pattern for the lane (<code>NEW PATTERN</code>), rolled when SCL is let go</td></tr>
+        <tr><td>E+ SCL held + K1 · K3</td><td>DICE's <b>density</b> (sparse to every step) · <b>scale</b> (minor/major pentatonic, minor, major, dorian, chromatic); saved with the song, shown on the screen while held</td></tr>
         <tr><td>E+ ARP</td><td><b>MUTATE</b>: two small changes (<code>MUTATED</code>)</td></tr>
         <tr><td>E+ LFO</td><td>one undo (again: redo)</td></tr>
         <tr><td>Keys 17+</td><td>audition</td></tr>
@@ -210,7 +211,7 @@
       <ul>
         <li><b>01</b> lead · <b>02</b> bass · <b>03–0A</b> SID drum kit: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI, RIM</li>
         <li><b>0B–0E</b> digi drums (4-bit samples): DG KICK, DG SNARE, DG CLAP, DG HAT. GoatTracker plays chip-kit copies instead.</li>
-        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the minor pentatonic on the lane's note; a drum lane keeps its note.</li>
+        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the song's DICE scale (the minor pentatonic unless you chose another) on the lane's note; a drum lane keeps its note.</li>
       </ul>
     </section>
 

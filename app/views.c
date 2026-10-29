@@ -2832,6 +2832,9 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if ((pressed | v->key.down) & (1u << SAVE_KEY_BUTTON)) {
         pressed = save_buttons(v, pressed, held);
     }
+    if (v->step.scl_down) {
+        step_view_buttons(&v->step, &v->s, held); /* SCL's release: DICE rolls */
+    }
     if (v->live.arp_down) {
         live_view_buttons(&v->live, held); /* ARP's release on LIVE: the arpeggio on or off */
     }

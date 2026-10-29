@@ -75,7 +75,7 @@ extern "C" {
 #define STEP_VIEW_STEP_COL 5u
 #define STEP_VIEW_LANES 3u
 /* The bytes of what the view drew (three zones' looks), in step_view.drawn. */
-#define STEP_VIEW_LOOK 46u
+#define STEP_VIEW_LOOK 49u
 
 /* The waveform SET writes: its choices (0 is none: no command). */
 #define STEP_VIEW_WAVES 5u
@@ -109,6 +109,11 @@ typedef struct {
     /* MUTATE or DICE at work (step_view.c, "generative play"): the run's kind (0: none), where,
      * how far, whether the lane is the song's drums, and the seed its random is made from. */
     uint8_t run, gen_pattern, gen_voice, gen_row, gen_drums;
+    /* DICE's density and scale for the run (read from the song's DICE chunk as it starts). */
+    uint8_t gen_dens, gen_scale;
+    /* SCL is down with EDIT: its release rolls DICE unless K1 or K3 was turned (or another
+     * button pressed) meanwhile; the song's density and scale show while it is down. */
+    uint8_t scl_down, scl_spoiled;
     uint32_t seed;
     uint8_t drawn[STEP_VIEW_LOOK];
 } step_view;
@@ -117,6 +122,9 @@ extern const view step_view_view;
 
 /* No step held, page 0, every lane at C-3 with instrument 1, staccato. */
 void step_view_init(step_view* st, song_view* sv);
+/* SCL's hold, once a pass while STEP shows (views_buttons, with the buttons held): its release
+ * rolls DICE if it was not spoiled. */
+void step_view_buttons(step_view* st, screen* s, uint32_t held);
 /* The step keys, once a pass while STEP shows (views_note_keys): down are the keys down,
  * pressed those that went down since the last call, take 0 while GLO is held (its layer
  * takes the keys). A key that goes up with no knob turned on it toggles its step. Returns the

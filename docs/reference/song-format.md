@@ -223,6 +223,7 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | `SCNE` | the SCENE piece, the voices' roles and the drums | no | M2c Task 2; semantics M2f Task 4 |
 | `KEYS` | the keys' live preset and setup | no | M2c Task 2 |
 | `DIGI` | the digi drums: instruments that play a built-in sample | no | decision record 0009 |
+| `DICE` | STEP's DICE settings: density and scale | no | 1.0 |
 | `PAD ` | padding (a space ends the tag) | no | skipped, never kept |
 | `TRKB` | reserved: chip B's tracks (M5) | | |
 | `RIPD` | reserved: rip data (M5) | | |
@@ -389,6 +390,19 @@ is what GoatTracker, which skips the trailer, plays instead: a NEW song's digi d
 entry with an instrument out of 1-63 or an unknown sample is left out (the chunk is kept as
 written), and of two entries for one instrument the later counts. A chunk of another version,
 or shorter than its count says, marks nothing.
+
+**`DICE`** (3 bytes): STEP's DICE ([controls](controls.md#step): EDIT + SCL held, K1 and K3).
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | density: 0 SPARSE, 1 LIGHT, 2 MEDIUM, 3 BUSY, 4 FULL |
+| 2 | 1 | scale: 0 minor pentatonic, 1 major pentatonic, 2 minor, 3 major, 4 dorian, 5 chromatic |
+
+No chunk, a chunk of another version or shorter than 3 bytes, and a value out of range (each
+field on its own) are the defaults, density 2 and scale 0: what DICE rolled before the chunk
+existed, so an older song rolls as it did. GoatTracker skips the chunk; an older SIDOU keeps it
+and writes it back.
 
 **`PAD `** (1 + p bytes): version 1, then p bytes of `$00`.
 

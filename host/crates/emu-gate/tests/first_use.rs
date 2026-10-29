@@ -1292,6 +1292,47 @@ fn notes_of(p: &[[u8; 4]]) -> Vec<(usize, u32)> {
         .collect()
 }
 
+/// NEW, STEP: EDIT + SCL held with K1 and K3 turned sets DICE's density (every step) and scale
+/// (major pentatonic) in the song and rolls nothing at the release; the next EDIT + SCL rolls
+/// them: a note on every row, all in the major pentatonic on the lane's C-3.
+#[test]
+fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    let before = song(&mut m, &fw).pattern(0).unwrap();
+    m.key(EDIT, true);
+    m.run_ms(40);
+    m.key(SCL, true);
+    m.run_ms(40);
+    turn(&mut m, PANEL_ENC_K1 as u8, 4);
+    turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
+    m.key(SCL, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    let s = song(&mut m, &fw);
+    assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
+    let (mut d, mut sc) = (0u8, 0u8);
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut d, &mut sc) }, 1);
+    assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
+    chord(&mut m, EDIT, SCL);
+    assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
+    step_settled(&mut m, &fw);
+    let diced = song(&mut m, &fw).pattern(0).unwrap();
+    let notes = notes_of(&diced);
+    assert_eq!(
+        notes.len(),
+        diced.len() - 1,
+        "every step has a note (the end row aside)"
+    );
+    for &(row, note) in &notes {
+        assert!(
+            [0, 2, 4, 7, 9].contains(&((note + 120 - LANE_NOTE) % 12)),
+            "row {row}: note {note} is out of the major pentatonic"
+        );
+    }
+}
+
 /// NEW, STEP: a step with a note held and ALGORITHM turned back five detents: the popup says
 /// CHANCE 75%, the step keeps its note and the song holds the lock. EDIT + SCL (DICE): NEW
 /// PATTERN, the lane's notes on the eighths, all in key (C minor pentatonic over two octaves),
