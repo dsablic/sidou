@@ -700,8 +700,8 @@ fn a_full_speed_stream_loses_nothing() {
 
 /// src/usb.c's MIDI out ring, `midi_out_q[MQ]`, and its write index.
 const MQ: u32 = 64;
-/// Felucca's ids: the FX button, K1 and PRESETS.
-const FX_BUTTON: u8 = 2;
+/// Felucca's ids: ALGORITHM (on LIVE's TONE page the chip's profile), K1 and PRESETS.
+const ALGORITHM: u8 = 1;
 const K1: u8 = 2;
 /// PRESETS (the big encoder) steps the preset: a program change.
 const PRESETS: u8 = 6;
@@ -799,9 +799,10 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
     assert_eq!(cutoff(&mut m, &fw), (10 * 2047 + 63) / 127);
     let (p, w) = queued(&mut m, &fw, w);
     assert!(p.is_empty(), "MIDI in echoed: {p:08x?}");
-    // The FX button: the chip model on CC 25, and the profile that follows it on CC 85 (the
-    // 8580 R5). PRESETS: a program change, without the parameters the preset loads.
-    press(&mut m, FX_BUTTON);
+    // ALGORITHM on TONE, the 6581 R4AR to the 8580 R5: the chip model on CC 25, and the profile
+    // on CC 85. PRESETS: a program change, without the parameters the preset loads.
+    m.turn(ALGORITHM, 1);
+    m.run_ms(50);
     let (p, w) = queued(&mut m, &fw, w);
     let r5 = unsafe {
         sidou_sys::midi_map_to_cc(

@@ -1167,15 +1167,15 @@ patch's value up or down around 64; SIDOU does not.
   110 ms (the first 8580 after power-on about 150 ms), while the old one plays on, and swaps
   in when it is whole: a stream of changes never holds the instrument up, and the last one
   received is the chip you get. A stream faster than that (a change every 70 ms or less)
-  restarts the preparation each time, so the chip swaps only once it stops. The FX button
-  asks for a change the same way.
+  restarts the preparation each time, so the chip swaps only once it stops. ALGORITHM on
+  LIVE's TONE page (the profile, the model with it) asks for a change the same way.
 - **Two chips:** everything here (notes, CCs, NRPNs, expression, learn) plays the
   instrument, so the chip the keys play: chip A, or chip B while a song plays on chip A (the
   KEYS setting AUTO; with KEYS A, chip A always). The chip-level CCs (25 model, 85 profile,
   86-90 the character) set the keys' setup, which both chips hold: the other chip follows it
   in the background. On chip A's own channels (Modes, below) they set chip A's setup.
 - **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
-  model change does, and the model follows it. The model (CC 25, the FX button) selects
+  model change does, and the model follows it. The model (CC 25) selects
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
   output thump and filter bleed change the playing chip without a reset; they too go from
   the next tick, the last value received, and glide there so a jump does not click (age
@@ -1253,8 +1253,8 @@ SIDOU sends its parameter changes over USB (the USB-MIDI IN endpoint, cable 0), 
 DAW can record the panel as automation and play it back. Nothing goes out of the TRS
 jack, which is MIDI IN only.
 
-- **What:** a parameter that changes on the panel (the knobs, MASTER, the FX button,
-  the effect-slot controls) goes out as the map's CC: the value as the CC curve gives it,
+- **What:** a parameter that changes on the panel (the knobs, MASTER, the profile and
+  model ALGORITHM steps, the effect-slot controls) goes out as the map's CC: the value as the CC curve gives it,
   round(value * 127 / max). A preset from the panel (PRESETS) goes out as a program change, which carries the
   preset's factory settings; the edits PRESETS brings back with it (SIDOU keeps each preset's
   edits while another plays) go after it as the CCs of the parameters that differ.

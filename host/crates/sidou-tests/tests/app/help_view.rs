@@ -913,10 +913,10 @@ fn a_slot_card_names_its_algorithms_controls_and_rec_its_quantise() {
         for k in ["K1", "K2", "K3", "K4"] {
             assert_eq!(knob(&off, k), "UNUSED", "{name}: OFF's {k}");
         }
-        // ENV steps DIST to TAPE, then OVERDRIVE.
+        // ALGORITHM steps DIST to TAPE, then OVERDRIVE.
         let od = words(name, &|ui| {
-            ui.press(PANEL_BTN_ENV);
-            ui.press(PANEL_BTN_ENV);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
             ui.settle();
         });
         let got: Vec<String> = ["K1", "K2", "K3", "K4"]
@@ -1304,10 +1304,13 @@ fn the_tour_follows_the_first_boot_after_an_install() {
         "PRESS ENV came after {} ms",
         ui.now - start
     );
-    // ENV steps an effect: its own toast, then the last step 1.6 s later.
+    // ENV opens LAB at its ENVELOPE page: the toast goes, then the last step 1.6 s later (the
+    // help card it asks for is LAB's).
     ui.press(PANEL_BTN_ENV);
     let start = ui.now;
     frame(&mut ui);
+    assert_eq!(ui.top(), "LAB");
+    assert_eq!(ui.v.lab.page, LAB_PAGE_ENVELOPE as u8);
     assert_ne!(ui.toast().as_deref(), Some("PRESS ENV"));
     until_toast(&mut ui, "HOLD HOME FOR HELP", 3000);
     assert!(ui.now - start >= 1600);
@@ -1377,8 +1380,8 @@ fn no_tour_on_a_normal_boot() {
     assert_eq!(ui.v.tour, 0);
 }
 
-/// Ergonomics review E30 (M2 review 5.13): ENV pressed in the menu while the tour's first step
-/// shows: the tour ends its own toast only, and ENV's (its effect's name) shows.
+/// Ergonomics review E30 (M2 review 5.13): OCT+ pressed in the menu while the tour's first step
+/// shows: the tour ends its own toast only, and OCT+'s (the octave) shows.
 #[test]
 fn an_action_during_the_tour_keeps_its_own_toast() {
     let mut ui = Ui::without_cards();
@@ -1387,14 +1390,14 @@ fn an_action_during_the_tour_keeps_its_own_toast() {
     ui.press(PANEL_BTN_HOME);
     frame(&mut ui);
     assert_eq!(ui.top(), "MENU");
-    ui.press(PANEL_BTN_ENV);
+    ui.press(PANEL_BTN_OCT_UP);
     for _ in 0..3 {
         frame(&mut ui);
     }
     let t = ui.toast().unwrap_or_default();
     assert!(
         !t.is_empty() && t != "TURN K1",
-        "ENV's toast is gone: {t:?}"
+        "OCT+'s toast is gone: {t:?}"
     );
 }
 

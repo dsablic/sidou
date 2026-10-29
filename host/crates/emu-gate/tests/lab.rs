@@ -241,6 +241,50 @@ fn lab_opens_from_the_menu_and_home_goes_back_to_live() {
     assert_eq!(depth(&mut m, &fw), 1);
 }
 
+/// LIVE's one change: ENV, LFO and FX open LAB over LIVE at ENVELOPE, MOD and FX (the press and
+/// the busiest pass after it within the poll allowance), and HOME goes back to LIVE; neither
+/// toggles the chip model nor steps a slot's algorithm any more.
+#[test]
+fn env_lfo_and_fx_on_live_open_lab_at_their_pages() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let l = m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32);
+    let model = m.soc.read8(l + ilp32::live::model as u32);
+    let slot = l + ilp32::live::slot as u32;
+    m.watch_calls(fw.symbol("ui_buttons"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    for (what, b, page) in [
+        ("ENV", PANEL_BTN_ENV, LAB_PAGE_ENVELOPE),
+        ("LFO", PANEL_BTN_LFO, LAB_PAGE_MOD),
+        ("FX", PANEL_BTN_FX, LAB_PAGE_FX),
+    ] {
+        let (i, p) = start_cost(&mut m, 300, |m| tap(m, b as u8));
+        println!("LIVE {what}: the input {i}, the busiest pass {p}");
+        assert!(
+            i + p <= common::POLL_INSTRUCTIONS,
+            "{what}: {i} + {p} instructions"
+        );
+        wait_for(&mut m, what, |m| {
+            common::top_view(m, &fw) == fw.symbol("lab_view_view")
+                && !common::screen_animating(m, &fw)
+        });
+        assert_eq!(lab_page(&mut m, &fw), page as u8, "{what}");
+        assert_eq!(depth(&mut m, &fw), 2, "{what}: LAB over LIVE");
+        assert_eq!(
+            m.soc.read8(l + ilp32::live::model as u32),
+            model,
+            "{what}: the model"
+        );
+        assert_eq!(m.soc.read8(slot), 0, "{what}: the slot's algorithm");
+        tap(&mut m, HOME);
+        wait_for(&mut m, "LIVE", |m| {
+            common::top_view(m, &fw) == fw.symbol("live_view_view")
+                && !common::screen_animating(m, &fw)
+        });
+    }
+}
+
 /// The inputs' calls and the busiest pass after each (from midi_drain to midi_service).
 fn start_cost(m: &mut Machine, ms: u64, act: impl FnOnce(&mut Machine)) -> (u64, u64) {
     let (calls, passes) = (m.watched_calls.len(), m.passes.len());

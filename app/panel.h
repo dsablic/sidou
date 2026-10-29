@@ -32,8 +32,9 @@ extern "C" {
 #define PANEL_BTN_FX 2u
 /* The effect slots' shortcut, in every view (docs/reference/controls.md): EDIT held turns
  * K1-K4 into the selected slot's Amount, A, B and Mix; SCL selects the next slot (Distortion,
- * Modulation, FX); ENV steps the selected slot's algorithm. The CHIP view (app/chip_view.h)
- * edits the same selected slot. */
+ * Modulation, FX). The CHIP view (app/chip_view.h) edits the same selected slot. ENV, LFO and
+ * FX open LAB's pages from LIVE (app/views.c) and are its pages in LAB (app/lab_view.h); the
+ * other views leave them alone. */
 #define PANEL_BTN_SCL 3u
 #define PANEL_BTN_ENV 4u
 #define PANEL_BTN_LFO 5u
@@ -195,7 +196,7 @@ uint32_t panel_take_glo(panel* p);
 /* The keys in mask are another's until they go up (a view's: the song views' jam): a note
  * they sound is released, and they sound nothing until then. */
 void panel_quiet_keys(panel* p, live* l, uint32_t mask);
-/* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots);
+/* Button press edges: OCT-, OCT+ and SCL (the next effect slot);
  * held: the debounced buttons, which says whether EDIT is held for panel_encoder. */
 void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
 /* The parameter encoder enc turns with the buttons held (bit i: button i) on p's page: with

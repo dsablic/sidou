@@ -422,7 +422,46 @@ fn env_lfo_and_fx_open_their_page_in_lab() {
         ui.press(b);
         assert_eq!(u32::from(ui.v.lab.page), page);
     }
-    // Consumed: the panel never saw them (ENV's next algorithm, FX's chip toggle).
+    // Neither the slot's algorithm nor the chip model moved (the panel has neither since LIVE's
+    // change).
+    assert_eq!(ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize], algorithm);
+    assert_eq!(ui.live().model_req, model);
+}
+
+/// LIVE's one change: ENV, LFO and FX open LAB over LIVE at ENVELOPE, MOD and FX, from TONE or a
+/// slot's page; in the menu they do nothing (nor the model, nor the slot's algorithm).
+#[test]
+fn env_lfo_and_fx_on_live_open_lab_at_their_page() {
+    let mut ui = Ui::without_cards();
+    settle(&mut ui);
+    let algorithm = ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize];
+    let model = ui.live().model_req;
+    for (b, page, live_page) in [
+        (PANEL_BTN_ENV, LAB_PAGE_ENVELOPE, 0),
+        (PANEL_BTN_LFO, LAB_PAGE_MOD, 0),
+        (PANEL_BTN_FX, LAB_PAGE_FX, 1),
+    ] {
+        ui.turn(PANEL_ENC_SELECT, live_page);
+        settle(&mut ui);
+        assert_eq!(ui.top(), "LIVE");
+        ui.press(b);
+        settle(&mut ui);
+        assert_eq!(ui.top(), "LAB", "button {b}");
+        assert_eq!(u32::from(ui.v.lab.page), page, "button {b}");
+        assert_eq!(ui.v.s.depth, 2, "LAB over LIVE");
+        ui.press(PANEL_BTN_HOME);
+        settle(&mut ui);
+        ui.turn(PANEL_ENC_SELECT, -live_page);
+        settle(&mut ui);
+    }
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "MENU");
+    for b in [PANEL_BTN_ENV, PANEL_BTN_LFO, PANEL_BTN_FX] {
+        ui.press(b);
+        settle(&mut ui);
+        assert_eq!(ui.top(), "MENU", "button {b} in the menu");
+    }
     assert_eq!(ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize], algorithm);
     assert_eq!(ui.live().model_req, model);
 }

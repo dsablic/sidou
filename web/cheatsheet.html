@@ -95,7 +95,7 @@
         <table>
           <tr><td>Note keys</td><td>play the chip, F3–G5 at the current octave (always velocity 127)</td></tr>
           <tr><td>OCT− / OCT+</td><td>octave −3…+3; their LEDs show the direction</td></tr>
-          <tr><td>FX</td><td>chip model 6581 / 8580 (lit for the 8580)</td></tr>
+          <tr><td>ENV · LFO · FX</td><td>open LAB at ENVELOPE · MOD · FX (FX lit for the 8580)</td></tr>
           <tr><td>K1 · K2</td><td>cutoff · resonance</td></tr>
           <tr><td>K3</td><td>the sound's own control: PULSE (pulse width), RATIO (SYNC LEAD's sync ratio) or DECAY</td></tr>
           <tr><td>K4</td><td>release, 0–15</td></tr>
@@ -106,7 +106,7 @@
           <tr><td>SELECT</td><td>pages the knob row: TONE, DIST, MOD, FX</td></tr>
           <tr><td>ALGORITHM</td><td>on TONE the chip profile; on a slot's page that slot's algorithm</td></tr>
           <tr><td>E+ K1–K4</td><td>the selected effect slot's Amount, A, B, Mix (any view)</td></tr>
-          <tr><td>SCL · ENV</td><td>next effect slot · its next algorithm (any view)</td></tr>
+          <tr><td>SCL</td><td>next effect slot (any view)</td></tr>
           <tr><td>ARP</td><td>chord arpeggio on/off; held + K1–K3 its rate, order, span</td></tr>
           <tr><td>GLO + key 1–3 / 4–6</td><td>mute / solo song voice 1–3 (any view)</td></tr>
           <tr><td>SEQ · PLAY · REC</td><td>song views · play/stop the song · record mode</td></tr>
@@ -143,7 +143,7 @@
         <tr><td>tap ARP</td><td>chord arpeggio: hold a chord, one voice steps through it (badge <code>ARP 3F UP 1OCT</code>)</td></tr>
         <tr><td>ARP + K1</td><td>rate: 1F 2F 3F 4F 6F 8F (frames a note), /32 /16 /8 of MIDI clock</td></tr>
         <tr><td>ARP + K2 · K3</td><td>order UP DN UD AS (as played) · span 1 or 2 octaves</td></tr>
-        <tr><td>FX</td><td>6581 ↔ 8580 (back to the last 6581 profile)</td></tr>
+        <tr><td>Chip model</td><td>ALGORITHM on TONE: R5 is the 8580, the others 6581s (CC 25 toggles it)</td></tr>
         <tr><td>Two chips</td><td>no song: keys on chip A; a song playing: keys on chip B on top (<code>KEYS:B</code>). SETTINGS KEYS A keeps them on A</td></tr>
         <tr><td>CHIP SPREAD</td><td>SETTINGS → SPREAD OFF…100 %: chip A left, chip B right, while both sound</td></tr>
         <tr><td>GLO tapped twice</td><td>latches the mute/solo layer (<code>GLO LATCHED</code>); tap GLO to end</td></tr>
@@ -157,7 +157,16 @@
         <tr><td>TONE page</td><td>K1 cutoff · K2 reso · K3 own control · K4 release</td></tr>
         <tr><td>DIST / MOD / FX page</td><td>K1–K4 that slot's Amount · A · B · Mix (named for the algorithm, e.g. DRIVE TONE BIAS MIX)</td></tr>
         <tr><td>ALGORITHM on TONE</td><td>profile: R2 (bright), R3 (dark), R4AR (classic, power-on), R5 (8580, clean), WORN (gritty)</td></tr>
-        <tr><td>SCL / E+ K / ENV</td><td>pick a slot / turn it / step its algorithm; a new algorithm starts from a setting you hear at once</td></tr>
+        <tr><td>SCL / E+ K / ALGORITHM</td><td>pick a slot / turn it / step its algorithm on its page (down to OFF); a new algorithm starts from a setting you hear at once</td></tr>
+      </table>
+      <h3>LAB (menu → LAB, or ENV · LFO · FX on LIVE)</h3>
+      <table>
+        <tr><td>SELECT · ENV LFO FX</td><td>pages OSC, ENVELOPE, FILTER, MOD, FX · straight to ENVELOPE, MOD, FX</td></tr>
+        <tr><td>K1–K4 · ALGORITHM</td><td>the page's four cards · its choice (waveform, envelope mode, filter, ARP, the slot's algorithm)</td></tr>
+        <tr><td>SAVE · E+ SAVE</td><td>keep the sound as USER 1–16 (<code>U01</code>, PRESETS after DICE) · name it on the keys</td></tr>
+        <tr><td>tap EDIT · E+ LFO</td><td>A/B against the sound as loaded · undo (16 steps)</td></tr>
+        <tr><td>E+ ARP · E+ SCL</td><td>vary this page · roll the whole sound (never silent, undoable)</td></tr>
+        <tr><td>HOME</td><td>back to LIVE, the sound as edited</td></tr>
       </table>
       <h3>Effect slots (in this order, stereo)</h3>
       <table>
@@ -172,7 +181,7 @@
         <tr><td>K1–K4 on CHIP</td><td>character: AGE, DAC, THUMP (note thump), BLEED</td></tr>
         <tr><td>E+ ALGORITHM, SAVE</td><td>pick USER 1–8 (<code>SAVE TO USER 3</code>), SAVE stores the profile (asks before overwriting)</td></tr>
       </table>
-      <p class="note">ENV = next algorithm, LFO = clear (in STEP and TRACKER), GLO = mutes and solos. LFO does nothing on LIVE.</p>
+      <p class="note">ENV, LFO, FX = LAB's pages (on LIVE they open LAB; outside LIVE and LAB they do nothing), LFO = clear (in STEP and TRACKER), GLO = mutes and solos.</p>
     </section>
 
     <section>
@@ -273,7 +282,7 @@
         <tr><td>More CCs</td><td>20 wave · 21 ring · 22 sync · 23 filter mode · 24 routing · 26 envelope mode · 27–30 arp on/rate/order/span · 76–78 vibrato · 120/123 all notes off</td></tr>
         <tr><td>Effect slots</td><td>Dist 102–106 · Mod 107–111 · FX 112–116 (algorithm, Amount, A, B, Mix)</td></tr>
         <tr><td>SAVE + turn a knob</td><td>MIDI learn: send a CC to bind it (<code>LEARNED CC 21 → CUTOFF</code>); SAVE again in the frame forgets it; HOME cancels</td></tr>
-        <tr><td>MIDI out</td><td>USB only, channel 1: the panel's knobs, MASTER, FX and slots as CCs, PRESETS as a program change; MIDI input is never echoed</td></tr>
+        <tr><td>MIDI out</td><td>USB only, channel 1: the panel's knobs, MASTER, the chip profile and slots as CCs, PRESETS as a program change; MIDI input is never echoed</td></tr>
         <tr><td>Clock</td><td>the song follows MIDI clock and start/stop (CLOCK AUTO); CLOCK OUT ON sends it over USB</td></tr>
       </table>
       <p class="note">Every parameter also has an NRPN: the full map is <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">midi.md</a>.</p>
@@ -308,7 +317,7 @@
       <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">the MIDI map</a> ·
       <a href="https://dsablic.github.io/sidou/">play it in the browser</a> · <a href="https://dsablic.github.io/sidou/videos.html">the how-to videos</a> ·
       <a href="https://github.com/dsablic/sidou/releases/latest">latest release</a></p>
-    <p>Checked against SIDOU 0.5.0. SIDOU · github.com/dsablic/sidou · the firmware is
+    <p>Checked against SIDOU 0.5.0 and LAB (1.0, in progress). SIDOU · github.com/dsablic/sidou · the firmware is
       GPL-3.0-only, this page GPL-3.0-or-later · an independent project, not affiliated with M-VAVE or Commodore trademark holders.</p>
   </footer>
 </main>

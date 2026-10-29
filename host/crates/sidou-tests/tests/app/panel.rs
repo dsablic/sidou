@@ -156,15 +156,23 @@ fn many_keys_steal_and_release_cleanly() {
 }
 
 #[test]
-fn buttons_turn_the_octave_and_toggle_the_model() {
+fn buttons_turn_the_octave_and_fx_and_env_do_nothing_here() {
     let mut p = Panel::new();
     p.buttons(1 << PANEL_BTN_OCT_DOWN);
     assert_eq!(p.rig.live.octave, -1);
     p.buttons(1 << PANEL_BTN_OCT_UP | 1 << PANEL_BTN_OCT_DOWN);
     assert_eq!(p.rig.live.octave, -1, "both at once cancel out");
-    p.buttons(1 << PANEL_BTN_FX);
-    assert_eq!(p.rig.live.model, SID_MODEL_8580);
     p.rig.clear();
+    p.buttons(1 << PANEL_BTN_FX | 1 << PANEL_BTN_ENV);
+    assert_eq!(
+        p.rig.live.model, SID_MODEL_6581,
+        "FX opens LAB from LIVE (app/views.c)"
+    );
+    assert_eq!(
+        p.rig.live.slot[0][LIVE_SLOT_ALGORITHM as usize], 0,
+        "ENV too"
+    );
+    assert!(p.rig.log().is_empty(), "FX and ENV do nothing in the panel");
     p.buttons(1 << 3 | 1 << 12 | 1 << 13);
     assert!(p.rig.log().is_empty(), "the other buttons do nothing yet");
 }
@@ -372,7 +380,7 @@ fn leds_show_held_keys_the_octave_and_the_8580() {
     p.buttons(1 << PANEL_BTN_OCT_DOWN);
     p.buttons(1 << PANEL_BTN_OCT_DOWN);
     assert_eq!(p.leds().buttons, 1 << PANEL_BTN_OCT_DOWN);
-    p.buttons(1 << PANEL_BTN_FX);
+    p.rig.button(LIVE_BUTTON_FX); // the 8580: FX lit
     assert_eq!(
         p.leds().buttons,
         1 << PANEL_BTN_OCT_DOWN | 1 << PANEL_BTN_FX

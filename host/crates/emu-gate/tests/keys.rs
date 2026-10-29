@@ -13,9 +13,10 @@ use fm1_core::Bus;
 use common::{build_dir, pitch, record, Firmware, Machine};
 use sidou_sys::{ilp32, SID_MODEL_6581, SID_MODEL_8580};
 
-/// The A4 key (Felucca's id), FX (button 2).
+/// The A4 key (Felucca's id), ALGORITHM (encoder 1: on LIVE's TONE page the chip's profile, the
+/// 6581 R4AR at boot, the 8580 R5 one step on).
 const A4_KEY: u8 = 30;
-const FX: u8 = 2;
+const ALGORITHM: u8 = 1;
 
 fn fixture(what: &str) -> Option<Firmware> {
     let Some(build) = build_dir() else {
@@ -74,13 +75,6 @@ fn voices(m: &mut Machine, fw: &Firmware, x: usize) -> Vec<(u32, u8, u8, u8)> {
         .collect()
 }
 
-fn tap(m: &mut Machine, id: u8) {
-    m.key(id, true);
-    m.run_ms(30);
-    m.key(id, false);
-    m.run_ms(30);
-}
-
 /// With the song hook set, the keys move to chip B: chip B goes in use, the LIVE view's tap
 /// reads it, and A4 sounds from it at 440 Hz; chip B's voices get exactly the registers chip
 /// A's got for the same key with no song (the same setup and the instrument's writes), and
@@ -132,11 +126,12 @@ fn with_a_song_a_key_sounds_from_chip_b_as_it_does_from_chip_a() {
     assert_eq!(m.soc.read8(fw.symbol("b_on")), 0, "chip B still in use");
 }
 
-/// The FX button acts on the keys' setup: during a song on chip B (the keys'), not chip A (the
-/// song's); after the song chip A takes it, and with no song chip B follows chip A.
+/// The chip model from the panel (ALGORITHM on LIVE's TONE page) acts on the keys' setup: during
+/// a song on chip B (the keys'), not chip A (the song's); after the song chip A takes it, and
+/// with no song chip B follows chip A.
 #[test]
-fn the_fx_button_acts_on_the_keys_setup() {
-    let Some(fw) = fixture("the keys FX test") else {
+fn the_panels_chip_model_acts_on_the_keys_setup() {
+    let Some(fw) = fixture("the keys model test") else {
         return;
     };
     let mut m = booted(&fw);
@@ -144,17 +139,17 @@ fn the_fx_button_acts_on_the_keys_setup() {
         let s = sid_of(m, &fw, x);
         m.soc.read8(s + ilp32::sid::model as u32)
     };
-    // No song: FX changes chip A, and chip B follows in the background.
-    tap(&mut m, FX);
+    // No song: the 8580 R5 on chip A, and chip B follows in the background.
+    m.turn(ALGORITHM, 1);
     m.run_ms(300);
     assert_eq!(
         (model(&mut m, 0), model(&mut m, 1)),
         (SID_MODEL_8580 as u8, SID_MODEL_8580 as u8)
     );
-    // A song: FX changes chip B, the keys', and leaves chip A, the song's.
+    // A song: back to the 6581 R4AR on chip B, the keys', leaving chip A, the song's.
     song(&mut m, &fw, true);
     m.run_ms(50);
-    tap(&mut m, FX);
+    m.turn(ALGORITHM, -1);
     m.run_ms(300);
     assert_eq!(
         (model(&mut m, 0), model(&mut m, 1)),

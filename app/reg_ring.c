@@ -13,11 +13,11 @@
  *   a model change, a reset, the gate reset and every register
  *                                               1 + 1 + 25
  *   (live_tick taking a spare prepared for the profile or model asked for, or, with no
- *   preparer, the FX button: one per pass at most. MIDI and the FX button only record the
+ *   preparer, live_button's model toggle: one per pass at most. MIDI and the toggle only record the
  *   request; a tick applies one only if it differs from the chip's, and once one reset is
  *   queued no other spare can be ready in the pass: there is one, and a preparation never
  *   starts while a swap is queued.)
- *   ENV, the selected effect slot's next algorithm  1
+ *   ALGORITHM on a slot page, the slot's algorithm 1
  *   (with EDIT held K1-K4 move effect-slot controls instead of the knobs, one write each:
  *   fewer than the knobs' below, so the knob layer is the worst case)
  *   K4 to another preset, every register       25

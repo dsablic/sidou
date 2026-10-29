@@ -1237,7 +1237,7 @@ SELECT, ALGORITHM):
   ALGORITHM and a knob on it, with the busiest main-loop pass after each,
   stay within the poll allowance (compile-time ties), but a profile step, whose
   pass is the chip reset (bounded on its own); every chip reset at full
-  character (ALGORITHM onto each profile, the FX button both ways, CC 85 onto
+  character (ALGORITHM onto each profile, the model's CC 25 both ways, CC 85 onto
   each profile) stays within its bound, the worst onto worn; a CC changes the
   page's row and K1 turns it back to its golden. RED MOON RITE, SCENE's
   sixth piece, is in every SCENE check above, and has its own with the demo

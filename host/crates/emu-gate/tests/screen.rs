@@ -1458,13 +1458,12 @@ fn a_chip_change_sweeps_the_raster_over_the_border() {
     // screen_ramp, its purple band shown as light grey on the border (app/screen.c raster)
     let ramp = [1u8, 7, 13, 3, 14, 15, 10];
     common::to_mid_frame(&mut m, &fw);
-    m.key(FX, true);
+    m.midi(&[0xB0, 25, 127]); // the model's CC: the 8580 (FX opens LAB now, on LIVE only)
     let mut frames = Vec::new();
     for _ in 0..24 {
         m.run_ms(UI_PERIOD_MS);
         frames.push(border(&m));
     }
-    m.key(FX, false);
     // The status screen's ring in the theme's dim colour (dark grey); a frame with any other is a band.
     let ring = unsafe { (*sidou_sys::theme_get(sidou_sys::THEME_HIGH_CONTRAST)).dim };
     let swept: Vec<&Vec<u8>> = frames
@@ -1651,8 +1650,8 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
     let menu_idle = measure(&mut m, &fw, 16, |_| {});
     let back = measure(&mut m, &fw, 16, |m| m.turn(ALGORITHM, 1));
     settle(&mut m, &fw);
-    let raster = measure(&mut m, &fw, 24, |m| m.key(FX, true));
-    m.key(FX, false);
+    // A model change (the model's CC: the 8580) sweeps the raster.
+    let raster = measure(&mut m, &fw, 24, |m| m.midi(&[0xB0, 25, 127]));
     let report = serde_json::json!({
         "frame_ms": UI_PERIOD_MS,
         "spi_hz": SPI_HZ,
@@ -1862,9 +1861,23 @@ fn the_tour_follows_the_first_boot_after_an_install() {
     assert_eq!(tour_step(&mut m, &fw), 3, "K1 ended the first toast");
     m.run_ms(1500);
     assert_eq!(tour_step(&mut m, &fw), 4, "PRESS ENV 1.6 s later");
-    press(&mut m, sidou_sys::PANEL_BTN_ENV as u8);
+    press(&mut m, ENV);
     m.run_ms(200);
     assert_eq!(tour_step(&mut m, &fw), 5, "ENV ended the second");
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("lab_view_view"),
+        "ENV opened LAB"
+    );
+    assert_eq!(
+        ui_byte(
+            &mut m,
+            &fw,
+            sidou_sys::ilp32::views::lab + sidou_sys::ilp32::lab_view::page
+        ),
+        sidou_sys::LAB_PAGE_ENVELOPE as u8,
+        "at its ENVELOPE page"
+    );
     m.run_ms(1700);
     assert_eq!(tour_step(&mut m, &fw), 6, "HOLD HOME FOR HELP");
     hold_for_help(&mut m, &fw);
@@ -1892,8 +1905,8 @@ fn a_button_skips_the_boot_and_does_nothing_else() {
     let Some((build, fw)) = fixture("the boot screen test") else {
         return;
     };
-    // FX would toggle the chip and OCT+ step the octave; either shows on the status screen and
-    // as a toast.
+    // FX would open LAB and OCT+ step the octave; either shows on the screen (LAB, or the
+    // octave and a toast).
     // HOME too: not held at power-on, its press is a skip like any other (app/boot.h).
     for button in [FX, OCT_UP, HOME] {
         let mut m = Machine::boot(&fw.image);
@@ -3513,7 +3526,7 @@ const CHIP_WORST_POLL: u64 = 38_000;
 /// (SELECT from FX back to the chip: three frames change colour).
 const CHIP_INPUT: u64 = 215;
 const CHIP_PASS: u64 = 49_000;
-/// ALGORITHM on the chip steps the profile, as the FX button and CC 85 do: the live tick
+/// ALGORITHM on the chip steps the profile, as LIVE's ALGORITHM, CC 25 and CC 85 do: the live tick
 /// prepares the spare chip a slice a tick (app/reg_ring.h, reg_ring_prepare_step; decision
 /// record 0006, "Cost") and swaps it in once it is whole, so the step's passes are the
 /// others' plus a slice, within the poll allowance like every pass (M2b Task 1 retired M1's
@@ -3559,9 +3572,8 @@ fn chip_stays_within_its_budgets() {
     let busy = measure(&mut m, &fw, 50, |m| {
         m.midi(&burst);
         m.turn(SELECT, 1);
-        m.key(FX, true);
+        m.midi(&[0xB0, 25, 127]); // the chip: the 8580
     });
-    m.key(FX, false);
     let report = serde_json::json!({
         "frame_ms": UI_PERIOD_MS,
         "spi_hz": SPI_HZ,
@@ -3764,7 +3776,7 @@ fn profile(m: &mut Machine, fw: &Firmware) -> u8 {
 }
 
 /// Every way to reset the chip, at full character (age, DAC, thump and bleed at 127, settled):
-/// ALGORITHM on CHIP onto every profile, the FX button both ways, and CC 85 onto every profile;
+/// ALGORITHM on CHIP onto every profile, the model's CC 25 both ways, and CC 85 onto every profile;
 /// the busiest main-loop pass after each within the poll allowance, every slice of the spare's
 /// preparation within REG_RING_PREPARE_SLICE, as many slices as the host's preparation counts
 /// (sid_character_prep_slices; the first onto the 8580 4 more, its default DACs), and none
@@ -3844,10 +3856,11 @@ fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
             m.midi(&[0xB0, 85, v])
         });
     }
-    // FX: from WORN to the 8580, and back to the last 6581 profile, WORN.
-    for want in [SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
-        run(&mut m, format!("FX to profile {want}"), want, &|m| {
-            press(m, FX)
+    // CC 25, the model (the FX button's toggle once): from WORN to the 8580, and back to the
+    // last 6581 profile, WORN.
+    for (v, want) in [(127u8, SID_CHIP_8580_R5), (0, SID_CHIP_6581_WORN)] {
+        run(&mut m, format!("CC 25 {v} to profile {want}"), want, &|m| {
+            m.midi(&[0xB0, 25, v])
         });
     }
     let worst = costs.iter().max_by_key(|c| c.1).unwrap();
@@ -4311,8 +4324,13 @@ fn the_states_help_cards_match_their_goldens() {
             }
             "chip-tabs" | "chip-slot" | "expert" => {
                 if name == "chip-slot" {
-                    press(&mut m, ENV); // DIST: TAPE, then OVERDRIVE
-                    press(&mut m, ENV);
+                    // DIST's page, ALGORITHM: TAPE, then OVERDRIVE; back to TONE
+                    m.turn(SELECT, 1);
+                    m.run_ms(100);
+                    m.turn(ALGORITHM, 2);
+                    m.run_ms(100);
+                    m.turn(SELECT, -1);
+                    m.run_ms(100);
                 }
                 into_chip_card(&mut m, &fw);
                 m.run_ms(2 * UI_PERIOD_MS);
@@ -4401,7 +4419,7 @@ fn the_help_card_stays_within_the_frame_budget() {
 }
 
 /// Any button or knob on a card ends it at the next frame and does nothing else: FX would
-/// toggle the chip, OCT+ step the octave, SELECT pick a piece; the view under it cuts in.
+/// open LAB from LIVE, OCT+ step the octave, SELECT pick a piece; the view under it cuts in.
 #[test]
 fn a_control_skips_a_title_card_and_does_nothing_else() {
     let Some((_, fw)) = fixture("the title card test") else {

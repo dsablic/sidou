@@ -17,9 +17,11 @@ use sidou_sys::{
     SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
 };
 
-/// Felucca's ids: the buttons of the effect layer (app/panel.h), K1 and K4, the A4 key.
-const ENV: u8 = 4;
+/// Felucca's ids: the effect layer's EDIT (app/panel.h), SELECT, ALGORITHM, K1 and K4, the A4
+/// key.
 const EDIT: u8 = 6;
+const SELECT: u8 = 0;
+const ALGORITHM: u8 = 1;
 const K1: u8 = 2;
 const K4: u8 = 5;
 const A4_KEY: u8 = 30;
@@ -131,9 +133,9 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     m.soc.periph.led_take();
     let (dry, dry_r) = record_lr(&mut m, 300);
     let edit_before = m.soc.periph.led_take()[usize::from(EDIT)];
-    // Distortion is the selected slot at boot: ENV twice is OVERDRIVE (OFF, TAPE, ...).
-    tap(&mut m, ENV);
-    tap(&mut m, ENV);
+    // Distortion's page (SELECT), ALGORITHM two clicks: OVERDRIVE (OFF, TAPE, ...); then back
+    // to TONE, where EDIT holds the slot's layer.
+    slot_algorithm(&mut m, 2);
     // fm1-emu turns a knob one click at a time: hold EDIT until every click has landed.
     // First the slot on at no drive, with the tone and mix the driven take has: what the
     // slot does besides the drive (its tone filter, its mix) is in both takes.
@@ -381,13 +383,23 @@ fn every_slots_heaviest_fits_the_audio_budget_and_runs_from_sram() {
     );
 }
 
+/// SELECT to the Distortion slot's page, ALGORITHM `clicks` clicks, SELECT back to TONE.
+fn slot_algorithm(m: &mut Machine, clicks: i32) {
+    m.turn(SELECT, 1);
+    m.run_ms(100);
+    m.turn(ALGORITHM, clicks);
+    m.run_ms(100);
+    m.turn(SELECT, -1);
+    m.run_ms(100);
+}
+
 #[test]
-fn env_on_live_is_heard() {
+fn a_slot_algorithm_on_live_is_heard() {
     let Some(fw) = fixture("the effects test") else {
         return;
     };
     let mut m = booted(&fw);
-    tap(&mut m, ENV);
+    slot_algorithm(&mut m, 1);
     let l = m
         .soc
         .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);

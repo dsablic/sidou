@@ -1016,9 +1016,10 @@ fn the_edit_shortcut_turns_the_selected_slot_in_every_view() {
     assert_eq!(ui.live().slot[1][LIVE_SLOT_AMOUNT as usize], 8);
     assert_eq!(ui.live().slot[1][LIVE_SLOT_MIX as usize], 4);
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 0, "EDIT + K1 turned the age");
-    // ENV steps the selected slot's algorithm here as well.
+    // ENV does nothing here (on LIVE it opens LAB; ALGORITHM on a slot page steps the algorithm).
     ui.press(PANEL_BTN_ENV);
-    assert_eq!(ui.live().slot[1][LIVE_SLOT_ALGORITHM as usize], 1);
+    assert_eq!(ui.live().slot[1][LIVE_SLOT_ALGORITHM as usize], 0);
+    assert_eq!(ui.top(), "CHIP");
     // Back in LIVE: K1 is the cutoff again, EDIT + K1 the slot.
     ui.press(PANEL_BTN_HOME);
     ui.press(PANEL_BTN_HOME);
@@ -1041,11 +1042,11 @@ fn the_panel_plays_on_the_chip_view() {
     ui.press(PANEL_BTN_OCT_UP);
     assert_eq!(ui.live().octave, octave + 1);
     ui.press(PANEL_BTN_OCT_DOWN);
+    // FX does nothing here: the chip model is CHIP's ALGORITHM (or LIVE's), not a button.
     ui.press(PANEL_BTN_FX);
-    assert_eq!(ui.live().model, SID_MODEL_8580, "FX");
-    assert_eq!(param(&ui, LIVE_PARAM_PROFILE), SID_CHIP_8580_R5);
-    ui.press(PANEL_BTN_FX);
+    assert_eq!(ui.live().model, SID_MODEL_6581, "FX");
     assert_eq!(param(&ui, LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
+    assert_eq!(ui.top(), "CHIP");
     // HOME goes back to the menu.
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");

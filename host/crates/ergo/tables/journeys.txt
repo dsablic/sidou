@@ -137,8 +137,8 @@ journey explore | Explore the chip, the effects and the scene
   step chip-age | Turn the chip's age | K1 turns AGE here | down A3; turn K1 40; up A3 | change; clip 600
   step chip-dist | Pick DIST's algorithm on CHIP | SELECT to DIST, ALGORITHM to step | turn SELECT 1; turn ALGORITHM 1; note A3 500 | sound; clip 300; task change DIST algorithm (from CHIP)
   step chip-back | Back to LIVE | HOME twice | press HOME; press HOME; wait 400 | view live; task get back to LIVE (from CHIP)
-  step dist-shortcut | DIST's algorithm with ENV | ENV steps the effect | press ENV; note A3 500 | change; sound; clip 300; task change DIST algorithm
-  step drive | Set DIST's drive on its page | SELECT to DIST, then K1 | down A3; turn SELECT 1; turn K1 20; turn SELECT -1; up A3 | change; clip 300
+  step dist-shortcut | DIST's algorithm on LIVE | SELECT to DIST's page, ALGORITHM steps the effect | turn SELECT 1; turn ALGORITHM 1; note A3 500 | change; sound; clip 300; task change DIST algorithm
+  step drive | Set DIST's drive on its page | K1 on DIST's page, then SELECT back | down A3; turn K1 20; turn SELECT -1; up A3 | change; clip 300
   step scene | Open SCENE | Pick SCENE in the menu | press HOME; select-item SCENE; turn ALGORITHM 1; wait 2800 | view scene
   step scene-next | Next piece | SELECT picks the next piece | turn SELECT 1; wait 700; note A4 400 | toast; clip 300
   step scene-home | Back from SCENE | HOME | press HOME; press HOME; wait 400 | view live

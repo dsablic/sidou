@@ -128,10 +128,11 @@ impl Panel {
 fn edit_held_turns_k1_k4_into_the_selected_slots_controls() {
     let mut pn = Panel::new();
     let edit = 1 << PANEL_BTN_EDIT;
-    // SCL twice: the FX slot; ENV: its first algorithm.
+    // SCL twice: the FX slot; then its first algorithm (ALGORITHM on its page, as LIVE's view
+    // turns it).
     pn.buttons(1 << PANEL_BTN_SCL, 0);
     pn.buttons(1 << PANEL_BTN_SCL, 0);
-    pn.buttons(1 << PANEL_BTN_ENV, 0);
+    unsafe { live_slot_next_algorithm(&mut *pn.rig.live, 2) };
     assert_eq!(pn.rig.live.fx_select, 2);
     assert_eq!(pn.rig.live.slot[2][0], SID_FXSLOT_DELAY as u8);
     assert!(

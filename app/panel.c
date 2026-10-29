@@ -101,17 +101,11 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
     if (pressed & (1u << PANEL_BTN_SCL)) {
         live_fx_select_next(l);
     }
-    if (pressed & (1u << PANEL_BTN_ENV)) {
-        live_slot_next_algorithm(l, l->fx_select);
-    }
     if (pressed & (1u << PANEL_BTN_OCT_DOWN)) {
         live_button(l, LIVE_BUTTON_OCT_DOWN);
     }
     if (pressed & (1u << PANEL_BTN_OCT_UP)) {
         live_button(l, LIVE_BUTTON_OCT_UP);
-    }
-    if (pressed & (1u << PANEL_BTN_FX)) {
-        live_button(l, LIVE_BUTTON_FX);
     }
 }
 

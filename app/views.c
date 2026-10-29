@@ -1235,16 +1235,20 @@ static void midi_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_midi, v, SCREEN_CUT);
 }
 
-/* The menu's LAB replaces the menu: LAB over LIVE, so HOME from LAB is always LIVE and the stack
- * never holds the menu and LAB. It opens at OSC. */
-static void lab_open(void* ctx, int32_t steps) {
-    views* v = ctx;
-    (void)steps;
-    lab_view_page_set(&v->lab, LAB_PAGE_OSC);
+/* LAB at a page, over LIVE: the menu's LAB replaces the menu, so HOME from LAB is always LIVE and
+ * the stack never holds the menu and LAB. */
+static void lab_show(views* v, uint32_t page) {
+    lab_view_page_set(&v->lab, page);
     if (screen_top(&v->s) == &views_menu) {
         (void)screen_pop(&v->s, SCREEN_CUT);
     }
     (void)screen_push(&v->s, &lab_view_view, &v->lab, SCREEN_WIPE_DOWN);
+}
+
+/* The menu's LAB opens at OSC. */
+static void lab_open(void* ctx, int32_t steps) {
+    (void)steps;
+    lab_show(ctx, LAB_PAGE_OSC);
 }
 
 static void settings_open(void* ctx, int32_t steps) {
@@ -2128,8 +2132,8 @@ enum {
     TOUR_OFF,
     TOUR_BOOT, /* the boot is still on */
     /* Step s shows as TOUR_K1 + 2 s (TURN K1, until the cutoff or the selected slot's amount
-     * changes; PRESS ENV, until the selected slot's algorithm changes; HOLD HOME FOR HELP, until
-     * a help card opens) and the gap before step s + 1 as TOUR_K1 + 2 s + 1. */
+     * changes; PRESS ENV, until LAB shows, its ENVELOPE page; HOLD HOME FOR HELP, until a help
+     * card opens) and the gap before step s + 1 as TOUR_K1 + 2 s + 1. */
     TOUR_K1
 };
 #define TOUR_TOAST_MS 8000u
@@ -2312,13 +2316,12 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
 /* ---- the first-run tour: three toasts after the full boot an install plays ---- */
 
 /* A number that changes whenever what step s waits for does: the cutoff or the selected slot's
- * amount (a step of either moves it by an odd amount, which 16 bits cannot wrap back), then the
- * selected slot's algorithm. */
+ * amount (a step of either moves it by an odd amount, which 16 bits cannot wrap back), then
+ * whether LAB shows. */
 static uint16_t tour_watch(const views* v, uint32_t s) {
     const live* l = v->l;
-    const uint8_t* slot = l->slot[l->fx_select];
-    return s ? slot[LIVE_SLOT_ALGORITHM]
-             : (uint16_t)(l->cutoff * 129u + slot[LIVE_SLOT_AMOUNT] * 517u);
+    return s ? screen_top(&v->s) == &lab_view_view
+             : (uint16_t)(l->cutoff * 129u + l->slot[l->fx_select][LIVE_SLOT_AMOUNT] * 517u);
 }
 
 static const char* const TOUR_TEXT[3] = {"TURN K1", "PRESS ENV", "HOLD HOME FOR HELP"};
@@ -2340,8 +2343,7 @@ static int tour_text(const views* v) {
     return 0;
 }
 
-/* Ends the tour's own toast, if one shows: never a toast the action itself raised (ENV's DIST
- * TAPE, tell()'s). */
+/* Ends the tour's own toast, if one shows: never a toast the action itself raised (tell()'s). */
 static void tour_clear(views* v) {
     if (v->s.toast_on && tour_text(v)) {
         screen_toast(&v->s, "", 0);
@@ -2349,9 +2351,9 @@ static void tour_clear(views* v) {
 }
 
 /* Once a frame while the tour runs (views_flow): step s toasts, waits for the action it asks for
- * or TOUR_TOAST_MS, and the next comes TOUR_GAP_MS after, so the action's own toast and popup
- * have gone. An action ends its step's toast at once (K1's popup is the answer; on another view
- * than LIVE ENV's own toast replaces it); a help card, opened by the way or as the last step asks, ends the tour. */
+ * or TOUR_TOAST_MS, and the next comes TOUR_GAP_MS after, so the action's own popup has gone. An
+ * action ends its step's toast at once (K1's popup is the answer, ENV's LAB); a help card, opened
+ * by the way or as the last step asks, ends the tour. */
 __attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_ms) {
     uint32_t t = v->tour;
     if (t == TOUR_BOOT) {
@@ -2374,8 +2376,8 @@ __attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_
         return;
     }
     int acted = s < 2u && tour_watch(v, s) != v->tour_ref;
-    if (acted && (s == 0u || screen_top(&v->s) == &live_view_view)) {
-        tour_clear(v); /* LIVE says an algorithm itself: no toast of its own */
+    if (acted) {
+        tour_clear(v);
     }
     if (acted || waited >= TOUR_TOAST_MS) {
         v->tour = s == 2u ? TOUR_OFF : (uint8_t)(t + 1u);
@@ -2785,6 +2787,17 @@ __attribute__((noinline, unused)) LIVE_COLD static void lab_buttons(views* v, ui
     lab_view_buttons(&v->lab, &v->s, pressed, held, screen_top(&v->s) == &lab_view_view);
 }
 
+/* ENV, LFO and FX on LIVE open LAB at ENVELOPE, MOD and FX (LAB takes them itself as its pages;
+ * in the other views they do nothing). */
+#define LAB_BUTTONS (1u << PANEL_BTN_ENV | 1u << PANEL_BTN_LFO | 1u << PANEL_BTN_FX)
+__attribute__((noinline, unused)) LIVE_COLD static void live_lab(views* v, uint32_t pressed) {
+    if (screen_top(&v->s) == &live_view_view) {
+        lab_show(v, pressed >> PANEL_BTN_ENV & 1u   ? LAB_PAGE_ENVELOPE
+                    : pressed >> PANEL_BTN_LFO & 1u ? LAB_PAGE_MOD
+                                                    : LAB_PAGE_FX);
+    }
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     knob_page(v, p);
     if (((pressed >> PANEL_BTN_EDIT) | v->lab.edit_down) & 1u) {
@@ -2806,6 +2819,9 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
         if (screen_input(&v->s, &e)) {
             rest &= ~(1u << b);
         }
+    }
+    if (rest & LAB_BUTTONS) {
+        live_lab(v, rest);
     }
     knob_page(v, p);
     panel_buttons(p, v->l, rest, held);

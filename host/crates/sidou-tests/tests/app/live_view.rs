@@ -246,7 +246,7 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
         "VU labels in the legend colour"
     );
     ui.press(PANEL_BTN_SCL);
-    ui.press(PANEL_BTN_ENV);
+    unsafe { live_slot_next_algorithm(&mut *ui.rig.live, 1) };
     ui.rig.set_preset(1);
     ui.press(PANEL_BTN_OCT_UP);
     ui.settle();

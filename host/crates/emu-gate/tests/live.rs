@@ -12,6 +12,9 @@ use sidou_sys::{ilp32, SID_MODEL_6581, SID_MODEL_8580};
 /// Felucca's button ids.
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
+/// ALGORITHM, the encoder: on LIVE's TONE page it steps the chip's profile, the model with it (the
+/// 6581 R4AR at boot, the 8580 R5 next).
+const ALGORITHM: u8 = 1;
 const K1: u8 = 2;
 /// A MIDI note's key id at octave 0 (note key 0 = F3 = MIDI 53, id 14).
 const fn key_id(note: u8) -> u8 {
@@ -246,23 +249,34 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     assert_eq!(a_model(&mut m), SID_MODEL_6581 as u8, "after boot");
 
     let from = m.soc.periph.audio.len() / 2;
-    tap(&mut m, FX);
+    m.turn(ALGORITHM, 1);
     m.run_ms(200);
     let x: Vec<f32> = m.left()[from..].iter().map(|&s| f32::from(s)).collect();
     m.soc.periph.led_take();
     m.run_ms(50);
     let fx_led = m.soc.periph.led_take()[usize::from(FX)];
     let first = chips(&mut m, &fw);
-    assert_eq!(a_model(&mut m), SID_MODEL_8580 as u8, "after the first FX");
+    assert_eq!(
+        a_model(&mut m),
+        SID_MODEL_8580 as u8,
+        "after the first toggle"
+    );
     assert_ne!(
         first.active, boot_state.active,
-        "the first FX swapped no chip"
+        "the first toggle swapped no chip"
     );
-    tap(&mut m, FX);
+    m.turn(ALGORITHM, -1);
     m.run_ms(300); // chip A's preparation, then chip B's following it
     let second = chips(&mut m, &fw);
-    assert_eq!(a_model(&mut m), SID_MODEL_6581 as u8, "after the second FX");
-    assert_ne!(second.active, first.active, "the second FX swapped no chip");
+    assert_eq!(
+        a_model(&mut m),
+        SID_MODEL_6581 as u8,
+        "after the second toggle"
+    );
+    assert_ne!(
+        second.active, first.active,
+        "the second toggle swapped no chip"
+    );
     for c in [&boot_state, &first, &second] {
         assert_eq!((c.spare_ready, c.lost_resets), (0, 0), "{c:?}");
     }

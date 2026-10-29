@@ -192,9 +192,9 @@
       <p>Press <b>Start</b> (a browser plays sound only after a click). Any key skips the boot.</p>
       <p><b>The first-run tour.</b> After the boot, SIDOU shows three large messages, one after another:
         <b>TURN K1</b> (turn <kbd>,</kbd> <kbd>.</kbd>, or drag or scroll over the K1 knob),
-        <b>PRESS ENV</b> (press <kbd>3</kbd>, or click the ENV button) and <b>HOLD HOME FOR HELP</b>
-        (hold <kbd>7</kbd>, or hold the mouse on HOME, for a moment: a help card opens, and any control
-        closes it). Each goes when you do what it asks, or after 8 seconds. On a real FM-1 the tour runs
+        <b>PRESS ENV</b> (press <kbd>3</kbd>, or click the ENV button: LAB opens at the sound's envelope)
+        and <b>HOLD HOME FOR HELP</b> (hold <kbd>7</kbd>, or hold the mouse on HOME, for a moment: a help
+        card opens, LAB's here, and any control closes it; a tap on HOME goes back to LIVE). Each goes when you do what it asks, or after 8 seconds. On a real FM-1 the tour runs
         once, after an install, because the unit remembers it in its flash. This page keeps the emulated
         flash in your browser, one save per SIDOU build: the tour and the full boot come once per build,
         and what you save (settings, songs) is there on your next visit. <b>Export…</b> writes it to a
@@ -203,16 +203,15 @@
       <table aria-label="Keyboard and panel controls">
         <tr><td><kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> … <kbd>;</kbd> <kbd>'</kbd></td><td>the note keys, C4 to F5 (a piano row: <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> are the sharps)</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>X</kbd></td><td>OCT− / OCT+</td></tr>
-        <tr><td><kbd>1</kbd></td><td>FX: the chip, 6581 or 8580</td></tr>
+        <tr><td><kbd>1</kbd> FX · <kbd>3</kbd> ENV · <kbd>4</kbd> LFO</td><td>on LIVE, open LAB at its FX, ENVELOPE or MOD page (in LAB they step to those pages): shape the sound with every parameter in sight, <kbd>8</kbd> SAVE keeps it as a USER sound. FX is lit while the 8580 plays</td></tr>
         <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>K1 down / up (the cutoff on LIVE)</td></tr>
         <tr><td>K1 K2 K3 K4</td><td>drag up / down or scroll over a knob. On LIVE: cutoff, resonance, the sound's own control (pulse width, decay or sync ratio, by the sound) and the release. They show the page SELECT chose (TONE, or a slot's Amount, A, B, Mix); on the CHIP view (menu → CHIP) the focused section's controls</td></tr>
         <tr><td>PRESETS</td><td>the big knob: drag or scroll for the next or previous preset (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC, then DICE, which rolls a new sound each turn)</td></tr>
         <tr><td><kbd>5</kbd> held + K1–K4</td><td>EDIT: the selected effect slot's Amount, A, B, Mix</td></tr>
         <tr><td><kbd>2</kbd> SCL</td><td>selects the next effect slot (Distortion, Modulation, FX)</td></tr>
-        <tr><td><kbd>3</kbd> ENV</td><td>the selected slot's next algorithm, which sounds at once</td></tr>
         <tr><td><kbd>7</kbd> HOME</td><td>a tap: the menu from LIVE, back one view elsewhere; hold it for 0.6 s: the help card of the view, for what it is doing (SELECT turns a two-page card)</td></tr>
         <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>SELECT: pages the knob row on LIVE, moves in the menu and on CHIP</td></tr>
-        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>ALGORITHM: the chip's profile on LIVE (or a slot's algorithm); in the menu, changes the item's value</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>ALGORITHM: the chip's profile on LIVE, the 6581s and the 8580 R5 among them (on a slot's page the slot's algorithm, which sounds at once, down to OFF); in the menu, changes the item's value</td></tr>
         <tr><td><kbd>8</kbd> SAVE</td><td>in the menu: opens the highlighted item (CHIP, TRACKER, SETTINGS, SONG …); in a song view: saves the song; held while you turn a knob: MIDI learn</td></tr>
         <tr><td><kbd>0</kbd> SEQ</td><td>the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE, round</td></tr>
         <tr><td><kbd>Space</kbd> PLAY / <kbd>R</kbd> REC</td><td>plays SIDOU's song (SIDOU LOOP) and stops it / record mode</td></tr>
@@ -220,7 +219,7 @@
         <tr><td>MASTER</td><td>volume (drag the knob at the top left)</td></tr>
         <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC, SPREAD, RESET: they save themselves (but REC; RESET and STORE ask first)</td></tr>
       </table>
-      <p>The mouse or a touch screen plays the panel directly (<kbd>4</kbd> LFO, <kbd>6</kbd> GLO and <kbd>9</kbd> ARP
+      <p>The mouse or a touch screen plays the panel directly (<kbd>6</kbd> GLO and <kbd>9</kbd> ARP
         are the other buttons). All controls:
         <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/controls.md">docs/reference/controls.md</a>.</p>
       <p><b>MIDI in:</b> pick a keyboard under <b>MIDI in</b> (Chrome, Edge, Firefox; Safari has no Web MIDI).

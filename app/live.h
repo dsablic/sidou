@@ -32,7 +32,7 @@
  * will swap in: live_tick calls the preparer once a tick, a slice of the work each (the
  * sink's spare chip, app/reg_ring.h), and sends the reset, in that tick, once it says the
  * chip is whole; the chip that plays meanwhile keeps every register and setting. Without
- * one, the reset goes at the next tick (the FX button's at once) and the sink prepares the
+ * one, the reset goes at the next tick (live_button's toggle at once) and the sink prepares the
  * chip in that call. */
 #ifndef SIDOU_LIVE_H
 #define SIDOU_LIVE_H
@@ -292,7 +292,9 @@ typedef enum {
     LIVE_BUTTON_OCT_UP = 1,
     LIVE_BUTTON_FX = 2 /* toggles the chip 6581/8580, keeping every parameter: the 8580 R5
                         * profile, or back to the last 6581 profile; at once, or with a
-                        * preparer the model asked for, which live_tick prepares */
+                        * preparer the model asked for, which live_tick prepares. No panel
+                        * button calls it since FX opens LAB (ALGORITHM on TONE and CC 25
+                        * set the model their own ways); the tests do */
 } live_button_id;
 
 /* A preset is data. The knobs start from its cutoff, resonance and pulse width, and the SID
@@ -434,8 +436,8 @@ typedef struct {
     uint8_t envelope_mode; /* a live_envelope_mode */
     /* The chip's character (LIVE_PARAM_PROFILE..LIVE_PARAM_BLEED), for the whole instrument
      * like the model. The profile as the chip has it, as asked for (live_tick applies it,
-     * with a reset), and the last 6581 profile asked for (the FX button and the model go back
-     * to it). The controls as asked for, and as last sent; live_tick sends them. */
+     * with a reset), and the last 6581 profile asked for (live_button's toggle and the model
+     * go back to it). The controls as asked for, and as last sent; live_tick sends them. */
     uint8_t profile;
     uint8_t profile_req;
     uint8_t profile_6581;
@@ -719,7 +721,7 @@ uint32_t live_param_max(uint32_t param);
  * waits for the audio interrupt to empty the register ring and runs sid_init in the main
  * loop, too slow for every CC of a stream. live_tick applies the last model asked for, at
  * most once a tick and only when it differs from the chip's (with a preparer, once the chip
- * for it is whole); the FX button applies at once without a preparer. */
+ * for it is whole); live_button's toggle applies at once without a preparer. */
 void live_param_set(live* l, uint32_t param, uint32_t value);
 /* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
  * (model_req), so a set reads back at once; the chip's is the model field. */

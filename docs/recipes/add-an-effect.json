@@ -11,8 +11,8 @@
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "SCL",
-    "ENV",
+    "SELECT",
+    "ALGORITHM",
     "EDIT + K1-K4",
     "the effect slots"
   ],
@@ -99,8 +99,8 @@
       "title": "*Dry*"
     },
     {
-      "caption": "SCL steps DIST, MOD, FX. Twice for FX: the echoes and rooms.",
-      "control": "press SCL, then wait 0.7 s, then press SCL, then wait 1.5 s",
+      "caption": "SELECT pages TONE, DIST, MOD, FX. Three for FX: the echoes and rooms.",
+      "control": "turn SELECT clockwise by 3 detents, then wait 1.5 s",
       "expect": [
         {
           "kind": "text",
@@ -108,7 +108,7 @@
         }
       ],
       "focus": {
-        "callout": "PRESS SCL TWICE",
+        "callout": "TURN SELECT TO FX",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -128,16 +128,9 @@
       "id": "slot",
       "inputs": [
         {
-          "button": "SCL",
-          "op": "press"
-        },
-        {
-          "ms": 700,
-          "op": "wait"
-        },
-        {
-          "button": "SCL",
-          "op": "press"
+          "detents": 3,
+          "encoder": "SELECT",
+          "op": "turn"
         },
         {
           "ms": 1500,
@@ -145,11 +138,11 @@
         }
       ],
       "needs": [],
-      "title": "*SCL*: pick a slot"
+      "title": "*SELECT*: pick a slot"
     },
     {
-      "caption": "ENV steps the slot's algorithm: DELAY, ready to hear.",
-      "control": "press ENV, then wait 0.5 s, then play 7 notes at 120 BPM",
+      "caption": "ALGORITHM steps the slot's algorithm: DELAY, ready to hear.",
+      "control": "turn ALGORITHM clockwise by 1 detent, then wait 0.5 s, then play 7 notes at 120 BPM",
       "expect": [
         {
           "kind": "text",
@@ -161,7 +154,7 @@
         }
       ],
       "focus": {
-        "callout": "PRESS ENV",
+        "callout": "TURN ALGORITHM",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -181,8 +174,9 @@
       "id": "delay",
       "inputs": [
         {
-          "button": "ENV",
-          "op": "press"
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
         },
         {
           "ms": 500,
@@ -238,7 +232,7 @@
         }
       ],
       "needs": [],
-      "title": "*ENV*: an algorithm"
+      "title": "*ALGORITHM*: an algorithm"
     },
     {
       "caption": "Hold EDIT: K1 to K4 turn the slot. K1 is the feedback, K4 the mix.",
@@ -334,8 +328,8 @@
       "title": "*EDIT* + K1 for more"
     },
     {
-      "caption": "ENV twice more: REVERB.",
-      "control": "press ENV, then wait 0.3 s, then press ENV, then wait 0.5 s, then play 8 notes at 120 BPM",
+      "caption": "ALGORITHM two more: REVERB.",
+      "control": "turn ALGORITHM clockwise by 2 detents, then wait 0.5 s, then play 8 notes at 120 BPM",
       "expect": [
         {
           "kind": "text",
@@ -347,7 +341,7 @@
         }
       ],
       "focus": {
-        "callout": "PRESS ENV TWICE",
+        "callout": "TURN ALGORITHM TWO MORE",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -367,16 +361,9 @@
       "id": "reverb",
       "inputs": [
         {
-          "button": "ENV",
-          "op": "press"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "button": "ENV",
-          "op": "press"
+          "detents": 2,
+          "encoder": "ALGORITHM",
+          "op": "turn"
         },
         {
           "ms": 500,

@@ -753,10 +753,12 @@ fn catch_up_ticks_share_one_character_table_slice_and_make_the_store_yield() {
 fn worst_pass(l: &mut live, p: &mut panel, fx: bool) {
     unsafe {
         if fx {
-            panel_buttons(p, l, 1 << PANEL_BTN_FX, 0);
+            // the model toggle (ALGORITHM on LIVE's TONE page, or MIDI's CC 25)
+            live_button(l, LIVE_BUTTON_FX);
         }
-        // the selected effect slot's next algorithm (EDIT not held: the knobs stay knobs)
-        panel_buttons(p, l, 1 << PANEL_BTN_ENV, 0);
+        // the selected effect slot's next algorithm (ALGORITHM on a slot page: the knobs stay
+        // knobs)
+        live_slot_next_algorithm(l, u32::from(l.fx_select));
         // the sync lead: every note-on also sets the sync voice's frequency
         panel_encoder(p, l, PANEL_ENC_PRESETS, 1);
         // Expression MIDI set earlier (here after K4, so the preset does not reset it): the

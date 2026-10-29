@@ -4,7 +4,7 @@
  * the panel as automation (docs/reference/midi.md, "Output").
  *
  * Diff-based: midi_out keeps every parameter's value as it last saw it (live_param_get, so the
- * chip model is the one asked for: the FX button's change shows at once) and compares.
+ * chip model is the one asked for: a model toggle shows at once) and compares.
  * - midi_out_local takes the changes since the last look as the panel's (anything but MIDI
  *   input): they are pending. midi_out_remote takes them as MIDI input's: the sender has the
  *   value already, so they are never echoed, on whichever port they came in (TRS or USB), and

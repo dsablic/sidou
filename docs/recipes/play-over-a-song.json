@@ -406,8 +406,8 @@
       "title": "*K1* on your sound"
     },
     {
-      "caption": "SCL twice, ENV: DELAY on the mix.",
-      "control": "press SCL, then press SCL, then press ENV, then wait 0.3 s, then play 4 notes at 125 BPM",
+      "caption": "SELECT to FX, ALGORITHM: DELAY on the mix.",
+      "control": "turn SELECT clockwise by 3 detents, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then play 4 notes at 125 BPM",
       "expect": [
         {
           "kind": "text",
@@ -419,7 +419,7 @@
         }
       ],
       "focus": {
-        "callout": "SCL, SCL, ENV",
+        "callout": "SELECT TO FX, ALGORITHM",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -439,16 +439,14 @@
       "id": "echo",
       "inputs": [
         {
-          "button": "SCL",
-          "op": "press"
+          "detents": 3,
+          "encoder": "SELECT",
+          "op": "turn"
         },
         {
-          "button": "SCL",
-          "op": "press"
-        },
-        {
-          "button": "ENV",
-          "op": "press"
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
         },
         {
           "ms": 300,

@@ -55,7 +55,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "EDIT+K1",
-        setup: "press ENV",
+        setup: "turn SELECT 1; turn ALGORITHM 1; turn SELECT -1",
         input: Input::HoldTurn(panel::EDIT, panel::K1),
     },
     Case {

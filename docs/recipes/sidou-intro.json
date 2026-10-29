@@ -396,8 +396,8 @@
       "title": "STEP, with *locks*"
     },
     {
-      "caption": "The song plays chip A, a 6581. The keys play chip B: FX makes it an 8580.",
-      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press FX, then wait 0.6 s, then play 14 notes at 150 BPM",
+      "caption": "The song plays chip A, a 6581. The keys play chip B: ALGORITHM makes it an 8580.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.6 s, then play 14 notes at 150 BPM",
       "expect": [
         {
           "kind": "view",
@@ -413,8 +413,8 @@
         }
       ],
       "focus": {
-        "callout": "FX, THEN THE KEYS",
-        "control": "FX",
+        "callout": "ALGORITHM, THEN THE KEYS",
+        "control": "ALGORITHM",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -458,8 +458,9 @@
           "op": "wait"
         },
         {
-          "button": "FX",
-          "op": "press"
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
         },
         {
           "ms": 600,

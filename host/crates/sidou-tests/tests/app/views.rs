@@ -1181,16 +1181,36 @@ fn select_and_algorithm_do_nothing_outside_the_menu() {
     }
 }
 
-/// M1a's and M1c's panel mappings, in view `view`.
+/// M1a's and M1c's panel mappings, in view `view`: FX and ENV no longer the chip model and
+/// the next algorithm (on LIVE they open LAB; elsewhere they do nothing).
 fn the_panel_plays(ui: &mut Ui, view: &str) {
     let l0 = (ui.live().octave, ui.live().model, ui.live().cutoff);
     ui.press(PANEL_BTN_OCT_UP);
     assert_eq!(ui.live().octave, l0.0 + 1, "{view}: OCT+");
     ui.press(PANEL_BTN_OCT_DOWN);
     assert_eq!(ui.live().octave, l0.0, "{view}: OCT-");
-    ui.press(PANEL_BTN_FX);
-    assert_ne!(ui.live().model, l0.1, "{view}: FX");
-    ui.press(PANEL_BTN_FX);
+    let s0 = usize::from(ui.live().fx_select);
+    let alg0 = ui.live().slot[s0][LIVE_SLOT_ALGORITHM as usize];
+    for b in [PANEL_BTN_FX, PANEL_BTN_ENV] {
+        ui.press(b);
+        assert_eq!(
+            ui.live().model,
+            l0.1,
+            "{view}: button {b} toggled the model"
+        );
+        assert_eq!(
+            ui.live().slot[s0][LIVE_SLOT_ALGORITHM as usize],
+            alg0,
+            "{view}: button {b} stepped the algorithm"
+        );
+        ui.settle();
+        if view == "LIVE" {
+            assert_eq!(ui.top(), "LAB", "{view}: button {b} opens LAB");
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
+        }
+        assert_eq!(ui.top(), view, "{view}: button {b}");
+    }
     ui.turn(PANEL_ENC_K1, -2);
     assert_eq!(
         ui.live().cutoff,
@@ -1207,13 +1227,6 @@ fn the_panel_plays(ui: &mut Ui, view: &str) {
         "{view}: SCL"
     );
     let s = usize::from(ui.live().fx_select);
-    let alg = ui.live().slot[s][LIVE_SLOT_ALGORITHM as usize];
-    ui.press(PANEL_BTN_ENV);
-    assert_eq!(
-        ui.live().slot[s][LIVE_SLOT_ALGORITHM as usize],
-        alg + 1,
-        "{view}: ENV"
-    );
     // The EDIT layer: K1..K4 are the selected slot's Amount, A, B and Mix while EDIT is held.
     ui.hold(PANEL_BTN_EDIT, true);
     for k in 0..4 {
@@ -1292,7 +1305,7 @@ fn a_change_of_octave_slot_or_algorithm_shows_a_toast() {
     ui.press(PANEL_BTN_SCL);
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("SLOT MOD"));
-    ui.press(PANEL_BTN_ENV);
+    ui.rig.cc(LIVE_CC_SLOT_FIRST + 5, 32); // MOD's algorithm CC: CHORUS
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("MOD CHORUS"));
     // Whatever made the change: here MIDI, the FX slot's algorithm CC.
@@ -1313,7 +1326,7 @@ fn a_change_of_octave_slot_or_algorithm_shows_a_toast() {
 #[test]
 fn a_chip_change_shows_a_toast_and_runs_the_raster() {
     let mut ui = Ui::new();
-    ui.press(PANEL_BTN_FX);
+    ui.rig.button(LIVE_BUTTON_FX);
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("CHIP 8580"));
     assert!(unsafe { screen_animating(&ui.v.s) } != 0, "no raster");
@@ -1374,7 +1387,7 @@ fn the_status_view_shows_the_instrument() {
     assert_eq!(ui.small(20, 2, 4), "    ", "the note is off");
     // Page 3: the slots (> marks the selected one), the selected slot's Amount, A and B.
     ui.turn(PANEL_ENC_SELECT, 1);
-    ui.press(PANEL_BTN_ENV);
+    unsafe { live_slot_next_algorithm(&mut *ui.rig.live, 0) };
     ui.settle();
     assert_eq!(ui.big(2, 22, 2, 3), "3/3");
     assert_eq!(ui.big(5, 2, 2, 5), ">DIST");

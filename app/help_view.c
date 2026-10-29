@@ -24,13 +24,13 @@
 static const char* const LIVE_LINES[] = {
     "SELECT\0PAGE",   "ALG\0PROFILE",  "K1\0CUTOFF",      "K2\0RESO",
     "K3\0SOUND'S OWN", "K4\0RELEASE",  "PRESETS\0SOUND",  "E+K\0SLOT",
-    "SCL\0NEXT SLOT", "ENV\0NEXT ALG", "ARP\0CHORD ARP",  "ARP+K\0ARP SET",
-    "FX\0CHIP MODEL", "OCT-/+\0OCTAVE", "SAVE+K\0LEARN",  "HOME\0MENU"};
+    "SCL\0NEXT SLOT", "ENV LFO FX\0LAB", "ARP\0CHORD ARP", "ARP+K\0ARP SET",
+    "OCT-/+\0OCTAVE", "SAVE+K\0LEARN",  "HOME\0MENU"};
 /* LIVE on a slot's page: K1..K4 the slot's controls, named for its algorithm. */
 static const char* const LIVE_SLOT_LINES[] = {
     "SELECT\0PAGE",   "ALG\0ALGORITHM", "K1\0\1",         "K2\0\2",
-    "K3\0\3",         "K4\0\4",         "SCL\0NEXT SLOT", "ENV\0NEXT ALG",
-    "PRESETS\0SOUND", "FX\0CHIP MODEL", "OCT-/+\0OCTAVE", "GLO+KEY\0MUTE",
+    "K3\0\3",         "K4\0\4",         "SCL\0NEXT SLOT", "ENV LFO FX\0LAB",
+    "PRESETS\0SOUND", "OCT-/+\0OCTAVE", "GLO+KEY\0MUTE",
     "ARP\0CHORD ARP",  "SAVE+K\0LEARN",  "SEQ\0SONG VIEWS", "HOME\0MENU"};
 /* SAVE is the menu's OK: it opens the view under the selection (ALG clockwise does too); the
  * settings save themselves. */
@@ -57,7 +57,7 @@ static const char* const CHIP_TABS_LINES[] = {"SELECT\0FOCUS", "ALG\0CHIP A/B", 
 static const char* const CHIP_LINES[] = {"SELECT\0FOCUS",  "ALG\0PROFILE", "E+ALG\0SAVE TO",
                                          "K1\0AGE",        "K2\0DAC",      "K3\0NOTE THUMP",
                                          "K4\0BLEED",      "E+K\0SLOT",    "SAVE\0STORE",
-                                         "FX\0CHIP MODEL", "HOME\0BACK"};
+                                         "HOME\0BACK"};
 static const char* const CHIP_SLOT_LINES[] = {"SELECT\0FOCUS", "ALG\0ALGORITHM", "K1\0\1",
                                               "K2\0\2",        "K3\0\3",         "K4\0\4",
                                               "SCL\0NEXT SLOT", "HOME\0BACK"};

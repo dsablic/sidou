@@ -46,6 +46,9 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
+- **Shape a sound and keep it (LAB, 1.0 in progress).** ENV, LFO and FX on LIVE open LAB: five
+  pages (OSC, ENVELOPE, FILTER, MOD, FX) draw what their knobs do, and one SAVE keeps the sound as
+  one of 16 USER sounds, with A/B, undo and variation rolls.
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
@@ -111,9 +114,10 @@ On LIVE:
 | K3 | the sound's own control: pulse width, decay or sync ratio |
 | K4 | release |
 | PRESETS | the preset (DICE after the fourth) |
-| SELECT / ALGORITHM | the knob page (TONE, DIST, MOD, FX) / the chip profile or effect algorithm |
+| SELECT / ALGORITHM | the knob page (TONE, DIST, MOD, FX) / the chip profile (the 6581s and the 8580) or the effect's algorithm |
 | EDIT held + K1 to K4 | the selected effect slot's amount, A, B and mix |
-| SCL / ENV | the next effect slot / its next algorithm |
+| SCL | the next effect slot |
+| ENV / LFO / FX | LAB at its envelope, modulation or effects page (1.0 in progress) |
 | MASTER | volume |
 | SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
 | PLAY / REC | play and stop the song (with a `.sid` tune loaded, the tune; EDIT held pauses it) / record mode |

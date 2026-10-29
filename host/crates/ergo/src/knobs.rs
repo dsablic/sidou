@@ -258,8 +258,8 @@ pub fn specs() -> Vec<Spec> {
         true,
         false,
     );
-    // EDIT held: the DIST slot at OVERDRIVE (ENV twice: TAPE, OVERDRIVE).
-    let od = "press ENV; press ENV; holdturn EDIT K4 32";
+    // EDIT held: the DIST slot at OVERDRIVE (ALGORITHM twice on its page: TAPE, OVERDRIVE).
+    let od = "turn SELECT 1; turn ALGORITHM 2; turn SELECT -1; holdturn EDIT K4 32";
     add(
         "K1.edit",
         "K1",

@@ -121,13 +121,13 @@ journey chip-character | Shape the chip's character
 journey add-an-effect | Add an effect
   goal Pick an effect slot, choose its algorithm and turn it with EDIT and the knobs.
   prereq On LIVE after the boot, SAW LEAD.
-  skills SCL; ENV; EDIT + K1-K4; the effect slots
+  skills SELECT; ALGORITHM; EDIT + K1-K4; the effect slots
   related chip-character; shape-a-sound
   step dry | *Dry* | First the sound as it is. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 | sound; callout PLAY THE KEYS
-  step slot | *SCL*: pick a slot | SCL steps DIST, MOD, FX. Twice for FX: the echoes and rooms. | press SCL; wait 700; press SCL; wait 1500 | text FX; screen 0 22 30 8; callout PRESS SCL TWICE
-  step delay | *ENV*: an algorithm | ENV steps the slot's algorithm: DELAY, ready to hear. | press ENV; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text DELAY; sound; screen 0 22 30 8; callout PRESS ENV
+  step slot | *SELECT*: pick a slot | SELECT pages TONE, DIST, MOD, FX. Three for FX: the echoes and rooms. | turn SELECT 3; wait 1500 | text FX; screen 0 22 30 8; callout TURN SELECT TO FX
+  step delay | *ALGORITHM*: an algorithm | ALGORITHM steps the slot's algorithm: DELAY, ready to hear. | turn ALGORITHM 1; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text DELAY; sound; screen 0 22 30 8; callout TURN ALGORITHM
   step more | *EDIT* + K1 for more | Hold EDIT: K1 to K4 turn the slot. K1 is the feedback, K4 the mix. | holdturn EDIT K1 24; holdturn EDIT K4 20; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; screen 0 15 30 7; callout HOLD EDIT + TURN K1
-  step reverb | A *room* | ENV twice more: REVERB. | press ENV; wait 300; press ENV; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 | text REVERB; sound; screen 0 22 30 8; callout PRESS ENV TWICE
+  step reverb | A *room* | ALGORITHM two more: REVERB. | turn ALGORITHM 2; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 | text REVERB; sound; screen 0 22 30 8; callout TURN ALGORITHM TWO MORE
 
 journey midi-learn | MIDI learn on a knob
   goal Make a controller's knob turn K1's cutoff.
@@ -174,7 +174,7 @@ journey play-over-a-song | Play over a song
   step play | *PLAY*: chip A | E minor at 125 BPM, on the first SID. | press PLAY; wait 3000; press HOME; wait 400; press HOME; wait 2500 | sound; view live; screen 0 0 30 2; callout PLAY, HOME
   step jam | *Jam* on chip B | The keys play the second SID on top. LIVE says KEYS:B. | sync; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | sound; screen 0 22 30 8; callout PLAY THE KEYS
   step shape | *K1* on your sound | The knobs shape the keys' sound, not the song's. | sweep K1 -36 1500; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:4 | sound; value cutoff 0 1300; screen 0 15 30 7; callout TURN K1
-  step echo | An *echo* | SCL twice, ENV: DELAY on the mix. | press SCL; press SCL; press ENV; wait 300; play 125 E5:4 D5:4 B4:4 G4:4 | text DELAY; sound; screen 0 22 30 8; callout SCL, SCL, ENV
+  step echo | An *echo* | SELECT to FX, ALGORITHM: DELAY on the mix. | turn SELECT 3; turn ALGORITHM 1; wait 300; play 125 E5:4 D5:4 B4:4 G4:4 | text DELAY; sound; screen 0 22 30 8; callout SELECT TO FX, ALGORITHM
   step mute | *Mute* a voice | GLO and the first key: voice 1 of the song goes quiet. Again: back. | holdkey GLO F3; wait 2500; holdkey GLO F3; wait 1500 | sound; screen 0 26 30 4; callout HOLD GLO + KEY 1
   step record | *REC* your jam | SEQ to TRACKER, REC, and play: your notes go into the song. | press SEQ; wait 700; press SEQ; wait 800; press REC; sync; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 C5:2 B4:2 A4:2 G4:2 F#4:4 E4:4; press REC; wait 3000 | view tracker; sound; screen 0 2 30 24; callout SEQ, REC, PLAY THE KEYS
 
@@ -233,7 +233,7 @@ journey sidou-intro | SIDOU in a minute | poweron
   step tracker | Write C64 songs in a *tracker* | SEQ twice: the TRACKER, GoatTracker's layout. PLAY, then REC: what you play goes into the pattern. | press SEQ; wait 600; press SEQ; wait 600; press PLAY; wait 1800; press REC; play 150 D5:2 C5:2 A4:4 G4:2 A4:2 F4:4; press REC; wait 800 | view tracker; sound; screen 0 2 30 24; focus REC; callout SEQ, PLAY, REC
   step goattracker | The same *.sng*, both ways | It opens in GoatTracker 2.77 and comes back; the player matches GoatTracker's, register for register. | wait 5500 | sound; focus card; callout SIDOU TRACKER <> CHROME COMET.SNG <> GOATTRACKER 2
   step step-locks | STEP, with *locks* | SEQ round the pages to STEP. Hold a step and turn K1: a cutoff LOCK on that step alone. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 1300; down F3; turn K1 12; wait 1000; up F3; wait 1500 | view step; sound; screen 0 15 30 15; focus K1; callout HOLD A STEP + TURN K1
-  step two-sids | A song on one SID, you on the *other* | The song plays chip A, a 6581. The keys play chip B: FX makes it an 8580. | press HOME; wait 500; press HOME; wait 500; press HOME; wait 900; press FX; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view live; text KEYS:B; sound; screen 0 22 30 8; focus FX; callout FX, THEN THE KEYS
+  step two-sids | A song on one SID, you on the *other* | The song plays chip A, a 6581. The keys play chip B: ALGORITHM makes it an 8580. | press HOME; wait 500; press HOME; wait 500; press HOME; wait 900; turn ALGORITHM 1; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view live; text KEYS:B; sound; screen 0 22 30 8; focus ALGORITHM; callout ALGORITHM, THEN THE KEYS
   step spread | Two SIDs, *left* and right | SETTINGS, SPREAD to 100%: the song stays on chip A, on the left, your keys on chip B, on the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view settings; text SPREAD; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
   step character | Dial the chip like an *amp* | CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs. | press HOME; wait 600; select-item CHIP; turn ALGORITHM 1; wait 2800; turn ALGORITHM 1; wait 700; turn ALGORITHM 1; wait 700; turn ALGORITHM 2; wait 900; sweep K1 50 1500; sweep K4 60 1500; wait 800 | view chip; sound; screen 0 2 30 13; focus K1; callout ALGORITHM, THEN K1-K4
   step arp | *Chords* as C64 arpeggios | ARP on LIVE, a chord held: one voice steps through its notes fifty times a second, as C64 tunes do, and the other two voices stay free. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 600; down C4; down E4; down G4; wait 3200; up C4; up E4; up G4; wait 600 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD

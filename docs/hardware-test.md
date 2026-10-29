@@ -21,10 +21,11 @@ A device session starts only when everything marked *Emulator* passes
 
 ## Ergonomics: effects you hear on pick
 
-- [ ] On LIVE with a held note, press ENV once on Distortion: the sound changes at once (TAPE
-  warms it). Press again for OVERDRIVE, FUZZ, CRUSH, LO-FI: each sounds different, none
-  silent. Select Modulation (SCL) and FX and step their algorithms: each is audible.
-  *Emulator:* `emu-gate/tests/fx_live.rs::env_on_live_is_heard` (ENV once selects TAPE at its musical start), `sidou-tests/tests/app/fx_live.rs::every_default_is_audible` (every algorithm of every slot adds an audible signal to a saw), `sidou-tests/tests/app/live_instrument.rs::a_silent_slot_picks_up_a_musical_start`. *Emulator (no test yet):* that the algorithms render different audio from each other.
+- [ ] On LIVE with a held note, SELECT to Distortion's page and turn ALGORITHM one click: the
+  sound changes at once (TAPE warms it). Turn on for OVERDRIVE, FUZZ, CRUSH, LO-FI: each sounds
+  different, none silent; turned back to OFF the slot is bypassed. SELECT on to Modulation and FX
+  and step their algorithms: each is audible.
+  *Emulator:* `emu-gate/tests/fx_live.rs::a_slot_algorithm_on_live_is_heard` (ALGORITHM once on DIST's page selects TAPE at its musical start), `sidou-tests/tests/app/fx_live.rs::every_default_is_audible` (every algorithm of every slot adds an audible signal to a saw), `sidou-tests/tests/app/live_instrument.rs::a_silent_slot_picks_up_a_musical_start`. *Emulator (no test yet):* that the algorithms render different audio from each other.
 - [ ] Turn one control with EDIT held, then step the algorithm: the control keeps your value.
   *Emulator:* `sidou-tests/tests/app/live_instrument.rs::an_edited_slot_keeps_its_values` (a slot with a turned control keeps its values when the algorithm is stepped, also through OFF), `sidou-tests/tests/app/fx_live.rs::edit_held_turns_k1_k4_into_the_selected_slots_controls`.
 
@@ -253,7 +254,7 @@ same version with a writable store.
   voice 1's scope shows the saw.
   *Emulator:* `emu-gate/tests/screen.rs::a_note_skips_the_boot_and_plays` (LIVE on top, voice 1 names the note, peak over 1000), `emu-gate/tests/midi.rs::a_trs_note_on_during_the_title_card_plays_and_ends_the_boot`. *Emulator (no test yet):* the voice 1 scope shows a saw.
 - [ ] OCT+ on the title card: LIVE wipes in, and the header stays OCT+0
-  (the press only skipped). The same with FX: the header stays 6581.
+  (the press only skipped). The same with FX: LIVE stays (LAB does not open).
   *Emulator:* `emu-gate/tests/screen.rs::a_button_skips_the_boot_and_does_nothing_else` (OCT+ and FX each end the boot and LIVE matches the golden with OCTAVE 0 and 6581).
 - [ ] Tap HOME as soon as the title card shows: LIVE wipes in (not the full
   boot, and not the menu).
@@ -333,9 +334,9 @@ which printed control did it.
 
 | Role (id) | Expected | Printed control that does it | Pass | Covered |
 |---|---|---|---|---|
-| OCT- (button 0) | OCTAVE -1 (to -3), keys an octave lower; its LED lit while the octave is below 0 | | [ ] | *Emulator:* `sidou-tests/tests/app/panel.rs::buttons_turn_the_octave_and_toggle_the_model`, `sidou-tests/tests/app/panel.rs::leds_show_held_keys_the_octave_and_the_8580` (octave -1, LED); *device-only:* the printed control |
+| OCT- (button 0) | OCTAVE -1 (to -3), keys an octave lower; its LED lit while the octave is below 0 | | [ ] | *Emulator:* `sidou-tests/tests/app/panel.rs::buttons_turn_the_octave_and_fx_and_env_do_nothing_here`, `sidou-tests/tests/app/panel.rs::leds_show_held_keys_the_octave_and_the_8580` (octave -1, LED); *device-only:* the printed control |
 | OCT+ (button 1) | OCTAVE +1 (to +3), keys an octave higher; its LED lit while the octave is above 0 | | [ ] | *Emulator:* `emu-gate/tests/live.rs::oct_up_doubles_the_pitch_and_lights_its_led` (pitch doubles, LED lit); *device-only:* the printed control |
-| FX (button 2) | CHIP toggles 6581/8580 with no gap in the sound; FX LED lit for the 8580 | | [ ] | *Emulator:* `emu-gate/tests/live.rs::the_model_toggle_swaps_chips_without_a_gap` (no silent block across the toggle, FX LED lit for 8580), `sidou-tests/tests/app/chip_view.rs::algorithm_steps_the_profile_and_the_model_follows`; *device-only:* the printed control |
+| FX (button 2) | on LIVE opens LAB at its FX page; FX LED lit for the 8580 (ALGORITHM on TONE to R5) | | [ ] | *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`, `emu-gate/tests/live.rs::the_model_toggle_swaps_chips_without_a_gap` (FX LED lit for the 8580); *device-only:* the printed control |
 | K1 (encoder 2) | CUTOFF; turning down takes the highs out | | [ ] | *Emulator:* `emu-gate/tests/live.rs::turning_k1_down_takes_the_highs_out`, `sidou-tests/tests/app/panel.rs::k1_to_k4_are_cutoff_resonance_the_sounds_own_control_and_release`; *device-only:* the printed control |
 | K2 (encoder 3) | RESO 0..15 | | [ ] | *Emulator:* `sidou-tests/tests/app/panel.rs::k1_to_k4_are_cutoff_resonance_the_sounds_own_control_and_release`, `sidou-tests/tests/app/live_view.rs::the_knob_row_shows_what_k1_to_k4_turn_and_nothing_else` (the resonance value follows K2, 0..15); *device-only:* the printed control |
 | K3 (encoder 4) | the sound's own control: DECAY (SAW LEAD, NOISE PERC), PULSE (PWM BASS: 3 % to 50 %, one side), RATIO (SYNC LEAD: -12..+12 semitones); the label and value change with the preset | | [ ] | *Emulator:* `sidou-tests/tests/app/live_instrument.rs::k3_follows_the_sound` (DECAY on SAW LEAD and NOISE PERC, PULSE 3 % to 50 % on PWM BASS); *emulator (no test yet):* SYNC LEAD's RATIO -12..+12 on K3; *device-only:* the printed control |
@@ -344,7 +345,7 @@ which printed control did it.
 | MASTER (pot) | VOLUME 0..100 %, even steps of loudness across the travel (a taper: no jump near the top), quieter turned down | | [ ] | *Emulator:* `sidou-tests/tests/app/master_gain.rs::master_has_an_even_db_taper`, `sidou-tests/tests/app/panel.rs::master_follows_the_pot_with_hysteresis`, `emu-gate/tests/live.rs::master_turns_the_volume_down`; *device-only:* the real pot's travel and how even the loudness feels, which printed control |
 | MASTER (pot) untouched | the MASTER popup stays away while the pot is untouched: leave it in the middle, fully down and fully up for a minute each (keys playing and silent); no VOLUME popup comes up and the volume does not drift; a slow turn still brings the popup and it ends on the value turned to | | [ ] | *Emulator:* `sidou-tests/tests/app/panel.rs::a_noisy_pot_at_rest_never_asks_for_the_popup`, `sidou-tests/tests/app/panel.rs::a_real_turn_asks_and_its_gain_reaches_the_target` (a simulated noisy pot); *device-only:* the real pot's noise |
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] | *Emulator:* `sidou-tests/tests/app/fx_live.rs::edit_held_turns_k1_k4_into_the_selected_slots_controls` (SCL steps the slot and wraps), `sidou-tests/tests/app/live_view.rs::the_header_lanes_knobs_and_slots_show_the_instrument` (the slot line on LIVE); *device-only:* the printed control |
-| ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] | *Emulator:* `emu-gate/tests/fx_live.rs::env_on_live_is_heard`, `sidou-tests/tests/app/views.rs::a_change_of_octave_slot_or_algorithm_shows_a_toast` (MOD CHORUS), `sidou-tests/tests/app/live_instrument.rs::a_silent_slot_picks_up_a_musical_start`; *device-only:* the printed control |
+| ENV (button 4) | on LIVE opens LAB at its ENVELOPE page (LFO, button 5, at MOD); in the other views but LAB nothing | | [ ] | *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`, `sidou-tests/tests/app/views.rs::the_panel_plays_the_instrument_as_before_in_every_view` (nothing outside LIVE and LAB); *device-only:* the printed control |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] | *Emulator:* `sidou-tests/tests/app/fx_live.rs::edit_held_turns_k1_k4_into_the_selected_slots_controls` (Amount, A, B, Mix, EDIT LED lit while the slot is on), `sidou-tests/tests/app/chip_view.rs::the_edit_shortcut_turns_the_selected_slot_in_every_view`, `emu-gate/tests/screen.rs::edit_held_relabels_the_knob_row`; *device-only:* the printed control |
 | HOME (button 8) | acts on its release: from LIVE, the menu (a wipe down from the top); held 600 ms it opens the help card of the view that shows instead (below); in the menu, back to LIVE (a wipe up from the bottom; behind THE OSCILLATOR's title card only with CARDS at ALWAYS, below) | | [ ] | *Emulator:* `emu-gate/tests/screen.rs::a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom`, `sidou-tests/tests/app/views.rs::home_opens_the_menu_and_goes_back_one_view`, `emu-gate/tests/screen.rs::holding_home_shows_the_help_card_and_a_tap_still_goes_home` (600 ms), `emu-gate/tests/screen.rs::cards_always_and_off` (THE OSCILLATOR's card only with ALWAYS); *device-only:* the printed control and the real key's hold timing |
 | SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] | *Emulator:* `sidou-tests/tests/app/save_key.rs::a_clean_press_and_release_saves_at_the_release`, `sidou-tests/tests/app/save_key.rs::another_button_or_a_knob_while_save_is_down_spoils_the_save`, `emu-gate/tests/midi.rs::midi_learn_over_trs_binds_cc_14_to_k1s_cutoff` (SAVE held + knob learns, SAVE alone does not), `emu-gate/tests/settings.rs::saves_press_on_live_stores_the_settings_within_a_second`; *device-only:* the printed control |
@@ -376,17 +377,18 @@ which printed control did it.
   while a note plays crossfades without a click.
   *Emulator:* `emu-gate/tests/fx_live.rs::the_edit_layer_turns_on_overdrive_and_the_wave_clips` (the wave clips), `emu-gate/tests/fx_live.rs::trs_ccs_turn_on_the_reverb_in_stereo_with_a_tail` (stereo tail), `sidou-tests/tests/unit/slots.rs::switching_algorithms_is_click_free_in_the_existing_blocks`; *device-only:* listening on headphones.
 - [ ] In the menu, on the status screen, in SCENE and on the glyph sheet, the
-  keys, K1..K4, OCT-/OCT+, FX and the EDIT layer play as on LIVE. On the CHIP
-  view the keys, OCT-/OCT+, FX and the EDIT layer do too (EDIT + K1 turns the
-  selected slot's Amount, whatever the focus), and K1..K4 are the page's.
+  keys, K1..K4, OCT-/OCT+ and the EDIT layer play as on LIVE (ENV and FX do
+  nothing there). On the CHIP view the keys, OCT-/OCT+ and the EDIT layer do too
+  (EDIT + K1 turns the selected slot's Amount, whatever the focus), and K1..K4 are
+  the page's.
   *Emulator:* `sidou-tests/tests/app/views.rs::the_panel_plays_the_instrument_as_before_in_every_view`, `sidou-tests/tests/app/chip_view.rs::the_panel_plays_on_the_chip_view`, `sidou-tests/tests/app/chip_view.rs::the_edit_shortcut_turns_the_selected_slot_in_every_view`.
 - [ ] On the CHIP view, a character or slot CC from a controller (CC 86 for AGE,
   CC 102..116 for the slots) moves its bar or value on the page as it plays.
   *Emulator:* `emu-gate/tests/screen.rs::chip_follows_midi_and_the_knobs_there_and_back` (a CC takes the age to 0 and the page shows it), `sidou-tests/tests/app/chip_view.rs::midi_changes_show_on_the_page`; *device-only:* a real controller sending CCs (external gear).
-- [ ] OCT+, SCL and ENV show a toast on the bottom line ("OCTAVE +1",
-  "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; FX shows
-  "CHIP 8580" and sweeps colour bands down the border for about half a
-  second.
+- [ ] Outside LIVE (on STATUS, say), OCT+, SCL and a slot's algorithm show a toast on the
+  bottom line ("OCTAVE +1", "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; a change
+  to the 8580 (ALGORITHM on LIVE's TONE to R5) shows "CHIP 8580" and sweeps colour bands down
+  the border for about half a second.
   *Emulator:* `sidou-tests/tests/app/views.rs::a_change_of_octave_slot_or_algorithm_shows_a_toast` (OCTAVE +1, SLOT MOD, MOD CHORUS, gone after the toast time), `sidou-tests/tests/app/views.rs::a_chip_change_shows_a_toast_and_runs_the_raster` (CHIP 8580), `emu-gate/tests/screen.rs::a_chip_change_sweeps_the_raster_over_the_border`, `emu-gate/tests/screen.rs::a_button_change_shows_a_toast_that_goes_away`.
 - [ ] **The song views' button ids (M2d).** GLO 7, SEQ 11, PLAY 12 and REC 13 (and LFO 5,
   ARP 10: STEP's gate, LIVE's chord arpeggio) are Felucca's ids and were never confirmed on a SIDOU unit (M1 used
@@ -672,9 +674,10 @@ Help card ([controls](reference/controls.md#help)):
 
 - [ ] On LIVE, a quick tap of HOME opens the menu, and a tap in the menu goes back to LIVE; a
   tap never shows the card. Holding HOME about half a second shows HELP LIVE (title bar with the
-  name on the right, eight lines: SELECT PAGE, ALG PROFILE, PRESETS SOUND, EDIT+K FX, GLO+KEY
-  MUTE, SAVE+K LEARN, SEQ SONG, HOME MENU), drawn in a few frames with no flicker, and the
-  menu does not open under it. Let HOME go: the card stays.
+  name on the right, eight lines: SELECT PAGE, ALG PROFILE, K1 CUTOFF, K2 RESO, K3 SOUND'S OWN,
+  K4 RELEASE, PRESETS SOUND, E+K SLOT; SELECT turns to the second: SCL NEXT SLOT, ENV LFO FX
+  LAB, ARP CHORD ARP, ARP+K ARP SET, OCT-/+ OCTAVE, SAVE+K LEARN, HOME MENU), drawn in a few
+  frames with no flicker, and the menu does not open under it. Let HOME go: the card stays.
   *Emulator:*
   `emu-gate/tests/screen.rs::holding_home_shows_the_help_card_and_a_tap_still_goes_home`,
   `sidou-tests/tests/app/help_view.rs::a_tap_goes_home_and_a_hold_shows_the_help_card`,
@@ -700,8 +703,8 @@ firmware version change), the full boot, then:
 
 - [ ] Three large toasts one after the other, 1.6 s apart at least: TURN K1, PRESS ENV, and HOLD
   HOME FOR HELP on two lines. Turning K1 ends the first at once and PRESS ENV follows; pressing
-  ENV (the effect's name toasts) ends the second; holding HOME shows the help card with no toast
-  left over it. Left alone each stays 8 s. Power-cycle: no tour. HOME held while powering on, or
+  ENV opens LAB at its ENVELOPE page and ends the second; holding HOME there shows LAB ENV's
+  help card with no toast left over it, and a tap of HOME then goes back to LIVE. Left alone each stays 8 s. Power-cycle: no tour. HOME held while powering on, or
   a normal boot: no tour.
   *Emulator:* `emu-gate/tests/screen.rs::the_tour_follows_the_first_boot_after_an_install`,
   `emu-gate/tests/screen.rs::no_tour_when_home_asked_for_the_boot_or_on_a_normal_boot`,
@@ -734,7 +737,7 @@ CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
   no toast and no raster, by design: only a model change (to or from 8580 R5) says CHIP 6581
   or CHIP 8580 and sweeps the border. The profile word changes either way.
   *Emulator:* `emu-gate/tests/screen.rs::a_chip_change_sweeps_the_raster_over_the_border` (the
-  raster and toast for a model change, via the FX button),
+  raster and toast for a model change),
   `sidou-tests/tests/app/chip_view.rs::algorithm_steps_the_profile_and_the_model_follows`;
   *Emulator (no test yet):* no toast and no raster for a step between two 6581 profiles
   (R2/R3/R4AR) while the profile word changes.
@@ -948,8 +951,8 @@ them passed. Use a moderate headphone level. Keep the USB-output release gate in
   `sidou-tests/tests/app/keys_route.rs::keys_a_leaves_the_songs_other_voices_byte_for_byte`;
   *Emulator (no test yet):* the song keeping its filter and volume while instrument filter knobs
   turn.
-- [ ] While a chord holds on the keys' chip, step a built-in profile and toggle FX both
-  ways. No silent block, dropout or crackle occurs during preparation. A profile/model
+- [ ] While a chord holds on the keys' chip, step a built-in profile both ways (ALGORITHM on
+  LIVE's TONE, 6581 R4AR to 8580 R5 and back). No silent block, dropout or crackle occurs during preparation. A profile/model
   change intentionally re-attacks held notes; an expert edit below must not.
   *Emulator:* `emu-gate/tests/live.rs::the_model_toggle_swaps_chips_without_a_gap`,
   `emu-gate/tests/screen.rs::chip_resets_at_full_character_stay_within_the_poll_allowance`,
@@ -2335,6 +2338,56 @@ the day, as the earlier flash days').
 
 Notes:
 
+## 22. LAB (1.0)
+
+What it decides: whether LAB reads and feels right in the hand. What fm1-emu proves (the pages,
+their goldens and budgets, the store, undo and the rolls) is named under each item; on the unit
+only what it cannot see: the LCD at arm's length, the ear, the flash across a real power cut and
+the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold.
+
+- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the five pages** (OSC,
+  ENVELOPE, FILTER, MOD, FX); HOME goes back to LIVE.
+  *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`,
+  `emu-gate/tests/lab.rs::lab_opens_from_the_menu_and_home_goes_back_to_live`.
+  *Device-only:* the pages' drawings readable at arm's length on the LCD, the lit card visible in
+  daylight.
+- [ ] **Turn every card of every page with a key held:** the drawing follows each turn.
+  *Emulator:* `sidou-tests/tests/app/lab_view.rs::the_pages_match_their_goldens` and the drawing
+  tests beside it, `emu-gate/tests/lab.rs::lab_osc_and_envelope_draw_within_their_budgets`,
+  `emu-gate/tests/lab.rs::lab_filter_mod_and_fx_draw_within_their_budgets`.
+  *Device-only:* that what is drawn matches what is heard (the filter's peak, the envelope's
+  length), by ear.
+- [ ] **SAVE keeps:** the toast, `U01` on LIVE, PRESETS on LIVE reaches it after DICE; power off
+  and on: the sound and the unsaved edit come back.
+  *Emulator:* `emu-gate/tests/lab.rs::a_happy_accident_is_kept_with_one_press`,
+  `emu-gate/tests/lab.rs::a_kept_sound_survives_a_power_cycle`,
+  `emu-gate/tests/lab.rs::the_edit_comes_back_at_power_on`,
+  `emu-gate/tests/lab.rs::presets_reaches_the_user_sounds_on_live_and_in_lab`.
+  *Device-only:* the real flash across a real power cut (the battery pulled mid-save: the old
+  sounds or the new, never neither); the keep flow's feel (one press, the toast read in time).
+- [ ] **EDIT + SAVE names a slot with the keys.**
+  *Emulator:* `emu-gate/tests/lab.rs::edit_save_names_and_writes_a_slot`.
+  *Device-only:* typing on the keys feels right.
+- [ ] **EDIT tapped compares, EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls.**
+  *Emulator:* `emu-gate/tests/lab.rs::edit_tapped_swaps_the_sound_heard`,
+  `emu-gate/tests/lab.rs::edit_lfo_undoes_in_lab`,
+  `emu-gate/tests/lab.rs::edit_arp_and_edit_scl_change_the_sound_heard_and_undo`,
+  `sidou-tests/tests/app/lab_edit.rs::ten_thousand_varies_and_rolls_are_never_silent`.
+  *Device-only:* the tap's timing in the hand; whether the variations sound like useful
+  accidents (feel and musicality).
+- [ ] **MIDI learn on a card from a real controller** (SAVE held, turn a card, move the
+  controller's knob).
+  *Emulator:* `emu-gate/tests/lab.rs::midi_learn_on_a_lab_card_over_trs`.
+  *Device-only:* a real controller over the MIDI adapter and over USB.
+- [ ] **The chip model from ALGORITHM on TONE** (FX no longer toggles it): R5 is the 8580, and
+  FX's LED is lit while it plays; a slot's algorithm from ALGORITHM on LAB's FX page (down to
+  OFF bypasses it, what ENV's cycle once did).
+  *Emulator:* `emu-gate/tests/live.rs::the_model_toggle_swaps_chips_without_a_gap` (ALGORITHM
+  on TONE both ways, FX's LED lit for the 8580), `emu-gate/tests/keys.rs::the_panels_chip_model_acts_on_the_keys_setup`.
+  *Device-only:* the LED.
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2362,3 +2415,4 @@ Notes:
 | 19 USB audio out | | |
 | 20 .sid tunes over SysEx PUT | | |
 | 21 .sid playback and the 6502's meter | | |
+| 22 LAB | | |

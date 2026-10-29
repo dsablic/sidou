@@ -502,9 +502,9 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
     assert_eq!(says(&ui), (format!("DIST {label}"), amount.to_string()));
     assert_eq!(amount, 12, "a detent is 4");
     ui.up(PANEL_BTN_EDIT);
-    // ENV (a button) toasts; the popup is for the knobs.
+    // SCL (a button) toasts; the popup is for the knobs.
     ui.popup_gone();
-    ui.press(PANEL_BTN_ENV);
+    ui.press(PANEL_BTN_SCL);
     ui.frame();
     assert!(!shown(&ui) && ui.toast().is_some());
 }
