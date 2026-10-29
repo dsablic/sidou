@@ -1,6 +1,15 @@
 {
   "findings": {
+    "CONS.drift.about.env": "low",
+    "CONS.drift.about.fx": "low",
+    "CONS.drift.about.lfo": "low",
+    "CONS.drift.scene.env": "low",
+    "CONS.drift.scene.fx": "low",
+    "CONS.drift.scene.lfo": "low",
     "CONS.drift.tracker.algorithm": "low",
+    "CONS.inert.env": "low",
+    "CONS.inert.fx": "low",
+    "CONS.inert.lfo": "low",
     "HARN.nav.build.back": "high",
     "HARN.nav.keep.theme": "high",
     "JOUR.dead.build.save-song": "medium",
@@ -9,6 +18,9 @@
     "JOUR.nyp.build.to-instr": "medium",
     "JOUR.nyp.build.to-order": "medium",
     "JOUR.nyp.sketch.enter-notes": "medium",
+    "KNOB.detents.K3.lab-osc": "low",
+    "KNOB.detents.K4.lab-osc": "low",
+    "KNOB.fine.K3.lab-osc": "low",
     "MUS.quiet.noise-perc.a4": "medium",
     "MUS.quiet.noise-perc.f3": "medium",
     "MUS.quiet.pwm-bass.a4": "medium",
@@ -17,13 +29,14 @@
     "MUS.quiet.saw-lead.f3": "medium",
     "MUS.quiet.sync-lead.a4": "medium",
     "MUS.quiet.sync-lead.f3": "medium",
+    "READ.size.lab": "low",
     "READ.size.step": "low",
     "READ.size.tracker": "low",
     "TASK.fail.change-theme.keep": "high"
   },
   "firmware": {
-    "image_bytes": 543136,
-    "image_fnv1a": "e021c82924a9973b"
+    "image_bytes": 543600,
+    "image_fnv1a": "e3a673147082a731"
   },
   "metrics": {
     "feedback.ALGORITHM (CHIP profile).first_change_ms": {
@@ -84,6 +97,42 @@
     },
     "feedback.SEQ (open the song views).first_change_ms": {
       "value": 41.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.actions": {
+      "value": 4.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.actions_to_first_sound": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.forced_wait_ms": {
+      "value": 1000.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.mode_switches": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.not_yet_possible": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.stops_playing_steps": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.accident.time_to_first_sound_ms": {
+      "value": 725.0,
       "worse_when_higher": true
     },
     "journey.build.actions": {
@@ -371,11 +420,11 @@
       "worse_when_higher": false
     },
     "knob.K1.edit.audible_cents": {
-      "value": 579.0244099643935,
+      "value": 597.3701841306331,
       "worse_when_higher": false
     },
     "knob.K1.edit.audible_db": {
-      "value": 13.65251856761121,
+      "value": 13.70345484442987,
       "worse_when_higher": false
     },
     "knob.K1.edit.dead_zone": {
@@ -392,6 +441,78 @@
     },
     "knob.K1.edit.median_step": {
       "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-env.audible_cents": {
+      "value": 553.9669431058826,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-env.audible_db": {
+      "value": 35.14186861598847,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-env.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-env.detents": {
+      "value": 15.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-env.max_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-env.median_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-filter.audible_cents": {
+      "value": 2951.0542676771347,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-filter.audible_db": {
+      "value": 2.490909382865965,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-filter.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-filter.detents": {
+      "value": 64.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-filter.max_step": {
+      "value": 158.52424320881403,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-filter.median_step": {
+      "value": 126.29949254109383,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-osc.audible_cents": {
+      "value": 855.56505864299,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-osc.audible_db": {
+      "value": 9.863063071141347,
+      "worse_when_higher": false
+    },
+    "knob.K1.lab-osc.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-osc.detents": {
+      "value": 30.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-osc.max_step": {
+      "value": 1.5628815628815629,
+      "worse_when_higher": true
+    },
+    "knob.K1.lab-osc.median_step": {
+      "value": 1.5628815628815629,
       "worse_when_higher": false
     },
     "knob.K1.live.audible_cents": {
@@ -443,11 +564,11 @@
       "worse_when_higher": false
     },
     "knob.K2.edit.audible_cents": {
-      "value": 1024.6185003369621,
+      "value": 999.6227308611794,
       "worse_when_higher": false
     },
     "knob.K2.edit.audible_db": {
-      "value": 0.8969290716263032,
+      "value": 0.9671911236030297,
       "worse_when_higher": false
     },
     "knob.K2.edit.dead_zone": {
@@ -464,6 +585,78 @@
     },
     "knob.K2.edit.median_step": {
       "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-env.audible_cents": {
+      "value": 209.08348858637126,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-env.audible_db": {
+      "value": 3.3714170830433403,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-env.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-env.detents": {
+      "value": 15.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-env.max_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-env.median_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-filter.audible_cents": {
+      "value": 617.744498693154,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-filter.audible_db": {
+      "value": 0.2636218248284621,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-filter.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-filter.detents": {
+      "value": 15.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-filter.max_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-filter.median_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-osc.audible_cents": {
+      "value": 808.3578238131618,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-osc.audible_db": {
+      "value": 8.587303304444568,
+      "worse_when_higher": false
+    },
+    "knob.K2.lab-osc.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-osc.detents": {
+      "value": 64.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-osc.max_step": {
+      "value": 1.5625,
+      "worse_when_higher": true
+    },
+    "knob.K2.lab-osc.median_step": {
+      "value": 1.5625,
       "worse_when_higher": false
     },
     "knob.K2.live.audible_cents": {
@@ -515,11 +708,11 @@
       "worse_when_higher": false
     },
     "knob.K3.edit.audible_cents": {
-      "value": 84.88333456717267,
+      "value": 86.38198379169557,
       "worse_when_higher": false
     },
     "knob.K3.edit.audible_db": {
-      "value": 0.9369384616319039,
+      "value": 0.8853134294336442,
       "worse_when_higher": false
     },
     "knob.K3.edit.dead_zone": {
@@ -536,6 +729,54 @@
     },
     "knob.K3.edit.median_step": {
       "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K3.lab-env.audible_cents": {
+      "value": 147.60427940657374,
+      "worse_when_higher": false
+    },
+    "knob.K3.lab-env.audible_db": {
+      "value": 0.6973611641098074,
+      "worse_when_higher": false
+    },
+    "knob.K3.lab-env.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.lab-env.detents": {
+      "value": 15.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.lab-env.max_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": true
+    },
+    "knob.K3.lab-env.median_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": false
+    },
+    "knob.K3.lab-osc.audible_cents": {
+      "value": 602.1693743343459,
+      "worse_when_higher": false
+    },
+    "knob.K3.lab-osc.audible_db": {
+      "value": 6.004623576938975,
+      "worse_when_higher": false
+    },
+    "knob.K3.lab-osc.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.lab-osc.detents": {
+      "value": 255.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.lab-osc.max_step": {
+      "value": 0.39215686274509803,
+      "worse_when_higher": true
+    },
+    "knob.K3.lab-osc.median_step": {
+      "value": 0.39215686274509803,
       "worse_when_higher": false
     },
     "knob.K3.live.audible_cents": {
@@ -659,11 +900,11 @@
       "worse_when_higher": false
     },
     "knob.K4.edit.audible_cents": {
-      "value": 392.0837793183426,
+      "value": 391.5576572057639,
       "worse_when_higher": false
     },
     "knob.K4.edit.audible_db": {
-      "value": 1.2854508038451797,
+      "value": 1.391526178128757,
       "worse_when_higher": false
     },
     "knob.K4.edit.dead_zone": {
@@ -680,6 +921,54 @@
     },
     "knob.K4.edit.median_step": {
       "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K4.lab-env.audible_cents": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.K4.lab-env.audible_db": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.K4.lab-env.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.lab-env.detents": {
+      "value": 15.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.lab-env.max_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": true
+    },
+    "knob.K4.lab-env.median_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": false
+    },
+    "knob.K4.lab-osc.audible_cents": {
+      "value": 464.9729343611642,
+      "worse_when_higher": false
+    },
+    "knob.K4.lab-osc.audible_db": {
+      "value": 5.963195427211652,
+      "worse_when_higher": false
+    },
+    "knob.K4.lab-osc.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.lab-osc.detents": {
+      "value": 100.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.lab-osc.max_step": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.lab-osc.median_step": {
+      "value": 1.0,
       "worse_when_higher": false
     },
     "knob.K4.live.audible_cents": {
@@ -874,6 +1163,18 @@
       "value": 3.0,
       "worse_when_higher": false
     },
+    "read.lab.contrast_failing_pairs": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "read.lab.play_below_min": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "read.lab.play_texts": {
+      "value": 29.0,
+      "worse_when_higher": false
+    },
     "read.learn.contrast_failing_pairs": {
       "value": 0.0,
       "worse_when_higher": true
@@ -895,7 +1196,7 @@
       "worse_when_higher": true
     },
     "read.live.play_texts": {
-      "value": 32.0,
+      "value": 37.0,
       "worse_when_higher": false
     },
     "read.menu.contrast_failing_pairs": {
@@ -1055,7 +1356,7 @@
       "worse_when_higher": true
     },
     "task.change-dist-algorithm.explore.actions": {
-      "value": 1.0,
+      "value": 2.0,
       "worse_when_higher": true
     },
     "task.change-dist-algorithm.explore.levels": {
@@ -1148,6 +1449,18 @@
     },
     "task.get-back-to-live.sketch.wait_ms": {
       "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.keep-a-happy-accident.accident.actions": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "task.keep-a-happy-accident.accident.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.keep-a-happy-accident.accident.wait_ms": {
+      "value": 400.0,
       "worse_when_higher": true
     },
     "task.learn-a-cc.perform.actions": {

@@ -23,6 +23,10 @@ title_card | ignore | any
 status  | glance | any
 learn   | glance | any
 tracker | glance | hex
+# LAB: the page's name (2x) and ALGORITHM's choice (2x) are read while shaping. The cards' own names
+# stay small by design (the knob row's labels) and fall to the rules below, so DELAY (the MOD card,
+# the vibrato's delay) is judged like the effect of the same name.
+lab     | play   | words OSC,ENVELOPE,FILTER,MOD,FX,LAB,INSTANT,AUTHENTIC,TRIANGLE,SAW,NOISE,LP,BP,HP,NOTCH,ARP
 *       | hint   | words SELECT,ALGORITHM,ALG,HOME,MOVE,STEP,CHANGE,BACK,CANCEL,VOICE,MODEL,PROFILE,BPM,OL,K1
 menu    | play   | any
 # The menu's kin: SETTINGS' values and the SONG pages' actions, files and names are read as the

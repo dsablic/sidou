@@ -521,7 +521,26 @@ pub struct Params {
     pub slot: [[u8; 5]; 3],
     /// The chord arpeggio (app/live.h live_arp_set): on, rate, order, span.
     pub arp: [u8; 4],
+    /// What LAB's cards move besides the above: attack, sustain, waveform bits, filter voices
+    /// and mode, the PWM LFO's depth and rate, the fine tune, the velocity target, the vibrato's
+    /// rate, depth and delay.
+    pub lab: [i32; 12],
 }
+
+const LAB_FIELDS: [&str; 12] = [
+    "attack",
+    "sustain",
+    "waveform",
+    "filter_voices",
+    "filter_mode",
+    "pwm_depth",
+    "pwm_rate",
+    "tune",
+    "velocity_target",
+    "vibrato_rate",
+    "vibrato_depth",
+    "vibrato_delay",
+];
 
 impl Params {
     /// Name and value of every field, for diffing.
@@ -553,6 +572,9 @@ impl Params {
             .enumerate()
         {
             v.push(((*a).to_string(), i64::from(self.arp[i])));
+        }
+        for (i, a) in LAB_FIELDS.iter().enumerate() {
+            v.push(((*a).to_string(), i64::from(self.lab[i])));
         }
         v
     }
@@ -602,6 +624,25 @@ impl Dev {
             self.live_u8(ilp32::live::arp_rate),
             self.live_u8(ilp32::live::arp_order),
             self.live_u8(ilp32::live::arp_span),
+        ];
+        let (ad, sr) = (
+            self.live_u8(ilp32::live::attack_decay),
+            self.live_u8(ilp32::live::sustain_release),
+        );
+        p.lab = [
+            i32::from(ad >> 4),
+            i32::from(sr >> 4),
+            i32::from(self.live_u8(ilp32::live::control)),
+            i32::from(self.live_u8(ilp32::live::filter_voices)),
+            i32::from(self.live_u8(ilp32::live::filter_mode)),
+            i32::from(self.live_u16(ilp32::live::pwm_depth)),
+            // the LFO's phase step back to the parameter's 0.05 Hz units (live_pwm_rate)
+            (i32::from(self.live_u16(ilp32::live::pwm_rate)) * 1000 + 16384) / 32768,
+            i32::from(self.live_u8(ilp32::live::tune) as i8),
+            i32::from(self.live_u8(ilp32::live::velocity_target)),
+            i32::from(self.live_u8(ilp32::live::vibrato_rate)),
+            i32::from(self.live_u8(ilp32::live::vibrato_depth)),
+            i32::from(self.live_u8(ilp32::live::vibrato_delay)),
         ];
         p
     }

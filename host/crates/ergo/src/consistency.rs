@@ -71,6 +71,7 @@ pub const VIEWS: &[(&str, &str)] = &[
     ),
     ("chip", "press HOME; turn ALGORITHM 1; wait 3000"),
     ("tracker", "press SEQ; press SEQ"),
+    ("lab", "press ENV; wait 900; turn SELECT -1; wait 400"),
     (
         "scene",
         "press HOME; select-item SCENE; turn ALGORITHM 1; wait 3000",
@@ -89,7 +90,7 @@ pub const VIEWS: &[(&str, &str)] = &[
     ),
 ];
 
-pub const CONTROLS: [(&str, u8); 8] = [
+pub const CONTROLS: [(&str, u8); 11] = [
     ("K1", panel::K1),
     ("K2", panel::K2),
     ("K3", panel::K3),
@@ -98,6 +99,9 @@ pub const CONTROLS: [(&str, u8); 8] = [
     ("SELECT", panel::SELECT),
     ("ALGORITHM", panel::ALGORITHM),
     ("HOME", panel::HOME),
+    ("ENV", panel::ENV),
+    ("LFO", panel::LFO),
+    ("FX", panel::FX),
 ];
 
 /// What docs/reference/controls.md says does nothing: (view, control). Everything else is
@@ -107,7 +111,37 @@ pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("status", "ALGORITHM"),
     ("about", "SELECT"),
     ("about", "ALGORITHM"),
+    // ENV, LFO and FX open or step LAB; in every other view they do nothing (controls.md).
+    ("menu", "ENV"),
+    ("settings", "ENV"),
+    ("chip", "ENV"),
+    ("tracker", "ENV"),
+    ("scene", "ENV"),
+    ("status", "ENV"),
+    ("midi", "ENV"),
+    ("about", "ENV"),
+    ("menu", "LFO"),
+    ("settings", "LFO"),
+    ("chip", "LFO"),
+    ("tracker", "LFO"),
+    ("scene", "LFO"),
+    ("status", "LFO"),
+    ("midi", "LFO"),
+    ("about", "LFO"),
+    ("menu", "FX"),
+    ("settings", "FX"),
+    ("chip", "FX"),
+    ("tracker", "FX"),
+    ("scene", "FX"),
+    ("status", "FX"),
+    ("midi", "FX"),
+    ("about", "FX"),
 ];
+
+/// The controls that are pressed, not turned (button and encoder ids overlap, so by name).
+fn is_button(name: &str) -> bool {
+    ["HOME", "ENV", "LFO", "FX"].contains(&name)
+}
 
 /// What one control did in one view.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -128,7 +162,13 @@ impl Effect {
 
 /// What the panel showed over the 1.2 s after `setup` and a control used (`dir`: None leaves it
 /// alone): the distinct frames (a hash each), and what the control did.
-fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (BTreeSet<u64>, Effect) {
+fn after(
+    build: &Path,
+    setup: &str,
+    control: u8,
+    button: bool,
+    dir: Option<i32>,
+) -> (BTreeSet<u64>, Effect) {
     let frame = |d: &Dev| {
         let mut h = DefaultHasher::new();
         d.m.soc.lcd.fb.hash(&mut h);
@@ -143,7 +183,7 @@ fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (BTreeSet<
     let p0 = d.params();
     let mut popup = false;
     match dir {
-        Some(n) if control == panel::HOME => {
+        Some(n) if button => {
             let _ = n;
             d.key_down(control);
             d.run(30);
@@ -180,17 +220,21 @@ fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (BTreeSet<
 /// blinking cursor) is compared with the same run left alone: the control did something on
 /// screen when it made a frame the idle run never showed. A control at the end of its range is
 /// tried the other way as well.
-pub fn try_control(build: &Path, setup: &str, control: u8) -> Effect {
-    let (idle, _) = after(build, setup, control, None);
+pub fn try_control(build: &Path, setup: &str, control: u8, button: bool) -> Effect {
+    let (idle, _) = after(build, setup, control, button, None);
     let mut best = Effect::default();
     for dir in [1, -1] {
-        let (seen, mut e) = after(build, setup, control, Some(dir));
+        let (seen, mut e) = after(build, setup, control, button, Some(dir));
         e.screen = !seen.is_subset(&idle);
-        if e.acts() {
+        // A knob that lit a card but moved nothing may be at the end of its range: try the other way.
+        let knob = !button && (panel::K1..=panel::K4).contains(&control);
+        if e.acts() && (!knob || !e.params.is_empty()) {
             return e;
         }
-        best = e;
-        if control == panel::HOME {
+        if best == Effect::default() || e.acts() {
+            best = e;
+        }
+        if button {
             break;
         }
     }
@@ -331,7 +375,7 @@ pub fn run_all(build: &Path) -> ConsistencyResult {
         .collect();
     let done = crate::par_map(&jobs, |(v, setup, n, id)| {
         eprintln!("  consistency {v} {n}");
-        try_control(build, setup, *id)
+        try_control(build, setup, *id, is_button(n))
     });
     let effects: BTreeMap<(String, String), Effect> = jobs
         .iter()

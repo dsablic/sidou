@@ -143,6 +143,17 @@ journey explore | Explore the chip, the effects and the scene
   step scene-next | Next piece | SELECT picks the next piece | turn SELECT 1; wait 700; note A4 400 | toast; clip 300
   step scene-home | Back from SCENE | HOME | press HOME; press HOME; wait 400 | view live
 
+journey accident | Keep a happy accident
+  goal Open LAB from LIVE, turn two knobs while a key sounds, and keep the sound as a USER sound.
+  prereq On LIVE after the boot.
+  skills LAB; ENV opens LAB; holding a key while turning; SAVE keeps; USER sounds
+  related keep; explore
+  step open-lab | Open LAB | ENV opens LAB at the envelope | press ENV; wait 600 | view lab; remember
+  step turn-k2 | Turn K2 with a key down | Hold a key and turn K2 | down A3; turn K2 3 | change; sound; task keep a happy accident
+  step turn-k4 | Turn K4 | Turn K4 | turn K4 -2; up A3 | change; task keep a happy accident
+  step keep | Keep it | SAVE keeps the sound as a USER sound | press SAVE; wait 400 | toast; text KEPT AS; task keep a happy accident
+  step recall | Switch off and on again | The kept sound is still there | powercycle | recalled
+
 journey songs | Work with the song lists
   goal Open SONG's pages (LOAD, NEW, SAVE AS, DELETE) and the SIDS list; HOME backs out of each, and a key still sounds at the end.
   prereq On LIVE after the boot; no song of your own in the store.
@@ -216,3 +227,14 @@ journey tour | Screens for the readability check | tour
   step live-arp | LIVE with ARP on | - | press HOME; wait 1500; press ARP; wait 800 | view live; text 3F UP 1OCT
   step live-arp-chord | ARP stepping a chord | - | down C4; down E4; down G4; wait 1500 | sound
   step live-arp-off | ARP off | - | up C4; up E4; up G4; wait 300; press ARP; wait 800 | absent 1OCT
+  step lab-open | LAB at the envelope | - | press ENV; wait 800 | view lab
+  step lab-card | LAB, a card turned | - | turn K1 2 | change
+  step lab-algorithm | LAB, ALGORITHM turned | - | turn ALGORITHM 1; wait 400 | change
+  step lab-filter | LAB, FILTER | - | turn SELECT 1; wait 600 | change
+  step lab-mod | LAB, MOD | - | press LFO; wait 600 | change
+  step lab-fx | LAB, FX | - | press FX; wait 600 | change
+  step lab-osc | LAB, OSC | - | turn SELECT -4; wait 600 | change
+  step lab-keep | LAB, a sound kept | - | press SAVE; wait 1500 | toast
+  step lab-name | LAB, the name page | - | holdpress EDIT SAVE; wait 600 | change
+  step lab-name-back | Back | - | press HOME; wait 600 | view lab
+  step lab-home | Back to LIVE | - | press HOME; wait 1500 | view live

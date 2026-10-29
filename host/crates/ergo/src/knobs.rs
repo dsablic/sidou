@@ -32,6 +32,9 @@ pub enum P {
     /// K3 on a sync sound: the ratio's semitones from the preset's, -12..+12.
     SyncSemis,
     Character(usize),
+    /// LAB's cards the rows above do not cover: an index into `Params::lab` (attack, sustain,
+    /// the PWM LFO's depth and rate, the fine tune), and the range its steps are a share of.
+    Lab(usize, u16),
     /// slot (0 DIST, 1 MOD, 2 FX), field (1 amount, 2 A, 3 B, 4 mix).
     Slot(usize, usize),
 }
@@ -50,6 +53,8 @@ impl P {
             // shifted up so that the sweep's raw values are positive
             P::SyncSemis => f64::from(i32::from(p.sync_semis) + 12),
             P::Character(i) => f64::from(p.character[i]),
+            // the fine tune is signed (cents): shifted up so the sweep's raw values are positive
+            P::Lab(i, _) => f64::from(p.lab[i] + if i == 7 { 50 } else { 0 }),
             P::Slot(s, f) => f64::from(p.slot[s][f]),
         }
     }
@@ -66,6 +71,20 @@ impl P {
             P::Release => "release".into(),
             P::SyncSemis => "sync ratio".into(),
             P::Character(i) => ["age", "DAC sloppiness", "thump", "filter bleed"][i].into(),
+            P::Lab(i, _) => [
+                "attack",
+                "sustain",
+                "",
+                "",
+                "",
+                "PWM depth",
+                "PWM rate",
+                "fine tune",
+            ]
+            .get(i)
+            .copied()
+            .unwrap_or("LAB card")
+            .into(),
             P::Slot(s, f) => format!(
                 "{} {}",
                 ["DIST", "MOD", "FX"][s],
@@ -94,6 +113,7 @@ impl P {
             P::Decay | P::Release => 15.0,
             P::SyncSemis => 24.0,
             P::Character(_) | P::Slot(..) => 127.0,
+            P::Lab(_, full) => f64::from(full),
         }
     }
 
@@ -331,9 +351,119 @@ pub fn specs() -> Vec<Spec> {
         false,
         true,
     );
-    // The decay on SAW LEAD and the thump are heard where a note starts.
+    // LAB's cards (docs/reference/controls.md "LAB"): the OSC page on PWM BASS (the preset with a
+    // pulse and its PWM LFO), then the envelope's four and the filter's cutoff and resonance.
+    // The vibrato's cards and the filter's voices are not swept: a wobble and a routing mask are
+    // not what the centroid and level of a held note show.
+    // ENV opens LAB at ENVELOPE; SELECT steps to OSC (-1) or FILTER (+1).
+    let osc = "turn PRESETS 1; press ENV; wait 600; turn SELECT -1; wait 300".to_string();
+    let env = "press ENV; wait 600".to_string();
+    let filt = "press ENV; wait 600; turn SELECT 1; wait 300".to_string();
+    let mut lab_add = |id: &str, view: &str, param: P, setup: &str, k: u8, audio: bool| {
+        v.push(Spec {
+            id: id.into(),
+            control: format!("K{}", k - panel::K1 + 1),
+            view: view.into(),
+            param,
+            setup: setup.into(),
+            hold: None,
+            enc: Some(k),
+            audio,
+            discrete: false,
+            retrigger: false,
+        });
+    };
+    lab_add(
+        "K1.lab-osc",
+        "LAB OSC (PWM BASS)",
+        P::PulseWidth,
+        &osc,
+        panel::K1,
+        true,
+    );
+    lab_add(
+        "K2.lab-osc",
+        "LAB OSC (PWM BASS)",
+        P::Lab(5, 2048),
+        &osc,
+        panel::K2,
+        true,
+    );
+    lab_add(
+        "K3.lab-osc",
+        "LAB OSC (PWM BASS)",
+        P::Lab(6, 255),
+        &osc,
+        panel::K3,
+        true,
+    );
+    lab_add(
+        "K4.lab-osc",
+        "LAB OSC (PWM BASS)",
+        P::Lab(7, 100),
+        &osc,
+        panel::K4,
+        true,
+    );
+    lab_add(
+        "K1.lab-env",
+        "LAB ENVELOPE",
+        P::Lab(0, 15),
+        &env,
+        panel::K1,
+        true,
+    );
+    lab_add(
+        "K2.lab-env",
+        "LAB ENVELOPE",
+        P::Decay,
+        &env,
+        panel::K2,
+        true,
+    );
+    lab_add(
+        "K3.lab-env",
+        "LAB ENVELOPE",
+        P::Lab(1, 15),
+        &env,
+        panel::K3,
+        true,
+    );
+    lab_add(
+        "K4.lab-env",
+        "LAB ENVELOPE",
+        P::Release,
+        &env,
+        panel::K4,
+        false,
+    );
+    lab_add(
+        "K1.lab-filter",
+        "LAB FILTER",
+        P::Cutoff,
+        &filt,
+        panel::K1,
+        true,
+    );
+    lab_add(
+        "K2.lab-filter",
+        "LAB FILTER",
+        P::Resonance,
+        &filt,
+        panel::K2,
+        true,
+    );
+    // The decay on SAW LEAD, the thump and LAB's attack, decay and sustain are heard where a
+    // note starts.
     for s in v.iter_mut() {
-        s.retrigger = s.id == "K3.live" || s.id == "K3.chip";
+        s.retrigger = [
+            "K3.live",
+            "K3.chip",
+            "K1.lab-env",
+            "K2.lab-env",
+            "K3.lab-env",
+        ]
+        .contains(&s.id.as_str());
     }
     v
 }
