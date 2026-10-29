@@ -40,7 +40,9 @@ set_source_files_properties(song/gt2_stream.c song/gt2_ins.c PROPERTIES COMPILE_
 set_source_files_properties(song/gt2_sng.c PROPERTIES COMPILE_OPTIONS -Os)
 # Save/edit bookkeeping and extension lookups are main-loop work; their O(1) IRQ edit
 # application stays in .ram_text unchanged.
-set_source_files_properties(song/gt2_song.c song/song_ext.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
+set_source_files_properties(song/gt2_song.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
+# song_ext.c (chunk parsing, locks, options) at -Oz: the 1.1 flash win-back (docs/plans/2026-10-29-1.1-design.md).
+set_source_files_properties(song/song_ext.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
 # Shape analysis is bounded main-loop work, outside the interrupt's player frame path; the
 # size build costs more an analysis unit, which SONG_SLICE_UNITS (song_ctl.h) accounts for.
 set_source_files_properties(player/gt2_shape.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
