@@ -10,7 +10,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { crc32 as zlibCrc32 } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
-  ACK, ABORT, Client, DATA, DIR, END, INQ, NAK, PUT, crc32, decodeFrame, encodeFrame, nakMessage, pack, unpack,
+  ACK, ABORT, Client, DATA, busyWaits, DIR, END, INQ, NAK, PUT, crc32, decodeFrame, encodeFrame, nakMessage, pack, unpack,
   validName,
 } from "./sysex.js";
 
@@ -87,7 +87,8 @@ class Device {
     }
     if (f.command === ACK) return this.dirNext();
     if (f.command === ABORT) { this.upload = null; return; }
-    if (this.nak?.command === f.command && this.nak.at === (f.command === DATA ? this.nData++ : 0)) {
+    if (this.nak?.command === f.command && this.nak.at === (f.command === DATA ? this.nData++ : 0) && this.nak.times !== 0) {
+      if (this.nak.times) this.nak.times--;
       this.upload = null;
       return this.reply(NAK, f.sequence, Uint8Array.from([this.nak.reason, this.nak.pool ?? 0]));
     }
@@ -133,7 +134,7 @@ class Device {
 }
 function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
 function le(b, i) { return (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)) >>> 0; }
-const connect = (opts, copts = { timeout: 300, ackTimeout: 300 }) => {
+const connect = (opts, copts = { timeout: 300, ackTimeout: 300, busy: [] }) => {
   const device = new Device(opts);
   const client = new Client(null, copts);
   client.send = device.attach(client);
@@ -191,6 +192,29 @@ await test("NAKs end the transfer with the protocol's reasons and what to do", a
   await assert.rejects(c.client.put("A", new Uint8Array(30)), (e) => e.nak === 7 && /did not accept/.test(e.message));
   assert.match(nakMessage(2), /checksum/);
   assert.match(nakMessage(9), /aborted/);
+});
+
+await test("busyWaits backs off 1, 2, 4, 5 s up to the total", () => {
+  assert.deepEqual(busyWaits().slice(0, 5), [1000, 2000, 4000, 5000, 5000]);
+  assert.equal(busyWaits().reduce((a, b) => a + b), 60000);
+  assert.deepEqual(busyWaits(0), []);
+});
+
+await test("NAK BUSY waits and sends the whole PUT again, then succeeds", async () => {
+  const waits = [];
+  const data = new Uint8Array(600).fill(9);
+  for (const nak of [{ command: PUT, at: 0, reason: 4, pool: 1, times: 2 }, { command: DATA, at: 1, reason: 4, pool: 1, times: 1 }]) {
+    const { device, client } = connect({ nak }, { timeout: 300, ackTimeout: 300, busy: [10, 20, 40], sleep: async (ms) => { waits.push(ms); } });
+    const seen = [];
+    await client.put("BUSY SONG", data, { onBusy: (ms, n) => seen.push([ms, n]) });
+    assert.deepEqual(device.stored.get("BUSY SONG"), data);
+    assert.ok(seen.length > 0 && seen[0][1] === 1);
+  }
+  assert.deepEqual(waits, [10, 20, 10]);
+  const { client } = connect({ nak: { command: PUT, at: 0, reason: 4, pool: 1, times: 5 } }, { timeout: 300, ackTimeout: 300, busy: [1, 1], sleep: async () => {} });
+  await assert.rejects(client.put("A", new Uint8Array(10)), (e) => e.nak === 4);
+  const f = connect({ nak: { command: DATA, at: 0, reason: 5 } }, { timeout: 300, ackTimeout: 300, busy: [1, 1], sleep: async () => { throw new Error("must not wait"); } });
+  await assert.rejects(f.client.put("A", new Uint8Array(10)), (e) => e.nak === 5);
 });
 
 await test("a silent device times out and gets an ABORT", async () => {

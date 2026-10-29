@@ -47,6 +47,17 @@ export function nakMessage(reason, pool) {
   return base;
 }
 
+// How long a sender waits between tries when the FM-1 answers BUSY: 1 s, 2 s, 4 s, then 5 s each,
+// until about `total` ms are spent (sysex.md: a NAK ends the transfer, so the whole PUT is sent again).
+export function busyWaits(total = 60000, first = 1000, cap = 5000) {
+  const waits = [];
+  for (let w = first, sum = 0; sum < total; w = Math.min(w * 2, cap)) {
+    waits.push(Math.min(w, total - sum));
+    sum += waits[waits.length - 1];
+  }
+  return waits;
+}
+
 const TABLE = new Uint32Array(256).map((_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -130,7 +141,9 @@ const le32 = (b, i) => (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] <<
 // The stop-and-wait client. `send(bytes)` writes one frame to the device; `push(bytes)` takes each
 // message the device sends (any bytes: non-SIDOU ones are ignored).
 export class Client {
-  constructor(send, { timeout = 3000, ackTimeout = 10000 } = {}) {
+  constructor(send, { timeout = 3000, ackTimeout = 10000, busy = busyWaits(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+    this.busy = busy;
+    this.sleep = sleep;
     this.send = send;
     this.timeout = timeout;
     this.ackTimeout = ackTimeout;
@@ -217,7 +230,21 @@ export class Client {
   }
 
   // PUT a named store file (target 0), one packet at a time; onProgress(done, total) after each ACK.
-  async put(name, data, { type = 1, onProgress = () => {} } = {}) {
+  // On NAK BUSY (the store is short of clean sectors or writing) the whole PUT is sent again after
+  // a wait, as a NAK ends the transfer; onBusy(waitMs, attempt) says so. Other NAKs fail at once.
+  async put(name, data, { type = 1, onProgress = () => {}, onBusy = () => {} } = {}) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.putOnce(name, data, type, onProgress);
+      } catch (e) {
+        if (e.nak !== 4 || attempt >= this.busy.length) throw e;
+        onBusy(this.busy[attempt], attempt + 1);
+        await this.sleep(this.busy[attempt]);
+      }
+    }
+  }
+
+  async putOnce(name, data, type, onProgress) {
     this.drain();
     const total = data.length;
     onProgress(0, total);

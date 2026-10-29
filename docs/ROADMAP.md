@@ -62,6 +62,12 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **A device session gates 1.0.** USB audio recording, the first-run tour, unplugging the
   cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, and a long 48 kHz recording, left to users (the CPU erratum in Felucca's resampler, [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16); if it fails, 48 kHz goes off until a fix).
 
+## 1.1 (in progress)
+
+Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](plans/2026-10-29-1.1-design.md)
+(the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
+`.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
+
 ## 1.x
 
 **Sound and play**
