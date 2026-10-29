@@ -7,9 +7,12 @@ next, with a "What's new in X.Y.Z" section and its package in the install steps 
 2026-10-25: "we should keep the readme in sync with the releases"), and on a release tag
 (GITHUB_REF refs/tags/vX.Y.Z) the tag must be that release.
   tools/readme-check        exit 0 when the README is current, else 1 with what is stale
-Run by the merge check (every change, docs-only ones too) and by ci.yml on a tag."""
+The Firmware Hub card, fmhub.json, is checked the same way (its rules, and changed for every minor
+or major release). Run by the merge check (every change, docs-only ones too) and by ci.yml on a tag."""
+import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +36,35 @@ if f"sidou-{version}.fwsc" not in readme:
 ref = os.environ.get("GITHUB_REF", "")
 if ref.startswith("refs/tags/v") and ref != f"refs/tags/v{version}":
     errors.append(f"the tag {ref[10:]} is not CHANGELOG.md's newest release v{version}")
+
+# The Firmware Hub card (fmhub.json) keeps up too (the user, 2026-10-29: "fmhub.json should always be
+# in sync with the rest of update"). The hub's rules (thefirmwarehub.com/submit): "what" is plain
+# English, at most 300 characters, no HTML, code or links; "kinds" one of six; "play" and "editor"
+# optional. And a minor or major release reviews it: fmhub.json changed since the release before.
+try:
+    hub = json.loads((root / "fmhub.json").read_text())
+except (OSError, ValueError) as e:
+    hub = None
+    errors.append(f"fmhub.json does not read as JSON: {e}")
+if hub is not None:
+    what = hub.get("what", "")
+    if not what or len(what) > 300:
+        errors.append(f"fmhub.json's \"what\" must be 1 to 300 characters (it is {len(what)})")
+    if re.search(r"<[a-zA-Z/]|https?://|`", what):
+        errors.append("fmhub.json's \"what\" must have no HTML, code or links")
+    kinds = hub.get("kinds")
+    if not isinstance(kinds, list) or len(kinds) != 1 or kinds[0] not in {"synth", "groove", "drums", "chords", "tracker", "other"}:
+        errors.append("fmhub.json's \"kinds\" must be one of synth, groove, drums, chords, tracker, other")
+    unknown = set(hub) - {"what", "kinds", "play", "editor"}
+    if unknown:
+        errors.append(f"fmhub.json has fields the hub does not read: {', '.join(sorted(unknown))}")
+releases = re.findall(r"^## \[(\d+)\.(\d+)\.(\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.M)
+if len(releases) > 1 and releases[0][2] == "0":
+    prev = "v" + ".".join(releases[1])
+    if subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{prev}"], cwd=root,
+                      capture_output=True).returncode == 0 and \
+       subprocess.run(["git", "diff", "--quiet", prev, "--", "fmhub.json"], cwd=root).returncode == 0:
+        errors.append(f"fmhub.json is unchanged since {prev}: review the hub card's text for v{version}")
 for e in errors:
     print(f"readme-check: {e}", file=sys.stderr)
 if errors:
