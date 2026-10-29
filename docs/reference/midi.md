@@ -194,9 +194,10 @@ jack, which is MIDI IN only.
 The live instrument's chord arpeggio ([controls.md](controls.md), Chord arpeggio): with it on,
 the notes held, MIDI's and the keys' together (up to 8; a ninth drops the oldest), are one
 voice stepping through them at the rate, its gate held from the first note to the release of
-the last. Its CCs are in a block MIDI leaves undefined; they are no parameters of the map (no
-NRPN), MIDI learn does not reach them, and MIDI out does not send them. A learned CC wins over
-them, as over the map's.
+the last. Its CCs are in a block MIDI leaves undefined. The rate is a parameter of the map (ARP
+rate: NRPN 0/9; MIDI learn reaches it, MIDI out sends it, a program change loads its default);
+on/off, the order and the span are no parameters (no NRPN), MIDI learn does not reach them and
+MIDI out does not send them. A learned CC wins over them, as over the map's.
 
 - **CC 27, on/off:** off below 64, on from 64. A program change loads the preset's factory
   settings: off.
@@ -381,6 +382,7 @@ In NRPN order.
 | Live | PWM rate | - | 0/6 (6) | 0..255 | linear | 0 | 0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's |
 | Live | Fine tune | - | 0/7 (7) | 0..100 | steps | 50 | 0..100 = -50..+50 cents, 50 in tune; every voice; a preset's |
 | Live | Filter LFO | 31 | 0/8 (8) | 0..32 | steps | 0 | 0 off .. 32 of K1's cutoff detents each way: the cutoff's LFO, a triangle at the PWM rate; a preset's (off) |
+| Live | ARP rate | 28 | 0/9 (9) | 0..8 | steps | 2 | the chord arpeggio's: 0..5 a note every 1, 2, 3, 4, 6 or 8 frames of 50 Hz, 6..8 a 32nd, a 16th or an 8th of the MIDI clock (Chord arpeggio, below); a preset's (2) |
 | SID | Waveform | 20 | 1/0 (128) | 0..15 | steps | 2 | sum of 1 triangle, 2 saw, 4 pulse, 8 noise; 0 silent |
 | SID | Ring modulation | 21 | 1/1 (129) | 0..1 | steps | 0 | 0 off, 1 on (by the voice before) |
 | SID | Sync | 22 | 1/2 (130) | 0..1 | steps | 0 | 0 off, 1 on (to the voice before) |
@@ -448,7 +450,7 @@ In NRPN order.
 | 25 | SID Chip model |
 | 26 | SID Envelope mode |
 | 27 | Live Chord arpeggio on/off |
-| 28 | Live Chord arpeggio rate |
+| 28 | Live ARP rate |
 | 29 | Live Chord arpeggio order |
 | 30 | Live Chord arpeggio span |
 | 31 | Live Filter LFO |

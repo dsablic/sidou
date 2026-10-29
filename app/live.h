@@ -128,8 +128,8 @@ extern "C" {
 #define LIVE_CC_SLOT_LAST 116u
 /* The chord arpeggio (live_arp_set), in General MIDI's undefined block 27..31: on/off (off
  * below 64), the rate (the value scaled over LIVE_ARP_RATES), the order (over the four) and the
- * span (1 octave below 64, 2 from 64). Not parameters of the map: no NRPN, and MIDI out does not
- * send them. */
+ * span (1 octave below 64, 2 from 64). The rate is the map's (LIVE_PARAM_ARP_RATE: an NRPN, MIDI
+ * learn and MIDI out reach it); the other three are live_cc's alone, no parameters. */
 #define LIVE_CC_ARP 27u
 #define LIVE_CC_ARP_RATE 28u
 #define LIVE_CC_ARP_ORDER 29u
@@ -625,6 +625,9 @@ typedef enum {
     /* 1.1's: the filter LFO's depth, 0..LIVE_FILTER_LFO_MAX K1 detents each way, at the PWM's
      * rate (live.filter_lfo). */
     LIVE_PARAM_FILTER_LFO,
+    /* The chord arpeggio's rate, 0..LIVE_ARP_RATES - 1 (live_arp_set's LIVE_ARP_RATE): CC 28's
+     * row, so learn reaches it. */
+    LIVE_PARAM_ARP_RATE,
     LIVE_PARAM_COUNT
 } live_param;
 

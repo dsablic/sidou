@@ -772,7 +772,8 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
     let mut later = v9.clone();
     later[0] = SETTINGS_VERSION as u8 + 1;
     later[v7.len()] = SETTINGS_PARAMS_V9 as u8 + 1;
-    later[SETTINGS_BYTES as usize - 1] = 47; // the filter LFO's
+    let filter_lfo = v7.len() + 1 + (LIVE_PARAM_FILTER_LFO - LIVE_PARAM_PWM_DEPTH) as usize;
+    later[filter_lfo] = 47;
     later.push(48);
     let mut t = Set::blank();
     assert_eq!(
@@ -1482,20 +1483,26 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
 /// when the store recovers, and a save that keeps failing says so once.
 #[test]
 fn a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once() {
-    let mut s = Set::blank();
-    s.load();
-    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    s.result();
-    *s.cards = 0;
-    s.rig.live.settings_dirty = 1;
-    s.st.sim.fail = 40; // two programs in five fail: the save keeps failing over four debounces
-    let mut failed = 0;
-    for _ in 0..(4 * SETTINGS_DEBOUNCE_MS / TICK) {
-        s.tick();
-        failed += u32::from(s.result() == SETTINGS_FAILED);
-    }
-    assert!(s.st.stats().errors > 0);
-    assert_ne!(s.stored(), Some(s.gather()), "not on flash");
+    // A failure rate at which the save keeps failing over four debounces: which one does depends
+    // on the simulated failures' draws, so on the records' sizes; the first of these that does.
+    let (mut s, failed) = [40u64, 35, 30, 45, 25, 50, 55]
+        .into_iter()
+        .find_map(|rate| {
+            let mut s = Set::blank();
+            s.load();
+            s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+            s.result();
+            *s.cards = 0;
+            s.rig.live.settings_dirty = 1;
+            s.st.sim.fail = rate;
+            let mut failed = 0;
+            for _ in 0..(4 * SETTINGS_DEBOUNCE_MS / TICK) {
+                s.tick();
+                failed += u32::from(s.result() == SETTINGS_FAILED);
+            }
+            (s.st.stats().errors > 0 && s.stored() != Some(s.gather())).then_some((s, failed))
+        })
+        .expect("a rate at which the save keeps failing");
     assert_eq!(failed, 1, "told once, not nagged");
     assert!(s.set.tries >= 2, "tried again: {}", s.set.tries);
     s.st.sim.fail = 0;

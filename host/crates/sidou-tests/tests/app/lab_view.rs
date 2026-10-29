@@ -118,7 +118,7 @@ fn each_card_turns_its_parameter_by_its_detent() {
         (LAB_PAGE_MOD, 0, LIVE_PARAM_VIBRATO_RATE, 60, 1),
         (LAB_PAGE_MOD, 1, LIVE_PARAM_VIBRATO_DEPTH, 20, 1),
         (LAB_PAGE_MOD, 2, LIVE_PARAM_VIBRATO_DELAY, 20, 1),
-        (LAB_PAGE_MOD, 3, LIVE_PARAM_VELOCITY_TARGET, 1, 1),
+        (LAB_PAGE_MOD, 3, LIVE_PARAM_ARP_RATE, 3, 1),
         (
             LAB_PAGE_FX,
             0,
@@ -217,6 +217,33 @@ fn filter_k4_is_the_filter_lfo_with_its_rate_on_the_name_line() {
     // the cards' text for the other pages' LFO: OSC's PWM HZ moves with it
     to_page(&mut ui, LAB_PAGE_OSC);
     assert_eq!(ui.small(row, 15, 6), "PWM HZ");
+}
+
+/// MOD's K4 is the arpeggio's RATE, as LIVE's ARP + K1 turns it: frames of 50 Hz (`3FR`), then
+/// the clock's notes (`1/32`, `1/16`, `1/8`); dark grey while ARP is off, and turned all the same.
+#[test]
+fn mod_k4_is_the_arp_rate_dark_while_arp_is_off() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_MOD);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let (row, val) = (LAB_VIEW_LABEL_ROW as usize, LAB_VIEW_VALUE_ROW as usize + 1);
+    assert_eq!(ui.small(row, 22, 4), "RATE");
+    assert_eq!(ui.big(val, 22, 2, 3), "3FR", "SAW LEAD's default rate");
+    assert_eq!(ui.g.attr[row * GRID_COLS as usize + 22] & 15, th.dim, "ARP off: dark");
+    ui.turn(K1 + 3, 4);
+    assert_eq!(u32::from(ui.live().arp_rate), LIVE_ARP_RATE_CLOCK, "settable while off");
+    settle(&mut ui);
+    assert_eq!(ui.big(val, 22, 2, 4), "1/32");
+    ui.turn(K1 + 3, 2);
+    settle(&mut ui);
+    assert_eq!(ui.big(val, 22, 2, 3), "1/8");
+    ui.turn(PANEL_ENC_ALGORITHM, 1); // ARP UP
+    settle(&mut ui);
+    assert_ne!(ui.g.attr[row * GRID_COLS as usize + 22] & 15, th.dim, "ARP on: lit");
+    ui.turn(K1 + 3, -7);
+    assert_eq!(ui.live().arp_rate, 1);
+    settle(&mut ui);
+    assert_eq!(ui.big(val, 22, 2, 3), "2FR");
 }
 
 /// On SYNC LEAD (a mono-sync saw) OSC's K1 reads RATIO and turns the sync ratio's semitones.
@@ -2490,7 +2517,7 @@ fn save_and_each_card_learns_its_parameter() {
                 LIVE_PARAM_VIBRATO_RATE,
                 LIVE_PARAM_VIBRATO_DEPTH,
                 LIVE_PARAM_VIBRATO_DELAY,
-                LIVE_PARAM_VELOCITY_TARGET,
+                LIVE_PARAM_ARP_RATE,
             ],
         ),
         (
@@ -2542,6 +2569,7 @@ fn learn_names_every_lab_card() {
         (LIVE_PARAM_VIBRATO_DEPTH, "VIB AMT"),
         (LIVE_PARAM_VIBRATO_DELAY, "VIB DLY"),
         (LIVE_PARAM_FILTER_LFO, "FILT LFO"),
+        (LIVE_PARAM_ARP_RATE, "ARP RATE"),
     ];
     for (p, name) in names {
         let mut buf = [0 as std::os::raw::c_char; LEARN_VIEW_NAME as usize];

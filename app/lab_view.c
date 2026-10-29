@@ -51,7 +51,6 @@ static const char* const MODE_NAMES[8] = {"OFF", "LP",    "BP",    "LP+BP",
                                           "HP",  "NOTCH", "BP+HP", "ALL"};
 static const char* const ARP_NAMES[5] = {"ARP OFF", "ARP UP", "ARP DOWN", "ARP UP-DOWN",
                                          "ARP PLAYED"};
-static const char* const VELOCITY_NAMES[4] = {"OFF", "SUS", "CUT", "PW"};
 /* The hint line's phrases: every LAB gesture, a phrase at a time. */
 static const char* const HINTS[LAB_VIEW_HINTS] = {
     "EDIT A/B  +LFO UNDO  +ARP VARY",
@@ -233,8 +232,16 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             copy(name, "VIB HZ");
             tenths(value, v);
         } else if (k == 3u) {
-            copy(name, "VELO");
-            copy(value, VELOCITY_NAMES[v & 3u]);
+            /* the arpeggio's rate: frames of 50 Hz ("3FR"), or the clock's note ("1/16"); dark
+             * while ARP is off, and turned all the same */
+            copy(name, "RATE");
+            if (v >= LIVE_ARP_RATE_CLOCK) {
+                char* e = append(value, "1/");
+                *number(e, (int32_t)(96u / live_arp_steps[v % LIVE_ARP_RATES]), 0) = 0;
+            } else {
+                *append(number(value, live_arp_steps[v], 0), "FR") = 0;
+            }
+            return l->arp_on;
         } else {
             copy(name, k == 1u ? "DEPTH" : "DELAY");
             (void)number(value, (int32_t)v, 0);
@@ -711,7 +718,7 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
         }
         break;
     case LAB_PAGE_MOD:
-        add(l, k == 3u ? (uint32_t)LIVE_PARAM_VELOCITY_TARGET : LIVE_PARAM_VIBRATO_RATE + k, d);
+        add(l, k == 3u ? (uint32_t)LIVE_PARAM_ARP_RATE : LIVE_PARAM_VIBRATO_RATE + k, d);
         break;
     default: live_slot_turn(l, l->fx_select % LIVE_SLOTS, LIVE_SLOT_AMOUNT + k, d); break;
     }

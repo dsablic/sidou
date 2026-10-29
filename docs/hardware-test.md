@@ -2406,6 +2406,11 @@ What it decides: whether 1.1's additions to LAB sound and feel right. Set up as 
   *Device-only:* by ear: no zipper or stepping on the 6581's filter at slow rates and deep sweeps
   (the cutoff moves up to 100 times a second, 1/256 of a detent at a time), and whether 32
   detents each way is a useful range.
+- [ ] **ARP RATE on MOD's K4:** ARP on with ALGORITHM, a chord held, K4 through the rates; with a
+  MIDI clock coming in, the last three follow it.
+  *Emulator:* `sidou-tests/tests/app/lab_view.rs::mod_k4_is_the_arp_rate_dark_while_arp_is_off`,
+  `sidou-tests/tests/app/live_macro.rs::the_arp_rate_is_a_parameter_on_cc_28s_row`.
+  *Device-only:* none beyond section 22's (the card read at arm's length).
 
 Notes:
 

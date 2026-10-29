@@ -525,6 +525,7 @@ LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_COUNT])
     out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(p->pwm_rate);
     out[LIVE_PARAM_TUNE] = LIVE_TUNE_CENTS;
     out[LIVE_PARAM_FILTER_LFO] = 0;
+    out[LIVE_PARAM_ARP_RATE] = LIVE_ARP_RATE_DEFAULT;
 }
 
 static void put16(uint8_t* s, uint32_t at, uint32_t v) {
@@ -843,6 +844,7 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_PWM_RATE: return LIVE_PWM_RATE_MAX;
     case LIVE_PARAM_TUNE: return 2u * LIVE_TUNE_CENTS;
     case LIVE_PARAM_FILTER_LFO: return LIVE_FILTER_LFO_MAX;
+    case LIVE_PARAM_ARP_RATE: return LIVE_ARP_RATES - 1u;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return SID_CHARACTER_MAX;
@@ -1047,6 +1049,7 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         l->filter_lfo = (uint8_t)value;
         li_update_cutoff(l);
         break;
+    case LIVE_PARAM_ARP_RATE: live_arp_set(l, LIVE_ARP_RATE, value); break;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             if (l->expert[param - LIVE_PARAM_EXPERT] != value) {
@@ -1096,6 +1099,7 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_PWM_RATE: return live_pwm_rate(l->pwm_rate);
     case LIVE_PARAM_TUNE: return (uint32_t)(l->tune + LIVE_TUNE_CENTS);
     case LIVE_PARAM_FILTER_LFO: return l->filter_lfo;
+    case LIVE_PARAM_ARP_RATE: return l->arp_rate;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return expert_get(l, param - LIVE_PARAM_EXPERT);

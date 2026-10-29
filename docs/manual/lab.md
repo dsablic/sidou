@@ -72,6 +72,13 @@ name line shows the rate (`LFO1.3HZ`). On a sound with no rate yet the first det
 1 Hz, so you hear it at once. The drawing dots the band the cutoff sweeps through. CC 31 sets it
 from MIDI.
 
+## The arpeggio's speed
+
+MOD's K4 is the arpeggio's **RATE**, as ARP + K1 on LIVE: a note every few frames (`3FR`), or
+in time with a MIDI clock (`1/32`, `1/16`, `1/8`). It is dark while ARP is off, and you can set
+it all the same, ready for when you turn ARP on with ALGORITHM. (1.0 had the velocity target
+here; it is NRPN 6/1 now.)
+
 ## What is not there yet
 
 Sending a sound to a song as an instrument is planned for 1.x ([the roadmap](../ROADMAP.md)).

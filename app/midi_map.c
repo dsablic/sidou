@@ -190,6 +190,11 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
         "rate; a preset's (off)",
         LIVE_PARAM_FILTER_LFO, LIVE_CC_FILTER_LFO, NRPN(NRPN_LIVE, 8), LIVE_FILTER_LFO_MAX, 0,
         STEPS),
+    ROW("Live", "ARP rate",
+        "the chord arpeggio's: 0..5 a note every 1, 2, 3, 4, 6 or 8 frames of 50 Hz, 6..8 a 32nd, "
+        "a 16th or an 8th of the MIDI clock (Chord arpeggio, below); a preset's (2)",
+        LIVE_PARAM_ARP_RATE, LIVE_CC_ARP_RATE, NRPN(NRPN_LIVE, 9), LIVE_ARP_RATES - 1,
+        LIVE_ARP_RATE_DEFAULT, STEPS),
 
     ROW("Output", "Spread",
         "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "
@@ -246,6 +251,7 @@ static const uint8_t cc_rows[128] = {
     [LIVE_CC_VIBRATO_DEPTH] = 41u,
     [LIVE_CC_VIBRATO_DELAY] = 42u,
     [LIVE_CC_FILTER_LFO] = TAIL_ROW(LIVE_PARAM_FILTER_LFO), /* the sound's, after the experts */
+    [LIVE_CC_ARP_RATE] = TAIL_ROW(LIVE_PARAM_ARP_RATE),
     [MIDI_MAP_CC_SPREAD] = MIDI_MAP_ROWS, /* the last row */
     SLOT_CC(0),  SLOT_CC(1),  SLOT_CC(2),  SLOT_CC(3),  SLOT_CC(4),
     SLOT_CC(5),  SLOT_CC(6),  SLOT_CC(7),  SLOT_CC(8),  SLOT_CC(9),

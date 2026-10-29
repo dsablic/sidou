@@ -113,3 +113,28 @@ fn the_filter_lfo_is_a_parameter_of_the_sound_with_a_cc() {
     unsafe { live_preset_params(1, out.as_mut_ptr()) };
     assert_eq!(out[LIVE_PARAM_FILTER_LFO as usize], 0);
 }
+
+/// The arpeggio's rate is a parameter (LAB's MOD K4): CC 28 through its map row (the same rates
+/// as before), an NRPN, and MIDI learn can rebind it; a preset loads its default.
+#[test]
+fn the_arp_rate_is_a_parameter_on_cc_28s_row() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    assert_eq!(unsafe { live_param_max(LIVE_PARAM_ARP_RATE) }, LIVE_ARP_RATES - 1);
+    assert_eq!(get(&rig, LIVE_PARAM_ARP_RATE), LIVE_ARP_RATE_DEFAULT);
+    set(&mut rig, LIVE_PARAM_ARP_RATE, 7);
+    assert_eq!(rig.live.arp_rate, 7);
+    set(&mut rig, LIVE_PARAM_ARP_RATE, 99);
+    assert_eq!(u32::from(rig.live.arp_rate), LIVE_ARP_RATES - 1, "clamped");
+    let e = unsafe { midi_map_for_cc(LIVE_CC_ARP_RATE as u8) };
+    assert!(!e.is_null(), "CC 28 is a row's");
+    assert_eq!(u32::from(unsafe { (*e).param }), LIVE_PARAM_ARP_RATE);
+    for (value, rate) in [(0u8, 0u8), (14, 0), (15, 1), (100, 7), (127, 8)] {
+        rig.cc(LIVE_CC_ARP_RATE, value);
+        assert_eq!(rig.live.arp_rate, rate, "CC {value}");
+    }
+    rig.set_preset(1);
+    assert_eq!(get(&rig, LIVE_PARAM_ARP_RATE), LIVE_ARP_RATE_DEFAULT);
+    let mut out = [0u16; LIVE_PARAM_COUNT as usize];
+    unsafe { live_preset_params(1, out.as_mut_ptr()) };
+    assert_eq!(u32::from(out[LIVE_PARAM_ARP_RATE as usize]), LIVE_ARP_RATE_DEFAULT);
+}

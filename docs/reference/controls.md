@@ -739,7 +739,7 @@ value popup; PRESETS opens no popup either (the header names the sound).
 | OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
 | ENVELOPE | ATTACK | DECAY | SUS (the sustain level) | RELEASE (0..15, a step a detent) | INSTANT, AUTHENTIC: the envelope mode, the instrument's for every sound (ALL SOUNDS) |
 | FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | LFO: the filter LFO's depth, `0` (off) to `32` of K1's detents each way, a triangle (up first) at the rate OSC's PWM HZ sets, shown on the card's name line (`LFO1.3HZ`); turned up from off on a sound with no rate yet, the rate starts at 1 Hz; the drawing dots the band the cutoff sweeps | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
-| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | VELO: the velocity target (OFF, SUS, CUT, PW) | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
+| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | RATE: the arpeggio's rate, as LIVE's ARP + K1 (`3FR`: a note every 3 frames of 50 Hz, then `1/32`, `1/16`, `1/8` of the MIDI clock); dark grey while ARP is off, and set all the same. The velocity target, which this card had in 1.0, is NRPN 6/1's | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
@@ -950,7 +950,8 @@ release); while it is on a badge at 2× under LIVE's band says so, readable at a
 - **MIDI:** notes held over MIDI arpeggiate as the keys do, with them; up to eight notes held
   (a ninth drops the oldest). CC 27 switches it (on from 64), CC 28 sets the rate (0..127 over
   the nine rates), CC 29 the order and CC 30 the span (2 octaves from 64): [midi.md](midi.md),
-  Chord arpeggio. MIDI out does not send them.
+  Chord arpeggio. The rate is a parameter of the map (NRPN 0/9: MIDI learn can move it to
+  another CC, and MIDI out sends it); the other three are not, and MIDI out does not send them.
 
 ## Effect slots
 

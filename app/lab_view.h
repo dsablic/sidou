@@ -19,7 +19,7 @@
  *   nothing in LAB is found only on the help card (a toast, on rows 27-28, leaves it).
  * A card or the choice that was just turned is lit (its name in reverse video) for
  * SCREEN_POPUP_MS, in place of the value popup (app/views.c lab_frame). A card the page has no
- * use for (FILTER's K4; a slot's control its algorithm does not use) is dark grey.
+ * use for (a slot's control its algorithm does not use; MOD's RATE while ARP is off) is dark grey.
  *
  * The cards and the choice, by page (panel_lab_param names a card's parameter):
  * - OSC: PULSE (the pulse width, LIVE's walk of LIVE_PULSE_STEP; RATIO on a mono-sync sound
@@ -27,9 +27,11 @@
  *   HZ (its rate, 0.05 Hz a detent), TUNE (cents); the waveform, the combined ones, then the
  *   triangle's ring and the saw's and pulse's sync (lab_view_wave_choices).
  * - ENVELOPE: ATTACK, DECAY, SUSTAIN, RELEASE (0..15); the envelope mode.
- * - FILTER: CUTOFF (LIVE's K1 walk), RESO, VOICES (the voices routed, 1 2 3); LP, BP, HP, NOTCH.
- * - MOD: the vibrato's rate (VIB HZ), depth and delay, and the velocity target (VELO); ARP off
- *   or its order.
+ * - FILTER: CUTOFF (LIVE's K1 walk), RESO, VOICES (the voices routed, 1 2 3), the filter LFO's
+ *   depth (its rate, OSC's PWM HZ, on the name line: "LFO1.3HZ"; from off with no rate, 1 Hz);
+ *   LP, BP, HP, NOTCH.
+ * - MOD: the vibrato's rate (VIB HZ), depth and delay, and the arpeggio's RATE (LIVE's ARP + K1:
+ *   "3FR", "1/16"; dark while ARP is off, turned all the same); ARP off or its order.
  * - FX: the selected slot's Amount, A, B and Mix (named for its algorithm, app/chip_view.h);
  *   the slot's algorithm, OFF included. SCL selects the next slot, as everywhere.
  *

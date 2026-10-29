@@ -68,7 +68,7 @@ void learn_view_param_name(uint32_t param, char* buf) {
         append(buf, LEARN_VIEW_NAME, chip_view_expert_name(param - LIVE_PARAM_EXPERT));
     } else if (param >= LIVE_PARAM_EXPERT_END && param < LIVE_PARAM_COUNT) {
         static const char* const TAIL[LIVE_PARAM_TAIL] = {"PWM DEPTH", "PWM RATE", "TUNE",
-                                                          "FILT LFO"};
+                                                          "FILT LFO", "ARP RATE"};
         append(buf, LEARN_VIEW_NAME, TAIL[param - LIVE_PARAM_EXPERT_END]);
     } else {
         /* LAB's cards past the ones above (each at most 8 characters: "LEARN " fits) */

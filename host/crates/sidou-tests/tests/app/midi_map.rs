@@ -1297,11 +1297,11 @@ jack, which is MIDI IN only.
     )
 }
 
-/// The chord arpeggio's CCs (app/live.h live_arp_set): not rows of the map.
-fn arp_ccs() -> [(u32, &'static str); 4] {
+/// The chord arpeggio's CCs (app/live.h live_arp_set) that are no rows of the map (its rate is
+/// one: ARP rate).
+fn arp_ccs() -> [(u32, &'static str); 3] {
     [
         (LIVE_CC_ARP, "Chord arpeggio on/off"),
-        (LIVE_CC_ARP_RATE, "Chord arpeggio rate"),
         (LIVE_CC_ARP_ORDER, "Chord arpeggio order"),
         (LIVE_CC_ARP_SPAN, "Chord arpeggio span"),
     ]
@@ -1326,9 +1326,10 @@ fn arp_section() -> String {
 The live instrument's chord arpeggio ([controls.md](controls.md), Chord arpeggio): with it on,
 the notes held, MIDI's and the keys' together (up to {held}; a ninth drops the oldest), are one
 voice stepping through them at the rate, its gate held from the first note to the release of
-the last. Its CCs are in a block MIDI leaves undefined; they are no parameters of the map (no
-NRPN), MIDI learn does not reach them, and MIDI out does not send them. A learned CC wins over
-them, as over the map's.
+the last. Its CCs are in a block MIDI leaves undefined. The rate is a parameter of the map (ARP
+rate: NRPN 0/9; MIDI learn reaches it, MIDI out sends it, a program change loads its default);
+on/off, the order and the span are no parameters (no NRPN), MIDI learn does not reach them and
+MIDI out does not send them. A learned CC wins over them, as over the map's.
 
 - **CC {on}, on/off:** off below 64, on from 64. A program change loads the preset's factory
   settings: off.
@@ -1740,9 +1741,11 @@ fn doc() -> String {
     s
 }
 
-/// The chord arpeggio's CCs are no row's, and in a block MIDI leaves undefined (20..31).
+/// The chord arpeggio's CCs but the rate's are no row's, and all are in a block MIDI leaves
+/// undefined (20..31).
 #[test]
 fn the_arpeggio_ccs_are_free_and_undefined_in_midi() {
+    assert!((20..=31).contains(&LIVE_CC_ARP_RATE));
     for (cc, _) in arp_ccs() {
         assert!((20..=31).contains(&cc), "CC {cc}");
         assert!(

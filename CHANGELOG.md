@@ -14,11 +14,15 @@ All notable changes are documented here. The format follows
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
   rate starts it at 1 Hz. CC 31 and NRPN 0/8 reach it (docs/reference/midi.md); a preset loads
   it off, and DICE's rolls leave it off. It is kept with the sound.
+- **LAB: the arpeggio's RATE on MOD's K4** (`3FR`, `1/16`: LIVE's ARP + K1), dark while ARP is
+  off and set all the same. The rate is a parameter of the MIDI map now: CC 28 goes through its
+  row, so MIDI learn can rebind it, it has NRPN 0/9 and MIDI out sends it.
 
 ### Changed
+- LAB's MOD K4 was the velocity target; that stays on NRPN 6/1.
 - A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
   unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
-  schema 9: it keeps the filter LFO's learned CC.
+  schema 9: it keeps the learned CCs of 1.1's parameters.
 
 ### Fixed
 - LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as

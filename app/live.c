@@ -971,8 +971,8 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
         live_reset_controllers(l);
         return;
     }
-    if ((uint32_t)cc - LIVE_CC_ARP <= LIVE_CC_ARP_SPAN - LIVE_CC_ARP) {
-        /* the arpeggio's: on from 64, the rest scaled over their values */
+    if ((uint32_t)cc - LIVE_CC_ARP <= LIVE_CC_ARP_SPAN - LIVE_CC_ARP && cc != LIVE_CC_ARP_RATE) {
+        /* the arpeggio's: on from 64, the rest scaled over their values (the rate is the map's) */
         static const uint8_t VALUES[4] = {2, LIVE_ARP_RATES, 4, LIVE_ARP_SPAN_MAX};
         uint32_t f = (uint32_t)cc - LIVE_CC_ARP;
         live_arp_set(l, f, (uint32_t)value * VALUES[f] / 128u + (f == LIVE_ARP_SPAN));
@@ -1053,6 +1053,7 @@ void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(l->pwm_rate);
     out[LIVE_PARAM_TUNE] = (uint16_t)(l->tune + LIVE_TUNE_CENTS);
     out[LIVE_PARAM_FILTER_LFO] = l->filter_lfo;
+    out[LIVE_PARAM_ARP_RATE] = l->arp_rate;
 }
 
 /* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8

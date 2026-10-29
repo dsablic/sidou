@@ -171,7 +171,7 @@ static const char* const LAB_FILTER_LINES[] = {
     "K1\0CUTOFF", "K2\0RESONANCE", "K3\0VOICES", "K4\0FILTER LFO",
     "ALG\0FILTER", LAB_TAIL_A,      LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
 static const char* const LAB_MOD_LINES[] = {
-    "K1\0VIBRATO HZ", "K2\0VIB DEPTH", "K3\0VIB DELAY", "K4\0VELOCITY",
+    "K1\0VIBRATO HZ", "K2\0VIB DEPTH", "K3\0VIB DELAY", "K4\0ARP RATE",
     "ALG\0ARP",       LAB_TAIL_A,      LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
 /* FX: the selected slot's controls in its algorithm's words; SCL moves the slot (no room left
  * for the learn line). */
