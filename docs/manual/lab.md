@@ -35,7 +35,7 @@ The full table of cards is in [controls.md](../reference/controls.md#lab).
 | tap **EDIT** | A/B: the sound as kept or loaded (A), then back to your edit (B) |
 | **EDIT + LFO** | undo, up to 16 steps back (`UNDO (3)`) |
 | **EDIT + ARP** | vary the page a little, never silent, never the same twice |
-| **EDIT + SCL** | roll the whole voice, as DICE does, also never silent and undoable |
+| **EDIT + SCL** | roll the whole voice, as DICE does, also never silent and undoable; either finger may land first (SCL alone selects the next effect slot when it is let go) |
 | **EDIT + PRESETS** | back to the sound as kept or loaded |
 
 A result is held to what a C4 would give on the chip: if none of the tries is audible the sound

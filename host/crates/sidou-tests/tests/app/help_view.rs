@@ -1057,6 +1057,9 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
             if c.s.ui.v.step.scl_down == STEP_VIEW_SCL_ALONE as u8 {
                 continue;
             }
+            if c.s.ui.v.lab.scl_alone != 0 {
+                continue; // LAB's SCL waits for EDIT the same way
+            }
             need.insert((ctl, edit));
         }
     }

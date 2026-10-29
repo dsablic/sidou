@@ -743,7 +743,8 @@ value popup; PRESETS opens no popup either (the header names the sound).
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
-page follows it). The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, REC, GLO,
+page follows it); alone it waits for EDIT a moment (EDIT + SCL is the roll whichever finger lands
+first), and selects the slot when it is let go, or as soon as another control is used while it is down. The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, REC, GLO,
 MASTER and PRESETS do what they do in every view.
 
 **SAVE** keeps the sound with one press, whatever the page. A USER sound is kept in its own
@@ -795,7 +796,7 @@ kept.
 
 **EDIT + ARP** varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
 detents either way, and one time in four ALGORITHM's choice a step (not ENVELOPE's: the envelope
-mode is every sound's); on FX with the slot off, the choice. **EDIT + SCL** rolls the voice as
+mode is every sound's); on FX with the slot off, the choice. **EDIT + SCL** (whichever lands first) rolls the voice as
 DICE does (the waveform with its ring or sync, the envelope, the cutoff, resonance, mode and
 routing, a pulse's width, the vibrato's depth); the effect slots, the arpeggio, the PWM and the
 fine tune stay, and so do the sound's name and its base (it is still the sound being shaped, now
