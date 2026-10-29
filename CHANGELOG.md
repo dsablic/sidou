@@ -9,6 +9,28 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **LAB, a view to shape one sound and keep it** (1.0, in progress). Five pages, OSC, ENVELOPE,
+  FILTER, MOD and FX, each with four cards on K1 to K4 and a drawing of what they do (the pulse's
+  width, the envelope, the filter's curve, the modulation, the effect slot); ALGORITHM is the
+  page's choice (the waveform, the envelope mode, the filter mode, the arpeggio, the slot's
+  algorithm). It opens from the menu (after SONG) and from LIVE with ENV, LFO or FX; HOME goes back
+  to LIVE. A slot's algorithm OFF on the FX page bypasses it. SAVE held with a knob learns that
+  card's parameter for MIDI; every page has a help card
+  ([shape a sound in LAB](docs/manual/lab.md)).
+- **Keep it, name it, undo it.** SAVE keeps the sound as one of sixteen **USER sounds** (`LAB 01`
+  and on, in the lowest free slot, or in place for a USER sound); EDIT + SAVE opens a name page
+  (the keys type A to Z and a space). Tapping EDIT compares the sound as kept (A) with the edit
+  (B); EDIT + LFO undoes, sixteen steps; EDIT + PRESETS goes back to the sound as kept. EDIT + ARP
+  varies the page and EDIT + SCL rolls the voice, and neither result is ever silent (an estimate of
+  a C4 held for 500 ms) or the same as the one before.
+- **USER sounds in PRESETS.** PRESETS clockwise from DICE plays the USER sounds (`U01` to `U16`,
+  empty slots skipped); a USER sound loads as a preset, with its three effect slots and its name,
+  and its edits come back when it is loaded again. A MIDI program change knows the built-ins only.
+- **The store and MIDI:** the sixteen sounds are one private store file (`USER SOUNDS`, type 4,
+  rewritten whole a keep at a time; a power cut leaves the old file or the new; SAVE AS and SysEx
+  refuse its name and no list shows it) and the unsaved edit is one more key. The settings record
+  is schema 8; old records load as before. The PWM depth, PWM rate and fine tune are MIDI
+  parameters (NRPN, no CC).
 - **DICE's settings on STEP:** with EDIT + SCL held, K1 sets the density (SPARSE, LIGHT, MEDIUM,
   BUSY, FULL: how many steps get a note) and K3 the scale (MIN PENT, MAJ PENT, MINOR, MAJOR,
   DORIAN, CHROMATIC); the frame shows both at 2x while SCL is held. Letting go of SCL with no
@@ -24,6 +46,11 @@ All notable changes are documented here. The format follows
   the store retired sectors for the session, `RETIRED n ERR n`; nothing while it is healthy.
 
 ### Changed
+- **ENV, LFO and FX open LAB.** On LIVE, ENV
+  toggled the chip model and cycled the effect, FX stepped the next algorithm, and LFO did
+  nothing. They open LAB at ENVELOPE, MOD and FX now, and do nothing outside LIVE and LAB. The chip model is ALGORITHM on
+  LIVE's TONE page (or CC 25), the next algorithm is ALGORITHM on a slot's page, and an effect is
+  bypassed by turning its algorithm to OFF. The first-run tour's `PRESS ENV` now opens LAB.
 - **Readable small text on TABLE and STEP:** TABLE's meaning line is at 2x for every table (the
   PULSE, FILTER and SPEED words are shorter), and STEP's step ruler and each lane's note,
   instrument and gate line (`C-3 I01 STAC`) are at 2x. The greyed chip B lane (`CHIP B IN M5`)
