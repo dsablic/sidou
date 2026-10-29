@@ -162,7 +162,7 @@ install the unit appears as Felucca's loader.
 
 - [ ] `fm1_install.py sidou.fwsc` starts: step 1 (SIDOU or stock reads the
   package and stages the loader) reports no error.
-  *Emulator:* `emu-gate/tests/usb.rs::the_running_firmware_serves_an_updates_whole_step_one` (every read of step 1, the loader staged, the success, the record, the restart), `sidou-pack/tests/ota_step1.rs::a_package_stages_its_loader_and_commits`; *device-only:* the real `fm1_install.py` on a real computer and OS.
+  *Emulator:* `emu-gate/tests/usb.rs::the_running_firmware_serves_an_updates_whole_step_one` (every read of step 1, the loader staged, the success, the record; the core reset into the loader is not modelled: the core waits for it), `sidou-pack/tests/ota_step1.rs::a_package_stages_its_loader_and_commits`; *device-only:* the real `fm1_install.py` on a real computer and OS.
 - [ ] The unit restarts into the update loader. It enumerates as Felucca's
   loader, whatever the OS shows (expected: "Felucca Update", USB
   1209:0002, identity `ota-FM-1_900`). Record what you see:
@@ -1313,11 +1313,11 @@ Notes:
 
 - [ ] The unit enumerates as a USB-MIDI device "SIDOU FM-1" by "SIDOU
   contributors" (pid.codes test VID/PID 1209:0001). Record what the OS shows:
-  *Emulator:* `emu-gate/tests/usb.rs::a_host_gets_the_identity_and_the_knobs_over_usb` (device descriptor VID/PID 1209:0001, the strings "SIDOU contributors" and "SIDOU FM-1", EP0 in 64-byte packets), `sidou-pack/tests/usb_audio.rs::the_device_is_one_composite_usb_midi_and_class_compliant_audio_input` (the descriptors).
+  *Emulator:* `emu-gate/tests/usb.rs::a_host_gets_the_identity_and_the_knobs_over_usb` (fm1-emu's host enumerates it: device descriptor VID/PID 1209:0001, the product string "SIDOU FM-1" over EP0 and the manufacturer's "SIDOU contributors" in usb.c, EP0 in 64-byte packets), `sidou-pack/tests/usb_audio.rs::the_device_is_one_composite_usb_midi_and_class_compliant_audio_input` (the descriptors).
   *Device-only:* what macOS, Windows or Linux show for the unit (real USB hosts and OSes).
 - [ ] The same note, CC and program tests as section 7 pass over USB.
   *Emulator:* `sidou-tests/tests/app/midi_rx.rs::usb_packets_play_notes`, `sidou-tests/tests/app/midi_rx.rs::ccs_follow_the_default_mapping` (a USB CC 74 moves the cutoff), `sidou-tests/tests/app/midi_in.rs::a_channel_message_whole_is_its_bytes_one_at_a_time` (a USB packet gives the messages the TRS bytes give, so section 7's tests carry over).
-  *Emulator (no test yet):* a note-on, CC 74 and a program change sent through the emulated USB host (common/usb_host.rs) to the firmware image, checking pitch, cutoff and preset as `emu-gate/tests/midi.rs` does over TRS.
+  *Emulator (no test yet):* a note-on, CC 74 and a program change sent through fm1-emu's USB host (common/usb_host.rs) to the firmware image, checking pitch, cutoff and preset as `emu-gate/tests/midi.rs` does over TRS.
 - [ ] TRS and USB at the same time both play.
   *Emulator:* `sidou-tests/tests/app/midi_rx.rs::a_usb_message_between_the_bytes_of_a_trs_message_leaves_both_whole`, `sidou-tests/tests/app/midi_rx.rs::a_gap_restarts_only_the_parser_of_the_source_it_lost`.
 - [ ] **MIDI out (M1d):** in a DAW (or a MIDI monitor) on the SIDOU input, turn K1:
@@ -2164,9 +2164,10 @@ By ear; no device risk beyond the usual song editing.
 
 What it is: [README, What you can do](../README.md#what-you-can-do). The unit is one USB
 device, the MIDI port and a class-compliant audio input "SIDOU FM-1" (2 channels, 16-bit,
-44.1 or 48 kHz), Felucca's `usb.c` audio input. fm1-emu has no USB controller: the host tests
-(`host/crates/sidou-pack/tests/usb_audio.rs`, and Felucca's own `uac_test.c`) and a modelled
-host in emu-gate (`tests/usb.rs`) check the firmware's side; only the unit shows the chip's.
+44.1 or 48 kHz), Felucca's `usb.c` audio input. The host tests
+(`host/crates/sidou-pack/tests/usb_audio.rs`, and Felucca's own `uac_test.c`) and fm1-emu's own USB
+controller and host in emu-gate (`tests/usb.rs`) check the firmware's side; only the unit shows
+the chip's.
 A note held (or a song playing) throughout unless an item says otherwise.
 
 - [ ] **macOS:** plug in. Audio MIDI Setup lists "SIDOU FM-1" with 2 input channels and the
@@ -2224,7 +2225,7 @@ A note held (or a song playing) throughout unless an item says otherwise.
   *Device-only:* a real DAW holding the input open while the real loader updates the unit (install tools, real host).
 - [ ] **Stop and start:** stop the recording and start it again ten times, close and reopen the
   DAW, unplug and replug mid-recording: the stream comes back every time, the MIDI port too.
-  *Emulator:* `emu-gate/tests/usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz` (alt setting 0 stops the packets and the hand-over goes on).
+  *Emulator:* `emu-gate/tests/usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz` (the stream stopped, by the bus reset of a new enumeration as fm1-emu's host has no SET_INTERFACE to alt 0: no packets, the hand-over goes on).
   *Emulator (no test yet):* ten stop and start cycles and a bus reset mid-recording, the stream and the MIDI port coming back each time.
   *Device-only:* a real DAW closed and reopened and the cable replugged mid-recording (real host and DAW).
 - [ ] **Host asleep:** record, put the computer to sleep, wake it: the sound never stops on the

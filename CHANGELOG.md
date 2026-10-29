@@ -14,8 +14,11 @@ All notable changes are documented here. The format follows
   boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
   fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
   with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
-  8 s after the last feed. The update test checks the reset after its record. The budgets are
-  unchanged, instruction for instruction.
+  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
+- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
+  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
+  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
+  host cannot do is listed in `docs/upstream-reports.md` (row 11).
 
 ### Fixed
 - The Songs page waits and sends again when the FM-1 answers a transfer with NAK BUSY, instead

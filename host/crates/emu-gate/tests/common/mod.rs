@@ -207,7 +207,8 @@ pub struct Machine {
     /// Bytes read into each buffer snapshot as well (e.g. the voices' gates).
     pub snapshot_bytes: Vec<u32>,
     alnk_entry: u64,
-    /// A USB host on the cable (common::usb_host), None: no host, as fm1-emu has none.
+    /// The USB cable and a host on it (common::usb_host, fm1-emu's own: `plug_usb`), None: no
+    /// cable.
     pub usb: Option<usb_host::UsbHost>,
     /// Whether dropping the machine checks its stacks' deepest use (`Drop`): off for a run
     /// that leaves SIDOU (the stock firmware has its own stacks).
@@ -554,6 +555,13 @@ impl Machine {
             resets: Vec::new(),
             stop_at_reset: false,
         }
+    }
+
+    /// The USB cable in (the SIE answers) and a host on it from the next frame (`usb_frames`).
+    pub fn plug_usb(&mut self) {
+        let mut host = usb_host::UsbHost::plug(&mut self.soc);
+        host.start();
+        self.usb = Some(host);
     }
 
     /// Whether the chip asked for a reset `run_cycles` has not carried out (`stop_at_reset`).

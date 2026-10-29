@@ -1384,8 +1384,8 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
   pitch, and the sync lead keeps its ratio while it bends;
 - floods of chip-model CCs, pitch bends and program changes neither stall the main
   loop nor lose input;
-- a flood of filter CCs over USB (16 a millisecond, put straight into the MIDI in ring:
-  fm1-emu has no USB controller) of CC 74 and of CC 71, at age/heat 0 and 127, adds no
+- a flood of filter CCs over USB (16 a millisecond, put straight into the MIDI in ring, more
+  than fm1-emu's host sends in a frame) of CC 74 and of CC 71, at age/heat 0 and 127, adds no
   more to the audio interrupt than the ISR's allowance (100 instructions a sample), and
   age 127 no more than 2 a sample over age 0 (the filter is recomputed once a block);
 - MIDI out: the panel's changes go out as USB-MIDI packets, MIDI input is not echoed,
@@ -1466,16 +1466,15 @@ What fm1-emu does not do, so what only the device can tell. Each has a device ch
 [hardware-test.md](docs/hardware-test.md) and, where it is upstream's to fix, a line in
 [upstream-reports.md](docs/upstream-reports.md).
 
-- **No USB.** The USB0 registers (`0x11800..0x1183F`) are plain storage: the SIE never
-  reports a finished access, so unmodified firmware times out at boot, leaves USB off and
-  retries once a second. `usb_poll`'s cost with a host attached cannot be measured, and the
-  update protocol (USB only) cannot be driven. Covered instead by the host tests of the packet
-  conversion, the MIDI ring and the input logic; `step 1` (`ota.c`) against packages from
-  `sidou-pack` (`crates/sidou-pack/tests/ota_step1.rs`); and `crates/emu-gate/tests/usb.rs`,
-  which plays a host against a model of the controller (`tests/common/usb_host.rs`:
-  enumeration, the update handshake and first read, K1's and K4's MIDI out, the DAC's
-  output through a modelled EP4). The model is the firmware's side only: the chip's DMA and
-  timing are not in it. An install and USB timing are device checks (section 8 and 8.1).
+- **USB: fm1-emu's own model.** Since `93cb7ee3` fm1-emu models the USB0 controller (a Mentor
+  MUSB core behind JieLi's window) and a full-speed host on the cable, independent of Felucca's
+  driver. `crates/emu-gate/tests/usb.rs` drives that host a frame at a time
+  (`tests/common/usb_host.rs`): enumeration, the update handshake and step 1, K1's and K4's MIDI
+  out, SysEx transfers, USB audio at 44.1 and 48 kHz. Its SIE takes an estimated 1 µs a round
+  trip, which the USB tests' costs include. What its host cannot do (a control request of the
+  test's own, more than one bulk OUT a frame, the core reset into the update loader) is
+  upstream-reports.md row 11. The chip's DMA against a sleeping core and real USB timing stay
+  device checks (sections 8 and 8.1).
 - **No mask ROM.** Since `93cb7ee3` fm1-emu models the watchdog and the reset through
   `PR_PWR` (our report fm1-emu#65): a chip reset starts the firmware again from its entry with
   RAM kept (`Machine::resets` in the tests). What the FM-1's ROM does after a reset it has no
@@ -1643,8 +1642,8 @@ held to `STORE_POLL_WORK` too. The tests:
   device with V15's head takes SIDOU's package without its head being
   written, and the way back works: V15's own package passes `ota.c`'s
   head-identity check and is staged, while a device whose head had been
-  changed would refuse it before any erase. fm1-emu has no USB, so this is
-  where the protocol and the package format meet before hardware. With the
+  changed would refuse it before any erase. Here the protocol and the
+  package format meet on the host (emu-gate's `usb.rs` runs step 1 over fm1-emu's USB). With the
   fm1 build there, the loader it built (Felucca's) is staged too.
 - `flash_hooks.rs` runs the firmware's flash hooks for the update protocol
   (`platform/fm1/ota_flash.h`) with stand-ins for the flash driver, the

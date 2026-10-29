@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! USB-MIDI end to end in fm1-emu, with a host and the device controller modelled in the test
-//! crate (common::usb_host; fm1-emu itself has no USB controller). The host enumerates the
-//! device, asks for its identity as Felucca's installer does (the update protocol's handshake,
-//! cmd 0x11), and reads EP1 IN while K1 and PRESETS turn. On v0.2.0-m2-preview the device received
+//! USB-MIDI end to end in fm1-emu, with fm1-emu's own model of the FM-1's USB controller and
+//! a host on the cable (common::usb_host), a model independent of Felucca's driver. The host
+//! enumerates the device, asks for its identity as Felucca's installer does (the update
+//! protocol's handshake, cmd 0x11), and reads EP1 IN while K1 and PRESETS turn. On v0.2.0-m2-preview the device received
 //! all of this and a host saw almost none of what it sent (docs/hardware-test.md, section 8).
 //! What this checks is the firmware's side, as the USB fix made it:
 //! - it presents as "SIDOU FM-1" by "SIDOU contributors" (usb.c's string hook);
@@ -27,6 +27,7 @@ mod common;
 use common::usb_host::UsbHost;
 use common::{build_dir, run_past_boot, skip_message, Firmware, Machine, USB_AUDIO_PER_SAMPLE};
 use fm1_core::Bus;
+use fm1_soc::usb::UsbEvent;
 
 /// Felucca's ids: K1 (cutoff, CC 74) and PRESETS (the preset, a program change).
 const K1: u8 = 2;
@@ -58,45 +59,74 @@ fn up_and_config(m: &mut Machine, fw: &Firmware) -> (u8, u8) {
     (m.soc.read8(usb), m.soc.read8(usb + 1))
 }
 
-fn setup(m: &mut Machine, pkt: [u8; 8]) {
-    let usb = m.usb.as_mut().expect("a host");
-    usb.setup(&mut m.soc, pkt);
-    m.usb_frames(3);
-}
-
-/// Bus reset, address 7, the device and config descriptors, configuration 1.
+/// The host's enumeration, to the device configured (fm1-emu's host: the device descriptor,
+/// SET_ADDRESS, the configuration, the language and product strings, SET_CONFIGURATION),
+/// checked on what crossed EP0.
 fn enumerate(m: &mut Machine, fw: &Firmware) {
-    host(m).bus_reset();
-    m.usb_frames(3);
-    setup(m, [0x00, 0x05, 0x07, 0, 0, 0, 0, 0]);
+    host(m).start();
     host(m).in0.clear();
-    setup(m, [0x80, 0x06, 0x00, 0x01, 0, 0, 0x12, 0]);
-    let dev = host(m).in0.concat();
-    assert_eq!(dev.len(), 18, "the device descriptor: {dev:02x?}");
-    assert_eq!(&dev[8..12], &[0x09, 0x12, 0x01, 0x00], "VID/PID 1209:0001");
-    host(m).in0.clear();
-    setup(m, [0x80, 0x06, 0x00, 0x02, 0, 0, 0xFF, 0]);
-    m.usb_frames(3);
-    let cfg = host(m).in0.concat();
-    assert_eq!(cfg.len(), CONFIG_LEN, "the config descriptor over EP0");
-    assert_eq!(host(m).in0[0].len(), 64, "in 64-byte data packets");
-    // The strings: SIDOU's, through usb.c's string hook (platform/fm1/VENDORED.md).
-    for (index, text) in [(1u8, "SIDOU contributors"), (2, "SIDOU FM-1")] {
-        host(m).in0.clear();
-        setup(m, [0x80, 0x06, index, 0x03, 0x09, 0x04, 0xFF, 0]);
-        m.usb_frames(3);
-        let d = host(m).in0.concat();
-        let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        assert_eq!(
-            d[..2],
-            [2 + utf16.len() as u8, 3],
-            "string {index}: {d:02x?}"
-        );
-        assert_eq!(d[2..], utf16[..], "string {index}");
+    for _ in 0..2_000 {
+        if UsbHost::configured(&m.soc) {
+            break;
+        }
+        m.usb_frames(1);
     }
-    setup(m, [0x00, 0x09, 0x01, 0, 0, 0, 0, 0]);
-    assert_eq!(host(m).address(), 7);
-    assert_eq!(host(m).stalls, 0);
+    let events = m.soc.usb.events.clone();
+    assert!(
+        UsbHost::configured(&m.soc),
+        "not enumerated in 2 s: {events:?}"
+    );
+    // (a STALL or a wrong answer would have failed the enumeration)
+    assert!(
+        events.contains(&UsbEvent::Configured {
+            product: "SIDOU FM-1".into(),
+            vid: 0x1209,
+            pid: 0x0001
+        }),
+        "{events:?}"
+    );
+    assert!(
+        !events.iter().any(|e| matches!(e, UsbEvent::Failed(_))),
+        "{events:?}"
+    );
+    let in0 = host(m).in0.clone();
+    let dev = in0
+        .iter()
+        .find(|p| p.len() == 18 && p[1] == 1)
+        .expect("the device descriptor over EP0");
+    assert_eq!(&dev[8..12], &[0x09, 0x12, 0x01, 0x00], "VID/PID 1209:0001");
+    let at = in0
+        .iter()
+        .position(|p| p.len() == 64 && p[..2] == [9, 2])
+        .expect("the whole config descriptor over EP0");
+    let mut cfg = Vec::new();
+    for p in &in0[at..] {
+        cfg.extend_from_slice(p);
+        if p.len() < 64 {
+            break;
+        }
+    }
+    assert_eq!(cfg.len(), CONFIG_LEN, "the config descriptor over EP0");
+    assert_eq!(in0[at].len(), 64, "in 64-byte data packets");
+    // The strings: SIDOU's, through usb.c's string hook (platform/fm1/VENDORED.md). fm1-emu's
+    // host asks for the product's only: the manufacturer's is read where usb.c answers it from.
+    for (index, text) in [(1u8, "SIDOU contributors"), (2, "SIDOU FM-1")] {
+        let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let mut want = vec![2 + utf16.len() as u8, 3];
+        want.extend(&utf16);
+        let d = if index == 2 {
+            in0.iter()
+                .find(|p| p.len() > 2 && p[1] == 3 && p[2..] == utf16[..])
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            let at = fw.symbol("STR1");
+            (0..want.len() as u32)
+                .map(|i| m.soc.read8(at + i))
+                .collect()
+        };
+        assert_eq!(d, want, "string {index}: {d:02x?}");
+    }
     assert_eq!(up_and_config(m, fw), (1, 1), "not configured");
 }
 
@@ -154,15 +184,11 @@ fn message(cmd: u8, body: &[u8]) -> Vec<u8> {
     sx
 }
 
+/// USB-MIDI event packets to the device: the host sends them from the next frame on, 64
+/// bytes a frame, again the next frame while the device NAKs.
 fn send(m: &mut Machine, bytes: &[u8]) {
-    for chunk in bytes.chunks(64) {
-        loop {
-            let usb = m.usb.as_mut().expect("a host");
-            if usb.out1(&mut m.soc, chunk) {
-                break;
-            }
-            m.usb_frames(1);
-        }
+    for msg in UsbHost::messages(bytes) {
+        UsbHost::send(&mut m.soc, &msg);
     }
 }
 
@@ -216,7 +242,7 @@ fn a_host_gets_the_identity_and_the_knobs_over_usb() {
         return;
     };
     let mut m = Machine::boot(&fw.image);
-    m.usb = Some(UsbHost::default());
+    m.usb = Some(UsbHost::plug(&mut m.soc));
     run_past_boot(&mut m, &fw);
     m.usb_frames(20);
     assert_eq!(
@@ -284,16 +310,13 @@ fn a_host_gets_the_identity_and_the_knobs_over_usb() {
     );
     assert!(host(&mut m).in1.iter().all(|p| p.len() <= IN_MAX));
 
-    let usb = m.usb.as_ref().expect("a host");
-    println!(
-        "{} SIE accesses, {} inside an audio interrupt",
-        usb.sie_accesses, usb.sie_in_audio
+    let (sie, in_audio) = (
+        UsbHost::sie_accesses(&m.soc),
+        m.usb.as_ref().expect("a host").sie_in_audio,
     );
-    assert!(usb.sie_accesses > 0);
-    assert_eq!(
-        usb.sie_in_audio, 0,
-        "USB polled nested in the audio interrupt"
-    );
+    println!("{sie} SIE accesses, {in_audio} inside an audio interrupt");
+    assert!(sie > 0);
+    assert_eq!(in_audio, 0, "USB polled nested in the audio interrupt");
 }
 
 #[test]
@@ -302,7 +325,7 @@ fn an_upgrade_request_gets_the_first_read_request_out() {
         return;
     };
     let mut m = Machine::boot(&fw.image);
-    m.usb = Some(UsbHost::default());
+    m.usb = Some(UsbHost::plug(&mut m.soc));
     run_past_boot(&mut m, &fw);
     m.usb_frames(20);
     enumerate(&mut m, &fw);
@@ -457,7 +480,7 @@ impl Link {
 /// A USB host with the device enumerated and the song I/O settled after the boot.
 fn usb_machine(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
-    m.usb = Some(UsbHost::default());
+    m.usb = Some(UsbHost::plug(&mut m.soc));
     run_past_boot(&mut m, fw);
     enumerate(&mut m, fw);
     let songs = fw.symbol("songs") + sidou_sys::ilp32::song_io::state as u32;
@@ -830,7 +853,10 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
         m.usb_frames(40);
     };
     tap(&mut m, &[play]);
-    m.usb_frames(1_500);
+    // (no continue may fall at the song's end, where it starts the song again with no song
+    // position: from 1,000 ms none of the sixteen does; from 1,500 the thirteenth did, with
+    // fm1-emu's host's timing)
+    m.usb_frames(1_000);
     tap(&mut m, &[play]);
     m.usb_frames(300);
     let mut held = 0;
@@ -872,7 +898,10 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
         link.send(&mut m, 0x7e, 32, &[]);
         m.usb_frames(20);
         let inside = spp_inside(&host(&mut m).in1);
-        println!("continue {delay} ms before the DATA's ACK: song position inside {inside:?}");
+        println!(
+            "continue {delay} ms before the DATA's ACK (stopped at call {stopped_at}): song \
+             position inside {inside:?}"
+        );
         assert_eq!(
             inside,
             Some(false),
@@ -958,12 +987,12 @@ fn clocks_stamped_late_by_a_flash_hold_stay_out_of_the_clocks_fit() {
 }
 
 /// A host that floods EP1 OUT with a foreign SysEx dump as fast as the device takes it (a
-/// packet again as soon as the last one was read: two a millisecond, at USB's 2 kHz poll, 32
-/// events), while a chord plays and, every 40 ms, the main loop is held 20 ms before it drains
-/// MIDI (a long pass): SIDOU's MIDI-in ring never loses an event, the device NAKs the host
-/// instead (review 4.5: EP1 NAKed only on usb.c's own ring, which never holds SysEx, so a dump
-/// overflowed SIDOU's 256 entries in a long pass, and the gap released every note and reset
-/// SysEx).
+/// 64-byte packet, 16 events, every frame the device does not NAK: fm1-emu's host sends one
+/// bulk OUT a frame), while a chord plays and, every 40 ms, the main loop is held 20 ms before
+/// it drains MIDI (a long pass): SIDOU's MIDI-in ring never loses an event, the device NAKs the
+/// host instead (review 4.5: EP1 NAKed only on usb.c's own ring, which never holds SysEx, so a
+/// dump overflowed SIDOU's 256 entries in a long pass, and the gap released every note and
+/// reset SysEx).
 #[test]
 fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
     let Some(fw) = fixture("USB back-pressure on a SysEx flood") else {
@@ -985,30 +1014,21 @@ fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
         .chain((0..8192u32).map(|i| (i % 127) as u8))
         .chain(std::iter::once(0xf7))
         .collect();
-    let packets = sysex_packets(&dump);
-    let step = m.soc.periph.cycle_of_ms(1) / 8;
     let long_pass = m.soc.periph.cycle_of_ms(20);
     let drain = fw.symbol("midi_drain");
     let (start, mut naks, mut held) = (m.ms(), 0u64, 0u32);
     let mut next_pass = m.ms() + 5;
-    for chunk in packets.chunks(64) {
-        loop {
-            if m.ms() >= next_pass {
-                m.busy = Some((drain, long_pass));
-                held += 1;
-                next_pass = m.ms() + 40;
-            }
-            let usb = m.usb.as_mut().expect("a host");
-            if usb.out1(&mut m.soc, chunk) {
-                break;
-            }
+    UsbHost::send(&mut m.soc, &dump);
+    while UsbHost::pending(&m.soc) > 0 {
+        if m.ms() >= next_pass {
+            m.busy = Some((drain, long_pass));
+            held += 1;
+            next_pass = m.ms() + 40;
+        }
+        let sent = m.soc.usb.out_packets;
+        m.usb_frames(1);
+        if m.soc.usb.out_packets == sent {
             naks += 1;
-            let before = m.ms();
-            m.run_cycles(step);
-            if m.ms() != before {
-                let usb = m.usb.as_mut().expect("a host");
-                usb.frame(&mut m.soc);
-            }
         }
     }
     m.usb_frames(200);
@@ -1445,42 +1465,35 @@ fn read_response(flags: u8, addr: u32, data: &[u8]) -> Vec<u8> {
 /// Step 1 of an update as fm1_install.py runs it against the running firmware: the upgrade
 /// request, then every read request answered from the package's logical image (10 ms after
 /// it, the installer's DELAY["reply"]), until the device asks for the host's "success"
-/// (FINISH_CHECK). The host's OUT packets queue as the host's MIDI driver queues them: one a
-/// frame, a NAKed one again the next. Returns the reads served and whether the device asked
+/// (FINISH_CHECK). The host's OUT packets queue as the host's MIDI driver queues them: 64
+/// bytes a frame, NAKed ones again the next. Returns the reads served and whether the device asked
 /// for the "success"; panics when the device NAKs the host for longer than
 /// `STEP_ONE_NAK_MS`, which step 1 never needs (the session takes each frame at once).
 fn installer_step_one(m: &mut Machine, fw: &Firmware, image: &[u8]) -> (Vec<(u32, u32)>, bool) {
     const FINISH_CHECK: u32 = 0xE000_0000;
     const STEP_ONE_NAK_MS: u64 = 1_000;
     host(m).in1.clear();
-    let mut out: std::collections::VecDeque<Vec<u8>> =
-        sysex_packets(&[0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
-            .chunks(64)
-            .map(<[u8]>::to_vec)
-            .collect();
+    UsbHost::send(&mut m.soc, &[0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7]);
     let mut served = Vec::new();
     let (mut taken, mut idle, mut naked) = (0usize, 0u64, 0u64);
     // fm1_install.py's idle_check: 8 s without a request ends step 1.
     while idle < 8_000 {
-        if let Some(chunk) = out.front() {
-            let usb = m.usb.as_mut().expect("a host");
-            if usb.out1(&mut m.soc, chunk) {
-                out.pop_front();
-                naked = 0;
-            } else {
-                naked += 1;
-                assert!(
-                    naked <= STEP_ONE_NAK_MS,
-                    "the device NAKed the installer for {naked} ms after {} reads \
-                     ({} packets unsent; pc in {})",
-                    served.len(),
-                    out.len(),
-                    fw.function_at(m.cpu.pc)
-                );
-            }
-        }
+        let sent = m.soc.usb.out_packets;
         m.usb_frames(1);
         idle += 1;
+        if UsbHost::pending(&m.soc) == 0 || m.soc.usb.out_packets != sent {
+            naked = 0;
+        } else {
+            naked += 1;
+            assert!(
+                naked <= STEP_ONE_NAK_MS,
+                "the device NAKed the installer for {naked} ms after {} reads \
+                 ({} packets unsent; pc in {})",
+                served.len(),
+                UsbHost::pending(&m.soc),
+                fw.function_at(m.cpu.pc)
+            );
+        }
         assert!(
             m.resets.is_empty() && !m.reset_due(),
             "the device restarted ({:?}) after {} reads",
@@ -1512,7 +1525,7 @@ fn installer_step_one(m: &mut Machine, fw: &Firmware, image: &[u8]) -> (Vec<(u32
             );
             m.usb_frames(10);
             let answer = read_response(flags, addr, &image[addr as usize..(addr + n) as usize]);
-            out.extend(sysex_packets(&answer).chunks(64).map(<[u8]>::to_vec));
+            UsbHost::send(&mut m.soc, &answer);
             served.push((addr, n));
         }
     }
@@ -1572,30 +1585,27 @@ fn the_running_firmware_serves_an_updates_whole_step_one() {
     // Step 2's hand-off: the host's "success" (fm1_install.py serve), then the record, flash
     // copy first, and the core reset into the loader.
     let answer = read_response(0, 0xE000_0000, b"success\0");
+    m.stop_at_reset = true;
     send(&mut m, &sysex_packets(&answer));
     let identity = b"ota-FM-1_015";
     let mut ms = 0;
     while (0..12u32).any(|i| m.soc.read8(UPDATA_PARM + 8 + i) != identity[i as usize]) {
+        assert!(!m.reset_due(), "a reset before the UPDATA_PARM record");
         assert!(ms < 2_000, "no UPDATA_PARM record 2 s after the success");
         m.usb_frames(1);
         ms += 1;
     }
     assert_eq!(&m.soc.flash.mem[OTA_RES + 8..OTA_RES + 20], identity);
-    // The reset (main.c upgrade, fm1_reboot: PR_PWR), into the mask ROM's loader on the FM-1
-    // (fm1-emu has none: SIDOU boots again).
-    m.stop_at_reset = true;
-    let mut ms = 0;
-    while !m.reset_due() {
-        assert!(ms < 2_000, "no reset 2 s after the record");
-        m.usb_frames(1);
-        ms += 1;
-    }
-    let at = fw.function_at(m.cpu.pc);
-    m.reset();
-    println!("the reset after {ms} ms, from {at}: {:?}", m.resets);
-    assert!(at.starts_with("fm1_reboot"), "the reset came from {at}");
-    assert_eq!(m.resets.len(), 1);
-    assert_eq!(m.resets[0].1, common::RST_SOFT);
+    // The core reset into the SPL, which runs the staged loader (fm1_enter_update: PWR_CON),
+    // fm1-emu does not model: the core waits for it with the interrupts off, and nothing else
+    // resets the chip meanwhile (the watchdog's 8 s aside).
+    m.usb_frames(50);
+    let pc = m.cpu.pc;
+    let at = fw.function_at(pc);
+    m.usb_frames(10);
+    println!("after the record: the core waits at {pc:#x} ({at})");
+    assert_eq!(m.cpu.pc, pc, "the core left the reset's wait");
+    assert!(m.resets.is_empty() && !m.reset_due(), "{:?}", m.resets);
     let (user, system) = m.stack_use();
     println!("step 1's stacks: user {user}, system {system}");
 }
@@ -1620,32 +1630,24 @@ fn foreign_sectors(flash: &mut [u8], secs: &[usize]) {
     }
 }
 
-/// Until the device answers the descriptor request: a host polling the attached device as a
-/// real one does (a bus reset, SET_ADDRESS and GET_DESCRIPTOR every 100 ms), then the whole
-/// enumeration, then the updater's identity handshake once a second, as fm1_install.py's
-/// wait_for. Returns (attached, answered): emulated ms from power-on.
+/// Until the device answers the update's identity: a host on the cable from power-on
+/// (fm1-emu's: it enumerates the device once its pull-up comes), then the updater's identity
+/// handshake once a second, as fm1_install.py's wait_for. Returns (attached, answered):
+/// emulated ms from power-on.
 fn first_identity(m: &mut Machine, fw: &Firmware, limit_ms: u64) -> (u64, u64) {
     let mut attached = None;
-    while attached.is_none() {
-        assert!(m.ms() < limit_ms, "USB never attached in {limit_ms} ms");
-        if up_and_config(m, fw).0 == 1 {
+    while !UsbHost::configured(&m.soc) {
+        assert!(
+            m.ms() < limit_ms,
+            "not configured in {limit_ms} ms (attached at {attached:?}): {:?}",
+            m.soc.usb.events
+        );
+        if attached.is_none() && up_and_config(m, fw).0 == 1 {
             attached = Some(m.ms());
         }
         m.usb_frames(1);
     }
-    loop {
-        assert!(m.ms() < limit_ms, "no device descriptor in {limit_ms} ms");
-        host(m).bus_reset();
-        m.usb_frames(3);
-        setup(m, [0x00, 0x05, 0x07, 0, 0, 0, 0, 0]);
-        host(m).in0.clear();
-        setup(m, [0x80, 0x06, 0x00, 0x01, 0, 0, 0x12, 0]);
-        if host(m).in0.concat().len() == 18 {
-            break;
-        }
-        m.usb_frames(100);
-    }
-    enumerate(m, fw);
+    let attached = attached.expect("USB attached");
     loop {
         assert!(m.ms() < limit_ms, "no identity reply in {limit_ms} ms");
         host(m).in1.clear();
@@ -1653,7 +1655,7 @@ fn first_identity(m: &mut Machine, fw: &Firmware, limit_ms: u64) -> (u64, u64) {
         for _ in 0..1_000 {
             m.usb_frames(1);
             if replies(&host(m).in1).iter().any(|r| r[0] == 0x11) {
-                return (attached.unwrap(), m.ms());
+                return (attached, m.ms());
             }
         }
     }
@@ -1691,7 +1693,7 @@ fn a_first_boot_over_another_firmwares_sectors_answers_usb_at_once() {
             (fw.symbol("fl_erase4k_ram"), ms(&m, erase_ms)),
         ];
         m.watch_calls(fw.symbol("boot_feed"));
-        m.usb = Some(UsbHost::default());
+        m.plug_usb();
         let (attached, answered) = first_identity(&mut m, &fw, 30_000);
         let hz = m.soc.periph.hz as f64 / 1e3;
         let feeds = m.watched_starts.clone();
@@ -1810,23 +1812,31 @@ fn hand_over(m: &mut Machine, fw: &Firmware) -> (u8, u8, u32, u32) {
     )
 }
 
-/// SET_INTERFACE on the audio streaming interface (2): alt 1 starts the stream, and the host
-/// reads it from the frame after; alt 0 stops it, the host's reading first.
-fn record(m: &mut Machine, on: bool) {
-    if !on {
-        host(m).ep4_reading = false;
+/// The host records at `hz`, from its first packet on. fm1-emu's host starts a recording as
+/// it configures the device (SET_INTERFACE to alt 1 on the audio streaming interface, then
+/// SET_CUR of the rate on EP 0x84), so the cable goes out for a frame and back and the host
+/// enumerates the device again (`UsbHost::replug`).
+fn record(m: &mut Machine, hz: u32) {
+    m.soc.usb.audio_record(hz);
+    host(m).replug();
+    let packets = m.soc.usb.audio_packets;
+    for _ in 0..2_000 {
+        m.usb_frames(1);
+        if m.soc.usb.audio_packets > packets {
+            break;
+        }
     }
-    setup(m, [0x01, 0x0B, u8::from(on), 0, 2, 0, 0, 0]);
-    host(m).ep4_reading = on;
+    assert_eq!(
+        m.soc.usb.audio_rate, hz,
+        "recording at {hz}: {:?}",
+        m.soc.usb.events
+    );
+    host(m).in4.clear();
 }
 
-/// SET_CUR sampling frequency on EP 0x84: the SETUP, then its 3-byte data stage.
-fn set_rate(m: &mut Machine, hz: u32) {
-    setup(m, [0x22, 0x01, 0x00, 0x01, 0x84, 0x00, 0x03, 0x00]);
-    let usb = m.usb.as_mut().expect("a host");
-    usb.out0(&mut m.soc, &hz.to_le_bytes()[..3]);
-    m.usb_frames(3);
-    assert_eq!(host(m).stalls, 0, "SET_CUR {hz} stalled");
+/// IN tokens on EP4 that found no packet (UnderRun) so far.
+fn ep4_empty(m: &Machine) -> u64 {
+    m.soc.usb.audio_underruns
 }
 
 /// The EP4 packets' frames as (L, R).
@@ -1878,7 +1888,8 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
     m.key(A4_KEY, true);
     m.usb_frames(300);
 
-    record(&mut m, true);
+    record(&mut m, 44_100);
+    let empty = ep4_empty(&m);
     m.usb_frames(1000);
     let u = uac(&mut m, &fw);
     let packets = host(&mut m).in4.clone();
@@ -1903,7 +1914,7 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
         (0, 0, 0, 0),
         "a glitch at 44.1 kHz"
     );
-    assert_eq!(host(&mut m).ep4_empty, 0, "an IN token found no packet");
+    assert_eq!(ep4_empty(&m), empty, "an IN token found no packet");
     assert_eq!(hand_over(&mut m, &fw).3, 0, "a block skipped");
     // The DAC's samples, bit for bit: the recording from its first sound on is a run of what
     // the DAC played.
@@ -1937,8 +1948,10 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
         "no sound recorded"
     );
 
-    set_rate(&mut m, 48_000);
-    host(&mut m).in4.clear();
+    record(&mut m, 48_000);
+    // (the counters from the 48 kHz stream's start: the enumeration before it is not the stream)
+    let u48_from = uac(&mut m, &fw);
+    let empty = ep4_empty(&m);
     let dac_from = m.left().len();
     m.usb_frames(1000);
     let u48 = uac(&mut m, &fw);
@@ -1965,23 +1978,36 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
         "48 kHz level {level:.0}, the DAC's {dac_level:.0}"
     );
     assert_eq!(
-        (u48.underruns, u48.overruns, u48.stalls, u48.missed),
+        (
+            u48.underruns - u48_from.underruns,
+            u48.overruns - u48_from.overruns,
+            u48.stalls - u48_from.stalls,
+            u48.missed - u48_from.missed
+        ),
         (0, 0, 0, 0),
         "a glitch at 48 kHz"
     );
     assert!(u48.pkts >= 995, "{} packets counted at 48 kHz", u48.pkts);
-    assert_eq!(host(&mut m).ep4_empty, 0, "an IN token found no packet");
+    assert_eq!(ep4_empty(&m), empty, "an IN token found no packet");
     assert_eq!(hand_over(&mut m, &fw).3, 0, "a block skipped");
 
-    record(&mut m, false);
+    // The stream stops: fm1-emu's host has no SET_INTERFACE to alt 0, so the bus reset of the
+    // next enumeration stops it (usb.c uac_stream(0), SET_INTERFACE's own path), and the 20
+    // frames before the host's first request again are the stream's end.
+    host(&mut m).replug();
+    let unplugged = m.ms();
+    while uac(&mut m, &fw).alt != 0 {
+        m.usb_frames(1);
+        assert!(m.ms() - unplugged < 1_000, "no bus reset");
+    }
     host(&mut m).in4.clear();
-    m.usb_frames(50);
+    m.usb_frames(15);
     assert!(host(&mut m).in4.is_empty(), "packets after alt 0");
     let (want, left, ..) = hand_over(&mut m, &fw);
     assert_eq!((want, left), (0, 0), "the hand-over goes on after alt 0");
 }
 
-/// What recording costs the interrupts, a chord held, recording and not by turns: the audio
+/// What recording costs the interrupts, a chord held, on a machine recording and one not: the audio
 /// interrupt (the TIMER5 work that nests in a render: packets, the producer's quarters), and
 /// every interrupt together (TIMER5's copy of the block, the producer, 48 kHz's resampler, and
 /// the packets).
@@ -1990,11 +2016,19 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
     let Some(fw) = fixture("the USB audio cost test") else {
         return;
     };
-    let mut m = usb_machine(&fw);
-    for k in [18, 25, 37] {
-        m.key(k, true);
-    }
-    m.usb_frames(1500); // to the sustain level: the chip's cost steady
+    // fm1-emu's host cannot stop a recording (no SET_INTERFACE to alt 0): recording and not
+    // are machines of their own, the same chord held on each.
+    let chord = |hz: Option<u32>| {
+        let mut m = usb_machine(&fw);
+        if let Some(hz) = hz {
+            record(&mut m, hz);
+        }
+        for k in [18, 25, 37] {
+            m.key(k, true);
+        }
+        m.usb_frames(1500); // to the sustain level: the chip's cost steady
+        m
+    };
     let measure = |m: &mut Machine, ms: u64| {
         let (from, isr) = (m.alnk_blocks.len(), m.isr_steps);
         m.usb_frames(ms);
@@ -2005,18 +2039,12 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
             (m.isr_steps - isr) as f64 / samples,
         )
     };
+    let mut quiet = chord(None);
+    let off: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut quiet, 400)).collect();
     let mut rows = Vec::new();
     for hz in [44_100, 48_000] {
-        let (mut on, mut off) = (Vec::new(), Vec::new());
-        for _ in 0..3 {
-            record(&mut m, true);
-            set_rate(&mut m, hz);
-            m.usb_frames(50);
-            on.push(measure(&mut m, 400));
-            record(&mut m, false);
-            m.usb_frames(50);
-            off.push(measure(&mut m, 400));
-        }
+        let mut m = chord(Some(hz));
+        let on: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut m, 400)).collect();
         let mean = |v: &[(f64, f64)], f: fn(&(f64, f64)) -> f64| {
             v.iter().map(f).sum::<f64>() / v.len() as f64
         };
@@ -2029,9 +2057,10 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
             mean(&off, |x| x.0)
         );
         rows.push((hz, alnk, all));
+        let (user, system) = m.stack_use();
+        println!("stacks: user {user} bytes, system {system}");
     }
-    let (user, system) = m.stack_use();
-    println!("stacks: user {user} bytes, system {system}");
+
     for (hz, alnk, _) in rows {
         assert!(
             alnk > 0.0,
