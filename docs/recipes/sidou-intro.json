@@ -995,7 +995,7 @@
       "title": "A *scene* that plays along"
     },
     {
-      "caption": "Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases",
+      "caption": "SIDS plays .sid tunes from the store; LAB shapes one sound and keeps it. Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases",
       "control": "wait 5.0 s",
       "expect": [
         {
@@ -1023,7 +1023,7 @@
         }
       ],
       "needs": [],
-      "title": "Next: *.sid* files on SIDOU"
+      "title": "And *.sid* files, and LAB"
     }
   ],
   "title": "SIDOU in a minute"

@@ -1,0 +1,1084 @@
+{
+  "goal": "Open LAB from LIVE, shape one sound page by page, compare it with the original, vary it, keep it and find it again on PRESETS.",
+  "id": "shape-in-lab",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, with the first preset (SAW LEAD) playing."
+  },
+  "related": [
+    "shape-a-sound",
+    "add-an-effect"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "ENV opens LAB",
+    "K1-K4 cards",
+    "SELECT pages",
+    "SCL",
+    "EDIT A/B",
+    "EDIT + ARP vary",
+    "SAVE keeps",
+    "PRESETS"
+  ],
+  "steps": [
+    {
+      "caption": "SAW LEAD on LIVE: a plain saw. Listen first.",
+      "control": "play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "dry",
+      "inputs": [
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "The sound *as it is*"
+    },
+    {
+      "caption": "ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 5.",
+      "control": "press ENV, then wait 1.0 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "ENVELOPE"
+        },
+        {
+          "kind": "text",
+          "value": "2/5"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV",
+        "control": "ENV"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open",
+      "inputs": [
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*ENV* opens LAB"
+    },
+    {
+      "caption": "K1 to K4 are attack, decay, sustain and release; the curve moves as they turn.",
+      "control": "turn K1 slowly clockwise by 5 detents over 0.9 s, then turn K4 slowly clockwise by 2 detents over 0.6 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "screen_changes"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K1 TO K4",
+        "control": "K1"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "envelope",
+      "inputs": [
+        {
+          "detents": 5,
+          "encoder": "K1",
+          "ms": 900,
+          "op": "sweep"
+        },
+        {
+          "detents": 2,
+          "encoder": "K4",
+          "ms": 600,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Turn the *cards*"
+    },
+    {
+      "caption": "SELECT back one page: OSC, the waveform drawn at its pulse width. ALGORITHM changes the waveform, K1 the width.",
+      "control": "turn SELECT counter-clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.5 s, then turn K1 slowly clockwise by 15 detents over 1.2 s, then play 4 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "OSC"
+        },
+        {
+          "kind": "text",
+          "value": "1/5"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN SELECT, ALGORITHM",
+        "control": "SELECT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "osc",
+      "inputs": [
+        {
+          "detents": -1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": 15,
+          "encoder": "K1",
+          "ms": 1200,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "The *oscillator*"
+    },
+    {
+      "caption": "SELECT forward two pages: the filter's response, with its cutoff and its resonance peak.",
+      "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then turn K1 slowly counter-clockwise by 45 detents over 1.5 s, then turn K2 slowly clockwise by 8 detents over 0.8 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "FILTER"
+        },
+        {
+          "assert": "darker",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN SELECT",
+        "control": "SELECT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "filter",
+      "inputs": [
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": -45,
+          "encoder": "K1",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "detents": 8,
+          "encoder": "K2",
+          "ms": 800,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "The *filter* page"
+    },
+    {
+      "caption": "The vibrato and the PWM as waves over a second: K2 deepens the vibrato.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.7 s, then turn K2 slowly clockwise by 30 detents over 1.2 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "MOD"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN SELECT",
+        "control": "SELECT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mod",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 30,
+          "encoder": "K2",
+          "ms": 1200,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*MOD*: the vibrato"
+    },
+    {
+      "caption": "SELECT again: the three effect slots as a chain. SCL moves to the next slot, ALGORITHM picks its effect.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.7 s, then press SCL, then wait 0.4 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "FX"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SCL, ALGORITHM",
+        "control": "ALGORITHM"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "fx",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "button": "SCL",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*FX*: a chain"
+    },
+    {
+      "caption": "Tap EDIT: the sound as you loaded it. Tap again: your edit.",
+      "control": "press EDIT, then wait 0.5 s, then play 4 notes at 120 BPM, then press EDIT, then wait 0.5 s, then play 4 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TAP EDIT: A / B",
+        "control": "EDIT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "ab",
+      "inputs": [
+        {
+          "button": "EDIT",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "button": "EDIT",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*A/B*"
+    },
+    {
+      "caption": "EDIT + ARP varies this page a little, never to silence, never the same twice.",
+      "control": "hold EDIT and press ARP, then wait 0.2 s, then play 4 notes at 120 BPM, then hold EDIT and press ARP, then wait 0.2 s, then play 4 notes at 120 BPM, then wait 2.6 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + PRESS ARP",
+        "control": "ARP"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "vary",
+      "inputs": [
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "ARP"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "ARP"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "ms": 2600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Vary* it"
+    },
+    {
+      "caption": "One press: the next free USER slot, with a name.",
+      "control": "press SAVE, then wait 1.6 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "KEPT AS U01"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SAVE",
+        "control": "SAVE"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "keep",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SAVE* keeps it"
+    },
+    {
+      "caption": "HOME: LIVE plays the sound you kept.",
+      "control": "press HOME, then wait 1.0 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "LAB 01"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS HOME",
+        "control": "HOME"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "live",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Back on *LIVE*"
+    },
+    {
+      "caption": "USER sounds come after the built-in ones and DICE: PRESETS two back, two on, and LAB 01 is there.",
+      "control": "turn PRESETS counter-clockwise by 2 detents, then wait 1.0 s, then play 3 notes at 120 BPM, then turn PRESETS clockwise by 2 detents, then wait 1.0 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "LAB 01"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESETS: TWO BACK, TWO ON",
+        "control": "PRESETS"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "presets",
+      "inputs": [
+        {
+          "detents": -2,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "detents": 2,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Find it on *PRESETS*"
+    }
+  ],
+  "title": "Shape a sound in LAB and keep it"
+}

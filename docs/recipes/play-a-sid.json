@@ -1,0 +1,430 @@
+{
+  "goal": "Play a .sid tune from the store: pick it in SIDS, change its song, mute and solo its voices, pause and stop.",
+  "id": "play-a-sid",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot; CHROME COMET and DOJO, a tune of four songs, in the store.",
+    "tunes": [
+      "chrome-comet",
+      "dojo"
+    ]
+  },
+  "related": [
+    "mute-and-solo",
+    "shape-in-lab"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SIDS",
+    "ALGORITHM plays and steps songs",
+    "GLO mutes and solos",
+    "EDIT + PLAY pauses",
+    "PLAY stops"
+  ],
+  "steps": [
+    {
+      "caption": "HOME for the menu: SIDS plays the .sid files in the store.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then wait 0.6 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SIDS"
+        }
+      ],
+      "focus": {
+        "callout": "HOME, TURN SELECT TO SIDS",
+        "control": "SELECT",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "menu",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SIDS"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The menu's *SIDS*"
+    },
+    {
+      "caption": "SAVE opens the list: every .sid in the store.",
+      "control": "press SAVE, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "sid_view_browser"
+        },
+        {
+          "kind": "text",
+          "value": "DOJO"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SAVE",
+        "control": "SAVE"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "list",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The *tunes*"
+    },
+    {
+      "caption": "SELECT moves to DOJO, a GoatTracker tune by Cadaver.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.9 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "DOJO"
+        }
+      ],
+      "focus": {
+        "callout": "TURN SELECT",
+        "control": "SELECT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "pick",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Pick* one"
+    },
+    {
+      "caption": "ALGORITHM clockwise plays it: NOW PLAYING, the song, the time, the three voices' levels.",
+      "control": "turn ALGORITHM clockwise by 1 detent, then wait 4.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "PLAYING"
+        },
+        {
+          "kind": "text",
+          "value": "SONG 1/4"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN ALGORITHM",
+        "control": "ALGORITHM"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 4500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Play* it"
+    },
+    {
+      "caption": "DOJO holds four songs. ALGORITHM steps to the next.",
+      "control": "turn ALGORITHM clockwise by 1 detent, then wait 4.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SONG 2/4"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN ALGORITHM",
+        "control": "ALGORITHM"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "next",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 4500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Another *song*"
+    },
+    {
+      "caption": "GLO and the second key: voice 2 goes quiet, MUT on the screen. The same keys again bring it back.",
+      "control": "hold GLO and press note key F#3, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "MUT"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEY 2",
+        "control": "GLO"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mute",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Mute* a voice"
+    },
+    {
+      "caption": "GLO and the fourth key: only voice 1 plays, SOL says so. The same keys again let the others in.",
+      "control": "hold GLO and press note key F#3, then wait 0.3 s, then hold GLO and press note key G#3, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SOL"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEY 4",
+        "control": "GLO"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "solo",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "button": "GLO",
+          "note": "G#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Solo* a voice"
+    },
+    {
+      "caption": "EDIT + PLAY pauses the tune, and again carries on from where it was.",
+      "control": "hold GLO and press note key G#3, then wait 0.6 s, then hold EDIT and press PLAY, then wait 1.8 s, then hold EDIT and press PLAY, then wait 3.0 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "PLAYING"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + PRESS PLAY",
+        "control": "EDIT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "pause",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "G#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "PLAY"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "PLAY"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Pause*"
+    },
+    {
+      "caption": "PLAY stops it. HOME goes back to the list.",
+      "control": "press PLAY, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "STOPPED"
+        },
+        {
+          "assert": "silent",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS PLAY",
+        "control": "PLAY"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "stop",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Stop*"
+    }
+  ],
+  "title": "Play a .sid tune"
+}
