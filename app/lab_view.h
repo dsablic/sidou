@@ -102,7 +102,7 @@ extern "C" {
 #define LAB_VIEW_HINT_ROW 29u
 /* A hint phrase shows this long, then the next. */
 #define LAB_VIEW_HINT_MS 2000u
-#define LAB_VIEW_HINTS 3u
+#define LAB_VIEW_HINTS 4u
 /* lab_view.hl: the choice (ALGORITHM) lit; 1..4 a card. */
 #define LAB_VIEW_HL_CHOICE 5u
 /* OSC's choices: TRIANGLE .. PULSE SYNC. */
@@ -164,6 +164,8 @@ typedef struct {
     uint8_t edit_down;    /* EDIT pressed while LAB showed, held since (its tap: A/B) */
     uint8_t edit_spoiled; /* another control while it was: its release compares nothing */
     uint8_t ab;           /* LAB_VIEW_AB_*: comparing, and which sound plays */
+    uint8_t peek;         /* a note key while EDIT is down: A plays until EDIT is let go (ab + 1,
+                           * to give back; 0 none). B waits in other */
     uint8_t loads;        /* live.loads as LAB last saw it: another sound ends A/B */
     uint8_t other[LAB_SOUND_BYTES]; /* B, the edit, while A plays */
     lab_edit undo; /* the steps EDIT + LFO undoes (app/lab_edit.h) */
@@ -191,7 +193,10 @@ void lab_view_flash(lab_view* lv, uint32_t k, uint32_t now_ms);
  * U03?`, then SAVE again; any other control cancels the question), HOME (lab_view_home) leaves
  * without writing. The other cards and pages wait while it shows. lab_view_name_keys takes the
  * keys pressed this frame (bit k: key k) while it shows and returns the ones it used, which the
- * panel then keeps quiet; 0 outside it. */
+ * panel then keeps quiet; 0 outside it. On the pages, a key pressed while EDIT is down (LAB on
+ * top) is a peek: A (the sound as kept or loaded) plays, before the key's note starts, until EDIT
+ * is let go, B (the edit) put aside and given back then; the header shows A outlined. Any other
+ * control while it peeks gives B back first, then acts on B. A peek is no undo step. */
 uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
 /* EDIT's tap (A/B), from the panel's buttons each input frame (pressed edges, held levels) while
  * EDIT is down or pressed; top: LAB is the view on top. EDIT pressed and let go with no other
@@ -200,7 +205,8 @@ uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
  * the header showing A; the next tap plays B again, and so on. On a sound that is its base it
  * toasts NOTHING TO COMPARE. A turn of LAB's while A plays makes A the edit: comparing ends and
  * B's difference from it is one undo step (EDIT + LFO gives B back). Comparing ends when another sound loads (live.loads). EDIT as a
- * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. */
+ * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. A note key while EDIT is down
+ * is a peek (lab_view_keys): no tap at the release. */
 void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, int top);
 /* SCL's release, from the panel's buttons while it waits for EDIT (lab_view.scl_alone): EDIT + SCL
  * rolls whichever finger lands first; SCL alone selects the next effect slot as everywhere, when

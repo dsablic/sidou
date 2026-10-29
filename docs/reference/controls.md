@@ -725,11 +725,11 @@ through OFF once did). On every page:
 | Rows | Shows |
 |---|---|
 | 0-1 | the page's name at 2× in yellow, its place (`2/5`) on the right |
-| 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares |
+| 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares; **A** outlined during a peek (EDIT held + a key) |
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
 | 22-27 | the four cards in the knobs' places, as LIVE's knob row: the card's name small in the knob's colour, its value at 3× in white (2× when it takes three characters), a bar and the knob's name |
-| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`) |
+| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`, `EDIT+KEY PEEK A`) |
 
 A card or the choice that turns is lit (its name in reverse video) for a second instead of the
 value popup; PRESETS opens no popup either (the header names the sound).
@@ -777,9 +777,16 @@ control cancels the question). The toast is the keep's. **HOME** leaves the page
 **EDIT tapped alone** compares (A/B): on an edited sound the edit (**B**) is put aside and the
 sound as kept or loaded (**A**, the `*` gone) plays, the header showing `A`; the next tap plays B
 again (`B`), and so on. It acts when EDIT is let go, and only if nothing else was pressed or
-turned while it was down (the note keys do not count, so a note can be played while it is held):
-EDIT + a knob, LFO, ARP, SCL, SAVE or PRESETS are combinations and never compare, and EDIT keeps
-its meaning everywhere else. On a sound that is its base it toasts `NOTHING TO COMPARE`. A card
+turned while it was down: EDIT + a knob, LFO, ARP, SCL, SAVE or PRESETS are combinations and
+never compare, and EDIT keeps its meaning everywhere else. On a sound that is its base it toasts
+`NOTHING TO COMPARE`.
+
+**EDIT held + the note keys peek at A:** a key pressed while EDIT is down plays the sound as kept
+or loaded (A) for as long as EDIT is held, the header showing `A` outlined (not reversed, as
+comparing shows it); letting EDIT go gives the edit (B) back, and compares nothing. While A plays
+already (comparing), a peek keeps it. Any other control used during a peek gives B back first
+and then acts on B, so nothing of A is edited by accident. A peek is no undo step, and on a sound
+that is its base it plays the sound as it is. A card
 or the choice turned while A plays makes A the edit: comparing ends there, and B's difference
 from it is one undo step (below), so B is not lost. Comparing also ends when another sound loads
 (PRESETS, a program change).

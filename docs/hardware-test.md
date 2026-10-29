@@ -2411,6 +2411,13 @@ What it decides: whether 1.1's additions to LAB sound and feel right. Set up as 
   *Emulator:* `sidou-tests/tests/app/lab_view.rs::mod_k4_is_the_arp_rate_dark_while_arp_is_off`,
   `sidou-tests/tests/app/live_macro.rs::the_arp_rate_is_a_parameter_on_cc_28s_row`.
   *Device-only:* none beyond section 22's (the card read at arm's length).
+- [ ] **Hold-to-peek:** an edited sound, EDIT held, a few notes played: A while held, B back on
+  letting go; the header's outlined `A`.
+  *Emulator:* `emu-gate/tests/lab.rs::edit_held_and_a_key_peeks_at_a` (heard, its input within
+  the poll allowance), `sidou-tests/tests/app/lab_view.rs::a_note_while_edit_is_down_peeks_at_a`,
+  `sidou-tests/tests/app/lab_view.rs::a_control_during_a_peek_acts_on_b`.
+  *Device-only:* the feel: whether the switch at the first key and back at EDIT's release is
+  quick enough to compare by ear, and whether the outlined `A` reads apart from the reversed one.
 
 Notes:
 

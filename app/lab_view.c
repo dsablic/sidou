@@ -56,6 +56,7 @@ static const char* const HINTS[LAB_VIEW_HINTS] = {
     "EDIT A/B  +LFO UNDO  +ARP VARY",
     "EDIT +SCL ROLL  +SAVE NAME",
     "SAVE KEEP  SELECT NEXT PAGE",
+    "EDIT+KEY PEEK A",
 };
 
 const char* lab_view_page_name(uint32_t page) {
@@ -431,7 +432,7 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     b[n++] = (uint8_t)l->model;
     b[n++] = (uint8_t)l->cutoff_out;
     b[n++] = (uint8_t)(l->cutoff_out >> 8);
-    b[n++] = lv->ab;
+    b[n++] = (uint8_t)(lv->ab | lv->peek << 4);
     if (lv->mode) { /* the name page: what it shows besides the sound */
         b[n++] = lv->mode;
         b[n++] = (uint8_t)(lv->slot | (l->sounds_valid >> lv->slot & 1u) << 7);
@@ -515,7 +516,10 @@ static void build(lab_view* lv, uint32_t now) {
     char name[LIVE_PRESET_NAME_CHARS + 2u];
     live_preset_name(l, name);
     (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ROW, 2, name, THEME_ATTR(th, value));
-    if (lv->ab) { /* comparing: which of the two plays, reversed */
+    if (lv->peek) { /* a peek: A, outlined (not reversed: the comparing's is) */
+        (void)grid_canvas_text_big(c, LAB_VIEW_AB_COL, LAB_VIEW_NAME_ROW, 2, "A",
+                                   GRID_ATTR(th->hot, th->bg));
+    } else if (lv->ab) { /* comparing: which of the two plays, reversed */
         char ab[2] = {lv->ab == LAB_VIEW_AB_A ? 'A' : 'B', 0};
         (void)grid_canvas_text_big(c, LAB_VIEW_AB_COL, LAB_VIEW_NAME_ROW, 2, ab,
                                    GRID_ATTR(th->bg, th->hot));
@@ -563,6 +567,7 @@ static void sync(lab_view* lv) {
     if (lv->loads != lv->l->loads) {
         lv->loads = lv->l->loads;
         lv->ab = LAB_VIEW_AB_OFF;
+        lv->peek = 0; /* B was the other sound's */
         lab_edit_clear(&lv->undo);
         lv->run = LAB_VIEW_NO_RUN;
     }
@@ -616,6 +621,34 @@ static void undo(lab_view* lv, screen* s) {
     screen_toast(s, t, SCREEN_TOAST_MS);
 }
 
+/* A peek ends: B back, comparing as it was. */
+static void peek_end(lab_view* lv) {
+    if (lv->peek) {
+        lv->ab = (uint8_t)(lv->peek - 1u);
+        lv->peek = 0;
+        live_sound_apply(lv->l, lv->other);
+    }
+}
+
+/* A note key while EDIT is down: A plays (B aside) until EDIT is let go; no tap then. */
+static void peek_start(lab_view* lv) {
+    live* l = lv->l;
+    sync(lv);
+    lv->edit_spoiled = 1;
+    if (lv->peek || lv->ab == LAB_VIEW_AB_A) {
+        return; /* A plays already */
+    }
+    uint8_t now[LAB_SOUND_BYTES];
+    uint8_t a[LAB_SOUND_BYTES];
+    live_sound_get(l, now);
+    a_sound(l, a);
+    if (!lab_sound_equal(now, a)) {
+        memcpy(lv->other, now, LAB_SOUND_BYTES);
+        live_sound_apply(l, a);
+        lv->peek = (uint8_t)(lv->ab + 1u);
+    }
+}
+
 /* EDIT's tap: B aside and A, or B again. */
 static void ab_tap(lab_view* lv, screen* s) {
     live* l = lv->l;
@@ -653,9 +686,11 @@ void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, 
     }
     if (pressed & ~bit) {
         lv->edit_spoiled = 1; /* another button while EDIT is down */
+        peek_end(lv);         /* it acts on B */
     }
     if (!(held & bit)) {
         lv->edit_down = 0;
+        peek_end(lv);
         if (!lv->edit_spoiled && top && lv->mode == LAB_VIEW_MODE_PAGES) {
             ab_tap(lv, s);
         }
@@ -816,6 +851,7 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (e->kind == SCREEN_TURN && lv->edit_down) {
         lv->edit_spoiled = 1; /* a control turned while EDIT is down: no A/B at its release */
+        peek_end(lv);         /* a peek's B back: the turn is B's */
     }
     if (lv->mode) { /* the name page takes every control but the ones that are not LAB's */
         if (e->kind == SCREEN_PRESS) {
@@ -1125,6 +1161,10 @@ int lab_view_home(lab_view* lv) {
 
 uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed) {
     uint32_t keys = pressed & ((1u << LAB_VIEW_NAME_KEYS) - 1u);
+    if (!lv->mode && pressed && lv->edit_down) {
+        peek_start(lv); /* EDIT held and a key: A, before the key's note starts */
+        return 0;
+    }
     if (!lv->mode || !keys) {
         return 0;
     }

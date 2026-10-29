@@ -783,6 +783,54 @@ fn cutoff(m: &mut Machine, fw: &Firmware) -> u16 {
     u16::from(m.soc.read8(a)) | u16::from(m.soc.read8(a + 1)) << 8
 }
 
+/// Hold-to-peek: EDIT held, a note key plays A (the sound as loaded: its cutoff, heard brighter
+/// than B's) for as long as EDIT is down, the key's input within the poll allowance; EDIT let go
+/// gives B back and compares nothing.
+#[test]
+fn edit_held_and_a_key_peeks_at_a() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    let a = cutoff(&mut m, &fw);
+    m.turn(SELECT, LAB_PAGE_FILTER as i32);
+    m.run_ms(100);
+    m.turn(K1, -30);
+    m.run_ms(400); // a detent every 8 ms
+    let b = cutoff(&mut m, &fw);
+    assert!(b < a / 2, "the cutoff well down: {a} -> {b}");
+    let bright = |x: &[f32]| common::power_above(x, 2000.0);
+    m.key(KEY0 + 12, true);
+    m.run_ms(600);
+    let heard_b = bright(&common::record(&mut m, 200));
+    m.key(KEY0 + 12, false);
+    m.run_ms(300);
+    m.key(PANEL_BTN_EDIT as u8, true);
+    m.run_ms(60);
+    m.watch_calls(fw.symbol("ui_note_keys"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let (input, pass) = start_cost(&mut m, 100, |m| m.key(KEY0 + 12, true));
+    println!("a peek's key: the input {input}, the busiest pass {pass}");
+    assert!(
+        input + pass <= common::POLL_INSTRUCTIONS,
+        "{input} + {pass}"
+    );
+    assert_eq!(cutoff(&mut m, &fw), a, "A plays");
+    m.run_ms(500);
+    let heard_a = bright(&common::record(&mut m, 200));
+    m.key(KEY0 + 12, false);
+    m.key(PANEL_BTN_EDIT as u8, false);
+    m.run_ms(100);
+    assert_eq!(cutoff(&mut m, &fw), b, "B back");
+    assert_eq!(
+        u32::from(lab_byte(&mut m, &fw, ilp32::lab_view::ab)),
+        LAB_VIEW_AB_OFF,
+        "no tap"
+    );
+    println!("the power above 2 kHz: B {heard_b:.4}, A peeked {heard_a:.4}");
+    assert!(heard_a > 4.0 * heard_b, "A is heard: {heard_a} against {heard_b}");
+}
+
 /// EDIT tapped in LAB swaps the sound heard: a held note with the cutoff turned well down (B)
 /// against the sound as loaded (A), each tap within the poll allowance; the swap is heard (the
 /// share of the power above 2 kHz) and is the instrument's (its cutoff), both ways and back.

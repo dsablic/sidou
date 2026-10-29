@@ -14,6 +14,10 @@ All notable changes are documented here. The format follows
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
   rate starts it at 1 Hz. CC 31 and NRPN 0/8 reach it (docs/reference/midi.md); a preset loads
   it off, and DICE's rolls leave it off. It is kept with the sound.
+- **LAB: hold EDIT and play to peek at A.** The note keys played while EDIT is held sound the
+  sound as kept or loaded, for as long as EDIT is down (the header's `A` outlined); letting go
+  gives your edit back. A tap of EDIT still compares; any other control during a peek acts on
+  the edit. The hint line has `EDIT+KEY PEEK A`.
 - **LAB: the arpeggio's RATE on MOD's K4** (`3FR`, `1/16`: LIVE's ARP + K1), dark while ARP is
   off and set all the same. The rate is a parameter of the MIDI map now: CC 28 goes through its
   row, so MIDI learn can rebind it, it has NRPN 0/9 and MIDI out sends it.

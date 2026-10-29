@@ -2115,17 +2115,100 @@ fn edit_as_a_modifier_never_compares() {
     );
 }
 
+/// The header's A/B letter: (the letter, 1 when it is reversed: comparing; 0 outlined: a peek).
+fn ab_mark(ui: &Ui) -> (String, bool) {
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let k = LAB_VIEW_NAME_ROW as usize * COLS + LAB_VIEW_AB_COL as usize;
+    (ab_letter(ui), ui.g.attr[k] >> 4 == th.hot)
+}
+
+/// Hold-to-peek: a note key while EDIT is down plays A (the sound as kept or loaded) for as long
+/// as EDIT is held, the header's A outlined; letting EDIT go gives B back, and no tap compares.
 #[test]
-fn a_note_while_edit_is_down_still_compares() {
+fn a_note_while_edit_is_down_peeks_at_a() {
     let mut ui = edited_lab();
+    let a = base_attack(&ui);
+    let steps = ui.v.lab.undo.steps;
+    ui.down(EDIT);
+    assert_eq!(attack(&ui), a + 3, "EDIT alone: still B");
+    ui.note_keys(1 << 12, 1 << 12);
+    assert_eq!(attack(&ui), a, "the note plays A");
+    settle(&mut ui);
+    assert_eq!(ab_mark(&ui), ("A".into(), false), "A, outlined");
+    assert_eq!(name_row(&ui), "SAW LEAD", "A is the base: no star");
+    ui.note_keys(0, 0);
+    ui.note_keys(1 << 14, 1 << 14);
+    assert_eq!(attack(&ui), a, "A for as long as EDIT is held");
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(attack(&ui), a + 3, "B back");
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no tap");
+    settle(&mut ui);
+    assert_eq!(ab_letter(&ui), "");
+    assert_eq!(ui.v.lab.undo.steps, steps, "a peek is no step");
+    assert_eq!(ui.toast(), None);
+    // the tap still compares
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A);
+    // a peek while A plays: A stays, and EDIT's release toggles nothing
     ui.down(EDIT);
     ui.note_keys(1 << 12, 1 << 12);
     ui.note_keys(0, 0);
     ui.up(EDIT);
+    assert_eq!((u32::from(ui.v.lab.ab), attack(&ui)), (LAB_VIEW_AB_A, a));
+    // a peek from B: A while held, then B again, still comparing
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_B);
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    assert_eq!(attack(&ui), a);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!((u32::from(ui.v.lab.ab), attack(&ui)), (LAB_VIEW_AB_B, a + 3));
+    // on an unedited sound a peek plays the sound as it is, and says nothing
+    let mut ui = lab_ui();
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    step(&mut ui);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    assert_eq!(ui.toast(), None, "no NOTHING TO COMPARE: it was a peek");
+}
+
+/// Any other control during a peek puts B back first, then acts on B.
+#[test]
+fn a_control_during_a_peek_acts_on_b() {
+    let mut ui = edited_lab();
+    let a = base_attack(&ui);
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    assert_eq!(attack(&ui), a);
+    let decay = param(&ui, LIVE_PARAM_DECAY);
+    ui.turn(K1 + 1, 1); // the decay, with EDIT held: on B
     assert_eq!(
-        u32::from(ui.v.lab.ab),
-        LAB_VIEW_AB_A,
-        "the note keys do not spoil the tap"
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a + 3, decay + 1),
+        "B back, and the turn on it"
+    );
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a + 3, decay + 1),
+        "nothing more at the release"
+    );
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    // a button too: EDIT + LFO undoes B's last step, not A
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    ui.press(PANEL_BTN_LFO);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a + 3, decay),
+        "B's decay undone"
     );
 }
 
