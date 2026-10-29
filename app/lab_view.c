@@ -141,6 +141,9 @@ static void pulse_percent(char* out, uint32_t pw) {
     e[1] = 0;
 }
 
+static char* append(char* out, const char* s);
+static uint32_t length(const char* s);
+
 static int ratio_card(const live* l) {
     return l->mono_sync && !(l->control & 0x40u);
 }
@@ -195,7 +198,15 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
     }
     case LAB_PAGE_FILTER:
         if (k == 3u) {
-            return 0; /* free (docs/plans/2026-10-25-lab-plan.md Task 18) */
+            /* the depth; the rate it shares with OSC's PWM HZ on the name line: "LFO1.3HZ",
+             * "LFO 12HZ" (the space where the column has room) */
+            char hz[6];
+            tenths(hz, (live_param_get(l, LIVE_PARAM_PWM_RATE) + 1u) / 2u);
+            char* e = append(name, length(hz) < 3u ? "LFO " : "LFO");
+            e = append(append(e, hz), "HZ");
+            *e = 0;
+            (void)number(value, (int32_t)v, 0);
+            return 1;
         }
         if (k < 2u) {
             copy(name, k ? "RESO" : "CUTOFF");
@@ -692,6 +703,11 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
             live_knob(l, k ? LIVE_KNOB_RESONANCE : LIVE_KNOB_CUTOFF, d);
         } else if (k == 2u) {
             add(l, LIVE_PARAM_FILTER_VOICES, d);
+        } else {
+            if (d > 0 && !l->filter_lfo && !l->pwm_rate) {
+                live_param_set(l, LIVE_PARAM_PWM_RATE, 20u); /* no rate yet: 1 Hz, so it is heard */
+            }
+            add(l, LIVE_PARAM_FILTER_LFO, d);
         }
         break;
     case LAB_PAGE_MOD:

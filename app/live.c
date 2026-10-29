@@ -431,10 +431,41 @@ static uint8_t most_pressure(const live* l) {
     return p;
 }
 
-/* The cutoff written: the parameter, opened by the wheel and the pressure, lowered by the
- * last note's velocity, where they are assigned to it. One filter for every voice. */
+/* The filter LFO's swing of the cutoff: the triangle of the PWM's phase (up first, from the cutoff
+ * at its centre) over filter_lfo of K1's detents each way along live_cutoff_steps, between its
+ * entries in 1/256 of a detent, clamped at the walk's ends; a cutoff off the walk swings from
+ * the entry next below it by the same registers. */
+uint32_t live_cutoff_place(const live* l, uint32_t c) {
+    const uint16_t* t = live_cutoff_steps[l->model];
+    if (t[l->cutoff_pos] == c) {
+        return l->cutoff_pos; /* K1's own place */
+    }
+    int32_t p = live_cutoff_down[l->model][(c >> 5) & 63u]; /* the last entry below c's bucket */
+    while (p < 64 && t[p + 1] <= c) {
+        p++;
+    }
+    return p < 0 ? 0u : (uint32_t)p;
+}
+
+static int32_t lfo_swing(const live* l) {
+    const uint16_t* t = live_cutoff_steps[l->model];
+    int32_t pos = (int32_t)live_cutoff_place(l, l->cutoff);
+    int32_t phase = l->lfo_phase;
+    int32_t tri = (phase < 32768 ? phase : 65536 - phase) - (int32_t)LFO_CENTRE;
+    int32_t q = pos * 256 + tri * l->filter_lfo / 64; /* 32 detents x 256 at the most */
+    q = q < 0 ? 0 : q > 64 * 256 ? 64 * 256 : q;
+    int32_t i = q >> 8;
+    int32_t at = t[i] + (i < 64 ? ((t[i + 1] - t[i]) * (q & 255)) >> 8 : 0);
+    return at - t[pos];
+}
+
+/* The cutoff written: the parameter, swung by the filter LFO, opened by the wheel and the pressure,
+ * lowered by the last note's velocity, where they are assigned to it. One filter for every voice. */
 static uint16_t cutoff_effective(const live* l) {
     int32_t c = l->cutoff;
+    if (l->filter_lfo) {
+        c += lfo_swing(l);
+    }
     if (l->mod_target == LIVE_MOD_CUTOFF) {
         c += l->mod_wheel * CUTOFF_PER_VALUE;
     }
@@ -467,7 +498,7 @@ void li_update_pws(live* l) {
     }
 }
 
-static void update_cutoff(live* l) {
+void li_update_cutoff(live* l) {
     uint16_t c = cutoff_effective(l); /* once: a K1 detent pays for it on the input path */
     if (c != l->cutoff_out) {
         write_cutoff_as(l, c);
@@ -504,7 +535,7 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
         put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
     }
     update_pw(l, v);
-    update_cutoff(l);
+    li_update_cutoff(l);
     write_freq(l, v);
     if (l->mono_sync) {
         write_freq(l, 2);
@@ -776,7 +807,7 @@ void li_set_cutoff(live* l, uint16_t value) {
     if (value != l->cutoff) {
         l->cutoff = value;
         l->settings_dirty = 1;
-        update_cutoff(l);
+        li_update_cutoff(l);
     }
 }
 
@@ -982,6 +1013,48 @@ void live_reset_controllers(live* l) {
     }
 }
 
+/* MIDI out compares every parameter several times a tick (midi_out.c look): at the app's speed. */
+void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]) {
+    out[LIVE_PARAM_CUTOFF] = l->cutoff;
+    out[LIVE_PARAM_RESONANCE] = l->resonance;
+    out[LIVE_PARAM_PULSE_WIDTH] = l->pulse_width;
+    out[LIVE_PARAM_VOLUME] = l->master;
+    out[LIVE_PARAM_WAVEFORM] = (uint16_t)(l->control >> 4);
+    out[LIVE_PARAM_RING] = (l->control & CTRL_RING) ? 1u : 0u;
+    out[LIVE_PARAM_SYNC] = (l->control & CTRL_SYNC) ? 1u : 0u;
+    out[LIVE_PARAM_ATTACK] = (uint16_t)(l->attack_decay >> 4);
+    out[LIVE_PARAM_DECAY] = l->attack_decay & 0x0fu;
+    out[LIVE_PARAM_SUSTAIN] = (uint16_t)(l->sustain_release >> 4);
+    out[LIVE_PARAM_RELEASE] = l->sustain_release & 0x0fu;
+    out[LIVE_PARAM_FILTER_MODE] = (l->filter_mode >> 4) & 7u;
+    out[LIVE_PARAM_FILTER_VOICES] = l->filter_voices & 7u;
+    out[LIVE_PARAM_MODEL] = l->model_req == SID_MODEL_8580 ? 1u : 0u;
+    for (uint32_t s = 0; s < LIVE_SLOTS; ++s) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; ++f) {
+            out[LIVE_PARAM_SLOT + s * LIVE_SLOT_FIELDS + f] = l->slot[s][f];
+        }
+    }
+    out[LIVE_PARAM_BEND_RANGE] = l->bend_range;
+    out[LIVE_PARAM_VELOCITY_TARGET] = l->velocity_target;
+    out[LIVE_PARAM_MOD_TARGET] = l->mod_target;
+    out[LIVE_PARAM_PRESSURE_TARGET] = l->pressure_target;
+    out[LIVE_PARAM_VIBRATO_RATE] = l->vibrato_rate;
+    out[LIVE_PARAM_VIBRATO_DEPTH] = l->vibrato_depth;
+    out[LIVE_PARAM_VIBRATO_DELAY] = l->vibrato_delay;
+    out[LIVE_PARAM_ENVELOPE_MODE] = l->envelope_mode;
+    out[LIVE_PARAM_PROFILE] = l->profile_req;
+    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
+        out[LIVE_PARAM_AGE + f] = l->character[f];
+    }
+}
+
+void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+    out[LIVE_PARAM_PWM_DEPTH] = l->pwm_depth;
+    out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(l->pwm_rate);
+    out[LIVE_PARAM_TUNE] = (uint16_t)(l->tune + LIVE_TUNE_CENTS);
+    out[LIVE_PARAM_FILTER_LFO] = l->filter_lfo;
+}
+
 /* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8
  * (live_fx_defaults). */
 static const uint8_t SLOT_ALGORITHMS[LIVE_SLOTS] = {SID_DIST_COUNT, SID_MOD_COUNT,
@@ -1121,7 +1194,7 @@ void live_tick(live* l) {
     }
     apply_profile(l);
     update_character(l);
-    if (l->pwm_depth) {
+    if (l->pwm_depth || l->filter_lfo) { /* one LFO: the PWM's and the filter's */
         l->lfo_phase = (uint16_t)(l->lfo_phase + l->pwm_rate);
     }
     /* The vibrato: rate / 10 Hz, 65536 a cycle, so 655.36 * rate / 100 per tick. */
@@ -1141,5 +1214,5 @@ void live_tick(live* l) {
         li_update_freq(l, v);
     }
     li_update_pws(l);
-    update_cutoff(l);
+    li_update_cutoff(l);
 }

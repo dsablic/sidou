@@ -104,7 +104,7 @@ fn select_steps_the_five_pages_and_stops_at_the_ends() {
 #[test]
 fn each_card_turns_its_parameter_by_its_detent() {
     // (page, knob, parameter, a start, the detent)
-    let table: [(u32, u32, u32, u32, i32); 16] = [
+    let table: [(u32, u32, u32, u32, i32); 17] = [
         (LAB_PAGE_OSC, 1, LIVE_PARAM_PWM_DEPTH, 640, 32),
         (LAB_PAGE_OSC, 2, LIVE_PARAM_PWM_RATE, 10, 1),
         (LAB_PAGE_OSC, 3, LIVE_PARAM_TUNE, 50, 1),
@@ -114,6 +114,7 @@ fn each_card_turns_its_parameter_by_its_detent() {
         (LAB_PAGE_ENVELOPE, 3, LIVE_PARAM_RELEASE, 4, 1),
         (LAB_PAGE_FILTER, 1, LIVE_PARAM_RESONANCE, 6, 1),
         (LAB_PAGE_FILTER, 2, LIVE_PARAM_FILTER_VOICES, 3, 1),
+        (LAB_PAGE_FILTER, 3, LIVE_PARAM_FILTER_LFO, 8, 1),
         (LAB_PAGE_MOD, 0, LIVE_PARAM_VIBRATO_RATE, 60, 1),
         (LAB_PAGE_MOD, 1, LIVE_PARAM_VIBRATO_DEPTH, 20, 1),
         (LAB_PAGE_MOD, 2, LIVE_PARAM_VIBRATO_DELAY, 20, 1),
@@ -187,18 +188,35 @@ fn each_card_turns_its_parameter_by_its_detent() {
     let before = param(&ui, LIVE_PARAM_CUTOFF);
     ui.turn(K1, 1);
     assert!(param(&ui, LIVE_PARAM_CUTOFF) > before, "the cutoff walk");
-    // FILTER's K4 is free: nothing turns, nothing is named.
-    let snapshot = (0..LIVE_PARAM_COUNT)
-        .map(|p| param(&ui, p))
-        .collect::<Vec<_>>();
-    ui.turn(K1 + 3, 3);
-    assert_eq!(
-        (0..LIVE_PARAM_COUNT)
-            .map(|p| param(&ui, p))
-            .collect::<Vec<_>>(),
-        snapshot,
-        "FILTER's K4 turns nothing"
-    );
+}
+
+/// FILTER's K4, the filter LFO: its depth in K1's detents, the rate it shares with PWM HZ on its
+/// name line; turned up from off on a sound whose LFO has no rate (SAW LEAD), the rate starts
+/// at 1 Hz, so the first detent is heard.
+#[test]
+fn filter_k4_is_the_filter_lfo_with_its_rate_on_the_name_line() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 0, "SAW LEAD: no LFO rate");
+    let row = LAB_VIEW_LABEL_ROW as usize;
+    assert_eq!(ui.small(row, 22, 8), "LFO 0HZ ");
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 22, 3, 1), "0", "off");
+    ui.turn(K1 + 3, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_FILTER_LFO), 1);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 20, "1 Hz to start");
+    settle(&mut ui);
+    assert_eq!(ui.small(row, 22, 8), "LFO1.0HZ");
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 22, 3, 1), "1", "the depth");
+    set(&mut ui, LIVE_PARAM_PWM_RATE, 25);
+    settle(&mut ui);
+    assert_eq!(ui.small(row, 22, 8), "LFO1.3HZ", "the shared rate, as PWM HZ says it");
+    // turned back to off and up again, the rate the player set stays
+    ui.turn(K1 + 3, -1);
+    ui.turn(K1 + 3, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 25);
+    // the cards' text for the other pages' LFO: OSC's PWM HZ moves with it
+    to_page(&mut ui, LAB_PAGE_OSC);
+    assert_eq!(ui.small(row, 15, 6), "PWM HZ");
 }
 
 /// On SYNC LEAD (a mono-sync saw) OSC's K1 reads RATIO and turns the sync ratio's semitones.
@@ -922,6 +940,37 @@ fn the_envelope_dot_follows_the_tap() {
         cells_in(&ui.g, th.value).is_empty(),
         "gone when the voice is silent"
     );
+}
+
+/// FILTER's K4, the filter LFO, draws the band the cutoff sweeps: dotted cells behind the curve,
+/// from the cutoff 8 detents down to 8 up (in K4's colour while it turns), with the LFO still
+/// (the phase at its centre); a golden.
+#[test]
+fn the_filter_lfo_draws_its_band() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let dots = |ui: &Ui| -> Vec<usize> {
+        (0..GRID_COLS as usize)
+            .filter(|&c| ui.g.ch[(ROW0 + 1) * GRID_COLS as usize + c] == FONT_D2 as u8)
+            .collect()
+    };
+    assert!(dots(&ui).is_empty(), "no LFO: no band");
+    ui.turn(K1, -200);
+    ui.turn(K1, 32);
+    set(&mut ui, LIVE_PARAM_FILTER_LFO, 8);
+    settle(&mut ui);
+    let band = dots(&ui);
+    assert!(band.len() >= 4, "{band:?}");
+    let cut = columns_in(&ui.g, th.label as u8);
+    assert!(
+        band.first().unwrap() < &cut[0] && band.last().unwrap() > &cut[0],
+        "the band {band:?} about the cutoff's line {cut:?}"
+    );
+    set(&mut ui, LIVE_PARAM_FILTER_LFO, 16);
+    settle(&mut ui);
+    assert!(dots(&ui).len() > band.len(), "deeper, wider");
+    page_golden(&mut ui, "lab-filter-lfo");
 }
 
 // ---- FILTER, MOD and FX (Task 7) ----
@@ -2432,7 +2481,7 @@ fn save_and_each_card_learns_its_parameter() {
                 LIVE_PARAM_CUTOFF,
                 LIVE_PARAM_RESONANCE,
                 LIVE_PARAM_FILTER_VOICES,
-                none,
+                LIVE_PARAM_FILTER_LFO,
             ],
         ),
         (
@@ -2492,6 +2541,7 @@ fn learn_names_every_lab_card() {
         (LIVE_PARAM_VIBRATO_RATE, "VIB RATE"),
         (LIVE_PARAM_VIBRATO_DEPTH, "VIB AMT"),
         (LIVE_PARAM_VIBRATO_DELAY, "VIB DLY"),
+        (LIVE_PARAM_FILTER_LFO, "FILT LFO"),
     ];
     for (p, name) in names {
         let mut buf = [0 as std::os::raw::c_char; LEARN_VIEW_NAME as usize];

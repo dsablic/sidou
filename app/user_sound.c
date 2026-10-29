@@ -269,13 +269,13 @@ uint8_t user_sound_preset_byte(const live* l) {
 uint32_t user_sound_edit_gather(const live* l, uint8_t* out) {
     out[0] = USER_SOUND_EDIT_VERSION;
     out[1] = user_sound_preset_byte(l);
-    out[2] = (uint8_t)live_preset_edited(l);
     memset(&out[3], 0, LAB_SOUND_NAME);
     for (uint32_t i = 0; i < LAB_SOUND_NAME && l->base_name[i]; i++) {
         out[3u + i] = (uint8_t)l->base_name[i];
     }
     out[3u + LAB_SOUND_NAME] = LAB_SOUND_BYTES;
-    live_sound_get(l, &out[4u + LAB_SOUND_NAME]);
+    live_sound_get(l, &out[4u + LAB_SOUND_NAME]); /* packed once: the mark compares it */
+    out[2] = (uint8_t)live_sound_edited(l, &out[4u + LAB_SOUND_NAME]);
     return USER_SOUND_EDIT_BYTES;
 }
 

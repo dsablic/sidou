@@ -457,16 +457,23 @@ LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
     li_write_all(l);
 }
 
-uint32_t live_preset_edited(const live* l) {
+uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
     if (l->preset == LIVE_PRESET_DICE) {
         return 0;
     }
+    for (uint32_t i = 0; i < LAB_SOUND_BYTES; i++) {
+        /* a bend range RPN 0 set is the channel's, not the sound's */
+        if (now[i] != l->base[i] && (i != LAB_SOUND_BEND_RANGE || !l->bend_range_rpn)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+uint32_t live_preset_edited(const live* l) {
     uint8_t now[LAB_SOUND_BYTES];
     live_sound_get(l, now);
-    if (l->bend_range_rpn) {
-        now[LAB_SOUND_BEND_RANGE] = l->base[LAB_SOUND_BEND_RANGE]; /* the channel's, not the sound's */
-    }
-    return !lab_sound_equal(now, l->base);
+    return live_sound_edited(l, now);
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
@@ -517,6 +524,7 @@ LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_COUNT])
     out[LIVE_PARAM_PWM_DEPTH] = p->pwm_depth;
     out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(p->pwm_rate);
     out[LIVE_PARAM_TUNE] = LIVE_TUNE_CENTS;
+    out[LIVE_PARAM_FILTER_LFO] = 0;
 }
 
 static void put16(uint8_t* s, uint32_t at, uint32_t v) {
@@ -616,8 +624,7 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->tune = (int8_t)(tune < -LIVE_TUNE_CENTS ? -LIVE_TUNE_CENTS
                        : tune > LIVE_TUNE_CENTS ? LIVE_TUNE_CENTS
                                                 : tune);
-    uint32_t lfo = in[LAB_SOUND_FILTER_LFO];
-    l->filter_lfo = (uint8_t)(lfo < LIVE_FILTER_LFO_MAX ? lfo : LIVE_FILTER_LFO_MAX);
+    live_param_set(l, LIVE_PARAM_FILTER_LFO, in[LAB_SOUND_FILTER_LFO]);
     l->reso_link = link_of(in[LAB_SOUND_RESO_LINK]);
     l->pwm_link = link_of(in[LAB_SOUND_PWM_LINK]);
     for (uint32_t i = 0; i < sizeof SOUND_PARAMS / sizeof SOUND_PARAMS[0]; i++) {
@@ -835,6 +842,7 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_PWM_DEPTH: return LIVE_PWM_DEPTH_MAX;
     case LIVE_PARAM_PWM_RATE: return LIVE_PWM_RATE_MAX;
     case LIVE_PARAM_TUNE: return 2u * LIVE_TUNE_CENTS;
+    case LIVE_PARAM_FILTER_LFO: return LIVE_FILTER_LFO_MAX;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return SID_CHARACTER_MAX;
@@ -1035,6 +1043,10 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
             li_update_freq(l, v);
         }
         break;
+    case LIVE_PARAM_FILTER_LFO:
+        l->filter_lfo = (uint8_t)value;
+        li_update_cutoff(l);
+        break;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             if (l->expert[param - LIVE_PARAM_EXPERT] != value) {
@@ -1083,6 +1095,7 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_PWM_DEPTH: return l->pwm_depth;
     case LIVE_PARAM_PWM_RATE: return live_pwm_rate(l->pwm_rate);
     case LIVE_PARAM_TUNE: return (uint32_t)(l->tune + LIVE_TUNE_CENTS);
+    case LIVE_PARAM_FILTER_LFO: return l->filter_lfo;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return expert_get(l, param - LIVE_PARAM_EXPERT);
@@ -1093,46 +1106,6 @@ uint32_t live_param_get(const live* l, uint32_t param) {
         }
         return 0;
     }
-}
-
-void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]) {
-    out[LIVE_PARAM_CUTOFF] = l->cutoff;
-    out[LIVE_PARAM_RESONANCE] = l->resonance;
-    out[LIVE_PARAM_PULSE_WIDTH] = l->pulse_width;
-    out[LIVE_PARAM_VOLUME] = l->master;
-    out[LIVE_PARAM_WAVEFORM] = (uint16_t)(l->control >> 4);
-    out[LIVE_PARAM_RING] = (l->control & CTRL_RING) ? 1u : 0u;
-    out[LIVE_PARAM_SYNC] = (l->control & CTRL_SYNC) ? 1u : 0u;
-    out[LIVE_PARAM_ATTACK] = (uint16_t)(l->attack_decay >> 4);
-    out[LIVE_PARAM_DECAY] = l->attack_decay & 0x0fu;
-    out[LIVE_PARAM_SUSTAIN] = (uint16_t)(l->sustain_release >> 4);
-    out[LIVE_PARAM_RELEASE] = l->sustain_release & 0x0fu;
-    out[LIVE_PARAM_FILTER_MODE] = (l->filter_mode >> 4) & 7u;
-    out[LIVE_PARAM_FILTER_VOICES] = l->filter_voices & 7u;
-    out[LIVE_PARAM_MODEL] = l->model_req == SID_MODEL_8580 ? 1u : 0u;
-    for (uint32_t s = 0; s < LIVE_SLOTS; ++s) {
-        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; ++f) {
-            out[LIVE_PARAM_SLOT + s * LIVE_SLOT_FIELDS + f] = l->slot[s][f];
-        }
-    }
-    out[LIVE_PARAM_BEND_RANGE] = l->bend_range;
-    out[LIVE_PARAM_VELOCITY_TARGET] = l->velocity_target;
-    out[LIVE_PARAM_MOD_TARGET] = l->mod_target;
-    out[LIVE_PARAM_PRESSURE_TARGET] = l->pressure_target;
-    out[LIVE_PARAM_VIBRATO_RATE] = l->vibrato_rate;
-    out[LIVE_PARAM_VIBRATO_DEPTH] = l->vibrato_depth;
-    out[LIVE_PARAM_VIBRATO_DELAY] = l->vibrato_delay;
-    out[LIVE_PARAM_ENVELOPE_MODE] = l->envelope_mode;
-    out[LIVE_PARAM_PROFILE] = l->profile_req;
-    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
-        out[LIVE_PARAM_AGE + f] = l->character[f];
-    }
-}
-
-void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
-    out[LIVE_PARAM_PWM_DEPTH] = l->pwm_depth;
-    out[LIVE_PARAM_PWM_RATE] = (uint16_t)live_pwm_rate(l->pwm_rate);
-    out[LIVE_PARAM_TUNE] = (uint16_t)(l->tune + LIVE_TUNE_CENTS);
 }
 
 void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {

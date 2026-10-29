@@ -34,7 +34,7 @@ static const uint64_t PRESET_LOADS =
     BIT(LIVE_PARAM_BEND_RANGE) | BIT(LIVE_PARAM_VELOCITY_TARGET) | BIT(LIVE_PARAM_MOD_TARGET) |
     BIT(LIVE_PARAM_PRESSURE_TARGET) | BIT(LIVE_PARAM_VIBRATO_RATE) |
     BIT(LIVE_PARAM_VIBRATO_DEPTH) | BIT(LIVE_PARAM_VIBRATO_DELAY) | BIT(LIVE_PARAM_PWM_DEPTH) |
-    BIT(LIVE_PARAM_PWM_RATE) | BIT(LIVE_PARAM_TUNE);
+    BIT(LIVE_PARAM_PWM_RATE) | BIT(LIVE_PARAM_TUNE) | BIT(LIVE_PARAM_FILTER_LFO);
 
 /* 1 for an expert parameter (they follow the profile's macros: SID_EXPERT_DEFAULT). */
 #define EXPERT(p) ((uint32_t)(p) - LIVE_PARAM_EXPERT < SID_EXPERT_COUNT)
@@ -171,9 +171,10 @@ static int look(midi_out* o, const live* l, int remote) {
     uint32_t released = 0;
     live_params_base(l, now);
     /* The parameters past the experts: their fields as live has them, compared first (a look at
-     * rest reads three), each one's value only once one moved. */
+     * rest reads a few), each one's value only once one moved. */
     int tail = l->pwm_depth != o->seen[LIVE_PARAM_PWM_DEPTH] || l->pwm_rate != o->pwm_step ||
-               (uint32_t)(l->tune + LIVE_TUNE_CENTS) != o->seen[LIVE_PARAM_TUNE];
+               (uint32_t)(l->tune + LIVE_TUNE_CENTS) != o->seen[LIVE_PARAM_TUNE] ||
+               l->filter_lfo != o->seen[LIVE_PARAM_FILTER_LFO];
     if (tail || l->preset != o->preset_seen) {
         live_params_tail(l, now);
         o->pwm_step = l->pwm_rate;

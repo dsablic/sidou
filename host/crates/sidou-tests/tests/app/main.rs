@@ -26,6 +26,7 @@ mod live_cutoff;
 mod live_dice;
 mod live_freq;
 mod live_instrument;
+mod live_macro;
 mod live_view;
 mod logo;
 mod logo_bitmap;

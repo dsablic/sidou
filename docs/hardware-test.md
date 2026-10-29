@@ -2393,6 +2393,22 @@ the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold
 
 Notes:
 
+## 23. LAB 1.1: the filter LFO, ARP RATE, peek and macros
+
+What it decides: whether 1.1's additions to LAB sound and feel right. Set up as section 22.
+
+- [ ] **The filter LFO (FILTER's K4) on a 6581 and on the 8580:** SAW LEAD, K4 up a few detents
+  from off (the rate starts at 1 Hz), a chord held; then K4 to 32 and OSC's PWM HZ to its top.
+  *Emulator:* `sidou-tests/tests/app/live_macro.rs::the_filter_lfo_sweeps_k1s_walk_each_way_at_the_pwm_rate`
+  (the sweep, smooth between the walk's entries), `sidou-tests/tests/app/lab_view.rs::the_filter_lfo_draws_its_band`,
+  `emu-gate/tests/lab.rs::lab_filter_mod_and_fx_draw_within_their_budgets` (the page with the LFO
+  sweeping), `emu-gate/tests/midi.rs::a_filter_cc_flood_fits_the_isr_overhead_at_any_age`.
+  *Device-only:* by ear: no zipper or stepping on the 6581's filter at slow rates and deep sweeps
+  (the cutoff moves up to 100 times a second, 1/256 of a detent at a time), and whether 32
+  detents each way is a useful range.
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2421,3 +2437,4 @@ Notes:
 | 20 .sid tunes over SysEx PUT | | |
 | 21 .sid playback and the 6502's meter | | |
 | 22 LAB | | |
+| 23 LAB 1.1 | | |

@@ -134,6 +134,8 @@ extern "C" {
 #define LIVE_CC_ARP_RATE 28u
 #define LIVE_CC_ARP_ORDER 29u
 #define LIVE_CC_ARP_SPAN 30u
+/* The filter LFO's depth (LIVE_PARAM_FILTER_LFO), the last of the block 20..31. */
+#define LIVE_CC_FILTER_LFO 31u
 #define LIVE_CC_ALL_SOUND_OFF 120u
 #define LIVE_CC_RESET_ALL 121u
 #define LIVE_CC_ALL_NOTES_OFF 123u
@@ -620,6 +622,9 @@ typedef enum {
     LIVE_PARAM_PWM_DEPTH = LIVE_PARAM_EXPERT + SID_EXPERT_COUNT,
     LIVE_PARAM_PWM_RATE,
     LIVE_PARAM_TUNE,
+    /* 1.1's: the filter LFO's depth, 0..LIVE_FILTER_LFO_MAX K1 detents each way, at the PWM's
+     * rate (live.filter_lfo). */
+    LIVE_PARAM_FILTER_LFO,
     LIVE_PARAM_COUNT
 } live_param;
 
@@ -636,7 +641,7 @@ typedef enum {
 #define LIVE_COLD
 #endif
 #define LIVE_PARAM_EXPERT_END (LIVE_PARAM_EXPERT + SID_EXPERT_COUNT)
-/* The parameters past the experts: LIVE_PARAM_PWM_DEPTH .. LIVE_PARAM_TUNE. */
+/* The parameters past the experts: LIVE_PARAM_PWM_DEPTH .. LIVE_PARAM_COUNT - 1. */
 #define LIVE_PARAM_TAIL (LIVE_PARAM_COUNT - LIVE_PARAM_EXPERT_END)
 /* LIVE_PARAM_PWM_RATE's value (0..LIVE_PWM_RATE_MAX, 0.05 Hz) as the LFO's phase step a tick,
  * round(rate * 65536 * 0.05 / LIVE_TICK_HZ), and a phase step back as the nearest rate. */
@@ -680,6 +685,9 @@ void live_all_notes_off(live* l);
  * the octave may change while the key is held. */
 uint8_t live_key_note(const live* l, uint8_t base_note);
 void live_knob(live* l, live_knob_id knob, int32_t delta);
+/* The place on K1's walk of cutoff c (0..LIVE_CUTOFF_MAX) on the chip's model: the last entry of
+ * live_cutoff_steps at or below it (0 below the first). */
+uint32_t live_cutoff_place(const live* l, uint32_t c);
 /* What K3 turns now (a live_tone_kind): RATIO on a mono-sync preset, else PULSE while the waveform
  * has the pulse bit, else DECAY. */
 uint32_t live_tone(const live* l);
@@ -701,6 +709,8 @@ void live_recall_preset(live* l, uint8_t q);
  * slots included; a bend range that RPN 0 set does not count). Never on DICE, whose every turn is
  * a new sound. */
 uint32_t live_preset_edited(const live* l);
+/* live_preset_edited with the sound already packed (live_sound_get's now). */
+uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]);
 /* The current sound's name (live.base_name) into buf (at least LIVE_PRESET_NAME_CHARS bytes), then
  * `*` while live_preset_edited; DICE's with its roll's number. */
 #define LIVE_PRESET_NAME_CHARS 12u

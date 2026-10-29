@@ -375,6 +375,10 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                 b(LAB_SOUND_RESONANCE),
                 b(LAB_SOUND_FILTER_VOICES),
                 b(LAB_SOUND_FILTER_MODE),
+                b(LAB_SOUND_FILTER_LFO),
+                // the LFO's rate, PWM HZ's, on K4's name line: 1 Hz when K4 turns it on
+                b(LAB_SOUND_PWM_RATE),
+                b(LAB_SOUND_PWM_RATE) + 1,
             ],
         ),
         (
@@ -384,7 +388,10 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                 .chain(b(LAB_SOUND_ARP)..b(LAB_SOUND_ARP) + 4)
                 .collect(),
         ),
-        (LAB_PAGE_FX, (b(LAB_SOUND_SLOTS)..BYTES).collect()),
+        (
+            LAB_PAGE_FX,
+            (b(LAB_SOUND_SLOTS)..b(LAB_SOUND_FILTER_LFO)).collect(),
+        ),
     ];
     let mut ui = lab_ui();
     for (page, own) in pages {

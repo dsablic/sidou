@@ -8,6 +8,18 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
+  (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
+  name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
+  rate starts it at 1 Hz. CC 31 and NRPN 0/8 reach it (docs/reference/midi.md); a preset loads
+  it off, and DICE's rolls leave it off. It is kept with the sound.
+
+### Changed
+- A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
+  unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
+  schema 9: it keeps the filter LFO's learned CC.
+
 ### Fixed
 - LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as
   EDIT + SCL is. ARP a few milliseconds before EDIT varies LAB's page or MUTATEs STEP's lane (on

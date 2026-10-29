@@ -41,6 +41,7 @@ void li_write_all(live* l);
 /* What the controllers, the vibrato and the LFOs move, written when it changed. */
 void li_update_freq(live* l, int v);
 void li_update_pws(live* l);
+void li_update_cutoff(live* l);
 /* The knobs' setters: the field and what it moves. */
 void li_set_cutoff(live* l, uint16_t value);
 void li_set_resonance(live* l, uint8_t value);

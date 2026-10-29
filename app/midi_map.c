@@ -185,6 +185,11 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
         LIVE_PARAM_PWM_RATE, NO_CC, NRPN(NRPN_LIVE, 6), LIVE_PWM_RATE_MAX, 0, LINEAR),
     ROW("Live", "Fine tune", "0..100 = -50..+50 cents, 50 in tune; every voice; a preset's",
         LIVE_PARAM_TUNE, NO_CC, NRPN(NRPN_LIVE, 7), 2 * LIVE_TUNE_CENTS, LIVE_TUNE_CENTS, STEPS),
+    ROW("Live", "Filter LFO",
+        "0 off .. 32 of K1's cutoff detents each way: the cutoff's LFO, a triangle at the PWM "
+        "rate; a preset's (off)",
+        LIVE_PARAM_FILTER_LFO, LIVE_CC_FILTER_LFO, NRPN(NRPN_LIVE, 8), LIVE_FILTER_LFO_MAX, 0,
+        STEPS),
 
     ROW("Output", "Spread",
         "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "
@@ -212,6 +217,9 @@ const midi_map_entry* midi_map_for_param(uint32_t param) {
 /* Each CC's row + 1, 0 for none: midi_map_for_cc in one load, for every CC of a stream (the
  * rows' order, which the host tests check against the table). */
 #define SLOT_CC(k) [LIVE_CC_SLOT_FIRST + (k)] = 21u + (k) /* the slots' rows from 20 */
+/* A parameter past the experts: its row + 1 (42 rows before the experts, then the experts, then
+ * one row each in the parameters' order). */
+#define TAIL_ROW(p) (43u + SID_EXPERT_COUNT + (p) - LIVE_PARAM_EXPERT_END)
 /* clang-format off */
 static const uint8_t cc_rows[128] = {
     [LIVE_CC_CUTOFF] = 1u,
@@ -237,6 +245,7 @@ static const uint8_t cc_rows[128] = {
     [LIVE_CC_VIBRATO_RATE] = 40u, /* after the Expression rows without a CC */
     [LIVE_CC_VIBRATO_DEPTH] = 41u,
     [LIVE_CC_VIBRATO_DELAY] = 42u,
+    [LIVE_CC_FILTER_LFO] = TAIL_ROW(LIVE_PARAM_FILTER_LFO), /* the sound's, after the experts */
     [MIDI_MAP_CC_SPREAD] = MIDI_MAP_ROWS, /* the last row */
     SLOT_CC(0),  SLOT_CC(1),  SLOT_CC(2),  SLOT_CC(3),  SLOT_CC(4),
     SLOT_CC(5),  SLOT_CC(6),  SLOT_CC(7),  SLOT_CC(8),  SLOT_CC(9),

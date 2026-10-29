@@ -738,7 +738,7 @@ value popup; PRESETS opens no popup either (the header names the sound).
 |---|---|---|---|---|---|
 | OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
 | ENVELOPE | ATTACK | DECAY | SUS (the sustain level) | RELEASE (0..15, a step a detent) | INSTANT, AUTHENTIC: the envelope mode, the instrument's for every sound (ALL SOUNDS) |
-| FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | free | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
+| FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | LFO: the filter LFO's depth, `0` (off) to `32` of K1's detents each way, a triangle (up first) at the rate OSC's PWM HZ sets, shown on the card's name line (`LFO1.3HZ`); turned up from off on a sound with no rate yet, the rate starts at 1 Hz; the drawing dots the band the cutoff sweeps | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
 | MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | VELO: the velocity target (OFF, SUS, CUT, PW) | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
 
@@ -758,8 +758,7 @@ sixteen slots full, SAVE on a sound that is not a USER one toasts `USER FULL: ED
 writes nothing (a USER sound still keeps in place). SAVE held while a knob turns is MIDI learn
 for that card's parameter on every page (on FX the selected slot's control; the toast names it:
 `LEARNED CC 21 -> PWM DEPTH`), and SAVE + HOME is learn's clear, as everywhere. OSC's K1 on a
-sync sound without pulse is the ratio, which has no CC (`RATIO: NO CC`); a card with no parameter
-yet (FILTER's K4) toasts `K4: NOTHING`. LAB composes under learn's frame; the frame forwards
+sync sound without pulse is the ratio, which has no CC (`RATIO: NO CC`). LAB composes under learn's frame; the frame forwards
 nothing to it.
 
 **EDIT + SAVE** (EDIT held first, as the help card teaches) opens the **name page**, a mode of

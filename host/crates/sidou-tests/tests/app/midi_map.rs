@@ -1105,13 +1105,13 @@ edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
 the bend range, three expression targets, the expert layer, the PWM and the fine tune also
-have a fixed CC (7-bit). MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
+have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..{last} selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode), expression settings (bend range, the targets,
-the vibrato), the PWM and the fine tune over any edits, even when it selects the preset already playing; volume, the
+the vibrato), the PWM, the fine tune and the filter LFO (off) over any edits, even when it selects the preset already playing; volume, the
 chip model and character, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
@@ -1121,10 +1121,10 @@ Expression; 7 volume; 71 resonance; 74 cutoff, i.e. brightness; 72, 73 and 75 re
 attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alone where
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
-mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
-character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
-117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM and the fine
-tune, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
+mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the chord
+arpeggio in 27..30 and the filter LFO in 31, the character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
+117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM, the fine
+tune and the filter LFO, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
 (SETTINGS' SPREAD) is a setting, not the instrument's: no preset holds it, MIDI learn does not
 bind it and SIDOU does not send it (Output, below).
 
@@ -1399,9 +1399,9 @@ the gesture, how to cancel and how to clear). What is learned:
   learning again moves the binding. The gesture reaches every
   parameter a knob turns: the cutoff, resonance, pulse width and release, CHIP's Age, DAC, Thump
   and Bleed and expert controls, each effect slot's Amount, A, B and Mix, and every card of
-  LAB's pages (the envelope, the filter voices, the vibrato's rate, depth and delay, the
-  velocity target, PWM depth, PWM rate and fine tune: the last three have an NRPN and no CC of
-  their own, so a learned CC is their only CC).
+  LAB's pages (the envelope, the filter voices, the filter LFO, the vibrato's rate, depth and
+  delay, the velocity target, PWM depth, PWM rate and fine tune: the last three have an NRPN and
+  no CC of their own, so a learned CC is their only CC).
 - **Values:** through the parameter's curve and range in the map below, as its own CC.
 - **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
   records what the controller sends and plays it back onto the same parameter. A parameter

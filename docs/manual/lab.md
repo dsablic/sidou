@@ -64,8 +64,14 @@ only the built-in presets.
 Hold **SAVE** and turn a card: the next MIDI controller you move is learned for that card's
 parameter, on every page. (OSC's ratio on a sync sound has no CC and says so.)
 
+## Sweep the filter
+
+FILTER's K4 is the **filter LFO**: how far the cutoff swings each way, in K1's detents (`0` is
+off, `32` the most). It swings at the PWM's rate, so OSC's PWM HZ sets its speed too; the card's
+name line shows the rate (`LFO1.3HZ`). On a sound with no rate yet the first detent starts it at
+1 Hz, so you hear it at once. The drawing dots the band the cutoff sweeps through. CC 31 sets it
+from MIDI.
+
 ## What is not there yet
 
-FILTER's K4 is free (it toasts `K4: NOTHING`). Sending a sound to a song as an instrument,
-holding a key to peek at a parameter and macros are planned for 1.x
-([the roadmap](../ROADMAP.md)).
+Sending a sound to a song as an instrument is planned for 1.x ([the roadmap](../ROADMAP.md)).

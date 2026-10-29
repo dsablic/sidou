@@ -495,7 +495,7 @@ fn lab_osc_and_envelope_draw_within_their_budgets() {
     assert!(over.is_empty(), "{over:#?}");
 }
 
-/// FILTER (each mode, the cutoff turned every frame), MOD (the vibrato, PWM BASS's PWM and ARP's
+/// FILTER (each mode, the cutoff turned every frame, then the filter LFO sweeping), MOD (the vibrato, PWM BASS's PWM and ARP's
 /// staircase) and FX (the distortion's curve, the modulation's wave, the delay's taps): every
 /// frame within LAB_VIEW_FRAME_CELLS, every ui_poll within LAB_WORST_POLL.
 #[test]
@@ -518,6 +518,11 @@ fn lab_filter_mod_and_fx_draw_within_their_budgets() {
     m.turn(ALGORITHM, 3);
     m.run_ms(100);
     run(&mut m, "FILTER, NOTCH", LAB_PAGE_FILTER);
+    // the filter LFO 12 detents deep at 1 Hz (K4 from off): the cutoff, its card and the curve
+    // move every tick
+    m.turn(K1 + 3, 12);
+    m.run_ms(200);
+    run(&mut m, "FILTER, NOTCH, LFO", LAB_PAGE_FILTER);
     // MOD: the vibrato and the PWM on, then ARP up-down
     for _ in 0..3 {
         m.turn(K1 + 1, 40);

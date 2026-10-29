@@ -485,10 +485,15 @@ static void filt_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     }
 }
 
-static void filt_init(filt_ctx* f, const live* l, uint32_t hl) {
-    float hz = sid_cutoff_hz(l->model, 0, l->cutoff_out);
+/* The response's column of cutoff register c. */
+static uint32_t filt_x(const live* l, uint32_t c) {
+    float hz = sid_cutoff_hz(l->model, 0, c);
     uint32_t h = (uint32_t)(hz < 30.0f ? 30.0f : hz > 12000.0f ? 12000.0f : hz);
-    f->xc = (uint16_t)(FILT_X0 + (uint32_t)(log2q8(h) - log2q8(30)) * FILT_PX_OCT / 256u);
+    return FILT_X0 + (uint32_t)(log2q8(h) - log2q8(30)) * FILT_PX_OCT / 256u;
+}
+
+static void filt_init(filt_ctx* f, const live* l, uint32_t hl) {
+    f->xc = (uint16_t)filt_x(l, l->cutoff_out);
     float k = sid_resonance_k(l->model, 0, l->resonance) * 256.0f;
     f->invq = (uint16_t)(k > 512.0f ? 512.0f : k);
     f->mode = l->filter_mode >> 4 & 7u;
@@ -845,6 +850,25 @@ static void guides_page(grid_canvas* c, const live* l, uint32_t page, uint32_t h
     uint32_t last = row0 + LAB_DRAW_ROWS - 1u;
     uint8_t hint = THEME_ATTR(th, hint);
     if (page == LAB_PAGE_FILTER) {
+        if (l->filter_lfo) {
+            /* the filter LFO's band: where the cutoff sweeps, dotted behind the curve (lit while
+             * K4 turns) */
+            const uint16_t* t = live_cutoff_steps[l->model];
+            int32_t pos = (int32_t)live_cutoff_place(l, l->cutoff);
+            int32_t off = (int32_t)l->cutoff - t[pos];
+            int32_t a = pos - l->filter_lfo < 0 ? 0 : pos - l->filter_lfo;
+            int32_t b = pos + l->filter_lfo > 64 ? 64 : pos + l->filter_lfo;
+            int32_t ra = t[a] + off, rb = t[b] + off;
+            uint32_t x0 = filt_x(l, (uint32_t)(ra < 0 ? 0 : ra));
+            uint32_t x1 = filt_x(l, (uint32_t)(rb > 2047 ? 2047 : rb));
+            uint8_t attr = GRID_ATTR(hl == 4u ? th->knob[3] : th->dim, th->bg);
+            for (uint32_t col = x0 / 8u; col <= x1 / 8u && col < GRID_COLS; col++) {
+                for (uint32_t r = 0; r + 1u < LAB_DRAW_ROWS; r++) {
+                    c->ch[row0 + r][col] = FONT_D2;
+                    c->attr[row0 + r][col] = attr;
+                }
+            }
+        }
         gtext(c, last, 6, "100", hint);
         gtext(c, last, 17, "1K", hint);
         gtext(c, last, 27, "10K", hint);

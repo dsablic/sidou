@@ -67,7 +67,8 @@ void learn_view_param_name(uint32_t param, char* buf) {
     } else if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
         append(buf, LEARN_VIEW_NAME, chip_view_expert_name(param - LIVE_PARAM_EXPERT));
     } else if (param >= LIVE_PARAM_EXPERT_END && param < LIVE_PARAM_COUNT) {
-        static const char* const TAIL[LIVE_PARAM_TAIL] = {"PWM DEPTH", "PWM RATE", "TUNE"};
+        static const char* const TAIL[LIVE_PARAM_TAIL] = {"PWM DEPTH", "PWM RATE", "TUNE",
+                                                          "FILT LFO"};
         append(buf, LEARN_VIEW_NAME, TAIL[param - LIVE_PARAM_EXPERT_END]);
     } else {
         /* LAB's cards past the ones above (each at most 8 characters: "LEARN " fits) */
@@ -257,7 +258,7 @@ static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_
     }
     int none = p && p->page == PANEL_PAGE_NONE && !(held & (1u << PANEL_BTN_EDIT));
     if (p && p->page >= PANEL_PAGE_LAB_FIRST && (p->page != PANEL_PAGE_LAB_FIRST || enc != PANEL_ENC_K1)) {
-        char t[] = "K?: NOTHING"; /* a card no parameter is on yet (FILTER's K4) */
+        char t[] = "K?: NOTHING"; /* a card with no parameter */
         t[1] = (char)('1' + enc - PANEL_ENC_K1);
         screen_toast(s, t, SCREEN_TOAST_MS);
         return 0;

@@ -40,6 +40,7 @@ void live_dice_shape(live* l, uint32_t s) {
     static const uint8_t MODES[8] = {1, 1, 1, 1, 1, 2, 4, 5}; /* LP x5, BP, HP, LP+HP */
     live_param_set(l, LIVE_PARAM_FILTER_MODE, MODES[next(&s) % 8u]);
     live_param_set(l, LIVE_PARAM_FILTER_VOICES, 7u);
+    live_param_set(l, LIVE_PARAM_FILTER_LFO, 0u); /* the filter rolled: still, as DICE's always was */
     uint32_t width = next(&s);
     if (wave == 4u) {
         live_param_set(l, LIVE_PARAM_PULSE_WIDTH, 128u + 64u * (4u + width % 27u));
