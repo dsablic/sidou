@@ -145,8 +145,14 @@ impl Dev {
         for name in tunes {
             let bytes = starter_tune(name).expect("a starter tune");
             let h = sidou_sysex::sid::check(&bytes).expect("a starter tune checks");
-            let title = sidou_sysex::sid::store_name(&sidou_sysex::sid::title(&h), name, &mut taken);
-            put_file(&mut d.m.soc.flash.mem, &title, sidou_sys::STORE_FILE_SID as u8, &bytes);
+            let title =
+                sidou_sysex::sid::store_name(&sidou_sysex::sid::title(&h), name, &mut taken);
+            put_file(
+                &mut d.m.soc.flash.mem,
+                &title,
+                sidou_sys::STORE_FILE_SID as u8,
+                &bytes,
+            );
         }
         d
     }
@@ -752,12 +758,7 @@ pub fn put_file(flash: &mut [u8], name: &str, file_type: u8, bytes: &[u8]) {
         store_quiet(&mut *st, 1);
         while store_poll(&mut *st) != 0 {}
         assert_eq!(
-            store_file_begin(
-                &mut *st,
-                name.as_ptr(),
-                file_type,
-                bytes.len() as u32
-            ),
+            store_file_begin(&mut *st, name.as_ptr(), file_type, bytes.len() as u32),
             STORE_OK
         );
         let mut offset = 0;

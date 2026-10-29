@@ -550,14 +550,15 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 prelude_tunes: Vec::new(),
                 steps: Vec::new(),
             });
-        } else if let Some((k, v)) = ["goal", "prereq", "skills", "related", "songs", "tunes", "after"]
-            .iter()
-            .find_map(|k| {
-                line.strip_prefix(k)
-                    .and_then(|r| r.strip_prefix(' '))
-                    .map(|r| (*k, r.trim()))
-            })
-        {
+        } else if let Some((k, v)) = [
+            "goal", "prereq", "skills", "related", "songs", "tunes", "after",
+        ]
+        .iter()
+        .find_map(|k| {
+            line.strip_prefix(k)
+                .and_then(|r| r.strip_prefix(' '))
+                .map(|r| (*k, r.trim()))
+        }) {
             let j = out
                 .last_mut()
                 .ok_or_else(|| at("header line before any journey".into()))?;

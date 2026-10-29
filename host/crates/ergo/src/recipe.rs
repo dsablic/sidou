@@ -654,8 +654,7 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
                     let name = x
                         .as_str()
                         .ok_or("prerequisites: `tunes` must hold strings")?;
-                    crate::device::starter_tune(name)
-                        .map_err(|e| format!("prerequisites: {e}"))?;
+                    crate::device::starter_tune(name).map_err(|e| format!("prerequisites: {e}"))?;
                     Ok(name.to_string())
                 })
                 .collect::<Result<_, String>>()?,
