@@ -598,11 +598,11 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     else if (table == GT2_WTBL)
         what = left <= 0x0fu ? "DELAY " : left >= 0xf0u ? "COMMAND " : "WAVE ";
     else if (table == GT2_PTBL)
-        what = left & 0x80u ? "SET PULSE " : "PULSE SLIDE ";
+        what = left & 0x80u ? "SET " : "SLIDE ";
     else if (table == GT2_FTBL)
-        what = !left ? "CUTOFF " : left & 0x80u ? "FILTER CTRL " : "FILTER SLIDE ";
+        what = !left ? "CUTOFF " : left & 0x80u ? "CTRL " : "SLIDE ";
     else
-        what = left & 0x80u ? "CALCULATED SPEED " : "SPEED ";
+        what = left & 0x80u ? "CALC " : "SPEED ";
     uint32_t n = 0u;
     while (*what && n < 24u)
         out[n++] = *what++;
@@ -1092,8 +1092,8 @@ static void build_footer(song_pages* p) {
     if (!*say && p->page == SONG_VIEW_INSTR)
         say = p->instr_cursor < GT2_INS_NAME ? PARAM_NAMES[p->instr_cursor] : "INSTRUMENT NAME";
     if (!*say && p->arp && p->page == SONG_VIEW_TABLE) {
-        memcpy(meaning, "SAVE WRITES FROM ROW ", 21u);
-        hex2(p->arp_start + 1u, meaning + 21u);
+        memcpy(meaning, "SAVE AT ROW ", 12u);
+        hex2(p->arp_start + 1u, meaning + 12u);
         say = meaning;
     }
     if (!*say && p->page == SONG_VIEW_TABLE && sv->song) {

@@ -20,9 +20,9 @@
 #define LOWER_AT (LANES_AT + LANES_N)
 #define LOWER_N 11u
 _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
-#define HEAD_ROWS 0x0000000Fu
-#define LANES_ROWS 0x0000FFF0u
-#define LOWER_ROWS 0x3FFF0000u
+#define HEAD_ROWS 0x0000001Fu
+#define LANES_ROWS 0x0001FFE0u
+#define LOWER_ROWS 0x3FFE0000u
 
 /* What a knob steps a lock by, its value when the step has none, its range's top. */
 static const uint16_t LOCK_STEP[SONG_LOCK_PARAMS] = {32, 1, 1, 1, 64, 2, 2, 2, 2, 5};
@@ -276,14 +276,14 @@ static uint32_t step_col(uint32_t i) {
     return STEP_VIEW_STEP_COL + i + i / 4u;
 }
 
-/* The header, the page selector and the ruler: rows 0-3. */
+/* The header, the page selector and the ruler: rows 0-4. */
 static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
     const theme* th = theme_get(sv->l->theme);
     const uint8_t base = THEME_ATTR(th, value);
     uint32_t v = sv->voice;
-    blank(c, 0, 4u, base);
+    blank(c, 0, 5u, base);
     char vn[3] = {'V', (char)('1' + v), 0};
     big(c, 0, 0, vn, GRID_ATTR(lanes[v].silent ? th->dim : th->voice[v], th->bg));
     char pat[7] = "PAT --";
@@ -323,15 +323,16 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     uint32_t n = decimal(lanes[v].rows, len);
     small(c, 21, STEP_VIEW_PAGE_ROW, len, THEME_ATTR(th, value));
     small(c, 21u + n, STEP_VIEW_PAGE_ROW, " STEPS", THEME_ATTR(th, hint));
-    /* Row 3: the number of each group's first step. */
+    /* Rows 3-4, at 2x: the number of each group's first step. */
     for (uint32_t g = 0; g < 4u; g++) {
         decimal(page * STEP_VIEW_STEPS + g * 4u + 1u, len);
-        small(c, step_col(g * 4u), STEP_VIEW_RULER_ROW, len, THEME_ATTR(th, hint));
+        big(c, step_col(g * 4u), STEP_VIEW_RULER_ROW, len, THEME_ATTR(th, label));
     }
     sv->dirty |= HEAD_ROWS;
 }
 
-/* Lane l's three rows from its first. */
+/* Lane l's four rows from its first: the pips, their notches, and at 2x the lane's note, its
+ * instrument and its gate. */
 static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t l, uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -339,11 +340,6 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     const theme* th = theme_get(sv->l->theme);
     uint32_t r = STEP_VIEW_LANES_ROW + STEP_VIEW_LANE_ROWS * l;
     blank(c, r, STEP_VIEW_LANE_ROWS, THEME_ATTR(th, value));
-    if (l >= SONG_T_VOICES) {
-        big(c, 0, r, "B", THEME_ATTR(th, dim));
-        small(c, STEP_VIEW_STEP_COL, r + 2u, "CHIP B IN M5", THEME_ATTR(th, dim));
-        return;
-    }
     const lane* ln = &lanes[l];
     int selected = l == sv->voice;
     char vn[3] = {'V', (char)('1' + l), 0};
@@ -397,13 +393,13 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     text[n++] = HEX[st->instr[l] >> 4];
     text[n++] = HEX[st->instr[l] & 15u];
     text[n++] = ' ';
-    const char* gate = st->gate >> l & 1u ? "LEGATO" : "STACCATO";
+    const char* gate = st->gate >> l & 1u ? "LEG" : "STAC";
     while (*gate) {
         text[n++] = *gate++;
     }
     text[n] = 0;
-    small(c, STEP_VIEW_STEP_COL, r + 2u, text,
-          selected ? THEME_ATTR(th, value) : THEME_ATTR(th, hint));
+    big(c, STEP_VIEW_STEP_COL, r + 2u, text,
+        selected ? THEME_ATTR(th, value) : THEME_ATTR(th, hint));
 }
 
 static void build_lanes(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
@@ -480,7 +476,7 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     uint32_t v = sv->voice;
     const lane* ln = &lanes[v];
     const uint8_t frame = THEME_ATTR(th, dim);
-    blank(c, 16u, GRID_ROWS - 16u, THEME_ATTR(th, value));
+    blank(c, 17u, GRID_ROWS - 17u, THEME_ATTR(th, value));
     /* The frame, rows 17-22. */
     put(c, 0, 17u, FONT_ROUND_TL, frame);
     put(c, GRID_COLS - 1u, 17u, FONT_ROUND_TR, frame);
@@ -1331,7 +1327,7 @@ static void compose(screen* s, void* state, grid* g) {
     uint32_t reach = screen_animating(s) ? screen_reach(s) : GRID_ROWS;
     zone(st, ZONE_HEAD, 0u, reach, now, HEAD_AT, HEAD_N, 0);
     zone(st, ZONE_LANES, STEP_VIEW_LANES_ROW, reach, now, LANES_AT, LANES_N, 0);
-    zone(st, ZONE_LOWER, STEP_VIEW_HELD_ROW - 1u, reach, now, LOWER_AT, LOWER_N, 0);
+    zone(st, ZONE_LOWER, STEP_VIEW_HELD_ROW, reach, now, LOWER_AT, LOWER_N, 0);
     sv->built = 1;
     song_view_copy(sv, s, g);
 }

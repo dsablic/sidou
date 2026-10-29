@@ -7,13 +7,13 @@
  * - rows 0-1, the header (as TRACKER's): the voice "V1" at 2x in its colour, its pattern
  *   "PAT 03" at 2x, MUT/SOL, the play mark, the tempo and REC;
  * - row 2 the page selector (PAGE 1 2 3 4, the shown one reversed) and the pattern's length
- *   (64 STEPS); row 3 the step ruler (the number of each group's first step);
- * - rows 4-15 four lanes of three rows: V1, V2, V3, then B greyed (CHIP B IN M5). A lane's
+ *   (64 STEPS); rows 3-4 the step ruler at 2x (the number of each group's first step);
+ * - rows 5-16 three lanes of four rows: V1, V2, V3. A lane's
  *   16 steps stand in columns 5-23 in groups of four, each a pip (an empty step a dark square,
  *   a note a ball in the voice's colour, the playing step white) over a notch row: a yellow
  *   notch is a LOCK on that step, a cyan one a SET (the waveform command), the held step a
- *   yellow block. Under them the lane's default note, its instrument and its gate (STACCATO or
- *   LEGATO); an arrow marks the selected lane;
+ *   yellow block. Under them, at 2x, the lane's default note, its instrument and its gate (STAC or
+ *   LEG); an arrow marks the selected lane;
  * - rows 17-22 the HELD STEP frame: K1 CUTOFF, K2 RESONANCE, K3 PULSE WIDTH and K4 WAVEFORM
  *   with their values and bars, LOCK in yellow on a locked one and SET in cyan on the waveform
  *   command (what EDIT turns them into, the character, is the help card's);
@@ -65,15 +65,15 @@ extern "C" {
  * frame and the pads. */
 #define STEP_VIEW_PAGE_ROW 2u
 #define STEP_VIEW_RULER_ROW 3u
-#define STEP_VIEW_LANES_ROW 4u
-#define STEP_VIEW_LANE_ROWS 3u
+#define STEP_VIEW_LANES_ROW 5u
+#define STEP_VIEW_LANE_ROWS 4u
 #define STEP_VIEW_HELD_ROW 17u
 #define STEP_VIEW_PADS_ROW 24u
 /* The pads' first column: a pad is two cells and a cell apart, a beat two cells more. */
 #define STEP_VIEW_PAD_COL 2u
-/* A lane's first step column, and the lanes the view draws (V1-V3 and the greyed B). */
+/* A lane's first step column, and the lanes the view draws (V1-V3). */
 #define STEP_VIEW_STEP_COL 5u
-#define STEP_VIEW_LANES 4u
+#define STEP_VIEW_LANES 3u
 /* The bytes of what the view drew (three zones' looks), in step_view.drawn. */
 #define STEP_VIEW_LOOK 46u
 

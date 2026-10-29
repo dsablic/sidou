@@ -17,13 +17,13 @@
     "MUS.quiet.saw-lead.f3": "medium",
     "MUS.quiet.sync-lead.a4": "medium",
     "MUS.quiet.sync-lead.f3": "medium",
-    "READ.size.step": "medium",
+    "READ.size.step": "low",
     "READ.size.tracker": "low",
     "TASK.fail.change-theme.keep": "high"
   },
   "firmware": {
-    "image_bytes": 485016,
-    "image_fnv1a": "ea692d848a7d2024"
+    "image_bytes": 543136,
+    "image_fnv1a": "e021c82924a9973b"
   },
   "metrics": {
     "feedback.ALGORITHM (CHIP profile).first_change_ms": {
@@ -247,7 +247,7 @@
       "worse_when_higher": true
     },
     "journey.perform.time_to_first_sound_ms": {
-      "value": 10.0,
+      "value": 165.0,
       "worse_when_higher": true
     },
     "journey.sketch.actions": {
@@ -291,7 +291,35 @@
       "worse_when_higher": true
     },
     "journey.sketch.time_to_first_sound_ms": {
-      "value": 415.0,
+      "value": 460.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.actions": {
+      "value": 23.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.forced_wait_ms": {
+      "value": 12400.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.menu_trips": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.mode_switches": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.not_yet_possible": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.songs.stops_playing_steps": {
+      "value": 0.0,
       "worse_when_higher": true
     },
     "knob.ALGORITHM.chip.audible_cents": {
@@ -391,15 +419,15 @@
       "worse_when_higher": false
     },
     "knob.K2.chip.audible_cents": {
-      "value": 118.5362160836907,
+      "value": 1462.7735031237119,
       "worse_when_higher": false
     },
     "knob.K2.chip.audible_db": {
-      "value": 0.825791002592311,
+      "value": 0.8744000733404391,
       "worse_when_higher": false
     },
     "knob.K2.chip.dead_zone": {
-      "value": 4.0,
+      "value": 0.0,
       "worse_when_higher": true
     },
     "knob.K2.chip.detents": {
@@ -879,7 +907,7 @@
       "worse_when_higher": true
     },
     "read.menu.play_texts": {
-      "value": 15.0,
+      "value": 17.0,
       "worse_when_higher": false
     },
     "read.midi.contrast_failing_pairs": {
@@ -918,6 +946,18 @@
       "value": 12.0,
       "worse_when_higher": false
     },
+    "read.sid_view_browser.contrast_failing_pairs": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "read.sid_view_browser.play_below_min": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "read.sid_view_browser.play_texts": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
     "read.song_menu.contrast_failing_pairs": {
       "value": 0.0,
       "worse_when_higher": true
@@ -927,7 +967,7 @@
       "worse_when_higher": true
     },
     "read.song_menu.play_texts": {
-      "value": 12.0,
+      "value": 13.0,
       "worse_when_higher": false
     },
     "read.song_pages_instr.contrast_failing_pairs": {
@@ -983,7 +1023,7 @@
       "worse_when_higher": true
     },
     "read.step.play_below_min": {
-      "value": 3.0,
+      "value": 1.0,
       "worse_when_higher": true
     },
     "read.step.play_texts": {

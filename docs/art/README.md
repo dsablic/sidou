@@ -936,13 +936,14 @@ knob is a parameter lock** ([controls](../reference/controls.md#step)).
 - **Rows 0-1, the header:** as TRACKER's: **V1** at 2× in the voice's colour, its pattern
   **PAT 04** at 2×, MUT or SOL, the play mark, the tempo and REC.
 - **Row 2:** `PAGE` and the page numbers (the shown page reversed yellow) and the pattern's length
-  (`64 STEPS`); **row 3** the ruler: the number of each group's first step (`1 5 9 13`).
-- **Rows 4-15, four lanes of three rows:** V1, V2 and V3 at 2× in their colours, and **B**
-  greyed (`CHIP B IN M5`). The selected lane has the arrow. A lane's 16 steps are in columns
+  (`64 STEPS`); **rows 3-4** the ruler at 2×: the number of each group's first step (`1 5 9 13`).
+- **Rows 5-16, three lanes of four rows:** V1, V2 and V3 at 2× in their colours (a greyed
+  `B` lane stood here until it made room for the 2× lines below). The selected lane has the arrow. A lane's 16 steps are in columns
   5-23 in groups of four: **a dark square for an empty step, a ball in the voice's colour for a
   note, the playing step white**, and under it the notch row: a **yellow** notch is a LOCK, a
   **cyan** one a SET (a step with both shows the yellow one); the held step is a yellow block.
-  The line under each lane says its note, its instrument and its gate (`C-3 I01 STACCATO`).
+  The line under each lane, at 2×, says its note, its instrument and its gate (`C-3 I01 STAC`
+  or `LEG`).
 - **Rows 17-22, the HELD STEP frame:** `HELD STEP 6` (and the step's note), then the four knobs
   as `K1 CUTOFF`, `K2 RESO`, `K3 PULSE` and `K4 WAVE`, each with a bar in the knob's colour and
   its value (a percentage for the cutoff and the pulse width, 0-15 the resonance, `TRI`,
@@ -963,7 +964,7 @@ The value popup names what a knob on a held step sets, in the knob's colour: `CU
 four, `PAGE` (`2/4`), `NOTE` and `INSTRUMENT`.
 
 **The budget.** The view builds into the song views' shared canvas in three zones, each only
-when its own look changes: the header with the pages and the ruler (rows 0-3), the lanes
+when its own look changes: the header with the pages and the ruler (rows 0-4), the lanes
 (rows 4-15: the playing step moves, the edits and the locks) and the frame and pads
 (rows 16-29: only the edits, the locks, the held step and the page do). While a wipe shows the
 view a zone is built when its rows are reached, so the SEQ pass is not the whole canvas at once

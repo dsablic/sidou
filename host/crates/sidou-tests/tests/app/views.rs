@@ -798,7 +798,7 @@ impl Ui {
                     GRID_BIG_FIRST + 4
                 };
                 if self.g.ch[k] == b' ' {
-                    return self.g.src[k] as char;
+                    return ' '; // a blank cell: its source is a text drawn there before
                 }
                 assert_eq!(
                     u32::from(self.g.ch[k]),

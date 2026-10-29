@@ -1564,7 +1564,7 @@ fn the_arp_helper_shows_its_page_and_leaves_with_the_table() {
     assert_eq!(ui.big(11, 21, 2, 3), "+12");
     assert_eq!(ui.big(17, 0, 2, 4), "WAVE");
     assert_eq!(ui.big(17, 12, 2, 5), "PULSE");
-    assert_eq!(ui.small(29, 0, 23), "SAVE WRITES FROM ROW 01");
+    assert_eq!(ui.big(28, 0, 2, 14), "SAVE AT ROW 01");
     // The page changing closes the draft.
     unsafe { screen_pop(&mut h.ui.v.s, SCREEN_CUT) };
     assert_eq!(h.p.arp, 0);

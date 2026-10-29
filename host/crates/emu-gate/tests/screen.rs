@@ -5473,6 +5473,22 @@ fn the_readable_order_instrument_and_table_pages_match_their_goldens() {
         let mut m = booted(&fw);
         open_edit_page(&mut m, &fw, steps, symbol);
         compare_golden(&build, name, &m.soc.lcd.fb, &[]);
+        if name == "table-wave" {
+            // the ARP helper (a blank row's new arpeggio, a combined waveform chosen with
+            // PRESETS), and the PULSE table's rows, whose meanings used to be 1x
+            press(&mut m, ARP);
+            settle(&mut m, &fw);
+            m.turn(sidou_sys::SONG_PAGES_ENC_PRESETS as u8, 5);
+            m.run_ms(1500); // the popup goes
+            settle(&mut m, &fw);
+            compare_golden(&build, "table-arp", &m.soc.lcd.fb, &[]);
+            press(&mut m, HOME);
+            settle(&mut m, &fw);
+            m.turn(ALGORITHM, 1);
+            m.run_ms(1500); // the popup goes
+            settle(&mut m, &fw);
+            compare_golden(&build, "table-pulse", &m.soc.lcd.fb, &[]);
+        }
     }
 }
 

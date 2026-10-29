@@ -28,9 +28,11 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 
 **Smaller things that make 1.0 feel finished**
 
-- **ARP helper: audition and waveform choice.** Hear the draft before SAVE and pick its
-  waveform in TABLE's helper. S.
-- **Readable small text.** TABLE's and STEP's small text at 2× where there is room. S-M.
+- **ARP helper: audition and waveform choice.** The waveform: done (PRESETS in the helper).
+  Hearing the draft before SAVE: open, it needs the player to play table rows it does not
+  hold (the song-control jam plays the song's own tables). S.
+- **Readable small text.** Done for TABLE (the meaning line at 2×) and STEP (the ruler and the
+  lane lines at 2×, the greyed chip B lane gone); STEP's page selector row stays 1×. S-M.
 - **Fewer late writes for dense `.sid` players.** Done: 24 render parts a block (from 16), 80
   writes a block's window (from 100, to stay in the interrupt's budget), proved by a
   one-write-a-sample bench and synthetic player bursts; Sound Test stays a known limit.

@@ -8,6 +8,18 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The ARP helper's waveform:** PRESETS in TABLE's ARP helper chooses the waveform the rows
+  carry (TRI, SAW, PULSE, NOISE and the combined ones), shown on the helper's page; the rows stay
+  plain GoatTracker 2 wavetable rows, and the host test plays each waveform in GoatTracker's own
+  player.
+
+### Changed
+- **Readable small text on TABLE and STEP:** TABLE's meaning line is at 2x for every table (the
+  PULSE, FILTER and SPEED words are shorter), and STEP's step ruler and each lane's note,
+  instrument and gate line (`C-3 I01 STAC`) are at 2x. The greyed chip B lane (`CHIP B IN M5`)
+  made room for it.
+
 ### Fixed
 - **Dense `.sid` players write on time:** a block of the audio now renders in up to 23 parts, not
   15, so a player that writes 23-26 times within 16-19 samples (Thomkat, Kill Me, The Last Ninja)
