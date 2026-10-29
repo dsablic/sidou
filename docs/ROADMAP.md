@@ -28,15 +28,16 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 
 **Smaller things that make 1.0 feel finished**
 
-- **ARP helper: audition and waveform choice.** Hear the draft before SAVE and pick its
-  waveform in TABLE's helper. S.
-- **Readable small text.** TABLE's and STEP's small text at 2× where there is room. S-M.
+- **ARP helper: waveform choice.** Done: PRESETS in TABLE's helper picks the rows' waveform.
+- **Readable small text.** Done for TABLE (the meaning line at 2×) and STEP (the ruler and the
+  lane lines at 2×, the greyed chip B lane gone); STEP's page selector row stays 1×. S-M.
 - **Fewer late writes for dense `.sid` players.** Done: 24 render parts a block (from 16), 80
   writes a block's window (from 100, to stay in the interrupt's budget), proved by a
   one-write-a-sample bench and synthetic player bursts; Sound Test stays a known limit.
 - **Minimal DICE settings.** Density and scale, saved per song. M.
-- **Store health on STATUS.** A retired store sector is shown, and a background settings save
-  that failed is detected and retried. S.
+- **Store health on STATUS.** Done: STATUS's bottom row shows the store's retired sectors and
+  flash errors, and a background settings save that failed is detected, retried at each debounce,
+  and said once by a toast.
 - **More test coverage.** Done: a gate that decodes every instruction of the image, and the
   ergo harness walks LOAD and the SONG pages, checking SAVE and HOME on every list.
 - **A SIDS how-to video and What's new in 1.0.** S-M.
@@ -61,6 +62,9 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 **Sound and play**
 
 - **The rest of DICE's settings:** range and rhythm. M.
+- **The ARP helper's audition.** Hear the draft arpeggio before SAVE: the player reads the
+  helper's draft rows as an overlay (the song-control jam plays only the song's own tables).
+  M; the audio path and RAMTEXT (moved from 1.0, the user, 2026-10-29).
 - **A held step's audition plays its locks.** Hold a step and hear it with its locks. M; needs
   room in the audio interrupt, so a device check follows.
 - **LAB's song bridge:** send a sound to a song as an instrument, pull one back. M-L. Its own

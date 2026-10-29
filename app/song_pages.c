@@ -238,6 +238,30 @@ static void popup_text(char out[SCREEN_POPUP_TEXT], const char* text) {
     out[n] = 0;
 }
 
+/* The waveforms the helper offers, as the control byte's top nibble (triangle, sawtooth, pulse,
+ * noise, then the combined ones; the low nibble, the gate and its sync and ring bits, stays). */
+#define ARP_SHAPES 8u
+static const uint8_t ARP_SHAPE[ARP_SHAPES] = {1u, 2u, 4u, 8u, 3u, 5u, 6u, 7u};
+static const char ARP_SHAPE_NAME[ARP_SHAPES][8] = {"TRI",     "SAW",     "PULSE",   "NOISE",
+                                                   "TRI+SAW", "TRI+PUL", "SAW+PUL", "ALL 3"};
+
+/* Where the byte's waveform is in the list (0 for one it does not hold). */
+static uint32_t arp_shape(uint8_t wave) {
+    for (uint32_t i = 0u; i < ARP_SHAPES; i++)
+        if (ARP_SHAPE[i] == wave >> 4)
+            return i;
+    return 0u;
+}
+
+/* The waveform's word, or its byte for one the list lacks (a hand-made row's). */
+static void arp_wave_name(uint8_t wave, char out[SCREEN_POPUP_TEXT]) {
+    uint32_t i = arp_shape(wave);
+    if (ARP_SHAPE[i] == wave >> 4)
+        memcpy(out, ARP_SHAPE_NAME[i], 8u);
+    else
+        hex2(wave, out);
+}
+
 /* A number into popup text, with its sign when `sign` or negative. */
 static void arp_num(char out[SCREEN_POPUP_TEXT], int32_t v, int sign) {
     uint32_t n = 0u, a = (uint32_t)(v < 0 ? -v : v);
@@ -281,6 +305,11 @@ static int arp_popup(const song_pages* p, uint32_t encoder, char name[SCREEN_POP
         arp_num(text, a->steps, 0);
         *fill = a->steps - 1u;
         *max = SONG_PAGES_ARP_STEPS - 1u;
+    } else if (encoder == SONG_PAGES_ENC_PRESETS) {
+        label = "WAVE";
+        arp_wave_name(a->wave, text);
+        *fill = arp_shape(a->wave);
+        *max = ARP_SHAPES - 1u;
     } else {
         return 0;
     }
@@ -569,11 +598,11 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     else if (table == GT2_WTBL)
         what = left <= 0x0fu ? "DELAY " : left >= 0xf0u ? "COMMAND " : "WAVE ";
     else if (table == GT2_PTBL)
-        what = left & 0x80u ? "SET PULSE " : "PULSE SLIDE ";
+        what = left & 0x80u ? "SET " : "SLIDE ";
     else if (table == GT2_FTBL)
-        what = !left ? "CUTOFF " : left & 0x80u ? "FILTER CTRL " : "FILTER SLIDE ";
+        what = !left ? "CUTOFF " : left & 0x80u ? "CTRL " : "SLIDE ";
     else
-        what = left & 0x80u ? "CALCULATED SPEED " : "SPEED ";
+        what = left & 0x80u ? "CALC " : "SPEED ";
     uint32_t n = 0u;
     while (*what && n < 24u)
         out[n++] = *what++;
@@ -799,6 +828,9 @@ static int arp_input(song_pages* p, const screen_event* e) {
         a->speed = (uint8_t)clamp((int32_t)a->speed + steps, 1u, SONG_PAGES_ARP_SPEED_MAX);
     } else if (e->id == PANEL_ENC_K1 + 3u) {
         a->loop = (uint8_t)clamp((int32_t)a->loop + steps, 0u, a->steps);
+    } else if (e->id == SONG_PAGES_ENC_PRESETS) {
+        uint32_t i = clamp((int32_t)arp_shape(a->wave) + steps, 0u, ARP_SHAPES - 1u);
+        a->wave = (uint8_t)(ARP_SHAPE[i] << 4 | (a->wave & 0x0fu));
     } else {
         return 0;
     }
@@ -893,7 +925,7 @@ static void build_head(song_pages* p) {
 
 /* The helper's page, in the table's rows: the number of steps, the speed and the loop step at 2x
  * with the knob that turns each, the steps' offsets four to a line (the step the cursor is on in
- * reverse, the loop step in yellow), and the waveform that is kept. */
+ * reverse, the loop step in yellow), and the waveform PRESETS chooses. */
 static void arp_row(song_pages* p, uint32_t j) {
     song_view* sv = p->sv;
     song_view_canvas* c = &sv->cv;
@@ -920,9 +952,9 @@ static void arp_row(song_pages* p, uint32_t j) {
             big(c, k % 4u * 7u, r, num, attr);
         }
     } else if (j == 7u) {
-        memcpy(num, "WAVE ", 5u);
-        hex2(a->wave, num + 5u);
-        small(c, 0u, r, num, THEME_ATTR(th, hint));
+        big(c, 0u, r, "WAVE", THEME_ATTR(th, label));
+        arp_wave_name(a->wave, num);
+        big(c, 12u, r, num, THEME_ATTR(th, value));
     }
 }
 
@@ -1060,8 +1092,8 @@ static void build_footer(song_pages* p) {
     if (!*say && p->page == SONG_VIEW_INSTR)
         say = p->instr_cursor < GT2_INS_NAME ? PARAM_NAMES[p->instr_cursor] : "INSTRUMENT NAME";
     if (!*say && p->arp && p->page == SONG_VIEW_TABLE) {
-        memcpy(meaning, "SAVE WRITES FROM ROW ", 21u);
-        hex2(p->arp_start + 1u, meaning + 21u);
+        memcpy(meaning, "SAVE AT ROW ", 12u);
+        hex2(p->arp_start + 1u, meaning + 12u);
         say = meaning;
     }
     if (!*say && p->page == SONG_VIEW_TABLE && sv->song) {
@@ -1112,6 +1144,7 @@ static void look(const song_pages* p, uint8_t out[SONG_PAGES_LOOK]) {
     out[38] = p->arp_draft.loop;
     out[39] = p->arp_start;
     memcpy(out + 40u, p->arp_draft.off, SONG_PAGES_ARP_STEPS);
+    out[48] = p->arp_draft.wave;
 }
 
 static int model_loading(const song_view* sv) {

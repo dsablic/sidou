@@ -131,7 +131,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
 | K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
-| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC, then the USER sounds [LAB kept](#lab), the empty slots skipped), clamped at both ends; with EDIT held it puts the current preset back to its factory settings (a USER sound, to the sound as kept); in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry) |
+| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC, then the USER sounds [LAB kept](#lab), the empty slots skipped), clamped at both ends; with EDIT held it puts the current preset back to its factory settings (a USER sound, to the sound as kept); in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry), TABLE's ARP helper (the waveform) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
@@ -296,7 +296,7 @@ machine: **the 16 leftmost note keys are steps 1-16** of the selected voice's pa
 **held step plus a knob is a parameter lock**. It edits the same pattern TRACKER shows, so a
 song made here opens in GoatTracker. The voice is the song views' voice (the lane marked by the
 arrow); a page is 16 rows of its pattern (the pattern's length says how many pages: 64 rows,
-4 pages); B is chip B's lane, greyed until M5. It needs no REC. The pads under the lanes are the
+4 pages). It needs no REC. The pads under the lanes are the
 16 keys in beats of four, numbered by beat (1 2 3 4, four times; the second and fourth beats
 shaded, each beat's first number brighter); a held step's number in the pattern shows in the
 HELD STEP frame (`HELD STEP 22`).
@@ -307,7 +307,7 @@ HELD STEP frame (`HELD STEP 22`).
 | SELECT | selects the lane, V1, V2, V3 and round |
 | ALGORITHM | pages through the pattern; while the song plays the page follows the playing step |
 | PRESETS | the lane's instrument, 01-3F, its name in the popup (`03 KICK`: a NEW song's drum kit, [SONG](#song)); with a step held, that step's note (and the lane's note for the steps toggled after it) |
-| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane |
+| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane as `STAC` or `LEG` |
 | Step held + K1 | cutoff **LOCK** on that step: 32 of 2047 a detent, from the middle (1024) |
 | Step held + K2 | resonance LOCK, 0-15 |
 | Step held + K3 | pulse width LOCK, 64 of 4095 a detent from the middle (2048) |
@@ -428,7 +428,7 @@ WAVE PTR lands there) and press **ARP**. A blank row opens a new arpeggio (a maj
 a step); rows the helper wrote, or hand-made ones of the same shape, open as that arpeggio;
 anything else says **NOT AN ARP** and nothing changes. The page shows the number of steps, the
 speed and the loop step at 2x, the offsets four to a line (the step the cursor is on in
-reverse, the loop step in yellow), the waveform that is kept (`WAVE 41`) and where SAVE writes.
+reverse, the loop step in yellow), the waveform (`WAVE PULSE`) and where SAVE writes (`SAVE AT ROW 01`).
 
 | Control | Does |
 |---|---|
@@ -437,16 +437,17 @@ reverse, the loop step in yellow), the waveform that is kept (`WAVE 41`) and whe
 | K1 / K2 | the step's offset over the played note: an octave / a semitone, -64 to +63 |
 | K3 | the speed: ticks a step lasts, 1-16 |
 | K4 | the loop step: where the arpeggio returns to after the last (1 loops all of it); **HOLD** plays the steps once and holds the last |
+| PRESETS | the waveform the rows carry: TRI, SAW, PULSE, NOISE, TRI+SAW, TRI+PUL, SAW+PUL, ALL 3 (the gate stays; a hand-made row's sync or ring bit stays too, and a byte the list lacks shows as hex until PRESETS picks one) |
 | SAVE | writes the rows and closes the helper (**ARP SAVED**) |
 | HOME | closes it without writing |
-| keys | audition the instrument as in the table |
+| keys | audition the instrument as in the table (the helper's draft is not in the song until SAVE, so the keys play the song's own rows) |
 
 The rows: row 1 holds the waveform and the first offset; each later step is a delay row of
 speed - 1 ticks (at speed 1 the waveform again) holding its offset; then a jump (`FF`) to the loop
 step, or `FF 00` to hold. Looping back to step 1 at speeds over 1 takes one more row, because a
 delay holds the note before it. Offsets are GoatTracker's relative notes (00-3F up, 40-7F down),
-and the waveform is the one read (41, pulse and gate, for a new arpeggio): K1 on its table row
-changes it. SAVE writes one byte at a time through the player's edit queue, as the table's
+and the waveform is the one PRESETS chose (pulse with the gate, 41, for a new arpeggio; the
+one read, for rows already there). SAVE writes one byte at a time through the player's edit queue, as the table's
 knobs do, only the bytes that differ, and blanks the rows a shorter arpeggio no longer needs.
 It refuses with **ROWS IN USE** when it would write over rows past the ones it read that are not
 blank (another program's), and with **TABLE FULL** at the table's end; the helper then stays open.
@@ -1422,7 +1423,10 @@ opens on the first page every time, as a help card does.
 | 2 | the chip (its model and the profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play), the preset and octave (`OCT +0`), and the held notes |
 | 3 | under the effect slots DIST, MOD and FX each slot's algorithm and Mix (`>` marks the selected slot), then the selected slot's Amount, A and B |
 
-The version number sits after SIDOU in the title.
+The version number sits after SIDOU in the title. On every page the bottom row, beside `READY.`,
+shows the store's health when it is not clean: `STORE ERR 3` (flash operations that failed since
+boot, up to 99), or with sectors retired for the session `RETIRED 2 ERR 3`. A healthy store shows
+nothing there.
 
 The menu (HOME) is drawn at 2 times the font, six items of the eleven at a time (the
 selected one a line in reverse video; the title bar says which it is of how many, and an arrow

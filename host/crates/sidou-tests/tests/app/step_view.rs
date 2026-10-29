@@ -111,13 +111,13 @@ fn release(s: &mut Song) {
 /// Cell (col, row) of a lane's step i: the pip, and the notch under it.
 fn pip(s: &Song, lane: usize, i: usize) -> (u8, u8) {
     let col = 5 + i + i / 4;
-    let r = 4 + 3 * lane;
+    let r = 5 + 4 * lane;
     (ch(&s.ui, col, r), attr(&s.ui, col, r))
 }
 
 fn notch(s: &Song, lane: usize, i: usize) -> (u8, u8) {
     let col = 5 + i + i / 4;
-    let r = 5 + 3 * lane;
+    let r = 6 + 4 * lane;
     (ch(&s.ui, col, r), attr(&s.ui, col, r))
 }
 
@@ -164,31 +164,28 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     );
     assert_eq!(attr(&s.ui, 7, 2) & 15, t.label);
     assert_eq!(s.ui.small(2, 21, 9), "64 STEPS ");
-    assert_eq!(s.ui.small(3, 5, 4), "1   ");
-    assert_eq!(s.ui.small(3, 10, 1), "5");
-    assert_eq!(s.ui.small(3, 15, 1), "9");
-    assert_eq!(s.ui.small(3, 20, 2), "13");
+    assert_eq!(s.ui.big(3, 5, 2, 2), "1 ");
+    assert_eq!(s.ui.big(3, 10, 2, 1), "5");
+    assert_eq!(s.ui.big(3, 15, 2, 1), "9");
+    assert_eq!(s.ui.big(3, 20, 2, 2), "13");
     // The lanes: V1 with notes on steps 1, 5 (a note, a command, a key off after it on 10).
-    assert_eq!(s.ui.big(4, 0, 2, 2), "V1");
-    assert_eq!(s.ui.big(7, 0, 2, 2), "V2");
-    assert_eq!(s.ui.big(10, 0, 2, 2), "V3");
-    assert_eq!(s.ui.big(13, 0, 2, 1), "B");
-    assert_eq!(attr(&s.ui, 0, 7) & 15, t.voice[1]);
-    assert_eq!(ch(&s.ui, 4, 4), FONT_ARROW_RIGHT as u8, "the selected lane");
-    assert_eq!(ch(&s.ui, 4, 7), b' ');
+    assert_eq!(s.ui.big(5, 0, 2, 2), "V1");
+    assert_eq!(s.ui.big(9, 0, 2, 2), "V2");
+    assert_eq!(s.ui.big(13, 0, 2, 2), "V3");
+    assert_eq!(attr(&s.ui, 0, 9) & 15, t.voice[1]);
+    assert_eq!(ch(&s.ui, 4, 5), FONT_ARROW_RIGHT as u8, "the selected lane");
+    assert_eq!(ch(&s.ui, 4, 9), b' ');
     assert_eq!(pip(&s, 0, 0), (FONT_BALL as u8, t.voice[0] | t.bg << 4));
     assert_eq!(pip(&s, 0, 1), (FONT_PIP as u8, t.dim | t.bg << 4));
     assert_eq!(pip(&s, 0, 4).0, FONT_BALL as u8);
     assert_eq!(pip(&s, 0, 9).0, FONT_PIP as u8, "a key off is not a note");
     assert_eq!(pip(&s, 1, 0).0, FONT_PIP as u8);
     // A group gap of one column between the fours.
-    assert_eq!(ch(&s.ui, 9, 4), b' ');
-    assert_eq!(ch(&s.ui, 14, 4), b' ');
-    assert_eq!(s.ui.small(6, 5, 16), "C-3 I01 STACCATO");
-    assert_eq!(attr(&s.ui, 5, 6) & 15, t.value, "the selected lane's line");
-    assert_eq!(attr(&s.ui, 5, 9) & 15, t.hint);
-    assert_eq!(s.ui.small(15, 5, 12), "CHIP B IN M5");
-    assert_eq!(attr(&s.ui, 5, 15) & 15, t.dim, "B is greyed");
+    assert_eq!(ch(&s.ui, 9, 5), b' ');
+    assert_eq!(ch(&s.ui, 14, 5), b' ');
+    assert_eq!(s.ui.big(7, 5, 2, 12), "C-3 I01 STAC");
+    assert_eq!(attr(&s.ui, 5, 7) & 15, t.value, "the selected lane's line");
+    assert_eq!(attr(&s.ui, 5, 11) & 15, t.hint);
     // The held step's frame: nothing held.
     assert_eq!(s.ui.small(17, 2, 14), " HELD STEP -- ");
     assert_eq!(s.ui.small(18, 2, 9), "K1 CUTOFF");
@@ -305,7 +302,7 @@ fn a_note_that_ends_the_pattern_has_no_key_off_to_write() {
     let mut s = step();
     s.ui.turn(PANEL_ENC_ALGORITHM, 3);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 3), "49 ");
+    assert_eq!(s.ui.big(3, 5, 2, 3), "49 ");
     tap(&mut s, 15);
     let p = pattern(&s, 0);
     assert_eq!(p[63], [C3, 1, 0, 0]);
@@ -317,7 +314,7 @@ fn a_legato_lane_writes_no_key_off_and_taking_a_note_away_leaves_the_one_before(
     let mut s = step();
     s.ui.press(PANEL_BTN_ARP);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(6, 5, 16), "C-3 I01 LEGATO  ");
+    assert_eq!(s.ui.big(7, 5, 2, 11), "C-3 I01 LEG");
     tap(&mut s, 6);
     let p = pattern(&s, 0);
     assert_eq!((p[6], p[7]), ([C3, 1, 0, 0], R));
@@ -331,13 +328,13 @@ fn a_legato_lane_writes_no_key_off_and_taking_a_note_away_leaves_the_one_before(
     );
     s.ui.press(PANEL_BTN_ARP);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(6, 5, 16), "C-3 I01 STACCATO");
+    assert_eq!(s.ui.big(7, 5, 2, 12), "C-3 I01 STAC");
     // The gate belongs to the lane.
     s.ui.press(PANEL_BTN_ARP);
     s.ui.turn(PANEL_ENC_SELECT, 1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(6, 5, 16), "C-3 I01 LEGATO  ");
-    assert_eq!(s.ui.small(9, 5, 16), "C-3 I01 STACCATO");
+    assert_eq!(s.ui.big(7, 5, 2, 11), "C-3 I01 LEG");
+    assert_eq!(s.ui.big(11, 5, 2, 12), "C-3 I01 STAC");
 }
 
 #[test]
@@ -348,8 +345,8 @@ fn select_picks_the_lane_and_the_keys_write_into_its_pattern() {
     assert_eq!(s.ui.big(0, 0, 2, 2), "V2");
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 01");
     assert_eq!(attr(&s.ui, 0, 0) & 15, th().voice[1]);
-    assert_eq!(ch(&s.ui, 4, 7), FONT_ARROW_RIGHT as u8);
-    assert_eq!(ch(&s.ui, 4, 4), b' ');
+    assert_eq!(ch(&s.ui, 4, 9), FONT_ARROW_RIGHT as u8);
+    assert_eq!(ch(&s.ui, 4, 5), b' ');
     tap(&mut s, 0);
     assert_eq!(pattern(&s, 1)[0], [C3, 1, 0, 0]);
     assert_eq!(
@@ -370,7 +367,7 @@ fn presets_sets_the_lanes_instrument_or_with_a_step_held_the_steps_note() {
     let mut s = step();
     s.ui.turn(PRESETS, 1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(6, 5, 16), "C-3 I02 STACCATO");
+    assert_eq!(s.ui.big(7, 5, 2, 12), "C-3 I02 STAC");
     assert_eq!(
         s.ui.v.song.instr, 2,
         "the keys audition the lane's instrument"
@@ -386,7 +383,7 @@ fn presets_sets_the_lanes_instrument_or_with_a_step_held_the_steps_note() {
         [C3 + 5, 2, 0, 0],
         "the knob touched it: no toggle at its release"
     );
-    assert_eq!(s.ui.small(6, 5, 7), "F-3 I02");
+    assert_eq!(s.ui.big(7, 5, 2, 7), "F-3 I02");
     tap(&mut s, 10);
     assert_eq!(pattern(&s, 0)[10][0], C3 + 5);
     // The note of a step with one moves from its own.
@@ -431,8 +428,8 @@ fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     assert_eq!(s.ui.small(2, 21, 9), "128 STEPS");
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 2), "17");
-    assert_eq!(s.ui.small(3, 20, 2), "29");
+    assert_eq!(s.ui.big(3, 5, 2, 2), "17");
+    assert_eq!(s.ui.big(3, 20, 2, 2), "29");
     assert_eq!(attr(&s.ui, 7, 2) >> 4, th().hot, "page 2 reversed");
     assert_eq!(attr(&s.ui, 5, 2) >> 4, th().bg);
     tap(&mut s, 0);
@@ -440,10 +437,10 @@ fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     assert_eq!(pip(&s, 2, 0).0, FONT_BALL as u8);
     s.ui.turn(PANEL_ENC_ALGORITHM, 20);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 3), "113", "the last page: 8 of 8");
+    assert_eq!(s.ui.big(3, 5, 2, 3), "113", "the last page: 8 of 8");
     s.ui.turn(PANEL_ENC_ALGORITHM, -20);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 2), "1 ", "page 1");
+    assert_eq!(s.ui.big(3, 5, 2, 2), "1 ", "page 1");
     // A pattern of another length shows as many pages as it needs: 64 rows, 4 pages.
     s.ui.v.song.order_pos = 0;
     settle(&mut s.ui);
@@ -466,7 +463,7 @@ fn while_the_song_plays_the_page_and_the_white_step_follow_it() {
     s.f.st.order_pos = [0, 0, 1];
     s.f.st.row = [3, 3, 70];
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 3), "65 ", "row 70 is on page 5");
+    assert_eq!(s.ui.big(3, 5, 2, 3), "65 ", "row 70 is on page 5");
     assert_eq!(attr(&s.ui, 13, 2) >> 4, th().hot);
     assert_eq!(pip(&s, 2, 6), (FONT_PIP as u8, th().value | th().bg << 4));
     assert_eq!(
@@ -482,14 +479,14 @@ fn while_the_song_plays_the_page_and_the_white_step_follow_it() {
     // ALGORITHM does not page against the playhead.
     s.ui.turn(PANEL_ENC_ALGORITHM, -3);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 3), "65 ");
+    assert_eq!(s.ui.big(3, 5, 2, 3), "65 ");
     // Stopped, the page stays where the playhead left it.
     s.f.st.state = SONG_T_STOPPED as u8;
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 3), "65 ");
+    assert_eq!(s.ui.big(3, 5, 2, 3), "65 ");
     s.ui.turn(PANEL_ENC_ALGORITHM, -1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(3, 5, 3), "49 ");
+    assert_eq!(s.ui.big(3, 5, 2, 3), "49 ");
 }
 
 fn popup(s: &Song, enc: u32, edit: bool) -> Option<(String, String, u32, u32)> {

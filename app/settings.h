@@ -111,7 +111,9 @@ typedef struct {
     uint8_t forcing;
     uint8_t result; /* a settings_result, until settings_take_result */
     uint8_t started;
-    uint8_t errors; /* the store's error count (its low byte) when it took the explicit save */
+    uint8_t errors; /* the store's error count (its low byte) when it took a save */
+    uint8_t watch;  /* a background write was taken: check it committed without a program error */
+    uint8_t tries;  /* background saves in a row that failed (the second says so once) */
     char last_song[STORE_NAME_MAX + 1u];
     uint8_t sid_model; /* SID MODEL: SETTINGS_SID_* */
     /* The USER sounds (settings_sounds; NULL: none), which a preset byte of 5 + n loads from; the

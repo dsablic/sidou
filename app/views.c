@@ -188,6 +188,9 @@ static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
     out[n++] = v->cards;
     out[n++] = v->home.cursor;
     out[n++] = v->home.top;
+    const store* st = v->set ? v->set->st : NULL;
+    out[n++] = st ? st->retired : 0u;
+    out[n++] = st ? (uint8_t)(st->errors < 99u ? st->errors : 99u) : 0u;
     out[n] = (uint8_t)blink;
 }
 
@@ -346,6 +349,27 @@ static int status_input(screen* s, void* state, const screen_event* e) {
     return 1;
 }
 
+/* The store's health on the READY row, right-aligned: nothing while it is healthy, else the
+ * sectors it retired for the session and the flash errors since boot (to 99): RETIRED 1 ERR 3,
+ * or STORE ERR 3. */
+static void status_store(grid* g, const theme* th, uint32_t retired, uint32_t errors) {
+    char t[24] = "";
+    char n[6];
+    if (retired) {
+        append(t, sizeof t, "RETIRED ");
+        number_text(n, retired);
+        append(t, sizeof t, n);
+    }
+    if (errors) {
+        append(t, sizeof t, retired ? " ERR " : "STORE ERR ");
+        number_text(n, errors);
+        append(t, sizeof t, n);
+    }
+    if (retired | errors) {
+        put(g, THEME_ATTR(th, hot), STATUS_READY_ROW, GRID_COLS - 1u - length(t), t);
+    }
+}
+
 static void status_compose(screen* s, void* state, grid* g) {
     views* v = state;
     const live* l = v->l;
@@ -407,6 +431,7 @@ static void status_compose(screen* s, void* state, grid* g) {
         status_page_effects(g, th, l);
     }
     put(g, lbl, STATUS_READY_ROW, 2, "READY.");
+    status_store(g, th, v->drawn[VIEWS_LOOK - 3u], v->drawn[VIEWS_LOOK - 2u]);
 }
 
 const view views_status = {"STATUS", NULL, NULL, status_input, status_compose, status_changed};

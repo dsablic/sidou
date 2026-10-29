@@ -62,6 +62,23 @@ fn freqs(sng: &[u8]) -> Vec<u16> {
         .collect()
 }
 
+/// Voice 1's control register after each frame's writes.
+fn controls(sng: &[u8]) -> Vec<u8> {
+    let t = trace(sng, 0, FRAMES, &Options::default()).expect("the reference plays the song");
+    let mut ctl = 0u8;
+    t.frames
+        .iter()
+        .map(|f| {
+            for &(reg, value) in f.calls.iter().flatten() {
+                if reg == 4 {
+                    ctl = value;
+                }
+            }
+            ctl
+        })
+        .collect()
+}
+
 /// The pitch GT2 gives C-3 plus `semis` semitones (a plain held note), by playing it.
 fn pitch(semis: i32) -> u16 {
     let f = freqs(&song(vec![(0x41, 0x00), (0xff, 0x00)], semis));
@@ -259,4 +276,33 @@ fn hand_made_and_other_rows_are_told_apart() {
     // A blank row, a stop and a wave program the helper does not write.
     no(&[(0, 0), (0, 0)]);
     no(&[(0xff, 0), (0xff, 0)]);
+}
+
+/// Every waveform the helper offers (PRESETS' list: the top nibble 1, 2, 4, 8 and the combined
+/// 3, 5, 6, 7, with the gate) reaches the reference player's control register while the steps
+/// still play as the helper says; a waveform's sync and ring bits stay with the byte.
+#[test]
+fn the_reference_player_plays_each_waveform_the_helper_chooses() {
+    for wave in [0x11u8, 0x21, 0x41, 0x81, 0x31, 0x51, 0x61, 0x71, 0x45, 0x23] {
+        let mut a = arp(&[0, 4, 7, 12], 2, 1);
+        a.wave = wave;
+        let r = rows(&a, TABLE_ROW);
+        assert!(
+            r.iter().all(|&(l, _)| l == wave || l < 0x10 || l == 0xff),
+            "{wave:02X}: the rows carry the waveform: {r:?}"
+        );
+        let ctl = controls(&song(r, 0));
+        let at = ctl
+            .iter()
+            .position(|&c| c & 0xf0 != 0)
+            .expect("a waveform sounds");
+        assert_eq!(ctl[at], wave, "{wave:02X}: the control register");
+        assert!(
+            ctl[at..at + 60].iter().all(|&c| c == wave),
+            "{wave:02X}: it holds through the steps"
+        );
+        let got = played(&a);
+        let want = expected(&a, 60);
+        assert_eq!(&got[..60], &want[..], "{wave:02X}: the steps");
+    }
 }

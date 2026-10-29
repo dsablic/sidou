@@ -38,7 +38,7 @@ void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t
 /* Setters write 1; 2 keeps the debounce, retry or unconsumed toast awake without gathering. */
 static void pending(settings* s) {
     s->l->settings_dirty =
-        (s->seen != s->saved || s->edit_seen != s->edit_saved || s->asked || s->result) ? 2u : 0u;
+        (s->seen != s->saved || s->edit_seen != s->edit_saved || s->asked || s->watch || s->result) ? 2u : 0u;
 }
 
 void settings_sounds(settings* s, user_sounds* sounds) {
@@ -241,8 +241,23 @@ int settings_load(settings* s, uint32_t now_ms) {
     return same;
 }
 
+/* A background save failed: the next debounce writes it again; the second failure in a row says so
+ * once (a toast), and a success clears the count. */
+static void retry_later(settings* s, uint32_t now_ms) {
+    s->changed_at = now_ms;
+    s->tries += s->tries < 255u;
+    if (s->tries == 2u) {
+        s->result = SETTINGS_FAILED;
+    }
+}
+
+/* A background write refused with a flash error (an unmounted store has none to retry). */
+static int background_error(const settings* s, int rc) {
+    return rc == STORE_ERROR && !s->asked && store_state(s->st) != STORE_STATE_UNMOUNTED;
+}
+
 /* Hands the record to the store: 1 if it took it (it commits on its own polls). */
-static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
+static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc, uint32_t now_ms) {
     if (!s->st) {
         return 1;
     }
@@ -254,7 +269,12 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
     if (rc == STORE_OK) {
         s->saved = crc;
         s->errors = (uint8_t)s->st->errors;
+        s->watch = 1;
         return 1;
+    }
+    if (background_error(s, rc)) {
+        retry_later(s, now_ms); /* not saved: it stays unsaved */
+        return 0;
     }
     if (rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID || rc == STORE_ERROR) {
         s->saved = crc; /* nothing to wait for */
@@ -267,7 +287,7 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
 }
 
 /* The unsaved edit to the store, once it is free: 1 if it took it. */
-static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
+static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc, uint32_t now_ms) {
     if (!s->st) {
         s->edit_saved = crc;
         return 1;
@@ -277,9 +297,17 @@ static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t cr
     }
     memcpy(s->edit, rec, len);
     int rc = store_put(s->st, USER_SOUND_EDIT_KEY, USER_SOUND_EDIT_TYPE, s->edit, len);
+    if (background_error(s, rc)) {
+        retry_later(s, now_ms);
+        return 0;
+    }
     if (rc == STORE_OK || rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID ||
         rc == STORE_ERROR) {
         s->edit_saved = crc; /* taken, or nothing to wait for */
+    }
+    if (rc == STORE_OK) {
+        s->errors = (uint8_t)s->st->errors;
+        s->watch = 1;
     }
     return rc == STORE_OK;
 }
@@ -301,18 +329,33 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         s->edit_seen = edit_crc;
         s->changed_at = now_ms;
     }
+    /* A background write the store took, now committed: a program error meanwhile left it
+     * undecided, so both records are written again by the next debounce (an explicit save
+     * checks its own). The second failure in a row says so once; a success clears the count. */
+    if (s->watch && s->st && !store_busy(s->st)) {
+        s->watch = 0;
+        if (s->asked) {
+            /* its own check follows */
+        } else if ((uint8_t)s->st->errors != s->errors) {
+            s->saved = ~s->saved;
+            s->edit_saved = ~s->edit_saved;
+            retry_later(s, now_ms);
+        } else {
+            s->tries = 0;
+        }
+    }
     /* The unsaved edit first, then the settings record: a cut between them leaves the new
      * sound over the old settings (it holds all of the sound), never the old edit over a newer
      * record, and SAVE says SAVED once both are kept. */
     if (s->asked == 1 || now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS) {
         if (edit_crc != s->edit_saved) {
-            (void)write_edit(s, edit, edit_len, edit_crc);
+            (void)write_edit(s, edit, edit_len, edit_crc, now_ms);
         } else if (s->asked == 1) {
-            if (write(s, rec, len, crc)) {
+            if (write(s, rec, len, crc, now_ms)) {
                 s->asked = 2;
             }
         } else if (crc != s->saved) {
-            (void)write(s, rec, len, crc);
+            (void)write(s, rec, len, crc, now_ms);
         }
     }
     if (!s->asked) {
@@ -350,7 +393,8 @@ void settings_tick(settings* s, uint32_t now_ms) {
      * is gathered again once the store can take it, not every frame. */
     int waiting = (s->seen != s->saved || s->edit_seen != s->edit_saved) &&
                   !(s->st && store_busy(s->st));
-    if (dirty || s->asked || (waiting && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
+    if (dirty || s->asked || (s->watch && !(s->st && store_busy(s->st))) ||
+        (waiting && now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS)) {
         update(s, now_ms);
     }
 }
