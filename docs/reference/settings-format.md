@@ -84,5 +84,9 @@ never an older edit over a newer record (which would bring back the sound before
 do not gather or CRC the record. Returning to the already-saved values requires no
 background write. An explicit SAVE skips the debounce; a busy store retries, and
 after two seconds an explicit save may force held operations and report
-`SAVED (GAPS)`. Background saves never force them. Foreign data is never overwritten
+`SAVED (GAPS)`. Background saves never force them. A background save is checked once the store
+is idle: a program error meanwhile (or a store that refuses it with a flash error) leaves both
+records unsaved, and the next debounce writes them again. The second failure in a row shows the
+toast `STORE ERROR: NOT SAVED` once, not again until a save has succeeded; the store's health
+is on STATUS. Foreign data is never overwritten
 without the menu's explicit format confirmation.

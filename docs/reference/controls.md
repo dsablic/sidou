@@ -1419,7 +1419,10 @@ opens on the first page every time, as a help card does.
 | 2 | the chip (its model and the profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play), the preset and octave (`OCT +0`), and the held notes |
 | 3 | under the effect slots DIST, MOD and FX each slot's algorithm and Mix (`>` marks the selected slot), then the selected slot's Amount, A and B |
 
-The version number sits after SIDOU in the title.
+The version number sits after SIDOU in the title. On every page the bottom row, beside `READY.`,
+shows the store's health when it is not clean: `STORE ERR 3` (flash operations that failed since
+boot, up to 99), or with sectors retired for the session `RETIRED 2 ERR 3`. A healthy store shows
+nothing there.
 
 The menu (HOME) is drawn at 2 times the font, six items of the eleven at a time (the
 selected one a line in reverse video; the title bar says which it is of how many, and an arrow

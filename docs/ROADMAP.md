@@ -35,8 +35,9 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   writes a block's window (from 100, to stay in the interrupt's budget), proved by a
   one-write-a-sample bench and synthetic player bursts; Sound Test stays a known limit.
 - **Minimal DICE settings.** Density and scale, saved per song. M.
-- **Store health on STATUS.** A retired store sector is shown, and a background settings save
-  that failed is detected and retried. S.
+- **Store health on STATUS.** Done: STATUS's bottom row shows the store's retired sectors and
+  flash errors, and a background settings save that failed is detected, retried at each debounce,
+  and said once by a toast.
 - **More test coverage.** Done: a gate that decodes every instruction of the image, and the
   ergo harness walks LOAD and the SONG pages, checking SAVE and HOME on every list.
 - **A SIDS how-to video and What's new in 1.0.** S-M.

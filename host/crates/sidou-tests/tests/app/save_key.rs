@@ -533,6 +533,41 @@ fn a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it() {
     assert_eq!(st.mount(), STORE_STATE_SIDOU);
 }
 
+/// STATUS says what the store went through: nothing while it is healthy, the errors since boot
+/// and the sectors it retired for the session otherwise (on the READY row, right-aligned).
+#[test]
+fn status_shows_the_stores_health_only_when_it_is_not_healthy() {
+    let mut s = Saving::new();
+    crate::views::open_status(&mut s.ui);
+    s.frame();
+    assert_eq!(s.ui.top(), "STATUS");
+    let ready = |s: &Saving| {
+        s.ui.row(28)
+            .trim_matches(|c| c == '#' || c == ' ')
+            .to_string()
+    };
+    assert_eq!(ready(&s), "READY.");
+    s.st.st.errors = 3;
+    s.frame();
+    assert!(
+        ready(&s).starts_with("READY.") && ready(&s).ends_with("STORE ERR 3"),
+        "{}",
+        ready(&s)
+    );
+    s.st.st.retired = 2;
+    s.st.st.errors = 12;
+    s.frame();
+    assert!(
+        ready(&s).starts_with("READY.") && ready(&s).ends_with("RETIRED 2 ERR 12"),
+        "{}",
+        ready(&s)
+    );
+    s.st.st.errors = 0;
+    s.st.st.retired = 0;
+    s.frame();
+    assert_eq!(ready(&s), "READY.");
+}
+
 /// SETTINGS' RESET: ALGORITHM clockwise asks, SAVE alone does it; moving the cursor, counter-
 /// clockwise and HOME cancel and change and write nothing; the reset is saved at once.
 #[test]
