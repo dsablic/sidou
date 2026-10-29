@@ -8,7 +8,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Store health on STATUS:** the bottom row shows `STORE ERR n` (flash errors since boot) and, when
+  the store retired sectors for the session, `RETIRED n ERR n`; nothing while it is healthy.
+
 ### Fixed
+- **A failed background settings save is retried:** a program error after the store took the
+  settings (or the unsaved LAB edit) was never noticed; both are now written again at the next
+  debounce, and the second failure in a row shows `STORE ERROR: NOT SAVED` once.
 - **Dense `.sid` players write on time:** a block of the audio now renders in up to 23 parts, not
   15, so a player that writes 23-26 times within 16-19 samples (Thomkat, Kill Me, The Last Ninja)
   no longer has writes land at the end of their 128-sample block (up to 2.9 ms late). LATE on

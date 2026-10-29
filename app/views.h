@@ -195,8 +195,8 @@ extern "C" {
  * which chip the keys play (with two chips and the KEYS setting), the keys' profile and the
  * other chip's, the preset, octave, cutoff (2), resonance, pulse width (2), volume and selected slot, each
  * voice's sounding note, every slot field, the title cards' option, the menu's cursor,
- * first row and blink. */
-#define VIEWS_LOOK (17u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+ * first row, the store's retired sectors and errors, and the blink. */
+#define VIEWS_LOOK (19u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 #define VIEWS_SONG_FILES 8u
 typedef struct {

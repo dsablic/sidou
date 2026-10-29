@@ -1463,6 +1463,61 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
     assert_eq!(s.result(), SETTINGS_NOTHING, "background saves say nothing");
 }
 
+/// A background save whose program fails is not on flash: the debounce writes it again, it lands
+/// when the store recovers, and a save that keeps failing says so once.
+#[test]
+fn a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once() {
+    let mut s = Set::blank();
+    s.load();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    s.result();
+    *s.cards = 0;
+    s.rig.live.settings_dirty = 1;
+    s.st.sim.fail = 25;
+    let mut failed = 0;
+    for _ in 0..(4 * SETTINGS_DEBOUNCE_MS / TICK) {
+        s.tick();
+        failed += u32::from(s.result() == SETTINGS_FAILED);
+    }
+    assert!(s.st.stats().errors > 0);
+    assert_ne!(s.stored(), Some(s.gather()), "not on flash");
+    assert_eq!(failed, 1, "told once, not nagged");
+    assert!(s.set.tries >= 2, "tried again: {}", s.set.tries);
+    s.st.sim.fail = 0;
+    s.ticks(2 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(
+        s.stored(),
+        Some(s.gather()),
+        "lands when the store recovers"
+    );
+    assert_eq!(s.set.tries, 0);
+    assert_eq!(s.result(), SETTINGS_NOTHING);
+}
+
+/// One failed background save, then a good one: retried quietly (no toast for a single failure).
+#[test]
+fn one_failed_background_save_retries_without_a_toast() {
+    let mut s = Set::blank();
+    s.load();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    s.result();
+    *s.cards = 0;
+    s.rig.live.settings_dirty = 1;
+    s.st.sim.fail = 25;
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    s.st.sim.fail = 0;
+    let mut results = Vec::new();
+    for _ in 0..(3 * SETTINGS_DEBOUNCE_MS / TICK) {
+        s.tick();
+        results.push(s.result());
+    }
+    assert!(
+        results.iter().all(|&r| r == SETTINGS_NOTHING),
+        "{results:?}"
+    );
+    assert_eq!(s.stored(), Some(s.gather()));
+}
+
 /// RESET (SETTINGS' item): every setting and every preset's edits back to what a first boot has,
 /// the version and the last song and the MIDI learn bindings kept, other store keys (a song, a USER profile) untouched, and
 /// the factory state saved by an explicit save.
