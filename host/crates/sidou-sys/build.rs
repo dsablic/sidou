@@ -180,6 +180,9 @@ fn c_build(root: &Path) -> cc::Build {
         .flag("-Wshadow")
         .define(MIDI_MAP_DOC, None)
         .define(RACE_HOOK, None)
+        // The font reads only FONT_FIRST..FONT_LAST in flash; the host build aborts on a code
+        // outside them (app/font.h).
+        .define("SIDOU_FONT_CHECK", None)
         .warnings_into_errors(true);
     sanitize::apply_sanitizer(&mut build);
     build

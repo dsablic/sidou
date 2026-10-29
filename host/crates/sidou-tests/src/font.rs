@@ -10,6 +10,17 @@ use std::path::PathBuf;
 /// Every cell value 0x00..0xFF has a glyph (blank unless the sheet draws one).
 pub const GLYPHS: usize = 256;
 
+/// The glyphs the firmware keeps: codes `0..=LAST` (the codes above are blank and never drawn;
+/// `font_glyph` in `font.h`).
+pub const LAST: usize = 0xDC;
+
+/// The firmware's glyph for `code`, as compiled (`font_glyphs`); blank for a code above
+/// `LAST`, which the firmware never draws.
+pub fn compiled_glyph(code: u8) -> [u8; 8] {
+    let rows = unsafe { *std::ptr::addr_of!(sidou_sys::font_glyphs) };
+    rows.get(usize::from(code)).copied().unwrap_or([0; 8])
+}
+
 /// One sheet entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
@@ -177,9 +188,10 @@ pub fn c_header(font: &Font) -> String {
     let _ = write!(
         s,
         "/* {GENERATED}\n \
-         * SIDOU's 8x8 PETSCII-style screen font (docs/art/README.md): 256 glyphs of 8 rows, top\n \
+         * SIDOU's 8x8 PETSCII-style screen font (docs/art/README.md): glyphs of 8 rows, top\n \
          * row first, bit 7 the leftmost pixel. ASCII 0x20..0x7E (lower case drawn as upper case)\n \
-         * and the graphics below; codes without a name or a character are blank. */\n\
+         * and the graphics below; codes without a name or a character are blank. Only the codes\n \
+         * 0..FONT_LAST are in flash: nothing draws a code above them. */\n\
          #ifndef SIDOU_FONT_H\n\
          #define SIDOU_FONT_H\n\n\
          #include <stdint.h>\n\n\
@@ -187,6 +199,7 @@ pub fn c_header(font: &Font) -> String {
          extern \"C\" {{\n\
          #endif\n\n"
     );
+    let _ = writeln!(s, "#define FONT_LAST 0x{LAST:02X}u\n");
     for e in font.entries.iter().filter(|e| e.name.is_some()) {
         let _ = writeln!(
             s,
@@ -198,7 +211,15 @@ pub fn c_header(font: &Font) -> String {
     s.push_str(
         "\n/* In flash (.rodata): read by the renderer only, 4-byte aligned (grid.c tests a glyph for blank\n\
          \x20* as two words). */\n\
-         extern const uint8_t font_glyphs[256][8] __attribute__((aligned(4)));\n\n\
+         extern const uint8_t font_glyphs[FONT_LAST + 1u][8] __attribute__((aligned(4)));\n\n\
+         /* A code's 8 rows. A code above FONT_LAST reads past the table: the host\n\
+         \x20* build (SIDOU_FONT_CHECK) aborts on one, which is how the tests prove nothing draws it. */\n\
+         #ifdef SIDOU_FONT_CHECK\n\
+         const uint8_t* font_glyph_checked(uint32_t code);\n\
+         #define font_glyph(code) font_glyph_checked((uint8_t)(code))\n\
+         #else\n\
+         #define font_glyph(code) (font_glyphs[(uint8_t)(code)])\n\
+         #endif\n\n\
          #ifdef __cplusplus\n\
          }\n\
          #endif\n\n\
@@ -219,9 +240,13 @@ pub fn c_source(font: &Font) -> String {
         s,
         "/* {GENERATED} */\n\
          #include \"font.h\"\n\n\
-         const uint8_t font_glyphs[256][8] __attribute__((aligned(4))) = {{\n"
+         #ifdef SIDOU_FONT_CHECK\n\
+         #include <stdio.h>\n\
+         #include <stdlib.h>\n\
+         #endif\n\n\
+         const uint8_t font_glyphs[FONT_LAST + 1u][8] __attribute__((aligned(4))) = {{\n"
     );
-    for (code, rows) in font.glyphs.iter().enumerate() {
+    for (code, rows) in font.glyphs.iter().enumerate().take(LAST + 1) {
         let bytes: Vec<String> = rows.iter().map(|b| format!("0x{b:02x}")).collect();
         let label = font
             .entries
@@ -231,7 +256,18 @@ pub fn c_source(font: &Font) -> String {
             .unwrap_or_default();
         let _ = writeln!(s, "    {{{}}}, /* 0x{code:02X}{label} */", bytes.join(", "));
     }
-    s.push_str("};\n");
+    s.push_str(
+        "};\n\n\
+         #ifdef SIDOU_FONT_CHECK\n\
+         const uint8_t* font_glyph_checked(uint32_t code) {\n    \
+         if (code > FONT_LAST) {\n        \
+         fprintf(stderr, \"font: code 0x%02X is not in flash\\n\", (unsigned)code);\n        \
+         abort();\n    \
+         }\n    \
+         return font_glyphs[code];\n\
+         }\n\
+         #endif\n",
+    );
     s
 }
 

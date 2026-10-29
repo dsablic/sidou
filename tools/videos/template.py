@@ -94,7 +94,7 @@ def ease(t: float) -> float:
 # ------------------------------------------------------------------------ fonts --
 
 def _font_c() -> list:
-    """app/font.c's glyphs: 256 x 8 bytes, the top row first, bit 7 the left pixel."""
+    """app/font.c's glyphs: 8 bytes each (codes 0..0xDC), the top row first, bit 7 the left pixel."""
     text = (ROOT / "app/font.c").read_text()
     rows = re.findall(r"\{((?:0x[0-9a-fA-F]{2},?\s*){8})\}", text)
     return [[int(b, 16) for b in re.findall(r"0x[0-9a-fA-F]{2}", r)] for r in rows]

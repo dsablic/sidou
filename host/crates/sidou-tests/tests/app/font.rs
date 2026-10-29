@@ -33,8 +33,12 @@ fn generated_files_are_up_to_date() {
 fn the_compiled_table_is_the_sheet() {
     let f = sheet();
     let table = unsafe { font_glyphs };
-    for (code, (got, want)) in table.iter().zip(&f.glyphs).enumerate() {
-        assert_eq!(got, want, "glyph {code:#04x}");
+    assert_eq!(table.len(), font::LAST + 1);
+    for (code, got) in table.iter().enumerate() {
+        assert_eq!(got, &f.glyphs[code], "glyph {code:#04x}");
+    }
+    for code in font::LAST + 1..font::GLYPHS {
+        assert_eq!(f.glyphs[code], [0; 8], "{code:#04x} is not blank but is not in flash");
     }
 }
 

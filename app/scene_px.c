@@ -269,7 +269,7 @@ static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, in
         for (int32_t y = y0; y < y1; y++) {
             for (int32_t x = x0; x < x1; x++) {
                 uint32_t gx = (uint32_t)(x - l->x);
-                uint8_t bits = font_glyphs[text[gx / TILE]][y - l->y];
+                uint8_t bits = font_glyph(text[gx / TILE])[y - l->y];
                 if (bits & (0x80u >> (gx % TILE))) {
                     out[(y - ty) * TILE + (x - tx)] = l->colour;
                 }

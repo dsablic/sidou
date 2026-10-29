@@ -1846,9 +1846,11 @@ static void charset_compose(screen* s, void* state, grid* g) {
         grid_put(g, 4, 4u + i, (uint8_t)HEX[i], label);
         for (uint32_t c = 0; c < 16u; c++) {
             uint32_t code = i * 16u + c;
-            /* (the codes of large text's pieces are blank glyphs, whose cells would draw one) */
+            /* (the codes of large text's pieces are blank glyphs, whose cells would draw one;
+             * the codes above FONT_LAST are not in flash, and blank) */
             grid_put(g, 7u + c, 4u + i,
-                     code - GRID_BIG_FIRST < GRID_BIG_PIECES ? ' ' : (uint8_t)code,
+                     code - GRID_BIG_FIRST < GRID_BIG_PIECES || code > FONT_LAST ? ' '
+                                                                                  : (uint8_t)code,
                      GRID_ATTR(GRID_WHITE, GRID_BLACK));
         }
         grid_put(g, 7u + i, 22, FONT_FULL, GRID_ATTR(i, GRID_BLACK));

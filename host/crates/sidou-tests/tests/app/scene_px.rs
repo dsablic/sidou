@@ -218,9 +218,8 @@ impl Model<'_> {
                     }
                 }
                 ML::Text(x0, y0, text, c) => {
-                    let glyphs = unsafe { &*std::ptr::addr_of!(font_glyphs) };
                     for (i, &ch) in text.iter().enumerate() {
-                        for (y, bits) in (0i32..).zip(glyphs[usize::from(ch)]) {
+                        for (y, bits) in (0i32..).zip(sidou_tests::font::compiled_glyph(ch)) {
                             for x in 0i32..8 {
                                 if bits & (0x80 >> x) != 0 {
                                     put(x0 + i as i32 * 8 + x, y0 + y, *c);
@@ -592,7 +591,7 @@ fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
     rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
     unsafe { grid_text(&mut *rig.g, 0, 0, c"A".as_ptr(), GRID_WHITE as u8) };
     rig.frame();
-    let glyph = unsafe { (*std::ptr::addr_of!(font_glyphs))[usize::from(b'A')] };
+    let glyph = sidou_tests::font::compiled_glyph(b'A');
     for (y, bits) in glyph.iter().enumerate() {
         for x in 0..8 {
             let want = if bits & (0x80 >> x) != 0 {
