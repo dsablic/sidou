@@ -579,7 +579,7 @@ fn every_glyph_in_every_colour_renders_with_and_without_an_overlay() {
     for pass in 0..4u32 {
         for i in 0..COLS * ROWS {
             let (c, r) = ((i % COLS) as u32, (i / COLS) as u32);
-            let ch = ((i as u32 + pass * 128) % 256) as u8;
+            let ch = ((i as u32 + pass * 128) % (FONT_LAST + 1)) as u8; // the codes in flash
             s.put(c, r, ch, rng.below(256) as u8);
             // A quarter of the cells an overlay of random pixels (the pool holds 255).
             if (i as u32 + pass).is_multiple_of(4) {

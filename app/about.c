@@ -299,8 +299,8 @@ static void scroller(const about* a, grid* g, uint32_t f) {
                 index -= chars;
             }
             uint32_t following = index + 1u == chars ? 0u : index + 1u;
-            const uint8_t* left = font_glyphs[(uint8_t)text[index]];
-            const uint8_t* right = font_glyphs[(uint8_t)text[following]];
+            const uint8_t* left = font_glyph(text[index]);
+            const uint8_t* right = font_glyph(text[following]);
             for (uint32_t y = 0; y < 8u; y++) {
                 if (row[c] == r) {
                     mask[c][y] |= (uint8_t)(left[y] << shift);

@@ -152,7 +152,7 @@ void widget_blank_pieces(grid* g, uint32_t col, uint32_t row, uint32_t w) {
             if (piece >= 4u) {
                 continue;
             }
-            const uint8_t* glyph = font_glyphs[g->src[i]] + (piece >> 1) * 4u;
+            const uint8_t* glyph = font_glyph(g->src[i]) + (piece >> 1) * 4u;
             uint32_t bits = glyph[0] | glyph[1] | glyph[2] | glyph[3];
             if (!(bits & (piece & 1u ? 0x0fu : 0xf0u))) {
                 grid_overlay_clear(g, x, y);

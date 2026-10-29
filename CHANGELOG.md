@@ -23,6 +23,10 @@ All notable changes are documented here. The format follows
   instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Fixed
+- LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before
+  EDIT (two fingers pressed together) used to select the next effect slot and lose the roll; SCL
+  alone now waits for EDIT and selects the slot when it is let go, or as soon as another control
+  is used.
 - The Songs page waits and sends again when the FM-1 answers a transfer with NAK BUSY, instead
   of giving up: it shows that the FM-1 is tidying its store, waits 1, 2, 4 and then 5 seconds
   between tries for about a minute, and sends the whole PUT again. Other refusals still stop the
