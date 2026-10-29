@@ -130,6 +130,9 @@ static void load_preset(live* l, uint8_t index) {
     l->pwm_depth = p->pwm_depth;
     l->pwm_rate = p->pwm_rate;
     l->tune = 0;
+    l->filter_lfo = 0;
+    l->reso_link = 0;
+    l->pwm_link = 0;
     l->lfo_phase = LFO_CENTRE;
     /* The arpeggio: the factory's, off, with every note released below. */
     l->arp_on = 0;
@@ -378,6 +381,9 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->pwm_depth = l->pwm_depth;
     e->pwm_rate = l->pwm_rate;
     e->tune = l->tune;
+    e->filter_lfo = l->filter_lfo;
+    e->reso_link = l->reso_link;
+    e->pwm_link = l->pwm_link;
     e->valid = 1;
 }
 
@@ -414,6 +420,9 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->pwm_depth = e->pwm_depth;
     l->pwm_rate = e->pwm_rate;
     l->tune = e->tune;
+    l->filter_lfo = e->filter_lfo;
+    l->reso_link = e->reso_link;
+    l->pwm_link = e->pwm_link;
 }
 
 /* A USER sound is left: its edit, if it has one, is kept for it (live.user_edit), over the one
@@ -547,6 +556,9 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_ARP + LIVE_ARP_ORDER] = l->arp_order;
     out[LAB_SOUND_ARP + LIVE_ARP_SPAN] = l->arp_span;
     memcpy(&out[LAB_SOUND_SLOTS], l->slot, sizeof l->slot);
+    out[LAB_SOUND_FILTER_LFO] = l->filter_lfo;
+    out[LAB_SOUND_RESO_LINK] = (uint8_t)l->reso_link;
+    out[LAB_SOUND_PWM_LINK] = (uint8_t)l->pwm_link;
 }
 
 /* The parameters a sound sets through live_param_set, and where it holds each: (offset, mask,
@@ -574,6 +586,12 @@ static const struct {
     {LIVE_PARAM_VIBRATO_DELAY, LAB_SOUND_VIBRATO_DELAY, 0xffu, 0u},
 };
 
+/* A link's byte, clamped to -LIVE_LINK_MAX..LIVE_LINK_MAX. */
+static int8_t link_of(uint8_t b) {
+    int32_t v = (int8_t)b;
+    return (int8_t)(v < -LIVE_LINK_MAX ? -LIVE_LINK_MAX : v > LIVE_LINK_MAX ? LIVE_LINK_MAX : v);
+}
+
 LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->settings_dirty = 1;
     uint8_t mono = in[LAB_SOUND_MONO_SYNC] ? 1u : 0u;
@@ -598,6 +616,10 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->tune = (int8_t)(tune < -LIVE_TUNE_CENTS ? -LIVE_TUNE_CENTS
                        : tune > LIVE_TUNE_CENTS ? LIVE_TUNE_CENTS
                                                 : tune);
+    uint32_t lfo = in[LAB_SOUND_FILTER_LFO];
+    l->filter_lfo = (uint8_t)(lfo < LIVE_FILTER_LFO_MAX ? lfo : LIVE_FILTER_LFO_MAX);
+    l->reso_link = link_of(in[LAB_SOUND_RESO_LINK]);
+    l->pwm_link = link_of(in[LAB_SOUND_PWM_LINK]);
     for (uint32_t i = 0; i < sizeof SOUND_PARAMS / sizeof SOUND_PARAMS[0]; i++) {
         uint32_t at = SOUND_PARAMS[i].at;
         uint32_t v = SOUND_PARAMS[i].shift == 16u

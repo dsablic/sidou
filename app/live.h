@@ -90,6 +90,11 @@ extern "C" {
 #define LIVE_TUNE_CENTS 50
 /* LIVE_PARAM_PWM_RATE's largest value: 12.75 Hz. */
 #define LIVE_PWM_RATE_MAX 255u
+/* The filter LFO (live.filter_lfo): its depth at most, K1's cutoff walk's detents each way
+ * (live_cutoff_steps), at the PWM's rate. */
+#define LIVE_FILTER_LFO_MAX 32u
+/* The macro links (live.reso_link, live.pwm_link): -LIVE_LINK_MAX..LIVE_LINK_MAX. */
+#define LIVE_LINK_MAX 8
 
 /* Pitch offsets are in 1/8192 semitone (Q13): a 14-bit pitch bend times the range in
  * semitones is exact at every range. */
@@ -388,6 +393,8 @@ typedef struct {
     uint8_t valid;
     uint16_t pwm_depth, pwm_rate; /* the pulse-width LFO's, as live's */
     int8_t tune;                  /* the fine tune, cents */
+    uint8_t filter_lfo;           /* the filter LFO's depth, as live's */
+    int8_t reso_link, pwm_link;   /* the macro links, as live's */
 } live_edit;
 
 /* The whole instrument; fields are read-only for callers (the UI shows them). */
@@ -544,6 +551,13 @@ typedef struct {
     /* The sounds loaded so far (load_preset counts them; wraps): LAB ends its A/B and its undo
      * history when another sound loads (app/lab_view.h). Not saved. */
     uint8_t loads;
+    /* The sound's own since 1.1 (lab_sound.h's last bytes): the filter LFO's depth, 0 (off) ..
+     * LIVE_FILTER_LFO_MAX K1 detents each way at the PWM's rate; the macro links,
+     * -LIVE_LINK_MAX..LIVE_LINK_MAX (0 none): the resonance following the cutoff, the PWM's depth
+     * following the width. */
+    uint8_t filter_lfo;
+    int8_t reso_link;
+    int8_t pwm_link;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */

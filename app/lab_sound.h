@@ -19,7 +19,10 @@
 extern "C" {
 #endif
 
-#define LAB_SOUND_BYTES 45u
+#define LAB_SOUND_BYTES 48u
+/* 1.0's sounds (docs/reference/sound-format.md): a reader takes any sound of at least these
+ * bytes, the bytes it does not have at their defaults (0). */
+#define LAB_SOUND_BYTES_1_0 45u
 /* A sound's name: up to 12 characters (with its terminator, 13 bytes in RAM). */
 #define LAB_SOUND_NAME 12u
 
@@ -47,6 +50,11 @@ extern "C" {
 #define LAB_SOUND_VIBRATO_DELAY 25u
 #define LAB_SOUND_ARP 26u   /* 4: the arpeggio's on, rate, order and span (live_arp_field) */
 #define LAB_SOUND_SLOTS 30u /* 15: slot s's field f at LAB_SOUND_SLOTS + 5 s + f */
+/* 1.1's: the filter LFO's depth (0..LIVE_FILTER_LFO_MAX), the macro links (signed,
+ * -LIVE_LINK_MAX..LIVE_LINK_MAX: the resonance's, the PWM's) */
+#define LAB_SOUND_FILTER_LFO 45u
+#define LAB_SOUND_RESO_LINK 46u
+#define LAB_SOUND_PWM_LINK 47u
 
 /* The sync ratio's base at most (16 times the pitch): the ratio's product stays in 32 bits. */
 #define LAB_SOUND_SYNC_BASE_MAX 4095u

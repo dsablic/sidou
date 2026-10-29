@@ -791,7 +791,7 @@ one step), a run of ALGORITHM (ENVELOPE's, the envelope mode, too), **EDIT + PRE
 to the sound as kept or loaded) and A becoming the edit. The seventeenth step drops the oldest.
 The steps last across HOME and back; another sound loading forgets them (undoing past a load
 would mix two sounds). There is no redo. While A plays, EDIT + LFO gives B back. The steps share
-48 bytes, so sixteen card turns fit, but a roll takes about a dozen: after rolls fewer steps are
+52 bytes, so sixteen card turns fit, but a roll takes about a dozen: after rolls fewer steps are
 kept.
 
 **EDIT + ARP** (whichever lands first) varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
