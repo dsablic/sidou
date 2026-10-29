@@ -81,8 +81,9 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
   voices, with mute and solo, pause and stop, and MIDI start, stop and continue
   ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
-  page turns any GoatTracker 2 `.sng` into a `.mid`, a MIDI channel a SID voice, with the notes where
-  GoatTracker's player puts them.
+  page turns any GoatTracker 2 `.sng`, from a file or read straight from the connected FM-1 (the
+  current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where
+  GoatTracker's player puts them, wavetable arpeggios included.
 - **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for
   presets and songs ([midi.md](docs/reference/midi.md)).
 - **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an

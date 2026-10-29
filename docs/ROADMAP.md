@@ -100,8 +100,11 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
   Done in 1.1 (the cut): MUTATE, DICE and a filter sweep (EDIT + ENV) in TRACKER, a root and a
   scale per lane, chance shown as a mark (edited in STEP). Still to come: generated arpeggio
   chords and multiplexed drums (instrument and wavetable writing: L).
-- **MIDI export on the device,** not only on the site; wavetable arpeggios and TRKB subtunes
-  in the export. M.
+- ~~**MIDI export on the device,** not only on the site; wavetable arpeggios and TRKB subtunes
+  in the export. M.~~ Done on the site instead (1.1): its Songs to MIDI page pulls the current
+  or a stored song from the connected FM-1 over SysEx (the FM-1 shows no files over USB), and
+  the export follows wavetable arpeggios. TRKB: nothing writes it, so nothing to export; the
+  export joins it when chip B's tracks are written. Live notes out stay later.
 - **More than 48 keys in the store.** Only if players hit STORE FULL (the starter pack uses
   11; LAB adds one). M-L; changes the store format.
 
@@ -128,7 +131,9 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
     path;
   - what MPL-2.0 changes: the second core's code becomes usable, and the BLE variant's licence
     question (below) is worth asking again;
-  - fm1-emu bumped past its watchdog model, so the tests check that a hang recovers.
+  - fm1-emu bumped past its watchdog model, so the tests check that a hang recovers. Done in
+    1.1: fm1-emu `93cb7ee3`, real resets in the boot-guard tests, a watchdog hang test, and the
+    USB tests on fm1-emu's own USB controller and host.
 
   L; a device session (installs, updates, USB-MIDI, USB audio).
 

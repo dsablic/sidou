@@ -4,7 +4,7 @@
 //! in fm1-emu: SIDOU's first song started, stopped, continued and sought from a 120 BPM clock,
 //! its rows against the clock's 16ths, every main-loop pass within the poll allowance.
 //! The device's own TRS poll (2 kHz) gives the clock its jitter: the bytes go in on time.
-//! One case goes over USB instead (common::usb_host): song position and continue reach SIDOU's
+//! One case goes over USB instead (common::usb_host, fm1-emu's host): song position and continue reach SIDOU's
 //! parser through usb.c's raw MIDI-in hook (platform/fm1/VENDORED.md), not its filter.
 
 mod common;
@@ -38,43 +38,28 @@ fn booted(fw: &Firmware) -> Machine {
     m
 }
 
-/// A host on the cable that has the device configured (address 7, configuration 1).
+/// A host on the cable that has the device configured (fm1-emu's host and its enumeration).
 fn booted_on_usb(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
-    m.usb = Some(UsbHost::default());
+    m.usb = Some(UsbHost::plug(&mut m.soc));
     common::run_past_boot(&mut m, fw);
-    m.usb_frames(20);
-    let setup = |m: &mut Machine, pkt: [u8; 8]| {
-        m.usb.as_mut().unwrap().setup(&mut m.soc, pkt);
-        m.usb_frames(3);
-    };
-    m.usb.as_mut().unwrap().bus_reset();
-    m.usb_frames(3);
-    setup(&mut m, [0x00, 0x05, 0x07, 0, 0, 0, 0, 0]);
-    setup(&mut m, [0x00, 0x09, 0x01, 0, 0, 0, 0, 0]);
+    m.usb.as_mut().unwrap().start();
+    for _ in 0..2_000 {
+        if UsbHost::configured(&m.soc) {
+            break;
+        }
+        m.usb_frames(1);
+    }
     let usb = fw.symbol("usb");
     assert_eq!(m.soc.read8(usb + 1), 1, "not configured");
     m.usb_frames(300);
     m
 }
 
-/// One MIDI message as a USB-MIDI event packet on EP1 OUT (cable 0), retried while the
-/// device NAKs.
+/// One MIDI message to the device on EP1 OUT (cable 0): the host sends it at the next frame,
+/// again the frame after while the device NAKs.
 fn usb_midi(m: &mut Machine, bytes: &[u8]) {
-    let cin = match bytes[0] {
-        0xF2 => 0x3,
-        0xF3 => 0x2,
-        _ => 0xF,
-    };
-    let mut pkt = [cin, 0, 0, 0];
-    pkt[1..=bytes.len()].copy_from_slice(bytes);
-    loop {
-        let usb = m.usb.as_mut().expect("a host");
-        if usb.out1(&mut m.soc, &pkt) {
-            break;
-        }
-        m.usb_frames(1);
-    }
+    UsbHost::send(&mut m.soc, bytes);
 }
 
 /// A MIDI message over TRS, or over USB when a host is on the cable.

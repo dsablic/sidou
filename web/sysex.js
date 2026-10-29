@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// SIDOU's SysEx protocol, version 1 (docs/reference/sysex.md), for the Songs page: the packing, the
-// frames, the CRC, and a stop-and-wait client that does INQ, DIR and PUT over any transport that
-// can send a frame and hand back the frames the device sends. No Web MIDI in here: web/sysex.test.mjs
-// runs it in Node against the vectors Rust's sidou-sysex checks too (web/sysex-vectors.txt) and
-// against a simulated device. Ported from tools/sysex_roundtrip.py's packing and framing.
+// SIDOU's SysEx protocol, version 1 (docs/reference/sysex.md), for the Songs page and the Songs to MIDI
+// page: the packing, the frames, the CRC, and a stop-and-wait client that does INQ, DIR, GET and PUT
+// over any transport that can send a frame and hand back the frames the device sends. No Web MIDI in
+// here: web/sysex.test.mjs runs it in Node against the vectors Rust's sidou-sysex checks too
+// (web/sysex-vectors.txt) and against a simulated device. Ported from tools/sysex_roundtrip.py's
+// packing and framing.
 
 export const INQ = 0x01, DIR = 0x02, GET = 0x03, PUT = 0x04, DATA = 0x05, END = 0x06, DEL = 0x07,
   ABORT = 0x08, ACK = 0x7e, NAK = 0x7f;
@@ -127,6 +128,20 @@ function name16(name) {
   return out;
 }
 
+// The songs among a DIR listing (type 1): not the `.sid` tunes (2) or whatever else the store holds.
+export const songsIn = (files) => files.filter((f) => f.type === 1);
+
+// What a person should do about a NAK to a GET (target 0 a stored song, 2 the current song).
+export function getNakMessage(e) {
+  switch (e.nak) {
+    case 4: return "the FM-1 is busy (saving, loading, or in the middle of an import): wait a moment and try again";
+    case 5: return "the FM-1 could not read that song out (too big for the transfer)";
+    case 6: return "the FM-1 has no such song any more: press Check this pair to list its songs again";
+    case 7: return "the FM-1 had an I/O error reading that song: try again";
+    default: return e.message;
+  }
+}
+
 function u32(n) {
   return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
 }
@@ -226,6 +241,58 @@ export class Client {
       }
       if (f.command !== DIR || f.data.length !== 25) throw new SysexError("a damaged DIR reply from the FM-1");
       files.push({ name: text(f.data.slice(0, 16)), type: f.data[16], length: le32(f.data, 17), crc: le32(f.data, 21) });
+    }
+  }
+
+  // GET a song: { target: 0, name } a stored file, or { target: 2 } the current song. SIDOU answers with
+  // the file's metadata (a PUT frame), its DATA packets and an END, each ACKed here before the next
+  // comes; the length and CRC it announced are checked. Resolves to the file's bytes. A refusal
+  // (BUSY while the song is saving or loading, not found, FULL) is a SysexError with `.nak`.
+  async get({ target = 0, name = "" } = {}, { onProgress = () => {} } = {}) {
+    this.drain();
+    const request = new Uint8Array(18);
+    request[0] = target;
+    if (target === 0) request.set(name16(name), 2);
+    else if (target !== 2) throw new SysexError("GET reads a stored song (target 0) or the current song (target 2)");
+    const wait = (ms) => this.recv(ms).then((f) => {
+      if (f.command === NAK) throw new SysexError(getNakMessage({ nak: f.data[0], message: nakMessage(f.data[0], f.data[1]) }), { nak: f.data[0], pool: f.data[1] });
+      return f;
+    });
+    try {
+      const seq = this.next();
+      this.send(encodeFrame(GET, seq, request));
+      // the current song is counted and checksummed in a pass before the first reply
+      const meta = await wait(this.ackTimeout);
+      if (meta.command !== PUT || meta.data.length !== 27 || meta.data[0] !== target) {
+        throw new SysexError("a damaged reply to the FM-1's GET");
+      }
+      const total = le32(meta.data, 19), crc = le32(meta.data, 23);
+      if (total > 65536) throw new SysexError("the FM-1 announced a file over 64 KiB");
+      this.send(encodeFrame(ACK, meta.sequence));
+      const out = new Uint8Array(total);
+      let got = 0;
+      onProgress(0, total);
+      for (;;) {
+        const f = await wait(this.ackTimeout);
+        if (f.command === END) {
+          this.send(encodeFrame(ACK, f.sequence));
+          this.seq = (f.sequence + 1) & 0x7f;
+          break;
+        }
+        if (f.command !== DATA || f.data.length < 1 || got + f.data.length > total) {
+          throw new SysexError("a damaged DATA packet from the FM-1");
+        }
+        out.set(f.data, got);
+        got += f.data.length;
+        this.send(encodeFrame(ACK, f.sequence));
+        onProgress(got, total);
+      }
+      if (got !== total) throw new SysexError(`the FM-1 sent ${got} bytes of the ${total} it announced`);
+      if (crc32(out) !== crc) throw new SysexError("the song arrived damaged (its checksum does not match): try again");
+      return out;
+    } catch (e) {
+      if (e.nak == null) this.send(encodeFrame(ABORT, this.next()));
+      throw e;
     }
   }
 

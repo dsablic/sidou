@@ -30,18 +30,6 @@ const showcase = ["chrome-comet", "iron-rite", "neon-highway", "paper-lanterns"]
 assert.ok(showcase.every((s) => songFiles.some((f) => f.stem === s)), "the showcase songs and their fixtures");
 const fixture = (stem) => JSON.parse(readFileSync(`${here}songmidi-fixtures/${stem}.json`, "utf8"));
 
-// GoatTracker's frequency table (gplay.c), to know what the player's note should sound like
-function freqTable() {
-  const src = readFileSync(`${root}third_party/goattracker2/src/gplay.c`, "utf8");
-  const arr = (name) => {
-    const m = src.match(new RegExp(`${name}\\[\\] = \\{([^}]*)\\}`));
-    return m[1].split(",").map((x) => x.trim()).filter(Boolean).map(Number);
-  };
-  const lo = arr("freqtbllo"), hi = arr("freqtblhi");
-  return lo.map((l, i) => l | (hi[i] << 8));
-}
-const FREQ = existsSync(`${root}third_party/goattracker2/src/gplay.c`) ? freqTable() : null;
-
 // Joins a voice's notes into the gate runs the SID hears: a tied note begins in the call the one
 // before it ends.
 function gateRuns(notes) {
@@ -58,18 +46,32 @@ function gateRuns(notes) {
   return runs;
 }
 
-// The note the wavetable's first step plays for an instrument, as an offset from the row's note:
-// a plain waveform step (not a delay or a command) with a relative note ($00-$7F; $00 is the row's
-// note itself). Fixed notes ($81 and up) and delays play something else a call after the note
-// starts, which the page does not follow; those notes are counted but their pitch is not checked.
-function firstStepOffset(song, instr) {
-  const ins = song.instruments[instr];
-  if (!ins || !ins.wavePtr) return null;
-  const left = song.tables[0].left[ins.wavePtr - 1], right = song.tables[0].right[ins.wavePtr - 1];
-  return left >= 0x10 && left < 0xe0 && right < 0x80 ? right : null;
+// Every call a note sounds, from the call after it starts (the register still holds the note before
+// at its first call, and the wavetable's first step names the pitch a call later), the voice's
+// frequency register, when it holds a note of GoatTracker's table, is that note's pitch. A slide,
+// vibrato or tone portamento (pattern commands 1-4) puts the register between table notes, which
+// the walk does not follow: those calls are skipped, and the few where a glide lands on a table
+// note the walk's pitch is not (the end of a tone portamento) are counted apart.
+let compared = 0, ties = 0, truncated = 0, arps = 0, calls = 0, wrong = 0, glided = 0;
+function comparePitches(stem, v, notes, course, end) {
+  const at = (c) => {
+    let lo = 0, hi = course.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1;
+      if (course[m][0] <= c) lo = m; else hi = m - 1;
+    }
+    return course[lo][1];
+  };
+  for (const nt of notes) {
+    for (let c = nt.start + 1; c < Math.min(nt.end, end); c++) {
+      const ref = at(c);
+      if (ref < 0) { glided++; continue; }
+      calls++;
+      if (ref !== nt.pitch - 12) wrong++;
+    }
+  }
 }
 
-let compared = 0, pitched = 0, unpitched = 0, ties = 0, truncated = 0;
 for (const { stem, path } of songFiles) {
   await test(`${stem}: every note's start, end and pitch match GoatTracker's player`, () => {
     const bytes = readFileSync(path);
@@ -89,24 +91,17 @@ for (const { stem, path } of songFiles) {
       for (const [i, r] of mine.entries()) {
         if (theirs[i][3]) truncated++;
         ties += r.notes.length - 1;
-        const first = r.notes[0];
-        const fw = song.instruments[first.instr]?.firstWave ?? 0;
-        // the gate rises with the note (a first-frame waveform) and not a call later with the wavetable's
-        const off = FREQ && fw > 0 && fw < 0xfe ? firstStepOffset(song, first.instr) : null;
-        const idx = first.pitch - 12 + (off ?? 0);
-        if (off !== null && idx >= 0 && idx < 96 && theirs[i][1] - theirs[i][0] >= 2) {
-          assert.equal(theirs[i][2], FREQ[idx], `${stem} voice ${v + 1} call ${r.start}: pitch ${first.pitch}`);
-          pitched++;
-        } else {
-          unpitched++;
-        }
       }
+      comparePitches(stem, v, walk.notes.filter((x) => x.voice === v), fx.course[v], end);
+      arps += walk.notes.filter((x) => x.voice === v && x.tie).length;
     }
   });
 }
-console.log(`  ${compared} notes' start and end compared (${truncated} held across the loop point, ${ties} tied notes inside them); ${pitched} pitches compared, ${unpitched} not (arpeggio, fixed-note or delayed first step, or a gate of one call)`);
-// with the GoatTracker examples and its sources checked out (the submodule) the whole set is compared
-if (songFiles.length >= 19 && FREQ) assert.ok(compared > 19000 && pitched > 11000, "the comparison is big enough to mean something");
+console.log(`  ${compared} gate runs' start and end compared (${truncated} held across the loop point, ${ties} tied notes inside them); ${calls} calls' pitch compared with the register, ${wrong} differ, ${glided} skipped (a slide or vibrato)`);
+// a glide ending on a table note the walk does not follow is the only way the two differ
+assert.ok(wrong <= calls / 2000, `${wrong} of ${calls} calls sound another pitch than the walk's`);
+// with the GoatTracker examples checked out (the submodule) the whole set is compared
+if (songFiles.length >= 17) assert.ok(compared > 17000 && calls > 100000 && ties > 20000, "the comparison is big enough to mean something");
 else assert.ok(compared > 0);
 
 // --- the .mid file ---------------------------------------------------------------------------------
@@ -300,6 +295,33 @@ await test("key off, key on, hard restart: where a note ends", () => {
     [24, 28, 38], // the next note's hard restart, read at 28 for the row at 30
     [30, 46, 40], // key on at 34 only re-opens the gate; the loop's first note hard-restarts it at 46
   ]);
+});
+
+await test("wavetable arpeggios: each pitch step is a tied note, a delay holds the note, $80 changes nothing", () => {
+  // C-2 held for a row of 6 calls (gate timer 2): the wavetable sets +0 a call after the row's own
+  // call, then +4, +7, waits out a two-call delay and sets +12
+  const arp = [[0x41, 0x00], [0x41, 0x04], [0x41, 0x07], [0x02, 0x80], [0x41, 0x0c], [0xff, 0x00]];
+  const rows = [[N(24), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const w = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: arp, patterns: [rows, ones(2)] }));
+  // the +0 step names the pitch the note already has, so the first note is not cut at call 1; the
+  // delay ends at call 6 and its $80 leaves the pitch, the +12 step comes at call 7
+  assert.deepEqual(first(w), [[0, 2, 36, false], [2, 3, 40, true], [3, 7, 43, true], [7, 10, 48, true]]);
+  assert.equal(gateRuns(w.notes.filter((x) => x.voice === 0)).length, 1, "one gate, four notes");
+  // $80 in a plain step (no note change) between the notes
+  const hold = [[0x41, 0x05], [0x41, 0x80], [0x41, 0x00], [0xff, 0x00]];
+  const w2 = sec(build({ orders: [[0xf2, 0, 0], [1, 0], [1, 0]], instruments: plain, wave: hold, patterns: [[[N(12), 1, 0, 0], [0xbd, 0, 0, 0]], ones(2)] }));
+  // the row's C-1 under the orderlist's +2 is 26 after a +0, and 31 under the first step's +5
+  assert.deepEqual(first(w2).slice(0, 2), [[0, 3, 31, false], [3, 10, 26, true]]);
+});
+
+await test("a fixed-note step ($81 and up) names the note itself; a wavetable command's column is not a note", () => {
+  const rows = [[N(10), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const fixed = [[0x81, 0xa4], [0xff, 0x00]]; // noise at note $24 (C-3): a drum
+  const w = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: fixed, patterns: [rows, ones(2)] }));
+  assert.deepEqual(first(w), [[0, 10, 12 + 0x24, false]], "the row's note is not what sounds, and the note is not cut at call 1");
+  const cmd = [[0x41, 0x00], [0xf7, 0x41], [0xff, 0x00]]; // $F7 sets the waveform ($41 is its parameter)
+  const w2 = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: cmd, patterns: [rows, ones(2)] }));
+  assert.deepEqual(first(w2), [[0, 10, 12 + 10, false]]);
 });
 
 await test("a legato instrument ties notes; tone portamento changes pitch without a new gate", () => {

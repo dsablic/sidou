@@ -8,6 +8,20 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
+  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
+  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
+  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
+  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
+  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
+- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
+  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
+  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
+  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
+  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
+  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
+
 ### Added
 - **DICE's range and rhythm on STEP.** With EDIT + SCL held, K2 sets the range (1 OCT, 2 OCT,
   3 OCT, BASS: the lane's octave and the one below) and K4 the rhythm (STRAIGHT, OFFBEAT, 3-3-2,
@@ -26,6 +40,24 @@ All notable changes are documented here. The format follows
 - **A filter sweep:** EDIT + ENV in STEP and TRACKER writes GoatTracker `C` commands (FILTER
   CUTOFF) every second row of the lane's pattern, up or down, never over a command; it plays in
   GoatTracker as written, and undo steps back a cell at a time.
+- **Songs to MIDI reads from the connected FM-1:** `midi.html` has "From the connected FM-1"
+  beside the file picker. Connect (Web MIDI with SysEx, in Chrome or Edge; nothing is opened before
+  the button), pick the ports, and it lists the current song (SysEx GET, target 2: the song as it
+  is now, edits included) and the songs stored on the FM-1 (DIR, then GET of target 0; the `.sid`
+  tunes in the store are not listed). The song is read, checked against the length and CRC the
+  FM-1 announced, and converted exactly as a picked file. A refusal (BUSY while the song saves or
+  loads, a song deleted since the listing, a transfer that arrives damaged) is shown in a sentence.
+  `web/sysex.js`'s client gained `get`, tested in `web/sysex.test.mjs` against the simulated device
+  (DIR, GET of both targets, every refusal, a damaged transfer) and in `web/check.mjs`'s fake Web MIDI.
+- **Wavetable arpeggios in the MIDI export:** a wavetable step with a note (relative to the row's
+  note, or a fixed one) that changes the pitch ends the sounding note and starts the next in the same
+  tick, so an arpeggio is a run of tied notes and a noise drum sounds the pitch it plays. Checked
+  against GoatTracker's packed player: the fixtures (`host/crates/gt2-ref/tests/midi_walk.rs`) now
+  also hold each voice's frequency register as table notes, and `web/songmidi.test.mjs` compares
+  the pitch of every note on 123,000 calls of the showcase songs, SIDOU LOOP and GoatTracker's
+  examples (27 calls differ, all where a slide or tone portamento ends on a table note). Vibrato,
+  slides and tone portamento are still not followed. SIDOU's `TRKB` chunk (a second chip's tracks)
+  is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Fixed
 - LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before
