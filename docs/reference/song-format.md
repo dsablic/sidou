@@ -223,7 +223,7 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | `SCNE` | the SCENE piece, the voices' roles and the drums | no | M2c Task 2; semantics M2f Task 4 |
 | `KEYS` | the keys' live preset and setup | no | M2c Task 2 |
 | `DIGI` | the digi drums: instruments that play a built-in sample | no | decision record 0009 |
-| `DICE` | STEP's DICE settings: density and scale | no | 1.0 |
+| `DICE` | STEP's DICE settings: density, scale, rhythm and range | no | 1.0 (rhythm and range 1.1) |
 | `PAD ` | padding (a space ends the tag) | no | skipped, never kept |
 | `TRKB` | reserved: chip B's tracks (M5) | | |
 | `RIPD` | reserved: rip data (M5) | | |
@@ -391,18 +391,23 @@ entry with an instrument out of 1-63 or an unknown sample is left out (the chunk
 written), and of two entries for one instrument the later counts. A chunk of another version,
 or shorter than its count says, marks nothing.
 
-**`DICE`** (3 bytes): STEP's DICE ([controls](controls.md#step): EDIT + SCL held, K1 and K3).
+**`DICE`** (5 bytes): STEP's DICE ([controls](controls.md#step): EDIT + SCL held, K1-K4).
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | version, 1 |
 | 1 | 1 | density: 0 SPARSE, 1 LIGHT, 2 MEDIUM, 3 BUSY, 4 FULL |
 | 2 | 1 | scale: 0 minor pentatonic, 1 major pentatonic, 2 minor, 3 major, 4 dorian, 5 chromatic |
+| 3 | 1 | rhythm: 0 STRAIGHT, 1 OFFBEAT, 2 3-3-2, 3 FOUR, 4 BROKEN (1.1) |
+| 4 | 1 | range: 0 one octave, 1 two, 2 three, 3 BASS (the lane's octave and the one below) (1.1) |
 
 No chunk, a chunk of another version or shorter than 3 bytes, and a value out of range (each
-field on its own) are the defaults, density 2 and scale 0: what DICE rolled before the chunk
-existed, so an older song rolls as it did. GoatTracker skips the chunk; an older SIDOU keeps it
-and writes it back.
+field on its own) are the defaults, density 2, scale 0, rhythm 0 and range 1: what DICE rolled
+before the chunk existed, so an older song rolls as it did. A field past the chunk's end is its
+default too: SIDOU 1.0 wrote 3 bytes, and its songs roll STRAIGHT over two octaves. SIDOU 1.0 reads
+the first three bytes of a longer chunk and keeps it as written, but when its own EDIT + SCL turns
+a knob it writes 3 bytes back: the rhythm and the range go back to their defaults. GoatTracker
+skips the chunk.
 
 **`PAD `** (1 + p bytes): version 1, then p bytes of `$00`.
 

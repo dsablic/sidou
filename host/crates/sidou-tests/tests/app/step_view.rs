@@ -1275,15 +1275,32 @@ fn notes_col(s: &Song) -> Vec<u8> {
     pattern(s, 0).iter().map(|c| c[0]).collect()
 }
 
-fn dice_chunk(s: &Song) -> (u8, u8, i32) {
-    let (mut d, mut sc) = (9u8, 9u8);
-    let r = unsafe { song_ext_get_dice(s.ui.v.song.song, &mut d, &mut sc) };
-    (d, sc, r)
+fn dice_of(s: &Song) -> (song_dice, i32) {
+    let mut v = song_dice::default();
+    let r = unsafe { song_ext_get_dice(s.ui.v.song.song, &mut v) };
+    (v, r)
 }
 
-fn set_dice(s: &mut Song, density: u32, scale: u32) {
-    let r = unsafe { song_ext_set_dice(s.ui.v.song.song.cast_mut(), density, scale) };
+/// The density, the scale and whether the song has the chunk.
+fn dice_chunk(s: &Song) -> (u8, u8, i32) {
+    let (v, r) = dice_of(s);
+    (v.density, v.scale, r)
+}
+
+fn set_dice_all(s: &mut Song, density: u32, scale: u32, rhythm: u32, range: u32) {
+    let v = song_dice {
+        density: density as u8,
+        scale: scale as u8,
+        rhythm: rhythm as u8,
+        range: range as u8,
+    };
+    let r = unsafe { song_ext_set_dice(s.ui.v.song.song.cast_mut(), &v) };
     assert_eq!(r, 0);
+}
+
+/// Density and scale, straight and two octaves (1.0's roll).
+fn set_dice(s: &mut Song, density: u32, scale: u32) {
+    set_dice_all(s, density, scale, 0, SONG_DICE_RANGE_DEFAULT);
 }
 
 fn drums(s: &mut Song) {
@@ -1489,7 +1506,7 @@ fn scl_alone_on_step_selects_the_next_slot() {
 }
 
 #[test]
-fn another_button_while_scl_is_held_spoils_the_roll_too_and_k2_k4_are_left_alone() {
+fn another_button_while_scl_is_held_spoils_the_roll_too() {
     let mut s = step();
     let before = notes_col(&s);
     s.ui.hold(PANEL_BTN_EDIT, true);
@@ -1519,4 +1536,166 @@ fn mutate_keeps_to_the_chosen_scale() {
             }
         }
     }
+}
+
+// ---- DICE's range (K2) and rhythm (K4) ----
+
+const MEDIUM: u32 = SONG_DICE_DENSITY_DEFAULT;
+/// The rhythms past STRAIGHT: the chance in percent of a hit on each place of two beats of
+/// sixteenths (docs/reference/controls.md "STEP"), as rolled at MEDIUM.
+const RHYTHM_WEIGHTS: [[u32; 8]; 4] = [
+    [10, 0, 90, 0, 10, 0, 90, 20],
+    [95, 0, 0, 85, 0, 0, 85, 0],
+    [100, 0, 20, 0, 100, 0, 20, 0],
+    [90, 0, 30, 65, 0, 45, 75, 20],
+];
+
+/// A roll with `seed` on a fresh song with every setting given, on a drum lane or not.
+fn rolled_all(dice: (u32, u32, u32, u32), drum: bool, seed: u32) -> Vec<u8> {
+    let mut s = step();
+    set_dice_all(&mut s, dice.0, dice.1, dice.2, dice.3);
+    if drum {
+        drums(&mut s);
+    }
+    s.ui.v.step.seed = seed;
+    edit_press(&mut s, PANEL_BTN_SCL);
+    notes_col(&s)
+}
+
+#[test]
+fn straight_and_two_octaves_roll_as_one_point_zero_did_and_drums_ignore_the_range() {
+    assert_eq!(rolled_all((MEDIUM, 0, 0, 1), false, 7), FROZEN_MELODIC);
+    for range in 0..SONG_DICE_RANGES {
+        let mut s = step();
+        set_dice_all(&mut s, MEDIUM, 0, 0, range);
+        drums(&mut s);
+        edit_press(&mut s, PANEL_BTN_SCL);
+        assert_eq!(notes_col(&s), FROZEN_DRUMS, "range {range} on drums");
+    }
+}
+
+#[test]
+fn each_rhythm_hits_as_its_weights_say_on_melodic_and_drum_lanes() {
+    for (i, weights) in RHYTHM_WEIGHTS.iter().enumerate() {
+        let rhythm = i as u32 + 1;
+        for drum in [false, true] {
+            let seeds = if drum { 8 } else { 32 };
+            let mut hit = [0u32; 8];
+            let mut seen = [0u32; 8];
+            for seed in 0..seeds {
+                let col = rolled_all((MEDIUM, 0, rhythm, 1), drum, 1000 + seed * 77);
+                for (r, &n) in col.iter().enumerate() {
+                    seen[r % 8] += 1;
+                    hit[r % 8] += u32::from(is_note(n));
+                }
+            }
+            for p in 0..8 {
+                let pc = hit[p] * 100 / seen[p];
+                if weights[p] == 0 {
+                    assert_eq!(
+                        hit[p], 0,
+                        "rhythm {rhythm} drum {drum}: place {p} never hits"
+                    );
+                } else if !drum {
+                    assert!(
+                        pc.abs_diff(weights[p]) <= 12,
+                        "rhythm {rhythm}: place {p} hit {pc}% against {}%",
+                        weights[p]
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_rhythms_scale_with_the_density_and_full_is_every_step() {
+    for rhythm in 1..SONG_DICE_RHYTHMS {
+        let counts: Vec<usize> = (0..SONG_DICE_DENSITIES)
+            .map(|d| hits(&rolled_all((d, 0, rhythm, 1), false, 7)).len())
+            .collect();
+        assert!(
+            counts.windows(2).all(|w| w[0] <= w[1]),
+            "rhythm {rhythm}: {counts:?}"
+        );
+        assert!(counts[0] < counts[2], "rhythm {rhythm}: {counts:?}");
+        assert_eq!(counts[4], 64, "rhythm {rhythm}: FULL is every step");
+    }
+}
+
+#[test]
+fn each_range_keeps_to_its_octaves() {
+    let root = i32::from(C3);
+    // (range, lowest, highest past the root, the lowest and highest a few rolls reach)
+    for (range, lo, hi) in [(0u32, 0, 11), (1, 0, 23), (2, 0, 35), (3, -12, 11)] {
+        let (mut low, mut high) = (99, -99);
+        for seed in 0..6 {
+            let col = rolled_all((4, 5, 0, range), false, 31 + seed);
+            for n in hits(&col) {
+                let d = i32::from(n) - root;
+                assert!(d >= lo && d <= hi, "range {range}: {d} past the root");
+                low = low.min(d);
+                high = high.max(d);
+            }
+        }
+        assert!(
+            low <= lo + 2 && high >= hi - 2,
+            "range {range}: only {low}..{high}"
+        );
+    }
+}
+
+#[test]
+fn k2_and_k4_with_edit_and_scl_held_set_the_range_and_the_rhythm_and_the_frame_shows_all_five() {
+    let mut s = step();
+    let before = notes_col(&s);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.down(PANEL_BTN_SCL);
+    settle(&mut s.ui);
+    let frame = |s: &Song| -> Vec<(String, String, String)> {
+        (0..5)
+            .map(|i| {
+                let r = 18 + 2 * i;
+                (
+                    s.ui.small(r, 2, 2),
+                    s.ui.small(r + 1, 2, 6).trim_end().to_string(),
+                    s.ui.big(r, 11, 2, 9).trim_end().to_string(),
+                )
+            })
+            .collect()
+    };
+    let row = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
+    assert_eq!(s.ui.small(17, 2, 23), " DICE - LET GO TO ROLL ");
+    assert_eq!(
+        frame(&s),
+        [
+            row("K1", "DENS", "MEDIUM"),
+            row("K2", "RANGE", "2 OCT"),
+            row("K3", "SCALE", "MIN PENT"),
+            row("K4", "RHYTHM", "STRAIGHT"),
+            row("  ", "ROOT", "C-3"),
+        ]
+    );
+    s.ui.turn(PANEL_ENC_K2, 5);
+    s.ui.turn(PANEL_ENC_K4, 2);
+    settle(&mut s.ui);
+    let (v, r) = dice_of(&s);
+    assert_eq!((v.range, v.rhythm, r), (3, 2, 1), "range clamps at BASS");
+    assert_eq!(frame(&s)[1].2, "BASS");
+    assert_eq!(frame(&s)[3].2, "3-3-2");
+    assert_eq!(
+        popup(&s, PANEL_ENC_K2, true),
+        Some(("RANGE".into(), "BASS".into(), 3, 3))
+    );
+    assert_eq!(
+        popup(&s, PANEL_ENC_K4, true),
+        Some(("RHYTHM".into(), "3-3-2".into(), 2, 4))
+    );
+    s.ui.turn(PANEL_ENC_K4, -9);
+    assert_eq!(dice_of(&s).0.rhythm, 0, "and STRAIGHT at the other end");
+    s.ui.up(PANEL_BTN_SCL);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(notes_col(&s), before, "a turn: no roll");
+    assert_eq!(s.ui.small(17, 2, 9), " HELD STE", "the frame is back");
 }

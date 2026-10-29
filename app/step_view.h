@@ -75,7 +75,7 @@ extern "C" {
 #define STEP_VIEW_STEP_COL 5u
 #define STEP_VIEW_LANES 3u
 /* The bytes of what the view drew (three zones' looks), in step_view.drawn. */
-#define STEP_VIEW_LOOK 49u
+#define STEP_VIEW_LOOK 52u
 
 /* The waveform SET writes: its choices (0 is none: no command). */
 #define STEP_VIEW_WAVES 5u
@@ -109,8 +109,9 @@ typedef struct {
     /* MUTATE or DICE at work (step_view.c, "generative play"): the run's kind (0: none), where,
      * how far, whether the lane is the song's drums, and the seed its random is made from. */
     uint8_t run, gen_pattern, gen_voice, gen_row, gen_drums;
-    /* DICE's density and scale for the run (read from the song's DICE chunk as it starts). */
-    uint8_t gen_dens, gen_scale;
+    /* DICE's density, scale, rhythm and range for the run (read from the song's DICE chunk as it
+     * starts). */
+    uint8_t gen_dens, gen_scale, gen_rhythm, gen_range;
     /* SCL is down with EDIT (STEP_VIEW_SCL_CHORD): its release rolls DICE unless K1 or K3 was
      * turned (or another button pressed) meanwhile; the song's density and scale show while it
      * is down. EDIT + SCL is the chord whichever lands first: SCL alone (STEP_VIEW_SCL_ALONE)

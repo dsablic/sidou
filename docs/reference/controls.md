@@ -318,7 +318,9 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED` |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
-| EDIT + SCL held + K3 | DICE's **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. K2 and K4 are unbound here (range and rhythm are for 1.x: they act as in LIVE) |
+| EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
+| EDIT + SCL held + K3 | DICE's **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too |
+| EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO) |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
@@ -348,13 +350,20 @@ staccato lane; a row's command and data stay. The seed comes from the time of th
 press is another pattern.
 
 **DICE's settings** (the `DICE` chunk, saved with the song): while EDIT + SCL is held, the HELD STEP
-frame becomes ` DICE - LET GO TO ROLL ` with the two settings at 2x, K1 `DENS` and K3 `SCALE`. The
+frame and the pads give way to ` DICE - LET GO TO ROLL ` with the four settings at 2x, each beside
+its knob, K1 `DENS`, K2 `RANGE`, K3 `SCALE` and K4 `RHYTHM`, and under them the lane's `ROOT` (its
+note, `C-3` by default). With `STRAIGHT` the
 density picks the grid's chances (melodic lane, percent by place in the beat 1-2-3-4: SPARSE 60 0 0
 0, LIGHT 85 0 25 0, MEDIUM 85 0 55 0, BUSY 90 35 75 35, FULL 100 each; a drum lane SPARSE 80 0 15 0,
 LIGHT 90 5 30 10, MEDIUM 90 15 50 25, BUSY 95 40 75 55, FULL 100 each). The scale is semitones above the
 lane's note: minor pentatonic 0 3 5 7 10, major pentatonic 0 2 4 7 9, minor 0 2 3 5 7 8 10, major 0 2
-4 5 7 9 11, dorian 0 2 3 5 7 9 10, chromatic all twelve. A song with no chunk is MEDIUM and the
-minor pentatonic.
+4 5 7 9 11, dorian 0 2 3 5 7 9 10, chromatic all twelve. The other rhythms weigh each place of two
+beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 20, 3-3-2 95 0 0 85 0
+0 85 0, FOUR 100 0 20 0 100 0 20 0, BROKEN 90 0 30 65 0 45 75 20; the density scales the weights
+(SPARSE half of each, LIGHT three quarters, BUSY each plus 20, FULL 100 everywhere). The range picks
+the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
+or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
+STRAIGHT and 2 OCT.
 
 **Gate.** A staccato lane writes a key off on the next row if that row has no note, and takes
 it away with the note; where the row before a removed note holds a note, the removed note's row

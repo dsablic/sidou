@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **DICE's range and rhythm on STEP.** With EDIT + SCL held, K2 sets the range (1 OCT, 2 OCT,
+  3 OCT, BASS: the lane's octave and the one below) and K4 the rhythm (STRAIGHT, OFFBEAT, 3-3-2,
+  FOUR, BROKEN; a drum lane takes the rhythm and ignores the range). The frame now shows all four
+  settings at 2x beside their knobs, and the lane's root under them. 2 OCT and STRAIGHT, the
+  defaults, roll exactly what 1.0 rolled. The `DICE` chunk grows from 3 to 5 bytes: SIDOU 1.0 still
+  reads a 1.1 song's density and scale, and if its EDIT + SCL turns a knob it writes the chunk back
+  without the rhythm and the range, which then return to their defaults.
+
 ### Fixed
 - LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before
   EDIT (two fingers pressed together) used to select the next effect slot and lose the roll; SCL

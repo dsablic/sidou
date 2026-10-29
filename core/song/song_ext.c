@@ -841,17 +841,19 @@ int song_ext_set_keys(gt2_song* s, const song_keys* v) {
 
 /* DICE */
 
-int song_ext_get_dice(const gt2_song* s, uint8_t* density, uint8_t* scale) {
+int song_ext_get_dice(const gt2_song* s, song_dice* v) {
     uint32_t len = 0;
     const uint8_t* d = get_v1(s, SONG_TAG_DICE, 3u, &len);
-    *density = d != NULL && d[1] < SONG_DICE_DENSITIES ? d[1] : SONG_DICE_DENSITY_DEFAULT;
-    *scale = d != NULL && d[2] < SONG_DICE_SCALES ? d[2] : 0u;
+    v->density = d != NULL && d[1] < SONG_DICE_DENSITIES ? d[1] : SONG_DICE_DENSITY_DEFAULT;
+    v->scale = d != NULL && d[2] < SONG_DICE_SCALES ? d[2] : 0u;
+    v->rhythm = d != NULL && len > 3u && d[3] < SONG_DICE_RHYTHMS ? d[3] : 0u;
+    v->range = d != NULL && len > 4u && d[4] < SONG_DICE_RANGES ? d[4] : SONG_DICE_RANGE_DEFAULT;
     return d != NULL;
 }
 
-int song_ext_set_dice(gt2_song* s, uint32_t density, uint32_t scale) {
-    uint8_t b[3] = {1u, (uint8_t)density, (uint8_t)scale};
-    return song_ext_set(s, SONG_TAG_DICE, b, 3u);
+int song_ext_set_dice(gt2_song* s, const song_dice* v) {
+    uint8_t b[SONG_DICE_BYTES] = {1u, v->density, v->scale, v->rhythm, v->range};
+    return song_ext_set(s, SONG_TAG_DICE, b, SONG_DICE_BYTES);
 }
 
 /* DIGI */

@@ -1292,9 +1292,10 @@ fn notes_of(p: &[[u8; 4]]) -> Vec<(usize, u32)> {
         .collect()
 }
 
-/// NEW, STEP: EDIT + SCL held with K1 and K3 turned sets DICE's density (every step) and scale
-/// (major pentatonic) in the song and rolls nothing at the release; the next EDIT + SCL rolls
-/// them: a note on every row, all in the major pentatonic on the lane's C-3.
+/// NEW, STEP: EDIT + SCL held with each of K1-K4 turned at once sets DICE's density (every
+/// step), range (one octave), scale (major pentatonic) and rhythm (FOUR, which FULL fills) in the
+/// song and rolls nothing at the release; the next EDIT + SCL rolls them: a note on every row,
+/// all in the major pentatonic in the octave of the lane's C-3.
 #[test]
 fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
     let Some(fw) = fixture() else { return };
@@ -1304,16 +1305,22 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
     m.run_ms(40);
     m.key(SCL, true);
     turn(&mut m, PANEL_ENC_K1 as u8, 4); // at once: SCL's press is in before the knob's
+    turn(&mut m, PANEL_ENC_K1 as u8 + 1, -1);
     turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
+    turn(&mut m, PANEL_ENC_K1 as u8 + 3, 3);
     m.key(SCL, false);
     m.key(EDIT, false);
     m.run_ms(400);
     step_settled(&mut m, &fw);
     let s = song(&mut m, &fw);
     assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
-    let (mut d, mut sc) = (0u8, 0u8);
-    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut d, &mut sc) }, 1);
-    assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
+    let mut dice = song_dice::default();
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut dice) }, 1);
+    assert_eq!(
+        (dice.density, dice.range, dice.scale, dice.rhythm),
+        (4, 0, 1, 3),
+        "the song holds FULL, 1 OCT, MAJ PENT and FOUR"
+    );
     chord(&mut m, EDIT, SCL);
     assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
     step_settled(&mut m, &fw);
@@ -1328,6 +1335,10 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
         assert!(
             [0, 2, 4, 7, 9].contains(&((note + 120 - LANE_NOTE) % 12)),
             "row {row}: note {note} is out of the major pentatonic"
+        );
+        assert!(
+            (LANE_NOTE..LANE_NOTE + 12).contains(&note),
+            "row {row}: note {note} is out of the one octave"
         );
     }
 }
@@ -1363,9 +1374,13 @@ fn scl_before_edit_is_dices_chord_too() {
     assert_eq!(after, amounts, "no effect knob turned");
     let s = song(&mut m, &fw);
     assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
-    let (mut d, mut sc) = (0u8, 0u8);
-    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut d, &mut sc) }, 1);
-    assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
+    let mut dice = song_dice::default();
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut dice) }, 1);
+    assert_eq!(
+        (dice.density, dice.scale),
+        (4, 1),
+        "the song holds FULL and MAJ PENT"
+    );
 }
 
 /// NEW, STEP: a step with a note held and ALGORITHM turned back five detents: the popup says
