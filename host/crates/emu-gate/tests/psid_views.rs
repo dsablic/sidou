@@ -650,7 +650,10 @@ fn a_sound_edit_asks_nothing_and_survives_a_tune() {
     until(&mut m, "the song back", |m| tune_state(m, &fw) == TUNE_OFF);
     song_idle(&mut m, &fw);
     // (its GoatTracker part: the trailer's KEYS and SLOT carry the sound as it is)
-    assert!(song_gt2(&mut m, &fw) == song, "the loop came back as it was");
+    assert!(
+        song_gt2(&mut m, &fw) == song,
+        "the loop came back as it was"
+    );
     assert_eq!(
         (m.soc.read8(preset), m.soc.read16(cutoff)),
         edited,

@@ -1064,14 +1064,15 @@ fn a_sound_edit_is_not_the_songs_and_a_tune_keeps_it() {
     assert_eq!(r.song.write(true), saved, "the song back from its file");
     unsafe {
         assert_eq!(song_io_keeping(&*r.io), 0, "only for that read");
-        assert_eq!(song_io_changed(&*r.io), 1, "the sound edit is still unsaved");
+        assert_eq!(
+            song_io_changed(&*r.io),
+            1,
+            "the sound edit is still unsaved"
+        );
         assert_eq!(song_io_edited(&*r.io), 0);
     }
     // a load is not a tune's return: the file's keys apply
-    assert_eq!(
-        unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) },
-        1
-    );
+    assert_eq!(unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) }, 1);
     r.finish();
     assert_eq!(k.kept, 0);
     r.io.dirty = 1; // a song edit

@@ -520,8 +520,8 @@
       "title": "On *PRESETS*"
     },
     {
-      "caption": "The menu's SIDS lists the tunes in the store. SELECT to DOJO, ALGORITHM plays it: a GoatTracker tune, by Cadaver. The song you changed asks first; ALGORITHM again discards it.",
-      "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then press SAVE, then wait 1.2 s, then turn SELECT clockwise by 1 detent, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.2 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.5 s",
+      "caption": "The menu's SIDS lists the tunes in the store. SELECT to DOJO, ALGORITHM plays it: a GoatTracker tune, by Cadaver.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then press SAVE, then wait 1.2 s, then turn SELECT clockwise by 1 detent, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.5 s",
       "expect": [
         {
           "kind": "text",
@@ -582,15 +582,6 @@
         },
         {
           "ms": 600,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 1200,
           "op": "wait"
         },
         {
