@@ -358,7 +358,7 @@
         },
         {
           "kind": "text",
-          "value": "SAW+PUL"
+          "value": "PULSE"
         },
         {
           "assert": "sounding",
