@@ -20,7 +20,8 @@ use crate::song_view::{attr, ch, Song};
 pub(crate) fn settle(ui: &mut crate::views::Ui) {
     for _ in 0..400 {
         let st = &ui.v.step;
-        if st.qn == 0 && st.follow == 0 && st.run == 0 && ui.v.editor.pending == 0 {
+        let g = &ui.v.song.gen_;
+        if st.qn == 0 && st.follow == 0 && g.run == 0 && g.follow == 0 && ui.v.editor.pending == 0 {
             break;
         }
         ui.frame();
@@ -30,9 +31,9 @@ pub(crate) fn settle(ui: &mut crate::views::Ui) {
     crate::song_view::settle(ui);
 }
 
-const R: [u8; 4] = [GT2_REST as u8, 0, 0, 0];
+pub(crate) const R: [u8; 4] = [GT2_REST as u8, 0, 0, 0];
 const OFF: [u8; 4] = [GT2_KEYOFF as u8, 0, 0, 0];
-const C3: u8 = GT2_FIRSTNOTE as u8 + 36;
+pub(crate) const C3: u8 = GT2_FIRSTNOTE as u8 + 36;
 
 fn th() -> &'static theme {
     unsafe { &*theme_get(THEME_HIGH_CONTRAST) }
@@ -72,7 +73,7 @@ pub(crate) fn open_step(s: &mut Song) {
     assert_eq!(s.ui.top(), "STEP");
 }
 
-fn pattern(s: &Song, p: u32) -> Vec<[u8; 4]> {
+pub(crate) fn pattern(s: &Song, p: u32) -> Vec<[u8; 4]> {
     let song = s.ui.v.song.song;
     let n = unsafe { gt2_pattern_rows(song, p) } as usize - 1;
     let d = unsafe { gt2_pattern_data(song, p) };
@@ -93,17 +94,17 @@ fn locks(s: &Song) -> Vec<(u8, u8, u8, u16)> {
 }
 
 /// A step key pressed and let go.
-fn tap(s: &mut Song, k: u32) {
+pub(crate) fn tap(s: &mut Song, k: u32) {
     s.ui.note_keys(1 << k, 1 << k);
     s.ui.note_keys(0, 0);
     settle(&mut s.ui);
 }
 
-fn hold(s: &mut Song, k: u32) {
+pub(crate) fn hold(s: &mut Song, k: u32) {
     s.ui.note_keys(1 << k, 1 << k);
 }
 
-fn release(s: &mut Song) {
+pub(crate) fn release(s: &mut Song) {
     s.ui.note_keys(0, 0);
     settle(&mut s.ui);
 }
@@ -408,7 +409,7 @@ fn a_held_steps_note_stops_at_g_sharp_7_the_patterns_last_note() {
     s.ui.turn(PRESETS, 100);
     release(&mut s);
     assert_eq!(pattern(&s, 0)[8][0], last, "the knob stops at G#7");
-    assert_eq!(s.ui.v.step.note[0], last - GT2_FIRSTNOTE as u8);
+    assert_eq!(s.ui.v.song.gen_.root[0], last - GT2_FIRSTNOTE as u8);
     hold(&mut s, 8);
     s.ui.turn(PRESETS, 3);
     release(&mut s);
@@ -489,7 +490,7 @@ fn while_the_song_plays_the_page_and_the_white_step_follow_it() {
     assert_eq!(s.ui.big(3, 5, 2, 3), "49 ");
 }
 
-fn popup(s: &Song, enc: u32, edit: bool) -> Option<(String, String, u32, u32)> {
+pub(crate) fn popup(s: &Song, enc: u32, edit: bool) -> Option<(String, String, u32, u32)> {
     let mut name = [0; SCREEN_POPUP_TEXT as usize];
     let mut value = [0; SCREEN_POPUP_TEXT as usize];
     let (mut fill, mut max) = (0, 0);
@@ -857,7 +858,7 @@ fn no_song_no_edit_and_a_toast_says_so() {
 
 /// A song of three 8-row patterns (6 calls a row): voice 1 plays notes on rows 0 and 4 with a
 /// pulse instrument whose wavetable and pulse table give the voice something to hold.
-fn loop_song() -> Model {
+pub(crate) fn loop_song() -> Model {
     let row = |note: u8, instr: u8| [note, instr, 0, 0];
     let p0 = vec![row(C3, 1), R, R, R, row(C3 + 4, 0), R, R, R];
     let p1 = vec![row(C3 - 12, 1), R, R, R, R, R, R, R];
@@ -883,7 +884,7 @@ fn loop_song() -> Model {
 }
 
 /// The song the view edits, as a model of its own (the region copied).
-fn snapshot(s: &Song) -> Model {
+pub(crate) fn snapshot(s: &Song) -> Model {
     let mut m = Model::host();
     let n = m.bytes().len();
     unsafe {
@@ -899,13 +900,13 @@ fn loop_step() -> Song {
 }
 
 /// A song's SID writes call by call from SIDOU's player, as one list a call.
-fn sidou_calls(song: &Model, calls: usize) -> Vec<Vec<(u8, u8)>> {
+pub(crate) fn sidou_calls(song: &Model, calls: usize) -> Vec<Vec<(u8, u8)>> {
     let mut p = Player::new(song, 0, &default_options()).expect("the player takes the song");
     (0..calls).map(|_| p.call()).collect()
 }
 
 /// GoatTracker's own player's writes for the same file, a list a call.
-fn reference_calls(sng: &[u8], calls: usize) -> Vec<Vec<(u8, u8)>> {
+pub(crate) fn reference_calls(sng: &[u8], calls: usize) -> Vec<Vec<(u8, u8)>> {
     let o = default_options();
     let opts = Options {
         hr_adsr: u32::from(o.hr_adsr),
@@ -1073,14 +1074,14 @@ fn presets_names_the_lanes_instrument() {
 // ---- generative play: chance, MUTATE and DICE ----
 
 /// EDIT + button, as the panel reports it, until the edits it makes are written.
-fn edit_press(s: &mut Song, b: u32) {
+pub(crate) fn edit_press(s: &mut Song, b: u32) {
     s.ui.hold(PANEL_BTN_EDIT, true);
     s.ui.press(b);
     s.ui.hold(PANEL_BTN_EDIT, false);
     settle(&mut s.ui);
 }
 
-fn is_note(n: u8) -> bool {
+pub(crate) fn is_note(n: u8) -> bool {
     (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n)
 }
 
@@ -1139,9 +1140,9 @@ fn algorithm_with_a_step_held_is_its_chance_a_lock_that_is_gone_at_one_hundred()
 fn dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits() {
     let mut s = step();
     let before = pattern(&s, 0);
-    s.ui.v.step.seed = 7;
+    s.ui.v.song.gen_.seed = 7;
     edit_press(&mut s, PANEL_BTN_SCL);
-    assert_eq!(s.ui.v.step.run, 0, "the run is over");
+    assert_eq!(s.ui.v.song.gen_.run, 0, "the run is over");
     let p = pattern(&s, 0);
     pattern_ok(&p);
     assert_eq!(p.len(), before.len());
@@ -1176,7 +1177,7 @@ fn dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits() {
     assert_ne!(pattern(&s, 0), again);
     // The same seed, the same pattern: a second song with the same start.
     let mut t = step();
-    t.ui.v.step.seed = 7;
+    t.ui.v.song.gen_.seed = 7;
     edit_press(&mut t, PANEL_BTN_SCL);
     assert_eq!(pattern(&t, 0), again);
 }
@@ -1218,7 +1219,7 @@ fn mutate_changes_a_little_stays_in_the_scale_and_valid_every_time() {
     for _ in 0..30 {
         let before = pattern(&s, 0);
         edit_press(&mut s, PANEL_BTN_ARP);
-        assert_eq!(s.ui.v.step.run, 0);
+        assert_eq!(s.ui.v.song.gen_.run, 0);
         let after = pattern(&s, 0);
         pattern_ok(&after);
         let changed: Vec<usize> = (0..after.len())
@@ -1249,7 +1250,7 @@ fn mutate_and_dice_wait_for_a_step_to_be_let_go_and_leave_rec_alone() {
     s.ui.press(PANEL_BTN_SCL);
     s.ui.hold(PANEL_BTN_EDIT, false);
     settle(&mut s.ui);
-    assert_eq!(s.ui.v.step.run, 0, "a held step: not a pattern action");
+    assert_eq!(s.ui.v.song.gen_.run, 0, "a held step: not a pattern action");
     release(&mut s);
     assert_eq!(pattern(&s, 0)[0][0], C3 + 7, "nothing was diced");
 }
@@ -1271,11 +1272,11 @@ const FROZEN_DRUMS: [u8; 64] = [
     190, 189, 189, 132, 190, 189, 189,
 ];
 
-fn notes_col(s: &Song) -> Vec<u8> {
+pub(crate) fn notes_col(s: &Song) -> Vec<u8> {
     pattern(s, 0).iter().map(|c| c[0]).collect()
 }
 
-fn dice_of(s: &Song) -> (song_dice, i32) {
+pub(crate) fn dice_of(s: &Song) -> (song_dice, i32) {
     let mut v = song_dice::default();
     let r = unsafe { song_ext_get_dice(s.ui.v.song.song, &mut v) };
     (v, r)
@@ -1284,13 +1285,13 @@ fn dice_of(s: &Song) -> (song_dice, i32) {
 /// The density, the scale and whether the song has the chunk.
 fn dice_chunk(s: &Song) -> (u8, u8, i32) {
     let (v, r) = dice_of(s);
-    (v.density, v.scale, r)
+    (v.density, v.scale[0], r)
 }
 
-fn set_dice_all(s: &mut Song, density: u32, scale: u32, rhythm: u32, range: u32) {
+pub(crate) fn set_dice_all(s: &mut Song, density: u32, scale: u32, rhythm: u32, range: u32) {
     let v = song_dice {
         density: density as u8,
-        scale: scale as u8,
+        scale: [scale as u8; 3],
         rhythm: rhythm as u8,
         range: range as u8,
     };
@@ -1303,7 +1304,7 @@ fn set_dice(s: &mut Song, density: u32, scale: u32) {
     set_dice_all(s, density, scale, 0, SONG_DICE_RANGE_DEFAULT);
 }
 
-fn drums(s: &mut Song) {
+pub(crate) fn drums(s: &mut Song) {
     let scene = song_scene {
         count: 3,
         role: [SONG_ROLE_DRUMS as u8, 0, 0, 0, 0, 0],
@@ -1321,12 +1322,12 @@ fn rolled(settings: Option<(u32, u32)>) -> Vec<u8> {
     if let Some((d, sc)) = settings {
         set_dice(&mut s, d, sc);
     }
-    s.ui.v.step.seed = 7;
+    s.ui.v.song.gen_.seed = 7;
     edit_press(&mut s, PANEL_BTN_SCL);
     notes_col(&s)
 }
 
-const SCALES: [&[u8]; 6] = [
+pub(crate) const SCALES: [&[u8]; 6] = [
     &[0, 3, 5, 7, 10],
     &[0, 2, 4, 7, 9],
     &[0, 2, 3, 5, 7, 8, 10],
@@ -1336,11 +1337,11 @@ const SCALES: [&[u8]; 6] = [
 ];
 
 /// A note's semitones above the root, whatever the octave.
-fn degree(n: u8) -> u8 {
+pub(crate) fn degree(n: u8) -> u8 {
     (i32::from(n) - i32::from(C3)).rem_euclid(12) as u8
 }
 
-fn hits(col: &[u8]) -> Vec<u8> {
+pub(crate) fn hits(col: &[u8]) -> Vec<u8> {
     col.iter().copied().filter(|&n| is_note(n)).collect()
 }
 
@@ -1391,7 +1392,7 @@ fn density_counts_sparse_to_every_step() {
         let mut s = step();
         set_dice(&mut s, d, 0);
         drums(&mut s);
-        s.ui.v.step.seed = 7;
+        s.ui.v.song.gen_.seed = 7;
         edit_press(&mut s, PANEL_BTN_SCL);
         let n = hits(&notes_col(&s)).len();
         assert!(n > last, "drums, density {d}: {n} after {last}");
@@ -1431,7 +1432,7 @@ fn k1_and_k3_with_edit_and_scl_held_set_the_song_and_a_turn_spoils_the_roll() {
         before,
         "a turn while held: no roll at the release"
     );
-    assert_eq!(s.ui.v.step.scl_down, 0);
+    assert_eq!(s.ui.v.song.gen_.scl_down, 0);
     assert_eq!(s.ui.small(17, 2, 9), " HELD STE", "the frame is back");
     // Letting go with no turn rolls, with what was set.
     edit_press(&mut s, PANEL_BTN_SCL);
@@ -1557,7 +1558,7 @@ fn rolled_all(dice: (u32, u32, u32, u32), drum: bool, seed: u32) -> Vec<u8> {
     if drum {
         drums(&mut s);
     }
-    s.ui.v.step.seed = seed;
+    s.ui.v.song.gen_.seed = seed;
     edit_press(&mut s, PANEL_BTN_SCL);
     notes_col(&s)
 }

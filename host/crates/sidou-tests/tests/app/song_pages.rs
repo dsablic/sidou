@@ -921,8 +921,9 @@ fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
     (sv.voice, sv.instr, sv.order_pos, sv.row, sv.subtune) = (2, 5, 1, 17, 0);
     sv.rec_n = 1;
     sv.built = 1;
+    sv.gen_.root = [40, 41, 42];
     let st = &mut h.ui.v.step;
-    (st.page, st.gate, st.note, st.instr) = (2, 0b101, [40, 41, 42], [3, 4, 6]);
+    (st.page, st.gate, st.instr) = (2, 0b101, [3, 4, 6]);
     st.held = 3;
     let pg = &mut h.ui.v.pages;
     (
@@ -946,7 +947,7 @@ fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
     );
     let st = &h.ui.v.step;
     assert_eq!(
-        (st.page, st.gate, st.note, st.instr),
+        (st.page, st.gate, h.ui.v.song.gen_.root, st.instr),
         (2, 0b101, [40, 41, 42], [3, 4, 6])
     );
     assert_eq!(st.held, STEP_VIEW_NONE as u8);
@@ -968,7 +969,7 @@ fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
     unsafe { views_song_loaded(&mut *h.ui.v) };
     let sv = &h.ui.v.song;
     assert_eq!((sv.voice, sv.instr, sv.order_pos, sv.row), (0, 1, 0, 0));
-    assert_eq!(h.ui.v.step.note, [36; 3]);
+    assert_eq!(h.ui.v.song.gen_.root, [36; 3]);
 }
 
 #[test]

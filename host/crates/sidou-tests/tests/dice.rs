@@ -1,29 +1,40 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! STEP's DICE settings (EDIT + SCL, K1 density, K2 range, K3 scale, K4 rhythm): the DICE chunk
-//! in SIDOU's trailer, kept with the song, and GoatTracker skipping it.
+//! The song views' DICE settings (EDIT + SCL, K1 density, K2 range, K3 the lane's scale, K4
+//! rhythm): the DICE chunk in SIDOU's trailer, kept with the song, and GoatTracker skipping it.
 
 use sidou_sys::*;
 use sidou_tests::song::*;
 
 const TAG_DICE: u32 = tag(b"DICE");
 
-/// Density, scale, rhythm, range and whether the chunk is there.
-fn get(song: &Song) -> (u8, u8, u8, u8, i32) {
+fn read(song: &Song) -> (song_dice, i32) {
     let mut v = song_dice {
         density: 9,
-        scale: 9,
+        scale: [9; 3],
         rhythm: 9,
         range: 9,
     };
     let r = unsafe { song_ext_get_dice(song.ptr(), &mut v) };
-    (v.density, v.scale, v.rhythm, v.range, r)
+    (v, r)
 }
 
+/// Density, lane 1's scale, rhythm, range and whether the chunk is there.
+fn get(song: &Song) -> (u8, u8, u8, u8, i32) {
+    let (v, r) = read(song);
+    (v.density, v.scale[0], v.rhythm, v.range, r)
+}
+
+/// The three lanes' scales.
+fn scales(song: &Song) -> [u8; 3] {
+    read(song).0.scale
+}
+
+/// Every lane on one scale.
 fn set(song: &mut Song, density: u8, scale: u8, rhythm: u8, range: u8) -> i32 {
     let v = song_dice {
         density,
-        scale,
+        scale: [scale; 3],
         rhythm,
         range,
     };
@@ -56,7 +67,7 @@ fn the_chunk_round_trips_and_goattracker_keeps_only_the_gt2_part() {
     let mut song = plain_song();
     assert_eq!(set(&mut song, 4, 5, 3, 2), 0);
     assert_eq!(get(&song), (4, 5, 3, 2, 1));
-    assert_eq!(song.ext_find(TAG_DICE), Some(vec![1, 4, 5, 3, 2]));
+    assert_eq!(song.ext_find(TAG_DICE), Some(vec![1, 4, 5, 3, 2, 5, 5]));
     let file = song.write(true);
     let plain = song.write(false);
     assert_eq!(&file[..plain.len()], &plain[..]);
@@ -118,4 +129,31 @@ fn a_one_point_zero_chunk_reads_with_the_new_fields_at_their_defaults() {
     let mut back = Song::host();
     back.read(&file, 0).unwrap();
     assert_eq!(back.write(true), file, "kept as written");
+}
+
+/// Each lane has its scale: byte 2 is lane 1's (what 1.0 reads), bytes 5 and 6 lanes 2 and 3's,
+/// each lane 1's when the chunk is shorter (1.0's 3 bytes, the 5 of 1.1's first cut) or the byte
+/// is out of range.
+#[test]
+fn each_lane_has_its_scale_and_lanes_two_and_three_default_to_lane_ones() {
+    let mut song = plain_song();
+    let v = song_dice {
+        density: 1,
+        scale: [3, 0, 5],
+        rhythm: 2,
+        range: 0,
+    };
+    assert_eq!(unsafe { song_ext_set_dice(song.ptr_mut(), &v) }, 0);
+    assert_eq!(song.ext_find(TAG_DICE), Some(vec![1, 1, 3, 2, 0, 0, 5]));
+    assert_eq!(scales(&song), [3, 0, 5]);
+    for (data, want) in [
+        (vec![1u8, 2, 4], [4, 4, 4]),
+        (vec![1, 2, 4, 0, 1], [4, 4, 4]),
+        (vec![1, 2, 4, 0, 1, 2], [4, 2, 4]),
+        (vec![1, 2, 4, 0, 1, 9, 1], [4, 4, 1]),
+        (vec![1, 2, 7, 0, 1, 2, 3], [0, 2, 3]),
+    ] {
+        assert_eq!(song.ext_set(TAG_DICE, &data), 0);
+        assert_eq!(scales(&song), want, "{data:?}");
+    }
 }

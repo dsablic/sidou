@@ -841,18 +841,26 @@ int song_ext_set_keys(gt2_song* s, const song_keys* v) {
 
 /* DICE */
 
+/* Byte at of a DICE chunk d of len bytes if it is below top, else dflt. */
+static uint8_t dice_byte(const uint8_t* d, uint32_t len, uint32_t at, uint32_t top, uint8_t dflt) {
+    return d != NULL && len > at && d[at] < top ? d[at] : dflt;
+}
+
 int song_ext_get_dice(const gt2_song* s, song_dice* v) {
     uint32_t len = 0;
     const uint8_t* d = get_v1(s, SONG_TAG_DICE, 3u, &len);
-    v->density = d != NULL && d[1] < SONG_DICE_DENSITIES ? d[1] : SONG_DICE_DENSITY_DEFAULT;
-    v->scale = d != NULL && d[2] < SONG_DICE_SCALES ? d[2] : 0u;
-    v->rhythm = d != NULL && len > 3u && d[3] < SONG_DICE_RHYTHMS ? d[3] : 0u;
-    v->range = d != NULL && len > 4u && d[4] < SONG_DICE_RANGES ? d[4] : SONG_DICE_RANGE_DEFAULT;
+    v->density = dice_byte(d, len, 1u, SONG_DICE_DENSITIES, SONG_DICE_DENSITY_DEFAULT);
+    v->scale[0] = dice_byte(d, len, 2u, SONG_DICE_SCALES, 0u);
+    v->rhythm = dice_byte(d, len, 3u, SONG_DICE_RHYTHMS, 0u);
+    v->range = dice_byte(d, len, 4u, SONG_DICE_RANGES, SONG_DICE_RANGE_DEFAULT);
+    v->scale[1] = dice_byte(d, len, 5u, SONG_DICE_SCALES, v->scale[0]);
+    v->scale[2] = dice_byte(d, len, 6u, SONG_DICE_SCALES, v->scale[0]);
     return d != NULL;
 }
 
 int song_ext_set_dice(gt2_song* s, const song_dice* v) {
-    uint8_t b[SONG_DICE_BYTES] = {1u, v->density, v->scale, v->rhythm, v->range};
+    uint8_t b[SONG_DICE_BYTES] = {1u,          v->density,  v->scale[0], v->rhythm,
+                                  v->range,    v->scale[1], v->scale[2]};
     return song_ext_set(s, SONG_TAG_DICE, b, SONG_DICE_BYTES);
 }
 

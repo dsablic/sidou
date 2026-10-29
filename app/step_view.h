@@ -31,8 +31,9 @@
  * legato, LFO with a step held clears its locks and its waveform command. Held with a knob,
  * ALGORITHM is the step's chance to play (a lock; the player drops the note of a pass that
  * loses its roll). EDIT + ARP is MUTATE (a few small changes to the lane's pattern), EDIT +
- * SCL is DICE (a new pattern for the lane, notes of a scale on a rhythm grid): both are plain
- * cell writes through the editor.
+ * SCL is DICE (a new pattern for the lane, notes of a scale on a rhythm grid), EDIT + ENV a
+ * filter sweep (GT2 C commands): plain cell writes through the editor (app/song_gen.h, shared
+ * with TRACKER).
  *
  * Two kinds, one meaning each: LOCK (K1 cutoff, K2 resonance, K3 pulse width; with EDIT held
  * K1-K4 the character, song_ext.h SONG_LOCK_*) holds for that row only and lives in the LOCK
@@ -95,8 +96,7 @@ typedef struct {
     uint8_t gate;      /* bit v: voice v's lane is legato */
     uint8_t rev;       /* locks written: the view draws again */
     uint8_t zones;     /* the zones built into the canvas (step_view.c) */
-    uint8_t note[3];   /* each lane's default note, 0..95 (0 is C-0) */
-    uint8_t instr[3];  /* and its instrument */
+    uint8_t instr[3];  /* each lane's instrument (its note, the root, is song_view.gen's) */
     uint16_t down;     /* the step keys the view knows are down (bit k) */
     uint16_t touched;  /* those a knob was turned on: they do not toggle at their release */
     /* A second row of one step's two (the key off after a note), sent once the first is
@@ -106,30 +106,17 @@ typedef struct {
     uint8_t follow_cell[4];
     uint8_t qn;
     step_act q[STEP_VIEW_QUEUE];
-    /* MUTATE or DICE at work (step_view.c, "generative play"): the run's kind (0: none), where,
-     * how far, whether the lane is the song's drums, and the seed its random is made from. */
-    uint8_t run, gen_pattern, gen_voice, gen_row, gen_drums;
-    /* DICE's density, scale, rhythm and range for the run (read from the song's DICE chunk as it
-     * starts). */
-    uint8_t gen_dens, gen_scale, gen_rhythm, gen_range;
-    /* SCL is down with EDIT (STEP_VIEW_SCL_CHORD): its release rolls DICE unless K1 or K3 was
-     * turned (or another button pressed) meanwhile; the song's density and scale show while it
-     * is down. EDIT + SCL is the chord whichever lands first: SCL alone (STEP_VIEW_SCL_ALONE)
-     * waits for EDIT, and selects the next effect slot as everywhere at its release, or at once
-     * when another control is used first. */
-    uint8_t scl_down, scl_spoiled;
-    uint32_t seed;
     uint8_t drawn[STEP_VIEW_LOOK];
 } step_view;
 
-enum { STEP_VIEW_SCL_CHORD = 1, STEP_VIEW_SCL_ALONE = 2 };
-
 extern const view step_view_view;
 
-/* No step held, page 0, every lane at C-3 with instrument 1, staccato. */
+/* No step held, page 0, every lane at C-3 with instrument 1, staccato; no generative run
+ * (song_view.gen, app/song_gen.h, which reads the lanes' gate from here). */
 void step_view_init(step_view* st, song_view* sv);
-/* SCL's hold, once a pass while STEP shows (views_buttons, with the buttons held): its release
- * rolls DICE if it was not spoiled. */
+/* SCL's hold, once a pass while it is down and TRACKER is not on top (views_buttons, with the
+ * buttons held): its release rolls DICE on the selected lane if it was not spoiled and STEP is
+ * on top. */
 void step_view_buttons(step_view* st, screen* s, uint32_t held);
 /* The step keys, once a pass while STEP shows (views_note_keys): down are the keys down,
  * pressed those that went down since the last call, take 0 while GLO is held (its layer

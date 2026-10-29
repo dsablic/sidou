@@ -66,11 +66,12 @@ static const char* const EXPERT_LINES[] = {"SELECT\0FOCUS", "ALG\0PAGE",     "K1
                                            "E+K\0SLOT",     "HOME\0BACK"};
 /* The song views: SEQ goes round them, SAVE saves the song, not the settings. STEP and TRACKER
  * undo one step (EDIT + LFO, E+LFO: the line's 14 characters; the ergonomics review's E32). STEP's
- * card is full: DICE's K1 and K3 (held with EDIT + SCL) took the places of PLAY and KEYS 17+. */
+ * card is full: DICE's settings (K1-K4 held with EDIT + SCL), its root (a key) and the sweep
+ * (E+ENV) took the places of PLAY, KEYS 17+ and GLO's mutes (every song view's, on TRACKER's). */
 static const char* const STEP_LINES[] = {
     "KEYS 1-16\0STEP", "STEP+K\0LOCK",   "SELECT\0LANE",    "ALG\0PAGE",
     "PRESETS\0INSTR",  "ARP\0GATE",      "E+LFO\0ONE UNDO", "E+ARP\0MUTATE",
-    "E+SCL\0DICE",     "SCL+K1\0DENSITY", "SCL+K3\0SCALE",   "GLO+KEY\0MUTE",
+    "E+SCL\0DICE",     "SCL+K\0DICE SET", "SCL+KEY\0ROOT",   "E+ENV\0SWEEP",
     "REC\0RECORD",    "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
 /* A step held: its locks, its note; let go with no knob turned, it toggles. */
 static const char* const STEP_HELD_LINES[] = {
@@ -84,15 +85,19 @@ static const char* const STEP_REC_LINES[] = {
     "SELECT\0LANE",   "ALG\0PAGE",       "PRESETS\0INSTR",  "ARP\0GATE",
     "E+LFO\0ONE UNDO", "REC\0RECORD OFF", "PLAY\0STOP",     "SEQ\0NEXT VIEW",
     "SAVE\0SONG",     "HOME\0BACK"};
+/* TRACKER's generative play is STEP's on the shown voice's pattern (app/song_gen.h): MUTATE,
+ * DICE with its settings and root, the sweep; PLAY (every view's) gave its place. */
 static const char* const TRACKER_LINES[] = {
     "SELECT\0ROW",     "E+SELECT\0PAGE", "ALG\0VOICE",     "E+ALG\0ROW STEP",
-    "KEYS\0AUDITION",  "REC\0EDIT",      "E+LFO\0ONE UNDO", "GLO+KEY\0MUTE",
-    "PLAY\0PLAY/STOP", "SEQ\0NEXT VIEW", "SAVE\0SONG",     "HOME\0BACK"};
-/* REC on, the song stopped: the cursor's row is edited. */
+    "KEYS\0AUDITION",  "REC\0EDIT",      "E+LFO\0ONE UNDO", "E+ARP\0MUTATE",
+    "E+SCL\0DICE",     "SCL+K\0DICE SET", "SCL+KEY\0ROOT",   "E+ENV\0SWEEP",
+    "GLO+KEY\0MUTE",   "SEQ\0NEXT VIEW", "SAVE\0SONG",     "HOME\0BACK"};
+/* REC on, the song stopped: the cursor's row is edited. DICE and the sweep (and MUTATE, on
+ * TRACKER's card) work here too; EDIT's page and row step are on TRACKER's card. */
 static const char* const TRACKER_EDIT_LINES[] = {
     "KEYS\0WRITE",     "ARP\0KEY OFF",   "LFO\0CLEAR NOTE", "K1\0INSTRUMENT",
     "K2\0COMMAND",     "K3 K4\0DATA",    "PRESETS\0INSTR",  "E+PRE\0INS/DEL",
-    "SELECT\0ROW",     "E+SELECT\0PAGE", "ALG\0VOICE",      "E+ALG\0ROW STEP",
+    "SELECT\0ROW",     "ALG\0VOICE",     "E+SCL\0DICE",     "E+ENV\0SWEEP",
     "E+LFO\0ONE UNDO", "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
 /* REC on, the song playing: the keys and K1 and K2 record; EDIT + K1..K4 edit the cursor's row. */
 static const char* const TRACKER_REC_LINES[] = {
