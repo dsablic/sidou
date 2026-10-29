@@ -38,7 +38,10 @@ fn the_compiled_table_is_the_sheet() {
         assert_eq!(got, &f.glyphs[code], "glyph {code:#04x}");
     }
     for code in font::LAST + 1..font::GLYPHS {
-        assert_eq!(f.glyphs[code], [0; 8], "{code:#04x} is not blank but is not in flash");
+        assert_eq!(
+            f.glyphs[code], [0; 8],
+            "{code:#04x} is not blank but is not in flash"
+        );
     }
 }
 
