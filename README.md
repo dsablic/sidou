@@ -72,7 +72,8 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
   its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
   the rest. REC records the keys and the filter knobs while the song plays, and parameter locks
-  are on STEP, with a chance for each step, MUTATE and DICE.
+  are on STEP, with a chance for each step. MUTATE, DICE (density, range, scale, rhythm and a
+  root for each lane) and a filter sweep write patterns in STEP and TRACKER.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
@@ -219,8 +220,9 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: 1.x** ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, the rest of DICE's
-  settings, the move to felucca-bsp.
+- **Next: 1.1** (in progress, [CHANGELOG.md](CHANGELOG.md)): DICE's range and rhythm, a root and
+  a scale per lane, MUTATE, DICE and a filter sweep in TRACKER. **1.x**
+  ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, the move to felucca-bsp.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/ROADMAP.md) and the

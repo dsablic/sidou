@@ -16,6 +16,16 @@ All notable changes are documented here. The format follows
   defaults, roll exactly what 1.0 rolled. The `DICE` chunk grows from 3 to 5 bytes: SIDOU 1.0 still
   reads a 1.1 song's density and scale, and if its EDIT + SCL turns a knob it writes the chunk back
   without the rhythm and the range, which then return to their defaults.
+- **Generative play in TRACKER.** EDIT + ARP is MUTATE and EDIT + SCL is DICE (either finger
+  first) on the shown voice's pattern, with STEP's settings frame over the window's lower half;
+  the same seed rolls the same pattern as STEP. A row whose step has a chance below 100 % shows a
+  yellow `%`. With REC on, EDIT + ARP is now MUTATE (ARP alone still writes the key off).
+- **A root and a scale per lane.** With EDIT + SCL held a note key sets the selected lane's root
+  (in STEP and TRACKER; the roll still comes when SCL is let go), and K3 sets that lane's scale.
+  The `DICE` chunk grows to 7 bytes: lanes 2 and 3's scales follow lane 1's, which 1.0 reads.
+- **A filter sweep:** EDIT + ENV in STEP and TRACKER writes GoatTracker `C` commands (FILTER
+  CUTOFF) every second row of the lane's pattern, up or down, never over a command; it plays in
+  GoatTracker as written, and undo steps back a cell at a time.
 
 ### Fixed
 - LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before

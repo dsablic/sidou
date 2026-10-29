@@ -72,8 +72,8 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 
 **Sound and play**
 
-- **The rest of DICE's settings:** range (K2) and rhythm (K4), left unbound beside the minimal
-  density and scale. M.
+- ~~**The rest of DICE's settings:** range (K2) and rhythm (K4), left unbound beside the minimal
+  density and scale. M.~~ Done in 1.1: the frame shows all four and the lane's root.
 - **The ARP helper's audition.** Hear the draft arpeggio before SAVE: the player reads the
   helper's draft rows as an overlay (the song-control jam plays only the song's own tables).
   M; the audio path and RAMTEXT (moved from 1.0, the user, 2026-10-29).
@@ -95,8 +95,11 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 
 **Songs**
 
-- **Generative play in TRACKER:** the same chance, MUTATE and DICE as STEP, C64 idioms
-  (generated arpeggio chords, multiplexed drums, filter sweeps), a scale per lane. M each.
+- ~~**Generative play in TRACKER:** the same chance, MUTATE and DICE as STEP, C64 idioms
+  (generated arpeggio chords, multiplexed drums, filter sweeps), a scale per lane. M each.~~
+  Done in 1.1 (the cut): MUTATE, DICE and a filter sweep (EDIT + ENV) in TRACKER, a root and a
+  scale per lane, chance shown as a mark (edited in STEP). Still to come: generated arpeggio
+  chords and multiplexed drums (instrument and wavetable writing: L).
 - **MIDI export on the device,** not only on the site; wavetable arpeggios and TRKB subtunes
   in the export. M.
 - **More than 48 keys in the store.** Only if players hit STORE FULL (the starter pack uses
