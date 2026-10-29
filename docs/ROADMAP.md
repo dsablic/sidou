@@ -28,9 +28,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 
 **Smaller things that make 1.0 feel finished**
 
-- **ARP helper: audition and waveform choice.** The waveform: done (PRESETS in the helper).
-  Hearing the draft before SAVE: open, it needs the player to play table rows it does not
-  hold (the song-control jam plays the song's own tables). S.
+- **ARP helper: waveform choice.** Done: PRESETS in TABLE's helper picks the rows' waveform.
 - **Readable small text.** Done for TABLE (the meaning line at 2×) and STEP (the ruler and the
   lane lines at 2×, the greyed chip B lane gone); STEP's page selector row stays 1×. S-M.
 - **Fewer late writes for dense `.sid` players.** Done: 24 render parts a block (from 16), 80
@@ -63,6 +61,9 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 **Sound and play**
 
 - **The rest of DICE's settings:** range and rhythm. M.
+- **The ARP helper's audition.** Hear the draft arpeggio before SAVE: the player reads the
+  helper's draft rows as an overlay (the song-control jam plays only the song's own tables).
+  M; the audio path and RAMTEXT (moved from 1.0, the user, 2026-10-29).
 - **A held step's audition plays its locks.** Hold a step and hear it with its locks. M; needs
   room in the audio interrupt, so a device check follows.
 - **LAB's song bridge:** send a sound to a song as an instrument, pull one back. M-L. Its own
