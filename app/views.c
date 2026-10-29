@@ -2832,6 +2832,9 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if ((pressed | v->key.down) & (1u << SAVE_KEY_BUTTON)) {
         pressed = save_buttons(v, pressed, held);
     }
+    if (v->lab.scl_alone) {
+        lab_view_scl(&v->lab, held); /* SCL alone on LAB waits for EDIT: its release */
+    }
     if (v->step.scl_down) {
         step_view_buttons(&v->step, &v->s, held); /* SCL's release: DICE rolls */
     }

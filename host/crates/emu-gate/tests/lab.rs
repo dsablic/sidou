@@ -1004,6 +1004,34 @@ fn edit_arp_and_edit_scl_change_the_sound_heard_and_undo() {
     assert_eq!(toast_text(&mut m, &fw), "NOTHING TO UNDO");
 }
 
+/// EDIT + SCL is the roll whichever finger lands first: SCL 5 ms before EDIT on LAB's FX page
+/// (two fingers pressing together) rolls the sound and selects no effect slot; SCL alone selects
+/// the next one at its release.
+#[test]
+fn scl_before_edit_rolls_in_lab_too() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_FX as u8);
+    let fx = live_at(&fw, ilp32::live::fx_select);
+    let slot = m.soc.read8(fx);
+    let before = voice_fields(&mut m, &fw);
+    m.key(PANEL_BTN_SCL as u8, true);
+    m.run_ms(5);
+    m.key(PANEL_BTN_EDIT as u8, true);
+    m.run_ms(60);
+    m.key(PANEL_BTN_SCL as u8, false);
+    m.key(PANEL_BTN_EDIT as u8, false);
+    m.run_ms(200);
+    assert_eq!(toast_text(&mut m, &fw), "ROLLED");
+    assert_ne!(voice_fields(&mut m, &fw), before, "rolled");
+    assert_eq!(m.soc.read8(fx), slot, "SCL selected no slot");
+    tap(&mut m, PANEL_BTN_SCL as u8);
+    m.run_ms(60);
+    assert_ne!(m.soc.read8(fx), slot, "SCL alone: the next slot");
+}
+
 /// MIDI learn on a LAB card, over TRS: SAVE held + K2 on OSC picks PWM depth (which has an NRPN
 /// and no CC), CC 14 binds to it and sets it through the map's curve, and the next CC follows;
 /// learn's frame closes over LAB and leaves it on top.

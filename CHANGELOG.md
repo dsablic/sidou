@@ -8,6 +8,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before
+  EDIT (two fingers pressed together) used to select the next effect slot and lose the roll; SCL
+  alone now waits for EDIT and selects the slot when it is let go, or as soon as another control
+  is used.
+
 ## [1.0.0] - 2026-10-29
 
 ### Added

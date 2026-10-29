@@ -465,6 +465,54 @@ fn a_roll_or_a_vary_undoes_in_one_step() {
     assert_eq!(name.to_str().unwrap(), "SAW LEAD");
 }
 
+/// EDIT + SCL is the roll whichever finger lands first: SCL a few milliseconds before EDIT
+/// (two fingers pressed together) rolls the sound and selects no slot, as EDIT first does, and
+/// letting SCL go after does nothing more.
+#[test]
+fn scl_landing_before_edit_is_the_same_roll() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FX);
+    let before = sound(&ui);
+    let slot = ui.live().fx_select;
+    ui.down(PANEL_BTN_SCL);
+    assert_eq!(ui.live().fx_select, slot, "it waits for EDIT");
+    ui.down(EDIT);
+    ui.frame();
+    assert_eq!(ui.toast().as_deref(), Some("ROLLED"));
+    assert_ne!(sound(&ui), before);
+    let rolled = sound(&ui);
+    ui.up(PANEL_BTN_SCL);
+    ui.up(EDIT);
+    ui.frame();
+    assert_eq!(ui.live().fx_select, slot, "SCL selected no slot");
+    assert_eq!(sound(&ui), rolled, "one roll");
+    assert_eq!(ui.v.lab.undo.steps, 1);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no A/B tap");
+}
+
+/// SCL alone in LAB still selects the next effect slot, once it is let go (it waits for EDIT
+/// that long) or as soon as another control is used while it is down, which then acts as ever.
+#[test]
+fn scl_alone_in_lab_selects_the_next_slot() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FX);
+    let before = sound(&ui);
+    let slot = ui.live().fx_select;
+    ui.press(PANEL_BTN_SCL);
+    assert_eq!(ui.live().fx_select, (slot + 1) % LIVE_SLOTS as u8);
+    ui.down(PANEL_BTN_SCL);
+    ui.turn(PANEL_ENC_K1, 1); // a knob while it is down: the slot first, then the knob
+    assert_eq!(ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
+    ui.down(EDIT); // EDIT after the knob: no chord any more
+    ui.up(PANEL_BTN_SCL);
+    ui.up(EDIT);
+    ui.frame();
+    assert_eq!(ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
+    assert_ne!(ui.toast().as_deref(), Some("ROLLED"));
+    assert_ne!(sound(&ui), before, "the knob acted");
+    assert_eq!(ui.v.lab.undo.steps, 1, "only the knob's step");
+}
+
 /// A sound nothing on its page can make heard: the variation leaves it and says so.
 #[test]
 fn a_silent_page_varies_nothing_and_says_so() {

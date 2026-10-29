@@ -765,9 +765,32 @@ static void choice_turn(lab_view* lv, int32_t steps) {
 static void name_turn(lab_view* lv, uint32_t id, int32_t steps);
 static void roll(lab_view* lv, screen* s, int whole);
 
+/* SCL that was down alone: SCL's everywhere, the next effect slot, and no chord now. */
+static void scl_alone(lab_view* lv) {
+    if (lv->scl_alone) {
+        lv->scl_alone = 0;
+        live_fx_select_next(lv->l);
+    }
+}
+
+void lab_view_scl(lab_view* lv, uint32_t held) {
+    if (!(held >> PANEL_BTN_SCL & 1u)) {
+        scl_alone(lv);
+    }
+}
+
 /* SELECT the pages, K1..K4 the cards, ALGORITHM the choice; ENV, LFO and FX their pages. */
 static int input(screen* s, void* state, const screen_event* e) {
     lab_view* lv = state;
+    if (lv->scl_alone) {
+        if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_EDIT) {
+            lv->scl_alone = 0; /* EDIT after SCL: the same chord, the whole roll */
+            lv->run = LAB_VIEW_NO_RUN;
+            roll(lv, s, 1);
+            return 1;
+        }
+        scl_alone(lv); /* another control: SCL was alone, its slot first */
+    }
     if (e->kind == SCREEN_TURN && lv->edit_down) {
         lv->edit_spoiled = 1; /* a control turned while EDIT is down: no A/B at its release */
     }
@@ -791,6 +814,10 @@ static int input(screen* s, void* state, const screen_event* e) {
         }
         if (edit && (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_SCL)) {
             roll(lv, s, e->id == PANEL_BTN_SCL); /* consumed: SCL selects no slot */
+            return 1;
+        }
+        if (e->id == PANEL_BTN_SCL) {
+            lv->scl_alone = 1; /* waits for EDIT a while: a hand's two fingers rarely land together */
             return 1;
         }
         uint32_t to = e->id == PANEL_BTN_ENV   ? LAB_PAGE_ENVELOPE

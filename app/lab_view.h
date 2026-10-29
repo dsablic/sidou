@@ -156,6 +156,7 @@ typedef struct {
     uint8_t cursor_at; /* the name page's cursor, 0..LAB_SOUND_NAME - 1 */
     uint8_t named;     /* the name is the player's, not the slot's automatic one */
     char name[LAB_SOUND_NAME + 1u]; /* the name page's name, spaces after it */
+    uint8_t scl_alone;    /* SCL pressed with no EDIT, still down: EDIT now makes it the roll */
     uint8_t edit_down;    /* EDIT pressed while LAB showed, held since (its tap: A/B) */
     uint8_t edit_spoiled; /* another control while it was: its release compares nothing */
     uint8_t ab;           /* LAB_VIEW_AB_*: comparing, and which sound plays */
@@ -197,6 +198,10 @@ uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
  * B's difference from it is one undo step (EDIT + LFO gives B back). Comparing ends when another sound loads (live.loads). EDIT as a
  * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. */
 void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, int top);
+/* SCL's release, from the panel's buttons while it waits for EDIT (lab_view.scl_alone): EDIT + SCL
+ * rolls whichever finger lands first; SCL alone selects the next effect slot as everywhere, when
+ * it is let go or as soon as another control is used. */
+void lab_view_scl(lab_view* lv, uint32_t held);
 /* HOME on the name page: back to the pages without writing. 1 if it was open (HOME did that). */
 int lab_view_home(lab_view* lv);
 /* SAVE's clean release in LAB: the sound is kept, in its own USER slot with its name or, if it
