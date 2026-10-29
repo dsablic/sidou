@@ -279,7 +279,8 @@ static void load(sid_view* sd, screen* s, const char* name) {
 }
 
 /* The highlighted tune chosen (ALGORITHM clockwise, SAVE): the loaded one opens NOW PLAYING as it
- * is; another loads, after the question when the song has unsaved changes and has its memory. */
+ * is; another loads, after the question when the song has unsaved edits of its own (a sound edit
+ * is not one: the tune leaves the keys as they are) and has its memory. */
 static void choose(sid_view* sd, screen* s) {
     if (sd->asking) {
         load(sd, s, sd->chosen); /* ALGORITHM again: the song's edits go */
@@ -296,7 +297,7 @@ static void choose(sid_view* sd, screen* s) {
         return;
     }
     const song_io* io = sd->sv->io;
-    if (st.state == SID_T_NONE && io && song_io_changed(io)) {
+    if (st.state == SID_T_NONE && io && song_io_edited(io)) {
         copy_name(sd->chosen, name);
         sd->asking = 1;
         sd->saving = 0;
@@ -378,7 +379,7 @@ void sid_view_frame(sid_view* sd, screen* s) {
         screen_top(s) != &sid_view_browser) {
         return;
     }
-    if (!song_io_changed(io)) {
+    if (!song_io_edited(io)) {
         load(sd, s, sd->chosen); /* saved: the tune */
     } else {
         sd->saving = 0; /* not saved (refused, failed, SAVE AS left): the question again */

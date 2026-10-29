@@ -67,6 +67,11 @@ All notable changes are documented here. The format follows
   no longer has writes land at the end of their 128-sample block (up to 2.9 ms late). LATE on
   STATUS stays at 0 for them; Sound Test, with a write about every sample for a whole frame, still
   shows some. No memory and no audible change elsewhere.
+- **A sound edit no longer asks about the song before a tune:** a PRESETS change or a knob on
+  LIVE or in LAB made SIDS ask `SONG NOT SAVED` before playing a tune, even on the built-in loop,
+  and its discard lost the sound too (the song's file put its own back when the tune ended). Only
+  the song's own edits (patterns, tables, instruments, its settings) ask now, and the keys' sound,
+  effect slots, MIDI and chip A's setup stay as they are across the tune.
 
 ## [0.5.0] - 2026-10-25
 

@@ -66,6 +66,13 @@ int song_io_changed(const song_io* io) {
            (io->hooks.generation && io->hooks.generation(io->hooks.ctx) != io->saved_live);
 }
 
+int song_io_edited(const song_io* io) {
+    if (io->away) {
+        return 0;
+    }
+    return io->dirty || (io->ctl && io->ctl->song->revision != io->saved_revision);
+}
+
 int song_io_busy(const song_io* io) {
     return io->state != SONG_IO_IDLE;
 }
@@ -244,6 +251,7 @@ int song_io_away(song_io* io, int on) {
     /* The song back as ABOUT's close brings it (its file by name, or the built-in it was), or
      * NEW's empty song. */
     io->action = io->away == 2u ? LOAD_NEW : LOAD_RESTORE;
+    io->keeping = io->away == 1u; /* the file's song, the keys' runtime as the tune left it */
     io->away = 0;
     io->message[0] = 0; /* a refusal while away is old news */
     io->restoring = 0;
@@ -251,6 +259,10 @@ int song_io_away(song_io* io, int on) {
     io->failure[0] = 0;
     io->state = SONG_IO_STOP;
     return 1;
+}
+
+int song_io_keeping(const song_io* io) {
+    return io->keeping;
 }
 
 int song_io_returning(const song_io* io) {
@@ -460,6 +472,7 @@ static void start_read(song_io* io) {
 }
 
 static void read_failed(song_io* io, const char* reason, int touched) {
+    io->keeping = 0;
     if (io->restoring || io->action == LOAD_RESTORE) {
         text(io->message, "SONG: RELOAD FAILED");
         io->state = SONG_IO_IDLE;
@@ -516,9 +529,11 @@ static void read_done(song_io* io) {
         }
     }
     io->saved_revision = io->ctl->song->revision;
-    if (io->hooks.generation) {
+    if (io->hooks.generation && !io->keeping) {
+        /* (kept: the runtime is what it was before the tune, and so is its unsaved mark) */
         io->saved_live = io->hooks.generation(io->hooks.ctx);
     }
+    io->keeping = 0;
     /* The model is now what was read: a stored file (start_read's read_file), or none. */
     io->fid = io->builtin || io->action == LOAD_NEW ? 0u : io->file.fid;
     io->state = SONG_IO_IDLE;

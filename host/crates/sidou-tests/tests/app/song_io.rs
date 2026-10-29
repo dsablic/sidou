@@ -1017,6 +1017,67 @@ fn away_refuses_everything_and_back_reads_the_song_from_its_file() {
     r.finish();
 }
 
+#[repr(C)]
+struct Keeping {
+    generation: u32,
+    io: *const song_io,
+    kept: i32,
+}
+
+unsafe extern "C" fn keeping_loaded(ctx: *mut std::ffi::c_void) -> i32 {
+    let k = unsafe { &mut *ctx.cast::<Keeping>() };
+    k.kept = unsafe { song_io_keeping(&*k.io) };
+    1
+}
+
+/// A sound edit is no edit a tune would lose: the keys' runtime (the generation) changed, the
+/// song's own data did not, so song_io_edited says 0 (SIDS plays a tune without asking) while
+/// song_io_changed says 1 (the file lacks the sound). Read back after the tune, the loaded hook
+/// is told to keep the runtime (song_io_keeping), and the song still counts as changed: its file
+/// lacks the edit, as before the tune. A pattern edit is the song's (song_io_edited 1).
+#[test]
+fn a_sound_edit_is_not_the_songs_and_a_tune_keeps_it() {
+    let mut r = Rig::new();
+    let mut k = Box::new(Keeping {
+        generation: 0,
+        io: &*r.io,
+        kept: -1,
+    });
+    r.io.hooks.ctx = (&mut *k as *mut Keeping).cast();
+    r.io.hooks.generation = Some(live_generation);
+    r.io.hooks.loaded = Some(keeping_loaded);
+    r.save(c"NIGHT");
+    let saved = r.song.write(true);
+    k.generation = 1; // the LIVE sound edited
+    unsafe {
+        assert_eq!(song_io_changed(&*r.io), 1, "the file lacks the sound");
+        assert_eq!(song_io_edited(&*r.io), 0, "the song itself is as saved");
+        assert_eq!(song_io_away(&mut *r.io, 1), 1);
+        let s = r.song.ptr_mut();
+        let bytes = (*s).region_bytes;
+        std::ptr::write_bytes(s.cast::<u8>(), 0xA5, bytes as usize);
+        gt2_song_init_wiped(s.cast(), bytes);
+        assert_eq!(song_io_away(&mut *r.io, 0), 1);
+    }
+    r.finish();
+    assert_eq!(k.kept, 1, "the read back keeps the keys' runtime");
+    assert_eq!(r.song.write(true), saved, "the song back from its file");
+    unsafe {
+        assert_eq!(song_io_keeping(&*r.io), 0, "only for that read");
+        assert_eq!(song_io_changed(&*r.io), 1, "the sound edit is still unsaved");
+        assert_eq!(song_io_edited(&*r.io), 0);
+    }
+    // a load is not a tune's return: the file's keys apply
+    assert_eq!(
+        unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) },
+        1
+    );
+    r.finish();
+    assert_eq!(k.kept, 0);
+    r.io.dirty = 1; // a song edit
+    assert_eq!(unsafe { song_io_edited(&*r.io) }, 1);
+}
+
 /// NEW's song, never saved, comes back as NEW's empty song.
 #[test]
 fn away_from_an_unsaved_new_song_comes_back_new() {

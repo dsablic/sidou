@@ -675,8 +675,15 @@ static int song_loaded(void* ctx) {
         song_char_on[f] = -1;
     }
     ui_song_loaded(song_io_returning(&songs));
-    if (songs.restoring) {
-        /* Runtime was untouched or restored already; reapplying KEYS releases held notes. */
+    if (songs.restoring || song_io_keeping(&songs)) {
+        /* Runtime was untouched or restored already; reapplying KEYS releases held notes. Back
+         * from a tune, the keys' sound, slots, MIDI and chip A's base are as the tune left them
+         * (a sound edit made before or during it is the player's, not the file's to undo); the
+         * song's chip A wants its base again, as a read sets it. */
+        if (!songs.restoring && song_base_valid) {
+            keys_route_song_wants(&keys_router, &song_char_base);
+            keys_router.song_user = 0;
+        }
         ui_song_rows(midi_routed()->setup.rows_per_beat);
         midi_sync_song_changed(midi_synced());
         return 1;

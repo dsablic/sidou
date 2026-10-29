@@ -109,10 +109,12 @@ the time, PAL or NTSC, its chips, and its three voices.
   with the tune stopped ends it, and your song comes back.
 - From a sequencer, MIDI start plays the song from its start, stop holds it, continue goes on.
 
-A tune takes the memory your song uses. If the song has changes that are not saved, the
-browser asks first, **SONG NOT SAVED**: SAVE saves the song (an unnamed one asks for its name),
-ALGORITHM again throws the changes away, HOME keeps both. When the tune ends, your song comes
-back as it was last saved.
+A tune takes the memory your song uses. If the song has changes that are not saved (its
+patterns, tables, instruments or settings), the browser asks first, **SONG NOT SAVED**: SAVE saves
+the song (an unnamed one asks for its name), ALGORITHM again throws the changes away, HOME keeps
+both. When the tune ends, your song comes back as it was last saved. The sound on the keys is not
+the song's memory: a sound changed on LIVE or in LAB asks nothing, and stays as it is when the
+song comes back.
 
 **SETTINGS → SID MODEL**: **AUTO** (the default) plays each tune on the chip its file names (a
 6581 or an 8580), **KEYS** on the chip the keys play, with its profile and character.

@@ -1257,11 +1257,15 @@ one up for the song (it ends for good, so the next PLAY is the song's); with no 
 is the song's, as always.
 
 **Before a tune takes the song's memory**: the song and a tune share it, so a tune loaded over
-a song with unsaved changes asks first, **SONG NOT SAVED** and the song's name (NEW SONG for one
+a song with unsaved edits of its own (patterns, orders, tables, instruments, the song's settings;
+an unsaved NEW) asks first, **SONG NOT SAVED** and the song's name (NEW SONG for one
 never named): **SAVE** saves it (in place, or through SAVE AS for an unnamed song, back to the
 question after), and the tune plays once it is saved; **ALGORITHM** clockwise again discards
 the changes and plays the tune; **HOME** cancels. When the tune ends for good, the song comes
-back from the store (the last one opened, by name), stopped.
+back from the store (the last one opened, by name), stopped. The keys' sound (a PRESETS change,
+a knob on LIVE, a LAB edit), their effect slots, MIDI and chip A's setup are not in the song's
+memory: a change to them asks nothing, and they stay as they are when the song comes back (the
+song's SAVE still writes them into its file, and LOAD and NEW still ask before replacing them).
 
 **NOW PLAYING** shows the tune's title at 2× on two lines (broken at a space), its author and
 released at 1×, **SONG 2/5**, the time since the song started and its state (PLAYING,

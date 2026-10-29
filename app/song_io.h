@@ -80,11 +80,20 @@ typedef struct {
     /* The model's memory is a .sid tune's (song_io_away): every action refused, nothing read.
      * 1, or 2 for NEW's song, which comes back as NEW's. */
     uint8_t away;
+    /* The song's file read back after a tune (song_io_keeping): the keys' runtime stays. */
+    uint8_t keeping;
 } song_io;
 
 void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* workspace,
                   const song_io_hooks* hooks);
+/* Anything SAVE would write that the stored file lacks: the song's own edits (song_io_edited)
+ * and the keys' runtime the file carries (hooks.generation: the sound, the slots, MIDI, chip A's
+ * setup). */
 int song_io_changed(const song_io* io);
+/* The song's own edits alone (patterns, orders, tables, instruments, the chunks the views edit,
+ * an unsaved NEW): what a .sid tune taking the model loses. The keys' runtime is not the model's
+ * and a tune leaves it (song_io_keeping), so a sound edit is not among them. */
+int song_io_edited(const song_io* io);
 int song_io_busy(const song_io* io);
 int song_io_saving(const song_io* io);
 /* User-facing SONG/bank directory: the MIDI loader's staging file is private. */
@@ -124,6 +133,10 @@ int song_io_away(song_io* io, int on);
  * back from its file (About's close, or a failed load's rollback), so the song views keep their
  * places; 0 for a song that replaces the player's (a load, NEW, a fallback to the built-in). */
 int song_io_returning(const song_io* io);
+/* From the loaded hook: 1 when this read is the song coming back after a tune (song_io_away
+ * off): the hook leaves the keys' runtime as the tune left it (the sound, the slots, MIDI, chip
+ * A's base) instead of applying the file's, and the song keeps its unsaved mark for it. */
+int song_io_keeping(const song_io* io);
 /* One bounded slice, only on passes without chip preparation or song analysis. */
 void song_io_poll(song_io* io, uint32_t now_ms);
 int song_io_take_message(song_io* io, char out[32]);

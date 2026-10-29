@@ -161,6 +161,22 @@ fn song_file(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
     song.write(true)
 }
 
+/// The song the device holds, its GoatTracker part alone (no SIDOU trailer).
+fn song_gt2(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
+    let mut song = Song::device();
+    let base = fw.symbol("__song_region");
+    for i in 0..SONG_REGION_BYTES {
+        // SAFETY: as song_file's.
+        unsafe {
+            song.ptr_mut()
+                .cast::<u8>()
+                .add(i as usize)
+                .write(m.soc.read8(base + i))
+        };
+    }
+    song.write(false)
+}
+
 /// An edit of the song (platform/fm1/main.c `song_test_hook`: op, pattern, row, cell): pattern 0,
 /// row 5 written with a note the song has.
 fn edit_song(m: &mut Machine, fw: &Firmware) {
@@ -598,6 +614,48 @@ fn the_unsaved_song_question_each_way() {
     let worst = m.passes.iter().copied().max().unwrap_or(0);
     println!("the question: the busiest pass {worst}");
     assert!(worst <= POLL_INSTRUCTIONS);
+}
+
+/// A sound edit is not the song's: on the built-in loop, PRESETS and a K1 turn on LIVE, then a
+/// tune from SIDS plays with no question; once it ends the loop comes back as it was and the
+/// sound as it was edited (the preset and the cutoff), not the loop's own.
+#[test]
+fn a_sound_edit_asks_nothing_and_survives_a_tune() {
+    let Some(fw) = fixture("the SID views' sound-edit test") else {
+        return;
+    };
+    let file = dojo();
+    let mut m = boot_with(&fw, &[("TUNE", &file)]);
+    run_past_boot(&mut m, &fw);
+    song_idle(&mut m, &fw);
+    let asking = ui_field(&fw, ilp32::views::sids + ilp32::sid_view::asking);
+    let live = fw.symbol("instrument");
+    let preset = live + ilp32::live::preset as u32;
+    let cutoff = live + ilp32::live::cutoff as u32;
+    let song = song_gt2(&mut m, &fw);
+    let was = m.soc.read8(preset);
+    m.turn(PANEL_ENC_PRESETS as u8, 1);
+    m.run_ms(100);
+    m.turn(PANEL_ENC_K1 as u8, -6);
+    m.run_ms(200);
+    let edited = (m.soc.read8(preset), m.soc.read16(cutoff));
+    assert_ne!(edited.0, was, "PRESETS changed the sound");
+    open_sids(&mut m, &fw);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(200);
+    assert_eq!(m.soc.read8(asking), 0, "a sound edit asks nothing");
+    until(&mut m, "the tune plays", |m| tune_state(m, &fw) == TUNE_ON);
+    m.run_ms(1_000);
+    ui_end_tune(&mut m, &fw);
+    until(&mut m, "the song back", |m| tune_state(m, &fw) == TUNE_OFF);
+    song_idle(&mut m, &fw);
+    // (its GoatTracker part: the trailer's KEYS and SLOT carry the sound as it is)
+    assert!(song_gt2(&mut m, &fw) == song, "the loop came back as it was");
+    assert_eq!(
+        (m.soc.read8(preset), m.soc.read16(cutoff)),
+        edited,
+        "the sound as edited, not the loop's"
+    );
 }
 
 /// MIDI over the TRS jack while a tune plays: stop holds it (paused, the 6502 still), continue

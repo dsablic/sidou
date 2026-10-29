@@ -11,8 +11,9 @@
  *   page's OK), loads the highlighted tune and opens NOW PLAYING; on the loaded tune it opens NOW
  *   PLAYING as it is. An empty store says NO TUNES: SEE MANUAL. HOME goes back; with the tune
  *   stopped (or failed) it also ends it for good: the song comes back from the store.
- * - The question: with no tune loaded and the song changed since its last save, a tune asks
- *   first (SONG NOT SAVED, the song's name): SAVE saves the song (a named one in place; an
+ * - The question: with no tune loaded and the song edited since its last save (song_io_edited:
+ *   its patterns, tables, instruments, settings; a sound edit on LIVE or in LAB is not the song's,
+ *   and the tune leaves it as it is), a tune asks first (SONG NOT SAVED, the song's name): SAVE saves the song (a named one in place; an
  *   unnamed one opens SAVE AS, and the question waits for it) and the tune loads once it is
  *   saved; ALGORITHM clockwise again discards the song's edits and loads the tune; HOME cancels.
  * - NOW PLAYING: the header's title at 2x on two lines, its author and released at 1x, SONG n/m
