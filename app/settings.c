@@ -337,8 +337,8 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         if (s->asked) {
             /* its own check follows */
         } else if ((uint8_t)s->st->errors != s->errors) {
-            s->saved = ~s->saved;
-            s->edit_saved = ~s->edit_saved;
+            s->saved = ~s->seen; /* unsaved, whatever it was: an inversion of one already unsaved would mark it saved */
+            s->edit_saved = ~s->edit_seen;
             retry_later(s, now_ms);
         } else {
             s->tries = 0;
@@ -367,7 +367,7 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
          * write is undecided then): not saved, and the debounce writes it again. */
         if (s->st && (uint8_t)s->st->errors != s->errors) {
             s->result = SETTINGS_FAILED;
-            s->saved = ~s->saved;
+            s->saved = ~s->seen; /* unsaved, whatever it was: an inversion of one already unsaved would mark it saved */
             s->changed_at = now_ms;
         } else {
             s->result = s->forcing ? SETTINGS_SAVED_GAPS : SETTINGS_SAVED;

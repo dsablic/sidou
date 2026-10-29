@@ -1473,7 +1473,7 @@ fn a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once() {
     s.result();
     *s.cards = 0;
     s.rig.live.settings_dirty = 1;
-    s.st.sim.fail = 25;
+    s.st.sim.fail = 40; // two programs in five fail: the save keeps failing over four debounces
     let mut failed = 0;
     for _ in 0..(4 * SETTINGS_DEBOUNCE_MS / TICK) {
         s.tick();
