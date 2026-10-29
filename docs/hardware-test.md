@@ -1640,15 +1640,15 @@ install the normal package again when you are done.
 
 - [ ] Without OCT-: the checklist build boots and plays as normal, and stays
   up past 10 s.
-  *Emulator:* `emu-gate/tests/bootguard.rs::a_stable_boot_clears_an_earlier_death` (a boot that runs past the stable time is stable); the SIDOU_TEST_DEATH build itself is not run in the emulator.
+  *Emulator:* `emu-gate/tests/bootguard.rs::a_stable_boot_clears_an_earlier_death` (a boot that runs past the stable time is stable), `emu-gate/tests/bootguard.rs::the_running_firmware_feeds_the_watchdog` (24 s, no reset); the SIDOU_TEST_DEATH build without OCT- is not run in the emulator.
   *Device-only:* a real boot of the checklist build staying up past 10 s (real silicon).
 - [ ] Hang build: hold OCT- while powering on and keep it held through the
   resets. Boot 1 dies, the watchdog resets, boot 2 dies, and boot 3 enters
   UBOOT instead of SIDOU. Record what the screen shows and how the unit
   appears on USB in UBOOT. This shows the guard state in `.noinit` survives
   a watchdog reset.
-  *Emulator:* `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot` (two early deaths, the third boot asks for UBOOT and starts no audio; the guard's words are kept by hand since fm1-emu models no reset).
-  *Device-only:* the real watchdog reset after about 8 s, `.noinit` surviving it, and what the screen and USB show in UBOOT (real silicon, mask ROM).
+  *Emulator:* `emu-gate/tests/bootguard.rs::a_hang_resets_through_the_watchdog_and_the_third_boot_enters_uboot` (the hang build, with `SIDOU_FM1_DEATH_BUILD`: two watchdog resets 9 s apart, the guard kept in RAM, the third boot asks for UBOOT), `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot`.
+  *Device-only:* the real watchdog's timing on silicon, `.noinit` surviving a real reset, and what the screen and USB show in UBOOT (real silicon, mask ROM).
 - [ ] In UBOOT, the unit stays there (no watchdog reset) for at least five
   minutes.
   *Device-only:* the mask ROM's UBOOT staying up for five minutes with no watchdog reset (real silicon).
@@ -1656,7 +1656,7 @@ install the normal package again when you are done.
   section 0, and record which one worked and how:
   *Device-only:* a recovery tool from section 0 installing from UBOOT, and which one worked (install and recovery tools, ROM boot mode).
 - [ ] Reboot build: the same, with the guard surviving a P33 reset.
-  *Emulator:* `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot` (the guard's logic, the same for a hang or a P33 reset).
+  *Emulator:* `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot` (two crashes, each reset through P33 by the fault handler, the guard kept in RAM; the third boot asks for UBOOT and starts no audio).
   *Device-only:* the real P33 reset keeping the guard (real silicon).
 - [ ] One death, then a normal boot (OCT- released) that runs past 10 s,
   then one more death: no UBOOT (the stable boot cleared the count).

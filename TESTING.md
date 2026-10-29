@@ -1476,10 +1476,12 @@ What fm1-emu does not do, so what only the device can tell. Each has a device ch
   enumeration, the update handshake and first read, K1's and K4's MIDI out, the DAC's
   output through a modelled EP4). The model is the firmware's side only: the chip's DMA and
   timing are not in it. An install and USB timing are device checks (section 8 and 8.1).
-- **No watchdog.** The P33 interface (`P33_CON`, `P33_DAT`) keeps what is written and acts on
-  nothing: no watchdog and no reset through `PR_PWR`, so `fm1_wdt_arm`, `fm1_wdt_feed` and
-  `fm1_reboot` have no effect and the boot test cannot tell whether the firmware feeds it.
-  Filed upstream (fm1-emu#65). Device check: hardware-test.md section 10.
+- **No mask ROM.** Since `93cb7ee3` fm1-emu models the watchdog and the reset through
+  `PR_PWR` (our report fm1-emu#65): a chip reset starts the firmware again from its entry with
+  RAM kept (`Machine::resets` in the tests). What the FM-1's ROM does after a reset it has no
+  model of: UBOOT and the update loader's hand-over are SIDOU booting again in the emulator, so
+  the tests stop at the firmware's reset request and check what it left. Device check:
+  hardware-test.md section 10.
 - **Instruction classes.** It still stops on a few pi32v2 classes (saturating `R += R`
   variants, register `&=`/`^=` masks, some FPU and accumulator classes). If a profiled hot
   spot needs one in hand-written assembly, support goes upstream first, so the gate's
@@ -1734,13 +1736,29 @@ file checks on instructions known to fail that the gate's two paths report.
 ### Boot-guard test
 
 `crates/emu-gate/tests/bootguard.rs` checks the boot-loop guard
-(`app/bootguard.c`, `boot_guard` in `platform/fm1/main.c`). fm1-emu does
-not model a reset, so each reset is a fresh machine that keeps the guard's
-`.noinit` words, and a boot dies by being cut off after 600 ms:
-- after two such boots the third enters UBOOT: the boot-state mailbox holds
-  `usb_update_mode`, the guard is cleared, and the audio never starts;
+(`app/bootguard.c`, `boot_guard` in `platform/fm1/main.c`) through fm1-emu's
+chip resets, which keep RAM and so the guard's `.noinit` words. A boot dies
+600 ms in as a crash does: the test raises an exception, the fault handler
+records it and resets the chip through `PR_PWR`:
+- after two such boots the third asks for UBOOT: the boot-state mailbox holds
+  `usb_update_mode`, the guard is cleared, the watchdog is off, the audio never
+  starts, and the reset comes from `fm1_enter_uboot`;
 - a boot that runs past `BOOTGUARD_STABLE_MS` (10 s) clears an earlier
-  death.
+  death;
+- the running firmware feeds the watchdog (armed for 8 s): 24 s, no reset.
+
+With `SIDOU_FM1_DEATH_BUILD` set to the checklist's hang build
+(hardware-test.md section 10), one more test holds OCT- from power-on: the
+build hangs 1 s into each boot with the interrupts off, the watchdog resets it
+8 s later, twice, and the third boot asks for UBOOT. Without the variable it
+skips.
+
+```
+tools/fm1-docker cmake --preset fm1 -B build/fm1-death -DSIDOU_TEST_DEATH=hang -DSIDOU_PRODUCT=FM-1_900
+tools/fm1-docker cmake --build build/fm1-death --target sidou_app
+cd host && SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_DEATH_BUILD=$PWD/../build/fm1-death \
+  cargo nextest run --locked --release -E 'package(emu-gate) & binary(bootguard)'
+```
 
 The guard's rules are host-tested too (`tests/app/bootguard.rs`).
 

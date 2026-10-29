@@ -23,7 +23,7 @@ sidou-tablegen = { path = "../sidou-tablegen" }
 [dev-dependencies]
 sidou-sysex = { path = "../sidou-sysex" }
 # The store's layout against the package's region descriptors (tests/app/store_layout.rs).
-fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "93cb7ee3f7008b27959ba73073b864e37efd7289" }
 sidou-pack = { path = "../sidou-pack" }
 
 [[bin]]

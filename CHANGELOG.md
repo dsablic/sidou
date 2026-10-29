@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
+  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
+  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
+  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
+  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
+  8 s after the last feed. The update test checks the reset after its record. The budgets are
+  unchanged, instruction for instruction.
+
 ### Fixed
 - The Songs page waits and sends again when the FM-1 answers a transfer with NAK BUSY, instead
   of giving up: it shows that the FM-1 is tidying its store, waits 1, 2, 4 and then 5 seconds

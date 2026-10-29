@@ -235,7 +235,19 @@ pub struct Machine {
     /// run_cycles_jit's tick already spent on the next instruction (machine::run_blocks's
     /// `pending_tick`), carried from one run to the next.
     jit_tick: bool,
+    /// The chip resets `run_cycles` carried out (the watchdog's, P33 PR_PWR's: fm1-soc's
+    /// `Soc::chip_reset`), each as (the ms it came at, its cause: `RST_SRC`'s bit,
+    /// `RST_WDT` or `RST_SOFT`). The core starts the firmware again from its entry; RAM, the
+    /// flash, the screen and the audio so far stay, as on the chip.
+    pub resets: Vec<(u64, u8)>,
+    /// With true, `run_cycles` stops at a reset that is due instead of carrying it out, so a
+    /// test sees the chip as it asked for it (`reset_due`); `reset` then carries it out.
+    pub stop_at_reset: bool,
 }
+
+/// P33 `RST_SRC`'s causes (fm1-soc p33.rs): the watchdog ran out, or PR_PWR (fm1_reboot).
+pub const RST_WDT: u8 = fm1_soc::p33::P33::RST_WDT;
+pub const RST_SOFT: u8 = fm1_soc::p33::P33::RST_SOFT;
 
 /// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
 /// use stays within half of it (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, Before M3 item 5: the
@@ -539,7 +551,30 @@ impl Machine {
             busy_until: None,
             idles: std::collections::BTreeMap::new(),
             jit_tick: false,
+            resets: Vec::new(),
+            stop_at_reset: false,
         }
+    }
+
+    /// Whether the chip asked for a reset `run_cycles` has not carried out (`stop_at_reset`).
+    pub fn reset_due(&self) -> bool {
+        self.soc.reset_due()
+    }
+
+    /// Carries out the reset that is due, if any (`resets`).
+    pub fn reset(&mut self) {
+        if !self.soc.reset_due() {
+            return;
+        }
+        let at = self.ms();
+        self.soc.chip_reset(&mut self.cpu);
+        let cause = self.soc.p33.reg(fm1_soc::p33::P33::RST_SRC, false);
+        self.resets.push((at, cause));
+        // (what was open in the firmware before it is gone)
+        self.alnk_open = None;
+        self.open_call = None;
+        self.pass_start = None;
+        self.busy_until = None;
     }
 
     /// The deepest use of each stack so far, in bytes (user, system): from the top down to the
@@ -609,7 +644,8 @@ impl Machine {
         self.run_cycles_jit(n);
     }
 
-    /// `run_ms_jit` for `n` cycles.
+    /// `run_ms_jit` for `n` cycles. A chip reset ends the run early, right after fm1-soc
+    /// carried it out (`resets`), so `stop_at_reset` does not apply here.
     pub fn run_cycles_jit(&mut self, n: u64) {
         assert!(self.usb.is_none(), "run_ms_jit has no USB host");
         let end = self.soc.periph.cycles + n;
@@ -619,8 +655,16 @@ impl Machine {
             // (the budget is in instructions, while `skip_idle` jumps the clock: a short one, so
             // the run stops near `end` and not that many instructions later)
             let n = (end - self.soc.periph.cycles).min(4096) as u32;
+            let resets = self.soc.resets;
             fm1_soc::machine::run_blocks(&mut self.cpu, &mut self.soc, n, &mut pending_tick)
                 .unwrap_or_else(|e| panic!("cpu fault: {e}"));
+            if self.soc.resets != resets {
+                // (run_blocks carries a reset out itself and stops right there: so does this run,
+                // and a test sees the new boot from its first instruction)
+                let cause = self.soc.p33.reg(fm1_soc::p33::P33::RST_SRC, false);
+                self.resets.push((self.ms(), cause));
+                break;
+            }
             assert!(!self.soc.cpu1_release, "SIDOU runs on core 0 only");
         }
         self.jit_tick = pending_tick;
@@ -630,9 +674,17 @@ impl Machine {
     /// Runs `n` CPU cycles of emulated time (fm1-emu: one instruction a cycle).
     pub fn run_cycles(&mut self, n: u64) {
         let end = self.soc.periph.cycles + n;
+        // (what a reset goes back to: the chip as the firmware's first instruction finds it)
+        self.soc.take_boot(&self.cpu);
         // fm1_soc::machine::run_blocks, one instruction at a time so `step` can stand in for
         // the instruction fm1-core lacks.
         while self.soc.periph.cycles < end {
+            if self.soc.reset_due() {
+                if self.stop_at_reset {
+                    return;
+                }
+                self.reset();
+            }
             let soc = &mut self.soc;
             let cpu = &mut self.cpu;
             if soc.periph.tick() {
@@ -640,6 +692,9 @@ impl Machine {
                 soc.advance(0);
                 if soc.periph.audio_halves != halves {
                     self.half_played.push(soc.periph.cycles);
+                }
+                if soc.reset_due() {
+                    continue;
                 }
             }
             soc.periph.in_isr = !cpu.irq_levels.is_empty();

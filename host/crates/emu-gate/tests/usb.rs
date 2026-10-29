@@ -1481,10 +1481,10 @@ fn installer_step_one(m: &mut Machine, fw: &Firmware, image: &[u8]) -> (Vec<(u32
         }
         m.usb_frames(1);
         idle += 1;
-        let at = fw.function_at(m.cpu.pc);
         assert!(
-            !at.starts_with("fm1_reboot") && !at.starts_with("fm1_cstart"),
-            "the device restarted ({at}) after {} reads",
+            m.resets.is_empty() && !m.reset_due(),
+            "the device restarted ({:?}) after {} reads",
+            m.resets,
             served.len()
         );
         // Only the packets read since the last look: a request is whole in them, as the
@@ -1581,6 +1581,21 @@ fn the_running_firmware_serves_an_updates_whole_step_one() {
         ms += 1;
     }
     assert_eq!(&m.soc.flash.mem[OTA_RES + 8..OTA_RES + 20], identity);
+    // The reset (main.c upgrade, fm1_reboot: PR_PWR), into the mask ROM's loader on the FM-1
+    // (fm1-emu has none: SIDOU boots again).
+    m.stop_at_reset = true;
+    let mut ms = 0;
+    while !m.reset_due() {
+        assert!(ms < 2_000, "no reset 2 s after the record");
+        m.usb_frames(1);
+        ms += 1;
+    }
+    let at = fw.function_at(m.cpu.pc);
+    m.reset();
+    println!("the reset after {ms} ms, from {at}: {:?}", m.resets);
+    assert!(at.starts_with("fm1_reboot"), "the reset came from {at}");
+    assert_eq!(m.resets.len(), 1);
+    assert_eq!(m.resets[0].1, common::RST_SOFT);
     let (user, system) = m.stack_use();
     println!("step 1's stacks: user {user}, system {system}");
 }
@@ -1709,6 +1724,11 @@ fn a_first_boot_over_another_firmwares_sectors_answers_usb_at_once() {
         assert!(
             gap <= erase_ms as f64 + 1.0,
             "{gap:.0} ms between two watchdog feeds at boot"
+        );
+        assert!(
+            m.resets.is_empty(),
+            "the watchdog reset the chip: {:?}",
+            m.resets
         );
         assert!(left > 0, "the boot reclaimed every sector itself");
         assert_eq!(m.soc.read8(state), sidou_sys::STORE_STATE_SIDOU as u8);
