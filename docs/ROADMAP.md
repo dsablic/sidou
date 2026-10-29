@@ -125,7 +125,9 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
     path;
   - what MPL-2.0 changes: the second core's code becomes usable, and the BLE variant's licence
     question (below) is worth asking again;
-  - fm1-emu bumped past its watchdog model, so the tests check that a hang recovers.
+  - fm1-emu bumped past its watchdog model, so the tests check that a hang recovers. Done in
+    1.1: fm1-emu `93cb7ee3`, real resets in the boot-guard tests, a watchdog hang test, and the
+    USB tests on fm1-emu's own USB controller and host.
 
   L; a device session (installs, updates, USB-MIDI, USB audio).
 

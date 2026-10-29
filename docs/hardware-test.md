@@ -2200,9 +2200,16 @@ A note held (or a song playing) throughout unless an item says otherwise.
   views fast (SCENE, the CHIP view, the song editor), scroll lists, and turn K1..K4: the
   recording has no clicks. Then the same with the effect slots at their heaviest (FLANGER,
   PHASER, REVERB on, two chips playing).
-  *Emulator:* `emu-gate/tests/usb.rs::recording_over_usb_audio_costs_the_audio_interrupt_little` (recording adds at most USB_AUDIO_PER_SAMPLE instructions to the audio interrupt).
+  *Emulator:* `emu-gate/tests/usb.rs::recording_over_usb_audio_costs_the_audio_interrupt_little` (recording adds at most USB_AUDIO_PER_SAMPLE instructions to the audio interrupt with the SIE answering at once, and at most 3.0 with fm1-emu's estimated 1 µs SIE round trip).
   *Emulator (no test yet):* the emulated host records for minutes while the panel moves through the views, scrolls and turns K1..K4, then with the heaviest effect slots and two chips: underruns, overruns, missed blocks and empty IN tokens stay 0 (`usb.rs` checks those counters with a chord held only).
   *Device-only:* clicks in a recording made on a real host (real USB host, ear).
+- [ ] **What recording costs the audio interrupt:** with a chord held, time the audio interrupt
+  with TIMER4 (24 MHz) while a host records and while it does not, at 44.1 and 48 kHz, and note
+  the difference a sample. It replaces fm1-emu's estimate of the SIE's round trip (1 µs), on
+  which the emulator's bound of 3.0 instructions a sample rests (0.73 with the SIE at once).
+  STATUS's meter times the 6502's slices only, so this needs a checklist build that times the
+  interrupt.
+  *Device-only:* the SIE's real round trip and the interrupt's real cost (real silicon, real USB host).
 - [ ] **Level:** MASTER turns the recording's level as it turns the speaker's (USB takes the
   output after MASTER). At full MASTER, two loud chords: the recording's peaks are where the
   line out's are, no harder clipping than on the line out.

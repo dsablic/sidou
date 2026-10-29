@@ -18,7 +18,9 @@ All notable changes are documented here. The format follows
 - **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
   of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
   step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
-  host cannot do is listed in `docs/upstream-reports.md` (row 11).
+  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
+  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
+  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Fixed
 - The Songs page waits and sends again when the FM-1 answers a transfer with NAK BUSY, instead

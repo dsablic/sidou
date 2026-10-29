@@ -479,8 +479,17 @@ impl Link {
 
 /// A USB host with the device enumerated and the song I/O settled after the boot.
 fn usb_machine(fw: &Firmware) -> Machine {
+    usb_machine_sie(fw, None)
+}
+
+/// usb_machine with the SIE's round trip set to `sie_cycles` CPU cycles (fm1-emu's
+/// `Usb::sie_cycles`; None: its estimate, 1 µs).
+fn usb_machine_sie(fw: &Firmware, sie_cycles: Option<u64>) -> Machine {
     let mut m = Machine::boot(&fw.image);
     m.usb = Some(UsbHost::plug(&mut m.soc));
+    if let Some(n) = sie_cycles {
+        m.soc.usb.sie_cycles = n;
+    }
     run_past_boot(&mut m, fw);
     enumerate(&mut m, fw);
     let songs = fw.symbol("songs") + sidou_sys::ilp32::song_io::state as u32;
@@ -2017,9 +2026,12 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
         return;
     };
     // fm1-emu's host cannot stop a recording (no SET_INTERFACE to alt 0): recording and not
-    // are machines of their own, the same chord held on each.
-    let chord = |hz: Option<u32>| {
-        let mut m = usb_machine(&fw);
+    // are machines of their own, the same chord held on each. Twice: with the SIE answering at
+    // once (one cycle a round trip), the firmware's own cost, held to USB_AUDIO_PER_SAMPLE; and
+    // with fm1-emu's estimated round trip (1 µs), where the busy-waits for the SIE count too,
+    // held to SIE_MODEL_PER_SAMPLE.
+    let chord = |hz: Option<u32>, sie: Option<u64>| {
+        let mut m = usb_machine_sie(&fw, sie);
         if let Some(hz) = hz {
             record(&mut m, hz);
         }
@@ -2039,36 +2051,43 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
             (m.isr_steps - isr) as f64 / samples,
         )
     };
-    let mut quiet = chord(None);
-    let off: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut quiet, 400)).collect();
-    let mut rows = Vec::new();
-    for hz in [44_100, 48_000] {
-        let mut m = chord(Some(hz));
-        let on: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut m, 400)).collect();
-        let mean = |v: &[(f64, f64)], f: fn(&(f64, f64)) -> f64| {
-            v.iter().map(f).sum::<f64>() / v.len() as f64
-        };
-        let alnk = mean(&on, |x| x.0) - mean(&off, |x| x.0);
-        let all = mean(&on, |x| x.1) - mean(&off, |x| x.1);
-        println!(
-            "{hz} Hz: the audio interrupt {:.2} recording, {:.2} not: +{alnk:.2} a sample; every \
-             interrupt +{all:.2} a sample ({on:?} / {off:?})",
-            mean(&on, |x| x.0),
-            mean(&off, |x| x.0)
-        );
-        rows.push((hz, alnk, all));
-        let (user, system) = m.stack_use();
-        println!("stacks: user {user} bytes, system {system}");
-    }
-
-    for (hz, alnk, _) in rows {
-        assert!(
-            alnk > 0.0,
-            "{hz} Hz: recording costs nothing: is it running?"
-        );
-        assert!(
-            alnk <= USB_AUDIO_PER_SAMPLE,
-            "{hz} Hz: recording adds {alnk:.2} instructions a sample to the audio interrupt"
-        );
+    let mean =
+        |v: &[(f64, f64)], f: fn(&(f64, f64)) -> f64| v.iter().map(f).sum::<f64>() / v.len() as f64;
+    for (sie, what, bound) in [
+        (Some(1), "the SIE at once", USB_AUDIO_PER_SAMPLE),
+        (None, "fm1-emu's SIE (1 µs)", SIE_MODEL_PER_SAMPLE),
+    ] {
+        let mut quiet = chord(None, sie);
+        let off: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut quiet, 400)).collect();
+        for hz in [44_100, 48_000] {
+            let mut m = chord(Some(hz), sie);
+            let on: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut m, 400)).collect();
+            let alnk = mean(&on, |x| x.0) - mean(&off, |x| x.0);
+            let all = mean(&on, |x| x.1) - mean(&off, |x| x.1);
+            println!(
+                "{what}, {hz} Hz: the audio interrupt {:.2} recording, {:.2} not: +{alnk:.2} a \
+                 sample; every interrupt +{all:.2} a sample ({on:?} / {off:?})",
+                mean(&on, |x| x.0),
+                mean(&off, |x| x.0)
+            );
+            let (user, system) = m.stack_use();
+            println!("stacks: user {user} bytes, system {system}");
+            assert!(
+                alnk > 0.0,
+                "{what}, {hz} Hz: recording costs nothing: is it running?"
+            );
+            assert!(
+                alnk <= bound,
+                "{what}, {hz} Hz: recording adds {alnk:.2} instructions a sample to the audio \
+                 interrupt (at most {bound})"
+            );
+        }
     }
 }
+
+/// Instructions a sample recording over USB audio adds to the audio interrupt with fm1-emu's
+/// estimated SIE round trip (1 µs; the device's real one is unmeasured, docs/hardware-test.md
+/// section 19): TIMER5's packet work polls the SIE's done bit, and the polls nest in a render
+/// now and then. Measured 2.72 at 44.1 kHz and 2.76 at 48 (0.73 and 0.76 with the SIE at once,
+/// USB_AUDIO_PER_SAMPLE's measurement).
+const SIE_MODEL_PER_SAMPLE: f64 = 3.0;
