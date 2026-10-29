@@ -1303,8 +1303,7 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
     m.key(EDIT, true);
     m.run_ms(40);
     m.key(SCL, true);
-    m.run_ms(40);
-    turn(&mut m, PANEL_ENC_K1 as u8, 4);
+    turn(&mut m, PANEL_ENC_K1 as u8, 4); // at once: SCL's press is in before the knob's
     turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
     m.key(SCL, false);
     m.key(EDIT, false);
@@ -1331,6 +1330,42 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
             "row {row}: note {note} is out of the major pentatonic"
         );
     }
+}
+
+/// EDIT + SCL is one chord whichever finger lands first: SCL 5 ms before EDIT (two fingers
+/// pressing together), K1 and K3 turned at once, set DICE's density and scale; SCL selects no
+/// effect slot and the EDIT layer's knobs stay as they were; the release rolls nothing.
+#[test]
+fn scl_before_edit_is_dices_chord_too() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    let before = song(&mut m, &fw).pattern(0).unwrap();
+    let live = fw.symbol("instrument");
+    let fx = live + ilp32::live::fx_select as u32;
+    let slots = live + ilp32::live::slot as u32;
+    let slot = m.soc.read8(fx);
+    let amounts: Vec<u8> = (0..LIVE_SLOTS * LIVE_SLOT_FIELDS)
+        .map(|i| m.soc.read8(slots + i))
+        .collect();
+    m.key(SCL, true);
+    m.run_ms(5);
+    m.key(EDIT, true);
+    turn(&mut m, PANEL_ENC_K1 as u8, 4);
+    turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
+    m.key(SCL, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    assert_eq!(m.soc.read8(fx), slot, "SCL selected no slot");
+    let after: Vec<u8> = (0..LIVE_SLOTS * LIVE_SLOT_FIELDS)
+        .map(|i| m.soc.read8(slots + i))
+        .collect();
+    assert_eq!(after, amounts, "no effect knob turned");
+    let s = song(&mut m, &fw);
+    assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
+    let (mut d, mut sc) = (0u8, 0u8);
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut d, &mut sc) }, 1);
+    assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
 }
 
 /// NEW, STEP: a step with a note held and ALGORITHM turned back five detents: the popup says

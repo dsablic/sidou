@@ -2145,9 +2145,10 @@ By ear; no device risk beyond the usual song editing.
 3. EDIT + SCL (DICE) on V1: a new eighth-note pattern in a minor pentatonic around the lane's note
    appears row by row (the edits are written one at a time; about a second for 64 rows). Press it
    again for another. Does it sound musical on your instrument? Note what you would change
-   (density, range, the scale).
-   *Emulator:* `emu-gate/tests/first_use.rs::chance_dice_and_mutate_on_step_do_what_they_say` (NEW PATTERN, eighth notes all in key, key offs, PLAY heard through several pitches), `sidou-tests/tests/app/step_view.rs::dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits`.
-   *Device-only:* whether it sounds musical and what to change in density, range and scale (feel and musicality).
+   (density, range, the scale). Press EDIT and SCL together as a hand does, either first, and
+   turn K1 at once: DENSITY moves, never the effect slot (SCL selects no slot in the chord).
+   *Emulator:* `emu-gate/tests/first_use.rs::chance_dice_and_mutate_on_step_do_what_they_say` (NEW PATTERN, eighth notes all in key, key offs, PLAY heard through several pitches), `sidou-tests/tests/app/step_view.rs::dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits`, `emu-gate/tests/first_use.rs::scl_before_edit_is_dices_chord_too` and `sidou-tests/tests/app/step_view.rs::scl_landing_before_edit_is_the_same_chord_and_k1_goes_to_dice` (SCL 5 ms before EDIT, K1 at once: DICE's density, no slot change).
+   *Device-only:* whether it sounds musical and what to change in density, range and scale (feel and musicality); the chord with the real buttons' timing.
 4. EDIT + ARP (MUTATE) a few times on a pattern you like: each press should change it a little (two
    notes at most) and stay in key. Play while pressing.
    *Emulator:* `emu-gate/tests/first_use.rs::chance_dice_and_mutate_on_step_do_what_they_say` (MUTATED, one or two notes change, still in key), `sidou-tests/tests/app/step_view.rs::mutate_changes_a_little_stays_in_the_scale_and_valid_every_time`, `sidou-tests/tests/app/step_view.rs::mutate_and_dice_wait_for_a_step_to_be_let_go_and_leave_rec_alone`.

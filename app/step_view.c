@@ -234,7 +234,7 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     l[8] = lanes[v].pattern;
     l[9] = st->held;
     l[10] = sv->l->theme;
-    if (st->scl_down) {
+    if (st->scl_down == STEP_VIEW_SCL_CHORD) {
         uint8_t d, sc;
         dice_get(sv, &d, &sc);
         l[11] = 1u;
@@ -563,7 +563,7 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     }
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     int held = st->held != STEP_VIEW_NONE && s && ln->pattern != 0xffu && at < ln->rows;
-    if (st->scl_down) {
+    if (st->scl_down == STEP_VIEW_SCL_CHORD) {
         dice_frame(st);
         build_pads(st, ln, page);
         return;
@@ -1111,8 +1111,18 @@ static void dice_turn(screen* s, step_view* st, int scale, int32_t steps) {
     }
 }
 
+/* SCL that was down alone: it is SCL's everywhere, the next effect slot, and no chord now. */
+static void scl_alone(step_view* st) {
+    if (st->scl_down == STEP_VIEW_SCL_ALONE) {
+        st->scl_down = 0u;
+        live_fx_select_next(st->sv->l);
+    }
+}
+
 void step_view_buttons(step_view* st, screen* s, uint32_t held) {
-    if (st->scl_down && !(held >> PANEL_BTN_SCL & 1u)) {
+    if (st->scl_down == STEP_VIEW_SCL_ALONE && !(held >> PANEL_BTN_SCL & 1u)) {
+        scl_alone(st);
+    } else if (st->scl_down && !(held >> PANEL_BTN_SCL & 1u)) {
         int roll = !st->scl_spoiled && screen_top(s) == &step_view_view;
         st->scl_down = st->scl_spoiled = 0u;
         if (roll) {
@@ -1131,13 +1141,23 @@ static int input(screen* s, void* state, const screen_event* e) {
     drain(s, st);
     target t;
     if (e->kind == SCREEN_PRESS) {
+        if (st->scl_down == STEP_VIEW_SCL_ALONE) {
+            if (e->id == PANEL_BTN_EDIT) {
+                st->scl_down = STEP_VIEW_SCL_CHORD; /* EDIT after SCL: the same chord */
+                st->scl_spoiled = 0u;
+                return 1;
+            }
+            scl_alone(st); /* another button: SCL was alone */
+        }
         if (st->scl_down && e->id != PANEL_BTN_SCL) {
             st->scl_spoiled = 1u; /* another button: a combination of its own, which does nothing */
             return 1;
         }
-        if (edit && st->held == STEP_VIEW_NONE && !song_view_recording(sv) &&
-            e->id == PANEL_BTN_SCL && sv->editor) {
-            st->scl_down = 1u; /* DICE rolls at SCL's release, unless a knob is turned first */
+        if (st->held == STEP_VIEW_NONE && !song_view_recording(sv) && e->id == PANEL_BTN_SCL &&
+            sv->editor) {
+            /* With EDIT: DICE rolls at SCL's release, unless a knob is turned first. Alone: it
+             * waits for EDIT a while (a hand's two fingers rarely land together). */
+            st->scl_down = edit ? STEP_VIEW_SCL_CHORD : STEP_VIEW_SCL_ALONE;
             st->scl_spoiled = 0u;
             return 1;
         }
@@ -1170,6 +1190,7 @@ static int input(screen* s, void* state, const screen_event* e) {
     if (e->kind != SCREEN_TURN) {
         return 0;
     }
+    scl_alone(st); /* a knob while SCL is down alone: the slot first, then the knob as ever */
     if (e->id == PANEL_ENC_SELECT) {
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
@@ -1191,7 +1212,8 @@ static int input(screen* s, void* state, const screen_event* e) {
         }
         return 1;
     }
-    if (st->scl_down && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 2u)) {
+    if (st->scl_down == STEP_VIEW_SCL_CHORD &&
+        (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 2u)) {
         dice_turn(s, st, e->id != PANEL_ENC_K1, e->steps);
         return 1;
     }
@@ -1257,7 +1279,8 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     uint32_t cur = 0u, top = 0u;
     int held = st->held != STEP_VIEW_NONE;
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
-    if (st->scl_down && (encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 2u)) {
+    if (st->scl_down == STEP_VIEW_SCL_CHORD &&
+        (encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 2u)) {
         uint8_t d, sc;
         dice_get(sv, &d, &sc);
         int scale = encoder != PANEL_ENC_K1;
@@ -1363,6 +1386,7 @@ static void enter(screen* s, void* state) {
 
 static void leave(screen* s, void* state) {
     step_view* st = state;
+    scl_alone(st);
     if (st->follow | st->qn) {
         drain(s, st);
     }

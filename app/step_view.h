@@ -111,12 +111,17 @@ typedef struct {
     uint8_t run, gen_pattern, gen_voice, gen_row, gen_drums;
     /* DICE's density and scale for the run (read from the song's DICE chunk as it starts). */
     uint8_t gen_dens, gen_scale;
-    /* SCL is down with EDIT: its release rolls DICE unless K1 or K3 was turned (or another
-     * button pressed) meanwhile; the song's density and scale show while it is down. */
+    /* SCL is down with EDIT (STEP_VIEW_SCL_CHORD): its release rolls DICE unless K1 or K3 was
+     * turned (or another button pressed) meanwhile; the song's density and scale show while it
+     * is down. EDIT + SCL is the chord whichever lands first: SCL alone (STEP_VIEW_SCL_ALONE)
+     * waits for EDIT, and selects the next effect slot as everywhere at its release, or at once
+     * when another control is used first. */
     uint8_t scl_down, scl_spoiled;
     uint32_t seed;
     uint8_t drawn[STEP_VIEW_LOOK];
 } step_view;
+
+enum { STEP_VIEW_SCL_CHORD = 1, STEP_VIEW_SCL_ALONE = 2 };
 
 extern const view step_view_view;
 

@@ -1038,7 +1038,8 @@ fn saves(name: &str) -> bool {
 }
 
 /// The controls a state acts on, from its handlers: each probe on a fresh power-on in that state
-/// (an event changes the state), the view's input; then what acts outside it: HOME everywhere,
+/// (an event changes the state), the view's input (STEP's SCL alone aside: it waits there for
+/// EDIT, and is SCL's next slot as everywhere); then what acts outside it: HOME everywhere,
 /// SAVE where save() has a meaning of its own, the keys and SEQ (the next view; EDIT + SEQ where
 /// song_pages_jump takes it) in a song view, K1..K4 where the view gives the panel a page of its
 /// own (chip_view_page: the chip's character, a slot's controls).
@@ -1051,6 +1052,11 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
     for (e, ctl, edit) in probes() {
         let mut c = open_ctx(name);
         if takes(&mut c.s.ui, &e) {
+            // STEP holds SCL alone only to wait for EDIT (EDIT + SCL, whichever lands first):
+            // it is still SCL's next slot, everywhere's, at its release.
+            if c.s.ui.v.step.scl_down == STEP_VIEW_SCL_ALONE as u8 {
+                continue;
+            }
             need.insert((ctl, edit));
         }
     }

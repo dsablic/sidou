@@ -37,7 +37,9 @@ All notable changes are documented here. The format follows
   knob turned rolls, as before, now at the release; MUTATE keeps to the chosen scale. The
   settings are saved with the song in SIDOU's `DICE` chunk (GoatTracker skips it), and a song
   with none rolls exactly as before (MEDIUM, MIN PENT). STEP's help card gained SCL+K1 and
-  SCL+K3 where PLAY and KEYS 17+ were.
+  SCL+K3 where PLAY and KEYS 17+ were. EDIT + SCL is the same chord whichever finger lands
+  first: SCL a few milliseconds before EDIT no longer selects the next effect slot and leaves K1
+  to the EDIT layer's effect knob (SCL alone on STEP selects the slot when it is let go).
 - **The ARP helper's waveform:** PRESETS in TABLE's ARP helper chooses the waveform the rows
   carry (TRI, SAW, PULSE, NOISE and the combined ones), shown on the helper's page; the rows stay
   plain GoatTracker 2 wavetable rows, and the host test plays each waveform in GoatTracker's own

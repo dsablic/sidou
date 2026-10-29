@@ -1430,6 +1430,64 @@ fn k1_and_k3_with_edit_and_scl_held_set_the_song_and_a_turn_spoils_the_roll() {
     assert_eq!(back.write(true), file);
 }
 
+/// EDIT + SCL is a chord whichever lands first: SCL a few milliseconds before EDIT (a hand
+/// pressing both at once), then K1 and K3 at once, set DICE's density and scale, as with EDIT
+/// first; SCL selects no slot and the EDIT layer's effect knobs are left alone, and the release
+/// rolls nothing (a turn spoils it).
+#[test]
+fn scl_landing_before_edit_is_the_same_chord_and_k1_goes_to_dice() {
+    let mut s = step();
+    let before = notes_col(&s);
+    let slot = s.ui.live().fx_select;
+    let amounts = s.ui.live().slot;
+    s.ui.down(PANEL_BTN_SCL);
+    s.ui.down(PANEL_BTN_EDIT);
+    s.ui.turn(PANEL_ENC_K1, 3);
+    s.ui.turn(PANEL_ENC_K3, 1);
+    assert_eq!(dice_chunk(&s), (4, 1, 1), "K1 and K3 are DICE's");
+    assert_eq!(s.ui.live().fx_select, slot, "SCL selected no slot");
+    assert_eq!(s.ui.live().slot, amounts, "no effect knob turned");
+    assert_eq!(
+        popup(&s, PANEL_ENC_K1, true),
+        Some(("DENSITY".into(), "FULL".into(), 4, 4))
+    );
+    s.ui.up(PANEL_BTN_SCL);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    assert_eq!(notes_col(&s), before, "a turn while held: no roll");
+    assert_eq!(s.ui.live().fx_select, slot);
+    // and with no turn, SCL then EDIT let go rolls, as EDIT + SCL does
+    s.ui.down(PANEL_BTN_SCL);
+    s.ui.down(PANEL_BTN_EDIT);
+    s.ui.up(PANEL_BTN_SCL);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    assert_ne!(notes_col(&s), before, "rolled");
+    assert_eq!(s.ui.live().fx_select, slot);
+}
+
+/// SCL alone on STEP still selects the next effect slot, once it is let go (it waits for EDIT
+/// that long) or as soon as another control is used while it is down, which then acts as it
+/// always did.
+#[test]
+fn scl_alone_on_step_selects_the_next_slot() {
+    let mut s = step();
+    let before = notes_col(&s);
+    let slot = s.ui.live().fx_select;
+    s.ui.press(PANEL_BTN_SCL);
+    assert_eq!(s.ui.live().fx_select, (slot + 1) % LIVE_SLOTS as u8);
+    s.ui.down(PANEL_BTN_SCL);
+    s.ui.turn(PANEL_ENC_K1, 1); // a knob while it is down: the slot first, then the knob
+    assert_eq!(s.ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
+    s.ui.down(PANEL_BTN_EDIT); // EDIT after the knob: no chord any more
+    s.ui.up(PANEL_BTN_SCL);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
+    assert_eq!(notes_col(&s), before, "no roll");
+    assert_eq!(dice_chunk(&s).2, 0, "nothing of DICE's set");
+}
+
 #[test]
 fn another_button_while_scl_is_held_spoils_the_roll_too_and_k2_k4_are_left_alone() {
     let mut s = step();
