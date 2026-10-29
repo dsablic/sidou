@@ -17,7 +17,7 @@ workspace = true
 sha2 = "0.10"
 
 [build-dependencies]
-cc = "1"
+cc = { version = "1", features = ["parallel"] }
 
 [dev-dependencies]
 fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }

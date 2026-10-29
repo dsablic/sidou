@@ -133,7 +133,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   S.
 - **Performance headroom.** A pass over the thin spots in the audio-interrupt gates (LIVE
   noise, SELECT into RULE, STATUS idle, MIDI floods, USB drain). M-L.
-- **Faster test CI.** Split the 13-minute test and use nextest in CI. S-M.
+- **Faster test CI.** The 13-minute test is split and the local merge check runs everything under nextest; the GitHub CI (tags only) runs just the package boot test and does not run emu-gate. What is left: an optional sharded emu-gate workflow on GitHub's x86 runners (the gate's JIT works there), to take the emulator stage off the local machine. S-M.
 - **REC from the keys, compensated.** The key-to-row timing is uncompensated (about 3 ms);
   decide by feel on the device. S.
 - **sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.

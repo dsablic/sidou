@@ -32,7 +32,7 @@ lists the prerequisites.
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
 | Chip profiles against reSIDfp (each profile's filter and combined waveforms at its settings) | `cargo test --release -p sidou-tests --test profiles` | `crates/sidou-tests/tests/profiles.rs` |
 | Expert parameter transport (macro releases, ordered restore, learned maximum and no echo) | `cargo test --locked --release -p sidou-tests --test expert_transport` | `crates/sidou-tests/tests/expert_transport.rs` |
-| Generated tables (drift) | `cargo test --release -p sidou-tablegen`; the filter tables with `--test drift -- --ignored` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
+| Generated tables (drift) | `cargo test --release -p sidou-tablegen`; the filter tables with `cargo nextest run --release -p sidou-tablegen --profile release` or plain `cargo test --release -p sidou-tablegen --test drift` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
@@ -45,6 +45,24 @@ lists the prerequisites.
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
 signal analysis.
+
+## Release-only tests
+
+Three tests take minutes and are left out of everyday `cargo nextest run` by the default filter in
+`host/.config/nextest.toml`: the emulator's ten-minute clock-drift test
+(`a_song_follows_a_steady_clock_for_ten_minutes_without_drifting`) and the two that recompute
+reSIDfp's filter fit (`every_cutoff_code_decodes_within_the_relative_error_bound` in
+`cutoff_codes.rs`, `checked_in_filter_tables_match_the_measurement` in `drift.rs`; 187 s in release,
+322 s under UBSan). Run them with `--profile release` (every test), or only them:
+
+```sh
+cargo nextest run --locked --release --workspace --profile release
+cargo nextest run --locked --release --workspace --ignore-default-filter -E 'not default()'
+```
+
+Plain `cargo test` knows nothing of nextest's filters and runs all three: `cargo test --workspace`
+is the complete run, slow by those minutes. The `#[ignore]`d long fuzz and survey tests are
+separate (`-- --ignored`, or nextest's `--run-ignored`). Doctests: nextest does not run them (there are none today).
 
 ## Emulator first, and the first-use tests
 
@@ -932,10 +950,10 @@ from what the generator produces:
   platform with nothing changed, that is a libm difference (reSIDfp builds
   the pulldown tables with `pow`, and some entries sit on a threshold), not
   stale tables: keep the checked-in headers.
-- `checked_in_filter_tables_match_the_measurement`, `#[ignore]`d: it
-  re-measures reSIDfp's filter (about 20 s on 8 cores), so CI runs it in the
-  Linux host job only (`cargo test --release -p sidou-tablegen --test drift
-  -- --ignored checked_in_filter_tables_match_the_measurement`). It compares
+- `checked_in_filter_tables_match_the_measurement`, release-only: it
+  re-measures reSIDfp's filter (about 20 s on 8 cores), so nextest's default
+  filter leaves it out and `--profile release` runs it (see "Release-only
+  tests" below; plain `cargo test` runs it too). It compares
   `filter.h` up to one unit in the last printed digit (0.1 Hz of cutoff,
   0.0001 of k): the fit's own maths uses the `libm` crate, the same on every
   platform, but reSIDfp builds its filter model and resampler with the

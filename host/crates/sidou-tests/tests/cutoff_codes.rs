@@ -38,7 +38,7 @@ fn numbers(text: &str) -> Vec<u32> {
 
 /// All 14,336 codes: sid_cutoff_hz and the sequential reader (FC values in order, with
 /// gaps, repeats and steps back) decode each as sidou-tablegen's decoder reads the header.
-/// The codes are the fit's (the test below; the ignored drift test re-measures them), so
+/// The codes are the fit's (the test below; the drift test re-measures them), so
 /// this holds the C decoder to the table without the half-minute fit.
 #[test]
 fn the_c_decoder_reads_every_delta_coded_cutoff() {

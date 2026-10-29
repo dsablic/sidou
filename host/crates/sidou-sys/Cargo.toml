@@ -15,4 +15,4 @@ workspace = true
 
 [build-dependencies]
 bindgen = "0.72"
-cc = "1"
+cc = { version = "1", features = ["parallel"] }

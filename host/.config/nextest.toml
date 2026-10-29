@@ -8,12 +8,22 @@
 # stage's wall time went from 1,077 s to 890 s.
 nextest-version = "0.9.91"
 
-# The everyday run (the merge check) leaves out the ten-minute clock-drift test, which alone
-# takes about as long as all the others (2026-10-23); the release profile runs everything:
-#   cargo nextest run --locked --release -p emu-gate --profile release
-# and runs before every release tag (TESTING.md, docs/flash-day.md).
+# The everyday run (the merge check) leaves out three tests that take minutes each; the release
+# profile runs everything, and so does the release bump's
+# `--ignore-default-filter -E 'not default()'`:
+#   cargo nextest run --locked --release --workspace --profile release
+# which runs before every release tag (TESTING.md, docs/flash-day.md).
+#  - the ten-minute clock-drift test, which alone takes about as long as all the other emu-gate
+#    tests (2026-10-23);
+#  - the two cutoff fit tests, which recompute `sidou_tablegen::filter_fits()` (reSIDfp's
+#    measured filter: 187 s in release, 322 s under UBSan, 2026-10-29). The cheap C-decoder
+#    test in cutoff_codes.rs and the generated-tables test in drift.rs stay in the everyday run.
 [profile.default]
-default-filter = 'not test(a_song_follows_a_steady_clock_for_ten_minutes_without_drifting)'
+default-filter = '''
+    not test(a_song_follows_a_steady_clock_for_ten_minutes_without_drifting)
+  & not test(every_cutoff_code_decodes_within_the_relative_error_bound)
+  & not test(checked_in_filter_tables_match_the_measurement)
+'''
 
 [profile.release]
 default-filter = 'all()'
@@ -40,3 +50,8 @@ filter = '''package(emu-gate) & (
   | test(a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted)
 )'''
 priority = 80
+
+# The USB tests (65-85 s each, 2026-10-29) would start last otherwise.
+[[profile.default.overrides]]
+filter = 'package(emu-gate) & binary(usb)'
+priority = 70

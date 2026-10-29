@@ -22,7 +22,7 @@ sidou-sys = { path = "../sidou-sys" }
 sha2 = "0.10"
 
 [build-dependencies]
-cc = "1"
+cc = { version = "1", features = ["parallel"] }
 
 [[bin]]
 name = "gt2-trace"

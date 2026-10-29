@@ -43,6 +43,10 @@ jobs:
         run: tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=${SIDOU_PRODUCT}
       - name: Build
         run: tools/fm1-docker cmake --build --preset fm1
+      # The Rust build (sidou-pack, emu-gate) cached between releases, as pages.yml does.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
       # The package's inputs that are not ours (three AC79 SDK files), pinned by SHA-256 in
       # inputs.toml: cached, so a run need not reach gitee; sidou-pack downloads and checks them
       # on a miss.
