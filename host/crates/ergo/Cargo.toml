@@ -22,6 +22,7 @@ png = "0.18"
 residfp-sys = { path = "../residfp-sys" }
 serde_json = "1"
 sidou-sys = { path = "../sidou-sys" }
+sidou-sysex = { path = "../sidou-sysex" }
 sidou-tablegen = { path = "../sidou-tablegen" }
 sidou-tests = { path = "../sidou-tests" }
 gt2-ref = { path = "../gt2-ref" }

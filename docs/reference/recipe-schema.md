@@ -37,6 +37,10 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
 - `prerequisites.songs` (optional): showcase songs, file names of `assets/songs/` without
   `.sng` (`["neon-highway"]`), put into the store before power-on, each under its title
   (NEON HIGHWAY). The recipe loads one through SONG, LOAD like a player would.
+- `prerequisites.tunes` (optional): starter-pack tunes, file names of `assets/starter/` without
+  `.sid` (`["dojo"]`), put into the store before power-on as a SysEx PUT of type 2 leaves them
+  (the file's own bytes under its store name, DOJO), so SIDS lists them. The recipe plays one
+  from the menu's SIDS like a player would.
 - `prerequisites.after` (optional): another recipe's id. Its steps (and its own `after`
   chain's) run first, checked but not filmed, so this recipe starts where that one ends (a
   bassline after the beat, a lead after the bassline) instead of repeating it. Its songs are
@@ -74,6 +78,7 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
   | `hold_turn` | button, encoder, detents | a button held while an encoder turns |
   | `hold_key` | button, note | a button held while a note key is pressed (GLO + key) |
   | `hold_press` | button, press | a button held while another button is pressed (EDIT + SCL) |
+  | `hold2_turn` | button, button2, encoder, detents | two buttons held while an encoder turns (EDIT + SCL, K1) |
   | `note` | notes[], ms | keys held together, then let go |
   | `down`, `up` | note | a key held across steps, then let go |
   | `select_item` | text | the menu's selection moved onto the line showing the text |

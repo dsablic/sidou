@@ -34,6 +34,8 @@ pub enum Act {
     Turn(u8, i32),
     /// A button held while an encoder turns.
     HoldTurn(u8, u8, i32),
+    /// Two buttons held while an encoder turns (EDIT + SCL, then K1).
+    Hold2Turn(u8, u8, u8, i32),
     /// A button held while a note key is pressed (GLO + key).
     HoldKey(u8, u8),
     /// A button held while another button is pressed (EDIT + SCL).
@@ -215,12 +217,16 @@ pub struct Journey {
     pub related: Vec<String>,
     /// Showcase songs (assets/songs/<name>.sng) put into the store before power-on.
     pub songs: Vec<String>,
+    /// Starter-pack tunes (assets/starter/<name>.sid) put into the store before power-on, as a
+    /// SysEx PUT of type 2 leaves them: the file's own bytes, under its store name.
+    pub tunes: Vec<String>,
     /// Another recipe whose steps run first, unfilmed: this one starts where that one ends.
     pub after: Option<String>,
     /// The steps `after` resolves to (its own prelude first), run before step 1, and the songs
     /// that chain puts in the store.
     pub prelude: Vec<Step>,
     pub prelude_songs: Vec<String>,
+    pub prelude_tunes: Vec<String>,
     pub steps: Vec<Step>,
 }
 
@@ -243,12 +249,14 @@ pub fn resolve_after(js: &mut [Journey]) -> Result<(), String> {
         }
         j.prelude.clear();
         j.prelude_songs.clear();
+        j.prelude_tunes.clear();
         for p in chain.iter().rev() {
             if p.poweron {
                 return Err(format!("{}: `after` {} starts at power-on", j.id, p.id));
             }
             j.prelude.extend(p.steps.iter().cloned());
             j.prelude_songs.extend(p.songs.iter().cloned());
+            j.prelude_tunes.extend(p.tunes.iter().cloned());
         }
         if j.poweron && j.after.is_some() {
             return Err(format!(
@@ -383,6 +391,10 @@ fn parse_act(text: &str) -> Result<Act, String> {
         "holdturn" => {
             need(4)?;
             Act::HoldTurn(button(w[1])?, encoder(w[2])?, num(w[3])?)
+        }
+        "hold2turn" => {
+            need(5)?;
+            Act::Hold2Turn(button(w[1])?, button(w[2])?, encoder(w[3])?, num(w[4])?)
         }
         "holdkey" => {
             need(3)?;
@@ -531,12 +543,14 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 skills: Vec::new(),
                 related: Vec::new(),
                 songs: Vec::new(),
+                tunes: Vec::new(),
                 after: None,
                 prelude: Vec::new(),
                 prelude_songs: Vec::new(),
+                prelude_tunes: Vec::new(),
                 steps: Vec::new(),
             });
-        } else if let Some((k, v)) = ["goal", "prereq", "skills", "related", "songs", "after"]
+        } else if let Some((k, v)) = ["goal", "prereq", "skills", "related", "songs", "tunes", "after"]
             .iter()
             .find_map(|k| {
                 line.strip_prefix(k)
@@ -562,6 +576,12 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                     j.songs = list(v);
                     for name in &j.songs {
                         crate::device::showcase_song(name).map_err(at)?;
+                    }
+                }
+                "tunes" => {
+                    j.tunes = list(v);
+                    for name in &j.tunes {
+                        crate::device::starter_tune(name).map_err(at)?;
                     }
                 }
                 _ => j.related = list(v),
@@ -720,7 +740,7 @@ pub fn effort_of(a: &Act) -> Effort {
         Act::Press(_) => Effort::Press,
         Act::Hold(..) => Effort::Hold,
         Act::Turn(_, n) | Act::Sweep(_, n, _) => Effort::Turn(n.unsigned_abs()),
-        Act::HoldTurn(_, _, n) => Effort::HoldTurn(n.unsigned_abs()),
+        Act::HoldTurn(_, _, n) | Act::Hold2Turn(_, _, _, n) => Effort::HoldTurn(n.unsigned_abs()),
         Act::HoldKey(..) | Act::HoldPress(..) => Effort::HoldKey,
         Act::Note(..) | Act::Down(_) | Act::Play(..) | Act::Taps(..) => Effort::Note,
         Act::Pot(_) => Effort::Turn(1),
@@ -1046,6 +1066,17 @@ fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) -> boo
             d.key_down(*b);
             d.run(30);
             d.turn(*e, *n);
+            d.key_up(*b);
+            d.run(30);
+        }
+        Act::Hold2Turn(b, b2, e, n) => {
+            d.key_down(*b);
+            d.run(60);
+            d.key_down(*b2);
+            d.run(150);
+            d.turn(*e, *n);
+            d.run(60);
+            d.key_up(*b2);
             d.key_up(*b);
             d.run(30);
         }
@@ -1527,14 +1558,20 @@ pub fn run_journey(
             songs.push(s.clone());
         }
     }
-    let mut d = if songs.is_empty() {
+    let mut tunes = j.prelude_tunes.clone();
+    for s in &j.tunes {
+        if !tunes.contains(s) {
+            tunes.push(s.clone());
+        }
+    }
+    let mut d = if songs.is_empty() && tunes.is_empty() {
         if j.poweron {
             Dev::power_on(build)
         } else {
             Dev::boot(build)
         }
     } else {
-        let mut d = Dev::power_on_with(build, &songs);
+        let mut d = Dev::power_on_with(build, &songs, &tunes);
         if !j.poweron {
             crate::common::run_past_boot(&mut d.m, &d.fw);
             d.m.run_ms(300);

@@ -135,11 +135,18 @@ impl Dev {
 
     /// Powered on as `power_on`, with these showcase songs (assets/songs/<name>.sng) in the
     /// store, each under its title (`chrome-comet` is CHROME COMET).
-    pub fn power_on_with(build: &Path, songs: &[String]) -> Dev {
+    pub fn power_on_with(build: &Path, songs: &[String], tunes: &[String]) -> Dev {
         let mut d = Dev::power_on(build);
         for name in songs {
             let bytes = showcase_song(name).expect("a showcase song");
             put_song(&mut d.m.soc.flash.mem, &store_name(name), &bytes);
+        }
+        let mut taken = std::collections::HashSet::new();
+        for name in tunes {
+            let bytes = starter_tune(name).expect("a starter tune");
+            let h = sidou_sysex::sid::check(&bytes).expect("a starter tune checks");
+            let title = sidou_sysex::sid::store_name(&sidou_sysex::sid::title(&h), name, &mut taken);
+            put_file(&mut d.m.soc.flash.mem, &title, sidou_sys::STORE_FILE_SID as u8, &bytes);
         }
         d
     }
@@ -636,6 +643,23 @@ pub fn showcase_song(name: &str) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("song {name}: {}: {e}", path.display()))
 }
 
+/// A starter-pack tune's file, assets/starter/<name>.sid.
+pub fn starter_tune(name: &str) -> Result<Vec<u8>, String> {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err(format!(
+            "tune {name}: a file name of assets/starter, without .sid"
+        ));
+    }
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../assets/starter")
+        .join(format!("{name}.sid"));
+    std::fs::read(&path).map_err(|e| format!("tune {name}: {}: {e}", path.display()))
+}
+
 /// The store name a showcase song goes under: `chrome-comet` is CHROME COMET.
 pub fn store_name(name: &str) -> String {
     name.replace('-', " ").to_uppercase()
@@ -667,6 +691,11 @@ unsafe extern "C" fn flash_erase(ctx: *mut std::ffi::c_void, off: u32) -> i32 {
 /// Writes a song file into a flash image's store, as the device's SAVE would (emu-gate's
 /// song_store.rs does the same for its fixtures).
 pub fn put_song(flash: &mut [u8], name: &str, bytes: &[u8]) {
+    put_file(flash, name, sidou_sys::STORE_FILE_SONG as u8, bytes);
+}
+
+/// Writes a file of the given store type into a flash image's store.
+pub fn put_file(flash: &mut [u8], name: &str, file_type: u8, bytes: &[u8]) {
     use sidou_sys::*;
     let hooks = store_flash {
         map: Some(flash_map),
@@ -685,7 +714,7 @@ pub fn put_song(flash: &mut [u8], name: &str, bytes: &[u8]) {
             store_file_begin(
                 &mut *st,
                 name.as_ptr(),
-                STORE_FILE_SONG as u8,
+                file_type,
                 bytes.len() as u32
             ),
             STORE_OK

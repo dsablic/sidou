@@ -204,23 +204,60 @@ journey chip-spread | Two SIDs, left and right
   step spread | *SPREAD* to 100% | HOME, SETTINGS, SPREAD: ALGORITHM steps it by 10%. The song moves to the left, your keys to the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 125 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | view settings; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
   step half | Halfway: *50%* | Back by five steps: both chips are nearer the centre, at the same loudness. | turn ALGORITHM -5; wait 400; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 | text 50%; sound; screen 0 2 30 14; focus ALGORITHM; callout ALGORITHM -5
 
-journey whats-new | What's new in SIDOU
-  goal See the release's highlights, one at a time, over a beat made with the new drum kit.
-  prereq The beat from A beat with the drum kit, on STEP, playing.
-  skills the drum kit; digi drums; chance; DICE; MUTATE; the ARP helper; the LEDs; RESET; USB audio; Songs to MIDI
-  related step-a-beat; step-generative; sidou-intro
-  after step-a-beat
-  step kit | A SID *drum kit* | A NEW song has eight drums on the chip's own voices, picked by name in STEP: KICK, SNARE, the hats, CLAP, the toms and RIM. | turn PRESETS -10; wait 800; turn PRESETS 2; wait 800; turn PRESETS 2; wait 800; turn PRESETS 2; wait 800; turn PRESETS 1; wait 1200 | view step; text I0A; sound; screen 0 2 30 13; focus PRESETS; callout PRESETS: THE DRUMS BY NAME
-  step digi | *Digi* drums | And four digi drums, DG KICK to DG HAT: samples, played as C64 tunes play them. The clap on 16 is one. | turn PRESETS 1; wait 800; turn PRESETS 1; wait 800; turn PRESETS 1; wait 800; turn PRESETS 1; wait 1500 | text I0E; sound; screen 0 2 30 13; focus PRESETS; callout PRESETS: 0B-0E
-  step chance | A *chance* to play | Hold a step and turn ALGORITHM: CHANCE 50%. That hat now plays one pass in two. | down G3; turn ALGORITHM -10; wait 1000; up G3; wait 1500 | sound; screen 0 2 30 13; focus ALGORITHM; callout HOLD A STEP + TURN ALGORITHM
-  step dice | *DICE* a lead | On the lead's lane, EDIT + SCL: a new pattern, minor pentatonic notes on the eighths. | turn SELECT 1; wait 1200; holdpress EDIT SCL; wait 100 | text NEW PATTERN; sound; screen 0 2 30 13; focus SCL; callout SELECT V1, HOLD EDIT + SCL
-  step mutate | And *MUTATE* it | EDIT + ARP: two small changes to the pattern, a note nudged, taken away or added. | wait 3400; holdpress EDIT ARP; wait 100 | text MUTATED; sound; screen 0 2 30 13; focus ARP; callout HOLD EDIT + ARP
-  step arp-helper | An *ARP* helper | SEQ round to TABLE, ARP on a WAVE row: an arpeggio as semitone steps, its speed and loop. SAVE writes plain GoatTracker rows. | press SEQ; wait 300; press SEQ; wait 300; press SEQ; wait 300; press SEQ; wait 900; turn SELECT 60; wait 700; press ARP; wait 1800; turn K3 1; wait 2000 | view song_pages_table; text PULSE; sound; screen 0 0 30 30; focus ARP; callout TABLE, ARP
-  step leds | *LEDs* that tell | A dim glow is set or available, full light active now: PLAY lights on the beat, ARP flashes with the arpeggio, REC counts in, and with GLO the keys show the voices. | press HOME; wait 5000 | sound; focus card; callout PLAY ON THE BEAT <> ARP WITH ITS STEPS <> GLO: THE VOICES
-  step reset | SETTINGS, *RESET* | One reset for everything that is not a song: ALGORITHM asks RESET?, SAVE would put every sound and setting back to factory. Songs stay; HOME says no. | press HOME; wait 500; press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item RESET; wait 600; turn ALGORITHM 1; wait 2000 | view settings; text RESET?; sound; screen 0 2 30 26; focus ALGORITHM; callout SETTINGS > RESET, ALGORITHM
-  step usb-audio | Record it over *USB* | The FM-1 is a USB audio input too: plug it in and a DAW records SIDOU, no driver. | press HOME; wait 4500 | sound; focus card; callout SIDOU <> ONE USB CABLE <> YOUR DAW
-  step midi | Songs to *MIDI* | On the site: a GoatTracker .sng in, a MIDI file out, a track for each voice, timed as GoatTracker plays it. | wait 4500 | sound; focus card; callout SONG.SNG <> DSABLIC.GITHUB.IO/SIDOU/MIDI.HTML <> SONG.MID
-  step get-it | Get *SIDOU* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 4000 | sound; focus card
+journey shape-in-lab | Shape a sound in LAB and keep it
+  goal Open LAB from LIVE, shape one sound page by page, compare it with the original, vary it, keep it and find it again on PRESETS.
+  prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
+  skills ENV opens LAB; K1-K4 cards; SELECT pages; SCL; EDIT A/B; EDIT + ARP vary; SAVE keeps; PRESETS
+  related shape-a-sound; add-an-effect
+  step dry | The sound *as it is* | SAW LEAD on LIVE: a plain saw. Listen first. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; callout PLAY THE KEYS
+  step open | *ENV* opens LAB | ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 5. | press ENV; wait 1000 | text ENVELOPE; text 2/5; focus ENV; callout PRESS ENV
+  step envelope | Turn the *cards* | K1 to K4 are attack, decay, sustain and release; the curve moves as they turn. | sweep K1 5 900; sweep K4 2 600; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; change; focus K1; callout TURN K1 TO K4
+  step osc | The *oscillator* | SELECT back one page: OSC, the waveform drawn at its pulse width. ALGORITHM changes the waveform, K1 the width. | turn SELECT -1; wait 700; turn ALGORITHM 1; wait 500; sweep K1 15 1200; play 120 A3:2 C4:2 E4:2 A4:4 | text OSC; text 1/5; sound; focus SELECT; callout TURN SELECT, ALGORITHM
+  step filter | The *filter* page | SELECT forward two pages: the filter's response, with its cutoff and its resonance peak. | turn SELECT 2; wait 700; sweep K1 -45 1500; sweep K2 8 800; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text FILTER; darker; focus SELECT; callout TURN SELECT
+  step mod | *MOD*: the vibrato | The vibrato and the PWM as waves over a second: K2 deepens the vibrato. | turn SELECT 1; wait 700; sweep K2 30 1200; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text MOD; sound; focus SELECT; callout TURN SELECT
+  step fx | *FX*: a chain | SELECT again: the three effect slots as a chain. SCL moves to the next slot, ALGORITHM picks its effect. | turn SELECT 1; wait 700; press SCL; wait 400; turn ALGORITHM 1; wait 700; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text FX; sound; focus ALGORITHM; callout SCL, ALGORITHM
+  step ab | *A/B* | Tap EDIT: the sound as you loaded it. Tap again: your edit. | press EDIT; wait 500; play 120 A3:2 C4:2 E4:2 A4:4; press EDIT; wait 500; play 120 A3:2 C4:2 E4:2 A4:4 | sound; focus EDIT; callout TAP EDIT: A / B
+  step vary | *Vary* it | EDIT + ARP varies this page a little, never to silence, never the same twice. | holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:4; holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:4; wait 2600 | sound; focus ARP; callout HOLD EDIT + PRESS ARP
+  step keep | *SAVE* keeps it | One press: the next free USER slot, with a name. | press SAVE; wait 1600 | text KEPT AS U01; focus SAVE; callout PRESS SAVE
+  step live | Back on *LIVE* | HOME: LIVE plays the sound you kept. | press HOME; wait 1000; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text LAB 01; sound; focus HOME; callout PRESS HOME
+  step presets | Find it on *PRESETS* | USER sounds come after the built-in ones and DICE: PRESETS two back, two on, and LAB 01 is there. | turn PRESETS -2; wait 1000; play 120 A3:2 C4:2 E4:4; turn PRESETS 2; wait 1000; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text LAB 01; sound; focus PRESETS; callout PRESETS: TWO BACK, TWO ON
+
+journey play-a-sid | Play a .sid tune
+  goal Play a .sid tune from the store: pick it in SIDS, change its song, mute and solo its voices, pause and stop.
+  prereq On LIVE after the boot; CHROME COMET and DOJO, a tune of four songs, in the store.
+  skills SIDS; ALGORITHM plays and steps songs; GLO mutes and solos; EDIT + PLAY pauses; PLAY stops
+  related mute-and-solo; shape-in-lab
+  tunes chrome-comet; dojo
+  step menu | The menu's *SIDS* | HOME for the menu: SIDS plays the .sid files in the store. | press HOME; wait 500; select-item SIDS; wait 600 | text SIDS; screen 0 0 30 30; focus SELECT; callout HOME, TURN SELECT TO SIDS
+  step list | The *tunes* | SAVE opens the list: every .sid in the store. | press SAVE; wait 1500 | view sid_view_browser; text DOJO; focus SAVE; callout PRESS SAVE
+  step pick | *Pick* one | SELECT moves to DOJO, a GoatTracker tune by Cadaver. | turn SELECT 1; wait 900 | text DOJO; focus SELECT; callout TURN SELECT
+  step play | *Play* it | ALGORITHM clockwise plays it: NOW PLAYING, the song, the time, the three voices' levels. | turn ALGORITHM 1; wait 4500 | text PLAYING; text SONG 1/4; sound; focus ALGORITHM; callout TURN ALGORITHM
+  step next | Another *song* | DOJO holds four songs. ALGORITHM steps to the next. | turn ALGORITHM 1; wait 4500 | text SONG 2/4; sound; focus ALGORITHM; callout TURN ALGORITHM
+  step mute | *Mute* a voice | GLO and the second key: voice 2 goes quiet, MUT on the screen. The same keys again bring it back. | holdkey GLO F#3; wait 3500 | text MUT; sound; focus GLO; callout HOLD GLO + KEY 2
+  step solo | *Solo* a voice | GLO and the fourth key: only voice 1 plays, SOL says so. The same keys again let the others in. | holdkey GLO F#3; wait 300; holdkey GLO G#3; wait 3500 | text SOL; sound; focus GLO; callout HOLD GLO + KEY 4
+  step pause | *Pause* | EDIT + PLAY pauses the tune, and again carries on from where it was. | holdkey GLO G#3; wait 600; holdpress EDIT PLAY; wait 1800; holdpress EDIT PLAY; wait 3000 | text PLAYING; sound; focus EDIT; callout HOLD EDIT + PRESS PLAY
+  step stop | *Stop* | PLAY stops it. HOME goes back to the list. | press PLAY; wait 1500 | text STOPPED; silent; focus PLAY; callout PRESS PLAY
+
+journey whats-new | What's new in SIDOU 1.0
+  goal See SIDOU 1.0's highlights, one at a time: LAB, .sid files, DICE's settings and the ARP helper's waveform.
+  prereq On LIVE after the boot; DOJO, a GoatTracker tune of four songs, in the store.
+  skills LAB; keeping a sound; SIDS; DICE's density and scale; the ARP helper's waveform
+  related shape-in-lab; play-a-sid; step-generative; sidou-intro
+  tunes dojo
+  step lab-open | *LAB*: shape one sound | ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, K1 to K4 are attack, decay, sustain and release. | press ENV; wait 700; sweep K1 5 600; sweep K4 2 400; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text ENVELOPE; sound; focus ENV; callout PRESS ENV
+  step lab-pages | Pages, *drawn* | SELECT steps the pages: here the filter's response, with its cutoff and its resonance peak. | turn SELECT 1; wait 500; sweep K1 -45 1000; sweep K2 8 400; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 | text FILTER; sound; focus SELECT; callout SELECT: PAGES
+  step lab-vary | *A/B* and a roll of the dice | Tap EDIT to hear the sound as it was, tap again for your edit. EDIT + ARP varies the page a little, never to silence. | press EDIT; wait 300; play 120 A3:2 C4:2 E4:2; press EDIT; wait 300; play 120 A3:2 C4:2 E4:2; holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:2; wait 2300 | sound; focus EDIT; callout TAP EDIT: A/B <> EDIT + ARP: VARY
+  step lab-keep | *SAVE* keeps it | One press: the sound goes to the next free USER slot with a name, KEPT AS U01 LAB 01. | press SAVE; wait 1600 | text KEPT AS U01; focus SAVE; callout PRESS SAVE
+  step lab-presets | On *PRESETS* | HOME back to LIVE: your sound is on PRESETS after the built-in sounds and DICE. | press HOME; wait 900; turn PRESETS -2; wait 900; play 120 A3:2 C4:2 E4:4; turn PRESETS 2; wait 900; play 120 A3:2 C4:2 E4:2 A4:4 | text LAB 01; value preset 0 40; sound; focus PRESETS; callout PRESETS: TWO BACK, TWO ON
+  step sid-open | *.sid* files, played | The menu's SIDS lists the tunes in the store. SELECT to DOJO, ALGORITHM plays it: a GoatTracker tune, by Cadaver. The song you changed asks first; ALGORITHM again discards it. | press HOME; wait 500; select-item SIDS; press SAVE; wait 1200; turn SELECT 1; wait 600; turn ALGORITHM 1; wait 1200; turn ALGORITHM 1; wait 2500 | text DOJO; text SONG 1/4; text PLAYING; sound; focus ALGORITHM; callout MENU > SIDS, ALGORITHM
+  step sid-song | Four *songs* in one file | ALGORITHM steps to the next song of the tune. GLO and a key mutes or solos a voice, as in your own songs. | turn ALGORITHM 1; wait 2200; holdkey GLO F#3; wait 2200; holdkey GLO F#3; wait 500 | text SONG 2/4; sound; focus ALGORITHM; callout ALGORITHM: NEXT SONG <> GLO + KEY: MUTE
+  step sid-time | Tunes keep *time* | Dense players, the ones that write the chip hundreds of times a second, now arrive in time: fewer late register writes. | wait 3500 | sound; focus card; callout DENSE PLAYERS <> FEWER LATE WRITES <> TUNES IN TIME
+  step dice-open | A new *song*, and STEP | PLAY stops the tune, HOME twice for the menu. SONG, NEW, then SEQ: STEP, with the lead's lane. | press PLAY; wait 500; press HOME; wait 500; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 2600; press SEQ; wait 900 | view step; absent BUSY; screen 0 2 30 13; focus SEQ; callout SONG > NEW, SEQ
+  step dice-settings | *DICE*'s density and scale | Hold EDIT + SCL and turn K1: how many steps get a note, SPARSE to FULL. K3 picks the scale: MAJOR, DORIAN, CHROMATIC. | hold2turn EDIT SCL K1 3; wait 500; hold2turn EDIT SCL K3 3; wait 700 | text MAJOR; screen 0 2 30 13; focus K1; callout HOLD EDIT + SCL, TURN K1, K3
+  step dice-roll | Roll *it* | EDIT + SCL again, with no knob turned: the roll, in your density and scale. | holdpress EDIT SCL; wait 300 | text NEW PATTERN; screen 0 2 30 13; focus SCL; callout HOLD EDIT + PRESS SCL
+  step dice-play | And *play* it | PLAY: the new lead, a note on every step, all in the one scale. | press PLAY; wait 5000 | sound; screen 0 2 30 13; focus PLAY; callout PRESS PLAY
+  step arp-helper | An *ARP* helper with a waveform | TABLE's ARP helper writes an arpeggio as plain wavetable rows. PRESETS picks the waveform they carry: PULSE, SAW, NOISE. | press SEQ; wait 300; press SEQ; wait 300; press SEQ; wait 300; press SEQ; wait 900; turn SELECT 60; wait 700; press ARP; wait 1500; turn PRESETS 1; wait 1200 | view song_pages_table; sound; screen 0 0 30 30; focus ARP; callout TABLE, ARP, PRESETS
+  step get-it | Get *SIDOU 1.0* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3500 | sound; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.
@@ -238,7 +275,7 @@ journey sidou-intro | SIDOU in a minute | poweron
   step character | Dial the chip like an *amp* | CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs. | press HOME; wait 600; select-item CHIP; turn ALGORITHM 1; wait 2800; turn ALGORITHM 1; wait 700; turn ALGORITHM 1; wait 700; turn ALGORITHM 2; wait 900; sweep K1 50 1500; sweep K4 60 1500; wait 800 | view chip; sound; screen 0 2 30 13; focus K1; callout ALGORITHM, THEN K1-K4
   step arp | *Chords* as C64 arpeggios | ARP on LIVE, a chord held: one voice steps through its notes fifty times a second, as C64 tunes do, and the other two voices stay free. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 600; down C4; down E4; down G4; wait 3200; up C4; up E4; up G4; wait 600 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD
   step scene | A *scene* that plays along | RED MOON RITE duels to the song's drums and bass. | press HOME; wait 500; turn SELECT 2; turn ALGORITHM 1; wait 2800; turn SELECT 5; wait 3500 | view scene; sound; focus screen; callout SCENE > RED MOON RITE
-  step next | Next: *.sid* files on SIDOU | Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases | wait 5000 | sound; focus card
+  step next | And *.sid* files, and LAB | SIDS plays .sid tunes from the store; LAB shapes one sound and keeps it. Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases | wait 5000 | sound; focus card
 
 journey first-run | A fresh install has a song to play
   goal Find something to play on a fresh install, whose store is empty: LOAD lists SIDOU LOOP, built in.
