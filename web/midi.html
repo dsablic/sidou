@@ -2,7 +2,8 @@
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <!-- SIDOU's Songs to MIDI page: a GoatTracker 2 .sng as a Standard MIDI File, made in the browser
-     (nothing is uploaded; no MIDI port is opened). midi.js is the page, songmidi.js the code, which
+     (nothing is uploaded). A file needs no MIDI port; "From the connected FM-1" opens one only after
+     the Connect button, and only reads (DIR, GET). midi.js is the page, songmidi.js the code, which
      web/songmidi.test.mjs compares note by note with GoatTracker's own player. Same palette as songs.html. -->
 <html lang="en">
 <head>
@@ -29,6 +30,16 @@
   code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   section { border-top: 1px solid var(--rule); padding-top: 14px; }
   nav { color: var(--dim); }
+  .note { border: 1px solid var(--yellow); border-radius: 10px; background: var(--card); padding: 9px 12px; margin-bottom: 10px; }
+  .note[hidden] { display: none; }
+  .note p { margin: 0; }
+  .row label { display: flex; gap: 8px; align-items: center; color: var(--dim); }
+  button[disabled] { opacity: .5; cursor: default; }
+  #device { margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+  #device[data-state="ok"] { color: var(--ok); }
+  #device[data-state="error"] { color: var(--bad); }
+  #fm1 { margin-top: 12px; }
+  #fm1 .song button { white-space: nowrap; }
   button, a.button { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; text-decoration: none; display: inline-block; }
   .primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
   select { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
@@ -68,7 +79,8 @@
 
   <p>Turn a GoatTracker 2 song into a Standard MIDI File: one MIDI channel for each SID voice, the notes
     where GoatTracker's player puts them. Play the file with any synth, or drop it into a DAW and give the
-    voices new sounds. The song is read and converted in your browser; nothing is uploaded.</p>
+    voices new sounds. The song is read and converted in your browser; nothing is uploaded. It can come from a file, or straight
+    from an FM-1 connected to your computer.</p>
 
   <section>
     <h2>1. Pick a song</h2>
@@ -80,6 +92,26 @@
     <p style="margin-top:12px">Or one of SIDOU's four showcase songs:</p>
     <ul class="songs" id="songs"></ul>
     <p id="error" role="alert"></p>
+  </section>
+
+  <section id="from-fm1">
+    <h2>Or read it from the connected FM-1</h2>
+    <div id="support" class="note" hidden>
+      <p><b>This browser cannot read from the FM-1.</b> That needs Web MIDI with SysEx, which Chrome and Edge
+        have. Safari has no Web MIDI, and Firefox is not supported by this page. Use Chrome or Edge on a
+        computer (a <code>.sng</code> file above works in any browser).</p>
+    </div>
+    <p>Plug in the FM-1 with its USB cable (running SIDOU 0.2.0 or newer, not in the updater) and
+      press Connect. The browser asks to use your MIDI devices with SysEx: allow it. The page only
+      <b>reads</b> (the list of songs, then the one you pick) and does nothing until you press Connect.</p>
+    <div class="row">
+      <button type="button" id="connect" class="primary">Connect</button>
+      <label>Output <select id="out" aria-label="MIDI output" disabled></select></label>
+      <label>Input <select id="in" aria-label="MIDI input" disabled></select></label>
+      <button type="button" id="check" disabled>Check this pair</button>
+    </div>
+    <p id="device" role="status" aria-live="polite">Not connected.</p>
+    <ul class="songs" id="fm1" hidden></ul>
   </section>
 
   <section id="result" hidden aria-live="polite">
@@ -96,18 +128,21 @@
     <h2>What is in the file, and what is not</h2>
     <ul class="limits">
       <li><b>Voices:</b> one track and one MIDI channel for each SID voice, channels 1 to 3 (1 to 6 for a
-        GoatTracker Stereo song, whose second chip has voices 4 to 6). Every note has velocity 100: the SID
+        GoatTracker Stereo song, whose second chip has voices 4 to 6; SIDOU's own chunk for a second chip's
+        tracks, <code>TRKB</code>, is reserved and nothing writes it yet, so there is nothing of it to export). Every note has velocity 100: the SID
         has no velocity, and an instrument's volume is its envelope, which is not exported.</li>
       <li><b>Pitch:</b> a note is the row's note plus the orderlist's transpose, as the tracker shows it.
-        What an instrument's wavetable does to the pitch (arpeggios, fixed notes such as a drum's pitch
-        sweep) and the pattern commands that move it (vibrato, slides) are <b>not</b> followed. A drum
-        written as noise at a fixed pitch shows up as the note on its row.</li>
+        An instrument's wavetable is followed: each step with a note (relative to the row's note, or a fixed
+        one) that changes the pitch ends the sounding note and starts the next at the same tick, so an
+        arpeggio is a run of short notes and a drum's pitch sweep a run of very short ones; a drum written as
+        noise at a fixed pitch is the note it sounds, not the one on its row. The pattern commands that move
+        the pitch (vibrato, slides, tone portamento) are <b>not</b> followed.</li>
       <li><b>Timing:</b> the player's own: speed (ticks a row), funktempo, tempo commands (the global and
         the voice's own), the orderlist's repeats and loop, and the gate timers. A note starts on the call
         where the player starts it and ends where the gate falls: on a key off, or one gate timer before the
         next note's row (GoatTracker's hard restart), so a note is a little shorter than its row. A legato
-        instrument or a tone portamento changes the pitch without a new gate: the file ends the old note
-        and starts the new one at the same tick.</li>
+        instrument, a tone portamento or a wavetable step changes the pitch without a new gate: the file
+        ends the old note and starts the new one at the same tick.</li>
       <li><b>One pass:</b> each voice plays its orderlist once and the file stops where it comes round to its
         loop point. A song with several subtunes has a menu; each is its own file.</li>
       <li><b>Tempo:</b> one tempo for the whole file, so that every note lands on a whole MIDI tick

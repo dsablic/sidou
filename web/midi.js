@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Songs to MIDI page: a .sng (dropped, chosen, or one of the four showcase songs) becomes a Standard
-// MIDI File with songmidi.js, offered as a download. No MIDI port is opened and nothing is sent anywhere.
+// The Songs to MIDI page: a .sng (dropped, chosen, one of the four showcase songs, or read from a
+// connected FM-1) becomes a Standard MIDI File with songmidi.js, offered as a download. Nothing is
+// uploaded. A MIDI port is opened only after the Connect button (Web MIDI with SysEx, the same way as the
+// Songs page), and only to ask the FM-1 for its list of songs (DIR) and read the one chosen (GET).
 import { SongError, songToMidi } from "./songmidi.js";
+import { Client, songsIn } from "./sysex.js";
+
+const DEVICE_PORT = "SIDOU FM-1";
 
 const SONGS = [
   { file: "chrome-comet.sng", name: "CHROME COMET", about: "Mid-eighties game music in D minor at 150 BPM. 80 s." },
@@ -96,3 +101,128 @@ const drop = $("drop");
 for (const type of ["dragenter", "dragover"]) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add("over"); });
 for (const type of ["dragleave", "drop"]) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.remove("over"); });
 drop.addEventListener("drop", (e) => readFile(e.dataTransfer.files[0]));
+
+// ---------------------------------------------------------------------------------------------
+// From the connected FM-1
+
+const fm1 = { access: null, client: null, busy: false, files: [] };
+
+function say(text, kind = "") {
+  $("device").textContent = text;
+  $("device").dataset.state = kind;
+}
+
+const version = (v) => `${v[0]}.${v[1]}.${v[2]}${v[3] ? ` (revision ${v[3]})` : ""}`;
+
+function setBusy(busy) {
+  fm1.busy = busy;
+  $("connect").disabled = busy;
+  $("check").disabled = busy || !fm1.access || !$("out").value || !$("in").value;
+  for (const b of $("fm1").querySelectorAll("button")) b.disabled = busy || !fm1.client;
+}
+
+function fillPorts() {
+  for (const [id, ports] of [["out", fm1.access.outputs], ["in", fm1.access.inputs]]) {
+    const select = $(id);
+    const previous = select.value;
+    const names = [...ports.values()];
+    select.replaceChildren(el("option", { value: "", textContent: "choose…" }),
+      ...names.map((p) => el("option", { value: p.id, textContent: p.name })));
+    const keep = names.find((p) => p.id === previous) ?? names.find((p) => p.name === DEVICE_PORT);
+    select.value = keep ? keep.id : "";
+    select.disabled = false;
+  }
+}
+
+function forget() {
+  fm1.client = null;
+  fm1.files = [];
+  $("fm1").hidden = true;
+  $("fm1").replaceChildren();
+  setBusy(false);
+}
+
+// What to read: the current song (GET target 2) and each stored song (DIR; GET target 0)
+function listSongs() {
+  const card = (title, about, target, name) => {
+    const button = el("button", { type: "button", textContent: "Make .mid", disabled: !fm1.client });
+    button.addEventListener("click", () => readSong(target, name, title, button));
+    return el("li", { className: "song" }, el("h3", {}, title), el("p", { textContent: about }), el("div", { className: "act" }, button));
+  };
+  const cards = [card("The current song", "What the FM-1 has loaded and is editing now, with the changes you have not saved.", 2, "")];
+  for (const f of songsIn(fm1.files)) cards.push(card(f.name, `A song stored on the FM-1, ${f.length} bytes.`, 0, f.name));
+  if (cards.length === 1) cards.push(el("li", { className: "song" }, el("p", { textContent: "The FM-1's store has no other songs." })));
+  $("fm1").replaceChildren(...cards);
+  $("fm1").hidden = false;
+}
+
+async function readSong(target, name, title, button) {
+  if (fm1.busy || !fm1.client) return;
+  setBusy(true);
+  $("error").textContent = "";
+  const label = button.textContent;
+  try {
+    const bytes = await fm1.client.get({ target, name }, {
+      onProgress: (d, t) => { button.textContent = t ? `Reading ${Math.round((100 * d) / t)}%` : label; },
+    });
+    show(bytes, stemOf(target === 2 ? "fm1-current-song" : name));
+  } catch (e) {
+    $("result").hidden = true;
+    $("error").textContent = `Could not read ${title} from the FM-1: ${e.message}.`;
+  } finally {
+    button.textContent = label;
+    setBusy(false);
+  }
+}
+
+async function connect() {
+  if (!navigator.requestMIDIAccess) return;
+  setBusy(true);
+  try {
+    fm1.access = await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    say(`The browser refused MIDI access with SysEx (${e.message || e.name}). Allow it for this site and press Connect again.`, "error");
+    setBusy(false);
+    return;
+  }
+  fm1.access.onstatechange = () => { fillPorts(); forget(); say("A MIDI device changed: pick the ports and press Check this pair.", ""); };
+  fillPorts();
+  setBusy(false);
+  const out = $("out").selectedOptions[0]?.textContent, inn = $("in").selectedOptions[0]?.textContent;
+  if (out === DEVICE_PORT && inn === DEVICE_PORT) await check();
+  else say(`No port named "${DEVICE_PORT}" found. Is the FM-1 plugged in and running SIDOU? Pick its output and input and press Check this pair; nothing is sent to other ports until you do.`, "error");
+}
+
+async function check() {
+  const output = fm1.access.outputs.get($("out").value);
+  const input = fm1.access.inputs.get($("in").value);
+  if (!output || !input) return;
+  forget();
+  setBusy(true);
+  for (const p of fm1.access.inputs.values()) p.onmidimessage = null;
+  const client = new Client((bytes) => output.send(bytes));
+  input.onmidimessage = (e) => client.push(e.data);
+  say(`Asking ${output.name}…`);
+  try {
+    const info = await client.inquire();
+    if (info.protocol !== 1) throw new Error(`it speaks SysEx protocol ${info.protocol}; this page speaks 1`);
+    fm1.files = await client.dir();
+    fm1.client = client;
+    say(`SIDOU ${version(info.version)} on ${output.name}.`, "ok");
+    listSongs();
+  } catch (e) {
+    say(e.message, "error");
+  }
+  setBusy(false);
+}
+
+if (!navigator.requestMIDIAccess) {
+  $("support").hidden = false;
+  $("connect").disabled = true;
+  say("This browser has no Web MIDI.", "error");
+} else {
+  $("connect").addEventListener("click", connect);
+  $("check").addEventListener("click", check);
+  $("out").addEventListener("change", forget);
+  $("in").addEventListener("change", forget);
+}

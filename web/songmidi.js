@@ -9,8 +9,11 @@
 // commands, channel-specific tempo), the sequencer (orderlist repeats, transposes, the loop), the
 // pattern fetch gatetimer frames before a row starts (which is when a hard restart or a key off
 // closes the previous note), the instruments' first-frame waveform and their legato and
-// no-hard-restart flags. A note is the row's note plus the orderlist transpose; wavetable
-// arpeggios, vibrato, portamento and the other effects do not move it.
+// no-hard-restart flags. A note is the row's note plus the orderlist transpose. The wavetable's
+// note column moves it: a step with a relative note ($00-$7F, added to the row's note) or a fixed
+// one ($81-$FF, the note itself) sets the pitch, and when that differs from the sounding note's the
+// file ends it and starts the next in the same call (an arpeggio is a run of tied notes). Vibrato,
+// portamento and the other pattern effects do not move it.
 //
 // A note is a stretch with the SID's gate bit high, as the player sets it: the gate flag (pattern
 // key on and off, the hard restart before a note, the instrument's first-frame waveform) and the
@@ -203,7 +206,8 @@ function rowsOf(song, num) {
 // Walks one subtune call by call until every voice has played its orderlist once. Returns
 //   notes   [{ voice, start, end, pitch, tie, instr }] in player calls from the first call, pitch a MIDI
 //           note number (GT2's C-0 is 12); tie: it began without the gate falling (legato
-//           instrument, tone portamento): the note before it ended in the same call
+//           instrument, tone portamento, a wavetable step that changes the pitch): the note before
+//           it ended in the same call
 //   ends    each voice's call where its orderlist came round again (the walk stops there)
 //   origin  the call of the first row
 //   tempo   [{ frame, kind: "speed"|"funk", text }] changes
@@ -232,18 +236,25 @@ export function walkSong(song, subtune = 0) {
   const chn = orders.map((order, c) => ({
     c, order, songptr: 0, pattnum: 0, rows: [], pattptr: -1, repeat: 0, trans: 0, instr: 1,
     tick: 1, tempo: defaultTempo, gatetimer: 0, newnote: null, newcmd: 0, newdata: 0,
-    gate: 0, wave: 0, waveptr: 0, wavetime: 0, pitch: null, cur: null, wrapSeq: null, end: null, tick0s: 0, firstRow: null, rowCount: 0,
+    gate: 0, wave: 0, waveptr: 0, wavetime: 0, pitch: null, sound: null, cur: null, wrapSeq: null, end: null, tick0s: 0, firstRow: null, rowCount: 0,
   }));
   const notes = [];
   let origin = null;
 
   const closeNote = (ch, frame) => {
     if (!ch.cur) return;
-    if (frame > ch.cur.start) notes.push({ ...ch.cur, end: frame });
+    if (frame > ch.cur.start) {
+      const { pending, ...note } = ch.cur;
+      notes.push({ ...note, end: frame });
+    }
     ch.cur = null;
   };
-  const openNote = (ch, frame, tie) => {
-    ch.cur = { voice: ch.c, start: frame, pitch: Math.max(0, Math.min(127, 12 + ch.pitch)), tie, instr: ch.instr };
+  const clampPitch = (p) => Math.max(0, Math.min(127, p));
+  // `pending`: the note began in the call that set its row note, before the wavetable's first step
+  // ran; that step (the next call's) names the pitch the voice sounds, with no change in between
+  const openNote = (ch, frame, tie, pending = false) => {
+    const pitch = ch.sound ?? clampPitch(12 + ch.pitch);
+    ch.cur = { voice: ch.c, start: frame, pitch, tie, instr: ch.instr, pending };
   };
 
   const sequencer = (ch, frame) => {
@@ -287,24 +298,29 @@ export function walkSong(song, subtune = 0) {
   };
 
   // The wavetable's step for this call (gplay.c WAVEEXEC): the waveform it sets decides whether
-  // the gate bit is high; its notes and the other commands only move the pitch or other
-  // registers, which the walk does not follow.
+  // the gate bit is high, and its note column the pitch (the MIDI note it sets, or null); the
+  // commands only move other registers, which the walk does not follow.
   const waveExec = (ch) => {
-    if (!ch.waveptr) return;
+    if (!ch.waveptr) return null;
     const wt = song.tables[0];
     const left = wt.left[ch.waveptr - 1], right = wt.right[ch.waveptr - 1];
-    if (left === undefined) return;
+    if (left === undefined) return null;
     if (left > 0x0f) {
       if (left < 0xe0) ch.wave = left;
       else if (left <= 0xef) ch.wave = left & 0x0f;
       else if (left <= 0xfe && (left & 0x0f) === 7) ch.wave = right;
     } else if (ch.wavetime !== left) {
       ch.wavetime++;
-      return;
+      return null;
     }
     ch.wavetime = 0;
     ch.waveptr++;
     if (wt.left[ch.waveptr - 1] === 0xff) ch.waveptr = wt.right[ch.waveptr - 1];
+    if (left >= 0xf0 || right === 0x80) return null; // a command, or "no change"
+    // an unsigned byte sum, as the player's: a relative note under the transpose wraps
+    const note = (right < 0x80 ? (right + ch.pitch) & 0xff : right) & 0x7f;
+    ch.sound = clampPitch(12 + note);
+    return ch.sound;
   };
 
   const logTempo = (entry) => {
@@ -327,6 +343,7 @@ export function walkSong(song, subtune = 0) {
     ch.tick--;
     let skipWave = false;
     let retune = false;
+    let sound = null;
     if (ch.tick === 0) {
       ch.tick0s++;
       if (ch.tick0s === 2) origin = origin === null ? frame : Math.min(origin, frame);
@@ -340,6 +357,7 @@ export function walkSong(song, subtune = 0) {
       if (ch.newnote !== null) {
         const i = ins(ch.instr);
         ch.pitch = ch.newnote - FIRSTNOTE;
+        ch.sound = null;
         retune = true;
         if (ch.newcmd !== CMD_TONEPORTA) {
           if (i.firstWave) {
@@ -382,17 +400,24 @@ export function walkSong(song, subtune = 0) {
       }
     }
     if (!skipWave) {
-      waveExec(ch);
+      sound = waveExec(ch);
       if (ch.tick === ch.gatetimer) fetch(ch, frame);
     }
     // the SID's gate bit: the waveform byte and the gate flag both
     if (ch.end === null) {
       if ((ch.wave & ch.gate & 1) === 1) {
-        if (!ch.cur) openNote(ch, frame, false);
+        if (!ch.cur) openNote(ch, frame, false, retune);
         else if (retune) {
           closeNote(ch, frame);
-          openNote(ch, frame, true);
+          openNote(ch, frame, true, true);
+        } else if (sound !== null && sound !== ch.cur.pitch) {
+          if (ch.cur.pending) ch.cur.pitch = sound;
+          else {
+            closeNote(ch, frame);
+            openNote(ch, frame, true);
+          }
         }
+        if (ch.cur && !skipWave) ch.cur.pending = false;
       } else {
         closeNote(ch, frame);
       }

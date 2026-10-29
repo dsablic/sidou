@@ -70,7 +70,8 @@ function watch() {
 
 
 // The Songs page's fake Web MIDI: two port pairs, "Other Synth" (must stay silent) and "SIDOU FM-1",
-// a simulated device behind the second that follows docs/reference/sysex.md (INQ, DIR, PUT/DATA/END).
+// a simulated device behind the second that follows docs/reference/sysex.md (INQ, DIR, PUT/DATA/END,
+// and GET of a stored song or the current one, whose bytes it fetches from the site's songs/).
 function fakeMidi() {
   const log = (window.__midi = { other: [], fm1: [], requested: null });
   const inputs = new Map([["i1", { id: "i1", name: "Other Synth", onmidimessage: null }],
@@ -90,15 +91,45 @@ function fakeMidi() {
     if (!e) { listing = null; return reply(6, seq); }
     const name = new Array(16).fill(0);
     [...e.name].forEach((c, i) => { name[i] = c.charCodeAt(0); });
-    return reply(2, seq, [...name, 1, ...u32(e.length), ...u32(e.crc)]);
+    return reply(2, seq, [...name, e.type ?? 1, ...u32(e.length), ...u32(e.crc)]);
+  };
+  // GET: the metadata (a PUT frame), DATA packets and END, one after each ACK
+  let out = null, outSeq = 0;
+  const outNext = async () => {
+    const next = out.shift();
+    if (!next) { out = null; return; }
+    const seq = outSeq;
+    outSeq = (outSeq + 1) & 127;
+    return reply(next[0], seq, next[1]);
+  };
+  const get = async (f) => {
+    const { crc32 } = await import("./sysex.js");
+    const d = f.data;
+    let file, name = new Array(16).fill(0);
+    if (d[0] === 2) file = "chrome-comet.sng";
+    else {
+      const n = String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, "");
+      file = n.toLowerCase().replace(/ /g, "-") + ".sng";
+      name = Array.from(d.slice(2, 18));
+    }
+    const r = await fetch(`songs/${file}`);
+    if (!r.ok) return reply(0x7f, f.sequence, [6, 0]);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    log.gets = [...(log.gets || []), { target: d[0], file }];
+    out = [[4, [d[0], 0, ...name, 1, ...u32(bytes.length), ...u32(crc32(bytes))]]];
+    for (let o = 0; o < bytes.length; o += 256) out.push([5, bytes.slice(o, o + 256)]);
+    out.push([6, []]);
+    outSeq = f.sequence;
+    return outNext();
   };
   const device = async (bytes) => {
     const { decodeFrame } = await import("./sysex.js");
     log.fm1.push(Array.from(bytes));
     const f = decodeFrame(bytes);
     if (f.command === 1) return reply(1, f.sequence, [1, 0, 2, 0, 0, 1, 0, ...u32(30000), 6, 1]);
-    if (f.command === 2) { listing = [{ name: "IRON RITE", length: 10, crc: 1 }]; dirSeq = f.sequence; return dirNext(); }
-    if (f.command === 0x7e) return dirNext();
+    if (f.command === 2) { listing = [{ name: "IRON RITE", length: 10, crc: 1 }, { name: "A TUNE", type: 2, length: 400, crc: 2 }]; dirSeq = f.sequence; return dirNext(); }
+    if (f.command === 3) return get(f);
+    if (f.command === 0x7e) return out ? outNext() : dirNext();
     if (f.command === 4) {
       const d = f.data;
       upload = { name: String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, ""), data: [] };
@@ -271,6 +302,7 @@ try {
   midi.on("pageerror", (e) => fail(`midi page error: ${e.message}`));
   midi.on("requestfailed", (r) => fail(`midi page request failed: ${r.url()}`));
   midi.on("response", (r) => { if (r.status() >= 400) fail(`midi page HTTP ${r.status()}: ${r.url()}`); });
+  await midi.addInitScript(fakeMidi);
   await midi.goto(new URL("midi.html", url).href);
   if (await midi.locator("#songs .song").count() !== 4) fail("the MIDI page does not list four songs");
   if (!(await midi.locator("#result").isHidden())) fail("the MIDI page shows a result before a song is chosen");
@@ -289,6 +321,37 @@ try {
   console.log(`midi page: ${mid.name}, ${mid.size} bytes, ${mid.tracks} tracks`);
   if (mid.head !== "MThd" || mid.tracks !== 4 || mid.name !== "chrome-comet.mid" || mid.size < 5000) fail(`the MIDI page's download is wrong: ${JSON.stringify(mid)}`);
   if (!mid.wide) fail("the MIDI page scrolls sideways at phone width");
+
+  // "From the connected FM-1": nothing is asked or sent before Connect; then the songs (not the .sid
+  // tune) are listed, and the current song and a stored one are read with GET and converted
+  const touched = () => midi.evaluate(() => window.__midi.fm1.length + window.__midi.other.length + (window.__midi.requested ? 1 : 0));
+  if (await touched() !== 0) fail("the MIDI page used MIDI before Connect");
+  await midi.locator("#connect").click();
+  try {
+    await midi.waitForFunction(() => /SIDOU 0\.2\.0/.test(document.getElementById("device").textContent), null, { timeout: 10_000 });
+  } catch {
+    fail(`the MIDI page did not find the FM-1: ${await midi.locator("#device").textContent()}`);
+  }
+  const cards = await midi.locator("#fm1 .song h3").allTextContents();
+  if (cards.join("|") !== "The current song|IRON RITE") fail(`the MIDI page lists ${JSON.stringify(cards)} from the FM-1`);
+  const readFrom = async (n) => {
+    await midi.locator("#fm1 .song button").nth(n).click();
+    try {
+      await midi.waitForFunction((k) => document.getElementById("download").textContent.includes(k), n ? "IRON-RITE" : "fm1-current-song", { timeout: 10_000 });
+    } catch {
+      fail(`the MIDI page did not read song ${n} from the FM-1: ${await midi.locator("#error").textContent()}`);
+    }
+    return midi.evaluate(async () => {
+      const a = document.getElementById("download");
+      const bytes = new Uint8Array(await (await fetch(a.href)).arrayBuffer());
+      return { name: a.download, head: String.fromCharCode(...bytes.slice(0, 4)), size: bytes.length, gets: window.__midi.gets };
+    });
+  };
+  const cur = await readFrom(0), stored = await readFrom(1);
+  console.log(`midi page from the FM-1: ${cur.name} ${cur.size} bytes, ${stored.name} ${stored.size} bytes`);
+  if (cur.head !== "MThd" || stored.head !== "MThd" || cur.name !== "fm1-current-song.mid" || stored.name !== "IRON-RITE.mid") fail(`the MIDI page's FM-1 downloads are wrong: ${JSON.stringify([cur, stored])}`);
+  if (JSON.stringify(stored.gets) !== JSON.stringify([{ target: 2, file: "chrome-comet.sng" }, { target: 0, file: "iron-rite.sng" }])) fail(`the GETs were ${JSON.stringify(stored.gets)}`);
+  if (await midi.evaluate(() => window.__midi.other.length) !== 0) fail("the MIDI page sent to the other port");
   await midi.close();
 
   // the cheat sheet: it loads (the logo too), names its version and fits a phone's width

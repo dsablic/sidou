@@ -119,6 +119,11 @@ waits and sends the whole PUT again from its first packet, whichever packet was 
 Songs page waits 1 s, 2 s, 4 s, then 5 s between tries, for about a minute in all, and shows
 that it is waiting; any other reason stops the transfer.
 
+The Songs to MIDI page reads with GET: target 2 for the current song, or target 0 and a name from
+DIR (type 1) for a stored one. It ACKs every packet, checks the announced length and CRC, and
+shows a refusal in words: BUSY (4: a song saving or loading, or an import under way), FULL (5:
+the song is too big to read out), not found (6: deleted since the DIR) or I/O (7).
+
 For incoming PUT, the initial packet declares exact length and CRC. SIDOU claims
 all store sectors with `store_file_begin` before acknowledging it (a `.sid`'s at its first
 DATA, above). If the clean

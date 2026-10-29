@@ -97,8 +97,11 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 
 - **Generative play in TRACKER:** the same chance, MUTATE and DICE as STEP, C64 idioms
   (generated arpeggio chords, multiplexed drums, filter sweeps), a scale per lane. M each.
-- **MIDI export on the device,** not only on the site; wavetable arpeggios and TRKB subtunes
-  in the export. M.
+- ~~**MIDI export on the device,** not only on the site; wavetable arpeggios and TRKB subtunes
+  in the export. M.~~ Done on the site instead (1.1): its Songs to MIDI page pulls the current
+  or a stored song from the connected FM-1 over SysEx (the FM-1 shows no files over USB), and
+  the export follows wavetable arpeggios. TRKB: nothing writes it, so nothing to export; the
+  export joins it when chip B's tracks are written. Live notes out stay later.
 - **More than 48 keys in the store.** Only if players hit STORE FULL (the starter pack uses
   11; LAB adds one). M-L; changes the store format.
 
