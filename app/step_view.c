@@ -18,7 +18,7 @@
 #define LANES_AT (HEAD_AT + HEAD_N)
 #define LANES_N 24u
 #define LOWER_AT (LANES_AT + LANES_N)
-#define LOWER_N 11u
+#define LOWER_N 14u
 _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
 #define HEAD_ROWS 0x0000001Fu
 #define LANES_ROWS 0x0001FFE0u
@@ -33,6 +33,11 @@ static const char* const WAVE_NAMES[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PU
 static const char* const WAVE_SHORT[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PUL", "NOI"};
 static const char* const KNOB_NAMES[4] = {"CUTOFF", "RESONANCE", "PULSE WIDTH", "WAVEFORM"};
 static const char* const KNOB_SHORT[4] = {"CUTOFF", "RESO", "PULSE", "WAVE"};
+/* DICE's settings by name (the frame and the popup). */
+static const char* const DENSITY_NAMES[SONG_DICE_DENSITIES] = {"SPARSE", "LIGHT", "MEDIUM", "BUSY",
+                                                               "FULL"};
+static const char* const SCALE_NAMES[SONG_DICE_SCALES] = {"MIN PENT", "MAJ PENT", "MINOR",
+                                                          "MAJOR",    "DORIAN",   "CHROMATIC"};
 static const char* const CHAR_NAMES[4] = {"AGE", "DAC", "THUMP", "BLEED"};
 static const char HEX[] = "0123456789ABCDEF";
 static const char NOTE_NAMES[12][3] = {"C-", "C#", "D-", "D#", "E-", "F-",
@@ -174,6 +179,16 @@ static void put32(uint8_t* out, uint32_t v) {
     out[3] = (uint8_t)(v >> 24);
 }
 
+/* The song's DICE density and scale (the defaults with no song or no chunk). */
+static void dice_get(const song_view* sv, uint8_t* d, uint8_t* sc) {
+    if (sv->song) {
+        (void)song_ext_get_dice(sv->song, d, sc);
+    } else {
+        *d = SONG_DICE_DENSITY_DEFAULT;
+        *sc = 0u;
+    }
+}
+
 static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     const song_view* sv = st->sv;
     lane lanes[SONG_T_VOICES];
@@ -219,6 +234,13 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     l[8] = lanes[v].pattern;
     l[9] = st->held;
     l[10] = sv->l->theme;
+    if (st->scl_down) {
+        uint8_t d, sc;
+        dice_get(sv, &d, &sc);
+        l[11] = 1u;
+        l[12] = d;
+        l[13] = sc;
+    }
 }
 
 /* ---- the canvas ---- */
@@ -467,6 +489,55 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     }
 }
 
+/* The pads: two rows of eight, a beat (four steps) apart, each numbered by its place in its
+ * beat at 2x (1 2 3 4  1 2 3 4); the second and fourth beats shaded (the cursor's dark grey),
+ * a beat's first step in the value role and the others in the label role, a step's pad in the
+ * lane's colour when it has a note, the held one yellow. The held step's own number is the
+ * frame's (HELD STEP 22). */
+static void build_pads(step_view* st, const lane* ln, uint32_t page) {
+    song_view* sv = st->sv;
+    canvas* c = &sv->cv;
+    const gt2_song* s = sv->song;
+    const theme* th = theme_get(sv->l->theme);
+    uint32_t v = sv->voice;
+    const uint8_t* pd = s && ln->pattern != 0xffu ? gt2_pattern_data(s, ln->pattern) : NULL;
+    for (uint32_t i = 0; i < STEP_VIEW_STEPS; i++) {
+        uint32_t row = page * STEP_VIEW_STEPS + i;
+        uint32_t j = i & 7u;
+        uint32_t r = STEP_VIEW_PADS_ROW + (i >> 3) * 3u, col = STEP_VIEW_PAD_COL + 3u * j + (j >> 2) * 2u;
+        if (row >= ln->rows || !s || ln->pattern == 0xffu) {
+            continue;
+        }
+        const uint8_t* cell = cell_in(pd, row);
+        uint8_t a = GRID_ATTR(i & 3u ? th->label : th->value, i & 4u ? th->cursor : th->bg);
+        if (is_note(cell[0])) {
+            a = GRID_ATTR(th->bg, th->voice[v]);
+        }
+        if (st->held == i) {
+            a = GRID_ATTR(th->bg, th->hot);
+        }
+        char num[2] = {(char)('1' + (i & 3u)), 0};
+        big(c, col, r, num, a);
+    }
+    sv->dirty |= LOWER_ROWS;
+}
+
+/* The frame while EDIT + SCL is held: DICE's two settings at 2x, K1 and K3 beside them (what a
+ * turn changes is what the frame says; a release rolls). */
+static void dice_frame(step_view* st) {
+    canvas* c = &st->sv->cv;
+    const theme* th = theme_get(st->sv->l->theme);
+    uint8_t d, sc;
+    dice_get(st->sv, &d, &sc);
+    small(c, 2, 17u, " DICE - LET GO TO ROLL ", THEME_ATTR(th, hot));
+    small(c, 2, 18u, "K1", THEME_ATTR(th, hint));
+    small(c, 2, 19u, "DENS", GRID_ATTR(th->knob_text[0], th->bg));
+    big(c, 11, 18u, DENSITY_NAMES[d], GRID_ATTR(th->knob_text[0], th->bg));
+    small(c, 2, 20u, "K3", THEME_ATTR(th, hint));
+    small(c, 2, 21u, "SCALE", GRID_ATTR(th->knob_text[2], th->bg));
+    big(c, 11, 20u, SCALE_NAMES[sc], GRID_ATTR(th->knob_text[2], th->bg));
+}
+
 /* Rows 16-29: the HELD STEP frame and the pads. */
 static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     song_view* sv = st->sv;
@@ -492,6 +563,11 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     }
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     int held = st->held != STEP_VIEW_NONE && s && ln->pattern != 0xffu && at < ln->rows;
+    if (st->scl_down) {
+        dice_frame(st);
+        build_pads(st, ln, page);
+        return;
+    }
     char title[16] = " HELD STEP ";
     uint32_t n = 11u;
     if (held) {
@@ -520,32 +596,9 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     for (uint32_t k = 0; k < 4u; k++) {
         knob_cell(st, ln, at, held, k, 18u + 2u * (k >> 1));
     }
-    /* The pads: two rows of eight, a beat (four steps) apart, each numbered by its place in its
-     * beat at 2x (1 2 3 4  1 2 3 4); the second and fourth beats shaded (the cursor's dark grey),
-     * a beat's first step in the value role and the others in the label role, a step's pad in the
-     * lane's colour when it has a note, the held one yellow. The held step's own number is the
-     * frame's (HELD STEP 22). */
-    const uint8_t* pd = s && ln->pattern != 0xffu ? gt2_pattern_data(s, ln->pattern) : NULL;
-    for (uint32_t i = 0; i < STEP_VIEW_STEPS; i++) {
-        uint32_t row = page * STEP_VIEW_STEPS + i;
-        uint32_t j = i & 7u;
-        uint32_t r = STEP_VIEW_PADS_ROW + (i >> 3) * 3u, col = STEP_VIEW_PAD_COL + 3u * j + (j >> 2) * 2u;
-        if (row >= ln->rows || !s || ln->pattern == 0xffu) {
-            continue;
-        }
-        const uint8_t* cell = cell_in(pd, row);
-        uint8_t a = GRID_ATTR(i & 3u ? th->label : th->value, i & 4u ? th->cursor : th->bg);
-        if (is_note(cell[0])) {
-            a = GRID_ATTR(th->bg, th->voice[v]);
-        }
-        if (st->held == i) {
-            a = GRID_ATTR(th->bg, th->hot);
-        }
-        char num[2] = {(char)('1' + (i & 3u)), 0};
-        big(c, col, r, num, a);
-    }
-    sv->dirty |= LOWER_ROWS;
+    build_pads(st, ln, page);
 }
+
 
 /* ---- editing ---- */
 
@@ -718,20 +771,29 @@ static void unset_now(screen* s, step_view* st, const target* t) {
 /* ---- generative play: MUTATE and DICE (E+ARP, E+SCL) ----
  * Both are runs of ordinary cell writes through the editor, one a turn of drain, so each is an
  * edit as any other (the pattern stays plain GT2 data; undo steps back a cell at a time). The
- * notes come from a scale on the lane's own note (PRESETS with a step held): minor pentatonic;
+ * notes come from a scale on the lane's own note (PRESETS with a step held): the song's DICE
+ * scale (the minor pentatonic unless EDIT + SCL + K3 chose another);
  * a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it hits. What
  * "random" means is song_mix of the seed and the row: the same seed makes the same pattern. */
 enum { GEN_MUTATE = 1, GEN_DICE };
-static const uint8_t PENTATONIC[5] = {0, 3, 5, 7, 10};
-/* DICE's grid: the chance in percent of a hit on a row's place in its beat. A melodic lane hits
- * on the eighths, a drum lane on the sixteenths with a heavy first one. */
-static const uint8_t GRID_MELODIC[4] = {85, 0, 55, 0};
-static const uint8_t GRID_DRUMS[4] = {90, 15, 50, 25};
+/* DICE's scales (the song's DICE chunk picks one; 0 is the minor pentatonic it always rolled):
+ * the length, then the semitones above the root. */
+static const uint8_t SCALES[SONG_DICE_SCALES][13] = {
+    {5, 0, 3, 5, 7, 10},          {5, 0, 2, 4, 7, 9},         {7, 0, 2, 3, 5, 7, 8, 10},
+    {7, 0, 2, 4, 5, 7, 9, 11},    {7, 0, 2, 3, 5, 7, 9, 10},  {12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}};
+/* DICE's grid by density (0 sparse .. 4 every step; 2 is what it always rolled): the chance in
+ * percent of a hit on a row's place in its beat. A melodic lane hits on the eighths, a drum lane
+ * on the sixteenths with a heavy first one. */
+static const uint8_t GRID_MELODIC[SONG_DICE_DENSITIES][4] = {
+    {60, 0, 0, 0}, {85, 0, 25, 0}, {85, 0, 55, 0}, {90, 35, 75, 35}, {100, 100, 100, 100}};
+static const uint8_t GRID_DRUMS[SONG_DICE_DENSITIES][4] = {
+    {80, 0, 15, 0}, {90, 5, 30, 10}, {90, 15, 50, 25}, {95, 40, 75, 55}, {100, 100, 100, 100}};
 #define GEN_PHI 0x9e3779b9u
 
-static int in_scale(uint32_t root, uint32_t note) {
-    for (uint32_t i = 0; i < 5u; i++) {
-        if ((note + 120u - root) % 12u == PENTATONIC[i]) {
+static int in_scale(const step_view* st, uint32_t root, uint32_t note) {
+    const uint8_t* sc = SCALES[st->gen_scale];
+    for (uint32_t i = 1; i <= sc[0]; i++) {
+        if ((note + 120u - root) % 12u == sc[i]) {
             return 1;
         }
     }
@@ -745,7 +807,8 @@ static uint32_t gen_note(const step_view* st, uint32_t voice, uint32_t h) {
     if (st->gen_drums) {
         return root;
     }
-    uint32_t n = root + PENTATONIC[h % 5u] + 12u * (h >> 8 & 1u);
+    const uint8_t* sc = SCALES[st->gen_scale];
+    uint32_t n = root + sc[1u + h % sc[0]] + 12u * (h >> 8 & 1u);
     while (n > GT2_NOTE_MAX) {
         n -= 12u;
     }
@@ -754,7 +817,7 @@ static uint32_t gen_note(const step_view* st, uint32_t voice, uint32_t h) {
 
 static int dice_hit(const step_view* st, uint32_t row) {
     uint32_t h = song_mix(st->seed + row * GEN_PHI);
-    return (h >> 8) % 100u < (st->gen_drums ? GRID_DRUMS : GRID_MELODIC)[row & 3u];
+    return (h >> 8) % 100u < (st->gen_drums ? GRID_DRUMS : GRID_MELODIC)[st->gen_dens][row & 3u];
 }
 
 /* DICE's row: its note, or what follows one (a key off on a staccato lane), or a rest; only a
@@ -803,7 +866,7 @@ static void mutate_now(screen* s, step_view* st, target* t) {
     int up = (int)(h >> 10 & 1u);
     for (uint32_t i = 0; i < 12u; i++) {
         n = up ? (n < GT2_NOTE_MAX ? n + 1u : n) : (n ? n - 1u : n);
-        if (in_scale(root, n)) {
+        if (in_scale(st, root, n)) {
             break;
         }
     }
@@ -1025,9 +1088,37 @@ static void gen_start(screen* s, step_view* st, uint32_t kind) {
     st->gen_pattern = t.pattern;
     st->gen_voice = t.voice;
     st->gen_row = 0u;
+    dice_get(sv, &st->gen_dens, &st->gen_scale);
     st->run = (uint8_t)kind;
     refuse(s, kind == GEN_MUTATE ? "MUTATED" : "NEW PATTERN");
     drain(s, st);
+}
+
+/* K1 or K3 with EDIT + SCL held: the song's DICE density or scale, one detent a step, stopping
+ * at the ends; a turn spoils the roll at SCL's release. */
+static void dice_turn(screen* s, step_view* st, int scale, int32_t steps) {
+    uint8_t d, sc;
+    dice_get(st->sv, &d, &sc);
+    int32_t top = (int32_t)(scale ? SONG_DICE_SCALES : SONG_DICE_DENSITIES) - 1;
+    int32_t v = (int32_t)(scale ? sc : d) + steps;
+    v = v < 0 ? 0 : v > top ? top : v;
+    st->scl_spoiled = 1u;
+    int r = st->sv->song ? song_ext_set_dice((gt2_song*)st->sv->song, scale ? d : (uint32_t)v,
+                                             scale ? (uint32_t)v : sc)
+                         : -1;
+    if (r < 0) {
+        refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : "SONG FULL");
+    }
+}
+
+void step_view_buttons(step_view* st, screen* s, uint32_t held) {
+    if (st->scl_down && !(held >> PANEL_BTN_SCL & 1u)) {
+        int roll = !st->scl_spoiled && screen_top(s) == &step_view_view;
+        st->scl_down = st->scl_spoiled = 0u;
+        if (roll) {
+            gen_start(s, st, GEN_DICE);
+        }
+    }
 }
 
 static int input(screen* s, void* state, const screen_event* e) {
@@ -1040,6 +1131,16 @@ static int input(screen* s, void* state, const screen_event* e) {
     drain(s, st);
     target t;
     if (e->kind == SCREEN_PRESS) {
+        if (st->scl_down && e->id != PANEL_BTN_SCL) {
+            st->scl_spoiled = 1u; /* another button: a combination of its own, which does nothing */
+            return 1;
+        }
+        if (edit && st->held == STEP_VIEW_NONE && !song_view_recording(sv) &&
+            e->id == PANEL_BTN_SCL && sv->editor) {
+            st->scl_down = 1u; /* DICE rolls at SCL's release, unless a knob is turned first */
+            st->scl_spoiled = 0u;
+            return 1;
+        }
         if (e->id == PANEL_BTN_LFO && edit) {
             if (sv->editor) {
                 (void)song_edit_undo(sv->editor);
@@ -1049,8 +1150,8 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         if (edit && st->held == STEP_VIEW_NONE && !song_view_recording(sv) &&
-            (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_SCL)) {
-            gen_start(s, st, e->id == PANEL_BTN_ARP ? GEN_MUTATE : GEN_DICE);
+            e->id == PANEL_BTN_ARP) {
+            gen_start(s, st, GEN_MUTATE);
             return 1;
         }
         if (e->id == PANEL_BTN_LFO && st->held != STEP_VIEW_NONE) {
@@ -1088,6 +1189,10 @@ static int input(screen* s, void* state, const screen_event* e) {
             int32_t last = (int32_t)pages_of(lanes[sv->voice].rows) - 1;
             st->page = (uint8_t)(p < 0 ? 0 : p > last ? last : p);
         }
+        return 1;
+    }
+    if (st->scl_down && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 2u)) {
+        dice_turn(s, st, e->id != PANEL_ENC_K1, e->steps);
         return 1;
     }
     int held = st->held != STEP_VIEW_NONE;
@@ -1152,7 +1257,15 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     uint32_t cur = 0u, top = 0u;
     int held = st->held != STEP_VIEW_NONE;
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
-    if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
+    if (st->scl_down && (encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 2u)) {
+        uint8_t d, sc;
+        dice_get(sv, &d, &sc);
+        int scale = encoder != PANEL_ENC_K1;
+        label = scale ? "SCALE" : "DENSITY";
+        cur = scale ? sc : d;
+        top = (scale ? SONG_DICE_SCALES : SONG_DICE_DENSITIES) - 1u;
+        copy_text(text, scale ? SCALE_NAMES[sc] : DENSITY_NAMES[d]);
+    } else if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
         label = "CHANCE";
         cur = 100u;
         (void)lock_get(sv->song, ln->pattern, at, SONG_LOCK_CHANCE, &cur);
@@ -1243,6 +1356,7 @@ static void enter(screen* s, void* state) {
     st->held = STEP_VIEW_NONE;
     st->zones = 0u;
     st->run = 0u;
+    st->scl_down = st->scl_spoiled = 0u;
     st->down = st->touched = 0u;
     st->sv->instr = st->instr[st->sv->voice];
 }
@@ -1253,6 +1367,7 @@ static void leave(screen* s, void* state) {
         drain(s, st);
     }
     st->qn = st->run = 0u;
+    st->scl_down = st->scl_spoiled = 0u;
     st->sv->built = 0;
     st->held = STEP_VIEW_NONE;
     st->down = st->touched = 0u;

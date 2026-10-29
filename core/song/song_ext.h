@@ -33,6 +33,7 @@ extern "C" {
 #define SONG_TAG_SCNE SONG_TAG('S', 'C', 'N', 'E')
 #define SONG_TAG_KEYS SONG_TAG('K', 'E', 'Y', 'S')
 #define SONG_TAG_DIGI SONG_TAG('D', 'I', 'G', 'I')
+#define SONG_TAG_DICE SONG_TAG('D', 'I', 'C', 'E')
 #define SONG_TAG_PAD SONG_TAG('P', 'A', 'D', ' ')
 #define SONG_TAG_TRKB SONG_TAG('T', 'R', 'K', 'B') /* reserved: chip B's tracks (M5) */
 #define SONG_TAG_RIPD SONG_TAG('R', 'I', 'P', 'D') /* reserved: rip data (M5) */
@@ -240,6 +241,16 @@ typedef struct {
 } song_keys;
 int song_ext_get_keys(const gt2_song* s, song_keys* v);
 int song_ext_set_keys(gt2_song* s, const song_keys* v);
+
+/* DICE: STEP's roll (EDIT + SCL), its density (0 sparse .. 4 every step) and its scale (0 minor
+ * pentatonic, 1 major pentatonic, 2 minor, 3 major, 4 dorian, 5 chromatic). No chunk, or a
+ * value out of range, is the default: density 2 and the minor pentatonic, what the roll always
+ * was. 1 when the chunk is there and valid; the two are filled either way. */
+#define SONG_DICE_DENSITIES 5u
+#define SONG_DICE_SCALES 6u
+#define SONG_DICE_DENSITY_DEFAULT 2u
+int song_ext_get_dice(const gt2_song* s, uint8_t* density, uint8_t* scale);
+int song_ext_set_dice(gt2_song* s, uint32_t density, uint32_t scale);
 
 /* DIGI: the digi drums (decision record 0009). Each entry marks an instrument (1-63) as a digi
  * drum and names a built-in sample (SONG_DIGI_*); the instrument's own GT2 content is what

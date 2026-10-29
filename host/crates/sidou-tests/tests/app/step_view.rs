@@ -541,7 +541,7 @@ fn a_held_step_and_a_knob_is_a_lock_that_the_step_shows_and_keeps_for_its_row_on
     assert_eq!(s.ui.small(19, 26, 3), "---", "the others have none");
     s.ui.turn(PANEL_ENC_K1, 2);
     s.ui.turn(PANEL_ENC_K2, 1);
-    s.ui.turn(PANEL_ENC_K3, -1);
+    s.ui.turn(PANEL_ENC_K3, -1); // (the first scale is the floor)
     settle(&mut s.ui);
     assert_eq!(
         locks(&s),
@@ -1252,4 +1252,213 @@ fn mutate_and_dice_wait_for_a_step_to_be_let_go_and_leave_rec_alone() {
     assert_eq!(s.ui.v.step.run, 0, "a held step: not a pattern action");
     release(&mut s);
     assert_eq!(pattern(&s, 0)[0][0], C3 + 7, "nothing was diced");
+}
+
+// ---- DICE's settings: EDIT + SCL held, K1 the density, K3 the scale ----
+
+/// The note column of the lane's pattern as DICE rolled it, seed 7, with no settings (frozen
+/// from the roll before the settings existed: a song with no DICE chunk rolls as it always did).
+const FROZEN_MELODIC: [u8; 64] = [
+    189, 189, 189, 189, 137, 190, 189, 189, 144, 190, 154, 190, 142, 190, 189, 189, 142, 190, 135,
+    190, 135, 190, 135, 190, 142, 190, 189, 189, 151, 190, 189, 189, 135, 190, 137, 190, 139, 190,
+    189, 189, 144, 190, 189, 189, 189, 189, 189, 189, 151, 190, 132, 190, 147, 190, 137, 190, 137,
+    190, 189, 189, 139, 190, 189, 189,
+];
+const FROZEN_DRUMS: [u8; 64] = [
+    132, 190, 132, 190, 132, 190, 132, 132, 132, 190, 132, 132, 132, 190, 132, 190, 132, 190, 132,
+    190, 132, 132, 132, 190, 132, 190, 189, 189, 132, 190, 132, 190, 189, 189, 189, 189, 132, 190,
+    189, 189, 132, 190, 189, 132, 132, 190, 189, 189, 189, 189, 132, 132, 132, 190, 189, 189, 132,
+    190, 189, 189, 132, 190, 189, 189,
+];
+
+fn notes_col(s: &Song) -> Vec<u8> {
+    pattern(s, 0).iter().map(|c| c[0]).collect()
+}
+
+fn dice_chunk(s: &Song) -> (u8, u8, i32) {
+    let (mut d, mut sc) = (9u8, 9u8);
+    let r = unsafe { song_ext_get_dice(s.ui.v.song.song, &mut d, &mut sc) };
+    (d, sc, r)
+}
+
+fn set_dice(s: &mut Song, density: u32, scale: u32) {
+    let r = unsafe { song_ext_set_dice(s.ui.v.song.song.cast_mut(), density, scale) };
+    assert_eq!(r, 0);
+}
+
+fn drums(s: &mut Song) {
+    let scene = song_scene {
+        count: 3,
+        role: [SONG_ROLE_DRUMS as u8, 0, 0, 0, 0, 0],
+        ..Default::default()
+    };
+    assert_eq!(
+        unsafe { song_ext_set_scene(s.ui.v.song.song.cast_mut(), &scene) },
+        0
+    );
+}
+
+/// A roll with seed 7 on a fresh song with the settings given (None: no chunk).
+fn rolled(settings: Option<(u32, u32)>) -> Vec<u8> {
+    let mut s = step();
+    if let Some((d, sc)) = settings {
+        set_dice(&mut s, d, sc);
+    }
+    s.ui.v.step.seed = 7;
+    edit_press(&mut s, PANEL_BTN_SCL);
+    notes_col(&s)
+}
+
+const SCALES: [&[u8]; 6] = [
+    &[0, 3, 5, 7, 10],
+    &[0, 2, 4, 7, 9],
+    &[0, 2, 3, 5, 7, 8, 10],
+    &[0, 2, 4, 5, 7, 9, 11],
+    &[0, 2, 3, 5, 7, 9, 10],
+    &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+];
+
+/// A note's semitones above the root, whatever the octave.
+fn degree(n: u8) -> u8 {
+    (i32::from(n) - i32::from(C3)).rem_euclid(12) as u8
+}
+
+fn hits(col: &[u8]) -> Vec<u8> {
+    col.iter().copied().filter(|&n| is_note(n)).collect()
+}
+
+#[test]
+fn dice_still_rolls_as_before_with_no_chunk_and_with_the_defaults_chosen() {
+    assert_eq!(rolled(None), FROZEN_MELODIC);
+    assert_eq!(rolled(Some((2, 0))), FROZEN_MELODIC);
+    for settings in [None, Some((2, 0))] {
+        let mut s = step();
+        if let Some((d, sc)) = settings {
+            set_dice(&mut s, d, sc);
+        }
+        drums(&mut s);
+        edit_press(&mut s, PANEL_BTN_SCL);
+        assert_eq!(notes_col(&s), FROZEN_DRUMS);
+    }
+}
+
+#[test]
+fn each_scale_rolls_only_its_notes_and_the_chromatic_one_uses_them_all() {
+    for (i, scale) in SCALES.iter().enumerate() {
+        let col = rolled(Some((2, i as u32)));
+        let h = hits(&col);
+        assert!(h.len() > 8, "scale {i}: {} notes", h.len());
+        let mut seen = std::collections::BTreeSet::new();
+        for &n in &h {
+            let degree = degree(n);
+            assert!(scale.contains(&degree), "scale {i}: {degree} is not in it");
+            seen.insert(degree);
+        }
+        assert!(
+            seen.len() >= scale.len().min(5),
+            "scale {i}: only {seen:?} came up"
+        );
+    }
+}
+
+#[test]
+fn density_counts_sparse_to_every_step() {
+    let counts: Vec<usize> = (0..5).map(|d| hits(&rolled(Some((d, 0)))).len()).collect();
+    println!("notes by density: {counts:?}");
+    assert!(counts.windows(2).all(|w| w[0] < w[1]), "{counts:?}");
+    assert_eq!(counts[4], 64, "every step has a note");
+    assert!(counts[0] > 0 && counts[0] < 16, "sparse: {counts:?}");
+    // a drum lane too
+    let mut last = 0;
+    for d in 0..5 {
+        let mut s = step();
+        set_dice(&mut s, d, 0);
+        drums(&mut s);
+        s.ui.v.step.seed = 7;
+        edit_press(&mut s, PANEL_BTN_SCL);
+        let n = hits(&notes_col(&s)).len();
+        assert!(n > last, "drums, density {d}: {n} after {last}");
+        last = n;
+    }
+    assert_eq!(last, 64);
+}
+
+#[test]
+fn k1_and_k3_with_edit_and_scl_held_set_the_song_and_a_turn_spoils_the_roll() {
+    let mut s = step();
+    let before = notes_col(&s);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.down(PANEL_BTN_SCL);
+    s.ui.frame();
+    assert_eq!(s.ui.small(17, 2, 23), " DICE - LET GO TO ROLL ");
+    s.ui.turn(PANEL_ENC_K1, 3);
+    s.ui.turn(PANEL_ENC_K3, -1); // (the first scale is the floor)
+    s.ui.turn(PANEL_ENC_K3, 1);
+    s.ui.frame();
+    assert_eq!(dice_chunk(&s), (4, 1, 1), "density clamps at the end");
+    assert_eq!(
+        popup(&s, PANEL_ENC_K1, true),
+        Some(("DENSITY".into(), "FULL".into(), 4, 4))
+    );
+    assert_eq!(
+        popup(&s, PANEL_ENC_K3, true),
+        Some(("SCALE".into(), "MAJ PENT".into(), 1, 5))
+    );
+    s.ui.turn(PANEL_ENC_K1, -10);
+    assert_eq!(dice_chunk(&s).0, 0, "and at the other");
+    s.ui.up(PANEL_BTN_SCL);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(
+        notes_col(&s),
+        before,
+        "a turn while held: no roll at the release"
+    );
+    assert_eq!(s.ui.v.step.scl_down, 0);
+    assert_eq!(s.ui.small(17, 2, 9), " HELD STE", "the frame is back");
+    // Letting go with no turn rolls, with what was set.
+    edit_press(&mut s, PANEL_BTN_SCL);
+    let col = notes_col(&s);
+    assert_ne!(col, before);
+    let h = hits(&col);
+    assert!(!h.is_empty() && h.len() < 16, "sparse");
+    assert!(h.iter().all(|n| SCALES[1].contains(&degree(*n))));
+    // The settings are the song's: written with it and read back.
+    let file = snapshot(&s).write(true);
+    let mut back = Model::host();
+    back.read(&file, 0).unwrap();
+    assert_eq!(back.write(true), file);
+}
+
+#[test]
+fn another_button_while_scl_is_held_spoils_the_roll_too_and_k2_k4_are_left_alone() {
+    let mut s = step();
+    let before = notes_col(&s);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.down(PANEL_BTN_SCL);
+    s.ui.press(PANEL_BTN_ARP); // MUTATE would run on a press of its own: not here
+    s.ui.up(PANEL_BTN_SCL);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(notes_col(&s), before);
+    assert_eq!(dice_chunk(&s).2, 0, "no chunk written without a turn");
+}
+
+#[test]
+fn mutate_keeps_to_the_chosen_scale() {
+    for scale in [1u32, 3, 4, 5] {
+        let mut s = step();
+        set_dice(&mut s, 3, scale);
+        edit_press(&mut s, PANEL_BTN_SCL);
+        for _ in 0..20 {
+            edit_press(&mut s, PANEL_BTN_ARP);
+            for n in hits(&notes_col(&s)) {
+                assert!(
+                    SCALES[scale as usize].contains(&degree(n)),
+                    "scale {scale}: {} escaped ({n})",
+                    degree(n)
+                );
+            }
+        }
+    }
 }

@@ -65,12 +65,13 @@ static const char* const EXPERT_LINES[] = {"SELECT\0FOCUS", "ALG\0PAGE",     "K1
                                            "MACROS\0RESET", "E+ALG\0SAVE TO", "SAVE\0STORE",
                                            "E+K\0SLOT",     "HOME\0BACK"};
 /* The song views: SEQ goes round them, SAVE saves the song, not the settings. STEP and TRACKER
- * undo one step (EDIT + LFO, E+LFO: the line's 14 characters; the ergonomics review's E32). */
+ * undo one step (EDIT + LFO, E+LFO: the line's 14 characters; the ergonomics review's E32). STEP's
+ * card is full: DICE's K1 and K3 (held with EDIT + SCL) took the places of PLAY and KEYS 17+. */
 static const char* const STEP_LINES[] = {
     "KEYS 1-16\0STEP", "STEP+K\0LOCK",   "SELECT\0LANE",    "ALG\0PAGE",
     "PRESETS\0INSTR",  "ARP\0GATE",      "E+LFO\0ONE UNDO", "E+ARP\0MUTATE",
-    "E+SCL\0DICE",     "KEYS 17+\0PLAY", "GLO+KEY\0MUTE",   "REC\0RECORD",
-    "PLAY\0PLAY/STOP", "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+    "E+SCL\0DICE",     "SCL+K1\0DENSITY", "SCL+K3\0SCALE",   "GLO+KEY\0MUTE",
+    "REC\0RECORD",    "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
 /* A step held: its locks, its note; let go with no knob turned, it toggles. */
 static const char* const STEP_HELD_LINES[] = {
     "K1\0CUTOFF LOCK", "K2\0RESO LOCK",  "K3\0PULSE LOCK", "K4\0WAVE SET",

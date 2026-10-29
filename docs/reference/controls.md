@@ -316,7 +316,9 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
 | Step held + LFO | clears that step's locks, its chance and its SET |
 | EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED` |
-| EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN` |
+| EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held |
+| EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
+| EDIT + SCL held + K3 | DICE's **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. K2 and K4 are unbound here (range and rhythm are for 1.x: they act as in LIVE) |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO) |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
@@ -338,12 +340,21 @@ under row inserts and deletes, undo restores it, and GoatTracker plays the step 
 DICE write ordinary cells through the editor, one row a turn like every STEP edit, so the lane's
 pattern stays plain GoatTracker data (undo steps back one cell at a time, as for any edit); both
 need no step held and no REC (they do nothing while recording: REC on, the song playing and any count-in over), and they stop if STEP is left before they finish. The notes are the
-**minor pentatonic** on the lane's note (the one PRESETS sets with a step held, C-3 by default) and
+**minor pentatonic** (or the song's DICE scale, below) on the lane's note (the one PRESETS sets with a step held, C-3 by default) and
 the octave above; a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it
 hits. DICE puts hits on the eighths for a melodic lane (the beat 85 %, the offbeat 55 %) and on the
 sixteenths for a drum lane (90, 15, 50, 25 % through the beat), a key off after each hit on a
 staccato lane; a row's command and data stay. The seed comes from the time of the press, so each
 press is another pattern.
+
+**DICE's settings** (the `DICE` chunk, saved with the song): while EDIT + SCL is held, the HELD STEP
+frame becomes ` DICE - LET GO TO ROLL ` with the two settings at 2x, K1 `DENS` and K3 `SCALE`. The
+density picks the grid's chances (melodic lane, percent by place in the beat 1-2-3-4: SPARSE 60 0 0
+0, LIGHT 85 0 25 0, MEDIUM 85 0 55 0, BUSY 90 35 75 35, FULL 100 each; a drum lane SPARSE 80 0 15 0,
+LIGHT 90 5 30 10, MEDIUM 90 15 50 25, BUSY 95 40 75 55, FULL 100 each). The scale is semitones above the
+lane's note: minor pentatonic 0 3 5 7 10, major pentatonic 0 2 4 7 9, minor 0 2 3 5 7 8 10, major 0 2
+4 5 7 9 11, dorian 0 2 3 5 7 9 10, chromatic all twelve. A song with no chunk is MEDIUM and the
+minor pentatonic.
 
 **Gate.** A staccato lane writes a key off on the next row if that row has no note, and takes
 it away with the note; where the row before a removed note holds a note, the removed note's row

@@ -4938,6 +4938,22 @@ fn the_step_view_matches_its_goldens() {
     step_release(&mut m, 5);
     common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "step-lock", &m.soc.lcd.fb, &[]);
+    // EDIT + SCL held, K1 and K3 turned: DICE's density and scale at 2x, the roll spoiled.
+    m.key(EDIT, true);
+    m.run_ms(60);
+    m.key(sidou_sys::PANEL_BTN_SCL as u8, true);
+    m.run_ms(60);
+    m.turn(K1, 1);
+    m.run_ms(100);
+    m.turn(K1 + 2, 4);
+    m.run_ms(1500); // the popup goes
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "step-dice", &m.soc.lcd.fb, &[]);
+    m.key(sidou_sys::PANEL_BTN_SCL as u8, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "step-lock", &m.soc.lcd.fb, &[]); // no roll, the frame is back
     press(&mut m, PLAY);
     m.run_ms(2_000);
     common::to_mid_frame(&mut m, &fw);
