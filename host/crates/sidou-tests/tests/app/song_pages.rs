@@ -1424,6 +1424,51 @@ fn the_arp_helper_builds_an_arpeggio_and_writes_plain_wavetable_rows() {
 }
 
 #[test]
+fn the_arp_helpers_presets_choose_the_waveform_the_rows_carry() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    h.press(PANEL_BTN_ARP);
+    assert_eq!(h.p.arp_draft.wave, 0x41);
+    assert_eq!(
+        h.popup(PANEL_ENC_PRESETS, false),
+        Some(("WAVE".into(), "PULSE".into(), 2, 7))
+    );
+    // The list: TRI SAW PULSE NOISE, then the combined ones; it stops at its ends.
+    h.turn(PANEL_ENC_PRESETS, 1);
+    assert_eq!(h.p.arp_draft.wave, 0x81);
+    h.turn(PANEL_ENC_PRESETS, 1);
+    assert_eq!(h.p.arp_draft.wave, 0x31);
+    h.turn(PANEL_ENC_PRESETS, 9);
+    assert_eq!(h.p.arp_draft.wave, 0x71);
+    assert_eq!(
+        h.popup(PANEL_ENC_PRESETS, false),
+        Some(("WAVE".into(), "ALL 3".into(), 7, 7))
+    );
+    h.turn(PANEL_ENC_PRESETS, -9);
+    assert_eq!(h.p.arp_draft.wave, 0x11);
+    h.turn(PANEL_ENC_PRESETS, 1);
+    assert_eq!(
+        h.popup(PANEL_ENC_PRESETS, false),
+        Some(("WAVE".into(), "SAW".into(), 1, 7))
+    );
+    // Nothing is written until SAVE, and then every waveform row is the chosen one.
+    assert_eq!(h.wave_rows(0, 1), [(0, 0)]);
+    h.settle();
+    h.save_arp();
+    h.finish_arp();
+    let rows = h.wave_rows(0, 6);
+    assert_eq!(rows[0].0, 0x21);
+    assert_eq!(rows[5], (0xff, 2));
+    // Reading them back opens the same waveform; a byte the list lacks is kept and shown as hex.
+    h.press(PANEL_BTN_ARP);
+    assert_eq!(h.p.arp_draft.wave, 0x21);
+    h.turn(PANEL_ENC_PRESETS, 0);
+    assert_eq!(
+        h.popup(PANEL_ENC_PRESETS, false),
+        Some(("WAVE".into(), "SAW".into(), 1, 7))
+    );
+}
+
+#[test]
 fn the_arp_helper_reads_an_arpeggio_back_and_says_when_rows_are_not_one() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
     h.press(PANEL_BTN_ARP);
@@ -1517,7 +1562,8 @@ fn the_arp_helper_shows_its_page_and_leaves_with_the_table() {
     assert_eq!(ui.big(11, 7, 2, 2), "+4");
     assert_eq!(ui.big(11, 14, 2, 2), "+7");
     assert_eq!(ui.big(11, 21, 2, 3), "+12");
-    assert_eq!(ui.small(17, 0, 7), "WAVE 41");
+    assert_eq!(ui.big(17, 0, 2, 4), "WAVE");
+    assert_eq!(ui.big(17, 12, 2, 5), "PULSE");
     assert_eq!(ui.small(29, 0, 23), "SAVE WRITES FROM ROW 01");
     // The page changing closes the draft.
     unsafe { screen_pop(&mut h.ui.v.s, SCREEN_CUT) };
