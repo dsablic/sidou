@@ -51,7 +51,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   neighbour) and `docs/media/social-preview.png` (1280 x 640, the logo, the tagline, five golden screens).
   To set them: Settings, General, Social preview, Edit, Upload an image (the preview); the avatar is the
   owner's account or organisation picture (profile Settings, Public profile, Profile picture). Redo
-  both if the logo changes. Still by hand, and the Hub card is still to be checked.
+  both if the logo changes. The social preview is set (2026-10-29); the Hub card is still to be checked.
 
 **Hygiene before the tag**
 
