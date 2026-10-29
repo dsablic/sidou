@@ -62,6 +62,9 @@ pub fn act_json(a: &Act) -> Value {
         Act::HoldTurn(b, e, n) => {
             json!({"op": "hold_turn", "button": button_name(*b), "encoder": encoder_name(*e), "detents": n})
         }
+        Act::Hold2Turn(b, b2, e, n) => {
+            json!({"op": "hold2_turn", "button": button_name(*b), "button2": button_name(*b2), "encoder": encoder_name(*e), "detents": n})
+        }
         Act::HoldKey(b, n) => {
             json!({"op": "hold_key", "button": button_name(*b), "note": note_name(*n)})
         }
@@ -123,6 +126,12 @@ pub fn act_from_json(v: &Value, at: &str) -> Result<Act, String> {
         ),
         "hold_turn" => Act::HoldTurn(
             by_name(&BUTTONS, get_str(v, "button", at)?)?,
+            by_name(&ENCODERS, get_str(v, "encoder", at)?)?,
+            get_i64(v, "detents", at)? as i32,
+        ),
+        "hold2_turn" => Act::Hold2Turn(
+            by_name(&BUTTONS, get_str(v, "button", at)?)?,
+            by_name(&BUTTONS, get_str(v, "button2", at)?)?,
             by_name(&ENCODERS, get_str(v, "encoder", at)?)?,
             get_i64(v, "detents", at)? as i32,
         ),
@@ -349,6 +358,18 @@ pub fn describe(acts: &[Act]) -> String {
             },
             n.abs()
         ),
+        Act::Hold2Turn(b, b2, e, n) => format!(
+            "hold {} and {} and turn {} {} by {} detents",
+            button_name(*b),
+            button_name(*b2),
+            encoder_name(*e),
+            if *n >= 0 {
+                "clockwise"
+            } else {
+                "counter-clockwise"
+            },
+            n.abs()
+        ),
         Act::HoldKey(b, n) => format!(
             "hold {} and press note key {}",
             button_name(*b),
@@ -491,6 +512,9 @@ fn prerequisites_json(j: &Journey) -> Value {
     if !j.songs.is_empty() {
         p["songs"] = json!(j.songs);
     }
+    if !j.tunes.is_empty() {
+        p["tunes"] = json!(j.tunes);
+    }
     if let Some(a) = &j.after {
         p["after"] = json!(a);
     }
@@ -620,6 +644,21 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
                 })
                 .collect::<Result<_, String>>()?,
         },
+        tunes: match pre.get("tunes") {
+            None => Vec::new(),
+            Some(list) => list
+                .as_array()
+                .ok_or("prerequisites: `tunes` must be a list of strings")?
+                .iter()
+                .map(|x| {
+                    let name = x
+                        .as_str()
+                        .ok_or("prerequisites: `tunes` must hold strings")?;
+                    crate::device::starter_tune(name).map_err(|e| format!("prerequisites: {e}"))?;
+                    Ok(name.to_string())
+                })
+                .collect::<Result<_, String>>()?,
+        },
         after: match pre.get("after") {
             None => None,
             Some(a) => Some(
@@ -630,6 +669,7 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
         },
         prelude: Vec::new(),
         prelude_songs: Vec::new(),
+        prelude_tunes: Vec::new(),
         steps,
     })
 }
@@ -782,9 +822,11 @@ pub fn schema_keys() -> Map<String, Value> {
         skills: vec![],
         related: vec![],
         songs: vec![],
+        tunes: vec![],
         after: None,
         prelude: vec![],
         prelude_songs: vec![],
+        prelude_tunes: vec![],
         steps: vec![],
     })
     .as_object()
@@ -908,6 +950,27 @@ mod tests {
         assert!(parse_recipe(&bad).unwrap_err().contains("focus"));
         let mut bad = recipe_json(&j[0]);
         bad["prerequisites"]["songs"] = json!(["../etc"]);
+        assert!(parse_recipe(&bad).is_err());
+    }
+
+    #[test]
+    fn starter_tunes_and_two_held_buttons_round_trip() {
+        let j = parse_table(concat!(
+            "journey t | T\n goal G\n skills S\n tunes dojo; chrome-comet\n",
+            " step a | A | c | hold2turn EDIT SCL K1 3 | text X\n",
+        ))
+        .unwrap()
+        .remove(0);
+        assert_eq!(j.tunes, ["dojo", "chrome-comet"]);
+        let v = recipe_json(&j);
+        assert_eq!(v["prerequisites"]["tunes"][1], "chrome-comet");
+        assert_eq!(v["steps"][0]["inputs"][0]["op"], "hold2_turn");
+        let back = parse_recipe(&v).unwrap();
+        assert_eq!(back.tunes, j.tunes);
+        assert_eq!(back.steps[0].acts, j.steps[0].acts);
+        assert!(parse_table("journey t | T\n tunes no-such-tune\n").is_err());
+        let mut bad = v;
+        bad["prerequisites"]["tunes"] = json!(["../etc"]);
         assert!(parse_recipe(&bad).is_err());
     }
 

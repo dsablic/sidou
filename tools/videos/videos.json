@@ -11,8 +11,13 @@
   },
   "whats-new": {
     "teaser": false,
-    "bpm": 125,
-    "preview_step": "kit"
+    "bed": [
+      "lab-keep",
+      "dice-open",
+      "dice-settings",
+      "dice-roll"
+    ],
+    "preview_step": "lab-pages"
   },
   "rec-over-loop": {
     "bpm": 125
@@ -55,5 +60,11 @@
   },
   "arp-visible": {
     "video": false
+  },
+  "shape-in-lab": {
+    "preview_step": "filter"
+  },
+  "play-a-sid": {
+    "preview_step": "play"
   }
 }

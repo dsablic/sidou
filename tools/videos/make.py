@@ -96,6 +96,8 @@ def recipe_capture(rid: str) -> Path:
     songs = sorted({s for v in chain for s in v["prerequisites"].get("songs", [])})
     parts = [json.dumps(v, sort_keys=True).encode() for v in chain]
     parts += [(ROOT / f"assets/songs/{s}.sng").read_bytes() for s in songs]
+    tunes = sorted({s for v in chain for s in v["prerequisites"].get("tunes", [])})
+    parts += [(ROOT / f"assets/starter/{s}.sid").read_bytes() for s in tunes]
     return capture(rid, RECIPES, parts)
 
 
@@ -153,6 +155,10 @@ def events_of(steps: list) -> list:
             elif op == "hold_turn":
                 ev.append((a["button"], "hold", t0, t1, 0))
                 ev.append((a["encoder"], "turn", t0 + 30, max(t1 - 30, t0 + 31), a["detents"]))
+            elif op == "hold2_turn":
+                ev.append((a["button"], "hold", t0, t1, 0))
+                ev.append((a["button2"], "hold", t0 + 30, t1, 0))
+                ev.append((a["encoder"], "turn", t0 + 210, max(t1 - 30, t0 + 61), a["detents"]))
             elif op == "hold_key":
                 ev.append((a["button"], "hold", t0, t1, 0))
                 ev.append((a["note"], "key", t0 + 30, t0 + 180, 0))
@@ -203,6 +209,8 @@ def default_callout(step: dict) -> str:
         return f"TURN {a['encoder']}"
     if op == "hold_turn":
         return f"HOLD {a['button']} + TURN {a['encoder']}"
+    if op == "hold2_turn":
+        return f"HOLD {a['button']} + {a['button2']} + TURN {a['encoder']}"
     if op == "hold_key":
         return f"HOLD {a['button']} + KEY {panel.note_number(a['note']) - 52}"
     if op == "hold_press":
@@ -258,6 +266,10 @@ def palette(cap: Path) -> list:
 
 
 def version() -> str:
+    """The corner's version: CMakeLists.txt's, or SIDOU_VIDEOS_VERSION (videos made for a release
+    before its version is bumped)."""
+    if os.environ.get("SIDOU_VIDEOS_VERSION"):
+        return f"SIDOU {os.environ['SIDOU_VIDEOS_VERSION']} - PLAYED ON SIDOU"
     m = re.search(r"project\(sidou VERSION ([0-9.]+)", (ROOT / "CMakeLists.txt").read_text())
     return f"SIDOU {m.group(1) if m else '?'} - PLAYED ON SIDOU"
 

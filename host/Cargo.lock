@@ -285,6 +285,7 @@ dependencies = [
  "residfp-sys",
  "serde_json",
  "sidou-sys",
+ "sidou-sysex",
  "sidou-tablegen",
  "sidou-tests",
 ]

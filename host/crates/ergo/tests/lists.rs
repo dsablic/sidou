@@ -185,6 +185,7 @@ fn every_list_takes_save_and_home_and_leads_back_to_live() {
         let mut d = Dev::power_on_with(
             &build,
             &["chrome-comet".to_string()][..usize::from(l.own_song)],
+            &[],
         );
         ergo::common::run_past_boot(&mut d.m, &d.fw);
         d.run(300);
