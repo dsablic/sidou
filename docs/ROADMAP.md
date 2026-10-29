@@ -24,7 +24,9 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 **LAB: shape one sound and keep it.** A view for experimenting on the go: five pages with
 drawings of the oscillator, envelope and more, one press to keep a sound, 16 USER sounds,
 A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
-[plans/2026-10-25-lab-design.md](plans/2026-10-25-lab-design.md). L, in progress.
+[plans/2026-10-25-lab-design.md](plans/2026-10-25-lab-design.md). L. **Built** (on `main`, in
+the unreleased 1.0; the help cards, the ergonomics journey and the manual page
+[docs/manual/lab.md](manual/lab.md) are done); the device session below gates its release.
 
 **Smaller things that make 1.0 feel finished**
 
@@ -53,7 +55,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **Its own USB ID.** A pid.codes product ID for the app, applied for by the user. 1.0 is not
   blocked by it: the ID lands in a 1.0.x. The update loader stays Felucca's, vendored byte for
   byte, on 0x1209:0x0002.
-- **The ergo baseline refreshed** after LAB, with the accepted findings reviewed.
+- **The ergo baseline refreshed** after LAB, with the accepted findings reviewed. Done.
 - **A device session gates 1.0.** USB audio recording, the first-run tour, unplugging the
   cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, and a long 48 kHz recording (the CPU erratum in Felucca's resampler, [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16); if it fails, 48 kHz goes off until a fix).
 
@@ -72,6 +74,14 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **Instruments from a `.sid`.** Lift an instrument out of a tune you play. M-L; pairs with
   the song bridge.
 - **LAB: hold-to-peek and macros.** S-M each.
+- **FILTER's K4: a filter LFO.** The user accepted it (2026-10-25) and it is not built: K4 is
+  free and toasts `K4: NOTHING`. A new parameter (`LIVE_PARAM_FILTER_LFO`, the 60th of 64): the
+  PWM LFO's wave also sweeps the cutoff by this much (0..127), at the PWM rate; one term in
+  `cutoff_effective`, 10 bytes of RAM, its map row, the drawing's sweep, the help card. S-M.
+- **MOD's K4: ARP RATE** in the place of the velocity target (the panel's keys send no velocity,
+  so the card does nothing on the go). Needs the arpeggio's rate as a parameter (the 61st; CC 28
+  stays) so the card can be learned; the velocity target stays reachable over MIDI (NRPN) and on
+  STATUS. S-M.
 
 **Songs**
 

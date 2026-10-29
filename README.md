@@ -47,8 +47,11 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
 - **Shape a sound and keep it (LAB, 1.0 in progress).** ENV, LFO and FX on LIVE open LAB: five
-  pages (OSC, ENVELOPE, FILTER, MOD, FX) draw what their knobs do, and one SAVE keeps the sound as
-  one of 16 USER sounds, with A/B, undo and variation rolls.
+  pages (OSC, ENVELOPE, FILTER, MOD, FX) draw what their four cards do, so you turn K1 to K4 and see
+  it. EDIT's tap compares A and B, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
+  EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER
+  sounds, which PRESETS plays after DICE; EDIT + SAVE names it on the keys. A slot turned to OFF
+  on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)).
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
@@ -117,12 +120,17 @@ On LIVE:
 | SELECT / ALGORITHM | the knob page (TONE, DIST, MOD, FX) / the chip profile (the 6581s and the 8580) or the effect's algorithm |
 | EDIT held + K1 to K4 | the selected effect slot's amount, A, B and mix |
 | SCL | the next effect slot |
-| ENV / LFO / FX | LAB at its envelope, modulation or effects page (1.0 in progress) |
+| ENV / LFO / FX | open LAB at its envelope, modulation or effects page (1.0 in progress) |
 | MASTER | volume |
 | SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
 | PLAY / REC | play and stop the song (with a `.sid` tune loaded, the tune; EDIT held pauses it) / record mode |
 | SAVE | in the menu: opens the highlighted item; in a song view: saves the song |
 | HOME | the menu from LIVE, back one view elsewhere (settings are under SETTINGS in the menu) |
+
+**In LAB** (1.0 in progress): K1 to K4 are the page's four cards and ALGORITHM its choice; SELECT, or
+ENV, LFO and FX, change the page; SAVE keeps the sound as a USER sound; tap EDIT for A/B; EDIT + LFO
+undoes, EDIT + ARP varies, EDIT + SCL rolls, EDIT + SAVE names; HOME goes back to LIVE
+([shape a sound in LAB](docs/manual/lab.md)).
 
 **Hold HOME on any screen for its help card**: it says what each control does there, for what the screen is doing (SELECT turns a two-page card). Every control, every screen and every MIDI
 message is in [docs/reference/controls.md](docs/reference/controls.md) and
@@ -194,7 +202,7 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
 - **Next: 1.0, with LAB**, a view for shaping one sound and keeping it, made for experimenting on the go
-  ([docs/ROADMAP.md](docs/ROADMAP.md)), with the smaller things around it: DICE's settings, more
+  (built and on `main`, not yet released; [docs/ROADMAP.md](docs/ROADMAP.md)), with the smaller things around it: DICE's settings, more
   render parts for dense `.sid` players, and a device session.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the

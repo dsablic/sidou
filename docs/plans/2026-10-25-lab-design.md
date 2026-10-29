@@ -6,6 +6,12 @@ Agreed with the user in a design session after v0.5.0. Inputs:
 [https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md](https://github.com/dsablic/sidou/blob/v0.5.0/docs/TODO.md) "LAB", [what other firmwares do](2026-10-25-lab-inspiration.md),
 [the button audit](2026-10-25-button-audit.md).
 
+**Status (2026-10-29):** built, in [the plan](2026-10-25-lab-plan.md) Tasks 1 to 18, on `main` and
+not yet released. Where the plan deviated: the USER sounds are one store file and the unsaved
+edit one key (Task 1's option A); FILTER's K4 and MOD's K4 proposals (a filter LFO, ARP RATE) are
+accepted and not built, and are in [the roadmap](../ROADMAP.md) (1.x); the song bridge, hold-to-peek
+and macros are 1.x. The user's page: [shape a sound in LAB](../manual/lab.md).
+
 **The goal:** the FM-1 is an ideal device for experimenting on the go. LAB is where a LIVE sound
 is shaped with every parameter visible and kept with one press. **Ergonomics first** (the user):
 you see what you are tweaking and what it does; everything is logical and clearly visible.
