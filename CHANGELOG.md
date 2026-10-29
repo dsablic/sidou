@@ -8,6 +8,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The Songs page waits and sends again when the FM-1 answers a transfer with NAK BUSY, instead
+  of giving up: it shows that the FM-1 is tidying its store, waits 1, 2, 4 and then 5 seconds
+  between tries for about a minute, and sends the whole PUT again. Other refusals still stop the
+  transfer. `sidou-sysex` only writes `.syx` files, so it has no sender to change.
+
 ## [1.0.0] - 2026-10-29
 
 ### Added

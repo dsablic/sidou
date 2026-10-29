@@ -114,6 +114,11 @@ ABORT is accepted at any sequence from the transfer's owner. Duplicate or
 out-of-order DATA packets abort rather than being written twice; retry the
 whole transfer after a NAK or a lost ACK.
 
+A sender that gets NAK BUSY (4) is not failing for good: the NAK ended the transfer, so it
+waits and sends the whole PUT again from its first packet, whichever packet was refused. The
+Songs page waits 1 s, 2 s, 4 s, then 5 s between tries, for about a minute in all, and shows
+that it is waiting; any other reason stops the transfer.
+
 For incoming PUT, the initial packet declares exact length and CRC. SIDOU claims
 all store sectors with `store_file_begin` before acknowledging it (a `.sid`'s at its first
 DATA, above). If the clean

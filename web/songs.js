@@ -183,7 +183,10 @@ async function run(songs) {
       c.progress.value = 0;
       say(c.status, "Sending…");
       try {
-        await state.client.put(song.name, bytes, { onProgress: (d, t) => { c.progress.value = t ? d / t : 1; } });
+        await state.client.put(song.name, bytes, {
+          onProgress: (d, t) => { c.progress.value = t ? d / t : 1; },
+          onBusy: (ms) => say(c.status, `The FM-1 is tidying its store, waiting ${Math.round(ms / 1000)} s…`),
+        });
       } catch (e) {
         say(c.status, `Failed: ${e.message}.`, "error");
         if (all) say(note, `Stopped at ${song.name}.`, "error");

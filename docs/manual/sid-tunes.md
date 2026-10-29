@@ -43,6 +43,10 @@ port for output, load the `.syx` and send it **with a pause of one second after 
 (the FM-1 writes each message to flash before it takes the next; without the pause it refuses
 the upload). A 4 KiB tune takes about 20 seconds.
 
+If the tool reports a refusal part way (the screen shows BUSY, as the store is tidying its
+flash), wait about 20 seconds and send the whole file again; the Songs page on the demo site
+does this by itself.
+
 - **macOS:** SysEx Librarian (Snoize): its preferences set the pause between messages.
 - **Windows:** MIDI-OX: SysEx, Configure, the delay after each F7, in milliseconds.
 - **Linux:** `amidi -p hw:X,0 -s first.syx -i 1000` (`amidi -l` lists the ports; `-i` is the
