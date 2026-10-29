@@ -22,7 +22,22 @@ screenshots the tests check.*
 
 **Watch:** [SIDOU in 79 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 1.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html) · [the cheat sheet](https://dsablic.github.io/sidou/cheatsheet.html)
 
-## What's new in 0.5.0
+## What's new in 1.0.0
+
+- **LAB: shape one sound and keep it.** Five pages (OSC, ENVELOPE, FILTER, MOD, FX), each
+  drawing what its four knobs do. ENV, LFO and FX on LIVE open it. SAVE keeps the sound as one
+  of sixteen USER sounds that PRESETS plays; EDIT compares A and B, EDIT + LFO undoes, EDIT + ARP
+  and EDIT + SCL roll variations that are never silent ([shape a sound in LAB](docs/manual/lab.md)).
+- **DICE's settings on STEP:** hold EDIT + SCL and turn K1 for the density, K3 for the scale;
+  saved with the song.
+- **Dense `.sid` players arrive on time,** the **ARP helper** picks its waveform, **TABLE and
+  STEP** read at 2×, and **STATUS** shows the store's health.
+
+The chip model moved to ALGORITHM on LIVE's TONE page (CC 25 as before). All of it is in the
+[release notes](https://github.com/dsablic/sidou/releases/tag/v1.0.0) and the
+[CHANGELOG](CHANGELOG.md).
+
+## What was new in 0.5.0
 
 - **`.sid` tunes on the FM-1.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC)
   from the device's flash, each SID write timed to its cycle. Menu → SIDS lists them; NOW PLAYING
@@ -46,7 +61,7 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
-- **Shape a sound and keep it (LAB, 1.0 in progress).** ENV, LFO and FX on LIVE open LAB: five
+- **Shape a sound and keep it (LAB, new in 1.0).** ENV, LFO and FX on LIVE open LAB: five
   pages (OSC, ENVELOPE, FILTER, MOD, FX) draw what their four cards do, so you turn K1 to K4 and see
   it. EDIT's tap compares A and B, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
   EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER
@@ -93,8 +108,8 @@ flash.
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
 
-1. Download the `.fwsc` file (for example `sidou-0.5.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou-0.5.0.fwsc`). The unit then shows
+1. Download the `.fwsc` file (for example `sidou-1.0.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-1.0.0.fwsc`). The unit then shows
    up on USB as "SIDOU FM-1", and later versions install over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
 4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
@@ -120,14 +135,14 @@ On LIVE:
 | SELECT / ALGORITHM | the knob page (TONE, DIST, MOD, FX) / the chip profile (the 6581s and the 8580) or the effect's algorithm |
 | EDIT held + K1 to K4 | the selected effect slot's amount, A, B and mix |
 | SCL | the next effect slot |
-| ENV / LFO / FX | open LAB at its envelope, modulation or effects page (1.0 in progress) |
+| ENV / LFO / FX | open LAB at its envelope, modulation or effects page |
 | MASTER | volume |
 | SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
 | PLAY / REC | play and stop the song (with a `.sid` tune loaded, the tune; EDIT held pauses it) / record mode |
 | SAVE | in the menu: opens the highlighted item; in a song view: saves the song |
 | HOME | the menu from LIVE, back one view elsewhere (settings are under SETTINGS in the menu) |
 
-**In LAB** (1.0 in progress): K1 to K4 are the page's four cards and ALGORITHM its choice; SELECT, or
+**In LAB**: K1 to K4 are the page's four cards and ALGORITHM its choice; SELECT, or
 ENV, LFO and FX, change the page; SAVE keeps the sound as a USER sound; tap EDIT for A/B; EDIT + LFO
 undoes, EDIT + ARP varies, EDIT + SCL rolls, EDIT + SAVE names; HOME goes back to LIVE
 ([shape a sound in LAB](docs/manual/lab.md)).
@@ -190,8 +205,11 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 
 ## Status and roadmap
 
-- **v0.5.0** is released (2026-10-25, [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0),
-  [CHANGELOG.md](CHANGELOG.md)): `.sid` playback. SIDOU's own 6502 plays PSID tunes on the chips,
+- **v1.0.0** is released (2026-10-29, [release notes](https://github.com/dsablic/sidou/releases/tag/v1.0.0),
+  [CHANGELOG.md](CHANGELOG.md)): LAB, a view for shaping one sound and keeping it as one of
+  sixteen USER sounds, DICE's density and scale, dense `.sid` players on time, the ARP helper's
+  waveform, 2× text on TABLE and STEP, and the store's health on STATUS.
+- **v0.5.0** (2026-10-25): `.sid` playback. SIDOU's own 6502 plays PSID tunes on the chips,
   each write timed to its cycle, from the store (SIDS and NOW PLAYING); tunes go on over SysEx,
   with an openly licensed starter pack; STATUS, now at 2× on three pages, shows the 6502's share
   of the CPU.
@@ -201,9 +219,8 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: 1.0, with LAB**, a view for shaping one sound and keeping it, made for experimenting on the go
-  (built and on `main`, not yet released; [docs/ROADMAP.md](docs/ROADMAP.md)), with the smaller things around it: DICE's settings, more
-  render parts for dense `.sid` players, and a device session.
+- **Next: 1.x** ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, the rest of DICE's
+  settings, the move to felucca-bsp.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/ROADMAP.md) and the

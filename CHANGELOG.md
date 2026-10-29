@@ -8,8 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-29
+
 ### Added
-- **LAB, a view to shape one sound and keep it** (1.0, in progress). Five pages, OSC, ENVELOPE,
+- **LAB, a view to shape one sound and keep it**. Five pages, OSC, ENVELOPE,
   FILTER, MOD and FX, each with four cards on K1 to K4 and a drawing of what they do (the pulse's
   width, the envelope, the filter's curve, the modulation, the effect slot); ALGORITHM is the
   page's choice (the waveform, the envelope mode, the filter mode, the arpeggio, the slot's

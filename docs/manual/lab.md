@@ -4,7 +4,7 @@
 
 LAB is where you shape one sound with every parameter in sight, and keep it with one press.
 It is made for experimenting: turn something, hear it, compare, undo, roll the dice, keep what
-you like. LAB is part of 1.0, which is still in progress; this page describes what is built.
+you like. LAB came in 1.0.
 
 ## 1. Open it
 

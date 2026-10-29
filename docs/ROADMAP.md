@@ -8,6 +8,8 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.0.0](https://github.com/dsablic/sidou/releases/tag/v1.0.0)** (2026-10-29): LAB, sixteen
+  USER sounds, DICE's density and scale, dense `.sid` players on time (the list below).
 - **[0.5.0](https://github.com/dsablic/sidou/releases/tag/v0.5.0)** (2026-10-25): `.sid`
   playback on SIDOU's own 6502, SIDS and NOW PLAYING, tunes over SysEx.
 - **[0.4.0](https://github.com/dsablic/sidou/releases/tag/v0.4.0)** (2026-10-25): SID drum kit
@@ -19,14 +21,13 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 - **[0.2.0](https://github.com/dsablic/sidou/releases/tag/v0.2.0)** (2026-10-22): the first
   release to run on a real FM-1, with USB-MIDI out.
 
-## 1.0 (in progress)
+## 1.0
 
 **LAB: shape one sound and keep it.** A view for experimenting on the go: five pages with
 drawings of the oscillator, envelope and more, one press to keep a sound, 16 USER sounds,
 A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
-[plans/2026-10-25-lab-design.md](plans/2026-10-25-lab-design.md). L. **Built** (on `main`, in
-the unreleased 1.0; the help cards, the ergonomics journey and the manual page
-[docs/manual/lab.md](manual/lab.md) are done); the device session below gates its release.
+[plans/2026-10-25-lab-design.md](plans/2026-10-25-lab-design.md). L. **Released** in 1.0
+(the manual page: [docs/manual/lab.md](manual/lab.md)).
 
 **Smaller things that make 1.0 feel finished**
 
