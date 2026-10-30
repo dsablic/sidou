@@ -325,13 +325,15 @@ __attribute__((noinline)) static void fx_tick_any(sid_slots* s, uint32_t alg, fl
 #define ADVANCE() (amount += ia, a += ib, b += ic, mix += im)
 #define SAVE(sl) ((sl)->amount = amount, (sl)->a = a, (sl)->b = b, (sl)->mix = mix)
 
-/* Steady distortion: one loop per algorithm. */
-#define DIST_LOOP(expr)                              \
-    for (uint32_t i = 0; i < len; ++i) {             \
-        ADVANCE();                                   \
-        float xi = x[i];                             \
-        float wet = (expr);                          \
-        x[i] = xi + mix * (wet - xi);                \
+/* Steady distortion: one loop per algorithm, on the input lifted to the algorithms' level (xg,
+ * SID_SLOT_DIST_GAIN) and the wet brought back down. */
+#define DIST_LOOP(expr)                                              \
+    for (uint32_t i = 0; i < len; ++i) {                             \
+        ADVANCE();                                                   \
+        float xi = x[i];                                             \
+        float xg = xi * SID_SLOT_DIST_GAIN;                          \
+        float wet = (expr) * (1.0f / SID_SLOT_DIST_GAIN);            \
+        x[i] = xi + mix * (wet - xi);                                \
     }
 
 static void dist_run(sid_slots* s, float* x, uint32_t len) {
@@ -343,7 +345,9 @@ static void dist_run(sid_slots* s, float* x, uint32_t len) {
             ADVANCE();
             float g = step_switch(s, SID_SLOT_DIST);
             if (sl->phase != SID_SLOT_CLEAR) {
-                float wet = dist_tick_any(s, sl->algorithm, x[i], amount, a, b);
+                float wet = dist_tick_any(s, sl->algorithm, x[i] * SID_SLOT_DIST_GAIN, amount,
+                                          a, b) *
+                            (1.0f / SID_SLOT_DIST_GAIN);
                 x[i] += mix * g * (wet - x[i]);
             }
         }
@@ -351,14 +355,14 @@ static void dist_run(sid_slots* s, float* x, uint32_t len) {
         return;
     }
     switch (sl->algorithm) {
-    case SID_DIST_TAPE: DIST_LOOP(sid_fx_tape_tick(&d->tape, xi, amount)) break;
+    case SID_DIST_TAPE: DIST_LOOP(sid_fx_tape_tick(&d->tape, xg, amount)) break;
     case SID_DIST_OVERDRIVE:
-        DIST_LOOP(sid_fx_overdrive_tick(&d->overdrive, xi, amount, a, b))
+        DIST_LOOP(sid_fx_overdrive_tick(&d->overdrive, xg, amount, a, b))
         break;
-    case SID_DIST_FUZZ: DIST_LOOP(sid_fx_fuzz_tick(&d->fuzz, xi, amount, a, b)) break;
-    case SID_DIST_CRUSH: DIST_LOOP(sid_fx_crush_tick(&d->crush, xi, a, amount)) break;
+    case SID_DIST_FUZZ: DIST_LOOP(sid_fx_fuzz_tick(&d->fuzz, xg, amount, a, b)) break;
+    case SID_DIST_CRUSH: DIST_LOOP(sid_fx_crush_tick(&d->crush, xg, a, amount)) break;
     case SID_DIST_LOFI:
-        DIST_LOOP(sid_fx_noise_tick(&d->lofi.noise, sid_fx_crt_tick(&d->lofi.crt, xi, amount, a),
+        DIST_LOOP(sid_fx_noise_tick(&d->lofi.noise, sid_fx_crt_tick(&d->lofi.crt, xg, amount, a),
                                     b))
         break;
     default:

@@ -37,6 +37,92 @@ pub fn step(cpu: &mut Cpu, soc: &mut Soc) {
         .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
 }
 
+/// A misaligned access the FM-1 faults on: (pc, address, bytes).
+pub type Misaligned = (u32, u32, u8);
+
+/// The FM-1's alignment rule over fm1-emu's bus: on the chip a 16- or 32-bit RAM access at an
+/// address that is not a multiple of its size faults, always (fm1-emu's paper, "Misaligned
+/// 16/32-bit RAM access": the `align` probe); fm1-emu carries it out. This bus does too, and
+/// records each one.
+struct AlignBus<'a> {
+    soc: &'a mut Soc,
+    pc: u32,
+    seen: &'a mut Vec<Misaligned>,
+}
+
+impl AlignBus<'_> {
+    fn check(&mut self, addr: u32, bytes: u8) {
+        let ram = fm1_soc::RAM_BASE..fm1_soc::RAM_BASE + RAM_SIZE as u32;
+        if !addr.is_multiple_of(u32::from(bytes)) && ram.contains(&addr) {
+            self.seen.push((self.pc, addr, bytes));
+        }
+    }
+}
+
+impl Bus for AlignBus<'_> {
+    fn read8(&mut self, addr: u32) -> u8 {
+        self.soc.read8(addr)
+    }
+    fn read16(&mut self, addr: u32) -> u16 {
+        self.check(addr, 2);
+        self.soc.read16(addr)
+    }
+    fn read32(&mut self, addr: u32) -> u32 {
+        self.check(addr, 4);
+        self.soc.read32(addr)
+    }
+    fn fetch32(&mut self, addr: u32) -> u32 {
+        self.soc.fetch32(addr)
+    }
+    fn write8(&mut self, addr: u32, value: u8) {
+        self.soc.write8(addr, value);
+    }
+    fn write16(&mut self, addr: u32, value: u16) {
+        self.check(addr, 2);
+        self.soc.write16(addr, value);
+    }
+    fn write32(&mut self, addr: u32, value: u32) {
+        self.check(addr, 4);
+        self.soc.write32(addr, value);
+    }
+    fn tick(&mut self) -> bool {
+        self.soc.tick()
+    }
+    fn irq_pending(&self) -> bool {
+        self.soc.irq_pending()
+    }
+    fn jit_mem(&mut self) -> Option<fm1_core::JitMem> {
+        self.soc.jit_mem()
+    }
+    fn tick_room(&self) -> u64 {
+        self.soc.tick_room()
+    }
+    fn add_ticks(&mut self, n: u64) {
+        self.soc.add_ticks(n);
+    }
+    fn hw_lock(&mut self, core: u32, set: bool) -> bool {
+        self.soc.hw_lock(core, set)
+    }
+    fn next_tick_due(&self) -> bool {
+        self.soc.next_tick_due()
+    }
+    fn idle(&mut self, core: u32) {
+        self.soc.idle(core);
+    }
+    fn irq_window(&mut self) {
+        self.soc.irq_window();
+    }
+    fn service(&mut self) {
+        self.soc.service();
+    }
+    fn code_writes(&self) -> Option<u64> {
+        self.soc.code_writes()
+    }
+    fn code_mark(&mut self, lo: u32, hi: u32) {
+        self.soc.code_mark(lo, hi);
+    }
+}
+
 /// Where the SPL maps app.bin, and enters it.
 pub const APP_BASE: u32 = 0x0200_0120;
 /// The SPL's boot-parameter block (Felucca's crt0.S: inside the vector table at 0x01C7FE00).
@@ -244,6 +330,10 @@ pub struct Machine {
     /// With true, `run_cycles` stops at a reset that is due instead of carrying it out, so a
     /// test sees the chip as it asked for it (`reset_due`); `reset` then carries it out.
     pub stop_at_reset: bool,
+    /// With true, `run_cycles` records in `misaligned` each 16- or 32-bit RAM access the FM-1
+    /// would fault on (`AlignBus`): fm1-emu carries them out.
+    pub align_check: bool,
+    pub misaligned: Vec<Misaligned>,
 }
 
 /// P33 `RST_SRC`'s causes (fm1-soc p33.rs): the watchdog ran out, or PR_PWR (fm1_reboot).
@@ -554,6 +644,8 @@ impl Machine {
             jit_tick: false,
             resets: Vec::new(),
             stop_at_reset: false,
+            align_check: false,
+            misaligned: Vec::new(),
         }
     }
 
@@ -806,7 +898,17 @@ impl Machine {
             }
             feed_trs(&mut self.trs_at, soc);
             let (pc, skipped) = (cpu.pc, soc.periph.skipped);
-            step(cpu, soc);
+            if self.align_check {
+                let mut bus = AlignBus {
+                    soc,
+                    pc,
+                    seen: &mut self.misaligned,
+                };
+                cpu.step(&mut bus)
+                    .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
+            } else {
+                step(cpu, soc);
+            }
             if !in_isr && soc.periph.skipped != skipped {
                 *self.idles.entry(pc).or_insert(0) += 1;
             }

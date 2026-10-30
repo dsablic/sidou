@@ -8,6 +8,9 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.1.0](https://github.com/dsablic/sidou/releases/tag/v1.1.0)** (2026-10-30): LAB's
+  filter LFO, ARP RATE, MACRO links and peek, the auditions, generative TRACKER, DICE's range
+  and rhythm, knob curves (the list below).
 - **[1.0.0](https://github.com/dsablic/sidou/releases/tag/v1.0.0)** (2026-10-29): LAB, sixteen
   USER sounds, DICE's density and scale, dense `.sid` players on time (the list below).
 - **[0.5.0](https://github.com/dsablic/sidou/releases/tag/v0.5.0)** (2026-10-25): `.sid`
@@ -62,11 +65,33 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 - **A device session gates 1.0.** USB audio recording, the first-run tour, unplugging the
   cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, and a long 48 kHz recording, left to users (the CPU erratum in Felucca's resampler, [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16); if it fails, 48 kHz goes off until a fix).
 
-## 1.1 (in progress)
+## 1.1
 
-Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](plans/2026-10-29-1.1-design.md)
+Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows in a 1.1.x): [the 1.1 design](plans/2026-10-29-1.1-design.md)
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
+
+## 1.5 (next)
+
+The user, 2026-10-30: 1.1.x and what was 1.2 roll into one release, 1.5; a quality pass follows
+it. Each large item gets its own design first (as LAB did).
+
+- **SIDOU's own USB ID** (0x51D0, pid.codes request #1341).
+- **LAB's song bridge** and **instruments from a `.sid`** (below, Sound and play).
+- **Generated arpeggio chords and multiplexed drums in TRACKER** (1.1's cut left them out).
+- **A browser editor and librarian** and **the screen mirror (FM-1 Live Link)** (below,
+  Connectivity).
+- **A popup for every encoder edit** (the user, 2026-10-30): turning an encoder that changes a
+  parameter shown in small print brings up its name and value, large. An audit of every view
+  (TABLE, INSTR, ORDER, the EDIT layers, CHIP, SETTINGS) and an ergonomics-gate check that
+  enforces it; 1.1 does the effect knobs (EDIT + K1-K4) with a reusable popup.
+- **The move to felucca-bsp** (below, Platform), if felucca-bsp #14 and #15 are settled in time;
+  SIDOU takes upstream code only byte for byte.
+
+Before 1.5 is released: a test and code cleanup (DRY, deduplication and simplification wherever
+possible; the user, 2026-10-30). After 1.5: the rest of the quality pass (performance headroom,
+the faster ergonomics gate, suggested automations, knob-curve follow-ups from the device
+sessions).
 
 ## 1.x
 
@@ -96,7 +121,7 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
   each way at the PWM rate, CC 31.
 - ~~**MOD's K4: ARP RATE**~~ Done (1.1): `LIVE_PARAM_ARP_RATE`, CC 28 through its map row; the
   velocity target stays on NRPN 6/1 (STATUS does not show it).
-- **LAB, press order:** EDIT + ARP and EDIT + LFO whichever finger lands first, in LAB and STEP.
+- ~~**LAB, press order:** EDIT + ARP and EDIT + LFO whichever finger lands first, in LAB and STEP.~~
   Done (1.1).
 
 **Songs**
@@ -164,7 +189,8 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 - ~~**REC from the keys, compensated.**~~ Done in 1.1: a fixed 6.0 ms computed from the block,
   the double buffer and the debounce, in NEAREST and OFF; the feel at tempo 6 and 3 is a device
   check. S.
-- **sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.
+- ~~**sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.~~ Done (1.1) in
+  the site's sender; `sidou-sysex` only writes files.
 
 ## Later and ideas
 

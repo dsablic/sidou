@@ -2621,11 +2621,17 @@ static int param_text(const views* v, uint32_t param, char* name, char* value, u
         uint32_t i = param - LIVE_PARAM_SLOT;
         uint32_t slot = i / LIVE_SLOT_FIELDS;
         uint32_t field = i % LIVE_SLOT_FIELDS;
+        /* the effect by name over the control's and its value: OVERDRIVE, DRIVE 91 (a slot
+         * that is off: DIST OFF, AMT 40) */
+        uint32_t alg = l->slot[slot][LIVE_SLOT_ALGORITHM];
         char label[CHIP_VIEW_LABEL];
-        (void)chip_view_label(slot, l->slot[slot][LIVE_SLOT_ALGORITHM], field, label);
-        join(name, SCREEN_POPUP_TEXT, SLOT_NAMES[slot], " ");
-        append(name, SCREEN_POPUP_TEXT, label);
-        number_value(value, l->slot[slot][field], fill, max, LIVE_SLOT_MAX);
+        char num[4];
+        (void)chip_view_label(slot, alg, field, label);
+        join(name, SCREEN_POPUP_TEXT, alg ? views_algorithm_name(slot, alg) : SLOT_NAMES[slot],
+             alg ? "" : " OFF");
+        number_value(num, l->slot[slot][field], fill, max, LIVE_SLOT_MAX);
+        join(value, SCREEN_POPUP_TEXT, label, " ");
+        append(value, SCREEN_POPUP_TEXT, num);
     } else if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
         chip_setup setup;
         chip_setup_of(l, &setup);
@@ -3286,7 +3292,7 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
             v->live.beat = 0;
             v->live.row_seen = 0xffu; /* the song's first row is a beat */
         }
-        if (control) {
+        if (control && !(ask & ASK_EDIT)) { /* EDIT held: the slot's control in the popup */
             live_view_flash(&v->live, enc - PANEL_ENC_K1 + 1u, now_ms);
             v->s.popup_ask = 0;
         } else if ((ask & (ASK_BASE | ASK_PARAM)) == ASK_BASE) {

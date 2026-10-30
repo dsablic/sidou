@@ -202,11 +202,14 @@ typedef struct {
 
 /* A wavetable draft heard before it is written (1.1, TABLE's ARP helper): on one channel the
  * wavetable's rows [first, first + len) read as these (left bytes, then right bytes), and a
- * jammed note there starts its wave program at first. channel GT2_DRAFT_OFF: none. */
+ * jammed note there starts its wave program at first. channel GT2_DRAFT_OFF: none. Word
+ * aligned wherever it is: song_ctl copies one in words, and the FM-1 faults on a misaligned
+ * word access (1.1.0's ARP helper rebooted the device). */
 #define GT2_DRAFT_ROWS 10u
 #define GT2_DRAFT_OFF 0xffu
 typedef struct {
-    uint8_t channel, first, len, pad;
+    _Alignas(4) uint8_t channel;
+    uint8_t first, len, pad;
     uint8_t rows[2u * GT2_DRAFT_ROWS];
 } gt2_draft;
 

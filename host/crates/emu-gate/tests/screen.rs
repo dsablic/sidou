@@ -510,6 +510,37 @@ fn popup_rows(m: &mut Machine, fw: &Firmware) -> u8 {
     )
 }
 
+/// EDIT held + a knob over LIVE: the effect slot's control in the large popup, the effect's
+/// name over the control's and its value, with a bar (app/views.c live_frame, param_text).
+#[test]
+fn edit_and_a_knob_on_live_open_the_effects_popup() {
+    let Some((build, fw)) = fixture("the effect popup test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    m.key(EDIT, true);
+    m.run_ms(30);
+    m.turn(ALGORITHM, 2); // OVERDRIVE, at its musical start
+    m.run_ms(1_300); // its highlight is over
+    m.turn(K1, 3);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(
+        popup_rows(&mut m, &fw),
+        sidou_sys::SCREEN_POPUP_ROWS as u8,
+        "the popup is open"
+    );
+    compare_golden(&build, "live-edit-popup", &m.soc.lcd.fb, &[]);
+    m.key(EDIT, false);
+    m.run_ms(1_500);
+    assert_eq!(
+        popup_rows(&mut m, &fw),
+        0,
+        "gone a second after the last detent"
+    );
+}
+
 /// A knob over LIVE opens no popup: its column's label is shown reversed for a second instead
 /// (app/views.c live_frame), and LIVE is as it was after that.
 #[test]
@@ -1038,7 +1069,7 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
 /// A turn that asks for the popup stays within an input bound whatever view takes it (the CHIP
 /// view's own: CHIP_INPUT): the input's call (ui_encoder, which stores the ask) and the busiest
 /// pass after it, in which the frame asks the views for the text and draws the popup's first
-/// rows. Measured (M2f): K1 218 on LIVE and STATUS (234 over the menu, 230 on SCENE), K2 170 to
+/// rows. EDIT held over LIVE is the effect slot's popup (1.1). Measured (M2f): K1 218 on LIVE and STATUS (234 over the menu, 230 on SCENE), K2 170 to
 /// 186, ALGORITHM 166, SELECT 129, the busiest pass 37.2k on the views that compose little and
 /// 59.8k on SCENE (its own piece). K4 (the preset) is no popup's cost:
 /// it loads a preset, 1,185 here and 88,997 in the busiest pass over LIVE, as before.
@@ -1052,10 +1083,18 @@ fn a_popup_ask_keeps_the_input_and_the_passes_within_the_allowance() {
         return;
     };
     let mut over = Vec::new();
-    for view in ["live", "status", "menu", "scene"] {
+    for view in ["live", "live-edit", "status", "menu", "scene"] {
         let mut m = booted(&fw);
         match view {
             "status" => common::open_status(&mut m, &fw),
+            "live-edit" => {
+                // EDIT held: K1 and K2 turn the effect slot, in the large popup over LIVE
+                settle(&mut m, &fw);
+                m.key(EDIT, true);
+                m.run_ms(30);
+                m.turn(ALGORITHM, 2);
+                m.run_ms(1_300);
+            }
             "menu" => {
                 open_menu(&mut m, &fw);
                 select(&mut m, sidou_sys::VIEWS_MENU_OCTAVE as i32);

@@ -56,6 +56,13 @@ extern "C" {
 
 enum { SID_SLOT_DIST, SID_SLOT_MOD, SID_SLOT_FX, SID_SLOT_COUNT };
 
+/* The distortions are made for a SID voice at 0.25 of full scale (their drives' knees, makeups
+ * and quantisers: fx_overdrive.h, fx_fuzz.h, fx_crush.h). A voice as the chip renders it on the
+ * device is about 12 dB lower (SAW LEAD's A4 peaks at -23 dBFS), so the slot lifts its input by
+ * this much and lowers the wet signal by as much again: the algorithms hear a voice at their
+ * level, and the slot's output is at the chip's. A power of two: both products are exact. */
+#define SID_SLOT_DIST_GAIN 4.0f
+
 /* Distortion (mono). */
 enum {
     SID_DIST_NONE,      /* wet = dry */

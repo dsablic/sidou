@@ -9,6 +9,18 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **FM-1 Live Link, the device's side: a computer mirrors the screen and presses the buttons over
+  the USB cable** ([live-link.md](docs/reference/live-link.md), an open protocol for any FM-1
+  firmware; the browser viewer comes later). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,
+  "FM1L"), started only by the host: START (the FM-1 answers its capabilities: the grid, the
+  palette, the font's CRC), a heartbeat every 2 s, STOP, and an end by itself 3 s after the last
+  heartbeat. While a session runs the FM-1 shows `LINK` in the bottom-left corner. The mirror
+  sends the cells the LCD was sent (code, colour, large text's pieces, the scopes' overlays;
+  SCENE's pixel art as 4-bit pixels), the newest state of each, in frames of at most 48 bytes that
+  give way to SysEx transfers, MIDI out and clock out and stay within 22 KB/s; the font and
+  palette on request. A PANEL frame holds and presses buttons and turns encoders (Felucca's ids),
+  all let go 500 ms after the last one; the keys stay MIDI notes. The reference decoder is the
+  `fm1-live-link` crate (`host/crates/live-link`), which rebuilds the screen pixel for pixel.
 - **LAB's song bridge: send a sound to the song, pull one back.** **REC** in LAB writes the sound
   into the song's lowest free instrument as a plain GoatTracker 2 instrument, a byte at a time
   through the edit queue, so the song plays on (`SENT AS I06 SAW LEAD`); **EDIT + REC** writes it
@@ -23,12 +35,32 @@ All notable changes are documented here. The format follows
   naming what was approximated (`I01 ~DRUM`). The ARP helper's SAVE now writes through the same
   batch writer. ([controls](docs/reference/controls.md#send-a-lab-sound-to-the-song),
   [LAB](docs/manual/lab.md#send-it-to-the-song-and-pull-one-back))
+- **Lift a sound from a `.sid`.** In NOW PLAYING, solo a voice and press REC: its next note
+  (a second at most, to its gate-off) becomes a GoatTracker 2 instrument: wave rows with notes
+  relative to the note it started on, the envelope (later changes as `F5`/`F6` rows), the pulse
+  sweep, a calculated vibrato when one follows the tune's (else the note held at its centre:
+  `LIFTED, VIBRATO DROPPED`), filter rows when the voice is filtered (approximate). It goes to the
+  store as `LIFTED SOUND` (a GTI5 file, type 3, one store entry, replaced by the next lift), and
+  once the tune ends and the song is back, SIDOU offers it: SAVE imports it into the song's first
+  empty instrument (the song stopped), HOME skips it. Digis are refused (`DIGI: CAN'T LIFT`).
+  The capture reads the 6502's writes in the main loop; the audio interrupt is unchanged. Help:
+  PLAYING's REC line and the LIFT card ([controls](docs/reference/controls.md#lift-a-sound),
+  [manual](docs/manual/sid-tunes.md#5-lift-a-sound)).
 
 ### Changed
 - **The LAB help cards** list REC (to the song) and EDIT + REC (replace) in place of SAVE + K
   (MIDI learn, the same everywhere: MACRO's card keeps it); ENV, LFO and FX share a line (`ENV LFO
   FX LAB`, as LIVE's). INSTR's card has `ENV LFO FX LAB`. LAB's hint line's last phrase ends
   `REC SEND`.
+
+## [1.1.0] - 2026-10-30
+
+LAB's filter LFO, ARP RATE, MACRO links and peek; the ARP helper's and a held step's auditions;
+generative TRACKER, DICE's range, rhythm and a root and scale per lane; knob curves; the
+Distortion slot heard, with a popup; REC timing; uploads that wait for quiet; CLOCK OUT's start
+fix.
+
+### Changed
 - **An upload waits for quiet while a song plays.** A SysEx upload (the Songs page, a `.sid`, a
   `.syx`) used to mute the music for each packet's flash writes, about ten dips a second. Now,
   while a song or a tune plays or a computer records the FM-1's USB audio, the FM-1 writes
@@ -61,18 +93,6 @@ All notable changes are documented here. The format follows
 - A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
   unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
   schema 9: it keeps the learned CCs of 1.1's parameters.
-- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
-  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
-  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
-  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
-  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
-  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
-- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
-  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
-  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
-  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
-  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
-  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 - **Knob curves for every parameter whose ear is a ratio.** LAB's PWM HZ walks 32 detents from
   0.05 to 12.75 Hz even in pitch (shown in hundredths below 1 Hz), PWM's depth 32 on a square law,
   VIB HZ 24 from 0.5 to 12.7 Hz, VIB DEPTH 0 and 31 geometric to +-99 cents, VIB DELAY 0 and 23
@@ -88,29 +108,12 @@ All notable changes are documented here. The format follows
   docs/reference/controls.md "Knob curves" lists every curve.
 
 ### Added
-- **Lift a sound from a `.sid`.** In NOW PLAYING, solo a voice and press REC: its next note
-  (a second at most, to its gate-off) becomes a GoatTracker 2 instrument: wave rows with notes
-  relative to the note it started on, the envelope (later changes as `F5`/`F6` rows), the pulse
-  sweep, a calculated vibrato when one follows the tune's (else the note held at its centre:
-  `LIFTED, VIBRATO DROPPED`), filter rows when the voice is filtered (approximate). It goes to the
-  store as `LIFTED SOUND` (a GTI5 file, type 3, one store entry, replaced by the next lift), and
-  once the tune ends and the song is back, SIDOU offers it: SAVE imports it into the song's first
-  empty instrument (the song stopped), HOME skips it. Digis are refused (`DIGI: CAN'T LIFT`).
-  The capture reads the 6502's writes in the main loop; the audio interrupt is unchanged. Help:
-  PLAYING's REC line and the LIFT card ([controls](docs/reference/controls.md#lift-a-sound),
-  [manual](docs/manual/sid-tunes.md#5-lift-a-sound)).
-- **FM-1 Live Link, the device's side: a computer mirrors the screen and presses the buttons over
-  the USB cable** ([live-link.md](docs/reference/live-link.md), an open protocol for any FM-1
-  firmware; the browser viewer comes later). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,
-  "FM1L"), started only by the host: START (the FM-1 answers its capabilities: the grid, the
-  palette, the font's CRC), a heartbeat every 2 s, STOP, and an end by itself 3 s after the last
-  heartbeat. While a session runs the FM-1 shows `LINK` in the bottom-left corner. The mirror
-  sends the cells the LCD was sent (code, colour, large text's pieces, the scopes' overlays;
-  SCENE's pixel art as 4-bit pixels), the newest state of each, in frames of at most 48 bytes that
-  give way to SysEx transfers, MIDI out and clock out and stay within 22 KB/s; the font and
-  palette on request. A PANEL frame holds and presses buttons and turns encoders (Felucca's ids),
-  all let go 500 ms after the last one; the keys stay MIDI notes. The reference decoder is the
-  `fm1-live-link` crate (`host/crates/live-link`), which rebuilds the screen pixel for pixel.
+- **EDIT + K1-K4 says the effect in the large popup.** Turning the selected effect slot's
+  Amount, A, B or Mix with EDIT held on LIVE opens the value popup: the effect's name over the
+  control's and its value at 2x, `OVERDRIVE` over `DRIVE 91`, with a bar (a slot that is off:
+  `DIST OFF` over `AMT 40`). LIVE's knob row shows the slot's controls small; the popup is
+  readable at arm's length. The same text everywhere the EDIT layer opens a popup (CHIP's chip
+  focus, STATUS, the menu, SCENE), which said `DIST DRIVE` over `91` before.
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
   (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
@@ -178,6 +181,20 @@ All notable changes are documented here. The format follows
   is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Fixed
+- **The distortions are heard on a played note.** The Distortion slot's algorithms are made
+  for a SID voice at a quarter of full scale, but the chip gives the slot about 12 dB less
+  (SAW LEAD's A4 peaks at -23 dBFS). Turned with EDIT + K1 from the bottom to the top on one
+  note, TAPE's Amount did nothing you could hear; OVERDRIVE's and FUZZ's were mostly volume
+  knobs (+14.5 and +13.3 dB louder, little clipping); CRUSH's top chopped the note into bursts;
+  LO-FI's hum and noise drowned it. The slot now lifts its input x4 into the algorithms and
+  lowers the wet signal as much again: TAPE saturates, OVERDRIVE and FUZZ clip at +4.0 and
+  +1.8 dB, CRUSH's top plays a 4-bit note, the hum and noise sit under it. The same settings
+  sound more driven than in 1.0 (a chord or a song through the slot, louder than one note,
+  more so). Modulation and FX were heard end to end already, and the knob curves of 1.1 were
+  not the cause: 1.0 measured the same (`emu-gate/tests/fx_knobs.rs`).
+- **The settings were sometimes not saved after two failed writes in a row.** A flash program
+  error while saving the unsaved LAB edit, twice in a row, left the settings record marked as
+  saved though it was not on flash; it is now written again at the next debounce.
 - TRACKER: EDIT + LFO (undo) works whichever finger lands first, as EDIT + ARP does. With REC on and
   the song stopped, LFO alone now writes its rest when it is let go (or as soon as another control
   is used; at once while REC records), so LFO a few milliseconds before EDIT no longer loses the undo.
@@ -205,6 +222,10 @@ All notable changes are documented here. The format follows
   room instead of handing USB a packet it would drop.
 
 ## [1.0.0] - 2026-10-29
+
+LAB, a view for shaping one sound and keeping it as one of sixteen USER sounds, DICE's density and
+scale, dense `.sid` players on time, the ARP helper's waveform, 2x text on TABLE and STEP, and the
+store's health on STATUS.
 
 ### Added
 - **LAB, a view to shape one sound and keep it**. Five pages, OSC, ENVELOPE,
@@ -273,6 +294,10 @@ All notable changes are documented here. The format follows
 
 ## [0.5.0] - 2026-10-25
 
+`.sid` playback: SIDOU's own 6502 plays PSID tunes on the chips, each write timed to its cycle,
+from the store (SIDS and NOW PLAYING); tunes go on over SysEx, with an openly licensed starter
+pack; STATUS, at 2x on three pages, shows the 6502's share of the CPU.
+
 ### Added
 - **`.sid` playback:** PSID tunes (one or two SID chips, PAL or NTSC, up to 65,536 bytes) play on
   the FM-1 from the store. SIDOU's own 6502 runs a frame ahead of the audio in the main loop and
@@ -312,6 +337,10 @@ All notable changes are documented here. The format follows
   memory, so the song views say `SID PLAYING: STOP TO EDIT` while one plays.
 
 ## [0.4.0] - 2026-10-25
+
+A SID drum kit and digi drums, generative STEP (chance per step, MUTATE, DICE), recording over the
+USB cable, the button LEDs in two levels, an ARP helper in TABLE, SETTINGS -> RESET, and songs to
+MIDI on the site.
 
 ### Added
 - **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
@@ -439,6 +468,8 @@ All notable changes are documented here. The format follows
 
 ## [0.3.1] - 2026-10-23
 
+An install over Felucca boots straight into SIDOU.
+
 ### Fixed
 - **The first boot after another firmware no longer detours through UBOOT.** Installed over
   Felucca 1.6.1, SIDOU's first boot went to the chip's USB boot (WL80UBOOT1.00) for 45 s before
@@ -454,6 +485,8 @@ All notable changes are documented here. The format follows
   plays the how-to videos in the browser.
 
 ## [0.3.0] - 2026-10-23
+
+The first wider public release ([release notes](docs/release-notes/v0.3.0.md)).
 
 ### Added
 - **Chord arpeggios on LIVE:** ARP switches them on; a chord held is one voice stepping through
@@ -498,6 +531,8 @@ All notable changes are documented here. The format follows
   under way waits for the file; nothing is erased meanwhile.
 
 ## [0.2.0] - 2026-10-22
+
+The first release to run on a real FM-1.
 
 ### Added
 - **M2d complete: STEP, TRACKER, the song pages and REC** (Tasks 1-7). Make a song on the FM-1:

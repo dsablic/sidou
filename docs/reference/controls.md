@@ -206,8 +206,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | K4 on LIVE's page (the same views) | RELEASE (0-15) |
 | PRESETS (encoder 6) | PRESET and the preset's name (no bar), in every view but LIVE (whose header says it) |
 | K1-K4 on CHIP's EXPERT section | the named expert control in its units: percent, DAC ratio `R`, voice-DAC DC units `DC`, Hz, WEAK / MED / STRONG, or noise write-back tap count |
-| EDIT held + K1-K4 with the focus on CHIP's chip section | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) (the slot is not on that page) |
-| EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
+| EDIT held + K1-K4 on LIVE (either page), with the focus on CHIP's chip section, and on STATUS, the menu, SCENE and the song views where EDIT + the knob turns the slot | the selected slot's effect by name and the control in the algorithm's own word with its value (0-127), at 2x: `OVERDRIVE` over `DRIVE 91`, `CHORUS` over `RATE 40`, and a bar; a slot that is off says `DIST OFF` over `AMT 40` |
 | MASTER | VOLUME (0-100%, the bar the pot's travel), in every view, once the pot turns by about 1.5 % of its travel (a pot at rest never shows it) |
 | ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
 | ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE`, `SPREAD` (`OFF`, `10%` .. `100%`), `RESET ALL?` (`SAVE RESETS` once asked) |
@@ -215,7 +214,8 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 **LIVE and CHIP show a turned knob where it is instead of opening the popup over it** (the popup
 would hide the very controls and meters being tuned): the knob's label (on LIVE, in row 15; on
 CHIP, its label under the choice) is shown in reverse video, in the knob's own colour, for a
-second after its last detent. The profile word and the selected slot's algorithm on LIVE do the
+second after its last detent. EDIT held is the exception on LIVE: the effect slot's controls
+are small on the knob row, so EDIT + K1-K4 opens the popup with the effect's name. The profile word and the selected slot's algorithm on LIVE do the
 same when ALGORITHM changes them, and on CHIP the choice at 3x is the display of ALGORITHM. A
 control the slot does not use stays dim. MASTER keeps its popup everywhere. STATUS, the menu and
 SCENE keep every popup.
@@ -1073,6 +1073,13 @@ Distortion, Modulation and FX run after the chip, in that order, in stereo
 | Distortion | OFF, TAPE, OVERDRIVE, FUZZ, CRUSH, LO-FI | drive (CRUSH: bit depth; LO-FI: TV tone) | OVERDRIVE tone, FUZZ octave, CRUSH rate, LO-FI hum | OVERDRIVE bias, FUZZ starved bias, LO-FI noise |
 | Modulation | OFF, CHORUS, FLANGER, PHASER, TREMOLO, AUTO-PAN, WOW | depth (AUTO-PAN width; WOW wow) | rate (WOW: flutter) | CHORUS ensemble, FLANGER and PHASER feedback, TREMOLO and AUTO-PAN shape |
 | FX | OFF, DELAY, PING-PONG, REVERB, LUSH | DELAY feedback, REVERB and LUSH decay | DELAY time, REVERB and LUSH damping | DELAY damping, REVERB diffusion, LUSH bandwidth |
+
+**The distortions hear a note at their own level.** They are made for a SID voice at a quarter
+of full scale; the chip gives the slot about a quarter of that (SAW LEAD's A4 peaks at
+-23 dBFS), so the Distortion slot lifts its input 12 dB (x4) and lowers its wet signal as much
+again. Their Amount is a drive from the bottom of the knob to the top: TAPE saturates,
+OVERDRIVE and FUZZ clip at about the level they started at, CRUSH's coarsest steps still play
+the note, and LO-FI's hum and noise sit under it.
 
 Mix is dry/wet. Every control is smoothed, and changing algorithm crossfades through
 the dry sound (slots take turns, so a full change takes up to ~150 ms). Everything is off
