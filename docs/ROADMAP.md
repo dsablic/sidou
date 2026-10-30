@@ -95,7 +95,7 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
   each way at the PWM rate, CC 31.
 - ~~**MOD's K4: ARP RATE**~~ Done (1.1): `LIVE_PARAM_ARP_RATE`, CC 28 through its map row; the
   velocity target stays on NRPN 6/1 (STATUS does not show it).
-- **LAB, press order:** EDIT + ARP and EDIT + LFO whichever finger lands first, in LAB and STEP.
+- ~~**LAB, press order:** EDIT + ARP and EDIT + LFO whichever finger lands first, in LAB and STEP.~~
   Done (1.1).
 
 **Songs**
@@ -160,7 +160,8 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 - ~~**REC from the keys, compensated.**~~ Done in 1.1: a fixed 6.0 ms computed from the block,
   the double buffer and the debounce, in NEAREST and OFF; the feel at tempo 6 and 3 is a device
   check. S.
-- **sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.
+- ~~**sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.~~ Done (1.1) in
+  the site's sender; `sidou-sysex` only writes files.
 
 ## Later and ideas
 
