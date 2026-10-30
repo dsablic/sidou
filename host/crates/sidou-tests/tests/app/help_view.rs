@@ -626,7 +626,7 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 42] = [
+const CONTEXTS: [&str; 43] = [
     "LIVE",
     "LAB OSC",
     "LAB ENV",
@@ -666,6 +666,7 @@ const CONTEXTS: [&str; 42] = [
     "SIDS",
     "PLAYING",
     "UNSAVED",
+    "LIFT",
     // The same cards reached another way: STEP on a full stack, CHIP's slots MOD and FX.
     "STEP FULL",
     "CHIP MOD",
@@ -785,6 +786,15 @@ fn open_ctx(name: &str) -> Ctx {
                 ui.turn(PANEL_ENC_ALGORITHM, 1); // discarded: NOW PLAYING
             }
             ui.settle();
+            tune = Some(bound);
+        }
+        "LIFT" => {
+            // A lifted instrument offered once the song is back, over the menu.
+            let mut bound = crate::sid_view::bind(ui, &["ALPHA"]);
+            open(ui, &Open::Menu);
+            crate::sid_view::offer(&mut bound.0, "ALPHA V1", 1);
+            ui.settle();
+            assert_eq!(ui.top(), "LIFTED SOUND");
             tune = Some(bound);
         }
         "STEP FULL" => {
@@ -1044,6 +1054,7 @@ fn saves(name: &str) -> bool {
             | "STEP FULL"
             | "SIDS"
             | "UNSAVED"
+            | "LIFT"
     )
 }
 

@@ -1948,6 +1948,10 @@ static int global(void* ctx, const screen_event* e) {
         return 1;
     }
     if (e->id == PANEL_BTN_REC) {
+        if (shows(v) == &sid_view_playing) {
+            sid_view_rec(&v->sids, &v->s); /* the soloed voice's lift */
+            return 1;
+        }
         int in_song = song_view_is(shows(v));
         song_view_rec(&v->song, in_song);
         if (!in_song) { /* no REC mark outside the song views: a toast says it */
@@ -2252,6 +2256,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &sid_view_browser && sid_view_home(&v->sids)) {
         return; /* the question cancelled */
     }
+    if (from == &sid_view_offer) {
+        sid_view_offer_answer(&v->sids, &v->s, 0); /* skipped: the file stays on the store */
+    }
     if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
         return; /* out of the ARP helper, back to the table */
     }
@@ -2299,6 +2306,9 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     }
     if (top == &sid_view_playing) {
         return HELP_CARD_PLAYING;
+    }
+    if (top == &sid_view_offer) {
+        return HELP_CARD_LIFT;
     }
     if (top == &views_charset) {
         return HELP_CARD_CHARSET;
@@ -2722,6 +2732,10 @@ static void save(views* v, uint32_t held) {
     }
     if (shows(v) == &lab_view_view) {
         lab_view_save(&v->lab, &v->s, (int)(held >> PANEL_BTN_EDIT & 1u)); /* keep, or EDIT + SAVE the name page */
+        return;
+    }
+    if (shows(v) == &sid_view_offer) {
+        sid_view_offer_answer(&v->sids, &v->s, 1); /* the lifted instrument into the song */
         return;
     }
     if (shows(v) == &chip_view_view) {
@@ -3284,6 +3298,16 @@ void views_frame(views* v, uint32_t now_ms) {
     toast_hold(v);
     if (v->sids.saving) {
         sid_view_frame(&v->sids, &v->s); /* the question's song saved: the tune */
+    }
+    /* The lifted instrument's offer, once the song is back: over LIVE, the menu or SIDS (not over
+     * a card or a capture), gone once answered. */
+    const view* now = screen_top(&v->s);
+    if (sid_view_offered(&v->sids)) {
+        if (now == &live_view_view || now == &views_menu || now == &sid_view_browser) {
+            screen_push(&v->s, &sid_view_offer, &v->sids, SCREEN_WIPE_DOWN);
+        }
+    } else if (now == &sid_view_offer) {
+        screen_pop(&v->s, SCREEN_WIPE_UP);
     }
     v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);

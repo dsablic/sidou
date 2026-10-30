@@ -729,6 +729,15 @@ static int midi_object_stopped(const song_ctl* sc) {
            sc->stage == sc->cmd_tail;
 }
 
+/* The song after an instrument import (SysEx's and the lift's): stopped, its shapes derived anew. */
+static void song_after_import(song_ctl* sc) {
+    sc->state = SONG_IDLE;
+    sc->shapes_used = 0;
+    sc->player.shape = NULL;
+    sc->bg_on = sc->bg_dirty = sc->widened = sc->ff_on = sc->deriving = 0;
+    sc->want_handover = sc->spare_wait = sc->hold_next = 0;
+}
+
 static int midi_object_open(void* ctx, uint8_t target, uint8_t index, int writing,
                             uint32_t length) {
     (void)ctx;
@@ -833,11 +842,7 @@ static int midi_object_complete(void* ctx, const store_file* file) {
             return SYSEX_PENDING;
         }
         if (result > 0) {
-            sc->state = SONG_IDLE;
-            sc->shapes_used = 0;
-            sc->player.shape = NULL;
-            sc->bg_on = sc->bg_dirty = sc->widened = sc->ff_on = sc->deriving = 0;
-            sc->want_handover = sc->spare_wait = sc->hold_next = 0;
+            song_after_import(sc);
         }
         return result > 0 ? 0 : work->error == GT2_ERR_FULL || work->error == GT2_ERR_SONG_FULL ?
                SYSEX_FULL : SYSEX_IO;
@@ -1552,6 +1557,12 @@ static struct {
     uint32_t busy, window_t;
     uint16_t load;    /* the 6502's share of the CPU over the last window, in tenths of a percent */
     uint16_t ticks_k; /* ticks a thousand 6502 cycles took */
+    /* The lift's hand-over (lift_pass): LIFT_BEGIN while its file waits for the store, its
+     * length, its flags (PSID_LIFT_F_*) and since when it waits. */
+    uint8_t lift;
+    uint8_t lift_flags;
+    uint16_t lift_len;
+    uint32_t lift_ms;
 } sid_tune;
 
 /* A chip's sample step at `clock` (sid.c sid_init_begin's, at the device's rate). */
@@ -1802,6 +1813,161 @@ static void tune_reload(psid_ctl* c) {
     sid_tune.state = TUNE_PREP;
 }
 
+/* --- The lift (core/psid/psid_lift.h; docs/manual/sid-tunes.md, "Lift a sound"): NOW PLAYING's
+ * REC arms it for the soloed voice (tb_lift); psid_ctl's sink and play calls feed it; once its note
+ * is taken, a pass that ran no slice converts it (about 20,000 instructions at most) and the GTI5
+ * file goes to the store as LIFTED SOUND (STORE_FILE_GTI), whole into the store's staging buffer
+ * (256 bytes), so the store programs it once the device is quiet, the tune stopped, and the lift's
+ * state over the song's work space (audio_lift) is free again. The song back, the file committed,
+ * the views offer it (sid_view_offer) and tb_import imports it with the song's importer. --- */
+
+#define LIFT_FILE "LIFTED SOUND"
+enum { LIFT_IDLE, LIFT_BEGIN };
+#define LIFT_GIVE_UP_MS 3000u /* the tune ending: how long its file may wait for the store */
+
+/* The offer, kept over the song's return: the file's CRC (the one it waits to see committed),
+ * its length, the instrument it goes into and its name. */
+static struct {
+    uint8_t state; /* SID_OFFER_*; LIFT_WAITING while its file is not committed */
+    uint8_t instr;
+    uint16_t len;
+    uint32_t crc;
+    store_file file;
+    char name[SID_OFFER_NAME + 1u];
+} lift_offer;
+#define LIFT_WAITING 3u
+
+/* The instrument's name: the tune's title in the font's characters, cut to 13, and the voice. */
+static void lift_name(char out[SID_OFFER_NAME + 1u], uint32_t voice) {
+    const char* t = audio_psid_header()->name;
+    uint32_t n = 0;
+    for (; n < 13u && t[n]; n++) {
+        char ch = t[n];
+        ch = ch >= 'a' && ch <= 'z' ? (char)(ch - 32) : ch;
+        out[n] = (uint8_t)ch >= 0x20u && (uint8_t)ch < 0x60u ? ch : '?';
+    }
+    while (n && out[n - 1u] == ' ') {
+        n--;
+    }
+    out[n++] = ' ';
+    out[n++] = 'V';
+    out[n++] = (char)('1' + voice);
+    out[n] = 0;
+}
+
+/* The first instrument with nothing in it, 0 for none. */
+static uint32_t lift_free_instr(const gt2_song* s) {
+    for (uint32_t i = 0; i < GT2_MAX_INSTR; i++) {
+        uint8_t any = 0;
+        for (uint32_t b = 0; b < GT2_INSTR_BYTES; b++) {
+            any |= s->instr[i][b];
+        }
+        if (!any) {
+            return i + 1u;
+        }
+    }
+    return 0;
+}
+
+/* A pass of the lift while it holds its state (a note taken, a file for the store): 1 until it
+ * lets go. `ending`: the tune ends, so a store that stays busy LIFT_GIVE_UP_MS loses the file. */
+static int lift_pass(int ending) {
+    psid_lift* l = audio_lift();
+    store* st = store_fm1();
+    if (sid_tune.lift == LIFT_IDLE && l->state != PSID_LIFT_TAKEN) {
+        return l->state == PSID_LIFT_TAKING;
+    }
+    if (!audio_work_slice()) {
+        return 1; /* the conversion and the store's begin take a pass of their own */
+    }
+    if (sid_tune.lift == LIFT_IDLE) {
+        uint32_t flags;
+        lift_name(lift_offer.name, l->voice);
+        int n = psid_lift_convert(l, audio_psid_header()->clock == 2u, lift_offer.name, &flags);
+        psid_lift_arm(l, 3u, sid_tune.chips); /* off; the file stays in it */
+        if (n < 0) {
+            ui_toast(n == PSID_LIFT_E_DIGI ? "DIGI: CAN'T LIFT" : "LIFT: NOTE TOO SHORT", 2000u);
+            return 0;
+        }
+        sid_tune.lift = LIFT_BEGIN;
+        sid_tune.lift_len = (uint16_t)n;
+        sid_tune.lift_flags = (uint8_t)flags;
+        sid_tune.lift_ms = uptime_ms;
+    }
+    int rc = store_file_begin(st, LIFT_FILE, STORE_FILE_GTI, sid_tune.lift_len);
+    if (rc == STORE_BUSY) {
+        store_file_wait(st, store_busy(st)); /* a record commits first: asked again */
+        if (!ending || uptime_ms - sid_tune.lift_ms < LIFT_GIVE_UP_MS) {
+            return 1;
+        }
+    }
+    store_file_wait(st, 0);
+    sid_tune.lift = LIFT_IDLE;
+    if (rc == STORE_OK && store_file_write(st, l->file, sid_tune.lift_len) == sid_tune.lift_len &&
+        store_file_end(st) == STORE_OK) {
+        lift_offer.state = LIFT_WAITING; /* offered once committed and the song is back */
+        lift_offer.len = sid_tune.lift_len;
+        lift_offer.crc = store_crc32(0, l->file, sid_tune.lift_len);
+        char t[8u + SID_OFFER_NAME + 1u] = "LIFTED: ";
+        memcpy(t + 8, lift_offer.name, SID_OFFER_NAME + 1u);
+        ui_toast(sid_tune.lift_flags & PSID_LIFT_F_NO_VIBRATO ? "LIFTED, VIBRATO DROPPED"
+                 : sid_tune.lift_flags & PSID_LIFT_F_SHORT    ? "LIFTED, CUT TO FIT"
+                                                              : t,
+                 2000u);
+    } else {
+        if (rc == STORE_OK) {
+            store_file_abort(st);
+        }
+        ui_toast(rc == STORE_FULL ? "STORE FULL: NOT LIFTED"
+                 : rc == STORE_BUSY ? "LIFT LOST: STORE BUSY"
+                                    : "LIFT: STORE ERROR",
+                 2000u);
+    }
+    return 0;
+}
+
+/* Once a pass: the offer's file seen committed (or lost) once the song is back, and an import's
+ * steps. */
+static void lift_offer_pass(void) {
+    if (sid_tune.state != TUNE_OFF) {
+        return;
+    }
+    if (lift_offer.state == LIFT_WAITING) {
+        store* st = store_fm1();
+        if (store_file_result(st) == STORE_BUSY) {
+            return; /* a file open or committing: perhaps this one */
+        }
+        if (store_file_open(st, LIFT_FILE, &lift_offer.file) == STORE_OK &&
+            lift_offer.file.type == STORE_FILE_GTI && lift_offer.file.crc == lift_offer.crc) {
+            lift_offer.instr = (uint8_t)lift_free_instr(audio_song()->song);
+            lift_offer.state = SID_OFFER_READY;
+        } else {
+            lift_offer.state = SID_OFFER_NONE;
+            ui_toast("LIFT: NOT SAVED", 2000u);
+        }
+    } else if (lift_offer.state == SID_OFFER_IMPORTING) {
+        song_ctl* sc = audio_song();
+        int r = gt2_ins_import_step(&song_stream.instrument);
+        if (r == 0) {
+            return;
+        }
+        sc->song->frozen = 0;
+        lift_offer.state = SID_OFFER_NONE;
+        if (r > 0) {
+            song_after_import(sc);
+            char t[] = "IMPORTED AS I00";
+            t[13] = "0123456789ABCDEF"[lift_offer.instr >> 4];
+            t[14] = "0123456789ABCDEF"[lift_offer.instr & 15u];
+            ui_toast(t, 2000u);
+        } else {
+            gt2_err e = song_stream.instrument.error;
+            ui_toast(e == GT2_ERR_FULL || e == GT2_ERR_SONG_FULL ? "SONG FULL: NOT IMPORTED"
+                                                                 : "IMPORT FAILED",
+                     2000u);
+        }
+    }
+}
+
 /* Once a pass, where the song's pass runs: the tune's steps (above), and while it plays its
  * slice, its shadows following a chip swapped under it, its failures told. */
 static void tune_pass(void) {
@@ -1837,8 +2003,12 @@ static void tune_pass(void) {
         if (audio_player_now() != AUDIO_NONE || !audio_work_slice()) {
             return;
         }
-        /* The song's state is free: the tune's is made over it, its header read again. */
+        /* The song's state is free: the tune's is made over it, its header read again; the lift
+         * over the song's work space. */
         c = audio_psid_init();
+        psid_lift_init(audio_lift());
+        c->lift = audio_lift();
+        sid_tune.lift = LIFT_IDLE;
         psid_header* h = audio_psid_header();
         char name[STORE_NAME_MAX + 1u];
         memcpy(name, sid_tune.io.file.name, sizeof name);
@@ -1905,6 +2075,10 @@ static void tune_pass(void) {
         }
         tune_tell(c);
         st = psid_ctl_state(c);
+        if (st != PSID_INIT && st != PSID_PLAYING && st != PSID_PAUSED) {
+            psid_lift_stop(audio_lift()); /* stopped: a note under way is what it has */
+        }
+        (void)lift_pass(0);
         front.playing = st == PSID_INIT || st == PSID_PLAYING;
         if (uptime_ms - sid_tune.cycles_ms >= 1000u) {
             /* STATUS's cycles a second (none while it stands still) */
@@ -1922,8 +2096,9 @@ static void tune_pass(void) {
     case TUNE_END:
         (void)psid_ctl_stop(c);
         (void)psid_ctl_poll(c); /* sees the stop played out; runs nothing once stopped */
-        if (c->stop_wait) {
-            return;
+        psid_lift_stop(audio_lift());
+        if (c->stop_wait || lift_pass(1)) {
+            return; /* the lift's file to the store first: the song's work space is its */
         }
         if (sid_tune.clocked) {
             for (uint32_t k = 0; k < sid_tune.chips; k++) {
@@ -2034,8 +2209,21 @@ static int tb_mute(void* ctx, uint32_t mask) {
 static void tb_status(void* ctx, sid_status* out) {
     (void)ctx;
     uint32_t t = sid_tune.state;
+    if (lift_offer.state == SID_OFFER_READY || lift_offer.state == SID_OFFER_IMPORTING) {
+        out->offer = lift_offer.state;
+        out->offer_instr = lift_offer.instr;
+        out->offer_playing = (uint8_t)!midi_object_stopped(audio_song());
+        memcpy(out->offer_name, lift_offer.name, sizeof out->offer_name);
+    }
     if (t == TUNE_OFF) {
         return; /* SID_T_NONE (zeroed by the caller) */
+    }
+    if (t >= TUNE_TO_PSID && t <= TUNE_END) {
+        const psid_lift* l = audio_lift();
+        out->lift = (uint8_t)(l->state == PSID_LIFT_ARMED ? SID_LIFT_ARMED
+                              : l->state || sid_tune.lift ? SID_LIFT_TAKING
+                                                          : SID_LIFT_OFF);
+        out->lift_voice = l->voice;
     }
     const psid_ctl* c = audio_psid();
     int has = t >= TUNE_TO_PSID && t <= TUNE_END; /* the tune's state is made */
@@ -2069,8 +2257,54 @@ static void tb_status(void* ctx, sid_status* out) {
     out->h = has && sid_tune.ask != TUNE_ASK_SWITCH ? audio_psid_header() : NULL;
 }
 
-static const sid_transport tune_binding = {tb_play, tb_start, tb_stop, tb_pause, tb_resume,
-                                           tb_end, tb_mute, tb_status, NULL};
+static int tb_lift(void* ctx, uint32_t voice) {
+    (void)ctx;
+    if (sid_tune.state != TUNE_ON || audio_lift()->state == PSID_LIFT_TAKEN ||
+        sid_tune.lift != LIFT_IDLE) {
+        return 0; /* the last note still on its way to the store */
+    }
+    psid_lift_arm(audio_lift(), voice, sid_tune.chips);
+    return 1;
+}
+
+/* The offer's answer: the import (the song stopped and settled, no other import or load in hand)
+ * or the skip. */
+static int tb_import(void* ctx, int go) {
+    (void)ctx;
+    if (lift_offer.state != SID_OFFER_READY) {
+        return 0;
+    }
+    if (!go) {
+        lift_offer.state = SID_OFFER_NONE;
+        return 1;
+    }
+    song_ctl* sc = audio_song();
+    gt2_song* s = sc->song;
+    lift_offer.instr = (uint8_t)lift_free_instr(s);
+    if (!lift_offer.instr) {
+        ui_toast("NO FREE INSTRUMENT", 2000u);
+        return 0;
+    }
+    if (!midi_object_stopped(sc) || song_io_busy(&songs) || songs.about || songs.external ||
+        s->frozen || s->pending || s->pending_loose || midi_object.owned) {
+        ui_toast("SONG BUSY: TRY AGAIN", 2000u);
+        return 0;
+    }
+    s->frozen = 1;
+    if (gt2_ins_import_begin(&song_stream.instrument, s, lift_offer.instr, midi_file_read,
+                             &lift_offer.file, lift_offer.len, 1) != GT2_OK) {
+        s->frozen = 0;
+        lift_offer.state = SID_OFFER_NONE;
+        ui_toast("IMPORT FAILED", 2000u);
+        return 0;
+    }
+    lift_offer.state = SID_OFFER_IMPORTING;
+    return 1;
+}
+
+static const sid_transport tune_binding = {tb_play,   tb_start,  tb_stop,   tb_pause,
+                                           tb_resume, tb_end,    tb_mute,   tb_status,
+                                           tb_lift,   tb_import, NULL};
 
 /* MIDI's start, stop and continue while a tune is loaded (app/midi_sync.h midi_sync_tune): start
  * restarts its song from init, stop holds it where it is (pause), continue goes on (a stopped
@@ -2153,6 +2387,7 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         }
     }
     tune_pass();
+    lift_offer_pass();
     if (!song_away) {
         song_pass();
     }

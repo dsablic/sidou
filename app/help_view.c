@@ -148,14 +148,17 @@ static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "SAVE\0CHOOSE", "A
                                             "HOME\0BACK",    "HOLD HOME\0HELP"};
 
 /* The SID views (app/sid_view.h): SAVE is the browser's OK, as SONG's LOAD's; PLAY and EDIT +
- * PLAY are the tune's while one is loaded. NOW PLAYING's ALG steps the song; the keys play chip
- * B (the keys' chip under a tune). */
+ * PLAY are the tune's while one is loaded. NOW PLAYING's ALG steps the song; REC lifts the soloed
+ * voice's next note; the keys play chip B (the keys' chip under a tune). */
 static const char* const SIDS_LINES[] = {"SELECT\0TUNE",    "SAVE\0CHOOSE",  "ALG\0CHOOSE",
                                          "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "HOME\0BACK",
                                          "HOLD HOME\0HELP"};
 static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE",
-                                            "GLO+KEY\0MUTE",  "KEYS\0PLAY",      "HOME\0BACK",
-                                            "HOLD HOME\0HELP"};
+                                            "GLO+KEY\0MUTE",  "REC\0LIFT SOLO",  "KEYS\0PLAY",
+                                            "HOME\0BACK",     "HOLD HOME\0HELP"};
+/* The lifted instrument's offer once the song is back: SAVE imports it, HOME leaves it on the
+ * store. */
+static const char* const LIFT_LINES[] = {"SAVE\0IMPORT", "HOME\0SKIP", "HOLD HOME\0HELP"};
 /* The question before a tune takes the song's memory: SAVE saves the song, ALG again discards
  * its changes, HOME keeps both. */
 static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "HOME\0CANCEL",
@@ -218,6 +221,7 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_RESET] = CARD("RESET", RESET_LINES),
     [HELP_CARD_SIDS] = CARD("SIDS", SIDS_LINES),
     [HELP_CARD_PLAYING] = CARD("PLAYING", PLAYING_LINES),
+    [HELP_CARD_LIFT] = CARD("LIFT", LIFT_LINES),
     [HELP_CARD_UNSAVED] = CARD("UNSAVED", UNSAVED_LINES),
     [HELP_CARD_LAB_OSC] = CARD("LAB OSC", LAB_OSC_LINES),
     [HELP_CARD_LAB_ENVELOPE] = CARD("LAB ENV", LAB_ENVELOPE_LINES),

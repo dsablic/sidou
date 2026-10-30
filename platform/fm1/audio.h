@@ -56,6 +56,9 @@ uint32_t audio_player_now(void);
 psid_ctl* audio_psid_init(void);
 psid_ctl* audio_psid(void);
 psid_header* audio_psid_header(void);
+/* The lift's state (core/psid/psid_lift.h), over the song's main-loop work space: only while a
+ * tune has the song's memory (from TUNE_TO_NONE until the song is made again, main.c). */
+psid_lift* audio_lift(void);
 /* psid_ctl_poll, as a slice of the pass: none in a pass that ran a chip preparation or a
  * character table's slice; one that runs counts as the pass's slice (audio_work_slice, the
  * store's quiet pass), and a preparation waits for the next pass. Returns psid_ctl_poll's. */
