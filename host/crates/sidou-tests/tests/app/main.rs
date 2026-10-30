@@ -61,6 +61,7 @@ mod sid_view;
 mod song_audition_shape;
 mod song_edit;
 mod song_gen;
+mod song_gen_roles;
 mod song_io;
 mod song_leds;
 mod song_order_locks;

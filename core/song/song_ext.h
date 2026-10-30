@@ -216,11 +216,13 @@ int song_ext_set_midi(gt2_song* s, const song_midi* v);
 /* SCNE: the SCENE piece, the voices' roles and the instruments' drums (M2f: RED MOON RITE's
  * music hooks, app/scene_song.h). A role or a drum the chunk leaves out (AUTO, or an
  * instrument not in the table) is guessed from the music (scene_song.h). The drum table
- * follows the roles, and a chunk without one (M2c's) has none. */
+ * follows the roles, and a chunk without one (M2c's) has none. The roles also steer DICE in
+ * STEP and TRACKER (app/song_gen.h): DRUMS one note, ARP chords, BASS_DRUMS (1.5) the kit's kick
+ * and snare time-shared with a bass; a reader older than a role takes it as none of its own. */
 #define SONG_SCENE_VOICES_MAX 6u
 #define SONG_SCENE_DRUMS_MAX 16u
 enum { SONG_ROLE_AUTO, SONG_ROLE_DRUMS, SONG_ROLE_BASS, SONG_ROLE_ARP, SONG_ROLE_LEAD,
-       SONG_ROLE_NONE };
+       SONG_ROLE_NONE, SONG_ROLE_BASS_DRUMS, SONG_ROLES };
 enum { SONG_DRUM_NONE, SONG_DRUM_KICK, SONG_DRUM_SNARE, SONG_DRUM_HAT };
 typedef struct {
     uint8_t piece, count;

@@ -207,6 +207,7 @@
         <tr><td>step held + LFO</td><td>clear the step's locks, chance and SET</td></tr>
         <tr><td>E+ SCL</td><td><b>DICE</b>: a new pattern for the lane (<code>NEW PATTERN</code>), rolled when SCL is let go</td></tr>
         <tr><td>E+ SCL held + K1 · K2 · K3 · K4</td><td>DICE's <b>density</b> (sparse to every step) · <b>range</b> (1, 2 or 3 octaves, BASS) · the lane's <b>scale</b> (minor/major pentatonic, minor, major, dorian, chromatic) · <b>rhythm</b> (STRAIGHT, OFFBEAT, 3-3-2, FOUR, BROKEN); saved with the song, shown on the screen while held</td></tr>
+        <tr><td>E+ SCL held + PRESETS</td><td>the lane's <b>role</b>: AUTO, DRUMS, BASS, BASS+DRUMS, ARP, LEAD, NONE (the song's <code>SCNE</code>). DICE on an <b>ARP</b> lane writes chords (<code>NEW CHORDS</code>: a note and <code>8XX</code> at a shared chord program, major, minor, sus4 or 7, in the lane's scale); on a <b>BASS+DRUMS</b> lane the NEW song's KICK and SNARE on the strong beats and the lane's instrument as the bass between</td></tr>
         <tr><td>E+ SCL held + a key</td><td>the lane's <b>root</b> (the roll still comes when SCL is let go)</td></tr>
         <tr><td>E+ ARP</td><td><b>MUTATE</b>: two small changes (<code>MUTATED</code>)</td></tr>
         <tr><td>E+ ENV</td><td><b>SWEEP</b>: a filter sweep, GoatTracker <code>C</code> commands every 2 rows, never over a command</td></tr>
@@ -217,7 +218,7 @@
       <ul>
         <li><b>01</b> lead · <b>02</b> bass · <b>03–0A</b> SID drum kit: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI, RIM</li>
         <li><b>0B–0E</b> digi drums (4-bit samples): DG KICK, DG SNARE, DG CLAP, DG HAT. GoatTracker plays chip-kit copies instead.</li>
-        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the lane's DICE scale (the minor pentatonic unless you chose another) on the lane's root; a drum lane keeps its note.</li>
+        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the lane's DICE scale (the minor pentatonic unless you chose another) on the lane's root; a drum lane keeps its note; an ARP lane rolls chords; a BASS+DRUMS lane the kit and a bass.</li>
       </ul>
     </section>
 

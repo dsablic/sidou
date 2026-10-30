@@ -321,6 +321,7 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
 | EDIT + SCL held + K3 | the selected lane's DICE **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. Each lane has its own (a lane never set has V1's) |
 | EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
+| EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
 | EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
 | EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO); either finger may land first |
@@ -355,7 +356,8 @@ press is another pattern.
 frame and the pads give way to ` DICE - LET GO TO ROLL ` with the four settings at 2x, each beside
 its knob, K1 `DENS`, K2 `RANGE`, K3 `SCALE` (the selected lane's) and K4 `RHYTHM`, and under them
 the lane's `ROOT` (its note, `C-3` by default; a note key sets it). On a drum lane RANGE and SCALE
-are grey: it keeps its one note. TRACKER shows the same frame and takes the same knobs. With `STRAIGHT` the
+are grey: it keeps its one note. Beside the root, `PRE ROLE` and the lane's role (PRESETS turns it).
+TRACKER shows the same frame and takes the same knobs. With `STRAIGHT` the
 density picks the grid's chances (melodic lane, percent by place in the beat 1-2-3-4: SPARSE 60 0 0
 0, LIGHT 85 0 25 0, MEDIUM 85 0 55 0, BUSY 90 35 75 35, FULL 100 each; a drum lane SPARSE 80 0 15 0,
 LIGHT 90 5 30 10, MEDIUM 90 15 50 25, BUSY 95 40 75 55, FULL 100 each). The scale is semitones above the
@@ -367,6 +369,29 @@ beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 2
 the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
 or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
 STRAIGHT and 2 OCT.
+
+**Roles** (EDIT + SCL held + PRESETS; the `SCNE` chunk). A **DRUMS** lane keeps its one note, as
+above. An **ARP** lane rolls **chords** (toast `NEW CHORDS`): each hit is a note, the lane's
+instrument and GoatTracker's `8XX` (WAVETABLE POINTER) at one of four shared chord programs in the
+song's wavetable: **MAJ** (0 4 7), **MIN** (0 3 7), **SUS4** (0 5 7) and **7** (0 4 7 10), rows `00`
+and the semitones over the note, a frame each, and a jump back to the first. Their left byte `00`
+keeps the waveform, so one program serves every instrument: the chord plays the instrument's
+first-frame waveform (a NEW song's PULSE and BASS have pulse; an instrument whose first frame is
+the test bit, `09`, is silent in a chord). The chord is one whose tones are all in the lane's scale
+on its root, the seed's pick among those that fit the hit's note (the next note of the scale up
+when none does). The first ARP roll writes the four programs after the wavetable's last row, 17
+rows through the batch writer, then the cells; later rolls find them by their rows, wherever they
+are. With no room the roll says `TABLE FULL` and writes nothing. A hit's command is its chord's; a
+row without a hit loses an `8XX` an earlier roll left there. TRACKER's command line names the chord
+of the cursor's row (`V1 8 07 CHORD A MIN`). A **BASS+DRUMS** lane is one voice time-shared
+between the drums and a bass: the NEW song's **KICK** and **SNARE** (instruments 03 and 04, found
+by their bytes; a song without them says `NO DRUM KIT`) on the rhythm's strong rows of each bar of
+16 rows, four a beat (`STRAIGHT` and `OFFBEAT` a kick on beats 1 and 3, the snare on 2 and 4;
+`3-3-2` kicks on rows `00 03 08 0B`, the snare on `06 0E`; `FOUR` a kick on every beat; `BROKEN`
+kicks on `00 07 0A`, the snare on `04 0C`; TRACKER's row numbers within the bar), on the lane's root, and between them the lane's instrument as the bass, notes
+of the scale in the range at the density (`BASS` range suits it). Pattern cells only: no instrument
+or table is written. `BASS`, `LEAD`, `NONE` and `AUTO` roll as before; MUTATE leaves a chord's
+command as it is.
 
 **Gate.** A staccato lane writes a key off on the next row if that row has no note, and takes
 it away with the note; where the row before a removed note holds a note, the removed note's row
@@ -390,9 +415,13 @@ REC records (the song playing).
 |---|---|
 | EDIT + ARP | **MUTATE** (toast `MUTATED`), either finger first; with REC on too, where ARP alone writes a key off: while the song is stopped it writes it when ARP is let go (or as soon as another control is used), so EDIT landing after ARP is MUTATE and no key off |
 | EDIT + SCL | **DICE** (toast `NEW PATTERN`), rolled when SCL is let go unless a knob was turned or another button pressed; SCL first, then EDIT, is the same chord, and SCL alone selects the next effect slot when it is let go |
-| EDIT + SCL held | the settings frame over the window's lower half (rows 15-26): K1 density, K2 range, K3 the shown voice's scale, K4 rhythm, a note key the voice's root, as in [STEP](#step) |
+| EDIT + SCL held | the settings frame over the window's lower half (rows 15-26): K1 density, K2 range, K3 the shown voice's scale, K4 rhythm, PRESETS the voice's role, a note key the voice's root, as in [STEP](#step) |
 | EDIT + ENV | **SWEEP**, as in STEP |
 | EDIT + LFO | undoes one cell of the run, as for any edit |
+
+DICE's roles work as in STEP: an ARP voice rolls chords (`NEW CHORDS`) and the command line
+under the rows names the chord of the cursor's row (`V1 8 07 CHORD A MIN` in place of `WAVETABLE
+POINTER`); a BASS+DRUMS voice rolls the kit and the bass with the current instrument as the bass.
 
 A row whose step STEP gave a **chance** below 100 % shows a yellow `%` beside its number; the
 chance itself is edited in STEP (a step held + ALGORITHM).
@@ -958,7 +987,9 @@ The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
 **With a song:** the voices' roles and the drums come from the song's `SCNE` chunk
 ([song format](song-format.md)), else they are guessed: a voice whose instrument's wavetable
 starts with noise is the drums (a kick under MIDI note 100, a hat from 106, a snare between,
-by the first wavetable step's note), the lowest of the others the bass, the rest the arp.
+by the first wavetable step's note), the lowest of the others the bass, the rest the arp. A
+BASS+DRUMS voice (1.5; set in DICE's frame) is the drums where it plays the NEW song's KICK or
+SNARE and the bass elsewhere.
 A row is each row of voice 1; the bar has 4 beats of the `MIDI` chunk's rows a beat (4 by
 default). The bass is high above the middle of its range over the current and the last bar.
 A muted voice plays no part: muted drums stop the chops and parries.

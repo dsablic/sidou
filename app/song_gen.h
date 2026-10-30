@@ -10,14 +10,19 @@
  * steps back a cell at a time. The notes come from the lane's scale on its root (C-3 until
  * PRESETS with a step held in STEP, or a note key with EDIT + SCL held, sets it), over the
  * range's octaves, on the rhythm's grid scaled by the density; a lane the SCNE chunk calls
- * DRUMS keeps its one note (the root) and varies only where it hits. What "random" means is
- * song_mix of the seed and the row: the same seed makes the same pattern.
+ * DRUMS keeps its one note (the root) and varies only where it hits. DICE on an ARP lane writes
+ * chords: each hit a note, the lane's instrument and GoatTracker's 8XX (the wavetable pointer)
+ * at one of the song's shared chord programs (song_gen_chord_*), a chord whose tones are in the
+ * lane's scale, the missing programs written first through the batch writer (song_pages.h). A
+ * BASS+DRUMS lane gets the kit's kick and snare (core/song/gt2_kit.h) on the rhythm's strong
+ * rows and the lane's instrument, the bass, between. What "random" means is song_mix of the seed
+ * and the row: the same seed makes the same pattern.
  *
  * EDIT + SCL is a chord whichever lands first: SCL alone waits for EDIT, and selects the next
  * effect slot (as everywhere) at its release or as soon as another control is used. While the
  * chord is held K1-K4 set the density, the range, the selected lane's scale and the rhythm, a
  * note key the lane's root; a knob turned or another button pressed spoils the roll at SCL's
- * release. EDIT + ARP is MUTATE whichever lands first too: a view holds ARP's lone action back
+ * release; PRESETS sets the selected lane's role (the SCNE chunk). EDIT + ARP is MUTATE whichever lands first too: a view holds ARP's lone action back
  * (song_gen.arp_alone) while EDIT may still arrive; TRACKER holds LFO's back the same way
  * (song_gen.lfo_alone), as EDIT + LFO is undo.
  *
@@ -35,6 +40,7 @@ extern "C" {
 #endif
 
 struct song_view;
+struct song_pages;
 
 /* A run's kind (song_gen.run; 0: none). */
 enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP };
@@ -45,6 +51,12 @@ enum { SONG_GEN_SCL_CHORD = 1, SONG_GEN_SCL_ALONE = 2 };
 /* The settings frame's rows (song_gen_frame), and the bytes of its look (song_gen_look). */
 #define SONG_GEN_FRAME_ROWS 12u
 #define SONG_GEN_LOOK 6u
+/* The encoder that sets the lane's role while the chord is held: PRESETS. */
+#define SONG_GEN_ENC_ROLE 6u
+/* The shared chord programs (wavetable rows `00 rel` from the root, then a jump back to the
+ * first): major, minor, sus4, dominant seventh. */
+enum { SONG_GEN_MAJ, SONG_GEN_MIN, SONG_GEN_SUS4, SONG_GEN_7, SONG_GEN_CHORDS };
+#define SONG_GEN_CHORD_ROWS 5u
 /* The filter sweep: a C command every SONG_GEN_SWEEP_EVERY rows from SWEEP_LOW to SWEEP_HIGH or
  * back. */
 #define SONG_GEN_SWEEP_EVERY 2u
@@ -70,6 +82,12 @@ typedef struct {
     uint8_t follow, follow_row;
     uint8_t follow_cell[4];
     uint32_t seed;
+    /* The lane's role (SONG_ROLE_*), the kit's kick and snare (BASS+DRUMS), the chord programs'
+     * first rows (1 based, ARP), and 1 while the batch writer writes the missing ones. */
+    uint8_t role, kick, snare, wait;
+    uint8_t chord[SONG_GEN_CHORDS];
+    /* SONG's pages, whose batch writer writes the chord programs (views.c sets it). */
+    struct song_pages* pages;
 } song_gen;
 
 /* No run, no chord, every root C-3; gate: STEP's lanes' gate (NULL: staccato). */
@@ -79,6 +97,16 @@ void song_gen_init(song_gen* g, const uint8_t* gate);
 void song_gen_dice(const struct song_view* sv, song_dice* d);
 /* 1: lane `voice` is the song's drums (its SCNE chunk). */
 int song_gen_drums(const struct song_view* sv, uint32_t voice);
+/* Lane `voice`'s role in the SCNE chunk (SONG_ROLE_*), AUTO with no song, chunk or entry. */
+uint32_t song_gen_role(const struct song_view* sv, uint32_t voice);
+/* Chord program c's rows from table row `first` (1 based): left[] and right[], the rows back. */
+uint32_t song_gen_chord_rows(uint32_t c, uint32_t first, uint8_t left[SONG_GEN_CHORD_ROWS],
+                             uint8_t right[SONG_GEN_CHORD_ROWS]);
+/* The chord program the wavetable holds from row `ptr` (1 based): SONG_GEN_* or SONG_GEN_CHORDS
+ * for none; song_gen_chord_find the first row of c's (0: none), its name (MAJ, MIN, SUS4, 7). */
+uint32_t song_gen_chord_at(const gt2_song* s, uint32_t ptr);
+uint32_t song_gen_chord_find(const gt2_song* s, uint32_t c);
+const char* song_gen_chord_name(uint32_t c);
 /* The note of a random value h on the run's lane (song_gen_start's), and whether row hits. */
 uint32_t song_gen_note(const song_gen* g, uint32_t h);
 int song_gen_hit(const song_gen* g, uint32_t row);
@@ -112,7 +140,8 @@ int song_gen_popup(const struct song_view* sv, uint32_t enc, char name[SCREEN_PO
 uint32_t song_gen_keys(struct song_view* sv, uint32_t down, uint32_t pressed);
 /* The settings frame, rows top..top + SONG_GEN_FRAME_ROWS - 1 of the song views' canvas. */
 void song_gen_frame(struct song_view* sv, uint32_t top);
-/* What the frame shows (out[0] 0: no chord, the rest 0), for a view's look. 1: the chord. */
+/* What the frame shows (out[0] 0: no chord, the rest 0; else 1 + the lane's role), for a view's
+ * look. 1: the chord. */
 int song_gen_look(const struct song_view* sv, uint8_t out[SONG_GEN_LOOK]);
 
 #ifdef __cplusplus

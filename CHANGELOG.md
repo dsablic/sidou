@@ -35,11 +35,30 @@ All notable changes are documented here. The format follows
   PLAYING's REC line and the LIFT card ([controls](docs/reference/controls.md#lift-a-sound),
   [manual](docs/manual/sid-tunes.md#5-lift-a-sound)).
 
+- **Chords and time-shared drums from DICE.** A lane's **role** is set in DICE's frame: hold EDIT
+  + SCL and turn **PRESETS** (`PRE ROLE` beside the root; the popup says it large): AUTO, DRUMS,
+  BASS, BASS+DRUMS, ARP, LEAD, NONE, kept in the song's `SCNE` chunk. DICE on an **ARP** lane writes
+  chords (`NEW CHORDS`): each hit a note, the lane's instrument and GoatTracker's `8XX` at one of
+  four shared wavetable chord programs (major, minor, sus4, 7: rows `00` and the semitones, a frame
+  each, so the instrument's waveform plays every chord), a chord whose tones are in the lane's scale.
+  The programs go after the wavetable's last row the first time (17 rows, through the batch writer)
+  and are found by their rows after that; with no room the roll says `TABLE FULL`. TRACKER's command
+  line names the chord (`CHORD A MIN`). A **BASS+DRUMS** lane gets the NEW song's kit, its KICK and
+  SNARE (found by their bytes, else `NO DRUM KIT`), on the rhythm's strong rows and the lane's
+  instrument between as the bass: one voice, time-shared, pattern cells only. RED MOON RITE hears a
+  BASS+DRUMS voice's kick and snare as drums and its other notes as the bass. GoatTracker plays both
+  as SIDOU does. ([controls](docs/reference/controls.md#step),
+  [song format](docs/reference/song-format.md))
+
 ### Changed
 - **The LAB help cards** list REC (to the song) and EDIT + REC (replace) in place of SAVE + K
   (MIDI learn, the same everywhere: MACRO's card keeps it); ENV, LFO and FX share a line (`ENV LFO
   FX LAB`, as LIVE's). INSTR's card has `ENV LFO FX LAB`. LAB's hint line's last phrase ends
   `REC SEND`.
+
+### Fixed
+- **A DICE setting turned while a roll is still writing its cells** says `WAITING`; it said
+  `SONG FULL`, and the song had room.
 
 ## [1.1.0] - 2026-10-30
 

@@ -44,6 +44,10 @@ extern const gt2_kit_drum gt2_kit_instr[GT2_KIT_DRUMS];
 extern const uint8_t gt2_kit_wave[2][GT2_KIT_WAVE_ROWS];
 extern const uint8_t gt2_kit_pulse[2][GT2_KIT_PULSE_ROWS];
 
+/* The first instrument (1-63) of song s whose bytes before the name are drum's (GT2_KIT_*),
+ * the kit's drum as a NEW song holds it (its rows from row 1); 0: none. */
+uint32_t gt2_kit_find(const gt2_song* s, uint32_t drum);
+
 #ifdef __cplusplus
 }
 #endif

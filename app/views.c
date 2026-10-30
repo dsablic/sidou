@@ -2138,6 +2138,7 @@ void views_song_loaded(views* v) {
     song_pages_init(&v->pages, &v->song);
     v->pages.page = page;
     step_view_init(&v->step, &v->song);
+    v->song.gen.pages = &v->pages; /* DICE's chord programs go through its batch writer */
     v->songs.built = 0;
 }
 
@@ -2213,6 +2214,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     song_view_init(&v->song, l);
     song_pages_init(&v->pages, &v->song);
     step_view_init(&v->step, &v->song);
+    v->song.gen.pages = &v->pages;
     v->songs.built = 0;
     v->songs.scanning = 0;
     v->song.editor = &v->editor;

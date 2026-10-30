@@ -351,12 +351,22 @@ the song (`app/scene_song.h`; docs/art/README.md "RED MOON RITE").
 | 0 | 1 | version, 1 |
 | 1 | 1 | the SCENE piece (kept; M2 does not act on it) |
 | 2 | 1 | v, the voice count |
-| 3 | v | each voice's role: 0 AUTO (guessed), 1 DRUMS, 2 BASS, 3 ARP, 4 LEAD (as ARP), 5 NONE |
+| 3 | v | each voice's role: 0 AUTO (guessed), 1 DRUMS, 2 BASS, 3 ARP, 4 LEAD (as ARP), 5 NONE, 6 BASS+DRUMS (1.5) |
 | 3 + v | 1 | d, the drum table's pairs, 0-16 (absent: none) |
 | 4 + v | 2 × d | per pair: an instrument (1-63) and its drum: 1 KICK, 2 SNARE, 3 HAT |
 
 A voice left AUTO, and a drum voice's instrument not in the table, are guessed as
 `app/scene_song.h` describes. A reader older than the drum table reads the roles and stops.
+
+The roles also steer DICE in STEP and TRACKER ([controls](controls.md#step): EDIT + SCL held,
+PRESETS sets the selected lane's, and SIDOU 1.5 writes the chunk with 3 voices, the others AUTO,
+when a song has none): DRUMS one note, ARP chords, BASS+DRUMS the NEW song's kick and snare
+time-shared with a bass. **BASS+DRUMS** (6) is 1.5's: the chunk's layout and version are
+unchanged, so SIDOU 1.0 and 1.1 read it as before and keep it as written (they check no role's
+value and have no gesture that writes the chunk). There the role is none of theirs: DICE rolls the
+lane as a melodic one (the scale on the root, with the lane's instrument), and RED MOON RITE gives
+the voice no part, as NONE (1.5 hears its kick and snare as drums, its other notes as the bass).
+The song itself is plain GoatTracker data in either version. GoatTracker skips the chunk.
 
 **`KEYS`** (2 + 2 × q bytes, optionally followed by a preset byte): the keys' live preset and their chip setup, as `live_params`
 reports them (`app/live.h`, `LIVE_PARAM_*`; the model, envelope mode, profile and

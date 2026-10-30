@@ -526,7 +526,23 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         say[6] = HEX[cell[3] & 15u];
         uint8_t a = THEME_ATTR(th, hot);
         small(c, 0, TRACKER_VIEW_SAY_ROW, say, a);
-        small(c, 8, TRACKER_VIEW_SAY_ROW, tracker_view_command_name(cell[2]), a);
+        /* a wavetable pointer at one of DICE's chord programs says the chord (song_gen.h) */
+        uint32_t chord = (cell[2] & 15u) == 8u ? song_gen_chord_at(s, cell[3]) : SONG_GEN_CHORDS;
+        char name[16] = "CHORD ";
+        uint32_t k = 6u;
+        if (chord < SONG_GEN_CHORDS && cell[0] >= GT2_FIRSTNOTE && cell[0] <= GT2_LASTNOTE) {
+            const char* nn = NOTE_NAMES[(cell[0] - GT2_FIRSTNOTE) % 12u];
+            name[k++] = nn[0];
+            if (nn[1] == '#') {
+                name[k++] = '#';
+            }
+            name[k++] = ' ';
+        }
+        if (chord < SONG_GEN_CHORDS) {
+            memcpy(name + k, song_gen_chord_name(chord), 5u);
+        }
+        small(c, 8, TRACKER_VIEW_SAY_ROW,
+              chord < SONG_GEN_CHORDS ? name : tracker_view_command_name(cell[2]), a);
         break;
     }
     char ghost[6];
