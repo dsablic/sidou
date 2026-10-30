@@ -374,7 +374,7 @@ user confirms a format; M2a Task 5's format screen must expect it.
 | `0x100` | 1 | the [settings record](settings-format.md) |
 | `0x101`..`0x108` | 2 | the eight [USER chip profiles](profile-format.md) |
 | `0x109` | 4 | LAB's [unsaved edit](sound-format.md#the-unsaved-edit) |
-| `0x80000000 \| slot` | `0x82` | a file: a song (type 1, M2c), a `.sid` tune (type 2, M3), SysEx's `MIDI INSTRUMENT` staging (type 3), LAB's [USER sounds](sound-format.md) (type 4, `USER SOUNDS`) |
+| `0x80000000 \| slot` | `0x82` | a file: a song (type 1, M2c), a `.sid` tune (type 2, M3), a GTI5 instrument (type 3: SysEx's `MIDI INSTRUMENT` staging, NOW PLAYING's `LIFTED SOUND`), LAB's [USER sounds](sound-format.md) (type 4, `USER SOUNDS`) |
 
 Keys below `0x100` belong to the emulator tests (`platform/fm1/store_fm1.c`'s hook). The
 files of types 3 and 4 are the firmware's own: no list shows them, and SAVE AS and SysEx

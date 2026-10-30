@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "font.h"
+#include "lab_song.h"
 #include "tracker_view.h"
 
 static const char HEX[] = "0123456789ABCDEF";
@@ -95,7 +96,7 @@ static gt2_err prepare(song_pages* p) {
     return gt2_set_order(song, r->pattern, voice, r->row, (uint8_t)value, &p->edit);
 }
 
-static void arp_issue(song_pages* p);
+static void batch_issue(song_pages* p);
 static void arp_hear(song_pages* p);
 static void arp_changed(song_pages* p);
 
@@ -115,8 +116,8 @@ int song_pages_poll(song_pages* p) {
         p->pending = 0u;
         p->status = SONG_PAGES_READY;
         p->revision++;
-        if (p->arp_next < p->arp_end)
-            arp_issue(p); /* the ARP helper's next cell */
+        if (p->batch_next < p->batch_end)
+            batch_issue(p); /* the batch's next cell */
         return 1;
     }
     if (!guarded(p)) {
@@ -127,7 +128,7 @@ int song_pages_poll(song_pages* p) {
                 if (p->prepared)
                     gt2_edit_cancel((gt2_song*)t->song, &p->edit);
                 p->pending = p->prepared = p->sent = p->auxiliary = 0u;
-                p->arp_next = p->arp_end;
+                p->batch_next = p->batch_end;
             }
             return 0;
         }
@@ -150,7 +151,7 @@ int song_pages_poll(song_pages* p) {
             p->status = p->error == GT2_ERR_FULL || p->error == GT2_ERR_SONG_FULL ?
                         SONG_PAGES_FULL : SONG_PAGES_INVALID;
             p->pending = 0u;
-            p->arp_next = p->arp_end;
+            p->batch_next = p->batch_end;
             return 0;
         }
         p->prepared = 1u;
@@ -729,18 +730,97 @@ int song_pages_arp_decode(const uint8_t* left, const uint8_t* right, uint32_t fi
     return 1;
 }
 
-/* The next byte of the helper's rows that differs from the song's, as a table write; the writes
- * go one at a time, each from the poll that saw the last acknowledged (an edit is pending until
- * then). A write the guard refuses ends them: the status says why. */
-static void arp_issue(song_pages* p) {
+/* ---- the batch writer ---- */
+
+int song_pages_batch_busy(const song_pages* p) {
+    return p->batch_next < p->batch_end;
+}
+
+int song_pages_batch_begin(song_pages* p) {
+    if (song_pages_batch_busy(p))
+        return 0;
+    p->batch_next = p->batch_end = p->batch_runs = p->batch_used = 0u;
+    return 1;
+}
+
+/* A run of n bytes (from `bytes`, or zeros), or why not. */
+static const char* batch_add(song_pages* p, uint32_t kind, uint32_t index, uint32_t n,
+                             const uint8_t* bytes) {
+    if (!n)
+        return NULL;
+    if (p->batch_runs >= SONG_PAGES_BATCH_RUNS || p->batch_end + n > 255u ||
+        (bytes && p->batch_used + n > SONG_PAGES_BATCH_BYTES))
+        return "BATCH FULL";
+    p->batch_run[p->batch_runs++] = (song_pages_run){(uint8_t)kind, (uint8_t)index, (uint8_t)n,
+                                                     bytes ? p->batch_used : SONG_PAGES_RUN_BLANK};
+    if (bytes) {
+        memcpy(p->batch_bytes + p->batch_used, bytes, n);
+        p->batch_used = (uint8_t)(p->batch_used + n);
+    }
+    p->batch_end = (uint8_t)(p->batch_end + n);
+    return NULL;
+}
+
+const char* song_pages_batch_blank(song_pages* p, uint32_t table, uint32_t first, uint32_t n) {
+    return batch_add(p, table, first, 2u * n, NULL);
+}
+
+const char* song_pages_batch_rows(song_pages* p, uint32_t table, uint32_t first, uint32_t n,
+                                  uint32_t had, const uint8_t* left, const uint8_t* right) {
     const gt2_song* song = p->sv->song;
-    while (song && p->arp_next < p->arp_end) {
-        uint32_t k = p->arp_next++, row = p->arp_start + k / 2u, side = k & 1u;
-        uint8_t value = p->arp_rows[k];
-        if ((side ? song->rtable[GT2_WTBL][row] : song->ltable[GT2_WTBL][row]) == value)
-            continue;
-        p->request = (song_edit_request){.kind = SONG_PAGES_EDIT_TABLE, .pattern = GT2_WTBL,
-                                       .row = row, .cell = {value, (uint8_t)side, 0u, 0u}};
+    if (!song)
+        return "NO SONG";
+    if (first + n > GT2_TABLE_ROWS)
+        return "TABLE FULL";
+    for (uint32_t i = had; i < n; i++)
+        if (song->ltable[table][first + i] | song->rtable[table][first + i])
+            return "ROWS IN USE"; /* past the rows it read: another program's */
+    uint8_t rows[2u * SONG_PAGES_ARP_ROWS];
+    if (n > SONG_PAGES_ARP_ROWS)
+        return "BATCH FULL";
+    for (uint32_t i = 0u; i < n; i++) {
+        rows[2u * i] = left[i];
+        rows[2u * i + 1u] = right[i];
+    }
+    uint8_t runs = p->batch_runs, end = p->batch_end, used = p->batch_used;
+    const char* why = batch_add(p, table, first, 2u * n, rows);
+    if (!why && had > n) /* rows it no longer needs go blank */
+        why = song_pages_batch_blank(p, table, first + n, had - n);
+    if (why) {
+        p->batch_runs = runs;
+        p->batch_end = end;
+        p->batch_used = used;
+    }
+    return why;
+}
+
+const char* song_pages_batch_instr(song_pages* p, uint32_t instr, const uint8_t bytes[GT2_INSTR_BYTES]) {
+    return batch_add(p, SONG_PAGES_RUN_INSTR, instr, GT2_INSTR_BYTES, bytes);
+}
+
+/* The next byte of the batch that differs from the song's, as a cell write; the writes go one at
+ * a time, each from the poll that saw the last acknowledged (an edit is pending until then). A
+ * write the guard refuses ends them: the status says why. */
+static void batch_issue(song_pages* p) {
+    const gt2_song* song = p->sv->song;
+    while (song && p->batch_next < p->batch_end) {
+        uint32_t k = p->batch_next++, r = 0u;
+        while (k >= p->batch_run[r].n)
+            k -= p->batch_run[r++].n;
+        const song_pages_run* run = &p->batch_run[r];
+        uint8_t value = run->at == SONG_PAGES_RUN_BLANK ? 0u : p->batch_bytes[run->at + k];
+        uint32_t row = run->index + k / 2u, side = k & 1u;
+        if (run->kind == SONG_PAGES_RUN_INSTR) {
+            if (song->instr[run->index - 1u][k] == value)
+                continue;
+            p->request = (song_edit_request){.kind = SONG_PAGES_EDIT_INSTR, .pattern = run->index,
+                                           .row = k, .cell = {value, 0u, 0u, 0u}};
+        } else {
+            if ((side ? song->rtable[run->kind][row] : song->ltable[run->kind][row]) == value)
+                continue;
+            p->request = (song_edit_request){.kind = SONG_PAGES_EDIT_TABLE, .pattern = run->kind,
+                                           .row = row, .cell = {value, (uint8_t)side, 0u, 0u}};
+        }
         if (!guarded(p))
             break;
         p->pending = 1u;
@@ -748,7 +828,100 @@ static void arp_issue(song_pages* p) {
         p->status = SONG_PAGES_WAITING;
         return;
     }
-    p->arp_next = p->arp_end;
+    p->batch_next = p->batch_end;
+}
+
+int song_pages_batch_go(song_pages* p) {
+    p->transport = p->sv->t;
+    p->status = SONG_PAGES_READY;
+    batch_issue(p);
+    song_pages_poll(p);
+    return p->status == SONG_PAGES_WAITING || p->status == SONG_PAGES_READY;
+}
+
+/* ---- LAB's send ---- */
+
+static const uint8_t PTR_FIELD[GT2_TABLES] = {GT2_INS_WAVE, GT2_INS_PULSE, GT2_INS_FILTER,
+                                              GT2_INS_VIBPARAM};
+
+const char* song_pages_lab_send(song_pages* p, const uint8_t sound[LAB_SOUND_BYTES], const char* name,
+                                uint32_t model, uint32_t* instr, uint32_t* notes) {
+    gt2_song* song = (gt2_song*)p->sv->song;
+    if (!song)
+        return "NO SONG";
+    if (p->pending || !song_pages_batch_begin(p))
+        return "WAITING";
+    uint32_t i = *instr ? *instr : lab_song_free(song);
+    if (!i)
+        return "NO FREE INSTR";
+    lab_song_instr in;
+    uint8_t first[GT2_TABLES] = {1u, 1u, 1u, 1u}, own[GT2_TABLES] = {0}, at[GT2_TABLES] = {0};
+    uint8_t had[GT2_TABLES] = {0}, moved[GT2_TABLES] = {0}, shared = 0u;
+    uint8_t kept[LAB_SOUND_BYTES];
+    lab_song_encode(sound, name, p->sv->voice, model, first, &in); /* the rows each takes */
+    int mine = *instr && lab_song_kept(song, i, own, kept);
+    const uint8_t* ins = song->instr[i - 1u];
+    for (uint32_t t = 0u; t < GT2_TABLES; t++) {
+        uint32_t n = in.rows[t], ptr = ins[PTR_FIELD[t]], old = mine && t != GT2_STBL ? own[t] : 0u;
+        if (old && (!ptr || lab_song_shared(song, i, t, ptr, old)))
+            old = 0u; /* not its own: left as it is */
+        if (t == GT2_STBL && n) {
+            for (uint32_t r = 0u; r < GT2_TABLE_ROWS && !shared; r++)
+                if (song->ltable[t][r] == in.left[t][0] && song->rtable[t][r] == in.right[t][0]) {
+                    at[t] = (uint8_t)r; /* a speed row the table has: shared, not written */
+                    shared = 1u;
+                }
+        }
+        if (old && (n <= old || ptr - 1u + n <= GT2_TABLE_ROWS)) {
+            uint32_t r = n;
+            while (r > old && !(song->ltable[t][ptr - 2u + r] | song->rtable[t][ptr - 2u + r]))
+                r--;
+            if (r <= old) { /* in place: the rows after its own are blank */
+                at[t] = (uint8_t)(ptr - 1u);
+                had[t] = (uint8_t)old;
+                old = 0u;
+            }
+        }
+        if (n && !(t == GT2_STBL && shared) && !had[t]) {
+            uint32_t end = lab_song_table_end(song, t);
+            if (end + n > GT2_TABLE_ROWS)
+                return "TABLE FULL";
+            at[t] = (uint8_t)end;
+        }
+        moved[t] = (uint8_t)old; /* its own rows, now somewhere else: blanked */
+        first[t] = (uint8_t)(at[t] + 1u);
+    }
+    lab_song_encode(sound, name, p->sv->voice, model, first, &in);
+    const char* why = NULL;
+    for (uint32_t t = 0u; !why && t < GT2_TABLES; t++) {
+        if ((in.rows[t] || had[t]) && !(t == GT2_STBL && shared))
+            why = song_pages_batch_rows(p, t, at[t], in.rows[t], had[t], in.left[t], in.right[t]);
+        if (!why && moved[t])
+            why = song_pages_batch_blank(p, t, ins[PTR_FIELD[t]] - 1u, moved[t]);
+    }
+    why = why ? why : song_pages_batch_instr(p, i, in.instr);
+    if (why) {
+        p->batch_runs = p->batch_end = p->batch_used = 0u;
+        return why;
+    }
+    (void)lab_song_keep(song, i, &in, sound); /* no room: a pull decodes it */
+    if (in.notes & LAB_SONG_ARP) { /* the helper on its rows, to decide the chord */
+        uint32_t used = 0u;
+        p->table = GT2_WTBL;
+        p->table_row = p->arp_start = at[GT2_WTBL];
+        p->arp_cur = 0u;
+        p->arp = (uint8_t)song_pages_arp_decode(in.left[GT2_WTBL], in.right[GT2_WTBL], first[GT2_WTBL],
+                                               in.rows[GT2_WTBL], &p->arp_draft, &used);
+        p->arp_len = (uint8_t)used;
+        p->arp_dirty = p->arp;
+    }
+    if (!song_pages_batch_go(p)) {
+        p->arp = 0u;
+        return song_pages_message(p);
+    }
+    *instr = i;
+    *notes = in.notes;
+    return NULL;
 }
 
 int song_pages_arp_open(song_pages* p, screen* s) {
@@ -781,7 +954,7 @@ static void arp_hear(song_pages* p) {
     const song_transport* t = p->sv->t;
     if (p->arp && p->arp_heard && p->arp_voice != p->sv->voice)
         p->arp_dirty = 1u;
-    if (!p->arp_dirty || (!p->arp && (p->pending || p->arp_next < p->arp_end)))
+    if (!p->arp_dirty || (!p->arp && (p->pending || song_pages_batch_busy(p))))
         return;
     if (!t || !t->draft) {
         p->arp_dirty = 0u;
@@ -812,30 +985,15 @@ int song_pages_arp_close(song_pages* p) {
 }
 
 void song_pages_arp_save(song_pages* p, screen* s) {
-    const gt2_song* song = p->sv->song;
     uint8_t left[SONG_PAGES_ARP_ROWS], right[SONG_PAGES_ARP_ROWS];
     uint32_t n = song_pages_arp_encode(&p->arp_draft, p->arp_start + 1u, left, right);
-    const char* why = !song ? "NO SONG" : p->pending ? "WAITING" :
-                      p->arp_start + n > GT2_TABLE_ROWS ? "TABLE FULL" : NULL;
-    for (uint32_t i = p->arp_len; !why && i < n; i++)
-        if (song->ltable[GT2_WTBL][p->arp_start + i] | song->rtable[GT2_WTBL][p->arp_start + i])
-            why = "ROWS IN USE"; /* past the rows it read: another program's */
+    const char* why = !p->sv->song ? "NO SONG" : p->pending || !song_pages_batch_begin(p) ? "WAITING" :
+                      song_pages_batch_rows(p, GT2_WTBL, p->arp_start, n, p->arp_len, left, right);
     if (why) {
         screen_toast(s, why, SCREEN_TOAST_MS);
         return;
     }
-    uint32_t end = n > p->arp_len ? n : p->arp_len; /* rows it no longer needs go blank */
-    for (uint32_t i = 0u; i < end; i++) {
-        p->arp_rows[2u * i] = i < n ? left[i] : 0u;
-        p->arp_rows[2u * i + 1u] = i < n ? right[i] : 0u;
-    }
-    p->transport = p->sv->t;
-    p->arp_next = 0u;
-    p->arp_end = (uint8_t)(2u * end);
-    p->status = SONG_PAGES_READY;
-    arp_issue(p);
-    song_pages_poll(p);
-    if (p->status != SONG_PAGES_WAITING && p->status != SONG_PAGES_READY) {
+    if (!song_pages_batch_go(p)) {
         screen_toast(s, song_pages_message(p), SCREEN_TOAST_MS);
         return; /* the helper stays open */
     }

@@ -180,6 +180,8 @@ typedef struct {
     uint8_t run;   /* the control whose run of turns the newest step is, LAB_VIEW_NO_RUN none */
     uint16_t rolled; /* the last roll's or variation's result (lab_edit_hash) */
     uint32_t rng;    /* the rolls' xorshift state */
+    uint16_t sent;      /* the last send's LAB_SONG_* notes, on the hint line until sent_until */
+    uint32_t sent_until;
 } lab_view;
 
 extern const view lab_view_view;
@@ -233,6 +235,18 @@ void lab_view_save(lab_view* lv, screen* s, int edit);
 /* The toast of the keep that committed in slot: `KEPT AS U03 LAB 03` (a new slot) or `KEPT U03
  * LAB 03` (in place), with (GAPS) where it fits. */
 void lab_view_kept(const lab_view* lv, uint32_t slot, int gaps, screen* s);
+/* The song bridge (app/lab_song.h). sent: a send's notes (LAB_SONG_*) take the hint line for
+ * LAB_VIEW_SENT_MS from now: `NOT SENT: FX TUNE` for what was dropped, `APPROX: PWM FILTER` for
+ * what was approximated, by turns when both. pull: sound (an instrument pulled) played as one
+ * undo step (EDIT + LFO gives the sound before it back), the base kept (the name marked `*`);
+ * its toast `PULLED I05`, and what the decode approximated (`I05 ~DRUM GATE`). */
+#define LAB_VIEW_SENT_MS 6000u
+void lab_view_sent(lab_view* lv, uint32_t notes, uint32_t now);
+void lab_view_pull(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES], uint32_t instr,
+                   uint32_t notes);
+/* The hint line's text at now into out (GRID_COLS + 1): the phrase, or a send's note. */
+const char* lab_view_hint_text(const lab_view* lv, uint32_t now, char* out);
+
 /* The page's name ("ENVELOPE"). */
 const char* lab_view_page_name(uint32_t page);
 /* Card k (0..3) of the page as the page shows it: its name into name and its value into value

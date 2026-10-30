@@ -29,6 +29,8 @@ pub(crate) enum TuneCall {
     Resume,
     End,
     Mute(u32),
+    Lift(u32),
+    Import(i32),
 }
 
 /// The player, as main.c's binding shows it: a play loads at once (`loading` holds it in
@@ -112,6 +114,32 @@ unsafe extern "C" fn t_mute(ctx: *mut c_void, mask: u32) -> i32 {
 unsafe extern "C" fn t_status(ctx: *mut c_void, out: *mut sid_status) {
     unsafe { *out = tune(ctx).st };
 }
+/// The lift: armed for the voice (3: off), as the binding shows it.
+unsafe extern "C" fn t_lift(ctx: *mut c_void, voice: u32) -> i32 {
+    let t = tune(ctx);
+    t.calls.push(TuneCall::Lift(voice));
+    t.st.lift = if voice < 3 { SID_LIFT_ARMED as u8 } else { 0 };
+    t.st.lift_voice = if voice < 3 { voice as u8 } else { 0 };
+    1
+}
+/// The offer's answer: an import runs (IMPORTING) until the test ends it; a skip ends the offer.
+unsafe extern "C" fn t_import(ctx: *mut c_void, go: i32) -> i32 {
+    let t = tune(ctx);
+    t.calls.push(TuneCall::Import(go));
+    t.st.offer = if go != 0 {
+        SID_OFFER_IMPORTING as u8
+    } else {
+        SID_OFFER_NONE as u8
+    };
+    1
+}
+
+/// A lifted instrument offered, as the binding offers it once the song is back.
+pub(crate) fn offer(t: &mut Tune, name: &str, instr: u8) {
+    t.st.offer = SID_OFFER_READY as u8;
+    t.st.offer_instr = instr;
+    text(&mut t.st.offer_name, name);
+}
 
 fn text(field: &mut [c_char], s: &str) {
     field.fill(0);
@@ -176,6 +204,8 @@ pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
         end: Some(t_end),
         mute: Some(t_mute),
         status: Some(t_status),
+        lift: Some(t_lift),
+        import: Some(t_import),
         ctx: ctx.cast(),
     });
     unsafe { views_set_tune(&mut *ui.v, &*t) };
@@ -884,12 +914,15 @@ fn sid_model_is_a_setting() {
 /// question's), each drawn whole within the card's frame budget, against their goldens.
 #[test]
 fn the_sid_views_help_cards_match_their_goldens() {
-    for (card, open) in [("SIDS", 0), ("PLAYING", 2), ("UNSAVED", 1)] {
+    for (card, open) in [("SIDS", 0), ("PLAYING", 2), ("UNSAVED", 1), ("LIFT", 0)] {
         let mut s = Sids::new(&["NIGHT DRIVE"]);
         s.io.dirty = 1;
         open_sids(&mut s.ui);
         for _ in 0..open {
             s.ui.turn(PANEL_ENC_ALGORITHM, 1); // the question, then discarded: NOW PLAYING
+        }
+        if card == "LIFT" {
+            offer(&mut s.tune, "NIGHT DRIVE V2", 5); // over the browser
         }
         settle(&mut s.ui);
         s.ui.down(PANEL_BTN_HOME);
@@ -902,4 +935,79 @@ fn the_sid_views_help_cards_match_their_goldens() {
         assert_eq!(name.to_str().unwrap(), card);
         golden(&s.ui, &format!("help-{}", card.to_lowercase()));
     }
+}
+
+/// REC on NOW PLAYING lifts the one voice GLO solos: armed (its lane says ARM, then REC while the
+/// note is taken), REC again disarms; with no voice or two soloed, or the tune not playing, a toast
+/// says why and nothing is asked. Elsewhere REC stays the song's.
+#[test]
+fn rec_on_now_playing_lifts_the_soloed_voice() {
+    let mut s = Sids::new(&["NIGHT DRIVE"]);
+    now_playing(&mut s);
+    s.calls();
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: SOLO ONE VOICE"));
+    s.ui.v.song.solo = 6;
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: SOLO ONE VOICE"));
+    assert!(s.calls().is_empty());
+    s.ui.v.song.solo = 2;
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: V2'S NEXT NOTE"));
+    assert_eq!(s.calls(), vec![TuneCall::Lift(1)]);
+    while s.ui.toast().is_some() {
+        s.ui.frame();
+    }
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(20, 6, 2, 3), "ARM");
+    golden(&s.ui, "playing-lift-armed");
+    s.tune.st.lift = SID_LIFT_TAKING as u8;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(20, 6, 2, 3), "REC");
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFT OFF"));
+    assert_eq!(s.calls(), vec![TuneCall::Lift(3)]);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(20, 6, 2, 3), "SOL");
+    s.tune.st.state = SID_T_PAUSED as u8;
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: PLAY THE TUNE"));
+    assert!(s.calls().is_empty());
+    assert_eq!(s.ui.v.song.rec, 0, "not the song's REC");
+}
+
+/// Once the song is back, the lifted instrument is offered over the menu: its name and the
+/// instrument it goes into; SAVE imports it (the song must be stopped: with it playing the screen
+/// and a toast say so, and nothing is asked), HOME skips it; the offer goes once answered.
+#[test]
+fn the_lifted_instrument_is_offered_once_the_song_is_back() {
+    let mut s = Sids::new(&["NIGHT DRIVE"]);
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
+    offer(&mut s.tune, "NIGHT DRIVE V2", 5);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "LIFTED SOUND");
+    assert_eq!(s.ui.big(6, 2, 2, 14), "NIGHT DRIVE V2");
+    assert_eq!(s.ui.big(9, 2, 2, 8), "INTO I05");
+    golden(&s.ui, "lift-offer");
+    s.ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(s.calls(), vec![TuneCall::Import(1)]);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(9, 2, 2, 9), "IMPORTING");
+    s.tune.st.offer = SID_OFFER_NONE as u8;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "MENU", "answered: gone");
+
+    offer(&mut s.tune, "NIGHT DRIVE V3", 0);
+    s.tune.st.offer_playing = 1;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(9, 2, 2, 13), "NO FREE INSTR");
+    assert_eq!(s.ui.big(15, 2, 2, 13), "STOP IT FIRST");
+    s.ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(s.ui.toast().as_deref(), Some("STOP THE SONG FIRST"));
+    assert!(s.calls().is_empty());
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
+    assert_eq!(s.calls(), vec![TuneCall::Import(0)]);
+    assert_eq!(s.ui.top(), "MENU");
 }

@@ -139,7 +139,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SAVE (button 9)** | clean press and release: on every list its **OK**, opening or choosing the highlighted item: the menu's item (nothing on a value item; on SETTINGS it only confirms STORE's format or RESET), [SONG](#song)'s action, the file LOAD or DELETE lists, a confirmation's answer (NO goes back a page, as HOME); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
-| **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**) |
+| **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**); in LAB it [sends the sound to the song](#send-a-lab-sound-to-the-song) instead, and in NOW PLAYING it lifts the soloed voice ([Lift a sound](#lift-a-sound)) |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; those six keys sound nothing while GLO is held; **the other keys play** (a change from before: held and latched are one rule) |
 | **GLO tapped twice** (within 400 ms) | **latches** GLO's layer: the keys are the mutes and solos without holding GLO (a toast says `GLO LATCHED`, GLO's LED is lit, and LIVE shows the layer); a tap on GLO ends it (`GLO OFF`) |
 | **SELECT (encoder 0)**, in the menu or SETTINGS | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
@@ -444,6 +444,7 @@ refusals use the large toast. K1/K2 show the actual edited value in the value po
 | INSTR | SELECT | selects one of the nine parameters, then a character of its 16-byte GT2 name |
 | INSTR | K1 / K2 | coarse (16) / fine (1) adjustment of the selected byte or name character |
 | INSTR | EDIT + SEQ | on WAVE/PULSE/FILTER/VIBRATO pointer, opens that table at its pointer; otherwise asks SELECT A PTR |
+| INSTR | ENV / LFO / FX | [pulls the instrument into LAB](#pull-an-instrument-into-lab), which opens at ENVELOPE / MOD / FX (`EMPTY INSTRUMENT` for one with no bytes: nothing happens) |
 | TABLE | ALGORITHM | selects WAVE, PULSE, FILTER or SPEED |
 | TABLE | SELECT | selects table row 01–FF |
 | TABLE | K1 / K2 | edits the left / right byte |
@@ -585,7 +586,8 @@ SETTINGS, the MIDI page (its setup is RAM-only), CHIP, SCENE, each of the five s
 TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), STATUS, ABOUT, the
 glyph sheet (CHARSET), the SONG menu's actions and each of its pages: the list of files LOAD
 and DELETE browse (**FILES**), SAVE AS's name and a confirmation; and the SID views: the browser
-(**SIDS**), **NOW PLAYING** (its card is **PLAYING**) and the browser's question (**UNSAVED**).
+(**SIDS**), **NOW PLAYING** (its card is **PLAYING**), the browser's question (**UNSAVED**) and
+the lifted instrument's offer (**LIFT**).
 
 **The card is the one for the state the view is in when HOME has been held**, where a control
 means something else there:
@@ -606,6 +608,7 @@ means something else there:
 | LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
+| the lifted instrument's offer | **LIFT** | SAVE imports it, HOME skips it |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
 it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
@@ -773,7 +776,7 @@ through OFF once did). On every page:
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
 | 22-27 | the four cards in the knobs' places, as LIVE's knob row: the card's name small in the knob's colour, its value at 3× in white (2× when it takes three characters), a bar and the knob's name |
-| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`, `EDIT+KEY PEEK A`) |
+| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`, `EDIT+KEY PEEK A  REC SEND`); for 6 s after a send, what it [dropped or approximated](#send-a-lab-sound-to-the-song) (`NOT SENT: FX TUNE`, `APPROX: PWM FILTER`, by turns when both) |
 
 A card or the choice that turns is lit (its name in reverse video) for a second instead of the
 value popup; PRESETS opens no popup either (the header names the sound).
@@ -798,8 +801,9 @@ with the point the sound is at now; a graph with no link is a dark flat line.
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
 page follows it); alone it waits for EDIT a moment (EDIT + SCL is the roll whichever finger lands
-first), and selects the slot when it is let go, or as soon as another control is used while it is down. The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, REC, GLO,
-MASTER and PRESETS do what they do in every view.
+first), and selects the slot when it is let go, or as soon as another control is used while it is down. The keys play and the song plays on as everywhere: OCT, PLAY, SEQ, GLO,
+MASTER and PRESETS do what they do in every view. **REC** is LAB's own: it sends the sound to
+the song ([below](#send-a-lab-sound-to-the-song)).
 
 **SAVE** keeps the sound with one press, whatever the page. A USER sound is kept in its own
 slot (its name stays); any other sound goes to the lowest free slot of the sixteen as `LAB 01`..
@@ -868,6 +872,51 @@ tests prove no sound it passes renders under -40. A result is **never the same t
 sound before it, not the last result. A refused result is tried again (a variation 8 times, then
 the smallest moves; a roll 16 times); if none passes the sound stays and the toast says
 `NOTHING AUDIBLE` (a sound with no waveform varied on ENVELOPE, say).
+
+### Send a LAB sound to the song
+
+**REC** in LAB writes the sound into the song (1.5, the song bridge:
+[the design](../plans/2026-10-30-1.5-design.md#2-labs-song-bridge), `app/lab_song.h`) as a plain
+GoatTracker 2 instrument: into the song's **lowest free instrument** (all 25 bytes 0), its
+programs after each table's last row. The toast says where: `SENT AS I0F LAB 03` (the instrument
+in hex, the sound's name, which the instrument takes). It is written through the song's edit
+queue a byte at a time, so the song plays on; INSTR's cursor goes to it (STEP, when SEQ
+passes through it, sets its lane's instrument there, as it always has). **EDIT + REC** writes
+it over **INSTR's instrument** instead: a used one asks first (`REPLACE I05? EDIT+REC`; EDIT + REC
+again within 4 s replaces it). An unedited instrument sent before keeps its rows: the new
+programs go where they were, the rows they no longer need blanked; any other instrument's rows
+stay as they are and the new programs go after the tables' last rows. Refusals: `NO SONG`,
+`WAITING` (a write still going), `NO FREE INSTR`, `TABLE FULL`, `ROWS IN USE`, the song's own
+(`SAVING`, `SONG FULL`).
+
+| The sound's | Written as | How close |
+|---|---|---|
+| waveform, ring, sync | the wave program `ctrl+gate 00`, `FF 00`, and the same waveform as the first frame's | exact |
+| AD, SR | the instrument's AD and SR, GoatTracker's hard restart (gate timer 2, HR on); an attack of 0 is raised to 1 | exact (the hard restart added; the hint line says `ATTACK`) |
+| pulse width (a pulse waveform only) | the pulse program's `8H LL` row | exact |
+| PWM depth and rate, PWM LINK | a pulse loop of about five rows (climb to the top, then the whole band down and up), the link baked into the depth | approximate: it starts from each note, moves in 50 Hz steps, made up for GoatTracker's pulse rest at tempo 6 |
+| cutoff, resonance, mode, routing | the filter program: the mode and resonance (RESO LINK baked at the cutoff), the cutoff's top 8 bits; routed to the voice TRACKER and ORDER show | the 11-bit cutoff to 8; it takes over the song's filter while the instrument plays |
+| filter LFO | a filter loop over the same band at the PWM's rate | approximate |
+| vibrato | the vibrato delay and a calculated-mode speed row (a speed row the table has already is shared) | approximate: a cycle of 2S + 4 frames, a depth of a power of two |
+| ARP on | the [ARP helper](#arp-helper)'s default chord (major; DOWN and UP-DOWN in their order) at the arpeggio's rate, and TABLE opens with the helper on its rows | the helper decides |
+| one-voice sync, fine tune, the velocity, wheel and pressure targets, the effect slots | nothing | dropped (the hint line says `NOT SENT: SYNC TUNE PLAY FX`) |
+
+The sound goes with the instrument in the song's trailer (`LBnn`,
+[song-format.md](song-format.md#sidous-trailer)), so pulling the instrument back, unedited,
+gives this exact sound.
+
+### Pull an instrument into LAB
+
+On **INSTR**, **ENV**, **LFO** or **FX** take the instrument under the cursor into LAB, which
+opens at ENVELOPE, MOD or FX, as they open LAB from LIVE. The pull is one undo step (EDIT + LFO
+gives the sound before it back), and the sound keeps its name with a `*`. An instrument sent from
+LAB and not edited since comes back exactly (`PULLED I05`). Any other is decoded: one-row wave
+programs, the send's own loops and a calculated vibrato come back close; what could only be
+approximated is in the toast (`I05 ~DRUM GATE`): `DRUM` (absolute notes, or a program of several
+waveforms), `SWEEP` (a one-shot pulse or filter sweep), `GATE` (another gate timer, no hard
+restart, legato), `ARP` (an arpeggio: LIVE's chord arpeggio plays the keys held), `VIB` (an
+absolute vibrato speed), `LFO` (a filter loop at another rate than the pulse loop: LIVE has one
+LFO). The bend range and the three targets stay the sound's; the effect slots go off.
 
 ## SCENE
 
@@ -1369,6 +1418,7 @@ on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). 
 | **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
 | **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
 | **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune |
+| **REC** | | lifts the one voice GLO solos: its next note becomes an instrument ([below](#lift-a-sound)); REC again while it waits disarms it |
 | **HOME** | back to the menu; with the tune stopped (or failed) it ends for good there, and the song comes back from the store | back to the browser, the tune playing on |
 
 An empty store says **NO TUNES: SEE MANUAL**. The loaded tune keeps its place in the browser:
@@ -1412,6 +1462,36 @@ ENV3 read as on a C64) and a third SID's dropped writes.
 Refusals are toasts: `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID`, `TOO LONG`, `SID NOT
 FOUND`, `SID: READ ERROR` (the file went while it loaded), `INIT TOO LONG`, `PLAY HUNG`,
 `6502 JAM AT $xxxx`, `MIDI MODE HAS CHIP A` (MULTITIMBRAL and WHOLE-CHIP keep chip A).
+
+### Lift a sound
+
+**REC in NOW PLAYING** lifts an instrument out of the tune: solo a voice first (GLO held + note
+key 4, 5 or 6), then REC. The voice's lane says **ARM** (`LIFT: V2'S NEXT NOTE`) until the voice's
+next note starts, then **REC** while it is taken: a frame a play call (50 a second on a PAL tune)
+for a second at most, or until the note's gate goes off or the next note starts. REC again while
+it waits disarms it (`LIFT OFF`). Without exactly one voice soloed it says `LIFT: SOLO ONE VOICE`;
+with the tune paused or stopped, `LIFT: PLAY THE TUNE`. REC was free there: it only set the
+song's record flag, which a tune cannot use. A 2SID tune's solo is the voice on both chips: the
+chip whose voice starts a note first is lifted.
+
+The note becomes a GoatTracker 2 instrument ([the manual](../manual/sid-tunes.md#5-lift-a-sound)
+says what it holds) and goes to the store as one file, **LIFTED SOUND** (a GTI5 instrument,
+replaced by the next lift): `LIFTED: <NAME>` (the tune's title and the voice, `CONSULTANT V1`),
+`LIFTED, VIBRATO DROPPED` (a swing no GoatTracker vibrato follows: the note is held at its
+centre), `LIFTED, CUT TO FIT` (a busy note's last frames dropped). Refusals: `DIGI: CAN'T LIFT`
+(samples played through the registers), `LIFT: NOTE TOO SHORT` (the gate went off in the note's
+first call), `STORE FULL: NOT LIFTED`, `LIFT: STORE ERROR`, `LIFT LOST: STORE BUSY` (the tune
+ended while the store stayed busy for 3 s). The store writes the file once the device is quiet
+(the tune stopped), as it writes everything.
+
+**The offer.** Once the tune has ended and the song is back, and the file is on the store, a page
+opens over LIVE, the menu or SIDS: **LIFTED SOUND**, the instrument's name and **INTO I05** (the
+song's first empty instrument; **NO FREE INSTR** when all 63 are used). Its card is **LIFT**.
+
+| Control | Result |
+|---|---|
+| **SAVE** | imports it into that instrument with its tables (the importer SysEx uses): `IMPORTED AS I05`, the song changed (unsaved). The song must be stopped: while it plays the page says **SONG PLAYING: STOP IT FIRST** and SAVE says `STOP THE SONG FIRST`. Refusals: `NO FREE INSTRUMENT`, `SONG BUSY: TRY AGAIN` (a load, a save or a SysEx import in hand), `SONG FULL: NOT IMPORTED` |
+| **HOME** | skips it: the file stays on the store (a SysEx GET of `LIFTED SOUND` reads it) until the next lift replaces it |
 
 ## SAVE
 

@@ -31,10 +31,10 @@ typedef song_view_canvas canvas;
 #define LOOK_PLAY 4u
 #define LOOK_PLAY_N 12u
 #define LOOK_LANES 16u
-#define LOOK_LANES_N 5u
-#define LOOK_COUNT 21u
+#define LOOK_LANES_N 7u
+#define LOOK_COUNT 23u
 #define LOOK_COUNT_N 4u
-#define LOOK_THEME 25u
+#define LOOK_THEME 27u
 _Static_assert(LOOK_THEME < SID_VIEW_LOOK, "NOW PLAYING's look");
 /* The rows of NOW PLAYING's parts. */
 #define TITLE_ROW 1u
@@ -544,6 +544,8 @@ static void playing_look(const sid_view* sd, const sid_status* st, uint8_t out[S
     for (uint32_t v = 0; v < 3u; v++) {
         l[2u + v] = (uint8_t)((uint32_t)st->env[v] * (SID_VIEW_BAR_CHARS * 8u) / 255u);
     }
+    l[5] = st->lift;
+    l[6] = st->lift_voice;
     uint8_t* k = out + LOOK_COUNT;
     uint32_t over = capped(st->overruns), late = capped(st->late);
     k[0] = (uint8_t)over;
@@ -616,7 +618,8 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
 }
 
 /* The voices: the number in the voice's colour (dark grey while GLO silences it, reversed while
- * soloed), MUT or SOL, and chip A's envelope as a bar. */
+ * soloed), MUT or SOL (ARM and REC on the voice the lift takes), and chip A's envelope as a
+ * bar. */
 static void build_lanes(sid_view* sd, const sid_status* st, const theme* th) {
     const song_view* sv = sd->sv;
     canvas* c = &sd->sv->cv;
@@ -632,7 +635,11 @@ static void build_lanes(sid_view* sd, const sid_status* st, const theme* th) {
         big(c, 2, row, digit, sv->solo >> v & 1u ? GRID_ATTR(th->bg, th->hot)
                               : off              ? THEME_ATTR(th, dim)
                                                  : GRID_ATTR(th->voice[v], th->bg));
-        if (sv->solo >> v & 1u) {
+        if (st->lift && v == st->lift_voice) {
+            /* the lift: armed for the voice's next note, then taking it */
+            big(c, 6, row, st->lift == SID_LIFT_ARMED ? "ARM" : "REC",
+                st->lift == SID_LIFT_ARMED ? THEME_ATTR(th, hot) : THEME_ATTR(th, alert));
+        } else if (sv->solo >> v & 1u) {
             big(c, 6, row, "SOL", THEME_ATTR(th, value));
         } else if (sv->mute >> v & 1u) {
             big(c, 6, row, "MUT", THEME_ATTR(th, alert));
@@ -759,6 +766,117 @@ static void playing_enter(screen* s, void* state) {
 
 const view sid_view_playing = {"NOW PLAYING", playing_enter, NULL, playing_input,
                                playing_compose, playing_changed};
+
+void sid_view_rec(sid_view* sd, screen* s) {
+    const sid_transport* t = sd->t;
+    sid_status st;
+    status_of(sd, &st);
+    uint32_t solo = sd->sv->solo & 7u;
+    char msg[] = "LIFT: V1'S NEXT NOTE";
+    const char* say = msg;
+    if (!t || !t->lift) {
+        return;
+    }
+    if (st.lift != SID_LIFT_OFF) {
+        (void)t->lift(t->ctx, 3u);
+        say = "LIFT OFF";
+    } else if (st.state != SID_T_PLAYING) {
+        say = "LIFT: PLAY THE TUNE";
+    } else if (solo != 1u && solo != 2u && solo != 4u) {
+        say = "LIFT: SOLO ONE VOICE";
+    } else {
+        uint32_t v = solo >> 1; /* 1, 2, 4: voice 0, 1, 2 */
+        msg[7] = (char)('1' + v);
+        (void)t->lift(t->ctx, v);
+    }
+    screen_toast(s, say, SCREEN_TOAST_MS);
+}
+
+/* ---- The lifted instrument's offer ---- */
+
+int sid_view_offered(const sid_view* sd) {
+    sid_status st;
+    status_of(sd, &st);
+    return st.offer != SID_OFFER_NONE;
+}
+
+/* What the offer shows: its state, the instrument, the song playing, the theme. */
+static void offer_look(const sid_view* sd, const sid_status* st, uint8_t out[4]) {
+    out[0] = st->offer;
+    out[1] = st->offer_instr;
+    out[2] = st->offer_playing;
+    out[3] = sd->sv->l->theme;
+}
+
+static int offer_changed(screen* s, void* state) {
+    (void)s;
+    const sid_view* sd = state;
+    sid_status st;
+    status_of(sd, &st);
+    uint8_t now[4];
+    offer_look(sd, &st, now);
+    return !sd->offer_built || sd->sv->dirty || memcmp(now, sd->offer_drawn, 4) != 0;
+}
+
+static void offer_compose(screen* s, void* state, grid* g) {
+    sid_view* sd = state;
+    song_view* sv = sd->sv;
+    sid_status st;
+    status_of(sd, &st);
+    uint8_t now[4];
+    offer_look(sd, &st, now);
+    if (song_view_acquire_canvas(sv, SONG_VIEW_CANVAS_SIDS) || memcmp(now, sd->offer_drawn, 4)) {
+        sd->offer_built = 0;
+    }
+    if (!sd->offer_built) {
+        canvas* c = &sv->cv;
+        const theme* th = theme_get(sv->l->theme);
+        const uint8_t legend = THEME_ATTR(th, hint);
+        blank(c, (1u << GRID_ROWS) - 1u, THEME_ATTR(th, value));
+        big(c, 2, 2, "LIFTED SOUND", GRID_ATTR(th->title_fg, th->title_bg));
+        name_line(c, 6, st.offer_name, THEME_ATTR(th, value));
+        char into[] = "INTO I00";
+        into[6] = "0123456789ABCDEF"[st.offer_instr >> 4 & 15u];
+        into[7] = "0123456789ABCDEF"[st.offer_instr & 15u];
+        big(c, 2, 9, st.offer == SID_OFFER_IMPORTING ? "IMPORTING"
+                     : st.offer_instr                ? into
+                                                     : "NO FREE INSTR",
+            THEME_ATTR(th, label));
+        if (now[2]) {
+            big(c, 2, 13, "SONG PLAYING:", THEME_ATTR(th, alert));
+            big(c, 2, 15, "STOP IT FIRST", THEME_ATTR(th, alert));
+        }
+        big(c, 2, LEGEND_ROW, "SAVE    IMPORT", legend);
+        big(c, 2, BACK_ROW, "HOME      SKIP", legend);
+        sv->dirty = (1u << GRID_ROWS) - 1u;
+        memcpy(sd->offer_drawn, now, 4);
+        sd->offer_built = 1;
+    }
+    song_view_copy(sv, s, g);
+}
+
+static void offer_enter(screen* s, void* state) {
+    (void)s;
+    sid_view* sd = state;
+    sd->offer_built = 0;
+}
+
+const view sid_view_offer = {"LIFTED SOUND", offer_enter, NULL, NULL, offer_compose,
+                             offer_changed};
+
+void sid_view_offer_answer(sid_view* sd, screen* s, int go) {
+    const sid_transport* t = sd->t;
+    if (!t || !t->import) {
+        return;
+    }
+    sid_status st;
+    status_of(sd, &st);
+    if (go && st.offer_playing) {
+        screen_toast(s, "STOP THE SONG FIRST", SCREEN_TOAST_MS);
+        return;
+    }
+    (void)t->import(t->ctx, go);
+}
 
 /* ---- STATUS's rows ---- */
 

@@ -23,6 +23,8 @@ static void ring_sink(void* ctx, uint32_t cycle, uint32_t chip, uint32_t reg, ui
     c->ring_entry[i & (PSID_RING - 1u)] = PSID_RING_ENTRY(chip, reg, value);
     c->stage = i + 1u;
     c->writes++;
+    if (c->lift)
+        psid_lift_write(c->lift, chip, reg, value);
 }
 
 /* A request to the interrupt, taken at its next block's start. */
@@ -62,6 +64,7 @@ void psid_ctl_init(psid_ctl* c, psid_work* w, uint8_t* mem, const psid_ctl_hooks
     c->h = NULL;
     c->file = NULL;
     c->hooks = hooks ? *hooks : none;
+    c->lift = NULL;
     c->slices = c->writes = c->dropped = 0;
     c->error = 0;
     c->state = PSID_EMPTY;
@@ -306,6 +309,8 @@ int psid_ctl_poll(psid_ctl* c)
         if (e->phase == PSID_PHASE_WAIT && !nv && (int32_t)(e->next_due - t) > (int32_t)run)
             run = e->next_due - t;
         r = psid_env_run(e, left < run ? left : run);
+        if (r == PSID_RUN_CALL_DONE && c->lift)
+            psid_lift_call(c->lift);
         uint32_t now = psid_env_now(e), d = now - t;
         nv = noisy(c);
         if (nv)

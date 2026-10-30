@@ -69,7 +69,8 @@ typedef enum {
     HELP_CARD_LAB_FX = 36,       /* (arg: the slot and its algorithm) */
     HELP_CARD_LAB_MACRO = 37,
     HELP_CARD_LAB_NAME = 38,     /* and its name page */
-    HELP_CARDS = 39
+    HELP_CARD_LIFT = 39,         /* the lifted instrument's offer (app/sid_view.h) */
+    HELP_CARDS = 40
 } help_card_id;
 
 /* Lines a page of a card has at most and the pages, characters of a line (the control, a space

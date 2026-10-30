@@ -51,6 +51,7 @@
 
 #include "psid/psid_env.h"
 #include "psid/psid_file.h"
+#include "psid/psid_lift.h"
 #include "sid/sid.h"
 #include "sid/sid_shadow.h"
 
@@ -175,6 +176,7 @@ typedef struct psid_ctl {
     const psid_header* h;        /* the caller's, as long as the tune is loaded */
     const uint8_t* file;         /* the whole file, or NULL when it came in parts */
     psid_ctl_hooks hooks;
+    psid_lift* lift;  /* sees every write and every play call's return (psid_lift.h); NULL none */
     uint32_t stage;   /* entries before it are pushed */
     uint32_t slices;  /* slices run */
     uint32_t writes;  /* SID writes pushed since the song started */

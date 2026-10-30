@@ -8,6 +8,39 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **LAB's song bridge: send a sound to the song, pull one back.** **REC** in LAB writes the sound
+  into the song's lowest free instrument as a plain GoatTracker 2 instrument, a byte at a time
+  through the edit queue, so the song plays on (`SENT AS I06 SAW LEAD`); **EDIT + REC** writes it
+  over INSTR's instrument (`REPLACE I05? EDIT+REC` first). The waveform, ring, sync, AD, SR and
+  pulse width are exact (GoatTracker's hard restart, gate timer 2; an attack of 0 becomes 1); the
+  PWM and the filter LFO become loops, the vibrato a calculated speed, the cutoff 8 bits on the
+  voice TRACKER shows; ARP opens TABLE's ARP helper on a default chord; one-voice sync, the fine
+  tune, the targets and the effect slots stay behind. LAB's hint line says what was approximated
+  or left out. On **INSTR**, **ENV**, **LFO** or **FX** pull the instrument into LAB at that page,
+  one undo step: a sent, unedited one exactly, kept in a new trailer chunk per instrument
+  (`LB01`..`LB3F`, [song-format.md](docs/reference/song-format.md)), any other decoded, the toast
+  naming what was approximated (`I01 ~DRUM`). The ARP helper's SAVE now writes through the same
+  batch writer. ([controls](docs/reference/controls.md#send-a-lab-sound-to-the-song),
+  [LAB](docs/manual/lab.md#send-it-to-the-song-and-pull-one-back))
+- **Lift a sound from a `.sid`.** In NOW PLAYING, solo a voice and press REC: its next note
+  (a second at most, to its gate-off) becomes a GoatTracker 2 instrument: wave rows with notes
+  relative to the note it started on, the envelope (later changes as `F5`/`F6` rows), the pulse
+  sweep, a calculated vibrato when one follows the tune's (else the note held at its centre:
+  `LIFTED, VIBRATO DROPPED`), filter rows when the voice is filtered (approximate). It goes to the
+  store as `LIFTED SOUND` (a GTI5 file, type 3, one store entry, replaced by the next lift), and
+  once the tune ends and the song is back, SIDOU offers it: SAVE imports it into the song's first
+  empty instrument (the song stopped), HOME skips it. Digis are refused (`DIGI: CAN'T LIFT`).
+  The capture reads the 6502's writes in the main loop; the audio interrupt is unchanged. Help:
+  PLAYING's REC line and the LIFT card ([controls](docs/reference/controls.md#lift-a-sound),
+  [manual](docs/manual/sid-tunes.md#5-lift-a-sound)).
+
+### Changed
+- **The LAB help cards** list REC (to the song) and EDIT + REC (replace) in place of SAVE + K
+  (MIDI learn, the same everywhere: MACRO's card keeps it); ENV, LFO and FX share a line (`ENV LFO
+  FX LAB`, as LIVE's). INSTR's card has `ENV LFO FX LAB`. LAB's hint line's last phrase ends
+  `REC SEND`.
+
 ## [1.1.0] - 2026-10-30
 
 ### Changed

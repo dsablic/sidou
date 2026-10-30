@@ -7,6 +7,7 @@
 #include "chip_view.h"
 #include "font.h"
 #include "lab_draw.h"
+#include "lab_song.h"
 #include "live_dice.h"
 #include "live_view.h"
 #include "panel.h"
@@ -57,7 +58,7 @@ static const char* const HINTS[LAB_VIEW_HINTS] = {
     "EDIT A/B  +LFO UNDO  +ARP VARY",
     "EDIT +SCL ROLL  +SAVE NAME",
     "SAVE KEEP  SELECT NEXT PAGE",
-    "EDIT+KEY PEEK A",
+    "EDIT+KEY PEEK A  REC SEND",
 };
 
 const char* lab_view_page_name(uint32_t page) {
@@ -457,6 +458,7 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     b[n++] = l->theme;
     b[n++] = (uint8_t)(lv->hl | lv->hl_link << 4);
     b[n++] = (uint8_t)hint_phase(now);
+    b[n++] = (int32_t)(lv->sent_until - now) > 0; /* a send's note on the hint line */
     b[n++] = l->envelope_mode;
     b[n++] = l->fx_select;
     b[n++] = (uint8_t)l->model;
@@ -569,7 +571,8 @@ static void build(lab_view* lv, uint32_t now) {
     for (uint32_t k = 0; k < 4u; k++) {
         draw_card(lv, c, th, k);
     }
-    text(c, 0, LAB_VIEW_HINT_ROW, HINTS[hint_phase(now)], THEME_ATTR(th, hint));
+    char hint[GRID_COLS + 1u];
+    text(c, 0, LAB_VIEW_HINT_ROW, lab_view_hint_text(lv, now, hint), THEME_ATTR(th, hint));
     lv->built = 1;
     lv->copying = 1;
 }
@@ -1378,3 +1381,47 @@ static void compose(screen* s, void* state, grid* g) {
 }
 
 const view lab_view_view = {"LAB", enter, NULL, input, compose, changed};
+
+/* ---- the song bridge ---- */
+
+LIVE_COLD void lab_view_sent(lab_view* lv, uint32_t notes, uint32_t now) {
+    lv->sent = (uint16_t)(notes & (LAB_SONG_DROPPED | LAB_SONG_APPROX));
+    lv->sent_until = lv->sent ? now + LAB_VIEW_SENT_MS : now;
+}
+
+LIVE_COLD const char* lab_view_hint_text(const lab_view* lv, uint32_t now, char* out) {
+    if (!lv->sent || (int32_t)(lv->sent_until - now) <= 0) {
+        return HINTS[hint_phase(now)];
+    }
+    int dropped = (lv->sent & LAB_SONG_DROPPED) &&
+                  (!(lv->sent & LAB_SONG_APPROX) || !(hint_phase(now) & 1u));
+    char* e = append(out, dropped ? "NOT SENT: " : "APPROX: ");
+    lab_song_words(lv->sent, dropped, e, GRID_COLS + 1u - (uint32_t)(e - out));
+    return out;
+}
+
+LIVE_COLD void lab_view_pull(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES],
+                             uint32_t instr, uint32_t notes) {
+    uint8_t before[LAB_EDIT_BYTES];
+    begin(lv, before);
+    live_sound_apply(lv->l, sound);
+    lv->run = LAB_VIEW_NO_RUN;
+    record(lv, before, LAB_VIEW_NO_RUN);
+    static const char HEX[] = "0123456789ABCDEF";
+    char t[SCREEN_TOAST_CHARS + 1u];
+    char* e = t;
+    if (!(notes & LAB_SONG_APPROX)) {
+        e = append(e, "PULLED ");
+    }
+    *e++ = 'I';
+    *e++ = HEX[instr >> 4 & 15u];
+    *e++ = HEX[instr & 15u];
+    if (notes & LAB_SONG_APPROX) {
+        e = append(e, " ~");
+        lab_song_words(notes, 0, e, SCREEN_TOAST_CHARS + 1u - (uint32_t)(e - t));
+    } else {
+        *e = 0;
+    }
+    lv->sent = 0u;
+    screen_toast(s, t, SCREEN_TOAST_MS);
+}

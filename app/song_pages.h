@@ -45,6 +45,19 @@ typedef struct {
     uint8_t wave;                     /* the waveform byte, 10..DF */
 } song_pages_arp;
 
+/* The batch writer (song_pages_batch_*): runs of instrument bytes and table rows, written one
+ * differing byte per acknowledged edit. A run's kind: a table (GT2_WTBL..GT2_STBL; index its
+ * first row, 0 based, and n its bytes, left and right of each row in turn) or an instrument's
+ * bytes (SONG_PAGES_RUN_INSTR; index the instrument, 1..63, its fields from 0); at the offset of
+ * its bytes in batch_bytes, or SONG_PAGES_RUN_BLANK for a run of zeros. */
+#define SONG_PAGES_BATCH_BYTES 80u
+#define SONG_PAGES_BATCH_RUNS 8u
+#define SONG_PAGES_RUN_INSTR GT2_TABLES
+#define SONG_PAGES_RUN_BLANK 0xffu
+typedef struct {
+    uint8_t kind, index, n, at;
+} song_pages_run;
+
 typedef struct {
     song_view* sv;
     /* Retained while an edit waits, even if the user leaves the page. */
@@ -59,14 +72,17 @@ typedef struct {
     uint8_t pending, prepared, sent, auxiliary, status;
     gt2_err error;
     /* The ARP helper: open, the step the cursor is on, the table row it starts at (0 based), the
-     * rows it read, the next byte to write and where they end; the draft and the bytes to write
-     * (left, right of each row). */
-    uint8_t arp, arp_cur, arp_start, arp_len, arp_next, arp_end;
+     * rows it read; the draft. */
+    uint8_t arp, arp_cur, arp_start, arp_len;
     /* The draft as the player hears it (song_transport.draft): on its voice, and a change to
      * send (published on open and every change, taken off once closed and its rows written). */
     uint8_t arp_heard, arp_voice, arp_dirty;
     song_pages_arp arp_draft;
-    uint8_t arp_rows[2u * SONG_PAGES_ARP_ROWS];
+    /* The batch being written: the next byte of all its runs' and where they end, the runs and
+     * the bytes they hold. */
+    uint8_t batch_next, batch_end, batch_runs, batch_used;
+    song_pages_run batch_run[SONG_PAGES_BATCH_RUNS];
+    uint8_t batch_bytes[SONG_PAGES_BATCH_BYTES];
     uint8_t drawn[SONG_PAGES_LOOK];
 } song_pages;
 
@@ -108,6 +124,34 @@ void song_pages_arp_save(song_pages* pages, screen* s);
  * sends it, and each change, and takes it off once the helper has closed and its rows are
  * written; poll while arp_dirty as while pending. */
 int song_pages_arp_close(song_pages* pages);
+
+/* The batch writer (TABLE's ARP helper, LAB's send): begin empties it (while one is written:
+ * 0, nothing done); rows adds n rows of table from row first (0 based) over the `had` rows there
+ * the caller read as its own, the ones it no longer needs blanked; blank adds n blank rows; instr
+ * an instrument's 25 bytes. Each returns NULL, or why nothing was added: TABLE FULL (past row
+ * 255), ROWS IN USE (a row past `had` that is not blank: another program's), BATCH FULL. go
+ * writes them in the order added, one differing byte per acknowledgement through the edit queue
+ * (a byte the song already has is skipped); a write the guard refuses ends them (the status says
+ * why). go returns 1 while they are written or done, 0 when refused at once (the status). */
+int song_pages_batch_begin(song_pages* pages);
+const char* song_pages_batch_rows(song_pages* pages, uint32_t table, uint32_t first, uint32_t n,
+                                  uint32_t had, const uint8_t* left, const uint8_t* right);
+const char* song_pages_batch_blank(song_pages* pages, uint32_t table, uint32_t first, uint32_t n);
+const char* song_pages_batch_instr(song_pages* pages, uint32_t instr, const uint8_t bytes[GT2_INSTR_BYTES]);
+int song_pages_batch_go(song_pages* pages);
+/* 1 while a batch has bytes left to write. */
+int song_pages_batch_busy(const song_pages* pages);
+/* LAB's send (app/lab_song.h): the sound as instrument *instr (0: the lowest free one, written
+ * back), named name, its filter on the song views' voice, through the batch writer (works while
+ * the song plays). Each program goes after its table's last row, or over the rows the
+ * instrument's own kept programs had (an unedited sent instrument's that no other instrument
+ * points into), the rows they no longer need blanked; a speed row the table has already is
+ * shared. The sound is kept with it (lab_song_keep). With the arpeggio on, TABLE's ARP helper is
+ * left open on its rows (pages->arp; the caller shows TABLE). NULL, and what was approximated or
+ * dropped into *notes; else why nothing was sent (NO SONG, WAITING, NO FREE INSTR, TABLE FULL,
+ * ROWS IN USE, or the guard's). */
+const char* song_pages_lab_send(song_pages* pages, const uint8_t sound[LAB_SOUND_BYTES],
+                                const char* name, uint32_t model, uint32_t* instr, uint32_t* notes);
 
 void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char out[31]);
 

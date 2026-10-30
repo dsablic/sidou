@@ -90,7 +90,9 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
   EDIT while you play peeks at A, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
   EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER
   sounds, which PRESETS plays after DICE; EDIT + SAVE names it on the keys. A slot turned to OFF
-  on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)).
+  on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)). REC in LAB
+  sends the sound to the song as a GoatTracker instrument while it plays, and ENV on INSTR pulls
+  one back into LAB (new in 1.5).
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
@@ -105,7 +107,9 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
   the device's flash: the menu's SIDS lists them, NOW PLAYING shows the tune, its songs and its
   voices, with mute and solo, pause and stop, and MIDI start, stop and continue
-  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)).
+  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). Solo a voice and press REC
+  to lift its next note as a GoatTracker instrument for your own song
+  ([lift a sound](docs/manual/sid-tunes.md#5-lift-a-sound)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
   page turns any GoatTracker 2 `.sng`, from a file or read straight from the connected FM-1 (the
   current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where
@@ -173,7 +177,7 @@ On LIVE:
 **In LAB**: K1 to K4 are the page's four cards and ALGORITHM its choice; SELECT, or
 ENV, LFO and FX, change the page; SAVE keeps the sound as a USER sound; tap EDIT for A/B, hold it
 and play to peek at A; EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls, EDIT + SAVE names;
-HOME goes back to LIVE
+REC sends the sound to the song (EDIT + REC over INSTR's instrument); HOME goes back to LIVE
 ([shape a sound in LAB](docs/manual/lab.md)).
 
 **Hold HOME on any screen for its help card**: it says what each control does there, for what the screen is doing (SELECT turns a two-page card). Every control, every screen and every MIDI
