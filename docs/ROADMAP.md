@@ -84,8 +84,9 @@ it. Each large item gets its own design first (as LAB did).
 - **The move to felucca-bsp** (below, Platform), if felucca-bsp #14 and #15 are settled in time;
   SIDOU takes upstream code only byte for byte.
 
-After 1.5: the quality pass (performance headroom, the faster ergonomics gate, suggested
-automations, knob-curve follow-ups from the device sessions).
+After 1.5: the quality pass (a test and code cleanup: DRY, deduplication and simplification
+wherever possible; performance headroom, the faster ergonomics gate, suggested automations,
+knob-curve follow-ups from the device sessions).
 
 ## 1.x
 
