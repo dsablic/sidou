@@ -34,7 +34,9 @@ target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # tables: a switch's table would be read from flash (.rodata) by the audio interrupt.
 set_source_files_properties(player/gt2_play.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
 set_source_files_properties(player/song_ctl.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
-set_source_files_properties(song/gt2_stream.c song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
+set_source_files_properties(song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
+# 1.5 flash win-back: the stream reader is boot and main-loop work (240 bytes at -Oz).
+set_source_files_properties(song/gt2_stream.c PROPERTIES COMPILE_OPTIONS -Oz)
 # The whole-file .sng reader (the boot reads its song in the LCD's reset wait) and its helpers:
 # boot and main-loop work, never the interrupt.
 set_source_files_properties(song/gt2_sng.c PROPERTIES COMPILE_OPTIONS -Os)
