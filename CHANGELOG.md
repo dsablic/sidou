@@ -62,7 +62,9 @@ All notable changes are documented here. The format follows
   values keep their meaning: presets, USER sounds and songs sound as before, and a value off a
   curve stays until the knob turns, whose first detent goes the way turned. The vibrato's CCs
   (76-78), the slots' CCs (102-116) and a CC learned for these land on the same positions (the
-  map's new `walk` curve, docs/reference/midi.md); their NRPNs still set any value.
+  map's new `walk` curve, docs/reference/midi.md); their NRPNs still set any value. A DAW's
+  automation of those CCs recorded against 1.0 lands on the curves' positions now, so it can
+  sound different: re-record it, or send the NRPNs for exact values.
   docs/reference/controls.md "Knob curves" lists every curve.
 
 ### Added
