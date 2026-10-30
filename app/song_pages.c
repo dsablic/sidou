@@ -787,7 +787,7 @@ static void arp_hear(song_pages* p) {
         p->arp_dirty = 0u;
         return;
     }
-    uint8_t left[SONG_PAGES_ARP_ROWS], right[SONG_PAGES_ARP_ROWS];
+    uint8_t left[SONG_PAGES_ARP_ROWS] = {0}, right[SONG_PAGES_ARP_ROWS] = {0};
     uint32_t n = p->arp ? song_pages_arp_encode(&p->arp_draft, p->arp_start + 1u, left, right) : 0u;
     if (p->arp_start + n > GT2_TABLE_ROWS)
         n = 0u; /* past the table: SAVE says TABLE FULL */
