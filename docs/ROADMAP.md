@@ -81,6 +81,10 @@ it. Each large item gets its own design first (as LAB did).
 - **Generated arpeggio chords and multiplexed drums in TRACKER** (1.1's cut left them out).
 - **A browser editor and librarian** and **the screen mirror (FM-1 Live Link)** (below,
   Connectivity).
+- **A popup for every encoder edit** (the user, 2026-10-30): turning an encoder that changes a
+  parameter shown in small print brings up its name and value, large. An audit of every view
+  (TABLE, INSTR, ORDER, the EDIT layers, CHIP, SETTINGS) and an ergonomics-gate check that
+  enforces it; 1.1 does the effect knobs (EDIT + K1-K4) with a reusable popup.
 - **The move to felucca-bsp** (below, Platform), if felucca-bsp #14 and #15 are settled in time;
   SIDOU takes upstream code only byte for byte.
 
