@@ -1997,3 +1997,50 @@ fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
     assert_eq!(h.ui.v.pages.arp, 1);
     assert_eq!(h.ui.v.pages.arp_draft.steps, 4);
 }
+
+/// ENV, LFO or FX on INSTR pull its instrument into LAB at their page: a sent one exactly, as
+/// one undo step; a kit drum decoded, the toast saying what was approximated.
+#[test]
+fn env_lfo_and_fx_on_instr_pull_the_instrument_into_lab() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    let s = modulated();
+    h.send(&s, 0).unwrap();
+    h.finish_arp();
+    let sound = |h: &Pages| {
+        let mut now = [0u8; LAB_SOUND_BYTES as usize];
+        unsafe { live_sound_get(&*h.ui.rig.live, now.as_mut_ptr()) };
+        now
+    };
+    let before = sound(&h);
+    assert_ne!(before, s);
+    h.ui.v.song.instr = 1;
+    h.ui.press(PANEL_BTN_ENV);
+    assert_eq!(h.ui.top(), "LAB");
+    assert_eq!(u32::from(h.ui.v.lab.page), LAB_PAGE_ENVELOPE);
+    assert_eq!(h.ui.toast().as_deref(), Some("PULLED I01"));
+    assert_eq!(sound(&h), s, "exactly the sound sent");
+    // one undo step
+    h.ui.down(PANEL_BTN_EDIT);
+    h.ui.press(PANEL_BTN_LFO);
+    h.ui.up(PANEL_BTN_EDIT);
+    assert_eq!(sound(&h), before);
+    // a kit drum, from FX
+    unsafe {
+        screen_pop(&mut h.ui.v.s, SCREEN_CUT);
+        let m = &mut *h.model.ptr_mut();
+        m.instr[1] = std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[1]);
+        for i in 0..GT2_KIT_WAVE_ROWS as usize {
+            m.ltable[0][100 + i] = gt2_kit_wave[0][i];
+            m.rtable[0][100 + i] = gt2_kit_wave[1][i];
+        }
+        m.instr[1][2] = 100 + 9; // the snare's rows, moved
+    }
+    h.ui.v.song.instr = 2;
+    h.ui.press(PANEL_BTN_FX);
+    assert_eq!(u32::from(h.ui.v.lab.page), LAB_PAGE_FX);
+    let toast = h.ui.toast().unwrap();
+    assert!(
+        toast.starts_with("I02 ~") && toast.contains("DRUM"),
+        "{toast}"
+    );
+}

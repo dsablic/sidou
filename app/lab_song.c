@@ -430,8 +430,8 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model, uint8_
             int32_t d = (place(model, (uint32_t)fr.hi << 3) - place(model, (uint32_t)fr.lo << 3) + 1) / 2;
             sound[LAB_SOUND_FILTER_LFO] = (uint8_t)clampi(d, 1, LIVE_FILTER_LFO_MAX);
             uint32_t frate = (uint32_t)clampi(ratio(32768, fr.loop), 1, LIVE_PWM_STEP_MAX);
-            if (rate && rate != frate)
-                notes |= LAB_SONG_LFO; /* one LFO in LIVE: the PWM's rate */
+            if (rate && (rate > frate ? rate - frate : frate - rate) * 8u > rate)
+                notes |= LAB_SONG_LFO; /* one LFO in LIVE: the PWM's rate (an eighth apart) */
             rate = rate ? rate : frate;
         } else if (fr.moves) {
             notes |= LAB_SONG_SWEEP;

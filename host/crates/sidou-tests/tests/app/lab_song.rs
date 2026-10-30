@@ -416,3 +416,113 @@ fn at_most_sixteen_chunks_are_kept() {
     assert!(song.ext_find(u32::from_le_bytes(*b"LB11")).is_some());
     assert!(song.raw().ext_used <= 16 * (8 + 9 + BYTES as u32));
 }
+
+// ---- pull ----
+
+/// A sound to pull into: none of the fields a pull sets.
+fn other() -> Sound {
+    let mut s = [0u8; BYTES];
+    s[LAB_SOUND_CONTROL as usize] = 0x20;
+    s[(LAB_SOUND_ARP + LIVE_ARP_SPAN) as usize] = 2;
+    s[LAB_SOUND_BEND_RANGE as usize] = 12;
+    s[LAB_SOUND_SLOTS as usize + 5] = 3; // the modulation slot: off after a pull
+    put16(&mut s, LAB_SOUND_PWM_RATE, 3000);
+    s
+}
+
+fn pull(song: &Song, instr: u32) -> (Sound, u32) {
+    let mut s = other();
+    let notes = unsafe { lab_song_pull(song.ptr(), instr, 0, s.as_mut_ptr()) };
+    (s, notes)
+}
+
+fn u16_of(s: &Sound, at: u32) -> i32 {
+    i32::from(s[at as usize]) | i32::from(s[at as usize + 1]) << 8
+}
+
+/// Unedited: the sound exactly, its dropped fields too.
+#[test]
+fn a_pull_of_a_sent_instrument_is_the_sound_exactly() {
+    let mut s = plain();
+    s[LAB_SOUND_TUNE as usize] = 9;
+    s[LAB_SOUND_SLOTS as usize] = 2;
+    s[LAB_SOUND_AD as usize] = 0x05; // its attack 0 raised in the instrument, not in the sound
+    let (song, _) = sent_song(&s, 4, [1, 1, 1, 1]);
+    assert_eq!(pull(&song, 4), (s, LAB_SONG_EXACT));
+}
+
+/// Edited (the name, here): decoded. One-row wave programs, the send's own loops and the
+/// calculated vibrato come back close, and say nothing approximated.
+#[test]
+fn an_edited_instrument_decodes_close_to_its_sound() {
+    let mut s = plain();
+    s[LAB_SOUND_CONTROL as usize] = 0x42;
+    put16(&mut s, LAB_SOUND_PULSE, 2048);
+    put16(&mut s, LAB_SOUND_PWM_DEPTH, 512);
+    put16(&mut s, LAB_SOUND_PWM_RATE, 655);
+    s[LAB_SOUND_FILTER_VOICES as usize] = 7;
+    s[LAB_SOUND_RESONANCE as usize] = 9;
+    s[LAB_SOUND_FILTER_LFO as usize] = 6;
+    s[LAB_SOUND_VIBRATO_RATE as usize] = 60;
+    s[LAB_SOUND_VIBRATO_DEPTH as usize] = 64;
+    s[LAB_SOUND_VIBRATO_DELAY as usize] = 20;
+    let (mut song, _) = sent_song(&s, 2, [1, 1, 1, 1]);
+    unsafe { (*song.ptr_mut()).instr[1][9] = b'X' };
+    let (d, notes) = pull(&song, 2);
+    assert_eq!(notes, 0, "nothing approximated");
+    for f in [
+        LAB_SOUND_CONTROL,
+        LAB_SOUND_AD,
+        LAB_SOUND_SR,
+        LAB_SOUND_RESONANCE,
+        LAB_SOUND_FILTER_MODE,
+    ] {
+        assert_eq!(d[f as usize], s[f as usize], "field {f}");
+    }
+    assert_eq!(u16_of(&d, LAB_SOUND_PULSE), 2048);
+    assert_eq!(u16_of(&d, LAB_SOUND_CUTOFF), 1000, "1000 is 125 x 8");
+    assert_eq!(d[LAB_SOUND_FILTER_VOICES as usize], 7);
+    let depth = u16_of(&d, LAB_SOUND_PWM_DEPTH);
+    assert!((depth - 512).abs() <= 51, "{depth}");
+    let rate = u16_of(&d, LAB_SOUND_PWM_RATE);
+    assert!((rate - 655).abs() * 10 <= 655, "{rate}");
+    let lfo = i32::from(d[LAB_SOUND_FILTER_LFO as usize]);
+    assert!((lfo - 6).abs() <= 1, "{lfo}");
+    let (vr, vd) = (
+        d[LAB_SOUND_VIBRATO_RATE as usize],
+        d[LAB_SOUND_VIBRATO_DEPTH as usize],
+    );
+    assert!(
+        (50..=72).contains(&vr) && (45..=90).contains(&vd),
+        "{vr} {vd}"
+    );
+    assert_eq!(d[LAB_SOUND_VIBRATO_DELAY as usize], 20);
+    // what a GT2 instrument has no room for: the slots off, the tune and the sync none; the
+    // player's bend range kept
+    assert_eq!(d[LAB_SOUND_SLOTS as usize + 5], 0);
+    assert_eq!(d[LAB_SOUND_BEND_RANGE as usize], 12);
+    assert!(unsafe { lab_sound_valid(d.as_ptr()) } != 0);
+}
+
+/// A kit drum (absolute notes, several waveforms, the test bit first) pulls, and says DRUM.
+#[test]
+fn a_kit_drum_pulls_with_what_was_approximated() {
+    let mut song = Song::device();
+    let raw = unsafe { &mut *song.ptr_mut() };
+    let kick = unsafe { std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[0]) };
+    raw.instr[0] = kick;
+    unsafe {
+        for i in 0..GT2_KIT_WAVE_ROWS as usize {
+            raw.ltable[0][i] = gt2_kit_wave[0][i];
+            raw.rtable[0][i] = gt2_kit_wave[1][i];
+        }
+        for i in 0..GT2_KIT_PULSE_ROWS as usize {
+            raw.ltable[1][i] = gt2_kit_pulse[0][i];
+            raw.rtable[1][i] = gt2_kit_pulse[1][i];
+        }
+    }
+    let (d, notes) = pull(&song, 1);
+    assert!(notes & LAB_SONG_DRUM != 0, "{notes:#x}");
+    assert_eq!((d[1], d[2]), (kick[0], kick[1]));
+    assert!(unsafe { lab_sound_valid(d.as_ptr()) } != 0);
+}
