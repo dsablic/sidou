@@ -32,8 +32,12 @@ screenshots the tests check.*
 - **Generative TRACKER and more DICE:** MUTATE and DICE in TRACKER, DICE's range and rhythm, a
   root and a scale per lane, and a filter sweep on EDIT + ENV, all as plain GoatTracker data.
 - **Knob curves** for the PWM, the vibrato and every effect slot's knobs, even to the ear.
+- **The Distortion slot is heard:** TAPE saturates, OVERDRIVE and FUZZ clip instead of only
+  getting louder, CRUSH's top is a 4-bit buzz; EDIT + K1-K4 show the effect, the control and its
+  value in a large popup.
 - **REC lands where you played,** an upload waits for quiet while a song plays, CLOCK OUT sends
-  a start after a stop, and the site's Songs to MIDI reads songs straight from the FM-1.
+  a start after a stop, the ARP helper and every EDIT chord work whichever finger lands first,
+  and the site's Songs to MIDI reads songs straight from the FM-1.
 
 The vibrato's and the effect slots' CCs now land on the curves' positions (their NRPNs still set
 exact values). All of it is in the
@@ -248,8 +252,10 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: 1.1.x**, SIDOU's own USB ID once pid.codes assigns it; then **1.x**
-  ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, the move to felucca-bsp.
+- **Next: 1.5** ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, instruments lifted
+  from a `.sid`, generated chords and multiplexed drums in TRACKER, a browser editor and
+  librarian, the screen mirror (FM-1 Live Link), a popup for every encoder edit and SIDOU's own
+  USB ID; a test and code cleanup before it ships.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/ROADMAP.md) and the
