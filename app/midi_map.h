@@ -7,7 +7,9 @@
  *
  * - A CC sets the parameter through its curve (midi_map_from_cc): LINEAR spans the range,
  *   value * max / 127 rounded; STEPS divides 0..127 evenly among the values,
- *   value * (max + 1) / 128.
+ *   value * (max + 1) / 128; WALK lands on the positions of the knob's walk (live.h "Knob
+ *   walks"), position round(value * (n - 1) / 127) of n, so the CC moves as the knob does and
+ *   0..127 reaches every position.
  * - An NRPN carries the parameter's own value, MSB * 128 + LSB, clamped to its range: the
  *   full 11 bits of the cutoff and 12 of the pulse width. For a parameter of more than 128
  *   values (max >= 128) CC 6 applies the MSB at once (the LSB taken as 0) and CC 38 refines
@@ -47,7 +49,8 @@ extern "C" {
 
 typedef enum {
     MIDI_CURVE_LINEAR = 0, /* value * max / 127, rounded: needs max >= 127 */
-    MIDI_CURVE_STEPS = 1   /* value * (max + 1) / 128: needs max < 128 */
+    MIDI_CURVE_STEPS = 1,  /* value * (max + 1) / 128: needs max < 128 */
+    MIDI_CURVE_WALK = 2    /* the knob's walk's positions (live_walk_from_cc) */
 } midi_map_curve;
 
 /* The reference's text is only for the host tests that generate docs/reference/midi.md:
@@ -79,11 +82,16 @@ const midi_map_entry* midi_map_row(uint32_t i);
 const midi_map_entry* midi_map_for_param(uint32_t param);
 const midi_map_entry* midi_map_for_cc(uint8_t cc);
 const midi_map_entry* midi_map_for_nrpn(uint16_t nrpn);
-/* A CC value 0..127 as the parameter's value, by the row's curve. */
-uint32_t midi_map_from_cc(const midi_map_entry* e, uint8_t value);
+/* A CC value 0..127 as the parameter's value, by the row's curve. l: the instrument a WALK row's
+ * walk depends on (an effect slot's algorithm); it may be NULL for the other curves. */
+uint32_t midi_map_from_cc(const live* l, const midi_map_entry* e, uint8_t value);
 /* A parameter value as a CC value, round(value * 127 / max) (clamped): midi_map_from_cc
- * gives it back exactly for STEPS, and as near as 7 bits can for LINEAR. */
-uint8_t midi_map_to_cc(const midi_map_entry* e, uint32_t value);
+ * gives it back exactly for STEPS, and as near as 7 bits can for LINEAR; WALK's, the nearest
+ * position's CC, gives back that position. l as midi_map_from_cc's. */
+uint8_t midi_map_to_cc(const live* l, const midi_map_entry* e, uint32_t value);
+/* A CC value applied to the row's parameter (midi_map_param_set) by its curve; a WALK row's
+ * position exactly (live_walk_cc). */
+void midi_map_cc_set(live* l, const midi_map_entry* e, uint8_t value);
 
 /* A row's parameter as the map sets it: a live parameter (live_param_get, _set, _max) or
  * SPREAD (MIDI_MAP_SPREAD, chip_spread_set). */

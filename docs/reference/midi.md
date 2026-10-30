@@ -38,6 +38,12 @@ patch's value up or down around 64; SIDOU does not.
   127 are the ends.
 - **CC, steps curve:** 0..127 is divided evenly among the parameter's values,
   value * (max + 1) / 128: a switch is off below 64 and on from 64.
+- **CC, walk curve:** 0..127 lands on the positions the knob turns through (its walk:
+  the vibrato's rate, depth and delay, the PWM's depth and rate, and each effect slot's
+  Amount, A, B and Mix by the slot's algorithm, see controls.md, Knob curves), position
+  round(value * (n - 1) / 127) of n, so a CC sweep moves as the knob does and reaches every
+  position; sent out, a value goes as its nearest position's CC. Its NRPN still sets any
+  value.
 - **NRPN:** CC 99 and 98 select the parameter (MSB, LSB). The data is the parameter's own
   value, MSB * 128 + LSB, clamped to its range: CC 6 sets the MSB (the LSB taken as 0),
   CC 38 the LSB (with the MSB of the last CC 6, or, if none came since the selection or
@@ -123,7 +129,9 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   twice a C64 player's frame rate. A flood of messages costs one update per tick.
 - **Vibrato:** a triangle per voice, from 0 at each note-on once its delay is over. Rate
   CC 76 (0.1 Hz steps, up to 12.7 Hz), depth CC 77 (127 is +-99 cents), delay CC 78
-  (10 ms steps). The wheel and aftertouch add to the depth where they are assigned to the
+  (10 ms steps), each CC on the walk LAB's knob takes (the walk curve: 24 rates 0.5..12.7 Hz
+  even in pitch, 32 depths even in cents' ratio, 24 delays 40 ms..1.27 s); their NRPNs set
+  any value. The wheel and aftertouch add to the depth where they are assigned to the
   vibrato, up to 127. Updated at 100 Hz, a triangle of +-d cents at f Hz moves 4 * d * f /
   100 cents a tick: 6 cents at +-25 cents and 6 Hz, 24 cents at the full depth. Above
   about 8 Hz a cycle has fewer than 12 steps and the vibrato starts to sound stepped.
@@ -378,8 +386,8 @@ In NRPN order.
 | Live | Pulse width | 1 | 0/2 (2) | 0..4095 | linear | 2048 | 0..4095, the SID's 12 bits; the PWM presets move around it; CC 1 while it is the mod wheel's target (the default) |
 | Live | Volume | 7 | 0/3 (3) | 0..1023 | linear | 1023 | 0..1023 as the MASTER pot, the final output's digital gain |
 | Output | Spread | 117 | 0/4 (4) | 0..100 | steps | 0 | SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; saved with the settings (not a preset's, not learned, not sent) |
-| Live | PWM depth | - | 0/5 (5) | 0..2048 | linear | 0 | 0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed near the ends so the pulse never closes); a preset's |
-| Live | PWM rate | - | 0/6 (6) | 0..255 | linear | 0 | 0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's |
+| Live | PWM depth | - | 0/5 (5) | 0..2048 | walk | 0 | 0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed near the ends so the pulse never closes); a preset's |
+| Live | PWM rate | - | 0/6 (6) | 0..255 | walk | 0 | 0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's |
 | Live | Fine tune | - | 0/7 (7) | 0..100 | steps | 50 | 0..100 = -50..+50 cents, 50 in tune; every voice; a preset's |
 | Live | Filter LFO | 31 | 0/8 (8) | 0..32 | steps | 0 | 0 off .. 32 of K1's cutoff detents each way: the cutoff's LFO, a triangle at the PWM rate; a preset's (off) |
 | Live | ARP rate | 28 | 0/9 (9) | 0..8 | steps | 2 | the chord arpeggio's: 0..5 a note every 1, 2, 3, 4, 6 or 8 frames of 50 Hz, 6..8 a 32nd, a 16th or an 8th of the MIDI clock (Chord arpeggio, below); a preset's (2) |
@@ -416,27 +424,27 @@ In NRPN order.
 | Expert | External high-pass | - | 2/17 (273) | 0..127 | linear | 20 | 0..127 = 0..100 Hz |
 | Expert | Voice DC offset | - | 2/18 (274) | 0..127 | linear | 60 | 0..127 = 0..0.6 voice-DAC units |
 | Distortion | Algorithm | 102 | 3/0 (384) | 0..5 | steps | 0 | 0 OFF, 1 TAPE, 2 OVERDRIVE, 3 FUZZ, 4 CRUSH, 5 LO-FI |
-| Distortion | Amount | 103 | 3/1 (385) | 0..127 | linear | 0 | 0..127 |
-| Distortion | A | 104 | 3/2 (386) | 0..127 | linear | 0 | 0..127 |
-| Distortion | B | 105 | 3/3 (387) | 0..127 | linear | 0 | 0..127 |
-| Distortion | Mix | 106 | 3/4 (388) | 0..127 | linear | 0 | 0 dry .. 127 wet |
+| Distortion | Amount | 103 | 3/1 (385) | 0..127 | walk | 0 | 0..127 |
+| Distortion | A | 104 | 3/2 (386) | 0..127 | walk | 0 | 0..127 |
+| Distortion | B | 105 | 3/3 (387) | 0..127 | walk | 0 | 0..127 |
+| Distortion | Mix | 106 | 3/4 (388) | 0..127 | walk | 0 | 0 dry .. 127 wet |
 | Modulation | Algorithm | 107 | 4/0 (512) | 0..6 | steps | 0 | 0 OFF, 1 CHORUS, 2 FLANGER, 3 PHASER, 4 TREMOLO, 5 AUTO-PAN, 6 WOW |
-| Modulation | Amount | 108 | 4/1 (513) | 0..127 | linear | 0 | 0..127 |
-| Modulation | A | 109 | 4/2 (514) | 0..127 | linear | 0 | 0..127 |
-| Modulation | B | 110 | 4/3 (515) | 0..127 | linear | 0 | 0..127 |
-| Modulation | Mix | 111 | 4/4 (516) | 0..127 | linear | 0 | 0 dry .. 127 wet |
+| Modulation | Amount | 108 | 4/1 (513) | 0..127 | walk | 0 | 0..127 |
+| Modulation | A | 109 | 4/2 (514) | 0..127 | walk | 0 | 0..127 |
+| Modulation | B | 110 | 4/3 (515) | 0..127 | walk | 0 | 0..127 |
+| Modulation | Mix | 111 | 4/4 (516) | 0..127 | walk | 0 | 0 dry .. 127 wet |
 | FX | Algorithm | 112 | 5/0 (640) | 0..4 | steps | 0 | 0 OFF, 1 DELAY, 2 PING-PONG, 3 REVERB, 4 LUSH |
-| FX | Amount | 113 | 5/1 (641) | 0..127 | linear | 0 | 0..127 |
-| FX | A | 114 | 5/2 (642) | 0..127 | linear | 0 | 0..127 |
-| FX | B | 115 | 5/3 (643) | 0..127 | linear | 0 | 0..127 |
-| FX | Mix | 116 | 5/4 (644) | 0..127 | linear | 0 | 0 dry .. 127 wet |
+| FX | Amount | 113 | 5/1 (641) | 0..127 | walk | 0 | 0..127 |
+| FX | A | 114 | 5/2 (642) | 0..127 | walk | 0 | 0..127 |
+| FX | B | 115 | 5/3 (643) | 0..127 | walk | 0 | 0..127 |
+| FX | Mix | 116 | 5/4 (644) | 0..127 | walk | 0 | 0 dry .. 127 wet |
 | Expression | Bend range | - | 6/0 (768) | 0..24 | steps | 2 | semitones each way; also RPN 0 (CC 101/100 = 0/0, then CC 6 the semitones) |
 | Expression | Velocity target | - | 6/1 (769) | 0..3 | steps | 0 | 0 off (full level), 1 sustain level, 2 cutoff (lower), 3 pulse width (narrower) |
 | Expression | Mod wheel target | - | 6/2 (770) | 0..2 | steps | 0 | 0 pulse width (CC 1 sets it), 1 vibrato depth (adds), 2 cutoff (opens) |
 | Expression | Aftertouch target | - | 6/3 (771) | 0..3 | steps | 0 | 0 off, 1 vibrato depth (adds), 2 pulse width (raises), 3 cutoff (opens) |
-| Expression | Vibrato rate | 76 | 6/4 (772) | 0..127 | linear | 60 | 0..12.7 Hz in 0.1 Hz steps |
-| Expression | Vibrato depth | 77 | 6/5 (773) | 0..127 | linear | 0 | 0 off .. 127 +-99 cents, a triangle |
-| Expression | Vibrato delay | 78 | 6/6 (774) | 0..127 | linear | 0 | 0..1.27 s after each note-on, in 10 ms |
+| Expression | Vibrato rate | 76 | 6/4 (772) | 0..127 | walk | 60 | 0..12.7 Hz in 0.1 Hz steps |
+| Expression | Vibrato depth | 77 | 6/5 (773) | 0..127 | walk | 0 | 0 off .. 127 +-99 cents, a triangle |
+| Expression | Vibrato delay | 78 | 6/6 (774) | 0..127 | walk | 0 | 0..1.27 s after each note-on, in 10 ms |
 
 ## By CC
 

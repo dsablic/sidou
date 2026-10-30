@@ -144,8 +144,8 @@ extern "C" {
 #define LIVE_SLOTS 3u
 #define LIVE_SLOT_FIELDS 5u
 #define LIVE_SLOT_MAX 127u
-/* A knob detent moves a slot control this many steps: 32 detents end to end. */
-#define LIVE_SLOT_DETENT 4
+/* A knob turns a slot control along its walk (live_walk_slot): 32 detents end to end. */
+#define LIVE_SLOT_DETENTS 32u
 
 typedef enum {
     LIVE_SLOT_ALGORITHM = 0,
@@ -712,6 +712,48 @@ void live_links_update(live* l);
 /* What K3 turns now (a live_tone_kind): RATIO on a mono-sync preset, else PULSE while the waveform
  * has the pulse bit, else DECAY. */
 uint32_t live_tone(const live* l);
+
+/* Knob walks (live_walk.c, docs/reference/controls.md "Knob curves"): the values a knob lands
+ * on, rising strictly, each one detent from the next, so a parameter whose ear is logarithmic
+ * moves by even steps of what is heard. They choose the values only: a stored value keeps its
+ * meaning, and a value off the walk (a preset, MIDI, a sound saved before) is kept until a turn,
+ * whose first detent lands on the first entry beyond it the turn's way (none that way: it
+ * stays). PWM HZ walks the phase step (live.pwm_rate), the others the parameter's own values. */
+enum {
+    LIVE_WALK_PWM_RATE,  /* 32, geometric 0.05..12.75 Hz, in phase steps */
+    LIVE_WALK_PWM_DEPTH, /* 32, square law 0..LIVE_PWM_DEPTH_MAX */
+    LIVE_WALK_VIB_RATE,  /* 24, geometric 0.5..12.7 Hz */
+    LIVE_WALK_VIB_DEPTH, /* 32: 0, then geometric 6..127 (+-4.7..+-99 cents) */
+    LIVE_WALK_VIB_DELAY, /* 24: 0, then quasi-log 40 ms..1.27 s */
+    LIVE_WALK_FX_LIN,    /* the slots' shapes, 32 over 0..127: even, 4 a detent (5 mid-way) */
+    LIVE_WALK_FX_LOG,    /* 0, then geometric 5..127 (+1 steps where geometric is finer) */
+    LIVE_WALK_FX_EQP,    /* equal power, 127 sin(pi/2 i/31): dense at the top */
+    LIVE_WALKS
+};
+#define LIVE_WALK_NONE LIVE_WALKS
+/* A walk's positions, and position i's value (stored units). */
+uint32_t live_walk_count(uint32_t walk);
+uint32_t live_walk_at(uint32_t walk, uint32_t i);
+/* The shape of an effect slot's control: field LIVE_SLOT_AMOUNT..LIVE_SLOT_MIX of an algorithm,
+ * chosen per algorithm and field by its rendered response (host knob_curves.rs). The tables for
+ * live_slot_turn's own walk: the three shapes' 32 positions (LIVE_WALK_FX_LIN + i), each from 0
+ * to LIVE_SLOT_MAX, and per slot and algorithm the four controls' shapes, two bits each from
+ * bit 0 (Amount). */
+uint32_t live_walk_slot(uint32_t slot, uint32_t algorithm, uint32_t field);
+extern const uint8_t live_walk_fx[3][32];
+extern const uint8_t live_walk_shapes[LIVE_SLOTS][8];
+/* The walk a parameter's knob takes (an effect slot's by its algorithm now), or LIVE_WALK_NONE. */
+uint32_t live_walk_of(const live* l, uint32_t param);
+/* value moved detents along walk (above). */
+uint32_t live_walk_step(uint32_t walk, uint32_t value, int32_t detents);
+/* The parameter turned by detents along its walk (it must have one). */
+void live_walk_turn(live* l, uint32_t param, int32_t detents);
+/* A CC onto the walk's positions, (cc (n - 1) + 63) / 127, so 0..127 reaches each one: its value
+ * in the parameter's units (live_param_set's), and back, the nearest position's CC. live_walk_cc
+ * sets the position itself (PWM HZ's step exactly, finer than its parameter's 0.05 Hz). */
+uint32_t live_walk_from_cc(const live* l, uint32_t param, uint32_t cc);
+uint8_t live_walk_to_cc(const live* l, uint32_t param, uint32_t value);
+void live_walk_cc(live* l, uint32_t param, uint32_t cc);
 /* round(65536 * 2^((k - 12) / 12)) for k = 0..24: the sync ratio's semitones (live.c). */
 extern const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1];
 /* PRESETS: steps the sound a detent each (clockwise the next), clamped at both ends: the
@@ -842,7 +884,7 @@ uint32_t live_slot_algorithms(uint32_t slot);
 /* Sets a slot's field: an algorithm clamped to the slot's, a control to 0..LIVE_SLOT_MAX.
  * Sends it when it changed. */
 void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value);
-/* Turns a slot control by detents (LIVE_SLOT_DETENT steps each), clamped at both ends. */
+/* Turns a slot control by detents along its walk (live_walk_slot), clamped at both ends. */
 void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents);
 /* Amount, A, B and Mix (0..127) an algorithm starts from when picked from the panel
  * (app/fx_defaults.c): [slot][algorithm]; NONE's row is zeros. */

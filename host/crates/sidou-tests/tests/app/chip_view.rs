@@ -249,7 +249,9 @@ fn expert_pages_bind_four_direct_knobs_and_leave_unused_knobs_inert() {
         effect
     );
     ui.turn(K1, 1);
-    assert_eq!(param(&ui, effect), LIVE_SLOT_DETENT);
+    // a detent along the slot's walk (NONE's Amount: linear, 32 detents end to end)
+    let w = unsafe { live_walk_of(ui.live(), effect) };
+    assert_eq!(param(&ui, effect), unsafe { live_walk_at(w, 1) });
 }
 
 #[test]
@@ -982,9 +984,11 @@ fn the_knobs_turn_the_focused_slot() {
         ui.turn(PANEL_ENC_SELECT, 1);
         for k in 0..4 {
             ui.turn(K1 + k, 1 + k as i32 + slot as i32);
+            // along the control's walk from 0 (knob_curves.rs): Mix's starts 0, 5, 6, ...
+            let w = unsafe { live_walk_slot(slot, 0, LIVE_SLOT_AMOUNT + k) };
             assert_eq!(
                 u32::from(ui.live().slot[slot as usize][(LIVE_SLOT_AMOUNT + k) as usize]),
-                4 * (1 + k + slot),
+                unsafe { live_walk_at(w, 1 + k + slot) },
                 "slot {slot} K{}",
                 k + 1
             );
@@ -994,7 +998,7 @@ fn the_knobs_turn_the_focused_slot() {
     settle(&mut ui);
     assert_eq!(
         control(&ui, 3),
-        ("MIX".into(), "24".into()),
+        ("MIX".into(), "10".into()), // position 6 of Mix's walk (knob_curves.rs)
         "FX is in focus"
     );
     ui.turn(PANEL_ENC_SELECT, -1);
@@ -1014,7 +1018,11 @@ fn the_edit_shortcut_turns_the_selected_slot_in_every_view() {
     ui.turn(K1 + 3, 1);
     ui.hold(PANEL_BTN_EDIT, false);
     assert_eq!(ui.live().slot[1][LIVE_SLOT_AMOUNT as usize], 8);
-    assert_eq!(ui.live().slot[1][LIVE_SLOT_MIX as usize], 4);
+    assert_eq!(
+        ui.live().slot[1][LIVE_SLOT_MIX as usize],
+        5,
+        "Mix's walk (knob_curves.rs): 0, then 5"
+    );
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 0, "EDIT + K1 turned the age");
     // ENV does nothing here (on LIVE it opens LAB; ALGORITHM on a slot page steps the algorithm).
     ui.press(PANEL_BTN_ENV);
@@ -1132,13 +1140,7 @@ fn midi_learn_binds_a_chip_view_knob() {
         let e = unsafe { midi_learn_route(ml, cc) };
         assert!(!e.is_null());
         let e = unsafe { &*e };
-        unsafe {
-            live_param_set(
-                &mut *ui.rig.live,
-                u32::from(e.param),
-                midi_map_from_cc(e, value),
-            )
-        };
+        unsafe { midi_map_cc_set(&mut *ui.rig.live, e, value) };
     };
     route(&mut ui, &mut ml, 100);
     assert_eq!(unsafe { midi_learn_cc_of(&*ml, LIVE_PARAM_AGE) }, cc);
@@ -1231,7 +1233,9 @@ fn midi_out_sends_the_chip_views_knobs() {
     };
     let cc = |p: u32, value: u32| {
         let e = unsafe { &*midi_map_for_param(p) };
-        [0x0B, 0xB0, e.cc, unsafe { midi_map_to_cc(e, value) }]
+        [0x0B, 0xB0, e.cc, unsafe {
+            midi_map_to_cc(std::ptr::null(), e, value)
+        }]
     };
     ui.turn(K1, 2);
     ui.turn(K1 + 2, 1);
@@ -1288,7 +1292,8 @@ fn midi_changes_show_on_the_page() {
     ui.turn(PANEL_ENC_SELECT, 2);
     settle(&mut ui);
     assert_eq!(choice(&ui, 3), "WOW");
-    assert_eq!(control(&ui, 0), ("WOW".into(), "50".into()));
+    // CC 50 on WOW's walk (knob_curves.rs: logarithmic): position 12 of 32, 18
+    assert_eq!(control(&ui, 0), ("WOW".into(), "18".into()));
     ui.turn(PANEL_ENC_SELECT, -2);
     settle(&mut ui);
     ui.rig.cc(CC_PROFILE, 40); // 4, worn: CC 85 spans the five built-in profiles, then USER 1..8

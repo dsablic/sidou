@@ -18,9 +18,12 @@
     "JOUR.nyp.build.to-instr": "medium",
     "JOUR.nyp.build.to-order": "medium",
     "JOUR.nyp.sketch.enter-notes": "medium",
-    "KNOB.detents.K3.lab-osc": "low",
     "KNOB.detents.K4.lab-osc": "low",
-    "KNOB.fine.K3.lab-osc": "low",
+    "KNOB.jump.K3.lab-osc": "medium",
+    "KNOB.uneven.K2.lab-osc": "low",
+    "KNOB.uneven.K3.edit": "low",
+    "KNOB.uneven.K3.lab-osc": "low",
+    "KNOB.uneven.K4.edit": "low",
     "MUS.quiet.noise-perc.a4": "medium",
     "MUS.quiet.noise-perc.f3": "medium",
     "MUS.quiet.pwm-bass.a4": "medium",
@@ -420,11 +423,11 @@
       "worse_when_higher": false
     },
     "knob.K1.edit.audible_cents": {
-      "value": 597.3701841306331,
+      "value": 648.2370660471457,
       "worse_when_higher": false
     },
     "knob.K1.edit.audible_db": {
-      "value": 13.70345484442987,
+      "value": 13.834675889677946,
       "worse_when_higher": false
     },
     "knob.K1.edit.dead_zone": {
@@ -432,11 +435,11 @@
       "worse_when_higher": true
     },
     "knob.K1.edit.detents": {
-      "value": 32.0,
+      "value": 31.0,
       "worse_when_higher": true
     },
     "knob.K1.edit.max_step": {
-      "value": 3.1496062992125986,
+      "value": 3.937007874015748,
       "worse_when_higher": true
     },
     "knob.K1.edit.median_step": {
@@ -564,11 +567,11 @@
       "worse_when_higher": false
     },
     "knob.K2.edit.audible_cents": {
-      "value": 999.6227308611794,
+      "value": 1006.3775188809449,
       "worse_when_higher": false
     },
     "knob.K2.edit.audible_db": {
-      "value": 0.9671911236030297,
+      "value": 0.9722965210030026,
       "worse_when_higher": false
     },
     "knob.K2.edit.dead_zone": {
@@ -576,11 +579,11 @@
       "worse_when_higher": true
     },
     "knob.K2.edit.detents": {
-      "value": 32.0,
+      "value": 31.0,
       "worse_when_higher": true
     },
     "knob.K2.edit.max_step": {
-      "value": 3.1496062992125986,
+      "value": 3.937007874015748,
       "worse_when_higher": true
     },
     "knob.K2.edit.median_step": {
@@ -636,11 +639,11 @@
       "worse_when_higher": false
     },
     "knob.K2.lab-osc.audible_cents": {
-      "value": 808.3578238131618,
+      "value": 663.4896977382589,
       "worse_when_higher": false
     },
     "knob.K2.lab-osc.audible_db": {
-      "value": 8.587303304444568,
+      "value": 7.533519093786374,
       "worse_when_higher": false
     },
     "knob.K2.lab-osc.dead_zone": {
@@ -648,15 +651,15 @@
       "worse_when_higher": true
     },
     "knob.K2.lab-osc.detents": {
-      "value": 64.0,
+      "value": 31.0,
       "worse_when_higher": true
     },
     "knob.K2.lab-osc.max_step": {
-      "value": 1.5625,
+      "value": 6.34765625,
       "worse_when_higher": true
     },
     "knob.K2.lab-osc.median_step": {
-      "value": 1.5625,
+      "value": 3.22265625,
       "worse_when_higher": false
     },
     "knob.K2.live.audible_cents": {
@@ -708,27 +711,27 @@
       "worse_when_higher": false
     },
     "knob.K3.edit.audible_cents": {
-      "value": 86.38198379169557,
+      "value": 88.3450645715122,
       "worse_when_higher": false
     },
     "knob.K3.edit.audible_db": {
-      "value": 0.8853134294336442,
+      "value": 0.9363113330387804,
       "worse_when_higher": false
     },
     "knob.K3.edit.dead_zone": {
-      "value": 4.0,
+      "value": 0.0,
       "worse_when_higher": true
     },
     "knob.K3.edit.detents": {
-      "value": 32.0,
+      "value": 31.0,
       "worse_when_higher": true
     },
     "knob.K3.edit.max_step": {
-      "value": 3.1496062992125986,
+      "value": 10.236220472440944,
       "worse_when_higher": true
     },
     "knob.K3.edit.median_step": {
-      "value": 3.1496062992125986,
+      "value": 2.3622047244094486,
       "worse_when_higher": false
     },
     "knob.K3.lab-env.audible_cents": {
@@ -756,11 +759,11 @@
       "worse_when_higher": false
     },
     "knob.K3.lab-osc.audible_cents": {
-      "value": 602.1693743343459,
+      "value": 421.43634435388026,
       "worse_when_higher": false
     },
     "knob.K3.lab-osc.audible_db": {
-      "value": 6.004623576938975,
+      "value": 6.106997585781173,
       "worse_when_higher": false
     },
     "knob.K3.lab-osc.dead_zone": {
@@ -768,15 +771,15 @@
       "worse_when_higher": true
     },
     "knob.K3.lab-osc.detents": {
-      "value": 255.0,
+      "value": 31.0,
       "worse_when_higher": true
     },
     "knob.K3.lab-osc.max_step": {
-      "value": 0.39215686274509803,
+      "value": 16.470588235294116,
       "worse_when_higher": true
     },
     "knob.K3.lab-osc.median_step": {
-      "value": 0.39215686274509803,
+      "value": 1.1764705882352942,
       "worse_when_higher": false
     },
     "knob.K3.live.audible_cents": {
@@ -900,11 +903,11 @@
       "worse_when_higher": false
     },
     "knob.K4.edit.audible_cents": {
-      "value": 391.5576572057639,
+      "value": 404.0388274684597,
       "worse_when_higher": false
     },
     "knob.K4.edit.audible_db": {
-      "value": 1.391526178128757,
+      "value": 1.3370371761376632,
       "worse_when_higher": false
     },
     "knob.K4.edit.dead_zone": {
@@ -912,15 +915,15 @@
       "worse_when_higher": true
     },
     "knob.K4.edit.detents": {
-      "value": 32.0,
+      "value": 31.0,
       "worse_when_higher": true
     },
     "knob.K4.edit.max_step": {
-      "value": 3.1496062992125986,
+      "value": 10.236220472440944,
       "worse_when_higher": true
     },
     "knob.K4.edit.median_step": {
-      "value": 3.1496062992125986,
+      "value": 2.3622047244094486,
       "worse_when_higher": false
     },
     "knob.K4.lab-env.audible_cents": {

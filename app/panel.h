@@ -217,9 +217,9 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
  * delay and the velocity target; FX the selected slot's Amount, A, B and Mix. What
  * panel_knob_param names on a LAB page, EDIT held or not. LIVE_PARAM_COUNT past the pages. */
 uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k);
-/* Detent steps of encoder enc (+ = clockwise): what panel_knob_param names, a slot control by
- * LIVE_SLOT_DETENT a detent, a character control by PANEL_CHARACTER_DETENT, clamped at both
- * ends, and on PANEL_PAGE_LIVE live's knobs. */
+/* Detent steps of encoder enc (+ = clockwise): what panel_knob_param names, a slot control a
+ * position of its walk a detent (live_walk_slot), a character control by PANEL_CHARACTER_DETENT,
+ * clamped at both ends, and on PANEL_PAGE_LIVE live's knobs. */
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
 /* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
 void panel_master(panel* p, live* l, int32_t raw);

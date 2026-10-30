@@ -126,6 +126,24 @@ static void tenths(char* out, uint32_t t) {
     }
 }
 
+/* The PWM's (and the filter LFO's) rate from its phase step: in tenths, as tenths(), or in
+ * hundredths below 1 Hz where tenths would not tell the walk's slow positions apart ("0.05",
+ * ".05" when brief, for the name line). */
+static void lfo_hz(char* out, uint32_t step, int brief) {
+    uint32_t c = (step * 10000u + 32768u) >> 16; /* 65536 a cycle a tick, 100 ticks a second */
+    if (c >= 100u || c % 10u == 0u) {
+        tenths(out, (c + 5u) / 10u);
+        return;
+    }
+    if (!brief) {
+        *out++ = '0';
+    }
+    out[0] = '.';
+    out[1] = (char)('0' + c / 10u);
+    out[2] = (char)('0' + c % 10u);
+    out[3] = 0;
+}
+
 static void copy(char* out, const char* s) {
     uint32_t n = 0;
     for (; s[n] && n + 1u < LAB_VIEW_TEXT; n++) {
@@ -186,7 +204,7 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             e[1] = 0;
         } else if (k == 2u) {
             copy(name, "PWM HZ");
-            tenths(value, (v + 1u) / 2u); /* 0.05 Hz a step */
+            lfo_hz(value, l->pwm_rate, 0);
         } else {
             copy(name, "TUNE");
             (void)number(value, (int32_t)v - LIVE_TUNE_CENTS, 1);
@@ -204,7 +222,7 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             /* the depth; the rate it shares with OSC's PWM HZ on the name line: "LFO1.3HZ",
              * "LFO 12HZ" (the space where the column has room) */
             char hz[6];
-            tenths(hz, (live_param_get(l, LIVE_PARAM_PWM_RATE) + 1u) / 2u);
+            lfo_hz(hz, l->pwm_rate, 1);
             char* e = append(name, length(hz) < 3u ? "LFO " : "LFO");
             e = append(append(e, hz), "HZ");
             *e = 0;
@@ -745,11 +763,10 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
     case LAB_PAGE_OSC:
         if (k == 0u) {
             pulse_turn(l, d);
+        } else if (k < 3u) {
+            live_walk_turn(l, k == 1u ? LIVE_PARAM_PWM_DEPTH : LIVE_PARAM_PWM_RATE, d);
         } else {
-            static const uint8_t PARAM[3] = {LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE,
-                                             LIVE_PARAM_TUNE};
-            static const uint8_t DETENT[3] = {32, 1, 1};
-            add(l, PARAM[k - 1u], d * DETENT[k - 1u]);
+            add(l, LIVE_PARAM_TUNE, d);
         }
         break;
     case LAB_PAGE_ENVELOPE: add(l, LIVE_PARAM_ATTACK + k, d); break;
@@ -766,7 +783,11 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
         }
         break;
     case LAB_PAGE_MOD:
-        add(l, k == 3u ? (uint32_t)LIVE_PARAM_ARP_RATE : LIVE_PARAM_VIBRATO_RATE + k, d);
+        if (k == 3u) {
+            add(l, LIVE_PARAM_ARP_RATE, d);
+        } else {
+            live_walk_turn(l, LIVE_PARAM_VIBRATO_RATE + k, d); /* rate, depth, delay */
+        }
         break;
     case LAB_PAGE_MACRO:
         if (k < 2u) {

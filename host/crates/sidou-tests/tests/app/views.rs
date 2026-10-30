@@ -1232,16 +1232,19 @@ fn the_panel_plays(ui: &mut Ui, view: &str) {
     for k in 0..4 {
         let field = LIVE_SLOT_AMOUNT as usize + k;
         let before = ui.live().slot[s][field];
-        // a control the algorithm's defaults put at the top turns down
-        let steps = if before > LIVE_SLOT_MAX as u8 - LIVE_SLOT_DETENT as u8 {
-            -1
-        } else {
-            1
+        // a control the algorithm's defaults put at the top turns down; a detent along its walk
+        let steps = if before == LIVE_SLOT_MAX as u8 { -1 } else { 1 };
+        let w = unsafe {
+            live_walk_slot(
+                s as u32,
+                u32::from(ui.live().slot[s][LIVE_SLOT_ALGORITHM as usize]),
+                field as u32,
+            )
         };
         ui.turn(PANEL_ENC_K1 + k as u32, steps);
         assert_eq!(
-            ui.live().slot[s][field],
-            before.wrapping_add_signed(steps as i8 * LIVE_SLOT_DETENT as i8),
+            u32::from(ui.live().slot[s][field]),
+            unsafe { live_walk_step(w, u32::from(before), steps) },
             "{view}: EDIT + K{}",
             k + 1
         );

@@ -45,13 +45,7 @@ impl Learn {
         let e = unsafe { midi_learn_route(&mut *self.ml, cc) };
         if !e.is_null() {
             let e = unsafe { &*e };
-            unsafe {
-                live_param_set(
-                    &mut *self.ui.rig.live,
-                    u32::from(e.param),
-                    midi_map_from_cc(e, value),
-                )
-            };
+            unsafe { midi_map_cc_set(&mut *self.ui.rig.live, e, value) };
         }
     }
 

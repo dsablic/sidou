@@ -834,8 +834,11 @@ fn the_new_parameters_learn_and_persist_their_cc() {
     let e = unsafe { midi_learn_for_cc(&*b.ml, 46) };
     assert!(!e.is_null());
     assert_eq!(u32::from(unsafe { (*e).param }), LIVE_PARAM_TUNE);
-    assert_eq!(unsafe { midi_map_from_cc(e, 127) }, 2 * LIVE_TUNE_CENTS);
-    assert_eq!(unsafe { midi_map_from_cc(e, 0) }, 0);
+    assert_eq!(
+        unsafe { midi_map_from_cc(std::ptr::null(), e, 127) },
+        2 * LIVE_TUNE_CENTS
+    );
+    assert_eq!(unsafe { midi_map_from_cc(std::ptr::null(), e, 0) }, 0);
 }
 
 #[test]

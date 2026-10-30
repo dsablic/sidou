@@ -956,7 +956,7 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
         unsafe { midi_route_take(route, &m) };
     };
     // CC 85 now includes USER 1..8 after the five built-in profiles.
-    let worn = unsafe { midi_map_to_cc(midi_map_for_cc(85), SID_CHIP_6581_WORN) };
+    let worn = unsafe { midi_map_to_cc(std::ptr::null(), midi_map_for_cc(85), SID_CHIP_6581_WORN) };
     cc(&mut route, 1, 85, worn);
     cc(&mut route, 2, 89, 127);
     cc(&mut route, 0, 26, 127);

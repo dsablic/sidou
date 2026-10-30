@@ -141,8 +141,11 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 
 **Quality**
 
-- **Knob curves for every parameter.** K1's cutoff, MASTER, K3 and K4 are done; the rest get
-  a useful range, an even-in-perception curve and a test for dead zones and jumps. M.
+- ~~**Knob curves for every parameter.** K1's cutoff, MASTER, K3 and K4 are done; the rest get
+  a useful range, an even-in-perception curve and a test for dead zones and jumps. M.~~ Done in
+  1.1: PWM, PWM HZ, VIB HZ, DEPTH and DELAY on walks, each effect control on one of three shapes
+  chosen by rendering (controls.md "Knob curves"); OVERDRIVE's and FUZZ's drive left linear for
+  the ear check.
 - **Suggested automations.** A one-line toast offers "record this knob move as locks?" after
   you keep doing it. L, idea; cheap in the main loop.
 - ~~**SysEx during a chord.**~~ Done in 1.1: an upload waits for quiet while a song plays or a

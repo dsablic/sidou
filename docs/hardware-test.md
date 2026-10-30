@@ -2504,6 +2504,34 @@ What it decides: whether 1.1's additions to LAB sound and feel right. Set up as 
 
 Notes:
 
+## 25. Knob curves (1.1)
+
+What it decides: whether each curved knob feels even by ear (docs/reference/controls.md "Knob
+curves"). Set up as section 22; a chord held while turning, one detent at a time, up then down.
+
+- [ ] **LAB OSC PWM and PWM HZ:** PULSE at 50 %, PWM up from off through its 32 detents; then PWM
+  HZ from its bottom (`.05`) to its top (`13`).
+  *Emulator:* `sidou-tests/tests/app/knob_curves.rs` (the walks, the detents, the ratios, the
+  first detent off the walk, the CCs), `sidou-tests/tests/app/lab_view.rs::each_card_turns_its_parameter_by_its_detent`.
+  *Device-only:* by ear: PWM's first detents just audible and no detent near the top doing nothing;
+  PWM HZ's detents sounding like even steps of speed, none jumping.
+- [ ] **LAB MOD VIB HZ, DEPTH and DELAY:** DEPTH up from 0 through its detents, VIB HZ through its
+  24, DELAY through its 24 on repeated notes.
+  *Emulator:* as above.
+  *Device-only:* by ear: DEPTH's first detent (+-4.7 cents) a just-audible shimmer and every detent
+  after it an even step; DELAY's steps even in feel.
+- [ ] **An effect slot's controls (EDIT + K1-K4, LAB FX):** for each algorithm, each control from 0
+  to 127 a detent at a time, and Mix from 0.
+  *Emulator:* `sidou-tests/tests/app/knob_curves.rs::each_slot_control_takes_the_most_even_shape_for_its_ear`
+  (each control's measure rendered through the slots, its steps within 0.5x..2x of the median),
+  `sidou-tests/tests/app/fx_live.rs`, `sidou-tests/tests/app/chip_view.rs::the_knobs_turn_the_focused_slot`.
+  *Device-only:* by ear, especially the ones the measure could not settle: OVERDRIVE's and FUZZ's
+  drive (linear as before: does FUZZ's clip still arrive all at once near a third of the travel?
+  is OVERDRIVE's lower half too quiet a change?), CRUSH's rate (fine near the top), DELAY's
+  feedback and every Mix (even steps of dB: does Mix's first detent, -28 dB, start low enough?).
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2534,3 +2562,4 @@ Notes:
 | 22 LAB | | |
 | 23 Auditions before writing | | |
 | 24 LAB 1.1 | | |
+| 25 Knob curves | | |

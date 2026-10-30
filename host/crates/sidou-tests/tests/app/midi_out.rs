@@ -134,7 +134,7 @@ fn row(param: u32) -> &'static midi_map_entry {
 }
 
 fn to_cc(param: u32, value: u32) -> u8 {
-    unsafe { midi_map_to_cc(row(param), value) }
+    unsafe { midi_map_to_cc(std::ptr::null(), row(param), value) }
 }
 
 /// The MIDI bytes of a stream of packets (midi_usb_bytes), which also checks each CIN.
@@ -242,15 +242,22 @@ fn every_parameter_reaches_a_second_instrument_through_its_stream() {
         for p in 0..LIVE_PARAM_COUNT {
             let r = row(p);
             // The pulse width goes as its NRPN too: the wheel drives the cutoff by now.
-            let exact = hires == 1
-                || r.max < 128
-                || r.cc == MIDI_MAP_NO_CC as u8
-                || p == LIVE_PARAM_PULSE_WIDTH;
+            // A walked parameter's CC carries its walk's positions (knob_curves.rs).
+            let walk = u32::from(r.curve) == MIDI_CURVE_WALK;
+            let exact = r.cc == MIDI_MAP_NO_CC as u8
+                || p == LIVE_PARAM_PULSE_WIDTH
+                || (!walk && (hires == 1 || r.max < 128));
             let got = far.get(p);
             if exact {
                 assert_eq!(got, want[p as usize], "parameter {p} (hires {hires})");
             } else {
-                let back = unsafe { midi_map_from_cc(r, to_cc(p, want[p as usize])) };
+                let back = unsafe {
+                    midi_map_from_cc(
+                        &*far.rig.live,
+                        r,
+                        midi_map_to_cc(&*o.rig.live, r, want[p as usize]),
+                    )
+                };
                 assert_eq!(got, back, "parameter {p} through its CC");
             }
         }
@@ -592,12 +599,21 @@ fn the_effect_slots_go_out_on_their_ccs() {
     let mut got = o.drain();
     got.sort_unstable();
     let fx = LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS;
+    // as the slot's walks (DELAY's) carry them (knob_curves.rs)
+    let to_cc = |p: u32, v: u32| unsafe { midi_map_to_cc(&*o.rig.live, row(p), v) };
     let mut want = vec![
         cc_packet(0, 112, to_cc(fx, 1)),
         cc_packet(0, 113, to_cc(fx + LIVE_SLOT_AMOUNT, 48)),
         cc_packet(0, 114, to_cc(fx + LIVE_SLOT_A, 64)),
         cc_packet(0, 115, to_cc(fx + LIVE_SLOT_B, 48)),
-        cc_packet(0, 116, to_cc(fx + LIVE_SLOT_MIX, 72)),
+        cc_packet(
+            0,
+            116,
+            to_cc(
+                fx + LIVE_SLOT_MIX,
+                u32::from(o.rig.live.slot[2][LIVE_SLOT_MIX as usize]),
+            ),
+        ),
     ];
     want.sort_unstable();
     assert_eq!(got, want);
@@ -702,7 +718,7 @@ fn nrpn_data_entry_alone_is_midi_input_and_not_echoed() {
     // The wheel on the pulse width is its CC 1.
     o.trs(&[0xB0, 1, 99]);
     assert_eq!(o.get(LIVE_PARAM_PULSE_WIDTH), unsafe {
-        midi_map_from_cc(row(LIVE_PARAM_PULSE_WIDTH), 99)
+        midi_map_from_cc(std::ptr::null(), row(LIVE_PARAM_PULSE_WIDTH), 99)
     });
     assert_eq!(o.drain(), []);
 }

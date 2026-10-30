@@ -1011,7 +1011,7 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
     }
     const midi_map_entry* e = midi_map_for_cc(cc);
     if (e && e->param != MIDI_MAP_RESERVED) {
-        live_param_set(l, e->param, midi_map_from_cc(e, value));
+        midi_map_cc_set(l, e, value);
     }
 }
 
@@ -1110,7 +1110,22 @@ void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value) {
 
 void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents) {
     if (slot < LIVE_SLOTS && field < LIVE_SLOT_FIELDS && field != LIVE_SLOT_ALGORITHM) {
-        live_slot_set(l, slot, field, l->slot[slot][field] + detents * LIVE_SLOT_DETENT);
+        /* live_walk_step on the control's shape, here and by halves: a knob's input on CHIP's
+         * slot line is bounded (emu-gate screen.rs CHIP_INPUT). Every shape starts at 0 and ends
+         * at LIVE_SLOT_MAX, so a value is never below or above it. */
+        uint32_t algorithm = l->slot[slot][LIVE_SLOT_ALGORITHM] & 7u;
+        const uint8_t* t =
+            live_walk_fx[live_walk_shapes[slot][algorithm] >> 2u * (field - LIVE_SLOT_AMOUNT) & 3u];
+        uint32_t v = l->slot[slot][field];
+        int32_t pos = 0;
+        for (int32_t s = 16; s; s >>= 1) {
+            pos += t[pos + s] <= v ? s : 0;
+        }
+        if (t[pos] != v && detents < 0) {
+            pos++; /* off the walk: down from the first position above */
+        }
+        pos += detents;
+        live_slot_set(l, slot, field, t[pos < 0 ? 0 : pos > 31 ? 31 : pos]);
     }
 }
 

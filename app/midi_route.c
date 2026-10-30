@@ -529,7 +529,7 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
         return;
     }
     chip_setup s = r->kr->song_want;
-    uint32_t v = midi_map_from_cc(e, value);
+    uint32_t v = midi_map_from_cc(NULL, e, value);
     uint32_t edit_mask = 0;
     switch (e->param) {
     case LIVE_PARAM_PROFILE:
@@ -566,7 +566,7 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
 
 static void filter_cc(midi_route* r, uint8_t cc, uint8_t value) {
     const midi_map_entry* e = midi_map_for_cc(cc);
-    uint32_t v = midi_map_from_cc(e, value);
+    uint32_t v = midi_map_from_cc(NULL, e, value);
     if (cc == LIVE_CC_CUTOFF) {
         r->cutoff = (uint16_t)v;
         r->locks |= LOCK_CUTOFF;

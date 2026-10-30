@@ -291,9 +291,13 @@ void midi_out_remote(midi_out* o, const live* l) {
 /* 1 when v and wire encode as the same CC value (midi_map_to_cc). Never for two values of a range
  * of at most 128 values, the encoding being injective there; over a wider range two values in it
  * at least max / 127 apart differ too (round(v * 127 / max)), so only closer ones pay for the two
- * encodings. */
-static int same_cc(const midi_map_entry* e, uint32_t v, uint32_t wire) {
+ * encodings. A WALK row's values between two positions may share a CC: never compared, so a
+ * change may send the CC sent before (the receiver lands on the same position). */
+static int same_cc(const live* l, const midi_map_entry* e, uint32_t v, uint32_t wire) {
     uint32_t max = e->max;
+    if (e->curve == MIDI_CURVE_WALK) {
+        return 0; /* sent: at worst its position's CC again (a tick's cost: emu-gate midi.rs) */
+    }
     if (v <= max && wire <= max) {
         if (max <= 127u) {
             return 0;
@@ -303,7 +307,7 @@ static int same_cc(const midi_map_entry* e, uint32_t v, uint32_t wire) {
             return 0;
         }
     }
-    return midi_map_to_cc(e, v) == midi_map_to_cc(e, wire);
+    return midi_map_to_cc(l, e, v) == midi_map_to_cc(l, e, wire);
 }
 
 /* Parameter p's pending change into out[*n..], within budget. 1: done, sent or with nothing to
@@ -326,7 +330,7 @@ static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_
     uint32_t on = wire_cc(o, l, p, e);
     int nrpn = on == MIDI_MAP_NO_CC;
     if ((nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
-        (!nrpn && !(wire == SID_EXPERT_DEFAULT && EXPERT(p)) && same_cc(e, v, wire))) {
+        (!nrpn && !(wire == SID_EXPERT_DEFAULT && EXPERT(p)) && same_cc(l, e, v, wire))) {
         o->pending[p] = 0; /* nothing to send it as, or nothing new on the wire */
         return 1;
     }
@@ -340,7 +344,7 @@ static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_
         out[(*n)++] = packet(CIN_CC, cc, CC_DATA_MSB, v >> 7);
         out[(*n)++] = packet(CIN_CC, cc, CC_DATA_LSB, v & 0x7fu);
     } else {
-        out[(*n)++] = packet(CIN_CC, cc, on, midi_map_to_cc(e, v));
+        out[(*n)++] = packet(CIN_CC, cc, on, midi_map_to_cc(l, e, v));
     }
     o->wire[p] = (uint16_t)v;
     o->pending[p] = 0;

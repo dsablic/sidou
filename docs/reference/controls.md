@@ -133,7 +133,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
 | **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC, then the USER sounds [LAB kept](#lab), the empty slots skipped), clamped at both ends; with EDIT held it puts the current preset back to its factory settings (a USER sound, to the sound as kept); in every view but where the view takes the encoder: TRACKER with REC on, STEP and INSTR always (the lane's or the song's instrument), ORDER with EDIT held (inserts or deletes an entry), TABLE's ARP helper (the waveform) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
-| **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
+| **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end, along each control's [curve](#knob-curves)), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, SETTINGS, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing; a toast raised meanwhile waits and shows once the card closes |
 | **SAVE (button 9)** | clean press and release: on every list its **OK**, opening or choosing the highlighted item: the menu's item (nothing on a value item; on SETTINGS it only confirms STORE's format or RESET), [SONG](#song)'s action, the file LOAD or DELETE lists, a confirmation's answer (NO goes back a page, as HOME); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
@@ -677,7 +677,7 @@ The focus is on the tabs, the chip, a slot or EXPERT; the yellow tab (or title) 
 | SELECT | moves the focus: the tabs, CHIP, DIST, MOD, FX, EXPERT (it stops at either end) | the same | the same |
 | ALGORITHM | the B tab clockwise, the A tab counter-clockwise | the next profile clockwise, the one before counter-clockwise: the five built-in ones, then USER 1..8 (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
 | EDIT held + ALGORITHM | | steps the **save target**: USER 1..8, or OFF (below) | |
-| K1 / K2 / K3 / K4 | as on the chip | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end) |
+| K1 / K2 / K3 / K4 | as on the chip | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end, [curved](#knob-curves)) |
 
 The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
 SELECT onto a slot selects it (and the toast says so, SLOT MOD), and SCL on a slot moves the
@@ -789,11 +789,11 @@ with the point the sound is at now; a graph with no link is a dark flat line.
 
 | Page | K1 | K2 | K3 | K4 | ALGORITHM |
 |---|---|---|---|---|---|
-| OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
+| OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 detents on a square law, fine near off (`25%`) | PWM HZ: its rate, 32 detents from 0.05 to 12.75 Hz, even in pitch (`.05`..`0.87` in hundredths below 1 Hz, then `1.0`, `13`) | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
 | ENVELOPE | ATTACK | DECAY | SUS (the sustain level) | RELEASE (0..15, a step a detent) | INSTANT, AUTHENTIC: the envelope mode, the instrument's for every sound (ALL SOUNDS) |
 | FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | LFO: the filter LFO's depth, `0` (off) to `32` of K1's detents each way, a triangle (up first) at the rate OSC's PWM HZ sets, shown on the card's name line (`LFO1.3HZ`); turned up from off on a sound with no rate yet, the rate starts at 1 Hz; the drawing dots the band the cutoff sweeps | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
-| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | RATE: the arpeggio's rate, as LIVE's ARP + K1 (`3FR`: a note every 3 frames of 50 Hz, then `1/32`, `1/16`, `1/8` of the MIDI clock); dark grey while ARP is off, and set all the same. The velocity target, which this card had in 1.0, is NRPN 6/1's | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
-| FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
+| MOD | VIB HZ: the vibrato's rate, 24 detents from 0.5 to 12.7 Hz, even in pitch | DEPTH: 0, then 31 detents from +-4.7 to +-99 cents, even in ratio | DELAY: 0, then 23 detents from 40 ms to 1.27 s, even in ratio (in 10 ms) | RATE: the arpeggio's rate, as LIVE's ARP + K1 (`3FR`: a note every 3 frames of 50 Hz, then `1/32`, `1/16`, `1/8` of the MIDI clock); dark grey while ARP is off, and set all the same. The velocity target, which this card had in 1.0, is NRPN 6/1's | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
+| FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; along each control's [curve](#knob-curves)) | the slot's algorithm, OFF included |
 | MACRO | RES LNK: RESO LINK, `-8` to `+8` (`0` none): the resonance follows the cutoff, the link times the cutoff's distance below the middle of K1's walk, in 8ths of a step a detent of it (positive: it rises as the cutoff closes; negative, a squelch: as it opens), on top of RESO, clamped | PWM LNK: PWM LINK, `-8` to `+8`: the PWM's depth follows the width, the link times the width's distance from 50 % in 8ths, on top of PWM | dark, unused | dark, unused | no choice: the line says `LINKED` or `NO LINKS` (dark) |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
@@ -1057,6 +1057,55 @@ algorithm CC sets the algorithm alone.
 Each changes a 220 Hz saw at half scale by at least -20 dB of its own level (the RMS of the
 difference from the dry sound; the test `every_default_is_audible`).
 
+### Knob curves
+
+A knob whose ear is logarithmic turns through values even to the ear, not even in number: the
+knob walks a list of positions, a detent each, rising with every detent. The positions only
+choose which values a turn lands on: a stored value keeps its meaning, so presets, USER sounds
+and songs sound as before. A value off the walk (a preset's, MIDI's, a sound saved before 1.1)
+stays until the knob turns; the first detent then lands on the first position past it the way
+you turned, never back. A CC lands on the same positions (0..127 reaches each one, and a value
+sent out goes as its nearest position's CC); the NRPN keeps the full resolution. Checked by
+`knob_curves.rs`: every detent moves, each step is within 0.5x..2x of the median one in what the
+ear follows, and the first detent off the walk goes the way turned.
+
+| Knob | Positions | Even in |
+|---|---|---|
+| K1 (cutoff), MASTER, LIVE's K3 and K4, CHIP's AGE, DAC, THUMP, BLEED | as before 1.1 (K1's walk above, MASTER's taper) | |
+| LAB OSC PWM | 32: 0 and a square law to 2048 (2, 9, 19, 34 ... 2048) | the depth's square root |
+| LAB OSC PWM HZ | 32: 0.05 Hz x 255^(i/31), 0.05 to 12.75 Hz (each 1.20 times the last) | pitch (log Hz) |
+| LAB MOD VIB HZ | 24: 0.5 to 12.7 Hz (0.5, 0.6 ... 11.0, 12.7), geometric where 0.1 Hz allows | pitch |
+| LAB MOD DEPTH | 32: 0, then 6 to 127 (+-4.7 to +-99 cents) | the swing's ratio |
+| LAB MOD DELAY | 24: 0, then 4 to 127 ticks (40 ms to 1.27 s) | the delay's ratio |
+| LAB FILTER LFO | 33, a detent each: no curve. Each is one of K1's detents, even in pitch, so each adds the same swing | |
+| TUNE, ENVELOPE, RESO, VOICES, ARP RATE, the links | a value a detent (discrete) | |
+| An effect slot's Amount, A, B and Mix (EDIT + K1-K4, CHIP's slot line, LAB FX) | 32 of 0..127 in one of three shapes, by algorithm and control (below) | what the control does |
+
+The three shapes: **LIN**, even (4 a detent, three 5s mid-way); **LOG**, 0 then 5 to 127, each
+about 1.11 times the last (+1 where that is finer: 5, 6 ... 14, 16, 18 ... 103, 114, 127): for
+what is heard in dB or as a ratio; **EQP**, the equal-power curve 127 sin(pi/2 x i/31), fine
+near the top. Each control's shape was chosen by measuring its response, rendered through the
+effect slots where it is a level (`knob_curves.rs`):
+
+| Slot | Algorithm | Amount | A | B | Mix |
+|---|---|---|---|---|---|
+| Distortion | TAPE | LIN (drive in dB) | - | - | LOG (the wet signal in dB) |
+| Distortion | OVERDRIVE | LIN (Plaits' drive law, made for a linear knob) | LIN (tone, already log Hz) | LOG (the bias's harmonics in dB) | LOG |
+| Distortion | FUZZ | LIN (1 + 99 a^2; its clip starts abruptly at a voice's level) | LOG (the octave in dB) | LOG (the starved bias in dB) | LOG |
+| Distortion | CRUSH | LIN (bits) | EQP (the hold rate in log Hz: linear in Hz, so fine near the top) | - | LOG |
+| Distortion | LO-FI | LIN (TV tone, log Hz) | LOG (hum in dB) | LOG (noise in dB) | LOG |
+| Modulation | CHORUS | LOG (depth: the pitch swing's ratio) | LIN (rate, log Hz) | LOG (ensemble in dB) | LOG |
+| Modulation | FLANGER | LOG (the sweep's octaves) | LIN (rate) | LIN (feedback, -0.9..0.9) | LOG |
+| Modulation | PHASER | LOG (depth) | LIN (rate) | LIN (feedback's peak in dB) | LOG |
+| Modulation | TREMOLO, AUTO-PAN | LOG (the modulation in dB) | LIN (rate) | LIN (shape) | LOG |
+| Modulation | WOW | LOG (wow, cents) | LOG (flutter, cents) | - | LOG |
+| FX | DELAY, PING-PONG | LOG (each echo's level in dB) | LIN (time, log ms) | LIN (damping, log Hz) | LOG |
+| FX | REVERB, LUSH | LIN (decay: the rendered RT60's log) | LIN (damping, log Hz) | LIN (diffusion, bandwidth) | LOG |
+
+OFF's controls are LIN with a LOG Mix. FUZZ's and OVERDRIVE's drive stay linear: no shape of the
+three makes their laws even (OVERDRIVE's rise is in the top half by design, FUZZ's clip starts
+abruptly at a SID voice's level), so the ear check decides (docs/hardware-test.md).
+
 ## Chip character
 
 On the panel they are the CHIP view's ([above](#chip)): ALGORITHM steps the profile and K1..K4
@@ -1186,8 +1235,9 @@ USB output and hold-free flash operation still require their hardware checks.
 
 An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
 among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52..76
-PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) is the control's whole
-range.
+PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) lands on the 32 positions of
+the control's [curve](#knob-curves) by the slot's algorithm now, position round(CC x 31 / 127);
+its NRPN sets any value 0..127.
 
 ## Settings and STORE
 

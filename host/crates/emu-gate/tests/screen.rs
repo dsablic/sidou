@@ -3521,10 +3521,11 @@ const CHIP_BUSY_PER_FRAME: f64 = 41_000.0;
 const CHIP_WORST_POLL: u64 = 38_000;
 /// SELECT, ALGORITHM and a knob on the CHIP view: the input's call (ui_encoder) and the busiest
 /// main-loop pass after it (from midi_drain to midi_service), within the latency gate's poll
-/// allowance together. Measured: the input 210 at most (K1 on DIST, which stores the popup's ask;
-/// 217 before M2f's large text, whose input path saved 25 instructions elsewhere), the busiest pass 44.5k
-/// (SELECT from FX back to the chip: three frames change colour).
-const CHIP_INPUT: u64 = 215;
+/// allowance together. Measured: the input 240 at most (K1 on DIST, which stores the popup's ask
+/// and, since 1.1's knob curves, finds the control's place on its walk by halves: 210 before, 217
+/// before M2f's large text, whose input path saved 25 instructions elsewhere), the busiest pass
+/// 44.5k (SELECT from FX back to the chip: three frames change colour).
+const CHIP_INPUT: u64 = 245;
 const CHIP_PASS: u64 = 49_000;
 /// ALGORITHM on the chip steps the profile, as LIVE's ALGORITHM, CC 25 and CC 85 do: the live tick
 /// prepares the spare chip a slice a tick (app/reg_ring.h, reg_ring_prepare_step; decision

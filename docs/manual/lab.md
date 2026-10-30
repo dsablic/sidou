@@ -65,6 +65,17 @@ only the built-in presets.
 Hold **SAVE** and turn a card: the next MIDI controller you move is learned for that card's
 parameter, on every page. (OSC's ratio on a sync sound has no CC and says so.)
 
+## Knobs that turn by ear
+
+The cards whose sound is heard as a ratio turn by ear, not by number: each detent of PWM HZ and
+VIB HZ is the same step in pitch (PWM HZ from 0.05 to 12.75 Hz in 32 detents, shown in
+hundredths below 1 Hz: `.05`, `0.12`), VIB's DEPTH and DELAY grow by the same ratio each detent
+after 0, PWM's depth on a square law (fine near off), and each effect control on the FX page by
+its own curve (a delay's feedback and every Mix by even steps of dB, the rates and tones even in
+pitch). A sound saved before keeps its values exactly; the first detent takes a value the curve
+does not hold to the next one the way you turn. A MIDI controller learned for a card moves along
+the same curve. [The controls reference](../reference/controls.md#knob-curves) lists every curve.
+
 ## Sweep the filter
 
 FILTER's K4 is the **filter LFO**: how far the cutoff swings each way, in K1's detents (`0` is

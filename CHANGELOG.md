@@ -53,6 +53,17 @@ All notable changes are documented here. The format follows
   host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
   measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
   instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
+- **Knob curves for every parameter whose ear is a ratio.** LAB's PWM HZ walks 32 detents from
+  0.05 to 12.75 Hz even in pitch (shown in hundredths below 1 Hz), PWM's depth 32 on a square law,
+  VIB HZ 24 from 0.5 to 12.7 Hz, VIB DEPTH 0 and 31 geometric to +-99 cents, VIB DELAY 0 and 23
+  from 40 ms to 1.27 s; each effect slot's Amount, A, B and Mix (EDIT + K1-K4, CHIP's slot line,
+  LAB's FX page) takes one of three shapes by algorithm and control, chosen by rendering the
+  slots (every Mix and a delay's feedback even in dB, CRUSH's rate fine near the top). Stored
+  values keep their meaning: presets, USER sounds and songs sound as before, and a value off a
+  curve stays until the knob turns, whose first detent goes the way turned. The vibrato's CCs
+  (76-78), the slots' CCs (102-116) and a CC learned for these land on the same positions (the
+  map's new `walk` curve, docs/reference/midi.md); their NRPNs still set any value.
+  docs/reference/controls.md "Knob curves" lists every curve.
 
 ### Added
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents

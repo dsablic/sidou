@@ -22,6 +22,7 @@
 
 #define LINEAR MIDI_CURVE_LINEAR
 #define STEPS MIDI_CURVE_STEPS
+#define WALK MIDI_CURVE_WALK
 #define NRPN MIDI_MAP_NRPN
 
 /* NRPN MSBs: the groups. */
@@ -52,10 +53,10 @@
 
 #define SLOT_ROWS(slot, g, algorithms, count)                                                      \
     SLOT_ROW(slot, g, 0, "Algorithm", algorithms, (count) - 1, STEPS),                             \
-        SLOT_ROW(slot, g, 1, "Amount", "0..127", LIVE_SLOT_MAX, LINEAR),                           \
-        SLOT_ROW(slot, g, 2, "A", "0..127", LIVE_SLOT_MAX, LINEAR),                                \
-        SLOT_ROW(slot, g, 3, "B", "0..127", LIVE_SLOT_MAX, LINEAR),                                \
-        SLOT_ROW(slot, g, 4, "Mix", "0 dry .. 127 wet", LIVE_SLOT_MAX, LINEAR)
+        SLOT_ROW(slot, g, 1, "Amount", "0..127", LIVE_SLOT_MAX, WALK),                             \
+        SLOT_ROW(slot, g, 2, "A", "0..127", LIVE_SLOT_MAX, WALK),                                  \
+        SLOT_ROW(slot, g, 3, "B", "0..127", LIVE_SLOT_MAX, WALK),                                  \
+        SLOT_ROW(slot, g, 4, "Mix", "0 dry .. 127 wet", LIVE_SLOT_MAX, WALK)
 
 #define EXPERT_ROW(field, name, values, def) \
     ROW("Expert", name, values, LIVE_PARAM_EXPERT + (field), NO_CC, \
@@ -148,13 +149,13 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
         LIVE_PRESSURE_OFF, STEPS),
     ROW("Expression", "Vibrato rate", "0..12.7 Hz in 0.1 Hz steps", LIVE_PARAM_VIBRATO_RATE,
         LIVE_CC_VIBRATO_RATE, NRPN(NRPN_EXPRESSION, 4), LIVE_EXPRESSION_MAX,
-        LIVE_VIBRATO_RATE_DEFAULT, LINEAR),
+        LIVE_VIBRATO_RATE_DEFAULT, WALK),
     ROW("Expression", "Vibrato depth", "0 off .. 127 +-99 cents, a triangle",
         LIVE_PARAM_VIBRATO_DEPTH, LIVE_CC_VIBRATO_DEPTH, NRPN(NRPN_EXPRESSION, 5),
-        LIVE_EXPRESSION_MAX, 0, LINEAR),
+        LIVE_EXPRESSION_MAX, 0, WALK),
     ROW("Expression", "Vibrato delay", "0..1.27 s after each note-on, in 10 ms",
         LIVE_PARAM_VIBRATO_DELAY, LIVE_CC_VIBRATO_DELAY, NRPN(NRPN_EXPRESSION, 6),
-        LIVE_EXPRESSION_MAX, 0, LINEAR),
+        LIVE_EXPRESSION_MAX, 0, WALK),
 
     EXPERT_ROW(SID_EXPERT_FILTER_6581_CURVE, "6581 filter curve", "0..127 = reSIDfp curve 0..1", 64),
     EXPERT_ROW(SID_EXPERT_FILTER_6581_RANGE, "6581 filter range", "0..127 = reSIDfp range 0..1",
@@ -180,9 +181,9 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     ROW("Live", "PWM depth",
         "0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed "
         "near the ends so the pulse never closes); a preset's",
-        LIVE_PARAM_PWM_DEPTH, NO_CC, NRPN(NRPN_LIVE, 5), LIVE_PWM_DEPTH_MAX, 0, LINEAR),
+        LIVE_PARAM_PWM_DEPTH, NO_CC, NRPN(NRPN_LIVE, 5), LIVE_PWM_DEPTH_MAX, 0, WALK),
     ROW("Live", "PWM rate", "0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's",
-        LIVE_PARAM_PWM_RATE, NO_CC, NRPN(NRPN_LIVE, 6), LIVE_PWM_RATE_MAX, 0, LINEAR),
+        LIVE_PARAM_PWM_RATE, NO_CC, NRPN(NRPN_LIVE, 6), LIVE_PWM_RATE_MAX, 0, WALK),
     ROW("Live", "Fine tune", "0..100 = -50..+50 cents, 50 in tune; every voice; a preset's",
         LIVE_PARAM_TUNE, NO_CC, NRPN(NRPN_LIVE, 7), 2 * LIVE_TUNE_CENTS, LIVE_TUNE_CENTS, STEPS),
     ROW("Live", "Filter LFO",
@@ -285,16 +286,22 @@ const midi_map_entry* midi_map_for_nrpn(uint16_t nrpn) {
     return NULL;
 }
 
-uint32_t midi_map_from_cc(const midi_map_entry* e, uint8_t value) {
+uint32_t midi_map_from_cc(const live* l, const midi_map_entry* e, uint8_t value) {
     uint32_t v = value > 127u ? 127u : value;
     if (e->curve == MIDI_CURVE_STEPS) {
         return v * (e->max + 1u) / 128u;
     }
+    if (e->curve == MIDI_CURVE_WALK) {
+        return live_walk_from_cc(l, e->param, v);
+    }
     return (v * e->max + 63u) / 127u;
 }
 
-uint8_t midi_map_to_cc(const midi_map_entry* e, uint32_t value) {
+uint8_t midi_map_to_cc(const live* l, const midi_map_entry* e, uint32_t value) {
     uint32_t max = e->max;
+    if (e->curve == MIDI_CURVE_WALK) {
+        return live_walk_to_cc(l, e->param, value > max ? max : value);
+    }
     if (max == 0 || value == 0) {
         return 0;
     }
@@ -403,6 +410,14 @@ static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t valu
     midi_map_param_set(p->l, e->param, v > e->max ? e->max : v);
 }
 
+void midi_map_cc_set(live* l, const midi_map_entry* e, uint8_t value) {
+    if (e->curve == MIDI_CURVE_WALK) {
+        live_walk_cc(l, e->param, value);
+    } else {
+        midi_map_param_set(l, e->param, midi_map_from_cc(l, e, value));
+    }
+}
+
 void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
     if (channel > 15u || value > 127u) {
         return;
@@ -450,7 +465,7 @@ void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
             e = midi_map_for_cc(cc); /* a setting's CC: live_cc does not know it */
         }
         if (e) {
-            midi_map_param_set(p->l, e->param, midi_map_from_cc(e, value));
+            midi_map_cc_set(p->l, e, value);
         } else {
             live_cc(p->l, cc, value);
         }

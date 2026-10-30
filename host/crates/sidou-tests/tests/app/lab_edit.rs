@@ -429,8 +429,17 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                         LAB_SOUND_VIBRATO_DEPTH,
                         LAB_SOUND_VIBRATO_DELAY,
                     ] {
-                        let d = i32::from(after[at as usize]) - i32::from(before[at as usize]);
-                        assert!(d.abs() <= 3, "{i}: {d}");
+                        // 1 to 3 detents along the card's walk (knob_curves.rs), either way
+                        let p = LIVE_PARAM_VIBRATO_RATE + (at - LAB_SOUND_VIBRATO_RATE);
+                        let w = unsafe { live_walk_of(&*ui.rig.live, p) };
+                        let (b, a) = (
+                            u32::from(before[at as usize]),
+                            u32::from(after[at as usize]),
+                        );
+                        assert!(
+                            (-3..=3).any(|d| unsafe { live_walk_step(w, b, d) } == a),
+                            "{i}: {b} -> {a}"
+                        );
                     }
                 }
                 LAB_PAGE_OSC => {

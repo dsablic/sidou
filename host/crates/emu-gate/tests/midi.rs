@@ -737,6 +737,7 @@ fn cc_packet(cc: u8, value: u8) -> u32 {
 fn cutoff_cc(value: u32) -> u8 {
     unsafe {
         sidou_sys::midi_map_to_cc(
+            std::ptr::null(),
             sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
             value,
         )
@@ -806,6 +807,7 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
     let (p, w) = queued(&mut m, &fw, w);
     let r5 = unsafe {
         sidou_sys::midi_map_to_cc(
+            std::ptr::null(),
             sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_PROFILE),
             sidou_sys::SID_CHIP_8580_R5,
         )
@@ -994,14 +996,18 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
     // 2.6k, every parameter changed, and less with each bound by MIDI learn (7.1k before the
     // rows were cached). The idle and deduplicated bounds are per parameter, at what M1c
     // Task 3 measured with its character's 42 (906 and 1,914: 21.6 and 45.6 a parameter);
-    // a tick of changes is bounded by its packets, not the count.
+    // a tick of changes is bounded by its packets, not the count. Since 1.1's knob curves a
+    // walked parameter's CC (the slots' controls, the vibrato's, MIDI_CURVE_WALK) is its
+    // position's, found by halves, about 100 instructions a packet: 4.4k at worst every
+    // parameter changed (2.6k before), 3.2k learned, 4.2k with the expert snapshot, each well
+    // inside a pass's allowance (common::POLL_INSTRUCTIONS).
     let per_param = |x: u64| x as f64 / f64::from(sidou_sys::LIVE_PARAM_COUNT);
     assert!(
         per_param(idle) < IDLE_PER_PARAM
             && per_param(deduplicated) < DEDUPLICATED_PER_PARAM
-            && changed < 3_000
-            && changed_learned < 3_000
-            && changed_experts < 3_000,
+            && changed < 4_600
+            && changed_learned < 4_600
+            && changed_experts < 4_600,
         "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
           deduplicated, {changed} with every parameter changed, {changed_learned} also learned, \
           {changed_experts} with a cold expert snapshot"
@@ -1214,7 +1220,7 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
     let cutoff_row = unsafe { sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF) };
     let row_index = (cutoff_row as usize - unsafe { sidou_sys::midi_map_row(0) } as usize)
         / size_of::<sidou_sys::midi_map_entry>();
-    let from_cc = |v: u8| unsafe { sidou_sys::midi_map_from_cc(cutoff_row, v) };
+    let from_cc = |v: u8| unsafe { sidou_sys::midi_map_from_cc(std::ptr::null(), cutoff_row, v) };
 
     // SAVE down, and K1 turned before it comes up: the frame opens on the turn and stays.
     m.key(SAVE, true);
@@ -1355,6 +1361,7 @@ fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
     assert_eq!(learned(&mut m, &fw).1, 1);
     assert_eq!(cutoff(&mut m, &fw), unsafe {
         sidou_sys::midi_map_from_cc(
+            std::ptr::null(),
             sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
             learned_last,
         )

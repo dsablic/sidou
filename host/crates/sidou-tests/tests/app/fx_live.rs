@@ -51,9 +51,11 @@ fn algorithms_cycle_and_controls_turn_by_detents() {
     let a = unsafe { live_fx_defaults[1][SID_MOD_CHORUS as usize] }[1];
     assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], a);
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 3) };
+    let w = unsafe { live_walk_slot(1, SID_MOD_CHORUS, LIVE_SLOT_A) };
     assert_eq!(
-        rig.live.slot[1][LIVE_SLOT_A as usize],
-        a + (3 * LIVE_SLOT_DETENT) as u8
+        u32::from(rig.live.slot[1][LIVE_SLOT_A as usize]),
+        unsafe { live_walk_step(w, u32::from(a), 3) },
+        "three detents along the rate's walk"
     );
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 100) };
     assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], LIVE_SLOT_MAX as u8);
@@ -74,14 +76,15 @@ fn slot_ccs_map_slot_and_field() {
     assert_eq!(
         rig.log(),
         &[
-            (slot_reg(0, LIVE_SLOT_AMOUNT), 64),
+            // on the controls' walks (knob_curves.rs): CC 64 of a linear one is position 16, 66
+            (slot_reg(0, LIVE_SLOT_AMOUNT), 66),
             (slot_reg(0, LIVE_SLOT_ALGORITHM), (SID_DIST_COUNT - 1) as u8),
             (
                 slot_reg(2, LIVE_SLOT_ALGORITHM),
                 SID_FXSLOT_REVERB_LIGHT as u8
             ),
             (slot_reg(2, LIVE_SLOT_MIX), 127),
-            (slot_reg(1, LIVE_SLOT_B), 33),
+            (slot_reg(1, LIVE_SLOT_B), 32), // position 8
         ]
     );
     // Every algorithm of every slot is reachable by CC.
@@ -145,19 +148,25 @@ fn edit_held_turns_k1_k4_into_the_selected_slots_controls() {
         pn.enc(enc, i as i32 + 1);
     }
     let s = pn.rig.live.slot[2];
-    let d = LIVE_SLOT_DETENT as u8;
     let f = unsafe { live_fx_defaults[2][SID_FXSLOT_DELAY as usize] };
+    let after = |k: u32| unsafe {
+        live_walk_step(
+            live_walk_slot(2, SID_FXSLOT_DELAY, LIVE_SLOT_AMOUNT + k),
+            u32::from(f[k as usize]),
+            k as i32 + 1,
+        ) as u8
+    };
     assert_eq!(
         &s[1..],
-        &[f[0] + d, f[1] + 2 * d, f[2] + 3 * d, f[3] + 4 * d],
-        "Amount, A, B, Mix from DELAY's defaults"
+        &[after(0), after(1), after(2), after(3)],
+        "Amount, A, B, Mix from DELAY's defaults, along their walks"
     );
     assert_eq!(pn.rig.live.cutoff, cutoff, "K1 did not move the cutoff");
     // Let go of EDIT: K1 is the cutoff again.
     pn.buttons(0, 0);
     pn.enc(PANEL_ENC_K1, -1);
     assert_ne!(pn.rig.live.cutoff, cutoff);
-    assert_eq!(pn.rig.live.slot[2][1], f[0] + d);
+    assert_eq!(pn.rig.live.slot[2][1], after(0));
     // SCL wraps back to Distortion, which is off: EDIT dark.
     pn.buttons(1 << PANEL_BTN_SCL, 0);
     assert_eq!(pn.rig.live.fx_select, 0);

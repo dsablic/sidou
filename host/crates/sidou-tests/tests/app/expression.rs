@@ -265,10 +265,14 @@ fn vibrato_is_off_by_default_and_writes_nothing() {
 #[test]
 fn vibrato_follows_its_rate_and_depth_ccs_tick_by_tick() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    rig.cc(LIVE_CC_VIBRATO_RATE, 50); // 5.0 Hz: 20 ticks a cycle
-    rig.cc(LIVE_CC_VIBRATO_DEPTH, 64);
-    assert_eq!(get(&rig, LIVE_PARAM_VIBRATO_RATE), 50);
-    assert_eq!(get(&rig, LIVE_PARAM_VIBRATO_DEPTH), 64);
+    // The CCs land on the knob's walk (knob_curves.rs): CC 89 on 4.7 Hz, CC 102 on depth 69;
+    // 5.0 Hz and 64 are not on the walks (their NRPNs set them).
+    rig.cc(LIVE_CC_VIBRATO_RATE, 89);
+    rig.cc(LIVE_CC_VIBRATO_DEPTH, 102);
+    assert_eq!(get(&rig, LIVE_PARAM_VIBRATO_RATE), 47);
+    assert_eq!(get(&rig, LIVE_PARAM_VIBRATO_DEPTH), 69);
+    set(&mut rig, LIVE_PARAM_VIBRATO_RATE, 50); // 5.0 Hz: 20 ticks a cycle
+    set(&mut rig, LIVE_PARAM_VIBRATO_DEPTH, 64);
     rig.note_on(C4);
     assert_eq!(
         rig.voice_freq(0),
@@ -291,8 +295,8 @@ fn vibrato_follows_its_rate_and_depth_ccs_tick_by_tick() {
 #[test]
 fn the_vibrato_delay_holds_it_off_after_each_note_on() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    rig.cc(LIVE_CC_VIBRATO_DEPTH, 127);
-    rig.cc(LIVE_CC_VIBRATO_DELAY, 10);
+    set(&mut rig, LIVE_PARAM_VIBRATO_DEPTH, 127);
+    set(&mut rig, LIVE_PARAM_VIBRATO_DELAY, 10);
     assert_eq!(get(&rig, LIVE_PARAM_VIBRATO_DELAY), 10);
     rig.note_on(C4);
     rig.clear();
@@ -308,7 +312,7 @@ fn the_vibrato_delay_holds_it_off_after_each_note_on() {
 #[test]
 fn each_voice_has_its_own_vibrato_phase_from_its_note_on() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    rig.cc(LIVE_CC_VIBRATO_DEPTH, 100);
+    set(&mut rig, LIVE_PARAM_VIBRATO_DEPTH, 100);
     rig.note_on(48);
     for _ in 0..3 {
         rig.tick();
@@ -326,7 +330,7 @@ fn each_voice_has_its_own_vibrato_phase_from_its_note_on() {
 #[test]
 fn vibrato_and_bend_add() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    rig.cc(LIVE_CC_VIBRATO_DEPTH, 40);
+    set(&mut rig, LIVE_PARAM_VIBRATO_DEPTH, 40);
     rig.note_on(C4);
     bend(&mut rig, 4096);
     rig.tick();
@@ -339,7 +343,7 @@ fn vibrato_and_bend_add() {
 fn the_sync_lead_vibrato_moves_master_and_slave_together() {
     let mut rig = Rig::new(SID_MODEL_8580);
     rig.set_preset(SYNC_LEAD);
-    rig.cc(LIVE_CC_VIBRATO_DEPTH, 90);
+    set(&mut rig, LIVE_PARAM_VIBRATO_DEPTH, 90);
     let ratio = u32::from(preset(SYNC_LEAD).sync_ratio_q8);
     rig.note_on(C4);
     let step = vibrato_step(LIVE_VIBRATO_RATE_DEFAULT);
@@ -403,7 +407,7 @@ fn the_wheel_sets_the_pulse_width_by_default() {
 fn the_wheel_on_vibrato_adds_depth_and_leaves_the_pulse_width() {
     let mut rig = Rig::new(SID_MODEL_8580);
     set(&mut rig, LIVE_PARAM_MOD_TARGET, LIVE_MOD_VIBRATO);
-    rig.cc(LIVE_CC_VIBRATO_DEPTH, 20);
+    set(&mut rig, LIVE_PARAM_VIBRATO_DEPTH, 20);
     rig.note_on(C4);
     let pw = rig.voice_pw(0);
     rig.cc(LIVE_CC_MOD_WHEEL, 100);

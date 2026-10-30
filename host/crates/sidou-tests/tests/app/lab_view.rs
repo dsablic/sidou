@@ -124,36 +124,50 @@ fn each_card_turns_its_parameter_by_its_detent() {
             0,
             LIVE_PARAM_SLOT + LIVE_SLOT_AMOUNT,
             60,
-            LIVE_SLOT_DETENT as i32,
+            0, // along the slot's walk
         ),
         (
             LAB_PAGE_FX,
             1,
             LIVE_PARAM_SLOT + LIVE_SLOT_A,
             60,
-            LIVE_SLOT_DETENT as i32,
+            0, // along the slot's walk
         ),
         (
             LAB_PAGE_FX,
             3,
             LIVE_PARAM_SLOT + LIVE_SLOT_MIX,
             60,
-            LIVE_SLOT_DETENT as i32,
+            0, // along the slot's walk
         ),
     ];
     let mut ui = lab_ui();
     for (page, k, p, start, detent) in table {
         to_page(&mut ui, page);
         set(&mut ui, p, start);
+        // a walked parameter (knob_curves.rs) by its walk's positions, PWM HZ's in its phase step
+        let w = unsafe { live_walk_of(&*ui.rig.live, p) };
+        let stored = |ui: &Ui| {
+            if p == LIVE_PARAM_PWM_RATE {
+                u32::from(ui.rig.live.pwm_rate)
+            } else {
+                param(ui, p)
+            }
+        };
+        let from = stored(&ui);
+        let (up, down) = if w == LIVE_WALKS {
+            (
+                (start as i32 + detent) as u32,
+                (start as i32 - detent) as u32,
+            )
+        } else {
+            let up = unsafe { live_walk_step(w, from, 1) };
+            (up, unsafe { live_walk_step(w, up, -2) })
+        };
         ui.turn(K1 + k, 1);
-        assert_eq!(
-            param(&ui, p) as i32,
-            start as i32 + detent,
-            "page {page} K{}: one detent",
-            k + 1
-        );
+        assert_eq!(stored(&ui), up, "page {page} K{}: one detent", k + 1);
         ui.turn(K1 + k, -2);
-        assert_eq!(param(&ui, p) as i32, start as i32 - detent, "and back two");
+        assert_eq!(stored(&ui), down, "and back two");
         // panel_knob_param names the card's parameter on LAB's panel page (learn's pick sets
         // it), EDIT held or not.
         let mut on_page = *ui.p;
@@ -2796,11 +2810,7 @@ fn a_learned_cc_turns_the_card_and_the_drawing() {
         assert!(!e.is_null());
         let e = unsafe { &*e };
         unsafe {
-            live_param_set(
-                &mut *ui.rig.live,
-                u32::from(e.param),
-                midi_map_from_cc(e, value),
-            );
+            midi_map_cc_set(&mut *ui.rig.live, e, value);
         }
     };
     set(&mut ui, LIVE_PARAM_PWM_DEPTH, 0);

@@ -451,7 +451,7 @@ impl Learned {
 }
 
 fn from_cc(param: u32, value: u8) -> u32 {
-    unsafe { midi_map_from_cc(row(param), value) }
+    unsafe { midi_map_from_cc(std::ptr::null(), row(param), value) }
 }
 
 fn cc_packet(cc: u8, value: u8) -> u32 {
@@ -484,7 +484,8 @@ fn a_learned_cc_takes_the_parameters_curve_and_range() {
     }
     m.learn(LIVE_PARAM_SLOT + LIVE_SLOT_FIELDS + LIVE_SLOT_MIX, 22, 0);
     m.trs(&[0xB0, 22, 99]);
-    assert_eq!(m.rig.live.slot[1][LIVE_SLOT_MIX as usize], 99);
+    // on Mix's walk (knob_curves.rs): CC 99 is position 24 of 32, 61
+    assert_eq!(m.rig.live.slot[1][LIVE_SLOT_MIX as usize], 61);
 }
 
 #[test]
@@ -555,7 +556,7 @@ fn a_panel_change_to_a_learned_parameter_goes_out_on_the_learned_cc() {
     assert_eq!(
         m.tick(),
         [cc_packet(LIVE_CC_RESONANCE as u8, unsafe {
-            midi_map_to_cc(row(LIVE_PARAM_RESONANCE), 3)
+            midi_map_to_cc(std::ptr::null(), row(LIVE_PARAM_RESONANCE), 3)
         })]
     );
 }

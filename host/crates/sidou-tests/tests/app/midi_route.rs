@@ -805,7 +805,7 @@ fn bank_2_and_cc_85_pick_the_same_builtin_and_saved_profiles_on_chip_a() {
             "program {pick}: USER identity"
         );
         kr.song_want = initial;
-        let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
+        let cc = unsafe { midi_map_to_cc(std::ptr::null(), midi_map_for_cc(85), pick) };
         r.trs(&[0xB0, 85, cc]);
         assert_eq!(kr.song_want.profile, want.profile, "CC 85 pick {pick}");
         assert_eq!(kr.song_want.controls, want.controls, "CC 85 pick {pick}");
@@ -875,7 +875,7 @@ fn chip_a_midi_edits_mark_explicit_controls_even_when_the_value_is_unchanged() {
         r.rig.live.user_ctl[slot] = kr.song_want.controls;
     }
     for pick in 0..SID_CHIPS + LIVE_USER_PROFILES {
-        let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
+        let cc = unsafe { midi_map_to_cc(std::ptr::null(), midi_map_for_cc(85), pick) };
         r.trs(&[0xB0, 32, 2, 0xC0, pick as u8, 0xB0, 85, cc]);
         let expected = KEYS_ROUTE_EDIT_PROFILE
             | KEYS_ROUTE_EDIT_EXPERT
@@ -927,7 +927,7 @@ fn refused_chip_a_midi_edits_keep_the_setup_and_user_identity() {
     }
     let before = kr.song_want;
     for pick in 0..SID_CHIPS + LIVE_USER_PROFILES {
-        let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
+        let cc = unsafe { midi_map_to_cc(std::ptr::null(), midi_map_for_cc(85), pick) };
         for bytes in [vec![0xB0, 32, 2, 0xC0, pick as u8], vec![0xB0, 85, cc]] {
             r.trs(&bytes);
             assert_eq!(kr.song_want.profile, before.profile, "pick {pick}");

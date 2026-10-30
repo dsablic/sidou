@@ -1139,7 +1139,7 @@ fn midi_learn_on_a_lab_card_over_trs() {
     };
     let before = depth_of(&mut m);
     let row = unsafe { midi_map_for_param(LIVE_PARAM_PWM_DEPTH) };
-    let from_cc = |v: u8| unsafe { midi_map_from_cc(row, v) };
+    let from_cc = |v: u8| unsafe { midi_map_from_cc(std::ptr::null(), row, v) };
 
     m.key(PANEL_BTN_SAVE as u8, true);
     m.run_ms(30);

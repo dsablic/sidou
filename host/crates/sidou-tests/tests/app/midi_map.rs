@@ -44,6 +44,10 @@ impl Row {
     fn steps(&self) -> bool {
         self.curve == MIDI_CURVE_STEPS
     }
+    /// The knob's walk's positions (live.h "Knob walks"; knob_curves.rs checks the walks).
+    fn walk(&self) -> bool {
+        self.curve == MIDI_CURVE_WALK
+    }
     /// A setting's row (SPREAD): not a live parameter; midi_map_cc reaches it, live_cc does not.
     fn setting(&self) -> bool {
         u32::from(self.param) == MIDI_MAP_SPREAD
@@ -94,9 +98,21 @@ fn ptr_for(param: u32) -> *const midi_map_entry {
     e
 }
 
-/// The curves as documented, computed independently of the C.
+/// The curves as documented, computed independently of the C (a walk's positions are the C's,
+/// a slot's at NONE: knob_curves.rs checks them).
 fn expect_from_cc(r: &Row, v: u8) -> u32 {
     let max = u32::from(r.max);
+    if r.walk() {
+        let rig = Rig::new(SID_MODEL_6581);
+        let w = unsafe { live_walk_of(&*rig.live, u32::from(r.param)) };
+        let n = unsafe { live_walk_count(w) };
+        let at = unsafe { live_walk_at(w, (u32::from(v) * (n - 1) + 63) / 127) };
+        return if u32::from(r.param) == LIVE_PARAM_PWM_RATE {
+            unsafe { live_pwm_rate(at) }
+        } else {
+            at
+        };
+    }
     if r.steps() {
         u32::from(v) * (max + 1) / 128
     } else {
@@ -258,7 +274,7 @@ fn ranges_match_the_instrument() {
         assert!(r.def <= r.max, "{}: default {} > {}", r.name, r.def, r.max);
         if r.steps() {
             assert!(r.max < 128, "{}: too many steps for a CC", r.name);
-        } else {
+        } else if !r.walk() {
             assert_eq!(r.curve, MIDI_CURVE_LINEAR, "{}", r.name);
             assert!(
                 r.max >= 127,
@@ -345,7 +361,12 @@ fn each_entry_round_trips_through_its_cc() {
         fill_users(&mut rig);
         for v in 0..128u8 {
             let want = expect_from_cc(r, v);
-            assert_eq!(unsafe { midi_map_from_cc(e, v) }, want, "{} CC {v}", r.name);
+            assert_eq!(
+                unsafe { midi_map_from_cc(std::ptr::null(), e, v) },
+                want,
+                "{} CC {v}",
+                r.name
+            );
             rig.cc(u32::from(r.cc), v);
             assert_eq!(
                 get(&rig, u32::from(r.param)),
@@ -353,9 +374,18 @@ fn each_entry_round_trips_through_its_cc() {
                 "{} CC {v}",
                 r.name
             );
-            if !r.steps() {
+            if r.walk() {
+                // a position's CC comes back as the position
+                let c = unsafe { midi_map_to_cc(std::ptr::null(), e, want) };
                 assert_eq!(
-                    unsafe { midi_map_to_cc(e, want) },
+                    expect_from_cc(r, c),
+                    want,
+                    "{}: CC {v} -> {want} -> CC {c}",
+                    r.name
+                );
+            } else if !r.steps() {
+                assert_eq!(
+                    unsafe { midi_map_to_cc(std::ptr::null(), e, want) },
                     v,
                     "{}: CC {v} -> {want} -> CC",
                     r.name
@@ -365,11 +395,20 @@ fn each_entry_round_trips_through_its_cc() {
         // And from the parameter's side: a value sent out as a CC comes back as itself
         // (steps), or as the nearest value a CC can carry (linear).
         for p in 0..=u32::from(r.max) {
-            let c = unsafe { midi_map_to_cc(e, p) };
+            let c = unsafe { midi_map_to_cc(std::ptr::null(), e, p) };
             assert!(c < 128, "{} {p}", r.name);
             let back = expect_from_cc(r, c);
             if r.steps() {
                 assert_eq!(back, p, "{}: {p} -> CC {c} -> {back}", r.name);
+            } else if r.walk() {
+                // the nearest position
+                let rig = Rig::new(SID_MODEL_6581);
+                let w = unsafe { live_walk_of(&*rig.live, u32::from(r.param)) };
+                let nearest = (0..unsafe { live_walk_count(w) })
+                    .map(|i| unsafe { live_walk_at(w, i) })
+                    .min_by_key(|&x| x.abs_diff(p))
+                    .unwrap();
+                assert_eq!(back, nearest, "{}: {p} -> CC {c} -> {back}", r.name);
             } else {
                 let step = f64::from(r.max) / 127.0;
                 assert!(
@@ -379,15 +418,20 @@ fn each_entry_round_trips_through_its_cc() {
                 );
             }
         }
-        assert_eq!(unsafe { midi_map_to_cc(e, 0) }, 0, "{}", r.name);
         assert_eq!(
-            unsafe { midi_map_to_cc(e, u32::from(r.max)) },
+            unsafe { midi_map_to_cc(std::ptr::null(), e, 0) },
+            0,
+            "{}",
+            r.name
+        );
+        assert_eq!(
+            unsafe { midi_map_to_cc(std::ptr::null(), e, u32::from(r.max)) },
             127,
             "{}",
             r.name
         );
         assert_eq!(
-            unsafe { midi_map_to_cc(e, u32::from(r.max) + 1000) },
+            unsafe { midi_map_to_cc(std::ptr::null(), e, u32::from(r.max) + 1000) },
             127,
             "{}: out of range",
             r.name
@@ -1138,6 +1182,12 @@ patch's value up or down around 64; SIDOU does not.
   127 are the ends.
 - **CC, steps curve:** 0..127 is divided evenly among the parameter's values,
   value * (max + 1) / 128: a switch is off below 64 and on from 64.
+- **CC, walk curve:** 0..127 lands on the positions the knob turns through (its walk:
+  the vibrato's rate, depth and delay, the PWM's depth and rate, and each effect slot's
+  Amount, A, B and Mix by the slot's algorithm, see controls.md, Knob curves), position
+  round(value * (n - 1) / 127) of n, so a CC sweep moves as the knob does and reaches every
+  position; sent out, a value goes as its nearest position's CC. Its NRPN still sets any
+  value.
 - **NRPN:** CC 99 and 98 select the parameter (MSB, LSB). The data is the parameter's own
   value, MSB * 128 + LSB, clamped to its range: CC 6 sets the MSB (the LSB taken as 0),
   CC 38 the LSB (with the MSB of the last CC 6, or, if none came since the selection or
@@ -1223,7 +1273,9 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   twice a C64 player's frame rate. A flood of messages costs one update per tick.
 - **Vibrato:** a triangle per voice, from 0 at each note-on once its delay is over. Rate
   CC 76 (0.1 Hz steps, up to 12.7 Hz), depth CC 77 (127 is +-99 cents), delay CC 78
-  (10 ms steps). The wheel and aftertouch add to the depth where they are assigned to the
+  (10 ms steps), each CC on the walk LAB's knob takes (the walk curve: 24 rates 0.5..12.7 Hz
+  even in pitch, 32 depths even in cents' ratio, 24 delays 40 ms..1.27 s); their NRPNs set
+  any value. The wheel and aftertouch add to the depth where they are assigned to the
   vibrato, up to 127. Updated at 100 Hz, a triangle of +-d cents at f Hz moves 4 * d * f /
   100 cents a tick: 6 cents at +-25 cents and 6 Hz, 24 cents at the full depth. Above
   about 8 Hz a cycle has fewer than 12 steps and the vibrato starts to sound stepped.
@@ -1666,6 +1718,8 @@ fn nrpn_text(r: &Row) -> String {
 fn curve_text(r: &Row) -> &'static str {
     if r.steps() {
         "steps"
+    } else if r.walk() {
+        "walk"
     } else {
         "linear"
     }
