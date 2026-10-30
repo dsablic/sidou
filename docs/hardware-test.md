@@ -2532,6 +2532,50 @@ curves"). Set up as section 22; a chord held while turning, one detent at a time
 
 Notes:
 
+## 26. FM-1 Live Link (1.5)
+
+What it decides: whether a computer can mirror the screen and press the buttons over the USB
+cable on a real FM-1 (docs/reference/live-link.md). Needs section 8.1 (USB-MIDI out) passed. The
+viewer page comes later on the site; until then any Web MIDI page or tool that sends the frames
+of live-link.md's test vectors will do (Chrome or Edge, the FM-1's MIDI port). Never send
+anything else to the FM-1 while you test.
+
+- [ ] **A session starts only from the host and shows LINK:** START, then the font and the palette
+  requested; the FM-1 shows `LINK` in the bottom-left corner, and nothing on it changes otherwise.
+  *Emulator:* `emu-gate/tests/link.rs::the_mirror_follows_live_tracker_the_menu_and_scene` (HELLO,
+  the font, the stamp), `sidou-tests/tests/app/link.rs::hello_says_what_the_device_offers`.
+  *Device-only:* that the host's MIDI driver passes the frames both ways (HELLO comes back), and
+  `LINK` readable at arm's length.
+- [ ] **The mirror keeps up:** LIVE with a chord's scopes, TRACKER playing (PLAY), the menu, SCENE.
+  The mirror shows each view; the moving ones at a lower frame rate than the LCD, never behind by
+  more than a moment; at rest exactly the LCD.
+  *Emulator:* the same test (pixel for pixel at rest, within 2 s while moving, the rates in
+  `link_mirror.json`).
+  *Device-only:* the rates a real host's USB reads give (the emulator's host takes one IN packet a
+  millisecond); no click, gap or drift in the sound while it streams (listen to a held chord and
+  a playing song with and without a session).
+- [ ] **MIDI out and clock out are unchanged:** with CLOCK OUT on and a DAW following, PLAY, stop,
+  EDIT + PLAY, while the mirror streams; K1 swept on LIVE with the DAW recording CCs.
+  *Emulator:* `emu-gate/tests/link.rs::clock_outs_song_position_goes_as_without_a_session`,
+  `emu-gate/tests/link.rs::midi_outs_ccs_go_as_without_a_session`.
+  *Device-only:* the DAW follows as without a session, records every CC, and its MIDI monitor shows
+  no broken SysEx.
+- [ ] **Remote control:** the host holds EDIT and turns K1 (a PANEL frame every 200 ms), taps HOME,
+  turns PRESETS; then stops sending with EDIT held.
+  *Emulator:* `emu-gate/tests/link.rs::a_hosts_panel_frame_presses_turns_and_is_let_go`,
+  `sidou-tests/tests/app/link.rs::the_hosts_buttons_are_let_go_half_a_second_after_its_last_panel_frame`.
+  *Device-only:* the FM-1 answers as to its own buttons, and EDIT lets go half a second after the
+  host stops (the slot's popup closes, K1 turns the cutoff again).
+- [ ] **The end:** close the page (no STOP sent): `LINK` goes about 3 s later. Start again, then
+  unplug the cable: `LINK` goes at once. A file transfer over SysEx (the Songs page) during a
+  session finishes as without one.
+  *Emulator:* `emu-gate/tests/link.rs::a_session_ends_three_seconds_after_the_last_heartbeat`,
+  `sidou-tests/tests/app/link.rs::a_session_ends_three_seconds_after_the_last_heartbeat`.
+  *Device-only:* all of it on the device (unplugging and a real transfer are not in the
+  emulator's link test).
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2563,3 +2607,4 @@ Notes:
 | 23 Auditions before writing | | |
 | 24 LAB 1.1 | | |
 | 25 Knob curves | | |
+| 26 FM-1 Live Link | | |

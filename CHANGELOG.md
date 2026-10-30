@@ -68,6 +68,18 @@ All notable changes are documented here. The format follows
   docs/reference/controls.md "Knob curves" lists every curve.
 
 ### Added
+- **FM-1 Live Link, the device's side: a computer mirrors the screen and presses the buttons over
+  the USB cable** ([live-link.md](docs/reference/live-link.md), an open protocol for any FM-1
+  firmware; the browser viewer comes later). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,
+  "FM1L"), started only by the host: START (the FM-1 answers its capabilities: the grid, the
+  palette, the font's CRC), a heartbeat every 2 s, STOP, and an end by itself 3 s after the last
+  heartbeat. While a session runs the FM-1 shows `LINK` in the bottom-left corner. The mirror
+  sends the cells the LCD was sent (code, colour, large text's pieces, the scopes' overlays;
+  SCENE's pixel art as 4-bit pixels), the newest state of each, in frames of at most 48 bytes that
+  give way to SysEx transfers, MIDI out and clock out and stay within 22 KB/s; the font and
+  palette on request. A PANEL frame holds and presses buttons and turns encoders (Felucca's ids),
+  all let go 500 ms after the last one; the keys stay MIDI notes. The reference decoder is the
+  `fm1-live-link` crate (`host/crates/live-link`), which rebuilds the screen pixel for pixel.
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
   (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no

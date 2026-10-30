@@ -117,7 +117,10 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
   SysEx. L; no firmware change.
 - **Screen mirror (FM-1 Live Link).** The screen, scopes and remote controls in a browser
   over the USB cable, for the other FM-1 firmwares too. L; the design text is in the
-  [old roadmap](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md).
+  [old roadmap](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md)
+  and [1.5's design](plans/2026-10-30-1.5-design.md), section 6. In progress: the device's side
+  (the session, the cells mirror, remote control), the [protocol](reference/live-link.md) and the
+  reference decoder are in; the browser viewer and scopes as state are next.
 
 **Platform**
 

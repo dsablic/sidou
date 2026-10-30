@@ -31,6 +31,14 @@ NUL-padded, with one to sixteen characters in `20`–`5F`, not starting with a
 space. Bytes following the first NUL must be zero. CRC means IEEE reflected
 CRC-32, the same as the store and zlib.
 
+### FM-1 Live Link frames
+
+`F0 7D 46 4D 31 4C` ("FM1L") frames are Live Link's, the screen mirror and remote control
+([live-link.md](live-link.md)): the same packing and checksum rule as above, with no sequence
+byte, decoded payloads of at most 48 bytes, and their own commands. They share the USB port
+with this protocol and never interleave with it: a Live Link frame goes out whole, and none goes
+while a transfer of this protocol (or its reply) is under way on USB. On TRS they are ignored.
+
 ## Commands
 
 | Byte | Command | Request or response payload |
