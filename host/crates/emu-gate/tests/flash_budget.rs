@@ -15,7 +15,8 @@
 //! | M2f | 512,000 |
 //! | M3 | 534,000 (M3_START + M3's 28,000; `IMAGE_CEILING` from M3's Task 9 to LAB) |
 //! | 1.0 | 552,000 (M3's ceiling + 18,000: LAB's estimate and 1.0's small features; `IMAGE_CEILING` until 1.1) |
-//! | 1.1 | 556,000 (1.0's ceiling + 4,000: 1.1's features after a win-back; `IMAGE_CEILING` since 1.1) |
+//! | 1.1 | 556,000 (1.0's ceiling + 4,000: 1.1's features after a win-back) |
+//! | 1.5 | 568,000 (1.1's ceiling + 12,000: 1.5's features after a win-back; `IMAGE_CEILING` since 1.5) |
 //!
 //! M3's start target was 506,000 bytes, the image won back at M2's close
 //! (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Before M3"), which M3's own 28,000 then takes to
@@ -34,7 +35,11 @@
 //! needs 7.3-11.2 KB against the 7,088 bytes under 1.0's ceiling, and the user decided on
 //! 2026-10-29 to win 3-5 KB back first (the font to the glyphs 0..0xDC, song_ext.c, psid_file.c
 //! and scene.c built for size: 544,912 down to 540,800 bytes) and set the ceiling 4,000 higher.
-//! The slot keeps 25,564 bytes (`X_RESERVE`), the room 1.x starts from after 1.1.
+//! The slot keeps 25,564 bytes (`V11_RESERVE`), the room 1.x starts from after 1.1.
+//! 1.5's stage follows 1.1's (docs/plans/2026-10-30-1.5-design.md, "Flash"): the user decided on
+//! 2026-10-30 to win 2-4 KB back first (the song views, the scene's tiles, the MIDI out and
+//! the song reader built for size: 550,368 down to 547,664 bytes) and set the ceiling 12,000 higher. The slot keeps 13,564 bytes
+//! (`X_RESERVE`) for felucca-bsp and later.
 //! The M2 schedule above is history
 //! (the plans landed in parallel, so each ceiling was the latest stage merged, not the next
 //! by sub-milestone order): it only rises, ends at or below 512,000 bytes and leaves at least
@@ -59,8 +64,8 @@ const M3_START: usize = 506_000;
 /// M3's own flash budget (its plan's ceiling), and what M4 and M5 keep of the slot after it.
 const M3_BUDGET: usize = 28_000;
 const M4_M5_RESERVE: usize = 47_564;
-const PLAN: &str = "1.1";
-const IMAGE_CEILING: usize = V11_STAGE.1;
+const PLAN: &str = "1.5";
+const IMAGE_CEILING: usize = V15_STAGE.1;
 /// M3's stage of the schedule: the image's ceiling once M3 is in.
 const M3_STAGE: (&str, usize) = ("M3", M3_START + M3_BUDGET);
 /// 1.0's flash budget on top of M3's ceiling, and its stage: the image's ceiling once 1.0 is in
@@ -71,10 +76,16 @@ const V1_STAGE: (&str, usize) = ("1.0", M3_STAGE.1 + V1_BUDGET);
 /// (the 3-5 KB win-back first, then the user's decision, 2026-10-29).
 const V11_BUDGET: usize = 4_000;
 const V11_STAGE: (&str, usize) = ("1.1", V1_STAGE.1 + V11_BUDGET);
+/// 1.5's flash budget on top of 1.1's ceiling, and its stage: the image's ceiling once 1.5 is in
+/// (the 2-4 KB win-back first, then the user's decision, 2026-10-30).
+const V15_BUDGET: usize = 12_000;
+const V15_STAGE: (&str, usize) = ("1.5", V11_STAGE.1 + V15_BUDGET);
 /// What 1.0's ceiling left of the slot, before 1.1.
 const V1_RESERVE: usize = 29_564;
-/// What 1.1's ceiling leaves of the slot: the room 1.x starts from.
-const X_RESERVE: usize = 25_564;
+/// What 1.1's ceiling left of the slot, before 1.5.
+const V11_RESERVE: usize = 25_564;
+/// What 1.5's ceiling leaves of the slot: the room felucca-bsp and later start from.
+const X_RESERVE: usize = 13_564;
 /// What M3's ceiling must leave for M4 and M5 (the plans' floor then, before 1.0's raise).
 const M4_M5_FLOOR: usize = 40_000;
 // M3's start target is within M2's schedule, and M3's budget on top of it leaves M4 and M5
@@ -181,6 +192,25 @@ fn v11s_stage_follows_v1s_and_leaves_1x_its_room() {
     assert!(
         ceiling <= APP_SLOT && APP_SLOT - ceiling >= X_RESERVE,
         "{} bytes of the slot left after 1.1's ceiling",
+        APP_SLOT.saturating_sub(ceiling)
+    );
+    assert_eq!(APP_SLOT - ceiling, V11_RESERVE);
+}
+
+#[test]
+fn v15s_stage_follows_v11s_and_leaves_the_rest_its_room() {
+    let (name, ceiling) = V15_STAGE;
+    assert_eq!(name, "1.5");
+    assert!(
+        ceiling > V11_STAGE.1,
+        "1.5's ceiling {ceiling} does not rise from 1.1's ({})",
+        V11_STAGE.1
+    );
+    assert_eq!(ceiling, 568_000);
+    assert_eq!(ceiling - V11_STAGE.1, V15_BUDGET);
+    assert!(
+        ceiling <= APP_SLOT && APP_SLOT - ceiling >= X_RESERVE,
+        "{} bytes of the slot left after 1.5's ceiling",
         APP_SLOT.saturating_sub(ceiling)
     );
     assert_eq!(APP_SLOT - ceiling, X_RESERVE);
