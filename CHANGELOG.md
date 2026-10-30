@@ -94,6 +94,16 @@ All notable changes are documented here. The format follows
   of giving up: it shows that the FM-1 is tidying its store, waits 1, 2, 4 and then 5 seconds
   between tries for about a minute, and sends the whole PUT again. Other refusals still stop the
   transfer. `sidou-sysex` only writes `.syx` files, so it has no sender to change.
+- CLOCK OUT: PLAY alone after a stop part way through sends a start (`FA`), as the song starts
+  again (from the song views' position). It used to send the stopped place's song position and a continue (`F2`, `FB`),
+  so a synced sequencer carried on from there while the FM-1 started again, and the FM-1's
+  clocks then paused for as long as it had been since the play before. Clock out read the call
+  count before the audio interrupt had taken the PLAY; it now asks song control whether the
+  last start was a play or a continue, and counts no calls until the play is taken. EDIT + PLAY
+  still sends the song position and continue.
+- CLOCK OUT: a start, stop or continue that came while a SysEx reply filled the USB ring was
+  lost. A reply now leaves the ring's last four packets to clock out, and clock out waits for
+  room instead of handing USB a packet it would drop.
 
 ## [1.0.0] - 2026-10-29
 

@@ -325,9 +325,12 @@ FOLLOW, OFF; AUTO at power-on) and CLOCK OUT (OFF at power-on) set it
 - **Out** (USB only: the TRS jack is MIDI IN only), with CLOCK OUT on and no clock coming
   in: 24 clocks a beat at the song's tempo (a beat is its calls a row x rows a beat), each
   sent in the first pass after its time, within a pass and USB's 1 ms frame; start (FA) when
-  the song starts, stop (FC) when it stops, and song position then continue (F2, FB) when it
-  goes on from where it stopped. A clock that comes in is never sent back: while one is
-  followed, nothing goes out.
+  the song starts (PLAY, from its top or an orderlist position, after a stop too), stop (FC)
+  when it stops, and song position then continue (F2, FB) when it goes on from where it
+  stopped (EDIT + PLAY). The song position waits for the end of a SysEx reply that is part
+  way out; a reply leaves room in USB's ring for clock out's start, stop and continue, which
+  wait for room rather than being dropped. A clock that comes in is never sent back: while one
+  is followed, nothing goes out.
 
 ## SysEx
 

@@ -740,6 +740,7 @@ int song_ctl_continue(song_ctl* sc) {
     sc->hold_next = 0u;
     push(sc, &c);
     sc->handback = 0u;
+    sc->from_top = 0u;
     sc->state = SONG_PLAYING;
     return 1;
 }
@@ -1358,6 +1359,7 @@ static void poll_loading(song_ctl* sc, int may_slice) {
         sc->hold_next = 0u;
         push(sc, &k);
         sc->handback = 0u;
+        sc->from_top = 0u;
         sc->state = SONG_PLAYING;
         return;
     }
@@ -1377,7 +1379,9 @@ static void poll_loading(song_ctl* sc, int may_slice) {
         st[ch] = sc->start[ch];
     c.u.p.y = p.q;
     c.u.p.z = p.r;
-    take_spare(sc, push(sc, &c));
+    sc->play_seq = push(sc, &c);
+    take_spare(sc, sc->play_seq);
+    sc->from_top = 1u;
     sc->shapes_used = 1u;
     sc->widened = 0u;
     sc->want_handover = 0u;
@@ -1800,6 +1804,17 @@ uint32_t song_ctl_events(song_ctl* sc, song_event* out, uint32_t n) {
 
 uint32_t song_ctl_state(const song_ctl* sc) {
     return sc->state;
+}
+
+uint32_t song_ctl_clock_calls(const song_ctl* sc) {
+    const volatile song_ctl* v = sc;
+    uint32_t applied = v->applied; /* before the calls: a PLAY applied since resets them */
+    uint32_t calls = v->calls;
+    return (int32_t)(applied - sc->play_seq) < 0 ? 0u : calls;
+}
+
+uint32_t song_ctl_from_top(const song_ctl* sc) {
+    return sc->from_top;
 }
 
 uint32_t song_ctl_warnings(const song_ctl* sc) {

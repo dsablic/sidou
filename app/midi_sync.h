@@ -153,6 +153,10 @@ typedef struct midi_sync {
      * cable, so a song position (system common, which would end the frame) waits, and the
      * continue after it with it (midi_sync_poll sends neither until it is 0). */
     uint8_t out_common_wait;
+    /* The caller's, before each poll: the packets its USB ring has room for now
+     * (MIDI_SYNC_OUT_MAX at init). A start, stop, or song position and continue waits whole
+     * until it fits, and the clocks past the room go in a later pass: none is dropped. */
+    uint8_t out_room;
     uint32_t out_clock;  /* the next clock's number since the start */
     uint32_t sent;       /* packets written */
     /* counters, for the tests */

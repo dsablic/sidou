@@ -1321,7 +1321,8 @@ static void st_clock(void* ctx, song_clock* out) {
         } else {
             out->speed[0] = out->speed[1] = (uint8_t)(t + 1u);
         }
-        out->calls = sc->calls;
+        out->calls = song_ctl_clock_calls((const song_ctl*)sc);
+        out->from_top = (uint8_t)song_ctl_from_top((const song_ctl*)sc);
         out->call_sample = sc->call_sample;
         const volatile song_period* q = &sc->period;
         float frac = (float)q->r * 65536.0f / (float)(q->den ? q->den : 1u);
