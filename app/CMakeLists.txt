@@ -128,4 +128,11 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(live_setup.c live_walk.c PROPERTIES COMPILE_OPTIONS -Oz)
     # SCENE's pieces run once a frame, inside the scene budgets (emu-gate scene_budget.rs, screen.rs).
     set_source_files_properties(scene.c PROPERTIES COMPILE_OPTIONS -Os)
+    # 1.5's win-back (docs/plans/2026-10-30-1.5-design.md "Flash"): files built for size one by one,
+    # each kept only while its budget gate holds with room. Left out on purpose, each measured:
+    # views.c (-Oz saves 880 bytes but K1's popup input reaches 250 of POPUP_INPUT 250), chip_view.c
+    # (240 bytes; CHIP K1 on DIST reaches 245 of CHIP_INPUT 245), grid.c (3,360 bytes, but the tile
+    # renderer's frame grows 15 %: THE CHIP's ui_poll 79,774 over 79,000), live_view.c and live.c
+    # (the instrument's frame and input), reg_ring.c (the audio interrupt's pops).
+    set_source_files_properties(sid_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
 endif()
