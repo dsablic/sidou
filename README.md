@@ -83,7 +83,9 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
   the device's flash: the menu's SIDS lists them, NOW PLAYING shows the tune, its songs and its
   voices, with mute and solo, pause and stop, and MIDI start, stop and continue
-  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)).
+  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). Solo a voice and press REC
+  to lift its next note as a GoatTracker instrument for your own song
+  ([lift a sound](docs/manual/sid-tunes.md#5-lift-a-sound)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
   page turns any GoatTracker 2 `.sng`, from a file or read straight from the connected FM-1 (the
   current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where

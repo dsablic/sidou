@@ -139,7 +139,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SAVE (button 9)** | clean press and release: on every list its **OK**, opening or choosing the highlighted item: the menu's item (nothing on a value item; on SETTINGS it only confirms STORE's format or RESET), [SONG](#song)'s action, the file LOAD or DELETE lists, a confirmation's answer (NO goes back a page, as HOME); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
-| **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**) |
+| **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**); in NOW PLAYING it lifts the soloed voice instead ([Lift a sound](#lift-a-sound)) |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; those six keys sound nothing while GLO is held; **the other keys play** (a change from before: held and latched are one rule) |
 | **GLO tapped twice** (within 400 ms) | **latches** GLO's layer: the keys are the mutes and solos without holding GLO (a toast says `GLO LATCHED`, GLO's LED is lit, and LIVE shows the layer); a tap on GLO ends it (`GLO OFF`) |
 | **SELECT (encoder 0)**, in the menu or SETTINGS | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
@@ -585,7 +585,8 @@ SETTINGS, the MIDI page (its setup is RAM-only), CHIP, SCENE, each of the five s
 TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), STATUS, ABOUT, the
 glyph sheet (CHARSET), the SONG menu's actions and each of its pages: the list of files LOAD
 and DELETE browse (**FILES**), SAVE AS's name and a confirmation; and the SID views: the browser
-(**SIDS**), **NOW PLAYING** (its card is **PLAYING**) and the browser's question (**UNSAVED**).
+(**SIDS**), **NOW PLAYING** (its card is **PLAYING**), the browser's question (**UNSAVED**) and
+the lifted instrument's offer (**LIFT**).
 
 **The card is the one for the state the view is in when HOME has been held**, where a control
 means something else there:
@@ -606,6 +607,7 @@ means something else there:
 | LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
+| the lifted instrument's offer | **LIFT** | SAVE imports it, HOME skips it |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
 it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
@@ -1362,6 +1364,7 @@ on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). 
 | **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
 | **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
 | **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune |
+| **REC** | | lifts the one voice GLO solos: its next note becomes an instrument ([below](#lift-a-sound)); REC again while it waits disarms it |
 | **HOME** | back to the menu; with the tune stopped (or failed) it ends for good there, and the song comes back from the store | back to the browser, the tune playing on |
 
 An empty store says **NO TUNES: SEE MANUAL**. The loaded tune keeps its place in the browser:
@@ -1405,6 +1408,36 @@ ENV3 read as on a C64) and a third SID's dropped writes.
 Refusals are toasts: `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID`, `TOO LONG`, `SID NOT
 FOUND`, `SID: READ ERROR` (the file went while it loaded), `INIT TOO LONG`, `PLAY HUNG`,
 `6502 JAM AT $xxxx`, `MIDI MODE HAS CHIP A` (MULTITIMBRAL and WHOLE-CHIP keep chip A).
+
+### Lift a sound
+
+**REC in NOW PLAYING** lifts an instrument out of the tune: solo a voice first (GLO held + note
+key 4, 5 or 6), then REC. The voice's lane says **ARM** (`LIFT: V2'S NEXT NOTE`) until the voice's
+next note starts, then **REC** while it is taken: a frame a play call (50 a second on a PAL tune)
+for a second at most, or until the note's gate goes off or the next note starts. REC again while
+it waits disarms it (`LIFT OFF`). Without exactly one voice soloed it says `LIFT: SOLO ONE VOICE`;
+with the tune paused or stopped, `LIFT: PLAY THE TUNE`. REC was free there: it only set the
+song's record flag, which a tune cannot use. A 2SID tune's solo is the voice on both chips: the
+chip whose voice starts a note first is lifted.
+
+The note becomes a GoatTracker 2 instrument ([the manual](../manual/sid-tunes.md#5-lift-a-sound)
+says what it holds) and goes to the store as one file, **LIFTED SOUND** (a GTI5 instrument,
+replaced by the next lift): `LIFTED: <NAME>` (the tune's title and the voice, `CONSULTANT V1`),
+`LIFTED, VIBRATO DROPPED` (a swing no GoatTracker vibrato follows: the note is held at its
+centre), `LIFTED, CUT TO FIT` (a busy note's last frames dropped). Refusals: `DIGI: CAN'T LIFT`
+(samples played through the registers), `LIFT: NOTE TOO SHORT` (the gate went off in the note's
+first call), `STORE FULL: NOT LIFTED`, `LIFT: STORE ERROR`, `LIFT LOST: STORE BUSY` (the tune
+ended while the store stayed busy for 3 s). The store writes the file once the device is quiet
+(the tune stopped), as it writes everything.
+
+**The offer.** Once the tune has ended and the song is back, and the file is on the store, a page
+opens over LIVE, the menu or SIDS: **LIFTED SOUND**, the instrument's name and **INTO I05** (the
+song's first empty instrument; **NO FREE INSTR** when all 63 are used). Its card is **LIFT**.
+
+| Control | Result |
+|---|---|
+| **SAVE** | imports it into that instrument with its tables (the importer SysEx uses): `IMPORTED AS I05`, the song changed (unsaved). The song must be stopped: while it plays the page says **SONG PLAYING: STOP IT FIRST** and SAVE says `STOP THE SONG FIRST`. Refusals: `NO FREE INSTRUMENT`, `SONG BUSY: TRY AGAIN` (a load, a save or a SysEx import in hand), `SONG FULL: NOT IMPORTED` |
+| **HOME** | skips it: the file stays on the store (a SysEx GET of `LIFTED SOUND` reads it) until the next lift replaces it |
 
 ## SAVE
 

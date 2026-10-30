@@ -2532,6 +2532,35 @@ curves"). Set up as section 22; a chord held while turning, one detent at a time
 
 Notes:
 
+## 26. Lift a sound from a .sid (1.5)
+
+What it decides: whether a lifted instrument sounds like the tune's voice by ear, on HVSC tunes
+the emulator never played (docs/manual/sid-tunes.md "5. Lift a sound"). Set up: a few tunes on
+the store (section 20): the starter pack's The Consultant, and three or four HVSC tunes of
+different players (a GoatTracker tune, a Rob Hubbard or Martin Galway lead with vibrato, a
+JCH or DMC tune with pulse sweeps, one with a filtered bass), and a song of your own, saved.
+
+- [ ] **Lift:** play a tune, solo a voice (GLO + key 4-6), REC: the lane says ARM, then REC as a
+  note starts; the toast names it (`LIFTED: ...`, or `LIFTED, VIBRATO DROPPED`).
+  *Emulator:* `emu-gate/tests/psid_views.rs::a_voice_lifted_from_a_tune_is_imported_into_the_song`,
+  `sidou-tests/tests/psid_lift.rs` (the capture and conversion; The Consultant's six notes played
+  back register for register, the vibrato within half of the held note's difference).
+  *Device-only:* none for the steps; the audio never dips while the note is taken.
+- [ ] **Import and play:** stop the tune, HOME out of SIDS: the song comes back and LIFTED SOUND is
+  offered; SAVE: `IMPORTED AS I0x`. In TRACKER, play the instrument at the note the tune used and
+  an octave either side.
+  *Emulator:* as above (the instrument's bytes and wave rows in the song).
+  *Device-only:* by ear, against the tune's voice soloed: the attack, the waveform changes, the
+  pulse sweep and the vibrato's speed and depth; note what differs (a filter that took over the
+  song's, a vibrato dropped, a drum's noise pitch).
+- [ ] **Refusals:** a digi tune (a sampled drum): `DIGI: CAN'T LIFT`. REC with no voice soloed:
+  `LIFT: SOLO ONE VOICE`.
+  *Emulator:* `sidou-tests/tests/psid_lift.rs::a_digi_burst_is_refused`,
+  `sidou-tests/tests/app/sid_view.rs::rec_on_now_playing_lifts_the_soloed_voice`.
+  *Device-only:* whether a real digi tune trips it (eight writes a call to one register).
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2563,3 +2592,4 @@ Notes:
 | 23 Auditions before writing | | |
 | 24 LAB 1.1 | | |
 | 25 Knob curves | | |
+| 26 Lift a sound from a .sid | | |

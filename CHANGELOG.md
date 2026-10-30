@@ -68,6 +68,17 @@ All notable changes are documented here. The format follows
   docs/reference/controls.md "Knob curves" lists every curve.
 
 ### Added
+- **Lift a sound from a `.sid`.** In NOW PLAYING, solo a voice and press REC: its next note
+  (a second at most, to its gate-off) becomes a GoatTracker 2 instrument: wave rows with notes
+  relative to the note it started on, the envelope (later changes as `F5`/`F6` rows), the pulse
+  sweep, a calculated vibrato when one follows the tune's (else the note held at its centre:
+  `LIFTED, VIBRATO DROPPED`), filter rows when the voice is filtered (approximate). It goes to the
+  store as `LIFTED SOUND` (a GTI5 file, type 3, one store entry, replaced by the next lift), and
+  once the tune ends and the song is back, SIDOU offers it: SAVE imports it into the song's first
+  empty instrument (the song stopped), HOME skips it. Digis are refused (`DIGI: CAN'T LIFT`).
+  The capture reads the 6502's writes in the main loop; the audio interrupt is unchanged. Help:
+  PLAYING's REC line and the LIFT card ([controls](docs/reference/controls.md#lift-a-sound),
+  [manual](docs/manual/sid-tunes.md#5-lift-a-sound)).
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
   (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
