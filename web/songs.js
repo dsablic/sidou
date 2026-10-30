@@ -193,6 +193,10 @@ async function run(songs) {
             waiting = true;
             say(c.status, `The FM-1 is tidying its store, waiting ${Math.round(ms / 1000)} s…`);
           },
+          onWait: () => {
+            waiting = true;
+            say(c.status, "Waiting for the FM-1 to be quiet: stop the song playing on it (or the recording of its USB audio)…");
+          },
         });
       } catch (e) {
         say(c.status, `Failed: ${e.message}.`, "error");

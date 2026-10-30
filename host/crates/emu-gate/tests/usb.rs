@@ -513,6 +513,10 @@ fn name16(name: &str) -> Vec<u8> {
         .collect()
 }
 
+/// The default build's gap between two packets' holds while only the keys sound
+/// (platform/fm1/store_fm1.h STORE_SYSEX_GAP_MS, the build option SIDOU_SYSEX_GAP_MS).
+const SYSEX_GAP_MS: f64 = 250.0;
+
 /// A store type nothing on the device reads (app/store.h: 1 a song, 2 a .sid, whose header a PUT
 /// checks, 3 SysEx's instrument staging): the transfers' disposable files.
 const OTHER_TYPE: u8 = 0x7F;
@@ -636,28 +640,36 @@ fn timed_round_trip(fw: &Firmware, name: &str, chord: bool) -> (f64, f64) {
 /// program was a hold of its own, STORE_FORCE_GAP_MS (100 ms) after the last. Now a reply goes
 /// out whole, as fast as USB's ring takes it, and a packet's programs share one hold, which
 /// stays on between packets while the device is silent (the first 500 ms of a PUT find that
-/// out). Bounds: the measurement (42.4 up, 10.3 down) plus at most 10 %.
+/// out; until then the holds are STORE_SYSEX_GAP_MS apart, 250 ms since 1.1, so the first
+/// packets cost more: 42.4 up before). Bounds: the measurement (46.9 up, 10.9 down) plus at
+/// most 10 %.
 #[test]
 fn a_silent_usb_put_and_get_move_a_256_byte_packet_quickly() {
     let Some(fw) = fixture("the SysEx USB timing test") else {
         return;
     };
     let (up, down) = timed_round_trip(&fw, "USB TIMING", false);
-    assert!(up <= 46.0, "PUT: {up:.1} ms a packet");
-    assert!(down <= 11.0, "GET: {down:.1} ms a packet");
+    assert!(up <= 51.6, "PUT: {up:.1} ms a packet");
+    assert!(down <= 12.0, "GET: {down:.1} ms a packet");
 }
 
-/// The same while a chord sounds: a packet's programs share one hold, ramped down and back up,
-/// and the holds stay STORE_FORCE_GAP_MS apart, so the chord plays between packets. Before:
-/// 292.6 ms up, 205.6 down. Bounds: the measurement (105.7 up, 10.4 down) plus at most 10 %
-/// (M3's code layout moved GET to 11.1 ms; 11.0 was below the 10 %).
+/// The same while a chord sounds on the keys alone (no song, no USB recording): a packet's
+/// programs share one hold, ramped down and back up, and the holds stay STORE_SYSEX_GAP_MS
+/// apart (the default build's 250 ms; 1.1 item 13, from 100), so the chord plays between
+/// packets, a dip four times a second at most. Before: 292.6 ms up, 205.6 down; with 100 ms
+/// gaps 105.7 up. Bounds: the gap at least, the measurement (263.2 up, 10.4 down) plus at most
+/// 10 % (M3's code layout moved GET to 11.1 ms; 11.0 was below the 10 %).
 #[test]
 fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     let Some(fw) = fixture("the SysEx USB timing test") else {
         return;
     };
     let (up, down) = timed_round_trip(&fw, "USB CHORD", true);
-    assert!(up <= 116.0, "PUT: {up:.1} ms a packet");
+    assert!(
+        up >= SYSEX_GAP_MS,
+        "PUT: {up:.1} ms a packet, under the gap"
+    );
+    assert!(up <= 290.0, "PUT: {up:.1} ms a packet");
     assert!(down <= 11.4, "GET: {down:.1} ms a packet");
 }
 
@@ -1270,6 +1282,87 @@ fn stall(m: &mut Machine, fw: &Firmware, pending: Pending, how: Sound) {
     );
 }
 
+/// The demo song stopped (PLAY again), and the transport with it.
+fn stop_song(m: &mut Machine, fw: &Firmware) {
+    m.key(sidou_sys::PANEL_BTN_PLAY as u8, true);
+    m.usb_frames(30);
+    m.key(sidou_sys::PANEL_BTN_PLAY as u8, false);
+    let ctl = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::isr_playing as u32;
+    for _ in 0..2_000 {
+        if m.soc.read8(ctl) == 0 {
+            return;
+        }
+        m.usb_frames(1);
+    }
+    panic!("the song never stopped");
+}
+
+/// The screen's toast (app/screen.h).
+fn toast(m: &mut Machine, fw: &Firmware) -> String {
+    let at = fw.symbol("ui") + sidou_sys::ilp32::screen::toast as u32;
+    (0..sidou_sys::SCREEN_TOAST_CHARS)
+        .map(|i| m.soc.read8(at + i))
+        .take_while(|&b| b != 0)
+        .map(char::from)
+        .collect()
+}
+
+/// 1.1 item 13: while a song plays a write waits for quiet. The packet whose ACK it holds back
+/// gets a WAIT at once and every SYSEX_WAIT_EVERY_MS (2 s), the toast says UPLOAD WAITS FOR
+/// QUIET, and no hold comes, so the song never dips; a wait of `ms` (from two seconds) outlasts
+/// SysEx's two-second timeout without ending the transfer. Then the song stops and the write
+/// goes on: returns when it stopped.
+fn waits_while_the_song_plays(
+    m: &mut Machine,
+    fw: &Firmware,
+    link: &mut Link,
+    sequence: u8,
+    ms: u64,
+) -> u64 {
+    let counts = fw.symbol("store_fm1_counts");
+    let (holds, want) = (m.soc.read32(counts + 16), fw.symbol("hold_want"));
+    let start = m.ms();
+    let mut waits = Vec::new();
+    while m.ms() - start < ms {
+        let (command, s, payload) = link.recv(m, 3_000);
+        assert_eq!(
+            (command, s, payload.len()),
+            (0x7d, sequence, 0),
+            "a WAIT for {sequence}: {payload:02x?}"
+        );
+        waits.push(m.ms() - start);
+        assert!(toast(m, fw).starts_with("UPLOAD WAITS"), "{}", toast(m, fw));
+        assert_eq!(
+            m.soc.read8(want),
+            0,
+            "a hold asked for while the song plays"
+        );
+    }
+    println!("WAITs for {sequence} at {waits:?} ms");
+    assert!(waits[0] <= 50, "the first WAIT at once: {waits:?}");
+    assert!(
+        waits.len() as u64 > ms / u64::from(sidou_sys::SYSEX_WAIT_EVERY_MS),
+        "{waits:?}"
+    );
+    for w in waits.windows(2) {
+        let gap = w[1] - w[0];
+        assert!(
+            (u64::from(sidou_sys::SYSEX_WAIT_EVERY_MS)
+                ..=u64::from(sidou_sys::SYSEX_WAIT_EVERY_MS) + 50)
+                .contains(&gap),
+            "WAITs {gap} ms apart"
+        );
+    }
+    assert_eq!(
+        m.soc.read32(counts + 16),
+        holds,
+        "a hold while the song plays"
+    );
+    let stopped = m.ms();
+    stop_song(m, fw);
+    stopped
+}
+
 /// On the device (2026-10-23) every PUT with a chord held on LIVE's keys was refused BUSY, and
 /// went through as soon as the keys were up: the store had a write under way (quiet maintenance
 /// had started a collection), whose held programs wait for quiet, and store_file_begin refused
@@ -1295,8 +1388,12 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
     // SAFETY: data is valid for its length; the CRC routine does not retain it.
     let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };
     meta.extend(crc.to_le_bytes());
-    let asked = m.ms();
+    let mut asked = m.ms();
     link.send(&mut m, 4, 10, &meta);
+    let song = matches!(how, Sound::Song);
+    if song {
+        asked = waits_while_the_song_plays(&mut m, &fw, &mut link, 10, 4_000);
+    }
     let (command, s, payload) = link.recv(&mut m, 2_000);
     assert_eq!(
         (command, s),
@@ -1337,13 +1434,21 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
     );
     assert_eq!(progs, holds, "every production program is held");
     assert!(pass <= common::POLL_INSTRUCTIONS, "a pass {pass}");
-    // Bounds: the measurement (claimed after 22 ms at most, the record's case: its programs in
-    // one hold; 112.0 ms a packet, its first DATA a forced gap after that hold) plus 10 %.
-    assert!(claim <= 25, "the PUT's claim took {claim} ms");
-    assert!(up <= 123.0, "PUT: {up:.1} ms a packet");
+    // Bounds: the measurement plus 10 %. Keys or notes: claimed after 19 ms at most (the
+    // record's case: its programs in one hold), 262.4 ms a packet (STORE_SYSEX_GAP_MS, 250,
+    // apart). A song: from its stop, claimed after 30 ms, then 51-55 ms a packet (the song's
+    // tail sounds a while, then the device is silent and the hold stays on).
+    let (claim_max, up_max) = if song { (33, 60.0) } else { (25, 289.0) };
+    assert!(claim <= claim_max, "the PUT's claim took {claim} ms");
+    assert!(up <= up_max, "PUT: {up:.1} ms a packet");
+    assert!(
+        song || up >= SYSEX_GAP_MS,
+        "PUT: {up:.1} ms a packet, under the gap"
+    );
     m.usb_frames(10);
     assert!(
-        m.soc
+        song || m
+            .soc
             .periph
             .audio
             .iter()
@@ -1381,12 +1486,19 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
         }
     }
 
-    // A DEL meets the same: a record taken meanwhile waits for quiet, and the DEL waits for it.
+    // A DEL meets the same: a record taken meanwhile waits for quiet, and the DEL waits for it
+    // (and, while the song plays again, for quiet).
+    if song {
+        sound(&mut m, &fw, how);
+    }
     hook_put(&mut m, &fw, 0x201, 0xa5);
     m.usb_frames(200);
     assert_ne!(writer_phase(&mut m, &fw), 0, "the record waits for quiet");
-    let asked = m.ms();
+    let mut asked = m.ms();
     link.send(&mut m, 7, 100, &name16("USB WAITS"));
+    if song {
+        asked = waits_while_the_song_plays(&mut m, &fw, &mut link, 100, 2_000);
+    }
     let (command, s, payload) = link.recv(&mut m, 2_000);
     assert_eq!(
         (command, s),
@@ -1395,9 +1507,9 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
     );
     let del = m.ms() - asked;
     println!("DEL while a record waits: ACK after {del} ms");
-    // Bound: the measurement (128 ms at most: a forced gap, then the record and the tombstone
-    // in one hold) plus 10 %.
-    assert!(del <= 141, "the DEL took {del} ms");
+    // Bound: the measurement plus 10 %: 308 ms at most (a gap, then the record and the
+    // tombstone in one hold); a song's: 282 ms from its stop (its tail sounds: a gap first).
+    assert!(del <= if song { 310 } else { 339 }, "the DEL took {del} ms");
     let mut flash = m.soc.flash.mem.clone();
     let st = common::mount_dump(&mut flash);
     let mut file = sidou_sys::store_file::default();

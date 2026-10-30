@@ -28,6 +28,11 @@ void input_tick_isr(void);
 /* The key scan's frame count (one frame = 11 TIMER5 ticks, ~1.1 ms): the debounced state
  * and the edges only change when it does. */
 uint32_t input_frame(void);
+/* The scan's frame in us (11 columns of TIMER5's 100 us) and the frames a key stays closed
+ * before it counts as pressed (Felucca's FM1_DEB_PRESS; input.c checks both): REC's
+ * compensation (main.c REC_LAG_SAMPLES) reads them. */
+#define INPUT_FRAME_US 1100u
+#define INPUT_PRESS_FRAMES 2u
 /* Main loop: button, note-key and encoder changes since the last call into live; buttons and
  * encoders through the views first (ui_buttons, ui_encoder), then the note keys
  * (ui_note_keys).

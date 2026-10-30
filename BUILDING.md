@@ -140,6 +140,31 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
+**The SysEx gap variants** (1.1 item 13, only for the ear check in
+[docs/hardware-test.md](docs/hardware-test.md#8c-sysex-files-instruments-and-songs-m2e-task-5),
+never to be handed out): while only the keys sound, an upload's flash writes dip the sound
+once a packet, `SIDOU_SYSEX_GAP_MS` apart (250 by default). Build each variant in its own
+directory, then package it as SIDOU is packaged:
+
+```sh
+for gap in 100 250 500; do
+    tools/fm1-docker cmake --preset fm1 -B build/fm1-gap$gap -DSIDOU_SYSEX_GAP_MS=$gap
+    tools/fm1-docker cmake --build build/fm1-gap$gap
+done
+cd host
+for gap in 100 250 500; do
+    cargo run --release -p sidou-pack -- \
+        --app ../build/fm1-gap$gap/platform/fm1/sidou_app.bin \
+        --loader ../build/fm1-gap$gap/platform/fm1/loader/loader.bin \
+        -o ../build/fm1-gap$gap/sidou-gap$gap.fwsc
+done
+```
+
+The 250 build is the release's. The others are marked as not a release build: `sidou-pack`
+warns, and `sidou-pack --verify` and `tools/preflash` fail their build-options line (everything
+else they check still applies). A song or a USB recording makes an upload wait for quiet in
+every variant; the gap is only heard with the keys.
+
 `sidou-pack --test-wrong-size` makes a package that SIDOU's update step 1
 refuses (for the checklist's refused-install item).
 `sidou-pack --verify sidou.fwsc` checks a finished package (SHA-256, identity, sizes, CRCs, the

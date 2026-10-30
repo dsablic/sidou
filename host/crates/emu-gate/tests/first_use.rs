@@ -1133,6 +1133,152 @@ fn tracker_rec_enters_a_note_that_plays_and_seq_walks_every_song_view() {
     }
 }
 
+// ---- REC from the keys, compensated (1.1 item 14) ----
+
+/// The DAC's clock against song control's sample count: the cycle at which song sample `x`
+/// leaves the DAC. Each snapshot (an audio interrupt) gives the count after its block and the
+/// cycle it was entered; that block plays from the end of the half then playing (the first
+/// `half_played` after the entry), a sample every 1/FS on, and the DAC never stops, so one
+/// block whose start is known places every sample.
+fn heard_cycle(m: &Machine, x: f64) -> f64 {
+    let hz = m.soc.periph.hz as f64;
+    for snap in m.buffer_snapshots.iter().rev() {
+        if let Some(&start) = m.half_played.iter().find(|&&c| c > snap.entry) {
+            let after = u32::from_le_bytes(snap.bytes[..4].try_into().unwrap());
+            let first = f64::from(after) - HALF_FRAMES as f64;
+            return start as f64 + (x - first) * hz / FS;
+        }
+    }
+    panic!("no block heard yet");
+}
+
+/// A key pressed `d_ms` from when row `row` (of the play's count) is heard, with `quant`: the
+/// pattern row its note lands on (voice 1's pattern 0, a NEW song: tempo 6, rows `rows` long).
+fn rec_trial(m: &mut Machine, fw: &Firmware, quant: u32, row: u32, d_ms: f64) -> usize {
+    let ui = fw.symbol("ui");
+    m.soc.write8(
+        ui + (ilp32::views::song + ilp32::song_view::quant) as u32,
+        quant as u8,
+    );
+    let ctl = fw.symbol("song_transport");
+    let seen = fw.symbol("song_seen");
+    // The row now and the call it began on, the last call and its sample, the period.
+    let row_now = u32::from(m.soc.read8(seen + ilp32::song_status::row as u32));
+    let row_call = m.soc.read16(seen + ilp32::song_status::row_call as u32);
+    let calls = m.soc.read32(ctl + ilp32::song_ctl::calls as u32);
+    let at = m.soc.read32(ctl + ilp32::song_ctl::call_sample as u32);
+    let p = ctl + ilp32::song_ctl::period as u32;
+    let (q, r, den) = (
+        m.soc.read32(p + ilp32::song_period::q as u32),
+        m.soc.read32(p + ilp32::song_period::r as u32),
+        m.soc.read32(p + ilp32::song_period::den as u32),
+    );
+    let period = f64::from(q) + f64::from(r) / f64::from(den.max(1));
+    let row_start_call = f64::from(row_call) + 6.0 * f64::from(row - row_now);
+    let sample = f64::from(at) + (row_start_call - f64::from(calls - 1)) * period;
+    let press = heard_cycle(m, sample) + d_ms * m.soc.periph.hz as f64 / 1000.0;
+    let now = m.soc.periph.cycles as f64;
+    assert!(
+        press > now + 1000.0,
+        "row {row} is too close: plan further ahead"
+    );
+    let before = song(m, fw).pattern(0).unwrap();
+    m.run_cycles((press - now) as u64);
+    m.key(KEY0 + 7, true);
+    m.run_ms(40);
+    m.key(KEY0 + 7, false);
+    let start = m.ms();
+    loop {
+        let after = song(m, fw).pattern(0).unwrap();
+        let new: Vec<usize> = (0..after.len())
+            .filter(|&i| is_note(after[i][0]) && after[i] != before[i])
+            .collect();
+        if let [i] = new[..] {
+            return i;
+        }
+        assert!(new.is_empty(), "notes on rows {new:?}");
+        assert!(m.ms() - start < 1_000, "the key recorded nothing");
+        m.run_ms(10);
+    }
+}
+
+/// 1.1 item 14, REC timing measured in the emulator: a NEW song plays in TRACKER with REC on;
+/// a key goes down a known time before or after a row's first sample leaves the DAC (what the
+/// player hears), and lands on the row it was played in. The device places a key 6.0 ms before
+/// it reads it (main.c REC_LAG_SAMPLES: the double buffer, less half a block, and the
+/// debounce), so a key 5 ms early lands a row early in OFF, and one 5 ms late on the row; in
+/// NEAREST the half-way point is where it was heard. Uncompensated, the key 5 ms early landed on
+/// the row (what was rendered, not heard, had passed it). The sweep finds where OFF turns over:
+/// the compensation's error against the emulated delays (0 at best; 1.1's first estimate, 8.9
+/// ms, counted a block's wait the main loop does not have and turned over past +3 ms; 6.0 turns
+/// over at 0).
+#[test]
+fn rec_places_a_key_where_it_was_heard() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    press(&mut m, SEQ);
+    m.run_ms(WIPE_MS);
+    assert_view(&mut m, &fw, "tracker_view_view", "SEQ from STEP");
+    press(&mut m, REC);
+    let samples = fw.symbol("song_transport") + ilp32::song_ctl::samples as u32;
+    m.snapshot_bytes = (0..4).map(|i| samples + i).collect();
+    m.snapshot_buffer(Some((fw.symbol("abuf"), 0)));
+    m.key(PLAY, true);
+    m.run_ms(30);
+    m.key(PLAY, false);
+    let start = m.ms();
+    while !playing(&mut m, &fw) {
+        assert!(m.ms() - start < 2_000, "PLAY plays");
+        m.run_ms(5);
+    }
+    m.run_ms(300);
+    let rows = song(&mut m, &fw).pattern(0).unwrap().len() as u32;
+    let half_row = ROW_MS / 2.0;
+    let (off, near) = (SONG_VIEW_QUANT_OFF, SONG_VIEW_QUANT_NEAREST);
+    // (quantise, ms from the row's start heard, the row it lands on, relative)
+    let cases: [(u32, f64, i32); 4] = [
+        (off, -5.0, -1),
+        (off, 5.0, 0),
+        (near, half_row - 5.0, 0),
+        (near, half_row + 5.0, 1),
+    ];
+    let seen = fw.symbol("song_seen");
+    let mut next = u32::from(m.soc.read8(seen + ilp32::song_status::row as u32)) + 3;
+    for (quant, d, want) in cases {
+        let got = rec_trial(&mut m, &fw, quant, next, d);
+        let expect = (next as i32 + want).rem_euclid(rows as i32) as usize;
+        println!("quantise {quant}, {d:+.1} ms from row {next}'s sound: row {got}");
+        assert_eq!(
+            got, expect,
+            "quantise {quant}, a key {d:+.1} ms from row {next}"
+        );
+        next += 4;
+    }
+    let mut flip = None;
+    for d in [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0] {
+        let got = rec_trial(&mut m, &fw, off, next, d);
+        let on_row = got == (next % rows) as usize;
+        println!(
+            "OFF, {d:+.1} ms: {}",
+            if on_row { "the row" } else { "the row before" }
+        );
+        if on_row && flip.is_none() {
+            flip = Some(d);
+        }
+        next += 4;
+    }
+    println!(
+        "compensation {:.1} ms (265 samples); OFF turns to the row at {flip:?} ms from its sound",
+        265.0 * 1000.0 / FS
+    );
+    let flip = flip.expect("OFF never turned to the row within 3 ms");
+    assert!(
+        flip > -3.0,
+        "the row from {flip} ms: the compensation is short"
+    );
+    stop(&mut m, &fw);
+}
+
 // ---- SONG: the built-in loop, SAVE AS and a power cycle ----
 
 /// NEW (unsaved changes), then SONG's LOAD and its first entry, SIDOU LOOP, confirmed (YES):

@@ -43,6 +43,7 @@ CRC-32, the same as the store and zlib.
 | `06` | END | Empty; finishes a PUT or GET, or terminates DIR |
 | `07` | DEL | name[16] |
 | `08` | ABORT | Empty; cancels the transfer |
+| `7D` | WAIT | Empty, device to host only; the packet whose ACK waits for quiet ([below](#waiting-for-quiet)) |
 | `7E` | ACK | Empty; sequence identifies the packet acknowledged |
 | `7F` | NAK | reason u8, clean pool sectors u8 |
 
@@ -165,10 +166,14 @@ idle backstop excludes storage back-pressure. A running transfer prevents quiet
 maintenance erases. With the provisional no-window flash configuration, a PUT
 is an explicit write owner, like SAVE: its programs use the existing forced-gap
 audio hold/mute/ramp path, not a speculative window. A DATA packet's programs (and
-END's FILE record) share one hold, a program a store pass. While the device sounds,
-the hold is released after each packet so audio can ramp back up, and the next one
-starts at least 100 ms later; while it is silent (no song, gated voice, UI sound or
-button, and the output low for 500 ms), the hold stays on between packets.
+END's FILE record) share one hold, a program a store pass. While a song plays or a
+computer records the FM-1's USB audio there is no hold at all: the write waits for
+quiet ([below](#waiting-for-quiet)). While only the keys sound (a gated voice, a UI
+sound or a button), the hold is released after each packet so audio can ramp back up,
+and the next one starts at least 250 ms later (the build option `SIDOU_SYSEX_GAP_MS`,
+[BUILDING.md](../../BUILDING.md); a SAVE's forced erases keep 100 ms); while it is
+silent (no song, gated voice, UI sound or button, and the output low for 500 ms), the
+hold stays on between packets.
 Ownership never enables refill erases. DEL
 also owns its explicit programs and can use forced holds with windows disabled.
 Disabled windows alone do not cause BUSY. With write windows enabled, including
@@ -176,6 +181,29 @@ the emulator override, these programs are hold-free. Hold-free hardware operatio
 depends on the flash timing run in [hardware checklist section 12][flash-timing].
 
 [flash-timing]: ../hardware-test.md#12-flash-timing-spike-m2a-task-3b
+
+### Waiting for quiet
+
+While a song (or a `.sid` tune) plays, or a computer records the FM-1's USB audio, a write
+whose programs are due waits for quiet instead of muting the music for them: a DATA
+packet's ACK, END's (its FILE record), DEL's, and a PUT's or DEL's that waits for a record
+being written (above). On USB the device sends `F0 7D 53 44 7D seq checksum F7` (WAIT, empty)
+at once and every two seconds while it waits, `seq` being the packet whose ACK it holds back;
+the screen says `UPLOAD WAITS FOR QUIET` as often. A sender that knows WAIT starts its ACK
+timeout again at each one (the Songs page says it is waiting for the FM-1 to be quiet). Once
+the song stops (or the recording does), the programs run and the ACK follows. A wait has a
+limit: after 60 seconds the transfer ends with NAK BUSY (4); a sender should not retry that
+BUSY on its own, since the song is still playing. Time spent waiting is not sender idle
+time, and the two seconds a PUT or DEL waits for a record do not count it.
+
+Older senders: WAIT is new in 1.1. A sender that drops frames it does not know waits its own
+ACK timeout and fails if the song plays on past it; one that treats an unknown frame as an
+error fails at the first WAIT. Either way nothing is replaced, and the upload goes through
+with the song stopped. A sender on a fixed pause (one second after each message, as the SysEx
+tools in [the manual](../manual/sid-tunes.md) send) is refused BUSY while a song plays: its
+next message comes while the last still waits. TRS has no reply path: a TRS upload waits with
+the toast alone, and its one-second gap does not cover a wait; stop the song first. With
+validated write windows, programs need no hold and nothing waits.
 
 Current-song/instrument operations refuse a busy or saving song. A download freezes
 model edits until completion/abort. Instrument transfers require a stopped song;

@@ -393,13 +393,36 @@ static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* 
         return 0;
     }
     uint32_t row_q8 = ((uint32_t)sv->st.speed[0] + sv->st.speed[1]) * 128u;
+    row_q8 = row_q8 ? row_q8 : 6u * 256u;
     uint32_t elapsed = ((uint32_t)(uint16_t)(sv->st.now_call - sv->st.row_call[v]) << 8) +
                        sv->st.now_frac;
+    /* The key was played rec_lag before now (song_transport.h): before this row began, it
+     * belongs to the row before (at most a row back). */
+    uint32_t lag = sv->st.rec_lag < row_q8 ? sv->st.rec_lag : row_q8;
+    uint32_t back = lag > elapsed;
+    elapsed = elapsed + back * row_q8 - lag;
     uint32_t ahead = song_view_quantise(quantised ? sv->quant : SONG_VIEW_QUANT_OFF, elapsed,
-                                        row_q8 ? row_q8 : 6u * 256u);
-    ahead = ahead > 1u ? 1u : ahead; /* a stale row would put it further */
+                                        row_q8);
+    ahead = ahead > 1u + back ? 1u + back : ahead; /* a stale row would put it further */
     uint32_t at = sv->st.row[v] + ahead;
     uint32_t pat = o[i], rows = gt2_pattern_rows(s, pat) - 1u;
+    if (at < back) {
+        /* Before row 0: the last row of the entry that played before it, when that is certain
+         * (the play did not start on this row, and no repeat command comes between them: a
+         * repeat's later pass follows itself); else row 0 itself. */
+        uint32_t j = i;
+        while (j-- > 0u && o[j] >= GT2_TRANSDOWN) {
+        }
+        if (j < i && o[j] < GT2_REPEAT && sv->st.row_call[v]) {
+            rows = gt2_pattern_rows(s, o[j]) - 1u;
+            *pattern = o[j];
+            *row = rows ? rows - 1u : 0u;
+            *transpose = entry_transpose(o, j);
+            return 1;
+        }
+        at = back;
+    }
+    at -= back;
     if (at >= rows) {
         at -= rows;
         if (!(sv->st.again >> v & 1u)) {

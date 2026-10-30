@@ -10,7 +10,8 @@ enum {
     IDLE, UPLOAD, PROGRAM, COMMIT, DELETE, PREPASS, META, DOWNLOAD, FINISH, DIRECTORY, WAIT,
     DRAIN, IMPORT, IMPORT_DRAIN, OPEN, UNLINK
 };
-enum { INQ = 1, DIR, GET, PUT, DATA, END, DEL, ABORT, ACK = 0x7E, NAK };
+/* STILL is WAIT on the wire (sysex.h); WAIT names a state above. */
+enum { INQ = 1, DIR, GET, PUT, DATA, END, DEL, ABORT, STILL = 0x7D, ACK, NAK };
 
 static const char instrument_name[] = "MIDI INSTRUMENT";
 static const char song_name[] = "MIDI SONG";
@@ -60,6 +61,7 @@ static int zeroes(const uint8_t* p, unsigned n) {
 
 static void release(sysex* s) {
     s->tx_wait = 0;
+    s->waiting = 0;
     s->checking = s->held = 0;
     if (s->state == OPEN || s->state == UNLINK) store_file_wait(s->storage, 0);
     if (s->state == IMPORT || s->state == IMPORT_DRAIN) {
@@ -618,6 +620,34 @@ void sysex_poll(sysex* s, uint32_t now_ms) {
         return;
     }
     if (s->tx_wait) return;
+    /* Loud (sysex.h): a write whose programs are due waits, and says so. */
+    if (s->loud && s->programming &&
+        (s->state == PROGRAM || s->state == COMMIT || s->state == DELETE || s->state == OPEN ||
+         s->state == UNLINK)) {
+        if (!s->waiting) {
+            s->waiting = 1;
+            s->wait_start = s->now;
+            s->wait_sent = s->now - SYSEX_WAIT_EVERY_MS;
+        }
+        if (s->now - s->wait_start >= SYSEX_QUIET_MAX_MS) {
+            fail(s, SYSEX_BUSY, s->sequence);
+            return;
+        }
+        s->last = s->now; /* OPEN's and UNLINK's two seconds count no wait */
+        if (s->now - s->wait_sent >= SYSEX_WAIT_EVERY_MS) {
+            s->wait_sent = s->now;
+            if (s->hooks.toast) s->hooks.toast(s->hooks.ctx, SYSEX_WAITING);
+            if (s->owner == SYSEX_USB) {
+                queue(s, STILL, s->sequence, 0, 0);
+                transmit(s);
+                return;
+            }
+        }
+        if (s->state == PROGRAM) return; /* nothing more written until quiet */
+    } else if (s->waiting) {
+        s->waiting = 0;
+        if (s->hooks.toast) s->hooks.toast(s->hooks.ctx, SYSEX_RECEIVING);
+    }
     if (s->state == OPEN || s->state == UNLINK) {
         /* Tried again until the record commits; still busy after SYSEX_TIMEOUT_MS: BUSY. */
         int result = s->state == OPEN ?

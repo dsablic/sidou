@@ -81,6 +81,11 @@ typedef struct {
      * at a pattern's last row, whether it plays again (an orderlist repeat), so REC places a
      * key past that row in the pattern's next pass, not the next entry's. */
     uint8_t again;
+    /* How long before now a key pressed now was played, in now_frac's 256ths of a call: what
+     * the player heard lags the render by the output's double buffer, and the key reaches the
+     * main loop after its debounce (platform/fm1/main.c REC_LAG_SAMPLES).
+     * REC places a key that much earlier (song_view.c rec_place); 0: none. */
+    uint16_t rec_lag;
     uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 

@@ -47,6 +47,13 @@ If the tool reports a refusal part way (the screen shows BUSY, as the store is t
 flash), wait about 20 seconds and send the whole file again; the Songs page on the demo site
 does this by itself.
 
+**Stop the song first.** While a song or a tune plays on the FM-1, or a computer records its
+USB audio, the FM-1 writes nothing to flash, so the music never dips: the screen says
+**UPLOAD WAITS FOR QUIET** and each message waits until the song stops (a minute at most,
+then the upload is refused). A tool that sends on a timer does not wait with it and is refused
+BUSY; stop the song and send again. The Songs page waits, and says so. With only the keys
+sounding the upload goes on, the sound dipping briefly four times a second.
+
 - **macOS:** SysEx Librarian (Snoize): its preferences set the pause between messages.
 - **Windows:** MIDI-OX: SysEx, Configure, the delay after each F7, in milliseconds.
 - **Linux:** `amidi -p hw:X,0 -s first.syx -i 1000` (`amidi -l` lists the ports; `-i` is the

@@ -536,8 +536,12 @@ the orderlist gives the entry on the song's first pass (the nearest transpose be
 
 The keys sound during a count-in but record nothing. Recorded notes go to the editor one cell
 write at a time, with at most four waiting (a fifth key is refused with `WAITING`; a staccato
-STEP key's key off counts as a second write). A key's time is read where the audio block starts,
-about 3 ms, with no compensation for the keys' own delay or the sound's. With REC off, or the
+STEP key's key off counts as a second write). A key lands where it was played against what
+was heard: the device places it 6.0 ms before it reads it (the output's double buffer, two
+audio blocks less half a block on average, and the key's debounce), in NEAREST and OFF
+alike, and K1's and K2's locks too, with no setting. In OFF a key in a row's first 6.0 ms goes to the row before; at a
+pattern's row 0, to the last row of the entry that played before it, or row 0 itself where
+that is not certain (the play started there, an orderlist repeat, the list's first entry). With REC off, or the
 song stopped, nothing is recorded (REC stays on). What was recorded is the song's pattern and lock table, which
 SAVE saves like any edit.
 
@@ -1152,7 +1156,10 @@ directory, named files, current-song dumps and GTI5 instruments. Replies use USB
 only; TRS accepts paced uploads without replies. PUT claims its space before
 acknowledging. With today's no-window flash configuration, PUT uses explicit
 SAVE-style program holds and the existing mute/ramp; validated windows make it
-hold-free. RECEIVING is followed by SAVED or a refusal toast. A transfer never
+hold-free. While a song plays or a computer records the USB audio there are no holds:
+the upload waits for quiet, the toast says `UPLOAD WAITS FOR QUIET` (every two seconds,
+a minute at most, then BUSY), and it goes on once the song stops ([sysex.md](sysex.md#waiting-for-quiet)).
+While only the keys sound, the holds come 250 ms apart. RECEIVING is followed by SAVED or a refusal toast. A transfer never
 enables refill erases, and partial uploads do not replace files. Instrument
 transfers need the transport stopped; import blocks seeks/audition while it owns the
 model, and requires a fresh PLAY afterward. Song import refuses unsaved changes.
