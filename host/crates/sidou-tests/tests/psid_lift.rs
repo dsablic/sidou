@@ -87,8 +87,12 @@ impl Lift {
     fn convert(&mut self, ntsc: bool) -> Result<(Vec<u8>, u32), i32> {
         let mut flags = 0u32;
         let name = c"TEST V1";
-        let n =
-            unsafe { psid_lift_convert(&mut *self.0, i32::from(ntsc), name.as_ptr(), &mut flags) };
+        let mut n = PSID_LIFT_AGAIN as i32;
+        while n == PSID_LIFT_AGAIN as i32 {
+            n = unsafe {
+                psid_lift_convert(&mut *self.0, i32::from(ntsc), name.as_ptr(), &mut flags)
+            };
+        }
         if n < 0 {
             Err(n)
         } else {
@@ -580,7 +584,10 @@ fn a_starter_tune_s_voices_lift_and_play_back() {
         }
         let frames: Vec<Regs> = (0..l.frames as usize).map(|k| Regs(l.frame[k])).collect();
         let mut flags = 0;
-        let n = unsafe { psid_lift_convert(&mut *l, 0, c"CONSULTANT".as_ptr(), &mut flags) };
+        let mut n = PSID_LIFT_AGAIN as i32;
+        while n == PSID_LIFT_AGAIN as i32 {
+            n = unsafe { psid_lift_convert(&mut *l, 0, c"CONSULTANT".as_ptr(), &mut flags) };
+        }
         assert!(n > 0, "voice {voice}: {n}");
         let g = parse(&l.file[..n as usize]);
         // GoatTracker's pulse and realtime optimisations skip table steps at the song's own

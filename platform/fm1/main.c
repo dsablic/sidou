@@ -1884,6 +1884,9 @@ static int lift_pass(int ending) {
         uint32_t flags;
         lift_name(lift_offer.name, l->voice);
         int n = psid_lift_convert(l, audio_psid_header()->clock == 2u, lift_offer.name, &flags);
+        if (n == PSID_LIFT_AGAIN) {
+            return 1; /* fewer frames, at the next pass */
+        }
         psid_lift_arm(l, 3u, sid_tune.chips); /* off; the file stays in it */
         if (n < 0) {
             ui_toast(n == PSID_LIFT_E_DIGI ? "DIGI: CAN'T LIFT" : "LIFT: NOTE TOO SHORT", 2000u);

@@ -6,7 +6,8 @@
 //! the mute at the same block, sample for sample, and unequal to the render without it), and
 //! solos voice 3; ALGORITHM steps the song; EDIT + PLAY pauses and resumes; PLAY stops; the
 //! unsaved-song question each way (ALGORITHM again discards, SAVE saves it first; HOME cancels);
-//! MIDI start, stop and continue over TRS; and through all of it, and over the browser's pages
+//! MIDI start, stop and continue over TRS; a voice lifted (REC) and imported once the song is back;
+//! and through all of it, and over the browser's pages
 //! and NOW PLAYING with a tune moving, every ui_poll within SIDS_WORST_POLL, every main-loop pass
 //! within POLL_INSTRUCTIONS and every frame within the song views' 200 cells.
 
@@ -364,6 +365,7 @@ fn check_budgets(m: &Machine, fw: &Firmware, cost: &Cost, what: &str) {
         [
             "sid_view_browser",
             "sid_view_playing",
+            "sid_view_offer",
             "views_menu",
             "views_status",
             "live_view_view",
@@ -707,4 +709,115 @@ fn midi_start_stop_and_continue_over_trs_drive_the_tune() {
     let worst = m.passes.iter().copied().max().unwrap_or(0);
     println!("MIDI's transport: the busiest pass {worst}");
     assert!(worst <= POLL_INSTRUCTIONS);
+}
+
+/// main.c's lift_offer: its state (SID_OFFER_*, 3 while its file waits to be committed), then
+/// the instrument it goes into.
+const OFFER_WAITING: u8 = 3;
+/// psid_lift_convert's cost on the device, in a pass of its own (main.c lift_pass): within the
+/// slice budget a tune's pass may take (psid_ctl.h PSID_SLICE_WORK's 40,000 instructions).
+const LIFT_CONVERT_WORST: u64 = 40_000;
+
+/// The lift end to end on the device: a starter tune (GoatTracker's The Consultant, Cadaver), its
+/// first voice soloed with GLO, REC on NOW PLAYING: the voice's next note is taken and handed to
+/// the store; PLAY stops the tune and HOME ends it, the song comes back and the store commits the
+/// file (LIFTED SOUND, a GTI5 instrument); the offer shows over LIVE, SAVE imports it: the song's
+/// first free instrument holds the lifted one (its AD, SR, vibrato delay, gate timer, first wave
+/// and name as the file has them) and its wave table's rows. Every pass, ui_poll and frame within
+/// its budget throughout.
+#[test]
+fn a_voice_lifted_from_a_tune_is_imported_into_the_song() {
+    let Some(fw) = fixture("the lift test") else {
+        return;
+    };
+    let file = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../assets/starter/consultant.sid"),
+    )
+    .expect("assets/starter/consultant.sid");
+    let mut m = boot_with(&fw, &[("CONSULTANT", &file)]);
+    run_past_boot(&mut m, &fw);
+    song_idle(&mut m, &fw);
+    m.watch_calls(fw.symbol("ui_poll"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut cells = Cost::default();
+    ui_play_tune(&mut m, &fw, 0);
+    until(&mut m, "the tune plays", |m| {
+        tune_state(m, &fw) == TUNE_ON && writes(m, &fw) > 200
+    });
+    glo_key(&mut m, 3); // voice 1 soloed
+                        // the conversion's cost, while it is watched (a pass the 6502's slice left alone)
+    let polls = m.watched_calls.len();
+    m.watch_calls(fw.symbol("psid_lift_convert"));
+    press(&mut m, PANEL_BTN_REC as u8);
+    let offer = fw.symbol("lift_offer");
+    let start = m.ms();
+    while m.soc.read8(offer) != OFFER_WAITING {
+        assert!(
+            m.ms() - start < WAIT_MS,
+            "timed out: the lift handed to the store"
+        );
+        frames(&mut m, &fw, 20, &mut cells);
+    }
+    let convert = m.watched_calls[polls..].to_vec();
+    println!("psid_lift_convert: {convert:?} instructions");
+    assert_eq!(convert.len(), 1, "one conversion");
+    assert!(
+        convert[0] <= LIFT_CONVERT_WORST,
+        "the conversion took {}",
+        convert[0]
+    );
+    m.watch_calls(fw.symbol("ui_poll"));
+    ui_end_tune(&mut m, &fw);
+    let start = m.ms();
+    while m.soc.read8(offer) != SID_OFFER_READY as u8
+        || top_view(&mut m, &fw) != fw.symbol("sid_view_offer")
+    {
+        assert!(m.ms() - start < WAIT_MS, "timed out: the offer");
+        frames(&mut m, &fw, 20, &mut cells);
+    }
+    assert_eq!(tune_state(&mut m, &fw), TUNE_OFF);
+    let instr = u32::from(m.soc.read8(offer + 1));
+    assert!(instr >= 1, "a free instrument");
+    let (typ, gti) = stored_file(&m.soc.flash.mem, "LIFTED SOUND").expect("LIFTED SOUND stored");
+    assert_eq!(u32::from(typ), STORE_FILE_GTI);
+    assert_eq!(&gti[..4], b"GTI5");
+    println!("lifted: {gti:02X?}, into instrument {instr}");
+    press(&mut m, PANEL_BTN_SAVE as u8);
+    let start = m.ms();
+    while m.soc.read8(offer) != SID_OFFER_NONE as u8 {
+        assert!(m.ms() - start < WAIT_MS, "timed out: the import");
+        frames(&mut m, &fw, 20, &mut cells);
+    }
+    frames(&mut m, &fw, 300, &mut cells);
+    assert_ne!(
+        top_view(&mut m, &fw),
+        fw.symbol("sid_view_offer"),
+        "the offer answered"
+    );
+    let mut song = Song::device();
+    song.read(&song_file(&mut m, &fw), 0)
+        .map_err(|i| i.msg)
+        .expect("the song reads");
+    let ins = song.raw().instr[instr as usize - 1];
+    for f in [0usize, 1, 6, 7, 8] {
+        assert_eq!(ins[f], gti[4 + f], "instrument byte {f}");
+    }
+    assert_eq!(&ins[9..], &gti[13..29], "the name");
+    // the wave table's rows, where the import put them
+    let rows = usize::from(gti[29]);
+    let at = usize::from(ins[2]) - 1;
+    for r in 0..rows {
+        let (l, rr) = (gti[30 + r], gti[30 + rows + r]);
+        assert_eq!(song.raw().ltable[0][at + r], l, "wave row {r}");
+        if l != 0xff {
+            assert_eq!(song.raw().rtable[0][at + r], rr, "wave row {r}");
+        }
+    }
+    check_budgets(
+        &m,
+        &fw,
+        &cells,
+        "a tune, GLO, REC, the tune's end, the offer, SAVE",
+    );
 }

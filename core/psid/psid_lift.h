@@ -79,7 +79,8 @@ enum {
     PSID_LIFT_TAKEN  /* done: psid_lift_convert */
 };
 
-/* psid_lift_convert's refusals (negative) and flags. */
+/* psid_lift_convert's refusals (negative), its "again" and its flags. */
+#define PSID_LIFT_AGAIN 0      /* too much for the file: fewer frames, at the next call */
 #define PSID_LIFT_E_DIGI (-1)  /* DIGI: CAN'T LIFT */
 #define PSID_LIFT_E_EMPTY (-2) /* no frame: the gate went off in the gate-on call */
 #define PSID_LIFT_F_NO_VIBRATO 0x01u /* a vibrato no instrument vibrato follows: dropped */
@@ -96,6 +97,7 @@ typedef struct {
     uint8_t digi;   /* a register took more than PSID_LIFT_DIGI writes in a call of the note */
     uint8_t ended;  /* the gate went off, or on again, in this call: it is not kept */
     uint8_t base;   /* psid_lift_convert's base note (0 C-0): the note that plays it as lifted */
+    uint8_t cut;    /* psid_lift_convert dropped frames from the end to fit the file */
     uint8_t count[PSID_LIFT_REGS]; /* this call's writes to each */
     uint8_t regs[2][25];           /* each chip's registers $00-$18 as last written */
     uint8_t before[2][2];          /* each chip's voice frequency as the last call left it */
@@ -121,7 +123,10 @@ void psid_lift_call(psid_lift* l);
 void psid_lift_stop(psid_lift* l);
 
 /* The captured note (state PSID_LIFT_TAKEN) as a GTI5 file in l->file: its length (at most
- * PSID_LIFT_FILE_MAX), or a PSID_LIFT_E_* refusal. `ntsc`: the tune's clock is NTSC. `name`: the
+ * PSID_LIFT_FILE_MAX), a PSID_LIFT_E_* refusal, or PSID_LIFT_AGAIN when the note does not fit
+ * the file: an eighth of its frames are dropped from its end, and the next call tries again (a
+ * call is one attempt, so a main-loop pass does one: 13,407 instructions on the device for The
+ * Consultant's lead, emu-gate psid_views.rs). `ntsc`: the tune's clock is NTSC. `name`: the
  * instrument's name (16 characters at most kept). *flags gets PSID_LIFT_F_*. */
 int psid_lift_convert(psid_lift* l, int ntsc, const char* name, uint32_t* flags);
 

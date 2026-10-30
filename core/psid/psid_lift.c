@@ -217,12 +217,12 @@ static void wave_rows(build* b, uint32_t base)
 
 /* The frequencies GoatTracker's instrument vibrato (calculated speed: speed, the note's step
  * >> shift, after `delay` effect frames) gives the frames, against the captured ones: the sum
- * of the differences. */
+ * of the differences, given up once it reaches `best`. */
 static uint32_t vibrato_error(const build* b, int ntsc, uint32_t speed, uint32_t shift,
-                              uint32_t delay)
+                              uint32_t delay, uint32_t best)
 {
     uint32_t freq = 0, note = 0, time = 0, err = 0;
-    for (uint32_t k = 1; k < b->n; k++) {
+    for (uint32_t k = 1; k < b->n && err < best; k++) {
         if (b->l->kind[k] == NOTE) {
             note = b->l->note[k];
             freq = note_freq(note);
@@ -357,7 +357,7 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
             delay += b->l->kind[k] == PLAIN;
         for (uint32_t sp = h > 3u ? h - 3u : 0u; sp <= h && sp < 0x80u; sp++)
             for (uint32_t sh = 0; sh < 8u; sh++) {
-                uint32_t e = vibrato_error(b, ntsc, sp, sh, delay);
+                uint32_t e = vibrato_error(b, ntsc, sp, sh, delay, best);
                 if (e < best) {
                     best = e;
                     speed = sp;
@@ -414,20 +414,23 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
 int psid_lift_convert(psid_lift* l, int ntsc, const char* name, uint32_t* flags)
 {
     build b;
-    *flags = 0;
+    *flags = l->cut ? PSID_LIFT_F_SHORT : 0u;
     if (l->digi)
         return PSID_LIFT_E_DIGI;
     if (!l->frames)
         return PSID_LIFT_E_EMPTY;
-    if (l->frames == 1u)
+    if (l->frames == 1u) {
         memcpy(l->frame[1], l->frame[0], PSID_LIFT_REGS); /* a frame to set the note in */
-    b.l = l;
-    b.n = l->frames > 1u ? l->frames : 2u;
-    for (; b.n > 1u; b.n--) {
-        uint32_t len = convert(&b, ntsc, name, flags);
-        if (len)
-            return (int)len;
-        *flags = PSID_LIFT_F_SHORT;
+        l->frames = 2;
     }
-    return PSID_LIFT_E_EMPTY;
+    b.l = l;
+    b.n = l->frames;
+    uint32_t len = convert(&b, ntsc, name, flags);
+    if (len)
+        return (int)len;
+    /* too much for the file: an eighth fewer frames (one at least), at the next call */
+    uint32_t cut = l->frames / 8u;
+    l->frames = (uint8_t)(l->frames - (cut ? cut : 1u));
+    l->cut = 1;
+    return l->frames > 1u ? PSID_LIFT_AGAIN : PSID_LIFT_E_EMPTY;
 }
