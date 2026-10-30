@@ -874,9 +874,6 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
         m.usb_frames(40);
     };
     tap(&mut m, &[play]);
-    // (no continue may fall at the song's end, where it starts the song again with no song
-    // position: from 1,000 ms none of the sixteen does; from 1,500 the thirteenth did, with
-    // fm1-emu's host's timing)
     m.usb_frames(1_000);
     tap(&mut m, &[play]);
     m.usb_frames(300);
@@ -889,14 +886,18 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
         link.send(&mut m, 3, 30, &get);
         let (command, s, _) = link.recv(&mut m, 2_000);
         assert_eq!((command, s), (4, 30), "GET's metadata");
+        let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
+        let before = m.soc.read32(calls);
+        // EDIT first, as a player holds it: pressed in the same ms as PLAY, the key scan may
+        // take PLAY a frame before EDIT, a play from the top (no song position)
         m.key(edit, true);
+        m.usb_frames(10);
         m.key(play, true);
         m.usb_frames(delay);
         link.send(&mut m, 0x7e, 30, &[]);
         // a ms at a time: does the song play on while the song position waits for the reply?
         let out_state = syncing + sidou_sys::ilp32::midi_sync::out_state as u32;
         let waiting = syncing + sidou_sys::ilp32::midi_sync::out_common_wait as u32;
-        let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
         let stopped_at = m.soc.read32(calls);
         for _ in 0..60 {
             m.usb_frames(1);
@@ -918,6 +919,10 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
         assert_eq!((command, s), (6, 32), "GET's END");
         link.send(&mut m, 0x7e, 32, &[]);
         m.usb_frames(20);
+        assert!(
+            m.soc.read32(calls) > before,
+            "EDIT + PLAY went on from call {before}: a continue, not a play from the top"
+        );
         let inside = spp_inside(&host(&mut m).in1);
         println!(
             "continue {delay} ms before the DATA's ACK (stopped at call {stopped_at}): song \
