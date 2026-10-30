@@ -106,7 +106,7 @@
         },
         {
           "kind": "text",
-          "value": "2/5"
+          "value": "2/6"
         }
       ],
       "focus": {
@@ -237,7 +237,7 @@
         },
         {
           "kind": "text",
-          "value": "1/5"
+          "value": "1/6"
         },
         {
           "assert": "sounding",
