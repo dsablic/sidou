@@ -193,7 +193,10 @@ fn dice_still_rolls_as_before() {
             roll(&mut rig, seed.wrapping_mul(2_654_435_761));
             let mut s = [0u8; LAB_SOUND_BYTES as usize];
             unsafe { live_sound_get(&*rig.live, s.as_mut_ptr()) };
-            for b in s.iter().chain(rig.live.base.iter()) {
+            // 1.0's bytes, as hashed then; DICE leaves 1.1's (the filter LFO, the links) off
+            let old = LAB_SOUND_BYTES_1_0 as usize;
+            assert_eq!(s[old..], [0, 0, 0]);
+            for b in s[..old].iter().chain(rig.live.base[..old].iter()) {
                 h = (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3);
             }
         }

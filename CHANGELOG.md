@@ -37,8 +37,43 @@ All notable changes are documented here. The format follows
   host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
   measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
   instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
+- LAB's MOD K4 was the velocity target; that stays on NRPN 6/1.
+- A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
+  unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
+  schema 9: it keeps the learned CCs of 1.1's parameters.
+- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
+  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
+  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
+  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
+  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
+  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
+- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
+  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
+  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
+  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
+  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
+  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Added
+- **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
+  (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
+  name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
+  rate starts it at 1 Hz. CC 31 and NRPN 0/8 reach it (docs/reference/midi.md); a preset loads
+  it off, and DICE's rolls leave it off. It is kept with the sound.
+- **LAB: macro links, on a sixth page, MACRO.** RES LNK (`-8` to `+8`) makes the resonance follow
+  the cutoff (positive: it rises as the filter closes; negative, a squelch, as it opens) and PWM
+  LNK makes the PWM's depth follow the pulse width's distance from a square. They belong to the
+  sound and act wherever the cutoff or the width moves (LIVE's knobs, LAB's cards, CC 74, the mod
+  wheel, the filter LFO), on top of the parameters, which stay as set. Two graphs show them; the
+  RESO and PWM cards and LIVE's K2 show what the chip has, and light when K1 moves them. NRPN 0/10
+  and 0/11 (MIDI learn reaches them).
+- **LAB: hold EDIT and play to peek at A.** The note keys played while EDIT is held sound the
+  sound as kept or loaded, for as long as EDIT is down (the header's `A` outlined); letting go
+  gives your edit back. A tap of EDIT still compares; any other control during a peek acts on
+  the edit. The hint line has `EDIT+KEY PEEK A`.
+- **LAB: the arpeggio's RATE on MOD's K4** (`3FR`, `1/16`: LIVE's ARP + K1), dark while ARP is
+  off and set all the same. The rate is a parameter of the MIDI map now: CC 28 goes through its
+  row, so MIDI learn can rebind it, it has NRPN 0/9 and MIDI out sends it.
 - **TABLE's ARP helper is heard before SAVE.** While the helper is open the keys play the draft
   (`HEARING DRAFT` under its name): the current instrument on the cursor's voice from the helper's
   first row, and every turn of an offset, the speed, the loop or the steps is heard at once on a
@@ -59,7 +94,8 @@ All notable changes are documented here. The format follows
 - **Generative play in TRACKER.** EDIT + ARP is MUTATE and EDIT + SCL is DICE (either finger
   first) on the shown voice's pattern, with STEP's settings frame over the window's lower half;
   the same seed rolls the same pattern as STEP. A row whose step has a chance below 100 % shows a
-  yellow `%`. With REC on, EDIT + ARP is now MUTATE (ARP alone still writes the key off).
+  yellow `%`. With REC on, EDIT + ARP is now MUTATE: ARP alone still writes the key off, when it
+  is let go while the song is stopped, so EDIT may land second.
 - **A root and a scale per lane.** With EDIT + SCL held a note key sets the selected lane's root
   (in STEP and TRACKER; the roll still comes when SCL is let go), and K3 sets that lane's scale.
   The `DICE` chunk grows to 7 bytes: lanes 2 and 3's scales follow lane 1's, which 1.0 reads.
@@ -86,6 +122,10 @@ All notable changes are documented here. The format follows
   is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Fixed
+- LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as
+  EDIT + SCL is. ARP a few milliseconds before EDIT varies LAB's page or MUTATEs STEP's lane (on
+  STEP, ARP alone now switches the lane's gate when it is let go, so the chord leaves the gate as
+  it was); LFO first undoes (in LAB it shows MOD on the way, which is harmless).
 - LAB: EDIT + SCL rolls the voice whichever finger lands first. SCL a few milliseconds before
   EDIT (two fingers pressed together) used to select the next effect slot and lose the roll; SCL
   alone now waits for EDIT and selects the slot when it is let go, or as soon as another control

@@ -22,7 +22,7 @@ static int open_file(const store* st, store_file* f, uint32_t* stride) {
     uint8_t h[USER_SOUND_HEADER];
     if (!st || store_file_open(st, STORE_SOUNDS_NAME, f) != STORE_OK ||
         f->type != STORE_FILE_SOUNDS || store_file_read(st, f, 0, h, sizeof h) != (int)sizeof h ||
-        h[0] < 1u || h[1] < LAB_SOUND_BYTES) {
+        h[0] < 1u || h[1] < LAB_SOUND_BYTES_1_0) {
         return 0;
     }
     *stride = 1u + LAB_SOUND_NAME + h[1];
@@ -30,12 +30,13 @@ static int open_file(const store* st, store_file* f, uint32_t* stride) {
     return h[2] >= USER_SOUNDS && f->length >= USER_SOUND_HEADER + USER_SOUNDS * *stride;
 }
 
-/* A slot's bytes as the file holds them ([used][name][sound]) into rec: 1 if it is a sound. */
+/* A slot's bytes as the file holds them ([used][name][sound]) into rec, the bytes of the sound an
+ * older file does not have at their defaults (0): 1 if it is a sound. */
 static int slot_of(const store* st, const store_file* f, uint32_t stride, uint32_t n,
                    uint8_t rec[USER_SOUND_STRIDE]) {
-    if (store_file_read(st, f, USER_SOUND_HEADER + n * stride, rec, USER_SOUND_STRIDE) !=
-            (int)USER_SOUND_STRIDE ||
-        rec[0] != 1u) {
+    uint32_t k = stride < USER_SOUND_STRIDE ? stride : USER_SOUND_STRIDE;
+    memset(rec, 0, USER_SOUND_STRIDE);
+    if (store_file_read(st, f, USER_SOUND_HEADER + n * stride, rec, k) != (int)k || rec[0] != 1u) {
         return 0;
     }
     for (uint32_t i = 0; i < LAB_SOUND_NAME && rec[1u + i]; i++) {
@@ -158,12 +159,16 @@ static void piece(const user_sounds* u, const store_file* f, uint32_t stride, in
             uint32_t slot = (at - USER_SOUND_HEADER) / USER_SOUND_STRIDE;
             uint32_t i = (at - USER_SOUND_HEADER) % USER_SOUND_STRIDE;
             k = USER_SOUND_STRIDE - i < n ? USER_SOUND_STRIDE - i : n;
+            /* an older file's slot has fewer bytes: the rest are their defaults (0) */
+            uint32_t have = !old || i >= stride ? 0u : stride - i < k ? stride - i : k;
             if (slot == u->slot) {
                 memcpy(p, &u->rec[i], k);
-            } else if (!old ||
-                       store_file_read(u->st, f, USER_SOUND_HEADER + slot * stride + i, p, k) !=
-                           (int)k) {
+            } else if (!have ||
+                       store_file_read(u->st, f, USER_SOUND_HEADER + slot * stride + i, p, have) !=
+                           (int)have) {
                 memset(p, 0, k); /* an empty slot (its used byte 0) */
+            } else {
+                memset(p + have, 0, k - have);
             }
         }
         at += k;
@@ -264,23 +269,31 @@ uint8_t user_sound_preset_byte(const live* l) {
 uint32_t user_sound_edit_gather(const live* l, uint8_t* out) {
     out[0] = USER_SOUND_EDIT_VERSION;
     out[1] = user_sound_preset_byte(l);
-    out[2] = (uint8_t)live_preset_edited(l);
     memset(&out[3], 0, LAB_SOUND_NAME);
     for (uint32_t i = 0; i < LAB_SOUND_NAME && l->base_name[i]; i++) {
         out[3u + i] = (uint8_t)l->base_name[i];
     }
     out[3u + LAB_SOUND_NAME] = LAB_SOUND_BYTES;
-    live_sound_get(l, &out[4u + LAB_SOUND_NAME]);
+    live_sound_get(l, &out[4u + LAB_SOUND_NAME]); /* packed once: the mark compares it */
+    out[2] = (uint8_t)live_sound_edited(l, &out[4u + LAB_SOUND_NAME]);
     return USER_SOUND_EDIT_BYTES;
 }
 
 int user_sound_edit_apply(live* l, const uint8_t* rec, uint32_t len) {
     const uint32_t at = 4u + LAB_SOUND_NAME; /* the sound */
-    if (len < at || rec[0] < 1u || rec[at - 1u] < LAB_SOUND_BYTES || len < at + rec[at - 1u] ||
-        rec[1] != user_sound_preset_byte(l) || !lab_sound_valid(&rec[at])) {
+    if (len < at || rec[0] < 1u || rec[at - 1u] < LAB_SOUND_BYTES_1_0 || len < at + rec[at - 1u] ||
+        rec[1] != user_sound_preset_byte(l)) {
         return 0;
     }
-    live_sound_apply(l, &rec[at]);
+    /* an older record's sound: the bytes it does not have at their defaults (0) */
+    uint8_t s[LAB_SOUND_BYTES];
+    uint32_t n = rec[at - 1u] < LAB_SOUND_BYTES ? rec[at - 1u] : LAB_SOUND_BYTES;
+    memset(s, 0, sizeof s);
+    memcpy(s, &rec[at], n);
+    if (!lab_sound_valid(s)) {
+        return 0;
+    }
+    live_sound_apply(l, s);
     if (!l->user_sound && l->preset == LIVE_PRESET_DICE) {
         live_sound_get(l, l->base); /* DICE's base is its roll, as it was left */
     }

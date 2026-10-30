@@ -108,6 +108,10 @@ typedef struct {
     uint8_t follow_cell[4];
     uint8_t qn;
     step_act q[STEP_VIEW_QUEUE];
+    /* LFO pressed alone, still down: EDIT pressed now is the undo (EDIT + LFO) whichever lands
+     * first; LFO alone did what it does at its press. (ARP's, which waits for its release, is
+     * song_view.gen's arp_alone, app/song_gen.h.) */
+    uint8_t lfo_alone;
     uint8_t drawn[STEP_VIEW_LOOK];
 } step_view;
 

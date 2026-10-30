@@ -83,18 +83,18 @@ fn choice(ui: &Ui) -> String {
 }
 
 #[test]
-fn select_steps_the_five_pages_and_stops_at_the_ends() {
+fn select_steps_the_six_pages_and_stops_at_the_ends() {
     let mut ui = lab_ui();
-    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX"];
+    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX", "MACRO"];
     assert_eq!(ui.v.lab.page, 0, "LAB opens at OSC");
     for (i, name) in names.iter().enumerate() {
         settle(&mut ui);
         assert_eq!(usize::from(ui.v.lab.page), i);
         assert_eq!(ui.big(0, 0, 2, name.len()), *name, "the page's name at 2x");
-        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/5", i + 1), "its place");
+        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/6", i + 1), "its place");
         ui.turn(PANEL_ENC_SELECT, 1);
     }
-    assert_eq!(ui.v.lab.page, 4, "clamped at FX");
+    assert_eq!(u32::from(ui.v.lab.page), LAB_PAGE_MACRO, "clamped at MACRO");
     ui.turn(PANEL_ENC_SELECT, -9);
     assert_eq!(ui.v.lab.page, 0, "clamped at OSC");
 }
@@ -104,7 +104,7 @@ fn select_steps_the_five_pages_and_stops_at_the_ends() {
 #[test]
 fn each_card_turns_its_parameter_by_its_detent() {
     // (page, knob, parameter, a start, the detent)
-    let table: [(u32, u32, u32, u32, i32); 16] = [
+    let table: [(u32, u32, u32, u32, i32); 17] = [
         (LAB_PAGE_OSC, 1, LIVE_PARAM_PWM_DEPTH, 640, 32),
         (LAB_PAGE_OSC, 2, LIVE_PARAM_PWM_RATE, 10, 1),
         (LAB_PAGE_OSC, 3, LIVE_PARAM_TUNE, 50, 1),
@@ -114,10 +114,11 @@ fn each_card_turns_its_parameter_by_its_detent() {
         (LAB_PAGE_ENVELOPE, 3, LIVE_PARAM_RELEASE, 4, 1),
         (LAB_PAGE_FILTER, 1, LIVE_PARAM_RESONANCE, 6, 1),
         (LAB_PAGE_FILTER, 2, LIVE_PARAM_FILTER_VOICES, 3, 1),
+        (LAB_PAGE_FILTER, 3, LIVE_PARAM_FILTER_LFO, 8, 1),
         (LAB_PAGE_MOD, 0, LIVE_PARAM_VIBRATO_RATE, 60, 1),
         (LAB_PAGE_MOD, 1, LIVE_PARAM_VIBRATO_DEPTH, 20, 1),
         (LAB_PAGE_MOD, 2, LIVE_PARAM_VIBRATO_DELAY, 20, 1),
-        (LAB_PAGE_MOD, 3, LIVE_PARAM_VELOCITY_TARGET, 1, 1),
+        (LAB_PAGE_MOD, 3, LIVE_PARAM_ARP_RATE, 3, 1),
         (
             LAB_PAGE_FX,
             0,
@@ -187,18 +188,179 @@ fn each_card_turns_its_parameter_by_its_detent() {
     let before = param(&ui, LIVE_PARAM_CUTOFF);
     ui.turn(K1, 1);
     assert!(param(&ui, LIVE_PARAM_CUTOFF) > before, "the cutoff walk");
-    // FILTER's K4 is free: nothing turns, nothing is named.
+}
+
+/// FILTER's K4, the filter LFO: its depth in K1's detents, the rate it shares with PWM HZ on its
+/// name line; turned up from off on a sound whose LFO has no rate (SAW LEAD), the rate starts
+/// at 1 Hz, so the first detent is heard.
+#[test]
+fn filter_k4_is_the_filter_lfo_with_its_rate_on_the_name_line() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 0, "SAW LEAD: no LFO rate");
+    let row = LAB_VIEW_LABEL_ROW as usize;
+    assert_eq!(ui.small(row, 22, 8), "LFO 0HZ ");
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 22, 3, 1), "0", "off");
+    ui.turn(K1 + 3, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_FILTER_LFO), 1);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 20, "1 Hz to start");
+    settle(&mut ui);
+    assert_eq!(ui.small(row, 22, 8), "LFO1.0HZ");
+    assert_eq!(
+        ui.big(LAB_VIEW_VALUE_ROW as usize, 22, 3, 1),
+        "1",
+        "the depth"
+    );
+    set(&mut ui, LIVE_PARAM_PWM_RATE, 25);
+    settle(&mut ui);
+    assert_eq!(
+        ui.small(row, 22, 8),
+        "LFO1.3HZ",
+        "the shared rate, as PWM HZ says it"
+    );
+    // turned back to off and up again, the rate the player set stays
+    ui.turn(K1 + 3, -1);
+    ui.turn(K1 + 3, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 25);
+    // the cards' text for the other pages' LFO: OSC's PWM HZ moves with it
+    to_page(&mut ui, LAB_PAGE_OSC);
+    assert_eq!(ui.small(row, 15, 6), "PWM HZ");
+}
+
+/// MOD's K4 is the arpeggio's RATE, as LIVE's ARP + K1 turns it: frames of 50 Hz (`3FR`), then
+/// the clock's notes (`1/32`, `1/16`, `1/8`); dark grey while ARP is off, and turned all the same.
+#[test]
+fn mod_k4_is_the_arp_rate_dark_while_arp_is_off() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_MOD);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let (row, val) = (LAB_VIEW_LABEL_ROW as usize, LAB_VIEW_VALUE_ROW as usize + 1);
+    assert_eq!(ui.small(row, 22, 4), "RATE");
+    assert_eq!(ui.big(val, 22, 2, 3), "3FR", "SAW LEAD's default rate");
+    assert_eq!(
+        ui.g.attr[row * GRID_COLS as usize + 22] & 15,
+        th.dim,
+        "ARP off: dark"
+    );
+    ui.turn(K1 + 3, 4);
+    assert_eq!(
+        u32::from(ui.live().arp_rate),
+        LIVE_ARP_RATE_CLOCK,
+        "settable while off"
+    );
+    settle(&mut ui);
+    assert_eq!(ui.big(val, 22, 2, 4), "1/32");
+    ui.turn(K1 + 3, 2);
+    settle(&mut ui);
+    assert_eq!(ui.big(val, 22, 2, 3), "1/8");
+    ui.turn(PANEL_ENC_ALGORITHM, 1); // ARP UP
+    settle(&mut ui);
+    assert_ne!(
+        ui.g.attr[row * GRID_COLS as usize + 22] & 15,
+        th.dim,
+        "ARP on: lit"
+    );
+    ui.turn(K1 + 3, -7);
+    assert_eq!(ui.live().arp_rate, 1);
+    settle(&mut ui);
+    assert_eq!(ui.big(val, 22, 2, 3), "2FR");
+}
+
+/// MACRO (6/6): K1 RESO LNK and K2 PWM LNK, -8..+8 a detent at a time (signed: `+3`, `-8`), K3
+/// and K4 dark and turning nothing; ALGORITHM has no choice (LINKED or NO LINKS). The drawing's
+/// two graphs follow the links (a golden with both set).
+#[test]
+fn macro_turns_the_links_and_k3_k4_are_dark() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_MACRO);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let row = LAB_VIEW_LABEL_ROW as usize;
+    assert_eq!(ui.small(row, 0, 7), "RES LNK");
+    assert_eq!(ui.small(row, 8, 7), "PWM LNK");
+    assert_eq!(choice(&ui), "NO LINKS");
+    ui.turn(K1, 3);
+    ui.turn(K1 + 1, -9);
+    assert_eq!(param(&ui, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX + 3);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_LINK), 0, "clamped at -8");
+    settle(&mut ui);
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 0, 3, 2), "+3");
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2), "-8");
+    assert_eq!(choice(&ui), "LINKED");
     let snapshot = (0..LIVE_PARAM_COUNT)
         .map(|p| param(&ui, p))
         .collect::<Vec<_>>();
+    ui.turn(K1 + 2, 3);
     ui.turn(K1 + 3, 3);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(
         (0..LIVE_PARAM_COUNT)
             .map(|p| param(&ui, p))
             .collect::<Vec<_>>(),
         snapshot,
-        "FILTER's K4 turns nothing"
+        "K3, K4 and ALGORITHM turn nothing"
     );
+    settle(&mut ui);
+    let value = LAB_VIEW_VALUE_ROW as usize;
+    for col in [15usize, 22] {
+        assert_eq!(
+            ui.g.attr[value * GRID_COLS as usize + col] & 15,
+            th.dim,
+            "col {col} dark"
+        );
+    }
+    ui.turn(K1 + 1, 12); // PWM LNK +4
+    settle_hint(&mut ui);
+    golden(&ui, "lab-macro-linked");
+}
+
+/// RESO LINK in LAB: FILTER's K1 turned, the resonance the link moves shows on the RESO card
+/// (what the chip has) and the card lights with K1's; OSC's K1 and PWM LINK the same with the PWM
+/// card.
+#[test]
+fn a_link_lights_the_card_it_moves() {
+    let mut ui = lab_ui();
+    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX + 8);
+    let mid = unsafe { live_cutoff_steps[ui.live().model as usize][32] };
+    set(&mut ui, LIVE_PARAM_CUTOFF, u32::from(mid)); // the walk's middle: the link adds nothing
+    unsafe { live_tick(&mut *ui.rig.live) }; // the linked resonance follows at the tick
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let res = ui.live().res_out;
+    assert_eq!(u32::from(res), param(&ui, LIVE_PARAM_RESONANCE));
+    ui.turn(K1, -4);
+    assert_ne!(ui.live().res_out, res, "the link moved it");
+    assert_eq!(ui.v.lab.hl_link, 2, "RESO lights");
+    for _ in 0..4 {
+        ui.frame(); // the page built and copied, well within the light's second
+    }
+    let row = LAB_VIEW_LABEL_ROW as usize;
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    assert_eq!(
+        ui.g.attr[row * GRID_COLS as usize + 8] >> 4,
+        th.knob_text[1],
+        "reversed"
+    );
+    let shown: u32 = ui
+        .big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2)
+        .trim()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        shown,
+        u32::from(ui.live().res_out),
+        "the resonance the chip has"
+    );
+    settle(&mut ui);
+    assert_eq!(ui.v.lab.hl_link, 0, "and goes out with it");
+    // K2 with no link moving anything lights itself alone
+    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX);
+    ui.turn(K1, 1);
+    assert_eq!(ui.v.lab.hl_link, 0);
+    // OSC: PULSE moves PWM LINK's depth
+    set(&mut ui, LIVE_PARAM_PWM_LINK, LIVE_LINK_MAX + 4);
+    set(&mut ui, LIVE_PARAM_PWM_DEPTH, 64);
+    to_page(&mut ui, LAB_PAGE_OSC);
+    ui.turn(K1, -3);
+    assert_eq!(ui.v.lab.hl_link, 2, "PWM lights");
 }
 
 /// On SYNC LEAD (a mono-sync saw) OSC's K1 reads RATIO and turns the sync ratio's semitones.
@@ -526,7 +688,7 @@ fn the_frame_stays_within_200_cells() {
     );
 }
 
-/// The five pages on SAW LEAD as it loads (FX with OVERDRIVE on the first slot).
+/// The six pages on SAW LEAD as it loads (FX with OVERDRIVE on the first slot).
 #[test]
 fn the_pages_match_their_goldens() {
     let mut ui = lab_ui();
@@ -536,6 +698,7 @@ fn the_pages_match_their_goldens() {
         (LAB_PAGE_FILTER, "lab-filter"),
         (LAB_PAGE_MOD, "lab-mod"),
         (LAB_PAGE_FX, "lab-fx"),
+        (LAB_PAGE_MACRO, "lab-macro"),
     ] {
         to_page(&mut ui, page);
         if page == LAB_PAGE_FX {
@@ -922,6 +1085,37 @@ fn the_envelope_dot_follows_the_tap() {
         cells_in(&ui.g, th.value).is_empty(),
         "gone when the voice is silent"
     );
+}
+
+/// FILTER's K4, the filter LFO, draws the band the cutoff sweeps: dotted cells behind the curve,
+/// from the cutoff 8 detents down to 8 up (in K4's colour while it turns), with the LFO still
+/// (the phase at its centre); a golden.
+#[test]
+fn the_filter_lfo_draws_its_band() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let dots = |ui: &Ui| -> Vec<usize> {
+        (0..GRID_COLS as usize)
+            .filter(|&c| ui.g.ch[(ROW0 + 1) * GRID_COLS as usize + c] == FONT_D2 as u8)
+            .collect()
+    };
+    assert!(dots(&ui).is_empty(), "no LFO: no band");
+    ui.turn(K1, -200);
+    ui.turn(K1, 32);
+    set(&mut ui, LIVE_PARAM_FILTER_LFO, 8);
+    settle(&mut ui);
+    let band = dots(&ui);
+    assert!(band.len() >= 4, "{band:?}");
+    let cut = columns_in(&ui.g, th.label as u8);
+    assert!(
+        band.first().unwrap() < &cut[0] && band.last().unwrap() > &cut[0],
+        "the band {band:?} about the cutoff's line {cut:?}"
+    );
+    set(&mut ui, LIVE_PARAM_FILTER_LFO, 16);
+    settle(&mut ui);
+    assert!(dots(&ui).len() > band.len(), "deeper, wider");
+    page_golden(&mut ui, "lab-filter-lfo");
 }
 
 // ---- FILTER, MOD and FX (Task 7) ----
@@ -2039,17 +2233,103 @@ fn edit_as_a_modifier_never_compares() {
     );
 }
 
+/// The header's A/B letter: (the letter, 1 when it is reversed: comparing; 0 outlined: a peek).
+fn ab_mark(ui: &Ui) -> (String, bool) {
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let k = LAB_VIEW_NAME_ROW as usize * COLS + LAB_VIEW_AB_COL as usize;
+    (ab_letter(ui), ui.g.attr[k] >> 4 == th.hot)
+}
+
+/// Hold-to-peek: a note key while EDIT is down plays A (the sound as kept or loaded) for as long
+/// as EDIT is held, the header's A outlined; letting EDIT go gives B back, and no tap compares.
 #[test]
-fn a_note_while_edit_is_down_still_compares() {
+fn a_note_while_edit_is_down_peeks_at_a() {
     let mut ui = edited_lab();
+    let a = base_attack(&ui);
+    let steps = ui.v.lab.undo.steps;
+    ui.down(EDIT);
+    assert_eq!(attack(&ui), a + 3, "EDIT alone: still B");
+    ui.note_keys(1 << 12, 1 << 12);
+    assert_eq!(attack(&ui), a, "the note plays A");
+    settle(&mut ui);
+    assert_eq!(ab_mark(&ui), ("A".into(), false), "A, outlined");
+    assert_eq!(name_row(&ui), "SAW LEAD", "A is the base: no star");
+    ui.note_keys(0, 0);
+    ui.note_keys(1 << 14, 1 << 14);
+    assert_eq!(attack(&ui), a, "A for as long as EDIT is held");
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(attack(&ui), a + 3, "B back");
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no tap");
+    settle(&mut ui);
+    assert_eq!(ab_letter(&ui), "");
+    assert_eq!(ui.v.lab.undo.steps, steps, "a peek is no step");
+    assert_eq!(ui.toast(), None);
+    // the tap still compares
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A);
+    // a peek while A plays: A stays, and EDIT's release toggles nothing
     ui.down(EDIT);
     ui.note_keys(1 << 12, 1 << 12);
     ui.note_keys(0, 0);
     ui.up(EDIT);
+    assert_eq!((u32::from(ui.v.lab.ab), attack(&ui)), (LAB_VIEW_AB_A, a));
+    // a peek from B: A while held, then B again, still comparing
+    ui.press(EDIT);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_B);
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    assert_eq!(attack(&ui), a);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
     assert_eq!(
-        u32::from(ui.v.lab.ab),
-        LAB_VIEW_AB_A,
-        "the note keys do not spoil the tap"
+        (u32::from(ui.v.lab.ab), attack(&ui)),
+        (LAB_VIEW_AB_B, a + 3)
+    );
+    // on an unedited sound a peek plays the sound as it is, and says nothing
+    let mut ui = lab_ui();
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    step(&mut ui);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    assert_eq!(ui.toast(), None, "no NOTHING TO COMPARE: it was a peek");
+}
+
+/// Any other control during a peek puts B back first, then acts on B.
+#[test]
+fn a_control_during_a_peek_acts_on_b() {
+    let mut ui = edited_lab();
+    let a = base_attack(&ui);
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    assert_eq!(attack(&ui), a);
+    let decay = param(&ui, LIVE_PARAM_DECAY);
+    ui.turn(K1 + 1, 1); // the decay, with EDIT held: on B
+    assert_eq!(
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a + 3, decay + 1),
+        "B back, and the turn on it"
+    );
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a + 3, decay + 1),
+        "nothing more at the release"
+    );
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF);
+    // a button too: EDIT + LFO undoes B's last step, not A
+    ui.down(EDIT);
+    ui.note_keys(1 << 12, 1 << 12);
+    ui.press(PANEL_BTN_LFO);
+    ui.note_keys(0, 0);
+    ui.up(EDIT);
+    assert_eq!(
+        (attack(&ui), param(&ui, LIVE_PARAM_DECAY)),
+        (a + 3, decay),
+        "B's decay undone"
     );
 }
 
@@ -2432,7 +2712,7 @@ fn save_and_each_card_learns_its_parameter() {
                 LIVE_PARAM_CUTOFF,
                 LIVE_PARAM_RESONANCE,
                 LIVE_PARAM_FILTER_VOICES,
-                none,
+                LIVE_PARAM_FILTER_LFO,
             ],
         ),
         (
@@ -2441,7 +2721,7 @@ fn save_and_each_card_learns_its_parameter() {
                 LIVE_PARAM_VIBRATO_RATE,
                 LIVE_PARAM_VIBRATO_DEPTH,
                 LIVE_PARAM_VIBRATO_DELAY,
-                LIVE_PARAM_VELOCITY_TARGET,
+                LIVE_PARAM_ARP_RATE,
             ],
         ),
         (
@@ -2492,6 +2772,8 @@ fn learn_names_every_lab_card() {
         (LIVE_PARAM_VIBRATO_RATE, "VIB RATE"),
         (LIVE_PARAM_VIBRATO_DEPTH, "VIB AMT"),
         (LIVE_PARAM_VIBRATO_DELAY, "VIB DLY"),
+        (LIVE_PARAM_FILTER_LFO, "FILT LFO"),
+        (LIVE_PARAM_ARP_RATE, "ARP RATE"),
     ];
     for (p, name) in names {
         let mut buf = [0 as std::os::raw::c_char; LEARN_VIEW_NAME as usize];

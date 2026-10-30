@@ -176,8 +176,10 @@
         record. It plays PSID <code>.sid</code> tunes too, from the unit's flash, on its own 6502
         (the menu's SIDS: one or two SID chips, PAL or NTSC, with mute and solo for the voices).</p>
       <p><b>LAB</b> (new in 1.0) is where you shape one sound and keep it: press <kbd>3</kbd> ENV,
-        <kbd>4</kbd> LFO or <kbd>1</kbd> FX on LIVE. Five pages draw what their four knobs do; tap
-        EDIT to compare A and B, EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls a new voice, and
+        <kbd>4</kbd> LFO or <kbd>1</kbd> FX on LIVE. Six pages draw what their four knobs do (a filter
+        LFO on FILTER, and on MACRO links that make the resonance follow the cutoff); tap EDIT to compare
+        A and B, hold it while you play to peek at A, EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL
+        rolls a new voice, and
         <kbd>8</kbd> SAVE keeps the sound as a USER sound (PRESETS plays it after DICE). In this page the
         kept sounds go to the emulated flash like your songs.</p>
       <p>This page runs the <b>newest build of SIDOU's main branch</b>, rebuilt whenever the firmware or this page changes, so it can be ahead of the latest release; the build line under the player names it (run locally: your own build) in <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a>,
@@ -210,7 +212,7 @@
       <table aria-label="Keyboard and panel controls">
         <tr><td><kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> … <kbd>;</kbd> <kbd>'</kbd></td><td>the note keys, C4 to F5 (a piano row: <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> are the sharps)</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>X</kbd></td><td>OCT− / OCT+</td></tr>
-        <tr><td><kbd>1</kbd> FX · <kbd>3</kbd> ENV · <kbd>4</kbd> LFO</td><td>on LIVE, open LAB at its FX, ENVELOPE or MOD page (in LAB they step to those pages): shape the sound with every parameter in sight, <kbd>8</kbd> SAVE keeps it as a USER sound; EDIT (a tap) compares A and B; EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls; HOME goes back. FX is lit while the 8580 plays</td></tr>
+        <tr><td><kbd>1</kbd> FX · <kbd>3</kbd> ENV · <kbd>4</kbd> LFO</td><td>on LIVE, open LAB at its FX, ENVELOPE or MOD page (in LAB they step to those pages): shape the sound with every parameter in sight, <kbd>8</kbd> SAVE keeps it as a USER sound; EDIT (a tap) compares A and B, EDIT held while you play peeks at A; EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls (either finger first); HOME goes back. FX is lit while the 8580 plays</td></tr>
         <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>K1 down / up (the cutoff on LIVE)</td></tr>
         <tr><td>K1 K2 K3 K4</td><td>drag up / down or scroll over a knob. On LIVE: cutoff, resonance, the sound's own control (pulse width, decay or sync ratio, by the sound) and the release. They show the page SELECT chose (TONE, or a slot's Amount, A, B, Mix); on the CHIP view (menu → CHIP) the focused section's controls</td></tr>
         <tr><td>PRESETS</td><td>the big knob: drag or scroll for the next or previous preset (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC, then DICE, which rolls a new sound each turn)</td></tr>

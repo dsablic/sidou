@@ -98,7 +98,7 @@ extern "C" {
 /* LAB's pages (app/lab_view.h), OSC first: their cards' parameters (panel_lab_param). The view
  * turns its cards itself; the page is for the popup's names and MIDI learn. */
 #define PANEL_PAGE_LAB_FIRST PANEL_PAGE_EXPERT_END
-#define PANEL_PAGE_LAB_END (PANEL_PAGE_LAB_FIRST + 5u)
+#define PANEL_PAGE_LAB_END (PANEL_PAGE_LAB_FIRST + 6u)
 /* A detent moves a character control this many steps: 32 detents end to end, as a slot's. */
 #define PANEL_CHARACTER_DETENT 4
 

@@ -4,14 +4,14 @@
 # MIDI: the CC and NRPN map
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
-the bend range, three expression targets, the expert layer, the PWM and the fine tune also
-have a fixed CC (7-bit). MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
+the bend range, three expression targets, the expert layer, the PWM, the fine tune and the macro links also
+have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..3 selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode), expression settings (bend range, the targets,
-the vibrato), the PWM and the fine tune over any edits, even when it selects the preset already playing; volume, the
+the vibrato), the PWM, the fine tune, the filter LFO (off), the arpeggio's rate and the macro links (none) over any edits, even when it selects the preset already playing; volume, the
 chip model and character, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
@@ -21,10 +21,10 @@ Expression; 7 volume; 71 resonance; 74 cutoff, i.e. brightness; 72, 73 and 75 re
 attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alone where
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
-mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
-character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
-117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM and the fine
-tune, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
+mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the chord
+arpeggio in 27..30 and the filter LFO in 31, the character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
+117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM, the fine
+tune, the filter LFO, the arpeggio's rate and the macro links, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
 (SETTINGS' SPREAD) is a setting, not the instrument's: no preset holds it, MIDI learn does not
 bind it and SIDOU does not send it (Output, below).
 
@@ -194,9 +194,10 @@ jack, which is MIDI IN only.
 The live instrument's chord arpeggio ([controls.md](controls.md), Chord arpeggio): with it on,
 the notes held, MIDI's and the keys' together (up to 8; a ninth drops the oldest), are one
 voice stepping through them at the rate, its gate held from the first note to the release of
-the last. Its CCs are in a block MIDI leaves undefined; they are no parameters of the map (no
-NRPN), MIDI learn does not reach them, and MIDI out does not send them. A learned CC wins over
-them, as over the map's.
+the last. Its CCs are in a block MIDI leaves undefined. The rate is a parameter of the map (ARP
+rate: NRPN 0/9; MIDI learn reaches it, MIDI out sends it, a program change loads its default);
+on/off, the order and the span are no parameters (no NRPN), MIDI learn does not reach them and
+MIDI out does not send them. A learned CC wins over them, as over the map's.
 
 - **CC 27, on/off:** off below 64, on from 64. A program change loads the preset's factory
   settings: off.
@@ -226,9 +227,9 @@ the gesture, how to cancel and how to clear). What is learned:
   learning again moves the binding. The gesture reaches every
   parameter a knob turns: the cutoff, resonance, pulse width and release, CHIP's Age, DAC, Thump
   and Bleed and expert controls, each effect slot's Amount, A, B and Mix, and every card of
-  LAB's pages (the envelope, the filter voices, the vibrato's rate, depth and delay, the
-  velocity target, PWM depth, PWM rate and fine tune: the last three have an NRPN and no CC of
-  their own, so a learned CC is their only CC).
+  LAB's pages (the envelope, the filter voices, the filter LFO, the vibrato's rate, depth and
+  delay, the arpeggio's rate, PWM depth, PWM rate, fine tune and the macro links: the last five
+  have an NRPN and no CC of their own, so a learned CC is their only CC).
 - **Values:** through the parameter's curve and range in the map below, as its own CC.
 - **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
   records what the controller sends and plays it back onto the same parameter. A parameter
@@ -383,6 +384,10 @@ In NRPN order.
 | Live | PWM depth | - | 0/5 (5) | 0..2048 | linear | 0 | 0 off .. 2048 pulse-width steps each way: the pulse width's LFO, a triangle (narrowed near the ends so the pulse never closes); a preset's |
 | Live | PWM rate | - | 0/6 (6) | 0..255 | linear | 0 | 0..12.75 Hz in 0.05 Hz steps (PWM BASS's 10 is 0.5 Hz); a preset's |
 | Live | Fine tune | - | 0/7 (7) | 0..100 | steps | 50 | 0..100 = -50..+50 cents, 50 in tune; every voice; a preset's |
+| Live | Filter LFO | 31 | 0/8 (8) | 0..32 | steps | 0 | 0 off .. 32 of K1's cutoff detents each way: the cutoff's LFO, a triangle at the PWM rate; a preset's (off) |
+| Live | ARP rate | 28 | 0/9 (9) | 0..8 | steps | 2 | the chord arpeggio's: 0..5 a note every 1, 2, 3, 4, 6 or 8 frames of 50 Hz, 6..8 a 32nd, a 16th or an 8th of the MIDI clock (Chord arpeggio, below); a preset's (2) |
+| Live | RESO link | - | 0/10 (10) | 0..16 | steps | 8 | 0..16 = -8..+8, 8 none: the resonance follows the cutoff, link x (32 - the cutoff's place of K1's 64) / 8 on top of it (positive: up as the cutoff closes; negative, the squelch: up as it opens); a preset's (none) |
+| Live | PWM link | - | 0/11 (11) | 0..16 | steps | 8 | 0..16 = -8..+8, 8 none: the PWM's depth follows the width, link x its distance from 50 % (of 2048) / 8 on top of it; a preset's (none) |
 | SID | Waveform | 20 | 1/0 (128) | 0..15 | steps | 2 | sum of 1 triangle, 2 saw, 4 pulse, 8 noise; 0 silent |
 | SID | Ring modulation | 21 | 1/1 (129) | 0..1 | steps | 0 | 0 off, 1 on (by the voice before) |
 | SID | Sync | 22 | 1/2 (130) | 0..1 | steps | 0 | 0 off, 1 on (to the voice before) |
@@ -450,9 +455,10 @@ In NRPN order.
 | 25 | SID Chip model |
 | 26 | SID Envelope mode |
 | 27 | Live Chord arpeggio on/off |
-| 28 | Live Chord arpeggio rate |
+| 28 | Live ARP rate |
 | 29 | Live Chord arpeggio order |
 | 30 | Live Chord arpeggio span |
+| 31 | Live Filter LFO |
 | 71 | Live Resonance |
 | 72 | SID Release |
 | 73 | SID Attack |

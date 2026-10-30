@@ -28,7 +28,8 @@
  * 125 + 2 x the expert count  SPREAD, 0..100 (schema 6; app/chip_spread.h)
  * 126 + 2 x the expert count  SID MODEL (SETTINGS_SID_*; schema 7; app/sid_view.h)
  * 127 + 2 x the expert count  the count of live parameters past the experts (3: PWM depth, PWM
- *      rate, fine tune), then each one's learned CC (schema 8; their values are not here)
+ *      rate, fine tune), then each one's learned CC (schema 8; their values are not here);
+ *      schema 9 counts 1.1's too (SETTINGS_PARAMS_V9: the filter LFO, the ARP rate, the links)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -59,12 +60,15 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 8u
+#define SETTINGS_VERSION 9u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 /* The live parameters past the experts whose learned CCs schema 8 appends (their values are the
  * sound's, kept with it, not here). */
 #define SETTINGS_PARAMS_V8 3u
+/* Schema 9: the same, with 1.1's parameters past the experts counted (and a later firmware's
+ * count may be more: the record says). */
+#define SETTINGS_PARAMS_V9 7u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
 #define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
 #define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)
@@ -74,7 +78,8 @@ enum {
     SETTINGS_V6_BYTES = SETTINGS_V5_BYTES + 1u,
     SETTINGS_V7_BYTES = SETTINGS_V6_BYTES + 1u,
     SETTINGS_V8_BYTES = SETTINGS_V7_BYTES + 1u + SETTINGS_PARAMS_V8,
-    SETTINGS_BYTES = SETTINGS_V8_BYTES
+    SETTINGS_V9_BYTES = SETTINGS_V7_BYTES + 1u + SETTINGS_PARAMS_V9,
+    SETTINGS_BYTES = SETTINGS_V9_BYTES
 };
 /* SID MODEL: a .sid tune's chips as its header names them (AUTO, the default: a named model plays
  * reSIDfp's profile of it, "unknown" and "both" the keys' setup), or the keys' setup for every

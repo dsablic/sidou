@@ -13,7 +13,7 @@ you like. LAB came in 1.0.
   algorithm; they are LAB's now. The chip model is ALGORITHM on LIVE's TONE page.)
 - Or HOME, then LAB in the menu (after SONG). It opens at OSC.
 
-**SELECT** steps the five pages (OSC, ENVELOPE, FILTER, MOD, FX), and ENV, LFO and FX jump to
+**SELECT** steps the six pages (OSC, ENVELOPE, FILTER, MOD, FX, MACRO), and ENV, LFO and FX jump to
 theirs. **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
 and FX do nothing.
 
@@ -33,8 +33,9 @@ The full table of cards is in [controls.md](../reference/controls.md#lab).
 | Do | Gets you |
 |---|---|
 | tap **EDIT** | A/B: the sound as kept or loaded (A), then back to your edit (B) |
-| **EDIT + LFO** | undo, up to 16 steps back (`UNDO (3)`) |
-| **EDIT + ARP** | vary the page a little, never silent, never the same twice |
+| hold **EDIT**, play keys | peek: A for as long as EDIT is held (the header's `A` outlined), your edit back when you let go |
+| **EDIT + LFO** | undo, up to 16 steps back (`UNDO (3)`); either finger may land first |
+| **EDIT + ARP** | vary the page a little, never silent, never the same twice; either finger may land first |
 | **EDIT + SCL** | roll the whole voice, as DICE does, also never silent and undoable; either finger may land first (SCL alone selects the next effect slot when it is let go) |
 | **EDIT + PRESETS** | back to the sound as kept or loaded |
 
@@ -64,8 +65,35 @@ only the built-in presets.
 Hold **SAVE** and turn a card: the next MIDI controller you move is learned for that card's
 parameter, on every page. (OSC's ratio on a sync sound has no CC and says so.)
 
+## Sweep the filter
+
+FILTER's K4 is the **filter LFO**: how far the cutoff swings each way, in K1's detents (`0` is
+off, `32` the most). It swings at the PWM's rate, so OSC's PWM HZ sets its speed too; the card's
+name line shows the rate (`LFO1.3HZ`). On a sound with no rate yet the first detent starts it at
+1 Hz, so you hear it at once. The drawing dots the band the cutoff sweeps through. CC 31 sets it
+from MIDI.
+
+## The arpeggio's speed
+
+MOD's K4 is the arpeggio's **RATE**, as ARP + K1 on LIVE: a note every few frames (`3FR`), or
+in time with a MIDI clock (`1/32`, `1/16`, `1/8`). It is dark while ARP is off, and you can set
+it all the same, ready for when you turn ARP on with ALGORITHM. (1.0 had the velocity target
+here; it is NRPN 6/1 now.)
+
+## Link the knobs: MACRO
+
+The sixth page, **MACRO**, links what one knob does to another, for this sound:
+
+- **K1, RES LNK** (`-8` to `+8`): the resonance follows the cutoff. Positive, it rises as you close
+  the filter (the classic sweep); negative, as you open it (a squelch).
+- **K2, PWM LNK** (`-8` to `+8`): the PWM's depth follows the pulse width: positive, the further the
+  width from a square, the more it moves.
+
+The two graphs show each link and where the sound is on it now. The links act wherever the cutoff
+or the width moves: LIVE's knobs, LAB's cards, CC 74, the mod wheel, the filter LFO. Your RESO and
+PWM settings stay as you set them; the cards show what the chip has, and light when K1 moves them.
+K3 and K4 have no link yet.
+
 ## What is not there yet
 
-FILTER's K4 is free (it toasts `K4: NOTHING`). Sending a sound to a song as an instrument,
-holding a key to peek at a parameter and macros are planned for 1.x
-([the roadmap](../ROADMAP.md)).
+Sending a sound to a song as an instrument is planned for 1.x ([the roadmap](../ROADMAP.md)).

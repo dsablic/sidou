@@ -620,6 +620,8 @@ static uint32_t build_step(song_view* sv, uint32_t from) {
     return touched;
 }
 
+static void arp_alone(screen* s, song_view* sv);
+
 /* Built anew at its first compose: what changed while it was away. */
 static void enter(screen* s, void* state) {
     song_view* sv = state;
@@ -632,6 +634,7 @@ static void enter(screen* s, void* state) {
 static void leave(screen* s, void* state) {
     song_view* sv = state;
     song_gen_scl_alone(sv);
+    arp_alone(s, sv);
     if (sv->gen.follow) {
         song_gen_drain(sv, s);
     }
@@ -648,6 +651,9 @@ static void gen_start(screen* s, song_view* sv, uint32_t kind) {
 }
 
 void tracker_view_buttons(song_view* sv, screen* s, uint32_t held) {
+    if (sv->gen.arp_alone && !(held >> PANEL_BTN_ARP & 1u)) {
+        arp_alone(s, sv); /* ARP let go alone: its key off */
+    }
     if (song_gen_release(sv, held) && screen_top(s) == &tracker_view_view) {
         gen_start(s, sv, SONG_GEN_DICE);
     }
@@ -684,6 +690,40 @@ __attribute__((noinline, unused)) static void finish_ready_edit(song_view* sv) {
     if (sv->edit_pending && sv->editor->sent) {
         (void)song_edit_poll(sv->editor);
         sv->edit_pending = sv->editor->pending;
+    }
+}
+
+/* ARP or LFO with REC on: a key off, or a rest (LFO twice on a row: the whole row cleared). */
+static void rec_clear(screen* s, song_view* sv, uint32_t id) {
+    lane ln;
+    uint8_t cell[4];
+    if (!read_cell(sv, &ln, cell)) {
+        feedback(s, sv);
+        return;
+    }
+    if (id == PANEL_BTN_ARP) {
+        cell[0] = GT2_KEYOFF;
+        sv->clear_armed = 0;
+    } else if (sv->clear_armed && sv->clear_pattern == ln.pattern && sv->clear_row == sv->row) {
+        cell[0] = GT2_REST;
+        cell[1] = cell[2] = cell[3] = 0;
+    } else {
+        cell[0] = GT2_REST;
+    }
+    if (write_cell(s, sv, &ln, cell) && id == PANEL_BTN_LFO) {
+        sv->clear_armed = 1;
+        sv->clear_pattern = ln.pattern;
+        sv->clear_row = sv->row;
+    }
+    sv->field = TRACKER_VIEW_FIELD_NOTE;
+}
+
+/* ARP that was down alone with REC on: its key off now, and no chord. */
+static void arp_alone(screen* s, song_view* sv) {
+    if (sv->gen.arp_alone) {
+        sv->gen.arp_alone = 0u;
+        finish_ready_edit(sv);
+        rec_clear(s, sv, PANEL_BTN_ARP);
     }
 }
 
@@ -789,6 +829,14 @@ static int input(screen* s, void* state, const screen_event* e) {
         /* EDIT + SCL (DICE, either order), EDIT + ARP (MUTATE), EDIT + ENV (the filter sweep):
          * STEP's, on the shown voice's pattern (app/song_gen.h); nothing while REC records */
         int free = !song_view_recording(sv) && sv->editor;
+        if (e->id == PANEL_BTN_EDIT && sv->gen.arp_alone && (e->held >> PANEL_BTN_ARP & 1u)) {
+            sv->gen.arp_alone = 0u; /* EDIT after ARP: the same chord; ARP's key off is spoilt */
+            if (free) {
+                gen_start(s, sv, SONG_GEN_MUTATE);
+            }
+            return 1;
+        }
+        arp_alone(s, sv); /* another button: ARP was alone */
         if (song_gen_press(sv, e->id, edit, free)) {
             return 1;
         }
@@ -809,33 +857,18 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (e->kind == SCREEN_PRESS && sv->rec &&
         (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_LFO)) {
-        lane ln;
-        uint8_t cell[4];
-        if (read_cell(sv, &ln, cell)) {
-            if (e->id == PANEL_BTN_ARP) {
-                cell[0] = GT2_KEYOFF;
-                sv->clear_armed = 0;
-            } else if (sv->clear_armed && sv->clear_pattern == ln.pattern && sv->clear_row == sv->row) {
-                cell[0] = GT2_REST;
-                cell[1] = cell[2] = cell[3] = 0;
-            } else {
-                cell[0] = GT2_REST;
-            }
-            if (write_cell(s, sv, &ln, cell) && e->id == PANEL_BTN_LFO) {
-                sv->clear_armed = 1;
-                sv->clear_pattern = ln.pattern;
-                sv->clear_row = sv->row;
-            }
-            sv->field = TRACKER_VIEW_FIELD_NOTE;
-        } else {
-            feedback(s, sv);
+        if (e->id == PANEL_BTN_ARP && !edit && !song_view_recording(sv) && sv->editor) {
+            sv->gen.arp_alone = 1u; /* the key off at its release: EDIT may land after it */
+            return 1;
         }
+        rec_clear(s, sv, e->id);
         return 1;
     }
     if (e->kind != SCREEN_TURN) {
         return 0;
     }
     song_gen_scl_alone(sv); /* a knob while SCL is down alone: the slot first, then the knob */
+    arp_alone(s, sv);
     if (song_gen_turn(sv, s, e->id, e->steps)) {
         return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
     }

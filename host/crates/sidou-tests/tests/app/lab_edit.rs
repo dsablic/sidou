@@ -375,6 +375,10 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                 b(LAB_SOUND_RESONANCE),
                 b(LAB_SOUND_FILTER_VOICES),
                 b(LAB_SOUND_FILTER_MODE),
+                b(LAB_SOUND_FILTER_LFO),
+                // the LFO's rate, PWM HZ's, on K4's name line: 1 Hz when K4 turns it on
+                b(LAB_SOUND_PWM_RATE),
+                b(LAB_SOUND_PWM_RATE) + 1,
             ],
         ),
         (
@@ -384,7 +388,10 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                 .chain(b(LAB_SOUND_ARP)..b(LAB_SOUND_ARP) + 4)
                 .collect(),
         ),
-        (LAB_PAGE_FX, (b(LAB_SOUND_SLOTS)..BYTES).collect()),
+        (
+            LAB_PAGE_FX,
+            (b(LAB_SOUND_SLOTS)..b(LAB_SOUND_FILTER_LFO)).collect(),
+        ),
     ];
     let mut ui = lab_ui();
     for (page, own) in pages {
@@ -511,6 +518,75 @@ fn scl_alone_in_lab_selects_the_next_slot() {
     assert_ne!(ui.toast().as_deref(), Some("ROLLED"));
     assert_ne!(sound(&ui), before, "the knob acted");
     assert_eq!(ui.v.lab.undo.steps, 1, "only the knob's step");
+}
+
+/// EDIT + ARP is the variation whichever finger lands first: ARP a few milliseconds before EDIT
+/// varies the page as EDIT first does (one undo step, no A/B tap), and letting them go does
+/// nothing more.
+#[test]
+fn arp_landing_before_edit_is_the_same_variation() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let before = sound(&ui);
+    ui.down(PANEL_BTN_ARP);
+    assert_eq!(sound(&ui), before, "ARP alone changes nothing in LAB");
+    ui.down(EDIT);
+    ui.frame();
+    assert_eq!(ui.toast().as_deref(), Some("VARIED"));
+    assert_ne!(sound(&ui), before);
+    let varied = sound(&ui);
+    ui.up(PANEL_BTN_ARP);
+    ui.up(EDIT);
+    ui.frame();
+    assert_eq!(sound(&ui), varied, "one variation");
+    assert_eq!(ui.v.lab.undo.steps, 1);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no A/B tap");
+}
+
+/// EDIT + LFO is undo whichever finger lands first: LFO a few milliseconds before EDIT has
+/// already stepped to MOD (harmless), and EDIT then undoes the last step.
+#[test]
+fn lfo_landing_before_edit_is_the_same_undo() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let before = sound(&ui);
+    ui.turn(PANEL_ENC_K1 + 1, 3);
+    assert_ne!(sound(&ui), before);
+    ui.down(PANEL_BTN_LFO);
+    assert_eq!(
+        u32::from(ui.v.lab.page),
+        LAB_PAGE_MOD,
+        "LFO's page, at once"
+    );
+    ui.down(EDIT);
+    ui.frame();
+    assert_eq!(ui.toast().as_deref(), Some("UNDO (0)"));
+    assert_eq!(sound(&ui), before, "undone");
+    ui.up(PANEL_BTN_LFO);
+    ui.up(EDIT);
+    ui.frame();
+    assert_eq!(sound(&ui), before);
+    assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no A/B tap");
+}
+
+/// ARP or LFO let go before EDIT lands is no chord: EDIT alone is A/B's tap, as ever.
+#[test]
+fn arp_or_lfo_let_go_before_edit_is_no_chord() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    ui.turn(PANEL_ENC_K1 + 1, 3);
+    let edited = sound(&ui);
+    for b in [PANEL_BTN_ARP, PANEL_BTN_LFO] {
+        ui.press(b);
+        ui.down(EDIT);
+        ui.up(EDIT);
+        ui.frame();
+        assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_A, "EDIT's tap: A");
+        ui.press(EDIT);
+        ui.frame();
+        assert_eq!(sound(&ui), edited, "B again");
+        assert_eq!(ui.v.lab.undo.steps, 1, "nothing undone or varied");
+    }
 }
 
 /// A sound nothing on its page can make heard: the variation leaves it and says so.

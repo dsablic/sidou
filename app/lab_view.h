@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* LAB: one LIVE sound shaped on five pages, each with its shape drawn from the live values above
+/* LAB: one LIVE sound shaped on six pages, each with its shape drawn from the live values above
  * four cards for K1..K4 (docs/plans/2026-10-25-lab-design.md; docs/art/README.md "LAB").
  *
- * The pages, in SELECT's order (clamped at both ends): OSC, ENVELOPE, FILTER, MOD, FX. On each:
- * - rows 0-1, the header at 2x: the page's name in yellow, and its place `2/5` on the right;
+ * The pages, in SELECT's order (clamped at both ends): OSC, ENVELOPE, FILTER, MOD, FX, MACRO. On
+ * each:
+ * - rows 0-1, the header at 2x: the page's name in yellow, and its place `2/6` on the right;
  * - rows 2-3, the sound's name at 2x in white with `*` while it differs from its base
  *   (live_preset_name), and A or B on the right while EDIT's tap compares (lab_view_buttons);
  * - rows 4-17, the page's drawing (LAB_VIEW_ART_ROW..; app/lab_draw.h): what it shapes, from the
@@ -19,7 +20,7 @@
  *   nothing in LAB is found only on the help card (a toast, on rows 27-28, leaves it).
  * A card or the choice that was just turned is lit (its name in reverse video) for
  * SCREEN_POPUP_MS, in place of the value popup (app/views.c lab_frame). A card the page has no
- * use for (FILTER's K4; a slot's control its algorithm does not use) is dark grey.
+ * use for (a slot's control its algorithm does not use; MOD's RATE while ARP is off) is dark grey.
  *
  * The cards and the choice, by page (panel_lab_param names a card's parameter):
  * - OSC: PULSE (the pulse width, LIVE's walk of LIVE_PULSE_STEP; RATIO on a mono-sync sound
@@ -27,11 +28,18 @@
  *   HZ (its rate, 0.05 Hz a detent), TUNE (cents); the waveform, the combined ones, then the
  *   triangle's ring and the saw's and pulse's sync (lab_view_wave_choices).
  * - ENVELOPE: ATTACK, DECAY, SUSTAIN, RELEASE (0..15); the envelope mode.
- * - FILTER: CUTOFF (LIVE's K1 walk), RESO, VOICES (the voices routed, 1 2 3); LP, BP, HP, NOTCH.
- * - MOD: the vibrato's rate (VIB HZ), depth and delay, and the velocity target (VELO); ARP off
- *   or its order.
+ * - FILTER: CUTOFF (LIVE's K1 walk), RESO, VOICES (the voices routed, 1 2 3), the filter LFO's
+ *   depth (its rate, OSC's PWM HZ, on the name line: "LFO1.3HZ"; from off with no rate, 1 Hz);
+ *   LP, BP, HP, NOTCH.
+ * - MOD: the vibrato's rate (VIB HZ), depth and delay, and the arpeggio's RATE (LIVE's ARP + K1:
+ *   "3FR", "1/16"; dark while ARP is off, turned all the same); ARP off or its order.
  * - FX: the selected slot's Amount, A, B and Mix (named for its algorithm, app/chip_view.h);
  *   the slot's algorithm, OFF included. SCL selects the next slot, as everywhere.
+ * - MACRO: the sound's links (live.h live_resonance_effective, live_pwm_depth_effective): RES LNK
+ *   (-8..+8, the resonance following the cutoff) and PWM LNK (the PWM's depth following the
+ *   width); K3 and K4 dark, and ALGORITHM has no choice (the line says LINKED or NO LINKS). When a
+ *   link moves the card it acts on as another card turns (FILTER's K1 the resonance, OSC's K1
+ *   the PWM), that card lights too (lab_view.hl_link), and the cards show what the chip has.
  *
  * Input: SELECT steps the pages; K1..K4 turn the cards (EDIT held too: no hidden combination);
  * ALGORITHM steps the choice (clamped); ENV, LFO and FX open ENVELOPE, MOD and FX. EDIT + LFO
@@ -85,7 +93,8 @@ extern "C" {
 #define LAB_PAGE_FILTER 2u
 #define LAB_PAGE_MOD 3u
 #define LAB_PAGE_FX 4u
-#define LAB_PAGES 5u
+#define LAB_PAGE_MACRO 5u
+#define LAB_PAGES 6u
 /* The cells a frame of LAB sends at most (as CHIP's and LIVE's: about 17.5 ms of SPI). */
 #define LAB_VIEW_FRAME_CELLS 200u
 /* The page's rows (above). */
@@ -100,14 +109,14 @@ extern "C" {
 #define LAB_VIEW_HINT_ROW 29u
 /* A hint phrase shows this long, then the next. */
 #define LAB_VIEW_HINT_MS 2000u
-#define LAB_VIEW_HINTS 3u
+#define LAB_VIEW_HINTS 4u
 /* lab_view.hl: the choice (ALGORITHM) lit; 1..4 a card. */
 #define LAB_VIEW_HL_CHOICE 5u
 /* OSC's choices: TRIANGLE .. PULSE SYNC. */
 #define LAB_VIEW_WAVES 11u
 /* A card's or the choice's text, terminator included ("TRI+SAW+PUL"). */
 #define LAB_VIEW_TEXT 14u
-/* lab_view.mode: the five pages, the name page (EDIT + SAVE), the name page asking once more
+/* lab_view.mode: the six pages, the name page (EDIT + SAVE), the name page asking once more
  * before it overwrites a used slot. */
 #define LAB_VIEW_MODE_PAGES 0u
 #define LAB_VIEW_MODE_NAME 1u
@@ -147,6 +156,7 @@ typedef struct {
     uint8_t built;     /* the canvas shows drawn */
     uint8_t copying;   /* the canvas has cells the grid does not have yet (the budget) */
     uint8_t hl;        /* 1..4 the card lit, LAB_VIEW_HL_CHOICE the choice, 0 none */
+    uint8_t hl_link;   /* 1..4 a card a macro link moved with the one turned, lit with it */
     uint8_t art_done;  /* the grid shows the whole drawing of `art` (app/lab_draw.h) */
     uint8_t art_turn;  /* text and drawing both stale: 1 the drawing's frame next */
     uint32_t art;      /* the hash of what the drawing shows (lab_draw_look) */
@@ -157,9 +167,13 @@ typedef struct {
     uint8_t named;     /* the name is the player's, not the slot's automatic one */
     char name[LAB_SOUND_NAME + 1u]; /* the name page's name, spaces after it */
     uint8_t scl_alone;    /* SCL pressed with no EDIT, still down: EDIT now makes it the roll */
+    uint8_t chord;        /* ARP or LFO pressed alone (its id + 1; 0 none): EDIT pressed while it
+                           * is still down is EDIT + ARP or EDIT + LFO, whichever landed first */
     uint8_t edit_down;    /* EDIT pressed while LAB showed, held since (its tap: A/B) */
     uint8_t edit_spoiled; /* another control while it was: its release compares nothing */
     uint8_t ab;           /* LAB_VIEW_AB_*: comparing, and which sound plays */
+    uint8_t peek;         /* a note key while EDIT is down: A plays until EDIT is let go (ab + 1,
+                           * to give back; 0 none). B waits in other */
     uint8_t loads;        /* live.loads as LAB last saw it: another sound ends A/B */
     uint8_t other[LAB_SOUND_BYTES]; /* B, the edit, while A plays */
     lab_edit undo; /* the steps EDIT + LFO undoes (app/lab_edit.h) */
@@ -187,7 +201,10 @@ void lab_view_flash(lab_view* lv, uint32_t k, uint32_t now_ms);
  * U03?`, then SAVE again; any other control cancels the question), HOME (lab_view_home) leaves
  * without writing. The other cards and pages wait while it shows. lab_view_name_keys takes the
  * keys pressed this frame (bit k: key k) while it shows and returns the ones it used, which the
- * panel then keeps quiet; 0 outside it. */
+ * panel then keeps quiet; 0 outside it. On the pages, a key pressed while EDIT is down (LAB on
+ * top) is a peek: A (the sound as kept or loaded) plays, before the key's note starts, until EDIT
+ * is let go, B (the edit) put aside and given back then; the header shows A outlined. Any other
+ * control while it peeks gives B back first, then acts on B. A peek is no undo step. */
 uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
 /* EDIT's tap (A/B), from the panel's buttons each input frame (pressed edges, held levels) while
  * EDIT is down or pressed; top: LAB is the view on top. EDIT pressed and let go with no other
@@ -196,7 +213,8 @@ uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed);
  * the header showing A; the next tap plays B again, and so on. On a sound that is its base it
  * toasts NOTHING TO COMPARE. A turn of LAB's while A plays makes A the edit: comparing ends and
  * B's difference from it is one undo step (EDIT + LFO gives B back). Comparing ends when another sound loads (live.loads). EDIT as a
- * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. */
+ * modifier (EDIT + K, LFO, ARP, SCL, SAVE, PRESETS) never compares. A note key while EDIT is down
+ * is a peek (lab_view_keys): no tap at the release. */
 void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, int top);
 /* SCL's release, from the panel's buttons while it waits for EDIT (lab_view.scl_alone): EDIT + SCL
  * rolls whichever finger lands first; SCL alone selects the next effect slot as everywhere, when

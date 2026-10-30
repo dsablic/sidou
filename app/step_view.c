@@ -961,7 +961,27 @@ static void gen_start(screen* s, step_view* st, uint32_t kind) {
     drain(s, st);
 }
 
+/* ARP that was down alone: the lane's gate switched, and no chord now. */
+static void arp_alone(step_view* st) {
+    if (st->sv->gen.arp_alone) {
+        st->sv->gen.arp_alone = 0u;
+        st->gate ^= (uint8_t)(1u << st->sv->voice);
+    }
+}
+
+/* EDIT + LFO: the editor's last change undone. */
+static void undo(screen* s, song_view* sv) {
+    if (sv->editor) {
+        (void)song_edit_undo(sv->editor);
+        sv->edit_pending = sv->editor->pending;
+    }
+    feedback(s, sv);
+}
+
 void step_view_buttons(step_view* st, screen* s, uint32_t held) {
+    if (st->sv->gen.arp_alone && !(held >> PANEL_BTN_ARP & 1u)) {
+        arp_alone(st);
+    }
     if (song_gen_release(st->sv, held) && screen_top(s) == &step_view_view) {
         gen_start(s, st, SONG_GEN_DICE);
     }
@@ -977,8 +997,24 @@ static int input(screen* s, void* state, const screen_event* e) {
     drain(s, st);
     target t;
     if (e->kind == SCREEN_PRESS) {
-        /* SCL: DICE's chord (EDIT + SCL, either order) and what it spoils (app/song_gen.h). */
         int free = st->held == STEP_VIEW_NONE && !song_view_recording(sv) && sv->editor;
+        uint32_t lfo = st->lfo_alone;
+        st->lfo_alone = 0u;
+        if (e->id == PANEL_BTN_EDIT && ((sv->gen.arp_alone && (e->held >> PANEL_BTN_ARP & 1u)) ||
+                                        (lfo && (e->held >> PANEL_BTN_LFO & 1u)))) {
+            /* EDIT after ARP or LFO: the same chord; ARP's gate is spoilt */
+            if (sv->gen.arp_alone) {
+                sv->gen.arp_alone = 0u;
+                if (free) {
+                    gen_start(s, st, SONG_GEN_MUTATE);
+                }
+            } else {
+                undo(s, sv);
+            }
+            return 1;
+        }
+        arp_alone(st); /* another button: ARP was alone */
+        /* SCL: DICE's chord (EDIT + SCL, either order) and what it spoils (app/song_gen.h). */
         if (song_gen_press(sv, e->id, edit, free)) {
             return 1;
         }
@@ -987,11 +1023,7 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         if (e->id == PANEL_BTN_LFO && edit) {
-            if (sv->editor) {
-                (void)song_edit_undo(sv->editor);
-                sv->edit_pending = sv->editor->pending;
-            }
-            feedback(s, sv);
+            undo(s, sv);
             return 1;
         }
         if (edit && st->held == STEP_VIEW_NONE && !song_view_recording(sv) &&
@@ -1007,15 +1039,18 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         if (e->id == PANEL_BTN_ARP) {
-            st->gate ^= (uint8_t)(1u << sv->voice);
+            sv->gen.arp_alone = 1u; /* the gate at its release: EDIT may land after it */
             return 1;
         }
+        st->lfo_alone = e->id == PANEL_BTN_LFO && !edit;
         return 0;
     }
     if (e->kind != SCREEN_TURN) {
         return 0;
     }
     song_gen_scl_alone(sv); /* a knob while SCL is down alone: the slot first, then the knob */
+    arp_alone(st);
+    st->lfo_alone = 0u;
     if (e->id == PANEL_ENC_SELECT) {
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
@@ -1195,6 +1230,7 @@ static void enter(screen* s, void* state) {
     st->held = STEP_VIEW_NONE;
     st->zones = 0u;
     song_gen_stop(st->sv);
+    st->lfo_alone = 0u;
     st->down = st->touched = 0u;
     st->sv->instr = st->instr[st->sv->voice];
 }
@@ -1202,6 +1238,8 @@ static void enter(screen* s, void* state) {
 static void leave(screen* s, void* state) {
     step_view* st = state;
     song_gen_scl_alone(st->sv);
+    arp_alone(st);
+    st->lfo_alone = 0u;
     if (st->follow | st->qn | st->sv->gen.follow) {
         drain(s, st);
     }

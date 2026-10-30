@@ -620,11 +620,11 @@ void live_view_knob_text(const live* l, uint32_t k, char* buf) {
         hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f), 1);
         return;
     }
-    case 1:
-        if (l->resonance >= 10u) {
+    case 1: /* the resonance the chip has: RESO LINK's term in it */
+        if (l->res_out >= 10u) {
             buf[n++] = '1';
         }
-        buf[n++] = (char)('0' + l->resonance % 10u);
+        buf[n++] = (char)('0' + l->res_out % 10u);
         break;
     case 2: {
         uint32_t tone = live_tone(l);
@@ -758,7 +758,7 @@ __attribute__((noinline, unused)) LIVE_COLD static uint32_t knob_px(const live_v
     } else {
         uint32_t tone = live_tone(l);
         value = k == 0u   ? l->cutoff_out
-                : k == 1u ? l->resonance
+                : k == 1u ? l->res_out
                 : k == 3u ? (uint32_t)(l->sustain_release & 15u)
                 : tone == LIVE_TONE_RATIO ? (uint32_t)(l->sync_semis + LIVE_RATIO_SEMIS)
                 : tone == LIVE_TONE_PULSE ? (l->pulse_width > 2048u ? 4096u - l->pulse_width
@@ -1054,7 +1054,7 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
     } else {
         k[3] = (uint8_t)l->cutoff_out;
         k[4] = (uint8_t)(l->cutoff_out >> 8);
-        k[5] = l->resonance;
+        k[5] = l->res_out;
         k[6] = (uint8_t)l->pulse_width; /* K3's: the width, the decay or the ratio */
         k[7] = (uint8_t)(l->pulse_width >> 8);
         k[8] = (uint8_t)(l->sustain_release & 15u);

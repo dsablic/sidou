@@ -6,8 +6,9 @@
 
 #include <string.h>
 
-_Static_assert(LAB_SOUND_SLOTS + LIVE_SLOTS * LIVE_SLOT_FIELDS == LAB_SOUND_BYTES,
-               "the slots are the sound's last bytes");
+_Static_assert(LAB_SOUND_SLOTS + LIVE_SLOTS * LIVE_SLOT_FIELDS == LAB_SOUND_BYTES_1_0,
+               "the slots are 1.0's last bytes");
+_Static_assert(LAB_SOUND_PWM_LINK + 1u == LAB_SOUND_BYTES, "1.1's after them");
 _Static_assert(LAB_SOUND_ARP + LIVE_ARP_SPAN + 1u == LAB_SOUND_SLOTS,
                "the arpeggio's four fields, then the slots");
 
@@ -36,7 +37,13 @@ static const struct {
     {LAB_SOUND_ARP + LIVE_ARP_RATE, LIVE_ARP_RATES - 1u},
     {LAB_SOUND_ARP + LIVE_ARP_ORDER, LIVE_ARP_PLAYED},
     {LAB_SOUND_ARP + LIVE_ARP_SPAN, LIVE_ARP_SPAN_MAX},
+    {LAB_SOUND_FILTER_LFO, LIVE_FILTER_LFO_MAX},
 };
+
+/* A link's byte within -LIVE_LINK_MAX..LIVE_LINK_MAX. */
+static int link_ok(uint8_t b) {
+    return (uint8_t)(b + LIVE_LINK_MAX) <= 2u * LIVE_LINK_MAX;
+}
 
 LIVE_COLD uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]) {
     for (uint32_t i = 0; i < sizeof BYTE_MAX / sizeof BYTE_MAX[0]; i++) {
@@ -52,7 +59,8 @@ LIVE_COLD uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]) {
         u16_at(s, LAB_SOUND_SYNC_BASE) > LAB_SOUND_SYNC_BASE_MAX || semis < -LIVE_RATIO_SEMIS ||
         semis > LIVE_RATIO_SEMIS || u16_at(s, LAB_SOUND_PWM_DEPTH) > LIVE_PWM_DEPTH_MAX ||
         u16_at(s, LAB_SOUND_PWM_RATE) > LIVE_PWM_STEP_MAX || tune < -LIVE_TUNE_CENTS ||
-        tune > LIVE_TUNE_CENTS || s[LAB_SOUND_ARP + LIVE_ARP_SPAN] < 1u) {
+        tune > LIVE_TUNE_CENTS || s[LAB_SOUND_ARP + LIVE_ARP_SPAN] < 1u ||
+        !link_ok(s[LAB_SOUND_RESO_LINK]) || !link_ok(s[LAB_SOUND_PWM_LINK])) {
         return 0;
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {

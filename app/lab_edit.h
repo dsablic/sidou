@@ -28,7 +28,7 @@ extern "C" {
 
 /* The steps undo keeps, and the entries they share. */
 #define LAB_EDIT_STEPS 16u
-#define LAB_EDIT_ENTRIES 48u
+#define LAB_EDIT_ENTRIES 52u
 /* What a step records: the sound's bytes, then the envelope mode. */
 #define LAB_EDIT_MODE LAB_SOUND_BYTES
 #define LAB_EDIT_BYTES (LAB_SOUND_BYTES + 1u)

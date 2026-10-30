@@ -28,6 +28,7 @@ add_library(sidou_live STATIC
     lab_view.c
     live.c
     live_cutoff.c
+    live_setup.c
     live_dice.c
     live_freq.c
     live_view.c
@@ -119,6 +120,10 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c
         midi_learn.c about.c song_edit.c midi_map.c help_view.c logo.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(screen.c chip_ctl.c keys_route.c panel.c PROPERTIES COMPILE_OPTIONS -Os)
+    # live's cold half (1.1's flash win-back, docs/plans/2026-10-29-1.1-design.md "Flash"): the
+    # presets, the parameters and the sound, once a turn, a CC or a load. live.c keeps the input's
+    # paths the budgets bound (K1's cutoff, a slot's pick) and the tick at the default.
+    set_source_files_properties(live_setup.c PROPERTIES COMPILE_OPTIONS -Oz)
     # SCENE's pieces run once a frame, inside the scene budgets (emu-gate scene_budget.rs, screen.rs).
     set_source_files_properties(scene.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()

@@ -342,9 +342,10 @@ fn its_ccs_switch_it_and_set_the_rate_order_and_span() {
     assert_eq!(rig.live.arp_span, 2);
     rig.cc(LIVE_CC_ARP_SPAN, 0);
     assert_eq!(rig.live.arp_span, 1);
-    // None is a map row's CC.
+    // None is a map row's CC but the rate's (LIVE_PARAM_ARP_RATE, so learn reaches it).
     for cc in LIVE_CC_ARP..=LIVE_CC_ARP_SPAN {
-        assert!(unsafe { midi_map_for_cc(cc as u8) }.is_null(), "CC {cc}");
+        let row = unsafe { midi_map_for_cc(cc as u8) };
+        assert_eq!(row.is_null(), cc != LIVE_CC_ARP_RATE, "CC {cc}");
     }
 }
 

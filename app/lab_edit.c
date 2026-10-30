@@ -183,6 +183,9 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
     if (wave & 4u) {
         int32_t pw = (int32_t)(s[LAB_SOUND_PULSE] | (s[LAB_SOUND_PULSE + 1u] & 15u) << 8);
         int32_t depth = (int32_t)(s[LAB_SOUND_PWM_DEPTH] | s[LAB_SOUND_PWM_DEPTH + 1u] << 8);
+        int32_t away = pw > 2048 ? pw - 2048 : 2048 - pw;
+        depth += (int8_t)s[LAB_SOUND_PWM_LINK] * away / 8; /* PWM LINK's term */
+        depth = depth < 0 ? 0 : depth > (int32_t)LIVE_PWM_DEPTH_MAX ? (int32_t)LIVE_PWM_DEPTH_MAX : depth;
         side = (pw > 2048 ? 4096 - pw : pw) - depth / 2;
         int32_t p = pulse_db(side, 0);
         if (p == NONE) {
@@ -222,9 +225,31 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
             return 0; /* routed to no output */
         }
         uint32_t fc = (uint32_t)(s[LAB_SOUND_CUTOFF] | s[LAB_SOUND_CUTOFF + 1u] << 8) & 2047u;
+        sid_model m = model ? SID_MODEL_8580 : SID_MODEL_6581;
         int low;
-        db += filter_db(mode, sid_cutoff_hz(model ? SID_MODEL_8580 : SID_MODEL_6581, 0, fc), note,
-                        (int)(wave & 1u), !model, &low);
+        int32_t f = filter_db(mode, sid_cutoff_hz(m, 0, fc), note, (int)(wave & 1u), !model, &low);
+        uint32_t lfo = s[LAB_SOUND_FILTER_LFO];
+        if (lfo) {
+            /* the filter LFO: the worst of its sweep's two ends, K1's walk lfo detents each way */
+            const uint16_t* t = live_cutoff_steps[m];
+            int32_t pos = 0;
+            while (pos < 64 && t[pos + 1] <= fc) {
+                pos++;
+            }
+            int32_t off = (int32_t)fc - t[pos];
+            for (int32_t way = -1; way <= 1; way += 2) {
+                int32_t at = pos + way * (int32_t)lfo;
+                int32_t r = t[at < 0 ? 0 : at > 64 ? 64 : at] + off;
+                int end_low;
+                int32_t e = filter_db(mode, sid_cutoff_hz(m, 0, (uint32_t)(r < 0 ? 0 : r > 2047 ? 2047 : r)),
+                                      note, (int)(wave & 1u), !model, &end_low);
+                if (e < f) {
+                    f = e;
+                    low = end_low;
+                }
+            }
+        }
+        db += f;
         if (low && (wave & 4u)) { /* a narrow pulse's level is in its partials, which it takes */
             db += pulse_db(side, 1) - pulse_db(side, 0);
         }

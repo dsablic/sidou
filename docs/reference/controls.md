@@ -307,7 +307,7 @@ HELD STEP frame (`HELD STEP 22`).
 | SELECT | selects the lane, V1, V2, V3 and round |
 | ALGORITHM | pages through the pattern; while the song plays the page follows the playing step |
 | PRESETS | the lane's instrument, 01-3F, its name in the popup (`03 KICK`: a NEW song's drum kit, [SONG](#song)); with a step held, that step's note (and the lane's note for the steps toggled after it) |
-| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane as `STAC` or `LEG` |
+| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane as `STAC` or `LEG`. It switches when ARP is let go, or as soon as another control is used while it is down: EDIT pressed while it is down is MUTATE instead |
 | Step held + K1 | cutoff **LOCK** on that step: 32 of 2047 a detent, from the middle (1024) |
 | Step held + K2 | resonance LOCK, 0-15 |
 | Step held + K3 | pulse width LOCK, 64 of 4095 a detent from the middle (2048) |
@@ -315,7 +315,7 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + EDIT + K1-K4 | the character's LOCKs: age/heat, DAC, thump, bleed (0-127) |
 | Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
 | Step held + LFO | clears that step's locks, its chance and its SET |
-| EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED` |
+| EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED`. Either finger may land first (ARP first leaves the lane's gate as it was) |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
 | EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
@@ -323,7 +323,7 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
 | EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
 | EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
-| EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO) |
+| EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO); either finger may land first |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
 
@@ -388,7 +388,7 @@ REC records (the song playing).
 
 | Control | Does |
 |---|---|
-| EDIT + ARP | **MUTATE** (toast `MUTATED`); with REC on too, where ARP alone writes a key off |
+| EDIT + ARP | **MUTATE** (toast `MUTATED`), either finger first; with REC on too, where ARP alone writes a key off: while the song is stopped it writes it when ARP is let go (or as soon as another control is used), so EDIT landing after ARP is MUTATE and no key off |
 | EDIT + SCL | **DICE** (toast `NEW PATTERN`), rolled when SCL is let go unless a knob was turned or another button pressed; SCL first, then EDIT, is the same chord, and SCL alone selects the next effect slot when it is let go |
 | EDIT + SCL held | the settings frame over the window's lower half (rows 15-26): K1 density, K2 range, K3 the shown voice's scale, K4 rhythm, a note key the voice's root, as in [STEP](#step) |
 | EDIT + ENV | **SWEEP**, as in STEP |
@@ -406,7 +406,7 @@ field expands to 2× in reverse yellow. Other voices remain activity strips.
 | Control | With REC on |
 |---|---|
 | Note key | writes its note and the current instrument into the cursor's row, auditions it, then advances by the edit step (wrapping within the pattern) |
-| ARP | writes key off (`===`), keeping the row's other fields (EDIT + ARP is MUTATE, above) |
+| ARP | writes key off (`===`), keeping the row's other fields, when it is let go (at once while REC records; EDIT + ARP is MUTATE, above) |
 | LFO | clears the note to a rest; a second press on the same row clears all four fields |
 | EDIT + LFO | undoes the last edit; the next press redoes it (also available with REC off). Undo keeps **one step**: the help card says E+LFO ONE UNDO |
 | K1 | instrument number, 00–3F (00 leaves the playing instrument unchanged) |
@@ -603,7 +603,7 @@ means something else there:
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
 | SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
 | SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
-| LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
+| LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
 
@@ -761,30 +761,40 @@ it) is where one LIVE sound is shaped with every parameter in sight
 **HOME** goes back to LIVE, the sound kept as edited. It opens at OSC from the menu, and from
 LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX.
 
-**SELECT** steps the five pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
-**MOD**, **FX**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
+**SELECT** steps the six pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**MOD**, **FX**, **MACRO**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
 ALGORITHM on the FX page (OFF included: a slot turned to OFF is bypassed, what ENV's cycle
 through OFF once did). On every page:
 
 | Rows | Shows |
 |---|---|
-| 0-1 | the page's name at 2× in yellow, its place (`2/5`) on the right |
-| 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares |
+| 0-1 | the page's name at 2× in yellow, its place (`2/6`) on the right |
+| 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares; **A** outlined during a peek (EDIT held + a key) |
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
 | 22-27 | the four cards in the knobs' places, as LIVE's knob row: the card's name small in the knob's colour, its value at 3× in white (2× when it takes three characters), a bar and the knob's name |
-| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`) |
+| 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`, `EDIT+KEY PEEK A`) |
 
 A card or the choice that turns is lit (its name in reverse video) for a second instead of the
 value popup; PRESETS opens no popup either (the header names the sound).
+
+**The macro links** belong to the sound (kept with it, undone and compared with it) and act wherever
+the cutoff or the width moves: LIVE's K1 and K3, LAB's cards, CC 74, the mod wheel and the filter
+LFO. They are terms on top of the parameters, which stay as set: a link back at `0` gives them back.
+FILTER's RESO card and LIVE's K2 show the resonance the chip has (with RESO LINK's term), OSC's PWM
+card the depth it has; when K1 turns and its link moves RESO (FILTER) or PWM (OSC), that card lights
+with K1's. The resonance follows the cutoff within a 10 ms tick. MACRO draws the two links as
+graphs: the resonance over the cutoff's place on K1's walk, the PWM's depth over the width, each
+with the point the sound is at now; a graph with no link is a dark flat line.
 
 | Page | K1 | K2 | K3 | K4 | ALGORITHM |
 |---|---|---|---|---|---|
 | OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
 | ENVELOPE | ATTACK | DECAY | SUS (the sustain level) | RELEASE (0..15, a step a detent) | INSTANT, AUTHENTIC: the envelope mode, the instrument's for every sound (ALL SOUNDS) |
-| FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | free | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
-| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | VELO: the velocity target (OFF, SUS, CUT, PW) | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
+| FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | LFO: the filter LFO's depth, `0` (off) to `32` of K1's detents each way, a triangle (up first) at the rate OSC's PWM HZ sets, shown on the card's name line (`LFO1.3HZ`); turned up from off on a sound with no rate yet, the rate starts at 1 Hz; the drawing dots the band the cutoff sweeps | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
+| MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | RATE: the arpeggio's rate, as LIVE's ARP + K1 (`3FR`: a note every 3 frames of 50 Hz, then `1/32`, `1/16`, `1/8` of the MIDI clock); dark grey while ARP is off, and set all the same. The velocity target, which this card had in 1.0, is NRPN 6/1's | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
+| MACRO | RES LNK: RESO LINK, `-8` to `+8` (`0` none): the resonance follows the cutoff, the link times the cutoff's distance below the middle of K1's walk, in 8ths of a step a detent of it (positive: it rises as the cutoff closes; negative, a squelch: as it opens), on top of RESO, clamped | PWM LNK: PWM LINK, `-8` to `+8`: the PWM's depth follows the width, the link times the width's distance from 50 % in 8ths, on top of PWM | dark, unused | dark, unused | no choice: the line says `LINKED` or `NO LINKS` (dark) |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
 page follows it); alone it waits for EDIT a moment (EDIT + SCL is the roll whichever finger lands
@@ -802,8 +812,7 @@ sixteen slots full, SAVE on a sound that is not a USER one toasts `USER FULL: ED
 writes nothing (a USER sound still keeps in place). SAVE held while a knob turns is MIDI learn
 for that card's parameter on every page (on FX the selected slot's control; the toast names it:
 `LEARNED CC 21 -> PWM DEPTH`), and SAVE + HOME is learn's clear, as everywhere. OSC's K1 on a
-sync sound without pulse is the ratio, which has no CC (`RATIO: NO CC`); a card with no parameter
-yet (FILTER's K4) toasts `K4: NOTHING`. LAB composes under learn's frame; the frame forwards
+sync sound without pulse is the ratio, which has no CC (`RATIO: NO CC`). LAB composes under learn's frame; the frame forwards
 nothing to it.
 
 **EDIT + SAVE** (EDIT held first, as the help card teaches) opens the **name page**, a mode of
@@ -822,23 +831,30 @@ control cancels the question). The toast is the keep's. **HOME** leaves the page
 **EDIT tapped alone** compares (A/B): on an edited sound the edit (**B**) is put aside and the
 sound as kept or loaded (**A**, the `*` gone) plays, the header showing `A`; the next tap plays B
 again (`B`), and so on. It acts when EDIT is let go, and only if nothing else was pressed or
-turned while it was down (the note keys do not count, so a note can be played while it is held):
-EDIT + a knob, LFO, ARP, SCL, SAVE or PRESETS are combinations and never compare, and EDIT keeps
-its meaning everywhere else. On a sound that is its base it toasts `NOTHING TO COMPARE`. A card
+turned while it was down: EDIT + a knob, LFO, ARP, SCL, SAVE or PRESETS are combinations and
+never compare, and EDIT keeps its meaning everywhere else. On a sound that is its base it toasts
+`NOTHING TO COMPARE`.
+
+**EDIT held + the note keys peek at A:** a key pressed while EDIT is down plays the sound as kept
+or loaded (A) for as long as EDIT is held, the header showing `A` outlined (not reversed, as
+comparing shows it); letting EDIT go gives the edit (B) back, and compares nothing. While A plays
+already (comparing), a peek keeps it. Any other control used during a peek gives B back first
+and then acts on B, so nothing of A is edited by accident. A peek is no undo step, and on a sound
+that is its base it plays the sound as it is. A card
 or the choice turned while A plays makes A the edit: comparing ends there, and B's difference
 from it is one undo step (below), so B is not lost. Comparing also ends when another sound loads
 (PRESETS, a program change).
 
 **EDIT + LFO** undoes, sixteen steps back (`UNDO (3)`: the steps left; `NOTHING TO UNDO` when
-none are). A step is a card's run of turns (until another control is used: one detent or twenty,
+none are), whichever finger lands first (LFO first shows MOD on the way, which is harmless). A step is a card's run of turns (until another control is used: one detent or twenty,
 one step), a run of ALGORITHM (ENVELOPE's, the envelope mode, too), **EDIT + PRESETS** (the revert
 to the sound as kept or loaded) and A becoming the edit. The seventeenth step drops the oldest.
 The steps last across HOME and back; another sound loading forgets them (undoing past a load
 would mix two sounds). There is no redo. While A plays, EDIT + LFO gives B back. The steps share
-48 bytes, so sixteen card turns fit, but a roll takes about a dozen: after rolls fewer steps are
+52 bytes, so sixteen card turns fit, but a roll takes about a dozen: after rolls fewer steps are
 kept.
 
-**EDIT + ARP** varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
+**EDIT + ARP** (whichever lands first) varies the page a little, as STEP's MUTATE: each card the page uses moves 1 to 3
 detents either way, and one time in four ALGORITHM's choice a step (not ENVELOPE's: the envelope
 mode is every sound's); on FX with the slot off, the choice. **EDIT + SCL** (whichever lands first) rolls the voice as
 DICE does (the waveform with its ring or sync, the envelope, the cutoff, resonance, mode and
@@ -995,7 +1011,8 @@ release); while it is on a badge at 2× under LIVE's band says so, readable at a
 - **MIDI:** notes held over MIDI arpeggiate as the keys do, with them; up to eight notes held
   (a ninth drops the oldest). CC 27 switches it (on from 64), CC 28 sets the rate (0..127 over
   the nine rates), CC 29 the order and CC 30 the span (2 octaves from 64): [midi.md](midi.md),
-  Chord arpeggio. MIDI out does not send them.
+  Chord arpeggio. The rate is a parameter of the map (NRPN 0/9: MIDI learn can move it to
+  another CC, and MIDI out sends it); the other three are not, and MIDI out does not send them.
 
 ## Effect slots
 

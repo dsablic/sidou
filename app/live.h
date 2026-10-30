@@ -90,6 +90,11 @@ extern "C" {
 #define LIVE_TUNE_CENTS 50
 /* LIVE_PARAM_PWM_RATE's largest value: 12.75 Hz. */
 #define LIVE_PWM_RATE_MAX 255u
+/* The filter LFO (live.filter_lfo): its depth at most, K1's cutoff walk's detents each way
+ * (live_cutoff_steps), at the PWM's rate. */
+#define LIVE_FILTER_LFO_MAX 32u
+/* The macro links (live.reso_link, live.pwm_link): -LIVE_LINK_MAX..LIVE_LINK_MAX. */
+#define LIVE_LINK_MAX 8
 
 /* Pitch offsets are in 1/8192 semitone (Q13): a 14-bit pitch bend times the range in
  * semitones is exact at every range. */
@@ -123,12 +128,14 @@ extern "C" {
 #define LIVE_CC_SLOT_LAST 116u
 /* The chord arpeggio (live_arp_set), in General MIDI's undefined block 27..31: on/off (off
  * below 64), the rate (the value scaled over LIVE_ARP_RATES), the order (over the four) and the
- * span (1 octave below 64, 2 from 64). Not parameters of the map: no NRPN, and MIDI out does not
- * send them. */
+ * span (1 octave below 64, 2 from 64). The rate is the map's (LIVE_PARAM_ARP_RATE: an NRPN, MIDI
+ * learn and MIDI out reach it); the other three are live_cc's alone, no parameters. */
 #define LIVE_CC_ARP 27u
 #define LIVE_CC_ARP_RATE 28u
 #define LIVE_CC_ARP_ORDER 29u
 #define LIVE_CC_ARP_SPAN 30u
+/* The filter LFO's depth (LIVE_PARAM_FILTER_LFO), the last of the block 20..31. */
+#define LIVE_CC_FILTER_LFO 31u
 #define LIVE_CC_ALL_SOUND_OFF 120u
 #define LIVE_CC_RESET_ALL 121u
 #define LIVE_CC_ALL_NOTES_OFF 123u
@@ -388,6 +395,8 @@ typedef struct {
     uint8_t valid;
     uint16_t pwm_depth, pwm_rate; /* the pulse-width LFO's, as live's */
     int8_t tune;                  /* the fine tune, cents */
+    uint8_t filter_lfo;           /* the filter LFO's depth, as live's */
+    int8_t reso_link, pwm_link;   /* the macro links, as live's */
 } live_edit;
 
 /* The whole instrument; fields are read-only for callers (the UI shows them). */
@@ -544,6 +553,15 @@ typedef struct {
     /* The sounds loaded so far (load_preset counts them; wraps): LAB ends its A/B and its undo
      * history when another sound loads (app/lab_view.h). Not saved. */
     uint8_t loads;
+    /* The sound's own since 1.1 (lab_sound.h's last bytes): the filter LFO's depth, 0 (off) ..
+     * LIVE_FILTER_LFO_MAX K1 detents each way at the PWM's rate; the macro links,
+     * -LIVE_LINK_MAX..LIVE_LINK_MAX (0 none): the resonance following the cutoff, the PWM's depth
+     * following the width. */
+    uint8_t filter_lfo;
+    int8_t reso_link;
+    int8_t pwm_link;
+    /* The resonance last written (live_resonance_effective's, RESO LINK's term in it). */
+    uint8_t res_out;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -606,6 +624,17 @@ typedef enum {
     LIVE_PARAM_PWM_DEPTH = LIVE_PARAM_EXPERT + SID_EXPERT_COUNT,
     LIVE_PARAM_PWM_RATE,
     LIVE_PARAM_TUNE,
+    /* 1.1's: the filter LFO's depth, 0..LIVE_FILTER_LFO_MAX K1 detents each way, at the PWM's
+     * rate (live.filter_lfo). */
+    LIVE_PARAM_FILTER_LFO,
+    /* The chord arpeggio's rate, 0..LIVE_ARP_RATES - 1 (live_arp_set's LIVE_ARP_RATE): CC 28's
+     * row, so learn reaches it. */
+    LIVE_PARAM_ARP_RATE,
+    /* The macro links (live.reso_link, live.pwm_link), 0..2 LIVE_LINK_MAX for -LIVE_LINK_MAX..
+     * LIVE_LINK_MAX (LIVE_LINK_MAX: none): the resonance following the cutoff, the PWM's depth
+     * following the width. 63 is the last parameter midi_out's 64-bit PRESET_LOADS has room for. */
+    LIVE_PARAM_RESO_LINK,
+    LIVE_PARAM_PWM_LINK,
     LIVE_PARAM_COUNT
 } live_param;
 
@@ -622,7 +651,7 @@ typedef enum {
 #define LIVE_COLD
 #endif
 #define LIVE_PARAM_EXPERT_END (LIVE_PARAM_EXPERT + SID_EXPERT_COUNT)
-/* The parameters past the experts: LIVE_PARAM_PWM_DEPTH .. LIVE_PARAM_TUNE. */
+/* The parameters past the experts: LIVE_PARAM_PWM_DEPTH .. LIVE_PARAM_COUNT - 1. */
 #define LIVE_PARAM_TAIL (LIVE_PARAM_COUNT - LIVE_PARAM_EXPERT_END)
 /* LIVE_PARAM_PWM_RATE's value (0..LIVE_PWM_RATE_MAX, 0.05 Hz) as the LFO's phase step a tick,
  * round(rate * 65536 * 0.05 / LIVE_TICK_HZ), and a phase step back as the nearest rate. */
@@ -666,6 +695,20 @@ void live_all_notes_off(live* l);
  * the octave may change while the key is held. */
 uint8_t live_key_note(const live* l, uint8_t base_note);
 void live_knob(live* l, live_knob_id knob, int32_t delta);
+/* The place on K1's walk of cutoff c (0..LIVE_CUTOFF_MAX) on the chip's model: the last entry of
+ * live_cutoff_steps at or below it (0 below the first). */
+uint32_t live_cutoff_place(const live* l, uint32_t c);
+/* The macro links' terms (live.reso_link, live.pwm_link; reversible: the parameters stay): the
+ * resonance written, the parameter plus reso_link x (32 - the place of the cutoff written on K1's
+ * walk) / 8, clamped to 0..15 (positive opens it as the cutoff closes; negative, the squelch, as
+ * it opens); and the PWM's depth, the parameter plus pwm_link x the width's distance from 2048
+ * / 8, clamped to 0..LIVE_PWM_DEPTH_MAX. They act wherever the cutoff or the width move (K1, K3,
+ * LAB, CC 74, the wheel, the filter LFO). */
+uint32_t live_resonance_effective(const live* l);
+uint32_t live_pwm_depth_effective(const live* l);
+/* RESO LINK's resonance written when the cutoff moved it: live_tick's, after the cutoff (the input
+ * path's K1 and CC 74 leave it to the tick, 10 ms at most), and LAB's after a turn of its own. */
+void live_links_update(live* l);
 /* What K3 turns now (a live_tone_kind): RATIO on a mono-sync preset, else PULSE while the waveform
  * has the pulse bit, else DECAY. */
 uint32_t live_tone(const live* l);
@@ -687,6 +730,8 @@ void live_recall_preset(live* l, uint8_t q);
  * slots included; a bend range that RPN 0 set does not count). Never on DICE, whose every turn is
  * a new sound. */
 uint32_t live_preset_edited(const live* l);
+/* live_preset_edited with the sound already packed (live_sound_get's now). */
+uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]);
 /* The current sound's name (live.base_name) into buf (at least LIVE_PRESET_NAME_CHARS bytes), then
  * `*` while live_preset_edited; DICE's with its roll's number. */
 #define LIVE_PRESET_NAME_CHARS 12u

@@ -539,6 +539,73 @@ fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
     assert_eq!(u.read(5), Some(("NOW".to_owned(), s[2])));
 }
 
+/// 1.0's file (sounds of 45 bytes, docs/reference/sound-format.md "at least 45, a missing tail
+/// is the defaults"): every slot reads with the fields 1.1 appended at their defaults (the filter
+/// LFO off, no links), and a keep rewrites the others with the defaults appended.
+#[test]
+fn a_1_0_file_reads_with_the_new_fields_at_their_defaults() {
+    const OLD: usize = LAB_SOUND_BYTES_1_0 as usize;
+    let mut s = sounds(47, 3);
+    for x in &mut s {
+        x[OLD..].fill(0); // what 1.0 knew: the tail is the defaults
+    }
+    let stride = 1 + LAB_SOUND_NAME as usize + OLD;
+    let mut f = vec![1u8, OLD as u8, USER_SOUNDS as u8];
+    f.resize(HEADER + USER_SOUNDS as usize * stride, 0);
+    for (n, name, x) in [(0usize, "OLD A", s[0]), (15, "OLD LAST", s[1])] {
+        let at = HEADER + n * stride;
+        f[at] = 1;
+        f[at + 1..at + 1 + name.len()].copy_from_slice(name.as_bytes());
+        f[at + 13..at + 13 + OLD].copy_from_slice(&x[..OLD]);
+    }
+    let mut st = fresh(5, 256);
+    put_file(&mut st, STORE_FILE_SOUNDS, &f);
+    let mut u = Unit::new(st);
+    u.boot();
+    assert_eq!(u.rig.live.sounds_valid, 1 | 1 << 15);
+    assert_eq!(u.read(0), Some(("OLD A".to_owned(), s[0])));
+    assert_eq!(
+        u.read(15),
+        Some(("OLD LAST".to_owned(), s[1])),
+        "the file's last slot"
+    );
+    let mut new = s[2];
+    new[LAB_SOUND_FILTER_LFO as usize] = 9;
+    new[LAB_SOUND_RESO_LINK as usize] = -3i8 as u8;
+    u.keep(4, "NEW", &new);
+    let u = u.power_cycle();
+    assert_eq!(u.rig.live.sounds_valid, 1 | 1 << 4 | 1 << 15);
+    assert_eq!(u.read(0), Some(("OLD A".to_owned(), s[0])));
+    assert_eq!(u.read(4), Some(("NEW".to_owned(), new)));
+    assert_eq!(u.read(15), Some(("OLD LAST".to_owned(), s[1])));
+    // 1.0's unsaved edit (45 sound bytes): applied, the new fields at their defaults.
+    let mut u = u;
+    let mut on = u.sound();
+    on[LAB_SOUND_FILTER_LFO as usize] = 20;
+    on[LAB_SOUND_PWM_LINK as usize] = 5;
+    u.apply(&on);
+    let mut rec = vec![1u8, user_sound_preset_byte_of(&u), 1];
+    rec.extend_from_slice(b"SAW LEAD\0\0\0\0");
+    rec.push(OLD as u8);
+    rec.extend_from_slice(&s[0][..OLD]);
+    assert_eq!(
+        unsafe { user_sound_edit_apply(&mut *u.rig.live, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(u.sound(), s[0], "the tail at its defaults");
+    // fewer than 45 is not a sound
+    rec[15] = OLD as u8 - 1;
+    rec.pop();
+    assert_eq!(
+        unsafe { user_sound_edit_apply(&mut *u.rig.live, rec.as_ptr(), rec.len() as u32) },
+        0
+    );
+}
+
+fn user_sound_preset_byte_of(u: &Unit) -> u8 {
+    unsafe { user_sound_preset_byte(&*u.rig.live) }
+}
+
 #[test]
 fn a_bad_slot_reads_as_empty() {
     let s = sounds(43, 2);

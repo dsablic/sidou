@@ -7,7 +7,7 @@
 #include <string.h>
 
 _Static_assert(LIVE_PARAM_EXPERT == SETTINGS_PARAMS_V1 &&
-                   LIVE_PARAM_COUNT == LIVE_PARAM_EXPERT_END + SETTINGS_PARAMS_V8,
+                   LIVE_PARAM_COUNT == LIVE_PARAM_EXPERT_END + SETTINGS_PARAMS_V9,
                "a new live parameter: append it to the record in a new schema version");
 _Static_assert(LIVE_PARAM_EXPERT_END - LIVE_PARAM_EXPERT == SID_EXPERT_COUNT, "the expert parameter range");
 _Static_assert(SID_EXPERT_COUNT <= UINT8_MAX, "the expert count fits one byte");
@@ -84,7 +84,7 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     }
     out[n++] = l->spread;
     out[n++] = s->sid_model;
-    out[n++] = SETTINGS_PARAMS_V8;
+    out[n++] = SETTINGS_PARAMS_V9;
     for (uint32_t p = LIVE_PARAM_EXPERT_END; p < LIVE_PARAM_COUNT; p++) {
         out[n++] = s->ml ? midi_learn_cc_of(s->ml, p) : (uint8_t)MIDI_MAP_NO_CC;
     }
@@ -115,7 +115,8 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             return 0;
         }
     }
-    /* Schema 8: the parameters past the experts, a count and each one's learned CC. */
+    /* Schema 8: the parameters past the experts, a count and each one's learned CC (schema 9 counts
+     * 1.1's too: the count is the record's). */
     uint32_t tail_at = SETTINGS_V4_BYTES + 3u + 2u * experts, tail = 0;
     if (rec[0] >= 8u) {
         if (len < tail_at + 1u || len < tail_at + 1u + rec[tail_at]) {
@@ -185,7 +186,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         }
     }
     l->expert_version += (uint32_t)expert_changed;
-    for (uint32_t i = 0; s->ml && i < tail && i < SETTINGS_PARAMS_V8; i++) {
+    for (uint32_t i = 0; s->ml && i < tail && i < SETTINGS_PARAMS_V9; i++) {
         uint8_t cc = rec[tail_at + 1u + i];
         if (cc != MIDI_MAP_NO_CC) {
             (void)midi_learn_bind(s->ml, cc, LIVE_PARAM_EXPERT_END + i);
@@ -337,8 +338,8 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         if (s->asked) {
             /* its own check follows */
         } else if ((uint8_t)s->st->errors != s->errors) {
-            s->saved = ~s->saved;
-            s->edit_saved = ~s->edit_saved;
+            s->saved = ~s->seen; /* unsaved, whatever it was: an inversion of one already unsaved would mark it saved */
+            s->edit_saved = ~s->edit_seen;
             retry_later(s, now_ms);
         } else {
             s->tries = 0;
@@ -367,7 +368,7 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
          * write is undecided then): not saved, and the debounce writes it again. */
         if (s->st && (uint8_t)s->st->errors != s->errors) {
             s->result = SETTINGS_FAILED;
-            s->saved = ~s->saved;
+            s->saved = ~s->seen; /* unsaved, whatever it was: an inversion of one already unsaved would mark it saved */
             s->changed_at = now_ms;
         } else {
             s->result = s->forcing ? SETTINGS_SAVED_GAPS : SETTINGS_SAVED;

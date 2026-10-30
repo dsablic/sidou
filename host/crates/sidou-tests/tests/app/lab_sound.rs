@@ -110,6 +110,10 @@ pub(crate) fn random_sound(r: &mut Xs) -> Sound {
             s[at + f] = r.below(LIVE_SLOT_MAX + 1) as u8;
         }
     }
+    s[LAB_SOUND_FILTER_LFO as usize] = r.below(LIVE_FILTER_LFO_MAX + 1) as u8;
+    for f in [LAB_SOUND_RESO_LINK, LAB_SOUND_PWM_LINK] {
+        s[f as usize] = (r.below(2 * LIVE_LINK_MAX + 1) as i32 - LIVE_LINK_MAX as i32) as i8 as u8;
+    }
     assert!(valid(&s), "{s:?}");
     s
 }
@@ -201,7 +205,15 @@ fn the_base_is_the_preset_as_loaded() {
             b[LAB_SOUND_ARP as usize..LAB_SOUND_SLOTS as usize],
             [0, LIVE_ARP_RATE_DEFAULT as u8, LIVE_ARP_UP as u8, 1]
         );
-        assert_eq!(&b[LAB_SOUND_SLOTS as usize..], slots.as_flattened());
+        assert_eq!(
+            &b[LAB_SOUND_SLOTS as usize..LAB_SOUND_BYTES_1_0 as usize],
+            slots.as_flattened()
+        );
+        assert_eq!(
+            b[LAB_SOUND_BYTES_1_0 as usize..],
+            [0, 0, 0],
+            "no filter LFO, no links"
+        );
         assert_eq!(b, sound_of(&rig), "loaded, so not edited");
         assert!(!edited(&rig));
         assert!(valid(&b));
@@ -449,6 +461,15 @@ fn an_invalid_sound_is_refused() {
         assert!(!valid(&s), "{name} is refused");
     };
     bad("the gate", &|s| s[LAB_SOUND_CONTROL as usize] |= 0x01);
+    bad("filter LFO", &|s| {
+        s[LAB_SOUND_FILTER_LFO as usize] = LIVE_FILTER_LFO_MAX as u8 + 1
+    });
+    bad("reso link up", &|s| {
+        s[LAB_SOUND_RESO_LINK as usize] = LIVE_LINK_MAX as u8 + 1
+    });
+    bad("pwm link down", &|s| {
+        s[LAB_SOUND_PWM_LINK as usize] = (-(LIVE_LINK_MAX as i8) - 1) as u8
+    });
     bad("the test bit", &|s| s[LAB_SOUND_CONTROL as usize] |= 0x08);
     bad("pulse width", &|s| put16(s, LAB_SOUND_PULSE, 4096));
     bad("cutoff", &|s| put16(s, LAB_SOUND_CUTOFF, 2048));

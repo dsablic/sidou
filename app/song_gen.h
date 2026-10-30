@@ -17,7 +17,8 @@
  * effect slot (as everywhere) at its release or as soon as another control is used. While the
  * chord is held K1-K4 set the density, the range, the selected lane's scale and the rhythm, a
  * note key the lane's root; a knob turned or another button pressed spoils the roll at SCL's
- * release.
+ * release. EDIT + ARP is MUTATE whichever lands first too: a view holds ARP's lone action back
+ * (song_gen.arp_alone) while EDIT may still arrive.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_SONG_GEN_H
@@ -53,6 +54,10 @@ typedef struct {
     uint8_t root[SONG_GEN_LANES]; /* each lane's note, 0..95 (C-3, 36, by default) */
     const uint8_t* gate;          /* STEP's lanes' gate (bit v legato), NULL: staccato */
     uint8_t scl_down, scl_spoiled;
+    /* ARP pressed alone and still down, its lone action held back (STEP's gate, TRACKER's key
+     * off with REC on): EDIT pressed now is MUTATE, whichever finger lands first. The view does
+     * the lone action at ARP's release or as soon as another control is used. */
+    uint8_t arp_alone;
     /* The run: its kind, its pattern and rows, the lane, the next row (or MUTATE's count), the
      * lane's instrument and gate, whether it is the song's drums, DICE's settings as it started,
      * the sweep's direction, the seed its random is made from. */
@@ -83,7 +88,7 @@ void song_gen_start(struct song_view* sv, screen* s, uint32_t kind, uint32_t pat
 int song_gen_busy(const struct song_view* sv);
 /* The run's next write, once the editor is free: one a call. */
 void song_gen_drain(struct song_view* sv, screen* s);
-/* The run and the chord stop (the view is left). */
+/* The run and the chords stop (the view is left). */
 void song_gen_stop(struct song_view* sv);
 
 /* A view's button press: the chord's part. free: the view may roll now (no step held, not

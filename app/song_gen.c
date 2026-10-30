@@ -362,7 +362,7 @@ void song_gen_drain(song_view* sv, screen* s) {
 
 void song_gen_stop(song_view* sv) {
     sv->gen.run = 0u;
-    sv->gen.scl_down = sv->gen.scl_spoiled = 0u;
+    sv->gen.scl_down = sv->gen.scl_spoiled = sv->gen.arp_alone = 0u;
 }
 
 /* ---- the chord ---- */

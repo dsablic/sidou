@@ -245,7 +245,9 @@ journey tour | Screens for the readability check | tour
   step lab-filter | LAB, FILTER | - | turn SELECT 1; wait 600 | change
   step lab-mod | LAB, MOD | - | press LFO; wait 600 | change
   step lab-fx | LAB, FX | - | press FX; wait 600 | change
-  step lab-osc | LAB, OSC | - | turn SELECT -4; wait 600 | change
+  step lab-macro | LAB, MACRO | - | turn SELECT 1; wait 600 | change; text NO LINKS
+  step lab-macro-link | LAB, a link turned | - | turn K1 3; wait 400 | change; text LINKED
+  step lab-osc | LAB, OSC | - | turn SELECT -5; wait 600 | change
   step lab-keep | LAB, a sound kept | - | press SAVE; wait 1500 | toast
   step lab-name | LAB, the name page | - | holdpress EDIT SAVE; wait 600 | change
   step lab-name-back | Back | - | press HOME; wait 600 | view lab

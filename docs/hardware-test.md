@@ -2387,8 +2387,8 @@ their goldens and budgets, the store, undo and the rolls) is named under each it
 only what it cannot see: the LCD at arm's length, the ear, the flash across a real power cut and
 the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold.
 
-- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the five pages** (OSC,
-  ENVELOPE, FILTER, MOD, FX); HOME goes back to LIVE.
+- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the six pages** (OSC,
+  ENVELOPE, FILTER, MOD, FX, MACRO); HOME goes back to LIVE.
   *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`,
   `emu-gate/tests/lab.rs::lab_opens_from_the_menu_and_home_goes_back_to_live`.
   *Device-only:* the pages' drawings readable at arm's length on the LCD, the lit card visible in
@@ -2467,6 +2467,41 @@ under each item. Set up: the build on the unit, a song with a lead on V1 (SIDOU 
   *Device-only:* the audio interrupt's real timing with the song playing (by ear, and STATUS's
   meter).
 
+## 24. LAB 1.1: the filter LFO, ARP RATE, peek and macros
+
+What it decides: whether 1.1's additions to LAB sound and feel right. Set up as section 22.
+
+- [ ] **The filter LFO (FILTER's K4) on a 6581 and on the 8580:** SAW LEAD, K4 up a few detents
+  from off (the rate starts at 1 Hz), a chord held; then K4 to 32 and OSC's PWM HZ to its top.
+  *Emulator:* `sidou-tests/tests/app/live_macro.rs::the_filter_lfo_sweeps_k1s_walk_each_way_at_the_pwm_rate`
+  (the sweep, smooth between the walk's entries), `sidou-tests/tests/app/lab_view.rs::the_filter_lfo_draws_its_band`,
+  `emu-gate/tests/lab.rs::lab_filter_mod_and_fx_draw_within_their_budgets` (the page with the LFO
+  sweeping), `emu-gate/tests/midi.rs::a_filter_cc_flood_fits_the_isr_overhead_at_any_age`.
+  *Device-only:* by ear: no zipper or stepping on the 6581's filter at slow rates and deep sweeps
+  (the cutoff moves up to 100 times a second, 1/256 of a detent at a time), and whether 32
+  detents each way is a useful range.
+- [ ] **ARP RATE on MOD's K4:** ARP on with ALGORITHM, a chord held, K4 through the rates; with a
+  MIDI clock coming in, the last three follow it.
+  *Emulator:* `sidou-tests/tests/app/lab_view.rs::mod_k4_is_the_arp_rate_dark_while_arp_is_off`,
+  `sidou-tests/tests/app/live_macro.rs::the_arp_rate_is_a_parameter_on_cc_28s_row`.
+  *Device-only:* none beyond section 22's (the card read at arm's length).
+- [ ] **Hold-to-peek:** an edited sound, EDIT held, a few notes played: A while held, B back on
+  letting go; the header's outlined `A`.
+  *Emulator:* `emu-gate/tests/lab.rs::edit_held_and_a_key_peeks_at_a` (heard, its input within
+  the poll allowance), `sidou-tests/tests/app/lab_view.rs::a_note_while_edit_is_down_peeks_at_a`,
+  `sidou-tests/tests/app/lab_view.rs::a_control_during_a_peek_acts_on_b`.
+  *Device-only:* the feel: whether the switch at the first key and back at EDIT's release is
+  quick enough to compare by ear, and whether the outlined `A` reads apart from the reversed one.
+- [ ] **The macro links (MACRO):** RES LNK at `+8` then `-8`, a chord held while K1 sweeps on LIVE;
+  PWM LNK at `+6` on PWM BASS while K3 (the width) turns.
+  *Emulator:* `sidou-tests/tests/app/live_macro.rs::reso_link_makes_the_resonance_follow_the_cutoff`,
+  `sidou-tests/tests/app/live_macro.rs::pwm_link_makes_the_pwm_depth_follow_the_width`,
+  `sidou-tests/tests/app/lab_view.rs::macro_turns_the_links_and_k3_k4_are_dark`,
+  `sidou-tests/tests/app/lab_view.rs::a_link_lights_the_card_it_moves`,
+  `emu-gate/tests/lab.rs::lab_filter_mod_and_fx_draw_within_their_budgets` (MACRO's frames).
+  *Device-only:* by ear: whether the link's range is musical (the squelch, the resonance never
+  whistling where it should not), and the graphs readable at arm's length.
+
 Notes:
 
 ## Result
@@ -2498,3 +2533,4 @@ Notes:
 | 21 .sid playback and the 6502's meter | | |
 | 22 LAB | | |
 | 23 Auditions before writing | | |
+| 24 LAB 1.1 | | |

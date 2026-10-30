@@ -174,16 +174,20 @@ static const char* const LAB_ENVELOPE_LINES[] = {
     "K1\0ATTACK", "K2\0DECAY", "K3\0SUSTAIN", "K4\0RELEASE",
     "ALG\0ENV MODE", LAB_TAIL_A, LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
 static const char* const LAB_FILTER_LINES[] = {
-    "K1\0CUTOFF", "K2\0RESONANCE", "K3\0VOICES", "K4\0UNUSED",
+    "K1\0CUTOFF", "K2\0RESONANCE", "K3\0VOICES", "K4\0FILTER LFO",
     "ALG\0FILTER", LAB_TAIL_A,      LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
 static const char* const LAB_MOD_LINES[] = {
-    "K1\0VIBRATO HZ", "K2\0VIB DEPTH", "K3\0VIB DELAY", "K4\0VELOCITY",
+    "K1\0VIBRATO HZ", "K2\0VIB DEPTH", "K3\0VIB DELAY", "K4\0ARP RATE",
     "ALG\0ARP",       LAB_TAIL_A,      LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
 /* FX: the selected slot's controls in its algorithm's words; SCL moves the slot (no room left
  * for the learn line). */
 static const char* const LAB_FX_LINES[] = {
     "K1\0\1",       "K2\0\2",  "K3\0\3",    "K4\0\4",
     "ALG\0ALGORITHM", LAB_TAIL_A, LAB_TAIL_B, "SCL\0NEXT SLOT", "HOME\0LIVE"};
+/* MACRO: the links of the sound; K3, K4 and ALGORITHM have none. */
+static const char* const LAB_MACRO_LINES[] = {
+    "K1\0RESO LINK", "K2\0PWM LINK", "K3 K4\0UNUSED", "ALG\0NOTHING",
+    LAB_TAIL_A,       LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
 /* The name page (EDIT + SAVE): the keys type, the three page buttons and K2-K4 do nothing. */
 static const char* const LAB_NAME_LINES[] = {
     "KEYS\0LETTERS", "SELECT\0CURSOR", "ALG\0CHARACTER", "K1\0SLOT",
@@ -220,6 +224,7 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LAB_FILTER] = CARD("LAB FILTER", LAB_FILTER_LINES),
     [HELP_CARD_LAB_MOD] = CARD("LAB MOD", LAB_MOD_LINES),
     [HELP_CARD_LAB_FX] = CARD("LAB FX", LAB_FX_LINES),
+    [HELP_CARD_LAB_MACRO] = CARD("LAB MACRO", LAB_MACRO_LINES),
     [HELP_CARD_LAB_NAME] = CARD("LAB NAME", LAB_NAME_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&

@@ -86,15 +86,14 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
   design first (the LAB design calls it the second step).
 - **Instruments from a `.sid`.** Lift an instrument out of a tune you play. M-L; pairs with
   the song bridge.
-- **LAB: hold-to-peek and macros.** S-M each.
-- **FILTER's K4: a filter LFO.** The user accepted it (2026-10-25) and it is not built: K4 is
-  free and toasts `K4: NOTHING`. A new parameter (`LIVE_PARAM_FILTER_LFO`, the 60th of 64): the
-  PWM LFO's wave also sweeps the cutoff by this much (0..127), at the PWM rate; one term in
-  `cutoff_effective`, 10 bytes of RAM, its map row, the drawing's sweep, the help card. S-M.
-- **MOD's K4: ARP RATE** in the place of the velocity target (the panel's keys send no velocity,
-  so the card does nothing on the go). Needs the arpeggio's rate as a parameter (the 61st; CC 28
-  stays) so the card can be learned; the velocity target stays reachable over MIDI (NRPN) and on
-  STATUS. S-M.
+- ~~**LAB: hold-to-peek and macros.**~~ Done (1.1): EDIT held while you play peeks at A; the
+  MACRO page's RESO and PWM links ([LAB](manual/lab.md)).
+- ~~**FILTER's K4: a filter LFO.**~~ Done (1.1): `LIVE_PARAM_FILTER_LFO`, 0..32 of K1's detents
+  each way at the PWM rate, CC 31.
+- ~~**MOD's K4: ARP RATE**~~ Done (1.1): `LIVE_PARAM_ARP_RATE`, CC 28 through its map row; the
+  velocity target stays on NRPN 6/1 (STATUS does not show it).
+- **LAB, press order:** EDIT + ARP and EDIT + LFO whichever finger lands first, in LAB and STEP.
+  Done (1.1).
 
 **Songs**
 

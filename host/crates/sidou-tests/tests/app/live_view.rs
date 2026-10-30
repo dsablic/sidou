@@ -366,7 +366,7 @@ fn every_knob_value_fits_its_column() {
     // K2 holds 2 characters, K3 3 in its 7 cells (the pulse width as one side's percent, the
     // sync ratio's semitones, the decay), K4 the release 0..15.
     for r in 0..=LIVE_RESONANCE_MAX {
-        ui.rig.live.resonance = r as u8;
+        unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_RESONANCE, r) };
         assert_eq!(text(&ui, 1), r.to_string());
     }
     ui.rig.set_preset(1); // PWM BASS: K3 is the pulse width, either side of the square

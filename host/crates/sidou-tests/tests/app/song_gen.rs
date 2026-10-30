@@ -163,6 +163,92 @@ fn tracker_mutates_with_rec_on_and_rolls_nothing_while_recording() {
     assert_eq!(pattern(&s, 0), before, "nothing rolled while recording");
 }
 
+/// EDIT + ARP is MUTATE in TRACKER whichever finger lands first. With REC on and the song
+/// stopped ARP alone writes a key off, so it waits: ARP a few milliseconds before EDIT is the same
+/// MUTATE as EDIT first (a twin session, the same seed), with no key off at the cursor.
+#[test]
+fn trackers_arp_landing_before_edit_is_the_same_mutate_and_no_key_off() {
+    let rec_on = || {
+        let mut s = tracker_on(fixed_song());
+        s.ui.press(PANEL_BTN_REC);
+        settle(&mut s.ui);
+        s.ui.v.song.gen_.seed = 7;
+        s.ui.v.s.now = 1000;
+        s.ui.v.s.frame = 25;
+        s
+    };
+    let mut twin = rec_on();
+    assert_eq!(
+        edit_toast(&mut twin, PANEL_BTN_ARP).as_deref(),
+        Some("MUTATED")
+    );
+    let mut s = rec_on();
+    let before = pattern(&s, 0);
+    s.ui.down(PANEL_BTN_ARP);
+    assert_eq!(pattern(&s, 0), before, "ARP waits for EDIT: no key off yet");
+    s.ui.down(PANEL_BTN_EDIT);
+    assert_eq!(s.ui.toast().as_deref(), Some("MUTATED"));
+    s.ui.up(PANEL_BTN_ARP);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    assert_ne!(pattern(&s, 0), before, "mutated");
+    assert_eq!(
+        pattern(&s, 0),
+        pattern(&twin, 0),
+        "the same MUTATE as EDIT first"
+    );
+}
+
+/// ARP alone with REC on still writes its key off at the cursor: when it is let go, as soon as
+/// another control is used while it is down, and at once while REC records (no MUTATE there).
+#[test]
+fn trackers_arp_alone_with_rec_on_writes_the_key_off() {
+    let mut s = tracker_on(fixed_song());
+    s.ui.press(PANEL_BTN_REC);
+    settle(&mut s.ui);
+    let at = |s: &Song, r: usize| pattern(s, 0)[r][0];
+    assert_ne!(at(&s, 0), GT2_KEYOFF as u8);
+    s.ui.down(PANEL_BTN_ARP);
+    settle(&mut s.ui);
+    assert_ne!(at(&s, 0), GT2_KEYOFF as u8, "not at its press");
+    s.ui.up(PANEL_BTN_ARP);
+    settle(&mut s.ui);
+    assert_eq!(at(&s, 0), GT2_KEYOFF as u8, "at its release");
+    // A knob while ARP is down: the key off first, then the knob (SELECT: the next row).
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    settle(&mut s.ui);
+    let before = pattern(&s, 0);
+    assert_ne!(before[1][0], GT2_KEYOFF as u8);
+    s.ui.down(PANEL_BTN_ARP);
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    settle(&mut s.ui);
+    assert_eq!(
+        at(&s, 1),
+        GT2_KEYOFF as u8,
+        "the key off before the knob moved the cursor"
+    );
+    assert_eq!(s.ui.v.song.row, 2);
+    s.ui.down(PANEL_BTN_EDIT); // EDIT after the knob: no chord any more
+    s.ui.up(PANEL_BTN_ARP);
+    s.ui.up(PANEL_BTN_EDIT);
+    settle(&mut s.ui);
+    let after = pattern(&s, 0);
+    assert_eq!(after[2..], before[2..], "no MUTATE");
+    // While REC records: the key off at ARP's press.
+    let st = &mut s.f.st;
+    st.state = SONG_T_PLAYING as u8;
+    st.order_pos = [0, 0, 0];
+    st.row = [2, 0, 0];
+    s.ui.frame();
+    assert!(unsafe { song_view_recording(&s.ui.v.song) } != 0);
+    let row = s.ui.v.song.row as usize;
+    s.ui.down(PANEL_BTN_ARP);
+    settle(&mut s.ui);
+    assert_eq!(at(&s, row), GT2_KEYOFF as u8, "at once while recording");
+    assert_eq!(s.ui.v.song.gen_.arp_alone, 0);
+    s.ui.up(PANEL_BTN_ARP);
+}
+
 #[test]
 fn trackers_frame_shows_the_settings_and_its_knobs_set_them_without_a_roll() {
     let mut s = tracker_on(fixed_song());
