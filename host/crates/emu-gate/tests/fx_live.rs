@@ -157,7 +157,9 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     m.key(EDIT, false);
     m.run_ms(200);
     let (wet, wet_r) = record_lr(&mut m, 300);
-    // Clipping squares the wave off: the crest factor (peak / rms) falls, the level rises.
+    // Clipping squares the wave off: the crest factor (peak / rms) falls and the harmonics come
+    // up, at about the level it had (the drive's makeup; before the slot lifted its input to
+    // the algorithms' level, the drive was mostly a volume knob: rms 890 -> 3177).
     let crest = |x: &[f32]| f64::from(peak(x)) / rms(x);
     let (cd, c0, cw) = (crest(&dry), crest(&undriven), crest(&wet));
     println!(
@@ -173,7 +175,14 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     // Against the slot at no drive, so the drive alone counts, whatever the source's level
     // and the tone filter do to the crest factor.
     assert!(cw < 0.8 * c0, "no clipping: crest factor {c0} -> {cw}");
-    assert!(rms(&wet) > 2.0 * rms(&dry), "the drive did not come up");
+    assert!(
+        power_above(&wet, 2000.0) > 2.0 * power_above(&dry, 2000.0),
+        "the drive's harmonics did not come up"
+    );
+    assert!(
+        (rms(&wet) / rms(&dry)).log10().abs() * 20.0 < 6.0,
+        "the drive changed the level more than the sound"
+    );
     // EDIT's LED shows the selected slot is on (the LEDs are multiplexed: lit is above 0).
     m.soc.periph.led_take();
     m.run_ms(50);

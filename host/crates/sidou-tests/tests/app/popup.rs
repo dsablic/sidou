@@ -499,7 +499,10 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
         .to_string_lossy()
         .into_owned();
     let amount = ui.live().slot[0][LIVE_SLOT_AMOUNT as usize];
-    assert_eq!(says(&ui), (format!("DIST {label}"), amount.to_string()));
+    assert_eq!(
+        says(&ui),
+        ("OVERDRIVE".to_owned(), format!("{label} {amount}"))
+    );
     assert_eq!(amount, 12, "a detent is 4");
     ui.up(PANEL_BTN_EDIT);
     // SCL (a button) toasts; the popup is for the knobs.
@@ -577,7 +580,8 @@ fn the_chip_view_highlights_its_knobs_and_shows_its_choice_with_no_popup() {
     ui.down(PANEL_BTN_EDIT);
     ui.turn(PANEL_ENC_K1, 1);
     open(&mut ui);
-    assert!(says(&ui).0.starts_with("DIST"), "{:?}", says(&ui));
+    let drive = ui.live().slot[0][LIVE_SLOT_AMOUNT as usize];
+    assert_eq!(says(&ui), ("TAPE".to_owned(), format!("DRIVE {drive}")));
     ui.up(PANEL_BTN_EDIT);
 }
 
@@ -1016,7 +1020,7 @@ fn a_knob_on_live_highlights_its_label_and_opens_no_popup() {
     master(&mut ui, 700);
     open(&mut ui);
     assert_eq!(says(&ui).0, "VOLUME");
-    // EDIT held is the slot's page on the knob row.
+    // EDIT held is the slot's page on the knob row (and its knobs open the popup: below).
     ui.popup_gone();
     assert_eq!(ui.v.live.edit, 0);
     ui.hold(PANEL_BTN_EDIT, true);
@@ -1025,6 +1029,68 @@ fn a_knob_on_live_highlights_its_label_and_opens_no_popup() {
     ui.hold(PANEL_BTN_EDIT, false);
     ui.frame();
     assert_eq!(ui.v.live.edit, 0);
+}
+
+/// EDIT held + K1..K4 on LIVE: the selected slot's control in the large popup, the effect's name
+/// over the control's and its value, with a bar; the knob row's label is not lit instead.
+#[test]
+fn edit_and_a_knob_on_live_open_the_effects_popup() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    unsafe { live_slot_pick(&mut *ui.rig.live, 0, SID_DIST_OVERDRIVE) };
+    let names = ["DRIVE", "TONE", "BIAS", "MIX"];
+    for k in 0..4u32 {
+        let mut buf = [0 as std::ffi::c_char; CHIP_VIEW_LABEL as usize];
+        unsafe {
+            chip_view_label(
+                0,
+                SID_DIST_OVERDRIVE,
+                LIVE_SLOT_AMOUNT + k,
+                buf.as_mut_ptr(),
+            )
+        };
+        let label = unsafe { CStr::from_ptr(buf.as_ptr()) }
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(label, names[k as usize]);
+        ui.down(PANEL_BTN_EDIT);
+        ui.turn(PANEL_ENC_K1 + k, -2);
+        open(&mut ui);
+        let v = ui.live().slot[0][(LIVE_SLOT_AMOUNT + k) as usize];
+        assert_eq!(
+            says(&ui),
+            ("OVERDRIVE".to_owned(), format!("{label} {v}")),
+            "K{}",
+            k + 1
+        );
+        assert_eq!(ui.v.live.hl, 0, "the popup says it: no label lit under it");
+        // the bar: the value out of 127
+        assert_eq!(ui.v.popup.has_bar, 1);
+        assert_eq!(
+            u32::from(ui.v.popup.bar),
+            u32::from(v) * SCREEN_POPUP_BAR_CELLS * 8 / 127,
+            "K{}",
+            k + 1
+        );
+        ui.up(PANEL_BTN_EDIT);
+        ui.popup_gone();
+    }
+    // A slot that is off: the slot by name, OFF, and the control's generic name.
+    unsafe { live_fx_select(&mut *ui.rig.live, 1) };
+    ui.down(PANEL_BTN_EDIT);
+    ui.turn(PANEL_ENC_K1, 1);
+    open(&mut ui);
+    let (name, value) = says(&ui);
+    assert_eq!(name, "MOD OFF");
+    assert!(value.starts_with("AMT "), "{value}");
+    ui.up(PANEL_BTN_EDIT);
+    // Without EDIT, a knob on LIVE still lights its label and opens no popup.
+    ui.popup_gone();
+    ui.turn(PANEL_ENC_K1, 1);
+    for _ in 0..4 {
+        ui.frame();
+    }
+    assert!(!shown(&ui));
 }
 
 #[test]
