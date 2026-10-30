@@ -106,7 +106,7 @@ SECTIONS
         *(.text.song_ctl_chip_swapped .text.song_sink .text.song_rewrite .text.song_gate_off)
         *(.text.song_set_gate_reset .text.song_apply .text.song_voices .text.song_handover)
         *(.text.song_push_events)
-        *(.text.song_lock_row .text.song_lock_apply)
+        *(.text.song_lock_row .text.song_lock_apply .text.song_draft .text.song_held)
         *(.text.render_a .text.render_part .text.play_a) /* audio.c: chip A split at the call */
         *(.text.gt2_edit_apply)
         /* A .sid tune (M3 Task 9): psid_ctl's interrupt half (core/psid/psid_ctl_isr.c: the

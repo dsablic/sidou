@@ -39,6 +39,8 @@ pub(crate) struct Fake {
     pub(crate) last_subtune: u32,
     /// The player's calls since the play, as its clock says.
     pub(crate) clock_calls: u32,
+    /// STEP's held steps' locks given to the player (song_transport.held): voice, (param, value).
+    pub(crate) helds: Vec<(u32, Vec<(u8, u16)>)>,
 }
 
 impl Fake {
@@ -90,6 +92,23 @@ unsafe extern "C" fn mute(ctx: *mut c_void, mask: u32) -> i32 {
 }
 unsafe extern "C" fn jam(ctx: *mut c_void, voice: u32, note: u32, instr: u32) -> i32 {
     fake(ctx).cmd(Call::Jam(voice, note, instr))
+}
+unsafe extern "C" fn held(ctx: *mut c_void, voice: u32, locks: *const u8, n: u32) -> i32 {
+    let f = fake(ctx);
+    if f.refuse {
+        return 0;
+    }
+    let b = if n == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(locks, 3 * n as usize) }
+    };
+    let l = b
+        .chunks(3)
+        .map(|c| (c[0], u16::from(c[1]) | u16::from(c[2]) << 8))
+        .collect();
+    f.helds.push((voice, l));
+    1
 }
 unsafe extern "C" fn status(ctx: *mut c_void, out: *mut song_status) {
     let f = fake(ctx);
@@ -170,6 +189,7 @@ impl Song {
             index_swaps: 0,
             last_subtune: 0,
             clock_calls: 0,
+            helds: Vec::new(),
         });
         let ctx: *mut Fake = &mut *f;
         let t = Box::new(song_transport {
@@ -186,6 +206,7 @@ impl Song {
             edit: Some(edit),
             edit_done: Some(edit_done),
             edit_guard: Some(edit_guard),
+            held: Some(held),
             ..Default::default() // M2e's other clock members: none
         });
         unsafe { views_set_song(&mut *ui.v, &*t) };

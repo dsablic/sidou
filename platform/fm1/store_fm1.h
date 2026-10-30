@@ -42,6 +42,14 @@
 #define STORE_HOLD_US 35000u       /* a held operation masks interrupts at most this long */
 #define STORE_HOLD_GAP_MS 10u      /* between held operations: TIMER5 drains the TRS ring */
 #define STORE_FORCE_GAP_MS 100u    /* between a forced save's held erases (store_fm1_force) */
+/* Between two SysEx packets' holds while only the keys sound (no song, no USB recording: then
+ * the write waits for quiet instead, store_fm1.c hold_ready). A build option, chosen by ear
+ * (docs/hardware-test.md): cmake -DSIDOU_SYSEX_GAP_MS=100, 250 (the default) or 500. */
+#ifndef STORE_SYSEX_GAP_MS
+#define STORE_SYSEX_GAP_MS 250u
+#endif
+_Static_assert(STORE_SYSEX_GAP_MS >= 10u && STORE_SYSEX_GAP_MS <= 2000u,
+               "SIDOU_SYSEX_GAP_MS is 10..2000: past SysEx's two-second timeout a sender gives up");
 #define STORE_PROGRAM_GAP_MS 1u    /* between a SysEx write's held programs in one hold */
 #define STORE_QUIET_MS 500u        /* quiet: no key, no MIDI input, the output low, this long */
 

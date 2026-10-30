@@ -91,6 +91,11 @@ typedef struct {
     uint32_t d_tick0;
     uint8_t count[3], lowest[3];
     uint8_t rel_any, rel_hi, abs_any, abs_lo, abs_hi;
+    /* Wavetable rows no table holds yet that a channel plays (song_ctl_draft): xwave_n left
+     * bytes, then from xwave[GT2_DRAFT_ROWS] their right bytes; each derivation reads them as it
+     * reads the rows in use. NULL: none. The caller's, set after gt2_shape_begin. */
+    const uint8_t* xwave;
+    uint8_t xwave_n;
 } gt2_analysis;
 
 /* Refusals (gt2_shape_begin, gt2_shape_step's results). */

@@ -73,9 +73,11 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
   its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
-  the rest. REC records the keys and the filter knobs while the song plays, and parameter locks
-  are on STEP, with a chance for each step. MUTATE, DICE (density, range, scale, rhythm and a
-  root for each lane) and a filter sweep write patterns in STEP and TRACKER.
+  the rest. REC records the keys and the filter knobs while the song plays, each note where you
+  played it against what you heard, and parameter locks are on STEP, with a chance for each step;
+  a held step sounds with its locks. TABLE's ARP helper writes arpeggios as wavetable rows, and the
+  keys play the draft before you save it. MUTATE, DICE (density, range, scale, rhythm and a root
+  for each lane) and a filter sweep write patterns in STEP and TRACKER.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
@@ -163,7 +165,8 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
 - **On the device:** SAVE in a song view stores the song in the FM-1's flash. The menu's SONG
   item loads, creates, saves under a name and deletes songs.
 - **Over USB:** SysEx GET reads a song from the device and PUT writes one to it
-  ([protocol](docs/reference/sysex.md)).
+  ([protocol](docs/reference/sysex.md)); while a song plays, an upload waits for quiet so the
+  music never dips.
 - **The showcase songs:** a fresh install lists only the built-in SIDOU LOOP. The
   [Songs page](https://dsablic.github.io/sidou/songs.html) of the browser demo sends
   CHROME COMET, IRON RITE, NEON HIGHWAY and PAPER LANTERNS ([`assets/songs`](assets/songs/)) to a

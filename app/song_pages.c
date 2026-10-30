@@ -96,8 +96,11 @@ static gt2_err prepare(song_pages* p) {
 }
 
 static void arp_issue(song_pages* p);
+static void arp_hear(song_pages* p);
+static void arp_changed(song_pages* p);
 
 int song_pages_poll(song_pages* p) {
+    arp_hear(p);
     if (!p->pending)
         return 0;
     const song_transport* t = p->transport;
@@ -768,12 +771,43 @@ int song_pages_arp_open(song_pages* p, screen* s) {
     p->arp_cur = 0u;
     p->arp_start = (uint8_t)row;
     p->arp_len = (uint8_t)used;
+    arp_changed(p);
     return 1;
+}
+
+/* The draft to the player: the helper's rows while it is open (on the voice the keys play),
+ * none once it has closed and the rows SAVE sends are written. Sent again until taken. */
+static void arp_hear(song_pages* p) {
+    const song_transport* t = p->sv->t;
+    if (p->arp && p->arp_heard && p->arp_voice != p->sv->voice)
+        p->arp_dirty = 1u;
+    if (!p->arp_dirty || (!p->arp && (p->pending || p->arp_next < p->arp_end)))
+        return;
+    if (!t || !t->draft) {
+        p->arp_dirty = 0u;
+        return;
+    }
+    uint8_t left[SONG_PAGES_ARP_ROWS] = {0}, right[SONG_PAGES_ARP_ROWS] = {0};
+    uint32_t n = p->arp ? song_pages_arp_encode(&p->arp_draft, p->arp_start + 1u, left, right) : 0u;
+    if (p->arp_start + n > GT2_TABLE_ROWS)
+        n = 0u; /* past the table: SAVE says TABLE FULL */
+    if (!t->draft(t->ctx, p->sv->voice, p->arp_start + 1u, n, left, right))
+        return;
+    p->arp_dirty = 0u;
+    p->arp_heard = (uint8_t)(n != 0u);
+    p->arp_voice = p->sv->voice;
+}
+
+static void arp_changed(song_pages* p) {
+    p->arp_dirty = 1u;
+    arp_hear(p);
 }
 
 int song_pages_arp_close(song_pages* p) {
     int open = p->arp;
     p->arp = 0u;
+    if (p->arp_heard)
+        arp_changed(p);
     return open;
 }
 
@@ -806,6 +840,7 @@ void song_pages_arp_save(song_pages* p, screen* s) {
         return; /* the helper stays open */
     }
     p->arp = 0u;
+    arp_changed(p); /* the draft goes once its rows are written */
     screen_toast(s, "ARP SAVED", SCREEN_TOAST_MS);
 }
 
@@ -834,6 +869,7 @@ static int arp_input(song_pages* p, const screen_event* e) {
     } else {
         return 0;
     }
+    arp_changed(p); /* heard at once on the held note */
     return 1;
 }
 
@@ -896,8 +932,10 @@ static void build_head(song_pages* p) {
         small(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
     } else {
         /* which knob turns which column, at 2x beside the name (the columns' colours) */
-        if (p->arp)
+        if (p->arp) {
             big(c, 0u, 0u, "ARP   ", base); /* over the table's name */
+            small(c, 0u, 2u, "HEARING DRAFT", THEME_ATTR(th, hint)); /* the keys play it */
+        }
         big(c, 12u, 0u, "K1", GRID_ATTR(th->knob_text[0], th->bg));
         big(c, 17u, 0u, "K2", GRID_ATTR(th->knob_text[1], th->bg));
     }
@@ -1241,7 +1279,7 @@ static void leave(screen* s, void* state) {
     (void)s;
     song_pages* p = state;
     p->unbuilt = 0u;
-    p->arp = 0u; /* the draft goes with the page */
+    (void)song_pages_arp_close(p); /* the draft goes with the page */
 }
 
 /* A pop does not enter the revealed view, and MIDI learn calls the covered view directly.

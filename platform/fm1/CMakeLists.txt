@@ -35,11 +35,16 @@ set(SIDOU_TEST_DEATH_MS "1000" CACHE STRING "When SIDOU_TEST_DEATH strikes, ms a
 # channel, and NRPNs at full resolution for the cutoff, pulse width and volume instead of CCs.
 set(SIDOU_MIDI_OUT_CHANNEL "1" CACHE STRING "MIDI out channel, 1..16")
 option(SIDOU_MIDI_OUT_NRPN "MIDI out: 14-bit NRPNs for the high-resolution parameters" OFF)
+# The gap between two SysEx packets' audio holds while only the keys sound (store_fm1.h
+# STORE_SYSEX_GAP_MS; a song or a USB recording makes an upload wait for quiet instead): an ear
+# call on the device (docs/hardware-test.md), so variants build with 100, 250 or 500.
+set(SIDOU_SYSEX_GAP_MS "250" CACHE STRING "SysEx upload: ms between holds while the keys sound")
 target_compile_definitions(${t} PRIVATE SIDOU_VERSION="${PROJECT_VERSION}"
     SIDOU_VERSION_MAJOR=${PROJECT_VERSION_MAJOR} SIDOU_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     SIDOU_VERSION_PATCH=${PROJECT_VERSION_PATCH}
     SIDOU_PRODUCT="${SIDOU_PRODUCT}" SIDOU_MIDI_OUT_CHANNEL=${SIDOU_MIDI_OUT_CHANNEL}
-    SIDOU_MIDI_OUT_NRPN=$<BOOL:${SIDOU_MIDI_OUT_NRPN}>)
+    SIDOU_MIDI_OUT_NRPN=$<BOOL:${SIDOU_MIDI_OUT_NRPN}>
+    STORE_SYSEX_GAP_MS=${SIDOU_SYSEX_GAP_MS}u)
 if(SIDOU_TEST_DEATH STREQUAL "hang" OR SIDOU_TEST_DEATH STREQUAL "reboot")
     message(WARNING "SIDOU_TEST_DEATH=${SIDOU_TEST_DEATH}: a checklist build that dies early")
     string(COMPARE EQUAL "${SIDOU_TEST_DEATH}" "reboot" death_reboot)
@@ -98,7 +103,8 @@ endif()
 set(sidou_option_defaults
     "SIDOU_ALL_COMBINED_PROFILES=ON" "SIDOU_ALL_COMBINED_PROFILES_8580=ON"
     "SIDOU_FLASH_SPIKE=OFF" "SIDOU_USB_FIX=ON" "SIDOU_MIDI_OUT_NRPN=OFF"
-    "SIDOU_MIDI_OUT_CHANNEL=1" "SIDOU_TEST_DEATH=" "SIDOU_TEST_DEATH_MS=1000"
+    "SIDOU_MIDI_OUT_CHANNEL=1" "SIDOU_SYSEX_GAP_MS=250" "SIDOU_TEST_DEATH="
+    "SIDOU_TEST_DEATH_MS=1000"
     "SIDOU_PRODUCT=FM-1_900" "CMAKE_BUILD_TYPE=Release")
 set(sidou_options "")
 set(sidou_options_off "")

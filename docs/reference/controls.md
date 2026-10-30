@@ -303,7 +303,7 @@ HELD STEP frame (`HELD STEP 22`).
 
 | Control | Does |
 |---|---|
-| Step key 1-16, pressed and let go | toggles a note at that step on the selected lane: the lane's note (C-3 until PRESETS with a step held changes it) and instrument; off writes a rest. The key also auditions the step's note, as TRACKER's keys do. A key held with a knob turned on it is a lock (below) and toggles nothing |
+| Step key 1-16, pressed and let go | toggles a note at that step on the selected lane: the lane's note (C-3 until PRESETS with a step held changes it) and instrument; off writes a rest. The key also auditions the step's note, as TRACKER's keys do, with the step's cutoff, resonance, filter mode, route and pulse LOCKs (its chance does not apply to an audition; its character LOCKs are the row's, heard when the song plays it). A key held with a knob turned on it is a lock (below) and toggles nothing; the turn is heard at once on the held note, and the locks go when the key is let go |
 | SELECT | selects the lane, V1, V2, V3 and round |
 | ALGORITHM | pages through the pattern; while the song plays the page follows the playing step |
 | PRESETS | the lane's instrument, 01-3F, its name in the popup (`03 KICK`: a NEW song's drum kit, [SONG](#song)); with a step held, that step's note (and the lane's note for the steps toggled after it) |
@@ -471,6 +471,8 @@ a step); rows the helper wrote, or hand-made ones of the same shape, open as tha
 anything else says **NOT AN ARP** and nothing changes. The page shows the number of steps, the
 speed and the loop step at 2x, the offsets four to a line (the step the cursor is on in
 reverse, the loop step in yellow), the waveform (`WAVE PULSE`) and where SAVE writes (`SAVE AT ROW 01`).
+Under the name, `HEARING DRAFT`: while the helper is open the keys play the draft, not the rows in
+the song.
 
 | Control | Does |
 |---|---|
@@ -480,9 +482,9 @@ reverse, the loop step in yellow), the waveform (`WAVE PULSE`) and where SAVE wr
 | K3 | the speed: ticks a step lasts, 1-16 |
 | K4 | the loop step: where the arpeggio returns to after the last (1 loops all of it); **HOLD** plays the steps once and holds the last |
 | PRESETS | the waveform the rows carry: TRI, SAW, PULSE, NOISE, TRI+SAW, TRI+PUL, SAW+PUL, ALL 3 (the gate stays; a hand-made row's sync or ring bit stays too, and a byte the list lacks shows as hex until PRESETS picks one) |
-| SAVE | writes the rows and closes the helper (**ARP SAVED**) |
-| HOME | closes it without writing |
-| keys | audition the instrument as in the table (the helper's draft is not in the song until SAVE, so the keys play the song's own rows) |
+| SAVE | writes the rows and closes the helper (**ARP SAVED**); the keys play the draft until the rows are written, then the song's rows, which are now the same |
+| HOME | closes it without writing; the keys play the song's own rows again |
+| keys | play the draft: the current instrument on the cursor's voice, its wave program starting at the helper's first row, whatever the instrument's WAVE PTR says. Every turn is heard at once on a held note. Nothing is written until SAVE |
 
 The rows: row 1 holds the waveform and the first offset; each later step is a delay row of
 speed - 1 ticks (at speed 1 the waveform again) holding its offset; then a jump (`FF`) to the loop
@@ -494,6 +496,13 @@ knobs do, only the bytes that differ, and blanks the rows a shorter arpeggio no 
 It refuses with **ROWS IN USE** when it would write over rows past the ones it read that are not
 blank (another program's), and with **TABLE FULL** at the table's end; the helper then stays open.
 SEQ or any page change closes it too. Holding HOME shows its card.
+
+The draft lives in the player, not in the song: on the cursor's voice, the wavetable's rows from
+the helper's first row read as the draft's, for every note on that voice (a note of an instrument
+whose WAVE PTR is there plays it too); the other voices play the song's rows, so a playing song
+sounds as written on them. While the helper is open the player reads wave delays (the speed's
+delay rows), and a draft that reaches notes past the song's frequency table widens it first:
+the first key after such a turn may wait a few frames.
 
 ### Recording while the song plays
 
@@ -527,8 +536,12 @@ the orderlist gives the entry on the song's first pass (the nearest transpose be
 
 The keys sound during a count-in but record nothing. Recorded notes go to the editor one cell
 write at a time, with at most four waiting (a fifth key is refused with `WAITING`; a staccato
-STEP key's key off counts as a second write). A key's time is read where the audio block starts,
-about 3 ms, with no compensation for the keys' own delay or the sound's. With REC off, or the
+STEP key's key off counts as a second write). A key lands where it was played against what
+was heard: the device places it 6.0 ms before it reads it (the output's double buffer, two
+audio blocks less half a block on average, and the key's debounce), in NEAREST and OFF
+alike, and K1's and K2's locks too, with no setting. In OFF a key in a row's first 6.0 ms goes to the row before; at a
+pattern's row 0, to the last row of the entry that played before it, or row 0 itself where
+that is not certain (the play started there, an orderlist repeat, the list's first entry). With REC off, or the
 song stopped, nothing is recorded (REC stays on). What was recorded is the song's pattern and lock table, which
 SAVE saves like any edit.
 
@@ -1160,7 +1173,10 @@ directory, named files, current-song dumps and GTI5 instruments. Replies use USB
 only; TRS accepts paced uploads without replies. PUT claims its space before
 acknowledging. With today's no-window flash configuration, PUT uses explicit
 SAVE-style program holds and the existing mute/ramp; validated windows make it
-hold-free. RECEIVING is followed by SAVED or a refusal toast. A transfer never
+hold-free. While a song plays or a computer records the USB audio there are no holds:
+the upload waits for quiet, the toast says `UPLOAD WAITS FOR QUIET` (every two seconds,
+a minute at most, then BUSY), and it goes on once the song stops ([sysex.md](sysex.md#waiting-for-quiet)).
+While only the keys sound, the holds come 250 ms apart. RECEIVING is followed by SAVED or a refusal toast. A transfer never
 enables refill erases, and partial uploads do not replace files. Instrument
 transfers need the transport stopped; import blocks seeks/audition while it owns the
 model, and requires a fresh PLAY afterward. Song import refuses unsaved changes.

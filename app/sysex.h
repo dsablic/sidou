@@ -7,6 +7,10 @@
 
 #define SYSEX_PACKET_MAX 256u
 #define SYSEX_TIMEOUT_MS 2000u
+/* A write that waits for quiet (sysex.loud): a WAIT to a USB sender this often, so its ACK
+ * timeout keeps waiting, and the toast again; given up with BUSY after SYSEX_QUIET_MAX_MS. */
+#define SYSEX_WAIT_EVERY_MS 2000u
+#define SYSEX_QUIET_MAX_MS 60000u
 enum { SYSEX_USB = 0, SYSEX_TRS = 1 };
 enum { SYSEX_PENDING = -1 };
 enum {
@@ -15,7 +19,9 @@ enum {
     SYSEX_RECEIVING = 10, SYSEX_SAVED = 11,
     /* A .sid's refusals (type STORE_FILE_SID, its header checked by psid_parse at its first
      * DATA, before anything is claimed or written): RSID, MUS, a broken header, data past $FFFF. */
-    SYSEX_RSID = 12, SYSEX_MUS, SYSEX_BROKEN, SYSEX_TOO_LONG
+    SYSEX_RSID = 12, SYSEX_MUS, SYSEX_BROKEN, SYSEX_TOO_LONG,
+    /* A toast, never a NAK: the write waits for quiet (UPLOAD WAITS FOR QUIET). */
+    SYSEX_WAITING = 16
 };
 
 /* All hooks run in the main loop. Errors use the positive SYSEX_* reasons.
@@ -79,6 +85,11 @@ typedef struct {
     /* A .sid's PUT: checking, its first DATA (the header) not yet in; held, that DATA waiting in
      * buffer for its sectors' claim (a record being written: OPEN). */
     uint8_t checking, held;
+    /* The platform's, before each poll: 1 while its held programs wait for quiet (a song plays,
+     * a computer records the USB audio), so a write's ACK waits; waiting: the wait under way,
+     * since wait_start, the last WAIT (and toast) at wait_sent. */
+    uint8_t loud, waiting;
+    uint32_t wait_start, wait_sent;
 } sysex;
 
 _Static_assert(sizeof(sysex) <= 1024, "SysEx state includes its one packet buffer");
@@ -98,6 +109,10 @@ _Static_assert(sizeof(sysex) <= 1024, "SysEx state includes its one packet buffe
  * against the declared length. A refusal (SYSEX_RSID, _MUS, _BROKEN, _TOO_LONG) comes before
  * store_file_begin, so nothing of the tune is programmed; the claim's BUSY or FULL answers that
  * DATA, and from there it is any PUT.
+ * While loud, a write whose programs are due (a DATA's, END's record, a DEL's, a record a PUT
+ * or DEL waits for) waits: a WAIT (empty, the pending packet's sequence) to a USB sender at
+ * once and every SYSEX_WAIT_EVERY_MS, the toast SYSEX_WAITING as often; the ACK once quiet
+ * lets the programs go; BUSY after SYSEX_QUIET_MAX_MS of waiting.
  */
 void sysex_init(sysex* s, store* storage, const sysex_hooks* hooks,
                 const uint8_t version[4], int windows);

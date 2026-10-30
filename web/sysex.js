@@ -8,7 +8,7 @@
 // packing and framing.
 
 export const INQ = 0x01, DIR = 0x02, GET = 0x03, PUT = 0x04, DATA = 0x05, END = 0x06, DEL = 0x07,
-  ABORT = 0x08, ACK = 0x7e, NAK = 0x7f;
+  ABORT = 0x08, WAIT = 0x7d, ACK = 0x7e, NAK = 0x7f;
 export const MAX_DATA = 256;
 const HEADER = [0x7d, 0x53, 0x44];
 
@@ -201,13 +201,27 @@ export class Client {
     return s;
   }
 
-  async expectAck(sequence, ms = this.ackTimeout) {
-    const f = await this.recv(ms);
-    if (f.command === NAK) {
-      throw new SysexError(nakMessage(f.data[0], f.data[1]), { nak: f.data[0], pool: f.data[1] });
-    }
-    if (f.command !== ACK || f.sequence !== sequence) {
-      throw new SysexError(`unexpected answer ${f.command.toString(16)} (sequence ${f.sequence}) from the FM-1`);
+  // The ACK of `sequence`. A WAIT for it (sysex.md, "Waiting for quiet": a song plays on the FM-1,
+  // or a computer records its USB audio, and the write waits for quiet) starts the timeout again
+  // and calls onWait; the device sends one every 2 s while it waits, and gives up after a minute.
+  async expectAck(sequence, ms = this.ackTimeout, onWait = () => {}) {
+    for (;;) {
+      const f = await this.recv(ms);
+      if (f.command === WAIT && f.sequence === sequence) {
+        this.waited = true;
+        onWait();
+        continue;
+      }
+      if (f.command === NAK) {
+        const message = f.data[0] === 4 && this.waited
+          ? "the FM-1 waited a minute for quiet and gave up: stop the song (or the recording of its USB audio) and send again"
+          : nakMessage(f.data[0], f.data[1]);
+        throw new SysexError(message, { nak: f.data[0], pool: f.data[1] });
+      }
+      if (f.command !== ACK || f.sequence !== sequence) {
+        throw new SysexError(`unexpected answer ${f.command.toString(16)} (sequence ${f.sequence}) from the FM-1`);
+      }
+      return;
     }
   }
 
@@ -298,36 +312,39 @@ export class Client {
 
   // PUT a named store file (target 0), one packet at a time; onProgress(done, total) after each ACK.
   // On NAK BUSY (the store is short of clean sectors or writing) the whole PUT is sent again after
-  // a wait, as a NAK ends the transfer; onBusy(waitMs, attempt) says so. Other NAKs fail at once.
-  async put(name, data, { type = 1, onProgress = () => {}, onBusy = () => {} } = {}) {
+  // a wait, as a NAK ends the transfer; onBusy(waitMs, attempt) says so. Other NAKs fail at once,
+  // and so does a BUSY that ends a wait for quiet (the minute is up: someone has to stop the song).
+  // onWait() each time the FM-1 says it is waiting for quiet.
+  async put(name, data, { type = 1, onProgress = () => {}, onBusy = () => {}, onWait = () => {} } = {}) {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.putOnce(name, data, type, onProgress);
+        this.waited = false;
+        return await this.putOnce(name, data, type, onProgress, onWait);
       } catch (e) {
-        if (e.nak !== 4 || attempt >= this.busy.length) throw e;
+        if (e.nak !== 4 || this.waited || attempt >= this.busy.length) throw e;
         onBusy(this.busy[attempt], attempt + 1);
         await this.sleep(this.busy[attempt]);
       }
     }
   }
 
-  async putOnce(name, data, type, onProgress) {
+  async putOnce(name, data, type, onProgress, onWait = () => {}) {
     this.drain();
     const total = data.length;
     onProgress(0, total);
     try {
       let seq = this.next();
       this.send(encodeFrame(PUT, seq, putPayload(name, type, total, crc32(data))));
-      await this.expectAck(seq);
+      await this.expectAck(seq, this.ackTimeout, onWait);
       for (let off = 0; off < total; off += MAX_DATA) {
         seq = this.next();
         this.send(encodeFrame(DATA, seq, data.slice(off, off + MAX_DATA)));
-        await this.expectAck(seq);
+        await this.expectAck(seq, this.ackTimeout, onWait);
         onProgress(Math.min(off + MAX_DATA, total), total);
       }
       seq = this.next();
       this.send(encodeFrame(END, seq));
-      await this.expectAck(seq);
+      await this.expectAck(seq, this.ackTimeout, onWait);
     } catch (e) {
       if (e.nak == null) this.send(encodeFrame(ABORT, this.next()));
       throw e;

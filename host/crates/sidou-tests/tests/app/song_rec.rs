@@ -825,3 +825,157 @@ fn k1_recording_shows_hz_and_a_count_in_takes_nothing() {
     assert_ne!(s.ui.live().cutoff, cutoff, "K1 moved LIVE's cutoff");
     assert_eq!(locks(&s), vec![]);
 }
+
+// ---- 1.1 item 14: REC from the keys, compensated ----
+
+/// What the device's status says a key lags (platform/fm1/main.c REC_LAG_SAMPLES, 265 samples,
+/// over PAL's 880 samples a call), in 256ths of a call: 6.0 ms.
+const LAG: u32 = 265 * 256 / 880;
+
+/// The player on voice 1's `row` of orderlist entry `entry`, `elapsed` into it, at `tempo`, the
+/// status with the device's lag; a key (key 16) pressed: the pattern and row it lands on.
+fn lands(
+    quant: u32,
+    tempo: u8,
+    entry: u8,
+    row: u8,
+    elapsed: u32,
+    started_here: bool,
+) -> (u32, usize) {
+    lands_in(song(), quant, tempo, entry, row, elapsed, started_here)
+}
+
+fn lands_in(
+    model: Model,
+    quant: u32,
+    tempo: u8,
+    entry: u8,
+    row: u8,
+    elapsed: u32,
+    started_here: bool,
+) -> (u32, usize) {
+    let mut s = Song::playing(Some(model));
+    open_tracker(&mut s.ui);
+    s.ui.v.song.quant = quant as u8;
+    s.ui.press(PANEL_BTN_REC);
+    at(&mut s, row, elapsed);
+    let st = &mut s.f.st;
+    st.speed = [tempo, tempo];
+    st.rec_lag = LAG as u16;
+    st.order_pos = [entry, 0, 0];
+    if started_here {
+        st.row_call = [0; 3];
+        st.now_call = (elapsed >> 8) as u16;
+    }
+    s.ui.frame();
+    tap(&mut s, 16);
+    let mut found = Vec::new();
+    for p in 0..4 {
+        for r in 0..16 {
+            if cell(&s, p, r)[0] == KEY16 {
+                found.push((p, r));
+            }
+        }
+    }
+    assert_eq!(found.len(), 1, "one note recorded: {found:?}");
+    found[0]
+}
+
+/// The key is placed where it was played, LAG before the status's now: in OFF, a key less than
+/// LAG into a row was played in the row before, LAG or more in this one; in NEAREST the half-way
+/// point moves on by LAG. At tempo 6 (a row 6 calls, 120 ms) and at tempo 3 (60 ms).
+#[test]
+fn rec_places_a_key_where_it_was_played_the_lag_before_now() {
+    let (off, near) = (SONG_VIEW_QUANT_OFF, SONG_VIEW_QUANT_NEAREST);
+    for tempo in [6u8, 3] {
+        let row = u32::from(tempo) * 256;
+        let cases = [
+            (off, 0, 2, "OFF, the row's start: the row before"),
+            (off, LAG - 1, 2, "OFF, just under the lag: the row before"),
+            (off, LAG, 3, "OFF, the lag: this row"),
+            (off, row - 1, 3, "OFF, the row's end: this row"),
+            (off, row + LAG - 1, 3, "OFF, a stale status: this row still"),
+            (near, 0, 3, "NEAREST, the row's start: this row"),
+            (
+                near,
+                row / 2 + LAG - 1,
+                3,
+                "NEAREST, under half a row past the lag",
+            ),
+            (
+                near,
+                row / 2 + LAG,
+                4,
+                "NEAREST, half a row past the lag: the next",
+            ),
+            (near, row - 1, 4, "NEAREST, the row's end: the next"),
+        ];
+        for (quant, elapsed, want, what) in cases {
+            assert_eq!(
+                lands(quant, tempo, 0, 3, elapsed, false),
+                (0, want),
+                "tempo {tempo}: {what}"
+            );
+        }
+    }
+}
+
+/// A key the lag puts before a pattern's row 0 goes to the last row of the entry that played
+/// before it (pattern 0's row 15, its 16 rows), not into this pattern; NEAREST rounds it to row
+/// 0 as before. Where what played before is not certain it stays on row 0: the first entry (the
+/// play's start, or the list come round), the play started on this row, a repeat in between.
+#[test]
+fn before_row_0_the_lag_goes_back_to_the_entry_that_played_before() {
+    let (off, near) = (SONG_VIEW_QUANT_OFF, SONG_VIEW_QUANT_NEAREST);
+    for tempo in [6u8, 3] {
+        assert_eq!(
+            lands(off, tempo, 1, 0, LAG - 1, false),
+            (0, 15),
+            "tempo {tempo}"
+        );
+        assert_eq!(lands(off, tempo, 1, 0, LAG, false), (1, 0));
+        assert_eq!(lands(near, tempo, 1, 0, 0, false), (1, 0), "NEAREST: row 0");
+        assert_eq!(
+            lands(off, tempo, 1, 0, 10, true),
+            (1, 0),
+            "the play began here"
+        );
+        assert_eq!(
+            lands(off, tempo, 0, 0, 10, false),
+            (0, 0),
+            "the first entry"
+        );
+    }
+    // Pattern 0, a repeat command, pattern 1: pattern 1's later passes follow pattern 1.
+    let mut m = song();
+    let mut spec = SngSpec::new();
+    spec.orders = vec![vec![
+        (vec![0, GT2_REPEAT as u8 + 3, 1], 0),
+        (vec![2], 0),
+        (vec![3], 0),
+    ]];
+    spec.instr = vec![[0u8; 25], [0u8; 25]];
+    spec.patterns = (0..4).map(|_| (vec![R; 16], [0xff, 0, 0, 0])).collect();
+    m.read(&spec.encode(), 0).unwrap();
+    assert_eq!(
+        lands_in(m, off, 6, 2, 0, 10, false),
+        (1, 0),
+        "a repeat before the entry: row 0"
+    );
+    // A transpose between the two is no repeat: back to pattern 0, at its own transpose.
+    let mut m = song();
+    let mut spec = SngSpec::new();
+    spec.orders = vec![vec![
+        (vec![0, GT2_TRANSUP as u8 + 2, 1], 0),
+        (vec![2], 0),
+        (vec![3], 0),
+    ]];
+    spec.instr = vec![[0u8; 25], [0u8; 25]];
+    spec.patterns = (0..4).map(|_| (vec![R; 16], [0xff, 0, 0, 0])).collect();
+    m.read(&spec.encode(), 0).unwrap();
+    assert_eq!(
+        lands_in(m, off, 6, 2, 0, 10, false),
+        (0, 15),
+        "over a transpose"
+    );
+}

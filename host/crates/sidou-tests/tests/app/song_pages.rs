@@ -21,6 +21,31 @@ struct Queue {
     guard: i32,
     refuse: bool,
     kinds: Vec<u8>,
+    /// The drafts the ARP helper gave the player: voice, first row, left and right bytes.
+    drafts: Vec<(u32, u32, Vec<u8>, Vec<u8>)>,
+}
+
+unsafe extern "C" fn hear(
+    ctx: *mut c_void,
+    voice: u32,
+    first: u32,
+    n: u32,
+    left: *const u8,
+    right: *const u8,
+) -> i32 {
+    let q = unsafe { &mut *ctx.cast::<Queue>() };
+    let (l, r) = if n == 0 {
+        (Vec::new(), Vec::new())
+    } else {
+        unsafe {
+            (
+                std::slice::from_raw_parts(left, n as usize).to_vec(),
+                std::slice::from_raw_parts(right, n as usize).to_vec(),
+            )
+        }
+    };
+    q.drafts.push((voice, first, l, r));
+    1
 }
 
 unsafe extern "C" fn submit(ctx: *mut c_void, edit: *const gt2_edit, ticket: *mut u32) -> i32 {
@@ -69,6 +94,7 @@ impl Pages {
             edit_done: Some(done),
             edit_guard: Some(guard),
             status: Some(status),
+            draft: Some(hear),
             ..Default::default()
         });
         let mut p = Box::<song_pages>::default();
@@ -1569,4 +1595,46 @@ fn the_arp_helper_shows_its_page_and_leaves_with_the_table() {
     // The page changing closes the draft.
     unsafe { screen_pop(&mut h.ui.v.s, SCREEN_CUT) };
     assert_eq!(h.p.arp, 0);
+}
+
+/// 1.1: while the helper is open the keys play the draft. It goes to the player on open and with
+/// every change (the rows SAVE would write, from the helper's row, on the cursor's voice), and
+/// HOME takes it off with nothing written; after SAVE it stays until its rows are written, then
+/// goes. The header says so.
+#[test]
+fn the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    h.press(PANEL_BTN_ARP);
+    let encoded = |a: &song_pages_arp| {
+        let mut l = [0u8; SONG_PAGES_ARP_ROWS as usize];
+        let mut r = [0u8; SONG_PAGES_ARP_ROWS as usize];
+        let n = unsafe { song_pages_arp_encode(a, 1, l.as_mut_ptr(), r.as_mut_ptr()) } as usize;
+        (l[..n].to_vec(), r[..n].to_vec())
+    };
+    let (l, r) = encoded(&h.p.arp_draft);
+    assert_eq!(h.q.drafts, vec![(0, 1, l, r)], "heard on open");
+    h.settle();
+    assert_eq!(h.ui.small(2, 0, 13), "HEARING DRAFT");
+    h.turn(PANEL_ENC_K2, 1);
+    h.turn(K3, 1);
+    assert_eq!(h.q.drafts.len(), 3, "each turn heard");
+    let (l, r) = encoded(&h.p.arp_draft);
+    assert_eq!(h.q.drafts[2], (0, 1, l, r));
+    // HOME: off, nothing written
+    assert_eq!(unsafe { song_pages_arp_close(&mut *h.p) }, 1);
+    assert_eq!(h.q.drafts.last().unwrap().2.len(), 0, "the draft goes");
+    assert_eq!(h.wave_rows(0, 6), vec![(0, 0); 6]);
+    assert_eq!(h.q.submitted, 0);
+    // SAVE: heard until the rows are in
+    h.press(PANEL_BTN_ARP);
+    let heard = h.q.drafts.len();
+    h.save_arp();
+    assert_eq!(h.p.arp, 0);
+    assert_eq!(h.q.drafts.len(), heard, "still heard while the rows go");
+    h.finish_arp();
+    unsafe { song_pages_poll(&mut *h.p) };
+    assert_eq!(h.q.drafts.len(), heard + 1);
+    assert_eq!(h.q.drafts.last().unwrap().2.len(), 0, "then it goes");
+    assert_eq!(h.p.arp_heard, 0);
+    assert_eq!(h.wave_rows(0, 1), [(0x41, 0)]);
 }

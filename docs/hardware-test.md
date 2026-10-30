@@ -1542,15 +1542,30 @@ commands for these checks.
   64 KiB round trip (maintenance runs then), hold a three-note chord on LIVE and,
   still holding it, run `tools/sysex-roundtrip "SIDOU FM-1" 4096`, then
   `tools/sysex-roundtrip "SIDOU FM-1" 65536`. Both print PUT, GET identical and
-  DEL gone, with no NAK; record the PUT seconds (about 105 ms a 256-byte packet
-  in fm1-emu, so about 1.7 s for 4 KiB and 27 s for 64 KiB). Repeat each with
-  the demo song playing (PLAY) instead of the chord, and with three notes held
-  by another app (a DAW, or a keyboard routed to the FM-1's USB port). Over TRS,
-  hold the chord and repeat the TRS upload below: RECEIVING then SAVED, never
-  STORE BUSY: RESEND.
-  *Emulator:* `emu-gate/tests/usb.rs::a_usb_put_with_keys_held_waits_out_a_record_and_is_accepted` (4 KiB, a chord held, a store record waiting: the PUT is accepted and no erase happens; the same with a song playing and with MIDI notes held), `emu-gate/tests/usb.rs::a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet` (one hold a packet, the chord plays between packets), `emu-gate/tests/sysex.rs::a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted` (64 KiB over TRS with windows off).
-  *Emulator (no test yet):* a 64 KiB PUT through the emulated USB host with a chord held, and the 105 ms a packet bound at that size.
+  DEL gone, with no NAK; record the PUT seconds (about 263 ms a 256-byte packet
+  in fm1-emu since 1.1's 250 ms gap, so about 4.2 s for 4 KiB and 67 s for 64 KiB).
+  Repeat each with three notes held by another app (a DAW, or a keyboard routed to
+  the FM-1's USB port). With the demo song playing (PLAY) instead, the upload waits
+  for quiet (the next item). Over TRS, hold the chord and repeat the TRS upload
+  below: RECEIVING then SAVED, never STORE BUSY: RESEND.
+  *Emulator:* `emu-gate/tests/usb.rs::a_usb_put_with_keys_held_waits_out_a_record_and_is_accepted` (4 KiB, a chord held, a store record waiting: the PUT is accepted and no erase happens; the same with MIDI notes held), `emu-gate/tests/usb.rs::a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet` (one hold a packet, at least 250 ms apart, the chord plays between packets), `emu-gate/tests/sysex.rs::a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted` (64 KiB over TRS with windows off).
+  *Emulator (no test yet):* a 64 KiB PUT through the emulated USB host with a chord held, and the 263 ms a packet bound at that size.
   *Device-only:* listening for the mute and ramp gaps, stuck or missed notes, the PUT seconds on the real flash chip, notes held by another app or a keyboard, and `tools/sysex-roundtrip` on a real host (ear, real flash timing, external gear).
+- [ ] **An upload waits for quiet; the gap by ear (1.1 item 13).** Play the demo song
+  (PLAY) and send a song from the Songs page: the page says it is waiting for the FM-1 to be
+  quiet, the screen says `UPLOAD WAITS FOR QUIET` (again every two seconds), and the song
+  plays on with no dip. Stop it: the upload goes on and ends SENT. The same with a DAW
+  recording the FM-1's USB audio (input armed and recording) and no song: it waits until the
+  recording stops. Leave a song playing for over a minute: the page fails with "waited a
+  minute for quiet", nothing replaced. Then the gap: with only a three-note chord held on
+  LIVE (no song, nothing recording), send a 64 KiB file
+  (`tools/sysex-roundtrip "SIDOU FM-1" 65536`) on each variant package, 100, 250 and 500 ms
+  ([BUILDING.md](../BUILDING.md), "The SysEx gap variants"), and write down which one's dips
+  are least disturbing for how long the upload takes (about 1.7, 4.2 and 8.2 s for 4 KiB).
+  The chosen value becomes the default; reflash the release package afterwards.
+  *Emulator:* `emu-gate/tests/usb.rs::a_usb_put_with_a_song_playing_waits_out_a_collection_and_is_accepted` (the song plays: WAIT at once and every two seconds, no hold, past the two-second timeout; the song stops and the PUT and a DEL go on), `emu-gate/tests/usb.rs::a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet` (the keys alone: holds 250 ms apart), `sidou-tests/tests/app/sysex.rs::a_loud_device_holds_a_datas_ack_and_says_wait_until_quiet`, `sidou-tests/tests/app/sysex.rs::a_wait_for_quiet_gives_up_with_busy_after_its_limit` (the minute's limit), `web/sysex.test.mjs` (the page keeps waiting on WAIT, and does not retry the BUSY that ends one).
+  *Emulator (no test yet):* the wait while a computer records the USB audio (`midi_usb_recording`; the song's case runs the same code).
+  *Device-only:* the ear call between the three gaps, the song playing on without a dip on the real DAC, a real DAW's recording (ear, external gear).
 - [ ] **Refusal before streaming:** if the clean pool cannot cover a file,
   metadata receives BUSY with pool size (or STORE BUSY: RESEND on TRS), before
   accepting DATA. Stop the transfer and allow quiet refill before retrying.
@@ -2037,14 +2052,16 @@ silent three-pattern song at tempo 6, so what you hear is what you made). Contro
   patterns, with SETs playing as here.
   *Emulator:* `emu-gate/tests/first_use.rs::save_as_and_a_power_cycle_bring_back_the_song_and_a_setting`, `emu-gate/tests/song_store.rs::saved_song_survives_reboot_stopped_and_plays_bit_exact` (plays bit exact, locks and recorded notes included), `sidou-tests/tests/app/step_view.rs::a_step_made_song_plays_as_goattrackers_player_does_with_its_set_and_without_the_chunk_locks`.
   *Device-only:* opening the song in GoatTracker on a computer after a SysEx transfer (external gear).
-- [ ] **Feel (open question).** Note how recording feels at tempo 6 and at tempo 3: does a
-  note you play on the beat land on that beat? Two things are not decided and the unit decides
-  them ([ROADMAP.md](ROADMAP.md#1x), "REC from the keys, compensated"): **the key-to-row timing is uncompensated** (read
-  at the audio block, about 3 ms, with no latency correction). While recording TRACKER follows
-  the playing pattern (the notes show as they land) and its cursor comes back when the song
-  stops. Write down which of NEAREST and OFF you prefer and whether a fixed offset is wanted.
-  *Device-only:* how recording feels at tempo 6 and 3, and the choice between NEAREST and OFF and a fixed offset (feel and musicality).
-  *Emulator (no test yet):* the key-to-row delay as a number (the item says about 3 ms, uncompensated): a timed key at a known cycle against the row it lands on; `song_rec.rs` checks the row, not the delay.
+- [ ] **Feel.** Note how recording feels at tempo 6 and at tempo 3: does a note you play on
+  the beat land on that beat? Since 1.1 a key is placed 6.0 ms before the device reads it (the
+  output's double buffer and the key's debounce, computed from the code's constants and
+  measured in the emulator: [controls.md](reference/controls.md), REC). Play along in OFF too, where
+  a key just early lands on the row before. While recording TRACKER follows the playing
+  pattern (the notes show as they land) and its cursor comes back when the song stops. Write
+  down whether notes played on the beat land on it, early or late, at both tempos, and which
+  of NEAREST and OFF you prefer.
+  *Emulator:* `emu-gate/tests/first_use.rs::rec_places_a_key_where_it_was_heard` (a key pressed a known time before and after a row is heard, in OFF and NEAREST at tempo 6: the row it lands on, and the compensation as a number), `sidou-tests/tests/app/song_rec.rs::rec_places_a_key_where_it_was_played_the_lag_before_now` (the boundaries at tempo 6 and 3), `sidou-tests/tests/app/song_rec.rs::before_row_0_the_lag_goes_back_to_the_entry_that_played_before`.
+  *Device-only:* how recording feels at tempo 6 and 3, the finger's own timing and the speaker's, and the choice between NEAREST and OFF (feel and musicality).
 
 ## 15. The output stage: SPREAD and the soft limiter (v0.3.0)
 
@@ -2413,7 +2430,44 @@ the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold
 
 Notes:
 
-## 23. LAB 1.1: the filter LFO, ARP RATE, peek and macros
+## 23. Auditions before writing (1.1)
+
+What it decides: whether the ARP helper's draft and a held step's locks sound right through the
+unit's output, and whether the audio interrupt keeps its time while they play over a song. What
+fm1-emu proves (the registers each audition writes, RAMTEXT, the player's worst block) is named
+under each item. Set up: the build on the unit, a song with a lead on V1 (SIDOU LOOP will do).
+
+- [ ] **The ARP helper's draft on the keys.** TABLE, the WAVE table, a blank row (or the
+  instrument's own, from INSTR's EDIT + SEQ on WAVE PTR), ARP: `HEARING DRAFT` under the name.
+  Hold a note key: the arpeggio plays. Turn K1/K2 on a step, K3 (speed), K4 (loop) and ALGORITHM
+  (steps) with the key still held: each turn is heard at once, with no click or stuck note. HOME:
+  the key plays the song's rows again and the table is unchanged. ARP again, SAVE: the same
+  arpeggio as before SAVE.
+  *Emulator:* `emu-gate/tests/song.rs::the_arp_helpers_draft_plays_on_chip_a_before_save` (two
+  steps an octave apart on chip A, a K2 turn heard on the held note, HOME writes nothing),
+  `sidou-tests/tests/song_ctl.rs::a_drafts_jam_sounds_as_the_saved_rows_do` (the draft's render
+  equals the saved rows' call for call), `a_drafts_change_is_heard_on_the_held_note`,
+  `sidou-tests/tests/app/song_pages.rs::the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written`.
+  *Device-only:* listening (the arpeggio clean on the held note through every turn).
+- [ ] **A held step plays its locks.** STEP, V1: hold a step and turn K1 well down, K2 up, K3:
+  each turn is heard on the held note at once; let go and hold it again: the same darker, resonant
+  sound; let go: the song's own sound on the next notes. EDIT + K1 (a character lock) on the step
+  is not heard in the audition, only when the song plays the row.
+  *Emulator:* `emu-gate/tests/song.rs::a_held_step_sounds_its_cutoff_lock_on_chip_a`,
+  `sidou-tests/tests/song_locks.rs::a_held_steps_audition_plays_its_row_as_the_sequencer_does`,
+  `a_held_steps_locks_go_at_its_release_and_leave_the_next_rows_alone`,
+  `sidou-tests/tests/app/step_view.rs::a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back`.
+  *Device-only:* listening (the filter heard as locked, no click at the release).
+- [ ] **Both with a song playing.** PLAY, then hold a step in STEP (its locks over the song on
+  that voice), and in TABLE's helper hold a key: the other voices play on unchanged, no dropout,
+  no late note, STATUS's meter where it was.
+  *Emulator:* `emu-gate/tests/ram_audio.rs` (the draft's reads and the held locks run from SRAM:
+  `.ram_text` 49,072 of 49,152 bytes), `emu-gate/tests/song.rs::the_players_worst_block_fits_its_budget`
+  (48.9 instructions a sample of 60), `sidou-tests/tests/song_ctl.rs::a_draft_plays_only_on_its_channel`.
+  *Device-only:* the audio interrupt's real timing with the song playing (by ear, and STATUS's
+  meter).
+
+## 24. LAB 1.1: the filter LFO, ARP RATE, peek and macros
 
 What it decides: whether 1.1's additions to LAB sound and feel right. Set up as section 22.
 
@@ -2478,4 +2532,5 @@ Notes:
 | 20 .sid tunes over SysEx PUT | | |
 | 21 .sid playback and the 6502's meter | | |
 | 22 LAB | | |
-| 23 LAB 1.1 | | |
+| 23 Auditions before writing | | |
+| 24 LAB 1.1 | | |

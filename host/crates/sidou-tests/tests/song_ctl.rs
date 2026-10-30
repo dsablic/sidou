@@ -1379,3 +1379,218 @@ fn an_audition_after_a_stop_keeps_where_continue_goes_on() {
         "{calls} calls, {rows} rows after continue"
     );
 }
+
+// ---- 1.1: TABLE's ARP helper heard before SAVE (song_ctl_draft) ----
+
+/// The ARP helper's rows for a major arpeggio at speed 2 (delay rows), looping at step 1, from
+/// table row `first` (1 based).
+fn arp_rows(first: u32, offsets: &[i8], speed: u8) -> (Vec<u8>, Vec<u8>) {
+    let mut a = song_pages_arp {
+        steps: offsets.len() as u8,
+        speed,
+        loop_: 1,
+        wave: SONG_PAGES_ARP_WAVE as u8,
+        ..Default::default()
+    };
+    a.off[..offsets.len()].copy_from_slice(offsets);
+    let mut left = [0u8; SONG_PAGES_ARP_ROWS as usize];
+    let mut right = [0u8; SONG_PAGES_ARP_ROWS as usize];
+    let n = unsafe { song_pages_arp_encode(&a, first, left.as_mut_ptr(), right.as_mut_ptr()) };
+    (left[..n as usize].to_vec(), right[..n as usize].to_vec())
+}
+
+/// Instrument 1 plays the wavetable's row 1 (a plain sawtooth, no delays); instrument 2 row 3,
+/// where the draft goes: blank, or with `saved` the rows SAVE writes there. Every channel plays
+/// instrument 2.
+fn draft_song(saved: Option<&(Vec<u8>, Vec<u8>)>) -> Vec<u8> {
+    let mut s = simple_spec();
+    s.instr = vec![
+        ins(0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09),
+        ins(0x09, 0x00, 3, 0, 0, 0, 0, 2, 0x09),
+    ];
+    let mut wave = vec![(0x21, 0x00), (0xff, 0x00)];
+    if let Some((l, r)) = saved {
+        wave.extend(l.iter().copied().zip(r.iter().copied()));
+    }
+    s.tables[0] = wave;
+    for (p, _) in &mut s.patterns {
+        for c in p.iter_mut().filter(|c| c[1] != 0) {
+            c[1] = 2;
+        }
+    }
+    s.encode()
+}
+
+fn draft(t: &mut Transport, ch: u32, first: u32, rows: &(Vec<u8>, Vec<u8>)) {
+    let n = rows.0.len() as u32;
+    assert_eq!(
+        unsafe { song_ctl_draft(&mut *t.sc, ch, first, n, rows.0.as_ptr(), rows.1.as_ptr()) },
+        1
+    );
+}
+
+/// Voice v's frequency, pulse and control as the chip holds them.
+fn voice(t: &Transport, v: usize) -> (u32, u32, u8) {
+    let o = &t.chip.osc[v];
+    (o.freq, o.pw, o.control)
+}
+
+/// Voice 1 from the call its jam sounds, `calls` calls of it.
+fn jam_heard(t: &mut Transport, note: u32, calls: u32) -> Vec<(u32, u32, u8)> {
+    assert!(t.jam(0, note, 2));
+    let mut out = Vec::new();
+    let mut guard = 0;
+    while out.len() < calls as usize {
+        let c = t.calls();
+        t.pass();
+        t.block_silent();
+        if t.calls() != c && (!out.is_empty() || t.chip.env[0].gate != 0) {
+            out.push(voice(t, 0));
+        }
+        guard += 1;
+        assert!(guard < 10_000, "the jam did not sound");
+    }
+    out
+}
+
+fn auditioning(t: &mut Transport) {
+    assert!(t.audition());
+    assert!(t.run_until(400, |t| t.jam_ready()));
+}
+
+/// The keys play the draft as they play the rows SAVE writes: a jam of instrument 2 with the
+/// draft heard (the song has no wave delays, the draft has: the shape widens first) sounds,
+/// call for call, as the same jam once the rows are in the table; the song's own rows are
+/// untouched, and a draft taken off plays the table again.
+#[test]
+fn a_drafts_jam_sounds_as_the_saved_rows_do() {
+    let rows = arp_rows(3, &[0, 4, 7, 12], 2);
+    assert!(rows.0.iter().any(|&l| (1..0x10).contains(&l)), "delay rows");
+    let mut saved = song_of(&draft_song(Some(&rows)), None);
+    let mut t = Transport::new(&mut saved);
+    auditioning(&mut t);
+    let want = jam_heard(&mut t, 36, 60);
+    let pitches: std::collections::BTreeSet<u32> = want.iter().map(|v| v.0).collect();
+    assert!(
+        pitches.len() >= 4,
+        "the saved arpeggio plays its steps: {pitches:?}"
+    );
+
+    let mut blank = song_of(&draft_song(None), None);
+    let before = blank.write(false);
+    let mut t = Transport::new(&mut blank);
+    auditioning(&mut t);
+    assert_eq!(
+        u32::from(t.shape().flags) & GT2_PF_WAVEDELAY,
+        0,
+        "the song has no delays"
+    );
+    draft(&mut t, 0, 3, &rows);
+    assert!(t.run_until(400, |t| t.sc.draft_grow == 0 && t.sc.deriving == 0));
+    assert_eq!(t.sc.draft.channel, 0);
+    assert_ne!(
+        u32::from(t.shape().flags) & GT2_PF_WAVEDELAY,
+        0,
+        "the shape widened for the draft"
+    );
+    assert_eq!(
+        jam_heard(&mut t, 36, 60),
+        want,
+        "the draft plays as the saved rows"
+    );
+    assert!(t.jam(0, SONG_JAM_RELEASE, 2));
+    assert_eq!(blank.write(false), before, "nothing written");
+
+    // taken off: the table's (blank) rows again, as the song without the draft plays them
+    let mut t2_song = song_of(&draft_song(None), None);
+    let mut t2 = Transport::new(&mut t2_song);
+    auditioning(&mut t2);
+    let plain = jam_heard(&mut t2, 36, 30);
+    assert_eq!(
+        unsafe { song_ctl_draft(&mut *t.sc, 0, 0, 0, std::ptr::null(), std::ptr::null()) },
+        1
+    );
+    t.run_until(20, |t| t.sc.draft.channel == GT2_DRAFT_OFF as u8);
+    assert_eq!(t.sc.draft.channel, GT2_DRAFT_OFF as u8, "the draft is off");
+    let heard = jam_heard(&mut t, 36, 30);
+    // (the note's first call holds the voice's last frequency: the hard restart's)
+    assert_eq!(
+        heard[1..].iter().map(|v| v.0).collect::<Vec<_>>(),
+        plain[1..].iter().map(|v| v.0).collect::<Vec<_>>(),
+        "without the draft the jam plays the table's rows"
+    );
+}
+
+/// A turn on a held note is heard at once: the draft changed while voice 1 holds its jam
+/// plays the new step's pitch within a few calls, with no new note.
+#[test]
+fn a_drafts_change_is_heard_on_the_held_note() {
+    let rows = arp_rows(3, &[0, 0, 0, 0], 1);
+    let mut blank = song_of(&draft_song(None), None);
+    let mut t = Transport::new(&mut blank);
+    auditioning(&mut t);
+    draft(&mut t, 0, 3, &rows);
+    assert!(t.run_until(400, |t| t.sc.draft_grow == 0 && t.sc.deriving == 0));
+    let held = jam_heard(&mut t, 36, 10);
+    let base = held.last().unwrap().0;
+    assert!(held[1..].iter().all(|v| v.0 == base), "one pitch: {held:?}");
+    // speed 2 (delays the song lacks) and an octave on step 3
+    draft(&mut t, 0, 3, &arp_rows(3, &[0, 0, 12, 0], 2));
+    let mut seen = Vec::new();
+    for _ in 0..40 {
+        let c = t.calls();
+        t.pass();
+        t.block_silent();
+        if t.calls() != c {
+            seen.push(voice(&t, 0).0);
+        }
+    }
+    assert!(
+        seen.iter().any(|&f| f > base * 19 / 10),
+        "the octave step sounds on the held note: {seen:?}"
+    );
+    assert!(
+        seen.iter().all(|&f| f == base || f > base * 19 / 10),
+        "and only the draft's steps: {seen:?}"
+    );
+}
+
+/// The draft is its channel's only: with the song playing and every channel on instrument 2,
+/// channels 2 and 3 play the table's rows call for call as without a draft, channel 1 the
+/// draft's.
+#[test]
+fn a_draft_plays_only_on_its_channel() {
+    let saved = arp_rows(3, &[0, 0, 0, 0], 1);
+    let rows = arp_rows(3, &[0, 7, 12, 19], 2);
+    let run = |with: bool| {
+        let mut song = song_of(&draft_song(Some(&saved)), None);
+        let mut t = Transport::new(&mut song);
+        if with {
+            draft(&mut t, 0, 3, &rows);
+        }
+        assert!(t.play(0, 0));
+        let mut out = Vec::new();
+        while t.calls() < 150 {
+            let c = t.calls();
+            t.pass();
+            t.block_silent();
+            if t.calls() != c {
+                out.push([voice(&t, 0), voice(&t, 1), voice(&t, 2)]);
+            }
+        }
+        out
+    };
+    let (plain, drafted) = (run(false), run(true));
+    assert_eq!(plain.len(), drafted.len());
+    for (k, (a, b)) in plain.iter().zip(&drafted).enumerate() {
+        assert_eq!(
+            a[1..],
+            b[1..],
+            "call {k}: voices 2 and 3 play the table's rows"
+        );
+    }
+    assert!(
+        plain.iter().zip(&drafted).any(|(a, b)| a[0] != b[0]),
+        "voice 1 plays the draft"
+    );
+}

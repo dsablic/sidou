@@ -3271,7 +3271,7 @@ void views_frame(views* v, uint32_t now_ms) {
         v->song_last = top; /* what SEQ reopens (song_step) */
     }
     song_view_frame(&v->song, in_song);
-    if (v->pages.pending) {
+    if (v->pages.pending || v->pages.arp_dirty || v->pages.arp) {
         uint8_t previous = v->pages.status;
         (void)song_pages_poll(&v->pages);
         if (previous != v->pages.status && v->pages.status != SONG_PAGES_WAITING &&

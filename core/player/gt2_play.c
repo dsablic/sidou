@@ -11,6 +11,8 @@
  * SRAM, and reads nothing it would have to search. */
 #include "gt2_play.h"
 
+#include <stddef.h>
+
 /* gplay.c's frequency table: C-0 to B-7. In RAM, as the audio path's tables must be on the
  * device (docs/hardware.md, "Code in SRAM"): pi32v2's clang would otherwise put a static
  * that is never written in flash's .rodata, so the section is named, as sid_env.h does. */
@@ -91,6 +93,16 @@ static uint8_t tl(const gt2_song* s, uint32_t t, uint32_t pos) {
 
 static uint8_t tr(const gt2_song* s, uint32_t t, uint32_t pos) {
     return pos - 1u < GT2_TABLE_ROWS ? s->rtable[t][pos - 1u] : 0u;
+}
+
+/* The wavetable's left (side 0) or right byte at a position, as channel ch reads it: a draft's
+ * rows on its channel (gt2_draft), else the song's. */
+static uint8_t wt(const gt2_player* p, uint32_t ch, uint32_t pos, uint32_t side) {
+    const gt2_draft* d = p->draft;
+    uint32_t i;
+    if (d && ch == d->channel && (i = pos - d->first) < d->len)
+        return d->rows[i + side * GT2_DRAFT_ROWS];
+    return side ? tr(p->song, GT2_WTBL, pos) : tl(p->song, GT2_WTBL, pos);
 }
 
 static const uint8_t* instrument(const gt2_song* s, uint8_t i) {
@@ -783,6 +795,10 @@ static void exec_channel(out* o, uint32_t ch) {
         }
         table_encoding(p, c, WAVE_ENCODING);
         c->waveptr = ins[GT2_INS_WAVE];
+        if (p->draft_jam && ch == p->draft->channel) {
+            p->draft_jam = 0u; /* the jam's note plays the draft */
+            c->waveptr = p->draft->first;
+        }
         if (p->shape->flags & GT2_PF_ALT) {
             set_ad(o, c, x, ins[GT2_INS_AD]);
             set_sr(o, c, x, ins[GT2_INS_SR]);
@@ -809,7 +825,7 @@ waveexec:
     y = c->waveptr;
     if (y == 0u)
         goto wavedone;
-    a = wave_left(p, c, tl(s, GT2_WTBL, y));
+    a = wave_left(p, c, wt(p, ch, y, 0u));
     if (encoding(p, c) & GT2_PF_WAVEDELAY) {
         if (a < 0x10u) {
             if (a == c->wavetime)
@@ -825,10 +841,10 @@ waveexec:
         c->wave = a;
 nowavechange: {
     /* the next row a jump: take it now */
-    uint8_t cur = tl(s, GT2_WTBL, y);
-    uint8_t right = tr(s, GT2_WTBL, y);
+    uint8_t cur = wt(p, ch, y, 0u);
+    uint8_t right = wt(p, ch, y, 1u);
     uint32_t next = (uint32_t)y + 1u;
-    c->waveptr = tl(s, GT2_WTBL, next) == LOOP ? tr(s, GT2_WTBL, next) : (uint8_t)next;
+    c->waveptr = wt(p, ch, next, 0u) == LOOP ? wt(p, ch, next, 1u) : (uint8_t)next;
     if (encoding(p, c) & GT2_PF_WAVEDELAY)
         c->wavetime = 0u;
     uint8_t packed = wave_left(p, c, cur);
@@ -1044,9 +1060,9 @@ void gt2_play_frame(gt2_player* p, gt2_sid_fn sink, void* ctx) {
 void gt2_play_start(gt2_player* p, const gt2_song* s, const gt2_shape* shape,
                     const uint8_t* start) {
     /* A loop, not a struct assignment: a compiler may make that a memset call, which the
-     * audio interrupt must not reach (it is in flash on the device). */
+     * audio interrupt must not reach (it is in flash on the device). The draft stays. */
     volatile uint8_t* q = (volatile uint8_t*)p;
-    for (uint32_t i = 0u; i < sizeof *p; i++)
+    for (uint32_t i = 0u; i < offsetof(gt2_player, draft); i++)
         q[i] = 0u;
     p->song = s;
     p->shape = shape;
@@ -1092,8 +1108,22 @@ void gt2_play_jam(gt2_player* p, uint32_t ch, uint8_t note, uint8_t instr, gt2_s
         c->counter = 1u;
     }
     p->jam_voices |= (uint8_t)(1u << ch);
+    if (p->draft && ch == p->draft->channel)
+        p->draft_jam = 1u;
     if (instr != 0u)
         c->instr = instr;
     c->newfx = 0u;
     note_start(&o, c, ch * 7u, (uint8_t)(note + NOTE));
+}
+
+void gt2_play_draft(gt2_player* p, const gt2_draft* d) {
+    p->draft = d;
+    if (d->channel >= GT2_PLAY_CHANNELS || !p->shape) {
+        p->draft_jam = 0u;
+        return;
+    }
+    gt2_channel* c = &p->chn[d->channel];
+    uint32_t w = (uint32_t)c->waveptr - d->first;
+    if (w < GT2_DRAFT_ROWS && (w >= d->len || d->rows[w] == LOOP))
+        c->waveptr = d->first;
 }

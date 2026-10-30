@@ -8,6 +8,36 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **An upload waits for quiet while a song plays.** A SysEx upload (the Songs page, a `.sid`, a
+  `.syx`) used to mute the music for each packet's flash writes, about ten dips a second. Now,
+  while a song or a tune plays or a computer records the FM-1's USB audio, the FM-1 writes
+  nothing: it holds the packet's ACK, says `UPLOAD WAITS FOR QUIET`, and goes on once the song
+  stops (a minute at most, then BUSY). The protocol gains one reply, WAIT (`7D`), sent every two
+  seconds while it waits; the Songs page shows "waiting for the FM-1 to be quiet" and keeps
+  waiting ([sysex.md](docs/reference/sysex.md#waiting-for-quiet): older senders time out or
+  stop at the first WAIT; a tool on a one-second timer is refused BUSY, so stop the song
+  first). With only the keys sounding the dips come 250 ms apart, not 100 (four a second); the
+  gap is a build option, `SIDOU_SYSEX_GAP_MS`, for the ear check on the device (BUILDING.md).
+- **REC from the keys lands where you played.** A key is placed 6.0 ms before the device reads
+  it: what you heard lags the player by the output's double buffer (two audio blocks, 5.8 ms,
+  less half a block on average by the time the key is read) and the key's debounce (1.5 scan
+  frames, 1.65 ms), computed from those constants and measured in the emulator. Both NEAREST and
+  OFF use it, K1's and K2's locks too; in OFF a key just past a row's start goes to the row
+  before, at row 0 to the last row of the entry that played before it.
+- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
+  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
+  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
+  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
+  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
+  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
+- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
+  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
+  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
+  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
+  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
+  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
+
 ### Added
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
   (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
@@ -28,6 +58,16 @@ All notable changes are documented here. The format follows
 - **LAB: the arpeggio's RATE on MOD's K4** (`3FR`, `1/16`: LIVE's ARP + K1), dark while ARP is
   off and set all the same. The rate is a parameter of the MIDI map now: CC 28 goes through its
   row, so MIDI learn can rebind it, it has NRPN 0/9 and MIDI out sends it.
+- **TABLE's ARP helper is heard before SAVE.** While the helper is open the keys play the draft
+  (`HEARING DRAFT` under its name): the current instrument on the cursor's voice from the helper's
+  first row, and every turn of an offset, the speed, the loop or the steps is heard at once on a
+  held note. HOME closes it with nothing written; SAVE writes the rows as before. The draft is the
+  player's (a song_ctl command at a block's start), on that voice only: a playing song keeps its
+  own rows on the others.
+- **A held STEP step plays its locks.** Holding a step key sounds its note with the step's cutoff,
+  resonance, filter mode, route and pulse LOCKs, and a K1-K3 turn on it is heard at once; the locks
+  go when the key is let go, and the song's next rows play their own. Chance does not apply to an
+  audition; the character LOCKs stay the row's.
 - **DICE's range and rhythm on STEP.** With EDIT + SCL held, K2 sets the range (1 OCT, 2 OCT,
   3 OCT, BASS: the lane's octave and the one below) and K4 the rhythm (STRAIGHT, OFFBEAT, 3-3-2,
   FOUR, BROKEN; a drum lane takes the rhythm and ignores the range). The frame now shows all four

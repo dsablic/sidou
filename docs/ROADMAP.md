@@ -74,11 +74,14 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 
 - ~~**The rest of DICE's settings:** range (K2) and rhythm (K4), left unbound beside the minimal
   density and scale. M.~~ Done in 1.1: the frame shows all four and the lane's root.
-- **The ARP helper's audition.** Hear the draft arpeggio before SAVE: the player reads the
+- ~~**The ARP helper's audition.** Hear the draft arpeggio before SAVE: the player reads the
   helper's draft rows as an overlay (the song-control jam plays only the song's own tables).
-  M; the audio path and RAMTEXT (moved from 1.0, the user, 2026-10-29).
-- **A held step's audition plays its locks.** Hold a step and hear it with its locks. M; needs
-  room in the audio interrupt, so a device check follows.
+  M; the audio path and RAMTEXT (moved from 1.0, the user, 2026-10-29).~~ Done in 1.1: the keys
+  play the draft (`HEARING DRAFT`), every turn heard at once; a device check follows
+  (hardware-test.md section 23).
+- ~~**A held step's audition plays its locks.** Hold a step and hear it with its locks. M; needs
+  room in the audio interrupt, so a device check follows.~~ Done in 1.1: its cutoff, resonance,
+  filter mode, route and pulse locks, pinned while held; the device check is section 23.
 - **LAB's song bridge:** send a sound to a song as an instrument, pull one back. M-L. Its own
   design first (the LAB design calls it the second step).
 - **Instruments from a `.sid`.** Lift an instrument out of a tune you play. M-L; pairs with
@@ -142,13 +145,15 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
   a useful range, an even-in-perception curve and a test for dead zones and jumps. M.
 - **Suggested automations.** A one-line toast offers "record this knob move as locks?" after
   you keep doing it. L, idea; cheap in the main loop.
-- **SysEx during a chord.** The 100 ms gap before a store write is an ear call, not yet made.
-  S.
+- ~~**SysEx during a chord.**~~ Done in 1.1: an upload waits for quiet while a song plays or a
+  computer records (WAIT, `UPLOAD WAITS FOR QUIET`); keys alone dip 250 ms apart, a build
+  option until the ear check on the device. S.
 - **Performance headroom.** A pass over the thin spots in the audio-interrupt gates (LIVE
   noise, SELECT into RULE, STATUS idle, MIDI floods, USB drain). M-L.
 - **Faster test CI.** The 13-minute test is split and the local merge check runs everything under nextest; the GitHub CI (tags only) runs just the package boot test and does not run emu-gate. What is left: an optional sharded emu-gate workflow on GitHub's x86 runners (the gate's JIT works there), to take the emulator stage off the local machine. S-M.
-- **REC from the keys, compensated.** The key-to-row timing is uncompensated (about 3 ms);
-  decide by feel on the device. S.
+- ~~**REC from the keys, compensated.**~~ Done in 1.1: a fixed 6.0 ms computed from the block,
+  the double buffer and the debounce, in NEAREST and OFF; the feel at tempo 6 and 3 is a device
+  check. S.
 - **sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.
 
 ## Later and ideas

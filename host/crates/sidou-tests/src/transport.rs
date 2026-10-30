@@ -156,6 +156,7 @@ pub fn player_state(p: &gt2_player) -> Vec<u8> {
     let mut q = *p;
     q.song = std::ptr::null();
     q.shape = std::ptr::null();
+    q.draft = std::ptr::null();
     q.start = [0; 3];
     // up to the last field (the struct's tail padding is not data)
     let bytes = std::mem::offset_of!(gt2_player, ev) + size_of::<[gt2_event; 3]>();

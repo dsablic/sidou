@@ -305,7 +305,7 @@ void midi_sysex_bind(const sysex_hooks* hooks, const volatile uint32_t* now_ms) 
     sysex_init(&sidou_sysex, store_fm1(), &bound, version, store_fm1_window != 0);
 }
 
-void midi_sysex_service(uint32_t now_ms) {
+void midi_sysex_service(uint32_t now_ms, int loud) {
     if (!midi_sysex_running) {
         return;
     }
@@ -317,6 +317,7 @@ void midi_sysex_service(uint32_t now_ms) {
         }
     }
     sidou_sysex.windows = store_fm1_window != 0;
+    sidou_sysex.loud = (uint8_t)(loud != 0);
     sysex_poll(&sidou_sysex, now_ms);
     midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
 }
@@ -509,6 +510,11 @@ void midi_send(void) {
 
 void midi_service(uint32_t now_ms) {
     usb_retry_quiet(now_ms);
+}
+
+int midi_usb_recording(void) {
+    /* As usb_audio_tick reads it (usb_audio.c); the TIMER5 interrupt changes each. */
+    return uac.alt && *(volatile uint8_t*)&usb.config && uac.flowing;
 }
 
 int midi_usb_live(void) {

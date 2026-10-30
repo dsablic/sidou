@@ -81,6 +81,11 @@ typedef struct {
      * at a pattern's last row, whether it plays again (an orderlist repeat), so REC places a
      * key past that row in the pattern's next pass, not the next entry's. */
     uint8_t again;
+    /* How long before now a key pressed now was played, in now_frac's 256ths of a call: what
+     * the player heard lags the render by the output's double buffer, and the key reaches the
+     * main loop after its debounce (platform/fm1/main.c REC_LAG_SAMPLES).
+     * REC places a key that much earlier (song_view.c rec_place); 0: none. */
+    uint16_t rec_lag;
     uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 
@@ -150,6 +155,14 @@ typedef struct {
                            uint32_t nlocks, uint32_t* ticket);
     /* Optional selected-subtune PLAY. The original play remains MIDI's subtune-zero start. */
     int (*play_from)(void* ctx, uint32_t subtune, uint32_t order_pos);
+    /* Optional auditions of what is not written yet (1, or 0: not now, ask again). TABLE's ARP
+     * helper's draft: on voice, the wavetable's rows from first (1 based) read as left[0..n) and
+     * right[0..n), and a jam there plays them (song_ctl_draft); n 0: none. STEP's held step: its
+     * filter and pulse locks (param, value low, high; n at most 5) over the voice's sound until
+     * n 0 (song_ctl_held). */
+    int (*draft)(void* ctx, uint32_t voice, uint32_t first, uint32_t n, const uint8_t* left,
+                 const uint8_t* right);
+    int (*held)(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n);
 } song_transport;
 
 #ifdef __cplusplus
