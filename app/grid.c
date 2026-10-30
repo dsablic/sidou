@@ -67,6 +67,7 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
     g->region_bx = g->region_by = 0;
     g->region_painter = NULL;
     g->region_ctx = NULL;
+    g->region_peek = NULL;
     g->region_run = 0;
     for (uint32_t i = 0; i < GRID_CELLS; i++) {
         g->src[i] = ' ';
@@ -525,6 +526,9 @@ int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_
         region_stale(g);
     }
     g->region_bitmap = NULL;
+    if (g->region_painter != fn || g->region_ctx != ctx) {
+        g->region_peek = NULL;
+    }
     g->region_painter = fn;
     g->region_ctx = ctx;
     g->region_col = (uint8_t)col;

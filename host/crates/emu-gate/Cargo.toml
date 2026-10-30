@@ -16,6 +16,7 @@ workspace = true
 sidou-sys = { path = "../sidou-sys" }
 
 [dev-dependencies]
+fm1-live-link = { path = "../live-link" }
 fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "93cb7ee3f7008b27959ba73073b864e37efd7289" }
 fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "93cb7ee3f7008b27959ba73073b864e37efd7289" }
 gt2-ref = { path = "../gt2-ref" }

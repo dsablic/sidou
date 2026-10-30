@@ -154,6 +154,9 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
 - **Over USB:** SysEx GET reads a song from the device and PUT writes one to it
   ([protocol](docs/reference/sysex.md)); while a song plays, an upload waits for quiet so the
   music never dips.
+- **Screen mirror (FM-1 Live Link):** a computer can show the FM-1's screen and press its
+  buttons over the same USB-MIDI port ([protocol](docs/reference/live-link.md), open to the other
+  FM-1 firmwares); the browser viewer comes later.
 - **The showcase songs:** a fresh install lists only the built-in SIDOU LOOP. The
   [Songs page](https://dsablic.github.io/sidou/songs.html) of the browser demo sends
   CHROME COMET, IRON RITE, NEON HIGHWAY and PAPER LANTERNS ([`assets/songs`](assets/songs/)) to a

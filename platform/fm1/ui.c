@@ -58,11 +58,34 @@ static uint8_t idle_work;
  * work between frames (the one test such calls make, most calls). */
 static uint8_t at_rest;
 
+/* LINK, drawn over the bottom-left corner's two cells while a Live Link session runs (on the
+ * panel only): a row of 16 pixels a bit, bit 15 the leftmost. */
+#define STAMP_ROW (GRID_ROWS - 1u)
+#define STAMP_CELLS 2u
+static const uint16_t stamp_rows[8] = {0, 0x452A, 0x45AC, 0x4568, 0x452C, 0x752A, 0, 0};
+static uint8_t stamped;
+
+/* Over the run in px, rendered: the stamp's pixels in its cells. */
+__attribute__((noinline)) static void stamp(uint16_t* px) {
+    uint32_t w = run.len * GRID_CELL_PX;
+    uint32_t x0 = run.col * GRID_CELL_PX;
+    uint32_t x1 = STAMP_CELLS * GRID_CELL_PX;
+    for (uint32_t y = 0; y < GRID_CELL_PX; y++) {
+        for (uint32_t x = x0; x < x1 && x - x0 < w; x++) {
+            px[y * w + x - x0] =
+                stamp_rows[y] >> (15u - x) & 1u ? palette[GRID_LIGHT_GREEN] : palette[GRID_BLACK];
+        }
+    }
+}
+
 /* The next changed run rendered into the free buffer, unless one waits already. 0: nothing to
  * send. */
 static int prepare(void) {
     if (!pending && grid_next_run(&cells, &run)) {
         grid_render_run(&cells, &run, palette, lcd_buffer());
+        if (stamped && run.row == STAMP_ROW && run.col < STAMP_CELLS) {
+            stamp(lcd_buffer());
+        }
         pending = 1;
     }
     return pending;
@@ -71,7 +94,23 @@ static int prepare(void) {
 static void send(void) {
     lcd_send(run.col * GRID_CELL_PX, run.row * GRID_CELL_PX, run.len * GRID_CELL_PX,
              GRID_CELL_PX);
+    if (midi_link_active) {
+        midi_link_mark(run.row, run.col, run.len);
+    }
     pending = 0;
+}
+
+void ui_link(uint32_t now_ms) {
+    midi_link_run(&cells, now_ms);
+    /* After the run: a session it ended (its STOPPED sent, or the host gone) takes the stamp
+     * with it in this call, the last before midi_link_active is set again. */
+    uint8_t on = (uint8_t)midi_link_on();
+    if (on != stamped) {
+        stamped = on;
+        for (uint32_t c = 0; c < STAMP_CELLS; c++) {
+            grid_mark(&cells, c, STAMP_ROW); /* drawn again, with the stamp or without */
+        }
+    }
 }
 
 /* Everything that changed, waiting for the panel (blocking). */

@@ -61,6 +61,11 @@ void ui_song_force(int on);
  * slice of the view's work between frames, if it has any (views_idle: RED MOON RITE's scan),
  * and returns; the first one after the first frame is out turns the display on. */
 void ui_poll(uint32_t now_ms);
+/* Main loop, after ui_poll, while midi_link_active (main.c tests it: a pass without a session
+ * pays that test alone): FM-1 Live Link's mirror of the grid (midi_link_run), and LINK in
+ * the panel's bottom-left corner while a session runs (drawn on the panel only, over the
+ * corner's two cells: the mirror shows the grid). */
+void ui_link(uint32_t now_ms);
 /* Main loop, once a pass: the song control and the events drained from its ring this pass,
  * for the views (views_song). */
 void ui_song(const song_ctl* sc, const song_event* ev, uint32_t n);
