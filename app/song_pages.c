@@ -844,7 +844,7 @@ int song_pages_batch_go(song_pages* p) {
 static const uint8_t PTR_FIELD[GT2_TABLES] = {GT2_INS_WAVE, GT2_INS_PULSE, GT2_INS_FILTER,
                                               GT2_INS_VIBPARAM};
 
-const char* song_pages_lab_send(song_pages* p, const uint8_t* sound, const char* name,
+const char* song_pages_lab_send(song_pages* p, const uint8_t sound[LAB_SOUND_BYTES], const char* name,
                                 uint32_t model, uint32_t* instr, uint32_t* notes) {
     gt2_song* song = (gt2_song*)p->sv->song;
     if (!song)

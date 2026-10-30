@@ -110,7 +110,7 @@ static void arp_chord(const uint8_t* sound, uint8_t wave, prog* p) {
                                                           p->o->right[GT2_WTBL]);
 }
 
-void lab_song_encode(const uint8_t* sound, const char* name, uint32_t voice, uint32_t model,
+void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uint32_t voice, uint32_t model,
                      const uint8_t first[GT2_TABLES], lab_song_instr* o) {
     memset(o, 0, sizeof *o);
     uint8_t* ins = o->instr;
@@ -257,7 +257,8 @@ static uint32_t rd32(const uint8_t* p) {
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
 
-int lab_song_kept(const gt2_song* s, uint32_t instr, uint8_t rows[GT2_TABLES], uint8_t* sound) {
+int lab_song_kept(const gt2_song* s, uint32_t instr, uint8_t rows[GT2_TABLES],
+                  uint8_t sound[LAB_SOUND_BYTES]) {
     uint32_t len = 0u;
     const uint8_t* d = song_ext_find(s, lab_song_tag(instr), &len);
     if (!d || len < KEPT_HEAD + LAB_SOUND_BYTES_1_0 || d[0] != KEPT_VERSION ||
@@ -273,7 +274,8 @@ int lab_song_kept(const gt2_song* s, uint32_t instr, uint8_t rows[GT2_TABLES], u
     return 1;
 }
 
-int lab_song_keep(gt2_song* s, uint32_t instr, const lab_song_instr* in, const uint8_t* sound) {
+int lab_song_keep(gt2_song* s, uint32_t instr, const lab_song_instr* in,
+                  const uint8_t sound[LAB_SOUND_BYTES]) {
     uint32_t len = 0u, kept = 0u;
     uint8_t rows[GT2_TABLES], snd[LAB_SOUND_BYTES];
     if (!song_ext_find(s, lab_song_tag(instr), &len)) {
@@ -357,7 +359,8 @@ static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
     }
 }
 
-uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model, uint8_t* sound) {
+uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
+                       uint8_t sound[LAB_SOUND_BYTES]) {
     uint8_t rows[GT2_TABLES];
     if (lab_song_kept(s, instr, rows, sound))
         return LAB_SONG_EXACT;
