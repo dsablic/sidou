@@ -98,11 +98,13 @@ static void sidou_trs(void* ctx, midi_sysex_event event, uint8_t byte) {
 /* Live Link (app/link.h): read by the emulator tests through the ELF symbol. In POOL, as the
 MIDI learn bindings: the RAM region keeps its room. */
 static link_state live_link __attribute__((used, section(".pool")));
+uint8_t midi_link_active;
 
 static void sidou_usb(void* ctx, midi_sysex_event event, uint8_t byte) {
     ((midi_rx*)ctx)->inputs++;
     (void)event;
     link_byte(&live_link, byte, *sysex_ms);
+    midi_link_active = (uint8_t)(live_link.on | live_link.want);
     sysex_byte(&sidou_sysex, SYSEX_USB, byte, *sysex_ms);
     midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
     store_fm1_active |= midi_sysex_running;
@@ -333,9 +335,7 @@ void midi_sysex_service(uint32_t now_ms, int loud) {
 /* ---- Live Link (midi.h) ---- */
 
 void midi_link_mark(uint32_t row, uint32_t col, uint32_t len) {
-    if (live_link.on) {
-        link_mark(&live_link, row, col, len);
-    }
+    link_mark(&live_link, row, col, len);
 }
 
 int midi_link_on(void) {
@@ -351,11 +351,9 @@ int32_t midi_link_steps(uint32_t enc) {
 }
 
 void midi_link_run(const grid* g, uint32_t now_ms) {
-    if (!live_link.on && !live_link.want) {
-        return; /* no session: most passes */
-    }
     if (!midi_usb_live()) {
         link_drop(&live_link); /* the host went away */
+        midi_link_active = 0;
         return;
     }
     /* Out of the way of everything else on the IN endpoint: a SysEx transfer or reply of
@@ -374,6 +372,7 @@ void midi_link_run(const grid* g, uint32_t now_ms) {
     if (n) {
         sidou_outstanding = 1; /* the updater's replies wait for the ring to empty */
     }
+    midi_link_active = (uint8_t)(live_link.on | live_link.want);
 }
 
 /* ---- midi.h ---- */

@@ -2605,7 +2605,9 @@ static void sidou_main(void) {
             tune_idle();
         }
         ui_poll(now);
-        ui_link(now);
+        if (midi_link_active) {
+            ui_link(now);
+        }
         midi_service(now);
         bootguard_poll(&boot_guard, now);
 #if defined(SIDOU_TEST_DEATH_MS)

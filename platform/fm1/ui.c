@@ -94,11 +94,16 @@ static int prepare(void) {
 static void send(void) {
     lcd_send(run.col * GRID_CELL_PX, run.row * GRID_CELL_PX, run.len * GRID_CELL_PX,
              GRID_CELL_PX);
-    midi_link_mark(run.row, run.col, run.len);
+    if (midi_link_active) {
+        midi_link_mark(run.row, run.col, run.len);
+    }
     pending = 0;
 }
 
 void ui_link(uint32_t now_ms) {
+    midi_link_run(&cells, now_ms);
+    /* After the run: a session it ended (its STOPPED sent, or the host gone) takes the stamp
+     * with it in this call, the last before midi_link_active is set again. */
     uint8_t on = (uint8_t)midi_link_on();
     if (on != stamped) {
         stamped = on;
@@ -106,7 +111,6 @@ void ui_link(uint32_t now_ms) {
             grid_mark(&cells, c, STAMP_ROW); /* drawn again, with the stamp or without */
         }
     }
-    midi_link_run(&cells, now_ms);
 }
 
 /* Everything that changed, waiting for the panel (blocking). */

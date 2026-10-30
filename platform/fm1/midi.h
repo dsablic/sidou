@@ -73,13 +73,15 @@ void midi_sysex_bind(const sysex_hooks* hooks, const volatile uint32_t* now_ms);
 void midi_sysex_service(uint32_t now_ms, int loud);
 /* 1 while a computer records the USB audio (it has the stream open and takes its packets). */
 int midi_usb_recording(void);
-/* FM-1 Live Link (app/link.h, docs/reference/live-link.md), over USB's SysEx. Main loop:
- * the panel was sent cells [col, col + len) of row (ui.c, each run); nothing without a
- * session. */
+/* FM-1 Live Link (app/link.h, docs/reference/live-link.md), over USB's SysEx. 1 while a
+ * session runs or has a reply to send: the calls below are for then only, so that without
+ * a session the main loop pays one test of this byte where it would make them. */
+extern uint8_t midi_link_active;
+/* Main loop: the panel was sent cells [col, col + len) of row (ui.c, each run). */
 void midi_link_mark(uint32_t row, uint32_t col, uint32_t len);
 /* 1 while a host's session runs. */
 int midi_link_on(void);
-/* Main loop, once a pass: the session's next frame onto USB, if there is one and room. */
+/* Main loop, a pass's: the session's next frame onto USB, if there is one and room. */
 void midi_link_run(const grid* g, uint32_t now_ms);
 /* The host's held buttons, its presses since the last call into *pressed (input.c). */
 uint32_t midi_link_buttons(uint32_t* pressed);
