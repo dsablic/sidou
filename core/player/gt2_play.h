@@ -242,6 +242,12 @@ typedef struct {
  * whose channels start at start[] (packed orderlist bytes, gt2_shape_order_byte; NULL:
  * their starts). O(1): the audio interrupt's. The shape must stay as it is until another
  * replaces it (gt2_play_set_shape) or the player is started again. */
+/* GoatTracker's frequency table (src/gplay.c's freqtbllo/freqtblhi): C-0 to B-7, PAL. In RAM
+ * on the device, the audio path's (gt2_play.c); the main loop reads it too (psid_lift.c). */
+#define GT2_NOTES 96u
+extern const uint8_t gt2_freq_lo[GT2_NOTES];
+extern const uint8_t gt2_freq_hi[GT2_NOTES];
+
 void gt2_play_start(gt2_player* p, const gt2_song* s, const gt2_shape* shape,
                     const uint8_t* start);
 

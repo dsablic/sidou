@@ -22,6 +22,7 @@ add_library(sidou_core STATIC
     psid/psid_env.c
     psid/psid_ctl.c
     psid/psid_ctl_isr.c
+    psid/psid_lift.c
     player/gt2_play.c
     player/gt2_shape.c
     player/song_ctl.c
@@ -63,6 +64,8 @@ set_source_files_properties(psid/psid_file.c PROPERTIES COMPILE_OPTIONS -Oz)
 # are, with no jump tables (a table would be read from flash by the interrupt).
 set_source_files_properties(psid/psid_ctl.c PROPERTIES COMPILE_OPTIONS -Os)
 set_source_files_properties(psid/psid_ctl_isr.c PROPERTIES COMPILE_OPTIONS "-O2;-fno-jump-tables")
+# The lift (psid_lift.h): the main loop's, once a note; built for size.
+set_source_files_properties(psid/psid_lift.c PROPERTIES COMPILE_OPTIONS -Oz)
 # The voice shadow (M3; sid_shadow.h) runs with the 6502 in the main loop, from flash: built for
 # size, and in one section, so that none of the voice code it instantiates from the headers
 # (sid_osc.h's and sid_env.h's out-of-line helpers) has a name app.ld's .ram_text patterns take

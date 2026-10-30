@@ -12,6 +12,7 @@
 #include "psid/psid_ctl.h"
 #include "psid/psid_env.h"
 #include "psid/psid_file.h"
+#include "psid/psid_lift.h"
 #include "sid/sid.h"
 #include "sid/sid_character.h"
 #include "sid/sid_env.h"
