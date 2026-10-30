@@ -459,9 +459,15 @@ impl Slots {
     }
 }
 
-/// A SID voice's level (0.25 full scale): a 441 Hz sine for the drives, a 220 Hz saw of 20
-/// harmonics for the rest.
+/// A SID voice's level: a 441 Hz sine for the drives, a 220 Hz saw of 20 harmonics for the
+/// rest, 0.25 full scale as the algorithms hear it (the distortion slot lifts its input by
+/// SID_SLOT_DIST_GAIN to that level, so its voice comes in that much lower, as the chip's).
 fn voice(slot: u32, n: usize) -> Vec<i16> {
+    let level = if slot == 0 {
+        0.25 / SID_SLOT_DIST_GAIN
+    } else {
+        0.25
+    };
     (0..n)
         .map(|i| {
             let t = i as f64 / f64::from(FS);
@@ -473,7 +479,7 @@ fn voice(slot: u32, n: usize) -> Vec<i16> {
                     .sum::<f64>()
                     / 1.7
             };
-            (x * 0.25 * 32767.0).round() as i16
+            (x * level * 32767.0).round() as i16
         })
         .collect()
 }

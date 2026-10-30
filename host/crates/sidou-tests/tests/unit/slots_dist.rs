@@ -216,10 +216,12 @@ fn drives_hold_their_aliases_down() {
 #[test]
 fn drive_parameter_jumps_are_click_free() {
     use Control::*;
-    // Below hard clipping: 0.03 full scale stays under the overdrive's knee at full drive
-    // and in the fuzz's clip at moderate gain; switches at full level are covered below.
+    // Below hard clipping: 0.03 full scale (as the algorithms hear it, the slot's input lifted
+    // by SID_SLOT_DIST_GAIN) stays under the overdrive's knee at full drive and in the fuzz's
+    // clip at moderate gain; switches at full level are covered below.
+    let g = SID_SLOT_DIST_GAIN;
     assert_click_free_at(
-        0.03,
+        0.03 / g,
         DIST,
         params(SID_DIST_OVERDRIVE, 0.5, 0.5, 0.5, 1.0),
         &[
@@ -232,14 +234,14 @@ fn drive_parameter_jumps_are_click_free() {
     // The octave's rectified cusp at every zero crossing is real signal with a 2nd
     // difference of ~60 LSB at 0.03 full scale; at 0.01 it is a third of that.
     assert_click_free_at(
-        0.01,
+        0.01 / g,
         DIST,
         params(SID_DIST_FUZZ, 0.3, 0.5, 0.5, 1.0),
         &[(A, 0.0, 1.0), (B, 0.0, 1.0), (Mix, 0.0, 1.0)],
     );
     // The fuzz's gain spans 40 dB: its Amount jump is checked up to where it clips.
     assert_click_free_at(
-        0.03,
+        0.03 / g,
         DIST,
         params(SID_DIST_FUZZ, 0.0, 0.0, 0.0, 1.0),
         &[(Amount, 0.0, 0.5)],

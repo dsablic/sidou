@@ -416,3 +416,92 @@ fn every_default_is_audible() {
         );
     }
 }
+
+/// A SAW LEAD note (A4) as the chip renders it on the device, 0.6 s from the key: the live
+/// instrument's register writes into a 6581 at 44.1 kHz.
+fn saw_lead_note() -> Vec<i16> {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.note_on(69);
+    let mut chip = Box::<sid>::default();
+    unsafe { sid_init(&mut *chip, SID_MODEL_6581, SID_CLOCK_PAL, 44100) };
+    for &(r, v) in rig.log() {
+        if r <= 0x18 {
+            unsafe { sid_write(&mut *chip, r, v) };
+        }
+    }
+    let mut out = vec![0i16; 26460];
+    for c in out.chunks_mut(128) {
+        unsafe { sid_render(&mut *chip, c.as_mut_ptr(), c.len() as u32) };
+    }
+    out
+}
+
+/// The distortion slot's output for `input` with Amount at `amount` (the rest the defaults,
+/// Mix full), both sides summed, the last 0.4 s.
+fn dist_render(alg: u32, amount: u8, input: &[i16]) -> Vec<f64> {
+    let d = unsafe { live_fx_defaults[0][alg as usize] };
+    let f = |v: u8| f32::from(v) / 127.0;
+    let (mut s, _pool) = slots_box();
+    let p = sid_slot_params {
+        algorithm: alg,
+        amount: f(amount),
+        a: f(d[1]),
+        b: f(d[2]),
+        mix: 1.0,
+    };
+    unsafe { sid_slots_set(&mut *s, 0, &p) };
+    let mut out = Vec::new();
+    for b in input.chunks(128) {
+        let mut o = vec![0i16; 2 * b.len()];
+        unsafe { sid_slots_process(&mut *s, b.as_ptr(), o.as_mut_ptr(), b.len() as u32) };
+        out.extend(o.chunks(2).map(|lr| f64::from(lr[0]) + f64::from(lr[1])));
+    }
+    out[out.len() - 17640..].to_vec()
+}
+
+/// How much a change alters the sound's shape, its level taken out: the RMS of the difference
+/// of the two renders, each at unit RMS, in dB (a pure level change is -inf; a different wave
+/// near 0 dB).
+fn shape_change(a: &[f64], b: &[f64]) -> f64 {
+    let (ra, rb) = (rms(a), rms(b));
+    if ra == 0.0 || rb == 0.0 {
+        return 0.0; // one of them silent: as different as can be
+    }
+    let d: Vec<f64> = a.iter().zip(b).map(|(x, y)| x / ra - y / rb).collect();
+    20.0 * rms(&d).log10()
+}
+
+/// Every distortion's Amount is heard end to end on a SAW LEAD note at the level the chip gives
+/// it on the device (the slot's input, -23 dBFS at its peak), not only on a note at the
+/// algorithms' reference level (a 0.25 full-scale voice): from the bottom to the top of the knob
+/// the wave's shape changes by at least -15 dB of itself, the note never vanishes, and its level
+/// moves by 6 dB at most (Amount is a drive, not a volume knob). 1.0 and 1.1.0 fed the slot the
+/// chip's samples as they were: TAPE's Amount changed the shape by -31 dB (nothing heard),
+/// OVERDRIVE's and FUZZ's mostly the level (+14.5 and +13.4 dB), CRUSH's top chopped the note
+/// into bursts.
+#[test]
+fn every_distortion_amount_is_heard_on_a_saw_lead_note() {
+    let note = saw_lead_note();
+    let held = &note[note.len() - 17640..];
+    let peak = held.iter().map(|&v| i32::from(v).abs()).max().unwrap();
+    let level: Vec<f64> = held.iter().map(|&v| f64::from(v)).collect();
+    println!(
+        "SAW LEAD A4 at the slot's input: rms {:.1} dBFS, peak {:.1} dBFS",
+        20.0 * (rms(&level) / 32768.0).log10(),
+        20.0 * (f64::from(peak) / 32768.0).log10()
+    );
+    let mut weak = Vec::new();
+    for alg in 1..unsafe { live_slot_algorithms(0) } {
+        let lo = dist_render(alg, 0, &note);
+        let hi = dist_render(alg, 127, &note);
+        let shape = shape_change(&lo, &hi);
+        let level = 20.0 * (rms(&hi).max(1e-9) / rms(&lo).max(1e-9)).log10();
+        println!(
+            "DIST {alg}: Amount 0 -> 127 changes the shape {shape:.1} dB, the level {level:+.1} dB"
+        );
+        if shape < -15.0 || rms(&hi) < 0.1 * rms(&lo) || level.abs() > 6.0 {
+            weak.push(format!("{alg}: shape {shape:.1} dB, level {level:+.1} dB"));
+        }
+    }
+    assert!(weak.is_empty(), "{weak:#?}");
+}

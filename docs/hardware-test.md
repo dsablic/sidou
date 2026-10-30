@@ -26,6 +26,13 @@ A device session starts only when everything marked *Emulator* passes
   different, none silent; turned back to OFF the slot is bypassed. SELECT on to Modulation and FX
   and step their algorithms: each is audible.
   *Emulator:* `emu-gate/tests/fx_live.rs::a_slot_algorithm_on_live_is_heard` (ALGORITHM once on DIST's page selects TAPE at its musical start), `sidou-tests/tests/app/fx_live.rs::every_default_is_audible` (every algorithm of every slot adds an audible signal to a saw), `sidou-tests/tests/app/live_instrument.rs::a_silent_slot_picks_up_a_musical_start`. *Emulator (no test yet):* that the algorithms render different audio from each other.
+- [ ] SAW LEAD, one held note, each distortion in turn (EDIT + ALGORITHM), EDIT + K1 from the
+  bottom to the top: TAPE thickens and warms, OVERDRIVE and FUZZ go from clean to clipped at
+  about the same loudness (not just louder), CRUSH goes from clean to a coarse 4-bit buzz and
+  the note never vanishes, LO-FI's TV tone darkens; the popup says `TAPE` / `DRIVE 127` and so
+  on. LO-FI's HUM and NOISE (K2, K3) sit under the note at the top, not over it. Then a chord
+  and a song through OVERDRIVE: louder input clips harder, as a pedal does.
+  *Emulator:* `sidou-tests/tests/app/fx_live.rs::every_distortion_amount_is_heard_on_a_saw_lead_note` (each Amount changes the wave by -15 dB of itself or more, the level by 6 dB at most, the note never silent), `emu-gate/tests/fx_knobs.rs::every_distortion_amount_from_the_edit_layer_is_heard` (the same from the panel, the DAC's output); *device-only:* how much drive is musical.
 - [ ] Turn one control with EDIT held, then step the algorithm: the control keeps your value.
   *Emulator:* `sidou-tests/tests/app/live_instrument.rs::an_edited_slot_keeps_its_values` (a slot with a turned control keeps its values when the algorithm is stepped, also through OFF), `sidou-tests/tests/app/fx_live.rs::edit_held_turns_k1_k4_into_the_selected_slots_controls`.
 

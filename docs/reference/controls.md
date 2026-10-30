@@ -1025,6 +1025,13 @@ Distortion, Modulation and FX run after the chip, in that order, in stereo
 | Modulation | OFF, CHORUS, FLANGER, PHASER, TREMOLO, AUTO-PAN, WOW | depth (AUTO-PAN width; WOW wow) | rate (WOW: flutter) | CHORUS ensemble, FLANGER and PHASER feedback, TREMOLO and AUTO-PAN shape |
 | FX | OFF, DELAY, PING-PONG, REVERB, LUSH | DELAY feedback, REVERB and LUSH decay | DELAY time, REVERB and LUSH damping | DELAY damping, REVERB diffusion, LUSH bandwidth |
 
+**The distortions hear a note at their own level.** They are made for a SID voice at a quarter
+of full scale; the chip gives the slot about a quarter of that (SAW LEAD's A4 peaks at
+-23 dBFS), so the Distortion slot lifts its input 12 dB (x4) and lowers its wet signal as much
+again. Their Amount is a drive from the bottom of the knob to the top: TAPE saturates,
+OVERDRIVE and FUZZ clip at about the level they started at, CRUSH's coarsest steps still play
+the note, and LO-FI's hum and noise sit under it.
+
 Mix is dry/wet. Every control is smoothed, and changing algorithm crossfades through
 the dry sound (slots take turns, so a full change takes up to ~150 ms). Everything is off
 by default; saved slot settings are restored at power-on.
