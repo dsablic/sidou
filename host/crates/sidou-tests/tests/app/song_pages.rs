@@ -1373,7 +1373,7 @@ impl Pages {
         for _ in 0..64 {
             self.ack();
             unsafe { song_pages_poll(&mut *self.p) };
-            if self.p.pending == 0 && self.p.arp_next >= self.p.arp_end {
+            if self.p.pending == 0 && self.p.batch_next >= self.p.batch_end {
                 return;
             }
         }
@@ -1637,4 +1637,110 @@ fn the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written() {
     assert_eq!(h.q.drafts.last().unwrap().2.len(), 0, "then it goes");
     assert_eq!(h.p.arp_heard, 0);
     assert_eq!(h.wave_rows(0, 1), [(0x41, 0)]);
+}
+
+// ---- the batch writer (1.5: the ARP helper's and LAB's send) ----
+
+impl Pages {
+    fn table_rows(&self, table: usize, from: usize, n: usize) -> Vec<(u8, u8)> {
+        (from..from + n)
+            .map(|r| (self.model.raw().ltable[table][r], self.model.raw().rtable[table][r]))
+            .collect()
+    }
+
+    fn batch_rows(&mut self, table: u32, first: u32, rows: &[(u8, u8)], had: u32) -> Option<String> {
+        let l: Vec<u8> = rows.iter().map(|r| r.0).collect();
+        let r: Vec<u8> = rows.iter().map(|r| r.1).collect();
+        let why = unsafe {
+            song_pages_batch_rows(&mut *self.p, table, first, rows.len() as u32, had, l.as_ptr(), r.as_ptr())
+        };
+        (!why.is_null()).then(|| unsafe { CStr::from_ptr(why) }.to_str().unwrap().to_owned())
+    }
+}
+
+/// A batch of an instrument and rows of two tables: written in the order added, a differing byte
+/// per acknowledged edit (the bytes the song has already are skipped), the rows first so that the
+/// instrument's pointers never name rows not written yet.
+#[test]
+fn the_batch_writer_writes_rows_then_the_instrument_a_differing_byte_at_a_time() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    unsafe { (*h.model.ptr_mut()).rtable[1][3] = 0x40 }; // the pulse row's right byte already there
+    assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 1);
+    assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x41, 0), (0xff, 0)], 0), None);
+    assert_eq!(h.batch_rows(GT2_PTBL, 3, &[(0x88, 0x40), (0xff, 0)], 1), None);
+    let mut ins = [0u8; 25];
+    ins[..9].copy_from_slice(&[0x19, 0xa9, 1, 4, 0, 0, 0, 2, 0x41]);
+    ins[9..13].copy_from_slice(b"LAB1");
+    assert!(unsafe { song_pages_batch_instr(&mut *h.p, 5, ins.as_ptr()) }.is_null());
+    assert_eq!(unsafe { song_pages_batch_go(&mut *h.p) }, 1);
+    assert_eq!(unsafe { song_pages_batch_busy(&*h.p) }, 1);
+    // The first byte is out; the rest wait for its acknowledgement.
+    assert_eq!(h.q.submitted, 1);
+    assert_eq!(h.p.request.kind, SONG_PAGES_EDIT_TABLE);
+    h.finish_arp();
+    assert_eq!(unsafe { song_pages_batch_busy(&*h.p) }, 0);
+    assert_eq!(h.table_rows(0, 0, 2), [(0x41, 0), (0xff, 0)]);
+    assert_eq!(h.table_rows(1, 3, 2), [(0x88, 0x40), (0xff, 0)]);
+    assert_eq!(h.model.raw().instr[4], ins);
+    // 0x41, 0xff; 0x88, 0xff (0x40 there already); the instrument's 10 bytes that are not 0.
+    assert_eq!(h.q.submitted, 2 + 2 + 10);
+}
+
+/// TABLE FULL past row 255, ROWS IN USE over another program's rows, and the rows a shorter
+/// program no longer needs blanked; nothing is added on a refusal.
+#[test]
+fn the_batch_writer_refuses_full_tables_and_rows_in_use_and_blanks_what_is_left() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    for r in 10..14 {
+        unsafe {
+            (*h.model.ptr_mut()).ltable[2][r] = 0x90 + r as u8;
+            (*h.model.ptr_mut()).rtable[2][r] = 1;
+        }
+    }
+    unsafe { song_pages_batch_begin(&mut *h.p) };
+    let three = [(0x90, 0xf1), (0, 0x40), (0xff, 0)];
+    assert_eq!(h.batch_rows(GT2_FTBL, 253, &three, 0).as_deref(), Some("TABLE FULL"));
+    assert_eq!(h.batch_rows(GT2_FTBL, 8, &three, 0).as_deref(), Some("ROWS IN USE"));
+    // its own four rows from 10: three written, the fourth blanked
+    assert_eq!(h.batch_rows(GT2_FTBL, 10, &three, 4), None);
+    assert!(unsafe { song_pages_batch_blank(&mut *h.p, GT2_FTBL, 20, 1) }.is_null());
+    assert_eq!(unsafe { song_pages_batch_go(&mut *h.p) }, 1);
+    h.finish_arp();
+    assert_eq!(
+        h.table_rows(2, 8, 6),
+        [(0, 0), (0, 0), (0x90, 0xf1), (0, 0x40), (0xff, 0), (0, 0)]
+    );
+    // Nothing is begun again while one is written.
+    unsafe { song_pages_batch_begin(&mut *h.p) };
+    assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x21, 0), (0xff, 0)], 0), None);
+    unsafe { song_pages_batch_go(&mut *h.p) };
+    assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 0);
+    h.finish_arp();
+    assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 1);
+}
+
+/// A write the guard refuses ends the batch: the bytes after it are not written, and the status
+/// says why.
+#[test]
+fn the_batch_writer_stops_at_a_guard_refusal() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    unsafe { song_pages_batch_begin(&mut *h.p) };
+    h.batch_rows(GT2_WTBL, 0, &[(0x41, 0), (0x21, 0), (0xff, 0)], 0);
+    unsafe { song_pages_batch_go(&mut *h.p) };
+    h.ack();
+    h.q.guard = SONG_EDIT_GUARD_FULL as i32;
+    unsafe { song_pages_poll(&mut *h.p) };
+    assert_eq!(h.p.status as u32, SONG_PAGES_FULL);
+    assert_eq!(unsafe { song_pages_batch_busy(&*h.p) }, 0);
+    for _ in 0..8 {
+        h.ack();
+        unsafe { song_pages_poll(&mut *h.p) };
+    }
+    assert_eq!(h.table_rows(0, 0, 3), [(0x41, 0), (0, 0), (0, 0)]);
+    // Refused at once: go says so.
+    h.q.guard = SONG_EDIT_GUARD_SAVING as i32;
+    unsafe { song_pages_batch_begin(&mut *h.p) };
+    assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x11, 0)], 1), None);
+    assert_eq!(unsafe { song_pages_batch_go(&mut *h.p) }, 0);
+    assert_eq!(h.p.status as u32, SONG_PAGES_SAVING);
 }
