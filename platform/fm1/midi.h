@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 
+#include "grid.h"
 #include "keys_route.h"
 #include "live.h"
 #include "midi_learn.h"
@@ -72,6 +73,18 @@ void midi_sysex_bind(const sysex_hooks* hooks, const volatile uint32_t* now_ms);
 void midi_sysex_service(uint32_t now_ms, int loud);
 /* 1 while a computer records the USB audio (it has the stream open and takes its packets). */
 int midi_usb_recording(void);
+/* FM-1 Live Link (app/link.h, docs/reference/live-link.md), over USB's SysEx. Main loop:
+ * the panel was sent cells [col, col + len) of row (ui.c, each run); nothing without a
+ * session. */
+void midi_link_mark(uint32_t row, uint32_t col, uint32_t len);
+/* 1 while a host's session runs. */
+int midi_link_on(void);
+/* Main loop, once a pass: the session's next frame onto USB, if there is one and room. */
+void midi_link_run(const grid* g, uint32_t now_ms);
+/* The host's held buttons, its presses since the last call into *pressed (input.c). */
+uint32_t midi_link_buttons(uint32_t* pressed);
+/* Encoder enc's steps from the host since the last call. */
+int32_t midi_link_steps(uint32_t enc);
 extern uint8_t midi_sysex_running;
 extern uint8_t midi_sysex_writing;
 

@@ -5,6 +5,8 @@
  * fm1_irq.h (platform/fm1/VENDORED.md). */
 #include "input.h"
 
+#include "midi.h"
+
 #include "fm1_adc.h"
 #include "fm1_input.h"
 
@@ -115,10 +117,14 @@ void input_poll(panel* p, live* l) {
     fm1_in.notes_pressed = 0;
     fm1__unlock(k);
 
-    ui_buttons(p, pressed, fm1_in.buttons);
+    /* A Live Link host's buttons and encoders with the panel's (midi.h; none without a
+     * session, which only a host starts, after the boot's combinations were read). */
+    uint32_t remote;
+    uint32_t held = fm1_in.buttons | midi_link_buttons(&remote);
+    ui_buttons(p, pressed | remote, held);
     ui_note_keys(p, down, note_pressed);
     for (uint32_t e = 0; e < PANEL_ENCODERS; e++) {
-        int32_t steps = fm1_enc_take(e);
+        int32_t steps = fm1_enc_take(e) + midi_link_steps(e);
         if (steps) {
             ui_encoder(p, e, steps);
         }

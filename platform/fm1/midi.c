@@ -24,6 +24,7 @@
 
 #include "audio.h"
 #include "input.h"
+#include "link.h"
 #include "midi.h"
 #include "midi_out.h"
 #include "midi_ring.h"
@@ -94,9 +95,14 @@ static void sidou_trs(void* ctx, midi_sysex_event event, uint8_t byte) {
     store_fm1_active |= midi_sysex_running;
 }
 
+/* Live Link (app/link.h): read by the emulator tests through the ELF symbol. In POOL, as the
+MIDI learn bindings: the RAM region keeps its room. */
+static link_state live_link __attribute__((used, section(".pool")));
+
 static void sidou_usb(void* ctx, midi_sysex_event event, uint8_t byte) {
     ((midi_rx*)ctx)->inputs++;
     (void)event;
+    link_byte(&live_link, byte, *sysex_ms);
     sysex_byte(&sidou_sysex, SYSEX_USB, byte, *sysex_ms);
     midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
     store_fm1_active |= midi_sysex_running;
@@ -324,6 +330,52 @@ void midi_sysex_service(uint32_t now_ms, int loud) {
     midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
 }
 
+/* ---- Live Link (midi.h) ---- */
+
+void midi_link_mark(uint32_t row, uint32_t col, uint32_t len) {
+    if (live_link.on) {
+        link_mark(&live_link, row, col, len);
+    }
+}
+
+int midi_link_on(void) {
+    return live_link.on;
+}
+
+uint32_t midi_link_buttons(uint32_t* pressed) {
+    return link_take(&live_link, pressed);
+}
+
+int32_t midi_link_steps(uint32_t enc) {
+    return link_steps(&live_link, enc);
+}
+
+void midi_link_run(const grid* g, uint32_t now_ms) {
+    if (!live_link.on && !live_link.want) {
+        return; /* no session: most passes */
+    }
+    if (!midi_usb_live()) {
+        link_drop(&live_link); /* the host went away */
+        return;
+    }
+    /* Out of the way of everything else on the IN endpoint: a SysEx transfer or reply of
+     * SIDOU's or the updater's, and the ring's last slots, MIDI out's and clock out's. A frame
+     * goes into the ring whole, in this pass: nothing comes between its packets. */
+    uint32_t used = mo_w - mo_r;
+    int busy = midi_sysex_running || sx_busy || so_w != so_r;
+    uint8_t f[LINK_FRAME_MAX + 2u];
+    uint32_t n = link_poll(&live_link, g, now_ms, used < MQ ? MQ - used : 0u, busy, f);
+    f[n] = f[n + 1u] = 0; /* a last packet's unused bytes */
+    for (uint32_t i = 0; i < n; i += 3u) {
+        uint32_t cin = i + 3u >= n ? 4u + n - i : 4u; /* 5, 6, 7 end the frame; 4 goes on */
+        midi_out_event(cin | (uint32_t)f[i] << 8 | (uint32_t)f[i + 1u] << 16 |
+                       (uint32_t)f[i + 2u] << 24);
+    }
+    if (n) {
+        sidou_outstanding = 1; /* the updater's replies wait for the ring to empty */
+    }
+}
+
 /* ---- midi.h ---- */
 
 void midi_init(live* l, keys_route* kr) {
@@ -339,6 +391,7 @@ void midi_init(live* l, keys_route* kr) {
     midi_rx_learn(&rx, &learned);
     midi_out_learn(&midi_tx, &learned);
     sidou_callbacks();
+    link_init(&live_link, "SIDOU " SIDOU_VERSION);
     uart_midi_init();
     usb_start();
 }
@@ -651,12 +704,11 @@ int update_poll(void) {
     if (!sx_ready && !usb.ota_req) {
         return 0; /* the usual case, at every main-loop wake */
     }
-    if (sx_ready && sx_frame_len &&
-        (sx_frame[0] == 0x7Eu ||
-         (sx_frame_len >= 3u && sx_frame[0] == 0x7Du && sx_frame[1] == 0x53u &&
-          sx_frame[2] == 0x44u))) {
-        /* The raw USB stream already reached SIDOU's parser (usb_raw_in). Free the updater's
-         * unrelated copy now, so it can collect a request while our reply streams. */
+    if (sx_ready && sx_frame_len && (sx_frame[0] == 0x7Eu || sx_frame[0] == 0x7Du)) {
+        /* The raw USB stream already reached SIDOU's parsers (usb_raw_in): its own frames and
+         * Live Link's (7D), and the universal inquiry (7E); the updater's never start so.
+         * Free the updater's unrelated copy now, so it can collect a request while our reply
+         * streams. */
         ota_frame_done();
         if (!usb.ota_req) {
             return 0;
