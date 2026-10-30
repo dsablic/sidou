@@ -141,6 +141,17 @@ const char* song_pages_batch_instr(song_pages* pages, uint32_t instr, const uint
 int song_pages_batch_go(song_pages* pages);
 /* 1 while a batch has bytes left to write. */
 int song_pages_batch_busy(const song_pages* pages);
+/* LAB's send (app/lab_song.h): the sound as instrument *instr (0: the lowest free one, written
+ * back), named name, its filter on the song views' voice, through the batch writer (works while
+ * the song plays). Each program goes after its table's last row, or over the rows the
+ * instrument's own kept programs had (an unedited sent instrument's that no other instrument
+ * points into), the rows they no longer need blanked; a speed row the table has already is
+ * shared. The sound is kept with it (lab_song_keep). With the arpeggio on, TABLE's ARP helper is
+ * left open on its rows (pages->arp; the caller shows TABLE). NULL, and what was approximated or
+ * dropped into *notes; else why nothing was sent (NO SONG, WAITING, NO FREE INSTR, TABLE FULL,
+ * ROWS IN USE, or the guard's). */
+const char* song_pages_lab_send(song_pages* pages, const uint8_t sound[LAB_SOUND_BYTES],
+                                const char* name, uint32_t model, uint32_t* instr, uint32_t* notes);
 
 void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char out[31]);
 

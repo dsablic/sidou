@@ -7,6 +7,7 @@
 
 #include "chip_spread.h"
 #include "font.h"
+#include "lab_song.h"
 
 /* The status screen's version: right-aligned to end before this column (row 2, after SIDOU). */
 #define VERSION_END_COL 21u
@@ -1921,6 +1922,87 @@ __attribute__((noinline, unused)) LIVE_COLD static void glo_tap(views* v) {
     v->glo_tap_ms = now;
 }
 
+/* The song bridge (app/lab_song.h; docs/reference/controls.md "Send a LAB sound to the song").
+ * REC in LAB sends the sound to the song's next free instrument; EDIT + REC writes it over
+ * INSTR's instrument, a used one after the question (`REPLACE I05? EDIT+REC`, the same again
+ * within SEND_ASK_MS). With the arpeggio on, TABLE opens with its ARP helper on the chord. */
+#define SEND_ASK_MS 4000u
+__attribute__((noinline, unused)) LIVE_COLD static void lab_send(views* v, int edit) {
+    static const char HEX[] = "0123456789ABCDEF";
+    const gt2_song* song = v->song.song;
+    uint32_t instr = edit ? v->song.instr : 0u, notes = 0u;
+    char t[SCREEN_TOAST_CHARS + 1u] = "REPLACE I00? EDIT+REC";
+    if (instr && song && v->send_ask != instr && lab_song_free(song) != instr) {
+        uint32_t used = 0u; /* lab_song_free is the lowest empty: is this one empty too? */
+        for (uint32_t k = 0u; k < GT2_INSTR_BYTES; k++)
+            used |= song->instr[instr - 1u][k];
+        if (used) {
+            v->send_ask = (uint8_t)instr;
+            v->send_ask_at = v->s.now;
+            t[9] = HEX[instr >> 4];
+            t[10] = HEX[instr & 15u];
+            screen_toast(&v->s, t, SEND_ASK_MS);
+            return;
+        }
+    }
+    if (instr && v->send_ask == instr && v->s.now - v->send_ask_at > SEND_ASK_MS) {
+        v->send_ask = 0u; /* asked too long ago: ask again */
+        lab_send(v, edit);
+        return;
+    }
+    v->send_ask = 0u;
+    uint8_t sound[LAB_SOUND_BYTES];
+    char name[LIVE_PRESET_NAME_CHARS + 2u];
+    live_sound_get(v->l, sound);
+    live_preset_name(v->l, name);
+    for (char* c = name; *c; c++)
+        if (*c == '*')
+            *c = 0;
+    const char* why = song_pages_lab_send(&v->pages, sound, name, (uint32_t)v->l->model, &instr, &notes);
+    if (why) {
+        screen_toast(&v->s, why, SCREEN_TOAST_MS);
+        return;
+    }
+    char* e = t;
+    for (const char* w = "SENT AS I"; *w; w++)
+        *e++ = *w;
+    *e++ = HEX[instr >> 4];
+    *e++ = HEX[instr & 15u];
+    *e++ = ' ';
+    for (const char* w = name; *w && e < t + SCREEN_TOAST_CHARS; w++)
+        *e++ = *w;
+    *e = 0;
+    screen_toast(&v->s, t, SCREEN_TOAST_MS);
+    lab_view_sent(&v->lab, notes, v->s.now);
+    v->song.instr = (uint8_t)instr; /* INSTR shows it next */
+    if (v->pages.arp && v->s.depth < SCREEN_DEPTH) { /* the chord: TABLE's helper decides */
+        (void)screen_push(&v->s, &song_pages_table_view, &v->pages, SCREEN_WIPE_DOWN);
+    } else {
+        v->pages.arp = 0u;
+    }
+}
+
+/* ENV, LFO or FX on INSTR: its instrument pulled into LAB, which opens at that page. */
+__attribute__((noinline, unused)) LIVE_COLD static int lab_pull(views* v) {
+    const gt2_song* song = v->song.song;
+    uint32_t instr = v->song.instr;
+    if (!song || !instr) {
+        return 0;
+    }
+    uint32_t used = 0u;
+    for (uint32_t k = 0u; k < GT2_INSTR_BYTES; k++)
+        used |= song->instr[instr - 1u][k];
+    if (!used) {
+        screen_toast(&v->s, "EMPTY INSTRUMENT", SCREEN_TOAST_MS);
+        return 0;
+    }
+    uint8_t sound[LAB_SOUND_BYTES];
+    live_sound_get(v->l, sound);
+    uint32_t notes = lab_song_pull(song, instr, (uint32_t)v->l->model, sound);
+    lab_view_pull(&v->lab, &v->s, sound, instr, notes);
+    return 1;
+}
+
 /* HOME's press only starts it (views_flow): it acts when it is let go, so that a hold can open the
  * help card instead. A capture (learn, the boot, a card) and SAVE held take the press first.
  * SEQ, PLAY and REC: the song views'. */
@@ -1945,6 +2027,10 @@ static int global(void* ctx, const screen_event* e) {
         if (!sid_view_play(&v->sids, edit, sid_view_is(shows(v)))) { /* a .sid tune's, first */
             song_view_play(&v->song, edit);
         }
+        return 1;
+    }
+    if (e->id == PANEL_BTN_REC && shows(v) == &lab_view_view) {
+        lab_send(v, (int)(e->held >> PANEL_BTN_EDIT & 1u)); /* the sound to the song */
         return 1;
     }
     if (e->id == PANEL_BTN_REC) {
@@ -2819,7 +2905,8 @@ __attribute__((noinline, unused)) LIVE_COLD static void lab_buttons(views* v, ui
  * in the other views they do nothing). */
 #define LAB_BUTTONS (1u << PANEL_BTN_ENV | 1u << PANEL_BTN_LFO | 1u << PANEL_BTN_FX)
 __attribute__((noinline, unused)) LIVE_COLD static void live_lab(views* v, uint32_t pressed) {
-    if (screen_top(&v->s) == &live_view_view) {
+    if (screen_top(&v->s) == &song_pages_instr_view ? lab_pull(v) /* its instrument first */
+                                                     : screen_top(&v->s) == &live_view_view) {
         lab_show(v, pressed >> PANEL_BTN_ENV & 1u   ? LAB_PAGE_ENVELOPE
                     : pressed >> PANEL_BTN_LFO & 1u ? LAB_PAGE_MOD
                                                     : LAB_PAGE_FX);

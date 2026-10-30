@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "font.h"
+#include "lab_song.h"
 #include "tracker_view.h"
 
 static const char HEX[] = "0123456789ABCDEF";
@@ -836,6 +837,91 @@ int song_pages_batch_go(song_pages* p) {
     batch_issue(p);
     song_pages_poll(p);
     return p->status == SONG_PAGES_WAITING || p->status == SONG_PAGES_READY;
+}
+
+/* ---- LAB's send ---- */
+
+static const uint8_t PTR_FIELD[GT2_TABLES] = {GT2_INS_WAVE, GT2_INS_PULSE, GT2_INS_FILTER,
+                                              GT2_INS_VIBPARAM};
+
+const char* song_pages_lab_send(song_pages* p, const uint8_t* sound, const char* name,
+                                uint32_t model, uint32_t* instr, uint32_t* notes) {
+    gt2_song* song = (gt2_song*)p->sv->song;
+    if (!song)
+        return "NO SONG";
+    if (p->pending || !song_pages_batch_begin(p))
+        return "WAITING";
+    uint32_t i = *instr ? *instr : lab_song_free(song);
+    if (!i)
+        return "NO FREE INSTR";
+    lab_song_instr in;
+    uint8_t first[GT2_TABLES] = {1u, 1u, 1u, 1u}, own[GT2_TABLES] = {0}, at[GT2_TABLES] = {0};
+    uint8_t had[GT2_TABLES] = {0}, moved[GT2_TABLES] = {0}, shared = 0u;
+    uint8_t kept[LAB_SOUND_BYTES];
+    lab_song_encode(sound, name, p->sv->voice, model, first, &in); /* the rows each takes */
+    int mine = *instr && lab_song_kept(song, i, own, kept);
+    const uint8_t* ins = song->instr[i - 1u];
+    for (uint32_t t = 0u; t < GT2_TABLES; t++) {
+        uint32_t n = in.rows[t], ptr = ins[PTR_FIELD[t]], old = mine && t != GT2_STBL ? own[t] : 0u;
+        if (old && (!ptr || lab_song_shared(song, i, t, ptr, old)))
+            old = 0u; /* not its own: left as it is */
+        if (t == GT2_STBL && n) {
+            for (uint32_t r = 0u; r < GT2_TABLE_ROWS && !shared; r++)
+                if (song->ltable[t][r] == in.left[t][0] && song->rtable[t][r] == in.right[t][0]) {
+                    at[t] = (uint8_t)r; /* a speed row the table has: shared, not written */
+                    shared = 1u;
+                }
+        }
+        if (old && (n <= old || ptr - 1u + n <= GT2_TABLE_ROWS)) {
+            uint32_t r = n;
+            while (r > old && !(song->ltable[t][ptr - 2u + r] | song->rtable[t][ptr - 2u + r]))
+                r--;
+            if (r <= old) { /* in place: the rows after its own are blank */
+                at[t] = (uint8_t)(ptr - 1u);
+                had[t] = (uint8_t)old;
+                old = 0u;
+            }
+        }
+        if (n && !(t == GT2_STBL && shared) && !had[t]) {
+            uint32_t end = lab_song_table_end(song, t);
+            if (end + n > GT2_TABLE_ROWS)
+                return "TABLE FULL";
+            at[t] = (uint8_t)end;
+        }
+        moved[t] = (uint8_t)old; /* its own rows, now somewhere else: blanked */
+        first[t] = (uint8_t)(at[t] + 1u);
+    }
+    lab_song_encode(sound, name, p->sv->voice, model, first, &in);
+    const char* why = NULL;
+    for (uint32_t t = 0u; !why && t < GT2_TABLES; t++) {
+        if ((in.rows[t] || had[t]) && !(t == GT2_STBL && shared))
+            why = song_pages_batch_rows(p, t, at[t], in.rows[t], had[t], in.left[t], in.right[t]);
+        if (!why && moved[t])
+            why = song_pages_batch_blank(p, t, ins[PTR_FIELD[t]] - 1u, moved[t]);
+    }
+    why = why ? why : song_pages_batch_instr(p, i, in.instr);
+    if (why) {
+        p->batch_runs = p->batch_end = p->batch_used = 0u;
+        return why;
+    }
+    (void)lab_song_keep(song, i, &in, sound); /* no room: a pull decodes it */
+    if (in.notes & LAB_SONG_ARP) { /* the helper on its rows, to decide the chord */
+        uint32_t used = 0u;
+        p->table = GT2_WTBL;
+        p->table_row = p->arp_start = at[GT2_WTBL];
+        p->arp_cur = 0u;
+        p->arp = (uint8_t)song_pages_arp_decode(in.left[GT2_WTBL], in.right[GT2_WTBL], first[GT2_WTBL],
+                                               in.rows[GT2_WTBL], &p->arp_draft, &used);
+        p->arp_len = (uint8_t)used;
+        p->arp_dirty = p->arp;
+    }
+    if (!song_pages_batch_go(p)) {
+        p->arp = 0u;
+        return song_pages_message(p);
+    }
+    *instr = i;
+    *notes = in.notes;
+    return NULL;
 }
 
 int song_pages_arp_open(song_pages* p, screen* s) {

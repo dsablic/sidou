@@ -1644,15 +1644,34 @@ fn the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written() {
 impl Pages {
     fn table_rows(&self, table: usize, from: usize, n: usize) -> Vec<(u8, u8)> {
         (from..from + n)
-            .map(|r| (self.model.raw().ltable[table][r], self.model.raw().rtable[table][r]))
+            .map(|r| {
+                (
+                    self.model.raw().ltable[table][r],
+                    self.model.raw().rtable[table][r],
+                )
+            })
             .collect()
     }
 
-    fn batch_rows(&mut self, table: u32, first: u32, rows: &[(u8, u8)], had: u32) -> Option<String> {
+    fn batch_rows(
+        &mut self,
+        table: u32,
+        first: u32,
+        rows: &[(u8, u8)],
+        had: u32,
+    ) -> Option<String> {
         let l: Vec<u8> = rows.iter().map(|r| r.0).collect();
         let r: Vec<u8> = rows.iter().map(|r| r.1).collect();
         let why = unsafe {
-            song_pages_batch_rows(&mut *self.p, table, first, rows.len() as u32, had, l.as_ptr(), r.as_ptr())
+            song_pages_batch_rows(
+                &mut *self.p,
+                table,
+                first,
+                rows.len() as u32,
+                had,
+                l.as_ptr(),
+                r.as_ptr(),
+            )
         };
         (!why.is_null()).then(|| unsafe { CStr::from_ptr(why) }.to_str().unwrap().to_owned())
     }
@@ -1667,7 +1686,10 @@ fn the_batch_writer_writes_rows_then_the_instrument_a_differing_byte_at_a_time()
     unsafe { (*h.model.ptr_mut()).rtable[1][3] = 0x40 }; // the pulse row's right byte already there
     assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 1);
     assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x41, 0), (0xff, 0)], 0), None);
-    assert_eq!(h.batch_rows(GT2_PTBL, 3, &[(0x88, 0x40), (0xff, 0)], 1), None);
+    assert_eq!(
+        h.batch_rows(GT2_PTBL, 3, &[(0x88, 0x40), (0xff, 0)], 1),
+        None
+    );
     let mut ins = [0u8; 25];
     ins[..9].copy_from_slice(&[0x19, 0xa9, 1, 4, 0, 0, 0, 2, 0x41]);
     ins[9..13].copy_from_slice(b"LAB1");
@@ -1699,8 +1721,14 @@ fn the_batch_writer_refuses_full_tables_and_rows_in_use_and_blanks_what_is_left(
     }
     unsafe { song_pages_batch_begin(&mut *h.p) };
     let three = [(0x90, 0xf1), (0, 0x40), (0xff, 0)];
-    assert_eq!(h.batch_rows(GT2_FTBL, 253, &three, 0).as_deref(), Some("TABLE FULL"));
-    assert_eq!(h.batch_rows(GT2_FTBL, 8, &three, 0).as_deref(), Some("ROWS IN USE"));
+    assert_eq!(
+        h.batch_rows(GT2_FTBL, 253, &three, 0).as_deref(),
+        Some("TABLE FULL")
+    );
+    assert_eq!(
+        h.batch_rows(GT2_FTBL, 8, &three, 0).as_deref(),
+        Some("ROWS IN USE")
+    );
     // its own four rows from 10: three written, the fourth blanked
     assert_eq!(h.batch_rows(GT2_FTBL, 10, &three, 4), None);
     assert!(unsafe { song_pages_batch_blank(&mut *h.p, GT2_FTBL, 20, 1) }.is_null());
@@ -1743,4 +1771,222 @@ fn the_batch_writer_stops_at_a_guard_refusal() {
     assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x11, 0)], 1), None);
     assert_eq!(unsafe { song_pages_batch_go(&mut *h.p) }, 0);
     assert_eq!(h.p.status as u32, SONG_PAGES_SAVING);
+}
+
+// ---- 1.5: LAB's send (app/lab_song.h) through the batch writer ----
+
+use crate::lab_sound::Sound;
+
+impl Pages {
+    fn send(&mut self, s: &Sound, instr: u32) -> Result<(u32, u32), String> {
+        let (mut i, mut notes) = (instr, 0);
+        let why = unsafe {
+            song_pages_lab_send(
+                &mut *self.p,
+                s.as_ptr(),
+                c"LAB 03".as_ptr(),
+                0,
+                &mut i,
+                &mut notes,
+            )
+        };
+        if why.is_null() {
+            Ok((i, notes))
+        } else {
+            Err(unsafe { CStr::from_ptr(why) }.to_str().unwrap().to_owned())
+        }
+    }
+
+    fn instr(&self, i: usize) -> [u8; 25] {
+        self.model.raw().instr[i - 1]
+    }
+}
+
+fn modulated() -> Sound {
+    let mut s = crate::lab_song::plain();
+    s[LAB_SOUND_PULSE as usize..][..2].copy_from_slice(&2048u16.to_le_bytes());
+    s[LAB_SOUND_PWM_DEPTH as usize..][..2].copy_from_slice(&512u16.to_le_bytes());
+    s[LAB_SOUND_PWM_RATE as usize..][..2].copy_from_slice(&655u16.to_le_bytes());
+    s[LAB_SOUND_FILTER_VOICES as usize] = 7;
+    s[LAB_SOUND_VIBRATO_RATE as usize] = 60;
+    s[LAB_SOUND_VIBRATO_DEPTH as usize] = 64;
+    s
+}
+
+/// A send takes the lowest free instrument and puts each program after its table's last row
+/// (a speed row the table has already is shared), the filter on the song views' voice; it is
+/// written a cell at a time while the song plays, rows first, and the chunk keeps the sound.
+#[test]
+fn a_send_takes_the_next_free_instrument_and_the_rows_after_each_tables_last() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    unsafe {
+        let m = &mut *h.model.ptr_mut();
+        m.instr[0][0] = 0x11; // instrument 1 in use
+        for r in 0..3 {
+            m.ltable[0][r] = 0x21; // three wave rows
+        }
+        m.ltable[1][0] = 0x88; // a pulse row
+        m.ltable[3][0] = 0x81; // the speed row the vibrato needs
+        m.rtable[3][0] = 2;
+    }
+    h.ui.v.song.voice = 1;
+    let s = modulated();
+    let (i, notes) = h.send(&s, 0).unwrap();
+    assert_eq!(i, 2);
+    assert_eq!(notes, LAB_SONG_PWM | LAB_SONG_FILTER | LAB_SONG_VIB);
+    let want = crate::lab_song::encode(&s, 1, [4, 2, 1, 1]);
+    assert_eq!(
+        h.instr(2),
+        [0; 25],
+        "nothing until the edits are acknowledged"
+    );
+    h.finish_arp();
+    assert_eq!(h.instr(2), want.instr);
+    assert_eq!(
+        (want.instr[2], want.instr[3], want.instr[4], want.instr[5]),
+        (4, 2, 1, 1)
+    );
+    for t in 0..3 {
+        let at = [3, 1, 0][t];
+        assert_eq!(
+            h.table_rows(t, at, want.rows[t] as usize),
+            crate::lab_song::rows(&want, t),
+            "table {t}"
+        );
+    }
+    assert_eq!(
+        h.table_rows(3, 0, 2),
+        [(0x81, 2), (0, 0)],
+        "the speed row shared"
+    );
+    assert_eq!(want.right[2][0] & 7, 2, "the filter on voice 2");
+    // The next goes to the next free one, after these.
+    let (i, _) = h.send(&crate::lab_song::plain(), 0).unwrap();
+    assert_eq!(i, 3);
+    h.finish_arp();
+    assert_eq!(h.instr(3)[2], 4 + want.rows[0]);
+}
+
+/// EDIT + send over an unedited sent instrument: its programs where they were, the rows they no
+/// longer need blank; over an instrument edited since (or not sent), the programs go after the
+/// tables' last rows and its old rows stay.
+#[test]
+fn a_send_over_a_sent_instrument_writes_in_its_rows_and_blanks_the_rest() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    let (i, _) = h.send(&modulated(), 0).unwrap();
+    h.finish_arp();
+    let old = h.instr(i as usize);
+    let pulse = old[3] as usize;
+    assert_eq!(
+        h.table_rows(1, pulse - 1, 6)[4].0,
+        0xff,
+        "a five-row pulse loop"
+    );
+    let plain = crate::lab_song::plain();
+    assert_eq!(h.send(&plain, i).unwrap().0, i);
+    h.finish_arp();
+    let new = h.instr(i as usize);
+    assert_eq!((new[2], new[3]), (old[2], old[3]), "in place");
+    assert_eq!(
+        h.table_rows(1, pulse - 1, 5),
+        [(0x88, 0x12), (0xff, 0), (0, 0), (0, 0), (0, 0)]
+    );
+    assert_eq!((new[4], new[5]), (0, 0), "no filter, no vibrato now");
+    assert_eq!(
+        h.table_rows(2, 0, 3),
+        [(0, 0); 3],
+        "the filter's rows blank"
+    );
+    // Edited since: no longer its own rows.
+    unsafe { (*h.model.ptr_mut()).instr[i as usize - 1][0] = 0x55 };
+    h.send(&modulated(), i).unwrap();
+    h.finish_arp();
+    assert_eq!(
+        h.instr(i as usize)[3],
+        3,
+        "after the pulse table's last row"
+    );
+    assert_eq!(
+        h.table_rows(1, pulse - 1, 2),
+        [(0x88, 0x12), (0xff, 0)],
+        "left as it was"
+    );
+}
+
+#[test]
+fn a_send_says_why_it_cannot() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    let s = crate::lab_song::plain();
+    h.send(&s, 0).unwrap();
+    assert_eq!(h.send(&s, 0).unwrap_err(), "WAITING");
+    h.finish_arp();
+    let submitted = h.q.submitted;
+    for r in 0..255 {
+        unsafe { (*h.model.ptr_mut()).ltable[0][r] = 0x41 };
+    }
+    assert_eq!(h.send(&s, 0).unwrap_err(), "TABLE FULL");
+    for i in 0..63 {
+        unsafe { (*h.model.ptr_mut()).instr[i][7] = 2 };
+    }
+    assert_eq!(h.send(&s, 0).unwrap_err(), "NO FREE INSTR");
+    assert_eq!(h.q.submitted, submitted, "nothing written on a refusal");
+}
+
+/// REC in LAB sends the sound and says where; EDIT + REC asks before it replaces INSTR's
+/// instrument, and replaces it on a second EDIT + REC. With the arpeggio on, TABLE opens on its
+/// chord with the ARP helper. ENV on INSTR pulls the instrument into LAB.
+#[test]
+fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    h.ui.press(PANEL_BTN_ENV);
+    assert_eq!(h.ui.toast().as_deref(), Some("EMPTY INSTRUMENT"));
+    assert_eq!(h.ui.top(), "INSTR");
+    // to LAB from the menu, a sound with a filter and the arpeggio
+    unsafe {
+        let mut s = crate::lab_song::plain();
+        s[LAB_SOUND_FILTER_VOICES as usize] = 7;
+        live_sound_apply(&mut *h.ui.rig.live, s.as_ptr());
+    }
+    unsafe {
+        screen_push(
+            &mut h.ui.v.s,
+            &lab_view_view,
+            (&mut h.ui.v.lab as *mut lab_view).cast(),
+            SCREEN_CUT,
+        )
+    };
+    h.ui.press(PANEL_BTN_REC);
+    let toast = h.ui.toast().unwrap();
+    assert!(toast.starts_with("SENT AS I01 "), "{toast}");
+    for _ in 0..64 {
+        h.ack();
+        h.ui.frame();
+    }
+    assert_eq!(h.model.raw().instr[0][0], 0x29);
+    let mut hint = [0 as std::ffi::c_char; 31];
+    let text = unsafe { lab_view_hint_text(&h.ui.v.lab, h.ui.now, hint.as_mut_ptr()) };
+    assert_eq!(
+        unsafe { CStr::from_ptr(text) }.to_str().unwrap(),
+        "APPROX: FILTER"
+    );
+    assert_eq!(h.ui.v.song.instr, 1, "INSTR shows it");
+    // EDIT + REC: a question, then the replace
+    unsafe { (*h.ui.rig.live).attack_decay = 0x48 };
+    h.ui.hold(PANEL_BTN_EDIT, true);
+    h.ui.press(PANEL_BTN_REC);
+    assert_eq!(h.ui.toast().as_deref(), Some("REPLACE I01? EDIT+REC"));
+    h.ui.press(PANEL_BTN_REC);
+    h.ui.hold(PANEL_BTN_EDIT, false);
+    assert!(h.ui.toast().unwrap().starts_with("SENT AS I01"));
+    for _ in 0..64 {
+        h.ack();
+        h.ui.frame();
+    }
+    assert_eq!(h.model.raw().instr[0][0], 0x48);
+    // the arpeggio: TABLE's helper on its chord
+    unsafe { live_arp_set(&mut *h.ui.rig.live, LIVE_ARP_ON, 1) };
+    h.ui.press(PANEL_BTN_REC);
+    assert_eq!(h.ui.top(), "TABLE");
+    assert_eq!(h.ui.v.pages.arp, 1);
+    assert_eq!(h.ui.v.pages.arp_draft.steps, 4);
 }

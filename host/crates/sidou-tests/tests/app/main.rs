@@ -19,6 +19,7 @@ mod help_view;
 mod keys_route;
 mod knob_curves;
 mod lab_edit;
+mod lab_song;
 mod lab_sound;
 mod lab_view;
 mod learn_view;
