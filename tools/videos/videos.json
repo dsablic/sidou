@@ -12,12 +12,11 @@
   "whats-new": {
     "teaser": false,
     "bed": [
-      "lab-keep",
       "dice-open",
-      "dice-settings",
+      "dice-range",
       "dice-roll"
     ],
-    "preview_step": "lab-pages"
+    "preview_step": "lab-lfo"
   },
   "rec-over-loop": {
     "bpm": 125
