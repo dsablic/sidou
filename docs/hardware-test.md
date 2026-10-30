@@ -2443,8 +2443,14 @@ under each item. Set up: the build on the unit, a song with a lead on V1 (SIDOU 
   (steps) with the key still held: each turn is heard at once, with no click or stuck note. HOME:
   the key plays the song's rows again and the table is unchanged. ARP again, SAVE: the same
   arpeggio as before SAVE.
+  First, after power-on with SIDOU LOOP stopped: TABLE, the WAVE table, a blank row past the
+  song's, ARP: the unit does not restart (the 1.1.0 candidate did: a misaligned word copy).
   *Emulator:* `emu-gate/tests/song.rs::the_arp_helpers_draft_plays_on_chip_a_before_save` (two
-  steps an octave apart on chip A, a K2 turn heard on the held note, HOME writes nothing),
+  steps an octave apart on chip A, a K2 turn heard on the held note, HOME writes nothing, no
+  access the FM-1 faults on),
+  `emu-gate/tests/song.rs::the_arp_helper_on_an_empty_row_of_the_built_in_loop_does_not_crash`
+  (blank rows from the first after the song's to FE: no reset, no misaligned 16/32-bit RAM access,
+  which the chip faults on and fm1-emu carries out),
   `sidou-tests/tests/song_ctl.rs::a_drafts_jam_sounds_as_the_saved_rows_do` (the draft's render
   equals the saved rows' call for call), `a_drafts_change_is_heard_on_the_held_note`,
   `sidou-tests/tests/app/song_pages.rs::the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written`.
