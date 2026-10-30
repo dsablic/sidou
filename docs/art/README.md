@@ -818,8 +818,8 @@ characters of the large text's pieces: 2,700 bytes).
 
 ## LAB
 
-LAB (`app/lab_view.h`, from the menu's LAB) is one LIVE sound on five pages, OSC, ENVELOPE,
-FILTER, MOD and FX, each with what it shapes drawn above four cards for K1..K4, on the theme's
+LAB (`app/lab_view.h`, from the menu's LAB) is one LIVE sound on six pages, OSC, ENVELOPE,
+FILTER, MOD, FX and MACRO, each with what it shapes drawn above four cards for K1..K4, on the theme's
 colours ([the theme](#theme)). What is read while playing is at 2× or 3×: the sound's name, the
 choice, the cards' values.
 
@@ -828,11 +828,13 @@ choice, the cards' values.
 ![LAB's FILTER page](../../tests/golden/lcd/lab-filter.png)
 ![LAB's MOD page](../../tests/golden/lcd/lab-mod.png)
 ![LAB's FX page](../../tests/golden/lcd/lab-fx.png)
+![LAB's MACRO page](../../tests/golden/lcd/lab-macro.png)
 
 - **Rows 0-1:** the page's name at 2× in yellow (the `hot` role: the page in focus), and its
-  place `2/5` at 2× in the hint colour on the right.
+  place `2/6` at 2× in the hint colour on the right.
 - **Rows 2-3:** the sound's name at 2× in white, with `*` while it differs from its base (the
-  sound as loaded or kept). Yellow over white keeps the page and the sound apart where the two
+  sound as loaded or kept); A or B reversed on the right while EDIT's tap compares, A outlined
+  (the hot colour on the background) during a peek. Yellow over white keeps the page and the sound apart where the two
   2× lines meet.
 - **Rows 4-17:** the page's drawing (240 × 112 pixels, `app/lab_draw.h`), from the instrument as it
   sounds now; the part the turned card shapes is lit in that knob's colour for a second.
@@ -841,7 +843,8 @@ choice, the cards' values.
   colour, and on ENVELOPE **ALL SOUNDS** under it (the envelope mode is the instrument's).
 - **Rows 22-27, the cards:** the columns of LIVE's knob row (8, 7, 7, 8 cells): the card's name
   small in the knob's text colour (reversed for a second after a turn; dark grey for a card the
-  page has no use for), its value at 3× in white, 2× when it takes three characters (`50%`,
+  page has no use for, or MOD's RATE while ARP is off; reversed too when a macro link moved it with
+  K1's turn), its value at 3× in white, 2× when it takes three characters (`50%`,
   `0.5`, `127`), a bar in the knob's colour on dark grey, and K1..K4 in the hint colour. Names
   keep to a column: ENVELOPE's K3 is **SUS**, since SUSTAIN would run into RELEASE.
 - **Row 29, the hint line:** LAB's gestures in the hint colour, a phrase every 2 s, each at most
@@ -863,17 +866,20 @@ Guides that do not move are glyphs under the traces, in the canvas.
 ![FILTER: a low pass](../../tests/golden/lcd/lab-filter-lp.png)
 ![FILTER: a notch](../../tests/golden/lcd/lab-filter-notch.png)
 ![FILTER: full resonance](../../tests/golden/lcd/lab-filter-reso15.png)
+![FILTER: the filter LFO's band](../../tests/golden/lcd/lab-filter-lfo.png)
 ![MOD: the vibrato after its delay](../../tests/golden/lcd/lab-mod-vibrato.png)
 ![MOD: ARP's staircase](../../tests/golden/lcd/lab-mod-arp.png)
 ![FX: the chain and OVERDRIVE's curve](../../tests/golden/lcd/lab-fx-chain.png)
 ![FX: a hard drive](../../tests/golden/lcd/lab-fx-drive.png)
 ![FX: a delay's taps](../../tests/golden/lcd/lab-fx-delay.png)
+![MACRO: RES LNK +3 and PWM LNK +4](../../tests/golden/lcd/lab-macro-linked.png)
 
 | Drawing | Shows | Colours |
 |---|---|---|
 | OSC | one cycle (224 pixels at the note's pitch; the fine tune makes it shorter or longer) of the waveform at the pulse width a sounding voice has now (the PWM's LFO moves the edge); the combined waveforms as the 6581's AND of the shapes; noise as a fixed scribble about the middle; with ring or sync, one cycle of the modulator with the carrier at the sync ratio (SYNC LEAD's, 1.5 on a sound whose modulator is another key's) | the waveform's colour, as LIVE's lanes (saw yellow, pulse cyan, triangle light green, noise light grey, combined white); the modulator light grey; the PWM's range a dotted dark grey band behind the edge; lit: K1 the pulse's edge, K2 and K3 the band, K4 the note's own cycle end (a line) |
 | ENVELOPE | the ADSR to scale from the SID's rate periods on a time axis of decades (1 ms to a minute, 48 pixels a decade; 10MS, 0.1S, 1S, 10S under it): the attack linear, the decay and release by the envelope's exponential steps; the key let go (a dark grey line) at the middle, or once the sustain is reached and held half as long again, so every segment is in sight; while a key sounds, the voice's envelope (the tap's) is a white block on the curve at its level | the curve light grey; lit: the turned card's segment in its knob's colour |
-| FILTER | the mode's response on a log axis (30 Hz to 12 kHz, 26 pixels an octave; 100, 1K, 10K under it) in dB (+6 at the top, -54 at the foot), from the filter's own transfer function with the damping the chip has; the cutoff a line down the area, at the cutoff the chip has now (an LFO, the wheel or velocity move it); V1 V2 V3 at 2x under it | the curve white (dark when the filter is off); the cutoff's line grey; V1 V2 V3 in the voices' colours, dark when not routed; lit: K1 the line, K2 the curve about the cutoff, K3 the voices reversed |
+| FILTER | the mode's response on a log axis (30 Hz to 12 kHz, 26 pixels an octave; 100, 1K, 10K under it) in dB (+6 at the top, -54 at the foot), from the filter's own transfer function with the damping the chip has; the cutoff a line down the area, at the cutoff the chip has now (an LFO, the wheel or velocity move it); V1 V2 V3 at 2x under it | the curve white (dark when the filter is off); the cutoff's line grey; V1 V2 V3 in the voices' colours, dark when not routed; with the filter LFO on, the band the cutoff sweeps dotted dark grey behind the curve; lit: K1 the line, K2 the curve about the cutoff, K3 the voices reversed, K4 the band |
+| MACRO | two graphs side by side: the resonance (0..15) over the cutoff's place on K1's walk, and the PWM's depth (0..2048) over the width, each with a tick at the point the sound is at now; CUT>RESO and WIDTH>PWM under them | a graph white while its link is set, dark grey (a flat line) with none; the points yellow; lit: K1 the left graph, K2 the right |
 | MOD | a window of 1.3 s in three bands: the vibrato (its delay a flat start), the PWM's wave, and with ARP on its staircase for a C major chord (the order, span and rate as set); 0.5S and 1S under it | the vibrato white, the PWM grey (dark without the pulse waveform), ARP's staircase yellow; lit: K1 the vibrato's first cycle, K2 its trace, K3 its delay |
 | FX | the three slots as a chain at 2x (the selected one marked, a slot that is off dark) and the selected slot's shape under it: the distortion's transfer curve against the straight line, the modulation's LFO over 2 s, the delay's taps over 1.5 s (the echoes' sides alternate on PING-PONG), the reverbs' decay; a slot without a drawing (OFF, LO-FI) shows its name at 2x | the shape white, its reference dark grey, the delay's input yellow; lit: K1-K3 the shape, K4 the slot's mark |
 
@@ -888,9 +894,10 @@ canvas is the song views').
 |---|---|---|
 | OSC, SAW LEAD / PWM BASS (its LFO moving the edge) | 66 / 200 | 59.4k / 61.3k |
 | ENVELOPE, the dot moving | 85 | 74.7k (the drawing about 45k) |
-| FILTER, LP / NOTCH | 55 / 89 | 65.7k / 66.0k |
-| MOD, the vibrato / ARP on | 70 / 72 | 69.4k / 77.8k |
-| FX, OVERDRIVE / CHORUS / DELAY | 60 / 68 / 66 | 48.3k / 54.5k / 49.7k |
+| FILTER, LP / NOTCH / NOTCH with the filter LFO 12 deep (1.1) | 104 / 96 / 141 | 65.9k / 68.1k / 69.4k |
+| MOD, the vibrato / ARP on | 70 / 109 | 71.0k / 81.9k |
+| FX, OVERDRIVE / CHORUS / DELAY | 51 / 53 / 63 | 48.6k / 53.4k / 48.8k |
+| MACRO, both links turned (1.1) | 82 | 57.8k |
 
 ## SONG
 
