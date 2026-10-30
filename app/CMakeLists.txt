@@ -135,4 +135,5 @@ if(CMAKE_CROSSCOMPILING)
     # renderer's frame grows 15 %: THE CHIP's ui_poll 79,774 over 79,000), live_view.c and live.c
     # (the instrument's frame and input), reg_ring.c (the audio interrupt's pops).
     set_source_files_properties(sid_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(tracker_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
 endif()
