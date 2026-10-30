@@ -38,7 +38,7 @@
 //! The slot keeps 25,564 bytes (`V11_RESERVE`), the room 1.x starts from after 1.1.
 //! 1.5's stage follows 1.1's (docs/plans/2026-10-30-1.5-design.md, "Flash"): the user decided on
 //! 2026-10-30 to win 2-4 KB back first (the song views, the scene's tiles, the MIDI out and
-//! the song reader built for size: 550,368 down to 547,664 bytes) and set the ceiling 12,000 higher. The slot keeps 13,564 bytes
+//! the song reader built for size: 550,368 down to 548,048 bytes) and set the ceiling 12,000 higher. The slot keeps 13,564 bytes
 //! (`X_RESERVE`) for felucca-bsp and later.
 //! The M2 schedule above is history
 //! (the plans landed in parallel, so each ceiling was the latest stage merged, not the next
