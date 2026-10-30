@@ -24,6 +24,8 @@
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
 _Static_assert(offsetof(gt2_player, draft) % 4u == 0u, "a hand-over copies the player in words");
+_Static_assert(offsetof(song_ctl, draft) % 4u == 0u && _Alignof(gt2_draft) >= 4u,
+               "song_draft copies a draft in words: the FM-1 faults on a misaligned one");
 _Static_assert(SONG_DIGI_SAMPLES == SONG_DIGI_KINDS - 1u, "a built-in sample for each DIGI kind");
 
 /* --- The audio interrupt ---------------------------------------------------------------- */
