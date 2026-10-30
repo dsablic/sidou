@@ -22,6 +22,7 @@ add_library(sidou_core STATIC
     psid/psid_env.c
     psid/psid_ctl.c
     psid/psid_ctl_isr.c
+    psid/psid_lift.c
     player/gt2_play.c
     player/gt2_shape.c
     player/song_ctl.c
@@ -34,12 +35,15 @@ target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # tables: a switch's table would be read from flash (.rodata) by the audio interrupt.
 set_source_files_properties(player/gt2_play.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
 set_source_files_properties(player/song_ctl.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
-set_source_files_properties(song/gt2_stream.c song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
+set_source_files_properties(song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
+# 1.5 flash win-back: the stream reader is boot and main-loop work (240 bytes at -Oz).
+set_source_files_properties(song/gt2_stream.c PROPERTIES COMPILE_OPTIONS -Oz)
 # The whole-file .sng reader (the boot reads its song in the LCD's reset wait) and its helpers:
 # boot and main-loop work, never the interrupt.
 set_source_files_properties(song/gt2_sng.c PROPERTIES COMPILE_OPTIONS -Os)
 # Save/edit bookkeeping and extension lookups are main-loop work; their O(1) IRQ edit
 # application stays in .ram_text unchanged.
+# Not -Oz (384 bytes): it moves four LCD goldens (live-c64, live-keys-b, scene-rule30, scene-stars).
 set_source_files_properties(song/gt2_song.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
 # song_ext.c (chunk parsing, locks, options) at -Oz: the 1.1 flash win-back (docs/plans/2026-10-29-1.1-design.md).
 set_source_files_properties(song/song_ext.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
@@ -63,6 +67,8 @@ set_source_files_properties(psid/psid_file.c PROPERTIES COMPILE_OPTIONS -Oz)
 # are, with no jump tables (a table would be read from flash by the interrupt).
 set_source_files_properties(psid/psid_ctl.c PROPERTIES COMPILE_OPTIONS -Os)
 set_source_files_properties(psid/psid_ctl_isr.c PROPERTIES COMPILE_OPTIONS "-O2;-fno-jump-tables")
+# The lift (psid_lift.h): the main loop's, once a note; built for size.
+set_source_files_properties(psid/psid_lift.c PROPERTIES COMPILE_OPTIONS -Oz)
 # The voice shadow (M3; sid_shadow.h) runs with the 6502 in the main loop, from flash: built for
 # size, and in one section, so that none of the voice code it instantiates from the headers
 # (sid_osc.h's and sid_env.h's out-of-line helpers) has a name app.ld's .ram_text patterns take

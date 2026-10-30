@@ -57,8 +57,10 @@ while a transfer of this protocol (or its reply) is under way on USB. On TRS the
 
 Targets are 0: named store file, 1: instrument 1–63 of the current song, and
 2: current song. Unused instrument/name fields are zero. Files are at most
-65,536 bytes. A file's type is 1–127 (1 is a song, 2 a PSID `.sid` tune, below); targets 1
-and 2 use type 1.
+65,536 bytes. A file's type is 1–127 (1 is a song, 2 a PSID `.sid` tune, below, 3 a GTI5
+instrument); targets 1 and 2 use type 1. NOW PLAYING's lift writes its instrument as the type 3
+file `LIFTED SOUND` ([controls](controls.md#lift-a-sound)), which DIR lists and GET reads like any
+file.
 Target 1 is GoatTracker's GTI5
 instrument format, including its four tables; table references are relocated
 on import. Target 2 is a canonical GTS5 song including SIDOU's trailer.

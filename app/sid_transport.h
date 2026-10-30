@@ -21,6 +21,13 @@
  * - mute: GLO's mask, bit v voice v (solo folded in, song_view_mute_mask): on chip A's voices,
  *   and on voice v of both chips for a 2SID tune; kept for the tune's next start too.
  * - status: once a frame at most, from the main loop.
+ * - lift: arms the lift of voice `voice` (0..2) of the playing tune (core/psid/psid_lift.h): its
+ *   next note becomes a GoatTracker instrument, the store's LIFTED SOUND file (STORE_FILE_GTI);
+ *   voice 3 disarms. Its toasts (what was lifted, or why not) are the binding's.
+ * - import: the lifted instrument offered once the song is back (status.offer): go 1 imports it
+ *   into the song's first free instrument (offer_instr) with the song's importer (core/song/
+ *   gt2_ins.h), 0 skips it (the file stays on the store). With the song playing
+ *   (status.offer_playing) it is refused: the song must be stopped. Its result is a toast.
  * Every command returns at once; 1 taken, 0 refused (nothing loaded).
  *
  * Portable C, no hardware access. */
@@ -45,6 +52,15 @@ extern "C" {
 #define SID_T_FAILED 5u  /* it stopped itself (INIT TOO LONG, PLAY HUNG, a JAM) */
 #define SID_T_ENDING 6u  /* ending for good: the song comes back */
 
+/* The lift's state (sid_status.lift), and the offer's (sid_status.offer). */
+#define SID_LIFT_OFF 0u
+#define SID_LIFT_ARMED 1u  /* waiting for the voice's next note */
+#define SID_LIFT_TAKING 2u /* its frames, then the file */
+#define SID_OFFER_NONE 0u
+#define SID_OFFER_READY 1u     /* the lifted instrument waits for the song's answer */
+#define SID_OFFER_IMPORTING 2u /* the song's importer runs */
+#define SID_OFFER_NAME 16u     /* the instrument's name (GoatTracker's 16 characters) */
+
 /* What the tune is doing. */
 typedef struct {
     uint8_t state;     /* SID_T_* */
@@ -62,6 +78,12 @@ typedef struct {
     uint8_t model[2];  /* each chip's model as it plays the tune (sid_model) */
     char name[STORE_NAME_MAX + 1u]; /* the store's file */
     const psid_header* h; /* the tune's header while it is read (NULL before) */
+    uint8_t lift;         /* SID_LIFT_* */
+    uint8_t lift_voice;   /* the voice it lifts, 0..2 */
+    uint8_t offer;        /* SID_OFFER_*, with or without a tune */
+    uint8_t offer_instr;  /* the instrument it would import into, 1..63; 0 none free */
+    uint8_t offer_playing; /* the song plays (or is not settled): no import now */
+    char offer_name[SID_OFFER_NAME + 1u];
 } sid_status;
 
 typedef struct {
@@ -73,6 +95,8 @@ typedef struct {
     int (*end)(void* ctx);
     int (*mute)(void* ctx, uint32_t mask);
     void (*status)(void* ctx, sid_status* out);
+    int (*lift)(void* ctx, uint32_t voice);
+    int (*import)(void* ctx, int go);
     void* ctx;
 } sid_transport;
 

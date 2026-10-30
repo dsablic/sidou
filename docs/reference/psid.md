@@ -277,6 +277,16 @@ reads; every other read matches reSIDfp's, on both models and every combined-wav
   On random streams with sync, 0.2 % to 5 % of OSC3's reads differ from reSIDfp's, no more
   than the audio chip's own at the same cycles.
 
+### The lift
+
+NOW PLAYING's REC (`core/psid/psid_lift.h`; [controls](controls.md#lift-a-sound)) reads the
+same write sink, in the main loop: armed for a voice, it starts at the voice's next gate-on (the
+control register's gate bit written 0 then 1) on the chips the tune has, and keeps the voice's
+seven registers and `$15-$18` as they stand at each play call's return, for 50 calls at most, up
+to the gate's next change (that call not kept). More than eight writes to one of those
+registers in a call is a digi, refused. The audio interrupt never sees the lift; its state
+overlays the song's work space while the tune has the song's memory.
+
 ## Known limits
 
 - **No ROMs.** The KERNAL, BASIC and character ROMs are not there (they are Commodore's).

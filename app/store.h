@@ -130,7 +130,7 @@
 #define STORE_FILE_HEAD 32u        /* a FILE record's data before its sector list */
 #define STORE_FILE_SONG 1u         /* file types: 1..STORE_TYPE_MAX; a GoatTracker 2 song (M2c) */
 #define STORE_FILE_SID 2u          /* a PSID .sid tune (M3) */
-#define STORE_FILE_GTI 3u          /* SysEx's GTI5 instrument staging (MIDI INSTRUMENT, private) */
+#define STORE_FILE_GTI 3u          /* a GTI5 instrument: SysEx's staging (MIDI INSTRUMENT, private), the lift's LIFTED SOUND */
 #define STORE_FILE_SOUNDS 4u       /* LAB's 16 USER sounds (app/user_sound.h, private) */
 /* The USER sounds' file name: SAVE AS and SysEx refuse it, no list shows it. */
 #define STORE_SOUNDS_NAME "USER SOUNDS"

@@ -619,7 +619,7 @@ fn the_structs_fit_the_overlays() {
         PSID_RING * 6,
         ilp32::psid_work::SIZE
     );
-    assert_eq!(ilp32::psid_ctl::SIZE, 6252);
+    assert_eq!(ilp32::psid_ctl::SIZE, 6256); // with the lift's pointer (psid_lift.h)
     assert_eq!(
         ilp32::psid_work::SIZE,
         ilp32::psid_env::SIZE + 2 * ilp32::sid_shadow::SIZE

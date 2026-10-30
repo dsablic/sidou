@@ -174,7 +174,8 @@
         pattern (DICE, with its density, range, scale, rhythm and root), vary one (MUTATE) or write a
         filter sweep. On a real FM-1 the sound also goes out over USB as an audio input a computer can
         record. It plays PSID <code>.sid</code> tunes too, from the unit's flash, on its own 6502
-        (the menu's SIDS: one or two SID chips, PAL or NTSC, with mute and solo for the voices).</p>
+        (the menu's SIDS: one or two SID chips, PAL or NTSC, with mute and solo for the voices), and
+        lifts a soloed voice's next note as a GoatTracker instrument for your song.</p>
       <p><b>LAB</b> (new in 1.0) is where you shape one sound and keep it: press <kbd>3</kbd> ENV,
         <kbd>4</kbd> LFO or <kbd>1</kbd> FX on LIVE. Six pages draw what their four knobs do (a filter
         LFO on FILTER, and on MACRO links that make the resonance follow the cutoff), the knobs turning
@@ -213,7 +214,7 @@
       <table aria-label="Keyboard and panel controls">
         <tr><td><kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> … <kbd>;</kbd> <kbd>'</kbd></td><td>the note keys, C4 to F5 (a piano row: <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> are the sharps)</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>X</kbd></td><td>OCT− / OCT+</td></tr>
-        <tr><td><kbd>1</kbd> FX · <kbd>3</kbd> ENV · <kbd>4</kbd> LFO</td><td>on LIVE, open LAB at its FX, ENVELOPE or MOD page (in LAB they step to those pages): shape the sound with every parameter in sight, <kbd>8</kbd> SAVE keeps it as a USER sound; EDIT (a tap) compares A and B, EDIT held while you play peeks at A; EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls (either finger first); HOME goes back. FX is lit while the 8580 plays</td></tr>
+        <tr><td><kbd>1</kbd> FX · <kbd>3</kbd> ENV · <kbd>4</kbd> LFO</td><td>on LIVE, open LAB at its FX, ENVELOPE or MOD page (in LAB they step to those pages): shape the sound with every parameter in sight, <kbd>8</kbd> SAVE keeps it as a USER sound; EDIT (a tap) compares A and B, EDIT held while you play peeks at A; EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls (either finger first); <kbd>R</kbd> REC sends the sound to SIDOU LOOP as an instrument (and on INSTR, ENV pulls one back into LAB); HOME goes back. FX is lit while the 8580 plays</td></tr>
         <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>K1 down / up (the cutoff on LIVE)</td></tr>
         <tr><td>K1 K2 K3 K4</td><td>drag up / down or scroll over a knob. On LIVE: cutoff, resonance, the sound's own control (pulse width, decay or sync ratio, by the sound) and the release. They show the page SELECT chose (TONE, or a slot's Amount, A, B, Mix); on the CHIP view (menu → CHIP) the focused section's controls</td></tr>
         <tr><td>PRESETS</td><td>the big knob: drag or scroll for the next or previous preset (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC, then DICE, which rolls a new sound each turn)</td></tr>
@@ -225,7 +226,7 @@
         <tr><td><kbd>8</kbd> SAVE</td><td>in the menu: opens the highlighted item (CHIP, TRACKER, SETTINGS, SONG …); in a song view: saves the song; held while you turn a knob: MIDI learn</td></tr>
         <tr><td><kbd>0</kbd> SEQ</td><td>the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE, round</td></tr>
         <tr><td><kbd>Space</kbd> PLAY / <kbd>R</kbd> REC</td><td>plays SIDOU's song (SIDOU LOOP) and stops it / record mode</td></tr>
-        <tr><td>Menu → SIDS</td><td>the <code>.sid</code> tunes on the flash, eight a page (<kbd>←</kbd> <kbd>→</kbd> move, ALGORITHM clockwise or <kbd>8</kbd> SAVE plays one). NOW PLAYING: ↑ ↓ the song before or after, <kbd>Space</kbd> stops the tune, <kbd>5</kbd> held + <kbd>Space</kbd> pauses it, <kbd>6</kbd> GLO held + the first three note keys mute a voice, the next three solo one, <kbd>7</kbd> HOME back to the list with the tune still playing</td></tr>
+        <tr><td>Menu → SIDS</td><td>the <code>.sid</code> tunes on the flash, eight a page (<kbd>←</kbd> <kbd>→</kbd> move, ALGORITHM clockwise or <kbd>8</kbd> SAVE plays one). NOW PLAYING: ↑ ↓ the song before or after, <kbd>Space</kbd> stops the tune, <kbd>5</kbd> held + <kbd>Space</kbd> pauses it, <kbd>6</kbd> GLO held + the first three note keys mute a voice, the next three solo one, <kbd>R</kbd> REC with one voice soloed lifts its next note as an instrument (offered to the song once the tune ends: <kbd>8</kbd> SAVE imports it), <kbd>7</kbd> HOME back to the list with the tune still playing</td></tr>
         <tr><td>MASTER</td><td>volume (drag the knob at the top left)</td></tr>
         <tr><td>Menu → SETTINGS</td><td>KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC, SPREAD, RESET: they save themselves (but REC; RESET and STORE ask first)</td></tr>
       </table>

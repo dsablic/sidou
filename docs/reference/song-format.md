@@ -224,6 +224,7 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | `KEYS` | the keys' live preset and setup | no | M2c Task 2 |
 | `DIGI` | the digi drums: instruments that play a built-in sample | no | decision record 0009 |
 | `DICE` | the song views' DICE settings: density, each lane's scale, rhythm and range | no | 1.0 (rhythm, range, lanes 2-3 1.1) |
+| `LB01`..`LB3F` | a LAB sound sent as instrument 01..3F, and the CRC that says it is unedited | no (instrument-bound, by its CRC) | 1.5 (the song bridge) |
 | `PAD ` | padding (a space ends the tag) | no | skipped, never kept |
 | `TRKB` | reserved: chip B's tracks (M5) | | |
 | `RIPD` | reserved: rip data (M5) | | |
@@ -414,6 +415,25 @@ the one it knows) and keeps the chunk as written, but when its own EDIT + SCL tu
 writes 3 bytes back: the rhythm and the range go back to their defaults and lanes 2 and 3 take
 lane 1's scale. GoatTracker skips the chunk. A lane's root (the note DICE rolls on) is not saved:
 every lane starts at C-3 when a song loads.
+
+**`LBnn`** (9 + 48 bytes): the LAB sound sent as instrument nn (two upper-case hex digits,
+`01`..`3F`; [controls](controls.md#send-a-lab-sound-to-the-song): REC in LAB), so that the
+instrument pulled back into LAB, unedited, is that sound exactly (`app/lab_song.h`). One chunk
+an instrument, written when the sound is sent.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 4 | the rows of the wave, pulse, filter and speed programs the send wrote, from the instrument's pointer into each table (0: none) |
+| 5 | 4 | CRC-32 (as the trailer's) of the instrument's 25 bytes, then, table by table, each of those rows' left and right bytes |
+| 9 | 48 | the sound, as a USER sound's ([sound-format.md](sound-format.md#a-sound)); at least 45 bytes, the missing tail its defaults |
+
+A pull uses the sound only while the CRC of the song's bytes matches: an instrument, row or name
+edited since (here or in GoatTracker) is decoded instead, and a chunk whose sound is not valid
+counts for nothing. SIDOU keeps at most 16 of them (1,040 bytes of the area's 4,096): a send past
+that removes a chunk whose CRC no longer matches, and when none does it keeps no chunk (the
+instrument is sent all the same; its pull decodes). GoatTracker skips the chunks; an older SIDOU
+keeps them.
 
 **`PAD `** (1 + p bytes): version 1, then p bytes of `$00`.
 

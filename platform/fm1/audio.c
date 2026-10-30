@@ -100,7 +100,16 @@ static union {
         psid_header header;
     } psid;
 } player_isr __attribute__((section(".song_noinit")));
-static song_work song_space __attribute__((section(".pool.song_noinit")));
+/* The song's main-loop work space, and over it a tune's lift (core/psid/psid_lift.h): the song's
+ * work is idle from the moment the song lets go of its memory (main.c TUNE_TO_NONE, song_away;
+ * nothing of the song runs then) until audio_song_remake makes it again (TUNE_BACK_NONE), and
+ * the lift lives only in between (main.c hands its file to the store before the song comes
+ * back). */
+static union {
+    song_work song;
+    psid_lift lift;
+} song_space __attribute__((section(".pool.song_noinit")));
+_Static_assert(sizeof(psid_lift) <= sizeof(song_work), "the lift fits the song's work space");
 _Static_assert(sizeof player_isr.psid <= sizeof player_isr.song,
                "a tune's state fits the song transport's and its shapes'");
 #define song_transport (player_isr.song.transport)
@@ -205,6 +214,10 @@ psid_ctl* audio_psid(void) {
     return &tune_ctl;
 }
 
+psid_lift* audio_lift(void) {
+    return &song_space.lift;
+}
+
 psid_header* audio_psid_header(void) {
     return &player_isr.psid.header;
 }
@@ -247,13 +260,13 @@ void audio_tap_chip(uint32_t chip) {
 
 gt2_song* audio_song_boot(void) {
     gt2_song* s = gt2_song_init(song_region, SONG_REGION_BYTES);
-    song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space);
+    song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space.song);
     return s;
 }
 
 gt2_song* audio_song_remake(void) {
     gt2_song* s = gt2_song_init_wiped(song_region, SONG_REGION_BYTES);
-    song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space);
+    song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space.song);
     return s;
 }
 

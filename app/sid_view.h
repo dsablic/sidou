@@ -21,7 +21,8 @@
  *   since the song started and the state, PAL or NTSC, each chip's model, a 2SID mark (and a
  *   third SID's, 3SID: 3RD SILENT), the three voice lanes with GLO's mutes and solos (as
  *   TRACKER's header: the voice's colour, dark grey while silent, reversed while soloed; MUT and
- *   SOL) and chip A's envelopes, and the overruns and late writes when not zero.
+ *   SOL) and chip A's envelopes, and the overruns and late writes when not zero. REC lifts the
+ *   soloed voice's next note as an instrument (sid_view_rec): its lane says ARM, then REC.
  * - PLAY (global, sid_view_play) while a tune is loaded: plays the loaded song from init when it
  *   is stopped, stops it when it plays or is paused; EDIT held + PLAY pauses and resumes (on a
  *   stopped tune it plays). In a view other than these two, PLAY on a stopped tune ends it for
@@ -76,10 +77,15 @@ typedef struct {
     char files[SID_VIEW_FILES][STORE_NAME_MAX + 1u];
     char chosen[STORE_NAME_MAX + 1u]; /* the question's tune */
     uint8_t drawn[SID_VIEW_LOOK];
+    uint8_t offer_built;
+    uint8_t offer_drawn[4];
 } sid_view;
 
 extern const view sid_view_browser;
 extern const view sid_view_playing;
+/* The lifted instrument's offer, once the song is back (sid_transport.h import): its name, the
+ * instrument it goes into, SAVE imports, HOME skips; with the song playing it says to stop it. */
+extern const view sid_view_offer;
 
 /* No player, no store, the browser at its first page. */
 void sid_view_init(sid_view* sd, song_view* sv);
@@ -91,6 +97,14 @@ void sid_view_open(sid_view* sd, screen* s);
 int sid_view_is(const view* v);
 /* The tune's state (SID_T_*; SID_T_NONE with no player). */
 uint32_t sid_view_state(const sid_view* sd);
+/* REC on NOW PLAYING: the lift of the one voice GLO solos (sid_transport.h lift), armed or, if
+ * armed, off; a toast says which, or why not (the tune not playing, not one voice soloed). */
+void sid_view_rec(sid_view* sd, screen* s);
+/* 1 while a lifted instrument is offered (sid_view_offer shows it). */
+int sid_view_offered(const sid_view* sd);
+/* SAVE (go 1) or HOME (go 0) on the offer: the import, or the skip; with the song playing SAVE
+ * says to stop it first. */
+void sid_view_offer_answer(sid_view* sd, screen* s, int go);
 /* PLAY (EDIT held: edit), in a SID view (here) or another: 1 when a tune is loaded and took it. */
 int sid_view_play(sid_view* sd, int edit, int here);
 /* HOME let go on the browser: 1 when it cancelled the question (HOME goes nowhere else); 0 to go

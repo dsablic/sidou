@@ -105,6 +105,24 @@ or the width moves: LIVE's knobs, LAB's cards, CC 74, the mod wheel, the filter 
 PWM settings stay as you set them; the cards show what the chip has, and light when K1 moves them.
 K3 and K4 have no link yet.
 
-## What is not there yet
+## Send it to the song, and pull one back
 
-Sending a sound to a song as an instrument is planned for 1.x ([the roadmap](../ROADMAP.md)).
+**REC** sends the sound to the song as a GoatTracker instrument, into the lowest free one, while
+the song plays on: the toast says which (`SENT AS I06 SAW LEAD`). It is a plain GoatTracker 2
+instrument with its wave, pulse, filter and speed rows, so the song still opens in GoatTracker.
+**EDIT + REC** writes it over the instrument INSTR shows instead, asking first if that one is in
+use (`REPLACE I05? EDIT+REC`, then EDIT + REC again).
+
+The waveform, ring, sync, the envelope and the pulse width arrive exactly (GoatTracker's hard
+restart added, and an attack of 0 becomes 1). The PWM, the filter LFO and the vibrato become
+GoatTracker loops and speeds, close but stepped; the filter takes over the song's filter on the
+voice TRACKER shows; with ARP on, TABLE opens with its ARP helper on a default chord for you to
+finish. One-voice sync, the fine tune, the velocity, wheel and pressure targets and the effect
+slots stay behind. For six seconds the hint line says what was approximated or left behind
+(`APPROX: PWM FILTER`, `NOT SENT: FX TUNE`).
+
+On **INSTR**, **ENV**, **LFO** or **FX** pull the instrument under the cursor into LAB, at that
+page. A sound you sent and nobody edited comes back exactly (`PULLED I06`), its effect slots and
+tune too; any other instrument is read as near as LAB can play it, and the toast names what it
+could only approximate (`I01 ~DRUM`). The pull is one undo step: EDIT + LFO gives your sound
+back. The table of what goes how is in [controls.md](../reference/controls.md#send-a-lab-sound-to-the-song).
