@@ -312,3 +312,107 @@ fn the_pwm_loop_and_the_vibrato_play_within_their_tolerances() {
     let mean = (peaks[peaks.len() - 1] - peaks[0]) as f64 / (peaks.len() - 1) as f64;
     assert!((mean - 7.2).abs() < 0.3, "{mean}");
 }
+
+// ---- the exact round trip: the LBnn chunk ----
+
+/// The sent instrument written into a song (as the batch writer would), its sound kept.
+fn sent_song(s: &Sound, instr: usize, first: [u8; 4]) -> (Song, lab_song_instr) {
+    let mut song = Song::device();
+    let o = encode(s, 0, first);
+    let raw = unsafe { &mut *song.ptr_mut() };
+    raw.instr[instr - 1] = o.instr;
+    for t in 0..4 {
+        for i in 0..o.rows[t] as usize {
+            raw.ltable[t][first[t] as usize - 1 + i] = o.left[t][i];
+            raw.rtable[t][first[t] as usize - 1 + i] = o.right[t][i];
+        }
+    }
+    unsafe { gt2_saved_recount(song.ptr_mut()) }; // written here directly, not as edits
+    assert_eq!(
+        unsafe { lab_song_keep(song.ptr_mut(), instr as u32, &o, s.as_ptr()) },
+        0
+    );
+    (song, o)
+}
+
+fn kept(song: &Song, instr: u32) -> Option<Sound> {
+    let (mut rows, mut s) = ([0u8; 4], [0u8; BYTES]);
+    (unsafe { lab_song_kept(song.ptr(), instr, rows.as_mut_ptr(), s.as_mut_ptr()) } != 0)
+        .then_some(s)
+}
+
+/// `LB0F` keeps the sound and the CRC of the instrument's bytes and its programs' rows: the
+/// sound comes back while they are unedited, and not once a byte, a row or the name changes.
+#[test]
+fn the_chunk_keeps_the_sound_while_the_instrument_is_unedited() {
+    let mut s = plain();
+    s[LAB_SOUND_FILTER_VOICES as usize] = 7;
+    s[LAB_SOUND_SLOTS as usize] = 2; // dropped by the send, kept by the chunk
+    s[LAB_SOUND_TUNE as usize] = 7;
+    let (mut song, o) = sent_song(&s, 15, [3, 1, 9, 1]);
+    assert_eq!(unsafe { lab_song_tag(15) }, u32::from_le_bytes(*b"LB0F"));
+    let chunk = song
+        .ext_find(u32::from_le_bytes(*b"LB0F"))
+        .expect("the chunk");
+    assert_eq!(chunk.len(), 9 + BYTES);
+    assert_eq!(chunk[0], 1);
+    assert_eq!(&chunk[1..5], &o.rows);
+    assert_eq!(&chunk[9..], &s);
+    assert_eq!(kept(&song, 15), Some(s));
+    assert_eq!(kept(&song, 14), None);
+    let edits: [(&str, fn(&mut gt2_song)); 4] = [
+        ("a byte", |r| r.instr[14][1] ^= 0x10),
+        ("a row", |r| r.rtable[2][9] ^= 1),
+        ("the name", |r| r.instr[14][20] = b'X'),
+        ("the pulse's jump", |r| r.ltable[1][1] = 0x7f),
+    ];
+    for (what, edit) in edits {
+        let mut copy = Song::device();
+        copy.copy_from(&song);
+        edit(unsafe { &mut *copy.ptr_mut() });
+        assert_eq!(kept(&copy, 15), None, "{what}");
+    }
+    // a row past the programs is not theirs
+    unsafe { (*song.ptr_mut()).ltable[0][10] = 0x11 };
+    assert_eq!(kept(&song, 15), Some(s));
+}
+
+/// The chunk goes through a save and a load with the song; GoatTracker's own player reads the
+/// file and plays the instrument (the trailer is after the GT2 part, which it skips).
+#[test]
+fn the_chunk_survives_a_save_and_goattracker_skips_it() {
+    let s = plain();
+    let (song, _) = sent_song(&s, 1, [1, 1, 1, 1]);
+    let file = song.write(true);
+    let mut back = Song::device();
+    back.read(&file, 4).map_err(|i| i.msg).unwrap();
+    assert_eq!(kept(&back, 1), Some(s));
+    let plain_file = song.write(false);
+    assert!(file.len() > plain_file.len() + 9 + BYTES);
+    let t = gt2_ref::trace::trace(&file, 0, 4, &gt2_ref::Options::default());
+    assert!(t.is_ok(), "GoatTracker reads the file");
+}
+
+/// At most 16 chunks: past them a stale one makes room, and with none stale no chunk is kept.
+#[test]
+fn at_most_sixteen_chunks_are_kept() {
+    let s = plain();
+    let (mut song, _) = sent_song(&s, 1, [1, 1, 1, 1]); // the rows every one shares
+    for i in 1..=17u32 {
+        let mut o = encode(&s, 0, [1, 1, 1, 1]);
+        o.instr[0] = i as u8;
+        unsafe { (*song.ptr_mut()).instr[i as usize - 1] = o.instr };
+        let r = unsafe { lab_song_keep(song.ptr_mut(), i, &o, s.as_ptr()) };
+        assert_eq!(r, if i <= 16 { 0 } else { -1 }, "instrument {i}");
+    }
+    unsafe { (*song.ptr_mut()).instr[4][0] = 0x99 }; // instrument 5 edited: stale
+    let mut o = encode(&s, 0, [1, 1, 1, 1]);
+    o.instr[0] = 17;
+    assert_eq!(
+        unsafe { lab_song_keep(song.ptr_mut(), 17, &o, s.as_ptr()) },
+        0
+    );
+    assert!(song.ext_find(u32::from_le_bytes(*b"LB05")).is_none());
+    assert!(song.ext_find(u32::from_le_bytes(*b"LB11")).is_some());
+    assert!(song.raw().ext_used <= 16 * (8 + 9 + BYTES as u32));
+}

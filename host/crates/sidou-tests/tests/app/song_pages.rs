@@ -1860,6 +1860,13 @@ fn a_send_takes_the_next_free_instrument_and_the_rows_after_each_tables_last() {
         "the speed row shared"
     );
     assert_eq!(want.right[2][0] & 7, 2, "the filter on voice 2");
+    // the chunk keeps the sound, its CRC that of the bytes as the queue wrote them
+    let (mut rows, mut kept) = ([0u8; 4], [0u8; LAB_SOUND_BYTES as usize]);
+    assert_eq!(
+        unsafe { lab_song_kept(h.model.ptr(), 2, rows.as_mut_ptr(), kept.as_mut_ptr()) },
+        1
+    );
+    assert_eq!((kept, rows), (s, want.rows));
     // The next goes to the next free one, after these.
     let (i, _) = h.send(&crate::lab_song::plain(), 0).unwrap();
     assert_eq!(i, 3);
