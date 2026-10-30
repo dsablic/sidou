@@ -452,8 +452,10 @@ fn a_tune_from_the_menu_plays_mutes_solos_steps_pauses_and_stops() {
             && writes(m, &fw) > 100
     });
     frames(&mut m, &fw, 1_000, &mut cells);
-    // EDIT + PLAY: paused, then on
+    // EDIT + PLAY: paused, then on. EDIT first, as a player holds it: pressed in the same ms
+    // as PLAY, the key scan may take PLAY a frame before EDIT (PLAY alone: a stop)
     m.key(EDIT, true);
+    m.run_ms(10);
     press(&mut m, PLAY);
     m.key(EDIT, false);
     until(&mut m, "paused", |m| psid_state(m, &fw) == PSID_PAUSED);
@@ -461,6 +463,7 @@ fn a_tune_from_the_menu_plays_mutes_solos_steps_pauses_and_stops() {
     frames(&mut m, &fw, 500, &mut cells);
     assert_eq!(writes(&mut m, &fw), w, "the 6502 runs while paused");
     m.key(EDIT, true);
+    m.run_ms(10);
     press(&mut m, PLAY);
     m.key(EDIT, false);
     until(&mut m, "playing again", |m| {
