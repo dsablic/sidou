@@ -22,6 +22,7 @@ mod lab_edit;
 mod lab_sound;
 mod lab_view;
 mod learn_view;
+mod link;
 mod live_arp;
 mod live_cutoff;
 mod live_dice;

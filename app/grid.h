@@ -143,6 +143,12 @@ typedef struct {
      * large text (app/screen.h) guards its rows so that the view's compose does not move it. */
     uint32_t big_guard;
     uint8_t big_touched; /* a piece's character changed (grid_big_touched) */
+    /* A painter region's pixels for a reader other than the panel (the Live Link mirror,
+     * app/link.h): fills what the painter would, with no side effect on its owner (the
+     * painter may note what the panel shows). Set by the painter's owner after
+     * grid_region_painter, which clears it when the painter or its context changes; NULL:
+     * the region's pixels are the panel's alone. */
+    grid_painter region_peek;
 } grid;
 
 /* A frame composed off the grid by a view that copies it onto the grid cell by cell (app/chip_view.c,

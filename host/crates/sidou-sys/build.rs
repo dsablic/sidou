@@ -55,6 +55,7 @@ const SOURCES: &[&str] = &[
     "app/lab_view.c",
     "app/live.c",
     "app/learn_view.c",
+    "app/link.c",
     "app/live_cutoff.c",
     "app/live_dice.c",
     "app/live_setup.c",
@@ -248,11 +249,11 @@ fn main() {
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|chip_spread_.*|master_.*|tail_gate_.*|thump_out_.*|chip_ctl_.*|chip_setup_.*|",
                 "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*|user_sound_.*|user_sounds_.*|",
-                "sid_view_.*|lab_.*",
+                "sid_view_.*|lab_.*|link_.*",
             ),
         )
         .allowlist_type(
-            "sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*",
+            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*",
         )
         .allowlist_var(
             concat!(
@@ -262,7 +263,7 @@ fn main() {
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
                 "demo_song_.*|gt2_kit_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
-                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*",
+                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*",
             ),
         )
         // `static const` tables private to the headers; they have no symbol to link to.
@@ -295,7 +296,7 @@ fn main() {
             "sid|sid_osc|sid_env|sid_shadow|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
             "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",
             "title_card|help_view|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
-            "midi_route|midi_sync|midi_clock|sysex|psid_env|psid_ctl|psid_work|sid_view|song_view",
+            "midi_route|midi_sync|midi_clock|sysex|psid_env|psid_ctl|psid_work|sid_view|song_view|link_state|panel",
         ))
         .generate()
         .expect("bindgen (ILP32 layout) failed")
