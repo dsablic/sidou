@@ -30,6 +30,7 @@ void midi_sync_init(midi_sync* s) {
         p[i] = 0;
     }
     midi_clock_init(&s->clock, SAMPLE_RATE);
+    s->out_room = MIDI_SYNC_OUT_MAX;
     s->mode = MIDI_SYNC_AUTO;
     s->rows_per_beat = 4u;
 }
@@ -411,15 +412,22 @@ static uint32_t realtime(uint8_t b) {
 static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
                             uint32_t* out) {
     uint32_t n = 0;
+    uint32_t room = s->out_room < MIDI_SYNC_OUT_MAX ? s->out_room : MIDI_SYNC_OUT_MAX;
     int on = s->clock_out && !midi_sync_following(s);
     uint32_t b2 = beat2(s, st);
     /* a load between (a continue that takes chip A again) is no change */
     if (st->state != s->out_state && st->state != MIDI_SYNC_LOADING) {
         uint8_t was = s->out_state;
+        /* a continue's (not a play's: it starts its calls again, whatever count they had) */
         int spp = on && st->state == MIDI_SYNC_PLAYING && was == MIDI_SYNC_STOPPED && b2 &&
-                  st->calls > 1u;
+                  !st->from_top && st->calls > 1u;
         if (spp && s->out_common_wait) {
             return n; /* the song position after the SysEx frame's end: the next pass's */
+        }
+        int sends = on && (st->state == MIDI_SYNC_PLAYING ||
+                           (was == MIDI_SYNC_PLAYING && st->state == MIDI_SYNC_STOPPED));
+        if (sends && room < (spp ? 2u : 1u)) {
+            return n; /* USB's ring is full: the next pass's, not dropped */
         }
         s->out_state = st->state;
         if (on && st->state == MIDI_SYNC_PLAYING) {
@@ -446,7 +454,7 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
     float period = (float)st->period_q16 * (1.0f / 65536.0f); /* samples a call */
     float calls_a_clock = (float)b2 / (float)(2u * MIDI_CLOCK_PER_BEAT);
     float per = calls_a_clock * period; /* samples a clock */
-    while (n < MIDI_SYNC_OUT_MAX) {
+    while (n < room) {
         /* clock out_clock's call position against the last call */
         float d = (float)s->out_clock * calls_a_clock - (float)(st->calls - 1u);
         uint32_t at = st->call_sample + (uint32_t)(int32_t)(d * period);

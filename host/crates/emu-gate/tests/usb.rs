@@ -940,6 +940,169 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
     assert!(held > 0, "no continue came while a reply was part way out");
 }
 
+/// Clock out's transport among the host's IN packets, in order: start (FA), continue (FB),
+/// stop (FC) and song position (F2, with its 16ths), SysEx and clocks aside.
+fn transport_out(in1: &[Vec<u8>]) -> Vec<(u8, u32)> {
+    events(in1)
+        .iter()
+        .filter_map(|p| match p[0] & 15 {
+            15 if matches!(p[1], 0xfa..=0xfc) => Some((p[1], 0)),
+            3 if p[1] == 0xf2 => Some((0xf2, u32::from(p[2]) | u32::from(p[3]) << 7)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A USB host with CLOCK OUT on, the song played a second from its top and stopped there.
+fn clock_out_stopped_part_way(fw: &Firmware) -> Machine {
+    let mut m = usb_machine(fw);
+    let syncing = fw.symbol("syncing");
+    m.soc
+        .write8(syncing + sidou_sys::ilp32::midi_sync::clock_out as u32, 1);
+    let play = sidou_sys::PANEL_BTN_PLAY as u8;
+    tap_keys(&mut m, &[play]);
+    m.usb_frames(1_000);
+    tap_keys(&mut m, &[play]);
+    m.usb_frames(300);
+    m
+}
+
+/// `keys` down in that order, 10 ms apart (a modifier held before the key it changes, as a
+/// player holds it), 40 ms held, then up.
+fn tap_keys(m: &mut Machine, keys: &[u8]) {
+    for (i, &k) in keys.iter().enumerate() {
+        if i > 0 {
+            m.usb_frames(10);
+        }
+        m.key(k, true);
+    }
+    m.usb_frames(40);
+    for &k in keys.iter().rev() {
+        m.key(k, false);
+    }
+    m.usb_frames(40);
+}
+
+/// PLAY alone after a stop part way through plays the song from its top, and clock out says
+/// so: a start (FA), not the stopped place's song position and a continue, which a synced
+/// follower would carry on from while SIDOU starts again. EDIT + PLAY goes on from where it
+/// stopped: the song position, then continue.
+#[test]
+fn clock_out_starts_a_play_from_the_top_and_continues_edit_play() {
+    let Some(fw) = fixture("clock out's start against its continue") else {
+        return;
+    };
+    let (play, edit) = (
+        sidou_sys::PANEL_BTN_PLAY as u8,
+        sidou_sys::PANEL_BTN_EDIT as u8,
+    );
+    let mut m = clock_out_stopped_part_way(&fw);
+    let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
+    let stopped_at = m.soc.read32(calls);
+    assert!(stopped_at > 20, "stopped part way: call {stopped_at}");
+    host(&mut m).in1.clear();
+    tap_keys(&mut m, &[play]);
+    m.usb_frames(100);
+    let now = m.soc.read32(calls);
+    assert!(now < stopped_at, "PLAY played from the top: call {now}");
+    assert_eq!(
+        transport_out(&host(&mut m).in1),
+        [(0xfa, 0)],
+        "PLAY alone: a start"
+    );
+    // stopped again, part way, and on with EDIT + PLAY
+    m.usb_frames(1_000);
+    tap_keys(&mut m, &[play]);
+    m.usb_frames(300);
+    let stopped_at = m.soc.read32(calls);
+    host(&mut m).in1.clear();
+    tap_keys(&mut m, &[edit, play]);
+    m.usb_frames(100);
+    assert!(m.soc.read32(calls) > stopped_at, "EDIT + PLAY went on");
+    let out = transport_out(&host(&mut m).in1);
+    assert_eq!(out.len(), 2, "a song position and a continue: {out:x?}");
+    assert_eq!(out[0].0, 0xf2, "{out:x?}");
+    assert!(out[0].1 > 0, "the song position where it stopped: {out:x?}");
+    assert_eq!(out[1], (0xfb, 0), "{out:x?}");
+}
+
+/// A start goes out while a SysEx reply fills USB's ring: the reply leaves clock out room,
+/// and clock out waits for room rather than handing USB a packet it drops (Felucca's
+/// midi_out_event drops one with the ring full). PLAY alone is pressed at a range of times
+/// against a GET's DATA (101 packets, more than the ring holds), so some of the starts come
+/// while the reply is part way out.
+#[test]
+fn clock_outs_start_goes_out_during_a_sysex_reply() {
+    let Some(fw) = fixture("clock out's start against a SysEx reply") else {
+        return;
+    };
+    let play = sidou_sys::PANEL_BTN_PLAY as u8;
+    let mut m = usb_machine(&fw);
+    put_file(&mut m, &mut Link::default(), "SPP", &reply_file());
+    let syncing = fw.symbol("syncing");
+    m.soc
+        .write8(syncing + sidou_sys::ilp32::midi_sync::clock_out as u32, 1);
+    let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
+    let state = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::state as u32;
+    let tx_active = fw.symbol("sidou_sysex") + sidou_sys::ilp32::sysex::tx_active as u32;
+    let (mo_w, mo_r) = (fw.symbol("mo_w"), fw.symbol("mo_r"));
+    let mut during = 0;
+    for delay in 0..16u64 {
+        tap_keys(&mut m, &[play]);
+        m.usb_frames(500);
+        tap_keys(&mut m, &[play]); // stopped part way
+        m.usb_frames(100);
+        let stopped_at = m.soc.read32(calls);
+        host(&mut m).in1.clear();
+        let mut link = Link::default();
+        let mut get = vec![0, 0];
+        get.extend(name16("SPP"));
+        link.send(&mut m, 3, 30, &get);
+        let (command, s, _) = link.recv(&mut m, 2_000);
+        assert_eq!((command, s), (4, 30), "GET's metadata");
+        m.key(play, true);
+        m.usb_frames(delay);
+        link.send(&mut m, 0x7e, 30, &[]);
+        // a ms at a time: did the song start while the reply was part way out with the ring
+        // (all but clock out's room) full?
+        let mut overlap = false;
+        for _ in 0..40 {
+            m.usb_frames(1);
+            let used = m.soc.read32(mo_w).wrapping_sub(m.soc.read32(mo_r));
+            if m.soc.read8(state) == sidou_sys::SONG_PLAYING as u8
+                && m.soc.read8(tx_active) != 0
+                && used >= 60
+            {
+                overlap = true;
+            }
+        }
+        let (command, s, _) = link.recv(&mut m, 2_000);
+        assert_eq!((command, s), (5, 31), "GET's DATA");
+        m.key(play, false);
+        link.send(&mut m, 0x7e, 31, &[]);
+        let (command, s, _) = link.recv(&mut m, 2_000);
+        assert_eq!((command, s), (6, 32), "GET's END");
+        link.send(&mut m, 0x7e, 32, &[]);
+        m.usb_frames(40);
+        let out = transport_out(&host(&mut m).in1);
+        println!(
+            "PLAY {delay} ms before the DATA's ACK (stopped at call {stopped_at}): \
+             overlap {overlap}, clock out {out:x?}"
+        );
+        during += usize::from(overlap);
+        assert!(
+            m.soc.read32(calls) < stopped_at,
+            "PLAY played from the top (call {})",
+            m.soc.read32(calls)
+        );
+        assert_eq!(out, [(0xfa, 0)], "PLAY's start, once, against a reply");
+        tap_keys(&mut m, &[play]); // stop
+        m.usb_frames(100);
+    }
+    println!("{during} of the starts came while the reply filled the ring");
+    assert!(during > 0, "no start came while a reply filled the ring");
+}
+
 /// The clock follower's fit (app/midi_clock.h): its clocks' (number, stamp) in samples, oldest
 /// first, and the largest distance of one from the least-squares line through them all, in ms.
 fn fit_residual(m: &mut Machine, fw: &Firmware) -> (usize, f64) {

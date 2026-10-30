@@ -280,7 +280,9 @@ static void usb_in_pump(void) {
 
 static int sidou_send(void* ctx, const uint8_t packet[4]) {
     (void)ctx;
-    if (!midi_usb_live() || mo_w - mo_r >= MQ || so_w != so_r || sx_busy) {
+    /* the ring's last MIDI_SYNC_OUT_MAX slots are clock out's: its start or stop goes out
+     * during a reply, not after it */
+    if (!midi_usb_live() || mo_w - mo_r >= MQ - MIDI_SYNC_OUT_MAX || so_w != so_r || sx_busy) {
         return 0;
     }
     uint32_t word = (uint32_t)packet[0] | (uint32_t)packet[1] << 8 |
@@ -376,11 +378,15 @@ void midi_sync_pass(void) {
     midi_sync_rows(&syncing, routing.setup.rows_per_beat);
     /* A reply frame part way out on USB: clock out's song position waits for its end. */
     syncing.out_common_wait = sidou_sysex.tx_active;
+    /* No host, or one asleep: clock out's packets are dropped (midi_send's rule). With one,
+     * they wait for the ring's room (midi_out_event drops a packet with none): MIDI out's and
+     * a reply's packets may fill it. The interrupt only ever frees more (ep1_tx). */
+    int up = *(volatile uint8_t*)&usb.config && !usb.suspended;
+    uint32_t used = mo_w - mo_r;
+    uint32_t room = used < MQ ? MQ - used : 0u;
+    syncing.out_room = (uint8_t)(!up || room > MIDI_SYNC_OUT_MAX ? MIDI_SYNC_OUT_MAX : room);
     uint32_t pkt[MIDI_SYNC_OUT_MAX];
     uint32_t n = midi_sync_poll(&syncing, now, pkt);
-    /* No host, or one asleep: clock out's packets are dropped (midi_send's rule). The
-     * update's SysEx shares the ring's room with nothing else: a full ring drops them too. */
-    int up = *(volatile uint8_t*)&usb.config && !usb.suspended;
     for (uint32_t i = 0; i < n && up; i++) {
         midi_out_event(pkt[i]);
     }

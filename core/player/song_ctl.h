@@ -261,6 +261,7 @@ typedef struct song_ctl {
     uint32_t busy;          /* edits refused for want of room (song_ctl_edit's 0) */
     uint32_t spare_free_at; /* the seq after which the spare shape buffer is free */
     uint32_t stop_seq;
+    uint32_t play_seq;      /* the last PLAY's (song_ctl_clock_calls) */
     uint32_t ff_seq, ff_calls, ff_target;
     uint32_t quiet;         /* polls since the last edit */
     uint32_t slices;        /* analysis and fast-forward slices run */
@@ -299,6 +300,7 @@ typedef struct song_ctl {
     uint8_t edit_restore_n;
     uint8_t hold_next;      /* song_ctl_hold: the next PLAY or CONTINUE waits for an align */
     uint8_t ff_stop;        /* STOP must retire its replay even if chip hand-back is cancelled */
+    uint8_t from_top;       /* the last start sent: 1 a PLAY, 0 a CONTINUE (song_ctl_from_top) */
     /* Main-loop audition preparation. Pins live until the next explicit PLAY, including
      * release tails. A retained request is 1 (shape pending) or 2 (note pending). */
     uint32_t jam_instruments[2];
@@ -458,6 +460,12 @@ int song_ctl_held(song_ctl* sc, uint32_t ch, const uint8_t* locks, uint32_t n);
 
 /* SONG_* */
 uint32_t song_ctl_state(const song_ctl* sc);
+/* M2e's clock out. The calls since the last play as the main loop has sent it: 0 while a PLAY
+ * waits for the interrupt (the interrupt's count is the play before's until it applies it).
+ * And whether the last start sent was a PLAY (1: its calls count from 0, from the song's top or
+ * an orderlist position) or a CONTINUE (0: on from where it stopped). */
+uint32_t song_ctl_clock_calls(const song_ctl* sc);
+uint32_t song_ctl_from_top(const song_ctl* sc);
 /* GT2_PLAY_WARN_* of the shape the player follows, and GT2_PLAY_WARN_PAST_B7 once a note
  * past the table has played (gt2_player.freq_unknown): the SONG view's hint. */
 #define GT2_PLAY_WARN_PAST_B7 (1u << 7)

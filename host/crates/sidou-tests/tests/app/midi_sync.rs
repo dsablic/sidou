@@ -140,7 +140,8 @@ unsafe extern "C" fn t_clock(ctx: *mut std::ffi::c_void, out: *mut song_clock) {
     } else {
         [t + 1, t + 1]
     };
-    o.calls = s.calls;
+    o.calls = unsafe { song_ctl_clock_calls(s) };
+    o.from_top = unsafe { song_ctl_from_top(s) } as u8;
     o.call_sample = s.call_sample;
     let p = &s.period;
     o.period_q16 = (p.q << 16) + (p.r as f32 * 65536.0 / p.den.max(1) as f32) as u32;
@@ -615,6 +616,83 @@ fn clock_out_sends_24_a_beat_at_the_songs_tempo_and_the_transport() {
     r.sync.out_common_wait = 0;
     r.run(10);
     assert_eq!(r.out[0].0 & 0xff, 0x03, "a three-byte system common");
+    assert_eq!(((r.out[0].0 >> 8) & 0xff) as u8, 0xF2);
+    assert_eq!(realtime(r.out[1].0), 0xFB);
+}
+
+/// PLAY alone after a stop part way through plays the song from its top: clock out sends a
+/// start (FA), not the stopped place's song position and a continue (F2, FB), even in the
+/// passes between the PLAY going out and the audio interrupt taking it (the calls still the
+/// last play's then). Its clocks start with the new first call, not skipped ahead by the old
+/// count.
+#[test]
+fn clock_out_sends_a_start_for_a_play_from_the_top_after_a_stop() {
+    let mut r = Rig::new();
+    unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_AUTO, 1) };
+    r.run(10);
+    assert!(r.t.play(0, 0));
+    r.run((2.0 * FS / BLOCK as f64) as u32);
+    assert!(r.t.stop());
+    r.run(40);
+    assert!(r.t.calls() > 50, "stopped part way: call {}", r.t.calls());
+    r.out.clear();
+    r.calls.clear();
+    assert!(r.t.play(0, 0));
+    r.run((1.0 * FS / BLOCK as f64) as u32);
+    let realtime = |p: u32| ((p >> 8) & 0xff) as u8;
+    let transport: Vec<u8> = r
+        .out
+        .iter()
+        .map(|p| realtime(p.0))
+        .filter(|&b| b != 0xF8)
+        .collect();
+    assert_eq!(transport, [0xFA], "a start alone: {:x?}", r.out);
+    let first_call = r.calls[0];
+    assert_eq!(first_call.0, 0, "the song from its top");
+    let first_clock = r
+        .out
+        .iter()
+        .find(|p| realtime(p.0) == 0xF8)
+        .expect("clocks after the start")
+        .1;
+    assert!(
+        first_clock >= first_call.1 && first_clock - first_call.1 <= 33,
+        "the first clock at sample {first_clock}, the first call at {}",
+        first_call.1
+    );
+}
+
+/// Clock out never hands USB more than its ring has room for (`out_room`, the caller's): a
+/// start, a stop or a song position and continue waits whole for the room, and clocks that
+/// do not fit go once there is room, not dropped.
+#[test]
+fn clock_out_waits_for_room_rather_than_dropping_its_transport() {
+    let mut r = Rig::new();
+    unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_AUTO, 1) };
+    r.run(10);
+    r.sync.out_room = 0;
+    assert!(r.t.play(0, 0));
+    r.run(20);
+    assert!(r.out.is_empty(), "sent with no room: {:x?}", r.out);
+    r.sync.out_room = MIDI_SYNC_OUT_MAX as u8;
+    r.run(1);
+    let realtime = |p: u32| ((p >> 8) & 0xff) as u8;
+    assert_eq!(realtime(r.out[0].0), 0xFA, "the start once there is room");
+    r.run((1.0 * FS / BLOCK as f64) as u32);
+    // stopped and continued with room for one packet: the song position and continue wait
+    // for room for both
+    assert!(r.t.stop());
+    r.run(10);
+    assert_eq!(realtime(r.out.last().unwrap().0), 0xFC);
+    r.out.clear();
+    r.sync.out_room = 1;
+    assert!(r.t.resume());
+    r.run(10);
+    assert!(r.out.iter().all(|p| p.0 & 0xff != 0x03), "{:x?}", r.out);
+    assert!(r.out.iter().all(|p| realtime(p.0) != 0xFB), "{:x?}", r.out);
+    r.sync.out_room = MIDI_SYNC_OUT_MAX as u8;
+    r.run(1);
+    assert_eq!(r.out[0].0 & 0xff, 0x03, "{:x?}", r.out);
     assert_eq!(((r.out[0].0 >> 8) & 0xff) as u8, 0xF2);
     assert_eq!(realtime(r.out[1].0), 0xFB);
 }

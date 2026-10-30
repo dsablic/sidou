@@ -93,11 +93,14 @@ typedef struct {
  * in song_ctl_state's order (SONG_T_STARTING for a load, including a held start's), whether a
  * seek runs its slices (1) or waits for its call (2), the speed (as song_status's; 0 0
  * before a play), the calls since the play and the last one's sample on song control's count
- * (song_ctl.samples), and the samples a call now (Q16). */
+ * (song_ctl.samples), and the samples a call now (Q16). The calls are 0 while a play waits to
+ * be applied (song_ctl_clock_calls), and from_top says whether the last start was a play (1:
+ * the calls count from 0) or a continue (0): clock out's start against its song position. */
 typedef struct {
     uint8_t state;
     uint8_t seeking;
     uint8_t speed[2];
+    uint8_t from_top;
     uint32_t calls;
     uint32_t call_sample;
     uint32_t period_q16;
