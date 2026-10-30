@@ -71,6 +71,22 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
+## 1.5 (next)
+
+The user, 2026-10-30: 1.1.x and what was 1.2 roll into one release, 1.5; a quality pass follows
+it. Each large item gets its own design first (as LAB did).
+
+- **SIDOU's own USB ID** (0x51D0, pid.codes request #1341).
+- **LAB's song bridge** and **instruments from a `.sid`** (below, Sound and play).
+- **Generated arpeggio chords and multiplexed drums in TRACKER** (1.1's cut left them out).
+- **A browser editor and librarian** and **the screen mirror (FM-1 Live Link)** (below,
+  Connectivity).
+- **The move to felucca-bsp** (below, Platform), if felucca-bsp #14 and #15 are settled in time;
+  SIDOU takes upstream code only byte for byte.
+
+After 1.5: the quality pass (performance headroom, the faster ergonomics gate, suggested
+automations, knob-curve follow-ups from the device sessions).
+
 ## 1.x
 
 **Sound and play**
