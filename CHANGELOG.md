@@ -43,6 +43,11 @@ All notable changes are documented here. The format follows
 
 ## [1.1.0] - 2026-10-30
 
+LAB's filter LFO, ARP RATE, MACRO links and peek; the ARP helper's and a held step's auditions;
+generative TRACKER, DICE's range, rhythm and a root and scale per lane; knob curves; the
+Distortion slot heard, with a popup; REC timing; uploads that wait for quiet; CLOCK OUT's start
+fix.
+
 ### Changed
 - **An upload waits for quiet while a song plays.** A SysEx upload (the Songs page, a `.sid`, a
   `.syx`) used to mute the music for each packet's flash writes, about ten dips a second. Now,
@@ -206,6 +211,10 @@ All notable changes are documented here. The format follows
 
 ## [1.0.0] - 2026-10-29
 
+LAB, a view for shaping one sound and keeping it as one of sixteen USER sounds, DICE's density and
+scale, dense `.sid` players on time, the ARP helper's waveform, 2x text on TABLE and STEP, and the
+store's health on STATUS.
+
 ### Added
 - **LAB, a view to shape one sound and keep it**. Five pages, OSC, ENVELOPE,
   FILTER, MOD and FX, each with four cards on K1 to K4 and a drawing of what they do (the pulse's
@@ -273,6 +282,10 @@ All notable changes are documented here. The format follows
 
 ## [0.5.0] - 2026-10-25
 
+`.sid` playback: SIDOU's own 6502 plays PSID tunes on the chips, each write timed to its cycle,
+from the store (SIDS and NOW PLAYING); tunes go on over SysEx, with an openly licensed starter
+pack; STATUS, at 2x on three pages, shows the 6502's share of the CPU.
+
 ### Added
 - **`.sid` playback:** PSID tunes (one or two SID chips, PAL or NTSC, up to 65,536 bytes) play on
   the FM-1 from the store. SIDOU's own 6502 runs a frame ahead of the audio in the main loop and
@@ -312,6 +325,10 @@ All notable changes are documented here. The format follows
   memory, so the song views say `SID PLAYING: STOP TO EDIT` while one plays.
 
 ## [0.4.0] - 2026-10-25
+
+A SID drum kit and digi drums, generative STEP (chance per step, MUTATE, DICE), recording over the
+USB cable, the button LEDs in two levels, an ARP helper in TABLE, SETTINGS -> RESET, and songs to
+MIDI on the site.
 
 ### Added
 - **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
@@ -439,6 +456,8 @@ All notable changes are documented here. The format follows
 
 ## [0.3.1] - 2026-10-23
 
+An install over Felucca boots straight into SIDOU.
+
 ### Fixed
 - **The first boot after another firmware no longer detours through UBOOT.** Installed over
   Felucca 1.6.1, SIDOU's first boot went to the chip's USB boot (WL80UBOOT1.00) for 45 s before
@@ -454,6 +473,8 @@ All notable changes are documented here. The format follows
   plays the how-to videos in the browser.
 
 ## [0.3.0] - 2026-10-23
+
+The first wider public release ([release notes](docs/release-notes/v0.3.0.md)).
 
 ### Added
 - **Chord arpeggios on LIVE:** ARP switches them on; a chord held is one voice stepping through
@@ -498,6 +519,8 @@ All notable changes are documented here. The format follows
   under way waits for the file; nothing is erased meanwhile.
 
 ## [0.2.0] - 2026-10-22
+
+The first release to run on a real FM-1.
 
 ### Added
 - **M2d complete: STEP, TRACKER, the song pages and REC** (Tasks 1-7). Make a song on the FM-1:

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The README keeps up with the releases (the user, 2026-10-23: "keep the readme always up to
-date"). The newest release in CHANGELOG.md must be in the README's status as released, never as
-next, with a "What's new in X.Y.Z" section and its package in the install steps (the user,
-2026-10-25: "we should keep the readme in sync with the releases"), and on a release tag
-(GITHUB_REF refs/tags/vX.Y.Z) the tag must be that release.
-  tools/readme-check        exit 0 when the README is current, else 1 with what is stale
+"""The README and the CHANGELOG keep up with the releases. Version information lives in
+CHANGELOG.md, not in the README (the user, 2026-10-30: "move the version info out of readme and
+into changelog"): the README names no release and points at CHANGELOG.md, the releases page and
+the roadmap; every release in CHANGELOG.md has a date and a one-line summary under its heading;
+on a release tag (GITHUB_REF refs/tags/vX.Y.Z) the tag must be CHANGELOG.md's newest release.
+  tools/readme-check        exit 0 when the README and CHANGELOG are current, else 1 with what is stale
 The Firmware Hub card, fmhub.json, is checked the same way (its rules, and changed for every minor
 or major release). Run by the merge check (every change, docs-only ones too) and by ci.yml on a tag."""
 import json
@@ -25,14 +25,17 @@ if not m:
     sys.exit("readme-check: no released version in CHANGELOG.md")
 version, date = m.groups()
 errors = []
-if f"**v{version}** is released" not in readme:
-    errors.append(f"README.md's status does not say \"**v{version}** is released\" (CHANGELOG.md: {version}, {date})")
-if re.search(rf"\*\*v{re.escape(version)}\*\* is (next|upcoming|coming)", readme):
-    errors.append(f"README.md still calls v{version} upcoming")
-if f"## What's new in {version}" not in readme:
-    errors.append(f"README.md has no \"## What's new in {version}\" section for the newest release")
-if f"sidou-{version}.fwsc" not in readme:
-    errors.append(f"README.md's install steps do not name sidou-{version}.fwsc")
+for link in ("CHANGELOG.md", "https://github.com/dsablic/sidou/releases", "docs/ROADMAP.md"):
+    if link not in readme:
+        errors.append(f"README.md does not link {link}")
+named = sorted(set(re.findall(r"(?<![\d.])v?\d+\.\d+\.\d+(?![\d])", readme)))
+if named:
+    errors.append(f"README.md names releases ({', '.join(named)}): version information belongs in CHANGELOG.md")
+for h in re.finditer(r"^## \[(\d+\.\d+\.\d+[^\]]*)\](.*)\n\n(.)", changelog, re.M):
+    if not re.match(r" - \d{4}-\d{2}-\d{2}$", h.group(2)):
+        errors.append(f"CHANGELOG.md's {h.group(1)} has no date")
+    if h.group(3) in "#-":
+        errors.append(f"CHANGELOG.md's {h.group(1)} has no one-line summary under its heading")
 ref = os.environ.get("GITHUB_REF", "")
 if ref.startswith("refs/tags/v") and ref != f"refs/tags/v{version}":
     errors.append(f"the tag {ref[10:]} is not CHANGELOG.md's newest release v{version}")
