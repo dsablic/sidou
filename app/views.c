@@ -2838,8 +2838,9 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if (v->lab.scl_alone) {
         lab_view_scl(&v->lab, held); /* SCL alone on LAB waits for EDIT: its release */
     }
-    if (v->song.gen.scl_down | v->song.gen.arp_alone) {
-        /* SCL's release: DICE rolls; ARP's alone: STEP's gate, TRACKER's key off */
+    if (v->song.gen.scl_down | v->song.gen.arp_alone | v->song.gen.lfo_alone) {
+        /* SCL's release: DICE rolls; ARP's alone: STEP's gate, TRACKER's key off; LFO's alone:
+         * TRACKER's rest */
         if (screen_top(&v->s) == &tracker_view_view) {
             tracker_view_buttons(&v->song, &v->s, held);
         } else {

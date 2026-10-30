@@ -18,7 +18,8 @@
  * chord is held K1-K4 set the density, the range, the selected lane's scale and the rhythm, a
  * note key the lane's root; a knob turned or another button pressed spoils the roll at SCL's
  * release. EDIT + ARP is MUTATE whichever lands first too: a view holds ARP's lone action back
- * (song_gen.arp_alone) while EDIT may still arrive.
+ * (song_gen.arp_alone) while EDIT may still arrive; TRACKER holds LFO's back the same way
+ * (song_gen.lfo_alone), as EDIT + LFO is undo.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_SONG_GEN_H
@@ -58,6 +59,8 @@ typedef struct {
      * off with REC on): EDIT pressed now is MUTATE, whichever finger lands first. The view does
      * the lone action at ARP's release or as soon as another control is used. */
     uint8_t arp_alone;
+    /* The same for LFO (TRACKER's rest with REC on): EDIT + LFO is undo, whichever lands first. */
+    uint8_t lfo_alone;
     /* The run: its kind, its pattern and rows, the lane, the next row (or MUTATE's count), the
      * lane's instrument and gate, whether it is the song's drums, DICE's settings as it started,
      * the sweep's direction, the seed its random is made from. */

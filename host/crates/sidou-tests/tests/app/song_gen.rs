@@ -249,6 +249,80 @@ fn trackers_arp_alone_with_rec_on_writes_the_key_off() {
     s.ui.up(PANEL_BTN_ARP);
 }
 
+/// EDIT + LFO (undo) is a chord whichever finger lands first in TRACKER. With REC on and the song
+/// stopped LFO alone writes a rest, so it waits: LFO a few milliseconds before EDIT is the same
+/// undo as EDIT first, and the rest is never written.
+#[test]
+fn trackers_lfo_landing_before_edit_is_the_same_undo_and_no_rest() {
+    let rec_on = || {
+        let mut s = tracker_on(fixed_song());
+        s.ui.press(PANEL_BTN_REC);
+        settle(&mut s.ui);
+        s
+    };
+    for lfo_first in [false, true] {
+        let mut s = rec_on();
+        let before = pattern(&s, 0);
+        s.ui.press(PANEL_BTN_ARP); // an edit to undo: a key off at row 0
+        settle(&mut s.ui);
+        assert_ne!(pattern(&s, 0), before);
+        if lfo_first {
+            s.ui.down(PANEL_BTN_LFO);
+            assert_eq!(s.ui.v.song.gen_.lfo_alone, 1, "LFO waits for EDIT");
+            s.ui.down(PANEL_BTN_EDIT);
+        } else {
+            s.ui.down(PANEL_BTN_EDIT);
+            s.ui.down(PANEL_BTN_LFO);
+        }
+        s.ui.up(PANEL_BTN_LFO);
+        s.ui.up(PANEL_BTN_EDIT);
+        settle(&mut s.ui);
+        assert_eq!(pattern(&s, 0), before, "undone, lfo_first {lfo_first}");
+        assert_eq!(s.ui.v.song.gen_.lfo_alone, 0);
+    }
+}
+
+/// LFO alone with REC on still writes its rest at the cursor: when it is let go, as soon as
+/// another control is used while it is down, and at once while REC records.
+#[test]
+fn trackers_lfo_alone_with_rec_on_writes_the_rest() {
+    let mut s = tracker_on(fixed_song());
+    s.ui.press(PANEL_BTN_REC);
+    settle(&mut s.ui);
+    let at = |s: &Song, r: usize| pattern(s, 0)[r][0];
+    assert_ne!(at(&s, 0), GT2_REST as u8);
+    s.ui.down(PANEL_BTN_LFO);
+    settle(&mut s.ui);
+    assert_ne!(at(&s, 0), GT2_REST as u8, "not at its press");
+    s.ui.up(PANEL_BTN_LFO);
+    settle(&mut s.ui);
+    assert_eq!(at(&s, 0), GT2_REST as u8, "at its release");
+    s.ui.turn(PANEL_ENC_SELECT, 4);
+    settle(&mut s.ui);
+    assert_ne!(at(&s, 4), GT2_REST as u8);
+    s.ui.down(PANEL_BTN_LFO);
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    settle(&mut s.ui);
+    assert_eq!(at(&s, 4), GT2_REST as u8, "the rest before the knob moved");
+    assert_eq!(s.ui.v.song.row, 5);
+    s.ui.up(PANEL_BTN_LFO);
+    // While REC records: the rest at LFO's press.
+    s.ui.v.song.row = 9; // a key off: not a rest yet
+    let st = &mut s.f.st;
+    st.state = SONG_T_PLAYING as u8;
+    st.order_pos = [0, 0, 0];
+    st.row = [2, 0, 0];
+    s.ui.frame();
+    assert!(unsafe { song_view_recording(&s.ui.v.song) } != 0);
+    let row = s.ui.v.song.row as usize;
+    assert_ne!(at(&s, row), GT2_REST as u8);
+    s.ui.down(PANEL_BTN_LFO);
+    settle(&mut s.ui);
+    assert_eq!(at(&s, row), GT2_REST as u8, "at once while recording");
+    assert_eq!(s.ui.v.song.gen_.lfo_alone, 0);
+    s.ui.up(PANEL_BTN_LFO);
+}
+
 #[test]
 fn trackers_frame_shows_the_settings_and_its_knobs_set_them_without_a_roll() {
     let mut s = tracker_on(fixed_song());

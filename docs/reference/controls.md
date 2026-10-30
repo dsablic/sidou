@@ -407,7 +407,7 @@ field expands to 2× in reverse yellow. Other voices remain activity strips.
 |---|---|
 | Note key | writes its note and the current instrument into the cursor's row, auditions it, then advances by the edit step (wrapping within the pattern) |
 | ARP | writes key off (`===`), keeping the row's other fields, when it is let go (at once while REC records; EDIT + ARP is MUTATE, above) |
-| LFO | clears the note to a rest; a second press on the same row clears all four fields |
+| LFO | clears the note to a rest; a second press on the same row clears all four fields. While the song is stopped the rest is written when LFO is let go (or as soon as another control is used), at once while REC records, so EDIT may land after LFO: EDIT + LFO is then the undo and no rest |
 | EDIT + LFO | undoes the last edit; the next press redoes it (also available with REC off). Undo keeps **one step**: the help card says E+LFO ONE UNDO |
 | K1 | instrument number, 00–3F (00 leaves the playing instrument unchanged) |
 | K2 | command, 0–F |

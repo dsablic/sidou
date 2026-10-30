@@ -122,6 +122,9 @@ All notable changes are documented here. The format follows
   is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Fixed
+- TRACKER: EDIT + LFO (undo) works whichever finger lands first, as EDIT + ARP does. With REC on and
+  the song stopped, LFO alone now writes its rest when it is let go (or as soon as another control
+  is used; at once while REC records), so LFO a few milliseconds before EDIT no longer loses the undo.
 - LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as
   EDIT + SCL is. ARP a few milliseconds before EDIT varies LAB's page or MUTATEs STEP's lane (on
   STEP, ARP alone now switches the lane's gate when it is let go, so the chord leaves the gate as

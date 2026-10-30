@@ -621,6 +621,7 @@ static uint32_t build_step(song_view* sv, uint32_t from) {
 }
 
 static void arp_alone(screen* s, song_view* sv);
+static void lfo_alone(screen* s, song_view* sv);
 
 /* Built anew at its first compose: what changed while it was away. */
 static void enter(screen* s, void* state) {
@@ -635,6 +636,7 @@ static void leave(screen* s, void* state) {
     song_view* sv = state;
     song_gen_scl_alone(sv);
     arp_alone(s, sv);
+    lfo_alone(s, sv);
     if (sv->gen.follow) {
         song_gen_drain(sv, s);
     }
@@ -653,6 +655,9 @@ static void gen_start(screen* s, song_view* sv, uint32_t kind) {
 void tracker_view_buttons(song_view* sv, screen* s, uint32_t held) {
     if (sv->gen.arp_alone && !(held >> PANEL_BTN_ARP & 1u)) {
         arp_alone(s, sv); /* ARP let go alone: its key off */
+    }
+    if (sv->gen.lfo_alone && !(held >> PANEL_BTN_LFO & 1u)) {
+        lfo_alone(s, sv); /* LFO let go alone: its rest */
     }
     if (song_gen_release(sv, held) && screen_top(s) == &tracker_view_view) {
         gen_start(s, sv, SONG_GEN_DICE);
@@ -724,6 +729,15 @@ static void arp_alone(screen* s, song_view* sv) {
         sv->gen.arp_alone = 0u;
         finish_ready_edit(sv);
         rec_clear(s, sv, PANEL_BTN_ARP);
+    }
+}
+
+/* LFO that was down alone with REC on: its rest now, and no undo. */
+static void lfo_alone(screen* s, song_view* sv) {
+    if (sv->gen.lfo_alone) {
+        sv->gen.lfo_alone = 0u;
+        finish_ready_edit(sv);
+        rec_clear(s, sv, PANEL_BTN_LFO);
     }
 }
 
@@ -816,6 +830,17 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
     return 1;
 }
 
+/* EDIT + LFO: one cell back, then forward again. */
+static void tracker_undo(screen* s, song_view* sv) {
+    finish_ready_edit(sv);
+    if (sv->editor) {
+        (void)song_edit_undo(sv->editor);
+        sv->edit_pending = sv->editor->pending;
+    }
+    sv->clear_armed = 0;
+    feedback(s, sv);
+}
+
 static int input(screen* s, void* state, const screen_event* e) {
     song_view* sv = state;
     if (sv->away) {
@@ -836,7 +861,15 @@ static int input(screen* s, void* state, const screen_event* e) {
             }
             return 1;
         }
+        int lfo_chord =
+            e->id == PANEL_BTN_EDIT && sv->gen.lfo_alone && (e->held >> PANEL_BTN_LFO & 1u);
         arp_alone(s, sv); /* another button: ARP was alone */
+        if (lfo_chord) {
+            sv->gen.lfo_alone = 0u; /* EDIT after LFO: the same chord; LFO's rest is spoilt */
+            tracker_undo(s, sv);
+            return 1;
+        }
+        lfo_alone(s, sv); /* another button: LFO was alone */
         if (song_gen_press(sv, e->id, edit, free)) {
             return 1;
         }
@@ -846,19 +879,17 @@ static int input(screen* s, void* state, const screen_event* e) {
         }
     }
     if (e->kind == SCREEN_PRESS && edit && e->id == PANEL_BTN_LFO) {
-        finish_ready_edit(sv);
-        if (sv->editor) {
-            (void)song_edit_undo(sv->editor);
-            sv->edit_pending = sv->editor->pending;
-        }
-        sv->clear_armed = 0;
-        feedback(s, sv);
+        tracker_undo(s, sv);
         return 1;
     }
     if (e->kind == SCREEN_PRESS && sv->rec &&
         (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_LFO)) {
         if (e->id == PANEL_BTN_ARP && !edit && !song_view_recording(sv) && sv->editor) {
             sv->gen.arp_alone = 1u; /* the key off at its release: EDIT may land after it */
+            return 1;
+        }
+        if (e->id == PANEL_BTN_LFO && !edit && !song_view_recording(sv) && sv->editor) {
+            sv->gen.lfo_alone = 1u; /* the rest at its release: EDIT may land after it */
             return 1;
         }
         rec_clear(s, sv, e->id);
@@ -869,6 +900,7 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     song_gen_scl_alone(sv); /* a knob while SCL is down alone: the slot first, then the knob */
     arp_alone(s, sv);
+    lfo_alone(s, sv);
     if (song_gen_turn(sv, s, e->id, e->steps)) {
         return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
     }
