@@ -68,7 +68,9 @@ is in the [release notes](https://github.com/dsablic/sidou/releases/tag/v0.5.0) 
   EDIT while you play peeks at A, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
   EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER
   sounds, which PRESETS plays after DICE; EDIT + SAVE names it on the keys. A slot turned to OFF
-  on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)).
+  on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)). REC in LAB
+  sends the sound to the song as a GoatTracker instrument while it plays, and ENV on INSTR pulls
+  one back into LAB (new in 1.5).
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
@@ -151,7 +153,7 @@ On LIVE:
 **In LAB**: K1 to K4 are the page's four cards and ALGORITHM its choice; SELECT, or
 ENV, LFO and FX, change the page; SAVE keeps the sound as a USER sound; tap EDIT for A/B, hold it
 and play to peek at A; EDIT + LFO undoes, EDIT + ARP varies, EDIT + SCL rolls, EDIT + SAVE names;
-HOME goes back to LIVE
+REC sends the sound to the song (EDIT + REC over INSTR's instrument); HOME goes back to LIVE
 ([shape a sound in LAB](docs/manual/lab.md)).
 
 **Hold HOME on any screen for its help card**: it says what each control does there, for what the screen is doing (SELECT turns a two-page card). Every control, every screen and every MIDI
@@ -229,7 +231,8 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
 - **Next: 1.1** (in progress, [CHANGELOG.md](CHANGELOG.md)): DICE's range and rhythm, a root and
   a scale per lane, MUTATE, DICE and a filter sweep in TRACKER. **1.x**
-  ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, the move to felucca-bsp.
+  ([docs/ROADMAP.md](docs/ROADMAP.md)): the move to felucca-bsp. In progress for 1.5: LAB's song
+  bridge.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/ROADMAP.md) and the

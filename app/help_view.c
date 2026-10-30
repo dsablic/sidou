@@ -111,8 +111,8 @@ static const char* const ORDER_LINES[] = {
     "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
 static const char* const INSTR_LINES[] = {
     "SELECT\0PARAM",  "PRESETS\0INSTR", "K1\0COARSE",    "K2\0FINE",
-    "E+SEQ\0TABLE",   "KEYS\0AUDITION", "SEQ\0NEXT VIEW", "SAVE\0SONG",
-    "HOME\0BACK"};
+    "E+SEQ\0TABLE",   "ENV LFO FX\0LAB", "KEYS\0AUDITION", "SEQ\0NEXT VIEW",
+    "SAVE\0SONG",     "HOME\0BACK"};
 static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "ALG\0TABLE",      "K1\0LEFT BYTE",
                                           "K2\0RIGHT BYTE",   "ARP\0ARPEGGIO",   "KEYS\0AUDITION",
                                           "SEQ\0NEXT VIEW",   "SAVE\0SONG",      "HOME\0BACK"};
@@ -162,32 +162,34 @@ static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "
                                             "HOLD HOME\0HELP"};
 
 /* LAB's pages, a card each: the page's four cards and its choice first, then what every page
- * takes (two pages at most, so no line is spared: SAVE+K is MIDI learn, EDIT's tap is the hint
- * line's A/B). ENV, LFO and FX open their pages, EDIT + PRESETS reverts, HOME goes to LIVE. */
-#define LAB_TAIL_A "SELECT\0PAGE", "ENV LFO\0PAGES", "FX\0PAGE"
+ * takes (two pages at most, so no line is spared: SAVE+K, MIDI learn, is everywhere's and on
+ * MACRO's card; EDIT's tap is the hint line's A/B). ENV, LFO and FX open their pages, as from
+ * LIVE (LIVE's card's words), EDIT + PRESETS reverts, REC sends the sound to the song (EDIT + REC
+ * over INSTR's instrument), HOME goes to LIVE. */
+#define LAB_TAIL_A "SELECT\0PAGE", "ENV LFO FX\0LAB"
 #define LAB_TAIL_B "SAVE\0KEEP", "E+SAVE\0NAME", "E+LFO\0UNDO", "E+ARP\0VARY", "E+SCL\0ROLL", \
-                   "E+PRE\0REVERT"
+                   "E+PRE\0REVERT", "REC\0TO SONG"
 static const char* const LAB_OSC_LINES[] = {
     "K1\0PULSE/RATIO", "K2\0PWM DEPTH", "K3\0PWM RATE", "K4\0TUNE",
-    "ALG\0WAVEFORM",   LAB_TAIL_A,      LAB_TAIL_B,     "SAVE+K\0LEARN", "HOME\0LIVE"};
+    "ALG\0WAVEFORM",   LAB_TAIL_A,      LAB_TAIL_B,     "E+REC\0REPLACE", "HOME\0LIVE"};
 static const char* const LAB_ENVELOPE_LINES[] = {
     "K1\0ATTACK", "K2\0DECAY", "K3\0SUSTAIN", "K4\0RELEASE",
-    "ALG\0ENV MODE", LAB_TAIL_A, LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
+    "ALG\0ENV MODE", LAB_TAIL_A, LAB_TAIL_B,   "E+REC\0REPLACE", "HOME\0LIVE"};
 static const char* const LAB_FILTER_LINES[] = {
     "K1\0CUTOFF", "K2\0RESONANCE", "K3\0VOICES", "K4\0FILTER LFO",
-    "ALG\0FILTER", LAB_TAIL_A,      LAB_TAIL_B,   "SAVE+K\0LEARN", "HOME\0LIVE"};
+    "ALG\0FILTER", LAB_TAIL_A,      LAB_TAIL_B,   "E+REC\0REPLACE", "HOME\0LIVE"};
 static const char* const LAB_MOD_LINES[] = {
     "K1\0VIBRATO HZ", "K2\0VIB DEPTH", "K3\0VIB DELAY", "K4\0ARP RATE",
-    "ALG\0ARP",       LAB_TAIL_A,      LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
+    "ALG\0ARP",       LAB_TAIL_A,      LAB_TAIL_B,      "E+REC\0REPLACE", "HOME\0LIVE"};
 /* FX: the selected slot's controls in its algorithm's words; SCL moves the slot (no room left
- * for the learn line). */
+ * for EDIT + REC's line: the other pages' cards have it). */
 static const char* const LAB_FX_LINES[] = {
     "K1\0\1",       "K2\0\2",  "K3\0\3",    "K4\0\4",
     "ALG\0ALGORITHM", LAB_TAIL_A, LAB_TAIL_B, "SCL\0NEXT SLOT", "HOME\0LIVE"};
 /* MACRO: the links of the sound; K3, K4 and ALGORITHM have none. */
 static const char* const LAB_MACRO_LINES[] = {
     "K1\0RESO LINK", "K2\0PWM LINK", "K3 K4\0UNUSED", "ALG\0NOTHING",
-    LAB_TAIL_A,       LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
+    LAB_TAIL_A,       LAB_TAIL_B,      "E+REC\0REPLACE", "SAVE+K\0LEARN", "HOME\0LIVE"};
 /* The name page (EDIT + SAVE): the keys type, the three page buttons and K2-K4 do nothing. */
 static const char* const LAB_NAME_LINES[] = {
     "KEYS\0LETTERS", "SELECT\0CURSOR", "ALG\0CHARACTER", "K1\0SLOT",

@@ -166,6 +166,19 @@ journey accident | Keep a happy accident
   step keep | Keep it | SAVE keeps the sound as a USER sound | press SAVE; wait 400 | toast; text KEPT AS; task keep a happy accident
   step recall | Switch off and on again | The kept sound is still there | powercycle | recalled
 
+journey send | Send a LAB sound to the song
+  goal Shape a sound in LAB, send it to the song as a GoatTracker instrument while the song plays, and pull it back from INSTR.
+  prereq On LIVE after the boot, the built-in song loaded (its lowest free instrument is 06).
+  skills LAB; REC sends a LAB sound to the song; INSTR; ENV on INSTR pulls the instrument into LAB
+  related accident; build
+  step open-lab | Open LAB | ENV opens LAB at the envelope | press ENV; wait 600 | view lab
+  step play | Play the song | PLAY: the song plays on in LAB | press PLAY; wait 400 | -
+  step shape | Turn the decay with a key down | Hold a key and turn K2 | down A3; turn K2 3; up A3 | change; sound; task send a LAB sound to the song
+  step send | Send it | REC sends the sound to the song's lowest free instrument | press REC; wait 400 | toast; text SENT AS; task send a LAB sound to the song
+  step to-instr | Open INSTR | SEQ to INSTR (STEP, TRACKER, ORDER, INSTR) | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500 | view song_pages_instr
+  step pick | Its instrument | PRESETS to 06, the one the toast named | turn PRESETS -63; turn PRESETS 5 | change
+  step pull | Pull it back | ENV on INSTR takes the instrument into LAB | press ENV; wait 600 | view lab; toast; text PULLED
+
 journey songs | Work with the song lists
   goal Open SONG's pages (LOAD, NEW, SAVE AS, DELETE) and the SIDS list; HOME backs out of each, and a key still sounds at the end.
   prereq On LIVE after the boot; no song of your own in the store.

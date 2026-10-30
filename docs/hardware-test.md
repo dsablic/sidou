@@ -303,6 +303,7 @@ input id, for mapping notes.
 | 10 | D4 | 293.66 | 23 | [ ] | [ ] | |
 | 11 | D#4 | 311.13 | 24 | [ ] | [ ] | |
 | 12 | E4 | 329.63 | 25 | [ ] | [ ] | |
+| 26 LAB's song bridge | | |
 | 13 | F4 | 349.23 | 26 | [ ] | [ ] | |
 | 14 | F#4 | 369.99 | 27 | [ ] | [ ] | |
 | 15 | G4 | 392.00 | 28 | [ ] | [ ] | |
@@ -2529,6 +2530,48 @@ curves"). Set up as section 22; a chord held while turning, one detent at a time
   drive (linear as before: does FUZZ's clip still arrive all at once near a third of the travel?
   is OVERDRIVE's lower half too quiet a change?), CRUSH's rate (fine near the top), DELAY's
   feedback and every Mix (even steps of dB: does Mix's first detent, -28 dB, start low enough?).
+
+Notes:
+
+## 26. LAB's song bridge (1.5)
+
+What it decides: whether a sound sent from LAB sounds in the song as it did in LAB, and whether
+the gestures read and feel right (docs/reference/controls.md "Send a LAB sound to the song").
+Set up as section 22, a song loaded (SIDOU LOOP or one of your own).
+
+- [ ] **Send while the song plays:** PLAY, then in LAB a few cards turned on a plain sound (SAW
+  LEAD), **REC**: the toast `SENT AS I06 SAW LEAD`; SEQ to INSTR and PRESETS to that instrument,
+  then a note in TRACKER with it, or the keys on INSTR.
+  *Emulator:* `emu-gate/tests/lab.rs::rec_in_lab_sends_to_the_playing_song_and_env_on_instr_pulls_it_back`
+  (the bytes through the audio interrupt's queue, the chunk, the song playing on),
+  `sidou-tests/tests/app/lab_song.rs::the_sent_instrument_plays_the_lab_sounds_registers`,
+  `sidou-tests/tests/gt2_match.rs::lab_sounds_sent_to_the_song_match` (GoatTracker's player plays
+  it as SIDOU's), the ergo journey `send`.
+  *Device-only:* by ear: the instrument in the song against the sound in LAB, on the same chip
+  model (only the hard restart's click at each note should differ); no glitch in the playing song
+  while the bytes go in.
+- [ ] **The approximate fields:** PWM BASS (its PWM), then a sound with the filter LFO (FILTER K4 at
+  8), then the vibrato (MOD: 6 Hz, DEPTH half way), each sent and played in the song; the hint line
+  says `APPROX: PWM`, `APPROX: FILTER LFO`, `APPROX: VIB`.
+  *Emulator:* `sidou-tests/tests/app/lab_song.rs::the_pwm_loop_and_the_vibrato_play_within_their_tolerances`.
+  *Device-only:* by ear: whether the PWM loop, restarting at each note, and the vibrato's nearest
+  speed (6.9 Hz for 6.0) are close enough; whether the filter taking over the song's filter is
+  what you expect (the hint line said so).
+- [ ] **EDIT + REC over INSTR's instrument:** EDIT + REC asks `REPLACE I06? EDIT+REC`; again
+  replaces it; the song plays the new sound where it played the old one.
+  *Emulator:* `sidou-tests/tests/app/song_pages.rs::rec_in_lab_sends_and_edit_rec_asks_before_it_replaces`,
+  `sidou-tests/tests/app/song_pages.rs::a_send_over_a_sent_instrument_writes_in_its_rows_and_blanks_the_rest`.
+  *Device-only:* whether the question is seen in time and 4 s is long enough to answer it.
+- [ ] **Pull back:** on INSTR, ENV (or LFO, FX) on the instrument sent: LAB opens at ENVELOPE with
+  the sound exactly (`PULLED I06`); EDIT + LFO gives back the sound before; then a kit drum
+  (instrument 01 of a NEW song): `I01 ~DRUM`.
+  *Emulator:* `emu-gate/tests/lab.rs::rec_in_lab_sends_to_the_playing_song_and_env_on_instr_pulls_it_back`,
+  `sidou-tests/tests/app/song_pages.rs::env_lfo_and_fx_on_instr_pull_the_instrument_into_lab`.
+  *Device-only:* the feel of ENV on INSTR opening LAB; whether a pulled kit drum is a useful start.
+- [ ] **GoatTracker:** the song saved, opened in GoatTracker 2 on a computer: the instrument sent
+  plays there as on the FM-1 (the `LBnn` chunks are ignored).
+  *Emulator:* `sidou-tests/tests/app/lab_song.rs::the_chunk_survives_a_save_and_goattracker_skips_it`.
+  *Device-only:* the file in GoatTracker itself.
 
 Notes:
 

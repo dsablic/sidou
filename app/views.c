@@ -2029,7 +2029,7 @@ static int global(void* ctx, const screen_event* e) {
         }
         return 1;
     }
-    if (e->id == PANEL_BTN_REC && shows(v) == &lab_view_view) {
+    if (e->id == PANEL_BTN_REC && shows(v) == &lab_view_view && !v->lab.mode) {
         lab_send(v, (int)(e->held >> PANEL_BTN_EDIT & 1u)); /* the sound to the song */
         return 1;
     }

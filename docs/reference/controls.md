@@ -878,7 +878,8 @@ the smallest moves; a roll 16 times); if none passes the sound stays and the toa
 GoatTracker 2 instrument: into the song's **lowest free instrument** (all 25 bytes 0), its
 programs after each table's last row. The toast says where: `SENT AS I0F LAB 03` (the instrument
 in hex, the sound's name, which the instrument takes). It is written through the song's edit
-queue a byte at a time, so the song plays on; INSTR's cursor moves to it. **EDIT + REC** writes
+queue a byte at a time, so the song plays on; INSTR's cursor goes to it (STEP, when SEQ
+passes through it, sets its lane's instrument there, as it always has). **EDIT + REC** writes
 it over **INSTR's instrument** instead: a used one asks first (`REPLACE I05? EDIT+REC`; EDIT + REC
 again within 4 s replaces it). An unedited instrument sent before keeps its rows: the new
 programs go where they were, the rows they no longer need blanked; any other instrument's rows

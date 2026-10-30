@@ -82,8 +82,10 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
 - ~~**A held step's audition plays its locks.** Hold a step and hear it with its locks. M; needs
   room in the audio interrupt, so a device check follows.~~ Done in 1.1: its cutoff, resonance,
   filter mode, route and pulse locks, pinned while held; the device check is section 23.
-- **LAB's song bridge:** send a sound to a song as an instrument, pull one back. M-L. Its own
-  design first (the LAB design calls it the second step).
+- ~~**LAB's song bridge:** send a sound to a song as an instrument, pull one back. M-L. Its own
+  design first (the LAB design calls it the second step).~~ Done for 1.5 ([the design](plans/2026-10-30-1.5-design.md#2-labs-song-bridge)):
+  REC in LAB sends, ENV / LFO / FX on INSTR pull, the `LBnn` chunk for the exact round trip; a
+  device check follows (hardware-test.md section 26).
 - **Instruments from a `.sid`.** Lift an instrument out of a tune you play. M-L; pairs with
   the song bridge.
 - ~~**LAB: hold-to-peek and macros.**~~ Done (1.1): EDIT held while you play peeks at A; the

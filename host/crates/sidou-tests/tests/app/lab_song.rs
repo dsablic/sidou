@@ -321,11 +321,10 @@ fn sent_song(s: &Sound, instr: usize, first: [u8; 4]) -> (Song, lab_song_instr) 
     let o = encode(s, 0, first);
     let raw = unsafe { &mut *song.ptr_mut() };
     raw.instr[instr - 1] = o.instr;
-    for t in 0..4 {
-        for i in 0..o.rows[t] as usize {
-            raw.ltable[t][first[t] as usize - 1 + i] = o.left[t][i];
-            raw.rtable[t][first[t] as usize - 1 + i] = o.right[t][i];
-        }
+    for (t, &at) in first.iter().enumerate() {
+        let (n, at) = (o.rows[t] as usize, at as usize - 1);
+        raw.ltable[t][at..][..n].copy_from_slice(&o.left[t][..n]);
+        raw.rtable[t][at..][..n].copy_from_slice(&o.right[t][..n]);
     }
     unsafe { gt2_saved_recount(song.ptr_mut()) }; // written here directly, not as edits
     assert_eq!(
@@ -360,7 +359,8 @@ fn the_chunk_keeps_the_sound_while_the_instrument_is_unedited() {
     assert_eq!(&chunk[9..], &s);
     assert_eq!(kept(&song, 15), Some(s));
     assert_eq!(kept(&song, 14), None);
-    let edits: [(&str, fn(&mut gt2_song)); 4] = [
+    type Edit = (&'static str, fn(&mut gt2_song));
+    let edits: [Edit; 4] = [
         ("a byte", |r| r.instr[14][1] ^= 0x10),
         ("a row", |r| r.rtable[2][9] ^= 1),
         ("the name", |r| r.instr[14][20] = b'X'),
@@ -511,16 +511,16 @@ fn a_kit_drum_pulls_with_what_was_approximated() {
     let raw = unsafe { &mut *song.ptr_mut() };
     let kick = unsafe { std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[0]) };
     raw.instr[0] = kick;
-    unsafe {
-        for i in 0..GT2_KIT_WAVE_ROWS as usize {
-            raw.ltable[0][i] = gt2_kit_wave[0][i];
-            raw.rtable[0][i] = gt2_kit_wave[1][i];
-        }
-        for i in 0..GT2_KIT_PULSE_ROWS as usize {
-            raw.ltable[1][i] = gt2_kit_pulse[0][i];
-            raw.rtable[1][i] = gt2_kit_pulse[1][i];
-        }
-    }
+    let (wave, pulse) = unsafe {
+        (
+            (&raw const gt2_kit_wave).read(),
+            (&raw const gt2_kit_pulse).read(),
+        )
+    };
+    raw.ltable[0][..wave[0].len()].copy_from_slice(&wave[0]);
+    raw.rtable[0][..wave[1].len()].copy_from_slice(&wave[1]);
+    raw.ltable[1][..pulse[0].len()].copy_from_slice(&pulse[0]);
+    raw.rtable[1][..pulse[1].len()].copy_from_slice(&pulse[1]);
     let (d, notes) = pull(&song, 1);
     assert!(notes & LAB_SONG_DRUM != 0, "{notes:#x}");
     assert_eq!((d[1], d[2]), (kick[0], kick[1]));

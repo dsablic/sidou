@@ -1978,7 +1978,7 @@ fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
     );
     assert_eq!(h.ui.v.song.instr, 1, "INSTR shows it");
     // EDIT + REC: a question, then the replace
-    unsafe { (*h.ui.rig.live).attack_decay = 0x48 };
+    h.ui.rig.live.attack_decay = 0x48;
     h.ui.hold(PANEL_BTN_EDIT, true);
     h.ui.press(PANEL_BTN_REC);
     assert_eq!(h.ui.toast().as_deref(), Some("REPLACE I01? EDIT+REC"));
@@ -2029,10 +2029,9 @@ fn env_lfo_and_fx_on_instr_pull_the_instrument_into_lab() {
         screen_pop(&mut h.ui.v.s, SCREEN_CUT);
         let m = &mut *h.model.ptr_mut();
         m.instr[1] = std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[1]);
-        for i in 0..GT2_KIT_WAVE_ROWS as usize {
-            m.ltable[0][100 + i] = gt2_kit_wave[0][i];
-            m.rtable[0][100 + i] = gt2_kit_wave[1][i];
-        }
+        let wave = (&raw const gt2_kit_wave).read();
+        m.ltable[0][100..][..wave[0].len()].copy_from_slice(&wave[0]);
+        m.rtable[0][100..][..wave[1].len()].copy_from_slice(&wave[1]);
         m.instr[1][2] = 100 + 9; // the snare's rows, moved
     }
     h.ui.v.song.instr = 2;
