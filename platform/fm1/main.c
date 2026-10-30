@@ -1980,6 +1980,9 @@ static void tune_pass(void) {
         return;
     case TUNE_SONG_STOP: {
         song_ctl* sc = audio_song();
+        if (lift_offer.state == SID_OFFER_IMPORTING) {
+            return; /* the lifted instrument's import finishes first */
+        }
         if (song_ctl_state(sc) == SONG_PLAYING || song_ctl_state(sc) == SONG_LOADING) {
             (void)song_ctl_stop(sc);
             return;
@@ -2212,7 +2215,8 @@ static int tb_mute(void* ctx, uint32_t mask) {
 static void tb_status(void* ctx, sid_status* out) {
     (void)ctx;
     uint32_t t = sid_tune.state;
-    if (lift_offer.state == SID_OFFER_READY || lift_offer.state == SID_OFFER_IMPORTING) {
+    if (t == TUNE_OFF &&
+        (lift_offer.state == SID_OFFER_READY || lift_offer.state == SID_OFFER_IMPORTING)) {
         out->offer = lift_offer.state;
         out->offer_instr = lift_offer.instr;
         out->offer_playing = (uint8_t)!midi_object_stopped(audio_song());
@@ -2274,8 +2278,8 @@ static int tb_lift(void* ctx, uint32_t voice) {
  * or the skip. */
 static int tb_import(void* ctx, int go) {
     (void)ctx;
-    if (lift_offer.state != SID_OFFER_READY) {
-        return 0;
+    if (lift_offer.state != SID_OFFER_READY || sid_tune.state != TUNE_OFF) {
+        return 0; /* offered only while the song has its memory */
     }
     if (!go) {
         lift_offer.state = SID_OFFER_NONE;
