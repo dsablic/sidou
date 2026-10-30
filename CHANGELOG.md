@@ -8,27 +8,6 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-- **The distortions are heard on a played note.** The Distortion slot's algorithms are made
-  for a SID voice at a quarter of full scale, but the chip gives the slot about 12 dB less
-  (SAW LEAD's A4 peaks at -23 dBFS). Turned with EDIT + K1 from the bottom to the top on one
-  note, TAPE's Amount did nothing you could hear; OVERDRIVE's and FUZZ's were mostly volume
-  knobs (+14.5 and +13.3 dB louder, little clipping); CRUSH's top chopped the note into bursts;
-  LO-FI's hum and noise drowned it. The slot now lifts its input x4 into the algorithms and
-  lowers the wet signal as much again: TAPE saturates, OVERDRIVE and FUZZ clip at +4.0 and
-  +1.8 dB, CRUSH's top plays a 4-bit note, the hum and noise sit under it. The same settings
-  sound more driven than in 1.1.0 (a chord or a song through the slot, louder than one note,
-  more so). Modulation and FX were heard end to end already, and the knob curves of 1.1 were
-  not the cause: 1.0 measured the same (`emu-gate/tests/fx_knobs.rs`).
-
-### Added
-- **EDIT + K1-K4 says the effect in the large popup.** Turning the selected effect slot's
-  Amount, A, B or Mix with EDIT held on LIVE opens the value popup: the effect's name over the
-  control's and its value at 2x, `OVERDRIVE` over `DRIVE 91`, with a bar (a slot that is off:
-  `DIST OFF` over `AMT 40`). LIVE's knob row shows the slot's controls small; the popup is
-  readable at arm's length. The same text everywhere the EDIT layer opens a popup (CHIP's chip
-  focus, STATUS, the menu, SCENE), which said `DIST DRIVE` over `91` before.
-
 ## [1.1.0] - 2026-10-30
 
 ### Changed
@@ -79,6 +58,12 @@ All notable changes are documented here. The format follows
   docs/reference/controls.md "Knob curves" lists every curve.
 
 ### Added
+- **EDIT + K1-K4 says the effect in the large popup.** Turning the selected effect slot's
+  Amount, A, B or Mix with EDIT held on LIVE opens the value popup: the effect's name over the
+  control's and its value at 2x, `OVERDRIVE` over `DRIVE 91`, with a bar (a slot that is off:
+  `DIST OFF` over `AMT 40`). LIVE's knob row shows the slot's controls small; the popup is
+  readable at arm's length. The same text everywhere the EDIT layer opens a popup (CHIP's chip
+  focus, STATUS, the menu, SCENE), which said `DIST DRIVE` over `91` before.
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
   (a triangle, up first) at the PWM's rate, which OSC's PWM HZ sets and the card shows on its
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
@@ -146,6 +131,17 @@ All notable changes are documented here. The format follows
   is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Fixed
+- **The distortions are heard on a played note.** The Distortion slot's algorithms are made
+  for a SID voice at a quarter of full scale, but the chip gives the slot about 12 dB less
+  (SAW LEAD's A4 peaks at -23 dBFS). Turned with EDIT + K1 from the bottom to the top on one
+  note, TAPE's Amount did nothing you could hear; OVERDRIVE's and FUZZ's were mostly volume
+  knobs (+14.5 and +13.3 dB louder, little clipping); CRUSH's top chopped the note into bursts;
+  LO-FI's hum and noise drowned it. The slot now lifts its input x4 into the algorithms and
+  lowers the wet signal as much again: TAPE saturates, OVERDRIVE and FUZZ clip at +4.0 and
+  +1.8 dB, CRUSH's top plays a 4-bit note, the hum and noise sit under it. The same settings
+  sound more driven than in 1.0 (a chord or a song through the slot, louder than one note,
+  more so). Modulation and FX were heard end to end already, and the knob curves of 1.1 were
+  not the cause: 1.0 measured the same (`emu-gate/tests/fx_knobs.rs`).
 - **The settings were sometimes not saved after two failed writes in a row.** A flash program
   error while saving the unsaved LAB edit, twice in a row, left the settings record marked as
   saved though it was not on flash; it is now written again at the next debounce.
