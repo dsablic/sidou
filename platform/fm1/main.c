@@ -880,6 +880,7 @@ static void midi_sysex_toast(void* ctx, uint8_t reason) {
     const char* text = "MIDI: BAD PACKET";
     switch (reason) {
     case SYSEX_RECEIVING: text = "RECEIVING"; break;
+    case SYSEX_WAITING: text = "UPLOAD WAITS FOR QUIET"; break;
     case SYSEX_SAVED: text = "SAVED"; break;
     case SYSEX_BUSY: text = "STORE BUSY: RESEND"; break;
     case SYSEX_FULL: text = "STORE FULL"; break;
@@ -1136,6 +1137,20 @@ static void song_seen_rows(const song_event* ev, uint32_t n) {
     }
 }
 
+/* REC from the keys (1.1 item 14): how long before the main loop's now a key it reads was
+ * played against what was heard, in samples, the middle of each delay. The clock's now is the
+ * end of the block last rendered, which the DAC plays two blocks after that block's interrupt
+ * (the double buffer); the key counts as pressed INPUT_PRESS_FRAMES scan frames after it closes
+ * (the first one a frame or less after: 1.5 frames on average, 1.1 to 2.2 ms), and the pass
+ * that follows that frame reads it, half a block on average after the last interrupt, which
+ * is that much less of the double buffer still to play. 2 x 128 - 64 + 73 = 265 samples, 6.0
+ * ms (emu-gate first_use.rs rec_places_a_key_where_it_was_heard measures it). */
+#define REC_LAG_SAMPLES                                                                         \
+    (2u * AUDIO_HALF_FRAMES - AUDIO_HALF_FRAMES / 2u +                                          \
+     ((2u * INPUT_PRESS_FRAMES - 1u) * INPUT_FRAME_US * AUDIO_SAMPLE_RATE + 1000000u) /          \
+         2000000u)
+_Static_assert(REC_LAG_SAMPLES == 265u, "REC's lag, as docs/reference/controls.md says");
+
 static void st_status(void* ctx, song_status* out) {
     song_ctl* sc = ctx;
     if (song_away) {
@@ -1165,6 +1180,7 @@ static void st_status(void* ctx, song_status* out) {
         uint32_t frac = d > 0 && q ? (uint32_t)d * 256u / q : 0u;
         out->now_call = (uint16_t)(calls ? calls - 1u : 0u);
         out->now_frac = (uint8_t)(frac > 255u ? 255u : frac);
+        out->rec_lag = (uint16_t)(q ? REC_LAG_SAMPLES * 256u / q : 0u);
     }
     /* the play's options; before one, the song's (or the defaults), read again each second */
     static gt2_options before;

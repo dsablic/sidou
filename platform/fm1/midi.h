@@ -67,7 +67,11 @@ int midi_usb_live(void);
 uint32_t midi_inputs(void);
 /* Main-loop binding and bounded service for SIDOU's independent SysEx stream. */
 void midi_sysex_bind(const sysex_hooks* hooks, const volatile uint32_t* now_ms);
-void midi_sysex_service(uint32_t now_ms);
+/* `loud`: the store's held programs wait for quiet now (store_fm1.c), so a write's ACK waits
+ * and the sender hears WAIT (app/sysex.h sysex.loud). */
+void midi_sysex_service(uint32_t now_ms, int loud);
+/* 1 while a computer records the USB audio (it has the stream open and takes its packets). */
+int midi_usb_recording(void);
 extern uint8_t midi_sysex_running;
 extern uint8_t midi_sysex_writing;
 

@@ -1490,3 +1490,125 @@ fn sysex_refuses_the_user_sounds_name() {
     e.nak(4, SYSEX_MALFORMED);
     assert_eq!(e.rig.file("USER SOUNDS"), Some(bytes), "untouched");
 }
+
+// ---- 1.1 item 13: a write waits for quiet (sysex.loud), and says so with WAIT ----
+
+/// Polls until a whole frame is out or `polls` run, the clock where it is: the frame, or None.
+fn frame_within(e: &mut Engine, polls: usize) -> Option<(u8, u8, Vec<u8>)> {
+    let mut wire = Vec::new();
+    for _ in 0..polls {
+        e.poll();
+        wire.extend(e.wire());
+        if wire.last() == Some(&0xf7) {
+            return Some(decode(&wire));
+        }
+    }
+    assert!(wire.is_empty(), "a frame part way out: {wire:02x?}");
+    None
+}
+
+/// While the platform says its held programs wait (a song plays, a computer records the USB
+/// audio), a DATA's ACK waits: a WAIT with that DATA's sequence goes out at once and every
+/// SYSEX_WAIT_EVERY_MS, each with the toast UPLOAD WAITS FOR QUIET; once quiet, the ACK, the
+/// toast RECEIVING again, and the upload ends as any other.
+#[test]
+fn a_loud_device_holds_a_datas_ack_and_says_wait_until_quiet() {
+    let mut e = Engine::new(false);
+    let data: Vec<u8> = (0..512u32).map(|i| (i * 13) as u8).collect();
+    e.request(4, 10, &upload_metadata(named("WAITED"), &data));
+    e.ack(10);
+    e.engine.loud = 1;
+    e.request(5, 11, &data[..256]);
+    assert_eq!(e.response(), (0x7d, 11, vec![]), "WAIT at once");
+    assert_eq!(e.hooks.toasts.last(), Some(&(SYSEX_WAITING as u8)));
+    for step in 1..=3u32 {
+        e.now += SYSEX_WAIT_EVERY_MS - 1;
+        assert_eq!(frame_within(&mut e, 300), None, "nothing between the WAITs");
+        e.now += 1;
+        assert_eq!(e.response(), (0x7d, 11, vec![]), "WAIT {step}");
+    }
+    let waits = e
+        .hooks
+        .toasts
+        .iter()
+        .filter(|t| **t == SYSEX_WAITING as u8)
+        .count();
+    assert_eq!(waits, 4, "the toast with each WAIT");
+    assert_eq!(e.rig.file("WAITED"), None);
+    assert_eq!(e.engine.offset, 256);
+    e.engine.loud = 0;
+    e.ack(11);
+    assert!(e.hooks.toasts.contains(&(SYSEX_RECEIVING as u8)));
+    e.request(5, 12, &data[256..]);
+    e.ack(12);
+    e.request(6, 13, &[]);
+    e.ack(13);
+    assert_eq!(e.rig.file("WAITED"), Some(data));
+    assert_eq!(e.hooks.writing.last(), Some(&false));
+}
+
+/// A wait has a limit: SYSEX_QUIET_MAX_MS after it began, NAK BUSY ends the transfer (nothing
+/// replaced, the ownership given back), and the next transfer's wait starts afresh.
+#[test]
+fn a_wait_for_quiet_gives_up_with_busy_after_its_limit() {
+    let mut e = Engine::new(false);
+    let data = vec![0x5a; 256];
+    e.request(4, 20, &upload_metadata(named("GIVEN UP"), &data));
+    e.ack(20);
+    e.engine.loud = 1;
+    e.request(5, 21, &data);
+    assert_eq!(e.response(), (0x7d, 21, vec![]));
+    while e.now + SYSEX_WAIT_EVERY_MS < SYSEX_QUIET_MAX_MS {
+        e.now += SYSEX_WAIT_EVERY_MS;
+        assert_eq!(e.response(), (0x7d, 21, vec![]), "at {} ms", e.now);
+    }
+    e.now = SYSEX_QUIET_MAX_MS;
+    e.nak(21, SYSEX_BUSY);
+    assert!(!e.active());
+    assert_eq!(e.hooks.writing.last(), Some(&false));
+    assert_eq!(e.rig.file("GIVEN UP"), None);
+    // The next one waits from its own start.
+    e.engine.loud = 0;
+    e.request(4, 30, &upload_metadata(named("GIVEN UP"), &data));
+    e.ack(30);
+    e.engine.loud = 1;
+    e.request(5, 31, &data);
+    assert_eq!(e.response(), (0x7d, 31, vec![]), "a fresh wait");
+    e.engine.loud = 0;
+    e.ack(31);
+}
+
+/// TRS has no reply path: a wait there is the toast alone, and the frame gap a TRS sender keeps
+/// (one second) is not enough for a wait, so a frame that comes while it waits aborts (as any
+/// packet before the last is programmed); the next PUT starts again.
+#[test]
+fn a_trs_upload_waits_with_the_toast_alone() {
+    let mut e = Engine::new(false);
+    let data = vec![0x33; 32];
+    e.bytes(1, &frame(4, 0, &upload_metadata(named("TRS WAIT"), &data)));
+    e.engine.loud = 1;
+    e.bytes(1, &frame(5, 1, &data));
+    for _ in 0..256 {
+        e.poll();
+    }
+    assert!(e.hooks.packets.is_empty(), "nothing sent on TRS");
+    assert_eq!(e.hooks.toasts.last(), Some(&(SYSEX_WAITING as u8)));
+    e.engine.loud = 0;
+    for _ in 0..256 {
+        e.poll();
+    }
+    e.bytes(1, &frame(6, 2, &[]));
+    for _ in 0..256 {
+        e.poll();
+    }
+    assert_eq!(e.rig.file("TRS WAIT"), Some(data));
+}
+
+/// A device that is not loud never sends WAIT: the ACKs come as before.
+#[test]
+fn a_quiet_device_never_says_wait() {
+    let mut e = Engine::new(false);
+    let data: Vec<u8> = (0..300u32).map(|i| i as u8).collect();
+    e.upload(named("NO WAIT"), &data, 256);
+    assert!(!e.hooks.toasts.contains(&(SYSEX_WAITING as u8)));
+}

@@ -59,6 +59,7 @@ struct {
     uint8_t sysex_turn;
     uint8_t silent;      /* as quiet, but for MIDI input (a SysEx transfer's own bytes) */
     uint8_t programmed;  /* a held operation ran in this hold */
+    uint8_t loud;        /* a song plays, or a computer records the USB audio */
 } store_fm1_state;
 #define fm store_fm1_state
 
@@ -92,19 +93,27 @@ static void hold_off(void) {
  * pages, its chunk header and commit word, at END the FILE record (store_file_pending); before
  * a PUT claims (a DEL deletes), the record it waits for (a save, a collection's copy: sysex.c
  * OPEN, UNLINK); one a store_poll, at least STORE_PROGRAM_GAP_MS apart with the interrupts on
- * between them; the hold ends with the batch (store_fm1_service). A sounding device plays
- * between two holds, STORE_FORCE_GAP_MS apart, ramped down and back up; a silent one
- * (fm.silent) hears no mute, so its hold stays on between packets, as the quiet store's, and
- * starts STORE_HOLD_GAP_MS after the last. One program a hold, each STORE_FORCE_GAP_MS apart, took 280 ms a 256-byte
- * packet (docs/hardware-results/2026-10-22-flash-day.md). */
+ * between them; the hold ends with the batch (store_fm1_service). While a song plays or a
+ * computer records the USB audio (fm.loud) there is no hold: the write waits for quiet (its ACK
+ * waits, sysex.c), so the music never dips. While only the keys sound, the device plays between
+ * two holds, STORE_SYSEX_GAP_MS apart, ramped down and back up; a silent one (fm.silent) hears
+ * no mute, so its hold stays on between packets, as the quiet store's, and starts
+ * STORE_HOLD_GAP_MS after the last. One program a hold, each STORE_FORCE_GAP_MS apart, took 280
+ * ms a 256-byte packet (docs/hardware-results/2026-10-22-flash-day.md). */
 static int hold_ready(void) {
     if (!fm.quiet && !fm.force && !midi_sysex_writing) {
+        return 0;
+    }
+    if (midi_sysex_writing && fm.loud && !fm.force) {
+        if (fm.holding) {
+            hold_off(); /* a song started under a silent device's hold */
+        }
         return 0;
     }
     if (midi_sysex_writing) {
         uint32_t gap = fm.holding ? STORE_PROGRAM_GAP_MS
                        : fm.silent ? STORE_HOLD_GAP_MS
-                                   : STORE_FORCE_GAP_MS;
+                                   : STORE_SYSEX_GAP_MS;
         if (fm.now - fm.last_hold < gap) {
             return 0;
         }
@@ -307,8 +316,10 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
         return;
     }
     fm.now = now_ms;
+    fm.loud = (uint8_t)(kr->song || midi_usb_recording());
     if (midi_sysex_running && (++fm.sysex_turn & 1u) && audio_work_slice()) {
-        midi_sysex_service(now_ms);
+        /* A write waits for quiet where its programs would be held through the music. */
+        midi_sysex_service(now_ms, fm.loud && !fm.force && !store_fm1_window);
     }
     if (store_fm1_hook.op) {
         test_hook(kr);

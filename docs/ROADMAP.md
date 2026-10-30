@@ -137,13 +137,15 @@ Every small and medium item of 1.x below, plus 1.0.x's USB ID: [the 1.1 design](
   a useful range, an even-in-perception curve and a test for dead zones and jumps. M.
 - **Suggested automations.** A one-line toast offers "record this knob move as locks?" after
   you keep doing it. L, idea; cheap in the main loop.
-- **SysEx during a chord.** The 100 ms gap before a store write is an ear call, not yet made.
-  S.
+- ~~**SysEx during a chord.**~~ Done in 1.1: an upload waits for quiet while a song plays or a
+  computer records (WAIT, `UPLOAD WAITS FOR QUIET`); keys alone dip 250 ms apart, a build
+  option until the ear check on the device. S.
 - **Performance headroom.** A pass over the thin spots in the audio-interrupt gates (LIVE
   noise, SELECT into RULE, STATUS idle, MIDI floods, USB drain). M-L.
 - **Faster test CI.** The 13-minute test is split and the local merge check runs everything under nextest; the GitHub CI (tags only) runs just the package boot test and does not run emu-gate. What is left: an optional sharded emu-gate workflow on GitHub's x86 runners (the gate's JIT works there), to take the emulator stage off the local machine. S-M.
-- **REC from the keys, compensated.** The key-to-row timing is uncompensated (about 3 ms);
-  decide by feel on the device. S.
+- ~~**REC from the keys, compensated.**~~ Done in 1.1: a fixed 6.0 ms computed from the block,
+  the double buffer and the debounce, in NEAREST and OFF; the feel at tempo 6 and 3 is a device
+  check. S.
 - **sidou-flash retries on NAK BUSY** when a transfer meets a store write. S.
 
 ## Later and ideas

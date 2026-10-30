@@ -10,6 +10,9 @@
 
 #include "ui.h"
 
+_Static_assert(INPUT_FRAME_US == FM1_NCOL * FM1_LED_TICK_US, "a scan frame, as input.h says");
+_Static_assert(INPUT_PRESS_FRAMES == FM1_DEB_PRESS, "the press debounce, as input.h says");
+
 static panel_leds shown;
 static uint8_t shown_valid;
 

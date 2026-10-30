@@ -10,8 +10,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { crc32 as zlibCrc32 } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
-  ACK, ABORT, Client, DATA, busyWaits, DIR, END, INQ, NAK, PUT, crc32, decodeFrame, encodeFrame, nakMessage, pack, unpack,
-  validName,
+  ACK, ABORT, Client, DATA, busyWaits, DIR, END, INQ, NAK, PUT, WAIT, crc32, decodeFrame, encodeFrame, nakMessage, pack,
+  unpack, validName,
 } from "./sysex.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
@@ -57,8 +57,9 @@ await test("names follow the store's rules", () => {
 // A device that follows sysex.md: it checks every frame it gets as the real one would and answers
 // into the client. `fail` names a NAK to send for a given command: { DATA: [index, reason, pool] }.
 class Device {
-  constructor({ files = [], free = 40000, nak = null, mute = null } = {}) {
+  constructor({ files = [], free = 40000, nak = null, mute = null, quiet = null } = {}) {
     this.files = files.map((f) => ({ ...f }));
+    this.quiet = quiet; // { at: a DATA's index, waits: WAITs before its answer, every: ms, give_up: NAK BUSY then }
     this.free = free;
     this.nak = nak;
     this.mute = mute;
@@ -111,6 +112,21 @@ class Device {
       assert.ok(f.data.length >= 1 && f.data.length <= 256);
       assert.equal(have % 16, 0, "DATA starts 16-byte aligned");
       u.data.push(...f.data);
+      const q = this.quiet;
+      u.packets = (u.packets ?? 0) + 1;
+      if (q && q.at === u.packets - 1) {
+        this.quiet = null;
+        for (let i = 0; i < q.waits; i++) {
+          setTimeout(() => this.client.push(encodeFrame(WAIT, f.sequence)), i * q.every);
+        }
+        setTimeout(() => {
+          if (q.give_up) {
+            this.upload = null;
+            this.client.push(encodeFrame(NAK, f.sequence, Uint8Array.from([4, 3])));
+          } else this.client.push(encodeFrame(ACK, f.sequence));
+        }, q.waits * q.every);
+        return;
+      }
       return this.reply(ACK, f.sequence);
     }
     assert.equal(f.command, END);
@@ -215,6 +231,32 @@ await test("NAK BUSY waits and sends the whole PUT again, then succeeds", async 
   await assert.rejects(client.put("A", new Uint8Array(10)), (e) => e.nak === 4);
   const f = connect({ nak: { command: DATA, at: 0, reason: 5 } }, { timeout: 300, ackTimeout: 300, busy: [1, 1], sleep: async () => { throw new Error("must not wait"); } });
   await assert.rejects(f.client.put("A", new Uint8Array(10)), (e) => e.nak === 5);
+});
+
+await test("WAIT keeps a PUT waiting past its ACK timeout, says so, and the upload goes on", async () => {
+  // Three WAITs 200 ms apart, then the ACK: 600 ms against an ACK timeout of 300.
+  const data = Uint8Array.from({ length: 700 }, (_, i) => i & 0xff);
+  const { device, client } = connect({ quiet: { at: 1, waits: 3, every: 200 } });
+  const seen = [];
+  await client.put("QUIET SONG", data, { onWait: () => seen.push("wait"), onProgress: (d) => seen.push(d) });
+  assert.deepEqual(device.stored.get("QUIET SONG"), data);
+  assert.deepEqual(seen, [0, 256, "wait", "wait", "wait", 512, 700]);
+});
+
+await test("a WAIT that ends in BUSY is not retried and says to stop the song", async () => {
+  const { client } = connect({ quiet: { at: 0, waits: 2, every: 100, give_up: true } },
+    { timeout: 300, ackTimeout: 300, busy: [1, 1], sleep: async () => { throw new Error("must not retry"); } });
+  let waits = 0;
+  await assert.rejects(client.put("GAVE UP", new Uint8Array(300), { onWait: () => waits++ }),
+    (e) => e.nak === 4 && /quiet.*stop the song/.test(e.message));
+  assert.equal(waits, 2);
+});
+
+await test("a WAIT for another packet is no ACK", async () => {
+  const c = new Client(() => {}, { timeout: 300, ackTimeout: 300 });
+  const p = c.expectAck(5);
+  c.push(encodeFrame(WAIT, 4));
+  await assert.rejects(p, /unexpected answer 7d/);
 });
 
 await test("a silent device times out and gets an ABORT", async () => {

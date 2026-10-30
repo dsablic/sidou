@@ -9,6 +9,22 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **An upload waits for quiet while a song plays.** A SysEx upload (the Songs page, a `.sid`, a
+  `.syx`) used to mute the music for each packet's flash writes, about ten dips a second. Now,
+  while a song or a tune plays or a computer records the FM-1's USB audio, the FM-1 writes
+  nothing: it holds the packet's ACK, says `UPLOAD WAITS FOR QUIET`, and goes on once the song
+  stops (a minute at most, then BUSY). The protocol gains one reply, WAIT (`7D`), sent every two
+  seconds while it waits; the Songs page shows "waiting for the FM-1 to be quiet" and keeps
+  waiting ([sysex.md](docs/reference/sysex.md#waiting-for-quiet): older senders time out or
+  stop at the first WAIT; a tool on a one-second timer is refused BUSY, so stop the song
+  first). With only the keys sounding the dips come 250 ms apart, not 100 (four a second); the
+  gap is a build option, `SIDOU_SYSEX_GAP_MS`, for the ear check on the device (BUILDING.md).
+- **REC from the keys lands where you played.** A key is placed 6.0 ms before the device reads
+  it: what you heard lags the player by the output's double buffer (two audio blocks, 5.8 ms,
+  less half a block on average by the time the key is read) and the key's debounce (1.5 scan
+  frames, 1.65 ms), computed from those constants and measured in the emulator. Both NEAREST and
+  OFF use it, K1's and K2's locks too; in OFF a key just past a row's start goes to the row
+  before, at row 0 to the last row of the entry that played before it.
 - **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
   demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
   boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the

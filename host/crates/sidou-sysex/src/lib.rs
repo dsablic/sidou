@@ -24,6 +24,9 @@ pub const DATA: u8 = 0x05;
 pub const END: u8 = 0x06;
 pub const DEL: u8 = 0x07;
 pub const ABORT: u8 = 0x08;
+/// The device's "still waiting for quiet" (docs/reference/sysex.md, "Waiting for quiet"): empty, the
+/// sequence of the packet whose ACK it holds back.
+pub const WAIT: u8 = 0x7d;
 pub const ACK: u8 = 0x7e;
 pub const NAK: u8 = 0x7f;
 
@@ -167,14 +170,16 @@ impl Packet {
                 validate_type(data[18], data[0])
             }
             DATA if !data.is_empty() => Ok(()),
-            END | ABORT | ACK if data.is_empty() => Ok(()),
+            END | ABORT | ACK | WAIT if data.is_empty() => Ok(()),
             DEL if data.len() == 16 => validate_name(data),
             NAK if data.len() == 2
                 && ((1..=9).contains(&data[0]) || (12..=15).contains(&data[0])) =>
             {
                 Ok(())
             }
-            INQ | DIR | GET | PUT | DATA | END | DEL | ABORT | ACK | NAK => Err(Error::Payload),
+            INQ | DIR | GET | PUT | DATA | END | DEL | ABORT | WAIT | ACK | NAK => {
+                Err(Error::Payload)
+            }
             _ => Err(Error::UnknownCommand),
         }
     }
@@ -519,7 +524,7 @@ mod tests {
     #[test]
     fn command_ranges_and_payload_shapes_are_validated_in_both_directions() {
         for command in 0..=255 {
-            if ![INQ, DIR, GET, PUT, DATA, END, DEL, ABORT, ACK, NAK].contains(&command) {
+            if ![INQ, DIR, GET, PUT, DATA, END, DEL, ABORT, WAIT, ACK, NAK].contains(&command) {
                 assert!(packet(command, vec![]).encode().is_err());
                 if command < 128 {
                     assert!(Packet::decode(&wire(command, 0, &[])).is_err());
@@ -537,6 +542,7 @@ mod tests {
             (DEL, vec![0; 15]),
             (ABORT, vec![0]),
             (ACK, vec![0]),
+            (WAIT, vec![0]),
             (NAK, vec![0, 0]),
             (NAK, vec![10, 0]),
             (NAK, vec![11, 0]),

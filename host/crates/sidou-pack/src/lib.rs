@@ -69,13 +69,14 @@ pub const OPTIONS_MARK: &[u8] = b"SIDOU-OPTIONS 1 ";
 /// The defaults of the options that change the image, in the record's order (`-` is empty):
 /// what a release is built with. platform/fm1/CMakeLists.txt's `sidou_option_defaults` is the
 /// same list (SIDOU_PRODUCT aside: it is the identity, per release, checked on its own).
-pub const DEFAULT_OPTIONS: [(&str, &str); 9] = [
+pub const DEFAULT_OPTIONS: [(&str, &str); 10] = [
     ("SIDOU_ALL_COMBINED_PROFILES", "ON"),
     ("SIDOU_ALL_COMBINED_PROFILES_8580", "ON"),
     ("SIDOU_FLASH_SPIKE", "OFF"),
     ("SIDOU_USB_FIX", "ON"),
     ("SIDOU_MIDI_OUT_NRPN", "OFF"),
     ("SIDOU_MIDI_OUT_CHANNEL", "1"),
+    ("SIDOU_SYSEX_GAP_MS", "250"),
     ("SIDOU_TEST_DEATH", "-"),
     ("SIDOU_TEST_DEATH_MS", "1000"),
     ("CMAKE_BUILD_TYPE", "Release"),
