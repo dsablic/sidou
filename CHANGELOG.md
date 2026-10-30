@@ -37,6 +37,22 @@ All notable changes are documented here. The format follows
   host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
   measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
   instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
+- LAB's MOD K4 was the velocity target; that stays on NRPN 6/1.
+- A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
+  unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
+  schema 9: it keeps the learned CCs of 1.1's parameters.
+- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
+  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
+  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
+  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
+  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
+  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
+- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
+  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
+  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
+  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
+  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
+  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Added
 - **LAB: the filter LFO on FILTER's K4.** The cutoff swings each way by up to 32 of K1's detents
@@ -104,24 +120,6 @@ All notable changes are documented here. The format follows
   examples (27 calls differ, all where a slide or tone portamento ends on a table note). Vibrato,
   slides and tone portamento are still not followed. SIDOU's `TRKB` chunk (a second chip's tracks)
   is reserved and nothing writes it, so there is nothing of it to export.
-
-### Changed
-- LAB's MOD K4 was the velocity target; that stays on NRPN 6/1.
-- A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
-  unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
-  schema 9: it keeps the learned CCs of 1.1's parameters.
-- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
-  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
-  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
-  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
-  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
-  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
-- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
-  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
-  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
-  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
-  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
-  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Fixed
 - LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as
