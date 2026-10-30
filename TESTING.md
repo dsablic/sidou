@@ -41,6 +41,8 @@ lists the prerequisites.
 | Ergonomics harness (readability, knob feel, effort per task, feedback speed, consistency, journeys; a report for review, not a gate) | `cargo run --release -p ergo -- --out ../build/ergo` (needs the fm1 build); its unit tests run with the workspace | `crates/ergo/`, [the section below](#the-ergonomics-harness-ergo) |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 | Songs page's SysEx code, in Node (no browser, no MIDI) | `node web/sysex.test.mjs` (`tools/web-demo --check` runs it first) | `web/sysex.test.mjs`, `web/sysex.js`, `web/sysex-vectors.txt` |
+| Library page's store work and backups, in Node (a simulated FM-1, no MIDI) | `node web/library.test.mjs` (`tools/web-demo --check` runs it first) | `web/library.test.mjs`, `web/store.js`, `web/zip.js`, `web/fake-fm1.mjs` |
+| The site's wasm core against the host build (every song in `assets/songs` and GoatTracker's examples, cut files, an ambiguous mono/stereo file: the read, the `.sng` with and without the trailer, the plain file's check and GoatTracker 2.77 loading it unchanged, every GTI5, two seconds of the player and an instrument at a note, byte for byte) | `tools/wasm-core && node web/core.test.mjs`; the fixtures: `cargo test --release -p sidou-tests --test web_core` (`SIDOU_WEB_CORE_FIXTURE_UPDATE=1` rewrites `web/core-fixtures.json`) | `web/core.test.mjs`, `web/core.js`, `platform/web/core_api.c`, `crates/sidou-tests/tests/web_core.rs` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -1836,7 +1838,18 @@ the other port, does not ask for SysEx, does not find the device (INQ and DIR), 
 one replace question (the simulated store has a different IRON RITE), or the PUTs it sent do not
 carry the four `.sng` files byte for byte (CRC included).
 
-Before the browser, `web/check.sh` runs `node web/sysex.test.mjs`, which needs no browser: the
+The same run covers the Library page (`web/library.html`) with the same fake MIDI: a song picked
+from a file opens through the wasm core with no MIDI used, and its exports are the FM-1's save
+byte for byte, a plain GoatTracker file and a GTI5; then, connected, the listing, a delete, a
+rename (GET, PUT, DEL), a backup `.zip` with its manifest and an Open of a stored song. It fails
+on any of those, on a frame to the other port, or on a sideways scroll at phone width.
+
+Before the browser, `web/check.sh` runs `node web/library.test.mjs` (the Library's store work,
+`web/store.js`, and its `.zip`, against `web/fake-fm1.mjs`: list, download, send with the
+overwrite check, delete, rename, backup and restore round trips, the refusals; the `.zip` opened by
+`unzip` and a deflated one read) and `node web/core.test.mjs` (the built `sidou-core.wasm` against
+`web/core-fixtures.json`, which the host build writes: `sidou-tests`' `web_core` test fails when
+the committed file is not what the host build makes). It also runs `node web/sysex.test.mjs`, which needs no browser: the
 page's SysEx encoder and decoder (`web/sysex.js`) against `web/sysex-vectors.txt` (the frames
 Rust's `sidou-sysex` also encodes and decodes: its test `web_vectors_match_the_canonical_encoder_and_decoder`
 fails when the file and the crate disagree), the packing at every payload length, a PUT's three

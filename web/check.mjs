@@ -8,7 +8,9 @@
 // (fm1-emu's persistence.js: the sectors SIDOU wrote, kept in IndexedDB per package). Exits
 // non-zero on any failure. Then the Songs page (songs.html) against a simulated FM-1 in a fake
 // Web MIDI: Connect, Send all, and the frames it sent (web/sysex.js's own decoder checks them
-// against the site's .sng files), and nothing sent to the other port. Run by web/check.sh (tools/web-demo --check).
+// against the site's .sng files), and nothing sent to the other port; the Songs to MIDI page; the
+// Library page (a song's exports through the wasm core, then the store: list, delete, rename, back
+// up, open); the cheat sheet. Run by web/check.sh (tools/web-demo --check).
 //   node check.mjs http://127.0.0.1:8642/ [screenshot.png]
 import { chromium } from "playwright";
 
@@ -71,7 +73,8 @@ function watch() {
 
 // The Songs page's fake Web MIDI: two port pairs, "Other Synth" (must stay silent) and "SIDOU FM-1",
 // a simulated device behind the second that follows docs/reference/sysex.md (INQ, DIR, PUT/DATA/END,
-// and GET of a stored song or the current one, whose bytes it fetches from the site's songs/).
+// DEL, and GET of a stored file or the current song, whose bytes it fetches from the site's songs/
+// unless it holds them).
 function fakeMidi() {
   const log = (window.__midi = { other: [], fm1: [], requested: null });
   const inputs = new Map([["i1", { id: "i1", name: "Other Synth", onmidimessage: null }],
@@ -83,6 +86,12 @@ function fakeMidi() {
   };
   const u32 = (v) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
   let upload = null, listing = null, dirSeq = 0;
+  // the store: what DIR lists, and the bytes of the files sent (PUT) or held here; a song with no
+  // bytes here is read from the site's songs/ by its name
+  const tune = new Uint8Array(400);
+  tune.set([0x50, 0x53, 0x49, 0x44, 0, 2, 0, 0x7c]);
+  let files = [{ name: "IRON RITE", type: 1, length: 10, crc: 1 }, { name: "A TUNE", type: 2, length: 400, crc: 2 }];
+  const stored = new Map([["A TUNE", tune]]);
   const dirNext = async () => {
     if (!listing) return;
     const e = listing.shift();
@@ -105,18 +114,24 @@ function fakeMidi() {
   const get = async (f) => {
     const { crc32 } = await import("./sysex.js");
     const d = f.data;
-    let file, name = new Array(16).fill(0);
+    let file, name = new Array(16).fill(0), bytes, type = 1;
     if (d[0] === 2) file = "chrome-comet.sng";
     else {
       const n = String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, "");
-      file = n.toLowerCase().replace(/ /g, "-") + ".sng";
+      const there = files.find((x) => x.name === n);
+      if (!there) return reply(0x7f, f.sequence, [6, 0]);
+      type = there.type;
+      bytes = stored.get(n);
+      file = bytes ? n : n.toLowerCase().replace(/ /g, "-") + ".sng";
       name = Array.from(d.slice(2, 18));
     }
-    const r = await fetch(`songs/${file}`);
-    if (!r.ok) return reply(0x7f, f.sequence, [6, 0]);
-    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (!bytes) {
+      const r = await fetch(`songs/${file}`);
+      if (!r.ok) return reply(0x7f, f.sequence, [6, 0]);
+      bytes = new Uint8Array(await r.arrayBuffer());
+    }
     log.gets = [...(log.gets || []), { target: d[0], file }];
-    out = [[4, [d[0], 0, ...name, 1, ...u32(bytes.length), ...u32(crc32(bytes))]]];
+    out = [[4, [d[0], 0, ...name, type, ...u32(bytes.length), ...u32(crc32(bytes))]]];
     for (let o = 0; o < bytes.length; o += 256) out.push([5, bytes.slice(o, o + 256)]);
     out.push([6, []]);
     outSeq = f.sequence;
@@ -127,17 +142,33 @@ function fakeMidi() {
     log.fm1.push(Array.from(bytes));
     const f = decodeFrame(bytes);
     if (f.command === 1) return reply(1, f.sequence, [1, 0, 2, 0, 0, 1, 0, ...u32(30000), 6, 1]);
-    if (f.command === 2) { listing = [{ name: "IRON RITE", length: 10, crc: 1 }, { name: "A TUNE", type: 2, length: 400, crc: 2 }]; dirSeq = f.sequence; return dirNext(); }
+    if (f.command === 2) { listing = files.map((x) => ({ ...x })); dirSeq = f.sequence; return dirNext(); }
     if (f.command === 3) return get(f);
     if (f.command === 0x7e) return out ? outNext() : dirNext();
     if (f.command === 4) {
       const d = f.data;
-      upload = { name: String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, ""), data: [] };
+      upload = { name: String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, ""), type: d[18], data: [] };
       log.puts = [...(log.puts || [])];
       return reply(0x7e, f.sequence);
     }
     if (f.command === 5) { upload.data.push(...f.data); return reply(0x7e, f.sequence); }
-    if (f.command === 6) { log.puts.push(upload); upload = null; return reply(0x7e, f.sequence); }
+    if (f.command === 6) {
+      const { crc32 } = await import("./sysex.js");
+      const bytes = Uint8Array.from(upload.data);
+      stored.set(upload.name, bytes);
+      files = files.filter((x) => x.name !== upload.name).concat({ name: upload.name, type: upload.type, length: bytes.length, crc: crc32(bytes) });
+      log.puts.push(upload);
+      upload = null;
+      return reply(0x7e, f.sequence);
+    }
+    if (f.command === 7) {
+      const n = String.fromCharCode(...f.data).replace(/\0+$/, "");
+      if (!files.some((x) => x.name === n)) return reply(0x7f, f.sequence, [6, 0]);
+      files = files.filter((x) => x.name !== n);
+      stored.delete(n);
+      log.dels = [...(log.dels || []), n];
+      return reply(0x7e, f.sequence);
+    }
   };
   const outputs = new Map([["o1", { id: "o1", name: "Other Synth", send: (b) => log.other.push(Array.from(b)) }],
     ["o2", { id: "o2", name: "SIDOU FM-1", send: (b) => { chain = chain.then(() => device(b)); } }]]);
@@ -353,6 +384,78 @@ try {
   if (JSON.stringify(stored.gets) !== JSON.stringify([{ target: 2, file: "chrome-comet.sng" }, { target: 0, file: "iron-rite.sng" }])) fail(`the GETs were ${JSON.stringify(stored.gets)}`);
   if (await midi.evaluate(() => window.__midi.other.length) !== 0) fail("the MIDI page sent to the other port");
   await midi.close();
+
+  // the Library page: a song from a file through the wasm core (export .sng, plain and GTI5) with no
+  // MIDI; then against the simulated FM-1: the listing, delete, rename, back up, open a stored song
+  const lib = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  lib.on("console", (m) => { if (m.type() === "error") fail(`library page console error: ${m.text()}`); });
+  lib.on("pageerror", (e) => fail(`library page error: ${e.message}`));
+  lib.on("requestfailed", (r) => fail(`library page request failed: ${r.url()}`));
+  lib.on("response", (r) => { if (r.status() >= 400) fail(`library page HTTP ${r.status()}: ${r.url()}`); });
+  const prompts = [];
+  lib.on("dialog", (d) => (d.type() === "prompt" ? d.accept(prompts.shift() ?? d.defaultValue()) : d.accept()));
+  await lib.addInitScript(fakeMidi);
+  await lib.goto(new URL("library.html", url).href);
+  const comet = new Uint8Array(await (await fetch(new URL("songs/chrome-comet.sng", url))).arrayBuffer());
+  await lib.setInputFiles("#file", { name: "chrome-comet.sng", mimeType: "application/octet-stream", buffer: Buffer.from(comet) });
+  try {
+    await lib.waitForSelector("#song-panel:not([hidden])", { timeout: 10_000 });
+  } catch {
+    fail(`the Library page did not open a song: ${await lib.locator("#song-error").textContent()}`);
+  }
+  const saved = () => lib.evaluate(() => window.__library.saved.map((x) => ({ filename: x.filename, length: x.bytes.length,
+    head: String.fromCharCode(...x.bytes.slice(0, 4)), hex: Array.from(x.bytes, (b) => b.toString(16).padStart(2, "0")).join("") })));
+  await lib.locator("#export-sng").click();
+  await lib.locator("#export-plain").click();
+  await lib.locator("#instruments button").first().click();
+  const exported = await saved();
+  console.log(`library page exports: ${exported.map((x) => `${x.filename} (${x.length} B)`).join(", ")}`);
+  const cometHex = Buffer.from(comet).toString("hex");
+  if (await lib.locator("#s-name").textContent() !== "CHROME COMET" || await lib.locator("#instruments tr").count() !== 12) fail("the Library page shows the wrong song");
+  if (exported.length !== 3 || exported[0].filename !== "CHROME-COMET.sng" || exported[0].hex !== cometHex) fail(`the .sng export is not the FM-1's save: ${JSON.stringify(exported.map((x) => x.filename))}`);
+  if (exported[1]?.filename !== "CHROME-COMET-goattracker.sng" || exported[1].head !== "GTS5" || exported[1].length >= comet.length) fail("the plain export is wrong");
+  if (!/\.ins$/.test(exported[2]?.filename ?? "") || exported[2].head !== "GTI5") fail("the GTI5 export is wrong");
+  if (await lib.evaluate(() => window.__midi.fm1.length + window.__midi.other.length + (window.__midi.requested ? 1 : 0)) !== 0) fail("the Library page used MIDI before Connect");
+  await lib.locator("#connect").click();
+  try {
+    await lib.waitForFunction(() => /SIDOU 0\.2\.0 .*2 files, 29\.3 KiB free/.test(document.getElementById("device").textContent), null, { timeout: 10_000 });
+  } catch {
+    fail(`the Library page did not find the FM-1: ${await lib.locator("#device").textContent()}`);
+  }
+  const names = () => lib.locator("#files td.name").allTextContents();
+  if ((await names()).join("|") !== "IRON RITE|A TUNE") fail(`the Library lists ${JSON.stringify(await names())}`);
+  const settle = async (what, cond) => {
+    try {
+      await lib.waitForFunction(cond, null, { timeout: 10_000 });
+    } catch {
+      fail(`the Library page did not ${what}: ${await lib.locator("#store-state").textContent()}`);
+    }
+  };
+  await lib.locator('#files tr[data-name="A TUNE"] button', { hasText: "Delete" }).click();
+  await settle("delete", () => /A TUNE deleted/.test(document.getElementById("store-state").textContent));
+  prompts.push("RITE");
+  await lib.locator('#files tr[data-name="IRON RITE"] button', { hasText: "Rename" }).click();
+  await settle("rename", () => /IRON RITE is now RITE/.test(document.getElementById("store-state").textContent));
+  if ((await names()).join("|") !== "RITE") fail(`after delete and rename the Library lists ${JSON.stringify(await names())}`);
+  await lib.locator("#backup").click();
+  await settle("back up", () => /1 file backed up/.test(document.getElementById("store-state").textContent));
+  const zipped = await lib.evaluate(async () => {
+    const { unzip } = await import("./zip.js");
+    const z = window.__library.saved.at(-1);
+    return { filename: z.filename, entries: (await unzip(z.bytes)).map((e) => e.name), dels: window.__midi.dels, puts: window.__midi.puts.map((p) => p.name) };
+  });
+  console.log(`library page: deleted ${zipped.dels.join(", ")}, renamed by PUT ${zipped.puts.join(", ")}, backup ${zipped.filename}: ${zipped.entries.join(", ")}`);
+  if (!/^fm1-backup-\d{4}-\d\d-\d\d\.zip$/.test(zipped.filename) || zipped.entries.join("|") !== "sidou-backup.json|RITE.sng") fail(`the backup is wrong: ${JSON.stringify(zipped)}`);
+  if (zipped.dels.join("|") !== "A TUNE|IRON RITE" || zipped.puts.join("|") !== "RITE") fail(`the store saw ${JSON.stringify(zipped)}`);
+  await lib.locator('#files tr[data-name="RITE"] button', { hasText: "Open" }).click();
+  try {
+    await lib.waitForFunction(() => document.getElementById("s-name").textContent === "IRON RITE", null, { timeout: 10_000 });
+  } catch {
+    fail(`the Library page did not open a stored song: ${await lib.locator("#song-error").textContent()}`);
+  }
+  if (await lib.evaluate(() => window.__midi.other.length) !== 0) fail("the Library page sent to the other port");
+  if (!(await lib.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the Library page scrolls sideways at phone width");
+  await lib.close();
 
   // the cheat sheet: it loads (the logo too), names its version and fits a phone's width
   const sheet = await browser.newPage({ viewport: { width: 390, height: 844 } });

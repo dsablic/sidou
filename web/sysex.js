@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// SIDOU's SysEx protocol, version 1 (docs/reference/sysex.md), for the Songs page and the Songs to MIDI
-// page: the packing, the frames, the CRC, and a stop-and-wait client that does INQ, DIR, GET and PUT
+// SIDOU's SysEx protocol, version 1 (docs/reference/sysex.md), for the Library, Songs and Songs to MIDI
+// pages: the packing, the frames, the CRC, and a stop-and-wait client that does INQ, DIR, GET, PUT and DEL
 // over any transport that can send a frame and hand back the frames the device sends. No Web MIDI in
 // here: web/sysex.test.mjs runs it in Node against the vectors Rust's sidou-sysex checks too
 // (web/sysex-vectors.txt) and against a simulated device. Ported from tools/sysex_roundtrip.py's
@@ -321,6 +321,27 @@ export class Client {
         this.waited = false;
         return await this.putOnce(name, data, type, onProgress, onWait);
       } catch (e) {
+        if (e.nak !== 4 || this.waited || attempt >= this.busy.length) throw e;
+        onBusy(this.busy[attempt], attempt + 1);
+        await this.sleep(this.busy[attempt]);
+      }
+    }
+  }
+
+  // DEL a named store file; resolves once the deletion has committed (the FM-1's ACK). NAK 6 when
+  // there is no such file. BUSY is retried as put() retries it (a record being written), except
+  // after a wait for quiet; onWait() each time the FM-1 says it is waiting for quiet.
+  async del(name, { onBusy = () => {}, onWait = () => {} } = {}) {
+    const payload = name16(name);
+    for (let attempt = 0; ; attempt++) {
+      this.drain();
+      this.waited = false;
+      try {
+        const seq = this.next();
+        this.send(encodeFrame(DEL, seq, payload));
+        return await this.expectAck(seq, this.ackTimeout, onWait);
+      } catch (e) {
+        if (e.nak === 6) throw new SysexError(`the FM-1 has no file named ${name}`, { nak: 6 });
         if (e.nak !== 4 || this.waited || attempt >= this.busy.length) throw e;
         onBusy(this.busy[attempt], attempt + 1);
         await this.sleep(this.busy[attempt]);

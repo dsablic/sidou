@@ -2614,6 +2614,40 @@ JCH or DMC tune with pulse sweeps, one with a filtered bass), and a song of your
 
 Notes:
 
+## 28. The site's Library page (1.5)
+
+What it decides: whether the Library page (docs/manual/library.md) works with a real FM-1 over a
+real USB-MIDI link in Chrome: the protocol, the store and the wasm core are tested against a
+simulated FM-1 and the host build, never against the device. Set up: SIDOU on the FM-1 with a few
+songs, a `.sid` tune and a lifted sound on the store; Chrome on a computer with the site (or
+`tools/web-demo`) at `library.html`.
+
+- [ ] **List:** Connect: the line names the firmware, the file count and the free space; every
+  file of the FM-1's SONG and SIDS menus is listed (no `MIDI SONG`, `MIDI INSTRUMENT` or staging
+  file), with sizes that match the menus.
+  *Emulator:* `web/library.test.mjs` and `web/check.mjs` (the fake Web MIDI).
+  *Device-only:* the real port pair found by name; DIR over the real link.
+- [ ] **Send, download, rename, delete:** send a `.sng` and a `.sid` (Send files…), download them
+  back and compare (`cmp`); send the same song again (left alone) and a different one under its
+  name (asked first); rename a song (it loads under the new name, the old one is gone); delete one
+  (gone from SONG, LOAD).
+  *Emulator:* as above; `emu-gate`'s SysEx tests for PUT, GET and DEL on the firmware.
+  *Device-only:* DEL and the PUTs on the real flash, while a song plays (the page says it waits
+  for quiet; the music never dips) and while silent.
+- [ ] **Back up and restore:** Back up all; delete two files; Restore the `.zip`: the two come
+  back, the rest are left alone; the restored song loads and plays.
+  *Emulator:* `web/library.test.mjs` (the round trip).
+  *Device-only:* a full store's backup (every file, the largest one too) and its restore.
+- [ ] **Export:** Open the current song; Download .sng loads in GoatTracker 2.77 and back on the
+  FM-1 the same; the plain GoatTracker file loads in GoatTracker; an instrument's `.ins` loads in
+  GoatTracker's instrument load.
+  *Emulator:* `web/core.test.mjs` (the bytes against the host build, the plain file loaded and
+  saved unchanged by GoatTracker's own code); `web/check.mjs`.
+  *Device-only:* GoatTracker 2 itself on a computer for the `.ins` (no test loads a GTI5 in
+  GoatTracker's code).
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2647,3 +2681,4 @@ Notes:
 | 25 Knob curves | | |
 | 26 LAB's song bridge | | |
 | 27 Lift a sound from a .sid | | |
+| 28 The site's Library page | | |

@@ -1,0 +1,183 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's Library page: the FM-1's store over Web MIDI (SysEx v1, docs/reference/sysex.md) and a
+     song's export through SIDOU's own reader and writer in wasm (sidou-core.wasm, tools/wasm-core).
+     library.js is the page, store.js the store work, zip.js the backups, core.js the wasm core;
+     web/library.test.mjs and web/core.test.mjs test them in Node, web/check.mjs the page with a
+     simulated FM-1. Same palette as songs.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU library</title>
+<meta name="description" content="The FM-1's songs, .sid tunes and instruments from the browser: list, download, send, rename, delete, back up and restore; export a song for GoatTracker and its instruments as .ins.">
+<link rel="icon" href="data:,">
+<style>
+  :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
+          --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --ok: #9ad284; --bad: #d98c80; --yellow: #b8c76f; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+  h3 { margin: 0 0 4px; font-size: 15px; }
+  p { margin: 0 0 10px; color: #c4c0de; max-width: 72ch; }
+  b { color: var(--ink); }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, select:focus-visible, label.button:focus-within, label.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  section { border-top: 1px solid var(--rule); padding-top: 14px; min-width: 0; }
+  nav { color: var(--dim); }
+  .note { border: 1px solid var(--yellow); border-radius: 10px; background: var(--card); padding: 9px 12px; margin-bottom: 10px; }
+  .note[hidden] { display: none; }
+  .note p { margin: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+  .row label:not(.button) { display: flex; gap: 8px; align-items: center; color: var(--dim); }
+  select { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+  button, label.button { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; display: inline-block; }
+  label.button input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  label.button:has(input[disabled]) { opacity: .5; cursor: default; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
+  button[disabled] { opacity: .5; cursor: default; }
+  [data-state="ok"] { color: var(--ok); }
+  [data-state="error"] { color: var(--bad); }
+  #device { margin: 0; font-variant-numeric: tabular-nums; }
+  #store[hidden], #song-panel[hidden] { display: none; }
+  #store-state { min-height: 1.5em; margin: 6px 0 0; }
+  progress { width: 100%; height: 6px; accent-color: var(--accent); }
+  progress[hidden] { display: none; }
+  .table { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  th { color: var(--dim); font-weight: 600; font-size: 12.5px; }
+  td.name { color: var(--ink); white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  td.num, td.crc { white-space: nowrap; }
+  td.crc { color: var(--dim); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  td.acts { white-space: nowrap; text-align: right; }
+  td.acts button { padding: 3px 9px; margin-left: 4px; }
+  label.drop { display: block; border: 2px dashed var(--line); border-radius: 10px; background: var(--card); padding: 18px 14px; text-align: center; color: var(--dim); cursor: pointer; }
+  label.drop.over { border-color: var(--accent); color: var(--ink); }
+  label.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  #song-panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 12px; display: grid; gap: 10px; }
+  #song-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 4px 0 0; }
+  #song-panel dt { color: var(--dim); }
+  #song-panel dd { margin: 0; }
+  #song-panel .row { margin: 0; }
+  #s-plain-note { margin: 0; color: var(--yellow); }
+  #s-plain-note:empty, #song-error:empty { display: none; }
+  #song-error { color: var(--bad); margin: 8px 0 0; }
+  footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  @media (max-width: 600px) { .brand img { width: 160px; } th.crc, td.crc { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
+      <h1>Library</h1>
+    </div>
+    <nav><a href="./">Play it in the browser</a> · <a href="songs.html">Showcase songs</a> · <a href="midi.html">Songs to MIDI</a> · <a href="videos.html">Videos</a></nav>
+  </header>
+
+  <p>Everything in your FM-1's store, from the browser: the songs, the <code>.sid</code> tunes and the
+    instruments (a lifted sound is one). Download them, send your own, rename, delete, and back the whole
+    store up to one <code>.zip</code> and restore it. And any song, from the FM-1 or a file, exported for
+    GoatTracker 2 and its instruments as <code>.ins</code> files, by SIDOU's own song code running in the
+    page: what it accepts and refuses is what the FM-1 accepts and refuses.</p>
+
+  <div id="support" class="note" hidden>
+    <p><b>This browser cannot reach the FM-1.</b> That needs Web MIDI with SysEx, which Chrome and Edge
+      have. Safari has no Web MIDI, and Firefox is not supported by this page. Use Chrome or Edge on a
+      computer (Chrome on Android also works with a USB cable). Exporting a song from a file works in any
+      browser.</p>
+  </div>
+
+  <section>
+    <h2>1. Connect</h2>
+    <p>Plug in the FM-1 (running SIDOU, not in the updater) and press Connect. The browser asks to use your
+      MIDI devices with SysEx: allow it. This page sends nothing until you press Connect, and then only to
+      the pair you see selected below.</p>
+    <div class="row">
+      <button type="button" id="connect" class="primary">Connect</button>
+      <label>Output <select id="out" aria-label="MIDI output" disabled></select></label>
+      <label>Input <select id="in" aria-label="MIDI input" disabled></select></label>
+      <button type="button" id="check" disabled>Check this pair</button>
+    </div>
+    <p id="device" role="status" aria-live="polite">Not connected.</p>
+  </section>
+
+  <section id="store" hidden>
+    <h2>2. On the FM-1</h2>
+    <div class="row">
+      <button type="button" id="refresh">Refresh</button>
+      <label class="button">Send files… <input type="file" id="send" multiple accept=".sng,.sid,.ins,application/octet-stream"></label>
+      <button type="button" id="backup" class="primary">Back up all</button>
+      <label class="button">Restore a backup… <input type="file" id="restore" accept=".zip,application/zip"></label>
+    </div>
+    <div class="table">
+      <table>
+        <thead><tr><th>Name</th><th>Type</th><th>Size</th><th class="crc">CRC-32</th><th></th></tr></thead>
+        <tbody id="files"></tbody>
+      </table>
+    </div>
+    <progress id="progress" max="1" value="0" hidden></progress>
+    <p id="store-state" role="status" aria-live="polite"></p>
+    <p>A file sent under a name the FM-1 already has is replaced only after you confirm; an identical one
+      is left alone. Rename reads the file, sends it under the new name and deletes the old one only once
+      the new one is stored. A backup holds every file listed here, with a <code>sidou-backup.json</code>
+      that keeps their names and types; restoring it sends back what is missing or different (asking
+      first) and deletes nothing. The FM-1's private files (a song or instrument it is importing, and the
+      copy it keeps until you SAVE AS) are never listed, so they are never read, backed up or touched.
+      While a song plays on the FM-1 (or a computer records its USB audio) it writes nothing, so the music
+      never dips: the page says it is waiting for the FM-1 to be quiet until you stop the song.</p>
+  </section>
+
+  <section id="song">
+    <h2>3. A song: export</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".sng,application/octet-stream">
+      <b>Drop a <code>.sng</code> here</b>, or press to choose one; or <b>Open</b> one on the FM-1 above.
+    </label>
+    <div class="row" style="margin-top:10px">
+      <button type="button" id="current" class="needs-fm1" disabled>Open the FM-1's current song</button>
+    </div>
+    <p id="song-error" role="alert"></p>
+    <div id="song-panel" hidden aria-live="polite">
+      <div>
+        <h3 id="s-name"></h3>
+        <dl id="s-info"></dl>
+      </div>
+      <div class="row">
+        <button type="button" id="export-sng" class="primary">Download .sng</button>
+        <button type="button" id="export-plain">Plain GoatTracker .sng</button>
+        <button type="button" id="send-song" class="needs-fm1" disabled>Send to the FM-1…</button>
+      </div>
+      <p id="s-plain-note" role="status"></p>
+      <p style="margin:0">The <b>.sng</b> is the song as the FM-1 saves it, SIDOU's settings kept in a
+        trailer GoatTracker 2 skips over. The <b>plain GoatTracker</b> file leaves them out, for tools that
+        refuse anything after the song; the page warns when GoatTracker would read it with another channel
+        count. Each instrument downloads as GoatTracker's <code>.ins</code> (GTI5), its table rows with it.</p>
+      <div class="table">
+        <table>
+          <thead><tr><th>#</th><th>Instrument</th><th class="crc">AD SR</th><th></th></tr></thead>
+          <tbody id="instruments"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    SIDOU · <a href="https://github.com/dsablic/sidou">github.com/dsablic/sidou</a> · how to use this page:
+    <a href="https://github.com/dsablic/sidou/blob/main/docs/manual/library.md">docs/manual/library.md</a> · the protocol:
+    <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/sysex.md">docs/reference/sysex.md</a>
+  </footer>
+</main>
+<script type="module" src="library.js"></script>
+</body>
+</html>

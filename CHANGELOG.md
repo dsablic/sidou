@@ -9,6 +9,19 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The site's Library page** ([library.html](https://dsablic.github.io/sidou/library.html)):
+  everything in a connected FM-1's store (songs, `.sid` tunes, instruments) with its type, size
+  and CRC, and the free space; download, send (an identical file is left alone, a different one
+  replaced only after you confirm), rename (the old file stays until the new one is stored),
+  delete, and a backup of the whole store as one `.zip` (with a manifest keeping the FM-1's names
+  and types) that restores in one go. Any song, from the FM-1 or a file, exports as a `.sng` with
+  SIDOU's trailer, as a plain GoatTracker file (with a warning when GoatTracker would read it with
+  another channel count), and each instrument as a GoatTracker `.ins` (GTI5). The FM-1's private
+  files are never listed, so never touched. The songs go through SIDOU's own C, compiled to
+  WebAssembly (`sidou-core.wasm`, 130 KB, `tools/wasm-core` with the build image's clang and
+  Rust's linker): it accepts and refuses what the FM-1 does, with the FM-1's messages, and its
+  bytes and player output match the host build's exactly (`web/core.test.mjs`). The Songs and
+  Songs to MIDI pages stay, linked from it. ([the manual](docs/manual/library.md))
 - **LAB's song bridge: send a sound to the song, pull one back.** **REC** in LAB writes the sound
   into the song's lowest free instrument as a plain GoatTracker 2 instrument, a byte at a time
   through the edit queue, so the song plays on (`SENT AS I06 SAW LEAD`); **EDIT + REC** writes it

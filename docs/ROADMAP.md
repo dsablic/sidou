@@ -143,7 +143,13 @@ sessions).
 
 - **A browser editor and librarian.** Edit instruments, tables and patterns, list the
   device's songs, export plain GoatTracker files; today the site sends songs and files over
-  SysEx. L; no firmware change.
+  SysEx. L; no firmware change. In progress for 1.5
+  ([the design](plans/2026-10-30-1.5-design.md#5-browser-editor-and-librarian-site-only)):
+  done, the wasm core (SIDOU's song reader and writer, GTI5 export and player as
+  `sidou-core.wasm`, `tools/wasm-core`), the Library page (list, download, send with an overwrite
+  check, rename, delete, back up and restore) and export (`.sng` with the trailer, plain
+  GoatTracker with the channel-count check, instruments as GTI5); next, instruments and tables,
+  the pattern and orderlist grid, and preview with the wasm player.
 - **Screen mirror (FM-1 Live Link).** The screen, scopes and remote controls in a browser
   over the USB cable, for the other FM-1 firmwares too. L; the design text is in the
   [old roadmap](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md).
