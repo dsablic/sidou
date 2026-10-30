@@ -511,8 +511,8 @@ fn the_font_and_the_palette_come_as_the_device_has_them() {
     let s = Screen::new();
     let mut link = Link::new();
     let m = session(&mut link, &s);
-    for c in 0..=FONT_LAST as usize {
-        assert_eq!(m.font[c], unsafe { font_glyphs[c] }, "glyph {c:#x}");
+    for (c, glyph) in m.font.iter().enumerate().take(FONT_LAST as usize + 1) {
+        assert_eq!(*glyph, unsafe { font_glyphs[c] }, "glyph {c:#x}");
     }
     assert_eq!(m.palette, unsafe { grid_palette });
 }

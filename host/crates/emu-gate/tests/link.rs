@@ -145,7 +145,7 @@ impl Host {
         let now = m.ms();
         let in1 = &m.usb.as_ref().expect("a host").in1;
         let mut frames = Vec::new();
-        for p in in1[self.taken..].concat().chunks_exact(4) {
+        for p in in1[self.taken..].concat().as_chunks::<4>().0 {
             let cin = p[0] & 15;
             if (4..=7).contains(&cin) {
                 if p[1] == 0xf0 {
