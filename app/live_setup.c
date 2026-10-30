@@ -526,6 +526,8 @@ LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_COUNT])
     out[LIVE_PARAM_TUNE] = LIVE_TUNE_CENTS;
     out[LIVE_PARAM_FILTER_LFO] = 0;
     out[LIVE_PARAM_ARP_RATE] = LIVE_ARP_RATE_DEFAULT;
+    out[LIVE_PARAM_RESO_LINK] = LIVE_LINK_MAX;
+    out[LIVE_PARAM_PWM_LINK] = LIVE_LINK_MAX;
 }
 
 static void put16(uint8_t* s, uint32_t at, uint32_t v) {
@@ -626,8 +628,8 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
                        : tune > LIVE_TUNE_CENTS ? LIVE_TUNE_CENTS
                                                 : tune);
     live_param_set(l, LIVE_PARAM_FILTER_LFO, in[LAB_SOUND_FILTER_LFO]);
-    l->reso_link = link_of(in[LAB_SOUND_RESO_LINK]);
-    l->pwm_link = link_of(in[LAB_SOUND_PWM_LINK]);
+    live_param_set(l, LIVE_PARAM_RESO_LINK, (uint32_t)(link_of(in[LAB_SOUND_RESO_LINK]) + LIVE_LINK_MAX));
+    live_param_set(l, LIVE_PARAM_PWM_LINK, (uint32_t)(link_of(in[LAB_SOUND_PWM_LINK]) + LIVE_LINK_MAX));
     for (uint32_t i = 0; i < sizeof SOUND_PARAMS / sizeof SOUND_PARAMS[0]; i++) {
         uint32_t at = SOUND_PARAMS[i].at;
         uint32_t v = SOUND_PARAMS[i].shift == 16u
@@ -845,6 +847,8 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_TUNE: return 2u * LIVE_TUNE_CENTS;
     case LIVE_PARAM_FILTER_LFO: return LIVE_FILTER_LFO_MAX;
     case LIVE_PARAM_ARP_RATE: return LIVE_ARP_RATES - 1u;
+    case LIVE_PARAM_RESO_LINK:
+    case LIVE_PARAM_PWM_LINK: return 2u * LIVE_LINK_MAX;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return SID_CHARACTER_MAX;
@@ -1050,6 +1054,16 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         li_update_cutoff(l);
         break;
     case LIVE_PARAM_ARP_RATE: live_arp_set(l, LIVE_ARP_RATE, value); break;
+    case LIVE_PARAM_RESO_LINK:
+        if (l->reso_link != (int8_t)((int32_t)value - LIVE_LINK_MAX)) {
+            l->reso_link = (int8_t)((int32_t)value - LIVE_LINK_MAX);
+            li_write_res_filt(l);
+        }
+        break;
+    case LIVE_PARAM_PWM_LINK:
+        l->pwm_link = (int8_t)((int32_t)value - LIVE_LINK_MAX);
+        li_update_pws(l);
+        break;
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             if (l->expert[param - LIVE_PARAM_EXPERT] != value) {
@@ -1100,6 +1114,8 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_TUNE: return (uint32_t)(l->tune + LIVE_TUNE_CENTS);
     case LIVE_PARAM_FILTER_LFO: return l->filter_lfo;
     case LIVE_PARAM_ARP_RATE: return l->arp_rate;
+    case LIVE_PARAM_RESO_LINK: return (uint32_t)(l->reso_link + LIVE_LINK_MAX);
+    case LIVE_PARAM_PWM_LINK: return (uint32_t)(l->pwm_link + LIVE_LINK_MAX);
     default:
         if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
             return expert_get(l, param - LIVE_PARAM_EXPERT);

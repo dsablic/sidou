@@ -14,6 +14,13 @@ All notable changes are documented here. The format follows
   name line (`LFO1.3HZ`); the drawing dots the swept band. The first detent on a sound with no
   rate starts it at 1 Hz. CC 31 and NRPN 0/8 reach it (docs/reference/midi.md); a preset loads
   it off, and DICE's rolls leave it off. It is kept with the sound.
+- **LAB: macro links, on a sixth page, MACRO.** RES LNK (`-8` to `+8`) makes the resonance follow
+  the cutoff (positive: it rises as the filter closes; negative, a squelch, as it opens) and PWM
+  LNK makes the PWM's depth follow the pulse width's distance from a square. They belong to the
+  sound and act wherever the cutoff or the width moves (LIVE's knobs, LAB's cards, CC 74, the mod
+  wheel, the filter LFO), on top of the parameters, which stay as set. Two graphs show them; the
+  RESO and PWM cards and LIVE's K2 show what the chip has, and light when K1 moves them. NRPN 0/10
+  and 0/11 (MIDI learn reaches them).
 - **LAB: hold EDIT and play to peek at A.** The note keys played while EDIT is held sound the
   sound as kept or loaded, for as long as EDIT is down (the header's `A` outlined); letting go
   gives your edit back. A tap of EDIT still compares; any other control during a peek acts on

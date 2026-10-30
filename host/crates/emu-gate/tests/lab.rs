@@ -496,7 +496,8 @@ fn lab_osc_and_envelope_draw_within_their_budgets() {
 }
 
 /// FILTER (each mode, the cutoff turned every frame, then the filter LFO sweeping), MOD (the vibrato, PWM BASS's PWM and ARP's
-/// staircase) and FX (the distortion's curve, the modulation's wave, the delay's taps): every
+/// staircase), FX (the distortion's curve, the modulation's wave, the delay's taps) and MACRO
+/// (the links' two graphs): every
 /// frame within LAB_VIEW_FRAME_CELLS, every ui_poll within LAB_WORST_POLL.
 #[test]
 fn lab_filter_mod_and_fx_draw_within_their_budgets() {
@@ -547,6 +548,8 @@ fn lab_filter_mod_and_fx_draw_within_their_budgets() {
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
     run(&mut m, "FX, DELAY", LAB_PAGE_FX);
+    // MACRO: both links turned every frame, the graphs drawn again
+    run(&mut m, "MACRO", LAB_PAGE_MACRO);
     assert!(over.is_empty(), "{over:#?}");
 }
 

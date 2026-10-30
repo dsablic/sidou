@@ -314,8 +314,18 @@ static uint8_t voice_sr(const live* l, int v) {
     return (uint8_t)(s << 4 | (l->sustain_release & 0x0fu));
 }
 
+uint32_t live_resonance_effective(const live* l) {
+    int32_t r = l->resonance;
+    if (l->reso_link) {
+        r += l->reso_link * (32 - (int32_t)live_cutoff_place(l, l->cutoff_out)) / 8;
+        r = r < 0 ? 0 : r > (int32_t)LIVE_RESONANCE_MAX ? (int32_t)LIVE_RESONANCE_MAX : r;
+    }
+    return (uint32_t)r;
+}
+
 void li_write_res_filt(live* l) {
-    put(l, REG_RES_FILT, (uint8_t)(l->resonance << 4 | l->filter_voices));
+    l->res_out = (uint8_t)live_resonance_effective(l);
+    put(l, REG_RES_FILT, (uint8_t)(l->res_out << 4 | l->filter_voices));
 }
 
 void li_write_mode_vol(live* l) {
@@ -381,9 +391,26 @@ void li_write_all(live* l) {
  * the range, so that its sweep never goes thinner than K3's narrowest width (LIVE_PULSE_FIRST),
  * nor as thin at the wide end: clamped to 0, a width is no pulse but a DC level, and the voice
  * went silent for part of every cycle (PWM BASS at a 9 % width, a quarter of its 2 s cycle). */
+void live_links_update(live* l) {
+    if (l->reso_link && live_resonance_effective(l) != l->res_out) {
+        li_write_res_filt(l);
+    }
+}
+
+uint32_t live_pwm_depth_effective(const live* l) {
+    int32_t d = l->pwm_depth;
+    if (l->pwm_link) {
+        int32_t away = l->pulse_width > 2048u ? (int32_t)l->pulse_width - 2048
+                                                : 2048 - (int32_t)l->pulse_width;
+        d += l->pwm_link * away / 8;
+        d = d < 0 ? 0 : d > (int32_t)LIVE_PWM_DEPTH_MAX ? (int32_t)LIVE_PWM_DEPTH_MAX : d;
+    }
+    return (uint32_t)d;
+}
+
 static uint16_t pw_effective(const live* l) {
     int32_t pw = l->pulse_width;
-    int32_t depth = l->pwm_depth;
+    int32_t depth = (int32_t)live_pwm_depth_effective(l);
     int32_t room = pw - LIVE_PULSE_FIRST;
     int32_t top = (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - LIVE_PULSE_FIRST - pw;
     room = room < top ? room : top;
@@ -501,7 +528,7 @@ void li_update_pws(live* l) {
 void li_update_cutoff(live* l) {
     uint16_t c = cutoff_effective(l); /* once: a K1 detent pays for it on the input path */
     if (c != l->cutoff_out) {
-        write_cutoff_as(l, c);
+        write_cutoff_as(l, c); /* RESO LINK's resonance follows at the tick (live_links_update) */
     }
 }
 
@@ -1054,6 +1081,8 @@ void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     out[LIVE_PARAM_TUNE] = (uint16_t)(l->tune + LIVE_TUNE_CENTS);
     out[LIVE_PARAM_FILTER_LFO] = l->filter_lfo;
     out[LIVE_PARAM_ARP_RATE] = l->arp_rate;
+    out[LIVE_PARAM_RESO_LINK] = (uint16_t)(l->reso_link + LIVE_LINK_MAX);
+    out[LIVE_PARAM_PWM_LINK] = (uint16_t)(l->pwm_link + LIVE_LINK_MAX);
 }
 
 /* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8
@@ -1195,7 +1224,7 @@ void live_tick(live* l) {
     }
     apply_profile(l);
     update_character(l);
-    if (l->pwm_depth || l->filter_lfo) { /* one LFO: the PWM's and the filter's */
+    if (l->filter_lfo || live_pwm_depth_effective(l)) { /* one LFO: the PWM's and the filter's */
         l->lfo_phase = (uint16_t)(l->lfo_phase + l->pwm_rate);
     }
     /* The vibrato: rate / 10 Hz, 65536 a cycle, so 655.36 * rate / 100 per tick. */
@@ -1216,4 +1245,5 @@ void live_tick(live* l) {
     }
     li_update_pws(l);
     li_update_cutoff(l);
+    live_links_update(l);
 }

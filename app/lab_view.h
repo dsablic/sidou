@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* LAB: one LIVE sound shaped on five pages, each with its shape drawn from the live values above
+/* LAB: one LIVE sound shaped on six pages, each with its shape drawn from the live values above
  * four cards for K1..K4 (docs/plans/2026-10-25-lab-design.md; docs/art/README.md "LAB").
  *
- * The pages, in SELECT's order (clamped at both ends): OSC, ENVELOPE, FILTER, MOD, FX. On each:
- * - rows 0-1, the header at 2x: the page's name in yellow, and its place `2/5` on the right;
+ * The pages, in SELECT's order (clamped at both ends): OSC, ENVELOPE, FILTER, MOD, FX, MACRO. On
+ * each:
+ * - rows 0-1, the header at 2x: the page's name in yellow, and its place `2/6` on the right;
  * - rows 2-3, the sound's name at 2x in white with `*` while it differs from its base
  *   (live_preset_name), and A or B on the right while EDIT's tap compares (lab_view_buttons);
  * - rows 4-17, the page's drawing (LAB_VIEW_ART_ROW..; app/lab_draw.h): what it shapes, from the
@@ -34,6 +35,11 @@
  *   "3FR", "1/16"; dark while ARP is off, turned all the same); ARP off or its order.
  * - FX: the selected slot's Amount, A, B and Mix (named for its algorithm, app/chip_view.h);
  *   the slot's algorithm, OFF included. SCL selects the next slot, as everywhere.
+ * - MACRO: the sound's links (live.h live_resonance_effective, live_pwm_depth_effective): RES LNK
+ *   (-8..+8, the resonance following the cutoff) and PWM LNK (the PWM's depth following the
+ *   width); K3 and K4 dark, and ALGORITHM has no choice (the line says LINKED or NO LINKS). When a
+ *   link moves the card it acts on as another card turns (FILTER's K1 the resonance, OSC's K1
+ *   the PWM), that card lights too (lab_view.hl_link), and the cards show what the chip has.
  *
  * Input: SELECT steps the pages; K1..K4 turn the cards (EDIT held too: no hidden combination);
  * ALGORITHM steps the choice (clamped); ENV, LFO and FX open ENVELOPE, MOD and FX. EDIT + LFO
@@ -87,7 +93,8 @@ extern "C" {
 #define LAB_PAGE_FILTER 2u
 #define LAB_PAGE_MOD 3u
 #define LAB_PAGE_FX 4u
-#define LAB_PAGES 5u
+#define LAB_PAGE_MACRO 5u
+#define LAB_PAGES 6u
 /* The cells a frame of LAB sends at most (as CHIP's and LIVE's: about 17.5 ms of SPI). */
 #define LAB_VIEW_FRAME_CELLS 200u
 /* The page's rows (above). */
@@ -109,7 +116,7 @@ extern "C" {
 #define LAB_VIEW_WAVES 11u
 /* A card's or the choice's text, terminator included ("TRI+SAW+PUL"). */
 #define LAB_VIEW_TEXT 14u
-/* lab_view.mode: the five pages, the name page (EDIT + SAVE), the name page asking once more
+/* lab_view.mode: the six pages, the name page (EDIT + SAVE), the name page asking once more
  * before it overwrites a used slot. */
 #define LAB_VIEW_MODE_PAGES 0u
 #define LAB_VIEW_MODE_NAME 1u
@@ -149,6 +156,7 @@ typedef struct {
     uint8_t built;     /* the canvas shows drawn */
     uint8_t copying;   /* the canvas has cells the grid does not have yet (the budget) */
     uint8_t hl;        /* 1..4 the card lit, LAB_VIEW_HL_CHOICE the choice, 0 none */
+    uint8_t hl_link;   /* 1..4 a card a macro link moved with the one turned, lit with it */
     uint8_t art_done;  /* the grid shows the whole drawing of `art` (app/lab_draw.h) */
     uint8_t art_turn;  /* text and drawing both stale: 1 the drawing's frame next */
     uint32_t art;      /* the hash of what the drawing shows (lab_draw_look) */

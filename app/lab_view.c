@@ -17,7 +17,7 @@
  * side, a bar a cell shorter than its column. */
 static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
 static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
-/* The header's page number, `2/5`, at 2x on the right. */
+/* The header's page number, `2/6`, at 2x on the right. */
 #define PLACE_COL 24u
 /* ALG's legend on the choice's first row, ENVELOPE's ALL SOUNDS on its second. */
 #define ALG_COL 27u
@@ -35,7 +35,8 @@ _Static_assert(LIVE_PARAM_ATTACK + 3 == LIVE_PARAM_RELEASE &&
                    LIVE_PARAM_VIBRATO_RATE + 2 == LIVE_PARAM_VIBRATO_DELAY,
                "ENVELOPE's and MOD's cards are consecutive parameters");
 
-static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "MOD", "FX"};
+static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "MOD", "FX",
+                                                  "MACRO"};
 
 /* OSC's choices: $d404's waveform, ring and sync bits, and their names. */
 static const uint8_t WAVES[LAB_VIEW_WAVES] = {0x10, 0x20, 0x40, 0x80, 0x30, 0x50,
@@ -178,6 +179,8 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             }
         } else if (k == 1u) {
             copy(name, "PWM");
+            v = live_pwm_depth_effective(l); /* with PWM LINK's term: what the chip has */
+            *fill = v;
             char* e = number(value, (int32_t)((v * 100u + 2048u) / 4096u), 0);
             e[0] = '%';
             e[1] = 0;
@@ -210,10 +213,8 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         }
         if (k < 2u) {
             copy(name, k ? "RESO" : "CUTOFF");
-            live_view_knob_text(l, k, value); /* LIVE's: the cutoff the chip has now */
-            if (k == 0u) {
-                *fill = l->cutoff_out;
-            }
+            live_view_knob_text(l, k, value); /* LIVE's: what the chip has now */
+            *fill = k ? l->res_out : l->cutoff_out;
         } else {
             copy(name, "VOICES");
             uint32_t n = 0;
@@ -247,6 +248,13 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             copy(name, k == 1u ? "DEPTH" : "DELAY");
             (void)number(value, (int32_t)v, 0);
         }
+        return 1;
+    case LAB_PAGE_MACRO:
+        if (k >= 2u) {
+            return 0; /* no link there */
+        }
+        copy(name, k ? "PWM LNK" : "RES LNK");
+        (void)number(value, (int32_t)v - LIVE_LINK_MAX, 1);
         return 1;
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
@@ -304,6 +312,9 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
         return;
     case LAB_PAGE_MOD:
         copy(out, ARP_NAMES[l->arp_on ? 1u + (l->arp_order & 3u) : 0u]);
+        return;
+    case LAB_PAGE_MACRO:
+        copy(out, l->reso_link || l->pwm_link ? "LINKED" : "NO LINKS");
         return;
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
@@ -369,6 +380,7 @@ static int choice_off(const lab_view* lv) {
     case LAB_PAGE_FILTER: return (l->filter_mode >> 4 & 7u) == 0u;
     case LAB_PAGE_MOD: return !l->arp_on;
     case LAB_PAGE_FX: return l->slot[l->fx_select % LIVE_SLOTS][LIVE_SLOT_ALGORITHM] == 0u;
+    case LAB_PAGE_MACRO: return !l->reso_link && !l->pwm_link;
     default: return 0;
     }
 }
@@ -386,8 +398,8 @@ static void draw_card(const lab_view* lv, canvas* c, const theme* th, uint32_t k
     uint32_t cells = KNOB_W[k] - 1u;
     uint8_t accent = used ? th->knob[k] : th->dim;
     uint8_t na = !used ? THEME_ATTR(th, dim)
-                 : lv->hl == k + 1u ? GRID_ATTR(th->bg, th->knob_text[k])
-                                    : GRID_ATTR(th->knob_text[k], th->bg);
+                 : lv->hl == k + 1u || lv->hl_link == k + 1u ? GRID_ATTR(th->bg, th->knob_text[k])
+                                                             : GRID_ATTR(th->knob_text[k], th->bg);
     text(c, col, LAB_VIEW_LABEL_ROW, name, na);
     uint8_t va = GRID_ATTR(used ? th->value : th->dim, th->bg);
     if (length(value) <= 2u) {
@@ -425,7 +437,7 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     }
     b[n++] = lv->page;
     b[n++] = l->theme;
-    b[n++] = lv->hl;
+    b[n++] = (uint8_t)(lv->hl | lv->hl_link << 4);
     b[n++] = (uint8_t)hint_phase(now);
     b[n++] = l->envelope_mode;
     b[n++] = l->fx_select;
@@ -546,8 +558,9 @@ static void build(lab_view* lv, uint32_t now) {
 
 /* A highlight whose time is up goes: the look changes with it, so the page is built again. */
 static void expire(lab_view* lv, const screen* s) {
-    if (lv->hl && (int32_t)(s->now - lv->hl_until) >= 0) {
+    if ((lv->hl | lv->hl_link) && (int32_t)(s->now - lv->hl_until) >= 0) {
         lv->hl = 0;
+        lv->hl_link = 0;
     }
 }
 
@@ -755,6 +768,11 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
     case LAB_PAGE_MOD:
         add(l, k == 3u ? (uint32_t)LIVE_PARAM_ARP_RATE : LIVE_PARAM_VIBRATO_RATE + k, d);
         break;
+    case LAB_PAGE_MACRO:
+        if (k < 2u) {
+            add(l, LIVE_PARAM_RESO_LINK + k, d);
+        }
+        break;
     default: live_slot_turn(l, l->fx_select % LIVE_SLOTS, LIVE_SLOT_AMOUNT + k, d); break;
     }
 }
@@ -777,6 +795,7 @@ static void choice_turn(lab_view* lv, int32_t steps) {
     case LAB_PAGE_ENVELOPE:
         live_param_set(l, LIVE_PARAM_ENVELOPE_MODE, (uint32_t)clamp(l->envelope_mode + steps, 0, 1));
         break;
+    case LAB_PAGE_MACRO: break; /* no choice */
     case LAB_PAGE_FILTER: {
         /* From a mode no choice has (OFF, LP+BP, BP+HP, ALL): the next one the turn's way. */
         int32_t mode = l->filter_mode >> 4 & 7u;
@@ -901,7 +920,15 @@ static int input(screen* s, void* state, const screen_event* e) {
     uint8_t before[LAB_EDIT_BYTES];
     if (e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
         begin(lv, before);
+        /* a link's card moved by K1 (the cutoff's RESO LINK, the width's PWM LINK) lights too */
+        uint32_t linked = lv->page == LAB_PAGE_FILTER ? l->res_out : live_pwm_depth_effective(l);
         card_turn(lv, e->id - PANEL_ENC_K1, e->steps);
+        live_links_update(l); /* the linked resonance at once, not at the tick: the card shows it */
+        if (e->id == PANEL_ENC_K1 && (lv->page == LAB_PAGE_FILTER || lv->page == LAB_PAGE_OSC) &&
+            linked != (lv->page == LAB_PAGE_FILTER ? l->res_out : live_pwm_depth_effective(l))) {
+            lv->hl_link = 2u;
+            lv->hl_until = s->now + SCREEN_POPUP_MS;
+        }
         record(lv, before, e->id);
         return 1;
     }

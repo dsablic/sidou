@@ -83,18 +83,18 @@ fn choice(ui: &Ui) -> String {
 }
 
 #[test]
-fn select_steps_the_five_pages_and_stops_at_the_ends() {
+fn select_steps_the_six_pages_and_stops_at_the_ends() {
     let mut ui = lab_ui();
-    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX"];
+    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX", "MACRO"];
     assert_eq!(ui.v.lab.page, 0, "LAB opens at OSC");
     for (i, name) in names.iter().enumerate() {
         settle(&mut ui);
         assert_eq!(usize::from(ui.v.lab.page), i);
         assert_eq!(ui.big(0, 0, 2, name.len()), *name, "the page's name at 2x");
-        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/5", i + 1), "its place");
+        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/6", i + 1), "its place");
         ui.turn(PANEL_ENC_SELECT, 1);
     }
-    assert_eq!(ui.v.lab.page, 4, "clamped at FX");
+    assert_eq!(u32::from(ui.v.lab.page), LAB_PAGE_MACRO, "clamped at MACRO");
     ui.turn(PANEL_ENC_SELECT, -9);
     assert_eq!(ui.v.lab.page, 0, "clamped at OSC");
 }
@@ -244,6 +244,83 @@ fn mod_k4_is_the_arp_rate_dark_while_arp_is_off() {
     assert_eq!(ui.live().arp_rate, 1);
     settle(&mut ui);
     assert_eq!(ui.big(val, 22, 2, 3), "2FR");
+}
+
+/// MACRO (6/6): K1 RESO LNK and K2 PWM LNK, -8..+8 a detent at a time (signed: `+3`, `-8`), K3
+/// and K4 dark and turning nothing; ALGORITHM has no choice (LINKED or NO LINKS). The drawing's
+/// two graphs follow the links (a golden with both set).
+#[test]
+fn macro_turns_the_links_and_k3_k4_are_dark() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_MACRO);
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let row = LAB_VIEW_LABEL_ROW as usize;
+    assert_eq!(ui.small(row, 0, 7), "RES LNK");
+    assert_eq!(ui.small(row, 8, 7), "PWM LNK");
+    assert_eq!(choice(&ui), "NO LINKS");
+    ui.turn(K1, 3);
+    ui.turn(K1 + 1, -9);
+    assert_eq!(param(&ui, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX as u32 + 3);
+    assert_eq!(param(&ui, LIVE_PARAM_PWM_LINK), 0, "clamped at -8");
+    settle(&mut ui);
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 0, 3, 2), "+3");
+    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2), "-8");
+    assert_eq!(choice(&ui), "LINKED");
+    let snapshot = (0..LIVE_PARAM_COUNT).map(|p| param(&ui, p)).collect::<Vec<_>>();
+    ui.turn(K1 + 2, 3);
+    ui.turn(K1 + 3, 3);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(
+        (0..LIVE_PARAM_COUNT).map(|p| param(&ui, p)).collect::<Vec<_>>(),
+        snapshot,
+        "K3, K4 and ALGORITHM turn nothing"
+    );
+    settle(&mut ui);
+    let value = LAB_VIEW_VALUE_ROW as usize;
+    for col in [15usize, 22] {
+        assert_eq!(ui.g.attr[value * GRID_COLS as usize + col] & 15, th.dim, "col {col} dark");
+    }
+    ui.turn(K1 + 1, 12); // PWM LNK +4
+    settle_hint(&mut ui);
+    golden(&ui, "lab-macro-linked");
+}
+
+/// RESO LINK in LAB: FILTER's K1 turned, the resonance the link moves shows on the RESO card
+/// (what the chip has) and the card lights with K1's; OSC's K1 and PWM LINK the same with the PWM
+/// card.
+#[test]
+fn a_link_lights_the_card_it_moves() {
+    let mut ui = lab_ui();
+    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX as u32 + 8);
+    let mid = unsafe { live_cutoff_steps[ui.live().model as usize][32] };
+    set(&mut ui, LIVE_PARAM_CUTOFF, u32::from(mid)); // the walk's middle: the link adds nothing
+    unsafe { live_tick(&mut *ui.rig.live) }; // the linked resonance follows at the tick
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    let res = ui.live().res_out;
+    assert_eq!(u32::from(res), param(&ui, LIVE_PARAM_RESONANCE));
+    ui.turn(K1, -4);
+    assert_ne!(ui.live().res_out, res, "the link moved it");
+    assert_eq!(ui.v.lab.hl_link, 2, "RESO lights");
+    for _ in 0..4 {
+        ui.frame(); // the page built and copied, well within the light's second
+    }
+    let row = LAB_VIEW_LABEL_ROW as usize;
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    assert_eq!(ui.g.attr[row * GRID_COLS as usize + 8] >> 4, th.knob_text[1], "reversed");
+    let shown: u32 = ui.big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2).trim().parse().unwrap();
+    assert_eq!(shown, u32::from(ui.live().res_out), "the resonance the chip has");
+    settle(&mut ui);
+    assert_eq!(ui.v.lab.hl_link, 0, "and goes out with it");
+    // K2 with no link moving anything lights itself alone
+    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX as u32);
+    ui.turn(K1, 1);
+    assert_eq!(ui.v.lab.hl_link, 0);
+    // OSC: PULSE moves PWM LINK's depth
+    set(&mut ui, LIVE_PARAM_PWM_LINK, LIVE_LINK_MAX as u32 + 4);
+    set(&mut ui, LIVE_PARAM_PWM_DEPTH, 64);
+    to_page(&mut ui, LAB_PAGE_OSC);
+    ui.turn(K1, -3);
+    assert_eq!(ui.v.lab.hl_link, 2, "PWM lights");
 }
 
 /// On SYNC LEAD (a mono-sync saw) OSC's K1 reads RATIO and turns the sync ratio's semitones.
@@ -571,7 +648,7 @@ fn the_frame_stays_within_200_cells() {
     );
 }
 
-/// The five pages on SAW LEAD as it loads (FX with OVERDRIVE on the first slot).
+/// The six pages on SAW LEAD as it loads (FX with OVERDRIVE on the first slot).
 #[test]
 fn the_pages_match_their_goldens() {
     let mut ui = lab_ui();
@@ -581,6 +658,7 @@ fn the_pages_match_their_goldens() {
         (LAB_PAGE_FILTER, "lab-filter"),
         (LAB_PAGE_MOD, "lab-mod"),
         (LAB_PAGE_FX, "lab-fx"),
+        (LAB_PAGE_MACRO, "lab-macro"),
     ] {
         to_page(&mut ui, page);
         if page == LAB_PAGE_FX {

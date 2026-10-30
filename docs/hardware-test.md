@@ -2418,6 +2418,15 @@ What it decides: whether 1.1's additions to LAB sound and feel right. Set up as 
   `sidou-tests/tests/app/lab_view.rs::a_control_during_a_peek_acts_on_b`.
   *Device-only:* the feel: whether the switch at the first key and back at EDIT's release is
   quick enough to compare by ear, and whether the outlined `A` reads apart from the reversed one.
+- [ ] **The macro links (MACRO):** RES LNK at `+8` then `-8`, a chord held while K1 sweeps on LIVE;
+  PWM LNK at `+6` on PWM BASS while K3 (the width) turns.
+  *Emulator:* `sidou-tests/tests/app/live_macro.rs::reso_link_makes_the_resonance_follow_the_cutoff`,
+  `sidou-tests/tests/app/live_macro.rs::pwm_link_makes_the_pwm_depth_follow_the_width`,
+  `sidou-tests/tests/app/lab_view.rs::macro_turns_the_links_and_k3_k4_are_dark`,
+  `sidou-tests/tests/app/lab_view.rs::a_link_lights_the_card_it_moves`,
+  `emu-gate/tests/lab.rs::lab_filter_mod_and_fx_draw_within_their_budgets` (MACRO's frames).
+  *Device-only:* by ear: whether the link's range is musical (the squelch, the resonance never
+  whistling where it should not), and the graphs readable at arm's length.
 
 Notes:
 

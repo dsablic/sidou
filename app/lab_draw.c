@@ -748,6 +748,67 @@ static void fx_init(fx_ctx* f, const live* l, uint32_t hl) {
     }
 }
 
+/* ---- MACRO ---- */
+
+/* Two graphs side by side, from MAC_X0 and MAC_X1, MAC_W pixels wide, MAC_TOP..MAC_TOP + MAC_SPAN
+ * high: the resonance (0..15) over the cutoff's place on K1's walk (0..64), and the PWM's depth
+ * (0..2048) over the width (0..4095); each with the live point, a tick at the value now. */
+#define MAC_X0 8u
+#define MAC_X1 128u
+#define MAC_W 104u
+#define MAC_TOP 6u
+#define MAC_SPAN 84u
+
+typedef struct {
+    int8_t reso_link, pwm_link;
+    uint8_t res, place; /* the resonance parameter, the cutoff's place now */
+    uint16_t depth, pw; /* the PWM's depth parameter, the width now */
+    uint8_t hl;
+} mac_ctx;
+
+static uint8_t mac_y(int32_t v, int32_t max) {
+    v = v < 0 ? 0 : v > max ? max : v;
+    return (uint8_t)(MAC_TOP + (uint32_t)(max - v) * MAC_SPAN / (uint32_t)max);
+}
+
+static void mac_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const mac_ctx* m = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = 0;
+    if (x >= MAC_X0 && x <= MAC_X0 + MAC_W) {
+        int32_t p = (int32_t)((x - MAC_X0) * 64u / MAC_W);
+        uint8_t y = mac_y(m->res + m->reso_link * (32 - p) / 8, (int32_t)LIVE_RESONANCE_MAX);
+        out->lo[0] = out->hi[0] = y;
+        out->lit = (uint8_t)(m->hl == 1u);
+        uint32_t at = MAC_X0 + (uint32_t)m->place * MAC_W / 64u;
+        if ((x & ~1u) == (at & ~1u)) {
+            out->lo[2] = (uint8_t)(y > 4u ? y - 4u : 0u); /* the point now */
+            out->hi[2] = (uint8_t)(y + 4u);
+        }
+    } else if (x >= MAC_X1 && x <= MAC_X1 + MAC_W) {
+        int32_t w = (int32_t)((x - MAC_X1) * 4095u / MAC_W);
+        int32_t away = w > 2048 ? w - 2048 : 2048 - w;
+        uint8_t y = mac_y(m->depth + m->pwm_link * away / 8, (int32_t)LIVE_PWM_DEPTH_MAX);
+        out->lo[1] = out->hi[1] = y;
+        out->lit = (uint8_t)((m->hl == 2u) << 1);
+        uint32_t at = MAC_X1 + (uint32_t)m->pw * MAC_W / 4095u;
+        if ((x & ~1u) == (at & ~1u)) {
+            out->lo[2] = (uint8_t)(y > 4u ? y - 4u : 0u);
+            out->hi[2] = (uint8_t)(y + 4u);
+        }
+    }
+}
+
+static void mac_init(mac_ctx* m, const live* l, uint32_t hl) {
+    m->reso_link = l->reso_link;
+    m->pwm_link = l->pwm_link;
+    m->res = l->resonance;
+    m->place = (uint8_t)live_cutoff_place(l, l->cutoff_out);
+    m->depth = l->pwm_depth;
+    m->pw = l->pulse_width;
+    m->hl = (uint8_t)hl;
+}
+
 static void none_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     (void)ctx;
     (void)x;
@@ -776,6 +837,11 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
              (uint32_t)l->arp_on << 24) * 16777619u;
         h = (h ^ l->pwm_depth ^ (uint32_t)l->pwm_rate << 16) * 16777619u;
         h = (h ^ l->arp_rate ^ (uint32_t)l->arp_order << 8 ^ (uint32_t)l->arp_span << 16) * 16777619u;
+    } else if (page == LAB_PAGE_MACRO) {
+        h = (h ^ live_cutoff_place(l, l->cutoff_out) ^ (uint32_t)l->resonance << 8 ^
+             (uint32_t)(uint8_t)l->reso_link << 16 ^ (uint32_t)(uint8_t)l->pwm_link << 24) *
+            16777619u;
+        h = (h ^ l->pulse_width ^ (uint32_t)l->pwm_depth << 16) * 16777619u;
     } else if (page != LAB_DRAW_BLANK) {
         const uint8_t* s = l->slot[l->fx_select % LIVE_SLOTS];
         h = (h ^ l->fx_select ^ (uint32_t)s[0] << 8 ^ (uint32_t)s[1] << 16 ^ (uint32_t)s[2] << 24) *
@@ -793,6 +859,7 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
     filt_ctx f;
     mod_ctx m;
     fx_ctx x;
+    mac_ctx mc;
     if (hl >= 1u && hl <= 4u) {
         d.lit_color = th->knob[hl - 1u];
     }
@@ -821,6 +888,13 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         d.ctx = &m;
         d.color[0] = th->value;
         d.color[1] = l->control & 0x40u ? th->label : th->dim;
+        d.color[LAB_DRAW_MARKER] = th->hot;
+    } else if (page == LAB_PAGE_MACRO) {
+        mac_init(&mc, l, hl);
+        d.fn = mac_col;
+        d.ctx = &mc;
+        d.color[0] = l->reso_link ? th->value : th->dim; /* a flat line, no link: dark */
+        d.color[1] = l->pwm_link ? th->value : th->dim;
         d.color[LAB_DRAW_MARKER] = th->hot;
     } else if (page != LAB_DRAW_BLANK) {
         fx_init(&x, l, hl);
@@ -937,6 +1011,11 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
                 c->attr[row0 + r][col] = attr;
             }
         }
+    } else if (page == LAB_PAGE_MACRO) {
+        /* what each graph is: the cutoff to the resonance, the width to the PWM */
+        uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
+        gtext(c, row, 1, "CUT>RESO", THEME_ATTR(th, hint));
+        gtext(c, row, 16, "WIDTH>PWM", THEME_ATTR(th, hint));
     } else if (page == LAB_PAGE_FILTER || page == LAB_PAGE_MOD || page == LAB_PAGE_FX) {
         guides_page(c, l, page, hl, th, row0);
     } else if (page == LAB_PAGE_ENVELOPE) {

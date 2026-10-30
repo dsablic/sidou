@@ -559,7 +559,7 @@ means something else there:
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
 | SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
 | SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
-| LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
+| LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
 
@@ -717,14 +717,14 @@ it) is where one LIVE sound is shaped with every parameter in sight
 **HOME** goes back to LIVE, the sound kept as edited. It opens at OSC from the menu, and from
 LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX.
 
-**SELECT** steps the five pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
-**MOD**, **FX**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
+**SELECT** steps the six pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**MOD**, **FX**, **MACRO**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
 ALGORITHM on the FX page (OFF included: a slot turned to OFF is bypassed, what ENV's cycle
 through OFF once did). On every page:
 
 | Rows | Shows |
 |---|---|
-| 0-1 | the page's name at 2× in yellow, its place (`2/5`) on the right |
+| 0-1 | the page's name at 2× in yellow, its place (`2/6`) on the right |
 | 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares; **A** outlined during a peek (EDIT held + a key) |
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
@@ -734,6 +734,15 @@ through OFF once did). On every page:
 A card or the choice that turns is lit (its name in reverse video) for a second instead of the
 value popup; PRESETS opens no popup either (the header names the sound).
 
+**The macro links** belong to the sound (kept with it, undone and compared with it) and act wherever
+the cutoff or the width moves: LIVE's K1 and K3, LAB's cards, CC 74, the mod wheel and the filter
+LFO. They are terms on top of the parameters, which stay as set: a link back at `0` gives them back.
+FILTER's RESO card and LIVE's K2 show the resonance the chip has (with RESO LINK's term), OSC's PWM
+card the depth it has; when K1 turns and its link moves RESO (FILTER) or PWM (OSC), that card lights
+with K1's. The resonance follows the cutoff within a 10 ms tick. MACRO draws the two links as
+graphs: the resonance over the cutoff's place on K1's walk, the PWM's depth over the width, each
+with the point the sound is at now; a graph with no link is a dark flat line.
+
 | Page | K1 | K2 | K3 | K4 | ALGORITHM |
 |---|---|---|---|---|---|
 | OSC | PULSE: the pulse width, LIVE's walk (`50%`); RATIO on a mono-sync sound without the pulse bit (SYNC LEAD), the sync ratio's semitones | PWM: the pulse-width LFO's depth, 32 steps a detent (`25%`) | PWM HZ: its rate, 0.05 Hz a detent | TUNE: the fine tune, a cent a detent (`+20`) | TRIANGLE, SAW, PULSE, NOISE, TRI+SAW, TRI+PULSE, SAW+PULSE, TRI+SAW+PUL, TRI RING, SAW SYNC, PULSE SYNC |
@@ -741,6 +750,7 @@ value popup; PRESETS opens no popup either (the header names the sound).
 | FILTER | CUTOFF: LIVE's K1 walk, the cutoff the chip has now | RESO | VOICES: the voices routed to the filter (`123`, `-` none) | LFO: the filter LFO's depth, `0` (off) to `32` of K1's detents each way, a triangle (up first) at the rate OSC's PWM HZ sets, shown on the card's name line (`LFO1.3HZ`); turned up from off on a sound with no rate yet, the rate starts at 1 Hz; the drawing dots the band the cutoff sweeps | LP, BP, HP, NOTCH (from another mode MIDI set, the next one the turn's way) |
 | MOD | VIB HZ: the vibrato's rate | DEPTH | DELAY | RATE: the arpeggio's rate, as LIVE's ARP + K1 (`3FR`: a note every 3 frames of 50 Hz, then `1/32`, `1/16`, `1/8` of the MIDI clock); dark grey while ARP is off, and set all the same. The velocity target, which this card had in 1.0, is NRPN 6/1's | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; a slot's detent) | the slot's algorithm, OFF included |
+| MACRO | RES LNK: RESO LINK, `-8` to `+8` (`0` none): the resonance follows the cutoff, the link times the cutoff's distance below the middle of K1's walk, in 8ths of a step a detent of it (positive: it rises as the cutoff closes; negative, a squelch: as it opens), on top of RESO, clamped | PWM LNK: PWM LINK, `-8` to `+8`: the PWM's depth follows the width, the link times the width's distance from 50 % in 8ths, on top of PWM | dark, unused | dark, unused | no choice: the line says `LINKED` or `NO LINKS` (dark) |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
 page follows it); alone it waits for EDIT a moment (EDIT + SCL is the roll whichever finger lands

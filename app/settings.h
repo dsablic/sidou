@@ -29,7 +29,7 @@
  * 126 + 2 x the expert count  SID MODEL (SETTINGS_SID_*; schema 7; app/sid_view.h)
  * 127 + 2 x the expert count  the count of live parameters past the experts (3: PWM depth, PWM
  *      rate, fine tune), then each one's learned CC (schema 8; their values are not here);
- *      schema 9 counts 1.1's too (SETTINGS_PARAMS_V9: the filter LFO, the ARP rate)
+ *      schema 9 counts 1.1's too (SETTINGS_PARAMS_V9: the filter LFO, the ARP rate, the links)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -68,7 +68,7 @@ extern "C" {
 #define SETTINGS_PARAMS_V8 3u
 /* Schema 9: the same, with 1.1's parameters past the experts counted (and a later firmware's
  * count may be more: the record says). */
-#define SETTINGS_PARAMS_V9 5u
+#define SETTINGS_PARAMS_V9 7u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
 #define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
 #define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)

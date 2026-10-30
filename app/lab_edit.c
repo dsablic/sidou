@@ -183,6 +183,9 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
     if (wave & 4u) {
         int32_t pw = (int32_t)(s[LAB_SOUND_PULSE] | (s[LAB_SOUND_PULSE + 1u] & 15u) << 8);
         int32_t depth = (int32_t)(s[LAB_SOUND_PWM_DEPTH] | s[LAB_SOUND_PWM_DEPTH + 1u] << 8);
+        int32_t away = pw > 2048 ? pw - 2048 : 2048 - pw;
+        depth += (int8_t)s[LAB_SOUND_PWM_LINK] * away / 8; /* PWM LINK's term */
+        depth = depth < 0 ? 0 : depth > (int32_t)LIVE_PWM_DEPTH_MAX ? (int32_t)LIVE_PWM_DEPTH_MAX : depth;
         side = (pw > 2048 ? 4096 - pw : pw) - depth / 2;
         int32_t p = pulse_db(side, 0);
         if (p == NONE) {

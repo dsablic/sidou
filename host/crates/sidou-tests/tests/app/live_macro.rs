@@ -19,11 +19,13 @@ fn get(rig: &Rig, p: u32) -> u32 {
     unsafe { live_param_get(&*rig.live, p) }
 }
 
-/// K1 to walk position `pos` from the bottom.
+/// The cutoff at K1's walk position `pos`: to the walk's first entry, then K1 up `pos` detents.
 fn cutoff_at(rig: &mut Rig, pos: i32) {
-    rig.knob(LIVE_KNOB_CUTOFF, -200);
+    let t = steps(rig.live.model);
+    set(rig, LIVE_PARAM_CUTOFF, u32::from(t[0]));
+    rig.knob(LIVE_KNOB_CUTOFF, -1); // on the walk: its place 0
     rig.knob(LIVE_KNOB_CUTOFF, pos);
-    assert_eq!(rig.live.cutoff, steps(rig.live.model)[pos as usize]);
+    assert_eq!(rig.live.cutoff, t[pos as usize]);
 }
 
 /// The cutoff written each tick for `ticks` ticks.
@@ -137,4 +139,129 @@ fn the_arp_rate_is_a_parameter_on_cc_28s_row() {
     let mut out = [0u16; LIVE_PARAM_COUNT as usize];
     unsafe { live_preset_params(1, out.as_mut_ptr()) };
     assert_eq!(u32::from(out[LIVE_PARAM_ARP_RATE as usize]), LIVE_ARP_RATE_DEFAULT);
+}
+
+/// The resonance the chip has (register $d417's high nibble).
+fn res_on_chip(rig: &Rig) -> u32 {
+    u32::from(rig.reg(0x17) >> 4)
+}
+
+/// RESO LINK: the resonance follows the cutoff's place on K1's walk, link x (32 - place) / 8 on
+/// top of the parameter, clamped; positive opens it as the cutoff closes, negative (squelch) as it
+/// opens. A term: the parameter stays, and the link at 0 gives it back.
+#[test]
+fn reso_link_makes_the_resonance_follow_the_cutoff() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    assert_eq!(get(&rig, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX as u32, "8: no link");
+    set(&mut rig, LIVE_PARAM_RESONANCE, 6);
+    for (link, pos, want) in [
+        (8i32, 32, 6u32),
+        (8, 24, 14),
+        (8, 16, 15),
+        (8, 40, 0),
+        (4, 24, 10),
+        (-8, 40, 14),
+        (-8, 24, 0),
+        (-2, 64, 14),
+    ] {
+        set(&mut rig, LIVE_PARAM_RESO_LINK, (link + LIVE_LINK_MAX as i32) as u32);
+        cutoff_at(&mut rig, pos);
+        rig.tick(); // the resonance follows at the tick
+        assert_eq!(res_on_chip(&rig), want, "link {link} at {pos}");
+        assert_eq!(unsafe { live_resonance_effective(&*rig.live) }, want);
+        assert_eq!(rig.live.resonance, 6, "the parameter stays");
+    }
+    set(&mut rig, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX as u32);
+    assert_eq!(res_on_chip(&rig), 6, "no link: the parameter");
+    // CC 74 moves the cutoff, and the resonance with it
+    set(&mut rig, LIVE_PARAM_RESO_LINK, (LIVE_LINK_MAX + 8) as u32);
+    rig.cc(LIVE_CC_CUTOFF, 0);
+    rig.tick();
+    assert_eq!(res_on_chip(&rig), 15, "CC 74 closed: up");
+    rig.cc(LIVE_CC_CUTOFF, 127);
+    rig.tick();
+    assert_eq!(res_on_chip(&rig), 0, "CC 74 open: down");
+    // the mod wheel on the cutoff, applied at the tick
+    rig.cc(LIVE_CC_CUTOFF, 0);
+    set(&mut rig, LIVE_PARAM_MOD_TARGET, LIVE_MOD_CUTOFF);
+    rig.cc(1, 127);
+    rig.tick();
+    assert!(res_on_chip(&rig) < 15, "the wheel opened it: {}", res_on_chip(&rig));
+    // and the filter LFO's sweep
+    rig.cc(1, 0);
+    rig.tick();
+    cutoff_at(&mut rig, 32);
+    set(&mut rig, LIVE_PARAM_PWM_RATE, 125);
+    set(&mut rig, LIVE_PARAM_FILTER_LFO, 16);
+    let res: Vec<u32> = (0..16)
+        .map(|_| {
+            rig.tick();
+            res_on_chip(&rig)
+        })
+        .collect();
+    assert_eq!(*res.iter().max().unwrap(), 15, "{res:?}");
+    assert_eq!(*res.iter().min().unwrap(), 0, "{res:?}");
+}
+
+/// PWM LINK: the PWM's depth follows the width's distance from 50 %, link x distance / 8 on top
+/// of the parameter, clamped; the LFO runs while the depth it gives is not 0.
+#[test]
+fn pwm_link_makes_the_pwm_depth_follow_the_width() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    let eff = |rig: &Rig| unsafe { live_pwm_depth_effective(&*rig.live) };
+    set(&mut rig, LIVE_PARAM_PWM_DEPTH, 100);
+    set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 1024);
+    assert_eq!(eff(&rig), 100, "no link");
+    set(&mut rig, LIVE_PARAM_PWM_LINK, (LIVE_LINK_MAX + 4) as u32);
+    assert_eq!(eff(&rig), 100 + 4 * 1024 / 8);
+    set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 3072);
+    assert_eq!(eff(&rig), 100 + 4 * 1024 / 8, "the other side, the same distance");
+    set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 2048);
+    assert_eq!(eff(&rig), 100, "a square: the parameter");
+    set(&mut rig, LIVE_PARAM_PWM_LINK, 0); // -8
+    set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 1024);
+    assert_eq!(eff(&rig), 0, "clamped at 0");
+    assert_eq!(rig.live.pwm_depth, 100, "the parameter stays");
+    // the LFO runs for the linked depth alone
+    set(&mut rig, LIVE_PARAM_PWM_DEPTH, 0);
+    set(&mut rig, LIVE_PARAM_PWM_RATE, 20);
+    set(&mut rig, LIVE_PARAM_PWM_LINK, (LIVE_LINK_MAX + 8) as u32);
+    let phase = rig.live.lfo_phase;
+    rig.tick();
+    assert_ne!(rig.live.lfo_phase, phase, "the linked depth moves the LFO");
+    rig.note_on(60);
+    let pws: Vec<u16> = (0..100)
+        .map(|_| {
+            rig.tick();
+            rig.voice_pw(0)
+        })
+        .collect();
+    assert!(
+        pws.iter().max().unwrap() - pws.iter().min().unwrap() > 500,
+        "the width swings: {:?}",
+        (pws.iter().min(), pws.iter().max())
+    );
+}
+
+/// The links are parameters of the sound, NRPN only (MIDI learn reaches them), 0..16 for
+/// -8..+8; a preset loads them at none.
+#[test]
+fn the_links_are_parameters_of_the_sound() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    for p in [LIVE_PARAM_RESO_LINK, LIVE_PARAM_PWM_LINK] {
+        assert_eq!(unsafe { live_param_max(p) }, 2 * LIVE_LINK_MAX as u32);
+        let e = unsafe { midi_map_for_param(p) };
+        assert!(!e.is_null());
+        assert_eq!(u32::from(unsafe { (*e).cc }), MIDI_MAP_NO_CC);
+        set(&mut rig, p, 3);
+    }
+    let mut s = [0u8; LAB_SOUND_BYTES as usize];
+    unsafe { live_sound_get(&*rig.live, s.as_mut_ptr()) };
+    assert_eq!(s[LAB_SOUND_RESO_LINK as usize] as i8, -5);
+    assert_eq!(s[LAB_SOUND_PWM_LINK as usize] as i8, -5);
+    rig.set_preset(1);
+    assert_eq!(get(&rig, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX as u32);
+    let mut out = [0u16; LIVE_PARAM_COUNT as usize];
+    unsafe { live_preset_params(1, out.as_mut_ptr()) };
+    assert_eq!(out[LIVE_PARAM_PWM_LINK as usize], LIVE_LINK_MAX as u16);
 }

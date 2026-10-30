@@ -195,6 +195,15 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
         "a 16th or an 8th of the MIDI clock (Chord arpeggio, below); a preset's (2)",
         LIVE_PARAM_ARP_RATE, LIVE_CC_ARP_RATE, NRPN(NRPN_LIVE, 9), LIVE_ARP_RATES - 1,
         LIVE_ARP_RATE_DEFAULT, STEPS),
+    ROW("Live", "RESO link",
+        "0..16 = -8..+8, 8 none: the resonance follows the cutoff, link x (32 - the cutoff's "
+        "place of K1's 64) / 8 on top of it (positive: up as the cutoff closes; negative, the "
+        "squelch: up as it opens); a preset's (none)",
+        LIVE_PARAM_RESO_LINK, NO_CC, NRPN(NRPN_LIVE, 10), 2 * LIVE_LINK_MAX, LIVE_LINK_MAX, STEPS),
+    ROW("Live", "PWM link",
+        "0..16 = -8..+8, 8 none: the PWM's depth follows the width, link x its distance from 50 % "
+        "(of 2048) / 8 on top of it; a preset's (none)",
+        LIVE_PARAM_PWM_LINK, NO_CC, NRPN(NRPN_LIVE, 11), 2 * LIVE_LINK_MAX, LIVE_LINK_MAX, STEPS),
 
     ROW("Output", "Spread",
         "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "

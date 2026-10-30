@@ -626,13 +626,14 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 41] = [
+const CONTEXTS: [&str; 42] = [
     "LIVE",
     "LAB OSC",
     "LAB ENV",
     "LAB FILTER",
     "LAB MOD",
     "LAB FX",
+    "LAB MACRO",
     "LAB NAME",
     "LIVE SLOT",
     "MENU",
@@ -700,9 +701,16 @@ fn open_ctx(name: &str) -> Ctx {
         "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
         "RESET" => crate::views::open_setting(ui, VIEWS_SETTINGS_RESET),
         "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
-        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB MOD" | "LAB FX" | "LAB NAME" => {
+        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB MOD" | "LAB FX" | "LAB MACRO" | "LAB NAME" => {
             menu_item(ui, VIEWS_MENU_LAB);
-            let page = ["LAB OSC", "LAB ENV", "LAB FILTER", "LAB MOD", "LAB FX"]
+            let page = [
+                "LAB OSC",
+                "LAB ENV",
+                "LAB FILTER",
+                "LAB MOD",
+                "LAB FX",
+                "LAB MACRO",
+            ]
                 .iter()
                 .position(|n| *n == name);
             crate::lab_view::to_page(ui, page.unwrap_or(0) as u32);
@@ -852,6 +860,7 @@ fn lab_help_cards_match_their_goldens() {
         ("LAB FILTER", "help-lab-filter", 2),
         ("LAB MOD", "help-lab-mod", 2),
         ("LAB FX", "help-lab-fx", 2),
+        ("LAB MACRO", "help-lab-macro", 2),
         ("LAB NAME", "help-lab-name", 1),
     ] {
         let mut c = open_ctx(name);
@@ -1012,6 +1021,7 @@ fn saves(name: &str) -> bool {
             | "LAB FILTER"
             | "LAB MOD"
             | "LAB FX"
+            | "LAB MACRO"
             | "LAB NAME"
             | "EXPERT"
             | "MENU"

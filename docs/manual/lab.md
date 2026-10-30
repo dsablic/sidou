@@ -13,7 +13,7 @@ you like. LAB came in 1.0.
   algorithm; they are LAB's now. The chip model is ALGORITHM on LIVE's TONE page.)
 - Or HOME, then LAB in the menu (after SONG). It opens at OSC.
 
-**SELECT** steps the five pages (OSC, ENVELOPE, FILTER, MOD, FX), and ENV, LFO and FX jump to
+**SELECT** steps the six pages (OSC, ENVELOPE, FILTER, MOD, FX, MACRO), and ENV, LFO and FX jump to
 theirs. **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
 and FX do nothing.
 
@@ -79,6 +79,20 @@ MOD's K4 is the arpeggio's **RATE**, as ARP + K1 on LIVE: a note every few frame
 in time with a MIDI clock (`1/32`, `1/16`, `1/8`). It is dark while ARP is off, and you can set
 it all the same, ready for when you turn ARP on with ALGORITHM. (1.0 had the velocity target
 here; it is NRPN 6/1 now.)
+
+## Link the knobs: MACRO
+
+The sixth page, **MACRO**, links what one knob does to another, for this sound:
+
+- **K1, RES LNK** (`-8` to `+8`): the resonance follows the cutoff. Positive, it rises as you close
+  the filter (the classic sweep); negative, as you open it (a squelch).
+- **K2, PWM LNK** (`-8` to `+8`): the PWM's depth follows the pulse width: positive, the further the
+  width from a square, the more it moves.
+
+The two graphs show each link and where the sound is on it now. The links act wherever the cutoff
+or the width moves: LIVE's knobs, LAB's cards, CC 74, the mod wheel, the filter LFO. Your RESO and
+PWM settings stay as you set them; the cards show what the chip has, and light when K1 moves them.
+K3 and K4 have no link yet.
 
 ## What is not there yet
 

@@ -3,7 +3,7 @@
 # Settings record
 
 The settings are one value in the [store](store-format.md), key `0x100`, type `1`.
-Schema 9 is `128 + 2 × SID_EXPERT_COUNT + T` bytes (161 bytes with `T = 5`); schema 8 is
+Schema 9 is `128 + 2 × SID_EXPERT_COUNT + T` bytes (163 bytes with `T = 7`); schema 8 is
 `131 + 2 × SID_EXPERT_COUNT` bytes (159 bytes); schema 7 is
 `127 + 2 × SID_EXPERT_COUNT` bytes (155 bytes); schema 6 is
 `126 + 2 × SID_EXPERT_COUNT` bytes (154 bytes); schema 5 is
@@ -15,7 +15,7 @@ keeps schema 2's and appends THEME. Schema 4 appends the last song's filename;
 schema 5 appends the expert overrides and their learned CCs; schema 6 appends SPREAD; schema 7
 appends SID MODEL; schema 8 appends the learned CCs of the parameters after the experts (PWM
 depth, PWM rate and the fine tune: LAB's sound); schema 9 counts 1.1's too (the filter LFO), the
-same layout with a larger `T` (the filter LFO, the arpeggio's rate).
+same layout with a larger `T` (the filter LFO, the arpeggio's rate, the two macro links).
 
 | Offset | Bytes | Value |
 |---|---|---|
@@ -36,8 +36,8 @@ same layout with a larger `T` (the filter LFO, the arpeggio's rate).
 | 125 + E | E | Learned CC for each expert parameter; `255` means no binding |
 | 125 + 2E | 1 | SPREAD: `0` mono (default) .. `100` chip A left, chip B right (schema 6) |
 | 126 + 2E | 1 | SID MODEL: `0` AUTO (default: a `.sid` tune's chips as its header names them), `1` KEYS (the keys' setup for every tune) (schema 7) |
-| 127 + 2E | 1 | Count of the parameters after the experts, `T`: `3` (schema 8), `5` (schema 9) |
-| 128 + 2E | T | Learned CC for each of them, in LIVE_PARAM order (`LIVE_PARAM_PWM_DEPTH`, `_PWM_RATE`, `_TUNE`, then schema 9's `_FILTER_LFO`, `_ARP_RATE`); `255` means no binding. A reader takes the first ones it knows of a longer list |
+| 127 + 2E | 1 | Count of the parameters after the experts, `T`: `3` (schema 8), `7` (schema 9) |
+| 128 + 2E | T | Learned CC for each of them, in LIVE_PARAM order (`LIVE_PARAM_PWM_DEPTH`, `_PWM_RATE`, `_TUNE`, then schema 9's `_FILTER_LFO`, `_ARP_RATE`, `_RESO_LINK`, `_PWM_LINK`); `255` means no binding. A reader takes the first ones it knows of a longer list |
 
 CUTOFF and PULSE WIDTH are two bytes each; every other parameter is one byte.
 The VOLUME parameter's byte is zero and is ignored when loading: MASTER belongs to

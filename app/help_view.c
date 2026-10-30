@@ -178,6 +178,10 @@ static const char* const LAB_MOD_LINES[] = {
 static const char* const LAB_FX_LINES[] = {
     "K1\0\1",       "K2\0\2",  "K3\0\3",    "K4\0\4",
     "ALG\0ALGORITHM", LAB_TAIL_A, LAB_TAIL_B, "SCL\0NEXT SLOT", "HOME\0LIVE"};
+/* MACRO: the links of the sound; K3, K4 and ALGORITHM have none. */
+static const char* const LAB_MACRO_LINES[] = {
+    "K1\0RESO LINK", "K2\0PWM LINK", "K3 K4\0UNUSED", "ALG\0NOTHING",
+    LAB_TAIL_A,       LAB_TAIL_B,      "SAVE+K\0LEARN", "HOME\0LIVE"};
 /* The name page (EDIT + SAVE): the keys type, the three page buttons and K2-K4 do nothing. */
 static const char* const LAB_NAME_LINES[] = {
     "KEYS\0LETTERS", "SELECT\0CURSOR", "ALG\0CHARACTER", "K1\0SLOT",
@@ -214,6 +218,7 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LAB_FILTER] = CARD("LAB FILTER", LAB_FILTER_LINES),
     [HELP_CARD_LAB_MOD] = CARD("LAB MOD", LAB_MOD_LINES),
     [HELP_CARD_LAB_FX] = CARD("LAB FX", LAB_FX_LINES),
+    [HELP_CARD_LAB_MACRO] = CARD("LAB MACRO", LAB_MACRO_LINES),
     [HELP_CARD_LAB_NAME] = CARD("LAB NAME", LAB_NAME_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&

@@ -560,6 +560,8 @@ typedef struct {
     uint8_t filter_lfo;
     int8_t reso_link;
     int8_t pwm_link;
+    /* The resonance last written (live_resonance_effective's, RESO LINK's term in it). */
+    uint8_t res_out;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -628,6 +630,11 @@ typedef enum {
     /* The chord arpeggio's rate, 0..LIVE_ARP_RATES - 1 (live_arp_set's LIVE_ARP_RATE): CC 28's
      * row, so learn reaches it. */
     LIVE_PARAM_ARP_RATE,
+    /* The macro links (live.reso_link, live.pwm_link), 0..2 LIVE_LINK_MAX for -LIVE_LINK_MAX..
+     * LIVE_LINK_MAX (LIVE_LINK_MAX: none): the resonance following the cutoff, the PWM's depth
+     * following the width. 63 is the last parameter midi_out's 64-bit PRESET_LOADS has room for. */
+    LIVE_PARAM_RESO_LINK,
+    LIVE_PARAM_PWM_LINK,
     LIVE_PARAM_COUNT
 } live_param;
 
@@ -691,6 +698,17 @@ void live_knob(live* l, live_knob_id knob, int32_t delta);
 /* The place on K1's walk of cutoff c (0..LIVE_CUTOFF_MAX) on the chip's model: the last entry of
  * live_cutoff_steps at or below it (0 below the first). */
 uint32_t live_cutoff_place(const live* l, uint32_t c);
+/* The macro links' terms (live.reso_link, live.pwm_link; reversible: the parameters stay): the
+ * resonance written, the parameter plus reso_link x (32 - the place of the cutoff written on K1's
+ * walk) / 8, clamped to 0..15 (positive opens it as the cutoff closes; negative, the squelch, as
+ * it opens); and the PWM's depth, the parameter plus pwm_link x the width's distance from 2048
+ * / 8, clamped to 0..LIVE_PWM_DEPTH_MAX. They act wherever the cutoff or the width move (K1, K3,
+ * LAB, CC 74, the wheel, the filter LFO). */
+uint32_t live_resonance_effective(const live* l);
+uint32_t live_pwm_depth_effective(const live* l);
+/* RESO LINK's resonance written when the cutoff moved it: live_tick's, after the cutoff (the input
+ * path's K1 and CC 74 leave it to the tick, 10 ms at most), and LAB's after a turn of its own. */
+void live_links_update(live* l);
 /* What K3 turns now (a live_tone_kind): RATIO on a mono-sync preset, else PULSE while the waveform
  * has the pulse bit, else DECAY. */
 uint32_t live_tone(const live* l);
