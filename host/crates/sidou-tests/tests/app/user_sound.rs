@@ -564,7 +564,11 @@ fn a_1_0_file_reads_with_the_new_fields_at_their_defaults() {
     u.boot();
     assert_eq!(u.rig.live.sounds_valid, 1 | 1 << 15);
     assert_eq!(u.read(0), Some(("OLD A".to_owned(), s[0])));
-    assert_eq!(u.read(15), Some(("OLD LAST".to_owned(), s[1])), "the file's last slot");
+    assert_eq!(
+        u.read(15),
+        Some(("OLD LAST".to_owned(), s[1])),
+        "the file's last slot"
+    );
     let mut new = s[2];
     new[LAB_SOUND_FILTER_LFO as usize] = 9;
     new[LAB_SOUND_RESO_LINK as usize] = -3i8 as u8;

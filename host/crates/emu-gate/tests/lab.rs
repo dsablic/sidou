@@ -831,7 +831,10 @@ fn edit_held_and_a_key_peeks_at_a() {
         "no tap"
     );
     println!("the power above 2 kHz: B {heard_b:.4}, A peeked {heard_a:.4}");
-    assert!(heard_a > 4.0 * heard_b, "A is heard: {heard_a} against {heard_b}");
+    assert!(
+        heard_a > 4.0 * heard_b,
+        "A is heard: {heard_a} against {heard_b}"
+    );
 }
 
 /// EDIT tapped in LAB swaps the sound heard: a held note with the cutoff turned well down (B)

@@ -783,7 +783,10 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
     for (p, cc) in tail.into_iter().zip([44u8, 45, 46]) {
         assert_eq!(unsafe { midi_learn_cc_of(&*t.ml, p) }, cc);
     }
-    assert_eq!(unsafe { midi_learn_cc_of(&*t.ml, LIVE_PARAM_FILTER_LFO) }, 47);
+    assert_eq!(
+        unsafe { midi_learn_cc_of(&*t.ml, LIVE_PARAM_FILTER_LFO) },
+        47
+    );
     later.pop();
     assert_eq!(
         unsafe { settings_apply(&mut *t.set, later.as_ptr(), later.len() as u32) },

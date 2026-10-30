@@ -52,7 +52,11 @@ fn the_filter_lfo_sweeps_k1s_walk_each_way_at_the_pwm_rate() {
         assert_eq!(get(&rig, LIVE_PARAM_FILTER_LFO), 8);
         let cycle = swept(&mut rig, 16);
         let (lo, hi) = (*cycle.iter().min().unwrap(), *cycle.iter().max().unwrap());
-        assert_eq!((lo, hi), (t[22], t[38]), "8 detents each way, model {model}");
+        assert_eq!(
+            (lo, hi),
+            (t[22], t[38]),
+            "8 detents each way, model {model}"
+        );
         assert_eq!(cycle[3], t[38], "up first: the top a quarter cycle in");
         assert_eq!(cycle[11], t[22], "the bottom three quarters in");
         assert_eq!(cycle[15], t[30], "a whole cycle: back at the cutoff");
@@ -65,10 +69,14 @@ fn the_filter_lfo_sweeps_k1s_walk_each_way_at_the_pwm_rate() {
         let mut distinct = slow.clone();
         distinct.sort_unstable();
         distinct.dedup();
-        assert!(distinct.len() > 17, "{} values: more than the walk's 17", distinct.len());
+        assert!(
+            distinct.len() > 17,
+            "{} values: more than the walk's 17",
+            distinct.len()
+        );
         set(&mut rig, LIVE_PARAM_PWM_RATE, 125);
         rig.live.lfo_phase = 16384; // the cycle's start again
-        // the base moves under it: K1 a detent up, the sweep with it
+                                    // the base moves under it: K1 a detent up, the sweep with it
         rig.knob(LIVE_KNOB_CUTOFF, 1);
         let cycle = swept(&mut rig, 16);
         let (lo, hi) = (*cycle.iter().min().unwrap(), *cycle.iter().max().unwrap());
@@ -91,7 +99,10 @@ fn the_lfo_runs_for_the_filter_alone_and_holds_while_both_are_off() {
     set(&mut rig, LIVE_PARAM_PWM_RATE, 20);
     let phase = rig.live.lfo_phase;
     swept(&mut rig, 5);
-    assert_eq!(rig.live.lfo_phase, phase, "no PWM, no filter LFO: the phase holds");
+    assert_eq!(
+        rig.live.lfo_phase, phase,
+        "no PWM, no filter LFO: the phase holds"
+    );
     set(&mut rig, LIVE_PARAM_FILTER_LFO, 4);
     swept(&mut rig, 5);
     assert_ne!(rig.live.lfo_phase, phase, "the filter LFO alone moves it");
@@ -100,15 +111,25 @@ fn the_lfo_runs_for_the_filter_alone_and_holds_while_both_are_off() {
 #[test]
 fn the_filter_lfo_is_a_parameter_of_the_sound_with_a_cc() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    assert_eq!(unsafe { live_param_max(LIVE_PARAM_FILTER_LFO) }, LIVE_FILTER_LFO_MAX);
+    assert_eq!(
+        unsafe { live_param_max(LIVE_PARAM_FILTER_LFO) },
+        LIVE_FILTER_LFO_MAX
+    );
     set(&mut rig, LIVE_PARAM_FILTER_LFO, 99);
-    assert_eq!(get(&rig, LIVE_PARAM_FILTER_LFO), LIVE_FILTER_LFO_MAX, "clamped");
+    assert_eq!(
+        get(&rig, LIVE_PARAM_FILTER_LFO),
+        LIVE_FILTER_LFO_MAX,
+        "clamped"
+    );
     rig.cc(LIVE_CC_FILTER_LFO, 64);
     assert_eq!(get(&rig, LIVE_PARAM_FILTER_LFO), 16, "CC 31 over 0..32");
     let mut s = [0u8; LAB_SOUND_BYTES as usize];
     unsafe { live_sound_get(&*rig.live, s.as_mut_ptr()) };
     assert_eq!(s[LAB_SOUND_FILTER_LFO as usize], 16);
-    assert!(unsafe { live_preset_edited(&*rig.live) } != 0, "an edit of the sound");
+    assert!(
+        unsafe { live_preset_edited(&*rig.live) } != 0,
+        "an edit of the sound"
+    );
     rig.set_preset(1);
     assert_eq!(get(&rig, LIVE_PARAM_FILTER_LFO), 0, "a preset loads it off");
     let mut out = [0u16; LIVE_PARAM_COUNT as usize];
@@ -121,7 +142,10 @@ fn the_filter_lfo_is_a_parameter_of_the_sound_with_a_cc() {
 #[test]
 fn the_arp_rate_is_a_parameter_on_cc_28s_row() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    assert_eq!(unsafe { live_param_max(LIVE_PARAM_ARP_RATE) }, LIVE_ARP_RATES - 1);
+    assert_eq!(
+        unsafe { live_param_max(LIVE_PARAM_ARP_RATE) },
+        LIVE_ARP_RATES - 1
+    );
     assert_eq!(get(&rig, LIVE_PARAM_ARP_RATE), LIVE_ARP_RATE_DEFAULT);
     set(&mut rig, LIVE_PARAM_ARP_RATE, 7);
     assert_eq!(rig.live.arp_rate, 7);
@@ -138,7 +162,10 @@ fn the_arp_rate_is_a_parameter_on_cc_28s_row() {
     assert_eq!(get(&rig, LIVE_PARAM_ARP_RATE), LIVE_ARP_RATE_DEFAULT);
     let mut out = [0u16; LIVE_PARAM_COUNT as usize];
     unsafe { live_preset_params(1, out.as_mut_ptr()) };
-    assert_eq!(u32::from(out[LIVE_PARAM_ARP_RATE as usize]), LIVE_ARP_RATE_DEFAULT);
+    assert_eq!(
+        u32::from(out[LIVE_PARAM_ARP_RATE as usize]),
+        LIVE_ARP_RATE_DEFAULT
+    );
 }
 
 /// The resonance the chip has (register $d417's high nibble).
@@ -152,7 +179,11 @@ fn res_on_chip(rig: &Rig) -> u32 {
 #[test]
 fn reso_link_makes_the_resonance_follow_the_cutoff() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    assert_eq!(get(&rig, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX as u32, "8: no link");
+    assert_eq!(
+        get(&rig, LIVE_PARAM_RESO_LINK),
+        LIVE_LINK_MAX as u32,
+        "8: no link"
+    );
     set(&mut rig, LIVE_PARAM_RESONANCE, 6);
     for (link, pos, want) in [
         (8i32, 32, 6u32),
@@ -164,7 +195,11 @@ fn reso_link_makes_the_resonance_follow_the_cutoff() {
         (-8, 24, 0),
         (-2, 64, 14),
     ] {
-        set(&mut rig, LIVE_PARAM_RESO_LINK, (link + LIVE_LINK_MAX as i32) as u32);
+        set(
+            &mut rig,
+            LIVE_PARAM_RESO_LINK,
+            (link + LIVE_LINK_MAX as i32) as u32,
+        );
         cutoff_at(&mut rig, pos);
         rig.tick(); // the resonance follows at the tick
         assert_eq!(res_on_chip(&rig), want, "link {link} at {pos}");
@@ -186,7 +221,11 @@ fn reso_link_makes_the_resonance_follow_the_cutoff() {
     set(&mut rig, LIVE_PARAM_MOD_TARGET, LIVE_MOD_CUTOFF);
     rig.cc(1, 127);
     rig.tick();
-    assert!(res_on_chip(&rig) < 15, "the wheel opened it: {}", res_on_chip(&rig));
+    assert!(
+        res_on_chip(&rig) < 15,
+        "the wheel opened it: {}",
+        res_on_chip(&rig)
+    );
     // and the filter LFO's sweep
     rig.cc(1, 0);
     rig.tick();
@@ -215,7 +254,11 @@ fn pwm_link_makes_the_pwm_depth_follow_the_width() {
     set(&mut rig, LIVE_PARAM_PWM_LINK, (LIVE_LINK_MAX + 4) as u32);
     assert_eq!(eff(&rig), 100 + 4 * 1024 / 8);
     set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 3072);
-    assert_eq!(eff(&rig), 100 + 4 * 1024 / 8, "the other side, the same distance");
+    assert_eq!(
+        eff(&rig),
+        100 + 4 * 1024 / 8,
+        "the other side, the same distance"
+    );
     set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 2048);
     assert_eq!(eff(&rig), 100, "a square: the parameter");
     set(&mut rig, LIVE_PARAM_PWM_LINK, 0); // -8

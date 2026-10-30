@@ -1396,7 +1396,11 @@ fn arp_or_lfo_before_edit_mutate_and_undo_on_step() {
     assert_ne!(mutated, diced, "mutated");
     assert_eq!(m.soc.read8(gate), lanes, "ARP's gate left alone");
     lead(&mut m, PANEL_BTN_LFO as u8);
-    assert_ne!(song(&mut m, &fw).pattern(0).unwrap(), mutated, "an edit undone");
+    assert_ne!(
+        song(&mut m, &fw).pattern(0).unwrap(),
+        mutated,
+        "an edit undone"
+    );
 }
 
 /// NEW, STEP: a step with a note held and ALGORITHM turned back five detents: the popup says

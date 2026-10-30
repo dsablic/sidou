@@ -711,8 +711,8 @@ fn open_ctx(name: &str) -> Ctx {
                 "LAB FX",
                 "LAB MACRO",
             ]
-                .iter()
-                .position(|n| *n == name);
+            .iter()
+            .position(|n| *n == name);
             crate::lab_view::to_page(ui, page.unwrap_or(0) as u32);
             if page.is_none() {
                 ui.down(PANEL_BTN_EDIT); // EDIT + SAVE: the name page

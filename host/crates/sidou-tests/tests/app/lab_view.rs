@@ -206,10 +206,18 @@ fn filter_k4_is_the_filter_lfo_with_its_rate_on_the_name_line() {
     assert_eq!(param(&ui, LIVE_PARAM_PWM_RATE), 20, "1 Hz to start");
     settle(&mut ui);
     assert_eq!(ui.small(row, 22, 8), "LFO1.0HZ");
-    assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 22, 3, 1), "1", "the depth");
+    assert_eq!(
+        ui.big(LAB_VIEW_VALUE_ROW as usize, 22, 3, 1),
+        "1",
+        "the depth"
+    );
     set(&mut ui, LIVE_PARAM_PWM_RATE, 25);
     settle(&mut ui);
-    assert_eq!(ui.small(row, 22, 8), "LFO1.3HZ", "the shared rate, as PWM HZ says it");
+    assert_eq!(
+        ui.small(row, 22, 8),
+        "LFO1.3HZ",
+        "the shared rate, as PWM HZ says it"
+    );
     // turned back to off and up again, the rate the player set stays
     ui.turn(K1 + 3, -1);
     ui.turn(K1 + 3, 1);
@@ -229,9 +237,17 @@ fn mod_k4_is_the_arp_rate_dark_while_arp_is_off() {
     let (row, val) = (LAB_VIEW_LABEL_ROW as usize, LAB_VIEW_VALUE_ROW as usize + 1);
     assert_eq!(ui.small(row, 22, 4), "RATE");
     assert_eq!(ui.big(val, 22, 2, 3), "3FR", "SAW LEAD's default rate");
-    assert_eq!(ui.g.attr[row * GRID_COLS as usize + 22] & 15, th.dim, "ARP off: dark");
+    assert_eq!(
+        ui.g.attr[row * GRID_COLS as usize + 22] & 15,
+        th.dim,
+        "ARP off: dark"
+    );
     ui.turn(K1 + 3, 4);
-    assert_eq!(u32::from(ui.live().arp_rate), LIVE_ARP_RATE_CLOCK, "settable while off");
+    assert_eq!(
+        u32::from(ui.live().arp_rate),
+        LIVE_ARP_RATE_CLOCK,
+        "settable while off"
+    );
     settle(&mut ui);
     assert_eq!(ui.big(val, 22, 2, 4), "1/32");
     ui.turn(K1 + 3, 2);
@@ -239,7 +255,11 @@ fn mod_k4_is_the_arp_rate_dark_while_arp_is_off() {
     assert_eq!(ui.big(val, 22, 2, 3), "1/8");
     ui.turn(PANEL_ENC_ALGORITHM, 1); // ARP UP
     settle(&mut ui);
-    assert_ne!(ui.g.attr[row * GRID_COLS as usize + 22] & 15, th.dim, "ARP on: lit");
+    assert_ne!(
+        ui.g.attr[row * GRID_COLS as usize + 22] & 15,
+        th.dim,
+        "ARP on: lit"
+    );
     ui.turn(K1 + 3, -7);
     assert_eq!(ui.live().arp_rate, 1);
     settle(&mut ui);
@@ -266,19 +286,27 @@ fn macro_turns_the_links_and_k3_k4_are_dark() {
     assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 0, 3, 2), "+3");
     assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2), "-8");
     assert_eq!(choice(&ui), "LINKED");
-    let snapshot = (0..LIVE_PARAM_COUNT).map(|p| param(&ui, p)).collect::<Vec<_>>();
+    let snapshot = (0..LIVE_PARAM_COUNT)
+        .map(|p| param(&ui, p))
+        .collect::<Vec<_>>();
     ui.turn(K1 + 2, 3);
     ui.turn(K1 + 3, 3);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(
-        (0..LIVE_PARAM_COUNT).map(|p| param(&ui, p)).collect::<Vec<_>>(),
+        (0..LIVE_PARAM_COUNT)
+            .map(|p| param(&ui, p))
+            .collect::<Vec<_>>(),
         snapshot,
         "K3, K4 and ALGORITHM turn nothing"
     );
     settle(&mut ui);
     let value = LAB_VIEW_VALUE_ROW as usize;
     for col in [15usize, 22] {
-        assert_eq!(ui.g.attr[value * GRID_COLS as usize + col] & 15, th.dim, "col {col} dark");
+        assert_eq!(
+            ui.g.attr[value * GRID_COLS as usize + col] & 15,
+            th.dim,
+            "col {col} dark"
+        );
     }
     ui.turn(K1 + 1, 12); // PWM LNK +4
     settle_hint(&mut ui);
@@ -306,9 +334,21 @@ fn a_link_lights_the_card_it_moves() {
     }
     let row = LAB_VIEW_LABEL_ROW as usize;
     let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
-    assert_eq!(ui.g.attr[row * GRID_COLS as usize + 8] >> 4, th.knob_text[1], "reversed");
-    let shown: u32 = ui.big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2).trim().parse().unwrap();
-    assert_eq!(shown, u32::from(ui.live().res_out), "the resonance the chip has");
+    assert_eq!(
+        ui.g.attr[row * GRID_COLS as usize + 8] >> 4,
+        th.knob_text[1],
+        "reversed"
+    );
+    let shown: u32 = ui
+        .big(LAB_VIEW_VALUE_ROW as usize, 8, 3, 2)
+        .trim()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        shown,
+        u32::from(ui.live().res_out),
+        "the resonance the chip has"
+    );
     settle(&mut ui);
     assert_eq!(ui.v.lab.hl_link, 0, "and goes out with it");
     // K2 with no link moving anything lights itself alone
@@ -2242,7 +2282,10 @@ fn a_note_while_edit_is_down_peeks_at_a() {
     assert_eq!(attack(&ui), a);
     ui.note_keys(0, 0);
     ui.up(EDIT);
-    assert_eq!((u32::from(ui.v.lab.ab), attack(&ui)), (LAB_VIEW_AB_B, a + 3));
+    assert_eq!(
+        (u32::from(ui.v.lab.ab), attack(&ui)),
+        (LAB_VIEW_AB_B, a + 3)
+    );
     // on an unedited sound a peek plays the sound as it is, and says nothing
     let mut ui = lab_ui();
     ui.down(EDIT);

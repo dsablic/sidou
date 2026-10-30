@@ -553,7 +553,11 @@ fn lfo_landing_before_edit_is_the_same_undo() {
     ui.turn(PANEL_ENC_K1 + 1, 3);
     assert_ne!(sound(&ui), before);
     ui.down(PANEL_BTN_LFO);
-    assert_eq!(u32::from(ui.v.lab.page), LAB_PAGE_MOD, "LFO's page, at once");
+    assert_eq!(
+        u32::from(ui.v.lab.page),
+        LAB_PAGE_MOD,
+        "LFO's page, at once"
+    );
     ui.down(EDIT);
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("UNDO (0)"));
