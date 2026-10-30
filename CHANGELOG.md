@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-30
+
 ### Changed
 - **An upload waits for quiet while a song plays.** A SysEx upload (the Songs page, a `.sid`, a
   `.syx`) used to mute the music for each packet's flash writes, about ten dips a second. Now,
@@ -41,18 +43,6 @@ All notable changes are documented here. The format follows
 - A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
   unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
   schema 9: it keeps the learned CCs of 1.1's parameters.
-- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
-  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
-  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
-  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
-  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
-  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
-- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
-  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
-  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
-  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
-  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
-  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 - **Knob curves for every parameter whose ear is a ratio.** LAB's PWM HZ walks 32 detents from
   0.05 to 12.75 Hz even in pitch (shown in hundredths below 1 Hz), PWM's depth 32 on a square law,
   VIB HZ 24 from 0.5 to 12.7 Hz, VIB DEPTH 0 and 31 geometric to +-99 cents, VIB DELAY 0 and 23
@@ -135,6 +125,9 @@ All notable changes are documented here. The format follows
   is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Fixed
+- **The settings were sometimes not saved after two failed writes in a row.** A flash program
+  error while saving the unsaved LAB edit, twice in a row, left the settings record marked as
+  saved though it was not on flash; it is now written again at the next debounce.
 - TRACKER: EDIT + LFO (undo) works whichever finger lands first, as EDIT + ARP does. With REC on and
   the song stopped, LFO alone now writes its rest when it is let go (or as soon as another control
   is used; at once while REC records), so LFO a few milliseconds before EDIT no longer loses the undo.

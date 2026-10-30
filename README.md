@@ -22,7 +22,25 @@ screenshots the tests check.*
 
 **Watch:** [SIDOU in 79 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 1.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html) · [the cheat sheet](https://dsablic.github.io/sidou/cheatsheet.html)
 
-## What's new in 1.0.0
+## What's new in 1.1.0
+
+- **LAB grows:** a filter LFO on FILTER's K4, the arpeggio's rate on MOD's K4, a sixth page,
+  MACRO, whose links make the resonance follow the cutoff and the PWM depth follow the pulse
+  width, and EDIT held while you play to hear the sound as kept (A).
+- **Hear before you write:** TABLE's ARP helper plays its draft on the keys, and a held STEP
+  step sounds with its locks.
+- **Generative TRACKER and more DICE:** MUTATE and DICE in TRACKER, DICE's range and rhythm, a
+  root and a scale per lane, and a filter sweep on EDIT + ENV, all as plain GoatTracker data.
+- **Knob curves** for the PWM, the vibrato and every effect slot's knobs, even to the ear.
+- **REC lands where you played,** an upload waits for quiet while a song plays, CLOCK OUT sends
+  a start after a stop, and the site's Songs to MIDI reads songs straight from the FM-1.
+
+The vibrato's and the effect slots' CCs now land on the curves' positions (their NRPNs still set
+exact values). All of it is in the
+[release notes](https://github.com/dsablic/sidou/releases/tag/v1.1.0) and the
+[CHANGELOG](CHANGELOG.md).
+
+## What was new in 1.0.0
 
 - **LAB: shape one sound and keep it.** Five pages (OSC, ENVELOPE, FILTER, MOD, FX), each
   drawing what its four knobs do. ENV, LFO and FX on LIVE open it. SAVE keeps the sound as one
@@ -114,8 +132,8 @@ flash.
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
 
-1. Download the `.fwsc` file (for example `sidou-1.0.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou-1.0.0.fwsc`). The unit then shows
+1. Download the `.fwsc` file (for example `sidou-1.1.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-1.1.0.fwsc`). The unit then shows
    up on USB as "SIDOU FM-1", and later versions install over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
 4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
@@ -213,8 +231,11 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 
 ## Status and roadmap
 
-- **v1.0.0** is released (2026-10-29, [release notes](https://github.com/dsablic/sidou/releases/tag/v1.0.0),
-  [CHANGELOG.md](CHANGELOG.md)): LAB, a view for shaping one sound and keeping it as one of
+- **v1.1.0** is released (2026-10-30, [release notes](https://github.com/dsablic/sidou/releases/tag/v1.1.0),
+  [CHANGELOG.md](CHANGELOG.md)): LAB's filter LFO, ARP RATE, MACRO links and peek; the ARP
+  helper's and a held step's auditions; generative TRACKER, DICE's range, rhythm and a root and
+  scale per lane; knob curves; REC timing; uploads that wait for quiet; CLOCK OUT's start fix.
+- **v1.0.0** (2026-10-29): LAB, a view for shaping one sound and keeping it as one of
   sixteen USER sounds, DICE's density and scale, dense `.sid` players on time, the ARP helper's
   waveform, 2× text on TABLE and STEP, and the store's health on STATUS.
 - **v0.5.0** (2026-10-25): `.sid` playback. SIDOU's own 6502 plays PSID tunes on the chips,
@@ -227,8 +248,7 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.1** (2026-10-23): an install over Felucca boots straight into SIDOU. **v0.3.0**
   (2026-10-23, [release notes](docs/release-notes/v0.3.0.md)) was the first wider public
   release; v0.2.0 (2026-10-22) the first to run on a real FM-1.
-- **Next: 1.1** (in progress, [CHANGELOG.md](CHANGELOG.md)): DICE's range and rhythm, a root and
-  a scale per lane, MUTATE, DICE and a filter sweep in TRACKER. **1.x**
+- **Next: 1.1.x**, SIDOU's own USB ID once pid.codes assigns it; then **1.x**
   ([docs/ROADMAP.md](docs/ROADMAP.md)): LAB's song bridge, the move to felucca-bsp.
 
 Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit; the first-run tour is still to be checked there. See the
