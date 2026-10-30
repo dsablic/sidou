@@ -1356,3 +1356,100 @@ fn a_pitch_the_player_does_not_play_is_reported() {
     o.clock_hz = 1_000_000;
     assert_eq!(Player::new(&song, 0, &o).unwrap().shape().warnings, 0);
 }
+
+/// 1.5's song bridge: LAB sounds sent to a song (`app/lab_song.h`) as instruments, each
+/// program after the last as the send places them, played by GoatTracker's packed player call
+/// for call as by SIDOU's: a plain pulse, ring and sync, the PWM's loop, the filter with its LFO
+/// loop on each voice, the vibrato's calculated speed, the arpeggio's chord, an attack of 0.
+fn lab_sounds_song() -> Vec<u8> {
+    let mut sounds: Vec<[u8; LAB_SOUND_BYTES as usize]> = Vec::new();
+    let base = {
+        let mut s = [0u8; LAB_SOUND_BYTES as usize];
+        s[LAB_SOUND_CONTROL as usize] = 0x40;
+        s[LAB_SOUND_AD as usize] = 0x29;
+        s[LAB_SOUND_SR as usize] = 0xa9;
+        s[LAB_SOUND_PULSE as usize..][..2].copy_from_slice(&0x812u16.to_le_bytes());
+        s[LAB_SOUND_CUTOFF as usize..][..2].copy_from_slice(&1200u16.to_le_bytes());
+        s[LAB_SOUND_FILTER_MODE as usize] = 0x10;
+        s[(LAB_SOUND_ARP + LIVE_ARP_SPAN) as usize] = 1;
+        s[(LAB_SOUND_ARP + LIVE_ARP_RATE) as usize] = 1;
+        s
+    };
+    let with = |f: &dyn Fn(&mut [u8; LAB_SOUND_BYTES as usize])| {
+        let mut s = base;
+        f(&mut s);
+        s
+    };
+    sounds.push(base);
+    sounds.push(with(&|s| s[LAB_SOUND_CONTROL as usize] = 0x14));
+    sounds.push(with(&|s| {
+        s[LAB_SOUND_CONTROL as usize] = 0x42;
+        s[LAB_SOUND_PWM_DEPTH as usize..][..2].copy_from_slice(&700u16.to_le_bytes());
+        s[LAB_SOUND_PWM_RATE as usize..][..2].copy_from_slice(&900u16.to_le_bytes());
+    }));
+    sounds.push(with(&|s| {
+        s[LAB_SOUND_CONTROL as usize] = 0x20;
+        s[LAB_SOUND_FILTER_VOICES as usize] = 7;
+        s[LAB_SOUND_RESONANCE as usize] = 12;
+        s[LAB_SOUND_FILTER_LFO as usize] = 12;
+        s[LAB_SOUND_PWM_RATE as usize..][..2].copy_from_slice(&300u16.to_le_bytes());
+    }));
+    sounds.push(with(&|s| {
+        s[LAB_SOUND_VIBRATO_RATE as usize] = 55;
+        s[LAB_SOUND_VIBRATO_DEPTH as usize] = 90;
+        s[LAB_SOUND_VIBRATO_DELAY as usize] = 30;
+        s[LAB_SOUND_AD as usize] = 0x0a;
+    }));
+    sounds.push(with(&|s| {
+        s[LAB_SOUND_CONTROL as usize] = 0x10;
+        s[(LAB_SOUND_ARP + LIVE_ARP_ON) as usize] = 1;
+        s[(LAB_SOUND_ARP + LIVE_ARP_ORDER) as usize] = LIVE_ARP_UP_DOWN as u8;
+    }));
+    let mut tables: [Vec<(u8, u8)>; 4] = Default::default();
+    let mut instr = Vec::new();
+    for (k, s) in sounds.iter().enumerate() {
+        let first: [u8; 4] = std::array::from_fn(|t| tables[t].len() as u8 + 1);
+        let mut o = lab_song_instr::default();
+        // the filter on each voice in turn
+        unsafe {
+            lab_song_encode(
+                s.as_ptr(),
+                c"LAB".as_ptr(),
+                k as u32 % 3,
+                0,
+                first.as_ptr(),
+                &mut o,
+            )
+        };
+        for (t, table) in tables.iter_mut().enumerate() {
+            table.extend((0..o.rows[t] as usize).map(|i| (o.left[t][i], o.right[t][i])));
+        }
+        instr.push(o.instr);
+    }
+    let voice = |a: u8, b: u8| {
+        let mut p = Vec::new();
+        for k in 0..16u8 {
+            p.push(row(n(3, k % 7), if k % 4 < 2 { a } else { b }));
+            p.extend(rests(3));
+            if k % 5 == 4 {
+                p.push(row(OFF, 0));
+            }
+        }
+        p
+    };
+    song(
+        [(vec![0], 0), (vec![1], 0), (vec![2], 0)],
+        instr,
+        tables,
+        vec![voice(1, 4), voice(2, 5), voice(3, 6)],
+    )
+}
+
+#[test]
+fn lab_sounds_sent_to_the_song_match() {
+    check("lab sounds", &lab_sounds_song(), &default_options());
+    let mut o = default_options();
+    o.optimize_pulse = 0;
+    o.optimize_realtime = 0;
+    check("lab sounds, no optimisations", &lab_sounds_song(), &o);
+}

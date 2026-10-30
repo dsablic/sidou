@@ -1174,3 +1174,80 @@ fn midi_learn_on_a_lab_card_over_trs() {
     m.run_ms(60);
     assert_eq!(depth_of(&mut m), from_cc(0));
 }
+
+// ---- 1.5: the song bridge on the image ----
+
+/// The song as the device holds it (platform/fm1/audio.c's region).
+fn device_song(m: &mut Machine, fw: &Firmware) -> sidou_tests::song::Song {
+    let mut song = sidou_tests::song::Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(song.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    song
+}
+
+fn attack_decay(m: &mut Machine, fw: &Firmware) -> u8 {
+    m.soc
+        .read8(fw.symbol("instrument") + ilp32::live::attack_decay as u32)
+}
+
+/// REC in LAB sends the sound to the song while it plays, through the audio interrupt's edit
+/// queue, into the lowest free instrument with its chunk; ENV on INSTR (SEQ to it, PRESETS to the
+/// instrument) brings the sound back after a card turned it, and LAB opens at ENVELOPE.
+#[test]
+fn rec_in_lab_sends_to_the_playing_song_and_env_on_instr_pulls_it_back() {
+    let Some(fw) = fixture() else { return };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    open_lab(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_PLAY as u8);
+    m.run_ms(300);
+    let playing = |m: &mut Machine| {
+        m.soc
+            .read8(fw.symbol("song_transport") + ilp32::song_ctl::isr_playing as u32)
+            != 0
+    };
+    assert!(playing(&mut m));
+    let free = unsafe { lab_song_free(device_song(&mut m, &fw).ptr()) };
+    assert!(free != 0, "the built-in song has a free instrument");
+    let ad = attack_decay(&mut m, &fw);
+    tap(&mut m, PANEL_BTN_REC as u8);
+    m.run_ms(1500);
+    assert!(playing(&mut m), "the song played on");
+    let song = device_song(&mut m, &fw);
+    let ins = song.raw().instr[free as usize - 1];
+    let want_ad = if ad & 0xf0 == 0 { ad | 0x10 } else { ad };
+    assert_eq!(ins[GT2_INS_AD as usize], want_ad);
+    assert_eq!(ins[GT2_INS_GATETIMER as usize], 2);
+    assert_ne!(ins[GT2_INS_WAVE as usize], 0);
+    let tag = unsafe { lab_song_tag(free) };
+    assert!(song.ext_find(tag).is_some(), "the sound kept with it");
+    // turn the attack, then pull it back from INSTR
+    m.turn(SELECT, 1); // ENVELOPE
+    m.run_ms(100);
+    m.turn(K1, 3);
+    m.run_ms(200);
+    assert_ne!(attack_decay(&mut m, &fw), ad);
+    for _ in 0..4 {
+        tap(&mut m, PANEL_BTN_SEQ as u8); // STEP, TRACKER, ORDER, INSTR
+        m.run_ms(400);
+    }
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("song_pages_instr_view")
+    );
+    // STEP, on the way, set the cursor to its lane's instrument: PRESETS to the one sent
+    let presets = SONG_PAGES_ENC_PRESETS as u8;
+    m.turn(presets, -(GT2_MAX_INSTR as i32));
+    m.run_ms(10 * u64::from(GT2_MAX_INSTR) + 40); // a click each 10 ms
+    m.turn(presets, free as i32 - 1);
+    m.run_ms(10 * u64::from(free) + 40);
+    tap(&mut m, PANEL_BTN_ENV as u8);
+    m.run_ms(400);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("lab_view_view"));
+    assert_eq!(attack_decay(&mut m, &fw), ad, "the sound sent, exactly");
+}

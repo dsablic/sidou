@@ -45,6 +45,7 @@
 #include "keys_route.h"
 #include "lab_draw.h"
 #include "lab_edit.h"
+#include "lab_song.h"
 #include "lab_sound.h"
 #include "live.h"
 #include "live_dice.h"

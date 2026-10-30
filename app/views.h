@@ -253,6 +253,8 @@ typedef struct {
     song_pages pages;
     /* When GLO was last pressed, plus 1 (0: never), for the double tap that latches its layer. */
     uint32_t glo_tap_ms;
+    uint32_t send_ask_at; /* EDIT + REC in LAB asked to replace send_ask (INSTR's), then */
+    uint8_t send_ask;
     step_view step;
     uint8_t cards_seen; /* ONCE: bit id, the card id has played since power-on */
     /* HOME acts on its release (views_flow): 0 up, 1 pressed (it goes home when let go, or opens

@@ -8,7 +8,27 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **LAB's song bridge: send a sound to the song, pull one back.** **REC** in LAB writes the sound
+  into the song's lowest free instrument as a plain GoatTracker 2 instrument, a byte at a time
+  through the edit queue, so the song plays on (`SENT AS I06 SAW LEAD`); **EDIT + REC** writes it
+  over INSTR's instrument (`REPLACE I05? EDIT+REC` first). The waveform, ring, sync, AD, SR and
+  pulse width are exact (GoatTracker's hard restart, gate timer 2; an attack of 0 becomes 1); the
+  PWM and the filter LFO become loops, the vibrato a calculated speed, the cutoff 8 bits on the
+  voice TRACKER shows; ARP opens TABLE's ARP helper on a default chord; one-voice sync, the fine
+  tune, the targets and the effect slots stay behind. LAB's hint line says what was approximated
+  or left out. On **INSTR**, **ENV**, **LFO** or **FX** pull the instrument into LAB at that page,
+  one undo step: a sent, unedited one exactly, kept in a new trailer chunk per instrument
+  (`LB01`..`LB3F`, [song-format.md](docs/reference/song-format.md)), any other decoded, the toast
+  naming what was approximated (`I01 ~DRUM`). The ARP helper's SAVE now writes through the same
+  batch writer. ([controls](docs/reference/controls.md#send-a-lab-sound-to-the-song),
+  [LAB](docs/manual/lab.md#send-it-to-the-song-and-pull-one-back))
+
 ### Changed
+- **The LAB help cards** list REC (to the song) and EDIT + REC (replace) in place of SAVE + K
+  (MIDI learn, the same everywhere: MACRO's card keeps it); ENV, LFO and FX share a line (`ENV LFO
+  FX LAB`, as LIVE's). INSTR's card has `ENV LFO FX LAB`. LAB's hint line's last phrase ends
+  `REC SEND`.
 - **An upload waits for quiet while a song plays.** A SysEx upload (the Songs page, a `.sid`, a
   `.syx`) used to mute the music for each packet's flash writes, about ten dips a second. Now,
   while a song or a tune plays or a computer records the FM-1's USB audio, the FM-1 writes

@@ -24,6 +24,7 @@ add_library(sidou_live STATIC
     keys_route.c
     lab_draw.c
     lab_edit.c
+    lab_song.c
     lab_sound.c
     lab_view.c
     live.c
@@ -86,8 +87,8 @@ target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # keeps them small in flash (M2f's code budget, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2f-scene.md).
 set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS "-Os")
 # LAB's sound and its undo (docs/plans/2026-10-25-lab-plan.md): checked, compared and recorded once
-# a turn or a load.
-set_source_files_properties(lab_sound.c lab_edit.c user_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
+# a turn or a load; the song bridge's send and pull, once a press.
+set_source_files_properties(lab_sound.c lab_song.c lab_edit.c user_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)
@@ -128,4 +129,18 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(live_setup.c live_walk.c PROPERTIES COMPILE_OPTIONS -Oz)
     # SCENE's pieces run once a frame, inside the scene budgets (emu-gate scene_budget.rs, screen.rs).
     set_source_files_properties(scene.c PROPERTIES COMPILE_OPTIONS -Os)
+    # 1.5's win-back (docs/plans/2026-10-30-1.5-design.md "Flash"): files built for size one by one,
+    # each kept only while its budget gate holds with room. Left out on purpose, each measured:
+    # views.c (-Oz saves 880 bytes but K1's popup input reaches 250 of POPUP_INPUT 250), chip_view.c
+    # (240 bytes; CHIP K1 on DIST reaches 245 of CHIP_INPUT 245), grid.c (3,360 bytes, but the tile
+    # renderer's frame grows 15 %: THE CHIP's ui_poll 79,774 over 79,000), live_view.c and live.c
+    # (the instrument's frame and input), reg_ring.c (the audio interrupt's pops).
+    set_source_files_properties(scene_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(scene_px.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(widget.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(midi_out.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(song_gen.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
+    set_source_files_properties(step_view.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
+    set_source_files_properties(sid_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(tracker_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
 endif()

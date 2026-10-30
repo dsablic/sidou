@@ -1100,6 +1100,19 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
             need.insert((Ctl::Button(PANEL_BTN_SEQ), true));
         }
     }
+    // 1.5's song bridge, outside the views' input: REC in LAB sends (EDIT + REC replaces), and
+    // ENV, LFO and FX on INSTR pull its instrument into LAB
+    if name.starts_with("LAB ") && name != "LAB NAME" {
+        need.insert((Ctl::Button(PANEL_BTN_REC), false));
+        if name != "LAB FX" {
+            need.insert((Ctl::Button(PANEL_BTN_REC), true));
+        }
+    }
+    if name == "INSTR" {
+        for b in [PANEL_BTN_ENV, PANEL_BTN_LFO, PANEL_BTN_FX] {
+            need.insert((Ctl::Button(b), false));
+        }
+    }
     if ui.top() == "CHIP" && unsafe { chip_view_page(&ui.v.chip) } != PANEL_PAGE_LIVE {
         for k in PANEL_ENC_K1..=PANEL_ENC_K4 {
             need.insert((Ctl::Encoder(k), false));
