@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.0.0 release](https://github.com/dsablic/sidou/releases/tag/v1.0.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.1.0 release](https://github.com/dsablic/sidou/releases/tag/v1.1.0).
 
 - [SIDOU in 79 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.0](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 1.1](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -47,7 +47,7 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.6 s, 7.9 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.0 highlights: LAB (ENV opens it, drawn pages, EDIT A/B and vary, SAVE keeps, found on PRESETS), SIDS playing .sid tunes, a card for fewer late writes in dense players, DICE's density and scale, the ARP helper's waveform | 66.5 s, 5.3 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.1 highlights: LAB's filter LFO and the MACRO page's RESO link, hold EDIT and play to peek at A, DICE's range and rhythm on STEP, a held step sounding its locks, generative TRACKER (MUTATE, DICE, the filter sweep), the ARP helper heard before SAVE | 60.3 s, 5.7 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.2 s, 4.5 MB |
@@ -98,7 +98,7 @@ tools/make-videos                       # every video's recipe, all three cuts, 
 tools/make-videos --recipe step-a-beat  # one (repeatable)
 tools/make-videos --fast                # half resolution, fast x264: a quick look
 tools/make-videos --formats wide        # only some cuts
-SIDOU_VIDEOS_VERSION=1.0.0 tools/make-videos   # the corner's version, before CMakeLists.txt has it
+SIDOU_VIDEOS_VERSION=1.1.0 tools/make-videos   # the corner's version, before CMakeLists.txt has it
 ```
 
 It needs the fm1 build (`build/fm1`, or `SIDOU_FM1_BUILD`), Rust, `uv` (Python with Pillow
