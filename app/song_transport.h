@@ -150,6 +150,14 @@ typedef struct {
                            uint32_t nlocks, uint32_t* ticket);
     /* Optional selected-subtune PLAY. The original play remains MIDI's subtune-zero start. */
     int (*play_from)(void* ctx, uint32_t subtune, uint32_t order_pos);
+    /* Optional auditions of what is not written yet (1, or 0: not now, ask again). TABLE's ARP
+     * helper's draft: on voice, the wavetable's rows from first (1 based) read as left[0..n) and
+     * right[0..n), and a jam there plays them (song_ctl_draft); n 0: none. STEP's held step: its
+     * filter and pulse locks (param, value low, high; n at most 5) over the voice's sound until
+     * n 0 (song_ctl_held). */
+    int (*draft)(void* ctx, uint32_t voice, uint32_t first, uint32_t n, const uint8_t* left,
+                 const uint8_t* right);
+    int (*held)(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n);
 } song_transport;
 
 #ifdef __cplusplus

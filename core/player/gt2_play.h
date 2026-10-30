@@ -200,6 +200,16 @@ typedef struct {
 } gt2_shape;
 #define GT2_ORD_RAW 0xfeu
 
+/* A wavetable draft heard before it is written (1.1, TABLE's ARP helper): on one channel the
+ * wavetable's rows [first, first + len) read as these (left bytes, then right bytes), and a
+ * jammed note there starts its wave program at first. channel GT2_DRAFT_OFF: none. */
+#define GT2_DRAFT_ROWS 10u
+#define GT2_DRAFT_OFF 0xffu
+typedef struct {
+    uint8_t channel, first, len, pad;
+    uint8_t rows[2u * GT2_DRAFT_ROWS];
+} gt2_draft;
+
 typedef struct {
     const gt2_song* song;
     const gt2_shape* shape;
@@ -217,14 +227,18 @@ typedef struct {
      * every row were empty; unrequested channels hold their state. 0 for every song played. */
     uint8_t frozen;
     uint8_t jam_voices; /* explicitly jammed voices; unpacked ones are never sequenced */
+    uint8_t draft_jam;  /* a jam on the draft's channel: its note starts the draft */
     uint8_t start[GT2_PLAY_CHANNELS]; /* the packed orderlist byte the song starts each
                                        * channel from (0: its start) */
     uint8_t regs[GT2_SID_REGS]; /* the SID's registers as written (the ghost registers) */
     gt2_channel chn[GT2_PLAY_CHANNELS];
     gt2_event ev[GT2_PLAY_CHANNELS]; /* the last call's events */
+    /* NULL or a draft (song_ctl's), read by the wavetable's reads; last: gt2_play_start and
+     * song_ctl's hand-over leave it as it is */
+    const gt2_draft* draft;
 } gt2_player;
 
-/* The player as the packed player is after `JSR init`: the next call initialises the song,
+/* The player as the packed player is after `JSR init` (its draft kept: gt2_player.draft): the next call initialises the song,
  * whose channels start at start[] (packed orderlist bytes, gt2_shape_order_byte; NULL:
  * their starts). O(1): the audio interrupt's. The shape must stay as it is until another
  * replaces it (gt2_play_set_shape) or the player is started again. */
@@ -251,6 +265,11 @@ void gt2_play_frame(gt2_player* p, gt2_sid_fn sink, void* ctx);
  * to sink as the row's would. Between calls (M2c Task 6's jam command). */
 void gt2_play_jam(gt2_player* p, uint32_t ch, uint8_t note, uint8_t instr, gt2_sid_fn sink,
                   void* ctx);
+
+/* A new or changed draft on its channel (between calls): a wave pointer left inside the draft's
+ * rows past its end, or on its jump, goes back to first (the shape reads delays while a draft is
+ * on: song_ctl_draft, gt2_analysis.xwave). */
+void gt2_play_draft(gt2_player* p, const gt2_draft* d);
 
 #ifdef __cplusplus
 }

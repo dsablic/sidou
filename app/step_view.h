@@ -93,6 +93,8 @@ typedef struct {
     song_view* sv;
     uint8_t page;      /* the page ALGORITHM chose (the song plays: the playing step's) */
     uint8_t held;      /* the held step, STEP_VIEW_NONE: none */
+    uint8_t heard;     /* 1 + the voice that plays a held step's locks (song_transport.held), 0 */
+    uint8_t heard_off; /* their end waits to be taken */
     uint8_t gate;      /* bit v: voice v's lane is legato */
     uint8_t rev;       /* locks written: the view draws again */
     uint8_t zones;     /* the zones built into the canvas (step_view.c) */

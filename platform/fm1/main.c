@@ -1124,6 +1124,15 @@ static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
     return 1;
 }
 
+static int st_draft(void* ctx, uint32_t voice, uint32_t first, uint32_t n, const uint8_t* left,
+                    const uint8_t* right) {
+    return song_away ? 0 : song_ctl_draft(ctx, voice, first, n, left, right);
+}
+
+static int st_held(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n) {
+    return song_away ? 0 : song_ctl_held(ctx, voice, locks, n);
+}
+
 /* The song views' listener of the event ring (song_events below): each voice's place. */
 static void song_seen_rows(const song_event* ev, uint32_t n) {
     for (uint32_t i = 0; i < n; i++) {
@@ -1361,6 +1370,8 @@ static const song_transport song_binding = {
     .edit_done = st_edit_done,
     .edit_guard = st_song_edit_saving_and_size_guard,
     .edit_with_locks = st_edit_with_locks,
+    .draft = st_draft,
+    .held = st_held,
 };
 static song_transport song_bound;
 

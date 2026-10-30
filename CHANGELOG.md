@@ -23,6 +23,16 @@ All notable changes are documented here. The format follows
   instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Added
+- **TABLE's ARP helper is heard before SAVE.** While the helper is open the keys play the draft
+  (`HEARING DRAFT` under its name): the current instrument on the cursor's voice from the helper's
+  first row, and every turn of an offset, the speed, the loop or the steps is heard at once on a
+  held note. HOME closes it with nothing written; SAVE writes the rows as before. The draft is the
+  player's (a song_ctl command at a block's start), on that voice only: a playing song keeps its
+  own rows on the others.
+- **A held STEP step plays its locks.** Holding a step key sounds its note with the step's cutoff,
+  resonance, filter mode, route and pulse LOCKs, and a K1-K3 turn on it is heard at once; the locks
+  go when the key is let go, and the song's next rows play their own. Chance does not apply to an
+  audition; the character LOCKs stay the row's.
 - **DICE's range and rhythm on STEP.** With EDIT + SCL held, K2 sets the range (1 OCT, 2 OCT,
   3 OCT, BASS: the lane's octave and the one below) and K4 the rhythm (STRAIGHT, OFFBEAT, 3-3-2,
   FOUR, BROKEN; a drum lane takes the rhythm and ignores the range). The frame now shows all four

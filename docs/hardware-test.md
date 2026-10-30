@@ -2413,6 +2413,45 @@ the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold
 
 Notes:
 
+## 23. Auditions before writing (1.1)
+
+What it decides: whether the ARP helper's draft and a held step's locks sound right through the
+unit's output, and whether the audio interrupt keeps its time while they play over a song. What
+fm1-emu proves (the registers each audition writes, RAMTEXT, the player's worst block) is named
+under each item. Set up: the build on the unit, a song with a lead on V1 (SIDOU LOOP will do).
+
+- [ ] **The ARP helper's draft on the keys.** TABLE, the WAVE table, a blank row (or the
+  instrument's own, from INSTR's EDIT + SEQ on WAVE PTR), ARP: `HEARING DRAFT` under the name.
+  Hold a note key: the arpeggio plays. Turn K1/K2 on a step, K3 (speed), K4 (loop) and ALGORITHM
+  (steps) with the key still held: each turn is heard at once, with no click or stuck note. HOME:
+  the key plays the song's rows again and the table is unchanged. ARP again, SAVE: the same
+  arpeggio as before SAVE.
+  *Emulator:* `emu-gate/tests/song.rs::the_arp_helpers_draft_plays_on_chip_a_before_save` (two
+  steps an octave apart on chip A, a K2 turn heard on the held note, HOME writes nothing),
+  `sidou-tests/tests/song_ctl.rs::a_drafts_jam_sounds_as_the_saved_rows_do` (the draft's render
+  equals the saved rows' call for call), `a_drafts_change_is_heard_on_the_held_note`,
+  `sidou-tests/tests/app/song_pages.rs::the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written`.
+  *Device-only:* listening (the arpeggio clean on the held note through every turn).
+- [ ] **A held step plays its locks.** STEP, V1: hold a step and turn K1 well down, K2 up, K3:
+  each turn is heard on the held note at once; let go and hold it again: the same darker, resonant
+  sound; let go: the song's own sound on the next notes. EDIT + K1 (a character lock) on the step
+  is not heard in the audition, only when the song plays the row.
+  *Emulator:* `emu-gate/tests/song.rs::a_held_step_sounds_its_cutoff_lock_on_chip_a`,
+  `sidou-tests/tests/song_locks.rs::a_held_steps_audition_plays_its_row_as_the_sequencer_does`,
+  `a_held_steps_locks_go_at_its_release_and_leave_the_next_rows_alone`,
+  `sidou-tests/tests/app/step_view.rs::a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back`.
+  *Device-only:* listening (the filter heard as locked, no click at the release).
+- [ ] **Both with a song playing.** PLAY, then hold a step in STEP (its locks over the song on
+  that voice), and in TABLE's helper hold a key: the other voices play on unchanged, no dropout,
+  no late note, STATUS's meter where it was.
+  *Emulator:* `emu-gate/tests/ram_audio.rs` (the draft's reads and the held locks run from SRAM:
+  `.ram_text` 49,072 of 49,152 bytes), `emu-gate/tests/song.rs::the_players_worst_block_fits_its_budget`
+  (48.9 instructions a sample of 60), `sidou-tests/tests/song_ctl.rs::a_draft_plays_only_on_its_channel`.
+  *Device-only:* the audio interrupt's real timing with the song playing (by ear, and STATUS's
+  meter).
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2441,3 +2480,4 @@ Notes:
 | 20 .sid tunes over SysEx PUT | | |
 | 21 .sid playback and the 6502's meter | | |
 | 22 LAB | | |
+| 23 Auditions before writing | | |

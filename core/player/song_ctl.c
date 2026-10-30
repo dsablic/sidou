@@ -23,7 +23,7 @@
 
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
-_Static_assert(sizeof(gt2_player) % 4u == 0u, "a hand-over copies the player in words");
+_Static_assert(offsetof(gt2_player, draft) % 4u == 0u, "a hand-over copies the player in words");
 _Static_assert(SONG_DIGI_SAMPLES == SONG_DIGI_KINDS - 1u, "a built-in sample for each DIGI kind");
 
 /* --- The audio interrupt ---------------------------------------------------------------- */
@@ -84,6 +84,29 @@ static void song_voices(song_ctl* sc, uint8_t mute, uint8_t taken) {
                 sid_write(sc->chip, (uint8_t)r, sc->shadow[r]);
         }
     }
+}
+
+/* 1.1's auditions, out of song_apply's way (its cases' addresses stay in registers). A draft
+ * (song_ctl_draft) word by word: a struct assignment may become a memcpy call, in flash. */
+__attribute__((noinline)) static void song_draft(song_ctl* sc, const song_cmd* c) {
+    const uint32_t* from = (const uint32_t*)(const void*)&c->u.draft;
+    for (uint32_t i = 0u; i < sizeof(gt2_draft) / 4u; i++)
+        ((volatile uint32_t*)(void*)&sc->draft)[i] = from[i];
+    gt2_play_draft(&sc->player, &sc->draft);
+}
+
+/* A held step's locks (song_ctl_held): the channel's, pinned while n > 0. */
+__attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c) {
+    uint32_t ch = c->a, n = c->b;
+    const uint8_t* h = c->u.held;
+    song_row_lock* d = sc->lock_cur[ch];
+    for (uint32_t i = 0u; i < n; i++, d++, h += 3) {
+        d->param = h[0];
+        d->lo = h[1];
+        d->hi = h[2];
+    }
+    sc->lock_n[ch] = (uint8_t)n;
+    sc->lock_pin = (uint8_t)(n ? sc->lock_pin | 1u << ch : sc->lock_pin & ~(1u << ch));
 }
 
 static void song_apply(song_ctl* sc, const song_cmd* c) {
@@ -194,6 +217,12 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->rem = 0u;
         break;
     }
+    case SONG_CMD_DRAFT:
+        song_draft(sc, c);
+        break;
+    case SONG_CMD_HELD:
+        song_held(sc, c);
+        break;
     case SONG_CMD_PERIOD:
         sc->period.q = c->u.p.x;
         sc->period.r = c->u.p.y;
@@ -254,10 +283,11 @@ static void song_handover(song_ctl* sc) {
         }
         return;
     }
-    /* Word by word, not a struct assignment (which may become a memcpy call, in flash). */
+    /* Word by word, not a struct assignment (which may become a memcpy call, in flash); the
+     * draft stays the interrupt's (gt2_player.draft, last). */
     const uint32_t* from = (const uint32_t*)(const void*)sc->armed_state;
     uint32_t* to = (uint32_t*)(void*)&sc->player;
-    for (uint32_t i = 0u; i < sizeof(gt2_player) / 4u; i++)
+    for (uint32_t i = 0u; i < offsetof(gt2_player, draft) / 4u; i++)
         ((volatile uint32_t*)to)[i] = from[i];
     sc->player.shape = sc->armed_shape;
     if (sc->armed_now)
@@ -292,9 +322,11 @@ static void song_push_events(song_ctl* sc) {
 }
 
 /* A channel's row starts: the published locks that are this row's become the channel's. */
-static void song_lock_row(song_ctl* sc, uint32_t ch, const gt2_event* e) {
+__attribute__((noinline)) static void song_lock_row(song_ctl* sc, uint32_t ch, const gt2_event* e) {
     const song_lock_set* set = &sc->lock_next[ch][sc->lock_pub[ch] & 1u];
     uint32_t n = 0u;
+    if ((sc->lock_pin >> ch) & 1u)
+        goto pinned; /* a held step's locks stay while it is held (song_ctl_held) */
     for (uint32_t i = 0u; i < set->n && i < SONG_ROW_LOCKS; i++) {
         const song_row_lock* l = &set->e[i];
         if (l->pattern == e->pattern && l->row == e->row) {
@@ -307,6 +339,7 @@ static void song_lock_row(song_ctl* sc, uint32_t ch, const gt2_event* e) {
         }
     }
     sc->lock_n[ch] = (uint8_t)n;
+pinned:
     sc->row_pat[ch] = e->pattern;
     sc->row_row[ch] = e->row;
     sc->row_ord[ch] = e->order_pos;
@@ -478,6 +511,7 @@ void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
 /* --- The main loop ---------------------------------------------------------------------- */
 
 static void lock_prime(song_ctl* sc);
+static void draft_fresh(song_ctl* sc, gt2_analysis* a);
 static void digi_map(song_ctl* sc);
 static void lock_character(song_ctl* sc);
 static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e);
@@ -518,6 +552,8 @@ void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* s
     sc->song_gate = NO_GATE;
     sc->period = song_period_of(1u, 0u);
     sc->jam_lo = 96u;
+    sc->draft.channel = GT2_DRAFT_OFF;
+    sc->player.draft = &sc->draft; /* kept by starts and hand-overs (gt2_player.draft) */
     sc->digi_ok = 7u;
     for (uint32_t k = 0u; k < SONG_DIGI_KINDS; k++)
         sc->digi_from[k] = SONG_DIGI_START[k];
@@ -647,6 +683,7 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
         sc->error = (int16_t)r;
         return 1;
     }
+    draft_fresh(sc, &w->bg);
     sc->subtune = (uint8_t)subtune;
     sc->start_pos = (uint8_t)pos;
     sc->digi_hold = 0u; /* a new start: no voice holds a digi drum yet */
@@ -657,7 +694,8 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
     sc->auditioning = 0u;
     sc->jam_instruments[0] = sc->jam_instruments[1] = 0u;
     sc->jam_lo = 96u;
-    sc->jam_hi = sc->jam_live = sc->jam_release = 0u;
+    sc->jam_hi = sc->jam_release = 0u;
+    sc->jam_live = (uint8_t)(sc->draft_n != 0u); /* a draft is an audition: shapes retained */
     cancel_jams(sc);
     sc->state = SONG_LOADING;
     return 1;
@@ -755,7 +793,7 @@ int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
             used = 0u;
         const gt2_shape* sh = sc->shapes[sc->active];
         int ready = sc->shapes_used && sc->state != SONG_LOADING && !sc->ff_on &&
-                    !sc->deriving && note >= sh->first_note && note <= sh->last_note &&
+                    !sc->deriving && !sc->draft_grow && note >= sh->first_note && note <= sh->last_note &&
                     (used == 0u || sh->ins_num[used] != 0u);
         if (ready && room(sc) < 1u)
             return 0;
@@ -856,6 +894,92 @@ int song_ctl_audition_end(song_ctl* sc) {
     return 1;
 }
 
+/* What a draft's rows need of the shape (gt2_shape.c's derive_wrow): DRAFT_DELAY for a delay,
+ * DRAFT_REL for a relative note, DRAFT_REL20 for one of 20 or more (the shape's notes from 0),
+ * and the highest relative note in bits 8-15 (the frequency table's top). */
+#define DRAFT_DELAY 1u
+#define DRAFT_REL 2u
+#define DRAFT_REL20 4u
+static uint32_t draft_needs(const song_ctl* sc) {
+    uint32_t f = sc->draft_n ? DRAFT_DELAY : 0u; /* delays whatever its speed (gt2_shape.c) */
+    for (uint32_t i = 0u; i < sc->draft_n; i++) {
+        uint8_t l = sc->draft_rows[i], d = sc->draft_rows[i + GT2_DRAFT_ROWS];
+        if (l >= 0x01u && l <= 0x0fu)
+            f |= DRAFT_DELAY;
+        if (l < 0xf0u && d <= 0x80u) {
+            f |= DRAFT_REL | (d >= 0x20u ? DRAFT_REL20 : 0u);
+            if (d > f >> 8)
+                f = (f & 0xffu) | (uint32_t)d << 8;
+        }
+    }
+    return f;
+}
+
+/* A fresh analysis (a's) reads the draft's rows: it covers what they need. */
+static void draft_fresh(song_ctl* sc, gt2_analysis* a) {
+    a->xwave = sc->draft_rows;
+    a->xwave_n = sc->draft_n;
+    sc->draft_cov = draft_needs(sc);
+    sc->draft_grow = 0u;
+}
+
+int song_ctl_draft(song_ctl* sc, uint32_t ch, uint32_t first, uint32_t n, const uint8_t* left,
+                   const uint8_t* right) {
+    if (room(sc) < 1u)
+        return 0;
+    if (ch >= GT2_PLAY_CHANNELS || n == 0u || n > GT2_DRAFT_ROWS || first == 0u ||
+        first + n - 1u > GT2_TABLE_ROWS) {
+        ch = GT2_DRAFT_OFF;
+        n = 0u;
+    }
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_DRAFT);
+    c.u.draft.channel = (uint8_t)ch;
+    c.u.draft.first = (uint8_t)first;
+    c.u.draft.len = (uint8_t)n;
+    for (uint32_t i = 0u; i < n; i++) {
+        c.u.draft.rows[i] = left[i];
+        c.u.draft.rows[i + GT2_DRAFT_ROWS] = right[i];
+    }
+    push(sc, &c);
+    for (uint32_t i = 0u; i < 2u * GT2_DRAFT_ROWS; i++)
+        sc->draft_rows[i] = c.u.draft.rows[i];
+    sc->draft_n = (uint8_t)n;
+    sc->w->cur.xwave = sc->w->bg.xwave = sc->draft_rows;
+    sc->w->cur.xwave_n = sc->w->bg.xwave_n = (uint8_t)n;
+    if (!n)
+        return 1;
+    sc->jam_live = 1u; /* an audition: shape changes keep the voices' table encodings */
+    uint32_t need = draft_needs(sc), cov = sc->draft_cov;
+    if ((need & ~cov & 0xffu) || (need >> 8) > (cov >> 8)) {
+        /* wider than the shape: derived again (poll_jams) before the next jam */
+        sc->draft_cov = (cov | need) & 0xffu;
+        sc->draft_cov |= ((need >> 8) > (cov >> 8) ? need : cov) & 0xff00u;
+        sc->draft_grow = 1u;
+        if (sc->bg_on)
+            sc->bg_dirty = 1u;
+    }
+    return 1;
+}
+
+int song_ctl_held(song_ctl* sc, uint32_t ch, const uint8_t* locks, uint32_t n) {
+    if (ch >= GT2_PLAY_CHANNELS || n > SONG_HELD_LOCKS || room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_HELD);
+    c.a = (uint8_t)ch;
+    for (uint32_t i = 0u; i < n; i++) {
+        if (locks[3u * i] > SONG_LOCK_PULSE)
+            return 0;
+        c.u.held[3u * i] = locks[3u * i];
+        c.u.held[3u * i + 1u] = locks[3u * i + 1u];
+        c.u.held[3u * i + 2u] = locks[3u * i + 2u];
+    }
+    c.b = (uint8_t)n;
+    push(sc, &c);
+    return 1;
+}
+
 int song_ctl_set_period(song_ctl* sc, song_period p) {
     if (room(sc) < 1u || p.den == 0u || p.q < SONG_BLOCK)
         return 0;
@@ -953,7 +1077,9 @@ static void poll_jams(song_ctl* sc) {
     if (!sc->jam_live || sc->state == SONG_LOADING || sc->state == SONG_IDLE ||
         sc->deriving || sc->ff_on || sc->spare_wait || sc->inflight_n || sc->want_handover)
         return;
-    if (gt2_shape_include_jams(&sc->w->cur, sc->jam_instruments, sc->jam_lo, sc->jam_hi)) {
+    if (gt2_shape_include_jams(&sc->w->cur, sc->jam_instruments, sc->jam_lo, sc->jam_hi) ||
+        sc->draft_grow) {
+        sc->draft_grow = 0u; /* the derivation reads the draft's rows (draft_fresh) */
         sc->bg_on = 0u;
         gt2_shape_derive_begin(&sc->w->cur);
         sc->deriving = sc->deriving_for = SONG_DERIVE_JAM;
@@ -1040,6 +1166,7 @@ int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
 static void far_start(gt2_player* p, const gt2_song* s, const gt2_shape* sh, const uint8_t* st) {
     void (*volatile fn)(gt2_player*, const gt2_song*, const gt2_shape*, const uint8_t*) =
         gt2_play_start;
+    p->draft = 0; /* a fast-forward plays the song's rows (gt2_play_start keeps the draft) */
     fn(p, s, sh, st);
 }
 
@@ -1272,6 +1399,7 @@ static void poll_narrow(song_ctl* sc, int may_slice) {
             return;
         if (gt2_shape_begin(&w->bg, sc->song, sc->subtune, &sc->opts) < 0)
             return;
+        draft_fresh(sc, &w->bg);
         gt2_shape_include_jams(&w->bg, sc->jam_instruments, sc->jam_lo, sc->jam_hi);
         sc->bg_on = 1u;
         sc->bg_dirty = 0u;

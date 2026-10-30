@@ -277,6 +277,17 @@ moved to flash:
   coefficients are a function of the registers and the stage, and a render reads them only at
   its start.
 
+1.1's auditions (TABLE's ARP helper heard before SAVE, a held STEP step's locks) take 336 of
+the 416: **49,072 of 49,152 (80 free)**. The player's wavetable reads check the draft (`wt`, 72
+bytes, and `exec_channel` +54), a jam starts a draft note there (`gt2_play_jam` +16), a draft
+command keeps a held wave pointer in its rows (`gt2_play_draft` 60), and the two commands are
+applied out of `song_apply`'s way (`song_draft` 36, `song_held` 76: inside it they cost its
+cases' addresses in registers, 194 bytes). `song_lock_row` went out of line, where its held-step
+pin costs nothing (`song_ctl_call` and it 676 bytes, 678 before). The draft's pointer is
+`gt2_player`'s last field and the draft `song_ctl`'s, so no other field's offset moved. The
+player's worst block went from 6,043 to 6,257 instructions (47.2 to 48.9 a sample, of 60): the
+check on every wavetable read.
+
 Nothing in RAMTEXT runs while the flash is programmed or erased but the flash driver: every
 program and erase (`store_fm1.c` `operate`, `ota_flash.h`) runs with interrupts masked and calls
 only `fl_*_ram`, so the audio interrupt is in SRAM for its cycles and its branch reach, not for

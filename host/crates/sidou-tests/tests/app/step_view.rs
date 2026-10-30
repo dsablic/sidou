@@ -1700,3 +1700,50 @@ fn k2_and_k4_with_edit_and_scl_held_set_the_range_and_the_rhythm_and_the_frame_s
     assert_eq!(notes_col(&s), before, "a turn: no roll");
     assert_eq!(s.ui.small(17, 2, 9), " HELD STE", "the frame is back");
 }
+
+/// 1.1: a held step sounds with its filter and pulse locks. The key gives the player the step's
+/// cutoff, resonance, filter mode, route and pulse locks (not its chance or character), a K1 turn
+/// on it gives them again at once with the new cutoff, and its release lets them go.
+#[test]
+fn a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back() {
+    let mut s = step();
+    let song = s.ui.v.song.song.cast_mut();
+    for (p, v) in [
+        (SONG_LOCK_CUTOFF, 700),
+        (SONG_LOCK_ROUTE, 1),
+        (SONG_LOCK_PULSE, 0x456),
+        (SONG_LOCK_CHANCE, 50),
+        (SONG_LOCK_AGE, 30),
+    ] {
+        assert_eq!(unsafe { song_lock_put(song, 0, 0, p, v) }, 0);
+    }
+    s.f.helds.clear();
+    hold(&mut s, 0);
+    let want = vec![
+        (SONG_LOCK_CUTOFF as u8, 700u16),
+        (SONG_LOCK_ROUTE as u8, 1),
+        (SONG_LOCK_PULSE as u8, 0x456),
+    ];
+    assert_eq!(
+        s.f.helds,
+        vec![(0, want.clone())],
+        "the step's filter and pulse locks"
+    );
+    s.ui.turn(PANEL_ENC_K1, 1);
+    let mut after = want;
+    after[0].1 = 700 + 32;
+    assert_eq!(
+        s.f.helds.last(),
+        Some(&(0, after)),
+        "the turn heard at once"
+    );
+    release(&mut s);
+    assert_eq!(
+        s.f.helds.last(),
+        Some(&(0, vec![])),
+        "let go at the release"
+    );
+    let n = s.f.helds.len();
+    tap(&mut s, 1); // a step without locks: none, then let go
+    assert_eq!(s.f.helds[n..], [(0, vec![]), (0, vec![])]);
+}

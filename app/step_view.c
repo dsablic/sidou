@@ -797,6 +797,38 @@ static void act(screen* s, step_view* st, uint32_t kind, const target* t, int32_
     drain(s, st);
 }
 
+/* A held step's filter and pulse locks, heard with its note (song_transport.held; chance is not
+ * an audition's, the character's locks are the rows'). With none, the voice's own sound. */
+static void hear_locks(step_view* st, const target* t) {
+    song_view* sv = st->sv;
+    if (!sv->t || !sv->t->held) {
+        return;
+    }
+    uint8_t h[3u * (SONG_LOCK_PULSE + 1u)];
+    uint32_t n = 0u, count = 0u;
+    const uint8_t* r = song_locks_row(sv->song, t->pattern, t->row, &count);
+    for (uint32_t i = 0; r && i < count && n <= SONG_LOCK_PULSE; i++, r += SONG_LOCK_BYTES) {
+        if (r[2] <= SONG_LOCK_PULSE) {
+            memcpy(h + 3u * n++, r + 2, 3u);
+        }
+    }
+    if (st->heard && st->heard != t->voice + 1u) {
+        (void)sv->t->held(sv->t->ctx, st->heard - 1u, NULL, 0u); /* another lane's step let go */
+    }
+    st->heard_off = (uint8_t)!sv->t->held(sv->t->ctx, t->voice, h, n);
+    st->heard = (uint8_t)(t->voice + 1u);
+}
+
+/* The held step's locks go with its last key (again until the player takes it). */
+static void heard_end(step_view* st) {
+    song_view* sv = st->sv;
+    if (st->heard && (!sv->t || !sv->t->held || sv->t->held(sv->t->ctx, st->heard - 1u, NULL, 0u))) {
+        st->heard = st->heard_off = 0u;
+    } else {
+        st->heard_off = (uint8_t)(st->heard != 0u);
+    }
+}
+
 /* The note a step's key sounds: the step's own, else the lane's default. */
 static uint32_t audition_note(const step_view* st, const target* t, const uint8_t* cell) {
     return is_note(cell[0]) ? cell[0] - GT2_FIRSTNOTE : st->sv->gen.root[t->voice];
@@ -831,6 +863,7 @@ static void key_down(step_view* st, screen* s, uint32_t k) {
     uint32_t instr = is_note(c[0]) && c[1] ? c[1] : st->instr[t.voice];
     (void)sv->t->jam(sv->t->ctx, t.voice, audition_note(st, &t, c), instr);
     sv->jam_voice = t.voice;
+    hear_locks(st, &t); /* with its cutoff, resonance, filter, route and pulse */
 }
 
 uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t pressed, int take) {
@@ -864,6 +897,9 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
             key_down(st, s, k);
         }
     }
+    if (!st->down && (st->heard_off || (st->heard && gone))) {
+        heard_end(st);
+    }
     if (!st->down || (take && song_view_rec_playing(sv))) {
         st->held = STEP_VIEW_NONE; /* (the pads of a recording hold no step) */
     } else if (st->held >= STEP_VIEW_STEPS || !(st->down >> st->held & 1u)) {
@@ -889,6 +925,9 @@ static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, 
                                                   : song_lock_put(song, t->pattern, t->row, param, (uint32_t)v);
     if (r >= 0) {
         st->rev++;
+        if (param <= SONG_LOCK_PULSE) {
+            hear_locks(st, t); /* the turn heard at once */
+        }
     } else {
         refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
                   r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL" : "LOCKS FULL");
@@ -906,6 +945,7 @@ static void clear_step(screen* s, step_view* st, const target* t) {
         }
         st->rev = (uint8_t)(st->rev + (r > 0));
     }
+    hear_locks(st, t);
     act(s, st, ACT_UNSET, t, 0);
 }
 

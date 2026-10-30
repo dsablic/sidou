@@ -422,8 +422,7 @@ static uint32_t derive_wavecmd(gt2_analysis* a, uint32_t r) {
 }
 
 /* A wavetable row in use ("Process tables"): delays, commands, notes. */
-static void derive_wrow(gt2_analysis* a, uint32_t r) {
-    uint8_t l = tl(a, GT2_WTBL, r), d = tr(a, GT2_WTBL, r);
+static void derive_wbytes(gt2_analysis* a, uint8_t l, uint8_t d) {
     if (l >= 0x01u && l <= 0x0fu)
         a->d_seen |= DSEEN_WAVEDELAY;
     if (l >= 0xf0u && l <= 0xfeu) {
@@ -447,6 +446,10 @@ static void derive_wrow(gt2_analysis* a, uint32_t r) {
             a->abs_any = 1u;
         }
     }
+}
+
+static void derive_wrow(gt2_analysis* a, uint32_t r) {
+    derive_wbytes(a, tl(a, GT2_WTBL, r), tr(a, GT2_WTBL, r));
 }
 
 /* player.s's variables below the frequency table, as the assembly lays them out: blocks of
@@ -827,6 +830,13 @@ static int derive_step(gt2_analysis* a, gt2_shape* out, uint32_t* budget) {
             break;
         case D_WTABLE:
             if (a->d_i > GT2_TABLE_ROWS) {
+                /* and a draft's rows, as if a channel's program reached them (gt2_analysis.xwave) */
+                for (uint32_t i = 0u; a->xwave && i < a->xwave_n; i++) {
+                    derive_wbytes(a, a->xwave[i], a->xwave[i + GT2_DRAFT_ROWS]);
+                    /* and its delays from the start: a held note keeps its encoding, and a turn
+                     * of the speed may bring them */
+                    a->d_seen |= DSEEN_WAVEDELAY;
+                }
                 a->d_phase = D_PTABLE;
                 a->d_i = 1u;
                 break;
@@ -1024,6 +1034,7 @@ int gt2_play_init(gt2_player* p, gt2_shape* shape, const gt2_song* s, uint32_t s
     /* through a pointer: the frame path is in SRAM on the device (song_ctl.c, far_start) */
     void (*volatile start)(gt2_player*, const gt2_song*, const gt2_shape*, const uint8_t*) =
         gt2_play_start;
+    p->draft = 0; /* none (gt2_play_start keeps it) */
     start(p, s, shape, 0);
     return 0;
 }

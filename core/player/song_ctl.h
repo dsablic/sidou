@@ -102,8 +102,12 @@ typedef struct {
 
 enum {
     SONG_CMD_PLAY = 1, SONG_CMD_STOP, SONG_CMD_CONTINUE, SONG_CMD_MUTE, SONG_CMD_SHAPE,
-    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_ALIGN
+    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_ALIGN,
+    SONG_CMD_DRAFT, SONG_CMD_HELD
 };
+
+/* A held step's locks (song_ctl_held): the filter and pulse ones, CUTOFF..PULSE. */
+#define SONG_HELD_LOCKS (SONG_LOCK_PULSE + 1u)
 
 typedef struct {
     uint8_t kind;   /* SONG_CMD_* */
@@ -111,6 +115,8 @@ typedef struct {
     uint32_t seq;
     union {
         gt2_edit edit;
+        gt2_draft draft;
+        uint8_t held[3u * SONG_HELD_LOCKS]; /* param, value low, high */
         struct {
             const void* ptr, *ptr2;
             uint32_t x, y, z;
@@ -223,6 +229,8 @@ typedef struct song_ctl {
     uint8_t row_pat[GT2_PLAY_CHANNELS], row_row[GT2_PLAY_CHANNELS]; /* pattern $FF: no row yet */
     uint8_t row_ord[GT2_PLAY_CHANNELS];
     uint8_t lock_n[GT2_PLAY_CHANNELS];
+    uint8_t lock_pin; /* bit ch: lock_cur[ch] is a held step's (song_ctl_held), which the
+                       * channel's rows leave alone */
     song_row_lock lock_cur[GT2_PLAY_CHANNELS][SONG_ROW_LOCKS];
     uint32_t lock_regs;           /* the registers the last call wrote over (bit r) */
     /* Per-step chance (SONG_LOCK_CHANCE): the main loop rolls for the steps a channel may read
@@ -326,6 +334,14 @@ typedef struct song_ctl {
      * note sounds as long as its key was held, not a call. */
     uint32_t jam_at[GT2_PLAY_CHANNELS];
     uint8_t jam_timed;
+    /* --- 1.1's draft (song_ctl_draft), last: the interrupt's, as the player reads it; the main
+     * loop's rows for the analysis (left then right, draft_n each, 0 none), whether they need a
+     * wider shape before the next jam, and what the shape covers of drafts since its last fresh
+     * analysis (DRAFT_* in song_ctl.c) --- */
+    gt2_draft draft;
+    uint8_t draft_rows[2u * GT2_DRAFT_ROWS];
+    uint8_t draft_n, draft_grow;
+    uint32_t draft_cov;
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -429,6 +445,17 @@ void song_ctl_poll(song_ctl* sc, uint32_t flags);
 void song_ctl_commit(song_ctl* sc);
 /* Up to n events, oldest first; the count. Dropped ones are counted in ev_lost. */
 uint32_t song_ctl_events(song_ctl* sc, song_event* out, uint32_t n);
+/* 1.1's auditions of what is not written yet. song_ctl_draft: on channel ch the wavetable's rows
+ * from first (1 based) read as left[0..n) and right[0..n) (n <= GT2_DRAFT_ROWS), and a jam there
+ * starts its wave program at first (TABLE's ARP helper: the keys play the draft); n 0 or ch past
+ * the channels: none. The shape widens for the draft's delays and notes before the next jam.
+ * song_ctl_held: channel ch plays n locks (SONG_HELD_LOCKS at most: param CUTOFF..PULSE, then
+ * the value's low and high byte, three bytes each) over the player's after each call, whatever
+ * its rows lock, until a call with n 0 (STEP's held step). 1, or 0: not now (ask again). */
+int song_ctl_draft(song_ctl* sc, uint32_t ch, uint32_t first, uint32_t n, const uint8_t* left,
+                   const uint8_t* right);
+int song_ctl_held(song_ctl* sc, uint32_t ch, const uint8_t* locks, uint32_t n);
+
 /* SONG_* */
 uint32_t song_ctl_state(const song_ctl* sc);
 /* GT2_PLAY_WARN_* of the shape the player follows, and GT2_PLAY_WARN_PAST_B7 once a note

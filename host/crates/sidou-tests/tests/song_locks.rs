@@ -649,3 +649,135 @@ fn the_main_loop_tells_the_player_the_steps_that_lose_their_roll() {
     }
     assert!(skipped_rows > 0, "the main loop told the player");
 }
+
+// ---- 1.1: a held STEP step plays its locks (song_ctl_held) ----
+
+const HELD: [(u32, u32); 5] = [
+    (SONG_LOCK_CUTOFF, 1234),
+    (SONG_LOCK_RESONANCE, 9),
+    (SONG_LOCK_FILTER_MODE, 2),
+    (SONG_LOCK_ROUTE, 1),
+    (SONG_LOCK_PULSE, 0x321),
+];
+
+fn held(t: &mut Transport, ch: u32, locks: &[(u32, u32)]) {
+    let bytes: Vec<u8> = locks
+        .iter()
+        .flat_map(|&(p, v)| [p as u8, v as u8, (v >> 8) as u8])
+        .collect();
+    assert_eq!(
+        unsafe { song_ctl_held(&mut *t.sc, ch, bytes.as_ptr(), locks.len() as u32) },
+        1
+    );
+}
+
+/// What the locks set: the cutoff, resonance, filter mode, voice 1's route and pulse, and its
+/// frequency and control.
+fn locked_regs(t: &Transport) -> (u32, u8, u8, u8, u32, u32, u8) {
+    (
+        t.chip.fc,
+        t.chip.res,
+        t.chip.mode_vol >> 4 & 7,
+        t.chip.routing & 1,
+        t.chip.osc[0].pw,
+        t.chip.osc[0].freq,
+        t.chip.osc[0].control,
+    )
+}
+
+/// A held step's audition sounds as the sequencer plays its row: pattern 0's row 0 (C-3 on
+/// instrument 1) with all five filter and pulse locks, played by the song and jammed with its
+/// locks held, gives the same registers call for call for the row's six calls.
+#[test]
+fn a_held_steps_audition_plays_its_row_as_the_sequencer_does() {
+    let mut s = song();
+    for (p, v) in HELD {
+        put(&mut s, 0, 0, p, v);
+    }
+    let mut t = Transport::new(&mut s);
+    assert!(t.play(0, 0));
+    let mut row = Vec::new();
+    while row.len() < 6 {
+        let c = t.calls();
+        t.pass();
+        t.block_silent();
+        if t.calls() != c && t.sc.row_pat[0] == 0 && t.sc.row_row[0] == 0 {
+            row.push(locked_regs(&t));
+        }
+    }
+    assert_eq!(row[0].0, 1234);
+
+    let mut plain = song(); // no locks in the song: they come from the held step
+    let mut t = Transport::new(&mut plain);
+    assert!(t.audition());
+    assert!(t.run_until(400, |t| t.jam_ready()));
+    held(&mut t, 0, &HELD);
+    assert!(t.jam(0, 36, 1));
+    let mut heard = Vec::new();
+    let mut guard = 0;
+    while heard.len() < 6 {
+        let c = t.calls();
+        t.pass();
+        t.block_silent();
+        if t.calls() != c && (!heard.is_empty() || t.chip.env[0].gate != 0) {
+            heard.push(locked_regs(&t));
+        }
+        guard += 1;
+        assert!(guard < 10_000);
+    }
+    assert_eq!(heard, row, "the held step sounds as its row");
+}
+
+/// While a step is held its locks stay over the rows the song plays (the rows' own locks wait),
+/// and at its release they go: from the next call the registers are the song's as without it,
+/// and a later row's own lock plays again.
+#[test]
+fn a_held_steps_locks_go_at_its_release_and_leave_the_next_rows_alone() {
+    let run = |hold: bool| {
+        let mut s = song();
+        put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 900);
+        let mut t = Transport::new(&mut s);
+        assert!(t.play(0, 0));
+        let mut out = Vec::new();
+        let mut pins = Vec::new();
+        while t.calls() < 120 {
+            let c = t.calls();
+            if hold && c == 8 {
+                held(&mut t, 0, &[(SONG_LOCK_CUTOFF, 1500)]);
+            }
+            if hold && c == 30 {
+                held(&mut t, 0, &[]);
+            }
+            t.pass();
+            t.block_silent();
+            if t.calls() != c {
+                out.push((t.chip.fc, t.sc.row_row[0]));
+                pins.push(t.sc.lock_pin);
+            }
+        }
+        (out, pins)
+    };
+    let (plain, _) = run(false);
+    let (got, pins) = run(true);
+    assert!(
+        plain.iter().any(|&(fc, r)| r == 3 && fc == 900),
+        "row 3's own lock plays"
+    );
+    for k in 0..plain.len() {
+        let (fc, r) = got[k];
+        if (10..30).contains(&k) {
+            assert_eq!(fc, 1500, "call {k}, row {r}: the held step's cutoff");
+            assert_eq!(pins[k], 1, "call {k}: pinned");
+        } else if k >= 32 {
+            assert_eq!(
+                got[k], plain[k],
+                "call {k}: the song's own after the release"
+            );
+            assert_eq!(pins[k], 0, "call {k}: unpinned");
+        }
+    }
+    assert!(
+        got[32..].iter().any(|&(fc, r)| r == 3 && fc == 900),
+        "a later row 3 plays its own lock"
+    );
+}

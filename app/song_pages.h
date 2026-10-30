@@ -62,6 +62,9 @@ typedef struct {
      * rows it read, the next byte to write and where they end; the draft and the bytes to write
      * (left, right of each row). */
     uint8_t arp, arp_cur, arp_start, arp_len, arp_next, arp_end;
+    /* The draft as the player hears it (song_transport.draft): on its voice, and a change to
+     * send (published on open and every change, taken off once closed and its rows written). */
+    uint8_t arp_heard, arp_voice, arp_dirty;
     song_pages_arp arp_draft;
     uint8_t arp_rows[2u * SONG_PAGES_ARP_ROWS];
     uint8_t drawn[SONG_PAGES_LOOK];
@@ -100,7 +103,10 @@ void song_pages_arp_default(song_pages_arp* a);
 int song_pages_arp_open(song_pages* pages, screen* s);
 /* SAVE in the helper: writes the rows (through the edit queue, a cell at a time) and closes it. */
 void song_pages_arp_save(song_pages* pages, screen* s);
-/* HOME in the helper closes it without writing; 1 if it was open. */
+/* HOME in the helper closes it without writing (and the draft goes from the player); 1 if it
+ * was open. While it is open the keys play the draft (song_transport.draft): song_pages_poll
+ * sends it, and each change, and takes it off once the helper has closed and its rows are
+ * written; poll while arp_dirty as while pending. */
 int song_pages_arp_close(song_pages* pages);
 
 void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char out[31]);

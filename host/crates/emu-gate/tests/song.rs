@@ -1957,3 +1957,138 @@ fn a_playing_digi_drum_costs_the_interrupt_its_bound() {
         "the window never closed"
     );
 }
+
+/// The firmware's song_ctl draft (1.1, song_ctl_draft): channel, first row, rows.
+fn draft_of(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
+    let d = transport(fw) + ilp32::song_ctl::draft as u32;
+    (
+        m.soc.read8(d + ilp32::gt2_draft::channel as u32),
+        m.soc.read8(d + ilp32::gt2_draft::first as u32),
+        m.soc.read8(d + ilp32::gt2_draft::len as u32),
+    )
+}
+
+/// Voice 1's frequency every 5 ms for `ms`.
+fn freqs_for(m: &mut Machine, fw: &Firmware, ms: u64) -> Vec<u32> {
+    (0..ms / 5)
+        .map(|_| {
+            m.run_ms(5);
+            chip_a_voice(m, fw, 0).0
+        })
+        .collect()
+}
+
+/// 1.1: TABLE's ARP helper heard before SAVE. The helper opens on row 01 (the first song's own
+/// one-step program) and the draft is on voice 1 (the cursor's); made two steps, the second an
+/// octave up, looping, a key held there plays both on chip A (the highest twice the lowest); a K2
+/// turn on step 2 is heard on the held note at once; HOME takes the draft off with nothing
+/// written.
+#[test]
+fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
+    let Some((_, fw)) = fixture("the ARP helper's audition") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    for _ in 0..5 {
+        press(&mut m, SEQ); // STEP, TRACKER, ORDER, INSTR, TABLE
+        m.run_ms(300);
+    }
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("song_pages_table_view"));
+    let region = fw.symbol("__song_region");
+    let before: Vec<u8> = (0..SONG_REGION_BYTES)
+        .map(|i| m.soc.read8(region + i))
+        .collect();
+    press(&mut m, PANEL_BTN_ARP as u8);
+    m.run_ms(200);
+    assert_eq!(
+        draft_of(&mut m, &fw),
+        (0, 1, 2),
+        "the draft on voice 1 from row 01"
+    );
+    m.turn(PANEL_ENC_ALGORITHM as u8, 1); // two steps
+    m.run_ms(100);
+    m.turn(PANEL_ENC_SELECT as u8, 1); // on step 2
+    m.run_ms(100);
+    m.turn(PANEL_ENC_K1 as u8, 1); // an octave
+    m.run_ms(100);
+    m.turn(PANEL_ENC_K1 as u8 + 3, 1); // looping at step 1
+    m.run_ms(200);
+    assert_eq!(draft_of(&mut m, &fw), (0, 1, 3), "each change heard");
+    m.key(KEY0 + 12, true);
+    m.run_ms(200);
+    let f = freqs_for(&mut m, &fw, 400);
+    let mut pitches: Vec<u32> = f.clone();
+    pitches.sort_unstable();
+    pitches.dedup();
+    println!("the draft's pitches {pitches:?}");
+    assert_eq!(pitches.len(), 2, "two steps: {f:?}");
+    let ratio = f64::from(pitches[1]) / f64::from(pitches[0]);
+    assert!(
+        (ratio - 2.0).abs() < 0.02,
+        "an octave over the lowest: {ratio}"
+    );
+    // K2 on step 2: a semitone more, on the held note
+    m.turn(PANEL_ENC_K1 as u8 + 1, 1);
+    m.run_ms(100);
+    let g = freqs_for(&mut m, &fw, 400);
+    let top = *g.iter().max().unwrap();
+    let up = f64::from(top) / f64::from(pitches[1]);
+    assert!(
+        (up - 2f64.powf(1.0 / 12.0)).abs() < 0.01,
+        "a semitone up at once: {g:?}"
+    );
+    m.key(KEY0 + 12, false);
+    m.run_ms(200);
+    press(&mut m, PANEL_BTN_HOME as u8);
+    m.run_ms(200);
+    assert_eq!(
+        draft_of(&mut m, &fw).0,
+        GT2_DRAFT_OFF as u8,
+        "HOME takes it off"
+    );
+    let after: Vec<u8> = (0..SONG_REGION_BYTES)
+        .map(|i| m.soc.read8(region + i))
+        .collect();
+    assert!(before == after, "nothing written");
+}
+
+/// 1.1: a held STEP step plays its locks. A cutoff lock put on step 1 of the lead's first bar
+/// (K1 with the step held), then the step held again: chip A's cutoff is the lock's while the key
+/// is down, the song's own once it is let go, and the lock is pinned only while held.
+#[test]
+fn a_held_step_sounds_its_cutoff_lock_on_chip_a() {
+    let Some((_, fw)) = fixture("the held step's audition") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    press(&mut m, SEQ);
+    m.run_ms(500); // STEP, V1
+    let t = transport(&fw);
+    let pin = t + ilp32::song_ctl::lock_pin as u32;
+    let chip_fc = |m: &mut Machine| {
+        let chips = fw.chips();
+        let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
+        let chip =
+            chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+        m.soc.read32(chip + ilp32::sid::fc as u32)
+    };
+    m.key(KEY0, true);
+    m.run_ms(60);
+    m.turn(PANEL_ENC_K1 as u8, -30); // 1024 - 30 * 32 = 64
+    m.run_ms(300);
+    assert_eq!(chip_fc(&mut m), 64, "the turn heard at once");
+    assert_eq!(m.soc.read8(pin) & 1, 1, "pinned while held");
+    m.key(KEY0, false);
+    m.run_ms(300);
+    assert_eq!(m.soc.read8(pin), 0, "let go");
+    m.run_ms(2500); // the audition ends
+    m.key(KEY0, true);
+    m.run_ms(200);
+    assert_eq!(chip_fc(&mut m), 64, "held again: its lock");
+    m.key(KEY0, false);
+    m.run_ms(300);
+    assert_eq!(m.soc.read8(pin), 0);
+    assert_ne!(chip_fc(&mut m), 64, "the song's own cutoff after it");
+}
