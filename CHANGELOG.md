@@ -8,6 +8,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **EDIT + K1-K4 says the effect in the large popup.** Turning the selected effect slot's
+  Amount, A, B or Mix with EDIT held on LIVE opens the value popup: the effect's name over the
+  control's and its value at 2x, `OVERDRIVE` over `DRIVE 91`, with a bar (a slot that is off:
+  `DIST OFF` over `AMT 40`). LIVE's knob row shows the slot's controls small; the popup is
+  readable at arm's length. The same text everywhere the EDIT layer opens a popup (CHIP's chip
+  focus, STATUS, the menu, SCENE), which said `DIST DRIVE` over `91` before.
+
 ## [1.1.0] - 2026-10-30
 
 ### Changed
