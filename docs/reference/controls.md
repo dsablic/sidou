@@ -318,7 +318,11 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED`. Either finger may land first (ARP first leaves the lane's gate as it was) |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
-| EDIT + SCL held + K3 | DICE's **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. K2 and K4 are unbound here (range and rhythm are for 1.x: they act as in LIVE) |
+| EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
+| EDIT + SCL held + K3 | the selected lane's DICE **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. Each lane has its own (a lane never set has V1's) |
+| EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
+| EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
+| EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO); either finger may land first |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
@@ -340,21 +344,29 @@ under row inserts and deletes, undo restores it, and GoatTracker plays the step 
 DICE write ordinary cells through the editor, one row a turn like every STEP edit, so the lane's
 pattern stays plain GoatTracker data (undo steps back one cell at a time, as for any edit); both
 need no step held and no REC (they do nothing while recording: REC on, the song playing and any count-in over), and they stop if STEP is left before they finish. The notes are the
-**minor pentatonic** (or the song's DICE scale, below) on the lane's note (the one PRESETS sets with a step held, C-3 by default) and
-the octave above; a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it
+**minor pentatonic** (or the lane's DICE scale, below) on the lane's note, its root (the one PRESETS sets with a step held, or a note key with EDIT + SCL held; C-3 by default), over
+DICE's range (the octave above too, by default); a lane the SCNE chunk calls DRUMS keeps its one note and varies only where it
 hits. DICE puts hits on the eighths for a melodic lane (the beat 85 %, the offbeat 55 %) and on the
 sixteenths for a drum lane (90, 15, 50, 25 % through the beat), a key off after each hit on a
 staccato lane; a row's command and data stay. The seed comes from the time of the press, so each
 press is another pattern.
 
 **DICE's settings** (the `DICE` chunk, saved with the song): while EDIT + SCL is held, the HELD STEP
-frame becomes ` DICE - LET GO TO ROLL ` with the two settings at 2x, K1 `DENS` and K3 `SCALE`. The
+frame and the pads give way to ` DICE - LET GO TO ROLL ` with the four settings at 2x, each beside
+its knob, K1 `DENS`, K2 `RANGE`, K3 `SCALE` (the selected lane's) and K4 `RHYTHM`, and under them
+the lane's `ROOT` (its note, `C-3` by default; a note key sets it). On a drum lane RANGE and SCALE
+are grey: it keeps its one note. TRACKER shows the same frame and takes the same knobs. With `STRAIGHT` the
 density picks the grid's chances (melodic lane, percent by place in the beat 1-2-3-4: SPARSE 60 0 0
 0, LIGHT 85 0 25 0, MEDIUM 85 0 55 0, BUSY 90 35 75 35, FULL 100 each; a drum lane SPARSE 80 0 15 0,
 LIGHT 90 5 30 10, MEDIUM 90 15 50 25, BUSY 95 40 75 55, FULL 100 each). The scale is semitones above the
 lane's note: minor pentatonic 0 3 5 7 10, major pentatonic 0 2 4 7 9, minor 0 2 3 5 7 8 10, major 0 2
-4 5 7 9 11, dorian 0 2 3 5 7 9 10, chromatic all twelve. A song with no chunk is MEDIUM and the
-minor pentatonic.
+4 5 7 9 11, dorian 0 2 3 5 7 9 10, chromatic all twelve. The other rhythms weigh each place of two
+beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 20, 3-3-2 95 0 0 85 0
+0 85 0, FOUR 100 0 20 0 100 0 20 0, BROKEN 90 0 30 65 0 45 75 20; the density scales the weights
+(SPARSE half of each, LIGHT three quarters, BUSY each plus 20, FULL 100 everywhere). The range picks
+the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
+or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
+STRAIGHT and 2 OCT.
 
 **Gate.** A staccato lane writes a key off on the next row if that row has no note, and takes
 it away with the note; where the row before a removed note holds a note, the removed note's row
@@ -366,6 +378,25 @@ the audition, which holds edits for a short time. Taps and knob turns in that ti
 (at most four besides the one being written; a fifth is refused with `WAITING`). Refusals use
 the large toast (`SAVING`, `SONG FULL`, `INVALID EDIT`, `NO SONG`, `LOCKS FULL`).
 
+### Generative play in TRACKER
+
+TRACKER has STEP's MUTATE, DICE and SWEEP on the **shown voice's pattern** (the one at the cursor,
+or the one playing), with the current instrument (PRESETS with REC on), as a staccato lane unless
+STEP set that lane LEGATO. The same seed, pattern, settings and root roll the same pattern in
+both views. They work with REC off and with REC on while the song is stopped, and do nothing while
+REC records (the song playing).
+
+| Control | Does |
+|---|---|
+| EDIT + ARP | **MUTATE** (toast `MUTATED`), either finger first; with REC on too, where ARP alone writes a key off: while the song is stopped it writes it when ARP is let go (or as soon as another control is used), so EDIT landing after ARP is MUTATE and no key off |
+| EDIT + SCL | **DICE** (toast `NEW PATTERN`), rolled when SCL is let go unless a knob was turned or another button pressed; SCL first, then EDIT, is the same chord, and SCL alone selects the next effect slot when it is let go |
+| EDIT + SCL held | the settings frame over the window's lower half (rows 15-26): K1 density, K2 range, K3 the shown voice's scale, K4 rhythm, a note key the voice's root, as in [STEP](#step) |
+| EDIT + ENV | **SWEEP**, as in STEP |
+| EDIT + LFO | undoes one cell of the run, as for any edit |
+
+A row whose step STEP gave a **chance** below 100 % shows a yellow `%` beside its number; the
+chance itself is edited in STEP (a step held + ALGORITHM).
+
 ### Editing TRACKER
 
 **REC on** enables pattern editing. The row number is a yellow block; the selected note or
@@ -375,7 +406,7 @@ field expands to 2× in reverse yellow. Other voices remain activity strips.
 | Control | With REC on |
 |---|---|
 | Note key | writes its note and the current instrument into the cursor's row, auditions it, then advances by the edit step (wrapping within the pattern) |
-| ARP | writes key off (`===`), keeping the row's other fields |
+| ARP | writes key off (`===`), keeping the row's other fields, when it is let go (at once while REC records; EDIT + ARP is MUTATE, above) |
 | LFO | clears the note to a rest; a second press on the same row clears all four fields |
 | EDIT + LFO | undoes the last edit; the next press redoes it (also available with REC off). Undo keeps **one step**: the help card says E+LFO ONE UNDO |
 | K1 | instrument number, 00–3F (00 leaves the playing instrument unchanged) |

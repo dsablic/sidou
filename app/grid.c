@@ -827,7 +827,7 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
     }
     uint32_t i = run->row * GRID_COLS + run->col + k0;
     for (uint32_t k = k0; k < k1; k++, i++) {
-        const uint8_t* glyph = font_glyphs[g->ch[i]];
+        const uint8_t* glyph = font_glyph(g->ch[i]);
         uint16_t fg = pal[g->attr[i] & 15u];
         static const uint8_t none[8];
         const uint8_t* mask = none;
@@ -872,7 +872,7 @@ __attribute__((noinline, unused)) static void render_piece(const grid* g, uint32
     uint32_t q = piece < 4u ? piece : piece < 13u ? piece - 4u : 0u; /* y * scale + x */
     uint32_t y0 = big_src(q, scale) * 8u;          /* the cell's pixel row in the character */
     uint32_t x0 = (q - big_src(q, scale) * scale) * 8u;
-    const uint8_t* glyph = font_glyphs[g->src[i]];
+    const uint8_t* glyph = font_glyph(g->src[i]);
     uint32_t sx[8];
     for (uint32_t j = 0; j < 8u; j++) {
         sx[j] = 7u - big_src(x0 + j, scale);
@@ -914,7 +914,7 @@ void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16],
                          px + k * GRID_CELL_PX, run->len * GRID_CELL_PX);
             continue;
         }
-        const uint8_t* glyph = font_glyphs[g->ch[i]];
+        const uint8_t* glyph = font_glyph(g->ch[i]);
         uint32_t fg = pal[g->attr[i] & 15u];
         uint32_t bg = pal[g->attr[i] >> 4];
         /* The cell's colours by a pair's two glyph bits. */

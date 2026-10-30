@@ -92,6 +92,10 @@ extern "C" {
 #define TRACKER_VIEW_ORDER_ROW 27u
 #define TRACKER_VIEW_SAY_ROW 28u
 #define TRACKER_VIEW_HINT_ROW 29u
+/* The column of the mark on a row with a chance below 100 (STEP's chance lock), beside its number. */
+#define TRACKER_VIEW_CHANCE_COL 2u
+/* DICE's frame (app/song_gen.h) while EDIT + SCL is held: over the window from this row on. */
+#define TRACKER_VIEW_DICE_ROW 6u
 /* The field of a row to highlight (an edit cursor, tracker_view.c draw_row). */
 #define TRACKER_VIEW_FIELD_NONE 0u
 #define TRACKER_VIEW_FIELD_NOTE 1u
@@ -110,8 +114,13 @@ void tracker_view_order_entry(uint8_t entry, char out[4]);
 /* A command's name (GoatTracker's readme, 4.x), "" for none. */
 const char* tracker_view_command_name(uint32_t cmd);
 void tracker_view_note(screen* s, song_view* sv, uint32_t note);
+/* The popup of an encoder: DICE's settings while EDIT + SCL is held, else with REC on the cell's
+ * fields and the instrument. 0: nothing to show. */
 int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* name, char* value,
                        uint32_t* fill, uint32_t* max);
+/* SCL's hold, once a pass while it is down and TRACKER is on top (views_buttons, with the buttons
+ * held): its release rolls DICE on the shown voice's pattern if it was not spoiled. */
+void tracker_view_buttons(song_view* sv, screen* s, uint32_t held);
 
 #ifdef __cplusplus
 }

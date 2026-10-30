@@ -280,7 +280,7 @@ fn macro_turns_the_links_and_k3_k4_are_dark() {
     assert_eq!(choice(&ui), "NO LINKS");
     ui.turn(K1, 3);
     ui.turn(K1 + 1, -9);
-    assert_eq!(param(&ui, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX as u32 + 3);
+    assert_eq!(param(&ui, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX + 3);
     assert_eq!(param(&ui, LIVE_PARAM_PWM_LINK), 0, "clamped at -8");
     settle(&mut ui);
     assert_eq!(ui.big(LAB_VIEW_VALUE_ROW as usize, 0, 3, 2), "+3");
@@ -319,7 +319,7 @@ fn macro_turns_the_links_and_k3_k4_are_dark() {
 #[test]
 fn a_link_lights_the_card_it_moves() {
     let mut ui = lab_ui();
-    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX as u32 + 8);
+    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX + 8);
     let mid = unsafe { live_cutoff_steps[ui.live().model as usize][32] };
     set(&mut ui, LIVE_PARAM_CUTOFF, u32::from(mid)); // the walk's middle: the link adds nothing
     unsafe { live_tick(&mut *ui.rig.live) }; // the linked resonance follows at the tick
@@ -352,11 +352,11 @@ fn a_link_lights_the_card_it_moves() {
     settle(&mut ui);
     assert_eq!(ui.v.lab.hl_link, 0, "and goes out with it");
     // K2 with no link moving anything lights itself alone
-    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX as u32);
+    set(&mut ui, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX);
     ui.turn(K1, 1);
     assert_eq!(ui.v.lab.hl_link, 0);
     // OSC: PULSE moves PWM LINK's depth
-    set(&mut ui, LIVE_PARAM_PWM_LINK, LIVE_LINK_MAX as u32 + 4);
+    set(&mut ui, LIVE_PARAM_PWM_LINK, LIVE_LINK_MAX + 4);
     set(&mut ui, LIVE_PARAM_PWM_DEPTH, 64);
     to_page(&mut ui, LAB_PAGE_OSC);
     ui.turn(K1, -3);

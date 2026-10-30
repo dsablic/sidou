@@ -28,12 +28,60 @@ All notable changes are documented here. The format follows
 - **LAB: the arpeggio's RATE on MOD's K4** (`3FR`, `1/16`: LIVE's ARP + K1), dark while ARP is
   off and set all the same. The rate is a parameter of the MIDI map now: CC 28 goes through its
   row, so MIDI learn can rebind it, it has NRPN 0/9 and MIDI out sends it.
+- **DICE's range and rhythm on STEP.** With EDIT + SCL held, K2 sets the range (1 OCT, 2 OCT,
+  3 OCT, BASS: the lane's octave and the one below) and K4 the rhythm (STRAIGHT, OFFBEAT, 3-3-2,
+  FOUR, BROKEN; a drum lane takes the rhythm and ignores the range). The frame now shows all four
+  settings at 2x beside their knobs, and the lane's root under them. 2 OCT and STRAIGHT, the
+  defaults, roll exactly what 1.0 rolled. The `DICE` chunk grows from 3 to 5 bytes: SIDOU 1.0 still
+  reads a 1.1 song's density and scale, and if its EDIT + SCL turns a knob it writes the chunk back
+  without the rhythm and the range, which then return to their defaults.
+- **Generative play in TRACKER.** EDIT + ARP is MUTATE and EDIT + SCL is DICE (either finger
+  first) on the shown voice's pattern, with STEP's settings frame over the window's lower half;
+  the same seed rolls the same pattern as STEP. A row whose step has a chance below 100 % shows a
+  yellow `%`. With REC on, EDIT + ARP is now MUTATE: ARP alone still writes the key off, when it
+  is let go while the song is stopped, so EDIT may land second.
+- **A root and a scale per lane.** With EDIT + SCL held a note key sets the selected lane's root
+  (in STEP and TRACKER; the roll still comes when SCL is let go), and K3 sets that lane's scale.
+  The `DICE` chunk grows to 7 bytes: lanes 2 and 3's scales follow lane 1's, which 1.0 reads.
+- **A filter sweep:** EDIT + ENV in STEP and TRACKER writes GoatTracker `C` commands (FILTER
+  CUTOFF) every second row of the lane's pattern, up or down, never over a command; it plays in
+  GoatTracker as written, and undo steps back a cell at a time.
+- **Songs to MIDI reads from the connected FM-1:** `midi.html` has "From the connected FM-1"
+  beside the file picker. Connect (Web MIDI with SysEx, in Chrome or Edge; nothing is opened before
+  the button), pick the ports, and it lists the current song (SysEx GET, target 2: the song as it
+  is now, edits included) and the songs stored on the FM-1 (DIR, then GET of target 0; the `.sid`
+  tunes in the store are not listed). The song is read, checked against the length and CRC the
+  FM-1 announced, and converted exactly as a picked file. A refusal (BUSY while the song saves or
+  loads, a song deleted since the listing, a transfer that arrives damaged) is shown in a sentence.
+  `web/sysex.js`'s client gained `get`, tested in `web/sysex.test.mjs` against the simulated device
+  (DIR, GET of both targets, every refusal, a damaged transfer) and in `web/check.mjs`'s fake Web MIDI.
+- **Wavetable arpeggios in the MIDI export:** a wavetable step with a note (relative to the row's
+  note, or a fixed one) that changes the pitch ends the sounding note and starts the next in the same
+  tick, so an arpeggio is a run of tied notes and a noise drum sounds the pitch it plays. Checked
+  against GoatTracker's packed player: the fixtures (`host/crates/gt2-ref/tests/midi_walk.rs`) now
+  also hold each voice's frequency register as table notes, and `web/songmidi.test.mjs` compares
+  the pitch of every note on 123,000 calls of the showcase songs, SIDOU LOOP and GoatTracker's
+  examples (27 calls differ, all where a slide or tone portamento ends on a table note). Vibrato,
+  slides and tone portamento are still not followed. SIDOU's `TRKB` chunk (a second chip's tracks)
+  is reserved and nothing writes it, so there is nothing of it to export.
 
 ### Changed
 - LAB's MOD K4 was the velocity target; that stays on NRPN 6/1.
 - A USER sound is 48 bytes (the filter LFO and the macro links); 1.0's 45-byte sounds and its
   unsaved edit load with them off (docs/reference/sound-format.md). The settings record is
   schema 9: it keeps the learned CCs of 1.1's parameters.
+- **The emulator is fm1-emu `93cb7ee3`** (was `c1c045fc`), for the emulator gate and the browser
+  demo: it models the watchdog and the reset through P33 (fm1-emu #92, our report #65). The
+  boot-guard tests now die and reset as the FM-1 does, RAM kept: two crashes, each reset by the
+  fault handler, and the third boot asks for UBOOT; the running firmware feeds the watchdog; and,
+  with the checklist's hang build (`SIDOU_FM1_DEATH_BUILD`), a hang resets through the watchdog
+  8 s after the last feed. The firmware budgets are unchanged, instruction for instruction.
+- **The USB tests run on fm1-emu's own USB controller and host** (new at this revision), in place
+  of the test crate's model: an independent check of Felucca's `usb.c`. Enumeration, the update's
+  step 1, MIDI both ways, SysEx transfers and USB audio at 44.1 and 48 kHz pass on it; what its
+  host cannot do is listed in `docs/upstream-reports.md` (row 11). The USB audio cost test
+  measures twice: with the SIE answering at once (the firmware's own cost, held to 2.0
+  instructions a sample as before) and with fm1-emu's estimated 1 µs round trip (held to 3.0).
 
 ### Fixed
 - LAB and STEP: EDIT + ARP and EDIT + LFO are their chords whichever finger lands first, as

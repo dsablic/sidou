@@ -162,7 +162,7 @@ install the unit appears as Felucca's loader.
 
 - [ ] `fm1_install.py sidou.fwsc` starts: step 1 (SIDOU or stock reads the
   package and stages the loader) reports no error.
-  *Emulator:* `emu-gate/tests/usb.rs::the_running_firmware_serves_an_updates_whole_step_one` (every read of step 1, the loader staged, the success, the record, the restart), `sidou-pack/tests/ota_step1.rs::a_package_stages_its_loader_and_commits`; *device-only:* the real `fm1_install.py` on a real computer and OS.
+  *Emulator:* `emu-gate/tests/usb.rs::the_running_firmware_serves_an_updates_whole_step_one` (every read of step 1, the loader staged, the success, the record; the core reset into the loader is not modelled: the core waits for it), `sidou-pack/tests/ota_step1.rs::a_package_stages_its_loader_and_commits`; *device-only:* the real `fm1_install.py` on a real computer and OS.
 - [ ] The unit restarts into the update loader. It enumerates as Felucca's
   loader, whatever the OS shows (expected: "Felucca Update", USB
   1209:0002, identity `ota-FM-1_900`). Record what you see:
@@ -1313,11 +1313,11 @@ Notes:
 
 - [ ] The unit enumerates as a USB-MIDI device "SIDOU FM-1" by "SIDOU
   contributors" (pid.codes test VID/PID 1209:0001). Record what the OS shows:
-  *Emulator:* `emu-gate/tests/usb.rs::a_host_gets_the_identity_and_the_knobs_over_usb` (device descriptor VID/PID 1209:0001, the strings "SIDOU contributors" and "SIDOU FM-1", EP0 in 64-byte packets), `sidou-pack/tests/usb_audio.rs::the_device_is_one_composite_usb_midi_and_class_compliant_audio_input` (the descriptors).
+  *Emulator:* `emu-gate/tests/usb.rs::a_host_gets_the_identity_and_the_knobs_over_usb` (fm1-emu's host enumerates it: device descriptor VID/PID 1209:0001, the product string "SIDOU FM-1" over EP0 and the manufacturer's "SIDOU contributors" in usb.c, EP0 in 64-byte packets), `sidou-pack/tests/usb_audio.rs::the_device_is_one_composite_usb_midi_and_class_compliant_audio_input` (the descriptors).
   *Device-only:* what macOS, Windows or Linux show for the unit (real USB hosts and OSes).
 - [ ] The same note, CC and program tests as section 7 pass over USB.
   *Emulator:* `sidou-tests/tests/app/midi_rx.rs::usb_packets_play_notes`, `sidou-tests/tests/app/midi_rx.rs::ccs_follow_the_default_mapping` (a USB CC 74 moves the cutoff), `sidou-tests/tests/app/midi_in.rs::a_channel_message_whole_is_its_bytes_one_at_a_time` (a USB packet gives the messages the TRS bytes give, so section 7's tests carry over).
-  *Emulator (no test yet):* a note-on, CC 74 and a program change sent through the emulated USB host (common/usb_host.rs) to the firmware image, checking pitch, cutoff and preset as `emu-gate/tests/midi.rs` does over TRS.
+  *Emulator (no test yet):* a note-on, CC 74 and a program change sent through fm1-emu's USB host (common/usb_host.rs) to the firmware image, checking pitch, cutoff and preset as `emu-gate/tests/midi.rs` does over TRS.
 - [ ] TRS and USB at the same time both play.
   *Emulator:* `sidou-tests/tests/app/midi_rx.rs::a_usb_message_between_the_bytes_of_a_trs_message_leaves_both_whole`, `sidou-tests/tests/app/midi_rx.rs::a_gap_restarts_only_the_parser_of_the_source_it_lost`.
 - [ ] **MIDI out (M1d):** in a DAW (or a MIDI monitor) on the SIDOU input, turn K1:
@@ -1640,15 +1640,15 @@ install the normal package again when you are done.
 
 - [ ] Without OCT-: the checklist build boots and plays as normal, and stays
   up past 10 s.
-  *Emulator:* `emu-gate/tests/bootguard.rs::a_stable_boot_clears_an_earlier_death` (a boot that runs past the stable time is stable); the SIDOU_TEST_DEATH build itself is not run in the emulator.
+  *Emulator:* `emu-gate/tests/bootguard.rs::a_stable_boot_clears_an_earlier_death` (a boot that runs past the stable time is stable), `emu-gate/tests/bootguard.rs::the_running_firmware_feeds_the_watchdog` (24 s, no reset); the SIDOU_TEST_DEATH build without OCT- is not run in the emulator.
   *Device-only:* a real boot of the checklist build staying up past 10 s (real silicon).
 - [ ] Hang build: hold OCT- while powering on and keep it held through the
   resets. Boot 1 dies, the watchdog resets, boot 2 dies, and boot 3 enters
   UBOOT instead of SIDOU. Record what the screen shows and how the unit
   appears on USB in UBOOT. This shows the guard state in `.noinit` survives
   a watchdog reset.
-  *Emulator:* `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot` (two early deaths, the third boot asks for UBOOT and starts no audio; the guard's words are kept by hand since fm1-emu models no reset).
-  *Device-only:* the real watchdog reset after about 8 s, `.noinit` surviving it, and what the screen and USB show in UBOOT (real silicon, mask ROM).
+  *Emulator:* `emu-gate/tests/bootguard.rs::a_hang_resets_through_the_watchdog_and_the_third_boot_enters_uboot` (the hang build, with `SIDOU_FM1_DEATH_BUILD`: two watchdog resets 9 s apart, the guard kept in RAM, the third boot asks for UBOOT), `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot`.
+  *Device-only:* the real watchdog's timing on silicon, `.noinit` surviving a real reset, and what the screen and USB show in UBOOT (real silicon, mask ROM).
 - [ ] In UBOOT, the unit stays there (no watchdog reset) for at least five
   minutes.
   *Device-only:* the mask ROM's UBOOT staying up for five minutes with no watchdog reset (real silicon).
@@ -1656,7 +1656,7 @@ install the normal package again when you are done.
   section 0, and record which one worked and how:
   *Device-only:* a recovery tool from section 0 installing from UBOOT, and which one worked (install and recovery tools, ROM boot mode).
 - [ ] Reboot build: the same, with the guard surviving a P33 reset.
-  *Emulator:* `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot` (the guard's logic, the same for a hang or a P33 reset).
+  *Emulator:* `emu-gate/tests/bootguard.rs::two_early_deaths_end_in_uboot` (two crashes, each reset through P33 by the fault handler, the guard kept in RAM; the third boot asks for UBOOT and starts no audio).
   *Device-only:* the real P33 reset keeping the guard (real silicon).
 - [ ] One death, then a normal boot (OCT- released) that runs past 10 s,
   then one more death: no UBOOT (the stable boot cleared the count).
@@ -2158,15 +2158,28 @@ By ear; no device risk beyond the usual song editing.
 6. Save, reopen the song in GoatTracker 2: the pattern is plain; every step plays (GoatTracker
    ignores chance).
    *Emulator:* `sidou-tests/tests/song_locks.rs::a_chance_is_a_lock_that_round_trips_and_leaves_the_gt2_bytes_alone` (the GT2 bytes are plain), `sidou-tests/tests/app/step_view.rs::a_step_made_song_plays_as_goattrackers_player_does_with_its_set_and_without_the_chunk_locks`.
+7. (1.1) Hold EDIT + SCL: the frame shows DENS, RANGE, SCALE, RHYTHM and ROOT at 2x. Turn K2 and
+   K4 through their choices and roll each rhythm (let go without a turn): OFFBEAT, 3-3-2, FOUR and
+   BROKEN should each be heard as its name says, on a melodic and on a drum lane; BASS should sit
+   under the lead. Press a key while holding the chord: ROOT follows it and the roll still comes.
+   *Emulator:* `emu-gate/tests/first_use.rs::dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them` (K1-K4 turned at once after SCL), `emu-gate/tests/screen.rs::the_step_view_matches_its_goldens` (golden step-dice), `sidou-tests/tests/app/step_view.rs::each_rhythm_hits_as_its_weights_say_on_melodic_and_drum_lanes`, `sidou-tests/tests/app/step_view.rs::each_range_keeps_to_its_octaves`, `sidou-tests/tests/app/song_gen.rs::a_note_key_with_edit_and_scl_held_sets_the_lanes_root_and_the_roll_still_comes`.
+   *Device-only:* whether each rhythm and range sounds musical (by ear).
+8. (1.1) In TRACKER: EDIT + SCL, EDIT + ARP and EDIT + ENV on the shown voice, the frame over the
+   lower rows while EDIT + SCL is held. On a voice whose instrument uses the filter, EDIT + ENV and
+   PLAY: the cutoff should open (SWEEP UP) or close (SWEEP DOWN) across the pattern, smoothly
+   enough to use.
+   *Emulator:* `emu-gate/tests/first_use.rs::tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter`, `emu-gate/tests/screen.rs::the_tracker_dice_frame_matches_its_golden`, `sidou-tests/tests/app/song_gen.rs::a_swept_song_plays_in_goattrackers_player_as_written`.
+   *Device-only:* the sweep heard, and whether every second row is fine-grained enough.
    *Device-only:* GoatTracker 2 opening and playing the saved song on a computer (external gear).
 
 ## 19. USB audio out
 
 What it is: [README, What you can do](../README.md#what-you-can-do). The unit is one USB
 device, the MIDI port and a class-compliant audio input "SIDOU FM-1" (2 channels, 16-bit,
-44.1 or 48 kHz), Felucca's `usb.c` audio input. fm1-emu has no USB controller: the host tests
-(`host/crates/sidou-pack/tests/usb_audio.rs`, and Felucca's own `uac_test.c`) and a modelled
-host in emu-gate (`tests/usb.rs`) check the firmware's side; only the unit shows the chip's.
+44.1 or 48 kHz), Felucca's `usb.c` audio input. The host tests
+(`host/crates/sidou-pack/tests/usb_audio.rs`, and Felucca's own `uac_test.c`) and fm1-emu's own USB
+controller and host in emu-gate (`tests/usb.rs`) check the firmware's side; only the unit shows
+the chip's.
 A note held (or a song playing) throughout unless an item says otherwise.
 
 - [ ] **macOS:** plug in. Audio MIDI Setup lists "SIDOU FM-1" with 2 input channels and the
@@ -2199,9 +2212,16 @@ A note held (or a song playing) throughout unless an item says otherwise.
   views fast (SCENE, the CHIP view, the song editor), scroll lists, and turn K1..K4: the
   recording has no clicks. Then the same with the effect slots at their heaviest (FLANGER,
   PHASER, REVERB on, two chips playing).
-  *Emulator:* `emu-gate/tests/usb.rs::recording_over_usb_audio_costs_the_audio_interrupt_little` (recording adds at most USB_AUDIO_PER_SAMPLE instructions to the audio interrupt).
+  *Emulator:* `emu-gate/tests/usb.rs::recording_over_usb_audio_costs_the_audio_interrupt_little` (recording adds at most USB_AUDIO_PER_SAMPLE instructions to the audio interrupt with the SIE answering at once, and at most 3.0 with fm1-emu's estimated 1 µs SIE round trip).
   *Emulator (no test yet):* the emulated host records for minutes while the panel moves through the views, scrolls and turns K1..K4, then with the heaviest effect slots and two chips: underruns, overruns, missed blocks and empty IN tokens stay 0 (`usb.rs` checks those counters with a chord held only).
   *Device-only:* clicks in a recording made on a real host (real USB host, ear).
+- [ ] **What recording costs the audio interrupt:** with a chord held, time the audio interrupt
+  with TIMER4 (24 MHz) while a host records and while it does not, at 44.1 and 48 kHz, and note
+  the difference a sample. It replaces fm1-emu's estimate of the SIE's round trip (1 µs), on
+  which the emulator's bound of 3.0 instructions a sample rests (0.73 with the SIE at once).
+  STATUS's meter times the 6502's slices only, so this needs a checklist build that times the
+  interrupt.
+  *Device-only:* the SIE's real round trip and the interrupt's real cost (real silicon, real USB host).
 - [ ] **Level:** MASTER turns the recording's level as it turns the speaker's (USB takes the
   output after MASTER). At full MASTER, two loud chords: the recording's peaks are where the
   line out's are, no harder clipping than on the line out.
@@ -2224,7 +2244,7 @@ A note held (or a song playing) throughout unless an item says otherwise.
   *Device-only:* a real DAW holding the input open while the real loader updates the unit (install tools, real host).
 - [ ] **Stop and start:** stop the recording and start it again ten times, close and reopen the
   DAW, unplug and replug mid-recording: the stream comes back every time, the MIDI port too.
-  *Emulator:* `emu-gate/tests/usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz` (alt setting 0 stops the packets and the hand-over goes on).
+  *Emulator:* `emu-gate/tests/usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz` (the stream stopped, by the bus reset of a new enumeration as fm1-emu's host has no SET_INTERFACE to alt 0: no packets, the hand-over goes on).
   *Emulator (no test yet):* ten stop and start cycles and a bus reset mid-recording, the stream and the MIDI port coming back each time.
   *Device-only:* a real DAW closed and reopened and the cable replugged mid-recording (real host and DAW).
 - [ ] **Host asleep:** record, put the computer to sleep, wake it: the sound never stops on the

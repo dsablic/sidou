@@ -97,6 +97,18 @@ journey build | Build a song
   step save-song | Save the song | SAVE keeps the song | press SAVE | needs song_save; toast
   step back | Back to LIVE | HOME goes back | press HOME | view live
 
+journey generate | Roll a pattern in the tracker
+  goal Let SIDOU write a pattern for the shown voice, sweep its filter and hear it.
+  prereq On LIVE after the boot.
+  skills DICE; the filter sweep
+  related sketch; build
+  step open-song | Open the song views | SEQ opens STEP, SEQ again the tracker | press SEQ; press SEQ | view tracker
+  step dice | Roll a new pattern | EDIT + SCL rolls a new pattern for the shown voice | holdpress EDIT SCL; wait 300 | toast; change; setup
+  step sweep | Sweep the filter | EDIT + ENV writes a filter sweep into the pattern | holdpress EDIT ENV; wait 300 | toast; change; setup
+  step play | Hear it | PLAY starts the song | press PLAY; wait 1500 | sound; clip 1200
+  step stop | Stop | PLAY again stops it | press PLAY; wait 600 | silent
+  step back | Back to LIVE | HOME goes back | press HOME | view live
+
 journey perform | Perform
   goal Play along with a MIDI clock, switch sounds, mute and solo live.
   prereq On LIVE after the boot; a sequencer on the TRS jack.

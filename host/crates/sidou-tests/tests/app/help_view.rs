@@ -1064,7 +1064,7 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
         if takes(&mut c.s.ui, &e) {
             // STEP holds SCL alone only to wait for EDIT (EDIT + SCL, whichever lands first):
             // it is still SCL's next slot, everywhere's, at its release.
-            if c.s.ui.v.step.scl_down == STEP_VIEW_SCL_ALONE as u8 {
+            if c.s.ui.v.song.gen_.scl_down == SONG_GEN_SCL_ALONE as u8 {
                 continue;
             }
             if c.s.ui.v.lab.scl_alone != 0 {

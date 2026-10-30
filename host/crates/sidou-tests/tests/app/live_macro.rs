@@ -179,11 +179,7 @@ fn res_on_chip(rig: &Rig) -> u32 {
 #[test]
 fn reso_link_makes_the_resonance_follow_the_cutoff() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    assert_eq!(
-        get(&rig, LIVE_PARAM_RESO_LINK),
-        LIVE_LINK_MAX as u32,
-        "8: no link"
-    );
+    assert_eq!(get(&rig, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX, "8: no link");
     set(&mut rig, LIVE_PARAM_RESONANCE, 6);
     for (link, pos, want) in [
         (8i32, 32, 6u32),
@@ -206,10 +202,10 @@ fn reso_link_makes_the_resonance_follow_the_cutoff() {
         assert_eq!(unsafe { live_resonance_effective(&*rig.live) }, want);
         assert_eq!(rig.live.resonance, 6, "the parameter stays");
     }
-    set(&mut rig, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX as u32);
+    set(&mut rig, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX);
     assert_eq!(res_on_chip(&rig), 6, "no link: the parameter");
     // CC 74 moves the cutoff, and the resonance with it
-    set(&mut rig, LIVE_PARAM_RESO_LINK, (LIVE_LINK_MAX + 8) as u32);
+    set(&mut rig, LIVE_PARAM_RESO_LINK, LIVE_LINK_MAX + 8);
     rig.cc(LIVE_CC_CUTOFF, 0);
     rig.tick();
     assert_eq!(res_on_chip(&rig), 15, "CC 74 closed: up");
@@ -251,7 +247,7 @@ fn pwm_link_makes_the_pwm_depth_follow_the_width() {
     set(&mut rig, LIVE_PARAM_PWM_DEPTH, 100);
     set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 1024);
     assert_eq!(eff(&rig), 100, "no link");
-    set(&mut rig, LIVE_PARAM_PWM_LINK, (LIVE_LINK_MAX + 4) as u32);
+    set(&mut rig, LIVE_PARAM_PWM_LINK, LIVE_LINK_MAX + 4);
     assert_eq!(eff(&rig), 100 + 4 * 1024 / 8);
     set(&mut rig, LIVE_PARAM_PULSE_WIDTH, 3072);
     assert_eq!(
@@ -268,7 +264,7 @@ fn pwm_link_makes_the_pwm_depth_follow_the_width() {
     // the LFO runs for the linked depth alone
     set(&mut rig, LIVE_PARAM_PWM_DEPTH, 0);
     set(&mut rig, LIVE_PARAM_PWM_RATE, 20);
-    set(&mut rig, LIVE_PARAM_PWM_LINK, (LIVE_LINK_MAX + 8) as u32);
+    set(&mut rig, LIVE_PARAM_PWM_LINK, LIVE_LINK_MAX + 8);
     let phase = rig.live.lfo_phase;
     rig.tick();
     assert_ne!(rig.live.lfo_phase, phase, "the linked depth moves the LFO");
@@ -292,7 +288,7 @@ fn pwm_link_makes_the_pwm_depth_follow_the_width() {
 fn the_links_are_parameters_of_the_sound() {
     let mut rig = Rig::new(SID_MODEL_6581);
     for p in [LIVE_PARAM_RESO_LINK, LIVE_PARAM_PWM_LINK] {
-        assert_eq!(unsafe { live_param_max(p) }, 2 * LIVE_LINK_MAX as u32);
+        assert_eq!(unsafe { live_param_max(p) }, 2 * LIVE_LINK_MAX);
         let e = unsafe { midi_map_for_param(p) };
         assert!(!e.is_null());
         assert_eq!(u32::from(unsafe { (*e).cc }), MIDI_MAP_NO_CC);
@@ -303,7 +299,7 @@ fn the_links_are_parameters_of_the_sound() {
     assert_eq!(s[LAB_SOUND_RESO_LINK as usize] as i8, -5);
     assert_eq!(s[LAB_SOUND_PWM_LINK as usize] as i8, -5);
     rig.set_preset(1);
-    assert_eq!(get(&rig, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX as u32);
+    assert_eq!(get(&rig, LIVE_PARAM_RESO_LINK), LIVE_LINK_MAX);
     let mut out = [0u16; LIVE_PARAM_COUNT as usize];
     unsafe { live_preset_params(1, out.as_mut_ptr()) };
     assert_eq!(out[LIVE_PARAM_PWM_LINK as usize], LIVE_LINK_MAX as u16);

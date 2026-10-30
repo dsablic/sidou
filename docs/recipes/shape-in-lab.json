@@ -97,7 +97,7 @@
       "title": "The sound *as it is*"
     },
     {
-      "caption": "ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 5.",
+      "caption": "ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 6.",
       "control": "press ENV, then wait 1.0 s",
       "expect": [
         {

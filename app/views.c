@@ -1846,9 +1846,11 @@ static void charset_compose(screen* s, void* state, grid* g) {
         grid_put(g, 4, 4u + i, (uint8_t)HEX[i], label);
         for (uint32_t c = 0; c < 16u; c++) {
             uint32_t code = i * 16u + c;
-            /* (the codes of large text's pieces are blank glyphs, whose cells would draw one) */
+            /* (the codes of large text's pieces are blank glyphs, whose cells would draw one;
+             * the codes above FONT_LAST are not in flash, and blank) */
             grid_put(g, 7u + c, 4u + i,
-                     code - GRID_BIG_FIRST < GRID_BIG_PIECES ? ' ' : (uint8_t)code,
+                     code - GRID_BIG_FIRST < GRID_BIG_PIECES || code > FONT_LAST ? ' '
+                                                                                  : (uint8_t)code,
                      GRID_ATTR(GRID_WHITE, GRID_BLACK));
         }
         grid_put(g, 7u + i, 22, FONT_FULL, GRID_ATTR(i, GRID_BLACK));
@@ -2056,7 +2058,7 @@ void views_song_back(views* v) {
     uint8_t lanes[2 + 2u * SONG_T_VOICES];
     lanes[0] = st->page;
     lanes[1] = st->gate;
-    memcpy(lanes + 2, st->note, sizeof st->note);
+    memcpy(lanes + 2, sv->gen.root, SONG_T_VOICES);
     memcpy(lanes + 2 + SONG_T_VOICES, st->instr, sizeof st->instr);
     song_pages* pg = &v->pages;
     uint16_t order_cursor = pg->order_cursor;
@@ -2069,7 +2071,7 @@ void views_song_back(views* v) {
     sv->subtune = place[4];
     st->page = lanes[0];
     st->gate = lanes[1];
-    memcpy(st->note, lanes + 2, sizeof st->note);
+    memcpy(sv->gen.root, lanes + 2, SONG_T_VOICES);
     memcpy(st->instr, lanes + 2 + SONG_T_VOICES, sizeof st->instr);
     pg->order_cursor = order_cursor;
     pg->subtune = cursors[0];
@@ -2634,7 +2636,8 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
     if (enc == ASK_MASTER) {
         return param_text(v, LIVE_PARAM_VOLUME, name, value, fill, max);
     }
-    if (shows(v) == &tracker_view_view && v->song.rec) {
+    if (shows(v) == &tracker_view_view &&
+        (v->song.rec || v->song.gen.scl_down == SONG_GEN_SCL_CHORD)) {
         *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4
                                                     ? enc - PANEL_ENC_K1 : 0u];
         return tracker_view_popup(&v->song, enc, (ask & ASK_EDIT) != 0u, name, value, fill, max);
@@ -2835,8 +2838,13 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if (v->lab.scl_alone) {
         lab_view_scl(&v->lab, held); /* SCL alone on LAB waits for EDIT: its release */
     }
-    if (v->step.scl_down | v->step.arp_alone) {
-        step_view_buttons(&v->step, &v->s, held); /* SCL's release: DICE rolls; ARP's: the gate */
+    if (v->song.gen.scl_down | v->song.gen.arp_alone) {
+        /* SCL's release: DICE rolls; ARP's alone: STEP's gate, TRACKER's key off */
+        if (screen_top(&v->s) == &tracker_view_view) {
+            tracker_view_buttons(&v->song, &v->s, held);
+        } else {
+            step_view_buttons(&v->step, &v->s, held);
+        }
     }
     if (v->live.arp_down) {
         live_view_buttons(&v->live, held); /* ARP's release on LIVE: the arpeggio on or off */
@@ -2880,7 +2888,12 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
         int glo = (int)(((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u); /* held, or latched */
         int take = !glo && sv->t && song_view_is(top);
         uint32_t steps = 0u, jam_down = down, jam_pressed = pressed;
-        if (top == &step_view_view) {
+        if ((top == &step_view_view || top == &tracker_view_view) &&
+            sv->gen.scl_down == SONG_GEN_SCL_CHORD) {
+            /* EDIT + SCL held: a key is the lane's root (app/song_gen.h), and sounds nothing */
+            steps = song_gen_keys(sv, down, pressed);
+            jam_down = jam_pressed = 0u;
+        } else if (top == &step_view_view) {
             /* The 16 leftmost keys are STEP's; the rest are the jam's. */
             steps = step_view_keys(&v->step, &v->s, down, pressed, !glo);
             jam_down &= ~((1u << STEP_VIEW_STEPS) - 1u);

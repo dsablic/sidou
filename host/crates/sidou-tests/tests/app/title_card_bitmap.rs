@@ -30,9 +30,8 @@ fn the_generated_file_is_up_to_date() {
 /// a pixel where the matrix is below n. So the glow drawn in glyphs is the art's.
 #[test]
 fn the_fonts_dither_glyphs_are_the_arts_bayer_order() {
-    let glyphs = unsafe { font_glyphs };
     for n in 0..=16u8 {
-        let g = &glyphs[FONT_D0 as usize + usize::from(n)];
+        let g = &sidou_tests::font::compiled_glyph(FONT_D0 as u8 + n);
         for (y, row) in g.iter().enumerate().take(8) {
             for x in 0..8 {
                 assert_eq!(

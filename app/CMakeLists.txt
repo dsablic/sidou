@@ -67,6 +67,7 @@ add_library(sidou_live STATIC
     song_pages.c
     song_io.c
     song_edit.c
+    song_gen.c
     step_view.c
     store.c
     sysex.c
@@ -109,7 +110,7 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(lab_view.c lab_draw.c PROPERTIES COMPILE_OPTIONS -Oz)
     # These editors run bounded main-loop work. Keep their rendering and edit helpers outlined
     # rather than duplicating them into the page/input paths.
-    set_source_files_properties(song_pages.c step_view.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
+    set_source_files_properties(song_pages.c step_view.c song_gen.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
     # The flash win-back before 1.0 (docs/plans/2026-10-24-flash-space.md): files whose gates bound
     # work or sit well clear of their budgets, built for size. Left out on purpose, each measured:
     # live.c (the input's instruction count: ui_encoder over CHIP_PICK_INPUT 400, K1 over POPUP_INPUT
@@ -123,4 +124,6 @@ if(CMAKE_CROSSCOMPILING)
     # presets, the parameters and the sound, once a turn, a CC or a load. live.c keeps the input's
     # paths the budgets bound (K1's cutoff, a slot's pick) and the tick at the default.
     set_source_files_properties(live_setup.c PROPERTIES COMPILE_OPTIONS -Oz)
+    # SCENE's pieces run once a frame, inside the scene budgets (emu-gate scene_budget.rs, screen.rs).
+    set_source_files_properties(scene.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()

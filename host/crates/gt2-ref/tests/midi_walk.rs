@@ -8,7 +8,11 @@
 //! A run is a stretch of calls with the voice's gate bit (SID register 4, bit 0) high:
 //! `[first call, first call after, frequency a call after the first]` (the frequency register
 //! at a note's first call is the previous note's; the wavetable's first step sets it on the
-//! next). Call 0 is the first play call after init. The test checks the committed fixtures are
+//! next). Call 0 is the first play call after init. Each voice also has its frequency's course
+//! as the notes of GoatTracker's frequency table it sounds (`[call, note]` at each change of
+//! the register's table note, -1 when the register holds no table frequency, as in a slide or
+//! vibrato), which the node test compares with the pitch of every note the walk makes, wavetable
+//! arpeggios included. The test checks the committed fixtures are
 //! what the reference makes now; `SIDOU_MIDI_FIXTURE_UPDATE=1` rewrites them.
 //!
 //!   SIDOU_MIDI_FIXTURE_UPDATE=1 cargo test --release -p gt2-ref --test midi_walk
@@ -85,6 +89,47 @@ fn runs(regs: &[[u8; 25]], voice: usize) -> Vec<[u32; 3]> {
     out
 }
 
+/// GoatTracker's frequency table (gplay.c `freqtbllo`/`freqtblhi`: 128 entries, C-0 up).
+fn freq_table() -> Vec<u16> {
+    let src = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../third_party/goattracker2/src/gplay.c"),
+    )
+    .expect("gplay.c");
+    let arr = |name: &str| -> Vec<u16> {
+        let at = src.find(&format!("{name}[] = {{")).expect(name);
+        let body = &src[src[at..].find('{').unwrap() + at + 1..];
+        body[..body.find('}').unwrap()]
+            .split(',')
+            .filter_map(|x| {
+                x.trim()
+                    .strip_prefix("0x")
+                    .and_then(|h| u16::from_str_radix(h, 16).ok())
+            })
+            .collect()
+    };
+    let (lo, hi) = (arr("freqtbllo"), arr("freqtblhi"));
+    assert_eq!((lo.len(), hi.len()), (128, 128));
+    lo.iter().zip(&hi).map(|(l, h)| l | h << 8).collect()
+}
+
+/// One voice's table note at each change, per call (-1: not a table frequency).
+fn course(regs: &[[u8; 25]], voice: usize, table: &[u16]) -> Vec<[i32; 2]> {
+    let lo = 7 * voice;
+    let mut out: Vec<[i32; 2]> = Vec::new();
+    for (f, r) in regs.iter().enumerate() {
+        let freq = r[lo] as u16 | (r[lo + 1] as u16) << 8;
+        let note = table
+            .iter()
+            .position(|&t| t == freq)
+            .map_or(-1, |n| n as i32);
+        if out.last().is_none_or(|l| l[1] != note) {
+            out.push([f as i32, note]);
+        }
+    }
+    out
+}
+
 fn fixture(sng: &[u8], calls: usize) -> String {
     let t = trace(sng, 0, calls, &Options::default()).expect("trace");
     let mut regs = [0u8; 25];
@@ -97,6 +142,16 @@ fn fixture(sng: &[u8], calls: usize) -> String {
             per_call.push(regs);
         }
     }
+    let table = freq_table();
+    let courses: Vec<String> = (0..3)
+        .map(|v| {
+            let rows: Vec<String> = course(&per_call, v, &table)
+                .iter()
+                .map(|r| format!("[{},{}]", r[0], r[1]))
+                .collect();
+            format!("[{}]", rows.join(","))
+        })
+        .collect();
     let voices: Vec<String> = (0..3)
         .map(|v| {
             let rows: Vec<String> = runs(&per_call, v)
@@ -107,9 +162,10 @@ fn fixture(sng: &[u8], calls: usize) -> String {
         })
         .collect();
     format!(
-        "{{\"calls\":{},\"voices\":[\n{}\n]}}\n",
+        "{{\"calls\":{},\"voices\":[\n{}\n],\"course\":[\n{}\n]}}\n",
         per_call.len(),
-        voices.join(",\n")
+        voices.join(",\n"),
+        courses.join(",\n")
     )
 }
 

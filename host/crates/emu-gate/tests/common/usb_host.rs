@@ -1,256 +1,170 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A USB host and the FM-1's USB0 device controller, modelled in the test crate over fm1-emu's
-//! plain register storage (fm1-emu has no USB controller: its USB0 registers keep what was
-//! written). `Machine::run_cycles` calls `after_step` after every instruction once
-//! `Machine::usb` is set, and the model answers what the instruction asked of the SIE, so the
-//! firmware's next instruction finds it done, as on the chip.
+//! A USB host on the cable: fm1-emu's own (fm1_soc::usb: the FM-1's USB0 controller, a Mentor
+//! MUSB core behind JieLi's register window, and a full-speed host at the other end), which
+//! is a model of the controller independent of SIDOU's Felucca driver.
 //!
-//! What it models, from platform/fm1/hal/fm1_usb.h and src/usb.c (Felucca's driver):
-//! - the SIE behind CON1 (MUSB's byte map): a write `(r << 8) | v` or a read
-//!   `(r << 8) | 0x4000` while CON0 bit 2 (USB_NRST) is set, done with bit 15 and, for a read,
-//!   the byte in bits 0..7; the indexed endpoint registers 16..23 of EP0, EP1 and EP4;
-//! - the interrupt flags INTRTX1, INTRRX1 and INTRUSB, cleared by their read;
-//! - SOF (CON0 bit 13, cleared by writing bit 12) and the frame number, once a frame;
-//! - the endpoint DMA: an IN packet (EP0's data stage, EP1 IN) is read from RAM at the address
-//!   and count registers when the host takes it, at the next frame after TxPktRdy, as the
-//!   controller reads it when the host's IN token comes; a SETUP, an EP0 OUT data stage or an
-//!   EP1 OUT packet is written to RAM at EP0's address or EP1's RX address;
-//! - EP4 IN, the USB audio stream (isochronous): while the host records (`ep4_reading`), the
-//!   packet the device readied is read from RAM at EP4's own address and count registers once a
-//!   frame, and a frame that finds none sets TXCSR1's UnderRun, as the chip does.
+//! The cable is fm1-emu's (`Usb::plug`: the SIE answers, at its own pace), but the test, not
+//! the SoC's clock, runs the host's 1 ms frames (`frame`, from `Machine::usb_frames`), so it
+//! decides when a host is there and sees what crosses the bus. In each frame fm1-emu's host
+//! does what a computer does: after the D+ pull-up a bus reset and the enumeration (the device
+//! descriptor, SET_ADDRESS, the configuration, the language and the product string,
+//! SET_CONFIGURATION), then once a frame up to 64 bytes of MIDI to the device (`send`) and one
+//! IN poll, and, recording (`record`), SET_INTERFACE, SET_CUR of the rate and an isochronous IN
+//! transaction a frame.
 //!
-//! What it does not: timing below a frame, NAKs other than EP1 OUT's while its last packet is
-//! unread, data toggles, stalls beyond counting them, EP2 and EP3, the PHY. The chip's own
-//! behaviour is what docs/hardware-test.md checks; this is the firmware's side of it.
+//! What this adds on top: the IN packets as they leave the device's RAM, read through the
+//! controller's DMA (`in0`, `in1`, `in4`: fm1-emu hands the host's IN data on only as complete
+//! MIDI messages, which lose the packets' bounds), and which SIE accesses happen inside the
+//! audio interrupt (`after_step`).
+//!
+//! What fm1-emu's host cannot do (docs/upstream-reports.md, row 11): send a control request of
+//! the test's own (a string other than the product's, SET_INTERFACE to alternate setting 0,
+//! SET_CUR on a running stream: a new rate takes a new enumeration, `replug`), tell the
+//! device's address, or send more than one bulk OUT transaction in a frame.
 
 use fm1_core::Bus;
+use fm1_soc::usb::Dma;
 use fm1_soc::Soc;
 
-const CON0: u32 = 0x11800;
-const CON1: u32 = 0x11804;
 const EP0_ADR: u32 = 0x11818;
-const EP4_CNT: u32 = 0x11834;
+const EP1_TADR: u32 = 0x1181C;
 const EP4_TADR: u32 = 0x11838;
+/// USB_IO_CON0: bit 6 is the D+ pull-up (the device attached).
+const USB_IO_CON0: u32 = 0x51000;
 
-fn cnt(ep: u32) -> u32 {
-    0x11808 + 4 * ep
+/// The SoC under fm1-emu's host, the bytes its DMA reads for the host noted.
+struct Tap<'a> {
+    soc: &'a mut Soc,
+    reads: Vec<(u32, u8)>,
 }
 
-fn tadr(ep: u32) -> u32 {
-    0x1181C + 8 * (ep - 1)
-}
-
-fn radr(ep: u32) -> u32 {
-    0x11820 + 8 * (ep - 1)
+impl Dma for Tap<'_> {
+    fn dma_read8(&mut self, addr: u32) -> u8 {
+        let b = self.soc.read8(addr);
+        self.reads.push((addr, b));
+        b
+    }
+    fn dma_write8(&mut self, addr: u32, v: u8) {
+        self.soc.write8(addr, v);
+    }
 }
 
 #[derive(Default)]
 pub struct UsbHost {
-    /// FADDR..INDEX (0..15), as written.
-    regs: [u8; 16],
-    /// EP0's, EP1's and EP4's indexed registers 16..23 (CSR0 / TXCSR1 at 17, RXCSR1 at 20,
-    /// the RX count at 22 and 23); EP2 and EP3's slots unused.
-    ep: [[u8; 8]; 5],
-    intr_tx: u8,
-    intr_rx: u8,
-    intr_usb: u8,
-    frame: u16,
-    ep0_in: bool,
-    ep1_in: bool,
-    /// EP0 data stages the host has taken.
+    /// A host on the bus: its frames run (none before `start`, as with no computer there).
+    pub present: bool,
+    /// The next frame drops the pull-up as the host sees it (the cable pulled and put back).
+    unplug: bool,
+    /// EP0's IN data packets the host has taken.
     pub in0: Vec<Vec<u8>>,
     /// EP1 IN packets the host has taken.
     pub in1: Vec<Vec<u8>>,
-    /// The host reads EP4 IN once a frame (an audio recorder with the stream selected).
-    pub ep4_reading: bool,
-    ep4_in: bool,
-    /// EP4 IN packets the host has taken.
+    /// EP4 IN packets (the recording) the host has taken.
     pub in4: Vec<Vec<u8>>,
-    /// Frames whose EP4 IN token found no packet (UnderRun).
-    pub ep4_empty: u32,
-    /// STALL handshakes the device asked for on EP0.
-    pub stalls: u32,
     /// SIE accesses made while an ALNK0 interrupt was open (nested interrupts included).
     pub sie_in_audio: u64,
-    pub sie_accesses: u64,
+    sie_seen: u64,
 }
 
 impl UsbHost {
-    fn index(&self) -> usize {
-        usize::from(self.regs[14])
+    /// The cable into the FM-1, from now on: the SIE answers. No host yet (`start`).
+    pub fn plug(soc: &mut Soc) -> Self {
+        let hz = soc.periph.hz;
+        soc.usb.plug(hz);
+        UsbHost::default()
     }
 
-    fn sie_read(&mut self, r: u32) -> u8 {
-        match r {
-            2 => std::mem::take(&mut self.intr_tx),
-            4 => std::mem::take(&mut self.intr_rx),
-            6 => std::mem::take(&mut self.intr_usb),
-            3 | 5 => 0,
-            12 => self.frame as u8,
-            13 => (self.frame >> 8) as u8,
-            0..=15 => self.regs[r as usize],
-            16..=23 if matches!(self.index(), 0 | 1 | 4) => {
-                self.ep[self.index()][(r - 16) as usize]
-            }
-            _ => 0,
+    /// A host from the next frame on: it enumerates the device once it is attached.
+    pub fn start(&mut self) {
+        self.present = true;
+    }
+
+    /// The cable out for a frame and back: the host enumerates the device again.
+    pub fn replug(&mut self) {
+        self.unplug = true;
+    }
+
+    /// Configured by the host (its enumeration done).
+    pub fn configured(soc: &Soc) -> bool {
+        soc.usb.product().is_some()
+    }
+
+    /// One complete MIDI message (SysEx included) queued for the device: the host sends it
+    /// at the next frames, up to 64 bytes a frame, again the next frame while NAKed.
+    pub fn send(soc: &mut Soc, msg: &[u8]) {
+        soc.usb.midi_send(msg);
+    }
+
+    /// Event packets still waiting to go to the device.
+    pub fn pending(soc: &Soc) -> usize {
+        soc.usb.midi_pending()
+    }
+
+    /// USB-MIDI event packets (4 bytes each) as messages, the way a host's driver joins them.
+    pub fn messages(packets: &[u8]) -> Vec<Vec<u8>> {
+        let (mut sysex, mut out) = (Vec::new(), Vec::new());
+        for p in packets.as_chunks::<4>().0 {
+            fm1_soc::usb::midi_from_packet(p, &mut sysex, &mut out);
         }
+        out
     }
 
-    fn sie_write(&mut self, r: u32, v: u8) {
-        let i = self.index();
-        match r {
-            0..=15 => self.regs[r as usize] = v,
-            17 if i == 0 => {
-                let csr = &mut self.ep[0][1];
-                if v & 0x40 != 0 {
-                    *csr &= !0x01; // ServicedRxPktRdy
-                }
-                if v & 0x80 != 0 {
-                    *csr &= !0x10; // ServicedSetupEnd
-                }
-                if v & 0x20 != 0 {
-                    self.stalls += 1;
-                }
-                if v == 0 {
-                    *csr &= !0x04; // SentStall
-                }
-                if v & 0x02 != 0 {
-                    *csr |= 0x02; // TxPktRdy until the host takes it
-                    self.ep0_in = true;
-                }
-            }
-            17 if i == 1 => {
-                if v & 0x08 != 0 {
-                    self.ep[1][1] = v & !0x09; // FlushFIFO: nothing pending
-                    self.ep1_in = false;
-                } else {
-                    self.ep[1][1] = v;
-                    self.ep1_in = v & 0x01 != 0;
-                }
-            }
-            17 if i == 4 => {
-                if v & 0x08 != 0 {
-                    self.ep[4][1] = v & !0x09; // FlushFIFO: nothing pending
-                    self.ep4_in = false;
-                } else {
-                    self.ep[4][1] = v; // TxPktRdy, and UnderRun cleared by the write
-                    self.ep4_in = v & 0x01 != 0;
-                }
-            }
-            20 if i == 1 => self.ep[1][4] = v & !0x01, // the packet is released
-            16..=23 if matches!(i, 0 | 1 | 4) => self.ep[i][(r - 16) as usize] = v,
-            _ => {}
-        }
-    }
-
-    /// After every instruction: SOF's clear, and an SIE access the instruction started.
+    /// After every instruction: an SIE access the instruction made inside the audio interrupt.
     pub fn after_step(&mut self, soc: &mut Soc, in_audio: bool) {
-        let con0 = soc.read32(CON0);
-        if con0 & (1 << 12) != 0 {
-            soc.write32(CON0, con0 & !(3 << 12));
-        }
-        if con0 & 4 == 0 {
-            return;
-        }
-        let con1 = soc.read32(CON1);
-        if con1 & 0x8000 != 0 {
-            return;
-        }
-        self.sie_accesses += 1;
+        let n = soc.usb.sie_accesses;
         if in_audio {
-            self.sie_in_audio += 1;
+            self.sie_in_audio += n - self.sie_seen;
         }
-        let r = (con1 >> 8) & 0x3F;
-        if con1 & 0x4000 != 0 {
-            let d = self.sie_read(r);
-            soc.write32(CON1, (con1 & 0x7F00) | 0x8000 | u32::from(d));
-        } else {
-            self.sie_write(r, con1 as u8);
-            soc.write32(CON1, con1 | 0x8000);
-        }
+        self.sie_seen = n;
     }
 
-    /// A bus reset: the device sees it at its next poll.
-    pub fn bus_reset(&mut self) {
-        self.intr_usb |= 0x04;
-        self.regs[0] = 0;
+    /// SIE accesses so far.
+    pub fn sie_accesses(soc: &Soc) -> u64 {
+        soc.usb.sie_accesses
     }
 
-    /// One SETUP packet into EP0's buffer.
-    pub fn setup(&mut self, soc: &mut Soc, pkt: [u8; 8]) {
-        let a = soc.read32(EP0_ADR);
-        for (i, b) in pkt.iter().enumerate() {
-            soc.write8(a + i as u32, *b);
-        }
-        self.ep[0][1] |= 0x01;
-        self.intr_tx |= 0x01;
-    }
-
-    /// EP0's OUT data stage after a SETUP that announced one (SET_CUR's 3 bytes).
-    pub fn out0(&mut self, soc: &mut Soc, data: &[u8]) {
-        let a = soc.read32(EP0_ADR);
-        for (i, b) in data.iter().enumerate() {
-            soc.write8(a + i as u32, *b);
-        }
-        self.ep[0][1] |= 0x01;
-        self.ep[0][6] = data.len() as u8;
-        self.intr_tx |= 0x01;
-    }
-
-    /// One EP1 OUT packet; false (NAK) while the last one is still unread.
-    pub fn out1(&mut self, soc: &mut Soc, data: &[u8]) -> bool {
-        if self.ep[1][4] & 0x01 != 0 {
-            return false;
-        }
-        let a = soc.read32(radr(1));
-        for (i, b) in data.iter().enumerate() {
-            soc.write8(a + i as u32, *b);
-        }
-        self.ep[1][4] |= 0x01;
-        self.ep[1][6] = data.len() as u8;
-        self.ep[1][7] = 0;
-        self.intr_rx |= 0x02;
-        true
-    }
-
-    /// One 1 ms frame: SOF and the frame number, and the IN packets the device has readied,
-    /// read from RAM now.
+    /// One 1 ms frame of fm1-emu's host, and the IN packets it took, from the endpoints'
+    /// buffers as the DMA read them.
     pub fn frame(&mut self, soc: &mut Soc) {
-        self.frame = (self.frame + 1) & 0x7FF;
-        let con0 = soc.read32(CON0);
-        if con0 & 4 != 0 {
-            soc.write32(CON0, con0 | (1 << 13));
+        if !self.present {
+            return;
         }
-        if self.ep0_in {
-            let (a, n) = (soc.read32(EP0_ADR), soc.read32(cnt(0)).min(64));
-            self.in0.push((0..n).map(|i| soc.read8(a + i)).collect());
-            self.ep[0][1] &= !0x02;
-            self.intr_tx |= 0x01;
-            self.ep0_in = false;
+        let pullup = soc.read32(USB_IO_CON0) & 0x40 != 0 && !std::mem::take(&mut self.unplug);
+        let now = soc.periph.cycles;
+        let mut usb = std::mem::take(&mut soc.usb);
+        let bases = [
+            usb.read(EP0_ADR, now),
+            usb.read(EP1_TADR, now),
+            usb.read(EP4_TADR, now),
+        ];
+        let mut tap = Tap {
+            soc,
+            reads: Vec::new(),
+        };
+        usb.frame(&mut tap, pullup);
+        let reads = std::mem::take(&mut tap.reads);
+        soc.usb = usb;
+        // (the same IN data as messages: `in1` has it as packets)
+        soc.usb.midi_take();
+        // Each packet: a run of consecutive bytes from an endpoint's buffer address.
+        let mut packets: Vec<(usize, Vec<u8>)> = Vec::new();
+        let mut last = None;
+        for (addr, b) in reads {
+            let start = bases.iter().position(|&a| a == addr);
+            match (start, last) {
+                (_, Some(l)) if addr == l + 1 => packets.last_mut().expect("a packet").1.push(b),
+                (Some(ep), _) => packets.push((ep, vec![b])),
+                _ => panic!("a DMA read at {addr:#x}, in no endpoint's buffer"),
+            }
+            last = Some(addr);
         }
-        if self.ep1_in {
-            let (a, n) = (soc.read32(tadr(1)), soc.read32(cnt(1)).min(64));
-            self.in1.push((0..n).map(|i| soc.read8(a + i)).collect());
-            self.ep[1][1] &= !0x01;
-            self.intr_tx |= 0x02;
-            self.ep1_in = false;
-        }
-        if self.ep4_reading {
-            if self.ep4_in {
-                let (a, n) = (soc.read32(EP4_TADR), soc.read32(EP4_CNT).min(1023));
-                self.in4.push((0..n).map(|i| soc.read8(a + i)).collect());
-                self.ep[4][1] &= !0x01;
-                self.ep4_in = false;
-            } else {
-                self.ep[4][1] |= 0x04; // UnderRun: the IN token found nothing
-                self.ep4_empty += 1;
+        for (ep, p) in packets {
+            match ep {
+                0 => self.in0.push(p),
+                1 => self.in1.push(p),
+                _ => self.in4.push(p),
             }
         }
-    }
-
-    /// The device's address (FADDR).
-    pub fn address(&self) -> u8 {
-        self.regs[0]
     }
 }

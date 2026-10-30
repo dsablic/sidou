@@ -1266,10 +1266,12 @@ fn in_key(note: u32) -> bool {
 /// STEP's editor quiet: no generative run, no action queued, no edit in flight.
 fn step_settled(m: &mut Machine, fw: &Firmware) {
     let st = fw.symbol("ui") + ilp32::views::step as u32;
+    let gen_at = fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::gen_) as u32;
     let base = fw.symbol("__song_region");
     let start = m.ms();
     loop {
-        let quiet = m.soc.read8(st + ilp32::step_view::run as u32) == 0
+        let quiet = m.soc.read8(gen_at + ilp32::song_gen::run as u32) == 0
+            && m.soc.read8(gen_at + ilp32::song_gen::follow as u32) == 0
             && m.soc.read8(st + ilp32::step_view::qn as u32) == 0
             && m.soc.read8(st + ilp32::step_view::follow as u32) == 0
             && m.soc.read16(base + ilp32::gt2_song::pending as u32) == 0
@@ -1292,9 +1294,10 @@ fn notes_of(p: &[[u8; 4]]) -> Vec<(usize, u32)> {
         .collect()
 }
 
-/// NEW, STEP: EDIT + SCL held with K1 and K3 turned sets DICE's density (every step) and scale
-/// (major pentatonic) in the song and rolls nothing at the release; the next EDIT + SCL rolls
-/// them: a note on every row, all in the major pentatonic on the lane's C-3.
+/// NEW, STEP: EDIT + SCL held with each of K1-K4 turned at once sets DICE's density (every
+/// step), range (one octave), scale (major pentatonic) and rhythm (FOUR, which FULL fills) in the
+/// song and rolls nothing at the release; the next EDIT + SCL rolls them: a note on every row,
+/// all in the major pentatonic in the octave of the lane's C-3.
 #[test]
 fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
     let Some(fw) = fixture() else { return };
@@ -1304,16 +1307,22 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
     m.run_ms(40);
     m.key(SCL, true);
     turn(&mut m, PANEL_ENC_K1 as u8, 4); // at once: SCL's press is in before the knob's
+    turn(&mut m, PANEL_ENC_K1 as u8 + 1, -1);
     turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
+    turn(&mut m, PANEL_ENC_K1 as u8 + 3, 3);
     m.key(SCL, false);
     m.key(EDIT, false);
     m.run_ms(400);
     step_settled(&mut m, &fw);
     let s = song(&mut m, &fw);
     assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
-    let (mut d, mut sc) = (0u8, 0u8);
-    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut d, &mut sc) }, 1);
-    assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
+    let mut dice = song_dice::default();
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut dice) }, 1);
+    assert_eq!(
+        (dice.density, dice.range, dice.scale[0], dice.rhythm),
+        (4, 0, 1, 3),
+        "the song holds FULL, 1 OCT, MAJ PENT and FOUR"
+    );
     chord(&mut m, EDIT, SCL);
     assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
     step_settled(&mut m, &fw);
@@ -1329,6 +1338,81 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
             [0, 2, 4, 7, 9].contains(&((note + 120 - LANE_NOTE) % 12)),
             "row {row}: note {note} is out of the major pentatonic"
         );
+        assert!(
+            (LANE_NOTE..LANE_NOTE + 12).contains(&note),
+            "row {row}: note {note} is out of the one octave"
+        );
+    }
+}
+
+/// NEW, TRACKER: EDIT + SCL held shows DICE's frame; K1 and K2 turned at once set FULL and 1 OCT,
+/// a note key the lane's root (C-4), and the release rolls nothing (a turn spoils it). The next
+/// EDIT + SCL rolls the shown voice's pattern: a note on every row, in the minor pentatonic in the
+/// octave from C-4. EDIT + ENV then writes the filter sweep: a C command every second row.
+#[test]
+fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    press(&mut m, SEQ);
+    m.run_ms(WIPE_MS);
+    assert_view(&mut m, &fw, "tracker_view_view", "SEQ from STEP");
+    let before = song(&mut m, &fw).pattern(0).unwrap();
+    let sv = fw.symbol("ui") + ilp32::views::song as u32;
+    let gen_at = sv + ilp32::song_view::gen_ as u32;
+    m.key(EDIT, true);
+    m.run_ms(40);
+    m.key(SCL, true);
+    turn(&mut m, PANEL_ENC_K1 as u8, 2); // at once: SCL's press is in before the knob's
+    turn(&mut m, PANEL_ENC_K1 as u8 + 1, -1);
+    let key = 7u8; // C4 on the panel at octave 0 (app/panel.h: key 0 is F3)
+    m.key(KEY0 + key, true);
+    m.run_ms(100);
+    m.key(KEY0 + key, false);
+    m.run_ms(100);
+    let canvas = sv + (ilp32::song_view::cv + ilp32::grid_canvas::ch) as u32;
+    let top = TRACKER_VIEW_TOP + TRACKER_VIEW_ROW_CELLS * TRACKER_VIEW_DICE_ROW;
+    assert_eq!(
+        text_at(&mut m, canvas + top * GRID_COLS + 2, 23),
+        " DICE - LET GO TO ROLL ",
+        "the frame"
+    );
+    let root = 48u8; // C-4: the jam's note 0 is key note 12
+    assert_eq!(
+        m.soc.read8(gen_at + ilp32::song_gen::root as u32),
+        root,
+        "the key set V1's root"
+    );
+    m.key(SCL, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    let s = song(&mut m, &fw);
+    assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
+    let mut dice = song_dice::default();
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut dice) }, 1);
+    assert_eq!((dice.density, dice.range), (4, 0), "FULL and 1 OCT");
+    chord(&mut m, EDIT, SCL);
+    assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
+    step_settled(&mut m, &fw);
+    let diced = song(&mut m, &fw).pattern(0).unwrap();
+    let notes = notes_of(&diced);
+    assert_eq!(notes.len(), diced.len() - 1, "every row a note");
+    for &(row, note) in &notes {
+        let d = note - u32::from(root);
+        assert!(
+            d < 12 && [0, 3, 5, 7, 10].contains(&d),
+            "row {row}: note {note} is off C-4's minor pentatonic"
+        );
+    }
+    chord(&mut m, EDIT, PANEL_BTN_ENV as u8);
+    let said = toast(&mut m, &fw);
+    assert!(said == "SWEEP UP" || said == "SWEEP DOWN", "{said}");
+    step_settled(&mut m, &fw);
+    let swept = song(&mut m, &fw).pattern(0).unwrap();
+    for (row, c) in swept.iter().enumerate().take(diced.len() - 1) {
+        let want = if row % 2 == 0 { 0x0c } else { diced[row][2] };
+        assert_eq!(c[2], want, "row {row}: {c:02x?}");
+        assert_eq!(c[..2], diced[row][..2], "row {row}: the note stays");
     }
 }
 
@@ -1363,9 +1447,13 @@ fn scl_before_edit_is_dices_chord_too() {
     assert_eq!(after, amounts, "no effect knob turned");
     let s = song(&mut m, &fw);
     assert_eq!(s.pattern(0).unwrap(), before, "a turn while held: no roll");
-    let (mut d, mut sc) = (0u8, 0u8);
-    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut d, &mut sc) }, 1);
-    assert_eq!((d, sc), (4, 1), "the song holds FULL and MAJ PENT");
+    let mut dice = song_dice::default();
+    assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut dice) }, 1);
+    assert_eq!(
+        (dice.density, dice.scale[0]),
+        (4, 1),
+        "the song holds FULL and MAJ PENT"
+    );
 }
 
 /// EDIT + ARP is MUTATE whichever finger lands first: ARP 5 ms before EDIT mutates the diced
