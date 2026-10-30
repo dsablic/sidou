@@ -4960,6 +4960,36 @@ fn the_step_view_matches_its_goldens() {
     compare_golden(&build, "step-play", &m.soc.lcd.fb, &[]);
 }
 
+/// TRACKER with EDIT + SCL held: DICE's frame over the window's lower half (its four settings at
+/// 2x, K4's rhythm turned to 3-3-2, the root a key set), and the rows back when it is let go
+/// (a turn: no roll).
+#[test]
+fn the_tracker_dice_frame_matches_its_golden() {
+    let Some((build, fw)) = fixture("the TRACKER DICE golden test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_tracker(&mut m, &fw);
+    let scl = sidou_sys::PANEL_BTN_SCL as u8;
+    m.key(EDIT, true);
+    m.run_ms(60);
+    m.key(scl, true);
+    m.run_ms(60);
+    m.turn(K1 + 3, 2);
+    m.run_ms(100);
+    m.key(A4_KEY, true);
+    m.run_ms(100);
+    m.key(A4_KEY, false);
+    m.run_ms(1500); // the popup goes
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker-dice", &m.soc.lcd.fb, &[]);
+    m.key(scl, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
+}
+
 /// STEP playing for `ms`: the song (None: SIDOU LOOP) injected, STEP from SEQ, PLAY; the frames'
 /// costs and the frames whose copy the budget cut short.
 fn step_run(fw: &Firmware, song: Option<&sidou_tests::song::Song>, ms: u64) -> (Cost, u32) {

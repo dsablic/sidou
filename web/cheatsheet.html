@@ -202,8 +202,10 @@
         <tr><td>step held + PRESETS</td><td>that step's note (and the lane's next notes)</td></tr>
         <tr><td>step held + LFO</td><td>clear the step's locks, chance and SET</td></tr>
         <tr><td>E+ SCL</td><td><b>DICE</b>: a new pattern for the lane (<code>NEW PATTERN</code>), rolled when SCL is let go</td></tr>
-        <tr><td>E+ SCL held + K1 · K3</td><td>DICE's <b>density</b> (sparse to every step) · <b>scale</b> (minor/major pentatonic, minor, major, dorian, chromatic); saved with the song, shown on the screen while held</td></tr>
+        <tr><td>E+ SCL held + K1 · K2 · K3 · K4</td><td>DICE's <b>density</b> (sparse to every step) · <b>range</b> (1, 2 or 3 octaves, BASS) · the lane's <b>scale</b> (minor/major pentatonic, minor, major, dorian, chromatic) · <b>rhythm</b> (STRAIGHT, OFFBEAT, 3-3-2, FOUR, BROKEN); saved with the song, shown on the screen while held</td></tr>
+        <tr><td>E+ SCL held + a key</td><td>the lane's <b>root</b> (the roll still comes when SCL is let go)</td></tr>
         <tr><td>E+ ARP</td><td><b>MUTATE</b>: two small changes (<code>MUTATED</code>)</td></tr>
+        <tr><td>E+ ENV</td><td><b>SWEEP</b>: a filter sweep, GoatTracker <code>C</code> commands every 2 rows, never over a command</td></tr>
         <tr><td>E+ LFO</td><td>one undo (again: redo)</td></tr>
         <tr><td>Keys 17+</td><td>audition</td></tr>
       </table>
@@ -211,7 +213,7 @@
       <ul>
         <li><b>01</b> lead · <b>02</b> bass · <b>03–0A</b> SID drum kit: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI, RIM</li>
         <li><b>0B–0E</b> digi drums (4-bit samples): DG KICK, DG SNARE, DG CLAP, DG HAT. GoatTracker plays chip-kit copies instead.</li>
-        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the song's DICE scale (the minor pentatonic unless you chose another) on the lane's note; a drum lane keeps its note.</li>
+        <li>3 voices, 64-row patterns, tempo 6. DICE and MUTATE use the lane's DICE scale (the minor pentatonic unless you chose another) on the lane's root; a drum lane keeps its note.</li>
       </ul>
     </section>
 
@@ -221,6 +223,7 @@
         <tr><td>TRACKER SELECT</td><td>row (E+: 8 rows)</td></tr>
         <tr><td>TRACKER ALGORITHM</td><td>voice shown, V1 V2 V3 (E+: edit step 0–16)</td></tr>
         <tr><td>REC on, song stopped</td><td>keys write notes · ARP key off · LFO clears (twice: whole row) · K1 instr · K2 command · K3/K4 data · PRESETS current instr · E+ PRESETS insert/delete row · E+ LFO one undo</td></tr>
+        <tr><td>TRACKER E+ ARP · E+ SCL · E+ ENV</td><td>STEP's MUTATE · DICE (its frame and knobs while held) · SWEEP on the shown voice's pattern; a <code>%</code> marks a row with a chance below 100</td></tr>
         <tr><td>ORDER</td><td>SELECT entry · ALG subtune/voice · K1 value · K2 kind (pattern, repeat, transpose) · E+ PRESETS insert/delete · ARP restart · PLAY from here</td></tr>
         <tr><td>INSTR</td><td>PRESETS instrument · SELECT parameter / name letter · K1 coarse · K2 fine · E+ SEQ opens its table</td></tr>
         <tr><td>TABLE</td><td>ALG WAVE/PULSE/FILTER/SPEED · SELECT row · K1/K2 left/right byte · ARP opens the ARP helper (WAVE)</td></tr>

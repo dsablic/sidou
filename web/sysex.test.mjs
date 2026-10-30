@@ -10,9 +10,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { crc32 as zlibCrc32 } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
-  ACK, ABORT, Client, DATA, busyWaits, DIR, END, INQ, NAK, PUT, WAIT, crc32, decodeFrame, encodeFrame, nakMessage, pack,
-  unpack, validName,
+  ACK, ABORT, Client, DATA, GET, busyWaits, DIR, END, INQ, NAK, PUT, WAIT, crc32, decodeFrame, encodeFrame, nakMessage, pack,
+  unpack, songsIn, validName,
 } from "./sysex.js";
+import { SongError, songToMidi } from "./songmidi.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const hex = (b) => Buffer.from(b).toString("hex");
@@ -57,7 +58,12 @@ await test("names follow the store's rules", () => {
 // A device that follows sysex.md: it checks every frame it gets as the real one would and answers
 // into the client. `fail` names a NAK to send for a given command: { DATA: [index, reason, pool] }.
 class Device {
-  constructor({ files = [], free = 40000, nak = null, mute = null, quiet = null } = {}) {
+  constructor({ files = [], free = 40000, nak = null, mute = null, quiet = null, current = null, refuse = null, chunk = 256, flip = null } = {}) {
+    this.flip = flip; // flip a bit of the first DATA packet's byte at this index
+    this.current = current; // the current song's bytes, for GET target 2
+    this.refuse = refuse; // a NAK reason for every GET
+    this.chunk = chunk;
+    this.out = null;
     this.files = files.map((f) => ({ ...f }));
     this.quiet = quiet; // { at: a DATA's index, waits: WAITs before its answer, every: ms, give_up: NAK BUSY then }
     this.free = free;
@@ -86,7 +92,8 @@ class Device {
       this.dirSeq = f.sequence;
       return this.dirNext();
     }
-    if (f.command === ACK) return this.dirNext();
+    if (f.command === GET) return this.get(f);
+    if (f.command === ACK) return this.out ? this.outNext() : this.dirNext();
     if (f.command === ABORT) { this.upload = null; return; }
     if (this.nak?.command === f.command && this.nak.at === (f.command === DATA ? this.nData++ : 0) && this.nak.times !== 0) {
       if (this.nak.times) this.nak.times--;
@@ -136,6 +143,39 @@ class Device {
     this.stored.set(u.name, Uint8Array.from(u.data));
     this.upload = null;
     this.reply(ACK, f.sequence);
+  }
+  // GET: the metadata (a PUT frame), the DATA packets and END, one at a time, each after the ACK of the one before
+  get(f) {
+    const d = f.data;
+    assert.equal(d.length, 18, "GET is target, instrument and a name");
+    assert.equal(d[1], 0, "no instrument");
+    if (this.refuse) return this.reply(NAK, f.sequence, Uint8Array.from([this.refuse, 3]));
+    let bytes, type = 1, name = new Uint8Array(16);
+    if (d[0] === 2) {
+      assert.ok(d.slice(2).every((b) => b === 0), "target 2 has no name");
+      bytes = this.current;
+    } else {
+      assert.equal(d[0], 0);
+      const n = Buffer.from(d.slice(2, 18)).toString("latin1").replace(/\0+$/, "");
+      const file = this.files.find((x) => x.name === n);
+      if (!file || !this.stored.has(n)) return this.reply(NAK, f.sequence, Uint8Array.from([6, 0]));
+      bytes = this.stored.get(n);
+      type = file.type;
+      name = d.slice(2, 18);
+    }
+    let seq = f.sequence;
+    this.out = [[PUT, Uint8Array.from([d[0], 0, ...name, type, ...u32(bytes.length), ...u32(crc32(bytes))])]];
+    for (let o = 0; o < bytes.length; o += this.chunk) this.out.push([DATA, bytes.slice(o, o + this.chunk)]);
+    if (this.flip !== null) this.out[1][1] = this.out[1][1].map((b, i) => (i === this.flip ? b ^ 1 : b));
+    this.out.push([END, new Uint8Array()]);
+    this.outSeq = seq;
+    this.outNext();
+  }
+  outNext() {
+    const next = this.out.shift();
+    if (!next) { this.out = null; return; }
+    this.reply(next[0], this.outSeq, next[1]);
+    this.outSeq = (this.outSeq + 1) & 0x7f;
   }
   dirNext() {
     if (!this.listing) return;
@@ -189,6 +229,72 @@ await test("INQ, DIR and a whole multi-packet PUT against the device", async () 
   // overwriting: the same name again replaces it
   await client.put("CHROME COMET", song.slice(0, 100));
   assert.equal(device.stored.get("CHROME COMET").length, 100);
+});
+
+// one of the site's songs
+const songBytes = (name) => {
+  const a = Array.from(readFileSync(`${here}../assets/songs/${name}`));
+  return Uint8Array.from(a);
+};
+
+await test("the Songs to MIDI flow: DIR lists the songs, GET reads one, the file converts like a picked one", async () => {
+  const comet = songBytes("chrome-comet.sng"), iron = songBytes("iron-rite.sng");
+  const tune = Uint8Array.from({ length: 300 }, (_, i) => i);
+  const files = [
+    { name: "CHROME COMET", type: 1, length: comet.length, crc: crc32(comet) },
+    { name: "A TUNE", type: 2, length: tune.length, crc: crc32(tune) },
+    { name: "IRON RITE", type: 1, length: iron.length, crc: crc32(iron) },
+  ];
+  const { device, client } = connect({ files, current: iron }, { timeout: 300, ackTimeout: 300, busy: [] });
+  device.stored.set("CHROME COMET", comet);
+  device.stored.set("A TUNE", tune);
+  device.stored.set("IRON RITE", iron);
+  await client.inquire();
+  const listed = songsIn(await client.dir());
+  assert.deepEqual(listed.map((f) => f.name), ["CHROME COMET", "IRON RITE"], "the .sid tune is not a song");
+  // a stored song, in 100-byte packets (any length up to 256 is allowed), is the file's bytes
+  device.chunk = 100;
+  const seen = [];
+  const got = await client.get({ target: 0, name: listed[0].name }, { onProgress: (d, t) => seen.push([d, t]) });
+  assert.deepEqual(got, comet);
+  assert.deepEqual(seen.at(-1), [comet.length, comet.length]);
+  const direct = songToMidi(comet);
+  const viaFm1 = songToMidi(got);
+  assert.deepEqual(viaFm1.midi.bytes, direct.midi.bytes, "the same .mid as the picked file's");
+  // the current song (target 2), GET's frame byte for byte: target 2, instrument 0, sixteen zeros
+  device.chunk = 256;
+  const cur = await client.get({ target: 2 });
+  assert.deepEqual(cur, iron);
+  assert.ok(device.sent.some((h) => h.startsWith("f07d534403") && decodeFrame(unhex(h)).data.length === 18 && decodeFrame(unhex(h)).data[0] === 2));
+  assert.equal(songToMidi(cur).song.name, "IRON RITE");
+  // the sequence goes on after a GET: a DIR and another GET still work
+  assert.equal((await client.dir()).length, 3);
+  assert.deepEqual(await client.get({ target: 0, name: "IRON RITE" }), iron);
+});
+
+await test("GET refusals: busy, no such song, full; a damaged transfer is an error and an ABORT", async () => {
+  const comet = songBytes("chrome-comet.sng");
+  for (const [reason, text] of [[4, /busy.*try again/], [5, /too big/], [6, /no such song/], [7, /I\/O error/]]) {
+    const { device, client } = connect({ current: comet, refuse: reason });
+    await assert.rejects(client.get({ target: 2 }), (e) => e.nak === reason && text.test(e.message));
+    assert.ok(!device.sent.some((h) => h.startsWith("f07d534408")), "no ABORT after a NAK");
+  }
+  // a stored name the device does not hold
+  let c = connect({ files: [{ name: "GONE", type: 1, length: 1, crc: 0 }] });
+  await assert.rejects(c.client.get({ target: 0, name: "GONE" }), (e) => e.nak === 6 && /Check this pair/.test(e.message));
+  // a song that arrives with a wrong CRC is not handed on
+  c = connect({ current: comet, flip: 5 });
+  await assert.rejects(c.client.get({ target: 2 }), /damaged/);
+  assert.equal(decodeFrame(unhex(c.device.sent.at(-1))).command, ABORT);
+  // silence: the page's wait ends with a sentence, not a hang
+  c = connect({ current: comet }, { timeout: 50, ackTimeout: 50, busy: [] });
+  c.device.get = () => {};
+  await assert.rejects(c.client.get({ target: 2 }), /no answer/);
+  // a GET of another target or an invalid name is refused before anything is sent
+  await assert.rejects(connect().client.get({ target: 1 }), /GET reads/);
+  await assert.rejects(connect().client.get({ target: 0, name: "lower" }), /valid SIDOU file name/);
+  // a file that is not a song reaches the converter's own refusal
+  assert.throws(() => songToMidi(Uint8Array.from({ length: 200 }, () => 7)), SongError);
 });
 
 await test("the sequence wraps modulo 128 over a long run", async () => {

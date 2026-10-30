@@ -94,6 +94,7 @@ const SOURCES: &[&str] = &[
     "app/sid_view.c",
     "app/song_io.c",
     "app/song_edit.c",
+    "app/song_gen.c",
     "app/step_view.c",
     "app/store.c",
     "app/sysex.c",

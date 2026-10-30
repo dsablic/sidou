@@ -12,9 +12,10 @@
 /* What the header shows, as bytes (song_view.drawn): the play state, the tempo (2), REC, the shown
  * voice, the mutes and the solos, its pattern, the theme; then what the rows show: the mode, the
  * window's top (2), the bar's row, whether there is a song, the shown voice, the theme, the
- * orderlist position, each voice's pattern, entry and silence, the song's edit count (4). */
+ * orderlist position, each voice's pattern, entry and silence, the song's edit count (4), REC, the
+ * field, the subtune, DICE's frame (app/song_gen.h song_gen_look), the jam. */
 #define HEAD_LOOK 8u
-#define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u + 3u + 2u)
+#define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u + 3u + SONG_GEN_LOOK + 2u)
 _Static_assert(HEAD_LOOK + ROWS_LOOK <= SONG_VIEW_LOOK, "the looks fit");
 /* The rows' look bytes the bar's step changes alone (rows_look): the bar's row, the position. */
 #define ROWS_BAR 3u
@@ -214,6 +215,8 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     out[n++] = sv->rec;
     out[n++] = sv->field;
     out[n++] = (uint8_t)subtune_of(sv, sv->voice, at_cursor(sv));
+    (void)song_gen_look(sv, out + n);
+    n += SONG_GEN_LOOK;
     int jam = sv->jam_key != SONG_VIEW_NO_KEY && sv->jam_voice == sv->voice;
     out[n++] = jam ? sv->jam_key : SONG_VIEW_NO_KEY;
     out[n++] = jam ? sv->instr : 0u;
@@ -412,6 +415,18 @@ static void draw_strip(canvas* c, const theme* th, uint32_t r, uint32_t col, int
     }
 }
 
+/* 1: row u of the pattern has a chance below 100 (a LOCK STEP writes, song_ext.h). */
+static int chance_below(const gt2_song* s, uint32_t pattern, uint32_t u) {
+    uint32_t n = 0u;
+    const uint8_t* r = song_locks_row(s, pattern, u, &n);
+    for (uint32_t i = 0; r && i < n; i++, r += SONG_LOCK_BYTES) {
+        if (r[2] == SONG_LOCK_CHANCE) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* Window row j (the pattern row `top` + j, its two cell rows) and its strips, into the canvas. */
 static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SONG_T_VOICES],
                             const strip_data strips[SONG_T_VOICES], int32_t top, uint32_t j) {
@@ -439,6 +454,11 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
         char ghost[6];
         draw_row(c, th, r, shown_v, u, cell, on, on && at_cursor(sv) ? sv->field : TRACKER_VIEW_FIELD_NONE,
                  on && cell && ghost_of(sv, ghost) ? ghost : NULL);
+        if (cell && chance_below(s, bar.pattern, u)) {
+            /* a step STEP gave a chance below 100: a yellow mark beside the row's number */
+            c->ch[r + 1u][TRACKER_VIEW_CHANCE_COL] = '%';
+            c->attr[r + 1u][TRACKER_VIEW_CHANCE_COL] = GRID_ATTR(th->hot, on ? th->cursor : th->bg);
+        }
     } else {
         blank(c, 0, r, GRID_COLS, TRACKER_VIEW_ROW_CELLS, THEME_ATTR(th, value));
     }
@@ -567,6 +587,11 @@ static void build_rows(song_view* sv) {
     build_footer(sv, th, lanes);
     sv->dirty |= ((1u << (GRID_ROWS - TRACKER_VIEW_ORDER_ROW)) - 1u) << TRACKER_VIEW_ORDER_ROW;
     sv->unbuilt = (uint16_t)((1u << TRACKER_VIEW_ROWS) - 1u);
+    if (sv->gen.scl_down == SONG_GEN_SCL_CHORD) {
+        /* EDIT + SCL held: DICE's frame over the window's lower half */
+        song_gen_frame(sv, TRACKER_VIEW_TOP + TRACKER_VIEW_ROW_CELLS * TRACKER_VIEW_DICE_ROW);
+        sv->unbuilt = (uint16_t)((1u << TRACKER_VIEW_DICE_ROW) - 1u);
+    }
 }
 
 /* What a step of the bar changes when nothing else did (the window stands, in BAR): the row it
@@ -600,14 +625,32 @@ static void enter(screen* s, void* state) {
     song_view* sv = state;
     sv->built = 0;
     sv->edit_screen = s;
+    song_gen_stop(sv);
 }
 
-/* Left: no rows wait to be built; the next visit builds all of them. */
+/* Left: no rows wait to be built; the next visit builds all of them. A generative run stops. */
 static void leave(screen* s, void* state) {
-    (void)s;
     song_view* sv = state;
+    song_gen_scl_alone(sv);
+    if (sv->gen.follow) {
+        song_gen_drain(sv, s);
+    }
+    song_gen_stop(sv);
     sv->unbuilt = 0;
     sv->built = 0;
+}
+
+/* MUTATE, DICE or the sweep (app/song_gen.h) on the shown voice's pattern at the cursor, with the
+ * current instrument. */
+static void gen_start(screen* s, song_view* sv, uint32_t kind) {
+    song_gen_start(sv, s, kind, edit_lane(sv).pattern, sv->voice, sv->instr);
+    song_gen_drain(sv, s);
+}
+
+void tracker_view_buttons(song_view* sv, screen* s, uint32_t held) {
+    if (song_gen_release(sv, held) && screen_top(s) == &tracker_view_view) {
+        gen_start(s, sv, SONG_GEN_DICE);
+    }
 }
 
 __attribute__((noinline, unused)) static uint8_t clamp(int32_t value, uint32_t max) {
@@ -670,6 +713,12 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
                        uint32_t* fill, uint32_t* max) {
     uint32_t v;
     const char* label;
+    if (song_gen_popup(sv, encoder, name, value, fill, max)) {
+        return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
+    }
+    if (!sv->rec) {
+        return 0;
+    }
     if (encoder == 6u && !edit) {
         v = sv->instr;
         label = "INSTRUMENT";
@@ -736,6 +785,18 @@ static int input(screen* s, void* state, const screen_event* e) {
     if (sv->rec) {
         finish_ready_edit(sv);
     }
+    if (e->kind == SCREEN_PRESS) {
+        /* EDIT + SCL (DICE, either order), EDIT + ARP (MUTATE), EDIT + ENV (the filter sweep):
+         * STEP's, on the shown voice's pattern (app/song_gen.h); nothing while REC records */
+        int free = !song_view_recording(sv) && sv->editor;
+        if (song_gen_press(sv, e->id, edit, free)) {
+            return 1;
+        }
+        if (edit && free && (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_ENV)) {
+            gen_start(s, sv, e->id == PANEL_BTN_ARP ? SONG_GEN_MUTATE : SONG_GEN_SWEEP);
+            return 1;
+        }
+    }
     if (e->kind == SCREEN_PRESS && edit && e->id == PANEL_BTN_LFO) {
         finish_ready_edit(sv);
         if (sv->editor) {
@@ -773,6 +834,10 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (e->kind != SCREEN_TURN) {
         return 0;
+    }
+    song_gen_scl_alone(sv); /* a knob while SCL is down alone: the slot first, then the knob */
+    if (song_gen_turn(sv, s, e->id, e->steps)) {
+        return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
     }
     if (e->id == PANEL_ENC_SELECT) {
         uint32_t n = rows_of(sv->song, edit_lane(sv).pattern);
@@ -871,8 +936,10 @@ static int model_loading(const song_view* sv) {
 }
 
 static int changed(screen* s, void* state) {
-    (void)s;
-    const song_view* sv = state;
+    song_view* sv = state;
+    if (song_gen_busy(sv) && !sv->away) {
+        song_gen_drain(sv, s);
+    }
     if (sv->away) {
         return song_view_away_changed(sv);
     }
@@ -921,7 +988,7 @@ static void compose(screen* s, void* state, grid* g) {
         for (uint32_t i = 0; i < ROWS_LOOK; i++) {
             changed |= (uint32_t)(rows[i] != sv->drawn[HEAD_LOOK + i]) << i;
         }
-        if (!fresh && !head_new && !sv->unbuilt &&
+        if (!fresh && !head_new && !sv->unbuilt && sv->gen.scl_down != SONG_GEN_SCL_CHORD &&
             !(changed & ~(ROWS_BAR_BIT | ROWS_POS_BIT | ROWS_JAM_BITS))) {
             sv->dirty |= build_step(sv, sv->drawn[HEAD_LOOK + ROWS_BAR]);
         } else {

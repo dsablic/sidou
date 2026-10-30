@@ -242,15 +242,30 @@ typedef struct {
 int song_ext_get_keys(const gt2_song* s, song_keys* v);
 int song_ext_set_keys(gt2_song* s, const song_keys* v);
 
-/* DICE: STEP's roll (EDIT + SCL), its density (0 sparse .. 4 every step) and its scale (0 minor
- * pentatonic, 1 major pentatonic, 2 minor, 3 major, 4 dorian, 5 chromatic). No chunk, or a
- * value out of range, is the default: density 2 and the minor pentatonic, what the roll always
- * was. 1 when the chunk is there and valid; the two are filled either way. */
+/* DICE: the song views' roll (EDIT + SCL in STEP and TRACKER), its density (0 sparse .. 4 every
+ * step), each lane's scale (0 minor pentatonic, 1 major pentatonic, 2 minor, 3 major, 4 dorian, 5
+ * chromatic), its rhythm (0 straight, 1 offbeat, 2 3-3-2, 3 four, 4 broken) and its range (0 one
+ * octave, 1 two, 2 three, 3 bass: the root's octave and the one below). The chunk: version 1,
+ * density, lane 1's scale, rhythm, range, lane 2's and lane 3's scales. No chunk, a value out of
+ * range or a field the chunk is too short for (1.0 wrote 3 bytes, 1.1's first cut 5) is the
+ * default: density 2, the minor pentatonic, straight and two octaves, what the roll always was; a
+ * lane 2 or 3 scale's default is lane 1's. 1 when the chunk is there and valid; the fields are
+ * filled either way. */
 #define SONG_DICE_DENSITIES 5u
 #define SONG_DICE_SCALES 6u
+#define SONG_DICE_RHYTHMS 5u
+#define SONG_DICE_RANGES 4u
+#define SONG_DICE_LANES 3u
 #define SONG_DICE_DENSITY_DEFAULT 2u
-int song_ext_get_dice(const gt2_song* s, uint8_t* density, uint8_t* scale);
-int song_ext_set_dice(gt2_song* s, uint32_t density, uint32_t scale);
+#define SONG_DICE_RANGE_DEFAULT 1u
+#define SONG_DICE_BYTES 7u
+typedef struct {
+    uint8_t density;
+    uint8_t scale[SONG_DICE_LANES];
+    uint8_t rhythm, range;
+} song_dice;
+int song_ext_get_dice(const gt2_song* s, song_dice* v);
+int song_ext_set_dice(gt2_song* s, const song_dice* v);
 
 /* DIGI: the digi drums (decision record 0009). Each entry marks an instrument (1-63) as a digi
  * drum and names a built-in sample (SONG_DIGI_*); the instrument's own GT2 content is what

@@ -2175,6 +2175,18 @@ By ear; no device risk beyond the usual song editing.
 6. Save, reopen the song in GoatTracker 2: the pattern is plain; every step plays (GoatTracker
    ignores chance).
    *Emulator:* `sidou-tests/tests/song_locks.rs::a_chance_is_a_lock_that_round_trips_and_leaves_the_gt2_bytes_alone` (the GT2 bytes are plain), `sidou-tests/tests/app/step_view.rs::a_step_made_song_plays_as_goattrackers_player_does_with_its_set_and_without_the_chunk_locks`.
+7. (1.1) Hold EDIT + SCL: the frame shows DENS, RANGE, SCALE, RHYTHM and ROOT at 2x. Turn K2 and
+   K4 through their choices and roll each rhythm (let go without a turn): OFFBEAT, 3-3-2, FOUR and
+   BROKEN should each be heard as its name says, on a melodic and on a drum lane; BASS should sit
+   under the lead. Press a key while holding the chord: ROOT follows it and the roll still comes.
+   *Emulator:* `emu-gate/tests/first_use.rs::dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them` (K1-K4 turned at once after SCL), `emu-gate/tests/screen.rs::the_step_view_matches_its_goldens` (golden step-dice), `sidou-tests/tests/app/step_view.rs::each_rhythm_hits_as_its_weights_say_on_melodic_and_drum_lanes`, `sidou-tests/tests/app/step_view.rs::each_range_keeps_to_its_octaves`, `sidou-tests/tests/app/song_gen.rs::a_note_key_with_edit_and_scl_held_sets_the_lanes_root_and_the_roll_still_comes`.
+   *Device-only:* whether each rhythm and range sounds musical (by ear).
+8. (1.1) In TRACKER: EDIT + SCL, EDIT + ARP and EDIT + ENV on the shown voice, the frame over the
+   lower rows while EDIT + SCL is held. On a voice whose instrument uses the filter, EDIT + ENV and
+   PLAY: the cutoff should open (SWEEP UP) or close (SWEEP DOWN) across the pattern, smoothly
+   enough to use.
+   *Emulator:* `emu-gate/tests/first_use.rs::tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter`, `emu-gate/tests/screen.rs::the_tracker_dice_frame_matches_its_golden`, `sidou-tests/tests/app/song_gen.rs::a_swept_song_plays_in_goattrackers_player_as_written`.
+   *Device-only:* the sweep heard, and whether every second row is fine-grained enough.
    *Device-only:* GoatTracker 2 opening and playing the saved song on a computer (external gear).
 
 ## 19. USB audio out

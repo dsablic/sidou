@@ -53,6 +53,7 @@
 #include "song_transport.h"
 #include "song_io.h"
 #include "song_edit.h"
+#include "song_gen.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -96,7 +97,7 @@ extern "C" {
 /* Cells, colours and the characters of large text's pieces (app/grid.h grid_canvas). */
 typedef grid_canvas song_view_canvas;
 
-typedef struct {
+typedef struct song_view {
     const song_transport* t; /* NULL: no player */
     song_io* io; /* NULL: no song files */
     live* l;
@@ -154,6 +155,9 @@ typedef struct {
      * PLAYING: STOP TO EDIT and take no input but the views' global keys). */
     const sid_transport* tune;
     uint8_t away;
+    /* Generative play in STEP and TRACKER (app/song_gen.h): the lanes' roots, MUTATE, DICE and the
+     * sweep at work, and EDIT + SCL's chord. */
+    song_gen gen;
 } song_view;
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */
