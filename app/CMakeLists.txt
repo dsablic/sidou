@@ -134,6 +134,7 @@ if(CMAKE_CROSSCOMPILING)
     # (240 bytes; CHIP K1 on DIST reaches 245 of CHIP_INPUT 245), grid.c (3,360 bytes, but the tile
     # renderer's frame grows 15 %: THE CHIP's ui_poll 79,774 over 79,000), live_view.c and live.c
     # (the instrument's frame and input), reg_ring.c (the audio interrupt's pops).
+    set_source_files_properties(scene_px.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(widget.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(midi_out.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(song_gen.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
