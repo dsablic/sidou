@@ -902,8 +902,9 @@ A budget is set from a measurement plus a margin, and raising one is the owner's
   in the test.
 - A boot runs 400 ms before a test reaches the store: `lcd_init`'s reset (150 ms) and wake-up
   wait (120 ms), during which the store mounts, recovers and fills its pool, then the main loop.
-- `STORE_POLL_WORST`, 30,000 instructions, is the store's share of a main-loop pass ; each kind of `store_poll` work's cost a unit, measured on polls of at least
-  256 units, times `STORE_POLL_WORK` stays within it.
+- `STORE_POLL_WORST`, 30,000 instructions, is the store's share of a main-loop pass: each kind
+  of `store_poll` work's cost a unit, measured on polls of at least 256 units, times
+  `STORE_POLL_WORK` stays within it.
 - A hold fades the output to silence over two halves (256 frames), which play after the
   operation; a DAW's clock (F8 at 120 BPM) and active sensing do not keep the store from
   going quiet, a CC every 100 ms, a held chord and a playing song do.
