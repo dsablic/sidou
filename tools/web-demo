@@ -85,7 +85,7 @@ say "the Library page's wasm core (tools/wasm-core)"
 "$root/tools/wasm-core" "$out/sidou-core.wasm"
 # the Live Link page and its viewer's wasm (tools/wasm-link)
 say "the Live Link page's viewer (tools/wasm-link)"
-cp "$root/web/link.html" "$root/web/link.js" "$out/"
+cp "$root/web/link.html" "$root/web/link.js" "$root/web/link-keyboard.js" "$out/"
 "$root/tools/wasm-link" "$out/sidou-link.wasm"
 mkdir -p "$out/songs"
 cp "$root"/assets/songs/*.sng "$out/songs/"
