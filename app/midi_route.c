@@ -25,11 +25,9 @@
 #define CLOCK 0xf8u
 #define START 0xfau
 
-/* A channel's role in the mode. */
 enum { ROLE_NONE, ROLE_LIVE, ROLE_JAM };
 
 static void roles(midi_route* r);
-/* What goes straight to live on its channels (midi_route_fast). */
 #define FAST_KINDS                                                                             \
     (uint8_t)(1u << MIDI_NOTE_OFF | 1u << MIDI_NOTE_ON | 1u << MIDI_POLY_PRESSURE |            \
               1u << MIDI_CC | 1u << MIDI_CHANNEL_PRESSURE | 1u << MIDI_PITCH_BEND)
@@ -114,8 +112,6 @@ int midi_route_owns_chip_a(uint32_t mode) {
     return mode == MIDI_MODE_MULTI || mode == MIDI_MODE_WHOLE_A || mode == MIDI_MODE_WHOLE_B;
 }
 
-/* ---- the player ---- */
-
 static int p_on(midi_route* r, uint32_t v, uint32_t note, uint32_t instr, uint32_t legato) {
     return r->player.jam_on ? r->player.jam_on(r->player.ctx, v, note, instr, legato) : 1;
 }
@@ -124,7 +120,6 @@ static int p_off(midi_route* r, uint32_t v) {
     return r->player.jam_off ? r->player.jam_off(r->player.ctx, v) : 1;
 }
 
-/* Voice v sounds MIDI note n (in GoatTracker's range: the callers check) with instr. */
 static void sound(midi_route* r, uint32_t v, uint8_t n, uint32_t instr, uint32_t legato) {
     if (!p_on(r, v, (uint32_t)n - MIDI_ROUTE_GT_FIRST, instr, legato)) {
         r->dropped++;
@@ -141,15 +136,13 @@ static void silence(midi_route* r, uint32_t v) {
     if (p_off(r, v)) {
         r->v[v].note = MIDI_ROUTE_NO_NOTE;
     } else {
-        r->dropped++; /* the voice still sounds: its next jam_off or jam_on ends it */
+        r->dropped++;
     }
 }
 
 static int in_range(uint32_t n) {
     return n >= MIDI_ROUTE_GT_FIRST && n < MIDI_ROUTE_GT_FIRST + MIDI_ROUTE_GT_NOTES;
 }
-
-/* ---- held notes ---- */
 
 static void held_remove(midi_route_chan* c, uint8_t n) {
     uint32_t k = 0;
@@ -172,8 +165,6 @@ static void held_push(midi_route_chan* c, uint8_t n) {
     c->held[c->n++] = n;
 }
 
-/* ---- the setups ---- */
-
 static void chan_reset(midi_route_chan* c) {
     c->n = 0;
     c->bend = LIVE_BEND_CENTRE;
@@ -184,7 +175,7 @@ static void chan_reset(midi_route_chan* c) {
 static void release_all(midi_route* r) {
     for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
         silence(r, v);
-        r->v[v].note = MIDI_ROUTE_NO_NOTE; /* a new mode starts with none */
+        r->v[v].note = MIDI_ROUTE_NO_NOTE;
     }
     for (uint32_t c = 0; c < MIDI_ROUTE_VOICES; c++) {
         r->ch[c].n = 0;
@@ -249,7 +240,7 @@ void midi_route_set(midi_route* r, const midi_route_setup* s) {
     }
     r->arp_pos = 0;
     r->arp_wait = 0;
-    live_all_notes_off(r->l); /* a note on a channel that is no longer the instrument's */
+    live_all_notes_off(r->l);
     r->setup = n;
     roles(r);
     if (r->kr) {
@@ -264,9 +255,6 @@ void midi_route_reset_input(midi_route* r) {
     }
 }
 
-/* ---- classification ---- */
-
-/* The channel's role, and for a jam channel which (0..2). */
 static uint32_t role(const midi_route_setup* s, uint32_t channel, uint32_t* jam) {
     uint32_t d = (channel - s->base) & 15u;
     switch (s->mode) {
@@ -302,21 +290,18 @@ static void roles(midi_route* r) {
 
 midi_route_to midi_route_classify(const midi_route* r, const midi_msg* msg) {
     if (msg->kind == MIDI_REALTIME) {
-        return MIDI_ROUTE_TAKE; /* the ARP's clock; live has no use for it */
+        return MIDI_ROUTE_TAKE;
     }
     if (msg->kind == MIDI_SONG_POSITION || msg->kind == MIDI_SONG_SELECT) {
-        return MIDI_ROUTE_IGNORE; /* the transport's (M2e Task 2) */
+        return MIDI_ROUTE_IGNORE;
     }
     uint8_t to = r->to[msg->channel & 15u];
     if (to == MIDI_ROUTE_LIVE && msg->kind == MIDI_PROGRAM) {
-        return MIDI_ROUTE_TAKE; /* what the channel's bank says */
+        return MIDI_ROUTE_TAKE;
     }
     return (midi_route_to)to;
 }
 
-/* ---- notes ---- */
-
-/* The ARP's or CHORD's: the voices of WHOLE-CHIP A sounding note n. */
 static void chord_sound(midi_route* r, uint8_t n, uint32_t legato) {
     const uint8_t iv[MIDI_ROUTE_VOICES] = {0, r->setup.chord[0], r->setup.chord[1]};
     for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
@@ -336,7 +321,6 @@ static void chord_silence(midi_route* r) {
     }
 }
 
-/* Mono on voice v, channel c: the last note held sounds. */
 static void mono_on(midi_route* r, uint32_t v, midi_route_chan* c, uint8_t n) {
     uint32_t legato = r->setup.legato && r->v[v].note != MIDI_ROUTE_NO_NOTE;
     held_push(c, n);
@@ -355,7 +339,6 @@ static void mono_off(midi_route* r, uint32_t v, midi_route_chan* c, uint8_t n) {
     }
 }
 
-/* WHOLE-CHIP A, POLY: the voice of the note, a free one, or the oldest. */
 static void poly_on(midi_route* r, uint8_t n) {
     uint32_t pick = MIDI_ROUTE_VOICES;
     for (uint32_t v = 0; v < MIDI_ROUTE_VOICES && pick == MIDI_ROUTE_VOICES; v++) {
@@ -418,7 +401,7 @@ static void arp_off(midi_route* r, uint8_t n) {
     if (!c->n) {
         silence(r, 0);
     } else if (r->arp_pos >= c->n) {
-        r->arp_pos = (uint8_t)(c->n - 1u); /* the next step wraps to the first */
+        r->arp_pos = (uint8_t)(c->n - 1u);
     }
 }
 
@@ -470,7 +453,6 @@ static void note_off(midi_route* r, uint32_t jam, uint8_t n) {
     }
 }
 
-/* The jam channel's voices: its own in MULTITIMBRAL, all three in WHOLE-CHIP A. */
 static uint32_t voices_of(const midi_route* r, uint32_t jam) {
     return r->setup.mode == MIDI_MODE_MULTI ? 1u << jam : 7u;
 }
@@ -484,8 +466,6 @@ static void channel_off(midi_route* r, uint32_t jam) {
     }
     r->ch[jam].n = 0;
 }
-
-/* ---- controllers ---- */
 
 static void chip_profile(midi_route* r, uint32_t pick) {
     if (!r->kr || pick >= SID_CHIPS + LIVE_USER_PROFILES) {
@@ -519,7 +499,6 @@ static void chip_profile(midi_route* r, uint32_t pick) {
     }
 }
 
-/* Chip A's setup, as the song wants it, changed by a chip-level CC. */
 static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
     if (!r->kr) {
         return;
@@ -577,7 +556,6 @@ static void filter_cc(midi_route* r, uint8_t cc, uint8_t value) {
     r->filter_dirty = 1;
 }
 
-/* RPN 0, the channel's bend range (the others do nothing): as midi_map's for live. */
 static void rpn_data(midi_route_chan* c, uint8_t cc, uint8_t value) {
     if (c->rpn_msb != 0u || c->rpn_lsb != 0u) {
         return;
@@ -587,7 +565,7 @@ static void rpn_data(midi_route_chan* c, uint8_t cc, uint8_t value) {
     case CC_DATA_MSB: now = value; break;
     case CC_INCREMENT: now++; break;
     case CC_DECREMENT: now = now ? now - 1u : 0u; break;
-    default: return; /* the cents */
+    default: return;
     }
     c->range = clamp(now, 0u, LIVE_BEND_RANGE_MAX);
 }
@@ -599,7 +577,7 @@ static void jam_cc(midi_route* r, uint32_t jam, uint8_t cc, uint8_t value) {
     case CC_RPN_LSB: c->rpn_lsb = value; break;
     case CC_NRPN_MSB:
     case CC_NRPN_LSB:
-        c->rpn_msb = RPN_NONE; /* data entry is an NRPN's now: none of the jam channel's */
+        c->rpn_msb = RPN_NONE;
         c->rpn_lsb = RPN_NONE;
         break;
     case CC_DATA_MSB:
@@ -630,8 +608,6 @@ static void jam_cc(midi_route* r, uint32_t jam, uint8_t cc, uint8_t value) {
     }
 }
 
-/* ---- program change and banks ---- */
-
 static uint32_t bank_of(const midi_route* r, uint32_t ch) {
     return (uint32_t)r->bank[ch][0] << 7 | r->bank[ch][1];
 }
@@ -655,7 +631,7 @@ static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_
     case MIDI_ROUTE_BANK_SOUND:
         if (k == ROLE_JAM) {
             if (n < MIDI_ROUTE_INSTR_MAX) {
-                r->ch[jam].instr = (uint8_t)(n + 1u); /* from the next note */
+                r->ch[jam].instr = (uint8_t)(n + 1u);
             }
         } else if (n < LIVE_PRESET_COUNT) {
             live_set_preset(r->l, n);
@@ -663,7 +639,7 @@ static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_
         break;
     case MIDI_ROUTE_BANK_SONGS:
         if (k == ROLE_LIVE || ch == r->setup.base) {
-            r->song_req = n; /* the latest wins */
+            r->song_req = n;
         }
         break;
     case MIDI_ROUTE_BANK_PROFILES:
@@ -724,17 +700,15 @@ void midi_route_take(midi_route* r, const midi_msg* msg) {
         r->ch[jam].bend = msg->bend > LIVE_BEND_MAX ? (uint16_t)LIVE_BEND_MAX : msg->bend;
         break;
     case MIDI_CC: jam_cc(r, jam, msg->data1, msg->data2); break;
-    default: break; /* aftertouch: GoatTracker's instruments have none */
+    default: break;
     }
 }
-
-/* ---- the tick ---- */
 
 void midi_route_tick(midi_route* r) {
     const midi_route_setup* s = &r->setup;
     if (!midi_route_owns_chip_a(s->mode) && !r->filter_dirty &&
         !(r->v[0].bend_sent | r->v[1].bend_sent | r->v[2].bend_sent)) {
-        return; /* the instrument's mode, nothing of the jam's left to send */
+        return;
     }
     if (s->mode == MIDI_MODE_MULTI || s->mode == MIDI_MODE_WHOLE_A) {
         for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
@@ -751,7 +725,6 @@ void midi_route_tick(midi_route* r) {
             arp_rewind(r);
         }
     } else {
-        /* back to the song: no bend kept */
         for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
             if (r->v[v].bend_sent &&
                 (!r->player.jam_bend || r->player.jam_bend(r->player.ctx, v, 0))) {
@@ -768,13 +741,10 @@ void midi_route_tick(midi_route* r) {
     }
 }
 
-/* ---- the MIDI chunk ---- */
-
 void midi_route_setup_encode(const midi_route_setup* s, song_midi* out) {
     memset(out, 0, sizeof *out);
     out->mode = s->mode;
     out->rows_per_beat = s->rows_per_beat;
-    /* each voice's channel: chip A's three, then the instrument's */
     uint8_t n = s->base;
     switch (s->mode) {
     case MIDI_MODE_MULTI:
@@ -789,7 +759,7 @@ void midi_route_setup_encode(const midi_route_setup* s, song_midi* out) {
         out->channel[3] = (uint8_t)((n + MIDI_ROUTE_LIVE_OFFSET) & 15u);
         break;
     case MIDI_MODE_OMNI: out->count = 0; break;
-    default: /* LIVE, WHOLE-CHIP B: the instrument's */
+    default:
         out->count = 1;
         out->channel[0] = n;
         break;

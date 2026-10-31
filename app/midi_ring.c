@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "midi_ring.h"
 
-/* Orders memory accesses against an interrupt on the same core; emits no instruction
- * (as in reg_ring.c: the pi32v2 compiler has no __atomic_signal_fence). */
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
 void midi_ring_init(midi_ring* r) {
@@ -19,7 +17,7 @@ static void lose(midi_ring* r, uint8_t source, uint32_t n) {
     if (!r->in_gap) {
         r->epoch++;
     }
-    r->in_gap = (uint8_t)(r->in_gap | (source ? source : 0xFFu)); /* never 0 in a gap */
+    r->in_gap = (uint8_t)(r->in_gap | (source ? source : 0xFFu));
 }
 
 int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) {
@@ -28,7 +26,7 @@ int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) 
         lose(r, source, 1u);
         return 0;
     }
-    COMPILER_FENCE(); /* the tail before the slot it handed back */
+    COMPILER_FENCE();
     midi_ring_entry* e = &r->e[h & (MIDI_RING_SIZE - 1u)];
     e->stamp = stamp;
     e->data = data;
@@ -36,7 +34,7 @@ int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) 
     e->epoch = r->epoch;
     e->gap = r->in_gap;
     r->in_gap = 0;
-    COMPILER_FENCE(); /* the entry before the index that publishes it */
+    COMPILER_FENCE();
     r->head = h + 1u;
     return 1;
 }
@@ -56,9 +54,9 @@ int midi_ring_pop(midi_ring* r, midi_ring_entry* out) {
     if (t == r->head) {
         return 0;
     }
-    COMPILER_FENCE(); /* the head before the entry it publishes */
+    COMPILER_FENCE();
     *out = r->e[t & (MIDI_RING_SIZE - 1u)];
-    COMPILER_FENCE(); /* the entry is read before its slot is handed back */
+    COMPILER_FENCE();
     r->tail = t + 1u;
     return 1;
 }

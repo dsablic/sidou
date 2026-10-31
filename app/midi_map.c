@@ -25,27 +25,24 @@
 #define WALK MIDI_CURVE_WALK
 #define NRPN MIDI_MAP_NRPN
 
-/* NRPN MSBs: the groups. */
 #define NRPN_LIVE 0u
 #define NRPN_SID 1u
 #define NRPN_CHARACTER 2u
-#define NRPN_SLOT 3u /* + slot: Distortion 3, Modulation 4, FX 5; the LSB is the field */
+#define NRPN_SLOT 3u
 #define NRPN_EXPRESSION 6u
 #define NO_CC MIDI_MAP_NO_CC
 
-/* RPN 0/0: pitch-bend sensitivity, CC 6 the semitones and CC 38 the cents. */
 #define RPN_BEND_RANGE 0u
 
 #ifdef SIDOU_MIDI_MAP_DOC
 #define DOC(g, n, v) .group = g, .name = n, .values = v,
 #else
-#define DOC(g, n, v) /* the device keeps no text (midi_map.h) */
+#define DOC(g, n, v)
 #endif
 
 #define ROW(g, n, v, p, c, nr, mx, d, cv)                                                          \
     {DOC(g, n, v).param = p, .cc = c, .nrpn = nr, .max = mx, .def = d, .curve = cv}
 
-/* One field of an effect slot: parameter, CC and NRPN all follow from slot and field. */
 #define SLOT_ROW(slot, g, field, n, v, mx, cv)                                                     \
     ROW(g, n, v, LIVE_PARAM_SLOT + (slot) * LIVE_SLOT_FIELDS + (field),                            \
         LIVE_CC_SLOT_FIRST + (slot) * LIVE_SLOT_FIELDS + (field), NRPN(NRPN_SLOT + (slot), field), \
@@ -62,7 +59,6 @@
     ROW("Expert", name, values, LIVE_PARAM_EXPERT + (field), NO_CC, \
         NRPN(NRPN_CHARACTER, 5u + (field)), SID_CHARACTER_MAX, def, LINEAR)
 
-/* clang-format off */
 const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     ROW("Live", "Cutoff", "0..2047, the SID's 11 bits", LIVE_PARAM_CUTOFF,
         LIVE_CC_CUTOFF, NRPN(NRPN_LIVE, 0), LIVE_CUTOFF_MAX, 1200, LINEAR),
@@ -211,7 +207,6 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
         "saved with the settings (not a preset's, not learned, not sent)",
         MIDI_MAP_SPREAD, MIDI_MAP_CC_SPREAD, NRPN(NRPN_LIVE, 4), CHIP_SPREAD_MAX, 0, STEPS),
 };
-/* clang-format on */
 
 _Static_assert(SID_DIST_COUNT == 6 && SID_MOD_COUNT == 7 && SID_FXSLOT_COUNT == 5,
                "the algorithm lists above name every algorithm");
@@ -229,45 +224,39 @@ const midi_map_entry* midi_map_for_param(uint32_t param) {
     return NULL;
 }
 
-/* Each CC's row + 1, 0 for none: midi_map_for_cc in one load, for every CC of a stream (the
- * rows' order, which the host tests check against the table). */
-#define SLOT_CC(k) [LIVE_CC_SLOT_FIRST + (k)] = 21u + (k) /* the slots' rows from 20 */
-/* A parameter past the experts: its row + 1 (42 rows before the experts, then the experts, then
- * one row each in the parameters' order). */
+#define SLOT_CC(k) [LIVE_CC_SLOT_FIRST + (k)] = 21u + (k)
 #define TAIL_ROW(p) (43u + SID_EXPERT_COUNT + (p) - LIVE_PARAM_EXPERT_END)
-/* clang-format off */
 static const uint8_t cc_rows[128] = {
     [LIVE_CC_CUTOFF] = 1u,
     [LIVE_CC_RESONANCE] = 2u,
     [LIVE_CC_PULSE_WIDTH] = 3u,
     [LIVE_CC_VOLUME] = 4u,
-    [20] = 5u, /* waveform */
-    [21] = 6u, /* ring */
-    [22] = 7u, /* sync */
-    [23] = 8u, /* filter mode */
-    [24] = 9u, /* filter routing */
-    [25] = 10u, /* chip model */
-    [73] = 11u, /* attack */
-    [75] = 12u, /* decay */
-    [79] = 13u, /* sustain */
-    [72] = 14u, /* release */
-    [26] = 15u, /* envelope mode */
-    [85] = 16u, /* the Character rows */
+    [20] = 5u,
+    [21] = 6u,
+    [22] = 7u,
+    [23] = 8u,
+    [24] = 9u,
+    [25] = 10u,
+    [73] = 11u,
+    [75] = 12u,
+    [79] = 13u,
+    [72] = 14u,
+    [26] = 15u,
+    [85] = 16u,
     [86] = 17u,
     [87] = 18u,
     [89] = 19u,
     [90] = 20u,
-    [LIVE_CC_VIBRATO_RATE] = 40u, /* after the Expression rows without a CC */
+    [LIVE_CC_VIBRATO_RATE] = 40u,
     [LIVE_CC_VIBRATO_DEPTH] = 41u,
     [LIVE_CC_VIBRATO_DELAY] = 42u,
-    [LIVE_CC_FILTER_LFO] = TAIL_ROW(LIVE_PARAM_FILTER_LFO), /* the sound's, after the experts */
+    [LIVE_CC_FILTER_LFO] = TAIL_ROW(LIVE_PARAM_FILTER_LFO),
     [LIVE_CC_ARP_RATE] = TAIL_ROW(LIVE_PARAM_ARP_RATE),
-    [MIDI_MAP_CC_SPREAD] = MIDI_MAP_ROWS, /* the last row */
+    [MIDI_MAP_CC_SPREAD] = MIDI_MAP_ROWS,
     SLOT_CC(0),  SLOT_CC(1),  SLOT_CC(2),  SLOT_CC(3),  SLOT_CC(4),
     SLOT_CC(5),  SLOT_CC(6),  SLOT_CC(7),  SLOT_CC(8),  SLOT_CC(9),
     SLOT_CC(10), SLOT_CC(11), SLOT_CC(12), SLOT_CC(13), SLOT_CC(14),
 };
-/* clang-format on */
 #undef SLOT_CC
 
 _Static_assert(LIVE_CC_SLOT_LAST - LIVE_CC_SLOT_FIRST == 14u, "SLOT_CC covers every slot CC");
@@ -348,8 +337,6 @@ void midi_map_port_init(midi_map_port* p, live* l) {
     }
 }
 
-/* The parameter data entry goes to: none for an RPN (RPN 0 is rpn_data's), the null NRPN,
- * an unmapped or a reserved one. */
 static const midi_map_entry* selected(const midi_map_channel* c) {
     if (c->rpn) {
         return NULL;
@@ -358,9 +345,6 @@ static const midi_map_entry* selected(const midi_map_channel* c) {
     return e && e->param != MIDI_MAP_RESERVED ? e : NULL;
 }
 
-/* RPN 0, the bend range in semitones: CC 6 sets it at once (the standard's MSB), CC 38 (the
- * cents) is ignored, CC 96 and 97 step a semitone. Program changes keep it
- * (live_bend_range_rpn). Other RPNs do nothing. */
 static void rpn_data(midi_map_port* p, const midi_map_channel* c, uint8_t cc, uint8_t value) {
     if (c->rpn_msb != 0u || c->rpn_lsb != RPN_BEND_RANGE) {
         return;
@@ -370,7 +354,7 @@ static void rpn_data(midi_map_port* p, const midi_map_channel* c, uint8_t cc, ui
     case CC_DATA_MSB: live_bend_range_rpn(p->l, value); break;
     case CC_INCREMENT: live_bend_range_rpn(p->l, now + 1u); break;
     case CC_DECREMENT: live_bend_range_rpn(p->l, now ? now - 1u : 0u); break;
-    default: break; /* CC_DATA_LSB */
+    default: break;
     }
 }
 
@@ -389,7 +373,7 @@ static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t valu
     case CC_DATA_MSB:
         c->data_msb = value;
         if (e->max < 128u) {
-            return; /* a small parameter's value is in the LSB: CC 38 applies it */
+            return;
         }
         v = (uint32_t)value << 7;
         break;
@@ -402,7 +386,7 @@ static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t valu
         c->data_msb = MIDI_MAP_NO_DATA;
         v = now + 1u;
         break;
-    default: /* CC_DECREMENT */
+    default:
         c->data_msb = MIDI_MAP_NO_DATA;
         v = now ? now - 1u : 0u;
         break;
@@ -456,13 +440,12 @@ void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
         break;
     case CC_RESET_ALL:
         deselect(c);
-        live_cc(p->l, cc, value); /* the controllers */
+        live_cc(p->l, cc, value);
         break;
     default: {
-        /* A learned CC wins over the map's (midi_learn.h), CC 1's wheel included. */
         const midi_map_entry* e = p->learn ? midi_learn_route(p->learn, cc) : NULL;
         if (!e && cc == MIDI_MAP_CC_SPREAD) {
-            e = midi_map_for_cc(cc); /* a setting's CC: live_cc does not know it */
+            e = midi_map_for_cc(cc);
         }
         if (e) {
             midi_map_cc_set(p->l, e, value);

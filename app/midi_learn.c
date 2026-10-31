@@ -19,18 +19,18 @@ void midi_learn_init(midi_learn* ml) {
 
 int midi_learn_learnable(uint32_t cc) {
     switch (cc) {
-    case 0:  /* bank select MSB (app/midi_route.h) */
-    case 32: /* bank select LSB */
-    case 6:  /* data entry MSB */
-    case 38: /* data entry LSB */
-    case 96: /* increment */
-    case 97: /* decrement */
-    case 98: /* NRPN LSB */
-    case 99: /* NRPN MSB */
-    case 100: /* RPN LSB */
-    case 101: /* RPN MSB */
+    case 0:
+    case 32:
+    case 6:
+    case 38:
+    case 96:
+    case 97:
+    case 98:
+    case 99:
+    case 100:
+    case 101:
         return 0;
-    default: return cc < 120u; /* 120..127: channel mode */
+    default: return cc < 120u;
     }
 }
 
@@ -38,7 +38,6 @@ int midi_learn_param(uint32_t param) {
     return param < LIVE_PARAM_COUNT && midi_map_for_param(param) != NULL;
 }
 
-/* The state machine's end: idle, with what happened for the UI. */
 static void end(midi_learn* ml, midi_learn_result r, uint8_t cc) {
     ml->state = MIDI_LEARN_IDLE;
     ml->result = (uint8_t)r;
@@ -136,7 +135,6 @@ static void settings_changed(midi_learn* ml) {
     }
 }
 
-/* cc's binding gone, whoever has it. */
 static void unbind(midi_learn* ml, uint32_t cc) {
     const midi_map_entry* e = midi_learn_for_cc(ml, cc);
     if (e) {
@@ -152,9 +150,9 @@ int midi_learn_bind(midi_learn* ml, uint32_t cc, uint32_t param) {
         return 0;
     }
     if (ml->param_cc[param] != MIDI_MAP_NO_CC) {
-        unbind(ml, ml->param_cc[param]); /* it moves */
+        unbind(ml, ml->param_cc[param]);
     }
-    unbind(ml, cc); /* another parameter's: the CC moves */
+    unbind(ml, cc);
     const midi_map_entry* e = midi_map_for_param(param);
     ml->cc_row[cc] = (uint8_t)(e - midi_map_row(0));
     ml->param_cc[param] = (uint8_t)cc;
