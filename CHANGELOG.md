@@ -125,7 +125,7 @@ nothing changed.
 - **EDIT + SELECT jumps a page on ORDER and TABLE** (12 entries or rows, a screenful), as it
   jumps 8 rows on TRACKER, and **8 on INSTR** (ATK/DEC to 1ST WAVE, then the same character on
   the name's other line). Their help cards say `E+SELECT PAGE`.
-- **The firmware is 8.5 KB smaller** with nothing heard or seen changed: the .sid player's voice
+- **8.5 KB of duplicated code is gone** with nothing heard or seen changed: the .sid player's voice
   shadow calls the chip's own voice code instead of a copy of it, EDIT + SCL, EDIT + ARP and
   EDIT + LFO share one either-finger mechanism in LAB, STEP and TRACKER, and the views share their
   note names, number and popup text helpers and one CRC-32.
