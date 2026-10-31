@@ -8,7 +8,6 @@
 #include "bitmap_codec.h"
 #include "font.h"
 
-/* docs/art/README.md: the C64 colours after Pepto's measurements, as RGB565. */
 const uint16_t grid_palette[16] = {
     0x0000, 0xFFFF, 0x69A5, 0x7536, 0x69F0, 0x5C68, 0x314F, 0xBE2D,
     0x6A64, 0x41C0, 0x9B2B, 0x4228, 0x6B6D, 0x9E90, 0x6AF6, 0x94B2,
@@ -26,13 +25,11 @@ static int dirty(const grid* g, uint32_t i) {
            (g->stale[i >> 3] >> (i & 7u) & 1u);
 }
 
-/* A word of the cell arrays (each starts on a word boundary: grid.h). */
 typedef uint32_t __attribute__((may_alias)) cell_word;
 _Static_assert(offsetof(grid, ch) % 4u == 0u && offsetof(grid, attr) % 4u == 0u &&
                    offsetof(grid, shown_ch) % 4u == 0u && offsetof(grid, shown_attr) % 4u == 0u,
                "grid.h: the cell arrays must start on word boundaries");
 
-/* Nonzero if any of the four cells from i (a multiple of 4) is dirty (dirty()). */
 static uint32_t dirty4(const grid* g, uint32_t i) {
     const cell_word* ch = (const cell_word*)(const void*)&g->ch[i];
     const cell_word* sch = (const cell_word*)(const void*)&g->shown_ch[i];
@@ -54,7 +51,6 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
         g->attr[i] = g->shown_attr[i] = attr;
         g->ovl[i] = 0;
     }
-    /* Slot 0 on top. */
     for (uint32_t s = 0; s < GRID_OVERLAYS; s++) {
         g->ovl_free[s] = (uint8_t)(GRID_OVERLAYS - 1u - s);
     }
@@ -82,10 +78,6 @@ void grid_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
         return;
     }
     uint32_t i = row * GRID_COLS + col;
-    /* Marks against the composed cell, not the shown one. Comparing with shown_ch/shown_attr
-     * saves nothing while a screen clears before it redraws (compose_status): the clear
-     * differs from the panel on every text row either way. It measured 1 % more main-loop
-     * instructions per composed frame (host/crates/emu-gate/tests/screen.rs). */
     if (g->ch[i] != ch || g->attr[i] != attr) {
         g->ch[i] = ch;
         g->attr[i] = attr;
@@ -125,7 +117,7 @@ void grid_fill(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint
     uint32_t c1 = w < GRID_COLS - col ? col + w : GRID_COLS;
     uint32_t r1 = h < GRID_ROWS - row ? row + h : GRID_ROWS;
     for (uint32_t r = row; r < r1; r++) {
-        uint32_t changed = 0; /* against the composed cells, as in grid_put */
+        uint32_t changed = 0;
         for (uint32_t i = r * GRID_COLS + col; i < r * GRID_COLS + c1; i++) {
             changed |= (uint32_t)(g->ch[i] ^ ch) | (uint32_t)(g->attr[i] ^ attr);
             g->ch[i] = ch;
@@ -156,10 +148,7 @@ void grid_box(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8
 
 uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, const char* s,
                        uint8_t attr) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
+    uint32_t n = grid_text_length(s);
     if (col >= GRID_COLS || scale < 2u || scale > 3u) {
         return col;
     }
@@ -218,10 +207,7 @@ void grid_canvas_text(grid_canvas* c, uint32_t col, uint32_t row, const char* s,
 
 uint32_t grid_canvas_text_big(grid_canvas* c, uint32_t col, uint32_t row, uint32_t scale,
                               const char* s, uint8_t attr) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
+    uint32_t n = grid_text_length(s);
     if (col >= GRID_COLS || scale < 2u || scale > 3u) {
         return col;
     }
@@ -431,9 +417,6 @@ int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t m
     return 1;
 }
 
-/* Cells [a, b) in screen order to be sent again, eight a store where it can (a view switch
- * clears a full-screen region in the same frame as the next view's first compose). The
- * caller marks their rows. */
 static void stale_range(grid* g, uint32_t a, uint32_t b) {
     for (; a < b && (a & 7u); a++) {
         g->stale[a >> 3] |= (uint8_t)(1u << (a & 7u));
@@ -446,12 +429,11 @@ static void stale_range(grid* g, uint32_t a, uint32_t b) {
     }
 }
 
-/* The region's cells, to be sent again. */
 static void region_stale(grid* g) {
     uint32_t r0 = g->region_row;
     uint32_t r1 = r0 + g->region_h;
     if (g->region_w == GRID_COLS) {
-        stale_range(g, r0 * GRID_COLS, r1 * GRID_COLS); /* whole rows: one range */
+        stale_range(g, r0 * GRID_COLS, r1 * GRID_COLS);
     } else {
         for (uint32_t r = r0; r < r1; r++) {
             uint32_t i = r * GRID_COLS + g->region_col;
@@ -461,8 +443,6 @@ static void region_stale(grid* g) {
     g->rows |= ((1u << g->region_h) - 1u) << r0;
 }
 
-/* The cells in one of the region and the w x h cells from (col, row) but not in both, to be
- * sent again. */
 static void region_moved(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h) {
     uint32_t oc = g->region_col;
     uint32_t orow = g->region_row;
@@ -494,8 +474,6 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
         g->region_w == w && g->region_h == h && g->region_bx == bx && g->region_by == by) {
         return 0;
     }
-    /* Over the same bitmap cells (each cell in both shows the same cell of it): only the cells
-     * it adds or leaves change. */
     int same = g->region_bitmap == b &&
                (int32_t)col - (int32_t)bx == (int32_t)g->region_col - (int32_t)g->region_bx &&
                (int32_t)row - (int32_t)by == (int32_t)g->region_row - (int32_t)g->region_by;
@@ -567,7 +545,6 @@ int grid_marked(const grid* g, uint32_t col, uint32_t row) {
     return col < GRID_COLS && row < GRID_ROWS && dirty(g, row * GRID_COLS + col);
 }
 
-/* The run that holds pixel x of row y, and how many pixels of it are left from x on. */
 __attribute__((always_inline)) static inline uint32_t bitmap_seek(
     const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t* at, uint32_t* left, int raw) {
     uint32_t pixel;
@@ -603,7 +580,6 @@ void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, u
         left = (byte >> 4) + 1u;
     }
 }
-
 
 uint32_t grid_pending(const grid* g) {
     uint32_t n = 0;
@@ -654,7 +630,6 @@ int grid_next_run(grid* g, grid_run* run) {
         uint32_t c = g->scan_col;
         while (c < GRID_COLS) {
             uint32_t i = base + c;
-            /* Four clean cells at a time from a word boundary: most of a row is clean. */
             if (!(i & 3u) && c + 4u <= GRID_COLS && !dirty4(g, i)) {
                 c += 4u;
                 continue;
@@ -665,8 +640,6 @@ int grid_next_run(grid* g, grid_run* run) {
             c++;
         }
         if (c == GRID_COLS) {
-            /* Clean from scan_col on. Only a scan of the whole row may clear its bit: cells
-             * left of scan_col may have changed since the scan passed them. */
             if (g->scan_col == 0) {
                 g->rows &= ~bit;
                 g->scan_row++;
@@ -675,7 +648,6 @@ int grid_next_run(grid* g, grid_run* run) {
             continue;
         }
         uint32_t start = c;
-        /* A painter region's cells, [p0, p1) of the row, end the run at its cap. */
         uint32_t p0 = 0, p1 = 0, left = GRID_COLS;
         if (g->region_painter && row - g->region_row < g->region_h) {
             p0 = g->region_col;
@@ -700,10 +672,7 @@ int grid_next_run(grid* g, grid_run* run) {
     return 0;
 }
 
-/* Two pixels a 32-bit store, the left one at the lower address (PAIR): a cell row is four
- * stores. The pairs alias the uint16_t pixels (may_alias). */
 typedef uint32_t __attribute__((may_alias)) pixel_pair;
-/* A glyph's 8 rows as two words (font_glyphs is 4-byte aligned, font.h). */
 typedef uint32_t __attribute__((may_alias)) glyph_word;
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #define PAIR(left, right) ((uint32_t)(left) << 16 | (uint32_t)(right))
@@ -711,8 +680,6 @@ typedef uint32_t __attribute__((may_alias)) glyph_word;
 #define PAIR(left, right) ((uint32_t)(right) << 16 | (uint32_t)(left))
 #endif
 
-/* k pixels of colour c (a pair: two pixels of it) from o, two a 32-bit store where the pairs
- * are 4-byte aligned; the pixel after them. */
 static inline uint16_t* fill_pixels(uint16_t* o, uint32_t k, uint32_t c) {
     uint16_t* e = o + k;
     if (((uintptr_t)o & 2u) && o < e) {
@@ -727,10 +694,6 @@ static inline uint16_t* fill_pixels(uint16_t* o, uint32_t k, uint32_t c) {
     return o;
 }
 
-/* As grid_bitmap_row, as the panel's pixels into out (4-byte aligned), each colour given as a
- * pair (pairs[c], two pixels of it). While the longest run still fits before the end, runs are
- * taken whole with no clamp, and a run of 1 or 2 pixels (a dithered picture is mostly those)
- * is two stores with no loop; the first run (entered part way) and the last ones are clamped. */
 static void bitmap_raw_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n,
                               const uint32_t pairs[16], uint16_t* restrict out) {
     uint32_t pixel;
@@ -779,7 +742,7 @@ static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t
     while (o <= fast) {
         uint32_t byte = bitmap_code_run(data, &at);
         uint32_t c = pairs[byte & 15u];
-        uint32_t m = byte >> 4; /* the run's length - 1 */
+        uint32_t m = byte >> 4;
         if (m < 2u) {
             o[0] = (uint16_t)c;
             o[m] = (uint16_t)c;
@@ -796,18 +759,14 @@ static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t
     }
 }
 
-/* A pair's two bits (the left one the higher) as which of its pixels are set. */
 static const uint32_t PAIR_MASK[4] = {PAIR(0u, 0u), PAIR(0u, 0xFFFFu), PAIR(0xFFFFu, 0u),
                                       PAIR(0xFFFFu, 0xFFFFu)};
 
-/* The region's cells [k0, k1) of a run (k counted from the run's first cell): the bitmap's
- * pixels, then the glyphs' foreground and the overlays over them. */
 static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint32_t k1,
                           const uint16_t pal[16], uint16_t* px) {
-    uint32_t w = run->len * GRID_CELL_PX; /* pixels a row */
+    uint32_t w = run->len * GRID_CELL_PX;
     {
         const grid_bitmap* b = g->region_bitmap;
-        /* Palette pairs and painter pixels never live together. */
         union {
             uint32_t pairs[16];
             uint8_t cell[64];
@@ -823,7 +782,6 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
                               px + r * w + k0 * GRID_CELL_PX);
             }
         } else {
-            /* A painter: each cell's 64 colours, then the panel's pixels. */
             for (uint32_t k = k0; k < k1; k++) {
                 g->region_painter(g->region_ctx, run->col + k, run->row, scratch.cell);
                 uint16_t* o = px + k * GRID_CELL_PX;
@@ -853,7 +811,7 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
             uint32_t bits = glyph[r];
             uint32_t over = mask[r];
             if (!(bits | over)) {
-                continue; /* the bitmap alone: most of a picture's cells */
+                continue;
             }
             for (uint32_t j = 0; j < 8u; j++) {
                 uint32_t bit = 0x80u >> j;
@@ -867,21 +825,17 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
     }
 }
 
-/* Pixel p (0..23) of a glyph drawn at scale 1, 2 or 3: the pixel of the 8 x 8 glyph it shows (p,
- * p / 2, p / 3 as a multiply: exact for p < 24). */
 static uint32_t big_src(uint32_t p, uint32_t scale) {
     return scale == 1u ? p : scale == 2u ? p >> 1 : p * 11u >> 5;
 }
 
-/* The cell at i, a piece (0..GRID_BIG_PIECES - 1), as pixels at o with w pixels to a row: its
- * part of its character's glyph pixel-doubled or tripled, or (the last) the glyph as it is. */
 __attribute__((noinline, unused)) static void render_piece(const grid* g, uint32_t i,
                                                            uint32_t piece, uint16_t fg,
                                                            uint16_t bg, uint16_t* o,
                                                            uint32_t w) {
     uint32_t scale = piece < 4u ? 2u : piece < 13u ? 3u : 1u;
-    uint32_t q = piece < 4u ? piece : piece < 13u ? piece - 4u : 0u; /* y * scale + x */
-    uint32_t y0 = big_src(q, scale) * 8u;          /* the cell's pixel row in the character */
+    uint32_t q = piece < 4u ? piece : piece < 13u ? piece - 4u : 0u;
+    uint32_t y0 = big_src(q, scale) * 8u;
     uint32_t x0 = (q - big_src(q, scale) * scale) * 8u;
     const uint8_t* glyph = font_glyph(g->src[i]);
     uint32_t sx[8];
@@ -897,10 +851,9 @@ __attribute__((noinline, unused)) static void render_piece(const grid* g, uint32
 }
 
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px) {
-    uint32_t stride = run->len * GRID_CELL_PX / 2u; /* pairs a pixel row */
+    uint32_t stride = run->len * GRID_CELL_PX / 2u;
     uint32_t i = run->row * GRID_COLS + run->col;
     pixel_pair* out = (pixel_pair*)(void*)px;
-    /* The region's cells in the run, [k0, k1), counted from its first cell: none if k0 == k1. */
     uint32_t k0 = 0;
     uint32_t k1 = 0;
     if ((g->region_bitmap || g->region_painter) && run->row >= g->region_row &&
@@ -928,7 +881,6 @@ void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16],
         const uint8_t* glyph = font_glyph(g->ch[i]);
         uint32_t fg = pal[g->attr[i] & 15u];
         uint32_t bg = pal[g->attr[i] >> 4];
-        /* The cell's colours by a pair's two glyph bits. */
         const uint32_t lut[4] = {PAIR(bg, bg), PAIR(bg, fg), PAIR(fg, bg), PAIR(fg, fg)};
         pixel_pair* o = out + k * (GRID_CELL_PX / 2u);
         if (!g->ovl[i]) {
@@ -945,11 +897,9 @@ void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16],
         const uint8_t* mask = g->ovl_mask[s];
         uint32_t c = pal[g->ovl_color[s] & 15u];
         uint32_t oc = PAIR(c, c);
-        /* A row of the glyph's background alone (a scope's cells are mostly blank): the
-         * overlay over the background, by a pair's two mask bits. */
         const uint32_t olut[4] = {PAIR(bg, bg), PAIR(bg, c), PAIR(c, bg), oc};
         const glyph_word* gw = (const glyph_word*)(const void*)glyph;
-        if (!(gw[0] | gw[1])) { /* a blank glyph (a scope's cells): the overlay alone */
+        if (!(gw[0] | gw[1])) {
             for (uint32_t y = 0; y < 8u; y++, o += stride) {
                 uint32_t over = mask[y];
                 o[0] = olut[over >> 6];

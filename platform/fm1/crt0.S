@@ -1,10 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * SPDX-FileCopyrightText: 2026 SIDOU contributors
- * SPDX-License-Identifier: GPL-3.0-only
- * SIDOU entry, after Felucca's firmware/crt0.S. The SPL maps sidou_app.bin at XIP 0x02000120
- * and jumps to its first byte with r0 = its boot-parameter block; it expects `goto +4; rts`
- * as the first instruction. Save the core state the SPL left (for a boot probe, in the
- * debug area below RAM, as Felucca does), interrupts off, both stacks, then C. */
+ * SPDX-License-Identifier: GPL-3.0-only */
 	.section .text.crt0,"ax",@progbits
 	.globl _start
 _start:
@@ -13,10 +9,10 @@ _start:
 1:	r1 = icfg
 	r2 = psr
 	cli
-	r3 = 0x1C0DF00		/* debug area, 0x01C0C000..0x01C0E000 */
-	[r3 + 0x20] = r1	/* icfg as handed over */
-	[r3 + 0x24] = r2	/* psr */
-	[r3 + 0x28] = r0	/* boot-parameter pointer */
+	r3 = 0x1C0DF00
+	[r3 + 0x20] = r1
+	[r3 + 0x24] = r2
+	[r3 + 0x28] = r0
 	r1 = sp
 	[r3 + 0x2C] = r1
 	r1 = ssp

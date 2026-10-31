@@ -4,18 +4,14 @@
 
 #include <stddef.h>
 
-
 #define CLOCK 0xf8u
 #define START 0xfau
 #define CONTINUE 0xfbu
 #define STOP 0xfcu
 #define SPP 0xf2u
-/* USB-MIDI's code index numbers: a single byte, a three-byte system common message. */
 #define CIN_SINGLE 0x0fu
 #define CIN_COMMON3 0x03u
-/* 24 MHz / 544, rounded: the clock follower's sample rate. */
 #define SAMPLE_RATE 44118u
-/* A clock out more than this many clocks behind skips ahead rather than bursting. */
 #define OUT_CATCH_UP 2u
 
 static const char* const MODE_NAMES[MIDI_SYNC_MODES] = {"AUTO", "FOLLOW", "OFF"};
@@ -53,7 +49,6 @@ void midi_sync_song_changed(midi_sync* s) {
     s->out_clock = 0;
 }
 
-/* The transport has the clock's members (its ctx may be set after the bind). */
 static int bound(const midi_sync* s) {
     const song_transport* t = s->t;
     return t && t->hold && t->align && t->period && t->seek && t->seek_further && t->clock;
@@ -72,7 +67,6 @@ void midi_sync_rows(midi_sync* s, uint32_t rows_per_beat) {
     s->rows_per_beat = (uint8_t)(rows_per_beat ? rows_per_beat : 4u);
 }
 
-/* Whole samples in d ticks, toward zero. */
 static int32_t samples_in(int32_t d) {
     return d >= 0 ? d / (int32_t)MIDI_SYNC_TICKS_PER_SAMPLE
                   : -((-d) / (int32_t)MIDI_SYNC_TICKS_PER_SAMPLE);
@@ -83,7 +77,6 @@ void midi_sync_anchor(midi_sync* s, uint32_t ticks, uint32_t samples) {
         s->r_ticks = ticks;
         s->r_base = samples;
     } else {
-        /* the clock's time line on by whole samples, the rest of a sample kept in r_ticks */
         uint32_t n = (ticks - s->r_ticks) / MIDI_SYNC_TICKS_PER_SAMPLE;
         s->r_base += n;
         s->r_ticks += n * MIDI_SYNC_TICKS_PER_SAMPLE;
@@ -98,15 +91,10 @@ uint32_t midi_sync_sample_of(const midi_sync* s, uint32_t ticks) {
            MIDI_SYNC_LATENCY;
 }
 
-/* A stamp on the clock's own time line: the ticks in samples, which never jump (the clock's
- * fit and its holds are kept on it). */
 static uint32_t real_of(const midi_sync* s, uint32_t ticks) {
     return s->r_base + (uint32_t)samples_in((int32_t)(ticks - s->r_ticks));
 }
 
-/* A time on the clock's line as the player's sample heard then, by the latest anchor: the two
- * differ by the blocks the audio did not render (a flash hold masks the interrupts) and by
- * any drift between the audio's clock and the ticks. */
 static uint32_t heard_of(const midi_sync* s, uint32_t real) {
     return real + midi_sync_sample_of(s, s->a_ticks) - real_of(s, s->a_ticks);
 }
@@ -121,7 +109,6 @@ int midi_sync_following(const midi_sync* s) {
     return s->mode != MIDI_SYNC_OFF && s->clock.active;
 }
 
-/* While a .sid tune is loaded: its transport, and nothing else (no clock, no seek, no subtune). */
 __attribute__((noinline, unused)) static int tune_msg(midi_sync* s, const midi_msg* msg) {
     if (!s->tune(s->tune_ctx, MIDI_SYNC_TUNE_ASK)) {
         return 0;
@@ -170,21 +157,14 @@ void midi_sync_msg(midi_sync* s, const midi_msg* msg, uint32_t ticks) {
     }
 }
 
-/* ---- the player's calls against the clock's positions ---- */
-
-/* Calls a beat, twice over (funktempo's two tempos summed): calls a beat x 2; 0 with no
- * tempo. Integers and single floats only: the device has no 64-bit division. */
 static uint32_t beat2(const midi_sync* s, const song_clock* st) {
     return (uint32_t)(st->speed[0] + st->speed[1]) * s->rows_per_beat;
 }
 
-/* The call at clock position `pos` (clocks) from call 0 at position 0. */
 static uint32_t call_of(const midi_sync* s, const song_clock* st, uint32_t pos) {
     return pos * beat2(s, st) / (2u * MIDI_CLOCK_PER_BEAT);
 }
 
-/* When the clock at position whole + frac (clocks) comes, as the fit has it, as the player's
- * sample heard then: 1 and *t. */
 static int clock_time(const midi_sync* s, uint32_t whole, float frac, uint32_t* t) {
     uint32_t at;
     if (!midi_clock_time_of(&s->clock, whole, &at)) {
@@ -194,27 +174,23 @@ static int clock_time(const midi_sync* s, uint32_t whole, float frac, uint32_t* 
     return 1;
 }
 
-/* The earliest sample a command sent now can still place a call at: the next block's start
- * (the anchor's block is rendered). */
 static uint32_t horizon(const midi_sync* s) {
     return s->a_samples + MIDI_SYNC_LATENCY;
 }
 
-/* A held start or resume: its first call on the next clock it can still make. */
 static void align_start(midi_sync* s, const song_clock* st) {
     uint32_t pos = s->p_anchor;
     uint32_t t;
     if (!clock_time(s, pos, 0.0f, &t)) {
         if (!s->clock.based || !s->fresh) {
-            return; /* no clock since the start yet */
+            return;
         }
-        /* no tempo yet: the clock that just came */
         pos = s->clock.position - 1u;
         t = heard_of(s, s->clock.last);
     }
     t += MIDI_SYNC_DELAY;
     if ((int32_t)(t - horizon(s)) < 0) {
-        t = horizon(s); /* late: as soon as it can, the follower takes up the rest */
+        t = horizon(s);
     }
     if (!s->t->align(s->t->ctx, t)) {
         return;
@@ -228,7 +204,6 @@ static void align_start(midi_sync* s, const song_clock* st) {
     (void)st;
 }
 
-/* At each row: the next call against its clock, the error into the period or a re-align. */
 static void follow(midi_sync* s, const song_clock* st) {
     uint32_t b2 = beat2(s, st);
     if (b2 == 0u || st->calls == 0u || st->calls < s->next_row) {
@@ -238,7 +213,6 @@ static void follow(midi_sync* s, const song_clock* st) {
     uint32_t target = 0;
     int placed = 0;
     if (s->synced && st->calls >= s->c_anchor) {
-        /* the next call's clock position: p_anchor + its calls since x 24 / calls a beat */
         float dp = (float)(st->calls - s->c_anchor) * (float)(2u * MIDI_CLOCK_PER_BEAT) /
                    (float)b2;
         uint32_t whole = (uint32_t)dp;
@@ -264,8 +238,6 @@ static void follow(midi_sync* s, const song_clock* st) {
     }
 }
 
-/* A play from the song's start (the subtune the transport plays: song select's waits for a
- * transport that takes one), held for its align when a clock is followed. */
 static int play(midi_sync* s, int held) {
     s->t->hold(s->t->ctx, (uint32_t)held);
     if (!s->t->play(s->t->ctx, 0u)) {
@@ -290,7 +262,6 @@ static void lost(midi_sync* s, const song_clock* st) {
     s->lost++;
     s->synced = 0;
     if (s->aligning && st->state == MIDI_SYNC_PLAYING) {
-        /* held for a clock that will not come: start now */
         if (s->t->align(s->t->ctx, horizon(s))) {
             s->aligning = 0;
             s->held = 0;
@@ -301,7 +272,6 @@ static void lost(midi_sync* s, const song_clock* st) {
     }
 }
 
-/* The pending requests, in order: stop, start, seek, resume. */
 static void requests(midi_sync* s, const song_clock* st, int following) {
     if (s->want & MIDI_SYNC_WANT_STOP) {
         if (st->state == MIDI_SYNC_LOADING) {
@@ -317,11 +287,10 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
     }
     if (s->want & MIDI_SYNC_WANT_START) {
         if (st->state == MIDI_SYNC_PLAYING) {
-            s->want |= MIDI_SYNC_WANT_STOP; /* a start while playing: from the top */
+            s->want |= MIDI_SYNC_WANT_STOP;
             return;
         }
         if (st->state == MIDI_SYNC_STOPPED) {
-            /* back to the start and on, with no new analysis */
             s->want = (uint8_t)((s->want & ~MIDI_SYNC_WANT_START) | MIDI_SYNC_WANT_SEEK |
                                 MIDI_SYNC_WANT_RESUME);
             s->seek_pos = 0;
@@ -339,12 +308,11 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
         }
     }
     if ((s->want & MIDI_SYNC_WANT_SEEK) && st->state == MIDI_SYNC_PLAYING && !s->aligning) {
-        s->want &= (uint8_t)~MIDI_SYNC_WANT_SEEK; /* a position while playing: ignored */
+        s->want &= (uint8_t)~MIDI_SYNC_WANT_SEEK;
     }
     if ((s->want & MIDI_SYNC_WANT_SEEK) && !s->seek_on) {
         if (st->state == MIDI_SYNC_IDLE || st->state == MIDI_SYNC_LOADING) {
             if (s->want & MIDI_SYNC_WANT_RESUME) {
-                /* a continue with nothing played: the song from its start, then the seek */
                 if (st->state == MIDI_SYNC_IDLE &&
                     play(s, following)) {
                     s->aligning = 0;
@@ -353,7 +321,7 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
             return;
         }
         if (st->speed[0] == 0u) {
-            return; /* no tempo yet: the first call gives it */
+            return;
         }
         uint32_t call = call_of(s, st, s->seek_pos);
         if (s->t->seek(s->t->ctx, call)) {
@@ -365,7 +333,6 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
     }
     if (s->want & MIDI_SYNC_WANT_RESUME) {
         if (s->seek_on && st->seeking == 1u) {
-            /* the clock runs on while the seek slices: its target with it */
             if (s->clock.running) {
                 uint32_t call = call_of(s, st, s->clock.position);
                 if (call > s->seek_call && s->t->seek_further(s->t->ctx, call)) {
@@ -378,10 +345,8 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
         if (st->state == MIDI_SYNC_STOPPED) {
             resumed = resume(s, following);
         } else if (st->state == MIDI_SYNC_PLAYING) {
-            resumed = 1; /* a held play from IDLE, sought: it waits for its align */
+            resumed = 1;
         } else if (st->state == MIDI_SYNC_IDLE && !s->seek_on) {
-            /* a continue with no position for a song never played: a start from its first
-             * call, on the next clock from where the clock's position is */
             if (play(s, following)) {
                 s->want &= (uint8_t)~MIDI_SYNC_WANT_RESUME;
                 s->aligning = (uint8_t)following;
@@ -394,7 +359,6 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
         if (resumed) {
             s->want &= (uint8_t)~MIDI_SYNC_WANT_RESUME;
             s->aligning = (uint8_t)following;
-            /* the call the song goes on from, at the next clock's position */
             s->c_anchor = s->seek_on ? s->seek_call : st->calls;
             s->p_anchor = s->clock.position;
             s->seek_on = 0;
@@ -402,8 +366,6 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
         }
     }
 }
-
-/* ---- out ---- */
 
 static uint32_t realtime(uint8_t b) {
     return MIDI_SYNC_CABLE << 4 | CIN_SINGLE | (uint32_t)b << 8;
@@ -415,25 +377,21 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
     uint32_t room = s->out_room < MIDI_SYNC_OUT_MAX ? s->out_room : MIDI_SYNC_OUT_MAX;
     int on = s->clock_out && !midi_sync_following(s);
     uint32_t b2 = beat2(s, st);
-    /* a load between (a continue that takes chip A again) is no change */
     if (st->state != s->out_state && st->state != MIDI_SYNC_LOADING) {
         uint8_t was = s->out_state;
-        /* a continue's (not a play's: it starts its calls again, whatever count they had) */
         int spp = on && st->state == MIDI_SYNC_PLAYING && was == MIDI_SYNC_STOPPED && b2 &&
                   !st->from_top && st->calls > 1u;
         if (spp && s->out_common_wait) {
-            return n; /* the song position after the SysEx frame's end: the next pass's */
+            return n;
         }
         int sends = on && (st->state == MIDI_SYNC_PLAYING ||
                            (was == MIDI_SYNC_PLAYING && st->state == MIDI_SYNC_STOPPED));
         if (sends && room < (spp ? 2u : 1u)) {
-            return n; /* USB's ring is full: the next pass's, not dropped */
+            return n;
         }
         s->out_state = st->state;
         if (on && st->state == MIDI_SYNC_PLAYING) {
-            /* a continue goes on from its calls; a play starts them again */
             if (spp) {
-                /* on from where it stopped: the position (in 16ths), then continue */
                 uint32_t clocks = st->calls * (2u * MIDI_CLOCK_PER_BEAT) / b2;
                 uint32_t pos = clocks / MIDI_CLOCK_PER_16TH;
                 s->out_clock = pos * MIDI_CLOCK_PER_16TH;
@@ -451,11 +409,10 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
     if (!on || st->state != MIDI_SYNC_PLAYING || b2 == 0u || st->calls == 0u) {
         return n;
     }
-    float period = (float)st->period_q16 * (1.0f / 65536.0f); /* samples a call */
+    float period = (float)st->period_q16 * (1.0f / 65536.0f);
     float calls_a_clock = (float)b2 / (float)(2u * MIDI_CLOCK_PER_BEAT);
-    float per = calls_a_clock * period; /* samples a clock */
+    float per = calls_a_clock * period;
     while (n < room) {
-        /* clock out_clock's call position against the last call */
         float d = (float)s->out_clock * calls_a_clock - (float)(st->calls - 1u);
         uint32_t at = st->call_sample + (uint32_t)(int32_t)(d * period);
         int32_t wait = (int32_t)(at - now);
@@ -463,7 +420,7 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
             break;
         }
         if (per >= 1.0f && (float)(-wait) > (float)OUT_CATCH_UP * per) {
-            s->out_clock += (uint32_t)((float)(-wait) / per); /* far behind (a seek) */
+            s->out_clock += (uint32_t)((float)(-wait) / per);
             continue;
         }
         out[n++] = realtime(CLOCK);
@@ -506,7 +463,6 @@ uint32_t midi_sync_poll(midi_sync* s, uint32_t ticks, uint32_t out[MIDI_SYNC_OUT
         s->t->clock(s->t->ctx, &st);
         if (s->aligning && (st.state == MIDI_SYNC_IDLE || st.state == MIDI_SYNC_STOPPED) &&
             !(s->want & (MIDI_SYNC_WANT_RESUME | MIDI_SYNC_WANT_SEEK))) {
-            /* the held play or continue did not happen (a refused song): no hold left */
             s->t->hold(s->t->ctx, 0u);
             s->aligning = 0;
             s->held = 0;

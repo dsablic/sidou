@@ -1,36 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* What the SID views (app/sid_view.h) and the song views' GLO need of the .sid player (M3 Task
- * 11; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "The browser and the transport"): the tune's
- * transport, its mutes and what it is doing, as a table of functions, as song_transport.h is the
- * song's.
- *
- * The device binds it over main.c's tune (its states, the store's file through app/sid_io.h,
- * core/psid/psid_ctl.h); the host tests bind a fake. With none bound (sid_view_set_transport
- * NULL) the browser still lists the store's tunes, and choosing one does nothing.
- *
- * The device's binding:
- * - play: the store's .sid file `name`, its start song. With no tune loaded the song stops and
- *   lets go of its memory first (song_io_away discards its unsaved edits: the views ask before,
- *   app/sid_view.h); with one loaded, it stops and the new file loads in its place.
- * - start: the loaded tune's song `song` (1..songs) from init: a stop, its fade played out, the
- *   file read again from the store (sid_io: a file loaded in parts has no song change of its
- *   own), then psid_ctl_play. A request made while the tune loads waits for it; the last wins.
- * - stop, pause, resume: psid_ctl's. A stop asked while the tune loads stops it as it starts.
- * - end: the tune for good: its stop played out, the song back from the store.
- * - mute: GLO's mask, bit v voice v (solo folded in, song_view_mute_mask): on chip A's voices,
- *   and on voice v of both chips for a 2SID tune; kept for the tune's next start too.
- * - status: once a frame at most, from the main loop.
- * - lift: arms the lift of voice `voice` (0..2) of the playing tune (core/psid/psid_lift.h): its
- *   next note becomes a GoatTracker instrument, the store's LIFTED SOUND file (STORE_FILE_GTI);
- *   voice 3 disarms. Its toasts (what was lifted, or why not) are the binding's.
- * - import: the lifted instrument offered once the song is back (status.offer): go 1 imports it
- *   into the song's first free instrument (offer_instr) with the song's importer (core/song/
- *   gt2_ins.h), 0 skips it (the file stays on the store). With the song playing
- *   (status.offer_playing) it is refused: the song must be stopped. Its result is a toast.
- * Every command returns at once; 1 taken, 0 refused (nothing loaded).
- *
- * Portable C, no hardware access. */
 #ifndef SIDOU_SID_TRANSPORT_H
 #define SIDOU_SID_TRANSPORT_H
 
@@ -43,46 +12,43 @@
 extern "C" {
 #endif
 
-/* The tune's state. */
-#define SID_T_NONE 0u    /* no tune: the song has its memory */
-#define SID_T_LOADING 1u /* asked for: the song lets go, the file loads, the chips are made */
-#define SID_T_PLAYING 2u /* its init or its play calls run */
+#define SID_T_NONE 0u
+#define SID_T_LOADING 1u
+#define SID_T_PLAYING 2u
 #define SID_T_PAUSED 3u
 #define SID_T_STOPPED 4u
-#define SID_T_FAILED 5u  /* it stopped itself (INIT TOO LONG, PLAY HUNG, a JAM) */
-#define SID_T_ENDING 6u  /* ending for good: the song comes back */
+#define SID_T_FAILED 5u
+#define SID_T_ENDING 6u
 
-/* The lift's state (sid_status.lift), and the offer's (sid_status.offer). */
 #define SID_LIFT_OFF 0u
-#define SID_LIFT_ARMED 1u  /* waiting for the voice's next note */
-#define SID_LIFT_TAKING 2u /* its frames, then the file */
+#define SID_LIFT_ARMED 1u
+#define SID_LIFT_TAKING 2u
 #define SID_OFFER_NONE 0u
-#define SID_OFFER_READY 1u     /* the lifted instrument waits for the song's answer */
-#define SID_OFFER_IMPORTING 2u /* the song's importer runs */
-#define SID_OFFER_NAME 16u     /* the instrument's name (GoatTracker's 16 characters) */
+#define SID_OFFER_READY 1u
+#define SID_OFFER_IMPORTING 2u
+#define SID_OFFER_NAME 16u
 
-/* What the tune is doing. */
 typedef struct {
-    uint8_t state;     /* SID_T_* */
-    uint8_t chips;     /* 1, or 2 for a 2SID tune */
-    uint8_t shadow;    /* 1: the voice shadows answer OSC3 and ENV3 */
-    uint16_t song;     /* the song playing, or asked for (1..songs); 0 none yet */
-    uint32_t seconds;  /* the audio's time since the song started */
-    uint32_t cycles;   /* the 6502's cycles over the last second */
-    uint16_t load;     /* the 6502's share of the CPU over the last second, tenths of a percent */
-    uint16_t ticks_k;  /* 24 MHz ticks a thousand 6502 cycles took (0 with load: not measured) */
-    uint32_t overruns; /* play calls that ran past their period */
-    uint32_t late;     /* SID writes applied after their cycle */
-    uint32_t dropped;  /* a third SID's writes, dropped */
-    uint8_t env[3];    /* chip A's voices' envelopes, 0..255 */
-    uint8_t model[2];  /* each chip's model as it plays the tune (sid_model) */
-    char name[STORE_NAME_MAX + 1u]; /* the store's file */
-    const psid_header* h; /* the tune's header while it is read (NULL before) */
-    uint8_t lift;         /* SID_LIFT_* */
-    uint8_t lift_voice;   /* the voice it lifts, 0..2 */
-    uint8_t offer;        /* SID_OFFER_*, with or without a tune */
-    uint8_t offer_instr;  /* the instrument it would import into, 1..63; 0 none free */
-    uint8_t offer_playing; /* the song plays (or is not settled): no import now */
+    uint8_t state;
+    uint8_t chips;
+    uint8_t shadow;
+    uint16_t song;
+    uint32_t seconds;
+    uint32_t cycles;
+    uint16_t load;
+    uint16_t ticks_k;
+    uint32_t overruns;
+    uint32_t late;
+    uint32_t dropped;
+    uint8_t env[3];
+    uint8_t model[2];
+    char name[STORE_NAME_MAX + 1u];
+    const psid_header* h;
+    uint8_t lift;
+    uint8_t lift_voice;
+    uint8_t offer;
+    uint8_t offer_instr;
+    uint8_t offer_playing;
     char offer_name[SID_OFFER_NAME + 1u];
 } sid_status;
 

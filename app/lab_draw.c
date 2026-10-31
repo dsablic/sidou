@@ -16,25 +16,21 @@ _Static_assert(LAB_DRAW_ROWS == LAB_VIEW_ART_ROWS, "the drawing fills LAB's area
 _Static_assert(LAB_DRAW_H <= LAB_DRAW_NONE, "a row of the area fits a byte, NONE apart");
 _Static_assert(LAB_DRAW_STEP == 2u, "a sample is two columns (the kit's 0xC0)");
 
-/* ---- the kit ---- */
-
 int lab_draw_apply(const lab_draw* d, grid* g, const screen* s, uint32_t row0, uint32_t* left) {
     uint8_t prev_lo[LAB_DRAW_LAYERS] = {LAB_DRAW_NONE, LAB_DRAW_NONE, LAB_DRAW_NONE};
     uint8_t prev_hi[LAB_DRAW_LAYERS] = {0, 0, 0};
     int whole = 1;
     for (uint32_t c = 0; c < GRID_COLS; c++) {
-        /* The band's 8 columns into each cell row's mask, a span's pixels at a time; has[r]: bit
-         * l, layer l inks the cell, bit 3 a lit pixel. */
         uint32_t words[LAB_DRAW_ROWS * 2u + (LAB_DRAW_ROWS + 3u) / 4u];
         for (uint32_t k = 0; k < sizeof words / sizeof words[0]; k++) {
-            words[k] = 0; /* by words: the device's memset goes a byte at a time */
+            words[k] = 0;
         }
         uint8_t (*m)[8] = (uint8_t (*)[8])words;
         uint8_t* has = (uint8_t*)&words[LAB_DRAW_ROWS * 2u];
         for (uint32_t j = 0; j < 8u; j += LAB_DRAW_STEP) {
             lab_draw_col col;
             d->fn(d->ctx, c * 8u + j, &col);
-            uint8_t bit = (uint8_t)(0xC0u >> j); /* the sample's two columns */
+            uint8_t bit = (uint8_t)(0xC0u >> j);
             for (uint32_t l = 0; l < LAB_DRAW_LAYERS; l++) {
                 uint32_t a = col.lo[l];
                 uint32_t b = col.hi[l];
@@ -43,7 +39,6 @@ int lab_draw_apply(const lab_draw* d, grid* g, const screen* s, uint32_t row0, u
                     continue;
                 }
                 if (l != LAB_DRAW_MARKER) {
-                    /* a trace: joined to the column before, a pixel thicker below */
                     uint32_t ja = a;
                     uint32_t jb = b;
                     if (prev_lo[l] != LAB_DRAW_NONE) {
@@ -69,7 +64,7 @@ int lab_draw_apply(const lab_draw* d, grid* g, const screen* s, uint32_t row0, u
             uint32_t row = row0 + r;
             uint32_t h = has[r];
             if (!h && !g->ovl[row * GRID_COLS + c]) {
-                continue; /* empty, and nothing drawn there */
+                continue;
             }
             uint8_t color = h & 4u   ? d->color[LAB_DRAW_MARKER]
                             : h & 8u ? d->lit_color
@@ -85,7 +80,7 @@ int lab_draw_apply(const lab_draw* d, grid* g, const screen* s, uint32_t row0, u
             if (!h) {
                 grid_overlay_clear(g, c, row);
             } else if (grid_overlay(g, c, row, m[r], color) != 0) {
-                whole = 0; /* no slot left: the cell keeps its glyph alone */
+                whole = 0;
             }
             (*left)--;
         }
@@ -93,19 +88,12 @@ int lab_draw_apply(const lab_draw* d, grid* g, const screen* s, uint32_t row0, u
     return whole;
 }
 
-/* ---- ENVELOPE's time and levels ---- */
-
-/* 1000 x 10^(i / LAB_DRAW_DECADE): a decade of the time axis. */
 static const uint16_t DECADE[LAB_DRAW_DECADE] = {
     1000, 1049, 1101, 1155, 1212, 1271, 1334, 1399, 1468, 1540, 1616, 1695, 1778, 1866, 1957, 2054,
     2154, 2260, 2371, 2488, 2610, 2738, 2873, 3014, 3162, 3318, 3481, 3652, 3831, 4019, 4217, 4424,
     4642, 4870, 5109, 5360, 5623, 5900, 6190, 6494, 6813, 7148, 7499, 7867, 8254, 8660, 9085, 9532};
-/* The SID's rate periods, in cycles (the datasheet's 2 ms .. 8 s attacks, three times as long for
- * a decay or release from 255 to 0). */
 static const uint16_t PERIOD[16] = {9,   32,   63,   95,   149,   220,   267,   313,
                                     392, 977, 1954, 3126, 3907, 11720, 19532, 31251};
-/* The envelope's exponential steps on the way down: a step from a level of at least LO[i] takes
- * P[i] rate periods (reSID's exponential counter). 756 periods from 255 to 0. */
 static const uint8_t SEG_LO[6] = {94, 55, 27, 15, 7, 1};
 static const uint8_t SEG_P[6] = {1, 2, 4, 8, 16, 30};
 
@@ -118,7 +106,7 @@ uint32_t lab_draw_time_us(uint32_t x) {
     for (uint32_t d = u / LAB_DRAW_DECADE; d; d--) {
         t *= 10u;
     }
-    return t - 1000u; /* 1 ms at T0 is the axis' 0 */
+    return t - 1000u;
 }
 
 uint32_t lab_draw_x_of_us(uint32_t t) {
@@ -135,21 +123,18 @@ uint32_t lab_draw_x_of_us(uint32_t t) {
     return lo;
 }
 
-/* A period's microseconds are 1.015 of its cycles at the PAL clock (985,248 Hz). */
 uint32_t lab_draw_attack_us(uint32_t rate) {
-    return PERIOD[rate & 15u] * 25882u / 100u; /* 255 periods */
+    return PERIOD[rate & 15u] * 25882u / 100u;
 }
 
 uint32_t lab_draw_decay_us(uint32_t rate) {
-    return PERIOD[rate & 15u] * 767u; /* 756 periods */
+    return PERIOD[rate & 15u] * 767u;
 }
 
-/* Rate periods (weighted steps) in t microseconds of rate `period`. */
 static uint32_t periods(uint32_t t, uint32_t period) {
     return t / period * 64u / 65u;
 }
 
-/* The level after w rate periods down from level l. */
 static uint32_t level_down(uint32_t l, uint32_t w) {
     for (uint32_t i = 0; i < 6u; i++) {
         if (l < SEG_LO[i]) {
@@ -165,12 +150,10 @@ static uint32_t level_down(uint32_t l, uint32_t w) {
     return 0;
 }
 
-/* Rate periods from level hi down to level lo. */
 static uint32_t periods_between(uint32_t hi, uint32_t lo) {
     uint32_t w = 0;
     uint32_t top = 255;
     for (uint32_t i = 0; i < 6u; i++) {
-        /* levels c in [SEG_LO[i], top] each take SEG_P[i] to step down */
         uint32_t a = lo + 1u > SEG_LO[i] ? lo + 1u : SEG_LO[i];
         uint32_t b = hi < top ? hi : top;
         if (b >= a) {
@@ -181,14 +164,13 @@ static uint32_t periods_between(uint32_t hi, uint32_t lo) {
     return w;
 }
 
-/* An envelope's settings, worked out once a drawing. */
 typedef struct {
-    uint32_t attack;  /* microseconds to 255 */
-    uint32_t decay;   /* the decay's rate period */
-    uint32_t release; /* the release's */
-    uint32_t sustain; /* the level, 0..255 */
-    uint32_t gate;    /* the key let go, microseconds */
-    uint32_t at_gate; /* the level then */
+    uint32_t attack;
+    uint32_t decay;
+    uint32_t release;
+    uint32_t sustain;
+    uint32_t gate;
+    uint32_t at_gate;
 } env_shape;
 
 static uint32_t held_level(const env_shape* e, uint32_t t) {
@@ -219,7 +201,7 @@ uint32_t lab_draw_gate_us(uint8_t ad, uint8_t sr) {
     if (sustain < 255u) {
         t += periods_between(255, sustain) * PERIOD[ad & 15u] / 64u * 65u;
     }
-    t += t / 2u; /* the sustain held half as long again */
+    t += t / 2u;
     uint32_t mid = lab_draw_time_us(LAB_DRAW_GATE_X);
     uint32_t last = lab_draw_time_us(LAB_DRAW_GATE_MAX_X);
     return t < mid ? mid : t > last ? last : t;
@@ -231,18 +213,12 @@ uint32_t lab_draw_level(uint8_t ad, uint8_t sr, uint32_t gate_us, uint32_t t) {
     return env_level(&e, t);
 }
 
-/* ---- the drawings ---- */
-
-/* The plot's rows of the area: a level or a wave's 0..255 from the bottom row to the top. */
 #define OSC_TOP 6u
 #define OSC_SPAN 99u
 #define ENV_TOP 4u
 #define ENV_SPAN 96u
-/* OSC's cycle: from OSC_X0, OSC_CYCLE pixels at the note's pitch. */
 #define OSC_X0 8u
 #define OSC_CYCLE 224u
-/* The carrier's ratio to the modulator for ring or sync on a sound of four voices (the modulator
- * is another key's), in 1/256. */
 #define OSC_RATIO 384u
 
 static uint8_t y_of(uint32_t v, uint32_t top, uint32_t span) {
@@ -250,23 +226,21 @@ static uint8_t y_of(uint32_t v, uint32_t top, uint32_t span) {
 }
 
 typedef struct {
-    uint32_t cycle; /* pixels */
-    uint32_t ratio; /* the carrier's, 1/256 */
+    uint32_t cycle;
+    uint32_t ratio;
     uint16_t pw;
     uint8_t control;
-    uint8_t mod;    /* 1 ring, 2 sync: the modulator's trace */
+    uint8_t mod;
     uint8_t hl;
 } osc_ctx;
 
-/* The carrier's 8-bit output at the modulator's phase p (0..65535) and pixel x: the shapes its
- * waveform bits select, ANDed (the 6581's combined waveforms); none: 0. */
 static uint32_t osc_wave(const osc_ctx* o, uint32_t p, uint32_t x) {
     uint32_t q = p * o->ratio >> 8 & 0xFFFFu;
     uint32_t c = o->control;
     uint32_t v = 255;
     if (c & 0x10u) {
         uint32_t t = q < 32768u ? q >> 7 : (65535u - q) >> 7;
-        v &= o->mod == 1u && p >= 32768u ? 255u - t : t; /* ring: the modulator's top bit */
+        v &= o->mod == 1u && p >= 32768u ? 255u - t : t;
     }
     if (c & 0x20u) {
         v &= q >> 8;
@@ -275,8 +249,6 @@ static uint32_t osc_wave(const osc_ctx* o, uint32_t p, uint32_t x) {
         v &= (q >> 4) >= o->pw ? 255u : 0u;
     }
     if (c & 0x80u) {
-        /* a fixed scribble about the middle: a random level every 4 pixels, joined (at full
-         * height the trace would ink every cell, past the grid's overlays) */
         uint32_t k = x / 4u;
         uint32_t a = (k * 2654435761u) >> 26;
         uint32_t b = ((k + 1u) * 2654435761u) >> 26;
@@ -290,13 +262,12 @@ static void osc_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
     out->lit = 0;
     if (o->hl == 4u && (x == OSC_X0 + OSC_CYCLE - 1u || x == OSC_X0 + OSC_CYCLE - 2u)) {
-        out->lo[LAB_DRAW_MARKER] = OSC_TOP; /* the note's own cycle, against the tuned one */
+        out->lo[LAB_DRAW_MARKER] = OSC_TOP;
         out->hi[LAB_DRAW_MARKER] = OSC_TOP + OSC_SPAN;
     }
     if (x < OSC_X0 || x >= OSC_X0 + o->cycle + LAB_DRAW_STEP) {
         return;
     }
-    /* the sample after the cycle is the next one's start: a saw's drop, a pulse's last edge */
     uint32_t p = x >= OSC_X0 + o->cycle ? 0u : (x - OSC_X0) * 65536u / o->cycle;
     uint32_t v = osc_wave(o, p, x);
     out->lo[0] = out->hi[0] = y_of(v, OSC_TOP, OSC_SPAN);
@@ -304,7 +275,7 @@ static void osc_col(const void* ctx, uint32_t x, lab_draw_col* out) {
         uint32_t q = p * o->ratio >> 8 & 0xFFFFu;
         uint32_t b = ((x - LAB_DRAW_STEP - OSC_X0) * 65536u / o->cycle) * o->ratio >> 8 & 0xFFFFu;
         if (((q >> 4) >= o->pw) != ((b >> 4) >= o->pw)) {
-            out->lit = 1; /* the pulse's edge */
+            out->lit = 1;
         }
     }
     if (o->mod) {
@@ -313,7 +284,6 @@ static void osc_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     }
 }
 
-/* The pulse width a sounding voice has now (the LFO's), else the sound's. */
 static uint32_t live_pw(const live* l) {
     for (uint32_t v = 0; v < LIVE_VOICES; v++) {
         if (l->voice[v].gate) {
@@ -329,7 +299,6 @@ static void osc_init(osc_ctx* o, const live* l, uint32_t hl) {
     o->mod = l->control & 0x04u ? 1u : l->control & 0x02u ? 2u : 0u;
     uint32_t r = l->mono_sync ? l->sync_q8 : o->mod ? OSC_RATIO : 256u;
     o->ratio = r < 256u ? 256u : r > 2048u ? 2048u : r;
-    /* a cent's 1/1731 of the cycle: 2^(c / 1200) within 0.05 % at 50 */
     o->cycle = OSC_CYCLE * 65536u / (uint32_t)(65536 + l->tune * 38);
     o->hl = (uint8_t)hl;
 }
@@ -337,11 +306,10 @@ static void osc_init(osc_ctx* o, const live* l, uint32_t hl) {
 typedef struct {
     env_shape e;
     uint8_t hl;
-    uint8_t dot_x; /* LAB_DRAW_NONE: no dot */
+    uint8_t dot_x;
     uint8_t dot_y;
 } env_ctx;
 
-/* The segment of time t: 1 the attack, 2 the decay, 3 the sustain, 4 the release (the cards'). */
 static uint32_t env_segment(const env_shape* e, uint32_t t, uint32_t level) {
     if (t >= e->gate) {
         return 4;
@@ -358,8 +326,6 @@ static void env_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     uint32_t t = lab_draw_time_us(x);
     uint32_t level = env_level(&c->e, t);
     if (t < c->e.attack && t < c->e.gate) {
-        /* the attack rises across the sample: its top is where the sample's time ends (a
-         * pixel is 5 % of the time, 400 ms at 8 s: a point alone could miss the peak) */
         uint32_t end = lab_draw_time_us(x + LAB_DRAW_STEP);
         end = end < c->e.attack ? end : c->e.attack;
         end = end < c->e.gate ? end : c->e.gate;
@@ -369,13 +335,11 @@ static void env_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     out->lo[0] = out->hi[0] = y_of(level, ENV_TOP, ENV_SPAN);
     out->lit = (uint8_t)(c->hl && env_segment(&c->e, t, level) == c->hl);
     if (c->dot_x != LAB_DRAW_NONE && x + 3u >= c->dot_x && x <= c->dot_x + 3u) {
-        /* a white block of about 7 pixels on the light grey curve */
         out->lo[LAB_DRAW_MARKER] = (uint8_t)(c->dot_y > 3u ? c->dot_y - 3u : 0u);
         out->hi[LAB_DRAW_MARKER] = (uint8_t)(c->dot_y + 3u);
     }
 }
 
-/* The voice the tap's envelope is followed for: the loudest (0..2), or -1 with none. */
 static int32_t loudest(const scope* sc) {
     int32_t v = -1;
     uint32_t most = 0;
@@ -388,7 +352,6 @@ static int32_t loudest(const scope* sc) {
     return v;
 }
 
-/* Where the envelope the tap reads is on the curve: by its state and level. */
 static void env_dot(env_ctx* c, const scope* sc) {
     c->dot_x = LAB_DRAW_NONE;
     int32_t v = loudest(sc);
@@ -405,28 +368,22 @@ static void env_dot(env_ctx* c, const scope* sc) {
     } else {
         t = e->attack + periods_between(255, level) * e->decay / 64u * 65u;
         uint32_t last = lab_draw_x_of_us(e->gate);
-        last = lab_draw_time_us(last > 3u ? last - 3u : 0u); /* on the plateau, before the key */
+        last = lab_draw_time_us(last > 3u ? last - 3u : 0u);
         t = t < last ? t : last;
     }
     c->dot_x = (uint8_t)lab_draw_x_of_us(t);
     c->dot_y = y_of(level, ENV_TOP, ENV_SPAN);
 }
 
-/* ---- FILTER ---- */
-
-/* The response's columns: from FILT_X0 at 30 Hz, FILT_PX_OCT a octave, to 12 kHz at FILT_X1;
- * its rows: +6 dB at the top to -54 dB at FILT_SPAN. */
 #define FILT_X0 8u
 #define FILT_X1 232u
 #define FILT_PX_OCT 26u
 #define FILT_SPAN 88u
 #define FILT_REACH 24u
 
-/* 2^(n / 26) in Q12 (n signed): a half a column's step of the axis, and the effects' rates. */
 static const uint16_t EXP2[26] = {4096, 4207, 4320, 4437, 4557, 4680, 4806, 4936, 5070,
                                   5207, 5347, 5492, 5640, 5793, 5949, 6110, 6275, 6444,
                                   6619, 6797, 6981, 7170, 7363, 7562, 7767, 7976};
-/* log2(1 + i / 16) in Q8. */
 static const uint16_t LOG2[17] = {0,   22,  44,  63,  82,  100, 118, 134, 150,
                                   165, 179, 193, 207, 220, 232, 244, 256};
 
@@ -436,22 +393,21 @@ static uint32_t exp2q(int32_t n) {
     return k >= 0 ? t << (k < 18 ? k : 18) : -k < 32 ? t >> -k : 0u;
 }
 
-/* log2 v in Q8 (0 for 0). */
 static int32_t log2q8(uint64_t v) {
     if (!v) {
         return 0;
     }
     uint32_t p = 63u - (uint32_t)__builtin_clzll(v);
-    uint32_t m = (uint32_t)(p >= 8u ? v >> (p - 8u) : v << (8u - p)); /* 256..511 */
+    uint32_t m = (uint32_t)(p >= 8u ? v >> (p - 8u) : v << (8u - p));
     uint32_t i = (m - 256u) >> 4;
     uint32_t f = m & 15u;
     return (int32_t)(p * 256u + LOG2[i] + (LOG2[i + 1u] - LOG2[i]) * f / 16u);
 }
 
 typedef struct {
-    uint16_t xc;   /* the cutoff's column */
-    uint16_t invq; /* the damping 1 / Q in Q8 */
-    uint8_t mode;  /* $d418 bits 4-6 shifted down: 1 LP, 2 BP, 4 HP */
+    uint16_t xc;
+    uint16_t invq;
+    uint8_t mode;
     uint8_t hl;
 } filt_ctx;
 
@@ -462,10 +418,10 @@ static void filt_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     if (x < FILT_X0 || x > FILT_X1) {
         return;
     }
-    int32_t level = 0; /* log2 of the power gain, Q8 */
+    int32_t level = 0;
     if (f->mode) {
         int32_t d = ((int32_t)x - f->xc) * 2;
-        uint32_t w = exp2q(d); /* (f / fc)^2 in Q12 */
+        uint32_t w = exp2q(d);
         int64_t re = (f->mode & 1u ? 4096 : 0) - (f->mode & 4u ? (int64_t)w : 0);
         uint64_t num = (uint64_t)(re * re) + (f->mode & 2u ? (uint64_t)w * 4096u : 0u);
         int64_t one = 4096 - (int64_t)w;
@@ -476,16 +432,15 @@ static void filt_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     y = y < 0 ? 0 : y > (int32_t)FILT_SPAN - 1 ? (int32_t)FILT_SPAN - 1 : y;
     out->lo[0] = out->hi[0] = (uint8_t)y;
     if (f->hl == 2u && x + FILT_REACH >= f->xc && x <= f->xc + FILT_REACH) {
-        out->lit = 1; /* the resonance: the curve about the cutoff */
+        out->lit = 1;
     }
     if (f->mode && (x & ~1u) == (f->xc & ~1u)) {
-        out->lo[1] = 0; /* the cutoff: a line down the area */
+        out->lo[1] = 0;
         out->hi[1] = FILT_SPAN - 2u;
         out->lit |= (uint8_t)((f->hl == 1u) << 1);
     }
 }
 
-/* The response's column of cutoff register c. */
 static uint32_t filt_x(const live* l, uint32_t c) {
     float hz = sid_cutoff_hz(l->model, 0, c);
     uint32_t h = (uint32_t)(hz < 30.0f ? 30.0f : hz > 12000.0f ? 12000.0f : hz);
@@ -500,10 +455,6 @@ static void filt_init(filt_ctx* f, const live* l, uint32_t hl) {
     f->hl = (uint8_t)hl;
 }
 
-/* ---- MOD ---- */
-
-/* One window of LAB_DRAW_MOD_TICKS ticks (100 Hz) over the columns from MOD_X0: the vibrato
- * (band A), the PWM (band B) and the arpeggio's staircase (band C), their centres and bases. */
 #define MOD_X0 32u
 #define MOD_W 204u
 #define MOD_TICKS 128u
@@ -511,27 +462,24 @@ static void filt_init(filt_ctx* f, const live* l, uint32_t hl) {
 #define MOD_B_CY 54u
 #define MOD_C_BASE 102u
 #define MOD_AMP 14u
-/* Most steps ARP has in the window: the fastest rate, 1 frame (32 in 1/16 ticks). */
 #define MOD_STEPS 65u
 
 typedef struct {
-    uint16_t vstep, pstep; /* LFO phase a tick (65536 a cycle) */
-    uint16_t cycle;        /* the vibrato's cycle in 1/16 ticks (0: none) */
-    uint16_t arp_inv;      /* 65536 / a step's 1/16 ticks, rounded up (0: ARP off) */
-    uint8_t vamp;          /* the vibrato's swing in pixels */
-    uint8_t pamp;          /* the PWM's */
-    uint8_t delay;         /* the vibrato's, in ticks */
+    uint16_t vstep, pstep;
+    uint16_t cycle;
+    uint16_t arp_inv;
+    uint8_t vamp;
+    uint8_t pamp;
+    uint8_t delay;
     uint8_t hl;
-    uint8_t stairs[MOD_STEPS]; /* the arpeggio's row at each of the window's steps */
+    uint8_t stairs[MOD_STEPS];
 } mod_ctx;
 
-/* The LFO's triangle at a phase: -16384..16384, up first. */
 static int32_t tri(uint32_t phase) {
     int32_t p = (int32_t)(phase & 0xFFFFu);
     return p < 16384 ? p : p < 49152 ? 32768 - p : p - 65536;
 }
 
-/* The arpeggio's note at step idx, of a C major chord (played G C E), in semitones. */
 static uint32_t arp_semis(const live* l, uint32_t idx) {
     static const uint8_t SORTED[3] = {0, 4, 7};
     static const uint8_t PLAYED[3] = {7, 0, 4};
@@ -554,7 +502,7 @@ static void mod_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     if (x < MOD_X0 || x >= MOD_X0 + MOD_W) {
         return;
     }
-    uint32_t t16 = (x - MOD_X0) * 10u; /* ticks in 1/16: the window is 127.5 ticks */
+    uint32_t t16 = (x - MOD_X0) * 10u;
     uint32_t dq = (uint32_t)m->delay * 16u;
     int32_t v = 0;
     if (t16 >= dq) {
@@ -566,7 +514,7 @@ static void mod_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     out->lo[1] = out->hi[1] = (uint8_t)((int32_t)MOD_B_CY - (tri(t16 * m->pstep >> 4) * m->pamp >> 14));
     if (m->arp_inv) {
         uint32_t a = m->stairs[t16 * m->arp_inv >> 16];
-        uint32_t b = m->stairs[(t16 + 20u) * m->arp_inv >> 16]; /* two columns on */
+        uint32_t b = m->stairs[(t16 + 20u) * m->arp_inv >> 16];
         out->lo[LAB_DRAW_MARKER] = (uint8_t)(a < b ? a : b);
         out->hi[LAB_DRAW_MARKER] = (uint8_t)((a > b ? a : b) + 1u);
     }
@@ -590,11 +538,6 @@ static void mod_init(mod_ctx* m, const live* l, uint32_t hl) {
     }
 }
 
-/* ---- FX ---- */
-
-/* The selected slot's shape in the rows from FX_Y0, FX_H high: a transfer curve in a square of
- * FX_H + 1 columns from FX_PX0, a wave over the MOD window's columns, the delay's taps and the
- * reverb's decay over the OSC's. */
 #define FX_Y0 48u
 #define FX_H 55u
 #define FX_PX0 92u
@@ -606,15 +549,14 @@ static void mod_init(mod_ctx* m, const live* l, uint32_t hl) {
 enum { FX_NONE, FX_XFER, FX_WAVE, FX_TAPS, FX_DECAY };
 
 typedef struct {
-    uint32_t hz_q8; /* a wave's rate, 1/256 Hz */
-    uint16_t gap;   /* the taps' distance, pixels */
+    uint32_t hz_q8;
+    uint16_t gap;
     uint8_t kind;
     uint8_t slot, alg;
     uint8_t amount, a, b;
     uint8_t hl;
 } fx_ctx;
 
-/* The distortion's output (-256..256) for an input x of the same range. */
 static int32_t fx_xfer(const fx_ctx* f, int32_t x) {
     int32_t a = f->amount * 256 / 127;
     int32_t b = f->b * 256 / 127;
@@ -630,7 +572,7 @@ static int32_t fx_xfer(const fx_ctx* f, int32_t x) {
     if (f->alg == SID_DIST_TAPE) {
         g = 256 + 2 * a;
         bias = a * 38 / 256;
-    } else { /* the overdrive's gain law (core/fx/fx_overdrive.h), the fuzz's alike */
+    } else {
         int32_t a2 = a * a >> 8;
         int32_t a3 = a2 * a >> 8;
         int32_t a7 = (a3 * a2 >> 8) * a2 >> 8;
@@ -642,12 +584,11 @@ static int32_t fx_xfer(const fx_ctx* f, int32_t x) {
     if (f->alg == SID_DIST_FUZZ || v >= 256 || v <= -256) {
         return v < -256 ? -256 : v > 256 ? 256 : v;
     }
-    return (3 * v - (v * v >> 8) * v / 256) / 2; /* the clip's cubic */
+    return (3 * v - (v * v >> 8) * v / 256) / 2;
 }
 
-/* The rate of a modulation slot, in 1/256 Hz, from its A control (0..127). */
 static uint32_t fx_hz_q8(const fx_ctx* f) {
-    static const uint8_t MIN_Q8[SID_MOD_COUNT] = {0, 38, 13, 13, 26, 26, 0}; /* 0.15 .. 0.05 .. 0.1 */
+    static const uint8_t MIN_Q8[SID_MOD_COUNT] = {0, 38, 13, 13, 26, 26, 0};
     static const uint8_t OCT26[SID_MOD_COUNT] = {0, 78, 172, 172, 172, 172, 0};
     return (uint32_t)MIN_Q8[f->alg] * exp2q((int32_t)f->a * OCT26[f->alg] / 127) >> 12;
 }
@@ -679,8 +620,8 @@ static void fx_col(const void* ctx, uint32_t x, lab_draw_col* out) {
             int32_t s = sine_q7(ph);
             int32_t amp = f->amount * 26 / 127;
             if (f->alg == SID_MOD_TREMOLO || f->alg == SID_MOD_AUTOPAN) {
-                s += ((s < 0 ? -127 : 127) - s) * f->b / 127; /* the shape: sine to square */
-            } else if (f->alg == SID_MOD_WOW) { /* a slow wow with the flutter on it */
+                s += ((s < 0 ? -127 : 127) - s) * f->b / 127;
+            } else if (f->alg == SID_MOD_WOW) {
                 s = sine_q7((x - MOD_X0) * 128u * 643u >> 16);
                 s = (s * f->amount * 2 + sine_q7((x - MOD_X0) * 2048u * 643u >> 16) * f->a) / (3 * 127);
                 amp = 26;
@@ -695,8 +636,8 @@ static void fx_col(const void* ctx, uint32_t x, lab_draw_col* out) {
         }
         uint32_t mono = f->alg == SID_FXSLOT_DELAY;
         uint32_t gap = f->gap;
-        uint32_t k = (x - FX_X0 + 1u) / gap; /* the tap in this sample's two columns */
-        if (x == FX_X0) { /* the input */
+        uint32_t k = (x - FX_X0 + 1u) / gap;
+        if (x == FX_X0) {
             out->lo[LAB_DRAW_MARKER] = FX_Y0;
             out->hi[LAB_DRAW_MARKER] = (uint8_t)base;
         } else if (k && (x - FX_X0 + 1u) - k * gap < 2u) {
@@ -742,17 +683,12 @@ static void fx_init(fx_ctx* f, const live* l, uint32_t hl) {
         f->kind = f->alg <= SID_FXSLOT_PINGPONG ? FX_TAPS : FX_DECAY;
     }
     f->hz_q8 = f->kind == FX_WAVE ? fx_hz_q8(f) : 0u;
-    if (f->kind == FX_TAPS) { /* the time: 10 ms to the line's end, log */
+    if (f->kind == FX_TAPS) {
         uint32_t t = 10u * exp2q((int32_t)f->a * (f->alg == SID_FXSLOT_DELAY ? 188 : 161) / 127) >> 12;
         f->gap = (uint16_t)(t * FX_W / FX_TAPS_MS < 2u ? 2u : t * FX_W / FX_TAPS_MS);
     }
 }
 
-/* ---- MACRO ---- */
-
-/* Two graphs side by side, from MAC_X0 and MAC_X1, MAC_W pixels wide, MAC_TOP..MAC_TOP + MAC_SPAN
- * high: the resonance (0..15) over the cutoff's place on K1's walk (0..64), and the PWM's depth
- * (0..2048) over the width (0..4095); each with the live point, a tick at the value now. */
 #define MAC_X0 8u
 #define MAC_X1 128u
 #define MAC_W 104u
@@ -761,8 +697,8 @@ static void fx_init(fx_ctx* f, const live* l, uint32_t hl) {
 
 typedef struct {
     int8_t reso_link, pwm_link;
-    uint8_t res, place; /* the resonance parameter, the cutoff's place now */
-    uint16_t depth, pw; /* the PWM's depth parameter, the width now */
+    uint8_t res, place;
+    uint16_t depth, pw;
     uint8_t hl;
 } mac_ctx;
 
@@ -782,7 +718,7 @@ static void mac_col(const void* ctx, uint32_t x, lab_draw_col* out) {
         out->lit = (uint8_t)(m->hl == 1u);
         uint32_t at = MAC_X0 + (uint32_t)m->place * MAC_W / 64u;
         if ((x & ~1u) == (at & ~1u)) {
-            out->lo[2] = (uint8_t)(y > 4u ? y - 4u : 0u); /* the point now */
+            out->lo[2] = (uint8_t)(y > 4u ? y - 4u : 0u);
             out->hi[2] = (uint8_t)(y + 4u);
         }
     } else if (x >= MAC_X1 && x <= MAC_X1 + MAC_W) {
@@ -893,7 +829,7 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         mac_init(&mc, l, hl);
         d.fn = mac_col;
         d.ctx = &mc;
-        d.color[0] = l->reso_link ? th->value : th->dim; /* a flat line, no link: dark */
+        d.color[0] = l->reso_link ? th->value : th->dim;
         d.color[1] = l->pwm_link ? th->value : th->dim;
         d.color[LAB_DRAW_MARKER] = th->hot;
     } else if (page != LAB_DRAW_BLANK) {
@@ -907,7 +843,6 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
     return lab_draw_apply(&d, g, s, row0, left);
 }
 
-/* s at (row, col) in attr, 1x. */
 static void gtext(grid_canvas* c, uint32_t row, uint32_t col, const char* s, uint8_t attr) {
     for (; *s && col < GRID_COLS; s++, col++) {
         c->ch[row][col] = (uint8_t)*s;
@@ -915,18 +850,12 @@ static void gtext(grid_canvas* c, uint32_t row, uint32_t col, const char* s, uin
     }
 }
 
-/* The words of FILTER's, MOD's and FX's drawings: FILTER's axis and the voices routed (V1 V2 V3
- * at 2x, in the voices' colours, dark when not routed, reversed while K3 is turned), MOD's bands
- * and times, FX's chain of slots (the selected one marked, a slot that is off dark) and the
- * legend or the name of what its shape is. */
 static void guides_page(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, const theme* th,
                         uint32_t row0) {
     uint32_t last = row0 + LAB_DRAW_ROWS - 1u;
     uint8_t hint = THEME_ATTR(th, hint);
     if (page == LAB_PAGE_FILTER) {
         if (l->filter_lfo) {
-            /* the filter LFO's band: where the cutoff sweeps, dotted behind the curve (lit while
-             * K4 turns) */
             const uint16_t* t = live_cutoff_steps[l->model];
             int32_t pos = (int32_t)live_cutoff_place(l, l->cutoff);
             int32_t off = (int32_t)l->cutoff - t[pos];
@@ -977,7 +906,7 @@ static void guides_page(grid_canvas* c, const live* l, uint32_t page, uint32_t h
         }
         fx_ctx f;
         fx_init(&f, l, hl);
-        if (f.kind == FX_NONE) { /* no shape to draw: the slot's name, at 2x */
+        if (f.kind == FX_NONE) {
             const char* n = views_algorithm_name(sel, f.alg);
             uint32_t len = 0;
             while (n[len]) {
@@ -996,7 +925,6 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
                      uint32_t row0) {
     if (page == LAB_PAGE_OSC && (l->control & 0x40u) && l->pwm_depth && !l->mono_sync &&
         !(l->control & 0x06u)) {
-        /* the PWM's range: where the pulse's edge goes, dotted behind it */
         uint32_t cycle = OSC_CYCLE * 65536u / (uint32_t)(65536 + l->tune * 38);
         int32_t a = (int32_t)l->pulse_width - (int32_t)l->pwm_depth;
         int32_t b = (int32_t)l->pulse_width + (int32_t)l->pwm_depth;
@@ -1012,16 +940,14 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
             }
         }
     } else if (page == LAB_PAGE_MACRO) {
-        /* what each graph is: the cutoff to the resonance, the width to the PWM */
         uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
         gtext(c, row, 1, "CUT>RESO", THEME_ATTR(th, hint));
         gtext(c, row, 16, "WIDTH>PWM", THEME_ATTR(th, hint));
     } else if (page == LAB_PAGE_FILTER || page == LAB_PAGE_MOD || page == LAB_PAGE_FX) {
         guides_page(c, l, page, hl, th, row0);
     } else if (page == LAB_PAGE_ENVELOPE) {
-        /* the key let go: a line at its column; the time's ticks under the curve */
         uint32_t x = lab_draw_x_of_us(lab_draw_gate_us(l->attack_decay, l->sustain_release));
-        uint32_t key = (x + 4u) / 8u; /* a cell's left edge, within 4 pixels of the key's */
+        uint32_t key = (x + 4u) / 8u;
         for (uint32_t r = 0; r + 1u < LAB_DRAW_ROWS; r++) {
             c->ch[row0 + r][key] = FONT_H1;
             c->attr[row0 + r][key] = THEME_ATTR(th, dim);

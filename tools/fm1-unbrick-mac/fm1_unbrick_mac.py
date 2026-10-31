@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""fm1_unbrick on macOS: the unchanged fm1_unbrick.py with a USB bulk-only-transport SCSI backend.
-
-jl-uboot-tool reaches the ROM's "WL82 UBOOT1.00" disk through the OS's SCSI pass-through (Linux SG_IO,
-Windows SPTI); macOS has none for a USB disk. This talks the USB Mass Storage Bulk-Only Transport to the
-device directly through libusb (pyusb), detaching macOS's disk driver first (root needed), and exposes the
-same SCSIDev.execute(cdb, data_out, data_in) as scsiio/linuxport.py. fm1_unbrick.py itself is not
-modified: this module patches its platform hooks (device scan, SCSIDev, privileges) and calls its main().
-
-Run as root:  sudo ../venv/bin/python fm1_unbrick_mac.py info
-"""
 import os
 import struct
 import sys
@@ -23,7 +13,7 @@ import fm1_unbrick as fu
 
 VID, PID = 0x4C4A, 0x8057
 LIBUSB = "/opt/homebrew/lib/libusb-1.0.dylib"
-TIMEOUT_MS = 5000  # as scsiio/linuxport.py
+TIMEOUT_MS = 5000
 
 
 def backend():
@@ -39,7 +29,6 @@ def path_of(dev):
 
 
 class SCSIDev:
-    """jl-uboot-tool's scsiio SCSIDev over USB Bulk-Only Transport (CBW / data / CSW)."""
 
     def __init__(self, path=None):
         self.is_open = False
@@ -61,7 +50,7 @@ class SCSIDev:
             raise OSError("no USB device %s" % path)
         d = devs[0]
         if d.is_kernel_driver_active(0):
-            d.detach_kernel_driver(0)  # macOS's mass-storage driver: needs root
+            d.detach_kernel_driver(0)
         d.set_configuration()
         usb.util.claim_interface(d, 0)
         intf = d.get_active_configuration()[(0, 0)]
@@ -86,7 +75,7 @@ class SCSIDev:
         try:
             raw = bytes(self.dev.read(self.ep_in, 13, TIMEOUT_MS))
         except usb.core.USBError as e:
-            if e.errno != 32:  # not a stall
+            if e.errno != 32:
                 raise
             self.dev.clear_halt(self.ep_in)
             raw = bytes(self.dev.read(self.ep_in, 13, TIMEOUT_MS))
@@ -145,13 +134,11 @@ _load_jlub = fu.load_jlub
 
 def load_jlub(jl_dir):
     global _SCSIException
-    # scsiio/__init__.py raises ImportError on macOS before anything else: register the package
-    # without running it, so its submodule common.py (SCSIException) imports as on Linux.
     import types
     from pathlib import Path
     pkg = types.ModuleType("scsiio")
     pkg.__path__ = [str(Path(jl_dir).resolve() / "scsiio")]
-    pkg.SCSIDev = SCSIDev  # what scsiio/__init__.py exports on Linux and Windows (jltech/uboot.py imports it)
+    pkg.SCSIDev = SCSIDev
     sys.modules.setdefault("scsiio", pkg)
     ns = _load_jlub(jl_dir)
     _SCSIException = ns.SCSIException

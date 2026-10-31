@@ -1,38 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The flash timing spike (M2a Task 3b, flash_spike.h): a test firmware for the user to run on
- * a real FM-1 (docs/hardware-test.md, section 12), never released, built only with
- * -DSIDOU_FLASH_SPIKE=ON. The store's write windows and held erases (M2a Task 4) are sized
- * from what it measures; fm1-emu's flash is instantaneous, so there every time reads 0.
- *
- * Safe by construction:
- * - every erase and program goes through flash_spike_guard.h, which refuses anything outside
- *   the store's last two sectors [0xDE000, 0xE0000) and, for programs, the guard band
- *   0xF00..0xFFF of each sector; the fm1_flash.h driver in this file has the same bounds as
- *   its own FL_RANGE_OK (it never reaches the OTA area, unlike midi.c's);
- * - before writing, it reads both sectors: each must be blank or the spike's own (its mark at
- *   offset 0, the guard band erased), and 0xDE000's pattern blank or intact. Anything else
- *   and it writes nothing, says REFUSED, and waits for an install;
- * - it starts only on SAVE, so a unit on which it misbehaves still boots into a screen that
- *   accepts the normal installer; the audio never starts.
- *
- * What it measures, in this order (the results struct below, read by emu-gate
- * tests/flash_spike.rs, and the screen):
- * - the part: JEDEC id, SR1/SR2 and the configure register (its DP bit makes a page 512
- *   bytes), the SFDP header and the basic table's erase types;
- * - the CPU clock: dependent adds a microsecond, from SRAM (docs/hardware.md, "Clock");
- * - the round-trip pattern in 0xDE000: absent, intact or damaged since the last run;
- * - 4 KiB sector erase (0x20), 20 runs, each of a sector programmed full;
- * - page programs (0x02) of 256 bytes (14 a run, 280), 16 and 64 bytes (20 each);
- * - several programs into one page (64 of 4 bytes), zeros over zeros (3 times), one byte
- *   programmed 8 times clearing a bit each time, and a page programmed twice with different
- *   patterns (an ECC part would not read back the AND), each read back;
- * - page erase (0x81): whether the part erases the page alone, and 20 runs if it does;
- * - erase suspend and resume (0x75/0x7A) during a sector erase: the latency, SUS1, and
- *   whether a read of 0xDE000 while suspended returns its data;
- * - what masking interrupts for 1 ms (100 times) and for 35 ms (10 times) costs the TRS
- *   input while a sender keeps the jack busy: bytes taken and bytes lost;
- * - at the end 0xDF000 is erased back to 0xFF and 0xDE000 keeps the pattern. */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -40,7 +7,6 @@
 #include "fm1_time.h"
 
 #include "flash_spike_guard.h"
-/* This file's copy of the RAM driver erases and programs only the spike's sectors. */
 #define FL_RANGE_OK(off, n) FLASH_SPIKE_DRIVER_OK(off, n)
 #include "fm1_flash.h"
 
@@ -52,15 +18,12 @@
 #include "midi.h"
 #include "panel.h"
 
-/* ---- the RAM side: XIP off, interrupts masked, nothing but SFRs, the stack and RAM ---- */
-
 RAMINL void flash_spike_wait_us(uint32_t us) {
     uint32_t t0 = T4_CNT;
     while ((T4_CNT - t0) / 24u < us) {
     }
 }
 
-/* SR1 | SR2 << 8 | the configure register (0x15) << 16. */
 static RAMFN uint32_t flash_spike_regs_ram(void) {
     fl_saved_t s;
     uint32_t v;
@@ -72,7 +35,6 @@ static RAMFN uint32_t flash_spike_regs_ram(void) {
     return v;
 }
 
-/* Read SFDP (0x5A): n bytes from SFDP address 0. */
 static RAMFN int flash_spike_sfdp_ram(uint8_t* dst, uint32_t n) {
     fl_saved_t s;
     uint32_t i;
@@ -91,8 +53,6 @@ static RAMFN int flash_spike_sfdp_ram(uint8_t* dst, uint32_t n) {
     return 0;
 }
 
-/* Page erase (0x81). 1 if the part left the write enable latch set (it ignored the command),
- * after clearing it. */
 static RAMFN int flash_spike_page_erase_ram(uint32_t off, uint32_t* took_us) {
     fl_saved_t s;
     int rc;
@@ -110,11 +70,11 @@ static RAMFN int flash_spike_page_erase_ram(uint32_t off, uint32_t* took_us) {
         fl_tx(0x81);
         fl_addr(off);
         fl_cs(1);
-        fl_inval(off & ~0x1FFu, 2u * FLASH_SPIKE_PAGE); /* a dual page, if DP is set */
+        fl_inval(off & ~0x1FFu, 2u * FLASH_SPIKE_PAGE);
         rc = fl_wait_ready(100000u, took_us);
         if (rc == 0 && (fl_rdsr(0x05) & 2u)) {
             fl_cs(0);
-            fl_tx(0x04); /* WRDI */
+            fl_tx(0x04);
             fl_cs(1);
             rc = 1;
         }
@@ -123,7 +83,6 @@ static RAMFN int flash_spike_page_erase_ram(uint32_t off, uint32_t* took_us) {
     return rc;
 }
 
-/* A sector erase suspended after after_us, a fast read while suspended, the resume. */
 static RAMFN int flash_spike_suspend_ram(uint32_t erase_off, uint32_t after_us,
                                          uint32_t read_off, uint8_t* dst, uint32_t n,
                                          flash_spike_suspend_result* out) {
@@ -170,7 +129,6 @@ static RAMFN int flash_spike_suspend_ram(uint32_t erase_off, uint32_t after_us,
     return rc;
 }
 
-/* n rounds of 8 dependent adds; TIMER4 ticks (24 MHz) taken. */
 static RAMFN uint32_t flash_spike_adds_ram(uint32_t n) {
     uint32_t x = 0, i, t0 = T4_CNT;
     for (i = 0; i < n; i++) {
@@ -181,8 +139,6 @@ static RAMFN uint32_t flash_spike_adds_ram(uint32_t n) {
     }
     return T4_CNT - t0;
 }
-
-/* ---- the driver calls flash_spike_guard.h declares: interrupts masked around each ---- */
 
 static int flash_spike_drv_erase4k(uint32_t off, uint32_t* took_us) {
     uint32_t f = irq_save();
@@ -221,65 +177,55 @@ static int flash_spike_drv_suspend(uint32_t erase_off, uint32_t after_us, uint32
     return rc;
 }
 
-/* ---- the results ---- */
-
-#define SPIKE_BOOT 0u /* not yet at its start screen */
+#define SPIKE_BOOT 0u
 #define SPIKE_WAIT 1u
 #define SPIKE_RUN 2u
 #define SPIKE_DONE 3u
 #define SPIKE_REFUSED 4u
 #define SPIKE_FAILED 5u
 
-/* How the page erase behaved. */
-#define PE_IGNORED 0u /* nothing changed */
-#define PE_PAGE 1u    /* the page erased, nothing else */
-#define PE_WIDER 2u   /* the page erased and more (a 512-byte dual page: DP set) */
-#define PE_ODD 3u     /* anything else: the page not erased whole, or other bytes changed */
+#define PE_IGNORED 0u
+#define PE_PAGE 1u
+#define PE_WIDER 2u
+#define PE_ODD 3u
 
-/* Microseconds: runs, min, max, sum. */
 typedef struct {
     uint32_t n, min, max, sum;
 } spike_stat;
 
-/* Read by emu-gate tests/flash_spike.rs through the ELF symbol, as uint32_t words in this
- * order (the word index in each comment). */
 typedef struct {
-    uint32_t state;            /* 0: SPIKE_* */
-    uint32_t step;             /* 1: the step running, or the one that failed */
-    int32_t rc;                /* 2: its driver's error */
-    uint32_t refused;          /* 3: calls the guard refused (a bug if not 0) */
-    uint32_t jedec;            /* 4 */
-    uint32_t regs;             /* 5: SR1 | SR2 << 8 | CR << 16 */
-    uint32_t adds_per_us;      /* 6 */
-    uint32_t class_pattern;    /* 7: 0xDE000 at the start, FLASH_SPIKE_BLANK/OURS/FOREIGN */
-    uint32_t class_measure;    /* 8: 0xDF000 at the start */
-    uint32_t pattern_at_start; /* 9: FLASH_SPIKE_PATTERN_* */
-    uint32_t store_used;       /* 10: store sectors not blank at the start, of 73 */
-    spike_stat erase4k;        /* 11-14 */
-    spike_stat prog16;         /* 15-18 */
-    spike_stat prog64;         /* 19-22 */
-    spike_stat prog256;        /* 23-26 */
-    spike_stat page_erase;     /* 27-30 */
-    uint32_t page_erase_works; /* 31: PE_* */
-    spike_stat suspend;        /* 32-35: the suspend latency */
-    uint32_t sus_seen;         /* 36: suspends that showed SUS1 */
-    uint32_t sus_read_bad;     /* 37: bytes of 0xDE000 read wrong while suspended */
-    uint32_t sus_unfinished;   /* 38: bytes not erased after the resumes */
-    uint32_t verify_bad;       /* 39: bytes read back wrong after the timed programs */
-    uint32_t partial_bad;      /* 40: after 64 programs of 4 bytes into one page */
-    uint32_t rezero_bad;       /* 41: after zeros programmed over zeros, 3 times */
-    uint32_t bitwalk_bad;      /* 42: one byte programmed 8 times, a bit cleared each time */
-    uint32_t twice_bad;        /* 43: pages programmed twice: bytes not the AND of both */
-    uint32_t trs[6];           /* 44-49: bytes, lost: open 1 s; 100 x 1 ms masked; 10 x 35 ms */
-    uint32_t sfdp[4];          /* 50-53: the signature, the basic table's DW1, DW8, DW9 */
-    uint32_t final_bad;        /* 54: bytes of 0xDF000 not blank at the end, +1 if 0xDE000's
-                                  pattern is not intact */
+    uint32_t state;
+    uint32_t step;
+    int32_t rc;
+    uint32_t refused;
+    uint32_t jedec;
+    uint32_t regs;
+    uint32_t adds_per_us;
+    uint32_t class_pattern;
+    uint32_t class_measure;
+    uint32_t pattern_at_start;
+    uint32_t store_used;
+    spike_stat erase4k;
+    spike_stat prog16;
+    spike_stat prog64;
+    spike_stat prog256;
+    spike_stat page_erase;
+    uint32_t page_erase_works;
+    spike_stat suspend;
+    uint32_t sus_seen;
+    uint32_t sus_read_bad;
+    uint32_t sus_unfinished;
+    uint32_t verify_bad;
+    uint32_t partial_bad;
+    uint32_t rezero_bad;
+    uint32_t bitwalk_bad;
+    uint32_t twice_bad;
+    uint32_t trs[6];
+    uint32_t sfdp[4];
+    uint32_t final_bad;
 } spike_results;
 static spike_results flash_spike_res __attribute__((used));
 
-/* The sector images (what was read, and what 0xDF000 should hold), the program buffer, the
- * SFDP table and the screen. They live in the song's content region (app.ld, __song_region):
- * this build never plays a song (the audio is never started), and POOL has no room left. */
 #define SPIKE_SFDP_BYTES 128u
 typedef struct {
     uint8_t rd[FLASH_SPIKE_SECTOR];
@@ -296,15 +242,12 @@ static uint8_t* const expect = SPIKE_BUF->expect;
 static uint8_t* const data = SPIKE_BUF->data;
 static uint8_t* const sfdp = SPIKE_BUF->sfdp;
 #define flash_spike_screen (SPIKE_BUF->screen)
-/* Where the screen is, for the emulator tests (host/crates/emu-gate/tests/flash_spike.rs). */
 static grid* const flash_spike_screen_at __attribute__((used)) = &SPIKE_BUF->screen;
 static uint16_t palette[16];
 
 #define M FLASH_SPIKE_MEASURE
 #define P FLASH_SPIKE_PATTERN
 #define RUNS 20u
-
-/* ---- the screen: SIDOU's grid and font, drawn whole after every step ---- */
 
 #define TXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 #define HEAD GRID_ATTR(GRID_WHITE, GRID_BLUE)
@@ -326,7 +269,6 @@ static void text(uint32_t col, uint32_t row, const char* s, uint8_t attr) {
     grid_text(&flash_spike_screen, col, row, s, attr);
 }
 
-/* v in decimal, right-aligned in w cells. */
 static void dec(uint32_t col, uint32_t row, uint32_t w, uint32_t v, uint8_t attr) {
     char b[11];
     uint32_t i = 10;
@@ -355,7 +297,6 @@ static const char* class_name(uint32_t c) {
     return c == FLASH_SPIKE_BLANK ? "BLANK" : c == FLASH_SPIKE_OURS ? "SPIKE'S" : "FOREIGN";
 }
 
-/* min, mean, max in three columns of 7 from column 9, or "-" before the first run. */
 static void times(uint32_t row, const char* name, const spike_stat* s) {
     text(0, row, name, TXT);
     if (s->n == 0u) {
@@ -482,8 +423,6 @@ static void draw(void) {
     flash_spike_show();
 }
 
-/* ---- the measurements ---- */
-
 static void stat_add(spike_stat* s, uint32_t us) {
     if (s->n == 0u || us < s->min) {
         s->min = us;
@@ -513,7 +452,6 @@ static int read_sector(uint32_t off, uint8_t* dst) {
     return 0;
 }
 
-/* A program; 0xDF000's image follows it. */
 static int prog(uint32_t off, const uint8_t* src, uint32_t n, spike_stat* s) {
     uint32_t took;
     int rc = flash_spike_prog(off, src, n, &took);
@@ -537,7 +475,6 @@ static void fill(uint8_t v) {
     }
 }
 
-/* 0xDF000 erased and marked as the spike's at once. */
 static int erase_m(spike_stat* s) {
     static const char mark[] = FLASH_SPIKE_MARK;
     uint32_t took;
@@ -557,7 +494,6 @@ static int erase_m(spike_stat* s) {
     return prog(M, data, FLASH_SPIKE_MARK_LEN, NULL);
 }
 
-/* Pages 1..14 of 0xDF000 programmed with zeros, each timed into s (or not). */
 static int fill_m(spike_stat* s) {
     fill(0);
     for (uint32_t p = 1; p < FLASH_SPIKE_SECTOR_USE / FLASH_SPIKE_PAGE; p++) {
@@ -569,7 +505,6 @@ static int fill_m(spike_stat* s) {
     return 0;
 }
 
-/* Bytes of rd (read before) that differ from 0xDF000's image in [lo, hi). */
 static uint32_t wrong(uint32_t lo, uint32_t hi) {
     uint32_t n = 0;
     for (uint32_t i = lo; i < hi; i++) {
@@ -592,12 +527,10 @@ static void measure_part(void) {
     r->jedec = FL_FAR(fl_jedec_ram)();
     r->regs = FL_FAR(flash_spike_regs_ram)();
     FL_FAR(flash_spike_sfdp_ram)(sfdp, SPIKE_SFDP_BYTES);
-    /* 100,000 rounds of 8 adds, from SRAM with interrupts masked. */
     uint32_t ticks = FL_FAR(flash_spike_adds_ram)(100000u);
     irq_restore(f);
     r->adds_per_us = ticks ? 800000u * 24u / ticks : 0u;
     r->sfdp[0] = le32(sfdp);
-    /* The first parameter header (bytes 8..15): its table's pointer in bytes 12..14. */
     uint32_t ptp = le32(&sfdp[12]) & 0xFFFFFFu;
     if (ptp + 36u <= SPIKE_SFDP_BYTES) {
         r->sfdp[1] = le32(&sfdp[ptp]);
@@ -606,7 +539,6 @@ static void measure_part(void) {
     }
 }
 
-/* Every store sector read once: how many are not blank. */
 static int survey(void) {
     flash_spike_res.store_used = 0;
     for (uint32_t off = FLASH_SPIKE_STORE_LO; off < FLASH_SPIKE_STORE_HI;
@@ -625,7 +557,6 @@ static int survey(void) {
     return 0;
 }
 
-/* 0xDE000 erased and given the mark and the pattern. */
 static int write_pattern(void) {
     static const char mark[] = FLASH_SPIKE_MARK;
     uint32_t took;
@@ -641,7 +572,7 @@ static int write_pattern(void) {
         rc = read_sector(P, rd);
     }
     if (rc == 0 && flash_spike_pattern_state(rd) != FLASH_SPIKE_PATTERN_INTACT) {
-        rc = -20; /* the pattern did not read back */
+        rc = -20;
     }
     return rc;
 }
@@ -664,7 +595,6 @@ static int timed_erases_and_pages(void) {
     return 0;
 }
 
-/* 16-byte programs at 0x100.., 64-byte ones at 0x300..0x7FF. */
 static int timed_small_programs(void) {
     int rc = erase_m(NULL);
     fill(0);
@@ -683,8 +613,6 @@ static int timed_small_programs(void) {
     return rc;
 }
 
-/* Page 8: 64 programs of 4 bytes. Page 9: zeros 3 times. Page 10: 8 programs of one 16-byte
- * run, a bit cleared each time. Pages 11 and 12: programmed twice, the AND expected. */
 static int reprograms(void) {
     spike_results* r = &flash_spike_res;
     int rc = 0;
@@ -731,17 +659,15 @@ static int reprograms(void) {
     }
     data[0] = 0;
     if (rc == 0) {
-        rc = prog(M + 0xC05u, data, 1, NULL); /* one byte more in a programmed page */
+        rc = prog(M + 0xC05u, data, 1, NULL);
     }
     if (rc == 0 && (rc = reread()) == 0) {
         r->twice_bad = wrong(0xB00, 0xD00);
-        /* Nothing else in the sector moved meanwhile. */
         r->verify_bad += wrong(0, 0x800) + wrong(0xD00, FLASH_SPIKE_SECTOR);
     }
     return rc;
 }
 
-/* Page 13 erased with 0x81 between programmed pages 12 and 14. */
 static int page_erase(void) {
     spike_results* r = &flash_spike_res;
     uint32_t took;
@@ -783,7 +709,7 @@ static int page_erase(void) {
                 if (r->page_erase_works != PE_IGNORED) {
                     stat_add(&r->page_erase, took);
                 }
-                break; /* the times are only worth having for an erase of the page alone */
+                break;
             }
         } else if (!page_blank || others) {
             r->page_erase_works = PE_ODD;
@@ -831,12 +757,10 @@ static int suspends(void) {
     return 0;
 }
 
-/* The TRS input's counters, the input ring emptied (nothing plays it). */
 static void trs(uint32_t* bytes, uint32_t* lost) {
     midi_spike_trs(bytes, lost);
 }
 
-/* ms with interrupts on, emptying the input ring. */
 static void open_ms(uint32_t ms) {
     uint32_t t0 = fm1_ticks(), b, l;
     while (fm1_ticks() - t0 < ms * 1000u * FM1_TICKS_PER_US) {
@@ -939,7 +863,6 @@ _Noreturn void flash_spike_run(void (*service)(void)) {
     }
     grid_init(&flash_spike_screen, ' ', TXT);
     measure_part();
-    /* Read only, before anything is written: both sectors and the whole store. */
     rc = read_sector(P, rd);
     if (rc == 0) {
         r->class_pattern = (uint32_t)flash_spike_classify(rd);
@@ -951,8 +874,6 @@ _Noreturn void flash_spike_run(void (*service)(void)) {
         rc = survey();
     }
     r->rc = rc;
-    /* A damaged pattern is refused too: the spike's mark is there, but something else wrote
-     * the sector since (the stock round trip's finding, kept for the user to record). */
     r->state = rc ? SPIKE_FAILED
                : r->class_pattern == FLASH_SPIKE_FOREIGN ||
                        r->class_measure == FLASH_SPIKE_FOREIGN ||
@@ -962,7 +883,7 @@ _Noreturn void flash_spike_run(void (*service)(void)) {
     draw();
     lcd_on();
     if (r->state != SPIKE_WAIT) {
-        idle_forever(service); /* nothing written */
+        idle_forever(service);
     }
     while (!((input_buttons() >> PANEL_BTN_SAVE) & 1u)) {
         service();

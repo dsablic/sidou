@@ -12,7 +12,6 @@
 #include "song_view.h"
 #include "theme.h"
 
-/* DICE's settings by name (the frame and the popup). */
 static const char* const DENSITY_NAMES[SONG_DICE_DENSITIES] = {"SPARSE", "LIGHT", "MEDIUM", "BUSY",
                                                                "FULL"};
 static const char* const SCALE_NAMES[SONG_DICE_SCALES] = {"MIN PENT", "MAJ PENT", "MINOR",
@@ -20,53 +19,37 @@ static const char* const SCALE_NAMES[SONG_DICE_SCALES] = {"MIN PENT", "MAJ PENT"
 static const char* const RANGE_NAMES[SONG_DICE_RANGES] = {"1 OCT", "2 OCT", "3 OCT", "BASS"};
 static const char* const RHYTHM_NAMES[SONG_DICE_RHYTHMS] = {"STRAIGHT", "OFFBEAT", "3-3-2", "FOUR",
                                                             "BROKEN"};
-/* The frame's lines, K1-K4: their labels, the popup's names, their tops. */
 static const char* const DICE_LABELS[4] = {"DENS", "RANGE", "SCALE", "RHYTHM"};
 static const char* const DICE_NAMES[4] = {"DENSITY", "RANGE", "SCALE", "RHYTHM"};
 static const uint8_t DICE_TOPS[4] = {SONG_DICE_DENSITIES - 1u, SONG_DICE_RANGES - 1u,
                                      SONG_DICE_SCALES - 1u, SONG_DICE_RHYTHMS - 1u};
-/* The roles in the order PRESETS turns through them, and their names by SONG_ROLE_*. */
 static const uint8_t ROLE_ORDER[SONG_ROLES] = {SONG_ROLE_AUTO, SONG_ROLE_DRUMS, SONG_ROLE_BASS,
                                                SONG_ROLE_BASS_DRUMS, SONG_ROLE_ARP, SONG_ROLE_LEAD,
                                                SONG_ROLE_NONE};
 static const char* const ROLE_NAMES[SONG_ROLES] = {"AUTO", "DRUMS", "BASS", "ARP",
                                                    "LEAD", "NONE", "BASS+DRUMS"};
-/* The chord programs' rows after the root's (0): the semitones over the note, a row a frame. */
 static const uint8_t CHORD_TONES[SONG_GEN_CHORDS][SONG_GEN_CHORD_ROWS - 2u] = {
     {4, 7}, {3, 7}, {5, 7}, {4, 7, 10}};
 static const char CHORD_NAMES[SONG_GEN_CHORDS][5] = {"MAJ", "MIN", "SUS4", "7"};
-/* BASS+DRUMS: the kit's kick and snare on a bar of 16 rows by rhythm (bit r: row r), the bass
- * between. STRAIGHT and OFFBEAT a backbeat (OFFBEAT's bass on the offbeats), 3-3-2 the tresillo's
- * kicks, FOUR a kick on every beat, BROKEN a breakbeat. */
 static const uint16_t DRUM_KICK[SONG_DICE_RHYTHMS] = {0x0101, 0x0101, 0x0909, 0x1111, 0x0481};
 static const uint16_t DRUM_SNARE[SONG_DICE_RHYTHMS] = {0x1010, 0x1010, 0x4040, 0x0000, 0x1010};
-/* GoatTracker's WAVETABLE POINTER command, the chords'. */
 #define CMD_WAVEPTR 0x08u
 
-/* DICE's scales (0 is the minor pentatonic it always rolled): the length, then the semitones
- * above the root. */
 static const uint8_t SCALES[SONG_DICE_SCALES][13] = {
     {5, 0, 3, 5, 7, 10},          {5, 0, 2, 4, 7, 9},         {7, 0, 2, 3, 5, 7, 8, 10},
     {7, 0, 2, 4, 5, 7, 9, 11},    {7, 0, 2, 3, 5, 7, 9, 10},  {12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}};
-/* STRAIGHT's grid by density (0 sparse .. 4 every step; 2 is what it always rolled): the chance in
- * percent of a hit on a row's place in its beat. A melodic lane hits on the eighths, a drum lane
- * on the sixteenths with a heavy first one. */
 static const uint8_t GRID_MELODIC[SONG_DICE_DENSITIES][4] = {
     {60, 0, 0, 0}, {85, 0, 25, 0}, {85, 0, 55, 0}, {90, 35, 75, 35}, {100, 100, 100, 100}};
 static const uint8_t GRID_DRUMS[SONG_DICE_DENSITIES][4] = {
     {80, 0, 15, 0}, {90, 5, 30, 10}, {90, 15, 50, 25}, {95, 40, 75, 55}, {100, 100, 100, 100}};
-/* The other rhythms (the chunk's 1-4): the chance in percent of a hit on each place of two beats
- * of sixteenths as MEDIUM rolls it, melodic and drum lanes alike. The density scales them: a
- * weight times RHYTHM_MUL in percent, plus RHYTHM_ADD (FULL: every step). */
 static const uint8_t RHYTHMS[SONG_DICE_RHYTHMS - 1u][8] = {
-    {10, 0, 90, 0, 10, 0, 90, 20},   /* OFFBEAT: the eighths between the beats */
-    {95, 0, 0, 85, 0, 0, 85, 0},     /* 3-3-2: the tresillo */
-    {100, 0, 20, 0, 100, 0, 20, 0},  /* FOUR: on every beat */
-    {90, 0, 30, 65, 0, 45, 75, 20}}; /* BROKEN: a breakbeat's pushes */
+    {10, 0, 90, 0, 10, 0, 90, 20},
+    {95, 0, 0, 85, 0, 0, 85, 0},
+    {100, 0, 20, 0, 100, 0, 20, 0},
+    {90, 0, 30, 65, 0, 45, 75, 20}};
 static const uint8_t RHYTHM_MUL[SONG_DICE_DENSITIES] = {50, 75, 100, 100, 100};
 static const uint8_t RHYTHM_ADD[SONG_DICE_DENSITIES] = {0, 0, 0, 20, 100};
 #define GEN_PHI 0x9e3779b9u
-/* GoatTracker's FILTER CUTOFF command, the sweep's. */
 #define CMD_CUTOFF 0x0Cu
 
 void song_gen_init(song_gen* g, const uint8_t* gate) {
@@ -99,8 +82,6 @@ uint32_t song_gen_role(const song_view* sv, uint32_t voice) {
                : SONG_ROLE_AUTO;
 }
 
-/* ---- the chord programs ---- */
-
 static uint32_t chord_len(uint32_t c) {
     return c == SONG_GEN_7 ? 4u : 3u;
 }
@@ -111,7 +92,7 @@ uint32_t song_gen_chord_rows(uint32_t c, uint32_t first, uint8_t left[SONG_GEN_C
     memset(left, 0, SONG_GEN_CHORD_ROWS);
     right[0] = 0u;
     memcpy(right + 1, CHORD_TONES[c], n - 1u);
-    left[n] = 0xffu; /* the jump back to the root's row */
+    left[n] = 0xffu;
     right[n] = (uint8_t)first;
     return n + 1u;
 }
@@ -147,7 +128,6 @@ const char* song_gen_chord_name(uint32_t c) {
     return CHORD_NAMES[c];
 }
 
-/* Knob k's setting of d (K1 density, K2 range, K3 the lane's scale, K4 rhythm), and its name. */
 static uint8_t* dice_field(song_dice* d, uint32_t k, uint32_t voice) {
     return k == 0u ? &d->density : k == 1u ? &d->range : k == 2u ? &d->scale[voice] : &d->rhythm;
 }
@@ -171,9 +151,6 @@ static int in_scale(const song_gen* g, uint32_t root, uint32_t note) {
     return 0;
 }
 
-/* The note of a random value h on the lane: its own for a drum lane, else a degree of the
- * scale in the range's octaves from the lane's note (1 OCT its own, 2 OCT and the next, 3 OCT
- * and the one after, BASS and the one below). */
 uint32_t song_gen_note(const song_gen* g, uint32_t h) {
     uint32_t root = g->root[g->voice];
     if (g->drums) {
@@ -203,8 +180,6 @@ int song_gen_hit(const song_gen* g, uint32_t row) {
     return (h >> 8) % 100u < chance;
 }
 
-/* ---- the run ---- */
-
 __attribute__((noinline)) static void feedback(screen* s, const song_view* sv) {
     const char* msg = sv->editor && sv->song ? song_edit_message(sv->editor) : "NO SONG";
     if (msg && *msg) {
@@ -231,9 +206,6 @@ static int write_cell(screen* s, song_view* sv, uint32_t row, const uint8_t cell
     return ok;
 }
 
-/* A note on or off at row (STEP's toggle): on, the note with the lane's instrument; off, a rest
- * or the key off the note before it still wants. A staccato lane's key off follows on the next
- * row if it is empty (taking a note away takes its key off), at the next turn. */
 static void toggle(screen* s, song_view* sv, uint32_t row, uint32_t note) {
     song_gen* g = &sv->gen;
     uint8_t cell[4], other[4];
@@ -268,7 +240,6 @@ static void toggle(screen* s, song_view* sv, uint32_t row, uint32_t note) {
     }
 }
 
-/* Row r's hit: 0 none, 1 the lane's note, 2 the kit's kick, 3 its snare (BASS+DRUMS). */
 static uint32_t hit_kind(const song_gen* g, uint32_t r) {
     if (g->role == SONG_ROLE_BASS_DRUMS) {
         uint32_t bit = 1u << (r & 15u);
@@ -282,8 +253,6 @@ static uint32_t hit_kind(const song_gen* g, uint32_t r) {
     return (uint32_t)song_gen_hit(g, r);
 }
 
-/* A chord on a random value h: the note of the scale it starts from (the next degree up where
- * none fits) and one of the chords whose tones are all in the scale, the seed's pick. */
 static uint32_t chord_pick(const song_gen* g, uint32_t h, uint32_t* note) {
     uint32_t root = g->root[g->voice], fits = 0u, n = 0u, count = 0u;
     for (uint32_t k = 0; k < 12u && !fits; k++) {
@@ -310,9 +279,6 @@ static uint32_t chord_pick(const song_gen* g, uint32_t h, uint32_t* note) {
     return c;
 }
 
-/* DICE's row r: its note, or what follows one (a key off on a staccato lane), or a rest; only a
- * row that differs is written (its command and data stay, but an ARP lane's: a hit's is its
- * chord, 8XX, and a rest's 8XX goes). 1: written, or the run is over. */
 static int dice_row(screen* s, song_view* sv, uint32_t r) {
     song_gen* g = &sv->gen;
     uint8_t cell[4], was[4];
@@ -346,8 +312,6 @@ static int dice_row(screen* s, song_view* sv, uint32_t r) {
     return 1;
 }
 
-/* One of MUTATE's two changes at a random row: a note is nudged to the next note of the scale
- * up or down, or goes; a rest gets a note of the scale (a ghost step). */
 static void mutate_now(screen* s, song_view* sv) {
     song_gen* g = &sv->gen;
     uint8_t cell[4];
@@ -375,8 +339,6 @@ static void mutate_now(screen* s, song_view* sv) {
     (void)write_cell(s, sv, row, cell);
 }
 
-/* The sweep's row r (every SONG_GEN_SWEEP_EVERY): a FILTER CUTOFF command, low to high (up) or
- * back, where the row has no command. 1: written, or the run is over; 0: the row keeps its own. */
 static int sweep_row(screen* s, song_view* sv, uint32_t r) {
     song_gen* g = &sv->gen;
     uint8_t cell[4];
@@ -399,7 +361,6 @@ static int sweep_row(screen* s, song_view* sv, uint32_t r) {
     return 1;
 }
 
-/* The next write of the run: one a turn. */
 static void run_now(screen* s, song_view* sv) {
     song_gen* g = &sv->gen;
     uint32_t rows = sv->song ? gt2_pattern_rows(sv->song, g->pattern) - 1u : 0u;
@@ -410,7 +371,6 @@ static void run_now(screen* s, song_view* sv) {
         mutate_now(s, sv);
         g->run = ++g->row < 2u ? g->run : 0u;
     } else if (g->wait) {
-        /* the chord programs being written: the cells once the batch is done and they are there */
         const song_pages* p = g->pages;
         if (p->pending || song_pages_batch_busy(p)) {
             return;
@@ -436,9 +396,6 @@ static void run_now(screen* s, song_view* sv) {
     }
 }
 
-/* The chord programs in the song's wavetable (g->chord): 1 all there; 0 the missing ones go
- * after the table's last row through the batch writer (run_now waits for them); -1 refused, a
- * toast says why (TABLE FULL, WAITING). */
 static int chords_ready(song_view* sv, screen* s) {
     song_gen* g = &sv->gen;
     song_pages* p = g->pages;
@@ -598,13 +555,11 @@ int song_gen_release(song_view* sv, uint32_t held) {
     return roll;
 }
 
-/* A chunk write the song refused (song_ext_set's r < 0): saving, an edit in flight, or full. */
 __attribute__((noinline)) static void ext_refused(screen* s, int r) {
     refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING"
                                                                                 : "SONG FULL");
 }
 
-/* The place of lane voice's role in ROLE_ORDER. */
 static uint32_t role_place(const song_view* sv) {
     uint32_t role = song_gen_role(sv, sv->voice), k = 0u;
     while (ROLE_ORDER[k] != role) {
@@ -613,14 +568,12 @@ static uint32_t role_place(const song_view* sv) {
     return k;
 }
 
-/* PRESETS with the chord held: the selected lane's role, a detent a step in ROLE_ORDER, stopping
- * at the ends, into the SCNE chunk (made with every other lane AUTO if the song has none). */
 static void role_turn(song_view* sv, screen* s, int32_t steps) {
     song_scene scene;
     if (!sv->song) {
         return;
     }
-    (void)song_ext_get_scene(sv->song, &scene); /* none: zeros, every role AUTO */
+    (void)song_ext_get_scene(sv->song, &scene);
     if (scene.count < SONG_GEN_LANES) {
         scene.count = SONG_GEN_LANES;
     }
@@ -645,7 +598,6 @@ int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
     if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return 0;
     }
-    /* One detent a step, stopping at the ends; a turn spoils the roll at SCL's release. */
     uint32_t k = enc - PANEL_ENC_K1;
     song_dice d;
     song_gen_dice(sv, &d);
@@ -695,13 +647,11 @@ uint32_t song_gen_keys(song_view* sv, uint32_t down, uint32_t pressed) {
         }
         uint8_t n = live_key_note(sv->l, (uint8_t)(PANEL_BASE_NOTE + k));
         if (n != LIVE_NO_NOTE && n >= 12u && n - 12u <= GT2_NOTE_MAX) {
-            sv->gen.root[sv->voice] = (uint8_t)(n - 12u); /* the jam's: key note 12 is note 0 */
+            sv->gen.root[sv->voice] = (uint8_t)(n - 12u);
         }
     }
     return down | pressed;
 }
-
-/* ---- the frame ---- */
 
 typedef song_view_canvas canvas;
 
@@ -710,9 +660,6 @@ static void put(canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t a) {
     c->attr[row][col] = a;
 }
 
-/* While EDIT + SCL is held: DICE's four settings at 2x, each beside its knob (K1-K4, what a turn
- * changes is what the frame says), and the lane's root under them; a release rolls. A drum lane's
- * range and scale are grey: it keeps its one note. */
 void song_gen_frame(song_view* sv, uint32_t top) {
     canvas* c = &sv->cv;
     const theme* th = theme_get(sv->l->theme);
@@ -750,7 +697,6 @@ void song_gen_frame(song_view* sv, uint32_t top) {
     screen_note_text(root, nn);
     grid_canvas_text(c, 2, top + 10u, "ROOT", THEME_ATTR(th, label));
     (void)grid_canvas_text_big(c, 11, top + 9u, 2, nn, THEME_ATTR(th, value));
-    /* the lane's role beside it, PRESETS's (small: its popup says it large) */
     grid_canvas_text(c, 19, top + 9u, "PRE", THEME_ATTR(th, hint));
     grid_canvas_text(c, 23, top + 9u, "ROLE", THEME_ATTR(th, label));
     grid_canvas_text(c, 19, top + 10u, ROLE_NAMES[song_gen_role(sv, v)], THEME_ATTR(th, value));
@@ -764,7 +710,7 @@ int song_gen_look(const song_view* sv, uint8_t out[SONG_GEN_LOOK]) {
     }
     song_dice d;
     song_gen_dice(sv, &d);
-    out[0] = (uint8_t)(1u + song_gen_role(sv, sv->voice)); /* the chord, and the lane's role */
+    out[0] = (uint8_t)(1u + song_gen_role(sv, sv->voice));
     out[1] = d.density;
     out[2] = d.scale[sv->voice];
     out[3] = d.rhythm;

@@ -16,15 +16,13 @@ void thump_out_drop(sid* s) {
     s->thump_rendered = s->thump_late_at = 0u;
 }
 
-/* The sample s with the thump x, fitted into the room s leaves (thump_out.h), rounded half
- * away from zero as sid_render rounds. */
 static int16_t thump_add(int32_t s, float x) {
     int up = x >= 0.0f;
     float m = up ? x : -x;
     float h = (float)(up ? THUMP_OUT_CEILING - s : THUMP_OUT_CEILING + s) * 0.5f;
     if (m > h) {
         if (h <= 0.0f) {
-            return (int16_t)s; /* on or past the ceiling already: no room */
+            return (int16_t)s;
         }
         float d = m - h;
         m = h + d * h / (d + h);
@@ -34,8 +32,6 @@ static int16_t thump_add(int32_t s, float x) {
     return (int16_t)o;
 }
 
-/* Frames [from, to) of the thump, the chips' levels advancing a sample each. Out of line: one
- * copy of the loop for every segment (SRAM is scarce). */
 __attribute__((noinline, unused)) static void thump_run(thump_out* t, int16_t* lr, uint32_t from, uint32_t to) {
     float a = t->level[0], b = t->level[1];
     const float ra = t->r[0], rb = t->r[1];
@@ -56,7 +52,6 @@ void thump_out_apply(thump_out* t, int16_t* lr, uint32_t frames) {
         return;
     }
     uint32_t f = 0;
-    /* The late steps (thump_out_take), in the order of where they start. */
     for (;;) {
         int c = -1;
         for (int k = 0; k < 2; k++) {
@@ -77,7 +72,6 @@ void thump_out_apply(thump_out* t, int16_t* lr, uint32_t frames) {
         f = at;
     }
     thump_run(t, lr, f, frames);
-    /* Under half an LSB together a thump no longer changes a sample (the rounding): idle. */
     float a = t->level[0], b = t->level[1];
     if ((a < 0.0f ? -a : a) + (b < 0.0f ? -b : b) < 0.5f) {
         t->level[0] = t->level[1] = 0.0f;

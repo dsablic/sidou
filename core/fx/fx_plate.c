@@ -4,36 +4,29 @@
 
 #define MASK (SID_FX_PLATE_LEN - 1u)
 
-/* Lines, in ring order: the paper's lengths at 29,761 Hz; the modulated allpasses get
- * their swing added. */
 enum {
-    IN1, IN2, IN3, IN4,      /* input diffusers: 142, 107, 379, 277 */
-    L_AP, L_D1, L_AP2, L_D2, /* left half: mod allpass 672, 4453, allpass 1800, 3720 */
-    R_AP, R_D1, R_AP2, R_D2  /* right half: mod allpass 908, 4217, allpass 2656, 3163 */
+    IN1, IN2, IN3, IN4,
+    L_AP, L_D1, L_AP2, L_D2,
+    R_AP, R_D1, R_AP2, R_D2
 };
 static const float LENGTH_29K[SID_FX_PLATE_LINES] = {142,  107,  379, 277,  672,  4453,
                                                      1800, 3720, 908, 4217, 2656, 3163};
-/* The paper's layout at its own rate (with the modulated allpasses' swing and a sample
- * between lines) fits the ring; init scales it to the sample rate within the ring. */
 #define LAYOUT_29K                                                                      \
     (142 + 107 + 379 + 277 + 672 + 4453 + 1800 + 3720 + 908 + 4217 + 2656 + 3163 + 12 + \
      2 * (16 + 2))
 _Static_assert(LAYOUT_29K <= SID_FX_PLATE_LEN, "the plate's lines do not fit its ring");
 
-/* Output taps (paper, table 2): left from the right half and right from the left. */
 static const float TAP_29K[14] = {266, 2974, 1913, 1996, 1990, 187,  1066,
                                   353, 3627, 1228, 2673, 2111, 335, 121};
 
 void sid_fx_plate_init(sid_fx_plate* p, uint32_t sample_rate) {
     float scale = (float)sample_rate / 29761.0f;
-    /* Fit the lines (plus a sample of spacing each) into the ring. */
     float total = 0.0f;
     for (int i = 0; i < SID_FX_PLATE_LINES; ++i) {
         total += LENGTH_29K[i] * scale + 1.0f;
     }
     float swing = 16.0f * scale;
     total += 2.0f * (swing + 2.0f);
-    /* A margin for rounding each line up to a whole sample. */
     if (total > (float)(SID_FX_PLATE_LEN - 16u)) {
         scale *= (float)(SID_FX_PLATE_LEN - 16u) / total;
     }
@@ -67,7 +60,6 @@ void sid_fx_plate_init(sid_fx_plate* p, uint32_t sample_rate) {
     p->tank_r = 0.0f;
 }
 
-/* The sample written `offset` samples ago on `line` (h: its head index this sample). */
 #define AT(h, offset) buf[((h) + (offset)) & MASK]
 
 static inline float get_frac(const float* buf, uint32_t h, float offset) {
@@ -77,7 +69,6 @@ static inline float get_frac(const float* buf, uint32_t h, float offset) {
     return a + f * (AT(h, i + 1u) - a);
 }
 
-/* Schroeder allpass on a line: w = x + g d; y = d - g w; the line takes w. */
 static inline float allpass(float* buf, uint32_t h, float x, float coef, float delayed) {
     float w = sid_fx_flush(x + coef * delayed);
     AT(h, 0) = w;
@@ -100,7 +91,6 @@ void sid_fx_plate_tick(sid_fx_plate* p, float* buf, float m, float decay, float 
     float damp = 0.05f + 0.65f * damping;
     float bw = 0.3f + 0.6995f * bandwidth;
 
-    /* Bandwidth, then the input diffusers. */
     p->bw = sid_fx_flush(p->bw + bw * (m - p->bw));
     float x = p->bw;
     x = allpass(buf, h[IN1], x, 0.75f, TAIL(IN1));
@@ -108,8 +98,6 @@ void sid_fx_plate_tick(sid_fx_plate* p, float* buf, float m, float decay, float 
     x = allpass(buf, h[IN3], x, 0.625f, TAIL(IN3));
     x = allpass(buf, h[IN4], x, 0.625f, TAIL(IN4));
 
-    /* The tank. Each half's modulated allpass reads its line at length - 2 - swing + swing
-     * lfo, the LFO taken at segment ends. */
     if (p->left == 0) {
         p->lfo_phase += p->lfo_inc;
         const float seg = 1.0f / (float)SID_FX_PLATE_SEGMENT;
@@ -126,8 +114,6 @@ void sid_fx_plate_tick(sid_fx_plate* p, float* buf, float m, float decay, float 
     float in_l = x + dec * p->tank_r;
     float in_r = x + dec * p->tank_l;
 
-    /* Left half: allpass (decay diffusion 1, -0.70 into the tank as in the paper), delay,
-     * damping, decay, allpass (decay diffusion 2), delay. */
     float y = allpass(buf, h[L_AP], in_l, -0.70f, get_frac(buf, h[L_AP], p->mod_l));
     AT(h[L_D1], 0) = y;
     float t = TAIL(L_D1);
@@ -147,7 +133,6 @@ void sid_fx_plate_tick(sid_fx_plate* p, float* buf, float m, float decay, float 
     p->tank_l = out_l;
     p->tank_r = out_r;
 
-    /* Output taps (each at its offset from the line's head). */
     const uint32_t* k = p->tap;
     *l = 0.6f * (AT(h[R_D1], k[0]) + AT(h[R_D1], k[1]) - AT(h[R_AP2], k[2]) +
                  AT(h[R_D2], k[3]) - AT(h[L_D1], k[4]) - AT(h[L_AP2], k[5]) -

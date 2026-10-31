@@ -1,14 +1,5 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The videos' look, in one place: the layouts, the colours, the fonts, the wipes and the cards.
-
-SIDOU's own art: the C64 palette as the firmware draws it (read from the capture's frames), a
-C64-style border round a dark paper, raster bars from the boot screen and the logo, the
-device's 8x8 font for tags, labels and callouts, a C64 sprite pointer, and one clean sans
-(Inter Tight, OFL-1.1) for the headline and the sentence under it. Every coordinate is in the
-layout's units (1920 x 1080 for `wide`) and scaled by `S` (0.5 for --fast). Change the look
-here; make.py only says what happens when.
-"""
 
 import math
 import re
@@ -20,10 +11,9 @@ from PIL import Image, ImageDraw, ImageFont
 import panel
 
 ROOT = Path(__file__).resolve().parents[2]
-S = 1.0  # set by make.py: 1.0, or 0.5 for --fast
+S = 1.0
 FPS = 25
 
-# The C64 palette in SIDOU's order (app/grid.h); make.py replaces it with the frames' own.
 PAL = [
     (0, 0, 0), (255, 255, 255), (107, 52, 41), (115, 166, 181), (107, 60, 132), (90, 142, 66),
     (49, 40, 123), (189, 199, 107), (107, 77, 33), (66, 56, 0), (156, 101, 90), (66, 69, 66),
@@ -32,14 +22,9 @@ PAL = [
 BLACK, WHITE, RED, CYAN, PURPLE, GREEN, BLUE, YELLOW = range(8)
 ORANGE, BROWN, LRED, DGREY, GREY, LGREEN, LBLUE, LGREY = range(8, 16)
 
-# Raster bars: the boot screen's cool bars and the logo's warm ones.
 COOL = [BLUE, LBLUE, CYAN, WHITE, CYAN, LBLUE, BLUE]
 WARM = [BROWN, RED, ORANGE, LRED, YELLOW, WHITE, YELLOW, LRED, ORANGE, RED, BROWN]
 
-# The layouts: the same video re-laid-out, not cropped. `tag` (x, y, size), `headline` (x, y,
-# width, size), `lcd` the big screen's box (x, y, side; a whole multiple of 240 reads best),
-# `panel` its top left and scale (at least 40 % of the width: the controls read on a phone),
-# `callout` the label's glyph size.
 LAYOUTS = {
     "wide": {"size": (1920, 1080), "border": 36, "logo": (72, 62, 1.0), "version": (1848, 76),
              "tag": (72, 142, 24), "headline": (72, 178, 1010, 72), "lcd": (1128, 250, 720),
@@ -77,7 +62,6 @@ def border() -> tuple:
 
 
 def u(x: float) -> int:
-    """A layout unit in pixels."""
     return int(round(x * S))
 
 
@@ -91,10 +75,7 @@ def ease(t: float) -> float:
     return t * t * (3 - 2 * t)
 
 
-# ------------------------------------------------------------------------ fonts --
-
 def _font_c() -> list:
-    """app/font.c's glyphs: 8 bytes each (codes 0..0xDC), the top row first, bit 7 the left pixel."""
     text = (ROOT / "app/font.c").read_text()
     rows = re.findall(r"\{((?:0x[0-9a-fA-F]{2},?\s*){8})\}", text)
     return [[int(b, 16) for b in re.findall(r"0x[0-9a-fA-F]{2}", r)] for r in rows]
@@ -105,7 +86,6 @@ GLYPHS = _font_c()
 
 @lru_cache(maxsize=1024)
 def pixel_text(s: str, scale: int, fg: tuple, bg: tuple | None = None, advance: int = 8) -> Image.Image:
-    """`s` in the device's 8x8 font at a whole `scale`, as an RGBA image."""
     s = s.upper()
     w = max(1, (len(s) - 1) * advance + 8) * scale
     im = Image.new("RGBA", (w, 8 * scale), bg + (255,) if bg else (0, 0, 0, 0))
@@ -128,7 +108,6 @@ def sans(size_px: int, weight: int) -> ImageFont.FreeTypeFont:
 
 
 def pixel_scale(units: float) -> int:
-    """The 8x8 font's whole scale for a glyph about `units` tall."""
     return max(1, int(units * S / 8 + 0.5))
 
 
@@ -136,11 +115,7 @@ def paste(im: Image.Image, src: Image.Image, xy: tuple) -> None:
     im.paste(src, (int(xy[0]), int(xy[1])), src if src.mode == "RGBA" else None)
 
 
-# ------------------------------------------------------------------ rich text --
-
 def runs(text: str) -> list:
-    """`plain *marked* plain` (or `**marked**`) -> words, each a list of (text, marked) pieces:
-    punctuation after a marked word stays on it, with no space."""
     words, word, piece, marked = [], [], "", False
     for ch in re.sub(r"\*\*", "*", text) + " ":
         if ch == "*" or ch.isspace():
@@ -164,8 +139,6 @@ def plain(text: str) -> str:
 def draw_rich(d: ImageDraw.ImageDraw, xy: tuple, text: str, size_px: float, colours: tuple,
               weights: tuple, width: float, max_lines: int, leading: float = 1.18,
               centre: bool = False) -> int:
-    """Wraps `text` into `width`, marked words in colours[1] and weights[1]; returns the y
-    (pixels) under the last line."""
     fonts = (sans(u(size_px), weights[0]), sans(u(size_px), weights[1]))
     space = fonts[0].getlength(" ")
     x0, y = u(xy[0]), u(xy[1])
@@ -190,10 +163,7 @@ def draw_rich(d: ImageDraw.ImageDraw, xy: tuple, text: str, size_px: float, colo
     return y
 
 
-# ---------------------------------------------------------------- the panel ---
-
 def _p(x: float, y: float) -> tuple:
-    """A panel point in frame pixels."""
     px, py, k = L["panel"]
     return (u(px + x * k), u(py + y * k))
 
@@ -206,8 +176,6 @@ def panel_rect(box: tuple) -> tuple:
 
 @lru_cache(maxsize=4)
 def panel_base(key: tuple) -> Image.Image:
-    """The panel without the screen's picture, drawn at 3x and filtered down (smooth edges),
-    labelled in the device's font."""
     px0, py0, k = L["panel"]
     w, h = u(panel.W * k), u(panel.H * k)
     f = 3 * w / panel.W
@@ -245,7 +213,6 @@ def panel_base(key: tuple) -> Image.Image:
     return im
 
 
-# The C64 sprite pointer, 12 x 21 (a hand-drawn arrow: 1 outline, 2 fill).
 POINTER = [
     "1...........", "11..........", "121.........", "1221........", "12221.......",
     "122221......", "1222221.....", "12222221....", "122222221...", "1222222221..",
@@ -268,7 +235,6 @@ def pointer_sprite(scale: int) -> Image.Image:
 
 
 def control_point(name: str) -> tuple | None:
-    """Where the pointer's tip goes for a control: on it, below the centre and to the right."""
     box = panel.control_box(name)
     if box is None:
         return None
@@ -277,7 +243,6 @@ def control_point(name: str) -> tuple | None:
 
 
 def pointer(im: Image.Image, at: tuple, bob: float) -> None:
-    """The C64 sprite pointer, large, with a drop shadow."""
     sc = max(1, pixel_scale(8 * L["panel"][2] / 0.74 * 3.2))
     sp = pointer_sprite(sc)
     sh = Image.new("RGBA", sp.size, (0, 0, 0, 0))
@@ -286,12 +251,7 @@ def pointer(im: Image.Image, at: tuple, bob: float) -> None:
     paste(im, sp, (at[0], at[1] + bob))
 
 
-# --------------------------------------------------------------- the frame ---
-
 def frame_base(tag: str, headline: str, version: str, logo: Image.Image) -> Image.Image:
-    """Everything that stays for a step: the border, the paper, the logo, the tag and the
-    headline, the panel and the screen's frame. No sentences: the picture and the music carry
-    it (the captions are the .srt's)."""
     im = Image.new("RGB", size(), border())
     d = ImageDraw.Draw(im)
     b = L["border"]
@@ -314,13 +274,11 @@ def frame_base(tag: str, headline: str, version: str, logo: Image.Image) -> Imag
 
 
 def panel_box() -> tuple:
-    """The panel's rectangle in frame pixels."""
     px, py, k = L["panel"]
     return (u(px), u(py), u(px + panel.W * k), u(py + panel.H * k))
 
 
 def dim_panel(im: Image.Image, amount: float, keep: list) -> None:
-    """Dims the panel by `amount` (0.5: half), all but the rectangles in `keep`."""
     if amount <= 0:
         return
     box = panel_box()
@@ -335,7 +293,6 @@ def dim_panel(im: Image.Image, amount: float, keep: list) -> None:
 
 
 def beat_glow(im: Image.Image, strength: float) -> None:
-    """The big screen's frame breathing with the music: a ring that brightens on the beat."""
     if strength <= 0:
         return
     d = ImageDraw.Draw(im)
@@ -347,8 +304,6 @@ def beat_glow(im: Image.Image, strength: float) -> None:
 
 
 def lcd_view(lcd: Image.Image, zoom: float, centre: tuple) -> Image.Image:
-    """The 240 x 240 frame in the big screen's box, pushed in by `zoom` round `centre` (pixels
-    of the 240 x 240 frame)."""
     side = u(L["lcd"][2])
     if zoom <= 1.0001:
         return lcd.resize((side, side), Image.NEAREST)
@@ -359,7 +314,6 @@ def lcd_view(lcd: Image.Image, zoom: float, centre: tuple) -> Image.Image:
 
 
 def lcd_to_frame(px: float, py: float, zoom: float, centre: tuple) -> tuple:
-    """A point of the 240 x 240 frame in the big screen's box, as lcd_view shows it."""
     span = 240 / max(zoom, 1.0)
     cx = min(max(centre[0], span / 2), 240 - span / 2) if zoom > 1.0001 else 120
     cy = min(max(centre[1], span / 2), 240 - span / 2) if zoom > 1.0001 else 120
@@ -376,7 +330,6 @@ def put_lcd(im: Image.Image, lcd: Image.Image, zoom: float, centre: tuple) -> No
 
 
 def region_box(d: ImageDraw.ImageDraw, rect: tuple, alpha: float) -> None:
-    """The highlight round the screen region that changes."""
     if alpha <= 0:
         return
     col = mix(paper(), c(YELLOW), alpha)
@@ -396,7 +349,6 @@ def ring(d: ImageDraw.ImageDraw, rect: tuple, colour: tuple, grow: float = 0.0, 
 
 
 def glow(im: Image.Image, rect: tuple, colour: tuple, strength: float, round_: bool) -> None:
-    """A soft outer glow round a control: rings fading outwards."""
     if strength <= 0:
         return
     pad = u(40)
@@ -421,10 +373,6 @@ def highlight_rect(name: str) -> tuple | None:
 
 
 def control_highlight(im: Image.Image, name: str, state: dict) -> None:
-    """The control in use, unmistakable: a glow and a thick ring, and its cue: a press sinks
-    and bursts, a turn has an arrow round the knob going its way and the pointer of the knob
-    turning, a hold fills a ring like a timer. `state`: `active` (0..1), `kind` (press, hold,
-    turn, key), `phase` (0..1 through the act), `detents`, a knob's `angle`."""
     rect = highlight_rect(name)
     if rect is None:
         return
@@ -482,8 +430,6 @@ def control_highlight(im: Image.Image, name: str, state: dict) -> None:
 
 
 def callout_near(im: Image.Image, text: str, rect: tuple | None, alpha: float = 1.0) -> None:
-    """The plain-words label next to the control, big, black on yellow, with a tick pointing at
-    it: above it when there is room, else below. Without a control, under the big screen."""
     if not text or alpha <= 0:
         return
     sc = pixel_scale(L["callout"])
@@ -509,7 +455,6 @@ def callout_near(im: Image.Image, text: str, rect: tuple | None, alpha: float = 
             over = x < screen[2] and x + w > screen[0] and yy < screen[3] and yy + h > screen[1]
             return yy >= b and yy + h <= H - b and not over
 
-        # Beside the screen, never over it: slide left (or right) of it when it would cover it.
         if cx < screen[0] and x + w > screen[0] - u(16):
             x = max(b, screen[0] - u(16) - w)
         elif cx > screen[2] and x < screen[2] + u(16):
@@ -533,7 +478,6 @@ def callout_near(im: Image.Image, text: str, rect: tuple | None, alpha: float = 
 
 
 def raster_border(im: Image.Image, phase: float, colours: list, alpha: float = 1.0) -> None:
-    """Raster bars across the border (the paper untouched): `phase` moves them down."""
     if alpha <= 0:
         return
     d = ImageDraw.Draw(im)
@@ -552,12 +496,10 @@ def raster_border(im: Image.Image, phase: float, colours: list, alpha: float = 1
 
 
 def wipe_alpha(dt: float) -> float:
-    """The step-change raster's strength `dt` seconds after the change (0.45 s)."""
     return max(0.0, 1.0 - dt / 0.45) if dt >= 0 else 0.0
 
 
 def sparkle(im: Image.Image, at: tuple, dt: float) -> None:
-    """A little sprite flourish where something landed: four stars flying out (0.6 s)."""
     if not 0 <= dt < 0.6:
         return
     k = dt / 0.6
@@ -570,9 +512,6 @@ def sparkle(im: Image.Image, at: tuple, dt: float) -> None:
 
 def card(tag: str, headline: str, line: str, diagram: str, t: float, logo: Image.Image,
          version: str, lcd: Image.Image | None = None) -> Image.Image:
-    """A full-paper card (no device): the tag, a big headline, at most one short line, and an
-    optional diagram `A <> B <> C`: boxes with a dot travelling the arrows both ways; with
-    `lcd`, the screen as it is now stands over the first box."""
     im = Image.new("RGB", size(), border())
     d = ImageDraw.Draw(im)
     b = L["border"]
@@ -626,8 +565,6 @@ def card(tag: str, headline: str, line: str, diagram: str, t: float, logo: Image
 
 
 def title_card(t: float, title: str, logo2x: Image.Image, length: float) -> Image.Image:
-    """The opening card: LOAD"TITLE",8,1 typed on the paper, then the loading stripes in the
-    border and the logo (at most 2 s)."""
     im = Image.new("RGB", size(), border())
     d = ImageDraw.Draw(im)
     b = L["border"]

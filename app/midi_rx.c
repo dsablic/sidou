@@ -8,7 +8,6 @@
 #include "midi_sync.h"
 #include "midi_usb.h"
 
-/* With no router, every channel message plays the instrument. */
 static const uint8_t UNROUTED[16] = {
     0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu,
     0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu,
@@ -28,22 +27,17 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
     case MIDI_PITCH_BEND: live_bend(l, msg->bend); break;
     case MIDI_CHANNEL_PRESSURE: live_pressure(l, msg->data1); break;
     case MIDI_POLY_PRESSURE: live_poly_pressure(l, msg->data1, msg->data2); break;
-    default: break; /* real time, song position and select: not the instrument's */
+    default: break;
     }
 }
 
-/* 0: the message cannot change a parameter (live_param_get), so MIDI out need not look
- * around it: the NRPN and RPN selection, the notes off, the controllers' reset (bend, wheel,
- * pressure), the wheel on a target other than the pulse width and any other CC the map does
- * not give a parameter (CC 64, a reserved row's), unless MIDI learn takes it (bound, or
- * binding now). Data entry (6, 38, 96, 97) can. */
 static int edits(const midi_rx* rx, const midi_msg* msg) {
     const live* l = rx->l;
     if (msg->kind == MIDI_PROGRAM) {
         return msg->data1 < LIVE_PRESET_COUNT;
     }
     if (msg->kind != MIDI_CC) {
-        return 0; /* notes, bend and aftertouch */
+        return 0;
     }
     switch (msg->data1) {
     case 98:
@@ -73,18 +67,13 @@ static int edits(const midi_rx* rx, const midi_msg* msg) {
     return rx->learn != NULL && midi_learn_takes(rx->learn, msg->data1);
 }
 
-/* One message from a source's parser. Before the first that can change a parameter in a
- * pass, MIDI out takes what changed until then as the panel's; midi_rx_settle takes the rest
- * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
     rx->inputs += (uint32_t)(msg->kind != MIDI_REALTIME || msg->data1 == 0xFFu);
-    /* the instrument's note or CC goes straight on (a CC flood pays one look a message) */
     if (!((rx->fast[msg->channel] >> msg->kind) & 1u)) {
         if (msg->kind == MIDI_REALTIME) {
-            live_arp_realtime(rx->l, msg->data1); /* the arpeggio's clock rates */
+            live_arp_realtime(rx->l, msg->data1);
         }
         if (rx->sync && msg->kind >= MIDI_REALTIME) {
-            /* and on: the ARP's clock is the router's */
             midi_sync_msg(rx->sync, msg, rx->entry ? rx->entry->stamp : 0u);
         }
         midi_route* r = rx->route;
@@ -92,7 +81,7 @@ static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
             midi_route_to to = midi_route_classify(r, msg);
             if (to == MIDI_ROUTE_TAKE) {
                 if (rx->out && !rx->looked && midi_route_edits_live(r, msg)) {
-                    midi_out_local(rx->out, rx->l); /* a preset or a profile: MIDI's */
+                    midi_out_local(rx->out, rx->l);
                     rx->looked = 1;
                 }
                 midi_route_take(r, msg);
@@ -119,8 +108,6 @@ static void on_usb(void* ctx, const midi_msg* msg) {
     take(rx, &rx->usb_map, msg);
 }
 
-/* A source's parser and NRPN state, anew. Its SysEx callback stays: the caller's (the platform
- * sets the parsers' on_sysex after midi_rx_init; none, NULL, skips SysEx). */
 static void port_init(midi_rx* rx, midi_in* in, midi_map_port* map, midi_msg_fn on_msg) {
     midi_sysex_fn on_sysex = in->on_sysex;
     midi_map_port_init(map, rx->l);
@@ -129,9 +116,6 @@ static void port_init(midi_rx* rx, midi_in* in, midi_map_port* map, midi_msg_fn 
     midi_in_init(in, on_msg, on_sysex, rx);
 }
 
-/* A gap: the sources it lost (MIDI_SRC_* bits; 0, unknown: both) restart their parsers, so
- * a message or a SysEx frame cut by it is dropped, while the other source's go on (a SysEx
- * transfer on it included). Every note is released and the controllers reset either way. */
 static void restart(midi_rx* rx, uint8_t epoch, uint8_t sources) {
     rx->epoch = epoch;
     rx->restarts++;
@@ -143,7 +127,7 @@ static void restart(midi_rx* rx, uint8_t epoch, uint8_t sources) {
         port_init(rx, &rx->usb, &rx->usb_map, on_usb);
     }
     live_all_notes_off(rx->l);
-    live_reset_controllers(rx->l); /* a bend back to the centre may be among the lost */
+    live_reset_controllers(rx->l);
     if (rx->route) {
         midi_route_reset_input(rx->route);
     }
@@ -161,7 +145,7 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->fast = UNROUTED;
     rx->sync = NULL;
     rx->entry = NULL;
-    rx->trs.on_sysex = NULL; /* SysEx is skipped until the platform sets a callback */
+    rx->trs.on_sysex = NULL;
     rx->usb.on_sysex = NULL;
     port_init(rx, &rx->trs, &rx->trs_map, on_trs);
     port_init(rx, &rx->usb, &rx->usb_map, on_usb);
@@ -198,8 +182,6 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     } else if (e->source == MIDI_SRC_USB) {
         uint32_t p = e->data;
         uint32_t cin = p & 0x0fu;
-        /* A channel message whose status is its CIN's and whose data bytes are data (most of
-         * USB's): whole, as the bytes would give it. Anything else byte by byte. */
         if (cin >= 0x8u && cin <= 0xeu && (p >> 12 & 0x0fu) == cin && !(p & 0x80800000u)) {
             midi_in_channel(&rx->usb, (uint8_t)(p >> 8), (uint8_t)(p >> 16),
                             (uint8_t)(p >> 24));
@@ -220,7 +202,7 @@ void midi_rx_settle(midi_rx* rx) {
 
 int midi_rx_check_lost(midi_rx* rx, uint8_t epoch, uint8_t sources) {
     if ((int8_t)(uint8_t)(epoch - rx->epoch) <= 0) {
-        return 0; /* not newer: an entry taken since the caller read it may be ahead already */
+        return 0;
     }
     restart(rx, epoch, sources);
     return 1;

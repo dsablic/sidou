@@ -9,30 +9,20 @@
 #include "live_view.h"
 #include "song/gt2_song.h"
 
-/* What the header shows, as bytes (song_view.drawn): the play state, the tempo (2), REC, the shown
- * voice, the mutes and the solos, its pattern, the theme; then what the rows show: the mode, the
- * window's top (2), the bar's row, whether there is a song, the shown voice, the theme, the
- * orderlist position, each voice's pattern, entry and silence, the song's edit count (4), REC, the
- * field, the subtune, DICE's frame (app/song_gen.h song_gen_look), the jam. */
 #define HEAD_LOOK 8u
 #define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u + 3u + SONG_GEN_LOOK + 2u)
 _Static_assert(HEAD_LOOK + ROWS_LOOK <= SONG_VIEW_LOOK, "the looks fit");
-/* The rows' look bytes the bar's step changes alone (rows_look): the bar's row, the position. */
 #define ROWS_BAR 3u
 #define ROWS_POS 7u
 #define ROWS_BAR_BIT (1u << ROWS_BAR)
 #define ROWS_POS_BIT (1u << ROWS_POS)
-/* The last two: the key auditioning on the shown voice (SONG_VIEW_NO_KEY: none) and the
- * instrument it sounds; they change the bar's two rows and the hint line, nothing else. */
 #define ROWS_JAM (ROWS_LOOK - 2u)
 #define ROWS_JAM_BITS (3u << ROWS_JAM)
 
-/* The player's notes: key note 12 is its note 0 (song_view.c's GT2_NOTE0, GT2_NOTES). */
 #define JAM_NOTE0 12u
 #define JAM_NOTES 96u
 
 static const char HEX[] = "0123456789ABCDEF";
-/* GoatTracker 2's readme, 4.2: the pattern commands. */
 static const char* const COMMANDS[16] = {"",
                                          "PORTAMENTO UP",
                                          "PORTAMENTO DOWN",
@@ -96,7 +86,7 @@ void tracker_view_order_entry(uint8_t e, char out[4]) {
         out[1] = HEX[e & 15u];
     } else if (e < GT2_TRANSDOWN) {
         out[0] = 'R';
-        out[1] = HEX[e & 15u]; /* R0: 16 times */
+        out[1] = HEX[e & 15u];
     } else if (e < GT2_TRANSUP) {
         out[0] = '-';
         out[1] = HEX[(GT2_TRANSUP - e) & 15u];
@@ -107,29 +97,21 @@ void tracker_view_order_entry(uint8_t e, char out[4]) {
     out[2] = 0;
 }
 
-/* ---- what each voice shows ---- */
-
 typedef struct {
-    uint8_t pattern; /* 0xFF: none */
-    uint8_t entry;   /* its orderlist entry */
-    uint8_t row;     /* the row it is on */
+    uint8_t pattern;
+    uint8_t entry;
+    uint8_t row;
     uint8_t silent;
 } lane;
 
-/* 1: the shown voice shows the edit cursor's place: REC on with the song not playing. While REC
- * records it shows the playing pattern instead, its row following the player's (ergonomics
- * review E03); the cursor is kept for when it stops. */
 static int at_cursor(const song_view* sv) {
     return sv->rec && !song_view_rec_playing(sv);
 }
 
-/* The subtune voice v shows: cursor 1, the shown voice is at the edit cursor (its subtune). */
 static uint32_t subtune_of(const song_view* sv, uint32_t v, int cursor) {
     return song_view_playing(sv) && !(cursor && v == sv->voice) ? sv->st.subtune : sv->subtune;
 }
 
-/* Voice v's orderlist entry and row (app/song_view.h song_view_position), or with cursor the
- * shown voice's edit cursor, and the first pattern at or after the entry. */
 static lane lane_at(const song_view* sv, uint32_t v, int cursor) {
     lane ln = {0xffu, 0xffu, 0u, 0u};
     uint32_t entry, row;
@@ -157,18 +139,14 @@ static lane lane_at(const song_view* sv, uint32_t v, int cursor) {
     return ln;
 }
 
-/* What voice v shows. */
 static lane lane_of(const song_view* sv, uint32_t v) {
     return lane_at(sv, v, at_cursor(sv));
 }
 
-/* The shown voice's lane at the edit cursor with REC on (what the edits write), as shown with
- * it off. */
 static lane edit_lane(const song_view* sv) {
     return lane_at(sv, sv->voice, sv->rec);
 }
 
-/* A pattern's rows (the end row not counted), 0 for none. */
 static uint32_t rows_of(const gt2_song* s, uint32_t pattern) {
     return s && pattern != 0xffu ? gt2_pattern_rows(s, pattern) - 1u : 0u;
 }
@@ -218,8 +196,6 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     out[n++] = jam ? sv->instr : 0u;
 }
 
-/* ---- the canvas ---- */
-
 typedef song_view_canvas canvas;
 
 static void big(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
@@ -233,8 +209,6 @@ static void blank(canvas* c, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
     }
 }
 
-/* A key auditioning on the shown voice: its note and the instrument as a row's first five
- * characters ("A-4" and "02"), for the current row and the hint line. 0: none. */
 static int ghost_of(const song_view* sv, char out[6]) {
     if (sv->jam_key == SONG_VIEW_NO_KEY || sv->jam_voice != sv->voice) {
         return 0;
@@ -251,12 +225,10 @@ static int ghost_of(const song_view* sv, char out[6]) {
     return 1;
 }
 
-/* The colour of voice v's number and strip: its own, grey while the song silences it. */
 static uint8_t voice_color(const song_view* sv, const theme* th, uint32_t v) {
     return (song_view_mute_mask(sv) >> v & 1u) ? th->dim : th->voice[v];
 }
 
-/* The header, rows 0-2. */
 static void build_head(song_view* sv) {
     canvas* c = &sv->cv;
     const theme* th = theme_get(sv->l->theme);
@@ -272,8 +244,6 @@ static void build_head(song_view* sv) {
         pat[5] = HEX[ln.pattern & 15u];
     }
     big(c, 5, 0, sv->io && song_io_saving(sv->io) ? "SAVING" : pat, base);
-    /* Columns 18-23: MUT, SOL or REC at 2x (REC then, with MUT or SOL, small below them); the
-     * play mark or the stop square at 2x after them, the tempo and its label at the right. */
     int rec_big = sv->rec;
     if (sv->solo >> v & 1u) {
         big(c, 18, 0, "SOL", THEME_ATTR(th, value));
@@ -300,8 +270,6 @@ static void build_head(song_view* sv) {
     }
     grid_canvas_text(c, 26, 0, t, THEME_ATTR(th, label));
     grid_canvas_text(c, 26, 1, "BPM", THEME_ATTR(th, hint));
-    /* Row 2: all three voices' numbers, the shown one at column 24 and the other two over their
-     * strips: dim while the song silences the voice, reversed while it is soloed. */
     uint32_t col = TRACKER_VIEW_STRIP_COL;
     for (uint32_t w = 0, at = TRACKER_VIEW_STRIP_COL - TRACKER_VIEW_STRIP_STEP; w < SONG_T_VOICES; w++) {
         uint8_t a = sv->solo >> w & 1u ? GRID_ATTR(th->bg, th->hot)
@@ -314,11 +282,6 @@ static void build_head(song_view* sv) {
     }
 }
 
-/* One pattern row, its two cell rows from screen row r: u is the row's number, `cell` its four
- * bytes (NULL: none, a pattern shorter than the window), `on` the current row (the bar behind it),
- * `field` the field to highlight (TRACKER_VIEW_FIELD_*, an edit cursor's; NONE for the bar
- * alone). A muted voice's rows keep their colours: the header and the strips say it (a recolour of
- * a whole voice's cells is what a mute would otherwise send). */
 static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uint32_t u,
                      const uint8_t* cell, int on, uint32_t field, const char* ghost) {
     uint8_t bg = on ? th->cursor : th->bg;
@@ -333,23 +296,21 @@ static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uin
     }
     char t[9];
     tracker_view_cell(cell, t);
-    /* Grey rests and blanks (lighter on the band, where dark grey would vanish). */
     uint8_t quiet = on ? th->label : th->dim;
     uint8_t note = t[0] == '-' ? quiet : t[0] == '=' || t[0] == '+' ? th->label
                    : on                                              ? th->hot
                                                                      : th->value;
-    /* On the bar the instrument and the command are white: light red on dark grey is 2.05:1. */
     uint8_t ins = !cell[1] ? quiet : on ? th->value : th->voice[voice];
     uint8_t cmd = !cell[2] ? quiet : on ? th->value : th->label;
     uint8_t na = GRID_ATTR(note, field == TRACKER_VIEW_FIELD_NOTE ? th->hot : bg);
     uint8_t ia = GRID_ATTR(ins, field == TRACKER_VIEW_FIELD_INSTRUMENT ? th->hot : bg);
     uint8_t ca = GRID_ATTR(cmd, field == TRACKER_VIEW_FIELD_COMMAND ? th->hot : bg);
-    if (field) { /* the highlighted field's text in the band's colour, on the highlight */
+    if (field) {
         na = field == TRACKER_VIEW_FIELD_NOTE ? GRID_ATTR(th->bg, th->hot) : na;
         ia = field == TRACKER_VIEW_FIELD_INSTRUMENT ? GRID_ATTR(th->bg, th->hot) : ia;
         ca = field == TRACKER_VIEW_FIELD_COMMAND ? GRID_ATTR(th->bg, th->hot) : ca;
     }
-    if (ghost) { /* a key auditioning: its note and the instrument, ghosted, over the row's */
+    if (ghost) {
         t[0] = ghost[0], t[1] = ghost[1], t[2] = ghost[2], t[3] = ghost[3], t[4] = ghost[4];
         na = GRID_ATTR(th->label, bg);
         ia = GRID_ATTR(th->label, bg);
@@ -366,10 +327,9 @@ static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uin
     }
 }
 
-/* Voice v's pattern as a strip reads it: its rows (not counting the end row) and its cells. */
 typedef struct {
     uint32_t rows;
-    const uint8_t* data; /* NULL: none */
+    const uint8_t* data;
 } strip_data;
 
 static strip_data strip_of(const gt2_song* s, const lane* ln) {
@@ -380,7 +340,6 @@ static strip_data strip_of(const gt2_song* s, const lane* ln) {
     return d;
 }
 
-/* Whether a note sounds on row u of a voice's pattern: its strip's bar is tall. */
 static int sounds(const strip_data* d, uint32_t u) {
     if (u >= d->rows) {
         return 0;
@@ -389,8 +348,6 @@ static int sounds(const strip_data* d, uint32_t u) {
     return n >= GT2_FIRSTNOTE && n <= GT2_LASTNOTE;
 }
 
-/* One strip bar, bottom-aligned in the 16 pixels of a row: 12 high where a note sounds, 2 where
- * none does; nothing past the end of the voice's pattern. */
 static void draw_strip(canvas* c, const theme* th, uint32_t r, uint32_t col, int exists, int tall,
                        uint8_t color) {
     if (!exists) {
@@ -404,7 +361,6 @@ static void draw_strip(canvas* c, const theme* th, uint32_t r, uint32_t col, int
     }
 }
 
-/* 1: row u of the pattern has a chance below 100 (a LOCK STEP writes, song_ext.h). */
 static int chance_below(const gt2_song* s, uint32_t pattern, uint32_t u) {
     uint32_t n = 0u;
     const uint8_t* r = song_locks_row(s, pattern, u, &n);
@@ -416,7 +372,6 @@ static int chance_below(const gt2_song* s, uint32_t pattern, uint32_t u) {
     return 0;
 }
 
-/* Window row j (the pattern row `top` + j, its two cell rows) and its strips, into the canvas. */
 static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SONG_T_VOICES],
                             const strip_data strips[SONG_T_VOICES], int32_t top, uint32_t j) {
     canvas* c = &sv->cv;
@@ -424,7 +379,7 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
     uint32_t shown_v = sv->voice;
     lane bar = lanes[shown_v];
     uint32_t bar_rows = strips[shown_v].rows;
-    uint32_t shown = s ? bar_rows : GT2_MAX_ROWS; /* with no song, the numbers alone */
+    uint32_t shown = s ? bar_rows : GT2_MAX_ROWS;
     int32_t pr = top + (int32_t)j;
     uint32_t r = TRACKER_VIEW_TOP + TRACKER_VIEW_ROW_CELLS * j;
     if (pr < 0) {
@@ -444,14 +399,12 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
         draw_row(c, th, r, shown_v, u, cell, on, on && at_cursor(sv) ? sv->field : TRACKER_VIEW_FIELD_NONE,
                  on && cell && ghost_of(sv, ghost) ? ghost : NULL);
         if (cell && chance_below(s, bar.pattern, u)) {
-            /* a step STEP gave a chance below 100: a yellow mark beside the row's number */
             c->ch[r + 1u][TRACKER_VIEW_CHANCE_COL] = '%';
             c->attr[r + 1u][TRACKER_VIEW_CHANCE_COL] = GRID_ATTR(th->hot, on ? th->cursor : th->bg);
         }
     } else {
         blank(c, 0, r, GRID_COLS, TRACKER_VIEW_ROW_CELLS, THEME_ATTR(th, value));
     }
-    /* The other two voices as strips. */
     uint32_t col = TRACKER_VIEW_STRIP_COL;
     for (uint32_t w = 0; w < SONG_T_VOICES; w++) {
         if (w == shown_v) {
@@ -463,8 +416,6 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
     }
 }
 
-/* Rows 27-29: the shown voice's orderlist from its entry, the current row's first command spelled
- * out, the hint and the position. */
 static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T_VOICES]) {
     canvas* c = &sv->cv;
     const gt2_song* s = sv->song;
@@ -483,7 +434,7 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         for (uint32_t t = 0, i = bar.entry; t < 3u; t++, i++) {
             char e[6];
             if (i >= n) {
-                if (t < 2u) { /* RST and the restart position: five cells */
+                if (t < 2u) {
                     e[0] = 'R', e[1] = 'S', e[2] = 'T';
                     e[3] = HEX[o[n + 1u] >> 4];
                     e[4] = HEX[o[n + 1u] & 15u];
@@ -498,7 +449,6 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
             col += e[2] ? 4u : 3u;
         }
     }
-    /* the current row's first command, of the voices that sound, spelled out */
     for (uint32_t v = 0; s && v < SONG_T_VOICES; v++) {
         const uint8_t* d = gt2_pattern_data(s, lanes[v].pattern);
         if (lanes[v].silent || !d || bar.row >= rows_of(s, lanes[v].pattern)) {
@@ -515,7 +465,6 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         say[6] = HEX[cell[3] & 15u];
         uint8_t a = THEME_ATTR(th, hot);
         grid_canvas_text(c, 0, TRACKER_VIEW_SAY_ROW, say, a);
-        /* a wavetable pointer at one of DICE's chord programs says the chord (song_gen.h) */
         uint32_t chord = (cell[2] & 15u) == 8u ? song_gen_chord_at(s, cell[3]) : SONG_GEN_CHORDS;
         char name[16] = "CHORD ";
         uint32_t k = 6u;
@@ -536,7 +485,6 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
     }
     char ghost[6];
     if (ghost_of(sv, ghost)) {
-        /* a key auditioning: the instrument's number and its name (16 characters of 1x) */
         char say[24] = "I00 ";
         say[1] = HEX[sv->instr >> 4 & 15u];
         say[2] = HEX[sv->instr & 15u];
@@ -548,7 +496,6 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         say[len] = 0;
         grid_canvas_text(c, 0, TRACKER_VIEW_HINT_ROW, say, grey);
     }
-    /* the position as the song views have always said it: the orderlist entry and the row, hex */
     uint32_t pos, row;
     song_view_position(sv, shown_v, &pos, &row);
     if (at_cursor(sv)) {
@@ -563,7 +510,6 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
     grid_canvas_text(c, GRID_COLS - 13u, TRACKER_VIEW_HINT_ROW, at, grey);
 }
 
-/* Window rows [from, from + n) into the canvas (marked dirty), the lanes as they are now. */
 static void build_window(song_view* sv, uint32_t from, uint32_t n) {
     const theme* th = theme_get(sv->l->theme);
     lane lanes[SONG_T_VOICES];
@@ -582,7 +528,6 @@ static void build_window(song_view* sv, uint32_t from, uint32_t n) {
     }
 }
 
-/* The footer, whole, and the window to be built a few rows a frame (see compose). */
 static void build_rows(song_view* sv) {
     const theme* th = theme_get(sv->l->theme);
     lane lanes[SONG_T_VOICES];
@@ -593,14 +538,11 @@ static void build_rows(song_view* sv) {
     sv->dirty |= ((1u << (GRID_ROWS - TRACKER_VIEW_ORDER_ROW)) - 1u) << TRACKER_VIEW_ORDER_ROW;
     sv->unbuilt = (uint16_t)((1u << TRACKER_VIEW_ROWS) - 1u);
     if (sv->gen.scl_down) {
-        /* EDIT + SCL held: DICE's frame over the window's lower half */
         song_gen_frame(sv, TRACKER_VIEW_TOP + TRACKER_VIEW_ROW_CELLS * TRACKER_VIEW_DICE_ROW);
         sv->unbuilt = (uint16_t)((1u << TRACKER_VIEW_DICE_ROW) - 1u);
     }
 }
 
-/* What a step of the bar changes when nothing else did (the window stands, in BAR): the row it
- * leaves and the row it reaches, and the footer. Returns the canvas rows touched. */
 static uint32_t build_step(song_view* sv, uint32_t from) {
     const theme* th = theme_get(sv->l->theme);
     lane lanes[SONG_T_VOICES];
@@ -627,7 +569,6 @@ static uint32_t build_step(song_view* sv, uint32_t from) {
 
 static void lone_due(screen* s, song_view* sv, uint32_t button);
 
-/* Built anew at its first compose: what changed while it was away. */
 static void enter(screen* s, void* state) {
     song_view* sv = state;
     sv->built = 0;
@@ -635,7 +576,6 @@ static void enter(screen* s, void* state) {
     song_gen_stop(sv);
 }
 
-/* Left: no rows wait to be built; the next visit builds all of them. A generative run stops. */
 static void leave(screen* s, void* state) {
     song_view* sv = state;
     lone_due(s, sv, screen_lone_take(&sv->gen.lone));
@@ -647,8 +587,6 @@ static void leave(screen* s, void* state) {
     sv->built = 0;
 }
 
-/* MUTATE, DICE or the sweep (app/song_gen.h) on the shown voice's pattern at the cursor, with the
- * current instrument. */
 static void gen_start(screen* s, song_view* sv, uint32_t kind) {
     song_gen_start(sv, s, kind, edit_lane(sv).pattern, sv->voice, sv->instr);
     song_gen_drain(sv, s);
@@ -695,7 +633,6 @@ __attribute__((noinline, unused)) static void finish_ready_edit(song_view* sv) {
     }
 }
 
-/* ARP or LFO with REC on: a key off, or a rest (LFO twice on a row: the whole row cleared). */
 static void rec_clear(screen* s, song_view* sv, uint32_t id) {
     lane ln;
     uint8_t cell[4];
@@ -756,7 +693,7 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
     uint32_t v;
     const char* label;
     if (song_gen_popup(sv, encoder, name, value, fill, max)) {
-        return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
+        return 1;
     }
     if (!sv->rec) {
         return 0;
@@ -770,10 +707,8 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
     } else if ((encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u) && !edit &&
                song_view_rec_playing(sv)) {
         if (!song_view_recording(sv)) {
-            return 0; /* a count-in: the knob does nothing yet */
+            return 0;
         }
-        /* REC while the song plays (past a count-in): K1 and K2 record the cutoff, in Hz as
-         * every view says it, and the resonance */
         uint32_t k = encoder - PANEL_ENC_K1;
         v = song_view_rec_value(sv, k);
         label = k == 0u ? "CUTOFF" : "RESONANCE";
@@ -806,7 +741,7 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
         *name++ = *label;
     } while (*label++);
     if (encoder == 6u) {
-        song_view_instr_text(sv, v, value); /* PRESETS: the instrument's name too */
+        song_view_instr_text(sv, v, value);
     } else {
         value[0] = HEX[v >> 4 & 15u];
         value[1] = HEX[v & 15u];
@@ -818,7 +753,6 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
     return 1;
 }
 
-/* EDIT + LFO: one cell back, then forward again. */
 static void tracker_undo(screen* s, song_view* sv) {
     finish_ready_edit(sv);
     if (sv->editor) {
@@ -876,7 +810,7 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     lone_due(s, sv, screen_lone_take(&sv->gen.lone));
     if (song_gen_turn(sv, s, e->id, e->steps)) {
-        return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
+        return 1;
     }
     if (e->id == PANEL_ENC_SELECT) {
         uint32_t n = rows_of(sv->song, edit_lane(sv).pattern);
@@ -905,8 +839,6 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (!edit && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u) &&
         song_view_rec_playing(sv)) {
-        /* REC while the song plays: the filter knobs record locks on the row they are turned in
-         * (during a count-in nothing, and no popup says otherwise) */
         (void)song_view_record_knob(sv, s, e->id - PANEL_ENC_K1, e->steps);
         return 1;
     }
@@ -1022,7 +954,6 @@ static void compose(screen* s, void* state, grid* g) {
     }
     int animating = screen_animating(s);
     if (rows_new) {
-        /* Only the bar moved (and with it the position): the two rows and the footer. */
         uint32_t changed = 0;
         for (uint32_t i = 0; i < ROWS_LOOK; i++) {
             changed |= (uint32_t)(rows[i] != sv->drawn[HEAD_LOOK + i]) << i;
@@ -1031,7 +962,6 @@ static void compose(screen* s, void* state, grid* g) {
             !(changed & ~(ROWS_BAR_BIT | ROWS_POS_BIT | ROWS_JAM_BITS))) {
             sv->dirty |= build_step(sv, sv->drawn[HEAD_LOOK + ROWS_BAR]);
         } else {
-            /* The window is built a few rows a frame, as the copy takes their cells (below). */
             build_rows(sv);
         }
         for (uint32_t i = 0; i < ROWS_LOOK; i++) {
@@ -1043,8 +973,6 @@ static void compose(screen* s, void* state, grid* g) {
         while (!(sv->unbuilt >> first & 1u)) {
             first++;
         }
-        /* A wipe down reveals the rows from the top, a few a frame: only those are built (the rows
-         * past them are held, and are built before they show); else a few rows a frame. */
         uint32_t reach = screen_reach(s);
         uint32_t upto = animating ? (reach > TRACKER_VIEW_TOP ? (reach - TRACKER_VIEW_TOP + 1u) / 2u : 0u)
                                   : first + TRACKER_VIEW_BUILD_ROWS;

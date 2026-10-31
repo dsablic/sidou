@@ -1,22 +1,17 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The .sid player's main half (psid_ctl.h): the tune's 6502 in look-ahead slices, its writes
- * into the ring, and the requests to the interrupt. The interrupt's half is psid_ctl_isr.c. */
 #include "psid_ctl.h"
 
 #include <stddef.h>
 
-/* Orders memory accesses against an interrupt on the same core; emits no instruction (as
- * reg_ring.c's: the pi32v2 compiler has no __atomic_signal_fence). */
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
-/* The environment's sink: the write into the ring, unpublished until the slice's end. */
 static void ring_sink(void* ctx, uint32_t cycle, uint32_t chip, uint32_t reg, uint32_t value)
 {
     psid_ctl* c = (psid_ctl*)ctx;
     uint32_t i = c->stage;
     if (i - c->tail >= PSID_RING) {
-        c->dropped++; /* a slice runs only with PSID_SLICE_ROOM free: never */
+        c->dropped++;
         return;
     }
     c->ring_cycle[i & (PSID_RING - 1u)] = cycle;
@@ -27,11 +22,10 @@ static void ring_sink(void* ctx, uint32_t cycle, uint32_t chip, uint32_t reg, ui
         psid_lift_write(c->lift, chip, reg, value);
 }
 
-/* A request to the interrupt, taken at its next block's start. */
 static void ask(psid_ctl* c, uint8_t want)
 {
     c->want = want;
-    COMPILER_FENCE(); /* the request before the number that publishes it */
+    COMPILER_FENCE();
     c->want_seq = c->want_seq + 1u;
 }
 
@@ -47,8 +41,6 @@ static void mute_chips(psid_ctl* c, uint32_t mask)
 void psid_ctl_init(psid_ctl* c, psid_work* w, uint8_t* mem, const psid_ctl_hooks* hooks)
 {
     psid_ctl_hooks none = {NULL, NULL, NULL};
-    /* Field by field: the struct overlays other state on the device (Task 9), and the ring's
-     * 6 KiB need no clearing. */
     c->head = c->tail = c->stage = 0;
     c->want = PSID_ISR_OFF;
     c->want_seq = c->done_seq = 0;
@@ -75,15 +67,12 @@ void psid_ctl_init(psid_ctl* c, psid_work* w, uint8_t* mem, const psid_ctl_hooks
     c->mute = 0;
 }
 
-/* The interrupt renders none of the tune's chips: nothing loaded, or a stop has played out. */
 static int quiet(const psid_ctl* c)
 {
     return !c->stop_wait && (c->state == PSID_EMPTY || c->state == PSID_LOADED ||
                              c->state == PSID_STOPPED || c->state == PSID_FAILED);
 }
 
-/* The environment over the tune again: memory as at power-on, the data from `file` (if kept),
- * the sink and the shadows. */
 static void env_load(psid_ctl* c, int over)
 {
     psid_env* e = &c->w->env;
@@ -123,9 +112,6 @@ void psid_ctl_load_part(psid_ctl* c, uint32_t offset, const uint8_t* bytes, uint
     psid_env_load_part(&c->w->env, offset, bytes, n);
 }
 
-/* Song `song` from init at cycle 0, the environment loaded and the interrupt off: the shadows
- * from the chips as they stand (the interrupt renders none of them), the ring and the chips'
- * clocks from 0 (the interrupt touches neither while it is off). */
 static int begin(psid_ctl* c, uint32_t song)
 {
     psid_env* e = &c->w->env;
@@ -155,7 +141,7 @@ int psid_ctl_play(psid_ctl* c, uint32_t song)
         return 0;
     if (c->state != PSID_LOADED) {
         if (!c->file)
-            return 0; /* the caller loads the tune again */
+            return 0;
         env_load(c, 0);
     }
     if (song == 0u)
@@ -165,8 +151,6 @@ int psid_ctl_play(psid_ctl* c, uint32_t song)
     return begin(c, song);
 }
 
-/* The interrupt fades out, clears the chips' registers and goes off; the poll that sees it
- * done clears the mutes. */
 static void halt(psid_ctl* c, uint8_t state)
 {
     if (c->started)
@@ -175,7 +159,7 @@ static void halt(psid_ctl* c, uint8_t state)
     c->started = 0;
     c->state = state;
     if (!c->stop_wait)
-        mute_chips(c, 0); /* the audio never started: nothing to play out */
+        mute_chips(c, 0);
 }
 
 int psid_ctl_stop(psid_ctl* c)
@@ -245,9 +229,6 @@ uint32_t psid_ctl_ahead(const psid_ctl* c)
     return d > 0 ? (uint32_t)d : 0u;
 }
 
-/* The voices of the tune's shadows that combine noise with another waveform and have not locked
- * up yet: the shadow's dearest clocking (the noise register's write-back, cycle by cycle until
- * it locks up at 0, sid_osc.h; such a voice is `slow`, and a locked-up one is not). */
 static uint32_t noisy(const psid_ctl* c)
 {
     uint32_t n = 0;
@@ -259,14 +240,11 @@ static uint32_t noisy(const psid_ctl* c)
     return n;
 }
 
-/* The ring has no room for another slice. */
 static int ring_full(const psid_ctl* c)
 {
     return PSID_RING - (c->stage - c->tail) < PSID_SLICE_ROOM;
 }
 
-/* The audio starts once init has run a period, or returned, or filled the ring (which only the
- * interrupt empties); paused, at the resume. */
 static void maybe_start(psid_ctl* c)
 {
     const psid_env* e = &c->w->env;
@@ -283,7 +261,7 @@ int psid_ctl_poll(psid_ctl* c)
     if (c->stop_wait) {
         if (c->done_seq != c->want_seq)
             return 0;
-        c->stop_wait = 0; /* the stop has played out: the chips are the main loop's again */
+        c->stop_wait = 0;
         mute_chips(c, 0);
         if (c->next_song) {
             uint32_t song = c->next_song;
@@ -296,16 +274,10 @@ int psid_ctl_poll(psid_ctl* c)
     maybe_start(c);
     if (psid_ctl_ahead(c) >= PSID_AHEAD_CYCLES || ring_full(c))
         return 0;
-    /* The slice: runs of PSID_SUB_CYCLES while its estimated work (PSID_WORK_*, psid_ctl.h)
-     * is under PSID_SLICE_WORK, up to PSID_SLICE_CYCLES of 6502 time. While a voice combines
-     * noise, the shadows are clocked after every run, so they never have more than a run of it
-     * to catch up. A call's return ends a run early; the slice goes on. */
     uint32_t ran = 0, work = 0, accesses = e->sid_accesses, nv = noisy(c);
     int r;
     do {
         uint32_t t = psid_env_now(e), left = PSID_SLICE_CYCLES - ran, run = PSID_SUB_CYCLES;
-        /* Between calls nothing runs, so no access can come before the next call's start:
-         * one run to it, unless a voice's noise is to be clocked a run at a time. */
         if (e->phase == PSID_PHASE_WAIT && !nv && (int32_t)(e->next_due - t) > (int32_t)run)
             run = e->next_due - t;
         r = psid_env_run(e, left < run ? left : run);
@@ -325,7 +297,7 @@ int psid_ctl_poll(psid_ctl* c)
     uint32_t now = psid_env_now(e);
     for (uint32_t k = 0; k < c->chips; k++)
         sid_shadow_clock(&c->w->shadow[k], now);
-    COMPILER_FENCE(); /* the slice's entries before the index that publishes them */
+    COMPILER_FENCE();
     c->head = c->stage;
     c->slices++;
     e->late = c->late;

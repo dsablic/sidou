@@ -1,13 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The site's wasm core (tools/wasm-core builds it; web/core.js is its JavaScript side): the
- * device's own .sng reader and writer, GTI5 export and song player, behind a few calls that
- * pass bytes through two buffers in the module's memory. One song at a time, in a region the
- * size of the device's (SONG_REGION_BYTES), read with the device's multispeed cap, so a file
- * is refused here as the FM-1 refuses it, with the same message.
- *
- * Every call is synchronous and allocation-free. The JavaScript side writes a file into
- * sc_in() and reads results from sc_out(), sc_info() and sc_pcm(). */
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -28,12 +20,8 @@
 #define EXPORT(name)
 #endif
 
-/* A file in: the device's store holds at most 64 KiB, but a picked GoatTracker file may be
- * larger and is then refused by the reader with the device's message. */
 #define IN_MAX (4u * SONG_REGION_BYTES)
-/* A file out: the trailer-inclusive save cap, and room for the plain part. */
 #define OUT_MAX (GT2_SAVED_MAX + 1024u)
-/* The device's sample rate (24 MHz / 544) and the PCM buffer: a second of blocks. */
 #define SC_RATE 44118u
 #define PCM_BLOCKS 345u
 #define PCM_MAX (PCM_BLOCKS * SONG_BLOCK)
@@ -46,10 +34,9 @@ static uint8_t out_buf[OUT_MAX];
 static uint32_t out_len;
 static int16_t pcm[PCM_MAX];
 
-/* The last read's result, as web/core.js reads it: message, then the numbers. */
 typedef struct {
     char msg[32];
-    int32_t result;  /* gt2_sng_read's, or gt2_sng_check_plain's, or a gt2_err */
+    int32_t result;
     uint32_t version, channels, trailer, gt2_bytes, file_bytes, need_bytes, saved_bytes;
 } sc_info_t;
 static sc_info_t info;
@@ -105,8 +92,6 @@ static int write_out(void* ctx, const uint8_t* buf, uint32_t len) {
     return 0;
 }
 
-/* Reads the len bytes at sc_in() into a fresh song: gt2_sng_read's result (0 loaded, -1 and
- * the device's message, GT2_READ_SONG_FULL), and sc_info(). A refused file leaves no song. */
 EXPORT(sc_read) int32_t sc_read(uint32_t len) {
     memset(&info, 0, sizeof info);
     song = gt2_song_init(region, sizeof region);
@@ -127,12 +112,10 @@ EXPORT(sc_read) int32_t sc_read(uint32_t len) {
     if (r != 0) {
         song = NULL;
     }
-    playing = NULL; /* the transport's song: the song, or sc_play_pattern's copy */
+    playing = NULL;
     return r;
 }
 
-/* The song as a .sng at sc_out(): with SIDOU's trailer (1) or plain GoatTracker (0). The
- * length, or -1 (no song, or the writer failed). */
 EXPORT(sc_write) int32_t sc_write(int32_t with_trailer) {
     out_len = 0;
     if (!song || gt2_sng_write(song, with_trailer, write_out, NULL) != 0) {
@@ -141,8 +124,6 @@ EXPORT(sc_write) int32_t sc_write(int32_t with_trailer) {
     return (int32_t)out_len;
 }
 
-/* After sc_write(0): gt2_sng_check_plain over sc_out() (0 fine, 1 and a warning such as
- * READS BACK AS STEREO in sc_info's msg, -1 unreadable). */
 EXPORT(sc_check_plain) int32_t sc_check_plain(void) {
     memset(info.msg, 0, sizeof info.msg);
     if (!song) {
@@ -151,7 +132,6 @@ EXPORT(sc_check_plain) int32_t sc_check_plain(void) {
     return gt2_sng_check_plain(song, read_mem, out_buf, info.msg);
 }
 
-/* Instrument (1-63) as a GTI5 file at sc_out(): the length, or -gt2_err. */
 EXPORT(sc_export_instrument) int32_t sc_export_instrument(uint32_t instrument) {
     out_len = 0;
     if (!song) {
@@ -169,7 +149,6 @@ EXPORT(sc_export_instrument) int32_t sc_export_instrument(uint32_t instrument) {
     return (int32_t)out_len;
 }
 
-/* The song's model for display: counts, strings, instruments, tables, orderlists, patterns. */
 EXPORT(sc_song_word) uint32_t sc_song_word(uint32_t which) {
     if (!song) {
         return 0;
@@ -190,28 +169,24 @@ EXPORT(sc_song_string) const char* sc_song_string(uint32_t which) {
     }
     return which == 0 ? song->name : which == 1 ? song->author : song->copyright;
 }
-/* Instrument i (1-63): its 25 bytes in the file's order (the name last, 16 bytes). */
 EXPORT(sc_instrument) const uint8_t* sc_instrument(uint32_t i) {
     return song && i >= 1u && i <= GT2_MAX_INSTR ? song->instr[i - 1u] : NULL;
 }
 EXPORT(sc_table_rows) uint32_t sc_table_rows(uint32_t t) {
     return song && t < GT2_TABLES ? gt2_saved_table_rows(song, t) : 0;
 }
-/* Table t's left (side 0) or right (side 1) column, 255 bytes. */
 EXPORT(sc_table) const uint8_t* sc_table(uint32_t t, uint32_t side) {
     if (!song || t >= GT2_TABLES) {
         return NULL;
     }
     return side ? song->rtable[t] : song->ltable[t];
 }
-/* An orderlist: its entries, then $FF and the restart position (sc_order_entries + 2 bytes). */
 EXPORT(sc_order) const uint8_t* sc_order(uint32_t subtune, uint32_t channel) {
     return song ? gt2_order_data(song, subtune, channel) : NULL;
 }
 EXPORT(sc_order_entries) uint32_t sc_order_entries(uint32_t subtune, uint32_t channel) {
     return song ? gt2_order_entries(song, subtune, channel) : 0;
 }
-/* A held pattern's rows, 4 bytes each, the end row included; NULL if not held. */
 EXPORT(sc_pattern) const uint8_t* sc_pattern(uint32_t p) {
     return song ? gt2_pattern_data(song, p) : NULL;
 }
@@ -219,21 +194,12 @@ EXPORT(sc_pattern_rows) uint32_t sc_pattern_rows(uint32_t p) {
     return song ? gt2_pattern_rows(song, p) : 0;
 }
 
-/* --- Edits: the device's own primitives (gt2_song.h), each made and committed at once (the
- * host's way: gt2_edit_commit), so the model refuses here what it refuses on the FM-1 (LOCK
- * follows a pattern's rows as there, and the save-size cap is the same). A rebuild that finds
- * no hole large enough tidies the arena as the device's editor does (gt2_compact_step, one move
- * at a time) and tries again. Every call returns 0 or a gt2_err (GT2_ERR_SONG_FULL: the song as
- * the FM-1 saves it would pass 64 KiB). The page keeps its own undo: sc_region()'s bytes (the
- * region holds the whole song, offsets only, nothing outside it). */
-
 enum {
     SC_EDIT_INSTR, SC_EDIT_TABLE, SC_EDIT_ROW, SC_EDIT_ORDER, SC_EDIT_ORDER_INSERT,
     SC_EDIT_ORDER_DELETE, SC_EDIT_PUSH_ROW, SC_EDIT_PULL_ROW, SC_EDIT_INSERT_ROW,
     SC_EDIT_DELETE_ROW, SC_EDIT_RESIZE, SC_EDIT_PATTERN_ADD, SC_EDIT_PATTERN_REMOVE
 };
 
-/* The pattern the last SC_EDIT_PATTERN_ADD made. */
 static uint32_t added;
 
 static gt2_err primitive(uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32_t d, gt2_edit* e) {
@@ -256,14 +222,11 @@ static gt2_err primitive(uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32
     }
 }
 
-/* One edit (op and its arguments: SC_EDIT_ROW's d is the cell, its first byte lowest). */
 EXPORT(sc_edit) int32_t sc_edit(uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
     if (!song) {
         return GT2_ERR_RANGE;
     }
     gt2_edit e;
-    /* Each compaction move frees no space but joins holes; it ends within two moves a block
-     * (gt2_song.h), so a bound of the arena's units is generous. */
     for (uint32_t tries = 0; tries < 2u * GT2_REGION_MAX / GT2_UNIT; tries++) {
         memset(&e, 0, sizeof e);
         gt2_err r = primitive(op, a, b, c, d, &e);
@@ -288,7 +251,6 @@ EXPORT(sc_added) uint32_t sc_added(void) {
     return added;
 }
 
-/* The song's whole state, for the page's undo: copy it out before an edit, back to undo. */
 EXPORT(sc_region) uint8_t* sc_region(void) {
     return (uint8_t*)region;
 }
@@ -296,8 +258,6 @@ EXPORT(sc_region_bytes) uint32_t sc_region_bytes(void) {
     return sizeof region;
 }
 
-/* A pattern row's parameter locks (song_ext.h's LOCK): their count; sc_out() holds them,
- * SONG_LOCK_BYTES each (pattern, row, parameter, value u16). */
 EXPORT(sc_locks_row) uint32_t sc_locks_row(uint32_t pattern, uint32_t row) {
     uint32_t n = 0;
     const uint8_t* r = song ? song_locks_row(song, pattern, row, &n) : NULL;
@@ -308,21 +268,14 @@ EXPORT(sc_locks_row) uint32_t sc_locks_row(uint32_t pattern, uint32_t row) {
     return n;
 }
 
-/* --- Preview: the device's song transport (song_ctl) into chip A, as the audio interrupt
- * runs it, a block of SONG_BLOCK samples at a time with a main-loop pass between. Chip A has
- * the song's setup (CHPA: the profile, the character's four controls, the experts and the
- * envelope mode; a character lock moves them at once, where the FM-1 glides), and
- * sc_render_out puts it through the effect slots (SLOT) to stereo as the FM-1's output does.
- * Not here: the thump's output stage, chip B, CHIP SPREAD, MASTER and the tail gate. */
-
 static uint32_t scratch[SONG_REGION_BYTES / 4u];
 static sid_character character, base_character;
 static sid_dac dac;
-static uint8_t envelope; /* CHPA's: 1 AUTHENTIC */
+static uint8_t envelope;
 static sid_slots slots;
 static sid_slot_pool slot_pool;
 static int16_t pcm_out[2u * PCM_MAX];
-#define SC_SLOTS_SEED 0x51D0u /* platform/fm1/audio.c's */
+#define SC_SLOTS_SEED 0x51D0u
 
 static void pass(void) {
     song_ctl_poll(&sc, SONG_POLL_SLICE | SONG_POLL_RING);
@@ -335,7 +288,6 @@ static void block(int16_t* out) {
     song_ctl_block_end(&sc, out, SONG_BLOCK);
 }
 
-/* CHPA as the FM-1 accepts it (platform/fm1/main.c's setup_valid): 1 and the chunk. */
 static int song_setup(const gt2_song* s, song_chip_setup* c) {
     if (!song_ext_get_chip(s, SONG_TAG_CHPA, c)) {
         return 0;
@@ -372,8 +324,6 @@ static void chip_a_character(void* ctx, uint32_t field, int32_t value) {
     sid_character_change(&chip, &character, &dac);
 }
 
-/* The chip and the slots the song asks for: CHPA's model and character, else OPTS's model with
- * the default character and AUTHENTIC envelopes; SLOT's three slots, settled. */
 static int transport(gt2_song* s) {
     playing = s;
     if (!s) {
@@ -415,8 +365,6 @@ static int transport(gt2_song* s) {
                                  (float)v.slot[k][3] * to1, (float)v.slot[k][4] * to1};
             sid_slots_set(&slots, k, &p);
         }
-        /* The FM-1's slots took the song's settings when it loaded, well before PLAY: here two
-         * seconds of silence bring them there (their switch, its warm-up and fade). */
         memset(pcm, 0, SONG_BLOCK * sizeof pcm[0]);
         for (uint32_t b = 0; b < 2u * PCM_BLOCKS; b++) {
             sid_slots_process(&slots, pcm, pcm_out, SONG_BLOCK);
@@ -425,8 +373,6 @@ static int transport(gt2_song* s) {
     return 1;
 }
 
-/* Plays subtune from orderlist entry pos of each channel (0: its start): 1, or 0 and
- * sc_play_error() (GT2_PLAY_ERR_*, SONG_ERR_*). */
 EXPORT(sc_play_from) int32_t sc_play_from(uint32_t subtune, uint32_t pos) {
     if (!transport(song)) {
         return 0;
@@ -440,9 +386,6 @@ EXPORT(sc_play_error) int32_t sc_play_error(void) {
     return sc.error;
 }
 
-/* Plays one pattern over and over on voice `channel` (0-2), the others muted: a copy of the
- * song whose first subtune's orderlists all name it, so the song is untouched. 1, or 0 and
- * sc_play_error() (or a gt2_err from making the copy, negated, minus 100). */
 EXPORT(sc_play_pattern) int32_t sc_play_pattern(uint32_t pattern, uint32_t channel) {
     if (!song || channel >= GT2_MONO_CHANNELS || song->channels != GT2_MONO_CHANNELS) {
         sc.error = song && song->channels != GT2_MONO_CHANNELS ? -2 : -1;
@@ -479,7 +422,6 @@ EXPORT(sc_play_pattern) int32_t sc_play_pattern(uint32_t pattern, uint32_t chann
     return 1;
 }
 
-/* The audition (the song stopped, jams sound): 1 once a jam would sound, else 0. */
 EXPORT(sc_audition) int32_t sc_audition(void) {
     if (!transport(song) || !song_ctl_audition(&sc)) {
         return 0;
@@ -491,15 +433,12 @@ EXPORT(sc_audition) int32_t sc_audition(void) {
     return song_ctl_jam_ready(&sc);
 }
 
-/* Voice v takes note (0 C-0 .. 95; SONG_JAM_RELEASE lets it go) and instrument at its next
- * tick 0. */
 EXPORT(sc_jam) int32_t sc_jam(uint32_t voice, uint32_t note, uint32_t instrument) {
     int r = song_ctl_jam(&sc, voice, note, instrument);
     pass();
     return r;
 }
 
-/* Stops what plays (each voice's release rings on, as the FM-1's STOP). */
 EXPORT(sc_stop) int32_t sc_stop(void) {
     if (!playing) {
         return 0;
@@ -509,8 +448,6 @@ EXPORT(sc_stop) int32_t sc_stop(void) {
     return r;
 }
 
-/* The next blocks (at most PCM_BLOCKS) of chip A's mono 16-bit PCM at sc_rate() into sc_pcm():
- * the sample count. */
 EXPORT(sc_render) uint32_t sc_render(uint32_t blocks) {
     if (!playing) {
         return 0;
@@ -525,8 +462,6 @@ EXPORT(sc_render) uint32_t sc_render(uint32_t blocks) {
     return blocks * SONG_BLOCK;
 }
 
-/* The same through the effect slots: interleaved stereo (left first) into sc_pcm_out(), the
- * frame count. */
 EXPORT(sc_render_out) uint32_t sc_render_out(uint32_t blocks) {
     uint32_t n = sc_render(blocks);
     sid_slots_process(&slots, pcm, pcm_out, n);
@@ -536,7 +471,6 @@ EXPORT(sc_pcm_out) int16_t* sc_pcm_out(void) {
     return pcm_out;
 }
 
-/* Calls of the play routine since the play (for a song's length in the preview). */
 EXPORT(sc_calls) uint32_t sc_calls(void) {
     return sc.calls;
 }

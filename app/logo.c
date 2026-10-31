@@ -8,44 +8,29 @@
 #include "screen.h"
 #include "sine.h"
 
-/* ---- Pulse Train ----
- *
- * 15 x 5 cells, 120 x 40 pixels. The letters are a 5 x 7 face at 4x: each letter pixel a
- * 4 x 4 block, so the blocks are the cells' quadrants. Letter k starts at pixel 24 k. Pixel
- * rows 0..27 are seven bands of 4 rows, each band 3 rows of colour and a slot, coloured
- * through the raster ramp. A cell row holds two bands: the top one as a font glyph
- * (FONT_SLOT_*) in the band's colour, the bottom one as an overlay in the next band's. The
- * pulse wave below them is an overlay too: 2 pixels thick on rows 31-32 (high) or 36-37
- * (low), with 2-pixel edges between, in cyan. */
-
 #define PT_COLS 15u
 #define PT_ROWS 5u
 #define PT_BANDS 7u
 #define PT_LETTERS 5u
-#define PT_PITCH_Q 6u /* quadrants from one letter to the next (24 pixels) */
-#define PT_PERIOD 24u /* the pulse wave's period, pixels */
-#define PT_HIGH 31u   /* its top row high, and low */
+#define PT_PITCH_Q 6u
+#define PT_PERIOD 24u
+#define PT_HIGH 31u
 #define PT_LOW 36u
 #define PT_COLOR GRID_CYAN
-/* Every 4 frames: the stripes on frames 2 mod 4, the pulse on 0 mod 4. */
 #define PT_STEP 4u
-/* The pulse moves this many pixels a step (25 pixels a second), and its duty cycle sweeps
- * 14/256 of a turn a step (2.2 rad/s). */
 #define PT_MOVE 4u
 #define PT_SWEEP 14u
 
-/* S I D O U, rows top first, bit 4 the leftmost pixel. */
 static const uint8_t PT_FACE[PT_LETTERS][PT_BANDS] = {
-    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}, /* S */
-    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F}, /* I */
-    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E}, /* D */
-    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, /* O */
-    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, /* U */
+    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E},
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F},
+    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E},
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},
 };
 
 static const uint8_t PT_SLOT[4] = {' ', FONT_SLOT_L, FONT_SLOT_R, FONT_SLOT_LR};
 
-/* Band b's two quadrants in cell column cx: bit 0 the left, bit 1 the right. */
 static uint32_t pt_quads(uint32_t cx, uint32_t b) {
     uint32_t out = 0;
     for (uint32_t q = 0; q < 2u; q++) {
@@ -59,9 +44,6 @@ static uint32_t pt_quads(uint32_t cx, uint32_t b) {
     return out;
 }
 
-/* The pulse wave's pixels in each of its pixel columns, as a mask of its rows 31..38 (bit 0
- * row 31): the level's two rows, and rows 31..37 where the level changes (the column of the
- * change and the one before it). */
 #define PT_W (PT_COLS * 8u)
 static void pt_wave(uint8_t col[PT_W], uint32_t shift, uint32_t duty) {
     uint8_t high[PT_W];
@@ -72,7 +54,7 @@ static void pt_wave(uint8_t col[PT_W], uint32_t shift, uint32_t duty) {
             p = 0;
         }
     }
-    const uint8_t edge = 0x7Fu; /* rows 31..37 */
+    const uint8_t edge = 0x7Fu;
     for (uint32_t x = 0; x < PT_W; x++) {
         col[x] = high[x] ? 0x03u : (uint8_t)(0x03u << (PT_LOW - PT_HIGH));
         if ((x > 0 && high[x - 1] != high[x]) || (x + 1 < PT_W && high[x + 1] != high[x])) {
@@ -82,12 +64,10 @@ static void pt_wave(uint8_t col[PT_W], uint32_t shift, uint32_t duty) {
 }
 
 static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg) {
-    /* The grid's pixel region is the logo's (Cracktro Chrome's): this one has none. */
     grid_region_clear(g);
     uint32_t stripe = (frame + 2u) / PT_STEP % PT_BANDS;
     uint32_t pulse = frame / PT_STEP;
     uint32_t shift = pulse * PT_MOVE % PT_PERIOD;
-    /* duty 12 +- 7 of 24 pixels: 0.5 +- 0.3 */
     uint32_t duty = (uint32_t)(12 + sine_scaled(pulse * PT_SWEEP, 7));
     const uint8_t blank = GRID_ATTR(bg, bg);
     uint8_t wave[PT_W];
@@ -97,9 +77,9 @@ static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t
             uint32_t c = col + cx;
             uint32_t r = row + cy;
             uint8_t mask[8] = {0};
-            uint32_t over = 0; /* any overlay pixel */
+            uint32_t over = 0;
             uint8_t over_color = PT_COLOR;
-            uint32_t top = 2u * cy; /* the band in the cell's top half */
+            uint32_t top = 2u * cy;
             if (top < PT_BANDS) {
                 uint32_t q = pt_quads(cx, top);
                 uint8_t fg = screen_ramp[(top + PT_BANDS - stripe) % PT_BANDS];
@@ -114,7 +94,6 @@ static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t
                 over = bits;
                 over_color = screen_ramp[(top + 1u + PT_BANDS - stripe) % PT_BANDS];
             } else {
-                /* The cell's pixel rows against the wave's rows 31..38. */
                 for (uint32_t x = 0; x < 8u; x++) {
                     uint32_t rows = wave[cx * 8u + x];
                     for (uint32_t y = 0; y < 8u; y++) {
@@ -137,23 +116,11 @@ static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t
     }
 }
 
-/* Measured by host/crates/sidou-tests/tests/app/logo.rs: at most 42 cells on a stripe frame
- * and 30 on a pulse frame; 55 overlays. */
 const logo logo_pulse_train = {"PULSE TRAIN", PT_COLS, PT_ROWS, 55, 42, pt_draw, NULL};
-
-/* ---- the chrome logos: Metal Chrome and Cracktro Chrome ----
- *
- * The scene (assets/logo/<name>.png) in the pixel region, its cells blank (white on the
- * background, no overlay) so that the bitmap shows alone; what the caller writes in them
- * afterwards draws over it. Cracktro Chrome's lettering and its shadow take pixel rows
- * 75..135, inside cell rows 9..16; Metal Chrome's, with their outline, 81..145, inside cell
- * rows 10..18. */
 
 #define CC_BAND_ROWS 8u
 #define MC_BAND_ROWS 9u
 
-/* The footprint blank and without overlays, for the bitmap alone. Composed every frame, so
- * the cells are only looked at while some overlay is in use. */
 static void cc_blank(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t bg) {
     grid_fill(g, col, row, w, h, ' ', GRID_ATTR(GRID_WHITE, bg));
     if (g->ovl_nfree == GRID_OVERLAYS) {
@@ -196,7 +163,6 @@ static void mc_scene(grid* g, uint32_t frame) {
     grid_region(g, 0, 0, GRID_COLS, GRID_ROWS, &logo_metal_chrome_bitmap, 0, 0);
 }
 
-/* Still: no overlays, and no cell changes after the first frame. */
 const logo logo_cracktro_chrome = {"CRACKTRO CHROME", GRID_COLS, CC_BAND_ROWS, 0, 0, cc_draw,
                                    cc_scene};
 const logo logo_metal_chrome = {"METAL CHROME", GRID_COLS, MC_BAND_ROWS, 0, 0, mc_draw,

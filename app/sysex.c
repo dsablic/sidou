@@ -10,7 +10,6 @@ enum {
     IDLE, UPLOAD, PROGRAM, COMMIT, DELETE, PREPASS, META, DOWNLOAD, FINISH, DIRECTORY, WAIT,
     DRAIN, IMPORT, IMPORT_DRAIN, OPEN, UNLINK
 };
-/* STILL is WAIT on the wire (sysex.h); WAIT names a state above. */
 enum { INQ = 1, DIR, GET, PUT, DATA, END, DEL, ABORT, STILL = 0x7D, ACK, NAK };
 
 static const char instrument_name[] = "MIDI INSTRUMENT";
@@ -34,8 +33,6 @@ static uint8_t reason(int result) {
     }
 }
 
-/* The files SysEx keeps to itself, and LAB's USER sounds (app/user_sound.h): never listed,
- * fetched, replaced or deleted over SysEx. */
 static int reserved(const char* name) {
     return !strcmp(name, instrument_name) || !strcmp(name, song_name) ||
            !strcmp(name, STORE_SOUNDS_NAME);
@@ -131,15 +128,11 @@ static void acknowledge(sysex* s, uint8_t sequence) {
     else s->last = s->now;
 }
 
-/* STORE_BUSY only because a record is being written (a save, a collection's copy), which
- * waits for quiet while the device sounds: the transfer owns the programs, so its holds finish
- * the record, and it waits for it (OPEN, UNLINK; store_file_wait). The pool's BUSY is final. */
 static int record_busy(const sysex* s, int result) {
     return result == STORE_BUSY && store_busy(s->storage) &&
            store_file_result(s->storage) != STORE_BUSY;
 }
 
-/* Waits for the record, as the owner of its programs, at most SYSEX_TIMEOUT_MS. */
 static void wait_record(sysex* s, uint8_t state) {
     program_owner(s);
     store_file_wait(s->storage, 1);
@@ -147,8 +140,6 @@ static void wait_record(sysex* s, uint8_t state) {
     s->last = s->now;
 }
 
-/* A PUT's sectors claimed (store_file_begin said yes): ACK its metadata; a .sid's first DATA,
- * held in buffer, is programmed (its ACK once it is). */
 static void claim(sysex* s) {
     uint8_t seq = s->sequence;
     s->claimed = 1;
@@ -163,10 +154,6 @@ static void claim(sysex* s) {
     acknowledge(s, seq);
 }
 
-/* A .sid's first DATA (n bytes from the file's start, in buffer): the header checked by
- * psid_parse (the first 128 bytes and the declared length are all it reads), then the sectors
- * claimed as a PUT's are and the packet programmed. A refusal comes before any claim, so
- * nothing of a refused tune is ever programmed. */
 static void sid_first(sysex* s, unsigned n, uint8_t seq) {
     psid_header h;
     s->checking = 0;
@@ -211,7 +198,6 @@ static void accept(sysex* s) {
     acknowledge(s, s->sequence);
 }
 
-/* Generate the packed wire representation directly from the one decoded buffer. */
 static uint8_t output_byte(sysex* s) {
     unsigned pos = s->tx_position++;
     if (s->tx_identity) {
@@ -238,9 +224,6 @@ static uint8_t output_byte(sysex* s) {
     return byte;
 }
 
-/* As much of the frame as send takes, to its F7: a 256-byte DATA is 101 event packets, and one
- * a poll held each reply to the poll's rate (about 200 ms a packet on the FM-1, whose USB ring
- * takes 64 and sends 16 a poll). send's back-pressure bounds a call's work. */
 static void transmit(sysex* s) {
     if (!s->hooks.send) return;
     while (s->tx_active) {
@@ -423,10 +406,8 @@ static void command(sysex* s, sysex_parser* p) {
         s->length = length;
         s->expected_crc = crc;
         if (writing) {
-            /* GTI5 staging must not appear among the store's playable songs. */
             s->file.type = s->target == 1 ? STORE_FILE_GTI : type;
             if (!s->target && type == STORE_FILE_SID) {
-                /* A .sid: acknowledged now, claimed once its first DATA's header checks. */
                 if (length < PSID_HEADER_SIZE_V1) {
                     fail(s, SYSEX_BROKEN, seq);
                     return;
@@ -477,7 +458,6 @@ static void command(sysex* s, sysex_parser* p) {
     } else fail(s, SYSEX_MALFORMED, seq);
 }
 
-/* Keep one packed byte back: only F7 identifies the checksum, not its value. */
 static void packed_byte(sysex* s, sysex_parser* p, uint8_t byte) {
     ++p->packed;
     if (!p->group) {
@@ -497,9 +477,6 @@ static void packed_byte(sysex* s, sysex_parser* p, uint8_t byte) {
     if (++p->group == 8) p->group = 0;
 }
 
-/* The clock only moves forward: sysex_poll's now_ms comes from the start of the caller's
- * main-loop pass, and the bytes taken in that pass may carry a later millisecond, so a smaller
- * now_ms than the last one seen is kept out (else now - last wraps and times the transfer out). */
 static void advance(sysex* s, uint32_t now_ms) {
     if ((int32_t)(now_ms - s->now) > 0) s->now = now_ms;
 }
@@ -620,7 +597,6 @@ void sysex_poll(sysex* s, uint32_t now_ms) {
         return;
     }
     if (s->tx_wait) return;
-    /* Loud (sysex.h): a write whose programs are due waits, and says so. */
     if (s->loud && s->programming &&
         (s->state == PROGRAM || s->state == COMMIT || s->state == DELETE || s->state == OPEN ||
          s->state == UNLINK)) {
@@ -633,7 +609,7 @@ void sysex_poll(sysex* s, uint32_t now_ms) {
             fail(s, SYSEX_BUSY, s->sequence);
             return;
         }
-        s->last = s->now; /* OPEN's and UNLINK's two seconds count no wait */
+        s->last = s->now;
         if (s->now - s->wait_sent >= SYSEX_WAIT_EVERY_MS) {
             s->wait_sent = s->now;
             if (s->hooks.toast) s->hooks.toast(s->hooks.ctx, SYSEX_WAITING);
@@ -643,13 +619,12 @@ void sysex_poll(sysex* s, uint32_t now_ms) {
                 return;
             }
         }
-        if (s->state == PROGRAM) return; /* nothing more written until quiet */
+        if (s->state == PROGRAM) return;
     } else if (s->waiting) {
         s->waiting = 0;
         if (s->hooks.toast) s->hooks.toast(s->hooks.ctx, SYSEX_RECEIVING);
     }
     if (s->state == OPEN || s->state == UNLINK) {
-        /* Tried again until the record commits; still busy after SYSEX_TIMEOUT_MS: BUSY. */
         int result = s->state == OPEN ?
             store_file_begin(s->storage, s->file.name, s->file.type, s->length) :
             store_file_delete(s->storage, s->file.name);

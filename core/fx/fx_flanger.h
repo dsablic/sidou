@@ -3,18 +3,6 @@
 #ifndef SIDOU_FX_FLANGER_H
 #define SIDOU_FX_FLANGER_H
 
-/* Flanger, mono in, stereo out: a short delay swept by a sine between MIN_MS and up to
- * MAX_MS, read with Hermite interpolation (it sweeps fast and far), mixed with the input,
- * with feedback through a soft clip. The right side reads the same line with the LFO 90
- * degrees on. Reimplemented from Dattorro, "Effect Design" part 2.
- *
- * - Amount: depth, the sweep from MIN_MS up to MIN_MS + (MAX_MS - MIN_MS) depth;
- * - A: rate, 0.05 .. 5 Hz (log);
- * - B: feedback, -0.9 (B = 0) through 0 (B = 0.5) to +0.9 (B = 1).
- * Any amounts in [0, 1] may arrive on any sample. As in the chorus, the LFO, depth and
- * rate are evaluated every SID_FX_MOD_SEGMENT samples and the read delays move linearly
- * in between; the depth gets one more one-pole (per segment). */
-
 #include <stdint.h>
 
 #include "fx_chorus.h"
@@ -30,18 +18,18 @@ extern "C" {
 #define SID_FX_FLANGER_MIN_MS 0.1f
 #define SID_FX_FLANGER_MAX_MS 10.0f
 #define SID_FX_FLANGER_MIN_HZ 0.05f
-#define SID_FX_FLANGER_RATE_OCTAVES 6.643856f /* log2(5 / 0.05) */
+#define SID_FX_FLANGER_RATE_OCTAVES 6.643856f
 #define SID_FX_FLANGER_FEEDBACK 0.9f
 
 typedef struct {
     float buf[SID_FX_FLANGER_LEN];
     sid_fx_delay line;
     uint32_t phase, inc;
-    float min_delay, range, hz_inc; /* samples; base increment as a float */
-    float depth, depth_coef; /* depth after the block's own smoothing */
-    float delay_l, delay_r;  /* read delays */
-    float step_l, step_r;    /* their change per sample in this segment */
-    uint32_t left;           /* samples left in the segment */
+    float min_delay, range, hz_inc;
+    float depth, depth_coef;
+    float delay_l, delay_r;
+    float step_l, step_r;
+    uint32_t left;
 } sid_fx_flanger;
 
 static inline void sid_fx_flanger_set_rate(sid_fx_flanger* f, float rate) {
@@ -49,8 +37,6 @@ static inline void sid_fx_flanger_set_rate(sid_fx_flanger* f, float rate) {
     f->inc = (uint32_t)(int32_t)(hz * f->hz_inc) << 1;
 }
 
-/* sid_fx_flanger_init but for the line's samples, which it leaves as they are (the effect
- * slots keep this part as a template and clear the line at a start: fx_slots.c). */
 static inline void sid_fx_flanger_setup(sid_fx_flanger* f, uint32_t sample_rate) {
     float fs = (float)sample_rate;
     sid_fx_delay_init(&f->line, SID_FX_FLANGER_LEN);
@@ -62,7 +48,7 @@ static inline void sid_fx_flanger_setup(sid_fx_flanger* f, uint32_t sample_rate)
         max_delay = (float)(SID_FX_FLANGER_LEN - 4u);
     }
     if (f->min_delay < 1.0f) {
-        f->min_delay = 1.0f; /* Hermite needs one newer sample */
+        f->min_delay = 1.0f;
     }
     f->range = max_delay - f->min_delay;
     f->delay_l = f->min_delay;
@@ -87,7 +73,6 @@ static inline void sid_fx_flanger_init(sid_fx_flanger* f, uint32_t sample_rate) 
     sid_fx_flanger_setup(f, sample_rate);
 }
 
-/* x is normalised; depth, rate and feedback are in [0, 1]. */
 static inline void sid_fx_flanger_tick(sid_fx_flanger* f, float x, float depth, float rate,
                                        float feedback, float* l, float* r) {
     if (f->left == 0) {

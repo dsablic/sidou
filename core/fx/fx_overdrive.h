@@ -3,20 +3,6 @@
 #ifndef SIDOU_FX_OVERDRIVE_H
 #define SIDOU_FX_OVERDRIVE_H
 
-/* Overdrive: a mid-hump pre-filter (x + hump * high-pass at ~700 Hz), gain, the tape's soft
- * clip through ADAA of the whole clip (fx_adaa.h: the residual form breaks down at this
- * much gain), a post tone low-pass and a DC blocker.
- *
- * - Amount: the drive, after the gain law of Plaits' Overdrive (Emilie Gillet, MIT):
- *   1 + 0.5 a + (24 a^5 - 0.5 a) a^2, so 1 at a = 0 rising to 25 (+28 dB) at a = 1, with
- *   most of the rise in the top half. The hump grows with it (0 to +8 dB at 1.4 kHz).
- *   Makeup keeps a reference level of 0.25 full scale at about the same loudness.
- * - A: tone, a one-pole low-pass at TONE_MIN_HZ (A = 0, dark) to TONE_MAX_HZ (A = 1),
- *   log-mapped and table-driven like the CRT.
- * - B: bias into the clip (up to 0.4), for even harmonics; its static output is removed
- *   and the DC blocker takes what rectification leaves.
- * Any amounts in [0, 1] may arrive on any sample. */
-
 #include <stdint.h>
 
 #include "fx_adaa.h"
@@ -31,7 +17,7 @@ extern "C" {
 #define SID_FX_OD_REF 0.25f
 #define SID_FX_OD_BIAS 0.4f
 #define SID_FX_OD_TONE_MIN_HZ 1500.0f
-#define SID_FX_OD_TONE_LN_RANGE 2.4849066f /* ln(18000 / 1500) */
+#define SID_FX_OD_TONE_LN_RANGE 2.4849066f
 #define SID_FX_OD_TONE_STEPS 16u
 #define SID_FX_OD_DC_HZ 10.0f
 
@@ -39,7 +25,6 @@ typedef struct {
     float hump_b, dc_r;
     float tone_table[SID_FX_OD_TONE_STEPS + 1u];
     float hump_lp, tone_lp, u_prev, dc_x, dc_y;
-    /* Derived from the amounts. */
     float amount, drive, hump, makeup;
     float bias_amount, bias, bias_out;
     float tone, tone_a;
@@ -54,14 +39,12 @@ static inline void sid_fx_overdrive_set_amount(sid_fx_overdrive* o, float a) {
     o->amount = a;
     o->drive = 1.0f + 0.5f * a + (24.0f * a2 * a2 * a - 0.5f * a) * a2;
     o->hump = SID_FX_OD_HUMP * a;
-    /* makeup = REF / clip(REF drive) */
     sid_fx_recip_track(&o->makeup, sid_fx_od_clip(SID_FX_OD_REF * o->drive) / SID_FX_OD_REF);
 }
 
 static inline void sid_fx_overdrive_set_bias(sid_fx_overdrive* o, float b) {
     o->bias_amount = b;
     o->bias = SID_FX_OD_BIAS * b;
-    /* The bias (at most 0.4) is below the knee: the clip there is the cubic. */
     o->bias_out = o->bias - (4.0f / 27.0f) * o->bias * o->bias * o->bias;
 }
 
@@ -100,7 +83,6 @@ static inline void sid_fx_overdrive_init(sid_fx_overdrive* o, uint32_t sample_ra
     sid_fx_overdrive_reset(o);
 }
 
-/* x is normalised to [-1, 1); amount (drive), tone and bias are in [0, 1]. */
 static inline float sid_fx_overdrive_tick(sid_fx_overdrive* o, float x, float amount, float tone,
                                           float bias) {
     if (amount != o->amount) {

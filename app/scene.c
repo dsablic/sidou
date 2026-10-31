@@ -7,7 +7,6 @@
 
 #include "font.h"
 
-/* A blank cell: black on black. */
 #define BLANK_CH ((uint8_t)' ')
 #define BLANK_ATTR GRID_ATTR(GRID_BLACK, GRID_BLACK)
 
@@ -77,8 +76,6 @@ const uint8_t scene_dist4[GRID_ROWS][GRID_COLS] = {
      131, 132, 134, 137, 139, 141, 143, 146, 148, 151, 153, 156, 158, 161, 164},
 };
 
-/* ---- shared ---- */
-
 const int8_t scene_sin8[256] = {
     0, 3, 6, 9, 12, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46,
     49, 51, 54, 57, 60, 63, 65, 68, 71, 73, 76, 78, 81, 83, 85, 88,
@@ -121,8 +118,7 @@ uint8_t scene_dark(uint8_t color) {
     return DARK[color & 15u];
 }
 
-/* A voice's colour as RULE30 and the ant draw it: darker under a low cutoff. */
-static uint8_t mood(const scene_music* m, uint32_t v) {
+static uint8_t cutoff_shaded_color(const scene_music* m, uint32_t v) {
     return m->cutoff < SCENE_DARK_CUTOFF ? scene_dark(m->color[v]) : m->color[v];
 }
 
@@ -143,30 +139,17 @@ static int32_t clamp(int32_t x, int32_t lo, int32_t hi) {
     return x < lo ? lo : x > hi ? hi : x;
 }
 
-/* ---- FIRE ---- */
-
 #define FIRE_TOP (GRID_ROWS - SCENE_FIRE_ROWS)
-/* Columns a flame, a voice each. */
 #define FIRE_W (GRID_COLS / SCENE_VOICES)
-/* The ember bed: the bottom heat row glows at least this (brown, 38..45). Above it, heat at or
- * below FIRE_DARK goes out: in silence the bed holds still, and a flame's tail ends dark. */
 #define FIRE_EMBER 38u
-/* What a silent voice's flame falls to, not to nothing: the bed burns at about 94 (FIRE_EMBER is
- * only the least it glows), so a flame a few rows high flickers in silence. */
 #define FIRE_IDLE_HOT 120u
 #define FIRE_DARK 48u
 
-/* The flame's ramp: red from just above FIRE_DARK, light red from FIRE_LIGHT, then a thin band
- * of yellow (lime on this palette) FIRE_YELLOW below the white. The cutoff sets where the
- * white starts (FIRE_WHITE_OPEN open, FIRE_WHITE_SHUT shut, past any heat): it moves the top of
- * the ramp, not the heat, so an open filter burns yellow and white near the bed and a shut one
- * red. The ember bed, in silence, is brown. */
 #define FIRE_LIGHT 135u
 #define FIRE_YELLOW 16u
 #define FIRE_WHITE_OPEN 196u
 #define FIRE_WHITE_SHUT 300u
 
-/* Heat 0..255 as a colour, white from white_at. */
 static uint8_t fire_color(uint32_t heat, uint32_t white_at) {
     return heat >= white_at                ? GRID_WHITE
            : heat + FIRE_YELLOW >= white_at ? GRID_YELLOW
@@ -175,8 +158,6 @@ static uint8_t fire_color(uint32_t heat, uint32_t white_at) {
                                             : GRID_BLACK;
 }
 
-/* Cell row k of the fire: the upper half the heat row 2k, the lower half 2k + 1; the bottom
- * heat row, the bed, brown where it only glows. */
 static void fire_row(scene* s, uint32_t k, uint32_t white_at) {
     const scene_fire* f = &s->u.fire;
     const uint8_t* up = f->heat[2u * k];
@@ -190,28 +171,23 @@ static void fire_row(scene* s, uint32_t k, uint32_t white_at) {
     }
 }
 
-/* Where the white starts for the cutoff (0..2047), on a curve that rises fast and flattens
- * (c (2 - c), c the cutoff's fraction): the preset's 1200 already burns yellow at the bed. */
 static uint32_t fire_white(const scene_music* m) {
     uint32_t c = m->cutoff;
-    uint32_t k = c * (4094u - c) / 2047u; /* 0..2047 */
+    uint32_t k = c * (4094u - c) / 2047u;
     return FIRE_WHITE_SHUT - k * (FIRE_WHITE_SHUT - FIRE_WHITE_OPEN) / 2047u;
 }
 
-/* One step of the fire: the fuel follows the envelopes, the bottom row burns it, and every row
- * takes the heat of the row below, cooled a little and blown a column either way within its
- * flame (so the flames rise a row a step). */
 static void fire_burn(scene* s, const scene_music* m) {
     scene_fire* f = &s->u.fire;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        uint32_t e = m->env[v] + m->env[v] / 2u; /* a sustain of 10 (170) burns full */
+        uint32_t e = m->env[v] + m->env[v] / 2u;
         e = e > 255u ? 255u : e;
         uint32_t hot = f->hot[v];
         if (e) {
             hot -= hot / 16u;
             hot = e > hot ? e : hot;
         } else {
-            hot -= (hot + 3u) / 4u; /* a silent voice's flame dies down to the idle flame */
+            hot -= (hot + 3u) / 4u;
             hot = hot < FIRE_IDLE_HOT ? FIRE_IDLE_HOT : hot;
         }
         f->hot[v] = (uint8_t)hot;
@@ -220,7 +196,6 @@ static void fire_burn(scene* s, const scene_music* m) {
     for (uint32_t x = 0; x < GRID_COLS; x++) {
         uint32_t v = x / FIRE_W;
         uint32_t r = scene_random(&s->rng);
-        /* The fuel sways along the bed, two sines drifting apart: tongues that rise and move. */
         int32_t sway = sin8(x * 23u + f->burns * 5u) + sin8(x * 61u - f->burns * 7u);
         uint32_t fuel = (uint32_t)(184 + (sway * 88 >> 8)) + (r >> 4 & 31u);
         fuel = fuel > 255u ? 255u : fuel;
@@ -229,7 +204,6 @@ static void fire_burn(scene* s, const scene_music* m) {
         bed[x] = (uint8_t)(heat > ember ? heat : ember);
     }
     f->burns++;
-    /* The pitch: higher notes cool slower and burn higher; the resonance lowers the cooling. */
     uint32_t cool[SCENE_VOICES];
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         uint32_t t =
@@ -238,8 +212,6 @@ static void fire_burn(scene* s, const scene_music* m) {
         cool[v] = (uint32_t)(c < 2 ? 2 : c) + 1u;
         f->flare[v] = 0;
     }
-    /* Flame by flame, the xorshift's state in a register (scene_random's sequence): the burn
-     * runs twice every other frame, 840 cells each. */
     uint32_t rng = s->rng;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         uint32_t lo = v * FIRE_W;
@@ -253,15 +225,12 @@ static void fire_burn(scene* s, const scene_music* m) {
                 rng ^= rng >> 17;
                 rng ^= rng << 5;
                 uint32_t r = rng;
-                /* A cell in four drifts a column either way: the columns hold, tongues rise. */
                 uint32_t to = x;
                 if ((r & 3u) == 0u && x > lo) {
                     to--;
                 } else if ((r & 3u) == 1u && x < hi) {
                     to++;
                 }
-                /* Cooled by up to cool a row, and one cell in eight by 3 cool more: the flames
-                 * break into tongues. */
                 uint32_t c = ((r >> 8 & 255u) * k >> 8) + ((r >> 16 & 7u) ? 0u : 3u * k);
                 row[to] = (uint8_t)(below[x] > c + FIRE_DARK ? below[x] - c : 0u);
             }
@@ -273,17 +242,14 @@ static void fire_burn(scene* s, const scene_music* m) {
 static void fire_start(scene* s) {
     blank_rows(s, 0, FIRE_TOP);
     for (uint32_t k = 0; k < SCENE_FIRE_ROWS; k++) {
-        fire_row(s, k, FIRE_WHITE_SHUT); /* no heat yet: black */
+        fire_row(s, k, FIRE_WHITE_SHUT);
     }
 }
 
-/* It burns every other frame, two steps at once so the flames rise as fast as at 25 fps, and
- * draws half its rows a frame, the even ones on the frame it burns and the odd ones on the
- * next: 12.5 fps, half the area a frame. */
 static void fire_step(scene* s, const scene_music* m) {
     scene_fire* f = &s->u.fire;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        f->flare[v] = (uint8_t)(f->flare[v] | (m->trig[v] != 0)); /* kept for the next burn */
+        f->flare[v] = (uint8_t)(f->flare[v] | (m->trig[v] != 0));
     }
     uint32_t odd = s->frame & 1u;
     if (!odd) {
@@ -295,40 +261,28 @@ static void fire_step(scene* s, const scene_music* m) {
     }
 }
 
-/* ---- PLASMA ---- */
-
 #define PLASMA_MID 15
-/* The sines' spatial steps, 65536 a turn: across 0.28 rad a cell, down 0.22, round the centre
- * 0.35 (a quarter cell of scene_dist4: 0.0875), the diagonal 0.10 + 0.25 resonance / 15. */
 #define PLASMA_X 2921u
 #define PLASMA_Y 2294u
 #define PLASMA_R 913u
 #define PLASMA_D 1043u
 #define PLASMA_D_RES 174u
-/* A ripple: a bright ring RING_W quarter cells wide each side, growing RING_SPEED quarter cells
- * a frame (half a cell) from its note-on; its strength at the note-on (0.22 of the plasma's
- * range) falls exp(-3 t), 0.887 a frame. One ring, not a train of them: a frame changes the
- * cells on its edge, not every cell round it. */
 #define RING_W 8u
 #define RING_SPEED 2u
 #define RIPPLE_AMP 224u
 #define RIPPLE_FALL 227u
-/* Voice 3's warmth: up to 0.18 of the range, moving at most WARM_STEP a frame toward its
- * envelope, so a drum's envelope does not move every cell at once. */
 #define WARM_MAX 183u
 #define WARM_STEP 4u
-/* The four sums' range is -508..508; a level is one of 20 (5 ramp steps of 4 dithers). */
 #define PLASMA_SPAN 1016
 
 static const uint8_t PLASMA_RAMP[6] = {GRID_BLACK,      GRID_BLUE, GRID_PURPLE,
                                        GRID_LIGHT_BLUE, GRID_CYAN, GRID_WHITE};
 
-/* Cell row y of the plasma at its phases now. */
 static void plasma_row(scene* s, uint32_t y, const int32_t* across, const int32_t* diag,
                        const scene_ripple* rip, uint32_t ripples) {
     const scene_plasma* p = &s->u.plasma;
     int32_t down = sin8((y * PLASMA_Y - p->phase[1]) >> 8);
-    int32_t boost = p->warm; /* voice 3 warms it */
+    int32_t boost = p->warm;
     uint32_t dy = (uint32_t)(y < PLASMA_MID ? PLASMA_MID - y : y - PLASMA_MID);
     for (uint32_t x = 0; x < GRID_COLS; x++) {
         uint32_t dx = (uint32_t)(x < PLASMA_MID ? PLASMA_MID - x : x - PLASMA_MID);
@@ -344,14 +298,13 @@ static void plasma_row(scene* s, uint32_t y, const int32_t* across, const int32_
                 v += (int32_t)(r->amp * (RING_W - off) / RING_W);
             }
         }
-        uint32_t level = (uint32_t)clamp(v, 0, PLASMA_SPAN) * 1289u >> 16; /* * 20 / 1017 */
+        uint32_t level = (uint32_t)clamp(v, 0, PLASMA_SPAN) * 1289u >> 16;
         uint32_t pr = level / 4u;
         put(s, x, y, (uint8_t)(FONT_D0 + 4u * (level % 4u)),
             GRID_ATTR(PLASMA_RAMP[pr + 1u], PLASMA_RAMP[pr]));
     }
 }
 
-/* Rows from, from + by, .. below to. */
 static void plasma_rows(scene* s, const scene_music* m, uint32_t from, uint32_t to,
                         uint32_t by) {
     const scene_plasma* p = &s->u.plasma;
@@ -364,7 +317,7 @@ static void plasma_rows(scene* s, const scene_music* m, uint32_t from, uint32_t 
     for (uint32_t k = 0; k < 2u * GRID_COLS - 1u; k++) {
         diag[k] = sin8((k * twist + p->phase[2]) >> 8);
     }
-    scene_ripple rip[SCENE_VOICES]; /* the ripples running */
+    scene_ripple rip[SCENE_VOICES];
     uint32_t ripples = 0;
     for (uint32_t k = 0; k < SCENE_VOICES; k++) {
         if (p->rip[k].age < SCENE_RIPPLE_FRAMES) {
@@ -376,17 +329,12 @@ static void plasma_rows(scene* s, const scene_music* m, uint32_t from, uint32_t 
     }
 }
 
-/* No rows: the start is drawn as scene_fill asks for it. */
 static void plasma_start(scene* s) {
     for (uint32_t k = 0; k < SCENE_VOICES; k++) {
         s->u.plasma.rip[k].age = SCENE_RIPPLE_FRAMES;
     }
 }
 
-/* The cutoff sets the speed (0.1 to 0.8 rad a second, on its square: the prototype's 3.7 at
- * the top changed more cells a frame than the budget has), the envelopes how much of it runs
- * (an eighth in silence), and each sine runs at its own multiple of it (1, 0.7 back, 1.3 and
- * 1.7 back). It draws every other row a frame. */
 static void plasma_step(scene* s, const scene_music* m) {
     scene_plasma* p = &s->u.plasma;
     uint32_t loud = 0;
@@ -406,7 +354,6 @@ static void plasma_step(scene* s, const scene_music* m) {
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         scene_ripple* r = &p->rip[v];
         if (m->trig[v] && m->note[v] != SCENE_NO_NOTE) {
-            /* The pitch class across, the pitch up. */
             r->x = (uint8_t)(PLASMA_MID + ((int32_t)(m->note[v] % 12u) - 6) * 2);
             r->y = (uint8_t)clamp(PLASMA_MID - ((int32_t)m->note[v] - 72) / 2, 0,
                                   (int32_t)GRID_ROWS - 1);
@@ -421,21 +368,17 @@ static void plasma_step(scene* s, const scene_music* m) {
     plasma_rows(s, m, s->frame & 1u, GRID_ROWS, 2u);
 }
 
-/* ---- RULE 30 ---- */
-
 #define R30_W SCENE_RULE30_W
 #define R30_H SCENE_RULE30_H
 #define R30_MASK ((1ull << R30_W) - 1u)
 
 uint64_t scene_rule30_next(uint64_t cur) {
     cur &= R30_MASK;
-    uint64_t left = ((cur << 1) | (cur >> (R30_W - 1u))) & R30_MASK; /* bit i: cell i - 1 */
-    uint64_t right = (cur >> 1) | ((cur & 1u) << (R30_W - 1u));      /* bit i: cell i + 1 */
+    uint64_t left = ((cur << 1) | (cur >> (R30_W - 1u))) & R30_MASK;
+    uint64_t right = (cur >> 1) | ((cur & 1u) << (R30_W - 1u));
     return left ^ (cur | right);
 }
 
-/* A generation on the head's row in color, the two rows ahead cleared; dirty gets the cell
- * rows it touched. */
 static void r30_generation(scene* s, uint8_t color, uint32_t* dirty) {
     scene_rule30* t = &s->u.rule30;
     uint32_t h = t->head;
@@ -451,7 +394,6 @@ static void r30_generation(scene* s, uint8_t color, uint32_t* dirty) {
     t->head = (uint8_t)((h + 1u) % R30_H);
 }
 
-/* Cell row r: rows 2r and 2r + 1 as quadrants, in the lower row's colour where it has a pixel. */
 static void r30_draw(scene* s, uint32_t r) {
     const scene_rule30* t = &s->u.rule30;
     uint64_t a = t->row[2u * r];
@@ -479,8 +421,6 @@ static void r30_start(scene* s) {
     }
 }
 
-/* A note-on steps it in its voice's colour (voice 3's flips the cell its pitch picks first);
- * the loudest held voice keeps it stepping with its envelope. */
 static void r30_step(scene* s, const scene_music* m) {
     scene_rule30* t = &s->u.rule30;
     uint32_t dirty = 0;
@@ -492,7 +432,7 @@ static void r30_step(scene* s, const scene_music* m) {
         if (v == 2u && m->note[v] != SCENE_NO_NOTE) {
             t->cur ^= 1ull << ((m->note[v] * 7u + s->frame * 11u) % R30_W);
         }
-        r30_generation(s, mood(m, v), &dirty);
+        r30_generation(s, cutoff_shaded_color(m, v), &dirty);
         steps++;
     }
     uint32_t loud = SCENE_VOICES;
@@ -508,7 +448,7 @@ static void r30_step(scene* s, const scene_music* m) {
         if (t->acc >= SCENE_ENV_STEP) {
             t->acc = (uint16_t)(t->acc - SCENE_ENV_STEP);
             if (steps < SCENE_RULE30_MAX_STEPS) {
-                r30_generation(s, mood(m, loud), &dirty);
+                r30_generation(s, cutoff_shaded_color(m, loud), &dirty);
             }
         }
     }
@@ -519,8 +459,6 @@ static void r30_step(scene* s, const scene_music* m) {
     }
 }
 
-/* ---- STARS ---- */
-
 #define STAR_NEAR 205
 #define STAR_FAR 4096
 #define STAR_BOX 768
@@ -528,7 +466,6 @@ static void r30_step(scene* s, const scene_music* m) {
 static const uint8_t STAR_GLYPH[4] = {FONT_TINY, FONT_DOT, FONT_PLUS, FONT_STAR};
 static const uint8_t STAR_COLOR[4] = {GRID_GREY, GRID_LIGHT_GREY, GRID_WHITE, GRID_WHITE};
 
-/* Far to near: 0 past 0.75 of the depth, 1 past 0.45, 2 past 0.22, 3 the nearest. */
 static uint32_t star_layer(uint32_t z) {
     return z > 3072u ? 0u : z > 1843u ? 1u : z > 901u ? 2u : 3u;
 }
@@ -569,8 +506,6 @@ static void stars_start(scene* s) {
     stars_draw(s, NULL);
 }
 
-/* They come closer at the cruising speed (the cutoff's), a voice's third faster with its
- * envelope; a note-on lights its voice's stars and steers the centre toward its pitch. */
 static void stars_step(scene* s, const scene_music* m) {
     scene_stars* t = &s->u.stars;
     int32_t cruise = 8 + (int32_t)m->cutoff * 24 / 2047;
@@ -584,7 +519,7 @@ static void stars_step(scene* s, const scene_music* m) {
             t->lit[v]--;
         }
         if (!m->gate[v] && !m->env[v]) {
-            t->lit[v] = 0; /* let go and silent; a note-on's own ENV3 may still be 0 */
+            t->lit[v] = 0;
         }
     }
     int32_t d = t->aim - t->cx;
@@ -602,8 +537,6 @@ static void stars_step(scene* s, const scene_music* m) {
     }
     stars_draw(s, m);
 }
-
-/* ---- ANT ---- */
 
 static const int8_t ANT_DX[4] = {0, 1, 0, -1};
 static const int8_t ANT_DY[4] = {-1, 0, 1, 0};
@@ -636,8 +569,6 @@ static void ant_start(scene* s) {
     ant_balls(s, NULL);
 }
 
-/* Langton's rule: on an empty cell turn right and paint it, on a painted one turn left and
- * clear it; then a step forward, round the edges. */
 static void ant_walk(scene* s, uint32_t v, uint8_t color) {
     scene_ant* t = &s->u.ant;
     scene_ant_walker* a = &t->a[v];
@@ -654,12 +585,10 @@ static void ant_walk(scene* s, uint32_t v, uint8_t color) {
     a->y = (uint8_t)((a->y + GRID_ROWS + (uint32_t)(int32_t)ANT_DY[a->d]) % GRID_ROWS);
 }
 
-/* A note-on walks its ant SCENE_ANT_STEPS steps, a sounding voice a step every SCENE_ENV_STEP
- * of its envelope; the canvas changes only where an ant went. */
 static void ant_step(scene* s, const scene_music* m) {
     scene_ant* t = &s->u.ant;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        ant_cell(s, t->a[v].x, t->a[v].y); /* the ball goes */
+        ant_cell(s, t->a[v].x, t->a[v].y);
     }
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         uint32_t n = m->trig[v] ? SCENE_ANT_STEPS : 0u;
@@ -673,17 +602,15 @@ static void ant_step(scene* s, const scene_music* m) {
             t->acc[v] = 0;
         }
         for (; n > 0; n--) {
-            ant_walk(s, v, mood(m, v));
+            ant_walk(s, v, cutoff_shaded_color(m, v));
             if (++t->steps >= SCENE_ANT_RESET) {
-                ant_start(s); /* a clean board */
+                ant_start(s);
                 break;
             }
         }
     }
     ant_balls(s, m);
 }
-
-/* ---- the pieces ---- */
 
 static const scene_music REST = {
     {0}, {0}, {SCENE_NO_NOTE, SCENE_NO_NOTE, SCENE_NO_NOTE}, {0}, {0}, 0, 0};
@@ -711,7 +638,7 @@ void scene_fill(scene* s, const scene_music* m, uint32_t rows) {
     if (s->filled >= rows) {
         return;
     }
-    plasma_rows(s, m ? m : &REST, s->filled, rows, 1u); /* the only piece that fills */
+    plasma_rows(s, m ? m : &REST, s->filled, rows, 1u);
     s->filled = (uint8_t)rows;
 }
 

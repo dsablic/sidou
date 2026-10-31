@@ -88,7 +88,6 @@ static gt2_err prepare(song_pages* p) {
         return gt2_order_delete(song, r->pattern, voice, r->row, &p->edit);
     if (kind == SONG_PAGES_EDIT_RESTART)
         return gt2_set_order(song, r->pattern, voice, r->row, (uint8_t)value, &p->edit);
-    /* Publish an empty pattern first; only a later acknowledged step can name it. */
     if (value < GT2_REPEAT && !song->pattern[value]) {
         gt2_err result = gt2_order_pattern_check(song, r->pattern, voice, r->row,
                                                 (uint8_t)value, kind == SONG_PAGES_EDIT_INSERT);
@@ -123,7 +122,7 @@ int song_pages_poll(song_pages* p) {
         p->status = SONG_PAGES_READY;
         p->revision++;
         if (p->batch_next < p->batch_end)
-            batch_issue(p); /* the batch's next cell */
+            batch_issue(p);
         return 1;
     }
     if (!guarded(p)) {
@@ -206,8 +205,6 @@ static void start(song_pages* p, screen* s, uint32_t kind, uint32_t index, uint3
     }
 }
 
-/* ORDER's cursor is the song views' entry; a move to another entry (or subtune) starts it at
- * row 0, but TRACKER's row stays while the entry does (ORDER passed through keeps it). */
 static void sync_order(song_pages* p) {
     uint32_t n = entries(p);
     p->order_cursor = (uint16_t)clamp(p->order_cursor, 0u, n + 1u);
@@ -240,14 +237,11 @@ static uint8_t popup_byte(const song_pages* p, uint32_t kind, uint32_t index, ui
     return current;
 }
 
-/* The waveforms the helper offers, as the control byte's top nibble (triangle, sawtooth, pulse,
- * noise, then the combined ones; the low nibble, the gate and its sync and ring bits, stays). */
 #define ARP_SHAPES 8u
 static const uint8_t ARP_SHAPE[ARP_SHAPES] = {1u, 2u, 4u, 8u, 3u, 5u, 6u, 7u};
 static const char ARP_SHAPE_NAME[ARP_SHAPES][8] = {"TRI",     "SAW",     "PULSE",   "NOISE",
                                                    "TRI+SAW", "TRI+PUL", "SAW+PUL", "ALL 3"};
 
-/* Where the byte's waveform is in the list (0 for one it does not hold). */
 static uint32_t arp_shape(uint8_t wave) {
     for (uint32_t i = 0u; i < ARP_SHAPES; i++)
         if (ARP_SHAPE[i] == wave >> 4)
@@ -255,7 +249,6 @@ static uint32_t arp_shape(uint8_t wave) {
     return 0u;
 }
 
-/* The waveform's word, or its byte for one the list lacks (a hand-made row's). */
 static void arp_wave_name(uint8_t wave, char out[SCREEN_POPUP_TEXT]) {
     uint32_t i = arp_shape(wave);
     if (ARP_SHAPE[i] == wave >> 4)
@@ -273,8 +266,6 @@ static void arp_num(char out[ARP_NUM_TEXT], int32_t v, int sign) {
     (void)screen_decimal(out + n, (uint32_t)(v < 0 ? -v : v));
 }
 
-/* The helper's controls' popups: the offset, the speed, the loop step (HOLD for none) and the
- * number of steps. */
 static int arp_popup(const song_pages* p, uint32_t encoder, char name[SCREEN_POPUP_TEXT],
                      char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
     const song_pages_arp* a = &p->arp_draft;
@@ -629,15 +620,12 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     hex2(right, out + n);
 }
 
-/* ---- the ARP helper ---- */
-
 #define ARP_JUMP 0xffu
 
 static uint8_t arp_rel(int32_t off) {
     return (uint8_t)(off & 0x7f);
 }
 
-/* A relative note's offset: 00..3F up, 40..7F down (the player adds it to the note, modulo 128). */
 static int8_t arp_off(uint8_t right) {
     return (int8_t)(right < 0x40u ? (int32_t)right : (int32_t)right - 0x80);
 }
@@ -663,9 +651,9 @@ uint32_t song_pages_arp_encode(const song_pages_arp* a, uint32_t first,
     }
     if (n < 2u || a->loop == 0u || a->loop > n) {
         left[k] = ARP_JUMP;
-        right[k] = 0u; /* hold the last note */
+        right[k] = 0u;
     } else if (delay && a->loop == 1u) {
-        left[k] = delay; /* step 1 again, after the last one's time */
+        left[k] = delay;
         right[k++] = right[0];
         left[k] = ARP_JUMP;
         right[k] = (uint8_t)(first + 1u);
@@ -705,7 +693,7 @@ int song_pages_arp_decode(const uint8_t* left, const uint8_t* right, uint32_t fi
             return 0;
         loop = target - first + 1u;
         if (delayed && loop == 2u && n >= 3u && off[n - 1u] == off[0]) {
-            n--; /* the row that loops step 1 back */
+            n--;
             loop = 1u;
         }
     }
@@ -721,8 +709,6 @@ int song_pages_arp_decode(const uint8_t* left, const uint8_t* right, uint32_t fi
     return 1;
 }
 
-/* ---- the batch writer ---- */
-
 int song_pages_batch_busy(const song_pages* p) {
     return p->batch_next < p->batch_end;
 }
@@ -734,7 +720,6 @@ int song_pages_batch_begin(song_pages* p) {
     return 1;
 }
 
-/* A run of n bytes (from `bytes`, or zeros), or why not. */
 static const char* batch_add(song_pages* p, uint32_t kind, uint32_t index, uint32_t n,
                              const uint8_t* bytes) {
     if (!n)
@@ -765,7 +750,7 @@ const char* song_pages_batch_rows(song_pages* p, uint32_t table, uint32_t first,
         return "TABLE FULL";
     for (uint32_t i = had; i < n; i++)
         if (song->ltable[table][first + i] | song->rtable[table][first + i])
-            return "ROWS IN USE"; /* past the rows it read: another program's */
+            return "ROWS IN USE";
     uint8_t rows[2u * SONG_PAGES_ARP_ROWS];
     if (n > SONG_PAGES_ARP_ROWS)
         return "BATCH FULL";
@@ -775,7 +760,7 @@ const char* song_pages_batch_rows(song_pages* p, uint32_t table, uint32_t first,
     }
     uint8_t runs = p->batch_runs, end = p->batch_end, used = p->batch_used;
     const char* why = batch_add(p, table, first, 2u * n, rows);
-    if (!why && had > n) /* rows it no longer needs go blank */
+    if (!why && had > n)
         why = song_pages_batch_blank(p, table, first + n, had - n);
     if (why) {
         p->batch_runs = runs;
@@ -789,9 +774,6 @@ const char* song_pages_batch_instr(song_pages* p, uint32_t instr, const uint8_t 
     return batch_add(p, SONG_PAGES_RUN_INSTR, instr, GT2_INSTR_BYTES, bytes);
 }
 
-/* The next byte of the batch that differs from the song's, as a cell write; the writes go one at
- * a time, each from the poll that saw the last acknowledged (an edit is pending until then). A
- * write the guard refuses ends them: the status says why. */
 static void batch_issue(song_pages* p) {
     const gt2_song* song = p->sv->song;
     while (song && p->batch_next < p->batch_end) {
@@ -830,8 +812,6 @@ int song_pages_batch_go(song_pages* p) {
     return p->status == SONG_PAGES_WAITING || p->status == SONG_PAGES_READY;
 }
 
-/* ---- LAB's send ---- */
-
 static const uint8_t PTR_FIELD[GT2_TABLES] = {GT2_INS_WAVE, GT2_INS_PULSE, GT2_INS_FILTER,
                                               GT2_INS_VIBPARAM};
 
@@ -849,17 +829,17 @@ const char* song_pages_lab_send(song_pages* p, const uint8_t sound[LAB_SOUND_BYT
     uint8_t first[GT2_TABLES] = {1u, 1u, 1u, 1u}, own[GT2_TABLES] = {0}, at[GT2_TABLES] = {0};
     uint8_t had[GT2_TABLES] = {0}, moved[GT2_TABLES] = {0}, shared = 0u;
     uint8_t kept[LAB_SOUND_BYTES];
-    lab_song_encode(sound, name, p->sv->voice, model, first, &in); /* the rows each takes */
+    lab_song_encode(sound, name, p->sv->voice, model, first, &in);
     int mine = *instr && lab_song_kept(song, i, own, kept);
     const uint8_t* ins = song->instr[i - 1u];
     for (uint32_t t = 0u; t < GT2_TABLES; t++) {
         uint32_t n = in.rows[t], ptr = ins[PTR_FIELD[t]], old = mine && t != GT2_STBL ? own[t] : 0u;
         if (old && (!ptr || lab_song_shared(song, i, t, ptr, old)))
-            old = 0u; /* not its own: left as it is */
+            old = 0u;
         if (t == GT2_STBL && n) {
             for (uint32_t r = 0u; r < GT2_TABLE_ROWS && !shared; r++)
                 if (song->ltable[t][r] == in.left[t][0] && song->rtable[t][r] == in.right[t][0]) {
-                    at[t] = (uint8_t)r; /* a speed row the table has: shared, not written */
+                    at[t] = (uint8_t)r;
                     shared = 1u;
                 }
         }
@@ -867,7 +847,7 @@ const char* song_pages_lab_send(song_pages* p, const uint8_t sound[LAB_SOUND_BYT
             uint32_t r = n;
             while (r > old && !(song->ltable[t][ptr - 2u + r] | song->rtable[t][ptr - 2u + r]))
                 r--;
-            if (r <= old) { /* in place: the rows after its own are blank */
+            if (r <= old) {
                 at[t] = (uint8_t)(ptr - 1u);
                 had[t] = (uint8_t)old;
                 old = 0u;
@@ -879,7 +859,7 @@ const char* song_pages_lab_send(song_pages* p, const uint8_t sound[LAB_SOUND_BYT
                 return "TABLE FULL";
             at[t] = (uint8_t)end;
         }
-        moved[t] = (uint8_t)old; /* its own rows, now somewhere else: blanked */
+        moved[t] = (uint8_t)old;
         first[t] = (uint8_t)(at[t] + 1u);
     }
     lab_song_encode(sound, name, p->sv->voice, model, first, &in);
@@ -895,8 +875,8 @@ const char* song_pages_lab_send(song_pages* p, const uint8_t sound[LAB_SOUND_BYT
         p->batch_runs = p->batch_end = p->batch_used = 0u;
         return why;
     }
-    (void)lab_song_keep(song, i, &in, sound); /* no room: a pull decodes it */
-    if (in.notes & LAB_SONG_ARP) { /* the helper on its rows, to decide the chord */
+    (void)lab_song_keep(song, i, &in, sound);
+    if (in.notes & LAB_SONG_ARP) {
         uint32_t used = 0u;
         p->table = GT2_WTBL;
         p->table_row = p->arp_start = at[GT2_WTBL];
@@ -923,7 +903,7 @@ int song_pages_arp_open(song_pages* p, screen* s) {
         const uint8_t* l = song->ltable[GT2_WTBL] + row;
         const uint8_t* r = song->rtable[GT2_WTBL] + row;
         if (!l[0] && !r[0])
-            song_pages_arp_default(&p->arp_draft); /* a blank row: a new one */
+            song_pages_arp_default(&p->arp_draft);
         else if (!song_pages_arp_decode(l, r, row + 1u, GT2_TABLE_ROWS - row, &p->arp_draft, &used))
             why = "NOT AN ARP";
     }
@@ -939,8 +919,6 @@ int song_pages_arp_open(song_pages* p, screen* s) {
     return 1;
 }
 
-/* The draft to the player: the helper's rows while it is open (on the voice the keys play),
- * none once it has closed and the rows SAVE sends are written. Sent again until taken. */
 static void arp_hear(song_pages* p) {
     const song_transport* t = p->sv->t;
     if (p->arp && p->arp_heard && p->arp_voice != p->sv->voice)
@@ -954,7 +932,7 @@ static void arp_hear(song_pages* p) {
     uint8_t left[SONG_PAGES_ARP_ROWS] = {0}, right[SONG_PAGES_ARP_ROWS] = {0};
     uint32_t n = p->arp ? song_pages_arp_encode(&p->arp_draft, p->arp_start + 1u, left, right) : 0u;
     if (p->arp_start + n > GT2_TABLE_ROWS)
-        n = 0u; /* past the table: SAVE says TABLE FULL */
+        n = 0u;
     if (!t->draft(t->ctx, p->sv->voice, p->arp_start + 1u, n, left, right))
         return;
     p->arp_dirty = 0u;
@@ -986,10 +964,10 @@ void song_pages_arp_save(song_pages* p, screen* s) {
     }
     if (!song_pages_batch_go(p)) {
         screen_toast(s, song_pages_message(p), SCREEN_TOAST_MS);
-        return; /* the helper stays open */
+        return;
     }
     p->arp = 0u;
-    arp_changed(p); /* the draft goes once its rows are written */
+    arp_changed(p);
     screen_toast(s, "ARP SAVED", SCREEN_TOAST_MS);
 }
 
@@ -1018,7 +996,7 @@ static int arp_input(song_pages* p, const screen_event* e) {
     } else {
         return 0;
     }
-    arp_changed(p); /* heard at once on the held note */
+    arp_changed(p);
     return 1;
 }
 
@@ -1073,9 +1051,8 @@ static void build_head(song_pages* p) {
         big(c, 12u, 0u, number, GRID_ATTR(th->voice[sv->voice], th->bg));
         grid_canvas_text(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
     } else {
-        /* which knob turns which column, at 2x beside the name (the columns' colours) */
         if (p->arp) {
-            big(c, 0u, 0u, "ARP   ", base); /* over the table's name */
+            big(c, 0u, 0u, "ARP   ", base);
             grid_canvas_text(c, 0u, 2u, "HEARING DRAFT", THEME_ATTR(th, hint));
         }
         big(c, 12u, 0u, "K1", GRID_ATTR(th->knob_text[0], th->bg));
@@ -1103,9 +1080,6 @@ static void build_head(song_pages* p) {
     sv->dirty |= 7u;
 }
 
-/* The helper's page, in the table's rows: the number of steps, the speed and the loop step at 2x
- * with the knob that turns each, the steps' offsets four to a line (the step the cursor is on in
- * reverse, the loop step in yellow), and the waveform PRESETS chooses. */
 static void arp_row(song_pages* p, uint32_t j) {
     song_view* sv = p->sv;
     song_view_canvas* c = &sv->cv;
@@ -1319,8 +1293,6 @@ static void build_row(song_pages* p, uint32_t j) {
             tracker_view_order_entry(o[u], text);
         }
         big(c, 5u, r, text, on ? GRID_ATTR(th->bg, th->hot) : base);
-        /* The other two voices' entries at the same position, at 2x; what kind the entry is
-         * (a pattern, a repeat, a transpose) is in the line under the rows. */
         uint32_t col = SONG_PAGES_OTHER_COL;
         for (uint32_t v = 0u; v < SONG_T_VOICES; v++) {
             if (v == sv->voice)
@@ -1373,8 +1345,6 @@ static void build_row(song_pages* p, uint32_t j) {
     }
 }
 
-/* What the orderlist entry under the cursor is, in words: PATTERN 04, REPEAT 3, TRANSPOSE +2,
- * RESTART AT 00 for the end. */
 static void order_kind(const song_pages* p, char out[24]) {
     uint32_t u = p->order_cursor - 1u, n = entries(p);
     const uint8_t* o = order(p);
@@ -1414,7 +1384,6 @@ static void order_kind(const song_pages* p, char out[24]) {
 static void build_footer(song_pages* p) {
     song_view* sv = p->sv;
     const theme* th = theme_get(sv->l->theme);
-    /* What the controls do is the help card's (app/help_view.h): row 27 stays blank for the toast. */
     blank(&sv->cv, 27u, 3u, THEME_ATTR(th, value));
     char meaning[31];
     const char* say = song_pages_message(p);
@@ -1444,7 +1413,6 @@ static void build_footer(song_pages* p) {
                                 sv->song->rtable[p->table][p->table_row], meaning);
         say = meaning;
     }
-    /* 2x on rows 28-29 when it fits 15 cells; the long meanings stay 1x on the last row. */
     uint32_t n = 0u;
     while (say[n])
         n++;
@@ -1557,7 +1525,6 @@ static void enter_page(song_pages* p, uint32_t page) {
         p->subtune = 0u;
     p->sv->instr = (uint8_t)clamp(p->sv->instr, 1u, GT2_MAX_INSTR);
     if (page == SONG_VIEW_ORDER) {
-        /* the cursor on the song views' entry, as TRACKER left it */
         if (!p->sv->song || p->sv->subtune < p->sv->song->subtunes)
             p->subtune = p->sv->subtune;
         p->order_cursor = (uint16_t)(p->sv->order_pos + 1u);
@@ -1584,11 +1551,9 @@ static void leave(screen* s, void* state) {
     (void)s;
     song_pages* p = state;
     p->unbuilt = 0u;
-    (void)song_pages_arp_close(p); /* the draft goes with the page */
+    (void)song_pages_arp_close(p);
 }
 
-/* A pop does not enter the revealed view, and MIDI learn calls the covered view directly.
- * Identity belongs to the callbacks, never the last page that used this shared state. */
 #define PAGE_CALLBACKS(name, id) \
     static void name##_compose(screen* s, void* state, grid* g) { \
         ((song_pages*)state)->page = id; \

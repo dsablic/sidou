@@ -13,20 +13,19 @@ void midi_in_init(midi_in* m, midi_msg_fn on_msg, midi_sysex_fn on_sysex, void* 
     m->in_sysex = 0;
 }
 
-/* Data bytes after a status byte; system common messages included. */
 static uint8_t data_length(uint8_t status) {
     switch (status & 0xf0u) {
-    case 0xc0: /* program change */
-    case 0xd0: /* channel pressure */
+    case 0xc0:
+    case 0xd0:
         return 1;
     case 0xf0:
         switch (status) {
-        case 0xf1: /* MTC quarter frame */
-        case 0xf3: /* song select */
+        case 0xf1:
+        case 0xf3:
             return 1;
-        case 0xf2: /* song position */
+        case 0xf2:
             return 2;
-        default: /* F4, F5 (undefined), F6 (tune request), F7 */
+        default:
             return 0;
         }
     default: return 2;
@@ -63,13 +62,13 @@ static void complete(midi_in* m) {
     case 0xc0: emit(m, MIDI_PROGRAM, ch, a, 0, 0); break;
     case 0xd0: emit(m, MIDI_CHANNEL_PRESSURE, ch, a, 0, 0); break;
     case 0xe0: emit(m, MIDI_PITCH_BEND, ch, 0, 0, (uint16_t)(a | b << 7)); break;
-    default: /* system common: there is no running status after it */
+    default:
         m->status = 0;
         if (s == 0xf2) {
             emit(m, MIDI_SONG_POSITION, 0, 0, 0, (uint16_t)(a | b << 7));
         } else if (s == 0xf3) {
             emit(m, MIDI_SONG_SELECT, 0, a, 0, 0);
-        } /* F1, the MTC quarter frame: skipped */
+        }
         break;
     }
 }
@@ -90,7 +89,7 @@ void midi_in_byte(midi_in* m, uint8_t byte) {
         m->count = 0;
         m->status = byte;
         if (byte >= 0xf0 && data_length(byte) == 0) {
-            m->status = 0; /* F0, F4..F7: nothing to assemble, no running status */
+            m->status = 0;
         }
         return;
     }
@@ -108,7 +107,6 @@ void midi_in_byte(midi_in* m, uint8_t byte) {
 }
 
 void midi_in_channel(midi_in* m, uint8_t status, uint8_t d1, uint8_t d2) {
-    /* midi_in_byte's status branch for a channel status, then its data bytes' */
     if (m->in_sysex) {
         sysex(m, MIDI_SYSEX_ABORT, status);
         m->in_sysex = 0;

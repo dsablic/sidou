@@ -1,22 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Pre-flash check: is this package sound and is the way back open?
-
-    tools/preflash PACKAGE.fwsc [--unbricker DIR] [--installer PATH] [--v15 FM-1.fwsc]
-
-It reads local files and prints a PASS/FAIL list and the install steps. It never opens,
-enumerates or talks to a USB or MIDI device, never imports the installer, and never runs the
-steps it prints. docs/flash-day.md is the checklist around it.
-
-  --unbricker DIR   the MvaveFM1Unbricker folder: its jl-uboot-tool must be at the pinned
-                    commit with a valid wl82 loader (the unbricker's own verify_jlub)
-  --installer PATH  Felucca 1.6.1's tools/fm1_install.py (or a folder that has it)
-  --v15 PATH        M-VAVE's official FM-1.fwsc; else build/stock/, the package's folder and
-                    the unbricker folder are searched
-
-Exit status 0 when nothing FAILs (a SKIP is not a failure), 1 otherwise.
-"""
 
 from __future__ import annotations
 
@@ -33,8 +17,6 @@ from typing import List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 V15_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
-# The update loader a package must carry: sidou-pack --verify names it by its SHA-256
-# (sidou_pack::FELUCCA_LOADER_SHA256), and its handshake identity.
 LOADER_RELEASE = "Felucca 1.6.1"
 LOADER_ID = "ota-FM-1_900"
 

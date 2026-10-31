@@ -1,25 +1,20 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The song in the audio interrupt (song_ctl.h). The interrupt's functions come first; on the
- * device app.ld puts them (and only them) in SRAM, one section a function. */
 #include "song_ctl.h"
 
 #include <stddef.h>
 
 #include "gen/digi.h"
 
-/* The compiler keeps the stores before it before the ones after (one core: the interrupt
- * either runs before a store or after, never beside it). */
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
 #define CMD_MASK (SONG_CMD_RING - 1u)
 #define EV_MASK (SONG_EVENT_RING - 1u)
-#define NO_GATE 0xffu /* a PLAY, STOP or CONTINUE that leaves chip A's gate reset alone */
-/* What SONG_LOADING ends in (song_ctl.load_for). */
-#define LOAD_PLAY 0u     /* the PLAY command: the song plays */
-#define LOAD_PAUSED 1u   /* the PLAY command, paused: the audition, no song played yet */
-#define LOAD_WAKE 2u     /* chip A taken again for the audition of a stopped song */
-#define LOAD_CONTINUE 3u /* chip A taken again, then CONTINUE */
+#define NO_GATE 0xffu
+#define LOAD_PLAY 0u
+#define LOAD_PAUSED 1u
+#define LOAD_WAKE 2u
+#define LOAD_CONTINUE 3u
 
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
@@ -28,9 +23,6 @@ _Static_assert(offsetof(song_ctl, draft) % 4u == 0u && _Alignof(gt2_draft) >= 4u
                "song_draft copies a draft in words: the FM-1 faults on a misaligned one");
 _Static_assert(SONG_DIGI_SAMPLES == SONG_DIGI_KINDS - 1u, "a built-in sample for each DIGI kind");
 
-/* --- The audio interrupt ---------------------------------------------------------------- */
-
-/* The player's sink: chip A, less the muted voices; the shadow keeps every write. */
 static void song_sink(void* ctx, uint8_t reg, uint8_t value) {
     song_ctl* sc = ctx;
     sc->shadow[reg] = value;
@@ -43,7 +35,6 @@ static void song_sink(void* ctx, uint8_t reg, uint8_t value) {
     sid_write(sc->chip, reg, value);
 }
 
-/* The shadow's registers into s, less the muted voices'. */
 static void song_rewrite(song_ctl* sc, sid* s) {
     for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
         if (r < 21u) {
@@ -56,7 +47,6 @@ static void song_rewrite(song_ctl* sc, sid* s) {
     }
 }
 
-/* Voice v's gate off on chip A (its wave register less the gate bit). */
 static void song_gate_off(song_ctl* sc, uint32_t v) {
     sid_write(sc->chip, (uint8_t)(v * 7u + 4u), (uint8_t)(sc->shadow[v * 7u + 4u] & 0xfeu));
 }
@@ -66,9 +56,6 @@ static void song_set_gate_reset(song_ctl* sc, uint8_t g) {
         sid_set_gate_reset(sc->chip, g);
 }
 
-/* The voices left out of the song's writes: muted (the voice's gate off, then nothing of the
- * song's) and taken (the keys', KEYS A: nothing of the song's, the keys' writes stand). Back
- * from either: the song's registers again. */
 static void song_voices(song_ctl* sc, uint8_t mute, uint8_t taken) {
     uint8_t was = (uint8_t)(sc->mute | sc->taken);
     uint8_t muting = (uint8_t)(mute & ~sc->mute);
@@ -88,8 +75,6 @@ static void song_voices(song_ctl* sc, uint8_t mute, uint8_t taken) {
     }
 }
 
-/* 1.1's auditions, out of song_apply's way (its cases' addresses stay in registers). A draft
- * (song_ctl_draft) word by word: a struct assignment may become a memcpy call, in flash. */
 __attribute__((noinline)) static void song_draft(song_ctl* sc, const song_cmd* c) {
     const uint32_t* from = (const uint32_t*)(const void*)&c->u.draft;
     for (uint32_t i = 0u; i < sizeof(gt2_draft) / 4u; i++)
@@ -97,7 +82,6 @@ __attribute__((noinline)) static void song_draft(song_ctl* sc, const song_cmd* c
     gt2_play_draft(&sc->player, &sc->draft);
 }
 
-/* A held step's locks (song_ctl_held): the channel's, pinned while n > 0. */
 __attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c) {
     uint32_t ch = c->a, n = c->b;
     const uint8_t* h = c->u.held;
@@ -117,7 +101,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         gt2_play_start(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
                        (const uint8_t*)&c->u.p.x);
         sc->calls = 0u;
-        sc->next = c->c ? SONG_NEXT_HELD : 0u; /* c: held for M2e's align */
+        sc->next = c->c ? SONG_NEXT_HELD : 0u;
         sc->rem = 0u;
         sc->period.q = c->u.p.y;
         sc->period.r = c->u.p.z & 0xffffffu;
@@ -129,8 +113,6 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
             sc->lock_n[ch] = 0u;
             sc->row_pat[ch] = 0xffu;
         }
-        /* the keys' registers out: the song starts from a silent chip, less the voices the
-         * keys hold (KEYS A), whose note sounds on */
         for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
             sc->shadow[r] = 0u;
             if (r >= 21u || !((sc->taken >> (r / 7u)) & 1u))
@@ -139,7 +121,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->song_gate = c->a;
         song_set_gate_reset(sc, c->a);
         sc->play_block = sc->blocks;
-        sc->isr_playing = (uint8_t)!c->b; /* b: paused, for the audition */
+        sc->isr_playing = (uint8_t)!c->b;
         sc->audition = c->b;
         break;
     case SONG_CMD_STOP: {
@@ -189,7 +171,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         break;
     case SONG_CMD_JAM:
         if (!sc->isr_playing && !sc->audition && sc->player.shape) {
-            sc->audition = 1u; /* a stopped song's audition: the calls from now on */
+            sc->audition = 1u;
             sc->next = 0u;
             sc->rem = 0u;
         }
@@ -239,14 +221,13 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
 void song_ctl_block(song_ctl* sc, sid* chip) {
     sc->chip = chip;
     sc->blocks++;
-    /* The keys' voices first (KEYS A): from this block's call on, before any command. */
     uint8_t take = sc->take;
     if (take != sc->taken)
         song_voices(sc, sc->mute, take);
     uint32_t edits = 0u;
     uint32_t tail = sc->cmd_tail;
     uint32_t head = sc->cmd_head;
-    COMPILER_FENCE(); /* the head before the commands it publishes */
+    COMPILER_FENCE();
     while (tail != head) {
         const song_cmd* c = &sc->cmd[tail & CMD_MASK];
         if (c->kind == SONG_CMD_EDIT) {
@@ -257,14 +238,14 @@ void song_ctl_block(song_ctl* sc, sid* chip) {
                 break;
             }
             if (edits == SONG_EDITS_PER_BLOCK)
-                break; /* the rest wait for the next block */
+                break;
             edits++;
         }
         song_apply(sc, c);
         sc->applied = c->seq;
         tail++;
     }
-    COMPILER_FENCE(); /* the commands read before the slots go back to the producer */
+    COMPILER_FENCE();
     sc->cmd_tail = tail;
     if (edits > sc->edits_block_max)
         sc->edits_block_max = edits;
@@ -279,14 +260,12 @@ static void song_handover(song_ctl* sc) {
         return;
     if (!sc->armed_now && sc->calls != sc->armed_call) {
         if (sc->calls > sc->armed_call) {
-            sc->armed = 0u; /* too late: the main loop fast-forwards further and tries again */
+            sc->armed = 0u;
             sc->handover_ok = 0u;
             sc->handover_seq = sc->armed_seq;
         }
         return;
     }
-    /* Word by word, not a struct assignment (which may become a memcpy call, in flash); the
-     * draft stays the interrupt's (gt2_player.draft, last). */
     const uint32_t* from = (const uint32_t*)(const void*)sc->armed_state;
     uint32_t* to = (uint32_t*)(void*)&sc->player;
     for (uint32_t i = 0u; i < offsetof(gt2_player, draft) / 4u; i++)
@@ -294,7 +273,6 @@ static void song_handover(song_ctl* sc) {
     sc->player.shape = sc->armed_shape;
     if (sc->armed_now)
         sc->calls = sc->armed_call;
-    /* chip A as the fast-forwarded player left its registers */
     for (uint32_t r = 0u; r < GT2_SID_REGS; r++)
         sc->shadow[r] = sc->player.regs[r];
     song_rewrite(sc, sc->chip);
@@ -319,16 +297,15 @@ static void song_push_events(song_ctl* sc) {
         o->instr = e->instr;
         h++;
     }
-    COMPILER_FENCE(); /* the events before the head that publishes them */
+    COMPILER_FENCE();
     sc->ev_head = h;
 }
 
-/* A channel's row starts: the published locks that are this row's become the channel's. */
 __attribute__((noinline)) static void song_lock_row(song_ctl* sc, uint32_t ch, const gt2_event* e) {
     const song_lock_set* set = &sc->lock_next[ch][sc->lock_pub[ch] & 1u];
     uint32_t n = 0u;
     if ((sc->lock_pin >> ch) & 1u)
-        goto pinned; /* a held step's locks stay while it is held (song_ctl_held) */
+        goto pinned;
     for (uint32_t i = 0u; i < set->n && i < SONG_ROW_LOCKS; i++) {
         const song_row_lock* l = &set->e[i];
         if (l->pattern == e->pattern && l->row == e->row) {
@@ -345,12 +322,10 @@ pinned:
     sc->row_pat[ch] = e->pattern;
     sc->row_row[ch] = e->row;
     sc->row_ord[ch] = e->order_pos;
-    COMPILER_FENCE(); /* the row before the count that says it changed */
+    COMPILER_FENCE();
     sc->row_seq[ch] = (uint8_t)(sc->row_seq[ch] + 1u);
 }
 
-/* After a call: the locked registers over the player's (from its shadow and the locks), and
- * the shadow's back in those a lock left. */
 static void song_lock_apply(song_ctl* sc) {
     uint8_t r[GT2_SID_REGS];
     uint32_t mask = 0u;
@@ -405,17 +380,15 @@ void song_ctl_call(song_ctl* sc) {
     uint8_t frozen = (uint8_t)!sc->isr_playing;
     sc->player.frozen = frozen;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
-        /* a paused start's first call initialises the song (which clears a new note): the
-         * jam at the call after */
         if (sc->jam[ch][0] && !(frozen && sc->player.initsong)) {
             sc->jam[ch][0] = 0u;
             if (sc->jam[ch][1] == SONG_JAM_RELEASE) {
-                sc->player.chn[ch].gate = 0xfeu; /* as a key-off row */
+                sc->player.chn[ch].gate = 0xfeu;
                 continue;
             }
             gt2_play_jam(&sc->player, ch, sc->jam[ch][1], sc->jam[ch][2], song_sink, sc);
             if (frozen)
-                sc->player.chn[ch].counter = 1u; /* its tick 0 at this call */
+                sc->player.chn[ch].counter = 1u;
         }
     }
     sc->call_sample = sc->samples + sc->next;
@@ -436,9 +409,6 @@ void song_ctl_call(song_ctl* sc) {
 }
 
 void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
-    /* The digi drums (song_ctl.h). A note in this block's call (its sample is in the block)
-     * whose instrument is a digi drum starts its sample: the samples before the call are a
-     * silent code's, the sample's codes follow. */
     uint32_t at = sc->call_sample - sc->samples;
     if (sc->isr_playing || sc->audition)
         sc->next -= n;
@@ -461,7 +431,7 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
     const uint32_t end = sc->digi_end;
     int32_t level = sc->digi_level;
     int16_t* const last = out + n;
-    int16_t* next = out + sc->digi_left; /* where the next code starts */
+    int16_t* next = out + sc->digi_left;
     do {
         if (out == next) {
             if (i == end) {
@@ -488,8 +458,6 @@ void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
     if (chip != 0u || !(sc->isr_playing || sc->audition))
         return;
     song_rewrite(sc, s);
-    /* and the row's locked registers over the shadow's, as after its calls: the new chip
-     * would play the song's own cutoff and pulse until the next call */
     sid* was = sc->chip;
     sc->chip = s;
     song_lock_apply(sc);
@@ -509,8 +477,6 @@ void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
         sid_render(chip, out, n);
     }
 }
-
-/* --- The main loop ---------------------------------------------------------------------- */
 
 static void lock_prime(song_ctl* sc);
 static void draft_fresh(song_ctl* sc, gt2_analysis* a);
@@ -555,7 +521,7 @@ void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* s
     sc->period = song_period_of(1u, 0u);
     sc->jam_lo = 96u;
     sc->draft.channel = GT2_DRAFT_OFF;
-    sc->player.draft = &sc->draft; /* kept by starts and hand-overs (gt2_player.draft) */
+    sc->player.draft = &sc->draft;
     sc->digi_ok = 7u;
     for (uint32_t k = 0u; k < SONG_DIGI_KINDS; k++)
         sc->digi_from[k] = SONG_DIGI_START[k];
@@ -583,7 +549,6 @@ static uint32_t gcd(uint32_t a, uint32_t b) {
     return a;
 }
 
-/* a * b / d and its remainder, by shifts (no 64-bit division helper on the device). */
 static uint32_t muldiv(uint32_t a, uint32_t b, uint32_t d, uint32_t* rem) {
     uint64_t n = (uint64_t)a * b;
     uint64_t q = 0u, r = 0u;
@@ -599,11 +564,9 @@ static uint32_t muldiv(uint32_t a, uint32_t b, uint32_t d, uint32_t* rem) {
 }
 
 song_period song_period_of(uint32_t multispeed, uint32_t ntsc) {
-    /* gt2reloc's CIA timer (greloc.c, the .sid's speed code): latch value + 1 cycles */
     uint32_t base = ntsc ? 0x42c6u : 0x4cc7u;
     uint32_t clock = ntsc ? 1022727u : 985248u;
     uint32_t cycles = (multispeed ? base / multispeed : base * 2u) + 1u;
-    /* samples a call: cycles / clock * 24 MHz / 544 */
     uint32_t num = 24000000u, den = clock * 544u;
     uint32_t g = gcd(num, den);
     num /= g;
@@ -623,7 +586,6 @@ static uint32_t room(const song_ctl* sc) {
     return SONG_CMD_RING - (sc->stage - sc->cmd_tail);
 }
 
-/* Stages a command; its seq. The caller has checked the room. */
 static uint32_t push(song_ctl* sc, const song_cmd* c) {
     song_cmd* d = &sc->cmd[sc->stage & CMD_MASK];
     *d = *c;
@@ -633,7 +595,7 @@ static uint32_t push(song_ctl* sc, const song_cmd* c) {
 }
 
 void song_ctl_commit(song_ctl* sc) {
-    COMPILER_FENCE(); /* the commands before the head that publishes them */
+    COMPILER_FENCE();
     sc->cmd_head = sc->stage;
 }
 
@@ -641,8 +603,6 @@ static uint8_t spare(const song_ctl* sc) {
     return (uint8_t)(sc->active ^ 1u);
 }
 
-/* The player follows shapes[spare] once c (which names it) is applied; the other buffer is
- * free once that has happened. */
 static void take_spare(song_ctl* sc, uint32_t seq) {
     sc->active = spare(sc);
     sc->spare_wait = 1u;
@@ -650,7 +610,7 @@ static void take_spare(song_ctl* sc, uint32_t seq) {
 }
 
 static uint8_t gate_for_play(const song_ctl* sc) {
-    return sc->hooks.chip_a_song ? NO_GATE : 0u; /* AUTHENTIC envelopes: no gate reset */
+    return sc->hooks.chip_a_song ? NO_GATE : 0u;
 }
 
 static uint8_t cancel_jams(song_ctl* sc) {
@@ -671,7 +631,7 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
         sc->deriving || room(sc) < 2u)
         return 0;
     if (sc->state == SONG_PLAYING)
-        song_ctl_stop(sc); /* the song plays no more while the next one loads */
+        song_ctl_stop(sc);
     sc->bg_on = 0u;
     if (!song_ext_get_options(sc->song, &sc->opts))
         gt2_options_default(&sc->opts);
@@ -688,7 +648,7 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
     draft_fresh(sc, &w->bg);
     sc->subtune = (uint8_t)subtune;
     sc->start_pos = (uint8_t)pos;
-    sc->digi_hold = 0u; /* a new start: no voice holds a digi drum yet */
+    sc->digi_hold = 0u;
     sc->bg_on = 0u;
     sc->chip_ready = 0u;
     sc->loading_done = 0u;
@@ -697,7 +657,7 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
     sc->jam_instruments[0] = sc->jam_instruments[1] = 0u;
     sc->jam_lo = 96u;
     sc->jam_hi = sc->jam_release = 0u;
-    sc->jam_live = (uint8_t)(sc->draft_n != 0u); /* a draft is an audition: shapes retained */
+    sc->jam_live = (uint8_t)(sc->draft_n != 0u);
     cancel_jams(sc);
     sc->state = SONG_LOADING;
     return 1;
@@ -717,8 +677,6 @@ int song_ctl_stop(song_ctl* sc) {
     return 1;
 }
 
-/* SONG_LOADING for chip A alone (the song and its shape as they are): its hook, then what
- * `then` says. */
 static void retake_chip(song_ctl* sc, uint8_t then) {
     sc->loading_done = 1u;
     sc->chip_ready = 0u;
@@ -732,7 +690,7 @@ int song_ctl_continue(song_ctl* sc) {
         return 0;
     sc->auditioning = 0u;
     if (!sc->chip_held && !sc->handback) {
-        retake_chip(sc, LOAD_CONTINUE); /* chip A went back to the keys meanwhile */
+        retake_chip(sc, LOAD_CONTINUE);
         return 1;
     }
     song_cmd c;
@@ -759,12 +717,12 @@ int song_ctl_mute(song_ctl* sc, uint32_t mask) {
     if (room(sc) < 1u)
         return 0;
     sc->mute_user = (uint8_t)(mask & 7u);
-    push_mute(sc, (uint8_t)(sc->mute_user | sc->digi_hold)); /* the digi drums' voices too */
+    push_mute(sc, (uint8_t)(sc->mute_user | sc->digi_hold));
     return 1;
 }
 
 int song_ctl_take(song_ctl* sc, uint32_t mask) {
-    sc->take = (uint8_t)(mask & 7u); /* the one writer; read at the next block's start */
+    sc->take = (uint8_t)(mask & 7u);
     return 1;
 }
 
@@ -774,14 +732,13 @@ int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
         return 0;
     uint8_t bit = (uint8_t)(1u << voice);
     if (note == SONG_JAM_RELEASE && sc->jam_wait[voice][0]) {
-        if (!(sc->jam_release & bit)) /* sounding: due after its lateness; else its hold */
+        if (!(sc->jam_release & bit))
             sc->jam_at[voice] = (sc->jam_timed & bit) ? sc->samples + sc->jam_at[voice]
                                                       : sc->samples - sc->jam_at[voice];
         sc->jam_release |= bit;
         return 1;
     }
     if (sc->jam_wait[voice][0] == 2u && ((sc->jam_release | sc->jam_timed) & bit)) {
-        /* a retained note that sounds (or its release waits): the new note takes the voice */
         sc->jam_wait[voice][0] = 0u;
         sc->jam_release &= (uint8_t)~bit;
         sc->jam_timed &= (uint8_t)~bit;
@@ -846,7 +803,7 @@ uint32_t song_ctl_again(const song_ctl* sc) {
     uint32_t mask = 0u;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
         uint8_t seq, now, next;
-        do { /* the row's pattern and the player's, from one call (row_seq counts the rows) */
+        do {
             seq = sc->row_seq[ch];
             COMPILER_FENCE();
             now = sc->row_pat[ch];
@@ -864,7 +821,6 @@ int song_ctl_audition(song_ctl* sc) {
     if (sc->state == SONG_PLAYING || sc->state == SONG_LOADING || sc->auditioning)
         return 1;
     if (sc->state == SONG_IDLE) {
-        /* no song played yet: its analysis first, then a paused PLAY */
         if (!song_ctl_play(sc, sc->subtune, 0u))
             return 0;
         if (sc->state == SONG_LOADING)
@@ -872,7 +828,7 @@ int song_ctl_audition(song_ctl* sc) {
         return 1;
     }
     if (sc->chip_held || sc->handback) {
-        sc->handback = 0u; /* a stop not yet handed back: chip A stays the song's */
+        sc->handback = 0u;
         sc->auditioning = 1u;
         return 1;
     }
@@ -889,7 +845,7 @@ int song_ctl_audition_end(song_ctl* sc) {
     cmd_init(&c, SONG_CMD_STOP);
     c.a = sc->hooks.chip_a_keys ? NO_GATE : sc->keys_gate_reset;
     c.b = cancel_jams(sc);
-    c.c = 1u; /* cancel audition notes, retaining unjammed sequencer lookahead */
+    c.c = 1u;
     sc->ff_stop |= sc->ff_on;
     sc->stop_seq = push(sc, &c);
     sc->handback = 1u;
@@ -897,14 +853,11 @@ int song_ctl_audition_end(song_ctl* sc) {
     return 1;
 }
 
-/* What a draft's rows need of the shape (gt2_shape.c's derive_wrow): DRAFT_DELAY for a delay,
- * DRAFT_REL for a relative note, DRAFT_REL20 for one of 20 or more (the shape's notes from 0),
- * and the highest relative note in bits 8-15 (the frequency table's top). */
 #define DRAFT_DELAY 1u
 #define DRAFT_REL 2u
 #define DRAFT_REL20 4u
 static uint32_t draft_needs(const song_ctl* sc) {
-    uint32_t f = sc->draft_n ? DRAFT_DELAY : 0u; /* delays whatever its speed (gt2_shape.c) */
+    uint32_t f = sc->draft_n ? DRAFT_DELAY : 0u;
     for (uint32_t i = 0u; i < sc->draft_n; i++) {
         uint8_t l = sc->draft_rows[i], d = sc->draft_rows[i + GT2_DRAFT_ROWS];
         if (l >= 0x01u && l <= 0x0fu)
@@ -918,7 +871,6 @@ static uint32_t draft_needs(const song_ctl* sc) {
     return f;
 }
 
-/* A fresh analysis (a's) reads the draft's rows: it covers what they need. */
 static void draft_fresh(song_ctl* sc, gt2_analysis* a) {
     a->xwave = sc->draft_rows;
     a->xwave_n = sc->draft_n;
@@ -952,10 +904,9 @@ int song_ctl_draft(song_ctl* sc, uint32_t ch, uint32_t first, uint32_t n, const 
     sc->w->cur.xwave_n = sc->w->bg.xwave_n = (uint8_t)n;
     if (!n)
         return 1;
-    sc->jam_live = 1u; /* an audition: shape changes keep the voices' table encodings */
+    sc->jam_live = 1u;
     uint32_t need = draft_needs(sc), cov = sc->draft_cov;
     if ((need & ~cov & 0xffu) || (need >> 8) > (cov >> 8)) {
-        /* wider than the shape: derived again (poll_jams) before the next jam */
         sc->draft_cov = (cov | need) & 0xffu;
         sc->draft_cov |= ((need >> 8) > (cov >> 8) ? need : cov) & 0xff00u;
         sc->draft_grow = 1u;
@@ -1006,7 +957,6 @@ static void push_shape(song_ctl* sc) {
     take_spare(sc, push(sc, &c));
 }
 
-/* The edit's command, its seq the last of the edits in flight. */
 static void send_edit(song_ctl* sc, const gt2_edit* e) {
     song_work* w = sc->w;
     song_cmd c;
@@ -1017,7 +967,7 @@ static void send_edit(song_ctl* sc, const gt2_edit* e) {
     if (c.a || sc->edit_restore)
         sc->lock_edit_seq = seq;
     if (sc->inflight_n > 0u && w->inflight_seq[sc->inflight_n - 1u] == 0u) {
-        w->inflight_seq[sc->inflight_n - 1u] = seq; /* the held one goes */
+        w->inflight_seq[sc->inflight_n - 1u] = seq;
     } else {
         w->inflight[sc->inflight_n] = *e;
         w->inflight_seq[sc->inflight_n] = seq;
@@ -1026,7 +976,6 @@ static void send_edit(song_ctl* sc, const gt2_edit* e) {
     w->cur.pending_count = sc->inflight_n;
 }
 
-/* The widened shape is whole in the spare: it goes (if it differs), then the held edit. */
 static int finish_widen(song_ctl* sc) {
     song_work* w = sc->w;
     if (room(sc) < 2u)
@@ -1035,8 +984,6 @@ static int finish_widen(song_ctl* sc) {
     const gt2_shape* now = sc->shapes[sc->active];
     if (!same(next, now, sizeof *next)) {
         if (!gt2_shape_compatible(now, next) && !sc->jam_live && sc->state == SONG_PLAYING) {
-            /* the player's state cannot follow: the channels it plays stay until a
-             * fast-forwarded player takes over with the new shape */
             gt2_shape_keep_channels(next, now->channels);
             sc->want_handover = 1u;
         }
@@ -1057,9 +1004,6 @@ static void poll_jams(song_ctl* sc) {
         if (wait[0] != 2u || (int32_t)(applied - sc->jam_seq[ch]) < 0 ||
             sc->jam[ch][0] || sc->player.chn[ch].newnote)
             continue;
-        /* It sounds. Its release goes as long after it as its key was held: a retained note
-         * sounds late, and a release at once would cut it to a call. jam_at: the sample it was
-         * asked at, its hold (released) or its lateness (held); then the release's sample. */
         uint8_t bit = (uint8_t)(1u << ch);
         uint8_t off = (uint8_t)(sc->jam_release & bit);
         if (!(sc->jam_timed & bit)) {
@@ -1082,7 +1026,7 @@ static void poll_jams(song_ctl* sc) {
         return;
     if (gt2_shape_include_jams(&sc->w->cur, sc->jam_instruments, sc->jam_lo, sc->jam_hi) ||
         sc->draft_grow) {
-        sc->draft_grow = 0u; /* the derivation reads the draft's rows (draft_fresh) */
+        sc->draft_grow = 0u;
         sc->bg_on = 0u;
         gt2_shape_derive_begin(&sc->w->cur);
         sc->deriving = sc->deriving_for = SONG_DERIVE_JAM;
@@ -1113,8 +1057,6 @@ static int edit_main(song_ctl* sc, const gt2_edit* e) {
         sc->edits_submitted++;
         return 1;
     }
-    /* A shape command in flight holds the spare a widening may need: the edit waits a pass
-     * (the base must not grow without its shape going with the edit). */
     if (sc->state == SONG_LOADING || sc->ff_on || sc->spare_wait || sc->deriving ||
         sc->inflight_n == SONG_INFLIGHT || room(sc) < 2u) {
         sc->busy++;
@@ -1127,9 +1069,7 @@ static int edit_main(song_ctl* sc, const gt2_edit* e) {
     if (sc->bg_on)
         sc->bg_dirty = 1u;
     if (gt2_shape_widen(&w->cur, e)) {
-        /* The shape again, a slice a poll (a whole derivation is more than a pass has to
-         * spare); the edit waits for it, held (seq 0), and goes with it (finish_widen). */
-        sc->bg_on = 0u; /* a background analysis gives the spare up */
+        sc->bg_on = 0u;
         w->inflight_seq[sc->inflight_n] = 0u;
         sc->inflight_n++;
         gt2_shape_derive_begin(&w->cur);
@@ -1163,13 +1103,10 @@ int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
     return song_ctl_edit_with_locks(sc, e, 0, 0u);
 }
 
-/* The player's frame path runs from SRAM on the device (platform/fm1/app.ld), beyond the
- * direct call range of this side's code in flash: through pointers the compiler cannot fold
- * back into direct calls (as platform/fm1/audio.c's far_drain). */
 static void far_start(gt2_player* p, const gt2_song* s, const gt2_shape* sh, const uint8_t* st) {
     void (*volatile fn)(gt2_player*, const gt2_song*, const gt2_shape*, const uint8_t*) =
         gt2_play_start;
-    p->draft = 0; /* a fast-forward plays the song's rows (gt2_play_start keeps the draft) */
+    p->draft = 0;
     fn(p, s, sh, st);
 }
 
@@ -1224,7 +1161,6 @@ static void discard(void* ctx, uint8_t reg, uint8_t value) {
     (void)value;
 }
 
-/* What the interrupt has applied since the last poll. */
 static void poll_applied(song_ctl* sc, int may_ring) {
     if (sc->lock_edit_seq && sc->lock_edit_refresh)
         lock_refresh_edit(sc);
@@ -1256,8 +1192,6 @@ static void poll_applied(song_ctl* sc, int may_ring) {
     }
     if (sc->spare_wait && (int32_t)(a - sc->spare_free_at) >= 0)
         sc->spare_wait = 0u;
-    /* A completed replay owns the spare even if STOP followed it before this poll.
-     * Once STOP is acknowledged, no still-armed replay can complete after this read. */
     if (sc->ff_sent && sc->handover_seq == sc->ff_seq) {
         COMPILER_FENCE();
         sc->ff_sent = 0u;
@@ -1283,14 +1217,13 @@ static void poll_applied(song_ctl* sc, int may_ring) {
         for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
             for (uint32_t f = 0u; f < 4u; f++)
                 sc->char_lock[ch][f] = -1;
-        lock_character(sc); /* the song's own character again, before the keys take it */
+        lock_character(sc);
         if (sc->hooks.chip_a_keys)
             sc->hooks.chip_a_keys(sc->hooks.ctx);
         sc->handed_back++;
     }
 }
 
-/* One slice of the fast-forward, and its hand-over once it is ahead of the interrupt. */
 static void poll_ff(song_ctl* sc) {
     song_work* w = sc->w;
     if (sc->ff_sent || sc->ff_stop || sc->handback)
@@ -1312,7 +1245,6 @@ static void poll_ff(song_ctl* sc) {
     sc->ff_sent = 1u;
 }
 
-/* The analysis for PLAY, then chip A, then the PLAY command. */
 static void poll_loading(song_ctl* sc, int may_slice) {
     song_work* w = sc->w;
     if (!sc->loading_done) {
@@ -1324,7 +1256,6 @@ static void poll_loading(song_ctl* sc, int may_slice) {
             return;
         if (r < 0) {
             sc->error = (int16_t)r;
-            /* a stopped player keeps its song and shape; with none, nothing reads them */
             sc->state = sc->shapes_used ? SONG_STOPPED : SONG_IDLE;
             return;
         }
@@ -1347,7 +1278,7 @@ static void poll_loading(song_ctl* sc, int may_slice) {
         sc->chip_held = 1u;
     }
     if (sc->load_for == LOAD_WAKE) {
-        sc->auditioning = 1u; /* the first jam starts the calls */
+        sc->auditioning = 1u;
         sc->state = SONG_STOPPED;
         return;
     }
@@ -1372,7 +1303,7 @@ static void poll_loading(song_ctl* sc, int may_slice) {
     cmd_init(&c, SONG_CMD_PLAY);
     c.a = gate_for_play(sc);
     c.b = (uint8_t)(sc->load_for == LOAD_PAUSED);
-    c.c = sc->hold_next; /* M2e's clock: the first call waits for an align */
+    c.c = sc->hold_next;
     sc->hold_next = 0u;
     c.u.p.ptr = sc->shapes[spare(sc)];
     c.u.p.ptr2 = (const void*)(uintptr_t)p.den;
@@ -1396,7 +1327,6 @@ static void poll_loading(song_ctl* sc, int may_slice) {
     sc->state = SONG_PLAYING;
 }
 
-/* Narrowing: a fresh analysis of the song as it is, once edits have stopped. */
 static void poll_narrow(song_ctl* sc, int may_slice) {
     song_work* w = sc->w;
     if (!sc->bg_on) {
@@ -1419,7 +1349,7 @@ static void poll_narrow(song_ctl* sc, int may_slice) {
         return;
     sc->bg_on = 0u;
     if (r < 0 || sc->bg_dirty || sc->inflight_n)
-        return; /* the song changed under it: again once quiet */
+        return;
     const gt2_shape* now = sc->shapes[sc->active];
     gt2_shape* next = sc->shapes[spare(sc)];
     w->cur = w->bg;
@@ -1430,17 +1360,15 @@ static void poll_narrow(song_ctl* sc, int may_slice) {
         return;
     if (gt2_shape_compatible(now, next) || sc->jam_live || sc->state != SONG_PLAYING) {
         if (room(sc) < 1u) {
-            sc->widened = 1u; /* again later */
+            sc->widened = 1u;
             return;
         }
         push_shape(sc);
         sc->narrowed++;
     } else {
-        start_ff(sc, 0u, 0u); /* the spare holds the fresh shape */
+        start_ff(sc, 0u, 0u);
     }
 }
-
-/* --- Locks, the main loop's side ----------------------------------------------------------- */
 
 static uint8_t lock_order_byte(const gt2_song* song, uint32_t offset, const gt2_edit* edit) {
     if (edit && edit->kind == GT2_EDIT_CELL && offset >= edit->offset &&
@@ -1449,8 +1377,6 @@ static uint8_t lock_order_byte(const gt2_song* song, uint32_t offset, const gt2_
     return ((const uint8_t*)song)[offset];
 }
 
-/* The pattern channel ch's orderlist plays after model entry pos (the restart's after the
- * last), or -1. An unapplied edit is overlaid without changing the player's model. */
 static int next_pattern(const song_ctl* sc, uint32_t ch, uint32_t pos, const gt2_edit* edit) {
     uint32_t sub = sc->play_sub;
     if (edit && edit->slot != GT2_SLOT_ORDER + sub * GT2_MAX_CHANNELS + ch)
@@ -1473,7 +1399,6 @@ static int next_pattern(const song_ctl* sc, uint32_t ch, uint32_t pos, const gt2
     return -1;
 }
 
-/* A row's filter and pulse locks into set (at most SONG_ROW_LOCKS). */
 static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t pattern,
                          uint32_t row, const gt2_edit* edit) {
     uint32_t source = row;
@@ -1505,7 +1430,7 @@ static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t patter
     const uint8_t* rec = empty ? 0 : song_locks_row(sc->song, pattern, source, &n);
     for (uint32_t i = 0u; i < n && set->n < SONG_ROW_LOCKS; i++, rec += SONG_LOCK_BYTES) {
         if (rec[2] > SONG_LOCK_PULSE && rec[2] != SONG_LOCK_CHANCE)
-            continue; /* the character's: the hook's */
+            continue;
         song_row_lock* l = &set->e[set->n++];
         l->pattern = rec[0];
         l->row = (uint8_t)row;
@@ -1529,8 +1454,6 @@ static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t patter
     }
 }
 
-/* The locks channel ch's next row may have after its row (pattern, row, its entry ord),
- * into the table the interrupt does not read, then published. */
 static void lock_build(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row,
                        uint32_t ord, int first, const gt2_edit* edit) {
     song_lock_set* set = &sc->lock_next[ch][(sc->lock_pub[ch] & 1u) ^ 1u];
@@ -1543,7 +1466,6 @@ static void lock_build(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row
     } else if (row + 1u < rows) {
         lock_add_row(sc, set, pattern, row + 1u, edit);
     } else {
-        /* the pattern's end: the pattern again (a repeat), or the orderlist's next */
         lock_add_row(sc, set, pattern, 0u, edit);
         int next = ord != 0xffu ? next_pattern(sc, ch, ord, edit) : -1;
         if (next >= 0 && (uint32_t)next != pattern)
@@ -1554,9 +1476,8 @@ static void lock_build(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row
 static void lock_resolve(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row,
                          uint32_t ord, int first) {
     lock_build(sc, ch, pattern, row, ord, first, 0);
-    COMPILER_FENCE(); /* the table before the index that publishes it */
+    COMPILER_FENCE();
     sc->lock_pub[ch] = (uint8_t)(sc->lock_pub[ch] ^ 1u);
-    /* the chances of the steps it holds: a roll each, the losers' keys to the player */
     const song_lock_set* set = &sc->lock_next[ch][sc->lock_pub[ch] & 1u];
     gt2_channel* c = &sc->player.chn[ch];
     uint32_t k = 0u;
@@ -1604,8 +1525,6 @@ static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e) {
 }
 
 static void lock_refresh_edit(song_ctl* sc) {
-    /* The ISR leaves this command queued while refresh is set, so its reserved buffers
-     * can be rebuilt without either publishing half a table or racing a second edit. */
     sc->lock_edit_refresh = 1u;
     COMPILER_FENCE();
     if ((int32_t)(sc->applied - sc->lock_edit_seq) < 0) {
@@ -1616,7 +1535,6 @@ static void lock_refresh_edit(song_ctl* sc) {
     sc->lock_edit_refresh = 0u;
 }
 
-/* At PLAY: each channel's first row, from the play's entry. */
 static void lock_prime(song_ctl* sc) {
     sc->chance_n = 0u;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
@@ -1630,7 +1548,6 @@ static void lock_prime(song_ctl* sc) {
     }
 }
 
-/* The character's locks the channels' rows hold, told to the hook as they change. */
 static void lock_character(song_ctl* sc) {
     for (uint32_t f = 0u; f < 4u; f++) {
         int16_t v = -1;
@@ -1644,7 +1561,6 @@ static void lock_character(song_ctl* sc) {
     }
 }
 
-/* The rows the interrupt has started since the last poll. */
 static void poll_locks(song_ctl* sc) {
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
         uint8_t seq = sc->row_seq[ch];
@@ -1654,11 +1570,7 @@ static void poll_locks(song_ctl* sc) {
         uint32_t pattern = sc->row_pat[ch], row = sc->row_row[ch], ord = sc->row_ord[ch];
         COMPILER_FENCE();
         if (sc->row_seq[ch] != seq)
-            continue; /* another row started while read: the next poll */
-        /* Only lookahead publication waits for the edit's reserved buffers; the current
-         * row's character locks still reach their main-loop hook on this pass. The row stays
-         * unseen until its look-ahead is resolved: a row that started after this poll's
-         * poll_applied, with the edit applied meanwhile, is resolved at the next poll. */
+            continue;
         if (!sc->lock_edit_seq) {
             sc->row_seen[ch] = seq;
             lock_resolve(sc, ch, pattern, row, ord, 0);
@@ -1674,10 +1586,6 @@ static void poll_locks(song_ctl* sc) {
     lock_character(sc);
 }
 
-/* The DIGI chunk's map for the interrupt (song_ctl.digi_of), the bytes that changed only: an
- * entry the interrupt reads is never 0 on its way to its new value. Built when a play, a
- * continue or an audition starts, and when the extension area's size changes (a NEW load adds
- * the chunk): not every pass, which a MIDI flood makes many. */
 static void digi_map(song_ctl* sc) {
     uint8_t map[GT2_MAX_INSTR + 1u];
     song_ext_digi_map(sc->song, map);
@@ -1691,15 +1599,11 @@ static void digi_map(song_ctl* sc) {
     sc->digi_ext = sc->song->ext_used;
 }
 
-/* The digi drums' main-loop side (song_ctl.h, song_ctl_block_end), once a poll: the voices
- * whose digi drums may sound, and the mute of the voices whose instrument is a digi drum, from
- * the notes the interrupt reports (a second reader of the event ring, which leaves
- * song_ctl_events' alone). A song with no digi drum skips the events: a few loads a pass. */
 static void digi_poll(song_ctl* sc) {
     if (sc->song->ext_used != sc->digi_ext)
         digi_map(sc);
     uint32_t head = sc->ev_head;
-    COMPILER_FENCE(); /* the head before the events it publishes */
+    COMPILER_FENCE();
     if (sc->digi_any) {
         uint32_t t = head - sc->digi_ev > SONG_EVENT_RING ? head - SONG_EVENT_RING : sc->digi_ev;
         for (; t != head; t++) {
@@ -1761,7 +1665,6 @@ void song_ctl_poll(song_ctl* sc, uint32_t flags) {
             break;
         }
         if (sc->want_handover && !sc->ff_on && !sc->inflight_n && !sc->spare_wait) {
-            /* the true shape, into the spare, for the fast-forward: a slice a poll */
             gt2_shape_derive_begin(&sc->w->cur);
             sc->deriving = sc->deriving_for = sc->jam_live || sc->state != SONG_PLAYING
                 ? SONG_DERIVE_JAM : SONG_DERIVE_HANDOVER;
@@ -1797,7 +1700,7 @@ uint32_t song_ctl_events(song_ctl* sc, song_event* out, uint32_t n) {
         song_event e = sc->ev[sc->ev_tail & EV_MASK];
         COMPILER_FENCE();
         if (sc->ev_head - sc->ev_tail > SONG_EVENT_RING)
-            continue; /* overwritten while read: count it and go on from the oldest left */
+            continue;
         out[got++] = e;
         sc->ev_tail++;
     }
@@ -1810,7 +1713,7 @@ uint32_t song_ctl_state(const song_ctl* sc) {
 
 uint32_t song_ctl_clock_calls(const song_ctl* sc) {
     const volatile song_ctl* v = sc;
-    uint32_t applied = v->applied; /* before the calls: a PLAY applied since resets them */
+    uint32_t applied = v->applied;
     uint32_t calls = v->calls;
     return (int32_t)(applied - sc->play_seq) < 0 ? 0u : calls;
 }

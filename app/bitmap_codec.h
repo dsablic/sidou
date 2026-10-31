@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The run dictionary and row packets (docs/art/bitmap-codec.md). Cursors count nibbles. */
 #ifndef SIDOU_BITMAP_CODEC_H
 #define SIDOU_BITMAP_CODEC_H
 

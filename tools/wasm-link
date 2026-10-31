@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# The Live Link viewer's screen: SIDOU's cell grid and font (app/grid.c, app/font.c through
-# platform/web/link_font.c) with platform/web/link_api.c, as one small WebAssembly module with no imports, so the page draws
-# the FM-1's screen exactly as its LCD does. web/link.js is its JavaScript side.
-#   tools/wasm-link [OUT.wasm]     (default build/wasm-link/sidou-link.wasm)
-# The toolchain is tools/wasm-core's: clang (its wasm32 target) compiles, rust-lld (-flavor wasm)
-# or a wasm-ld on PATH links (SIDOU_WASM_LD names another; SIDOU_WASM_RUST_LLD=1 insists on
-# rust-lld). No libc: platform/fm1/libc_min.c, as on the device.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="${1:-$root/build/wasm-link/sidou-link.wasm}"
@@ -22,7 +15,6 @@ if [ -z "$ld" ]; then
     else
         sysroot=$(rustc --print sysroot)
         host=$(rustc -vV | sed -n 's/^host: //p')
-        # (its libLLVM is in the sysroot's lib, where rustc points it when rustc runs it)
         export LD_LIBRARY_PATH="$sysroot/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         export DYLD_LIBRARY_PATH="$sysroot/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
         ld="$sysroot/lib/rustlib/$host/bin/rust-lld -flavor wasm"
@@ -39,7 +31,6 @@ for s in "${sources[@]}"; do
     "$cc" "${flags[@]}" -c "$root/$s" -o "$o"
     objs+=("$o")
 done
-# A 16 KiB stack; the cells, the grid and the two pictures are static data (about 0.4 MiB).
 $ld --no-entry --gc-sections --strip-all -z stack-size=16384 --initial-memory=589824 \
     "${objs[@]}" -o "$out"
 echo "wasm-link: $out ($(wc -c <"$out" | tr -d ' ') bytes)"

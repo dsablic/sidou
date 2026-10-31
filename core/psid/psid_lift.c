@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* An instrument lifted from a .sid tune (psid_lift.h). */
 #include "psid_lift.h"
 
 #include <string.h>
@@ -8,14 +7,10 @@
 #include "player/gt2_play.h"
 #include "song/gt2_song.h"
 
-#define KEEP 0xffu  /* a frame's note: none set (the vibrato's frames after its note) */
+#define KEEP 0xffu
 #define ROWS PSID_LIFT_ROWS
-/* A frame's kind as GoatTracker's player runs it: a row that sets the note (the vibrato's
- * phase restarts), a command row (no effect runs), any other (the instrument's vibrato runs). */
 enum { PLAIN, NOTE, CMD };
 
-/* The conversion's place: the frames it takes, the file's next byte, the rows of the table it
- * builds (in psid_lift.row until put_table copies them into the file). */
 typedef struct {
     psid_lift* l;
     uint32_t n;
@@ -37,7 +32,6 @@ void psid_lift_arm(psid_lift* l, uint32_t voice, uint32_t chips)
     memset(l->count, 0, sizeof l->count);
 }
 
-/* A register's place in a frame, or PSID_LIFT_REGS for one the frame does not hold. */
 static uint32_t slot(const psid_lift* l, uint32_t reg)
 {
     uint32_t v = reg - l->voice * 7u;
@@ -54,7 +48,7 @@ void psid_lift_write(psid_lift* l, uint32_t chip, uint32_t reg, uint32_t value)
     l->regs[chip][reg] = (uint8_t)value;
     if (l->state == PSID_LIFT_ARMED) {
         if (reg == ctrl && chip < l->chips && !(old & 1u) && (value & 1u)) {
-            l->state = PSID_LIFT_TAKING; /* the gate-on: this call is frame 0 */
+            l->state = PSID_LIFT_TAKING;
             l->chip = (uint8_t)chip;
             l->count[4] = 1u;
         }
@@ -63,14 +57,13 @@ void psid_lift_write(psid_lift* l, uint32_t chip, uint32_t reg, uint32_t value)
         if (s < PSID_LIFT_REGS && l->count[s] < 255u)
             l->count[s]++;
         if (reg == ctrl && ((old ^ value) & 1u))
-            l->ended = 1; /* the gate off, or on again: the note is over */
+            l->ended = 1;
     }
 }
 
 void psid_lift_call(psid_lift* l)
 {
     if (l->state == PSID_LIFT_ARMED) {
-        /* each chip's frequency as this call left it: the one before the gate-on's call */
         for (uint32_t k = 0; k < 2u; k++)
             memcpy(l->before[k], &l->regs[k][l->voice * 7u], 2);
         return;
@@ -97,21 +90,17 @@ void psid_lift_stop(psid_lift* l)
                                                                           : PSID_LIFT_OFF;
 }
 
-/* --- The conversion ----------------------------------------------------------------------- */
-
 static uint32_t note_freq(uint32_t n)
 {
     return gt2_freq_lo[n] | (uint32_t)gt2_freq_hi[n] << 8;
 }
 
-/* A frame's frequency at the PAL clock (an NTSC tune's scaled by 1,022,727 / 985,248). */
 static uint32_t pal_freq(const uint8_t* f, int ntsc)
 {
     uint32_t x = f[0] | (uint32_t)f[1] << 8;
     return ntsc ? x + (x * 37479u + 492624u) / 985248u : x;
 }
 
-/* The note nearest the frequency, C-0 to B-7. */
 static uint32_t nearest(uint32_t f)
 {
     uint32_t lo = 0, hi = GT2_NOTES - 1u;
@@ -136,7 +125,6 @@ static void row(build* b, uint32_t left, uint32_t right)
     b->rows++;
 }
 
-/* The table built, ended with $FF 00 (none when empty), into the file: 0 if it does not fit. */
 static int put_table(build* b, int end)
 {
     uint8_t* f = b->l->file;
@@ -153,7 +141,6 @@ static int put_table(build* b, int end)
     return 1;
 }
 
-/* m frames with nothing to change: delay rows (a delay of d holds d + 1 frames). */
 static void idle(build* b, uint32_t m)
 {
     while (m) {
@@ -163,7 +150,6 @@ static void idle(build* b, uint32_t m)
     }
 }
 
-/* A note as a wavetable row's right byte: relative to the base, else absolute. */
 static uint32_t note_byte(uint32_t note, uint32_t base)
 {
     int32_t r = (int32_t)note - (int32_t)base;
@@ -174,7 +160,6 @@ static uint32_t note_byte(uint32_t note, uint32_t base)
     return 0x80u + (note ? note : 1u);
 }
 
-/* The wave table: a row a frame that changes something, delays for the frames between. */
 static void wave_rows(build* b, uint32_t base)
 {
     const psid_lift* l = b->l;
@@ -185,7 +170,6 @@ static void wave_rows(build* b, uint32_t base)
         uint32_t want = b->l->note[k];
         b->l->kind[k] = PLAIN;
         if (f[PSID_LIFT_AD] != ad || f[PSID_LIFT_SR] != sr) {
-            /* an envelope change takes its frame; a change beside it waits for the next */
             idle(b, m);
             m = 0;
             int a = f[PSID_LIFT_AD] != ad;
@@ -204,7 +188,6 @@ static void wave_rows(build* b, uint32_t base)
         idle(b, m);
         m = 0;
         uint32_t c = f[PSID_LIFT_CTRL];
-        /* waveforms $00-$0F and $E0-$FF are the inaudible $E0-$EF (the latter approximate) */
         uint32_t left = c < 0x10u || c >= 0xe0u ? 0xe0u | (c & 0x0fu) : c;
         row(b, w ? left : 0u, n ? note_byte(want, base) : 0x80u);
         ctrl = c;
@@ -215,9 +198,6 @@ static void wave_rows(build* b, uint32_t base)
     }
 }
 
-/* The frequencies GoatTracker's instrument vibrato (calculated speed: speed, the note's step
- * >> shift, after `delay` effect frames) gives the frames, against the captured ones: the sum
- * of the differences, given up once it reaches `best`. */
 static uint32_t vibrato_error(const build* b, int ntsc, uint32_t speed, uint32_t shift,
                               uint32_t delay, uint32_t best)
 {
@@ -245,15 +225,11 @@ static uint32_t vibrato_error(const build* b, int ntsc, uint32_t speed, uint32_t
     return err;
 }
 
-/* The pulse width's 12 bits in a frame. */
 static uint32_t width(const uint8_t* f)
 {
     return (f[PSID_LIFT_PW_HI] & 0x0fu) << 8 | f[PSID_LIFT_PW_LO];
 }
 
-/* Runs of equal steps of v (pulse: 12 bits, steps up to 127; filter: the cutoff's 8 bits, any
- * step) as modulation rows, from frame 2 on; set rows at the jumps (set) and at a change of the
- * filter's mode or resonance (set as well). Trailing still frames need no row. */
 static void runs(build* b, int pulse)
 {
     const psid_lift* l = b->l;
@@ -294,7 +270,6 @@ static void runs(build* b, int pulse)
         row(b, count, (uint32_t)speed & 0xffu);
 }
 
-/* The note's first n frames as the file: its length, or 0 if it does not fit. */
 static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
 {
     psid_lift* l = b->l;
@@ -304,13 +279,10 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
     memcpy(l->file, "GTI5", 4);
     b->pos = 4u + GT2_INSTR_BYTES;
     b->rows = 0;
-    /* The base: the first frame that sets the pitch (frame 0 keeps the note before's in
-     * GoatTracker's players). */
     uint32_t f0 = l->frame[0][0] | (uint32_t)l->frame[0][1] << 8;
     uint32_t base = nearest(pal_freq(l->frame[f0 == (l->before[l->chip][0] |
                                                     (uint32_t)l->before[l->chip][1] << 8)], ntsc));
     l->base = (uint8_t)base;
-    /* Each frame's nearest note; the turns of the frequency and the frames off a note's. */
     uint32_t turns = 0, off = 0, k0 = 0, first = 0, last = 0;
     int32_t dir = 0;
     for (uint32_t k = 1; k < n; k++) {
@@ -331,8 +303,6 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
             dir = nd;
         }
     }
-    /* A vibrato: three turns or more, off the notes, within a semitone of its centre from its
-     * first frame off a note: the centre held from the frame before. */
     uint32_t centre = 0, s = 0;
     if (turns >= 3u && off >= 3u) {
         uint32_t sum = 0;
@@ -349,7 +319,6 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
     wave_rows(b, base);
     if (!put_table(b, 1))
         return 0;
-    /* The vibrato's fit: speeds about the turns' spacing, every shift. */
     uint32_t best = 0xffffffffu, speed = 0, shift = 0, delay = 0;
     if (s && centre + 1u < GT2_NOTES) {
         uint32_t h = (last - first) / (turns - 1u);
@@ -364,7 +333,6 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
                     shift = sh;
                 }
             }
-        /* kept when it at least halves what holding the centre leaves */
         uint32_t held = 0, c = note_freq(centre);
         for (uint32_t k = s + 1u; k < n; k++) {
             uint32_t f = pal_freq(l->frame[k], ntsc);
@@ -372,7 +340,6 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
         }
         *flags |= 2u * best <= held ? PSID_LIFT_F_VIBRATO : PSID_LIFT_F_NO_VIBRATO;
     }
-    /* The pulse when a frame uses the pulse waveform; the filter when one routes the voice. */
     uint32_t pulse = 0, filter = 0;
     for (uint32_t k = 0; k < n; k++) {
         pulse |= l->frame[k][PSID_LIFT_CTRL] & 0x40u;
@@ -392,9 +359,6 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
         row(b, 0x80u | speed, shift);
     if (!put_table(b, 0))
         return 0;
-    /* The instrument: AD, SR, the tables from their first rows, the vibrato, GoatTracker's
-     * gate-off timer and hard restart (2), the first waveform (its own values $FE and $FF are
-     * the gate's). */
     uint32_t c0 = l->frame[0][PSID_LIFT_CTRL];
     ins[GT2_INS_AD] = l->frame[0][PSID_LIFT_AD];
     ins[GT2_INS_SR] = l->frame[0][PSID_LIFT_SR];
@@ -402,7 +366,6 @@ static uint32_t convert(build* b, int ntsc, const char* name, uint32_t* flags)
     ins[GT2_INS_PULSE] = (uint8_t)(pulse ? 1u : 0u);
     ins[GT2_INS_FILTER] = (uint8_t)(filter ? 1u : 0u);
     ins[GT2_INS_VIBPARAM] = (uint8_t)(*flags & PSID_LIFT_F_VIBRATO ? 1u : 0u);
-    /* the delay's byte is one more (GoatTracker's 0 is no vibrato at all) */
     ins[GT2_INS_VIBDELAY] = (uint8_t)(*flags & PSID_LIFT_F_VIBRATO ? delay + 1u : 0u);
     ins[GT2_INS_GATETIMER] = 2;
     ins[GT2_INS_FIRSTWAVE] = (uint8_t)(c0 >= 0xfeu ? 0xf1u : c0);
@@ -420,7 +383,7 @@ int psid_lift_convert(psid_lift* l, int ntsc, const char* name, uint32_t* flags)
     if (!l->frames)
         return PSID_LIFT_E_EMPTY;
     if (l->frames == 1u) {
-        memcpy(l->frame[1], l->frame[0], PSID_LIFT_REGS); /* a frame to set the note in */
+        memcpy(l->frame[1], l->frame[0], PSID_LIFT_REGS);
         l->frames = 2;
     }
     b.l = l;
@@ -428,7 +391,6 @@ int psid_lift_convert(psid_lift* l, int ntsc, const char* name, uint32_t* flags)
     uint32_t len = convert(&b, ntsc, name, flags);
     if (len)
         return (int)len;
-    /* too much for the file: an eighth fewer frames (one at least), at the next call */
     uint32_t cut = l->frames / 8u;
     l->frames = (uint8_t)(l->frames - (cut ? cut : 1u));
     l->cut = 1;

@@ -1,22 +1,17 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The knob walks (live.h "Knob walks"): the tables, generated and checked by the host tests
- * (knob_curves.rs), and the walk. Once a turn or a CC, in the main loop. */
 #include "live.h"
 
 #include "fx/fx_slots.h"
 
-/* round(32.768 x 255^(i / 31)): 0.05 Hz x 255^(i / 31) as the LFO's phase step a tick. */
 static const uint16_t PWM_RATE[32] = {33,   39,   47,   56,   67,   80,   96,   115,
                                       137,  164,  196,  234,  280,  335,  400,  479,
                                       572,  684,  818,  978,  1170, 1399, 1672, 2000,
                                       2391, 2859, 3419, 4088, 4888, 5844, 6988, 8356};
-/* round(2048 (i / 31)^2) */
 static const uint16_t PWM_DEPTH[32] = {0,    2,    9,    19,   34,   53,   77,   104,
                                        136,  173,  213,  258,  307,  360,  418,  480,
                                        546,  616,  690,  769,  852,  940,  1031, 1127,
                                        1228, 1332, 1441, 1554, 1671, 1792, 1918, 2048};
-/* Geometric from the top down, round(v / r), and a step of 1 where that is finer. */
 static const uint8_t VIB_RATE[24] = {5,  6,  7,  8,  9,  10, 11, 13, 15, 17, 20,  23,
                                      27, 31, 36, 41, 47, 54, 62, 71, 82, 95, 110, 127};
 static const uint8_t VIB_DEPTH[32] = {0,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
@@ -24,9 +19,6 @@ static const uint8_t VIB_DEPTH[32] = {0,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15
                                       51, 56, 62, 69, 77, 85, 94, 104, 115, 127};
 static const uint8_t VIB_DELAY[24] = {0,  4,  5,  6,  7,  8,  9,  10, 12, 14, 16,  19,
                                       22, 26, 30, 35, 41, 48, 56, 66, 78, 92, 108, 127};
-/* The effect slots' shapes (live.h live_walk_fx): LIN even, 4 a detent, with the three 5s mid-way,
- * clear of the steeper ends; LOG geometric from 5, a step of 1 where that is finer; EQP
- * 127 sin(pi/2 i/31), a step of 1 at the top where that is finer. */
 const uint8_t live_walk_fx[3][32] = {
     {0,  4,  8,  12, 16, 20, 24, 28, 32, 36,  40,  45,  49,  53,  57,  61,
      66, 70, 74, 78, 82, 87, 91, 95, 99, 103, 107, 111, 115, 119, 123, 127},
@@ -36,10 +28,6 @@ const uint8_t live_walk_fx[3][32] = {
      92, 96, 100, 104, 108, 111, 114, 117, 119, 121, 122, 123, 124, 125, 126, 127},
 };
 
-/* A walk: its table, bytes or halfwords, and its length. A CC's position and a position's CC
- * without a division (MIDI out sends a CC a parameter, emu-gate midi.rs bounds a tick):
- * round(cc (n - 1) / 127) = (cc POS + 2048) >> 12 and round(i 127 / (n - 1)) = (i CC + 128) >> 8,
- * exact over 0..127 and 0..n - 1 (knob_curves.rs checks every one). */
 typedef struct {
     const uint8_t* b;
     const uint16_t* w;
@@ -60,8 +48,6 @@ static uint32_t at(const walk_table* k, uint32_t i) {
     return k->w ? k->w[i] : k->b[i];
 }
 
-/* The last position at or below value (-1 if none), by halves: a detent's cost is bounded
- * (emu-gate screen.rs CHIP_INPUT, a slot's control on CHIP). */
 static int32_t place(const walk_table* k, uint32_t value) {
     int32_t lo = -1, hi = k->n;
     while (hi - lo > 1) {
@@ -75,8 +61,6 @@ static int32_t place(const walk_table* k, uint32_t value) {
     return lo;
 }
 
-/* Per slot and algorithm, the shape of Amount, A, B and Mix, two bits each from bit 0 (Amount):
- * 0 LIN, 1 LOG, 2 EQP. The choice and its measure per control are in knob_curves.rs. */
 #define SHAPES(amount, a, b, mix) ((amount) | (a) << 2 | (b) << 4 | (mix) << 6)
 #define LIN 0u
 #define LOG 1u
@@ -140,7 +124,7 @@ uint32_t live_walk_of(const live* l, uint32_t param) {
     default: break;
     }
     if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
-        uint32_t field = param - LIVE_PARAM_SLOT, slot = 0; /* no division: MIDI out's tick */
+        uint32_t field = param - LIVE_PARAM_SLOT, slot = 0;
         while (field >= LIVE_SLOT_FIELDS) {
             field -= LIVE_SLOT_FIELDS;
             slot++;
@@ -160,9 +144,8 @@ uint32_t live_walk_step(uint32_t walk, uint32_t value, int32_t detents) {
     int32_t n = k->n;
     int32_t pos = place(k, value);
     if (pos < 0 || at(k, (uint32_t)pos) != value) {
-        /* Off the walk: the first detent lands on the first position beyond it that way. */
         if (detents > 0 ? pos + 1 >= n : pos < 0) {
-            return value; /* none that way */
+            return value;
         }
         pos += detents > 0 ? 0 : 1;
     }
@@ -171,7 +154,6 @@ uint32_t live_walk_step(uint32_t walk, uint32_t value, int32_t detents) {
     return at(k, (uint32_t)pos);
 }
 
-/* The value the walk moves: PWM HZ's phase step, any other parameter's own value. */
 static uint32_t walked(const live* l, uint32_t param) {
     return param == LIVE_PARAM_PWM_RATE ? l->pwm_rate : live_param_get(l, param);
 }
@@ -209,7 +191,7 @@ uint8_t live_walk_to_cc(const live* l, uint32_t param, uint32_t value) {
     if (param == LIVE_PARAM_PWM_RATE) {
         value = live_pwm_step(value);
     }
-    int32_t i = place(k, value); /* the nearer of it and the next */
+    int32_t i = place(k, value);
     if (i < 0 || (i + 1 < k->n && at(k, (uint32_t)i + 1u) - value < value - at(k, (uint32_t)i))) {
         i++;
     }

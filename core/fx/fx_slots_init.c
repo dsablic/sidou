@@ -4,13 +4,6 @@
 
 #include <stddef.h>
 
-/* The slots' start-up, run once at boot from flash: in its own file so the device builds it for
- * size (core/CMakeLists.txt) while fx_slots.c, whose render is SRAM code (platform/fm1/app.ld),
- * stays at -O2. */
-
-/* A running state's bytes into a template (char copies: well defined whatever the types).
- * The switch path's own copy is slot_copy: the device runs this one from flash, that one from
- * SRAM (app.ld), and no call crosses between the two. */
 static void tpl_keep(void* dst, const void* src, uint32_t n) {
     unsigned char* d = dst;
     const unsigned char* q = src;
@@ -19,7 +12,6 @@ static void tpl_keep(void* dst, const void* src, uint32_t n) {
     }
 }
 
-/* Samples an algorithm must run before it is heard: its longest tap delay, `ms`. */
 static uint32_t warm_up(uint32_t sample_rate, float ms) {
     return (uint32_t)(int32_t)(ms * 0.001f * (float)sample_rate) + 4u;
 }
@@ -50,7 +42,7 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_
     float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
     float ahead = 1.0f;
     for (uint32_t i = 0; i < 16u; ++i) {
-        ahead *= 1.0f - k; /* (1 - k)^CHUNK: the one-pole CHUNK samples on */
+        ahead *= 1.0f - k;
     }
     s->smooth_ahead = ahead;
     float fade_samples = SID_SLOT_FADE_MS * 0.001f * (float)sample_rate;
@@ -70,8 +62,6 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_
     sid_fx_crt_init(&t->lofi.crt, sample_rate);
     sid_fx_noise_init(&t->lofi.noise, seed);
     sid_fx_tremolo_init(&t->tremolo, sample_rate);
-    /* The delay-line algorithms are set up in their running state (no algorithm runs yet), all
-     * but their lines' samples, and what follows the line kept. */
     sid_slot_mod_state* m = &s->mod;
     sid_fx_chorus_setup(&m->chorus, sample_rate);
     tpl_keep(t->chorus, &m->chorus.line, sizeof t->chorus);

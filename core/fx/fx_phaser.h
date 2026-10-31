@@ -3,19 +3,6 @@
 #ifndef SIDOU_FX_PHASER_H
 #define SIDOU_FX_PHASER_H
 
-/* Phaser, mono in, stereo out: per side, six first-order allpasses sharing one
- * coefficient, swept by a sine over a log-frequency table, with feedback from the chain's
- * output to its input; the output is the input plus the chain, which puts notches where
- * the chain turns the phase by odd multiples of 180 degrees. The right side's LFO runs
- * 90 degrees on. Reimplemented from Zolzer, DAFX (phaser) and Zavalishin, The Art of VA
- * Filter Design (first-order allpass).
- *
- * - Amount: depth, the sweep around the middle of MIN_HZ .. MAX_HZ (log);
- * - A: rate, 0.05 .. 5 Hz (log);
- * - B: feedback, 0 .. 0.7.
- * Any amounts in [0, 1] may arrive on any sample. The LFO and rate are evaluated every
- * SID_FX_MOD_SEGMENT samples and the coefficients move linearly in between. */
-
 #include <stdint.h>
 
 #include "fx_chorus.h"
@@ -28,21 +15,21 @@ extern "C" {
 
 #define SID_FX_PHASER_STAGES 6
 #define SID_FX_PHASER_MIN_HZ 150.0f
-#define SID_FX_PHASER_LN_RANGE 3.4011974f /* ln(4500 / 150) */
+#define SID_FX_PHASER_LN_RANGE 3.4011974f
 #define SID_FX_PHASER_STEPS 32u
 #define SID_FX_PHASER_MIN_RATE_HZ 0.05f
-#define SID_FX_PHASER_RATE_OCTAVES 6.643856f /* log2(5 / 0.05) */
+#define SID_FX_PHASER_RATE_OCTAVES 6.643856f
 #define SID_FX_PHASER_FEEDBACK 0.7f
 
 typedef struct {
-    float table[SID_FX_PHASER_STEPS + 1u]; /* allpass coefficient over the sweep */
+    float table[SID_FX_PHASER_STEPS + 1u];
     float s_l[SID_FX_PHASER_STAGES], s_r[SID_FX_PHASER_STAGES];
     float fb_l, fb_r;
     uint32_t phase, inc;
     float hz_inc;
-    float a_l, a_r;       /* coefficients */
-    float step_l, step_r; /* their change per sample in this segment */
-    uint32_t left;        /* samples left in the segment */
+    float a_l, a_r;
+    float step_l, step_r;
+    uint32_t left;
 } sid_fx_phaser;
 
 static inline void sid_fx_phaser_set_rate(sid_fx_phaser* p, float rate) {
@@ -83,7 +70,6 @@ static inline float sid_fx_phaser_coef(const sid_fx_phaser* p, float pos) {
     return sid_fx_lerp(p->table[i], p->table[i + 1], f - (float)i);
 }
 
-/* Six allpasses y = a x + s, s = x - a y (transposed direct form II). */
 static inline float sid_fx_phaser_chain(float* s, float a, float x) {
     for (int k = 0; k < SID_FX_PHASER_STAGES; ++k) {
         float y = a * x + s[k];
@@ -93,7 +79,6 @@ static inline float sid_fx_phaser_chain(float* s, float a, float x) {
     return x;
 }
 
-/* x is normalised; depth, rate and feedback are in [0, 1]. */
 static inline void sid_fx_phaser_tick(sid_fx_phaser* p, float x, float depth, float rate,
                                       float feedback, float* l, float* r) {
     if (p->left == 0) {

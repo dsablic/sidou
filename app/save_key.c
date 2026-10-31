@@ -14,7 +14,7 @@ save_key_action save_key_buttons(save_key* k, uint32_t pressed, uint32_t held) {
         k->spoiled = 0;
     }
     if (k->down && (pressed & ~bit)) {
-        k->spoiled = 1; /* another button while SAVE is down */
+        k->spoiled = 1;
     }
     if (k->down && !(held & bit)) {
         int clean = !k->spoiled;

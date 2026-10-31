@@ -4,9 +4,6 @@
 
 #include <stddef.h>
 
-/* GoatTracker's sound effects (readme 6.3): AD, SR, the pulse byte, frames, $00. Notes are
- * $80 + the note from C-0 (D-0 $82 .. B-7 $DF); $11 triangle, $21 sawtooth, $41 pulse, $81
- * noise, each with the gate. */
 static const uint8_t BLIP[] = {0x00, 0xa2, 0x08, 0x11, 0xc8, 0xc8, 0x00};
 static const uint8_t CONFIRM[] = {0x00, 0xa3, 0x08, 0x41, 0xc0, 0xc4, 0xc7, 0x00};
 static const uint8_t CHIME[] = {0x01, 0x94, 0x08, 0x11, 0xcc, 0xc8, 0xc3, 0xc3, 0x00};
@@ -14,7 +11,6 @@ static const uint8_t BUZZ[] = {0x00, 0xb3, 0x02, 0x41, 0x98, 0x98, 0x97, 0x97, 0
 static const uint8_t CHUNK[] = {0x00, 0x83, 0x08, 0x81, 0xa4, 0x41, 0x90, 0x90, 0x00};
 static const uint8_t* const SOUNDS[UI_SOUND_COUNT] = {BLIP, CONFIRM, CHIME, BUZZ, CHUNK};
 
-/* The SID's release (and decay) times, in ms, by rate. */
 static const uint16_t RELEASE_MS[16] = {6,   24,  48,   72,   114,  168,  204,   240,
                                         300, 750, 1500, 2400, 3000, 9000, 15000, 24000};
 
@@ -59,8 +55,6 @@ static void put(ui_sound* us, uint8_t reg, uint8_t value) {
     us->sink(us->sink_ctx, reg, value);
 }
 
-/* live's sink while a sound holds a voice of chip B, the keys' chip: live's writes to that
- * voice, and its filter routing bit, are held back. */
 static void filter(void* ctx, uint8_t reg, uint8_t value) {
     ui_sound* us = ctx;
     uint8_t u = us->l->ui_voice;
@@ -76,7 +70,6 @@ static void filter(void* ctx, uint8_t reg, uint8_t value) {
     us->live_sink(us->live_ctx, reg, value);
 }
 
-/* The voice back to live (its registers, and its filter bit) and live's sink back. */
 static void give_back(ui_sound* us) {
     live* l = us->l;
     if (us->live_sink) {
@@ -114,11 +107,10 @@ int ui_sound_busy(const ui_sound* us) {
     return us->voice != UI_SOUND_NONE;
 }
 
-/* A free voice of chip B for a sound (the header), or UI_SOUND_NONE. */
 static uint8_t free_voice(const ui_sound* us) {
     const live* l = us->l;
     if (!keys_on_b(l)) {
-        return 2; /* chip B is all free: voice 3 */
+        return 2;
     }
     const live_preset* p = live_preset_get(l->preset);
     if (p && p->mono_sync) {
@@ -129,7 +121,6 @@ static uint8_t free_voice(const ui_sound* us) {
         if (l->voice[v].gate || us->free_in[v]) {
             continue;
         }
-        /* The newest released: live's allocator takes the oldest next. */
         if (best == UI_SOUND_NONE || (int32_t)(l->voice[v].stamp - l->voice[best].stamp) > 0) {
             best = (uint8_t)v;
         }
@@ -137,8 +128,6 @@ static uint8_t free_voice(const ui_sound* us) {
     return best;
 }
 
-/* The sound's next frame: a waveform kept, then the note; $00 the end (the gate off, then its
- * release). */
 static void step(ui_sound* us) {
     const uint8_t* d = SOUNDS[us->id];
     uint8_t v7 = (uint8_t)(us->voice * 7u);
@@ -147,13 +136,13 @@ static void step(ui_sound* us) {
         us->wave = b;
         b = us->pos < UI_SOUND_MAX_BYTES ? d[us->pos++] : 0u;
     }
-    if (b < 0x82u || b > 0xdfu) { /* $00, or a frame with no note: the end */
+    if (b < 0x82u || b > 0xdfu) {
         put(us, (uint8_t)(v7 + 4u), (uint8_t)(us->wave & ~1u));
         us->id = UI_SOUND_NONE;
         us->tail = release_ticks(d[1]);
         return;
     }
-    uint16_t f = live_freq_table[(uint32_t)(b - 0x80u) + 12u]; /* C-0 is MIDI's 12 */
+    uint16_t f = live_freq_table[(uint32_t)(b - 0x80u) + 12u];
     put(us, v7, (uint8_t)f);
     put(us, (uint8_t)(v7 + 1u), (uint8_t)(f >> 8));
     put(us, (uint8_t)(v7 + 4u), us->wave);
@@ -172,7 +161,6 @@ void ui_sound_play(ui_sound* us, ui_sound_id id) {
         us->voice = v;
         us->keys = l->keys_chip;
         if (keys_on_b(l)) {
-            /* Hold the voice from live: its allocator skips it, its writes stop at the filter. */
             l->ui_voice = (uint8_t)(v + 1u);
             us->live_sink = l->sink;
             us->live_ctx = l->sink_ctx;
@@ -181,7 +169,7 @@ void ui_sound_play(ui_sound* us, ui_sound_id id) {
             put(us, REG_RES_FILT,
                 (uint8_t)((l->resonance << 4) | (l->filter_voices & ~(1u << v))));
         } else {
-            put(us, REG_RES_FILT, 0); /* chip B is the sound's: no filter */
+            put(us, REG_RES_FILT, 0);
             put(us, REG_MODE_VOL, 0x0f);
         }
     }
@@ -192,7 +180,7 @@ void ui_sound_play(ui_sound* us, ui_sound_id id) {
     us->wave = 0;
     us->phase = 0;
     us->tail = 0;
-    put(us, (uint8_t)(v7 + 4u), 0); /* the gate off first: the sound's attack from its start */
+    put(us, (uint8_t)(v7 + 4u), 0);
     put(us, (uint8_t)(v7 + 5u), d[0]);
     put(us, (uint8_t)(v7 + 6u), d[1]);
     put(us, (uint8_t)(v7 + 2u), d[2]);
@@ -215,7 +203,6 @@ void ui_sound_tick(ui_sound* us) {
         return;
     }
     if (l->keys_chip != us->keys) {
-        /* The keys moved: the voice is theirs (or the chip's new player's) now. */
         us->live_sink = NULL;
         l->ui_voice = 0;
         us->voice = UI_SOUND_NONE;
@@ -224,7 +211,6 @@ void ui_sound_tick(ui_sound* us) {
         return;
     }
     if (keys_on_b(l) && l->ui_voice != us->voice + 1u) {
-        /* A note took the voice back: the sound stops, writing nothing more. */
         if (l->sink == filter && l->sink_ctx == us) {
             l->sink = us->live_sink;
             l->sink_ctx = us->live_ctx;
