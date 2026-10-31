@@ -382,6 +382,10 @@ static inline uint32_t sid_noise_jump(uint32_t sr, uint32_t n) {
  * and frequency of those cycles, which nothing has changed: writes and hard sync
  * settle first). Exact, because nothing writes back into the register meanwhile (a
  * locked-up register's output is 0, and so is all it would write back). */
+extern void (*const sid_noise_settle_deferred_far)(sid_osc* o);
+#ifdef SID_VOICE_FAR
+#define sid_noise_settle_deferred sid_noise_settle_deferred_far
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -409,6 +413,7 @@ static void sid_noise_settle_deferred(sid_osc* o) {
     }
     o->shift_pipeline = (uint8_t)pending;
 }
+#endif
 
 static inline void sid_noise_settle(sid_osc* o) {
     if (o->defer) {
@@ -596,6 +601,10 @@ static inline uint32_t sid_osc_pull_msb(sid_osc* o, uint32_t a, uint32_t cycles,
 /* The noise register over a step from prev to next (not wrapped) when nothing writes
  * back into it (sid_osc_advance's fast path): a shift is the plain LFSR step, and only
  * a shift still pending at the end needs its latch and TEST-or-reset flag. */
+extern void (*const sid_noise_clock_far)(sid_osc* o, uint32_t prev, uint32_t next, uint32_t cycles);
+#ifdef SID_VOICE_FAR
+#define sid_noise_clock sid_noise_clock_far
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -654,6 +663,7 @@ static void sid_noise_clock(sid_osc* o, uint32_t prev, uint32_t next, uint32_t c
     }
     o->shift_pipeline = (uint8_t)pending;
 }
+#endif
 
 /* The bit-19 segment of an (unwrapped) accumulator value: a rise moves to the next. */
 static inline uint32_t sid_osc_seg19(uint32_t a) {
@@ -932,6 +942,11 @@ static inline uint32_t sid_osc_test_bulk(sid_osc* o, uint32_t left, uint32_t src
 /* `cycles` cycles of noise combined with other waveforms (or TEST with noise and
  * more), cycle by cycle where something changes and in bulk where provably nothing
  * but the accumulator or the fade countdown does. Exact either way. */
+extern void (*const sid_osc_run_combined_far)(sid_osc* o, uint32_t cycles, uint32_t src_acc,
+                                        uint32_t src_freq);
+#ifdef SID_VOICE_FAR
+#define sid_osc_run_combined sid_osc_run_combined_far
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -988,6 +1003,7 @@ static void sid_osc_run_combined(sid_osc* o, uint32_t cycles, uint32_t src_acc,
         sid_osc_cycle(o, sid_src_at(o, src_acc, src_freq, k));
     }
 }
+#endif
 
 /* For tests: sid_osc_advance for noise combined with other waveforms, but strictly
  * cycle by cycle (the reference for sid_osc_run_combined's bulk steps). */
@@ -1042,6 +1058,11 @@ static inline int sid_osc_quiet_step(sid_osc* o, uint32_t cycles, uint32_t src_a
 
 /* sid_osc_advance for TEST, noise combined with other waveforms and the 6581's sawtooth
  * combinations, and for steps where the noise register shifts. */
+extern void (*const sid_osc_advance_slow_far)(sid_osc* o, uint32_t cycles, uint32_t src_acc,
+                                        uint32_t src_freq);
+#ifdef SID_VOICE_FAR
+#define sid_osc_advance_slow sid_osc_advance_slow_far
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -1131,6 +1152,7 @@ static void sid_osc_advance_slow(sid_osc* o, uint32_t cycles, uint32_t src_acc,
     }
     o->acc = next & 0xffffffu;
 }
+#endif
 
 /* Advances `cycles` (at most 256, and freq * cycles < 2^24). src_acc and src_freq are
  * the ring modulation source's accumulator at the start and its frequency; only noise

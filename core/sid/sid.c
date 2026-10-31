@@ -840,3 +840,13 @@ void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_t
         grit(s, out, frames);
     }
 }
+
+void (*const sid_noise_settle_deferred_far)(sid_osc* o) = sid_noise_settle_deferred;
+void (*const sid_noise_clock_far)(sid_osc* o, uint32_t prev, uint32_t next,
+                                   uint32_t cycles) = sid_noise_clock;
+void (*const sid_osc_run_combined_far)(sid_osc* o, uint32_t cycles, uint32_t src_acc,
+                                        uint32_t src_freq) = sid_osc_run_combined;
+void (*const sid_osc_advance_slow_far)(sid_osc* o, uint32_t cycles, uint32_t src_acc,
+                                        uint32_t src_freq) = sid_osc_advance_slow;
+void (*const sid_env_run_far)(sid_env* e, uint32_t cycles, int may_rest) = sid_env_run;
+void (*const sid_env_advance_slow_far)(sid_env* e, uint32_t cycles) = sid_env_advance_slow;

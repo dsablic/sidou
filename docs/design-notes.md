@@ -17,3 +17,12 @@ The cleanup before 1.5's release moves the decisions now written as code comment
 - The app slot is 581,564 bytes; each release plan sets a ceiling (`flash_budget.rs`).
 - Cold code builds at `-Os`/`-Oz`; files on instruction-budget paths keep `-O2`. `gt2_song.c`
   stays at `-Os`: at `-Oz` it moved four LCD goldens, cause not yet found.
+- The voice shadow (`core/sid/sid_shadow.c`, the .sid player's main-loop copy of the voices)
+  runs from flash but calls the chip's own out-of-line voice helpers (`sid_osc_run_combined`,
+  `sid_osc_advance_slow`, `sid_noise_clock`, `sid_noise_settle_deferred`, `sid_env_run`,
+  `sid_env_advance_slow`) in SRAM through the `*_far` pointers `sid.c` exports
+  (`SID_VOICE_FAR`): a direct call cannot reach SRAM from flash (docs/hardware.md, "Call range").
+  It saved 7.3 KB of flash copies and leaves `sid.c`'s SRAM code byte for byte as it was. The
+  shadow still reads its envelope tables from flash (`SID_ENV_TABLES_IN_FLASH`), and builds
+  with `-fno-function-sections` so that none of the helpers it still instantiates is taken
+  into SRAM by app.ld's name patterns.
