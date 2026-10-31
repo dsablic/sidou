@@ -57,8 +57,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   point (crt0) sits alone in `.entry` as the image's first section, because the SPL jumps to the
   image's first byte. A static assertion verifies `_start == ORIGIN(XIP)`.
 - The firmware image (`sidou_app.bin`) concatenates four sections extracted from the ELF: `.entry`,
-  `.ram_text`, `.text` and `.data`, in that order. `fm1_cstart` copies `.ram_text` and `.data`
-  from their XIP image positions into RAM and RAMTEXT at boot. The link enforces
+  `.ram_text`, `.text` and `.data`, in that order. `fm1_cstart` copies `.ram_text` into RAMTEXT and
+  `.data` into RAM from their XIP image positions at boot. The link enforces
   `--orphan-handling=error` so no section lands in the image without an explicit rule.
 - Stacks in `app.ld` carry 256-byte guard bands. The user stack is 8 KiB, three times the deepest
   measured use (2,700 bytes; every test's machine checks both stacks stay within half their size).
@@ -69,9 +69,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `core/sid/sid_dac.c` places the DAC tables (17,408 bytes per chip model, two models) in POOL
   rather than RAM. A static assertion guards against the tables falling back
   into `.bss` if the linker fails to place them: `_pool_dac_end - _pool_dac_start >= 2 * 17408`.
-- `platform/fm1/midi.c` manages USB DMA buffer alignment: `usb.c` declares buffers `aligned(4)`,
-  but the hardware requires stricter alignment. The EP1 IN buffer at 4 mod 8 sends nothing; it
-  must sit on a 64-byte boundary, while other endpoints require 8-byte boundaries. The EP4 IN
+- `app.ld` aligns `usb.c`'s USB DMA buffers, which `midi.c`'s `-fdata-sections` puts in their own
+  sections: `usb.c` declares them `aligned(4)`, and on the FM-1 an EP1 IN buffer at 4 mod 8 sends
+  nothing (`docs/hardware-results/usb-out-diagnosis.md`). EP1 IN's sits on a 64-byte boundary, as
+  on the device test, the other two right after it on 8-byte ones, packed: RAM is tight. The EP4 IN
   buffer (USB audio, `ep4tx`) sits in the compiler's merged globals: emu-gate `tests/usb.rs`
   checks its 8-byte alignment. The USB audio ring (2 KiB) is zeroed with the rest of POOL.
 - `platform/fm1/audio.c` keeps the song transport's state out of the boot's zeroed ranges
@@ -85,38 +86,43 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `platform/fm1/main.c` initialises hardware in order: watchdog, fatal vectors, memory, LCD, live
   instrument, key matrix, MIDI (TRS UART, USB), audio (ALNK0 IRQ), 10 kHz tick (TIMER5 IRQ, which
   polls MIDI), interrupts on, then the screen's first frame.
-- `platform/fm1/main.c` (`fm1_cstart`) runs the boot-loop guard first, before any other init.
+- `platform/fm1/main.c` (`fm1_cstart`) runs the boot-loop guard (`bootguard_boot`) before anything
+  that may crash: only the second-core hold, `fm1_time_init`, the watchdog's arming and the power-on
+  UBOOT gesture come before it.
   `fm1_cpu1_halt` (the HAL's second-core hold) runs at every boot and before every reset, because
   SIDOU never starts the second core but one left running from a previous boot would execute
   whatever its PC points at during RAM clear and fill. The HAL builds the hold function only when
-  `FM1_CPU1_USED` is set; SIDOU sets it to 0.
+  `FM1_CPU1_USED` is set: `main.c` sets it to 1 for `fm1_sys.h` (the hold) and to 0 for
+  `fm1_irq.h`, whose second-core fault paths need Felucca's `fm1_cpu1.S`.
 - Interrupt priorities in `main.c`: TIMER5 (4) sits above ALNK0 (3), so the tick keeps pace even
   during the half-buffer render. Watchdog timeout is `WDT_TIMEOUT 0x0Du` (0x0A is 1 s; each step
   doubles). `TICK_MS` is `1000u / LIVE_TICK_HZ`. `live_tick` catches up at most `TICK_CATCH_UP`
   (2) ticks per pass. A pass runs at most one preparation slice regardless of how many ticks it
   caught up, because two slices (2×40k instructions) on top of the view's 68k would exceed the
   120k poll allowance.
-- `platform/fm1/crt0.S` saves the boot words to the debug area before anything else: `r0`, `icfg`,
-  `psr`, `sp`, `ssp` at 0x1C0DF00 + 0x20/0x24/0x28/0x2C/0x30. It sets the stacks to `_ustack_top`
-  and `_sstack_top`, then calls `fm1_cstart`. A final `goto .` freezes the CPU if `fm1_cstart`
-  ever returns.
-- `platform/fm1/build_options.c` defines `SIDOU_BUILD_OPTIONS` in the `.sidou_options` section: a
-  string of build metadata that does not consume RAM.
-- `platform/fm1/hal_check.c` includes every `fm1_*.h` HAL header to verify they compile together
-  with `FM1_CPU1_USED 0`. A dummy `fm1_fault` definition links the HAL's crash path.
+- `platform/fm1/crt0.S` saves the boot words to the debug area before anything else: `icfg`, `psr`,
+  `r0` (the boot-parameter pointer), `sp`, `ssp` at 0x1C0DF00 + 0x20/0x24/0x28/0x2C/0x30. It sets
+  the stacks to `_ustack_top` and `_sstack_top`, then calls `fm1_cstart`. A final `goto .` freezes
+  the CPU if `fm1_cstart` ever returns.
+- `platform/fm1/build_options.c` puts `SIDOU_BUILD_OPTIONS` in the `.sidou_options` section: the
+  build options that change the image, as text in the image ("SIDOU-OPTIONS 1 NAME=VALUE ...";
+  `platform/fm1/CMakeLists.txt` makes it, `app.ld` keeps it). `sidou-pack --verify` and
+  `tools/preflash` read it from a package and fail one built with options off their defaults, as a
+  stale or hand-changed CMake cache builds.
+- `platform/fm1/hal_check.c` includes every `fm1_*.h` HAL header in one translation unit, as the
+  firmware includes them; it is built as an object library and never linked. `fm1_irq.h` needs the
+  including file to define `fm1_fault`, and `fm1_sys.h` first (its `FM1_RESET_PREP`).
 
 ### Audio
 
-- `platform/fm1/audio.c` sets `AUDIO_SAMPLE_RATE` to 44118 Hz (not 44100): this is the measured
-  rate the HAL's dividers produce. `AUDIO_HALF_FRAMES` is 128: each half of the double buffer
-  holds 128 stereo frames. The interrupt fills one half while USB drains
-  the other.
+- `platform/fm1/audio.h` sets `AUDIO_SAMPLE_RATE` to 44118 Hz (not 44100): the I2S frame rate,
+  24 MHz / 544 = 44117.6 Hz. `AUDIO_HALF_FRAMES` is 128: each half of the double buffer holds 128
+  stereo frames. The ALNK0 interrupt fills each free half of the I2S DMA buffer.
 - `SLOTS_SEED` (0x51D0) seeds the effect slots' noise and drift generators (`sid_slots_init`).
-  Changing it changes every reverb and chorus sound slightly.
-- `audio.c` uses a volatile function pointer `far_drain` to force a long call across the
-  SRAM/flash boundary when `running` is false: a direct call might link but would break the
-  no-crossing rule. `reg_ring_drain` (in flash) and `audio_fill` (in SRAM) sit too far apart for
-  a direct branch.
+- `reg_ring_drain` runs from SRAM, beyond the direct call range of `audio.c`'s main-loop code in
+  flash, so those calls go through `far_drain`, a volatile function pointer the compiler cannot
+  fold back into a direct call (as Felucca's `FL_FAR`). `audio_fill`, in SRAM too, calls it
+  directly.
 - `audio.c` declares `song_region` as 64 KiB, 4 KiB aligned, in `.pool.song_region`. This region
   overlays with the C64's address space when a `.sid` tune plays. A static assertion verifies
   `SONG_REGION_BYTES == 0x10000u`.
@@ -124,8 +130,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   ctl/work/header state: both players' interrupt-side state, but never both live at once. The
   union sits in `.song_noinit` (not zeroed at boot). The `song_space` union holds `song_work` or
   `psid_lift`; a static assertion checks `sizeof(psid_lift) <= sizeof(song_work)`.
-- `audio.c` exports `song_transport` as a linker symbol with `__asm__(".set song_transport,
-  player_isr")` so emu-gate's linker tests can reference it.
+- `audio.c` exports `song_transport` as a symbol with `__asm__(".set song_transport,
+  player_isr")`: emu-gate's tests read the transport there, at the union's start.
 - `audio_ramp` in `audio.c` fades over one block (128 samples). A static assertion checks
   `AUDIO_HALF_FRAMES == 128u`, because the ramp shifts by 7 (k / 128 as the gain multiplier).
   `AUDIO_QUIET_PEAK` (128) is the threshold for the peak scanner: samples below this for many
@@ -136,27 +142,31 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `platform/fm1/input.c` sets the scan frame time to `INPUT_FRAME_US` (1100 µs); a static
   assertion checks this matches `FM1_NCOL * FM1_LED_TICK_US`. The debounce count is
   `INPUT_PRESS_FRAMES` (2); another assertion verifies it matches `FM1_DEB_PRESS`.
-- The master knob ADC is noisy, so `input.c` averages `INPUT_MASTER_READS` (4) readings per sample
-  to smooth it. The LED refresh period is `LEDS_PERIOD_MS` (10 ms, or 100 Hz), slow enough to
-  avoid flicker (human vision sees about 60 Hz) but much slower than the HAL's 909 Hz scan rate.
-- `input.c` provides `input_raw_keys` for recovery mode and bootloader checks (it runs before
-  `input_init`): it disables the LED shift register, scans the matrix for 14 buttons and all note
-  keys, then restores the pins. `raw_pins()` sets all pins to input with pullups and disables the
-  shift register.
-- `input.c` controls LED brightness in two layers: the `fm1_led_dim` bitfield and the `led_key`
-  on/off state. Dim keys (held notes) glow; on keys (buttons) shine bright.
+- `input.c` reads MASTER as the mean of `INPUT_MASTER_READS` (4) conversions, which halves the
+  pot's noise before `panel_master`'s thresholds see it. The LEDs follow the panel at most every
+  `LEDS_PERIOD_MS` (10 ms): the blinks and the beat move at tens of ms.
+- `input.c` provides `input_raw_keys` for `fm1_cstart`'s power-on UBOOT gesture (`main.c`), which
+  runs before memory is set up: it touches no variable, only GPIO and TIMER4. One whole matrix scan
+  with the LED lines dark returns the 14 buttons' bits and `INPUT_RAW_NOTES` for any note key,
+  undebounced. PA2 (the 595's /OE and the backlight, active low) is driven low for the scan's
+  ~0.3 ms, then put back as it was.
+- `input.c` sets the LEDs in two layers, lit (`fm1_led_key`) and dim, for the buttons and the note
+  keys alike: dim is the HAL's glow (`fm1_led_dim`), which its scan pulses, a thirtieth of lit.
 
 ### LCD
 
-- `platform/fm1/lcd.c` sets the SPI baud divider to `LCD_BAUD` (4) after wakeup, giving about
-  20 MHz. The screen is 240×240 pixels (`LCD_W` and `LCD_H`). The framebuffer holds 8 rows at a
-  time (`LCD_BUFFER_PIXELS` = 240 × 8), double-buffered, because RAM is tight.
-- The ST7789 expects RGB565 big-endian, but the pi32v2 is little-endian. `lcd.c` defines
-  `LCD_RGB` with `LCD_SWAP` to swap bytes at compile time.
+- `platform/fm1/lcd.c` sets the SPI baud divider to `LCD_BAUD` (4) after wakeup: SPI1's clock is
+  60 MHz / (BAUD + 1), 12 MHz. The screen is 240×240 pixels (`LCD_W` and `LCD_H`). There is no
+  framebuffer: windows of at most `LCD_BUFFER_PIXELS` (240 × 8, a full-width row of 8 × 8 cells)
+  go out from two RAM buffers, because the SPI DMA reads RAM only.
+- The panel takes RGB565 in its byte order, the high byte first: `lcd.h`'s `LCD_RGB` byte-swaps
+  the colour for it with `LCD_SWAP`.
 - `lcd_init` in `lcd.c` follows the ST7789 datasheet timing: hardware reset, 80 ms, software reset
   command (0x01), 150 ms, sleep out command (0x11), 120 ms, then config. The `during` callback
-  runs in the 150 ms wait (for first USB init), and `while_waking` runs in the 120 ms wait (for
-  more USB setup), so slow LCD timing overlaps with useful work.
+  runs in the 150 ms reset wait (`main.c`'s `while_lcd_resets`: the noise tables and the song's
+  region), and `while_waking` in the 120 ms wake-up wait (`while_lcd_wakes`: the store), each with
+  interrupts off: a wait takes as long as before if its work is shorter, so boot work that fits
+  costs the boot no time.
 - SPI DMA is asynchronous, so `lcd.c` uses a `busy` flag and `lcd_sync` to prevent starting a new
   transfer before the last finishes. `busy` is set after `data()` and cleared after `lcd_sync`.
   The `window` command sequence (0x2A for column range, 0x2B for row range, 0x2C to stream pixels)
@@ -164,9 +174,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### libc
 
-- `platform/fm1/libc_min.c` implements `memcpy` and `memset` to align to a 4-byte boundary first,
-  then copy word-at-a-time, because the pi32v2's word load and store are faster than byte
-  operations. `memcpy` checks that both pointers align the same way before switching to words
+- `platform/fm1/libc_min.c` is the libc the compiler calls on its own (struct zeroing and copies)
+  and the song reader's `memcmp`; there is no libc. It runs in flash: the audio interrupt calls
+  none of it. From 8 bytes, `memcpy` and `memset` align to a 4-byte boundary first, then go a word
+  at a time. `memcpy` checks that both pointers align the same way before switching to words
   (`!(((uintptr_t)d ^ (uintptr_t)s) & 3u)`); otherwise it copies bytes. The `may_alias` attribute on
   the `word` type tells the compiler that aliasing is allowed.
 
@@ -245,7 +256,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   fast-forward's slice over `SONG_SLICE_INSTRUCTIONS` (emu-gate `song.rs`).
 - No jump tables (`-fno-jump-tables`) in code the audio interrupt runs from SRAM: a switch's table
   would be read from flash (`.rodata`). That holds for `gt2_play.c`, `song_ctl.c`, `gt2_song.c`
-  (its `gt2_edit_apply` is in `.ram_text`), `song_ext.c` and `psid_ctl_isr.c`. `cpu6502.c` keeps
+  (its `gt2_edit_apply` is in `.ram_text`) and `psid_ctl_isr.c`; `song_ext.c` and `gt2_shape.c`
+  take the flag too. `cpu6502.c` keeps
   its jump table: the 6502 never runs in the interrupt.
 - Main-loop and boot work at `-Oz`: `gt2_stream.c` (240 bytes), `song_ext.c` (416), `psid_file.c`
   (1,344), `psid_lift.c`. At `-Os`: `gt2_ins.c`, `gt2_sng.c` (the boot reads its song in the
@@ -284,24 +296,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### `gt2_song.c` at `-Oz`: timing only
 
 - At `-Oz`, `gt2_song.c` is 384 bytes smaller and four LCD goldens move (`live-c64`, `live-keys-b`,
-  `scene-rule30`, `scene-stars`). The cause is timing, not a miscompile or undefined behaviour.
-  Measured in fm1-emu: both builds reach LIVE at the same millisecond with bit-identical audio up
-  to the key press. `-Oz` outlines more helpers (`end_row`, `empty_row`, `order_slot` ...), the
-  boot's main loop runs about 39,000 more instructions, and the main loop's phase at the key
-  differs: the note lands one 128-frame audio block earlier, so the scope captures another phase
-  of the waveform and the level meters differ by a few pixels. Pressing the key 0.1 to 1.9 ms
-  later on the `-Oz` build gives audio bit-identical to the `-Os` build's from boot to the end,
-  and the framebuffer identical to the golden. Of SCENE's six piece goldens at `-Oz`, fire,
-  plasma, ant and RED MOON RITE pass; rule30's lower band and stars' field differ.
-- The goldens capture a fixed moment after a key press, so any change in the main loop's
-  instruction count before the press can move them; they are not a check of the song code.
-  `gt2_song.c` stays at `-Os` all the same: at `-Oz` four goldens would have to be regenerated for
-  384 bytes, the owner's call.
-- The song code is clean under UBSan: sidou-tests' 419 song tests pass with
-  `SIDOU_SANITIZE=undefined` (clang, trapping) with the C at the host's default, at `-Os` and at
-  `-Oz`; with GCC 13 (`CC=gcc`, the build image) at `-O2` and `-Oz`, the `song`, `song_capacity`,
-  `song_locks`, `song_ctl` and `song_stream` binaries pass (104 tests; `song_snapshot` compiles
-  its own C, which does not link against GCC's sanitized library).
+  `scene-rule30`, `scene-stars`). The cause is timing: in fm1-emu, pressing the key 0.1 to 1.9 ms
+  later on the `-Oz` build gives audio bit-identical to the `-Os` build's, and the framebuffer
+  identical to the golden.
+- `gt2_song.c` stays at `-Os`: at `-Oz` four goldens would have to be regenerated for 384 bytes.
 
 ## SID emulation
 
@@ -1726,9 +1724,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   final state (`pc: u16, s, a, x, y, p: u8, n: u16`, then n times `address: u16, value: u8`) and
   the cycles (`n: u16`, then n times `address: u16, value: u8, read: u8`). The names are not kept.
   The JSON reader handles only what the tests use: no escapes in strings, no fractions.
-- `harte_full_set` (ignored) runs the full set from `SIDOU_HARTE_DIR`. 169 opcodes have a memory
-  operand or a push, so 16,900 tests are stamped under HOOK_ALL. Half the tests start at
-  0xffff_fffc so the stamps and the limit wrap.
+- `harte_full_set` (ignored) runs the full set from `SIDOU_HARTE_DIR`. On the committed subset 169
+  opcodes have a memory operand or a push, so 16,900 tests are stamped under HOOK_ALL. Half the
+  tests start at 0xffff_fffc so the stamps and the limit wrap.
 - A JAM leaves the PC on its opcode; Harte's final PC is the byte after it.
 - $01 is $37 (PORT_IO_MAPPED_IN) unless the test sets it, so the device variant hooks the I/O page
   too; $34 (all RAM) and $31 (bit 2 clear: the character ROM) map no I/O.
@@ -1792,8 +1790,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The write ring holds PSID_RING (1024) entries, 6,144 bytes. Each ring entry is 16 bits: chip << 13
   | register << 8 | value.
 - The interrupt renders each block with at most PSID_SPLITS (24) renders per block and
-  PSID_BLOCK_ENTRIES (80) ring entries per block. These bounds are set by device costs
-  (`host/crates/emu-gate/tests/common/budgets.rs`) so the worst blocks hold budget. The corpus'
+  PSID_BLOCK_ENTRIES (80) ring entries per block. These bounds are set from the device's costs
+  (`host/crates/emu-gate/tests/psid_budget.rs`) so the worst blocks hold PSID_ISR_WORST
+  (`tests/common/budgets.rs`). The corpus'
   tunes need at most 15 renders and 18 entries per block. 24 renders clear dense players' bursts
   (Thomkat, Kill Me, Last Ninja) with 80 entries.
 - The controller's two halves order their shared stores with `COMPILER_FENCE`, an empty `asm` with
@@ -1810,8 +1809,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - In each block the first PSID_SPLITS - 1 renders end at writes (those with a sample before them
   since the last); the remaining writes go in order at the block's end, as late writes.
 - The flash day's dense players (docs/hardware-results/2026-10-25-m3-flash-day.md): Thomkat writes
-  23 to 26 times in 16 to 19 samples, Kill Me about as many; writes 15 to 18 cycles apart (a sample
-  is 22.3) exceeded the 15 renders 16 splits allow and came late.
+  23 to 26 times in 16 to 19 samples, Kill Me about as many; the test's writes, 15 and 18 cycles
+  apart (a sample is 22.3, so some share one), need more than the 15 renders a PSID_SPLITS of 16
+  allows.
 - The ring's worst case is STA abs unrolled, a write every four cycles: the 6502 waits for room and
   nothing is dropped; each block takes PSID_BLOCK_ENTRIES entries. A write every 240 cycles for 3 s
   wraps the ring 12 times and its indexes cross 2^32.
@@ -1849,8 +1849,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   capture starts at the armed voice's gate-on, keeps a frame a call, and ends at the gate-off (that
   call not kept), at the next gate-on (also a hard restart inside a call), or after a second. In a
   2SID tune either chip's voice starts the lift; a 1SID lift never watches chip B.
-- Frame 0 keeps the note before's pitch, as GoatTracker's player leaves it; frame 1 is the base
-  note. An SR change becomes a $F6 wave row; a filter-routed voice gets filter rows.
+- The base note is the nearest note of the first frame that sets the pitch: frame 0, unless its
+  frequency is the note before's, as GoatTracker's players leave it; then frame 1. An SR change
+  becomes a $F6 wave row; a filter-routed voice gets filter rows.
 - A register written on and on within a call is a digi and is refused; eight writes of a register
   in a call are a player's business, not a digi.
 - GoatTracker's pulse and realtime optimisations skip table steps and effects at the song's own row
@@ -1858,8 +1859,6 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (GoatTracker's calculated vibrato steps by the note's step >> a shift): its mean difference is at
   most half of what holding the centre note would leave. GoatTracker's simple pulse writes the
   middle byte to both registers, so the low nybble is the high one's.
-- The ADSR delay bugs are designed out: the gate-off first frame counter runs at the release's
-  period; with release up to 977 cycles it ran past attack 0's 9 cycles.
 - Vibrato fit keeps speeds about the turns' spacing at every shift, kept when they at least halve
   what holding the centre would leave.
 
@@ -1905,9 +1904,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   it published, at its cycle, or at the block's start if the chip had passed it (late). With no
   split budget spent, `reference_render` of these is the player's output sample for sample.
 - DEVICE_SAMPLE_RATE is 24 MHz / 544 rounded to 44,118 Hz; FILE_MAX is STORE_FILE_MAX (64 KiB).
-  `model_of` plays a header's model as the oracle does: the 8580 for "8580", else the 6581. `grown`
-  fills a tune out to the largest file (zero page above $7C zero, the rest a pattern, as a C64's RAM
-  holds something there too) and it plays as the original does.
+  `model_of` plays a header's model as the oracle does: the 8580 for "8580", else the 6581.
+  `full_size` fills a tune out to the largest file (zero page above $7C zero, the rest a pattern, as
+  a C64's RAM holds something there too) and it plays as the original does.
 - `host/crates/psid-ref/c/psid_oracle.c` is a derived copy of FM-1 SID's `player/psid.c` (fm1-emu,
   BSD-2-Clause) with SIDOU's additions between `/* psid-ref: begin */` and `/* psid-ref: end */`;
   `host/crates/psid-ref/tests/oracle.rs` proves that removing the marked blocks gives the vendored
@@ -1926,7 +1925,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `exact(n)` takes exactly n cycles (0, or 2 and up: no instruction takes 1 cycle), never leaving 1
   cycle for the last part. Read fixtures fix the read-to-write distance the tests assert: OSC3 uses
   4 cycles, ENV3 uses 6, $D012 uses 8 or 4, and CIA counter reads use 4. The `bus_read(d)` function
-  needs d of 4 or more.
+  needs d of 4 or more, not 5.
 
 ### Tests: .sid tunes against the host
 
@@ -1961,9 +1960,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - SIDS_WORST_POLL (39,500 instructions): the SID views' busiest `ui_poll`, measured 35,909 (the
   browser's first frames as it opens from the menu, its canvas built whole and copied; a page read
   35,489; NOW PLAYING as a tune plays 18,048) plus 10 %. A compile-time assertion ties it to
-  POLL_INSTRUCTIONS, as every view's is (`app/screen.h`).
+  POLL_INSTRUCTIONS, as every view's is (emu-gate `tests/screen.rs`).
 - LIFT_CONVERT_WORST (40,000): `psid_lift_convert` runs in a main-loop pass of its own
-  (`lift_pass`), so it stays within the slice a tune's pass may take (PSID_SLICE_WORK).
+  (`lift_pass`), so it stays within the slice budget a tune's pass may take (PSID_SLICE_WORST,
+  40,000).
 - A frame's cells come from `lcd_count` between two composes: each LCD window costs 11 bytes and a
   cell 128; the song views' frames stay within 200 cells.
 - GLO pressed again within 450 ms latches its layer (a double tap), so the test waits that long
@@ -2035,11 +2035,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Streaming reader and writer
 
-- Each step of `gt2_stream` handles at most one pattern (516 bytes) or about 256 bytes, so a load or
-  save never takes more than a slice of a main-loop pass.
+- Each step of `gt2_stream` handles at most one pattern (516 bytes) or about 256 bytes.
 - Loading appends the packed objects to an empty arena in order, without first-fit's O(file) search
   through the bitmap.
-- The song's edit queue and file I/O share one `gt2_stream` workspace; reads and writes reuse it.
+- Song reads and writes share one `gt2_stream` workspace (`song_io.work`); an instrument import may
+  reuse it too.
 
 ### The channel count: GoatTracker Stereo's guess
 
@@ -2142,7 +2142,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   sound edit is no edit a tune would lose: `song_io_edited` says 0 while `song_io_changed` says 1.
 - LAB's USER sounds' file is no song: SAVE AS, a load and a delete refuse its name, and SONG's list
   leaves it out.
-- A CHPA whose profile is not the device's model is refused (SNG: BAD CHIP SETUP).
+- A CHPA whose profile is unknown or of another model than the chunk's own is refused (SNG: BAD
+  CHIP SETUP).
 
 ### Showcase songs and the starter pack
 
@@ -4908,7 +4909,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Frame budgets and randomness
 
 - A frame sends at most `SCENE_VIEW_FRAME_CELLS` (200) cells: 200 cells and their windows are
-  about 17.5 ms of SPI (one window a cell), inside the 20 ms budget. FIRE burns every other
+  about 17.5 ms of SPI (one window a cell, 18.5 ms), inside the 20 ms budget. FIRE burns every other
   frame, two steps at once (12.5 fps, rising as fast as at 25), and each frame draws half its
   rows, alternately, so a frame sends at most half the area. PLASMA draws every other row a frame.
 - The tile compositor's grid run takes at most `SCENE_PX_RUN_CELLS` (4) cells: two runs of them,
@@ -4922,12 +4923,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### FIRE
 
-- Three flames, a voice each (columns 0-9, 10-19, 20-29), in the bottom `SCENE_FIRE_ROWS` (14)
-  rows, two heat rows a cell (an upper-half glyph). A voice's envelope heats its flame, a note-on
-  flares it, its pitch sets how high it burns (higher notes cool slower: the cooling is
-  `13 - (pitch - 36) * 6 / 48 - resonance / 4`, clamped to 2), the cutoff how hot it looks (red,
-  up to yellow and white near the bed: the white starts at `fire_white(cutoff)` on a curve that
-  rises fast and flattens), the resonance lowers the cooling.
+- Three flames, a voice each (columns 0-9, 10-19, 20-29), in the bottom `SCENE_FIRE_ROWS` (14) rows,
+  two heat rows a cell (an upper-half glyph). A voice's envelope heats its flame, a note-on flares
+  it, its pitch sets how high it burns (higher notes cool slower: the cooling is
+  `13 - (pitch - 36) * 6 / 48 - resonance / 4`, at least 2, plus 1, the pitch clamped to 36..84),
+  the cutoff how hot it looks (red, up to yellow and white near the bed: the white starts at
+  `fire_white(cutoff)` on a curve that rises fast and flattens), the resonance lowers the cooling.
 - The fuel sways along the bed (two sines drifting apart) and a cell in eight cools by 3 cool
   more: the flames break into tongues. A silent voice's flame dies down to the brown ember bed
   (`FIRE_IDLE_HOT`: 120), which holds still. The ember bed: the bottom heat row glows at least
@@ -4981,7 +4982,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   its stars (cruise + envelope * 180 / 256), a note-on lights them in its colour for
   `SCENE_STARS_LIT` (5) frames, the latest note's pitch steers the centre across, and the cutoff
   sets the cruising speed (`8 + cutoff * 24 / 2047`). Depth layers: 0..3 (far to near), each
-  drawn with a different glyph and colour.
+  drawn with its own glyph, in grey, light grey, white and white.
 - The stars come closer at their speed; a star at `STAR_NEAR` (205) or closer wraps to
   `STAR_FAR` (4,096) and a new place.
 - A note-on lights its voice's stars even before its envelope rises: the tap's ENV3 is still 0
@@ -5023,8 +5024,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Bitmap codec
 
 - Run dictionary and checkpointed row packets (documented in `docs/art/bitmap-codec.md`). Nibble
-  cursors for decoding. Raw vs coded modes (bit 128 of byte 15): raw mode uses byte runs and
-  cumulative row offsets; coded mode uses a dictionary and delta offsets.
+  cursors for decoding. Raw vs coded modes (bit 128 of byte 15): raw mode stores the run bytes
+  directly and its checkpoints are absolute byte offsets from the payload's start; coded mode reads
+  runs through the pool's fifteen-byte codebook and its checkpoints count coded nibbles from the one
+  before.
 - The logos' scenes and the title cards are coded bitmaps: Metal Chrome 9730 bytes (vs 28800
   unpacked), Cracktro Chrome 3971 bytes, title cards 19754 bytes (17729 coded data, 1440 row
   offsets, 360 cell bits, 225 glow levels). Generated by host tests from `assets/logo/*.png`.
@@ -5057,9 +5060,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   runs a call), so a run takes at most `SCENE_PX_RUN_CELLS` of them.
 - The compositor's hashes hold under any interleaving the view can make (slots changed at random,
   the scan in slices, a rendered run left waiting while the scene changes on, sends delayed, the
-  refresh sweep): once all is scanned and sent the panel is the screen (`app/scene_px.h`). The
-  refresh sweep resends two tiles a frame, every tile once in 450 frames, which heals a change the
-  scene missed.
+  refresh sweep): once all is scanned and sent the panel is the screen (`app/scene_px.h`). At
+  two tiles a frame the refresh sweep resends every tile once in 450 frames, which heals a change
+  the scene missed.
 
 ### RED MOON RITE
 
@@ -5178,7 +5181,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - SYNC LEAD sounds on voice 1 alone (voices 2 and 3 have no waveform: they clock the sync), so
   SCENE hears them as silent and their parts stay still.
 
-### Tests: RED MOON RITE (emu-gate `tests/scene_budget.rs`, sidou-tests `tests/app/scene_rmr.rs`, `tests/app/scene_art.rs`)
+### Tests: RED MOON RITE (emu-gate `tests/screen.rs`, `tests/scene_budget.rs`, sidou-tests `tests/app/scene_rmr.rs`, `tests/app/scene_rmr_drawing.rs`, `tests/app/scene_art.rs`)
 
 - RED MOON RITE is measured over a minute of the demo song: cells a frame against the prototype's
   117 on average and 176 at most, SPI, the main loop's instructions a frame, the busiest `ui_poll`
@@ -5191,9 +5194,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (`scene_budget.rs` `TILE_WORST` 5,300: two fighters, the spark and the arc over the arena), so
   the run and slice caps are 4 and 8 cells (`app/scene_px.h`): two runs, or a slice, and a song's
   analysis slice fit a pass. Bounds about 10 % over.
-- RED MOON RITE drifts its pair a pixel a frame: 133 cells and 1.14M instructions a frame. RED
-  MOON RITE's `ui_poll`s render the compositor's runs (two of 8 painted cells, bounded by
-  `scene_budget.rs`) and have their own bound, as has the wipe into it from ANT.
+- Under the keys' band RED MOON RITE is bounded at 133 cells and 1.14M instructions a frame
+  (measured 120.5 and 1.03M): the pair drifts a pixel a frame. RED MOON RITE's `ui_poll`s render the
+  compositor's runs (two of `SCENE_PX_RUN_CELLS` (4) painted cells, bounded by `scene_budget.rs`)
+  and have their own bound, as has the wipe into it from ANT.
 - The PNGs in `assets/scene/` are compared decoded (size, depth, palette, transparency, pixels),
   not byte for byte, because Node's zlib may compress the same image to other bytes. The test needs
   Node and is skipped without it.
@@ -5244,8 +5248,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   voice), 8.0 s (the title card) and 11.2 s (LIVE); the title card's wipe starts 7.0 s in, so its
   budget is measured from 6.8 s.
 - The full boot is measured for 260 frames from HOME held at power-on: every frame after the first
-  (drawn whole before the display is on) within the SPI budget. The full boot measured 33k and 37k
-  instructions a frame: bounded at 38,000 and 42,000.
+  (drawn whole before the display is on) within the SPI budget. The full boot's busiest `ui_poll`
+  measured 33k and a frame 37k instructions: bounded at 38,000 (`BOOT_WORST_POLL`) and 42,000
+  (`BOOT_PER_FRAME`).
 - fm1-emu does not decrypt a bare image's XIP, so the plain XIP window over the store (from flash
   0x93000 up, Felucca's `fl_plain_window_init`) is checked through SFCENC's registers, which
   fm1-emu models, and a byte written into the flash chip read back through XIP.
@@ -5324,12 +5329,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   two frames, and compared with its golden and with its source PNG (assets/logo/title-<name>.png)
   pixel for pixel.
 - A card from its start to the end of the cut under it (the glow, the wipe, the 1 s hold, the cut)
-  takes 60 to 72 frames. Bounds about 10 % over the cards' measurement: 66 frames, 72.4 cells a
-  frame (200 at most: the glow's first level, and its scan of the screen's 900 cells for those that
-  differ), 17.14 ms of SPI at worst, 55.1k to 56.0k instructions a frame, busiest `ui_poll` 71.2k to
-  71.6k, the input 350 to 387 (`ui_encoder` for CHIP and SCENE, `ui_buttons` for HOME), the busiest
-  pass 72.8k to 73.1k: `TITLE_CARD_WORST_POLL` 79,000, `TITLE_CARD_PER_FRAME` 62,000,
-  `TITLE_CARD_INPUT` 430, `TITLE_CARD_PASS` 80,000 (host/crates/emu-gate/tests/screen.rs).
+  takes 60 to 72 frames. Bounds about 10 % over the cards' measurement: 64 to 66 frames, 68.7 to
+  72.4 cells a frame (200 at most: the glow's first level, and its scan of the screen's 900 cells
+  for those that differ), 17.14 ms of SPI at worst, 55.1k to 56.0k instructions a frame, busiest
+  `ui_poll` 71.2k to 71.6k, the input 350 to 387 (`ui_encoder` for CHIP and SCENE, `ui_buttons` for
+  HOME), the busiest pass 72.8k to 73.1k: `TITLE_CARD_WORST_POLL` 79,000, `TITLE_CARD_PER_FRAME`
+  62,000, `TITLE_CARD_INPUT` 430, `TITLE_CARD_PASS` 80,000 (host/crates/emu-gate/tests/screen.rs).
 - Any control on a card ends it at the next frame and does nothing else (FX would open LAB from
   LIVE, OCT+ step the octave, SELECT pick a piece); a note on a card plays at once, from the keys or
   MIDI, and ends it.
@@ -5339,9 +5344,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Help card
 
-- Drawn in units (title bar, then each line), sized so no frame sends more than 190 cells
-  (`HELP_FRAME_CELLS`). A card takes at most two pages, eight lines each. Lines fit 14 characters,
-  the control and what it does.
+- Drawn in units (title bar, then each line), as many as fit `HELP_FRAME_CELLS` (190) a frame, so
+  that no frame sends more than 200 cells whatever it covers. A card takes at most two pages, eight
+  lines each. Lines fit 14 characters, the control and what it does.
 - What a line does can be the state's own words: a first byte `HELP_TEXT_K1`..`HELP_TEXT_K4` names
   the knob's control of the slot in `arg`, `HELP_TEXT_QUANT` the quantise in `arg`.
 - HOME acts on its release: a tap goes home; a hold of 600 ms opens the card of the view that
@@ -5362,9 +5367,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The list-screen check skips UNSAVED: its question has its own answers, checked in sid_view.rs.
   SAVE AS's name is a value ALGORITHM edits, not an item.
 - The help card shows once HOME has been held about 600 ms (the test accepts 560 ms on, at the
-  frames' granularity, and a second and a half at most); it is drawn whole in six frames (400 ms).
-  Letting HOME go leaves it; K1 closes it and does nothing else; SELECT turns a card of two pages.
-  HOME tapped still acts on its release.
+  frames' granularity, and a second and a half at most); it is drawn whole in six frames (the test
+  waits 400 ms). Letting HOME go leaves it; K1 closes it and does nothing else; SELECT turns a card
+  of two pages. HOME tapped still acts on its release.
 
 ### First-run tour
 
@@ -5417,8 +5422,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `ABOUT_ROW_DELAY` frames (4) after the one above and is shown `ABOUT_ROW_FRAMES` frames (86),
   fading through 4 levels a level every other frame (so at most two rows change in a frame, all on
   even frames).
-- The bars' budget: moving them recolours the border's 116 cells, about 10 ms of SPI, so they change
-  every other frame at most (`BOOT_STRIPE_MS` 80 ms). Silent mode (unsaved changes) selects
+- Silent mode (unsaved changes) selects
   different scroller text.
 - About's first heading is at 2x: SIDOU and the version centred, or a version too long for
   both alone. The cracktro averages at most 120 cells a frame. The scroller's overlays sit over the
@@ -5447,7 +5451,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   frame or once. Its animation runs on the caller's frame count (25 fps); frame 0 is the still. Its
   background is its own: no transparent one. The grid has one pixel region and it is the logo's: a
   screen shows one bitmap logo at a time, and a view switch clears it.
-- Pulse Train is drawn in code with font glyphs and overlays; it changes only on odd frames (the
+- Pulse Train is drawn in code with font glyphs and overlays; it changes only on even frames (the
   stripes on frames 2, 6, 10, ..., the pulse on 4, 8, ...). The chrome logos (Metal Chrome and
   Cracktro Chrome) are bitmaps (generated from assets/logo/*.png): their draw hands the footprint to
   the renderer's pixel region, which shows the bitmap's cells pixel for pixel; the cells are blank
@@ -5491,9 +5495,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 - `bitmap_codec`'s run dictionary (a pool's first fifteen bytes are its codebook) and checkpointed
   row packets (docs/art/bitmap-codec.md) let any row or span decode without another row or a scratch
-  buffer; a byte holds a run of at most 16 pixels; checkpoints every `GRID_BITMAP_SEEK` pixels (64).
-  Pools are shared across images or kept independent, whichever is smaller. `byte_run_size` is the
-  original byte-run coding, kept as the size comparison's control.
+  buffer; a byte holds a run of at most 16 pixels; checkpoints at an interval each pool carries
+  (`GRID_BITMAP_SEEK`, 64, is the tools' default: the title cards use 64, the logos 256, RED MOON
+  RITE 32). Pools are shared across images or kept independent, whichever is smaller.
+  `byte_run_size` is the original byte-run coding, kept as the size comparison's control.
 - Each logo's run pool is its own array, named after its first logo: the firmware links only the
   logos it shows (`--gc-sections` with `-fdata-sections`), so a pool no shown logo reads (Cracktro
   Chrome's, which the host tests keep) stays out of the image.
