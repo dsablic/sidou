@@ -1,33 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The Live Link viewer's screen (tools/wasm-link builds it; web/link.js is its JavaScript
- * side): the device's cells as its frames leave them (docs/reference/live-link.md), drawn by
- * the device's own app/grid.c and app/font.c, so the picture is the LCD's pixel for pixel.
- *
- * A grid holds the cells: a CELLS or PIXELS record sets a cell's code and colour (a piece:
- * the piece's code and, in src, its character). Each row is drawn with grid_render_run as the
- * LCD's runs are, with each cell's overlay put on the grid for that row only (a row has at
- * most 30, so the grid's slots never run out however far the mirror is behind). A pixel cell
- * keeps its 64 background pixels here; a row that has any is drawn a second time with a
- * painter region over the whole screen whose painter hands back those pixels, and the pixel
- * cells are taken from that pass: grid_render_run draws a region cell's glyph and overlay
- * over the painter's pixels, which is the spec's rule for a pixel cell (a piece code there is
- * an ordinary glyph, blank in SIDOU's font). The palette given to grid_render_run is the
- * colour indexes themselves, so a pass yields colours, and lv_render maps them to RGBA for a
- * canvas and to RGB565 for the tests.
- *
- * GLYPHS overwrite the font grid.c draws from (platform/web/link_font.c keeps it writable)
- * and COLOURS the palette. A code past HELLO's last font code (or past this font's) draws nothing.
- *
- * Every call is synchronous and allocation-free. web/link.js writes a frame's payload into
- * lv_in() and calls lv_frame(cmd, len). */
 #include <stddef.h>
 #include <stdint.h>
 
 #include "font.h"
 #include "grid.h"
 
-/* The font's table, writable (platform/web/link_font.c). */
 uint8_t* link_font_init(void);
 static uint8_t* font;
 
@@ -36,9 +14,8 @@ static uint8_t* font;
 #define W (GRID_COLS * GRID_CELL_PX)
 #define PAYLOAD_MAX 48u
 #define OVERLAY 0x10u
-#define BLANK 0x20u /* a space: drawn in its background colour alone (below) */
+#define BLANK 0x20u
 
-/* Device to host. */
 #define HELLO 0x41u
 #define COLOURS 0x44u
 #define GLYPHS 0x45u
@@ -47,12 +24,10 @@ static uint8_t* font;
 
 static grid g;
 static uint8_t in_buf[PAYLOAD_MAX];
-/* The cells as the device sent them last. */
 static uint8_t cell_ch[GRID_CELLS], cell_attr[GRID_CELLS], cell_x[GRID_CELLS];
 static uint8_t cell_mask[GRID_CELLS][8];
 static uint8_t is_pixel[GRID_CELLS];
 static uint8_t pixels[GRID_CELLS][64];
-/* HELLO's: a session's screen is known, and its font codes and pieces. */
 static uint8_t have_hello, font_last, piece_first, pieces;
 static uint32_t dirty_rows;
 static uint16_t pal565[16];
@@ -68,11 +43,9 @@ static void set_colour(uint32_t c, uint16_t v) {
     r = r << 3 | r >> 2;
     gr = gr << 2 | gr >> 4;
     b = b << 3 | b >> 2;
-    pal_rgba[c] = 0xFF000000u | b << 16 | gr << 8 | r; /* R, G, B, A in memory */
+    pal_rgba[c] = 0xFF000000u | b << 16 | gr << 8 | r;
 }
 
-/* No cells, and SIDOU's codes until a HELLO says otherwise. The font and the palette stay
- * as they were last sent (a HELLO's CRCs tell the page whether they are still right). */
 static void reset(void) {
     for (uint32_t i = 0; i < GRID_CELLS; i++) {
         cell_ch[i] = cell_attr[i] = cell_x[i] = 0;
@@ -96,23 +69,18 @@ static void painter(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
 EXPORT(lv_in) uint8_t* lv_in(void) {
     return in_buf;
 }
-/* The font's rows, codes 0 to lv_font_codes() - 1, for a CRC and a cached copy. */
 EXPORT(lv_font) uint8_t* lv_font(void) {
     return font;
 }
 EXPORT(lv_font_codes) uint32_t lv_font_codes(void) {
     return FONT_LAST + 1u;
 }
-/* The palette as COLOURS carries it (16 RGB565, little-endian, as wasm is). */
 EXPORT(lv_palette) uint16_t* lv_palette(void) {
     return pal565;
 }
-/* Back to no session (the font and the palette stay). */
 EXPORT(lv_reset) void lv_reset(void) {
     reset();
 }
-/* Marks the whole screen to be drawn again (after the font or palette was written from
- * outside: a cached copy). */
 EXPORT(lv_touch) void lv_touch(void) {
     for (uint32_t c = 0; c < 16u; c++) {
         set_colour(c, pal565[c]);
@@ -124,8 +92,6 @@ static int is_piece(uint8_t ch) {
     return (uint8_t)(ch - piece_first) < pieces;
 }
 
-/* A CELLS or PIXELS payload, as fm1-live-link's Mirror takes it: 0 if malformed (the cells
- * before the fault are kept, as there). */
 static int cells(uint32_t cmd, uint32_t n) {
     const uint8_t* p = in_buf;
     if (n < 5u || p[0] >= GRID_ROWS) {
@@ -169,7 +135,6 @@ static int cells(uint32_t cmd, uint32_t n) {
     return at == n;
 }
 
-/* A frame from the device: its command and the payload in lv_in(). 1 if taken. */
 EXPORT(lv_frame) int lv_frame(uint32_t cmd, uint32_t n) {
     const uint8_t* p = in_buf;
     if (n > PAYLOAD_MAX) {
@@ -177,7 +142,6 @@ EXPORT(lv_frame) int lv_frame(uint32_t cmd, uint32_t n) {
     }
     switch (cmd) {
     case HELLO:
-        /* This viewer draws SIDOU's grid: 30 x 30 cells of 8 x 8 pixels, 16 colours. */
         if (n < 22u || p[2] != GRID_COLS || p[3] != GRID_ROWS || p[4] != 8u || p[5] != 8u ||
             p[6] != 16u) {
             return 0;
@@ -217,15 +181,12 @@ EXPORT(lv_frame) int lv_frame(uint32_t cmd, uint32_t n) {
     }
 }
 
-/* Row r's cells onto the grid as grid_render_run draws them, their overlays with them. */
 static void put_row(uint32_t r) {
     for (uint32_t c = 0; c < GRID_COLS; c++) {
         uint32_t i = r * GRID_COLS + c;
         uint8_t ch = cell_ch[i], attr = cell_attr[i], x = cell_x[i];
         int overlay = (x & OVERLAY) != 0;
         if (!is_pixel[i] && is_piece(ch)) {
-            /* A piece: SIDOU's piece codes, its character's glyph scaled. A character
-             * past the font draws nothing: the background alone. */
             ch = (uint8_t)(GRID_BIG_FIRST + (uint8_t)(ch - piece_first));
             g.src[i] = x;
             if (x > font_last) {
@@ -238,8 +199,6 @@ static void put_row(uint32_t r) {
                 attr = (uint8_t)(attr & 0xF0u) | (attr >> 4);
             }
         } else if (!is_pixel[i] && (uint8_t)(ch - GRID_BIG_FIRST) < GRID_BIG_PIECES) {
-            /* A code that is a piece in SIDOU's grid but not in this firmware's: its glyph
-             * at its own size (the plain piece; an overlay does not show on it). */
             g.src[i] = ch;
             ch = GRID_PIECE_PLAIN;
         }
@@ -251,8 +210,6 @@ static void put_row(uint32_t r) {
     }
 }
 
-/* Draws the rows that changed since the last call; the picture as RGBA (240 x 240, for a
- * canvas's ImageData). */
 EXPORT(lv_render) uint32_t* lv_render(void) {
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (!(dirty_rows >> r & 1u)) {
@@ -294,12 +251,10 @@ EXPORT(lv_render) uint32_t* lv_render(void) {
     return rgba;
 }
 
-/* The picture as RGB565, row by row (after lv_render). */
 EXPORT(lv_fb565) uint16_t* lv_fb565(void) {
     return fb565;
 }
 
-/* Once, before anything else: the grid, SIDOU's palette (the font is SIDOU's as built). */
 EXPORT(lv_init) void lv_init(void) {
     font = link_font_init();
     grid_init(&g, BLANK, 0);
