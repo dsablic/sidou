@@ -11,7 +11,7 @@ static void seal(bootguard* g) {
 }
 
 int bootguard_boot(bootguard* g) {
-    if (g->magic != BOOTGUARD_MAGIC || g->check != seal_of(g)) { /* power-on noise, or another firmware's */
+    if (g->magic != BOOTGUARD_MAGIC || g->check != seal_of(g)) {
         g->magic = BOOTGUARD_MAGIC;
         g->pending = 0;
         g->failed = 0;

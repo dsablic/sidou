@@ -8,8 +8,6 @@
 
 const char* const title_card_titles[TITLE_CARDS] = {"OSCILLATOR", "SCENE", "CHIP"};
 
-/* The glow's stops, dark to bright (assets/logo/metal-chrome.js GLOW): a level's stop i is the
- * cell's background, the next one its dither glyph's pixels. */
 static const uint8_t STOPS[4] = {GRID_BLACK, GRID_BLUE, GRID_PURPLE, GRID_RED};
 
 _Static_assert(FONT_D0 + 16u == FONT_D16, "the dither glyphs D0..D16 are consecutive codes");
@@ -24,7 +22,7 @@ void title_card_glow_cell(uint32_t col, uint32_t row, uint32_t level, uint8_t* c
     uint32_t qc = col < TITLE_CARD_GLOW_HALF ? col : GRID_COLS - 1u - col;
     uint32_t qr = row < TITLE_CARD_GLOW_HALF ? row : GRID_ROWS - 1u - row;
     uint32_t l = title_card_glow[qr][qc] * level / TITLE_CARD_LEVELS;
-    uint32_t i = l >> 4; /* at most 2: the table's levels are below 48 */
+    uint32_t i = l >> 4;
     *ch = (uint8_t)(FONT_D0 + (l & 15u));
     *attr = GRID_ATTR(STOPS[i + 1u], STOPS[i]);
 }
@@ -49,7 +47,6 @@ int title_card_capture(void* ctx, const screen_event* e) {
     return 1;
 }
 
-/* The next step, once the last one's cells are all out (and, for a level, it has held). */
 static void advance(title_card* c) {
     switch (c->phase) {
     case TITLE_CARD_GLOW:
@@ -90,8 +87,6 @@ static void enter(screen* s, void* state) {
     screen_capture(s, title_card_capture, state);
 }
 
-/* The step's cells onto the grid, those that differ, from where the last frame stopped,
- * until the frame's budget is spent; settled once a pass finds none left. */
 static void compose(screen* s, void* state, grid* g) {
     title_card* c = state;
     c->frames++;
@@ -100,7 +95,7 @@ static void compose(screen* s, void* state, grid* g) {
         grid_region(g, 0, 0, c->cols, GRID_ROWS, &title_card_bitmaps[c->id], 0, 0);
     }
     if (c->settled && !s->redraw) {
-        return; /* nothing new to draw, and nobody drew over it */
+        return;
     }
     const uint32_t* exact = title_card_cells[c->id];
     uint32_t used = screen_pending(s);
@@ -113,7 +108,7 @@ static void compose(screen* s, void* state, grid* g) {
         uint8_t attr;
         title_card_glow_cell(col, row, c->level, &ch, &attr);
         if (col < c->cols && (exact[row] >> col & 1u)) {
-            ch = ' '; /* the bitmap alone */
+            ch = ' ';
         }
         if (g->ch[i] == ch && g->attr[i] == attr) {
             continue;
@@ -128,5 +123,4 @@ static void compose(screen* s, void* state, grid* g) {
     c->settled = 1;
 }
 
-/* Composed every frame (no changed function): it moves on its own. */
 const view title_card_view = {"TITLE", enter, NULL, NULL, compose, NULL};

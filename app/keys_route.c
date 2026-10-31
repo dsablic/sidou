@@ -7,22 +7,16 @@
 #define REG_FC_LO 0x15u
 #define REG_MODE_VOL 0x18u
 
-/* A song plays on chip A while the keys are on it (KEYS A; or KEYS AUTO before chip B is
- * ready, which M2c's transport waits out: keys_route_ready_for_song): chip A keeps the song's
- * setup, filter, volume and the voices the keys do not hold. */
 static int keys_under_song(const keys_route* kr) {
     return kr->song && kr->l->keys_chip == 0u && !kr->tune;
 }
 
-/* live's sink while a 2SID tune has both chips: nothing reaches either. */
 static void silent_sink(void* ctx, uint8_t reg, uint8_t value) {
     (void)ctx;
     (void)reg;
     (void)value;
 }
 
-/* The voices the keys hold (bit v): the gated ones, and under mono sync voice 3, which the
- * sync lead clocks from voice 1. */
 static uint8_t held_voices(const live* l) {
     uint8_t m = 0;
     for (uint32_t v = 0; v < LIVE_VOICES; v++) {
@@ -37,9 +31,6 @@ static uint8_t held_voices(const live* l) {
     return m;
 }
 
-/* live's sink: the keys' chip's own (no layer in between, so the instrument's writes cost what
- * they did in M1), or, under a song with KEYS A, keys_route_sink, which holds back what the
- * song keeps. */
 static void retarget(keys_route* kr) {
     live* l = kr->l;
     if (kr->silent) {
@@ -104,17 +95,15 @@ void keys_route_sink(void* ctx, uint8_t reg, uint8_t value) {
     keys_route* kr = ctx;
     if (keys_under_song(kr)) {
         if (setup_reg(reg) || (reg >= REG_FC_LO && reg <= REG_MODE_VOL)) {
-            return; /* the song's setup, filter and volume */
+            return;
         }
         if (reg < REG_FC_LO) {
-            /* A voice's registers reach the song's chip only while the keys hold it, and its
-             * gate-off once as they let it go (the song gets it back then). */
             uint32_t v = reg / 7u;
             uint8_t now = held_voices(kr->l);
             uint8_t was = kr->taken;
             kr->taken = now;
             if ((now & ~was) && kr->taking) {
-                kr->taking(kr->taking_ctx, now); /* the song lets them go before this write */
+                kr->taking(kr->taking_ctx, now);
             }
             if (!(now & 1u << v) && !((was & 1u << v) && reg == v * 7u + 4u)) {
                 return;
@@ -127,26 +116,23 @@ void keys_route_sink(void* ctx, uint8_t reg, uint8_t value) {
 int keys_route_prepare(void* ctx, uint8_t profile) {
     keys_route* kr = ctx;
     if (keys_under_song(kr) || kr->silent) {
-        return 1; /* the song's (or the tune's) chip keeps its setup: nothing to prepare */
+        return 1;
     }
     return kr->prepare(kr->out[kr->l->keys_chip & 1u], profile);
 }
 
-/* Whether the keys play under a song (KEYS A) changes with the song and the setting: when it
- * starts, chip A has the keys' setup as the song takes it; it keeps it (or the song's, M2c)
- * until it ends, and is then taken back to the keys' (keys_route_tick). */
 static void update_under(keys_route* kr) {
     if (kr->song && !kr->song_seen) {
-        keys_route_song_wants(kr, &kr->ctl[0].has); /* chip A as the song finds it */
+        keys_route_song_wants(kr, &kr->ctl[0].has);
         kr->song_user = 0;
     }
     kr->song_seen = kr->song;
     uint8_t now = (uint8_t)keys_under_song(kr);
     if (now && !kr->under) {
-        kr->stale = 1; /* chip A's setup is what ctl[0] has: keys_route_song_setup's */
+        kr->stale = 1;
         kr->taken = held_voices(kr->l);
         if (kr->taken && kr->taking) {
-            kr->taking(kr->taking_ctx, kr->taken); /* keys held as the song starts */
+            kr->taking(kr->taking_ctx, kr->taken);
         }
     }
     if (now != kr->under) {
@@ -176,7 +162,7 @@ void keys_route_set_silent(keys_route* kr, int on) {
     uint8_t was = kr->silent;
     kr->silent = on ? 1u : 0u;
     if (was && !kr->silent) {
-        kr->stale = 1; /* the keys' chip holds the tune's setup: back to theirs (keys_route_tick) */
+        kr->stale = 1;
     }
     retarget(kr);
 }
@@ -197,7 +183,7 @@ void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {
     if (setup->profile != kr->song_want.profile) {
         kr->song_user = 0;
     }
-    kr->song_want = *setup; /* the one writer of song_want */
+    kr->song_want = *setup;
 }
 
 int keys_route_song_edit(keys_route* kr, const chip_setup* setup, uint32_t edit_mask) {
@@ -228,18 +214,15 @@ static void move(keys_route* kr, uint32_t to) {
     live* l = kr->l;
     uint32_t from = l->keys_chip & 1u;
     if (l->preparing) {
-        kr->prepare(kr->out[from], LIVE_PREPARE_CANCEL); /* asked again on the new chip */
+        kr->prepare(kr->out[from], LIVE_PREPARE_CANCEL);
     }
     chip_ctl_stop(&kr->ctl[to]);
     if (!kr->stale) {
-        /* The chip left behind has the keys' setup, as live gave it (not chip A after a song
-         * under KEYS A: that is the song's, which ctl[0] has). */
         chip_setup_of(l, &kr->ctl[from].has);
         kr->ctl[from].made = 1;
     }
     if (to == 1u) {
-        kr->stale = 0; /* chip A is the song's now; ctl[0] follows the keys' after it */
-        /* The song takes chip A: the notes the keys hold there are released. */
+        kr->stale = 0;
         for (uint32_t v = 0; v < LIVE_VOICES; v++) {
             uint8_t c = live_voice_control(l, v);
             if (c & 1u) {
@@ -249,8 +232,6 @@ static void move(keys_route* kr, uint32_t to) {
     }
     l->keys_chip = (uint8_t)to;
     if (to == 0u && kr->song) {
-        /* KEYS A during a song: chip A is the song's (stale until it stops), and the rewrite
-         * below reaches only the voices the keys hold (none: a move waits for no key held). */
         kr->stale = 1;
         kr->taken = held_voices(l);
         kr->under = 1;
@@ -259,10 +240,9 @@ static void move(keys_route* kr, uint32_t to) {
     if (kr->moved) {
         kr->moved(kr->moved_ctx, to);
     }
-    live_rewrite(l); /* every register on the new chip: the keys still down sound again */
+    live_rewrite(l);
 }
 
-/* The other chip's model and profile, for the views. */
 static void tell(keys_route* kr) {
     live* l = kr->l;
     const chip_ctl* o = &kr->ctl[(l->keys_chip & 1u) ^ 1u];
@@ -273,11 +253,8 @@ static void tell(keys_route* kr) {
 
 void keys_route_tick(keys_route* kr) {
     live* l = kr->l;
-    update_under(kr); /* the KEYS setting may have changed */
+    update_under(kr);
     if (kr->silent) {
-        /* A 2SID tune: each chip follows its setup, the keys stay where they are. Chip A only
-         * once chip B has its own: the two share the spare, and two requests in a tick would
-         * take it from each other for ever (the keys' chip drops the other's preparation). */
         if (chip_ctl_follow(&kr->ctl[1], &kr->tune_b_want)) {
             chip_ctl_follow(&kr->ctl[0], &kr->song_want);
         }
@@ -289,9 +266,6 @@ void keys_route_tick(keys_route* kr) {
     uint32_t keys = l->keys_chip & 1u;
     uint32_t target = kr->song && (l->keys_mode == LIVE_KEYS_AUTO || kr->tune) ? 1u : 0u;
     uint32_t other = keys ^ 1u;
-    /* To chip B once it has the keys' setup; to chip A once it has it again and no key is
-     * held, or, during a song with KEYS A, with no key held whatever its setup (the keys play
-     * through the song's). */
     int ready = target == 1u ? chip_ctl_has(&kr->ctl[1], &want)
                              : !keys_held(l) && (kr->song || chip_ctl_has(&kr->ctl[0], &want));
     if (target != keys && ready && !l->preparing) {
@@ -299,19 +273,14 @@ void keys_route_tick(keys_route* kr) {
         keys = target;
         other = keys ^ 1u;
     } else if (!(other == 0u && kr->song)) {
-        /* The other chip follows the keys' setup, unless it is the song's. */
         chip_ctl_follow(&kr->ctl[other], &want);
     } else {
-        chip_ctl_follow(&kr->ctl[0], &kr->song_want); /* the song's chip, the song's setup */
+        chip_ctl_follow(&kr->ctl[0], &kr->song_want);
     }
     chip_ctl* own = &kr->ctl[keys];
     if (keys_under_song(kr)) {
-        /* The keys play the song's chip: its setup is the song's. */
         chip_ctl_follow(own, &kr->song_want);
     } else if (kr->stale) {
-        /* The keys' own chip after a song kept its setup (KEYS A): back to the keys' setup
-         * (its profile prepared and reset, then every register again; or only the settings
-         * that differ), then live's writes keep it there. */
         if (own->has.profile != want.profile) {
             if (!l->preparing && chip_ctl_follow(own, &want)) {
                 live_rewrite(l);
@@ -323,7 +292,7 @@ void keys_route_tick(keys_route* kr) {
             kr->stale = 0;
         }
     } else {
-        chip_setup_of(l, &own->has); /* live keeps its own chip at the keys' setup */
+        chip_setup_of(l, &own->has);
         own->made = 1;
     }
     tell(kr);

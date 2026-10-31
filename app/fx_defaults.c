@@ -4,9 +4,6 @@
 
 #include "fx/fx_slots.h"
 
-/* Amount, A, B, Mix per slot and algorithm: what an algorithm picked from the panel starts
- * from (live_slot_pick), each one audible at once. NONE's row is zeros. Rows past a slot's
- * last algorithm are zeros too. */
 const uint8_t live_fx_defaults[LIVE_SLOTS][8][4] = {
     [0] = {
         [SID_DIST_TAPE] = {80, 0, 0, 127},

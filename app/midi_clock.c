@@ -8,12 +8,10 @@ void midi_clock_init(midi_clock* c, uint32_t sample_rate) {
     c->lost_after = sample_rate * MIDI_CLOCK_LOST_MS / 1000u;
 }
 
-/* b - a, for stamps within 2^31 of each other. */
 static int32_t since(uint32_t a, uint32_t b) {
     return (int32_t)(b - a);
 }
 
-/* Round half away from zero, without libm. */
 static int32_t round_i32(float x) {
     return (int32_t)(x < 0.0f ? x - 0.5f : x + 0.5f);
 }
@@ -25,8 +23,6 @@ static void drop_fit(midi_clock* c) {
     c->at_ref = 0.0f;
 }
 
-/* The least-squares line through the ring, x the clock number and y the stamp, both from
- * the newest clock's: centred, so every term is small and float keeps its precision. */
 static void fit(midi_clock* c) {
     unsigned n = c->count;
     float sx = 0.0f, sy = 0.0f;
@@ -63,8 +59,6 @@ static void add(midi_clock* c, uint32_t number, uint32_t stamp) {
     fit(c);
 }
 
-/* A clock stamped from a hold's start to a clock period after its end (to its end with no
- * tempo yet). A clock stamped later is past the hold, which is then forgotten. */
 static int in_hold(midi_clock* c, uint32_t stamp) {
     if (!c->has_hold || since(c->hold_start, stamp) < 0) {
         return 0;

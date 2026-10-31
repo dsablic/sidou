@@ -4,15 +4,12 @@
 
 _Static_assert(CHIP_MIX_FADE == 1u << 7, "the fade's weight is a 7-bit shift");
 
-/* B's weight at sample i of a fade: 128 is all of it. */
 static int32_t mix_weight(chip_mix_fade fade, uint32_t i) {
     return fade == CHIP_MIX_FULL ? 128
            : fade == CHIP_MIX_IN ? (int32_t)i + 1
                                  : (int32_t)CHIP_MIX_FADE - 1 - (int32_t)i;
 }
 
-/* The block from sample `from` on, the first whose sum is past int16: over zeroed before it,
- * then each sum saturated into a and its excess into over. Out of line: rare. */
 __attribute__((noinline, unused)) static void mix_past(int16_t* a, const int16_t* b,
                                                        int16_t* over, uint32_t from, uint32_t n,
                                                        chip_mix_fade fade) {

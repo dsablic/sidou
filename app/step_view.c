@@ -11,9 +11,6 @@
 #include "song/gt2_song.h"
 #include "song/song_ext.h"
 
-/* What the view shows, as bytes (step_view.drawn), in three zones that are built apart: the
- * header with the page selector and the ruler (rows 0-3); the lanes (rows 4-15), which the
- * playing step changes; the HELD STEP frame and the pads (rows 16-29), which it does not. */
 #define HEAD_AT 0u
 #define HEAD_N 11u
 #define LANES_AT (HEAD_AT + HEAD_N)
@@ -25,10 +22,8 @@ _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
 #define LANES_ROWS 0x0001FFE0u
 #define LOWER_ROWS 0x3FFE0000u
 
-/* What a knob steps a lock by, its value when the step has none, its range's top. */
 static const uint16_t LOCK_STEP[SONG_LOCK_PARAMS] = {32, 1, 1, 1, 64, 2, 2, 2, 2, 5};
 static const uint16_t LOCK_START[SONG_LOCK_PARAMS] = {1024, 8, 0, 0, 2048, 64, 64, 64, 64, 100};
-/* SET's choices: none, then triangle, sawtooth, pulse and noise, gate on. */
 static const uint8_t WAVES[STEP_VIEW_WAVES] = {0u, 0x11u, 0x21u, 0x41u, 0x81u};
 static const char* const WAVE_NAMES[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PULSE", "NOISE"};
 static const char* const WAVE_SHORT[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PUL", "NOI"};
@@ -47,17 +42,13 @@ void step_view_init(step_view* st, song_view* sv) {
     song_gen_init(&sv->gen, &st->gate);
 }
 
-/* ---- what each lane shows ---- */
-
 typedef struct {
-    uint8_t pattern; /* 0xFF: none */
-    uint8_t rows;    /* its rows, the end row not counted */
-    uint8_t play;    /* the row the song plays in it, 0xFF: none */
+    uint8_t pattern;
+    uint8_t rows;
+    uint8_t play;
     uint8_t silent;
 } lane;
 
-/* Voice v's pattern: the first one at or after the orderlist entry the views show (the
- * player's while the song plays and its row events said one, the cursor's otherwise). */
 static lane lane_of(const song_view* sv, uint32_t v) {
     lane ln = {0xffu, 0u, 0xffu, (uint8_t)(song_view_mute_mask(sv) >> v & 1u)};
     const gt2_song* s = sv->song;
@@ -86,7 +77,6 @@ static uint32_t pages_of(uint32_t rows) {
     return rows ? (rows + STEP_VIEW_STEPS - 1u) / STEP_VIEW_STEPS : 1u;
 }
 
-/* The page shown: the selected lane's playing page while the song plays, else ALGORITHM's. */
 static uint32_t page_of(const step_view* st, const lane lanes[SONG_T_VOICES]) {
     const lane* ln = &lanes[st->sv->voice];
     uint32_t page = ln->play != 0xffu ? ln->play / STEP_VIEW_STEPS : st->page;
@@ -104,19 +94,15 @@ static int is_note(uint32_t n) {
     return n >= GT2_FIRSTNOTE && n <= GT2_LASTNOTE;
 }
 
-/* Row `row` of a pattern whose data is d (NULL: an empty pattern, all rests). */
 static const uint8_t* cell_in(const uint8_t* d, uint32_t row) {
     static const uint8_t REST[4] = {GT2_REST, 0, 0, 0};
     return d ? d + row * GT2_ROW_BYTES : REST;
 }
 
-/* Row `row` of a lane's pattern as the model holds it. */
 static const uint8_t* cell_of(const gt2_song* s, const lane* ln, uint32_t row) {
     return cell_in(gt2_pattern_data(s, ln->pattern), row);
 }
 
-/* The LOCK chunk's records (song_ext.h: a version, a 16-bit count, then SONG_LOCK_BYTES a
- * record sorted by pattern, row, parameter), NULL and 0 with none: a lane reads them once. */
 static const uint8_t* lock_records(const gt2_song* s, uint32_t* n) {
     uint32_t len = 0u;
     const uint8_t* d = song_ext_find(s, SONG_TAG_LOCK, &len);
@@ -132,12 +118,10 @@ static const uint8_t* lock_records(const gt2_song* s, uint32_t* n) {
     return d + 3;
 }
 
-/* A record's pattern and row. */
 static uint32_t lock_at(const uint8_t* recs, uint32_t i) {
     return (uint32_t)recs[i * SONG_LOCK_BYTES] << 8 | recs[i * SONG_LOCK_BYTES + 1u];
 }
 
-/* The first record at or after (pattern, row). */
 static uint32_t lock_first(const uint8_t* recs, uint32_t n, uint32_t pattern, uint32_t row) {
     uint32_t lo = 0u, hi = n, key = pattern << 8 | row;
     while (lo < hi) {
@@ -163,8 +147,6 @@ static int lock_get(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t 
     }
     return 0;
 }
-
-/* ---- the look ---- */
 
 static void put32(uint8_t* out, uint32_t v) {
     out[0] = (uint8_t)v;
@@ -221,8 +203,6 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     (void)song_gen_look(sv, l + 11);
 }
 
-/* ---- the canvas ---- */
-
 typedef song_view_canvas canvas;
 
 static void big(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
@@ -245,7 +225,6 @@ static uint32_t step_col(uint32_t i) {
     return STEP_VIEW_STEP_COL + i + i / 4u;
 }
 
-/* The header, the page selector and the ruler: rows 0-4. */
 static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -281,7 +260,6 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     if (sv->rec) {
         grid_canvas_text(c, 22, 1, "REC", THEME_ATTR(th, alert));
     }
-    /* Row 2: the pages, the shown one reversed, and the pattern's length. */
     grid_canvas_text(c, 0, STEP_VIEW_PAGE_ROW, "PAGE", THEME_ATTR(th, hint));
     uint32_t pages = pages_of(lanes[v].rows);
     for (uint32_t p = 0; p < pages && p < 8u; p++) {
@@ -292,7 +270,6 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     uint32_t n = screen_decimal(len, lanes[v].rows);
     grid_canvas_text(c, 21, STEP_VIEW_PAGE_ROW, len, THEME_ATTR(th, value));
     grid_canvas_text(c, 21u + n, STEP_VIEW_PAGE_ROW, " STEPS", THEME_ATTR(th, hint));
-    /* Rows 3-4, at 2x: the number of each group's first step. */
     for (uint32_t g = 0; g < 4u; g++) {
         screen_decimal(len, page * STEP_VIEW_STEPS + g * 4u + 1u);
         big(c, step_col(g * 4u), STEP_VIEW_RULER_ROW, len, THEME_ATTR(th, label));
@@ -300,8 +277,6 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     sv->dirty |= HEAD_ROWS;
 }
 
-/* Lane l's four rows from its first: the pips, their notches, and at 2x the lane's note, its
- * instrument and its gate. */
 static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t l, uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -340,7 +315,6 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
         } else {
             put(c, col, r, pip, GRID_ATTR(color, th->bg));
         }
-        /* The notch: yellow for a LOCK, cyan for a SET (the waveform command). */
         uint32_t locks = 0u;
         if (recs) {
             while (next < nlocks && lock_at(recs, next) < (ln->pattern << 8 | row)) {
@@ -378,7 +352,6 @@ static void build_lanes(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     st->sv->dirty |= LANES_ROWS;
 }
 
-/* A bar of 8 cells with `fill` of `max`, in the knob's colour on a dark track. */
 static void bar(canvas* c, uint32_t col, uint32_t row, uint32_t fill, uint32_t max,
                 uint8_t color, uint8_t track) {
     uint32_t px = max ? fill * 64u / max : 0u;
@@ -389,9 +362,6 @@ static void bar(canvas* c, uint32_t col, uint32_t row, uint32_t fill, uint32_t m
     }
 }
 
-/* One knob of the HELD STEP frame: K1 and K3 on the frame's left, K2 and K4 on its right (the
- * knob's number from col, its name after it, LOCK or SET after the name, its bar and its
- * value under them). */
 static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint32_t k,
                       uint32_t row) {
     song_view* sv = st->sv;
@@ -400,7 +370,6 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     const theme* th = theme_get(sv->l->theme);
     uint32_t col = k & 1u ? 17u : 2u;
     char tag[3] = {'K', (char)('1' + k), 0};
-    /* The legend reads at 1x with nothing held too: hint, not dim (2.16:1). */
     grid_canvas_text(c, col, row, tag, THEME_ATTR(th, hint));
     grid_canvas_text(c, col + 3u, row, KNOB_SHORT[k],
                      GRID_ATTR(held ? th->knob_text[k] : th->hint, th->bg));
@@ -437,11 +406,6 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     }
 }
 
-/* The pads: two rows of eight, a beat (four steps) apart, each numbered by its place in its
- * beat at 2x (1 2 3 4  1 2 3 4); the second and fourth beats shaded (the cursor's dark grey),
- * a beat's first step in the value role and the others in the label role, a step's pad in the
- * lane's colour when it has a note, the held one yellow. The held step's own number is the
- * frame's (HELD STEP 22). */
 static void build_pads(step_view* st, const lane* ln, uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -470,7 +434,6 @@ static void build_pads(step_view* st, const lane* ln, uint32_t page) {
     sv->dirty |= LOWER_ROWS;
 }
 
-/* A rounded frame over rows [top, bottom]. */
 static void frame_box(canvas* c, uint32_t top, uint32_t bottom, uint8_t a) {
     put(c, 0, top, FONT_ROUND_TL, a);
     put(c, GRID_COLS - 1u, top, FONT_ROUND_TR, a);
@@ -486,7 +449,6 @@ static void frame_box(canvas* c, uint32_t top, uint32_t bottom, uint8_t a) {
     }
 }
 
-/* Rows 16-29: the HELD STEP frame and the pads. */
 static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -498,10 +460,9 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     blank(c, 17u, GRID_ROWS - 17u, THEME_ATTR(th, value));
     sv->dirty |= LOWER_ROWS;
     if (sv->gen.scl_down) {
-        song_gen_frame(sv, STEP_VIEW_HELD_ROW); /* over the HELD STEP frame and the pads */
+        song_gen_frame(sv, STEP_VIEW_HELD_ROW);
         return;
     }
-    /* The frame, rows 17-22. */
     frame_box(c, 17u, 22u, frame);
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     int held = st->held != STEP_VIEW_NONE && s && ln->pattern != 0xffu && at < ln->rows;
@@ -536,9 +497,6 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     build_pads(st, ln, page);
 }
 
-
-/* ---- editing ---- */
-
 __attribute__((noinline, unused)) static void feedback(screen* s, const song_view* sv) {
     const char* msg = sv->editor && sv->song ? song_edit_message(sv->editor) : "NO SONG";
     if (msg && *msg) {
@@ -559,7 +517,6 @@ __attribute__((noinline, unused)) static void finish_ready_edit(song_view* sv) {
     }
 }
 
-/* A step of a pattern: where an action writes. */
 typedef struct {
     uint8_t pattern, rows, voice, row;
 } target;
@@ -588,7 +545,6 @@ void step_view_leds(const step_view* st, uint32_t* set, uint32_t* rows, uint32_t
     }
 }
 
-/* The selected lane's step i of the page shown. */
 __attribute__((noinline, unused)) static int target_of(const step_view* st, uint32_t i, target* t) {
     const song_view* sv = st->sv;
     lane lanes[SONG_T_VOICES];
@@ -616,7 +572,6 @@ __attribute__((noinline, unused)) static int write_cell(screen* s, step_view* st
     return ok;
 }
 
-/* Step t's note on or off on its lane (on: note, the lane's default for a key). */
 static void toggle_now(screen* s, step_view* st, const target* t, uint32_t note) {
     song_view* sv = st->sv;
     uint8_t cell[4], other[4];
@@ -631,7 +586,6 @@ static void toggle_now(screen* s, step_view* st, const target* t, uint32_t note)
         cell[0] = (uint8_t)(GT2_FIRSTNOTE + note);
         cell[1] = st->instr[t->voice];
     } else {
-        /* A rest, or the key off the note before it still wants. */
         int after_note = t->row && read_cell(st, t, t->row - 1u, other) && is_note(other[0]);
         cell[0] = staccato && after_note ? GT2_KEYOFF : GT2_REST;
         cell[1] = 0u;
@@ -641,7 +595,6 @@ static void toggle_now(screen* s, step_view* st, const target* t, uint32_t note)
         return;
     }
     if (staccato && has_next) {
-        /* Staccato: a key off on the next empty row; taking a note away takes its key off. */
         if (note_on && other[0] == GT2_REST) {
             other[0] = GT2_KEYOFF;
             st->follow = 1u;
@@ -657,7 +610,6 @@ static void toggle_now(screen* s, step_view* st, const target* t, uint32_t note)
     }
 }
 
-/* SET: K4's waveform command on a step. */
 static void wave_now(screen* s, step_view* st, const target* t, int32_t steps) {
     uint8_t cell[4];
     if (!read_cell(st, t, t->row, cell)) {
@@ -679,7 +631,6 @@ static void wave_now(screen* s, step_view* st, const target* t, int32_t steps) {
     (void)write_cell(s, st, t, t->row, cell);
 }
 
-/* PRESETS on a held step: its note (the lane's from then on). */
 static void note_now(screen* s, step_view* st, const target* t, int32_t steps) {
     uint8_t cell[4];
     if (!read_cell(st, t, t->row, cell)) {
@@ -696,7 +647,6 @@ static void note_now(screen* s, step_view* st, const target* t, int32_t steps) {
     (void)write_cell(s, st, t, t->row, cell);
 }
 
-/* A step's waveform command goes (its locks went already). */
 static void unset_now(screen* s, step_view* st, const target* t) {
     uint8_t cell[4];
     if (read_cell(st, t, t->row, cell) && cell[2] == 7u) {
@@ -705,11 +655,8 @@ static void unset_now(screen* s, step_view* st, const target* t) {
     }
 }
 
-/* What a cell write waits for: the editor takes one at a time, and the first after a key
- * starts the audition, which holds edits for a while. The actions wait here, in order. */
 enum { ACT_TOGGLE = 1, ACT_WAVE, ACT_NOTE, ACT_UNSET };
 
-/* Runs what waits: the second row of a step, or the first action, once the editor is free. */
 __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
     song_view* sv = st->sv;
     if (!sv->editor) {
@@ -729,7 +676,7 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
         return;
     }
     if (!st->qn) {
-        song_gen_drain(sv, s); /* MUTATE, DICE or the sweep (app/song_gen.h) */
+        song_gen_drain(sv, s);
         return;
     }
     step_act a = st->q[0];
@@ -750,7 +697,6 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
     }
 }
 
-/* An action for a step, waiting its turn; turns of the same knob on the same step join. */
 static void act(screen* s, step_view* st, uint32_t kind, const target* t, int32_t steps) {
     step_act* last = st->qn ? &st->q[st->qn - 1u] : NULL;
     if (last && last->kind == kind && last->pattern == t->pattern && last->row == t->row &&
@@ -765,8 +711,6 @@ static void act(screen* s, step_view* st, uint32_t kind, const target* t, int32_
     drain(s, st);
 }
 
-/* A held step's filter and pulse locks, heard with its note (song_transport.held; chance is not
- * an audition's, the character's locks are the rows'). With none, the voice's own sound. */
 static void hear_locks(step_view* st, const target* t) {
     song_view* sv = st->sv;
     if (!sv->t || !sv->t->held) {
@@ -781,13 +725,12 @@ static void hear_locks(step_view* st, const target* t) {
         }
     }
     if (st->heard && st->heard != t->voice + 1u) {
-        (void)sv->t->held(sv->t->ctx, st->heard - 1u, NULL, 0u); /* another lane's step let go */
+        (void)sv->t->held(sv->t->ctx, st->heard - 1u, NULL, 0u);
     }
     st->heard_off = (uint8_t)!sv->t->held(sv->t->ctx, t->voice, h, n);
     st->heard = (uint8_t)(t->voice + 1u);
 }
 
-/* The held step's locks go with its last key (again until the player takes it). */
 static void heard_end(step_view* st) {
     song_view* sv = st->sv;
     if (st->heard && (!sv->t || !sv->t->held || sv->t->held(sv->t->ctx, st->heard - 1u, NULL, 0u))) {
@@ -797,7 +740,6 @@ static void heard_end(step_view* st) {
     }
 }
 
-/* The note a step's key sounds: the step's own, else the lane's default. */
 static uint32_t audition_note(const step_view* st, const target* t, const uint8_t* cell) {
     return is_note(cell[0]) ? cell[0] - GT2_FIRSTNOTE : st->sv->gen.root[t->voice];
 }
@@ -807,8 +749,6 @@ static void key_down(step_view* st, screen* s, uint32_t k) {
     st->held = (uint8_t)k;
     target t;
     if (sv->t && song_view_rec_playing(sv)) {
-        /* REC while the song plays: the key is a pad that records the lane's note at the row it
-         * is played in (a staccato lane's key off after it), and sounds it */
         uint32_t v = sv->voice;
         (void)song_view_record_note(sv, s, sv->gen.root[v], st->instr[v], !(st->gate >> v & 1u));
         if (sv->jam_off && sv->jam_voice != v) {
@@ -817,7 +757,7 @@ static void key_down(step_view* st, screen* s, uint32_t k) {
         sv->jam_off = 0;
         (void)sv->t->jam(sv->t->ctx, v, sv->gen.root[v], st->instr[v]);
         sv->jam_voice = (uint8_t)v;
-        st->touched = (uint16_t)(st->touched | 1u << k); /* it toggles nothing at its release */
+        st->touched = (uint16_t)(st->touched | 1u << k);
         return;
     }
     if (!sv->t || !target_of(st, k, &t)) {
@@ -831,7 +771,7 @@ static void key_down(step_view* st, screen* s, uint32_t k) {
     uint32_t instr = is_note(c[0]) && c[1] ? c[1] : st->instr[t.voice];
     (void)sv->t->jam(sv->t->ctx, t.voice, audition_note(st, &t, c), instr);
     sv->jam_voice = t.voice;
-    hear_locks(st, &t); /* with its cutoff, resonance, filter, route and pulse */
+    hear_locks(st, &t);
 }
 
 uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t pressed, int take) {
@@ -839,7 +779,6 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
     uint32_t mask = (1u << STEP_VIEW_STEPS) - 1u;
     uint32_t now = take ? down & mask : 0u;
     uint32_t pressed16 = take ? pressed & mask : 0u;
-    /* Let go (or let go and pressed again): a step with no knob turned on it toggles. */
     uint32_t gone = st->down & (~now | pressed16);
     for (uint32_t k = 0; gone >> k; k++) {
         if (!(gone >> k & 1u)) {
@@ -856,7 +795,7 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
         st->touched = (uint16_t)(st->touched & ~(1u << k));
         st->down = (uint16_t)(st->down & ~(1u << k));
         if (sv->t) {
-            sv->jam_off = 1; /* the audition goes at the next frame */
+            sv->jam_off = 1;
         }
     }
     for (uint32_t k = 0; pressed16 >> k; k++) {
@@ -869,7 +808,7 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
         heard_end(st);
     }
     if (!st->down || (take && song_view_rec_playing(sv))) {
-        st->held = STEP_VIEW_NONE; /* (the pads of a recording hold no step) */
+        st->held = STEP_VIEW_NONE;
     } else if (st->held >= STEP_VIEW_STEPS || !(st->down >> st->held & 1u)) {
         st->held = 0u;
         while (!(st->down >> st->held & 1u)) {
@@ -879,7 +818,6 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
     return pressed16 | now;
 }
 
-/* LOCK: a knob's parameter on the held step, for that row only. */
 static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, int32_t steps) {
     uint32_t value;
     gt2_song* song = (gt2_song*)st->sv->song;
@@ -894,7 +832,7 @@ static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, 
     if (r >= 0) {
         st->rev++;
         if (param <= SONG_LOCK_PULSE) {
-            hear_locks(st, t); /* the turn heard at once */
+            hear_locks(st, t);
         }
     } else {
         refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
@@ -902,7 +840,6 @@ static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, 
     }
 }
 
-/* LFO on a held step: its locks and its waveform command go. */
 static void clear_step(screen* s, step_view* st, const target* t) {
     gt2_song* song = (gt2_song*)st->sv->song;
     for (uint32_t p = 0; p < SONG_LOCK_PARAMS; p++) {
@@ -917,8 +854,6 @@ static void clear_step(screen* s, step_view* st, const target* t) {
     act(s, st, ACT_UNSET, t, 0);
 }
 
-/* MUTATE, DICE or the sweep on the selected lane (app/song_gen.h): the run starts, its writes
- * follow in drain. */
 static void gen_start(screen* s, step_view* st, uint32_t kind) {
     target t;
     if (!target_of(st, 0u, &t)) {
@@ -937,7 +872,6 @@ static void lone_due(step_view* st, uint32_t button) {
     }
 }
 
-/* EDIT + LFO: the editor's last change undone. */
 static void undo(screen* s, song_view* sv) {
     if (sv->editor) {
         (void)song_edit_undo(sv->editor);
@@ -1017,7 +951,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM && st->held != STEP_VIEW_NONE && target_of(st, st->held, &t)) {
-        st->touched = st->down; /* a step held: ALGORITHM is its chance, not the page */
+        st->touched = st->down;
         set_lock(s, st, &t, SONG_LOCK_CHANCE, e->steps);
         return 1;
     }
@@ -1032,10 +966,10 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     if (song_gen_turn(sv, s, e->id, e->steps)) {
-        return 1; /* K1-K4 with EDIT + SCL held: DICE's settings */
+        return 1;
     }
     int held = st->held != STEP_VIEW_NONE;
-    if (e->id == 6u) { /* PRESETS */
+    if (e->id == 6u) {
         if (held && target_of(st, st->held, &t)) {
             st->touched = st->down;
             act(s, st, ACT_NOTE, &t, e->steps);
@@ -1048,13 +982,11 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (!held && !edit && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u) &&
         song_view_recording(sv)) {
-        /* REC while the song plays: K1 and K2 record the cutoff and the resonance as locks on
-         * the row they are turned in (during a count-in they act as in LIVE) */
         st->rev = (uint8_t)(st->rev + song_view_record_knob(sv, s, e->id - PANEL_ENC_K1, e->steps));
         return 1;
     }
     if (e->id < PANEL_ENC_K1 || e->id > PANEL_ENC_K4 || !held) {
-        return 0; /* the knobs act as in LIVE until a step is held */
+        return 0;
     }
     uint32_t k = e->id - PANEL_ENC_K1;
     st->touched = st->down;
@@ -1122,7 +1054,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
         cur = song_view_rec_value(sv, k);
         top = k == 0u ? 2047u : 15u;
         if (k == 0u) {
-            live_view_fc_text(sv->l, cur, text); /* in Hz, as every view says the cutoff */
+            live_view_fc_text(sv->l, cur, text);
         } else {
             screen_decimal(text, cur);
         }
@@ -1164,8 +1096,6 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     return 1;
 }
 
-/* ---- the view ---- */
-
 static int model_loading(const song_view* sv) {
     return sv->io && (sv->io->state == SONG_IO_STOP || sv->io->state == SONG_IO_READ ||
                       sv->io->state == SONG_IO_VERIFY);
@@ -1195,7 +1125,6 @@ static void leave(screen* s, void* state) {
     st->down = st->touched = 0u;
 }
 
-/* The zones built into the canvas (step_view.zones). */
 #define ZONE_HEAD 1u
 #define ZONE_LANES 2u
 #define ZONE_LOWER 4u
@@ -1219,8 +1148,6 @@ static int changed(screen* s, void* state) {
            memcmp(now, st->drawn, LOWER_AT + LOWER_N) != 0;
 }
 
-/* Builds a zone, if its rows are on screen (a wipe down shows a few rows a frame, and the view
- * draws what they reach: the whole canvas in one frame is the busiest pass of a SEQ). */
 static void zone(step_view* st, uint32_t bit, uint32_t first_row, uint32_t reach,
                  const uint8_t* now, uint32_t at, uint32_t n, int force) {
     if (first_row >= reach ||
@@ -1230,7 +1157,7 @@ static void zone(step_view* st, uint32_t bit, uint32_t first_row, uint32_t reach
     lane lanes[SONG_T_VOICES];
     lanes_of(st->sv, lanes);
     uint32_t page = page_of(st, lanes);
-    st->page = (uint8_t)page; /* stopping leaves the page where the playing step was */
+    st->page = (uint8_t)page;
     if (bit == ZONE_HEAD) {
         build_head(st, lanes, page);
     } else if (bit == ZONE_LANES) {

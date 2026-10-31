@@ -99,7 +99,6 @@ int chip_ctl_follow(chip_ctl* c, const chip_setup* want) {
         return 0;
     }
     send_expert(c, want);
-    /* The controls first: the sink keeps them for the preparation and the ramp. */
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
         if (!c->made || c->has.controls[f] != want->controls[f]) {
             send(c, (uint8_t)LIVE_REG_CHAR(f + 1u), want->controls[f]);
@@ -114,7 +113,6 @@ int chip_ctl_follow(chip_ctl* c, const chip_setup* want) {
             return 0;
         }
         c->preparing = 0;
-        /* The profile just before the reset: the prepared spare is for it. */
         send(c, LIVE_REG_CHAR(0), want->profile);
         send(c, LIVE_REG_RESET, p->model);
         send(c, LIVE_REG_GATE_RESET, want->gate_reset);

@@ -20,7 +20,6 @@ uint32_t lab_sound_equal(const uint8_t a[LAB_SOUND_BYTES], const uint8_t b[LAB_S
     return memcmp(a, b, LAB_SOUND_BYTES) == 0;
 }
 
-/* Each byte field's largest value, by offset (LAB_SOUND_ARP's span is 1..). */
 static const struct {
     uint8_t at, max;
 } BYTE_MAX[] = {
@@ -40,7 +39,6 @@ static const struct {
     {LAB_SOUND_FILTER_LFO, LIVE_FILTER_LFO_MAX},
 };
 
-/* A link's byte within -LIVE_LINK_MAX..LIVE_LINK_MAX. */
 static int link_ok(uint8_t b) {
     return (uint8_t)(b + LIVE_LINK_MAX) <= 2u * LIVE_LINK_MAX;
 }

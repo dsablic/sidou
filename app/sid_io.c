@@ -6,8 +6,6 @@
 
 enum { STAGE_IDLE, STAGE_CLEAR, STAGE_DATA };
 
-/* SysEx's own files (app/sysex.c): MIDI INSTRUMENT's staging was stored as type 2 before .sid
- * files were; never a tune. */
 static int reserved(const char* name) {
     return !strcmp(name, "MIDI INSTRUMENT") || !strcmp(name, "MIDI SONG");
 }
@@ -56,8 +54,6 @@ int sid_io_open(sid_io* io, const store* st, const char* name, psid_header* h) {
     if (store_file_read(st, &io->file, 0, head, n) != (int)n) {
         return SID_IO_READ;
     }
-    /* The file's length with its first bytes: every check psid_parse makes against the rest
-     * is a bound, and it reads nothing past $7D. */
     int r = sid_io_refusal(psid_parse(head, io->file.length, h));
     if (r != SID_IO_OK) {
         memset(h, 0, sizeof *h);
@@ -71,7 +67,7 @@ int sid_io_load(sid_io* io, psid_ctl* c, const psid_header* h) {
     }
     io->ctl = c;
     io->h = h;
-    io->at = 2u; /* $00/$01: the port, as psid_ctl_load_over set them */
+    io->at = 2u;
     io->stage = STAGE_CLEAR;
     return 1;
 }
@@ -91,8 +87,6 @@ int sid_io_poll(sid_io* io) {
     if (io->stage != STAGE_DATA) {
         return 0;
     }
-    /* Straight into the 6502's memory: psid_parse has the data within the file and within
-     * $0002-$FFFF. */
     const psid_header* h = io->h;
     uint32_t end = h->data_off + h->data_len;
     uint32_t n = end - io->at < SID_IO_PASS_BYTES ? end - io->at : SID_IO_PASS_BYTES;

@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* live's cold half (app/live_int.h): the presets, a preset's load and the edits kept per preset,
- * the sound (lab_sound.h) packed, applied and stepped through, the parameters' setter, getter and
- * ranges, and the arpeggio's switch. Each runs once a turn, a CC, a load or a look, never per
- * tick or per sample: built for size (app/CMakeLists.txt). The input's paths that the emulator's
- * budgets bound (K1's cutoff, a slot's pick) and the tick stay in live.c. */
 #include "live.h"
 #include "live_dice.h"
 #include "live_int.h"
@@ -21,8 +16,6 @@ _Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_AGE + 2u == LIVE_CHAR_FIELDS,
 
 __attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t field);
 
-/* M1a's behaviour: velocity off, the wheel on the pulse width, aftertouch off, no vibrato
- * until CC 77 or a target asks for it. */
 #define EXPRESSION_DEFAULTS                                                                        \
     .bend_range = LIVE_BEND_RANGE_DEFAULT, .velocity_target = LIVE_VELOCITY_OFF,                   \
     .mod_target = LIVE_MOD_PULSE_WIDTH, .pressure_target = LIVE_PRESSURE_OFF,                      \
@@ -31,19 +24,19 @@ __attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t fi
 static const live_preset presets[LIVE_PRESET_SLOTS] = {
     {
         .name = "SAW LEAD",
-        .control = 0x20, /* saw */
+        .control = 0x20,
         .attack_decay = 0x09,
         .sustain_release = 0xa6,
         .pulse_width = 2048,
         .cutoff = 1200,
         .resonance = 6,
         .filter_voices = 0x07,
-        .filter_mode = 0x10, /* low-pass */
+        .filter_mode = 0x10,
         EXPRESSION_DEFAULTS,
     },
     {
         .name = "PWM BASS",
-        .control = 0x40, /* pulse */
+        .control = 0x40,
         .attack_decay = 0x05,
         .sustain_release = 0x84,
         .pulse_width = 1024,
@@ -52,12 +45,12 @@ static const live_preset presets[LIVE_PRESET_SLOTS] = {
         .filter_voices = 0x07,
         .filter_mode = 0x10,
         .pwm_depth = 768,
-        .pwm_rate = 328, /* a 2 s cycle */
+        .pwm_rate = 328,
         EXPRESSION_DEFAULTS,
     },
     {
         .name = "SYNC LEAD",
-        .control = 0x22, /* saw, hard-synced to voice 3 */
+        .control = 0x22,
         .attack_decay = 0x0a,
         .sustain_release = 0xb8,
         .pulse_width = 2048,
@@ -66,23 +59,23 @@ static const live_preset presets[LIVE_PRESET_SLOTS] = {
         .filter_voices = 0x01,
         .filter_mode = 0x10,
         .mono_sync = 1,
-        .sync_ratio_q8 = 704, /* 2.75 */
+        .sync_ratio_q8 = 704,
         EXPRESSION_DEFAULTS,
     },
     {
         .name = "NOISE PERC",
-        .control = 0x80, /* noise */
+        .control = 0x80,
         .attack_decay = 0x08,
         .sustain_release = 0x08,
         .pulse_width = 2048,
         .cutoff = 1800,
         .resonance = 2,
         .filter_voices = 0x07,
-        .filter_mode = 0x50, /* low-pass + high-pass: a notch */
+        .filter_mode = 0x50,
         EXPRESSION_DEFAULTS,
     },
     {
-        .name = "DICE", /* the base a roll starts from: SAW LEAD's values */
+        .name = "DICE",
         .control = 0x20,
         .attack_decay = 0x09,
         .sustain_release = 0xa6,
@@ -112,11 +105,11 @@ static void load_preset(live* l, uint8_t index) {
     l->filter_voices = p->filter_voices;
     l->filter_mode = p->filter_mode;
     if (!l->bend_range_rpn) {
-        l->bend_range = p->bend_range; /* RPN 0's is the channel's: kept */
+        l->bend_range = p->bend_range;
     }
     l->velocity_target = p->velocity_target;
     if (l->mod_target != p->mod_target) {
-        l->mod_wheel = 0; /* a new target starts from 0 */
+        l->mod_wheel = 0;
     }
     l->mod_target = p->mod_target;
     l->pressure_target = p->pressure_target;
@@ -134,7 +127,6 @@ static void load_preset(live* l, uint8_t index) {
     l->reso_link = 0;
     l->pwm_link = 0;
     l->lfo_phase = LFO_CENTRE;
-    /* The arpeggio: the factory's, off, with every note released below. */
     l->arp_on = 0;
     l->arp_rate = LIVE_ARP_RATE_DEFAULT;
     l->arp_order = LIVE_ARP_UP;
@@ -144,13 +136,12 @@ static void load_preset(live* l, uint8_t index) {
     for (int v = 0; v < LIVE_VOICES; ++v) {
         if (l->voice[v].gate) {
             l->voice[v].gate = 0;
-            l->voice[v].stamp = ++l->clock; /* released now, like a note-off */
+            l->voice[v].stamp = ++l->clock;
         }
     }
-    /* The base: the preset as loaded, the slots as they are (a built-in has none of its own). */
     l->user_sound = 0;
     live_sound_get(l, l->base);
-    l->base[LAB_SOUND_BEND_RANGE] = p->bend_range; /* not RPN 0's, the channel's */
+    l->base[LAB_SOUND_BEND_RANGE] = p->bend_range;
     live_sound_set_base(l, l->base, p->name);
 }
 
@@ -221,7 +212,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->expert_dirty = 0;
     l->expert_active = 0;
     l->expert_version = 0;
-    memset(l->slot, 0, sizeof l->slot); /* for the base load_preset takes; sent below */
+    memset(l->slot, 0, sizeof l->slot);
     load_preset(l, 0);
     li_reset_chip(l);
     li_write_all(l);
@@ -234,7 +225,6 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     }
 }
 
-/* ON: the held voices' notes, oldest first, into the arpeggio, on the oldest one's voice. */
 LIVE_COLD static void arp_start(live* l) {
     int keep = -1;
     l->arp_n = 0;
@@ -260,7 +250,7 @@ LIVE_COLD static void arp_start(live* l) {
         }
         if (keep < 0) {
             keep = v;
-            l->voice[v].gate = 0; /* out of the search; its gate is back on below, unwritten */
+            l->voice[v].gate = 0;
         } else {
             li_release(l, v);
         }
@@ -275,7 +265,6 @@ LIVE_COLD static void arp_start(live* l) {
     li_arp_sound(l);
 }
 
-/* OFF: each held note on a voice of its own, as if played again in the order played. */
 LIVE_COLD static void arp_stop(live* l) {
     if (l->arp_voice == LIVE_ARP_NO_VOICE) {
         return;
@@ -295,7 +284,7 @@ LIVE_COLD static void arp_stop(live* l) {
 }
 
 LIVE_COLD void live_arp_set(live* l, uint32_t field, uint32_t value) {
-    l->settings_dirty = 1; /* the sound's: the unsaved edit keeps it */
+    l->settings_dirty = 1;
     switch (field) {
     case LIVE_ARP_ON: {
         uint8_t want = value ? 1u : 0u;
@@ -349,14 +338,13 @@ LIVE_COLD void live_arp_turn(live* l, uint32_t field, int32_t detents) {
 void live_set_preset(live* l, uint8_t index) {
     l->settings_dirty = 1;
     if (index >= LIVE_PRESET_SLOTS) {
-        index = LIVE_PRESET_SLOTS - 1; /* the settings load DICE back */
+        index = LIVE_PRESET_SLOTS - 1;
     }
     load_preset(l, index);
-    l->edits[index].valid = 0; /* the factory's, over any edits it kept */
+    l->edits[index].valid = 0;
     li_write_all(l);
 }
 
-/* The current settings of the fields live_edit keeps. */
 LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->cutoff = l->cutoff;
     e->pulse_width = l->pulse_width;
@@ -387,8 +375,6 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->valid = 1;
 }
 
-/* e over what load_preset has just loaded (a bend range RPN 0 set stays; a new mod target starts
- * the wheel at 0, as load_preset does). */
 LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->cutoff = e->cutoff;
     l->pulse_width = e->pulse_width;
@@ -410,7 +396,7 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->vibrato_rate = e->vibrato_rate;
     l->vibrato_depth = e->vibrato_depth;
     l->vibrato_delay = e->vibrato_delay;
-    l->arp_on = e->arp_on; /* no note is held after load_preset: the next one starts it */
+    l->arp_on = e->arp_on;
     l->arp_rate = e->arp_rate;
     l->arp_order = e->arp_order;
     l->arp_span = e->arp_span;
@@ -425,9 +411,6 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->pwm_link = e->pwm_link;
 }
 
-/* A USER sound is left: its edit, if it has one, is kept for it (live.user_edit), over the one
- * kept for the USER sound left before it. A USER sound's preset is SAW LEAD's (live_load_user):
- * its edits are never SAW LEAD's. */
 static void user_leave(live* l) {
     if (live_preset_edited(l)) {
         live_sound_get(l, l->user_edit);
@@ -451,7 +434,7 @@ LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
     if (l->edits[q].valid) {
         edit_apply(l, &l->edits[q]);
         if (q == LIVE_PRESET_DICE) {
-            live_sound_get(l, l->base); /* DICE's base is its roll, as it was left */
+            live_sound_get(l, l->base);
         }
     }
     li_write_all(l);
@@ -462,7 +445,6 @@ uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
         return 0;
     }
     for (uint32_t i = 0; i < LAB_SOUND_BYTES; i++) {
-        /* a bend range RPN 0 set is the channel's, not the sound's */
         if (now[i] != l->base[i] && (i != LAB_SOUND_BEND_RANGE || !l->bend_range_rpn)) {
             return 1;
         }
@@ -480,7 +462,6 @@ LIVE_COLD void live_preset_name(const live* l, char* buf) {
     const char* name = l->base_name;
     uint32_t n = 0;
     if (l->preset == LIVE_PRESET_DICE) {
-        /* DICE and the number of the roll it holds, two digits */
         uint32_t r = l->dice_rolls % 100u;
         for (; name[n]; n++) {
             buf[n] = name[n];
@@ -539,7 +520,6 @@ static uint32_t get16(const uint8_t* s, uint32_t at) {
     return (uint32_t)s[at] | (uint32_t)s[at + 1u] << 8;
 }
 
-/* Straight-line: live_preset_edited packs the sound for every look of LIVE's header. */
 void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_CONTROL] = l->control;
     out[LAB_SOUND_AD] = l->attack_decay;
@@ -572,8 +552,6 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_PWM_LINK] = (uint8_t)l->pwm_link;
 }
 
-/* The parameters a sound sets through live_param_set, and where it holds each: (offset, mask,
- * shift) of the byte or (offset, 0, 16) of a 16-bit field. */
 static const struct {
     uint8_t param, at, mask, shift;
 } SOUND_PARAMS[] = {
@@ -597,7 +575,6 @@ static const struct {
     {LIVE_PARAM_VIBRATO_DELAY, LAB_SOUND_VIBRATO_DELAY, 0xffu, 0u},
 };
 
-/* A link's byte, clamped to -LIVE_LINK_MAX..LIVE_LINK_MAX. */
 static int8_t link_of(uint8_t b) {
     int32_t v = (int8_t)b;
     return (int8_t)(v < -LIVE_LINK_MAX ? -LIVE_LINK_MAX : v > LIVE_LINK_MAX ? LIVE_LINK_MAX : v);
@@ -607,7 +584,7 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->settings_dirty = 1;
     uint8_t mono = in[LAB_SOUND_MONO_SYNC] ? 1u : 0u;
     if (mono != l->mono_sync) {
-        live_all_notes_off(l); /* the voices change roles: none is left sounding */
+        live_all_notes_off(l);
         l->mono_sync = mono;
         li_write_controls(l);
     }
@@ -637,11 +614,9 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
                          : (uint32_t)(in[at] & SOUND_PARAMS[i].mask) >> SOUND_PARAMS[i].shift;
         live_param_set(l, SOUND_PARAMS[i].param, v);
     }
-    /* a bend range RPN 0 set holds unless the sound's differs (live_param_set ends it) */
     if (in[LAB_SOUND_BEND_RANGE] != l->bend_range) {
         live_param_set(l, LIVE_PARAM_BEND_RANGE, in[LAB_SOUND_BEND_RANGE]);
     }
-    /* the arpeggio's settings, then on or off: a held chord goes into it at the sound's rate */
     for (uint32_t f = LIVE_ARP_SPAN; f > LIVE_ARP_ON; f--) {
         live_arp_set(l, f, in[LAB_SOUND_ARP + f]);
     }
@@ -651,7 +626,6 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
             live_slot_set(l, k, f, in[LAB_SOUND_SLOTS + k * LIVE_SLOT_FIELDS + f]);
         }
     }
-    /* the pitch, the ratio and the LFO change no parameter: written as a tick writes them */
     for (int v = 0; v < LIVE_VOICES; ++v) {
         li_update_freq(l, v);
     }
@@ -661,7 +635,7 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
 LIVE_COLD void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND_BYTES],
                               const char* name) {
     l->settings_dirty = 1;
-    load_preset(l, 0); /* the frame: the voices released, the edits kept for SAW LEAD stay */
+    load_preset(l, 0);
     live_sound_apply(l, sound);
     live_sound_set_base(l, sound, name);
     l->user_sound = (uint8_t)(n + 1u);
@@ -669,7 +643,7 @@ LIVE_COLD void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND
 }
 
 LIVE_COLD void live_sound_set_base(live* l, const uint8_t in[LAB_SOUND_BYTES], const char* name) {
-    l->settings_dirty = 1; /* the unsaved edit holds the name and the mark */
+    l->settings_dirty = 1;
     if (in != l->base) {
         memcpy(l->base, in, LAB_SOUND_BYTES);
     }
@@ -688,20 +662,16 @@ const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1] = {
     92682,  98193,  104032, 110218, 116772, 123715, 131072,
 };
 
-/* What a roll starts from: the notes played, the clock and the LFO's phase are what no two turns
- * share (the roll adds its own count). */
 static uint32_t dice_seed(const live* l) {
     return l->note_ons * 2654435761u ^ l->clock * 40503u ^ l->lfo_phase;
 }
 
-/* The sounds PRESETS steps through, in order: the built-ins and DICE (0..LIVE_PRESET_SLOTS - 1),
- * then USER 1.. at LIVE_PRESET_SLOTS + n. */
 #define STEP_END (LIVE_PRESET_SLOTS + LIVE_SOUNDS)
 
 LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     if (revert) {
         if (l->user_sound) {
-            live_sound_apply(l, l->base); /* the sound as kept */
+            live_sound_apply(l, l->base);
             l->settings_dirty = 1;
             if (l->user_edit_slot == l->user_sound) {
                 l->user_edit_slot = 0;
@@ -715,18 +685,18 @@ LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     uint32_t to = at;
     for (uint32_t i = steps < 0 ? (uint32_t)-steps : (uint32_t)steps; i; i--) {
         uint32_t n = to;
-        do { /* a detent on, past the USER slots that hold nothing */
+        do {
             n = steps < 0 ? n - 1u : n + 1u;
         } while (n >= LIVE_PRESET_SLOTS && n < STEP_END &&
                  !(l->sounds_valid >> (n - LIVE_PRESET_SLOTS) & 1u));
-        if (n >= STEP_END) { /* the end, either way (below 0 wraps) */
+        if (n >= STEP_END) {
             break;
         }
         to = n;
     }
     if (to == at) {
         if (at == LIVE_PRESET_DICE) {
-            live_dice_roll(l, dice_seed(l)); /* DICE again: a new roll */
+            live_dice_roll(l, dice_seed(l));
         }
     } else if (to < LIVE_PRESET_SLOTS) {
         uint32_t fresh = to == LIVE_PRESET_DICE && !l->edits[to].valid;
@@ -744,9 +714,9 @@ LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
         }
         if (l->user_load && l->user_load(l->user_ctx, n)) {
             if (l->user_edit_slot == n + 1u) {
-                live_sound_apply(l, l->user_edit); /* as it was left; the base stays */
+                live_sound_apply(l, l->user_edit);
             }
-        } else { /* the store did not give it: not a sound, and the one playing stays */
+        } else {
             l->sounds_valid = (uint16_t)(l->sounds_valid & ~(1u << n));
             if (!l->user_sound) {
                 edit_apply(l, &l->edits[l->preset]);
@@ -755,9 +725,6 @@ LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     }
 }
 
-/* USER slot n set as the keys' setup: its base profile as a profile change (the spare prepared,
- * then swapped), its controls as the character's. An empty slot does nothing. Cold: picked
- * by hand or by a CC, never per frame. */
 __attribute__((noinline, unused)) static void apply_user(live* l, uint32_t n) {
     if (n >= LIVE_USER_PROFILES || !(l->user_valid >> n & 1u)) {
         return;
@@ -794,11 +761,11 @@ void live_button(live* l, live_button_id button) {
         if (l->expert_active) {
             macro_changed(l, 0);
         }
-        if (l->prepare) { /* the other model than the one asked for: live_tick prepares it */
+        if (l->prepare) {
             sid_model m = l->model_req == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581;
             l->user_applied = 0;
             li_request_profile(l, li_model_profile(l, m));
-        } else { /* at once, at a human's pace; over any request still pending */
+        } else {
             l->user_applied = 0;
             li_set_model(l, l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581);
         }
@@ -862,7 +829,6 @@ uint32_t live_param_max(uint32_t param) {
     }
 }
 
-/* Replaces the bits of mask in *field by value (already in place); 1 if that changed it. */
 static int set_bits(uint8_t* field, uint32_t mask, uint32_t value) {
     uint8_t now = (uint8_t)((*field & ~mask) | (value & mask));
     if (now == *field) {
@@ -982,14 +948,14 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
             li_write_res_filt(l);
         }
         break;
-    case LIVE_PARAM_MODEL: /* only recorded: live_tick applies it */
+    case LIVE_PARAM_MODEL:
         if (l->expert_active) {
             macro_changed(l, 0);
         }
         l->user_applied = 0;
         li_request_profile(l, li_model_profile(l, value ? SID_MODEL_8580 : SID_MODEL_6581));
         break;
-    case LIVE_PARAM_PROFILE: /* the same; USER 1..8 above the built-in ones */
+    case LIVE_PARAM_PROFILE:
         if (value < SID_CHIPS) {
             if (l->expert_active) {
                 macro_changed(l, 0);
@@ -1003,15 +969,13 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     case LIVE_PARAM_AGE:
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
-    case LIVE_PARAM_BLEED: /* recorded: live_tick sends them */
+    case LIVE_PARAM_BLEED:
         if (l->expert_active && l->character[param - LIVE_PARAM_AGE] != value) {
             macro_changed(l, param - LIVE_PARAM_AGE + 1u);
         }
         l->character[param - LIVE_PARAM_AGE] = (uint8_t)value;
         break;
-    /* Expression: recorded; live_tick writes what they change, except the velocity target,
-     * which rewrites the envelopes at once (each voice keeps its velocity). */
-    case LIVE_PARAM_BEND_RANGE: /* a preset edit: RPN 0's no longer holds */
+    case LIVE_PARAM_BEND_RANGE:
         l->bend_range = (uint8_t)value;
         l->bend_range_rpn = 0;
         break;
@@ -1024,20 +988,19 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     case LIVE_PARAM_MOD_TARGET:
         if (l->mod_target != value) {
             l->mod_target = (uint8_t)value;
-            l->mod_wheel = 0; /* a new target starts from 0 */
+            l->mod_wheel = 0;
         }
         break;
     case LIVE_PARAM_PRESSURE_TARGET: l->pressure_target = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_RATE: l->vibrato_rate = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_DEPTH: l->vibrato_depth = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_DELAY: l->vibrato_delay = (uint8_t)value; break;
-    case LIVE_PARAM_ENVELOPE_MODE: /* for the gate edges from now on: a held note's release too */
+    case LIVE_PARAM_ENVELOPE_MODE:
         if (l->envelope_mode != value) {
             l->envelope_mode = (uint8_t)value;
             li_write_gate_reset(l);
         }
         break;
-    /* The sound's own: what they move is written at once, as a tick would write it. */
     case LIVE_PARAM_PWM_DEPTH:
         l->pwm_depth = (uint16_t)value;
         li_update_pws(l);
@@ -1146,7 +1109,7 @@ void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
 
 uint32_t live_pwm_step(uint32_t rate) {
     rate = rate < LIVE_PWM_RATE_MAX ? rate : LIVE_PWM_RATE_MAX;
-    return (rate * 32768u + 500u) / 1000u; /* 65536 x 0.05 / 100 = 32.768 a rate */
+    return (rate * 32768u + 500u) / 1000u;
 }
 
 uint32_t live_pwm_rate(uint32_t step) {
