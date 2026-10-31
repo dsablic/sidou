@@ -1,63 +1,25 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: the live instrument in fm1-emu, played from the emulated front panel (keys,
-//! encoders, the MASTER pot) and watched on the audio output, the LEDs and the LCD.
 
 mod common;
 
-use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
+use common::panel::*;
+use common::{build_and_firmware, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, SID_MODEL_6581, SID_MODEL_8580};
 
-/// Felucca's button ids.
-const OCT_UP: u8 = 1;
-const FX: u8 = 2;
-/// ALGORITHM, the encoder: on LIVE's TONE page it steps the chip's profile, the model with it (the
-/// 6581 R4AR at boot, the 8580 R5 next).
-const ALGORITHM: u8 = 1;
-const K1: u8 = 2;
-/// A MIDI note's key id at octave 0 (note key 0 = F3 = MIDI 53, id 14).
-const fn key_id(note: u8) -> u8 {
-    14 + note - 53
-}
-const A4: u8 = 69;
 const E4: u8 = 64;
-/// A block of 128 frames at 44118 Hz, in instructions at 240 MHz: 2.90 ms.
 const BLOCK_BUDGET: u64 = 128 * 240_000_000 / 44_118;
-/// docs/art/README.md, the HIGH CONTRAST theme (the default): black background, dark grey
-/// border, as the panel received them (RGB565, high byte first).
 const BLACK: u16 = 0x0000;
 const DIM: u16 = 0x4228;
 const LCD_W: usize = 240;
 
-fn fixture(what: &str) -> Option<(std::path::PathBuf, Firmware)> {
-    let Some(build) = build_dir() else {
-        common::skip_message(what);
-        return None;
-    };
-    let fw = Firmware::load(&build);
-    Some((build, fw))
-}
-
-/// Past the boot animation (app/boot.h), which a control would skip instead of playing:
-/// until the boot view is gone from the screen (common::run_past_boot).
 fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
     common::run_past_boot(&mut m, fw);
     m
 }
 
-/// A button pressed and let go (longer than the debounce both ways).
-fn tap(m: &mut Machine, id: u8) {
-    m.key(id, true);
-    m.run_ms(30);
-    m.key(id, false);
-    m.run_ms(30);
-}
-
-/// The device's chips (platform/fm1/audio.c `chips`: A, B and their spare), read from
-/// emulated RAM: chip A's sid, the spare's state. The struct has no pointers, so the host
-/// build's layout (sidou-sys) is the device's.
 #[derive(Debug, PartialEq)]
 struct Chips {
     active: u8,
@@ -79,13 +41,13 @@ fn chips(m: &mut Machine, fw: &Firmware) -> Chips {
 
 #[test]
 fn a_key_sounds_at_its_pitch() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
     let quiet = record(&mut m, 100);
     for (note, hz) in [(A4, 440.0), (E4, 329.628)] {
-        m.key(key_id(note), true);
+        m.key(note_key(note), true);
         m.run_ms(100);
         let x = record(&mut m, 300);
         let f0 = pitch(&x);
@@ -98,7 +60,7 @@ fn a_key_sounds_at_its_pitch() {
             (f0 / hz - 1.0).abs() < 0.005,
             "key {note} plays {f0:.2} Hz, expected {hz} Hz"
         );
-        m.key(key_id(note), false);
+        m.key(note_key(note), false);
         m.run_ms(600);
     }
     assert!(
@@ -109,18 +71,18 @@ fn a_key_sounds_at_its_pitch() {
 
 #[test]
 fn oct_up_doubles_the_pitch_and_lights_its_led() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
-    m.key(key_id(A4), true);
+    m.key(note_key(A4), true);
     m.run_ms(100);
     let low = pitch(&record(&mut m, 300));
-    m.key(key_id(A4), false);
+    m.key(note_key(A4), false);
     m.run_ms(300);
 
-    tap(&mut m, OCT_UP);
-    m.key(key_id(A4), true);
+    press(&mut m, OCT_UP);
+    m.key(note_key(A4), true);
     m.run_ms(100);
     m.soc.periph.led_take();
     let high = pitch(&record(&mut m, 300));
@@ -128,7 +90,7 @@ fn oct_up_doubles_the_pitch_and_lights_its_led() {
     println!(
         "A4 {low:.2} Hz, after OCT+ {high:.2} Hz; LEDs: OCT+ {:.3}, A4 key {:.3}, FX {:.3}",
         leds[usize::from(OCT_UP)],
-        leds[usize::from(key_id(A4))],
+        leds[usize::from(note_key(A4))],
         leds[usize::from(FX)]
     );
     assert!((low / 440.0 - 1.0).abs() < 0.005, "A4 at {low:.2} Hz");
@@ -138,7 +100,7 @@ fn oct_up_doubles_the_pitch_and_lights_its_led() {
     );
     assert!(leds[usize::from(OCT_UP)] > 0.0, "the OCT+ LED is dark");
     assert!(
-        leds[usize::from(key_id(A4))] > 0.0,
+        leds[usize::from(note_key(A4))] > 0.0,
         "the held key's LED is dark"
     );
     assert_eq!(leds[usize::from(FX)], 0.0, "the FX LED is lit for the 6581");
@@ -146,14 +108,13 @@ fn oct_up_doubles_the_pitch_and_lights_its_led() {
 
 #[test]
 fn turning_k1_down_takes_the_highs_out() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
-    m.key(key_id(A4), true);
+    m.key(note_key(A4), true);
     m.run_ms(200);
     let before = power_above(&record(&mut m, 200), 2000.0);
-    // 40 detents of 16 steps: cutoff 1200 -> 560. The emulator turns a detent in 8 ms.
     m.turn(K1, -40);
     m.run_ms(500);
     let after = power_above(&record(&mut m, 200), 2000.0);
@@ -166,7 +127,7 @@ fn turning_k1_down_takes_the_highs_out() {
 
 #[test]
 fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
@@ -174,7 +135,6 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
     let lcd = &m.soc.lcd;
     assert!(lcd.display_on, "DISPON was not sent");
     let fb = lcd.fb.clone();
-    // (120, 20): text row 2 right of the title, blank; (4, 4): the border.
     let at = |x: usize, y: usize| fb[y * LCD_W + x];
     println!(
         "LCD: background {:#06x} at (120, 20), border {:#06x} at (4, 4), {} windows",
@@ -190,14 +150,12 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
         fg > 240 * 4 * 8 && bg > fb.len() / 2,
         "not a status screen: {fg} lit, {bg} black pixels"
     );
-    // Text inside: some lit pixels away from the border.
     let inner = (8..232)
         .flat_map(|y| (8..232).map(move |x| (x, y)))
         .filter(|&(x, y)| at(x, y) != BLACK)
         .count();
     assert!(inner > 500, "no text on the screen ({inner} pixels)");
 
-    // Nothing changes: nothing is sent.
     let windows = m.soc.lcd.frames;
     m.run_ms(300);
     assert_eq!(
@@ -205,13 +163,11 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
         "the screen was redrawn without a change"
     );
 
-    // A note changes the notes line (page 2, SELECT turns to it): only its cells go out, as one
-    // or two runs (windows).
     m.turn(sidou_sys::PANEL_ENC_SELECT as u8, 1);
     m.run_ms(300);
     let fb = m.soc.lcd.fb.clone();
     let windows = m.soc.lcd.frames;
-    m.key(key_id(A4), true);
+    m.key(note_key(A4), true);
     m.run_ms(200);
     let sent = m.soc.lcd.frames - windows;
     let changed = m.soc.lcd.fb.iter().zip(&fb).filter(|(a, b)| a != b).count();
@@ -222,22 +178,17 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
 
 #[test]
 fn the_model_toggle_swaps_chips_without_a_gap() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
-    // The spare chip's preparation, a slice a tick (app/reg_ring.h): every slice of both
-    // toggles. (Boot's chips are made at once, by sid_init, before the main loop.)
     m.watch_calls(fw.symbol("sid_character_prep_step"));
     common::run_past_boot(&mut m, &fw);
-    m.key(key_id(A4), true);
+    m.key(note_key(A4), true);
     m.run_ms(200);
     let blocks_before = m.alnk_blocks.len();
     let quiet_before = m.alnk_blocks.iter().copied().max().unwrap_or(0);
 
-    // Chip A's sid, and its model, after boot and each toggle: a swap each time (chip B, which
-    // follows the keys' setup in the background from M2b Task 4, takes the spare between them,
-    // so which of the three sids chip A is on depends on when it did), nothing lost.
     let a_model = |m: &mut Machine| {
         let base = fw.chips();
         let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
@@ -266,7 +217,7 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
         "the first toggle swapped no chip"
     );
     m.turn(ALGORITHM, -1);
-    m.run_ms(300); // chip A's preparation, then chip B's following it
+    m.run_ms(300);
     let second = chips(&mut m, &fw);
     assert_eq!(
         a_model(&mut m),
@@ -301,11 +252,6 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     });
     println!("{report}");
 
-    // Chip B's boot preparation (the 6581 R4AR, 7 slices), then each toggle's on chip A and
-    // chip B following it, 7 slices each (the 8580 R5 and the 6581 R4AR with the model's own
-    // DACs), the first 4 more for the 8580's default DACs, built on first use: all in the main
-    // loop (the watch counts main-loop calls only), and the blocks stay small, so none ran in
-    // the interrupt.
     assert_eq!(
         calls.len(),
         7 + 11 + 7 + 7 + 7,
@@ -325,11 +271,11 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
 
 #[test]
 fn master_turns_the_volume_down() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
-    m.key(key_id(A4), true);
+    m.key(note_key(A4), true);
     m.run_ms(200);
     let loud = peak(&record(&mut m, 200));
     m.pot(300);
@@ -342,7 +288,6 @@ fn master_turns_the_volume_down() {
     );
 }
 
-/// Main-loop instructions per second of emulated time over `ms`.
 fn main_rate(m: &mut Machine, ms: u64) -> f64 {
     let before = m.main_steps;
     m.run_ms(ms);
@@ -351,15 +296,13 @@ fn main_rate(m: &mut Machine, ms: u64) -> f64 {
 
 #[test]
 fn the_main_loop_is_cheap_when_idle() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
-    // Past the first USB retry (once a second while no host answers, platform/fm1/midi.c usb_retry_quiet),
-    // and whole seconds from then on, so each window holds exactly one retry.
     m.run_ms(1000);
     let idle = main_rate(&mut m, 1000);
-    m.key(key_id(A4), true);
+    m.key(note_key(A4), true);
     let held = main_rate(&mut m, 1000);
     println!(
         "main loop: {:.2}M instructions/s idle, {:.2}M with a held key ({:.1} % and {:.1} % of 240 MHz)",
@@ -368,10 +311,6 @@ fn the_main_loop_is_cheap_when_idle() {
         idle / 2.4e6,
         held / 2.4e6
     );
-    // 52.5M/s (22 % of the core) before the main loop was paced by the key scan's frames
-    // and the screen by a dirty-strip mask; 1.4M/s after; 2.0M/s with MIDI in, 0.4M/s of it
-    // the USB retry's SIE timeouts while no host answers. 2.2M/s before the cell-grid renderer,
-    // 2.59M/s with it (it composes the whole grid every 40 ms; tests/screen.rs).
     for (what, rate) in [("idle", idle), ("with a held key", held)] {
         assert!(
             rate < 5e6,
@@ -381,12 +320,10 @@ fn the_main_loop_is_cheap_when_idle() {
     }
 }
 
-/// Felucca's ARP button (app/panel.h PANEL_BTN_ARP).
 const ARP: u8 = 10;
 const C4: u8 = 60;
 const G4: u8 = 67;
 
-/// The sid chip A renders, and its voices' frequency, gate and envelope level.
 fn voices_a(m: &mut Machine, fw: &Firmware) -> [(u32, u8, u8); 3] {
     let base = fw.chips();
     let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
@@ -402,17 +339,13 @@ fn voices_a(m: &mut Machine, fw: &Firmware) -> [(u32, u8, u8); 3] {
     })
 }
 
-/// The chord arpeggio (app/live.h live_arp_set) from the panel: ARP tapped, a three-note chord
-/// held is one voice of chip A cycling the chord's three frequencies, a note every three frames
-/// (60 ms, the default rate, 3F) and with ARP held and K1 turned two detents back, a note a frame
-/// (20 ms); its gate held throughout, every other voice silent.
 #[test]
 fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
-    let Some((_, fw)) = fixture("the live test") else {
+    let Some((_, fw)) = build_and_firmware("the live test") else {
         return;
     };
     let mut m = booted(&fw);
-    tap(&mut m, ARP);
+    press(&mut m, ARP);
     let table = unsafe { sidou_sys::live_freq_table };
     let want: Vec<u32> = [C4, E4, G4]
         .iter()
@@ -429,7 +362,7 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
             m.run_ms(30);
         }
         for n in [C4, E4, G4] {
-            m.key(key_id(n), true);
+            m.key(note_key(n), true);
         }
         m.run_ms(200);
         let mut seen: Vec<(u64, u32)> = Vec::new();
@@ -447,9 +380,6 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
             }
             let f = vs[v].0;
             if seen.last().map(|&(_, g)| g) != Some(f) {
-                // A value for a single millisecond that is no chord note is the frequency's two
-                // registers read half written (the sample fell inside the audio interrupt's
-                // writes: the low byte the next note's, the high the last's), not a step.
                 if let Some(&(at, g)) = seen.last() {
                     if at + 1 == t && !want.contains(&g) {
                         seen.pop();
@@ -461,7 +391,6 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
             }
             m.run_ms(1);
         }
-        // The frequencies cycle the chord, up.
         let freqs: Vec<u32> = seen.iter().map(|&(_, f)| f).collect();
         let start = want
             .iter()
@@ -470,8 +399,6 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
         for (i, &f) in freqs.iter().enumerate() {
             assert_eq!(f, want[(start + i) % 3], "step {i}: {freqs:?}");
         }
-        // A step every `frames` frames: the interval between changes within a 128-frame block
-        // and a tick of the frame's.
         let gaps: Vec<u64> = seen.windows(2).skip(1).map(|w| w[1].0 - w[0].0).collect();
         let period = frames * 20;
         let mean = gaps.iter().sum::<u64>() as f64 / gaps.len() as f64;
@@ -484,7 +411,7 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
         );
         assert!((mean - period as f64).abs() < 0.5, "mean step {mean:.2} ms");
         for n in [C4, E4, G4] {
-            m.key(key_id(n), false);
+            m.key(note_key(n), false);
         }
         m.run_ms(50);
         let vs = voices_a(&mut m, &fw);
@@ -492,7 +419,7 @@ fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
             vs.iter().all(|x| x.1 == 0),
             "a gate after the release: {vs:?}"
         );
-        m.run_ms(2000); // the release rings out
+        m.run_ms(2000);
     }
     println!("{}", serde_json::Value::Object(report));
 }

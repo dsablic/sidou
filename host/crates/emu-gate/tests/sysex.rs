@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU frames over the emulated TRS jack; no physical MIDI or USB device is opened.
 
 mod common;
 
-use common::{build_dir, mount_dump, Firmware, Machine, POLL_INSTRUCTIONS};
+use common::panel::*;
+use common::{firmware, mount_dump, Firmware, Machine, POLL_INSTRUCTIONS};
 use fm1_core::Bus;
 use sidou_sys::*;
 
@@ -13,14 +13,6 @@ const PROGS: u32 = 0;
 const ERASES: u32 = 4;
 const HOLDS: u32 = 16;
 const CHORD: [u8; 3] = [30, 34, 37];
-
-fn fixture() -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        common::skip_message("the SysEx emulator tests");
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
 
 fn byte(m: &mut Machine, base: u32, offset: usize) -> u8 {
     m.soc.read8(base + offset as u32)
@@ -73,7 +65,6 @@ fn ready(m: &mut Machine, fw: &Firmware, sequence: u8) -> u64 {
                 m.soc.read32(s + ilp32::sysex::offset as u32)
             );
         }
-        // UPLOAD is private to sysex.c; sequence advances only after DATA is programmed.
         byte(m, s, ilp32::sysex::state) == 1
             && byte(m, s, ilp32::sysex::sequence) == sequence
             && m.soc
@@ -110,7 +101,6 @@ fn begin(m: &mut Machine, target: u8, instrument: u8, name: &str, data: &[u8]) {
     metadata.extend((0..16).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
     metadata.push(1);
     metadata.extend((data.len() as u32).to_le_bytes());
-    // SAFETY: data is valid for its length; the CRC routine does not retain it.
     metadata
         .extend(unsafe { store_crc32(0, data.as_ptr().cast(), data.len() as u32) }.to_le_bytes());
     send(m, 4, 0, &metadata);
@@ -142,7 +132,6 @@ fn upload(
     until_ms(m, "END committed and import completed", timeout, |m| {
         byte(m, s, ilp32::sysex::state) == 0 && byte(m, s, ilp32::sysex::claimed) == 0
     });
-    // store_fm1_state's input_ms follows the last non-real-time byte, including END.
     let last_input = m.soc.read32(fw.symbol("store_fm1_state") + 16);
     let now = m.soc.read32(fw.symbol("uptime_ms"));
     assert!(
@@ -154,7 +143,7 @@ fn upload(
 
 #[test]
 fn a_current_song_put_finishes_the_normal_loader_before_releasing_the_transfer() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, true);
     let song = sidou_tests::song_embed::sng();
     put(&mut m, &fw, 2, 0, "", &song);
@@ -195,7 +184,6 @@ fn stored(m: &mut Machine, name: &std::ffi::CStr) -> Option<Vec<u8>> {
     let mut flash = m.soc.flash.mem.clone();
     let st = mount_dump(&mut flash);
     let mut file = store_file::default();
-    // SAFETY: st, file and the output buffer outlive each store call.
     unsafe {
         if store_file_open(&*st, name.as_ptr(), &mut file) != STORE_OK {
             return None;
@@ -254,7 +242,7 @@ fn full_file() -> Vec<u8> {
 
 #[test]
 fn a_trs_put_commits_a_song_byte_exact_and_bank_one_loads_it() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, true);
     let song = sidou_tests::song_embed::sng();
     put(&mut m, &fw, 0, 0, "MIDI TEST", &song);
@@ -296,11 +284,10 @@ fn a_trs_put_commits_a_song_byte_exact_and_bank_one_loads_it() {
 
 #[test]
 fn a_pool_drained_put_is_refused_before_any_program_or_claim() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, true);
     chord(&mut m);
     let storage = fw.symbol("store_fm1_store");
-    // Debugger-style pool drain: SEC_CLEAN -> SEC_DIRTY, without touching flash.
     let states = storage + ilp32::store::sstate as u32;
     let mut drained = 0;
     for i in 0..STORE_SECTORS {
@@ -347,7 +334,7 @@ fn a_pool_drained_put_is_refused_before_any_program_or_claim() {
 
 #[test]
 fn a_trs_instrument_put_relocates_tables_into_the_current_song() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, true);
     let ctl = fw.symbol("song_transport");
     m.key(PANEL_BTN_PLAY as u8, true);
@@ -374,7 +361,6 @@ fn a_trs_instrument_put_relocates_tables_into_the_current_song() {
         },
     );
     let mut song = sidou_tests::song::Song::device();
-    // SAFETY: the song owns its region; no player is reading this host fixture.
     unsafe {
         let s = &mut *song.ptr_mut();
         for table in 0..GT2_TABLES as usize {
@@ -452,7 +438,7 @@ fn a_trs_instrument_put_relocates_tables_into_the_current_song() {
 
 #[test]
 fn a_full_size_trs_put_with_a_chord_never_erases_or_holds() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, true);
     chord(&mut m);
     let counts = fw.symbol("store_fm1_counts");
@@ -475,7 +461,7 @@ fn a_full_size_trs_put_with_a_chord_never_erases_or_holds() {
 
 #[test]
 fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, false);
     chord(&mut m);
     assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
@@ -491,7 +477,6 @@ fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_
     m.snapshot_buffer(Some((fw.symbol("abuf"), 4 * common::HALF_FRAMES as u32)));
     begin(&mut m, 0, 0, "HELD MIDI", &data);
     ready(&mut m, &fw, 1);
-    // TRS's accepted BEGIN is the equivalent of USB's initial ACK: no later erase is allowed.
     let erases = m.soc.read32(counts + ERASES);
     let worst = upload(&mut m, &fw, &data, |m, i| {
         assert_eq!(
@@ -502,7 +487,6 @@ fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_
         until(m, "audio released between TRS packets", |m| {
             m.soc.read8(want) == 0 && m.soc.read8(faded) == 0
         });
-        // Two DMA halves must play after release, not a whole second of sender delay.
         m.run_ms(6);
         assert!(
             m.soc
@@ -542,7 +526,6 @@ fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_
         programs, forced_holds,
         "every production program must be held"
     );
-    // Same explicit-hold silence assertion as store.rs::no_erase_while_it_plays.
     let mut run = 0;
     let longest = m.soc.periph.audio[audio0..].iter().fold(0, |best, &s| {
         run = if s == 0 { run + 1 } else { 0 };
@@ -587,13 +570,9 @@ fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_
     check_passes(&m);
 }
 
-/// The device's refusal (2026-10-23), over TRS: a record taken while a chord is held on LIVE's
-/// keys (a settings save) waits for quiet, and a PUT then was refused (STORE BUSY: RESEND).
-/// Now the PUT owns the record's programs, waits for it to commit in its holds, and claims well
-/// within the sender's one-second gap; the upload commits and nothing is erased meanwhile.
 #[test]
 fn a_production_trs_put_with_keys_held_waits_out_a_record_and_commits() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware() else { return };
     let mut m = boot(&fw, false);
     assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
     chord(&mut m);
@@ -632,7 +611,6 @@ fn a_production_trs_put_with_keys_held_waits_out_a_record_and_commits() {
     let mut flash = m.soc.flash.mem.clone();
     let st = mount_dump(&mut flash);
     let mut value = [0u8; 16];
-    // SAFETY: st and value outlive the call.
     let n = unsafe {
         store_get(
             &*st,

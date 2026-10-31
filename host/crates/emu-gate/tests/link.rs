@@ -1,60 +1,28 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! FM-1 Live Link end to end in fm1-emu (docs/reference/live-link.md): fm1-emu's USB host
-//! (common::usb_host) starts a session, keeps it with heartbeats and rebuilds the screen from
-//! the stream with the reference decoder (the fm1-live-link crate), while the views run:
-//! - the mirror draws what the LCD shows, pixel for pixel, once a view is at rest (LIVE,
-//!   TRACKER, the menu, SCENE's way out), and while one moves (LIVE's scopes, TRACKER playing,
-//!   SCENE) every cell of it shows what the LCD showed within the last two seconds;
-//! - LINK in the LCD's bottom-left corner while the session runs, gone after it;
-//! - the costs: each view's stream (bytes a second, under the 22 KB/s cap), the main loop's
-//!   passes within the poll allowance, MIDI out's CCs and clock out's song position as they go
-//!   without a session, and no packet inside a SysEx frame;
-//! - remote control: a PANEL frame's press opens the menu, its steps turn PRESETS, and its
-//!   held EDIT is let go half a second after the last PANEL frame.
 
 mod common;
 
+use common::panel::*;
 use common::usb_host::UsbHost;
-use common::{build_dir, run_past_boot, skip_message, Firmware, Machine, POLL_INSTRUCTIONS};
+use common::{build_dir, firmware, Firmware, Machine, POLL_INSTRUCTIONS};
 use fm1_core::Bus;
 use fm1_live_link as ll;
 use sidou_sys::ilp32;
 
 const W: usize = 240;
 const COLS: usize = 30;
-const HOME: u8 = 8;
-const EDIT: u8 = 6;
-const SEQ: u8 = 11;
-const PLAY: u8 = 12;
-const SELECT: u8 = 0;
-const ALGORITHM: u8 = 1;
-const K1: u8 = 2;
-const PRESETS: u8 = 6;
-/// A4 at octave 0 (note key 0 = F3 = MIDI 53, id 14).
-const A4_KEY: u8 = 14 + 69 - 53;
-/// The LINK stamp's cells (platform/fm1/ui.c): the bottom row's first two.
 const STAMP: [(usize, usize); 2] = [(0, 29), (1, 29)];
-/// How long a moving view's mirror may lag the LCD.
 const LAG_MS: usize = 2000;
-
-fn fixture(what: &str) -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        skip_message(what);
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
 
 fn host(m: &mut Machine) -> &mut UsbHost {
     m.usb.as_mut().expect("a host")
 }
 
-/// Booted past the boot, a host on the cable with the device configured.
 fn usb_machine(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
     m.usb = Some(UsbHost::plug(&mut m.soc));
-    run_past_boot(&mut m, fw);
+    common::run_past_boot(&mut m, fw);
     host(&mut m).start();
     for _ in 0..2_000 {
         if UsbHost::configured(&m.soc) {
@@ -68,7 +36,6 @@ fn usb_machine(fw: &Firmware) -> Machine {
     m
 }
 
-/// Each cell's 64 LCD pixels hashed, as the LCD has them now.
 fn cell_hashes(fb: &[u16]) -> Vec<u64> {
     (0..COLS * COLS)
         .map(|i| {
@@ -88,18 +55,14 @@ fn stamp_cell(i: usize) -> bool {
     STAMP.iter().any(|&(c, r)| r * COLS + c == i)
 }
 
-/// The host's side: the session's frames out of EP1 IN, the mirror, the heartbeat.
 struct Host {
     taken: usize,
     split: ll::Splitter,
     mirror: ll::Mirror,
-    /// (ms, command, payload bytes) of every frame.
     log: Vec<(u64, u8, usize)>,
     beat_at: u64,
     beating: bool,
-    /// The LCD's cells at each ms while `history` is on, the newest last.
     history: Option<std::collections::VecDeque<Vec<u64>>>,
-    /// Packets that were not SysEx (channel, system common, real time), with their ms.
     others: Vec<(u64, [u8; 4])>,
     open: bool,
 }
@@ -123,7 +86,6 @@ impl Host {
         UsbHost::send(&mut m.soc, frame);
     }
 
-    /// `ms` milliseconds a USB frame at a time: what came in decoded, a heartbeat a second.
     fn run(&mut self, m: &mut Machine, ms: u64) {
         for _ in 0..ms {
             if self.beating && self.mirror.on && m.ms() >= self.beat_at + 1000 {
@@ -164,7 +126,7 @@ impl Host {
         self.taken = in1.len();
         for f in frames {
             let Some((cmd, p)) = ll::parse(&f) else {
-                continue; // SIDOU's own SysEx or the updater's
+                continue;
             };
             assert!(p.len() <= ll::PAYLOAD_MAX, "a {}-byte payload", p.len());
             assert!(
@@ -175,7 +137,6 @@ impl Host {
         }
     }
 
-    /// A session: START, then the palette and the font, until all of them are in.
     fn start(&mut self, m: &mut Machine) {
         self.send(m, &ll::start());
         self.send(m, &ll::palette());
@@ -194,7 +155,6 @@ impl Host {
         );
     }
 
-    /// Payload bytes of the cell frames from `from` ms on, and their frames.
     fn cell_traffic(&self, from: u64) -> (usize, usize) {
         self.log
             .iter()
@@ -209,8 +169,6 @@ impl Host {
         self.run(m, 30);
     }
 
-    /// Every cell of the mirror shows what the LCD showed in the last LAG_MS (the stamp's
-    /// aside): how many cells were checked.
     fn assert_lags(&self, what: &str) -> usize {
         let h = self.history.as_ref().expect("the LCD's history");
         let fb = self.mirror.render();
@@ -230,9 +188,6 @@ impl Host {
     }
 }
 
-/// The link with nothing left to send and the panel showing the composed frame (a run rendered
-/// and not yet sent is not seen here: assert_mirror asks for this over 80 ms, in which any
-/// such run reaches the panel and marks the link).
 fn at_rest(m: &mut Machine, fw: &Firmware) -> bool {
     let link = fw.symbol("live_link");
     let g = fw.symbol("cells");
@@ -241,8 +196,6 @@ fn at_rest(m: &mut Machine, fw: &Firmware) -> bool {
     rows == 0 && pending == 0
 }
 
-/// Until the view and the link are at rest (a frame at a time), then the mirror against the
-/// LCD, pixel for pixel but the stamp's cells, and against the grid the panel shows.
 fn assert_mirror(h: &mut Host, m: &mut Machine, fw: &Firmware, what: &str) {
     let mut quiet = 0;
     for _ in 0..200 {
@@ -283,7 +236,6 @@ fn assert_mirror(h: &mut Host, m: &mut Machine, fw: &Firmware, what: &str) {
     }
 }
 
-/// The LCD's stamp cells: LINK, light green on black, or not.
 fn stamped(m: &Machine) -> bool {
     let (green, black) = (0x9e90u16, 0x0000u16);
     let rows = [0u16, 0x452a, 0x45ac, 0x4568, 0x452c, 0x752a, 0, 0];
@@ -299,8 +251,6 @@ fn stamped(m: &Machine) -> bool {
     })
 }
 
-/// Over a moving phase of `ms`: the cell bytes a second, the cell frames, and the lag check
-/// every 250 ms.
 fn moving(
     h: &mut Host,
     m: &mut Machine,
@@ -309,7 +259,7 @@ fn moving(
     mut act: impl FnMut(&mut Machine, u64),
 ) -> serde_json::Value {
     h.history = Some(std::collections::VecDeque::new());
-    h.run(m, 500); // the history filled a little, the stream under way
+    h.run(m, 500);
     let from = m.ms();
     let mut checked = 0;
     for step in 0..ms / 250 {
@@ -333,11 +283,9 @@ fn moving(
     })
 }
 
-/// LIVE, scopes playing, TRACKER scrolling, the menu, SCENE: the mirror against the LCD, the
-/// stream's rates, the passes' cost, the stamp.
 #[test]
 fn the_mirror_follows_live_tracker_the_menu_and_scene() {
-    let Some(fw) = fixture("the Live Link mirror test") else {
+    let Some(fw) = firmware("the Live Link mirror test") else {
         return;
     };
     let mut m = usb_machine(&fw);
@@ -354,7 +302,6 @@ fn the_mirror_follows_live_tracker_the_menu_and_scene() {
     assert_mirror(&mut h, &mut m, &fw, "LIVE at rest");
     assert!(stamped(&m), "no LINK on the LCD during a session");
 
-    // a note a quarter second, each a new attack and pitch: the scopes redraw throughout
     m.key(A4_KEY, true);
     let live = moving(&mut h, &mut m, 2000, "LIVE, notes' scopes", |m, step| {
         m.key(A4_KEY + ((step + 3) % 4) as u8 * 2, false);
@@ -367,7 +314,7 @@ fn the_mirror_follows_live_tracker_the_menu_and_scene() {
     h.run(&mut m, 2000);
     assert_mirror(&mut h, &mut m, &fw, "LIVE after the note");
 
-    h.press(&mut m, SEQ); // STEP, then TRACKER
+    h.press(&mut m, SEQ);
     h.press(&mut m, SEQ);
     h.run(&mut m, 700);
     assert_eq!(
@@ -393,7 +340,6 @@ fn the_mirror_follows_live_tracker_the_menu_and_scene() {
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
     assert_mirror(&mut h, &mut m, &fw, "the menu");
 
-    // SCENE from the menu, past its title card
     m.turn(SELECT, -(sidou_sys::VIEWS_MENU_ITEMS as i32));
     h.run(&mut m, 10 * u64::from(sidou_sys::VIEWS_MENU_ITEMS));
     m.turn(SELECT, sidou_sys::VIEWS_MENU_SCENE as i32);
@@ -417,7 +363,6 @@ fn the_mirror_follows_live_tracker_the_menu_and_scene() {
     report.insert("max_link_run_instructions".into(), link.into());
     report.insert("poll_instructions".into(), POLL_INSTRUCTIONS.into());
 
-    // STOP: no more frames, the stamp gone
     h.beating = false;
     h.send(&mut m, &ll::stop());
     h.run(&mut m, 200);
@@ -437,10 +382,9 @@ fn the_mirror_follows_live_tracker_the_menu_and_scene() {
     }
 }
 
-/// No heartbeat for 3 s: the session ends by itself, STOPPED says so, LINK goes.
 #[test]
 fn a_session_ends_three_seconds_after_the_last_heartbeat() {
-    let Some(fw) = fixture("the Live Link timeout test") else {
+    let Some(fw) = firmware("the Live Link timeout test") else {
         return;
     };
     let mut m = usb_machine(&fw);
@@ -462,12 +406,9 @@ fn a_session_ends_three_seconds_after_the_last_heartbeat() {
     assert!(!stamped(&m), "LINK after the timeout");
 }
 
-/// A PANEL frame: HOME pressed opens the menu, PRESETS' steps step the preset, EDIT held is
-/// held until half a second after the last PANEL frame. The note keys stay MIDI's: none of it
-/// plays a note.
 #[test]
 fn a_hosts_panel_frame_presses_turns_and_is_let_go() {
-    let Some(fw) = fixture("the Live Link remote test") else {
+    let Some(fw) = firmware("the Live Link remote test") else {
         return;
     };
     let mut m = usb_machine(&fw);
@@ -512,15 +453,12 @@ fn a_hosts_panel_frame_presses_turns_and_is_let_go() {
     }
     let let_go = let_go.expect("EDIT never let go");
     println!("EDIT let go {let_go} ms after the last PANEL frame");
-    // (the frame reaches the device in the next USB frame, the panel in the next key scan)
     assert!((500..=510).contains(&let_go), "{let_go} ms");
 }
 
-/// K1 turned fast on LIVE with notes' scopes streaming: MIDI out's CCs go as they do with no
-/// session (as many, the same values, none deferred for room), and none inside a frame.
 #[test]
 fn midi_outs_ccs_go_as_without_a_session() {
-    let Some(fw) = fixture("the Live Link MIDI out test") else {
+    let Some(fw) = firmware("the Live Link MIDI out test") else {
         return;
     };
     let cc = |with: bool| {
@@ -532,7 +470,6 @@ fn midi_outs_ccs_go_as_without_a_session() {
         h.run(&mut m, 500);
         let from = m.ms();
         for step in 0..20u8 {
-            // a new note every turn: the scopes redraw while the CCs go
             m.key(A4_KEY + (step + 3) % 4 * 2, false);
             m.key(A4_KEY + step % 4 * 2, true);
             m.turn(K1, 3);
@@ -559,7 +496,6 @@ fn midi_outs_ccs_go_as_without_a_session() {
     );
     assert!(frames > 50, "the scopes streamed only {frames} frames");
     assert!(!alone.is_empty());
-    // the same last value, and no fewer of them (which detents a 10 ms tick catches can differ)
     assert_eq!(
         with.last(),
         alone.last(),
@@ -572,14 +508,9 @@ fn midi_outs_ccs_go_as_without_a_session() {
     assert_eq!(deferred_with, deferred_alone, "MIDI out deferred for room");
 }
 
-/// Clock out on, TRACKER's song played, stopped part way and continued (EDIT + PLAY: a song
-/// position, then a continue) while a session streams: each of clock out's messages reaches the
-/// host as soon after the device starts or resumes the song as without a session (the song
-/// itself starts on its next player frame, whenever that is), its clocks as evenly, and none
-/// inside a frame (Host::take checks every packet).
 #[test]
 fn clock_outs_song_position_goes_as_without_a_session() {
-    let Some(fw) = fixture("the Live Link clock out test") else {
+    let Some(fw) = firmware("the Live Link clock out test") else {
         return;
     };
     let run = |with: bool| {
@@ -591,12 +522,10 @@ fn clock_outs_song_position_goes_as_without_a_session() {
         if with {
             h.start(&mut m);
         }
-        h.press(&mut m, SEQ); // STEP, then TRACKER
+        h.press(&mut m, SEQ);
         h.press(&mut m, SEQ);
         h.run(&mut m, 700);
         let calls = fw.symbol("song_transport") + ilp32::song_ctl::calls as u32;
-        // The ms the song's calls first move after `keys` go down, and the ms each of `bytes`
-        // first reaches the host from then on.
         let go = |h: &mut Host, m: &mut Machine, keys: &[u8], bytes: &[u8]| {
             let c0 = m.soc.read32(calls);
             let from = m.ms();
@@ -626,7 +555,6 @@ fn clock_outs_song_position_goes_as_without_a_session() {
         let start = go(&mut h, &mut m, &[PLAY], &[0xfa]);
         let from = m.ms();
         h.run(&mut m, 2000);
-        // the clocks while it plays, a frame a beat or more streaming beside them
         let clocks: Vec<u64> = h
             .others
             .iter()

@@ -1,35 +1,20 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: MIDI clock and transport for the song (M2e Task 2, app/midi_sync.h) over TRS
-//! in fm1-emu: SIDOU's first song started, stopped, continued and sought from a 120 BPM clock,
-//! its rows against the clock's 16ths, every main-loop pass within the poll allowance.
-//! The device's own TRS poll (2 kHz) gives the clock its jitter: the bytes go in on time.
-//! One case goes over USB instead (common::usb_host, fm1-emu's host): song position and continue reach SIDOU's
-//! parser through usb.c's raw MIDI-in hook (platform/fm1/VENDORED.md), not its filter.
 
 mod common;
 
 use fm1_core::Bus;
 
 use common::usb_host::UsbHost;
-use common::{build_dir, Firmware, Machine};
+use common::{firmware, Firmware, Machine};
 use sidou_sys::ilp32;
 use sidou_tests::song::Song;
 use sidou_tests::song_embed;
 use sidou_tests::transport::Transport;
 
 const BPM: f64 = 120.0;
-/// Emulated CPU cycles a sample (240 MHz, 24 MHz / 544 samples a second).
 const CYCLES_PER_SAMPLE: f64 = 240e6 / (24e6 / 544.0);
 const FS: f64 = 24e6 / 544.0;
-
-fn fixture(what: &str) -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        common::skip_message(what);
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
 
 fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
@@ -38,7 +23,6 @@ fn booted(fw: &Firmware) -> Machine {
     m
 }
 
-/// A host on the cable that has the device configured (fm1-emu's host and its enumeration).
 fn booted_on_usb(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
     m.usb = Some(UsbHost::plug(&mut m.soc));
@@ -56,13 +40,10 @@ fn booted_on_usb(fw: &Firmware) -> Machine {
     m
 }
 
-/// One MIDI message to the device on EP1 OUT (cable 0): the host sends it at the next frame,
-/// again the frame after while the device NAKs.
 fn usb_midi(m: &mut Machine, bytes: &[u8]) {
     UsbHost::send(&mut m.soc, bytes);
 }
 
-/// A MIDI message over TRS, or over USB when a host is on the cable.
 fn midi(m: &mut Machine, bytes: &[u8]) {
     if m.usb.is_some() {
         usb_midi(m, bytes);
@@ -71,7 +52,6 @@ fn midi(m: &mut Machine, bytes: &[u8]) {
     }
 }
 
-/// The first song's calls a row, from the host's song control (the same song and player).
 fn row_calls() -> u32 {
     let mut song = Song::device();
     song.read(&song_embed::sng(), 4).expect("reads");
@@ -87,8 +67,6 @@ fn song_field(m: &mut Machine, fw: &Firmware, offset: usize) -> u32 {
     m.soc.read32(fw.symbol("song_transport") + offset as u32)
 }
 
-/// Runs `ms` milliseconds a millisecond at a time with the clock's bytes at their times
-/// (the cycle each went in at, for the comparison), recording each call's (number, sample).
 struct Run {
     clocks: Vec<u64>,
     calls: Vec<(u32, u32)>,
@@ -100,7 +78,7 @@ fn run_clocked(
     ms: u64,
     mut extra: impl FnMut(&mut Machine, u64) -> bool,
 ) -> Run {
-    let per = 60.0 / BPM / 24.0 * m.soc.periph.hz as f64; // cycles a clock
+    let per = 60.0 / BPM / 24.0 * m.soc.periph.hz as f64;
     let start = m.soc.periph.cycles;
     let mut next = start as f64;
     let mut run = Run {
@@ -114,9 +92,7 @@ fn run_clocked(
             run.clocks.push(m.soc.periph.cycles);
             next += per;
         }
-        if extra(m, t) {
-            // a transport byte went in: the clock's next one after it
-        }
+        extra(m, t);
         if m.usb.is_some() {
             m.usb_frames(1);
         } else {
@@ -133,9 +109,6 @@ fn run_clocked(
     run
 }
 
-/// Each row's error from its 16th, less the run's mean (the constant delay, the jack's byte
-/// time, the emulator's audio offset), in ms, for rows from `first_row` on. The 16th of row k
-/// is the clock 6k after the clock `clock0` (the start's).
 fn row_deviation(run: &Run, row: u32, clock0: usize, first_row: u32) -> (f64, usize) {
     let mut errs = Vec::new();
     for &(call, sample) in &run.calls {
@@ -149,7 +122,6 @@ fn row_deviation(run: &Run, row: u32, clock0: usize, first_row: u32) -> (f64, us
         let at = run.clocks[i] as f64 / CYCLES_PER_SAMPLE;
         errs.push(f64::from(sample) - at);
     }
-    // the clock's samples and the player's differ by a constant (wraps cancel too)
     let mean = errs.iter().sum::<f64>() / errs.len() as f64;
     let worst = errs.iter().fold(0.0f64, |a, &e| a.max((e - mean).abs()));
     (worst / FS * 1e3, errs.len())
@@ -157,14 +129,13 @@ fn row_deviation(run: &Run, row: u32, clock0: usize, first_row: u32) -> (f64, us
 
 #[test]
 fn rows_land_on_a_120_bpm_clock_over_trs() {
-    let Some(fw) = fixture("the MIDI transport test") else {
+    let Some(fw) = firmware("the MIDI transport test") else {
         return;
     };
     let row = row_calls();
     let mut m = booted(&fw);
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
     let beat_ms = (60_000.0 / BPM) as u64;
-    // two beats of clock, then a start just before a clock, then eight beats
     let mut start_clock = None;
     let run = run_clocked(&mut m, &fw, beat_ms * 10, |m, t| {
         if t == 2 * beat_ms - 5 {
@@ -175,7 +146,6 @@ fn rows_land_on_a_120_bpm_clock_over_trs() {
         false
     });
     assert!(start_clock.is_some());
-    // the start went in 5 ms before the clock at 2 beats: clock 48 is the song's first
     let clock0 = 48;
     assert!(run.calls.len() > 100, "{} calls", run.calls.len());
     assert_eq!(run.calls[0].0, 0, "from the song's start");
@@ -191,18 +161,16 @@ fn rows_land_on_a_120_bpm_clock_over_trs() {
 
 #[test]
 fn stop_song_position_and_continue_over_trs() {
-    let Some(fw) = fixture("the MIDI transport test") else {
+    let Some(fw) = firmware("the MIDI transport test") else {
         return;
     };
     let mut m = booted(&fw);
     stop_song_position_and_continue(&mut m, &fw);
 }
 
-/// The same over USB: song position (a system common message) and the real-time bytes go
-/// through usb.c's raw MIDI-in hook to SIDOU's parser, as on TRS.
 #[test]
 fn stop_song_position_and_continue_over_usb() {
-    let Some(fw) = fixture("the MIDI transport test") else {
+    let Some(fw) = firmware("the MIDI transport test") else {
         return;
     };
     let mut m = booted_on_usb(&fw);
@@ -226,7 +194,6 @@ fn stop_song_position_and_continue(m: &mut Machine, fw: &Firmware) {
         stopped_at > 0 && stopped_at < 3 * 4 * row,
         "stopped at call {stopped_at}"
     );
-    // bar 3: 32 16ths, then continue
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
     let run = run_clocked(m, fw, beat_ms * 4, |m, t| {
         if t == 10 {
@@ -244,13 +211,6 @@ fn stop_song_position_and_continue(m: &mut Machine, fw: &Firmware) {
     assert!(pass <= common::POLL_INSTRUCTIONS);
 }
 
-/// Ten minutes of emulated time (SIDOU_DRIFT_SECONDS, if set, for a quicker look) following a
-/// steady TRS clock at `bpm`, the song started on the clock: the rows' places on their 16ths
-/// at the end against the first minute's (no drift builds up), and the song's position against
-/// the clock's (not a call gained or lost). fm1-core's JIT runs the machine (Machine::run_cycles_jit);
-/// the clock's bytes go into the jack at their cycles, exactly, over the whole span (24 MHz
-/// ticks wrap every 179 s, three times in it). Returns (rows checked, the last minute's worst
-/// distance from the first minute's mean, every row's from 2 s on, in ms, the wall time in s).
 fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
     let wall = std::time::Instant::now();
     let seconds: f64 = std::env::var("SIDOU_DRIFT_SECONDS")
@@ -260,18 +220,17 @@ fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
     let row = row_calls();
     let mut m = booted(fw);
     let hz = m.soc.periph.hz as f64;
-    let per = 60.0 / bpm / 24.0 * hz; // cycles a clock
+    let per = 60.0 / bpm / 24.0 * hz;
     let t0 = m.soc.periph.cycles as f64;
     let clocks = (seconds * bpm / 60.0 * 24.0) as usize + 48;
     let calls_at = fw.symbol("song_transport") + ilp32::song_ctl::calls as u32;
     let sample_at = fw.symbol("song_transport") + ilp32::song_ctl::call_sample as u32;
-    // the clock: two beats before the start, the start 5 ms before clock 48, then on
     let start = t0 + 48.0 * per - m.soc.periph.cycle_of_ms(5) as f64;
     let step = m.soc.periph.cycle_of_ms(4) as f64;
     let mut sent: Vec<u64> = Vec::with_capacity(clocks);
     let mut started = false;
     let mut last = m.soc.read32(calls_at);
-    let mut rows: Vec<(u32, u32)> = Vec::new(); // (call, sample) of each row's first call
+    let mut rows: Vec<(u32, u32)> = Vec::new();
     let mut i = 0usize;
     while i < clocks {
         let next = t0 + i as f64 * per;
@@ -296,14 +255,12 @@ fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
             last = calls;
         }
     }
-    // Row k's 16th is clock 48 + 6k: its error from it, in samples, less the delay's constant.
     let errs: Vec<(f64, f64)> = rows
         .iter()
         .filter_map(|&(call, sample)| {
             let k = (call / row) as usize;
             let at = sent.get(48 + 6 * k)?;
             let heard = *at as f64 / CYCLES_PER_SAMPLE;
-            // samples wrap at 2^32 (27 hours): none here
             Some((heard / FS, (f64::from(sample) - heard) / FS * 1e3))
         })
         .collect();
@@ -327,7 +284,6 @@ fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
         .filter(|e| e.0 > first_t + 2.0)
         .map(|e| (e.1 - mean).abs())
         .fold(0.0, f64::max);
-    // the song's position against the clock's: its rows so far against the clock's 16ths
     let clock_rows = (sent.len() - 48) / 6;
     let song_rows = (last / row) as usize;
     println!(
@@ -345,15 +301,9 @@ fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
     (errs.len(), last_minute, worst, wall.elapsed().as_secs_f64())
 }
 
-/// The clock-drift test (the old roadmap's item 6: https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md): ten minutes
-/// against a steady 120 BPM clock, and 133 BPM, whose clock (18.797 ms) is no whole number of
-/// samples or ticks. Every row stays within 1 ms of where rows sat in the first minute: the
-/// phase never drifts, far inside the one clock (20.8 and 18.8 ms) the plan allows. Measured
-/// (2026-10-22): the last minute at most 0.544 ms (120 BPM) and 0.595 ms (133 BPM) from the
-/// first's mean, the TRS poll's 0.5 ms quantum; about 2 to 4 minutes of wall time each.
 #[test]
 fn a_song_follows_a_steady_clock_for_ten_minutes_without_drifting() {
-    let Some(fw) = fixture("the clock-drift test") else {
+    let Some(fw) = firmware("the clock-drift test") else {
         return;
     };
     for bpm in [120.0, 133.0] {
