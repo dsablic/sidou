@@ -1990,7 +1990,6 @@ fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    m.align_check = true;
     for _ in 0..5 {
         press(&mut m, SEQ); // STEP, TRACKER, ORDER, INSTR, TABLE
         m.run_ms(300);
@@ -2052,11 +2051,6 @@ fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
         .map(|i| m.soc.read8(region + i))
         .collect();
     assert!(before == after, "nothing written");
-    assert!(
-        m.misaligned.is_empty(),
-        "accesses the FM-1 faults on (pc, address, bytes) {:x?}",
-        &m.misaligned[..m.misaligned.len().min(8)]
-    );
 }
 
 /// 1.1: a held STEP step plays its locks. A cutoff lock put on step 1 of the lead's first bar
@@ -2069,7 +2063,6 @@ fn a_held_step_sounds_its_cutoff_lock_on_chip_a() {
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    m.align_check = true;
     press(&mut m, SEQ);
     m.run_ms(500); // STEP, V1
     let t = transport(&fw);
@@ -2098,17 +2091,12 @@ fn a_held_step_sounds_its_cutoff_lock_on_chip_a() {
     m.run_ms(300);
     assert_eq!(m.soc.read8(pin), 0);
     assert_ne!(chip_fc(&mut m), 64, "the song's own cutoff after it");
-    assert!(
-        m.misaligned.is_empty(),
-        "accesses the FM-1 faults on (pc, address, bytes) {:x?}",
-        &m.misaligned[..m.misaligned.len().min(8)]
-    );
 }
 
 /// 1.1 release blocker: the ARP helper on an empty row of the built-in loop, stopped. On the
 /// FM-1 it rebooted: song_draft copied the draft word by word to song_ctl.draft at an odd
 /// address, and the chip faults on a misaligned word access (fm1-emu carries it out, so the
-/// machine here records them: `align_check`). For each row (the first blank one after the
+/// machine here fails on them). For each row (the first blank one after the
 /// song's, one in the middle, and the last ones, where a draft would run past row FF), a fresh
 /// boot, TABLE, the WAVE table, SELECT to the row, ARP, two seconds and a key: no reset, and no
 /// access the chip would fault on.
@@ -2138,7 +2126,6 @@ fn the_arp_helper_on_an_empty_row_of_the_built_in_loop_does_not_crash() {
     for row in [used, 0x80, 0xf5, 0xfe] {
         let mut m = Machine::boot(&fw.image);
         run_past_boot(&mut m, &fw);
-        m.align_check = true;
         for _ in 0..5 {
             press(&mut m, SEQ); // STEP, TRACKER, ORDER, INSTR, TABLE
             m.run_ms(300);
@@ -2167,11 +2154,6 @@ fn the_arp_helper_on_an_empty_row_of_the_built_in_loop_does_not_crash() {
         m.key(KEY0 + 12, false);
         m.run_ms(500);
         assert!(m.resets.is_empty(), "row {row:02X}: resets {:?}", m.resets);
-        assert!(
-            m.misaligned.is_empty(),
-            "row {row:02X}: accesses the FM-1 faults on (pc, address, bytes) {:x?}",
-            &m.misaligned[..m.misaligned.len().min(8)]
-        );
         assert_eq!(top_view(&mut m, &fw), fw.symbol("song_pages_table_view"));
     }
 }

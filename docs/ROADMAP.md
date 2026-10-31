@@ -173,9 +173,9 @@ sessions).
   code (USB, flash, the second core) into [felucca-bsp](https://github.com/hugelton/felucca-bsp),
   under MPL-2.0. SIDOU takes it as it takes Felucca's code today, byte for byte with its flags:
   - its `chip/usb.c` in place of 1.6.1's, with its USB-name build settings instead of SIDOU's
-    hook, once [felucca-bsp#14](https://github.com/hugelton/felucca-bsp/issues/14) (the SIE
-    timing at `-O2`) and [#15](https://github.com/hugelton/felucca-bsp/issues/15) (a raw MIDI-in
-    hook) are settled;
+    hook, once [#15](https://github.com/hugelton/felucca-bsp/issues/15) (a raw MIDI-in hook) is
+    settled ([felucca-bsp#14](https://github.com/hugelton/felucca-bsp/issues/14), the SIE timing,
+    and #16, the 48 kHz resampler's multiplies, are fixed upstream in `14610bd`, 2026-10-31);
   - the update loader kept compatible: installs and updates from 0.x and from Felucca still work;
   - its notes on the CPU (64-bit multiplies beside 16-bit loads) checked against SIDOU's audio
     path;
