@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Which chip the keys play (`app/keys_route.c`) and each chip's setup (`app/chip_ctl.c`),
-//! through the very ring the device runs: live on keys_route, chips A and B on one ring.
 
 use std::ffi::c_void;
 
@@ -20,7 +18,6 @@ unsafe extern "C" fn moved(ctx: *mut c_void, chip: u32) {
     k.moves.push(chip);
 }
 
-/// The device's instrument (platform/fm1/main.c): live on keys_route over two chips.
 struct Keys {
     ring: Box<reg_ring>,
     chips: Box<reg_ring_chips>,
@@ -97,7 +94,6 @@ impl Keys {
         }
     }
 
-    /// A main-loop pass with a tick (platform/fm1/main.c): live's, then keys_route's.
     fn tick(&mut self) {
         unsafe {
             live_tick(&mut *self.live);
@@ -131,8 +127,6 @@ fn gates(s: &sid) -> [u8; 3] {
     s.env.map(|e| e.gate)
 }
 
-/// The setup chip x has, as its ring sees it: the profile's filter rows and the ramp's
-/// character.
 fn setup(k: &Keys, x: usize) -> (u8, u8, [u8; 5]) {
     let c = &*k.chips;
     let s = &c.chip[usize::from(c.active[x])];
@@ -291,9 +285,6 @@ fn expert_setup_follows_the_keys_without_resetting_a_held_note() {
     );
 }
 
-/// With no song the keys play chip A as in M1; chip B is made with the keys' setup in the
-/// background (prepared, never reset at once), and holds it after every change: a profile, the
-/// FX button, the controls, the envelope mode.
 #[test]
 fn chip_b_holds_the_keys_setup_after_every_change() {
     let mut k = Keys::new();
@@ -346,9 +337,6 @@ fn chip_b_holds_the_keys_setup_after_every_change() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// A song starts on chip A: the keys move to chip B (same setup), a key held across the start
-/// is released on A and sounds again on B; new notes sound on B. The song stops with a key
-/// held: the keys stay on B until it is released, then go back to A.
 #[test]
 fn a_song_moves_the_keys_to_chip_b_and_back_when_no_key_is_held() {
     let mut k = Keys::new();
@@ -371,7 +359,6 @@ fn a_song_moves_the_keys_to_chip_b_and_back_when_no_key_is_held() {
         "a new note on B"
     );
     assert_eq!(gates(k.chip(0)), [0, 0, 0]);
-    // The song stops: two keys held, so the keys stay on B.
     k.song(false);
     k.ticks(30);
     assert_eq!(k.live.keys_chip, 1, "moved with keys held");
@@ -388,9 +375,6 @@ fn a_song_moves_the_keys_to_chip_b_and_back_when_no_key_is_held() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// While a song plays on A the keys' setup changes act on chip B (the keys'), not on A (the
-/// song's); when the song stops A is prepared to the keys' setup, and only then do the keys go
-/// back to it.
 #[test]
 fn during_a_song_the_keys_setup_changes_chip_b_and_a_takes_it_after() {
     let mut k = Keys::new();
@@ -433,11 +417,6 @@ unsafe extern "C" fn taking(ctx: *mut c_void, voices: u32) {
     k.takes.push((voices, k.ring.stage));
 }
 
-/// KEYS A over a song (the M2 review's 2.1): keys_route tells the song a voice is the keys'
-/// (keys_route.taking) before the first of that voice's registers goes to the ring, so the
-/// song can leave it alone from the block those registers reach; it tells nothing at the
-/// release (the main loop gives the voice back once the key's gate-off is in), nor with no
-/// song.
 #[test]
 fn keys_a_tells_the_song_a_voice_is_taken_before_its_first_register() {
     let mut k = Keys::new();
@@ -482,10 +461,6 @@ fn keys_a_tells_the_song_a_voice_is_taken_before_its_first_register() {
     assert_eq!(unsafe { keys_route_voices_taken(&*k.kr) }, 0);
 }
 
-/// KEYS A: during a song the keys stay on chip A; a key takes its voice from the song
-/// (keys_route_voices_taken) while it sounds and gives it back at the release; the song keeps
-/// the filter and the volume (the instrument's writes to $15-$18 do not reach the chip) and its
-/// setup (the FX button does not reset the chip).
 #[test]
 fn keys_a_takes_a_voice_from_the_song_and_gives_it_back() {
     let mut k = Keys::new();
@@ -516,7 +491,6 @@ fn keys_a_takes_a_voice_from_the_song_and_gives_it_back() {
         0,
         "the voice given back"
     );
-    // The song stops: chip A takes the keys' setup (the FX button's model) and filter.
     k.song(false);
     k.ticks(30);
     assert_eq!(k.chip(0).model, SID_MODEL_8580);
@@ -525,8 +499,6 @@ fn keys_a_takes_a_voice_from_the_song_and_gives_it_back() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// The keys sound the same on either chip: the same key on chip A with no song and on chip B
-/// during one, each chip fresh from the same setup, gives the same samples.
 #[test]
 fn a_key_sounds_the_same_on_either_chip() {
     let play = |song: bool| {
@@ -538,8 +510,6 @@ fn a_key_sounds_the_same_on_either_chip() {
         k.tick();
         let x = u32::from(k.live.keys_chip);
         assert_eq!(x, u32::from(song));
-        // Each chip's voice 1 from its own last state: compare the envelopes and the
-        // frequencies the chip got, then the sound of a fresh chip with those registers.
         let s = k.chip(x);
         (
             s.osc[0].freq,
@@ -553,9 +523,6 @@ fn a_key_sounds_the_same_on_either_chip() {
     assert_eq!(play(false), play(true));
 }
 
-/// A pass at its heaviest with the keys moving in it (reg_ring.c, REG_RING_WORST_PASS): a
-/// preset (every register), the FX button's request, every key down and up, then the move to
-/// chip B (gate-offs and every register again), with no wait for room.
 #[test]
 fn a_move_in_a_heavy_pass_fits_the_ring_without_waiting() {
     let mut k = Keys::new();
@@ -583,8 +550,6 @@ fn a_move_in_a_heavy_pass_fits_the_ring_without_waiting() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// A voice's registers as chip x has them: frequency, pulse width, control, attack, decay,
-/// sustain, release.
 fn voice_regs(k: &mut Keys, x: u32, v: usize) -> (u32, u32, u8, u8, u8, u8, u8) {
     let s = k.chip(x);
     let (o, e) = (&s.osc[v], &s.env[v]);
@@ -593,8 +558,6 @@ fn voice_regs(k: &mut Keys, x: u32, v: usize) -> (u32, u32, u8, u8, u8, u8, u8) 
     )
 }
 
-/// The song's writes to chip A, as M2c's player would make them: every register of voices 1
-/// to 3 with values of its own, the filter and the volume.
 fn song_writes(k: &mut Keys) {
     let a: *mut reg_ring_out = &mut *k.outs[0];
     for v in 0..3u8 {
@@ -614,9 +577,6 @@ fn song_writes(k: &mut Keys) {
     k.block();
 }
 
-/// Review I-1: a song started before chip B is ready (here at once, chip B not made yet) finds
-/// the keys still on chip A, which is then the song's already: keys_route_ready_for_song is 0,
-/// and the instrument's setup, filter and untaken voices stay off chip A until the keys move.
 #[test]
 fn a_song_before_chip_b_is_ready_waits_and_chip_a_is_already_the_songs() {
     let mut k = Keys::new();
@@ -660,9 +620,6 @@ fn a_song_before_chip_b_is_ready_waits_and_chip_a_is_already_the_songs() {
     );
 }
 
-/// Review I-2: the setup a song gives chip A (keys_route_song_setup) is what chip A is taken
-/// back from after the song, with KEYS AUTO (chip A prepared to the keys' setup before the keys
-/// return) and KEYS A (chip A prepared back under the keys); STATUS shows it meanwhile.
 #[test]
 fn the_songs_setup_on_chip_a_is_taken_back_after_the_song() {
     for mode in [LIVE_KEYS_AUTO, LIVE_KEYS_A] {
@@ -704,11 +661,6 @@ fn the_songs_setup_on_chip_a_is_taken_back_after_the_song() {
     }
 }
 
-/// Review I-3: with KEYS A during a song, the voices the keys do not hold keep the song's
-/// registers byte for byte: through a preset (every register), the PWM's every-tick pulse
-/// widths, the envelope and pulse-width knobs and parameters, notes on the voice the keys
-/// hold and its release, and a switch to KEYS A mid-song (a move and every register again).
-/// Under mono sync the keys hold voice 3 with voice 1.
 #[test]
 fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
     let mut k = Keys::new();
@@ -724,7 +676,7 @@ fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
     let all: Vec<_> = (0..3).map(|v| voice_regs(&mut k, 0, v)).collect();
     assert_eq!(all, before, "the move to chip A wrote the song's voices");
     unsafe {
-        live_set_preset(&mut *k.live, 1); // PWM BASS: its LFO writes pulse widths every tick
+        live_set_preset(&mut *k.live, 1);
         live_note_on(&mut *k.live, 60, 100);
     }
     k.tick();
@@ -758,7 +710,6 @@ fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
             "after the release: voice {v}"
         );
     }
-    // Mono sync (SYNC LEAD, preset 2): voice 1 and the sync source, voice 3.
     unsafe {
         live_set_preset(&mut *k.live, 2);
         live_note_on(&mut *k.live, 64, 100);
@@ -779,8 +730,6 @@ fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
     );
 }
 
-/// The CHIP view's A tab during a song edits the song's setup (keys_route_song_wants):
-/// chip A is prepared to it in the background, chip B (the keys') keeps the keys' setup.
 #[test]
 fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
     let mut k = Keys::new();
@@ -809,7 +758,6 @@ fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// What chip A has at the ring: its profile's filter row, its model and its ramp's controls.
 fn chip_a_is(k: &Keys, want: &chip_setup) -> bool {
     let p = unsafe { &*sid_chip_profile_get(u32::from(want.profile)) };
     let c = &*k.chips;
@@ -820,9 +768,6 @@ fn chip_a_is(k: &Keys, want: &chip_setup) -> bool {
         && [n.age, n.dac, n.thump, n.bleed] == want.controls
 }
 
-/// Review of Task 5, item 1: the want path is the one writer of song_want. An A-tab edit, then
-/// the song's CHPA, then another edit: chip A follows each in turn, the latest wins, and what
-/// keys_route says chip A has (ctl[0]) is what the ring's chip A has at the end.
 #[test]
 fn edits_and_the_songs_chpa_go_through_one_want_path() {
     let mut k = Keys::new();
@@ -863,9 +808,6 @@ fn edits_and_the_songs_chpa_go_through_one_want_path() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// Review of Task 5, item 3: a song stops after A-tab edits (the profile and the controls),
-/// with KEYS AUTO and KEYS A: chip A ends at the keys' profile and controls, with no reset made
-/// at once and none lost.
 #[test]
 fn chip_a_comes_back_to_the_keys_setup_after_a_tab_edits() {
     for mode in [LIVE_KEYS_AUTO, LIVE_KEYS_A] {
@@ -909,9 +851,6 @@ fn chip_a_comes_back_to_the_keys_setup_after_a_tab_edits() {
     }
 }
 
-/// M2e Task 3: a MIDI mode that gives chip A to the player counts as a song playing, with or
-/// without one: the keys go to chip B, and come back when the mode ends or, if a song plays,
-/// when it stops too.
 #[test]
 fn a_mode_that_gives_chip_a_to_the_player_moves_the_keys_as_a_song_does() {
     let mut k = Keys::new();
@@ -929,8 +868,6 @@ fn a_mode_that_gives_chip_a_to_the_player_moves_the_keys_as_a_song_does() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// M2e Task 3: the chip-level CCs on chip A's MIDI channels go to chip A's setup (the want
-/// path), not to the keys' (live's), which stays on chip B.
 #[test]
 fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
     let mut k = Keys::new();
@@ -955,7 +892,6 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
         };
         unsafe { midi_route_take(route, &m) };
     };
-    // CC 85 now includes USER 1..8 after the five built-in profiles.
     let worn = unsafe { midi_map_to_cc(std::ptr::null(), midi_map_for_cc(85), SID_CHIP_6581_WORN) };
     cc(&mut route, 1, 85, worn);
     cc(&mut route, 2, 89, 127);
@@ -971,7 +907,6 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
         SID_CHIP_6581_R4AR,
         "the keys' setup is kept"
     );
-    // 25: the model, the 8580's profile.
     cc(&mut route, 0, 25, 127);
     assert_eq!(u32::from(k.kr.song_want.profile), SID_CHIP_8580_R5);
     cc(&mut route, 0, 25, 127);
@@ -980,7 +915,6 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
         SID_CHIP_8580_R5,
         "already an 8580"
     );
-    // Back to OMNI: chip A is the keys' again.
     s.mode = MIDI_MODE_OMNI as u8;
     unsafe { midi_route_set(&mut *route, &s) };
     k.ticks(60);
@@ -988,8 +922,6 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// Extract the device callbacks and their real setup/character dependencies. Only audio_song
-/// and ui_toast stand in for platform services; this checks setup state, not rendered audio.
 #[test]
 fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
     use std::{fs, path::Path, process::Command};
@@ -1236,8 +1168,6 @@ int main(void) {{
     );
 }
 
-/// A .sid tune (M3 Task 9): KEYS A acts as AUTO (no voice can be taken from a tune), so the
-/// keys go to chip B, take no voice of chip A, and the tune may start once they are there.
 #[test]
 fn under_a_tune_keys_a_acts_as_auto() {
     let mut k = Keys::new();
@@ -1270,9 +1200,6 @@ fn under_a_tune_keys_a_acts_as_auto() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-/// A 2SID tune: the keys are silent, both chips are made fresh with the tune's setups (one at a
-/// time: two requests in a tick would take the shared spare from each other for ever), and after
-/// it the keys' chip has the keys' setup and registers back.
 #[test]
 fn a_2sid_tune_silences_the_keys_and_makes_both_chips_fresh() {
     let mut k = Keys::new();

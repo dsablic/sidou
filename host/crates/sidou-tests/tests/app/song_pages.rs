@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Page editing and integrated routing tests. The fake
-//! holds every edit until an explicit audio-boundary acknowledgement, catching live writes.
 
 use std::ffi::{c_void, CStr};
 
 use sidou_sys::*;
-use sidou_tests::song::{SngSpec, Song as Model};
+use sidou_tests::song::{kit_instr, SngSpec, Song as Model};
 
+use crate::song_view::{open_tracker, settle, Call, Song};
 use crate::views::Ui;
 
 const PANEL_ENC_K2: u32 = SONG_PAGES_ENC_K2;
@@ -21,8 +20,7 @@ struct Queue {
     guard: i32,
     refuse: bool,
     kinds: Vec<u8>,
-    /// The drafts the ARP helper gave the player: voice, first row, left and right bytes.
-    drafts: Vec<(u32, u32, Vec<u8>, Vec<u8>)>,
+    drafts_heard: Vec<(u32, u32, Vec<u8>, Vec<u8>)>,
 }
 
 unsafe extern "C" fn hear(
@@ -44,7 +42,7 @@ unsafe extern "C" fn hear(
             )
         }
     };
-    q.drafts.push((voice, first, l, r));
+    q.drafts_heard.push((voice, first, l, r));
     1
 }
 
@@ -215,6 +213,12 @@ impl Pages {
         }
         panic!("page did not settle");
     }
+}
+
+fn tracker_on_the_device_song() -> Song {
+    let mut h = Song::playing(Some(Model::device()));
+    open_tracker(&mut h.ui);
+    h
 }
 
 #[test]
@@ -807,7 +811,6 @@ fn transpose_minus_sixteen_is_not_displayed_as_minus_zero() {
 
 #[test]
 fn three_character_transposes_fit_primary_order_text_and_tracker_footer() {
-    use crate::song_view::{open_tracker, settle, Song};
     let mut spec = SngSpec::new();
     spec.orders[0] = vec![
         (vec![0, GT2_TRANSDOWN as u8, 1], 0),
@@ -962,7 +965,6 @@ fn two_subtunes() -> Model {
 
 #[test]
 fn selected_subtune_drives_play_and_tracker_but_playback_uses_the_actual_subtune() {
-    use crate::song_view::{open_tracker, settle, Call, Song};
     let mut h = Song::playing(Some(two_subtunes()));
     open_tracker(&mut h.ui);
     h.ui.press(PANEL_BTN_SEQ);
@@ -1015,7 +1017,6 @@ fn selected_subtune_drives_play_and_tracker_but_playback_uses_the_actual_subtune
 
 #[test]
 fn global_edit_seq_jumps_to_the_selected_instrument_pointer_before_cycling() {
-    use crate::song_view::{open_tracker, settle, Song};
     let mut spec = SngSpec::new();
     spec.instr = vec![[0; GT2_INSTR_BYTES as usize]];
     spec.instr[0][GT2_INS_PULSE as usize] = 5;
@@ -1040,9 +1041,7 @@ fn global_edit_seq_jumps_to_the_selected_instrument_pointer_before_cycling() {
 
 #[test]
 fn load_clears_page_requests_and_cursors_but_preserves_the_displayed_page() {
-    use crate::song_view::{open_tracker, settle, Song};
-    let mut h = Song::playing(Some(Model::device()));
-    open_tracker(&mut h.ui);
+    let mut h = tracker_on_the_device_song();
     for _ in 0..3 {
         h.ui.press(PANEL_BTN_SEQ);
         settle(&mut h.ui);
@@ -1061,13 +1060,9 @@ fn load_clears_page_requests_and_cursors_but_preserves_the_displayed_page() {
     assert_eq!(h.ui.big(0, 0, 2, 4), "WAVE");
 }
 
-/// Ergonomics review E27 (M2 review 5.10): ABOUT's tune and the user's song coming back
-/// (views_song_back) leave the song views' places and choices; what read the song starts again.
 #[test]
-fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
-    use crate::song_view::{open_tracker, settle, Song};
-    let mut h = Song::playing(Some(Model::device()));
-    open_tracker(&mut h.ui);
+fn a_returning_song_keeps_the_cursors_lanes_and_instrument_and_a_load_resets_them() {
+    let mut h = tracker_on_the_device_song();
     let sv = &mut h.ui.v.song;
     (sv.voice, sv.instr, sv.order_pos, sv.row, sv.subtune) = (2, 5, 1, 17, 0);
     sv.rec_n = 1;
@@ -1116,7 +1111,6 @@ fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
     assert_eq!(pg.status, SONG_PAGES_READY as u8);
     assert_eq!(h.ui.top(), "TRACKER");
     settle(&mut h.ui);
-    // A load proper resets them.
     unsafe { views_song_loaded(&mut *h.ui.v) };
     let sv = &h.ui.v.song;
     assert_eq!((sv.voice, sv.instr, sv.order_pos, sv.row), (0, 1, 0, 0));
@@ -1125,9 +1119,7 @@ fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
 
 #[test]
 fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() {
-    use crate::song_view::{open_tracker, settle, Song};
-    let mut h = Song::playing(Some(Model::device()));
-    open_tracker(&mut h.ui);
+    let mut h = tracker_on_the_device_song();
     for _ in 0..2 {
         h.ui.press(PANEL_BTN_SEQ);
         settle(&mut h.ui);
@@ -1144,8 +1136,7 @@ fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() 
         old.saturating_add(16)
     );
     assert_ne!(h.ui.v.song.which, SONG_VIEW_TRACKER as u8);
-    // K3 is the sound's own control since the knob-row change: the decay on the saw preset
-    h.ui.turn(PANEL_ENC_K1 + 2, 1);
+    h.ui.turn(PANEL_ENC_K3, 1);
     settle(&mut h.ui);
     assert_eq!(
         unsafe { CStr::from_ptr(h.ui.v.popup.name.as_ptr()) }.to_str(),
@@ -1155,9 +1146,7 @@ fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() 
 
 #[test]
 fn a_pending_page_edit_retains_its_binding_and_finishes_after_home() {
-    use crate::song_view::{open_tracker, settle, Song};
-    let mut h = Song::playing(Some(Model::device()));
-    open_tracker(&mut h.ui);
+    let mut h = tracker_on_the_device_song();
     for _ in 0..2 {
         h.ui.press(PANEL_BTN_SEQ);
         settle(&mut h.ui);
@@ -1257,9 +1246,7 @@ fn the_models_serialized_cap_maps_to_song_full_without_a_guard_approximation() {
 
 #[test]
 fn every_page_reacquires_the_canvas_after_chip_and_song_overlays_without_reentering() {
-    use crate::song_view::{open_tracker, settle, Song};
-    let mut h = Song::playing(Some(Model::device()));
-    open_tracker(&mut h.ui);
+    let mut h = tracker_on_the_device_song();
     for name in ["ORDER", "INSTR", "WAVE"] {
         h.ui.press(PANEL_BTN_SEQ);
         settle(&mut h.ui);
@@ -1340,14 +1327,12 @@ fn page_loads_keep_the_previous_canvas_until_the_model_is_complete() {
 
 #[test]
 fn nested_song_views_above_an_unnamed_save_return_to_the_original_page_and_popup() {
-    use crate::song_view::{open_tracker, settle, Song};
     for (steps, title, popup) in [
         (1, "ORDER", "PATTERN"),
         (2, "INSTR", "ATTACK/DECAY"),
         (3, "WAVE", "LEFT BYTE"),
     ] {
-        let mut h = Song::playing(Some(Model::device()));
-        open_tracker(&mut h.ui);
+        let mut h = tracker_on_the_device_song();
         for _ in 0..steps {
             h.ui.press(PANEL_BTN_SEQ);
         }
@@ -1415,14 +1400,9 @@ fn nested_song_views_above_an_unnamed_save_return_to_the_original_page_and_popup
 
 #[test]
 fn a_revealed_song_view_routes_keys_and_composes_its_own_page_under_midi_learn() {
-    use crate::song_view::{open_tracker, settle, Song};
     for (steps, title) in [(0, "TRACKER"), (2, "INSTR"), (3, "WAVE")] {
         let mut h = Song::playing(Some(Model::device()));
-        let mut learn = Box::<midi_learn>::default();
-        unsafe {
-            midi_learn_init(&mut *learn);
-            views_learn(&mut *h.ui.v, &mut *learn);
-        }
+        let _learn = h.ui.attach_learn();
         open_tracker(&mut h.ui);
         for _ in 0..steps {
             h.ui.press(PANEL_BTN_SEQ);
@@ -1443,7 +1423,7 @@ fn a_revealed_song_view_routes_keys_and_composes_its_own_page_under_midi_learn()
             u32::from(steps == 0),
             "the actual revealed {title} determines recording before compose"
         );
-        h.ui.learn_on(PANEL_ENC_K1 + 2);
+        h.ui.learn_on(PANEL_ENC_K3);
         assert_eq!(h.ui.top(), "LEARN");
         let writes = h.f.cell_writes;
         h.ui.note_keys(2, 2);
@@ -1462,13 +1442,9 @@ fn a_revealed_song_view_routes_keys_and_composes_its_own_page_under_midi_learn()
     }
 }
 
-/// Ergonomics review E26 (M2 review 5.9): passing through ORDER keeps TRACKER's row; ORDER's
-/// cursor starts on the song views' entry, and only a move to another entry starts row 0.
 #[test]
-fn passing_through_order_keeps_trackers_row() {
-    use crate::song_view::{open_tracker, settle, Song};
-    let mut h = Song::playing(Some(Model::device()));
-    open_tracker(&mut h.ui);
+fn passing_through_order_keeps_trackers_row_and_starts_on_the_song_views_entry() {
+    let mut h = tracker_on_the_device_song();
     h.ui.v.song.row = 17;
     h.ui.press(PANEL_BTN_SEQ);
     settle(&mut h.ui);
@@ -1479,22 +1455,19 @@ fn passing_through_order_keeps_trackers_row() {
     );
     assert_eq!(h.ui.v.song.row, 17, "ORDER kept the row");
     for _ in 0..4 {
-        h.ui.press(PANEL_BTN_SEQ); // INSTR, TABLE, STEP, TRACKER
+        h.ui.press(PANEL_BTN_SEQ);
         settle(&mut h.ui);
     }
     assert_eq!(h.ui.top(), "TRACKER");
     assert_eq!(h.ui.v.song.row, 17, "and TRACKER has it");
 }
 
-// ---- TABLE's ARP helper ----
-
 impl Pages {
     fn press(&mut self, id: u32) {
         self.input(SCREEN_PRESS, id, 0, 1 << id);
     }
 
-    /// The helper's rows written: every acknowledged cell, until the chain ends.
-    fn finish_arp(&mut self) {
+    fn ack_until_the_batch_is_written(&mut self) {
         for _ in 0..64 {
             self.ack();
             unsafe { song_pages_poll(&mut *self.p) };
@@ -1516,9 +1489,6 @@ impl Pages {
     }
 }
 
-const K3: u32 = PANEL_ENC_K1 + 2;
-const K4: u32 = PANEL_ENC_K1 + 3;
-
 #[test]
 fn the_arp_helper_builds_an_arpeggio_and_writes_plain_wavetable_rows() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
@@ -1528,8 +1498,6 @@ fn the_arp_helper_builds_an_arpeggio_and_writes_plain_wavetable_rows() {
     let d = h.p.arp_draft;
     assert_eq!((d.steps, d.speed, d.loop_, d.wave), (4, 2, 1, 0x41));
     assert_eq!(&d.off[..4], &[0, 4, 7, 12]);
-    // ALGORITHM: the steps (a new one copies the last); SELECT: the step; K1 an octave, K2 a
-    // semitone; K3 the speed; K4 the loop step.
     h.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(h.p.arp_draft.steps, 5);
     assert_eq!(h.p.arp_draft.off[4], 12);
@@ -1544,34 +1512,35 @@ fn the_arp_helper_builds_an_arpeggio_and_writes_plain_wavetable_rows() {
         h.popup(PANEL_ENC_K1, false),
         Some(("OFFSET".into(), "-7".into(), 57, 127))
     );
-    h.turn(K3, 1);
+    h.turn(PANEL_ENC_K3, 1);
     assert_eq!(
-        h.popup(K3, false),
+        h.popup(PANEL_ENC_K3, false),
         Some(("SPEED".into(), "3".into(), 2, 15))
     );
-    h.turn(K4, 1);
-    assert_eq!(h.popup(K4, false), Some(("LOOP".into(), "2".into(), 2, 5)));
+    h.turn(PANEL_ENC_K4, 1);
+    assert_eq!(
+        h.popup(PANEL_ENC_K4, false),
+        Some(("LOOP".into(), "2".into(), 2, 5))
+    );
     assert_eq!(
         h.popup(PANEL_ENC_ALGORITHM, false),
         Some(("STEPS".into(), "5".into(), 4, 7))
     );
-    h.turn(K4, -5);
+    h.turn(PANEL_ENC_K4, -5);
     assert_eq!(
-        h.popup(K4, false),
+        h.popup(PANEL_ENC_K4, false),
         Some(("LOOP".into(), "HOLD".into(), 0, 5))
     );
-    h.turn(K4, 2);
-    // Nothing is written until SAVE, and then plain rows from row 01.
+    h.turn(PANEL_ENC_K4, 2);
     assert_eq!(h.wave_rows(0, 7), vec![(0, 0); 7]);
     h.settle();
     h.save_arp();
     assert_eq!(h.ui.toast().as_deref(), Some("ARP SAVED"));
     assert_eq!(h.p.arp, 0, "SAVE closes the helper");
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     let want = [(0x41, 0), (2, 0x79), (2, 7), (2, 12), (2, 12), (0xff, 2)];
     assert_eq!(h.wave_rows(0, 6), want);
     assert_eq!(h.wave_rows(6, 1), [(0, 0)]);
-    // Each differing byte is its own acknowledged edit (blank bytes are not written).
     assert_eq!(h.q.submitted, 11);
 }
 
@@ -1584,7 +1553,6 @@ fn the_arp_helpers_presets_choose_the_waveform_the_rows_carry() {
         h.popup(PANEL_ENC_PRESETS, false),
         Some(("WAVE".into(), "PULSE".into(), 2, 7))
     );
-    // The list: TRI SAW PULSE NOISE, then the combined ones; it stops at its ends.
     h.turn(PANEL_ENC_PRESETS, 1);
     assert_eq!(h.p.arp_draft.wave, 0x81);
     h.turn(PANEL_ENC_PRESETS, 1);
@@ -1602,15 +1570,13 @@ fn the_arp_helpers_presets_choose_the_waveform_the_rows_carry() {
         h.popup(PANEL_ENC_PRESETS, false),
         Some(("WAVE".into(), "SAW".into(), 1, 7))
     );
-    // Nothing is written until SAVE, and then every waveform row is the chosen one.
     assert_eq!(h.wave_rows(0, 1), [(0, 0)]);
     h.settle();
     h.save_arp();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     let rows = h.wave_rows(0, 6);
     assert_eq!(rows[0].0, 0x21);
     assert_eq!(rows[5], (0xff, 2));
-    // Reading them back opens the same waveform; a byte the list lacks is kept and shown as hex.
     h.press(PANEL_BTN_ARP);
     assert_eq!(h.p.arp_draft.wave, 0x21);
     h.turn(PANEL_ENC_PRESETS, 0);
@@ -1624,36 +1590,32 @@ fn the_arp_helpers_presets_choose_the_waveform_the_rows_carry() {
 fn the_arp_helper_reads_an_arpeggio_back_and_says_when_rows_are_not_one() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
     h.press(PANEL_BTN_ARP);
-    h.turn(K3, 1);
-    h.turn(K4, 1);
+    h.turn(PANEL_ENC_K3, 1);
+    h.turn(PANEL_ENC_K4, 1);
     h.save_arp();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     let written = h.wave_rows(0, 6);
-    // The same rows open as the same arpeggio.
     h.press(PANEL_BTN_ARP);
     assert_eq!(h.p.arp, 1);
     let d = h.p.arp_draft;
     assert_eq!((d.steps, d.speed, d.loop_), (4, 3, 2));
     assert_eq!(&d.off[..4], &[0, 4, 7, 12]);
     assert_eq!(h.p.arp_len, 5);
-    // Shortening it blanks the rows it no longer needs; HOME's close writes nothing.
     h.turn(PANEL_ENC_ALGORITHM, -2);
     assert_eq!(unsafe { song_pages_arp_close(&mut *h.p) }, 1);
     assert_eq!(h.wave_rows(0, 6), written);
     h.press(PANEL_BTN_ARP);
     h.turn(PANEL_ENC_ALGORITHM, -2);
     h.save_arp();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(
         h.wave_rows(0, 6),
         [(0x41, 0), (2, 4), (0xff, 2), (0, 0), (0, 0), (0, 0)]
     );
-    // A row that is not an arpeggio (a delay first, then not one) is told so, and nothing opens.
     h.turn(PANEL_ENC_SELECT, 1);
     h.press(PANEL_BTN_ARP);
     assert_eq!(h.p.arp, 0);
     assert_eq!(h.ui.toast().as_deref(), Some("NOT AN ARP"));
-    // Another table has none.
     h.turn(PANEL_ENC_ALGORITHM, 1);
     h.press(PANEL_BTN_ARP);
     assert_eq!(h.p.arp, 0);
@@ -1663,19 +1625,18 @@ fn the_arp_helper_reads_an_arpeggio_back_and_says_when_rows_are_not_one() {
 #[test]
 fn the_arp_helper_never_writes_over_rows_that_are_not_blank_or_its_own() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
-    unsafe { (*h.model.ptr_mut()).ltable[0][4] = 0x41 }; // another program's row
-    h.press(PANEL_BTN_ARP); // a new arpeggio needs 5 rows, from row 1
-    h.turn(K4, -1);
+    unsafe { (*h.model.ptr_mut()).ltable[0][4] = 0x41 };
+    h.press(PANEL_BTN_ARP);
+    h.turn(PANEL_ENC_K4, -1);
     h.turn(PANEL_ENC_ALGORITHM, 2);
     h.save_arp();
     assert_eq!(h.ui.toast().as_deref(), Some("ROWS IN USE"));
     assert_eq!(h.p.arp, 1, "the helper stays for another try");
     assert_eq!(h.q.submitted, 0);
     assert_eq!(h.wave_rows(0, 6)[4], (0x41, 0));
-    // Fewer steps fit before it.
     h.turn(PANEL_ENC_ALGORITHM, -3);
     h.save_arp();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(h.wave_rows(0, 4), [(0x41, 0), (1, 4), (1, 7), (0xff, 0)]);
     assert_eq!(h.wave_rows(4, 1), [(0x41, 0)]);
 }
@@ -1691,7 +1652,7 @@ fn the_arp_helper_waits_for_the_edit_guard_and_keeps_its_draft_when_refused() {
     assert_eq!(h.wave_rows(0, 6), vec![(0, 0); 6]);
     h.q.guard = SONG_EDIT_GUARD_OK as i32;
     h.save_arp();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(h.wave_rows(0, 1), [(0x41, 0)]);
 }
 
@@ -1709,7 +1670,6 @@ fn the_arp_helper_shows_its_page_and_leaves_with_the_table() {
     assert_eq!(ui.big(5, 12, 2, 1), "2");
     assert_eq!(ui.big(7, 0, 2, 4), "LOOP");
     assert_eq!(ui.big(7, 12, 2, 1), "1");
-    // The offsets, four to a line, seven cells apart.
     assert_eq!(ui.big(11, 0, 2, 2), "+0");
     assert_eq!(ui.big(11, 7, 2, 2), "+4");
     assert_eq!(ui.big(11, 14, 2, 2), "+7");
@@ -1717,15 +1677,10 @@ fn the_arp_helper_shows_its_page_and_leaves_with_the_table() {
     assert_eq!(ui.big(17, 0, 2, 4), "WAVE");
     assert_eq!(ui.big(17, 12, 2, 5), "PULSE");
     assert_eq!(ui.big(28, 0, 2, 14), "SAVE AT ROW 01");
-    // The page changing closes the draft.
     unsafe { screen_pop(&mut h.ui.v.s, SCREEN_CUT) };
     assert_eq!(h.p.arp, 0);
 }
 
-/// 1.1: while the helper is open the keys play the draft. It goes to the player on open and with
-/// every change (the rows SAVE would write, from the helper's row, on the cursor's voice), and
-/// HOME takes it off with nothing written; after SAVE it stays until its rows are written, then
-/// goes. The header says so.
 #[test]
 fn the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
@@ -1737,34 +1692,38 @@ fn the_arp_helpers_draft_is_heard_until_it_closes_or_its_rows_are_written() {
         (l[..n].to_vec(), r[..n].to_vec())
     };
     let (l, r) = encoded(&h.p.arp_draft);
-    assert_eq!(h.q.drafts, vec![(0, 1, l, r)], "heard on open");
+    assert_eq!(h.q.drafts_heard, vec![(0, 1, l, r)], "heard on open");
     h.settle();
     assert_eq!(h.ui.small(2, 0, 13), "HEARING DRAFT");
     h.turn(PANEL_ENC_K2, 1);
-    h.turn(K3, 1);
-    assert_eq!(h.q.drafts.len(), 3, "each turn heard");
+    h.turn(PANEL_ENC_K3, 1);
+    assert_eq!(h.q.drafts_heard.len(), 3, "each turn heard");
     let (l, r) = encoded(&h.p.arp_draft);
-    assert_eq!(h.q.drafts[2], (0, 1, l, r));
-    // HOME: off, nothing written
+    assert_eq!(h.q.drafts_heard[2], (0, 1, l, r));
     assert_eq!(unsafe { song_pages_arp_close(&mut *h.p) }, 1);
-    assert_eq!(h.q.drafts.last().unwrap().2.len(), 0, "the draft goes");
+    assert_eq!(
+        h.q.drafts_heard.last().unwrap().2.len(),
+        0,
+        "the draft goes"
+    );
     assert_eq!(h.wave_rows(0, 6), vec![(0, 0); 6]);
     assert_eq!(h.q.submitted, 0);
-    // SAVE: heard until the rows are in
     h.press(PANEL_BTN_ARP);
-    let heard = h.q.drafts.len();
+    let heard = h.q.drafts_heard.len();
     h.save_arp();
     assert_eq!(h.p.arp, 0);
-    assert_eq!(h.q.drafts.len(), heard, "still heard while the rows go");
-    h.finish_arp();
+    assert_eq!(
+        h.q.drafts_heard.len(),
+        heard,
+        "still heard while the rows go"
+    );
+    h.ack_until_the_batch_is_written();
     unsafe { song_pages_poll(&mut *h.p) };
-    assert_eq!(h.q.drafts.len(), heard + 1);
-    assert_eq!(h.q.drafts.last().unwrap().2.len(), 0, "then it goes");
+    assert_eq!(h.q.drafts_heard.len(), heard + 1);
+    assert_eq!(h.q.drafts_heard.last().unwrap().2.len(), 0, "then it goes");
     assert_eq!(h.p.arp_heard, 0);
     assert_eq!(h.wave_rows(0, 1), [(0x41, 0)]);
 }
-
-// ---- the batch writer (1.5: the ARP helper's and LAB's send) ----
 
 impl Pages {
     fn table_rows(&self, table: usize, from: usize, n: usize) -> Vec<(u8, u8)> {
@@ -1802,13 +1761,10 @@ impl Pages {
     }
 }
 
-/// A batch of an instrument and rows of two tables: written in the order added, a differing byte
-/// per acknowledged edit (the bytes the song has already are skipped), the rows first so that the
-/// instrument's pointers never name rows not written yet.
 #[test]
 fn the_batch_writer_writes_rows_then_the_instrument_a_differing_byte_at_a_time() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
-    unsafe { (*h.model.ptr_mut()).rtable[1][3] = 0x40 }; // the pulse row's right byte already there
+    unsafe { (*h.model.ptr_mut()).rtable[1][3] = 0x40 };
     assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 1);
     assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x41, 0), (0xff, 0)], 0), None);
     assert_eq!(
@@ -1821,20 +1777,16 @@ fn the_batch_writer_writes_rows_then_the_instrument_a_differing_byte_at_a_time()
     assert!(unsafe { song_pages_batch_instr(&mut *h.p, 5, ins.as_ptr()) }.is_null());
     assert_eq!(unsafe { song_pages_batch_go(&mut *h.p) }, 1);
     assert_eq!(unsafe { song_pages_batch_busy(&*h.p) }, 1);
-    // The first byte is out; the rest wait for its acknowledgement.
     assert_eq!(h.q.submitted, 1);
     assert_eq!(h.p.request.kind, SONG_PAGES_EDIT_TABLE);
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(unsafe { song_pages_batch_busy(&*h.p) }, 0);
     assert_eq!(h.table_rows(0, 0, 2), [(0x41, 0), (0xff, 0)]);
     assert_eq!(h.table_rows(1, 3, 2), [(0x88, 0x40), (0xff, 0)]);
     assert_eq!(h.model.raw().instr[4], ins);
-    // 0x41, 0xff; 0x88, 0xff (0x40 there already); the instrument's 10 bytes that are not 0.
     assert_eq!(h.q.submitted, 2 + 2 + 10);
 }
 
-/// TABLE FULL past row 255, ROWS IN USE over another program's rows, and the rows a shorter
-/// program no longer needs blanked; nothing is added on a refusal.
 #[test]
 fn the_batch_writer_refuses_full_tables_and_rows_in_use_and_blanks_what_is_left() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
@@ -1854,26 +1806,22 @@ fn the_batch_writer_refuses_full_tables_and_rows_in_use_and_blanks_what_is_left(
         h.batch_rows(GT2_FTBL, 8, &three, 0).as_deref(),
         Some("ROWS IN USE")
     );
-    // its own four rows from 10: three written, the fourth blanked
     assert_eq!(h.batch_rows(GT2_FTBL, 10, &three, 4), None);
     assert!(unsafe { song_pages_batch_blank(&mut *h.p, GT2_FTBL, 20, 1) }.is_null());
     assert_eq!(unsafe { song_pages_batch_go(&mut *h.p) }, 1);
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(
         h.table_rows(2, 8, 6),
         [(0, 0), (0, 0), (0x90, 0xf1), (0, 0x40), (0xff, 0), (0, 0)]
     );
-    // Nothing is begun again while one is written.
     unsafe { song_pages_batch_begin(&mut *h.p) };
     assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x21, 0), (0xff, 0)], 0), None);
     unsafe { song_pages_batch_go(&mut *h.p) };
     assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 0);
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(unsafe { song_pages_batch_begin(&mut *h.p) }, 1);
 }
 
-/// A write the guard refuses ends the batch: the bytes after it are not written, and the status
-/// says why.
 #[test]
 fn the_batch_writer_stops_at_a_guard_refusal() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
@@ -1890,7 +1838,6 @@ fn the_batch_writer_stops_at_a_guard_refusal() {
         unsafe { song_pages_poll(&mut *h.p) };
     }
     assert_eq!(h.table_rows(0, 0, 3), [(0x41, 0), (0, 0), (0, 0)]);
-    // Refused at once: go says so.
     h.q.guard = SONG_EDIT_GUARD_SAVING as i32;
     unsafe { song_pages_batch_begin(&mut *h.p) };
     assert_eq!(h.batch_rows(GT2_WTBL, 0, &[(0x11, 0)], 1), None);
@@ -1898,9 +1845,8 @@ fn the_batch_writer_stops_at_a_guard_refusal() {
     assert_eq!(h.p.status as u32, SONG_PAGES_SAVING);
 }
 
-// ---- 1.5: LAB's send (app/lab_song.h) through the batch writer ----
-
 use crate::lab_sound::Sound;
+use crate::PANEL_ENC_K3;
 
 impl Pages {
     fn send(&mut self, s: &Sound, instr: u32) -> Result<(u32, u32), String> {
@@ -1938,20 +1884,17 @@ fn modulated() -> Sound {
     s
 }
 
-/// A send takes the lowest free instrument and puts each program after its table's last row
-/// (a speed row the table has already is shared), the filter on the song views' voice; it is
-/// written a cell at a time while the song plays, rows first, and the chunk keeps the sound.
 #[test]
 fn a_send_takes_the_next_free_instrument_and_the_rows_after_each_tables_last() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     unsafe {
         let m = &mut *h.model.ptr_mut();
-        m.instr[0][0] = 0x11; // instrument 1 in use
+        m.instr[0][0] = 0x11;
         for r in 0..3 {
-            m.ltable[0][r] = 0x21; // three wave rows
+            m.ltable[0][r] = 0x21;
         }
-        m.ltable[1][0] = 0x88; // a pulse row
-        m.ltable[3][0] = 0x81; // the speed row the vibrato needs
+        m.ltable[1][0] = 0x88;
+        m.ltable[3][0] = 0x81;
         m.rtable[3][0] = 2;
     }
     h.ui.v.song.voice = 1;
@@ -1965,7 +1908,7 @@ fn a_send_takes_the_next_free_instrument_and_the_rows_after_each_tables_last() {
         [0; 25],
         "nothing until the edits are acknowledged"
     );
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(h.instr(2), want.instr);
     assert_eq!(
         (want.instr[2], want.instr[3], want.instr[4], want.instr[5]),
@@ -1985,28 +1928,23 @@ fn a_send_takes_the_next_free_instrument_and_the_rows_after_each_tables_last() {
         "the speed row shared"
     );
     assert_eq!(want.right[2][0] & 7, 2, "the filter on voice 2");
-    // the chunk keeps the sound, its CRC that of the bytes as the queue wrote them
     let (mut rows, mut kept) = ([0u8; 4], [0u8; LAB_SOUND_BYTES as usize]);
     assert_eq!(
         unsafe { lab_song_kept(h.model.ptr(), 2, rows.as_mut_ptr(), kept.as_mut_ptr()) },
         1
     );
     assert_eq!((kept, rows), (s, want.rows));
-    // The next goes to the next free one, after these.
     let (i, _) = h.send(&crate::lab_song::plain(), 0).unwrap();
     assert_eq!(i, 3);
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(h.instr(3)[2], 4 + want.rows[0]);
 }
 
-/// EDIT + send over an unedited sent instrument: its programs where they were, the rows they no
-/// longer need blank; over an instrument edited since (or not sent), the programs go after the
-/// tables' last rows and its old rows stay.
 #[test]
-fn a_send_over_a_sent_instrument_writes_in_its_rows_and_blanks_the_rest() {
+fn a_send_over_an_unedited_sent_instrument_writes_in_its_rows_and_blanks_the_rest() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     let (i, _) = h.send(&modulated(), 0).unwrap();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     let old = h.instr(i as usize);
     let pulse = old[3] as usize;
     assert_eq!(
@@ -2016,7 +1954,7 @@ fn a_send_over_a_sent_instrument_writes_in_its_rows_and_blanks_the_rest() {
     );
     let plain = crate::lab_song::plain();
     assert_eq!(h.send(&plain, i).unwrap().0, i);
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     let new = h.instr(i as usize);
     assert_eq!((new[2], new[3]), (old[2], old[3]), "in place");
     assert_eq!(
@@ -2029,10 +1967,9 @@ fn a_send_over_a_sent_instrument_writes_in_its_rows_and_blanks_the_rest() {
         [(0, 0); 3],
         "the filter's rows blank"
     );
-    // Edited since: no longer its own rows.
     unsafe { (*h.model.ptr_mut()).instr[i as usize - 1][0] = 0x55 };
     h.send(&modulated(), i).unwrap();
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     assert_eq!(
         h.instr(i as usize)[3],
         3,
@@ -2051,7 +1988,7 @@ fn a_send_says_why_it_cannot() {
     let s = crate::lab_song::plain();
     h.send(&s, 0).unwrap();
     assert_eq!(h.send(&s, 0).unwrap_err(), "WAITING");
-    h.finish_arp();
+    h.ack_until_the_batch_is_written();
     let submitted = h.q.submitted;
     for r in 0..255 {
         unsafe { (*h.model.ptr_mut()).ltable[0][r] = 0x41 };
@@ -2064,16 +2001,12 @@ fn a_send_says_why_it_cannot() {
     assert_eq!(h.q.submitted, submitted, "nothing written on a refusal");
 }
 
-/// REC in LAB sends the sound and says where; EDIT + REC asks before it replaces INSTR's
-/// instrument, and replaces it on a second EDIT + REC. With the arpeggio on, TABLE opens on its
-/// chord with the ARP helper. ENV on INSTR pulls the instrument into LAB.
 #[test]
-fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
+fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces_and_an_arpeggio_opens_on_its_chord() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     h.ui.press(PANEL_BTN_ENV);
     assert_eq!(h.ui.toast().as_deref(), Some("EMPTY INSTRUMENT"));
     assert_eq!(h.ui.top(), "INSTR");
-    // to LAB from the menu, a sound with a filter and the arpeggio
     unsafe {
         let mut s = crate::lab_song::plain();
         s[LAB_SOUND_FILTER_VOICES as usize] = 7;
@@ -2102,7 +2035,6 @@ fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
         "APPROX: FILTER"
     );
     assert_eq!(h.ui.v.song.instr, 1, "INSTR shows it");
-    // EDIT + REC: a question, then the replace
     h.ui.rig.live.attack_decay = 0x48;
     h.ui.hold(PANEL_BTN_EDIT, true);
     h.ui.press(PANEL_BTN_REC);
@@ -2115,7 +2047,6 @@ fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
         h.ui.frame();
     }
     assert_eq!(h.model.raw().instr[0][0], 0x48);
-    // the arpeggio: TABLE's helper on its chord
     unsafe { live_arp_set(&mut *h.ui.rig.live, LIVE_ARP_ON, 1) };
     h.ui.press(PANEL_BTN_REC);
     assert_eq!(h.ui.top(), "TABLE");
@@ -2123,19 +2054,13 @@ fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces() {
     assert_eq!(h.ui.v.pages.arp_draft.steps, 4);
 }
 
-/// ENV, LFO or FX on INSTR pull its instrument into LAB at their page: a sent one exactly, as
-/// one undo step; a kit drum decoded, the toast saying what was approximated.
 #[test]
-fn env_lfo_and_fx_on_instr_pull_the_instrument_into_lab() {
+fn env_lfo_and_fx_on_instr_pull_a_sent_instrument_exactly_and_a_kit_drum_decoded_into_lab() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     let s = modulated();
     h.send(&s, 0).unwrap();
-    h.finish_arp();
-    let sound = |h: &Pages| {
-        let mut now = [0u8; LAB_SOUND_BYTES as usize];
-        unsafe { live_sound_get(&*h.ui.rig.live, now.as_mut_ptr()) };
-        now
-    };
+    h.ack_until_the_batch_is_written();
+    let sound = |h: &Pages| h.ui.rig.sound();
     let before = sound(&h);
     assert_ne!(before, s);
     h.ui.v.song.instr = 1;
@@ -2144,20 +2069,18 @@ fn env_lfo_and_fx_on_instr_pull_the_instrument_into_lab() {
     assert_eq!(u32::from(h.ui.v.lab.page), LAB_PAGE_ENVELOPE);
     assert_eq!(h.ui.toast().as_deref(), Some("PULLED I01"));
     assert_eq!(sound(&h), s, "exactly the sound sent");
-    // one undo step
     h.ui.down(PANEL_BTN_EDIT);
     h.ui.press(PANEL_BTN_LFO);
     h.ui.up(PANEL_BTN_EDIT);
     assert_eq!(sound(&h), before);
-    // a kit drum, from FX
     unsafe {
         screen_pop(&mut h.ui.v.s, SCREEN_CUT);
         let m = &mut *h.model.ptr_mut();
-        m.instr[1] = std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[1]);
+        m.instr[1] = kit_instr(1);
         let wave = (&raw const gt2_kit_wave).read();
         m.ltable[0][100..][..wave[0].len()].copy_from_slice(&wave[0]);
         m.rtable[0][100..][..wave[1].len()].copy_from_slice(&wave[1]);
-        m.instr[1][2] = 100 + 9; // the snare's rows, moved
+        m.instr[1][2] = 100 + 9;
     }
     h.ui.v.song.instr = 2;
     h.ui.press(PANEL_BTN_FX);

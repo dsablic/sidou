@@ -1,23 +1,17 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The CC/NRPN map (`app/midi_map.c`): the table, its round trips, the NRPN receiver, the
-//! live parameters it drives, and the published reference generated from it
-//! (docs/reference/midi.md; SIDOU_MIDI_DOC_UPDATE=1 rewrites it).
 
 use std::collections::BTreeSet;
-use std::ffi::CStr;
 use std::path::PathBuf;
 
 use sidou_sys::*;
 
-use crate::Rig;
+use crate::{c_utf8, Rig, CHARACTER};
 
 const TRS: u8 = MIDI_SRC_TRS as u8;
 const USB: u8 = MIDI_SRC_USB as u8;
-/// The chip model's CC (docs/reference/midi.md).
 const CC_MODEL: u8 = 25;
 
-/// One row of the table, read through FFI.
 #[derive(Debug, Clone)]
 struct Row {
     name: String,
@@ -44,19 +38,12 @@ impl Row {
     fn steps(&self) -> bool {
         self.curve == MIDI_CURVE_STEPS
     }
-    /// The knob's walk's positions (live.h "Knob walks"; knob_curves.rs checks the walks).
     fn walk(&self) -> bool {
         self.curve == MIDI_CURVE_WALK
     }
-    /// A setting's row (SPREAD): not a live parameter; midi_map_cc reaches it, live_cc does not.
     fn setting(&self) -> bool {
         u32::from(self.param) == MIDI_MAP_SPREAD
     }
-}
-
-fn text(p: *const std::ffi::c_char) -> String {
-    assert!(!p.is_null());
-    unsafe { CStr::from_ptr(p) }.to_str().unwrap().to_owned()
 }
 
 fn entry(i: u32) -> &'static midi_map_entry {
@@ -71,9 +58,9 @@ fn rows() -> Vec<Row> {
         .map(|i| {
             let e = entry(i);
             Row {
-                name: text(e.name),
-                group: text(e.group),
-                values: text(e.values),
+                name: c_utf8(e.name),
+                group: c_utf8(e.group),
+                values: c_utf8(e.values),
                 param: e.param,
                 cc: e.cc,
                 nrpn: e.nrpn,
@@ -98,8 +85,6 @@ fn ptr_for(param: u32) -> *const midi_map_entry {
     e
 }
 
-/// The curves as documented, computed independently of the C (a walk's positions are the C's,
-/// a slot's at NONE: knob_curves.rs checks them).
 fn expect_from_cc(r: &Row, v: u8) -> u32 {
     let max = u32::from(r.max);
     if r.walk() {
@@ -128,13 +113,7 @@ fn get(rig: &Rig, param: u32) -> u32 {
     unsafe { midi_map_param_get(&*rig.live, param) }
 }
 
-fn set(rig: &mut Rig, param: u32, value: u32) {
-    unsafe { live_param_set(&mut *rig.live, param, value) }
-}
-
-/// Every USER slot holds a profile (slot n: the built-in profile n % 5), so the profile
-/// parameter's values above the built-in ones apply (M2a Task 6; an empty slot does nothing).
-fn fill_users(rig: &mut Rig) {
+fn fill_every_user_slot_with_a_profile(rig: &mut Rig) {
     let l = &mut *rig.live;
     l.user_valid = 0xff;
     for n in 0..LIVE_USER_PROFILES as usize {
@@ -143,18 +122,13 @@ fn fill_users(rig: &mut Rig) {
     }
 }
 
-/// What live_param_get gives after `value` was set on `param`: itself, but for the profile
-/// parameter's USER slots, which set their base profile (the slot is the parameter's, not the
-/// profile's).
-fn expected(rig: &Rig, param: u32, value: u32) -> u32 {
+fn param_get_after_setting(rig: &Rig, param: u32, value: u32) -> u32 {
     if param == LIVE_PARAM_PROFILE && value >= SID_CHIPS {
         u32::from(rig.live.user_base[(value - SID_CHIPS) as usize])
     } else {
         value
     }
 }
-
-// --- the table ---
 
 #[test]
 fn every_parameter_has_exactly_one_row() {
@@ -214,8 +188,6 @@ fn ccs_and_nrpns_are_unique_and_every_row_has_one() {
 
 #[test]
 fn ccs_keep_clear_of_the_numbers_midi_reserves() {
-    // Bank select, data entry, the pedals, high-resolution velocity, increment/decrement,
-    // NRPN/RPN selection, channel mode.
     let reserved: Vec<u8> = [0, 32, 6, 38, 88]
         .into_iter()
         .chain(64..=69)
@@ -299,8 +271,6 @@ fn defaults_are_the_power_on_values() {
     }
 }
 
-/// The Character rows, reserved until M1c Task 3, are the character's parameters, on the
-/// numbers they kept: CC 85, 86, 87, 89, 90 and NRPN 2/0..4.
 #[test]
 fn the_character_rows_are_the_character_parameters() {
     let character: Vec<Row> = rows()
@@ -347,18 +317,15 @@ fn lookups_find_each_row_by_cc_and_by_nrpn() {
     assert!(unsafe { midi_map_for_nrpn(0xffff) }.is_null());
 }
 
-// --- round trips ---
-
 #[test]
 fn each_entry_round_trips_through_its_cc() {
-    // live_cc's rows; SPREAD's CC goes through midi_map_cc (chip_spread.rs).
     for r in rows()
         .iter()
         .filter(|r| r.has_cc() && !r.reserved() && !r.setting())
     {
         let e = ptr_for(u32::from(r.param));
         let mut rig = Rig::new(SID_MODEL_6581);
-        fill_users(&mut rig);
+        fill_every_user_slot_with_a_profile(&mut rig);
         for v in 0..128u8 {
             let want = expect_from_cc(r, v);
             assert_eq!(
@@ -370,12 +337,11 @@ fn each_entry_round_trips_through_its_cc() {
             rig.cc(u32::from(r.cc), v);
             assert_eq!(
                 get(&rig, u32::from(r.param)),
-                expected(&rig, u32::from(r.param), want),
+                param_get_after_setting(&rig, u32::from(r.param), want),
                 "{} CC {v}",
                 r.name
             );
             if r.walk() {
-                // a position's CC comes back as the position
                 let c = unsafe { midi_map_to_cc(std::ptr::null(), e, want) };
                 assert_eq!(
                     expect_from_cc(r, c),
@@ -392,8 +358,6 @@ fn each_entry_round_trips_through_its_cc() {
                 );
             }
         }
-        // And from the parameter's side: a value sent out as a CC comes back as itself
-        // (steps), or as the nearest value a CC can carry (linear).
         for p in 0..=u32::from(r.max) {
             let c = unsafe { midi_map_to_cc(std::ptr::null(), e, p) };
             assert!(c < 128, "{} {p}", r.name);
@@ -401,7 +365,6 @@ fn each_entry_round_trips_through_its_cc() {
             if r.steps() {
                 assert_eq!(back, p, "{}: {p} -> CC {c} -> {back}", r.name);
             } else if r.walk() {
-                // the nearest position
                 let rig = Rig::new(SID_MODEL_6581);
                 let w = unsafe { live_walk_of(&*rig.live, u32::from(r.param)) };
                 let nearest = (0..unsafe { live_walk_count(w) })
@@ -443,7 +406,7 @@ fn each_entry_round_trips_through_its_cc() {
 fn each_entry_round_trips_through_its_nrpn_at_full_resolution() {
     for r in rows().iter().filter(|r| r.has_nrpn() && !r.reserved()) {
         let mut m = Midi::new();
-        fill_users(&mut m.rig);
+        fill_every_user_slot_with_a_profile(&mut m.rig);
         let (msb, lsb) = ((r.nrpn >> 7) as u8, (r.nrpn & 0x7f) as u8);
         m.trs(&[0xB0, 99, msb, 98, lsb]);
         let param = u32::from(r.param);
@@ -451,44 +414,41 @@ fn each_entry_round_trips_through_its_nrpn_at_full_resolution() {
             m.trs(&[6, (p >> 7) as u8, 38, (p & 0x7f) as u8]);
             assert_eq!(
                 get(&m.rig, param),
-                expected(&m.rig, param, u32::from(p)),
+                param_get_after_setting(&m.rig, param, u32::from(p)),
                 "{}",
                 r.name
             );
         }
-        // Past the range: clamped.
         m.trs(&[6, 127, 38, 127]);
         assert_eq!(
             get(&m.rig, param),
-            expected(&m.rig, param, u32::from(r.max)),
+            param_get_after_setting(&m.rig, param, u32::from(r.max)),
             "{}",
             r.name
         );
     }
 }
 
-/// The character's settings live sends before every reset (live.h): the profile and its four
-/// controls.
-const CHARACTER: usize = LIVE_CHAR_FIELDS as usize;
-
-// --- the live parameters ---
-
 #[test]
 fn parameters_set_clamp_and_write_only_on_a_change() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    fill_users(&mut rig);
+    fill_every_user_slot_with_a_profile(&mut rig);
     for p in 0..LIVE_PARAM_COUNT {
         let max = unsafe { live_param_max(p) };
-        set(&mut rig, p, max + 1000);
-        assert_eq!(get(&rig, p), expected(&rig, p, max), "parameter {p} clamps");
+        rig.set_param(p, max + 1000);
+        assert_eq!(
+            get(&rig, p),
+            param_get_after_setting(&rig, p, max),
+            "parameter {p} clamps"
+        );
         rig.clear();
-        set(&mut rig, p, max);
+        rig.set_param(p, max);
         assert!(rig.log().is_empty(), "parameter {p}: {:?}", rig.log());
-        set(&mut rig, p, 0);
+        rig.set_param(p, 0);
         assert_eq!(get(&rig, p), 0, "parameter {p}");
     }
     rig.clear();
-    set(&mut rig, LIVE_PARAM_COUNT, 1);
+    rig.set_param(LIVE_PARAM_COUNT, 1);
     assert!(rig.log().is_empty());
 }
 
@@ -496,11 +456,11 @@ fn parameters_set_clamp_and_write_only_on_a_change() {
 fn the_sid_parameters_reach_their_registers() {
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.note_on(60);
-    let v = 0u8; // the voice it took
+    let v = 0u8;
     assert!(rig.gated(v));
-    set(&mut rig, LIVE_PARAM_WAVEFORM, 4 | 1); // pulse + triangle
-    set(&mut rig, LIVE_PARAM_RING, 1);
-    set(&mut rig, LIVE_PARAM_SYNC, 1);
+    rig.set_param(LIVE_PARAM_WAVEFORM, 4 | 1);
+    rig.set_param(LIVE_PARAM_RING, 1);
+    rig.set_param(LIVE_PARAM_SYNC, 1);
     for voice in 0..3 {
         assert_eq!(
             rig.control(voice) & 0xfe,
@@ -510,22 +470,21 @@ fn the_sid_parameters_reach_their_registers() {
     }
     assert!(rig.gated(v), "the gate is kept");
     assert!(!rig.gated(1));
-    set(&mut rig, LIVE_PARAM_ATTACK, 0xc);
-    set(&mut rig, LIVE_PARAM_DECAY, 0x3);
-    set(&mut rig, LIVE_PARAM_SUSTAIN, 0xe);
-    set(&mut rig, LIVE_PARAM_RELEASE, 0x1);
+    rig.set_param(LIVE_PARAM_ATTACK, 0xc);
+    rig.set_param(LIVE_PARAM_DECAY, 0x3);
+    rig.set_param(LIVE_PARAM_SUSTAIN, 0xe);
+    rig.set_param(LIVE_PARAM_RELEASE, 0x1);
     for voice in 0..3 {
         assert_eq!(rig.reg(voice * 7 + 5), 0xc3);
         assert_eq!(rig.reg(voice * 7 + 6), 0xe1);
     }
     let vol = rig.reg(0x18) & 0x0f;
-    set(&mut rig, LIVE_PARAM_FILTER_MODE, 2 | 4); // band-pass + high-pass
+    rig.set_param(LIVE_PARAM_FILTER_MODE, 2 | 4);
     assert_eq!(rig.reg(0x18), 0x60 | vol);
     let res = rig.reg(0x17) & 0xf0;
-    set(&mut rig, LIVE_PARAM_FILTER_VOICES, 2);
+    rig.set_param(LIVE_PARAM_FILTER_VOICES, 2);
     assert_eq!(rig.reg(0x17), res | 2);
 
-    // A program change loads the preset's own again.
     rig.set_preset(0);
     let p = crate::preset(0);
     assert_eq!(rig.control(0), p.control);
@@ -538,10 +497,10 @@ fn the_sid_parameters_reach_their_registers() {
 #[test]
 fn the_sid_parameters_survive_a_model_change() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    set(&mut rig, LIVE_PARAM_WAVEFORM, 8);
-    set(&mut rig, LIVE_PARAM_ATTACK, 7);
+    rig.set_param(LIVE_PARAM_WAVEFORM, 8);
+    rig.set_param(LIVE_PARAM_ATTACK, 7);
     rig.clear();
-    set(&mut rig, LIVE_PARAM_MODEL, 1);
+    rig.set_param(LIVE_PARAM_MODEL, 1);
     rig.tick();
     assert_eq!(rig.live.model, SID_MODEL_8580);
     assert_eq!(
@@ -556,7 +515,7 @@ fn the_sid_parameters_survive_a_model_change() {
     );
     assert_eq!(rig.control(0), 0x80);
     assert_eq!(rig.reg(5) >> 4, 7);
-    set(&mut rig, LIVE_PARAM_MODEL, 0);
+    rig.set_param(LIVE_PARAM_MODEL, 0);
     rig.tick();
     assert_eq!(rig.live.model, SID_MODEL_6581);
     assert_eq!(get(&rig, LIVE_PARAM_WAVEFORM), 8);
@@ -566,7 +525,6 @@ fn the_sid_parameters_survive_a_model_change() {
 fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
     let mut m = Midi::new();
     m.rig.clear();
-    // 101 toggles at MIDI rate within one tick, ending on the 8580.
     m.trs(&[0xB0]);
     for i in 0..101 {
         m.trs(&[CC_MODEL, if i % 2 == 0 { 64 } else { 63 }]);
@@ -593,7 +551,6 @@ fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
     m.rig.tick();
     assert!(m.rig.log().is_empty(), "applied twice: {:?}", m.rig.log());
 
-    // Toggles that end on the model already applied change nothing at all.
     for i in 0..100 {
         m.trs(&[CC_MODEL, if i % 2 == 0 { 63 } else { 64 }]);
     }
@@ -605,7 +562,7 @@ fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
 #[test]
 fn the_fx_button_toggles_the_chip_at_once_over_a_pending_request() {
     let mut m = Midi::new();
-    m.trs(&[0xB0, CC_MODEL, 127]); // 8580 asked for, not applied yet
+    m.trs(&[0xB0, CC_MODEL, 127]);
     m.rig.clear();
     m.rig.button(LIVE_BUTTON_FX);
     assert_eq!(
@@ -627,15 +584,12 @@ fn the_sync_lead_keeps_its_silent_voice_3_whatever_the_waveform() {
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.set_preset(2);
     rig.note_on(60);
-    set(&mut rig, LIVE_PARAM_WAVEFORM, 4);
+    rig.set_param(LIVE_PARAM_WAVEFORM, 4);
     assert_eq!(rig.control(0), 0x40 | 0x02 | 1);
     assert_eq!(rig.control(1), 0);
     assert_eq!(rig.control(2), 0);
 }
 
-// --- the NRPN receiver ---
-
-/// A live instrument (writing into a recorder) fed through a `midi_rx`.
 struct Midi {
     rig: Rig,
     rx: Box<midi_rx>,
@@ -718,7 +672,6 @@ fn lsb_only_updates_keep_the_msb() {
     assert_eq!(m.cutoff(), 9 << 7);
     m.trs(&[38, 127]);
     assert_eq!(m.cutoff(), 9 << 7 | 127);
-    // The MSB of the last data entry, even when it was clamped.
     m.trs(&[6, 127]);
     assert_eq!(u32::from(m.cutoff()), LIVE_CUTOFF_MAX);
     m.trs(&[38, 0]);
@@ -728,7 +681,6 @@ fn lsb_only_updates_keep_the_msb() {
 #[test]
 fn an_lsb_alone_after_selecting_fine_tunes_the_current_value() {
     let mut m = Midi::new();
-    // The preset's 1200 = 9 * 128 + 48.
     assert_eq!(m.cutoff(), 1200);
     select_cutoff(&mut m, 0xB0);
     m.trs(&[38, 50]);
@@ -758,7 +710,6 @@ fn increment_and_decrement_step_by_one_and_clamp() {
         LIVE_CUTOFF_MAX,
         "increment stops at the top"
     );
-    // A 4-bit parameter steps by one too.
     let r = row_for(LIVE_PARAM_RESONANCE);
     m.trs(&[99, (r.nrpn >> 7) as u8, 98, (r.nrpn & 0x7f) as u8]);
     let before = m.rig.live.resonance;
@@ -777,7 +728,6 @@ fn the_null_nrpn_deselects() {
     m.trs(&[6, 9, 38, 1, 96, 0, 97, 0]);
     assert_eq!(m.cutoff(), 5 << 7);
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
-    // Half of it is not null: MSB 127 with LSB 0 is a parameter number like any other.
     m.trs(&[98, 0]);
     m.trs(&[6, 9]);
     assert_eq!(m.cutoff(), 5 << 7, "NRPN 127/0 is not mapped");
@@ -790,16 +740,13 @@ fn an_rpn_takes_data_entry_away_from_the_nrpn() {
     let mut m = Midi::new();
     select_cutoff(&mut m, 0xB0);
     m.trs(&[6, 5]);
-    // RPN 0/0, pitch-bend sensitivity: the bend range, not the cutoff.
     m.trs(&[101, 0, 100, 0]);
     m.rig.clear();
     m.trs(&[6, 12, 38, 0, 96, 0, 97, 0]);
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
     assert_eq!(m.cutoff(), 5 << 7);
-    // Selecting the NRPN's MSB again brings it back, with the LSB it had.
     m.trs(&[99, 0, 6, 7]);
     assert_eq!(m.cutoff(), 7 << 7);
-    // The null RPN does not select the NRPN either.
     m.trs(&[101, 127, 100, 127, 6, 3]);
     assert_eq!(m.cutoff(), 7 << 7);
 }
@@ -823,7 +770,6 @@ fn rpn_0_sets_the_bend_range_in_semitones_at_the_msb() {
     assert_eq!(bend_range(&m), LIVE_BEND_RANGE_MAX, "clamped");
     m.trs(&[6, 0, 97, 0]);
     assert_eq!(bend_range(&m), 0);
-    // The range is the expression row's NRPN too, its value at the LSB.
     let r = row_for(LIVE_PARAM_BEND_RANGE);
     m.trs(&[
         99,
@@ -838,7 +784,6 @@ fn rpn_0_sets_the_bend_range_in_semitones_at_the_msb() {
     assert_eq!(bend_range(&m), 7);
 }
 
-/// NRPN 6/0, the bend range's row.
 fn nrpn_bend_range(m: &mut Midi, semitones: u8) {
     let r = row_for(LIVE_PARAM_BEND_RANGE);
     m.trs(&[
@@ -856,20 +801,16 @@ fn nrpn_bend_range(m: &mut Midi, semitones: u8) {
 
 #[test]
 fn rpn_0_keeps_the_bend_range_across_program_changes() {
-    // RP-015: RPN values are the channel's state, so a DAW's pitch-bend sensitivity, sent
-    // once before its program change, holds.
     let mut m = Midi::new();
     m.trs(&[0xB0, 101, 0, 100, 0, 6, 12]);
     m.trs(&[0xC0, 1]);
     assert_eq!(bend_range(&m), 12, "the program change kept RPN 0's range");
     m.trs(&[0xC0, 0]);
     assert_eq!(bend_range(&m), 12, "and the next");
-    // Neither reset all controllers nor a gap in the input resets it.
     m.trs(&[0xB0, 121, 0]);
     m.epoch = m.epoch.wrapping_add(1);
     m.trs(&[0xC0, 2]);
     assert_eq!(bend_range(&m), 12);
-    // It bends the notes of the new preset.
     m.trs(&[0x90, 60, 100, 0xE0, 0, 0]);
     m.rig.tick();
     assert_eq!(
@@ -877,7 +818,6 @@ fn rpn_0_keeps_the_bend_range_across_program_changes() {
         ((u32::from(unsafe { live_freq_at(60, -8192 * 12) }) * 704) >> 8) as u16,
         "the sync lead's voice 1, 12 semitones down"
     );
-    // The increment and decrement are RPN 0's data entry too.
     m.trs(&[0xB0, 101, 0, 100, 0, 97, 0, 0xC0, 0]);
     assert_eq!(bend_range(&m), 11);
 }
@@ -885,12 +825,10 @@ fn rpn_0_keeps_the_bend_range_across_program_changes() {
 #[test]
 fn the_bend_range_nrpn_edits_the_preset_and_the_last_of_rpn_and_nrpn_wins() {
     let mut m = Midi::new();
-    // NRPN 6/0 alone is a preset edit, like every NRPN: a program change discards it.
     nrpn_bend_range(&mut m, 7);
     assert_eq!(bend_range(&m), 7);
     m.trs(&[0xC0, 1]);
     assert_eq!(bend_range(&m), LIVE_BEND_RANGE_DEFAULT);
-    // RPN 0 then NRPN 6/0: the NRPN wins, and as an edit it ends RPN 0's hold.
     m.trs(&[0xB0, 101, 0, 100, 0, 6, 12]);
     nrpn_bend_range(&mut m, 5);
     assert_eq!(bend_range(&m), 5);
@@ -900,13 +838,11 @@ fn the_bend_range_nrpn_edits_the_preset_and_the_last_of_rpn_and_nrpn_wins() {
         LIVE_BEND_RANGE_DEFAULT,
         "back to the preset's"
     );
-    // NRPN 6/0 then RPN 0: the RPN wins and holds again.
     nrpn_bend_range(&mut m, 5);
     m.trs(&[0xB0, 101, 0, 100, 0, 6, 9]);
     assert_eq!(bend_range(&m), 9);
     m.trs(&[0xC0, 1]);
     assert_eq!(bend_range(&m), 9);
-    // Power-on forgets it.
     let m = Midi::new();
     assert_eq!(bend_range(&m), LIVE_BEND_RANGE_DEFAULT);
 }
@@ -914,7 +850,6 @@ fn the_bend_range_nrpn_edits_the_preset_and_the_last_of_rpn_and_nrpn_wins() {
 #[test]
 fn other_rpns_and_half_selected_ones_change_nothing() {
     let mut m = Midi::new();
-    // fine tuning (0/1), coarse tuning (0/2), and RPN MSB 0 with the LSB still null
     for sel in [[0u8, 1], [0, 2], [1, 0]] {
         m.trs(&[0xB0, 101, sel[0], 100, sel[1], 6, 9, 38, 9, 96, 0]);
     }
@@ -926,14 +861,14 @@ fn other_rpns_and_half_selected_ones_change_nothing() {
 fn nrpn_state_is_per_channel() {
     let mut m = Midi::new();
     let res = row_for(LIVE_PARAM_RESONANCE).nrpn;
-    m.trs(&[0xB0, 99, 0, 98, 0]); // channel 1: cutoff
-    m.trs(&[0xB3, 99, (res >> 7) as u8, 98, (res & 0x7f) as u8]); // channel 4: resonance
+    m.trs(&[0xB0, 99, 0, 98, 0]);
+    m.trs(&[0xB3, 99, (res >> 7) as u8, 98, (res & 0x7f) as u8]);
     m.trs(&[0xB0, 6, 3]);
     m.trs(&[0xB3, 6, 0, 38, 2]);
     assert_eq!(m.cutoff(), 3 << 7);
     assert_eq!(m.rig.live.resonance, 2);
     m.rig.clear();
-    m.trs(&[0xB7, 6, 1, 38, 1, 96, 0]); // channel 8 has nothing selected
+    m.trs(&[0xB7, 6, 1, 38, 1, 96, 0]);
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
 }
 
@@ -941,7 +876,7 @@ fn nrpn_state_is_per_channel() {
 fn nrpn_state_is_per_input() {
     let mut m = Midi::new();
     select_cutoff(&mut m, 0xB0);
-    m.usb_cc(0, 6, 1); // USB on the same channel selected nothing
+    m.usb_cc(0, 6, 1);
     assert_eq!(m.cutoff(), 1200);
     m.usb_cc(0, 99, 0);
     m.usb_cc(0, 98, 0);
@@ -964,7 +899,7 @@ fn reset_all_controllers_deselects() {
 fn a_gap_in_the_input_deselects() {
     let mut m = Midi::new();
     select_cutoff(&mut m, 0xB0);
-    m.epoch = 1; // input lost here: the selection may have changed in it
+    m.epoch = 1;
     m.trs(&[0xB0, 6, 1]);
     assert_eq!(m.rx.restarts, 1);
     assert_eq!(m.cutoff(), 1200);
@@ -999,7 +934,7 @@ fn the_pulse_width_nrpn_sets_12_bits() {
     let mut m = Midi::new();
     let r = row_for(LIVE_PARAM_PULSE_WIDTH);
     m.trs(&[0xB0, 99, (r.nrpn >> 7) as u8, 98, (r.nrpn & 0x7f) as u8]);
-    m.trs(&[6, 31, 38, 127]); // 4095
+    m.trs(&[6, 31, 38, 127]);
     assert_eq!(m.rig.voice_pw(0), 4095);
     m.trs(&[6, 1, 38, 1]);
     assert_eq!(m.rig.voice_pw(2), 129);
@@ -1019,7 +954,6 @@ fn resets(rig: &Rig) -> usize {
 
 #[test]
 fn a_small_parameter_takes_the_value_at_the_lsb_without_passing_through_0() {
-    // A standard 14-bit sender: 99, 98, then 6 = 0 and 38 = 1 for the value 1.
     let mut m = Midi::with_model(SID_MODEL_8580);
     select(&mut m, LIVE_PARAM_MODEL);
     m.rig.clear();
@@ -1061,7 +995,6 @@ fn an_msb_alone_leaves_a_small_parameter_alone() {
     m.rig.clear();
     m.trs(&[6, 0, 6, 1, 6, 127]);
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
-    // The stored MSB still counts for the LSB that completes it.
     m.trs(&[6, 0, 38, 9]);
     assert_eq!(m.rig.live.resonance, 9);
     m.trs(&[6, 1, 38, 0]);
@@ -1075,8 +1008,8 @@ fn an_msb_alone_leaves_a_small_parameter_alone() {
 #[test]
 fn an_nrpn_reaches_a_slot_field() {
     let mut m = Midi::new();
-    let amount = LIVE_PARAM_SLOT + LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT; // Modulation's
-    set(&mut m.rig, amount, 50);
+    let amount = LIVE_PARAM_SLOT + LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT;
+    m.rig.set_param(amount, 50);
     select(&mut m, amount);
     m.rig.clear();
     m.trs(&[6, 0, 38, 100]);
@@ -1102,15 +1035,13 @@ fn an_nrpn_reaches_the_chip_model() {
 
 #[test]
 fn the_envelope_mode_is_cc_26_and_nrpn_1_10() {
-    // Next to the chip model (CC 25, NRPN 1/5) in the SID's block: like it, a setting of the
-    // chip rather than of the preset. CC 26 is in 20..31, which MIDI leaves undefined.
     let r = row_for(LIVE_PARAM_ENVELOPE_MODE);
     assert_eq!((r.cc, r.nrpn), (26, nrpn(1, 10)));
     assert_eq!((r.max, r.def), (1, LIVE_ENVELOPE_INSTANT as u16));
     assert!(r.steps());
     let mut m = Midi::new();
     m.rig.clear();
-    m.usb_cc(3, 26, 64); // steps: on from 64
+    m.usb_cc(3, 26, 64);
     assert_eq!(
         get(&m.rig, LIVE_PARAM_ENVELOPE_MODE),
         LIVE_ENVELOPE_AUTHENTIC
@@ -1132,11 +1063,9 @@ fn the_envelope_mode_is_cc_26_and_nrpn_1_10() {
     );
 }
 
-// --- the published reference ---
-
-// The generated file's own licence header; reuse must not read it as this file's.
 // REUSE-IgnoreStart
-const HEADER: &str = "<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->\n\
+const GENERATED_DOC_LICENCE_HEADER: &str =
+    "<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->\n\
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->\n";
 // REUSE-IgnoreEnd
 
@@ -1349,8 +1278,6 @@ jack, which is MIDI IN only.
     )
 }
 
-/// The chord arpeggio's CCs (app/live.h live_arp_set) that are no rows of the map (its rate is
-/// one: ARP rate).
 fn arp_ccs() -> [(u32, &'static str); 3] {
     [
         (LIVE_CC_ARP, "Chord arpeggio on/off"),
@@ -1359,7 +1286,6 @@ fn arp_ccs() -> [(u32, &'static str); 3] {
     ]
 }
 
-/// The chord arpeggio over MIDI (app/live.h, [controls.md](controls.md) Chord arpeggio).
 fn arp_section() -> String {
     let steps = unsafe { live_arp_steps };
     let frames: Vec<String> = steps[..LIVE_ARP_RATE_CLOCK as usize]
@@ -1415,8 +1341,6 @@ fn list_text(s: &[String]) -> String {
     }
 }
 
-/// The CCs below the channel mode messages (120..127) that MIDI learn leaves to the NRPN and
-/// RPN receiver, from app/midi_learn.c.
 fn unlearnable() -> Vec<u32> {
     (0..120)
         .filter(|&cc| unsafe { midi_learn_learnable(cc) } == 0)
@@ -1470,7 +1394,6 @@ the gesture, how to cancel and how to clear). What is learned:
     )
 }
 
-/// MIDI's modes (app/midi_route.c, M2e Task 3): the table from the router's own text.
 fn modes_section() -> String {
     let mut s = String::from(
         "\
@@ -1488,8 +1411,8 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
     for m in 0..MIDI_MODE_COUNT {
         s.push_str(&format!(
             "| {} | {} |\n",
-            text(unsafe { midi_route_mode_name(m) }),
-            text(unsafe { midi_route_mode_doc(m) })
+            c_utf8(unsafe { midi_route_mode_name(m) }),
+            c_utf8(unsafe { midi_route_mode_doc(m) })
         ));
     }
     s.push_str(&format!(
@@ -1526,8 +1449,6 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
     s
 }
 
-/// Program change and bank select (app/midi_route.c, M2e Task 4): the banks from the
-/// router's own text.
 fn banks_section() -> String {
     let mut s = String::from(
         "\
@@ -1544,7 +1465,7 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
     for b in 0..MIDI_ROUTE_BANKS {
         s.push_str(&format!(
             "| {b} | {} |\n",
-            text(unsafe { midi_route_bank_doc(b) })
+            c_utf8(unsafe { midi_route_bank_doc(b) })
         ));
     }
     s.push_str(
@@ -1564,7 +1485,6 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
     s
 }
 
-/// MIDI clock and transport for the song (app/midi_sync.h, M2e Task 2).
 fn clock_section() -> String {
     let fs = 24e6 / 544.0;
     let ms = |samples: u32| f64::from(samples) / fs * 1e3;
@@ -1732,7 +1652,7 @@ fn curve_text(r: &Row) -> &'static str {
 
 fn doc() -> String {
     let rows = rows();
-    let mut s = String::from(HEADER);
+    let mut s = String::from(GENERATED_DOC_LICENCE_HEADER);
     s.push_str(&intro());
     s.push_str(&arp_section());
     s.push_str(&learn_section());
@@ -1800,8 +1720,6 @@ fn doc() -> String {
     s
 }
 
-/// The chord arpeggio's CCs but the rate's are no row's, and all are in a block MIDI leaves
-/// undefined (20..31).
 #[test]
 fn the_arpeggio_ccs_are_free_and_undefined_in_midi() {
     assert!((20..=31).contains(&LIVE_CC_ARP_RATE));
@@ -1857,7 +1775,6 @@ fn the_reference_lists_every_sysex_command() {
 #[test]
 fn midi_learn_leaves_alone_exactly_the_ccs_the_nrpn_receiver_takes() {
     assert_eq!(unlearnable(), [0, 6, 32, 38, 96, 97, 98, 99, 100, 101]);
-    // Each of them changes the receiver's state; a learnable one goes to live_cc.
     for cc in 0..128u8 {
         let mut m = Midi::new();
         let before = m.rx.trs_map.ch[0];

@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's showcase songs (src/showcase): the files in step with their sources; each read
-//! and written by SIDOU's reader and writer within the device's caps; each a canonical
-//! GoatTracker file that GoatTracker's own packed player plays as SIDOU's does; each
-//! rendering one non-silent, unclipped pass of the expected length on both chip models.
-//!
-//! SIDOU_SONG_UPDATE=1 rewrites the files; SIDOU_SHOWCASE_WAV=<dir> writes each song's render
-//! (and, with SIDOU_SHOWCASE_STEMS=1, one per voice) as WAV files.
 
 use gt2_ref::trace::trace;
 use gt2_ref::Options;
@@ -25,9 +18,6 @@ fn the_files_are_up_to_date() {
     );
 }
 
-/// Read with the device's caps into its 64 KiB region, written back the same, with the
-/// trailer naming the song's chip; without the trailer, a plain file that reads back as it
-/// is.
 #[test]
 fn each_song_reads_and_writes_on_the_device() {
     for s in showcase::all() {
@@ -45,8 +35,6 @@ fn each_song_reads_and_writes_on_the_device() {
         assert_eq!(found, 1, "{}: the chip's setup", s.name);
         assert_eq!(chip.model, (s.model == SID_MODEL_8580) as u8, "{}", s.name);
         assert_eq!(chip.envelope, 1, "{}", s.name);
-        // The device loads a song only if its CHPA profile is one of its model's
-        // (platform/fm1/main.c setup_valid: else SNG: BAD CHIP SETUP).
         let profile = unsafe { sid_chip_profile_get(u32::from(chip.profile)) };
         assert!(!profile.is_null(), "{}: the profile", s.name);
         assert_eq!(
@@ -68,7 +56,6 @@ fn each_song_reads_and_writes_on_the_device() {
     }
 }
 
-/// GoatTracker's load and save leave the plain file as it is.
 #[test]
 fn each_song_is_canonical_gts5() {
     for s in showcase::all() {
@@ -83,8 +70,6 @@ fn each_song_is_canonical_gts5() {
     }
 }
 
-/// Every write of every frame of a pass, and a little of the loop after it, equals
-/// GoatTracker 2.77's packed player's, run in gt2-ref's 6502 (gt2reloc's defaults).
 #[test]
 fn each_song_plays_as_goattracker_plays_it() {
     for s in showcase::all() {
@@ -111,7 +96,6 @@ fn levels(pcm: &[i16]) -> (f64, i32) {
     (rms, peak)
 }
 
-/// One pass: 60-90 s, no second of it silent, and no sample at full scale, on both models.
 #[test]
 fn each_song_renders_unclipped_on_both_chips() {
     for s in showcase::all() {
@@ -156,7 +140,6 @@ fn wanted(s: &Showcase) -> bool {
     only.is_empty() || only == s.name
 }
 
-/// SIDOU_SHOWCASE_WAV=<dir>: each song's render on its own chip, for review.
 #[test]
 fn render_to_dir() {
     let Ok(dir) = std::env::var("SIDOU_SHOWCASE_WAV") else {

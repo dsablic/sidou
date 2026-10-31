@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! LAB's USER sounds on the store (`app/user_sound.c`): sixteen slots in one private file,
-//! rewritten whole a keep at a time, and the unsaved edit, a small record the settings' debounce
-//! writes and settings_load applies (docs/reference/sound-format.md).
 
 use std::ffi::{CStr, CString};
 
@@ -10,16 +7,15 @@ use sidou_sys::*;
 
 use crate::lab_sound::{random_sound, Sound, Xs};
 use crate::store::{fresh, Rig as Store, Sim};
-use crate::Rig;
+use crate::{hex_bytes, Rig};
 
 const TICK: u32 = 10;
 const BYTES: usize = LAB_SOUND_BYTES as usize;
 const STRIDE: usize = USER_SOUND_STRIDE as usize;
 const HEADER: usize = USER_SOUND_HEADER as usize;
 const NAME: &CStr = c"USER SOUNDS";
+const SETTINGS_AND_EDIT_SAVED_MS: u32 = SETTINGS_DEBOUNCE_MS + 500;
 
-/// An instrument with its settings and USER sounds on a store, as the device wires them
-/// (platform/fm1/ui.c): the sounds loaded before the settings.
 struct Unit {
     rig: Rig,
     st: Store,
@@ -59,7 +55,6 @@ impl Unit {
         u
     }
 
-    /// A blank store, booted.
     fn blank() -> Self {
         let mut u = Self::new(fresh(1, 256));
         u.boot();
@@ -73,8 +68,6 @@ impl Unit {
         }
     }
 
-    /// The same part after a power cycle: a fresh store struct, mounted and refilled, a fresh
-    /// instrument booted from it.
     fn power_cycle(self) -> Self {
         let mut st = self.st;
         st.reset();
@@ -85,7 +78,6 @@ impl Unit {
         u
     }
 
-    /// One frame: the settings' tick and the sounds', then the store's polls.
     fn tick(&mut self) {
         self.now += TICK;
         unsafe {
@@ -106,14 +98,12 @@ impl Unit {
         }
     }
 
-    /// Keeps `s` in slot n as `name`: user_sound_save's answer.
     fn save(&mut self, n: u32, name: &str, s: &Sound) -> i32 {
         let name = CString::new(name).unwrap();
         unsafe { user_sound_save(&mut *self.sounds, n, name.as_ptr(), s.as_ptr(), self.now) }
     }
 
-    /// Ticks until the write ends (or the power is cut): its result and slot.
-    fn written(&mut self) -> (user_sound_result, u32) {
+    fn tick_until_written(&mut self) -> (user_sound_result, u32) {
         for _ in 0..10_000 {
             if self.st.sim.dead {
                 return (USER_SOUND_NOTHING, 0);
@@ -130,7 +120,7 @@ impl Unit {
 
     fn keep(&mut self, n: u32, name: &str, s: &Sound) {
         assert_eq!(self.save(n, name, s), 0, "queued");
-        assert_eq!(self.written(), (USER_SOUND_SAVED, n));
+        assert_eq!(self.tick_until_written(), (USER_SOUND_SAVED, n));
     }
 
     fn read(&self, n: u32) -> Option<(String, Sound)> {
@@ -145,9 +135,7 @@ impl Unit {
     }
 
     fn sound(&self) -> Sound {
-        let mut s = [0u8; BYTES];
-        unsafe { live_sound_get(&*self.rig.live, s.as_mut_ptr()) };
-        s
+        self.rig.sound()
     }
 
     fn apply(&mut self, s: &Sound) {
@@ -167,9 +155,7 @@ impl Unit {
     }
 }
 
-/// A file of the USER sounds' name and type written straight into the store (another
-/// firmware's, or a damaged one).
-fn put_file(st: &mut Store, typ: u32, bytes: &[u8]) {
+fn put_user_sounds_file(st: &mut Store, typ: u32, bytes: &[u8]) {
     st.maintain();
     assert_eq!(
         st.api(|s| unsafe { store_file_begin(s, NAME.as_ptr(), typ as u8, bytes.len() as u32) }),
@@ -181,8 +167,6 @@ fn put_file(st: &mut Store, typ: u32, bytes: &[u8]) {
     );
 }
 
-/// A file of `version` with `extra` bytes after each slot's sound and `slots` slots, holding
-/// (slot, name, sound) for the given ones.
 fn chunk(version: u8, extra: usize, slots: usize, held: &[(usize, &str, Sound)]) -> Vec<u8> {
     let stride = STRIDE + extra;
     let mut f = vec![version, (BYTES + extra) as u8, slots as u8];
@@ -212,17 +196,15 @@ fn a_slot_saves_and_reads_back() {
     u.apply(&s);
     let kept = u.sound();
     assert_eq!(u.save(2, "LAB 03", &kept), 0, "queued");
-    // live has it at once: the slot, the base and its name; the sound is USER 3 now
     assert_eq!(u.rig.live.sounds_valid, 1 << 2);
     assert_eq!(u.rig.live.user_sound, 3);
     assert_eq!(u.rig.live.base, kept);
     assert_eq!(u.base_name(), "LAB 03");
     assert!(!u.edited());
     assert_eq!(u.save(5, "LAB 06", &kept), -1, "one write at a time");
-    assert_eq!(u.written(), (USER_SOUND_SAVED, 2));
+    assert_eq!(u.tick_until_written(), (USER_SOUND_SAVED, 2));
     assert_eq!(u.read(2), Some(("LAB 03".to_owned(), kept)));
     assert_eq!(u.read(1), None);
-    // the file, byte for byte (docs/reference/sound-format.md)
     let file = u.st.file("USER SOUNDS").expect("the file");
     assert_eq!(file.len(), USER_SOUND_FILE_BYTES as usize);
     assert_eq!(file[..HEADER], [1, BYTES as u8, USER_SOUNDS as u8]);
@@ -259,7 +241,6 @@ fn sixteen_slots_and_a_rewrite_keep_the_others() {
         };
         assert_eq!(u.read(n as u32), Some(want), "slot {n}");
     }
-    // a slot past the last is no slot
     assert_eq!(u.read(USER_SOUNDS), None);
     assert_eq!(u.save(USER_SOUNDS, "X", &all[0]), -1);
     u.st.assert_clean();
@@ -272,7 +253,7 @@ fn a_cut_at_every_program_leaves_the_old_chunk_or_the_new() {
     for n in 0..4u32 {
         u.keep(n, &format!("OLD {n}"), &all[n as usize]);
     }
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500); // the settings and the edit settled too
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let region = u.st.sim.region().to_vec();
     let old: Vec<_> = (0..4).map(|n| u.read(n)).collect();
     let on_region = |seed| {
@@ -286,7 +267,6 @@ fn a_cut_at_every_program_leaves_the_old_chunk_or_the_new() {
         u.boot();
         u
     };
-    // the operations an uncut keep of slot 1 takes
     let mut clean = on_region(1);
     let ops = clean.st.sim.ops;
     clean.keep(1, "NEW 1", &all[4]);
@@ -299,7 +279,7 @@ fn a_cut_at_every_program_leaves_the_old_chunk_or_the_new() {
         let mut u = on_region(100 + k);
         u.st.sim.cut_at = Some(u.st.sim.ops + k);
         assert_eq!(u.save(1, "NEW 1", &all[4]), 0);
-        let (r, _) = u.written();
+        let (r, _) = u.tick_until_written();
         let dead = u.st.sim.dead;
         assert!(dead || r == USER_SOUND_SAVED, "cut {k}: {r}");
         let mut st = u.st;
@@ -317,7 +297,6 @@ fn a_cut_at_every_program_leaves_the_old_chunk_or_the_new() {
         } else {
             news += 1;
         }
-        // and the store carries on: the keep again, whole
         after.keep(1, "NEW 1", &all[4]);
         assert_eq!(after.read(1), new[1], "cut {k}: kept again");
         after.st.assert_clean();
@@ -329,7 +308,6 @@ fn a_cut_at_every_program_leaves_the_old_chunk_or_the_new() {
 #[test]
 fn the_edit_comes_back_after_a_power_cycle() {
     let s = sounds(31, 3);
-    // A built-in edited (the fine tune, the PWM and a slot are the record's alone).
     let mut u = Unit::blank();
     u.rig.preset_step(1);
     let mut edit = u.sound();
@@ -341,7 +319,7 @@ fn the_edit_comes_back_after_a_power_cycle() {
     u.apply(&edit);
     let edit = u.sound();
     assert!(u.edited());
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500);
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let rec = u.st.get(USER_SOUND_EDIT_KEY).expect("the unsaved edit");
     assert_eq!(rec.len(), USER_SOUND_EDIT_BYTES as usize);
     assert_eq!(
@@ -356,7 +334,6 @@ fn the_edit_comes_back_after_a_power_cycle() {
     assert_eq!(u.sound(), edit);
     assert!(u.edited(), "the star comes back");
     assert_eq!(u.base_name(), "PWM BASS");
-    // A USER sound edited: its base from the file, the edit over it.
     let mut u = u;
     u.apply(&s[0]);
     let playing = u.sound();
@@ -367,7 +344,7 @@ fn the_edit_comes_back_after_a_power_cycle() {
     tweak[LAB_SOUND_RESONANCE as usize] ^= 1;
     u.apply(&tweak);
     assert!(u.edited());
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500);
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let stored = u.st.get(SETTINGS_KEY).unwrap();
     assert_eq!(
         stored[4],
@@ -380,10 +357,9 @@ fn the_edit_comes_back_after_a_power_cycle() {
     assert_eq!(u.base_name(), "LAB 04");
     assert_eq!(u.sound(), tweak);
     assert!(u.edited());
-    // An unedited USER sound comes back unedited; an empty slot's byte loads SAW LEAD.
     let mut u = u;
     u.apply(&s[0]);
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500);
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let u = u.power_cycle();
     assert_eq!((u.rig.live.user_sound, u.sound()), (4, s[0]));
     assert!(!u.edited());
@@ -399,18 +375,16 @@ fn the_edit_comes_back_after_a_power_cycle() {
         (0, 0),
         "SAW LEAD"
     );
-    // DICE rolled: the roll and its name back, no star.
     let mut u = Unit::blank();
     u.rig.preset_step(4);
     unsafe { live_dice_roll(&mut *u.rig.live, 99) };
     let rolled = u.sound();
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500);
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let u = u.power_cycle();
     assert_eq!(u.rig.live.preset, LIVE_PRESET_DICE as u8);
     assert_eq!(u.sound(), rolled);
     assert_eq!(u.rig.live.base, rolled);
     assert!(!u.edited());
-    // A record of another sound than the settings loaded is not applied.
     let mut u = u;
     let mut rec = u.st.get(USER_SOUND_EDIT_KEY).unwrap();
     rec[1] = 2;
@@ -421,13 +395,10 @@ fn the_edit_comes_back_after_a_power_cycle() {
     u.st.assert_clean();
 }
 
-/// SAVE, then the power cut at every program of it: the sound comes back whole, the old one or
-/// the new, and the new once SAVE said SAVED. The edit record of the boot (the sound before the
-/// turn) never comes back over a settings record saved after it: the edit goes first.
 #[test]
 fn a_cut_during_save_never_brings_back_an_older_sound() {
     let mut u = Unit::blank();
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500); // the boot's settings and edit on the store
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     assert!(u.st.get(USER_SOUND_EDIT_KEY).is_some());
     let region = u.st.sim.region().to_vec();
     let old = u.sound();
@@ -446,7 +417,6 @@ fn a_cut_during_save_never_brings_back_an_older_sound() {
         let c = live_param_get(&*u.rig.live, LIVE_PARAM_CUTOFF);
         live_param_set(&mut *u.rig.live, LIVE_PARAM_CUTOFF, c - 200);
     };
-    // SAVE to SAVED, uncut: its operations
     let mut clean = on_region(1);
     turn(&mut clean);
     let new = clean.sound();
@@ -508,7 +478,7 @@ fn a_cut_during_save_never_brings_back_an_older_sound() {
 fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
     let s = sounds(41, 3);
     let mut st = fresh(2, 256);
-    put_file(
+    put_user_sounds_file(
         &mut st,
         STORE_FILE_SOUNDS,
         &chunk(
@@ -527,7 +497,6 @@ fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
     );
     assert_eq!(u.read(0), Some(("LATER A".to_owned(), s[0])));
     assert_eq!(u.read(3), Some(("LATER B".to_owned(), s[1])));
-    // A keep writes this version's file, the other slots' first bytes kept.
     u.keep(5, "NOW", &s[2]);
     let file = u.st.file("USER SOUNDS").unwrap();
     assert_eq!(file.len(), USER_SOUND_FILE_BYTES as usize);
@@ -539,15 +508,13 @@ fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
     assert_eq!(u.read(5), Some(("NOW".to_owned(), s[2])));
 }
 
-/// 1.0's file (sounds of 45 bytes, docs/reference/sound-format.md "at least 45, a missing tail
-/// is the defaults"): every slot reads with the fields 1.1 appended at their defaults (the filter
-/// LFO off, no links), and a keep rewrites the others with the defaults appended.
 #[test]
-fn a_1_0_file_reads_with_the_new_fields_at_their_defaults() {
+fn a_1_0_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites_them_with_the_defaults(
+) {
     const OLD: usize = LAB_SOUND_BYTES_1_0 as usize;
     let mut s = sounds(47, 3);
     for x in &mut s {
-        x[OLD..].fill(0); // what 1.0 knew: the tail is the defaults
+        x[OLD..].fill(0);
     }
     let stride = 1 + LAB_SOUND_NAME as usize + OLD;
     let mut f = vec![1u8, OLD as u8, USER_SOUNDS as u8];
@@ -559,7 +526,7 @@ fn a_1_0_file_reads_with_the_new_fields_at_their_defaults() {
         f[at + 13..at + 13 + OLD].copy_from_slice(&x[..OLD]);
     }
     let mut st = fresh(5, 256);
-    put_file(&mut st, STORE_FILE_SOUNDS, &f);
+    put_user_sounds_file(&mut st, STORE_FILE_SOUNDS, &f);
     let mut u = Unit::new(st);
     u.boot();
     assert_eq!(u.rig.live.sounds_valid, 1 | 1 << 15);
@@ -578,7 +545,6 @@ fn a_1_0_file_reads_with_the_new_fields_at_their_defaults() {
     assert_eq!(u.read(0), Some(("OLD A".to_owned(), s[0])));
     assert_eq!(u.read(4), Some(("NEW".to_owned(), new)));
     assert_eq!(u.read(15), Some(("OLD LAST".to_owned(), s[1])));
-    // 1.0's unsaved edit (45 sound bytes): applied, the new fields at their defaults.
     let mut u = u;
     let mut on = u.sound();
     on[LAB_SOUND_FILTER_LFO as usize] = 20;
@@ -593,7 +559,6 @@ fn a_1_0_file_reads_with_the_new_fields_at_their_defaults() {
         1
     );
     assert_eq!(u.sound(), s[0], "the tail at its defaults");
-    // fewer than 45 is not a sound
     rec[15] = OLD as u8 - 1;
     rec.pop();
     assert_eq!(
@@ -610,7 +575,8 @@ fn user_sound_preset_byte_of(u: &Unit) -> u8 {
 fn a_bad_slot_reads_as_empty() {
     let s = sounds(43, 2);
     let mut bad_sound = s[0];
-    bad_sound[LAB_SOUND_CUTOFF as usize + 1] = 0x0f; // a cutoff past 2047
+    let cutoff_past_2047 = 0x0f;
+    bad_sound[LAB_SOUND_CUTOFF as usize + 1] = cutoff_past_2047;
     let mut st = fresh(3, 256);
     let mut file = chunk(
         1,
@@ -624,7 +590,7 @@ fn a_bad_slot_reads_as_empty() {
         ],
     );
     file[HEADER + 6 * STRIDE] = 2;
-    put_file(&mut st, STORE_FILE_SOUNDS, &file);
+    put_user_sounds_file(&mut st, STORE_FILE_SOUNDS, &file);
     let mut u = Unit::new(st);
     u.boot();
     assert_eq!(u.rig.live.sounds_valid, 1 << 7);
@@ -633,14 +599,13 @@ fn a_bad_slot_reads_as_empty() {
         assert_eq!(unsafe { user_sound_load(&mut *u.sounds, n) }, 0);
     }
     assert_eq!(u.read(7), Some(("GOOD".to_owned(), s[1])));
-    // Not this firmware's file at all: a version 0, a short header, another type.
     for (typ, bytes) in [
         (STORE_FILE_SOUNDS, chunk(0, 0, 16, &[(1, "A", s[0])])),
         (STORE_FILE_SOUNDS, chunk(1, 0, 15, &[(1, "A", s[0])])),
         (STORE_FILE_SONG, chunk(1, 0, 16, &[(1, "A", s[0])])),
     ] {
         let mut st = fresh(4, 256);
-        put_file(&mut st, typ, &bytes);
+        put_user_sounds_file(&mut st, typ, &bytes);
         let mut u = Unit::new(st);
         u.boot();
         assert_eq!(u.rig.live.sounds_valid, 0, "type {typ}: {:?}", &bytes[..3]);
@@ -653,7 +618,6 @@ fn an_older_firmware_ignores_the_chunk_and_the_record() {
         decode_runs, fixture_file, fixture_path, fixture_value, FIXTURE_DELETED, FIXTURE_FILES,
         FIXTURE_KEYS, FIXTURE_ROUNDS,
     };
-    // The keys 0.5.0 reads (the settings and the USER profiles) and the file types it lists.
     assert!(!(0x100..=0x108).contains(&USER_SOUND_EDIT_KEY));
     assert!(![STORE_FILE_SONG, STORE_FILE_SID, STORE_FILE_GTI].contains(&STORE_FILE_SOUNDS));
     let region = decode_runs(&std::fs::read(fixture_path()).unwrap());
@@ -663,25 +627,22 @@ fn an_older_firmware_ignores_the_chunk_and_the_record() {
     );
     assert_eq!(st.mount(), STORE_STATE_SIDOU);
     st.maintain();
-    // The v7 settings fixture and a USER profile, as 0.5.0 left them.
-    let v7 = hex(include_str!("../data/settings-v7.hex"));
+    let v7 = hex_bytes(include_str!("../data/settings-v7.hex"));
     assert_eq!(st.put_now(SETTINGS_KEY, &v7), STORE_OK);
     let profile = [1, SID_CHIP_6581_WORN as u8, 4, 1, 2, 3, 4];
     assert_eq!(st.put_now(0x103, &profile), STORE_OK);
-    let before = |st: &Store| older_instrument(st, &v7);
+    let before = |st: &Store| instrument_0_5_0_boots_from(st, &v7);
     let instrument = before(&st);
-    // This firmware writes the chunk and the record over it.
     let mut u = Unit::new(st);
     u.boot();
     u.keep(0, "LAB 01", &sounds(47, 1)[0]);
     u.rig.knob(LIVE_KNOB_RESONANCE, 1);
-    u.ticks(SETTINGS_DEBOUNCE_MS + 500);
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let mut st = u.st;
     assert!(st.get(USER_SOUND_EDIT_KEY).is_some() && st.file("USER SOUNDS").is_some());
-    assert_eq!(st.put_now(SETTINGS_KEY, &v7), STORE_OK); // the settings as 0.5.0 left them
+    assert_eq!(st.put_now(SETTINGS_KEY, &v7), STORE_OK);
     st.reset();
     assert_eq!(st.mount(), STORE_STATE_SIDOU);
-    // The fixture's values and songs read as before.
     for k in 0..FIXTURE_KEYS {
         let want = (!FIXTURE_DELETED.contains(&k)).then(|| fixture_value(k, FIXTURE_ROUNDS - 1));
         assert_eq!(st.get(k), want, "key {k}");
@@ -689,7 +650,6 @@ fn an_older_firmware_ignores_the_chunk_and_the_record() {
     for (name, seed, len) in FIXTURE_FILES {
         assert_eq!(st.file(name), Some(fixture_file(seed, len)), "{name}");
     }
-    // No list shows the file: SONG's (song_io_listed) and SIDS' (sid_io_next).
     let mut f = store_file::default();
     let mut listed = Vec::new();
     while unsafe { store_dir_next(&*st.st, &mut f) } == 1 {
@@ -710,13 +670,10 @@ fn an_older_firmware_ignores_the_chunk_and_the_record() {
         0,
         "SIDS lists no tune"
     );
-    // 0.5.0's paths (the settings record and the USER profiles) give the same instrument.
     assert_eq!(before(&st), instrument);
 }
 
-/// The instrument 0.5.0's boot makes of a store: the settings record applied (settings_apply,
-/// which reads no other key) and the USER profiles loaded.
-fn older_instrument(st: &Store, v7: &[u8]) -> (Vec<u32>, u8, u8, Vec<u8>) {
+fn instrument_0_5_0_boots_from(st: &Store, v7: &[u8]) -> (Vec<u32>, u8, u8, Vec<u8>) {
     let mut rig = Rig::new(SID_MODEL_6581);
     let mut cards = Box::new(1u8);
     let mut rows = Box::new(0u8);
@@ -755,18 +712,9 @@ fn older_instrument(st: &Store, v7: &[u8]) -> (Vec<u32>, u8, u8, Vec<u8>) {
     )
 }
 
-fn hex(text: &str) -> Vec<u8> {
-    text.lines()
-        .filter(|line| !line.starts_with('#'))
-        .flat_map(str::split_whitespace)
-        .map(|v| u8::from_str_radix(v, 16).unwrap())
-        .collect()
-}
-
 #[test]
 fn store_full_keeps_the_sound_in_ram_and_says_so() {
     let mut st = fresh(6, 256);
-    // Files until the store takes no more, ever smaller, down to less than a sector.
     let mut i = 0;
     for size in [60_000usize, 20_000, 8_000, 3_000, 1_000] {
         loop {
@@ -783,7 +731,7 @@ fn store_full_keeps_the_sound_in_ram_and_says_so() {
     u.boot();
     let s = sounds(53, 1)[0];
     assert_eq!(u.save(1, "LAB 02", &s), 0);
-    let (r, slot) = u.written();
+    let (r, slot) = u.tick_until_written();
     assert_eq!((r, slot), (USER_SOUND_FULL, 1), "said so");
     assert_eq!(u.rig.live.sounds_valid, 1 << 1, "kept in RAM");
     assert_eq!((u.rig.live.base, u.rig.live.user_sound), (s, 2));

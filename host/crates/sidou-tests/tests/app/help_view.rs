@@ -1,11 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The help card (app/help_view.c) and HOME acting on its release (app/views.c `views_flow`): a
-//! tap goes home, a hold of 600 ms opens the card of the view that shows in the state it is in,
-//! SELECT turns a card of two pages, any other button or encoder closes it and does nothing else,
-//! no frame of it sends more than 200 cells, and every control a view's input takes is on its
-//! card; and the first-run tour (app/views.c `tour_frame`) that follows the full boot an install
-//! plays.
 
 use std::collections::BTreeSet;
 use std::ffi::CStr;
@@ -13,20 +7,28 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{drain, SPI_BUDGET_MS};
+use crate::{c_text, drain, SPI_BUDGET_MS};
 
-/// A frame, and what it sent (the panel's drain): the card draws against the cells pending.
-fn frame(ui: &mut Ui) {
-    ui.frame();
-    drain(&mut ui.g);
+const FRAME_CELL_BUDGET: usize = 200;
+const FRAMES_TO_DRAW_A_CARD: u32 = 12;
+
+fn frames_within_the_cell_budget(ui: &mut Ui, n: u32, what: &str) {
+    for _ in 0..n {
+        ui.frame();
+        let sent = drain(&mut ui.g);
+        assert!(
+            sent.cells <= FRAME_CELL_BUDGET,
+            "{what}: {} cells",
+            sent.cells
+        );
+    }
 }
 
-/// HOME down and the frames until the card shows (at most a second), HOME still down.
 fn hold_until_card(ui: &mut Ui) -> u32 {
     drain(&mut ui.g);
     ui.down(PANEL_BTN_HOME);
     for n in 0..25 {
-        frame(ui);
+        ui.frame_sent();
         if ui.top() == "HELP" {
             return n;
         }
@@ -34,9 +36,12 @@ fn hold_until_card(ui: &mut Ui) -> u32 {
     panic!("no help card after a second");
 }
 
-/// n characters of large text from (row, col): a blank cell is a space (the grid keeps the
-/// character a blank cell was last a piece of).
-fn big(ui: &Ui, row: usize, col: usize, n: usize) -> String {
+fn hold_until_card_drawn(ui: &mut Ui) {
+    hold_until_card(ui);
+    ui.frames_sent(FRAMES_TO_DRAW_A_CARD);
+}
+
+fn large_text_at(ui: &Ui, row: usize, col: usize, n: usize) -> String {
     (0..n)
         .map(|i| {
             let k = row * 30 + col + 2 * i;
@@ -49,9 +54,8 @@ fn big(ui: &Ui, row: usize, col: usize, n: usize) -> String {
         .collect()
 }
 
-/// The title bar: HELP, or the page of a card of two (`1/2`), and the card's name.
 fn title(ui: &Ui) -> (String, String) {
-    let head = big(ui, 1, 1, 14);
+    let head = large_text_at(ui, 1, 1, 14);
     let (left, name) = head.split_at(4);
     let left = left.trim().to_string();
     assert!(
@@ -65,22 +69,15 @@ fn card_name(ui: &Ui) -> String {
     title(ui).1
 }
 
-fn text(p: *const std::os::raw::c_char) -> String {
-    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
-}
-
-/// Line `l` of a card: the control and what it does (one string with a NUL between), the state's
-/// words (HELP_TEXT_*) as `h` gives them.
-fn line_of(h: &help_view, card: &help_card, l: usize) -> (String, String) {
+fn line_in_state_words(h: &help_view, card: &help_card, l: usize) -> (String, String) {
     let p = unsafe { *card.lines.add(l) };
     let key = unsafe { CStr::from_ptr(p) };
     let mut buf = [0 as std::os::raw::c_char; HELP_TEXT_WORD as usize];
     let what = unsafe { help_view_what(h, p.add(key.to_bytes().len() + 1), buf.as_mut_ptr()) };
-    (key.to_string_lossy().into_owned(), text(what))
+    (key.to_string_lossy().into_owned(), c_text(what))
 }
 
-/// Line `l` of a card, its own words (a HELP_TEXT_* code as a control character).
-fn line(card: &help_card, l: usize) -> (String, String) {
+fn line_as_coded(card: &help_card, l: usize) -> (String, String) {
     let p = unsafe { *card.lines.add(l) };
     let key = unsafe { CStr::from_ptr(p) };
     let what = unsafe { CStr::from_ptr(p.add(key.to_bytes().len() + 1)) };
@@ -90,11 +87,22 @@ fn line(card: &help_card, l: usize) -> (String, String) {
     )
 }
 
-/// HOME let go, then K1 (a card of two pages takes SELECT): the card closes.
-fn close(ui: &mut Ui) {
+fn lines_as_coded(card: &help_card) -> Vec<(String, String)> {
+    (0..usize::from(card.count))
+        .map(|l| line_as_coded(card, l))
+        .collect()
+}
+
+fn lines_in_state_words(h: &help_view, card: &help_card) -> Vec<(String, String)> {
+    (0..usize::from(card.count))
+        .map(|l| line_in_state_words(h, card, l))
+        .collect()
+}
+
+fn close_with_k1(ui: &mut Ui) {
     ui.up(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_K1, 1);
-    frame(ui);
+    ui.frame_sent();
     ui.settle();
     assert_ne!(ui.top(), "HELP");
 }
@@ -104,38 +112,31 @@ fn a_tap_goes_home_and_a_hold_shows_the_help_card() {
     let mut ui = Ui::without_cards();
     ui.settle();
     drain(&mut ui.g);
-    // A tap in 100 ms: the menu.
     ui.down(PANEL_BTN_HOME);
-    frame(&mut ui);
-    frame(&mut ui);
+    ui.frames_sent(2);
     assert_eq!(ui.top(), "LIVE", "the press alone does not navigate");
     ui.up(PANEL_BTN_HOME);
-    frame(&mut ui);
-    assert_eq!(ui.top(), "MENU");
+    ui.frame_sent();
+    assert_eq!(ui.top(), "MENU", "a tap goes to the menu");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "LIVE");
     ui.settle();
-    // Held: the card, never the menu.
     let fx = ui.v.fx_select;
-    let frames = hold_until_card(&mut ui);
+    let held_frames = hold_until_card(&mut ui);
     assert!(
-        (13..=15).contains(&frames),
-        "after about 600 ms, not {frames} frames"
+        (13..=15).contains(&held_frames),
+        "after about 600 ms, not {held_frames} frames"
     );
-    assert_eq!(card_name(&ui), "LIVE");
-    for _ in 0..12 {
-        frame(&mut ui);
-    }
+    assert_eq!(card_name(&ui), "LIVE", "held: the card, never the menu");
+    ui.frames_sent(FRAMES_TO_DRAW_A_CARD);
     ui.up(PANEL_BTN_HOME);
-    frame(&mut ui);
+    ui.frame_sent();
     assert_eq!(ui.top(), "HELP", "it stays open after the release");
-    for _ in 0..10 {
-        frame(&mut ui);
-    }
+    ui.frames_sent(10);
     assert_eq!(ui.top(), "HELP");
     let cutoff = unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_CUTOFF) };
     ui.turn(PANEL_ENC_K1, 1);
-    frame(&mut ui);
+    ui.frame_sent();
     ui.settle();
     assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.v.fx_select, fx, "the selection untouched");
@@ -148,77 +149,49 @@ fn a_tap_goes_home_and_a_hold_shows_the_help_card() {
 
 #[test]
 fn the_card_is_the_one_of_the_view_that_shows() {
-    for (name, open) in [
-        ("MENU", 0),
-        ("CHIP", 1),
-        ("SCENE", 2),
-        ("STEP", 3),
-        ("STATUS", 4),
-        ("MIDI", 5),
+    for (name, how) in [
+        ("MENU", Open::Menu),
+        ("CHIP", Open::Item(VIEWS_MENU_CHIP)),
+        ("SCENE", Open::Item(VIEWS_MENU_SCENE)),
+        ("STEP", Open::Seq(1)),
+        ("STATUS", Open::Item(VIEWS_MENU_STATUS)),
+        ("MIDI", Open::Item(VIEWS_MENU_MIDI)),
     ] {
         let mut ui = Ui::without_cards();
         ui.settle();
-        match open {
-            0 => ui.press(PANEL_BTN_HOME),
-            1 | 2 | 4 | 5 => {
-                ui.press(PANEL_BTN_HOME);
-                ui.settle();
-                ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-                let item = [
-                    0,
-                    VIEWS_MENU_CHIP,
-                    VIEWS_MENU_SCENE,
-                    0,
-                    VIEWS_MENU_STATUS,
-                    VIEWS_MENU_MIDI,
-                ][open];
-                ui.turn(PANEL_ENC_SELECT, item as i32);
-                frame(&mut ui);
-                ui.turn(PANEL_ENC_ALGORITHM, 1);
-            }
-            _ => ui.press(PANEL_BTN_SEQ),
-        }
+        open(&mut ui, &how);
         ui.settle();
-        hold_until_card(&mut ui);
-        for _ in 0..12 {
-            frame(&mut ui);
-        }
-        assert_eq!(card_name(&ui), name, "open {open}");
-        ui.up(PANEL_BTN_HOME);
-        ui.turn(PANEL_ENC_K1, 1);
-        frame(&mut ui);
-        ui.settle();
-        assert_ne!(ui.top(), "HELP", "open {open}");
-        assert_ne!(ui.top(), "LIVE", "open {open}: still in the view");
+        hold_until_card_drawn(&mut ui);
+        assert_eq!(card_name(&ui), name);
+        close_with_k1(&mut ui);
+        assert_ne!(ui.top(), "LIVE", "{name}: still in the view");
     }
 }
 
-/// HOME -> SONG -> LOAD's page -> SEQ: STEP on a full stack (SCREEN_DEPTH).
-fn full_stack() -> Ui {
-    let mut ui = Ui::without_cards();
+fn fill_the_stack_song_load_then_step(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.press(PANEL_BTN_SEQ);
     ui.settle();
-    assert_eq!(ui.top(), "STEP");
     assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8, "the stack is full");
+}
+
+fn full_stack() -> Ui {
+    let mut ui = Ui::without_cards();
+    fill_the_stack_song_load_then_step(&mut ui);
+    assert_eq!(ui.top(), "STEP");
     ui
 }
 
-/// On a full stack the card has its own slot (screen_push_over): a held HOME shows STEP's card,
-/// a control closes it and STEP is back as it was; a tap still goes home.
 #[test]
-fn a_held_home_on_a_full_stack_shows_the_card_too() {
+fn a_held_home_on_a_full_stack_shows_the_card_in_its_own_slot_and_a_tap_still_goes_home() {
     let mut ui = full_stack();
-    hold_until_card(&mut ui);
-    for _ in 0..12 {
-        frame(&mut ui);
-    }
+    hold_until_card_drawn(&mut ui);
     assert_eq!(card_name(&ui), "STEP");
     assert_eq!(ui.v.s.depth, SCREEN_SLOTS as u8);
-    close(&mut ui);
+    close_with_k1(&mut ui);
     assert_eq!(ui.top(), "STEP");
     assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8);
     ui.press(PANEL_BTN_HOME);
@@ -226,30 +199,30 @@ fn a_held_home_on_a_full_stack_shows_the_card_too() {
     assert_ne!(ui.top(), "STEP", "a tap goes home");
 }
 
-/// MIDI learn that cannot open on a full stack says so.
 #[test]
 fn midi_learn_on_a_full_stack_says_there_is_no_room() {
     let mut ui = full_stack();
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
+    let _ml = ui.attach_learn();
     ui.learn_on(PANEL_ENC_K1);
     assert_ne!(ui.top(), "LEARN");
     assert_eq!(ui.toast().as_deref(), Some("NO ROOM FOR LEARN"));
 }
 
-/// How a view (or a page) is reached from LIVE for the walk below.
 enum Open {
-    /// SEQ n times.
     Seq(u32),
     Menu,
-    /// The menu's item, ALGORITHM clockwise.
     Item(u32),
-    /// The menu's SONG, then its action (ALGORITHM clockwise on it), then `then` turns of
-    /// SELECT and of ALGORITHM (a confirmation's YES and its OK).
-    Song(u32, i32, i32),
+    SongAction {
+        action: u32,
+        select_turns: i32,
+        algorithm_turns: i32,
+    },
+}
+
+fn highlight_menu_item(ui: &mut Ui, item: u32) {
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.highlight_menu_item(item);
 }
 
 fn open(ui: &mut Ui, open: &Open) {
@@ -265,25 +238,23 @@ fn open(ui: &mut Ui, open: &Open) {
             ui.settle();
         }
         Open::Item(item) => {
-            ui.press(PANEL_BTN_HOME);
-            ui.settle();
-            ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-            ui.turn(PANEL_ENC_SELECT, item as i32);
-            frame(ui);
+            highlight_menu_item(ui, item);
+            ui.frame_sent();
             ui.turn(PANEL_ENC_ALGORITHM, 1);
             ui.settle();
         }
-        Open::Song(action, select, alg) => {
-            ui.press(PANEL_BTN_HOME);
-            ui.settle();
-            ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-            ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+        Open::SongAction {
+            action,
+            select_turns,
+            algorithm_turns,
+        } => {
+            highlight_menu_item(ui, VIEWS_MENU_SONG);
             ui.turn(PANEL_ENC_ALGORITHM, 1);
             ui.settle();
             ui.turn(PANEL_ENC_SELECT, action as i32);
             ui.turn(PANEL_ENC_ALGORITHM, 1);
-            ui.turn(PANEL_ENC_SELECT, select);
-            ui.turn(PANEL_ENC_ALGORITHM, alg);
+            ui.turn(PANEL_ENC_SELECT, select_turns);
+            ui.turn(PANEL_ENC_ALGORITHM, algorithm_turns);
             ui.settle();
         }
     }
@@ -297,24 +268,20 @@ fn a_held_home_in_the_menu_keeps_the_menu() {
     hold_until_card(&mut ui);
     ui.up(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_SELECT, 1);
-    frame(&mut ui);
+    ui.frame_sent();
     ui.settle();
     assert_eq!(ui.top(), "MENU");
 }
 
-/// Ergonomics review E32: undo keeps one step, and the song views that undo (STEP and TRACKER)
-/// say so on their cards.
 #[test]
 fn the_song_views_cards_say_undo_is_one_step() {
     for id in [HELP_CARD_STEP, HELP_CARD_TRACKER] {
         let card = unsafe { &help_cards[id as usize] };
-        let lines: Vec<(String, String)> = (0..usize::from(card.count))
-            .map(|l| line(card, l))
-            .collect();
+        let lines = lines_as_coded(card);
         assert!(
             lines.contains(&("E+LFO".to_owned(), "ONE UNDO".to_owned())),
             "{}: {lines:?}",
-            text(card.name)
+            c_text(card.name)
         );
     }
 }
@@ -324,10 +291,7 @@ fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
     for what in ["OCT+", "FX", "K1", "ALGORITHM", "SAVE"] {
         let mut ui = Ui::without_cards();
         ui.settle();
-        hold_until_card(&mut ui);
-        for _ in 0..12 {
-            frame(&mut ui);
-        }
+        hold_until_card_drawn(&mut ui);
         ui.up(PANEL_BTN_HOME);
         let cutoff = |ui: &Ui| unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_CUTOFF) };
         let (octave, model, c, preset) = (
@@ -343,7 +307,7 @@ fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
             "ALGORITHM" => ui.turn(PANEL_ENC_ALGORITHM, 1),
             _ => ui.press(SAVE_KEY_BUTTON),
         }
-        frame(&mut ui);
+        ui.frame_sent();
         ui.settle();
         assert_eq!(ui.top(), "LIVE", "{what}: the card closes");
         assert_eq!(
@@ -360,14 +324,9 @@ fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
     }
     let mut ui = Ui::without_cards();
     ui.settle();
-    hold_until_card(&mut ui);
-    for _ in 0..12 {
-        frame(&mut ui);
-    }
+    hold_until_card_drawn(&mut ui);
     ui.rig.note_on(69);
-    for _ in 0..4 {
-        frame(&mut ui);
-    }
+    ui.frames_sent(4);
     assert!(
         ui.live().voice.iter().any(|v| v.gate != 0 && v.note == 69),
         "the note plays"
@@ -375,7 +334,6 @@ fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
     assert_eq!(ui.top(), "HELP", "and the card stays");
 }
 
-/// The longest word a HELP_TEXT_* code gives: a slot's control name, UNUSED, a quantise.
 fn longest_word(code: u8) -> usize {
     let mut h = help_view::default();
     let what = [code as std::os::raw::c_char, 0];
@@ -383,7 +341,7 @@ fn longest_word(code: u8) -> usize {
     for arg in 0..=0x0fffu16 {
         h.arg = arg;
         let mut buf = [0 as std::os::raw::c_char; HELP_TEXT_WORD as usize];
-        let w = text(unsafe { help_view_what(&h, what.as_ptr(), buf.as_mut_ptr()) });
+        let w = c_text(unsafe { help_view_what(&h, what.as_ptr(), buf.as_mut_ptr()) });
         most = most.max(w.len());
     }
     most
@@ -396,15 +354,15 @@ fn every_line_fits_14_characters_with_a_space_between() {
     for (c, card) in cards.iter().enumerate() {
         let n = card.count as u32;
         assert!(n <= HELP_LINES * HELP_PAGES && n > 0, "card {c}: {n} lines");
-        // HELP (four) or the page (three) and a space, then the name, in 14 characters.
-        let name = text(card.name);
-        let room = if n > HELP_LINES { 10 } else { 9 };
+        let name = c_text(card.name);
+        let name_room_after_help_or_page_and_a_space = if n > HELP_LINES { 10 } else { 9 };
+        let room = name_room_after_help_or_page_and_a_space;
         assert!(
             !name.is_empty() && name.len() <= room,
             "card {c}: {name:?} in {room}"
         );
         for l in 0..card.count as usize {
-            let (key, what) = line(card, l);
+            let (key, what) = line_as_coded(card, l);
             assert!(!key.is_empty() && !what.is_empty());
             let first = what.as_bytes()[0];
             let len = if first < b' ' {
@@ -421,18 +379,17 @@ fn every_line_fits_14_characters_with_a_space_between() {
     }
 }
 
-/// The page shown: its lines on the grid, a line every three rows from row 4.
 fn assert_page_drawn(ui: &Ui, what: &str) {
     let h = &ui.v.help;
     let card = unsafe { &help_cards[h.card as usize] };
     let first = usize::from(h.page) * HELP_LINES as usize;
     for i in 0..HELP_LINES as usize {
-        let got = big(ui, 4 + 3 * i, 1, 14);
+        let got = large_text_at(ui, 4 + 3 * i, 1, 14);
         if first + i >= card.count as usize {
             assert_eq!(got.trim(), "", "{what}: line {i} past the card's");
             continue;
         }
-        let (key, what_does) = line_of(h, card, first + i);
+        let (key, what_does) = line_in_state_words(h, card, first + i);
         assert!(
             got.starts_with(&key) && got.trim_end().ends_with(&what_does),
             "{what}: {got:?} for {key} {what_does}"
@@ -466,79 +423,61 @@ fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
         for _ in 0..40 {
             ui.frame();
             let sent = drain(&mut ui.g);
-            assert!(sent.cells <= 200, "open {open}: {} cells", sent.cells);
+            assert!(
+                sent.cells <= FRAME_CELL_BUDGET,
+                "open {open}: {} cells",
+                sent.cells
+            );
             assert!(sent.spi_ms() <= SPI_BUDGET_MS);
             shown |= ui.top() == "HELP";
         }
         assert!(shown);
         assert_page_drawn(&ui, &format!("open {open}"));
-        // Nothing left to send once it is drawn.
         for _ in 0..3 {
             ui.frame();
-            assert_eq!(drain(&mut ui.g).cells, 0);
+            assert_eq!(drain(&mut ui.g).cells, 0, "nothing left to send once drawn");
         }
         ui.up(PANEL_BTN_HOME);
         ui.turn(PANEL_ENC_K1, 1);
-        for _ in 0..30 {
-            ui.frame();
-            let sent = drain(&mut ui.g);
-            assert!(
-                sent.cells <= 200,
-                "closing, open {open}: {} cells",
-                sent.cells
-            );
-        }
+        frames_within_the_cell_budget(&mut ui, 30, &format!("closing, open {open}"));
         assert_ne!(ui.top(), "HELP");
     }
 }
 
-/// A card of two pages (LIVE's) says 1/2; SELECT turns it to 2/2 and back, either way, each
-/// frame of a turn within 200 cells and the page whole after it, and does nothing else (the knob
-/// page stays TONE); K1 closes it. A card of one page (the menu's) says HELP and SELECT closes it.
 #[test]
 fn select_turns_a_card_of_two_pages_and_closes_one_of_one() {
     let mut ui = Ui::without_cards();
     ui.settle();
-    hold_until_card(&mut ui);
-    for _ in 0..12 {
-        frame(&mut ui);
-    }
+    hold_until_card_drawn(&mut ui);
     assert!(unsafe { help_cards[HELP_CARD_LIVE as usize].count } as u32 > HELP_LINES);
     assert_eq!(title(&ui), ("1/2".to_string(), "LIVE".to_string()));
     assert_page_drawn(&ui, "page 1");
     ui.up(PANEL_BTN_HOME);
     for (turn, page) in [(1, "2/2"), (1, "1/2"), (-1, "2/2")] {
         ui.turn(PANEL_ENC_SELECT, turn);
-        for _ in 0..12 {
-            ui.frame();
-            let sent = drain(&mut ui.g);
-            assert!(sent.cells <= 200, "{} cells", sent.cells);
-        }
+        frames_within_the_cell_budget(&mut ui, FRAMES_TO_DRAW_A_CARD, page);
         assert_eq!(ui.top(), "HELP", "SELECT closed the card");
         assert_eq!(title(&ui).0, page);
         assert_page_drawn(&ui, page);
     }
     assert_eq!(ui.v.live.page, 0, "SELECT paged LIVE under the card");
-    close(&mut ui);
+    close_with_k1(&mut ui);
     assert_eq!(ui.top(), "LIVE");
-    // One page: HELP, and SELECT closes it.
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    hold_until_card(&mut ui);
-    for _ in 0..12 {
-        frame(&mut ui);
-    }
-    assert_eq!(title(&ui), ("HELP".to_string(), "MENU".to_string()));
+    hold_until_card_drawn(&mut ui);
+    assert_eq!(
+        title(&ui),
+        ("HELP".to_string(), "MENU".to_string()),
+        "a card of one page says HELP"
+    );
     ui.up(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_SELECT, 1);
-    frame(&mut ui);
+    ui.frame_sent();
     ui.settle();
     assert_eq!(ui.top(), "MENU");
 }
 
-// ---- every control on the card: the views' input handlers fed every button and encoder ----
-
-/// A control of the panel as the cards' lines name it: a button, an encoder or the note keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Ctl {
     Button(u32),
@@ -546,12 +485,6 @@ enum Ctl {
     Keys,
 }
 
-/// The controls (and whether EDIT is held) a card line's control words name: SELECT, ALG,
-/// K1..K4 (K1-K4, K1 K2, K3/K4; K the four), PRESETS (PRE), KEYS..., the buttons; E+ or EDIT+
-/// with EDIT held. Another modifier (STEP+, GLO+, SAVE+, ARP+) names a gesture no probe makes:
-/// nothing.
-/// None for a line that names no control but tells something (SETTINGS KEPT, MACROS RESET,
-/// SPREAD A/B L/R).
 fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
     const INFO: [&str; 8] = [
         "SETTINGS",
@@ -617,15 +550,12 @@ fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
     Some(out)
 }
 
-/// A view in a state, opened from power-on with a song bound (the device's), and the card its
-/// held HOME opens.
 struct Ctx {
     s: crate::song_view::Song,
     _io: Box<song_io>,
     _tune: Option<(Box<crate::sid_view::Tune>, crate::sid_view::Bound)>,
 }
 
-/// The views and states with a card of their own (and the walk to each).
 const CONTEXTS: [&str; 43] = [
     "LIVE",
     "LAB OSC",
@@ -667,11 +597,18 @@ const CONTEXTS: [&str; 43] = [
     "PLAYING",
     "UNSAVED",
     "LIFT",
-    // The same cards reached another way: STEP on a full stack, CHIP's slots MOD and FX.
     "STEP FULL",
     "CHIP MOD",
     "CHIP FX",
 ];
+
+fn song_action(action: u32) -> Open {
+    Open::SongAction {
+        action,
+        select_turns: 0,
+        algorithm_turns: 0,
+    }
+}
 
 fn menu_item(ui: &mut Ui, item: u32) {
     open(ui, &Open::Item(item));
@@ -684,8 +621,7 @@ fn open_ctx(name: &str) -> Ctx {
         dirty: 1,
         ..Default::default()
     });
-    // The built-in song the firmware has (SIDOU LOOP): LOAD lists it first.
-    io.hooks.builtin = Some(no_bytes);
+    io.hooks.builtin = Some(builtin_song_never_read);
     unsafe { views_song_io(&mut *s.ui.v, &mut *io) };
     let ui = &mut s.ui;
     ui.settle();
@@ -716,7 +652,7 @@ fn open_ctx(name: &str) -> Ctx {
             .position(|n| *n == name);
             crate::lab_view::to_page(ui, page.unwrap_or(0) as u32);
             if page.is_none() {
-                ui.down(PANEL_BTN_EDIT); // EDIT + SAVE: the name page
+                ui.down(PANEL_BTN_EDIT);
                 ui.press(SAVE_KEY_BUTTON);
                 ui.up(PANEL_BTN_EDIT);
                 ui.settle();
@@ -728,12 +664,11 @@ fn open_ctx(name: &str) -> Ctx {
         "ABOUT" => menu_item(ui, VIEWS_MENU_ABOUT),
         "CHARSET" => menu_item(ui, VIEWS_MENU_CHARSET),
         "SONG" => menu_item(ui, VIEWS_MENU_SONG),
-        "FILES" => open(ui, &Open::Song(0, 0, 0)),
-        "SAVE AS" => open(ui, &Open::Song(2, 0, 0)),
-        "CONFIRM" => open(ui, &Open::Song(1, 0, 0)),
+        "FILES" => open(ui, &song_action(0)),
+        "SAVE AS" => open(ui, &song_action(2)),
+        "CONFIRM" => open(ui, &song_action(1)),
         "CHIP TABS" | "CHIP" | "CHIP SLOT" | "EXPERT" | "CHIP MOD" | "CHIP FX" => {
             menu_item(ui, VIEWS_MENU_CHIP);
-            // From the tabs: the chip, the slots, EXPERT.
             ui.turn(PANEL_ENC_SELECT, -8);
             let to = match name {
                 "CHIP TABS" => 0,
@@ -776,20 +711,20 @@ fn open_ctx(name: &str) -> Ctx {
             ui.settle();
         }
         "SIDS" | "PLAYING" | "UNSAVED" => {
-            // The SID views over the fake player, a store of two tunes; the song unsaved.
             let bound = crate::sid_view::bind(ui, &["ALPHA", "BETA"]);
             crate::sid_view::open_sids(ui);
-            if name != "SIDS" {
-                ui.turn(PANEL_ENC_ALGORITHM, 1); // the question
+            let to_the_unsaved_question = name != "SIDS";
+            let discarded_now_playing = name == "PLAYING";
+            if to_the_unsaved_question {
+                ui.turn(PANEL_ENC_ALGORITHM, 1);
             }
-            if name == "PLAYING" {
-                ui.turn(PANEL_ENC_ALGORITHM, 1); // discarded: NOW PLAYING
+            if discarded_now_playing {
+                ui.turn(PANEL_ENC_ALGORITHM, 1);
             }
             ui.settle();
             tune = Some(bound);
         }
         "LIFT" => {
-            // A lifted instrument offered once the song is back, over the menu.
             let mut bound = crate::sid_view::bind(ui, &["ALPHA"]);
             open(ui, &Open::Menu);
             crate::sid_view::offer(&mut bound.0, "ALPHA V1", 1);
@@ -797,15 +732,7 @@ fn open_ctx(name: &str) -> Ctx {
             assert_eq!(ui.top(), "LIFTED SOUND");
             tune = Some(bound);
         }
-        "STEP FULL" => {
-            ui.press(PANEL_BTN_HOME);
-            ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
-            ui.turn(PANEL_ENC_ALGORITHM, 1);
-            ui.turn(PANEL_ENC_ALGORITHM, 1);
-            ui.press(PANEL_BTN_SEQ);
-            ui.settle();
-            assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8, "the stack is full");
-        }
+        "STEP FULL" => fill_the_stack_song_load_then_step(ui),
         _ => panic!("no context {name}"),
     }
     Ctx {
@@ -815,21 +742,20 @@ fn open_ctx(name: &str) -> Ctx {
     }
 }
 
-/// A built-in song of no bytes: the walk never reads it (the song is unsaved, so LOAD asks first).
-unsafe extern "C" fn no_bytes(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
+unsafe extern "C" fn builtin_song_never_read(
+    _: *mut std::ffi::c_void,
+    _: u32,
+    _: *mut u8,
+    _: u32,
+) -> u32 {
     0
 }
 
-/// The card a held HOME opens over the context (the context left as it was): its id and its
-/// state's words.
 fn card_over(name: &str) -> (u32, u16) {
     let mut c = open_ctx(name);
     let ui = &mut c.s.ui;
     let under = (ui.top(), ui.v.s.depth);
-    hold_until_card(ui);
-    for _ in 0..12 {
-        frame(ui);
-    }
+    hold_until_card_drawn(ui);
     let id = (u32::from(ui.v.help.card), ui.v.help.arg);
     let want = match name {
         "STEP FULL" => "STEP",
@@ -838,7 +764,7 @@ fn card_over(name: &str) -> (u32, u16) {
     };
     assert_eq!(card_name(ui), want, "over {under:?}");
     assert_page_drawn(ui, name);
-    close(ui);
+    close_with_k1(ui);
     assert_eq!(
         (ui.top(), ui.v.s.depth),
         under,
@@ -847,9 +773,6 @@ fn card_over(name: &str) -> (u32, u16) {
     id
 }
 
-/// Every view and page the panel reaches, in every state with a card of its own, holds HOME to
-/// that card: the walk opens each (a fresh power-on each time), holds HOME and reads the card's
-/// name and lines; every card is some state's.
 #[test]
 fn every_view_and_page_holds_home_to_its_own_card() {
     let mut seen = [false; HELP_CARDS as usize];
@@ -860,8 +783,6 @@ fn every_view_and_page_holds_home_to_its_own_card() {
     assert!(seen.iter().all(|&s| s), "a card no view opens: {seen:?}");
 }
 
-/// LAB's cards, each a golden: the pages (two pages each) and the name page. A page's card names
-/// the control of its sound as the page has it.
 #[test]
 fn lab_help_cards_match_their_goldens() {
     for (name, golden_name, pages) in [
@@ -876,48 +797,35 @@ fn lab_help_cards_match_their_goldens() {
         let mut c = open_ctx(name);
         let ui = &mut c.s.ui;
         if name == "LAB FX" {
-            ui.turn(PANEL_ENC_ALGORITHM, 2); // OVERDRIVE: its own names
+            let to_overdrive = 2;
+            ui.turn(PANEL_ENC_ALGORITHM, to_overdrive);
             ui.settle();
         }
-        hold_until_card(ui);
-        for _ in 0..12 {
-            frame(ui);
-        }
+        hold_until_card_drawn(ui);
         assert_eq!(card_name(ui), name);
         assert_page_drawn(ui, name);
         crate::sid_view::golden(ui, golden_name);
         if pages == 2 {
             ui.turn(PANEL_ENC_SELECT, 1);
-            for _ in 0..12 {
-                frame(ui);
-            }
+            ui.frames_sent(FRAMES_TO_DRAW_A_CARD);
             assert_eq!(ui.top(), "HELP", "SELECT turned the card");
             assert_page_drawn(ui, name);
             crate::sid_view::golden(ui, &format!("{golden_name}-2"));
         }
-        close(ui);
+        close_with_k1(ui);
     }
 }
 
-/// The state's words: CHIP's slot card names its algorithm's controls (OVERDRIVE: DRIVE, TONE,
-/// BIAS, MIX; OFF: all four UNUSED), LIVE's slot page the same, and TRACKER's recording card the
-/// quantise SETTINGS chose.
 #[test]
 fn a_slot_card_names_its_algorithms_controls_and_rec_its_quantise() {
     let words = |name: &str, setup: &dyn Fn(&mut Ui)| {
         let mut c = open_ctx(name);
         setup(&mut c.s.ui);
         let ui = &mut c.s.ui;
-        hold_until_card(ui);
-        for _ in 0..12 {
-            frame(ui);
-        }
+        hold_until_card_drawn(ui);
         let h = ui.v.help;
-        let card = unsafe { &help_cards[h.card as usize] };
-        let lines: Vec<(String, String)> = (0..usize::from(card.count))
-            .map(|l| line_of(&h, card, l))
-            .collect();
-        close(ui);
+        let lines = lines_in_state_words(&h, unsafe { &help_cards[h.card as usize] });
+        close_with_k1(ui);
         lines
     };
     let knob = |lines: &[(String, String)], k: &str| {
@@ -932,35 +840,26 @@ fn a_slot_card_names_its_algorithms_controls_and_rec_its_quantise() {
         for k in ["K1", "K2", "K3", "K4"] {
             assert_eq!(knob(&off, k), "UNUSED", "{name}: OFF's {k}");
         }
-        // ALGORITHM steps DIST to TAPE, then OVERDRIVE.
-        let od = words(name, &|ui| {
+        let tape_then_overdrive = words(name, &|ui| {
             ui.turn(PANEL_ENC_ALGORITHM, 1);
             ui.turn(PANEL_ENC_ALGORITHM, 1);
             ui.settle();
         });
         let got: Vec<String> = ["K1", "K2", "K3", "K4"]
             .iter()
-            .map(|k| knob(&od, k))
+            .map(|k| knob(&tape_then_overdrive, k))
             .collect();
         assert_eq!(got, ["DRIVE", "TONE", "BIAS", "MIX"], "{name}");
     }
     let mut c = open_ctx("TRACK REC");
     c.s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
     let ui = &mut c.s.ui;
-    hold_until_card(ui);
-    for _ in 0..12 {
-        frame(ui);
-    }
+    hold_until_card_drawn(ui);
     let h = ui.v.help;
     let card = unsafe { &help_cards[h.card as usize] };
-    assert!((0..usize::from(card.count))
-        .map(|l| line_of(&h, card, l))
-        .any(|l| l == ("QUANT".to_string(), "COUNT-IN".to_string())));
+    assert!(lines_in_state_words(&h, card).contains(&("QUANT".to_string(), "COUNT-IN".to_string())));
 }
 
-/// The buttons and encoders a probe feeds a view: every button but those the global handler
-/// takes first (HOME, SEQ, PLAY, REC; SAVE is save_key's), every encoder both ways; each alone
-/// and with EDIT held.
 fn probes() -> Vec<(screen_event, Ctl, bool)> {
     let mut out = Vec::new();
     for edit in [false, true] {
@@ -1000,9 +899,6 @@ fn probes() -> Vec<(screen_event, Ctl, bool)> {
     out
 }
 
-/// Whether the view on top, in its state, takes the event: its own input, or for a turn the
-/// screen's global handler (SONG's pages take their encoders there; the views' global handler
-/// takes no turn).
 fn takes(ui: &mut Ui, e: &screen_event) -> bool {
     let top = ui.v.s.stack[usize::from(ui.v.s.depth) - 1];
     let v = unsafe { &*top.v };
@@ -1019,9 +915,6 @@ fn takes(ui: &mut Ui, e: &screen_event) -> bool {
     false
 }
 
-/// What SAVE does on its own in a state (app/views.c save(), mirrored): a USER slot on CHIP's chip
-/// and EXPERT, the keep in LAB, the song in the song views, the menu's and SONG's pages' OK, SAVE AS's name,
-/// STORE's format and RESET.
 fn saves(name: &str) -> bool {
     matches!(
         name,
@@ -1058,12 +951,6 @@ fn saves(name: &str) -> bool {
     )
 }
 
-/// The controls a state acts on, from its handlers: each probe on a fresh power-on in that state
-/// (an event changes the state), the view's input (STEP's SCL alone aside: it waits there for
-/// EDIT, and is SCL's next slot as everywhere); then what acts outside it: HOME everywhere,
-/// SAVE where save() has a meaning of its own, the keys and SEQ (the next view; EDIT + SEQ where
-/// song_pages_jump takes it) in a song view, K1..K4 where the view gives the panel a page of its
-/// own (chip_view_page: the chip's character, a slot's controls).
 fn scl_waits(lone: &screen_lone) -> bool {
     lone.waiting == SCREEN_LONE_HELD_BACK as u8 && lone.button == PANEL_BTN_SCL as u8
 }
@@ -1099,8 +986,6 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
             need.insert((Ctl::Button(PANEL_BTN_SEQ), true));
         }
     }
-    // 1.5's song bridge, outside the views' input: REC in LAB sends (EDIT + REC replaces), and
-    // ENV, LFO and FX on INSTR pull its instrument into LAB
     if name.starts_with("LAB ") && name != "LAB NAME" {
         need.insert((Ctl::Button(PANEL_BTN_REC), false));
         if name != "LAB FX" {
@@ -1120,9 +1005,6 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
     need
 }
 
-/// Every control a view's input handler acts on, in each state with a card of its own, has a
-/// line on that card: a control the view takes without its line fails here. A line with EDIT
-/// (E+X) names EDIT + X; X alone covers EDIT + X too where the view takes X as well.
 #[test]
 fn every_control_a_view_takes_is_on_its_card() {
     let mut missing = Vec::new();
@@ -1131,7 +1013,7 @@ fn every_control_a_view_takes_is_on_its_card() {
         let card = unsafe { &help_cards[id as usize] };
         let mut has = BTreeSet::new();
         for l in 0..usize::from(card.count) {
-            let (key, _) = line(card, l);
+            let (key, _) = line_as_coded(card, l);
             has.extend(controls_of(&key).unwrap_or_default());
         }
         let need = required(name);
@@ -1141,7 +1023,7 @@ fn every_control_a_view_takes_is_on_its_card() {
             if !ok {
                 missing.push(format!(
                     "{name} ({}): {}{ctl:?}",
-                    text(card.name),
+                    c_text(card.name),
                     if edit { "EDIT + " } else { "" }
                 ));
             }
@@ -1154,10 +1036,8 @@ fn every_control_a_view_takes_is_on_its_card() {
     );
 }
 
-/// The probe sees what it should: a control a view takes and its card left out fails. STEP takes
-/// ARP (the lane's gate): a card without ARP's line misses it.
 #[test]
-fn the_completeness_check_finds_a_missing_line() {
+fn the_completeness_check_finds_steps_arp_line_missing_from_its_card() {
     let need = required("STEP");
     assert!(
         need.contains(&(Ctl::Button(PANEL_BTN_ARP), false)),
@@ -1172,16 +1052,15 @@ fn the_completeness_check_finds_a_missing_line() {
         "{need:?}"
     );
     let card = unsafe { &help_cards[HELP_CARD_STEP as usize] };
-    let without: BTreeSet<(Ctl, bool)> = (0..usize::from(card.count))
-        .map(|l| line(card, l).0)
+    let without: BTreeSet<(Ctl, bool)> = lines_as_coded(card)
+        .into_iter()
+        .map(|(key, _)| key)
         .filter(|k| k != "ARP")
         .flat_map(|k| controls_of(&k).unwrap_or_default())
         .collect();
     assert!(!without.contains(&(Ctl::Button(PANEL_BTN_ARP), false)));
 }
 
-/// Where the panel is: the view on top, SONG's page, the stack's depth and what a file action
-/// would act on (the page's action and name, the song file's state and target).
 fn place(ui: &Ui) -> String {
     let m = &ui.v.songs;
     let io = unsafe { &*ui.v.song.io };
@@ -1196,8 +1075,8 @@ fn place(ui: &Ui) -> String {
     } else {
         "-"
     };
-    // SAVE AS's name is a value ALGORITHM edits, not an item it opens.
-    let chosen = if page == "SAVE AS" {
+    let name_is_a_value_algorithm_edits = page == "SAVE AS";
+    let chosen = if name_is_a_value_algorithm_edits {
         String::new()
     } else {
         name(&m.name)
@@ -1212,20 +1091,14 @@ fn place(ui: &Ui) -> String {
     )
 }
 
-/// The panel's OK on every list screen: wherever ALGORITHM clockwise opens or chooses the
-/// highlighted item (the menu's views, SONG's actions, LOAD's and DELETE's files, a confirmation's
-/// YES), a clean SAVE does the same; on a confirmation's NO, SAVE chooses NO (back a page, as
-/// HOME). And HOME goes back from each of them. The walk is every state with a card (CONTEXTS):
-/// a new list screen whose ALGORITHM opens something is checked without being named here.
 #[test]
 fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
     let mut lists = Vec::new();
     let mut wrong = Vec::new();
     let names: Vec<&str> = CONTEXTS.iter().copied().chain(["CONFIRM YES"]).collect();
     for name in names {
-        if name == "UNSAVED" {
-            // The question's own answers (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Memory"): SAVE
-            // saves the song first, ALGORITHM again discards it; sid_view.rs checks both.
+        let has_its_own_answers_checked_in_sid_view = name == "UNSAVED";
+        if has_its_own_answers_checked_in_sid_view {
             continue;
         }
         let ctx = |n: &str| {
@@ -1241,8 +1114,9 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
         c.s.ui.turn(PANEL_ENC_ALGORITHM, 1);
         c.s.ui.settle();
         let by_alg = place(&c.s.ui);
-        if by_alg == before {
-            continue; // ALGORITHM changes a value here (or nothing): no item to open
+        let algorithm_opens_no_item = by_alg == before;
+        if algorithm_opens_no_item {
+            continue;
         }
         lists.push(name);
         let mut c = ctx(name);
@@ -1262,7 +1136,6 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
             wrong.push(format!("{name}: HOME stays ({back})"));
         }
     }
-    // A confirmation's NO: SAVE goes back a page, as HOME does, and does nothing else.
     let mut c = open_ctx("CONFIRM");
     c.s.ui.press(SAVE_KEY_BUTTON);
     c.s.ui.settle();
@@ -1277,33 +1150,26 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
-/// Lines dropped for room before two pages: STEP's SEQ NEXT VIEW and TRACKER's HOME BACK.
 #[test]
 fn the_song_views_cards_keep_seq_and_home() {
     for id in [HELP_CARD_STEP, HELP_CARD_TRACKER] {
         let card = unsafe { &help_cards[id as usize] };
-        let lines: Vec<(String, String)> = (0..usize::from(card.count))
-            .map(|l| line(card, l))
-            .collect();
+        let lines = lines_as_coded(card);
         for want in [("SEQ", "NEXT VIEW"), ("HOME", "BACK")] {
             assert!(
                 lines.contains(&(want.0.to_owned(), want.1.to_owned())),
                 "{}: {lines:?}",
-                text(card.name)
+                c_text(card.name)
             );
         }
     }
 }
 
-// ---- the first-run tour (app/views.c tour_frame) ----
-
-/// The full boot an install plays (HOME not held), frames until it is over, the toast of the
-/// last frame.
-fn after_the_install_boot(ui: &mut Ui, home_held: i32) {
+fn after_the_install_boot_without_home(ui: &mut Ui) {
     drain(&mut ui.g);
-    unsafe { views_boot(&mut *ui.v, 1, home_held) };
+    unsafe { views_boot(&mut *ui.v, 1, 0) };
     for _ in 0..400 {
-        frame(ui);
+        ui.frame_sent();
         if ui.top() == "LIVE" && ui.v.s.wipe == SCREEN_CUT as u8 {
             return;
         }
@@ -1311,14 +1177,13 @@ fn after_the_install_boot(ui: &mut Ui, home_held: i32) {
     panic!("the boot did not end");
 }
 
-/// Frames until the toast says `text`, at most `ms` of them; its first frame.
 fn until_toast(ui: &mut Ui, text: &str, ms: u32) {
     let end = ui.now + ms;
     while ui.now < end {
         if ui.toast().as_deref() == Some(text) {
             return;
         }
-        frame(ui);
+        ui.frame_sent();
     }
     panic!(
         "no toast {text:?} in {ms} ms; the toast is {:?}",
@@ -1329,16 +1194,15 @@ fn until_toast(ui: &mut Ui, text: &str, ms: u32) {
 #[test]
 fn the_tour_follows_the_first_boot_after_an_install() {
     let mut ui = Ui::without_cards();
-    after_the_install_boot(&mut ui, 0);
+    after_the_install_boot_without_home(&mut ui);
     until_toast(&mut ui, "TURN K1", 400);
-    // K1: the toast goes (the popup is the answer), and the next comes 1.6 s later.
     let start = ui.now;
     ui.turn(PANEL_ENC_K1, 3);
-    frame(&mut ui);
+    ui.frame_sent();
     assert_ne!(
         ui.toast().as_deref(),
         Some("TURN K1"),
-        "the step's toast stays"
+        "K1 answers the step: its toast goes"
     );
     until_toast(&mut ui, "PRESS ENV", 3000);
     assert!(
@@ -1346,27 +1210,25 @@ fn the_tour_follows_the_first_boot_after_an_install() {
         "PRESS ENV came after {} ms",
         ui.now - start
     );
-    // ENV opens LAB at its ENVELOPE page: the toast goes, then the last step 1.6 s later (the
-    // help card it asks for is LAB's).
     ui.press(PANEL_BTN_ENV);
     let start = ui.now;
-    frame(&mut ui);
+    ui.frame_sent();
     assert_eq!(ui.top(), "LAB");
-    assert_eq!(ui.v.lab.page, LAB_PAGE_ENVELOPE as u8);
+    assert_eq!(
+        ui.v.lab.page, LAB_PAGE_ENVELOPE as u8,
+        "ENV opens LAB at its ENVELOPE page"
+    );
     assert_ne!(ui.toast().as_deref(), Some("PRESS ENV"));
     until_toast(&mut ui, "HOLD HOME FOR HELP", 3000);
     assert!(ui.now - start >= 1600);
-    // HOME held: the card, and no more toasts.
     ui.down(PANEL_BTN_HOME);
-    for _ in 0..20 {
-        frame(&mut ui);
-    }
+    ui.frames_sent(20);
     assert_eq!(ui.top(), "HELP");
     assert!(ui.toast().is_none(), "a toast over the card");
     ui.up(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_K1, 1);
     for _ in 0..600 {
-        frame(&mut ui);
+        ui.frame_sent();
         assert!(
             ui.toast().is_none(),
             "a toast after the tour: {:?}",
@@ -1378,7 +1240,7 @@ fn the_tour_follows_the_first_boot_after_an_install() {
 #[test]
 fn an_unanswered_tour_runs_on_its_own_clock_and_ends() {
     let mut ui = Ui::without_cards();
-    after_the_install_boot(&mut ui, 0);
+    after_the_install_boot_without_home(&mut ui);
     until_toast(&mut ui, "TURN K1", 400);
     until_toast(&mut ui, "PRESS ENV", 12_000);
     let t0 = ui.now;
@@ -1388,9 +1250,7 @@ fn an_unanswered_tour_runs_on_its_own_clock_and_ends() {
         (9_600..=9_680).contains(&gap),
         "8 s and 1.6 s, not {gap} ms"
     );
-    for _ in 0..400 {
-        frame(&mut ui);
-    }
+    ui.frames_sent(400);
     assert!(ui.toast().is_none());
     assert_eq!(ui.v.tour, 0, "the tour is over");
 }
@@ -1404,7 +1264,7 @@ fn no_tour_when_home_asked_for_the_boot() {
     ui.press(PANEL_BTN_HOME);
     ui.hold(PANEL_BTN_HOME, false);
     for _ in 0..1500 {
-        frame(&mut ui);
+        ui.frame_sent();
         assert!(ui.toast().is_none(), "a toast at {} ms", ui.now);
     }
     assert_eq!(ui.v.tour, 0);
@@ -1416,26 +1276,22 @@ fn no_tour_on_a_normal_boot() {
     drain(&mut ui.g);
     unsafe { views_boot(&mut *ui.v, 0, 0) };
     for _ in 0..1500 {
-        frame(&mut ui);
+        ui.frame_sent();
         assert!(ui.toast().is_none(), "a toast at {} ms", ui.now);
     }
     assert_eq!(ui.v.tour, 0);
 }
 
-/// Ergonomics review E30 (M2 review 5.13): OCT+ pressed in the menu while the tour's first step
-/// shows: the tour ends its own toast only, and OCT+'s (the octave) shows.
 #[test]
 fn an_action_during_the_tour_keeps_its_own_toast() {
     let mut ui = Ui::without_cards();
-    after_the_install_boot(&mut ui, 0);
+    after_the_install_boot_without_home(&mut ui);
     until_toast(&mut ui, "TURN K1", 400);
     ui.press(PANEL_BTN_HOME);
-    frame(&mut ui);
+    ui.frame_sent();
     assert_eq!(ui.top(), "MENU");
     ui.press(PANEL_BTN_OCT_UP);
-    for _ in 0..3 {
-        frame(&mut ui);
-    }
+    ui.frames_sent(3);
     let t = ui.toast().unwrap_or_default();
     assert!(
         !t.is_empty() && t != "TURN K1",
@@ -1443,8 +1299,6 @@ fn an_action_during_the_tour_keeps_its_own_toast() {
     );
 }
 
-/// Ergonomics review E29 (M2 review 5.12): a toast raised while a help card shows waits under
-/// it (nothing draws over the card, whose frames stay within 200 cells), then shows.
 #[test]
 fn a_toast_waits_under_the_help_card_and_shows_after_it() {
     let mut ui = Ui::without_cards();
@@ -1454,22 +1308,20 @@ fn a_toast_waits_under_the_help_card_and_shows_after_it() {
     for _ in 0..30 {
         ui.frame();
         let sent = drain(&mut ui.g);
-        assert!(sent.cells <= 200, "{} cells", sent.cells);
+        assert!(sent.cells <= FRAME_CELL_BUDGET, "{} cells", sent.cells);
         assert!(ui.toast().is_none(), "a toast over the card");
     }
     ui.up(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_K1, 1);
     let mut seen = false;
     for _ in 0..30 {
-        frame(&mut ui);
+        ui.frame_sent();
         seen |= ui.toast().as_deref() == Some("SONG SAVED");
     }
     assert_ne!(ui.top(), "HELP");
     assert!(seen, "the toast after the card");
 }
 
-/// Ergonomics review E28 (M2 review 5.14): the keys under a help card over TRACKER play the
-/// song view's jam (its instrument, its voice), not LIVE's instrument.
 #[test]
 fn keys_under_a_help_card_play_the_view_under_it() {
     use crate::song_view::{open_tracker, Call, Song};
@@ -1492,8 +1344,6 @@ fn keys_under_a_help_card_play_the_view_under_it() {
     );
 }
 
-/// HOME in TABLE's ARP helper closes the helper (the table stays); SAVE writes the rows, not the
-/// song, and closes it; held HOME shows the helper's card.
 #[test]
 fn home_and_save_in_the_arp_helper_close_it_and_never_leave_the_table() {
     let mut c = open_ctx("ARP");

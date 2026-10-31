@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The poll-interrupt to main-loop MIDI ring (`app/midi_ring.c`).
 
 use sidou_sys::*;
 
@@ -23,7 +22,6 @@ fn pop(r: &mut midi_ring) -> Option<(u8, u32, u32)> {
     (unsafe { midi_ring_pop(r, &mut e) } != 0).then_some((e.source, e.data, e.stamp))
 }
 
-/// The next entry's epoch.
 fn pop_epoch(r: &mut midi_ring) -> Option<u8> {
     let mut e = midi_ring_entry::default();
     (unsafe { midi_ring_pop(r, &mut e) } != 0).then_some(e.epoch)
@@ -94,7 +92,6 @@ fn each_gap_of_losses_starts_one_new_epoch_and_entries_carry_theirs() {
         assert!(push(&mut r, TRS, i, i));
     }
     assert_eq!(epoch(&r), 0);
-    // Two losses in a row: one gap.
     assert!(!push(&mut r, TRS, 0, 0));
     assert!(!push(&mut r, TRS, 0, 0));
     assert_eq!(epoch(&r), 1);
@@ -102,7 +99,6 @@ fn each_gap_of_losses_starts_one_new_epoch_and_entries_carry_theirs() {
     assert!(push(&mut r, USB, 0, 0), "the gap ends");
     assert!(!push(&mut r, TRS, 0, 0), "a new gap");
     assert_eq!(epoch(&r), 2);
-    // Losses before the ring join the gap they fall into, and start one after a push.
     unsafe { midi_ring_lose(&mut *r, TRS, 7) };
     assert_eq!(epoch(&r), 2);
     for _ in 0..SIZE - 1 {
@@ -142,7 +138,6 @@ fn the_indices_wrap_around_u32() {
 fn a_long_interleaved_run_keeps_every_entry_in_order() {
     let mut r = ring();
     let (mut next_in, mut next_out) = (0u32, 0u32);
-    // Bursts of 1..=40 pushes against takes of 1..=37: the fill wanders all over the ring.
     for round in 0..5000u32 {
         for _ in 0..1 + round * 7 % 40 {
             if room(&r) == 0 {
@@ -168,9 +163,6 @@ fn a_long_interleaved_run_keeps_every_entry_in_order() {
     assert_eq!(lost(&r), 0);
 }
 
-/// A gap says whose input it lost (review 4.1): the ring holds the sources' bits until the
-/// next push, which carries them in its entry and clears them; losses of both sources in one
-/// gap are one gap with both bits.
 #[test]
 fn a_gap_carries_the_sources_it_lost() {
     let mut r = ring();
@@ -197,7 +189,6 @@ fn a_gap_carries_the_sources_it_lost() {
     assert!(push(&mut r, TRS, 0, 0));
     assert!(unsafe { midi_ring_pop(&mut *r, &mut e) } != 0);
     assert_eq!((e.epoch, e.gap), (2, USB | TRS));
-    // An unknown source still makes a gap, with every bit.
     unsafe { midi_ring_lose(&mut *r, 0, 1) };
     assert_eq!((epoch(&r), r.in_gap), (3, 0xFF));
 }

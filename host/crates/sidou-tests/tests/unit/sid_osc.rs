@@ -27,8 +27,9 @@ fn accumulator_adds_frequency_every_cycle() {
 fn accumulator_wraps_at_24_bits_and_reports_msb_rise() {
     const FREQ: u32 = 0xffff;
     const CYCLES: u32 = 23;
+    const FIRST_STEP_CROSSES_THE_24_BIT_WRAP: u32 = 0xf00000;
     let mut o = make_osc(SID_CTRL_SAW, FREQ);
-    o.acc = 0xf00000; // the first step crosses the 24-bit wrap
+    o.acc = FIRST_STEP_CROSSES_THE_24_BIT_WRAP;
     let mut wraps = 0;
     let mut rises = 0;
     for step in 0..200 {
@@ -68,7 +69,6 @@ fn saw_is_the_top_12_bits() {
 
 #[test]
 fn triangle_folds_on_the_msb() {
-    // reSIDfp's table: the top 12 bits folded, shifted up one, so bit 0 is always 0.
     let mut o = make_osc(SID_CTRL_TRI, 0);
     o.acc = 0x400000;
     assert_eq!(output(&o, &o), 0x800);
@@ -80,7 +80,6 @@ fn triangle_folds_on_the_msb() {
 
 #[test]
 fn ring_mod_inverts_the_msb_while_the_source_msb_is_low() {
-    // reSIDfp: index = acc ^ (~source & 0x800000).
     let mut o = make_osc(SID_CTRL_TRI | SID_CTRL_RING, 0);
     let mut src = make_osc(SID_CTRL_SAW, 0);
     o.acc = 0x400000;
@@ -88,7 +87,6 @@ fn ring_mod_inverts_the_msb_while_the_source_msb_is_low() {
     assert_eq!(output(&o, &src), 0x800);
     src.acc = 0x000000;
     assert_eq!(output(&o, &src), 0x7fe);
-    // With sawtooth selected too, ring modulation does not touch the index.
     o.control = (SID_CTRL_TRI | SID_CTRL_SAW | SID_CTRL_RING) as u8;
     unsafe { sid_osc_update_mode(&mut o) };
     let plain = output(&o, &src);
@@ -125,8 +123,6 @@ fn test_bit_resets_and_holds_the_accumulator() {
     assert_eq!(o.acc, 0);
 }
 
-/// Every combination of waveforms, in every profile and on both models, goes
-/// through reSIDfp's pulldown table: the AND of the waveforms, then the table.
 #[test]
 fn combined_waveforms_match_re_sid_fp_tables() {
     use residfp_sys::{pulldown_table, CombinedWaveforms, Model};
@@ -140,7 +136,6 @@ fn combined_waveforms_match_re_sid_fp_tables() {
         for (profile, cws) in grid.into_iter().enumerate() {
             let table = pulldown_table(model, cws);
             for row in &table {
-                // A locked-up noise register relies on this: an output of 0 stays 0.
                 assert_eq!(row[0], 0);
             }
             let mut o = make_osc(0, 0);
@@ -180,7 +175,6 @@ fn combined_waveforms_match_re_sid_fp_tables() {
 
 #[test]
 fn reset_keeps_the_accumulator() {
-    // reSIDfp: "accumulator is not changed on reset".
     let mut o = sid_osc {
         acc: 0x555555,
         freq: 0x1234,
@@ -191,8 +185,6 @@ fn reset_keeps_the_accumulator() {
     assert_eq!(o.freq, 0);
 }
 
-/// sid_wave_ramp is reSIDfp's waveform table, all 4 x 4096 entries (so the triangle's
-/// bit 0 is always 0).
 #[test]
 fn wave_ramp_is_re_sid_fp_wave_table() {
     let table = residfp_sys::wave_table();

@@ -1,23 +1,23 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The screen (app/screen.c): the view stack and its focus, event routing, the toast, and the
-//! wipe and raster transitions with what each frame of them sends.
 
 use std::ffi::{c_int, c_void, CStr};
 
 use sidou_sys::*;
 
-use crate::piece_part;
+use crate::{piece_part, views::FRAME_MS};
 
 const COLS: usize = GRID_COLS as usize;
 const ROWS: usize = GRID_ROWS as usize;
 const CELLS: usize = COLS * ROWS;
-/// platform/fm1/lcd.c: SPI1 at 60 MHz / (4 + 1); lcd.h: 11 command bytes a window.
-const SPI_HZ: f64 = 12e6;
-const WINDOW_BYTES: usize = 11;
-/// docs/art/README.md: at most about 20 ms of SPI per 40 ms frame.
+const SPI1_CLOCK_HZ: f64 = 60e6;
+const SPI1_DIVIDER: f64 = 4.0 + 1.0;
+const SPI_HZ: f64 = SPI1_CLOCK_HZ / SPI1_DIVIDER;
+const WINDOW_COMMAND_BYTES: usize = 11;
+const CELL_PIXEL_BYTES: usize = 128;
 const SPI_BUDGET_MS: f64 = 20.0;
-const FRAME_MS: u32 = 40;
+const LARGE_TEXT_ROWS: usize = 2;
+const LARGE_CHAR_CELLS: usize = 4;
 const BORDER_CELLS: usize = 2 * COLS + 2 * (ROWS - 2);
 
 fn attr(fg: u32, bg: u32) -> u8 {
@@ -33,15 +33,12 @@ fn on_border(i: usize) -> bool {
     r == 0 || r == ROWS - 1 || c == 0 || c == COLS - 1
 }
 
-/// A test view: a light blue border of full blocks around `ch` in `fill`, and a log of the
-/// calls it gets.
 struct Probe {
     ch: u8,
     fill: u8,
     consume: bool,
     overlay: bool,
-    /// What its changed function answers (a view made with quiet_view); compose clears it.
-    dirty: bool,
+    changed: bool,
     log: Vec<String>,
 }
 
@@ -52,7 +49,7 @@ impl Probe {
             fill: attr(GRID_WHITE, GRID_BLUE),
             consume: false,
             overlay: false,
-            dirty: false,
+            changed: false,
             log: Vec::new(),
         })
     }
@@ -87,7 +84,7 @@ unsafe extern "C" fn p_input(_s: *mut screen, state: *mut c_void, e: *const scre
 unsafe extern "C" fn p_compose(_s: *mut screen, state: *mut c_void, g: *mut grid) {
     let p = unsafe { probe(state) };
     p.log.push("compose".into());
-    p.dirty = false;
+    p.changed = false;
     unsafe {
         grid_fill(
             g,
@@ -106,11 +103,10 @@ unsafe extern "C" fn p_compose(_s: *mut screen, state: *mut c_void, g: *mut grid
 }
 
 unsafe extern "C" fn p_changed(_s: *mut screen, state: *mut c_void) -> c_int {
-    c_int::from(unsafe { probe(state) }.dirty)
+    c_int::from(unsafe { probe(state) }.changed)
 }
 
-/// A probe composed every frame (no changed function).
-fn probe_view(name: &'static CStr) -> Box<view> {
+fn view_composed_every_frame(name: &'static CStr) -> Box<view> {
     Box::new(view {
         name: name.as_ptr(),
         enter: Some(p_enter),
@@ -121,30 +117,27 @@ fn probe_view(name: &'static CStr) -> Box<view> {
     })
 }
 
-/// A probe composed only when its `dirty` is set or the screen forces it.
-fn quiet_view(name: &'static CStr) -> Box<view> {
+fn view_composed_when_changed(name: &'static CStr) -> Box<view> {
     Box::new(view {
         changed: Some(p_changed),
-        ..*probe_view(name)
+        ..*view_composed_every_frame(name)
     })
 }
 
-/// What a frame sent.
 #[derive(Debug, Default, Clone, Copy)]
 struct Sent {
     windows: usize,
     cells: usize,
-    /// Rows with a window.
-    rows: usize,
+    rows_sent: usize,
 }
 
 impl Sent {
     fn spi_ms(self) -> f64 {
-        (self.cells * 128 + self.windows * WINDOW_BYTES) as f64 * 8.0 / SPI_HZ * 1e3
+        (self.cells * CELL_PIXEL_BYTES + self.windows * WINDOW_COMMAND_BYTES) as f64 * 8.0 / SPI_HZ
+            * 1e3
     }
 }
 
-/// A screen over a grid, and what the panel shows (each cell's code and colour as sent).
 struct Rig {
     g: Box<grid>,
     s: Box<screen>,
@@ -186,11 +179,10 @@ impl Rig {
                 self.shown[i] = (self.g.ch[i], self.g.attr[i]);
             }
         }
-        sent.rows = rows.count_ones() as usize;
+        sent.rows_sent = rows.count_ones() as usize;
         sent
     }
 
-    /// One frame, 40 ms after the last, sent in full.
     fn frame(&mut self) -> Sent {
         self.now += FRAME_MS;
         unsafe { screen_frame(&mut *self.s, self.now) };
@@ -223,15 +215,12 @@ impl Rig {
         unsafe { screen_animating(&*self.s) != 0 }
     }
 
-    /// Rows whose every interior cell shows ch.
     fn rows_showing(&self, ch: u8) -> Vec<usize> {
         (0..ROWS)
             .filter(|&r| (1..COLS - 1).all(|c| self.shown[r * COLS + c].0 == ch))
             .collect()
     }
 
-    /// `len` characters of what the panel shows on a row from `col`: large text (a character
-    /// over several cells) as one character, from the grid's record of it.
     fn row_text(&self, row: usize, col: usize, len: usize) -> String {
         (col..COLS)
             .filter_map(|c| {
@@ -251,7 +240,7 @@ impl Rig {
 
 #[test]
 fn the_root_view_is_entered_composed_every_frame_and_takes_the_events() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     assert_eq!(rs.take(), ["enter", "compose"]);
@@ -268,7 +257,11 @@ fn the_root_view_is_entered_composed_every_frame_and_takes_the_events() {
 
 #[test]
 fn push_and_pop_move_the_focus_and_call_enter_and_exit() {
-    let (root, a, b) = (probe_view(c"ROOT"), probe_view(c"A"), probe_view(c"B"));
+    let (root, a, b) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+        view_composed_every_frame(c"B"),
+    );
     let (mut rs, mut as_, mut bs) = (Probe::new(b'R'), Probe::new(b'A'), Probe::new(b'B'));
     let mut r = Rig::new(&root, &mut rs);
     rs.take();
@@ -295,8 +288,8 @@ fn push_and_pop_move_the_focus_and_call_enter_and_exit() {
 
 #[test]
 fn the_stack_keeps_its_root_and_has_a_ceiling() {
-    let root = probe_view(c"ROOT");
-    let v = probe_view(c"V");
+    let root = view_composed_every_frame(c"ROOT");
+    let v = view_composed_every_frame(c"V");
     let mut rs = Probe::new(b'R');
     let mut states: Vec<Box<Probe>> = (0..SCREEN_DEPTH).map(|_| Probe::new(b'V')).collect();
     let mut r = Rig::new(&root, &mut rs);
@@ -328,7 +321,7 @@ unsafe extern "C" fn capture_turns(ctx: *mut c_void, e: *const screen_event) -> 
 
 #[test]
 fn a_capture_sees_the_events_first_until_it_is_released() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     rs.take();
@@ -352,9 +345,7 @@ fn a_capture_sees_the_events_first_until_it_is_released() {
     );
 }
 
-/// Frames until the wipe ends, with the rows each one shows of the new view; checks the
-/// budget on the way.
-fn wipe_frames(r: &mut Rig, ch: u8) -> Vec<Vec<usize>> {
+fn wipe_frames_rows_showing(r: &mut Rig, ch: u8) -> Vec<Vec<usize>> {
     let mut seen = Vec::new();
     for _ in 0..20 {
         let sent = r.frame();
@@ -377,7 +368,10 @@ fn wipe_frames(r: &mut Rig, ch: u8) -> Vec<Vec<usize>> {
 
 #[test]
 fn a_wipe_down_reveals_the_new_view_top_first_behind_an_edge() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_WIPE_DOWN);
@@ -385,15 +379,13 @@ fn a_wipe_down_reveals_the_new_view_top_first_behind_an_edge() {
     let first = r.frame();
     let n = SCREEN_WIPE_ROWS as usize;
     assert_eq!(r.rows_showing(b'A'), (1..n).collect::<Vec<_>>());
-    // The edge: the next row, a white bar across the screen.
     let edge: Vec<(u8, u8)> = r.shown[n * COLS..(n + 1) * COLS].to_vec();
     assert!(edge
         .iter()
         .all(|&(c, a)| c == FONT_FULL as u8 && a & 15 == GRID_WHITE as u8));
-    // The rows below still show the root.
     assert_eq!(r.rows_showing(b'R'), (n + 1..ROWS - 1).collect::<Vec<_>>());
     assert!(first.spi_ms() <= SPI_BUDGET_MS);
-    let rest = wipe_frames(&mut r, b'A');
+    let rest = wipe_frames_rows_showing(&mut r, b'A');
     assert_eq!(
         rest.len() + 1,
         ROWS.div_ceil(n),
@@ -418,11 +410,12 @@ fn a_wipe_down_reveals_the_new_view_top_first_behind_an_edge() {
     assert_eq!(r.frame().cells, 0, "the wipe left work behind");
 }
 
-/// A banded cut (the title cards' end, app/title_card.h): the view below in bands of
-/// SCREEN_BAND_ROWS rows a frame, top first, with no edge, each frame inside the SPI budget.
 #[test]
 fn a_banded_cut_reveals_the_view_below_top_first_with_no_edge() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_CUT);
@@ -446,7 +439,6 @@ fn a_banded_cut_reveals_the_view_below_top_first_with_no_edge() {
             (1..revealed.min(ROWS - 1)).collect::<Vec<_>>(),
             "frame {frames}"
         );
-        // No edge: the rows below still show A, all of them.
         assert_eq!(
             r.rows_showing(b'A'),
             (revealed.max(1)..ROWS - 1).collect::<Vec<_>>(),
@@ -463,7 +455,10 @@ fn a_banded_cut_reveals_the_view_below_top_first_with_no_edge() {
 
 #[test]
 fn a_wipe_up_reveals_the_view_below_bottom_first() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_CUT);
@@ -480,15 +475,16 @@ fn a_wipe_up_reveals_the_view_below_bottom_first() {
         .iter()
         .all(|&(c, _)| c == FONT_FULL as u8));
     assert_eq!(r.rows_showing(b'A'), (1..edge).collect::<Vec<_>>());
-    wipe_frames(&mut r, b'R');
+    wipe_frames_rows_showing(&mut r, b'R');
     assert_eq!(r.rows_showing(b'R').len(), ROWS - 2);
 }
 
 #[test]
-fn a_reveal_wipes_the_same_view_in_anew() {
-    // A view that changes its whole look (the boot's title card) shows it behind a wipe,
-    // as a switch would: the stack, the focus and the capture stay as they are.
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+fn a_reveal_wipes_the_same_view_in_anew_keeping_the_stack_focus_and_capture() {
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_CUT);
@@ -499,7 +495,7 @@ fn a_reveal_wipes_the_same_view_in_anew() {
     as_.take();
     unsafe { screen_reveal(&mut *r.s, SCREEN_WIPE_DOWN) };
     assert!(r.animating());
-    let rest = wipe_frames(&mut r, b'B');
+    let rest = wipe_frames_rows_showing(&mut r, b'B');
     assert_eq!(rest.len(), ROWS.div_ceil(SCREEN_WIPE_ROWS as usize));
     assert_eq!(r.rows_showing(b'B').len(), ROWS - 2);
     assert_eq!(r.top(), &*a as *const view);
@@ -521,7 +517,10 @@ unsafe extern "C" fn consume_all(_ctx: *mut c_void, _e: *const screen_event) -> 
 
 #[test]
 fn a_cut_sends_the_whole_change_in_one_frame() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_CUT);
@@ -537,7 +536,10 @@ fn a_cut_sends_the_whole_change_in_one_frame() {
 
 #[test]
 fn a_switch_clears_the_old_views_overlays() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     as_.overlay = true;
     let mut r = Rig::new(&root, &mut rs);
@@ -550,13 +552,12 @@ fn a_switch_clears_the_old_views_overlays() {
     assert_eq!(r.g.ovl_nfree, GRID_OVERLAYS as u8);
 }
 
-/// A view pushed over the one on top (SCREEN_OVER: MIDI learn's frame, which composes the
-/// view under it) comes in at once, and the overlays of the view under it stay on the grid,
-/// there and back: that view goes on showing, and a switch that cleared them would send every
-/// cell they were on.
 #[test]
 fn a_view_pushed_over_another_keeps_its_overlays() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     rs.overlay = true;
     let mut r = Rig::new(&root, &mut rs);
@@ -577,14 +578,13 @@ fn a_view_pushed_over_another_keeps_its_overlays() {
 
 #[test]
 fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     let steps = 3;
     unsafe { screen_raster(&mut *r.s, steps) };
     assert!(r.animating());
-    // The border carries the view's text, so its purple band is light grey (app/screen.c raster).
-    let ramp = unsafe { screen_ramp }.map(|c| {
+    let ramp_under_text = unsafe { screen_ramp }.map(|c| {
         if u32::from(c) == GRID_PURPLE {
             GRID_LIGHT_GREY as u8
         } else {
@@ -597,7 +597,6 @@ fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
         let sent = r.frame();
         assert!(sent.spi_ms() <= SPI_BUDGET_MS, "{:.1} ms", sent.spi_ms());
         sends.push(sent.cells);
-        // Every border cell takes a ramp colour by its row, in bands; the inside is untouched.
         let colours: Vec<u8> = (0..ROWS).map(|row| r.shown[row * COLS].1 & 15).collect();
         for (i, &(c, a)) in r.shown.iter().enumerate() {
             let row = i / COLS;
@@ -610,10 +609,13 @@ fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
             }
         }
         for row in 1..ROWS {
-            let k = ramp.iter().position(|&x| x == colours[row - 1]).unwrap();
+            let k = ramp_under_text
+                .iter()
+                .position(|&x| x == colours[row - 1])
+                .unwrap();
             assert_eq!(
                 colours[row],
-                ramp[(k + 1) % ramp.len()],
+                ramp_under_text[(k + 1) % ramp_under_text.len()],
                 "bands follow the ramp"
             );
         }
@@ -624,9 +626,6 @@ fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
         }
         prev_colours = Some(colours);
     }
-    // A step every other frame recolours the border; the frames between send nothing. The
-    // first step leaves the rows that take the view's own light blue alone; every later step
-    // changes every border cell.
     for (f, &cells) in sends.iter().enumerate() {
         let step = f % SCREEN_RASTER_FRAMES as usize == 0;
         match (step, f) {
@@ -635,7 +634,6 @@ fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
             (true, _) => assert_eq!(cells, BORDER_CELLS, "frame {f}"),
         }
     }
-    // Then the border is the view's again.
     let back = r.frame().cells;
     assert!(back > 0 && back <= BORDER_CELLS, "{back}");
     assert!(!r.animating());
@@ -650,7 +648,10 @@ fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
 
 #[test]
 fn the_raster_waits_for_a_wipe() {
-    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (root, a) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_WIPE_DOWN);
@@ -675,15 +676,17 @@ fn the_raster_waits_for_a_wipe() {
 
 #[test]
 fn a_toast_shows_on_its_row_until_it_times_out() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     let row = SCREEN_TOAST_ROW as usize;
     let col = SCREEN_TOAST_COL as usize;
     unsafe { screen_toast(&mut *r.s, c"OCTAVE +1".as_ptr(), 100) };
     let sent = r.frame();
-    // Large text: 9 characters of 2 x 2 cells, in two rows.
-    assert_eq!((sent.windows, sent.cells), (2, 36));
+    assert_eq!(
+        (sent.windows, sent.cells),
+        (LARGE_TEXT_ROWS, "OCTAVE +1".len() * LARGE_CHAR_CELLS)
+    );
     assert_eq!(r.row_text(row, col, 9), "OCTAVE +1");
     assert_eq!(r.row_text(row + 1, col, 9), "OCTAVE +1");
     let a = r.shown[row * COLS + col].1;
@@ -694,11 +697,10 @@ fn a_toast_shows_on_its_row_until_it_times_out() {
         "the theme's toast colours"
     );
     assert_eq!(r.frame().cells, 0, "a toast that stays costs nothing");
-    r.frame(); // 80 ms after its first frame
+    r.frame();
     assert_eq!(r.row_text(row, col, 9), "OCTAVE +1");
-    r.frame(); // 120 ms after its first frame
+    r.frame();
     assert_eq!(r.row_text(row, col, 9), "RRRRRRRRR");
-    // A long one is clipped inside the frame's margin, and a new one replaces the last.
     unsafe {
         screen_toast(
             &mut *r.s,
@@ -717,7 +719,7 @@ fn a_toast_shows_on_its_row_until_it_times_out() {
 
 #[test]
 fn the_block_cursor_blinks_every_eight_frames() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     let mut runs: Vec<(bool, u32)> = Vec::new();
@@ -737,12 +739,10 @@ fn the_block_cursor_blinks_every_eight_frames() {
 
 #[test]
 fn a_toast_runs_from_its_first_frame_whenever_it_was_set() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     let (row, col) = (SCREEN_TOAST_ROW as usize, SCREEN_TOAST_COL as usize);
-    // Set after a long pause (no frames for 10 s, say during an update): it still shows for
-    // its whole time.
     unsafe { screen_toast(&mut *r.s, c"HELLO".as_ptr(), 100) };
     r.now += 10_000;
     r.frame();
@@ -760,7 +760,7 @@ fn a_toast_runs_from_its_first_frame_whenever_it_was_set() {
 
 #[test]
 fn a_toast_set_before_the_first_frame_shows_for_its_time() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut g = Box::<grid>::default();
     let mut s = Box::<screen>::default();
@@ -773,7 +773,6 @@ fn a_toast_set_before_the_first_frame_shows_for_its_time() {
             &mut *rs as *mut Probe as *mut c_void,
         );
         screen_toast(&mut *s, c"BOOT".as_ptr(), 100);
-        // The first frame comes late, at 5 s.
         screen_frame(&mut *s, 5_000);
     }
     assert_eq!(s.toast_on, 1, "the toast expired before it showed");
@@ -785,7 +784,6 @@ fn a_toast_set_before_the_first_frame_shows_for_its_time() {
 
 static GLOBAL: std::sync::Mutex<Vec<u8>> = std::sync::Mutex::new(Vec::new());
 
-/// A global handler that takes presses of button 8 (HOME, say).
 unsafe extern "C" fn global_home(_ctx: *mut c_void, e: *const screen_event) -> c_int {
     let e = unsafe { &*e };
     if e.kind != SCREEN_PRESS as u8 || e.id != 8 {
@@ -795,14 +793,13 @@ unsafe extern "C" fn global_home(_ctx: *mut c_void, e: *const screen_event) -> c
     1
 }
 
-/// A capture that takes everything, HOME included.
 unsafe extern "C" fn capture_all(_ctx: *mut c_void, _e: *const screen_event) -> c_int {
     1
 }
 
 #[test]
 fn the_capture_sees_home_before_the_global_handler_and_the_global_before_the_view() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     rs.take();
@@ -829,25 +826,26 @@ fn the_capture_sees_home_before_the_global_handler_and_the_global_before_the_vie
 
 #[test]
 fn a_capture_is_released_when_the_stack_falls_below_its_depth() {
-    let (root, a, b) = (probe_view(c"ROOT"), probe_view(c"A"), probe_view(c"B"));
+    let (root, a, b) = (
+        view_composed_every_frame(c"ROOT"),
+        view_composed_every_frame(c"A"),
+        view_composed_every_frame(c"B"),
+    );
     let (mut rs, mut as_, mut bs) = (Probe::new(b'R'), Probe::new(b'A'), Probe::new(b'B'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_CUT);
-    // A captures (MIDI learn, say), then opens B over itself.
     unsafe { screen_capture(&mut *r.s, Some(capture_all), 0x5150 as *mut c_void) };
     r.push(&b, &mut bs, SCREEN_CUT);
     r.pop(SCREEN_CUT);
     assert!(r.s.capture.is_some(), "released when a view above it went");
     assert!(r.input(SCREEN_PRESS, 2, 0, 0));
     assert!(as_.take().iter().all(|l| !l.starts_with("input")));
-    // A goes: so does its capture, and the events reach the root again.
     r.pop(SCREEN_CUT);
     assert!(r.s.capture.is_none(), "the capture outlived its view");
     assert!(r.s.capture_ctx.is_null());
     rs.take();
     assert!(!r.input(SCREEN_PRESS, 2, 0, 0));
     assert_eq!(rs.take(), ["input 0 2 0 0x0"]);
-    // A capture set on the root stays: the root is never popped.
     unsafe { screen_capture(&mut *r.s, Some(capture_all), 0x5150 as *mut c_void) };
     r.push(&a, &mut as_, SCREEN_CUT);
     r.pop(SCREEN_CUT);
@@ -856,7 +854,6 @@ fn a_capture_is_released_when_the_stack_falls_below_its_depth() {
 
 static REENTRY: std::sync::Mutex<Vec<i32>> = std::sync::Mutex::new(Vec::new());
 
-/// enter and exit that try to push and pop.
 unsafe extern "C" fn reenter(s: *mut screen, state: *mut c_void) {
     let v = unsafe { screen_top(&*s) };
     let pushed = unsafe { screen_push(s, v, state, SCREEN_CUT) };
@@ -866,11 +863,11 @@ unsafe extern "C" fn reenter(s: *mut screen, state: *mut c_void) {
 
 #[test]
 fn enter_and_exit_cannot_push_or_pop() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let a = Box::new(view {
         enter: Some(reenter),
         exit: Some(reenter),
-        ..*probe_view(c"A")
+        ..*view_composed_every_frame(c"A")
     });
     let mut rs = Probe::new(b'R');
     let mut as_ = Probe::new(b'A');
@@ -881,13 +878,15 @@ fn enter_and_exit_cannot_push_or_pop() {
     assert_eq!(r.pop(SCREEN_CUT), 0);
     assert_eq!(r.s.depth, 1, "exit changed the stack");
     assert_eq!(REENTRY.lock().unwrap().as_slice(), [-1, -1, -1, -1]);
-    // And the screen takes pushes again afterwards.
     assert_eq!(r.push(&a, &mut as_, SCREEN_CUT), 0);
 }
 
 #[test]
 fn a_view_composes_only_when_it_changed_or_the_screen_needs_it() {
-    let (root, a) = (quiet_view(c"ROOT"), quiet_view(c"A"));
+    let (root, a) = (
+        view_composed_when_changed(c"ROOT"),
+        view_composed_when_changed(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     assert_eq!(rs.take(), ["enter", "compose"], "the first frame composes");
@@ -895,12 +894,11 @@ fn a_view_composes_only_when_it_changed_or_the_screen_needs_it() {
         assert_eq!(r.frame().cells, 0);
     }
     assert!(rs.take().is_empty(), "an idle view composed");
-    rs.dirty = true;
+    rs.changed = true;
     r.frame();
     assert_eq!(rs.take(), ["compose"]);
     r.frame();
     assert!(rs.take().is_empty());
-    // A toast: composed while it shows and on the frame it goes, so the view's row is back.
     unsafe { screen_toast(&mut *r.s, c"HI".as_ptr(), 80) };
     for _ in 0..5 {
         r.frame();
@@ -914,7 +912,6 @@ fn a_view_composes_only_when_it_changed_or_the_screen_needs_it() {
     );
     r.frame();
     assert!(rs.take().is_empty());
-    // A raster: composed through it and once after, and the border is the view's again.
     unsafe { screen_raster(&mut *r.s, 2) };
     for _ in 0..2 * SCREEN_RASTER_FRAMES + 2 {
         r.frame();
@@ -926,7 +923,6 @@ fn a_view_composes_only_when_it_changed_or_the_screen_needs_it() {
         .enumerate()
         .filter(|&(i, _)| on_border(i))
         .all(|(_, &(c, a))| (c, a) == (FONT_FULL as u8, border_attr())));
-    // A switch composes the new view; screen_redraw the same one.
     r.push(&a, &mut as_, SCREEN_CUT);
     r.frame();
     r.frame();
@@ -943,18 +939,20 @@ fn a_view_composes_only_when_it_changed_or_the_screen_needs_it() {
 
 #[test]
 fn a_wipe_composes_every_frame_until_it_ends() {
-    let (root, a) = (quiet_view(c"ROOT"), quiet_view(c"A"));
+    let (root, a) = (
+        view_composed_when_changed(c"ROOT"),
+        view_composed_when_changed(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_WIPE_DOWN);
-    let frames = wipe_frames(&mut r, b'A').len();
+    let frames = wipe_frames_rows_showing(&mut r, b'A').len();
     assert_eq!(as_.take().len(), 1 + frames, "enter and a compose a frame");
     assert_eq!(r.rows_showing(b'A').len(), ROWS - 2);
     assert_eq!(r.frame().cells, 0);
     assert!(as_.take().is_empty());
 }
 
-/// What `p`'s compose draws, cell by cell.
 fn composed(p: &Probe) -> Vec<(u8, u8)> {
     (0..CELLS)
         .map(|i| {
@@ -967,21 +965,21 @@ fn composed(p: &Probe) -> Vec<(u8, u8)> {
         .collect()
 }
 
-/// A transition's frames until nothing runs: each inside the SPI budget and sending at most
-/// the wipe's rows, its edge and `extra` rows more. Then the panel shows `p`'s compose with
-/// nothing held.
-fn finish(r: &mut Rig, p: &Probe, extra: usize) {
-    for f in 0..40 {
-        let sent = r.frame();
-        assert!(
-            sent.spi_ms() <= SPI_BUDGET_MS,
-            "frame {f}: {:.1} ms of SPI ({sent:?})",
-            sent.spi_ms()
-        );
-        assert!(
-            sent.rows <= SCREEN_WIPE_ROWS as usize + 1 + extra,
-            "frame {f}: {sent:?}"
-        );
+fn assert_within_transition_budget(sent: Sent) {
+    assert!(
+        sent.spi_ms() <= SPI_BUDGET_MS,
+        "{:.1} ms of SPI ({sent:?})",
+        sent.spi_ms()
+    );
+    assert!(
+        sent.rows_sent <= SCREEN_WIPE_ROWS as usize + 1,
+        "the wipe's rows and its edge at most: {sent:?}"
+    );
+}
+
+fn finish_transition_on(r: &mut Rig, p: &Probe) {
+    for _ in 0..40 {
+        assert_within_transition_budget(r.frame());
         if !r.animating() && r.s.toast_on == 0 {
             break;
         }
@@ -997,46 +995,52 @@ fn finish(r: &mut Rig, p: &Probe, extra: usize) {
     assert_eq!(r.frame().cells, 0, "work left behind");
 }
 
-/// Three frames of a transition, inside the budgets.
-fn frames3(r: &mut Rig) {
+fn three_frames_within_budget(r: &mut Rig) {
     for _ in 0..3 {
-        let sent = r.frame();
-        assert!(sent.spi_ms() <= SPI_BUDGET_MS, "{sent:?}");
-        assert!(sent.rows <= SCREEN_WIPE_ROWS as usize + 1, "{sent:?}");
+        assert_within_transition_budget(r.frame());
     }
 }
 
 #[test]
 fn a_wipe_up_interrupting_a_wipe_down_ends_on_the_view_below() {
-    let (root, a) = (quiet_view(c"ROOT"), quiet_view(c"A"));
+    let (root, a) = (
+        view_composed_when_changed(c"ROOT"),
+        view_composed_when_changed(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_WIPE_DOWN);
-    frames3(&mut r);
+    three_frames_within_budget(&mut r);
     assert!(r.animating());
     r.pop(SCREEN_WIPE_UP);
-    finish(&mut r, &rs, 0);
+    finish_transition_on(&mut r, &rs);
 }
 
 #[test]
 fn a_push_inside_a_wipe_ends_on_the_new_view() {
-    let (root, a, b) = (quiet_view(c"ROOT"), quiet_view(c"A"), quiet_view(c"B"));
+    let (root, a, b) = (
+        view_composed_when_changed(c"ROOT"),
+        view_composed_when_changed(c"A"),
+        view_composed_when_changed(c"B"),
+    );
     let (mut rs, mut as_, mut bs) = (Probe::new(b'R'), Probe::new(b'A'), Probe::new(b'B'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_WIPE_DOWN);
-    frames3(&mut r);
+    three_frames_within_budget(&mut r);
     r.push(&b, &mut bs, SCREEN_WIPE_DOWN);
-    finish(&mut r, &bs, 0);
-    // And back to back the other way: a pop and at once another pop.
+    finish_transition_on(&mut r, &bs);
     r.pop(SCREEN_WIPE_UP);
     r.frame();
     r.pop(SCREEN_WIPE_UP);
-    finish(&mut r, &rs, 0);
+    finish_transition_on(&mut r, &rs);
 }
 
 #[test]
 fn a_toast_during_a_wipe_shows_once_its_row_is_revealed() {
-    let (root, a) = (quiet_view(c"ROOT"), quiet_view(c"A"));
+    let (root, a) = (
+        view_composed_when_changed(c"ROOT"),
+        view_composed_when_changed(c"A"),
+    );
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
     let mut r = Rig::new(&root, &mut rs);
     r.push(&a, &mut as_, SCREEN_WIPE_DOWN);
@@ -1045,9 +1049,7 @@ fn a_toast_during_a_wipe_shows_once_its_row_is_revealed() {
     let row = SCREEN_TOAST_ROW as usize;
     let col = SCREEN_TOAST_COL as usize;
     for _ in 0..40 {
-        let sent = r.frame();
-        assert!(sent.spi_ms() <= SPI_BUDGET_MS, "{sent:?}");
-        assert!(sent.rows <= SCREEN_WIPE_ROWS as usize + 1, "{sent:?}");
+        assert_within_transition_budget(r.frame());
         if r.g.hold & (1 << row) != 0 {
             assert_eq!(r.row_text(row, col, 2), "RR", "a held row was sent");
         }
@@ -1056,18 +1058,13 @@ fn a_toast_during_a_wipe_shows_once_its_row_is_revealed() {
         }
     }
     assert_eq!(r.row_text(row, col, 9), "OCTAVE +1");
-    // Then it goes, and the panel shows A alone.
     unsafe { screen_toast(&mut *r.s, c"".as_ptr(), 0) };
-    finish(&mut r, &as_, 0);
+    finish_transition_on(&mut r, &as_);
 }
 
-/// What the view on top draws over the view under it (screen_cover) and the toast's text while
-/// it shows are covered: a view holding to a budget leaves them alone and does not count them
-/// (screen_pending); the cover's cells count with the layers' (screen_layer_cells) for the
-/// frame it was set in.
 #[test]
 fn the_cover_and_a_showing_toast_are_left_out_of_a_views_budget() {
-    let root = probe_view(c"ROOT");
+    let root = view_composed_every_frame(c"ROOT");
     let mut rs = Probe::new(b'R');
     let mut r = Rig::new(&root, &mut rs);
     let covered = |r: &Rig, c: u32, row: u32| unsafe { screen_covered(&*r.s, c, row) } != 0;
@@ -1078,26 +1075,22 @@ fn the_cover_and_a_showing_toast_are_left_out_of_a_views_budget() {
     }
     let layers = unsafe { screen_layer_cells(&*r.s) };
     assert_eq!(layers, 7, "the cover's cells count with the layers'");
-    // What the view drew under the cover is not pending.
     unsafe {
         grid_put(&mut *r.g, 3, 21, b'X', 0x12);
         grid_put(&mut *r.g, 9, 21, b'X', 0x12);
     }
     assert_eq!(unsafe { grid_pending(&*r.g) }, 2);
     assert_eq!(unsafe { screen_pending(&*r.s) }, 1);
-    // A frame clears the cover.
     r.frame();
     assert!(!covered(&r, 2, 20), "the cover outlived its frame");
     assert_eq!(unsafe { screen_layer_cells(&*r.s) }, 0);
-    // The toast's text, from its first frame to its last, and not past its text.
     let row = SCREEN_TOAST_ROW;
     let col = SCREEN_TOAST_COL;
     unsafe { screen_toast(&mut *r.s, c"HELLO".as_ptr(), 120) };
-    // Large text: 5 characters of 2 x 2 cells, on the toast's row and the one below.
     assert!(covered(&r, col, row) && covered(&r, col + 9, row + 1));
     assert!(!covered(&r, col + 10, row) && !covered(&r, col - 1, row));
     assert!(!covered(&r, col, row - 1) && !covered(&r, col, row + 2));
-    r.frame(); // its first frame: it shows until 120 ms from now
+    r.frame();
     let first = r.now;
     r.s.now = first + 80;
     assert!(covered(&r, col, row), "the toast's last frame");
@@ -1106,7 +1099,6 @@ fn the_cover_and_a_showing_toast_are_left_out_of_a_views_budget() {
         !covered(&r, col, row),
         "the frame it ends in: the view draws there again"
     );
-    // A toast of no time never shows.
     unsafe { screen_toast(&mut *r.s, c"HELLO".as_ptr(), 0) };
     assert!(!covered(&r, col, row));
 }

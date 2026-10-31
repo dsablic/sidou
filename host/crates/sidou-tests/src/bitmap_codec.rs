@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The bitmap row format specified in docs/art/bitmap-codec.md.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Format {
@@ -8,8 +7,6 @@ pub struct Format {
     pub raw: bool,
 }
 
-/// Run-byte rows into shared or independent pools, whichever is smaller: row byte offsets,
-/// the pools concatenated, and each image's byte offset into them.
 pub fn encode(rows: &[Vec<Vec<u8>>], seeks: &[usize]) -> (Vec<Vec<u16>>, Vec<u8>, Vec<usize>) {
     encode_formats(
         rows,
@@ -198,7 +195,6 @@ fn pack(packets: &[Vec<u8>], order: &[usize]) -> (Vec<u16>, Vec<u8>) {
     (offsets, stream)
 }
 
-/// The next original run byte; `at` counts nibbles from this pool's header.
 pub fn next(data: &[u8], at: &mut usize) -> u8 {
     if data[15] & 128 != 0 {
         let run = data[*at / 2];
@@ -217,7 +213,6 @@ pub fn next(data: &[u8], at: &mut usize) -> u8 {
     }
 }
 
-/// A run's encoded length, using the pool's first fifteen bytes as its codebook.
 pub fn nibbles(dictionary: &[u8], run: u8) -> usize {
     if dictionary[15] & 128 != 0 {
         2
@@ -228,7 +223,6 @@ pub fn nibbles(dictionary: &[u8], run: u8) -> usize {
     }
 }
 
-/// A generated image's data pointer, into the concatenated RUNS pools.
 pub fn data_ref(base: usize) -> String {
     if base == 0 {
         "RUNS".into()
@@ -259,6 +253,15 @@ pub fn seek_row(data: &[u8], row: u16, width: usize, x: usize) -> (usize, usize)
 mod tests {
     use super::*;
 
+    fn assert_every_pixel_seeks_to_the_rest_of_the_row(data: &[u8], start: u16, row: &[u8]) {
+        let width = row.len();
+        for x in 0..width {
+            let (mut at, pixel) = seek_row(data, start, width, x);
+            let got: Vec<u8> = (pixel..width).map(|_| next(data, &mut at)).collect();
+            assert_eq!(&got[x - pixel..], &row[x..]);
+        }
+    }
+
     #[test]
     fn raw_packets_keep_run_bytes_and_absolute_checkpoints() {
         let row: Vec<u8> = (0..240).map(|x| (x % 16) as u8).collect();
@@ -273,11 +276,7 @@ mod tests {
         let start = usize::from(rows[0][0]);
         assert_eq!(&data[start..start + 7], &[32, 64, 96, 128, 160, 192, 224]);
         assert_eq!(&data[start + 7..start + 7 + row.len()], &row);
-        for x in 0..240 {
-            let (mut at, pixel) = seek_row(&data, rows[0][0], 240, x);
-            let got: Vec<u8> = (pixel..240).map(|_| next(&data, &mut at)).collect();
-            assert_eq!(&got[x - pixel..], &row[x..]);
-        }
+        assert_every_pixel_seeks_to_the_rest_of_the_row(&data, rows[0][0], &row);
     }
 
     #[test]
@@ -380,12 +379,7 @@ mod tests {
         let sets = vec![vec![row.clone()], vec![row.clone()]];
         let (rows, data, bases) = encode(&sets, &[16, 64]);
         for i in 0..2 {
-            let data = &data[bases[i]..];
-            for x in 0..40 {
-                let (mut at, pixel) = seek_row(data, rows[i][0], 40, x);
-                let got: Vec<u8> = (pixel..40).map(|_| next(data, &mut at)).collect();
-                assert_eq!(&got[x - pixel..], &row[x..]);
-            }
+            assert_every_pixel_seeks_to_the_rest_of_the_row(&data[bases[i]..], rows[i][0], &row);
         }
     }
 }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use sidou_sys::*;
 
+const RISES_IN_THE_FIRST_CYCLE: u32 = 0x7fe000;
+
 fn setup() -> (sid_osc, sid_osc) {
     let mut target = sid_osc::default();
     let mut src = sid_osc::default();
@@ -21,7 +23,7 @@ fn setup() -> (sid_osc, sid_osc) {
 #[test]
 fn resets_target_when_source_msb_rises_on_the_last_cycle() {
     let (mut target, mut src) = setup();
-    unsafe { sid_osc_advance(&mut src, 1, 0, 0) }; // 0x7ff000 -> 0x801000: rose this cycle
+    unsafe { sid_osc_advance(&mut src, 1, 0, 0) };
     assert_eq!(src.msb_rose, 1);
     unsafe { sid_osc_sync(&mut target, &src) };
     assert_eq!(target.acc, 0);
@@ -30,7 +32,7 @@ fn resets_target_when_source_msb_rises_on_the_last_cycle() {
 #[test]
 fn target_keeps_cycles_that_elapsed_after_the_rise() {
     let (mut target, mut src) = setup();
-    unsafe { sid_osc_advance(&mut src, 2, 0, 0) }; // rose one full cycle before the end of the step
+    unsafe { sid_osc_advance(&mut src, 2, 0, 0) };
     assert_eq!(src.msb_rose, 1);
     unsafe { sid_osc_sync(&mut target, &src) };
     assert_eq!(target.acc, 0x1000);
@@ -44,8 +46,6 @@ fn no_rise_no_reset() {
     assert_eq!(src.msb_rose, 0);
 }
 
-/// A noise-combined sync source runs cycle by cycle; its overshoot must still count to
-/// the end of the step, as sid_osc_sync expects.
 #[test]
 fn a_cycle_by_cycle_source_reports_overshoot_at_the_end_of_the_step() {
     for control in [0x91u8, 0xa1, 0xc1] {
@@ -55,10 +55,11 @@ fn a_cycle_by_cycle_source_reports_overshoot_at_the_end_of_the_step() {
             sid_osc_write_control(&mut src, control);
         }
         src.freq = 0x2000;
-        src.acc = 0x7fe000; // rises in the first cycle of a 20-cycle step
+        src.acc = RISES_IN_THE_FIRST_CYCLE;
         unsafe { sid_osc_advance(&mut src, 20, 0, 0) };
-        if src.msb_rose == 0 {
-            continue; // the 6581 pulled the MSB low (sawtooth combination)
+        let the_6581_pulled_the_msb_low = src.msb_rose == 0;
+        if the_6581_pulled_the_msb_low {
+            continue;
         }
         assert_eq!(
             src.overshoot,

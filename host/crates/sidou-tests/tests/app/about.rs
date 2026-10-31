@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The About cracktro (app/about.c): reached from the menu, the credits pages from
-//! CREDITS.md, the logo, raster bars, stars and the sine scroller, and what it sends a frame.
-
-use std::ffi::CStr;
 
 use sidou_sys::*;
 
+use crate::credits::compiled_pages;
 use crate::views::Ui;
-use crate::{assert_wipe_holds_still, drain, pixels, wipe_frames, Sent, SPI_BUDGET_MS};
+use crate::{assert_wipe_holds_still, c_utf8, drain, pixels, wipe_frames, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
 const W: usize = COLS * 8;
@@ -16,7 +13,6 @@ const PAGE: usize = ABOUT_PAGE_FRAMES as usize;
 const HEADING: usize = ABOUT_HEADING_ROW as usize;
 const LINES: usize = ABOUT_LINES_ROW as usize;
 
-/// The menu, then ABOUT, settled.
 pub(crate) fn open_about(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ABOUT as i32);
@@ -28,7 +24,6 @@ fn about_frame(ui: &Ui) -> usize {
     ui.v.about.frame as usize
 }
 
-/// Frames until the cracktro's own count reaches `frame`.
 fn run_to(ui: &mut Ui, frame: usize) -> Vec<Sent> {
     let mut sent = Vec::new();
     while about_frame(ui) < frame {
@@ -38,16 +33,46 @@ fn run_to(ui: &mut Ui, frame: usize) -> Vec<Sent> {
     sent
 }
 
-fn pages() -> &'static [credits_page] {
-    unsafe { std::slice::from_raw_parts(credits_pages.as_ptr(), credits_page_count as usize) }
+struct SongWithBuiltinTune {
+    _model: Box<gt2_song>,
+    _ctl: Box<song_ctl>,
+    io: Box<song_io>,
 }
 
-fn text(p: *const std::ffi::c_char) -> String {
-    unsafe { CStr::from_ptr(p) }.to_str().unwrap().to_owned()
+impl SongWithBuiltinTune {
+    fn new() -> Self {
+        unsafe extern "C" fn builtin(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
+            0
+        }
+        let mut model = Box::<gt2_song>::default();
+        let mut ctl = Box::new(song_ctl {
+            song: &mut *model,
+            ..Default::default()
+        });
+        let io = Box::new(song_io {
+            ctl: &mut *ctl,
+            hooks: song_io_hooks {
+                builtin: Some(builtin),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        Self {
+            _model: model,
+            _ctl: ctl,
+            io,
+        }
+    }
+}
+
+fn changed_rows(ui: &Ui, last: &[u8]) -> Vec<usize> {
+    (HEADING..ABOUT_RAMP_BOTTOM as usize)
+        .filter(|&r| (0..COLS).any(|c| ui.g.attr[r * COLS + c] != last[r * COLS + c]))
+        .collect()
 }
 
 #[test]
-fn about_opens_from_the_menu_and_home_goes_back() {
+fn about_opens_from_the_menu_plays_the_keys_and_home_goes_back() {
     let mut ui = Ui::new();
     open_about(&mut ui);
     assert_eq!(ui.top(), "ABOUT");
@@ -59,7 +84,6 @@ fn about_opens_from_the_menu_and_home_goes_back() {
         "the cracktro's overlays stayed"
     );
     assert!(ui.g.region_bitmap.is_null(), "the logo's bitmap stayed");
-    // The keys still play in it.
     open_about(&mut ui);
     ui.press(PANEL_BTN_OCT_UP);
     assert_eq!(ui.live().octave, 1);
@@ -90,82 +114,45 @@ fn unsaved_song_keeps_about_silent_and_the_silent_scroller_stays_in_budget() {
 
 #[test]
 fn clean_about_requests_its_tune_once_and_close_requests_restoration() {
-    unsafe extern "C" fn builtin(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
-        0
-    }
     let mut ui = Ui::without_cards();
-    let mut model = Box::<gt2_song>::default();
-    let mut ctl = Box::new(song_ctl {
-        song: &mut *model,
-        ..Default::default()
-    });
-    let mut io = Box::new(song_io {
-        ctl: &mut *ctl,
-        hooks: song_io_hooks {
-            builtin: Some(builtin),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    let mut tune = SongWithBuiltinTune::new();
+    let io = &mut *tune.io;
+    unsafe { views_song_io(&mut *ui.v, io) };
     open_about(&mut ui);
     assert_eq!(io.about, 1);
     assert_eq!(io.state, SONG_IO_STOP as u8);
     assert_eq!(ui.v.about.silent, 0);
     io.about_play = 1;
-    for _ in 0..10 {
-        ui.frame();
-    }
+    ui.frames(10);
     assert_eq!(io.about_play, 1, "frames must not reopen About's music");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(io.about_close, 1);
     assert_eq!(io.about_play, 0);
 }
 
-/// Ergonomics review E02 (M2 review 5.5): the song views opened over ABOUT edited ABOUT's tune,
-/// and its close lost the edits. While ABOUT's tune is the song (until the close has read the
-/// user's song back), SEQ and the menu's TRACKER are refused with a toast.
 #[test]
 fn the_song_views_do_not_open_while_abouts_tune_is_the_song() {
-    unsafe extern "C" fn builtin(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
-        0
-    }
     let mut ui = Ui::without_cards();
-    let mut model = Box::<gt2_song>::default();
-    let mut ctl = Box::new(song_ctl {
-        song: &mut *model,
-        ..Default::default()
-    });
-    let mut io = Box::new(song_io {
-        ctl: &mut *ctl,
-        hooks: song_io_hooks {
-            builtin: Some(builtin),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    let mut tune = SongWithBuiltinTune::new();
+    let io = &mut *tune.io;
+    unsafe { views_song_io(&mut *ui.v, io) };
     open_about(&mut ui);
     assert_eq!(io.about, 1);
     ui.press(PANEL_BTN_SEQ);
     ui.settle();
     assert_eq!(ui.top(), "ABOUT", "SEQ refused");
     assert_eq!(ui.toast().as_deref(), Some("LEAVE ABOUT FIRST"));
-    // Closed, the user's song is not back yet: the menu's TRACKER and SEQ wait for it.
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     assert_eq!(ui.top(), "MENU");
     assert_eq!(io.about, 1, "the restore runs");
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_TRACKER as i32);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.choose_menu_item(VIEWS_MENU_TRACKER);
     ui.settle();
     assert_eq!(ui.top(), "MENU", "TRACKER refused");
     assert_eq!(ui.toast().as_deref(), Some("LOADING"));
     ui.press(PANEL_BTN_SEQ);
     ui.settle();
     assert_eq!(ui.top(), "MENU", "SEQ refused");
-    // The user's song back: they open.
     io.about = 0;
     ui.press(PANEL_BTN_SEQ);
     ui.settle();
@@ -187,30 +174,26 @@ fn the_first_page_names_sidou_and_its_version_and_then_every_credits_page_shows(
         "{}",
         ui.row(LINES)
     );
-    for (k, p) in pages().iter().enumerate() {
+    for (k, p) in compiled_pages().iter().enumerate() {
         run_to(&mut ui, (k + 1) * PAGE + PAGE / 2);
-        let heading = text(p.heading);
+        let heading = c_utf8(p.heading);
         assert!(
             ui.row(HEADING).contains(&heading),
             "page {k}: {} not {heading}",
             ui.row(HEADING)
         );
         for (i, &line) in p.line.iter().take_while(|l| !l.is_null()).enumerate() {
-            let line = text(line);
+            let line = c_utf8(line);
             assert!(
                 ui.row(LINES + i).contains(&line),
                 "page {k} line {i}: {line}"
             );
         }
     }
-    // Then round again.
-    run_to(&mut ui, (pages().len() + 1) * PAGE + PAGE / 2);
+    run_to(&mut ui, (compiled_pages().len() + 1) * PAGE + PAGE / 2);
     assert!(ui.row(HEADING).contains("SIDOU V1.2.3"));
 }
 
-/// Ergonomics review E20: the first page's heading is at 2x and fits: SIDOU and the version,
-/// centred; a version too long for both, alone. Its two rows still change with at most one
-/// other row a frame.
 #[test]
 fn the_first_pages_heading_is_at_2x_and_fits() {
     let mut ui = Ui::new();
@@ -225,9 +208,7 @@ fn the_first_pages_heading_is_at_2x_and_fits() {
     let start = about_frame(&ui);
     for _ in start..PAGE {
         ui.frame();
-        let rows: Vec<usize> = (HEADING..ABOUT_RAMP_BOTTOM as usize)
-            .filter(|&r| (0..COLS).any(|c| ui.g.attr[r * COLS + c] != last[r * COLS + c]))
-            .collect();
+        let rows = changed_rows(&ui, &last);
         assert!(
             rows.len() <= 2,
             "frame {} changed rows {rows:?}",
@@ -253,14 +234,11 @@ fn a_page_cascades_in_and_out_two_rows_at_a_time() {
     let mut last = ui.g.attr;
     for k in 0..PAGE {
         ui.frame();
-        let rows: Vec<usize> = (HEADING..ABOUT_RAMP_BOTTOM as usize)
-            .filter(|&r| (0..COLS).any(|c| ui.g.attr[r * COLS + c] != last[r * COLS + c]))
-            .collect();
+        let rows = changed_rows(&ui, &last);
         assert!(
             rows.len() <= 2,
             "frame {k} of the page changed rows {rows:?}"
         );
-        // Drawn frame PAGE + k: even k is an even frame of the cracktro.
         assert!(
             rows.is_empty() || k % 2 == 0,
             "frame {k} of the page is odd"
@@ -280,7 +258,6 @@ fn a_page_fades_in_and_out() {
         seen.push(heading_fg(&ui));
         ui.frame();
     }
-    // Hidden (a blank cell is white on black), then the four levels up and down.
     let levels = [
         GRID_WHITE,
         GRID_BLUE,
@@ -298,8 +275,6 @@ fn a_page_fades_in_and_out() {
     );
 }
 
-/// The rows of the bars and the scroller: the bottom of the screen, below the second ramp
-/// line.
 const BARS: std::ops::Range<usize> =
     ABOUT_BAR_ROW as usize..(ABOUT_BAR_ROW + ABOUT_BAR_ROWS) as usize;
 const SCROLL: std::ops::Range<usize> = ABOUT_SCROLL_ROW as usize - 2..ABOUT_SCROLL_ROW as usize + 3;
@@ -311,7 +286,6 @@ fn the_logo_bars_stars_and_scroller_are_where_they_belong() {
     open_about(&mut ui);
     run_to(&mut ui, 60);
     let ovl = |r: usize| (0..COLS).filter(|&c| ui.g.ovl[r * COLS + c] != 0).count();
-    // The logo: Metal Chrome's lettering band, pixel for pixel, at the top.
     assert_eq!(
         (ABOUT_LOGO_ROW, ABOUT_LOGO_ROWS),
         (0, 9),
@@ -324,19 +298,14 @@ fn the_logo_bars_stars_and_scroller_are_where_they_belong() {
         px[..72 * W] == img.px[band..band + 72 * W],
         "the logo is not the scene's lettering band"
     );
-    // The scroller: overlays on its five rows, one or two a column (over the bars: app/about.c
-    // asserts it).
     let scroll: usize = SCROLL.map(ovl).sum();
     assert!((24..=60).contains(&scroll), "{scroll} scroller cells");
-    // Stars on black between the ramp lines.
     let stars: usize = STARS.map(ovl).sum();
     assert!((8..=24).contains(&stars), "{stars} star cells");
-    // Bars behind the scroller: at least one bar's 20 pixel rows of colour at the left edge,
-    // all of them in the bars' rows.
     let coloured: Vec<usize> = (72..W)
         .filter(|&y| {
             let c = px[y * W + 4];
-            c != GRID_BLACK as u8 && c != GRID_WHITE as u8 // not a letter of the scroller
+            c != GRID_BLACK as u8 && c != GRID_WHITE as u8
         })
         .filter(|&y| {
             !(ABOUT_RAMP_BOTTOM as usize * 8..ABOUT_RAMP_BOTTOM as usize * 8 + 8).contains(&y)
@@ -351,13 +320,11 @@ fn the_logo_bars_stars_and_scroller_are_where_they_belong() {
         coloured.iter().all(|&y| BARS.contains(&(y / 8))),
         "{coloured:?}"
     );
-    // The ramp lines.
     for r in [ABOUT_RAMP_TOP as usize, ABOUT_RAMP_BOTTOM as usize] {
         assert!((0..COLS).all(|c| ui.g.ch[r * COLS + c] == FONT_BOX_H as u8));
     }
 }
 
-/// The scroller's letters read over the bars: it is white, and no bar has white in it.
 #[test]
 fn the_scroller_reads_over_the_bars() {
     let mut ui = Ui::new();
@@ -370,7 +337,6 @@ fn the_scroller_reads_over_the_bars() {
                 assert_eq!(u32::from(ui.g.ovl_color[o - 1]), GRID_WHITE);
             }
         }
-        // A bar cell's two colours, its top and bottom halves.
         for i in BARS.flat_map(|r| r * COLS..(r + 1) * COLS) {
             let a = u32::from(ui.g.attr[i]);
             assert!(
@@ -381,7 +347,6 @@ fn the_scroller_reads_over_the_bars() {
     }
 }
 
-/// Pulse Train, the alternative logo, fits About's band too: centred in it, with no bitmap.
 #[test]
 fn a_logo_drawn_in_cells_fits_the_band() {
     let mut ui = Ui::new();
@@ -390,13 +355,10 @@ fn a_logo_drawn_in_cells_fits_the_band() {
     run_to(&mut ui, 20);
     assert!(ui.g.region_bitmap.is_null(), "the bitmap stayed");
     let ovl = |r: usize| (7..22).filter(|&c| ui.g.ovl[r * COLS + c] != 0).count();
-    // 5 rows centred in 9: rows 2-6.
     assert!((2..7).all(|r| ovl(r) > 0), "no logo on rows 2-6");
     assert!([0, 1, 7, 8].iter().all(|&r| ovl(r) == 0));
 }
 
-/// Cracktro Chrome, an alternative, fits the band: its 8 rows of lettering from the top, and
-/// a black row under them.
 #[test]
 fn cracktro_chrome_fits_the_band() {
     let mut ui = Ui::new();
@@ -418,8 +380,6 @@ fn every_cell_is_composed_every_frame() {
     open_about(&mut b);
     run_to(&mut a, 30);
     run_to(&mut b, 30);
-    // Any glyph and colour, and overlays where the cracktro draws them (the stars and the
-    // scroller; the others only a view switch clears).
     for i in 0..COLS * COLS {
         let (c, r) = (i % COLS, i / COLS);
         b.g.ch[i] = b'X';
@@ -433,9 +393,6 @@ fn every_cell_is_composed_every_frame() {
     assert!(pixels(&a.g) == pixels(&b.g), "a cell kept what was there");
 }
 
-/// The wipe into About: the cracktro holds still under it, so each frame sends the wipe's rows
-/// and nothing else (app/screen.h sizes a wipe for a view that does not move), after any time
-/// in the menu.
 #[test]
 fn the_wipe_into_about_sends_only_its_rows() {
     let mut worst = Sent::default();
@@ -444,9 +401,7 @@ fn the_wipe_into_about_sends_only_its_rows() {
         ui.press(PANEL_BTN_HOME);
         ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ABOUT as i32);
         ui.settle();
-        for _ in 0..warm {
-            ui.frame();
-        }
+        ui.frames(warm);
         drain(&mut ui.g);
         ui.turn(PANEL_ENC_ALGORITHM, 1);
         assert_eq!(ui.top(), "ABOUT");
@@ -466,14 +421,12 @@ fn the_wipe_into_about_sends_only_its_rows() {
     );
 }
 
-/// How the cracktro spends the SPI: the averages and worst frames over a full round of the
-/// credits.
 #[test]
-fn the_cracktro_stays_within_the_budget() {
+fn the_cracktro_averages_120_cells_a_frame_within_the_spi_and_overlay_budgets() {
     let mut ui = Ui::new();
     open_about(&mut ui);
     drain(&mut ui.g);
-    let frames = (pages().len() + 1) * PAGE;
+    let frames = (compiled_pages().len() + 1) * PAGE;
     let mut most_overlays = 0;
     let mut sent = Vec::new();
     while about_frame(&ui) < frames {
@@ -493,8 +446,6 @@ fn the_cracktro_stays_within_the_budget() {
         sent.len(),
         worst.spi_ms()
     );
-    // https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m1e-look-and-feel.md: trimmed from the prototype's 240 cells a
-    // frame to about 120.
     assert!(avg <= 120.0, "{avg:.1} cells a frame on average");
     assert!(
         worst.spi_ms() <= SPI_BUDGET_MS,

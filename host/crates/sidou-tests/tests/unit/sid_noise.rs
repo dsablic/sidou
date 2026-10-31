@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The noise register in reSIDfp's bit order (bit 22 is where the new bit enters).
 use sidou_sys::*;
+
+use crate::Lcg;
+
+const BIT_5_SO_THE_FORCED_BIT_SHIFTS_IN_0: u32 = 0x000020;
 
 fn noise_osc(is6581: bool) -> sid_osc {
     let mut o = sid_osc::default();
@@ -17,8 +20,7 @@ fn advance(o: &mut sid_osc, cycles: u32) {
     unsafe { sid_osc_advance(o, cycles, 0, 0) }
 }
 
-/// One shift as reSIDfp does it outside TEST: up one, new bit = bit 0 ^ bit 5.
-fn shift(sr: u32) -> u32 {
+fn residfp_shift(sr: u32) -> u32 {
     (sr >> 1) | (((sr ^ (sr >> 5)) & 1) << 22)
 }
 
@@ -43,8 +45,6 @@ fn output_uses_re_sid_fp_tap_mapping_and_write_back_inverts_it() {
     }
 }
 
-/// The register shifts two cycles after accumulator bit 19 rises, whatever the step
-/// sizes; against a cycle-by-cycle model.
 #[test]
 fn shifts_two_cycles_after_bit_19_rises() {
     for freq in [0x0123u32, 0x7531, 0xffff] {
@@ -63,7 +63,7 @@ fn shifts_two_cycles_after_bit_19_rises() {
                 } else if pipeline > 0 {
                     pipeline -= 1;
                     if pipeline == 0 {
-                        sr = shift(sr);
+                        sr = residfp_shift(sr);
                     }
                 }
             }
@@ -106,7 +106,7 @@ fn test_keeps_the_register_then_fades_it_to_all_ones() {
 #[test]
 fn releasing_test_shifts_with_the_new_bit_forced_to_one() {
     let mut o = noise_osc(true);
-    o.sr = 0x000020; // bit 5 set: forced 1 ^ bit 5 = 0
+    o.sr = BIT_5_SO_THE_FORCED_BIT_SHIFTS_IN_0;
     unsafe {
         sid_osc_write_control(&mut o, (SID_CTRL_NOISE | SID_CTRL_TEST) as u8);
     }
@@ -124,13 +124,12 @@ fn releasing_test_shifts_with_the_new_bit_forced_to_one() {
 fn register_is_maximal_length() {
     let mut sr = 0x7fffffu32;
     for _ in 0..0x7fffffu32 {
-        sr = shift(sr);
+        sr = residfp_shift(sr);
     }
     assert_eq!(sr, 0x7fffff);
-    // And sid_noise_shift_phase2 is that shift.
     let mut o = noise_osc(true);
     for _ in 0..1000 {
-        let expect = shift(o.sr);
+        let expect = residfp_shift(o.sr);
         o.latch = o.sr;
         o.test_or_reset = 0;
         unsafe { sid_noise_shift_phase2(&mut o, 8, 8) };
@@ -151,9 +150,6 @@ fn combined_with_pulse_the_output_locks_the_register_at_zero() {
     assert_eq!(o.noise, 0);
 }
 
-/// sid_osc_pull_msb relies on this: on the 6581, in every profile, a sawtooth
-/// combination's output has its top bit low in the cycle the accumulator enters its
-/// upper half (top 12 bits 0x800 to 0x80f), with the pulse high or low.
 #[test]
 fn saw_combinations_output_a_low_top_bit_entering_the_upper_half() {
     let mut o = sid_osc::default();
@@ -177,17 +173,7 @@ fn saw_combinations_output_a_low_top_bit_entering_the_upper_half() {
     }
 }
 
-struct Rng(u32);
-
-impl Rng {
-    fn next(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
-        self.0 >> 8
-    }
-}
-
 fn assert_same_osc(a: &sid_osc, b: &sid_osc, at: &str) {
-    // Deferred shifts (a locked-up register) are applied before comparing.
     let (mut a, mut b) = (*a, *b);
     unsafe {
         sid_noise_settle(&mut a);
@@ -198,11 +184,9 @@ fn assert_same_osc(a: &sid_osc, b: &sid_osc, at: &str) {
     assert_eq!(a.noise, b.noise, "noise, {at}");
     assert_eq!(a.out, b.out, "out, {at}");
     if a.cycle_mode == 1 {
-        // Kept only while running cycle by cycle (locked up, OSC3 is computed instead).
         assert_eq!(a.osc3, b.osc3, "osc3, {at}");
         assert_eq!(a.pulse, b.pulse, "pulse, {at}");
         if a.is6581 == 0 {
-            // The 8580's OSC3 latch; the 6581 does not use it.
             assert_eq!(a.tri_saw, b.tri_saw, "tri_saw, {at}");
         }
     }
@@ -216,26 +200,24 @@ fn assert_same_osc(a: &sid_osc, b: &sid_osc, at: &str) {
     }
 }
 
-/// Noise combined with other waveforms, with TEST, ring modulation and pulse width
-/// changes: sid_osc_advance's bulk steps against cycle by cycle.
 #[test]
 fn combined_noise_bulk_steps_match_cycle_by_cycle() {
     for (is6581, seed) in [(1, 1u32), (0, 2), (1, 3), (0, 4)] {
-        let mut rng = Rng(seed);
+        let mut rng = Lcg(seed);
         let mut fast = noise_osc(is6581 == 1);
         let mut slow = fast;
         let mut src_acc = 0x123456u32;
         for step in 0..150_000 {
-            let op = rng.next() % 64;
+            let op = rng.next_u32() % 64;
             if op < 4 {
-                let wf = [0x9u8, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x8][(rng.next() % 8) as usize];
+                let wf = [0x9u8, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x8][(rng.next_u32() % 8) as usize];
                 let control = (wf << 4)
-                    | if rng.next().is_multiple_of(4) {
+                    | if rng.next_u32().is_multiple_of(4) {
                         SID_CTRL_TEST as u8
                     } else {
                         0
                     }
-                    | if rng.next().is_multiple_of(4) {
+                    | if rng.next_u32().is_multiple_of(4) {
                         SID_CTRL_RING as u8
                     } else {
                         0
@@ -247,20 +229,20 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
                     sid_osc_write_control(&mut slow, control);
                 }
             } else if op < 6 {
-                let pw = rng.next() % 0x1000;
+                let pw = rng.next_u32() % 0x1000;
                 unsafe { sid_osc_write_pw(&mut fast, pw) };
                 unsafe { sid_osc_write_pw(&mut slow, pw) };
             } else if op < 7 {
-                let freq = [0x0123u32, 0x1167, 0x4000, 0xfedc][(rng.next() % 4) as usize];
+                let freq = [0x0123u32, 0x1167, 0x4000, 0xfedc][(rng.next_u32() % 4) as usize];
                 unsafe {
                     sid_osc_write_freq(&mut fast, freq);
                     sid_osc_write_freq(&mut slow, freq);
                 }
             } else {
-                let cycles = if rng.next().is_multiple_of(4) {
-                    1 + rng.next() % 3
+                let cycles = if rng.next_u32().is_multiple_of(4) {
+                    1 + rng.next_u32() % 3
                 } else {
-                    1 + rng.next() % 23
+                    1 + rng.next_u32() % 23
                 };
                 let src_freq = 0x2b89;
                 unsafe {
@@ -273,7 +255,6 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
                     }
                 }
                 src_acc = (src_acc + cycles * src_freq) & 0xffffff;
-                // As clock_voices does after each step.
                 fast.pulse_held = 0;
                 slow.pulse_held = 0;
                 if fast.control >> 4 > 8 {
@@ -284,10 +265,6 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
     }
 }
 
-/// The noise tables the firmware builds at boot (sid_noise_tables_init, a constructor) are
-/// the ones it used to load from the image: SID_NOISE_JUMP is sidou-tablegen's 2^k-shift
-/// matrices (the old gen/noise_jump.h, generated the same way), and SID_NOISE_WB_BYTE[h]
-/// is the writeback of the output's bits 4..11, SID_WB_HI(h >> 4) | SID_WB_LO(h & 15).
 #[test]
 fn boot_built_noise_tables_match_the_generated_ones() {
     let built = unsafe { &*std::ptr::addr_of!(SID_NOISE_JUMP) };
@@ -303,15 +280,12 @@ fn boot_built_noise_tables_match_the_generated_ones() {
         let want = bits(h >> 4, [2, 4, 8, 11]) | bits(h & 15, [13, 17, 20, 22]);
         assert_eq!(got, want, "SID_NOISE_WB_BYTE[{h:#04x}]");
     }
-    // Every entry of the byte table is an output bit's writeback, so no two bytes agree.
     let mut seen: Vec<u32> = wb_byte.to_vec();
     seen.sort_unstable();
     seen.dedup();
     assert_eq!(seen.len(), 256);
 }
 
-/// sid_noise_jump is that many plain shifts, across the table's range and past the
-/// register's period.
 #[test]
 fn noise_jump_equals_repeated_shifts() {
     let mut sr = 0x5a5a5au32;
@@ -319,12 +293,11 @@ fn noise_jump_equals_repeated_shifts() {
     let mut done = 0u32;
     for n in [0u32, 1, 31, 32, 33, 100, 4_096, 65_537, 1_000_003] {
         while done < n {
-            stepped = shift(stepped);
+            stepped = residfp_shift(stepped);
             done += 1;
         }
         assert_eq!(unsafe { sid_noise_jump(sr, n) }, stepped, "{n} shifts");
     }
-    // The period: 2^23 - 1 shifts bring every nonzero register back.
     sr = 0x123456;
     assert_eq!(unsafe { sid_noise_jump(sr, 0x7fffff) }, sr);
     assert_eq!(unsafe { sid_noise_jump(sr, 0x7fffff + 5) }, unsafe {
@@ -332,7 +305,6 @@ fn noise_jump_equals_repeated_shifts() {
     });
 }
 
-/// Without noise selected the shifts are only counted; settling applies them exactly.
 #[test]
 fn deferred_shifts_settle_to_the_stepped_register() {
     for freq in [0x0123u32, 0x7531, 0xffff] {

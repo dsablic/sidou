@@ -1,21 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! CHROME COMET: classic C64 game-music energy, D minor (harmonic minor's A major for the
-//! dominant), 150 BPM (tempo 5, sixteenths), the 6581. Original material written in the
-//! spirit of the mid-eighties game composers; no other tune's melody, chords or riffs.
-//!
-//! Plan. Voice 1 a staccato pulse bass bouncing octaves with passing notes, low-pass
-//! filtered (a resonant sweep when it plays alone); voice 2 the lead: a pulse-width
-//! modulated lead with a chirp attack, delayed vibrato and slides, then sixteenth arpeggio
-//! runs, and hard-synced laser zaps (synced to voice 1); voice 3 the drums (a pitch-dropped
-//! pulse kick, a noise and pulse snare, a ring-modulated metallic hat, triangle toms)
-//! multiplexed with one-frame chord arpeggios.
-//!
-//! Bars: intro 4 (the bass, a tom fill, a synced sweep rising) | A 8 (Dm Dm Bb C Dm Dm Gm A,
-//! the theme) | A' 8 (the theme climbing higher) | B 8 (Bb C Am Dm Gm C F A, long notes
-//! with vibrato and slides) | break 4 (the bass alone under its filter sweep, laser zaps,
-//! the drums) | solo 8 (Dm C Bb A twice, arpeggio runs) | A 8 | ending 2. 50 bars, 80 s; the
-//! loop restarts at A.
 
 use super::*;
 
@@ -26,7 +10,6 @@ pub const SONG: Showcase = Showcase {
     kit,
 };
 
-/// The A section's chords on voice 3: (root, program, bass pattern, its transpose).
 const A: [(&str, &str); 8] = [
     ("D-4", "min"),
     ("D-4", "min"),
@@ -61,7 +44,6 @@ fn drums_with(chord: &str) -> String {
 pub fn kit() -> Kit {
     let mut k = Kit::new("CHROME COMET");
 
-    // the wavetable
     k.wave("bass", &[(0x41, 0x00), jump(0)]);
     k.wave("lead", &[(0x41, 0x0c), (0x41, 0x00), jump(0)]);
     k.wave("run", &[(0x41, 0x00), jump(0)]);
@@ -90,7 +72,6 @@ pub fn kit() -> Kit {
             jump(0),
         ],
     );
-    // a metallic hat: a noise tick, then the triangle ring-modulated by voice 2
     k.wave("hat", &[(0x81, abs(95)), (0x15, abs(79)), jump(0)]);
     k.wave(
         "tom",
@@ -127,7 +108,6 @@ pub fn kit() -> Kit {
         ],
     );
 
-    // the pulse table
     k.pulse("bass", &[(0x84, 0x00), (0x20, 0x40), (0x20, 0xc0), jump(2)]);
     k.pulse("lead", &[(0x82, 0x00), (0x20, 0x30), (0x20, 0xd0), jump(2)]);
     k.pulse("mid", &[(0x88, 0x00), jump(0)]);
@@ -136,7 +116,6 @@ pub fn kit() -> Kit {
         &[(0x83, 0x00), (0x30, 0x20), (0x30, 0xe0), jump(2)],
     );
 
-    // the filter table: low-pass on voice 1
     k.filter("warm", &[(0x90, 0x61), (0x00, 0x60), jump(0)]);
     k.filter(
         "sweep",
@@ -149,7 +128,6 @@ pub fn kit() -> Kit {
         ],
     );
 
-    // the speed table
     k.speed("vib", 0x03, 0x60);
     k.speed("slide", 0x03, 0x00);
     k.speed("rise", 0x00, 0x50);
@@ -177,7 +155,6 @@ pub fn kit() -> Kit {
     k.alias("t2", "D-4/tom");
     k.alias("t3", "A-3/tom");
 
-    // voice 1: the bass, minor (on D) and major (on C)
     let minor = "D-2 . D-3 D-2 . D-2 D-3 . D-2 . D-3 D-2 C-3 D-3 A-2 C-3";
     let major = "C-2 . C-3 C-2 . C-2 C-3 . C-2 . C-3 C-2 A-2 C-3 G-2 A-2";
     k.pattern("bm-in", 16, &format!("D-2/bass@A=warm {}", &minor[4..]));
@@ -187,7 +164,6 @@ pub fn kit() -> Kit {
     k.pattern("bm-warm", 16, &format!("D-2/bass@A=warm {}", &minor[4..]));
     k.pattern("b-end", 32, "D-2/bass .31");
 
-    // voice 2: the lead
     let r = |n: usize| ".@1=rise ".repeat(n);
     k.pattern("quiet-in", 16, ".@F05 .15");
     k.pattern("quiet", 16, ".16");
@@ -236,7 +212,6 @@ pub fn kit() -> Kit {
          | F-6 .5 E-6 . F-6 . A-6 .5 \
          | E-6 .3 C#6 .3 A-5 .3 E-5 .3",
     );
-    // the laser zaps: synced to the bass, pitch diving
     let z = ".@2=zap";
     k.pattern(
         "zaps",
@@ -283,7 +258,6 @@ pub fn kit() -> Kit {
     );
     k.pattern("lead-end", 32, "D-6/wide .31");
 
-    // voice 3: the drums and chords
     k.pattern("intro1", 16, "k . . . s . . . k . k . s . . .");
     k.pattern("intro2", 16, "k . h . s . h . k . k h s t1 t2 t3");
     k.pattern("intro3", 16, "k . h . s . h . k . k h s . h .");
@@ -313,7 +287,6 @@ pub fn kit() -> Kit {
     k.pattern("brk-fill", 16, "k . h . s . h k . k h . t1 t1 t2 t3");
     k.pattern("end", 32, "x D-4/min .30");
 
-    // intro 4 | A 8 | A' 8 | B 8 | break 4 | solo 8 | A 8 | ending 2
     let bass_a = "+0 bm bm -2 bM +0 bM +0 bm bm +5 bm +7 bm";
     let bass_b = "-2 bM +0 bM +7 bm +0 bm +5 bm +0 bM +5 bM +7 bm";
     let bass_s = "+0 bm bM -2 bM +7 bm";

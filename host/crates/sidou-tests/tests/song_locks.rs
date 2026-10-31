@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Parameter locks (M2c Task 7): the LOCK chunk's records kept sorted, carried through the
-//! trailer and through the pattern edits that move rows, and played: a locked row's register
-//! holds the lock's value after each of its calls, the player itself plays as without locks,
-//! and the song's own value is back at the next row; the character's locks reach the hook.
 
 use std::ffi::c_void;
 
@@ -11,17 +7,21 @@ use sidou_sys::*;
 use sidou_tests::song::*;
 use sidou_tests::transport::*;
 
-const R: [u8; 4] = [0xbd, 0, 0, 0];
+const SONG_NAME_BYTE: usize = 4;
 
-fn row(note: u8, instr: u8) -> [u8; 4] {
-    [note, instr, 0, 0]
-}
-
-/// Three channels of 8-row patterns (6 ticks a row), a pulse instrument.
-fn sng() -> Vec<u8> {
-    let p0 = vec![row(0x60 + 36, 1), R, R, R, row(0x60 + 40, 0), R, R, R];
-    let p1 = vec![row(0x60 + 24, 1), R, R, R, R, R, R, R];
-    let p2 = vec![row(0x60 + 19, 1), R, R, R, R, R, R, R];
+fn three_channels_of_8_row_patterns() -> Vec<u8> {
+    let p0 = vec![
+        row(0x60 + 36, 1),
+        REST,
+        REST,
+        REST,
+        row(0x60 + 40, 0),
+        REST,
+        REST,
+        REST,
+    ];
+    let p1 = vec![row(0x60 + 24, 1), REST, REST, REST, REST, REST, REST, REST];
+    let p2 = vec![row(0x60 + 19, 1), REST, REST, REST, REST, REST, REST, REST];
     let mut s = SngSpec::new();
     s.orders = vec![vec![(vec![0], 0), (vec![1], 0), (vec![2], 0)]];
     let mut ins = [0u8; 25];
@@ -41,9 +41,7 @@ fn sng() -> Vec<u8> {
 }
 
 fn song() -> Song {
-    let mut s = Song::host();
-    s.read(&sng(), 0).unwrap();
-    s
+    Song::host_from(&three_channels_of_8_row_patterns())
 }
 
 fn locks(s: &Song) -> Vec<(u8, u8, u8, u16)> {
@@ -66,7 +64,7 @@ fn locks_stay_sorted_and_round_trip_through_the_trailer() {
     put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 900);
     put(&mut s, 0, 3, SONG_LOCK_RESONANCE, 12);
     put(&mut s, 0, 1, SONG_LOCK_AGE, 100);
-    put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 1000); // a new value, not a new lock
+    put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 1000);
     let want = vec![
         (0, 1, SONG_LOCK_AGE as u8, 100),
         (0, 3, SONG_LOCK_CUTOFF as u8, 1000),
@@ -87,8 +85,7 @@ fn locks_stay_sorted_and_round_trip_through_the_trailer() {
     assert_eq!(n, 2);
     assert!(!rec.is_null());
     let file = s.write(true);
-    let mut back = Song::host();
-    back.read(&file, 0).unwrap();
+    let back = Song::host_from(&file);
     assert_eq!(locks(&back), want, "through the trailer");
     assert_eq!(
         unsafe { song_lock_remove(s.ptr_mut(), 0, 3, SONG_LOCK_CUTOFF) },
@@ -106,14 +103,13 @@ fn the_gt2_parts_crc_rule_drops_the_locks() {
     let mut s = song();
     put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 900);
     let mut file = s.write(true);
-    file[4] ^= 0x20; // the song's name: the GT2 part changed, its CRC no longer matches
+    file[SONG_NAME_BYTE] ^= 0x20;
     let mut back = Song::host();
     let info = back.read(&file, 0).unwrap();
     assert_eq!(info.msg, "SNG: LOCKS DROPPED");
     assert!(locks(&back).is_empty());
 }
 
-/// The song's LOCK chunk's records (SONG_LOCK_BYTES each), to damage them in place.
 fn lock_records(s: &mut Song) -> &mut [u8] {
     let mut len = 0u32;
     let d = unsafe { song_ext_find(s.ptr(), u32::from_le_bytes(*b"LOCK"), &mut len) };
@@ -128,8 +124,6 @@ unsafe extern "C" fn read_bytes(ctx: *mut c_void, at: u32, buf: *mut u8, len: u3
     n as u32
 }
 
-/// The file through the streamed reader (gt2_stream, as the device loads from the store):
-/// its status and message.
 fn stream_load(s: &mut Song, file: &[u8]) -> (i32, String) {
     let mut w = gt2_stream::default();
     let bytes = file.to_vec();
@@ -153,9 +147,6 @@ fn stream_load(s: &mut Song, file: &[u8]) -> (i32, String) {
     panic!("the reader did not finish")
 }
 
-/// A LOCK chunk whose CRCs hold but whose records are out of range or out of order is dropped
-/// when the file is read, by both readers, with the message (review 3.6): a filter-mode lock of
-/// 8 would set $18's bit 7 (voice 3 off), and unsorted records hide locks from the row search.
 #[test]
 fn a_lock_chunk_out_of_range_or_out_of_order_is_dropped_when_read() {
     let base = || {
@@ -248,16 +239,13 @@ fn pattern_edits_carry_their_locks() {
         vec![(0, 5, 0, 500), (1, 5, 0, 900)],
         "cut to 6 rows"
     );
-    // an edit never applied moves nothing
     let mut e = gt2_edit::default();
     assert_eq!(unsafe { gt2_pattern_insert_row(p, 0, 0, &mut e) }, GT2_OK);
     unsafe { gt2_edit_cancel(p, &e) };
     assert_eq!(locks(&s), vec![(0, 5, 0, 500), (1, 5, 0, 900)], "a cancel");
 }
 
-/// The transport through `calls` calls: after each call, the chip's cutoff and voice 1's
-/// pulse width, and the row channel 1 plays.
-fn play(s: &mut Song, calls: u32) -> (Transport, Vec<(u32, u32, u8, u8)>) {
+fn cutoff_pulse_and_row_per_call(s: &mut Song, calls: u32) -> (Transport, Vec<(u32, u32, u8, u8)>) {
     let mut t = Transport::new(s);
     assert!(t.play(0, 0));
     let mut out = Vec::new();
@@ -280,12 +268,12 @@ fn play(s: &mut Song, calls: u32) -> (Transport, Vec<(u32, u32, u8, u8)>) {
 #[test]
 fn a_locked_row_holds_its_values_and_the_song_returns_after() {
     let mut plain = song();
-    let (t0, base) = play(&mut plain, 300);
+    let (t0, base) = cutoff_pulse_and_row_per_call(&mut plain, 300);
     let mut s = song();
     put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 1234);
     put(&mut s, 0, 3, SONG_LOCK_PULSE, 0x321);
     put(&mut s, 0, 6, SONG_LOCK_PULSE, 0x777);
-    let (t, got) = play(&mut s, 300);
+    let (t, got) = cutoff_pulse_and_row_per_call(&mut s, 300);
     let mut locked = 0;
     for (k, (&(fc, pw, pat, r), &(fc0, pw0, _, _))) in got.iter().zip(&base).enumerate() {
         match (pat, r) {
@@ -301,7 +289,6 @@ fn a_locked_row_holds_its_values_and_the_song_returns_after() {
         }
     }
     assert!(locked > 20, "{locked} locked calls");
-    // the player itself is the same as without locks
     assert!(player_state(&t.sc.player) == player_state(&t0.sc.player));
 }
 
@@ -324,8 +311,8 @@ fn a_character_lock_reaches_the_hook_and_goes_after_its_row() {
     };
     unsafe { song_ctl_set_hooks(&mut *t.sc, &hooks) };
     assert!(t.play(0, 0));
-    let until = 60; // past row 3 of pattern 0 (6 ticks a row)
-    while t.calls() < until {
+    let past_row_3_of_pattern_0 = 60;
+    while t.calls() < past_row_3_of_pattern_0 {
         t.pass();
         t.block_silent();
     }
@@ -334,14 +321,11 @@ fn a_character_lock_reaches_the_hook_and_goes_after_its_row() {
     assert_eq!(got, vec![(f, 90), (f, -1)]);
 }
 
-/// Ergonomics review E06 (1), M2 review 3.4: at a pattern's last row the look-ahead holds row 0
-/// of the pattern and of the next; with all five filter and pulse locks on both, the next
-/// pattern's row 0 plays all five of its own (eight slots lost its ROUTE and PULSE).
 #[test]
 fn a_pattern_boundary_with_five_locks_on_both_first_rows_keeps_all_ten() {
-    let p0 = vec![row(0x60 + 36, 1), R, R, R, R, R, R, R];
-    let p1 = vec![row(0x60 + 24, 1), R, R, R, R, R, R, R];
-    let p2 = vec![row(0x60 + 19, 1), R, R, R, R, R, R, R];
+    let p0 = vec![row(0x60 + 36, 1), REST, REST, REST, REST, REST, REST, REST];
+    let p1 = vec![row(0x60 + 24, 1), REST, REST, REST, REST, REST, REST, REST];
+    let p2 = vec![row(0x60 + 19, 1), REST, REST, REST, REST, REST, REST, REST];
     let mut spec = SngSpec::new();
     spec.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![2], 0)]];
     let mut ins = [0u8; 25];
@@ -357,8 +341,7 @@ fn a_pattern_boundary_with_five_locks_on_both_first_rows_keeps_all_ten() {
         .into_iter()
         .map(|p| (p, [0xff, 0, 0, 0]))
         .collect();
-    let mut s = Song::host();
-    s.read(&spec.encode(), 0).unwrap();
+    let mut s = Song::host_from(&spec.encode());
     for (p, v) in [
         (0u32, [100u32, 3, 1, 1, 0x111]),
         (1, [1500, 9, 2, 0, 0x555]),
@@ -403,8 +386,6 @@ fn a_pattern_boundary_with_five_locks_on_both_first_rows_keeps_all_ten() {
     assert!(seen > 3, "{seen} calls on pattern 1's row 0");
 }
 
-/// Ergonomics review E06 (2), M2 review 3.5: changing a lock in place while a row edit is
-/// pending is refused as adding one is, so the value never lands on rows about to move.
 #[test]
 fn changing_a_lock_while_an_edit_is_pending_waits() {
     let mut s = song();
@@ -438,9 +419,6 @@ fn changing_a_lock_while_an_edit_is_pending_waits() {
     assert_eq!(locks(&s), vec![(0, 6, 0, 600)]);
 }
 
-/// Ergonomics review E06 (3), M2 review 3.7: a row that starts while an edit's look-ahead is
-/// in flight (lock_edit_seq) is resolved once it lands, not marked seen and skipped: the next
-/// row's lock still plays.
 #[test]
 fn a_row_that_starts_during_an_edits_look_ahead_is_resolved_after_it() {
     let mut s = song();
@@ -455,8 +433,6 @@ fn a_row_that_starts_during_an_edits_look_ahead_is_resolved_after_it() {
         assert!(guard < 10_000);
     }
     t.pass();
-    // An edit's look-ahead in flight (as between poll_applied and poll_locks on the device):
-    // row 3 starts and is polled meanwhile.
     t.sc.lock_edit_seq = t.sc.applied.wrapping_add(1000);
     while t.sc.row_row[0] != 3 {
         t.block_silent();
@@ -476,9 +452,6 @@ fn a_row_that_starts_during_an_edits_look_ahead_is_resolved_after_it() {
     assert!(locked > 0);
 }
 
-/// Ergonomics review E08 (M2 review 2.3): chip A swapped (a profile change) on a locked row:
-/// the new chip gets the row's locked cutoff and pulse with the player's registers, not the
-/// song's own until the next call.
 #[test]
 fn a_chip_swapped_on_a_locked_row_gets_the_locked_registers_at_once() {
     let mut s = song();
@@ -505,8 +478,6 @@ fn a_chip_swapped_on_a_locked_row_gets_the_locked_registers_at_once() {
         assert_eq!(fresh.osc[v].pw, t.chip.osc[v].pw, "voice {v}: the song's");
     }
 }
-
-// ---- per-step chance (SONG_LOCK_CHANCE) ----
 
 #[test]
 fn a_chance_is_a_lock_that_round_trips_and_leaves_the_gt2_bytes_alone() {
@@ -574,7 +545,6 @@ fn the_roll_is_seedable_and_a_chance_of_c_plays_about_c_in_100() {
         let r = rolls(1234, c);
         let got = r.iter().filter(|&&p| p).count() as f64 / r.len() as f64 * 100.0;
         assert!((got - f64::from(c)).abs() < 1.0, "{c}%: played {got:.2}%");
-        // and no streaks that read as a pattern: a run of 12 equal rolls is rare at 50%
         if c == 50 {
             let longest = r.chunk_by(|a, b| a == b).map(<[bool]>::len).max().unwrap();
             assert!(longest < 24, "a run of {longest}");
@@ -582,9 +552,7 @@ fn the_roll_is_seedable_and_a_chance_of_c_plays_about_c_in_100() {
     }
 }
 
-/// How the pattern 0 row `row` of the first channel played over `passes` passes of its 8 rows
-/// (6 calls a row): true for a pass whose row played its note.
-fn played(s: &mut Song, seed: u32, row: u8, passes: usize) -> Vec<bool> {
+fn row_played_per_pass(s: &mut Song, seed: u32, row: u8, passes: usize) -> Vec<bool> {
     let mut t = Transport::new(s);
     t.sc.chance_seed = seed;
     assert!(t.play(0, 0));
@@ -610,25 +578,35 @@ fn played(s: &mut Song, seed: u32, row: u8, passes: usize) -> Vec<bool> {
 fn a_step_with_a_chance_plays_by_its_roll_and_the_player_otherwise_plays_as_ever() {
     let mut s = song();
     assert!(
-        played(&mut s, 1, 4, 20).iter().all(|&p| p),
+        row_played_per_pass(&mut s, 1, 4, 20).iter().all(|&p| p),
         "no chance: always"
     );
     put(&mut s, 0, 4, SONG_LOCK_CHANCE, 100);
-    assert!(played(&mut s, 1, 4, 20).iter().all(|&p| p), "100: always");
-    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 0);
-    assert!(played(&mut s, 1, 4, 30).iter().all(|&p| !p), "0: never");
     assert!(
-        played(&mut s, 1, 0, 30).iter().all(|&p| p),
+        row_played_per_pass(&mut s, 1, 4, 20).iter().all(|&p| p),
+        "100: always"
+    );
+    put(&mut s, 0, 4, SONG_LOCK_CHANCE, 0);
+    assert!(
+        row_played_per_pass(&mut s, 1, 4, 30).iter().all(|&p| !p),
+        "0: never"
+    );
+    assert!(
+        row_played_per_pass(&mut s, 1, 0, 30).iter().all(|&p| p),
         "another step is not touched"
     );
     put(&mut s, 0, 4, SONG_LOCK_CHANCE, 50);
-    let a = played(&mut s, 77, 4, 300);
+    let a = row_played_per_pass(&mut s, 77, 4, 300);
     assert_eq!(
         a,
-        played(&mut s, 77, 4, 300),
+        row_played_per_pass(&mut s, 77, 4, 300),
         "the same seed: the same passes"
     );
-    assert_ne!(a, played(&mut s, 78, 4, 300), "another seed: other passes");
+    assert_ne!(
+        a,
+        row_played_per_pass(&mut s, 78, 4, 300),
+        "another seed: other passes"
+    );
     let n = a.iter().filter(|&&p| p).count();
     assert!((110..=190).contains(&n), "{n} of 300 at 50%");
 }
@@ -650,8 +628,6 @@ fn the_main_loop_tells_the_player_the_steps_that_lose_their_roll() {
     assert!(skipped_rows > 0, "the main loop told the player");
 }
 
-// ---- 1.1: a held STEP step plays its locks (song_ctl_held) ----
-
 const HELD: [(u32, u32); 5] = [
     (SONG_LOCK_CUTOFF, 1234),
     (SONG_LOCK_RESONANCE, 9),
@@ -671,8 +647,6 @@ fn held(t: &mut Transport, ch: u32, locks: &[(u32, u32)]) {
     );
 }
 
-/// What the locks set: the cutoff, resonance, filter mode, voice 1's route and pulse, and its
-/// frequency and control.
 fn locked_regs(t: &Transport) -> (u32, u8, u8, u8, u32, u32, u8) {
     (
         t.chip.fc,
@@ -685,9 +659,6 @@ fn locked_regs(t: &Transport) -> (u32, u8, u8, u8, u32, u32, u8) {
     )
 }
 
-/// A held step's audition sounds as the sequencer plays its row: pattern 0's row 0 (C-3 on
-/// instrument 1) with all five filter and pulse locks, played by the song and jammed with its
-/// locks held, gives the same registers call for call for the row's six calls.
 #[test]
 fn a_held_steps_audition_plays_its_row_as_the_sequencer_does() {
     let mut s = song();
@@ -707,8 +678,8 @@ fn a_held_steps_audition_plays_its_row_as_the_sequencer_does() {
     }
     assert_eq!(row[0].0, 1234);
 
-    let mut plain = song(); // no locks in the song: they come from the held step
-    let mut t = Transport::new(&mut plain);
+    let mut song_without_locks = song();
+    let mut t = Transport::new(&mut song_without_locks);
     assert!(t.audition());
     assert!(t.run_until(400, |t| t.jam_ready()));
     held(&mut t, 0, &HELD);
@@ -728,9 +699,6 @@ fn a_held_steps_audition_plays_its_row_as_the_sequencer_does() {
     assert_eq!(heard, row, "the held step sounds as its row");
 }
 
-/// While a step is held its locks stay over the rows the song plays (the rows' own locks wait),
-/// and at its release they go: from the next call the registers are the song's as without it,
-/// and a later row's own lock plays again.
 #[test]
 fn a_held_steps_locks_go_at_its_release_and_leave_the_next_rows_alone() {
     let run = |hold: bool| {

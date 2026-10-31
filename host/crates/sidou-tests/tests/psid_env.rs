@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The PSID environment (M3 Task 6a; core/psid/psid_env.h, docs/reference/psid.md): loading,
-//! the calls and their registers, the bank register, the period (frame, CIA latch, speed
-//! bits), the clock, time and the scheduling of late calls, the limits, and slicing. Every
-//! tune is a fixture built here (`sidou_tests::psid_fixtures`), and each test states the cycles
-//! its fixture's instructions take.
 use std::os::raw::c_void;
 
 use sidou_sys::*;
@@ -15,11 +10,45 @@ const PAL: u32 = PSID_CLOCK_PAL;
 const NTSC: u32 = PSID_CLOCK_NTSC;
 const FRAME: u32 = PSID_FRAME_PAL;
 
-/// A SID write: cycle, chip, register, value.
+const INIT_RECORD_CYCLES: u32 = 12;
+const BANK_RECORD_CYCLES: u32 = 12;
+const IRQ_BANK_RECORD_CYCLES: u32 = 7;
+const COUNT_CYCLES: u32 = 12;
+const LDA_IMM_STA_ZP_CYCLES: u32 = 5;
+const LDA_ZP_CYCLES: u32 = 3;
+const BNE_TAKEN_CYCLES: u32 = 3;
+const BNE_NOT_TAKEN_CYCLES: u32 = 2;
+const CMP_IMM_CYCLES: u32 = 2;
+const DEC_ZP_BNE_CYCLES: u32 = 8;
+const TSX_STX_CYCLES: u32 = 6;
+const JMP_CYCLES: u32 = 3;
+const KERNAL_EXIT_CYCLES: u32 = 22;
+const RTS_CYCLES: u32 = 6;
+const RTI_CYCLES: u32 = 6;
+const DELAY_CYCLES: u32 = 1286;
+const READ_TO_ITS_STORE_CYCLES: u32 = 4;
+const PAL_LINE_CYCLES: u32 = 63;
+const NTSC_LINE_CYCLES: u32 = 65;
+const LAST_DELAY_EXTRA_CYCLE: u32 = 1;
+const VBI_INIT_CYCLES: u32 = INIT_RECORD_CYCLES + LDA_IMM_STA_ABS_CYCLES + RTS_CYCLES;
+const VBI_PLAY_CYCLES: u32 = BANK_RECORD_CYCLES + COUNT_CYCLES + RTS_CYCLES;
+const LATCH_SETTING_INIT_CYCLES: u32 = INIT_RECORD_CYCLES + 2 * LDA_IMM_STA_ABS_CYCLES + RTS_CYCLES;
+const IRQ_HANDLER_CYCLES: u32 = TSX_STX_CYCLES + IRQ_BANK_RECORD_CYCLES + COUNT_CYCLES;
+const OVERRUN_PLAY_ON_THE_GRID_CYCLES: u32 =
+    BANK_RECORD_CYCLES + LDA_ZP_CYCLES + BNE_TAKEN_CYCLES + COUNT_CYCLES + RTS_CYCLES;
+
+fn overrunning_play_cycles(delays: u32) -> u32 {
+    BANK_RECORD_CYCLES
+        + LDA_ZP_CYCLES
+        + BNE_NOT_TAKEN_CYCLES
+        + delays * DELAY_CYCLES
+        + LAST_DELAY_EXTRA_CYCLE
+        + COUNT_CYCLES
+        + RTS_CYCLES
+}
+
 type Write = (u32, u32, u32, u32);
 
-/// What a run reported, other than MORE and IDLE: the code, the cycle, and for a returned play
-/// call its start and its interrupt's cycle.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Event {
     code: i32,
@@ -28,17 +57,12 @@ struct Event {
     due: u32,
 }
 
-/// A loaded tune. Boxed, since the environment keeps pointers to the memory, the header and
-/// the write log.
 struct Tune {
     env: Box<psid_env>,
     mem: Box<[u8]>,
     header: Box<psid_header>,
-    // Boxed so the sink's pointer to the Vec stays put when the Tune moves.
     #[allow(clippy::box_collection)]
     writes: Box<Vec<Write>>,
-    // The chips whose voice shadows answer the tune's SID reads (`load_shadowed`), and the
-    // shadows; the environment keeps pointers to them, so each is boxed.
     #[allow(clippy::vec_box)]
     chips: Vec<Box<sid>>,
     #[allow(clippy::vec_box)]
@@ -79,8 +103,6 @@ impl Tune {
         t
     }
 
-    /// A tune whose SID reads are answered by shadows of fresh chips of the given models
-    /// (chip A's, and B's), started at cycle 0 as the player will.
     fn load_shadowed(p: &Psid, models: &[sid_model]) -> Tune {
         let mut t = Tune::load(p);
         for &m in models {
@@ -100,12 +122,11 @@ impl Tune {
         t
     }
 
-    /// The I/O page's hooks, as the 6502 calls them.
-    fn rd(&mut self, addr: u32, cycle: u32) -> u8 {
+    fn io_read(&mut self, addr: u32, cycle: u32) -> u8 {
         unsafe { (self.env.cpu.rd.unwrap())(self.env.cpu.user, addr, cycle) }
     }
 
-    fn wr(&mut self, addr: u32, value: u32, cycle: u32) {
+    fn io_write(&mut self, addr: u32, value: u32, cycle: u32) {
         unsafe { (self.env.cpu.wr.unwrap())(self.env.cpu.user, addr, value, cycle) }
     }
 
@@ -125,9 +146,7 @@ impl Tune {
         unsafe { psid_env_period(&*self.env) }
     }
 
-    /// Runs in slices of `slice` cycles until `until` or a stop: the events. MORE and IDLE are
-    /// checked to be the only other results.
-    fn play(&mut self, until: u32, slice: u32) -> Vec<Event> {
+    fn run_in_slices(&mut self, until: u32, slice: u32) -> Vec<Event> {
         let mut events = Vec::new();
         while (self.now().wrapping_sub(until) as i32) < 0 {
             let budget = slice.min(until.wrapping_sub(self.now()));
@@ -154,7 +173,6 @@ impl Tune {
         events
     }
 
-    /// The play calls' starts, from the events.
     fn starts(events: &[Event]) -> Vec<u32> {
         events
             .iter()
@@ -163,8 +181,7 @@ impl Tune {
             .collect()
     }
 
-    /// The writes to one register, as (cycle, value).
-    fn reg(&self, reg: u32) -> Vec<(u32, u32)> {
+    fn writes_to(&self, reg: u32) -> Vec<(u32, u32)> {
         self.writes
             .iter()
             .filter(|w| w.2 == reg)
@@ -223,7 +240,6 @@ fn load_puts_the_data_at_its_address_over_zeroed_memory() {
 
 #[test]
 fn load_in_pieces_equals_load_whole_with_a_load_address_prefix() {
-    // The header's load address 0: the data's first two bytes are the load address.
     let p = vbi();
     let mut file = p.bytes();
     let off = 0x7C;
@@ -250,7 +266,6 @@ fn load_in_pieces_equals_load_whole_with_a_load_address_prefix() {
             unsafe { psid_env_load_part(&mut *env, at as u32, file[at..].as_ptr(), n as u32) };
             at += n;
         }
-        // Pieces past the file's end and empty ones change nothing.
         unsafe {
             psid_env_load_part(&mut *env, file.len() as u32, file.as_ptr(), 9);
             psid_env_load_part(&mut *env, 0, file.as_ptr(), 0);
@@ -261,7 +276,6 @@ fn load_in_pieces_equals_load_whole_with_a_load_address_prefix() {
 
 #[test]
 fn load_over_leaves_the_memory_to_the_caller_but_the_port() {
-    // Task 10's loading: the caller clears the 64 KiB in parts and brings the data in.
     let file = vbi().bytes();
     let h = header(&file);
     let mut whole = Box::<psid_env>::default();
@@ -286,12 +300,10 @@ fn load_over_leaves_the_memory_to_the_caller_but_the_port() {
 fn a_vbi_tune_plays_every_frame_from_the_first_boundary_after_init() {
     let mut t = Tune::load(&vbi());
     assert_eq!(t.start(1), 0);
-    let events = t.play(5 * FRAME + 100, 1000);
-    // Init: INIT_RECORD's writes on 3, 7, 11; LDA #, STA $D418 (14-17); RTS: returns at 24.
-    let mut expect = vec![init_done(24)];
-    // Play: BANK_RECORD 12, COUNT 12, RTS 6.
+    let events = t.run_in_slices(5 * FRAME + 100, 1000);
+    let mut expect = vec![init_done(VBI_INIT_CYCLES)];
     for k in 1..=5 {
-        expect.push(call_done(k * FRAME, k * FRAME, 30));
+        expect.push(call_done(k * FRAME, k * FRAME, VBI_PLAY_CYCLES));
     }
     assert_eq!(events, expect);
     assert_eq!(
@@ -304,9 +316,9 @@ fn a_vbi_tune_plays_every_frame_from_the_first_boundary_after_init() {
         ]
     );
     let banks: Vec<(u32, u32)> = (1..=5).map(|k| (k * FRAME + 11, 0x37)).collect();
-    assert_eq!(t.reg(1), banks, "$01 at each play call's start");
+    assert_eq!(t.writes_to(1), banks, "$01 at each play call's start");
     let counts: Vec<(u32, u32)> = (1..=5).map(|k| (k * FRAME + 23, k)).collect();
-    assert_eq!(t.reg(0), counts);
+    assert_eq!(t.writes_to(0), counts);
     assert_eq!(t.env.calls, 5);
     assert_eq!(t.env.overruns, 0);
     assert_eq!(t.period(), FRAME);
@@ -318,14 +330,13 @@ fn init_gets_the_song_in_a_and_play_calls_start_from_the_same_registers() {
     for song in [1u32, 2, 33, 40] {
         t.writes.clear();
         assert_eq!(t.start(song), 0);
-        t.play(10, 10);
+        t.run_in_slices(10, 10);
         assert_eq!(
             t.writes[..3],
             [(3, 0, 2, song - 1), (7, 0, 3, 0), (11, 0, 4, 0)],
             "song {song}"
         );
     }
-    // Song 0 is the header's start song; one past the last is refused, and changes nothing.
     assert_eq!(t.start(0), 0);
     assert_eq!(t.env.song, 1);
     assert_eq!(t.start(41), -1);
@@ -336,9 +347,8 @@ fn init_gets_the_song_in_a_and_play_calls_start_from_the_same_registers() {
 fn a_cia_tune_takes_its_period_from_the_latch_init_sets() {
     let mut t = Tune::load(&cia(0x2000));
     t.start(1);
-    // Init: INIT_RECORD 12, two loads and stores 12, RTS 6.
-    let events = t.play(5 * 0x2001 + 100, 1500);
-    assert_eq!(events[0], init_done(30));
+    let events = t.run_in_slices(5 * 0x2001 + 100, 1500);
+    assert_eq!(events[0], init_done(LATCH_SETTING_INIT_CYCLES));
     assert_eq!(Tune::starts(&events), [1, 2, 3, 4, 5].map(|k| k * 0x2001));
     assert_eq!(t.period(), 0x2001);
 }
@@ -348,7 +358,7 @@ fn the_latch_starts_at_the_kernals_value_for_the_clock() {
     for (clock, period) in [(CLOCK_PAL, 0x4026), (CLOCK_NTSC, 0x4296)] {
         let mut t = Tune::load(&cia_default().flags(clock));
         t.start(1);
-        let events = t.play(3 * period + 40, 700);
+        let events = t.run_in_slices(3 * period + 40, 700);
         assert_eq!(Tune::starts(&events), [period, 2 * period, 3 * period]);
     }
 }
@@ -357,9 +367,7 @@ fn the_latch_starts_at_the_kernals_value_for_the_clock() {
 fn a_latch_changed_by_a_play_call_sets_the_next_period() {
     let mut t = Tune::load(&cia_changing());
     t.start(1);
-    let events = t.play(40_000, 333);
-    // Init sets $1000: the first call at 4,097. Call n sets n * $100 + $FF: the next call
-    // (n + 1) * $100 later.
+    let events = t.run_in_slices(40_000, 333);
     let mut due = 0x1001;
     let mut expect = Vec::new();
     for n in 1..=8u32 {
@@ -377,12 +385,11 @@ fn a_latch_changed_by_a_play_call_sets_the_next_period() {
 
 #[test]
 fn short_cia_periods_are_honoured() {
-    // FM-1 SID replaces periods under 1,000 cycles with the frame; the C64 does not.
     for latch in [998u16, 99] {
         let period = latch as u32 + 1;
         let mut t = Tune::load(&cia(latch));
         t.start(1);
-        let events = t.play(20 * period + 40, 64);
+        let events = t.run_in_slices(20 * period + 40, 64);
         let starts = Tune::starts(&events);
         assert_eq!(starts.len(), 20, "latch {latch}");
         for (k, s) in starts.iter().enumerate() {
@@ -392,11 +399,10 @@ fn short_cia_periods_are_honoured() {
     }
 }
 
-/// The period song `song` plays at, from its first two calls.
 fn song_period(p: &Psid, song: u32) -> u32 {
     let mut t = Tune::load(p);
     assert_eq!(t.start(song), 0);
-    let events = t.play(3 * FRAME, 5000);
+    let events = t.run_in_slices(3 * FRAME, 5000);
     let s = Tune::starts(&events);
     assert_eq!(t.period(), s[1] - s[0], "song {song}");
     s[1] - s[0]
@@ -405,7 +411,6 @@ fn song_period(p: &Psid, song: u32) -> u32 {
 #[test]
 fn the_speed_bits_pick_frame_or_cia_per_song_as_the_format_says() {
     const CIA: u32 = 10_000;
-    // v2, PlaySID flag clear: songs above 32 take bit 31.
     let p = forty_songs();
     for (song, period) in [
         (1, CIA),
@@ -418,7 +423,6 @@ fn the_speed_bits_pick_frame_or_cia_per_song_as_the_format_says() {
     ] {
         assert_eq!(song_period(&p, song), period, "v2, song {song}");
     }
-    // The PlaySID flag, and v1: the bits repeat.
     let mut v1 = forty_songs();
     v1.version = 1;
     for p in [forty_songs().flags(CLOCK_PAL | FLAG_PLAYSID), v1] {
@@ -439,21 +443,18 @@ fn play_address_zero_goes_through_the_kernals_vector_with_its_stack() {
     for rti in [false, true] {
         let mut t = Tune::load(&irq_kernal(rti));
         t.start(1);
-        let events = t.play(3 * FRAME + 100, 1000);
-        // Init: INIT_RECORD 12, two loads and stores 12, RTS 6. The handler: TSX, STX 6,
-        // IRQ_BANK_RECORD 7, COUNT 12, then JMP $EA31 (3) or the KERNAL exit's six (22).
-        let cycles = if rti { 47 } else { 28 };
-        let mut expect = vec![init_done(30)];
+        let events = t.run_in_slices(3 * FRAME + 100, 1000);
+        let exit = if rti { KERNAL_EXIT_CYCLES } else { JMP_CYCLES };
+        let cycles = IRQ_HANDLER_CYCLES + exit;
+        let mut expect = vec![init_done(LATCH_SETTING_INIT_CYCLES)];
         for k in 1..=3 {
             expect.push(call_done(k * FRAME, k * FRAME, cycles));
         }
         assert_eq!(events, expect, "rti {rti}");
-        // S after the sentinel, P, and the KERNAL entry's A, X and Y.
-        let s: Vec<u32> = t.reg(6).iter().map(|w| w.1).collect();
+        let s: Vec<u32> = t.writes_to(6).iter().map(|w| w.1).collect();
         assert_eq!(s, [0xF9; 3]);
-        // $01 as the tune left it (init's $37), not set by the call.
         let banks: Vec<(u32, u32)> = (1..=3).map(|k| (k * FRAME + 12, 0x37)).collect();
-        assert_eq!(t.reg(1), banks);
+        assert_eq!(t.writes_to(1), banks);
     }
 }
 
@@ -461,17 +462,21 @@ fn play_address_zero_goes_through_the_kernals_vector_with_its_stack() {
 fn play_address_zero_with_the_kernal_out_goes_through_ffff_and_rti() {
     let mut t = Tune::load(&irq_hardware());
     t.start(1);
-    let events = t.play(3 * FRAME + 100, 1000);
-    // Init: INIT_RECORD 12, LDA #, STA zp 5, two loads and stores 12, RTS 6.
-    let mut expect = vec![init_done(35)];
-    // The handler: TSX, STX 6, IRQ_BANK_RECORD 7, COUNT 12, RTI 6.
+    let events = t.run_in_slices(3 * FRAME + 100, 1000);
+    let mut expect = vec![init_done(
+        INIT_RECORD_CYCLES + LDA_IMM_STA_ZP_CYCLES + 2 * LDA_IMM_STA_ABS_CYCLES + RTS_CYCLES,
+    )];
     for k in 1..=3 {
-        expect.push(call_done(k * FRAME, k * FRAME, 31));
+        expect.push(call_done(
+            k * FRAME,
+            k * FRAME,
+            IRQ_HANDLER_CYCLES + RTI_CYCLES,
+        ));
     }
     assert_eq!(events, expect);
-    let s: Vec<u32> = t.reg(6).iter().map(|w| w.1).collect();
+    let s: Vec<u32> = t.writes_to(6).iter().map(|w| w.1).collect();
     assert_eq!(s, [0xFC; 3], "S after the sentinel and P");
-    let banks: Vec<u32> = t.reg(1).iter().map(|w| w.1).collect();
+    let banks: Vec<u32> = t.writes_to(1).iter().map(|w| w.1).collect();
     assert_eq!(banks, [0x35; 3]);
 }
 
@@ -485,9 +490,8 @@ fn every_call_starts_with_the_bank_register_for_its_address() {
     ] {
         let mut t = Tune::load(&banks(init, play));
         t.start(1);
-        t.play(3 * FRAME + 100, 2000);
-        // Each call records $01 and leaves it at $35; the next call sets it again.
-        let got: Vec<u32> = t.reg(1).iter().map(|w| w.1).collect();
+        t.run_in_slices(3 * FRAME + 100, 2000);
+        let got: Vec<u32> = t.writes_to(1).iter().map(|w| w.1).collect();
         assert_eq!(
             got,
             [init_bank, play_bank, play_bank, play_bank],
@@ -500,14 +504,15 @@ fn every_call_starts_with_the_bank_register_for_its_address() {
 fn a_two_second_init_runs_in_slices_and_play_starts_at_the_next_boundary() {
     let mut t = Tune::load(&slow_init());
     t.start(1);
-    let events = t.play(103 * FRAME, 1500);
-    // LDA #, STA zp 5; six rounds of 256 delays (1,286 cycles each, + 1), DEC zp 5 and BNE 3,
-    // the last BNE not taken; LDA #, STA $D418 6; RTS 6.
-    let end = 5 + 6 * (256 * 1286 + 1 + 8) - 1 + 6 + 6;
+    let events = t.run_in_slices(103 * FRAME, 1500);
+    let end = LDA_IMM_STA_ZP_CYCLES
+        + 6 * (256 * DELAY_CYCLES + LAST_DELAY_EXTRA_CYCLE + DEC_ZP_BNE_CYCLES)
+        - (BNE_TAKEN_CYCLES - BNE_NOT_TAKEN_CYCLES)
+        + LDA_IMM_STA_ABS_CYCLES
+        + RTS_CYCLES;
     assert_eq!(end, 1_975_366);
     assert_eq!(events[0], init_done(end));
     assert_eq!(t.writes[0], (end - 7, 0, 0x18, 0x0F));
-    // The first play call at the first frame boundary after init's return.
     assert_eq!(Tune::starts(&events), [101 * FRAME, 102 * FRAME]);
 }
 
@@ -516,8 +521,7 @@ fn an_init_that_never_returns_stops_after_five_seconds() {
     for (flags, clock) in [(CLOCK_PAL, PAL), (CLOCK_NTSC, NTSC)] {
         let mut t = Tune::load(&init_forever().flags(flags));
         t.start(1);
-        let events = t.play(6 * clock, 40_000);
-        // JMP is 3 cycles, and 5 s of either clock is a multiple of 3.
+        let events = t.run_in_slices(6 * clock, 40_000);
         assert_eq!(
             events,
             [Event {
@@ -541,20 +545,17 @@ fn an_init_that_never_returns_stops_after_five_seconds() {
 fn an_overrun_is_counted_and_the_next_call_starts_at_its_return() {
     let mut t = Tune::load(&play_overrun(23));
     t.start(1);
-    let events = t.play(5 * FRAME - 1, 1500);
-    // Init: RTS, 6. The first call: BANK_RECORD 12, LDA zp 3, BNE 2, 23 delays 29,579, COUNT 12,
-    // RTS 6; it misses the interrupt at 2 frames, which is taken at its return. The rest:
-    // BANK_RECORD 12, LDA zp 3, BNE 3, COUNT 12, RTS 6, each on the grid.
-    let first = 12 + 3 + 2 + 23 * 1286 + 1 + 12 + 6;
+    let events = t.run_in_slices(5 * FRAME - 1, 1500);
+    let first = overrunning_play_cycles(23);
     let ret = FRAME + first;
     assert_eq!(
         events,
         [
-            init_done(6),
+            init_done(RTS_CYCLES),
             call_done(FRAME, FRAME, first),
-            call_done(ret, 2 * FRAME, 36),
-            call_done(3 * FRAME, 3 * FRAME, 36),
-            call_done(4 * FRAME, 4 * FRAME, 36),
+            call_done(ret, 2 * FRAME, OVERRUN_PLAY_ON_THE_GRID_CYCLES),
+            call_done(3 * FRAME, 3 * FRAME, OVERRUN_PLAY_ON_THE_GRID_CYCLES),
+            call_done(4 * FRAME, 4 * FRAME, OVERRUN_PLAY_ON_THE_GRID_CYCLES),
         ]
     );
     assert_eq!(t.env.overruns, 1);
@@ -563,21 +564,19 @@ fn an_overrun_is_counted_and_the_next_call_starts_at_its_return() {
 
 #[test]
 fn interrupts_missed_by_a_long_overrun_are_one_pending_interrupt() {
-    // 61 delays: 78,447 cycles, nearly four frames; the interrupts at 2, 3 and 4 frames are
-    // one, taken at the return, and the next comes at 5 frames.
     let mut t = Tune::load(&play_overrun(61));
     t.start(1);
-    let events = t.play(6 * FRAME, 1500);
-    let first = 12 + 3 + 2 + 61 * 1286 + 1 + 12 + 6;
+    let events = t.run_in_slices(6 * FRAME, 1500);
+    let first = overrunning_play_cycles(61);
     let ret = FRAME + first;
     assert!(ret > 4 * FRAME && ret < 5 * FRAME);
     assert_eq!(
         events,
         [
-            init_done(6),
+            init_done(RTS_CYCLES),
             call_done(FRAME, FRAME, first),
-            call_done(ret, 4 * FRAME, 36),
-            call_done(5 * FRAME, 5 * FRAME, 36),
+            call_done(ret, 4 * FRAME, OVERRUN_PLAY_ON_THE_GRID_CYCLES),
+            call_done(5 * FRAME, 5 * FRAME, OVERRUN_PLAY_ON_THE_GRID_CYCLES),
         ]
     );
     assert_eq!(t.env.overruns, 1);
@@ -587,13 +586,12 @@ fn interrupts_missed_by_a_long_overrun_are_one_pending_interrupt() {
 fn a_play_call_that_never_returns_stops_after_a_second() {
     let mut t = Tune::load(&play_forever());
     t.start(1);
-    let events = t.play(5 * PAL, 40_000);
+    let events = t.run_in_slices(5 * PAL, 40_000);
     let last = *events.last().unwrap();
     assert_eq!(Tune::starts(&events), [FRAME, 2 * FRAME]);
-    // The third call: BANK_RECORD 12, COUNT 12, CMP # 2, BNE 2, then JMP forever from cycle 28.
-    // A second later is not on a JMP's boundary: the stop is at the first one past it.
     let start = 3 * FRAME;
-    let stop = start + 28 + (PAL - 28).div_ceil(3) * 3;
+    let jmp_loop_from = BANK_RECORD_CYCLES + COUNT_CYCLES + CMP_IMM_CYCLES + BNE_NOT_TAKEN_CYCLES;
+    let stop = start + jmp_loop_from + (PAL - jmp_loop_from).div_ceil(JMP_CYCLES) * JMP_CYCLES;
     assert_eq!(
         last,
         Event {
@@ -611,7 +609,7 @@ fn a_play_call_that_never_returns_stops_after_a_second() {
 fn a_jam_stops_the_tune_with_the_pc_on_the_opcode() {
     let mut t = Tune::load(&jam());
     t.start(1);
-    let events = t.play(5 * FRAME, 1000);
+    let events = t.run_in_slices(5 * FRAME, 1000);
     assert_eq!(events.last().unwrap().code, PSID_RUN_JAM as i32);
     assert_eq!(t.env.cpu.pc, PLAY + 20);
     assert_eq!(t.env.calls, 2);
@@ -630,7 +628,7 @@ fn ntsc_tunes_play_at_the_ntsc_clock_and_frame() {
         assert_eq!(t.env.clock, clock);
         assert_eq!(t.env.frame as u32, frame);
         t.start(1);
-        let events = t.play(3 * frame + 50, 1000);
+        let events = t.run_in_slices(3 * frame + 50, 1000);
         assert_eq!(Tune::starts(&events), [frame, 2 * frame, 3 * frame]);
     }
     assert_eq!(PSID_FRAME_NTSC, 263 * 65);
@@ -648,12 +646,10 @@ fn idle_time_passes_up_to_the_due_call() {
     assert_eq!(t.now(), 1024);
     assert_eq!(t.run(FRAME - 1024 - 1), PSID_RUN_IDLE as i32);
     assert_eq!(t.now(), FRAME - 1);
-    // A budget that ends on the due cycle starts the call and runs none of it.
     assert_eq!(t.run(1), PSID_RUN_MORE as i32);
     assert_eq!(t.now(), FRAME);
     assert_eq!(t.env.call_start, FRAME);
     assert_eq!(t.env.phase, PSID_PHASE_PLAY as u8);
-    // A budget across the due cycle: the rest runs in the same run.
     assert_eq!(t.run(10), PSID_RUN_MORE as i32);
     assert_eq!(t.run(100), PSID_RUN_CALL_DONE as i32);
     assert_eq!(t.now(), FRAME + 30);
@@ -681,11 +677,9 @@ fn nothing_runs_before_a_load_and_a_start() {
 
 #[test]
 fn a_call_to_a_stop_address_returns_at_once() {
-    // Play address 0 through a $0314 the tune never set: the call goes to $0000, the
-    // sentinel, and ends there; nothing runs from zeroed memory.
     let mut t = Tune::load(&vbi().play(0));
     t.start(1);
-    let events = t.play(3 * FRAME - 1, 1000);
+    let events = t.run_in_slices(3 * FRAME - 1, 1000);
     assert_eq!(
         Tune::starts(&events),
         [FRAME, 2 * FRAME],
@@ -700,14 +694,13 @@ fn slicing_init_at_every_size_from_1_to_5000_changes_nothing() {
     let until = 120_000;
     let mut whole = Tune::load(&p);
     whole.start(1);
-    let reference = whole.play(until, until);
+    let reference = whole.run_in_slices(until, until);
     assert_eq!(whole.writes.len(), 3 + 256 + 2 * 5);
     assert_eq!(Tune::starts(&reference).len(), 5);
     for slice in 1..=5000 {
-        // Loaded again each time: init and play keep state in the tune's memory.
         let mut t = Tune::load(&p);
         t.start(1);
-        let events = t.play(until, slice);
+        let events = t.run_in_slices(until, slice);
         assert_eq!(events, reference, "slice {slice}");
         assert_eq!(t.writes.len(), whole.writes.len(), "slice {slice}");
         for (i, (a, b)) in t.writes.iter().zip(whole.writes.iter()).enumerate() {
@@ -718,8 +711,6 @@ fn slicing_init_at_every_size_from_1_to_5000_changes_nothing() {
 
 #[test]
 fn time_wraps_past_two_to_the_32() {
-    // The same tunes with every time shifted to just before the count wraps, after init: the
-    // same calls, shifted.
     for p in [vbi(), play_overrun(23), cia(998)] {
         let mut a = Tune::load(&p);
         let mut b = Tune::load(&p);
@@ -732,8 +723,8 @@ fn time_wraps_past_two_to_the_32() {
         b.env.next_due = b.env.next_due.wrapping_add(shift);
         b.env.next_grid = b.env.next_grid.wrapping_add(shift);
         b.env.call_start = b.env.call_start.wrapping_add(shift);
-        let ea = a.play(8 * FRAME, 1500);
-        let eb = b.play((8 * FRAME).wrapping_add(shift), 1500);
+        let ea = a.run_in_slices(8 * FRAME, 1500);
+        let eb = b.run_in_slices((8 * FRAME).wrapping_add(shift), 1500);
         let back: Vec<Event> = eb
             .iter()
             .map(|e| Event {
@@ -752,26 +743,18 @@ fn time_wraps_past_two_to_the_32() {
 
 #[test]
 fn the_environment_fits_its_share_of_the_overlay() {
-    // The plan's "Memory and flash": the environment is about 400 bytes of the main loop's
-    // overlay with the I/O page's shadows. As the pi32v2 lays it out (ILP32): Task 6a's 92
-    // bytes, the two shadow pointers, the VIC's 64 bytes, the CIAs' 32 and two flags; Task 8's
-    // count of SID accesses.
     assert_eq!(ilp32::psid_env::SIZE, 200);
     assert_eq!(ilp32::cpu6502::SIZE, 32);
 }
 
-// --- The I/O page (Task 6b) -----------------------------------------------------------------
-
 const M6581: sid_model = SID_MODEL_6581;
 const M8580: sid_model = SID_MODEL_8580;
 
-/// Runs init (to its return or stop) in one go, and returns what it reported.
 fn run_init(t: &mut Tune) -> i32 {
     assert_eq!(t.start(1), 0);
     t.run(6_000_000)
 }
 
-/// (chip, register, value) of every SID write, in order.
 fn sid_writes(t: &Tune) -> Vec<(u32, u32, u32)> {
     t.writes.iter().map(|w| (w.1, w.2, w.3)).collect()
 }
@@ -794,7 +777,6 @@ fn exact_delays_take_exactly_their_cycles() {
 
 #[test]
 fn the_sid_windows_are_chip_a_with_its_mirrors() {
-    // $D400-$D7FF, every 32 bytes; the VIC, colour RAM and CIA 1 are not the SID.
     let p = stores(&[
         0xD400, 0xD41F, 0xD420, 0xD480, 0xD7E0, 0xD7FF, 0xD3FF, 0xD800, 0xDC00, 0xDE00,
     ]);
@@ -815,7 +797,6 @@ fn the_sid_windows_are_chip_a_with_its_mirrors() {
 
 #[test]
 fn a_second_sid_window_is_chip_b_and_takes_priority() {
-    // At $D420: chip A's mirrors resume at $D440.
     let p = stores(&[0xD400, 0xD41F, 0xD420, 0xD43F, 0xD440, 0xD7E0]).sid2(0x42);
     let mut t = Tune::load(&p);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
@@ -830,7 +811,6 @@ fn a_second_sid_window_is_chip_b_and_takes_priority() {
             (0, 0, 6)
         ]
     );
-    // At $DE00, outside the SID range, and the last window in it, $D7E0.
     let p = stores(&[0xD400, 0xDE00, 0xDE1F, 0xDE20, 0xDF00]).sid2(0xE0);
     let mut t = Tune::load(&p);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
@@ -853,11 +833,9 @@ fn a_third_sids_writes_are_dropped_and_counted_and_its_reads_are_zero() {
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
     assert_eq!(sid_writes(&t), [(0, 0, 1), (1, 0, 2), (0, 0, 5)]);
     assert_eq!(t.env.sid3_dropped, 2);
-    // Its reads: nothing there. A restart clears the count.
-    assert_eq!(t.rd(0xDE05, 100), 0);
+    assert_eq!(t.io_read(0xDE05, 100), 0);
     assert_eq!(t.start(1), 0);
     assert_eq!(t.env.sid3_dropped, 0);
-    // A third SID inside the SID range, with the second elsewhere.
     let p = stores(&[0xD440, 0xD460]).sid2(0x44).sid3(0x46);
     let mut t = Tune::load(&p);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
@@ -866,8 +844,6 @@ fn a_third_sids_writes_are_dropped_and_counted_and_its_reads_are_zero() {
     assert_eq!(sid_writes(&t), [(1, 0, 1)]);
 }
 
-/// Replays a tune's SID writes on a chip, clocking it to each write's cycle; `at_write` is
-/// called before each, with the chip clocked to the cycle `back` before it (a read's).
 fn replay(chip: &mut sid, writes: &[Write], back: u32, mut before: impl FnMut(&mut sid, usize)) {
     let mut now = 0u32;
     for (i, w) in writes.iter().enumerate() {
@@ -894,15 +870,14 @@ fn osc3_reads_are_the_chips_at_the_reads_cycle() {
         let p = osc3_noise();
         let mut t = Tune::load_shadowed(&p, &[model]);
         assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
-        // The eight reads are the writes to register 0, each 4 cycles after its read.
-        let reads: Vec<(u32, u32)> = t.reg(0);
+        let reads: Vec<(u32, u32)> = t.writes_to(0);
         assert_eq!(reads.len(), 8);
         let values: std::collections::BTreeSet<u32> = reads.iter().map(|r| r.1).collect();
         assert!(values.len() >= 6, "noise: {reads:?}");
         let mut chip = Box::<sid>::default();
         unsafe { sid_init(&mut *chip, model, PAL, 44_118) };
         let writes = t.writes.clone();
-        replay(&mut chip, &writes, 4, |c, i| {
+        replay(&mut chip, &writes, READ_TO_ITS_STORE_CYCLES, |c, i| {
             let w = writes[i];
             if w.2 == 0 {
                 let theirs = unsafe { sid_read(c, 0x1b) };
@@ -914,7 +889,6 @@ fn osc3_reads_are_the_chips_at_the_reads_cycle() {
 
 #[test]
 fn an_envelope_wait_ends_when_the_chips_envelope_gets_there() {
-    // Without real reads the loop never ends (ENV3 reads 0, so the first wait stays).
     let p = env3_wait();
     let mut t = Tune::load(&p);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_TOO_LONG as i32);
@@ -923,8 +897,6 @@ fn an_envelope_wait_ends_when_the_chips_envelope_gets_there() {
         assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32, "model {model}");
         let (marker, gate) = (*t.writes.last().unwrap(), t.writes[t.writes.len() - 2]);
         assert_eq!((marker.2, gate.2), (0, 0x12));
-        // The reference chip, given the same writes at the same cycles and stepped a cycle at
-        // a time: ENV3 rises, then first reads 0 again at cycle t2.
         let mut chip = Box::<sid>::default();
         unsafe { sid_init(&mut *chip, model, PAL, 44_118) };
         let mut now = 0u32;
@@ -946,7 +918,6 @@ fn an_envelope_wait_ends_when_the_chips_envelope_gets_there() {
             }
         }
         assert!(t2 > 0, "the chip's envelope never fell, model {model}");
-        // The loop reads every 7 cycles; the last read, which saw 0, is 6 before the write.
         let r = marker.0 - 6;
         assert!(
             r - 7 < t2 && t2 <= r,
@@ -957,8 +928,10 @@ fn an_envelope_wait_ends_when_the_chips_envelope_gets_there() {
 
 #[test]
 fn the_raster_line_comes_from_the_absolute_cycle() {
-    // The first read of a line is in its first loop's 9 cycles; the write is 8 after it.
-    for (ntsc, line, per) in [(false, 0x80u32, 63u32), (true, 0x60, 65)] {
+    for (ntsc, line, per) in [
+        (false, 0x80u32, PAL_LINE_CYCLES),
+        (true, 0x60, NTSC_LINE_CYCLES),
+    ] {
         let mut p = raster_wait(line as u8);
         if ntsc {
             p = p.flags(CLOCK_NTSC);
@@ -971,26 +944,27 @@ fn the_raster_line_comes_from_the_absolute_cycle() {
             "read at {r}, ntsc {ntsc}"
         );
     }
-    // $D011's bit 7, line 256 and on.
     let p = raster_high_wait();
     let mut t = Tune::load(&p);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
     let r = t.writes[0].0 - 6;
-    assert!((256 * 63..256 * 63 + 7).contains(&r), "read at {r}");
+    assert!(
+        (256 * PAL_LINE_CYCLES..256 * PAL_LINE_CYCLES + 7).contains(&r),
+        "read at {r}"
+    );
 }
 
 #[test]
 fn the_raster_of_every_call_is_the_absolute_one() {
-    // A CIA song of 10,000 cycles: the calls start at different places in the frame, where
-    // FM-1 SID's raster, from each call's start, reads 0.
     let p = raster_in_play(9_999);
     let mut t = Tune::load(&p);
     assert_eq!(t.start(1), 0);
-    t.play(8 * 10_000, 977);
-    let w: Vec<(u32, u32)> = t.reg(0);
+    t.run_in_slices(8 * 10_000, 977);
+    let w: Vec<(u32, u32)> = t.writes_to(0);
     assert!(w.len() >= 6);
     for &(at, v) in &w {
-        assert_eq!(v, (at - 4) % FRAME / 63, "read at {}", at - 4);
+        let read = at - READ_TO_ITS_STORE_CYCLES;
+        assert_eq!(v, read % FRAME / PAL_LINE_CYCLES, "read at {read}");
     }
     assert!(
         w.iter()
@@ -1006,20 +980,16 @@ fn cia_timer_a_counts_down_from_the_latch_from_its_underflow() {
     let p = cia_counter();
     let mut t = Tune::load(&p);
     assert_eq!(t.start(1), 0);
-    let events = t.play(8 * 2_305, 311);
-    // Init: the latch $0900 is set by cycle 12, and the counter (a period of 2,305 from cycle
-    // 0) read at 15 and 23 (a load's last cycle): 2,304 - 15 and 2,304 - 23.
-    assert_eq!(t.reg(0)[0], (19, 0xF1));
-    assert_eq!(t.reg(1)[0], (27, 0x08));
-    // Every play call starts on an underflow, so its reads at +3 and +11 see 2,301 and 2,293
-    // (FM-1 SID would return the latch, $0900, itself).
+    let events = t.run_in_slices(8 * 2_305, 311);
+    assert_eq!(t.writes_to(0)[0], (19, 0xF1));
+    assert_eq!(t.writes_to(1)[0], (27, 0x08));
     let calls = Tune::starts(&events).len();
     assert!(calls >= 5);
-    assert_eq!(t.reg(2).len(), calls);
-    for &(_, v) in &t.reg(2) {
+    assert_eq!(t.writes_to(2).len(), calls);
+    for &(_, v) in &t.writes_to(2) {
         assert_eq!(v, 0x08);
     }
-    for &(_, v) in &t.reg(3) {
+    for &(_, v) in &t.writes_to(3) {
         assert_eq!(v, 0xF5);
     }
 }
@@ -1030,17 +1000,15 @@ fn a_vbi_calls_start_sets_the_vic_flag_and_a_cia_calls_the_cias() {
         let p = irq_flags(cia);
         let mut t = Tune::load(&p);
         assert_eq!(t.start(1), 0);
-        let events = t.play(5 * FRAME, 997);
+        let events = t.run_in_slices(5 * FRAME, 997);
         let calls = Tune::starts(&events).len();
         assert!(calls >= 3);
         for r in 0..3 {
-            assert_eq!(t.reg(r)[0].1, 0, "init reads, register {r}");
+            assert_eq!(t.writes_to(r)[0].1, 0, "init reads, register {r}");
         }
-        // $D019 / $DC0D by the kind of call; the write of $D019 and the read of $DC0D
-        // acknowledge, the other kind of flag is not there, and $DD0D is 0.
         let (first, then) = if cia { (0, 0x81) } else { (0x81, 0) };
         for i in 0..calls {
-            let at = |r: u32| t.reg(r)[i].1;
+            let at = |r: u32| t.writes_to(r)[i].1;
             assert_eq!(
                 [at(3), at(4), at(5), at(6), at(7)],
                 [first, 0, then, 0, 0],
@@ -1052,9 +1020,6 @@ fn a_vbi_calls_start_sets_the_vic_flag_and_a_cia_calls_the_cias() {
 
 #[test]
 fn a_write_only_register_reads_the_bus_until_its_lifetime_is_up() {
-    // (model, cycles from the write to the read, the value read), at the lifetime's edges:
-    // 0x1d00 on a 6581 and 0xa2000 on an 8580. The read can come 4 cycles after the write
-    // at the soonest (STA, LDA).
     for (model, d, v) in [
         (M6581, 4, 0xA5),
         (M6581, 0x1cff, 0xA5),
@@ -1066,8 +1031,12 @@ fn a_write_only_register_reads_the_bus_until_its_lifetime_is_up() {
         let p = bus_read(d);
         let mut t = Tune::load_shadowed(&p, &[model]);
         assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
-        let (w, r) = (t.reg(5)[0].0, t.reg(0)[0]);
-        assert_eq!(r.0 - 4 - w, d, "the fixture's distance");
+        let (w, r) = (t.writes_to(5)[0].0, t.writes_to(0)[0]);
+        assert_eq!(
+            r.0 - READ_TO_ITS_STORE_CYCLES - w,
+            d,
+            "the fixture's distance"
+        );
         assert_eq!(r.1, v, "model {model}, {d} cycles");
     }
 }
@@ -1081,7 +1050,6 @@ fn each_chip_has_its_own_bus() {
         sid_writes(&t),
         [(0, 5, 0x11), (1, 5, 0x22), (0, 0, 0x11), (0, 1, 0x22)]
     );
-    // Without a shadow for B its reads are 0.
     let mut t = Tune::load_shadowed(&p, &[M6581]);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
     assert_eq!(sid_writes(&t)[2..], [(0, 0, 0x11), (0, 1, 0)]);
@@ -1092,13 +1060,12 @@ fn the_vic_and_cias_read_back_what_was_written() {
     let p = io_readback();
     let mut t = Tune::load(&p);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
-    let got: Vec<u32> = (0..8).map(|r| t.reg(r)[0].1).collect();
+    let got: Vec<u32> = (0..8).map(|r| t.writes_to(r)[0].1).collect();
     assert_eq!(got, [0x22, 0, 0, 0x33, 0x44, 0x55, 0, 0x1B]);
-    // A restart clears them.
     assert_eq!(t.start(1), 0);
-    assert_eq!(t.rd(0xD021, 5), 0);
-    assert_eq!(t.rd(0xDC02, 5), 0);
-    assert_eq!(t.rd(0xDD02, 5), 0);
+    assert_eq!(t.io_read(0xD021, 5), 0);
+    assert_eq!(t.io_read(0xDC02, 5), 0);
+    assert_eq!(t.io_read(0xDD02, 5), 0);
 }
 
 #[test]
@@ -1119,9 +1086,9 @@ fn a_read_modify_write_of_a_sid_register_is_two_writes() {
     let p = rmw();
     let mut t = Tune::load_shadowed(&p, &[M6581]);
     assert_eq!(run_init(&mut t), PSID_RUN_INIT_DONE as i32);
-    let w = t.reg(5);
+    let w = t.writes_to(5);
     assert_eq!(w.len(), 3);
-    assert_eq!(w[1].1, 0x05); // the old value, then the new, in consecutive cycles
+    assert_eq!(w[1].1, 0x05);
     assert_eq!(w[2], (w[1].0 + 1, 0x0A));
     assert_eq!(t.shadows[0].bus, 0x0A);
 }
@@ -1133,23 +1100,22 @@ fn the_interrupt_flags_are_acknowledged_as_stated() {
     assert_eq!(t.start(1), 0);
     t.env.vic_irq = 0x81;
     t.env.cia1_icr = 0x81;
-    assert_eq!(t.rd(0xD019, 1), 0x81);
+    assert_eq!(t.io_read(0xD019, 1), 0x81);
     assert_eq!(
-        t.rd(0xD019, 2),
+        t.io_read(0xD019, 2),
         0x81,
         "a read of $D019 does not acknowledge"
     );
-    t.wr(0xD019, 0, 3);
-    assert_eq!(t.rd(0xD019, 4), 0, "a write does");
-    assert_eq!(t.rd(0xDC0D, 5), 0x81);
-    assert_eq!(t.rd(0xDC0D, 6), 0, "a read of $DC0D does");
-    assert_eq!(t.rd(0xDD0D, 7), 0);
-    // The registers' mirrors: the VIC every 64 bytes, a CIA every 16.
-    t.wr(0xD3E5, 0x42, 8);
-    assert_eq!(t.rd(0xD025, 9), 0x42);
-    t.wr(0xDCF3, 0x43, 8);
-    assert_eq!(t.rd(0xDC03, 9), 0x43);
-    t.wr(0xDDF3, 0x44, 8);
-    assert_eq!(t.rd(0xDD03, 9), 0x44);
-    assert_eq!(t.rd(0xDC13, 9), 0x43);
+    t.io_write(0xD019, 0, 3);
+    assert_eq!(t.io_read(0xD019, 4), 0, "a write does");
+    assert_eq!(t.io_read(0xDC0D, 5), 0x81);
+    assert_eq!(t.io_read(0xDC0D, 6), 0, "a read of $DC0D does");
+    assert_eq!(t.io_read(0xDD0D, 7), 0);
+    t.io_write(0xD3E5, 0x42, 8);
+    assert_eq!(t.io_read(0xD025, 9), 0x42);
+    t.io_write(0xDCF3, 0x43, 8);
+    assert_eq!(t.io_read(0xDC03, 9), 0x43);
+    t.io_write(0xDDF3, 0x44, 8);
+    assert_eq!(t.io_read(0xDD03, 9), 0x44);
+    assert_eq!(t.io_read(0xDC13, 9), 0x43);
 }

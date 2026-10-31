@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The logos (app/logo.c): Metal Chrome, the default, and Cracktro Chrome, bitmaps in the
-//! renderer's pixel region, and Pulse Train, drawn on the cell grid; what each covers and what
-//! each frame of its animation costs.
 
 use std::ffi::CStr;
 
@@ -15,6 +12,7 @@ const COL: u32 = 8;
 const ROW: u32 = 3;
 const RAMP: [u8; 7] = [1, 7, 13, 3, 14, 4, 10];
 const BG: u8 = GRID_BLACK as u8;
+const U_LEFT_STEM_X: usize = 4 * 24 + 1;
 
 fn pulse() -> &'static logo {
     unsafe { &logo_pulse_train }
@@ -31,8 +29,7 @@ fn draw(g: &mut grid, frame: u32) {
     unsafe { logo_draw(pulse(), g, COL, ROW, frame, BG) };
 }
 
-/// The logo's 120 x 40 pixels from a grid it was drawn on.
-fn image(g: &grid) -> Vec<u8> {
+fn logo_pixels(g: &grid) -> Vec<u8> {
     let px = pixels(g);
     let (x0, y0) = (COL as usize * 8, ROW as usize * 8);
     (0..40)
@@ -41,8 +38,7 @@ fn image(g: &grid) -> Vec<u8> {
         .collect()
 }
 
-/// S I D O U in the 5 x 7 face, rows top first, '#' set.
-const FACE: [[&str; 7]; 5] = [
+const SIDOU_IN_THE_5X7_FACE: [[&str; 7]; 5] = [
     [
         ".####", "#....", "#....", ".###.", "....#", "....#", "####.",
     ],
@@ -72,10 +68,7 @@ fn name(l: &logo) -> &str {
     unsafe { CStr::from_ptr(l.name) }.to_str().unwrap()
 }
 
-/// Cracktro Chrome's scene's cell rows that hold its lettering whole (app/logo.c), 64 pixel
-/// rows.
-const BAND: std::ops::Range<usize> = 9..17;
-/// Metal Chrome's: 72 pixel rows.
+const CRACKTRO_BAND: std::ops::Range<usize> = 9..17;
 const METAL_BAND: std::ops::Range<usize> = 10..19;
 
 #[test]
@@ -114,9 +107,6 @@ fn metal_chrome_is_the_scenes_lettering_band_pixel_for_pixel() {
             "pixel row {y}"
         );
     }
-    // The band holds the lettering, its outline and its shadow whole: the letters' red, orange
-    // and yellow appear nowhere else in the scene's sky between the raster bars. (Their glow,
-    // whose dither reaches light red, goes 13 pixels beyond them: the band cuts it.)
     let lettering = [GRID_RED, GRID_ORANGE, GRID_YELLOW];
     for y in 40..160 {
         let inside = (METAL_BAND.start * 8..METAL_BAND.end * 8).contains(&y);
@@ -128,8 +118,6 @@ fn metal_chrome_is_the_scenes_lettering_band_pixel_for_pixel() {
             "lettering on pixel row {y}, outside the band"
         );
     }
-    // The letters' chrome takes pixel rows 83..141; with their black outline (on black) and
-    // their purple shadow, 3 pixels down and right, 81..145: inside the band's 80..151.
     let chrome = [GRID_WHITE, GRID_RED, GRID_ORANGE, GRID_YELLOW];
     let row_has = |y: usize, cs: &[u32]| {
         img.px[y * W..(y + 1) * W]
@@ -166,12 +154,10 @@ fn cracktro_chrome_is_the_scenes_lettering_band_pixel_for_pixel() {
     for y in 0..64 {
         assert_eq!(
             px[(y0 + y) * W..(y0 + y + 1) * W],
-            img.px[(BAND.start * 8 + y) * W..(BAND.start * 8 + y + 1) * W],
+            img.px[(CRACKTRO_BAND.start * 8 + y) * W..(CRACKTRO_BAND.start * 8 + y + 1) * W],
             "pixel row {y}"
         );
     }
-    // The band holds the lettering whole: its colours (the bands, the purple shadow) appear
-    // nowhere else in the scene's sky, above or below it.
     let lettering = [
         GRID_PURPLE,
         GRID_BROWN,
@@ -180,7 +166,7 @@ fn cracktro_chrome_is_the_scenes_lettering_band_pixel_for_pixel() {
         GRID_YELLOW,
     ];
     for y in 40..168 {
-        let inside = (BAND.start * 8..BAND.end * 8).contains(&y);
+        let inside = (CRACKTRO_BAND.start * 8..CRACKTRO_BAND.end * 8).contains(&y);
         let has = img.px[y * W..(y + 1) * W]
             .iter()
             .any(|&c| lettering.contains(&u32::from(c)));
@@ -189,7 +175,6 @@ fn cracktro_chrome_is_the_scenes_lettering_band_pixel_for_pixel() {
             "lettering on pixel row {y}, outside the band"
         );
     }
-    // Its pixel rows 76..135 (row 75 is its black outline, on black) are inside the band.
     assert!((76..136).all(|y| img.px[y * W..(y + 1) * W].iter().any(|&c| c != BG)));
 }
 
@@ -213,8 +198,8 @@ fn cracktro_chromes_scene_is_the_png_whole() {
 fn the_still_is_slotted_raster_letters_over_a_pulse_wave() {
     let mut g = fresh();
     draw(&mut g, 0);
-    let img = image(&g);
-    for (k, letter) in FACE.iter().enumerate() {
+    let img = logo_pixels(&g);
+    for (k, letter) in SIDOU_IN_THE_5X7_FACE.iter().enumerate() {
         for (row, bits) in letter.iter().enumerate() {
             for (col, b) in bits.chars().enumerate() {
                 for dy in 0..4 {
@@ -227,11 +212,9 @@ fn the_still_is_slotted_raster_letters_over_a_pulse_wave() {
             }
         }
     }
-    // The gaps between the letters stay clear.
     for x in (0..5).map(|k| k * 24 + 20).flat_map(|x| x..x + 4) {
         assert!((0..28).all(|y| img[y * 120 + x] == BG), "column {x}");
     }
-    // Frame 0: duty 12 of 24, no shift: high on rows 31-32 where x % 24 < 12, low on 36-37.
     let cyan = GRID_CYAN as u8;
     for x in 1..119 {
         let high = x % 24 < 12;
@@ -278,8 +261,6 @@ fn each_draws_only_its_footprint() {
 
 #[test]
 fn every_cell_of_the_footprint_is_redrawn_whatever_was_there() {
-    // Compose draws every cell: over garbage and stray overlays a logo looks as on a clear
-    // grid.
     for l in [pulse(), chrome(), metal()] {
         let mut clean = fresh();
         unsafe { logo_draw(l, &mut *clean, 0, ROW, 6, BG) };
@@ -307,13 +288,13 @@ fn the_stripes_roll_and_the_wave_moves_every_four_frames() {
     let mut g = fresh();
     draw(&mut g, 0);
     drain(&mut g);
-    let mut last = image(&g);
-    let band_colour = |img: &[u8], band: usize| img[band * 4 * 120 + 4 * 24 + 1]; // U's left stem
+    let mut last = logo_pixels(&g);
+    let band_colour = |img: &[u8], band: usize| img[band * 4 * 120 + U_LEFT_STEM_X];
     let mut stripes = Vec::new();
     for f in 1..=28u32 {
         draw(&mut g, f);
         let sent = drain(&mut g);
-        let img = image(&g);
+        let img = logo_pixels(&g);
         match f % 4 {
             1 | 3 => assert_eq!(sent.cells, 0, "frame {f} changed {sent:?}"),
             2 => {
@@ -340,7 +321,6 @@ fn the_stripes_roll_and_the_wave_moves_every_four_frames() {
         stripes.push(band_colour(&img, 0));
         last = img;
     }
-    // Each roll moves the ramp down one band: band 0 takes the colour before it in the ramp.
     let rolls: Vec<u8> = stripes.iter().copied().step_by(4).collect();
     for w in rolls.windows(2) {
         let k = RAMP.iter().position(|&c| c == w[0]).unwrap();
@@ -355,8 +335,6 @@ fn each_ones_declared_cost_and_overlays_are_what_it_takes() {
         unsafe { logo_draw(l, &mut *g, 0, ROW, 0, BG) };
         drain(&mut g);
         let (mut worst, mut overlays) = ([0usize; 4], 0usize);
-        // Pulse Train: two full cycles of the stripes (7 rolls) and more than one of the duty
-        // sweep.
         for f in 1..=200u32 {
             unsafe { logo_draw(l, &mut *g, 0, ROW, f, BG) };
             let k = f as usize % 4;
@@ -373,9 +351,6 @@ fn each_ones_declared_cost_and_overlays_are_what_it_takes() {
     }
 }
 
-/// Each logo fits each place that shows it: the boot's title card (its scene, or else its
-/// slot between the card's ramp lines, app/boot.h BOOT_LOGO_*) and About's band at the top
-/// (app/about.h ABOUT_LOGO_*), centred, with its overlays beside what else each draws.
 #[test]
 fn each_logo_fits_each_consumers_slot() {
     for l in [pulse(), chrome(), metal()] {
@@ -392,9 +367,6 @@ fn each_logo_fits_each_consumers_slot() {
                 name(l)
             );
         }
-        // The slots themselves sit between the ramp lines: app/boot.c and app/about.c assert
-        // it. About's stars (one cell each at most) and scroller (two overlays a column at
-        // most) share the pool with it.
         let about = u32::from(l.overlays) + ABOUT_STARS + 2 * GRID_COLS;
         assert!(about < GRID_OVERLAYS, "About: {about} overlays");
         assert!(u32::from(l.overlays) < GRID_OVERLAYS, "the title card");

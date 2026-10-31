@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! MIDI learn (`app/midi_learn.c`): the state machine (open on a knob, another knob, CC,
-//! cancel, timeout, forget the picked, clear all after a confirm; M2a Task 5's gesture), the bindings over the map (midi_map_cc), through MIDI input (midi_rx) and out
-//! (midi_out), and the panel's knob-to-parameter mapping it shares with the panel.
 
 use sidou_sys::*;
 
-use crate::Rig;
+use crate::{cc_packet, map_entry, Rig, PANEL_ENC_K2, PANEL_ENC_K3};
 
 const TRS: u8 = MIDI_SRC_TRS as u8;
 const NO_CC: u8 = MIDI_MAP_NO_CC as u8;
@@ -17,12 +14,6 @@ fn learn() -> Box<midi_learn> {
     let mut ml = Box::<midi_learn>::default();
     unsafe { midi_learn_init(&mut *ml) };
     ml
-}
-
-fn row(param: u32) -> &'static midi_map_entry {
-    let e = unsafe { midi_map_for_param(param) };
-    assert!(!e.is_null());
-    unsafe { &*e }
 }
 
 fn routed(ml: &midi_learn, cc: u32) -> Option<u32> {
@@ -38,7 +29,6 @@ fn take(ml: &mut midi_learn) -> midi_learn_result {
     unsafe { midi_learn_take(ml) }
 }
 
-/// Open on param's knob, then the CC through midi_learn_route.
 fn learn_cc(ml: &mut midi_learn, param: u32, cc: u8) {
     unsafe {
         assert_eq!(midi_learn_open(ml, param, 0), 1);
@@ -48,8 +38,6 @@ fn learn_cc(ml: &mut midi_learn, param: u32, cc: u8) {
     }
     assert_eq!(take(ml), MIDI_LEARN_LEARNED);
 }
-
-// --- the state machine ---
 
 #[test]
 fn at_power_on_nothing_is_bound_and_learn_is_idle() {
@@ -87,7 +75,6 @@ fn every_parameter_with_a_map_row_can_be_learned() {
 #[test]
 fn a_knob_opens_learn_on_its_parameter_then_a_cc_binds_to_it() {
     let mut ml = learn();
-    // A CC while idle binds nothing.
     assert!(unsafe { midi_learn_route(&mut *ml, 21) }.is_null());
     assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
     assert_eq!(
@@ -96,20 +83,18 @@ fn a_knob_opens_learn_on_its_parameter_then_a_cc_binds_to_it() {
     );
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
     assert_eq!(u32::from(ml.param), LIVE_PARAM_CUTOFF);
-    // Data entry and the channel mode messages do not bind: it still waits.
     for cc in [6, 38, 96, 97, 98, 99, 100, 101, 120, 121, 123, 127] {
         assert!(unsafe { midi_learn_route(&mut *ml, cc) }.is_null(), "{cc}");
         assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
     }
     let e = unsafe { midi_learn_route(&mut *ml, 21) };
-    assert_eq!(e, row(LIVE_PARAM_CUTOFF) as *const _);
+    assert_eq!(e, map_entry(LIVE_PARAM_CUTOFF) as *const _);
     assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
     assert_eq!((ml.result_cc, ml.count), (21, 1));
     assert_eq!(take(&mut ml), MIDI_LEARN_LEARNED);
     assert_eq!(take(&mut ml), MIDI_LEARN_NOTHING, "taken once");
     assert_eq!(routed(&ml, 21), Some(LIVE_PARAM_CUTOFF));
     assert_eq!(cc_of(&ml, LIVE_PARAM_CUTOFF), 21);
-    // Idle: the next CC is only routed, nothing more binds.
     assert!(unsafe { midi_learn_route(&mut *ml, 22) }.is_null());
     assert_eq!(ml.count, 1);
 }
@@ -117,7 +102,6 @@ fn a_knob_opens_learn_on_its_parameter_then_a_cc_binds_to_it() {
 #[test]
 fn a_knob_without_a_parameter_opens_nothing_and_another_knob_picks_again() {
     let mut ml = learn();
-    // K4 (the preset) has no parameter: the panel says LIVE_PARAM_COUNT.
     assert_eq!(unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_COUNT, 0) }, 0);
     assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
     unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
@@ -127,7 +111,6 @@ fn a_knob_without_a_parameter_opens_nothing_and_another_knob_picks_again() {
         (MIDI_LEARN_CC, LIVE_PARAM_CUTOFF),
         "a knob with no parameter leaves the pick"
     );
-    // Another knob after the first picks again.
     unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_RESONANCE, 0) };
     assert_eq!(u32::from(ml.param), LIVE_PARAM_RESONANCE);
     assert_eq!(take(&mut ml), MIDI_LEARN_NOTHING);
@@ -156,7 +139,7 @@ fn home_cancels_at_every_step_and_binds_nothing() {
 fn ten_seconds_without_a_step_time_out_and_each_step_restarts_the_time() {
     let t = MIDI_LEARN_TIMEOUT_MS;
     let mut ml = learn();
-    let start = 0xffff_f000u32; // across the clock's wrap
+    let start = 0xffff_f000u32;
     unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_RESONANCE, start) };
     assert_eq!(
         unsafe { midi_learn_tick(&mut *ml, start.wrapping_add(t - 1)) },
@@ -187,7 +170,6 @@ fn asked_then_confirmed_clears_every_binding() {
     let mut ml = learn();
     learn_cc(&mut ml, LIVE_PARAM_CUTOFF, 21);
     learn_cc(&mut ml, LIVE_PARAM_RESONANCE, 22);
-    // Neither asks nor confirms while idle.
     unsafe { midi_learn_ask_clear(&mut *ml, 0) };
     unsafe { midi_learn_confirm(&mut *ml) };
     assert_eq!((u32::from(ml.state), ml.count), (MIDI_LEARN_IDLE, 2));
@@ -197,7 +179,6 @@ fn asked_then_confirmed_clears_every_binding() {
     unsafe { midi_learn_ask_clear(&mut *ml, 0) };
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CONFIRM);
     assert_eq!(ml.count, 2, "asking clears nothing");
-    // A CC while asked binds nothing.
     assert!(unsafe { midi_learn_route(&mut *ml, 30) }.is_null());
     unsafe { midi_learn_confirm(&mut *ml) };
     assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
@@ -243,7 +224,6 @@ fn forget_instead_of_a_cc_forgets_the_picked_parameters_binding() {
         "the other stays"
     );
     assert_eq!(ml.count, 1);
-    // A parameter with nothing bound: nothing to forget, and it waits on, its time restarted.
     unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
     assert_eq!(unsafe { midi_learn_forget_picked(&mut *ml, 5000) }, 0);
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
@@ -258,17 +238,14 @@ fn forget_instead_of_a_cc_forgets_the_picked_parameters_binding() {
 fn one_cc_per_parameter_and_one_parameter_per_cc() {
     let mut ml = learn();
     learn_cc(&mut ml, LIVE_PARAM_CUTOFF, 21);
-    // The cutoff again, on another CC: it moves.
     learn_cc(&mut ml, LIVE_PARAM_CUTOFF, 22);
     assert_eq!(routed(&ml, 21), None);
     assert_eq!(routed(&ml, 22), Some(LIVE_PARAM_CUTOFF));
     assert_eq!(ml.count, 1);
-    // CC 22 for the resonance: the CC moves, the cutoff has none.
     learn_cc(&mut ml, LIVE_PARAM_RESONANCE, 22);
     assert_eq!(routed(&ml, 22), Some(LIVE_PARAM_RESONANCE));
     assert_eq!(cc_of(&ml, LIVE_PARAM_CUTOFF), NO_CC);
     assert_eq!(ml.count, 1);
-    // The same binding again changes nothing.
     learn_cc(&mut ml, LIVE_PARAM_RESONANCE, 22);
     assert_eq!(ml.count, 1);
 }
@@ -304,9 +281,7 @@ fn every_parameter_can_hold_a_binding_at_once() {
     );
 }
 
-/// The bindings' two tables agree: `count` is the bound CCs and the bound parameters alike,
-/// and each table is the other's inverse.
-fn assert_consistent(ml: &midi_learn, step: usize) {
+fn assert_the_tables_are_each_others_inverse(ml: &midi_learn, step: usize) {
     let none = MIDI_LEARN_NONE as u8;
     let ccs = ml.cc_row.iter().filter(|&&r| r != none).count();
     let params = ml.param_cc.iter().filter(|&&c| c != NO_CC).count();
@@ -336,8 +311,6 @@ fn assert_consistent(ml: &midi_learn, step: usize) {
     }
 }
 
-/// Random binds, forgets, clears and routed CCs (armed or not, learnable or not, parameters
-/// past the last included) keep the two tables each other's inverse.
 #[test]
 fn random_binds_forgets_clears_and_routes_keep_the_tables_inverse() {
     let mut ml = learn();
@@ -367,7 +340,7 @@ fn random_binds_forgets_clears_and_routes_keep_the_tables_inverse() {
                 unsafe { midi_learn_route(&mut *ml, cc as u8) };
             }
         }
-        assert_consistent(&ml, step);
+        assert_the_tables_are_each_others_inverse(&ml, step);
         most = most.max(ml.count);
     }
     assert!(
@@ -376,10 +349,6 @@ fn random_binds_forgets_clears_and_routes_keep_the_tables_inverse() {
     );
 }
 
-// --- through the map and MIDI input ---
-
-/// A live instrument fed through a `midi_rx` and watched by MIDI out, with learn wired in as
-/// the device does (platform/fm1/midi.c midi_init).
 struct Learned {
     rig: Rig,
     rx: Box<midi_rx>,
@@ -414,7 +383,6 @@ impl Learned {
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }
 
-    /// TRS bytes in one drain pass.
     fn trs(&mut self, bytes: &[u8]) {
         for &b in bytes {
             self.entry(TRS, u32::from(b), self.rx.epoch);
@@ -442,7 +410,6 @@ impl Learned {
         buf[..n as usize].to_vec()
     }
 
-    /// The gesture with the CC from TRS (on channel 5: learn is omni).
     fn learn(&mut self, param: u32, cc: u8, value: u8) {
         unsafe { midi_learn_open(&mut *self.ml, param, 0) };
         self.trs(&[0xB4, cc, value]);
@@ -451,11 +418,7 @@ impl Learned {
 }
 
 fn from_cc(param: u32, value: u8) -> u32 {
-    unsafe { midi_map_from_cc(std::ptr::null(), row(param), value) }
-}
-
-fn cc_packet(cc: u8, value: u8) -> u32 {
-    u32::from_le_bytes([0x0B | (MIDI_OUT_CABLE as u8) << 4, 0xB0, cc, value])
+    unsafe { midi_map_from_cc(std::ptr::null(), map_entry(param), value) }
 }
 
 #[test]
@@ -469,7 +432,6 @@ fn the_cc_that_teaches_also_sets_and_then_the_parameter_follows_it_on_every_chan
     }
     m.usb_cc(3, 21, 10);
     assert_eq!(m.get(LIVE_PARAM_CUTOFF), from_cc(LIVE_PARAM_CUTOFF, 10));
-    // The map's own CC still works.
     m.trs(&[0xB0, LIVE_CC_CUTOFF as u8, 90]);
     assert_eq!(m.get(LIVE_PARAM_CUTOFF), from_cc(LIVE_PARAM_CUTOFF, 90));
 }
@@ -484,7 +446,6 @@ fn a_learned_cc_takes_the_parameters_curve_and_range() {
     }
     m.learn(LIVE_PARAM_SLOT + LIVE_SLOT_FIELDS + LIVE_SLOT_MIX, 22, 0);
     m.trs(&[0xB0, 22, 99]);
-    // on Mix's walk (knob_curves.rs): CC 99 is position 24 of 32, 61
     assert_eq!(m.rig.live.slot[1][LIVE_SLOT_MIX as usize], 61);
 }
 
@@ -501,10 +462,8 @@ fn a_learned_cc_that_was_another_parameters_wins_and_gives_it_back_when_forgotte
         cutoff,
         "CC 74 is the resonance's now"
     );
-    // The cutoff's NRPN still reaches it.
     m.trs(&[0xB0, 99, 0, 98, 0, 6, 3, 38, 0]);
     assert_eq!(m.get(LIVE_PARAM_CUTOFF), 3 << 7);
-    // Forgotten: CC 74 is the cutoff's again.
     unsafe { midi_learn_forget(&mut *m.ml, LIVE_PARAM_RESONANCE) };
     m.trs(&[0xB0, LIVE_CC_CUTOFF as u8, 127]);
     assert_eq!(m.get(LIVE_PARAM_CUTOFF), LIVE_CUTOFF_MAX);
@@ -524,7 +483,6 @@ fn a_learned_cc_1_wins_over_the_mod_wheel() {
 fn nrpn_data_entry_and_channel_mode_are_never_learned() {
     let mut m = Learned::new();
     unsafe { midi_learn_open(&mut *m.ml, LIVE_PARAM_CUTOFF, 0) };
-    // An NRPN for the resonance, all of it, while learn waits.
     m.trs(&[0xB0, 99, 0, 98, 1, 6, 0, 38, 9, 96, 0, 0xB0, 121, 0, 123, 0]);
     assert_eq!(m.get(LIVE_PARAM_RESONANCE), 10);
     assert_eq!(u32::from(m.ml.state), MIDI_LEARN_CC, "still waiting");
@@ -535,14 +493,12 @@ fn nrpn_data_entry_and_channel_mode_are_never_learned() {
 fn bindings_survive_a_gap_in_the_input_and_a_program_change() {
     let mut m = Learned::new();
     m.learn(LIVE_PARAM_CUTOFF, 21, 0);
-    m.entry(TRS, 0xB0, 1); // a later epoch: the parsers restart
+    m.entry(TRS, 0xB0, 1);
     assert_eq!(m.rx.restarts, 1);
     m.trs(&[0xC0, 1, 0xB0, 21, 127]);
     assert_eq!(m.rig.live.preset, 1);
     assert_eq!(m.get(LIVE_PARAM_CUTOFF), LIVE_CUTOFF_MAX);
 }
-
-// --- MIDI out ---
 
 #[test]
 fn a_panel_change_to_a_learned_parameter_goes_out_on_the_learned_cc() {
@@ -550,13 +506,12 @@ fn a_panel_change_to_a_learned_parameter_goes_out_on_the_learned_cc() {
     m.learn(LIVE_PARAM_CUTOFF, 21, 64);
     assert_eq!(m.tick(), [], "the CC that taught is MIDI's: not echoed");
     m.set(LIVE_PARAM_CUTOFF, 2047);
-    assert_eq!(m.tick(), [cc_packet(21, 127)]);
-    // The others still go on the map's CCs.
+    assert_eq!(m.tick(), [cc_packet(0, 21, 127)]);
     m.set(LIVE_PARAM_RESONANCE, 3);
     assert_eq!(
         m.tick(),
-        [cc_packet(LIVE_CC_RESONANCE as u8, unsafe {
-            midi_map_to_cc(std::ptr::null(), row(LIVE_PARAM_RESONANCE), 3)
+        [cc_packet(0, LIVE_CC_RESONANCE as u8, unsafe {
+            midi_map_to_cc(std::ptr::null(), map_entry(LIVE_PARAM_RESONANCE), 3)
         })]
     );
 }
@@ -567,18 +522,18 @@ fn a_parameter_whose_cc_was_learned_by_another_goes_out_as_its_nrpn() {
     m.learn(LIVE_PARAM_RESONANCE, LIVE_CC_CUTOFF as u8, 0);
     m.tick();
     m.set(LIVE_PARAM_CUTOFF, 1000);
-    let nrpn = row(LIVE_PARAM_CUTOFF).nrpn;
+    let nrpn = map_entry(LIVE_PARAM_CUTOFF).nrpn;
     assert_eq!(
         m.tick(),
         [
-            cc_packet(99, (nrpn >> 7) as u8),
-            cc_packet(98, (nrpn & 0x7f) as u8),
-            cc_packet(6, (1000 >> 7) as u8),
-            cc_packet(38, (1000 & 0x7f) as u8)
+            cc_packet(0, 99, (nrpn >> 7) as u8),
+            cc_packet(0, 98, (nrpn & 0x7f) as u8),
+            cc_packet(0, 6, (1000 >> 7) as u8),
+            cc_packet(0, 38, (1000 & 0x7f) as u8)
         ]
     );
     m.set(LIVE_PARAM_RESONANCE, 15);
-    assert_eq!(m.tick(), [cc_packet(LIVE_CC_CUTOFF as u8, 127)]);
+    assert_eq!(m.tick(), [cc_packet(0, LIVE_CC_CUTOFF as u8, 127)]);
 }
 
 #[test]
@@ -593,15 +548,10 @@ fn a_learned_cc_from_midi_is_never_echoed_even_on_cc_1() {
         assert_eq!(m.get(LIVE_PARAM_CUTOFF), from_cc(LIVE_PARAM_CUTOFF, v));
         assert_eq!(m.tick(), [], "{v} echoed");
     }
-    // A panel change after the passes still goes, the tick's look finds it: on CC 1, the
-    // cutoff's learned CC.
     m.set(LIVE_PARAM_CUTOFF, 0);
-    assert_eq!(m.tick(), [cc_packet(1, 0)]);
+    assert_eq!(m.tick(), [cc_packet(0, 1, 0)]);
 }
 
-/// A CC neither the map nor learn takes changes no parameter, so a pass of it costs MIDI out no
-/// look (midi_rx_watch): CC 64, a free CC nobody learned, a reserved row's CC. Once learn takes
-/// one, waiting for a CC or bound to it, it does.
 #[test]
 fn a_cc_neither_the_map_nor_learn_takes_costs_midi_out_no_look() {
     let mut m = Learned::new();
@@ -628,9 +578,6 @@ fn a_cc_neither_the_map_nor_learn_takes_costs_midi_out_no_look() {
     assert_eq!(m.tick(), [], "nothing echoed");
 }
 
-// --- the panel's knobs ---
-
-/// On LIVE's page (PANEL_PAGE_LIVE, every view but CHIP's; chip_view.rs has the CHIP view's).
 fn knob_param(l: &live, held: u32, enc: u32) -> u32 {
     let mut p = panel::default();
     unsafe { panel_init(&mut p) };
@@ -658,8 +605,6 @@ fn the_knobs_parameters_are_the_ones_the_panel_turns() {
                     .filter(|&q| unsafe { live_param_get(&*rig.live, q) } != before[q as usize])
                     .collect();
                 if param == LIVE_PARAM_COUNT {
-                    // PRESETS steps the preset (EDIT held: reverts it); SELECT and ALGORITHM
-                    // are the views'; nothing else turns anything.
                     let presets = held == 0 && enc == PANEL_ENC_PRESETS;
                     assert_eq!(rig.live.preset != preset, presets, "enc {enc}");
                     if enc != PANEL_ENC_PRESETS {
@@ -673,22 +618,14 @@ fn the_knobs_parameters_are_the_ones_the_panel_turns() {
     }
     let l = Rig::new(SID_MODEL_6581);
     assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K1), LIVE_PARAM_CUTOFF);
-    assert_eq!(
-        knob_param(&l.live, 0, PANEL_ENC_K1 + 1),
-        LIVE_PARAM_RESONANCE
-    );
-    // K3 is the sound's own control: the decay on SAW LEAD, the pulse width on PWM BASS, the
-    // ratio (no parameter) on SYNC LEAD; K4 is the release.
-    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K1 + 2), LIVE_PARAM_DECAY);
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K2), LIVE_PARAM_RESONANCE);
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K3), LIVE_PARAM_DECAY);
     assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K4), LIVE_PARAM_RELEASE);
     let mut l = l;
     l.set_preset(1);
-    assert_eq!(
-        knob_param(&l.live, 0, PANEL_ENC_K1 + 2),
-        LIVE_PARAM_PULSE_WIDTH
-    );
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K3), LIVE_PARAM_PULSE_WIDTH);
     l.set_preset(2);
-    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K1 + 2), LIVE_PARAM_COUNT);
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K3), LIVE_PARAM_COUNT);
     l.set_preset(0);
     assert_eq!(
         knob_param(&l.live, edit, PANEL_ENC_K1),
@@ -696,8 +633,6 @@ fn the_knobs_parameters_are_the_ones_the_panel_turns() {
     );
 }
 
-/// The character's parameters (M1c Task 3) are learnable through their map rows like any
-/// other: a CC bound to one routes to its row.
 #[test]
 fn the_character_parameters_can_be_learned() {
     let mut ml = learn();
@@ -713,6 +648,6 @@ fn the_character_parameters_can_be_learned() {
         let cc = 14 + i as u32;
         assert_eq!(unsafe { midi_learn_bind(&mut *ml, cc, p) }, 1);
         assert_eq!(routed(&ml, cc), Some(p));
-        assert_eq!(u32::from(row(p).param), p);
+        assert_eq!(u32::from(map_entry(p).param), p);
     }
 }

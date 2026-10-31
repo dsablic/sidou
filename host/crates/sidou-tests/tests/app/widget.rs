@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Widgets (app/widget.c): the frame with a title, numbers, bars and the menu.
 
 use std::ffi::{c_char, c_void, CStr};
 
@@ -8,6 +7,7 @@ use sidou_sys::*;
 use sidou_tests::font;
 
 const COLS: usize = GRID_COLS as usize;
+const MENU_BUDGET_CELLS: u16 = 190;
 
 fn attr(fg: u32, bg: u32) -> u8 {
     ((bg << 4) | fg) as u8
@@ -42,7 +42,6 @@ fn a_frame_carries_its_title_in_the_top_edge() {
     assert_eq!(at(&g, 2, 6), f.code("BOX_V"));
     assert_eq!(at(&g, 5, 6), b'.', "the inside is left alone");
     assert!((3..9).all(|c| g.attr[4 * COLS + c] == a));
-    // A title longer than the edge is cut before the corner; none leaves the edge plain.
     unsafe { widget_frame(&mut *g, 0, 10, 6, 3, a, c"TOOLONG".as_ptr()) };
     assert_eq!(text(&g, 1, 10, 4), " TOO");
     assert_eq!(at(&g, 5, 10), f.code("BOX_TR"));
@@ -99,7 +98,6 @@ fn a_bar_fills_its_cells_in_eighths() {
     assert_eq!(bar(&mut g, 63), [8, 8, 8, 7]);
 }
 
-/// A menu's context: two values and a log of what ran.
 #[derive(Default)]
 struct Ctx {
     level: i32,
@@ -111,8 +109,7 @@ unsafe fn ctx<'a>(c: *mut c_void) -> &'a mut Ctx {
     unsafe { &mut *c.cast::<Ctx>() }
 }
 
-/// Writes s and its terminator into a MENU_VALUE_CHARS buffer.
-unsafe fn put(buf: *mut c_char, s: &str) {
+unsafe fn put_value(buf: *mut c_char, s: &str) {
     assert!(s.len() < MENU_VALUE_CHARS as usize);
     for (i, b) in s.bytes().chain([0]).enumerate() {
         unsafe { *buf.add(i) = b as c_char };
@@ -121,7 +118,7 @@ unsafe fn put(buf: *mut c_char, s: &str) {
 
 unsafe extern "C" fn level_value(c: *mut c_void, buf: *mut c_char) {
     let v = unsafe { ctx(c) }.level;
-    unsafe { put(buf, &v.to_string()) };
+    unsafe { put_value(buf, &v.to_string()) };
 }
 
 unsafe extern "C" fn level_turn(c: *mut c_void, steps: i32) {
@@ -132,7 +129,7 @@ unsafe extern "C" fn level_turn(c: *mut c_void, steps: i32) {
 
 unsafe extern "C" fn mode_value(c: *mut c_void, buf: *mut c_char) {
     let on = unsafe { ctx(c) }.mode;
-    unsafe { put(buf, if on { "ON" } else { "OFF" }) };
+    unsafe { put_value(buf, if on { "ON" } else { "OFF" }) };
 }
 
 unsafe extern "C" fn mode_turn(c: *mut c_void, _steps: i32) {
@@ -225,7 +222,7 @@ fn a_fast_spin_never_shows_two_selected_lines() {
     let mut c = Ctx::default();
     let mut m = new_menu(&its, 6, &mut c);
     m.scale = 2;
-    m.budget = 190;
+    m.budget = MENU_BUDGET_CELLS;
     m.sel_attr = attr(GRID_YELLOW, GRID_DARK_GREY);
     let base = attr(GRID_WHITE, GRID_BLACK);
     let mut g = new_grid();
@@ -243,7 +240,7 @@ fn a_fast_spin_never_shows_two_selected_lines() {
             .filter(|&k| g.attr[(4 + 3 * k) * COLS] == m.sel_attr)
             .count();
         assert_eq!(selected, 1, "cursor {}, top {}", m.cursor, m.top);
-        assert!(crate::drain(&mut g).cells <= 190);
+        assert!(crate::drain(&mut g).cells <= usize::from(MENU_BUDGET_CELLS));
     }
     for _ in 0..3 {
         unsafe { menu_draw(&mut m, &mut *g, 0, 4, 30, base, 0) };
@@ -268,7 +265,7 @@ fn a_fast_spin_never_shows_two_selected_lines() {
 fn colliding_menu_rows_never_keep_the_old_value() {
     unsafe extern "C" fn frames(c: *mut c_void, buf: *mut c_char) {
         let value = unsafe { ctx(c) }.level;
-        unsafe { put(buf, &format!("{value} FR")) };
+        unsafe { put_value(buf, &format!("{value} FR")) };
     }
     let its = [item(c"ARP RATE", Some(frames), Some(level_turn))];
     let mut c = Ctx {
@@ -348,7 +345,6 @@ fn a_menu_draws_its_rows_with_values_on_the_right_and_a_block_cursor() {
     assert_eq!(at(&g, 15, 6), b'.', "drew past its width");
     assert!((3..15).all(|col| (5..8).all(|row| g.attr[row * COLS + col] == a)));
     assert_eq!(at(&g, 3, 8), b'.', "drew past its rows");
-    // The cursor off; scrolled, the rows show the items from the top one.
     unsafe {
         menu_move(&mut m, 3);
         menu_draw(&mut m, &mut *g, 3, 5, 12, a, 0);
@@ -357,7 +353,6 @@ fn a_menu_draws_its_rows_with_values_on_the_right_and_a_block_cursor() {
     assert_eq!(text(&g, 3, 7, 12), " FIVE    -12");
 }
 
-/// A menu's line at scale 2, as its characters: the collapsed row `row` from column `col`.
 fn big_line(g: &grid, row: usize, col: usize, chars: usize) -> String {
     (0..chars)
         .map(|k| g.src[row * COLS + col + 2 * k] as char)
@@ -378,11 +373,8 @@ fn a_menu_at_scale_two_draws_large_lines_a_quota_at_a_time_and_only_what_changed
     let mut g = new_grid();
     let a = attr(GRID_LIGHT_BLUE, GRID_BLUE);
     let draw = |m: &mut menu, g: &mut grid| unsafe { menu_draw(m, g, 0, 4, 30, a, 0) };
-    // 4 lines (90 cells each here, on a grid of other cells) in a budget of 190: two a call (the
-    // first whatever is pending, the second while 60 more fit), the selected one first; the
-    // other two in the next call.
     crate::drain(&mut g);
-    m.budget = 190;
+    m.budget = MENU_BUDGET_CELLS;
     draw(&mut m, &mut g);
     assert_eq!(
         (m.pending, m.valid),
@@ -400,11 +392,9 @@ fn a_menu_at_scale_two_draws_large_lines_a_quota_at_a_time_and_only_what_changed
     crate::drain(&mut g);
     draw(&mut m, &mut g);
     assert_eq!((m.pending, m.valid), (0, 0b1111));
-    // Nothing changed: nothing drawn, and nothing marked.
     let before = (g.ch, g.attr);
     draw(&mut m, &mut g);
     assert!((g.ch, g.attr) == before && m.pending == 0);
-    // A value that changed redraws its line alone; a cursor move two (the old and the new).
     c.level = 12;
     crate::drain(&mut g);
     draw(&mut m, &mut g);
@@ -415,7 +405,6 @@ fn a_menu_at_scale_two_draws_large_lines_a_quota_at_a_time_and_only_what_changed
     assert_eq!(g.attr[4 * COLS], a, "the old line lost its bar");
     assert_eq!(g.attr[7 * COLS], sel, "the new one has it");
     assert_eq!(m.pending, 0);
-    // Scrolled: every line differs; two a call (the cursor's first), the grid drained between.
     crate::drain(&mut g);
     unsafe { menu_move(&mut m, 9) };
     draw(&mut m, &mut g);
@@ -432,7 +421,6 @@ fn a_menu_at_scale_two_draws_large_lines_a_quota_at_a_time_and_only_what_changed
         big_line(&g, 4, 1, 14),
         format!("{:<4}{:>10}", "MODE", "OFF")
     );
-    // What something drew over is drawn again whatever it was, quota or not.
     g.ch[7 * COLS + 2] = b'#';
     m.force_rows = 0b11 << 7;
     m.budget = 1;
@@ -468,8 +456,7 @@ fn a_menu_with_a_line_limit_draws_that_many_a_call_with_the_pixels_of_one_withou
     assert_eq!(free.pending, 0);
     let mut calls = 0;
     loop {
-        // Whatever the budget says, `lines` is the limit: 190 cells would fit three lines.
-        capped.budget = 190;
+        capped.budget = MENU_BUDGET_CELLS;
         unsafe { menu_draw(&mut capped, &mut *gc, 0, 4, 30, a, 0) };
         let drawn = capped.valid.count_ones();
         calls += 1;

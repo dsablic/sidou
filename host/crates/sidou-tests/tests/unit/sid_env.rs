@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use sidou_sys::*;
 
-/// An envelope as after power-on and reset: counter 0xaa, releasing at rate 0.
+use crate::{Lcg, ATTACK_0_FROM_RELOAD, RELEASE_6_PERIOD, RELEASE_FROM_RELOAD};
+
+const SUSTAIN_0XFF: u8 = 0xf0;
+
 fn powered_on() -> sid_env {
     let mut e = sid_env {
         counter: 0xaa,
@@ -12,8 +15,7 @@ fn powered_on() -> sid_env {
     e
 }
 
-/// Released to 0 and frozen there, as long after power-on.
-fn silent() -> sid_env {
+fn released_to_zero_and_frozen() -> sid_env {
     let mut e = powered_on();
     advance(&mut e, 100_000);
     assert_eq!(e.counter, 0);
@@ -22,7 +24,7 @@ fn silent() -> sid_env {
 }
 
 fn gated(ad: u8, sr: u8) -> sid_env {
-    let mut e = silent();
+    let mut e = released_to_zero_and_frozen();
     unsafe {
         sid_env_write_ad(&mut e, ad);
         sid_env_write_sr(&mut e, sr);
@@ -33,16 +35,14 @@ fn gated(ad: u8, sr: u8) -> sid_env {
 
 fn advance(e: &mut sid_env, cycles: u32) {
     unsafe { sid_env_advance(e, cycles) }
-    check(e);
+    assert_resting_invariants(e);
 }
 
-/// The resting-mode invariants (sid_env_check names the one that fails).
-fn check(e: &sid_env) {
+fn assert_resting_invariants(e: &sid_env) {
     let failed = unsafe { sid_env_check(e) };
     assert_eq!(failed, 0, "sid_env_check: invariant {failed} fails: {e:?}");
 }
 
-/// Cycles until the counter next changes, at most `limit`.
 fn cycles_to_next_step(e: &mut sid_env, limit: u32) -> Option<u32> {
     let start = e.counter;
     (1..=limit).find(|_| {
@@ -53,9 +53,6 @@ fn cycles_to_next_step(e: &mut sid_env, limit: u32) -> Option<u32> {
 
 #[test]
 fn reset_keeps_the_counter_and_releases_from_it_three_cycles_in() {
-    // reSIDfp: "counter is not changed on reset". Reset sets the rate LFSR to reload on
-    // the next cycle, so the first release step comes 3 cycles in (LFSR reload,
-    // exponential pipeline, envelope pipeline), then one every 9 cycles.
     let mut e = powered_on();
     assert_eq!(e.counter, 0xaa);
     assert_eq!(e.counter_enabled, 1);
@@ -75,8 +72,6 @@ fn reset_keeps_the_counter_and_releases_from_it_three_cycles_in() {
 
 #[test]
 fn reset_with_the_counter_at_zero_wraps_it_to_0xff() {
-    // reSIDfp's reset enables the counter whatever its value, so a counter at 0 steps
-    // down to 0xff and releases from there.
     let mut e = sid_env::default();
     unsafe { sid_env_reset(&mut e) };
     advance(&mut e, 3);
@@ -128,8 +123,6 @@ fn exponential_divider_doubles_step_time_below_0x5d() {
     while e.counter != 0x5d {
         advance(&mut e, 1);
     }
-    // The first step at period 2 comes a cycle later still: from period 2 on, the
-    // exponential pipeline takes two cycles instead of one.
     assert_eq!(cycles_to_next_step(&mut e, 100), Some(19));
     assert_eq!(cycles_to_next_step(&mut e, 100), Some(18));
     assert_eq!(cycles_to_next_step(&mut e, 100), Some(18));
@@ -147,9 +140,6 @@ fn release_freezes_at_zero() {
 
 #[test]
 fn lowering_the_rate_below_the_lfsr_position_waits_for_the_lfsr_to_wrap() {
-    // The ADSR delay bug: attack 15 has a period of 31251. 1000 cycles in, the period
-    // drops to 9, but the LFSR is already past that position and has to run through
-    // all 32767 states before it matches again.
     let mut e = gated(0xf0, 0xf0);
     advance(&mut e, 1000);
     let counter = e.counter;
@@ -160,11 +150,7 @@ fn lowering_the_rate_below_the_lfsr_position_waits_for_the_lfsr_to_wrap() {
     assert!(wait < 3_000, "{wait}");
 }
 
-/// SAW LEAD's envelope (attack 0, decay 9, sustain 10, release 6), held, released to 0, then
-/// gated again at each phase of the release rate's period (267 cycles): the cycles from
-/// the gate to the attack's first step, phase by phase. `gate_reset` is the chip's option
-/// (sid_set_gate_reset).
-fn retrigger_waits(gate_reset: u8) -> Vec<u32> {
+fn saw_lead_retrigger_waits_per_release_phase(gate_reset: u8) -> Vec<u32> {
     let mut e = powered_on();
     e.gate_reset = gate_reset;
     unsafe {
@@ -186,20 +172,9 @@ fn retrigger_waits(gate_reset: u8) -> Vec<u32> {
         .collect()
 }
 
-/// Release 6's rate period: its LFSR position (266) plus one.
-const RELEASE_6_PERIOD: u32 = 267;
-
-/// Attack 0's first step from a rate counter reloaded at the gate: one period (9 cycles),
-/// then the LFSR reload and the envelope pipeline (sid_env.h's timeline).
-const ATTACK_0_FROM_RELOAD: u32 = 9 + 3;
-
 #[test]
 fn a_retrigger_after_a_slow_release_waits_for_the_lfsr_unless_the_gate_resets_it() {
-    // Authentic (the default): the ADSR delay bug, as reSIDfp has it. Attack 0 matches at
-    // LFSR position 8, which the attack rate takes two cycles after the gate; a gate that
-    // finds the LFSR too far on (259 of release 6's 267 phases) waits for it to come round,
-    // about 32767 cycles.
-    let authentic = retrigger_waits(0);
+    let authentic = saw_lead_retrigger_waits_per_release_phase(0);
     let at_once = authentic
         .iter()
         .filter(|&&w| w <= ATTACK_0_FROM_RELOAD)
@@ -211,33 +186,29 @@ fn a_retrigger_after_a_slow_release_waits_for_the_lfsr_unless_the_gate_resets_it
             .all(|&w| w <= ATTACK_0_FROM_RELOAD || w > 32_000),
         "{authentic:?}"
     );
-    // Gate reset: the rate counter restarts at the gate, so every phase starts at once.
-    let instant = retrigger_waits(1);
+    let instant = saw_lead_retrigger_waits_per_release_phase(1);
     assert!(
         instant.iter().all(|&w| w <= ATTACK_0_FROM_RELOAD),
         "{instant:?}"
     );
 }
 
-/// The presets whose release is faster than their decay, as velocity 127 plays them (attack
-/// and decay, sustain and release): SAW LEAD, SYNC LEAD, PWM BASS. Their sustain levels keep
-/// the exponential divider at period 1.
 const RELEASE_FASTER_THAN_DECAY: [(&str, u8, u8); 3] = [
     ("SAW LEAD", 0x09, 0xa6),
     ("SYNC LEAD", 0x0a, 0xb8),
     ("PWM BASS", 0x05, 0x84),
 ];
 
-/// A rate's period, in cycles: its LFSR position plus one.
 fn rate_period(rate: u8) -> u32 {
     unsafe { sid_env_rate_pos(rate) + 1 }
 }
 
-/// An envelope gated with `ad` and `sr` and held into sustain, then released at each phase
-/// of the decay rate's period: per phase, the cycles from the gate's falling edge to the
-/// release's first step (at most `limit`), and the divider's period and count at the edge.
-/// `gate_reset` is the chip's option (sid_set_gate_reset).
-fn release_waits(ad: u8, sr: u8, gate_reset: u8, limit: u32) -> Vec<(u32, u32, u32)> {
+fn release_waits_per_decay_phase(
+    ad: u8,
+    sr: u8,
+    gate_reset: u8,
+    limit: u32,
+) -> Vec<(u32, u32, u32)> {
     let mut e = powered_on();
     e.gate_reset = gate_reset;
     unsafe {
@@ -261,16 +232,11 @@ fn release_waits(ad: u8, sr: u8, gate_reset: u8, limit: u32) -> Vec<(u32, u32, u
         .collect()
 }
 
-/// A release's first step from a rate counter reloaded at the gate's falling edge, with the
-/// divider at period 1: one release period, then the LFSR reload, the exponential pipeline
-/// and the envelope pipeline (sid_env.h's timeline).
-const RELEASE_FROM_RELOAD: u32 = 3;
-
 #[test]
 fn with_the_gate_reset_a_release_starts_within_a_release_period_at_every_phase() {
     for (name, ad, sr) in RELEASE_FASTER_THAN_DECAY {
         let bound = rate_period(sr & 0x0f) + RELEASE_FROM_RELOAD;
-        let waits = release_waits(ad, sr, 1, 40_000);
+        let waits = release_waits_per_decay_phase(ad, sr, 1, 40_000);
         assert!(
             waits.iter().all(|&(_, p, _)| p == 1),
             "{name}: divider period 1"
@@ -282,14 +248,10 @@ fn with_the_gate_reset_a_release_starts_within_a_release_period_at_every_phase()
 
 #[test]
 fn without_the_gate_reset_a_release_faster_than_the_decay_waits_for_the_lfsr() {
-    // The ADSR delay on note-off, as reSIDfp has it: the release rate matches only once the
-    // LFSR reaches its position, so an edge that finds the LFSR past it (held at the decay
-    // rate, it runs up to the decay's position) waits for it to come round. The phases that
-    // find it at or before the release's position, one release period of them, start at once.
     for (name, ad, sr) in RELEASE_FASTER_THAN_DECAY {
         let (decay, release) = (rate_period(ad & 0x0f), rate_period(sr & 0x0f));
         let bound = release + RELEASE_FROM_RELOAD;
-        let waits: Vec<u32> = release_waits(ad, sr, 0, 40_000)
+        let waits: Vec<u32> = release_waits_per_decay_phase(ad, sr, 0, 40_000)
             .iter()
             .map(|w| w.0)
             .collect();
@@ -308,14 +270,13 @@ fn without_the_gate_reset_a_release_faster_than_the_decay_waits_for_the_lfsr() {
 
 #[test]
 fn with_the_gate_reset_a_low_sustain_releases_after_the_divider_as_the_chip_does() {
-    // Below 0x5d the divider counts rate periods before a step (2, 4 or 8 here). The reset
-    // restarts only the LFSR: the divider's count carries on, so the first step comes at its
-    // next firing, (period - count) release periods after the edge, then the reload and the
-    // exponential (2) and envelope (1) pipelines.
     for s in 1..=5u8 {
         let sr = (s << 4) | 0x06;
         let release = rate_period(6);
-        for (phase, &(wait, p, x)) in release_waits(0x09, sr, 1, 100_000).iter().enumerate() {
+        for (phase, &(wait, p, x)) in release_waits_per_decay_phase(0x09, sr, 1, 100_000)
+            .iter()
+            .enumerate()
+        {
             assert!(p > 1, "sustain {s}: divider period {p}");
             let bound = (p - x) * release + 4;
             assert!(
@@ -328,8 +289,6 @@ fn with_the_gate_reset_a_low_sustain_releases_after_the_divider_as_the_chip_does
 
 #[test]
 fn with_the_gate_reset_a_counter_frozen_at_zero_stays_frozen_on_release() {
-    // Decayed to sustain 0, the counter freezes at 0; the release has nothing to step, with
-    // or without the reset, and the two end in the same state.
     for phase in [0u32, 1, 2, 100, 975, 976] {
         let mut ends = Vec::new();
         for gate_reset in [0u8, 1] {
@@ -365,7 +324,7 @@ fn raising_sustain_above_counter_during_decay_falls_to_zero_and_freezes() {
     while e.counter > 0x80 {
         advance(&mut e, 1);
     }
-    unsafe { sid_env_write_sr(&mut e, 0xf0) }; // sustain level 0xff, above the counter
+    unsafe { sid_env_write_sr(&mut e, SUSTAIN_0XFF) };
     advance(&mut e, 1_000_000);
     assert_eq!(e.counter, 0);
     assert_eq!(e.counter_enabled, 0);
@@ -375,7 +334,7 @@ fn raising_sustain_above_counter_during_decay_falls_to_zero_and_freezes() {
 
 #[test]
 fn gate_on_after_freeze_restarts_the_attack() {
-    let mut e = silent();
+    let mut e = released_to_zero_and_frozen();
     unsafe { sid_env_set_gate(&mut e, 1) };
     advance(&mut e, 2);
     assert_eq!(e.state, SID_ENV_ATTACK);
@@ -386,7 +345,7 @@ fn gate_on_after_freeze_restarts_the_attack() {
 
 #[test]
 fn a_frozen_envelope_rests_until_the_next_write() {
-    let mut e = silent();
+    let mut e = released_to_zero_and_frozen();
     advance(&mut e, 23);
     assert_eq!(e.dormant, 1);
     let before = e.idle;
@@ -420,7 +379,6 @@ fn an_envelope_holding_sustain_rests_until_the_next_write() {
     }
 }
 
-/// reSIDfp's rate table: the LFSR value that ends each rate's period.
 const ADSRTABLE: [u16; 16] = [
     0x007f, 0x3000, 0x1e00, 0x0660, 0x0182, 0x5573, 0x000e, 0x3805, 0x2424, 0x2220, 0x090c, 0x0ecd,
     0x010e, 0x23f7, 0x5237, 0x64a8,
@@ -431,7 +389,6 @@ fn lfsr_shift(lfsr: u16) -> u16 {
     (lfsr >> 1) | feedback
 }
 
-/// Shifts from 0x7fff to each LFSR value: the positions `sid_env` counts in.
 fn lfsr_positions() -> Vec<u32> {
     let mut pos = vec![u32::MAX; 0x8000];
     let mut lfsr = 0x7fffu16;
@@ -455,8 +412,6 @@ fn rate_positions_are_the_lfsr_table_values() {
     }
 }
 
-/// Independent per-cycle port of reSIDfp's EnvelopeGenerator (libresidfp at c1791383),
-/// with the real 15-bit rate LFSR.
 #[derive(Clone)]
 struct RefEnv {
     lfsr: u16,
@@ -478,13 +433,10 @@ struct RefEnv {
     sustain: u8,
     release: u8,
     env3: u8,
-    /// Not reSIDfp's: SIDOU's gate reset (sid_set_gate_reset), the LFSR back to 0x7fff on
-    /// each gate edge, rising and falling.
     gate_reset: bool,
 }
 
 impl RefEnv {
-    /// The class's initial values, with `counter` in place of 0xaa, then reset().
     fn new(counter: u8) -> Self {
         let mut e = Self {
             lfsr: 0x7fff,
@@ -680,10 +632,8 @@ impl RefEnv {
     }
 }
 
-/// Compares a settled copy, so `e` itself may stay at rest across steps. The counter
-/// and ENV3 must be current even at rest: the audio path and $1C read them directly.
-fn assert_same(e: &sid_env, r: &RefEnv, pos: &[u32], step: usize) {
-    check(e);
+fn assert_settled_copy_matches_reference(e: &sid_env, r: &RefEnv, pos: &[u32], step: usize) {
+    assert_resting_invariants(e);
     assert_eq!(
         e.counter, r.envelope_counter,
         "counter at rest, step {step}"
@@ -730,24 +680,6 @@ fn assert_same(e: &sid_env, r: &RefEnv, pos: &[u32], step: usize) {
     }
 }
 
-struct Lcg {
-    x: u32,
-}
-
-impl Lcg {
-    fn next(&mut self) -> u32 {
-        self.x = self.x.wrapping_mul(1664525).wrapping_add(1013904223);
-        self.x >> 8
-    }
-}
-
-/// sid_env_advance jumps over quiet stretches; reSIDfp clocks every cycle. Random
-/// writes at random times, including within a few cycles of each other so they land in
-/// the state-change and envelope pipelines, must leave both in the same state. With the
-/// gate reset too: the reference's LFSR restarts at each gate edge, rising and falling, and
-/// the fast paths (rest, linear runs, whole periods) must follow it there. The falling edges
-/// with the reset on are counted by what they meet: a pipeline in flight, a divider past
-/// period 1, a counter frozen at 0.
 #[test]
 fn jump_ahead_matches_per_cycle_reference() {
     let pos = lfsr_positions();
@@ -765,25 +697,23 @@ fn jump_ahead_matches_per_cycle_reference() {
         e.gate_reset = u8::from(gate_reset);
         let mut r = RefEnv::new(0xaa);
         r.gate_reset = gate_reset;
-        let mut rng = Lcg { x: seed };
+        let mut rng = Lcg(seed);
         for step in 0..20_000 {
-            let op = rng.next() % 16;
+            let op = rng.next_u32() % 16;
             if op == 0 {
-                let v = rng.next() as u8;
+                let v = rng.next_u32() as u8;
                 unsafe { sid_env_write_ad(&mut e, v) };
                 r.write_ad(v);
             } else if op == 1 {
-                let v = rng.next() as u8;
+                let v = rng.next_u32() as u8;
                 unsafe { sid_env_write_sr(&mut e, v) };
                 r.write_sr(v);
             } else if op <= 3 {
-                toggle_gate(&mut e, &mut r, &mut falls);
+                toggle_gate_counting_falls_with_the_reset(&mut e, &mut r, &mut falls);
             } else if op == 4 {
-                // A reset, half the time right after a gate change, with its state and
-                // envelope pipelines still pending.
-                if rng.next().is_multiple_of(2) {
-                    toggle_gate(&mut e, &mut r, &mut falls);
-                    let cycles = rng.next() % 3;
+                if rng.next_u32().is_multiple_of(2) {
+                    toggle_gate_counting_falls_with_the_reset(&mut e, &mut r, &mut falls);
+                    let cycles = rng.next_u32() % 3;
                     advance(&mut e, cycles);
                     for _ in 0..cycles {
                         r.clock();
@@ -793,17 +723,17 @@ fn jump_ahead_matches_per_cycle_reference() {
                 r.reset();
             } else {
                 let cycles = match op {
-                    5 => rng.next() % 70_001,
-                    6..=8 => rng.next() % 2_000,
-                    9..=12 => rng.next() % 6,
-                    _ => 20 + rng.next() % 4,
+                    5 => rng.next_u32() % 70_001,
+                    6..=8 => rng.next_u32() % 2_000,
+                    9..=12 => rng.next_u32() % 6,
+                    _ => 20 + rng.next_u32() % 4,
                 };
                 advance(&mut e, cycles);
                 for _ in 0..cycles {
                     r.clock();
                 }
             }
-            assert_same(&e, &r, &pos, step);
+            assert_settled_copy_matches_reference(&e, &r, &pos, step);
         }
     }
     assert!(falls.all > 4_000, "{falls:?}");
@@ -812,9 +742,6 @@ fn jump_ahead_matches_per_cycle_reference() {
     assert!(falls.frozen > 500, "{falls:?}");
 }
 
-/// Falling gate edges with the gate reset on, in the fuzz above: all of them, and those
-/// that met a pipeline in flight (state, envelope or exponential), a divider past period 1,
-/// and a counter frozen at 0.
 #[derive(Debug, Default)]
 struct FallingEdges {
     all: u32,
@@ -823,8 +750,11 @@ struct FallingEdges {
     frozen: u32,
 }
 
-/// Flips the gate on both envelopes, counting a falling edge with the reset on.
-fn toggle_gate(e: &mut sid_env, r: &mut RefEnv, falls: &mut FallingEdges) {
+fn toggle_gate_counting_falls_with_the_reset(
+    e: &mut sid_env,
+    r: &mut RefEnv,
+    falls: &mut FallingEdges,
+) {
     let g = !r.gate;
     if !g && r.gate_reset {
         falls.all += 1;
@@ -838,9 +768,6 @@ fn toggle_gate(e: &mut sid_env, r: &mut RefEnv, falls: &mut FallingEdges) {
     r.write_control(u8::from(g));
 }
 
-/// Steady states rest across calls; waking them (here: settling a copy after every
-/// call, and a write now and then) must land where reSIDfp's per-cycle clock does,
-/// at every divider period a held sustain level can have (1, 2, 4, 8) and when frozen.
 #[test]
 fn resting_steady_states_match_per_cycle_reference() {
     let pos = lfsr_positions();
@@ -856,33 +783,28 @@ fn resting_steady_states_match_per_cycle_reference() {
             r.write_ad(decay);
             r.write_sr(sr);
             r.write_control(1);
-            let mut rng = Lcg {
-                x: u32::from(sr) << 8 | u32::from(decay),
-            };
+            let mut rng = Lcg(u32::from(sr) << 8 | u32::from(decay));
             for step in 0..3_000 {
-                let cycles = match rng.next() % 8 {
-                    0 => rng.next() % 50_000,
+                let cycles = match rng.next_u32() % 8 {
+                    0 => rng.next_u32() % 50_000,
                     1 => {
                         unsafe { sid_env_write_sr(&mut e, sr) };
                         r.write_sr(sr);
                         0
                     }
-                    _ => 1 + rng.next() % 40,
+                    _ => 1 + rng.next_u32() % 40,
                 };
                 advance(&mut e, cycles);
                 for _ in 0..cycles {
                     r.clock();
                 }
-                assert_same(&e, &r, &pos, step);
+                assert_settled_copy_matches_reference(&e, &r, &pos, step);
             }
             assert_eq!(e.counter, (sr >> 4) * 0x11, "sr {sr:#04x}, decay {decay}");
         }
     }
 }
 
-/// Rests longer than `idle` can count (2^32 cycles): frozen, and holding sustain at
-/// every divider period. The state after T cycles must equal the state after
-/// T mod (rate period * divider period), the length of one whole pattern.
 #[test]
 fn rests_longer_than_2_to_the_32_cycles() {
     for (sr, divider) in [(0x00u8, 1u64), (0xf0, 1), (0x50, 2), (0x30, 4), (0x10, 8)] {

@@ -200,7 +200,6 @@ fn sysex_is_forwarded_and_otherwise_ignored() {
     assert_eq!(p.out.sysex, [Start, Data(0x7e), Data(0x01), Abort(0x90)]);
     p.out.sysex.clear();
 
-    // 0x90 above ended the SysEx: the note-on that follows is a message.
     p.feed(&[0x40, 0x64]);
     assert_eq!(p.take(), [Ev::On(0, 0x02, 0x40)]);
     assert!(p.out.sysex.is_empty());
@@ -283,7 +282,6 @@ fn sysex_without_a_callback_is_skipped() {
 
 #[test]
 fn system_common_cancels_running_status() {
-    // F1 (1 byte, skipped), F2 (2 bytes), F3 (1 byte), F6 (none), F4/F5 (undefined, none).
     for (sc, data, ev) in [
         (0xf1, &[0x10][..], None),
         (
@@ -357,7 +355,6 @@ fn data_before_any_status_is_ignored() {
     assert_eq!(parse(&[1, 2, 3, 0x80, 4, 5]), [Ev::Off(0, 4, 5)]);
 }
 
-/// xorshift64*: deterministic, no dependencies.
 struct Rng(u64);
 
 impl Rng {
@@ -377,7 +374,6 @@ fn random_streams_never_produce_out_of_range_data() {
     let mut sysex_open = false;
     for round in 0..2000 {
         let len = (rng.next() % 512) as usize;
-        // Every few rounds bias towards status bytes, otherwise towards data.
         let status_odds = [2u64, 8, 32][round % 3];
         let bytes: Vec<u8> = (0..len)
             .map(|_| {
@@ -409,7 +405,6 @@ fn random_streams_never_produce_out_of_range_data() {
                 assert!(m.data2 > 0, "{m:?}");
             }
         }
-        // Every SysEx is a Start, data, and then exactly one End or Abort.
         let mut open = sysex_open;
         for &e in &p.out.sysex {
             match e {
@@ -431,9 +426,6 @@ fn random_streams_never_produce_out_of_range_data() {
     assert!(total > 10_000, "the streams produced {total} messages");
 }
 
-/// midi_in_channel (a USB packet's channel message whole, app/midi_rx.c) gives what feeding its
-/// bytes does: the same messages, SysEx events and parser state, over a random stream of channel
-/// messages, running status, SysEx and system messages between them.
 #[test]
 fn a_channel_message_whole_is_its_bytes_one_at_a_time() {
     let mut seed = 0x1234_5678u32;
@@ -445,7 +437,6 @@ fn a_channel_message_whole_is_its_bytes_one_at_a_time() {
     for _ in 0..20_000 {
         let r = next();
         if r % 4 == 0 {
-            // anything else, byte by byte to both: SysEx, system common, running status, stray data
             let b = match next() % 6 {
                 0 => 0xf0,
                 1 => 0xf7,

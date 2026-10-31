@@ -1,43 +1,18 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The fixtures for the site's wasm core (`tools/wasm-core`, `web/core.js`): what this host build
-//! of the same C makes of SIDOU's songs and GoatTracker's examples, so `web/core.test.mjs` can
-//! check the wasm build gives the same bytes and samples. For each file: the read's result, the
-//! `.sng` written back with and without SIDOU's trailer, the plain file's check and whether
-//! GoatTracker 2.77 (gt2-ref) loads and saves it unchanged, every instrument's GTI5 export, and
-//! the device's player through song_ctl for two seconds of the song and an instrument at a note
-//! (each output as its length and a SHA-256 prefix). Also cut files (refusals) and the two readings of an ambiguous file
-//! (`the_trailer_records_the_channel_count` in tests/song.rs), whose plain export warns. The
-//! test checks the committed fixture is what this build makes now;
-//! `SIDOU_WEB_CORE_FIXTURE_UPDATE=1` rewrites it.
-//!
-//!   SIDOU_WEB_CORE_FIXTURE_UPDATE=1 cargo nextest run --release -p sidou-tests -E 'test(web_core)'
 
 use std::ffi::c_void;
 use std::fmt::Write as _;
-use std::path::PathBuf;
 
 use sha2::{Digest, Sha256};
 use sidou_sys::*;
+use sidou_tests::font::repo_root;
+use sidou_tests::hex;
 use sidou_tests::song::*;
 use sidou_tests::transport::{Transport, BLOCK, SAMPLE_RATE};
 
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
-}
-
-/// A file's or a render's fingerprint: SHA-256's first 8 bytes, in hex. (Not the CRC: a file
-/// with SIDOU's trailer ends in a CRC of what it covers, and two such files that differ only in
-/// what the trailer records have the same CRC-32 as a whole.)
-fn sum(b: &[u8]) -> String {
+fn fingerprint(b: &[u8]) -> String {
     format!("\"{}\"", hex(&Sha256::digest(b)[..8]))
-}
-
-fn hex(b: &[u8]) -> String {
-    b.iter().fold(String::new(), |mut s, x| {
-        let _ = write!(s, "{x:02x}");
-        s
-    })
 }
 
 fn json_str(s: &str) -> String {
@@ -56,13 +31,11 @@ fn json_str(s: &str) -> String {
     o
 }
 
-/// web/core.js's block count for `seconds` at the device's rate.
-fn blocks(seconds: f64) -> usize {
+fn core_js_blocks(seconds: f64) -> usize {
     (seconds * SAMPLE_RATE as f64 / BLOCK as f64).ceil() as usize
 }
 
-/// platform/web/core_api.c's song_setup: CHPA as the FM-1 accepts it (main.c's setup_valid).
-fn song_setup(song: &Song) -> Option<song_chip_setup> {
+fn fm1_accepted_chip_setup(song: &Song) -> Option<song_chip_setup> {
     let mut c = song_chip_setup::default();
     if unsafe { song_ext_get_chip(song.ptr(), TAG_CHPA, &mut c) } == 0 {
         return None;
@@ -79,9 +52,7 @@ fn song_setup(song: &Song) -> Option<song_chip_setup> {
     ok.then_some(c)
 }
 
-/// What core_api.c's chip hooks hold: the character (and the song's own, for a lock let go),
-/// the DAC table it builds into, the envelope mode, and chip A.
-struct Character {
+struct ChipHooks {
     now: sid_character,
     base: sid_character,
     dac: Box<sid_dac>,
@@ -90,13 +61,13 @@ struct Character {
 }
 
 unsafe extern "C" fn chip_a_song(ctx: *mut c_void, _setup: *const song_chip_setup) -> i32 {
-    let c = unsafe { &mut *ctx.cast::<Character>() };
+    let c = unsafe { &mut *ctx.cast::<ChipHooks>() };
     unsafe { sid_set_gate_reset(c.chip, i32::from(c.envelope == 0)) };
     1
 }
 
 unsafe extern "C" fn chip_a_character(ctx: *mut c_void, field: u32, value: i32) {
-    let c = unsafe { &mut *ctx.cast::<Character>() };
+    let c = unsafe { &mut *ctx.cast::<ChipHooks>() };
     let (to, from) = match field {
         0 => (&mut c.now.age, c.base.age),
         1 => (&mut c.now.dac, c.base.dac),
@@ -108,16 +79,13 @@ unsafe extern "C" fn chip_a_character(ctx: *mut c_void, field: u32, value: i32) 
     unsafe { sid_character_change(c.chip, &c.now, &mut *c.dac) };
 }
 
-/// core_api.c's transport(): chip A in the song's setup (CHPA, else OPTS's model), the chip
-/// hooks, and the effect slots from SLOT, settled by two seconds of silence.
 struct Preview {
     t: Transport,
-    _character: Box<Character>,
+    _character: Box<ChipHooks>,
     slots: Box<sid_slots>,
     _pool: Box<sid_slot_pool>,
 }
 
-/// A large C struct, all zeros, straight on the heap (the effect slots and their pool).
 fn zeroed_box<T>() -> Box<T> {
     let layout = std::alloc::Layout::new::<T>();
     // SAFETY: the C structs taken here are plain data, valid all zeros.
@@ -132,7 +100,7 @@ fn preview(song: &mut Song) -> Preview {
     let mut ch: sid_character = unsafe { std::mem::zeroed() };
     unsafe { sid_character_init(&mut ch) };
     let mut envelope = 1u8;
-    let model = match song_setup(song) {
+    let model = match fm1_accepted_chip_setup(song) {
         Some(c) => {
             let m = if c.model != 0 {
                 SID_MODEL_8580
@@ -163,7 +131,7 @@ fn preview(song: &mut Song) -> Preview {
         }
     };
     let mut t = Transport::new(song);
-    let mut character = Box::new(Character {
+    let mut character = Box::new(ChipHooks {
         now: ch,
         base: ch,
         dac: Box::new(unsafe { std::mem::zeroed() }),
@@ -177,7 +145,7 @@ fn preview(song: &mut Song) -> Preview {
             chip_a_song: Some(chip_a_song),
             chip_a_keys: None,
             chip_a_character: Some(chip_a_character),
-            ctx: (&mut *character as *mut Character).cast(),
+            ctx: (&mut *character as *mut ChipHooks).cast(),
         };
         song_ctl_set_hooks(&mut *t.sc, &hooks);
     }
@@ -227,20 +195,18 @@ fn render(t: &mut Transport, n: usize, out: &mut Vec<u8>) {
     }
 }
 
-/// sc_play and two seconds of sc_render.
-fn song_pcm(song: &mut Song) -> Option<Vec<u8>> {
+fn two_seconds_of_song_pcm(song: &mut Song) -> Option<Vec<u8>> {
     let mut p = preview(song);
     let t = &mut p.t;
     if !t.play(0, 0) {
         return None;
     }
     let mut out = Vec::new();
-    render(t, blocks(2.0), &mut out);
+    render(t, core_js_blocks(2.0), &mut out);
     Some(out)
 }
 
-/// renderInstrument(1, { note 48, hold 0.5, seconds 1.5 }): sc_audition, sc_jam and renders.
-fn instrument_pcm(song: &mut Song) -> Option<Vec<u8>> {
+fn instrument_at_note_48_pcm(song: &mut Song) -> Option<Vec<u8>> {
     let mut p = preview(song);
     let t = &mut p.t;
     if !t.audition() {
@@ -259,10 +225,10 @@ fn instrument_pcm(song: &mut Song) -> Option<Vec<u8>> {
     }
     t.pass();
     let mut out = Vec::new();
-    render(t, blocks(0.5), &mut out);
+    render(t, core_js_blocks(0.5), &mut out);
     t.jam(0, 0xff, 0);
     t.pass();
-    render(t, blocks(1.0), &mut out);
+    render(t, core_js_blocks(1.0), &mut out);
     Some(out)
 }
 
@@ -318,9 +284,9 @@ fn entry(name: &str, file: &[u8], embed: bool) -> String {
         o,
         ",\n   \"sng\": [{}, {}], \"plain\": [{}, {}], \"check\": [{}, {}], \"goattracker\": {}",
         sng.len(),
-        sum(&sng),
+        fingerprint(&sng),
         plain.len(),
-        sum(&plain),
+        fingerprint(&plain),
         check,
         json_str(&warning),
         goattracker
@@ -328,16 +294,19 @@ fn entry(name: &str, file: &[u8], embed: bool) -> String {
     let n = unsafe { gt2_saved_instruments(s.ptr()) };
     let ins: Vec<String> = (1..=n)
         .map(|i| match gti5(&s, i) {
-            Ok(b) => format!("[{}, {}]", b.len(), sum(&b)),
+            Ok(b) => format!("[{}, {}]", b.len(), fingerprint(&b)),
             Err(e) => format!("[-{e}]"),
         })
         .collect();
     let _ = write!(o, ",\n   \"gti5\": [{}]", ins.join(", "));
-    let pcm =
-        |p: Option<Vec<u8>>| p.map_or("null".into(), |b| format!("[{}, {}]", b.len() / 2, sum(&b)));
-    let song_audio = pcm(song_pcm(&mut s));
+    let pcm = |p: Option<Vec<u8>>| {
+        p.map_or("null".into(), |b| {
+            format!("[{}, {}]", b.len() / 2, fingerprint(&b))
+        })
+    };
+    let song_audio = pcm(two_seconds_of_song_pcm(&mut s));
     let ins_audio = if n >= 1 {
-        pcm(instrument_pcm(&mut s))
+        pcm(instrument_at_note_48_pcm(&mut s))
     } else {
         "null".into()
     };
@@ -348,9 +317,7 @@ fn entry(name: &str, file: &[u8], embed: bool) -> String {
     o
 }
 
-/// The mono and the stereo song of an ambiguous file, each saved with its trailer
-/// (tests/song.rs `the_trailer_records_the_channel_count`'s first generator state).
-fn ambiguous() -> (Vec<u8>, Vec<u8>) {
+fn ambiguous_mono_and_stereo() -> (Vec<u8>, Vec<u8>) {
     let lookalike = [0xff, 0x00, 0x01, 0xff, 0x00, 0x01, 0xff, 0x00];
     let mut rng = Rng(0xdf75_5aa4_46c7_9a0d);
     let mut spec = random_canonical(&mut rng, false);
@@ -377,10 +344,6 @@ fn ambiguous() -> (Vec<u8>, Vec<u8>) {
     (m.write(true), s.write(true))
 }
 
-// ---- The editor (web/editor.js): platform/web/core_api.c's sc_edit, its preview's other
-// renders, and the device's words for cells, orderlist entries and table rows.
-
-/// sc_edit's operations, in its order.
 const OP_INSTR: u32 = 0;
 const OP_TABLE: u32 = 1;
 const OP_ROW: u32 = 2;
@@ -423,7 +386,6 @@ fn primitive(
     }
 }
 
-/// sc_edit: the primitive; when fragmented, a compaction move committed and again; committed.
 fn edit(s: &mut Song, op: [u32; 5]) -> (u32, u32) {
     let mut added = 0;
     loop {
@@ -444,11 +406,8 @@ fn edit(s: &mut Song, op: [u32; 5]) -> (u32, u32) {
     }
 }
 
-/// CHROME COMET with what the showcase songs lack: parameter locks (the filter's and the
-/// character's, on the first pattern its first voice plays), the effect slots (a chorus and a
-/// delay) and some character on its chip.
-fn comet_plus() -> (Vec<u8>, u32) {
-    let comet = std::fs::read(root().join("assets/songs/chrome-comet.sng")).unwrap();
+fn comet_with_locks_slots_and_character() -> (Vec<u8>, u32) {
+    let comet = std::fs::read(repo_root().join("assets/songs/chrome-comet.sng")).unwrap();
     let mut s = Song::device();
     s.read(&comet, 4).unwrap();
     let first = s
@@ -487,9 +446,7 @@ fn comet_plus() -> (Vec<u8>, u32) {
     (file, first)
 }
 
-/// The script web/editor.test.mjs makes through sc_edit, refusals among them: each step's
-/// result and the .sng (trailer and all) after it.
-fn script(p: u32) -> Vec<[u32; 5]> {
+fn editor_script(p: u32) -> Vec<[u32; 5]> {
     let cell = |b: [u8; 4]| u32::from_le_bytes(b);
     vec![
         [OP_INSTR, 1, 0, 0x0a, 0],
@@ -526,12 +483,7 @@ fn script(p: u32) -> Vec<[u32; 5]> {
     ]
 }
 
-/// The two save-size refusals, as the editor meets them. The arena: patterns of 128 rows added
-/// until the device refuses one (FULL): their count and the refusal. The 64 KiB save: patterns
-/// of one row added up to number 207, 207 named in the first orderlist, 51-206 removed again
-/// (each then saved as 64 empty rows, which the arena does not hold), then patterns of 128 rows
-/// added until the device refuses one (SONG FULL): their count, the refusal, the .sng after.
-fn fill(file: &[u8]) -> (u32, u32, u32, u32, Vec<u8>) {
+fn save_size_refusals(file: &[u8]) -> (u32, u32, u32, u32, Vec<u8>) {
     let add = |s: &mut Song, rows: u32| -> (u32, u32) {
         let mut k = 0;
         loop {
@@ -556,14 +508,13 @@ fn fill(file: &[u8]) -> (u32, u32, u32, u32, Vec<u8>) {
     (arena_count, arena, save_count, save, s.write(true))
 }
 
-/// The song from orderlist position 2 for two seconds, through the effect slots: stereo.
-fn song_out_pcm(song: &mut Song, pos: u32) -> Vec<u8> {
+fn stereo_song_pcm_from_position(song: &mut Song, pos: u32) -> Vec<u8> {
     let mut p = preview(song);
     assert!(p.t.play(0, pos));
     let mut out = Vec::new();
     let mut b = [0i16; BLOCK];
     let mut lr = [0i16; 2 * BLOCK];
-    for _ in 0..blocks(2.0) {
+    for _ in 0..core_js_blocks(2.0) {
         p.t.pass();
         p.t.block(&mut b);
         unsafe { sid_slots_process(&mut *p.slots, b.as_ptr(), lr.as_mut_ptr(), BLOCK as u32) };
@@ -572,8 +523,6 @@ fn song_out_pcm(song: &mut Song, pos: u32) -> Vec<u8> {
     out
 }
 
-/// sc_play_pattern: a copy of the song whose first subtune plays the pattern on every voice,
-/// all but `channel` muted; two seconds of the chip.
 fn pattern_pcm(song: &Song, pattern: u32, channel: u32) -> Vec<u8> {
     let mut s = Song::device();
     s.copy_from(song);
@@ -588,7 +537,7 @@ fn pattern_pcm(song: &Song, pattern: u32, channel: u32) -> Vec<u8> {
     assert!(p.t.play(0, 0));
     assert!(p.t.mute(7 & !(1 << channel)));
     let mut out = Vec::new();
-    render(&mut p.t, blocks(2.0), &mut out);
+    render(&mut p.t, core_js_blocks(2.0), &mut out);
     out
 }
 
@@ -599,8 +548,7 @@ fn c_text(buf: &[std::os::raw::c_char]) -> String {
         .collect()
 }
 
-/// The device's words: tracker_view_cell, tracker_view_order_entry, song_pages_table_meaning.
-fn words() -> String {
+fn device_words() -> String {
     let mut cells = Vec::new();
     for note in [0x60u8, 0x6d, 0x90, 0xbc, 0xbd, 0xbe, 0xbf] {
         for (ins, cmd, par) in [
@@ -642,10 +590,10 @@ fn words() -> String {
 }
 
 fn editor() -> String {
-    let (file, p) = comet_plus();
+    let (file, p) = comet_with_locks_slots_and_character();
     let mut s = Song::device();
     s.read(&file, 4).unwrap();
-    let steps: Vec<String> = script(p)
+    let steps: Vec<String> = editor_script(p)
         .into_iter()
         .map(|op| {
             let (r, added) = edit(&mut s, op);
@@ -654,34 +602,34 @@ fn editor() -> String {
                 "[{:?}, {r}, {added}, {}, {}, {}]",
                 op,
                 sng.len(),
-                sum(&sng),
+                fingerprint(&sng),
                 unsafe { gt2_saved_size(s.ptr()) }
             )
         })
         .collect();
-    let (arena_count, arena, save_count, save, full) = fill(&file);
+    let (arena_count, arena, save_count, save, full) = save_size_refusals(&file);
     let mut plus = Song::device();
     plus.read(&file, 4).unwrap();
-    let out = song_out_pcm(&mut plus, 2);
+    let out = stereo_song_pcm_from_position(&mut plus, 2);
     let pat = pattern_pcm(&plus, p, 1);
-    let ins = instrument_pcm(&mut plus).unwrap();
-    let pcm = |b: &[u8], ch: usize| format!("[{}, {}]", b.len() / 2 / ch, sum(b));
+    let ins = instrument_at_note_48_pcm(&mut plus).unwrap();
+    let pcm = |b: &[u8], ch: usize| format!("[{}, {}]", b.len() / 2 / ch, fingerprint(b));
     format!(
         "{{\"song\": \"{}\", \"pattern\": {p},\n   \"steps\": [\n    {}],\n   \"fill\": [{arena_count}, {arena}, {save_count}, {save}, {}, {}],\n   \"out_pcm\": {}, \"pattern_pcm\": {}, \"instrument_pcm\": {},\n   {}}}",
         hex(&file),
         steps.join(",\n    "),
         full.len(),
-        sum(&full),
+        fingerprint(&full),
         pcm(&out, 2),
         pcm(&pat, 1),
         pcm(&ins, 1),
-        words()
+        device_words()
     )
 }
 
 #[test]
 fn web_core_fixture() {
-    let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(root().join("assets/songs"))
+    let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(repo_root().join("assets/songs"))
         .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -700,8 +648,7 @@ fn web_core_fixture() {
         files.push((format!("third_party/goattracker2/examples/{name}"), b));
     }
     let mut entries: Vec<String> = files.iter().map(|(n, b)| entry(n, b, false)).collect();
-    // Refusals: cut files, and a file that is not a song.
-    let comet = std::fs::read(root().join("assets/songs/chrome-comet.sng")).unwrap();
+    let comet = std::fs::read(repo_root().join("assets/songs/chrome-comet.sng")).unwrap();
     for cut in [3usize, 300, 2000] {
         entries.push(entry(
             &format!("chrome-comet cut to {cut}"),
@@ -714,7 +661,7 @@ fn web_core_fixture() {
         b"PSID not a song at all, just text",
         true,
     ));
-    let (mono, stereo) = ambiguous();
+    let (mono, stereo) = ambiguous_mono_and_stereo();
     entries.push(entry("ambiguous, mono", &mono, true));
     entries.push(entry("ambiguous, stereo", &stereo, true));
     let json = format!(
@@ -722,7 +669,7 @@ fn web_core_fixture() {
         entries.join(",\n  "),
         editor()
     );
-    let path = root().join("web/core-fixtures.json");
+    let path = repo_root().join("web/core-fixtures.json");
     if std::env::var_os("SIDOU_WEB_CORE_FIXTURE_UPDATE").is_some() {
         std::fs::write(&path, &json).unwrap();
     }

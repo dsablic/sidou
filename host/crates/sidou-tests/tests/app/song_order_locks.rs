@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Task 4 prospective order-lock regressions for cell, restart and rebuilt orderlists.
 
 use sidou_sys::*;
 use sidou_tests::song::Song;
@@ -152,7 +151,6 @@ fn order_cache_publication_reuses_the_row_sequence_refresh_handshake() {
     let (mut song, mut player) = at_boundary(false);
     let edit = prepare(&mut song, Edit::Cell);
     submit_without_publication(&mut player, &edit);
-    // An unrelated voice advances between preparation and command visibility.
     player.sc.row_seq[1] = player.sc.row_seq[1].wrapping_add(1);
     let before = player.sc.applied;
     unsafe {
@@ -162,8 +160,10 @@ fn order_cache_publication_reuses_the_row_sequence_refresh_handshake() {
     assert_ne!(player.sc.lock_edit_refresh, 0);
     assert_eq!(song.raw().pending, 1);
     assert!(has_lock(&player, 5));
-    // A preceding shape command may acknowledge, but the order edit must still wait.
-    assert!(player.sc.applied.wrapping_sub(before) <= 1);
+    assert!(
+        player.sc.applied.wrapping_sub(before) <= 1,
+        "only a preceding shape command acknowledges; the order edit waits"
+    );
     player.pass();
     unsafe { song_ctl_block(&mut *player.sc, &mut *player.chip) };
     assert!(has_lock(&player, 6));

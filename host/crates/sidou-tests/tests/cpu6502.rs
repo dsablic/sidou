@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's 6502 (core/cpu6502): Tom Harte's SingleStepTests (the committed subset, and the
-//! full set with `--ignored` and SIDOU_HARTE_DIR), Klaus Dormann's functional test, slicing,
-//! the 32-bit count's wrap, the stops, the I/O page's hooks and their cycle stamps.
-//!
-//! Three builds of the same file (sidou-sys's build.rs): the device's (CPU6502_SMALL), and the
-//! tests' CPU6502_HOOK_ALL as the device builds it and with the I/O accesses inline, where
-//! every operand access goes through the hooks so each one's cycle can be checked.
 
 use std::collections::BTreeSet;
 use std::ffi::{c_int, c_void};
@@ -24,7 +17,6 @@ type RunFn = unsafe extern "C" fn(*mut cpu6502, u32, c_int) -> c_int;
 struct Variant {
     name: &'static str,
     run: RunFn,
-    /// Every operand access goes through the hooks (CPU6502_HOOK_ALL).
     hook_all: bool,
 }
 
@@ -44,7 +36,6 @@ const HOOK_INLINE: Variant = Variant {
     hook_all: true,
 };
 
-/// One access through a hook.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Access {
     addr: u16,
@@ -53,7 +44,6 @@ struct Access {
     read: bool,
 }
 
-/// The memory behind the hooks: they read and write the same 64 KiB the core does, and log.
 struct Bus {
     mem: Vec<u8>,
     log: Vec<Access>,
@@ -85,8 +75,7 @@ unsafe extern "C" fn hook_wr(user: *mut c_void, addr: u32, value: u32, cycle: u3
     });
 }
 
-/// PC, A, X, Y, S, P and the count.
-type Regs = (u16, u8, u8, u8, u8, u8, u32);
+type RegsAndCount = (u16, u8, u8, u8, u8, u8, u32);
 
 struct Cpu {
     bus: Box<Bus>,
@@ -123,13 +112,24 @@ impl Cpu {
         &mut self.bus.mem
     }
 
-    fn regs(&self) -> Regs {
+    fn regs(&self) -> RegsAndCount {
         let c = &self.c;
         (c.pc, c.a, c.x, c.y, c.s, c.p, c.cycles)
     }
 }
 
-// --- Tom Harte's tests ---------------------------------------------------------------------
+const PORT_IO_MAPPED_IN: u8 = 0x37;
+const PORT_ALL_RAM: u8 = 0x34;
+const PORT_CHAR_ROM: u8 = 0x31;
+const JUST_BEFORE_THE_WRAP: u32 = 0xffff_fffc;
+const SUBSET_TESTS_PER_OPCODE: usize = 100;
+const OPCODES_WITH_A_MEMORY_OPERAND_OR_A_PUSH: usize = 169;
+const HARTE_RUNS: [(Variant, bool); 4] = [
+    (DEVICE, false),
+    (DEVICE, true),
+    (HOOK_ALL, true),
+    (HOOK_INLINE, true),
+];
 
 const JAMS: [u8; 12] = [
     0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xb2, 0xd2, 0xf2,
@@ -144,12 +144,15 @@ struct Tally {
     stamped: usize,
 }
 
-/// Runs one test on a variant; the first failure is returned as text. `io` sets the device
-/// variant's I/O page, so its hooked accesses (where $01 maps I/O in) are checked too.
-fn harte_one(v: Variant, t: &Test, io: bool, base: u32, tally: &mut Tally) -> Result<(), String> {
+fn run_harte_test(
+    v: Variant,
+    t: &Test,
+    io: bool,
+    base: u32,
+    tally: &mut Tally,
+) -> Result<(), String> {
     let mut cpu = Cpu::new(v);
-    // $01 maps I/O in unless the test sets it, so the device variant hooks the I/O page.
-    cpu.mem_mut()[1] = 0x37;
+    cpu.mem_mut()[1] = PORT_IO_MAPPED_IN;
     for &(addr, value) in &t.initial.ram {
         cpu.mem_mut()[addr as usize] = value;
     }
@@ -168,7 +171,6 @@ fn harte_one(v: Variant, t: &Test, io: bool, base: u32, tally: &mut Tally) -> Re
     tally.tests += 1;
 
     let f = &t.fin;
-    // A JAM leaves the PC on the opcode; Harte's final PC is the byte after it.
     let want_pc = if jam { f.pc.wrapping_sub(1) } else { f.pc };
     let c = &cpu.c;
     if (c.pc, c.s, c.a, c.x, c.y) != (want_pc, f.s, f.a, f.x, f.y) || (c.p ^ f.p) & 0xcf != 0 {
@@ -200,7 +202,6 @@ fn harte_one(v: Variant, t: &Test, io: bool, base: u32, tally: &mut Tally) -> Re
     }
     tally.cycles += 1;
 
-    // Each hooked access is the test's cycle at its stamp; with HOOK_ALL every write is one.
     let mut writes = BTreeSet::new();
     for a in &cpu.bus.log {
         let k = a.cycle.wrapping_sub(base) as usize;
@@ -229,15 +230,13 @@ fn harte_one(v: Variant, t: &Test, io: bool, base: u32, tally: &mut Tally) -> Re
     Ok(())
 }
 
-/// Runs a set of opcode files on a variant and returns its tally; panics with the failures.
-fn harte_run(v: Variant, io: bool, files: &[(u8, Vec<Test>)]) -> Tally {
+fn run_harte_tests(v: Variant, io: bool, files: &[(u8, Vec<Test>)]) -> Tally {
     let mut tally = Tally::default();
     let mut failures = Vec::new();
     for (op, tests) in files {
         for (n, t) in tests.iter().enumerate() {
-            // Half the tests start just before the count wraps: the stamps and the limit wrap.
-            let base = if n % 2 == 0 { 0 } else { 0xffff_fffc };
-            if let Err(e) = harte_one(v, t, io, base, &mut tally) {
+            let base = if n % 2 == 0 { 0 } else { JUST_BEFORE_THE_WRAP };
+            if let Err(e) = run_harte_test(v, t, io, base, &mut tally) {
                 if failures.len() < 20 {
                     failures.push(format!(
                         "{}: opcode {op:02x} test {n} {}: {e}",
@@ -270,22 +269,22 @@ fn subset() -> Vec<(u8, Vec<Test>)> {
 #[test]
 fn harte_subset_every_opcode() {
     let files = subset();
-    assert!(files.iter().all(|(_, t)| t.len() == 100));
-    for (v, io) in [
-        (DEVICE, false),
-        (DEVICE, true),
-        (HOOK_ALL, true),
-        (HOOK_INLINE, true),
-    ] {
-        let t = harte_run(v, io, &files);
+    assert!(files
+        .iter()
+        .all(|(_, t)| t.len() == SUBSET_TESTS_PER_OPCODE));
+    for (v, io) in HARTE_RUNS {
+        let t = run_harte_tests(v, io, &files);
         eprintln!("Harte subset, {} (io {io}): {t:?}", v.name);
         assert_eq!(t.tests, 25_600);
         assert_eq!(t.state, 25_600);
         assert_eq!(t.jams, 1_200);
         assert_eq!(t.cycles, 24_400);
         if v.hook_all {
-            // Each of the 169 opcodes with a memory operand or a push, in every test.
-            assert_eq!(t.stamped, 16_900, "{t:?}");
+            assert_eq!(
+                t.stamped,
+                OPCODES_WITH_A_MEMORY_OPERAND_OR_A_PUSH * SUBSET_TESTS_PER_OPCODE,
+                "{t:?}"
+            );
         } else if io {
             assert!(
                 t.stamped > 0,
@@ -299,22 +298,17 @@ fn harte_subset_every_opcode() {
 #[ignore = "the full set: SIDOU_HARTE_DIR names a directory of Tom Harte's 6502 v1 JSON files"]
 fn harte_full_set() {
     let dir = PathBuf::from(std::env::var("SIDOU_HARTE_DIR").expect("SIDOU_HARTE_DIR"));
-    let mut totals: Vec<(Variant, bool, Tally)> = [
-        (DEVICE, false),
-        (DEVICE, true),
-        (HOOK_ALL, true),
-        (HOOK_INLINE, true),
-    ]
-    .into_iter()
-    .map(|(v, io)| (v, io, Tally::default()))
-    .collect();
+    let mut totals: Vec<(Variant, bool, Tally)> = HARTE_RUNS
+        .into_iter()
+        .map(|(v, io)| (v, io, Tally::default()))
+        .collect();
     for op in 0..=255u8 {
         let path = dir.join(format!("{op:02x}.json"));
         let text =
             std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let files = vec![(op, harte::parse_json(&text, usize::MAX).unwrap())];
         for (v, io, total) in &mut totals {
-            let t = harte_run(*v, *io, &files);
+            let t = run_harte_tests(*v, *io, &files);
             total.tests += t.tests;
             total.state += t.state;
             total.cycles += t.cycles;
@@ -329,10 +323,7 @@ fn harte_full_set() {
     }
 }
 
-// --- Klaus Dormann's functional test --------------------------------------------------------
-
-/// The test's "jmp *" on success (6502_functional_test.lst).
-const SUCCESS: u16 = 0x3469;
+const SUCCESS_TRAP_PC: u16 = 0x3469;
 
 fn dormann(v: Variant) -> Cpu {
     let path = concat!(
@@ -353,9 +344,7 @@ fn cpu_reset(cpu: &mut Cpu) {
     unsafe { cpu6502_reset_regs(&mut cpu.c) };
 }
 
-/// A trap: the next instruction leaves the PC where it is (a jump or a taken branch to
-/// itself). Stepping one instruction more changes nothing a slice would not.
-fn trapped(cpu: &mut Cpu) -> bool {
+fn at_a_trap(cpu: &mut Cpu) -> bool {
     let pc = cpu.c.pc;
     cpu.run(cpu.c.cycles.wrapping_add(1), false);
     cpu.c.pc == pc
@@ -370,11 +359,11 @@ fn dormanns_functional_test_passes_on_every_variant() {
         loop {
             let state = cpu.run(cpu.c.cycles.wrapping_add(100_000), false);
             assert_eq!(state, CPU6502_RUN, "{}: pc {:04x}", v.name, cpu.c.pc);
-            if cpu.c.pc == SUCCESS {
+            if cpu.c.pc == SUCCESS_TRAP_PC {
                 break;
             }
             assert!(
-                !trapped(&mut cpu),
+                !at_a_trap(&mut cpu),
                 "{}: trapped at ${:04x} (see the listing)",
                 v.name,
                 cpu.c.pc
@@ -382,7 +371,6 @@ fn dormanns_functional_test_passes_on_every_variant() {
             chunks += 1;
             assert!(chunks < 2_000, "{}: no end", v.name);
         }
-        // The success trap is reached within the last chunk; the count at the chunk's end.
         eprintln!(
             "Dormann's functional test, {}: success by cycle {}",
             v.name, cpu.c.cycles
@@ -392,13 +380,9 @@ fn dormanns_functional_test_passes_on_every_variant() {
     assert!(done.windows(2).all(|w| w[0] == w[1]), "{done:?}");
 }
 
-// --- Slicing and the wrap --------------------------------------------------------------------
-
 const SLICED: u32 = 100_000;
 
-/// Dormann's first SLICED cycles from `base`, in slices of `step` cycles (the whole at once
-/// for 0): the registers, the count from base, a hash of the memory and the hooks' log.
-fn sliced(v: Variant, base: u32, step: u32) -> (Regs, u64, Vec<Access>) {
+fn dormann_in_slices(v: Variant, base: u32, step: u32) -> (RegsAndCount, u64, Vec<Access>) {
     let mut cpu = dormann(v);
     cpu.c.cycles = base;
     let mut done = 0;
@@ -431,12 +415,16 @@ fn sliced(v: Variant, base: u32, step: u32) -> (Regs, u64, Vec<Access>) {
 #[test]
 fn slices_of_every_length_from_1_to_300_cycles_equal_one_run() {
     for v in [DEVICE, HOOK_ALL] {
-        let whole = sliced(v, 0, 0);
+        let whole = dormann_in_slices(v, 0, 0);
         if v.hook_all {
             assert!(whole.2.len() > 1_000, "the stream is hooked");
         }
         for step in 1..=300 {
-            assert!(sliced(v, 0, step) == whole, "{}: slices of {step}", v.name);
+            assert!(
+                dormann_in_slices(v, 0, step) == whole,
+                "{}: slices of {step}",
+                v.name
+            );
         }
     }
 }
@@ -444,16 +432,18 @@ fn slices_of_every_length_from_1_to_300_cycles_equal_one_run() {
 #[test]
 fn a_run_across_the_counts_wrap_equals_one_from_zero() {
     for v in [DEVICE, HOOK_ALL] {
-        let whole = sliced(v, 0, 0);
-        // The wrap falls in the middle of the run, once at once and once in slices.
+        let whole = dormann_in_slices(v, 0, 0);
         let base = 0u32.wrapping_sub(SLICED / 2);
-        assert!(sliced(v, base, 0) == whole, "{}: across the wrap", v.name);
         assert!(
-            sliced(v, base, 97) == whole,
+            dormann_in_slices(v, base, 0) == whole,
+            "{}: across the wrap",
+            v.name
+        );
+        assert!(
+            dormann_in_slices(v, base, 97) == whole,
             "{}: across the wrap, sliced",
             v.name
         );
-        // The count has wrapped: it is past zero now.
         let mut cpu = dormann(v);
         cpu.c.cycles = base;
         cpu.run(base.wrapping_add(SLICED), false);
@@ -461,10 +451,7 @@ fn a_run_across_the_counts_wrap_equals_one_from_zero() {
     }
 }
 
-// --- The stops, the registers, JAM ----------------------------------------------------------
-
-/// A CPU over memory full of NOPs, with `code` at $1000 and the PC on it.
-fn nops(v: Variant, code: &[u8]) -> Cpu {
+fn on_nops_at_1000(v: Variant, code: &[u8]) -> Cpu {
     let mut cpu = Cpu::new(v);
     cpu.mem_mut().fill(0xea);
     cpu.mem_mut()[0x1000..0x1000 + code.len()].copy_from_slice(code);
@@ -477,7 +464,6 @@ fn nops(v: Variant, code: &[u8]) -> Cpu {
 fn the_sentinel_and_the_kernal_exits_stop_a_call_only_with_stops() {
     type Setup = fn(&mut Cpu);
     let cases: [(&str, &[u8], Setup, u16); 6] = [
-        // RTS to the sentinel a call pushes ($0000, so $0001)
         (
             "RTS to the sentinel",
             &[0x60],
@@ -516,20 +502,23 @@ fn the_sentinel_and_the_kernal_exits_stop_a_call_only_with_stops() {
     ];
     for v in [DEVICE, HOOK_ALL] {
         for (name, code, setup, to) in cases {
-            let mut cpu = nops(v, code);
+            let mut cpu = on_nops_at_1000(v, code);
             setup(&mut cpu);
             assert_eq!(cpu.run(1_000, true), CPU6502_RET, "{name}");
             assert_eq!(cpu.c.pc, to, "{name}");
             assert_eq!(cpu.c.state as u32, CPU6502_RET, "{name}");
 
-            let mut cpu = nops(v, code);
+            let mut cpu = on_nops_at_1000(v, code);
             setup(&mut cpu);
             assert_eq!(cpu.run(1_000, false), CPU6502_RUN, "{name}, no stops");
             assert!(cpu.c.cycles >= 1_000, "{name}: ran on through the NOPs");
         }
-        // An ordinary return does not stop.
-        let mut cpu = nops(v, &[0x4c, 0x00, 0x20]);
-        assert_eq!(cpu.run(100, true), CPU6502_RUN);
+        let mut cpu = on_nops_at_1000(v, &[0x4c, 0x00, 0x20]);
+        assert_eq!(
+            cpu.run(100, true),
+            CPU6502_RUN,
+            "an ordinary jump does not stop"
+        );
     }
 }
 
@@ -559,7 +548,7 @@ fn reset_regs_sets_the_registers_a_call_starts_from() {
 fn a_jam_stops_on_its_opcode_and_stops_again() {
     for v in [DEVICE, HOOK_ALL] {
         for op in JAMS {
-            let mut cpu = nops(v, &[0xea, op]);
+            let mut cpu = on_nops_at_1000(v, &[0xea, op]);
             assert_eq!(cpu.run(1_000, false), CPU6502_JAM);
             assert_eq!((cpu.c.pc, cpu.c.cycles), (0x1001, 2));
             assert_eq!(cpu.run(1_000, false), CPU6502_JAM, "again");
@@ -568,21 +557,19 @@ fn a_jam_stops_on_its_opcode_and_stops_again() {
     }
 }
 
-// --- The I/O page ---------------------------------------------------------------------------
-
 #[test]
 fn the_io_page_goes_to_the_hooks_only_while_io_is_set_and_01_maps_it_in() {
-    // STA $D400; INC $D418 (a read-modify-write); LDA $D41B; then a JAM to stop.
-    let code = [0x8d, 0x00, 0xd4, 0xee, 0x18, 0xd4, 0xad, 0x1b, 0xd4, 0x02];
+    let sta_d400_inc_d418_lda_d41b_jam =
+        [0x8d, 0x00, 0xd4, 0xee, 0x18, 0xd4, 0xad, 0x1b, 0xd4, 0x02];
     for (io, port, hooked) in [
         (1, 0x35, true),
-        (1, 0x37, true),
+        (1, PORT_IO_MAPPED_IN, true),
         (1, 0x36, true),
-        (1, 0x34, false), // all RAM
-        (1, 0x31, false), // bit 2 clear: the character ROM, not I/O
+        (1, PORT_ALL_RAM, false),
+        (1, PORT_CHAR_ROM, false),
         (0, 0x35, false),
     ] {
-        let mut cpu = nops(DEVICE, &code);
+        let mut cpu = on_nops_at_1000(DEVICE, &sta_d400_inc_d418_lda_d41b_jam);
         cpu.c.io = io;
         cpu.c.a = 0x5a;
         cpu.c.cycles = 1_000;
@@ -602,7 +589,6 @@ fn the_io_page_goes_to_the_hooks_only_while_io_is_set_and_01_maps_it_in() {
                     cycle: 1_003,
                     read: false,
                 },
-                // INC: the read on its third last cycle, the old value, then the new.
                 Access {
                     addr: 0xd418,
                     value: 0x0f,
@@ -662,7 +648,6 @@ fn the_converter_keeps_every_field_of_a_test() {
         }
     );
     assert_eq!(harte::parse_json(json, 1).unwrap().len(), 1);
-    // The binary keeps everything but the names.
     let back = harte::from_bin(&harte::to_bin(&tests)).unwrap();
     let unnamed: Vec<Test> = tests
         .into_iter()
@@ -672,7 +657,6 @@ fn the_converter_keeps_every_field_of_a_test() {
         })
         .collect();
     assert_eq!(back, unnamed);
-    // JSON the converter does not take: an escape, a fraction, a 9-bit byte.
     assert!(harte::parse_json(r#"[{"name": "a\"b"}]"#, 1).is_err());
     assert!(harte::parse_json("[1.5]", 1).is_err());
     let wide = json.replacen("\"a\": 194", "\"a\": 256", 1);

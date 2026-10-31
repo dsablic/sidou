@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The effect slots (`core/fx/fx_slots.h`): exact bypass, click-free switching and
-//! parameter jumps, stereo, determinism, and each algorithm's characteristic.
-
-use std::f64::consts::PI;
 
 use sidou_sys::*;
 
-pub const FS: u32 = 44100;
-pub const FSF: f64 = FS as f64;
+use crate::{difference, max_second_diff, sine, xorshift_noise, FIRMWARE_BLOCK, FS, FSF, RAMP};
+use crate::{CLICK, RESIDUAL_MAX, T_END, T_OFF, T_ON};
+
 pub const DIST: u32 = SID_SLOT_DIST;
 pub const MOD: u32 = SID_SLOT_MOD;
 pub const FX: u32 = SID_SLOT_FX;
 
-/// The slots and the pool they borrow (boxed, so the pointer the C side keeps is stable).
+const POOL_GARBAGE: u16 = 0x5a5a;
+const LOUDEST_TWO_CHIPS_IN_PHASE: f64 = 29_990.0;
+
 pub struct Slots {
     pub s: Box<sid_slots>,
     pub pool: Box<sid_slot_pool>,
@@ -21,9 +20,8 @@ pub struct Slots {
 
 impl Slots {
     pub fn new(seed: u32) -> Self {
-        // Garbage in the pool: the FX slot must clear it before use.
         let mut pool = Box::<sid_slot_pool>::default();
-        unsafe { pool.s16.fill(0x5a5au16 as i16) };
+        unsafe { pool.s16.fill(POOL_GARBAGE as i16) };
         let mut s = Box::<sid_slots>::default();
         unsafe { sid_slots_init(&mut *s, FS, seed, &mut *pool) };
         Self { s, pool }
@@ -33,7 +31,6 @@ impl Slots {
         unsafe { sid_slots_set(&mut *self.s, slot, &p) }
     }
 
-    /// Stereo out, interleaved.
     pub fn process(&mut self, input: &[i16]) -> Vec<i16> {
         let mut out = vec![0i16; 2 * input.len()];
         let n = u32::try_from(input.len()).expect("block fits in u32");
@@ -41,13 +38,12 @@ impl Slots {
         out
     }
 
-    /// In blocks of `block`.
     pub fn run_blocks(&mut self, input: &[i16], block: usize) -> Vec<i16> {
         input.chunks(block).flat_map(|b| self.process(b)).collect()
     }
 
     pub fn run(&mut self, input: &[i16]) -> Vec<i16> {
-        self.run_blocks(input, 128)
+        self.run_blocks(input, FIRMWARE_BLOCK)
     }
 
     pub fn bytes(&self) -> Vec<u8> {
@@ -76,23 +72,6 @@ pub fn off() -> sid_slot_params {
     params(0, 0.0, 0.0, 0.0, 0.0)
 }
 
-pub fn sine(hz: f64, amp: f64, n: usize) -> Vec<i16> {
-    (0..n)
-        .map(|i| (amp * 32767.0 * (2.0 * PI * hz * i as f64 / FSF).sin()).round() as i16)
-        .collect()
-}
-
-pub fn test_noise(n: usize, mut s: u32) -> Vec<i16> {
-    (0..n)
-        .map(|_| {
-            s ^= s << 13;
-            s ^= s >> 17;
-            s ^= s << 5;
-            (s >> 16) as u16 as i16
-        })
-        .collect()
-}
-
 pub fn left(x: &[i16]) -> Vec<i16> {
     x.iter().step_by(2).copied().collect()
 }
@@ -101,69 +80,24 @@ pub fn right(x: &[i16]) -> Vec<i16> {
     x.iter().skip(1).step_by(2).copied().collect()
 }
 
-pub fn tone_amp(x: &[i16], hz: f64) -> f64 {
-    let w = 2.0 * PI * hz / FSF;
-    let (mut re, mut im) = (0.0, 0.0);
-    for (i, &v) in x.iter().enumerate() {
-        re += f64::from(v) * (w * i as f64).cos();
-        im += f64::from(v) * (w * i as f64).sin();
-    }
-    2.0 * (re * re + im * im).sqrt() / x.len() as f64
-}
-
-pub fn rms(x: &[i16]) -> f64 {
-    let mean = x.iter().map(|&v| f64::from(v)).sum::<f64>() / x.len() as f64;
-    (x.iter()
-        .map(|&v| (f64::from(v) - mean).powi(2))
-        .sum::<f64>()
-        / x.len() as f64)
-        .sqrt()
-}
-
-pub fn db(r: f64) -> f64 {
-    20.0 * r.log10()
-}
-
-/// Largest 2nd difference per channel of interleaved stereo.
-pub fn max_second_diff_stereo(x: &[i16]) -> i32 {
-    [left(x), right(x)]
-        .iter()
+fn max_second_diff_per_channel(interleaved: &[i32]) -> i32 {
+    (0..2)
         .map(|c| {
-            c.windows(3)
-                .map(|w| (i32::from(w[2]) - 2 * i32::from(w[1]) + i32::from(w[0])).abs())
-                .max()
-                .unwrap_or(0)
+            let channel: Vec<i32> = interleaved.iter().skip(c).step_by(2).copied().collect();
+            max_second_diff(&channel)
         })
         .max()
         .unwrap()
 }
 
-/// Same, of the difference of two interleaved stereo signals.
-pub fn residual(a: &[i16], b: &[i16]) -> i32 {
-    let d: Vec<i32> = a
-        .iter()
-        .zip(b)
-        .map(|(x, y)| i32::from(*x) - i32::from(*y))
-        .collect();
-    let chan = |c: usize| -> i32 {
-        let v: Vec<i32> = d.iter().skip(c).step_by(2).copied().collect();
-        v.windows(3)
-            .map(|w| (w[2] - 2 * w[1] + w[0]).abs())
-            .max()
-            .unwrap_or(0)
-    };
-    chan(0).max(chan(1))
+pub fn max_second_diff_stereo(x: &[i16]) -> i32 {
+    max_second_diff_per_channel(&x.iter().map(|&v| i32::from(v)).collect::<Vec<_>>())
 }
 
-pub const T_ON: usize = FS as usize / 4;
-pub const T_OFF: usize = 3 * FS as usize / 2;
-pub const T_END: usize = 3 * FS as usize;
-pub const RAMP: usize = FS as usize / 5;
-pub const CLICK: i32 = 100;
-/// Residual threshold (the coordinator's limit); a CLICK-sized step must exceed it.
-pub const RESIDUAL_MAX: i32 = 30;
+pub fn max_second_diff_of_difference_stereo(a: &[i16], b: &[i16]) -> i32 {
+    max_second_diff_per_channel(&difference(a, b))
+}
 
-/// Which control a residual run moves.
 #[derive(Clone, Copy, Debug)]
 pub enum Control {
     Amount,
@@ -172,11 +106,6 @@ pub enum Control {
     Mix,
 }
 
-/// Click metric for one control of one slot: it jumps from `from` to `to` at T_ON and
-/// back at T_OFF (J), against a reference that ramps it over RAMP instead (R), with the
-/// slot's other controls at `base`. Both runs trace the same path at different speeds;
-/// a 110 Hz input keeps the 2nd difference of J - R to a few LSB, while a click in
-/// either shows at full size. `click` adds a synthetic step to J's left channel.
 pub fn slot_residual(
     slot: u32,
     base: sid_slot_params,
@@ -225,18 +154,13 @@ pub fn slot_residual(
             *v = v.saturating_add(CLICK as i16);
         }
     }
-    residual(&j, &r)
+    max_second_diff_of_difference_stereo(&j, &r)
 }
 
-/// Asserts the residual metric for every listed control of an algorithm, and that it
-/// would see a CLICK-sized step at a jump.
 pub fn assert_click_free(slot: u32, base: sid_slot_params, moves: &[(Control, f32, f32)]) {
     assert_click_free_at(0.5, slot, base, moves);
 }
 
-/// The same with the 110 Hz input at `amp` full scale: the drives are tested below their
-/// hard-clipping level, where J and R are smooth (clipped near-squares at slightly
-/// different gains differ by whole edges, which no click metric can see past).
 pub fn assert_click_free_at(
     amp: f64,
     slot: u32,
@@ -260,9 +184,13 @@ pub fn assert_click_free_at(
     assert!(c > RESIDUAL_MAX, "a {CLICK} LSB click shows only {c}");
 }
 
-/// Switches `slot` through `algorithms` (each held 0.5 s) on a 110 Hz tone; returns the
-/// worst 2nd difference within 60 ms of each switch and the worst in the steady parts.
-pub fn switch_steps(slot: u32, algorithms: &[u32], amount: f32, a: f32, b: f32) -> (i32, i32) {
+pub fn worst_second_diff_at_and_between_switches(
+    slot: u32,
+    algorithms: &[u32],
+    amount: f32,
+    a: f32,
+    b: f32,
+) -> (i32, i32) {
     let hold = FS as usize / 2;
     let input = sine(110.0, 0.5, hold * algorithms.len());
     let mut s = Slots::new(1);
@@ -292,7 +220,7 @@ fn all_off_is_exact_and_touches_nothing() {
         s.set(slot, off());
     }
     let before = s.bytes();
-    let mut input = test_noise(4096, 3);
+    let mut input = xorshift_noise(4096, 3);
     input.extend([i16::MIN, i16::MAX, 0, -1, 1]);
     let out = s.process(&input);
     assert_eq!(left(&out), input);
@@ -301,15 +229,13 @@ fn all_off_is_exact_and_touches_nothing() {
 }
 
 #[test]
-fn none_at_full_mix_is_the_identity() {
+fn none_at_full_mix_is_the_identity_up_to_the_output_limiter() {
     let mut s = Slots::new(1);
     for slot in [DIST, MOD, FX] {
         s.set(slot, params(0, 1.0, 1.0, 1.0, 1.0));
     }
-    let input = test_noise(FS as usize, 5);
+    let input = xorshift_noise(FS as usize, 5);
     let out = s.run(&input);
-    // Full-scale noise: in the path the output's soft limiter shapes what passes its knee, and
-    // only that (sid_fx_to_i16_limited).
     let limited: Vec<i16> = input
         .iter()
         .map(|&v| unsafe { sid_fx_limit_i32(i32::from(v)) })
@@ -332,7 +258,7 @@ fn each_slot_returns_to_exact_bypass() {
         s.set(slot, params(alg, 1.0, 1.0, 1.0, 0.0));
         s.run(&sine(440.0, 0.5, FS as usize));
         let before = s.bytes();
-        let input = test_noise(4096, 9);
+        let input = xorshift_noise(4096, 9);
         let out = s.run(&input);
         assert_eq!(left(&out), input, "slot {slot} algorithm {alg}");
         assert_eq!(right(&out), input);
@@ -367,7 +293,7 @@ fn block_size_does_not_matter_even_after_rest() {
 
 #[test]
 fn switching_algorithms_is_click_free_in_the_existing_blocks() {
-    let (sw, steady) = switch_steps(
+    let (sw, steady) = worst_second_diff_at_and_between_switches(
         DIST,
         &[SID_DIST_TAPE, SID_DIST_LOFI, SID_DIST_NONE, SID_DIST_TAPE],
         0.8,
@@ -376,7 +302,7 @@ fn switching_algorithms_is_click_free_in_the_existing_blocks() {
     );
     println!("dist switches: {sw} LSB at a switch, {steady} steady");
     assert!(sw <= steady.max(0) + RESIDUAL_MAX, "a switch steps by {sw}");
-    let (sw, steady) = switch_steps(
+    let (sw, steady) = worst_second_diff_at_and_between_switches(
         MOD,
         &[SID_MOD_WOW, SID_MOD_NONE, SID_MOD_WOW],
         1.0,
@@ -390,9 +316,6 @@ fn switching_algorithms_is_click_free_in_the_existing_blocks() {
 #[test]
 fn parameter_jumps_are_click_free_in_the_existing_blocks() {
     use Control::*;
-    // Each move starts from the others at a setting where it matters. Crush and the
-    // noise (Lo-fi B) are steppy or random by nature; their blocks have exact-model
-    // click tests in fx.rs.
     assert_click_free(
         DIST,
         params(SID_DIST_TAPE, 1.0, 0.0, 0.0, 1.0),
@@ -410,18 +333,13 @@ fn parameter_jumps_are_click_free_in_the_existing_blocks() {
     );
 }
 
-/// The output's soft limiter (core/fx/fx_limit.h sid_fx_to_i16_limited): the settings that
-/// clipped before it (the modulations with feedback or gain and every FX at full feedback, on
-/// two chips at their loudest steady level in phase: 29,990 out of the mix, chip_mix.rs) put no
-/// sample on a rail; each still reaches the limiter, so the test sees it work.
 #[test]
-fn full_feedback_never_reaches_a_rail() {
-    // Two saws, 110 Hz and a fifth up, at that level together.
+fn full_feedback_reaches_the_output_limiter_but_never_a_rail() {
     let n = 3 * FS as usize;
     let input: Vec<i16> = (0..n)
         .map(|i| {
             let saw = |hz: f64| 2.0 * ((hz * i as f64 / FSF).fract()) - 1.0;
-            (29_990.0 * (0.5 * saw(110.0) + 0.5 * saw(164.8))).round() as i16
+            (LOUDEST_TWO_CHIPS_IN_PHASE * (0.5 * saw(110.0) + 0.5 * saw(164.8))).round() as i16
         })
         .collect();
     for (slot, alg, name) in [
@@ -455,9 +373,6 @@ fn full_feedback_never_reaches_a_rail() {
     }
 }
 
-/// The slots' dry gain (sid_slots_dry), the share the chip spread's side takes: 1 with every
-/// slot off or at an algorithm of NONE, the product of 1 - Mix of those in the path once their
-/// Mix has settled, 0 with a slot fully wet; and it moves smoothly while a slot switches.
 #[test]
 fn the_dry_gain_is_the_product_of_the_slots_dry_paths() {
     let dry = |s: &Slots| unsafe { sid_slots_dry(&*s.s) };
@@ -481,15 +396,15 @@ fn the_dry_gain_is_the_product_of_the_slots_dry_paths() {
     }
     println!("switching to a fully wet lush: the dry gain steps by {most} a block at most");
     assert_eq!(dry(&s), 0.0, "fully wet");
-    assert!(most < 0.15, "a step of {most}"); // the stage ramps it over each block
+    assert!(
+        most < 0.15,
+        "a step of {most}: the stage ramps it over each block"
+    );
 }
 
-/// sid_slots_process_float is sid_slots_process_wide before its conversion: the same slots on the
-/// same input (a sum, with its excess: here none), its floats through sid_fx_to_i16_limited are
-/// the int16 output bit for bit, with the slots in the path and out of it.
 #[test]
 fn the_float_output_is_the_int16_one_before_its_conversion() {
-    let input = test_noise(FS as usize / 2, 9);
+    let input = xorshift_noise(FS as usize / 2, 9);
     let none = vec![0i16; 128];
     for p in [off(), params(SID_FXSLOT_REVERB_LUSH, 1.0, 0.5, 0.5, 0.7)] {
         let (mut a, mut b) = (Slots::new(3), Slots::new(3));

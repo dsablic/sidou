@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! TRACKER (app/tracker_view.c, M2d Task 2): the cells' text, the orderlists' entries, the
-//! window in both modes, and the view's rows, orderlists and command line for a fixed song,
-//! through the views with the fake player (song_view.rs).
 
 use std::ffi::CStr;
 
 use sidou_sys::*;
-use sidou_tests::song::{SngSpec, Song as Model};
+use sidou_tests::song::{SngSpec, Song as Model, REST as R};
 
-use crate::drain;
 use crate::song_view::{attr, attr_of, ch, open_tracker, settle, Call, Song};
+use crate::{drain, PANEL_ENC_K2, PANEL_ENC_K3};
 
 fn cell(c: [u8; 4]) -> String {
     let mut out = [0 as std::ffi::c_char; 9];
@@ -29,6 +26,23 @@ fn entry(e: u8) -> String {
 }
 
 const C4: u8 = 0x60 + 4 * 12;
+const KEY_A4: u32 = 1 << 16;
+const MUTE_VOICE_1: u32 = 1;
+const MUTE_VOICE_2: u32 = 1 << 1;
+const SOLO_VOICE_1: u32 = 1 << 3;
+
+fn tap_keys(ui: &mut crate::views::Ui, keys: u32) {
+    ui.note_keys(keys, keys);
+    ui.note_keys(0, 0);
+}
+
+fn glo_tap(ui: &mut crate::views::Ui, keys: &[u32]) {
+    ui.hold(PANEL_BTN_GLO, true);
+    for &k in keys {
+        tap_keys(ui, k);
+    }
+    ui.hold(PANEL_BTN_GLO, false);
+}
 
 #[test]
 fn a_cell_reads_as_goattracker_shows_it() {
@@ -86,10 +100,6 @@ fn the_window_is_the_bars_page_or_scrolls_under_it() {
     );
 }
 
-const R: [u8; 4] = [0xbd, 0, 0, 0];
-
-/// Voice 1 plays patterns 0 and 1, voice 2 pattern 2 transposed +3, voice 3 pattern 3 twice;
-/// pattern 0 holds each kind of cell in its first rows.
 fn fixed_song() -> Model {
     let mut p0 = vec![R; 32];
     p0[0] = [C4, 1, 3, 0x08];
@@ -126,9 +136,7 @@ fn tracker() -> Song {
     s
 }
 
-/// The cell rows of the window's row j: the top (the note and the instrument at 2x) and the lower
-/// (the number and the command, small).
-fn top(j: usize) -> usize {
+fn upper_cell_row(j: usize) -> usize {
     TRACKER_VIEW_TOP as usize + 2 * j
 }
 
@@ -148,10 +156,7 @@ fn a_streaming_load_keeps_the_previous_canvas_until_the_model_is_complete() {
         io.state = state as u8;
         s.ui.v.song.song = std::ptr::null();
         s.ui.v.song.built = 0;
-        for _ in 0..12 {
-            s.ui.frame();
-            drain(&mut s.ui.g);
-        }
+        s.ui.frames_sent(12);
         assert_eq!(
             (s.ui.g.ch, s.ui.g.attr, s.ui.g.src),
             before,
@@ -170,8 +175,6 @@ fn a_streaming_load_keeps_the_previous_canvas_until_the_model_is_complete() {
 fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
     let s = tracker();
     let t = th();
-    // Stopped: the cursor's entry 0 row 0: the page from row -4, the bar on row 0 (window row 4).
-    // The header: V1 at 2x in voice 1's colour, its pattern, the stop square, the tempo.
     assert_eq!(s.ui.big(0, 0, 2, 2), "V1");
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[0]);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 00");
@@ -181,33 +184,31 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
     );
     assert_eq!(s.ui.small(0, 26, 4), " 125");
     assert_eq!(s.ui.small(1, 26, 3), "BPM");
-    // The other two voices' numbers over their strips.
     assert_eq!(s.ui.small(2, 26, 1), "2");
     assert_eq!(attr(&s.ui, 26, 2) & 15, t.voice[1]);
     assert_eq!(s.ui.small(2, 28, 1), "3");
     assert_eq!(attr(&s.ui, 28, 2) & 15, t.voice[2]);
-    // Four blank rows of context above the first row.
     for j in 0..4 {
-        for r in top(j)..top(j) + 2 {
+        for r in upper_cell_row(j)..upper_cell_row(j) + 2 {
             assert_eq!(s.ui.small(r, 0, 25).trim(), "", "window row {j}");
         }
     }
-    // Row 0: the number small at the left of the lower row, the note and the instrument at 2x,
-    // the command small.
-    assert_eq!(s.ui.small(top(4) + 1, 0, 2), "00");
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-4");
-    assert_eq!(s.ui.big(top(4), 10, 2, 2), "01");
-    assert_eq!(s.ui.small(top(4) + 1, 15, 3), "308");
-    assert_eq!(s.ui.big(top(5), 3, 2, 3), "===");
-    assert_eq!(s.ui.big(top(5), 10, 2, 2), "..");
-    assert_eq!(s.ui.big(top(6), 3, 2, 3), "+++");
-    assert_eq!(s.ui.big(top(7), 3, 2, 3), "---");
-    assert_eq!(s.ui.big(top(8), 3, 2, 3), "G-4");
-    assert_eq!(s.ui.small(top(8) + 1, 15, 3), "422");
-    assert_eq!(s.ui.small(top(11) + 1, 0, 2), "07", "the 12th row");
-    // The bar: a dark grey band across columns 0-17 on both cell rows of row 0, the current
-    // number yellow, the note yellow, the instrument in the voice's colour, the command grey.
-    for r in [top(4), top(4) + 1] {
+    assert_eq!(s.ui.small(upper_cell_row(4) + 1, 0, 2), "00");
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "C-4");
+    assert_eq!(s.ui.big(upper_cell_row(4), 10, 2, 2), "01");
+    assert_eq!(s.ui.small(upper_cell_row(4) + 1, 15, 3), "308");
+    assert_eq!(s.ui.big(upper_cell_row(5), 3, 2, 3), "===");
+    assert_eq!(s.ui.big(upper_cell_row(5), 10, 2, 2), "..");
+    assert_eq!(s.ui.big(upper_cell_row(6), 3, 2, 3), "+++");
+    assert_eq!(s.ui.big(upper_cell_row(7), 3, 2, 3), "---");
+    assert_eq!(s.ui.big(upper_cell_row(8), 3, 2, 3), "G-4");
+    assert_eq!(s.ui.small(upper_cell_row(8) + 1, 15, 3), "422");
+    assert_eq!(
+        s.ui.small(upper_cell_row(11) + 1, 0, 2),
+        "07",
+        "the 12th row"
+    );
+    for r in [upper_cell_row(4), upper_cell_row(4) + 1] {
         for c in 0..TRACKER_VIEW_BAND_W as usize {
             assert_eq!(
                 u32::from(attr(&s.ui, c, r) >> 4),
@@ -223,45 +224,61 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
             );
         }
     }
-    assert_eq!(attr(&s.ui, 0, top(4) + 1) & 15, t.hot, "the current number");
-    assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.hot, "the current note");
     assert_eq!(
-        attr(&s.ui, 10, top(4)) & 15,
+        attr(&s.ui, 0, upper_cell_row(4) + 1) & 15,
+        t.hot,
+        "the current number"
+    );
+    assert_eq!(
+        attr(&s.ui, 3, upper_cell_row(4)) & 15,
+        t.hot,
+        "the current note"
+    );
+    assert_eq!(
+        attr(&s.ui, 10, upper_cell_row(4)) & 15,
         t.value,
         "the instrument, white on the bar"
     );
     assert_eq!(
-        attr(&s.ui, 15, top(4) + 1) & 15,
+        attr(&s.ui, 15, upper_cell_row(4) + 1) & 15,
         t.value,
         "the command, white on the bar"
     );
-    // Other rows: grey numbers, white notes, dark grey rests and blanks.
-    assert_eq!(attr(&s.ui, 0, top(8) + 1) & 15, t.label);
-    assert_eq!(attr(&s.ui, 3, top(8)) & 15, t.value, "a note");
-    assert_eq!(attr(&s.ui, 3, top(5)) & 15, t.label, "a key off");
-    assert_eq!(attr(&s.ui, 3, top(7)) & 15, t.dim, "a rest");
-    assert_eq!(attr(&s.ui, 10, top(7)) & 15, t.dim, "no instrument");
-    assert_eq!(attr(&s.ui, 15, top(7) + 1) & 15, t.dim, "no command");
-    // On the bar the rests are lighter than the band.
+    assert_eq!(attr(&s.ui, 0, upper_cell_row(8) + 1) & 15, t.label);
+    assert_eq!(attr(&s.ui, 3, upper_cell_row(8)) & 15, t.value, "a note");
+    assert_eq!(attr(&s.ui, 3, upper_cell_row(5)) & 15, t.label, "a key off");
+    assert_eq!(attr(&s.ui, 3, upper_cell_row(7)) & 15, t.dim, "a rest");
+    assert_eq!(
+        attr(&s.ui, 10, upper_cell_row(7)) & 15,
+        t.dim,
+        "no instrument"
+    );
+    assert_eq!(
+        attr(&s.ui, 15, upper_cell_row(7) + 1) & 15,
+        t.dim,
+        "no command"
+    );
     let mut quiet = tracker();
     quiet.ui.v.song.row = 1;
     settle(&mut quiet.ui);
     assert_eq!(
-        attr(&quiet.ui, 3, top(5)) & 15,
+        attr(&quiet.ui, 3, upper_cell_row(5)) & 15,
         t.label,
         "a key off on the bar"
     );
     quiet.ui.v.song.row = 3;
     settle(&mut quiet.ui);
     assert_eq!(
-        attr(&quiet.ui, 3, top(7)) & 15,
+        attr(&quiet.ui, 3, upper_cell_row(7)) & 15,
         t.label,
         "a rest on the bar, not dark grey"
     );
-    // The strips: voice 2 (pattern 2) sounds a note on row 0 (tall), key off on row 4 and rests
-    // otherwise (short); voice 3's pattern has 16 rows, so row 16 and on have none.
-    let tall =
-        |s: &Song, j: usize, col: usize| (ch(&s.ui, col, top(j)), ch(&s.ui, col, top(j) + 1));
+    let tall = |s: &Song, j: usize, col: usize| {
+        (
+            ch(&s.ui, col, upper_cell_row(j)),
+            ch(&s.ui, col, upper_cell_row(j) + 1),
+        )
+    };
     assert_eq!(
         tall(&s, 4, 26),
         (FONT_V4 as u8, FONT_V8 as u8),
@@ -274,15 +291,13 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
         (FONT_V4 as u8, FONT_V8 as u8),
         "voice 3 row 0"
     );
-    assert_eq!(attr(&s.ui, 26, top(4) + 1) & 15, t.voice[1]);
-    assert_eq!(attr(&s.ui, 28, top(4) + 1) & 15, t.voice[2]);
+    assert_eq!(attr(&s.ui, 26, upper_cell_row(4) + 1) & 15, t.voice[1]);
+    assert_eq!(attr(&s.ui, 28, upper_cell_row(4) + 1) & 15, t.voice[2]);
     assert_eq!(
-        u32::from(attr(&s.ui, 26, top(4) + 1) >> 4),
+        u32::from(attr(&s.ui, 26, upper_cell_row(4) + 1) >> 4),
         u32::from(t.bg),
         "not on the band"
     );
-    // The orderlist of the shown voice from its entry, the bar row's command spelled out, the
-    // hint and the position.
     assert_eq!(s.ui.small(27, 0, 8), "OL 00 01");
     assert_eq!(
         attr(&s.ui, 3, 27),
@@ -305,15 +320,13 @@ fn algorithm_steps_the_shown_voice_and_round() {
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.v.song.voice, 1);
-    // V2 in cyan, its pattern (voice 2 starts at the orderlist's transpose, pattern 2 is its
-    // first), its rows, the other two voices' numbers over the strips, its orderlist.
     assert_eq!(s.ui.big(0, 0, 2, 2), "V2");
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[1]);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 02");
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-3");
-    assert_eq!(s.ui.big(top(4), 10, 2, 2), "02");
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "C-3");
+    assert_eq!(s.ui.big(upper_cell_row(4), 10, 2, 2), "02");
     assert_eq!(
-        attr(&s.ui, 10, top(4)) & 15,
+        attr(&s.ui, 10, upper_cell_row(4)) & 15,
         t.value,
         "the instrument on the bar in white: voice 2's colour is 2.05:1 on the bar"
     );
@@ -321,15 +334,13 @@ fn algorithm_steps_the_shown_voice_and_round() {
     assert_eq!(attr(&s.ui, 26, 2) & 15, t.voice_text[0]);
     assert_eq!(s.ui.small(2, 28, 1), "3");
     assert_eq!(s.ui.small(27, 0, 14).trim_end(), "OL 02 RST00");
-    // Voice 1 is a strip now: tall on its row 0, its instrument shows no more.
-    assert_eq!(ch(&s.ui, 26, top(4)), FONT_V4 as u8);
+    assert_eq!(ch(&s.ui, 26, upper_cell_row(4)), FONT_V4 as u8);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(0, 0, 2, 2), "V3");
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[2]);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 03");
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-5");
-    // Round: 1 again, and the other way: 3.
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "C-5");
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.v.song.voice, 0);
@@ -343,9 +354,7 @@ fn algorithm_steps_the_shown_voice_and_round() {
         s.ui.v.song.voice, 0,
         "five back from voice 3: round twice and one"
     );
-    // The cursor row is the song's, not the voice's: it stays.
     assert_eq!(s.ui.v.song.row, 0);
-    // ALGORITHM is TRACKER's: no toast, and the panel did nothing with it.
     assert!(s.ui.toast().is_none());
     assert_eq!(s.ui.v.s.popup_ask, 0);
 }
@@ -356,7 +365,7 @@ fn the_keys_audition_on_the_shown_voice() {
     s.ui.turn(PANEL_ENC_ALGORITHM, 2);
     settle(&mut s.ui);
     s.calls();
-    s.ui.note_keys(1 << 16, 1 << 16); // A4 on the panel at octave 0
+    s.ui.note_keys(KEY_A4, KEY_A4);
     let jam: Vec<_> = s
         .calls()
         .into_iter()
@@ -375,26 +384,23 @@ fn a_key_auditioning_shows_its_note_ghosted_on_the_bar_and_names_the_instrument(
     let t = th();
     let hint = |s: &Song| s.ui.small(TRACKER_VIEW_HINT_ROW as usize, 0, 11);
     assert_eq!(hint(&s).trim(), "", "no help line");
-    // A4 held: the bar's note and instrument are the key's, in the label role, and the hint line
-    // names the instrument.
-    s.ui.note_keys(1 << 16, 1 << 16);
+    s.ui.note_keys(KEY_A4, KEY_A4);
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "A-4");
-    assert_eq!(s.ui.big(top(4), 10, 2, 2), "01");
-    assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.label, "ghosted");
-    assert_eq!(attr(&s.ui, 10, top(4)) & 15, t.label, "ghosted");
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "A-4");
+    assert_eq!(s.ui.big(upper_cell_row(4), 10, 2, 2), "01");
+    assert_eq!(attr(&s.ui, 3, upper_cell_row(4)) & 15, t.label, "ghosted");
+    assert_eq!(attr(&s.ui, 10, upper_cell_row(4)) & 15, t.label, "ghosted");
     assert!(hint(&s).starts_with("I01 "), "{}", hint(&s));
-    // Let go: the row comes back and the line is blank again.
     s.ui.note_keys(0, 0);
     settle(&mut s.ui);
-    assert_ne!(s.ui.big(top(4), 3, 2, 3), "A-4");
+    assert_ne!(s.ui.big(upper_cell_row(4), 3, 2, 3), "A-4");
     assert_eq!(hint(&s).trim(), "");
 }
 
 #[test]
 fn an_applied_edit_refreshes_the_stopped_trackers_rows() {
     let mut s = tracker();
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-4");
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "C-4");
     let song = s.ui.v.song.song.cast_mut();
     let mut edit = gt2_edit::default();
     let cell = [C4 + 2, 2, 4, 0x22];
@@ -404,9 +410,9 @@ fn an_applied_edit_refreshes_the_stopped_trackers_rows() {
     }
     s.f.st.applied = 1;
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "D-4");
-    assert_eq!(s.ui.big(top(4), 10, 2, 2), "02");
-    assert_eq!(s.ui.small(top(4) + 1, 15, 3), "422");
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "D-4");
+    assert_eq!(s.ui.big(upper_cell_row(4), 10, 2, 2), "02");
+    assert_eq!(s.ui.small(upper_cell_row(4) + 1, 15, 3), "422");
     assert_eq!(s.ui.small(28, 0, 15), "V1 4 22 VIBRATO");
 }
 
@@ -414,45 +420,46 @@ fn an_applied_edit_refreshes_the_stopped_trackers_rows() {
 fn a_muted_voice_is_grey_in_the_header_and_its_strip_and_says_so() {
     let mut s = tracker();
     let t = th();
-    // Voice 1 (shown) muted: its number grey, MUT in red beside the pattern.
-    s.ui.hold(PANEL_BTN_GLO, true);
-    s.ui.note_keys(1, 1);
-    s.ui.note_keys(0, 0);
-    s.ui.hold(PANEL_BTN_GLO, false);
+    glo_tap(&mut s.ui, &[MUTE_VOICE_1]);
     settle(&mut s.ui);
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.dim, "V1 grey");
     assert_eq!(s.ui.big(0, 18, 2, 3), "MUT");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.alert);
-    // Its rows keep their colours (the header and the strips say the mute).
-    assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.hot, "the bar's note");
     assert_eq!(
-        attr(&s.ui, 10, top(4)) & 15,
+        attr(&s.ui, 3, upper_cell_row(4)) & 15,
+        t.hot,
+        "the bar's note"
+    );
+    assert_eq!(
+        attr(&s.ui, 10, upper_cell_row(4)) & 15,
         t.value,
         "its instrument, white on the bar"
     );
-    assert_eq!(attr(&s.ui, 3, top(8)) & 15, t.value, "another row's note");
+    assert_eq!(
+        attr(&s.ui, 3, upper_cell_row(8)) & 15,
+        t.value,
+        "another row's note"
+    );
     assert_eq!(
         s.ui.small(28, 0, 30).trim_end(),
         "",
         "voice 1's command is not said"
     );
-    // Voice 2 muted too: its strip and its number turn dark grey, the bars short.
-    s.ui.hold(PANEL_BTN_GLO, true);
-    s.ui.note_keys(2, 2);
-    s.ui.note_keys(0, 0);
-    s.ui.hold(PANEL_BTN_GLO, false);
+    glo_tap(&mut s.ui, &[MUTE_VOICE_2]);
     settle(&mut s.ui);
     assert_eq!(attr(&s.ui, 26, 2) & 15, t.dim, "its number");
-    assert_eq!(attr(&s.ui, 26, top(4) + 1) & 15, t.dim, "its strip");
-    assert_eq!(ch(&s.ui, 26, top(4)), b' ', "short, though a note sounds");
+    assert_eq!(
+        attr(&s.ui, 26, upper_cell_row(4) + 1) & 15,
+        t.dim,
+        "its strip"
+    );
+    assert_eq!(
+        ch(&s.ui, 26, upper_cell_row(4)),
+        b' ',
+        "short, though a note sounds"
+    );
     assert_eq!(attr(&s.ui, 28, 2) & 15, t.voice[2], "voice 3 sounds");
-    // Voice 1 soloed instead: SOL in white, the other two silent (grey strips).
-    s.ui.hold(PANEL_BTN_GLO, true);
-    s.ui.note_keys(1 | 2, 1 | 2); // both unmuted
-    s.ui.note_keys(0, 0);
-    s.ui.note_keys(1 << 3, 1 << 3); // solo voice 1
-    s.ui.note_keys(0, 0);
-    s.ui.hold(PANEL_BTN_GLO, false);
+    glo_tap(&mut s.ui, &[MUTE_VOICE_1 | MUTE_VOICE_2, SOLO_VOICE_1]);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(0, 18, 2, 3), "SOL");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.value);
@@ -468,21 +475,16 @@ fn a_muted_voice_is_grey_in_the_header_and_its_strip_and_says_so() {
 #[test]
 fn the_command_line_says_the_first_command_of_a_voice_that_sounds() {
     let mut s = tracker();
-    // Row 4: voice 1 has a vibrato (4 22), voice 2 a filter cutoff (C 40).
     s.ui.v.song.row = 4;
     settle(&mut s.ui);
     assert_eq!(s.ui.small(28, 0, 15), "V1 4 22 VIBRATO");
-    s.ui.hold(PANEL_BTN_GLO, true);
-    s.ui.note_keys(1, 1); // voice 1 muted: voice 2's is said
-    s.ui.note_keys(0, 0);
-    s.ui.hold(PANEL_BTN_GLO, false);
+    glo_tap(&mut s.ui, &[MUTE_VOICE_1]);
     settle(&mut s.ui);
     assert_eq!(s.ui.small(28, 0, 21), "V2 C 40 FILTER CUTOFF");
 }
 
-/// Playing: each voice's entry and row from the player's row events; the bar moves down the
-/// page a row at a time (its two rows, a few cells), and turns the page at row 8, which the
-/// copy spreads over frames, top first, each within the budget.
+const BAR_STEP_CELLS_MAX: usize = 104;
+
 #[test]
 fn the_bar_moves_down_the_page_and_turns_it() {
     let mut s = tracker();
@@ -490,24 +492,17 @@ fn the_bar_moves_down_the_page_and_turns_it() {
     s.ui.press(PANEL_BTN_PLAY);
     s.f.st.order_pos = [0, 1, 1];
     let mut most = 0;
-    // Rows 0..7 are every step of the bar on the first page (rows -4..7); row 8 turns the page,
-    // checked below against SONG_VIEW_FRAME_CELLS. 64b6f97 cut the loop from 0..15 when the
-    // readable screens' page became 12 rows: 0..15 now crosses that turn.
     for row in 0..7u8 {
         s.f.st.row = [row, row, row];
         s.ui.frame();
         let sent = drain(&mut s.ui.g);
         most = most.max(sent.cells);
-        // the bar's two rows at 2x (2 cell rows of 25 cells each way), the strips and the
-        // position: 95 measured (2026-10-22, review 6.4), at most 10 % above. 64b6f97 raised
-        // it from 100 to 130 with the rows at 2x, without a word.
-        assert!(sent.cells <= 104, "row {row}: {sent:?}");
+        assert!(sent.cells <= BAR_STEP_CELLS_MAX, "row {row}: {sent:?}");
     }
     println!("the bar's step: at most {most} cells");
-    assert_eq!(s.ui.small(top(4 + 6) + 1, 0, 2), "06");
-    assert_eq!(attr(&s.ui, 0, top(4 + 6) + 1) & 15, t.hot);
+    assert_eq!(s.ui.small(upper_cell_row(4 + 6) + 1, 0, 2), "06");
+    assert_eq!(attr(&s.ui, 0, upper_cell_row(4 + 6) + 1) & 15, t.hot);
     assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 06");
-    // The page turn: the window from row 4 (rows 4..15), the bar on row 8.
     s.f.st.row = [8, 8, 8];
     let mut frames = Vec::new();
     for _ in 0..8 {
@@ -521,19 +516,31 @@ fn the_bar_moves_down_the_page_and_turns_it() {
     }
     println!("the page turn: {frames:?}");
     assert!(frames.len() <= 4, "the page turn took {frames:?}");
-    assert_eq!(s.ui.small(top(0) + 1, 0, 2), "04");
-    assert_eq!(s.ui.small(top(4) + 1, 0, 2), "08");
-    assert_eq!(attr(&s.ui, 0, top(4) + 1) & 15, t.hot, "the bar on row 8");
-    assert_eq!(s.ui.big(top(5), 3, 2, 3), "---", "pattern 0's row 9");
-    // Voices 2 and 3 on their second entry: voice 3's pattern 3 has 16 rows.
+    assert_eq!(s.ui.small(upper_cell_row(0) + 1, 0, 2), "04");
+    assert_eq!(s.ui.small(upper_cell_row(4) + 1, 0, 2), "08");
+    assert_eq!(
+        attr(&s.ui, 0, upper_cell_row(4) + 1) & 15,
+        t.hot,
+        "the bar on row 8"
+    );
+    assert_eq!(
+        s.ui.big(upper_cell_row(5), 3, 2, 3),
+        "---",
+        "pattern 0's row 9"
+    );
     s.f.st.row = [0x11, 0x11, 0x11];
     settle(&mut s.ui);
-    // The page of row $11 is rows $0C..$17: the bar on the window's row 5.
-    assert_eq!(s.ui.small(top(5) + 1, 0, 2), "11");
-    assert_eq!(s.ui.big(top(5), 3, 2, 3), "D-4", "pattern 0's row $11");
-    // Row $11 is past voice 3's 16 rows: no strip bar beside it.
+    assert_eq!(s.ui.small(upper_cell_row(5) + 1, 0, 2), "11");
     assert_eq!(
-        (ch(&s.ui, 28, top(5)), ch(&s.ui, 28, top(5) + 1)),
+        s.ui.big(upper_cell_row(5), 3, 2, 3),
+        "D-4",
+        "pattern 0's row $11"
+    );
+    assert_eq!(
+        (
+            ch(&s.ui, 28, upper_cell_row(5)),
+            ch(&s.ui, 28, upper_cell_row(5) + 1)
+        ),
         (b' ', b' ')
     );
     assert_eq!(s.ui.small(27, 0, 14).trim_end(), "OL 00 01");
@@ -542,7 +549,6 @@ fn the_bar_moves_down_the_page_and_turns_it() {
 #[test]
 fn scroll_keeps_the_bar_on_the_windows_row_5() {
     let mut s = tracker();
-    // The menu's TRACKER ROWS: clockwise SCROLL (HOME back to LIVE, HOME the menu).
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_HOME);
@@ -557,35 +563,39 @@ fn scroll_keeps_the_bar_on_the_windows_row_5() {
     );
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
-    s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_TRACKER as i32);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.choose_menu_item(VIEWS_MENU_TRACKER);
     settle(&mut s.ui);
     assert_eq!(s.ui.top(), "TRACKER");
-    // Row 0 on window row 5, the five rows above blank.
-    assert_eq!(s.ui.big(top(5), 3, 2, 3), "C-4");
-    assert_eq!(s.ui.small(top(5) + 1, 0, 2), "00");
-    assert_eq!(attr(&s.ui, 0, top(5) + 1) & 15, th().hot);
+    assert_eq!(s.ui.big(upper_cell_row(5), 3, 2, 3), "C-4");
+    assert_eq!(s.ui.small(upper_cell_row(5) + 1, 0, 2), "00");
+    assert_eq!(attr(&s.ui, 0, upper_cell_row(5) + 1) & 15, th().hot);
     for j in 0..5 {
-        assert_eq!(s.ui.small(top(j), 0, 25).trim(), "", "window row {j}");
+        assert_eq!(
+            s.ui.small(upper_cell_row(j), 0, 25).trim(),
+            "",
+            "window row {j}"
+        );
     }
-    // Playing row 5: row 5 on window row 5, every row moved.
     s.ui.press(PANEL_BTN_PLAY);
     s.f.st.order_pos = [0, 1, 1];
     s.f.st.row = [5, 5, 5];
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(top(5) + 1, 0, 2), "05");
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "G-4", "row 4 above");
-    assert_eq!(s.ui.big(top(0), 3, 2, 3), "C-4", "row 0 at the top");
-    assert_eq!(s.ui.small(top(11) + 1, 0, 2), "0B");
+    assert_eq!(s.ui.small(upper_cell_row(5) + 1, 0, 2), "05");
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "G-4", "row 4 above");
+    assert_eq!(
+        s.ui.big(upper_cell_row(0), 3, 2, 3),
+        "C-4",
+        "row 0 at the top"
+    );
+    assert_eq!(s.ui.small(upper_cell_row(11) + 1, 0, 2), "0B");
 }
 
 #[test]
 fn without_a_song_the_rows_are_numbers_alone() {
     let mut s = Song::playing(None);
     open_tracker(&mut s.ui);
-    assert_eq!(s.ui.small(top(4) + 1, 0, 2), "00");
-    assert_eq!(s.ui.small(top(4), 3, 22).trim_end(), "");
+    assert_eq!(s.ui.small(upper_cell_row(4) + 1, 0, 2), "00");
+    assert_eq!(s.ui.small(upper_cell_row(4), 3, 22).trim_end(), "");
     assert_eq!(s.ui.small(27, 0, 14).trim_end(), "OL");
     assert_eq!(s.ui.small(28, 0, 30).trim_end(), "");
 }
@@ -594,17 +604,22 @@ fn without_a_song_the_rows_are_numbers_alone() {
 fn a_theme_change_redraws_the_tracker_in_the_new_colours() {
     let mut s = tracker();
     let hc = th();
-    assert_eq!(u32::from(attr(&s.ui, 5, top(8)) >> 4), u32::from(hc.bg));
+    assert_eq!(
+        u32::from(attr(&s.ui, 5, upper_cell_row(8)) >> 4),
+        u32::from(hc.bg)
+    );
     unsafe { live_set_theme(&mut *s.ui.rig.live, THEME_C64) };
     s.ui.frame();
     settle(&mut s.ui);
     let c64 = unsafe { &*theme_get(THEME_C64) };
-    assert_eq!(u32::from(attr(&s.ui, 5, top(8)) >> 4), u32::from(c64.bg));
-    assert_eq!(attr(&s.ui, 0, top(8) + 1) & 15, c64.label);
-    assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-4", "the same rows");
+    assert_eq!(
+        u32::from(attr(&s.ui, 5, upper_cell_row(8)) >> 4),
+        u32::from(c64.bg)
+    );
+    assert_eq!(attr(&s.ui, 0, upper_cell_row(8) + 1) & 15, c64.label);
+    assert_eq!(s.ui.big(upper_cell_row(4), 3, 2, 3), "C-4", "the same rows");
 }
 
-/// The canvas as the view holds it: its cells, colours and the characters of its pieces.
 fn canvas(s: &Song) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let cv = &s.ui.v.song.cv;
     (
@@ -614,7 +629,6 @@ fn canvas(s: &Song) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     )
 }
 
-/// Frames until the window is whole in the canvas (a few rows are built a frame), each sent.
 fn finish_building(s: &mut Song) {
     for _ in 0..4 {
         s.ui.frame();
@@ -626,11 +640,8 @@ fn finish_building(s: &mut Song) {
     panic!("the window was not built in four frames");
 }
 
-/// Only the bar's step redraws its two rows and the footer; the canvas is the one a whole build
-/// gives, at every row of a page and across the turns, whichever voice is shown and whatever is
-/// muted.
 #[test]
-fn a_step_of_the_bar_draws_what_a_whole_build_would() {
+fn a_step_of_the_bar_draws_what_a_whole_build_would_whichever_voice_is_shown_or_muted() {
     for voice in 0..3u32 {
         let mut s = tracker();
         s.ui.turn(PANEL_ENC_ALGORITHM, voice as i32);
@@ -640,10 +651,7 @@ fn a_step_of_the_bar_draws_what_a_whole_build_would() {
         for row in (0..40u8).chain((0..40u8).rev()) {
             s.f.st.row = [row % 32, row % 32, row % 32];
             if row == 20 {
-                s.ui.hold(PANEL_BTN_GLO, true);
-                s.ui.note_keys(2, 2); // voice 2 muted
-                s.ui.note_keys(0, 0);
-                s.ui.hold(PANEL_BTN_GLO, false);
+                glo_tap(&mut s.ui, &[MUTE_VOICE_2]);
             }
             finish_building(&mut s);
             let stepped = canvas(&s);
@@ -687,11 +695,7 @@ fn rec_keys_before_compose_follow_tracker_not_the_borrowed_canvas() {
     for borrowed in ["CHIP", "SONG", "SAVE AS"] {
         for covered in [false, true] {
             let mut s = tracker();
-            let mut ml = Box::<midi_learn>::default();
-            unsafe {
-                midi_learn_init(&mut *ml);
-                views_learn(&mut *s.ui.v, &mut *ml);
-            }
+            let _ml = s.ui.attach_learn();
             s.ui.press(PANEL_BTN_REC);
             if borrowed == "SAVE AS" {
                 s.ui.press(SAVE_KEY_BUTTON);
@@ -710,20 +714,18 @@ fn rec_keys_before_compose_follow_tracker_not_the_borrowed_canvas() {
                 s.ui.turn(PANEL_ENC_ALGORITHM, 1);
                 settle(&mut s.ui);
                 assert_eq!(s.ui.top(), borrowed);
-                s.ui.note_keys(1 << 16, 1 << 16);
-                s.ui.note_keys(0, 0);
+                tap_keys(&mut s.ui, KEY_A4);
                 assert_eq!(s.f.cell_writes, 0, "REC outside TRACKER only auditions");
                 s.ui.press(PANEL_BTN_HOME);
                 s.ui.press(PANEL_BTN_HOME);
-                s.ui.press(PANEL_BTN_SEQ); // TRACKER, the song view used last
+                s.ui.press(PANEL_BTN_SEQ);
             }
             assert_eq!(s.ui.top(), "TRACKER");
             if covered {
                 s.ui.learn_on(PANEL_ENC_K1);
                 assert_eq!(s.ui.top(), "LEARN");
             }
-            s.ui.note_keys(1 << 16, 1 << 16);
-            s.ui.note_keys(0, 0);
+            tap_keys(&mut s.ui, KEY_A4);
             assert_eq!(
                 s.ui.v.song.row, 1,
                 "{borrowed}, learn {covered}: the first note must advance before compose"
@@ -738,15 +740,11 @@ fn rec_keys_before_compose_follow_tracker_not_the_borrowed_canvas() {
 #[test]
 fn rec_keys_survive_a_nested_tracker_above_midi_learn() {
     let mut s = tracker();
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *s.ui.v, &mut *ml);
-    }
+    let _ml = s.ui.attach_learn();
     s.ui.press(PANEL_BTN_REC);
     s.ui.learn_on(PANEL_ENC_K1);
     assert_eq!(s.ui.top(), "LEARN");
-    s.ui.press(PANEL_BTN_SEQ); // TRACKER, the song view used last
+    s.ui.press(PANEL_BTN_SEQ);
     assert_eq!(s.ui.top(), "TRACKER");
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_HOME);
@@ -754,8 +752,7 @@ fn rec_keys_survive_a_nested_tracker_above_midi_learn() {
     s.ui.press(PANEL_BTN_HOME);
     assert_eq!(s.ui.top(), "TRACKER");
     settle(&mut s.ui);
-    s.ui.note_keys(1 << 16, 1 << 16);
-    s.ui.note_keys(0, 0);
+    tap_keys(&mut s.ui, KEY_A4);
     settle(&mut s.ui);
     assert_eq!(row(&s, 0, 0), [GT2_FIRSTNOTE as u8 + 57, 1, 3, 8]);
     assert_eq!(s.ui.v.song.row, 1);
@@ -774,7 +771,7 @@ fn learn_completion_under_a_nested_tracker_waits_to_pop_its_own_view() {
         }
         s.ui.learn_on(PANEL_ENC_K1);
         assert_eq!(s.ui.top(), "LEARN");
-        s.ui.press(PANEL_BTN_SEQ); // TRACKER, the song view used last
+        s.ui.press(PANEL_BTN_SEQ);
         assert_eq!(s.ui.top(), "TRACKER");
         if save {
             s.ui.press(SAVE_KEY_BUTTON);
@@ -801,8 +798,7 @@ fn learn_completion_under_a_nested_tracker_waits_to_pop_its_own_view() {
 fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
     let mut s = tracker();
     s.ui.press(PANEL_BTN_REC);
-    s.ui.note_keys(1 << 16, 1 << 16);
-    s.ui.note_keys(0, 0);
+    tap_keys(&mut s.ui, KEY_A4);
     settle(&mut s.ui);
     assert_eq!(row(&s, 0, 0), [GT2_FIRSTNOTE as u8 + 57, 1, 3, 8]);
     assert_eq!(s.ui.v.song.row, 1);
@@ -813,9 +809,9 @@ fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
         unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
         Ok("INSTRUMENT")
     );
-    s.ui.turn(PANEL_ENC_K1 + 1, 4);
+    s.ui.turn(PANEL_ENC_K2, 4);
     settle(&mut s.ui);
-    s.ui.turn(PANEL_ENC_K1 + 2, 2);
+    s.ui.turn(PANEL_ENC_K3, 2);
     settle(&mut s.ui);
     s.ui.turn(PANEL_ENC_K4, 3);
     settle(&mut s.ui);
@@ -842,16 +838,14 @@ fn rec_dispatch_uses_the_active_view_before_the_first_compose_not_the_canvas_own
     s.ui.press(PANEL_BTN_SEQ);
     assert_ne!(s.ui.v.song.which, SONG_VIEW_TRACKER as u8);
     s.ui.press(PANEL_BTN_REC);
-    s.ui.note_keys(1 << 16, 1 << 16);
-    s.ui.note_keys(0, 0);
+    tap_keys(&mut s.ui, KEY_A4);
     settle(&mut s.ui);
     assert_eq!(row(&s, 0, 0)[0], GT2_FIRSTNOTE as u8 + 57);
     s.ui.press(PANEL_BTN_SEQ);
     s.ui.press(PANEL_BTN_SEQ);
     assert_eq!(s.ui.top(), "INSTR");
     let writes = s.f.cell_writes;
-    s.ui.note_keys(1, 1);
-    s.ui.note_keys(0, 0);
+    tap_keys(&mut s.ui, 1);
     settle(&mut s.ui);
     assert_eq!(
         s.f.cell_writes, writes,
@@ -915,29 +909,29 @@ fn the_edit_cursor_and_each_edited_field_are_visible_at_two_times() {
     s.ui.press(PANEL_BTN_REC);
     settle(&mut s.ui);
     assert_eq!(
-        attr(&s.ui, 0, top(4) + 1),
+        attr(&s.ui, 0, upper_cell_row(4) + 1),
         attr_of(th().bg.into(), th().hot.into())
     );
     assert_eq!(
-        attr(&s.ui, 3, top(4)),
+        attr(&s.ui, 3, upper_cell_row(4)),
         attr_of(th().bg.into(), th().hot.into())
     );
     s.ui.turn(PANEL_ENC_K1, 1);
     s.ui.frame();
     s.ui.now += 1500;
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(top(4), 10, 2, 2), "02");
+    assert_eq!(s.ui.big(upper_cell_row(4), 10, 2, 2), "02");
     assert_eq!(
-        attr(&s.ui, 10, top(4)),
+        attr(&s.ui, 10, upper_cell_row(4)),
         attr_of(th().bg.into(), th().hot.into())
     );
-    s.ui.turn(PANEL_ENC_K1 + 1, 1);
+    s.ui.turn(PANEL_ENC_K2, 1);
     s.ui.frame();
     s.ui.now += 1500;
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(top(4), 15, 2, 3), "408");
+    assert_eq!(s.ui.big(upper_cell_row(4), 15, 2, 3), "408");
     assert_eq!(
-        attr(&s.ui, 15, top(4)),
+        attr(&s.ui, 15, upper_cell_row(4)),
         attr_of(th().bg.into(), th().hot.into())
     );
 }
@@ -952,8 +946,7 @@ fn presets_step_size_and_shift_keep_the_length_and_undo_the_lost_tail() {
     s.ui.hold(PANEL_BTN_EDIT, false);
     assert_eq!(s.ui.v.song.instr, 3);
     assert_eq!(s.ui.v.song.step, 0);
-    s.ui.note_keys(1 << 16, 1 << 16);
-    s.ui.note_keys(0, 0);
+    tap_keys(&mut s.ui, KEY_A4);
     settle(&mut s.ui);
     assert_eq!(s.ui.v.song.row, 0);
     assert_eq!(row(&s, 0, 0)[1], 3);

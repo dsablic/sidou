@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! .sid tunes on the store (M3 Task 10, app/sid_io.h): the browser's list, the header's
-//! refusals before anything loads, and the loading in parts (the 64 KiB cleared, the data read
-//! straight into it) equal to psid_ctl_load of the whole file, for the largest file the store
-//! holds too; a file replaced under a loading, a song change loaded again.
+
 use std::ffi::CString;
 
 use super::store::{fresh, Rig};
@@ -11,7 +8,10 @@ use sidou_sys::*;
 use sidou_tests::psid::{full_size, packed, FILE_MAX};
 use sidou_tests::psid_fixtures::vbi;
 
-/// A file of `file_type` written whole into the store.
+use crate::c_utf8;
+
+const SONG_BYTES_LEFT_IN_MEMORY: u8 = 0x5a;
+
 pub fn put(rig: &mut Rig, name: &str, file_type: u32, data: &[u8]) {
     let c = CString::new(name).unwrap();
     let begin = |rig: &mut Rig| {
@@ -21,7 +21,7 @@ pub fn put(rig: &mut Rig, name: &str, file_type: u32, data: &[u8]) {
     };
     let mut rc = begin(rig);
     if rc == STORE_BUSY {
-        rig.maintain(); // the pool refilled, as the device does when quiet
+        rig.maintain();
         rc = begin(rig);
     }
     assert_eq!(rc, STORE_OK, "{name}: store_file_begin");
@@ -45,15 +45,9 @@ fn listed(rig: &Rig) -> Vec<String> {
 }
 
 fn message(r: u32) -> String {
-    let p = unsafe { sid_io_message(r as i32) };
-    unsafe { std::ffi::CStr::from_ptr(p) }
-        .to_str()
-        .unwrap()
-        .to_owned()
+    c_utf8(unsafe { sid_io_message(r as i32) })
 }
 
-/// psid_ctl over its own 64 KiB, filled with garbage first (the song's bytes on the device),
-/// with sid_io loading into it.
 struct Loader {
     ctl: Box<psid_ctl>,
     _work: Box<psid_work>,
@@ -67,7 +61,7 @@ impl Loader {
         let mut l = Loader {
             ctl: Box::default(),
             _work: Box::default(),
-            mem: Box::new([0x5a; 0x10000]),
+            mem: Box::new([SONG_BYTES_LEFT_IN_MEMORY; 0x10000]),
             h: Box::default(),
             io: Box::default(),
         };
@@ -87,8 +81,7 @@ impl Loader {
         unsafe { sid_io_open(&mut *self.io, &*rig.st, c.as_ptr(), &mut *self.h) as u32 }
     }
 
-    /// Opens and loads `name`: the polls it took.
-    fn load(&mut self, rig: &Rig, name: &str) -> u32 {
+    fn load_counting_polls(&mut self, rig: &Rig, name: &str) -> u32 {
         assert_eq!(self.open(rig, name), SID_IO_OK, "{name}");
         assert_eq!(
             unsafe { sid_io_load(&mut *self.io, &mut *self.ctl, &*self.h) },
@@ -110,7 +103,6 @@ impl Loader {
     }
 }
 
-/// The tune `file` loaded whole by psid_ctl_load, as a reference.
 struct Whole {
     ctl: Box<psid_ctl>,
     _work: Box<psid_work>,
@@ -141,8 +133,7 @@ impl Whole {
     }
 }
 
-/// Plays song 1 of both for `polls` passes: the same writes at the same cycles.
-fn plays_alike(a: &mut psid_ctl, b: &mut psid_ctl, polls: u32) {
+fn song_1_plays_alike(a: &mut psid_ctl, b: &mut psid_ctl, polls: u32) {
     unsafe {
         assert_eq!(psid_ctl_play(a, 1), 1);
         assert_eq!(psid_ctl_play(b, 1), 1);
@@ -164,7 +155,6 @@ fn the_list_has_only_sid_files_in_name_order_and_never_sysex_staging() {
     put(&mut rig, "ZED", STORE_FILE_SID, &tune);
     put(&mut rig, "A SONG", STORE_FILE_SONG, &[1; 40]);
     put(&mut rig, "ALPHA", STORE_FILE_SID, &tune);
-    // MIDI INSTRUMENT's staging was type 2 before .sid files were: still never a tune.
     put(&mut rig, "MIDI INSTRUMENT", STORE_FILE_SID, &[2; 40]);
     put(&mut rig, "MIDI SONG", STORE_FILE_SONG, &[3; 40]);
     put(&mut rig, "M", STORE_FILE_SID, &tune);
@@ -187,16 +177,14 @@ fn rsid_mus_and_broken_headers_are_refused_with_their_toasts_and_nothing_loads()
     rsid[..4].copy_from_slice(b"RSID");
     let mut mus = good.clone();
     mus[0x77] |= 1;
-    // FM-1 SID's bounds bug's fixture (docs/upstream-reports.md, 1): a data offset past the
-    // file's end.
-    let mut past = good[..0x7C].to_vec();
-    past[6..8].copy_from_slice(&0x0200u16.to_be_bytes());
+    let mut data_offset_past_end = good[..0x7C].to_vec();
+    data_offset_past_end[6..8].copy_from_slice(&0x0200u16.to_be_bytes());
     let mut long = good.clone();
     long[8..10].copy_from_slice(&0xFFF0u16.to_be_bytes());
     let cases: [(&str, &[u8], u32, &str); 6] = [
         ("RSID", &rsid, SID_IO_RSID, "RSID: NOT YET"),
         ("MUS", &mus, SID_IO_MUS, "MUS: NOT SUPPORTED"),
-        ("PAST", &past, SID_IO_BROKEN, "BROKEN .SID"),
+        ("PAST", &data_offset_past_end, SID_IO_BROKEN, "BROKEN .SID"),
         ("SHORT", &good[..0x40], SID_IO_BROKEN, "BROKEN .SID"),
         ("WAV", b"RIFF....WAVEfmt ", SID_IO_BROKEN, "BROKEN .SID"),
         ("LONG", &long, SID_IO_TOO_LONG, "TOO LONG"),
@@ -212,7 +200,7 @@ fn rsid_mus_and_broken_headers_are_refused_with_their_toasts_and_nothing_loads()
     }
     assert_eq!(message(SID_IO_READ), "SID: READ ERROR");
     assert!(
-        l.mem.iter().all(|&b| b == 0x5a),
+        l.mem.iter().all(|&b| b == SONG_BYTES_LEFT_IN_MEMORY),
         "a refusal touched the memory"
     );
     assert_eq!(unsafe { psid_ctl_state(&*l.ctl) }, PSID_EMPTY);
@@ -221,15 +209,14 @@ fn rsid_mus_and_broken_headers_are_refused_with_their_toasts_and_nothing_loads()
 #[test]
 fn a_tune_loads_in_parts_as_the_whole_file_loads_the_largest_file_too() {
     let mut rig = fresh(0x5349_4404, 256);
-    // The header's load address 0: the data's first two bytes are the load address.
-    let mut prefixed = vbi().bytes();
+    let mut load_address_in_data = vbi().bytes();
     let load = vbi().load;
-    prefixed[8..10].copy_from_slice(&[0, 0]);
-    prefixed.splice(0x7C..0x7C, load.to_le_bytes());
+    load_address_in_data[8..10].copy_from_slice(&[0, 0]);
+    load_address_in_data.splice(0x7C..0x7C, load.to_le_bytes());
     let big = full_size(&goat());
     let files = [
         ("VBI", vbi().bytes()),
-        ("PREFIXED", prefixed),
+        ("PREFIXED", load_address_in_data),
         ("GOAT", goat()),
         ("BIG", big),
     ];
@@ -239,15 +226,14 @@ fn a_tune_loads_in_parts_as_the_whole_file_loads_the_largest_file_too() {
     }
     for (name, file) in &files {
         let mut l = Loader::new();
-        let polls = l.load(&rig, name);
+        let polls = l.load_counting_polls(&rig, name);
         let mut w = Whole::new(file);
         assert!(l.mem[..] == w.mem[..], "{name}: the memory differs");
-        // The clear's passes, then the data's.
         let clear = (0x10000 - 2u32).div_ceil(SID_IO_CLEAR_BYTES);
         let data = w._h.data_len.div_ceil(SID_IO_PASS_BYTES);
         assert_eq!(polls, clear + data, "{name}");
         println!("{name}: {} data bytes in {polls} polls", w._h.data_len);
-        plays_alike(&mut l.ctl, &mut w.ctl, 40);
+        song_1_plays_alike(&mut l.ctl, &mut w.ctl, 40);
     }
 }
 
@@ -257,18 +243,23 @@ fn a_song_change_loads_the_tune_again_from_the_store() {
     let file = goat();
     put(&mut rig, "GOAT", STORE_FILE_SID, &file);
     let mut l = Loader::new();
-    l.load(&rig, "GOAT");
+    l.load_counting_polls(&rig, "GOAT");
     unsafe {
         assert_eq!(psid_ctl_play(&mut *l.ctl, 1), 1);
         for _ in 0..40 {
             psid_ctl_poll(&mut *l.ctl);
         }
-        // Loaded in parts, the tune has no file to load a song change from: the caller's.
-        assert_eq!(psid_ctl_subtune(&mut *l.ctl, 1), 0);
-        // Playing: not quiet, so no load.
-        assert_eq!(sid_io_load(&mut *l.io, &mut *l.ctl, &*l.h), 0);
+        assert_eq!(
+            psid_ctl_subtune(&mut *l.ctl, 1),
+            0,
+            "a tune loaded in parts has no file for a song change"
+        );
+        assert_eq!(
+            sid_io_load(&mut *l.io, &mut *l.ctl, &*l.h),
+            0,
+            "a playing tune is not quiet: no load"
+        );
         assert_eq!(psid_ctl_stop(&mut *l.ctl), 1);
-        // The interrupt's half plays the stop out (its acknowledgement), then a poll sees it.
         l.ctl.done_seq = l.ctl.want_seq;
         psid_ctl_poll(&mut *l.ctl);
     }
@@ -277,7 +268,7 @@ fn a_song_change_loads_the_tune_again_from_the_store() {
         l.mem[..] != w.mem[..],
         "the tune changed nothing in its memory"
     );
-    l.load(&rig, "GOAT");
+    l.load_counting_polls(&rig, "GOAT");
     assert!(
         l.mem[..] == w.mem[..],
         "loaded again: the memory as at the first load"
@@ -298,7 +289,6 @@ fn a_file_replaced_or_deleted_under_a_loading_stops_it() {
             "a file of three parts at least"
         );
         let mut polls = 0;
-        // Through the clear and into the data.
         while polls < 5 {
             assert_eq!(unsafe { sid_io_poll(&mut *l.io) }, 1);
             polls += 1;

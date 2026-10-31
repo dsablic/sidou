@@ -1,113 +1,90 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! LAB's rolls (app/lab_edit.h, app/lab_view.h): EDIT + ARP varies the page, EDIT + SCL rolls
-//! the sound, and neither is ever silent, as LAB_SILENT_MS and LAB_SILENT_DB define it, on the
-//! host chip: lab_audible, the predicate the rolls keep to, against renders.
-
-use std::ffi::c_void;
 
 use sidou_sys::*;
 
 use crate::lab_sound::{random_sound, Xs};
 use crate::lab_view::{lab_ui, to_page};
 use crate::views::Ui;
+use crate::{LiveChip, PANEL_ENC_K2};
 
 const BYTES: usize = LAB_SOUND_BYTES as usize;
+const HOST_RATE: usize = 44100;
+const DC_BLOCKER_POLE: f64 = 0.995;
+const C4: u8 = 60;
+const C_MAJOR_LOW: [u8; 3] = [48, 52, 55];
 
-/// A live instrument on a host chip (as live_instrument.rs's).
-struct Chip {
-    chip: Box<sid>,
-    _target: Box<live_sid_target>,
-    _dacs: Box<[sid_dac; 2]>,
-    live: Box<live>,
-}
-
-impl Chip {
-    fn new(model: sid_model) -> Self {
-        let mut chip = Box::<sid>::default();
-        unsafe { sid_init(&mut *chip, model, SID_CLOCK_PAL, 44100) };
-        let mut dacs = Box::<[sid_dac; 2]>::default();
-        let mut target = Box::new(live_sid_target {
-            chip: &mut *chip,
-            clock_hz: SID_CLOCK_PAL,
-            sample_rate: 44100,
-            dacs: dacs.as_mut_ptr(),
-            ..Default::default()
-        });
-        let mut l = Box::<live>::default();
-        let ctx: *mut live_sid_target = &mut *target;
-        unsafe { live_init(&mut *l, Some(live_sid_sink), ctx.cast::<c_void>(), model) };
-        Chip {
-            chip,
-            _target: target,
-            _dacs: dacs,
-            live: l,
-        }
-    }
-}
-
-/// SILENT_MS of a held C4 at the panel's velocity on the host chip, from the note-on, with
-/// sound `s` (and the envelope mode `mode`): the RMS of the chip's output through a DC blocker,
-/// in dBFS.
-pub(crate) fn held_c4_db(s: &[u8], model: sid_model, mode: u32) -> f64 {
-    let mut c = Chip::new(model);
-    let per_tick = 44100 / LIVE_TICK_HZ as usize;
-    // The chip's envelopes start at reSIDfp's power-on 170: a chord with the shortest envelope,
-    // let go, takes every voice's envelope to 0, as a played instrument has them.
-    unsafe {
-        live_param_set(&mut *c.live, LIVE_PARAM_ATTACK, 0);
-        live_param_set(&mut *c.live, LIVE_PARAM_DECAY, 0);
-        live_param_set(&mut *c.live, LIVE_PARAM_SUSTAIN, 0);
-        live_param_set(&mut *c.live, LIVE_PARAM_RELEASE, 0);
-        for n in [48, 52, 55] {
-            live_note_on(&mut *c.live, n, PANEL_VELOCITY as u8);
-        }
-    }
-    let mut scratch = vec![0i16; per_tick];
-    for t in 0..10 {
-        if t == 5 {
-            for n in [48, 52, 55] {
-                unsafe { live_note_off(&mut *c.live, n) };
+impl LiveChip {
+    fn render_ticks(&mut self, out: &mut [i16]) {
+        for tick in out.chunks_mut(TICK_SAMPLES) {
+            unsafe {
+                live_tick(&mut *self.live);
+                sid_render(&mut *self.chip, tick.as_mut_ptr(), tick.len() as u32);
             }
         }
+    }
+
+    fn take_envelopes_to_zero(&mut self) {
         unsafe {
-            live_tick(&mut *c.live);
-            sid_render(&mut *c.chip, scratch.as_mut_ptr(), per_tick as u32);
+            for p in [
+                LIVE_PARAM_ATTACK,
+                LIVE_PARAM_DECAY,
+                LIVE_PARAM_SUSTAIN,
+                LIVE_PARAM_RELEASE,
+            ] {
+                live_param_set(&mut *self.live, p, 0);
+            }
+            for n in C_MAJOR_LOW {
+                live_note_on(&mut *self.live, n, PANEL_VELOCITY as u8);
+            }
         }
-    }
-    assert!(
-        c.chip.env.iter().all(|e| e.counter == 0),
-        "the envelopes at 0"
-    );
-    unsafe {
-        live_sound_apply(&mut *c.live, s.as_ptr());
-        live_param_set(&mut *c.live, LIVE_PARAM_ENVELOPE_MODE, mode);
-        live_note_on(&mut *c.live, 60, PANEL_VELOCITY as u8);
-    }
-    let ticks = LAB_SILENT_MS as usize * LIVE_TICK_HZ as usize / 1000;
-    let mut out = vec![0i16; ticks * per_tick];
-    for t in 0..ticks {
-        unsafe {
-            live_tick(&mut *c.live);
-            sid_render(
-                &mut *c.chip,
-                out[t * per_tick..].as_mut_ptr(),
-                per_tick as u32,
-            );
+        let mut scratch = vec![0i16; 5 * TICK_SAMPLES];
+        self.render_ticks(&mut scratch);
+        for n in C_MAJOR_LOW {
+            unsafe { live_note_off(&mut *self.live, n) };
         }
+        self.render_ticks(&mut scratch);
+        assert!(
+            self.chip.env.iter().all(|e| e.counter == 0),
+            "the envelopes at 0"
+        );
     }
-    // A DC blocker (a first-order high-pass at about 35 Hz): the chip's output moves its DC level
-    // with the envelope (a thump at the gate, a ramp under a slow attack), which is not heard.
+}
+
+const TICK_SAMPLES: usize = HOST_RATE / LIVE_TICK_HZ as usize;
+
+fn dc_blocked_rms_dbfs(out: &[i16]) -> f64 {
     let (mut x1, mut y) = (0.0f64, 0.0f64);
     let mut ms = 0.0;
-    for &x in &out {
+    for &x in out {
         let x = f64::from(x);
-        y = x - x1 + 0.995 * y;
+        y = x - x1 + DC_BLOCKER_POLE * y;
         x1 = x;
         ms += y * y;
     }
     let ms = ms / out.len() as f64;
     20.0 * (ms.sqrt().max(1e-9) / 32768.0).log10()
+}
+
+pub(crate) fn held_c4_db(s: &[u8], model: sid_model, mode: u32) -> f64 {
+    let mut c = LiveChip::new(model, HOST_RATE as u32);
+    c.take_envelopes_to_zero();
+    unsafe {
+        live_sound_apply(&mut *c.live, s.as_ptr());
+        live_param_set(&mut *c.live, LIVE_PARAM_ENVELOPE_MODE, mode);
+        live_note_on(&mut *c.live, C4, PANEL_VELOCITY as u8);
+    }
+    let ticks = LAB_SILENT_MS as usize * LIVE_TICK_HZ as usize / 1000;
+    let mut out = vec![0i16; ticks * TICK_SAMPLES];
+    c.render_ticks(&mut out);
+    dc_blocked_rms_dbfs(&out)
+}
+
+fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 const EDIT: u32 = PANEL_BTN_EDIT;
@@ -120,22 +97,12 @@ fn audible(s: &[u8], model: sid_model) -> bool {
     unsafe { lab_audible(s.as_ptr(), model) != 0 }
 }
 
-/// The predicate against the render on 2,000 random sounds on each model, either envelope mode:
-/// no sound it passes is silent. (LAB_SOUNDS and LAB_SEED run more or others: 30,000 on each of
-/// six seeds passed when the predicate was made, and so did the next test on them.) It passes every built-in, as loaded, on both models, and a
-/// fair share of the random sounds that are heard (it is not merely strict).
 #[test]
-fn lab_audible_agrees_with_the_render() {
-    let mut r = Xs(std::env::var("LAB_SEED")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0x2468_ace1));
+fn lab_audible_passes_no_silent_sound_and_every_built_in() {
+    let mut r = Xs(env_or("LAB_SEED", 0x2468_ace1));
     let (mut passed, mut silent_refused, mut n) = (0, 0, 0);
     let mut wrong = Vec::new();
-    let count: u32 = std::env::var("LAB_SOUNDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2000);
+    let count: u32 = env_or("LAB_SOUNDS", 2000);
     for i in 0..count {
         let s = random_sound(&mut r);
         for model in [SID_MODEL_6581, SID_MODEL_8580] {
@@ -154,18 +121,15 @@ fn lab_audible_agrees_with_the_render() {
     let heard = n - silent_refused;
     eprintln!("{passed} of {n} passed, of {heard} heard; {silent_refused} silent, refused");
     assert!(wrong.is_empty(), "passed but silent:\n{}", wrong.join("\n"));
-    // random sounds are odd (an arpeggio, ring, sync and a combination at once): the predicate
-    // keeps a margin there; on the rolls' sounds every roll finds one (the next test)
     assert!(
         passed * 100 >= heard * 12,
-        "only {passed} of the {heard} heard passed"
+        "only {passed} of the {heard} heard passed: the predicate is merely strict"
     );
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
         let mut rig = crate::Rig::new(model);
         for p in 0..LIVE_PRESET_COUNT as u8 {
             rig.set_preset(p);
-            let mut s = [0u8; BYTES];
-            unsafe { live_sound_get(&*rig.live, s.as_mut_ptr()) };
+            let s = rig.sound();
             eprintln!(
                 "preset {p} on {model:?}: {:.1} dB {:?}",
                 held_c4_db(&s, model, 0),
@@ -177,14 +141,9 @@ fn lab_audible_agrees_with_the_render() {
     }
 }
 
-/// Each of the predicate's refusals is a sound the chip makes silent: no waveform, noise with
-/// another waveform, a decay to sustain 0 under 30 ms, the slowest attacks, a voice routed to no
-/// mode, a high-pass far above a triangle, a low-pass shut below the note, a pulse of no width.
 #[test]
 fn what_lab_audible_refuses_is_silent() {
-    let rig = crate::Rig::new(SID_MODEL_6581);
-    let mut base = [0u8; BYTES];
-    unsafe { live_sound_get(&*rig.live, base.as_mut_ptr()) };
+    let mut base = crate::Rig::new(SID_MODEL_6581).sound();
     base[LAB_SOUND_FILTER_VOICES as usize] = 0;
     base[LAB_SOUND_VIBRATO_DEPTH as usize] = 0;
     let with = |f: &dyn Fn(&mut [u8; BYTES])| {
@@ -225,7 +184,6 @@ fn what_lab_audible_refuses_is_silent() {
             assert!(silent(db), "{what} on {model:?}: {db:.1} dB is not silent");
         }
     }
-    // a low-pass shut below the note: the 8580's (the 6581's stops at about 240 Hz)
     let lp = with(&|s| {
         s[LAB_SOUND_FILTER_VOICES as usize] = 7;
         s[LAB_SOUND_FILTER_MODE as usize] = 0x10;
@@ -233,9 +191,11 @@ fn what_lab_audible_refuses_is_silent() {
         s[LAB_SOUND_CUTOFF as usize] = 4;
         s[LAB_SOUND_CUTOFF as usize + 1] = 0;
     });
-    assert!(!audible(&lp, SID_MODEL_8580));
+    assert!(
+        !audible(&lp, SID_MODEL_8580),
+        "a low-pass shut below the note"
+    );
     assert!(silent(held_c4_db(&lp, SID_MODEL_8580, 0)));
-    // a pulse of no width: the 8580's is silent (the 6581's leaks a little, and is refused too)
     let pulse = with(&|s| {
         s[0] = 0x40;
         s[3] = 0;
@@ -244,12 +204,11 @@ fn what_lab_audible_refuses_is_silent() {
         s[LAB_SOUND_PWM_DEPTH as usize + 1] = 0;
     });
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
-        assert!(!audible(&pulse, model));
+        assert!(!audible(&pulse, model), "a pulse of no width on {model:?}");
     }
     assert!(silent(held_c4_db(&pulse, SID_MODEL_8580, 0)));
 }
 
-/// EDIT held, `b` pressed, EDIT let go; the toast.
 fn edit_with(ui: &mut Ui, b: u32) -> Option<String> {
     ui.down(EDIT);
     ui.press(b);
@@ -259,16 +218,13 @@ fn edit_with(ui: &mut Ui, b: u32) -> Option<String> {
 }
 
 fn sound(ui: &Ui) -> [u8; BYTES] {
-    let mut s = [0u8; BYTES];
-    unsafe { live_sound_get(&*ui.rig.live, s.as_mut_ptr()) };
-    s
+    ui.rig.sound()
 }
 
 fn hash(s: &[u8]) -> u32 {
     unsafe { lab_edit_hash(s.as_ptr()) }
 }
 
-/// LAB on `model` (its reset applied).
 fn lab_on(model: sid_model) -> Ui {
     let mut ui = lab_ui();
     unsafe {
@@ -279,15 +235,9 @@ fn lab_on(model: sid_model) -> Ui {
     ui
 }
 
-/// Ten thousand varies and rolls, on every page and both models, each result held as a C4 on
-/// the host chip: none is silent, none is the sound before it or the last result, and every
-/// one says so.
 #[test]
 fn ten_thousand_varies_and_rolls_are_never_silent() {
-    let mut r = Xs(std::env::var("LAB_SEED")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0x1357_9bdf));
+    let mut r = Xs(env_or("LAB_SEED", 0x1357_9bdf));
     let mut quiet = Vec::new();
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
         let mut ui = lab_on(model);
@@ -324,8 +274,6 @@ fn ten_thousand_varies_and_rolls_are_never_silent() {
     assert!(quiet.is_empty(), "silent results:\n{}", quiet.join("\n"));
 }
 
-/// A roll, again and again from one sound (undone between): never the sound before it, never the
-/// last roll's result.
 #[test]
 fn a_roll_never_repeats_the_sound_before_it_or_the_last_roll() {
     let mut ui = lab_ui();
@@ -342,12 +290,11 @@ fn a_roll_never_repeats_the_sound_before_it_or_the_last_roll() {
         assert_ne!(after, start, "{i}");
         assert_ne!(Some(after), last, "{i}");
         last = Some(after);
-        edit_with(&mut ui, PANEL_BTN_LFO); // back to the start: the next roll starts there again
-        assert_eq!(sound(&ui), start);
+        edit_with(&mut ui, PANEL_BTN_LFO);
+        assert_eq!(sound(&ui), start, "{i}: undone to the start");
     }
 }
 
-/// A variation moves only its page's cards (and choice), each a little: 1 to 3 detents.
 #[test]
 fn a_vary_moves_only_its_pages_cards_a_little() {
     let b = |f: u32| f as usize;
@@ -376,7 +323,6 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                 b(LAB_SOUND_FILTER_VOICES),
                 b(LAB_SOUND_FILTER_MODE),
                 b(LAB_SOUND_FILTER_LFO),
-                // the LFO's rate, PWM HZ's, on K4's name line: 1 Hz when K4 turns it on
                 b(LAB_SOUND_PWM_RATE),
                 b(LAB_SOUND_PWM_RATE) + 1,
             ],
@@ -419,7 +365,7 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                     ] {
                         assert!(
                             (nib(&after, at, hi) - nib(&before, at, hi)).abs() <= 3,
-                            "{i}"
+                            "{i}: at most 3 detents"
                         );
                     }
                 }
@@ -429,7 +375,6 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                         LAB_SOUND_VIBRATO_DEPTH,
                         LAB_SOUND_VIBRATO_DELAY,
                     ] {
-                        // 1 to 3 detents along the card's walk (knob_curves.rs), either way
                         let p = LIVE_PARAM_VIBRATO_RATE + (at - LAB_SOUND_VIBRATO_RATE);
                         let w = unsafe { live_walk_of(&*ui.rig.live, p) };
                         let (b, a) = (
@@ -438,7 +383,7 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
                         );
                         assert!(
                             (-3..=3).any(|d| unsafe { live_walk_step(w, b, d) } == a),
-                            "{i}: {b} -> {a}"
+                            "{i}: {b} -> {a} is more than 3 detents along the card's walk"
                         );
                     }
                 }
@@ -453,7 +398,6 @@ fn a_vary_moves_only_its_pages_cards_a_little() {
     }
 }
 
-/// A roll and a variation are one undo step each, back to the sound before them.
 #[test]
 fn a_roll_or_a_vary_undoes_in_one_step() {
     let mut ui = lab_ui();
@@ -474,16 +418,12 @@ fn a_roll_or_a_vary_undoes_in_one_step() {
         Some("UNDO (0)")
     );
     assert_eq!(sound(&ui), start, "the variation undone");
-    // SCL with EDIT selected no slot; the base and the name stayed
-    assert_eq!(ui.live().fx_select, 0);
-    assert_eq!(ui.live().user_sound, 0);
+    assert_eq!(ui.live().fx_select, 0, "SCL with EDIT selected no slot");
+    assert_eq!(ui.live().user_sound, 0, "the base stayed");
     let name = unsafe { std::ffi::CStr::from_ptr(ui.live().base_name.as_ptr()) };
     assert_eq!(name.to_str().unwrap(), "SAW LEAD");
 }
 
-/// EDIT + SCL is the roll whichever finger lands first: SCL a few milliseconds before EDIT
-/// (two fingers pressed together) rolls the sound and selects no slot, as EDIT first does, and
-/// letting SCL go after does nothing more.
 #[test]
 fn scl_landing_before_edit_is_the_same_roll() {
     let mut ui = lab_ui();
@@ -506,10 +446,8 @@ fn scl_landing_before_edit_is_the_same_roll() {
     assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no A/B tap");
 }
 
-/// SCL alone in LAB still selects the next effect slot, once it is let go (it waits for EDIT
-/// that long) or as soon as another control is used while it is down, which then acts as ever.
 #[test]
-fn scl_alone_in_lab_selects_the_next_slot() {
+fn scl_alone_in_lab_selects_the_next_slot_on_release_or_on_another_control() {
     let mut ui = lab_ui();
     to_page(&mut ui, LAB_PAGE_FX);
     let before = sound(&ui);
@@ -517,21 +455,26 @@ fn scl_alone_in_lab_selects_the_next_slot() {
     ui.press(PANEL_BTN_SCL);
     assert_eq!(ui.live().fx_select, (slot + 1) % LIVE_SLOTS as u8);
     ui.down(PANEL_BTN_SCL);
-    ui.turn(PANEL_ENC_K1, 1); // a knob while it is down: the slot first, then the knob
-    assert_eq!(ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
-    ui.down(EDIT); // EDIT after the knob: no chord any more
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(
+        ui.live().fx_select,
+        (slot + 2) % LIVE_SLOTS as u8,
+        "a knob while SCL is down selects the slot first"
+    );
+    ui.down(EDIT);
     ui.up(PANEL_BTN_SCL);
     ui.up(EDIT);
     ui.frame();
     assert_eq!(ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
-    assert_ne!(ui.toast().as_deref(), Some("ROLLED"));
+    assert_ne!(
+        ui.toast().as_deref(),
+        Some("ROLLED"),
+        "EDIT after the knob is no chord"
+    );
     assert_ne!(sound(&ui), before, "the knob acted");
     assert_eq!(ui.v.lab.undo.steps, 1, "only the knob's step");
 }
 
-/// EDIT + ARP is the variation whichever finger lands first: ARP a few milliseconds before EDIT
-/// varies the page as EDIT first does (one undo step, no A/B tap), and letting them go does
-/// nothing more.
 #[test]
 fn arp_landing_before_edit_is_the_same_variation() {
     let mut ui = lab_ui();
@@ -552,14 +495,12 @@ fn arp_landing_before_edit_is_the_same_variation() {
     assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no A/B tap");
 }
 
-/// EDIT + LFO is undo whichever finger lands first: LFO a few milliseconds before EDIT has
-/// already stepped to MOD (harmless), and EDIT then undoes the last step.
 #[test]
 fn lfo_landing_before_edit_is_the_same_undo() {
     let mut ui = lab_ui();
     to_page(&mut ui, LAB_PAGE_FILTER);
     let before = sound(&ui);
-    ui.turn(PANEL_ENC_K1 + 1, 3);
+    ui.turn(PANEL_ENC_K2, 3);
     assert_ne!(sound(&ui), before);
     ui.down(PANEL_BTN_LFO);
     assert_eq!(
@@ -578,12 +519,11 @@ fn lfo_landing_before_edit_is_the_same_undo() {
     assert_eq!(u32::from(ui.v.lab.ab), LAB_VIEW_AB_OFF, "no A/B tap");
 }
 
-/// ARP or LFO let go before EDIT lands is no chord: EDIT alone is A/B's tap, as ever.
 #[test]
 fn arp_or_lfo_let_go_before_edit_is_no_chord() {
     let mut ui = lab_ui();
     to_page(&mut ui, LAB_PAGE_FILTER);
-    ui.turn(PANEL_ENC_K1 + 1, 3);
+    ui.turn(PANEL_ENC_K2, 3);
     let edited = sound(&ui);
     for b in [PANEL_BTN_ARP, PANEL_BTN_LFO] {
         ui.press(b);
@@ -598,11 +538,11 @@ fn arp_or_lfo_let_go_before_edit_is_no_chord() {
     }
 }
 
-/// A sound nothing on its page can make heard: the variation leaves it and says so.
 #[test]
 fn a_silent_page_varies_nothing_and_says_so() {
     let mut ui = lab_ui();
-    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_WAVEFORM, 0) }; // no waveform
+    let no_waveform = 0;
+    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_WAVEFORM, no_waveform) };
     to_page(&mut ui, LAB_PAGE_ENVELOPE);
     let before = sound(&ui);
     assert_eq!(
@@ -611,6 +551,9 @@ fn a_silent_page_varies_nothing_and_says_so() {
     );
     assert_eq!(sound(&ui), before);
     assert_eq!(ui.v.lab.undo.steps, 0, "no step");
-    // the roll sets a waveform
-    assert_eq!(edit_with(&mut ui, PANEL_BTN_SCL).as_deref(), Some("ROLLED"));
+    assert_eq!(
+        edit_with(&mut ui, PANEL_BTN_SCL).as_deref(),
+        Some("ROLLED"),
+        "the roll sets a waveform"
+    );
 }

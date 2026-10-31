@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The chips' thump on the final output (`app/thump_out.c`): idle it touches nothing, a step
-//! decays as the chip's DC blocker would play it, a song's step starts where it was written,
-//! and no thump clips: two full-scale chords at THUMP 100 % on both chips through any effect
-//! put no sample on a rail that the same chords without the thump do not.
 
 use sidou_sys::*;
 
@@ -39,8 +35,6 @@ fn on_a_rail(v: i32) -> bool {
     v >= 32767 || v <= -32768
 }
 
-/// Idle, the stage leaves a block as it is: no thump taken, or a chip at thump 0 (its steps
-/// are 0) however its notes and volume move.
 #[test]
 fn idle_it_touches_nothing() {
     let lr: Vec<i16> = (0..2 * BLOCK)
@@ -65,20 +59,15 @@ fn idle_it_touches_nothing() {
     assert_eq!(out, lr);
 }
 
-/// A step on silence plays as the DC blocker's step response: the step at the chip's output
-/// gain on the block's first sample, then times dc_r each sample, rounded half away from zero
-/// on both sides, until under half an LSB, where the stage goes idle. A song's write after the
-/// chip rendered n samples of the block starts at sample n.
 #[test]
-fn a_step_decays_as_the_dc_blocker_plays_it() {
+fn a_step_decays_as_the_dc_blocker_plays_it_from_the_sample_it_was_written() {
     for late in [0usize, 50] {
         let (mut s, _dac) = chip(127);
         let mut mono = vec![0i16; BLOCK];
         write(&mut s, &[(0x18, 0x0f), (0x05, 0x00), (0x06, 0xf0)]);
         render(&mut s, &mut mono);
-        unsafe { thump_out_drop(&mut *s) }; // the volume write's own step: not this test's
+        unsafe { thump_out_drop(&mut *s) };
         let mut t = thump_out::default();
-        // The note: from the block's start (the drain's write), or after `late` samples.
         render(&mut s, &mut mono[..late]);
         write(&mut s, &[(0x04, 0x01)]);
         render(&mut s, &mut mono[late..]);
@@ -119,9 +108,6 @@ fn a_step_decays_as_the_dc_blocker_plays_it() {
     }
 }
 
-/// The soft limit: on a sample at s the thump x is untouched up to half the room s leaves
-/// below THUMP_OUT_CEILING, limited beyond it (growing with x, never reaching the ceiling),
-/// and a sample already on a rail stays there. Both signs.
 #[test]
 fn the_thump_fits_into_the_room_the_output_leaves() {
     let one = |s: i16, x: f32| -> i16 {
@@ -152,7 +138,6 @@ fn the_thump_fits_into_the_room_the_output_leaves() {
                 last = o;
             }
         }
-        // Against the signal's sign the room is the whole way to the far rail.
         assert_eq!(
             one((sign * 20000) as i16, -sign as f32 * 1000.0),
             (sign * 19000) as i16
@@ -163,9 +148,6 @@ fn the_thump_fits_into_the_room_the_output_leaves() {
     assert_eq!(one(-32768, 5000.0), -27768);
 }
 
-/// Where each stage of the output put samples on a rail: the chips' own (sid_render clamps),
-/// chip B's mix (the sum before chip_mix saturates it), the effect slots', and the output's
-/// after the thump.
 #[derive(Debug, Default, PartialEq)]
 struct Rails {
     chips: Vec<usize>,
@@ -174,13 +156,11 @@ struct Rails {
     out: Vec<usize>,
 }
 
-/// Two full-scale chords, rendered as audio_fill renders them (platform/fm1/audio.c): a song on
-/// chip A and the keys on chip B, both the keys' chip (the 6581 R4AR) at `thump`, each three
-/// pulse voices at full sustain and volume 15 through an open low-pass as every preset routes
-/// them. Both chords start in the same block (B's from the drain, A's from the song's call
-/// in the block's middle, as the split render plays it), every 28 blocks, released after 21
-/// (a fast release: each start thumps fully). Chip B mixed into A, the effect slot `fx`, the
-/// thump. The rails each stage hit, and the output (interleaved L, R).
+const CHORDS_BLOCKS: usize = 460;
+const CHORD_EVERY_BLOCKS: usize = 28;
+const RELEASE_AFTER_BLOCKS: usize = 21;
+const SONG_CALL_SAMPLE: usize = BLOCK / 2;
+
 fn chords(thump: u8, fx: Option<(u32, sid_slot_params)>) -> (Rails, Vec<i16>, Vec<i16>) {
     let (mut a, _da) = chip(thump);
     let (mut b, _db) = chip(thump);
@@ -200,8 +180,9 @@ fn chords(thump: u8, fx: Option<(u32, sid_slot_params)>) -> (Rails, Vec<i16>, Ve
         regs
     };
     let gates = |on: u8| -> Vec<(u8, u8)> { (0..3).map(|v| (v * 7 + 4, 0x40 | on)).collect() };
-    write(&mut a, &setup([0x1167, 0x15ed, 0x1a13]));
-    write(&mut b, &setup([0x1167, 0x15ed, 0x1a13])); // the keys double the song's chord
+    let chord = [0x1167, 0x15ed, 0x1a13];
+    write(&mut a, &setup(chord));
+    write(&mut b, &setup(chord));
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
     unsafe { sid_slots_init(&mut *slots, FS, 0x51D0, &mut *pool) };
@@ -213,17 +194,17 @@ fn chords(thump: u8, fx: Option<(u32, sid_slot_params)>) -> (Rails, Vec<i16>, Ve
     let mut rails = Rails::default();
     let mut out = Vec::new();
     let mut chips = Vec::new();
-    for block in 0..460usize {
-        let start = block % 28 == 0;
-        if block % 28 == 21 {
+    for block in 0..CHORDS_BLOCKS {
+        let start = block % CHORD_EVERY_BLOCKS == 0;
+        if block % CHORD_EVERY_BLOCKS == RELEASE_AFTER_BLOCKS {
             write(&mut a, &gates(0));
             write(&mut b, &gates(0));
         }
         if start {
-            write(&mut b, &gates(1)); // the drain, at the block's start
-            render(&mut a, &mut ma[..64]);
-            write(&mut a, &gates(1)); // the song's call, mid-block
-            render(&mut a, &mut ma[64..]);
+            write(&mut b, &gates(1));
+            render(&mut a, &mut ma[..SONG_CALL_SAMPLE]);
+            write(&mut a, &gates(1));
+            render(&mut a, &mut ma[SONG_CALL_SAMPLE..]);
         } else {
             render(&mut a, &mut ma);
         }
@@ -241,7 +222,7 @@ fn chords(thump: u8, fx: Option<(u32, sid_slot_params)>) -> (Rails, Vec<i16>, Ve
             chips.push(ma[i]);
             chips.push(mb[i]);
         }
-        let mut over = vec![0i16; BLOCK]; // none unless chip_mix writes it
+        let mut over = vec![0i16; BLOCK];
         unsafe {
             chip_mix(
                 ma.as_mut_ptr(),
@@ -278,8 +259,6 @@ fn chords(thump: u8, fx: Option<(u32, sid_slot_params)>) -> (Rails, Vec<i16>, Ve
     (rails, out, chips)
 }
 
-/// Each effect at the corner of its controls that measured loudest on these chords (Mix full):
-/// the gains run from 1 to about 3 (feedback, resonance, drive, a pan's +3 dB side).
 fn effects() -> Vec<(&'static str, u32, [f32; 3])> {
     vec![
         ("tape", SID_SLOT_DIST, [1.0, 0.0, 0.0]),
@@ -324,21 +303,11 @@ fn peak(x: &[i16]) -> i32 {
     x.iter().map(|&v| i32::from(v).abs()).max().unwrap_or(0)
 }
 
-/// No setting makes a thump clip. Two full-scale chords (88 % of full scale together, every
-/// chord start on both chips at once), THUMP 100 % on both chips (keys on B, a song on A):
-/// with no effect and with the worst effect (the loudest of those the chords alone do not take
-/// to a rail), no sample of any stage reaches a rail, though the thump is there (thousands of
-/// LSB at each start). With every effect, the thump puts no sample on a rail the chords alone
-/// do not (it may take one off: a thump against a clipped peak's sign). Before the
-/// output stage the chips played the thump themselves, on top of their full-scale chords:
-/// both chips and chip B's mix clipped at every start.
 #[test]
 fn no_thump_clips_two_full_scale_chords_through_any_effect() {
     let (plain_rails, plain, plain_chips) = chords(0, None);
     assert_eq!(plain_rails, Rails::default(), "the chords alone are clean");
     let full = peak(&plain);
-    // 88 % of full scale together at the mix, which the output's soft limiter (where the slots
-    // convert, chip_mix.h) takes to 27,327: past its knee, the loudest the output gives them.
     assert!(
         full > SID_FX_LIMIT_KNEE as i32,
         "the chords reach {full}: past the limiter's knee"

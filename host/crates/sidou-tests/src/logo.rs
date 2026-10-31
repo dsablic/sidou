@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The logos' bitmaps: the indexed PNGs `assets/logo/metal-chrome.png` and
-//! `assets/logo/cracktro-chrome.png` (drawn by `assets/logo/<name>.js`) and the C they
-//! generate, `app/logo_bitmap.c`, a `grid_bitmap` (app/grid.h) each for the renderer's pixel
-//! region. `tests/app/logo_bitmap.rs` keeps the generated file in step with the PNGs.
-//!
-//! The encoding is `bitmap_codec`'s run dictionary and checkpointed row packets
-//! (docs/art/bitmap-codec.md): any row or span decodes without another row or a scratch buffer.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -14,7 +7,6 @@ use std::path::PathBuf;
 use crate::bitmap_codec;
 use crate::font::repo_root;
 
-/// The art palette (docs/art/README.md, app/grid.h's GRID_ colours) in sRGB.
 pub const PALETTE: [[u8; 3]; 16] = [
     [0x00, 0x00, 0x00],
     [0xff, 0xff, 0xff],
@@ -34,7 +26,6 @@ pub const PALETTE: [[u8; 3]; 16] = [
     [0x95, 0x95, 0x95],
 ];
 
-/// An image as art palette indexes, row by row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub w: usize,
@@ -42,24 +33,20 @@ pub struct Image {
     pub px: Vec<u8>,
 }
 
-/// A run-length coded image: row y's runs start at `data[rows[y]]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encoded {
     pub rows: Vec<u16>,
     pub data: Vec<u8>,
 }
 
-/// The longest run a byte holds.
 const RUN: usize = 16;
 
-/// app/grid.h GRID_BITMAP_SEEK: pixels between a bitmap row's checkpoints.
 pub const SEEK: usize = 64;
 pub const FORMAT: bitmap_codec::Format = bitmap_codec::Format {
     seek: SEEK,
     raw: false,
 };
 
-/// A logo's scene: `assets/logo/<name>.png`, compiled into `app/logo_bitmap.c` as `symbol`.
 #[derive(Clone, Copy, Debug)]
 pub struct Logo {
     pub name: &'static str,
@@ -68,7 +55,6 @@ pub struct Logo {
     pub format: bitmap_codec::Format,
 }
 
-/// The logos with a bitmap, the default first (app/logo.h).
 pub const LOGOS: [Logo; 2] = [
     Logo {
         name: "metal-chrome",
@@ -90,7 +76,6 @@ pub const LOGOS: [Logo; 2] = [
     },
 ];
 
-/// The default logo's name (app/logo.h logo_default).
 pub const DEFAULT: &str = "metal-chrome";
 
 pub fn png_path(name: &str) -> PathBuf {
@@ -101,15 +86,12 @@ pub fn generated_path() -> PathBuf {
     repo_root().join("app/logo_bitmap.c")
 }
 
-/// Reads and checks `assets/logo/<name>.png`.
 pub fn load(name: &str) -> Image {
     let path = png_path(name);
     let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     parse_png(&bytes).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
-/// An indexed PNG whose pixels are art palette colours (its palette in any order), at most
-/// the screen and in whole 8 x 8 cells.
 pub fn parse_png(bytes: &[u8]) -> Result<Image, String> {
     let mut dec = png::Decoder::new(std::io::Cursor::new(bytes))
         .read_info()
@@ -153,7 +135,6 @@ pub fn parse_png(bytes: &[u8]) -> Result<Image, String> {
     Ok(Image { w, h, px })
 }
 
-/// One row's runs.
 fn row_runs(row: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut x = 0;
@@ -174,8 +155,6 @@ pub fn encode(img: &Image) -> Encoded {
     }
 }
 
-/// Several images into one array of runs: each image's row offsets, and the runs, which rows
-/// alike share within an image and across them.
 pub fn encode_shared(
     imgs: &[(&Image, bitmap_codec::Format)],
 ) -> (Vec<Vec<u16>>, Vec<u8>, Vec<usize>) {
@@ -205,13 +184,11 @@ pub fn decode(enc: &Encoded, w: usize, h: usize) -> Vec<u8> {
     px
 }
 
-// The generated file's own licence header; reuse must not read it as this file's.
 // REUSE-IgnoreStart
 pub(crate) const SPDX: &str = "// SPDX-FileCopyrightText: 2026 SIDOU contributors\n\
                                // SPDX-License-Identifier: GPL-3.0-or-later\n";
 // REUSE-IgnoreEnd
 
-/// Numbers as C initialisers, `per` to a line.
 pub(crate) fn table<T: std::fmt::Display>(
     items: &[T],
     per: usize,
@@ -225,19 +202,16 @@ pub(crate) fn table<T: std::fmt::Display>(
     s
 }
 
-/// What an image costs alone: its runs and row offsets, in bytes.
 pub fn size(img: &Image, format: bitmap_codec::Format) -> (usize, usize) {
     let (rows, data, _) = encode_shared(&[(img, format)]);
     (data.len(), 2 * rows[0].len())
 }
 
-/// The original byte-run representation, retained as the whole-PNG comparison's control.
 pub fn byte_run_size(img: &Image) -> usize {
     let rows: std::collections::HashSet<_> = img.px.chunks(img.w).map(row_runs).collect();
     rows.iter().map(Vec::len).sum::<usize>() + 2 * img.h
 }
 
-/// `app/logo_bitmap.c`, from the logos' PNGs.
 pub fn c_source() -> String {
     let imgs: Vec<Image> = LOGOS.iter().map(|l| load(l.name)).collect();
     let (rows, data, bases) = encode_shared(
@@ -248,44 +222,8 @@ pub fn c_source() -> String {
             .collect::<Vec<_>>(),
     );
     let mut s = String::from(SPDX);
-    let files: Vec<String> = LOGOS
-        .iter()
-        .map(|l| format!("assets/logo/{}.png", l.name))
-        .collect();
-    let files = files.join(" and\n * ");
-    let _ = write!(
-        s,
-        "/* Generated by host/crates/sidou-tests/src/logo.rs from {};\n \
-         * do not edit.\n \
-         * The logos' scenes (app/logo.h), each a grid_bitmap (app/grid.h): run dictionaries\n \
-         * and checkpointed row packets (docs/art/bitmap-codec.md), shared where smaller.\n",
-        files
-    );
-    for (l, img) in LOGOS.iter().zip(&imgs) {
-        let (runs, offs) = size(img, l.format);
-        let _ = writeln!(
-            s,
-            " * {}: {} x {} pixels, {runs} bytes of runs and {offs} of row offsets alone,\n \
-             *   {} in all; 4 bits a pixel unpacked would be {}.",
-            l.title,
-            img.w,
-            img.h,
-            runs + offs,
-            img.w * img.h / 2
-        );
-    }
-    let offs: usize = rows.iter().map(|r| 2 * r.len()).sum();
-    let _ = write!(
-        s,
-        " * Together: {} bytes of runs and {offs} of row offsets, {} in all.\n \
-         * Each pool is its own array, named after its first logo: the firmware links only the\n \
-         * logos it shows (--gc-sections with -fdata-sections), so a pool no shown logo reads\n \
-         * (Cracktro Chrome's, which the host tests keep) stays out of the image. */\n\
-         #include \"logo.h\"\n",
-        data.len(),
-        data.len() + offs,
-    );
-    // The pools, in order: each image's base starts one, or shares an earlier image's.
+    s += "/* Generated by host/crates/sidou-tests/src/logo.rs from assets/logo/; do not edit. */\n\
+          #include \"logo.h\"\n";
     let mut starts: Vec<usize> = bases.clone();
     starts.sort_unstable();
     starts.dedup();
@@ -326,12 +264,10 @@ pub fn c_source() -> String {
     s
 }
 
-/// Writes `app/logo_bitmap.c` if `update`, else returns it if it is stale.
 pub fn check_or_write(update: bool) -> Vec<PathBuf> {
     check_or_write_file(&generated_path(), &c_source(), update)
 }
 
-/// Writes `want` to `path` if `update`, else returns `path` if it holds something else.
 pub(crate) fn check_or_write_file(
     path: &std::path::Path,
     want: &str,

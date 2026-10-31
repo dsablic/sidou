@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! MIDI's modes (`app/midi_route.c`): which channel plays the instrument and which plays chip
-//! A's voices as the player's jam voices, through `midi_rx` as the device runs it, with the
-//! player's side recorded.
 
 use std::ffi::c_void;
 
@@ -15,7 +12,6 @@ const C4: u8 = 60;
 const E4: u8 = 64;
 const G4: u8 = 67;
 
-/// What the router asked of the player.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Ev {
     On {
@@ -32,7 +28,6 @@ enum Ev {
 #[derive(Default)]
 struct Player {
     log: Vec<Ev>,
-    /// Refuse every call (a full command ring).
     full: bool,
 }
 
@@ -83,15 +78,14 @@ unsafe extern "C" fn filter(ctx: *mut c_void, locks: u32, cutoff: u32, reso: u32
     1
 }
 
-/// GoatTracker's note for a MIDI note.
-fn gt(n: u8) -> u32 {
+fn gt_note_of(n: u8) -> u32 {
     u32::from(n) - MIDI_ROUTE_GT_FIRST
 }
 
 fn on(voice: u32, n: u8, instr: u32) -> Ev {
     Ev::On {
         voice,
-        note: gt(n),
+        note: gt_note_of(n),
         instr,
         legato: 0,
     }
@@ -100,13 +94,12 @@ fn on(voice: u32, n: u8, instr: u32) -> Ev {
 fn glide(voice: u32, n: u8, instr: u32) -> Ev {
     Ev::On {
         voice,
-        note: gt(n),
+        note: gt_note_of(n),
         instr,
         legato: 1,
     }
 }
 
-/// live on a recorder, fed by midi_rx through a midi_route with a recording player.
 struct Route {
     rig: Rig,
     rx: Box<midi_rx>,
@@ -173,7 +166,6 @@ impl Route {
         std::mem::take(&mut self.player.log)
     }
 
-    /// The instrument's notes held.
     fn held(&self) -> Vec<u8> {
         self.rig
             .live
@@ -294,7 +286,7 @@ fn notes_outside_goattrackers_range_are_ignored() {
     let mut r = Route::with(MIDI_MODE_MULTI, 0, |_| {});
     r.trs(&[0x90, 11, 100, 108, 100, 127, 100, 12, 100, 107, 100]);
     assert_eq!(r.take(), [on(0, 12, 1), on(0, 107, 1)]);
-    assert_eq!(gt(107), 95);
+    assert_eq!(gt_note_of(107), 95);
 }
 
 #[test]
@@ -325,7 +317,6 @@ fn each_jam_channel_bends_its_voice_by_its_own_range_at_the_tick() {
     );
     r.tick();
     assert!(r.take().is_empty(), "nothing changed");
-    // RPN 0 on channel 2 only: 12 semitones.
     r.trs(&[0xB1, 101, 0, 0xB1, 100, 0, 0xB1, 6, 12]);
     r.tick();
     assert_eq!(r.take(), [Ev::Bend(1, (0x1000 - 8192) * 12)]);
@@ -482,7 +473,6 @@ fn chord_plays_the_stored_chord_over_the_three_voices() {
     );
     r.trs(&[0x80, C4, 0]);
     assert_eq!(r.take(), [Ev::Off(0), Ev::Off(1), Ev::Off(2)]);
-    // Past the top a voice is left silent.
     r.trs(&[0x90, 100, 1]);
     assert_eq!(r.take(), [on(0, 100, 1), on(1, 103, 1)]);
 }
@@ -502,7 +492,6 @@ fn arp_cycles_the_held_notes_on_voice_1_every_n_frames() {
             steps.push((t, e));
         }
     }
-    // A step every 2 frames, 4 ticks.
     assert_eq!(
         steps,
         [(3, on(0, E4, 1)), (7, on(0, G4, 1)), (11, on(0, C4, 1))]
@@ -569,7 +558,6 @@ fn every_mode_and_option_has_a_name_and_a_doc() {
     }
 }
 
-/// A setup's fields, to compare.
 fn fields(s: &midi_route_setup) -> [u8; 8] {
     [
         s.mode,
@@ -642,7 +630,6 @@ fn a_song_without_the_chunk_or_its_options_takes_the_default() {
         0
     );
     assert_eq!(fields(&back), fields(&dflt));
-    // An M2c chunk: version, mode, rows a beat, the channels, no options.
     let chunk = [1u8, MIDI_MODE_MULTI as u8, 6, 1, 2];
     assert_eq!(
         unsafe {
@@ -664,7 +651,6 @@ fn a_song_without_the_chunk_or_its_options_takes_the_default() {
     want.base = 2;
     want.rows_per_beat = 6;
     assert_eq!(fields(&back), fields(&want));
-    // An unknown mode and out-of-range options are the default's, clamped.
     let chunk = [1u8, 9, 0, 0, 1, 7, 99, 200, 250];
     unsafe {
         song_ext_set(
@@ -682,14 +668,11 @@ fn a_song_without_the_chunk_or_its_options_takes_the_default() {
     assert_eq!(back.arp_rate, MIDI_ROUTE_ARP_MAX as u8);
 }
 
-// ---- M2e Task 4: program change and bank select ----
-
 #[test]
 fn bank_select_is_kept_per_channel_and_bank_0_is_m1s() {
     let mut r = Route::new();
     r.trs(&[0xC0, 2]);
     assert_eq!(r.rig.live.preset, 2, "bank 0: the preset, as in M1");
-    // Channel 2 in bank 1: its program changes are songs, channel 1's still presets.
     r.trs(&[0xB1, 0, 0, 0xB1, 32, 1, 0xC1, 3, 0xC0, 1]);
     assert_eq!(r.rig.live.preset, 1);
     assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 3);
@@ -697,7 +680,6 @@ fn bank_select_is_kept_per_channel_and_bank_0_is_m1s() {
     r.trs(&[0xC1, 0]);
     assert_eq!(r.rig.live.preset, 1, "held until changed");
     assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 0);
-    // CC 0 is the MSB: bank 128 means nothing.
     r.trs(&[0xB1, 0, 1, 0xC1, 0]);
     assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, -1);
     assert_eq!(r.rig.live.preset, 1);
@@ -726,7 +708,6 @@ fn songs_come_from_the_instruments_channel_or_channel_n_only() {
     assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 2, "N");
     r.trs(&[0xB7, 32, 1, 0xC7, 3]);
     assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 3, "N + 3");
-    // Bank 0 on chip A's channels is still the instrument there.
     r.trs(&[0xB5, 32, 0, 0xC5, 9, 0x95, C4, 1]);
     assert_eq!(r.take(), [on(1, C4, 10)]);
 }

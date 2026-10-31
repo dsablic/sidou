@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! MIDI clock and transport for the song player (`app/midi_sync.c`, M2e Task 2), through a
-//! song transport (`app/song_transport.h`) bound over the real song control
-//! (`core/player/song_ctl.c`) as platform/fm1/main.c binds it, playing SIDOU's first song as
-//! the device runs them: a block rendered, then main-loop passes until the next (four a block
-//! here), each taking the MIDI that came in by then.
 
 use sidou_sys::*;
 use sidou_tests::song::Song;
@@ -44,7 +39,6 @@ fn loading_a_song_cancels_old_transport_requests_without_resetting_clock_configu
     assert_eq!(sync.clock.clocks, 123);
 }
 
-/// A message at a time (ticks).
 #[derive(Clone, Copy, Debug)]
 struct At {
     ticks: u32,
@@ -59,8 +53,6 @@ fn rt(ticks: u32, b: u8) -> At {
         len: 1,
     }
 }
-
-// ---- the song transport over song control, as platform/fm1/main.c's ----
 
 fn sc(ctx: *mut std::ffi::c_void) -> *mut song_ctl {
     ctx.cast()
@@ -173,20 +165,13 @@ struct Rig {
     sync: Box<midi_sync>,
     _transport: Box<song_transport>,
     parser: Box<midi_in>,
-    /// MIDI to come, in time order.
     midi: Vec<At>,
     next: usize,
-    /// Each call: its number and its sample.
     calls: Vec<(u32, u32)>,
-    /// Clock out's packets and the sample of the pass that sent them.
     out: Vec<(u32, u32)>,
-    /// The parser's messages land here, with the stamp they go in with.
     stamp: u32,
-    /// Ticks the audio lost to holds (`hold`): the blocks not rendered while the interrupts
-    /// were masked, so the player's samples fall behind the ticks by them.
-    skipped: u32,
-    /// MIDI that came before this tick (in a hold) is stamped with it: the first poll after.
-    late_until: u32,
+    ticks_lost_to_holds: u32,
+    stamp_late_until: u32,
 }
 
 unsafe extern "C" fn on_msg(ctx: *mut std::ffi::c_void, msg: *const midi_msg) {
@@ -210,8 +195,8 @@ impl Rig {
             calls: Vec::new(),
             out: Vec::new(),
             stamp: 0,
-            skipped: 0,
-            late_until: 0,
+            ticks_lost_to_holds: 0,
+            stamp_late_until: 0,
         });
         let rp: *mut Rig = &mut *r;
         let scp: *mut song_ctl = &mut *r.t.sc;
@@ -228,30 +213,27 @@ impl Rig {
         self.t.sc.samples
     }
 
-    /// Runs `blocks` blocks: each rendered, then its passes.
     fn run(&mut self, blocks: u32) {
         let next = self.next;
-        self.midi[next..].sort_by_key(|m| m.ticks); // stable: same-time messages keep order
+        self.midi[next..].sort_by_key(|m| m.ticks);
         for _ in 0..blocks {
             let s = self.samples();
             let calls_before = self.t.calls();
-            // a call's sample as heard, on the ticks' time line (the holds' lost blocks added)
-            let lost = self.skipped / TPS;
+            let lost = self.ticks_lost_to_holds / TPS;
             if let Some(at) = self.t.block_silent() {
                 if self.t.calls() != calls_before {
                     self.calls.push((self.t.calls() - 1, s + at as u32 + lost));
                 }
             }
-            // the block at s was rendered at the heard time s - BLOCK
             let rendered = (s.wrapping_sub(BLOCK as u32))
                 .wrapping_mul(TPS)
-                .wrapping_add(self.skipped);
+                .wrapping_add(self.ticks_lost_to_holds);
             unsafe { midi_sync_anchor(&mut *self.sync, rendered, s) };
             for j in 0..PASSES {
                 let now = rendered.wrapping_add(j * BLOCK as u32 / PASSES * TPS);
                 while self.next < self.midi.len() && self.midi[self.next].ticks <= now {
                     let m = self.midi[self.next];
-                    self.stamp = m.ticks.max(self.late_until);
+                    self.stamp = m.ticks.max(self.stamp_late_until);
                     unsafe { midi_in_feed(&mut *self.parser, m.bytes.as_ptr(), m.len as usize) };
                     self.next += 1;
                 }
@@ -265,18 +247,14 @@ impl Rig {
         }
     }
 
-    /// A flash operation with the interrupts masked for `ms`, before the next block: no
-    /// block renders meanwhile (the player's samples stop while the ticks go on), the MIDI that
-    /// comes in it is stamped at its end, and the hold is reported (midi_sync_held), as
-    /// platform/fm1/store_fm1.c's operate does.
     fn hold(&mut self, ms: u32) {
         let s = self.samples();
         let from = (s.wrapping_sub(BLOCK as u32))
             .wrapping_mul(TPS)
-            .wrapping_add(self.skipped);
+            .wrapping_add(self.ticks_lost_to_holds);
         let d = ms * 24_000;
-        self.skipped += d;
-        self.late_until = from + d;
+        self.ticks_lost_to_holds += d;
+        self.stamp_late_until = from + d;
         unsafe { midi_sync_held(&mut *self.sync, from, from + d) };
     }
 
@@ -293,8 +271,6 @@ impl Rig {
     }
 }
 
-/// A clock at `bpm` from tick `from` for `beats` beats, each clock moved by `jitter(i)`
-/// ticks (late only: a poll stamps what came since the last).
 fn clock(from: u32, bpm: f64, beats: u32, jitter: impl Fn(u32) -> u32) -> Vec<At> {
     let per = 24e6 * 60.0 / bpm / 24.0;
     (0..beats * 24)
@@ -302,18 +278,14 @@ fn clock(from: u32, bpm: f64, beats: u32, jitter: impl Fn(u32) -> u32) -> Vec<At
         .collect()
 }
 
-/// A cheap deterministic generator for the jitter.
 fn lcg(i: u32) -> u32 {
     i.wrapping_mul(1_103_515_245).wrapping_add(12_345) >> 8
 }
 
-/// TRS's: stamped at the 2 kHz poll after the byte came, 0..0.5 ms late.
 fn trs_jitter(i: u32) -> u32 {
     lcg(i) % 12_000
 }
 
-/// The rows' calls against the 16ths' clocks: the error of each row from the clock it should
-/// land on, less the delay, in ms; from `skip_beats` beats on.
 fn row_errors(r: &Rig, clocks: &[At], skip_beats: u32) -> Vec<f64> {
     let row = r.calls_a_row();
     let mut errs = Vec::new();
@@ -321,12 +293,11 @@ fn row_errors(r: &Rig, clocks: &[At], skip_beats: u32) -> Vec<f64> {
         if call % row != 0 {
             continue;
         }
-        let k = call / row; // the row: a 16th each at 4 rows a beat
+        let k = call / row;
         let i = (k * 6) as usize;
         if k < skip_beats * 4 || i >= clocks.len() {
             continue;
         }
-        // the clock as sent (its jitter is the input's, not the follower's error)
         let sent = f64::from(clocks[i].ticks) / f64::from(TPS);
         let err = f64::from(sample) - sent - f64::from(MIDI_SYNC_DELAY);
         errs.push(err / FS * 1e3);
@@ -344,7 +315,6 @@ fn a_start_on_a_120_bpm_clock_lands_the_rows_on_the_16ths() {
         let mut r = Rig::new();
         r.run(20);
         let t0 = r.samples() * TPS;
-        // a clock running before the start, as a sequencer's does
         let lead = clock(t0, bpm, 2, trs_jitter);
         let beat = (24e6 * 60.0 / bpm) as u32;
         let from = t0 + 2 * beat;
@@ -376,7 +346,6 @@ fn stop_and_continue_resume_on_the_clock() {
     let bpm = 120.0;
     let beat = (24e6 * 60.0 / bpm) as u32;
     let mut all = clock(t0, bpm, 16, trs_jitter);
-    // start at beat 1, stop at beat 5, continue at beat 8 (the clock runs on meanwhile)
     let at = |b: u32| t0 + b * beat - beat / 48;
     r.midi
         .extend(all.iter().copied().filter(|m| m.ticks < at(1)));
@@ -398,7 +367,6 @@ fn stop_and_continue_resume_on_the_clock() {
     let blocks = (16.5 * 0.5 * FS / BLOCK as f64) as u32;
     r.run(blocks);
     let row = r.calls_a_row();
-    // played 4 beats, stopped 3, played on from where it stopped
     let stopped: Vec<_> = r
         .calls
         .windows(2)
@@ -407,15 +375,13 @@ fn stop_and_continue_resume_on_the_clock() {
     assert_eq!(stopped.len(), 1, "one stop: {stopped:?}");
     let resumed = stopped[0][1];
     assert_eq!(resumed.0, stopped[0][0].0 + 1, "on from the next call");
-    // the resumed rows land on the clock: the song's call c sits at clock position 24 + its
-    // calls since the stop's position (8 beats in, less the 4 it played before)
-    all.drain(..24); // the song's clock 0 is beat 1's
+    all.drain(..24);
     let mut errs = Vec::new();
     for &(call, sample) in &r.calls {
         if call % row != 0 || call < resumed.0 + 8 * row {
             continue;
         }
-        let k = call / row + 3 * 4; // three beats of rows the song did not play
+        let k = call / row + 3 * 4;
         let i = (k * 6) as usize;
         if i < all.len() {
             let sent = f64::from(all[i].ticks) / f64::from(TPS);
@@ -428,9 +394,6 @@ fn stop_and_continue_resume_on_the_clock() {
     assert!(worst <= 1.0, "a resumed row {worst:.3} ms off");
 }
 
-/// A continue with no song position before it, for a song never played (IDLE), is a start:
-/// the song plays from its first call on the clock, and nothing is left pending (review 4.3:
-/// the request waited, and hijacked the next PLAY from the panel, aligning it to the clock).
 #[test]
 fn a_continue_with_no_position_on_a_song_never_played_starts_it_on_the_clock() {
     let mut r = Rig::new();
@@ -455,9 +418,7 @@ fn a_continue_with_no_position_on_a_song_never_played_starts_it_on_the_clock() {
     assert!(worst <= 1.0, "a row {worst:.3} ms off its 16th");
 }
 
-/// The clock's fit: the largest distance of one of its clocks from its least-squares line, in
-/// ms (app/midi_clock.h: stamps in samples against the clocks' numbers).
-fn fit_residual(c: &midi_clock) -> f64 {
+fn fit_residual_ms(c: &midi_clock) -> f64 {
     let pts: Vec<(f64, f64)> = (0..u32::from(c.count))
         .map(|i| {
             let k = ((u32::from(c.head) + i) % MIDI_CLOCK_WINDOW) as usize;
@@ -481,13 +442,6 @@ fn fit_residual(c: &midi_clock) -> f64 {
     worst / FS * 1e3
 }
 
-/// Flash holds while a song follows a clock (review 4.4): three holds 35 ms each, the
-/// interrupts masked, so the clocks that come meanwhile are stamped late at its end, and no
-/// block renders (the player's samples stop while the clock runs on). The late clocks stay out
-/// of the fit and the fit keeps the clock's own time line across the lost blocks: it stays a
-/// line (within the TRS poll's jitter) and the song realigns at most once a hold. The song
-/// itself lost 105 ms to the holds, which the period takes up at 1 % of a beat a beat
-/// (midi_clock_frame_q16): 21 beats; from then every row is on its 16th again.
 #[test]
 fn rows_land_on_the_clock_again_after_flash_holds() {
     let mut r = Rig::new();
@@ -508,7 +462,7 @@ fn rows_land_on_the_clock_again_after_flash_holds() {
         r.hold(35);
         for _ in 0..3 {
             r.run((0.25 * blocks_a_beat) as u32);
-            worst_fit = worst_fit.max(fit_residual(&r.sync.clock));
+            worst_fit = worst_fit.max(fit_residual_ms(&r.sync.clock));
         }
     }
     r.run(((beats - 9) as f64 * blocks_a_beat) as u32);
@@ -537,14 +491,12 @@ fn rows_land_on_the_clock_again_after_flash_holds() {
 fn a_song_position_seeks_and_continue_plays_from_there() {
     let mut r = Rig::new();
     r.run(20);
-    // play the song a moment to have it STOPPED with a tempo, as after a stop
     let t0 = r.samples() * TPS;
     start_at(&mut r, t0);
     r.midi.push(rt(t0 + 24_000_000 / 2, 0xFC));
     r.run((0.7 * FS / BLOCK as f64) as u32);
     assert_eq!(r.status().state, MIDI_SYNC_STOPPED as u8);
     let row = r.calls_a_row();
-    // SPP to bar 3 (beat 8: 32 16ths), then continue with a 120 BPM clock
     let t1 = r.samples() * TPS;
     r.midi.push(At {
         ticks: t1,
@@ -552,7 +504,6 @@ fn a_song_position_seeks_and_continue_plays_from_there() {
         len: 3,
     });
     let beat = 12_000_000u32;
-    // the sequencer's clock runs from before the continue
     r.midi.extend(clock(t1 - beat, 120.0, 1, trs_jitter));
     r.midi.push(rt(t1 + beat / 4, 0xFB));
     r.midi
@@ -560,7 +511,6 @@ fn a_song_position_seeks_and_continue_plays_from_there() {
     r.calls.clear();
     r.run((3.0 * FS / BLOCK as f64) as u32);
     let first = r.calls.first().expect("it played on").0;
-    // 32 16ths, 4 rows a beat: row 32
     assert_eq!(first, 32 * row, "the first call after the continue");
     assert!(r.sync.aligns >= 1);
 }
@@ -583,7 +533,6 @@ fn clock_out_sends_24_a_beat_at_the_songs_tempo_and_the_transport() {
         .filter(|p| realtime(p.0) == 0xF8)
         .map(|p| p.1)
         .collect();
-    // the song's tempo: a beat is 4 rows of its calls
     let row = r.calls_a_row();
     let st = r.status();
     let beat = f64::from(4 * row) * f64::from(st.period_q16) / 65536.0;
@@ -599,11 +548,8 @@ fn clock_out_sends_24_a_beat_at_the_songs_tempo_and_the_transport() {
             "a clock {d} samples after the last, {per} due"
         );
     }
-    // the first clock with the first call
     let first_call = r.calls[0].1;
     assert!(clocks[0] >= first_call && clocks[0] - first_call <= 33);
-    // and continue: SPP then FB, which wait while a SysEx frame is part way out (review 4.2:
-    // the SPP, system common, would end the host's frame)
     r.out.clear();
     r.sync.out_common_wait = 1;
     assert!(r.t.resume());
@@ -620,11 +566,6 @@ fn clock_out_sends_24_a_beat_at_the_songs_tempo_and_the_transport() {
     assert_eq!(realtime(r.out[1].0), 0xFB);
 }
 
-/// PLAY alone after a stop part way through plays the song from its top: clock out sends a
-/// start (FA), not the stopped place's song position and a continue (F2, FB), even in the
-/// passes between the PLAY going out and the audio interrupt taking it (the calls still the
-/// last play's then). Its clocks start with the new first call, not skipped ahead by the old
-/// count.
 #[test]
 fn clock_out_sends_a_start_for_a_play_from_the_top_after_a_stop() {
     let mut r = Rig::new();
@@ -662,9 +603,6 @@ fn clock_out_sends_a_start_for_a_play_from_the_top_after_a_stop() {
     );
 }
 
-/// Clock out never hands USB more than its ring has room for (`out_room`, the caller's): a
-/// start, a stop or a song position and continue waits whole for the room, and clocks that
-/// do not fit go once there is room, not dropped.
 #[test]
 fn clock_out_waits_for_room_rather_than_dropping_its_transport() {
     let mut r = Rig::new();
@@ -679,8 +617,6 @@ fn clock_out_waits_for_room_rather_than_dropping_its_transport() {
     let realtime = |p: u32| ((p >> 8) & 0xff) as u8;
     assert_eq!(realtime(r.out[0].0), 0xFA, "the start once there is room");
     r.run((1.0 * FS / BLOCK as f64) as u32);
-    // stopped and continued with room for one packet: the song position and continue wait
-    // for room for both
     assert!(r.t.stop());
     r.run(10);
     assert_eq!(realtime(r.out.last().unwrap().0), 0xFC);
@@ -837,8 +773,6 @@ fn song_select_picks_the_subtune_and_names_fit() {
     }
 }
 
-/// A .sid tune's transport (midi_sync_tune, M3 Task 11): what it was given, and whether a tune is
-/// loaded.
 struct TuneHook {
     loaded: bool,
     got: Vec<u32>,
@@ -855,9 +789,6 @@ unsafe extern "C" fn tune_hook(ctx: *mut std::ffi::c_void, b: u32) -> i32 {
     i32::from(h.loaded)
 }
 
-/// While a tune is loaded, start, stop and continue are its own and the song gets nothing (no
-/// play, no clock followed, no seek, no song select); CLOCK OFF ignores them for the tune too;
-/// with no tune, the song has them back.
 #[test]
 fn a_loaded_tune_takes_start_stop_and_continue_and_the_song_gets_nothing() {
     let mut r = Rig::new();
@@ -898,13 +829,11 @@ fn a_loaded_tune_takes_start_stop_and_continue_and_the_song_gets_nothing() {
         (0, 0),
         "no request, no subtune"
     );
-    // CLOCK OFF: the tune's transport is ignored too
     unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_OFF, 0) };
     let t1 = r.samples() * TPS;
     r.midi.push(rt(t1 + 100_000, 0xFA));
     r.run(20);
     assert_eq!(hook.got, [0xFA, 0xFC, 0xFB]);
-    // no tune: the song's again
     unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_AUTO, 0) };
     hook.loaded = false;
     let t2 = r.samples() * TPS;

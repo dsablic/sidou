@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's showcase songs under GoatTracker's packed player on `mos6502` and on SIDOU's 6502
-//! (M3 Task 3): the same ordered SID writes, cycles and registers for every call. The
-//! examples are gt2-ref's own `tests/sidou_cpu.rs`.
 
 use gt2_ref::cpu::Access;
 use gt2_ref::trace::cross_check;

@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The settings that persist (`app/settings.c`, M2a Task 5): the record and its schema, the
-//! load at boot (the full boot once after an install), the debounced background save, the
-//! explicit save and its forced held operations, a foreign store, and M2b's raw expert
-//! overrides and bindings with migrations from the original 42-parameter layout.
 
 use std::cell::Cell;
 use std::ffi::CStr;
@@ -11,15 +7,15 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::store::{fresh, Rig as Store};
-use crate::{record, Recorder, Rig};
+use crate::views::{CARDS_ALWAYS, CARDS_OFF};
+use crate::{hex_bytes, record, Recorder, Rig};
 
 const VERSION: &CStr = c"V1.2.3";
 const TICK: u32 = 10;
+const SPREAD_MONO: u8 = 0;
 
-/// Byte 1 is CARDS: 0 OFF, 1 ONCE (an old record's ON), 2 ALWAYS; anything else reads as the
-/// default, ONCE. No schema change.
 #[test]
-fn cards_byte_reads_old_and_new() {
+fn the_cards_byte_reads_off_once_always_and_anything_else_as_once() {
     let mut a = Set::blank();
     let mut rec = a.gather();
     let version = rec[0];
@@ -34,7 +30,7 @@ fn cards_byte_reads_old_and_new() {
         assert_eq!(out[1], want, "gathered after {byte}");
         assert_eq!(out[0], version, "no schema change");
     }
-    *a.cards = 2;
+    *a.cards = CARDS_ALWAYS;
     assert_eq!(a.gather()[1], 2, "ALWAYS is saved as 2");
 }
 
@@ -133,15 +129,19 @@ fn every_schema_migrates_from_nondefaults_without_changing_its_prefix() {
         assert_eq!(&s.gather()[1..len], &rec[1..], "unchanged schema prefix");
         s.rig.tick();
         let mut want = Set::blank();
-        want.change_everything();
-        assert_eq!(s.snapshot(), want.snapshot(), "schema {schema}: v1 fields");
+        want.move_every_persisted_value_off_its_default();
+        assert_eq!(
+            s.persisted_state(),
+            want.persisted_state(),
+            "schema {schema}: v1 fields"
+        );
     }
 }
 
 #[test]
 fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
     let mut s = Set::blank();
-    s.change_everything();
+    s.move_every_persisted_value_off_its_default();
     *s.rows = 1;
     unsafe {
         live_set_theme(&mut *s.rig.live, THEME_C64);
@@ -204,7 +204,6 @@ fn theme_validation_applies_to_schema_three_four_and_future_prefixes() {
 }
 
 thread_local! {
-    /// The force hook's calls, in order (settings.force).
     static FORCED: Cell<(u32, u32)> = const { Cell::new((0, 0)) };
 }
 
@@ -223,7 +222,6 @@ fn forced() -> (u32, u32) {
     FORCED.with(Cell::get)
 }
 
-/// An instrument, its learn table, CARDS and the UI sounds, and the settings on a store.
 struct Set {
     rig: Rig,
     ml: Box<midi_learn>,
@@ -233,12 +231,9 @@ struct Set {
     st: Store,
     set: Box<settings>,
     now: u32,
-    /// Writes the settings' ticks began.
-    writes: u32,
-    /// The unsaved edit's writes the ticks began.
-    edit_writes: u32,
-    /// The store is quiet: maintenance runs (else only writes).
-    quiet: bool,
+    settings_writes_begun: u32,
+    unsaved_edit_writes_begun: u32,
+    store_is_quiet: bool,
 }
 
 impl Set {
@@ -258,9 +253,9 @@ impl Set {
             snd: Box::default(),
             st,
             now: 1000,
-            writes: 0,
-            edit_writes: 0,
-            quiet: true,
+            settings_writes_begun: 0,
+            unsaved_edit_writes_begun: 0,
+            store_is_quiet: true,
         };
         unsafe {
             midi_learn_init(&mut *ml);
@@ -285,7 +280,6 @@ impl Set {
         s
     }
 
-    /// On a fresh, blank store with its pool filled.
     fn blank() -> Self {
         Self::new(fresh(1, 256), VERSION)
     }
@@ -294,24 +288,21 @@ impl Set {
         (unsafe { settings_load(&mut *self.set, self.now) }) != 0
     }
 
-    /// The settings' tick, then the store's polls for it (as the device's main loop runs
-    /// them). A write the tick began counts in `writes`.
     fn tick(&mut self) {
         self.now += TICK;
         let busy = self.st.busy();
         unsafe { settings_tick(&mut *self.set, self.now) };
         if !busy && self.st.busy() {
-            // the settings record's writes; the unsaved edit's (app/user_sound.h) apart
             if self.st.st.w.key == USER_SOUND_EDIT_KEY {
-                self.edit_writes += 1;
+                self.unsaved_edit_writes_begun += 1;
             } else {
-                self.writes += 1;
+                self.settings_writes_begun += 1;
             }
         }
         unsafe {
             store_quiet(
                 &mut *self.st.st,
-                i32::from(self.quiet || self.set.forcing != 0),
+                i32::from(self.store_is_quiet || self.set.forcing != 0),
             )
         };
         for _ in 0..64 {
@@ -350,8 +341,7 @@ impl Set {
         unsafe { settings_take_result(&mut *self.set) }
     }
 
-    /// The instrument and the settings as they stand, all of what persists.
-    fn snapshot(&self) -> (Vec<u32>, u8, u8, u8, u8, Vec<u8>) {
+    fn persisted_state(&self) -> (Vec<u32>, u8, u8, u8, u8, Vec<u8>) {
         let params = (0..LIVE_PARAM_COUNT)
             .filter(|&p| p != LIVE_PARAM_VOLUME)
             .map(|p| self.param(p))
@@ -369,9 +359,8 @@ impl Set {
         )
     }
 
-    /// Every kind of persisted value away from its default.
-    fn change_everything(&mut self) {
-        *self.cards = 0;
+    fn move_every_persisted_value_off_its_default(&mut self) {
+        *self.cards = CARDS_OFF;
         unsafe { ui_sound_set(&mut *self.snd, 1) };
         unsafe { live_set_keys_mode(&mut *self.rig.live, LIVE_KEYS_A) };
         self.rig.set_preset(2);
@@ -423,7 +412,7 @@ fn schema_four_last_song_migrates_without_becoming_expert_values() {
         128 + 2 * SID_EXPERT_COUNT as usize + SETTINGS_PARAMS_V9 as usize
     );
     let spread = 125 + 2 * SID_EXPERT_COUNT as usize;
-    assert_eq!(migrated[spread], 0, "SPREAD: mono");
+    assert_eq!(migrated[spread], SPREAD_MONO, "SPREAD: mono");
     assert_eq!(
         migrated[spread + 1],
         SETTINGS_SID_AUTO as u8,
@@ -431,14 +420,12 @@ fn schema_four_last_song_migrates_without_becoming_expert_values() {
     );
     assert_eq!(
         migrated[spread + 2..],
-        tail_defaults(),
+        schema_9_tail_with_nothing_learned(),
         "no bindings past the experts"
     );
 }
 
-/// Schema 9's last bytes with nothing learned: the count of the parameters past the experts and
-/// each one's CC, none.
-fn tail_defaults() -> Vec<u8> {
+fn schema_9_tail_with_nothing_learned() -> Vec<u8> {
     let mut t = vec![SETTINGS_PARAMS_V9 as u8];
     t.extend(std::iter::repeat_n(
         MIDI_MAP_NO_CC as u8,
@@ -495,7 +482,7 @@ fn the_record_is_v9s_layout_with_the_original_offsets_and_raw_expert_defaults() 
     );
     assert_eq!(
         rec[learned + 2..],
-        tail_defaults(),
+        schema_9_tail_with_nothing_learned(),
         "then the count past the experts and their CCs, last"
     );
 }
@@ -503,7 +490,7 @@ fn the_record_is_v9s_layout_with_the_original_offsets_and_raw_expert_defaults() 
 #[test]
 fn expert_raw_overrides_and_learn_bindings_survive_loading_after_macros() {
     let mut a = Set::blank();
-    a.change_everything();
+    a.move_every_persisted_value_off_its_default();
     for e in 0..SID_EXPERT_COUNT {
         a.set_param(LIVE_PARAM_EXPERT + e, (e * 7) % 128);
     }
@@ -577,7 +564,6 @@ fn future_expert_values_are_skipped_before_the_learn_bindings() {
     let end = 125 + SID_EXPERT_COUNT as usize;
     rec[0] = SETTINGS_VERSION as u8 + 1;
     rec[124] += 1;
-    // A later schema's 15th expert: its value after the 14, its learned CC after theirs.
     rec.insert(end, 19);
     rec.insert(end + 1 + SID_EXPERT_COUNT as usize, MIDI_MAP_NO_CC as u8);
     let mut st = fresh(10, 256);
@@ -621,31 +607,18 @@ fn the_v5_fixture_preserves_the_v4_prefix_and_raw_expert_values() {
         1
     );
     assert_eq!(&s.rig.live.expert[..3], &[SID_EXPERT_DEFAULT as u8, 0, 127]);
-    // Schema 8 keeps every byte and appends SPREAD, mono for a schema 5 record, SID MODEL,
-    // AUTO, and no bindings past the experts.
     let mut v9 = rec.clone();
     v9[0] = SETTINGS_VERSION as u8;
     v9.push(0);
     v9.push(SETTINGS_SID_AUTO as u8);
-    v9.extend(tail_defaults());
+    v9.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(s.gather(), v9);
 }
 
-fn hex(text: &str) -> Vec<u8> {
-    text.lines()
-        .filter(|line| !line.starts_with('#'))
-        .flat_map(str::split_whitespace)
-        .map(|v| u8::from_str_radix(v, 16).unwrap())
-        .collect()
-}
-
-/// Schema 6 (SPREAD) migrates: a schema 5 record loads SPREAD as 0 (mono) whatever it was; the
-/// v6 fixture (schema 5's bytes and SPREAD 70) loads it and saves the same bytes; a SPREAD this
-/// firmware does not know (over 100) loads as 0.
 #[test]
-fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
-    let v5 = hex(include_str!("../data/settings-v5.hex"));
-    let v6 = hex(include_str!("../data/settings-v6.hex"));
+fn schema_6_adds_spread_and_a_schema_5_or_unknown_spread_loads_as_mono() {
+    let v5 = hex_bytes(include_str!("../data/settings-v5.hex"));
+    let v6 = hex_bytes(include_str!("../data/settings-v6.hex"));
     assert_eq!(&v6[1..v5.len()], &v5[1..], "schema 5's bytes kept");
     assert_eq!((v6[0], v6.len()), (6, SETTINGS_V6_BYTES as usize));
     let mut s = Set::blank();
@@ -664,7 +637,7 @@ fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
     let mut v9 = v6.clone();
     v9[0] = SETTINGS_VERSION as u8;
     v9.push(SETTINGS_SID_AUTO as u8);
-    v9.extend(tail_defaults());
+    v9.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(s.gather(), v9, "saved as schema 9, SID MODEL at AUTO");
     for bad in [101u8, 255] {
         let mut rec = v6.clone();
@@ -678,13 +651,10 @@ fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
     }
 }
 
-/// Schema 7 (SID MODEL, M3 Task 11) migrates: a schema 6 record loads SID MODEL as AUTO whatever
-/// it was; the v7 fixture (schema 6's bytes and SID MODEL KEYS) loads it and saves the same
-/// bytes; a SID MODEL this firmware does not know loads as AUTO; RESET puts it back to AUTO.
 #[test]
-fn schema_7_adds_sid_model_and_a_schema_6_record_loads_it_as_auto() {
-    let v6 = hex(include_str!("../data/settings-v6.hex"));
-    let v7 = hex(include_str!("../data/settings-v7.hex"));
+fn schema_7_adds_sid_model_and_a_schema_6_or_unknown_model_loads_as_auto() {
+    let v6 = hex_bytes(include_str!("../data/settings-v6.hex"));
+    let v7 = hex_bytes(include_str!("../data/settings-v7.hex"));
     assert_eq!(&v7[1..v6.len()], &v6[1..], "schema 6's bytes kept");
     assert_eq!((v7[0], v7.len()), (7, SETTINGS_V7_BYTES as usize));
     let mut s = Set::blank();
@@ -705,7 +675,7 @@ fn schema_7_adds_sid_model_and_a_schema_6_record_loads_it_as_auto() {
     assert_eq!(u32::from(s.set.sid_model), SETTINGS_SID_KEYS);
     let mut v9 = v7.clone();
     v9[0] = SETTINGS_VERSION as u8;
-    v9.extend(tail_defaults());
+    v9.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(s.gather(), v9, "saved as schema 9");
     for bad in [2u8, 255] {
         let mut rec = v7.clone();
@@ -726,15 +696,10 @@ fn schema_7_adds_sid_model_and_a_schema_6_record_loads_it_as_auto() {
     assert_eq!(u32::from(s.set.sid_model), SETTINGS_SID_AUTO, "RESET: AUTO");
 }
 
-/// Schema 8 (the learned CCs of the parameters past the experts, LAB) migrates: the v7 fixture
-/// loads as before and saves as schema 9 with no bindings past the experts; the v8 fixture (the
-/// v7 fixture's bytes, then PWM depth, PWM rate and the fine tune learned on CC 44, 45 and 46)
-/// loads them and saves them as schema 9, the filter LFO unbound; a later schema's longer list is
-/// read for the ones this firmware knows.
 #[test]
 fn a_v7_or_v8_record_loads_into_schema_9() {
-    let v7 = hex(include_str!("../data/settings-v7.hex"));
-    let v8 = hex(include_str!("../data/settings-v8.hex"));
+    let v7 = hex_bytes(include_str!("../data/settings-v7.hex"));
+    let v8 = hex_bytes(include_str!("../data/settings-v8.hex"));
     assert_eq!(&v8[1..v7.len()], &v7[1..], "schema 7's bytes kept");
     assert_eq!((v8[0], v8.len()), (8, SETTINGS_V8_BYTES as usize));
     let tail = [LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE];
@@ -754,7 +719,7 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
     }
     let mut want = v7.clone();
     want[0] = SETTINGS_VERSION as u8;
-    want.extend(tail_defaults());
+    want.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(s.gather(), want);
     assert_eq!(
         unsafe { settings_apply(&mut *s.set, v8.as_ptr(), v8.len() as u32) },
@@ -768,7 +733,6 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
     v9[v7.len()] = SETTINGS_PARAMS_V9 as u8;
     v9.resize(SETTINGS_BYTES as usize, MIDI_MAP_NO_CC as u8);
     assert_eq!(s.gather(), v9, "loaded, and saved as schema 9");
-    // A later schema with one more parameter past the experts: the ones this firmware knows.
     let mut later = v9.clone();
     later[0] = SETTINGS_VERSION as u8 + 1;
     later[v7.len()] = SETTINGS_PARAMS_V9 as u8 + 1;
@@ -795,10 +759,8 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
     );
 }
 
-/// PWM depth, PWM rate and the fine tune learn a CC as the other parameters do, and the binding
-/// survives a power cycle; their values are the sound's, not the record's.
 #[test]
-fn the_new_parameters_learn_and_persist_their_cc() {
+fn pwm_depth_pwm_rate_and_fine_tune_learn_and_persist_their_cc() {
     let mut a = Set::blank();
     a.load();
     for (p, cc) in [
@@ -830,7 +792,6 @@ fn the_new_parameters_learn_and_persist_their_cc() {
             "{p} after a power cycle"
         );
     }
-    // A learned CC reaches its parameter's row, across its range.
     let e = unsafe { midi_learn_for_cc(&*b.ml, 46) };
     assert!(!e.is_null());
     assert_eq!(u32::from(unsafe { (*e).param }), LIVE_PARAM_TUNE);
@@ -844,7 +805,7 @@ fn the_new_parameters_learn_and_persist_their_cc() {
 #[test]
 fn every_persisted_value_round_trips_and_the_volume_does_not() {
     let mut a = Set::blank();
-    a.change_everything();
+    a.move_every_persisted_value_off_its_default();
     let rec = a.gather();
     let mut b = Set::blank();
     b.rig.set_master(100);
@@ -852,9 +813,8 @@ fn every_persisted_value_round_trips_and_the_volume_does_not() {
     let same = unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) };
     assert_eq!(same, 1, "the same firmware version");
     b.rig.tick();
-    assert_eq!(b.snapshot(), a.snapshot());
+    assert_eq!(b.persisted_state(), a.persisted_state());
     assert_eq!(b.rig.live.volume, volume, "the pot's, as it was");
-    // The master pot changes no record: no background save for it.
     a.rig.set_master(1000);
     assert_eq!(a.gather(), rec);
 }
@@ -876,8 +836,8 @@ fn dice_is_saved_and_loaded() {
     b.rig.tick();
     assert_eq!(b.rig.live.preset, LIVE_PRESET_COUNT as u8, "back on DICE");
     assert_eq!(
-        b.snapshot(),
-        a.snapshot(),
+        b.persisted_state(),
+        a.persisted_state(),
         "the roll's parameters came back"
     );
 }
@@ -968,47 +928,49 @@ fn filename_validation_clears_invalid_records_but_keeps_a_full_length_name() {
 #[test]
 fn a_first_boot_plays_the_full_boot_and_saves_the_version_then_the_short_one() {
     let mut s = Set::blank();
-    let before = s.snapshot();
+    let before = s.persisted_state();
     assert!(!s.load(), "no record: the full boot");
-    assert_eq!(s.snapshot(), before, "M1's defaults");
+    assert_eq!(s.persisted_state(), before, "M1's defaults");
     s.ticks(SETTINGS_DEBOUNCE_MS - 20);
     assert_eq!(s.stored(), None, "not before the debounce");
     s.ticks(40);
     assert_eq!(s.stored(), Some(s.gather()), "the version stored");
-    assert_eq!(s.writes, 1);
-    // The next boot, from the flash.
+    assert_eq!(s.settings_writes_begun, 1);
     let mut st = s.st;
     st.reset();
     assert_eq!(st.mount(), STORE_STATE_SIDOU);
     let mut s = Set::new(st, VERSION);
     assert!(s.load(), "the short boot");
     s.ticks(2 * SETTINGS_DEBOUNCE_MS);
-    assert_eq!(s.writes, 0, "nothing changed: nothing written");
+    assert_eq!(
+        s.settings_writes_begun, 0,
+        "nothing changed: nothing written"
+    );
 }
 
 #[test]
 fn settings_survive_a_power_cycle_and_a_new_version_plays_the_full_boot_once() {
     let mut s = Set::blank();
     s.load();
-    s.change_everything();
+    s.move_every_persisted_value_off_its_default();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    let want = s.snapshot();
+    let want = s.persisted_state();
     let mut st = s.st;
     st.reset();
     st.mount();
     let mut s = Set::new(st, c"V1.3.0");
     assert!(!s.load(), "another version: the full boot");
     s.rig.tick();
-    assert_eq!(s.snapshot(), want, "the settings still apply");
+    assert_eq!(s.persisted_state(), want, "the settings still apply");
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 1, "the new version stored");
+    assert_eq!(s.settings_writes_begun, 1, "the new version stored");
     let mut st = s.st;
     st.reset();
     st.mount();
     let mut s = Set::new(st, c"V1.3.0");
     assert!(s.load(), "then the short boot");
     s.rig.tick();
-    assert_eq!(s.snapshot(), want);
+    assert_eq!(s.persisted_state(), want);
 }
 
 #[test]
@@ -1018,7 +980,6 @@ fn an_unchanged_frame_does_not_gather_and_a_setter_change_is_saved() {
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
     let seen = s.set.seen;
     let cutoff = s.rig.live.cutoff;
-    // Bypass the read-only live API to detect an unwanted gather on an idle frame.
     s.rig.live.cutoff ^= 1;
     s.tick();
     assert_eq!(
@@ -1028,7 +989,7 @@ fn an_unchanged_frame_does_not_gather_and_a_setter_change_is_saved() {
     s.rig.live.cutoff = cutoff;
     s.set_param(LIVE_PARAM_CUTOFF, u32::from(cutoff ^ 1));
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 2);
+    assert_eq!(s.settings_writes_begun, 2);
     assert_eq!(s.stored(), Some(s.gather()));
 }
 
@@ -1039,14 +1000,16 @@ fn every_parameter_setter_marks_a_change_for_the_background_save() {
             continue;
         }
         if p >= LIVE_PARAM_PWM_DEPTH {
-            // the sound's own past the experts: kept with the sound, not in this record
             let mut s = Set::blank();
             s.load();
             s.ticks(SETTINGS_DEBOUNCE_MS + 100);
             let value = (s.param(p) + 1) % (unsafe { live_param_max(p) } + 1);
             s.set_param(p, value);
             s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-            assert_eq!(s.writes, 1, "parameter {p}: not in the settings record");
+            assert_eq!(
+                s.settings_writes_begun, 1,
+                "parameter {p}: not in the settings record"
+            );
             continue;
         }
         let mut s = Set::blank();
@@ -1055,9 +1018,9 @@ fn every_parameter_setter_marks_a_change_for_the_background_save() {
         let value = (s.param(p) + 1) % (unsafe { live_param_max(p) } + 1);
         s.set_param(p, value);
         s.ticks(SETTINGS_DEBOUNCE_MS - 20);
-        assert_eq!(s.writes, 1, "parameter {p}: must debounce");
+        assert_eq!(s.settings_writes_begun, 1, "parameter {p}: must debounce");
         s.ticks(120);
-        assert_eq!(s.writes, 2, "parameter {p}: must save");
+        assert_eq!(s.settings_writes_begun, 2, "parameter {p}: must save");
         assert_eq!(s.stored(), Some(s.gather()), "parameter {p}");
     }
 }
@@ -1082,7 +1045,7 @@ fn direct_persisted_setters_are_background_saved_but_controllers_are_not() {
         s.ticks(SETTINGS_DEBOUNCE_MS + 100);
         change(&mut s);
         s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-        assert_eq!(s.writes, 2, "setter {i}");
+        assert_eq!(s.settings_writes_begun, 2, "setter {i}");
         assert_eq!(s.stored(), Some(s.gather()), "setter {i}");
     }
     let mut s = Set::blank();
@@ -1096,7 +1059,10 @@ fn direct_persisted_setters_are_background_saved_but_controllers_are_not() {
         live_note_on(&mut *s.rig.live, 60, 100);
     }
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 1, "transient controls must not save");
+    assert_eq!(
+        s.settings_writes_begun, 1,
+        "transient controls must not save"
+    );
     assert_eq!(s.rig.live.settings_dirty, 0);
 }
 
@@ -1107,17 +1073,17 @@ fn binding_forgetting_and_clearing_are_background_saved() {
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
     unsafe { midi_learn_bind(&mut *s.ml, 21, LIVE_PARAM_CUTOFF) };
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 2);
+    assert_eq!(s.settings_writes_begun, 2);
     assert_eq!(s.stored(), Some(s.gather()));
     unsafe { midi_learn_forget(&mut *s.ml, LIVE_PARAM_CUTOFF) };
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 3);
+    assert_eq!(s.settings_writes_begun, 3);
     assert_eq!(s.stored(), Some(s.gather()));
     unsafe { midi_learn_bind(&mut *s.ml, 22, LIVE_PARAM_RESONANCE) };
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
     unsafe { midi_learn_clear(&mut *s.ml) };
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 5);
+    assert_eq!(s.settings_writes_begun, 5);
     assert_eq!(s.stored(), Some(s.gather()));
 }
 
@@ -1126,23 +1092,25 @@ fn a_burst_of_changes_is_one_write_five_seconds_after_the_last() {
     let mut s = Set::blank();
     assert!(!s.load());
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    assert_eq!(s.writes, 1, "the first boot's version");
+    assert_eq!(s.settings_writes_begun, 1, "the first boot's version");
     for i in 0..40 {
         s.set_param(LIVE_PARAM_CUTOFF, 100 + i * 10);
         s.ticks(100);
     }
-    assert_eq!(s.writes, 1, "nothing while the knob turns");
+    assert_eq!(s.settings_writes_begun, 1, "nothing while the knob turns");
     s.ticks(SETTINGS_DEBOUNCE_MS - 200);
-    assert_eq!(s.writes, 1, "nor before 5 s");
+    assert_eq!(s.settings_writes_begun, 1, "nor before 5 s");
     s.ticks(300);
-    assert_eq!(s.writes, 2, "one write for the burst");
+    assert_eq!(s.settings_writes_begun, 2, "one write for the burst");
     assert_eq!(s.stored(), Some(s.gather()));
-    // Back to a value already stored and away again within the debounce: still one write.
     s.set_param(LIVE_PARAM_CUTOFF, 5);
     s.ticks(1000);
     s.set_param(LIVE_PARAM_CUTOFF, 490);
     s.ticks(2 * SETTINGS_DEBOUNCE_MS);
-    assert_eq!(s.writes, 2, "the stored value again: nothing to write");
+    assert_eq!(
+        s.settings_writes_begun, 2,
+        "the stored value again: nothing to write"
+    );
     let result = s.result();
     assert_eq!(result, SETTINGS_NOTHING, "background saves say nothing");
 }
@@ -1151,10 +1119,9 @@ fn a_burst_of_changes_is_one_write_five_seconds_after_the_last() {
 fn save_now_skips_the_debounce_and_tells_when_it_commits() {
     let mut s = Set::blank();
     s.load();
-    *s.cards = 0;
+    *s.cards = CARDS_OFF;
     unsafe { settings_save_now(&mut *s.set, s.now) };
     assert_eq!(s.result(), SETTINGS_NOTHING, "not committed yet");
-    // the unsaved edit first (a blank store has none), then the record, then its commit
     s.tick();
     s.tick();
     assert_eq!(
@@ -1167,29 +1134,27 @@ fn save_now_skips_the_debounce_and_tells_when_it_commits() {
     assert_eq!(s.result(), SETTINGS_NOTHING, "said once");
     assert_eq!(s.stored(), Some(s.gather()));
     assert_eq!(forced(), (0, 0), "a store with its pool needs no force");
-    // the record went in a tick, after the edit SAVE wrote at once
-    assert_eq!((s.writes, s.edit_writes), (1, 0));
+    assert_eq!(
+        (s.settings_writes_begun, s.unsaved_edit_writes_begun),
+        (1, 0)
+    );
     s.ticks(2 * SETTINGS_DEBOUNCE_MS);
     assert_eq!(
-        (s.writes, s.edit_writes),
+        (s.settings_writes_begun, s.unsaved_edit_writes_begun),
         (1, 0),
         "the debounce has nothing left (the version is in that save)"
     );
-    // Nothing changed: an explicit save still says SAVED.
     unsafe { settings_save_now(&mut *s.set, s.now) };
     s.ticks(30);
     assert_eq!(s.result(), SETTINGS_SAVED);
 }
 
-/// A store whose pool is short (not quiet since its mount: the device was never quiet) takes
-/// no write; an explicit save waits, and after SETTINGS_FORCE_MS forces the held operations
-/// (the store refills while forced), says SAVED (GAPS), and the force ends.
 #[test]
 fn an_explicit_save_on_a_short_pool_forces_the_held_operations_and_says_so() {
     let mut st = Store::new(crate::store::Sim::new(2), 256);
     assert_eq!(st.mount(), STORE_STATE_BLANK);
     let mut s = Set::new(st, VERSION);
-    s.quiet = false;
+    s.store_is_quiet = false;
     s.load();
     unsafe { settings_save_now(&mut *s.set, s.now) };
     s.ticks(SETTINGS_FORCE_MS - 20);
@@ -1218,7 +1183,7 @@ fn a_foreign_store_keeps_nothing_and_an_explicit_save_says_so() {
     assert_eq!(st.mount(), STORE_STATE_FOREIGN);
     let mut s = Set::new(st, VERSION);
     assert!(!s.load(), "nothing read: the full boot");
-    s.change_everything();
+    s.move_every_persisted_value_off_its_default();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
     unsafe { settings_save_now(&mut *s.set, s.now) };
     s.tick();
@@ -1230,30 +1195,27 @@ fn a_foreign_store_keeps_nothing_and_an_explicit_save_says_so() {
 #[test]
 fn a_record_that_is_not_one_applies_nothing() {
     let mut s = Set::blank();
-    let before = s.snapshot();
+    let before = s.persisted_state();
     let mut good = Set::blank();
-    good.change_everything();
+    good.move_every_persisted_value_off_its_default();
     let rec = good.gather();
-    for bad in [
-        rec[..SETTINGS_V1_BYTES as usize - 1].to_vec(), // short
-        [&[0u8][..], &rec[1..]].concat(),               // schema 0
-        {
-            let mut r = rec.clone();
-            r[5] = 41; // fewer parameters than v1's
-            r
-        },
+    let mut fewer_params_than_v1 = rec.clone();
+    fewer_params_than_v1[5] = 41;
+    for (why, bad) in [
+        ("short", rec[..SETTINGS_V1_BYTES as usize - 1].to_vec()),
+        ("schema 0", [&[0u8][..], &rec[1..]].concat()),
+        ("fewer parameters than v1's", fewer_params_than_v1),
     ] {
         let same = unsafe { settings_apply(&mut *s.set, bad.as_ptr(), bad.len() as u32) };
-        assert_eq!(same, 0);
-        assert_eq!(s.snapshot(), before);
+        assert_eq!(same, 0, "{why}");
+        assert_eq!(s.persisted_state(), before, "{why}");
     }
 }
 
-/// A later schema appends fields: this firmware reads a newer record's v1 part.
 #[test]
 fn a_newer_schemas_record_applies_its_v1_part() {
     let mut good = Set::blank();
-    good.change_everything();
+    good.move_every_persisted_value_off_its_default();
     *good.rows = 1;
     unsafe {
         live_set_theme(&mut *good.rig.live, THEME_C64);
@@ -1267,14 +1229,12 @@ fn a_newer_schemas_record_applies_its_v1_part() {
     let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
     assert_eq!(same, 1);
     s.rig.tick();
-    assert_eq!(s.snapshot(), good.snapshot());
+    assert_eq!(s.persisted_state(), good.persisted_state());
     assert_eq!(s.gather(), prefix, "the entire known prefix survives");
 }
 
-/// An out-of-range value (a corrupt field the record's CRC still matched, or a range a later
-/// firmware narrowed) is skipped: the parameter keeps its value.
 #[test]
-fn an_out_of_range_value_is_skipped() {
+fn an_out_of_range_value_is_skipped_and_the_parameter_keeps_its_value() {
     let mut s = Set::blank();
     let mut rec = s.gather();
     let reso = s.param(LIVE_PARAM_RESONANCE);
@@ -1287,14 +1247,11 @@ fn fixture_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/settings-v1.bin")
 }
 
-/// `tests/data/settings-v1.bin` is a schema 1 record, checked in: every later schema must load
-/// it to the same values, the fields it lacks at their defaults.
-/// `SIDOU_SETTINGS_FIXTURE_UPDATE=1` writes it, for schema 1 only.
 #[test]
 fn a_schema_1_record_loads_to_the_same_values() {
     let path = fixture_path();
     let mut want = Set::blank();
-    want.change_everything();
+    want.move_every_persisted_value_off_its_default();
     if std::env::var_os("SIDOU_SETTINGS_FIXTURE_UPDATE").is_some() {
         assert_eq!(
             SETTINGS_VERSION, 1,
@@ -1309,7 +1266,7 @@ fn a_schema_1_record_loads_to_the_same_values() {
     let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
     assert_eq!(same, 1, "written by V1.2.3");
     s.rig.tick();
-    assert_eq!(s.snapshot(), want.snapshot());
+    assert_eq!(s.persisted_state(), want.persisted_state());
     assert_eq!(s.rig.live.octave, 0, "the octave does not persist");
     assert_eq!(*s.rows, 0, "schema 1 defaults to BAR, even after SCROLL");
 }
@@ -1344,9 +1301,9 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
         MIDI_MAP_NO_CC as u8,
         SID_EXPERT_COUNT as usize,
     ));
-    again.push(0); // SPREAD
+    again.push(SPREAD_MONO);
     again.push(SETTINGS_SID_AUTO as u8);
-    again.extend(tail_defaults());
+    again.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(
         s.gather(),
         again,
@@ -1355,16 +1312,14 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
     );
     s.rig.tick();
     let mut want = Set::blank();
-    want.change_everything();
-    assert_eq!(s.snapshot(), want.snapshot());
+    want.move_every_persisted_value_off_its_default();
+    assert_eq!(s.persisted_state(), want.persisted_state());
 }
 
 fn v3_fixture_path() -> std::path::PathBuf {
     fixture_path().with_file_name("settings-v3.bin")
 }
 
-/// `tests/data/settings-v3.bin` is a schema 3 record, checked in: schema 2's with the version
-/// bumped and the THEME byte appended (C64).
 #[test]
 fn a_schema_3_record_loads_the_c64_theme_and_keeps_the_v2_prefix() {
     let mut rec = std::fs::read(fixture_path().with_file_name("settings-v2.bin")).unwrap();
@@ -1407,7 +1362,6 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
         );
         assert_eq!(u32::from(b.rig.live.theme), theme);
     }
-    // Schemas 1 and 2 have no theme: it loads as the default, after any other choice.
     for v in ["settings-v1.bin", "settings-v2.bin"] {
         let rec = std::fs::read(fixture_path().with_file_name(v)).unwrap();
         let mut s = Set::blank();
@@ -1418,7 +1372,6 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
         );
         assert_eq!(s.rig.live.theme, THEME_HIGH_CONTRAST as u8, "{v}");
     }
-    // A theme the firmware does not know is the default, and a schema 3 record needs its byte.
     let mut s = Set::blank();
     let mut rec = s.gather();
     rec[0] = 3;
@@ -1438,14 +1391,12 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
     );
 }
 
-/// A store that was never mounted (an unknown flash part, review 1.1) keeps nothing, and an
-/// explicit save says so at once instead of waiting for ever.
 #[test]
 fn an_unmounted_store_keeps_nothing_and_an_explicit_save_says_it_failed() {
     let st = Store::new(crate::store::Sim::new(4), 256);
     let mut s = Set::new(st, VERSION);
     assert!(!s.load());
-    s.change_everything();
+    s.move_every_persisted_value_off_its_default();
     unsafe { settings_save_now(&mut *s.set, s.now) };
     s.tick();
     assert_eq!(s.result(), SETTINGS_FAILED);
@@ -1455,14 +1406,12 @@ fn an_unmounted_store_keeps_nothing_and_an_explicit_save_says_it_failed() {
     assert_eq!(forced(), (0, 0));
 }
 
-/// A program error after the store took an explicit save leaves the record undecided: the
-/// save says it failed, not SAVED (review 1.4), and the debounce writes the record again.
 #[test]
 fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
     let mut s = Set::blank();
     s.load();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    *s.cards = 0;
+    *s.cards = CARDS_OFF;
     s.st.sim.fail = 100;
     unsafe { settings_save_now(&mut *s.set, s.now) };
     let mut result = SETTINGS_NOTHING;
@@ -1485,20 +1434,17 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
     assert_eq!(s.result(), SETTINGS_NOTHING, "background saves say nothing");
 }
 
-/// A background save whose program fails is not on flash: the debounce writes it again, it lands
-/// when the store recovers, and a save that keeps failing says so once.
 #[test]
 fn a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once() {
-    // A failure rate at which the save keeps failing over four debounces: which one does depends
-    // on the simulated failures' draws, so on the records' sizes; the first of these that does.
-    let (mut s, failed) = [40u64, 35, 30, 45, 25, 50, 55]
+    let failure_rates_to_try = [40u64, 35, 30, 45, 25, 50, 55];
+    let (mut s, failed) = failure_rates_to_try
         .into_iter()
         .find_map(|rate| {
             let mut s = Set::blank();
             s.load();
             s.ticks(SETTINGS_DEBOUNCE_MS + 100);
             s.result();
-            *s.cards = 0;
+            *s.cards = CARDS_OFF;
             s.rig.live.settings_dirty = 1;
             s.st.sim.fail = rate;
             let mut failed = 0;
@@ -1522,14 +1468,13 @@ fn a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once() {
     assert_eq!(s.result(), SETTINGS_NOTHING);
 }
 
-/// One failed background save, then a good one: retried quietly (no toast for a single failure).
 #[test]
 fn one_failed_background_save_retries_without_a_toast() {
     let mut s = Set::blank();
     s.load();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
     s.result();
-    *s.cards = 0;
+    *s.cards = CARDS_OFF;
     s.rig.live.settings_dirty = 1;
     s.st.sim.fail = 25;
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
@@ -1546,22 +1491,18 @@ fn one_failed_background_save_retries_without_a_toast() {
     assert_eq!(s.stored(), Some(s.gather()));
 }
 
-/// RESET (SETTINGS' item): every setting and every preset's edits back to what a first boot has,
-/// the version and the last song and the MIDI learn bindings kept, other store keys (a song, a USER profile) untouched, and
-/// the factory state saved by an explicit save.
 #[test]
-fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
+fn reset_puts_every_setting_and_preset_edit_back_to_factory_keeping_version_song_and_bindings() {
     let mut s = Set::blank();
-    let factory = s.snapshot();
+    let factory = s.persisted_state();
     let factory_record = s.gather();
     s.load();
     unsafe { settings_set_song(&mut *s.set, c"MY SONG".as_ptr()) };
-    s.change_everything();
+    s.move_every_persisted_value_off_its_default();
     *s.rows = 1;
     unsafe { live_set_theme(&mut *s.rig.live, 1) };
     unsafe { chip_spread_set(&mut *s.rig.live, 40) };
     unsafe { live_param_set(&mut *s.rig.live, LIVE_PARAM_EXPERT + 3, 10) };
-    // Edit three presets, leaving two of them for the one that plays.
     for q in [1u8, 3, 4] {
         unsafe { live_recall_preset(&mut *s.rig.live, q) };
         s.set_param(LIVE_PARAM_CUTOFF, 100 + u32::from(q));
@@ -1569,7 +1510,7 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     }
     s.rig.tick();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    let learned = s.snapshot().5;
+    let learned = s.persisted_state().5;
     assert!(learned.iter().any(|&cc| cc != MIDI_MAP_NO_CC as u8));
     let before_record = s.gather();
     let song = vec![0x5a; 40];
@@ -1586,7 +1527,7 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     let mut want = factory.clone();
     want.5 = learned;
     assert_eq!(
-        s.snapshot(),
+        s.persisted_state(),
         want,
         "the settings are the factory's, the MIDI learn bindings kept"
     );
@@ -1605,7 +1546,6 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     let mut record = s.gather();
     record[92..106].copy_from_slice(&factory_record[92..106]);
     record[108..124].copy_from_slice(&factory_record[108..124]);
-    // The bindings (the parameters' and the experts') are the one thing a first boot's record lacks.
     let (ccs, expert_ccs) = (
         50..92,
         125 + SID_EXPERT_COUNT as usize..125 + 2 * SID_EXPERT_COUNT as usize,
@@ -1627,28 +1567,25 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     assert_eq!(s.stored(), Some(s.gather()), "saved");
     assert_eq!(s.st.get(0x4000), Some(song), "the song is untouched");
     assert_eq!(s.st.get(0x101), Some(user), "the USER profile is untouched");
-    // A power cycle keeps it.
-    let want = s.snapshot();
+    let want = s.persisted_state();
     let mut st = s.st;
     st.reset();
     st.mount();
     let mut s = Set::new(st, VERSION);
     assert!(s.load());
     s.rig.tick();
-    assert_eq!(s.snapshot(), want);
+    assert_eq!(s.persisted_state(), want);
 }
 
-/// Asking is not doing: without settings_reset (HOME, a move, a counter-clockwise turn: the
-/// views' cancel) nothing changes and nothing is written.
 #[test]
 fn reset_not_confirmed_changes_and_writes_nothing() {
     let mut s = Set::blank();
     s.load();
-    s.change_everything();
+    s.move_every_persisted_value_off_its_default();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    let (want, rec, writes) = (s.snapshot(), s.stored(), s.writes);
+    let (want, rec, writes) = (s.persisted_state(), s.stored(), s.settings_writes_begun);
     s.ticks(3 * SETTINGS_DEBOUNCE_MS);
-    assert_eq!(s.snapshot(), want);
+    assert_eq!(s.persisted_state(), want);
     assert_eq!(s.stored(), rec);
-    assert_eq!(s.writes, writes);
+    assert_eq!(s.settings_writes_begun, writes);
 }

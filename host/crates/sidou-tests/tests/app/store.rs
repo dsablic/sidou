@@ -1,16 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The store's core (`app/store.c`) on a simulated NOR flash with the part's semantics: a
-//! program only clears bits, within one 256-byte page; an erase sets a sector to 0xFF; reads
-//! are plain. The simulator also answers a share of operations with STORE_LATER, cuts power
-//! during any operation with a torn outcome, and flags what the store must never do: program
-//! the guard band, program bytes not erased (but the same bytes again, and the kill: in a
-//! header's magic, only bits still meant 1, never zeros over zeros), program across a page,
-//! use a sector whose erase was cut before erasing it again, program from a source in flash,
-//! or run more than one operation in a store_poll. It can also suspend an erase midway (the
-//! sector reads as an erase cut short until it resumes, as erase-suspend would), and make
-//! faint bits drift toward erased.
-//! docs/reference/store-format.md is the format.
 
 use std::collections::BTreeMap;
 use std::ffi::c_void;
@@ -25,7 +14,6 @@ const SECTORS: usize = STORE_SECTORS as usize;
 const USE: usize = STORE_SECTOR_USE as usize;
 const VALUE_MAX: usize = STORE_VALUE_MAX as usize;
 
-/// xorshift64*: deterministic per seed.
 #[derive(Clone)]
 pub struct Rng(u64);
 
@@ -54,18 +42,13 @@ impl Rng {
     }
 }
 
-/// The part's cells: the bytes as they read now, the bits programs meant to clear since the
-/// last erase, and the bits a cut left faint (neither programmed nor erased: each mount reads
-/// them anew, 0 or 1 at random, until a program clears them for good or an erase sets them).
 #[derive(Clone)]
 pub struct Cells {
     pub mem: Vec<u8>,
     pub meant: Vec<u8>,
     pub faint: Vec<u8>,
-    /// Sectors whose erase was cut: not to be used before an erase completes.
-    pub weak: [bool; SECTORS],
-    /// Faint bits drift toward erased: each read takes 1 three times in four.
-    pub bias: bool,
+    pub erase_cut: [bool; SECTORS],
+    pub drifts_to_erased: bool,
 }
 
 impl Cells {
@@ -74,12 +57,11 @@ impl Cells {
             mem: vec![0xFF; HI - LO],
             meant: vec![0xFF; HI - LO],
             faint: vec![0; HI - LO],
-            weak: [false; SECTORS],
-            bias: false,
+            erase_cut: [false; SECTORS],
+            drifts_to_erased: false,
         }
     }
 
-    /// A complete program of `data` at region offset `off`.
     fn prog(&mut self, off: usize, data: &[u8]) {
         for (i, &d) in data.iter().enumerate() {
             self.mem[off + i] &= d;
@@ -93,14 +75,17 @@ impl Cells {
         self.mem[r.clone()].fill(0xFF);
         self.meant[r.clone()].fill(0xFF);
         self.faint[r].fill(0);
-        self.weak[sec] = false;
+        self.erase_cut[sec] = false;
     }
 
-    /// A program cut short. Plain: some of the bits it would clear are cleared. Faint: each
-    /// such bit is cleared, left faint, or left as it was.
+    fn clear_bit(&mut self, at: usize, m: u8) {
+        self.mem[at] &= !m;
+        self.faint[at] &= !m;
+    }
+
     fn torn_prog(&mut self, rng: &mut Rng, off: usize, data: &[u8], tear: Tear) {
         let faint = tear.faint;
-        let level = tear.level(rng);
+        let level = tear.shared_progress(rng);
         for (i, &d) in data.iter().enumerate() {
             let at = off + i;
             self.meant[at] &= d;
@@ -115,13 +100,10 @@ impl Cells {
                 if d & m != 0 || solid0 {
                     continue;
                 }
-                match Tear::roll(level, rng) {
-                    0..=39 => {
-                        self.mem[at] &= !m;
-                        self.faint[at] &= !m;
-                    }
-                    40..=74 => self.faint[at] |= m,
-                    _ => {}
+                match Tear::fate(level, rng) {
+                    BitFate::Done => self.clear_bit(at, m),
+                    BitFate::Faint => self.faint[at] |= m,
+                    BitFate::NotStarted => {}
                 }
             }
         }
@@ -130,41 +112,33 @@ impl Cells {
         }
     }
 
-    /// An erase cut short. Plain: all 0xFF (cut before its header), any mix of old bytes and
-    /// 0xFF, or erased up to some point. Faint: per bit, either cut during the part's
-    /// pre-program to 0 (bits cleared, faint or as they were) or during the erase proper,
-    /// from all 0 (bits set, faint, or still 0).
     fn torn_erase(&mut self, rng: &mut Rng, sec: usize, tear: Tear) {
         let faint = tear.faint;
-        let level = tear.level(rng);
+        let level = tear.shared_progress(rng);
         let r = sec * SECTOR..(sec + 1) * SECTOR;
-        self.weak[sec] = true;
+        self.erase_cut[sec] = true;
         self.meant[r.clone()].fill(0);
         if faint {
             let preprogram = rng.chance(50);
             for at in r.clone() {
                 for bit in 0..8 {
                     let m = 1u8 << bit;
-                    let roll = Tear::roll(level, rng);
+                    let fate = Tear::fate(level, rng);
                     if preprogram {
                         if self.mem[at] & m == 0 && self.faint[at] & m == 0 {
                             continue;
                         }
-                        match roll {
-                            0..=39 => {
-                                self.mem[at] &= !m;
-                                self.faint[at] &= !m;
-                            }
-                            40..=74 => self.faint[at] |= m,
-                            _ => {}
+                        match fate {
+                            BitFate::Done => self.clear_bit(at, m),
+                            BitFate::Faint => self.faint[at] |= m,
+                            BitFate::NotStarted => {}
                         }
                     } else {
-                        self.mem[at] &= !m;
-                        self.faint[at] &= !m;
-                        match roll {
-                            0..=39 => self.mem[at] |= m,
-                            40..=74 => self.faint[at] |= m,
-                            _ => {}
+                        self.clear_bit(at, m);
+                        match fate {
+                            BitFate::Done => self.mem[at] |= m,
+                            BitFate::Faint => self.faint[at] |= m,
+                            BitFate::NotStarted => {}
                         }
                     }
                 }
@@ -193,7 +167,7 @@ impl Cells {
         for at in off..off + n {
             let f = self.faint[at];
             if f != 0 {
-                let ones = if self.bias {
+                let ones = if self.drifts_to_erased {
                     rng.next() | rng.next()
                 } else {
                     rng.next()
@@ -203,28 +177,40 @@ impl Cells {
         }
     }
 
-    /// What a mount reads: every faint bit anew.
     pub fn reread(&mut self, rng: &mut Rng) {
         self.reread_range(rng, 0, HI - LO);
     }
 }
 
-/// How a cut tears an operation. `faint`: bits may be left faint. `pulse`: the bits of one
-/// operation share one progress (a program pulse charges them together), with a small spread,
-/// so a cut often leaves all of them faint, or none started; else each bit draws alone.
 #[derive(Clone, Copy)]
 pub struct Tear {
     pub faint: bool,
     pub pulse: bool,
 }
 
+#[derive(Clone, Copy)]
+enum BitFate {
+    Done,
+    Faint,
+    NotStarted,
+}
+
+const BIT_DONE_BELOW: u64 = 40;
+const BIT_FAINT_BELOW: u64 = 75;
+
 impl Tear {
-    /// The operation's progress, if its bits share one.
-    fn level(self, rng: &mut Rng) -> Option<u64> {
+    fn shared_progress(self, rng: &mut Rng) -> Option<u64> {
         self.pulse.then(|| rng.below(100))
     }
 
-    /// A bit's draw, 0..100: under 40 done, under 75 faint, else not started.
+    fn fate(level: Option<u64>, rng: &mut Rng) -> BitFate {
+        match Self::roll(level, rng) {
+            r if r < BIT_DONE_BELOW => BitFate::Done,
+            r if r < BIT_FAINT_BELOW => BitFate::Faint,
+            _ => BitFate::NotStarted,
+        }
+    }
+
     fn roll(level: Option<u64>, rng: &mut Rng) -> u64 {
         match level {
             Some(l) => (l + rng.below(21)).saturating_sub(10).min(99),
@@ -233,18 +219,14 @@ impl Tear {
     }
 }
 
-/// A flash operation, as the fork log keeps it (region offsets).
 #[derive(Clone)]
 pub enum Op {
     Prog(usize, Vec<u8>),
     Erase(usize),
-    /// An erase suspended midway (the sector torn until it resumes), and its end.
     EraseBegin(usize),
     EraseEnd(usize),
 }
 
-/// Every region a cut during one of the logged operations would have left: from the cells
-/// before the first, each operation torn in turn, then applied whole for the next.
 pub struct Replay {
     cells: Cells,
     ops: std::vec::IntoIter<Op>,
@@ -253,7 +235,6 @@ pub struct Replay {
 }
 
 impl Iterator for Replay {
-    /// The cells as the operation, cut, would have left them, and whether it was an erase.
     type Item = (Cells, bool);
 
     fn next(&mut self) -> Option<(Cells, bool)> {
@@ -270,7 +251,6 @@ impl Iterator for Replay {
                     self.cells.erase(*sec);
                 }
                 Op::EraseBegin(sec) => {
-                    // Suspended: the operations until its end see the sector torn too.
                     fork.torn_erase(&mut self.rng, *sec, self.tear);
                     self.cells = fork.clone();
                 }
@@ -284,52 +264,32 @@ impl Iterator for Replay {
     }
 }
 
-/// The simulated part.
 pub struct Sim {
-    /// The whole flash, as the store's map reads it; the region's cells are mirrored in `cells`.
     pub mem: Vec<u8>,
     pub cells: Cells,
-    /// Programs and erases done (each a place a power cut can fall).
     pub ops: u64,
     pub progs: u64,
     pub erases: u64,
-    /// Kills (a header's magic programmed to zero) and erases of sectors that held data.
     pub kills: u64,
     pub reclaims: u64,
-    /// Cut the power during this operation.
     pub cut_at: Option<u64>,
     pub dead: bool,
-    /// Percent of operations answered STORE_LATER.
     pub later: u64,
     pub rng: Rng,
     pub violations: Vec<String>,
-    /// Operations in the current store_poll call.
     pub in_poll: u32,
-    /// Log the operations, for the regions a cut during each would leave (`replay`).
-    pub fork: bool,
+    pub log_forks: bool,
     log: Option<(Cells, Vec<Op>)>,
-    /// Cuts leave faint bits, and every mount reads them anew; `pulse`: an operation's bits
-    /// tear together (`Tear`).
     pub faint: bool,
     pub pulse: bool,
-    /// Faint bits read anew at some operations too (marginal bits in a session).
-    pub flips: bool,
-    /// Percent of operations the hook fails (STORE_ERROR), the part having done part of them.
+    pub rereads_in_session: bool,
     pub fail: u64,
-    /// Programs into each 256-byte page since its sector's last erase, and the cuts during
-    /// them; the most programs a page took, less one for each cut that fell in it (a claim cut
-    /// and read as never made is made again: STORE_PAGE_PROGS).
     pub page_progs: Vec<u16>,
     pub page_cuts: Vec<u16>,
     pub page_progs_max: u16,
-    /// Operations the hook failed.
     pub failed: u64,
-    /// Percent of erases suspended midway: answered STORE_LATER, the sector torn until the
-    /// next call resumes and completes it (Task 4's erase-suspend).
-    pub suspend: u64,
+    pub suspend_percent: u64,
     pub erasing: Option<usize>,
-    /// Worn-out sectors: every erase and every program in them fails (the part having done part
-    /// of it), however often the store tries.
     pub worn: Vec<usize>,
 }
 
@@ -349,28 +309,27 @@ impl Sim {
             rng: Rng::new(seed),
             violations: Vec::new(),
             in_poll: 0,
-            fork: false,
+            log_forks: false,
             log: None,
             faint: false,
             pulse: false,
-            flips: false,
+            rereads_in_session: false,
             fail: 0,
             page_progs: vec![0; (HI - LO) / STORE_PAGE as usize],
             page_cuts: vec![0; (HI - LO) / STORE_PAGE as usize],
             page_progs_max: 0,
             failed: 0,
-            suspend: 0,
+            suspend_percent: 0,
             erasing: None,
             worn: Vec::new(),
         })
     }
 
-    pub fn with_region(seed: u64, region: &[u8], weak: [bool; SECTORS]) -> Box<Self> {
+    pub fn with_region(seed: u64, region: &[u8], erase_cut: [bool; SECTORS]) -> Box<Self> {
         let mut sim = Sim::new(seed);
         sim.cells.mem.copy_from_slice(region);
-        // What the region holds counts as programmed, as far as it reads programmed.
         sim.cells.meant.copy_from_slice(region);
-        sim.cells.weak = weak;
+        sim.cells.erase_cut = erase_cut;
         sim.sync();
         sim
     }
@@ -392,8 +351,6 @@ impl Sim {
         &self.mem[LO..HI]
     }
 
-    /// Makes the bits meant programmed in `n` region bytes from `off` faint, reading `reads`
-    /// (masked to them) until the next change.
     pub fn set_faint(&mut self, off: usize, n: usize, reads: u8) {
         for at in off..off + n {
             let f = !self.cells.meant[at];
@@ -403,7 +360,6 @@ impl Sim {
         self.sync();
     }
 
-    /// Every faint bit reads `reads` (masked to it).
     pub fn faint_reads(&mut self, reads: u8) {
         for at in 0..HI - LO {
             let f = self.cells.faint[at];
@@ -412,7 +368,6 @@ impl Sim {
         self.sync();
     }
 
-    /// The bytes as a mount reads them: faint bits anew.
     pub fn reread(&mut self) {
         if self.faint {
             self.cells.reread(&mut self.rng);
@@ -420,7 +375,6 @@ impl Sim {
         }
     }
 
-    /// The logged operations since the last call, to replay as forks.
     pub fn replay(&mut self, seed: u64) -> Option<Replay> {
         let (cells, ops) = self.log.take()?;
         Some(Replay {
@@ -438,16 +392,15 @@ impl Sim {
         }
     }
 
-    /// In-session flips: now and then, every faint bit reads anew.
     fn flip(&mut self) {
-        if self.flips && self.rng.chance(2) {
+        if self.rereads_in_session && self.rng.chance(2) {
             self.cells.reread(&mut self.rng);
             self.sync();
         }
     }
 
     fn logged(&mut self, op: Op) {
-        if self.fork {
+        if self.log_forks {
             let cells = &self.cells;
             self.log
                 .get_or_insert_with(|| (cells.clone(), Vec::new()))
@@ -487,18 +440,13 @@ impl Sim {
             return STORE_LATER;
         }
         let r = off - LO;
-        // The kill: in a header's magic, zeros only over bits that read 1 (a bit a cut left
-        // faint, reading 1, is all the store can see). It may kill a sector torn by a cut
-        // erase, which is erased again next.
         let now = &self.cells.mem[r..r + n];
         let kill = rel + n <= 8 && data.iter().zip(now).all(|(&d, &m)| (!d & !m) == 0);
-        if self.cells.weak[sec] && !kill {
+        if self.cells.erase_cut[sec] && !kill {
             return self.violation(format!(
                 "a program at {off:#x} in sector {sec}, cut mid-erase"
             ));
         }
-        // Over programmed bytes, only the bytes meant already (faint bits programmed again), or
-        // the kill, never a 0 over a bit that reads 0.
         let meant = &self.cells.meant[r..r + n];
         let over = !kill && meant.iter().zip(&data).any(|(&m, &d)| m != 0xFF && m != d);
         if over {
@@ -547,7 +495,6 @@ impl Sim {
             if e != sec {
                 return self.violation(format!("an erase of {sec} while {e}'s is suspended"));
             }
-            // The suspended erase resumes and completes.
             self.erasing = None;
             self.logged(Op::EraseEnd(sec));
             self.flip();
@@ -562,7 +509,7 @@ impl Sim {
         self.ops += 1;
         self.erases += 1;
         self.reclaims += u64::from(self.mem[off..off + SECTOR].iter().any(|&b| b != 0xFF));
-        let suspend = self.suspend > 0 && self.rng.chance(self.suspend);
+        let suspend = self.suspend_percent > 0 && self.rng.chance(self.suspend_percent);
         self.logged(if suspend {
             Op::EraseBegin(sec)
         } else {
@@ -579,7 +526,6 @@ impl Sim {
             return STORE_ERROR;
         }
         if suspend {
-            // Begun and suspended: until it resumes, the sector reads as an erase cut short.
             self.cells.torn_erase(&mut self.rng, sec, tear);
             self.sync();
             self.erasing = Some(sec);
@@ -613,20 +559,14 @@ unsafe extern "C" fn sim_erase(ctx: *mut c_void, off: u32) -> i32 {
     sim.erase(off as usize)
 }
 
-/// A store on a simulated part.
 pub struct Rig {
     pub sim: Box<Sim>,
     pub st: Box<store>,
     pub window: u32,
-    /// The most work one store_poll did; the last mount's most for a sector's slice, and for
-    /// its finish.
     pub work_max: u32,
     pub mount_work: (u32, u32),
-    /// The most work one API call outside store_poll did (store_put, store_delete,
-    /// store_file_begin, store_file_rename, store_collect, store_erase_wanted).
     pub api_work_max: u32,
-    /// The data of the last put: the store programs it from here until it commits.
-    data: Vec<u8>,
+    last_put: Vec<u8>,
 }
 
 impl Rig {
@@ -638,15 +578,14 @@ impl Rig {
             work_max: 0,
             mount_work: (0, 0),
             api_work_max: 0,
-            data: Vec::new(),
+            last_put: Vec::new(),
         };
         r.reset();
         r
     }
 
-    /// A fresh store struct on the same part, as after a power cycle.
     pub fn reset(&mut self) {
-        self.sim.erasing = None; // a suspended erase is abandoned: the sector stays torn
+        self.sim.erasing = None;
         let flash = store_flash {
             map: Some(sim_map),
             prog: Some(sim_prog),
@@ -657,7 +596,6 @@ impl Rig {
         unsafe { store_init(&mut *self.st, &flash, self.window) };
     }
 
-    /// One store_poll: never more than one flash operation, never more than STORE_POLL_WORK.
     pub fn poll(&mut self) -> bool {
         self.sim.in_poll = 0;
         let busy = unsafe { store_poll(&mut *self.st) } != 0;
@@ -672,7 +610,6 @@ impl Rig {
         busy
     }
 
-    /// Mounts; the work of its polls (the last, which finishes it, apart) is in `mount_work`.
     pub fn mount(&mut self) -> store_state_id {
         self.sim.reread();
         unsafe { store_mount(&mut *self.st) };
@@ -690,7 +627,6 @@ impl Rig {
         self.state()
     }
 
-    /// An API call outside store_poll: its work is bounded as a poll's is (STORE_POLL_WORK).
     pub fn api<T>(&mut self, call: impl FnOnce(&mut store) -> T) -> T {
         self.st.work = 0;
         let v = call(&mut self.st);
@@ -708,7 +644,6 @@ impl Rig {
         unsafe { store_busy(&*self.st) != 0 }
     }
 
-    /// Polls until the store rests (or the power is cut).
     pub fn settle(&mut self) {
         let mut polls = 0u64;
         while !self.sim.dead && self.poll() {
@@ -717,7 +652,6 @@ impl Rig {
         }
     }
 
-    /// Maintenance while quiet, until it has nothing left to do.
     pub fn maintain(&mut self) {
         unsafe { store_quiet(&mut *self.st, 1) };
         self.settle();
@@ -730,8 +664,8 @@ impl Rig {
 
     pub fn put_typed(&mut self, key: u32, typ: u8, data: &[u8]) -> i32 {
         assert!(!self.busy(), "a put while the last write runs");
-        self.data = data.to_vec();
-        let (p, n) = (self.data.as_ptr().cast(), self.data.len() as u32);
+        self.last_put = data.to_vec();
+        let (p, n) = (self.last_put.as_ptr().cast(), self.last_put.len() as u32);
         self.api(|st| unsafe { store_put(st, key, typ, p, n) })
     }
 
@@ -772,8 +706,6 @@ impl Rig {
         self.api(|st| unsafe { store_erase_wanted(st) != 0 })
     }
 
-    /// Writes `data` as `key` and polls until it commits; a STORE_BUSY first lets
-    /// maintenance refill the pool once.
     pub fn put_now(&mut self, key: u32, data: &[u8]) -> i32 {
         let mut rc = self.put(key, data);
         if rc == STORE_BUSY {
@@ -805,13 +737,12 @@ impl Rig {
             self.sim.violations
         );
         assert_eq!(
-            guard_band_programmed(self.sim.region(), &self.sim.cells.weak),
+            guard_band_programmed(self.sim.region(), &self.sim.cells.erase_cut),
             None
         );
     }
 }
 
-/// Files.
 impl Rig {
     pub fn file_begin(&mut self, name: &str, len: usize) -> i32 {
         let c = std::ffi::CString::new(name).unwrap();
@@ -828,9 +759,6 @@ impl Rig {
         unsafe { store_file_result(&*self.st) }
     }
 
-    /// Offers `data` in pieces of up to `offer` bytes (random sizes if `rng`), polling between
-    /// offers as the main loop would, then ends the file and polls until it is committed (or
-    /// the power is cut). Returns the result. Checks the back-pressure as it goes.
     pub fn file_stream(&mut self, data: &[u8], offer: usize, mut rng: Option<&mut Rng>) -> i32 {
         let mut at = 0;
         let mut idle = 0;
@@ -841,7 +769,7 @@ impl Rig {
             }
             .min(data.len() - at);
             if self.file_result() != STORE_BUSY {
-                return self.file_result(); // it failed meanwhile
+                return self.file_result();
             }
             let room = STORE_WINDOW_MAX as usize - usize::from(self.st.f.fill);
             let took = self.file_write(&data[at..at + want]);
@@ -852,8 +780,6 @@ impl Rig {
             );
             at += took;
             idle = if took == 0 { idle + 1 } else { 0 };
-            // (The session's first write may first make cut headers invalid, 16 bytes each, a
-            // window at a time.)
             assert!(idle < 100 + 16 * SECTORS, "the file stopped taking bytes");
             self.poll();
             if self.sim.dead {
@@ -873,7 +799,6 @@ impl Rig {
         self.file_result()
     }
 
-    /// A whole file write; no maintenance between its begin and its end.
     pub fn file_now(&mut self, name: &str, data: &[u8]) -> i32 {
         let mut rc = self.file_begin(name, data.len());
         if rc == STORE_BUSY {
@@ -906,7 +831,6 @@ impl Rig {
         Some(buf)
     }
 
-    /// The file's bytes, checked against its CRC.
     pub fn file(&self, name: &str) -> Option<Vec<u8>> {
         let f = self.file_open(name)?;
         let data = self.file_read(&f, 0, f.length as usize)?;
@@ -940,19 +864,15 @@ impl Rig {
     }
 }
 
-/// The first store sector whose guard band holds a programmed byte, but for sectors whose
-/// erase was cut (`weak`): the part, not the store, left whatever they hold, and the store
-/// erases them before any use.
-pub fn guard_band_programmed(region: &[u8], weak: &[bool; SECTORS]) -> Option<usize> {
+pub fn guard_band_programmed(region: &[u8], erase_cut: &[bool; SECTORS]) -> Option<usize> {
     (0..SECTORS).find(|&s| {
-        !weak[s]
+        !erase_cut[s]
             && region[s * SECTOR + USE..(s + 1) * SECTOR]
                 .iter()
                 .any(|&b| b != 0xFF)
     })
 }
 
-/// A formatted, empty store with its pool full.
 pub fn fresh(seed: u64, window: u32) -> Rig {
     let mut r = Rig::new(Sim::new(seed), window);
     assert_eq!(r.mount(), STORE_STATE_BLANK);
@@ -977,17 +897,18 @@ fn crc32_is_zlibs() {
     assert_eq!(whole, part, "a CRC continues from a previous result");
 }
 
+const STORE_RAM_BUDGET: usize = 2_000;
+
 #[test]
-fn the_constants_are_the_plans() {
+fn the_constants_are_the_plans_and_the_store_fits_its_ram_budget() {
     assert_eq!(STORE_RECORDS, 3808);
     assert_eq!(STORE_POOL_MIN, 20);
     assert_eq!(STORE_POOL_TARGET, 22);
     assert_eq!(STORE_FILE_SECTOR_DATA, 3744);
     assert_eq!(STORE_CAPACITY, 198_432);
-    // The store's RAM on the device: at most 2,000 bytes (the plan's budget).
     let size = ilp32::store::SIZE;
     println!("store: {size} bytes on the device");
-    assert!(size <= 2_000, "the store struct is {size} bytes");
+    assert!(size <= STORE_RAM_BUDGET, "the store struct is {size} bytes");
 }
 
 #[test]
@@ -1037,7 +958,6 @@ fn values_round_trip_survive_a_power_cycle_and_deletes_stick() {
     let mut buf = [0u8; 4];
     let n = unsafe { store_get(&*r.st, 10, buf.as_mut_ptr().cast(), 4, &mut typ) };
     assert_eq!((n, typ), (1, STORE_TYPE_MAX as u8));
-    // A short buffer gets the start, and the whole length.
     let n = unsafe { store_get(&*r.st, 8, buf.as_mut_ptr().cast(), 4, std::ptr::null_mut()) };
     assert_eq!((n as usize, &buf[..]), (VALUE_MAX, &big[..4]));
     assert_eq!(r.delete_now(7), STORE_OK);
@@ -1071,7 +991,6 @@ fn bad_arguments_are_refused() {
 #[test]
 fn the_bytes_are_the_documented_format() {
     let mut r = fresh(4, 256);
-    // Every clean sector: the erase header, then 0xFF.
     let region = r.sim.region().to_vec();
     let clean: Vec<usize> = (0..SECTORS)
         .filter(|&s| region[s * SECTOR..s * SECTOR + 8] == *b"SIDOUSTR")
@@ -1090,11 +1009,9 @@ fn the_bytes_are_the_documented_format() {
         .find(|&s| rd32(&region, s * SECTOR + 28) == 0)
         .expect("a claimed sector");
     let h = &region[s * SECTOR..(s + 1) * SECTOR];
-    // The claim: its number (the erase count again), a CRC of bytes 0-23, the claim word.
     assert_eq!(rd32(h, 20), rd32(h, 12));
     assert_eq!(rd32(h, 24), crc32(&h[..24]));
     assert_eq!(rd32(h, 28), 0);
-    // The record at 32: type, flags, len, key, seq, CRC; data padded to 4; commit word.
     let rec = &h[32..32 + 16 + 8 + 4];
     assert_eq!(&rec[..4], &[1, 0, 5, 0]);
     assert_eq!(rd32(rec, 4), 0x1234_5678);
@@ -1187,7 +1104,6 @@ fn the_pool_never_goes_under_its_minimum_and_refills_to_its_target() {
 fn erase_counts_stay_within_a_small_spread() {
     let mut r = fresh(8, 256);
     let mut rng = Rng::new(8);
-    // Cold data, written once, and hot keys rewritten all the time.
     for k in 100..110 {
         let v = rng.bytes(VALUE_MAX);
         assert_eq!(r.put_now(k, &v), STORE_OK);
@@ -1236,8 +1152,6 @@ fn a_full_key_index_refuses_cleanly_and_a_delete_makes_room_after_a_collection()
         STORE_FULL,
         "the tombstone holds the key"
     );
-    // Collect until the tombstone's sector goes: it has nothing older to hide by then.
-    // The other keys move on twice, out of the first sector.
     for round in 0..2u8 {
         for k in 10..STORE_KEYS_MAX {
             assert_eq!(r.put_now(k, &[k as u8 ^ round; 600]), STORE_OK);
@@ -1263,7 +1177,6 @@ fn a_full_key_index_refuses_cleanly_and_a_delete_makes_room_after_a_collection()
     r.assert_clean();
 }
 
-/// Bytes another firmware might leave: Felucca's projects look nothing like a SIDOU header.
 fn foreign_region(seed: u64) -> Vec<u8> {
     let mut rng = Rng::new(seed);
     let mut region = vec![0xFF; HI - LO];
@@ -1290,16 +1203,12 @@ fn foreign_data_mounts_foreign_and_nothing_is_written_until_a_format() {
     assert_eq!(r.sim.ops, 0);
     assert_eq!(r.sim.region(), &region[..], "not a byte changed");
     assert_eq!(r.get(1), None);
-    // One foreign sector in an otherwise blank region is foreign too.
     let mut one = vec![0xFF; HI - LO];
     one[40 * SECTOR + 100] = 0x42;
     let mut r2 = Rig::new(Sim::with_region(10, &one, [false; SECTORS]), 256);
     assert_eq!(r2.mount(), STORE_STATE_FOREIGN);
-    // The user's confirm: a format, then the store is SIDOU's.
     unsafe { store_format(&mut *r.st) };
     assert_eq!(r.state(), STORE_STATE_BLANK);
-    // Nothing is written until every sector is erased: a foreign sector left as it was would
-    // make the next mount foreign again.
     assert_eq!(r.put(1, b"early"), STORE_BUSY);
     r.maintain();
     assert_eq!(r.stats().pool, SECTORS as u32, "all 73 erased");
@@ -1336,9 +1245,6 @@ fn a_newer_format_is_not_ours_to_touch() {
     assert_eq!(r2.put(2, b"y"), STORE_FOREIGN);
 }
 
-// ---- power loss ----
-
-/// What a key may read after a cut: its committed value, or the interrupted write's.
 #[derive(Clone, Debug)]
 enum Inflight {
     Idle,
@@ -1352,14 +1258,10 @@ struct Run {
     model: BTreeMap<u32, Vec<u8>>,
     keys: u32,
     inflight: Inflight,
-    /// The write a real cut interrupted, while the session after it has not written yet, and
-    /// its key's value from before it: until a record of the next session completes, a mount
-    /// may read the write as made or not, either way (store-format.md, "What is left").
-    lingering: Inflight,
-    before: Option<(u32, Option<Vec<u8>>)>,
-    /// Check every fork with a mount; every `deep`th also refills and writes on it.
+    undecided: Inflight,
+    undecided_key_before: Option<(u32, Option<Vec<u8>>)>,
     forks: bool,
-    deep: u64,
+    deep_check_every: u64,
     forks_checked: u64,
     cuts: u64,
     full: u64,
@@ -1371,12 +1273,10 @@ impl Run {
         Run::with(seed, keys, forks, [16, 64, 256][(seed % 3) as usize], false)
     }
 
-    /// `window`: the most one program writes; `faint`: cuts leave faint bits, read anew at
-    /// every mount.
     fn with(seed: u64, keys: u32, forks: bool, window: u32, faint: bool) -> Self {
         let mut rng = Rng::new(seed ^ 0xC0FFEE);
         let mut rig = fresh(seed, window);
-        rig.sim.fork = forks;
+        rig.sim.log_forks = forks;
         set_tear(&mut rig, seed, faint);
         rig.sim.later = if rng.chance(30) { 25 } else { 0 };
         Run {
@@ -1385,10 +1285,10 @@ impl Run {
             model: BTreeMap::new(),
             keys,
             inflight: Inflight::Idle,
-            lingering: Inflight::Idle,
-            before: None,
+            undecided: Inflight::Idle,
+            undecided_key_before: None,
             forks,
-            deep: 8,
+            deep_check_every: 8,
             forks_checked: 0,
             cuts: 0,
             full: 0,
@@ -1398,12 +1298,12 @@ impl Run {
 
     fn allowed(&self, key: u32) -> Vec<Option<Vec<u8>>> {
         let mut a = vec![self.model.get(&key).cloned()];
-        if let Some((k, v)) = &self.before {
+        if let Some((k, v)) = &self.undecided_key_before {
             if *k == key {
                 a.push(v.clone());
             }
         }
-        for op in [&self.inflight, &self.lingering] {
+        for op in [&self.inflight, &self.undecided] {
             match op {
                 Inflight::Put(k, v) if *k == key => a.push(Some(v.clone())),
                 Inflight::Delete(k) if *k == key => a.push(None),
@@ -1436,7 +1336,6 @@ impl Run {
         }
     }
 
-    /// Mounts every region a cut during the last operations would have left.
     fn check_forks(&mut self) {
         let Some(replay) = self.rig.sim.replay(self.seed ^ self.forks_checked) else {
             return;
@@ -1444,7 +1343,7 @@ impl Run {
         let tear = self.rig.sim.tear();
         for (cells, erased) in replay {
             self.forks_checked += 1;
-            assert_eq!(guard_band_programmed(&cells.mem, &cells.weak), None);
+            assert_eq!(guard_band_programmed(&cells.mem, &cells.erase_cut), None);
             let mut r = Rig::new(
                 Sim::with_cells(self.forks_checked, cells, tear),
                 self.rig.window,
@@ -1456,9 +1355,7 @@ impl Run {
                 self.seed
             );
             self.verify(&r, "a forked cut");
-            if erased || self.forks_checked.is_multiple_of(self.deep) {
-                // Carry on from there: a refill (a sector cut mid-erase is erased again
-                // before any use) and a write.
+            if erased || self.forks_checked.is_multiple_of(self.deep_check_every) {
                 let first: Vec<Option<Vec<u8>>> = (0..self.keys).map(|k| r.get(k)).collect();
                 r.maintain();
                 let k = self.keys;
@@ -1466,8 +1363,6 @@ impl Run {
                 assert_eq!(r.get(k).as_deref(), Some(&b"after"[..]));
                 self.verify(&r, "a forked cut, then a write");
                 r.assert_clean();
-                // Mounted again (faint bits read anew): what the first mount read stays (the
-                // interrupted write, if the first mount read it, was completed by the write).
                 r.reset();
                 assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
                 for (key, want) in first.iter().enumerate() {
@@ -1483,7 +1378,6 @@ impl Run {
         }
     }
 
-    /// After the power was cut: a fresh store on what the part holds.
     fn recover(&mut self) {
         self.cuts += 1;
         self.rig.sim.dead = false;
@@ -1492,16 +1386,14 @@ impl Run {
         let state = self.rig.mount();
         assert_eq!(state, STORE_STATE_SIDOU, "seed {}", self.seed);
         self.verify(&self.rig, "a real cut");
-        // A write cut in its header may read otherwise at a mount after a cut during the next
-        // session's recovery, before a record of it completes (store-format.md, "What is left").
-        let lingering = std::mem::replace(&mut self.inflight, Inflight::Idle);
-        if !matches!(lingering, Inflight::Idle) {
-            self.lingering = lingering;
-            self.before = None;
+        let undecided = std::mem::replace(&mut self.inflight, Inflight::Idle);
+        if !matches!(undecided, Inflight::Idle) {
+            self.undecided = undecided;
+            self.undecided_key_before = None;
         }
-        if let Inflight::Put(k, _) | Inflight::Delete(k) = self.lingering {
-            if self.before.is_none() {
-                self.before = Some((k, self.model.get(&k).cloned()));
+        if let Inflight::Put(k, _) | Inflight::Delete(k) = self.undecided {
+            if self.undecided_key_before.is_none() {
+                self.undecided_key_before = Some((k, self.model.get(&k).cloned()));
             }
             match self.rig.get(k) {
                 Some(v) => self.model.insert(k, v),
@@ -1511,7 +1403,6 @@ impl Run {
         self.inflight = Inflight::Idle;
     }
 
-    /// Polls the write in flight until it commits or the power is cut.
     fn finish(&mut self) {
         self.rig.settle();
         if self.forks {
@@ -1523,9 +1414,8 @@ impl Run {
         }
         let done = std::mem::replace(&mut self.inflight, Inflight::Idle);
         if !matches!(done, Inflight::Idle) {
-            // A write completed: recovery's copies went before it.
-            self.lingering = Inflight::Idle;
-            self.before = None;
+            self.undecided = Inflight::Idle;
+            self.undecided_key_before = None;
         }
         match done {
             Inflight::Put(k, v) => {
@@ -1548,7 +1438,6 @@ impl Run {
             (rc, before)
         };
         let (mut rc, mut before) = attempt(&mut self.rig);
-        // Busy: a refill, then again (once more if the power was cut during the refill).
         for _ in 0..3 {
             if rc != STORE_BUSY {
                 break;
@@ -1561,9 +1450,6 @@ impl Run {
             return;
         }
         assert_eq!(rc, STORE_OK, "seed {}", self.seed);
-        // A write never takes the pool under its minimum (a deletion in a full store, one
-        // under). Garbage collection's copies may use its reserve below that, until the
-        // victim's erase.
         let floor = if value.is_some() {
             STORE_POOL_MIN
         } else {
@@ -1629,7 +1515,7 @@ impl Run {
 
     fn end(&mut self) {
         self.rig.sim.cut_at = None;
-        self.rig.sim.fork = false;
+        self.rig.sim.log_forks = false;
         self.maintain();
         self.rig.reset();
         assert_eq!(self.rig.mount(), STORE_STATE_SIDOU);
@@ -1641,20 +1527,14 @@ impl Run {
     }
 }
 
-/// Faint bits for a run that wants them; for two seeds in three, an operation's bits tear
-/// together (`Tear::pulse`) and faint bits also read anew within a session; for two in five,
-/// faint bits drift toward erased. For one seed in four, erases are suspended midway now and
-/// then, whatever the faint bits.
 fn set_tear(rig: &mut Rig, seed: u64, faint: bool) {
     rig.sim.faint = faint;
     rig.sim.pulse = faint && !seed.is_multiple_of(3);
-    rig.sim.flips = rig.sim.pulse;
-    rig.sim.cells.bias = faint && seed % 5 < 2;
-    rig.sim.suspend = if seed % 4 == 1 { 30 } else { 0 };
+    rig.sim.rereads_in_session = rig.sim.pulse;
+    rig.sim.cells.drifts_to_erased = faint && seed % 5 < 2;
+    rig.sim.suspend_percent = if seed % 4 == 1 { 30 } else { 0 };
 }
 
-/// Windows the quick runs take in turn: the device's (16, 64, 256), the smallest, and sizes
-/// that split the 32-byte header, the 16-byte record header and the 4-byte commit word unevenly.
 const WINDOWS: [u32; 9] = [1, 3, 4, 8, 12, 16, 64, 100, 256];
 
 fn power_loss(seed: u64, steps: u32, keys: u32, forks: bool, window: u32, faint: bool) -> Run {
@@ -1703,9 +1583,6 @@ fn power_loss_with_real_cuts_over_long_runs() {
     assert!(cuts > 500);
 }
 
-/// The long version: thousands of seeds (minutes), every window size from 1 to 256, faint bits
-/// for three seeds in four. `cargo test --release -p sidou-tests --test app
-/// store::power_loss_long -- --ignored`.
 #[test]
 #[ignore]
 fn power_loss_long() {
@@ -1721,14 +1598,11 @@ fn power_loss_long() {
     println!("{forks} forked cuts and {cuts} real cuts checked");
 }
 
-/// The long runs' seeds: forked cuts, then real cuts only (values); the same for files.
 const LONG_FORKED: std::ops::Range<u64> = 1_000..1_400;
 const LONG_REAL: std::ops::Range<u64> = 10_000..13_000;
 const LONG_FILES_FORKED: std::ops::Range<u64> = 1_000..1_060;
 const LONG_FILES_REAL: std::ops::Range<u64> = 10_000..10_300;
 
-/// One seed of power_loss_long (or, `forked`, any seed as its forked ones): forked and real
-/// cuts counted.
 fn long_seed(seed: u64, forked: bool) -> (u64, u64) {
     let window = 1 + (seed % 256) as u32;
     let run = if forked || LONG_FORKED.contains(&seed) {
@@ -1739,7 +1613,6 @@ fn long_seed(seed: u64, forked: bool) -> (u64, u64) {
     (run.forks_checked, run.cuts)
 }
 
-/// One seed of files_power_loss_long (or, `forked`, any seed as its forked ones).
 fn long_files_seed(seed: u64, forked: bool) -> (u64, u64) {
     let run = if forked || LONG_FILES_FORKED.contains(&seed) {
         let window = WINDOWS[seed as usize % WINDOWS.len()];
@@ -1752,9 +1625,6 @@ fn long_files_seed(seed: u64, forked: bool) -> (u64, u64) {
     (run.forks_checked, run.cuts)
 }
 
-/// The long runs' seeds one at a time, for a parallel sweep: `SIDOU_STORE_SWEEP=values:1000`
-/// or `files:10000` (one process a seed, e.g. through `xargs -P`); `values-forked:5000` and
-/// `files-forked:5000` run any seed as the forked ones.
 #[test]
 #[ignore]
 fn power_loss_sweep() {
@@ -1774,18 +1644,14 @@ fn power_loss_sweep() {
     println!("{kind} seed {seed}: {forks} forked cuts, {cuts} real cuts");
 }
 
-/// The tombstone rule: the sector holding a deletion is collected before the sector holding
-/// the value it deleted, and the deletion must not come undone, at any cut.
 #[test]
 fn a_deletion_survives_its_sector_being_collected_first() {
     let mut run = Run::new(12, 24, true);
     run.rig.sim.later = 0;
-    // The value, among cold data that keeps its sector over half live.
     run.write(1, Some(vec![0xA1; 40]));
     for k in 10..13 {
         run.write(k, Some(vec![k as u8; 1100]));
     }
-    // Into later sectors: the deletion among values about to be superseded.
     for _ in 0..3 {
         run.write(2, Some(vec![2; 1200]));
     }
@@ -1793,7 +1659,6 @@ fn a_deletion_survives_its_sector_being_collected_first() {
     for _ in 0..12 {
         run.write(2, Some(vec![3; 1200]));
     }
-    // Collect: the deletion's sector, nearly all garbage, goes first.
     let mut first = false;
     for _ in 0..6 {
         let tombs = sectors_holding(run.rig.sim.region(), 1, STORE_TYPE_TOMB as u8);
@@ -1813,7 +1678,6 @@ fn a_deletion_survives_its_sector_being_collected_first() {
         first,
         "the deletion's sector was not collected before the value's"
     );
-    // Then the old value's sector, once its cold data moved on.
     for k in 10..13 {
         run.write(k, Some(vec![0; 8]));
     }
@@ -1831,7 +1695,28 @@ fn a_deletion_survives_its_sector_being_collected_first() {
     assert!(run.forks_checked > 200);
 }
 
-/// The claimed sectors holding a valid-looking record of `key` and `typ`.
+const SECTOR_HEADER_LEN: usize = 32;
+const RECORD_HEADER_LEN: usize = 16;
+const COMMIT_WORD_LEN: usize = 4;
+const VALUE_RECORD: u8 = 1;
+
+fn record_len(h: &[u8], off: usize) -> usize {
+    let data = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
+    RECORD_HEADER_LEN + data.div_ceil(4) * 4 + COMMIT_WORD_LEN
+}
+
+fn record_offsets(h: &[u8]) -> impl Iterator<Item = usize> + '_ {
+    let mut off = SECTOR_HEADER_LEN;
+    std::iter::from_fn(move || {
+        if off + RECORD_HEADER_LEN + COMMIT_WORD_LEN > USE || h[off] == 0xFF {
+            return None;
+        }
+        let at = off;
+        off += record_len(h, at);
+        Some(at)
+    })
+}
+
 fn sectors_holding(region: &[u8], key: u32, typ: u8) -> Vec<usize> {
     let mut out = Vec::new();
     for s in 0..SECTORS {
@@ -1839,21 +1724,13 @@ fn sectors_holding(region: &[u8], key: u32, typ: u8) -> Vec<usize> {
         if h[..8] != *b"SIDOUSTR" || rd32(h, 28) != 0 {
             continue;
         }
-        let mut off = 32;
-        while off + 20 <= USE && h[off] != 0xFF {
-            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
-            if h[off] == typ && rd32(h, off + 4) == key {
-                out.push(s);
-            }
-            off += 16 + len.div_ceil(4) * 4 + 4;
+        if record_offsets(h).any(|off| h[off] == typ && rd32(h, off + 4) == key) {
+            out.push(s);
         }
     }
     out
 }
 
-// ---- format versions ----
-
-/// The fixture's values: key k's final value.
 pub(crate) fn fixture_value(k: u32, round: u32) -> Vec<u8> {
     let len = ((k * 37 + round * 11) % 120) as usize;
     (0..len)
@@ -1861,29 +1738,23 @@ pub(crate) fn fixture_value(k: u32, round: u32) -> Vec<u8> {
         .collect()
 }
 
-/// The fixture's files' bytes.
 pub(crate) fn fixture_file(seed: u32, len: usize) -> Vec<u8> {
     (0..len)
         .map(|i| (i as u32 * 31 + seed * 17 + (i as u32 >> 8)) as u8)
         .collect()
 }
 
-/// The files the fixture holds at the end: name, seed, length.
 pub(crate) const FIXTURE_FILES: [(&str, u32, usize); 3] =
     [("NEW", 4, 400), ("SONG A", 1, 5000), ("SONG B", 3, 2600)];
 
 pub(crate) const FIXTURE_KEYS: u32 = 16;
 pub(crate) const FIXTURE_ROUNDS: u32 = 12;
-/// Deleted in the fixture's last round.
 pub(crate) const FIXTURE_DELETED: [u32; 3] = [3, 8, 13];
 
 pub(crate) fn fixture_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/store-v1.bin")
 }
 
-/// A STORE_FORMAT 1 region: rounds of writes to 16 keys with collections between, files
-/// written, replaced, deleted and renamed among them, three keys deleted at the end, then a
-/// write cut halfway.
 fn fixture_region() -> Vec<u8> {
     let mut r = fresh(13, 64);
     for round in 0..FIXTURE_ROUNDS {
@@ -1920,8 +1791,6 @@ fn fixture_region() -> Vec<u8> {
     r.sim.region().to_vec()
 }
 
-/// The fixture on disk: runs of bytes other than 0xFF, each `[u32 flash offset][u16 length]
-/// [bytes]`, little-endian; everything else in the region is 0xFF.
 fn encode_runs(region: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -1930,7 +1799,6 @@ fn encode_runs(region: &[u8]) -> Vec<u8> {
             i += 1;
             continue;
         }
-        // A run ends at 8 bytes of 0xFF in a row, or at 65,535 bytes.
         let (start, mut end) = (i, i + 1);
         let mut j = i + 1;
         while j < region.len() && j - start < 0xFFFF && j - end < 8 {
@@ -1959,9 +1827,6 @@ pub(crate) fn decode_runs(file: &[u8]) -> Vec<u8> {
     region
 }
 
-/// `tests/data/store-v1.bin` is a STORE_FORMAT 1 region, checked in: every later version
-/// must mount it to the same values (design doc section 5's migration rule).
-/// `SIDOU_STORE_FIXTURE_UPDATE=1` writes it, for format 1 only.
 #[test]
 fn a_format_1_region_mounts_to_the_same_values() {
     let path = fixture_path();
@@ -1994,7 +1859,6 @@ fn a_format_1_region_mounts_to_the_same_values() {
     let s = r.stats();
     assert_eq!(s.corrupt, 0);
     assert!(s.keys >= FIXTURE_KEYS + 3);
-    // And it carries on: a refill and writes over it.
     r.maintain();
     assert_eq!(r.put_now(3, b"back"), STORE_OK);
     r.reset();
@@ -2002,8 +1866,6 @@ fn a_format_1_region_mounts_to_the_same_values() {
     assert_eq!(r.get(3).as_deref(), Some(&b"back"[..]));
     r.assert_clean();
 }
-
-// ---- damage ----
 
 #[test]
 fn random_bytes_never_crash_the_mount() {
@@ -2016,9 +1878,6 @@ fn random_bytes_never_crash_the_mount() {
     }
 }
 
-/// A real region with random bytes changed, in its headers and records: the mount never
-/// crashes or reads out of bounds (run under the sanitizers), every value it gives is one the
-/// region held at some point, and the store still never programs what it must not.
 #[test]
 fn damaged_regions_mount_and_stay_safe() {
     let mut base = fresh(16, 256);
@@ -2068,8 +1927,6 @@ fn damaged_regions_mount_and_stay_safe() {
         );
     }
 }
-
-// ---- files ----
 
 const FILE_MAX: usize = STORE_FILE_MAX as usize;
 
@@ -2207,7 +2064,6 @@ fn the_directory_is_in_name_order() {
         .collect();
     want.sort();
     assert_eq!(r.dir(), want);
-    // Small values are not files.
     assert_eq!(r.put_now(5, b"setting"), STORE_OK);
     assert_eq!(r.dir().len(), names.len());
     r.reset();
@@ -2274,7 +2130,6 @@ fn replacing_a_file_keeps_the_old_until_the_new_commits() {
         "an old handle reads nothing"
     );
     assert_eq!(r.dir().len(), 1);
-    // The old file's sectors are garbage now: a refill collects them.
     let live = r.stats().live;
     r.maintain();
     assert_eq!(r.stats().live, live);
@@ -2300,7 +2155,6 @@ fn deleting_renaming_aborting_and_ending_short() {
     r.settle();
     assert_eq!(r.file("TWO"), None);
     assert_eq!(r.file_delete("TWO"), STORE_NOT_FOUND);
-    // Aborted: nothing appears, unused sectors go back to the pool.
     r.maintain();
     let pool = r.stats().pool;
     assert_eq!(r.file_begin("HALF", 20_000), STORE_OK);
@@ -2314,7 +2168,6 @@ fn deleting_renaming_aborting_and_ending_short() {
         pool,
         "the claimed sector became garbage, the rest came back"
     );
-    // Ended short.
     assert_eq!(r.file_begin("SHORT", 100), STORE_OK);
     assert_eq!(r.file_write(&[1; 50]), 50);
     assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_INVALID);
@@ -2333,8 +2186,6 @@ fn deleting_renaming_aborting_and_ending_short() {
 fn small_writes_go_on_while_a_file_is_open_and_maintenance_waits() {
     let mut r = fresh(29, 64);
     let data = content(29, 12_000);
-    // A head with room: the file's sectors leave the pool under its minimum, so small writes
-    // that need a new head wait for the file and a refill.
     assert_eq!(r.put_now(9, b"head"), STORE_OK);
     assert_eq!(r.file_begin("OPEN", data.len()), STORE_OK);
     assert!(!r.erase_wanted(), "maintenance waits for the file");
@@ -2366,21 +2217,15 @@ fn small_writes_go_on_while_a_file_is_open_and_maintenance_waits() {
     r.assert_clean();
 }
 
-/// store.c's collection job.
 const JOB_COLLECT: u8 = 2;
 
-/// A file begins while a collection is under way: between its copies, or with only its kill or
-/// its forgetting left (a SysEx PUT waits only for the record being written, sysex.c OPEN, so a
-/// PUT with keys held no longer waits for a collection that can only finish when quiet). The
-/// collection waits for the file (store_poll serves the file first) and goes on after it; every
-/// value and the file read back, and again after a power cycle.
 #[test]
 fn a_file_begins_while_a_collection_waits_and_both_finish() {
     let mut phases = std::collections::BTreeSet::new();
     for stop in 0..16u64 {
         let mut r = fresh(31, 256);
         for k in 100..106u32 {
-            assert_eq!(r.put_now(k, &[k as u8; 40]), STORE_OK); // live in the victim
+            assert_eq!(r.put_now(k, &[k as u8; 40]), STORE_OK);
         }
         for round in 0..3u8 {
             for k in 0..20u32 {
@@ -2388,8 +2233,6 @@ fn a_file_begins_while_a_collection_waits_and_both_finish() {
             }
         }
         assert_eq!(r.collect(), STORE_OK);
-        // The stop-th place where the writer is idle and the collection not done; half the
-        // operations put off (as held ones wait for quiet on the device), so its kill can wait.
         r.sim.later = 50;
         let (mut idle, mut polls) = (0, 0);
         while r.st.job == JOB_COLLECT && idle < stop {
@@ -2433,7 +2276,6 @@ fn a_file_begins_while_a_collection_waits_and_both_finish() {
         }
         r.assert_clean();
     }
-    // store.c's C_SCAN (between copies), C_KILL (the victim's kill to program), C_FORGET.
     assert_eq!(
         phases.into_iter().collect::<Vec<_>>(),
         [0, 1, 2],
@@ -2441,13 +2283,11 @@ fn a_file_begins_while_a_collection_waits_and_both_finish() {
     );
 }
 
-/// While a file waits to begin (store_file_wait), maintenance takes no step: a record being
-/// written commits, then the writer stays free for the file; nothing is erased meanwhile.
 #[test]
 fn a_waiting_file_holds_maintenance_back_until_it_begins() {
     let mut r = fresh(32, 256);
     for k in 100..106u32 {
-        assert_eq!(r.put_now(k, &[k as u8; 40]), STORE_OK); // live in the victim
+        assert_eq!(r.put_now(k, &[k as u8; 40]), STORE_OK);
     }
     for round in 0..3u8 {
         for k in 0..20u32 {
@@ -2459,7 +2299,7 @@ fn a_waiting_file_holds_maintenance_back_until_it_begins() {
         if r.busy() {
             break;
         }
-        r.poll(); // until the collection's first copy is under way
+        r.poll();
     }
     assert!(r.busy(), "the collection copies a live record");
     assert_eq!(
@@ -2533,7 +2373,6 @@ fn a_file_larger_than_the_free_space_is_refused_before_anything_is_written() {
     );
     assert!(n >= 6, "only {n} files fit");
     assert!(r.stats().free < 30_000 + 1_000);
-    // Deleting makes room after the collections.
     assert_eq!(r.file_delete("FILL 0"), STORE_OK);
     r.settle();
     r.maintain();
@@ -2547,9 +2386,6 @@ fn a_file_larger_than_the_free_space_is_refused_before_anything_is_written() {
     r.assert_clean();
 }
 
-/// Files under power cuts: random file writes, replacements, deletions and renames among small
-/// writes, collections and refills. After every cut every file reads its old bytes or its new
-/// ones, whole (its CRC checked), and every small value its old or new value.
 struct FileRun {
     rig: Rig,
     rng: Rng,
@@ -2579,7 +2415,7 @@ impl FileRun {
     fn new(seed: u64, forks: bool, max_len: usize, window: u32, faint: bool) -> Self {
         let mut rng = Rng::new(seed ^ 0xF11E);
         let mut rig = fresh(seed, window);
-        rig.sim.fork = forks;
+        rig.sim.log_forks = forks;
         set_tear(&mut rig, seed, faint);
         rig.sim.later = if rng.chance(30) { 20 } else { 0 };
         FileRun {
@@ -2606,7 +2442,7 @@ impl FileRun {
             let ok = match &self.inflight {
                 FileOp::Write(n, v) if n == name => got == old || got.as_ref() == Some(v),
                 FileOp::Delete(n) if n == name => got == old || got.is_none(),
-                FileOp::Rename(a, b) if a == name || b == name => true, // checked below
+                FileOp::Rename(a, b) if a == name || b == name => true,
                 _ => got == old,
             };
             assert!(
@@ -2667,7 +2503,6 @@ impl FileRun {
                     self.seed
                 );
                 r.assert_clean();
-                // Mounted again (faint bits read anew): what the first mount read stays.
                 r.reset();
                 assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
                 for (n, want) in NAMES.iter().zip(&files) {
@@ -2686,7 +2521,6 @@ impl FileRun {
         }
     }
 
-    /// After the operation: the forks, then a real cut's recovery, or the model's update.
     fn after(&mut self) {
         if self.forks {
             self.check_forks();
@@ -2738,8 +2572,6 @@ impl FileRun {
         self.after();
     }
 
-    /// The open file, given some of its bytes and some polls (its claims may be half done),
-    /// then aborted or ended short: the old file stays, whole.
     fn drop_file(&mut self, data: &[u8]) {
         let upto = self.rng.below(data.len() as u64 + 1) as usize;
         let polls = self.rng.below(48);
@@ -2868,7 +2700,7 @@ impl FileRun {
 
     fn end(&mut self) {
         self.rig.sim.cut_at = None;
-        self.rig.sim.fork = false;
+        self.rig.sim.log_forks = false;
         self.maintain();
         self.rig.reset();
         assert_eq!(self.rig.mount(), STORE_STATE_SIDOU);
@@ -2900,7 +2732,6 @@ fn file_power_loss(
 fn files_survive_a_cut_at_every_operation_old_or_new_never_neither_never_a_mix() {
     let (mut forks, mut cuts, mut drops) = (0, 0, 0);
     for (seed, window) in WINDOWS.into_iter().enumerate() {
-        // Files of up to a few windows' worth at the smallest windows, or the run takes minutes.
         let max_len = (window as usize * 40).clamp(300, 6_000);
         let run = file_power_loss(seed as u64, 60, true, max_len, window, seed % 2 == 0);
         forks += run.forks_checked;
@@ -2925,7 +2756,6 @@ fn files_under_real_cuts_over_long_runs() {
     assert!(cuts > 50 && drops > 20);
 }
 
-/// The long version, with the power-loss runs above (minutes).
 #[test]
 #[ignore]
 fn files_power_loss_long() {
@@ -2938,10 +2768,6 @@ fn files_power_loss_long() {
     println!("{forks} forked cuts and {cuts} real cuts checked");
 }
 
-// ---- regressions ----
-
-/// An open file's fresh key is taken from its begin: a small write cannot take the key
-/// index's last slot from under it (the file's commit would index a 49th key).
 #[test]
 fn an_open_files_fresh_key_is_kept_for_it() {
     let mut r = fresh(40, 256);
@@ -2973,8 +2799,6 @@ fn an_open_files_fresh_key_is_kept_for_it() {
     r.assert_clean();
 }
 
-/// An abort (or a short end) while a file sector's claim is half programmed leaves that sector
-/// dirty: it is erased before any use, never claimed again over the bits already cleared.
 #[test]
 fn a_file_dropped_mid_claim_leaves_its_sector_to_be_erased() {
     for window in [1u32, 4, 8, 16] {
@@ -2989,14 +2813,13 @@ fn a_file_dropped_mid_claim_leaves_its_sector_to_be_erased() {
                     r.poll();
                 }
                 if r.st.f.pdone == 0 {
-                    continue; // the claim's first pieces may sit in a page already done
+                    continue;
                 }
                 if short {
                     assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_INVALID);
                 } else {
                     unsafe { store_file_abort(&mut *r.st) };
                 }
-                // Every sector is used again: files, then values.
                 r.maintain();
                 for i in 0..12u64 {
                     assert_eq!(
@@ -3023,8 +2846,6 @@ fn file_idle(r: &mut Rig, ms: u32) {
     unsafe { store_file_idle(&mut *r.st, ms) };
 }
 
-/// A file whose sender went away does not hold the store: after STORE_FILE_IDLE_MS without a
-/// byte it is aborted, and maintenance and other files go on.
 #[test]
 fn an_open_file_whose_sender_goes_quiet_times_out() {
     let mut r = fresh(41, 64);
@@ -3032,7 +2853,6 @@ fn an_open_file_whose_sender_goes_quiet_times_out() {
     assert_eq!(r.file_begin("SYSEX", 5000), STORE_OK);
     let data = content(41, 5000);
     assert_eq!(r.file_write(&data[..300]), 256);
-    // The staging buffer full: the store is the slow one, the time does not count.
     file_idle(&mut r, STORE_FILE_IDLE_MS * 2);
     assert_eq!(r.file_result(), STORE_BUSY);
     r.settle();
@@ -3052,7 +2872,6 @@ fn an_open_file_whose_sender_goes_quiet_times_out() {
     assert!(r.erase_wanted(), "maintenance goes on");
     r.maintain();
     assert_eq!(r.file("SYSEX"), None);
-    // Ended, it commits however long the store takes.
     assert_eq!(r.file_begin("SYSEX", 300), STORE_OK);
     assert_eq!(r.file_write(&data[..300]), 256);
     r.settle();
@@ -3065,13 +2884,12 @@ fn an_open_file_whose_sender_goes_quiet_times_out() {
     r.assert_clean();
 }
 
-/// Replacing a file is checked against the space it frees: three songs nearly fill the store
-/// (three of 64 KiB never fit: 3 x 18 sectors is more than the 53 outside the pool's minimum),
-/// and re-saving one, even at the largest size, succeeds.
+const SECTORS_OF_A_NEARLY_LARGEST_SONG: usize = 17;
+
 #[test]
 fn replacing_a_file_counts_the_space_the_old_one_frees() {
     let mut r = fresh(42, 256);
-    let near = 17 * STORE_FILE_SECTOR_DATA as usize; // 63,648 bytes: 17 sectors
+    let near = SECTORS_OF_A_NEARLY_LARGEST_SONG * STORE_FILE_SECTOR_DATA as usize;
     for (i, n) in ["SONG 1", "SONG 2", "SONG 3"].iter().enumerate() {
         r.maintain();
         assert_eq!(r.file_now(n, &content(i as u64, near)), STORE_OK, "{n}");
@@ -3102,45 +2920,35 @@ fn a_format_with_a_file_open_ends_it_as_not_found() {
     assert_eq!(r.file_result(), STORE_NOT_FOUND);
 }
 
-// ---- faint bits ----
-
-/// The region offset of the commit word of `key`'s newest small record (by its sequence number).
-fn commit_word_of(region: &[u8], key: u32) -> usize {
+fn newest_commit_word_of(region: &[u8], key: u32, typ: u8) -> usize {
     let mut best = (0u32, 0usize);
-    for s in sectors_holding(region, key, 1) {
+    for s in sectors_holding(region, key, typ) {
         let h = &region[s * SECTOR..(s + 1) * SECTOR];
-        let mut off = 32;
-        while off + 20 <= USE && h[off] != 0xFF {
-            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
-            let size = 16 + len.div_ceil(4) * 4 + 4;
-            if h[off] == 1 && rd32(h, off + 4) == key && rd32(h, off + 8) >= best.0 {
-                best = (rd32(h, off + 8), s * SECTOR + off + size - 4);
+        for off in record_offsets(h) {
+            let size = record_len(h, off);
+            if h[off] == typ && rd32(h, off + 4) == key && rd32(h, off + 8) >= best.0 {
+                best = (rd32(h, off + 8), s * SECTOR + off + size - COMMIT_WORD_LEN);
             }
-            off += size;
         }
     }
     assert_ne!(best.1, 0, "no record of key {key}");
     best.1
 }
 
-/// A cut during a record's commit word can leave its bits faint: read as programmed at one
-/// mount, erased or half programmed at the next. Nothing written after it may depend on it,
-/// and once a mount has read it committed, it stays committed.
 #[test]
 fn a_faint_commit_word_loses_nothing_written_after_it() {
     for reads in [0xFFu8, 0x5A] {
         let mut r = fresh(60, 256);
         assert_eq!(r.put_now(1, b"old"), STORE_OK);
         assert_eq!(r.put_now(1, b"new"), STORE_OK);
-        let c = commit_word_of(r.sim.region(), 1);
-        r.sim.set_faint(c, 4, 0x00);
+        let c = newest_commit_word_of(r.sim.region(), 1, VALUE_RECORD);
+        r.sim.set_faint(c, COMMIT_WORD_LEN, 0x00);
         r.reset();
         assert_eq!(r.mount(), STORE_STATE_SIDOU);
         assert_eq!(r.get(1).as_deref(), Some(&b"new"[..]));
         for k in 2..6 {
             assert_eq!(r.put_now(k, b"after"), STORE_OK);
         }
-        // The next mount reads the faint bits otherwise.
         r.sim.faint_reads(reads);
         r.reset();
         assert_eq!(r.mount(), STORE_STATE_SIDOU);
@@ -3166,9 +2974,6 @@ fn a_faint_commit_word_loses_nothing_written_after_it() {
     }
 }
 
-/// A cut during an erase header's program can leave it faint: valid at one mount (the sector
-/// joins the pool), not at the next. Before a sector takes records, its claim programs the
-/// erase header again, so the records never go with it.
 #[test]
 fn a_faint_erase_header_is_programmed_again_before_its_sector_takes_records() {
     let mut r = fresh(61, 256);
@@ -3196,14 +3001,11 @@ fn a_faint_erase_header_is_programmed_again_before_its_sector_takes_records() {
     r.assert_clean();
 }
 
-/// A cut during a claim can leave its claim word faint: the sector reads claimed and empty at
-/// one mount, cut short at the next. Nothing is written into it before then.
 #[test]
 fn a_faint_claim_loses_nothing_written_after_it() {
     for reads in [0xFFu8, 0x3C] {
         let mut r = fresh(62, 256);
         assert_eq!(r.put_now(1, b"one"), STORE_OK);
-        // A clean sector claimed with the newest number, its claim word faint.
         let region = r.sim.region().to_vec();
         let x = (0..SECTORS)
             .rev()
@@ -3238,13 +3040,8 @@ fn a_faint_claim_loses_nothing_written_after_it() {
     }
 }
 
-/// The host proxy for Task 4's STORE_POLL_WORST: a mount's polls check at most a slice
-/// (STORE_MOUNT_SLICE bytes, a sector's header checks included), or one record alone, on
-/// every kind of region; its finish, and every other poll, at most STORE_POLL_WORK.
 #[test]
 fn a_mounts_polls_stay_within_a_slice() {
-    // A record whose CRC and key lookup are more than a slice is checked alone in its poll.
-    // (Its header, its fixed checks, its CRC at 4 a byte, a key lookup, the maps.)
     let slice =
         STORE_MOUNT_SLICE.max(STORE_REC_HEADER + 64 + 4 * (12 + STORE_CHUNK) + STORE_KEYS_MAX + 24);
     let mut regions: Vec<(String, Vec<u8>)> = Vec::new();
@@ -3256,7 +3053,6 @@ fn a_mounts_polls_stay_within_a_slice() {
     let mut rng = Rng::new(70);
     regions.push(("random".into(), rng.bytes(HI - LO)));
     regions.push(("foreign".into(), foreign_region(70)));
-    // Full of the largest values, of empty ones, and of the largest files.
     let mut big = fresh(71, 256);
     let mut k = 0;
     while big.put_now(k % 40, &rng.bytes(VALUE_MAX)) == STORE_OK && k < 400 {
@@ -3293,8 +3089,6 @@ fn a_mounts_polls_stay_within_a_slice() {
     println!("mount polls: {} at most, {} to finish", most.0, most.1);
 }
 
-/// The most programs a page takes between erases (STORE_PAGE_PROGS, for windows of 16 or more):
-/// the densest records there are (values of 1 to 8 bytes, tombstones), collections, files.
 #[test]
 fn a_page_takes_at_most_store_page_progs_programs_between_erases() {
     for window in [16u32, 64, 256] {
@@ -3323,9 +3117,6 @@ fn a_page_takes_at_most_store_page_progs_programs_between_erases() {
     }
 }
 
-/// A cut during a blank region's very first erase: the part's pre-program to 0 can leave the
-/// sector neither blank nor SIDOU's, so the region mounts FOREIGN (nothing written then, as for
-/// any foreign region, until the user confirms a format: Task 5's screen must expect it).
 #[test]
 fn a_cut_during_a_blank_regions_first_erase_can_mount_foreign() {
     let mut foreign = 0;
@@ -3362,14 +3153,11 @@ fn a_cut_during_a_blank_regions_first_erase_can_mount_foreign() {
     assert!(foreign > 0, "no cut left the region foreign");
 }
 
-/// A commit word is one program whatever the window, so a cut during it leaves all 32 of its
-/// bits in play (at a window of 1, a cut during its first byte left 8, often all faint: the
-/// write then read committed at one mount and cut at the next).
 #[test]
 fn a_commit_word_is_one_program_at_any_window() {
     for window in [1u32, 2, 3] {
         let mut r = fresh(95, window);
-        r.sim.fork = true;
+        r.sim.log_forks = true;
         assert_eq!(r.put_now(1, b"abcdefg"), STORE_OK);
         let replay = r.sim.replay(0).unwrap();
         let sizes: Vec<usize> = replay
@@ -3381,8 +3169,6 @@ fn a_commit_word_is_one_program_at_any_window() {
                 _ => 0,
             })
             .collect();
-        // The claim and the data, a byte (or the window) a program; the header too; then the
-        // commit word, whole.
         assert_eq!(sizes.last(), Some(&4), "window {window}: {sizes:?}");
         assert!(sizes[..sizes.len() - 1]
             .iter()
@@ -3391,7 +3177,7 @@ fn a_commit_word_is_one_program_at_any_window() {
 }
 
 #[test]
-fn review_many_short_boots() {
+fn many_short_boots_of_writes_never_refuse_as_full_or_lose_a_value() {
     let mut r = fresh(77, 256);
     let mut rng = Rng::new(77);
     let mut model: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
@@ -3438,8 +3224,7 @@ fn review_many_short_boots() {
     assert_eq!(full, 0);
 }
 
-#[test]
-fn review_boots_near_capacity() {
+fn writes_near_capacity_are_never_refused_as_full(boot_between: bool) {
     let mut r = fresh(78, 256);
     let mut files = 0;
     let mut rng = Rng::new(78);
@@ -3453,8 +3238,10 @@ fn review_boots_near_capacity() {
     let (mut busy, mut full, mut ok) = (0, 0, 0);
     let mut minfull = u32::MAX;
     for boot in 0..400u32 {
-        r.reset();
-        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        if boot_between {
+            r.reset();
+            assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        }
         r.maintain();
         for j in 0..2u32 {
             let k = (boot * 2 + j) % 40;
@@ -3484,58 +3271,25 @@ fn review_boots_near_capacity() {
 }
 
 #[test]
-fn review_noboot_near_capacity() {
-    let mut r = fresh(78, 256);
-    let mut files = 0;
-    let mut rng = Rng::new(78);
-    while files < 7 {
-        if r.file_now(&format!("F{files}"), &content(files as u64, 18_000)) != STORE_OK {
-            break;
-        }
-        files += 1;
-        r.maintain();
-    }
-    let (mut busy, mut full, mut ok) = (0, 0, 0);
-    let mut minfull = u32::MAX;
-    for boot in 0..400u32 {
-        r.maintain();
-        for j in 0..2u32 {
-            let k = (boot * 2 + j) % 40;
-            let v = rng.bytes(1248);
-            match r.put(k, &v) {
-                STORE_OK => {
-                    r.settle();
-                    ok += 1;
-                }
-                STORE_BUSY => busy += 1,
-                STORE_FULL => {
-                    full += 1;
-                    minfull = minfull.min(r.stats().live);
-                }
-                e => panic!("{e}"),
-            }
-        }
-    }
-    let st = r.stats();
-    eprintln!("files {files} ok {ok} busy {busy} full {full} (lowest live when full {minfull}, capacity {}) live {} pool {} claimed {}", STORE_CAPACITY, st.live, st.pool, st.claimed);
-    assert_eq!(
-        full,
-        0,
-        "the store refused writes {} under its capacity",
-        STORE_CAPACITY - minfull.min(STORE_CAPACITY)
-    );
+fn writes_near_capacity_with_a_boot_between_are_never_refused_as_full() {
+    writes_near_capacity_are_never_refused_as_full(true);
 }
 
 #[test]
-fn review_all_faint_commit_then_gc() {
+fn writes_near_capacity_without_boots_are_never_refused_as_full() {
+    writes_near_capacity_are_never_refused_as_full(false);
+}
+
+#[test]
+fn a_faint_commit_word_then_collections_keep_the_old_value_or_the_new() {
     let mut r = fresh(60, 256);
     assert_eq!(r.put_now(1, b"old"), STORE_OK);
     r.reset();
     assert_eq!(r.mount(), STORE_STATE_SIDOU);
     r.maintain();
     assert_eq!(r.put_now(1, b"new"), STORE_OK);
-    let c = commit_word_of(r.sim.region(), 1);
-    r.sim.set_faint(c, 4, 0x00);
+    let c = newest_commit_word_of(r.sim.region(), 1, VALUE_RECORD);
+    r.sim.set_faint(c, COMMIT_WORD_LEN, 0x00);
     r.reset();
     assert_eq!(r.mount(), STORE_STATE_SIDOU);
     assert_eq!(r.get(1).as_deref(), Some(&b"new"[..]));
@@ -3550,7 +3304,7 @@ fn review_all_faint_commit_then_gc() {
     }
     eprintln!(
         "sectors with key1: {:?}",
-        sectors_holding(r.sim.region(), 1, 1)
+        sectors_holding(r.sim.region(), 1, VALUE_RECORD)
     );
     eprintln!("reclaims {}", r.sim.reclaims - before);
     r.sim.faint_reads(0xFF);
@@ -3569,7 +3323,7 @@ fn review_all_faint_commit_then_gc() {
 }
 
 #[test]
-fn review_all_faint_file_commit_then_gc() {
+fn a_faint_file_commit_word_then_collections_keep_the_old_file_or_the_new() {
     let mut r = fresh(61, 256);
     assert_eq!(r.file_now("SONG", &content(1, 9000)), STORE_OK);
     r.reset();
@@ -3578,20 +3332,8 @@ fn review_all_faint_file_commit_then_gc() {
     assert_eq!(r.file_now("SONG", &content(2, 9000)), STORE_OK);
     let key = r.file_open("SONG").unwrap().key;
     let region = r.sim.region().to_vec();
-    let mut best = (0u32, 0usize);
-    for s in sectors_holding(&region, key, 0x82) {
-        let h = &region[s * SECTOR..(s + 1) * SECTOR];
-        let mut off = 32;
-        while off + 20 <= USE && h[off] != 0xFF {
-            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
-            let size = 16 + len.div_ceil(4) * 4 + 4;
-            if h[off] == 0x82 && rd32(h, off + 4) == key && rd32(h, off + 8) >= best.0 {
-                best = (rd32(h, off + 8), s * SECTOR + off + size - 4);
-            }
-            off += size;
-        }
-    }
-    r.sim.set_faint(best.1, 4, 0x00);
+    let commit = newest_commit_word_of(&region, key, STORE_TYPE_FILE as u8);
+    r.sim.set_faint(commit, COMMIT_WORD_LEN, 0x00);
     r.reset();
     assert_eq!(r.mount(), STORE_STATE_SIDOU);
     assert_eq!(r.file("SONG"), Some(content(2, 9000)));
@@ -3616,10 +3358,6 @@ fn review_all_faint_file_commit_then_gc() {
     );
 }
 
-/// The hook fails operations with no cut (STORE_ERROR, the part having done part of each): the
-/// writer's failure, a file's (file_fail with STORE_ERROR, mid-claim too), an erase's, a kill's
-/// and a header's. Nothing breaks a rule, and at every remount each key and file reads its value
-/// from before a failed write or after it, every other one exactly.
 #[test]
 fn hook_errors_never_cost_a_committed_value() {
     let (mut failed, mut either) = (0, 0);
@@ -3630,7 +3368,6 @@ fn hook_errors_never_cost_a_committed_value() {
         r.sim.pulse = r.sim.faint;
         r.sim.fail = 3;
         let mut rng = Rng::new(seed);
-        // What each key and file may read at the next mount.
         let mut values: BTreeMap<u32, Vec<Option<Vec<u8>>>> = BTreeMap::new();
         let mut files: BTreeMap<&str, Vec<Option<Vec<u8>>>> = BTreeMap::new();
         for step in 0..300 {
@@ -3711,24 +3448,24 @@ fn hook_errors_never_cost_a_committed_value() {
     assert!(failed > 300 && either > 10);
 }
 
-/// The write a cut interrupted in its commit word (every bit faint, read erased) is the newest
-/// record: it counts at every mount, and before the session writes it is copied forward (a new
-/// number, programmed whole), so it stays whatever the faint bits read later. Nothing else can
-/// read that way: a record older than the newest whose commit word reads erased never counts.
 #[test]
 fn the_interrupted_write_completes_and_stays() {
     for reads in [0xFFu8, 0x00, 0x5A] {
         let mut r = fresh(63, 256);
         assert_eq!(r.put_now(1, b"old"), STORE_OK);
         assert_eq!(r.put_now(1, b"cut"), STORE_OK);
-        let c = commit_word_of(r.sim.region(), 1);
-        r.sim.set_faint(c, 4, reads);
+        let c = newest_commit_word_of(r.sim.region(), 1, VALUE_RECORD);
+        r.sim.set_faint(c, COMMIT_WORD_LEN, reads);
         r.reset();
         assert_eq!(r.mount(), STORE_STATE_SIDOU);
         assert_eq!(r.get(1).as_deref(), Some(&b"cut"[..]), "reads {reads:#x}");
         assert_eq!(r.put(2, b"next"), STORE_BUSY, "recovery first");
         assert_eq!(r.put_now(2, b"next"), STORE_OK);
-        assert_ne!(commit_word_of(r.sim.region(), 1), c, "copied forward");
+        assert_ne!(
+            newest_commit_word_of(r.sim.region(), 1, VALUE_RECORD),
+            c,
+            "copied forward"
+        );
         r.maintain();
         while r.collect() == STORE_OK {
             r.maintain();
@@ -3743,16 +3480,15 @@ fn the_interrupted_write_completes_and_stays() {
         }
         r.assert_clean();
     }
-    // A record older than the newest, its commit word erased, does not count.
     let mut r = fresh(64, 256);
     assert_eq!(r.put_now(1, b"old"), STORE_OK);
     assert_eq!(r.put_now(1, b"never"), STORE_OK);
     assert_eq!(r.put_now(3, b"the newest"), STORE_OK);
-    let c = commit_word_of(r.sim.region(), 1);
+    let c = newest_commit_word_of(r.sim.region(), 1, VALUE_RECORD);
     r.reset();
     r.mount();
     assert_eq!(r.put_now(2, b"newer"), STORE_OK);
-    r.sim.cells.mem[c..c + 4].fill(0xFF); // as if never programmed (a test's liberty)
+    r.sim.cells.mem[c..c + 4].fill(0xFF);
     r.sim.cells.meant[c..c + 4].fill(0xFF);
     r.sim.mem[LO + c..LO + c + 4].fill(0xFF);
     r.reset();
@@ -3761,8 +3497,6 @@ fn the_interrupted_write_completes_and_stays() {
     assert_eq!(r.get(2).as_deref(), Some(&b"newer"[..]));
 }
 
-/// The newest record completed at the mount is indexed last: with the index full of the other
-/// keys, it is the one left out (counted as corruption), whatever order the sectors scan in.
 #[test]
 fn a_completed_write_that_overflows_the_index_is_the_one_left_out() {
     for first in [false, true] {
@@ -3770,8 +3504,6 @@ fn a_completed_write_that_overflows_the_index_is_the_one_left_out() {
         for k in 0..STORE_KEYS_MAX {
             assert_eq!(r.put_now(k, &k.to_le_bytes()), STORE_OK);
         }
-        // A 49th key's record, its commit word never programmed, the newest number, placed
-        // after the records of the first sector or of the last (as a store from elsewhere).
         let region = r.sim.region().to_vec();
         let claimed: Vec<usize> = (0..SECTORS)
             .filter(|&s| rd32(&region, s * SECTOR + 28) == 0 && region[s * SECTOR] == b'S')
@@ -3781,11 +3513,10 @@ fn a_completed_write_that_overflows_the_index_is_the_one_left_out() {
         } else {
             *claimed.last().unwrap()
         };
-        let mut off = 32;
+        let mut off = SECTOR_HEADER_LEN;
         let h = &region[sec * SECTOR..];
         while h[off] != 0xFF {
-            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
-            off += 16 + len.div_ceil(4) * 4 + 4;
+            off += record_len(h, off);
         }
         let mut rec = vec![1u8, 0, 4, 0];
         rec.extend_from_slice(&5000u32.to_le_bytes());
@@ -3807,19 +3538,13 @@ fn a_completed_write_that_overflows_the_index_is_the_one_left_out() {
     }
 }
 
-/// A write cut in its header, the header's faint bits reading wrong at the next mount (the
-/// write never happened) and right at a later one. Once the next session has completed one
-/// record (recovery's first copy), the cut write is older than it and uncommitted: it never
-/// counts again, whatever its bits read, and its sector is erased before the session writes.
 #[test]
 fn a_cut_header_never_counts_once_the_next_session_has_written() {
     for now in [0xFFu8, 0x5A] {
         let mut r = fresh(66, 256);
         assert_eq!(r.put_now(1, b"old"), STORE_OK);
         assert_eq!(r.put_now(1, b"torn"), STORE_OK);
-        // As a cut during its header leaves it: the commit word never programmed, the header's
-        // bits faint, reading erased now.
-        let c = commit_word_of(r.sim.region(), 1);
+        let c = newest_commit_word_of(r.sim.region(), 1, VALUE_RECORD);
         let head = c - 4 - 16;
         for at in [&mut r.sim.cells.mem, &mut r.sim.cells.meant] {
             at[c..c + 4].fill(0xFF);
@@ -3828,7 +3553,6 @@ fn a_cut_header_never_counts_once_the_next_session_has_written() {
         r.reset();
         assert_eq!(r.mount(), STORE_STATE_SIDOU);
         assert_eq!(r.get(1).as_deref(), Some(&b"old"[..]));
-        // Recovery, cut right after its first record commits.
         unsafe { store_quiet(&mut *r.st, 1) };
         let mut copying = false;
         while !r.sim.dead {
@@ -3840,7 +3564,7 @@ fn a_cut_header_never_counts_once_the_next_session_has_written() {
         }
         r.sim.dead = false;
         r.sim.cut_at = None;
-        r.sim.faint_reads(0x00); // the cut header's bits read right now
+        r.sim.faint_reads(0x00);
         r.reset();
         assert_eq!(r.mount(), STORE_STATE_SIDOU);
         assert_eq!(
@@ -3859,22 +3583,16 @@ fn a_cut_header_never_counts_once_the_next_session_has_written() {
     }
 }
 
-/// A kill cut short can leave the magic's zeros faint: the next mount reads the sector killed,
-/// and a collection could drop a tombstone that hid only that sector's records, which a later
-/// mount reading the magic valid again would bring back. The sector is erased before the session
-/// writes or collects (never killed again): its faint bits are gone before anything relies on it.
 #[test]
 fn a_sector_read_as_killed_is_erased_before_anything_relies_on_it() {
     let mut r = fresh(67, 256);
     assert_eq!(r.put_now(7, b"value"), STORE_OK);
     let old = sectors_holding(r.sim.region(), 7, 1)[0];
-    // A boot between: the deletion lands in a fresh head.
     r.reset();
     r.mount();
     r.maintain();
     assert_eq!(r.delete_now(7), STORE_OK);
     assert!(!sectors_holding(r.sim.region(), 7, STORE_TYPE_TOMB as u8).contains(&old));
-    // The value's sector killed by a cut kill: its magic's zeros faint, reading zero now.
     for b in &mut r.sim.cells.meant[old * SECTOR..old * SECTOR + 8] {
         *b = 0;
     }
@@ -3892,7 +3610,6 @@ fn a_sector_read_as_killed_is_erased_before_anything_relies_on_it() {
         b"SIDOUSTR",
         "a fresh erase header"
     );
-    // Then the tombstone may go.
     for _ in 0..12 {
         if sectors_holding(r.sim.region(), 7, STORE_TYPE_TOMB as u8).is_empty() {
             break;
@@ -3914,12 +3631,8 @@ fn a_sector_read_as_killed_is_erased_before_anything_relies_on_it() {
     r.assert_clean();
 }
 
-/// The writer's phase while it programs a record's commit word (store.c's W_COMMIT).
 const W_COMMIT: u8 = 4;
 
-/// Runs collections (store_collect, then its polls) until the writer has just programmed the
-/// commit word of a copy of `key`'s record; the region offset of that word. The collection is
-/// left there, as a cut would leave it.
 fn copy_commit_of(r: &mut Rig, key: u32) -> usize {
     for _ in 0..100 {
         if r.collect() != STORE_OK {
@@ -3943,10 +3656,6 @@ fn copy_commit_of(r: &mut Rig, key: u32) -> usize {
     panic!("no collection copied key {key}");
 }
 
-/// The review's C1: a collection cut in its copy's commit word, every bit faint and reading
-/// erased at the next mount. The copy is the newest record (a copy takes a new number), so it
-/// counts and is copied forward before anything else is written; the key is then deleted and
-/// every sector collected: whatever the faint bits read later, the deleted value stays gone.
 #[test]
 fn a_copy_read_erased_then_a_delete_never_brings_the_value_back() {
     for later in [0x00u8, 0x5A] {
@@ -3959,21 +3668,19 @@ fn a_copy_read_erased_then_a_delete_never_brings_the_value_back() {
         r.reset();
         r.mount();
         r.maintain();
-        assert_eq!(r.put_now(40, b"newer"), STORE_OK); // the newest, in a sector of its own
+        assert_eq!(r.put_now(40, b"newer"), STORE_OK);
         r.reset();
         r.mount();
         r.maintain();
-        // The head the copies go to, mostly live: never a collection's victim.
         for k in 50..53 {
             assert_eq!(r.put_now(k, &[k as u8; 1100]), STORE_OK);
         }
         let c = copy_commit_of(&mut r, 7);
-        r.sim.set_faint(c, 4, 0xFF);
+        r.sim.set_faint(c, COMMIT_WORD_LEN, 0xFF);
         r.reset();
         assert_eq!(r.mount(), STORE_STATE_SIDOU);
         assert_eq!(r.get(7).as_deref(), Some(&b"value"[..]));
         assert_eq!(r.delete_now(7), STORE_OK);
-        // Collections, with boots between so no head is spared, until the tombstone is gone.
         let tomb = |r: &Rig| !sectors_holding(r.sim.region(), 7, STORE_TYPE_TOMB as u8).is_empty();
         for _ in 0..12 {
             if !tomb(&r) {
@@ -3999,9 +3706,6 @@ fn a_copy_read_erased_then_a_delete_never_brings_the_value_back() {
     }
 }
 
-/// The review's C2: a sector read as killed at the mount is erased, and a write lands between
-/// its erase and its erase header. Nothing may program the freshly erased sector but its erase
-/// header: it joins the pool clean, and records written into it later stay.
 #[test]
 fn a_write_between_an_erase_and_its_header_lands_safely() {
     let mut r = fresh(69, 256);
@@ -4010,12 +3714,10 @@ fn a_write_between_an_erase_and_its_header_lands_safely() {
     r.mount();
     r.maintain();
     assert_eq!(r.put_now(8, b"other"), STORE_OK);
-    // A collection outside quiet: its victim killed, its erase left for later.
     assert_eq!(r.collect(), STORE_OK);
     r.settle();
     r.reset();
     assert_eq!(r.mount(), STORE_STATE_SIDOU);
-    // Maintenance until that erase is done; its header deferred.
     let erases = r.sim.erases;
     unsafe { store_quiet(&mut *r.st, 1) };
     while r.sim.erases == erases {
@@ -4035,7 +3737,6 @@ fn a_write_between_an_erase_and_its_header_lands_safely() {
     r.sim.later = 0;
     r.settle();
     r.maintain();
-    // Every sector claimed in turn.
     for i in 0..60u32 {
         assert_eq!(r.put_now(10 + i % 20, &[i as u8; 900]), STORE_OK);
     }
@@ -4055,10 +3756,6 @@ fn a_write_between_an_erase_and_its_header_lands_safely() {
     r.assert_clean();
 }
 
-/// The work of API calls outside store_poll (Rig::api holds each to STORE_POLL_WORK) at their
-/// worst: a full key index, live records spread over many sectors, the pool at its minimum so a
-/// put, a deletion and a file's begin each plan garbage collection, and store_erase_wanted
-/// planning a collection.
 #[test]
 fn api_calls_stay_within_a_polls_work() {
     let mut r = fresh(96, 256);
@@ -4074,7 +3771,6 @@ fn api_calls_stay_within_a_polls_work() {
             STORE_OK
         );
     }
-    // Rewrites until the pool is at its minimum and a put needs a new head.
     let mut busy = 0;
     for i in 0..2000u32 {
         let k = (i * 7) % STORE_KEYS_MAX;
@@ -4084,7 +3780,7 @@ fn api_calls_stay_within_a_polls_work() {
             let rc = r.file_begin("BIG", FILE_MAX);
             assert!(rc == STORE_BUSY || rc == STORE_FULL, "{rc}");
             if r.delete(k) == STORE_OK {
-                r.settle(); // a tombstone fits the head's room, or the pool one under
+                r.settle();
             }
             assert!(r.erase_wanted());
             r.maintain();
@@ -4101,10 +3797,6 @@ fn api_calls_stay_within_a_polls_work() {
     r.assert_clean();
 }
 
-/// A store the platform never mounted (store_fm1 leaves it so on a flash part it does not
-/// know) refuses every write at once and for good with STORE_ERROR: before, write_check said
-/// STORE_BUSY, and a SONG SAVE waited on it for ever with the song frozen (review 1.1). Reads
-/// find nothing and nothing touches the part.
 #[test]
 fn an_unmounted_store_refuses_every_write_for_good() {
     let mut r = Rig::new(Sim::new(11), 256);
@@ -4124,21 +3816,15 @@ fn an_unmounted_store_refuses_every_write_for_good() {
     assert!(r.file_open("SONG").is_none());
     assert!(r.dir().is_empty());
     assert_eq!(r.sim.ops, 0, "the part is never touched");
-    // Mounted after all, it writes.
     assert_eq!(r.mount(), STORE_STATE_BLANK);
     assert_eq!(r.put_now(1, b"value"), STORE_OK);
     assert_eq!(r.get(1).as_deref(), Some(&b"value"[..]));
 }
 
-/// A sector whose erase always fails (a worn part) is retired for the session after its
-/// second failed job in a row: maintenance goes on with the others, the pool fills, writes and
-/// files go on, and store_stats counts it (review 1.2: maintenance took it again and again, so
-/// nothing else was ever erased). The next boot finds it as the part left it and retires it
-/// again.
 #[test]
 fn a_sector_that_never_erases_is_retired_and_the_store_goes_on() {
     let mut sim = Sim::new(21);
-    sim.worn = vec![0]; // the first a blank region's refill takes
+    sim.worn = vec![0];
     let mut r = Rig::new(sim, 256);
     assert_eq!(r.mount(), STORE_STATE_BLANK);
     r.maintain();
@@ -4174,14 +3860,8 @@ fn a_sector_that_never_erases_is_retired_and_the_store_goes_on() {
     r.assert_clean();
 }
 
-/// The head sector wears out just as a cut leaves a write in it undecided (review 1.2's worst
-/// case: after the reboot the mount's recovery must evacuate and erase it before the session
-/// writes, and it never erases): recovery copies its records, retires it after its kills and
-/// erases fail twice each, and the store takes writes again; nothing committed is lost, at that
-/// boot and the next.
 #[test]
 fn a_worn_head_after_a_cut_is_evacuated_retired_and_recovery_ends() {
-    // The first cut during the next write that leaves the head ambiguous at the mount.
     let (mut r, head) = (0..)
         .find_map(|n| {
             let mut r = fresh(22, 64);
@@ -4228,15 +3908,12 @@ fn a_worn_head_after_a_cut_is_evacuated_retired_and_recovery_ends() {
     r.assert_clean();
 }
 
-/// Power cuts at every operation with a worn sector among the claimed ones: whatever recovery,
-/// collections and retirement do around it, every key reads its old value or its new one.
 #[test]
 fn power_loss_with_a_worn_sector_leaves_the_old_value_or_the_new() {
     let (mut tried, mut retired) = (0, 0);
     for (seed, window) in [(40u64, 16u32), (42, 64), (44, 256), (46, 4)] {
         let mut run = Run::with(seed, 10, true, window, seed % 4 == 2);
-        run.rig.sim.suspend = 0; // a suspended erase resumes whole: never worn
-                                 // Wear out a claimed sector (not the head), one holding records if there is one.
+        run.rig.sim.suspend_percent = 0;
         let claimed = |r: &Rig| {
             let head = usize::from(r.st.head);
             (0..SECTORS)

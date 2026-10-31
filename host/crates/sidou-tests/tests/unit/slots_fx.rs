@@ -1,20 +1,18 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The FX slot: delay (mono and ping-pong) and the light and lush reverbs.
 
 use sidou_sys::*;
 
 use crate::slots::*;
+use crate::{ac_rms, sine, xorshift_noise, FS, FSF, RESIDUAL_MAX};
 
-/// A 5 ms 300 Hz burst at `at`, then silence, `n` samples in all.
-fn burst(n: usize, at: usize, amp: f64) -> Vec<i16> {
+fn burst_of_5ms_at_300hz(n: usize, at: usize, amp: f64) -> Vec<i16> {
     let mut x = vec![0i16; n];
     let b = sine(300.0, amp, 220);
     x[at..at + b.len()].copy_from_slice(&b);
     x
 }
 
-/// Peak |x| within `w` samples of `at`.
 fn peak_near(x: &[i16], at: usize, w: usize) -> i32 {
     x[at.saturating_sub(w)..(at + w).min(x.len())]
         .iter()
@@ -23,29 +21,26 @@ fn peak_near(x: &[i16], at: usize, w: usize) -> i32 {
         .unwrap_or(0)
 }
 
-/// Echo time in samples for A, as the block maps it (min time 2^(octaves A)).
-fn echo_time(s: &Slots) -> f64 {
+fn echo_time_in_samples(s: &Slots) -> f64 {
     f64::from(unsafe { s.s.fx.echo.time })
 }
 
 #[test]
 fn delay_echoes_at_the_time_and_decays_by_the_feedback() {
     let n = 3 * FS as usize;
-    let input = burst(n, 1000, 0.25);
+    let input = burst_of_5ms_at_300hz(n, 1000, 0.25);
     let mut s = Slots::new(1);
     s.set(FX, params(SID_FXSLOT_DELAY, 0.5, 0.5, 0.0, 1.0));
-    // Let the switch-in finish (pool clear and fade) before the burst.
     s.run(&vec![0i16; FS as usize / 10]);
     let out = s.run(&input);
     let (l, r) = (left(&out), right(&out));
     assert_eq!(l, r, "mono delay: both sides alike");
-    let t = echo_time(&s);
+    let t = echo_time_in_samples(&s);
     let min = SID_FX_ECHO_MIN_MS * 1e-3 * FSF;
     let octaves = ((f64::from(SID_SLOT_POOL_LEN) - 4.0) / min).log2();
     let want = min * 2f64.powf(octaves * 0.5);
     println!("delay at A = 0.5: {t:.2} samples (want {want:.2})");
     assert!((t / want - 1.0).abs() < 0.003);
-    // Burst peaks: the input's at 1000 + ~55, echoes T, 2T, ... later.
     let p0 = peak_near(&input, 1055, 60);
     let echoes: Vec<i32> = (1..=3)
         .map(|k| peak_near(&l, 1055 + (k as f64 * t) as usize, 60))
@@ -57,20 +52,19 @@ fn delay_echoes_at_the_time_and_decays_by_the_feedback() {
         let ratio = f64::from(echoes[k]) / f64::from(echoes[k - 1]);
         assert!((ratio / fb - 1.0).abs() < 0.03, "repeat {k}: ratio {ratio}");
     }
-    // Nothing between the echoes.
     assert!(peak_near(&l, 1055 + (1.5 * t) as usize, 200) < 3);
 }
 
 #[test]
 fn ping_pong_alternates_sides() {
     let n = 2 * FS as usize;
-    let input = burst(n, 1000, 0.25);
+    let input = burst_of_5ms_at_300hz(n, 1000, 0.25);
     let mut s = Slots::new(1);
     s.set(FX, params(SID_FXSLOT_PINGPONG, 0.6, 0.3, 0.0, 1.0));
     s.run(&vec![0i16; FS as usize / 10]);
     let out = s.run(&input);
     let (l, r) = (left(&out), right(&out));
-    let t = echo_time(&s);
+    let t = echo_time_in_samples(&s);
     let at = |k: f64| 1055 + (k * t) as usize;
     let (l1, r1, l3, r2) = (
         peak_near(&l, at(1.0), 60),
@@ -92,11 +86,9 @@ fn ping_pong_alternates_sides() {
 
 #[test]
 fn delay_feedback_is_stable_at_the_top() {
-    // Full feedback on full-scale noise saturates smoothly, then dies away once the input
-    // stops (0.95 per repeat).
     let mut s = Slots::new(1);
     s.set(FX, params(SID_FXSLOT_DELAY, 1.0, 0.1, 0.0, 1.0));
-    let loud = s.run(&test_noise(5 * FS as usize, 5));
+    let loud = s.run(&xorshift_noise(5 * FS as usize, 5));
     let pk = loud.iter().map(|&v| i32::from(v).abs()).max().unwrap();
     let out = s.run(&vec![0i16; 15 * FS as usize]);
     let last = &out[out.len() - 2 * FS as usize..];
@@ -107,24 +99,19 @@ fn delay_feedback_is_stable_at_the_top() {
 
 #[test]
 fn switching_clears_the_pool_first() {
-    // A loud delay tail, then lush (which fills the whole pool), then the delay again on
-    // silence: the second delay must not replay anything.
     let mut s = Slots::new(1);
     s.set(FX, params(SID_FXSLOT_DELAY, 0.9, 0.6, 0.0, 1.0));
-    s.run(&test_noise(FS as usize, 1));
+    s.run(&xorshift_noise(FS as usize, 1));
     s.set(FX, params(SID_FXSLOT_REVERB_LUSH, 0.9, 0.0, 0.0, 1.0));
-    s.run(&test_noise(FS as usize / 2, 2));
+    s.run(&xorshift_noise(FS as usize / 2, 2));
     s.set(FX, params(SID_FXSLOT_DELAY, 0.9, 0.6, 0.0, 1.0));
     let quiet = vec![0i16; 3 * FS as usize];
     let out = s.run(&quiet);
-    // The lush tail fades out over the first 20 ms; after the switch completes, silence.
     let after = &out[2 * (FS as usize / 10)..];
     let pk = after.iter().map(|&v| i32::from(v).abs()).max().unwrap();
     assert_eq!(pk, 0, "the new delay replays old pool contents ({pk})");
 }
 
-/// RT60 in seconds from the energy decay of (L, R) by Schroeder integration, fitting the
-/// -5 .. -25 dB range.
 fn rt60(l: &[i16], r: &[i16]) -> f64 {
     let e: Vec<f64> = l
         .iter()
@@ -151,7 +138,7 @@ fn reverb_response(
     let mut s = Slots::new(1);
     s.set(FX, params(alg, amount, damping, b, 1.0));
     s.run(&vec![0i16; FS as usize / 10]);
-    let out = s.run(&burst(seconds * FS as usize, 0, 0.5));
+    let out = s.run(&burst_of_5ms_at_300hz(seconds * FS as usize, 0, 0.5));
     (left(&out), right(&out))
 }
 
@@ -187,10 +174,9 @@ fn reverbs_decay_longer_with_amount_and_are_wide() {
     }
 }
 
-/// Brightness: RMS of the first difference over RMS (rises with high-frequency content).
 fn brightness(x: &[i16]) -> f64 {
     let d: Vec<i16> = x.windows(2).map(|w| w[1].saturating_sub(w[0])).collect();
-    rms(&d) / rms(x)
+    ac_rms(&d) / ac_rms(x)
 }
 
 #[test]
@@ -200,7 +186,7 @@ fn reverbs_damping_darkens_the_tail() {
             let mut s = Slots::new(1);
             s.set(FX, params(alg, 0.6, damping, 0.5, 1.0));
             s.run(&vec![0i16; FS as usize / 10]);
-            let mut input = test_noise(441, 4);
+            let mut input = xorshift_noise(441, 4);
             input.resize(2 * FS as usize, 0);
             let out = s.run(&input);
             brightness(&left(&out)[FS as usize / 2..])
@@ -216,7 +202,7 @@ fn reverbs_are_stable_and_never_denormal() {
     for alg in [SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_REVERB_LUSH] {
         let mut s = Slots::new(1);
         s.set(FX, params(alg, 1.0, 0.0, 0.0, 1.0));
-        s.run(&test_noise(10 * FS as usize, 9));
+        s.run(&xorshift_noise(10 * FS as usize, 9));
         let out = s.run(&vec![0i16; 20 * FS as usize]);
         let last = &out[out.len() - 2 * FS as usize..];
         let pk = last.iter().map(|&v| i32::from(v).abs()).max().unwrap();
@@ -247,8 +233,6 @@ fn fx_parameter_jumps_are_click_free() {
         (B, 0.0, 1.0),
         (Mix, 0.0, 1.0),
     ];
-    // The delays at 0.02 full scale: at 0.95 feedback a 110 Hz tone builds up to 20x where
-    // its echoes line up, and a saturating loop at different gains is no click test.
     assert_click_free_at(0.02, FX, params(SID_FXSLOT_DELAY, 0.5, 0.2, 0.5, 1.0), &all);
     assert_click_free_at(
         0.02,
@@ -256,9 +240,6 @@ fn fx_parameter_jumps_are_click_free() {
         params(SID_FXSLOT_PINGPONG, 0.5, 0.2, 0.5, 1.0),
         &all,
     );
-    // The reverbs at 0.1 full scale: their wet tail is broadband, so the difference of two
-    // mixes of it has a 2nd difference that grows with level (40 LSB at 0.5 for a Mix
-    // move); a click does not.
     assert_click_free_at(
         0.1,
         FX,
@@ -285,15 +266,12 @@ fn reverb_lines_fit_their_rings_at_any_sample_rate() {
         let end_rv = rv.base[9] + rv.length[9];
         let end_pl = pl.base[11] + pl.length[11];
         println!("{fs} Hz: light uses {end_rv} of {SID_FX_REVERB_LEN}, lush {end_pl} of {SID_FX_PLATE_LEN}");
-        // Each line's last sample is at base + length - 1: within the ring.
         assert!(end_rv <= SID_FX_REVERB_LEN && end_pl <= SID_FX_PLATE_LEN);
     }
 }
 
 #[test]
 fn delay_time_glides_without_a_kink_at_musical_level() {
-    // A time jump on a 0.5 full-scale tone, no feedback (nothing saturates): the glide's
-    // speed eases in and out, so the read position never turns a corner.
     use Control::*;
     for alg in [SID_FXSLOT_DELAY, SID_FXSLOT_PINGPONG] {
         assert_click_free_at(0.5, FX, params(alg, 0.0, 0.2, 0.0, 1.0), &[(A, 0.0, 1.0)]);
@@ -302,7 +280,7 @@ fn delay_time_glides_without_a_kink_at_musical_level() {
 
 #[test]
 fn switching_fx_is_click_free() {
-    let (sw, steady) = switch_steps(
+    let (sw, steady) = worst_second_diff_at_and_between_switches(
         FX,
         &[
             SID_FXSLOT_DELAY,
@@ -345,9 +323,6 @@ fn all_slots_together_are_deterministic_in_any_block_size() {
 
 #[test]
 fn odd_block_sizes_and_switches_at_mix_0_do_not_change_the_output() {
-    // Algorithm switches made at Mix 0 and back, all slots, cut into odd block sizes at
-    // random: a fade can end off the snap grid with Mix 0; the result must not depend on
-    // where calls end.
     let n = 3 * FS as usize;
     let input = sine(220.0, 0.4, n);
     let settings: Vec<(usize, u32, sid_slot_params)> = vec![
@@ -378,7 +353,6 @@ fn odd_block_sizes_and_switches_at_mix_0_do_not_change_the_output() {
         let mut pos = 0;
         let mut k = 0;
         while pos < n {
-            // Settings land on their sample: cut a block there if needed.
             let next = settings
                 .iter()
                 .map(|e| e.0)

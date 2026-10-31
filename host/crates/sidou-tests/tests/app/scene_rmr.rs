@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! RED MOON RITE on the device's side (app/scene_rmr.h): its state machine frame by frame
-//! against the script's (tests/golden/scene/rmr-trace.tsv, written by
-//! assets/scene/red-moon-rite.js), and its layers against the script's golden frames.
 
 use std::path::PathBuf;
 
 use sidou_sys::*;
 use sidou_tests::font::repo_root;
 use sidou_tests::scene_art;
+
+use crate::STATUS_BAR_H;
 
 const W: usize = 240;
 const POSE_NAMES: [&str; 9] = [
@@ -19,8 +18,6 @@ fn golden_dir() -> PathBuf {
     repo_root().join("tests/golden/scene")
 }
 
-/// A frame of the trace: the steps it took, the cutoff, and the state after it, as the
-/// script prints them.
 struct TraceFrame {
     frame: u32,
     steps: Vec<scene_rmr_beat>,
@@ -42,7 +39,6 @@ fn beat_of(step: &str) -> scene_rmr_beat {
             hits |= h;
         }
     }
-    // The prototype's bass: 50 (D3) and up gives the right barbarian the lead.
     let bass = match f[3] {
         "-" => SCENE_RMR_BASS_NONE,
         n if n.parse::<u32>().unwrap() >= SCENE_SONG_BASS_SPLIT => SCENE_RMR_BASS_HIGH,
@@ -79,7 +75,6 @@ fn trace() -> Vec<TraceFrame> {
         .collect()
 }
 
-/// The device's state printed as the script prints it.
 fn state_of(r: &scene_rmr) -> String {
     let pose = |k: usize| POSE_NAMES[usize::from(r.pose[k])];
     let next = if r.next == 0 {
@@ -155,8 +150,6 @@ fn the_vignette_plays_the_script_frame_for_frame() {
     println!(
         "{disarms} disarms, {stuck} frames stuck, {reaches} frames reaching, {parries} parries"
     );
-    // Three passes of the four bars: a disarm each, the sword stuck a while, pulled free (the
-    // reach holds 8 frames, the last of them back in guard).
     assert_eq!(disarms, 3);
     assert!(stuck > 10 && reaches == 3 * 7 && parries > 10);
 }
@@ -164,7 +157,6 @@ fn the_vignette_plays_the_script_frame_for_frame() {
 #[test]
 fn the_sky_takes_the_cutoffs_palette() {
     let of = |c: u32| unsafe { scene_rmr_sky_of(c) };
-    // The prototype's 0.36 and 0.68 of the cutoff's range.
     assert_eq!(
         (of(0), of(736), of(737), of(1391), of(1392), of(2047)),
         (0, 0, 1, 1, 2, 2)
@@ -180,9 +172,7 @@ fn the_sky_takes_the_cutoffs_palette() {
     assert!(r.sky.iter().all(|&p| p == 2));
 }
 
-/// A screen composited from scene_px's slots, the way the panel gets it.
 struct Rig {
-    /// The grid the compositor's region is on, kept alive with it.
     _g: Box<grid>,
     sp: Box<scene_px>,
 }
@@ -219,11 +209,9 @@ impl Rig {
     }
 }
 
-/// The torches' boxes (their cycling and flare are the device's own) and the status bar (the
-/// script's goldens leave both out).
-fn masked(x: usize, y: usize) -> bool {
+fn left_out_of_the_script_goldens(x: usize, y: usize) -> bool {
     let f = unsafe { scene_rmr_flames };
-    y < 16
+    y < STATUS_BAR_H
         || f.iter().any(|b| {
             let (bx, by, bw, bh) = (
                 usize::from(b[0]),
@@ -259,20 +247,19 @@ fn the_layers_draw_the_scripts_golden_frames() {
         let mut off = Vec::new();
         for y in 0..W {
             for x in 0..W {
-                if !masked(x, y) && screen[y * W + x] != png.px[y * W + x] {
+                if !left_out_of_the_script_goldens(x, y) && screen[y * W + x] != png.px[y * W + x] {
                     off.push((x, y));
                 }
             }
         }
-        // The spin's arc is the device's sine (app/sine.h), not the script's: within a pixel.
-        let arc = if name == "spin" {
+        let spin_arc_off_by_a_pixel = if name == "spin" {
             2 * SCENE_RMR_ARC_MARKS as usize
         } else {
             0
         };
         println!("{name} (frame {frame}): {} pixels off", off.len());
         assert!(
-            off.len() <= arc,
+            off.len() <= spin_arc_off_by_a_pixel,
             "{name}: {} pixels differ from the script's, the first {:?}",
             off.len(),
             &off[..off.len().min(8)]
@@ -280,7 +267,6 @@ fn the_layers_draw_the_scripts_golden_frames() {
     }
 }
 
-/// A tile of the view's compositor, as the grid will paint it.
 fn view_tile(ui: &crate::views::Ui, col: usize, row: usize) -> [u8; 64] {
     let mut tile = [0u8; 64];
     let sp = unsafe { &ui.v.scene.u.rite.px };
@@ -288,11 +274,8 @@ fn view_tile(ui: &crate::views::Ui, col: usize, row: usize) -> [u8; 64] {
     tile
 }
 
-/// SELECT reaches RED MOON RITE (its toast); it shows over the compositor's painter region, its
-/// cells blank, and what the screen draws over it (the toast, MIDI learn's frame) keeps its own
-/// background; SELECT on to FIRE gives the region back.
 #[test]
-fn red_moon_rite_is_scenes_sixth_piece() {
+fn red_moon_rite_is_scenes_sixth_piece_and_paints_under_the_screens_overlays() {
     use crate::views::Ui;
     let mut ui = Ui::without_cards();
     crate::scene::open_scene(&mut ui);
@@ -304,7 +287,6 @@ fn red_moon_rite_is_scenes_sixth_piece() {
     crate::drain(&mut ui.g);
     let sp: *const scene_px = unsafe { &ui.v.scene.u.rite.px };
     assert_eq!(ui.g.region_ctx.cast_const(), sp.cast());
-    // The toast's cells: their background under the glyphs.
     let (c, r) = (SCREEN_TOAST_COL as usize, SCREEN_TOAST_ROW as usize);
     let bg = ui.g.attr[r * 30 + c] >> 4;
     assert_ne!(ui.g.ch[r * 30 + c], b' ');
@@ -313,21 +295,13 @@ fn red_moon_rite_is_scenes_sixth_piece() {
         view_tile(&ui, c, r).iter().all(|&p| p == bg),
         "the toast's background"
     );
-    for _ in 0..40 {
-        ui.frame();
-        crate::drain(&mut ui.g);
-    }
+    ui.frames_sent(40);
     assert!(ui.toast().is_none());
     assert!(
         view_tile(&ui, c, r).iter().any(|&p| p != bg),
         "the floor under the toast's row once it is gone"
     );
-    // MIDI learn's frame over it: the frame's cells keep the frame's background.
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
+    let _ml = ui.attach_learn();
     ui.learn_on(PANEL_ENC_K1);
     ui.frame();
     ui.frame();
@@ -351,7 +325,6 @@ fn red_moon_rite_is_scenes_sixth_piece() {
         view_tile(&ui, c, r).iter().any(|&p| p != bg),
         "the scene back under it"
     );
-    // FIRE: the cells' own pixels again.
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.frame();
     assert!(ui.g.region_painter.is_none());

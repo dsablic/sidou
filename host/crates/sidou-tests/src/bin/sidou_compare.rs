@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Renders the filter sweeps (sidou_tests::filter_sweeps) on SIDOU and reSIDfp, at the
-//! small-signal level the reference tests assert and at full scale, writes each pair as
-//! WAV files into the directory given as the first argument (default: the current
-//! directory) and prints the largest and the RMS envelope difference per scenario and
-//! model.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -12,6 +7,8 @@ use std::process::ExitCode;
 use sidou_sys::{SID_MODEL_6581, SID_MODEL_8580};
 use sidou_tests::filter_sweeps::{sweep, FULL, MODES, SMALL};
 use sidou_tests::signal_metrics::write_wav16;
+
+const WAV_SAMPLE_RATE: u32 = 44_100;
 
 fn main() -> ExitCode {
     let dir = PathBuf::from(std::env::args().nth(1).unwrap_or_else(|| ".".into()));
@@ -27,7 +24,7 @@ fn main() -> ExitCode {
                 let d = sweep(m, mode, sustain);
                 for (engine, x) in [("sidou", &d.ours), ("residfp", &d.reference)] {
                     let path = dir.join(format!("{name}_{tag}_{engine}.wav"));
-                    if let Err(e) = write_wav16(&path, x, 44100) {
+                    if let Err(e) = write_wav16(&path, x, WAV_SAMPLE_RATE) {
                         eprintln!("cannot write {}: {e}", path.display());
                         return ExitCode::FAILURE;
                     }

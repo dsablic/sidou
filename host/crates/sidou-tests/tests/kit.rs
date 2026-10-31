@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The SID drum kit (core/song/gt2_kit.h, decision record 0009): each drum rendered through
-//! the song transport on both chip models, and the NEW song that holds it as GoatTracker
-//! reads and writes it.
 
 use gt2_ref::trace::trace;
 use sidou_sys::*;
@@ -16,49 +13,22 @@ const NAMES: [&str; DRUMS] = [
     "KICK", "SNARE", "CL HAT", "OP HAT", "CLAP", "TOM LO", "TOM HI", "RIM",
 ];
 const FS: f64 = SAMPLE_RATE as f64;
-/// A PAL frame in samples, about.
-const FRAME: usize = 882;
+const FRAME_SAMPLES: usize = 882;
+const VOICE3_AD: u8 = 0x13;
+const ENV3: u8 = 0x1c;
 
-fn kit_instr(d: usize) -> [u8; 25] {
-    // SAFETY: gt2_kit_drum is 25 bytes, an instrument's.
-    unsafe { std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[d]) }
-}
-
-/// The kit as a song: its instruments 1-8 and its rows, the drum `d` at row 0 of voice 1.
 fn drum_song(d: usize) -> Vec<u8> {
     let mut s = SngSpec::new();
     s.instr = (0..DRUMS).map(kit_instr).collect();
-    // SAFETY: plain constant data.
-    let (wave, pulse) = unsafe {
-        (
-            (&raw const gt2_kit_wave).read(),
-            (&raw const gt2_kit_pulse).read(),
-        )
-    };
-    s.tables = vec![
-        wave[0]
-            .iter()
-            .copied()
-            .zip(wave[1].iter().copied())
-            .collect(),
-        pulse[0]
-            .iter()
-            .copied()
-            .zip(pulse[1].iter().copied())
-            .collect(),
-        vec![],
-        vec![],
-    ];
-    let mut p0 = vec![[0xbdu8, 0, 0, 0]; 64];
-    p0[0] = [0x60 + 36, d as u8 + 1, 0, 0];
+    s.tables = kit_tables().to_vec();
+    let mut p0 = vec![REST; 64];
+    p0[0] = [PATTERN_NOTE_C3, d as u8 + 1, 0, 0];
     s.patterns[0].0 = p0;
     s.encode()
 }
 
-/// The drum on chip A of `model` from its row's call, `ms` milliseconds, as floats.
-fn render(d: usize, model: sid_model, ms: usize) -> Vec<f32> {
-    let mut song = Song::host();
-    song.read(&drum_song(d), 0).unwrap();
+fn drum_on_chip_a_from_its_row(d: usize, model: sid_model, ms: usize) -> Vec<f32> {
+    let mut song = Song::host_from(&drum_song(d));
     let mut t = Transport::new(&mut song);
     unsafe { sid_init(&mut *t.chip, model, SID_CLOCK_PAL, SAMPLE_RATE) };
     assert!(t.play(0, 0));
@@ -89,8 +59,7 @@ fn db(v: f64) -> f64 {
     20.0 * v.max(1e-9).log10()
 }
 
-/// x through two one-pole low-passes at fc.
-fn low_pass(x: &[f32], fc: f64) -> Vec<f32> {
+fn two_pole_low_pass(x: &[f32], fc: f64) -> Vec<f32> {
     let a = 1.0 - (-2.0 * std::f64::consts::PI * fc / FS).exp();
     let (mut y1, mut y2) = (0.0f64, 0.0f64);
     x.iter()
@@ -106,16 +75,14 @@ fn models() -> [(sid_model, &'static str); 2] {
     [(SID_MODEL_6581, "6581"), (SID_MODEL_8580, "8580")]
 }
 
-/// Every drum sounds on both chips, from the frame after its row (its first frame is the
-/// test bit), loud at its start and fading to silence.
 #[test]
 fn every_drum_sounds_on_both_chips_and_fades() {
     for (d, name) in NAMES.iter().enumerate() {
         for (model, m) in models() {
-            let x = render(d, model, 1500);
+            let x = drum_on_chip_a_from_its_row(d, model, 1500);
             let on = onset(&x);
-            let start = db(rms(&x[on..on + FRAME / 2]));
-            let end = db(rms(&x[x.len() - FRAME * 5..]));
+            let start = db(rms(&x[on..on + FRAME_SAMPLES / 2]));
+            let end = db(rms(&x[x.len() - FRAME_SAMPLES * 5..]));
             println!(
                 "{} {m}: onset at {on}, {start:.1} dB, the last 100 ms {end:.1} dB",
                 name
@@ -130,15 +97,13 @@ fn every_drum_sounds_on_both_chips_and_fades() {
     }
 }
 
-/// The pitched drums fall: the kick from its click to a body near 58 Hz, the toms by a
-/// third or more, the high tom above the low one.
 #[test]
 fn the_kick_and_the_toms_fall_in_pitch() {
     for (model, m) in models() {
         let f0 = |d: usize, frame: usize| {
-            let x = render(d, model, 400);
-            let at = onset(&x) + frame * FRAME;
-            estimate_f0(&x[at..at + FRAME], FS, 30.0, 1000.0)
+            let x = drum_on_chip_a_from_its_row(d, model, 400);
+            let at = onset(&x) + frame * FRAME_SAMPLES;
+            estimate_f0(&x[at..at + FRAME_SAMPLES], FS, 30.0, 1000.0)
         };
         let (kick_early, kick_body) = (f0(GT2_KIT_KICK as usize, 0), f0(GT2_KIT_KICK as usize, 6));
         println!("{m}: kick {kick_early:.0} Hz, then {kick_body:.0} Hz");
@@ -160,15 +125,13 @@ fn the_kick_and_the_toms_fall_in_pitch() {
     }
 }
 
-/// The kick has weight on both models: most of it is below 120 Hz, as much on the 8580 as on
-/// the 6581.
 #[test]
 fn the_kick_has_weight_on_both_models() {
     let mut share = Vec::new();
     for (model, m) in models() {
-        let x = render(GT2_KIT_KICK as usize, model, 400);
+        let x = drum_on_chip_a_from_its_row(GT2_KIT_KICK as usize, model, 400);
         let x = &x[onset(&x)..];
-        let low = db(rms(&low_pass(x, 120.0))) - db(rms(x));
+        let low = db(rms(&two_pole_low_pass(x, 120.0))) - db(rms(x));
         println!("{m}: the kick's band below 120 Hz is {low:.1} dB of it");
         assert!(low > -4.0, "{m}: the kick's low band is {low:.1} dB of it");
         share.push(low);
@@ -179,22 +142,21 @@ fn the_kick_has_weight_on_both_models() {
     );
 }
 
-/// The hats are noise at its brightest; the closed one is short, the open one long.
 #[test]
 fn the_hats_are_bright_and_the_closed_one_short() {
     for (model, m) in models() {
         let fall = |d: usize| {
-            let x = render(d, model, 800);
+            let x = drum_on_chip_a_from_its_row(d, model, 800);
             let x = &x[onset(&x)..];
-            let crossings = x[..FRAME]
+            let crossings = x[..FRAME_SAMPLES]
                 .windows(2)
                 .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
                 .count();
-            let env = rms_envelope_db(x, FRAME / 2);
+            let env = rms_envelope_db(x, FRAME_SAMPLES / 2);
             let below = env.iter().position(|&e| e < env[0] - 24.0).unwrap();
             (
-                crossings as f64 * FS / FRAME as f64 / 2.0,
-                below * FRAME / 2,
+                crossings as f64 * FS / FRAME_SAMPLES as f64 / 2.0,
+                below * FRAME_SAMPLES / 2,
             )
         };
         let (closed_hz, closed) = fall(GT2_KIT_CLOSED_HAT as usize);
@@ -211,20 +173,18 @@ fn the_hats_are_bright_and_the_closed_one_short() {
             "{m}: the closed hat is not short against the open one"
         );
         assert!(
-            closed < FRAME * 5,
+            closed < FRAME_SAMPLES * 5,
             "{m}: the closed hat rings {closed} samples"
         );
     }
 }
 
-/// The clap is three bursts: its level dips between them, in its first 120 ms (the first
-/// burst two frames, its second frame its SR row's).
 #[test]
 fn the_clap_is_three_bursts() {
     for (model, m) in models() {
-        let x = render(GT2_KIT_CLAP as usize, model, 400);
+        let x = drum_on_chip_a_from_its_row(GT2_KIT_CLAP as usize, model, 400);
         let x = &x[onset(&x)..];
-        let env: Vec<f64> = rms_envelope_db(x, FRAME / 4);
+        let env: Vec<f64> = rms_envelope_db(x, FRAME_SAMPLES / 4);
         let dips = (1..24)
             .filter(|&i| env[i] < env[i - 1] - 3.0 && env[i + 2] > env[i] + 3.0)
             .count();
@@ -236,12 +196,13 @@ fn the_clap_is_three_bursts() {
     }
 }
 
-/// NEW's lead, bass and kit (instruments 1-10, and its tables) as a song on voice 3, whose
-/// envelope ENV3 reads: `before` (an instrument, or none) at row 0, `instr` at row 4, a key
-/// off at row 5 if `staccato`, all at `tempo`.
-fn voice3_song(before: Option<u8>, instr: u8, staccato: bool, tempo: u8) -> Vec<u8> {
-    let mut new = Song::host();
-    new.read(&template(), 0).unwrap();
+fn new_song_instruments_on_voice3(
+    before: Option<u8>,
+    instr: u8,
+    staccato: bool,
+    tempo: u8,
+) -> Vec<u8> {
+    let new = Song::host_from(&new_song_template());
     let raw = new.raw();
     let rows =
         |t: usize, n: u32| (0..n as usize).map(move |r| (raw.ltable[t][r], raw.rtable[t][r]));
@@ -253,39 +214,34 @@ fn voice3_song(before: Option<u8>, instr: u8, staccato: bool, tempo: u8) -> Vec<
         vec![],
         vec![],
     ];
-    let mut quiet = vec![[0xbdu8, 0, 0, 0]; 16];
-    quiet[0] = [0xbd, 0, 0x0f, tempo];
-    let mut v3 = vec![[0xbdu8, 0, 0, 0]; 16];
+    let mut quiet = vec![REST; 16];
+    quiet[0] = [REST[0], 0, 0x0f, tempo];
+    let mut v3 = vec![REST; 16];
     if let Some(i) = before {
-        v3[0] = [0x60 + 36, i, 0, 0];
+        v3[0] = [PATTERN_NOTE_C3, i, 0, 0];
     }
-    v3[4] = [0x60 + 36, instr, 0, 0];
+    v3[4] = [PATTERN_NOTE_C3, instr, 0, 0];
     if staccato {
-        v3[5] = [0xbe, 0, 0, 0];
+        v3[5] = [KEY_OFF, 0, 0, 0];
     }
     s.orders = vec![vec![(vec![0], 0), (vec![0], 0), (vec![1], 0)]];
     s.patterns = vec![(quiet, [0xff, 0, 0, 0]), (v3, [0xff, 0, 0, 0])];
     s.encode()
 }
 
-/// A kit drum's instrument in NEW's song.
-fn new_drum(d: usize) -> u8 {
+fn new_song_drum(d: usize) -> u8 {
     (SONG_IO_KIT as usize + d) as u8
 }
 
-/// A PAL frame in chip cycles, and ENV3's reading interval.
 const FRAME_CYCLES: u32 = SID_CLOCK_PAL / 50;
-const STEP_CYCLES: u32 = 100;
+const ENV3_READ_CYCLES: u32 = 100;
 
-/// The song through GoatTracker's own packed player (gt2-ref), its writes at the start of
-/// each frame of `frame` cycles, on reSIDfp and on SIDOU's chip: ENV3 every 100 cycles from
-/// row 4's note (its first frame, the last to write its AD `ad`), on each.
 fn env3_from_the_row(sng: &[u8], ad: u8, model: sid_model, frame: u32) -> [Vec<u8>; 2] {
     let t = trace(sng, 0, 60, &gt2_ref::Options::default()).expect("GoatTracker plays it");
     let row = t
         .frames
         .iter()
-        .rposition(|f| f.calls.iter().any(|c| c.contains(&(0x13, ad))))
+        .rposition(|f| f.calls.iter().any(|c| c.contains(&(VOICE3_AD, ad))))
         .expect("the note's first frame");
     let mut reference = ResidfpEngine::new(model, FS, true);
     let mut chip = Box::new(sid::default());
@@ -296,35 +252,24 @@ fn env3_from_the_row(sng: &[u8], ad: u8, model: sid_model, frame: u32) -> [Vec<u
             reference.write(reg, v);
             unsafe { sid_write(&mut *chip, reg, v) };
         }
-        for _ in 0..frame / STEP_CYCLES {
-            reference.clock_silent(STEP_CYCLES);
-            unsafe { sid_clock(&mut *chip, STEP_CYCLES) };
+        for _ in 0..frame / ENV3_READ_CYCLES {
+            reference.clock_silent(ENV3_READ_CYCLES);
+            unsafe { sid_clock(&mut *chip, ENV3_READ_CYCLES) };
             if f >= row {
-                env[0].push(reference.read(0x1c));
-                env[1].push(unsafe { sid_read(&mut *chip, 0x1c) });
+                env[0].push(reference.read(ENV3));
+                env[1].push(unsafe { sid_read(&mut *chip, ENV3) });
             }
         }
-        reference.clock_silent(frame % STEP_CYCLES);
-        unsafe { sid_clock(&mut *chip, frame % STEP_CYCLES) };
+        reference.clock_silent(frame % ENV3_READ_CYCLES);
+        unsafe { sid_clock(&mut *chip, frame % ENV3_READ_CYCLES) };
     }
     env
 }
 
-/// Every drum's envelope starts one frame after its row (its first frame the test bit with
-/// the gate off) and NEW's lead's and bass's on it, after silence, after the lead and after
-/// a drum, on reSIDfp and on SIDOU's chip, both models, played by GoatTracker's own player,
-/// at nine frame lengths (the rate counter's every phase at the gate: rate 0's period is 9
-/// cycles). Two ADSR delay bugs (the rate counter run past the attack's period, waiting out
-/// its wrap: 33 ms) made the drums sound 53 ms after their row and the lead, one phase in
-/// nine, 33 ms: the drums' release in their gate-off first frame (the counter's period up to
-/// 977 cycles against attack 0's 9), so their SR is $00 until the SR row; and at attack 0
-/// the decay's rate the gate selects for a cycle (the counter steps past 9 while compared
-/// with the decay's), so every attack is 1 (32).
 #[test]
 fn every_new_instrument_starts_on_time() {
-    let step_ms = f64::from(STEP_CYCLES) * 1000.0 / f64::from(SID_CLOCK_PAL);
-    let mut new = Song::host();
-    new.read(&template(), 0).unwrap();
+    let step_ms = f64::from(ENV3_READ_CYCLES) * 1000.0 / f64::from(SID_CLOCK_PAL);
+    let new = Song::host_from(&new_song_template());
     let ad = |i: u8| new.raw().instr[i as usize - 1][GT2_INS_AD as usize];
     let played: Vec<(u8, &str, f64)> = [(1, "PULSE", 0.0), (2, "BASS", 0.0)]
         .into_iter()
@@ -332,15 +277,19 @@ fn every_new_instrument_starts_on_time() {
             NAMES
                 .iter()
                 .enumerate()
-                .map(|(d, &name)| (new_drum(d), name, 1.0)),
+                .map(|(d, &name)| (new_song_drum(d), name, 1.0)),
         )
         .collect();
     for (model, m) in models() {
         for frame in FRAME_CYCLES - 4..=FRAME_CYCLES + 4 {
             let frame_ms = f64::from(frame) * 1000.0 / f64::from(SID_CLOCK_PAL);
-            for before in [None, Some(1), Some(new_drum(GT2_KIT_OPEN_HAT as usize))] {
+            for before in [
+                None,
+                Some(1),
+                Some(new_song_drum(GT2_KIT_OPEN_HAT as usize)),
+            ] {
                 for &(instr, name, frames) in &played {
-                    let sng = voice3_song(before, instr, false, 6);
+                    let sng = new_song_instruments_on_voice3(before, instr, false, 6);
                     let at = frames * frame_ms;
                     for (env, chip) in env3_from_the_row(&sng, ad(instr), model, frame)
                         .iter()
@@ -364,10 +313,6 @@ fn every_new_instrument_starts_on_time() {
     }
 }
 
-/// A key off on the next row (STEP's staccato) leaves a drum's envelope as without one at
-/// tempo 5 and up: its release is its decay, and its SR row comes before the key off (the
-/// gate goes off the gate-off timer's two frames before that row). RIM's release is
-/// shorter than its decay, its key off heard.
 #[test]
 fn a_staccato_drum_sounds_as_a_held_one() {
     for tempo in [6, 5] {
@@ -376,7 +321,8 @@ fn a_staccato_drum_sounds_as_a_held_one() {
             .enumerate()
             .filter(|&(d, _)| d != GT2_KIT_RIM as usize)
         {
-            let song = |staccato| voice3_song(None, new_drum(d), staccato, tempo);
+            let song =
+                |staccato| new_song_instruments_on_voice3(None, new_song_drum(d), staccato, tempo);
             let ad = kit_instr(d)[GT2_INS_AD as usize];
             let held = env3_from_the_row(&song(false), ad, SID_MODEL_6581, FRAME_CYCLES);
             let staccato = env3_from_the_row(&song(true), ad, SID_MODEL_6581, FRAME_CYCLES);
@@ -390,7 +336,7 @@ fn a_staccato_drum_sounds_as_a_held_one() {
     }
 }
 
-fn template() -> Vec<u8> {
+fn new_song_template() -> Vec<u8> {
     let mut out = Vec::new();
     let mut buf = [0u8; 256];
     loop {
@@ -409,13 +355,10 @@ fn template() -> Vec<u8> {
     }
 }
 
-/// NEW's song holds the kit from SONG_IO_KIT, its rows first, and is canonical: GoatTracker
-/// reads it and writes it back byte for byte, and so does SIDOU.
 #[test]
 fn the_new_song_holds_the_kit_and_goattracker_keeps_it() {
-    let sng = template();
-    let mut song = Song::host();
-    song.read(&sng, 0).unwrap();
+    let sng = new_song_template();
+    let song = Song::host_from(&sng);
     let raw = song.raw();
     for (d, name) in NAMES.iter().enumerate() {
         assert_eq!(
@@ -432,16 +375,13 @@ fn the_new_song_holds_the_kit_and_goattracker_keeps_it() {
     assert_eq!(song.write(false), sng, "SIDOU saves NEW's song differently");
 }
 
-/// NEW's bass is the lead an octave down (a wavetable right column of -12, $74) with a
-/// quarter-width pulse of its own row after the kit's; the lead keeps the square's $800.
 #[test]
 fn the_new_bass_is_an_octave_down_with_a_thinner_pulse() {
-    let sng = template();
-    let mut song = Song::host();
-    song.read(&sng, 0).unwrap();
+    let sng = new_song_template();
+    let song = Song::host_from(&sng);
     let raw = song.raw();
     let (lead, bass) = (&raw.instr[0], &raw.instr[1]);
-    let pulse_row = |i: &[u8; 25]| usize::from(i[3]) - 1;
+    let pulse_row = |i: &[u8; 25]| usize::from(i[GT2_INS_PULSE as usize]) - 1;
     assert_eq!(
         raw.ltable[1][pulse_row(lead)],
         0x88,
@@ -453,7 +393,7 @@ fn the_new_bass_is_an_octave_down_with_a_thinner_pulse() {
         "the bass's width $400"
     );
     assert_eq!(raw.ltable[1][pulse_row(bass) + 1], 0xff, "the pulse stops");
-    let wave_row = |i: &[u8; 25]| usize::from(i[2]) - 1;
+    let wave_row = |i: &[u8; 25]| usize::from(i[GT2_INS_WAVE as usize]) - 1;
     assert_eq!(raw.rtable[0][wave_row(lead)], 0x00, "the lead at the note");
     assert_eq!(raw.rtable[0][wave_row(bass)], 0x74, "the bass at -12");
     assert_eq!(raw.ltable[0][wave_row(bass) + 1], 0xff, "the wave stops");

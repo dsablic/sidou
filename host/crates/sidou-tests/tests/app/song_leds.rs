@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The button LEDs' inputs from the views (`views_leds`, app/views.c): the song's beat, REC, the
-//! voices GLO's layer shows, the question that waits for SAVE, and STEP's page. The lights those
-//! inputs make are panel.rs's.
 
 use sidou_sys::*;
 
@@ -20,11 +17,12 @@ fn leds(s: &mut Song, ms: u32) -> panel_leds {
     unsafe { panel_get_leds(&*s.ui.p, &*s.ui.rig.live, &i) }
 }
 
+const CALLS_A_ROW: u16 = 6;
+
 const fn bit(b: u32) -> u32 {
     1 << b
 }
 
-/// The song plays `row` of voice 1, `calls` calls into it (the row began at call `began`).
 fn at_row(s: &mut Song, row: u8, began: u16, calls: u16) {
     s.f.st.row = [row, SONG_T_NOWHERE as u8, SONG_T_NOWHERE as u8];
     s.f.st.row_call = [began, 0, 0];
@@ -48,51 +46,52 @@ fn play_is_lit_on_the_beat_rows_wherever_the_song_starts_or_jumps() {
     s.ui.frame();
     assert_eq!(s.ui.top(), "LIVE", "not a song view");
     s.f.st.state = SONG_T_PLAYING as u8;
-    s.ui.press(PANEL_BTN_OCT_UP); // an event: the views know the panel
+    s.ui.press(PANEL_BTN_OCT_UP);
     s.ui.p.playing = 1;
-    // Before a row event: playing, no beat yet.
-    assert_eq!(inputs(&mut s, 0).beat, PANEL_BEAT_NONE as u8);
-    // 4 rows a beat of 6 calls: a play from the middle of a pattern, on the off-beat row 6,
-    // reaches the beat at row 8, whatever call it is on.
+    assert_eq!(
+        inputs(&mut s, 0).beat,
+        PANEL_BEAT_NONE as u8,
+        "playing before a row event: no beat yet"
+    );
     for (row, lit) in [(6, false), (7, false), (8, true), (9, false), (12, true)] {
-        at_row(&mut s, row, 1000 + u16::from(row) * 6, 0);
+        at_row(&mut s, row, 1000 + u16::from(row) * CALLS_A_ROW, 0);
         assert_eq!(play_lit(&mut s), lit, "row {row}");
     }
-    // Into the beat's row: the first quarter is 6 calls, the first row.
     at_row(&mut s, 8, 5000, 5);
     assert!(play_lit(&mut s), "5 calls into the beat's row");
     at_row(&mut s, 9, 5006, 0);
     assert!(!play_lit(&mut s), "the next row");
-    // A jump (ORDER, a song-position pointer): the row and the row's start change at once, and
-    // the call counter wraps.
     at_row(&mut s, 3, 100, 2);
-    assert!(!play_lit(&mut s));
+    assert!(!play_lit(&mut s), "a jump back to row 3");
     at_row(&mut s, 32, 65530, 3);
     assert_eq!(s.f.st.now_call, 65530u16.wrapping_add(3));
     assert!(play_lit(&mut s), "after the jump to row 32");
     at_row(&mut s, 37, 7, 0);
     assert!(!play_lit(&mut s), "row 37");
-    // Another voice's rows count while the first has none yet.
     s.f.st.row = [SONG_T_NOWHERE as u8, 16, SONG_T_NOWHERE as u8];
     s.f.st.row_call = [0, 40, 0];
     s.f.st.now_call = 41;
     assert!(play_lit(&mut s), "voice 2's row 16");
-    // Funktempo 5/7: a row is 6 calls on average, the beat as before.
     s.f.st.speed = [5, 7];
     s.f.st.row = [4, 0, 0];
     s.f.st.row_call = [90, 0, 0];
     s.f.st.now_call = 92;
-    assert!(play_lit(&mut s));
-    // The rows a beat are the views' (the song's setup): 8 rows, row 4 is mid-beat.
+    assert!(
+        play_lit(&mut s),
+        "funktempo 5/7: a row of 6 calls on average"
+    );
     s.ui.v.song.rows_beat = 8;
-    assert!(!play_lit(&mut s));
+    assert!(!play_lit(&mut s), "8 rows a beat: row 4 is mid-beat");
     at_row(&mut s, 16, 200, 0);
     assert!(play_lit(&mut s));
-    // Stopped: no beat, no light.
     s.ui.p.playing = 0;
     s.f.st.state = SONG_T_STOPPED as u8;
     let l = leds(&mut s, 0);
-    assert_eq!((l.buttons | l.buttons_dim) & bit(PANEL_BTN_PLAY), 0);
+    assert_eq!(
+        (l.buttons | l.buttons_dim) & bit(PANEL_BTN_PLAY),
+        0,
+        "stopped: no light"
+    );
 }
 
 #[test]
@@ -172,7 +171,6 @@ fn step_page_and_playhead_follow_the_selected_lane() {
     let l = leds(&mut s, 1000);
     assert_eq!(l.notes, 1 | 1 << 4);
     assert_eq!(l.notes_dim, 0xffff & !(1 | 1 << 4));
-    // The song plays row 4 of voice 1: its key is the playhead, inverted when it moves there.
     s.f.st.state = SONG_T_PLAYING as u8;
     s.f.st.order_pos = [0, 0, 0];
     s.f.st.row = [4, 0, 0];
@@ -184,20 +182,25 @@ fn step_page_and_playhead_follow_the_selected_lane() {
     assert_eq!(l.notes & (1 << 4), 0, "a set step flicks dark");
     let l = leds(&mut s, 2000 + PANEL_FLICK_MS + 5);
     assert_eq!(l.notes & (1 << 4), 1 << 4, "and back");
-    // It moves on to an empty step: that one lights, the old one is as it was.
     s.f.st.row = [5, 0, 0];
     s.ui.frame();
     let i = inputs(&mut s, 3000);
     assert_eq!((i.step_head, i.head_ms), (5, 3000));
     let l = leds(&mut s, 3010);
-    assert_eq!(l.notes & (1 << 5), 1 << 5);
-    // Another voice's lane: its pattern's notes.
+    assert_eq!(
+        l.notes & (1 << 5),
+        1 << 5,
+        "the playhead lights an empty step"
+    );
     s.ui.v.song.voice = 1;
     let i = inputs(&mut s, 4000);
     assert_eq!(i.step_set, 0, "voice 2's pattern is empty");
-    // Out of the view the page is gone.
     s.ui.press(PANEL_BTN_HOME);
     s.ui.settle();
     assert_ne!(s.ui.top(), "STEP");
-    assert_eq!(inputs(&mut s, 5000).step_on, 0);
+    assert_eq!(
+        inputs(&mut s, 5000).step_on,
+        0,
+        "out of STEP the page is gone"
+    );
 }

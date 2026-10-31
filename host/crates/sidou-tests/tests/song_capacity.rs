@@ -67,8 +67,7 @@ unsafe extern "C" fn read_capacity_fixture(
 
 #[test]
 fn canonical_output_not_arena_use_limits_loading() {
-    let mut host = Song::host();
-    host.read(&holes_fixture(), 0).unwrap();
+    let mut host = Song::host_from(&holes_fixture());
     for _ in 0..4 {
         let mut edit = gt2_edit::default();
         let mut pattern = 0;

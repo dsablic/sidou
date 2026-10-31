@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! USB-MIDI event packets to the MIDI byte stream (`app/midi_usb.c`).
 
 use sidou_sys::*;
 
-/// A packet as the endpoint holds it: `[cable << 4 | cin, m0, m1, m2]`, read little-endian.
 fn packet(cable: u8, cin: u8, m: [u8; 3]) -> u32 {
     u32::from_le_bytes([cable << 4 | cin, m[0], m[1], m[2]])
 }
@@ -54,7 +52,6 @@ fn every_real_time_byte_passes_as_a_single_byte() {
     for rt in 0xF8..=0xFFu8 {
         assert_eq!(bytes(packet(0, 0xF, [rt, 0, 0])), [rt]);
     }
-    // CIN 0xF also carries unparsed single bytes, a SysEx data byte among them.
     assert_eq!(bytes(packet(0, 0xF, [0x42, 0, 0])), [0x42]);
 }
 
@@ -87,8 +84,6 @@ fn a_channel_message_whose_status_does_not_match_its_cin_is_dropped() {
     }
 }
 
-/// A SysEx message as a USB host sends it: CIN 4 for each full 3 bytes but the last, then
-/// CIN 5, 6 or 7 for the 1, 2 or 3 bytes that end it.
 fn sysex_packets(msg: &[u8]) -> Vec<u32> {
     let chunks: Vec<&[u8]> = msg.chunks(3).collect();
     chunks

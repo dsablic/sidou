@@ -1,17 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Reference harness: renders SIDOU and reSIDfp from the same register writes and measures
-//! the difference. Used by the reference tests and by `sidou-compare`. Also the generators of
-//! the screen font (`font`), the About screen's credits (`credits`), the logos' bitmaps
-//! (`logo`), the title cards' (`title_card`), SCENE's pixel art (`scene_art`), the song
-//! model's Rust side (`song`), the song player's (`player`) and its transport's
-//! (`transport`), the first song (`song_embed`) and the showcase songs (`showcase`); the
-//! converter and reader of Tom Harte's 6502 tests (`harte`); and PSID tunes built at test
-//! time (`psid_fixtures`) and the .sid player's host render (`psid`).
+
+use std::cmp::Ordering;
+use std::fmt::Write as _;
+
+pub const DEVICE_SAMPLE_RATE: u32 = 44_118;
+pub const PAL_CYCLES_PER_FRAME: u32 = 19_705;
 
 pub mod bitmap_codec;
 pub mod credits;
 pub mod filter_limits;
+pub mod filter_passband;
 pub mod filter_sweeps;
 pub mod font;
 pub mod harte;
@@ -30,3 +29,14 @@ pub mod song_embed;
 pub mod starter;
 pub mod title_card;
 pub mod transport;
+
+pub fn below_and_not_nan(x: f64, limit: f64) -> bool {
+    x.partial_cmp(&limit) == Some(Ordering::Less)
+}
+
+pub fn hex(b: &[u8]) -> String {
+    b.iter().fold(String::new(), |mut s, x| {
+        let _ = write!(s, "{x:02x}");
+        s
+    })
+}

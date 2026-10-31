@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The boot sequence (app/boot.c) over the views (app/views.c): its timing, the short and full
-//! sequences, skipping by any control without its normal action, a note that skips and plays,
-//! and what each frame sends.
 
 use sidou_sys::*;
 
-use crate::views::Ui;
+use crate::views::{Ui, FRAME_MS};
 use crate::{assert_wipe_holds_still, drain, grid_row, pixels, wipe_frames, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
 const W: usize = COLS * 8;
 
-/// The title card is Metal Chrome's scene, pixel for pixel, but for the card's text over it:
-/// the version line and PRESS ANY KEY (app/boot.h BOOT_SCENE_*_ROW).
 fn assert_title_card_is_the_scene(ui: &Ui) {
     let img = sidou_tests::logo::load("metal-chrome");
     let px = pixels(&ui.g);
@@ -25,21 +20,38 @@ fn assert_title_card_is_the_scene(ui: &Ui) {
             "pixel row {y} of the title card"
         );
     }
-    // The text rows are black in the scene: the text reads as on any black row.
     for r in text {
         assert!(img.px[r * 8 * W..(r + 1) * 8 * W].iter().all(|&c| c == 0));
     }
 }
 
-/// The full boot as HOME held at power-on starts it, or the short one.
+fn start_boot(ui: &mut Ui, full: bool, home_held: bool) {
+    drain(&mut ui.g);
+    unsafe { views_boot(&mut *ui.v, i32::from(full), i32::from(home_held)) };
+}
+
 fn booting(full: bool) -> Ui {
     let mut ui = Ui::new();
-    drain(&mut ui.g);
-    unsafe { views_boot(&mut *ui.v, i32::from(full), i32::from(full)) };
+    start_boot(&mut ui, full, full);
     ui
 }
 
-/// Frames until ms from the boot's first frame (the next one).
+fn first_frame_ms(ui: &Ui) -> u32 {
+    ui.now + FRAME_MS
+}
+
+type Played = (
+    i8,
+    sid_model,
+    u16,
+    [[u8; LIVE_SLOT_FIELDS as usize]; LIVE_SLOTS as usize],
+);
+
+fn played(ui: &Ui) -> Played {
+    let l = ui.live();
+    (l.octave, l.model, l.cutoff, l.slot)
+}
+
 fn run_to(ui: &mut Ui, start: u32, ms: u32) -> Vec<Sent> {
     let mut sent = Vec::new();
     while ui.now < start + ms {
@@ -80,14 +92,12 @@ fn the_full_sequence_keeps_the_prototypes_timing() {
     }
 }
 
-/// With two chips (the device, app/keys_route.h), the banner names both and their six voices.
 #[test]
 fn the_boot_banner_names_both_chips() {
     let mut ui = Ui::new();
     ui.rig.live.two_chips = 1;
-    drain(&mut ui.g);
-    unsafe { views_boot(&mut *ui.v, 1, 1) };
-    let start = ui.now + 40;
+    start_boot(&mut ui, true, true);
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 0);
     assert_eq!(
         ui.row(5).trim_matches('#').trim(),
@@ -98,13 +108,12 @@ fn the_boot_banner_names_both_chips() {
 #[test]
 fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen() {
     let mut ui = booting(true);
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     assert_eq!(ui.top(), "BOOT");
     run_to(&mut ui, start, 0);
     assert!(ui.row(3).contains("*** SIDOU V1.2.3 ***"), "{}", ui.row(3));
     assert_eq!(ui.row(5).trim_matches('#').trim(), "CHIP 6581  3 VOICES");
     assert_eq!(&ui.row(7)[2..8], "READY.");
-    // The cursor blinks at the prompt, 8 frames on and 8 off.
     let mut cursor = Vec::new();
     while ui.now < start + 760 {
         ui.frame();
@@ -130,7 +139,6 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
     assert_eq!(&ui.row(12)[2..8], "READY.");
     assert_eq!(&ui.row(13)[2..5], "RUN");
     assert_eq!(ui.top(), "BOOT");
-    // The title card wipes in: the logo's scene, the version over it.
     run_to(&mut ui, start, 7000 + 8 * 40);
     let version = BOOT_SCENE_VERSION_ROW as usize;
     assert!(
@@ -143,7 +151,6 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
     assert_eq!(ui.top(), "BOOT");
     run_to(&mut ui, start, 10_000);
     assert_eq!(ui.top(), "LIVE");
-    // LIVE wipes in, and then nothing is left of the boot.
     ui.settle();
     assert_eq!(&ui.row(0)[..8], "SAW LEAD");
     assert_eq!(&ui.row(3)[..1], "1", "voice 1's lane");
@@ -166,7 +173,7 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
 #[test]
 fn press_any_key_blinks_under_the_scene() {
     let mut ui = booting(false);
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     let key = BOOT_SCENE_KEY_ROW as usize;
     let mut shown = Vec::new();
     while ui.now < start + 1100 {
@@ -177,13 +184,11 @@ fn press_any_key_blinks_under_the_scene() {
     assert!(shown.contains(&true) && shown.contains(&false), "{shown:?}");
 }
 
-/// A logo without a scene (Pulse Train, the alternative) gets the card's slot between two
-/// ramp lines, with the name and the version below.
 #[test]
 fn a_logo_without_a_scene_gets_the_cards_slot() {
     let mut ui = booting(false);
     ui.v.boot.logo = unsafe { &logo_pulse_train };
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 200);
     assert!(ui.row(16).contains("SID FOR THE FM-1"), "{}", ui.row(16));
     assert!(ui.row(18).contains("V1.2.3  GPL-3.0"), "{}", ui.row(18));
@@ -201,7 +206,7 @@ fn a_logo_without_a_scene_gets_the_cards_slot() {
 #[test]
 fn the_short_boot_is_the_title_card_alone() {
     let mut ui = booting(false);
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 0);
     assert_eq!(ui.top(), "BOOT");
     assert!(ui
@@ -217,13 +222,10 @@ fn the_short_boot_is_the_title_card_alone() {
 }
 
 #[test]
-fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_hold() {
-    // platform/fm1/main.c reads HOME held at power-on from the key scan and starts the full
-    // boot. The key scan also reports the held key's press edge, once (fm1_input.h): it is
-    // the hold, not a skip, whether it comes before the first frame or after it.
+fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_hold_not_a_skip() {
     for before in [true, false] {
         let mut ui = booting(true);
-        let start = ui.now + 40;
+        let start = first_frame_ms(&ui);
         if !before {
             run_to(&mut ui, start, 200);
         }
@@ -239,7 +241,6 @@ fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_h
             ui.row(10)
         );
         assert_eq!(ui.live().octave, 0);
-        // A HOME press after that one skips, and does nothing else.
         ui.press(PANEL_BTN_HOME);
         ui.frame();
         assert_eq!(ui.top(), "LIVE", "a second HOME did not skip");
@@ -248,14 +249,11 @@ fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_h
     }
 }
 
-/// The full boot once after an install (app/settings.h: no record, or another version's),
-/// HOME not held: the whole sequence, and HOME's first press skips it.
 #[test]
 fn the_full_boot_after_an_install_is_skipped_by_the_first_home() {
     let mut ui = Ui::new();
-    drain(&mut ui.g);
-    unsafe { views_boot(&mut *ui.v, 1, 0) };
-    let start = ui.now + 40;
+    start_boot(&mut ui, true, false);
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 2400);
     assert!(ui.row(10).contains("SEARCHING FOR SIDOU"), "{}", ui.row(10));
     ui.press(PANEL_BTN_HOME);
@@ -267,12 +265,9 @@ fn the_full_boot_after_an_install_is_skipped_by_the_first_home() {
 
 #[test]
 fn home_tapped_as_soon_as_the_card_shows_skips_it() {
-    // Without HOME held at power-on, a HOME press is a skip from the very first frame.
     for frames in [0, 1, 5] {
         let mut ui = booting(false);
-        for _ in 0..frames {
-            ui.frame();
-        }
+        ui.frames(frames);
         ui.press(PANEL_BTN_HOME);
         ui.frame();
         assert_eq!(ui.top(), "LIVE", "HOME after {frames} frames did not skip");
@@ -284,7 +279,7 @@ fn home_tapped_as_soon_as_the_card_shows_skips_it() {
 #[test]
 fn holding_home_later_is_not_a_press() {
     let mut ui = booting(false);
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 400);
     ui.hold(PANEL_BTN_HOME, true);
     ui.frame();
@@ -304,26 +299,14 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
     ];
     for (what, skip) in skips {
         let mut ui = booting(true);
-        let start = ui.now + 40;
+        let start = first_frame_ms(&ui);
         run_to(&mut ui, start, 2500);
-        let before = (
-            ui.live().octave,
-            ui.live().model,
-            ui.live().cutoff,
-            ui.live().slot,
-        );
+        let before = played(&ui);
         skip(&mut ui);
-        // Pressed again before the frame: still taken.
         skip(&mut ui);
         ui.frame();
         assert_eq!(ui.top(), "LIVE", "{what} did not skip");
-        let after = (
-            ui.live().octave,
-            ui.live().model,
-            ui.live().cutoff,
-            ui.live().slot,
-        );
-        assert_eq!(after, before, "{what} also played");
+        assert_eq!(played(&ui), before, "{what} also played");
         assert_eq!(ui.toast(), None, "{what} showed a toast");
     }
 }
@@ -332,7 +315,7 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
 fn a_note_skips_and_plays() {
     for full in [true, false] {
         let mut ui = booting(full);
-        let start = ui.now + 40;
+        let start = first_frame_ms(&ui);
         run_to(&mut ui, start, 400);
         ui.rig.note_on(69);
         ui.frame();
@@ -342,12 +325,10 @@ fn a_note_skips_and_plays() {
 }
 
 #[test]
-fn a_note_shorter_than_a_frame_skips_the_boot_too() {
-    // On and off between two frames (a fast tap, or MIDI): no gate is left for the frame to
-    // see, but the note played.
+fn a_note_on_and_off_between_two_frames_skips_the_boot_too() {
     for full in [true, false] {
         let mut ui = booting(full);
-        let start = ui.now + 40;
+        let start = first_frame_ms(&ui);
         run_to(&mut ui, start, 400);
         ui.rig.note_on(69);
         ui.rig.note_off(69);
@@ -357,11 +338,9 @@ fn a_note_shorter_than_a_frame_skips_the_boot_too() {
 }
 
 #[test]
-fn changes_during_the_boot_draw_nothing_over_it() {
-    // MIDI can change the chip and the octave while the boot shows: no toast or raster over
-    // it, then or after it.
+fn midi_changes_during_the_boot_draw_nothing_over_it_or_after_it() {
     let mut ui = booting(true);
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 400);
     ui.rig.button(LIVE_BUTTON_FX);
     ui.rig.button(LIVE_BUTTON_OCT_UP);
@@ -377,8 +356,7 @@ fn changes_during_the_boot_draw_nothing_over_it() {
     assert_eq!(ui.live().model, SID_MODEL_8580);
 }
 
-/// The border cells of a grid.
-fn border(i: usize) -> bool {
+fn is_border_cell(i: usize) -> bool {
     let (c, r) = (i % COLS, i / COLS);
     r == 0 || r == COLS - 1 || c == 0 || c == COLS - 1
 }
@@ -386,7 +364,7 @@ fn border(i: usize) -> bool {
 #[test]
 fn the_loading_stripes_stay_in_the_border_every_other_frame() {
     let mut ui = booting(true);
-    let start = ui.now + 40;
+    let start = first_frame_ms(&ui);
     run_to(&mut ui, start, 3000);
     let mut changes = 0;
     let mut frames = 0;
@@ -398,14 +376,16 @@ fn the_loading_stripes_stay_in_the_border_every_other_frame() {
         let moved: Vec<usize> = (0..COLS * COLS)
             .filter(|&i| ui.g.ch[i] != ch[i] || ui.g.attr[i] != attr[i])
             .collect();
-        assert!(moved.iter().all(|&i| border(i)), "{moved:?} off the border");
+        assert!(
+            moved.iter().all(|&i| is_border_cell(i)),
+            "{moved:?} off the border"
+        );
         let changed = !moved.is_empty();
         assert!(!(changed && last_changed), "stripes on two frames in a row");
         changes += usize::from(changed);
         last_changed = changed;
         (ch, attr) = (ui.g.ch, ui.g.attr);
-        // Two colours a cell: the glyph splits the cell into a top and a bottom stripe.
-        for i in (0..COLS * COLS).filter(|&i| border(i)) {
+        for i in (0..COLS * COLS).filter(|&i| is_border_cell(i)) {
             let k = ui.g.ch[i];
             assert!(
                 (FONT_V0 as u8..=FONT_V8 as u8).contains(&k),
@@ -421,21 +401,19 @@ fn the_loading_stripes_stay_in_the_border_every_other_frame() {
     let lb = (GRID_BLUE << 4 | GRID_LIGHT_BLUE) as u8;
     assert!(
         (0..COLS * COLS)
-            .filter(|&i| border(i))
+            .filter(|&i| is_border_cell(i))
             .all(|i| ui.g.ch[i] == FONT_FULL as u8 && ui.g.attr[i] == lb),
         "the border did not come back at READY."
     );
 }
 
 #[test]
-fn every_frame_of_the_boot_fits_the_spi_budget() {
+fn every_frame_of_the_boot_after_the_first_fits_the_spi_budget() {
     for full in [true, false] {
         let mut ui = booting(full);
-        let start = ui.now + 40;
+        let start = first_frame_ms(&ui);
         let sent = run_to(&mut ui, start, if full { 10_000 } else { 1200 } + 12 * 40);
         assert_eq!(ui.top(), "LIVE");
-        // The first frame draws the whole screen (platform/fm1/ui.c ui_init, before the
-        // display is on); every other one stays inside the budget.
         for (k, s) in sent.iter().enumerate().skip(1) {
             assert!(
                 s.spi_ms() <= SPI_BUDGET_MS,
@@ -452,17 +430,14 @@ fn every_frame_of_the_boot_fits_the_spi_budget() {
     }
 }
 
-/// The wipe from the prompt into the title card: the logo holds still under it, so each frame
-/// sends the wipe's rows and nothing else, whatever the boot's start time against the frames.
 #[test]
 fn the_wipe_into_the_title_card_sends_only_its_rows() {
     let mut worst = Sent::default();
     for offset in 0..40 {
         let mut ui = Ui::new();
         ui.now += offset;
-        drain(&mut ui.g);
-        unsafe { views_boot(&mut *ui.v, 1, 1) };
-        let start = ui.now + 40;
+        start_boot(&mut ui, true, true);
+        let start = first_frame_ms(&ui);
         run_to(&mut ui, start, BOOT_TITLE_MS - 200);
         let frames = wipe_frames(&mut || {
             ui.frame();

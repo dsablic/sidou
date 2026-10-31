@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The theme (app/theme.c): the colour roles every view takes its colours from, the menu's
-//! THEME item, and the menu, toast and popup following it.
 
 use sidou_sys::*;
 
@@ -20,6 +18,17 @@ fn fg(attr: u8) -> u8 {
 fn bg(attr: u8) -> u8 {
     attr >> 4
 }
+
+fn role_or_accent(role: u8, accent: u8) -> u8 {
+    if role == THEME_ACCENT as u8 {
+        accent
+    } else {
+        role
+    }
+}
+
+const WCAG_AA_LARGE_TEXT: f64 = 3.0;
+const WCAG_AA_TEXT: f64 = 4.5;
 
 #[test]
 fn theme_roles_pass_contrast() {
@@ -51,32 +60,27 @@ fn theme_roles_pass_contrast() {
             .chain(t.knob_text)
             .chain(t.voice_text)
         {
-            check(colour, t.bg, 4.5);
+            check(colour, t.bg, WCAG_AA_TEXT);
         }
         for colour in [t.alert, t.menu_item, t.menu_value]
             .into_iter()
             .chain(t.voice)
             .chain(t.knob)
         {
-            check(colour, t.bg, 3.0);
+            check(colour, t.bg, WCAG_AA_LARGE_TEXT);
         }
-        check(t.sel_fg, t.sel_bg, 3.0);
-        check(t.title_fg, t.title_bg, 3.0);
-        check(t.toast_fg, t.toast_bg, 4.5);
-        check(t.value, t.cursor, 4.5);
-        check(t.hot, t.cursor, 4.5);
-        // STEP's pads at 2x: a shaded beat's numbers, a note's and the held one's.
-        check(t.label, t.cursor, 3.0);
+        check(t.sel_fg, t.sel_bg, WCAG_AA_LARGE_TEXT);
+        check(t.title_fg, t.title_bg, WCAG_AA_LARGE_TEXT);
+        check(t.toast_fg, t.toast_bg, WCAG_AA_TEXT);
+        check(t.value, t.cursor, WCAG_AA_TEXT);
+        check(t.hot, t.cursor, WCAG_AA_TEXT);
+        check(t.label, t.cursor, WCAG_AA_LARGE_TEXT);
         for colour in t.voice.into_iter().chain([t.hot]) {
-            check(t.bg, colour, 3.0);
+            check(t.bg, colour, WCAG_AA_LARGE_TEXT);
         }
         for accent in t.knob {
-            let name = if t.popup_name == THEME_ACCENT as u8 {
-                accent
-            } else {
-                t.popup_name
-            };
-            check(name, t.popup_bg, 3.0);
+            let name = role_or_accent(t.popup_name, accent);
+            check(name, t.popup_bg, WCAG_AA_LARGE_TEXT);
         }
     }
 }
@@ -97,10 +101,9 @@ fn high_contrast_is_the_default_and_has_the_agreed_roles() {
         knobs,
         [GRID_YELLOW, GRID_CYAN, GRID_LIGHT_GREEN, GRID_LIGHT_RED]
     );
-    // An id the firmware does not know is the default.
-    assert!(std::ptr::eq(theme(77), t));
+    let unknown_id = 77;
+    assert!(std::ptr::eq(theme(unknown_id), t));
     assert!(std::ptr::eq(theme(THEME_COUNT), t));
-    // A new instrument has it.
     let ui = Ui::new();
     assert_eq!(u32::from(ui.live().theme), THEME_HIGH_CONTRAST);
     assert_eq!(THEME_COUNT, LIVE_THEMES);
@@ -134,11 +137,10 @@ fn every_role_is_a_palette_colour_and_reads_on_the_background_and_the_cursor_row
                 "theme {id}: a role that vanishes into the background"
             );
         }
-        // What the current row of TRACKER draws over `cursor`.
-        let on_cursor = [
+        let on_tracker_cursor_row = [
             t.value, t.hot, t.voice[0], t.voice[1], t.voice[2], t.label, t.alert,
         ];
-        for c in on_cursor {
+        for c in on_tracker_cursor_row {
             assert_ne!(
                 c, t.cursor,
                 "theme {id}: a role that vanishes on the cursor row"
@@ -173,7 +175,6 @@ fn the_c64_theme_keeps_blue_and_readable_reverse_video() {
     assert_eq!(u32::from(t.popup_name), GRID_YELLOW);
     assert_eq!(u32::from(t.popup_bar), GRID_LIGHT_GREEN);
     assert_eq!(u32::from(t.popup_track), GRID_DARK_GREY);
-    // Cyan and light green retain their voice and knob accents on blue.
     let hc = theme(THEME_HIGH_CONTRAST);
     assert_eq!(t.voice[1..], hc.voice[1..]);
     assert_eq!(t.knob[..3], hc.knob[..3]);
@@ -193,15 +194,12 @@ fn the_menu_item_turns_the_theme_and_the_menu_follows_it() {
         ui.menu_line(VIEWS_SETTINGS_THEME as usize),
         "THEME     HIGH"
     );
-    // High contrast: the title bar grey on black, the selected line yellow on dark grey, the
-    // values cyan.
     let hc = theme(THEME_HIGH_CONTRAST);
     assert_eq!(fg(ui.g.attr[COLS + 1]), hc.title_fg);
     assert_eq!(bg(ui.g.attr[COLS + 1]), hc.title_bg);
     let item_row = 4 + 3 * (VIEWS_SETTINGS_THEME as usize - usize::from(ui.v.setup.top));
     let sel = ui.g.attr[item_row * COLS + 2];
     assert_eq!((fg(sel), bg(sel)), (hc.sel_fg, hc.sel_bg));
-    // Clockwise: C64, saved dirty, every view in its old colours.
     ui.rig.live.settings_dirty = 0;
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
@@ -221,7 +219,6 @@ fn the_menu_item_turns_the_theme_and_the_menu_follows_it() {
     assert_eq!(bg(ui.g.attr[COLS + 1]), c64.title_bg);
     let sel = ui.g.attr[item_row * COLS + 2];
     assert_eq!((fg(sel), bg(sel)), (c64.sel_fg, c64.sel_bg));
-    // Counter-clockwise: back; and it stops there (a value item turns both ways).
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     ui.settle();
     assert_eq!(u32::from(ui.live().theme), THEME_HIGH_CONTRAST);
@@ -237,16 +234,12 @@ fn the_popup_names_the_theme_in_full() {
     to_theme_item(&mut ui);
     ui.settle();
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    for _ in 0..4 {
-        ui.frame();
-    }
+    ui.frames(4);
     let row = |ui: &Ui, r: usize| ui.row(r)[3..].split('#').next().unwrap().trim().to_owned();
     assert_eq!(row(&ui, SCREEN_POPUP_ROW as usize + 1), "THEME");
     assert_eq!(row(&ui, SCREEN_POPUP_ROW as usize + 4), "C64");
     ui.turn(PANEL_ENC_ALGORITHM, -1);
-    for _ in 0..4 {
-        ui.frame();
-    }
+    ui.frames(4);
     assert_eq!(row(&ui, SCREEN_POPUP_ROW as usize + 4), "HI-CONTRAST");
 }
 
@@ -259,30 +252,18 @@ fn the_popup_bar_and_name_take_the_knobs_colour_in_both_themes() {
             let mut ui = Ui::without_cards();
             unsafe { live_set_theme(&mut *ui.rig.live, id) };
             ui.settle();
-            // STATUS keeps its popups (LIVE and CHIP highlight the knob instead).
             open_status(&mut ui);
             ui.settle();
             let t = theme(id);
-            // K1..K3 turn a parameter with a bar; K4 the preset, which has none.
             ui.turn(PANEL_ENC_K1 + k, 1);
-            for _ in 0..6 {
-                ui.frame();
-            }
+            ui.frames(6);
             let accent = t.knob[k as usize];
             let name = ui.g.attr[name_row * COLS + 3];
-            let want_name = if t.popup_name == THEME_ACCENT as u8 {
-                accent
-            } else {
-                t.popup_name
-            };
+            let want_name = role_or_accent(t.popup_name, accent);
             assert_eq!(fg(name), want_name, "theme {id}, K{}", k + 1);
             if k < 3 {
                 let bar = ui.g.attr[bar_row * COLS + 3];
-                let want = if t.popup_bar == THEME_ACCENT as u8 {
-                    accent
-                } else {
-                    t.popup_bar
-                };
+                let want = role_or_accent(t.popup_bar, accent);
                 assert_eq!(fg(bar), want, "theme {id}, K{}", k + 1);
                 assert_eq!(bg(bar), t.popup_track);
             }

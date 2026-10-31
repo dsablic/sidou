@@ -1,24 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The .sid player from Rust (M3 Task 8): `core/psid/psid_ctl.h`'s main half and interrupt
-//! half on the host, run as the device runs them (main-loop passes between audio blocks), and a
-//! reference render that clocks the chips write by write at the stamps, for the tests and for
-//! the device's comparison (Task 9). Also the corpus the oracle uses (Task 7): GoatTracker's
-//! examples and SIDOU's songs packed as PSID tunes.
 
 use std::os::raw::c_void;
-use std::path::PathBuf;
 
 use sidou_sys::*;
 
+use crate::font::repo_root;
 use crate::psid_fixtures::{Psid, CLOCK_PAL};
 
-/// The samples a block (platform/fm1/audio.h AUDIO_HALF_FRAMES).
 pub const BLOCK: usize = PSID_BLOCK as usize;
-/// The device's sample rate (24 MHz / 544, rounded).
-pub const SAMPLE_RATE: u32 = 44_118;
+pub const SAMPLE_RATE: u32 = crate::DEVICE_SAMPLE_RATE;
 
-/// A SID write: its cycle on the tune's count, chip (0 A, 1 B), register and value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Write {
     pub cycle: u32,
@@ -27,7 +19,6 @@ pub struct Write {
     pub value: u8,
 }
 
-/// The header of a file SIDOU's parser accepts.
 pub fn header(file: &[u8]) -> psid_header {
     let mut h = psid_header::default();
     let r = unsafe { psid_parse(file.as_ptr(), file.len() as u32, &mut h) };
@@ -35,8 +26,6 @@ pub fn header(file: &[u8]) -> psid_header {
     h
 }
 
-/// The chip a header's 2-bit model code plays as (the oracle's choice: the 8580 for "8580",
-/// else the 6581).
 pub fn model_of(code: u8) -> sid_model {
     if code == 2 {
         SID_MODEL_8580
@@ -45,7 +34,6 @@ pub fn model_of(code: u8) -> sid_model {
     }
 }
 
-/// The tune's two chips, fresh, at its clock and the device's rate.
 pub fn chips_for(h: &psid_header) -> Box<[sid; 2]> {
     let clock = if h.clock == 2 {
         PSID_CLOCK_NTSC
@@ -65,20 +53,15 @@ unsafe extern "C" fn hook_chip(ctx: *mut c_void, chip: u32) -> *mut sid {
     unsafe { &mut (*chips)[chip as usize] }
 }
 
-/// The mute straight into the chip: the host's pass runs between blocks, where the device's
-/// REG_RING_MUTE reaches it (the next block's drain).
 unsafe extern "C" fn hook_mute(ctx: *mut c_void, chip: u32, mask: u32) {
     let chips = ctx as *mut [sid; 2];
     unsafe { sid_set_mute(&mut (*chips)[chip as usize], mask as u8) };
 }
 
-/// The interrupt's render pointer: the plain render (the LIVE view's tap renders the same
-/// samples).
 unsafe extern "C" fn render_part(s: *mut sid, out: *mut i16, n: u32, _tapped: i32) {
     unsafe { sid_render(s, out, n) };
 }
 
-/// psid_ctl over a tune, with its work space, its 64 KiB and its two chips.
 pub struct Player {
     pub ctl: Box<psid_ctl>,
     pub work: Box<psid_work>,
@@ -86,18 +69,14 @@ pub struct Player {
     _mem: Box<[u8; 0x10000]>,
     _header: Box<psid_header>,
     _file: Box<[u8]>,
-    /// Every write the main loop has published, in ring order (ring index - `log_from`).
     pub log: Vec<Write>,
     log_from: u32,
     logged: u32,
-    /// The chips' clocks at each rendered block's start and the ring's head the interrupt saw.
     pub blocks: Vec<BlockStart>,
-    /// The most the 6502 was ahead of chip A after a pass.
     pub ahead_max: u32,
 }
 
 impl Player {
-    /// The tune `file` loaded (kept: song changes load it again), its chips fresh.
     pub fn new(file: &[u8]) -> Player {
         let header = Box::new(header(file));
         let chips = chips_for(&header);
@@ -139,7 +118,6 @@ impl Player {
         ok
     }
 
-    /// The log starts again at a song's start (the ring's indexes start from its tail).
     fn restart_log(&mut self) {
         self.log.clear();
         self.log_from = self.ctl.tail;
@@ -147,7 +125,6 @@ impl Player {
         self.blocks.clear();
     }
 
-    /// The ring's indexes from `x` (before the first pass of a song): its wrap's test.
     pub fn ring_from(&mut self, x: u32) {
         self.ctl.stage = x;
         self.ctl.head = x;
@@ -183,13 +160,12 @@ impl Player {
         unsafe { psid_ctl_ahead(&*self.ctl) }
     }
 
-    /// A main-loop pass; whether it ran a slice.
     pub fn pass(&mut self) -> bool {
         let running = |s: u32| matches!(s, PSID_INIT | PSID_PLAYING | PSID_PAUSED);
         let before = self.state();
         let ran = unsafe { psid_ctl_poll(&mut *self.ctl) != 0 };
         if !running(before) && running(self.state()) {
-            self.restart_log(); // a song change has started its song
+            self.restart_log();
         }
         while self.logged != self.ctl.head {
             let i = (self.logged & (PSID_RING - 1)) as usize;
@@ -208,8 +184,6 @@ impl Player {
         ran
     }
 
-    /// The interrupt's block: chip A's samples and chip B's (silence for a 1SID tune), and
-    /// the chips it rendered.
     pub fn block(&mut self) -> ([i16; BLOCK], [i16; BLOCK], u32) {
         let (mut sa, mut sb) = ([0i16; BLOCK], [0i16; BLOCK]);
         let at = BlockStart(self.ctl.clock[0], self.ctl.clock[1], self.ctl.head);
@@ -231,7 +205,6 @@ impl Player {
         (sa, sb, r)
     }
 
-    /// `blocks` blocks, `passes` main-loop passes before each: chip A's samples and chip B's.
     pub fn run(&mut self, blocks: usize, passes: usize) -> (Vec<i16>, Vec<i16>) {
         let (mut a, mut b) = (Vec::new(), Vec::new());
         for _ in 0..blocks {
@@ -245,15 +218,10 @@ impl Player {
         (a, b)
     }
 
-    /// Writes applied late (psid_ctl.late).
     pub fn late(&self) -> u32 {
         self.ctl.late
     }
 
-    /// The log's writes, each where the interrupt applied it: a chip takes a write in the
-    /// first block that had it published (the head it saw) and does not end before its cycle,
-    /// at its cycle, or at the block's start if the chip had passed it already (late). With no
-    /// split budget spent, the reference render of these is the player's, sample for sample.
     pub fn as_applied(&self) -> Vec<Write> {
         let mut v = self.log.clone();
         let mut b = 0;
@@ -264,7 +232,6 @@ impl Player {
             }
             let start = |k: usize| self.blocks[k].clock(w.chip);
             let mut k = b;
-            // a block ends where the next one starts
             while k + 1 < self.blocks.len() && w.cycle.wrapping_sub(start(k + 1)) as i32 >= 0 {
                 k += 1;
             }
@@ -276,7 +243,6 @@ impl Player {
     }
 }
 
-/// A rendered block as the interrupt began it: chip A's and B's clocks, and the ring's head.
 #[derive(Clone, Copy, Debug)]
 pub struct BlockStart(pub u32, pub u32, pub u32);
 
@@ -290,10 +256,6 @@ impl BlockStart {
     }
 }
 
-/// Renders `blocks` blocks of the chips from their clock 0, each write placed at its cycle
-/// (whole samples to it, then sid_advance and sid_write), with no split budget: the reference
-/// psid_ctl's placement must equal. A write the chip has passed goes in at once. Each block's
-/// renders split at the block's start as the interrupt's do.
 pub fn reference(chips: &mut [sid; 2], writes: &[Write], blocks: usize) -> (Vec<i16>, Vec<i16>) {
     let a = reference_chip(&mut chips[0], writes.iter().filter(|w| w.chip == 0), blocks);
     let b = reference_chip(&mut chips[1], writes.iter().filter(|w| w.chip == 1), blocks);
@@ -356,8 +318,6 @@ unsafe extern "C" fn collect(ctx: *mut c_void, cycle: u32, chip: u32, reg: u32, 
     });
 }
 
-/// The tune's writes for its first `cycles` on the environment alone (no look-ahead, no
-/// ring), the shadows from fresh chips: the stream the player must publish.
 pub fn stream(file: &[u8], song: u32, cycles: u32) -> Vec<Write> {
     let h = Box::new(header(file));
     let chips = chips_for(&h);
@@ -392,13 +352,6 @@ pub fn stream(file: &[u8], song: u32, cycles: u32) -> Vec<Write> {
     *out
 }
 
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
-}
-
-/// A song packed by GoatTracker's own packer (gt2-ref) at `sid` into a PSID file of its
-/// subtunes: v2, PAL, VBI; with `sid` at `$D420`, a v3 header naming it the second SID (the
-/// oracle's corpus, psid-ref's tests/oracle.rs).
 pub fn packed(sng: &[u8], sid: u32) -> Vec<u8> {
     let o = gt2_ref::Options {
         sid_address: sid,
@@ -424,10 +377,9 @@ pub fn packed(sng: &[u8], sid: u32) -> Vec<u8> {
     psid.bytes()
 }
 
-/// GoatTracker's example songs and SIDOU's own (`assets/songs`), by name.
 pub fn songs() -> Vec<(String, Vec<u8>)> {
     let mut v = gt2_ref::examples();
-    let mut own: Vec<(String, Vec<u8>)> = std::fs::read_dir(root().join("assets/songs"))
+    let mut own: Vec<(String, Vec<u8>)> = std::fs::read_dir(repo_root().join("assets/songs"))
         .expect("assets/songs")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -442,13 +394,8 @@ pub fn songs() -> Vec<(String, Vec<u8>)> {
     v
 }
 
-/// The largest file the store holds (app/store.h STORE_FILE_MAX).
 pub const FILE_MAX: usize = 65_536;
 
-/// `file` (a PSID v2+ tune, its data right after a `$7C`-byte header) grown to the store's
-/// largest file: the data from `$007C` to `$FFFF`, the tune's own bytes at their addresses, the
-/// zero page above `$7C` zero and the rest a pattern (memory the tune does not use: a C64's RAM
-/// holds something there too). It plays as `file` does.
 pub fn full_size(file: &[u8]) -> Vec<u8> {
     let h = header(file);
     assert_eq!(h.data_off, 0x7C, "a v2+ header with the load address in it");

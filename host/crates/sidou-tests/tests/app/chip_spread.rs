@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! CHIP SPREAD (`app/chip_spread.c`): equal-power gains, chip A to the left and chip B to the
-//! right, the unity gain that converts as the slots do (their soft limiter included), and the
-//! setting's MIDI row and clamp.
 
 use sidou_sys::*;
 
@@ -14,20 +11,18 @@ fn gains(spread: u32) -> (f32, f32) {
     (m, s)
 }
 
-/// The slots' float output for int16 frames (sid_slots_process_float with the slots off).
-fn floats(lr: &[i16]) -> Vec<f32> {
+fn slots_float_output(lr: &[i16]) -> Vec<f32> {
     lr.iter().map(|&v| f32::from(v) / 32768.0).collect()
 }
 
-/// The stage on a block of the slots' float output, the gains held.
-fn apply_f(lr: &[f32], side: &[i16], m: f32, k: f32) -> Vec<i16> {
+fn apply_to_float(lr: &[f32], side: &[i16], m: f32, k: f32) -> Vec<i16> {
     let mut out = vec![0i16; lr.len()];
     unsafe { chip_spread_apply(out.as_mut_ptr(), lr.as_ptr(), side.as_ptr(), m, m, k, k) };
     out
 }
 
 fn apply(lr: &[i16], side: &[i16], m: f32, k: f32) -> Vec<i16> {
-    apply_f(&floats(lr), side, m, k)
+    apply_to_float(&slots_float_output(lr), side, m, k)
 }
 
 fn side_of(a: &[i16], b: &[i16], fade: chip_mix_fade) -> Vec<i16> {
@@ -36,9 +31,7 @@ fn side_of(a: &[i16], b: &[i16], fade: chip_mix_fade) -> Vec<i16> {
     side
 }
 
-/// The mono block a and b make on both sides (the slots off: their output is their input; the
-/// sums here fit int16).
-fn mono(a: &[i16], b: &[i16]) -> Vec<i16> {
+fn mono_frames(a: &[i16], b: &[i16]) -> Vec<i16> {
     let mut m = a.to_vec();
     let mut over = vec![0i16; N];
     let past = unsafe {
@@ -73,39 +66,36 @@ fn the_gains_are_equal_power_from_mono_to_a_quarter_turn() {
     );
 }
 
-/// At unity (mid 1, side 0) the stage converts the slots' float output exactly as the slots
-/// convert it themselves (sid_fx_to_i16_limited), past the limiter's knee too: the stage starts
-/// and ends without a step. Every level from -2 to 2 of full scale in 1/65536 steps.
 #[test]
 fn unity_converts_as_the_slots_do() {
     let all: Vec<f32> = (-131_072..131_072).map(|v| v as f32 / 65_536.0).collect();
     let side = vec![12_345i16; N];
     for block in all.chunks(2 * N) {
-        let out = apply_f(block, &side, 1.0, 0.0);
+        let out = apply_to_float(block, &side, 1.0, 0.0);
         for (&x, &y) in block.iter().zip(&out) {
             assert_eq!(y, unsafe { sid_fx_to_i16_limited(x) }, "{x}");
         }
     }
 }
 
-/// SPREAD 100 with the slots off: chip A alone is all on the left at sqrt 2 (+3 dB) and nothing
-/// on the right; with chip B in use A is on the left and B on the right, each at sqrt 2 (to the
-/// side's halving, 1 LSB). Under the knee nothing is limited.
 #[test]
 fn full_spread_puts_chip_a_left_and_chip_b_right() {
     let (m, k) = gains(CHIP_SPREAD_MAX);
     let a: Vec<i16> = (0..N as i32).map(|i| (i * 131 - 8_000) as i16).collect();
     let b: Vec<i16> = (0..N as i32).map(|i| (5_000 - i * 77) as i16).collect();
     let zero = vec![0i16; N];
-    // A alone: the side is A itself.
-    let out = apply(&mono(&a, &zero), &a, m, k);
+    let out = apply(&mono_frames(&a, &zero), &a, m, k);
     for i in 0..N {
         let want = f64::from(a[i]) * std::f64::consts::SQRT_2;
         assert!((f64::from(out[2 * i]) - want).abs() <= 0.5 + 1e-3, "L {i}");
         assert_eq!(out[2 * i + 1], 0, "R {i}");
     }
-    // Both: the side halved, its gain doubled.
-    let out = apply(&mono(&a, &b), &side_of(&a, &b, CHIP_MIX_FULL), m, 2.0 * k);
+    let out = apply(
+        &mono_frames(&a, &b),
+        &side_of(&a, &b, CHIP_MIX_FULL),
+        m,
+        2.0 * k,
+    );
     for i in 0..N {
         let (l, r) = (f64::from(out[2 * i]), f64::from(out[2 * i + 1]));
         let sq = std::f64::consts::SQRT_2;
@@ -114,7 +104,6 @@ fn full_spread_puts_chip_a_left_and_chip_b_right() {
     }
 }
 
-/// At every SPREAD a chip's power over both sides is mono's (2 x its own): equal power.
 #[test]
 fn each_chip_keeps_its_power_at_every_spread() {
     let a: Vec<i16> = (0..N)
@@ -122,10 +111,10 @@ fn each_chip_keeps_its_power_at_every_spread() {
         .collect();
     let zero = vec![0i16; N];
     let power = |x: &[i16]| x.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>();
-    let mono_power = power(&mono(&a, &zero));
+    let mono_power = power(&mono_frames(&a, &zero));
     for s in (0..=CHIP_SPREAD_MAX).step_by(10) {
         let (m, k) = gains(s);
-        let p = power(&apply(&mono(&a, &zero), &a, m, k));
+        let p = power(&apply(&mono_frames(&a, &zero), &a, m, k));
         assert!(
             (p / mono_power - 1.0).abs() < 1e-3,
             "{s}: {:.5}",
@@ -134,8 +123,6 @@ fn each_chip_keeps_its_power_at_every_spread() {
     }
 }
 
-/// The side's fades are chip_mix's: during B's fade in or out the side is (A - B x the weight)
-/// halved, so A + B and A - B agree on how much of B there is.
 #[test]
 fn the_side_fades_b_as_the_mix_does() {
     let a: Vec<i16> = (0..N as i32).map(|i| (i * 50 - 3_000) as i16).collect();
@@ -156,13 +143,11 @@ fn the_side_fades_b_as_the_mix_does() {
     }
 }
 
-/// A gain change moves over the block: from mono to SPREAD 100 no sample steps by more than the
-/// gains' 1/128 of the block allows.
 #[test]
 fn a_change_ramps_over_the_block() {
     let (m, k) = gains(CHIP_SPREAD_MAX);
     let a = vec![16_000i16; N];
-    let lr = floats(&mono(&a, &vec![0i16; N]));
+    let lr = slots_float_output(&mono_frames(&a, &vec![0i16; N]));
     let mut out = vec![0i16; 2 * N];
     unsafe { chip_spread_apply(out.as_mut_ptr(), lr.as_ptr(), a.as_ptr(), 1.0, m, 0.0, k) };
     let left: Vec<i32> = out.iter().step_by(2).map(|&v| i32::from(v)).collect();
@@ -184,8 +169,6 @@ fn a_change_ramps_over_the_block() {
     assert!((left[N - 1] - 22_627).abs() <= 1 && right[N - 1] == 0);
 }
 
-/// One glide step with chip A's three voices at envelope level `a` and chip B's at `b` (None: out
-/// of use), the levels as audio_fill takes them (chip_spread_level).
 fn glide_step(g: &mut chip_spread_glide, a: u8, b: Option<u8>) -> u32 {
     let level = |x: u8| {
         let mut c = Box::<sid>::default();
@@ -197,9 +180,6 @@ fn glide_step(g: &mut chip_spread_glide, a: u8, b: Option<u8>) -> u32 {
     unsafe { chip_spread_glide_step(g, level(a), b.map_or(0, level)) }
 }
 
-/// A chip sounding alone stays centred (the glide stays at 0), whether chip B is out of use or in
-/// use and quiet; with both sounding the separation glides in a block at a time over
-/// CHIP_SPREAD_GLIDE blocks (about 0.1 s), and back out once one goes quiet.
 #[test]
 fn spread_separates_only_while_both_chips_sound() {
     for (a, b, what) in [
@@ -223,7 +203,6 @@ fn spread_separates_only_while_both_chips_sound() {
             "in, block {i}"
         );
     }
-    // B goes quiet: the hold, then a block at a time back to the centre.
     for i in 1..=CHIP_SPREAD_HOLD - 1 {
         assert_eq!(glide_step(&mut g, 200, Some(0)), glide, "held, block {i}");
     }
@@ -236,9 +215,6 @@ fn spread_separates_only_while_both_chips_sound() {
     }
 }
 
-/// The hysteresis: a level between CHIP_SPREAD_OFF and CHIP_SPREAD_ON does not make a quiet chip
-/// sound but keeps a sounding one sounding, and the gaps of a phrase (a note's release under
-/// CHIP_SPREAD_OFF for less than the hold) never move the image.
 #[test]
 fn the_sounding_test_does_not_flutter() {
     let between = (CHIP_SPREAD_OFF + CHIP_SPREAD_ON) as u8 / 2;
@@ -260,29 +236,23 @@ fn the_sounding_test_does_not_flutter() {
             "B decays to between: still sounding"
         );
     }
-    // Staccato on B: CHIP_SPREAD_HOLD - 1 blocks of silence between its notes.
     for _ in 0..20 {
         for _ in 0..CHIP_SPREAD_HOLD - 1 {
             assert_eq!(glide_step(&mut g, 200, Some(0)), CHIP_SPREAD_GLIDE);
         }
         assert_eq!(glide_step(&mut g, 200, Some(200)), CHIP_SPREAD_GLIDE);
     }
-    // One voice alone counts (the counters' OR).
     let mut c = Box::<sid>::default();
     c.env[2].counter = CHIP_SPREAD_ON as u8;
     assert_eq!(unsafe { chip_spread_level(&*c) }, CHIP_SPREAD_ON);
 }
 
-/// The glide on the stage as audio_fill runs it (platform/fm1/audio.c: the mid from 1 to cos phi
-/// and the side from 0 to sin phi by the glide's share, each block's gains ramping from the last
-/// block's): from centred to SPREAD 100's separation with no sample stepping by more than a few
-/// LSB, on a loud block whose side is as large as it gets, and the separation reached exactly.
 #[test]
 fn the_glide_moves_the_gains_without_a_step() {
     let (m, k) = gains(CHIP_SPREAD_MAX);
     let a = vec![16_000i16; N];
     let b = vec![-16_000i16; N];
-    let lr_ab = vec![0.0f32; 2 * N]; // A + B: 0 on both sides
+    let silent_mid = vec![0.0f32; 2 * N];
     let side = side_of(&a, &b, CHIP_MIX_FULL);
     let mut g = chip_spread_glide::default();
     let (mut m_now, mut k_now) = (1.0f32, 0.0f32);
@@ -294,7 +264,7 @@ fn the_glide_moves_the_gains_without_a_step() {
         unsafe {
             chip_spread_apply(
                 out.as_mut_ptr(),
-                lr_ab.as_ptr(),
+                silent_mid.as_ptr(),
                 side.as_ptr(),
                 m_now,
                 m_to,
@@ -316,9 +286,6 @@ fn the_glide_moves_the_gains_without_a_step() {
     assert!((left[left.len() - 1] - 22_627).abs() <= 1);
 }
 
-/// SPREAD as MIDI sets it: CC 117 by the steps curve (0..127 over 0..100), NRPN 0/4 to the
-/// percent, clamped; saved with the settings (the dirty flag). Not a live parameter: learn and
-/// MIDI out leave it alone.
 #[test]
 fn the_cc_and_the_nrpn_set_spread() {
     let row = unsafe { &*midi_map_for_cc(MIDI_MAP_CC_SPREAD as u8) };

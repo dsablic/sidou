@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's first song: assets/songs/sidou-loop.sng and app/demo_song.c are generated from
-//! sidou_tests::song_embed; SIDOU_SONG_UPDATE=1 rewrites them.
 
 use sidou_sys::*;
 use sidou_tests::song::Song;
@@ -23,8 +21,6 @@ fn the_generated_files_are_up_to_date() {
     }
 }
 
-/// The firmware's copy is the song's, and the device reads it (its caps, its 64 KiB
-/// region).
 #[test]
 fn the_firmwares_song_reads_on_the_device() {
     // SAFETY: app/demo_song.c defines the array with demo_song_sng_bytes bytes.
@@ -40,8 +36,6 @@ fn the_firmwares_song_reads_on_the_device() {
     assert_eq!(info.channels, 3);
 }
 
-/// GoatTracker's own load and save leave it as it is: a canonical GTS5 file (decision
-/// record 0007), so it opens in GoatTracker and comes back byte for byte.
 #[test]
 fn the_song_is_canonical_gts5() {
     let sng = song_embed::sng();
@@ -57,15 +51,6 @@ unsafe extern "C" fn whole(_ctx: *mut std::ffi::c_void, _profile: u8) -> i32 {
     1
 }
 
-/// The ring's writes for the song's chips in one pass, at most (app/keys_route.h's contract):
-/// under KEYS A both chips follow a setup in a song's tick (chip A the song's, asked for with
-/// keys_route_song_wants by platform/fm1/main.c song_chip_ready; chip B the keys'), each one
-/// chip_ctl_follow at its worst (measured here: a CHPA with another profile and every control,
-/// the tick its preparation ends in), and chip A's character tick besides: within the
-/// REG_RING_SONG_PASS entries app/reg_ring.h keeps for them; a move of the keys
-/// (REG_RING_MOVE_PASS) has its own share, so the shared pass is within REG_RING_WORST_PASS.
-/// Song control itself puts nothing in the ring: PLAY, the stop's gates and the mute are the
-/// interrupt's, and the stop hands chip A back through keys_route (its move's share).
 #[test]
 fn song_controls_pass_fits_its_ring_provision() {
     let mut c = Box::<chip_ctl>::default();
@@ -102,7 +87,6 @@ fn song_controls_pass_fits_its_ring_provision() {
             }
         }
     }
-    // both chips following, and chip A's character tick on the song's tick
     let shared = 2 * worst + 1;
     assert!(
         shared <= REG_RING_SONG_PASS,

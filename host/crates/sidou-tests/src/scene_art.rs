@@ -1,16 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! RED MOON RITE's art in flash: the indexed PNGs in `assets/scene/` (drawn by
-//! `assets/scene/red-moon-rite.js`) and the C they generate, `app/scene_rmr_art.c`, a
-//! `scene_image` (app/scene_art.h) each. `tests/app/scene_art.rs` keeps the generated file in
-//! step with the PNGs.
-//!
-//! The encoding is `bitmap_codec`'s run dictionaries and checkpointed row packets
-//! (docs/art/bitmap-codec.md). Transparency is a colour no image of the
-//! set uses (`clear`). Each image is cropped to the rectangle its pixels cover; an unarmed pose
-//! is a patch over its armed pose (the rectangle where they differ) when that is smaller; a sky
-//! is a gradient computed on the device and the pixels the gradient does not give (the moon,
-//! wisps and hills), which is smaller than the whole sky.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -19,20 +8,14 @@ use crate::bitmap_codec;
 use crate::font::repo_root;
 use crate::logo::{check_or_write_file, table, PALETTE, SPDX};
 
-/// A transparent pixel.
 pub const CLEAR: u8 = 255;
 
-/// The longest run a byte holds.
 const RUN: usize = 16;
 
-/// app/scene_art.h SCENE_ART_SEEK: a row wider than this has a run start, and a checkpoint,
-/// every SEEK pixels.
 pub const SEEK: usize = 32;
 
-/// The flash ceiling for RED MOON RITE's art (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2f-scene.md).
 pub const CEILING: usize = 48 * 1024;
 
-/// An image as palette indexes, row by row, `CLEAR` where transparent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Picture {
     pub w: usize,
@@ -46,7 +29,6 @@ impl Picture {
     }
 }
 
-/// An indexed PNG whose pixels are art palette colours or fully transparent.
 pub fn parse_png(bytes: &[u8]) -> Result<Picture, String> {
     let mut dec = png::Decoder::new(std::io::Cursor::new(bytes))
         .read_info()
@@ -107,7 +89,6 @@ pub fn generated_path() -> PathBuf {
     repo_root().join("app/scene_rmr_art.c")
 }
 
-/// A raster-split sky (app/scene_art.h's scene_gradient).
 #[derive(Clone, Copy, Debug)]
 pub struct Gradient {
     pub y0: u8,
@@ -119,7 +100,6 @@ pub struct Gradient {
 const BAYER: [u32; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
 impl Gradient {
-    /// The prototype's gradient(): the colour at screen pixel (x, y).
     pub fn at(&self, x: usize, y: usize) -> u8 {
         let s = self.stops;
         let mut i = 0;
@@ -137,12 +117,8 @@ impl Gradient {
     }
 }
 
-/// The sky's rows on the screen: sky-<n>.png holds rows 16..140.
 pub const SKY_Y: usize = 16;
 
-/// The three sky palettes, as red-moon-rite.js's PALS (BLACK 0, BLUE 6, PURPLE 4, RED 2,
-/// LIGHT_RED 10, ORANGE 8), from row 16 to 140 with seams of 6 rows. The round-trip test
-/// checks that gradient and overlay give the PNGs back.
 pub const SKIES: [Gradient; 3] = [
     Gradient {
         y0: 16,
@@ -164,27 +140,21 @@ pub const SKIES: [Gradient; 3] = [
     },
 ];
 
-/// The armed poses, in app/scene_art.h's order, and the unarmed ones.
 pub const POSES: [&str; 8] = [
     "guard", "guard2", "raise", "chop", "block", "spinA", "spinB", "hit",
 ];
 pub const UNARMED: [&str; 4] = ["guard", "guard2", "hit", "reach"];
 
-/// What an image is drawn from, before encoding.
 #[derive(Clone, Debug)]
 pub struct Source {
-    /// The C initialiser's place: `scene_rmr_barb[0][SCENE_RMR_GUARD]`.
     pub symbol: String,
     pub png: String,
-    /// The frame to code, in stored pixels, `CLEAR` where transparent.
     pub frame: Picture,
     pub gx: u8,
     pub anchor: (u8, u8),
-    /// For an unarmed pose: the armed pose's index in the list, a patch candidate.
     pub base: Option<usize>,
 }
 
-/// Every image of the set, in the generated file's order.
 pub fn sources() -> Vec<Source> {
     let mut out = Vec::new();
     let enum_name = |p: &str| match p {
@@ -192,7 +162,6 @@ pub fn sources() -> Vec<Source> {
         "spinB" => "SPIN_B".to_string(),
         p => p.to_uppercase(),
     };
-    // The armed poses come first: fighter who's pose k is source who * 8 + k.
     for who in 0..2 {
         for pose in POSES {
             let png = format!("barb-{who}-{pose}");
@@ -292,8 +261,6 @@ pub fn sources() -> Vec<Source> {
     out
 }
 
-/// The status bar's images and their symbols: the bar, and side 0's blade meter empty, full
-/// and its tip (side 1 is drawn mirrored).
 pub const HUD: [(&str, &str); 4] = [
     ("hud", "scene_rmr_hud"),
     ("hud-blade-empty", "scene_rmr_blade_empty"),
@@ -301,9 +268,6 @@ pub const HUD: [(&str, &str); 4] = [
     ("hud-blade-tip", "scene_rmr_blade_tip"),
 ];
 
-/// The disarm's flight of a fighter's sword (red-moon-rite-motion.txt): its frames in the air,
-/// the grip's place (dx from the fighter's place when it starts, y) and rotation at frames
-/// 1 .. frames - 1, and the grip's place once it sticks.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Flight {
     pub frames: usize,
@@ -311,8 +275,6 @@ pub struct Flight {
     pub stuck: (i32, i32),
 }
 
-/// The motion tables: each fighter's flight, and the spark's stages 1, 2 and 3 (pixels
-/// (dx, dy, colour) around the blades' meeting point, in drawing order).
 #[derive(Clone, Debug, Default)]
 pub struct Motion {
     pub flights: Vec<Flight>,
@@ -323,7 +285,6 @@ pub fn motion_path() -> PathBuf {
     repo_root().join("assets/scene/red-moon-rite-motion.txt")
 }
 
-/// red-moon-rite-motion.txt, parsed.
 pub fn motion() -> Motion {
     let text = std::fs::read_to_string(motion_path()).expect("red-moon-rite-motion.txt");
     let mut lines = text.lines().filter(|l| !l.starts_with('#'));
@@ -366,8 +327,6 @@ pub fn motion() -> Motion {
     m
 }
 
-/// A spark stage as rows (app/scene_art.h's scene_rmr_spark): the first row's dy, then each
-/// row's pixels (dx, colour) left to right, a pixel drawn twice taking its last colour.
 pub fn spark_rows(marks: &[(i32, i32, u8)]) -> (i32, Vec<Vec<(i32, u8)>>) {
     let dy0 = marks.iter().map(|m| m.1).min().unwrap();
     let dy1 = marks.iter().map(|m| m.1).max().unwrap();
@@ -382,10 +341,8 @@ pub fn spark_rows(marks: &[(i32, i32, u8)]) -> (i32, Vec<Vec<(i32, u8)>>) {
     )
 }
 
-/// The coded rectangle of an image: (x, y, w, h).
 pub type Rect = (usize, usize, usize, usize);
 
-/// The smallest rectangle holding every pixel `keep` picks.
 fn bbox(p: &Picture, keep: impl Fn(usize, usize) -> bool) -> Option<Rect> {
     let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
     for y in 0..p.h {
@@ -401,8 +358,6 @@ fn bbox(p: &Picture, keep: impl Fn(usize, usize) -> bool) -> Option<Rect> {
     (x0 != usize::MAX).then_some((x0, y0, x1 - x0, y1 - y0))
 }
 
-/// One row's runs, `clear` coding transparency; a row wider than SEEK has a run start every
-/// SEEK pixels.
 fn row_runs(row: &[u8], clear: u8) -> Vec<u8> {
     let mut out = Vec::new();
     let mut x = 0;
@@ -424,7 +379,6 @@ fn rect_rows(p: &Picture, r: Rect, clear: u8) -> Vec<Vec<u8>> {
         .collect()
 }
 
-/// What rows cost alone: their runs (rows alike shared) and offsets.
 fn rows_cost(rows: &[Vec<u8>]) -> usize {
     let mut seen = std::collections::HashSet::new();
     let runs: usize = rows
@@ -435,26 +389,23 @@ fn rows_cost(rows: &[Vec<u8>]) -> usize {
     runs + 2 * rows.len()
 }
 
-/// An image as it is coded.
 #[derive(Clone, Debug)]
 pub struct Coded {
     pub rect: Rect,
     pub rows: Vec<Vec<u8>>,
-    /// The base image's index, when coded as a patch.
     pub base: Option<usize>,
-    /// What it costs alone (runs and offsets), and what the whole frame would have.
     pub cost: usize,
     pub whole_cost: usize,
 }
 
-/// The colour no image uses: the set's `clear`.
 pub fn clear_colour(srcs: &[Source]) -> u8 {
     (0..16u8)
         .find(|c| srcs.iter().all(|s| !s.frame.px.contains(c)))
         .expect("every colour is used: no colour is left to code transparency")
 }
 
-/// Codes each image: cropped, or as a patch over its base when that is smaller.
+const PATCH_OF_AN_IDENTICAL_POSE: Rect = (0, 0, 1, 1);
+
 pub fn code(srcs: &[Source], clear: u8) -> Vec<Coded> {
     srcs.iter()
         .map(|s| {
@@ -480,8 +431,7 @@ pub fn code(srcs: &[Source], clear: u8) -> Vec<Coded> {
                 s.png
             );
             let Some(prect) = bbox(f, |x, y| f.at(x, y) != base.at(x, y)) else {
-                // The same picture: a patch of one pixel.
-                let prect = (0, 0, 1, 1);
+                let prect = PATCH_OF_AN_IDENTICAL_POSE;
                 let rows = rect_rows(f, prect, clear);
                 let cost = rows_cost(&rows);
                 return Coded {
@@ -509,8 +459,6 @@ pub fn code(srcs: &[Source], clear: u8) -> Vec<Coded> {
         .collect()
 }
 
-/// The set's rows in one array of runs, rows alike shared across every image: each image's
-/// row byte offsets, coded pools, and each image's byte offset to its pool.
 pub fn share(coded: &[Coded]) -> (Vec<Vec<u16>>, Vec<u8>, Vec<usize>) {
     let rows: Vec<_> = coded.iter().map(|c| c.rows.clone()).collect();
     bitmap_codec::encode_formats(
@@ -525,7 +473,6 @@ pub fn share(coded: &[Coded]) -> (Vec<Vec<u16>>, Vec<u8>, Vec<usize>) {
     )
 }
 
-/// Decodes a coded image back to its frame (the model the C decoder is checked against).
 pub fn decode(coded: &[Coded], i: usize, srcs: &[Source], clear: u8) -> Picture {
     let s = &srcs[i];
     let c = &coded[i];
@@ -552,7 +499,6 @@ pub fn decode(coded: &[Coded], i: usize, srcs: &[Source], clear: u8) -> Picture 
     }
 }
 
-/// The torches' flame areas, {x, y, w, h}, from flame-mask.png: one each side of the middle.
 pub fn flames() -> [[u8; 4]; 2] {
     let m = load("flame-mask");
     [0usize, 1].map(|side| {
@@ -564,8 +510,6 @@ pub fn flames() -> [[u8; 4]; 2] {
     })
 }
 
-/// The skies coded whole instead (the other choice the plan names): runs (rows alike shared
-/// across the three) and offsets, against the gradients and overlays the set uses.
 pub fn skies_both_ways() -> (usize, usize) {
     let srcs = sources();
     let clear = clear_colour(&srcs);
@@ -589,14 +533,10 @@ pub fn skies_both_ways() -> (usize, usize) {
     (rows_cost(&whole), rows_cost(&overlays) + gradients)
 }
 
-/// sizeof(scene_image) on the pi32v2 (ILP32): ten bytes, two of padding, three pointers.
 pub const IMAGE_STRUCT: usize = 24;
-/// sizeof(scene_gradient): four bytes and a pointer; and a stop.
 pub const GRADIENT_STRUCT: usize = 8;
 pub const STOP: usize = 2;
 
-/// What the set takes in flash: runs, row offsets and checkpoints, the images' and gradients'
-/// structs, the stops and the flame table.
 pub fn flash() -> (usize, usize, usize, usize) {
     let srcs = sources();
     let coded = code(&srcs, clear_colour(&srcs));
@@ -612,13 +552,10 @@ pub fn flash() -> (usize, usize, usize, usize) {
     (data.len(), offs, structs, data.len() + offs + structs)
 }
 
-/// sizeof(scene_rmr_grip), sizeof(scene_rmr_flight) and sizeof(scene_rmr_spark) on the
-/// pi32v2.
 pub const GRIP_STRUCT: usize = 3;
 pub const FLIGHT_STRUCT: usize = 12;
 pub const SPARK_STRUCT: usize = 16;
 
-/// What the motion tables take in flash: the flights' grips and the sparks' pixels and rows.
 pub fn motion_flash() -> usize {
     let m = motion();
     let flights: usize = m
@@ -637,7 +574,6 @@ pub fn motion_flash() -> usize {
     flights + sparks
 }
 
-/// The motion tables' C (red-moon-rite-motion.txt).
 fn motion_c() -> String {
     let m = motion();
     let mut s = String::new();
@@ -711,42 +647,16 @@ fn motion_c() -> String {
     s
 }
 
-/// `app/scene_rmr_art.c`, from the PNGs and the motion tables.
 pub fn c_source() -> String {
     let srcs = sources();
     let clear = clear_colour(&srcs);
     let coded = code(&srcs, clear);
     let (rows, data, bases) = share(&coded);
-    let (runs, offs, structs, total) = flash();
     let mut s = String::from(SPDX);
     let _ = write!(
         s,
-        "/* Generated by host/crates/sidou-tests/src/scene_art.rs from the PNGs and the motion\n \
-         * tables in assets/scene/ (drawn by assets/scene/red-moon-rite.js); do not edit.\n \
-         * RED MOON RITE's art (app/scene_art.h): each image cropped to the pixels it covers,\n \
-         * run dictionaries and row packets (docs/art/bitmap-codec.md), colour {clear} coding\n \
-         * transparency (no image uses it). The unarmed poses are patches over their\n \
-         * armed poses where that is smaller; the skies are a gradient computed on the device\n \
-         * and what it does not give (the moon, wisps and hills). A row wider than {SEEK}\n \
-         * pixels has a run start every {SEEK}, with checkpoints in its row packets.\n \
-         * In flash: {runs} bytes of coded data, {offs} of row offsets and {structs}\n \
-         * of tables, {total} in all. Per-image costs below are the byte-run crop/patch model.\n"
-    );
-    for (src, c) in srcs.iter().zip(&coded) {
-        let (x, y, w, h) = c.rect;
-        let how = match c.base {
-            Some(_) => format!("a patch, {} bytes (whole, {})", c.cost, c.whole_cost),
-            None => format!("{} bytes", c.cost),
-        };
-        let _ = writeln!(
-            s,
-            " * {}: {w} x {h} from ({x}, {y}) of {} x {}, {how}.",
-            src.png, src.frame.w, src.frame.h
-        );
-    }
-    let _ = write!(
-        s,
-        " */\n#include \"scene_art.h\"\n\n#include <stddef.h>\n\n\
+        "/* Generated by host/crates/sidou-tests/src/scene_art.rs from assets/scene/; \
+         do not edit. */\n#include \"scene_art.h\"\n\n#include <stddef.h>\n\n\
          static const uint8_t RUNS[{}] = {{\n{}}};\n",
         data.len(),
         table(&data, 16, |v| format!("0x{v:02x}")),
@@ -763,11 +673,9 @@ pub fn c_source() -> String {
         let src = &srcs[i];
         let c = &coded[i];
         let (x, y, w, h) = c.rect;
-        // A patch's base on a line of its own, within 100 columns.
         let base = c
             .base
             .map(|b| {
-                // The decoders draw a patch's base in the patch's frame.
                 let b_src = &srcs[b];
                 assert_eq!(
                     (b_src.frame.w, b_src.frame.h, b_src.gx),
@@ -863,7 +771,6 @@ pub fn c_source() -> String {
     s
 }
 
-/// Writes `app/scene_rmr_art.c` if `update`, else returns it if it is stale.
 pub fn check_or_write(update: bool) -> Vec<PathBuf> {
     check_or_write_file(&generated_path(), &c_source(), update)
 }

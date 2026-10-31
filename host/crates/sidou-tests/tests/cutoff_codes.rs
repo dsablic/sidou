@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Every measured cutoff survives the flash encoding and the C decoder within 2.5e-4, and
-//! the C decoder reads gen/filter.h's delta-coded blocks as sidou-tablegen wrote them.
 
 use residfp_sys::Model;
 use sidou_sys::{
@@ -9,8 +7,7 @@ use sidou_sys::{
     SID_MODEL_6581, SID_MODEL_8580,
 };
 
-/// A C array's numbers from gen/filter.h, comments left out.
-fn c_array(header: &str, name: &str) -> Vec<u32> {
+fn c_array_numbers(header: &str, name: &str) -> Vec<u32> {
     let at = header
         .find(&format!("{name}["))
         .unwrap_or_else(|| panic!("no {name}"));
@@ -36,19 +33,15 @@ fn numbers(text: &str) -> Vec<u32> {
         .collect()
 }
 
-/// All 14,336 codes: sid_cutoff_hz and the sequential reader (FC values in order, with
-/// gaps, repeats and steps back) decode each as sidou-tablegen's decoder reads the header.
-/// The codes are the fit's (the test below; the drift test re-measures them), so
-/// this holds the C decoder to the table without the half-minute fit.
 #[test]
-fn the_c_decoder_reads_every_delta_coded_cutoff() {
+fn both_c_decoders_read_every_delta_coded_cutoff_as_tablegen_wrote_it() {
     let header =
         std::fs::read_to_string(sidou_tablegen::repo_root().join("core/sid/gen/filter.h")).unwrap();
     let mut entries = 0;
     for (name, c_model) in [("6581", SID_MODEL_6581), ("8580", SID_MODEL_8580)] {
         let to16 = |v: Vec<u32>| -> Vec<u16> { v.into_iter().map(|x| x as u16).collect() };
-        let at = to16(c_array(&header, &format!("SID_CUTOFF_AT_{name}")));
-        let run: Vec<u8> = c_array(&header, &format!("SID_CUTOFF_RUN_{name}"))
+        let at = to16(c_array_numbers(&header, &format!("SID_CUTOFF_AT_{name}")));
+        let run: Vec<u8> = c_array_numbers(&header, &format!("SID_CUTOFF_RUN_{name}"))
             .into_iter()
             .map(|x| u8::try_from(x).unwrap())
             .collect();
@@ -77,7 +70,7 @@ fn the_c_decoder_reads_every_delta_coded_cutoff() {
             }
             let mut seq = sid_cutoff_seq::default();
             unsafe { sid_cutoff_seq_init(&mut seq, c_model, curve as u32) };
-            for fc in [
+            let gaps_repeats_and_steps_back = [
                 5u32,
                 5,
                 6,
@@ -93,7 +86,8 @@ fn the_c_decoder_reads_every_delta_coded_cutoff() {
                 1000,
                 1001,
                 2048 + 7,
-            ] {
+            ];
+            for fc in gaps_repeats_and_steps_back {
                 assert_eq!(
                     unsafe { sid_cutoff_seq_hz(&mut seq, fc) }.to_bits(),
                     hz(want[(fc & 2047) as usize]).to_bits(),
@@ -104,6 +98,8 @@ fn the_c_decoder_reads_every_delta_coded_cutoff() {
     }
     assert_eq!(entries, 14_336);
 }
+
+const MAX_RELATIVE_ERROR: f64 = 2.5e-4;
 
 #[test]
 fn every_cutoff_code_decodes_within_the_relative_error_bound() {
@@ -128,7 +124,7 @@ fn every_cutoff_code_decodes_within_the_relative_error_bound() {
                 let decoded = unsafe { sid_cutoff_hz(c_model, curve as u32, fc as u32) };
                 let error = (f64::from(decoded) / f64::from(original) - 1.0).abs();
                 assert!(
-                    error <= 2.5e-4,
+                    error <= MAX_RELATIVE_ERROR,
                     "{model:?} curve {curve} FC {fc}: {original} -> {decoded}"
                 );
                 let code = (original.to_bits() - (126 << 23) + (1 << 10)) >> 11;

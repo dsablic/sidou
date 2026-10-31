@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The effect slots in the live instrument (`app/fx_live.c`, live's slot settings, the
-//! panel's EDIT layer and the slot CCs).
 
 use std::ffi::c_void;
 
 use sidou_sys::*;
 
-use crate::Rig;
+use crate::{rms, Rig};
 
 const fn slot_reg(slot: u32, field: u32) -> u8 {
     (LIVE_REG_SLOT_BASE | slot << 3 | field) as u8
@@ -47,9 +45,11 @@ fn algorithms_cycle_and_controls_turn_by_detents() {
     assert_eq!(rig.live.slot[1][0], 0, "wraps from the last to NONE");
     unsafe { live_slot_next_algorithm(&mut *rig.live, 1) };
     assert_eq!(rig.live.slot[1][0], SID_MOD_CHORUS as u8);
-    // CHORUS starts from its defaults (live_fx_defaults); the detents add to them.
     let a = unsafe { live_fx_defaults[1][SID_MOD_CHORUS as usize] }[1];
-    assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], a);
+    assert_eq!(
+        rig.live.slot[1][LIVE_SLOT_A as usize], a,
+        "CHORUS starts from its defaults"
+    );
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 3) };
     let w = unsafe { live_walk_slot(1, SID_MOD_CHORUS, LIVE_SLOT_A) };
     assert_eq!(
@@ -59,24 +59,27 @@ fn algorithms_cycle_and_controls_turn_by_detents() {
     );
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 100) };
     assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], LIVE_SLOT_MAX as u8);
-    // The algorithm is not a knob.
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_ALGORITHM, 3) };
-    assert_eq!(rig.live.slot[1][0], SID_MOD_CHORUS as u8);
+    assert_eq!(
+        rig.live.slot[1][0], SID_MOD_CHORUS as u8,
+        "the algorithm is not a knob"
+    );
 }
 
 #[test]
 fn slot_ccs_map_slot_and_field() {
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.clear();
-    rig.cc(103, 64); // Distortion Amount
-    rig.cc(102, 127); // Distortion algorithm: the last
-    rig.cc(112, 80); // FX algorithm: 80 * 5 / 128 = 3, the light reverb
-    rig.cc(116, 127); // FX Mix
-    rig.cc(110, 33); // Modulation B
+    let (dist_amount, dist_algorithm, fx_algorithm, fx_mix, modulation_b) =
+        (103, 102, 112, 116, 110);
+    rig.cc(dist_amount, 64);
+    rig.cc(dist_algorithm, 127);
+    rig.cc(fx_algorithm, 80);
+    rig.cc(fx_mix, 127);
+    rig.cc(modulation_b, 33);
     assert_eq!(
         rig.log(),
         &[
-            // on the controls' walks (knob_curves.rs): CC 64 of a linear one is position 16, 66
             (slot_reg(0, LIVE_SLOT_AMOUNT), 66),
             (slot_reg(0, LIVE_SLOT_ALGORITHM), (SID_DIST_COUNT - 1) as u8),
             (
@@ -84,10 +87,10 @@ fn slot_ccs_map_slot_and_field() {
                 SID_FXSLOT_REVERB_LIGHT as u8
             ),
             (slot_reg(2, LIVE_SLOT_MIX), 127),
-            (slot_reg(1, LIVE_SLOT_B), 32), // position 8
-        ]
+            (slot_reg(1, LIVE_SLOT_B), 32),
+        ],
+        "CC values land on the controls' walks"
     );
-    // Every algorithm of every slot is reachable by CC.
     for slot in 0..LIVE_SLOTS {
         let count = unsafe { live_slot_algorithms(slot) };
         let reached: std::collections::BTreeSet<u8> = (0..128u8)
@@ -96,7 +99,11 @@ fn slot_ccs_map_slot_and_field() {
                 rig.live.slot[slot as usize][0]
             })
             .collect();
-        assert_eq!(reached.len() as u32, count, "slot {slot}");
+        assert_eq!(
+            reached.len() as u32,
+            count,
+            "slot {slot}: every algorithm is reachable by CC"
+        );
     }
 }
 
@@ -131,8 +138,6 @@ impl Panel {
 fn edit_held_turns_k1_k4_into_the_selected_slots_controls() {
     let mut pn = Panel::new();
     let edit = 1 << PANEL_BTN_EDIT;
-    // SCL twice: the FX slot; then its first algorithm (ALGORITHM on its page, as LIVE's view
-    // turns it).
     pn.buttons(1 << PANEL_BTN_SCL, 0);
     pn.buttons(1 << PANEL_BTN_SCL, 0);
     unsafe { live_slot_next_algorithm(&mut *pn.rig.live, 2) };
@@ -162,29 +167,52 @@ fn edit_held_turns_k1_k4_into_the_selected_slots_controls() {
         "Amount, A, B, Mix from DELAY's defaults, along their walks"
     );
     assert_eq!(pn.rig.live.cutoff, cutoff, "K1 did not move the cutoff");
-    // Let go of EDIT: K1 is the cutoff again.
     pn.buttons(0, 0);
     pn.enc(PANEL_ENC_K1, -1);
-    assert_ne!(pn.rig.live.cutoff, cutoff);
+    assert_ne!(
+        pn.rig.live.cutoff, cutoff,
+        "EDIT let go: K1 is the cutoff again"
+    );
     assert_eq!(pn.rig.live.slot[2][1], after(0));
-    // SCL wraps back to Distortion, which is off: EDIT dark.
     pn.buttons(1 << PANEL_BTN_SCL, 0);
-    assert_eq!(pn.rig.live.fx_select, 0);
-    assert_eq!(pn.leds().buttons & edit, 0);
+    assert_eq!(pn.rig.live.fx_select, 0, "SCL wraps back to Distortion");
+    assert_eq!(pn.leds().buttons & edit, 0, "Distortion is off: EDIT dark");
 }
+
+const SAMPLE_RATE: u32 = 44100;
+const HELD_TAIL_SAMPLES: usize = 17640;
 
 fn slots_box() -> (Box<sid_slots>, Box<sid_slot_pool>) {
     let mut pool = Box::<sid_slot_pool>::default();
     let mut s = Box::<sid_slots>::default();
-    unsafe { sid_slots_init(&mut *s, 44100, 1, &mut *pool) };
+    unsafe { sid_slots_init(&mut *s, SAMPLE_RATE, 1, &mut *pool) };
     (s, pool)
+}
+
+fn fx_live_box() -> (Box<sid_slots>, Box<sid_slot_pool>, Box<fx_live>) {
+    let (mut s, pool) = slots_box();
+    let mut f = Box::<fx_live>::default();
+    unsafe { fx_live_init(&mut *f, &mut *s) };
+    (s, pool, f)
+}
+
+fn process_slots(s: &mut sid_slots, input: &[i16]) -> Vec<i16> {
+    let mut out = Vec::with_capacity(2 * input.len());
+    for b in input.chunks(128) {
+        let mut o = vec![0i16; 2 * b.len()];
+        unsafe { sid_slots_process(s, b.as_ptr(), o.as_mut_ptr(), b.len() as u32) };
+        out.extend(o);
+    }
+    out
+}
+
+fn unit(v: u8) -> f32 {
+    f32::from(v) / 127.0
 }
 
 #[test]
 fn fx_live_applies_slot_registers_and_nothing_else() {
-    let (mut s, _pool) = slots_box();
-    let mut f = Box::<fx_live>::default();
-    unsafe { fx_live_init(&mut *f, &mut *s) };
+    let (s, _pool, mut f) = fx_live_box();
     let apply = |f: &mut fx_live, reg: u8, v: u8| unsafe { fx_live_apply(f, reg, v) };
     assert_eq!(
         apply(
@@ -200,14 +228,17 @@ fn fx_live_applies_slot_registers_and_nothing_else() {
     assert_eq!(t.algorithm, SID_MOD_FLANGER);
     assert_eq!(t.a, 1.0);
     assert!((t.mix - 64.0 / 127.0).abs() < 1e-6);
-    // Not slot registers: a SID register, the reset, a field past Mix, a slot past FX.
-    for reg in [0x11u8, LIVE_REG_RESET as u8, slot_reg(0, 5), slot_reg(3, 0)] {
+    let (sid_register, field_past_mix, slot_past_fx) = (0x11u8, slot_reg(0, 5), slot_reg(3, 0));
+    for reg in [
+        sid_register,
+        LIVE_REG_RESET as u8,
+        field_past_mix,
+        slot_past_fx,
+    ] {
         assert_eq!(apply(&mut f, reg, 1), 0, "reg {reg:#x}");
     }
 }
 
-/// What the drain delivered, in order: a pseudo-register apply, or a SID write seen as a
-/// change in the active chip's cutoff or resonance.
 #[derive(Debug, PartialEq)]
 enum Delivered {
     Slot(u8, u8),
@@ -215,8 +246,12 @@ enum Delivered {
     Resonance,
 }
 
-/// Wraps fx_live_pseudo: before each apply, records the SID writes that landed since the
-/// last one (the drain has no SID-write hook, so they show as chip state changes).
+fn active_fc_res(chips: *const reg_ring_chips) -> (u32, u8) {
+    let c = unsafe { &*chips };
+    let chip = &c.chip[usize::from(c.active[0])];
+    (chip.fc, chip.res)
+}
+
 struct Recorder {
     fx: *mut fx_live,
     chips: *const reg_ring_chips,
@@ -226,15 +261,14 @@ struct Recorder {
 }
 
 impl Recorder {
-    fn catch_up(&mut self) {
-        let c = unsafe { &*self.chips };
-        let chip = &c.chip[usize::from(c.active[0])];
-        if chip.fc != self.fc {
-            self.fc = chip.fc;
+    fn record_sid_writes_as_chip_changes(&mut self) {
+        let (fc, res) = active_fc_res(self.chips);
+        if fc != self.fc {
+            self.fc = fc;
             self.seen.push(Delivered::Cutoff);
         }
-        if chip.res != self.res {
-            self.res = chip.res;
+        if res != self.res {
+            self.res = res;
             self.seen.push(Delivered::Resonance);
         }
     }
@@ -242,24 +276,19 @@ impl Recorder {
 
 unsafe extern "C" fn record_pseudo(ctx: *mut c_void, reg: u8, value: u8) {
     let r = unsafe { &mut *ctx.cast::<Recorder>() };
-    r.catch_up();
+    r.record_sid_writes_as_chip_changes();
     r.seen.push(Delivered::Slot(reg, value));
     unsafe { fx_live_pseudo(r.fx.cast(), reg, value) };
 }
 
-/// The device's path: live -> reg_ring_sink -> ring -> drain -> pseudo handler -> slots.
-/// Slot settings and SID writes interleaved in one pass come out of the drain in the order
-/// live sent them.
 #[test]
-fn slot_settings_cross_the_register_ring_in_order() {
-    let (mut s, _pool) = slots_box();
-    let mut f = Box::<fx_live>::default();
-    unsafe { fx_live_init(&mut *f, &mut *s) };
+fn slot_settings_and_sid_writes_leave_the_register_ring_in_the_order_live_sent_them() {
+    let (s, _pool, mut f) = fx_live_box();
     let mut ring = Box::<reg_ring>::default();
     let chips: *mut reg_ring_chips = Box::into_raw(Box::<reg_ring_chips>::default());
     unsafe {
         reg_ring_init(&mut *ring);
-        reg_ring_chips_init(chips, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
+        reg_ring_chips_init(chips, SID_MODEL_6581, SID_CLOCK_PAL, SAMPLE_RATE);
     }
     unsafe extern "C" fn drain_now(ctx: *mut c_void) {
         let o = unsafe { &mut *ctx.cast::<reg_ring_out>() };
@@ -280,11 +309,7 @@ fn slot_settings_cross_the_register_ring_in_order() {
         reg_ring_commit(&mut *ring);
         reg_ring_drain(&mut *ring, chips);
     }
-    let (fc, res) = unsafe {
-        let c = &*chips;
-        let chip = &c.chip[usize::from(c.active[0])];
-        (chip.fc, chip.res)
-    };
+    let (fc, res) = active_fc_res(chips);
     let mut rec = Box::new(Recorder {
         fx: &mut *f,
         chips,
@@ -311,7 +336,7 @@ fn slot_settings_cross_the_register_ring_in_order() {
         reg_ring_commit(&mut *ring);
         reg_ring_drain(&mut *ring, chips);
     }
-    rec.catch_up();
+    rec.record_sid_writes_as_chip_changes();
     assert_eq!(
         rec.seen,
         [
@@ -333,55 +358,44 @@ fn slot_settings_cross_the_register_ring_in_order() {
 #[test]
 fn the_host_sink_never_writes_a_slot_register_to_the_chip() {
     let mut chip = Box::<sid>::default();
-    unsafe { sid_init(&mut *chip, SID_MODEL_6581, SID_CLOCK_PAL, 44100) };
+    unsafe { sid_init(&mut *chip, SID_MODEL_6581, SID_CLOCK_PAL, SAMPLE_RATE) };
     let before = format!("{:?}", chip.osc[0]);
     let mut t = live_sid_target {
         chip: &mut *chip,
         clock_hz: SID_CLOCK_PAL,
-        sample_rate: 44100,
+        sample_rate: SAMPLE_RATE,
         ..Default::default()
     };
-    // 0xA1 would alias to register 0x01 (voice 1's frequency high byte).
+    let aliases_voice_1_frequency_high = slot_reg(0, 1);
     unsafe {
         live_sid_sink(
             (&mut t as *mut live_sid_target).cast(),
-            slot_reg(0, 1),
+            aliases_voice_1_frequency_high,
             0xff,
         )
     };
     assert_eq!(format!("{:?}", chip.osc[0]), before);
 }
 
-fn rms(x: &[f64]) -> f64 {
-    (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt()
-}
-
-/// What a slot adds to a 220 Hz saw at the algorithm's defaults: the RMS of wet minus dry
-/// over the last 0.4 s, both channels, against the dry RMS.
-fn added_by(slot: u32, alg: u32) -> f64 {
+fn wet_minus_dry_rms_over_dry_on_a_220_hz_saw(slot: u32, alg: u32) -> f64 {
     let n = 22050usize;
     let saw: Vec<i16> = (0..n)
-        .map(|i| (((i as f64 * 220.0 / 44100.0).fract() * 2.0 - 1.0) * 16384.0) as i16)
+        .map(|i| {
+            (((i as f64 * 220.0 / f64::from(SAMPLE_RATE)).fract() * 2.0 - 1.0) * 16384.0) as i16
+        })
         .collect();
     let d = unsafe { live_fx_defaults[slot as usize][alg as usize] };
     let run = |p: sid_slot_params| {
         let (mut s, _pool) = slots_box();
         unsafe { sid_slots_set(&mut *s, slot, &p) };
-        let mut out = Vec::new();
-        for b in saw.chunks(128) {
-            let mut o = vec![0i16; 2 * b.len()];
-            unsafe { sid_slots_process(&mut *s, b.as_ptr(), o.as_mut_ptr(), b.len() as u32) };
-            out.extend(o);
-        }
-        out
+        process_slots(&mut s, &saw)
     };
-    let f = |v: u8| f32::from(v) / 127.0;
     let wet = run(sid_slot_params {
         algorithm: alg,
-        amount: f(d[0]),
-        a: f(d[1]),
-        b: f(d[2]),
-        mix: f(d[3]),
+        amount: unit(d[0]),
+        a: unit(d[1]),
+        b: unit(d[2]),
+        mix: unit(d[3]),
     });
     let dry = run(sid_slot_params {
         algorithm: 0,
@@ -390,7 +404,7 @@ fn added_by(slot: u32, alg: u32) -> f64 {
         b: 0.0,
         mix: 0.0,
     });
-    let from = 2 * (n - 17640);
+    let from = 2 * (n - HELD_TAIL_SAMPLES);
     let diff: Vec<f64> = (from..2 * n)
         .map(|i| f64::from(wet[i]) - f64::from(dry[i]))
         .collect();
@@ -402,7 +416,7 @@ fn added_by(slot: u32, alg: u32) -> f64 {
 fn every_default_is_audible() {
     for slot in 0..LIVE_SLOTS {
         for alg in 1..unsafe { live_slot_algorithms(slot) } {
-            let r = added_by(slot, alg);
+            let r = wet_minus_dry_rms_over_dry_on_a_220_hz_saw(slot, alg);
             assert!(
                 r >= 0.1,
                 "slot {slot} algorithm {alg}: adds {:.1} dB of the dry",
@@ -417,13 +431,11 @@ fn every_default_is_audible() {
     }
 }
 
-/// A SAW LEAD note (A4) as the chip renders it on the device, 0.6 s from the key: the live
-/// instrument's register writes into a 6581 at 44.1 kHz.
-fn saw_lead_note() -> Vec<i16> {
+fn saw_lead_a4_as_the_device_renders_it() -> Vec<i16> {
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.note_on(69);
     let mut chip = Box::<sid>::default();
-    unsafe { sid_init(&mut *chip, SID_MODEL_6581, SID_CLOCK_PAL, 44100) };
+    unsafe { sid_init(&mut *chip, SID_MODEL_6581, SID_CLOCK_PAL, SAMPLE_RATE) };
     for &(r, v) in rig.log() {
         if r <= 0x18 {
             unsafe { sid_write(&mut *chip, r, v) };
@@ -436,53 +448,39 @@ fn saw_lead_note() -> Vec<i16> {
     out
 }
 
-/// The distortion slot's output for `input` with Amount at `amount` (the rest the defaults,
-/// Mix full), both sides summed, the last 0.4 s.
-fn dist_render(alg: u32, amount: u8, input: &[i16]) -> Vec<f64> {
+fn distorted_at_full_mix_summed_held_tail(alg: u32, amount: u8, input: &[i16]) -> Vec<f64> {
     let d = unsafe { live_fx_defaults[0][alg as usize] };
-    let f = |v: u8| f32::from(v) / 127.0;
     let (mut s, _pool) = slots_box();
     let p = sid_slot_params {
         algorithm: alg,
-        amount: f(amount),
-        a: f(d[1]),
-        b: f(d[2]),
+        amount: unit(amount),
+        a: unit(d[1]),
+        b: unit(d[2]),
         mix: 1.0,
     };
     unsafe { sid_slots_set(&mut *s, 0, &p) };
-    let mut out = Vec::new();
-    for b in input.chunks(128) {
-        let mut o = vec![0i16; 2 * b.len()];
-        unsafe { sid_slots_process(&mut *s, b.as_ptr(), o.as_mut_ptr(), b.len() as u32) };
-        out.extend(o.chunks(2).map(|lr| f64::from(lr[0]) + f64::from(lr[1])));
-    }
-    out[out.len() - 17640..].to_vec()
+    let out: Vec<f64> = process_slots(&mut s, input)
+        .chunks(2)
+        .map(|lr| f64::from(lr[0]) + f64::from(lr[1]))
+        .collect();
+    out[out.len() - HELD_TAIL_SAMPLES..].to_vec()
 }
 
-/// How much a change alters the sound's shape, its level taken out: the RMS of the difference
-/// of the two renders, each at unit RMS, in dB (a pure level change is -inf; a different wave
-/// near 0 dB).
-fn shape_change(a: &[f64], b: &[f64]) -> f64 {
+const SILENCE_IS_AS_DIFFERENT_AS_CAN_BE_DB: f64 = 0.0;
+
+fn shape_change_db_with_level_taken_out(a: &[f64], b: &[f64]) -> f64 {
     let (ra, rb) = (rms(a), rms(b));
     if ra == 0.0 || rb == 0.0 {
-        return 0.0; // one of them silent: as different as can be
+        return SILENCE_IS_AS_DIFFERENT_AS_CAN_BE_DB;
     }
     let d: Vec<f64> = a.iter().zip(b).map(|(x, y)| x / ra - y / rb).collect();
     20.0 * rms(&d).log10()
 }
 
-/// Every distortion's Amount is heard end to end on a SAW LEAD note at the level the chip gives
-/// it on the device (the slot's input, -23 dBFS at its peak), not only on a note at the
-/// algorithms' reference level (a 0.25 full-scale voice): from the bottom to the top of the knob
-/// the wave's shape changes by at least -15 dB of itself, the note never vanishes, and its level
-/// moves by 6 dB at most (Amount is a drive, not a volume knob). 1.0 and 1.1.0 fed the slot the
-/// chip's samples as they were: TAPE's Amount changed the shape by -31 dB (nothing heard),
-/// OVERDRIVE's and FUZZ's mostly the level (+14.5 and +13.4 dB), CRUSH's top chopped the note
-/// into bursts.
 #[test]
-fn every_distortion_amount_is_heard_on_a_saw_lead_note() {
-    let note = saw_lead_note();
-    let held = &note[note.len() - 17640..];
+fn every_distortion_amount_changes_the_shape_not_the_level_of_a_saw_lead_note() {
+    let note = saw_lead_a4_as_the_device_renders_it();
+    let held = &note[note.len() - HELD_TAIL_SAMPLES..];
     let peak = held.iter().map(|&v| i32::from(v).abs()).max().unwrap();
     let level: Vec<f64> = held.iter().map(|&v| f64::from(v)).collect();
     println!(
@@ -492,9 +490,9 @@ fn every_distortion_amount_is_heard_on_a_saw_lead_note() {
     );
     let mut weak = Vec::new();
     for alg in 1..unsafe { live_slot_algorithms(0) } {
-        let lo = dist_render(alg, 0, &note);
-        let hi = dist_render(alg, 127, &note);
-        let shape = shape_change(&lo, &hi);
+        let lo = distorted_at_full_mix_summed_held_tail(alg, 0, &note);
+        let hi = distorted_at_full_mix_summed_held_tail(alg, 127, &note);
+        let shape = shape_change_db_with_level_taken_out(&lo, &hi);
         let level = 20.0 * (rms(&hi).max(1e-9) / rms(&lo).max(1e-9)).log10();
         println!(
             "DIST {alg}: Amount 0 -> 127 changes the shape {shape:.1} dB, the level {level:+.1} dB"

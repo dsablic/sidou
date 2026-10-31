@@ -1,19 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! NEON HIGHWAY: synthwave / outrun, E minor, 125 BPM (tempo 6, sixteenths), the 8580.
-//!
-//! Plan. Em C G D | Em C Am B, the B (V of Em) pulling back home. Voice 1 a resonant
-//! low-pass saw bass bouncing octaves on the eighths, the only filtered voice, its cutoff
-//! the song's arc (a four-bar opening sweep, a two-bar wah, a slow close in the breakdown);
-//! voice 2 the driving sixteenth arpeggio riff, then the soaring pulse-width lead with
-//! vibrato and slides; voice 3 the drums (kick, a long noise snare, sixteenth hats),
-//! multiplexed with one-frame chord arpeggios once the lead takes voice 2.
-//!
-//! Bars: intro 4 (the bass under a pedal E, the filter opening, the hats and a snare
-//! roll building) | A 8 (the arpeggio riff, full drums) | B 8 (the lead's hook) |
-//! breakdown 4 (Cmaj7 D Bm7 Em, the drums out, the filter closing, a snare roll) |
-//! return 8 (the hook, brighter, a climbing last bar) | tag 4 (the riff over the full kit) |
-//! outro 2. 38 bars, 73 s; the loop restarts at A.
 
 use super::*;
 
@@ -24,7 +10,6 @@ pub const SONG: Showcase = Showcase {
     kit,
 };
 
-/// A chord's (root, program) on voice 3 for each bar of the eight-bar progression.
 const CHORDS: [(&str, &str); 8] = [
     ("E-3", "min"),
     ("C-3", "maj"),
@@ -39,10 +24,8 @@ const CHORDS: [(&str, &str); 8] = [
 pub fn kit() -> Kit {
     let mut k = Kit::new("NEON HIGHWAY");
 
-    // the wavetable
     k.wave("saw", &[(0x21, 0x00), jump(0)]);
     k.wave("pulse", &[(0x41, 0x00), jump(0)]);
-    // the lead: a saw blip on the first frame, then pulse
     k.wave("lead", &[(0x21, 0x0c), (0x41, 0x00), jump(0)]);
     k.wave(
         "kick",
@@ -69,7 +52,6 @@ pub fn kit() -> Kit {
     );
     k.wave("hat", &[(0x81, abs(95)), jump(0)]);
     k.wave("crash", &[(0x81, abs(84)), (0x81, abs(76)), jump(0)]);
-    // chord arpeggios, a frame a note
     k.wave(
         "maj",
         &[
@@ -124,7 +106,6 @@ pub fn kit() -> Kit {
         ],
     );
 
-    // the pulse table
     k.pulse("pwm", &[(0x83, 0x00), (0x60, 0x10), (0x60, 0xf0), jump(2)]);
     k.pulse(
         "pluck",
@@ -136,7 +117,6 @@ pub fn kit() -> Kit {
         &[(0x84, 0x00), (0x40, 0x10), (0x40, 0xf0), jump(2)],
     );
 
-    // the filter table: low-pass on voice 1 only
     k.filter(
         "intro",
         &[
@@ -179,7 +159,6 @@ pub fn kit() -> Kit {
         ],
     );
 
-    // the speed table
     k.speed("vib", 0x05, 0x20);
     k.speed("slide", 0x01, 0x80);
     k.speed("wide", 0x04, 0x30);
@@ -214,7 +193,6 @@ pub fn kit() -> Kit {
     k.alias("o", "C-4/ohat");
     k.alias("x", "C-4/crash");
 
-    // voice 1: the bass
     let bounce = "E-1 . E-2 . E-1 . E-2 . E-1 . E-2 . E-1 . E-2 .";
     k.pattern(
         "bass-in",
@@ -243,7 +221,6 @@ pub fn kit() -> Kit {
     );
     k.pattern("bass-end", 32, "E-1/bass@A=fade .31");
 
-    // voice 2: the arpeggio riff (minor on E, major on C), the lead
     k.pattern(
         "riff-min",
         16,
@@ -293,7 +270,6 @@ pub fn kit() -> Kit {
     );
     k.pattern("lead-end", 32, "E-5/lead .31");
 
-    // voice 3: the drums, and the drums with chords
     k.pattern("silent", 16, ".16");
     k.pattern("hats", 16, "h . h . h . h . h . o . h . h h");
     k.pattern("roll", 16, "s . s . s . s . s s s s s s s s");
@@ -321,7 +297,6 @@ pub fn kit() -> Kit {
     k.pattern("pad3", 16, "E-3/add9 . . . s . s . s s s s s s s s");
     k.pattern("end", 32, "x .31");
 
-    // intro 4 | A 8 | B 8 | breakdown 4 | return 8 | tag 4 | outro 2
     let a = "bass-wah -4 bass +3 bass -2 bass +0 bass -4 bass +5 bass +7 bass-push";
     let b = "+0 bass-wah -4 bass +3 bass -2 bass +0 bass -4 bass +5 bass +7 bass-push";
     k.order(

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The screen font: app/font.c and app/font.h are generated from assets/font/sidou-8x8.txt
-//! (sidou_tests::font). SIDOU_FONT_UPDATE=1 rewrites them.
 
 use sidou_sys::font_glyphs;
 use sidou_tests::font::{self, Font};
+
+const PRINTABLE: std::ops::Range<u8> = 0x21..0x7f;
 
 fn sheet() -> Font {
     font::load()
@@ -48,7 +48,7 @@ fn the_compiled_table_is_the_sheet() {
 #[test]
 fn printable_ascii_is_complete_and_lower_case_is_upper_case() {
     let f = sheet();
-    for c in 0x21u8..0x7f {
+    for c in PRINTABLE {
         assert!(
             f.glyphs[usize::from(c)].iter().any(|&r| r != 0),
             "{:?} has no glyph",
@@ -65,7 +65,7 @@ fn printable_ascii_is_complete_and_lower_case_is_upper_case() {
 #[test]
 fn text_glyphs_leave_a_column_and_a_row_between_cells() {
     let f = sheet();
-    for c in 0x21u8..0x7f {
+    for c in PRINTABLE {
         let g = f.glyphs[usize::from(c)];
         assert_eq!(g[7], 0, "{:?} uses the bottom row", char::from(c));
         assert!(
@@ -102,23 +102,27 @@ fn block_glyphs_fill_what_their_names_say() {
         assert_eq!(count(&g(&format!("H{n}"))), 8 * n, "H{n}");
         assert_eq!(count(&g(&format!("BAR{n}"))), 6 * n, "BAR{n}");
     }
-    // Lower eighths fill from the bottom, left eighths from the left.
-    assert_eq!(g("V1"), [0, 0, 0, 0, 0, 0, 0, 0xff]);
-    assert_eq!(g("H1"), [0x80; 8]);
+    assert_eq!(
+        g("V1"),
+        [0, 0, 0, 0, 0, 0, 0, 0xff],
+        "lower eighths fill from the bottom"
+    );
+    assert_eq!(g("H1"), [0x80; 8], "left eighths fill from the left");
     for n in 0..=16u32 {
         assert_eq!(count(&g(&format!("D{n}"))), 4 * n, "D{n}");
     }
-    // Each dither level adds pixels to the one below it (ordered dithering).
     for n in 1..=16 {
         let (lo, hi) = (g(&format!("D{}", n - 1)), g(&format!("D{n}")));
-        assert!(lo.iter().zip(&hi).all(|(l, h)| l & !h == 0), "D{n}");
+        assert!(
+            lo.iter().zip(&hi).all(|(l, h)| l & !h == 0),
+            "D{n} drops a pixel of the level below it"
+        );
     }
 }
 
 #[test]
 fn box_lines_meet_at_the_cell_edges() {
     let f = sheet();
-    // The 2-pixel line runs through rows 3-4 and columns 3-4, so frames join up.
     let edges = |name: &str| {
         let c = f.code(name);
         (
@@ -128,7 +132,6 @@ fn box_lines_meet_at_the_cell_edges() {
             f.pixel(c, 7, 3) && f.pixel(c, 7, 4),
         )
     };
-    // (up, down, left, right)
     for (name, want) in [
         ("BOX_H", (false, false, true, true)),
         ("BOX_V", (true, true, false, false)),
@@ -164,8 +167,7 @@ fn the_sheet_rejects_malformed_glyphs() {
     }
 }
 
-/// font8x8_basic (public domain, test data only): `[code][row]`, bit 0 the leftmost pixel.
-fn font8x8_basic() -> Vec<[u8; 8]> {
+fn font8x8_basic_bit_7_leftmost() -> Vec<[u8; 8]> {
     include_str!("../data/font8x8_basic.h")
         .lines()
         .filter_map(|l| l.trim().strip_prefix('{')?.split_once('}'))
@@ -173,16 +175,15 @@ fn font8x8_basic() -> Vec<[u8; 8]> {
             let mut g = [0u8; 8];
             for (row, b) in g.iter_mut().zip(bytes.split(',')) {
                 let b = b.trim().trim_start_matches("0x");
-                // Mirror into the sheet's order, bit 7 leftmost.
-                *row = u8::from_str_radix(b, 16).expect("hex byte").reverse_bits();
+                let bit_0_leftmost = u8::from_str_radix(b, 16).expect("hex byte");
+                *row = bit_0_leftmost.reverse_bits();
             }
             g
         })
         .collect()
 }
 
-/// Pixels that differ between `a` and `b` moved right by `dx` and down by `dy`.
-fn distance(a: &[u8; 8], b: &[u8; 8], dx: i32, dy: i32) -> u32 {
+fn pixels_differing_with_b_shifted(a: &[u8; 8], b: &[u8; 8], dx: i32, dy: i32) -> u32 {
     (0..8i32)
         .map(|y| {
             let row = usize::try_from(y - dy)
@@ -196,25 +197,21 @@ fn distance(a: &[u8; 8], b: &[u8; 8], dx: i32, dy: i32) -> u32 {
         .sum()
 }
 
-/// Glyphs whose shape is forced at 8x8 with 2-pixel strokes: a dot, a tick, a bar, or a
-/// sans-serif stem whose only difference from font8x8 is font8x8's serifs. Each is
-/// justified in docs/art/README.md ("Provenance and licence").
-const FORCED: &str = ".,:;'`_|IT";
+const SHAPES_FORCED_NEAR_FONT8X8: &str = ".,:;'`_|IT";
 
-/// Closer than this to font8x8_basic, a glyph would be a copy (docs/art/README.md).
-const MIN_DISTANCE: u32 = 5;
+const MIN_PIXELS_FROM_FONT8X8: u32 = 5;
 
 #[test]
 fn glyphs_are_not_copied_from_font8x8() {
     let f = sheet();
-    let reference = font8x8_basic();
+    let reference = font8x8_basic_bit_7_leftmost();
     assert_eq!(reference.len(), 128);
-    for c in 0x21u8..0x7f {
+    for c in PRINTABLE {
         let ch = char::from(c);
         let near = (-1..=1)
             .flat_map(|dx| (-1..=1).map(move |dy| (dx, dy)))
             .map(|(dx, dy)| {
-                distance(
+                pixels_differing_with_b_shifted(
                     &f.glyphs[usize::from(c)],
                     &reference[usize::from(c)],
                     dx,
@@ -223,15 +220,15 @@ fn glyphs_are_not_copied_from_font8x8() {
             })
             .min()
             .unwrap();
-        if FORCED.contains(ch) {
+        if SHAPES_FORCED_NEAR_FONT8X8.contains(ch) {
             assert!(
-                near < MIN_DISTANCE,
-                "{ch:?} is {near} pixels away; drop it from FORCED"
+                near < MIN_PIXELS_FROM_FONT8X8,
+                "{ch:?} is {near} pixels away; drop it from SHAPES_FORCED_NEAR_FONT8X8"
             );
             continue;
         }
         assert!(
-            near >= MIN_DISTANCE,
+            near >= MIN_PIXELS_FROM_FONT8X8,
             "{ch:?} is {near} pixels from font8x8_basic (shifted up to one pixel); redraw it"
         );
     }

@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! UI sounds on chip B's spare voice (`app/ui_sound.c`): GoatTracker's sound-effect format
-//! stepped into chip B's registers, and never a voice the keys use. live and the sounds write
-//! one Recorder here: chip B (with the keys on it, `live.keys_chip` 1, as during a song).
 
 use sidou_sys::*;
 
-use crate::{record, Recorder, Rig};
+use crate::{record, Recorder, Rig, RELEASE_TO_ZERO_MS};
 
 struct Ui {
     rig: Rig,
@@ -14,7 +11,6 @@ struct Ui {
 }
 
 impl Ui {
-    /// `keys_on_b`: the keys play chip B (a song on chip A), live writing chip B.
     fn new(keys_on_b: bool) -> Self {
         let mut rig = Rig::new(SID_MODEL_6581);
         rig.live.two_chips = 1;
@@ -36,10 +32,15 @@ impl Ui {
         unsafe { ui_sound_play(&mut *self.us, id) };
     }
 
-    /// A live_tick, then the sounds' tick (platform/fm1/main.c).
     fn tick(&mut self) {
         self.rig.tick();
         unsafe { ui_sound_tick(&mut *self.us) };
+    }
+
+    fn run_out_the_power_on_releases(&mut self) {
+        for _ in 0..30 {
+            self.tick();
+        }
     }
 
     fn busy(&self) -> bool {
@@ -47,7 +48,7 @@ impl Ui {
     }
 }
 
-fn data(id: ui_sound_id) -> Vec<u8> {
+fn sound_bytes(id: ui_sound_id) -> Vec<u8> {
     let p = unsafe { ui_sound_data(id) };
     let mut v = Vec::new();
     for i in 0..UI_SOUND_MAX_BYTES as usize {
@@ -60,11 +61,9 @@ fn data(id: ui_sound_id) -> Vec<u8> {
     v
 }
 
-/// The writes GoatTracker's sound-effect format gives, frame by frame, for a sound on voice v
-/// (readme 6.3): the setup (gate off, AD, SR, the pulse byte to both pulse registers), then
-/// each frame's waveform (kept until the next) and note, and the end's gate off.
-fn expected(id: ui_sound_id, v: u8) -> Vec<Vec<(u8, u8)>> {
-    let d = data(id);
+const TICK_MS: u32 = 10;
+fn goattracker_format_writes(id: ui_sound_id, v: u8) -> Vec<Vec<(u8, u8)>> {
+    let d = sound_bytes(id);
     let r = v * 7;
     let mut frames = vec![vec![
         (r + 4, 0),
@@ -98,16 +97,13 @@ fn expected(id: ui_sound_id, v: u8) -> Vec<Vec<(u8, u8)>> {
     frames
 }
 
-/// Every sound, with the keys on chip A (chip B all free: voice 3, no filter, its volume up):
-/// the writes are the format's, a frame every other tick (50 Hz), and chip B is in use until
-/// the sound's release has run out.
 #[test]
 fn each_sound_steps_as_goattrackers_format_says() {
     for id in 0..UI_SOUND_COUNT {
         let mut ui = Ui::new(false);
         ui.on();
         ui.play(id);
-        let want = expected(id, 2);
+        let want = goattracker_format_writes(id, 2);
         let mut got = vec![ui.rig.log().to_vec()];
         assert_eq!(
             got[0][..2],
@@ -128,11 +124,8 @@ fn each_sound_steps_as_goattrackers_format_says() {
         }
         assert_eq!(got, want, "sound {id}");
         assert!(ui.busy(), "sound {id}: its release");
-        let sr = data(id)[1];
-        let rel = [
-            6u32, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000,
-        ];
-        let ticks = rel[usize::from(sr & 15)] / 10 + 1;
+        let sr = sound_bytes(id)[1];
+        let ticks = RELEASE_TO_ZERO_MS[usize::from(sr & 15)] / TICK_MS + 1;
         for t in 1..=ticks {
             ui.tick();
             assert_eq!(
@@ -148,7 +141,6 @@ fn each_sound_steps_as_goattrackers_format_says() {
     }
 }
 
-/// Off (the default): nothing is ever written, and chip B is never in use for a sound.
 #[test]
 fn off_writes_nothing() {
     let mut ui = Ui::new(false);
@@ -160,8 +152,6 @@ fn off_writes_nothing() {
     assert!(!ui.busy());
 }
 
-/// With the keys on chip B, a chord of three notes held while the menu is used: no sound, no
-/// voice touched (nothing written but live's own).
 #[test]
 fn three_held_notes_leave_no_voice_for_a_sound() {
     let mut ui = Ui::new(true);
@@ -183,13 +173,9 @@ fn three_held_notes_leave_no_voice_for_a_sound() {
     }
     assert!(!ui.busy(), "a sound found a voice");
     assert_eq!(ui.rig.live.ui_voice, 0);
-    // Only live's ticks wrote (none here: no LFO, no vibrato on SAW LEAD).
     assert!(ui.rig.log().is_empty(), "{:?}", ui.rig.log());
 }
 
-/// A voice just released is not free until its release has run out (SAW LEAD: release 6,
-/// 204 ms): the sound waits for none, it simply does not play; after the release it does,
-/// on that voice.
 #[test]
 fn a_voice_still_releasing_is_not_free() {
     let mut ui = Ui::new(true);
@@ -211,24 +197,18 @@ fn a_voice_still_releasing_is_not_free() {
     assert_eq!(v, 2, "the released voice (voice 2)");
 }
 
-/// While a sound holds a voice, live leaves it alone (its allocator skips it; its writes to it
-/// and its filter bit are held back); a note that finds the other two held takes it back at
-/// once, the sound writes nothing more, and the note plays with the instrument's envelope.
 #[test]
 fn a_note_takes_the_voice_back_from_a_sound() {
     let mut ui = Ui::new(true);
     ui.on();
     ui.rig.note_on(48);
     ui.tick();
-    for _ in 0..30 {
-        ui.tick(); // the other voices' power-on releases long run out
-    }
+    ui.run_out_the_power_on_releases();
     ui.play(UI_SOUND_CHIME);
     let v = ui.rig.live.ui_voice;
     assert!(v == 2 || v == 3, "the sound's voice: {v}");
     let held = usize::from(v - 1);
     ui.rig.clear();
-    // live writes every voice's envelope: not the sound's; and the filter without its bit.
     unsafe {
         live_param_set(&mut *ui.rig.live, LIVE_PARAM_ATTACK, 12);
         live_param_set(&mut *ui.rig.live, LIVE_PARAM_FILTER_VOICES, 7);
@@ -248,10 +228,8 @@ fn a_note_takes_the_voice_back_from_a_sound() {
         0,
         "the sound's voice into the filter"
     );
-    // A note, the second held: a free voice remains (the third), the sound keeps its own.
     ui.rig.note_on(55);
     assert_eq!(ui.rig.live.ui_voice, v);
-    // A third: the other two held, so it takes the sound's voice.
     ui.rig.clear();
     ui.rig.note_on(60);
     assert_eq!(ui.rig.live.ui_voice, 0, "the sound kept its voice");
@@ -277,14 +255,11 @@ fn a_note_takes_the_voice_back_from_a_sound() {
     );
 }
 
-/// When the sound and its release are done, the voice gets live's registers back.
 #[test]
 fn the_voice_is_given_back_with_lives_registers() {
     let mut ui = Ui::new(true);
     ui.on();
-    for _ in 0..30 {
-        ui.tick();
-    }
+    ui.run_out_the_power_on_releases();
     ui.play(UI_SOUND_BLIP);
     let v = ui.rig.live.ui_voice - 1;
     for _ in 0..40 {

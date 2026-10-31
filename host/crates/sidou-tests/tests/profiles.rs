@@ -1,39 +1,23 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The chip profiles (core/sid/gen/profiles.h, sidou_tablegen::profiles) at zero character
-//! against reSIDfp at each profile's settings:
-//! - the filter: the transfer functions around the cutoff and each mode's passband gain, as
-//!   tests/filter.rs measures the default settings (M1b Task 5 and 6), with reSIDfp's filter
-//!   curve and range set to the profile's;
-//! - the combined waveforms: OSC3 read once a frame and every 7 cycles from both engines,
-//!   reSIDfp with the profile's setCombinedWaveforms, equal read for read.
-//!
-//! reSIDfp keeps the 6581 filter range once per process, so this file is its own test binary
-//! and every filter measurement takes RANGE, setting the range first. "worn 6581" goes beyond
-//! reSIDfp (a DAC it cannot build, more non-linearity): its filter and combined waveforms
-//! are compared, its DACs are SIDOU's (tests/unit/sid_character.rs).
 
-use std::cmp::Ordering;
+use sidou_tests::below_and_not_nan;
 use std::sync::Mutex;
 
 use residfp_sys::{CombinedWaveforms, Model, Sampling, Sid};
 use sidou_sys::*;
 use sidou_tablegen::filter_fit::{
-    apply_range, compare, direct_spectra, fit, in_reach, measure_modes, register_writes, spectra,
-    transfer, CurveSetting, Mode, Response, CAPTURE, CLOCK_HZ, FS, MODES, SETTLE_CYCLES,
+    apply_range, compare, direct_spectra, fit, in_reach, measure_modes, CurveSetting, Mode,
+    Response, FS, MODES,
 };
 use sidou_tablegen::profiles::{curve_row, ChipProfile, PROFILES};
 use sidou_tests::filter_limits::{
     MAX_TRANSFER_DB_6581, MAX_TRANSFER_DB_8580, PASSBAND_GAIN_DB_6581, PASSBAND_GAIN_DB_8580,
 };
+use sidou_tests::filter_passband::{passband, passband_offset, responses, settled_output, TOP_HZ};
 use sidou_tests::register_probe::{first_mismatch, probe, Chip, TimedWrite, CYCLES_PER_FRAME};
 
-/// Held for every reSIDfp filter measurement: the 6581 range is the process's.
-static RANGE: Mutex<()> = Mutex::new(());
-
-fn below(x: f64, limit: f64) -> bool {
-    x.partial_cmp(&limit) == Some(Ordering::Less)
-}
+static RESIDFP_FILTER_RANGE_IS_PER_PROCESS: Mutex<()> = Mutex::new(());
 
 fn sidou_model(p: &ChipProfile) -> sid_model {
     if p.model == Model::Mos6581 {
@@ -43,16 +27,14 @@ fn sidou_model(p: &ChipProfile) -> sid_model {
     }
 }
 
-/// The profile's id, as sid_chip_profile_get counts them.
-fn id(p: &ChipProfile) -> u32 {
+fn profile_id(p: &ChipProfile) -> u32 {
     PROFILES.iter().position(|q| q.name == p.name).unwrap() as u32
 }
 
-/// A SIDOU chip with the profile at zero character, as a reset gives it.
 fn sidou_chip(p: &ChipProfile, rate: u32, dac: &mut sid_dac) -> Box<sid> {
     let mut s = Box::<sid>::default();
     let c = sid_character {
-        profile: (id(p) + 1) as u8,
+        profile: (profile_id(p) + 1) as u8,
         ..Default::default()
     };
     unsafe {
@@ -62,8 +44,6 @@ fn sidou_chip(p: &ChipProfile, rate: u32, dac: &mut sid_dac) -> Box<sid> {
     s
 }
 
-/// What a filter measurement plays on SIDOU's side: a profile at zero character, or one of
-/// gen/filter.h's rows on a chip of its model with the non-linearity at 1 (age/heat's rows).
 #[derive(Clone, Copy)]
 enum Target<'a> {
     Profile(&'a ChipProfile),
@@ -84,7 +64,7 @@ impl Target<'_> {
                 unsafe {
                     sid_init(&mut *s, m, SID_CLOCK_PAL, rate);
                     sid_set_filter_curve(&mut *s, row);
-                    sid_set_filter_nonlinearity(&mut *s, 1.0); // its floor follows the row
+                    sid_set_filter_nonlinearity(&mut *s, 1.0);
                 }
                 s
             }
@@ -92,78 +72,21 @@ impl Target<'_> {
     }
 }
 
-/// SIDOU's output for the filter measurement's register writes (tests/filter.rs's render).
-fn render(p: Target, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
+fn sidou_output(p: Target, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
     let mut dac = Box::<sid_dac>::default();
     let mut s = p.chip(FS as u32, &mut dac);
-    let settle = (f64::from(SETTLE_CYCLES) * FS / CLOCK_HZ) as usize;
-    let mut out = vec![0i16; settle + CAPTURE];
-    unsafe {
-        for (reg, value) in register_writes(fc, res, mode) {
-            sid_write(&mut *s, reg, value);
-        }
-        sid_render(&mut *s, out.as_mut_ptr(), out.len() as u32);
-    }
-    out[settle..].iter().map(|&v| f64::from(v)).collect()
+    settled_output(&mut s, fc, res, mode)
 }
 
 fn sidou_responses(p: Target, fc: u32, res: u8) -> Vec<(Mode, Response)> {
-    let direct = spectra(&render(p, fc, res, None));
-    MODES
-        .iter()
-        .map(|&m| (m, transfer(&spectra(&render(p, fc, res, Some(m))), &direct)))
-        .collect()
+    responses(|mode| sidou_output(p, fc, res, mode))
 }
 
-/// tests/filter.rs: compared up to here (frequency warping above it).
-const TOP_HZ: f64 = 7000.0;
-
-fn passband_offset(reference: &Response, ours: &Response, lo_hz: f64, hi_hz: f64) -> Option<f64> {
-    let d: Vec<f64> = reference
-        .hz
-        .iter()
-        .zip(&reference.db)
-        .filter(|&(&h, _)| h >= lo_hz && h <= hi_hz)
-        .map(|(&h, &db)| {
-            let j = ours
-                .hz
-                .iter()
-                .position(|&x| x == h)
-                .expect("the same bands");
-            ours.db[j] - db
-        })
-        .collect();
-    (!d.is_empty()).then(|| d.iter().sum::<f64>() / d.len() as f64)
-}
-
-fn passband(mode: Mode, f0: f64) -> (f64, f64) {
-    match mode {
-        Mode::Lp => (f0 / 8.0, f0 / 3.0),
-        Mode::Bp => (f0 / 1.2, f0 * 1.2),
-        Mode::Hp => (3.0 * f0, (9.0 * f0).min(TOP_HZ)),
-    }
-}
-
-/* M1b's tolerances (sidou_tests::filter_limits, tests/filter.rs's): the largest shape error
- * around the cutoff, LP, BP, HP, and the passband gain's range, SIDOU minus reSIDfp, over FC
- * 64..512 at resonance 0, 8 and 15. */
 const SHAPE_8580: [f64; 3] = MAX_TRANSFER_DB_8580;
 const SHAPE_6581: [f64; 3] = MAX_TRANSFER_DB_6581;
 const GAIN_8580: [(f64, f64); 3] = PASSBAND_GAIN_DB_8580;
 const GAIN_6581: [(f64, f64); 3] = PASSBAND_GAIN_DB_6581;
 
-/* Each profile's ceilings: M1b's, except where a profile away from reSIDfp's default curve
- * setting misses them, then the measured value rounded up to 0.01 dB (M1c Task 3; only ever
- * tightened). SIDOU's 6581 output mix and non-linearity were fitted at the default setting
- * (M1b Task 6), so the passband gain spreads a little further away from it: the R2 (curve
- * 0.58) by up to 0.22 dB on the band-pass, the R3 (0.42) by up to 0.58 dB, and the R3's
- * shape errors equal the R4AR's (both from FC 64 at resonance 15, in the threshold region
- * the two share) to within 0.01 dB. "worn 6581" is artistic: its filter is reSIDfp's curve
- * 0.35 at range 0.4, which SIDOU's model, fitted at the default range, follows less closely
- * (4.2, 4.0, 3.7 dB at its non-linearity of 1), and its non-linearity of 1.5 departs from
- * reSIDfp by design. Measured: R2 2.62 / 2.38 / 2.81 dB, gain -1.52..1.80, -2.24..1.18,
- * -0.29..0.49; R3 3.324 / 3.130 / 2.888, -1.64..2.26, -2.60..2.18, -0.39..0.54; worn 5.92 /
- * 5.68 / 5.16, -1.67..2.00, -1.66..2.21, -0.42..0.10. */
 #[allow(clippy::approx_constant)] // 3.14 dB, the R3's band-pass ceiling, is no pi
 fn limits(p: &ChipProfile) -> ([f64; 3], [(f64, f64); 3]) {
     match p.name {
@@ -181,14 +104,12 @@ fn limits(p: &ChipProfile) -> ([f64; 3], [(f64, f64); 3]) {
     }
 }
 
-/// SIDOU's filter against reSIDfp's at `setting`, over tests/filter.rs's FC and resonance
-/// values: each mode's largest shape error and its passband gain's range (dB).
 fn transfer_errors(
     name: &str,
     setting: &CurveSetting,
     ours: Target,
 ) -> ([f64; 3], [(f64, f64); 3]) {
-    let _range = RANGE
+    let _range = RESIDFP_FILTER_RANGE_IS_PER_PROCESS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     apply_range(setting);
@@ -214,7 +135,6 @@ fn transfer_errors(
     (shape, gain)
 }
 
-/// One profile's filter against reSIDfp's at its curve setting; the failures, if any.
 fn filter_failures(p: &ChipProfile) -> Vec<String> {
     let (limits, gain_limits) = limits(p);
     let (shape, gain) = transfer_errors(p.name, &p.filter, Target::Profile(p));
@@ -228,10 +148,10 @@ fn filter_failures(p: &ChipProfile) -> Vec<String> {
             shape[i],
             limits[i]
         );
-        if !below(shape[i], limits[i]) {
+        if !below_and_not_nan(shape[i], limits[i]) {
             failures.push(format!("{} {} shape {:.2} dB", p.name, m.name(), shape[i]));
         }
-        if !(below(min, lo) && below(hi, max)) {
+        if !(below_and_not_nan(min, lo) && below_and_not_nan(hi, max)) {
             failures.push(format!(
                 "{} {} passband {lo:.2}..{hi:.2} dB",
                 p.name,
@@ -248,9 +168,6 @@ fn each_profile_filter_matches_residfp_at_its_settings() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-// --- the combined waveforms ---
-
-/// The chip, and the DAC table it may point at (kept alive with it).
 struct Ours(Box<sid>, #[allow(dead_code)] Box<sid_dac>);
 
 impl Chip for Ours {
@@ -295,8 +212,7 @@ fn theirs(p: &ChipProfile, cws: CombinedWaveforms) -> Theirs {
     Theirs(s)
 }
 
-/// Voice 3 on a combined waveform: the gate on, a mid frequency, the pulse width given.
-fn writes(control: u8, pw: u16) -> Vec<TimedWrite> {
+fn voice3_combined_wave_writes(control: u8, pw: u16) -> Vec<TimedWrite> {
     [
         (0x0e, 0x00),
         (0x0f, 0x1c),
@@ -325,8 +241,6 @@ fn each_profile_combined_waveforms_are_residfps_at_its_strength() {
     let mut failures = Vec::new();
     for p in &PROFILES {
         let mut heard = false;
-        // Whether reSIDfp at each other strength differs from us somewhere: the comparison
-        // tells the strengths apart.
         let mut told_apart = [false; 3];
         for (control, pw) in [
             (0x30u8, 0u16),
@@ -342,13 +256,11 @@ fn each_profile_combined_waveforms_are_residfps_at_its_strength() {
                 } else {
                     200 * CYCLES_PER_FRAME
                 };
-                let w = writes(control, pw);
+                let w = voice3_combined_wave_writes(control, pw);
                 let a = probe(&mut ours(p), &w, 0x1b, interval, total);
                 for (k, &cws) in ALL.iter().enumerate() {
                     let b = probe(&mut theirs(p, cws), &w, 0x1b, interval, total);
                     if cws == p.combined {
-                        // Some combinations are silent on some chips (a weak pulldown): fine,
-                        // as long as the profile is heard somewhere.
                         heard |= b.iter().any(|&v| v != 0);
                         if let Some(m) = first_mismatch(&a, &b) {
                             failures.push(format!(
@@ -375,10 +287,6 @@ fn each_profile_combined_waveforms_are_residfps_at_its_strength() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// Age/heat's two rows (the 6581's curve 0.25 at range 0.3, the 8580's curve 0.75: where age
-/// 127 takes the filter) against reSIDfp at those settings, at the non-linearity of 1:
-/// recorded, not held to a bound (the rows are artistic targets, and age 127 doubles the
-/// 6581's non-linearity besides). Decision record 0006 has the numbers.
 #[test]
 fn the_age_rows_against_residfp_recorded() {
     for model in [Model::Mos6581, Model::Csg8580] {

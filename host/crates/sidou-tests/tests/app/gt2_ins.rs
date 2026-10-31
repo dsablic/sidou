@@ -4,14 +4,19 @@ use sidou_sys::*;
 use sidou_tests::song::Song;
 use std::ffi::c_void;
 
-unsafe extern "C" fn read(ctx: *mut c_void, at: u32, out: *mut u8, len: u32) -> u32 {
-    let bytes = unsafe { &*ctx.cast::<Vec<u8>>() };
-    let at = at as usize;
+const INSTRUMENT: u32 = 2;
+
+unsafe fn copy_out(bytes: &[u8], at: usize, out: *mut u8, len: u32) -> usize {
     let n = bytes.len().saturating_sub(at).min(len as usize);
     if n != 0 {
         unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr().add(at), out, n) };
     }
-    n as u32
+    n
+}
+
+unsafe extern "C" fn read(ctx: *mut c_void, at: u32, out: *mut u8, len: u32) -> u32 {
+    let bytes = unsafe { &*ctx.cast::<Vec<u8>>() };
+    unsafe { copy_out(bytes, at as usize, out, len) as u32 }
 }
 
 fn fixture() -> Vec<u8> {
@@ -31,7 +36,7 @@ fn import(song: &mut Song, bytes: &mut Vec<u8>) -> gt2_err {
     unsafe {
         gt2_ins_import(
             song.ptr_mut(),
-            2,
+            INSTRUMENT,
             Some(read),
             (bytes as *mut Vec<u8>).cast(),
             bytes.len() as u32,
@@ -42,6 +47,29 @@ fn import(song: &mut Song, bytes: &mut Vec<u8>) -> gt2_err {
 fn snapshot(song: &Song) -> Vec<u8> {
     unsafe { std::slice::from_raw_parts(song.ptr().cast::<u8>(), SONG_REGION_BYTES as usize) }
         .to_vec()
+}
+
+fn import_refused_leaving_the_song_untouched(song: &mut Song, bytes: &mut Vec<u8>) -> gt2_err {
+    let before = snapshot(song);
+    let err = import(song, bytes);
+    assert_ne!(err, GT2_OK);
+    assert_eq!(snapshot(song), before, "a refused import changed the song");
+    err
+}
+
+fn export_begin(out: &mut gt2_ins_export, song: &Song) -> gt2_err {
+    unsafe { gt2_ins_export_begin(out, song.ptr(), INSTRUMENT) }
+}
+
+fn export_read(out: &mut gt2_ins_export, at: usize, buf: &mut [u8]) -> usize {
+    unsafe {
+        gt2_ins_export_read(
+            (out as *mut gt2_ins_export).cast(),
+            at as u32,
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+        ) as usize
+    }
 }
 
 #[test]
@@ -90,38 +118,37 @@ fn malformed_truncated_and_full_files_preserve_every_song_byte() {
     let mut song = Song::device();
     let valid = fixture();
     for n in 0..valid.len() {
-        let before = snapshot(&song);
-        assert_ne!(import(&mut song, &mut valid[..n].to_vec()), GT2_OK);
-        assert_eq!(snapshot(&song), before);
+        import_refused_leaving_the_song_untouched(&mut song, &mut valid[..n].to_vec());
     }
     let mut invalid = valid.clone();
     invalid[33] = 99;
-    let before = snapshot(&song);
-    assert_ne!(import(&mut song, &mut invalid), GT2_OK);
-    assert_eq!(snapshot(&song), before);
+    import_refused_leaving_the_song_untouched(&mut song, &mut invalid);
     unsafe {
         (*song.ptr_mut()).ltable[0][254] = 1;
         gt2_saved_recount(song.ptr_mut());
     }
-    let before = snapshot(&song);
-    assert_eq!(import(&mut song, &mut fixture()), GT2_ERR_FULL);
-    assert_eq!(snapshot(&song), before);
+    assert_eq!(
+        import_refused_leaving_the_song_untouched(&mut song, &mut fixture()),
+        GT2_ERR_FULL
+    );
 }
 
 #[test]
 fn refuses_save_freeze_and_pending_edits() {
     let mut song = Song::device();
     unsafe { (*song.ptr_mut()).frozen = 1 };
-    let before = snapshot(&song);
-    assert_eq!(import(&mut song, &mut fixture()), GT2_ERR_SAVING);
-    assert_eq!(snapshot(&song), before);
+    assert_eq!(
+        import_refused_leaving_the_song_untouched(&mut song, &mut fixture()),
+        GT2_ERR_SAVING
+    );
     unsafe {
         (*song.ptr_mut()).frozen = 0;
         (*song.ptr_mut()).pending_loose = 1;
     }
-    let before = snapshot(&song);
-    assert_eq!(import(&mut song, &mut fixture()), GT2_ERR_PENDING);
-    assert_eq!(snapshot(&song), before);
+    assert_eq!(
+        import_refused_leaving_the_song_untouched(&mut song, &mut fixture()),
+        GT2_ERR_PENDING
+    );
 }
 
 #[test]
@@ -152,36 +179,16 @@ fn indexed_export_replays_identically_at_every_packet_size() {
     let mut song = Song::device();
     assert_eq!(import(&mut song, &mut fixture()), GT2_OK);
     let mut out = gt2_ins_export::default();
-    assert_eq!(
-        unsafe { gt2_ins_export_begin(&mut out, song.ptr(), 2) },
-        GT2_OK
-    );
+    assert_eq!(export_begin(&mut out, &song), GT2_OK);
     assert!(size_of::<gt2_ins_export>() <= 150);
     let mut expected = vec![0; out.length as usize];
-    assert_eq!(
-        unsafe {
-            gt2_ins_export_read(
-                (&mut out as *mut gt2_ins_export).cast(),
-                0,
-                expected.as_mut_ptr(),
-                expected.len() as u32,
-            )
-        },
-        out.length
-    );
+    assert_eq!(export_read(&mut out, 0, &mut expected), out.length as usize);
     assert_eq!(&expected[..4], b"GTI5");
     for packet in 1..=expected.len() + 1 {
         let mut actual = Vec::<u8>::new();
         loop {
             let mut chunk = vec![0; packet];
-            let n = unsafe {
-                gt2_ins_export_read(
-                    (&mut out as *mut gt2_ins_export).cast(),
-                    actual.len() as u32,
-                    chunk.as_mut_ptr(),
-                    packet as u32,
-                )
-            } as usize;
+            let n = export_read(&mut out, actual.len(), &mut chunk);
             if n == 0 {
                 break;
             }
@@ -203,7 +210,7 @@ fn owned_import_keeps_freeze_and_save_cap_refusal_is_atomic() {
         unsafe {
             gt2_ins_import_owned(
                 song.ptr_mut(),
-                2,
+                INSTRUMENT,
                 Some(read),
                 (&mut bytes as *mut Vec<u8>).cast(),
                 bytes.len() as u32,
@@ -216,9 +223,10 @@ fn owned_import_keeps_freeze_and_save_cap_refusal_is_atomic() {
         (*song.ptr_mut()).frozen = 0;
         (*song.ptr_mut()).saved_bytes = GT2_SAVED_MAX;
     }
-    let before = snapshot(&song);
-    assert_eq!(import(&mut song, &mut bytes), GT2_ERR_SONG_FULL);
-    assert_eq!(snapshot(&song), before);
+    assert_eq!(
+        import_refused_leaving_the_song_untouched(&mut song, &mut bytes),
+        GT2_ERR_SONG_FULL
+    );
 }
 
 #[test]
@@ -227,15 +235,11 @@ fn invalid_jumps_command_references_and_extra_bytes_are_atomic() {
     for (index, value) in [(35, 200), (35, 12), (33, 42), (37, 0xff), (29, 255)] {
         let mut bytes = fixture();
         bytes[index] = value;
-        let before = snapshot(&song);
-        assert_ne!(import(&mut song, &mut bytes), GT2_OK);
-        assert_eq!(snapshot(&song), before);
+        import_refused_leaving_the_song_untouched(&mut song, &mut bytes);
     }
     let mut bytes = fixture();
     bytes.push(0);
-    let before = snapshot(&song);
-    assert_ne!(import(&mut song, &mut bytes), GT2_OK);
-    assert_eq!(snapshot(&song), before);
+    import_refused_leaving_the_song_untouched(&mut song, &mut bytes);
 }
 
 #[test]
@@ -287,11 +291,8 @@ struct CountedSource {
 unsafe extern "C" fn counted_read(ctx: *mut c_void, at: u32, out: *mut u8, len: u32) -> u32 {
     let source = unsafe { &mut *ctx.cast::<CountedSource>() };
     let at = at as usize;
-    let n = source.bytes.len().saturating_sub(at).min(len as usize);
-    if n != 0 {
-        unsafe { std::ptr::copy_nonoverlapping(source.bytes.as_ptr().add(at), out, n) };
-        source.seen[at..at + n].fill(true);
-    }
+    let n = unsafe { copy_out(&source.bytes, at, out, len) };
+    source.seen[at..at + n].fill(true);
     source.read_bytes += n as u32;
     n as u32
 }
@@ -314,7 +315,7 @@ fn stepped_import_preflights_every_byte_then_replays_in_small_slices() {
             gt2_ins_import_begin(
                 &mut state,
                 song.ptr_mut(),
-                2,
+                INSTRUMENT,
                 Some(counted_read),
                 (&mut source as *mut CountedSource).cast(),
                 bytes.len() as u32,
@@ -360,7 +361,7 @@ fn stepped_import_late_refusal_is_atomic_and_terminal() {
             gt2_ins_import_begin(
                 &mut state,
                 song.ptr_mut(),
-                2,
+                INSTRUMENT,
                 Some(read),
                 (&mut bytes as *mut Vec<u8>).cast(),
                 bytes.len() as u32,
@@ -402,22 +403,9 @@ fn export_retains_original_bases_and_unrelocated_snapshot_bytes() {
     }
     let before = snapshot(&song);
     let mut out = gt2_ins_export::default();
-    assert_eq!(
-        unsafe { gt2_ins_export_begin(&mut out, song.ptr(), 2) },
-        GT2_OK
-    );
+    assert_eq!(export_begin(&mut out, &song), GT2_OK);
     let mut actual = vec![0; out.length as usize];
-    assert_eq!(
-        unsafe {
-            gt2_ins_export_read(
-                (&mut out as *mut gt2_ins_export).cast(),
-                0,
-                actual.as_mut_ptr(),
-                actual.len() as u32,
-            )
-        },
-        out.length
-    );
+    assert_eq!(export_read(&mut out, 0, &mut actual), out.length as usize);
     assert_eq!(actual, expected);
     assert_eq!(snapshot(&song), before);
 }
@@ -435,16 +423,10 @@ fn export_checks_commands_in_wavetable_rows_added_by_another_command() {
         s.ltable[3][39..42].copy_from_slice(&[0, 1, 2]);
     }
     let mut out = gt2_ins_export::default();
-    assert_eq!(
-        unsafe { gt2_ins_export_begin(&mut out, song.ptr(), 2) },
-        GT2_OK
-    );
+    assert_eq!(export_begin(&mut out, &song), GT2_OK);
     assert_eq!(out.rows, [5, 4, 2, 3]);
     unsafe { (*song.ptr_mut()).rtable[0][12] = 39 };
-    assert_eq!(
-        unsafe { gt2_ins_export_begin(&mut out, song.ptr(), 2) },
-        GT2_ERR_RANGE
-    );
+    assert_eq!(export_begin(&mut out, &song), GT2_ERR_RANGE);
 }
 
 #[test]
@@ -456,16 +438,10 @@ fn export_refuses_unrepresentable_dependencies_and_invalid_graphs() {
         (*song.ptr_mut()).instr[1][5] = 2;
         (*song.ptr_mut()).rtable[0][0] = 1;
     }
-    assert_eq!(
-        unsafe { gt2_ins_export_begin(&mut out, song.ptr(), 2) },
-        GT2_ERR_RANGE
-    );
+    assert_eq!(export_begin(&mut out, &song), GT2_ERR_RANGE);
     unsafe {
         (*song.ptr_mut()).instr[1][5] = 1;
         (*song.ptr_mut()).rtable[0][2] = 3;
     }
-    assert_eq!(
-        unsafe { gt2_ins_export_begin(&mut out, song.ptr(), 2) },
-        GT2_ERR_RANGE
-    );
+    assert_eq!(export_begin(&mut out, &song), GT2_ERR_RANGE);
 }
