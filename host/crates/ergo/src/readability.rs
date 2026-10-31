@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Readability: the scale, physical size and contrast of the text on each screen, judged
-//! against the per-view table in readability.txt.
 
 use std::collections::BTreeMap;
 
@@ -145,7 +143,6 @@ pub fn classify(rules: &[Rule], view: &str, text: &str) -> Class {
         .map_or(Class::Glance, |r| r.class)
 }
 
-/// A run with its judgement.
 #[derive(Clone, Debug)]
 pub struct RunReport {
     pub run: TextRun,
@@ -164,7 +161,6 @@ pub fn judge(shot: &Shot, rules: &[Rule], cfg: &Config) -> Vec<RunReport> {
     text_runs(&shot.cells)
         .into_iter()
         .map(|run| {
-            // Dots and dashes alone (an empty tracker row) are not text to read.
             let mut class = if run.text.chars().any(char::is_alphanumeric) {
                 classify(rules, &shot.view, &run.text)
             } else {
@@ -205,7 +201,6 @@ pub fn judge(shot: &Shot, rules: &[Rule], cfg: &Config) -> Vec<RunReport> {
         .collect()
 }
 
-/// A screen the harness saved, with where.
 pub struct Captured {
     pub name: String,
     pub path: String,
@@ -216,7 +211,6 @@ pub struct Captured {
 pub struct ReadResult {
     pub findings: Vec<Finding>,
     pub metrics: Vec<Metric>,
-    /// Per view: the text scales seen, play-text counts, and fg/bg pairs in use.
     pub summary: serde_json::Value,
 }
 
@@ -237,7 +231,6 @@ pub fn analyse(shots: &[Captured], rules: &[Rule], cfg: &Config) -> ReadResult {
         {
             continue;
         }
-        // Distinct play texts, and those under the size rule.
         let mut play: BTreeMap<String, (u32, bool)> = BTreeMap::new();
         let mut scales: BTreeMap<u32, u32> = BTreeMap::new();
         let mut pairs: BTreeMap<(u8, u8, u32), (f64, u32)> = BTreeMap::new();
@@ -288,7 +281,6 @@ pub fn analyse(shots: &[Captured], rules: &[Rule], cfg: &Config) -> ReadResult {
             false,
         ));
 
-        // Size finding: the shot with the most violating play runs carries the overlay.
         if !small.is_empty() {
             let worst = list
                 .iter()
@@ -348,7 +340,6 @@ pub fn analyse(shots: &[Captured], rules: &[Rule], cfg: &Config) -> ReadResult {
             );
         }
 
-        // Contrast finding.
         let mut bad: BTreeMap<(u8, u8, u32), (f64, Vec<String>)> = BTreeMap::new();
         let mut worst_shot: Option<(usize, &Captured, Vec<Overlay>)> = None;
         let mut play_fail = false;
@@ -452,8 +443,6 @@ mod tests {
             ("chip", "K1 K2 K3 K4", Class::Hint),
             ("live", "SELECT MOVE", Class::Hint),
             ("tracker", "A-4 02", Class::Play),
-            // The menu's kin: LOAD's files and SETTINGS' values are read as the menu's lines
-            // (the v0.3.0 device session found LOAD's names at 1x), and the arpeggio's badge.
             ("song_menu", "BEAT 1", Class::Play),
             ("song_menu", "SAVE CHOOSE", Class::Play),
             ("song_menu", "HOME BACK", Class::Hint),
@@ -544,7 +533,6 @@ mod tests {
     fn a_play_value_at_1x_breaks_the_size_rule_and_a_ratio_is_computed() {
         let rules = parse_rules(DEFAULT_RULES).unwrap();
         let cfg = Config::default();
-        // light blue on blue (14 on 6), the LIVE colours.
         let th = unsafe { &*sidou_sys::theme_get(1) };
         let s = shot_with("live", "FC 11.4K", th.value | th.bg << 4);
         let r = judge(&s, &rules, &cfg);

@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The run: every check in turn, the findings and metrics gathered, the files written.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -21,9 +20,7 @@ pub struct Opts {
     pub journeys_file: Option<PathBuf>,
     pub readability_file: Option<PathBuf>,
     pub config_file: Option<PathBuf>,
-    /// Run only these checks (journeys, readability, knobs, feedback, consistency, defaults).
     pub only: Option<Vec<String>>,
-    /// Capture this journey in full (every frame and the audio) and nothing else.
     pub capture: Option<String>,
     pub fail_on_regression: bool,
     pub knob_filter: Option<String>,
@@ -40,7 +37,6 @@ fn wanted(o: &Opts, k: &str) -> bool {
 }
 
 pub fn load_journeys(o: &Opts) -> Result<Vec<Journey>, String> {
-    // A directory is recipes in their JSON form (docs/recipes): what --check-recipes checks.
     if let Some(dir) = o.journeys_file.as_ref().filter(|p| p.is_dir()) {
         let mut js = crate::recipe::load_dir(dir)?
             .iter()
@@ -219,7 +215,6 @@ pub fn run(o: &Opts) -> Result<i32, String> {
         None => None,
     };
 
-    // Files.
     let counts = |s: Sev| findings.iter().filter(|f| f.severity == s).count();
     let mut by_cat: BTreeMap<&str, usize> = BTreeMap::new();
     for f in &findings {
@@ -392,7 +387,6 @@ fn build_report(
         body += "</section>";
     }
 
-    // Journeys.
     body += "<section id=\"journeys\"><h2>Journeys</h2><p class=\"muted\">Each journey is a scripted input sequence; a screenshot per step, a clip at the checkpoints. Dashed cards are steps not yet possible on this firmware.</p>";
     let feat: Vec<Vec<String>> = features
         .iter()
@@ -469,7 +463,6 @@ fn build_report(
     }
     body += "</section>";
 
-    // Tasks.
     body += "<section id=\"tasks\"><h2>Effort per task</h2>";
     let rows: Vec<Vec<String>> = task_list
         .iter()
@@ -528,7 +521,6 @@ fn build_report(
     );
     body += "</section>";
 
-    // Knobs.
     body += "<section id=\"knobs\"><h2>Knob and encoder feel</h2>";
     let rows: Vec<Vec<String>> = knob_table
         .iter()
@@ -565,7 +557,6 @@ fn build_report(
     );
     body += "</section>";
 
-    // Readability.
     body += "<section id=\"readability\"><h2>Readability</h2><p class=\"muted\">Text scale found in the firmware's grid, per view; colour pairs in use with their WCAG contrast.</p>";
     if let Value::Object(m) = read_summary {
         let rows: Vec<Vec<String>> = m
@@ -613,7 +604,6 @@ fn build_report(
     }
     body += "</section>";
 
-    // Consistency.
     body += "<section id=\"consistency\"><h2>Consistency</h2>";
     let mut views: Vec<String> = Vec::new();
     for c in cons_matrix {
@@ -664,7 +654,6 @@ fn build_report(
     body += &table(&head, &rows);
     body += "</section>";
 
-    // Feedback.
     body += "<section id=\"feedback\"><h2>Feedback speed</h2><p class=\"muted\">Milliseconds from the input to the first changed pixel, and to the value popup; four phases of the 40 ms frame.</p>";
     let rows: Vec<Vec<String>> = feed_table
         .iter()
@@ -696,7 +685,6 @@ fn build_report(
     );
     body += "</section>";
 
-    // Defaults.
     body += "<section id=\"musical\"><h2>Musical defaults</h2>";
     let rows: Vec<Vec<String>> = def_table
         .iter()
@@ -729,7 +717,6 @@ fn build_report(
     );
     body += "</section>";
 
-    // Config.
     body += "<section id=\"config\"><h2>Thresholds</h2><p class=\"muted\">Sources and reasoning are documented on each field in <code>host/crates/ergo/src/config.rs</code>; override with <code>--config</code>.</p><pre class=\"mono\">";
     body += &esc(&serde_json::to_string_pretty(&cfg.to_json()).unwrap());
     body += "</pre></section>";

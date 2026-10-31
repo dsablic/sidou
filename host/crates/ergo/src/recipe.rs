@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Recipes: a journey in its machine form, one JSON file each (docs/reference/recipe-schema.md),
-//! and the validator that runs them in the emulator and fails a recipe that no longer runs or no
-//! longer meets its expectations. The journeys table is the authoring form; this is the same
-//! data, serialised with a stable schema.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -17,7 +13,6 @@ use crate::journeys::{
 
 pub const SCHEMA: &str = "sidou-recipe/1";
 
-/// The example recipes' source (tables/recipes.txt).
 pub const DEFAULT_RECIPES: &str = include_str!("../tables/recipes.txt");
 
 fn button_name(id: u8) -> &'static str {
@@ -34,7 +29,6 @@ fn encoder_name(id: u8) -> &'static str {
         .map_or("?", |(n, _)| *n)
 }
 
-/// 69 -> "A4" (C4 = 60).
 pub fn note_name(n: u8) -> String {
     const N: [&str; 12] = [
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
@@ -322,7 +316,6 @@ pub fn expect_from_json(v: &Value, at: &str) -> Result<Expect, String> {
     })
 }
 
-/// The control in panel terms, made from the actions when the author gave none.
 pub fn describe(acts: &[Act]) -> String {
     let one = |a: &Act| match a {
         Act::Boot => "wait for the boot to end".to_string(),
@@ -674,7 +667,6 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
     })
 }
 
-/// Writes one JSON file per recipe of a table (not tours) into `dir`; returns the file names.
 pub fn export(table: &str, dir: &Path) -> Result<Vec<String>, String> {
     let js = parse_table(table)?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -691,7 +683,6 @@ pub fn export(table: &str, dir: &Path) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-/// One recipe's validation: a step that cannot run, or whose expectations do not hold.
 #[derive(Debug)]
 pub struct RecipeReport {
     pub id: String,
@@ -718,9 +709,6 @@ pub fn load_dir(dir: &Path) -> Result<Vec<(PathBuf, Value)>, String> {
         .collect()
 }
 
-/// Runs every recipe in the emulator: the schema is checked, then each step's inputs are made and
-/// each expectation checked. A step the firmware cannot do (a missing feature) fails too: a recipe
-/// teaches only what the synth does.
 pub fn validate(
     dir: &Path,
     build: &Path,
@@ -729,7 +717,6 @@ pub fn validate(
 ) -> Result<Vec<RecipeReport>, String> {
     let recipes = load_dir(dir)?;
     let features = crate::journeys::detect_features(build);
-    // Parse every recipe first: an `after` names another one.
     let mut parsed: Vec<Result<Journey, String>> =
         recipes.iter().map(|(_, v)| parse_recipe(v)).collect();
     let mut ok: Vec<Journey> = parsed
@@ -778,8 +765,6 @@ pub fn validate(
     Ok(reports)
 }
 
-/// A recipe's checks that need no emulator: unique step ids, every step captioned and with at
-/// least one expectation, related recipes that exist among `ids`.
 pub fn lint(j: &Journey, ids: &[String]) -> Vec<String> {
     let mut p = Vec::new();
     let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
@@ -940,7 +925,6 @@ mod tests {
         assert_eq!(v["prerequisites"]["songs"][0], "neon-highway");
         assert_eq!(v["steps"][0]["focus"]["screen"]["cols"], 3);
         assert_eq!(recipe_json(&j[1])["prerequisites"]["after"], "a");
-        // A recipe without video fields exports none: the existing files stay as they were.
         let plain = parse_table("journey c | C\n step c | C | c | wait 1 | sound\n").unwrap();
         let v = recipe_json(&plain[0]);
         assert!(v["steps"][0].get("focus").is_none());

@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Feedback speed: milliseconds from an input to the first changed pixel on the panel and to
-//! the value popup opening, for each control, over four phases of the 40 ms frame.
 
 use std::path::Path;
 
@@ -12,7 +10,6 @@ use crate::device::{panel, Dev};
 use crate::findings::{metric, Finding, Metric, Sev};
 use crate::journeys::run_script;
 
-/// One input to try: a name, a setup (journeys.txt actions), and the input.
 struct Case {
     name: &'static str,
     setup: &'static str,
@@ -23,7 +20,6 @@ enum Input {
     Turn(u8),
     Press(u8),
     Pot,
-    /// A button held, then an encoder turned.
     HoldTurn(u8, u8),
 }
 
@@ -108,7 +104,6 @@ const CASES: &[Case] = &[
 const PHASES: [u64; 4] = [0, 10, 20, 30];
 const LIMIT_MS: u64 = 600;
 
-/// One measurement: (first changed pixel, popup open), ms from the input; None: never.
 fn measure(build: &Path, case: &Case, phase: u64) -> (Option<u64>, Option<u64>) {
     let mut d = Dev::boot(build);
     run_script(&mut d, case.setup);

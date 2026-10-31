@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `--capture full`: a journey's every LCD frame at the UI's 25 fps as numbered PNGs, its whole
-//! audio as one WAV, and a JSON sidecar of frame timestamps and step captions, for building a
-//! video with exact A/V sync (docs/TESTING.md, "Reusing captures"). Nothing here reads a clock
-//! or a random number: the same build and journey give the same bytes.
 
 use std::path::Path;
 
@@ -13,7 +9,6 @@ use crate::device::{Dev, Recorder, FRAME_MS};
 use crate::journeys::{Journey, FS};
 use crate::screen::png_bytes;
 
-/// A step's times in a capture (emulated ms): its start, its end and each input's start and end.
 pub struct StepTimes {
     pub start: u64,
     pub end: u64,
@@ -23,18 +18,14 @@ pub struct StepTimes {
 pub struct Capture {
     pub journey: String,
     pub title: String,
-    /// The recipe's steps as the video uses them: what, where to look, and when.
     pub steps: Vec<serde_json::Value>,
     pub t0: u64,
     pub frames: Vec<(u64, Vec<u16>)>,
-    /// Interleaved stereo.
     pub audio: Vec<i16>,
     pub audio_offset_ms: f64,
     pub captions: Vec<(u64, String)>,
 }
 
-/// The emulated time, ms, at which audio sample `i` (per channel) plays: each half of the DMA
-/// buffer (128 frames) is stamped with the cycle it finished playing (`half_played`).
 fn sample_time_ms(dev: &Dev, i: usize) -> f64 {
     let half = crate::common::HALF_FRAMES;
     let h = i / half;
@@ -132,7 +123,6 @@ impl Capture {
     }
 }
 
-/// A 16-bit stereo WAV.
 pub fn wav_stereo16(x: &[i16], rate: u32) -> Vec<u8> {
     let data = (x.len() * 2) as u32;
     let mut v = Vec::with_capacity(44 + x.len() * 2);

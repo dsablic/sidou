@@ -1,20 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! No list is a dead end: every list the menu opens (the menu's own lines, SETTINGS, SONG's
-//! actions and its LOAD, DELETE and SAVE AS pages, the SIDS browser) takes HOME and SAVE, alone
-//! and in pairs, without a crash, and HOME then leads back to LIVE within a few presses with a
-//! key that still sounds. Needs the fm1 build (SIDOU_FM1_BUILD); skips without it.
 
 use ergo::device::Dev;
 use ergo::journeys::run_script;
 use ergo::metrics::rms_dbfs;
 use ergo::screen::text_runs;
 
-/// HOME presses allowed from any state back to LIVE (the deepest stack is SONG's LOAD, a
-/// confirmation, and the menu: 4).
 const HOME_LIMIT: usize = 8;
 
-/// What a key press does on a list, as the script that runs it.
 const ACTIONS: [(&str, &str); 4] = [
     ("HOME", "press HOME; wait 500"),
     ("SAVE", "press SAVE; wait 800"),
@@ -22,12 +15,8 @@ const ACTIONS: [(&str, &str); 4] = [
     ("SAVE HOME", "press SAVE; wait 800; press HOME; wait 500"),
 ];
 
-/// SONG's root with its cursor on LOAD: the firmware remembers the cursor, SELECT clamps.
 const SONG_ROOT: &str = "select-item SONG; press SAVE; wait 800; turn SELECT -5; wait 100";
 
-/// One list: the script that reaches it from the menu ("@;rest": SONG's root, then rest), the
-/// view it must be and the text it must show (a page reached by the wrong turn would pass HOME
-/// and SAVE all the same), and whether the machine's store holds a song of the player's own.
 struct List {
     name: &'static str,
     reach: &'static str,
@@ -138,7 +127,6 @@ fn lists() -> Vec<List> {
     ]
 }
 
-/// HOME until LIVE, as a player lost in a list would: the views passed on the way, or an error.
 fn home_to_live(d: &mut Dev) -> Result<Vec<String>, Vec<String>> {
     let mut seen = vec![d.view()];
     for _ in 0..HOME_LIMIT {
@@ -176,9 +164,6 @@ fn every_list_takes_save_and_home_and_leads_back_to_live() {
         ergo::common::skip_message("the list walk");
         return;
     };
-    // One machine per list (side by side on every core), its four tries one after the other,
-    // each from wherever the last left the firmware (a song loaded, a tune playing), as a
-    // player's next try would.
     let all = lists();
     let problems: Vec<String> = ergo::par_map(&all, |l| {
         let (list, reach, view, text) = (l.name, l.reach, l.view, &l.text);
@@ -202,7 +187,6 @@ fn every_list_takes_save_and_home_and_leads_back_to_live() {
                 problems.push(format!("{case}: HOME from LIVE reached {}", d.view()));
                 continue;
             }
-            // "@;rest": SONG's root first, then rest
             match reach.strip_prefix("@;") {
                 Some(rest) => run_script(&mut d, &format!("{SONG_ROOT}; {rest}")),
                 None if !reach.is_empty() => run_script(&mut d, reach),

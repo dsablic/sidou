@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Musical defaults: does each factory preset give a non-silent, reasonable sound for a held
-//! note, measured from the rendered audio: level, brightness, clipping and DC.
 
 use std::ffi::CStr;
 use std::path::Path;
@@ -40,7 +38,6 @@ fn preset_stats(a: &[f32], sustain: u8, cfg: &Config) -> Value {
 }
 
 pub fn preset_names() -> Vec<String> {
-    // The presets a program change selects: DICE, after them, is a new sound at every turn.
     (0..sidou_sys::LIVE_PRESET_COUNT as u8)
         .map_while(|i| {
             let p = unsafe { sidou_sys::live_preset_get(i) };
@@ -59,7 +56,6 @@ pub struct DefaultsResult {
     pub table: Vec<Value>,
 }
 
-/// Judges one measured note: the findings it earns.
 pub fn judge(label: &str, id: &str, stats: &Value, cfg: &Config) -> Vec<Finding> {
     let f = |k: &str| stats.get(k).and_then(Value::as_f64).unwrap_or(0.0);
     let mut out = Vec::new();
@@ -160,8 +156,6 @@ pub fn run_all(build: &Path, cfg: &Config, out: &Path) -> DefaultsResult {
     for ((i, _, nname), a) in jobs.iter().zip(measured) {
         let name = &names[*i];
         {
-            // The attack and what follows it: 20 to 420 ms after the key (a percussive preset
-            // has decayed to nothing by the end of a long note, which is its design).
             let preset = unsafe { &*sidou_sys::live_preset_get(*i as u8) };
             let mut stats = preset_stats(&a, preset.sustain_release >> 4, cfg);
             stats["sync_or_ring"] = json!(preset.mono_sync != 0 || preset.control & 0x06 != 0);

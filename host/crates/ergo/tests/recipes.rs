@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The example recipes in docs/recipes: they parse, lint clean, are what the table exports, and
-//! (with the fm1 build, SIDOU_FM1_BUILD) run in the emulator and meet their expectations.
 
 use std::path::{Path, PathBuf};
 
@@ -31,7 +29,6 @@ fn the_committed_recipes_are_valid_and_current() {
         let problems = lint(j, &ids);
         assert!(problems.is_empty(), "{}: {problems:?}", j.id);
     }
-    // What `ergo --export-recipes` writes now is what is committed.
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("ergo-recipes-export");
     let names = export(DEFAULT_RECIPES, &dir).unwrap();
     assert_eq!(names.len(), loaded.len());

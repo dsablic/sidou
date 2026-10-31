@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo run --release -p ergo -- --out build/ergo` (from host/): the ergonomics harness.
-//! Never touches a USB or MIDI device: everything runs in fm1-emu.
 
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

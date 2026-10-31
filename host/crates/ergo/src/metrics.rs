@@ -1,24 +1,17 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The harness's metric functions: pure arithmetic with no emulator in it, so they are
-//! unit-tested (the tests at the end).
 
-/// The screen's width in pixels and in millimetres (the FM-1's lit area, measured by the
-/// user: assets/prototypes/screen-readability.html's default).
 pub const SCREEN_PX: f64 = 240.0;
 pub const SCREEN_MM: f64 = 23.4;
 
-/// Pixel pitch in millimetres.
 pub fn mm_per_px(screen_mm: f64) -> f64 {
     screen_mm / SCREEN_PX
 }
 
-/// The physical height of a glyph cell drawn at `scale` times the 8-pixel font.
 pub fn glyph_mm(scale: u32, screen_mm: f64) -> f64 {
     8.0 * f64::from(scale) * mm_per_px(screen_mm)
 }
 
-/// sRGB channel (0..255) to linear light (WCAG 2.x).
 fn linear(c: u8) -> f64 {
     let s = f64::from(c) / 255.0;
     if s <= 0.03928 {
@@ -28,36 +21,28 @@ fn linear(c: u8) -> f64 {
     }
 }
 
-/// WCAG relative luminance.
 pub fn luminance(rgb: [u8; 3]) -> f64 {
     0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2])
 }
 
-/// WCAG contrast ratio, 1..21, of two colours in either order.
 pub fn contrast_ratio(a: [u8; 3], b: [u8; 3]) -> f64 {
     let (la, lb) = (luminance(a), luminance(b));
     let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
     (hi + 0.05) / (lo + 0.05)
 }
 
-/// The interval between two frequencies in cents (1200 to the octave).
 pub fn cents(from_hz: f64, to_hz: f64) -> f64 {
     1200.0 * (to_hz / from_hz).log2()
 }
 
-/// A power or amplitude ratio in decibels (amplitude: 20 log10).
 pub fn db(ratio: f64) -> f64 {
     20.0 * ratio.max(1e-12).log10()
 }
 
-/// The unit a parameter's steps are measured in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Unit {
-    /// Frequency or cutoff: cents of the Hz value.
     Cents,
-    /// Level: dB of a linear gain.
     Db,
-    /// Everything else: percent of the parameter's full range.
     Percent,
 }
 
@@ -71,9 +56,6 @@ impl Unit {
     }
 }
 
-/// The step from value `a` to `b` in musical units. For Cents and Db the values are the
-/// physical quantity (Hz, linear gain); for Percent they are raw values and `full` is the span
-/// that is 100%.
 pub fn step_size(unit: Unit, a: f64, b: f64, full: f64) -> f64 {
     match unit {
         Unit::Cents => cents(a.max(1e-9), b.max(1e-9)),
@@ -82,25 +64,20 @@ pub fn step_size(unit: Unit, a: f64, b: f64, full: f64) -> f64 {
     }
 }
 
-/// Steps in musical units along a series of values.
 pub fn steps(unit: Unit, vals: &[f64], full: f64) -> Vec<f64> {
     vals.windows(2)
         .map(|w| step_size(unit, w[0], w[1], full))
         .collect()
 }
 
-/// How a series of steps behaves, for the knob rules.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StepStats {
     pub n: usize,
     pub median_abs: f64,
     pub max_abs: f64,
     pub min_abs: f64,
-    /// Standard deviation over the mean of |step| (0 for a perfectly even curve).
     pub cv: f64,
-    /// Steps whose sign is against the sweep's overall direction.
     pub reversals: usize,
-    /// The longest run of consecutive steps with |step| below the threshold given.
     pub longest_dead_run: usize,
 }
 
@@ -135,37 +112,25 @@ pub fn step_stats(steps: &[f64], dead_below: f64) -> StepStats {
     }
 }
 
-/// One action of an input sequence, for the effort count. `hands` is how many hands the
-/// control takes while it is held or turned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effort {
     Press,
-    /// A button held for a time (alone).
     Hold,
-    /// An encoder turned by a number of detents.
     Turn(u32),
-    /// A button held while an encoder turns, or a second button is pressed (two hands).
     HoldTurn(u32),
-    /// A button held while a note key is pressed (GLO + key): two hands.
     HoldKey,
-    /// A note key (a play action, not navigation).
     Note,
-    /// MIDI in: not the panel (no hand on it).
     Midi,
-    /// Waiting: no action.
     Wait,
 }
 
-/// The counts of a sequence's actions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EffortCount {
     pub presses: u32,
     pub holds: u32,
-    /// Distinct turns (each continuous run of one encoder is one action).
     pub turns: u32,
     pub detents: u32,
     pub notes: u32,
-    /// The actions that count against the limit: presses, holds and turns, not detents.
     pub actions: u32,
     pub two_handed: u32,
 }
@@ -199,7 +164,6 @@ pub fn count_effort(seq: &[Effort]) -> EffortCount {
     c
 }
 
-/// RMS of samples as dBFS (16-bit full scale 32768), -120 for silence.
 pub fn rms_dbfs(x: &[f32]) -> f64 {
     if x.is_empty() {
         return -120.0;
@@ -208,7 +172,6 @@ pub fn rms_dbfs(x: &[f32]) -> f64 {
     (10.0 * (ms / (32768.0 * 32768.0)).max(1e-12).log10()).max(-120.0)
 }
 
-/// Spectral centroid in Hz of the first `n` samples (Hann window, mean removed), `fs` Hz.
 pub fn spectral_centroid(x: &[f32], fs: f64) -> f64 {
     let n = x.len().min(2048);
     if n < 64 {
@@ -222,7 +185,6 @@ pub fn spectral_centroid(x: &[f32], fs: f64) -> f64 {
         })
         .collect();
     let (mut num, mut den) = (0.0, 0.0);
-    // A recurrence-free DFT over every second bin: a centroid does not need them all.
     for k in (1..n / 2).step_by(2) {
         let w = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
         let (mut re, mut im) = (0.0, 0.0);
@@ -242,8 +204,6 @@ pub fn spectral_centroid(x: &[f32], fs: f64) -> f64 {
     }
 }
 
-/// The magnitude spectrum of the first 2048 samples (Hann window, mean removed) in dB, bins 1..=512
-/// (21.5 Hz to 11 kHz at 44.1 kHz): what a timbre looks like, for comparing two sounds.
 pub fn log_spectrum(x: &[f32]) -> Vec<f32> {
     let n = x.len().min(2048);
     if n < 256 {
@@ -271,8 +231,6 @@ pub fn log_spectrum(x: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-/// The RMS difference in dB between two log spectra, over the bins where either is within 60 dB
-/// of its own peak (the rest is noise floor). 0 for empty or unequal inputs.
 pub fn spectral_distance_db(a: &[f32], b: &[f32]) -> f64 {
     if a.is_empty() || a.len() != b.len() {
         return 0.0;
@@ -293,7 +251,6 @@ pub fn spectral_distance_db(a: &[f32], b: &[f32]) -> f64 {
     }
 }
 
-/// Mean (DC offset) of the samples as a fraction of full scale.
 pub fn dc_fraction(x: &[f32]) -> f64 {
     if x.is_empty() {
         return 0.0;
@@ -318,7 +275,6 @@ mod tests {
 
     #[test]
     fn contrast_matches_a_wcag_reference() {
-        // #777 on white is the classic 4.48:1 (just under AA).
         let r = contrast_ratio([0x77, 0x77, 0x77], [255, 255, 255]);
         assert!((r - 4.48).abs() < 0.01, "{r}");
     }

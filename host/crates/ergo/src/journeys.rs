@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Journeys: scripted input sequences with checkpoints, run in fm1-emu. The table is
-//! tables/journeys.txt (grammar in its header); each step has a screenshot, the optional
-//! audio clip, and the metrics the ergonomics rules read: actions, hands, menu levels, frames
-//! to completion, dead ends, "not yet possible" steps. The same table gives the common tasks
-//! for the effort and consistency checks.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -21,7 +16,6 @@ use crate::screen::{text_runs, write_png};
 
 pub const DEFAULT_TABLE: &str = include_str!("../tables/journeys.txt");
 
-/// The audio rate the emulator plays at (24 MHz / 544).
 pub const FS: f64 = 24e6 / 544.0;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -32,33 +26,20 @@ pub enum Act {
     Down(u8),
     Up(u8),
     Turn(u8, i32),
-    /// A button held while an encoder turns.
     HoldTurn(u8, u8, i32),
-    /// Two buttons held while an encoder turns (EDIT + SCL, then K1).
     Hold2Turn(u8, u8, u8, i32),
-    /// A button held while a note key is pressed (GLO + key).
     HoldKey(u8, u8),
-    /// A button held while another button is pressed (EDIT + SCL).
     HoldPress(u8, u8),
-    /// Note keys (MIDI note numbers) held together for ms.
     Note(Vec<u8>, u64),
-    /// Moves the menu's selection onto the item showing this text; one turn.
     SelectItem(String),
     Midi(Vec<u8>),
     Pot(u16),
     Wait(u64),
-    /// MIDI clock at bpm for ms, with a start first.
     Clock(u32, u64, bool),
     PowerCycle,
-    /// Note keys played in time: at `bpm`, each event a chord (empty: a rest) lasting `sixteenths`
-    /// 16th notes, the keys held for most of it (`play`).
     Play(u32, Vec<(Vec<u8>, u32)>),
-    /// Note keys tapped one after another, each held `ms` with a short gap (`taps`: STEP's keys).
     Taps(Vec<u8>, u64),
-    /// An encoder turned `n` detents spread evenly over `ms` (`sweep`): a hand turning slowly.
     Sweep(u8, i32, u64),
-    /// Waits for the playing song's voice 1 to reach the first row of a pattern (`sync`): what
-    /// follows starts on the bar.
     Sync,
 }
 
@@ -71,35 +52,19 @@ pub enum Expect {
     Popup,
     Toast,
     Text(String),
-    /// This text is on the screen at 2x or larger: readable at arm's length (the play-time
-    /// minimum of the readability check, docs/TESTING.md).
     BigText(String),
-    /// The remembered parameters are what they were.
     Recalled,
-    /// A parameter (a name of `Params::named`) within a range.
     Value(String, i64, i64),
-    /// This text is not on the screen.
     Absent(String),
-    /// The sound against the 400 ms before the step: brighter or darker (spectral centroid, 5%),
-    /// louder or quieter (RMS, 1 dB). Needs a sound before the step.
     Brighter,
     Darker,
     Louder,
     Quieter,
-    /// The RMS level of the last 400 ms, dBFS, within a range.
     Level(f64, f64),
-    /// The song's pattern that voice `v` (1..3) plays at orderlist entry `e` (subtune 0) holds
-    /// these notes (GoatTracker values), in row order, rests and key-offs skipped.
     Notes(u8, u8, Vec<u8>),
-    /// That pattern holds a note on exactly these rows (0-based).
     Rows(u8, u8, Vec<u8>),
 }
 
-/// Where a step's video looks (docs/reference/recipe-schema.md, `focus`): the control used (a
-/// button, encoder, MASTER, a note, `device` for the whole FM-1, `screen` for the screen alone,
-/// `card` for a card instead of the device while the step runs),
-/// a region of the screen in cells (col, row, cols, rows of the 30 x 30 grid) and a callout.
-/// Every part is optional; the video derives what is missing from the step's inputs.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Focus {
     pub control: Option<String>,
@@ -113,8 +78,6 @@ impl Focus {
     }
 }
 
-/// A focus control: a button, an encoder, MASTER, a note key (F3..G5), `device`, `screen` or
-/// `card`.
 pub fn check_focus_control(c: &str) -> Result<(), String> {
     if BUTTONS.iter().any(|(n, _)| *n == c)
         || ENCODERS.iter().any(|(n, _)| *n == c)
@@ -127,7 +90,6 @@ pub fn check_focus_control(c: &str) -> Result<(), String> {
     }
 }
 
-/// A screen region inside the 30 x 30 cells, at least one cell.
 pub fn check_screen(r: [u8; 4]) -> Result<(), String> {
     let [c, row, w, h] = r.map(u32::from);
     if w == 0 || h == 0 || c + w > 30 || row + h > 30 {
@@ -139,7 +101,6 @@ pub fn check_screen(r: [u8; 4]) -> Result<(), String> {
     }
 }
 
-/// `C-3`, `D#4` (TRACKER's names) -> GoatTracker's note value.
 pub fn gt_note(s: &str) -> Result<u8, String> {
     let b = s.as_bytes();
     if b.len() != 3 {
@@ -167,7 +128,6 @@ pub fn gt_note(s: &str) -> Result<u8, String> {
     Ok(sidou_sys::GT2_FIRSTNOTE as u8 + oct * 12 + base + sharp)
 }
 
-/// GoatTracker's note value -> `C-3`.
 pub fn gt_note_name(v: u8) -> String {
     const N: [&str; 12] = [
         "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",
@@ -192,12 +152,8 @@ pub struct Step {
     pub destructive: bool,
     pub remember: bool,
     pub defaults: bool,
-    /// The physical control in panel terms ("turn K1 clockwise about a quarter turn"); made from
-    /// the actions when absent.
     pub control: Option<String>,
-    /// Where the video looks during the step.
     pub focus: Focus,
-    /// The step opens a chapter of a long video, with this title.
     pub chapter: Option<String>,
 }
 
@@ -205,32 +161,21 @@ pub struct Step {
 pub struct Journey {
     pub id: String,
     pub title: String,
-    /// A tour only visits screens (for readability): no effort scoring.
     pub tour: bool,
-    /// Starts at power-on (time 0, the boot running); else on LIVE, booted.
     pub poweron: bool,
-    /// Recipe header: the one-line goal, what must be true to start, the skills taught and the
-    /// related recipes (docs/reference/recipe-schema.md).
     pub goal: String,
     pub prereq: String,
     pub skills: Vec<String>,
     pub related: Vec<String>,
-    /// Showcase songs (assets/songs/<name>.sng) put into the store before power-on.
     pub songs: Vec<String>,
-    /// Starter-pack tunes (assets/starter/<name>.sid) put into the store before power-on, as a
-    /// SysEx PUT of type 2 leaves them: the file's own bytes, under its store name.
     pub tunes: Vec<String>,
-    /// Another recipe whose steps run first, unfilmed: this one starts where that one ends.
     pub after: Option<String>,
-    /// The steps `after` resolves to (its own prelude first), run before step 1, and the songs
-    /// that chain puts in the store.
     pub prelude: Vec<Step>,
     pub prelude_songs: Vec<String>,
     pub prelude_tunes: Vec<String>,
     pub steps: Vec<Step>,
 }
 
-/// Fills each journey's `prelude` from its `after` chain, and adds the chain's songs to its own.
 pub fn resolve_after(js: &mut [Journey]) -> Result<(), String> {
     let all: Vec<Journey> = js.to_vec();
     for j in js.iter_mut() {
@@ -322,7 +267,6 @@ fn encoder(s: &str) -> Result<u8, String> {
         .ok_or_else(|| format!("unknown encoder {s}"))
 }
 
-/// `A4`, `C#3`: MIDI note (C4 = 60).
 pub fn note_number(s: &str) -> Result<u8, String> {
     let b = s.as_bytes();
     let base = match b.first() {
@@ -482,7 +426,6 @@ fn parse_act(text: &str) -> Result<Act, String> {
     })
 }
 
-/// One `play` event: `C4`, `C4+E4` (a chord) or `.` (a rest), then `:N` for N 16ths (default 1).
 fn play_event(t: &str) -> Result<(Vec<u8>, u32), String> {
     let (notes, len) = match t.split_once(':') {
         Some((n, l)) => (n, num(l)?),
@@ -502,9 +445,6 @@ fn play_event(t: &str) -> Result<(Vec<u8>, u32), String> {
     Ok((notes, len))
 }
 
-/// A `play` event's on and off times, ms from its start: a 16th at `bpm` is 15000 / bpm ms, and
-/// the keys are let go a little before the next event (as a player would, so a repeated key
-/// strikes again).
 pub fn play_times(bpm: u32, events: &[(Vec<u8>, u32)]) -> Vec<(u64, u64)> {
     let sixteenth = 15_000.0 / f64::from(bpm);
     let mut t = 0.0;
@@ -519,7 +459,6 @@ pub fn play_times(bpm: u32, events: &[(Vec<u8>, u32)]) -> Vec<(u64, u64)> {
         .collect()
 }
 
-/// Parses the table (grammar: tables/journeys.txt's header).
 pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
     let mut out: Vec<Journey> = Vec::new();
     for (n, raw) in text.lines().enumerate() {
@@ -751,7 +690,6 @@ pub fn effort_of(a: &Act) -> Effort {
     }
 }
 
-/// Which optional features this firmware has: `name -> reason` (empty reason: present).
 pub fn detect_features(build: &Path) -> BTreeMap<String, (bool, String)> {
     let d = Dev::power_on(build);
     let mut f: BTreeMap<String, (bool, String)> = BTreeMap::new();
@@ -816,10 +754,9 @@ fn tracker_text(d: &mut Dev) -> String {
         .join("|")
 }
 
-/// Does REC plus a key change what TRACKER shows? (Behaviour, not a symbol: it follows main.)
 fn probe_pattern_edit(build: &Path) -> bool {
     let mut d = Dev::boot(build);
-    d.press(panel::SEQ); // STEP, then TRACKER
+    d.press(panel::SEQ);
     d.press(panel::SEQ);
     d.settle();
     if d.view() != "tracker" {
@@ -830,7 +767,6 @@ fn probe_pattern_edit(build: &Path) -> bool {
     d.note(key_of_note(69), 300);
     d.press(panel::REC);
     d.settle();
-    // The REC mark itself changes the header; compare only the pattern rows.
     let rows = |t: &str| {
         t.split('|')
             .filter(|r| {
@@ -848,13 +784,9 @@ fn probe_pattern_edit(build: &Path) -> bool {
     rows(&before) != rows(&after)
 }
 
-/// The first grid row of the menu's items and the rows each takes (app/views.c MENU_ROW, and
-/// the 2x lines every 3 rows).
 const MENU_FIRST_ROW: usize = 4;
 const MENU_LINE_ROWS: usize = 3;
 
-/// The text of the menu's selected line. Which line is the firmware's own cursor and first
-/// visible item (`Dev::menu_cursor`), never the colours: a theme can colour a value like the bar.
 pub fn menu_selected(shot: &Shot, cursor: u8, top: u8) -> Option<String> {
     let row = MENU_FIRST_ROW + MENU_LINE_ROWS * usize::from(cursor.checked_sub(top)?);
     let mut runs: Vec<_> = text_runs(&shot.cells)
@@ -870,13 +802,10 @@ pub fn menu_selected(shot: &Shot, cursor: u8, top: u8) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// The menu pages `select-item` works on: the main menu and its SETTINGS page.
 fn is_menu(view: &str) -> bool {
     view == "menu" || view == "settings"
 }
 
-/// Whether the menu's selected line, as drawn, starts with `text`; the screen may trail the
-/// cursor by a frame or two, so it gets a few before a no.
 fn menu_shows(d: &mut Dev, text: &str) -> bool {
     for _ in 0..4 {
         let (cursor, top) = d.menu_cursor();
@@ -889,8 +818,6 @@ fn menu_shows(d: &mut Dev, text: &str) -> bool {
     false
 }
 
-/// Turns SELECT until the menu's selected line starts with `text`: forward, then back from the
-/// end of the menu (it does not wrap). False if no line ever does.
 fn select_menu_item(d: &mut Dev, text: &str, detents: &mut i32) -> bool {
     let mut dir = 1;
     let mut flips = 0;
@@ -916,13 +843,10 @@ fn select_menu_item(d: &mut Dev, text: &str, detents: &mut i32) -> bool {
     false
 }
 
-/// What a step measured.
 #[derive(Clone, Debug)]
 pub enum Status {
     Ok,
-    /// Ran, and an expectation did not hold.
     DeadEnd(String),
-    /// The step did not get to the view it meant to: what followed measured another screen.
     NavFailed(String),
     NotPossible(String),
 }
@@ -958,7 +882,6 @@ pub struct StepResult {
     pub destructive: bool,
     pub defaults: Option<Value>,
     pub expects: Vec<(String, bool)>,
-    /// Each input's start and end, ms (emulated time).
     pub act_ms: Vec<(u64, u64)>,
 }
 
@@ -968,7 +891,6 @@ pub struct JourneyResult {
     pub tour: bool,
     pub steps: Vec<StepResult>,
     pub captured: Vec<Captured>,
-    /// A tour only looks: the persisted settings before and after, when they differ.
     pub settings_drift: Option<(Vec<u8>, Vec<u8>)>,
 }
 
@@ -1007,7 +929,6 @@ fn expect_name(e: &Expect) -> String {
     }
 }
 
-/// Decimates by two (averaging) for the small clips: 22 kHz keeps what the filter does.
 pub fn decimate2(x: &[f32]) -> Vec<f32> {
     x.chunks(2)
         .map(|c| c.iter().sum::<f32>() / c.len() as f32)
@@ -1022,17 +943,13 @@ pub fn write_clip(path: &Path, x: &[f32]) {
         .expect("write a clip");
 }
 
-/// Run state across steps.
 #[derive(Default)]
 pub struct Ctx {
     pub remembered: Option<Params>,
-    /// The last view a step said it would reach.
     pub intended: Option<String>,
-    /// A step did not arrive and none has since: what follows is on the wrong screen.
     pub off_course: bool,
 }
 
-/// The first 5 ms window of `x` whose RMS is above `silence_db`: its start, in ms.
 pub fn first_sound_ms(x: &[f32], silence_db: f64) -> Option<f64> {
     let w = (FS * 0.005) as usize;
     x.chunks(w)
@@ -1040,7 +957,6 @@ pub fn first_sound_ms(x: &[f32], silence_db: f64) -> Option<f64> {
         .map(|i| i as f64 * 5.0)
 }
 
-/// Runs one action; false when it was a navigation that did not arrive (a menu item not found).
 fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) -> bool {
     match act {
         Act::Boot => {
@@ -1187,7 +1103,6 @@ fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) -> boo
     true
 }
 
-/// Runs `;`-separated actions with no measuring (a setup).
 pub fn run_script(d: &mut Dev, text: &str) {
     let (mut waited, mut det) = (0, 0);
     for a in text.split(';').map(str::trim).filter(|a| !a.is_empty()) {
@@ -1199,7 +1114,6 @@ pub fn run_script(d: &mut Dev, text: &str) {
     }
 }
 
-/// The depth of the view stack not counting a title card on top (it is a transient).
 pub fn view_depth(view: &str, depth: u8) -> u8 {
     if view == "title_card" {
         depth.saturating_sub(1)
@@ -1208,7 +1122,6 @@ pub fn view_depth(view: &str, depth: u8) -> u8 {
     }
 }
 
-/// Spectral centroid of the last 2048 samples, and the RMS of the last 400 ms.
 fn tail_stats(x: &[f32]) -> (f64, f64) {
     let n = (FS * 0.4) as usize;
     let t = &x[x.len().saturating_sub(n)..];
@@ -1216,7 +1129,6 @@ fn tail_stats(x: &[f32]) -> (f64, f64) {
     (spectral_centroid(c, FS), rms_dbfs(t))
 }
 
-/// What a check sees: the screen before, where the step's audio starts, the sound before it.
 pub struct CheckCtx<'a> {
     pub before: &'a Shot,
     pub audio_from: usize,
@@ -1300,7 +1212,6 @@ fn check(d: &mut Dev, e: &Expect, cx: &CheckCtx, cfg: &Config) -> bool {
     }
 }
 
-/// Runs one step.
 #[allow(clippy::too_many_arguments)]
 pub fn run_step(
     d: &mut Dev,
@@ -1392,8 +1303,6 @@ pub fn run_step(
         r.remember = true;
     }
     let inputs_end = d.ms();
-    // Wait for the expectations (a toast or popup shows within a few frames; a wipe or a card
-    // takes up to about 3 s), polling every frame.
     let cx = CheckCtx {
         before: &before,
         audio_from,
@@ -1456,7 +1365,6 @@ pub fn run_step(
     }
     r.frames_to_done =
         (settled_at.saturating_sub(start_ms).saturating_sub(waited)) as f64 / FRAME_MS as f64;
-    // Screenshot: with a popup or toast, as soon as it is up; else after the wipes.
     if s.expects.is_empty() || !met {
         d.run(FRAME_MS);
         d.settle();
@@ -1514,8 +1422,6 @@ pub fn run_step(
     (r, Some(cap))
 }
 
-/// Level, peak, clipping, DC and brightness of a note. The level is the loudest 100 ms RMS
-/// (a percussive preset has decayed by the end of the window, which is its design).
 fn performance_hands(s: &Step, effort: &EffortCount) -> bool {
     !s.setup && effort.two_handed > 0
 }
@@ -1552,7 +1458,6 @@ pub fn run_journey(
     out: &Path,
     capture_full: bool,
 ) -> (JourneyResult, Option<crate::capture::Capture>) {
-    // A journey starts at power-on, unless its first step boots: then the boot is the step.
     let mut songs = j.prelude_songs.clone();
     for s in &j.songs {
         if !songs.contains(s) {
@@ -1589,7 +1494,6 @@ pub fn run_journey(
         captured: Vec::new(),
         settings_drift: None,
     };
-    // The `after` recipe's steps: where this one starts. A failure there is this one's.
     let mut prelude_ctx = Ctx::default();
     for (i, s) in j.prelude.iter().enumerate() {
         let (r, _) = run_step(
@@ -1649,7 +1553,6 @@ pub fn run_journey(
     (res, cap)
 }
 
-/// The journey-level numbers.
 pub fn journey_metrics(j: &JourneyResult, cfg: &Config) -> Value {
     let mut actions = 0u32;
     let mut first_sound: Option<(u64, u32)> = None;
@@ -1732,7 +1635,6 @@ mod tests {
 
     #[test]
     fn play_times_follow_the_tempo_and_let_go_before_the_next_note() {
-        // At 120 BPM a 16th is 125 ms; a key is let go 31 ms before the next.
         let t = play_times(120, &[(vec![57], 1), (vec![], 2), (vec![60], 1)]);
         assert_eq!(t, vec![(0, 94), (125, 344), (375, 469)]);
     }
@@ -1846,8 +1748,6 @@ mod tests {
             .contains("line 2"));
     }
 
-    /// A menu screen of 2x lines every 3 rows from row 4, as app/views.c draws it: each line
-    /// `(label, value)` with its colours; the label and the value are separate runs.
     fn menu_screen(lines: &[(&str, &str, u8, u8)]) -> Shot {
         use crate::device::Cell;
         let mut cells = vec![
@@ -1885,8 +1785,6 @@ mod tests {
 
     #[test]
     fn the_selected_menu_line_is_the_cursors_whatever_the_colours() {
-        // HIGH theme: a cyan value (3) above the bar (black on white, 0x10 | 0) which is not the
-        // first line whose colours differ from the others'.
         let high = menu_screen(&[
             ("CHIP", "", 0x61, 0x61),
             ("TRACKER", "", 0x61, 0x61),
@@ -1899,9 +1797,7 @@ mod tests {
         assert_eq!(text(&high, 3, 0).as_deref(), Some("OCTAVE 0"));
         assert_eq!(text(&high, 4, 0).as_deref(), Some("THEME HIGH"));
         assert_eq!(text(&high, 5, 0).as_deref(), Some("STATUS"));
-        // The menu scrolled by two: item 4 is the third line.
         assert_eq!(text(&high, 4, 2).as_deref(), Some("PRE SAW LEAD"));
-        // C64 theme: light blue on blue everywhere, the bar the reverse.
         let c64 = menu_screen(&[
             ("CHIP", "", 0x6e, 0x6e),
             ("TRACKER", "", 0xe6, 0xe6),
@@ -1909,7 +1805,6 @@ mod tests {
         ]);
         assert_eq!(text(&c64, 1, 0).as_deref(), Some("TRACKER"));
         assert_eq!(text(&c64, 0, 0).as_deref(), Some("CHIP"));
-        // A cursor above the first visible line is nothing.
         assert_eq!(text(&c64, 0, 1), None);
     }
 

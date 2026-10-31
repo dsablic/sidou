@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The harness is deterministic: one short journey captured twice gives the same frames, audio
-//! and sidecar, byte for byte (what lets docs and videos regenerate only when the UI changes).
-//! Needs the fm1 build (SIDOU_FM1_BUILD, as emu-gate's tests); skips without it.
 
 use ergo::config::Config;
 use ergo::journeys::{detect_features, parse_table, run_journey};
@@ -56,7 +53,6 @@ fn a_short_journey_captured_twice_is_byte_identical() {
         serde_json::from_slice(&std::fs::read(caps[0].join("cap/frames.json")).unwrap()).unwrap();
     assert_eq!(side["captions"][0]["text"], "Turn K1 to open the filter");
     assert_eq!(side["fps"], 25.0);
-    // The step timeline the videos follow: each step's and each input's times, and its control.
     let steps = side["steps"].as_array().unwrap();
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["id"], "turn");

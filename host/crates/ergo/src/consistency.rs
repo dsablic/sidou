@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Consistency: does each physical control mean the same kind of thing in every view? K1-K4
-//! are a parameter row, SELECT moves a focus or a cursor, ALGORITHM steps a choice, HOME goes
-//! back. Each control is tried in each view and what it did is measured; the exceptions that
-//! docs/reference/controls.md documents are marked as such, anything else is a finding.
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,7 +57,6 @@ fn parameter_label_visible(param: &str, p: &crate::device::Params, text: &[Strin
             .any(|t| format!(" {} ", t.to_uppercase()).contains(&format!(" {label} ")))
 }
 
-/// The views and how to get to each from LIVE (journeys.txt actions).
 pub const VIEWS: &[(&str, &str)] = &[
     ("live", ""),
     ("menu", "press HOME; wait 900"),
@@ -104,14 +99,11 @@ pub const CONTROLS: [(&str, u8); 11] = [
     ("FX", panel::FX),
 ];
 
-/// What docs/reference/controls.md says does nothing: (view, control). Everything else is
-/// documented to act. Views missing from the doc's lists are marked `?` and not compared.
 pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("tracker", "ALGORITHM"),
     ("status", "ALGORITHM"),
     ("about", "SELECT"),
     ("about", "ALGORITHM"),
-    // ENV, LFO and FX open or step LAB; in every other view they do nothing (controls.md).
     ("menu", "ENV"),
     ("settings", "ENV"),
     ("chip", "ENV"),
@@ -138,12 +130,10 @@ pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("about", "FX"),
 ];
 
-/// The controls that are pressed, not turned (button and encoder ids overlap, so by name).
 fn is_button(name: &str) -> bool {
     ["HOME", "ENV", "LFO", "FX"].contains(&name)
 }
 
-/// What one control did in one view.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Effect {
     pub labelled: bool,
@@ -160,8 +150,6 @@ impl Effect {
     }
 }
 
-/// What the panel showed over the 1.2 s after `setup` and a control used (`dir`: None leaves it
-/// alone): the distinct frames (a hash each), and what the control did.
 fn after(
     build: &Path,
     setup: &str,
@@ -216,17 +204,12 @@ fn after(
     (seen, e)
 }
 
-/// What a control does in the view `setup` reaches. A view that changes by itself (About, or a
-/// blinking cursor) is compared with the same run left alone: the control did something on
-/// screen when it made a frame the idle run never showed. A control at the end of its range is
-/// tried the other way as well.
 pub fn try_control(build: &Path, setup: &str, control: u8, button: bool) -> Effect {
     let (idle, _) = after(build, setup, control, button, None);
     let mut best = Effect::default();
     for dir in [1, -1] {
         let (seen, mut e) = after(build, setup, control, button, Some(dir));
         e.screen = !seen.is_subset(&idle);
-        // A knob that lit a card but moved nothing may be at the end of its range: try the other way.
         let knob = !button && (panel::K1..=panel::K4).contains(&control);
         if e.acts() && (!knob || !e.params.is_empty()) {
             return e;
@@ -241,7 +224,6 @@ pub fn try_control(build: &Path, setup: &str, control: u8, button: bool) -> Effe
     best
 }
 
-/// The kind of thing a control is expected to do.
 pub fn kind_ok(control: &str, e: &Effect) -> Result<(), String> {
     match control {
         "K1" | "K2" | "K3" | "K4" if !e.params.is_empty() => Ok(()),
@@ -328,7 +310,6 @@ pub fn analyse(effects: &BTreeMap<(String, String), Effect>) -> ConsistencyResul
             .numbers(json!({"views": views})),
         );
     }
-    // K1-K4's meaning across views: the parameter families they move.
     let mut fam: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for ((view, control), e) in effects {
         if control == "K1" && !e.params.is_empty() && !e.labelled {
@@ -493,7 +474,6 @@ mod tests {
         assert!(ids.contains(&"CONS.inert.algorithm"), "{ids:?}");
         assert!(ids.contains(&"CONS.drift.menu.k1"), "{ids:?}");
         assert!(!ids.contains(&"CONS.drift.tracker.algorithm"));
-        // LIVE's SELECT pages the knob row now: dead there is drift.
         assert!(ids.contains(&"CONS.drift.live.select"), "{ids:?}");
     }
 }

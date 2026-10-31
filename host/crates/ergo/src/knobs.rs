@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Knob and encoder feel: each control swept over its whole range a detent at a time, the
-//! parameter read from the firmware's live instrument, the step in musical units, and the
-//! sound of a held note rendered between steps (spectral centroid and level).
 
 use std::path::Path;
 
@@ -17,7 +14,6 @@ use crate::metrics::{
     Unit,
 };
 
-/// Which firmware parameter a control moves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum P {
     Cutoff,
@@ -26,16 +22,11 @@ pub enum P {
     Master,
     Preset,
     Profile,
-    /// K3 on a saw or noise sound, and K4: the envelope's decay and release (0..15).
     Decay,
     Release,
-    /// K3 on a sync sound: the ratio's semitones from the preset's, -12..+12.
     SyncSemis,
     Character(usize),
-    /// LAB's cards the rows above do not cover: an index into `Params::lab` (attack, sustain,
-    /// the PWM LFO's depth and rate, the fine tune), and the range its steps are a share of.
     Lab(usize, u16),
-    /// slot (0 DIST, 1 MOD, 2 FX), field (1 amount, 2 A, 3 B, 4 mix).
     Slot(usize, usize),
 }
 
@@ -50,10 +41,8 @@ impl P {
             P::Profile => f64::from(p.profile),
             P::Decay => f64::from(p.decay),
             P::Release => f64::from(p.release),
-            // shifted up so that the sweep's raw values are positive
             P::SyncSemis => f64::from(i32::from(p.sync_semis) + 12),
             P::Character(i) => f64::from(p.character[i]),
-            // the fine tune is signed (cents): shifted up so the sweep's raw values are positive
             P::Lab(i, _) => f64::from(p.lab[i] + if i == 7 { 50 } else { 0 }),
             P::Slot(s, f) => f64::from(p.slot[s][f]),
         }
@@ -93,7 +82,6 @@ impl P {
         }
     }
 
-    /// The physical quantity steps are measured on, and its unit.
     pub fn unit(self) -> Unit {
         match self {
             P::Cutoff => Unit::Cents,
@@ -119,7 +107,6 @@ impl P {
 
     pub fn phys(self, raw: f64, model: u8) -> f64 {
         match self {
-            // The cutoff in Hz as the firmware's own curve gives it (curve 0 of the model).
             P::Cutoff => {
                 f64::from(unsafe { sidou_sys::sid_cutoff_hz(u32::from(model), 0, raw as u32) })
             }
@@ -139,14 +126,9 @@ pub struct Spec {
     pub param: P,
     pub setup: String,
     pub hold: Option<u8>,
-    /// The encoder, or None for the MASTER pot.
     pub enc: Option<u8>,
-    /// Hold a note and render between steps.
     pub audio: bool,
-    /// A choice (preset, profile): count its detents, no curve rules.
     pub discrete: bool,
-    /// The control acts at a note's start (the thump, the decay): each detent's window is a new
-    /// note from its first sample, not the held one.
     pub retrigger: bool,
 }
 
@@ -198,8 +180,6 @@ pub fn specs() -> Vec<Spec> {
         true,
         false,
     );
-    // K3 is the sound's own control: the decay on SAW LEAD (the first preset), the pulse width on
-    // PWM BASS, the sync ratio on SYNC LEAD, the decay on NOISE PERC.
     add(
         "K3.live",
         "K3",
@@ -244,7 +224,6 @@ pub fn specs() -> Vec<Spec> {
         true,
         false,
     );
-    // K4 is the release: heard after the note, so the sweep renders no held note.
     add(
         "K4.live",
         "K4",
@@ -278,7 +257,6 @@ pub fn specs() -> Vec<Spec> {
         true,
         false,
     );
-    // EDIT held: the DIST slot at OVERDRIVE (ALGORITHM twice on its page: TAPE, OVERDRIVE).
     let od = "turn SELECT 1; turn ALGORITHM 2; turn SELECT -1; holdturn EDIT K4 32";
     add(
         "K1.edit",
@@ -351,11 +329,6 @@ pub fn specs() -> Vec<Spec> {
         false,
         true,
     );
-    // LAB's cards (docs/reference/controls.md "LAB"): the OSC page on PWM BASS (the preset with a
-    // pulse and its PWM LFO), then the envelope's four and the filter's cutoff and resonance.
-    // The vibrato's cards and the filter's voices are not swept: a wobble and a routing mask are
-    // not what the centroid and level of a held note show.
-    // ENV opens LAB at ENVELOPE; SELECT steps to OSC (-1) or FILTER (+1).
     let osc = "turn PRESETS 1; press ENV; wait 600; turn SELECT -1; wait 300".to_string();
     let env = "press ENV; wait 600".to_string();
     let filt = "press ENV; wait 600; turn SELECT 1; wait 300".to_string();
@@ -453,8 +426,6 @@ pub fn specs() -> Vec<Spec> {
         panel::K2,
         true,
     );
-    // The decay on SAW LEAD, the thump and LAB's attack, decay and sustain are heard where a
-    // note starts.
     for s in v.iter_mut() {
         s.retrigger = [
             "K3.live",
@@ -472,17 +443,13 @@ pub fn specs() -> Vec<Spec> {
 pub struct Sweep {
     pub skipped: bool,
     pub spec: Spec,
-    /// Raw value at each detent, from the bottom.
     pub raw: Vec<f64>,
     pub phys: Vec<f64>,
     pub centroid: Vec<f64>,
     pub rms: Vec<f64>,
     pub pieces: Vec<Vec<f32>>,
-    /// The log spectrum of each detent's window (empty without audio).
     pub spectra: Vec<Vec<f32>>,
-    /// Detents from the bottom to the top of the range (None: a pot).
     pub detents: Option<usize>,
-    /// The value before the sweep moved it (the default, after the setup).
     pub initial: f64,
 }
 
@@ -504,9 +471,7 @@ fn control_used(param: P, algorithm: u8) -> bool {
     }
 }
 
-/// The note a sweep holds (A3).
 const NOTE: u8 = 57;
-/// A retriggered window's release before the new note: SAW LEAD's release (6) has ended.
 const RETRIGGER_GAP_MS: u64 = 600;
 
 fn window(d: &mut Dev, audio: bool, retrigger: bool) -> (f64, f64, Vec<f32>) {
@@ -583,7 +548,6 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
             }
         }
         Some(enc) => {
-            // To the bottom: eight detents at a time until the value stops moving.
             let mut stable = 0;
             let mut last = read(&mut d).0;
             for _ in 0..80 {
@@ -596,7 +560,6 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
                     break;
                 }
             }
-            // Up, a detent at a time, until it stops moving after it has moved.
             let mut same = 0;
             record(&mut d, &mut sw);
             for _ in 0..600 {
@@ -612,7 +575,6 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
                     break;
                 }
             }
-            // Detents to the top: up to the first one that reached the final value.
             let top = *sw.raw.last().unwrap();
             let first_top = sw.raw.iter().position(|v| *v == top).unwrap();
             sw.detents = Some(first_top);
@@ -627,7 +589,6 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
     sw
 }
 
-/// The numbers of one sweep, for the report and the baseline.
 #[derive(Clone, Debug, Default)]
 pub struct SweepStats {
     pub detents: Option<usize>,
@@ -640,20 +601,17 @@ pub struct SweepStats {
     pub param_reversals: usize,
     pub audible_cents: f64,
     pub audible_db: f64,
-    /// The largest timbre difference between the first detent and any other (dB).
     pub audible_spectral_db: f64,
     pub median_audio_pct: f64,
     pub dead_zone: usize,
     pub dead_zone_at: usize,
     pub dead_zone_share: f64,
-    /// Where the value stood before the sweep, as a share of the travel (by detent).
     pub default_share: f64,
 }
 
 pub fn stats(s: &Sweep, cfg: &Config) -> SweepStats {
     let unit = s.spec.param.unit();
     let full = s.spec.param.full();
-    // The MASTER pot's first value is silence: leave it out of the dB steps.
     let skip = usize::from(unit == Unit::Db && s.phys.first() == Some(&0.0));
     let vals = &s.phys[skip..];
     let indexed: Vec<_> = s
@@ -743,8 +701,6 @@ pub fn stats(s: &Sweep, cfg: &Config) -> SweepStats {
         let mut sorted = pct.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         out.median_audio_pct = sorted.get(sorted.len() / 2).copied().unwrap_or(0.0);
-        // Dead zone: a window of N detents over which neither brightness nor level moved by
-        // its JND, though the parameter moved.
         let n = cfg.dead_zone_detents;
         let mut marks = vec![false; s.centroid.len()];
         #[allow(clippy::needless_range_loop)]
@@ -853,7 +809,6 @@ fn chart(s: &Sweep) -> Chart {
     }
 }
 
-/// A clip of the sweep: about a dozen detents spread over it, 70 ms each.
 fn clip(s: &Sweep, out: &Path, name: &str) -> Option<ClipRef> {
     if !s.spec.audio || s.pieces.iter().all(Vec::is_empty) {
         return None;
@@ -879,7 +834,6 @@ pub struct KnobResult {
     pub table: Vec<Value>,
 }
 
-/// Judges a sweep: pure over the measured series (unit-tested with synthetic ones).
 pub fn judge(s: &Sweep, cfg: &Config, out: &Path) -> (Vec<Finding>, Vec<Metric>, Value) {
     if s.skipped {
         return (
@@ -1071,7 +1025,6 @@ pub fn judge(s: &Sweep, cfg: &Config, out: &Path) -> (Vec<Finding>, Vec<Metric>,
     (fs, metrics, row)
 }
 
-/// The measured series, for a reviewer who wants the numbers behind a chart.
 fn series_json(s: &Sweep) -> Value {
     json!({
         "id": s.spec.id, "control": s.spec.control, "view": s.spec.view,
@@ -1230,11 +1183,9 @@ mod tests {
     fn a_cutoff_that_covers_two_octaves_is_too_narrow_and_dead_where_the_sound_is_flat() {
         let n = 40;
         let raw: Vec<f64> = (0..n).map(|i| f64::from(i) * 16.0).collect();
-        // 2 octaves of cutoff in cents, evenly.
         let phys: Vec<f64> = (0..n)
             .map(|i| 200.0 * 2f64.powf(2.0 * f64::from(i) / f64::from(n - 1)))
             .collect();
-        // The sound is flat for the first 25 detents, then brightens.
         let centroid: Vec<f64> = (0..n)
             .map(|i| {
                 if i < 25 {
@@ -1271,7 +1222,6 @@ mod tests {
     fn a_healthy_sweep_has_no_findings() {
         let n = 32;
         let raw: Vec<f64> = (0..=n).map(f64::from).map(|i| i * 4.0).collect();
-        // Brightness doubles every 8 detents: audible everywhere.
         let centroid: Vec<f64> = (0..=n)
             .map(|i| 500.0 * 2f64.powf(f64::from(i) / 8.0))
             .collect();
@@ -1292,7 +1242,6 @@ mod tests {
         let s = sweep(P::Master, raw, phys, vec![], vec![]);
         let st = stats(&s, &Config::default());
         assert_eq!(st.unit, "dB");
-        // From 1/16 to 2/16 of the pot is a doubling: 6 dB; the last steps are under 1 dB.
         assert!(st.max_step > 5.9 && st.max_step < 6.1, "{}", st.max_step);
     }
 }

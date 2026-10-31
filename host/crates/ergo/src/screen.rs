@@ -1,18 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Reading a screen: the 16-colour palette, text found in the grid's cells (scale from the
-//! cell codes, colours from the attribute bytes), and PNG output.
 
 use std::path::Path;
 
 use crate::device::{Cell, Shot};
 
-/// app/grid.h: large text's pieces are codes GRID_BIG_FIRST.., 2x then 3x, then the plain
-/// piece.
 pub(crate) const BIG_FIRST: u8 = 0x01;
 const PLAIN_PIECE: u8 = BIG_FIRST + 13;
 
-/// The art palette as the panel shows it: the firmware's RGB565 table expanded to 8 bits.
 pub fn palette565() -> [u16; 16] {
     unsafe { sidou_sys::grid_palette }
 }
@@ -45,14 +40,11 @@ pub const COLOUR_NAMES: [&str; 16] = [
     "light grey",
 ];
 
-/// A piece of text found on the screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextRun {
     pub row: usize,
     pub col: usize,
-    /// Cells wide.
     pub cells: usize,
-    /// 1, 2 or 3 times the font.
     pub scale: u32,
     pub fg: u8,
     pub bg: u8,
@@ -73,9 +65,6 @@ fn glyph(c: &Cell) -> Option<(char, u32)> {
     }
 }
 
-/// The text on a screen. Plain text runs over adjacent cells that share their attribute (a
-/// single space may join words); a large character is read at its top-left piece, `scale`
-/// cells apart.
 pub fn text_runs(cells: &[Cell]) -> Vec<TextRun> {
     let mut out: Vec<TextRun> = Vec::new();
     for row in 0..30usize {
@@ -129,7 +118,6 @@ pub fn text_runs(cells: &[Cell]) -> Vec<TextRun> {
     out
 }
 
-/// The panel's pixels as palette indexes.
 pub fn indexed(fb: &[u16]) -> Vec<u8> {
     let pal = palette565();
     fb.iter()
@@ -137,7 +125,6 @@ pub fn indexed(fb: &[u16]) -> Vec<u8> {
         .collect()
 }
 
-/// A screen as a 4-bit indexed PNG in the art palette.
 pub fn png_bytes(fb: &[u16]) -> Vec<u8> {
     let idx = indexed(fb);
     let mut out = Vec::new();
@@ -160,7 +147,6 @@ pub fn write_png(path: &Path, fb: &[u16]) {
     std::fs::write(path, png_bytes(fb)).expect("write a PNG");
 }
 
-/// The screen as text, one line a cell row, for the log and the probe.
 pub fn ascii(shot: &Shot) -> String {
     let mut s = String::new();
     for row in 0..30 {
@@ -209,7 +195,6 @@ mod tests {
     #[test]
     fn large_text_is_found_by_its_pieces_and_scale() {
         let mut cells = vec![Cell::default(); 900];
-        // "OK" at 3x from column 4: top-left pieces (code 5) at columns 4 and 7.
         for (i, ch) in ['O', 'K'].into_iter().enumerate() {
             for y in 0..3 {
                 for x in 0..3 {

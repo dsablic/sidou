@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The ergonomics harness: drives the firmware in fm1-emu, scores it against explicit ergonomic
-//! rules and writes a report (docs/TESTING.md, "The ergonomics harness").
 
 pub mod capture;
-/// emu-gate's emulator helpers, included by path rather than copied.
 #[path = "../../emu-gate/tests/common/mod.rs"]
-#[allow(clippy::all, unused_qualifications, unused_imports)]
+#[allow(
+    clippy::all,
+    unused_qualifications,
+    unused_imports,
+    reason = "emu-gate's test helpers, included by path, are linted with emu-gate"
+)]
 pub mod common;
 pub mod config;
 pub mod device;
@@ -18,8 +20,6 @@ pub mod metrics;
 pub mod readability;
 pub mod screen;
 
-/// `f` over `items` on every core, results in the items' order (emulator runs are independent,
-/// each in its own `Machine`; nothing here depends on the order they finish in).
 pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
@@ -47,7 +47,6 @@ pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec
         .collect()
 }
 
-/// `K1 (CHIP)` -> `k1-chip`: a stable id part.
 pub fn slug(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {

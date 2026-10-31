@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The firmware in fm1-emu as the harness drives it: the panel's inputs, the screen read from
-//! the firmware's own grid (app/grid.h) and the live instrument's parameters, and an optional
-//! recorder of every LCD frame. Built on emu-gate's `common` (boot, key, turn, run_ms).
 
 use std::path::Path;
 
@@ -11,7 +8,6 @@ use sidou_sys::ilp32;
 
 use crate::common::{self, Firmware, Machine};
 
-/// app/panel.h: the buttons, the encoders (K1..K4 are 2..5).
 pub mod panel {
     pub const OCT_DOWN: u8 = 0;
     pub const OCT_UP: u8 = 1;
@@ -27,7 +23,6 @@ pub mod panel {
     pub const SEQ: u8 = 11;
     pub const PLAY: u8 = 12;
     pub const REC: u8 = 13;
-    /// The id of note key 0 (F3, MIDI 53); a MIDI note n is id `KEY0 + n - 53`.
     pub const KEY0: u8 = 14;
     pub const SELECT: u8 = 0;
     pub const ALGORITHM: u8 = 1;
@@ -38,26 +33,20 @@ pub mod panel {
     pub const PRESETS: u8 = 6;
 }
 
-/// The frame period (platform/fm1/ui.c: 25 fps).
 pub const FRAME_MS: u64 = 40;
 
-/// The key id of MIDI note `n` (F3..G5 only).
 pub fn key_of_note(n: u8) -> u8 {
     panel::KEY0 + n - 53
 }
 
-/// A cell of the shown frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Cell {
     pub ch: u8,
     pub attr: u8,
-    /// The character a large-text piece is a piece of.
     pub src: u8,
-    /// A pixel overlay is on the cell (a scope).
     pub ovl: bool,
 }
 
-/// The screen as the panel shows it.
 #[derive(Clone, Debug)]
 pub struct Shot {
     pub transient: bool,
@@ -73,13 +62,11 @@ impl Shot {
     }
 }
 
-/// One frame of a full capture.
 pub struct CapFrame {
     pub ms: u64,
     pub fb: Vec<u16>,
 }
 
-/// A full capture in progress: every frame boundary's LCD, and where the audio starts.
 pub struct Recorder {
     pub frames: Vec<CapFrame>,
     pub next: u64,
@@ -111,7 +98,6 @@ fn symbols_with_sizes(fw: &Firmware) -> Vec<(u32, u32, String)> {
 }
 
 impl Dev {
-    /// Booted as from the second power-on, past the boot and its wipe, settled.
     pub fn boot(build: &Path) -> Dev {
         let mut d = Dev::power_on(build);
         common::run_past_boot(&mut d.m, &d.fw);
@@ -120,7 +106,6 @@ impl Dev {
         d
     }
 
-    /// Powered on, as from the second power-on (the settings stored), at time 0.
     pub fn power_on(build: &Path) -> Dev {
         let fw = Firmware::load(build);
         let m = Machine::boot(&fw.image);
@@ -133,8 +118,6 @@ impl Dev {
         }
     }
 
-    /// Powered on as `power_on`, with these showcase songs (assets/songs/<name>.sng) in the
-    /// store, each under its title (`chrome-comet` is CHROME COMET).
     pub fn power_on_with(build: &Path, songs: &[String], tunes: &[String]) -> Dev {
         let mut d = Dev::power_on(build);
         for name in songs {
@@ -157,7 +140,6 @@ impl Dev {
         d
     }
 
-    /// The song as the device holds it now (its model region).
     pub fn song(&mut self) -> sidou_tests::song::Song {
         let mut song = sidou_tests::song::Song::device();
         let base = self.fw.symbol("__song_region");
@@ -169,8 +151,6 @@ impl Dev {
         song
     }
 
-    /// The rows (note value each, 0 for none) of the pattern voice `v` (0..2) plays at its
-    /// orderlist's pattern entry `e` (subtune 0; repeats and transposes are not entries).
     pub fn pattern_notes(&mut self, v: u32, e: usize) -> Option<Vec<u8>> {
         let song = self.song();
         let (order, _) = song.order(0, v)?;
@@ -195,15 +175,11 @@ impl Dev {
         )
     }
 
-    /// The row voice 1 of the playing song is on (main.c's `song_seen`), or None before one.
     pub fn song_row(&mut self) -> Option<u8> {
-        // song_status: state, multispeed, ntsc, mute, speed[2], order_pos[3], row[3].
         let r = self.m.soc.read8(self.fw.symbol("song_seen") + 9);
         (r != 0xff).then_some(r)
     }
 
-    /// Waits until voice 1 of the playing song starts a pattern (its row goes back to 0),
-    /// at most `limit` ms; true when it did.
     pub fn sync_to_pattern(&mut self, limit: u64) -> bool {
         let end = self.ms() + limit;
         let mut last = self.song_row();
@@ -218,7 +194,6 @@ impl Dev {
         false
     }
 
-    /// Waits for the boot to end by itself; returns the milliseconds it took.
     pub fn wait_boot(&mut self) -> u64 {
         let t = common::run_past_boot(&mut self.m, &self.fw);
         self.m.run_ms(100);
@@ -229,7 +204,6 @@ impl Dev {
         self.m.ms()
     }
 
-    /// Runs `ms` emulated milliseconds, saving frames while a full capture runs.
     pub fn run(&mut self, ms: u64) {
         if self.rec.is_none() {
             self.m.run_ms(ms);
@@ -252,10 +226,7 @@ impl Dev {
         }
     }
 
-    /// To half way between two UI frames (a whole frame is on the panel).
     pub fn mid_frame(&mut self) {
-        // An idle screen composes nothing, so its last frame never gets 20 ms old: after 80 ms
-        // of looking, take the phase as it is.
         let (last, now) = (self.fw.symbol("last_compose"), self.fw.symbol("uptime_ms"));
         for _ in 0..80 {
             let age = self.m.soc.read32(now).wrapping_sub(self.m.soc.read32(last));
@@ -266,7 +237,6 @@ impl Dev {
         }
     }
 
-    /// Starts a full capture: frames every `FRAME_MS` from now (half way between frames).
     pub fn start_capture(&mut self) {
         self.mid_frame();
         let t0 = self.m.ms();
@@ -294,7 +264,6 @@ impl Dev {
         self.m.key(id, false);
     }
 
-    /// A button pressed and let go, long enough for the key scan's debounce.
     pub fn press(&mut self, id: u8) {
         self.m.key(id, true);
         self.run(30);
@@ -302,8 +271,6 @@ impl Dev {
         self.run(30);
     }
 
-    /// An encoder turned by `n` detents (fm1-emu takes 8 ms a detent), waited out in steps of
-    /// at most 64 detents.
     pub fn turn(&mut self, enc: u8, n: i32) {
         let mut left = n;
         while left != 0 {
@@ -314,7 +281,6 @@ impl Dev {
         }
     }
 
-    /// A note key held for `ms`, then let go.
     pub fn note(&mut self, key: u8, ms: u64) {
         self.m.key(key, true);
         self.run(ms);
@@ -322,7 +288,6 @@ impl Dev {
         self.run(30);
     }
 
-    /// The name of the symbol holding `addr`.
     pub fn symbol_name(&self, addr: u32) -> String {
         self.names
             .iter()
@@ -331,8 +296,6 @@ impl Dev {
             .unwrap_or_else(|| format!("view@{addr:#x}"))
     }
 
-    /// The view on top of the screen's stack, named after its table's symbol (`live_view_view`
-    /// is `live`, `views_menu` is `menu`): the names follow the firmware, not a list here.
     pub fn view(&mut self) -> String {
         let ui = self.fw.symbol("ui");
         let depth = u32::from(self.m.soc.read8(ui + ilp32::screen::depth as u32));
@@ -349,7 +312,6 @@ impl Dev {
             .to_string()
     }
 
-    /// The depth of the screen's view stack.
     pub fn depth(&mut self) -> u8 {
         self.m
             .soc
@@ -362,7 +324,6 @@ impl Dev {
             || self.m.soc.read8(ui + ilp32::screen::raster_frames as u32) != 0
     }
 
-    /// Rows of the value popup that are drawn now (0: closed).
     pub fn popup_rows(&mut self) -> u8 {
         let ui = self.fw.symbol("ui");
         let p = self.m.soc.read32(ui + ilp32::screen::popup as u32);
@@ -372,13 +333,11 @@ impl Dev {
         self.m.soc.read8(p + ilp32::screen_popup_state::rows as u32)
     }
 
-    /// Whether a toast is on the screen.
     pub fn toast_on(&mut self) -> bool {
         let ui = self.fw.symbol("ui");
         self.m.soc.read8(ui + ilp32::screen::toast_on as u32) != 0
     }
 
-    /// Runs until any wipe or raster is over, then to half way between frames.
     pub fn settle(&mut self) {
         let mut guard = 0;
         self.run(FRAME_MS);
@@ -389,12 +348,10 @@ impl Dev {
         self.mid_frame();
     }
 
-    /// The grid struct's address (the screen's first field points to it).
     fn grid_addr(&mut self) -> u32 {
         self.m.soc.read32(self.fw.symbol("ui"))
     }
 
-    /// The screen as shown: the panel's pixels, and the grid's cells.
     pub fn shot(&mut self) -> Shot {
         let g = self.grid_addr();
         if g == 0 {
@@ -432,8 +389,6 @@ impl Dev {
             .read32(self.fw.symbol("ui") + ilp32::views::l as u32)
     }
 
-    /// The menu whose page shows: SETTINGS' (views.setup) while it shows, else the main one's
-    /// (views.home).
     fn menu_addr(&mut self) -> u32 {
         let field = if self.view() == "settings" {
             ilp32::views::setup
@@ -443,8 +398,6 @@ impl Dev {
         self.fw.symbol("ui") + field as u32
     }
 
-    /// The menu's own cursor and first visible item, read from the firmware's RAM (views.home,
-    /// or views.setup on SETTINGS).
     pub fn menu_cursor(&mut self) -> (u8, u8) {
         let home = self.menu_addr();
         (
@@ -453,14 +406,11 @@ impl Dev {
         )
     }
 
-    /// How many items the menu (or SETTINGS) has.
     pub fn menu_count(&mut self) -> u8 {
         let home = self.menu_addr();
         self.m.soc.read8(home + ilp32::menu::count as u32)
     }
 
-    /// What the menu persists, as bytes: the MIDI setup, the theme, KEYS and CARDS. A journey that
-    /// is meant to leave the settings alone compares this before and after.
     pub fn settings_bytes(&mut self) -> Vec<u8> {
         let ui = self.fw.symbol("ui");
         let route = self.m.soc.read32(ui + ilp32::views::route as u32);
@@ -489,7 +439,6 @@ impl Dev {
         u16::from(lo) | u16::from(hi) << 8
     }
 
-    /// The left channel played since sample `from`.
     pub fn audio_since(&self, from: usize) -> Vec<f32> {
         let all = self.m.left();
         all[from.min(all.len())..]
@@ -502,7 +451,6 @@ impl Dev {
         self.m.soc.periph.audio.len() / 2
     }
 
-    /// Whether the firmware image holds `needle` (a string, to tell if a feature is on main).
     pub fn image_has(&self, needle: &[u8]) -> bool {
         self.fw.image.windows(needle.len()).any(|w| w == needle)
     }
@@ -512,7 +460,6 @@ impl Dev {
     }
 }
 
-/// The live instrument's parameters as the firmware holds them (app/live.h `live`).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Params {
     pub cutoff: u16,
@@ -524,19 +471,12 @@ pub struct Params {
     pub model: u8,
     pub profile: u8,
     pub fx_select: u8,
-    /// K3's and K4's envelope nibbles (attack/decay's decay, sustain/release's release) and the
-    /// sync ratio's semitones.
     pub decay: u8,
     pub release: u8,
     pub sync_semis: i8,
     pub character: [u8; 4],
-    /// Each slot: algorithm, amount, A, B, mix.
     pub slot: [[u8; 5]; 3],
-    /// The chord arpeggio (app/live.h live_arp_set): on, rate, order, span.
     pub arp: [u8; 4],
-    /// What LAB's cards move besides the above: attack, sustain, waveform bits, filter voices
-    /// and mode, the PWM LFO's depth and rate, the fine tune, the velocity target, the vibrato's
-    /// rate, depth and delay.
     pub lab: [i32; 12],
 }
 
@@ -556,7 +496,6 @@ const LAB_FIELDS: [&str; 12] = [
 ];
 
 impl Params {
-    /// Name and value of every field, for diffing.
     pub fn named(&self) -> Vec<(String, i64)> {
         let mut v = vec![
             ("cutoff".to_string(), i64::from(self.cutoff)),
@@ -592,7 +531,6 @@ impl Params {
         v
     }
 
-    /// The names of the fields that differ.
     pub fn diff(&self, other: &Params) -> Vec<String> {
         self.named()
             .iter()
@@ -649,7 +587,6 @@ impl Dev {
             i32::from(self.live_u8(ilp32::live::filter_voices)),
             i32::from(self.live_u8(ilp32::live::filter_mode)),
             i32::from(self.live_u16(ilp32::live::pwm_depth)),
-            // the LFO's phase step back to the parameter's 0.05 Hz units (live_pwm_rate)
             (i32::from(self.live_u16(ilp32::live::pwm_rate)) * 1000 + 16384) / 32768,
             i32::from(self.live_u8(ilp32::live::tune) as i8),
             i32::from(self.live_u8(ilp32::live::velocity_target)),
@@ -660,7 +597,6 @@ impl Dev {
         p
     }
 
-    /// Powers off and on again over the same flash: what a save left is what loads.
     pub fn power_cycle(&mut self) {
         let flash = self.m.soc.flash.mem.clone();
         let mut m = Machine::boot_blank(&self.fw.image);
@@ -673,7 +609,6 @@ impl Dev {
     }
 }
 
-/// A showcase song's file, assets/songs/<name>.sng.
 pub fn showcase_song(name: &str) -> Result<Vec<u8>, String> {
     if name.is_empty()
         || !name
@@ -690,7 +625,6 @@ pub fn showcase_song(name: &str) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("song {name}: {}: {e}", path.display()))
 }
 
-/// A starter-pack tune's file, assets/starter/<name>.sid.
 pub fn starter_tune(name: &str) -> Result<Vec<u8>, String> {
     if name.is_empty()
         || !name
@@ -707,7 +641,6 @@ pub fn starter_tune(name: &str) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("tune {name}: {}: {e}", path.display()))
 }
 
-/// The store name a showcase song goes under: `chrome-comet` is CHROME COMET.
 pub fn store_name(name: &str) -> String {
     name.replace('-', " ").to_uppercase()
 }
@@ -735,13 +668,10 @@ unsafe extern "C" fn flash_erase(ctx: *mut std::ffi::c_void, off: u32) -> i32 {
     sidou_sys::STORE_OK
 }
 
-/// Writes a song file into a flash image's store, as the device's SAVE would (emu-gate's
-/// song_store.rs does the same for its fixtures).
 pub fn put_song(flash: &mut [u8], name: &str, bytes: &[u8]) {
     put_file(flash, name, sidou_sys::STORE_FILE_SONG as u8, bytes);
 }
 
-/// Writes a file of the given store type into a flash image's store.
 pub fn put_file(flash: &mut [u8], name: &str, file_type: u8, bytes: &[u8]) {
     use sidou_sys::*;
     let hooks = store_flash {

@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The report: one self-contained HTML file. Screenshots are shown at calibrated real size
-//! (the calibration idea of assets/prototypes/screen-readability.html: a bank card against a
-//! bar, then the screen's width in mm) and at 1:1 pixels; knob findings carry a chart of value
-//! against detent; audio clips are embedded as data URIs.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -42,7 +38,6 @@ pub fn base64(data: &[u8]) -> String {
     out
 }
 
-/// A chart as inline SVG: series each scaled 0..100 by the caller.
 pub fn svg_chart(c: &Chart) -> String {
     let (w, h, l, b, t) = (380.0, 170.0, 30.0, 26.0, 8.0);
     let xmax = c
@@ -157,7 +152,6 @@ impl<'a> Assets<'a> {
         }
     }
 
-    /// A screenshot at calibrated real size and at 1:1, with overlay boxes.
     pub fn shot(
         &mut self,
         rel: &str,

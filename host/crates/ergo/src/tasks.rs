@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Effort per task and what journeys say about workflow: the common tasks are the journeys'
-//! steps tagged `task NAME`; consecutive steps with one name are one task.
 
 use std::collections::BTreeMap;
 
@@ -102,7 +100,6 @@ pub fn judge(tasks: &[Task], cfg: &Config) -> (Vec<Finding>, Vec<Metric>) {
     let mut fs = Vec::new();
     let mut ms = Vec::new();
     for t in tasks {
-        // The same task can be scripted in two journeys: ids stay unique by naming both.
         let id = format!("{}.{}", crate::slug(&t.name), t.journey);
         if !t.possible {
             fs.push(
@@ -202,8 +199,6 @@ pub fn judge(tasks: &[Task], cfg: &Config) -> (Vec<Finding>, Vec<Metric>) {
     (fs, ms)
 }
 
-/// Features whose absence makes the product incomplete for a workflow (the rest are nice to
-/// have).
 const CORE: [&str; 6] = [
     "pattern_edit",
     "new_song",
@@ -375,7 +370,6 @@ pub fn journey_findings(
     (fs, ms)
 }
 
-/// Safety findings that are about the whole firmware.
 pub fn safety(features: &BTreeMap<String, (bool, String)>) -> Vec<Finding> {
     let mut fs = Vec::new();
     if let Some((false, why)) = features.get("undo") {

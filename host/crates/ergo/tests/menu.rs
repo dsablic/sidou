@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `select-item` lands on the menu line it names, in both themes (needs the fm1 build,
-//! SIDOU_FM1_BUILD): the firmware's own cursor and what the screen shows agree.
 
 use ergo::device::{panel, Dev, FRAME_MS};
 use ergo::journeys::{menu_selected, run_script};
@@ -43,7 +41,6 @@ fn select_item_reaches_every_line_in_both_themes() {
         let line = menu_selected(&d.shot(), cursor, top).unwrap_or_default();
         assert!(line.starts_with(item), "{item}: {line:?}");
     }
-    // SETTINGS (SAVE is the menu's OK) holds THEME.
     let before = d.settings_bytes();
     run_script(
         &mut d,

@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A finding: one thing the harness measured that breaks (or is worth knowing about) a rule,
-//! with a stable id so a review can accept or reject it run after run.
 
 use serde_json::{json, Value};
 
@@ -33,7 +31,6 @@ impl Sev {
     }
 }
 
-/// A rectangle in cells drawn over a screenshot.
 #[derive(Clone, Debug)]
 pub struct Overlay {
     pub col: usize,
@@ -45,7 +42,6 @@ pub struct Overlay {
 
 #[derive(Clone, Debug)]
 pub struct ShotRef {
-    /// Relative to the output directory.
     pub path: String,
     pub caption: String,
     pub overlays: Vec<Overlay>,
@@ -68,13 +64,11 @@ pub struct Chart {
 #[derive(Clone, Debug)]
 pub struct ClipRef {
     pub label: String,
-    /// Relative to the output directory.
     pub path: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct Finding {
-    /// Stable across runs: `<CATEGORY>.<rule>.<subject>`.
     pub id: String,
     pub severity: Sev,
     pub category: &'static str,
@@ -159,7 +153,6 @@ impl Finding {
     }
 }
 
-/// A figure the baseline comparison watches: `worse_when_higher` says which way is worse.
 #[derive(Clone, Debug)]
 pub struct Metric {
     pub key: String,
@@ -175,9 +168,6 @@ pub fn metric(key: impl Into<String>, value: f64, worse_when_higher: bool) -> Me
     }
 }
 
-/// What got worse against a baseline's metrics (a JSON object `key -> {value, worse_when_higher}`)
-/// and its findings (id -> severity): a metric moved the bad way by more than `tolerance` (a
-/// fraction, with an absolute floor of 1e-9), a finding is new, or its severity rose.
 pub fn regressions(
     now: &[Metric],
     now_findings: &[Finding],

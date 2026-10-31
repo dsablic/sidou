@@ -30,7 +30,7 @@ lab     | play   | words OSC,ENVELOPE,FILTER,MOD,FX,LAB,INSTANT,AUTHENTIC,TRIANG
 *       | hint   | words SELECT,ALGORITHM,ALG,HOME,MOVE,STEP,CHANGE,BACK,CANCEL,VOICE,MODEL,PROFILE,BPM,OL,K1
 menu    | play   | any
 # The menu's kin: SETTINGS' values and the SONG pages' actions, files and names are read as the
-# menu's are (the v0.3.0 device session found LOAD's names at 1x).
+# menu's are.
 settings | play  | any
 song_menu | play | any
 # The chord arpeggio's state on LIVE: read at arm's length while playing.
