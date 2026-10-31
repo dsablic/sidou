@@ -45,6 +45,26 @@ The cleanup before 1.5's release moves the decisions now written as code comment
   with `-fno-function-sections` so that none of the helpers it still instantiates is taken
   into SRAM by app.ld's name patterns.
 
+- The audio path runs from SRAM (`.ram_text`, placed by app.ld's name rules): the boot copies
+  it there and the ALNK0 interrupt executes nothing else, also while a song or a .sid tune
+  plays. fm1-emu does not model the I-cache, so the timing benefit is left to hardware
+  (docs/hardware.md, open checks). RAMTEXT is 48 KB, ending at Felucca's RAM-run debug area
+  (0x01C0C000), which code does not reach until a device check shows that SRAM is the app's.
+- No direct `call` or `goto` crosses between flash (XIP, 0x02000000 up) and SRAM code: SRAM is
+  about 4 MB below XIP, the edge of a branch's reach, so such a branch either fails the link
+  ("relocation truncated to fit", `R_PI32V2_LONG_JUMP_23M2`) or links only while the code
+  happens to lie close enough. The firmware links with `--emit-relocs` and `ram_audio.rs`
+  requires every branch relocation's site and target in the same region. Address loads
+  (`MOV_ABS32`, type 5, and `ABS32`, type 8, in JieLi's binutils) may cross: that is how flash
+  code calls SRAM code through a pointer (audio.c `far_drain`) and how the vector table
+  reaches `isr_alnk0`. Any other relocation type fails the test until it is classified.
+- The audio path reads no data from flash: every address the `.ram_text` code loads lies in
+  SRAM (RAM, POOL), where a read in the interrupt cannot miss the cache and wait on the flash.
+  A constant table the audio path reads goes to `.data` on the device
+  (`__attribute__((section(".data.<name>")))` under `__PI32V2__`, as `SID_NOISE_WB`). Data
+  reached through a pointer set up outside the audio path (the combined waveforms' pulldown
+  rows in flash by design, the DAC tables in POOL) is not checked.
+
 ## Controls
 
 - EDIT + SCL, EDIT + ARP and EDIT + LFO are chords whichever finger lands first: a hand's two
@@ -177,3 +197,412 @@ A budget is set from a measurement plus a margin, and raising one is the owner's
 - `POLL_INSTRUCTIONS`, 120,000: the latency gate's poll allowance, 0.5 ms at the 240 MHz
   clock (the TRS UART is polled at 2 kHz). The main loop drains MIDI between `ui_poll` calls,
   so a longer `ui_poll` would eat into it: every view's worst `ui_poll` stays within it.
+
+### Benchmark gates (sid_budget, fx_budget, slots_budget, scene_budget, cpu6502_budget, psid_budget)
+
+- The benchmark images (`bench/fm1`) run bare in fm1-emu and count instructions between
+  `bench_mark` calls; fm1-emu runs one instruction a cycle, so the counts are a lower bound on
+  the chip's cycles. Each gate also renders the same workload with the host build and requires
+  the target's samples to match it (the SID gate within 1 LSB), so a budget is never met by a broken render.
+- `fx_budget`: the post-chip effects with everything on cost at most 500 instructions a sample,
+  steady and in the worst case (targets alternating every block so the smoothing never
+  settles, the crusher capturing nearly every sample); with two chips at the SID's worst block
+  and the tap they stay within `TWO_CHIPS_PLUS_EFFECTS`. The scenario must change more than
+  half of the samples, or the comparison would be vacuous.
+- The host builds of the benchmark workloads (emu-gate's `src/lib.rs`) share the C workload's
+  global state, which is not thread-safe while the tests run in parallel: each render holds
+  sidou-sys's workload lock for the whole run.
+- `sid_budget`: the M0 budget of the design document's section 8, at most 900 instructions a
+  sample per chip, holds for every scenario on both models on average and block by block
+  (audio is produced a block at a time; blocks as `workload_render_samples` cuts them, at most
+  128 samples and never across an 882-sample frame). Each scenario's host output must peak
+  above 1,000, except the near-silent idle scenario, which is there for its cost.
+  `SIDOU_GATE_PROFILE=1` counts the render instructions per function and per block (slower).
+  pi32v2 mostly issues one instruction a cycle, but XIP loads and divides take longer.
+- `slots_budget`: decision record 0004's budgets, Distortion 150, Modulation 200, FX 450 and
+  the slot frame 100 instructions a sample, 900 for every slot's heaviest together, with the
+  controls moving all the time. While a preset change switches slots (one at a time) a
+  32-sample block may cost up to 1,000 (the switching slot's per-sample path and a new
+  algorithm's one-off setup), for at most 80 blocks above 900 (two preset changes, about
+  30 ms each). The worst switching block plus two chips at their worst block, the tap, the ISR
+  and USB audio recording stays within `AUDIO_TARGET`; what is left is the 6502's headroom.
+- `scene_budget`: the pixel scene's tile compositor (`app/scene_px.h`) in a frame like RED
+  MOON RITE's (13 slots), with its log checked against the host build's (the same runs and
+  every tile's hash the same: the device composites the host's pixels). The bounds are about
+  10 % over the measurements: a tile 1,959 on average and 4,826 at worst (bounds 2,150 and
+  5,300), a cell sent alone 5,646 at worst (6,200), a scan 2,829 a candidate (3,100). A run is
+  at most `SCENE_PX_RUN_CELLS` worst cells plus `grid_next_run`, and two runs, 10,000 for the
+  rest of a `ui_poll` (its bookkeeping and the window it starts; the view's own gate measures
+  the whole `ui_poll`) and a song's analysis slice fit `POLL_INSTRUCTIONS`: a compile-time
+  assertion keeps `SCENE_PX_RUN_CELLS` and the cell's cost from growing past it. A scan slice
+  (`SCENE_PX_SCAN_SLICE` tiles at the worst with their hash, and the walk over the candidate
+  bits) fits it the same way.
+- The scene's SPI: each cell is 128 bytes and each window 11 bytes of commands (CASET and
+  RASET, 4 bytes each, and RAMWR) at SPI1's 12 MHz (60 MHz / 5); the worst frame SCENE can send,
+  every cell a window of its own, stays within about 20 ms of SPI per 40 ms frame
+  (docs/art/README.md).
+- `cpu6502_budget`: SIDOU's 6502 (the device build of `core/cpu6502`, `CPU6502_SMALL` at
+  `-Os`) stepped as pi32v2 code in a bench image. Dormann's functional test reaching its
+  success trap is the decoder check: fm1-emu stops on an encoding it cannot decode (decision
+  record 0008, Risks), so a finished run means the compiler's dispatch decodes at the pinned
+  emulator. The workload is the three costliest of GoatTracker's 14 example songs per 6502
+  cycle (the ignored `every_example_song` survey: 8.12 to 8.88), packed by gt2-ref with its
+  default options and played for 10 s of 6502 time (501 PAL frames of 19,656 cycles), their
+  SID writes equal to the host 6502's. Each opcode is also measured alone, the call's own cost
+  taken off; an access through the I/O hooks must cost more than the inline memory access.
+- The voice shadow's catch-up is measured in slices of 1,500 cycles, the first estimate of the
+  look-ahead's slice; `PSID_SLICE_CYCLES` (1,000) was set from it. The look-ahead's passes are
+  measured on the shadow's dearest voices (noise with triangle from power-on, until the noise
+  register locks up) on one chip and two with an access every 4 cycles, and on a GoatTracker
+  tune. Instructions are not device cycles (docs/hardware.md, "Open checks").
+- `psid_budget`: a .sid tune's interrupt path (`psid_ctl_block`: the ring's pops, the split
+  renders' steps and their calls' setup, `sid_advance`, `sid_write`, the fades) is measured
+  in the 6502 bench (mode 6), each instruction of the block's call told by its function, apart
+  from the chips' own work, which the SID's gates bound (the render loops and the voices'
+  clocking; the settles a write runs first, the render's per-call setup and OSC3's latch at a
+  write are the .sid path's). Its worst block stays within `PSID_ISR_WORST` over the oracle's
+  corpus (GoatTracker's examples and SIDOU's songs, 1SID and 2SID) and over synthetic worst
+  tunes: an access every 4 cycles for whole frames (about 700 writes a block) to a voice, the
+  cutoff (each render part then recomputes the filter) and the volume, and one write on every
+  sample (one every 24 cycles, a sample being 22.3: a block at its render limit, 80 entries
+  and 23 renders). The bench runs at most 40 main-loop passes before a block; the device makes
+  about 30. `SIDOU_PSID_RUNS` picks the runs whose name contains it.
+- With a tune playing and LIVE showing (the busiest view, its tap on), each `psid_ctl_poll`
+  stays within `PSID_SLICE_WORST` and every main-loop pass within `POLL_INSTRUCTIONS`.
+- A tune takes no state of its own outside the song's: audio.c's union fits the song
+  transport's and the 6502's 64 KiB is the song's region. The .sid player's code in SRAM
+  (psid_ctl's interrupt half, `sid_advance`, audio.c's player paths and its swap hook) stays
+  within 1,536 bytes.
+
+### Boot (boot.rs)
+
+- The audio starts before the screen's first frame, and the main loop plays a key held at
+  power-on while that frame goes out: the boot holds no sound up. Only the LCD's reset and
+  wake-up delays (`lcd_init`, under 400 ms) come first. On the device the first frame is a full
+  screen of SPI, about 80 ms; fm1-emu sends SPI without its transfer time, so the emulator
+  shows only the order.
+- fm1-emu does not decrypt a bare image's XIP, so the plain XIP window over the store (from
+  flash 0x93000 up, Felucca's `fl_plain_window_init`) is checked through SFCENC's registers,
+  which fm1-emu models, and a byte written into the flash chip read back through XIP.
+
+### Boot guard and watchdog (bootguard.rs)
+
+- fm1-emu resets the chip as the FM-1 does (P33: the watchdog, and PR_PWR, which `fm1_reboot`
+  and `fm1_enter_uboot` write): the core starts the firmware again from its entry with the
+  chip's registers as the loader left them and RAM kept (the guard's `.noinit` words, the
+  boot-state mailbox). A test boot dies as a crash does: the test raises an exception on a
+  vector still on its fatal stub, and the firmware's fault handler records it and resets the
+  chip. fm1-core does not run the fatal handler's first instruction, `trigger` (the debug
+  unit's trace stop, which changes nothing else), so the test steps over it.
+- What UBOOT does next is the mask ROM's, which fm1-emu does not have: the tests stop at the
+  firmware's reset request (`Machine::stop_at_reset`) and check the request, the
+  `usb_update_mode` mailbox and that the boot went no further.
+- Felucca 1.6.1's 68-byte crash record overlaps the boot guard: only SIDOU's magic survives
+  it (Felucca writes that word only on a second-core crash), so foreign words after a valid
+  magic must not count as early deaths.
+- The hang build (`-DSIDOU_TEST_DEATH=hang`, `SIDOU_FM1_DEATH_BUILD`) runs hardware checklist
+  section 10's first half in the emulator: with OCT- held it hangs 1 s into each boot with the
+  interrupts off, the watchdog resets it 8 s after the last feed, twice, and the third boot
+  enters UBOOT. In that build `fm1_enter_uboot` is inlined into `fm1_cstart`.
+
+### The decode gate (decode_gate.rs)
+
+- A compiler idiom fm1-emu lacks stops the emulator only when a test happens to run its path
+  (the and-not read-modify-write with r8-r15 once stopped the keys test at the first key
+  release). The gate walks the ELF's code sections (`.entry`, `.ram_text`, `.text`) function by
+  function, asks fm1-core's decoder (`fm1_core::decode_info`, the one `fm1-emu --check-decode`
+  uses) for each instruction's length and class, and steps each instruction once on a scratch
+  machine whose registers point at free RAM: a class that decodes but has no semantics fails
+  too; a fault from the scratch state does not. A dual-issue head is stepped with its tail.
+- The jump tables the compiler leaves in `.text`, between its `.GJTIS`/`.GJTIL` and `.GJTIE`
+  marker symbols (the names recur per object file, so a start pairs with the next end above
+  it), are skipped; so is what follows the last function (`.rodata`, which the linker script
+  puts after the code). The boundaries are fm1-core's own, not the vendor objdump's, which
+  shows the 6-byte compare-and-branch as unknown and disassembles the jump tables as code. A
+  walk that does not land exactly on its function's end or a jump table's start means a length
+  disagrees with the compiler's.
+
+### The flash timing spike (flash_spike.rs)
+
+- The spike (`-DSIDOU_FLASH_SPIKE=ON`, docs/hardware-test.md section 12) is a test firmware
+  for measuring the device's flash timings. The default image carries none of it: no spike
+  symbol in its ELF and not the spike's sector mark in its bytes. In fm1-emu
+  (`SIDOU_FM1_SPIKE_BUILD`) every time reads 0 (the model's flash is instant), the page erase
+  (0x81) and the suspend are not modelled, and every check is clean. With every byte outside
+  the store's last two sectors set to a sentinel (0x5A and 0xA5 alternately, which no erase or
+  program leaves alone) none changes, and the guard band of both sectors stays erased. It
+  writes nothing over a sector that is neither blank nor its own, or over a damaged pattern.
+  The bounds at every address are sidou-pack's `tests/flash_spike_guard.rs`.
+- The spike runs with the TRS jack busy throughout and loses no byte, not even across a 35 ms
+  interrupt mask (109 bytes, under the 128-byte ring). The test sets the update staging area
+  blank, as on a unit after a completed install: the boot's `update_boot` erases a staging
+  area it finds in use, which is the update protocol's cleanup, not the spike's.
+
+### The update package (package.rs)
+
+- The package (`$SIDOU_FWSC`, else `sidou.fwsc` in the fm1 build directory) boots as fm1-emu
+  boots one (`stock_from_package` and `stock_boot`) and plays sample for sample as the bare
+  image does. A package older than the build's `sidou_app.bin` fails the test: it holds an
+  earlier build. It writes `sidou_package.json` and `sidou_package.wav` (A4 held from
+  power-on) into the build directory.
+
+### Chip B (chip_b.rs)
+
+- The tests drive chip B as the main loop does: its register writes go into the register ring
+  in emulated RAM (entries with `REG_RING_CHIP_B`) and its use is `b_want`, both between two
+  instructions of the main loop, outside the audio interrupt with nothing pushed or uncommitted,
+  so an injection lands whole before the next block.
+- Chip B out of use costs the audio interrupt what the one-chip path did, within 1 a sample:
+  397.87 instructions a sample with a chord held on LIVE (the tap on), measured before chip B
+  could render. The test sets MASTER full, where its gain stage does not run at unity, so it
+  measures what chip B costs.
+- With both chips at their worst (noise with ring modulation at 0x0800 on every voice), chip B
+  in use and every slot's heaviest at full, the worst block stays within the audio target, and
+  chip B's mix (`chip_mix`, measured by its own instructions, 8.1) under 10 a sample.
+- MASTER's gain stage at a constant gain (the pot's power-on reading, so every block of the
+  gates runs it) measured 12.04 instructions a stereo frame, a little over 5 an audio sample
+  (a load, a multiply, the rounding add, a shift, a store, unrolled by four); a ramping block
+  measures the same. The bound is 12.5.
+- CHIP SPREAD's stage (the side, the stage, which converts the slots' output in their place,
+  and the slots' dry gain) measured 50.56 a stereo frame with two chips at their worst, every
+  slot's heaviest and SPREAD 100; the bound is 51. The interrupt's mean rises by only about 33
+  to 35: the slots' own conversion, about 17, does not run then. At SPREAD 100 a chip sounding
+  alone stays centred (the stage does not run: mono's output bit for bit); with both sounding,
+  each chip's fundamental is more than 30 dB under on the other side.
+- Chip B's fades in and out of use step the output by no more than B's own step, 1/128 of its
+  sample and 1 for the rounding, at any sample including the block boundaries (a click test on
+  the host's render, which the device matches sample for sample). Chip B plays its power-on
+  release out where it is made, so going in use it starts from silence.
+
+### The scope tap (ram_audio.rs)
+
+- The tap's cost is measured on the same build by turns: LIVE on top (the tap on) against the
+  menu on top (the tap off), a chord held at its sustain level throughout. LIVE behind THE
+  OSCILLATOR's title card keeps the tap off until the card ends.
+
+### The effect slots on the device (fx_live.rs, fx_knobs.rs)
+
+- A CC or a key press may reach the audio interrupt up to 8 blocks after it was sent, and a
+  later CC of the same burst up to 3 blocks after the first: over TRS a CC takes about 1 ms at
+  31,250 baud and a block 2.9 ms, and the main loop commits what has arrived, so a burst
+  spreads over a few blocks. The sample-exact comparison tries every way a burst can land. The
+  chip plays before the note (its silent voices leak, as reSIDfp's), so the slots' output
+  before the note shows which block each CC reached.
+- The overdrive test plays a chord (A4, C#5, E5), so the slot's input is loud enough to clip:
+  one SAW LEAD note at the 6581 filter's reSIDfp level clips only to 0.82 of its undriven crest
+  factor, short of the 0.8 the test asks. The driven take is compared with the slot on at no
+  drive and the same tone and mix, so the drive alone counts; the drive's makeup keeps the
+  level within 6 dB.
+- A dim LED glows a thirtieth as bright as a lit one (the HAL's dim pulse through
+  `fm1_led_dim`); fm1-emu's LEDs are multiplexed, so lit is any level above 0.
+- Every distortion's Amount, bottom of the knob against the top on one SAW LEAD note at the
+  DAC, changes the sound's shape (the spectrum's difference with the level taken out) by at
+  least 1 dB and its level by at most 6 dB: measured 1.5 (CRUSH) to 4.1 dB (LO-FI), TAPE 2.0.
+  The slot lifts its input to the algorithms' level; without it the Amount was mostly a volume
+  knob.
+
+### The chip's character (character.rs)
+
+- A character CC takes effect up to 8 blocks after it was sent (the MIDI drain, then
+  `live_tick` every 10 ms, about 3.4 blocks), and a later CC of a burst in the same block as the
+  one before it or up to 5 blocks after (the next tick). The profile CC resets the chip into the
+  worn 6581; the four controls ramp it there without a reset, a tick at a time, and the spare
+  gets them before the swap. The device's ticks are counted from each block's
+  `REG_RING_CHARACTER` entries, so the host render ticks where the device did.
+- The thump's output stage (the decay of both chips' levels and, per side, the room left, the
+  soft limit's test and the rounding) measured 30.86 instructions a stereo frame while a thump
+  sounds; the bound is 31. Idle, the stage is a take and one test a block. DAC's grit (the
+  noise, the bow and the slew) measured 19.13 a sample on one chip while DAC is not 0; the
+  bound is 19.2, and at DAC 0 the render tests two halfwords. Both are outside the SID's worst
+  blocks and take their share from the 6502's headroom while they run.
+- The device compiles all three pulldown strengths for both models, used by the built-in
+  profiles and the expert selector as `SID_PD`'s shared blocks: each profile reads back as
+  reSIDfp's table, its blocks are the ones sidou-tablegen lays out, and the pool holds no
+  unused block. Each compiled row's pointer (`SID_PD_ROWS`, in RAM because
+  `sid_osc_update_mode` reads it in the audio path) is its index row's in `SID_PD`.
+
+### Settings across power cycles (settings.rs)
+
+- fm1-emu keeps the flash across power cycles in these tests: a machine is powered on with the
+  flash a previous one left. The settings record is 6 header bytes, then the parameters with
+  the cutoff and the pulse width two bytes each (app/settings.h); an older firmware's record
+  is written into the flash copy by the host store, as that firmware would have stored it.
+- A foreign store reads foreign until the menu's confirm formats it: a turn arms the
+  confirmation and further turns, however fast, only keep it armed; SAVE formats, every sector
+  erased (forced: the player asked) with the audio held through each, then the settings are
+  stored again.
+
+### LAB (lab.rs)
+
+- `LAB_WORST_POLL`, 90,000: the worst `ui_poll` that composes LAB's frame while a key sounds
+  and a card turns every frame (the canvas and the drawing by turns). Measured: ENVELOPE 74.7k
+  (its drawing about 45k), OSC 61.3k, a page without a drawing 44.9k. The bound keeps room
+  under `POLL_INSTRUCTIONS` for the inputs and MIDI; every LAB input with the busiest pass
+  after it stays within the allowance too.
+- Every result of EDIT + ARP and EDIT + SCL is heard: a C4 held from its note-on stays above
+  `LAB_SILENT_DB` at the device's output, read through the host test's DC blocker with the
+  MASTER gain at the pot's power-on reading divided out, so it reads as the chip alone does.
+- LAB's undo keeps its 16 steps in `LAB_EDIT_ENTRIES` bytes; a roll takes about a dozen, so a
+  run of rolls pushes the oldest out.
+
+### Note latency (latency.rs)
+
+- Note-on to sound is measured end to end from the cycle the note-on's last byte arrives at
+  the jack (its three bytes take 0.96 ms on the wire before that), along the whole path: the
+  jack's UART DMA, the 2 kHz UART poll into the MIDI ring, `midi_drain` onto live, which writes
+  the voice's registers into the register ring at once (notes are never held for the 10 ms
+  tick, as bend, aftertouch and the wheel are), the commit, then the audio interrupt applying
+  the ring at its block's start. Three points: taken (the interrupt that applies the note is
+  entered), buffer (it returns, its block written into the DMA buffer: `audio_fill` writes the
+  samples at its end) and audible (that sample leaves the DAC, one block later).
+- The bounds, for every trial: taken within a block and a poll (plus the USB attach's stall
+  around it); buffer within that plus the render allowance, the run's longest audio
+  interrupt, which is itself held to `AUDIO_TARGET` a block (decision record 0005's amendment:
+  the plan's bound left out the render); audible within taken and two blocks. With the
+  envelope INSTANT (the default, each gate edge restarting the rate counter) the envelope is up
+  in the block that takes the note and the release's first step in the block that takes the
+  note-off. With AUTHENTIC both may wait out the SID's ADSR delay, up to a rate LFSR period
+  (32,767 cycles, 33 ms) plus the attack, a block's granularity on top: a release rate's
+  period (267 cycles at SAW LEAD's release 6) is longer than attack 0's, so a gate that finds
+  the LFSR past it waits for it to come round (core/sid/sid_env.h).
+- "Sound" is a deviation from the pre-note baseline (the 20 ms before), 8 LSB past its largest
+  deviation, not a nonzero sample: the chip's output at rest is a DC level the DC blocker
+  settles, and a gated-off voice still leaks its waveform as reSIDfp's does. The first sample
+  past it is the gated voice's oscillator leaking through the DAC at envelope 0 (about 40
+  LSB); the note's envelope is taken at -30 dB of the held note's peak, and the release from
+  the rendered chip's envelope counter (its first step is one level in 170 in the audio). The
+  held note's peak must be at least half the host core's, at the MASTER pot's gain.
+- Each trial boots afresh (fm1-emu's state cannot be cloned) and injects the note-on at a random
+  cycle in a 40 ms window (a reproducible xorshift), so its phase against the audio block
+  (2.9 ms), the poll (0.5 ms), the 10 ms tick and the 40 ms compose is random; the note-off
+  140 ms later (the ADSR delay, the attack and SAW LEAD's decay to its sustain), at a random
+  cycle in a block.
+- The cases: the status screen at rest; busy (K1-K3 turning, every compose drawing); USB (the
+  note-on around the main loop's longest stall, the USB retry's attach once a second with no
+  host, `usb_probe`); the character's CCs sweeping (age and DAC, so the ramp builds a DAC table
+  a step a tick; their bytes go in only while the jack is idle before a note, and since the
+  changing DACs change what silent voices leak, the case is measured against the same run
+  without the notes, sample for sample: fm1-emu is deterministic); a profile step in flight
+  (CC 85 between two profiles faster than either's preparation, which takes at least 7 ticks,
+  so the spare is prepared a slice every tick and never swaps in); and a file being saved (the
+  store's programs in 16-byte write windows with interrupts masked). Every case also holds each
+  main-loop pass to `POLL_INSTRUCTIONS`, since a pass that long would hold a note back as much.
+- `SIDOU_LATENCY_TRIALS` sets every case's trial count (64 reproduces decision record 0005's
+  run); the default counts keep CI short. Each case writes `latency_<case>_<envelope>.json`
+  into the build directory.
+
+### First use (first_use.rs)
+
+- The first-use tests drive the panel as a player does on a fresh song and judge the result
+  as an ear would, not sample for sample (the bit-exact tests are song.rs's and
+  song_store.rs's): a sound loud enough over its length (RMS over 10 ms, at least 250 at the
+  chips' scale at the pot's power-on reading, which a click of a few samples never reaches;
+  silence under 40, the tail gate and the thump leave a little), its pitch (the chip's
+  frequency register and the audio's own fundamental, over 8,192 samples from 50 ms after the
+  onset, past the onset's thump that an estimate over the start takes for a low note), on time
+  (onsets at the rows' times) and each instrument told apart from the others.
+- Two sounds are told apart by a clear difference in loudness, length (10 ms windows within
+  20 dB of the loudest), brightness (the spectral centroid), busyness (zero crossings a
+  second), how much holds on (the mean RMS 50 to 150 ms after the loudest, over the loudest),
+  how pitched it is (the normalised autocorrelation's highest peak at 2 to 20 ms lags), pitch
+  (more than a semitone) or pulse width (a tenth). AD and SR are not part of it: an ear hardly
+  hears PULSE's from BASS's on a short note. A digi drum (its voice muted, the sample on the
+  volume register) is judged by length and brightness.
+- An onset is a 10 ms window over half the floor and at least 1.8 times the quietest of the
+  20 ms before it (a rise, not the last note's tail), every 5 ms, searched from 40 ms before
+  its row to 80 ms after; it may be half a player frame and a 5 ms window from its time. The
+  chip kit's drums sound a frame after their row (their first frame is the test bit with the
+  gate off, decision record 0009); the lead, the bass and the digi drums at once.
+- PRESETS is followed by a step press 150 ms later, as a hand moves from the knob to the keys;
+  the first press after PRESETS must audition the instrument PRESETS picked. The device once
+  played the previous one there and fm1-emu does not reproduce it, so the test stays as the
+  guard.
+- REC from the keys is compensated: the device places a key 6.0 ms before it reads it
+  (`REC_LAG_SAMPLES`: the double buffer, less half a block, and the debounce). The test places
+  a key a known time before or after a row's first sample leaves the DAC, using song
+  control's sample count against the DAC's clock (each audio interrupt's snapshot places its
+  block's samples, since the DAC never stops), and sweeps where OFF turns over: at 0 with the
+  6.0 ms compensation.
+- PLAY on a fresh boot is quiet until the song's first note, 140 ms later: chip B plays its
+  power-on envelope release out where it is made, so the keys moving to it make no thud.
+
+### USB and MIDI (usb.rs, midi.rs, sysex.rs, link.rs)
+
+- A 256-byte SysEx DATA packet and its ACK take 46.9 ms up (PUT) and 10.9 ms down (GET) with
+  nothing playing; with a chord held on the keys, 263.2 ms up, because the store waits
+  `STORE_SYSEX_GAP_MS` (250 ms by default, the build option `SIDOU_SYSEX_GAP_MS`) between two
+  packets' flash holds while the keys sound, and 10.4 ms down.
+- Recording over USB audio adds 3.0 instructions a sample to the audio interrupt with
+  fm1-emu's estimated SIE round trip of 1 us (measured 2.72 at 44.1 kHz, 2.76 at 48), and
+  `USB_AUDIO_PER_SAMPLE` with the SIE answering at once, the firmware's own cost (0.73 and
+  0.76). The device's real round trip is unmeasured (docs/hardware-test.md section 19), so the
+  tests measure both.
+- The USB rules the tests hold: packets carry at most 64 bytes (whole event packets), no SIE
+  access happens inside the audio interrupt, and the main loop never sleeps in `idle` while a
+  host is configured. A device that broke them received packets but a host saw almost none of
+  what it sent.
+- MIDI input at the jack's full speed may add at most 1.5M instructions a second to the main
+  loop on the status screen (measured 1.33M: 2.11M idle, 3.44M busy), 0.55 % of the core; on
+  LIVE the main loop's cost with the jack at full speed stays within 6.3M a second (measured
+  5.73M, 2.27M idle), where the scopes, envelope bars, note names and meters cost about 84k
+  instructions a frame against 14k at rest.
+- MIDI out's idle tick looks at every parameter for at most 22 instructions each (measured
+  21.6) and drops every unchanged one for at most 46 each (45.6); a tick with every parameter
+  changed stays within 4.6k (walked parameters find their CC by halves, about 100 a packet).
+- Live Link's tests run on USB frames (`usb_frames`), so their panel presses are timed in
+  frames rather than with the panel helpers.
+
+### Live Link
+
+- The host side of FM-1 Live Link (`host/crates/live-link`, the protocol in
+  docs/reference/live-link.md) has no dependencies and no I/O: the bytes come and go through
+  the caller (Web MIDI in a page, the emulator's USB host in the tests), so it compiles to wasm
+  as it is. Its reference decoder rebuilds the device's screen from what it streams and draws
+  it as the device's LCD shows it.
+- The decoder accepts only the canonical packing (a group's mask of the high bits, then the low
+  seven bits of up to seven bytes): a group with no byte after its mask, a mask bit with no
+  byte, or a byte with its high bit set is refused, and a frame whose checksum does not sum to
+  0 modulo 128 is rejected and counted.
+
+### The ergonomics harness
+
+- The harness (`host/crates/ergo`, docs/TESTING.md "The ergonomics harness") drives the
+  firmware in fm1-emu and never touches a USB or MIDI device. It includes emu-gate's `common`
+  by path rather than copying it, so both drive the same machine; its runs are independent,
+  each in its own `Machine`, and spread over every core with the results kept in the items'
+  order.
+- It is deterministic: nothing reads a clock or a random number, so one journey captured twice
+  gives the same frames, audio and sidecar byte for byte, and docs and videos regenerate only
+  when the UI changes. `--capture full` stamps each audio sample from the cycle its DMA half
+  finished playing (`half_played`), so frames and audio stay in exact sync.
+- An idle screen composes nothing, so its last frame never gets 20 ms old: after 80 ms of
+  looking for the mid-frame point, the harness takes the phase as it is. Expectations are
+  polled every frame for up to about 3 s (a toast or a popup shows within a few frames, a wipe
+  or a card takes longer).
+- Every threshold lives in `config.rs`, overridable with `--config FILE`, each from one of three
+  sources: psychophysics (textbook just-noticeable differences, rounded), a standard (WCAG,
+  ISO) or this project's judgement, to be tuned in review:
+  - Readability: the FM-1's lit screen is the player's measured width (240 px across it, 0.0975
+    mm a pixel). Play-time text is at least the 2x font, 1.56 mm: ISO 9241-303 and common
+    guidance ask 3 to 5 mm at arm's length for handheld displays, so this is already the
+    compromise the screen forces, and it keeps play-time text off the 0.78 mm 1x font.
+    Contrast follows WCAG 2.x AA, normal size for 1x, large for 2x and 3x.
+  - Knobs: pitch JND 3 to 6 cents for a trained listener on a steady tone (Moore); a cutoff
+    step worth a detent at about a quarter tone on a sustained saw; level JND about 1 dB
+    (Jesteadt et al.); brightness (spectral centroid) 5 %, about 85 cents, with a 6 % noise
+    floor for dead zones (fixed-note captures jitter that much); timbre 1.5 dB RMS between log
+    spectra, above what the same note differs by from one window to the next, because centroid
+    and level miss tone changes the spectrum shows. A knob needs 20 to 100 distinguishable
+    positions (no step under 1 % of the range); a cutoff step over a third of an octave sounds
+    stepped; a level step over a halving (6 dB) is a jump; step sizes spread over 0.5 (std over
+    mean) mean some are twice others. A K1 sweep covers at least three octaves of cutoff, or it
+    cannot open and close a sound. A full sweep takes at most 64 detents (under three turns of a
+    24-detent encoder, a sweep a hand makes in a second).
+  - Tasks: a common task needs at most three actions (the UX pass asked two) and few menu
+    levels; the first changed pixel comes within about 100 ms of an input, which still feels
+    immediate (Nielsen, after Miller), at the UI's 25 fps; the value popup opens 3 rows a
+    frame, so it is due within a few frames.
+  - Musical defaults: each factory preset's held note is neither buried nor hot, unclipped,
+    without DC and within a reasonable brightness (hard-sync and ring-modulated leads are
+    allowed brighter). A percussive preset is judged on its attack and what follows, 20 to
+    420 ms after the key: it has decayed by the end of a long note by design.
