@@ -338,6 +338,61 @@ fn order_subtune_selector_and_voice_navigation_are_separate() {
 }
 
 #[test]
+fn edit_and_select_jump_a_page_of_each_list() {
+    let edit = 1 << PANEL_BTN_EDIT;
+    let mut table = Pages::new(unsafe { &song_pages_table_view });
+    let page = SONG_PAGES_ROWS as i16;
+    table.input(SCREEN_TURN, PANEL_ENC_SELECT, 2, edit);
+    assert_eq!(u32::from(table.p.table_row), 2 * SONG_PAGES_ROWS);
+    table.input(SCREEN_TURN, PANEL_ENC_SELECT, -1, edit);
+    assert_eq!(u32::from(table.p.table_row), SONG_PAGES_ROWS);
+    table.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(u32::from(table.p.table_row), SONG_PAGES_ROWS + 1);
+    table.input(SCREEN_TURN, PANEL_ENC_SELECT, 255 / page, edit);
+    assert_eq!(
+        u32::from(table.p.table_row),
+        GT2_TABLE_ROWS - 1,
+        "the last row"
+    );
+
+    let mut order = Pages::new(unsafe { &song_pages_order_view });
+    let mut spec = SngSpec::new();
+    spec.orders[0][0] = ((0..30).map(|_| 0).collect(), 0);
+    order.model.read(&spec.encode(), 0).unwrap();
+    order.input(SCREEN_TURN, PANEL_ENC_SELECT, 1, edit);
+    assert_eq!(u32::from(order.p.order_cursor), 1 + SONG_PAGES_ROWS);
+    order.input(SCREEN_TURN, PANEL_ENC_SELECT, 2, edit);
+    assert_eq!(
+        order.p.order_cursor, 31,
+        "the restart marker, after the 30 entries"
+    );
+    order.input(SCREEN_TURN, PANEL_ENC_SELECT, -3, edit);
+    assert_eq!(order.p.order_cursor, 0, "the subtune selector");
+
+    let mut instr = Pages::new(unsafe { &song_pages_instr_view });
+    instr.input(SCREEN_TURN, PANEL_ENC_SELECT, 1, edit);
+    assert_eq!(
+        u32::from(instr.p.instr_cursor),
+        GT2_INS_NAME - 1,
+        "1ST WAVE"
+    );
+    instr.input(SCREEN_TURN, PANEL_ENC_SELECT, 1, edit);
+    assert_eq!(
+        u32::from(instr.p.instr_cursor),
+        GT2_INS_NAME + 7,
+        "the name's first line's last character"
+    );
+    instr.input(SCREEN_TURN, PANEL_ENC_SELECT, 1, edit);
+    assert_eq!(
+        u32::from(instr.p.instr_cursor),
+        GT2_INS_NAME + 15,
+        "the same column on the name's second line"
+    );
+    instr.input(SCREEN_TURN, PANEL_ENC_SELECT, -4, edit);
+    assert_eq!(instr.p.instr_cursor, 0);
+}
+
+#[test]
 fn table_bytes_are_separate_cells_and_pointer_jump_is_one_based() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
     h.turn(PANEL_ENC_K1, 0x41);

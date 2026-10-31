@@ -60,7 +60,7 @@ IN = INSTR, TB = TABLE (and its ARP helper).
 
 | Control | L | LS | ME | CH | SC | ST | TR | OR | IN | TB |
 |---|---|---|---|---|---|---|---|---|---|---|
-| SELECT | U pages TONE/DIST/MOD/FX (live_view.c:1185) | U | U cursor | U focus | C: SCENE changes piece, the rest F | C: lane | C: row (EDIT: 8 rows) | U cursor | U parameter | U row |
+| SELECT | U pages TONE/DIST/MOD/FX (live_view.c:1185) | U | U cursor | U focus | C: SCENE changes piece, the rest F | C: lane | C: row (EDIT: 8 rows) | U cursor (EDIT: 12, a page) | U parameter (EDIT: 8) | U row (EDIT: 12, a page) |
 | ALGORITHM | W profile (not an algorithm) (1196-1201) | U slot algorithm | U value | U | C: SCENE changes piece (same as SELECT); F on STATUS/ABOUT/CHARSET | C: page (step held: chance) | C: voice (EDIT: edit step) | U subtune / voice | F | U table choice |
 | PRESETS | U preset (panel.c:175-178) | - | - | - | - | C: lane instrument (step held: the step's note) | C: REC on = instrument; EDIT+ = insert/delete row; REC off = preset | U EDIT+: insert/delete; else preset | U instrument | U preset |
 | K1-K4 | U (TONE) | U slot Amount/A/B/Mix | U | U page | U | U until a step is held; then locks | U until REC is on | K1/K2 value/kind; K3/K4 as LIVE | K1/K2 byte; K3/K4 as LIVE | K1/K2 bytes; K3/K4 as LIVE |

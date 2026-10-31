@@ -106,16 +106,17 @@ static const char* const TRACKER_REC_LINES[] = {
     "PRESETS\0INSTR",  "E+PRE\0INS/DEL",  "SELECT\0ROW",     "ALG\0VOICE",
     "E+LFO\0ONE UNDO", "SEQ\0NEXT VIEW",  "SAVE\0SONG",      "HOME\0BACK"};
 static const char* const ORDER_LINES[] = {
-    "SELECT\0ENTRY",  "ALG\0TUNE/VOICE", "K1\0VALUE",     "K2\0KIND",
-    "E+PRE\0INS/DEL", "ARP\0RESTART",    "KEYS\0AUDITION", "PLAY\0FROM HERE",
-    "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+    "SELECT\0ENTRY",  "E+SELECT\0PAGE", "ALG\0TUNE/VOICE", "K1\0VALUE",
+    "K2\0KIND",       "E+PRE\0INS/DEL", "ARP\0RESTART",    "KEYS\0AUDITION",
+    "PLAY\0FROM HERE", "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
 static const char* const INSTR_LINES[] = {
-    "SELECT\0PARAM",  "PRESETS\0INSTR", "K1\0COARSE",    "K2\0FINE",
-    "E+SEQ\0TABLE",   "ENV LFO FX\0LAB", "KEYS\0AUDITION", "SEQ\0NEXT VIEW",
-    "SAVE\0SONG",     "HOME\0BACK"};
-static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "ALG\0TABLE",      "K1\0LEFT BYTE",
-                                          "K2\0RIGHT BYTE",   "ARP\0ARPEGGIO",   "KEYS\0AUDITION",
-                                          "SEQ\0NEXT VIEW",   "SAVE\0SONG",      "HOME\0BACK"};
+    "SELECT\0PARAM",  "E+SELECT\0PAGE", "PRESETS\0INSTR",  "K1\0COARSE",
+    "K2\0FINE",       "E+SEQ\0TABLE",    "ENV LFO FX\0LAB", "KEYS\0AUDITION",
+    "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "E+SELECT\0PAGE",  "ALG\0TABLE",
+                                          "K1\0LEFT BYTE",    "K2\0RIGHT BYTE",  "ARP\0ARPEGGIO",
+                                          "KEYS\0AUDITION",   "SEQ\0NEXT VIEW",  "SAVE\0SONG",
+                                          "HOME\0BACK"};
 /* TABLE's ARP helper: the arpeggio's steps, each a semitone offset, written as wavetable rows; the
  * keys play the draft. */
 static const char* const ARP_LINES[] = {"SELECT\0STEP",   "ALG\0STEPS",    "K1 K2\0OFFSET",

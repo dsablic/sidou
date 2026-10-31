@@ -24,6 +24,12 @@ static uint32_t clamp(int32_t n, uint32_t lo, uint32_t hi) {
     return n < (int32_t)lo ? lo : n > (int32_t)hi ? hi : (uint32_t)n;
 }
 
+#define NAME_LINE 8u
+
+static int32_t select_steps(const screen_event* e, uint32_t page) {
+    return e->held >> PANEL_BTN_EDIT & 1u ? e->steps * (int32_t)page : e->steps;
+}
+
 static uint8_t cycle(uint32_t n, int32_t steps, uint32_t count) {
     int32_t v = ((int32_t)n + steps) % (int32_t)count;
     return (uint8_t)(v < 0 ? v + (int32_t)count : v);
@@ -442,7 +448,8 @@ static int order_input(screen* s, void* state, const screen_event* e) {
     uint32_t n = entries(p);
     const uint8_t* o = order(p);
     if (e->kind == SCREEN_TURN && e->id == PANEL_ENC_SELECT) {
-        p->order_cursor = (uint16_t)clamp((int32_t)p->order_cursor + e->steps, 0u, n + 1u);
+        p->order_cursor = (uint16_t)clamp((int32_t)p->order_cursor + select_steps(e, SONG_PAGES_ROWS), 0u,
+                                          n + 1u);
         sync_order(p);
         return 1;
     }
@@ -503,7 +510,8 @@ static int instr_input(screen* s, void* state, const screen_event* e) {
     if (e->kind != SCREEN_TURN)
         return 0;
     if (e->id == PANEL_ENC_SELECT) {
-        p->instr_cursor = (uint8_t)clamp((int32_t)p->instr_cursor + e->steps, 0u, GT2_INSTR_BYTES - 1u);
+        p->instr_cursor = (uint8_t)clamp((int32_t)p->instr_cursor + select_steps(e, NAME_LINE), 0u,
+                                         GT2_INSTR_BYTES - 1u);
         return 1;
     }
     if (e->id == SONG_PAGES_ENC_PRESETS) {
@@ -541,7 +549,8 @@ static int table_input(screen* s, void* state, const screen_event* e) {
     if (p->arp)
         return arp_input(p, e);
     if (e->id == PANEL_ENC_SELECT) {
-        p->table_row = (uint8_t)clamp((int32_t)p->table_row + e->steps, 0u, GT2_TABLE_ROWS - 1u);
+        p->table_row = (uint8_t)clamp((int32_t)p->table_row + select_steps(e, SONG_PAGES_ROWS), 0u,
+                                      GT2_TABLE_ROWS - 1u);
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
@@ -1186,19 +1195,19 @@ static void build_row(song_pages* p, uint32_t j) {
             hex2(song->instr[sv->instr - 1u][j], num);
             big(c, 22u, r, num, on ? GRID_ATTR(th->bg, th->hot) : base);
         } else if (j < GT2_INS_NAME + 2u) {
-            char name[9];
-            uint32_t start = (j - GT2_INS_NAME) * 8u;
-            for (uint32_t k = 0u; k < 8u; k++) {
+            char name[NAME_LINE + 1u];
+            uint32_t start = (j - GT2_INS_NAME) * NAME_LINE;
+            for (uint32_t k = 0u; k < NAME_LINE; k++) {
                 uint8_t ch = song->instr[sv->instr - 1u][GT2_INS_NAME + start + k];
                 name[k] = ch >= 32u && ch <= 126u ? (char)ch : ' ';
             }
-            name[8] = 0;
+            name[NAME_LINE] = 0;
             big(c, 0u, r, name, THEME_ATTR(th, value));
             if (p->instr_cursor >= GT2_INS_NAME) {
                 uint32_t index = p->instr_cursor - GT2_INS_NAME;
-                if (index / 8u == j - GT2_INS_NAME) {
-                    char one[2] = {name[index % 8u], 0};
-                    big(c, index % 8u * 2u, r, one, GRID_ATTR(th->bg, th->hot));
+                if (index / NAME_LINE == j - GT2_INS_NAME) {
+                    char one[2] = {name[index % NAME_LINE], 0};
+                    big(c, index % NAME_LINE * 2u, r, one, GRID_ATTR(th->bg, th->hot));
                 }
             }
         }

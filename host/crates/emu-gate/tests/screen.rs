@@ -4323,7 +4323,7 @@ fn help_cards_match_their_goldens() {
         settle(&mut m, &fw);
         hold_for_help(&mut m, &fw);
         compare_golden(&build, &format!("help-{name}"), &m.soc.lcd.fb, &[]);
-        if matches!(name, "step" | "tracker" | "order" | "instr") {
+        if matches!(name, "step" | "tracker" | "order" | "instr" | "table") {
             // a card of two pages: SELECT turns it
             m.turn(SELECT, 1);
             m.run_ms(400);

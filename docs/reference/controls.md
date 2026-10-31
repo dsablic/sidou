@@ -467,19 +467,19 @@ refusals use the large toast. K1/K2 show the actual edited value in the value po
 
 | Page | Control | Does |
 |---|---|---|
-| ORDER | SELECT | moves between the subtune selector, entries and the restart marker |
+| ORDER | SELECT | moves between the subtune selector, entries and the restart marker; with EDIT held, 12 entries (a page) |
 | ORDER | ALGORITHM | selects the subtune on its selector; elsewhere changes the shown voice |
 | ORDER | K1 / K2 | changes the entry's value / kind (pattern, repeat, transpose) |
 | ORDER | EDIT + PRESETS | clockwise inserts an entry; counter-clockwise deletes it |
 | ORDER | ARP | sets the restart to the cursor's entry |
 | ORDER | PLAY | plays from the selected subtune and cursor entry; again stops |
 | INSTR | PRESETS | selects instrument 01–3F |
-| INSTR | SELECT | selects one of the nine parameters, then a character of its 16-byte GT2 name |
+| INSTR | SELECT | selects one of the nine parameters, then a character of its 16-byte GT2 name; with EDIT held, 8 (ATK/DEC to 1ST WAVE, then the same character on the name's other line) |
 | INSTR | K1 / K2 | coarse (16) / fine (1) adjustment of the selected byte or name character |
 | INSTR | EDIT + SEQ | on WAVE/PULSE/FILTER/VIBRATO pointer, opens that table at its pointer; otherwise asks SELECT A PTR |
 | INSTR | ENV / LFO / FX | [pulls the instrument into LAB](#pull-an-instrument-into-lab), which opens at ENVELOPE / MOD / FX (`EMPTY INSTRUMENT` for one with no bytes: nothing happens) |
 | TABLE | ALGORITHM | selects WAVE, PULSE, FILTER or SPEED |
-| TABLE | SELECT | selects table row 01–FF |
+| TABLE | SELECT | selects table row 01–FF; with EDIT held, 12 rows (a page) |
 | TABLE | K1 / K2 | edits the left / right byte |
 | TABLE | ARP | on the WAVE table: opens the [ARP helper](#arp-helper) on the arpeggio at the cursor row (a new one on a blank row; **NOT AN ARP** when the rows are anything else, **WAVE TABLE ONLY** elsewhere) |
 
