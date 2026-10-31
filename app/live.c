@@ -13,10 +13,7 @@
 #define REG_FC_HI 0x16u
 #define REG_RES_FILT 0x17u
 #define REG_MODE_VOL 0x18u
-/* The highest note that fits 16 bits, the last of live_freq_top_q4's octave (live_freq.c). */
 #define NOTE_TOP 106
-/* Expression scales: the cutoff moves 8 steps per controller value (0..1016), the pulse
- * width 16 (0..2032); a vibrato depth of 127 is 127 * 64 = 8128 / 8192 semitone. */
 #define CUTOFF_PER_VALUE 8
 #define PW_PER_VALUE 16
 
@@ -41,8 +38,6 @@ void live_char_store(sid_character* c, uint8_t reg, uint8_t value) {
     }
 }
 
-/* The host's DAC table the chip does not point at (it renders only between the sink's
- * calls, so nothing else can), or NULL without tables. */
 static sid_dac* host_free_dac(const live_sid_target* t) {
     if (!t->dacs) {
         return NULL;
@@ -112,14 +107,11 @@ int live_sid_prepare(void* ctx, uint8_t profile) {
     return done;
 }
 
-/* The spare live_sid_prepare made whole for a reset to model and the profile just sent, into
- * the chip (reg_ring.c, take_prepared). */
 static int take_prepared(live_sid_target* t, sid_model model) {
     if (!t->prep_on || !sid_character_prep_done(&t->prep) || t->prep.model != (uint8_t)model ||
         t->prep.c.profile != t->ramp.target.profile) {
         return 0;
     }
-    /* Borrowed rows may live inside either sid: copying backing arrays would overwrite them. */
     memcpy(t->chip, t->spare, offsetof(sid, cutoff_g));
     memcpy((uint8_t*)t->chip + offsetof(sid, filter_t),
            (const uint8_t*)t->spare + offsetof(sid, filter_t),
@@ -152,8 +144,6 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
         live_char_store(&t->ramp.target, reg, value);
     } else if (reg == LIVE_REG_CHAR_TICK) {
         sid_character_stage st;
-        /* No table while preparing, nor in the tick that ran a slice (the last one's
-         * included): reg_ring.c's character_tick, a tick standing for a pass. */
         sid_dac* table = t->prep_on || t->prep_tick ? NULL : host_free_dac(t);
         sid_filter_row rows[2];
         int filter_free = !t->prep_on && !t->prep_tick && host_free_filter(t, rows);
@@ -171,12 +161,11 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
 uint16_t live_freq_at(uint8_t note, int32_t offset) {
     int32_t n = note & 0x7f;
     while (n > NOTE_TOP) {
-        n -= 12; /* as the table folds it */
+        n -= 12;
     }
     if (offset == 0) {
         return live_freq_table[n];
     }
-    /* Clamp before adding: no overflow for any offset. */
     const int32_t top = NOTE_TOP * LIVE_PITCH_SEMITONE + LIVE_PITCH_SEMITONE - 1;
     if (offset < -top) {
         offset = -top;
@@ -191,15 +180,12 @@ uint16_t live_freq_at(uint8_t note, int32_t offset) {
     }
     uint32_t whole = (uint32_t)p >> 13;
     uint32_t frac = (uint32_t)p & 8191u;
-    /* 2^(frac / 8192 / 12) - 1 in Q20: 64 table steps a semitone, linear between them. */
     uint32_t j = frac >> 7, r = frac & 127u;
     uint32_t d = live_freq_fine_q20[j] +
                  (((live_freq_fine_q20[j + 1] - live_freq_fine_q20[j]) * r + 64u) >> 7);
-    /* The note's octave of the top one, and its frequency there in 1/16ths (< 2^20). */
     uint32_t below = (uint32_t)NOTE_TOP - whole;
     uint32_t octaves = below / 12u;
     uint32_t b = live_freq_top_q4[11u - below % 12u];
-    /* b * d >> 20 in 32 bits: b = hi * 1024 + lo, each product under 2^26. */
     uint32_t prod = (b >> 10) * d + (((b & 1023u) * d + 512u) >> 10);
     uint32_t q4 = b + ((prod + 512u) >> 10);
     uint32_t shift = 4u + octaves;
@@ -207,14 +193,11 @@ uint16_t live_freq_at(uint8_t note, int32_t offset) {
     return f > 0xffffu ? 0xffffu : (uint16_t)f;
 }
 
-/* The larger of the channel's pressure and the voice's own. */
 static uint8_t voice_pressure(const live* l, int v) {
     uint8_t p = l->voice[v].pressure;
     return l->channel_pressure > p ? l->channel_pressure : p;
 }
 
-/* The voice's vibrato depth: the setting, plus the wheel and its pressure where they are
- * assigned to it, up to 127. */
 static uint32_t vibrato_depth(const live* l, int v) {
     uint32_t d = l->vibrato_depth;
     if (l->mod_target == LIVE_MOD_VIBRATO) {
@@ -226,8 +209,6 @@ static uint32_t vibrato_depth(const live* l, int v) {
     return d > LIVE_EXPRESSION_MAX ? LIVE_EXPRESSION_MAX : d;
 }
 
-/* The voice's pitch offset in 1/8192 semitone: the bend, the fine tune and its vibrato, a
- * triangle from 0 (up first) once the delay is over. */
 static int32_t pitch_offset(const live* l, int v) {
     int32_t off = ((int32_t)l->bend - (int32_t)LIVE_BEND_CENTRE) * (int32_t)l->bend_range;
     if (l->tune) {
@@ -237,7 +218,7 @@ static int32_t pitch_offset(const live* l, int v) {
     uint32_t depth = vibrato_depth(l, v);
     if (depth && !x->vibrato_wait) {
         int32_t p = x->vibrato_phase;
-        int32_t t = p < 16384 ? p : p < 49152 ? 32768 - p : p - 65536; /* -16384..16384 */
+        int32_t t = p < 16384 ? p : p < 49152 ? 32768 - p : p - 65536;
         off += t * (int32_t)depth / 256;
     }
     return off;
@@ -249,16 +230,9 @@ static uint16_t voice_freq(const live* l, int v) {
     if (note == LIVE_NO_NOTE || (l->mono_sync && v == 1)) {
         return 0;
     }
-    /* The sync lead's voices 1 and 3 take the same pitch, so the ratio holds through a bend
-     * and the vibrato. */
     uint32_t f = live_freq_at(note, pitch_offset(l, src));
     if (l->mono_sync && v == 0) {
         f = (f * l->sync_q8) >> 8;
-        /* A known limit (docs/reference/controls.md, Presets): at 2.75 times the pitch the
-         * register is full from note 90 (F#6) at rest, from lower notes bent or vibrato'd up
-         * (88 at +2 semitones). Voice 3 still sets the pitch; the ratio, and the timbre,
-         * shrink toward the top. Dropping voice 1 an octave instead would jump the timbre
-         * mid-bend, so it saturates. */
         if (f > 0xffffu) {
             f = 0xffffu;
         }
@@ -268,7 +242,7 @@ static uint16_t voice_freq(const live* l, int v) {
 
 static uint8_t voice_control(const live* l, int v) {
     if (l->mono_sync && v != 0) {
-        return 0; /* voice 3 only clocks the sync; voice 2 is unused */
+        return 0;
     }
     return (uint8_t)(l->control | (l->voice[v].gate ? CTRL_GATE : 0u));
 }
@@ -304,8 +278,6 @@ static void write_cutoff(live* l) {
     write_cutoff_as(l, cutoff_effective(l));
 }
 
-/* The voice's sustain/release: the sustain level scaled by its velocity when that is the
- * velocity's target (127 keeps it). */
 static uint8_t voice_sr(const live* l, int v) {
     if (l->velocity_target != LIVE_VELOCITY_SUSTAIN) {
         return l->sustain_release;
@@ -349,7 +321,6 @@ void li_write_gate_reset(live* l) {
     put(l, LIVE_REG_GATE_RESET, l->envelope_mode == LIVE_ENVELOPE_INSTANT ? 1u : 0u);
 }
 
-/* The character's settings: the profile and each control, as sent from now on. */
 static void write_character(live* l) {
     put(l, LIVE_REG_CHAR(0), l->profile);
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
@@ -364,16 +335,12 @@ static void write_character(live* l) {
     }
 }
 
-/* A chip reset with the model, after the character's settings (the sink gives them to the
- * new chip), then the envelope mode, which sid_init turned off: before any register, so
- * before any gate. */
 void li_reset_chip(live* l) {
     write_character(l);
     put(l, LIVE_REG_RESET, (uint8_t)l->model);
     li_write_gate_reset(l);
 }
 
-/* Every register, envelopes before gates. */
 void li_write_all(live* l) {
     for (int v = 0; v < LIVE_VOICES; ++v) {
         put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
@@ -387,10 +354,6 @@ void li_write_all(live* l) {
     li_write_mode_vol(l);
 }
 
-/* The pulse width after the LFO, clamped to 12 bits. The LFO's depth narrows near the ends of
- * the range, so that its sweep never goes thinner than K3's narrowest width (LIVE_PULSE_FIRST),
- * nor as thin at the wide end: clamped to 0, a width is no pulse but a DC level, and the voice
- * went silent for part of every cycle (PWM BASS at a 9 % width, a quarter of its 2 s cycle). */
 void live_links_update(live* l) {
     if (l->reso_link && live_resonance_effective(l) != l->res_out) {
         li_write_res_filt(l);
@@ -417,7 +380,7 @@ static uint16_t pw_effective(const live* l) {
     depth = depth < room ? depth : room;
     if (depth > 0) {
         int32_t phase = l->lfo_phase;
-        int32_t tri = phase < 32768 ? phase : 65536 - phase; /* 0..32768 */
+        int32_t tri = phase < 32768 ? phase : 65536 - phase;
         pw += (tri - (int32_t)LFO_CENTRE) * depth / (int32_t)LFO_CENTRE;
     }
     if (pw < 0) {
@@ -432,8 +395,6 @@ static uint16_t clamp_u16(int32_t x, int32_t max) {
     return (uint16_t)(x < 0 ? 0 : x > max ? max : x);
 }
 
-/* The voice's pulse width: after the LFO, raised by its pressure, then narrowed by its
- * velocity (the distance to the nearer edge scaled, so above 2048 it narrows from the top). */
 static uint16_t voice_pw(const live* l, int v) {
     int32_t pw = pw_effective(l);
     if (l->pressure_target == LIVE_PRESSURE_PULSE_WIDTH) {
@@ -447,7 +408,6 @@ static uint16_t voice_pw(const live* l, int v) {
     return (uint16_t)pw;
 }
 
-/* The pressure of the most pressed held voice, or the channel's if more. */
 static uint8_t most_pressure(const live* l) {
     uint8_t p = l->channel_pressure;
     for (int v = 0; v < LIVE_VOICES; ++v) {
@@ -458,16 +418,12 @@ static uint8_t most_pressure(const live* l) {
     return p;
 }
 
-/* The filter LFO's swing of the cutoff: the triangle of the PWM's phase (up first, from the cutoff
- * at its centre) over filter_lfo of K1's detents each way along live_cutoff_steps, between its
- * entries in 1/256 of a detent, clamped at the walk's ends; a cutoff off the walk swings from
- * the entry next below it by the same registers. */
 uint32_t live_cutoff_place(const live* l, uint32_t c) {
     const uint16_t* t = live_cutoff_steps[l->model];
     if (t[l->cutoff_pos] == c) {
-        return l->cutoff_pos; /* K1's own place */
+        return l->cutoff_pos;
     }
-    int32_t p = live_cutoff_down[l->model][(c >> 5) & 63u]; /* the last entry below c's bucket */
+    int32_t p = live_cutoff_down[l->model][(c >> 5) & 63u];
     while (p < 64 && t[p + 1] <= c) {
         p++;
     }
@@ -479,15 +435,13 @@ static int32_t lfo_swing(const live* l) {
     int32_t pos = (int32_t)live_cutoff_place(l, l->cutoff);
     int32_t phase = l->lfo_phase;
     int32_t tri = (phase < 32768 ? phase : 65536 - phase) - (int32_t)LFO_CENTRE;
-    int32_t q = pos * 256 + tri * l->filter_lfo / 64; /* 32 detents x 256 at the most */
+    int32_t q = pos * 256 + tri * l->filter_lfo / 64;
     q = q < 0 ? 0 : q > 64 * 256 ? 64 * 256 : q;
     int32_t i = q >> 8;
     int32_t at = t[i] + (i < 64 ? ((t[i + 1] - t[i]) * (q & 255)) >> 8 : 0);
     return at - t[pos];
 }
 
-/* The cutoff written: the parameter, swung by the filter LFO, opened by the wheel and the pressure,
- * lowered by the last note's velocity, where they are assigned to it. One filter for every voice. */
 static uint16_t cutoff_effective(const live* l) {
     int32_t c = l->cutoff;
     if (l->filter_lfo) {
@@ -505,8 +459,6 @@ static uint16_t cutoff_effective(const live* l) {
     return clamp_u16(c, (int32_t)LIVE_CUTOFF_MAX);
 }
 
-/* Write only what changed: the frequencies, pulse widths and cutoff the controllers, the
- * vibrato and the LFO move. */
 void li_update_freq(live* l, int v) {
     if (voice_freq(l, v) != l->voice[v].freq_out) {
         write_freq(l, v);
@@ -526,9 +478,9 @@ void li_update_pws(live* l) {
 }
 
 void li_update_cutoff(live* l) {
-    uint16_t c = cutoff_effective(l); /* once: a K1 detent pays for it on the input path */
+    uint16_t c = cutoff_effective(l);
     if (c != l->cutoff_out) {
-        write_cutoff_as(l, c); /* RESO LINK's resonance follows at the tick (live_links_update) */
+        write_cutoff_as(l, c);
     }
 }
 
@@ -546,7 +498,7 @@ static int pick_voice(const live* l, uint8_t gated) {
 static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     live_voice* x = &l->voice[v];
     if (x->gate) {
-        x->gate = 0; /* a 0 -> 1 gate edge restarts the attack */
+        x->gate = 0;
         write_control(l, v);
     }
     x->note = note;
@@ -557,7 +509,6 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     x->vibrato_phase = 0;
     x->vibrato_wait = l->vibrato_delay;
     l->last_velocity = velocity;
-    /* Velocity: the sustain level before the gate, the pulse width, or the filter. */
     if (l->velocity_target == LIVE_VELOCITY_SUSTAIN) {
         put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
     }
@@ -570,13 +521,9 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     write_control(l, v);
 }
 
-/* A voice for a new note: a free one (the longest released), the UI sound's when the others are
- * all held, else the one held longest. */
 static int free_voice(live* l) {
     int v = pick_voice(l, 0);
     if (v < 0 && l->ui_voice) {
-        /* The others all held: a UI sound gives its voice back (app/ui_sound.h), with the
-         * instrument's envelope (the sound had its own). */
         v = l->ui_voice - 1;
         l->ui_voice = 0;
         put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
@@ -644,17 +591,13 @@ void live_all_notes_off(live* l) {
     l->arp_voice = LIVE_ARP_NO_VOICE;
 }
 
-/* ---- the chord arpeggio ---- */
-
 const uint8_t live_arp_steps[LIVE_ARP_RATES] = {1, 2, 3, 4, 6, 8, 3, 6, 12};
 
-/* Positions in a cycle: the held notes times the span, and up-down back without its ends. */
 static uint32_t arp_period(const live* l) {
     uint32_t n = (uint32_t)l->arp_n * l->arp_span;
     return l->arp_order == LIVE_ARP_UP_DOWN && n > 1u ? 2u * n - 2u : n;
 }
 
-/* The note at position pos (< arp_period) of the cycle. */
 static uint8_t arp_note_at(const live* l, uint32_t pos) {
     uint32_t n = (uint32_t)l->arp_n * l->arp_span;
     uint32_t q = pos;
@@ -670,14 +613,11 @@ static uint8_t arp_note_at(const live* l, uint32_t pos) {
     return (uint8_t)(up <= 127u ? up : note);
 }
 
-/* The step's length: ticks, and with a clock rate the clocks. */
 void li_arp_rewind(live* l) {
     l->arp_wait = (uint8_t)(live_arp_steps[l->arp_rate] * LIVE_ARP_TICKS_PER_FRAME);
     l->arp_clocks = live_arp_steps[l->arp_rate];
 }
 
-/* The arpeggio's voice to the cycle's note at its position: the frequency alone, the gate held
- * (the sync lead's voice 3 sets its pitch: both move). */
 void li_arp_sound(live* l) {
     int v = l->arp_voice;
     l->voice[v].note = arp_note_at(l, l->arp_pos);
@@ -692,9 +632,6 @@ static void arp_step(live* l) {
     li_arp_sound(l);
 }
 
-/* After the notes or the cycle changed: the position of the note that sounds, looking on from
- * where it was (up-down has most notes twice: the direction holds); if it is gone, the position
- * before where it was, so the next step takes what followed it. */
 LIVE_COLD void li_arp_resync(live* l) {
     uint32_t period = arp_period(l);
     uint32_t pos = l->arp_pos % period;
@@ -709,7 +646,6 @@ LIVE_COLD void li_arp_resync(live* l) {
     l->arp_pos = (uint8_t)((pos + period - 1u) % period);
 }
 
-/* note into the held notes: last in the order played, in its place among the sorted. */
 void li_arp_hold(live* l, uint8_t note) {
     uint32_t n = l->arp_n;
     uint32_t i = n;
@@ -722,7 +658,6 @@ void li_arp_hold(live* l, uint8_t note) {
     l->arp_n = (uint8_t)(n + 1u);
 }
 
-/* note out of both lists; 0 if it was not held. */
 static int arp_drop(live* l, uint8_t note) {
     uint32_t n = l->arp_n;
     int found = 0;
@@ -745,8 +680,6 @@ static int arp_drop(live* l, uint8_t note) {
     return 1;
 }
 
-/* The first note held starts the voice on the cycle's first note; another joins the cycle, which
- * keeps its time. A note held already is held once. */
 static void arp_note_on(live* l, uint8_t note, uint8_t velocity) {
     for (uint32_t i = 0; i < l->arp_n; i++) {
         if (l->arp_held[i] == note) {
@@ -754,7 +687,7 @@ static void arp_note_on(live* l, uint8_t note, uint8_t velocity) {
         }
     }
     if (l->arp_n == LIVE_ARP_HELD) {
-        (void)arp_drop(l, l->arp_held[0]); /* the oldest goes */
+        (void)arp_drop(l, l->arp_held[0]);
     }
     li_arp_hold(l, note);
     if (l->arp_voice != LIVE_ARP_NO_VOICE) {
@@ -769,7 +702,6 @@ static void arp_note_on(live* l, uint8_t note, uint8_t velocity) {
     l->note_ons++;
 }
 
-/* The last note let go releases the voice (its release rings at the pitch it had). */
 static void arp_note_off(live* l, uint8_t note) {
     if (!arp_drop(l, note) || l->arp_voice == LIVE_ARP_NO_VOICE) {
         return;
@@ -795,7 +727,6 @@ void live_arp_realtime(live* l, uint8_t status) {
     }
 }
 
-/* A tick: a step when its ticks are up, unless a clock rate has a clock to step it. */
 static void arp_tick(live* l) {
     if (l->arp_clock_seen) {
         l->arp_clock_seen--;
@@ -814,9 +745,6 @@ uint8_t live_key_note(const live* l, uint8_t base_note) {
     return base_note <= 127 && n >= 0 && n <= 127 ? (uint8_t)n : LIVE_NO_NOTE;
 }
 
-/* now + delta * step, saturated to [0, max]. delta is clamped first so the int32
- * arithmetic cannot overflow (and needs no 64-bit helpers): every range is at most
- * 4095 steps wide, so 4096 detents always reach the far end. */
 static uint16_t step_clamped(uint16_t now, int32_t delta, int32_t step, uint16_t max) {
     if (delta > 4096) {
         delta = 4096;
@@ -859,7 +787,6 @@ uint32_t live_tone(const live* l) {
     return l->control & 0x40u ? LIVE_TONE_PULSE : LIVE_TONE_DECAY;
 }
 
-/* K3: the sync ratio, the pulse width or the decay, by the sound (live_tone). */
 __attribute__((noinline, unused)) LIVE_COLD static void tone_turn(live* l, int32_t delta) {
     delta = delta > 64 ? 64 : delta < -64 ? -64 : delta;
     switch (live_tone(l)) {
@@ -871,13 +798,11 @@ __attribute__((noinline, unused)) LIVE_COLD static void tone_turn(live* l, int32
         l->sync_semis = (int8_t)semis;
         l->sync_q8 = (uint16_t)((l->sync_base_q8 * live_ratio_q16[semis + LIVE_RATIO_SEMIS] +
                                  32768u) >> 16);
-        l->settings_dirty = 1; /* the sound's: the unsaved edit keeps it */
+        l->settings_dirty = 1;
         li_update_freq(l, 0);
         break;
     }
     case LIVE_TONE_PULSE: {
-        /* The grid's positions, one side of the square: a width off it, or above a half (MIDI),
-         * is mirrored and taken to the nearest position first. */
         int32_t pw = l->pulse_width > 2048u ? 4096 - (int32_t)l->pulse_width : (int32_t)l->pulse_width;
         int32_t pos = (pw - LIVE_PULSE_FIRST + LIVE_PULSE_STEP / 2) / LIVE_PULSE_STEP;
         pos = pw < LIVE_PULSE_FIRST ? 0 : pos;
@@ -895,14 +820,9 @@ __attribute__((noinline, unused)) LIVE_COLD static void tone_turn(live* l, int32
 void live_knob(live* l, live_knob_id knob, int32_t delta) {
     switch (knob) {
     case LIVE_KNOB_CUTOFF: {
-        /* 64 detents along live_cutoff_steps, even in pitch. The table rises strictly, so from
-         * an entry a turn lands on a different one (set_cutoff ignores the same, at an end). */
         const uint16_t* t = live_cutoff_steps[l->model];
         int32_t pos = l->cutoff_pos;
         if (t[pos] != l->cutoff) {
-            /* A cutoff the table does not hold (MIDI, a preset, the model): start just before
-             * the first entry beyond it in the turn's direction (the buckets of live_cutoff_up
-             * and _down). With none that way, those give 64 and 0: the cutoff stays. */
             uint32_t b = l->cutoff >> 5;
             pos = delta > 0 ? live_cutoff_up[l->model][b] - 1 : live_cutoff_down[l->model][b] + 1;
             if (pos == (delta > 0 ? 64 : 0)) {
@@ -933,8 +853,6 @@ static sid_model profile_model(uint32_t profile) {
     return (sid_model)sid_chip_profile_get(profile)->model;
 }
 
-/* Records a profile asked for: the model follows it, and a 6581 one is the one to go back
- * to. */
 void li_request_profile(live* l, uint32_t profile) {
     l->settings_dirty = 1;
     l->profile_req = (uint8_t)profile;
@@ -944,13 +862,10 @@ void li_request_profile(live* l, uint32_t profile) {
     }
 }
 
-/* The profile for a model: the 8580's, or the last 6581 one asked for. */
 uint32_t li_model_profile(const live* l, sid_model model) {
     return model == SID_MODEL_8580 ? sid_chip_default(SID_MODEL_8580) : l->profile_6581;
 }
 
-/* A reset of the chip with the profile and its model, then every register: every parameter
- * is kept. It also settles any pending request (profile_req, model_req). */
 static void set_profile(live* l, uint32_t profile) {
     li_request_profile(l, profile);
     l->profile = (uint8_t)profile;
@@ -963,8 +878,6 @@ void li_set_model(live* l, sid_model model) {
     set_profile(l, li_model_profile(l, model));
 }
 
-/* The character's controls that changed since they were last sent, then the tick, every
- * tick: the sink ramps the chip towards them a tick at a time (sid_character_ramp_tick). */
 static void update_character(live* l) {
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         if (l->character[f] != l->character_sent[f]) {
@@ -979,9 +892,6 @@ void live_set_master(live* l, uint16_t value) {
     if (value > LIVE_MASTER_MAX) {
         value = LIVE_MASTER_MAX;
     }
-    /* A digital gain on the final output (app/master_gain.h; the main loop hands l->master to
-     * the audio path): the chip's volume register stays at LIVE_CHIP_VOLUME, so a song's own
-     * writes to it (a fade, the 6581's volume digi trick) keep their meaning relative to MASTER. */
     l->master = value;
     l->volume = (uint8_t)((value * 100u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
 }
@@ -999,14 +909,13 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
         return;
     }
     if ((uint32_t)cc - LIVE_CC_ARP <= LIVE_CC_ARP_SPAN - LIVE_CC_ARP && cc != LIVE_CC_ARP_RATE) {
-        /* the arpeggio's: on from 64, the rest scaled over their values (the rate is the map's) */
         static const uint8_t VALUES[4] = {2, LIVE_ARP_RATES, 4, LIVE_ARP_SPAN_MAX};
         uint32_t f = (uint32_t)cc - LIVE_CC_ARP;
         live_arp_set(l, f, (uint32_t)value * VALUES[f] / 128u + (f == LIVE_ARP_SPAN));
         return;
     }
     if (cc == LIVE_CC_MOD_WHEEL && l->mod_target != LIVE_MOD_PULSE_WIDTH) {
-        l->mod_wheel = value; /* live_tick applies it */
+        l->mod_wheel = value;
         return;
     }
     const midi_map_entry* e = midi_map_for_cc(cc);
@@ -1040,7 +949,6 @@ void live_reset_controllers(live* l) {
     }
 }
 
-/* MIDI out compares every parameter several times a tick (midi_out.c look): at the app's speed. */
 void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]) {
     out[LIVE_PARAM_CUTOFF] = l->cutoff;
     out[LIVE_PARAM_RESONANCE] = l->resonance;
@@ -1085,8 +993,6 @@ void live_params_tail(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     out[LIVE_PARAM_PWM_LINK] = (uint16_t)(l->pwm_link + LIVE_LINK_MAX);
 }
 
-/* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8
- * (live_fx_defaults). */
 static const uint8_t SLOT_ALGORITHMS[LIVE_SLOTS] = {SID_DIST_COUNT, SID_MOD_COUNT,
                                                     SID_FXSLOT_COUNT};
 
@@ -1110,9 +1016,6 @@ void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value) {
 
 void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents) {
     if (slot < LIVE_SLOTS && field < LIVE_SLOT_FIELDS && field != LIVE_SLOT_ALGORITHM) {
-        /* live_walk_step on the control's shape, here and by halves: a knob's input on CHIP's
-         * slot line is bounded (emu-gate screen.rs CHIP_INPUT). Every shape starts at 0 and ends
-         * at LIVE_SLOT_MAX, so a value is never below or above it. */
         uint32_t algorithm = l->slot[slot][LIVE_SLOT_ALGORITHM] & 7u;
         const uint8_t* t =
             live_walk_fx[live_walk_shapes[slot][algorithm] >> 2u * (field - LIVE_SLOT_AMOUNT) & 3u];
@@ -1122,14 +1025,13 @@ void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents) {
             pos += t[pos + s] <= v ? s : 0;
         }
         if (t[pos] != v && detents < 0) {
-            pos++; /* off the walk: down from the first position above */
+            pos++;
         }
         pos += detents;
         live_slot_set(l, slot, field, t[pos < 0 ? 0 : pos > 31 ? 31 : pos]);
     }
 }
 
-/* A slot's field to value (already in range), sent when it changed. */
 static void slot_store(live* l, uint32_t slot, uint32_t field, uint8_t value) {
     uint8_t* s = l->slot[slot];
     if (s[field] != value) {
@@ -1152,14 +1054,13 @@ void live_slot_pick(live* l, uint32_t slot, uint32_t algorithm) {
     }
     slot_store(l, slot, LIVE_SLOT_ALGORITHM, (uint8_t)algorithm);
     if (!algorithm) {
-        return; /* OFF keeps the controls: the next algorithm starts from them */
+        return;
     }
-    /* silent, or still what the algorithm it had started with */
     const uint8_t* was = live_fx_defaults[slot][had & 7u];
     if ((s[LIVE_SLOT_AMOUNT] | s[LIVE_SLOT_MIX]) &&
         (s[LIVE_SLOT_AMOUNT] != was[0] || s[LIVE_SLOT_A] != was[1] ||
          s[LIVE_SLOT_B] != was[2] || s[LIVE_SLOT_MIX] != was[3])) {
-        return; /* edited: the player's values stay */
+        return;
     }
     const uint8_t* d = live_fx_defaults[slot][algorithm];
     for (uint32_t f = 0; f < 4u; f++) {
@@ -1204,9 +1105,6 @@ void live_rewrite(live* l) {
     li_write_all(l);
 }
 
-/* A profile asked for that the chip does not have: with a preparer, a slice of its chip a
- * tick and the reset once that chip is whole; without, the reset at once. A request that went
- * back to the chip's own profile drops the preparation. */
 static void apply_profile(live* l) {
     if (l->profile_req == l->profile) {
         if (l->preparing) {
@@ -1239,10 +1137,9 @@ void live_tick(live* l) {
     }
     apply_profile(l);
     update_character(l);
-    if (l->filter_lfo || live_pwm_depth_effective(l)) { /* one LFO: the PWM's and the filter's */
+    if (l->filter_lfo || live_pwm_depth_effective(l)) {
         l->lfo_phase = (uint16_t)(l->lfo_phase + l->pwm_rate);
     }
-    /* The vibrato: rate / 10 Hz, 65536 a cycle, so 655.36 * rate / 100 per tick. */
     uint32_t step = ((uint32_t)l->vibrato_rate * 65536u + 500u) / 1000u;
     for (int v = 0; v < LIVE_VOICES; ++v) {
         live_voice* x = &l->voice[v];

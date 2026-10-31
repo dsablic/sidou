@@ -4,8 +4,6 @@
 
 #include "master_gain.h"
 
-/* What keeps a chip from being quiet: a counter or a gate up, or a bleed. 0 for a quiet chip.
- * Out of line, so the one copy serves both chips. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -30,8 +28,6 @@ void tail_gate_run(tail_gate* t, const sid* a, const sid* b, int16_t* s) {
 void tail_gate_also(const tail_gate* t, int16_t* s) {
     uint32_t n = t->n;
     if (n > TAIL_HOLD_BLOCKS) {
-        /* The block after the hold ramps to 0, later ones stay there: the mono block as 64
-         * frames, whose gain is the same for both samples of a pair. */
         master_gain_apply(s, TAIL_BLOCK_LOG2 - 1u, n == TAIL_HOLD_BLOCKS + 1u ? MASTER_UNITY : 0u,
                           0u);
     }
