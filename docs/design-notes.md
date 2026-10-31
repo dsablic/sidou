@@ -2324,8 +2324,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (docs/hardware.md). pi32v2's clang puts a static never written in flash `.rodata`, so the section
   is named (`.data.gt2_play`), as sid_env.h does.
 - `muldiv` computes a × b / d and its remainder by shifts: the device has no 64-bit division helper.
-  It builds a `uint64_t` numerator and divides bit by bit; quotient and remainder both fit in 32
-  bits.
+  It builds a `uint64_t` numerator and divides bit by bit, returning the quotient and the
+  remainder as 32-bit values.
 
 ### What the player reads: packed data rewritten on the fly
 
@@ -2450,9 +2450,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - Once edits stop for `SONG_QUIET_POLLS` (50) polls, a fresh analysis of the song as it is narrows a
   widened shape again. It costs about 70k instructions at worst, more than a main-loop pass has to
   spare, so it runs in slices.
-- A derivation runs in slices for four reasons: an edit widened the shape, a hand-over needs the
-  true shape, a derivation is still to complete, or jam instruments, notes or a draft need a wider
-  shape.
+- A derivation runs in slices for an edit that widened the shape, a hand-over that needs the true
+  shape, or jam instruments, notes or a draft that need a wider shape; a finished one waits as
+  `SONG_DERIVE_DONE` until its shape can go.
 - The derivation's phases are instrument (the class, table programs and features), wavecmd (a
   wavetable row that starts another table), wtable, ptable, final (the final numbers, numberings and
   layout), streams (each channel's packed orderlist stream) and end.
@@ -2462,8 +2462,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `SONG_SLICE_INSTRUCTIONS` (39,000): 200, not 300, because the shape code is built for size and
   costs more a unit.
 - Walking a table program marks the rows it reaches from its pointer and returns the rows it took. A
-  pointer onto a jump makes the packer refuse the song, so the analysis refuses it too. The
-  speedtable walk stops at once; the others walk until a row already seen or past the table's end.
+  pointer onto a jump makes the packer refuse the song; the walk then marks nothing and returns 0.
+  The speedtable walk stops at once; the others walk until a row already seen or past the table's
+  end.
 - With one song packed, init ignores the subtune; with more, the packed subtune index is the song's
   index among the first songs' subtunes, or -1 if the subtune is not packed.
 - Two shapes are compatible when they have the same channels, subtune and songs and the same
@@ -2528,8 +2529,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   parameters and its chance. A row holds one lock a parameter; undo's restored locks are the cut
   row's, which the model then has none of.
 - A held STEP step plays n locks (`SONG_HELD_LOCKS`, 5 at most) over the player's after each call,
-  whatever its rows lock, until a call with n 0. The locks are pinned while held and copied word by
-  word, which avoids a `memcmp` call.
+  whatever its rows lock, until a call with n 0. The locks are pinned while held.
 - Per-step chance (`SONG_LOCK_CHANCE`) is rolled by the main loop for the steps a channel may read
   next, as it resolves the locks, and it tells the player the ones that lose; a pattern's end may
   lead to two rows. The seed is the app's (the time at PLAY), and the roll's count restarts at each
@@ -2660,13 +2660,15 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   rebuilt and another channel's character locks are not delayed.
 - Ordinary row shifts may move or discard lock records but never consume the restore capacity
   (`check_restore_serialization`). An order edit waits for the row-sequence refresh even when an
-  unrelated voice advances meanwhile and a preceding shape command acknowledges.
-- The pages' fake queue holds every edit until an explicit audio-boundary acknowledgement, which
-  catches any write to the live song that bypasses the queue.
+  unrelated voice advances meanwhile and a preceding shape command acknowledges
+  (`tests/app/song_order_locks.rs`).
+- The pages' fake queue (`tests/app/song_pages.rs`) holds every edit until an explicit
+  audio-boundary acknowledgement, which catches any write to the live song that bypasses the
+  queue.
 
 ### NEW's template
 
-- NEW's song is produced byte by byte (no buffer held): a plain GTS5 stream with subtune 1, three
+- NEW's song is produced byte by byte (no buffer held): a plain GTS5 stream with one subtune, three
   64-row patterns, a pulse lead and a bass (instruments 1-2), then the SID drum kit (3-10,
   `SONG_IO_KIT`, its table rows first), and the digi drums (11-14, `SONG_IO_DIGI`: kick, snare, clap
   and hat, each a copy of its chip drum). The DIGI chunk marks them.
@@ -2698,9 +2700,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   exactly them. `RHYTHM_HIT_PERCENT_AT_MEDIUM` is each place's chance of a hit for the rhythms past
   STRAIGHT (docs/reference/controls.md, "STEP").
 - In TRACKER with REC on and the song stopped, ARP alone writes a key off and LFO alone a rest, so
-  each waits for EDIT: landing a few ms before EDIT is the same MUTATE as EDIT first, with nothing
-  written. Alone they write when let go, when another control is used, and at once while REC
-  records.
+  each waits for EDIT: landing a few ms before EDIT is the same MUTATE (ARP) or undo (LFO) as EDIT
+  first, with nothing written. Alone they write when let go, when another control is used, and at
+  once while REC records.
 
 ### SONG pages (ORDER, INSTR, TABLE)
 
@@ -2752,8 +2754,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (`song_status.again`), to the next entry on the last pass.
 - REC timing on the device (emu-gate `tests/song.rs`): a play starts from a fast-forwarded
   hand-over, so the song's call count does not begin at its first row; the test counts calls from
-  the first row the player starts after PLAY. A key pressed in a row's first half lands on that row,
-  in its second half on the next (tempo 6: six calls a row).
+  the first row the player starts after PLAY. A key lands on the nearest row: a quarter or less
+  into a row on that row, three quarters or more on the next (tempo 6: six calls a row).
 
 ### STEP
 
@@ -2809,9 +2811,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `TRACKER_IDLE_PER_FRAME` 7,900, `TRACKER_CHANGE_PER_FRAME` 10,100, `TRACKER_PLAYING_PER_FRAME`
   26,600. `TRACKER_WORST_POLL`, 33,000, is 7 % over its busiest user, the song pages' encoder
   redraws (INSTR's PRESETS, 30,744).
-- With REC on, TRACKER's cursor, and so the bar, stays where it is, so the playing measurement turns
-  REC off first; otherwise it measures a still view. The song plays on under REC (its calls go on),
-  which keeps the REC golden still.
+- The playing measurement turns REC off first. The song plays on under REC (its calls go on).
 - The inputs (`ui_buttons` for SEQ, REC and PLAY; GLO's key goes through the note keys' pass,
   `ui_note_keys` being inlined into `input_poll`'s caller, so only its pass is measured) and the
   busiest pass after each: SEQ from LIVE 3.5k (the push: the wipe's set-up over LIVE's overlays) and
@@ -2900,9 +2900,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The drain dispatches with an `if` chain, not a `switch`: a jump table would be data in flash,
   which the interrupt's SRAM code must not read (`platform/fm1/app.ld`, emu-gate's
   `ram_audio.rs`).
-- `sid_write` masks the register to 5 bits: a reset pseudo-register (0x80) would land on 0x00,
-  voice 1's low frequency, so the drain never passes a pseudo-register to it; unknown ones (0x9f,
-  and chip B's 0xC2..0xC7) are dropped, and chip B's are never handed to the slots' handler.
+- `sid_write` masks the register to 5 bits: a reset pseudo-register (0x80) would land on 0x00, voice
+  1's low frequency, so the drain never passes a pseudo-register to it; unknown ones on chip A
+  (0x9f) go to the slots' handler if there is one and are ignored otherwise; chip B's (0xC2..0xC7)
+  are dropped, never handed to the slots' handler.
 
 ### Chip resets and the spare sid
 
@@ -2999,14 +3000,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   slot's next algorithm, the sync lead, MIDI expression and every key pressed and let go within
   the pass. Without the model toggle the pass skips the sink's wait for an empty ring. A worst
   pass is over 200 entries, so twice the ring's size in passes fills it, and nothing is dropped.
-- With a keys move in it, `REG_RING_WORST_PASS` covers a preset (every register), the FX button's
-  request, every key down and up, then the move to chip B (gate-offs and every register again),
-  with no wait for ring room.
-- A song's tick under KEYS A has both chips following a setup (chip A the song's, chip B the
-  keys'), each `chip_ctl_follow` at its worst (a CHPA with another profile and every control, on
-  the tick its preparation ends), plus chip A's character tick: `2 * worst + 1` entries, within
-  `REG_RING_SONG_PASS`. A keys move has its own share (`REG_RING_MOVE_PASS`). Song control puts
-  nothing in the ring: PLAY, the stop's gates and the mute are the interrupt's.
+- With a keys move in it (sidou-tests `keys_route.rs`), `REG_RING_WORST_PASS` covers a preset (every
+  register), the FX button's request, every key down and up, then the move to chip B (gate-offs and
+  every register again), with no wait for ring room.
+- A song's tick under KEYS A (sidou-tests `demo_song.rs`) has both chips following a setup (chip A
+  the song's, chip B the keys'), each `chip_ctl_follow` at its worst (a CHPA with another profile
+  and every control, on the tick its preparation ends), plus chip A's character tick: `2 * worst +
+  1` entries, within `REG_RING_SONG_PASS`. A keys move has its own share (`REG_RING_MOVE_PASS`).
+  Song control puts nothing in the ring: PLAY, the stop's gates and the mute are the interrupt's.
 - `every_ring_test_passes_alone` reruns the binary once a test (`--exact`, one thread): the
   default DAC tables (`sid_dac.c`) are process state, and what one test leaves there must never
   change what another measures.
@@ -3040,8 +3041,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   cents at f Hz moves 4 × d × f / 100 cents a tick, 24 cents at 6 Hz and full depth (±99 cents),
   6 cents at a typical ±25. Depth 64 is half a semitone each way.
 - With everything moving at once a tick writes three frequencies, three pulse widths and the
-  cutoff: 14 register writes at most, 15 with the character tick, the catch-up tick's share of
-  `REG_RING_LIVE_PASS`.
+  cutoff: 14 register writes at most; with the MASTER reading's volume before it, 15 is a catch-up
+  tick's share of `REG_RING_LIVE_PASS` (the character's tick is counted apart).
 
 ### Velocity
 
@@ -3375,7 +3376,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   peaks.
 - Peak meter (`scope_meter`): 6 dB per 8 steps (8 log₂(amplitude); 64 and below empty, 32768
   full, `SCOPE_METER_MAX` 72 steps).
-- `Chip` (sidou-tests `scope.rs`, `live_view.rs`) applies the recorder's register file before each
+- `Chip` (sidou-tests `live_view.rs`) applies the recorder's register file before each
   block, as the device's drain applies the ring. The tap (`scope_render`) runs only while LIVE
   shows, including under MIDI learn's frame over LIVE, and not under learn over the menu.
 - The tap's cost (emu-gate `ram_audio.rs`) is measured on the same build by turns: LIVE on top
@@ -3504,8 +3505,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   notes, sample for sample: fm1-emu is deterministic); a profile step in flight (CC 85 between
   two profiles faster than either's preparation, which takes at least 7 ticks, so the spare is
   prepared a slice every tick and never swaps in); and a file being saved (the store's programs in
-  16-byte write windows with interrupts masked). Every case also holds each main-loop pass to
-  `POLL_INSTRUCTIONS`, since a pass that long would hold a note back as much.
+  16-byte write windows with interrupts masked). The character-sweep and profile-step cases also
+  hold each main-loop pass to `POLL_INSTRUCTIONS`, since a pass that long would hold a note back
+  as much.
 - `SIDOU_LATENCY_TRIALS` sets every case's trial count (64 reproduces decision record 0005's run);
   the default counts keep CI short. Each case writes `latency_<case>_<envelope>.json` into the
   build directory.
@@ -3549,11 +3551,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 - FILTER's response is calculated from the filter's transfer function with the damping the chip has
   (the resonance's 1/Q, `sid_resonance_k`) and the cutoff the chip has (`cutoff_out` through its
-  curve, `sid_cutoff_hz`). The 6581's modes lose more even open (its high-pass about 11 dB), and
-  its cutoff stops at about 240 Hz.
+  curve, `sid_cutoff_hz`). In `lab_audible`'s filter estimate (`app/lab_edit.c`), not the drawing,
+  the 6581's modes lose more even open (its high-pass about 11 dB), and its cutoff stops at about
+  240 Hz.
 - FX's distortion transfer curves use the overdrive's gain law (`core/fx/fx_overdrive.h`) and the
-  clip's cubic; the modulation uses the LFO's rate from the A control (0.15 to 0.05 to 0.1 Hz
-  minimum, 26 to 172 column-octaves); the delay's tap distance is log-scaled (10 ms to line's end).
+  clip's cubic; the modulation uses the LFO's rate from the A control (a minimum of 0.15, 0.05 or
+  0.1 Hz by algorithm, which A raises by up to 78 or 172 steps of 1/26 octave); the delay's tap
+  distance is log-scaled (10 ms to line's end).
 
 ### Undo
 
@@ -3623,14 +3627,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Variation and rolling
 
-- EDIT + ARP varies: each card the page uses moves 1 to 3 detents either way (clamped) and, one
-  time in four (always when it uses no card: an effect slot that is off), the choice a step (not
+- EDIT + ARP varies: each card the page uses moves 1 to 3 detents either way (clamped) and, one time
+  in four (always when it uses no card: an effect slot that is off), the choice a step (not
   ENVELOPE's, the instrument's mode). EDIT + SCL rolls the voice (`live_dice_shape`: the waveform,
-  the envelope, the filter, the pulse, the vibrato's depth; the slots, the arpeggio, the PWM and
-  the tune left), the sound's base and name kept. A result is never silent (`lab_audible` on the
-  chip's model) and never the sound before it or the last result (`lab_view.rolled`): such a result
-  is tried again (`LAB_VIEW_VARY_TRIES` times for a variation, `LAB_VIEW_ROLL_TRIES` for a roll,
-  and then the smallest move that passes); when none passes the sound stays and the toast says
+  the envelope, the filter, the pulse, the vibrato's depth; the slots, the arpeggio, the PWM and the
+  tune left), the sound's base and name kept. A result is never silent (`lab_audible` on the chip's
+  model) and never the sound before it or the last result (`lab_view.rolled`): such a result is
+  tried again (`LAB_VIEW_VARY_TRIES` times and then the smallest move that passes for a variation,
+  `LAB_VIEW_ROLL_TRIES` rolls for a roll); when none passes the sound stays and the toast says
   `NOTHING AUDIBLE`.
 - Every result of EDIT + ARP and EDIT + SCL is heard: a C4 held from its note-on stays above
   `LAB_SILENT_DB` at the device's output, read through the host test's DC blocker with the
@@ -3661,7 +3665,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The vibrato is approximated: LIVE's 6.0 Hz is 8.3 frames a cycle; the nearest GT2 speed is 6
   frames that run, 7.2 on average with the tick-0 frames it rests on (6.9 Hz). The test reads the
   frequencies before the pattern's end, where the song starts over.
-- PWM rates step by 0.05 Hz: rate 10 is PWM BASS's 2 s cycle, a phase step of 328 a tick.
+- lab_sound.rs: PWM rates step by 0.05 Hz: rate 10 is PWM BASS's 2 s cycle, a phase step of 328 a
+  tick.
 
 ### Tests: lab_view.rs
 
@@ -3771,16 +3776,16 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   screen.rs, `WINDOW_BYTES` in sidou-tests' main.rs). `SPI_BUDGET_MS` is 20 ms: at most about half
   of a 40 ms frame goes to SPI (docs/art/README.md).
 - Every transition frame (wipes, banded cuts, the raster, a toast during a wipe) is held to the SPI
-  budget and to the wipe's rows plus its edge (`assert_within_transition_budget` in emu-gate). A
-  wipe frame sends its `SCREEN_WIPE_ROWS` new rows and its edge row at most, so the view under a
-  wipe must hold still; a wipe that has not started and ended in `WIPE_FRAMES_MAX` (40) frames
-  fails.
-- The test `drain` (emu-gate screen.rs) renders every run it hands out, as platform/fm1/ui.c does,
+  budget and to the wipe's rows plus its edge (`assert_within_transition_budget` in sidou-tests'
+  screen.rs). A wipe frame sends its `SCREEN_WIPE_ROWS` new rows and its edge row at most, so the
+  view under a wipe must hold still; a wipe that has not started and ended in `WIPE_FRAMES_MAX` (40)
+  frames fails (sidou-tests' main.rs).
+- The test `drain` (sidou-tests' main.rs) renders every run it hands out, as platform/fm1/ui.c does,
   because a painter region (RED MOON RITE's) takes each tile's hash as it is painted; a drain that
   only counted runs would leave those hashes stale. The run buffer is `u32`-backed so it is 4-byte
   aligned, as grid_render_run takes it.
 - The raster ramps the border, which carries the view's text, so its purple band is drawn light grey
-  there (`ramp_under_text` in emu-gate).
+  there (`ramp_under_text` in sidou-tests' screen.rs).
 - A frame's cost is counted per compose, not per 40 ms of time: from its compose (ui.c's
   `last_compose`, stamped as the compose starts; its cells go out in later `ui_poll` calls) to the
   next one's. A window of time can hold the tail of one frame and the whole of the next, which no
@@ -3803,13 +3808,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - Static grid cells in .pool section.
 - Version string checked: SIDOU_VERSION must fit `VERSION_CELLS` (9).
 - Grid run must fit LCD buffer: GRID_RUN_PIXELS <= LCD_BUFFER_PIXELS.
-- Stamp mechanism: 2-cell wide stamp at bottom row.
-- The test model (emu-gate grid.rs) decodes a grid_bitmap's runs itself rather than through
+- `platform/fm1/ui.c` draws LINK over the bottom-left corner's two cells while a Live Link session
+  runs (on the panel only).
+- The test model (sidou-tests' grid.rs) decodes a grid_bitmap's runs itself rather than through
   app/grid.c, and works large text out with divisions, so the composed frame is an independent
   reference (`Screen::composed_from_scratch`).
 - A region that grows or shrinks over the same bitmap cells sends only the cells it adds or leaves,
   so a picture revealed a few columns a frame (a title card's wipe) sends each cell once.
-- The overlay pool holds `GRID_OVERLAYS` slots, between 240 and 255: LIVE's three scopes of 10 x 8
+- The overlay pool holds `GRID_OVERLAYS` slots, between 240 and 255: LIVE's three scopes of 20 x 4
   cells take 240, and a slot index still fits the u8 each cell keeps.
 
 ### Font
@@ -3837,8 +3843,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   includes MENU_BUDGET_FORCED. Deferred forced rows are invalidated so the next call restores them.
 - The menu's selection is a reverse-video line, not a blinking cursor, so a waiting menu sends
   nothing; a blinking 2 x 2 cursor would cost 2 windows a blink (emu-gate allows at most 2 in 16
-  frames). A menu at scale 2 draws two lines a call within `MENU_BUDGET_CELLS` (190), the selected
-  one first; what something drew over is drawn again regardless of the quota.
+  frames). In sidou-tests' widget.rs, four 90-cell lines at scale 2 in a budget of
+  `MENU_BUDGET_CELLS` (190) draw two a call, the selected one first, the other two in the next; what
+  something drew over is drawn again regardless of the quota.
 
 ### Panel
 
@@ -3854,9 +3861,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `PANEL_CHARACTER_DETENT` steps (4): 32 detents end to end, as a slot's. GLO's layer: keys 0-2
   mute voices 1-3, keys 3-5 solo them.
 - The song buttons' ids (LFO 5, GLO 7, ARP 10, SEQ 11, PLAY 12, REC 13) are Felucca's and not yet
-  confirmed on a SIDOU unit (docs/hardware-test.md); `the_song_buttons_have_feluccas_ids` (emu-gate
-  panel.rs) pins them so a change is deliberate. `panel_quiet_keys` exists for the song views' jam:
-  a view takes keys, and a note they already sound is released.
+  confirmed on a SIDOU unit (docs/hardware-test.md); `the_song_buttons_have_feluccas_ids`
+  (sidou-tests' panel.rs) checks them. `panel_quiet_keys` exists for the song views' jam: a view
+  takes keys, and a note they already sound is released.
 - The views set the panel's page before and after each event; panel_knob_param reads that page, so
   MIDI learn binds exactly what the panel turns. During a song CHIP's A tab edits the song's setup
   (keys_route.song_want) and the panel page is PANEL_PAGE_NONE, so learn binds nothing and says SONG
@@ -3882,9 +3889,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Value popup and toasts
 
 - The popup box's rows: the name from row 1, the value from row 4, the bar on row 7; the bar is 24
-  cells of 8 pixels (`BAR_CELLS`, `bar_px_of` in emu-gate popup.rs). The tests use STATUS for knob
-  popups because LIVE and CHIP light their knob label instead (`status_ui` in emu-gate); MASTER's
-  popup opens over any view.
+  cells of 8 pixels (`BAR_CELLS`, `bar_px_of` in sidou-tests' popup.rs). The tests use STATUS for
+  knob popups because LIVE and CHIP light their knob label instead (`status_ui` in sidou-tests'
+  popup.rs); MASTER's popup opens over any view.
 - A popup is whole after 3 rows a frame, following any raster or wipe that runs. It stays while the
   control keeps changing and closes `SCREEN_POPUP_MS` (25 frames) after the last change, again 3
   rows a frame, bottom first.
@@ -3895,14 +3902,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   characters at 2 x 2 cells on rows 27 and 28 in reverse video; longer text breaks at the last space
   that fits onto rows 25 to 28; text that cannot break into two lines of 13 is ordinary text on one
   row.
-- `a_turn_after_boot_opens_the_master_popup_mid_travel` (emu-gate popup.rs) plays the boot and a
+- `a_turn_after_boot_opens_the_master_popup_mid_travel` (sidou-tests' popup.rs) plays the boot and a
   turn a tick at a time (four ticks a 40 ms frame): the pot read at power-on, resting with noise,
   then a slow turn whose landed changes come every frame. The screen opens the popup only in a frame
-  without an ask (`popup_step`), and on the FM-1 it stayed shut until the turn's end; the test
-  requires it open within 15 frames of the turn starting.
-- The MASTER pot test models ADC noise with an LCG (`noisy_pot_reading` in emu-gate popup.rs) and
-  turns at a count a tick and at 40 a tick, so slow and fast turns ask for the popup and the gain
-  lands within `PANEL_MASTER_HYSTERESIS` (exactly at the ends).
+  without an ask (`popup_step`), and on the FM-1 it stayed shut until the pot reached an end, where
+  the reading stops changing; the test requires it open within 15 frames of the turn starting.
+- The MASTER pot test models ADC noise with an LCG (`noisy_pot_reading` in sidou-tests' panel.rs)
+  and turns at a count a tick and at 40 a tick, so slow and fast turns ask for the popup and the
+  gain lands within `PANEL_MASTER_HYSTERESIS` (exactly at the ends).
 
 ### The value popup's budgets
 
@@ -3950,7 +3957,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   holds a whole frame, and what follows starts at the same phase every run. `settle` waits 700 ms
   first, long enough for a wipe (8 frames) or a raster (14 frames) to end.
 - HOME acts on its release, at the next frame (app/views.c `views_flow`). The wipe and budget tests
-  hold it two frame periods (`tap_home` in emu-gate common), so the frames that follow are the
+  hold it two frame periods (`tap_home` in emu-gate screen.rs), so the frames that follow are the
   navigation's and the time to the middle of a frame stays where the goldens were made.
 - The LIVE reference shot waits for the boot's last rows: the boot can end with rows still to go out
   (a frame sends at most `LIVE_VIEW_FRAME_CELLS`, 200).
@@ -3974,8 +3981,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   compose, and the polls between frames (about 390, one per wake-up) return at once with nothing to
   send. Measured 6.6k instructions a frame on the status screen (37k when every frame composed);
   bounded at 7,500. One note on the status screen is one run of two or three cells, under 1 ms of
-  SPI, and costs one compose (about 26k) and the run over idle: under 30,000. The menu blinks its
-  cursor, one cell every 8 frames.
+  SPI, and costs one compose (about 26k) and the run over idle: under 30,000. The idle menu sends at
+  most 2 windows in 16 frames: its selection is a reverse-video line that does not blink.
 - A wipe sends each row that changes once and its edge row once more (at most the screen and 8
   rows), and renders a full screen (about 580 instructions a cell) and the edge rows: under 800k
   over idle. A raster step sends the 116 border cells every other frame. Every transition's
@@ -3983,14 +3990,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### View tests
 
-- `Ui::without_cards` (emu-gate views.rs) turns the title cards off for the routing and transition
-  tests, which the cards would sit over. `Ui::press` runs the frame's flow step after a HOME tap,
-  because HOME acts on its release. `Ui::frame` runs views_idle until it reports no work, as
-  platform/fm1/ui.c does (RED MOON RITE's scan).
+- `Ui::without_cards` (sidou-tests' views.rs) turns the title cards off for the routing and
+  transition tests, which the cards would sit over. `Ui::press` runs the frame's flow step after a
+  HOME tap, because HOME acts on its release. `Ui::frame` runs views_idle until it reports no work,
+  as platform/fm1/ui.c does (RED MOON RITE's scan).
 
 ### The ergonomics harness
 
-- The harness (`host/crates/ergo`, docs/TESTING.md "The ergonomics harness") drives the firmware in
+- The harness (`host/crates/ergo`, TESTING.md "The ergonomics harness") drives the firmware in
   fm1-emu and never touches a USB or MIDI device. It includes emu-gate's `common` by path rather
   than copying it, so both drive the same machine; its runs are independent, each in its own
   `Machine`, and spread over every core with the results kept in the items' order.
