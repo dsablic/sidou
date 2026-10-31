@@ -10,7 +10,7 @@
 # Steps: the fm1 firmware (tools/fm1-docker), its package (sidou-pack), fm1-emu's fm1-web crate
 # to wasm at the revision host/crates/emu-gate pins (fetched into build/fm1-emu), then the site:
 # upstream's web files at that revision, web/ on top, and SIDOU's own song code as wasm for the
-# Library page (tools/wasm-core) (docs: BUILDING.md "Browser demo").
+# Library page and the editor (tools/wasm-core) (docs: BUILDING.md "Browser demo").
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="$root/build/web"
@@ -80,8 +80,13 @@ sed "s/@VERSION@/$version/" "$root/web/firmwares.json" >"$out/firmwares.json"
 cp "$root/build/fm1/sidou.fwsc" "$out/sidou.fwsc"
 cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web/songs.js" "$root/web/sysex.js" "$root/web/midi.html" "$root/web/midi.js" "$root/web/songmidi.js" "$out/"
 cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$out/"
+cp "$root/web/editor.html" "$root/web/editor.js" "$root/web/song-edit.js" "$root/web/preview.js" "$root/web/preview-worklet.js" "$out/"
 say "the Library page's wasm core (tools/wasm-core)"
 "$root/tools/wasm-core" "$out/sidou-core.wasm"
+# the Live Link page and its viewer's wasm (tools/wasm-link)
+say "the Live Link page's viewer (tools/wasm-link)"
+cp "$root/web/link.html" "$root/web/link.js" "$out/"
+"$root/tools/wasm-link" "$out/sidou-link.wasm"
 mkdir -p "$out/songs"
 cp "$root"/assets/songs/*.sng "$out/songs/"
 cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"

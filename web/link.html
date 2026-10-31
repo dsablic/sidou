@@ -1,0 +1,358 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's Live Link page: the FM-1's screen in the browser and its panel's buttons and encoders,
+     over Web MIDI (FM-1 Live Link, docs/reference/live-link.md). link.js is the protocol and the
+     session, sidou-link.wasm (tools/wasm-link) draws the screen with SIDOU's own grid and font;
+     web/link.test.mjs tests them in Node, web/check.mjs the page with a simulated FM-1. Same palette
+     as library.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU Live Link</title>
+<meta name="description" content="The FM-1's screen in the browser, live, and its buttons and encoders from the page: FM-1 Live Link over the USB cable, nothing installed.">
+<link rel="icon" href="data:,">
+<style>
+  :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
+          --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --ok: #9ad284; --bad: #d98c80; --yellow: #b8c76f; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+  p { margin: 0 0 10px; color: #c4c0de; max-width: 72ch; }
+  b { color: var(--ink); }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, select:focus-visible, .enc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  section { border-top: 1px solid var(--rule); padding-top: 14px; min-width: 0; }
+  nav { color: var(--dim); }
+  .note { border: 1px solid var(--yellow); border-radius: 10px; background: var(--card); padding: 9px 12px; margin-bottom: 10px; }
+  .note[hidden] { display: none; }
+  .note p { margin: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+  .row label { display: flex; gap: 8px; align-items: center; color: var(--dim); min-width: 0; }
+  select { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; min-width: 0; }
+  button { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
+  button[disabled] { opacity: .5; cursor: default; }
+  [data-state="ok"] { color: var(--ok); }
+  [data-state="error"] { color: var(--bad); }
+  #device, #status { margin: 0; font-variant-numeric: tabular-nums; }
+
+  /* The FM-1, roughly: SELECT and ALGORITHM and the octave buttons left of the screen, K1-K4 and
+     PRESETS right of it, the other buttons under it; stacked on a phone. */
+  .fm1 { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid;
+         grid-template-columns: auto auto auto; grid-template-areas: "left screen right" "buttons buttons buttons" "keys keys keys";
+         justify-content: center; align-items: center; gap: 12px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .screen { grid-area: screen; display: grid; justify-items: center; gap: 6px; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; border-radius: 4px; width: 240px; height: 240px; }
+  .side { display: grid; gap: 10px; justify-items: center; align-content: center; }
+  .left { grid-area: left; }
+  .right { grid-area: right; grid-template-columns: auto auto; }
+  .right .big { grid-column: 1 / span 2; }
+  .buttons { grid-area: buttons; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+  .octave { display: flex; gap: 6px; }
+  .btn { min-width: 0; padding: 8px 2px; font-size: 12.5px; font-weight: 600; letter-spacing: .03em; }
+  .btn.held, .key.held { background: var(--accent); border-color: var(--accent); color: #0f0c22; }
+  .enc { display: grid; justify-items: center; gap: 3px; touch-action: none; }
+  .knob { width: 52px; height: 52px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #3a3170, var(--well)); border: 2px solid var(--line);
+          position: relative; cursor: ns-resize; touch-action: none; }
+  .big .knob { width: 72px; height: 72px; }
+  .knob::after { content: ""; position: absolute; left: 50%; top: 4px; width: 3px; height: 30%; margin-left: -1.5px; background: var(--ink); border-radius: 2px; transform-origin: 50% calc(var(--r) * 1px); transform: rotate(var(--a, 0deg)); }
+  .knob { --r: 22; }
+  .big .knob { --r: 32; }
+  .enc .name { font-size: 11.5px; font-weight: 600; color: var(--dim); letter-spacing: .04em; }
+  .enc .taps { display: flex; gap: 4px; }
+  .enc .taps button { padding: 1px 9px; font-size: 13px; line-height: 1.3; }
+  .keys { grid-area: keys; display: flex; justify-content: center; gap: 3px; }
+  .key { flex: 1 1 0; min-width: 0; max-width: 34px; height: 44px; padding: 0; font-size: 10px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
+  .key.black { background: #070514; height: 34px; }
+  .fm1[data-on="false"] .btn, .fm1[data-on="false"] .enc, .fm1[data-on="false"] .key { opacity: .5; pointer-events: none; }
+  footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  @media (max-width: 720px) {
+    .brand img { width: 160px; }
+    .fm1 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "screen screen" "left right" "buttons buttons" "keys keys"; }
+    .left { grid-template-columns: auto auto; }
+    .buttons { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
+      <h1>Live Link</h1>
+    </div>
+    <nav><a href="./">Play it in the browser</a> · <a href="library.html">Library</a> · <a href="editor.html">Editor</a> · <a href="songs.html">Showcase songs</a> · <a href="midi.html">Songs to MIDI</a> · <a href="videos.html">Videos</a></nav>
+  </header>
+
+  <p>Your FM-1's screen in the browser, live, and its buttons and encoders under your mouse or finger:
+    for a bigger view of the screen, to show it on a projector or a stream, or to play the FM-1 from
+    across the room. It goes over the USB cable as MIDI (FM-1 Live Link): nothing to install. The
+    picture is drawn by SIDOU's own screen code, so it is the FM-1's LCD pixel for pixel.</p>
+
+  <div id="support" class="note" hidden>
+    <p><b>This browser cannot reach the FM-1.</b> That needs Web MIDI with SysEx, which Chrome and Edge
+      have. Safari has no Web MIDI, and Firefox is not supported by this page. Use Chrome or Edge on a
+      computer (Chrome on Android also works with a USB cable).</p>
+  </div>
+
+  <section>
+    <h2>1. Connect</h2>
+    <p>Plug in the FM-1 (running SIDOU 1.5 or later) and press Connect. The browser asks to use your MIDI
+      devices with SysEx: allow it. This page sends nothing until you press Start, and then only to the
+      output selected below.</p>
+    <div class="row">
+      <button type="button" id="connect" class="primary">Connect</button>
+      <label>Output <select id="out" aria-label="MIDI output" disabled></select></label>
+      <label>Input <select id="in" aria-label="MIDI input" disabled></select></label>
+    </div>
+    <p id="device" role="status" aria-live="polite">Not connected.</p>
+  </section>
+
+  <section>
+    <h2>2. The FM-1</h2>
+    <div class="row">
+      <button type="button" id="start" class="primary" disabled>Start</button>
+      <button type="button" id="stop" disabled>Stop</button>
+      <button type="button" id="keyframe" disabled title="Ask the FM-1 for its whole screen again">Redraw</button>
+    </div>
+    <p id="status" role="status" aria-live="polite">No session.</p>
+    <div class="fm1" id="fm1" data-on="false">
+      <div class="screen"><canvas id="screen" width="240" height="240" aria-label="The FM-1's screen"></canvas></div>
+      <div class="side left" id="left"></div>
+      <div class="side right" id="right"></div>
+      <div class="buttons" id="buttons"></div>
+      <div class="keys" id="keys" aria-label="Note keys: MIDI notes on channel 1"></div>
+    </div>
+    <p style="margin-top:10px">Press and hold the buttons as on the FM-1. An encoder turns by dragging it up
+      or down, with the mouse wheel over it, with its <b>−</b> and <b>+</b>, or with the arrow keys once
+      it is selected. The keys under the panel play notes over MIDI. While the page is open the FM-1
+      shows <code>LINK</code> in its bottom-left corner; the session stops when you close the tab or
+      switch away from it, and starts again when you come back.</p>
+  </section>
+
+  <footer>
+    SIDOU · <a href="https://github.com/dsablic/sidou">github.com/dsablic/sidou</a> · how to use this page:
+    <a href="https://github.com/dsablic/sidou/blob/main/docs/manual/live-link.md">docs/manual/live-link.md</a> · the protocol:
+    <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/live-link.md">docs/reference/live-link.md</a>
+  </footer>
+</main>
+<script type="module">
+import { BUTTONS, ENCODERS, LinkClient, WIDTH, HEIGHT, loadViewer } from "./link.js";
+
+const DEVICE_PORT = "SIDOU FM-1";
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const say = (node, text, kind = "") => { node.textContent = text; node.dataset.state = kind; };
+
+const state = { access: null, client: null, viewer: null, output: null, input: null, notes: new Set() };
+window.__link = state; // the smoke test (web/check.mjs) reads it
+
+// ---- the screen: 240 x 240, scaled by a whole number of device pixels to fit
+const canvas = $("screen");
+const ctx = canvas.getContext("2d");
+let frame = 0;
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const narrow = window.innerWidth <= 720;
+  // the panel's width less its padding, and on a wide screen the controls either side
+  const room = Math.min($("fm1").clientWidth - (narrow ? 26 : 300), 720);
+  const k = Math.max(1, Math.floor((Math.max(room, 240) * dpr) / WIDTH));
+  canvas.style.width = canvas.style.height = `${(WIDTH * k) / dpr}px`;
+}
+function draw() {
+  frame = 0;
+  if (!state.viewer) return;
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(state.viewer.render()), WIDTH, HEIGHT), 0, 0);
+}
+const picture = () => { if (!frame) frame = requestAnimationFrame(draw); };
+
+// ---- the panel
+const client = () => state.client;
+function button(id) {
+  const b = el("button", { type: "button", className: "btn", textContent: BUTTONS[id], title: `${BUTTONS[id]} (button ${id})` });
+  const down = (e) => { e.preventDefault(); b.classList.add("held"); client()?.press(id); };
+  const up = () => { b.classList.remove("held"); client()?.release(id); };
+  b.addEventListener("pointerdown", (e) => { b.setPointerCapture?.(e.pointerId); down(e); });
+  b.addEventListener("pointerup", up);
+  b.addEventListener("pointercancel", up);
+  b.addEventListener("lostpointercapture", up);
+  b.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) down(e); });
+  b.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") up(); });
+  b.addEventListener("contextmenu", (e) => e.preventDefault());
+  return b;
+}
+function encoder(id, big = false) {
+  let angle = 0;
+  const knob = el("div", { className: "knob" });
+  const turn = (n) => { if (!n) return; angle += n * 15; knob.style.setProperty("--a", `${angle}deg`); client()?.turn(id, n); };
+  const enc = el("div", { className: `enc${big ? " big" : ""}`, tabIndex: 0, role: "slider", ariaLabel: `${ENCODERS[id]} (encoder ${id})`, title: `${ENCODERS[id]} (encoder ${id}): drag up or down, the wheel, or − and +` },
+    knob, el("span", { className: "name", textContent: ENCODERS[id] }),
+    el("span", { className: "taps" },
+      el("button", { type: "button", textContent: "−", ariaLabel: `${ENCODERS[id]} one step back`, onclick: () => turn(-1) }),
+      el("button", { type: "button", textContent: "+", ariaLabel: `${ENCODERS[id]} one step on`, onclick: () => turn(1) })));
+  // drag: a detent every 10 px, up clockwise
+  let drag = null;
+  knob.addEventListener("pointerdown", (e) => { e.preventDefault(); knob.setPointerCapture?.(e.pointerId); drag = { y: e.clientY }; });
+  knob.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const n = Math.trunc((drag.y - e.clientY) / 10);
+    if (n) { drag.y -= n * 10; turn(n); }
+  });
+  for (const t of ["pointerup", "pointercancel"]) knob.addEventListener(t, () => { drag = null; });
+  // the wheel: a detent a notch (a trackpad's small deltas add up)
+  let wheel = 0;
+  enc.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    wheel += e.deltaMode ? e.deltaY * 40 : e.deltaY;
+    const n = Math.trunc(wheel / 40);
+    if (n) { wheel -= n * 40; turn(-n); }
+  }, { passive: false });
+  enc.addEventListener("keydown", (e) => {
+    const n = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 5, PageDown: -5 }[e.key];
+    if (n) { e.preventDefault(); turn(n); }
+  });
+  return enc;
+}
+$("left").append(encoder(0), encoder(1), el("div", { className: "octave" }, button(0), button(1)));
+$("right").append(encoder(2), encoder(3), encoder(4), encoder(5), encoder(6, true));
+$("buttons").append(...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(button));
+
+// note keys: an octave from C4, MIDI notes on channel 1 to the FM-1's output (not part of PANEL)
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C"];
+const note = (n, on) => {
+  if (!state.output || !client()?.on) return;
+  if (on === state.notes.has(n)) return;
+  if (on) state.notes.add(n); else state.notes.delete(n);
+  state.output.send(on ? [0x90, n, 100] : [0x80, n, 0]);
+};
+const allNotesOff = () => { for (const n of [...state.notes]) note(n, false); };
+$("keys").append(...NOTE_NAMES.map((name, i) => {
+  const n = 60 + i;
+  const k = el("button", { type: "button", className: `key${name.includes("#") ? " black" : ""}`, textContent: name.includes("#") ? "" : name, ariaLabel: `${name}${i === 12 ? 5 : 4}` });
+  const up = () => { k.classList.remove("held"); note(n, false); };
+  k.addEventListener("pointerdown", (e) => { e.preventDefault(); k.setPointerCapture?.(e.pointerId); k.classList.add("held"); note(n, true); });
+  k.addEventListener("pointerup", up);
+  k.addEventListener("pointercancel", up);
+  k.addEventListener("lostpointercapture", up);
+  return k;
+}));
+
+// ---- the session
+const STATE_TEXT = {
+  off: "No session.",
+  starting: "Starting…",
+  stopped: "Stopped.",
+  ended: "The FM-1 ended the session: it heard no heartbeat for 3 s (was the tab in the background, the computer asleep or the cable out?). Press Restart.",
+  silent: "No answer from the FM-1: is it plugged in and running SIDOU 1.5 or later?",
+};
+let last = { t: performance.now(), frames: 0, bytes: 0 }, rate = "";
+function showState() {
+  const c = client();
+  const s = c?.state ?? "off";
+  const on = s === "on" || s === "silent";
+  $("fm1").dataset.on = String(s === "on");
+  $("start").disabled = !state.output || !state.input;
+  $("start").textContent = s === "ended" || s === "stopped" ? "Restart" : "Start";
+  $("stop").disabled = !(on || s === "starting");
+  $("keyframe").disabled = s !== "on";
+  if (s === "on") say($("status"), `Live: ${c.hello.name || "an FM-1"}${rate}`, "ok");
+  else if (s === "stopped" && c.why && c.why !== "hidden") say($("status"), `Stopped: ${c.why}.`, "error");
+  else say($("status"), STATE_TEXT[s] ?? s, s === "ended" || s === "silent" ? "error" : "");
+  if (s !== "on") { for (const b of document.querySelectorAll(".held")) b.classList.remove("held"); allNotesOff(); }
+}
+setInterval(() => {
+  const c = client();
+  if (!c?.on) { rate = ""; return; }
+  const now = performance.now(), dt = (now - last.t) / 1000;
+  rate = ` · ${Math.round((c.stats.frames - last.frames) / dt)} frames/s · ${Math.round((c.stats.bytes - last.bytes) / dt)} bytes/s`;
+  last = { t: now, frames: c.stats.frames, bytes: c.stats.bytes };
+  showState();
+}, 1000);
+
+const cache = {
+  getItem: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  setItem: (k, v) => { try { localStorage.setItem(k, v); } catch { /* not kept */ } },
+};
+
+async function start() {
+  if (!state.output || !state.input) return;
+  if (!state.viewer) state.viewer = await loadViewer("sidou-link.wasm");
+  if (!state.client) {
+    state.client = new LinkClient({ send: (b) => state.output.send(b), viewer: state.viewer, cache, onChange: showState, onPicture: picture });
+    state.client.watchPage(window);
+  }
+  for (const p of state.access.inputs.values()) if (p !== state.input) p.onmidimessage = null;
+  state.input.onmidimessage = (e) => state.client.receive(e.data);
+  last = { t: performance.now(), frames: state.client.stats.frames, bytes: state.client.stats.bytes };
+  state.client.start();
+}
+
+function stop() { allNotesOff(); state.client?.stop(); }
+
+function fillPorts() {
+  for (const [id, ports] of [["out", state.access.outputs], ["in", state.access.inputs]]) {
+    const select = $(id);
+    const previous = select.value;
+    const list = [...ports.values()];
+    select.replaceChildren(el("option", { value: "", textContent: "choose…" }), ...list.map((p) => el("option", { value: p.id, textContent: p.name })));
+    const keep = list.find((p) => p.id === previous) ?? list.find((p) => p.name === DEVICE_PORT);
+    select.value = keep ? keep.id : "";
+    select.disabled = false;
+  }
+  pick();
+}
+
+// The selected pair; a change stops a running session first.
+function pick() {
+  const output = state.access.outputs.get($("out").value) ?? null;
+  const input = state.access.inputs.get($("in").value) ?? null;
+  if (state.client && (output !== state.output || input !== state.input)) stop();
+  state.output = output;
+  state.input = input;
+  if (output && input) say($("device"), `Ports: ${output.name} → ${input.name}. Press Start.`, "ok");
+  else say($("device"), `No port named "${DEVICE_PORT}" found. Is the FM-1 plugged in and running SIDOU? Pick its output and input; nothing is sent before Start.`, "error");
+  showState();
+}
+
+async function connect() {
+  if (!navigator.requestMIDIAccess) return;
+  $("connect").disabled = true;
+  try {
+    state.access = await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    say($("device"), `The browser refused MIDI access with SysEx (${e.message || e.name}). Allow it for this site and press Connect again.`, "error");
+    $("connect").disabled = false;
+    return;
+  }
+  state.access.onstatechange = () => fillPorts();
+  fillPorts();
+  $("connect").disabled = false;
+}
+
+if (!navigator.requestMIDIAccess) {
+  $("support").hidden = false;
+  $("connect").disabled = true;
+  say($("device"), "This browser has no Web MIDI: Live Link needs Chrome or Edge.", "error");
+} else {
+  $("connect").addEventListener("click", connect);
+  $("out").addEventListener("change", pick);
+  $("in").addEventListener("change", pick);
+  $("start").addEventListener("click", start);
+  $("stop").addEventListener("click", stop);
+  $("keyframe").addEventListener("click", () => state.client?.keyframe());
+}
+window.addEventListener("resize", fit);
+fit();
+showState();
+loadViewer("sidou-link.wasm").then((v) => { state.viewer ??= v; draw(); }).catch((e) => say($("status"), `The screen's code did not load: ${e.message}.`, "error"));
+</script>
+</body>
+</html>

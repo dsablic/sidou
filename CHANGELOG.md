@@ -9,9 +9,32 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The site's song editor** ([editor.html](https://dsablic.github.io/sidou/editor.html)): a song
+  from a file, the FM-1's current song or one saved on it (or the Library's new **Edit**), its
+  instruments (the 25 bytes as INSTR shows them, the name), its four tables (as TABLE shows them,
+  each row's meaning in words), a pattern grid (notes typed or played from the computer keyboard,
+  INS and DEL that keep the length, rows inserted and deleted, the length, new and removed
+  patterns; parameter locks shown and moved with their rows) and the orderlists (entries edited,
+  inserted and deleted, the restart position), with undo and redo. Every edit is one of the FM-1's
+  own primitives in SIDOU's wasm core, so what it refuses the FM-1 refuses (`SONG FULL` past the
+  song's memory or the 64 KiB save, `INVALID EDIT`), and the song it saves is the one the FM-1
+  would. The preview plays an instrument from on-screen or computer keys, a pattern on one voice,
+  or the song from an orderlist position with SIDOU's own player in an AudioWorklet, resampled from
+  44,118 Hz, with the song's chip setup (profile, character, experts, envelopes) and its effect
+  slots; nothing sounds before a press. Save to a named file on the FM-1 (an existing one replaced
+  only after you confirm) or **Load now** (PUT target 2; the page explains the FM-1's
+  SAVE AS FIRST). A GoatTracker Stereo song's voices 4-6 are shown and kept, not edited. The wasm
+  core grows by the effect slots and the chip's character and is now built `-Oz`: 160,375 bytes,
+  within its 160 KiB budget. ([the manual](docs/manual/editor.md))
+- **The site's Live Link page** ([link.html](https://dsablic.github.io/sidou/link.html)): the
+  FM-1's screen in the browser, live and pixel for pixel (SIDOU's own `grid.c` and `font.c` in a
+  10 KB wasm, `tools/wasm-link`), with the panel's buttons and encoders (hold, drag, wheel, −/+,
+  arrow keys) and an octave of note keys; Connect, Start, Stop and Redraw, frames and bytes a
+  second; STOP when the tab is closed or hidden, starting again when it comes back; the font and
+  palette fetched only when the FM-1's differ, then kept. ([the manual](docs/manual/live-link.md))
 - **FM-1 Live Link, the device's side: a computer mirrors the screen and presses the buttons over
   the USB cable** ([live-link.md](docs/reference/live-link.md), an open protocol for any FM-1
-  firmware; the browser viewer comes later). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,
+  firmware; the site's Live Link page is its viewer). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,
   "FM1L"), started only by the host: START (the FM-1 answers its capabilities: the grid, the
   palette, the font's CRC), a heartbeat every 2 s, STOP, and an end by itself 3 s after the last
   heartbeat. While a session runs the FM-1 shows `LINK` in the bottom-left corner. The mirror

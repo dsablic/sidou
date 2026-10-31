@@ -10,7 +10,8 @@ const hex = (b) => Buffer.from(b).toString("hex");
 // A device that follows sysex.md: it checks every frame it gets as the real one would and answers
 // into the client. `fail` names a NAK to send for a given command: { DATA: [index, reason, pool] }.
 export class Device {
-  constructor({ files = [], free = 40000, nak = null, mute = null, quiet = null, current = null, refuse = null, chunk = 256, flip = null } = {}) {
+  constructor({ files = [], free = 40000, nak = null, mute = null, quiet = null, current = null, refuse = null, chunk = 256, flip = null, saveAsFirst = false } = {}) {
+    this.saveAsFirst = saveAsFirst; // PUT target 2 refused with BUSY (the screen's SAVE AS FIRST)
     this.flip = flip; // flip a bit of the first DATA packet's byte at this index
     this.current = current; // the current song's bytes, for GET target 2
     this.refuse = refuse; // a NAK reason for every GET
@@ -69,7 +70,15 @@ export class Device {
     if (f.command === PUT) {
       const d = f.data;
       assert.equal(d.length, 2 + 16 + 1 + 4 + 4);
-      assert.deepEqual([d[0], d[1]], [0, 0], "target 0, instrument 0");
+      assert.ok([0, 2].includes(d[0]) && d[1] === 0, "target 0 or 2, instrument 0");
+      if (d[0] === 2) {
+        // the current song: no name, a song; refused (BUSY, SAVE AS FIRST) before anything is taken
+        assert.ok(d.slice(2, 18).every((b) => b === 0), "target 2 has no name");
+        assert.equal(d[18], 1, "target 2 is a song");
+        if (this.saveAsFirst) return this.reply(NAK, f.sequence, Uint8Array.from([4, 0]));
+        this.upload = { target: 2, type: 1, length: le(d, 19), crc: le(d, 23), data: [], expect: (f.sequence + 1) & 0x7f };
+        return this.reply(ACK, f.sequence);
+      }
       const name = Buffer.from(d.slice(2, 18)).toString("latin1").replace(/\0+$/, "");
       assert.ok(validName(name));
       assert.ok(d.slice(2 + name.length, 18).every((b) => b === 0), "NUL padding");
@@ -110,6 +119,13 @@ export class Device {
     assert.equal(f.command, END);
     assert.equal(u.data.length, u.length, "exact length");
     assert.equal(crc32(Uint8Array.from(u.data)), u.crc, "CRC");
+    if (u.target === 2) {
+      // loaded at once: the FM-1's current song from now on (GET target 2 reads it back)
+      this.current = Uint8Array.from(u.data);
+      this.loads = [...(this.loads ?? []), this.current];
+      this.upload = null;
+      return this.reply(ACK, f.sequence);
+    }
     this.free += this.files.find((x) => x.name === u.name)?.length ?? 0;
     this.free -= u.length;
     this.files = this.files.filter((x) => x.name !== u.name).concat({ name: u.name, type: u.type, length: u.length, crc: u.crc });
@@ -169,3 +185,72 @@ export const connect = (opts, copts = { timeout: 300, ackTimeout: 300, busy: [] 
   client.send = device.attach(client);
   return { device, client };
 };
+
+// ---------------------------------------------------------------------------------------------
+// Live Link (docs/reference/live-link.md), for web/link.test.mjs: an FM-1's device side that
+// answers with the frames SIDOU's app/link.c sent in host/crates/sidou-tests/tests/web_link.rs
+// (web/link-fixtures.json). START: HELLO and the keyframe; PALETTE: COLOURS; FONT: GLYPHS;
+// KEYFRAME: the cells; HEARTBEAT: BEAT; STOP: STOPPED; any of them but START with no session:
+// STOPPED; the session ends by itself (STOPPED) 3 s after the last START or HEARTBEAT. PANEL
+// frames are recorded as { held, pressed, steps, at }. Every frame it gets must have the magic
+// and a good checksum. `deaf`: heartbeats are lost on the way; `mute`: it answers nothing.
+import { FONT as LL_FONT, HEARTBEAT as LL_HEARTBEAT, KEYFRAME as LL_KEYFRAME, PALETTE as LL_PALETTE,
+  PANEL as LL_PANEL, START as LL_START, STOP as LL_STOP, Splitter as LinkSplitter, isLink, parse as linkParse } from "./link.js";
+
+export class LiveLinkDevice {
+  constructor(fixtures, { clock = globalThis, deaf = false, mute = false } = {}) {
+    const frames = (list) => list.map((h) => Uint8Array.from(Buffer.from(h, "hex")));
+    this.f = { hello: frames(fixtures.hello), palette: frames(fixtures.palette), font: frames(fixtures.font),
+      keyframe: frames(fixtures.keyframe), beat: frames(fixtures.beat), stopped: frames(fixtures.stopped) };
+    this.clock = clock;
+    this.now = clock.now ? () => clock.now() : () => Date.now();
+    this.deaf = deaf;
+    this.mute = mute;
+    this.on = false;
+    this.heard = 0;
+    this.got = []; // every command received, in order
+    this.panels = [];
+    this.splitter = new LinkSplitter();
+    this.timer = clock.setInterval(() => this.tick(), 50);
+  }
+  attach(receive) { this.toHost = receive; return (bytes) => this.receive(bytes); }
+  close() { this.clock.clearInterval(this.timer); }
+  reply(list) {
+    if (this.mute) return;
+    for (const f of list) queueMicrotask(() => this.toHost?.(f));
+  }
+  tick() {
+    if (this.on && this.now() - this.heard >= 3000) {
+      this.on = false;
+      this.reply(this.f.stopped);
+    }
+  }
+  receive(bytes) {
+    for (const f of this.splitter.push(bytes)) {
+      assert.ok(isLink(f), "only Live Link frames go to the device here");
+      const p = linkParse(f);
+      assert.ok(p, `a frame that fails the checksum or its packing: ${Buffer.from(f).toString("hex")}`);
+      this.got.push(p.cmd);
+      if (p.cmd === LL_START) {
+        assert.deepEqual([...p.payload], [1], "START carries the protocol version");
+        this.on = true;
+        this.heard = this.now();
+        this.reply([...this.f.hello, ...this.f.keyframe]);
+        continue;
+      }
+      if (p.cmd === LL_HEARTBEAT && this.deaf) continue;
+      if (!this.on) { this.reply(this.f.stopped); continue; }
+      if (p.cmd === LL_STOP) { this.on = false; this.reply(this.f.stopped); continue; }
+      assert.ok(p.cmd === LL_PANEL || p.payload.length === 0, "only PANEL has a payload");
+      if (p.cmd === LL_HEARTBEAT) { this.heard = this.now(); this.reply(this.f.beat); }
+      else if (p.cmd === LL_PALETTE) this.reply(this.f.palette);
+      else if (p.cmd === LL_FONT) this.reply(this.f.font);
+      else if (p.cmd === LL_KEYFRAME) this.reply(this.f.keyframe);
+      else if (p.cmd === LL_PANEL) {
+        const d = p.payload;
+        assert.ok(d.length >= 4 && d.length <= 4 + 7, "PANEL: held, pressed, at most 7 encoders");
+        this.panels.push({ held: d[0] | (d[1] << 8), pressed: d[2] | (d[3] << 8), steps: Array.from(d.slice(4), (s) => (s << 24) >> 24), at: this.now() });
+      } else assert.fail(`an unknown command ${p.cmd}`);
+    }
+  }
+}

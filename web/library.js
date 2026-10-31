@@ -117,7 +117,7 @@ function showFiles() {
   say($("device"), `SIDOU ${version(lib.info.version)} on ${state.port}: ${lib.files.length} file${lib.files.length === 1 ? "" : "s"}, ${kb(lib.info.free)} free.`, "ok");
   const rows = lib.files.map((f) => {
     const acts = el("td", { className: "acts" });
-    if (f.type === 1) acts.append(button("Open", () => openFromFm1(f.name)));
+    if (f.type === 1) acts.append(button("Open", () => openFromFm1(f.name)), button("Edit", () => editFromFm1(f.name)));
     acts.append(button("Download", () => download(f)), button("Rename", () => rename(f)), button("Delete", () => remove(f)));
     const tr = el("tr", {}, el("td", { className: "name", textContent: f.name }), el("td", { textContent: typeLabel(f.type) }),
       el("td", { className: "num", textContent: kb(f.length) }), el("td", { className: "crc", textContent: hex32(f.crc) }), acts);
@@ -269,6 +269,23 @@ function openFromFm1(name) {
   });
 }
 
+// The editor (editor.html) takes a song over in this tab's sessionStorage and opens it.
+function editSong(bytes, source) {
+  try {
+    sessionStorage.setItem("sidou-edit", JSON.stringify({ hex: Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(""), source }));
+  } catch { /* no storage: the editor opens empty */ }
+  state.edited = source.name;
+  location.href = "editor.html";
+}
+
+function editFromFm1(name) {
+  return run(`Reading ${name}`, async (progress) => {
+    const bytes = await state.lib.download(name, { onProgress: progress });
+    editSong(bytes, { name, fm1: true });
+    return "";
+  });
+}
+
 function openCurrent() {
   return run("Reading the current song", async (progress) => {
     const bytes = await state.lib.client.get({ target: 2 }, { onProgress: progress });
@@ -311,6 +328,7 @@ function showSong() {
     }
     save(bytes, `${stem}-goattracker.sng`);
   };
+  $("edit-song").onclick = () => editSong(state.song.bytes, source);
   $("send-song").onclick = () => {
     const name = window.prompt("The name for this song on the FM-1 (up to 16 characters):", source.fm1 && !source.current ? source.name : storeName(s.name || source.name))?.trim().toUpperCase();
     if (name) sendBytes(name, state.core.write().bytes, 1);

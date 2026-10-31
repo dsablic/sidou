@@ -1,0 +1,273 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's song editor: a song from the FM-1 (Web MIDI, SysEx v1) or a file, edited with the
+     FM-1's own song code in wasm (sidou-core.wasm: the edit primitives, LOCK and the save-size
+     cap as on the device), previewed with its own player (preview.js, preview-worklet.js), saved
+     back. editor.js is the page, song-edit.js its work (web/editor.test.mjs tests that in Node),
+     web/check.mjs the page with a simulated FM-1. Same palette as library.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU editor</title>
+<meta name="description" content="Edit an FM-1 song in the browser with SIDOU's own song code: instruments, tables, patterns and orderlists, a preview with SIDOU's player, saved back to the FM-1.">
+<link rel="icon" href="data:,">
+<style>
+  :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
+          --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --ok: #9ad284; --bad: #d98c80; --yellow: #b8c76f;
+          --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+  h3 { margin: 0 0 4px; font-size: 15px; }
+  p { margin: 0 0 10px; color: #c4c0de; max-width: 72ch; }
+  b { color: var(--ink); }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, label.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code { font: 12.5px var(--mono); }
+  section { border-top: 1px solid var(--rule); padding-top: 14px; min-width: 0; }
+  nav { color: var(--dim); }
+  .note { border: 1px solid var(--yellow); border-radius: 10px; background: var(--card); padding: 9px 12px; margin-bottom: 10px; }
+  .note[hidden], [hidden] { display: none !important; }
+  .note p { margin: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+  .row label { display: flex; gap: 6px; align-items: center; color: var(--dim); }
+  select, input[type=text], input[type=number] { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+  input[type=number] { width: 5.5em; }
+  button { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
+  button[disabled] { opacity: .5; cursor: default; }
+  [data-state="ok"] { color: var(--ok); }
+  [data-state="error"] { color: var(--bad); }
+  #device, #status { margin: 0; font-variant-numeric: tabular-nums; min-height: 1.5em; }
+  progress { width: 100%; height: 6px; accent-color: var(--accent); }
+  label.drop { display: block; border: 2px dashed var(--line); border-radius: 10px; background: var(--card); padding: 18px 14px; text-align: center; color: var(--dim); cursor: pointer; }
+  label.drop.over { border-color: var(--accent); color: var(--ink); }
+  label.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  #song-error { color: var(--bad); margin: 8px 0 0; }
+  #song-error:empty { display: none; }
+  /* the song's bar: name, size, undo, what the last edit did */
+  .songbar { position: sticky; top: 0; z-index: 2; background: var(--room); border-bottom: 1px solid var(--rule); padding: 8px 0; display: grid; gap: 6px; }
+  .songbar .row { margin: 0; }
+  #s-name { margin: 0; font-family: var(--mono); }
+  .meter { flex: 1 1 180px; min-width: 140px; height: 8px; background: var(--well); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--accent); }
+  .meter.full i { background: var(--bad); }
+  #size { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
+  .panel .row { margin: 0; }
+  .grid { overflow: auto; max-height: 60vh; border: 1px solid var(--rule); border-radius: 8px; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
+  td.n { color: var(--dim); font-family: var(--mono); cursor: pointer; }
+  td.meaning, td.locks { color: var(--dim); font-family: var(--mono); font-size: 12.5px; }
+  td.locks { color: var(--yellow); }
+  tr.sel td { background: #241d55; }
+  tr.ro input { opacity: .6; }
+  input.cell { font: 13px var(--mono); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 2px 3px; text-transform: uppercase; }
+  input.cell:hover { border-color: var(--line); }
+  input.cell:focus { background: var(--well); border-color: var(--accent); outline: none; }
+  input.cell.bad { border-color: var(--bad); }
+  input.w1 { width: 2.2ch; } input.w2 { width: 3.2ch; } input.w3 { width: 4.4ch; } input.w16 { width: 18ch; text-transform: none; }
+  .params { display: grid; grid-template-columns: max-content max-content; gap: 2px 14px; align-items: center; }
+  .params label { color: var(--dim); }
+  .orders { display: flex; gap: 10px; flex-wrap: nowrap; }
+  .hint { color: var(--dim); font-size: 12.5px; margin: 0; }
+  /* the preview's keys */
+  .keys { position: relative; display: flex; height: 92px; user-select: none; touch-action: none; max-width: 100%; overflow-x: auto; }
+  .keys button { flex: 0 0 32px; height: 92px; padding: 0; border-radius: 0 0 5px 5px; background: #e8e6f4; color: #0f0c22; font-size: 11px; display: flex; align-items: flex-end; justify-content: center; border-color: #352879; }
+  .keys button.black { flex: 0 0 22px; height: 58px; margin: 0 -11px; z-index: 1; background: #0f0c22; color: var(--dim); border-color: var(--line); }
+  .keys button.down { background: var(--accent); }
+  #pv-state { color: var(--dim); font-variant-numeric: tabular-nums; }
+  footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  @media (max-width: 600px) { .brand img { width: 160px; } .grid { max-height: 55vh; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
+      <h1>Editor</h1>
+    </div>
+    <nav><a href="./">Play it in the browser</a> · <a href="library.html">Library</a> · <a href="link.html">Live Link</a> · <a href="songs.html">Showcase songs</a> · <a href="midi.html">Songs to MIDI</a></nav>
+  </header>
+
+  <p>An FM-1 song in the browser: its instruments, tables, patterns and orderlists, a preview played
+    by SIDOU's own player, and the song saved back to the FM-1. The editing is SIDOU's own song code,
+    the C the FM-1 runs, compiled to WebAssembly: an edit the FM-1 would refuse is refused here with its
+    words (<code>SONG FULL</code>, <code>INVALID EDIT</code>), parameter locks move with their rows, and
+    a song that fits here fits on the FM-1.</p>
+
+  <div id="support" class="note" hidden>
+    <p><b>This browser cannot reach the FM-1.</b> That needs Web MIDI with SysEx (Chrome or Edge). You can
+      still open a <code>.sng</code> file, edit it, preview it and download it.</p>
+  </div>
+
+  <section>
+    <h2>1. Open a song</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".sng,application/octet-stream">
+      <b>Drop a <code>.sng</code> here</b>, or press to choose one.
+    </label>
+    <p style="margin-top:10px">Or from the FM-1 (running SIDOU): press Connect and allow MIDI with SysEx.
+      Nothing is sent before Connect, and then only to the pair selected.</p>
+    <div class="row">
+      <button type="button" id="connect" class="primary">Connect</button>
+      <label>Output <select id="out" aria-label="MIDI output" disabled></select></label>
+      <label>Input <select id="in" aria-label="MIDI input" disabled></select></label>
+      <button type="button" id="check" disabled>Check this pair</button>
+    </div>
+    <p id="device" role="status" aria-live="polite">Not connected.</p>
+    <div class="row" id="fm1-open" hidden>
+      <button type="button" id="open-current">Open the FM-1's current song</button>
+      <label>or a saved one <select id="stored" aria-label="A song on the FM-1"></select></label>
+      <button type="button" id="open-stored">Open</button>
+    </div>
+    <progress id="progress" max="1" value="0" hidden></progress>
+    <p id="song-error" role="alert"></p>
+  </section>
+
+  <section id="editor" hidden>
+    <div class="songbar">
+      <div class="row">
+        <h3 id="s-name"></h3>
+        <span id="s-from" class="hint"></span>
+      </div>
+      <div class="row">
+        <div class="meter" id="meter" title="The song as the FM-1 saves it, of the 65,536 bytes it can hold"><i></i></div>
+        <span id="size"></span>
+        <button type="button" id="undo" title="Undo (Ctrl+Z)">Undo</button>
+        <button type="button" id="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="instr" aria-selected="true">Instruments</button>
+        <button type="button" role="tab" data-tab="table">Tables</button>
+        <button type="button" role="tab" data-tab="pattern">Patterns</button>
+        <button type="button" role="tab" data-tab="order">Orderlists</button>
+      </div>
+    </div>
+
+    <div class="panel" id="p-instr" role="tabpanel">
+      <div class="row">
+        <label>Instrument <select id="instr"></select></label>
+        <button type="button" id="gti5" title="GoatTracker's instrument file, its table rows with it">Download .ins</button>
+      </div>
+      <div class="params" id="params"></div>
+      <p class="hint">As INSTR shows it: each byte in hex. The table pointers count rows from 01 (00: none).
+        The keys below play the instrument shown here.</p>
+    </div>
+
+    <div class="panel" id="p-table" role="tabpanel" hidden>
+      <div class="row">
+        <label>Table <select id="table"><option value="0">WAVE</option><option value="1">PULSE</option><option value="2">FILTER</option><option value="3">SPEED</option></select></label>
+        <button type="button" id="table-all">Show all 255 rows</button>
+      </div>
+      <div class="grid"><table><thead><tr><th>Row</th><th>Left</th><th>Right</th><th>What it does</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <p class="hint">As TABLE shows it: the left and right byte of each row, and in words what the row
+        does (TABLE's footer).</p>
+    </div>
+
+    <div class="panel" id="p-pattern" role="tabpanel" hidden>
+      <div class="row">
+        <label>Pattern <select id="pattern"></select></label>
+        <label>Rows <input type="number" id="length" min="1" max="128"></label>
+        <button type="button" id="resize">Set length</button>
+        <button type="button" id="add-pattern">New pattern</button>
+        <button type="button" id="remove-pattern">Remove</button>
+      </div>
+      <div class="row">
+        <span class="hint" id="sel-row"></span>
+        <button type="button" id="push" title="TRACKER's INS: an empty row here, the last row dropped">Insert (keep length)</button>
+        <button type="button" id="pull" title="TRACKER's DEL: this row out, an empty row at the end">Delete (keep length)</button>
+        <button type="button" id="ins-row">Insert row</button>
+        <button type="button" id="del-row">Delete row</button>
+      </div>
+      <div class="grid"><table><thead><tr><th>Row</th><th>Note</th><th>Ins</th><th>Cmd</th><th>Par</th><th>Locks</th></tr></thead><tbody id="cells"></tbody></table></div>
+      <p class="hint">Notes as <code>C-4</code>, <code>C#4</code>; <code>---</code> none, <code>===</code>
+        key off, <code>+++</code> key on. With a note cell selected the computer keyboard plays as a
+        piano (Z to M and Q to U) and writes the note with the instrument shown on Instruments;
+        Delete or Backspace clears it, <code>=</code> is key off. A row with parameter locks (set on the
+        FM-1's STEP view) shows them; they move with their row.</p>
+    </div>
+
+    <div class="panel" id="p-order" role="tabpanel" hidden>
+      <div class="row">
+        <label>Subtune <select id="subtune"></select></label>
+        <span class="hint" id="order-note"></span>
+      </div>
+      <div class="row">
+        <label>Voice <select id="o-voice"><option value="0">1</option><option value="1">2</option><option value="2">3</option></select></label>
+        <label>Position <input type="number" id="o-pos" min="0" max="253" value="0"></label>
+        <label>Entry <input type="text" id="o-value" size="4" value="00" aria-label="Orderlist entry"></label>
+        <button type="button" id="o-insert">Insert</button>
+        <button type="button" id="o-delete">Delete</button>
+      </div>
+      <div class="grid"><table><thead id="o-head"></thead><tbody id="orders"></tbody></table></div>
+      <p class="hint">Entries as ORDER shows them: <code>04</code> pattern 04, <code>R3</code> repeat the
+        next pattern 3 times (<code>R0</code> 16), <code>+2</code> or <code>-3</code> transpose; the last
+        row is where each voice restarts. Edit an entry in place, or insert and delete at a position.</p>
+    </div>
+
+    <section id="preview" style="border:0;padding-top:0">
+      <h2>Preview</h2>
+      <div class="row">
+        <button type="button" id="play" class="primary">Play song</button>
+        <label>from position <input type="number" id="from" min="0" max="253" value="0"></label>
+        <button type="button" id="play-pattern">Play pattern</button>
+        <label>on voice <select id="pv-voice"><option value="0">1</option><option value="1">2</option><option value="2">3</option></select></label>
+        <button type="button" id="stop">Stop</button>
+        <span id="pv-state" role="status"></span>
+      </div>
+      <div class="row">
+        <button type="button" id="oct-down" aria-label="Octave down">Oct −</button>
+        <span id="octave"></span>
+        <button type="button" id="oct-up" aria-label="Octave up">Oct +</button>
+        <span class="hint" id="keys-instr"></span>
+      </div>
+      <div class="keys" id="keys" aria-label="Keys: play the instrument"></div>
+      <p class="hint">SIDOU's own player and SID in the browser, with the song's chip setup (its profile,
+        the character's controls, the envelope mode) and its effect slots. Not heard here: the thump's
+        output stage, the second chip and CHIP SPREAD, MASTER, and the character's glide (a character
+        lock changes it at once). Playing the song uses it as it is when you press Play.</p>
+    </section>
+
+    <section id="save" style="border:0;padding-top:0">
+      <h2>Save</h2>
+      <div class="row">
+        <label>Name on the FM-1 <input type="text" id="save-name" maxlength="16" size="18" aria-label="Name on the FM-1"></label>
+        <button type="button" id="save-fm1" class="primary needs-fm1" disabled>Save to the FM-1</button>
+        <button type="button" id="load-now" class="needs-fm1" disabled>Load now</button>
+      </div>
+      <div class="row">
+        <button type="button" id="dl-sng">Download .sng</button>
+        <button type="button" id="dl-plain">Plain GoatTracker .sng</button>
+      </div>
+      <p id="save-state" role="status" aria-live="polite"></p>
+      <p class="hint"><b>Save to the FM-1</b> stores the song under the name above (a song of that name is
+        replaced only after you confirm); load it there from SONG, LOAD. <b>Load now</b> sends it to the
+        FM-1 as its current song at once, in place of the one it has loaded. The FM-1 refuses that while its
+        own song has changes it has not saved, and while its current song is one that came from a computer
+        and has no name yet: its screen then says <b>SAVE AS FIRST</b>. Save it there with SAVE AS (or load
+        another song), then press Load now again.</p>
+    </section>
+  </section>
+
+  <footer>
+    SIDOU · <a href="https://github.com/dsablic/sidou">github.com/dsablic/sidou</a> · how to use this page:
+    <a href="https://github.com/dsablic/sidou/blob/main/docs/manual/editor.md">docs/manual/editor.md</a>
+  </footer>
+</main>
+<script type="module" src="editor.js"></script>
+</body>
+</html>

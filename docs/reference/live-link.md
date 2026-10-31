@@ -7,7 +7,9 @@ through the USB-MIDI port the FM-1 already has: SysEx frames both ways, no speci
 nothing installed (Web MIDI in Chrome or Edge is enough). It is written so that any FM-1
 firmware can implement it; what is SIDOU's own is marked as such.
 
-The viewer (a browser page) comes later. The reference decoder is the `fm1-live-link` crate
+The viewer is a browser page, the site's [Live Link](https://dsablic.github.io/sidou/link.html)
+(`web/link.html`, `web/link.js`; [manual](../manual/live-link.md)): it draws the screen with
+SIDOU's own `app/grid.c` and `app/font.c` compiled to wasm (`tools/wasm-link`). The reference decoder is the `fm1-live-link` crate
 (`host/crates/live-link`): no dependencies, small enough to port or compile to wasm.
 
 ## Frames

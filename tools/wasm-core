@@ -37,8 +37,10 @@ sources=(
     core/player/gt2_play.c core/player/gt2_shape.c core/player/song_ctl.c
     core/sid/sid.c core/sid/sid_shadow.c core/sid/sid_character.c core/sid/sid_dac.c
     core/sid/sid_filter.c
+    core/fx/fx.c core/fx/fx_slots.c core/fx/fx_slots_init.c core/fx/fx_reverb.c core/fx/fx_plate.c
+    core/fx/fx_limit.c
 )
-flags=(--target=wasm32-unknown-unknown -std=c11 -Os -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory
+flags=(--target=wasm32-unknown-unknown -std=c11 -Oz -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory
        -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Wno-unused-parameter
        -isystem "$root/platform/web/include" -I"$root/core")
 objs=()
@@ -48,7 +50,7 @@ for s in "${sources[@]}"; do
     objs+=("$o")
 done
 # A 64 KiB stack; memory grows as needed (the song region, the buffers and the player are
-# static data, about 0.5 MiB).
-$ld --no-entry --gc-sections --strip-all -z stack-size=65536 --initial-memory=1048576 \
+# static data, about 1.1 MiB: the effect slots' pool and a pattern preview's copy of the song too).
+$ld --no-entry --gc-sections --strip-all -z stack-size=65536 --initial-memory=2097152 \
     "${objs[@]}" -o "$out"
 echo "wasm-core: $out ($(wc -c <"$out" | tr -d ' ') bytes)"

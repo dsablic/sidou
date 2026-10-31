@@ -44,6 +44,8 @@ lists the prerequisites.
 | Songs page's SysEx code, in Node (no browser, no MIDI) | `node web/sysex.test.mjs` (`tools/web-demo --check` runs it first) | `web/sysex.test.mjs`, `web/sysex.js`, `web/sysex-vectors.txt` |
 | Library page's store work and backups, in Node (a simulated FM-1, no MIDI) | `node web/library.test.mjs` (`tools/web-demo --check` runs it first) | `web/library.test.mjs`, `web/store.js`, `web/zip.js`, `web/fake-fm1.mjs` |
 | The site's wasm core against the host build (every song in `assets/songs` and GoatTracker's examples, cut files, an ambiguous mono/stereo file: the read, the `.sng` with and without the trailer, the plain file's check and GoatTracker 2.77 loading it unchanged, every GTI5, two seconds of the player and an instrument at a note, byte for byte) | `tools/wasm-core && node web/core.test.mjs`; the fixtures: `cargo test --release -p sidou-tests --test web_core` (`SIDOU_WEB_CORE_FIXTURE_UPDATE=1` rewrites `web/core-fixtures.json`) | `web/core.test.mjs`, `web/core.js`, `platform/web/core_api.c`, `crates/sidou-tests/tests/web_core.rs` |
+| The editor's work against the host build and a simulated FM-1: a script of edits through the FM-1's primitives (refusals among them), each step's `.sng` byte for byte; both save-size refusals (`FULL`, `SONG FULL`); the parameter locks following INS, DEL, inserted and deleted rows and a cut; undo and redo; the previews' samples (the song from a position through the effect slots, a pattern on one voice, an instrument at a note; the chip's setup applied); the resampler; the FM-1's words for cells, orderlist entries and table rows against the C; saving (PUT target 0 with the overwrite check, Load now's PUT target 2 and SAVE AS FIRST's BUSY) | `tools/wasm-core && node web/editor.test.mjs`; the fixtures as above (`core-fixtures.json`'s `editor`) | `web/editor.test.mjs`, `web/song-edit.js`, `web/preview.js`, `web/core.js`, `platform/web/core_api.c`, `crates/sidou-tests/tests/web_core.rs` |
+| Live Link viewer, in Node (a simulated FM-1 answering with SIDOU's own frames, fake time, no MIDI): the frames against the spec's test vectors, the session (START, the heartbeat, STOP on stop and when the page is hidden, the device's auto-stop and a restart, silence), the wasm viewer's picture of the device's frames against the panel's (RGB565 CRC-32), the font and palette fetched only when HELLO's CRCs differ and then cached, a keyframe after a bad frame, PANEL for held, re-sent and released buttons and encoder steps | `tools/wasm-link && node web/link.test.mjs`; the fixtures: `cargo test --release -p sidou-tests --test web_link` (`SIDOU_WEB_LINK_FIXTURE_UPDATE=1` rewrites `web/link-fixtures.json`) | `web/link.test.mjs`, `web/link.js`, `web/fake-fm1.mjs`, `platform/web/link_api.c`, `crates/sidou-tests/tests/web_link.rs` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -1845,12 +1847,30 @@ byte for byte, a plain GoatTracker file and a GTI5; then, connected, the listing
 rename (GET, PUT, DEL), a backup `.zip` with its manifest and an Open of a stored song. It fails
 on any of those, on a frame to the other port, or on a sideways scroll at phone width.
 
+The same run covers the editor (`web/editor.html`) at phone width with the same fake MIDI: a song
+from a file opens as the FM-1 saves it, an instrument byte typed and a note played from the
+computer keyboard change the song through the wasm core, two undos give it back byte for byte and
+a redo makes the edit again, Play song sounds in the preview's AudioWorklet, nothing goes to MIDI
+before Connect; connected, Save to the FM-1 sends one PUT under the name given and Load now one
+PUT target 2 of the same song; then the Library's Edit opens its song in the editor. It fails on
+any of those, on a frame to the other port, or on a sideways scroll.
+
+The same run covers the Live Link viewer (`web/link.html`) with a fake MIDI whose simulated FM-1
+answers with the frames SIDOU's device side sent in `sidou-tests`' `web_link` test
+(`web/link-fixtures.json`, which `web/check.sh` copies next to `check.mjs`): nothing is sent
+before Start; after Start the canvas, read back as RGB565, has the panel's CRC-32; HOME held goes
+as PANEL frames, again while held, and a PANEL with nothing held lets it go; K1's + sends a step;
+the page going away (`pagehide`) sends STOP. It fails on any of those, on a frame with a bad
+checksum or magic, on a frame to the other port, or on a sideways scroll at phone width. Before
+the browser `web/check.sh` runs `node web/link.test.mjs` on the built `sidou-link.wasm`.
+
 Before the browser, `web/check.sh` runs `node web/library.test.mjs` (the Library's store work,
 `web/store.js`, and its `.zip`, against `web/fake-fm1.mjs`: list, download, send with the
 overwrite check, delete, rename, backup and restore round trips, the refusals; the `.zip` opened by
 `unzip` and a deflated one read) and `node web/core.test.mjs` (the built `sidou-core.wasm` against
 `web/core-fixtures.json`, which the host build writes: `sidou-tests`' `web_core` test fails when
-the committed file is not what the host build makes). It also runs `node web/sysex.test.mjs`, which needs no browser: the
+the committed file is not what the host build makes) and `node web/editor.test.mjs` (the editor's
+edits, previews and saving, against the same fixtures and `web/fake-fm1.mjs`). It also runs `node web/sysex.test.mjs`, which needs no browser: the
 page's SysEx encoder and decoder (`web/sysex.js`) against `web/sysex-vectors.txt` (the frames
 Rust's `sidou-sysex` also encodes and decodes: its test `web_vectors_match_the_canonical_encoder_and_decoder`
 fails when the file and the crate disagree), the packing at every payload length, a PUT's three

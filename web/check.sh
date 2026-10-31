@@ -19,6 +19,11 @@ node "$root/web/songmidi.test.mjs"
 # against the host build of the same C (fixtures from sidou-tests' web_core test)
 node "$root/web/library.test.mjs"
 node "$root/web/core.test.mjs" "$site/sidou-core.wasm"
+# the editor's edits, previews and saving, against the host build and a simulated FM-1
+node "$root/web/editor.test.mjs" "$site/sidou-core.wasm"
+# the Live Link viewer's code and its wasm against SIDOU's device side (fixtures from sidou-tests'
+# web_link test) and a simulated FM-1
+node "$root/web/link.test.mjs" "$site/sidou-link.wasm"
 mkdir -p "$dir"
 if [ "$(node -p 'require(process.argv[1]).version' "$dir/node_modules/playwright/package.json" 2>/dev/null)" != "$playwright" ]; then
     (cd "$dir" && npm install --no-audit --no-fund --silent "playwright@$playwright")
@@ -28,6 +33,7 @@ deps=()
 [ -z "${CI:-}" ] || [ -n "${SIDOU_BUILD_IMAGE:-}" ] || deps=(--with-deps)
 (cd "$dir" && npx --no-install playwright install "${deps[@]}" --only-shell chromium)
 cp "$root/web/check.mjs" "$dir/check.mjs"
+cp "$root/web/link-fixtures.json" "$dir/link-fixtures.json"   # (the Live Link page's simulated FM-1)
 
 log="$dir/serve.log"
 python3 "$root/web/serve.py" "$site" 0 >"$log" 2>&1 &

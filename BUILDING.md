@@ -266,10 +266,13 @@ runs `tools/web-demo --check` and deploys `build/web/` to GitHub Pages.
 
 ### The site's wasm core (`tools/wasm-core`)
 
-The Library page reads, writes and plays songs with SIDOU's own C: `core/song`,
-`core/player` and `core/sid` with `platform/web/core_api.c` (the calls the page
-makes) as one WebAssembly module with no imports, `sidou-core.wasm`, and
-`web/core.js` as its JavaScript side.
+The Library page and the editor read, write, edit and play songs with SIDOU's
+own C: `core/song`, `core/player`, `core/sid` and `core/fx` (the effect slots,
+for the editor's preview) with `platform/web/core_api.c` (the calls the pages
+make: the reader and writer, the FM-1's edit primitives, the preview) as one
+WebAssembly module with no imports, `sidou-core.wasm`, and `web/core.js` as its
+JavaScript side. The editor's preview runs a second copy of it in an
+AudioWorklet (`web/preview-worklet.js`).
 
 ```sh
 tools/wasm-core                 # build/wasm-core/sidou-core.wasm
@@ -282,12 +285,34 @@ and Apple's clang both have the target) and the Rust toolchain's own
 `SIDOU_WASM_LD` names another). There is no libc: the device's
 `platform/fm1/libc_min.c` and `platform/web/libm_min.c` (`fminf`, `fmaxf`).
 Flags as the host build's where results matter (`-ffp-contract=off`), the
-firmware's combined-waveform profiles, `-Os`. The module is about 130 KB
-(57 KB gzipped); its budget is 160 KiB, which `web/core.test.mjs` checks. The
+firmware's combined-waveform profiles, `-Oz` (which kept it within its budget
+once the effect slots came in; it still renders the song about 200 times faster
+than real time in Node). The module is 160,375 bytes (72 KB gzipped) and takes
+2 MiB of memory (the effect slots' 128 KiB pool, a pattern preview's copy of the
+song); its budget is 160 KiB, which `web/core.test.mjs` checks. The
 song region is the device's (64 KiB) and the reader has the device's
 multispeed cap, so the page refuses what the FM-1 refuses, with its messages;
-`web/core.test.mjs` checks every output against the host build
-(`web/core-fixtures.json`, TESTING.md).
+`web/core.test.mjs` and `web/editor.test.mjs` check every output against the
+host build (`web/core-fixtures.json`, TESTING.md).
+
+### The Live Link viewer's wasm (`tools/wasm-link`)
+
+The Live Link page (`web/link.html`) draws the FM-1's screen with the FM-1's own
+screen code: `app/grid.c` and `app/font.c` (through `platform/web/link_font.c`,
+which keeps the font writable for a device's GLYPHS frames) with
+`platform/web/link_api.c` (the cells as the frames leave them, each row drawn with
+`grid_render_run`, pixel cells through a painter region) as one small WebAssembly
+module with no imports, `sidou-link.wasm`; `web/link.js` is its JavaScript side.
+
+```sh
+tools/wasm-link                 # build/wasm-link/sidou-link.wasm
+tools/wasm-link OUT.wasm        # elsewhere (tools/web-demo builds it into build/web)
+```
+
+The toolchain is the wasm core's (above), and there is no libc but
+`platform/fm1/libc_min.c`. The module is about 10 KB (4 KB gzipped); its budget
+is 32 KiB, which `web/link.test.mjs` checks, with its picture of the device's
+frames against the panel's (`web/link-fixtures.json`, TESTING.md).
 
 ## The pinned toolchain
 

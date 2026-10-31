@@ -13,6 +13,7 @@
 //!
 //!   SIDOU_WEB_CORE_FIXTURE_UPDATE=1 cargo nextest run --release -p sidou-tests -E 'test(web_core)'
 
+use std::ffi::c_void;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
@@ -60,30 +61,161 @@ fn blocks(seconds: f64) -> usize {
     (seconds * SAMPLE_RATE as f64 / BLOCK as f64).ceil() as usize
 }
 
-/// platform/web/core_api.c's chip: CHPA's model, else OPTS's.
-fn model(song: &Song) -> sid_model {
+/// platform/web/core_api.c's song_setup: CHPA as the FM-1 accepts it (main.c's setup_valid).
+fn song_setup(song: &Song) -> Option<song_chip_setup> {
     let mut c = song_chip_setup::default();
-    if unsafe { song_ext_get_chip(song.ptr(), TAG_CHPA, &mut c) } != 0 {
-        return if c.model != 0 {
-            SID_MODEL_8580
-        } else {
-            SID_MODEL_6581
-        };
+    if unsafe { song_ext_get_chip(song.ptr(), TAG_CHPA, &mut c) } == 0 {
+        return None;
     }
-    let mut o = gt2_options::default();
-    unsafe { song_ext_get_options(song.ptr(), &mut o) };
-    if o.sid_model != 0 {
-        SID_MODEL_8580
-    } else {
-        SID_MODEL_6581
+    let p = unsafe { sid_chip_profile_get(c.profile.into()) };
+    let experts_ok = (0..usize::from(c.expert_count).min(SID_EXPERT_COUNT as usize))
+        .all(|f| c.expert[f] <= SID_CHARACTER_MAX as u8 || c.expert[f] == SID_EXPERT_DEFAULT as u8);
+    let ok = !p.is_null()
+        && unsafe { (*p).model } == c.model
+        && (c.age | c.dac | c.thump | c.bleed) & 0x80 == 0
+        && c.envelope <= 1
+        && u32::from(c.expert_count) <= SONG_EXPERT_MAX
+        && experts_ok;
+    ok.then_some(c)
+}
+
+/// What core_api.c's chip hooks hold: the character (and the song's own, for a lock let go),
+/// the DAC table it builds into, the envelope mode, and chip A.
+struct Character {
+    now: sid_character,
+    base: sid_character,
+    dac: Box<sid_dac>,
+    envelope: u8,
+    chip: *mut sid,
+}
+
+unsafe extern "C" fn chip_a_song(ctx: *mut c_void, _setup: *const song_chip_setup) -> i32 {
+    let c = unsafe { &mut *ctx.cast::<Character>() };
+    unsafe { sid_set_gate_reset(c.chip, i32::from(c.envelope == 0)) };
+    1
+}
+
+unsafe extern "C" fn chip_a_character(ctx: *mut c_void, field: u32, value: i32) {
+    let c = unsafe { &mut *ctx.cast::<Character>() };
+    let (to, from) = match field {
+        0 => (&mut c.now.age, c.base.age),
+        1 => (&mut c.now.dac, c.base.dac),
+        2 => (&mut c.now.thump, c.base.thump),
+        3 => (&mut c.now.bleed, c.base.bleed),
+        _ => return,
+    };
+    *to = if value < 0 { from } else { value as u8 };
+    unsafe { sid_character_change(c.chip, &c.now, &mut *c.dac) };
+}
+
+/// core_api.c's transport(): chip A in the song's setup (CHPA, else OPTS's model), the chip
+/// hooks, and the effect slots from SLOT, settled by two seconds of silence.
+struct Preview {
+    t: Transport,
+    _character: Box<Character>,
+    slots: Box<sid_slots>,
+    _pool: Box<sid_slot_pool>,
+}
+
+/// A large C struct, all zeros, straight on the heap (the effect slots and their pool).
+fn zeroed_box<T>() -> Box<T> {
+    let layout = std::alloc::Layout::new::<T>();
+    // SAFETY: the C structs taken here are plain data, valid all zeros.
+    unsafe {
+        let p = std::alloc::alloc_zeroed(layout).cast::<T>();
+        assert!(!p.is_null());
+        Box::from_raw(p)
     }
 }
 
-fn transport(song: &mut Song) -> Transport {
-    let m = model(song);
+fn preview(song: &mut Song) -> Preview {
+    let mut ch: sid_character = unsafe { std::mem::zeroed() };
+    unsafe { sid_character_init(&mut ch) };
+    let mut envelope = 1u8;
+    let model = match song_setup(song) {
+        Some(c) => {
+            let m = if c.model != 0 {
+                SID_MODEL_8580
+            } else {
+                SID_MODEL_6581
+            };
+            ch.profile = c.profile + 1;
+            (ch.age, ch.dac, ch.thump, ch.bleed) = (c.age, c.dac, c.thump, c.bleed);
+            for f in 0..SID_EXPERT_COUNT {
+                let v = if f < u32::from(c.expert_count) {
+                    c.expert[f as usize].into()
+                } else {
+                    SID_EXPERT_DEFAULT
+                };
+                unsafe { sid_character_expert_set(&mut ch, m, f, v) };
+            }
+            envelope = c.envelope;
+            m
+        }
+        None => {
+            let mut o = gt2_options::default();
+            unsafe { song_ext_get_options(song.ptr(), &mut o) };
+            if o.sid_model != 0 {
+                SID_MODEL_8580
+            } else {
+                SID_MODEL_6581
+            }
+        }
+    };
     let mut t = Transport::new(song);
-    unsafe { sid_init(&mut *t.chip, m, SID_CLOCK_PAL, SAMPLE_RATE) };
-    t
+    let mut character = Box::new(Character {
+        now: ch,
+        base: ch,
+        dac: Box::new(unsafe { std::mem::zeroed() }),
+        envelope,
+        chip: &mut *t.chip,
+    });
+    unsafe {
+        sid_init(&mut *t.chip, model, SID_CLOCK_PAL, SAMPLE_RATE);
+        sid_character_apply(&mut *t.chip, &character.now, &mut *character.dac);
+        let hooks = song_chip_hooks {
+            chip_a_song: Some(chip_a_song),
+            chip_a_keys: None,
+            chip_a_character: Some(chip_a_character),
+            ctx: (&mut *character as *mut Character).cast(),
+        };
+        song_ctl_set_hooks(&mut *t.sc, &hooks);
+    }
+    let mut pool: Box<sid_slot_pool> = zeroed_box();
+    let mut slots: Box<sid_slots> = zeroed_box();
+    unsafe { sid_slots_init(&mut *slots, SAMPLE_RATE, 0x51d0, &mut *pool) };
+    let mut v = song_slots::default();
+    if unsafe { song_ext_get_slots(song.ptr(), &mut v) } != 0 {
+        for k in 0..usize::from(v.count).min(SID_SLOT_COUNT as usize) {
+            let f = |i: usize| f32::from(v.slot[k][i]) * (1.0 / 127.0);
+            let p = sid_slot_params {
+                algorithm: v.slot[k][0].into(),
+                amount: f(1),
+                a: f(2),
+                b: f(3),
+                mix: f(4),
+            };
+            unsafe { sid_slots_set(&mut *slots, k as u32, &p) };
+        }
+        let silence = [0i16; BLOCK];
+        let mut out = [0i16; 2 * BLOCK];
+        for _ in 0..2 * 345 {
+            unsafe {
+                sid_slots_process(
+                    &mut *slots,
+                    silence.as_ptr(),
+                    out.as_mut_ptr(),
+                    BLOCK as u32,
+                )
+            };
+        }
+    }
+    Preview {
+        t,
+        _character: character,
+        slots,
+        _pool: pool,
+    }
 }
 
 fn render(t: &mut Transport, n: usize, out: &mut Vec<u8>) {
@@ -97,18 +229,20 @@ fn render(t: &mut Transport, n: usize, out: &mut Vec<u8>) {
 
 /// sc_play and two seconds of sc_render.
 fn song_pcm(song: &mut Song) -> Option<Vec<u8>> {
-    let mut t = transport(song);
+    let mut p = preview(song);
+    let t = &mut p.t;
     if !t.play(0, 0) {
         return None;
     }
     let mut out = Vec::new();
-    render(&mut t, blocks(2.0), &mut out);
+    render(t, blocks(2.0), &mut out);
     Some(out)
 }
 
 /// renderInstrument(1, { note 48, hold 0.5, seconds 1.5 }): sc_audition, sc_jam and renders.
 fn instrument_pcm(song: &mut Song) -> Option<Vec<u8>> {
-    let mut t = transport(song);
+    let mut p = preview(song);
+    let t = &mut p.t;
     if !t.audition() {
         return None;
     }
@@ -125,10 +259,10 @@ fn instrument_pcm(song: &mut Song) -> Option<Vec<u8>> {
     }
     t.pass();
     let mut out = Vec::new();
-    render(&mut t, blocks(0.5), &mut out);
+    render(t, blocks(0.5), &mut out);
     t.jam(0, 0xff, 0);
     t.pass();
-    render(&mut t, blocks(1.0), &mut out);
+    render(t, blocks(1.0), &mut out);
     Some(out)
 }
 
@@ -243,6 +377,308 @@ fn ambiguous() -> (Vec<u8>, Vec<u8>) {
     (m.write(true), s.write(true))
 }
 
+// ---- The editor (web/editor.js): platform/web/core_api.c's sc_edit, its preview's other
+// renders, and the device's words for cells, orderlist entries and table rows.
+
+/// sc_edit's operations, in its order.
+const OP_INSTR: u32 = 0;
+const OP_TABLE: u32 = 1;
+const OP_ROW: u32 = 2;
+const OP_ORDER: u32 = 3;
+const OP_ORDER_INSERT: u32 = 4;
+const OP_ORDER_DELETE: u32 = 5;
+const OP_PUSH_ROW: u32 = 6;
+const OP_PULL_ROW: u32 = 7;
+const OP_INSERT_ROW: u32 = 8;
+const OP_DELETE_ROW: u32 = 9;
+const OP_RESIZE: u32 = 10;
+const OP_PATTERN_ADD: u32 = 11;
+const OP_PATTERN_REMOVE: u32 = 12;
+
+fn primitive(
+    s: &mut Song,
+    [op, a, b, c, d]: [u32; 5],
+    added: &mut u32,
+    e: &mut gt2_edit,
+) -> gt2_err {
+    let cell = d.to_le_bytes();
+    let p = s.ptr_mut();
+    unsafe {
+        match op {
+            OP_INSTR => gt2_set_instr(p, a, b, c as u8, e),
+            OP_TABLE => gt2_set_table(p, a, b, c, d as u8, e),
+            OP_ROW => gt2_set_row(p, a, b, cell.as_ptr(), e),
+            OP_ORDER => gt2_set_order(p, a, b, c, d as u8, e),
+            OP_ORDER_INSERT => gt2_order_insert(p, a, b, c, d as u8, e),
+            OP_ORDER_DELETE => gt2_order_delete(p, a, b, c, e),
+            OP_PUSH_ROW => gt2_pattern_push_row(p, a, b, e),
+            OP_PULL_ROW => gt2_pattern_pull_row(p, a, b, e),
+            OP_INSERT_ROW => gt2_pattern_insert_row(p, a, b, e),
+            OP_DELETE_ROW => gt2_pattern_delete_row(p, a, b, e),
+            OP_RESIZE => gt2_pattern_resize(p, a, b, e),
+            OP_PATTERN_ADD => gt2_pattern_add(p, a, added, e),
+            OP_PATTERN_REMOVE => gt2_pattern_remove(p, a, e),
+            _ => GT2_ERR_RANGE,
+        }
+    }
+}
+
+/// sc_edit: the primitive; when fragmented, a compaction move committed and again; committed.
+fn edit(s: &mut Song, op: [u32; 5]) -> (u32, u32) {
+    let mut added = 0;
+    loop {
+        let mut e = gt2_edit::default();
+        let r = primitive(s, op, &mut added, &mut e);
+        if r == GT2_ERR_FRAGMENTED {
+            let mut m = gt2_edit::default();
+            if unsafe { gt2_compact_step(s.ptr_mut(), &mut m) } <= 0 {
+                return (r, added);
+            }
+            unsafe { gt2_edit_commit(s.ptr_mut(), &m) };
+            continue;
+        }
+        if r == GT2_OK {
+            unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
+        }
+        return (r, added);
+    }
+}
+
+/// CHROME COMET with what the showcase songs lack: parameter locks (the filter's and the
+/// character's, on the first pattern its first voice plays), the effect slots (a chorus and a
+/// delay) and some character on its chip.
+fn comet_plus() -> (Vec<u8>, u32) {
+    let comet = std::fs::read(root().join("assets/songs/chrome-comet.sng")).unwrap();
+    let mut s = Song::device();
+    s.read(&comet, 4).unwrap();
+    let first = s
+        .order(0, 0)
+        .unwrap()
+        .0
+        .into_iter()
+        .find(|&e| e < 0xd0)
+        .unwrap() as u32;
+    for (row, param, value) in [
+        (4, SONG_LOCK_CUTOFF, 900),
+        (4, SONG_LOCK_AGE, 100),
+        (10, SONG_LOCK_PULSE, 2048),
+        (20, SONG_LOCK_CUTOFF, 200),
+    ] {
+        assert_eq!(
+            unsafe { song_lock_put(s.ptr_mut(), first, row, param, value) },
+            0
+        );
+    }
+    let mut v = song_slots {
+        count: 3,
+        ..Default::default()
+    };
+    v.slot[1] = [1, 80, 40, 20, 64];
+    v.slot[2] = [1, 70, 50, 40, 50];
+    assert_eq!(unsafe { song_ext_set_slots(s.ptr_mut(), &v) }, 0);
+    let mut c = song_chip_setup::default();
+    assert_ne!(unsafe { song_ext_get_chip(s.ptr(), TAG_CHPA, &mut c) }, 0);
+    (c.age, c.dac, c.bleed) = (40, 30, 20);
+    assert_eq!(unsafe { song_ext_set_chip(s.ptr_mut(), TAG_CHPA, &c) }, 0);
+    let file = s.write(true);
+    let mut back = Song::device();
+    back.read(&file, 4).unwrap();
+    assert_eq!(back.write(true), file);
+    (file, first)
+}
+
+/// The script web/editor.test.mjs makes through sc_edit, refusals among them: each step's
+/// result and the .sng (trailer and all) after it.
+fn script(p: u32) -> Vec<[u32; 5]> {
+    let cell = |b: [u8; 4]| u32::from_le_bytes(b);
+    vec![
+        [OP_INSTR, 1, 0, 0x0a, 0],
+        [OP_INSTR, 1, 9, u32::from(b'X'), 0],
+        [OP_INSTR, 13, 0, 0x11, 0],
+        [OP_INSTR, 64, 0, 1, 0],
+        [OP_INSTR, 1, 25, 1, 0],
+        [OP_TABLE, 0, 0, 1, 0x80],
+        [OP_TABLE, 3, 200, 0, 1],
+        [OP_TABLE, 0, 255, 0, 1],
+        [OP_ROW, p, 0, 0, cell([0x60 + 48, 1, 0, 0])],
+        [OP_ROW, p, 1, 0, cell([0xbe, 0, 4, 0x22])],
+        [OP_ROW, p, 3, 0, cell([0x60 + 50, 2, 1, 0x10])],
+        [OP_ROW, p, 200, 0, cell([0xbd, 0, 0, 0])],
+        [OP_PUSH_ROW, p, 2, 0, 0],
+        [OP_PULL_ROW, p, 0, 0, 0],
+        [OP_INSERT_ROW, p, 5, 0, 0],
+        [OP_DELETE_ROW, p, 5, 0, 0],
+        [OP_RESIZE, p, 16, 0, 0],
+        [OP_RESIZE, p, 129, 0, 0],
+        [OP_ORDER, 0, 0, 0, 1],
+        [OP_ORDER_INSERT, 0, 0, 0, 0xf2],
+        [OP_ORDER_INSERT, 0, 0, 0, 0xd3],
+        [OP_ORDER_INSERT, 0, 0, 1, 0xf1],
+        [OP_ORDER_DELETE, 0, 0, 0, 0],
+        [OP_ORDER_DELETE, 0, 0, 0, 0],
+        [OP_PATTERN_ADD, 64, 0, 0, 0],
+        [OP_PATTERN_ADD, 0, 0, 0, 0],
+        [OP_PATTERN_REMOVE, 1, 0, 0, 0],
+        [OP_PATTERN_REMOVE, 200, 0, 0, 0],
+        [OP_ORDER, 0, 1, 0, 51],
+        [OP_PATTERN_REMOVE, 51, 0, 0, 0],
+        [13, 0, 0, 0, 0],
+    ]
+}
+
+/// The two save-size refusals, as the editor meets them. The arena: patterns of 128 rows added
+/// until the device refuses one (FULL): their count and the refusal. The 64 KiB save: patterns
+/// of one row added up to number 207, 207 named in the first orderlist, 51-206 removed again
+/// (each then saved as 64 empty rows, which the arena does not hold), then patterns of 128 rows
+/// added until the device refuses one (SONG FULL): their count, the refusal, the .sng after.
+fn fill(file: &[u8]) -> (u32, u32, u32, u32, Vec<u8>) {
+    let add = |s: &mut Song, rows: u32| -> (u32, u32) {
+        let mut k = 0;
+        loop {
+            let (r, p) = edit(s, [OP_PATTERN_ADD, rows, 0, 0, 0]);
+            if r != GT2_OK || p == 207 {
+                return (k + u32::from(r == GT2_OK), r);
+            }
+            k += 1;
+        }
+    };
+    let mut s = Song::device();
+    s.read(file, 4).unwrap();
+    let (arena_count, arena) = add(&mut s, 128);
+    let mut s = Song::device();
+    s.read(file, 4).unwrap();
+    assert_eq!(add(&mut s, 1).1, GT2_OK);
+    assert_eq!(edit(&mut s, [OP_ORDER, 0, 0, 0, 207]).0, GT2_OK);
+    for p in 51..207 {
+        assert_eq!(edit(&mut s, [OP_PATTERN_REMOVE, p, 0, 0, 0]).0, GT2_OK);
+    }
+    let (save_count, save) = add(&mut s, 128);
+    (arena_count, arena, save_count, save, s.write(true))
+}
+
+/// The song from orderlist position 2 for two seconds, through the effect slots: stereo.
+fn song_out_pcm(song: &mut Song, pos: u32) -> Vec<u8> {
+    let mut p = preview(song);
+    assert!(p.t.play(0, pos));
+    let mut out = Vec::new();
+    let mut b = [0i16; BLOCK];
+    let mut lr = [0i16; 2 * BLOCK];
+    for _ in 0..blocks(2.0) {
+        p.t.pass();
+        p.t.block(&mut b);
+        unsafe { sid_slots_process(&mut *p.slots, b.as_ptr(), lr.as_mut_ptr(), BLOCK as u32) };
+        out.extend(lr.iter().flat_map(|s| s.to_le_bytes()));
+    }
+    out
+}
+
+/// sc_play_pattern: a copy of the song whose first subtune plays the pattern on every voice,
+/// all but `channel` muted; two seconds of the chip.
+fn pattern_pcm(song: &Song, pattern: u32, channel: u32) -> Vec<u8> {
+    let mut s = Song::device();
+    s.copy_from(song);
+    for ch in 0..3 {
+        let mut e = gt2_edit::default();
+        let entry = pattern as u8;
+        let r = unsafe { gt2_order_replace(s.ptr_mut(), 0, ch, &entry, 1, 0, &mut e) };
+        assert_eq!(r, GT2_OK);
+        unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
+    }
+    let mut p = preview(&mut s);
+    assert!(p.t.play(0, 0));
+    assert!(p.t.mute(7 & !(1 << channel)));
+    let mut out = Vec::new();
+    render(&mut p.t, blocks(2.0), &mut out);
+    out
+}
+
+fn c_text(buf: &[std::os::raw::c_char]) -> String {
+    buf.iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8 as char)
+        .collect()
+}
+
+/// The device's words: tracker_view_cell, tracker_view_order_entry, song_pages_table_meaning.
+fn words() -> String {
+    let mut cells = Vec::new();
+    for note in [0x60u8, 0x6d, 0x90, 0xbc, 0xbd, 0xbe, 0xbf] {
+        for (ins, cmd, par) in [
+            (0u8, 0u8, 0u8),
+            (1, 0, 0x12),
+            (0x3f, 4, 0x2a),
+            (0, 0xf, 0xff),
+        ] {
+            let mut out = [0 as std::os::raw::c_char; 9];
+            let c = [note, ins, cmd, par];
+            unsafe { tracker_view_cell(c.as_ptr(), out.as_mut_ptr()) };
+            cells.push(format!("[\"{}\", {}]", hex(&c), json_str(&c_text(&out))));
+        }
+    }
+    let mut orders = Vec::new();
+    for e in (0u8..=0xfe).step_by(1) {
+        let mut out = [0 as std::os::raw::c_char; 4];
+        unsafe { tracker_view_order_entry(e, out.as_mut_ptr()) };
+        orders.push(json_str(&c_text(&out)));
+    }
+    let mut meanings = Vec::new();
+    for t in 0..4u32 {
+        for l in [
+            0x00u8, 0x01, 0x0f, 0x10, 0x41, 0x7f, 0x80, 0x81, 0xef, 0xf0, 0xfe, 0xff,
+        ] {
+            for r in [0x00u8, 0x01, 0x40, 0x7f, 0x80, 0x81, 0x83, 0xdf, 0xe0, 0xff] {
+                let mut out = [0 as std::os::raw::c_char; 31];
+                unsafe { song_pages_table_meaning(t, l, r, out.as_mut_ptr()) };
+                meanings.push(format!("[{t}, {l}, {r}, {}]", json_str(&c_text(&out))));
+            }
+        }
+    }
+    format!(
+        "\"cells\": [{}],\n   \"orders\": [{}],\n   \"meanings\": [{}]",
+        cells.join(", "),
+        orders.join(", "),
+        meanings.join(", ")
+    )
+}
+
+fn editor() -> String {
+    let (file, p) = comet_plus();
+    let mut s = Song::device();
+    s.read(&file, 4).unwrap();
+    let steps: Vec<String> = script(p)
+        .into_iter()
+        .map(|op| {
+            let (r, added) = edit(&mut s, op);
+            let sng = s.write(true);
+            format!(
+                "[{:?}, {r}, {added}, {}, {}, {}]",
+                op,
+                sng.len(),
+                sum(&sng),
+                unsafe { gt2_saved_size(s.ptr()) }
+            )
+        })
+        .collect();
+    let (arena_count, arena, save_count, save, full) = fill(&file);
+    let mut plus = Song::device();
+    plus.read(&file, 4).unwrap();
+    let out = song_out_pcm(&mut plus, 2);
+    let pat = pattern_pcm(&plus, p, 1);
+    let ins = instrument_pcm(&mut plus).unwrap();
+    let pcm = |b: &[u8], ch: usize| format!("[{}, {}]", b.len() / 2 / ch, sum(b));
+    format!(
+        "{{\"song\": \"{}\", \"pattern\": {p},\n   \"steps\": [\n    {}],\n   \"fill\": [{arena_count}, {arena}, {save_count}, {save}, {}, {}],\n   \"out_pcm\": {}, \"pattern_pcm\": {}, \"instrument_pcm\": {},\n   {}}}",
+        hex(&file),
+        steps.join(",\n    "),
+        full.len(),
+        sum(&full),
+        pcm(&out, 2),
+        pcm(&pat, 1),
+        pcm(&ins, 1),
+        words()
+    )
+}
+
 #[test]
 fn web_core_fixture() {
     let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(root().join("assets/songs"))
@@ -281,7 +717,11 @@ fn web_core_fixture() {
     let (mono, stereo) = ambiguous();
     entries.push(entry("ambiguous, mono", &mono, true));
     entries.push(entry("ambiguous, stereo", &stereo, true));
-    let json = format!("{{\"songs\": [\n  {}\n]}}\n", entries.join(",\n  "));
+    let json = format!(
+        "{{\"songs\": [\n  {}\n],\n \"editor\": {}}}\n",
+        entries.join(",\n  "),
+        editor()
+    );
     let path = root().join("web/core-fixtures.json");
     if std::env::var_os("SIDOU_WEB_CORE_FIXTURE_UPDATE").is_some() {
         std::fs::write(&path, &json).unwrap();

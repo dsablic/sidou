@@ -2615,10 +2615,9 @@ JCH or DMC tune with pulse sweeps, one with a filtered bass), and a song of your
 ## 28. FM-1 Live Link (1.5)
 
 What it decides: whether a computer can mirror the screen and press the buttons over the USB
-cable on a real FM-1 (docs/reference/live-link.md). Needs section 8.1 (USB-MIDI out) passed. The
-viewer page comes later on the site; until then any Web MIDI page or tool that sends the frames
-of live-link.md's test vectors will do (Chrome or Edge, the FM-1's MIDI port). Never send
-anything else to the FM-1 while you test.
+cable on a real FM-1 (docs/reference/live-link.md). Needs section 8.1 (USB-MIDI out) passed. Use
+the site's Live Link page (`link.html`, section 30 checks the page itself; Chrome or Edge, the
+FM-1's MIDI port). Never send anything else to the FM-1 while you test.
 
 - [ ] **A session starts only from the host and shows LINK:** START, then the font and the palette
   requested; the FM-1 shows `LINK` in the bottom-left corner, and nothing on it changes otherwise.
@@ -2690,6 +2689,76 @@ songs, a `.sid` tune and a lifted sound on the store; Chrome on a computer with 
 
 Notes:
 
+## 30. The site's editor and Live Link page (1.5)
+
+What it decides: whether the editor (docs/manual/editor.md) and the Live Link page
+(docs/manual/live-link.md) work with a real FM-1 over a real USB-MIDI link in Chrome, and whether
+the editor's preview sounds like the FM-1. Their code is tested against simulated FM-1s and the
+host build (`web/editor.test.mjs`, `web/link.test.mjs`, `web/check.mjs`), never against the device.
+Set up: SIDOU 1.5 on the FM-1 with a few songs saved; Chrome on a computer with the site (or
+`tools/web-demo`) at `editor.html` and `link.html`; headphones on the computer and on the FM-1.
+
+The editor:
+
+- [ ] **Open:** Connect; Open the FM-1's current song, then a saved one; and a `.sng` file. The
+  name, the size (as the FM-1 saves it) and the four tabs show the song as INSTR, TABLE, TRACKER
+  and ORDER show it on the FM-1 (compare an instrument, a table's rows and their meanings, a
+  pattern and an orderlist).
+  *Emulator:* `web/editor.test.mjs` (the words against the C), `web/check.mjs`.
+  *Device-only:* GET over the real link; the comparison with the FM-1's own screens.
+- [ ] **Edit and save:** change an instrument's AD and its name, a wave table row, a pattern's
+  notes (typed, and played from the computer keyboard), INS and DEL on a row with a parameter lock
+  (set on STEP first), an orderlist entry and the restart; undo one, redo it. Save to the FM-1 under
+  a new name, then under an existing one (asked first). On the FM-1: SONG, LOAD the saved song: every
+  change is there, the lock moved with its row, and it plays as the editor's preview did.
+  *Emulator:* `web/editor.test.mjs` (each edit's bytes against the host build, the locks, undo, the
+  save with the overwrite check against `web/fake-fm1.mjs`).
+  *Device-only:* PUT over the real link into the real flash; the FM-1 loading the result.
+- [ ] **The limits:** add patterns until the editor says `SONG FULL`; the song saves and loads on
+  the FM-1 at that size.
+  *Emulator:* `web/editor.test.mjs` (both refusals against the host build).
+  *Device-only:* the FM-1 loading a song at the limit made in the browser.
+- [ ] **Load now:** with the FM-1's song saved, Load now: the FM-1 loads it at once (its screen
+  shows the edited song). Load now again: refused, and the page explains SAVE AS FIRST (the FM-1's
+  screen says it); SAVE AS on the FM-1, then Load now works. Make an edit on the FM-1 without
+  saving: Load now is refused, nothing lost.
+  *Emulator:* `web/editor.test.mjs` (PUT target 2 and a BUSY against the simulated FM-1).
+  *Device-only:* all of the FM-1's side (the staging file, SAVE AS FIRST, the unsaved edit).
+- [ ] **Preview, by ear:** an instrument from the on-screen keys and the computer keyboard, a
+  pattern on each voice, the song from position 0 and from a later one, Stop. Compare with the
+  FM-1 playing the same song and instrument (CHIP's profile and character set, an effect slot
+  on): the same sound; the page says what it leaves out (the thump, chip B, MASTER, the
+  character's glide). No sound before a press; no crackle on a phone (Chrome on Android) or a
+  laptop.
+  *Emulator:* `web/editor.test.mjs` (the samples of the song through the effect slots, a pattern,
+  an instrument against the host build), `web/check.mjs` (the AudioWorklet plays).
+  *Device-only:* the comparison by ear, and the browser's real audio output.
+
+The Live Link page:
+
+- [ ] **Session:** Connect (both ports `SIDOU FM-1`; nothing happens on the FM-1 yet); Start: the
+  status names the firmware, `LINK` shows bottom-left on the FM-1, and the mirror matches the LCD
+  (but `LINK`) on LIVE with notes playing, TRACKER playing, SCENE's FIRE, the menu, a help card
+  (HOME held), a popup and large text. Redraw repaints it all. Its frames and bytes a second
+  roughly match live-link.md's Measured table.
+  *Emulator:* `web/link.test.mjs` (the picture against SIDOU's device side and its panel),
+  `web/check.mjs`; section 28's emulator tests.
+  *Device-only:* the real link, and the mirror beside the LCD.
+- [ ] **Remote control:** each on-screen button acts as the FM-1's (EDIT + K1, HOME held for the
+  help card, SAVE pressed and let go); each encoder by drag, wheel and −/+ (PRESETS steps the
+  preset); a held button stays held and lets go on release, nothing stuck; the note keys play.
+  *Emulator:* `web/link.test.mjs` (the PANEL frames), section 28's.
+  *Device-only:* the FM-1 answering.
+- [ ] **The end:** another tab: `LINK` goes within a second; back: the session starts again and the
+  mirror is right. Close the tab: `LINK` goes at once. Pull the cable during a session: `LINK` goes;
+  with it back, Restart works. Sleep the computer (or pause the tab in the debugger) over 3 s: the
+  FM-1 ends the session itself and the page says so and offers Restart. During a session clock out
+  and MIDI out's CCs stay steady and a Library download in another tab completes.
+  *Emulator:* `web/link.test.mjs` (STOP on hide and close, the auto-stop), section 28's.
+  *Device-only:* all of it with the real browser, cable and computer.
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2725,3 +2794,4 @@ Notes:
 | 27 Lift a sound from a .sid | | |
 | 28 FM-1 Live Link | | |
 | 29 The site's Library page | | |
+| 30 The site's editor and Live Link page | | |

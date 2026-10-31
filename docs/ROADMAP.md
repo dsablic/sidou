@@ -148,14 +148,21 @@ sessions).
   done, the wasm core (SIDOU's song reader and writer, GTI5 export and player as
   `sidou-core.wasm`, `tools/wasm-core`), the Library page (list, download, send with an overwrite
   check, rename, delete, back up and restore) and export (`.sng` with the trailer, plain
-  GoatTracker with the channel-count check, instruments as GTI5); next, instruments and tables,
-  the pattern and orderlist grid, and preview with the wasm player.
+  GoatTracker with the channel-count check, instruments as GTI5), and the editor
+  ([editor.html](https://dsablic.github.io/sidou/editor.html)): instruments, tables, a basic
+  pattern and orderlist grid through the device's own edit primitives (LOCK and the save-size cap
+  as on the FM-1), undo, a preview with the wasm player (an instrument at a note, a pattern, the
+  song from a position; the chip's setup and the effect slots), saving to a named file or loading
+  it now. Left for later: instrument delete and reorder, pattern renumbering, editing a Stereo
+  song's voices 4-6, and the preview's output stage (thump, chip B, MASTER).
 - **Screen mirror (FM-1 Live Link).** The screen, scopes and remote controls in a browser
   over the USB cable, for the other FM-1 firmwares too. L; the design text is in the
   [old roadmap](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md)
   and [1.5's design](plans/2026-10-30-1.5-design.md), section 6. In progress: the device's side
-  (the session, the cells mirror, remote control), the [protocol](reference/live-link.md) and the
-  reference decoder are in; the browser viewer and scopes as state are next.
+  (the session, the cells mirror, remote control), the [protocol](reference/live-link.md), the
+  reference decoder and the browser viewer ([link.html](https://dsablic.github.io/sidou/link.html):
+  the screen drawn by SIDOU's own `grid.c` and `font.c` in wasm, the buttons and encoders) are in;
+  scopes as state are next.
 
 **Platform**
 

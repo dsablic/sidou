@@ -146,8 +146,9 @@ function u32(n) {
   return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
 }
 
-export function putPayload(name, type, length, crc) {
-  return Uint8Array.from([0, 0, ...name16(name), type, ...u32(length), ...u32(crc)]);
+// PUT's metadata: target 0 a named store file, 2 the current song (no name; type 1).
+export function putPayload(name, type, length, crc, target = 0) {
+  return Uint8Array.from([target, 0, ...(target === 0 ? name16(name) : new Uint8Array(16)), type, ...u32(length), ...u32(crc)]);
 }
 
 const text = (b) => String.fromCharCode(...b).replace(/\0+$/, "");
@@ -311,6 +312,7 @@ export class Client {
   }
 
   // PUT a named store file (target 0), one packet at a time; onProgress(done, total) after each ACK.
+  // loadNow() is PUT target 2: the FM-1 loads the song at once (below).
   // On NAK BUSY (the store is short of clean sectors or writing) the whole PUT is sent again after
   // a wait, as a NAK ends the transfer; onBusy(waitMs, attempt) says so. Other NAKs fail at once,
   // and so does a BUSY that ends a wait for quiet (the minute is up: someone has to stop the song).
@@ -326,6 +328,16 @@ export class Client {
         await this.sleep(this.busy[attempt]);
       }
     }
+  }
+
+  // PUT target 2: a song the FM-1 loads now in place of its current one, as if from SONG, LOAD;
+  // resolves once it has loaded (the ACK of END follows the load). It refuses (NAK BUSY) while
+  // its current song has unsaved edits, or came over USB and was not given a name yet (its screen
+  // says SAVE AS FIRST), and while the song is busy or saving: no retry here, as what ends those
+  // is the player's to do; a song that does not load is refused with its NAK.
+  async loadNow(data, { onProgress = () => {}, onWait = () => {} } = {}) {
+    this.waited = false;
+    return this.putOnce("", data, 1, onProgress, onWait, 2);
   }
 
   // DEL a named store file; resolves once the deletion has committed (the FM-1's ACK). NAK 6 when
@@ -349,13 +361,13 @@ export class Client {
     }
   }
 
-  async putOnce(name, data, type, onProgress, onWait = () => {}) {
+  async putOnce(name, data, type, onProgress, onWait = () => {}, target = 0) {
     this.drain();
     const total = data.length;
     onProgress(0, total);
     try {
       let seq = this.next();
-      this.send(encodeFrame(PUT, seq, putPayload(name, type, total, crc32(data))));
+      this.send(encodeFrame(PUT, seq, putPayload(name, type, total, crc32(data), target)));
       await this.expectAck(seq, this.ackTimeout, onWait);
       for (let off = 0; off < total; off += MAX_DATA) {
         seq = this.next();
