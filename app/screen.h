@@ -124,6 +124,14 @@ typedef struct {
     uint32_t held; /* the buttons held (bit i: button i), the pressed one included */
 } screen_event;
 
+enum { SCREEN_LONE_NONE = 0, SCREEN_LONE_DONE = 1, SCREEN_LONE_HELD_BACK = 2 };
+#define SCREEN_LONE_NO_BUTTON 0xFFu
+
+typedef struct {
+    uint8_t button;
+    uint8_t waiting;
+} screen_lone;
+
 typedef struct screen screen;
 
 /* A function the popup runs once a frame, before its asks (screen_popup_watch). */
@@ -299,6 +307,14 @@ void screen_popup(screen* s, const char* name, const char* value, uint32_t fill,
 void screen_popup_accent(screen* s, uint32_t accent);
 /* 1 while the popup is open, opening or closing. */
 int screen_popup_shows(const screen* s);
+void screen_lone_wait(screen_lone* l, uint32_t button, uint32_t waiting);
+uint32_t screen_lone_chord(screen_lone* l, const screen_event* e);
+uint32_t screen_lone_take(screen_lone* l);
+uint32_t screen_lone_released(screen_lone* l, uint32_t held);
+extern const char screen_note_names[12][2];
+void screen_note_text(uint32_t note, char out[4]);
+uint32_t screen_decimal(char* out, uint32_t n);
+void screen_popup_copy(char out[SCREEN_POPUP_TEXT], const char* text);
 /* Sweeps the raster over the border for steps steps (SCREEN_RASTER_FRAMES frames each). */
 void screen_raster(screen* s, uint32_t steps);
 /* 1 while the block cursor is on. */

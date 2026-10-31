@@ -34,3 +34,13 @@ The cleanup before 1.5's release moves the decisions now written as code comment
   shadow still reads its envelope tables from flash (`SID_ENV_TABLES_IN_FLASH`), and builds
   with `-fno-function-sections` so that none of the helpers it still instantiates is taken
   into SRAM by app.ld's name patterns.
+
+## Controls
+
+- EDIT + SCL, EDIT + ARP and EDIT + LFO are chords whichever finger lands first: a hand's two
+  fingers rarely land together. One mechanism (`screen_lone` in `app/screen.h`) serves LAB, STEP
+  and TRACKER: a button pressed without EDIT is remembered while it stays down. EDIT pressed
+  then makes it the chord. Its lone action is either done at its press (`SCREEN_LONE_DONE`:
+  LAB's ARP and LFO, STEP's LFO) or held back (`SCREEN_LONE_HELD_BACK`: SCL's next effect slot,
+  STEP's ARP gate, TRACKER's key off and rest with REC on) until it is let go or another control
+  is used, which does the held-back action first.

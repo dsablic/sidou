@@ -188,6 +188,7 @@ uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, cons
  * column after it. */
 uint32_t grid_canvas_text_big(grid_canvas* c, uint32_t col, uint32_t row, uint32_t scale,
                               const char* s, uint8_t attr);
+void grid_canvas_text(grid_canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t attr);
 /* 1 if canvas cell (col, row) differs from the grid's: its code or colour, or for a piece its
  * character. */
 int grid_canvas_differs(const grid* g, const grid_canvas* c, uint32_t col, uint32_t row);
