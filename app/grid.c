@@ -148,10 +148,7 @@ void grid_box(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8
 
 uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, const char* s,
                        uint8_t attr) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
+    uint32_t n = grid_text_length(s);
     if (col >= GRID_COLS || scale < 2u || scale > 3u) {
         return col;
     }
@@ -210,10 +207,7 @@ void grid_canvas_text(grid_canvas* c, uint32_t col, uint32_t row, const char* s,
 
 uint32_t grid_canvas_text_big(grid_canvas* c, uint32_t col, uint32_t row, uint32_t scale,
                               const char* s, uint8_t attr) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
+    uint32_t n = grid_text_length(s);
     if (col >= GRID_COLS || scale < 2u || scale > 3u) {
         return col;
     }

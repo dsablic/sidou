@@ -194,16 +194,8 @@ _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAG
 #define HELP_LINE_CELLS (HELP_LINE_ROWS * GRID_COLS)
 #define HELP_LAST_ROWS (GRID_ROWS - HELP_ROW - HELP_LINE_ROWS * (HELP_LINES - 1u))
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static uint32_t right(const char* s) {
-    return GRID_COLS - 1u - 2u * length(s);
+    return GRID_COLS - 1u - 2u * grid_text_length(s);
 }
 
 static uint32_t pages(const help_card* c) {
@@ -271,7 +263,7 @@ static void draw_unit(grid* g, const theme* th, const help_view* h, uint32_t u) 
     if (line < c->count) {
         char buf[HELP_TEXT_WORD];
         const char* key = c->lines[line];
-        const char* what = help_view_what(h, key + length(key) + 1u, buf);
+        const char* what = help_view_what(h, key + grid_text_length(key) + 1u, buf);
         grid_text_big(g, 1, row, 2, key, GRID_ATTR(th->hot, th->bg));
         grid_text_big(g, right(what), row, 2, what, blank);
     }

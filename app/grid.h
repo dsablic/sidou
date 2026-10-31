@@ -146,6 +146,14 @@ void grid_hold(grid* g, uint32_t mask);
 int grid_next_run(grid* g, grid_run* run);
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px);
 
+static inline uint32_t grid_text_length(const char* s) {
+    uint32_t n = 0;
+    while (s[n]) {
+        n++;
+    }
+    return n;
+}
+
 #ifdef __cplusplus
 }
 #endif

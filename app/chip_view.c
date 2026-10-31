@@ -118,14 +118,6 @@ static uint32_t text(canvas* c, uint32_t col, uint32_t row, const char* s, uint8
     return col;
 }
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static void big(canvas* c, uint32_t col, uint32_t row, uint32_t scale, const char* s,
                 uint8_t attr) {
     char up[16];
@@ -418,7 +410,7 @@ static void draw_tabs(const chip_view* cv, canvas* c, const theme* th) {
                     : cv->tabs && i == 0u ? GRID_ATTR(th->bg, th->label)
                                            : GRID_ATTR(th->label, th->bg);
         uint32_t w = TAB_W[i];
-        uint32_t n = length(TAB_NAME[i]);
+        uint32_t n = grid_text_length(TAB_NAME[i]);
         fill(c, TAB_COL[i], CHIP_VIEW_TAB_ROW, w, 1, ' ', a);
         text(c, TAB_COL[i] + (w - n) / 2u, CHIP_VIEW_TAB_ROW, TAB_NAME[i], a);
     }
@@ -513,7 +505,7 @@ __attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas*
             value[2] = 'A';
             value[3] = 0;
         }
-        uint32_t scale = length(value) <= 4u ? 3u : 2u;
+        uint32_t scale = grid_text_length(value) <= 4u ? 3u : 2u;
         big(c, col, row + 3u, scale, value, GRID_ATTR(active ? th->value : th->dim, th->bg));
     }
 }

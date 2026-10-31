@@ -41,14 +41,6 @@ const char* views_slot_name(uint32_t slot) {
     return slot < LIVE_SLOTS ? SLOT_NAMES[slot] : "?";
 }
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static void put(grid* g, uint8_t attr, uint32_t row, uint32_t col, const char* s) {
     while (*s && col < GRID_COLS - 1u) {
         grid_put(g, col++, row, (uint8_t)*s++, attr);
@@ -56,7 +48,7 @@ static void put(grid* g, uint8_t attr, uint32_t row, uint32_t col, const char* s
 }
 
 static void append(char* buf, uint32_t cap, const char* s) {
-    uint32_t n = length(buf);
+    uint32_t n = grid_text_length(buf);
     while (*s && n + 1u < cap) {
         buf[n++] = *s++;
     }
@@ -214,7 +206,7 @@ static void status_notes(grid* g, uint8_t attr, const live* l) {
 static void status_line(grid* g, uint8_t lbl, uint8_t val, uint32_t row, const char* label,
                         const char* value) {
     grid_text_big(g, 2, row, 2, label, lbl);
-    grid_text_big(g, GRID_COLS - 2u - 2u * length(value), row, 2, value, val);
+    grid_text_big(g, GRID_COLS - 2u - 2u * grid_text_length(value), row, 2, value, val);
 }
 
 static void status_param(grid* g, const theme* th, uint32_t row, const char* label, uint32_t value,
@@ -273,7 +265,7 @@ static void status_page_effects(grid* g, const theme* th, const live* l) {
         }
         grid_text_big(g, 4, row, 2, SLOT_NAMES[k], lbl);
         number_text(num, l->slot[k][LIVE_SLOT_MIX]);
-        grid_text_big(g, GRID_COLS - 2u - 2u * length(num), row, 2, num, a);
+        grid_text_big(g, GRID_COLS - 2u - 2u * grid_text_length(num), row, 2, num, a);
         grid_text_big(g, 14, row, 2, "MIX", lbl);
         grid_text_big(g, 4, row + STATUS_LINE_ROWS, 2,
                       views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]), a);
@@ -282,7 +274,7 @@ static void status_page_effects(grid* g, const theme* th, const live* l) {
     grid_text_big(g, 2, row, 2, SLOT_NAMES[l->fx_select], lbl);
     grid_text_big(g, 12, row, 2, "AMT", lbl);
     number_text(num, sel[LIVE_SLOT_AMOUNT]);
-    grid_text_big(g, GRID_COLS - 2u - 2u * length(num), row, 2, num, a);
+    grid_text_big(g, GRID_COLS - 2u - 2u * grid_text_length(num), row, 2, num, a);
     row += STATUS_LINE_ROWS;
     number_text(num, sel[LIVE_SLOT_A]);
     grid_text_big(g, 2, row, 2, "A", lbl);
@@ -316,7 +308,7 @@ static void status_store(grid* g, const theme* th, uint32_t retired, uint32_t er
         append(t, sizeof t, n);
     }
     if (retired | errors) {
-        put(g, THEME_ATTR(th, hot), STATUS_READY_ROW, GRID_COLS - 1u - length(t), t);
+        put(g, THEME_ATTR(th, hot), STATUS_READY_ROW, GRID_COLS - 1u - grid_text_length(t), t);
     }
 }
 
@@ -354,7 +346,7 @@ static void status_compose(screen* s, void* state, grid* g) {
     grid_fill(g, GRID_COLS - 1u, 1, 1, GRID_ROWS - 2u, FONT_FULL, ring);
     grid_fill(g, 1, 1, GRID_COLS - 2u, GRID_ROWS - 2u, ' ', a);
     grid_text_big(g, 2, 2, 2, "SIDOU", THEME_ATTR(th, hot));
-    put(g, lbl, 2, VERSION_END_COL - length(v->version), v->version);
+    put(g, lbl, 2, VERSION_END_COL - grid_text_length(v->version), v->version);
     const char pages[4] = {(char)('1' + page), '/', (char)('0' + STATUS_PAGES), 0};
     grid_text_big(g, STATUS_PAGE_COL, 2, 2, pages, a);
 
@@ -1265,13 +1257,13 @@ static void big_menu_compose(screen* s, views* v, menu* m, const char* title, gr
         number_text(num, m->count);
         append(pos, sizeof pos, num);
         join(head, sizeof head, title, "");
-        uint32_t n = length(head);
-        while (n < sizeof head - 1u - length(pos)) {
+        uint32_t n = grid_text_length(head);
+        while (n < sizeof head - 1u - grid_text_length(pos)) {
             head[n++] = ' ';
         }
         head[n] = 0;
         append(head, sizeof head, pos);
-        uint32_t at = length(title) > 6u ? length(title) : 6u;
+        uint32_t at = grid_text_length(title) > 6u ? grid_text_length(title) : 6u;
         if (at < n) {
             head[at] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
         }

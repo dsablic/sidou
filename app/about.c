@@ -65,16 +65,8 @@ _Static_assert(ABOUT_ROW_FRAMES + CREDITS_LINES * ABOUT_ROW_DELAY <= ABOUT_PAGE_
 _Static_assert(ABOUT_ROW_DELAY % 4u == 0u && ABOUT_ROW_FRAMES % 2u == 0u,
                "the rows change on even frames, two at most at once");
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static void center(grid* g, uint32_t row, const char* s, uint8_t attr) {
-    uint32_t n = length(s);
+    uint32_t n = grid_text_length(s);
     grid_text(g, n < GRID_COLS ? (GRID_COLS - n) / 2u : 0u, row, s, attr);
 }
 
@@ -155,7 +147,7 @@ static void credits(const about* a, grid* g, uint32_t f) {
     uint32_t skip = 0;
     char first[24] = "SIDOU ";
     if (page == 0) {
-        uint32_t n = length(a->version) + 6u <= GRID_COLS / 2u ? 6u : 0u;
+        uint32_t n = grid_text_length(a->version) + 6u <= GRID_COLS / 2u ? 6u : 0u;
         for (const char* s = a->version; *s && n + 1u < sizeof first;) {
             first[n++] = *s++;
         }
@@ -174,7 +166,7 @@ static void credits(const about* a, grid* g, uint32_t f) {
     if (level >= 0) {
         uint8_t attr = GRID_ATTR(FADE_HEADING[level], GRID_BLACK);
         if (skip) {
-            uint32_t n = length(heading);
+            uint32_t n = grid_text_length(heading);
             grid_text_big(g, (GRID_COLS - 2u * n) / 2u, ABOUT_HEADING_ROW, 2, heading, attr);
         } else {
             center(g, ABOUT_HEADING_ROW, heading, attr);

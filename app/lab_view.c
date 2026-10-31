@@ -135,8 +135,6 @@ static void pulse_percent(char* out, uint32_t pw) {
 }
 
 static char* append(char* out, const char* s);
-static uint32_t length(const char* s);
-
 static int ratio_card(const live* l) {
     return l->mono_sync && !(l->control & 0x40u);
 }
@@ -194,7 +192,7 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         if (k == 3u) {
             char hz[6];
             lfo_hz(hz, l->pwm_rate, 1);
-            char* e = append(name, length(hz) < 3u ? "LFO " : "LFO");
+            char* e = append(name, grid_text_length(hz) < 3u ? "LFO " : "LFO");
             e = append(append(e, hz), "HZ");
             *e = 0;
             (void)number(value, (int32_t)v, 0);
@@ -347,14 +345,6 @@ static uint32_t text(canvas* c, uint32_t col, uint32_t row, const char* s, uint8
     return col;
 }
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static int choice_off(const lab_view* lv) {
     const live* l = lv->l;
     switch (lv->page) {
@@ -380,7 +370,7 @@ static void draw_card(const lab_view* lv, canvas* c, const theme* th, uint32_t k
                                                              : GRID_ATTR(th->knob_text[k], th->bg);
     text(c, col, LAB_VIEW_LABEL_ROW, name, na);
     uint8_t va = GRID_ATTR(used ? th->value : th->dim, th->bg);
-    if (length(value) <= 2u) {
+    if (grid_text_length(value) <= 2u) {
         (void)grid_canvas_text_big(c, col, LAB_VIEW_VALUE_ROW, 3, value, va);
     } else {
         (void)grid_canvas_text_big(c, col, LAB_VIEW_VALUE_ROW + 1u, 2, value, va);

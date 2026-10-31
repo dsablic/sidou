@@ -45,14 +45,6 @@ _Static_assert(LOOK_THEME < SID_VIEW_LOOK, "NOW PLAYING's look");
 #define BACK_ROW 26u
 #define COUNT_MAX 9999u
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static void copy_name(char* out, const char* in) {
     uint32_t n = 0;
     while (n < STORE_NAME_MAX && in[n]) {
@@ -98,7 +90,7 @@ static char shown(char ch) {
 
 static void title_lines(const char* t, char l1[SID_VIEW_NAME_CELLS + 1u],
                         char l2[SID_VIEW_NAME_CELLS + 1u]) {
-    uint32_t n = length(t), cut = n;
+    uint32_t n = grid_text_length(t), cut = n;
     if (n > SID_VIEW_NAME_CELLS) {
         cut = SID_VIEW_NAME_CELLS;
         for (uint32_t k = SID_VIEW_NAME_CELLS; k > 0u; k--) {
@@ -117,7 +109,7 @@ static void title_lines(const char* t, char l1[SID_VIEW_NAME_CELLS + 1u],
     while (*rest == ' ') {
         rest++;
     }
-    uint32_t m = length(rest);
+    uint32_t m = grid_text_length(rest);
     for (i = 0; i < m && i < SID_VIEW_NAME_CELLS; i++) {
         l2[i] = shown(rest[i]);
     }
@@ -516,14 +508,14 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     if (h) {
         char t[24] = "SONG ";
         screen_decimal(t + 5, song_of(st));
-        uint32_t n = length(t);
+        uint32_t n = grid_text_length(t);
         t[n++] = '/';
         screen_decimal(t + n, h->songs);
         big(c, 2, SONG_ROW, t, THEME_ATTR(th, value));
     }
     char t[16];
     screen_decimal(t, st->seconds / 60u);
-    uint32_t n = length(t);
+    uint32_t n = grid_text_length(t);
     t[n++] = ':';
     t[n++] = (char)('0' + st->seconds % 60u / 10u);
     t[n++] = (char)('0' + st->seconds % 10u);
@@ -534,7 +526,7 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     uint32_t s = st->state < 7u ? st->state : 0u;
     const uint8_t roles[4] = {THEME_ATTR(th, value), THEME_ATTR(th, label), THEME_ATTR(th, hot),
                               THEME_ATTR(th, alert)};
-    big(c, GRID_COLS - 2u * length(WORD[s]), TIME_ROW, WORD[s], roles[COLOUR[s]]);
+    big(c, GRID_COLS - 2u * grid_text_length(WORD[s]), TIME_ROW, WORD[s], roles[COLOUR[s]]);
     if (!h) {
         return;
     }

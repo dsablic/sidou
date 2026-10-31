@@ -106,16 +106,8 @@ int boot_capture(void* ctx, const screen_event* e) {
     return 1;
 }
 
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
-
 static uint32_t center(grid* g, uint32_t row, const char* s, uint8_t attr) {
-    uint32_t n = length(s);
+    uint32_t n = grid_text_length(s);
     uint32_t col = n < GRID_COLS ? (GRID_COLS - n) / 2u : 0u;
     return grid_text(g, col, row, s, attr);
 }
