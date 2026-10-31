@@ -2338,3 +2338,12 @@ The cleanup before 1.5's release moves the decisions now written as code comment
   picture as the CRC-32 of its RGB565 pixels, which `Mirror::render` must give from the frames
   alone (`SIDOU_WEB_LINK_FIXTURE_UPDATE=1`). `paint_diagonal_stripes` paints four colours so a
   pixel out of place shows.
+
+## Sanitizer builds
+
+- `host/build-support/sanitize.rs` is included by sidou-sys's and residfp-sys's build scripts so both
+  read `SIDOU_SANITIZE` the same way. `undefined` traps on undefined behaviour with no runtime
+  library, so it works on macOS and on stable Rust: clang and newer GCC spell it
+  `-fsanitize-trap=undefined`, GCC 12 only `-fsanitize-undefined-trap-on-error`, so the first the
+  compiler accepts is used. `address` needs the Rust side built with `-Zsanitizer=address` (nightly),
+  which provides the ASan runtime.
