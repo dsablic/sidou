@@ -33,7 +33,7 @@ _Static_assert((CHIP_SPREAD_ON & (CHIP_SPREAD_ON - 1u)) == 0u &&
 
 typedef struct {
     uint8_t held;
-    uint8_t g;
+    uint8_t share;
 } chip_spread_glide;
 
 uint32_t chip_spread_glide_step(chip_spread_glide* g, uint32_t a, uint32_t b);

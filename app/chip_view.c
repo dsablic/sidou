@@ -145,13 +145,13 @@ int chip_view_song_tab(const chip_view* cv) {
     return cv->kr && cv->kr->song && cv->tab == 0u;
 }
 
-static uint32_t applied(const chip_view* cv);
+static uint32_t picked_user_slot(const chip_view* cv);
 
 int chip_view_user(const chip_view* cv) {
-    return (int)applied(cv);
+    return (int)picked_user_slot(cv);
 }
 
-static uint32_t applied(const chip_view* cv) {
+static uint32_t picked_user_slot(const chip_view* cv) {
     if (!chip_view_song_tab(cv)) {
         return cv->l->user_applied;
     }
@@ -360,7 +360,7 @@ static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
                          cv->expert << 3 | cv->expert_page << 4);
     out[n++] = l->two_chips ? (uint8_t)(1u + l->keys_chip) : 0u;
     out[n++] = help_kind(cv);
-    out[n++] = (uint8_t)(applied(cv) | cv->target << 4);
+    out[n++] = (uint8_t)(picked_user_slot(cv) | cv->target << 4);
     out[n++] = (uint8_t)(cv->target && (l->user_valid >> (cv->target - 1u) & 1u));
     out[n++] = l->theme;
     out[n] = cv->hl;
@@ -377,12 +377,12 @@ static int looks_changed(const chip_view* cv) {
     return 0;
 }
 
-static uint32_t section(const chip_view* cv) {
+static uint32_t focused_section(const chip_view* cv) {
     return cv->chip ? 0u : cv->expert ? CHIP_VIEW_EXPERT : 1u + cv->l->fx_select % LIVE_SLOTS;
 }
 
 static void profile_word(const chip_view* cv, const char* name, char out[6]) {
-    uint32_t n = applied(cv);
+    uint32_t n = picked_user_slot(cv);
     uint32_t k = 0;
     if (n) {
         const char* u = "USR ";
@@ -412,7 +412,7 @@ static void draw_tabs(const chip_view* cv, canvas* c, const theme* th) {
         text(c, 12, CHIP_VIEW_TAB_ROW, "EXPERT", GRID_ATTR(th->bg, th->hot));
         return;
     }
-    uint32_t sec = section(cv);
+    uint32_t sec = focused_section(cv);
     for (uint32_t i = 0; i < CHIP_VIEW_SECTIONS; i++) {
         uint8_t a = !cv->tabs && sec == i  ? GRID_ATTR(th->bg, th->hot)
                     : cv->tabs && i == 0u ? GRID_ATTR(th->bg, th->label)
@@ -544,7 +544,7 @@ static void build(chip_view* cv) {
     chip_setup s;
     uint8_t model;
     shown(cv, &s, &model);
-    uint32_t sec = section(cv);
+    uint32_t sec = focused_section(cv);
     const uint8_t blank = THEME_ATTR(th, value);
     memset(c->ch, ' ', sizeof c->ch);
     memset(c->attr, blank, sizeof c->attr);
@@ -555,7 +555,7 @@ static void build(chip_view* cv) {
         text(c, GRID_COLS - 6u, 0, cv->tab ? "KEYS:B" : "KEYS:A", THEME_ATTR(th, hint));
     }
     draw_tabs(cv, c, th);
-    draw_names(cv, c, th, applied(cv) ? "USER" : sid_chip_profile_word(s.profile));
+    draw_names(cv, c, th, picked_user_slot(cv) ? "USER" : sid_chip_profile_word(s.profile));
     if (cv->expert) {
         draw_expert(cv, c, th, (sid_model)model, &s);
     } else if (sec == 0u) {
@@ -659,7 +659,7 @@ void chip_view_set_keys(chip_view* cv, keys_route* kr) {
 }
 
 uint32_t chip_view_focus(const chip_view* cv) {
-    return cv->tabs ? CHIP_VIEW_TABS : section(cv);
+    return cv->tabs ? CHIP_VIEW_TABS : focused_section(cv);
 }
 
 static void message(chip_view* cv, const char* a, uint32_t n, const char* b) {
@@ -679,7 +679,7 @@ static void message(chip_view* cv, const char* a, uint32_t n, const char* b) {
 __attribute__((noinline, unused)) static chip_view_save_result save_user(chip_view* cv,
                                                                        uint32_t now_ms) {
     live* l = cv->l;
-    uint32_t slot1 = cv->target ? cv->target : applied(cv);
+    uint32_t slot1 = cv->target ? cv->target : picked_user_slot(cv);
     if (!slot1) {
         return CHIP_VIEW_SAVE_NONE;
     }
@@ -747,7 +747,7 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
     live* l = cv->l;
     int song = chip_view_song_tab(cv);
     int32_t last = (int32_t)(SID_CHIPS + LIVE_USER_PROFILES) - 1;
-    uint32_t was = applied(cv);
+    uint32_t was = picked_user_slot(cv);
     int32_t at = was ? (int32_t)(SID_CHIPS - 1u + was) : (int32_t)(song ? cv->kr->song_want.profile : profile_of(l));
     int32_t original = at;
     int32_t dir = steps < 0 ? -1 : 1;
@@ -840,7 +840,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 0;
     }
     if (e->id == PANEL_ENC_SELECT) {
-        uint32_t at = cv->tabs ? 0u : 1u + section(cv);
+        uint32_t at = cv->tabs ? 0u : 1u + focused_section(cv);
         uint32_t f = step_clamped(at, e->steps, CHIP_VIEW_EXPERT + 1u);
         cv->tabs = (uint8_t)(f == 0u);
         cv->chip = (uint8_t)(f <= 1u);

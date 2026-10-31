@@ -118,7 +118,7 @@ uint8_t scene_dark(uint8_t color) {
     return DARK[color & 15u];
 }
 
-static uint8_t mood(const scene_music* m, uint32_t v) {
+static uint8_t cutoff_shaded_color(const scene_music* m, uint32_t v) {
     return m->cutoff < SCENE_DARK_CUTOFF ? scene_dark(m->color[v]) : m->color[v];
 }
 
@@ -432,7 +432,7 @@ static void r30_step(scene* s, const scene_music* m) {
         if (v == 2u && m->note[v] != SCENE_NO_NOTE) {
             t->cur ^= 1ull << ((m->note[v] * 7u + s->frame * 11u) % R30_W);
         }
-        r30_generation(s, mood(m, v), &dirty);
+        r30_generation(s, cutoff_shaded_color(m, v), &dirty);
         steps++;
     }
     uint32_t loud = SCENE_VOICES;
@@ -448,7 +448,7 @@ static void r30_step(scene* s, const scene_music* m) {
         if (t->acc >= SCENE_ENV_STEP) {
             t->acc = (uint16_t)(t->acc - SCENE_ENV_STEP);
             if (steps < SCENE_RULE30_MAX_STEPS) {
-                r30_generation(s, mood(m, loud), &dirty);
+                r30_generation(s, cutoff_shaded_color(m, loud), &dirty);
             }
         }
     }
@@ -602,7 +602,7 @@ static void ant_step(scene* s, const scene_music* m) {
             t->acc[v] = 0;
         }
         for (; n > 0; n--) {
-            ant_walk(s, v, mood(m, v));
+            ant_walk(s, v, cutoff_shaded_color(m, v));
             if (++t->steps >= SCENE_ANT_RESET) {
                 ant_start(s);
                 break;

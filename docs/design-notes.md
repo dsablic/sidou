@@ -1071,9 +1071,9 @@ sounding alone stays in the centre as mono at any SPREAD. With phi = SPREAD / 10
 on the left alone, B on the right, each √2 (+3 dB) where mono gave it 1 on both sides. The gains
 are computed by Taylor series to phi^9 and phi^8 (the terms left under 3×10⁻⁸ there). The
 separation glides in as the second chip starts sounding and out as one goes quiet: phi is SPREAD's
-angle times the glide's share g, 0 to 1 over CHIP_SPREAD_GLIDE blocks (32: about 0.1 s), and the
+angle times the glide's share (`share`), 0 to 1 over CHIP_SPREAD_GLIDE blocks (32: about 0.1 s), and the
 gains move linearly between the mono pair and SPREAD's (within 0.7 dB of equal power half way). At
-g = 0 the stage does not run: mono, bit for bit. A chip sounds while one of its envelopes is at
+a share of 0 the stage does not run: mono, bit for bit. A chip sounds while one of its envelopes is at
 CHIP_SPREAD_ON or more (16: -24 dB); both stay sounding until one has had all three under
 CHIP_SPREAD_OFF (4: -36 dB) for CHIP_SPREAD_HOLD blocks (16: 46 ms): the hysteresis keeps the gaps
 between a phrase's notes from fluttering the image. The thresholds are powers of two so one test
