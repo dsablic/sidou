@@ -387,6 +387,10 @@ export class LinkClient {
     this.#panel();
   }
 
+  flush() {
+    this.#panel();
+  }
+
   // Lets every held button go (the pointer left, the window lost focus).
   releaseAll() {
     if (this.held) { this.held = 0; this.#panel(); }

@@ -38,16 +38,18 @@ export const KEYMAP = [
   { keys: ['Backspace'], button: 10, label: 'ARP', desc: 'Key off' },
   { keys: ['Space'], button: 12, label: 'PLAY', desc: 'Play/Stop' },
 
-  { keys: ['ArrowUp'], encoder: 0, delta: 1, label: 'SELECT ↑', desc: 'Move cursor up' },
-  { keys: ['ArrowDown'], encoder: 0, delta: -1, label: 'SELECT ↓', desc: 'Move cursor down' },
+  { keys: ['ArrowUp'], encoder: 0, delta: -1, label: 'SELECT ↑', desc: 'Move cursor up' },
+  { keys: ['ArrowDown'], encoder: 0, delta: 1, label: 'SELECT ↓', desc: 'Move cursor down' },
   { keys: ['ArrowLeft'], encoder: 1, delta: -1, label: 'ALGORITHM ←', desc: 'Navigate left' },
   { keys: ['ArrowRight'], encoder: 1, delta: 1, label: 'ALGORITHM →', desc: 'Navigate right' },
 
-  { keys: ['PageUp'], encoder: 1, delta: 1, label: 'PageUp', desc: 'Page forward (ALGORITHM)' },
-  { keys: ['PageDown'], encoder: 1, delta: -1, label: 'PageDown', desc: 'Page back (ALGORITHM)' },
+  { keys: ['PageUp'], encoder: 0, delta: -1, withEdit: true, label: 'EDIT + SELECT ↑', desc: 'Up a page (8 rows in TRACKER)' },
+  { keys: ['PageDown'], encoder: 0, delta: 1, withEdit: true, label: 'EDIT + SELECT ↓', desc: 'Down a page (8 rows in TRACKER)' },
 
-  { keys: ['ShiftLeft', 'ShiftRight'], button: 6, label: 'EDIT', desc: 'Edit layer (hold)', modifier: true },
+  { keys: ['ShiftLeft', 'ShiftRight'], button: 6, label: 'EDIT', desc: 'Edit layer (hold)' },
 ];
+
+const EDIT_BUTTON = 6;
 
 export class KeyboardController {
   constructor({ client, playNote, stopNote }) {
@@ -57,7 +59,6 @@ export class KeyboardController {
 
     this.held = new Map();
     this.notesOn = new Set();
-    this.modifiers = { edit: false };
 
     this.keydown = this.keydown.bind(this);
     this.keyup = this.keyup.bind(this);
@@ -78,8 +79,9 @@ export class KeyboardController {
   }
 
   shouldIgnore(e) {
+    if (e.defaultPrevented) return true;
     const tag = e.target.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return true;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return true;
     if (e.target.isContentEditable) return true;
     return false;
   }
@@ -94,9 +96,7 @@ export class KeyboardController {
     for (const mapping of KEYMAP) {
       if (!mapping.keys.includes(code)) continue;
 
-      if (mapping.modifier) {
-        if (mapping.button === 6) this.modifiers.edit = true;
-      } else if (mapping.note !== undefined) {
+      if (mapping.note !== undefined) {
         e.preventDefault();
         this.held.set(code, { type: 'note', note: mapping.note });
         this.notesOn.add(mapping.note);
@@ -107,8 +107,8 @@ export class KeyboardController {
         this.getClient()?.press(mapping.button);
       } else if (mapping.encoder !== undefined) {
         e.preventDefault();
-        this.held.set(code, { type: 'encoder', encoder: mapping.encoder, delta: mapping.delta });
-        this.getClient()?.turn(mapping.encoder, mapping.delta);
+        this.held.set(code, { type: 'encoder' });
+        this.turn(mapping);
       }
       break;
     }
@@ -124,9 +124,7 @@ export class KeyboardController {
     for (const mapping of KEYMAP) {
       if (!mapping.keys.includes(code)) continue;
 
-      if (mapping.modifier) {
-        if (mapping.button === 6) this.modifiers.edit = false;
-      } else if (held.type === 'note') {
+      if (held.type === 'note') {
         e.preventDefault();
         this.notesOn.delete(held.note);
         this.stopNote?.(held.note);
@@ -156,6 +154,50 @@ export class KeyboardController {
       }
     }
     this.held.clear();
-    this.modifiers.edit = false;
   }
+
+  editHeld() {
+    for (const held of this.held.values()) {
+      if (held.type === 'button' && held.button === EDIT_BUTTON) return true;
+    }
+    return false;
+  }
+
+  turn(mapping) {
+    const client = this.getClient();
+    if (!client) return;
+    const pressEdit = mapping.withEdit && !this.editHeld();
+    if (pressEdit) client.press(EDIT_BUTTON);
+    client.turn(mapping.encoder, mapping.delta);
+    if (pressEdit) {
+      client.flush();
+      client.release(EDIT_BUTTON);
+    }
+  }
+}
+
+const GROUPS = [
+  ['Piano keys', (m) => m.note !== undefined],
+  ['Navigation', (m) => m.encoder !== undefined],
+  ['Buttons', (m) => m.button !== undefined],
+];
+
+const KEY_NAMES = { Digit: '', Key: '', Arrow: '', Numpad: 'Pad ' };
+
+function keyName(code) {
+  const prefix = Object.keys(KEY_NAMES).find((p) => code.startsWith(p));
+  const name = prefix ? KEY_NAMES[prefix] + code.slice(prefix.length) : code;
+  return { Up: '↑', Down: '↓', Left: '←', Right: '→', Comma: ',', Escape: 'Esc', ShiftLeft: 'Shift' }[name] ?? name;
+}
+
+export function keymapCard() {
+  return GROUPS.map(([title, keep]) => {
+    const rows = KEYMAP.filter(keep);
+    if (title === 'Piano keys') {
+      const row = (from, to) => rows.slice(from, to).map((m) => keyName(m.keys[0])).join(' ');
+      const octave = rows.findIndex((m, i) => i > 0 && m.note === rows[0].note + 12) + 1;
+      return { title, items: [[row(0, octave), 'C-4 to C-5, as MIDI notes'], [row(octave), 'C-5 to C-6']] };
+    }
+    return { title, items: rows.map((m) => [keyName(m.keys[0]), `${m.label}: ${m.desc}`]) };
+  });
 }

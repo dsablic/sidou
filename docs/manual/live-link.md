@@ -78,22 +78,16 @@ stays the source of truth. Typing in the port selectors or other inputs does not
 - **Lower row:** `Z S X D C V G B H N J M ,` — C to C (white and black keys)
 - **Upper row:** `Q 2 W 3 E R 5 T 6 Y 7 U I` — C to C, one octave up
 
-### Navigation
+### Navigation and buttons
 
-- **↑ ↓** — SELECT encoder (cursor/row up/down in TRACKER/TABLE/INSTR)
-- **← →** — ALGORITHM encoder (voice/page/choice left/right)
-- **Page Up/Down** — ALGORITHM (paging where it pages, e.g. TRACKER rows)
+- **↑ ↓** — SELECT: TRACKER's cursor up and down a row (and SELECT's job in the other views)
+- **← →** — ALGORITHM: TRACKER's voice, and ALGORITHM's job elsewhere
+- **Page Up / Page Down** — EDIT + SELECT: a page up or down (8 rows in TRACKER)
+- **Enter** SAVE, **Esc** HOME, **Backspace** ARP (a key off in TRACKER with REC on), **Space** PLAY
+- **Shift** — EDIT, held while it is down, for the EDIT layers
 
-### Buttons
-
-- **Enter** — SAVE (confirm, save, OK on every list)
-- **Esc** — HOME (back, menu)
-- **Backspace** — ARP (key off in TRACKER with REC on)
-- **Space** — PLAY (play/stop the song)
-- **Shift** — EDIT (hold with a key for EDIT-held layers)
-
-The keymap is designed from docs/reference/controls.md so each key maps to exactly what the
-device does in each view.
+The page's keymap card is drawn from the same table the keys use. Keys typed in a text field or
+on a focused button or knob are theirs, not the FM-1's.
 
 ## Notes
 

@@ -150,33 +150,7 @@
     <p>While keyboard control is on, the computer keyboard drives the FM-1. The device stays the source
       of truth: the page sends PANEL frames (buttons and encoders) and MIDI notes. Typing in the port
       selectors or other inputs does not send.</p>
-    <div class="keymap">
-      <div class="keymap-group">
-        <h3>Piano keys (two rows, GoatTracker-style)</h3>
-        <div class="keymap-items">
-          <div class="keymap-item"><code>Z S X D C V G B H N J M ,</code><span>Lower row: C to C (white and black)</span></div>
-          <div class="keymap-item"><code>Q 2 W 3 E R 5 T 6 Y 7 U I</code><span>Upper row: C to C (one octave up)</span></div>
-        </div>
-      </div>
-      <div class="keymap-group">
-        <h3>Navigation</h3>
-        <div class="keymap-items">
-          <div class="keymap-item"><code>↑ ↓</code><span>SELECT encoder (cursor/row up/down in TRACKER/TABLE/INSTR)</span></div>
-          <div class="keymap-item"><code>← →</code><span>ALGORITHM encoder (voice/page/choice left/right)</span></div>
-          <div class="keymap-item"><code>Page Up/Down</code><span>ALGORITHM (paging where it pages, e.g. TRACKER rows)</span></div>
-        </div>
-      </div>
-      <div class="keymap-group">
-        <h3>Buttons</h3>
-        <div class="keymap-items">
-          <div class="keymap-item"><code>Enter</code><span>SAVE (confirm, save, OK on every list)</span></div>
-          <div class="keymap-item"><code>Esc</code><span>HOME (back, menu)</span></div>
-          <div class="keymap-item"><code>Backspace</code><span>ARP (key off in TRACKER with REC on)</span></div>
-          <div class="keymap-item"><code>Space</code><span>PLAY (play/stop the song)</span></div>
-          <div class="keymap-item"><code>Shift</code><span>EDIT (hold with a key for EDIT-held layers)</span></div>
-        </div>
-      </div>
-    </div>
+    <div class="keymap" id="keymap"></div>
   </section>
 
   <footer>
@@ -187,13 +161,17 @@
 </main>
 <script type="module">
 import { BUTTONS, ENCODERS, LinkClient, WIDTH, HEIGHT, loadViewer } from "./link.js";
-import { KeyboardController } from "./link-keyboard.js";
+import { KeyboardController, keymapCard } from "./link-keyboard.js";
 
 const DEVICE_PORT = "SIDOU FM-1";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const say = (node, text, kind = "") => { node.textContent = text; node.dataset.state = kind; };
 
+$("keymap").replaceChildren(...keymapCard().map(({ title, items }) =>
+  el("div", { className: "keymap-group" }, el("h3", { textContent: title }),
+    el("div", { className: "keymap-items" }, ...items.map(([k, what]) =>
+      el("div", { className: "keymap-item" }, el("code", { textContent: k }), el("span", { textContent: what })))))));
 const state = { access: null, client: null, viewer: null, output: null, input: null, notes: new Set(), keyboard: null, keyboardOn: false };
 window.__link = state; // the smoke test (web/check.mjs) reads it
 
