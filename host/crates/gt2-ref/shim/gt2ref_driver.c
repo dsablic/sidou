@@ -1,10 +1,5 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
-/* For tests/assembler.rs only: a command-line packer over gt2ref.h, built there against
- * GoatTracker's own assembler (fetched, never committed) so its output can be compared
- * with the harness's.
- *   gt2ref-driver in.sng out.prg [A=hex] [S=n] [P=player bits] [O=n] [R=n] [W=hex page]
- *                 [Z=hex] [G=Hz] [L=hex] [N] */
 #include <stdio.h>
 #include <stdlib.h>
 

@@ -1,23 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The firmware's flash hooks for the update protocol (platform/fm1/ota_flash.h), built for
-//! the host by harness/flash_hooks.c with stand-ins for the flash driver, the interrupt mask,
-//! the audio and the LEDs: erases and writes only inside the staging area, never while the
-//! audio runs, the driver always called with interrupts masked, reads in 256-byte windows.
 
 use std::sync::{Mutex, MutexGuard};
 
 use sidou_pack::harness::{fh_counts, fh_erase, fh_flash, fh_fread, fh_prog, fh_reset, FhCounters};
 
-/// ota.c's staging area.
 const AREA: u32 = 0xE0000;
 const AREA_LEN: u32 = 0x5000;
-/// What fh_reset fills the flash with.
 const FILL: u8 = 0x5A;
 
 static HARNESS: Mutex<()> = Mutex::new(());
 
-/// The harness, reset, with the audio running or not; one test at a time (global state).
 fn harness(audio: bool) -> MutexGuard<'static, ()> {
     let g = HARNESS.lock().unwrap_or_else(|e| e.into_inner());
     unsafe { fh_reset(i32::from(audio)) };
@@ -98,7 +91,7 @@ fn writes_only_inside_the_area() {
         (AREA + AREA_LEN - 2, 4),
         (AREA + AREA_LEN, 1),
         (0x4000, 16),
-        (u32::MAX - 1, 4), // wraps
+        (u32::MAX - 1, 4),
     ] {
         assert_eq!(prog(off, &vec![0u8; n]), -8, "write of {n} at {off:#x}");
     }
@@ -113,14 +106,13 @@ fn nothing_is_erased_or_written_while_the_audio_runs() {
     let c = counts();
     assert_eq!((c.refused, c.erases, c.writes, c.leds_dark), (2, 0, 0, 0));
     assert!(flash(AREA..AREA + AREA_LEN).iter().all(|&b| b == FILL));
-    // Out-of-area requests are refused for that first, and not counted as audio refusals.
     assert_eq!(erase(0x4000), -8);
     assert_eq!(counts().refused, 2);
 }
 
 #[test]
 fn reads_go_in_short_masked_windows() {
-    let _h = harness(true); // reads are allowed while the audio runs
+    let _h = harness(true);
     let mut buf = vec![0u8; 1000];
     assert_eq!(unsafe { fh_fread(0x4000, buf.as_mut_ptr(), 1000) }, 0);
     assert!(buf.iter().all(|&b| b == FILL));
@@ -131,7 +123,6 @@ fn reads_go_in_short_masked_windows() {
     );
 }
 
-/// harness/flash_hooks.c copies FL_IN from the HAL header: keep the two the same.
 #[test]
 fn the_harness_range_check_is_the_hals() {
     let norm = |s: &str| -> String {

@@ -1,39 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's named chip profiles (M1c Task 3): each is a set of reSIDfp settings, a filter
-//! curve setting (a row of gen/filter.h), a combined-waveform strength and the voice DACs'
-//! ladder, plus the 6581 filter's non-linearity amount (sid_set_filter_nonlinearity), and
-//! the curve setting the age/heat control drifts towards. `profiles_header` writes them to
-//! core/sid/gen/profiles.h.
-//!
-//! What reSIDfp exposes, and what each profile takes from it (libresidfp c1791383):
-//! - `setFilter6581Curve` / `setFilter8580Curve` (0..1, 0.5 by default; Filter6581.h and
-//!   Filter8580.h say 0 is dark and 1 bright, which the 6581 does, while the 8580's cutoff
-//!   rises as its curve falls, measured: FC 1024 is 7.1 kHz at 0.5 and 10.4 kHz at 0.25, as
-//!   its integrators' gate voltage, 1.8 - 0.6 curve, rises) and `setFilter6581Range` (0..1: the VCRs' uCox, 1 + 39 r uA/V^2; the
-//!   default, never set, is 20 uA/V^2, r = 19/39). The curve shifts the 6581's cutoff DAC
-//!   zero (FilterModelConfig6581::getDAC), the range scales its VCR current.
-//! - `setCombinedWaveforms`: three sampled chips (WaveformCalculator.cpp): AVERAGE from a
-//!   6581 R3 0486S (sampled by Trurl) and an 8580 R5 1088 (reFX-Mike), WEAK from a 6581 R2
-//!   4383 (ltx128) and an 8580 R5 4887, STRONG from a 6581 R2 0384 (Trurl) and an 8580 R5
-//!   1489.
-//! - `setDacLeakage` (0..1, a scale on the MOSFET leakage, 1 by default; it cannot raise
-//!   it) and the R-2R ladder's 2R/R ratio, which reSIDfp fixes per model (2.20 on the 6581,
-//!   2.00 on the 8580; Dac.cpp).
-//! - The op-amp transfer function of reSIDfp's 6581 filter is measured on a 6581R4AR 0687
-//!   (FilterModelConfig6581.cpp), its 8580's on an 8580R5 1690.
-//!
-//! What is not documented anywhere we found: a filter curve or range per 6581 revision.
-//! The revisions R2, R3 and R4AR share their filter design (the R3 changed the input pins'
-//! protection, the R4AR the silicon grade; Wikipedia "MOS Technology 6581", "Revisions",
-//! uncited there), while 6581 filters vary widely from chip to chip (reSIDfp's Filter6581.h:
-//! its resistances are "only approximate values for one particular SID chip"). So the R2 and
-//! R3 rows below are representative points in that spread, chosen by SIDOU: R2 brighter,
-//! R3 darker than reSIDfp's default (the R4AR's), each with the combined waveforms sampled
-//! from that revision. They are labelled as SIDOU's choices in the header and the docs.
-//! "Worn 6581" is an artistic profile, not a measured chip: darker and narrower (curve and
-//! range), the strongest combined waveforms, a leakier and more kinked DAC than reSIDfp
-//! allows, and more non-linearity.
 
 use std::fmt::Write;
 
@@ -41,13 +7,9 @@ use residfp_sys::{CombinedWaveforms, Model};
 
 use crate::filter_fit::CurveSetting;
 
-/// The 6581's filter range for reSIDfp's default uCox (20e-6 = (1 + 39 r) 1e-6).
 pub const DEFAULT_RANGE_6581: f64 = 19.0 / 39.0;
 
-/// The filter curve settings fitted for gen/filter.h, in table order per model (index 0 is
-/// the one sid_init uses, reSIDfp's default). The profiles below index into them.
 pub const FILTER_CURVES: [CurveSetting; 7] = [
-    // 6581: reSIDfp's default (the R4AR), R2, R3, worn, and age/heat's target.
     CurveSetting::default_for(Model::Mos6581),
     CurveSetting {
         model: Model::Mos6581,
@@ -69,7 +31,6 @@ pub const FILTER_CURVES: [CurveSetting; 7] = [
         curve: 0.25,
         range6581: Some(0.3),
     },
-    // 8580: reSIDfp's default (the R5), and age/heat's target.
     CurveSetting::default_for(Model::Csg8580),
     CurveSetting {
         model: Model::Csg8580,
@@ -78,7 +39,6 @@ pub const FILTER_CURVES: [CurveSetting; 7] = [
     },
 ];
 
-/// The row of `setting` among its model's rows of gen/filter.h.
 pub fn curve_row(setting: &CurveSetting) -> usize {
     FILTER_CURVES
         .iter()
@@ -87,28 +47,19 @@ pub fn curve_row(setting: &CurveSetting) -> usize {
         .expect("a fitted curve setting")
 }
 
-/// One named profile.
 #[derive(Clone, Copy, Debug)]
 pub struct ChipProfile {
-    /// As the CHIP view and the MIDI reference show it.
     pub name: &'static str,
-    /// The C enumerator's suffix: SID_CHIP_<ident>.
     pub ident: &'static str,
     pub model: Model,
-    /// Its filter's reSIDfp setting.
     pub filter: CurveSetting,
-    /// The setting age/heat drifts its filter towards (at age 127).
     pub hot: CurveSetting,
     pub combined: CombinedWaveforms,
-    /// The voice DACs' 2R/R ratio and leakage (sid_dac_build); None for reSIDfp's.
     pub dac: Option<(f64, f64)>,
-    /// The 6581 filter's non-linearity amount (1: reSIDfp's).
     pub nonlinearity: f64,
-    /// Where it comes from, for the generated header.
     pub source: &'static str,
 }
 
-/// The profiles, in the order of the MIDI map's Profile row (0..4).
 pub const PROFILES: [ChipProfile; 5] = [
     ChipProfile {
         name: "6581 R2",
@@ -191,8 +142,6 @@ fn combined_c(cws: CombinedWaveforms) -> &'static str {
     }
 }
 
-/// gen/profiles.h: the profiles' enumerators and their rows (sid_chip_profile, in
-/// sid_character.h).
 pub fn profiles_header() -> crate::Generated {
     let mut s = String::new();
     // REUSE-IgnoreStart
@@ -269,7 +218,6 @@ mod tests {
             curve_row(&p.filter);
             curve_row(&p.hot);
         }
-        // Row 0 of each model is reSIDfp's default, which sid_init uses.
         assert_eq!(curve_row(&CurveSetting::default_for(Model::Mos6581)), 0);
         assert_eq!(curve_row(&CurveSetting::default_for(Model::Csg8580)), 0);
     }

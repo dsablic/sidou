@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The flash spike's bounds (platform/fm1/flash_spike_guard.h) on the host: the same code, with
- * the driver calls played by stand-ins on a 1 MiB flash that record every address they are
- * handed, so the tests (tests/flash_spike_guard.rs) can show nothing outside the store's last
- * two sectors ever reaches the driver. */
 #include <stdint.h>
 #include <string.h>
 
@@ -13,8 +9,6 @@
 static uint8_t flash[FLASH_SIZE];
 static uint32_t drv_calls, drv_lo = 0xFFFFFFFFu, drv_hi;
 
-/* The stand-ins do what the part would, wrapping at 1 MiB as the part ignores the high
- * address bits, so a call the guard let through at a bad address would show in the flash. */
 static void reached(uint32_t off, uint32_t n) {
     drv_calls++;
     if (off < drv_lo) {
@@ -115,7 +109,6 @@ int fs_suspend(uint32_t erase_off, uint32_t read_off, uint8_t* dst, uint32_t n) 
     flash_spike_suspend_result r;
     return flash_spike_suspend(erase_off, 1000, read_off, dst, n, &r);
 }
-/* The RAM driver's own gate in the spike's build (fm1_flash.h's FL_RANGE_OK there). */
 int fs_driver_ok(uint32_t off, uint32_t n) {
     return FLASH_SPIKE_DRIVER_OK(off, n);
 }

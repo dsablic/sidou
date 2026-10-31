@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The flash spike's bounds (platform/fm1/flash_spike_guard.h, M2a Task 3b), built for the host
-//! by harness/flash_spike_guard.c with stand-ins for the driver: every erase, page erase,
-//! program and suspend the spike can ask for, at every address of the 1 MiB part, reaches the
-//! driver only inside the store's last two sectors [0xDE000, 0xE0000), programs only below
-//! each sector's guard band (0xF00), and nothing else in the flash changes. Also the spike's
-//! test of whose a sector is (blank, its own, or foreign: refused) and of its round-trip
-//! pattern. emu-gate tests/flash_spike.rs runs the spike's image itself.
 
 use std::sync::{Mutex, MutexGuard};
 
@@ -18,17 +11,14 @@ use sidou_pack::harness::{
 const FLASH: u32 = 1 << 20;
 const SECTOR: u32 = 0x1000;
 const PAGE: u32 = 0x100;
-/// The plan's flash map (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2a-storage.md).
 const STORE_LO: u32 = 0x97000;
 const STORE_HI: u32 = 0xE0000;
 const APP_HI: u32 = 0x93000;
 const OTA: std::ops::Range<u32> = 0xE0000..0xE5000;
 const SPIKE: std::ops::Range<u32> = 0xDE000..0xE0000;
 const USE: u32 = 0xF00;
-/// What fs_reset fills the flash with: nothing the stand-ins write leaves it alone.
 const FILL: u8 = 0x5A;
 
-/// Blank, the spike's own, and foreign.
 const BLANK: i32 = 0;
 const OURS: i32 = 1;
 const FOREIGN: i32 = 2;
@@ -56,8 +46,6 @@ fn inside(off: u32, n: u32) -> bool {
     off >= SPIKE.start && u64::from(off) + u64::from(n) <= u64::from(SPIKE.end)
 }
 
-/// The flash outside the spike's sectors still holds FILL, and the driver was never handed
-/// an address outside them.
 fn untouched_outside() {
     let f = flash();
     let moved = (0..FLASH)
@@ -85,7 +73,6 @@ fn the_bounds_are_the_stores_last_two_sectors_clear_of_everything_else() {
         (c.store_lo, c.store_hi, c.sector_use),
         (STORE_LO, STORE_HI, USE)
     );
-    // The bounds as the C has them, against the map.
     assert!(c.spike_lo >= c.store_lo && c.spike_hi <= c.store_hi);
     assert!(
         c.spike_lo >= APP_HI,
@@ -98,8 +85,6 @@ fn the_bounds_are_the_stores_last_two_sectors_clear_of_everything_else() {
 fn sector_erases_reach_the_driver_only_for_the_spikes_two_sectors() {
     let _h = harness();
     let mut accepted = Vec::new();
-    // Every 256-byte step of the part and beyond it (the part ignores the high bits), and the
-    // top of the address space.
     let offs = (0..2 * FLASH)
         .step_by(PAGE as usize)
         .chain([u32::MAX - SECTOR + 1, !(SECTOR - 1)]);
@@ -150,7 +135,6 @@ fn programs_reach_the_driver_only_inside_one_page_below_the_guard_band() {
             assert_eq!(ok, want, "program of {n} at {off:#x}");
         }
     }
-    // Wrapping lengths and offsets.
     for (off, n) in [
         (0xDE000, u32::MAX),
         (u32::MAX, 2),
@@ -164,8 +148,6 @@ fn programs_reach_the_driver_only_inside_one_page_below_the_guard_band() {
         );
     }
     untouched_outside();
-    // The guard band of both sectors was never programmed: an update record's magic (+6)
-    // reads 0xFFFF there.
     let f = flash();
     for s in [0xDE000usize, 0xDF000] {
         assert!(f[s + USE as usize..s + SECTOR as usize]
@@ -233,7 +215,6 @@ fn pattern_state(s: &[u8]) -> i32 {
     unsafe { fs_pattern_state(s.as_ptr()) }
 }
 
-/// The sector as the spike leaves 0xDE000.
 fn pattern() -> Vec<u8> {
     let m = mark();
     sector(|i| match i {
@@ -254,8 +235,6 @@ fn only_blank_sectors_and_the_spikes_own_are_taken() {
     let mut busy = ours.clone();
     busy[0x100..0x800].fill(0);
     assert_eq!(classify(&busy), OURS, "the spike's own, mid-run");
-    // Foreign: one byte anywhere in a blank sector, the guard band touched, a store sector,
-    // a mark one byte off, a sector cut mid-erase.
     for i in [0usize, 15, 16, 0xEFF, 0xF00, 0xF06, 0xFFF] {
         let mut s = sector(|_| 0xFF);
         s[i] = 0xFE;

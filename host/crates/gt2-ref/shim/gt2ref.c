@@ -1,10 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-FileCopyrightText: Lasse Öörni and GoatTracker 2's contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
-/* The harness's entry points (gt2ref.h): GoatTracker 2.77's gt2reloc main, its option
- * handling and checks, called with the options as values instead of a command line.
- * gt2ref_pack's "Validate parameters" block reproduces gt2reloc.c's (GPL-2.0-or-later,
- * whose "any later version" lets this file stay GPL-3.0-or-later). */
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,12 +9,10 @@
 #include "membuf.h"
 #include "gt2ref_shim.h"
 
-/* gt2reloc.c's globals (its main is compiled as gt2reloc_main, never called). */
 extern char songfilename[];
 extern char packedsongname[];
 extern unsigned char freqtbllo[], freqtblhi[];
 extern unsigned customclockrate;
-/* greloc.c's source and output buffers, left full when its exit returns early. */
 extern struct membuf src, dest;
 
 #define PACKED_NAME "gt2ref.prg"
@@ -40,7 +34,6 @@ void gt2ref_default_options(gt2ref_options* o) {
     o->zeropage = 0xfc;
 }
 
-/* The idents loadsong reads (gsong.c); any other leaves the cleared song as it is. */
 static int known_ident(const unsigned char* sng, size_t len) {
     static const char* const idents[] = {"GTS!", "GTS2", "GTS3", "GTS4", "GTS5"};
     if (len < 4)
@@ -51,11 +44,6 @@ static int known_ident(const unsigned char* sng, size_t len) {
     return 0;
 }
 
-/* What gt2reloc's main does before it reads its options: the channels, a cleared song,
- * then the song loaded. The defaults of every option, as gt2reloc.c initialises them.
- * loadsong reports nothing: it skips a file whose ident it does not know, and reads zeros
- * past the end of a short one. So the load fails (-1) on an unknown ident, or if any of
- * loadsong's reads came back short (the shim's gt2ref_fread). */
 static int gt2ref_load(const unsigned char* sng, size_t len) {
     if (!saved_defaults) {
         memcpy(default_lo, freqtbllo, FREQ_NOTES);
@@ -113,7 +101,6 @@ int gt2ref_pack(const unsigned char* sng, size_t len, const gt2ref_options* o,
     playeradr = (int)o->player_address;
     zeropageadr = (int)o->zeropage;
     sidmodel = o->sid_model;
-    /* gt2reloc's "Validate parameters". */
     sidmodel &= 1;
     adparam &= 0xffff;
     zeropageadr &= 0xff;
@@ -135,7 +122,6 @@ int gt2ref_pack(const unsigned char* sng, size_t len, const gt2ref_options* o,
         basepitch = 0.0f;
     if (basepitch > 0.0f)
         calculatefreqtable();
-    /* gt2reloc reports its sizes on its stdout, which gt2ref_quiet discards. */
     int ok = gt2ref_guard(relocator) == 0;
     gt2ref_take_output(PACKED_NAME, prg, prg_len);
     gt2ref_set_input(NULL, 0);

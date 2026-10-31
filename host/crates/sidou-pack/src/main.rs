@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `sidou-pack --app sidou_app.bin --loader loader/loader.bin -o sidou.fwsc`
-//!
-//! Packs the firmware image and the update loader's RAM image (both from the fm1 build) into
-//! an FM-1 update package. Downloads the inputs that are not SIDOU's on first use into the
-//! cache (default: the repository's `build/`), checked against `inputs.toml`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -23,8 +18,6 @@ struct Args {
     cache: PathBuf,
     fetch: bool,
     ota: Option<PathBuf>,
-    /// docs/hardware-test.md: a package whose flash.bin is 4 KiB short, which the firmware's
-    /// step 1 refuses before it erases anything.
     wrong_size: bool,
 }
 
@@ -78,8 +71,6 @@ fn run(a: &Args) -> Result<(), String> {
         let ota = sidou_pack::wrap_loader(&loader).map_err(|e| e.to_string())?;
         std::fs::write(p, ota).map_err(|e| format!("{}: {e}", p.display()))?;
     }
-    // A package may be made of any build (the flash spike's, a checklist build's); its
-    // verification is what fails one that is not a release.
     match sidou_pack::build_options(&app) {
         Some(o) => {
             let p = sidou_pack::option_problems(&o);
@@ -106,8 +97,6 @@ fn run(a: &Args) -> Result<(), String> {
     Ok(())
 }
 
-/// `--verify PKG`: checks a finished package (no inputs, no network, no device) and prints one
-/// `key value` line per fact, `problem ...` lines for what is wrong. Exit 1 if there is any.
 fn verify_main(path: &str) -> ExitCode {
     let pkg = match std::fs::read(path) {
         Ok(p) => p,

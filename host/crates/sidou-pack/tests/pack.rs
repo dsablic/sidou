@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Packages with the real inputs: read back with fm1-emu's reader (`fm1_soc::fwsc`), and a
-//! golden hash. They need the cache (`build/ac79/`, which `sidou-pack` fills on first use)
-//! and skip without it.
 
 use sidou_pack::{
     default_cache, flash_image, head, head_chip_key, inputs, loader_identity, loader_release,
@@ -10,8 +7,6 @@ use sidou_pack::{
     APP_SLOT, CHIP_KEY, DEFAULT_OPTIONS, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
 };
 
-/// The package of `tiny_app` and `tiny_loader` with the pinned inputs.
-/// Checked once against Felucca's fm1pkg_make.py on the same inputs: byte-identical.
 const GOLDEN_SHA256: &str = "03fbd6443eff4b337a8d737f3286aa297264cdf33fc9c6d3681fd82d21b1bafb";
 
 fn cached() -> Option<Inputs> {
@@ -31,8 +26,6 @@ fn tiny_app() -> Vec<u8> {
     a
 }
 
-/// `tiny_app` with the record of a build whose options are the defaults but for `change`'s
-/// (what platform/fm1/CMakeLists.txt makes).
 fn tiny_app_built_with(change: &[(&str, &str)]) -> Vec<u8> {
     let mut a = tiny_app();
     a.extend_from_slice(b"SIDOU-OPTIONS 1");
@@ -62,7 +55,6 @@ fn a_package_reads_back_with_fm1_emus_reader() {
     let (app, loader) = (tiny_app(), tiny_loader());
     let pkg = package(&inp, &app, &loader, DEFAULT_PRODUCT).unwrap();
     let u = fm1_soc::fwsc::unpack(&pkg).expect("fm1-emu reads the package");
-    // flash.bin: the SDK-default head with the SDK's SPL and the chip key, then the app area.
     assert_eq!(u.raw.len(), FLASH_SIZE);
     assert_eq!(
         &u.raw[..HEAD_SIZE],
@@ -71,7 +63,6 @@ fn a_package_reads_back_with_fm1_emus_reader() {
     assert_eq!(head_chip_key(&u.raw[..HEAD_SIZE]).unwrap(), CHIP_KEY);
     assert_eq!(&u.raw[0xA0..0xA0 + inp.uboot.len()], inp.uboot.as_slice());
     assert_eq!(u.area, HEAD_SIZE);
-    // The app area unscrambled: the directory and the app where the SPL maps it (0x02000120).
     let entry = u.entry("app.bin").expect("app.bin in the app area");
     assert_eq!((entry.offset, entry.size), (0x120, APP_SLOT));
     assert_eq!(&u.xip[0x120..0x120 + app.len()], app.as_slice());
@@ -83,7 +74,6 @@ fn a_package_reads_back_with_fm1_emus_reader() {
     }
     let usr = u.entry("USR").unwrap();
     assert_eq!((usr.offset, usr.size), (0xEA000, 0x12000));
-    // The ufw container: identity, flash.bin at 0x400, ota.bin after it.
     assert_eq!(product_of(&pkg), DEFAULT_PRODUCT);
     let (fl_off, flash) = ufw_file(&pkg, 0).unwrap();
     let (ota_off, ota) = ufw_file(&pkg, 100).unwrap();
@@ -147,13 +137,11 @@ fn verify_refuses_an_app_built_with_other_options_than_the_defaults() {
     let ok = verify(&pack(&tiny_release_app()));
     assert!(ok.problems.is_empty(), "{:?}", ok.problems);
     assert!(ok.options.contains("SIDOU_ALL_COMBINED_PROFILES_8580=ON"));
-    // A stale cache: the 8580 tables off.
     let stale = tiny_app_built_with(&[("SIDOU_ALL_COMBINED_PROFILES_8580", "OFF")]);
     let v = verify(&pack(&stale));
     assert_eq!(v.problems.len(), 1, "{:?}", v.problems);
     assert!(v.problems[0].contains("SIDOU_ALL_COMBINED_PROFILES_8580=OFF"));
     assert!(v.options.contains("SIDOU_ALL_COMBINED_PROFILES_8580=OFF"));
-    // No record at all (an image of before the record, or not from SIDOU's CMake).
     let v = verify(&pack(&tiny_app()));
     assert!(v.problems.iter().any(|p| p.contains("no build options")));
 }
@@ -195,15 +183,12 @@ fn verify_refuses_damage_and_foreign_identities() {
         return;
     };
     let pkg = package(&inp, &tiny_app(), &tiny_loader(), DEFAULT_PRODUCT).unwrap();
-    // A flipped bit in the app area: the package's own CRCs catch it.
     let mut bad = pkg.clone();
     let at = 0x400 + HEAD_SIZE + 0x200;
     bad[at] ^= 1;
     assert!(!verify(&bad).problems.is_empty());
-    // Not a package at all.
     assert!(!verify(&[0u8; 100]).problems.is_empty());
     assert!(!verify(&vec![0u8; 5000]).problems.is_empty());
-    // An identity outside FM-1_9XY.
     let ota = wrap_loader(&tiny_loader()).unwrap();
     let mut flash = flash_image(&inp, &tiny_app()).unwrap();
     flash.truncate(FLASH_SIZE);
@@ -220,7 +205,6 @@ fn the_loader_identity_is_its_first_terminated_ota_string() {
         loader_identity(b"\x00ota-FM-1_900\x00ota-x\x00"),
         "ota-FM-1_900"
     );
-    // Not terminated within 32 bytes, or not printable: skipped for the next one.
     let mut l = b"ota-".to_vec();
     l.extend([b'a'; 40]);
     l.extend_from_slice(b"\x00ota-\x01\x00ota-FM-1_015\x00");

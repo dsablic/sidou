@@ -1,17 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The host 6502: Klaus Dormann's functional test (third_party/6502-tests), decimal mode
-//! included, and the documented-opcode table the harness traps with.
 
 use gt2_ref::cpu::{documented, Cpu6502, Mos6502, Ram, Regs};
 
-/// The test's "jmp *" on success, from its listing (6502_functional_test.lst, line 13377).
 const SUCCESS: u16 = 0x3469;
 
 #[test]
 fn documented_opcodes_are_151() {
     assert_eq!((0..=255u8).filter(|&o| documented(o)).count(), 151);
-    // A few undocumented ones (LAX, SAX, the KIL/JAM opcodes, the extra NOPs).
     for op in [0x02, 0xa7, 0x87, 0x1a, 0x80, 0xeb, 0xcb] {
         assert!(!documented(op), "{op:02X}");
     }
@@ -25,8 +21,6 @@ fn dormanns_functional_test_passes_decimal_mode_included() {
     );
     let bin = std::fs::read(path).expect("6502_functional_test.bin");
     assert_eq!(bin.len(), 0x10000);
-    // The listing: assembled with disable_decimal = 0, so ADC and SBC are tested in decimal
-    // mode too.
     let lst = std::fs::read_to_string(path.replace(".bin", ".lst")).unwrap();
     assert!(lst.contains("0000 =                  disable_decimal = 0"));
     let mut ram = Ram::new(0xd400);

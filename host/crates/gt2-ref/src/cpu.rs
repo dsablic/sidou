@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A host 6502 behind a small trait, so SIDOU's own 6502 runs the same traces and is checked
-//! against the other (M3 Task 3). [`Mos6502`] is the `mos6502` crate's NMOS core (0.10.1,
-//! BSD-3-Clause) over [`Ram`]: 64 KiB whose writes to the SID's 25 registers are logged in
-//! order. [`Sidou6502`] is `core/cpu6502` over the same [`Ram`]: its hooks read and write
-//! the bytes and log the same writes.
 
 use std::ffi::c_void;
 
@@ -13,20 +8,16 @@ use mos6502::instruction::Nmos6502;
 use mos6502::memory::Bus;
 use mos6502::registers::{StackPointer, Status};
 
-/// The registers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Regs {
     pub a: u8,
     pub x: u8,
     pub y: u8,
     pub sp: u8,
-    /// NV-BDIZC
     pub p: u8,
     pub pc: u16,
 }
 
-/// 64 KiB of RAM; writes to `[sid, sid + 0x18]` are logged as (register, value) while
-/// `logging` is on.
 pub struct Ram {
     pub bytes: Vec<u8>,
     pub sid: u16,
@@ -44,7 +35,6 @@ impl Ram {
         }
     }
 
-    /// Copies `data` to `at`; refused, and nothing written, if it would run past `$FFFF`.
     pub fn load(&mut self, at: u16, data: &[u8]) -> Result<(), String> {
         let at = at as usize;
         if data.len() > 0x10000 - at {
@@ -68,29 +58,20 @@ impl Bus for Ram {
     }
 }
 
-/// What a harness needs of a 6502.
 pub trait Cpu6502 {
     fn regs(&self) -> Regs;
     fn set_regs(&mut self, r: Regs);
-    /// Executes one instruction; false if the core cannot decode the opcode at PC.
     fn step(&mut self) -> bool;
     fn ram(&self) -> &Ram;
     fn ram_mut(&mut self) -> &mut Ram;
-    /// The cycles run since the core was made, if it counts them.
     fn cycles(&self) -> Option<u64>;
 }
 
 pub struct Mos6502 {
     cpu: CPU<Ram, Nmos6502>,
-    /// Cycles `mos6502` counts that the NMOS 6502 does not take; see [`RMW_ABSOLUTE_X`].
     overcount: u64,
 }
 
-/// ASL, ROL, LSR, ROR, DEC and INC with absolute,X: always 7 cycles on the NMOS 6502 (the
-/// read-modify-write has its dummy read whether or not the index crosses a page), where
-/// `mos6502` 0.10.1 takes 8 when it does (found by Task 3's cross-check, in
-/// `everlasting.sng` under `-B1`: INC $1xxx,X at $1214; Tom Harte's tests agree with SIDOU's
-/// core). [`Mos6502`] takes the extra cycle back so that its counts are the NMOS 6502's.
 pub const RMW_ABSOLUTE_X: [u8; 6] = [0x1e, 0x3e, 0x5e, 0x7e, 0xde, 0xfe];
 
 impl Mos6502 {
@@ -153,21 +134,13 @@ impl Cpu6502 for Mos6502 {
     }
 }
 
-/// How [`Sidou6502`] reaches the SID's registers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {
-    /// `cpu6502_run_hook_all`: every operand access goes through the hooks, wherever it is
-    /// (any `-L` address works).
     HookAll,
-    /// `cpu6502_run`, the device's build (CPU6502_SMALL): only `$D000-$DFFF` goes through
-    /// the hooks, while `$01` maps I/O in (the harness sets `$01` to `$35`). The SID must be
-    /// in that page.
     Device,
-    /// `cpu6502_run_hook_inline`: as `HookAll`, with the I/O accesses inline.
     HookInline,
 }
 
-/// SIDOU's 6502 (`core/cpu6502`), over [`Ram`].
 pub struct Sidou6502 {
     c: sidou_sys::cpu6502,
     ram: Ram,
@@ -192,7 +165,6 @@ impl Sidou6502 {
             access != Access::Device || (0xd000..=0xd7ff).contains(&ram.sid),
             "the device build reaches the SID only in the I/O page"
         );
-        // The 6510's port: I/O in (bits 0-1 set, bit 2 set).
         ram.bytes[1] = 0x35;
         let c = sidou_sys::cpu6502 {
             rd: Some(hook_rd),
@@ -254,8 +226,6 @@ impl Cpu6502 for Sidou6502 {
     }
 }
 
-/// The 151 documented NMOS 6502 opcodes (MOS's programming manual); every other opcode is
-/// undocumented ("illegal").
 pub fn documented(opcode: u8) -> bool {
     const LEGAL: [u8; 151] = [
         0x00, 0x01, 0x05, 0x06, 0x08, 0x09, 0x0a, 0x0d, 0x0e, 0x10, 0x11, 0x15, 0x16, 0x18, 0x19,
@@ -273,5 +243,4 @@ pub fn documented(opcode: u8) -> bool {
     LEGAL.binary_search(&opcode).is_ok()
 }
 
-/// SED: decimal mode on.
 pub const SED: u8 = 0xf8;

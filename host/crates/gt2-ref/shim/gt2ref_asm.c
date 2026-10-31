@@ -1,33 +1,5 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
-/* A 6502 assembler for the dialect of GoatTracker 2's player.s and of the source its
- * relocator (greloc.c) generates around it: assemble(), as parse.h declares it.
- *
- * GoatTracker ships the assembler from Exomizer 2 beta by Magnus Lind, whose licence
- * allows only non-commercial use; SIDOU does not take it in (third_party/goattracker2/
- * VENDORED.md). This one was written for SIDOU from player.s, greloc.c's generated source
- * and the original's observed output; no code of the original is used. What it takes:
- * - a line holds statements: `label:`, `name = expr`, an instruction, `.ORG (expr)`,
- *   `.BYTE (expr, ...)`, `.WORD (expr, ...)`, `.IF (expr)`, `.ELSE`, `.ENDIF`; `;` starts
- *   a comment;
- * - addressing modes are written, not guessed: `#expr` immediate, `<expr` zero page (with
- *   `,x` or `,y`), `expr` absolute (with `,x` or `,y`), `(<expr,x)` and `(expr),y`
- *   indirect, nothing for implied and accumulator; branches are relative;
- * - expressions: decimal and `$` hex numbers, symbols, `.DEFINED(symbol)`, unary `-` and
- *   `!`, `* / %`, `+ -`, `< >`, `== !=`, `&&`, `||` (C's precedence), parentheses;
- * - a symbol is defined once; an assignment keeps its expression and resolves it when
- *   used; a label is the program counter; `.IF` resolves its condition at once, and the
- *   statements of a false branch are skipped unseen;
- * - output is every byte from the first statement on, in order; an operand out of range
- *   is an error (a .BYTE value out of range is written as its low byte);
- * - two quirks of the original are kept, so the bytes are the same: LDY's absolute indexed
- *   form is written `,y` and assembles as $BC (LDY abs,X), and BVS assembles as $B0;
- * - gt2ref_assemble's strict mode, for the 6502 programs SIDOU's tests write (M3's PSID
- *   fixtures), turns both quirks off (`ldy abs,x` is $BC, `ldy abs,y` an error, BVS $70) and
- *   adds BIT, BRK, CLD, CLV, RTI and SED; assemble() is never strict.
- * The gt2-ref tests check it byte for byte against GoatTracker's own assembler over every
- * example song and option set (tests/assembler.rs, with GoatTracker's release fetched
- * into build/). */
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -50,11 +22,10 @@ typedef struct {
     int n, at;
 } line;
 
-/* Expressions, kept as trees for the symbols resolved late. */
 enum { E_NUM, E_SYM, E_NEG, E_NOT, E_BIN };
 typedef struct expr {
     int kind;
-    int op; /* E_BIN: the operator's first character, or 'A' &&, 'O' ||, 'E' ==, 'N' != */
+    int op;
     int32_t num;
     int sym;
     struct expr *a, *b;
@@ -65,12 +36,11 @@ typedef struct {
     expr* value;
 } symbol;
 
-/* What is emitted: a byte, or an operand resolved at the end. */
 enum { A_BYTE, A_U8, A_I8, A_UI8, A_U16, A_BYTES_EXPR, A_WORD_EXPR };
 typedef struct {
     int kind;
     uint8_t code;
-    int32_t pc; /* after the instruction, for branches */
+    int32_t pc;
     expr* e;
 } atom;
 
@@ -130,7 +100,6 @@ static int find_sym(asm_state* s, const char* name) {
     return -1;
 }
 
-/* A symbol's slot, made (with no value) if new. */
 static int sym_ref(asm_state* s, const char* name) {
     int i = find_sym(s, name);
     if (i >= 0)
@@ -212,7 +181,6 @@ static int resolve(asm_state* s, expr* e, int32_t* v, int depth) {
     return 0;
 }
 
-/* Lexing a line. */
 
 static void lex(asm_state* s, const char* p, const char* end, line* l) {
     l->n = 0;
@@ -279,7 +247,6 @@ static int is_dir(line* l, const char* d) {
     return t->kind == T_DIR && strcasecmp(t->text, d) == 0;
 }
 
-/* Expressions: C's precedence. */
 
 static expr* parse_expr(asm_state* s, line* l);
 
@@ -375,7 +342,6 @@ static expr* parse_expr(asm_state* s, line* l) {
     return parse_level(s, l, 0);
 }
 
-/* Instructions: the mnemonics the dialect has, with an opcode for each mode (0 none). */
 
 enum { M_IMP, M_IMM, M_ZP, M_ZPX, M_ZPY, M_ABS, M_ABSX, M_ABSY, M_INDX, M_INDY, M_REL, M_N };
 
@@ -386,11 +352,8 @@ typedef struct {
 
 #define NO -1
 static const mnemonic MNEMONICS[] = {
-    /*        IMP   IMM   ZP    ZPX   ZPY   ABS   ABSX  ABSY  INDX  INDY  REL */
     {"lda", {NO, 0xa9, 0xa5, 0xb5, NO, 0xad, 0xbd, 0xb9, 0xa1, 0xb1, NO}},
     {"ldx", {NO, 0xa2, 0xa6, NO, 0xb6, 0xae, NO, 0xbe, NO, NO, NO}},
-    /* The dialect writes LDY's absolute indexed form as `,y` and makes it $BC, LDY abs,X;
-     * player.s relies on it (`ldy mt_chnnote,y`, X the channel). */
     {"ldy", {NO, 0xa0, 0xa4, 0xb4, NO, 0xac, NO, 0xbc, NO, NO, NO}},
     {"sta", {NO, NO, 0x85, 0x95, NO, 0x8d, 0x9d, 0x99, 0x81, 0x91, NO}},
     {"stx", {NO, NO, 0x86, NO, 0x96, 0x8e, NO, NO, NO, NO, NO}},
@@ -418,7 +381,6 @@ static const mnemonic MNEMONICS[] = {
     {"bpl", {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, 0x10}},
     {"bmi", {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, 0x30}},
     {"bvc", {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, 0x50}},
-    /* The dialect's BVS is $B0 (BCS); player.s never uses it. */
     {"bvs", {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, 0xb0}},
     {"tsx", {0xba, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
     {"txs", {0x9a, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
@@ -442,10 +404,7 @@ static const mnemonic MNEMONICS[] = {
     {"dey", {0x88, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO}},
 };
 
-/* Strict mode's table, looked up before the dialect's: the quirks off, and what player.s
- * never needed. */
 static const mnemonic STRICT_MNEMONICS[] = {
-    /*        IMP   IMM   ZP    ZPX   ZPY   ABS   ABSX  ABSY  INDX  INDY  REL */
     {"ldy", {NO, 0xa0, 0xa4, 0xb4, NO, 0xac, 0xbc, NO, NO, NO, NO}},
     {"bvs", {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, 0x70}},
     {"bit", {NO, NO, 0x24, NO, NO, 0x2c, NO, NO, NO, NO, NO}},
@@ -503,7 +462,6 @@ static void instruction(asm_state* s, line* l, const mnemonic* m) {
             l->at += 2;
         }
     } else if (is_op(l, "(") && m->op[M_INDY] != NO) {
-        /* (<expr,x) or (expr),y; anything else in parentheses is an absolute expression */
         int save = l->at;
         l->at++;
         int zp = is_op(l, "<");
@@ -547,7 +505,6 @@ static void instruction(asm_state* s, line* l, const mnemonic* m) {
     }
 }
 
-/* .BYTE (list) and .WORD (list) */
 static void data(asm_state* s, line* l, int words) {
     if (!is_op(l, "(")) {
         fail(s, "( expected after", words ? ".WORD" : ".BYTE");
@@ -569,8 +526,7 @@ static void data(asm_state* s, line* l, int words) {
         l->at++;
 }
 
-/* The .IF stack: each level's state. */
-enum { IF_TRUE, IF_FALSE, IF_DEAD }; /* DEAD: inside a skipped outer branch */
+enum { IF_TRUE, IF_FALSE, IF_DEAD };
 
 static int active(const int* stack, int depth) {
     return depth == 0 || stack[depth - 1] == IF_TRUE;
@@ -610,7 +566,6 @@ static int assemble_mode(struct membuf* src, struct membuf* dest, int strict) {
                     break;
                 }
                 if (!active(ifs, depth)) {
-                    /* skip the condition unseen */
                     int nest = 0;
                     while (peek(&l)->kind != T_END) {
                         if (is_op(&l, "("))
@@ -644,7 +599,6 @@ static int assemble_mode(struct membuf* src, struct membuf* dest, int strict) {
                 continue;
             }
             if (!active(ifs, depth)) {
-                /* a skipped statement: its tokens up to the next directive of the .IF kind */
                 l.at++;
                 while (peek(&l)->kind != T_END &&
                        !(peek(&l)->kind == T_DIR && (strcasecmp(peek(&l)->text, "IF") == 0 ||
@@ -698,7 +652,6 @@ static int assemble_mode(struct membuf* src, struct membuf* dest, int strict) {
     }
     if (depth != 0)
         fail(s, ".IF without .ENDIF", NULL);
-    /* Output. */
     for (int i = 0; i < s->natoms && !s->failed; i++) {
         atom* a = &s->atoms[i];
         int32_t v = 0;
@@ -738,7 +691,7 @@ static int assemble_mode(struct membuf* src, struct membuf* dest, int strict) {
             b[0] = (unsigned char)v;
             membuf_append(dest, b, 1);
             break;
-        default: /* A_WORD_EXPR */
+        default:
             b[0] = (unsigned char)(v % 256);
             b[1] = (unsigned char)(v / 256);
             membuf_append(dest, b, 2);
@@ -758,8 +711,6 @@ int assemble(struct membuf* src, struct membuf* dest) {
     return assemble_mode(src, dest, 0);
 }
 
-/* The source text src[0..len), assembled (strict or the dialect) into a malloc'd buffer the
- * caller frees with gt2ref_free: 0, or nonzero on an error (printed to stderr). */
 int gt2ref_assemble(const unsigned char* text, size_t len, int strict, unsigned char** out,
                     size_t* out_len) {
     struct membuf src = STATIC_MEMBUF_INIT, dest = STATIC_MEMBUF_INIT;

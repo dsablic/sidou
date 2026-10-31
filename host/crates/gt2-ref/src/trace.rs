@@ -1,76 +1,32 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Runs a packed GoatTracker player frame by frame and records each call's SID writes
-//! (decision record 0007, "Equivalence, defined": a frame's ordered writes to the SID's 25
-//! registers).
-//!
-//! The song is packed with the options, loaded at its address, and called through a
-//! return address that ends at [`SENTINEL`]: init once with A the subtune, then play
-//! `max(multiplier, 1)` times a frame. Before each instruction the harness checks the
-//! opcode: any of the 105 undocumented ones fails the trace with its address and frame, so
-//! a player that runs only documented opcodes is proven to by execution. A call that runs
-//! past [`STEP_LIMIT`] instructions is a hang.
-//!
-//! With zero-page ghost registers (`PLAYER_ZPGHOSTREGS`) the player writes no SID register
-//! itself; the harness then plays the main program's part after each call, readme 5.1's
-//! copy from the ghost registers: registers `$18` down to 0 ([`GHOST_REVERSE`]), or, for
-//! the alternative player (a hard restart ADSR of `$F000` and up), channel by channel
-//! ([`GHOST_ALT`]).
-//!
-//! A traced frame is one PAL video frame, 20 ms, holding `max(multiplier, 1)` play calls
-//! (20/n ms apart at n x). With the multiplier 0 (25 Hz) the player is meant to be called
-//! every other video frame, so each traced frame, one call, then stands for 40 ms.
-//!
-//! The packed code must leave room for what the harness and the C64 put in memory: it is
-//! refused ([`TraceError::Placement`]) over the SID's window (`$D400-$D7FF`, and the 25
-//! registers at `-L`'s address), over the return address pushed at `$01FE-$01FF`, over
-//! [`SENTINEL`], or past `$FFFF`.
 
 use crate::cpu::{documented, Access, Cpu6502, Mos6502, Ram, Regs, Sidou6502, SED};
 use crate::{pack, Options, Packed, PLAYER_ZPGHOSTREGS};
 
-/// Where a call returns to: the harness stops there.
 pub const SENTINEL: u16 = 0xfff0;
-/// Instructions one call may take.
 pub const STEP_LIMIT: u32 = 200_000;
 
-/// The SID's I/O window on the C64.
 pub const SID_WINDOW: std::ops::RangeInclusive<u16> = 0xd400..=0xd7ff;
-/// Where [`call`] pushes the return address.
 pub const RETURN_SLOT: std::ops::RangeInclusive<u16> = 0x01fe..=0x01ff;
 
-/// The main program's copy for `player.s` (readme 5.1): `LDX #$18 / copy: LDA ghostregs,X /
-/// STA $D400,X / DEX / BPL copy`.
 pub const GHOST_REVERSE: [u8; 25] = [
     0x18, 0x17, 0x16, 0x15, 0x14, 0x13, 0x12, 0x11, 0x10, 0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09,
     0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
 ];
-/// The copy for `altplayer.s`: readme 5.1, "the copy loop should not be in reverse order but
-/// should be for each channel: wave, frequency, pulsewidth, and ADSR last". Within a channel
-/// the order is the alternative player's own buffered one (`mt_loadregs`): wave, frequency
-/// low and high, pulse low and high, AD, SR. The readme leaves the filter's four registers
-/// out. `altplayer.s`'s own full-ghosting copy (`mt_copyregs`, non-zero-page ghosts) runs
-/// forward over $00-$18, so it writes the filter last; SIDOU's convention puts it first, as
-/// the reverse loop for `player.s` also does, so the two ghost orders differ only within
-/// the channels. Either way all 25 writes land together at the frame's start, so the SID's
-/// registers, and the sound, after each frame are the same; only the write list's order,
-/// which the C player's trace must match, depends on the choice.
 pub const GHOST_ALT: [u8; 25] = [
     0x15, 0x16, 0x17, 0x18, 0x04, 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x0b, 0x07, 0x08, 0x09, 0x0a,
     0x0c, 0x0d, 0x12, 0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14,
 ];
 
-/// Zero-page ghost registers: where they are, and the order the main program copies them.
 #[derive(Clone, Copy, Debug)]
 pub struct Ghost {
     pub base: u16,
     pub order: &'static [u8; 25],
 }
 
-/// A call's writes: (register 0-24, value), in order.
 pub type Writes = Vec<(u8, u8)>;
 
-/// One frame: the writes of each call of the play routine in it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Frame {
     pub calls: Vec<Writes>,
@@ -79,26 +35,21 @@ pub struct Frame {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TraceError {
     Pack(String),
-    /// The packed code where the harness cannot run it.
     Placement(String),
-    /// An undocumented opcode about to execute; frame None is the init call.
     Undocumented {
         opcode: u8,
         address: u16,
         frame: Option<usize>,
     },
-    /// SED about to execute, when the harness traps it.
     Decimal {
         address: u16,
         frame: Option<usize>,
     },
-    /// An opcode the core cannot decode (a core that lacks a documented one).
     Undecodable {
         opcode: u8,
         address: u16,
         frame: Option<usize>,
     },
-    /// A call that did not return within STEP_LIMIT instructions.
     Hang {
         address: u16,
         frame: Option<usize>,
@@ -146,17 +97,14 @@ impl std::fmt::Display for TraceError {
     }
 }
 
-/// How the harness runs a packed player.
 #[derive(Clone, Copy, Debug)]
 pub struct Setup {
     pub load: u16,
     pub init: u16,
     pub play: u16,
     pub calls_per_frame: u32,
-    /// The ghost registers, if the main program copies them to the SID.
     pub ghost: Option<Ghost>,
     pub sid: u16,
-    /// Fail on SED (only if the core's decimal mode were not proven, see the crate's tests).
     pub trap_sed: bool,
 }
 
@@ -169,8 +117,6 @@ impl Setup {
             calls_per_frame: o.multiplier.max(1),
             ghost: (o.player_version & PLAYER_ZPGHOSTREGS != 0).then_some(Ghost {
                 base: (o.zeropage & 0xff) as u16,
-                // greloc.c: "if (adparam >= 0xf000) playername = "altplayer.s";", after
-                // gt2reloc's adparam &= 0xffff.
                 order: if o.hr_adsr & 0xffff >= 0xf000 {
                     &GHOST_ALT
                 } else {
@@ -183,15 +129,12 @@ impl Setup {
     }
 }
 
-/// The traced song: init's writes, then each frame's.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Trace {
     pub init: Writes,
     pub frames: Vec<Frame>,
 }
 
-/// What one call left behind: its writes, its cycles if the core counts them, and the
-/// registers on return.
 struct Call {
     writes: Writes,
     cycles: Option<u64>,
@@ -267,21 +210,18 @@ fn call<C: Cpu6502>(
 }
 
 impl Ram {
-    /// A store to the SID as the main program makes it (logged as the player's are).
     pub fn set_sid(&mut self, address: u16, value: u8) {
         use mos6502::memory::Bus;
         self.set_byte(address, value);
     }
 }
 
-/// Every call's cycles and return registers, in order: init, then each frame's play calls.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Timing {
     pub cycles: Vec<Option<u64>>,
     pub regs: Vec<Regs>,
 }
 
-/// Runs a packed player in `cpu`, already holding the code at `setup.load`.
 pub fn run<C: Cpu6502>(
     cpu: &mut C,
     setup: &Setup,
@@ -291,7 +231,6 @@ pub fn run<C: Cpu6502>(
     run_timed(cpu, setup, subtune, frames).map(|(t, _)| t)
 }
 
-/// [`run`], and each call's cycles and registers too.
 pub fn run_timed<C: Cpu6502>(
     cpu: &mut C,
     setup: &Setup,
@@ -319,12 +258,9 @@ pub fn run_timed<C: Cpu6502>(
     Ok((Trace { init, frames: out }, timing))
 }
 
-/// Refuses code at `load`, `len` bytes long, where the harness cannot run it (the module's
-/// doc): over the SID's window or its registers at `sid`, the return slot, the sentinel, or
-/// past `$FFFF`.
 pub fn check_placement(load: u16, len: usize, sid: u16) -> Result<(), String> {
     let start = load as u32;
-    let end = start + len as u32; // exclusive
+    let end = start + len as u32;
     if len == 0 {
         return Ok(());
     }
@@ -353,7 +289,6 @@ pub fn check_placement(load: u16, len: usize, sid: u16) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads a packed player into a fresh [`Mos6502`], if it is placed where it can run.
 pub fn load(packed: &Packed, sid: u16) -> Result<Mos6502, TraceError> {
     check_placement(packed.load, packed.code.len(), sid).map_err(TraceError::Placement)?;
     let mut ram = Ram::new(sid);
@@ -362,21 +297,14 @@ pub fn load(packed: &Packed, sid: u16) -> Result<Mos6502, TraceError> {
     Ok(Mos6502::new(ram))
 }
 
-/// What [`cross_check`] compared.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Crossed {
     pub frames: usize,
     pub writes: usize,
     pub calls: usize,
-    /// The calls whose cycle counts were compared (`mos6502` reports them).
     pub timed_calls: usize,
 }
 
-/// Runs the packed player on `mos6502` and on SIDOU's core in each of `accesses`, and
-/// compares: every call's ordered SID writes, its cycles, the registers it returns with
-/// (flags 4 and 5 aside: the two cores keep them differently), and the whole memory at the
-/// end (`$01`, the 6510's port the core's I/O needs, aside). The first difference is the
-/// error, with where it is.
 pub fn cross_check(
     sng: &[u8],
     subtune: u8,
@@ -454,7 +382,6 @@ pub fn cross_check(
     Ok(crossed)
 }
 
-/// Packs `sng` with the options and traces `frames` frames of `subtune`.
 pub fn trace(sng: &[u8], subtune: u8, frames: usize, o: &Options) -> Result<Trace, TraceError> {
     let packed = pack(sng, o).map_err(TraceError::Pack)?;
     let setup = Setup::of(&packed, o);

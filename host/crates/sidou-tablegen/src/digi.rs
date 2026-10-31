@@ -1,36 +1,15 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The built-in digi drums (decision record 0009): four short samples, synthesized here from a
-//! fixed-seed noise generator, sines and exponential envelopes, no recorded material, and
-//! written as 4-bit codes, the values a C64 player writes to `$D418`'s low nibble.
-//!
-//! The recipe, at the digi's rate (one code every 5 output samples, 24 MHz / 544 / 5, about
-//! 8,824 Hz), each sample then scaled to its peak and rounded to a code (rest at 8):
-//!
-//! - KICK, 220 ms: a sine whose pitch falls from 188 Hz to 48 Hz (48 + 140 e^(-t/25 ms)), at
-//!   an envelope that rises in 1 ms and decays with 160 ms, and a click of noise over its
-//!   first milliseconds (e^(-t/2 ms), at 0.4).
-//! - SNARE, 180 ms: two tones, 190 Hz (0.55, e^(-t/35 ms)) and 330 Hz (0.25, e^(-t/20 ms)),
-//!   and noise through a first difference (brighter), at 0.8 with e^(-t/55 ms).
-//! - CLAP, 200 ms: noise through a two-pole resonator at 1.1 kHz, Q about 3, in three bursts
-//!   10 ms apart (each e^(-t/4 ms)) and a tail from 30 ms (0.7, e^(-t/60 ms)).
-//! - HAT, 60 ms: noise through two first differences, e^(-t/12 ms).
-//!
-//! Each sample ends at its last code away from the rest, then at the rest (8). The codes are
-//! packed two a byte (code i in byte i / 2, the low nibble first), after one pad code, so that
-//! the interrupt's index 0 can mean "none" (song_ctl.digi_at).
 
 use std::f64::consts::PI;
 
 use crate::Generated;
 
-/// The digi's rate: the output's (24 MHz / 544) over 5.
 pub const RATE: f64 = 24e6 / 544.0 / 5.0;
 
 struct Noise(u32);
 
 impl Noise {
-    /// White noise in -1..1 (xorshift32).
     fn next(&mut self) -> f64 {
         let mut x = self.0;
         x ^= x << 13;
@@ -77,7 +56,6 @@ fn snare() -> Vec<f64> {
 
 fn clap() -> Vec<f64> {
     let mut noise = Noise(0x636c_6170);
-    // A two-pole resonator (a band-pass) at f0 with pole radius r.
     let (f0, r) = (1100.0, 0.88);
     let (a1, a2) = (2.0 * r * (2.0 * PI * f0 / RATE).cos(), -r * r);
     let (mut y1, mut y2) = (0.0, 0.0);
@@ -120,7 +98,6 @@ fn hat() -> Vec<f64> {
         .collect()
 }
 
-/// A sample as codes 0-15 (rest 8), scaled to its peak, ending at the rest.
 pub fn codes(x: &[f64]) -> Vec<u8> {
     let peak = x.iter().fold(0.0f64, |m, v| m.max(v.abs()));
     let mut c: Vec<u8> = x
@@ -134,7 +111,6 @@ pub fn codes(x: &[f64]) -> Vec<u8> {
     c
 }
 
-/// The four samples in the DIGI chunk's order (1 KICK, 2 SNARE, 3 CLAP, 4 HAT), as codes.
 pub fn samples() -> Vec<(&'static str, Vec<u8>)> {
     vec![
         ("KICK", codes(&kick())),
@@ -144,9 +120,6 @@ pub fn samples() -> Vec<(&'static str, Vec<u8>)> {
     ]
 }
 
-/// The codes as gen/digi.h holds them: a pad code (0), then the samples' codes one after
-/// another, two a byte, the low nibble first. Returns the bytes and where each sample's codes
-/// start, with the end after the last.
 pub fn packed() -> (Vec<u8>, Vec<usize>) {
     let mut codes = vec![0u8];
     let mut starts = vec![1usize];

@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The reference harness: GoatTracker 2.77's packer and its packed player in the host 6502.
 
 use gt2_ref::cpu::{Cpu6502, Mos6502, Ram, Regs};
 use gt2_ref::trace::{run, trace, Setup, Trace, TraceError, Writes};
@@ -48,8 +47,6 @@ fn init_and_play_are_where_gt2reloc_says() {
             ..Options::default()
         };
         let p = pack(sng, &o).unwrap();
-        // gt2reloc: "Player address: $1000"; init at the address, play at +3 (readme 5),
-        // each a JMP into the player.
         assert_eq!(p.load as u32, page << 8);
         assert_eq!((p.init(), p.play()), (p.load, p.load + 3));
         assert_eq!(p.code[0], 0x4c);
@@ -68,9 +65,7 @@ fn options_change_the_packed_player_as_they_should() {
         f(&mut o);
         pack(sng, &o).unwrap()
     };
-    // Multispeed: the default tempo (and so the code) changes.
     assert_ne!(with(&|o| o.multiplier = 2).code, base.code);
-    // Pulse and realtime optimisation, buffered writes, the hard restart ADSR: other code.
     assert_ne!(with(&|o| o.optimize_pulse = 0).code, base.code);
     assert_ne!(with(&|o| o.optimize_realtime = 0).code, base.code);
     assert_ne!(
@@ -78,18 +73,15 @@ fn options_change_the_packed_player_as_they_should() {
         base.code
     );
     assert_ne!(with(&|o| o.hr_adsr = 0x0a00).code, base.code);
-    // A-4's pitch: another frequency table, the same length.
     let tuned = with(&|o| o.a4_hz = 432.0);
     assert_ne!(tuned.code, base.code);
     assert_eq!(tuned.code.len(), base.code.len());
-    // NTSC: a packed .prg is the same; gt2reloc's NTSC only changes a .sid's header and
-    // speed code, and the player has one frequency table (the editor's PAL one).
     assert_eq!(with(&|o| o.ntsc = 1), base);
 }
 
 #[test]
 fn multispeed_calls_the_player_n_times_a_frame() {
-    let (_, sng) = &examples()[0]; // 2xtest.sng, a 2x-speed song
+    let (_, sng) = &examples()[0];
     let o = Options {
         multiplier: 2,
         ..Options::default()
@@ -113,12 +105,11 @@ fn zero_page_ghost_registers_are_copied_by_the_harness() {
     }
 }
 
-/// A hand-made player: init is RTS; play runs `op` at `$1010`.
 fn hand_made(op: &[u8]) -> (Mos6502, Setup) {
     let mut ram = Ram::new(0xd400);
     ram.load(0x1000, &[0x4c, 0x06, 0x10, 0x4c, 0x10, 0x10, 0x60])
         .unwrap();
-    let mut play = vec![0xa9, 0x11, 0x8d, 0x04, 0xd4]; // LDA #$11, STA $D404
+    let mut play = vec![0xa9, 0x11, 0x8d, 0x04, 0xd4];
     play.extend_from_slice(op);
     play.push(0x60);
     ram.load(0x1010, &play).unwrap();
@@ -139,7 +130,7 @@ fn an_undocumented_opcode_fails_the_trace_with_its_address() {
     let (mut cpu, setup) = hand_made(&[0xea]);
     let t = run(&mut cpu, &setup, 0, 3).unwrap();
     assert_eq!(t.frames[2].calls[0], vec![(4, 0x11)]);
-    let (mut cpu, setup) = hand_made(&[0xa7, 0x10]); // LAX $10
+    let (mut cpu, setup) = hand_made(&[0xa7, 0x10]);
     assert_eq!(
         run(&mut cpu, &setup, 0, 3),
         Err(TraceError::Undocumented {
@@ -148,7 +139,6 @@ fn an_undocumented_opcode_fails_the_trace_with_its_address() {
             frame: Some(0)
         })
     );
-    // SED, when the harness is told to trap it.
     let (mut cpu, mut setup) = hand_made(&[0xf8, 0xd8]);
     assert!(run(&mut cpu, &setup, 0, 1).is_ok());
     setup.trap_sed = true;
@@ -159,7 +149,6 @@ fn an_undocumented_opcode_fails_the_trace_with_its_address() {
             frame: Some(0)
         })
     );
-    // A call that never returns.
     let (mut cpu, setup) = hand_made(&[0x4c, 0x15, 0x10]);
     assert!(matches!(
         run(&mut cpu, &setup, 0, 1),
@@ -167,20 +156,16 @@ fn an_undocumented_opcode_fails_the_trace_with_its_address() {
     ));
 }
 
-// The review's regressions (M2c Tasks 1-3).
-
 #[test]
 fn a_song_goattracker_cannot_load_is_refused() {
     let (_, sng) = &examples()[2];
     assert!(pack(sng, &Options::default()).is_ok());
     assert!(canonical(sng).is_ok());
-    // A bad ident: loadsong reads nothing and leaves the cleared song, which would pack.
     let mut bad = sng.clone();
     bad[..4].copy_from_slice(b"GTX5");
     assert!(pack(&bad, &Options::default()).is_err(), "bad ident packed");
     assert!(canonical(&bad).is_err(), "bad ident canonicalised");
     assert!(pack(&[], &Options::default()).is_err(), "empty file packed");
-    // A short file: loadsong's reads run past the end and read zeros.
     for cut in [3, 50, 101, sng.len() / 2, sng.len() - 1] {
         let short = &sng[..cut];
         assert!(
@@ -189,8 +174,6 @@ fn a_song_goattracker_cannot_load_is_refused() {
         );
         assert!(canonical(short).is_err(), "cut {cut} canonicalised");
     }
-    // Every ident loadsong takes still loads, and so does a file with bytes after the song
-    // (a SIDOU trailer).
     let mut longer = sng.clone();
     longer.extend_from_slice(b"SIDOU...trailer");
     assert!(pack(&longer, &Options::default()).is_ok());
@@ -207,7 +190,6 @@ fn code_over_the_sid_the_stack_slot_or_the_trampoline_is_refused() {
         player_address: page << 8,
         ..Options::default()
     };
-    // -Wd0: the code runs into $D400.
     for page in [0xd0u32, 0xd4, 0xd7] {
         let r = trace(sng, 0, 2, &at(page));
         assert!(
@@ -215,10 +197,8 @@ fn code_over_the_sid_the_stack_slot_or_the_trampoline_is_refused() {
             "-W{page:02x}: {r:?}"
         );
     }
-    // The return address the harness pushes, at $01FE-$01FF.
     let r = trace(sng, 0, 2, &at(0x01));
     assert!(matches!(r, Err(TraceError::Placement(_))), "-W01: {r:?}");
-    // Up to the trampoline at $FFF0, or past $FFFF.
     let top = (0xfff0 - len) >> 8;
     for page in [top + 1, 0xff] {
         let r = trace(sng, 0, 2, &at(page));
@@ -227,11 +207,9 @@ fn code_over_the_sid_the_stack_slot_or_the_trampoline_is_refused() {
             "-W{page:02x}: {r:?}"
         );
     }
-    // Clear of them all, it traces: below the SID, above it, and just below the trampoline.
     for page in [0x02u32, 0xd4 - len.div_ceil(256) - 1, 0xd8, top] {
         trace(sng, 0, 2, &at(page)).unwrap_or_else(|e| panic!("-W{page:02x}: {e}"));
     }
-    // A SID moved with -L: code over its registers is refused too.
     let o = Options {
         sid_address: 0x1020,
         ..Options::default()
@@ -254,9 +232,6 @@ fn ram_refuses_a_load_past_ffff() {
     assert!(ram.load(1, &vec![2; 0x10000]).is_err());
 }
 
-/// The alternative player's copy order (readme 5.1): each channel's wave, frequency, pulse
-/// width, then ADSR; the filter's registers, which the player computes before the
-/// channels, first.
 const ALT_ORDER: [u8; 25] = [
     0x15, 0x16, 0x17, 0x18, 0x04, 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x0b, 0x07, 0x08, 0x09, 0x0a,
     0x0c, 0x0d, 0x12, 0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14,
@@ -281,7 +256,6 @@ fn the_alternative_players_ghost_registers_are_copied_channel_by_channel() {
             assert_eq!(regs, ALT_ORDER, "-A{hr:04X}");
         }
     }
-    // Below $F000, the reverse loop stands.
     let o = Options {
         hr_adsr: 0xef00,
         player_version: PLAYER_ZPGHOSTREGS | PLAYER_BUFFERED,
@@ -293,7 +267,6 @@ fn the_alternative_players_ghost_registers_are_copied_channel_by_channel() {
     assert_eq!(regs, (0..=0x18u8).rev().collect::<Vec<_>>());
 }
 
-/// A core that cannot decode anything: the harness reports it as such, not as a hang.
 struct Undecoding(Mos6502);
 
 impl Cpu6502 for Undecoding {
@@ -326,7 +299,6 @@ fn an_opcode_the_core_cannot_decode_is_not_a_hang() {
     assert!(e.to_string().contains("cannot decode"), "{e}");
 }
 
-/// FNV-1a over a trace, for pinning one.
 fn digest(t: &Trace) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325u64;
     let mut eat = |b: u8| {
@@ -351,7 +323,7 @@ fn digest(t: &Trace) -> u64 {
 
 #[test]
 fn multispeed_calls_differ_from_1x_and_each_writes() {
-    let (_, sng) = &examples()[0]; // 2xtest.sng
+    let (_, sng) = &examples()[0];
     let one = trace(sng, 0, 100, &Options::default()).unwrap();
     for m in [2u32, 4] {
         let o = Options {
@@ -375,10 +347,6 @@ fn multispeed_calls_differ_from_1x_and_each_writes() {
     }
 }
 
-/// The option sets the review ran by hand, as gt2reloc's flags, each traced over every
-/// example's first subtune (300 frames) without a trap, and pinned: a digest of all the
-/// traces per set. A change to the packer, the assembler, the core or the harness that
-/// changes any frame changes a digest.
 #[test]
 fn option_matrix_traces_are_pinned() {
     let d = Options::default;

@@ -1,14 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's assembler (shim/gt2ref_asm.c) against GoatTracker's own, the one from Exomizer 2
-//! beta that GoatTracker ships, whose non-commercial licence keeps it out of SIDOU's tree
-//! (third_party/goattracker2/VENDORED.md). The test fetches GoatTracker 2.77's release into
-//! build/goattracker2-2.77/ (once, SHA-256 checked), checks that the vendored files are the
-//! release's, builds a packer with the release's assembler and the same shim, and compares
-//! its output with the harness's for every example song and a set of options, byte for
-//! byte. It needs curl, unzip and a C compiler (`CC`, else `cc`), so it is `--ignored`:
-//!
-//!     cargo test --release -p gt2-ref --test assembler -- --ignored
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -42,12 +33,10 @@ fn run(cmd: &mut Command) {
     );
 }
 
-/// The release, unpacked: build/goattracker2-2.77/release.
 fn release(dir: &Path) -> PathBuf {
     let zip = dir.join("GoatTracker_2.77.zip");
     if !zip.exists() || sha256(&std::fs::read(&zip).unwrap()) != SHA256 {
         std::fs::create_dir_all(dir).unwrap();
-        // A generic User-Agent; nothing about the user goes with the request.
         run(Command::new("curl")
             .args(["-sSL", "-A", "sidou-build", "-o"])
             .arg(&zip)
@@ -71,11 +60,9 @@ fn release(dir: &Path) -> PathBuf {
     out
 }
 
-/// A packer over the release's own assembler.
 fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
     let exe = dir.join("gt2ref-exomizer");
     let shim = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shim");
-    // The shim's headers without its membuf.h and parse.h: the release's are used.
     let inc = dir.join("include");
     std::fs::create_dir_all(&inc).unwrap();
     for h in ["bme.h", "gt2ref_shim.h", "gt2ref.h", "gt2ref_rename.h"] {
@@ -97,7 +84,6 @@ fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
         .arg(src.join("asm"));
     c.arg("-DGT2REF_EXOMIZER_ASM");
     c.arg(format!("-DGT2REF_SRC_DIR=\"{}\"", src.display()));
-    // GoatTracker's files with fopen, fread, exit and main renamed, as build.rs builds them.
     let objs = dir.join("gt-objs");
     std::fs::create_dir_all(&objs).unwrap();
     for f in [
@@ -135,7 +121,6 @@ fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
     exe
 }
 
-/// The options compared: each gt2reloc option alone, and a few together.
 fn option_sets() -> Vec<(Vec<&'static str>, Options)> {
     let d = Options::default;
     let mut v: Vec<(Vec<&'static str>, Options)> = vec![(vec![], d())];
@@ -245,7 +230,6 @@ fn option_sets() -> Vec<(Vec<&'static str>, Options)> {
 fn sidous_assembler_packs_as_goattrackers_own() {
     let dir = root().join("build/goattracker2-2.77");
     let rel = release(&dir);
-    // The vendored files are the release's, byte for byte.
     let vendored = root().join("third_party/goattracker2");
     let mut files = 0;
     for sub in ["src", "examples", "."] {
@@ -276,8 +260,6 @@ fn sidous_assembler_packs_as_goattrackers_own() {
                 .output()
                 .unwrap()
                 .status;
-            // Both refuse the same songs and options (zero-page ghost registers past $FF,
-            // for one), or both pack them to the same bytes.
             match pack(&sng, &o) {
                 Ok(ours) => {
                     assert!(status.success(), "{name} {args:?}: only SIDOU's packed it");

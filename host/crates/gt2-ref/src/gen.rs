@@ -1,21 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Random valid songs for the song player's register match (M2c Task 5b): a `.sng` that
-//! gt2reloc packs, using every pattern command and special note, tables with jumps and
-//! loops, the wavetable's commands, orderlists of up to 40 steps, patterns of up to 128
-//! rows (cut to what packs into 256 bytes), up to 4 subtunes, now and then a gate-off timer
-//! at or above the tempo, and random playroutine options within the device's caps
-//! (multispeed 1-4).
-//!
-//! "Valid" is what the packer accepts (no table pointer onto a jump, no table running off
-//! its end, no illegal wavetable command, patterns that pack into 256 bytes) and what plays
-//! the same on any player: every note stays inside the frequency table (C-0 to B-7, with
-//! transposes, wavetable notes and the note-independent speeds' next note), and every
-//! orderlist ends on a pattern, so player.s never reads past its own orderlist.
 
 use crate::Options;
 
-/// A small xorshift generator: the same seed, the same song.
 pub struct Rng(u64);
 
 impl Rng {
@@ -30,12 +17,10 @@ impl Rng {
         (self.0 >> 16) as u32
     }
 
-    /// 0 to n - 1.
     pub fn below(&mut self, n: u32) -> u32 {
         self.word() % n
     }
 
-    /// lo to hi, both included.
     pub fn range(&mut self, lo: u32, hi: u32) -> u32 {
         lo + self.below(hi - lo + 1)
     }
@@ -53,14 +38,12 @@ impl Rng {
     }
 }
 
-/// A generated song and the options to play it with.
 #[derive(Clone, Debug)]
 pub struct Generated {
     pub sng: Vec<u8>,
     pub options: Options,
 }
 
-/// What a speedtable entry is for.
 #[derive(Clone, Copy, PartialEq)]
 enum Speed {
     Vibrato,
@@ -69,8 +52,6 @@ enum Speed {
     Funk,
 }
 
-/// The tables as programs: each a run of rows ending in a jump (to a row of its own, or 0
-/// to stop). `starts` are the programs' first rows (1-based).
 #[derive(Default)]
 struct Table {
     rows: Vec<(u8, u8)>,
@@ -78,8 +59,6 @@ struct Table {
 }
 
 impl Table {
-    /// A program of `rows` (not jumps) and its final jump: a loop to one of its rows, or a
-    /// stop.
     fn program(&mut self, rng: &mut Rng, rows: Vec<(u8, u8)>) {
         let start = self.rows.len() as u8 + 1;
         let n = rows.len() as u8;
@@ -103,11 +82,8 @@ impl Table {
 }
 
 const WAVEFORMS: [u8; 10] = [0x11, 0x21, 0x41, 0x81, 0x51, 0x15, 0x13, 0x40, 0x20, 0x10];
-/// Pattern notes: C-2 to C-5 (note 24 to 60).
 const NOTE_LO: u32 = 24;
 const NOTE_HI: u32 = 60;
-/// Transposes within +-7, wavetable notes within -12 to +24 and absolute notes up to 80:
-/// every note stays within 5 to 91, its next note (for the note-independent speeds) too.
 const TRANS: u32 = 7;
 
 fn speed_entry(rng: &mut Rng, kind: Speed) -> (u8, u8) {
@@ -121,15 +97,14 @@ fn speed_entry(rng: &mut Rng, kind: Speed) -> (u8, u8) {
 
 fn wave_right(rng: &mut Rng) -> u8 {
     match rng.below(5) {
-        0 => rng.range(0, 24) as u8,           // relative up
-        1 => rng.range(0x74, 0x7f) as u8,      // relative down, to -12
-        2 => 0x80,                             // keep the frequency
-        3 => rng.range(0x81, 0x81 + 80) as u8, // absolute, to note 80
+        0 => rng.range(0, 24) as u8,
+        1 => rng.range(0x74, 0x7f) as u8,
+        2 => 0x80,
+        3 => rng.range(0x81, 0x81 + 80) as u8,
         _ => 0,
     }
 }
 
-/// Options within the device's caps: multispeed 1-4 and every other option at random.
 fn options(rng: &mut Rng) -> Options {
     let mut o = Options {
         multiplier: rng.pick(&[1, 1, 1, 2, 3, 4]),
@@ -163,9 +138,6 @@ fn options(rng: &mut Rng) -> Options {
     o
 }
 
-/// A pattern cut until it packs into gt2reloc's 256 bytes: an upper bound of packpattern's
-/// size (an instrument byte, a command byte and its parameter whenever they change, the
-/// note, the end mark; packed rests only make it smaller).
 fn fit_packed(mut rows: Vec<[u8; 4]>) -> Vec<[u8; 4]> {
     loop {
         let mut size = 1;
@@ -184,13 +156,11 @@ fn fit_packed(mut rows: Vec<[u8; 4]>) -> Vec<[u8; 4]> {
     }
 }
 
-/// The song for a seed.
 pub fn generate(seed: u64) -> Generated {
     let rng = &mut Rng::new(seed);
     let options = options(rng);
     let noopt = options.player_version & crate::PLAYER_NOOPTIMIZATION != 0;
 
-    // The speedtable: each entry one kind, so each command points at one that suits it.
     let kinds: Vec<Speed> = (0..rng.range(2, 9))
         .map(|_| rng.pick(&[Speed::Vibrato, Speed::Porta, Speed::Calculated, Speed::Funk]))
         .collect();
@@ -249,8 +219,6 @@ pub fn generate(seed: u64) -> Generated {
         let rows = (0..rng.range(1, 6))
             .map(|k| {
                 if k == 0 {
-                    // a note first, so the channel's last note (the note-independent
-                    // speeds' base) is always one the frequency table holds
                     let note = loop {
                         let r = wave_right(rng);
                         if r != 0x80 && !(0x74..=0x7f).contains(&r) {
@@ -261,12 +229,6 @@ pub fn generate(seed: u64) -> Generated {
                 }
                 match rng.below(if commands { 7 } else { 6 }) {
                     0 | 1 => {
-                        // $D0-$DF run as commands when the table has delays and
-                        // commands, and may then reach a handler that takes a table
-                        // index (the packer renumbers the tables, and a handler it
-                        // leaves out runs the next one's code): plain waveforms only
-                        // without that, -I0 (which turns both on) included
-                        // (gt2_match.rs's quirk fixture covers the quirk)
                         let w = if !(delays && commands) && !noopt && rng.chance(10) {
                             rng.range(0xd0, 0xdf) as u8
                         } else {
@@ -305,8 +267,6 @@ pub fn generate(seed: u64) -> Generated {
         wave.program(rng, rows);
     }
 
-    // The instruments. Instrument 1 holds the filter's program, so that the wavetable's
-    // filter commands always have the filter's code to run in.
     let ninstr = rng.range(1, 8) as usize;
     let mut instr: Vec<[u8; 25]> = (0..ninstr)
         .map(|k| {
@@ -321,8 +281,6 @@ pub fn generate(seed: u64) -> Generated {
                 gate = 2;
             }
             if rng.chance(3) {
-                // at or above the tempo: the editor stops; the packed player never fetches
-                // the channel's next row again
                 gate = rng.range(6, 0x3f) as u8;
             }
             if rng.chance(15) {
@@ -348,15 +306,11 @@ pub fn generate(seed: u64) -> Generated {
         })
         .collect();
     if rng.chance(15) {
-        // instrument 63's AD sets the default tempo
         instr.resize(63, [0; 25]);
         instr[62][0] = rng.range(4, 9) as u8;
     }
 
-    // The patterns.
     let npat = rng.range(2, 8) as usize;
-    // Each pattern opens on a note and an instrument (not a toneportamento), so a channel
-    // has a note before any effect reads it.
     let patterns: Vec<Vec<[u8; 4]>> = (0..npat)
         .map(|_| {
             let rows = if rng.chance(15) {
@@ -413,7 +367,6 @@ pub fn generate(seed: u64) -> Generated {
                             },
                             _ => rng.byte(),
                         };
-                        // funktempo needs a funk entry
                         if (c == 14 && d == 0) || (c == 3 && r == 0) {
                             (0, 0)
                         } else {
@@ -427,9 +380,6 @@ pub fn generate(seed: u64) -> Generated {
         .map(fit_packed)
         .collect();
 
-    // The orderlists: [transpose] [repeat] pattern steps, sometimes an R0 or a transpose
-    // after a repeat (readme 3.1's rules broken, as GoatTracker packs them), always a
-    // pattern last.
     let subtunes = rng.pick(&[1, 1, 2, 3, 4]) as usize;
     let orders: Vec<Vec<(Vec<u8>, u8)>> = (0..subtunes)
         .map(|_| {
@@ -462,7 +412,6 @@ pub fn generate(seed: u64) -> Generated {
                         }
                         e.push(rng.below(npat as u32) as u8);
                     }
-                    // a restart among the entries the packer keeps (it drops R0)
                     let kept = e.iter().filter(|&&b| b != 0xd0).count() as u32;
                     let restart = rng.below(kept) as u8;
                     (e, restart)
