@@ -297,8 +297,16 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 - At `-Oz`, `gt2_song.c` is 384 bytes smaller and four LCD goldens move (`live-c64`, `live-keys-b`,
   `scene-rule30`, `scene-stars`). The cause is timing: in fm1-emu, pressing the key 0.1 to 1.9 ms
-  later on the `-Oz` build gives audio bit-identical to the `-Os` build's, and the framebuffer
+  later on the `-Oz` build gives audio bit-identical to the `-Os` build's, and the screen
   identical to the golden.
+- Measured in fm1-emu (2026-10-31): both builds reach LIVE at the same millisecond (1,880 ms) with
+  identical audio; at `-Oz` more small helpers go out of line and the main loop runs about 39,000
+  more instructions during boot, so the test's key press is handled later and the note starts one
+  128-frame block earlier: the scope shows another phase of the wave and the meters move a few
+  pixels. Of the six SCENE goldens at `-Oz`, fire, plasma, ant and RED MOON RITE match.
+- No undefined behaviour shows: the host's 419 song tests pass under clang's UBSan with the C at the
+  default level, `-Os` and `-Oz`; under GCC 13's sanitizer at `-O2` and `-Oz`, five song test
+  binaries pass (104 tests; `song_snapshot` does not link against GCC's sanitized runtime).
 - `gt2_song.c` stays at `-Os`: at `-Oz` four goldens would have to be regenerated for 384 bytes.
 
 ## SID emulation
