@@ -472,7 +472,38 @@ def loudnorm(src: Path, dst: Path) -> dict:
                     f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:"
                     f"offset={m['target_offset']}:linear=true", "-ar", "48000",
                     "-fflags", "+bitexact", "-flags:a", "+bitexact", str(dst)], check=True)
+    m["aac_peak_db"] = fit_aac_peak(dst)
     return m
+
+
+AAC = ["-c:a", "aac", "-b:a", "192k"]
+AAC_PEAK_DB = -1.5
+AAC_PEAK_MARGIN_DB = 0.1
+
+
+def aac_peak_db(wav: Path) -> float:
+    enc = wav.with_suffix(".peak.m4a")
+    subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(wav), *AAC, "-fflags", "+bitexact",
+                    "-flags:a", "+bitexact", str(enc)], check=True)
+    r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(enc), "-af",
+                        "astats=measure_perchannel=none:measure_overall=Peak_level", "-f", "null", "-"],
+                       capture_output=True, text=True, check=True)
+    enc.unlink()
+    return float(re.findall(r"Peak level dB: (-?[0-9.]+|-inf)", r.stderr)[-1])
+
+
+def fit_aac_peak(wav: Path) -> float:
+    peak = aac_peak_db(wav)
+    for _ in range(3):
+        if peak <= AAC_PEAK_DB:
+            break
+        tmp = wav.with_suffix(".fit.wav")
+        gain = AAC_PEAK_DB - AAC_PEAK_MARGIN_DB - peak
+        subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(wav), "-af", f"volume={gain:.2f}dB",
+                        "-fflags", "+bitexact", "-flags:a", "+bitexact", str(tmp)], check=True)
+        tmp.replace(wav)
+        peak = aac_peak_db(wav)
+    return peak
 
 
 def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
@@ -550,7 +581,8 @@ def render(rid: str, fast: bool, jobs: int, formats: list) -> dict:
     scale = 0.5 if fast else 1.0
     work = [(kind, j) for kind, n in segs for j in range(n)]
     result = {"id": rid, "seconds": round(len(work) / FPS, 1), "capture_s": round(t_cap, 1),
-              "loudness_in_lufs": loud["input_i"], "chapters": len(chap)}
+              "loudness_in_lufs": loud["input_i"], "aac_peak_db": loud["aac_peak_db"],
+              "chapters": len(chap)}
     for fmt in formats:
         t0 = time.monotonic()
         init(plan, scale, fmt)
@@ -562,7 +594,7 @@ def render(rid: str, fast: bool, jobs: int, formats: list) -> dict:
                "-r", str(FPS), "-i", "-", "-i", str(wav), "-f", "ffmetadata", "-i", str(mf),
                "-map", "0:v", "-map", "1:a", "-map_chapters", "2", "-map_metadata", "2",
                "-c:v", "libx264", *preset, "-pix_fmt", "yuv420p", "-x264-params", "threads=1",
-               "-c:a", "aac", "-b:a", "192k", "-fflags", "+bitexact",
+               *AAC, "-fflags", "+bitexact",
                "-flags:v", "+bitexact", "-flags:a", "+bitexact", "-movflags", "+faststart", str(mp4)]
         ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         hashes, preview = [], []

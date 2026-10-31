@@ -12,11 +12,15 @@
   "whats-new": {
     "teaser": false,
     "bed": [
-      "dice-open",
-      "dice-range",
-      "dice-roll"
+      "lift-offer",
+      "lift-import",
+      "instr-pointers",
+      "page-jump",
+      "roles-new",
+      "role-drums",
+      "role-chords"
     ],
-    "preview_step": "lab-lfo"
+    "preview_step": "role-drums"
   },
   "rec-over-loop": {
     "bpm": 125
@@ -65,5 +69,12 @@
   },
   "play-a-sid": {
     "preview_step": "play"
+  },
+  "send-to-song": {
+    "bpm": 125,
+    "preview_step": "send"
+  },
+  "lift-a-sound": {
+    "preview_step": "lift"
   }
 }

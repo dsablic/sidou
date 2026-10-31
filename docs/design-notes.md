@@ -1561,6 +1561,11 @@ docs/hardware.md.
   else, so the script registers the package without running it, so that its `common.py`
   imports as on Linux, and supplies the `SCSIDev` that `jltech/uboot.py` imports. Detaching
   macOS's mass-storage driver needs root.
+- `tools/make-videos` normalises each video's audio to -16 LUFS (true peak -1.5 dBTP), then
+  encodes it to AAC as the MP4 will and reads the decoded sample peak: the encode overshoots the
+  WAV's peaks, by up to 2.4 dB on the hard-panned pulse waves of chip-spread (1.1's whats-new
+  reached -0.4 dB). Over -1.5 dB, the WAV is turned down by the excess plus 0.1 dB and checked
+  again, so such a video ends a little under -16 LUFS rather than near full scale.
 
 ## LAB
 
