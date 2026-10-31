@@ -1,14 +1,6 @@
 #!/bin/sh
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Run a command in the pinned pi32v2 build image, e.g.  tools/fm1-docker cmake --preset fm1
-# The repo is mounted at the same path, so CMake caches and paths stay valid outside.
-#
-# The image is ghcr.io/dsablic/sidou-build (tools/docker/Dockerfile, published by
-# .github/workflows/build-image.yml). With tools/docker/image.digest (a line sha256:...) the
-# command runs in exactly that image; without it, in :latest. Pulled once, when not here yet.
-# When it cannot be pulled (offline, not published yet), or SIDOU_BUILD_LOCAL=1, the Dockerfile
-# is built here instead. Inside the image itself (CI) the command just runs.
 set -eu
 if [ -n "${SIDOU_BUILD_IMAGE:-}" ]; then exec "$@"; fi
 root=$(cd "$(dirname "$0")/.." && pwd)

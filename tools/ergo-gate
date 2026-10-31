@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# The ergonomics harness as a merge gate: it fails on anything the accepted baseline does not have.
-#   tools/ergo-gate BUILD_DIR            the whole harness, then the recipes (a few minutes)
-#   tools/ergo-gate --quick BUILD_DIR    readability, journeys (the tour) and the recipes only
-#   tools/ergo-gate --out DIR ...        where the run's files go (default BUILD_DIR/../ergo-gate)
-# Exit 0: no new finding, no finding whose severity rose, every recipe passes. Exit 1: one of them
-# (the new ones are printed). Exit 2: the harness could not run. The baseline is
-# docs/ergo-baseline/metrics.json; accepting a change is refreshing it (TESTING.md, "Ergonomics gate").
 set -euo pipefail
+usage() {
+    cat <<'USAGE'
+The ergonomics harness as a merge gate: it fails on anything the accepted baseline does not have.
+  tools/ergo-gate BUILD_DIR            the whole harness, then the recipes (a few minutes)
+  tools/ergo-gate --quick BUILD_DIR    readability, journeys (the tour) and the recipes only
+  tools/ergo-gate --out DIR ...        where the run's files go (default BUILD_DIR/../ergo-gate)
+Exit 0: no new finding, no finding whose severity rose, every recipe passes. Exit 1: one of them
+(the new ones are printed). Exit 2: the harness could not run. The baseline is
+docs/ergo-baseline/metrics.json; accepting a change is refreshing it (TESTING.md, "Ergonomics gate").
+USAGE
+}
 root=$(cd "$(dirname "$0")/.." && pwd)
 quick=0 out="" build=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --quick) quick=1 ;;
         --out) out=$2; shift ;;
-        -h|--help) sed -n 4,10p "$0"; exit 0 ;;
+        -h|--help) usage; exit 0 ;;
         -*) echo "ergo-gate: unknown option $1" >&2; exit 2 ;;
         *) build=$1 ;;
     esac

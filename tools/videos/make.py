@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""SIDOU's how-to videos from the recipes (docs/videos.md): each recipe of docs/recipes is run in
-fm1-emu by the ergonomics harness (`ergo --capture full`), and its frames, audio and step
-timeline become a video: a payoff teaser, a typed title card, the steps with the control lit on
-the panel and the screen pushed in where the result shows, and an end beat. Run it through
-tools/make-videos.
-
-Nothing reads a clock or a random number: the same firmware, recipe and Pillow give the same
-frames (their SHA-256 are written next to each video). Captures are cached under
-build/videos/cache, keyed by the firmware image, the recipe (and the ones it starts after), the
-songs it loads and the harness's sources, so a change of the look re-renders without the
-emulator.
-"""
 
 import argparse
 import array
@@ -47,8 +35,6 @@ END_S = 1.5
 RATE = 44118
 
 
-# --------------------------------------------------------------- captures ---
-
 def sha(*parts: bytes) -> str:
     h = hashlib.sha256()
     for p in parts:
@@ -62,7 +48,6 @@ def fw_dir() -> Path:
 
 
 def recipe_chain(rid: str) -> list:
-    """The recipe and the ones it starts after (prerequisites.after), as JSON values."""
     out, seen = [], set()
     while rid and rid not in seen:
         seen.add(rid)
@@ -73,7 +58,6 @@ def recipe_chain(rid: str) -> list:
 
 
 def capture(rid: str, source: Path, key_parts: list) -> Path:
-    """Runs (or reuses) the harness's full capture of one recipe; returns its directory."""
     harness = sorted((HOST / "crates/ergo/src").glob("*.rs")) + [
         HOST / "crates/emu-gate/tests/common/mod.rs"]
     key = sha((fw_dir() / "platform/fm1/sidou_app.bin").read_bytes(),
@@ -106,8 +90,6 @@ def soundtrack_capture() -> Path:
                    [SOUNDTRACK.read_bytes(), (ROOT / "assets/songs/chrome-comet.sng").read_bytes()])
 
 
-# ------------------------------------------------------------------ audio ---
-
 def read_wav(path: Path) -> array.array:
     with wave.open(str(path)) as w:
         a = array.array("h")
@@ -116,7 +98,6 @@ def read_wav(path: Path) -> array.array:
 
 
 def piece(src: array.array, start: int, n: int, gain: float = 1.0, fade: int = 220) -> array.array:
-    """`n` stereo frames of `src` from frame `start` (silence outside it), gained and faded."""
     out = array.array("h", bytes(4 * n))
     for i in range(n):
         j = start + i
@@ -135,13 +116,10 @@ def write_wav(path: Path, a: array.array) -> None:
         w.writeframes(a.tobytes())
 
 
-# ------------------------------------------------------------- the plan ---
-
 VERB = {"press": "PRESS", "hold": "HOLD", "turn": "TURN", "sweep": "TURN", "pot": "TURN"}
 
 
 def events_of(steps: list) -> list:
-    """Every input as panel events: (control, kind, t0, t1, detents), ms of the capture."""
     ev, down = [], {}
     for s in steps:
         for a in s["inputs"]:
@@ -244,10 +222,8 @@ def plan_of(rid: str, cap: Path, sound: Path) -> dict:
         s["acts_end"] = max([a["end_ms"] for a in acts], default=s["ms"])
         s["next_ms"] = steps[i + 1]["ms"] if i + 1 < len(steps) else n * 40
     cfg = json.loads(VIDEOS.read_text()).get(rid, {})
-    # The beat starts where PLAY was first pressed (the song's first row, near enough).
     plays = [a["end_ms"] for s in steps for a in s["inputs"] if a["op"] == "press" and a.get("button") == "PLAY"]
     anchor = plays[0] if plays else None
-    # The preview: 4 s where the most happens (the busiest step's start), else the end.
     busiest = max(steps, key=lambda s: len([a for a in s["inputs"] if a["op"] != "wait"])) if steps else None
     p0 = busiest["ms"] // 40 if busiest else max(0, n - 100)
     if cfg.get("preview_step"):
@@ -266,15 +242,11 @@ def palette(cap: Path) -> list:
 
 
 def version() -> str:
-    """The corner's version: CMakeLists.txt's, or SIDOU_VIDEOS_VERSION (videos made for a release
-    before its version is bumped)."""
     if os.environ.get("SIDOU_VIDEOS_VERSION"):
         return f"SIDOU {os.environ['SIDOU_VIDEOS_VERSION']} - PLAYED ON SIDOU"
     m = re.search(r"project\(sidou VERSION ([0-9.]+)", (ROOT / "CMakeLists.txt").read_text())
     return f"SIDOU {m.group(1) if m else '?'} - PLAYED ON SIDOU"
 
-
-# ---------------------------------------------------------------- render ---
 
 P: dict = {}
 
@@ -317,7 +289,6 @@ def is_card(s: dict) -> bool:
 
 
 def zoom_at(ms: float) -> tuple:
-    """The push-in (zoom, centre, alpha, region) at a capture time."""
     k = step_at(ms)
     s = P["steps"][k]
     reg = s["region"]
@@ -341,7 +312,6 @@ def angle_of(name: str, ms: float) -> float:
 
 
 def panel_states(ms: float, k: int) -> dict:
-    """Each lit control: its cue at this time."""
     s = P["steps"][k]
     out = {}
     lo, hi = s["ms"], s["next_ms"]
@@ -351,7 +321,6 @@ def panel_states(ms: float, k: int) -> dict:
     for c, kind, t0, t1, det in P["events"]:
         if t1 < lo or t0 >= hi:
             continue
-        # Only what is in use now (from just before to a moment after), and the step's focus.
         if c not in out and not (t0 - 400 <= ms <= max(t1, t0 + 400) + 1200):
             continue
         st = out.setdefault(c, {"active": 0.0})
@@ -372,7 +341,6 @@ def panel_states(ms: float, k: int) -> dict:
 
 
 def pointer_at(ms: float) -> tuple | None:
-    """The sprite pointer: it flies (eased, 0.3 s) to each control just before it is used."""
     lead, fly = 300, 300
     targets = [(t0 - lead, c) for c, kind, t0, t1, det in P["events"]]
     targets.sort(key=lambda x: x[0])
@@ -398,7 +366,6 @@ def pointer_at(ms: float) -> tuple | None:
 
 
 def beat(ms: float) -> float:
-    """0..1: how much the frame glows, strongest on each beat of the song."""
     bpm, anchor = P.get("bpm"), P.get("beat_anchor")
     if not bpm or anchor is None or ms < anchor:
         return 0.0
@@ -407,7 +374,6 @@ def beat(ms: float) -> float:
 
 
 def primary(s: dict) -> str | None:
-    """The control the step's callout points at: its focus control, else its first input's."""
     f = s.get("focus", {}).get("control")
     if f and f not in ("device", "screen", "card"):
         return f
@@ -483,15 +449,12 @@ def compose(job: tuple) -> bytes:
     return im.tobytes()
 
 
-# ----------------------------------------------------------- the outputs ---
-
 def fmt_srt(ms: float) -> str:
     ms = int(round(ms))
     return f"{ms // 3600000:02}:{ms // 60000 % 60:02}:{ms // 1000 % 60:02},{ms % 1000:03}"
 
 
 def segments(plan: dict) -> list:
-    """The video's parts: (kind, frames)."""
     cfg = plan["cfg"]
     teaser = min(int(TEASER_S * FPS), plan["frames"]) if cfg.get("teaser", True) else 0
     title = int(TITLE_S * FPS) if cfg.get("title", True) else 0
@@ -499,7 +462,6 @@ def segments(plan: dict) -> list:
 
 
 def loudnorm(src: Path, dst: Path) -> dict:
-    """Two-pass EBU R128 normalisation to -16 LUFS integrated, -1.5 dBTP, 48 kHz."""
     target = "I=-16:TP=-1.5:LRA=11"
     r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(src), "-af",
                         f"loudnorm={target}:print_format=json", "-f", "null", "-"],
@@ -514,7 +476,6 @@ def loudnorm(src: Path, dst: Path) -> dict:
 
 
 def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
-    """The subtitles, the chapters (ffmetadata) and the normalised audio."""
     main0 = (segs[0][1] + segs[1][1]) * 40
     total = sum(n for _, n in segs) * 40
     srt, chap = [], []
@@ -552,7 +513,6 @@ def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
 
     n_main = plan["frames"] * 40
     main = piece(a, -off, at(n_main), 1.0, 60)
-    # The soundtrack under the steps the recipe leaves quiet (videos.json `bed`), from its start.
     beds = [s for s in plan["steps"] if s["id"] in plan["cfg"].get("bed", [])]
     for s in beds:
         n = at(s["next_ms"] - s["ms"])
@@ -640,12 +600,9 @@ def main() -> None:
     for f in formats:
         if f not in T.LAYOUTS:
             sys.exit(f"make-videos: no format {f}")
-    # Every recipe is a video but the checks marked `"video": false` in videos.json.
     cfg = json.loads(VIDEOS.read_text())
     ids = a.recipe or sorted(p.stem for p in RECIPES.glob("*.json")
                              if cfg.get(p.stem, {}).get("video", True))
-    # The captures first, several at once (each is one emulator on one core); then the renders,
-    # each on every core.
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max(1, (os.cpu_count() or 2) // 2)) as ex:
         list(ex.map(lambda f: f(), [soundtrack_capture] + [lambda r=r: recipe_capture(r) for r in ids]))
