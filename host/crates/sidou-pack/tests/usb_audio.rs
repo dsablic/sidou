@@ -507,7 +507,7 @@ fn nothing_is_copied_while_no_host_records() {
         }
         let s = state();
         assert_eq!((s.want, s.left, s.blocks, s.ring_w), (0, 0, 0, 0));
-        uac_h_stream(1); // alt 1, but the host has not taken a packet yet
+        uac_h_stream(1);
         for _ in 0..100 {
             uac_h_tick();
             uac_h_take(lr.as_ptr());

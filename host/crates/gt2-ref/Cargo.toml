@@ -6,8 +6,6 @@ description = "Test-only reference for SIDOU's song player: GoatTracker 2.77's o
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-# Links GoatTracker 2.77's GPL-2.0-or-later code (third_party/goattracker2) with SIDOU's
-# GPL-3.0-or-later shim; never built into the firmware.
 license.workspace = true
 publish.workspace = true
 

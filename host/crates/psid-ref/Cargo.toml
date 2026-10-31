@@ -6,8 +6,6 @@ description = "Test-only oracle for SIDOU's PSID environment: m6502.h and FM-1 S
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-# Links m6502.h (zlib) and a derived copy of FM-1 SID's psid.c (BSD-2-Clause) with SIDOU's
-# GPL-3.0-or-later code; never built into the firmware.
 license.workspace = true
 publish.workspace = true
 

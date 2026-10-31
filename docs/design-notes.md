@@ -2142,6 +2142,20 @@ The cleanup before 1.5's release moves the decisions now written as code comment
 - `harness/felucca/uac_test.c` is Felucca's upstream test code (GPL-3.0-only), kept byte for byte,
   comments included.
 
+### Licences of the host crates
+
+- `gt2-ref` links GoatTracker 2.77's GPL-2.0-or-later code (third_party/goattracker2) with
+  SIDOU's GPL-3.0-or-later shim; `psid-ref` links m6502.h (zlib) and a derived copy of FM-1
+  SID's psid.c (BSD-2-Clause) with SIDOU's GPL-3.0-or-later code. Neither is ever built into
+  the firmware.
+- `sidou-pack` is a port of Felucca's GPL-3.0-only packer. The files it fetches on first use
+  (`inputs.toml`, never committed, pinned by SHA-256, cached in build/ac79/) are JieLi's AC79 SDK
+  (Apache-2.0) at tag AC79NN_SDK_V1.2.1_2023-12-13, as Felucca's tools/build.py pins them: the
+  SPL (uboot.boot) goes into every package's head, cfg_tool.bin and the default EQ table into its
+  app area. Every package ships with LICENSES/Apache-2.0.txt.
+- `sidou-tablegen` takes its fit's transcendental functions from a pure-Rust libm, the same on
+  every platform: the platform's own libm may differ in the last digit.
+
 ## Web
 
 ### Demo page (index.html, patch-main.sh, serve.py)

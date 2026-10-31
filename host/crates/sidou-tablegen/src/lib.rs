@@ -120,7 +120,7 @@ pub struct PulldownLayout {
 fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
     let n = blocks.len();
     let len = PD_BLOCK_BYTES;
-    let mut next: Vec<Option<(usize, usize)>> = vec![None; n]; // (block, overlap)
+    let mut next_block_and_overlap: Vec<Option<(usize, usize)>> = vec![None; n];
     let mut has_prev = vec![false; n];
     let mut head_of: Vec<usize> = (0..n).collect();
     let mut tail_of: Vec<usize> = (0..n).collect();
@@ -133,7 +133,7 @@ fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
             }
         }
         for i in 0..n {
-            if next[i].is_some() {
+            if next_block_and_overlap[i].is_some() {
                 continue;
             }
             let Some(heads) = by_prefix.get_mut(&blocks[i][len - l..]) else {
@@ -144,7 +144,7 @@ fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
                 continue;
             };
             let j = heads.remove(pos);
-            next[i] = Some((j, l));
+            next_block_and_overlap[i] = Some((j, l));
             has_prev[j] = true;
             let (h, t) = (head_of[i], tail_of[j]);
             tail_of[h] = t;
@@ -157,7 +157,7 @@ fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
         at[h] = out.len();
         out.extend_from_slice(&blocks[h]);
         let mut b = h;
-        while let Some((c, l)) = next[b] {
+        while let Some((c, l)) = next_block_and_overlap[b] {
             at[c] = out.len() - l;
             out.extend_from_slice(&blocks[c][l..]);
             b = c;

@@ -1,12 +1,5 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: Apache-2.0
-#
-# The files sidou-pack fetches on first use (never committed), pinned by SHA-256.
-#
-# JieLi's AC79 SDK (Apache-2.0), tag AC79NN_SDK_V1.2.1_2023-12-13, as Felucca's
-# tools/build.py pins them: the SPL (uboot.boot) goes into every package's head, cfg_tool.bin
-# and the default EQ table into its app area. Cached in build/ac79/. Ship
-# LICENSES/Apache-2.0.txt with every package.
 
 ac79_base = "https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK/raw/AC79NN_SDK_V1.2.1_2023-12-13/cpu/wl82/tools/"
 uboot = "uboot.boot 4e3b4c220dc96641cb5a723f41e68ce41d5261ae9434bb33fbd7f2c59976ded4"
