@@ -10,16 +10,6 @@ __attribute__((section(".data.sid_noise_wb")))
 #endif
 const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_HI)};
 
-/* The noise tables the audio path reads, built once before anything runs instead of loaded
- * from the image: on the device the boot calls sid_noise_tables_init in the LCD's reset wait,
- * before the audio starts (platform/fm1/main.c, while_lcd_resets: the boot's timeline stays
- * as it was), and each bench's main after zeroing memory; on the host it is a constructor,
- * run before main. On the device they lie in POOL (SRAM, as ram_audio.rs requires of
- * what the audio path reads), not in .data's copy in flash and in the RAM region.
- * SID_NOISE_JUMP[k][i] is the register after 2^k plain shifts of bit i alone: row 0 is one
- * shift, each further row the one before applied to itself (sid_noise_jump in sid_osc.h).
- * SID_NOISE_WB_BYTE[h] is SID_NOISE_WB's two halves for the output's bits 4..11 at once.
- * unit/sid_noise.rs checks both against sidou-tablegen's matrices and SID_NOISE_WB. */
 #ifdef __PI32V2__
 __attribute__((section(".pool.sid_noise_jump")))
 #endif
@@ -29,8 +19,6 @@ __attribute__((section(".pool.sid_noise_wb_byte")))
 #endif
 uint32_t SID_NOISE_WB_BYTE[256];
 
-/* Each compiled row's index row in SID_PD (gen/pulldown.h): sid_osc_update_mode reads it in
- * the audio path, so RAM on the device. */
 #ifdef __PI32V2__
 __attribute__((section(".data.sid_pd_rows")))
 #endif
@@ -61,24 +49,10 @@ void sid_noise_tables_init(void) {
     }
 }
 
-#define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
-/* reSIDfp's output level relative to OUTPUT_GAIN: the RMS of one unfiltered voice at
- * volume 15 (sawtooth, triangle and 50% pulse, at 0x08d6 and 0x1d45), measured
- * through its mixer and output stages: 3.37 dB louder on the 6581, 1.05 dB on the 8580
- * (reference.rs asserts the match). At this level three voices at maximum resonance
- * clip the 8580 by up to about 1.1 dB, as they clip reSIDfp; the 6581 keeps 0.5 dB of
- * headroom (unit/sid.rs, three_voices_at_maximum_resonance_headroom). */
+#define OUTPUT_GAIN (0.1f * 32767.0f)
 #define LEVEL_6581 1.4736f
 #define LEVEL_8580 1.1288f
 #define DC_BLOCK_HZ 16.0f
-/* The thump at a note's start (sid_write): the peak a DC rising linearly over the attack (2 ms
- * to 8 s, SID_ENV_RATE_POS's rates) reaches through the 16 Hz DC blocker, tau / T (1 - e^-T/tau)
- * with tau = 1 / (2 pi 16 Hz), so a slow attack hardly thumps. Read where register writes are
- * applied (the audio interrupt's drain): RAM on the device (emu-gate tests/ram_audio.rs). */
-/* A note's thump against the volume write's: the voice DC's rise is the louder transient (at
- * thump 1, two voice DAC units for a fast attack's note from silence, where a saw at full
- * envelope swings one either way). Neither needs headroom in the chip: the output stage
- * (app/thump_out.h) plays both after the effect slots, within the room the output leaves. */
 #define THUMP_GATE 2.0f
 #ifdef __PI32V2__
 __attribute__((section(".data.sid_thump_attack")))
@@ -87,48 +61,19 @@ static const float THUMP_ATTACK[16] = {0.9059f, 0.6871f, 0.4972f, 0.3773f, 0.256
                                        0.1461f, 0.1243f, 0.0995f, 0.0398f, 0.0199f, 0.0124f,
                                        0.0099f, 0.0033f, 0.0020f, 0.0012f};
 
-/* The 6581's filter and output path, fitted to reSIDfp's 6581 at 44.1 kHz (M1b Task 6:
- * filter sweeps at small and full scale and with three loud voices, cutoffs and damping
- * measured from reSIDfp with one to three voices at two envelope levels, passband gains
- * and the volume register's DC steps; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-14-m1b-sound-accuracy.md).
- * The non-linearity (sid_filter.h, sid_nonlin), at amount 1: */
-#define NL_LEVEL 0.055f     /* g per unit |hp|, at 44.1 kHz */
+#define NL_LEVEL 0.055f
 #define NL_LEVEL_REF 0.13875f
 #define NL_LOAD 0.13125f
 #define NL_LOAD_REF 1.7375f
 #define NL_FLOOR_HZ 240.7f
-/* reSIDfp's 6581 filter outputs against its unfiltered voices: the low-pass and the
- * high-pass inverted (inverting op-amps), the band-pass not; each mode's passband gain;
- * and its op-amps' finite gain A, which makes the integrators leak: the band-pass carries
- * LEAK (1 / A) of the low-pass, the high-pass 2 LEAK of the band-pass and LEAK^2 of the
- * low-pass (a state-variable filter with lossy integrators is a lossless one, retuned,
- * with these outputs; the retuning is in the fitted tables). */
 #define MIX_GAIN_LP 0.6875f
 #define MIX_GAIN_BP SID_MIX_GAIN_BP
 #define MIX_GAIN_HP 0.5f
 #define MIX_LEAK (1.0f / 3.375f)
-/* The DC each input routed into the filter (a voice or EXT IN) brings at the operating
- * point of reSIDfp's summer: the filter's load. It moves the cutoff only (it enters the
- * load term, not the signal: as a step through a resonant low-pass it would ring past
- * full scale where reSIDfp's saturating op-amps do not). */
 #define DC_FILTER_INPUT 1.15625f
-/* The external filter's low-pass with reSIDfp's resampling after it: one pole, fitted to
- * reSIDfp's output at 44.1 kHz (13.2 kHz), not the external filter's 15.9 kHz nominal
- * pole, which leaves out the resampler's roll-off. */
 #define OUT_LP_HZ 13154.0f
-/* sid_clock's step. sid_osc_advance needs freq * cycles < 2^24, so at most 256.
- * Within that, the step only matters for hard sync: the restart is exact, but what the
- * synced voice did earlier in the step (its noise clocks, its MSB rise) is not
- * recomputed (see sid_osc_sync); 16 is no longer than sid_render's step at any PAL rate
- * up to 61.5 kHz, so sid_clock is never coarser than rendering. The loop's cost does not
- * matter: sid_clock is for tests and register-accurate seeking, not the audio path. */
 #define CLOCK_STEP 16u
 
-/* update_mix_bpn, update_filter and update_mix are always inline: sid_init (flash) and
- * sid_write (SRAM, the audio path) both call them, and no direct call may cross between the
- * two (platform/fm1/app.ld).
- * The 6581's band-pass mix: over the damping (sid_svf_tick_6581's bpn), so every write
- * that sets the damping or the mode sets it (sid_update_filter has the same). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -137,7 +82,6 @@ static inline void update_mix_bpn(sid* s) {
     s->mix_bpn = MIX_GAIN_BP * bp / s->svf.k;
 }
 
-/* The filter's coefficients and the band-pass mix (sid.h). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -145,7 +89,6 @@ static inline void update_filter(sid* s) {
     sid_update_filter(s);
 }
 
-/* The 6581's mix of the filter's outputs and its load, for $17 and $18 (sid.h). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -155,7 +98,7 @@ static inline void update_mix(sid* s) {
     }
     uint32_t routed = 0;
     for (uint32_t v = 0; v < 4u; ++v) {
-        routed += (s->routing >> v) & 1u; /* the voices and EXT IN */
+        routed += (s->routing >> v) & 1u;
     }
     float lp = (s->mode_vol & 0x10u) ? 1.0f : 0.0f;
     float bp = (s->mode_vol & 0x20u) ? 1.0f : 0.0f;
@@ -169,9 +112,6 @@ static inline void update_mix(sid* s) {
     s->svf.load_at = s->nl.load_ref - s->dc_in;
 }
 
-/* The render's voice masks from the routing, $18's 3OFF and the mute (sid.h, voice_path), at
- * the start of each render: once a render, not at every $17 and $18 write (a song's frame
- * writes them several times a call). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -181,11 +121,6 @@ static inline void update_voice_masks(sid* s) {
                               (~off & 7u) * SID_PATH_DIRECT);
 }
 
-/* exp(-x) for x >= 0, without libm: (Taylor series of exp(-x / 16))^16. For sid_init's
- * output pole, x = 2 pi OUT_LP_HZ / fs: within 5e-6 relative from 22.05 kHz up (x < 3.75),
- * 3e-5 at 16 kHz, 0.3% at 8 kHz, and 27% low at sid_init's lowest rate, 4 kHz (x = 20.7),
- * where exp(-x) is 1e-9. out_c = 1 - exp_neg is within 5 ULP of exact at every rate
- * sid_init accepts. */
 static float exp_neg(float x) {
     float y = x / 16.0f;
     float e = 1.0f - y * (1.0f - y / 2.0f * (1.0f - y / 3.0f * (1.0f - y / 4.0f * (1.0f - y / 5.0f))));
@@ -201,8 +136,6 @@ void sid_external_coefficients(uint32_t sample_rate, float lp_hz, float hp_hz,
     *dc_r = 1.0f - 2.0f * SIDOU_PI * hp_hz / (float)sample_rate;
 }
 
-/* A cutoff in Hz, clamped to 30 Hz .. 0.45 fs, as the angle pi f / fs (the second filter
- * tables' entries, sid.h) and as the SVF's g, its tangent (the first's). */
 static inline float cutoff_x(const sid* s, float hz) {
     float limit = 0.45f * (float)s->sample_rate;
     if (hz < 30.0f) {
@@ -220,7 +153,7 @@ static float cutoff_g(const sid* s, float hz) {
 
 void sid_nonlin_for_rows(const sid* s, float amount, float t, const sid_filter_row* rows,
                          sid_nonlin* out) {
-    if (!(amount >= 0.0f)) { /* NaN too */
+    if (!(amount >= 0.0f)) {
         amount = 0.0f;
     } else if (amount > 2.0f) {
         amount = 2.0f;
@@ -230,9 +163,6 @@ void sid_nonlin_for_rows(const sid* s, float amount, float t, const sid_filter_r
     out->level = amount * NL_LEVEL * (44100.0f / fs);
     out->level_off = -out->level * out->level_ref;
     out->load = amount * NL_LOAD;
-    /* The lowest cutoff is the chip's, not the non-linearity's: it follows the cutoff at FC 0,
-     * blended as sid_update_filter blends it, against the default curve setting's (1 exactly
-     * at the default), and the amount scales it only up to 1 (0: none, the filter linear). */
     float scale = amount < 1.0f ? amount : 1.0f;
     float table = sid_filter_cutoff(rows, 0, t) / cutoff_g(s, sid_cutoff_hz(s->model, 0, 0));
     out->floor = scale * sidou_tanf(SIDOU_PI * NL_FLOOR_HZ / fs) * table;
@@ -255,8 +185,6 @@ float sid_base_output_gain(const sid* s) {
     return OUTPUT_GAIN * (s->model == SID_MODEL_6581 ? LEVEL_6581 : LEVEL_8580);
 }
 
-/* A curve setting's cutoff and damping tables: the cutoff (clamped to 30 Hz .. 0.45 fs) as
- * the SVF's g (the first tables) or as its angle (the second's). */
 static void build_filter_row(const sid* s, uint32_t curve, int angles, float* g, float* k) {
     sid_cutoff_seq q;
     sid_cutoff_seq_init(&q, s->model, curve);
@@ -269,8 +197,6 @@ static void build_filter_row(const sid* s, uint32_t curve, int angles, float* g,
     }
 }
 
-/* The chip's tables for curve and toward (sid.h). For one curve setting (sid_init's, and
- * sid_set_filter_curve's) one pass: each FC's lookup and angle once, for both tables. */
 static void build_filter_tables(sid* s, uint32_t curve, uint32_t toward) {
     if (toward == curve) {
         sid_cutoff_seq q;
@@ -312,7 +238,7 @@ int sid_set_filter_blend(sid* s, uint32_t curve, uint32_t toward, float t) {
     if (curve >= n || toward >= n) {
         return -1;
     }
-    if (!(t > 0.0f)) { /* NaN too */
+    if (!(t > 0.0f)) {
         t = 0.0f;
     } else if (t > 1.0f) {
         t = 1.0f;
@@ -322,8 +248,6 @@ int sid_set_filter_blend(sid* s, uint32_t curve, uint32_t toward, float t) {
     return 0;
 }
 
-/* sid_init zeroes the chip but its filter tables, which build_filter_tables writes whole:
- * they are half the struct, and the device's memset goes a byte at a time. */
 _Static_assert(offsetof(sid, res_k) == offsetof(sid, cutoff_g) + sizeof(float) * SID_FC_STEPS &&
                    offsetof(sid, cutoff_x_to) == offsetof(sid, res_k) + sizeof(float) * 16u &&
                    offsetof(sid, res_k_to) ==
@@ -346,10 +270,10 @@ void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_
     for (int v = 0; v < 3; ++v) {
         s->osc[v].acc = SID_OSC_POWER_ON_ACC;
         sid_osc_set_model(&s->osc[v], model == SID_MODEL_6581);
-        s->osc[v].tri_saw = 0x555u; /* reSIDfp's power-on latch; reset keeps it */
+        s->osc[v].tri_saw = 0x555u;
         s->env[v].counter = SID_ENV_POWER_ON;
         sid_osc_reset(&s->osc[v]);
-        sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
+        sid_env_reset_settled(&s->env[v]);
     }
     s->sample_rate = sample_rate;
     sid_svf_reset(&s->svf);
@@ -401,15 +325,11 @@ void sid_filter_refresh(sid* s) {
     update_mix(s);
 }
 
-/* The voices' step, clock_voices (the renders, sid_clock and sid_advance call it), and OSC3 as
- * reSIDfp latches it, read_osc3: sid_voices.h, which the voice shadow (sid_shadow.c) shares. */
 #define SID_VOICES_T sid
 #define SID_VOICES_CLOCK clock_voices
 #define SID_VOICES_OSC3 read_osc3
 #include "sid_voices.h"
 
-/* A thump step (sid.h): from the next block's first sample, or from this one's sample the
- * chip has rendered up to. Always inline: sid_write runs in SRAM. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -425,8 +345,6 @@ static inline void thump_step(sid* s, float step) {
 void sid_write(sid* s, uint8_t reg, uint8_t v) {
     s->bus = v;
     reg &= 0x1f;
-    /* OSC3 latched in the last cycle, before a write to voice 2 (the ring source) or
-     * voice 3 changes what read_osc3 would reconstruct it from. */
     if (reg >= 0x07 && reg <= 0x12 && !s->vf.osc3_held) {
         s->vf.osc3_latch = read_osc3(s);
         s->vf.osc3_held = 1;
@@ -444,18 +362,10 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         case 2: sid_osc_write_pw(o, (o->pw & 0xf00u) | v); break;
         case 3: sid_osc_write_pw(o, (o->pw & 0x0ffu) | ((uint32_t)(v & 0x0f) << 8)); break;
         case 4: {
-            /* The ring source as this voice's output sees it (sid_osc_output). */
             uint32_t src_acc = reg >= 7 ? s->osc[reg / 7 - 1].acc : sid_osc_acc_last(&s->osc[2]);
             sid_osc_latch_ramp(o, src_acc);
             sid_osc_write_control(o, v);
             if (s->thump != 0.0f && (v & SID_CTRL_GATE) && !e->gate) {
-                /* The thump at a note's start (sid.h): the voice DC's rise as the envelope
-                 * attacks from where it is to the top, the volume scaling it, as large as
-                 * the DC blocker lets a ramp of the attack's length peak (THUMP_ATTACK). A DC
-                 * takes the voice's path: straight to the output, or through the filter's
-                 * low-pass if it is routed there (inverted on the 6581, sid.h mix_lp; the
-                 * band- and high-pass block it). Left for the output stage as the volume
-                 * write's step is (below). */
                 uint32_t voice = reg / 7u;
                 float path = 1.0f;
                 if (s->routing & (1u << voice)) {
@@ -477,8 +387,6 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         return;
     }
     switch (reg) {
-    /* $15-$17 only mark the filter: sid_render_tap recomputes its coefficients once, from
-     * the registers as the block's writes left them (sid.h, sid_update_filter). */
     case 0x15:
         s->fc = (s->fc & 0x7f8u) | (v & 0x07u);
         s->filter_dirty = 1;
@@ -496,10 +404,6 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
     case 0x18: {
         float volume = (float)(v & 0x0f) / 15.0f;
         if (s->thump != 0.0f) {
-            /* The thump (sid.h): a DC the volume scales, which the output's DC blocker
-             * removes again, so all it ever does is step the output as the volume changes:
-             * the blocker's own response to it, which the output stage plays (sid.h
-             * thump_pending; the render pays nothing). */
             thump_step(s, s->thump * (volume - s->volume));
         }
         s->mode_vol = v;
@@ -539,7 +443,7 @@ void sid_set_combined_profile(sid* s, int profile) {
 uint8_t sid_read(sid* s, uint8_t reg) {
     switch (reg & 0x1f) {
     case 0x19:
-    case 0x1a: s->bus = 0xff; break; /* paddles: nothing connected */
+    case 0x1a: s->bus = 0xff; break;
     case 0x1b: s->bus = s->vf.osc3_held ? s->vf.osc3_latch : read_osc3(s); break;
     case 0x1c: s->bus = s->env[2].env3; break;
     default: break;
@@ -548,10 +452,7 @@ uint8_t sid_read(sid* s, uint8_t reg) {
 }
 
 #ifdef SID_TEST_ZERO_VOICE
-/* Host tests only (sidou-sys build.rs compiles sid.c a second time with it, under other
- * names): the voices whose output is 0 (bit v, voice v), the reference the mute
- * (sid_set_mute) is checked against. The device and the core's own build never define it. */
-static _Thread_local uint32_t sid_test_zero_voices; /* per thread: the tests run in parallel */
+static _Thread_local uint32_t sid_test_zero_voices;
 void sid_test_set_zero_voices(uint32_t mask);
 void sid_test_set_zero_voices(uint32_t mask) {
     sid_test_zero_voices = mask;
@@ -567,9 +468,6 @@ static inline float voice_out(const sid* s, int v) {
     return s->dac->wave[s->osc[v].out] * s->dac->env[s->env[v].counter];
 }
 
-/* Deferred noise shifts repeat with the register's period (2^23 - 1): fold the count
- * before it can wrap (after about 19 hours at the top pitch). A call adds at most one
- * rise per 16 cycles (2^28 for sid_clock's largest), well inside the 2^31 left. */
 static inline void fold_owed_inline(sid* s) {
     for (int v = 0; v < 3; ++v) {
         if (s->osc[v].owed >= 0x80000000u) {
@@ -578,7 +476,6 @@ static inline void fold_owed_inline(sid* s) {
     }
 }
 
-/* Out of line, so it does not crowd sid_render's loop. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline))
 #endif
@@ -598,23 +495,17 @@ void sid_clock(sid* s, uint32_t cycles) {
 void sid_advance(sid* s, uint32_t k) {
     SID_DEBUG_ASSERT(k < sid_next_cycles(s));
     if (k == 0u) {
-        return; /* clock_voices(0) would still end the step: the pulse latches, OSC3's */
+        return;
     }
     clock_voices(s, k);
-    s->cycle_frac_q16 -= k << 16; /* the next sample's add brings it back: k < its cycles */
+    s->cycle_frac_q16 -= k << 16;
 }
 
-/* render_8580's loop, in chunks of `every` samples with a tap after each (sid_render_tap;
- * sid_render's is one chunk and no tap): M0's linear filter and mix, unchanged. With
- * bleed_on (a constant: each model's render has a copy with it and one without, so a chip
- * with no bleed pays nothing for it) the routed voices also reach the output unfiltered
- * (sid.h). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
 static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t every,
                                sid_tap tap, void* ctx, const int bleed_on) {
-    /* In a local, as render_6581_body keeps it: nothing writes the chip during a render. */
     const float bleed = s->bleed;
     int16_t* const last = out + frames;
     while (out < last) {
@@ -653,14 +544,12 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
 
             float x = (direct + filtered) * s->volume;
             float y = x - s->dc_x1 + s->dc_r * s->dc_y1;
-            /* Same reason as sid_svf_tick: on constant input y decays into denormals. */
             if (y < 1e-15f && y > -1e-15f) {
                 y = 0.0f;
             }
             s->dc_x1 = x;
             s->dc_y1 = y;
 
-            /* Round half away from zero, clamped so the cast stays in range. */
             float o = y * s->output_gain;
             o += o >= 0.0f ? 0.5f : -0.5f;
             if (o > 32767.0f) {
@@ -676,12 +565,6 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
     }
 }
 
-/* One function per model, so neither model's code depends on the other's, and the model
- * test stays out of the per-sample loop. The 6581's runs its non-linear filter
- * (sid_nl_tick) and its output path (sid.h), and keeps what it reads every sample in
- * locals: nothing writes the chip during a render (sid_write runs between them), and the
- * compiler cannot know that through the pointer. The tap (sid_render_tap) sees its voices;
- * its filter's state is stored back once, at the end. bleed_on as render_loop's. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -720,14 +603,12 @@ static inline void render_6581_body(sid* s, int16_t* out, uint32_t frames, uint3
             }
             sid_nl_tick(&ic1, &ic2, &lp, &bp, &hp, &bpn, filt_in, &c);
             float filtered = mix_lp * lp + mix_bpn * bpn + mix_bp * bp + mix_hp * hp;
-            /* The output low-pass. At volume 0 it decays towards 0 (sid_svf_flush's reason). */
             float x = out_lp + (vol_c * (direct + filtered) - out_c * out_lp);
             if (x < 1e-15f && x > -1e-15f) {
                 x = 0.0f;
             }
             out_lp = x;
 
-            /* render_8580's DC blocker and rounding. */
             float y = x - dc_x1 + dc_r * dc_y1;
             if (y < 1e-15f && y > -1e-15f) {
                 y = 0.0f;
@@ -790,8 +671,6 @@ static void render_8580_bleed(sid* s, int16_t* out, uint32_t frames, uint32_t ev
     render_loop(s, out, frames, every, tap, ctx, 1);
 }
 
-/* The grit (sid.h) on a render's samples, a moving towards the stage's by SID_GRIT_SLEW a
- * sample until it is there: the same path however the renders split it. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline))
 #endif
@@ -818,7 +697,7 @@ void sid_render(sid* s, int16_t* out, uint32_t frames) {
 void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                     void* ctx) {
     fold_owed(s);
-    s->thump_rendered += frames; /* where a thump step written next starts (sid.h) */
+    s->thump_rendered += frames;
     if (s->filter_dirty) {
         s->filter_dirty = 0;
         update_filter(s);

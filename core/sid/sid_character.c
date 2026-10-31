@@ -41,7 +41,6 @@ void sid_character_init(sid_character* c) {
     }
 }
 
-/* The character's profile for a chip of the model: its own, or the model's default. */
 static const sid_chip_profile* profile_for(sid_model model, const sid_character* c) {
     const sid_chip_profile* p = c->profile ? sid_chip_profile_get(c->profile - 1u) : NULL;
     if (!p || p->model != (uint8_t)model) {
@@ -54,21 +53,15 @@ static const sid_chip_profile* profile_of(const sid* s, const sid_character* c) 
     return profile_for(s->model, c);
 }
 
-/* A control as 0..1. */
 static float amount(uint8_t v) {
     return (float)(v > SID_CHARACTER_MAX ? SID_CHARACTER_MAX : v) / (float)SID_CHARACTER_MAX;
 }
 
-/* A control's effect as 0..1 (sid_character.h, SID_CHARACTER_CURVE_LINEAR): a little linear
- * and the rest squared, so the first detents are subtle and the top is obvious. */
 static float response(uint8_t v) {
     float a = amount(v);
     return a * (SID_CHARACTER_CURVE_LINEAR + (1.0f - SID_CHARACTER_CURVE_LINEAR) * a);
 }
 
-/* The DACs' grit as 0..1 for the control's 0..1 (sid.h, grit): its square root (Newton's from
- * above, converged to a float's precision for every detent), so the grit's level rises fastest
- * at the first detents, where a little of it is already heard, and keeps rising to the top. */
 static float grit_curve(float a) {
     if (a <= 0.0f) {
         return 0.0f;
@@ -80,7 +73,6 @@ static float grit_curve(float a) {
     return y;
 }
 
-/* The stage's grit for a DAC setting (sid.h). */
 static uint16_t dac_grit(uint8_t dac) {
     return (uint16_t)(grit_curve(amount(dac)) * SID_CHARACTER_GRIT * (float)SID_GRIT_ONE + 0.5f);
 }
@@ -243,8 +235,6 @@ static void dac_params(const sid* s, const sid_character* c, float* kink, float*
     dac_params_for(s->model, c, kink, leakage);
 }
 
-/* The DAC macro's bit errors (sid_dac_mismatch): no expert parameter of their own, they
- * follow the macro whatever the kink and leakage are set to. */
 static float dac_mismatch(const sid_character* c) {
     return response(c->dac) * SID_CHARACTER_MISMATCH;
 }
@@ -303,7 +293,7 @@ void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac
     float age = amount(c->age);
     float nl = sid_character_expert_value(c, s->model, SID_EXPERT_NONLINEARITY);
     float filter_t = filter_overridden(c, s->model) ? 0.0f : age;
-    sid_nonlin_for(s, nl, filter_t, &out->nl); /* clamped to 2 there */
+    sid_nonlin_for(s, nl, filter_t, &out->nl);
     out->dac = dac ? dac : sid_dac_default(s->model == SID_MODEL_6581);
     out->thump = sid_character_expert_value(c, s->model, SID_EXPERT_THUMP);
     out->bleed = sid_character_expert_value(c, s->model, SID_EXPERT_BLEED);
@@ -325,14 +315,10 @@ void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac
     uint32_t kept = sid_noise_writeback((0xffu >> taps) << 4);
     out->writeback_keep = kept;
     out->noise_keep = sid_noise_output(kept);
-    /* sid_init's gain at any thump: the thump needs no headroom in the chip, the output
-     * stage fits it into the room the output leaves (sid.h thump_pending). */
     out->output_gain = sid_base_output_gain(s);
     out->grit = dac_grit(c->dac);
 }
 
-/* The filter tables, DACs and stage for the character, on a chip that is not rendering;
- * the DAC table it got (NULL: the model's default). */
 static const sid_dac* change(sid* s, const sid_character* c, sid_dac* dac) {
     sid_character_filter(s, c);
     const sid_dac* table = NULL;
@@ -342,8 +328,8 @@ static const sid_dac* change(sid* s, const sid_character* c, sid_dac* dac) {
     }
     sid_character_stage st;
     sid_character_stage_for(s, c, table, &st);
-    sid_character_commit(s, &st); /* the filter's coefficients too */
-    s->grit_now = (uint32_t)s->grit << 7; /* at once: no slew (sid.h) */
+    sid_character_commit(s, &st);
+    s->grit_now = (uint32_t)s->grit << 7;
     return table;
 }
 
@@ -357,7 +343,6 @@ void sid_character_change(sid* s, const sid_character* c, sid_dac* dac) {
     change(s, c, dac);
 }
 
-/* The preparation's pieces (sid_character_prep_step), in order. */
 enum { PREP_DEFAULT_DAC, PREP_ROW_G, PREP_ROW_X, PREP_EXPERT_FILTER, PREP_DAC, PREP_DONE };
 
 #define ROW_SLICES(n) ((SID_FC_STEPS + (n) - 1u) / (n))
@@ -409,31 +394,21 @@ int sid_character_prep_done(const sid_character_prep* p) {
     return p->phase == PREP_DONE;
 }
 
-/* sid_init_end and sid_character_apply's stage: what is left once the tables are built. */
 static void prep_finish(sid_character_prep* p) {
     sid* s = p->s;
     sid_init_end(s);
     sid_character_stage st;
     sid_character_stage_for(s, &p->c, p->table, &st);
-    sid_character_commit(s, &st); /* the filter's coefficients too */
-    s->grit_now = (uint32_t)s->grit << 7; /* a fresh chip: no slew (sid.h) */
+    sid_character_commit(s, &st);
+    s->grit_now = (uint32_t)s->grit << 7;
     p->phase = PREP_DONE;
 }
 
-/* The pieces follow sid_init and sid_character_apply (sid_character_filter, then the DACs,
- * then the stage), building each table once: the first row is the profile's curve setting
- * and the second its hot row, as sid_character_filter leaves them whichever way it gets
- * there (both rows anew, or sid_init's first and the second anew). */
 int sid_character_prep_step(sid_character_prep* p, sid_dac* dac) {
     sid* s = p->s;
     const sid_chip_profile* prof = profile_for((sid_model)p->model, &p->c);
     switch (p->phase) {
     case PREP_DEFAULT_DAC:
-        /* sid_init_begin points the chip at the model's default DACs: on the device the
-         * 8580's are built on first use, a step a slice, not all in one. The caller says how
-         * many slices to spend here, whether or not a step is left to do (on hosts the first
-         * builds the whole table, and another preparer may have built it), so the count is
-         * the same everywhere. */
         if (p->default_left) {
             p->default_left--;
             sid_dac_default_step(p->model == SID_MODEL_6581);
@@ -572,9 +547,6 @@ void sid_character_filter_job_start(sid_character_filter_job* job, const sid* s,
     job->source_t = s->filter_t;
 }
 
-/* Bilinear curve/range interpolation adds work to each cutoff; use smaller pieces
- * than the profile-only preparer. No new table storage, only caller-leased rows. */
-
 int sid_character_filter_job_step(sid_character_filter_job* job) {
     if (job->phase >= 2u) {
         return 1;
@@ -659,7 +631,6 @@ void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
     r->grit_dac = c->dac > SID_CHARACTER_MAX ? (uint8_t)SID_CHARACTER_MAX : c->dac;
 }
 
-/* v moved towards to by at most step. */
 static uint8_t toward(uint8_t v, uint8_t to, uint32_t step) {
     if (v < to) {
         return (uint8_t)((uint32_t)(to - v) > step ? v + step : to);
@@ -667,7 +638,6 @@ static uint8_t toward(uint8_t v, uint8_t to, uint32_t step) {
     return (uint8_t)((uint32_t)(v - to) > step ? v - step : to);
 }
 
-/* A control's setting as the ramp takes it: clamped, as amount() reads it. */
 static uint8_t clamped(uint8_t v) {
     return v > SID_CHARACTER_MAX ? (uint8_t)SID_CHARACTER_MAX : v;
 }
@@ -699,9 +669,6 @@ static int expert_step(sid_character* now, const sid_character* want, sid_model 
     return 1;
 }
 
-/* The most detents (at most max) a ramp moves a control on the perceptual curve from now
- * towards to in one step, keeping the effect's change within lim 127ths of its amount (what a
- * detent of a linear control moves it); 0 if even one detent changes it more. */
 static uint32_t ramp_step(uint8_t now, uint8_t to, float lim, uint32_t max) {
     uint32_t gap = now < to ? (uint32_t)(to - now) : (uint32_t)(now - to);
     float from = response(now);
@@ -714,7 +681,6 @@ static uint32_t ramp_step(uint8_t now, uint8_t to, float lim, uint32_t max) {
     return 0;
 }
 
-/* ramp_step, but at least a detent. */
 static uint8_t ramp_toward(uint8_t now, uint8_t to, float lim, uint32_t max) {
     uint32_t step = ramp_step(now, to, lim, max);
     return toward(now, to, step ? step : 1u);
@@ -739,15 +705,10 @@ static void dac_copy(sid_character* to, const sid_character* from) {
     expert_copy(to, from, SID_EXPERT_VOICE_DC);
 }
 
-/* The bleed's tick: up to SID_CHARACTER_BLEED_RAMP_MAX detents where its curve is shallow,
- * one where it is not, and where one detent moves it more than SID_CHARACTER_BLEED_RAMP 127ths
- * half a detent a tick (bleed_half: the stage half way to the next detent, sid_character.h).
- * 1 if the stage's bleed changed. */
 static int bleed_tick(sid_character_ramp* r) {
     sid_character* now = &r->now;
     uint8_t to = clamped(r->target.bleed);
     if (r->bleed_half) {
-        /* The rest of the half detent's way, or back if the target turned. */
         int ahead = r->bleed_half > 0 ? to > now->bleed : to < now->bleed;
         if (ahead) {
             now->bleed = (uint8_t)(now->bleed + r->bleed_half);
@@ -854,7 +815,6 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
                              SID_CHARACTER_RAMP);
     int changed = now->age != was.age || now->thump != was.thump;
     changed |= bleed_tick(r);
-    /* The grit goes to the asked-for setting at once: the chip slews to it (sid.h). */
     changed |= r->grit_dac != clamped(want->dac);
     r->grit_dac = clamped(want->dac);
     if (now->expert_mask | want->expert_mask) {
@@ -940,7 +900,7 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
             r->next_dac = next.dac;
             r->dac_next = next;
             r->building = 1;
-            sid_dac_job_step(&r->job); /* the first step now: the table in SID_DAC_BUILD_STEPS */
+            sid_dac_job_step(&r->job);
         }
     }
     if (changed) {

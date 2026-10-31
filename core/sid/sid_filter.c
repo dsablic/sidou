@@ -13,8 +13,6 @@ void sid_svf_reset(sid_svf* f) {
     f->g = 0.0f;
 }
 
-/* The tables (gen/filter.h) stay in flash: sid_init and sid_set_filter_curve read them,
- * never the audio path. */
 uint32_t sid_filter_curves(sid_model model) {
     return model == SID_MODEL_6581 ? SID_FILTER_CURVES_6581 : SID_FILTER_CURVES_8580;
 }

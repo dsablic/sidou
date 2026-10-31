@@ -1011,7 +1011,7 @@ fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
     let character_init = between(
         &character,
         "void sid_character_init(",
-        "/* The character's profile",
+        "static const sid_chip_profile* profile_for(",
     );
     let character_edits = between(
         &character,
