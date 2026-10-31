@@ -264,7 +264,9 @@ static void arp_wave_name(uint8_t wave, char out[SCREEN_POPUP_TEXT]) {
         hex2(wave, out);
 }
 
-static void arp_num(char out[SCREEN_POPUP_TEXT], int32_t v, int sign) {
+#define ARP_NUM_TEXT 5u
+
+static void arp_num(char out[ARP_NUM_TEXT], int32_t v, int sign) {
     uint32_t n = 0u;
     if (v < 0 || sign)
         out[n++] = v < 0 ? '-' : '+';
@@ -1138,6 +1140,7 @@ static void arp_row(song_pages* p, uint32_t j) {
 
 #define PROGRAM_WORDS 5u
 #define PROGRAM_WORD 6u
+_Static_assert(PROGRAM_WORD >= ARP_NUM_TEXT, "a program word holds an offset");
 #define PROGRAM_ROWS 8u
 #define PROGRAM_TAG_COL 26u
 #define TABLE_END 0xffu
