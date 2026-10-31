@@ -1,46 +1,23 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The settings on the device (app/settings.h, M2a Task 5), in fm1-emu with its flash kept
-//! across power cycles: CARDS, the envelope mode and a learned CC survive one; the full boot
-//! plays once after an install (no settings, or another version's), then the short one; SAVE's
-//! press stores them at once; a foreign store reads foreign until the menu's confirm formats it.
 
 mod common;
 
-use std::ffi::c_void;
-
-use common::{build_dir, run_past_boot, stored_value, top_view, Firmware, Machine};
+use common::panel::{press, ALGORITHM, HOME, K1, SAVE};
+use common::{
+    booted, firmware, put_value, run_past_boot, stored_value, top_view, Firmware, Machine,
+};
 use fm1_core::Bus;
 use sidou_sys::ilp32;
 use sidou_sys::*;
 
-const ALGORITHM: u8 = 1;
-const K1: u8 = 2;
-const HOME: u8 = 8;
-const SAVE: u8 = 9;
-/// A CC the map leaves free (docs/reference/midi.md); the envelope mode's (app/midi_map.c).
+const MENU_WIPE_MS: u64 = 700;
 const CC_FREE: u8 = 14;
+const FOREIGN_BYTE: u8 = 0x5A;
 const CC_ENVELOPE: u8 = 26;
-/// The record's byte of the envelope mode: 6 header bytes, then parameters 0..35, the cutoff and
-/// the pulse width two bytes each (app/settings.h).
+const REC_CARDS: usize = 1;
 const REC_ENVELOPE: usize = 6 + LIVE_PARAM_ENVELOPE_MODE as usize + 2;
 
-fn fixture(what: &str) -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        common::skip_message(what);
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
-
-fn press(m: &mut Machine, id: u8) {
-    m.key(id, true);
-    m.run_ms(30);
-    m.key(id, false);
-    m.run_ms(30);
-}
-
-/// Powered on with `flash`, past the boot.
 fn power_on(fw: &Firmware, flash: &[u8]) -> Machine {
     let mut m = Machine::boot_blank(&fw.image);
     m.soc.flash.mem.copy_from_slice(flash);
@@ -48,7 +25,6 @@ fn power_on(fw: &Firmware, flash: &[u8]) -> Machine {
     m
 }
 
-/// The boot the views played at this power-on (platform/fm1/ui.c `ui`, its `boot`): 1 full.
 fn full_boot(m: &mut Machine, fw: &Firmware) -> bool {
     let a = fw.symbol("ui") + (ilp32::views::boot + ilp32::boot::full) as u32;
     m.soc.read8(a) != 0
@@ -63,7 +39,6 @@ fn envelope(m: &mut Machine, fw: &Firmware) -> u8 {
         .read8(fw.symbol("instrument") + ilp32::live::envelope_mode as u32)
 }
 
-/// CC 14's bound map row in platform/fm1/midi.c `learned` (MIDI_LEARN_NONE: none).
 fn cc_free_row(m: &mut Machine, fw: &Firmware) -> u8 {
     m.soc
         .read8(fw.symbol("learned") + (ilp32::midi_learn::cc_row + CC_FREE as usize) as u32)
@@ -74,15 +49,12 @@ fn store_state(m: &mut Machine, fw: &Firmware) -> u8 {
         .read8(fw.symbol("store_fm1_store") + ilp32::store::state as u32)
 }
 
-/// The menu open, then SETTINGS, its cursor on `item` (fm1-emu turns an encoder a detent every
-/// 8 ms); HOME twice goes back to LIVE.
 fn setting_item(m: &mut Machine, item: u32) {
     press(m, HOME);
-    m.run_ms(700);
+    m.run_ms(MENU_WIPE_MS);
     common::settings_item(m, item);
 }
 
-/// Until the settings stored differ from `before` (or `ms` passed): the time it took.
 fn stored_within(m: &mut Machine, before: &Option<Vec<u8>>, ms: u64) -> Option<u64> {
     let start = m.ms();
     while m.ms() < start + ms {
@@ -96,11 +68,10 @@ fn stored_within(m: &mut Machine, before: &Option<Vec<u8>>, ms: u64) -> Option<u
 
 #[test]
 fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
-    let Some(fw) = fixture("the settings test") else {
+    let Some(fw) = firmware("the settings test") else {
         return;
     };
-    let mut m = Machine::boot(&fw.image);
-    run_past_boot(&mut m, &fw);
+    let mut m = booted(&fw);
     assert!(
         !full_boot(&mut m, &fw),
         "a second power-on plays the short boot"
@@ -109,7 +80,6 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
         (cards(&mut m, &fw), envelope(&mut m, &fw)),
         (1, LIVE_ENVELOPE_INSTANT as u8)
     );
-    // CARDS off in the menu (ALGORITHM counter-clockwise), back to LIVE.
     setting_item(&mut m, VIEWS_SETTINGS_CARDS);
     m.turn(ALGORITHM, -1);
     m.run_ms(100);
@@ -117,7 +87,6 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
     m.run_ms(300);
     press(&mut m, HOME);
     m.run_ms(700);
-    // The envelope mode over MIDI; CC 14 learned for K1's cutoff.
     m.midi(&[0xB0, CC_ENVELOPE, 127]);
     m.run_ms(50);
     m.key(SAVE, true);
@@ -134,7 +103,6 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
         (want.0, want.1)
     );
     assert_ne!(want.2, MIDI_LEARN_NONE as u8, "CC 14 not learned");
-    // The debounce passes (no toast, no SAVE), and the power goes.
     let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY);
     let took = stored_within(&mut m, &before, 8_000).expect("never stored");
     println!("the background save landed {took} ms after the last change");
@@ -153,60 +121,11 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
     );
 }
 
-// ---- a host store over a flash copy, writable ----
-
-unsafe extern "C" fn copy_map(ctx: *mut c_void, off: u32) -> *const u8 {
-    unsafe { ctx.cast::<u8>().add(off as usize) }
-}
-
-unsafe extern "C" fn copy_prog(ctx: *mut c_void, off: u32, p: *const c_void, n: u32) -> i32 {
-    for i in 0..n as usize {
-        unsafe { *ctx.cast::<u8>().add(off as usize + i) &= *p.cast::<u8>().add(i) };
-    }
-    0
-}
-
-unsafe extern "C" fn copy_erase(ctx: *mut c_void, off: u32) -> i32 {
-    for i in 0..STORE_SECTOR as usize {
-        unsafe { *ctx.cast::<u8>().add(off as usize + i) = 0xFF };
-    }
-    0
-}
-
-/// `key`'s value replaced by `data` in a flash copy, as an older firmware would have stored it.
-fn put(flash: &mut [u8], key: u32, data: &[u8]) {
-    let f = store_flash {
-        map: Some(copy_map),
-        prog: Some(copy_prog),
-        erase: Some(copy_erase),
-        ctx: flash.as_mut_ptr().cast(),
-    };
-    let mut st: Box<store> = Box::default();
-    unsafe {
-        store_init(&mut *st, &f, 256);
-        store_mount(&mut *st);
-        store_quiet(&mut *st, 1);
-        while store_poll(&mut *st) != 0 {}
-        assert_eq!(
-            store_put(
-                &mut *st,
-                key,
-                SETTINGS_TYPE as u8,
-                data.as_ptr().cast(),
-                data.len() as u32
-            ),
-            STORE_OK
-        );
-        while store_poll(&mut *st) != 0 {}
-    }
-}
-
 #[test]
 fn the_full_boot_plays_once_after_an_install_then_the_short_one() {
-    let Some(fw) = fixture("the settings test") else {
+    let Some(fw) = firmware("the settings test") else {
         return;
     };
-    // A blank flash: the first power-on.
     let mut m = Machine::boot_blank(&fw.image);
     run_past_boot(&mut m, &fw);
     assert!(
@@ -218,14 +137,13 @@ fn the_full_boot_plays_once_after_an_install_then_the_short_one() {
     let rec = stored_value(&flash, SETTINGS_KEY).expect("the version stored");
     let mut m = power_on(&fw, &flash);
     assert!(!full_boot(&mut m, &fw), "then the short one");
-    // An older firmware's record: the full boot once, its settings kept, then the short one.
     let mut old = rec[..SETTINGS_V1_BYTES as usize].to_vec();
     old[0] = 1;
     let v = SETTINGS_V1_BYTES as usize - SETTINGS_VERSION_CHARS as usize;
     old[v..].fill(0);
     old[v..v + 6].copy_from_slice(b"V0.0.1");
-    old[1] = 0; // CARDS off
-    put(&mut flash, SETTINGS_KEY, &old);
+    old[REC_CARDS] = 0;
+    put_value(&mut flash, SETTINGS_KEY, SETTINGS_TYPE as u8, &old);
     let mut m = power_on(&fw, &flash);
     assert!(full_boot(&mut m, &fw), "a new version: the full boot");
     assert_eq!(cards(&mut m, &fw), 0, "its settings still apply");
@@ -238,11 +156,10 @@ fn the_full_boot_plays_once_after_an_install_then_the_short_one() {
 
 #[test]
 fn saves_press_on_live_stores_the_settings_within_a_second() {
-    let Some(fw) = fixture("the settings test") else {
+    let Some(fw) = firmware("the settings test") else {
         return;
     };
-    let mut m = Machine::boot(&fw.image);
-    run_past_boot(&mut m, &fw);
+    let mut m = booted(&fw);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
     m.midi(&[0xB0, CC_ENVELOPE, 127]);
     m.run_ms(50);
@@ -257,16 +174,14 @@ fn saves_press_on_live_stores_the_settings_within_a_second() {
 
 #[test]
 fn a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings() {
-    let Some(fw) = fixture("the settings test") else {
+    let Some(fw) = firmware("the settings test") else {
         return;
     };
     let mut flash = Machine::boot_blank(&fw.image).soc.flash.mem.clone();
-    flash[(STORE_LO + 7 * STORE_SECTOR) as usize + 123] = 0x5A; // another firmware's byte
+    flash[(STORE_LO + 7 * STORE_SECTOR) as usize + 123] = FOREIGN_BYTE;
     let mut m = power_on(&fw, &flash);
     assert_eq!(store_state(&mut m, &fw), STORE_STATE_FOREIGN as u8);
     setting_item(&mut m, VIEWS_SETTINGS_STORE);
-    // A turn arms, nothing written; more turns, however fast, only keep it armed (ergonomics
-    // review E01); SAVE formats: every sector erased, the audio held through each.
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
     let region = (STORE_LO as usize)..(STORE_HI as usize);
@@ -285,7 +200,6 @@ fn a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings
     );
     press(&mut m, SAVE);
     let start = m.ms();
-    // Every sector erased (forced: the user asked), then the settings stored again.
     while stored_value(&m.soc.flash.mem, SETTINGS_KEY).is_none() {
         m.run_ms(100);
         assert!(m.ms() < start + 30_000, "the format never ended");

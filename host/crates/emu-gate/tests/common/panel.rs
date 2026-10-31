@@ -58,6 +58,18 @@ pub fn chord(m: &mut Machine, modifier: u8, id: u8) {
     holding(m, modifier, |m| press(m, id));
 }
 
+pub const TWO_FINGERS_APART_MS: u64 = 5;
+pub const CHORD_HELD_MS: u64 = 60;
+
+pub fn chord_key_first(m: &mut Machine, id: u8, modifier: u8) {
+    m.key(id, true);
+    m.run_ms(TWO_FINGERS_APART_MS);
+    m.key(modifier, true);
+    m.run_ms(CHORD_HELD_MS);
+    m.key(id, false);
+    m.key(modifier, false);
+}
+
 pub fn turn_time(clicks: i32) -> u64 {
     DETENT_MS * u64::from(clicks.unsigned_abs())
 }

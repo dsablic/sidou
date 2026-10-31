@@ -1,99 +1,39 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! First use, checked as a listener would (TESTING.md, "Emulator first, and the first-use
-//! tests"): the panel driven the way a user drives it on a fresh song (the menu's SONG pages,
-//! STEP, TRACKER, PLAY, GLO, the generative gestures, a power cycle), and what comes out judged
-//! by what an ear notices: a sound loud enough over its length (RMS, not a peak a click passes),
-//! its pitch (the chip's frequency register and the audio's own fundamental), on time (onsets at
-//! the rows' times), and each instrument told apart from the others (pitch, brightness, length,
-//! waveform), not sample for sample (the bit-exact tests are song.rs's and song_store.rs's).
-//!
-//! v0.4.0's device session found what these would have: a NEW song silent since v0.2.0 (its
-//! lead at 0 Hz), NEW's PULSE and BASS sounding the same, and the first step press after
-//! PRESETS auditioning the previous instrument. They found two more, both since fixed: the chip
-//! kit's drums sounded about 55 ms after their row, not one frame
-//! (the_kits_drums_sound_one_frame_after_their_row; the ADSR delay bug, decision record 0009),
-//! and PLAY thudded before its first note (play_is_quiet_until_the_first_note).
 
 mod common;
 
+use common::panel::{self, press, turn, *};
 use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::song::Song;
 
-const SELECT: u8 = PANEL_ENC_SELECT as u8;
-const ALGORITHM: u8 = PANEL_ENC_ALGORITHM as u8;
-const PRESETS: u8 = PANEL_ENC_PRESETS as u8;
-const HOME: u8 = PANEL_BTN_HOME as u8;
-const SAVE: u8 = PANEL_BTN_SAVE as u8;
-const SEQ: u8 = PANEL_BTN_SEQ as u8;
-const PLAY: u8 = PANEL_BTN_PLAY as u8;
-const REC: u8 = PANEL_BTN_REC as u8;
-const GLO: u8 = PANEL_BTN_GLO as u8;
-const EDIT: u8 = PANEL_BTN_EDIT as u8;
-const ARP: u8 = PANEL_BTN_ARP as u8;
-const SCL: u8 = PANEL_BTN_SCL as u8;
-const KEY0: u8 = PANEL_KEY_ID0 as u8;
-
-/// app/views.c's SONG page actions, in their order (SELECT from the top).
+const CHORD_RELEASE_MS: u64 = 40;
+const AUDITION_HANDS_CHIP_A_BACK_MS: u64 = 2_500;
+const C4_KEY_INDEX: u8 = note_key(60) - KEY0;
+const SETTINGS_DEBOUNCE_MS: u64 = 6_000;
+const JAM_ROOT_NOTE: u8 = 48;
 const SONG_LOAD: i32 = 0;
 const SONG_NEW: i32 = 1;
 const SONG_SAVE_AS: i32 = 2;
 
-/// A wipe or a raster over, with room (screen.rs SETTLE_MS).
 const WIPE_MS: u64 = 700;
-/// Song I/O's longest operation, with room (song_store.rs).
 const IO_TIMEOUT_MS: u64 = 15_000;
-/// A NEW song's tempo 6 on PAL: six 20 ms calls a row.
 const ROW_MS: f64 = 120.0;
-/// A NEW song's lanes play this note until PRESETS with a step held changes it (C-3).
 const LANE_NOTE: u32 = 36;
-/// The chip's clock (platform/fm1/audio.c: PAL).
 const CHIP_HZ: f64 = SID_CLOCK_PAL as f64;
 
-/// RMS over 10 ms that a sound a listener hears reaches at least (the chips' scale at the
-/// pot's power-on reading). A click of a few samples stays far below it over 10 ms.
 const AUDIBLE_RMS: f64 = 250.0;
-/// RMS over 10 ms that silence stays below (the tail gate and the thump leave a little).
 const SILENT_RMS: f64 = 40.0;
 
-// ---- the panel, as a user's fingers ----
-
-fn fixture() -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        skip_message("the first-use tests");
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
-
-/// A button pressed and let go, long enough for the key scan's debounce either way.
-fn press(m: &mut Machine, id: u8) {
-    m.key(id, true);
-    m.run_ms(30);
-    m.key(id, false);
-    m.run_ms(30);
-}
-
-/// `held` down, `id` pressed and let go, `held` up: EDIT + SCL and the like.
 fn chord(m: &mut Machine, held: u8, id: u8) {
-    m.key(held, true);
-    m.run_ms(40);
-    press(m, id);
-    m.key(held, false);
-    m.run_ms(40);
-}
-
-/// An encoder turned `clicks` detents; fm1-emu turns one every 8 ms, each waited out.
-fn turn(m: &mut Machine, enc: u8, clicks: i32) {
-    m.turn(enc, clicks);
-    m.run_ms(10 * u64::from(clicks.unsigned_abs()) + 40);
+    panel::chord(m, held, id);
+    m.run_ms(CHORD_RELEASE_MS);
 }
 
 fn booted(fw: &Firmware) -> Machine {
-    let mut m = Machine::boot(&fw.image);
-    run_past_boot(&mut m, fw);
+    let mut m = common::booted(fw);
     idle(&mut m, fw);
     m
 }
@@ -109,22 +49,6 @@ fn assert_view(m: &mut Machine, fw: &Firmware, symbol: &str, what: &str) {
     );
 }
 
-fn text_at(m: &mut Machine, address: u32, length: u32) -> String {
-    (0..length)
-        .map(|i| m.soc.read8(address + i) as char)
-        .take_while(|&c| c != '\0')
-        .collect()
-}
-
-fn toast(m: &mut Machine, fw: &Firmware) -> String {
-    text_at(
-        m,
-        fw.symbol("ui") + ilp32::screen::toast as u32,
-        SCREEN_TOAST_CHARS,
-    )
-}
-
-/// The value popup's name and value (app/screen.h screen_popup_state).
 fn popup(m: &mut Machine, fw: &Firmware) -> (String, String) {
     let at = fw.symbol("ui") + ilp32::views::popup as u32;
     (
@@ -153,7 +77,6 @@ fn song_name(m: &mut Machine, fw: &Firmware) -> String {
     )
 }
 
-/// Song I/O idle again (a load, a NEW, a save over).
 fn idle(m: &mut Machine, fw: &Firmware) {
     let start = m.ms();
     while io_byte(m, fw, ilp32::song_io::state) != SONG_IO_IDLE as u8 {
@@ -170,7 +93,6 @@ fn playing(m: &mut Machine, fw: &Firmware) -> bool {
     ctl_byte(m, fw, ilp32::song_ctl::isr_playing) != 0
 }
 
-/// The song in the device's region, as the host reads it (song_store.rs).
 fn song(m: &mut Machine, fw: &Firmware) -> Song {
     let mut song = Song::device();
     let address = fw.symbol("__song_region");
@@ -186,7 +108,6 @@ fn song(m: &mut Machine, fw: &Firmware) -> Song {
     song
 }
 
-/// The menu (HOME), its SONG item opened (ALGORITHM clockwise), the cursor on `action`.
 fn open_song_page(m: &mut Machine, fw: &Firmware, action: i32) {
     home_to_live(m, fw);
     press(m, HOME);
@@ -201,7 +122,6 @@ fn open_song_page(m: &mut Machine, fw: &Firmware, action: i32) {
     turn(m, SELECT, action);
 }
 
-/// Out of the menu to LIVE: HOME let go until LIVE is on top.
 fn home_to_live(m: &mut Machine, fw: &Firmware) {
     for _ in 0..4 {
         if view_is(m, fw, "live_view_view") {
@@ -213,7 +133,6 @@ fn home_to_live(m: &mut Machine, fw: &Firmware) {
     assert_view(m, fw, "live_view_view", "HOME back to LIVE");
 }
 
-/// SONG, NEW (on a song with no unsaved changes: no confirmation), back to LIVE.
 fn new_song(m: &mut Machine, fw: &Firmware) {
     open_song_page(m, fw, SONG_NEW);
     turn(m, ALGORITHM, 1);
@@ -227,14 +146,12 @@ fn new_song(m: &mut Machine, fw: &Firmware) {
     home_to_live(m, fw);
 }
 
-/// SEQ from LIVE: STEP (the first song view after power-on).
 fn open_step(m: &mut Machine, fw: &Firmware) {
     press(m, SEQ);
     m.run_ms(WIPE_MS);
     assert_view(m, fw, "step_view_view", "SEQ from LIVE");
 }
 
-/// A NEW song on STEP, the transport stopped.
 fn new_song_on_step(fw: &Firmware) -> Machine {
     let mut m = booted(fw);
     new_song(&mut m, fw);
@@ -242,17 +159,14 @@ fn new_song_on_step(fw: &Firmware) -> Machine {
     m
 }
 
-/// The lane's instrument (STEP's, `step.instr[voice]`).
 fn lane_instrument(m: &mut Machine, fw: &Firmware, voice: u32) -> u8 {
     m.soc
         .read8(fw.symbol("ui") + (ilp32::views::step + ilp32::step_view::instr) as u32 + voice)
 }
 
-/// PRESETS to instrument `to` on the selected lane, from `from`; its popup names it.
 fn presets_to(m: &mut Machine, fw: &Firmware, voice: u32, to: u8, name: &str) {
     let from = lane_instrument(m, fw, voice);
     if from == to {
-        // already there (a NEW song's lanes start at 01): away and back, as a user checks it
         turn(m, PRESETS, 1);
         turn(m, PRESETS, -1);
     } else {
@@ -264,10 +178,6 @@ fn presets_to(m: &mut Machine, fw: &Firmware, voice: u32, to: u8, name: &str) {
     assert_eq!(value, format!("{to:02X} {name}"), "PRESETS' popup names it");
 }
 
-// ---- what a listener hears ----
-
-/// Chip A's voice `v` as the interrupt renders it (song.rs chip_a_voice), with its pulse
-/// width and its envelope's AD and SR as the registers hold them.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Voice {
     freq: u32,
@@ -300,26 +210,21 @@ fn hz_of_freq(freq: u32) -> f64 {
     f64::from(freq) * CHIP_HZ / 16_777_216.0
 }
 
-/// GoatTracker's note `n` (0 is C-0) in Hz, A-4 (57) at 440.
 fn hz_of_note(n: u32) -> f64 {
     440.0 * 2f64.powf((f64::from(n) - 57.0) / 12.0)
 }
 
-/// Semitones from `want` to `hz`.
 fn cents_off(hz: f64, want: f64) -> f64 {
     1200.0 * (hz / want).log2()
 }
 
-/// A sound as heard: the audio from the key's press and the voice's registers each ms.
 #[derive(Clone, Debug)]
 struct Heard {
     audio: Vec<f32>,
     regs: Vec<Voice>,
-    /// Each ms, the gates of all three voices (bit v: voice v).
     gates: Vec<u8>,
 }
 
-/// 10 ms windows' RMS.
 fn rms_windows(x: &[f32]) -> Vec<f64> {
     let w = (FS / 100.0) as usize;
     x.chunks(w)
@@ -332,21 +237,13 @@ fn rms(x: &[f32]) -> f64 {
     (x.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>() / x.len().max(1) as f64).sqrt()
 }
 
-/// What tells two sounds apart for an ear: how loud (the loudest 10 ms), how long (10 ms
-/// windows within 20 dB of the loudest), how bright (the spectral centroid over the first
-/// 4096 samples from the loudest window's start), how busy (zero crossings a second over its
-/// length), how much of it holds on and how pitched it is.
 #[derive(Clone, Copy, Debug)]
 struct Traits {
     loudest: f64,
     length_ms: f64,
     centroid: f64,
     crossings: f64,
-    /// How much of it holds on: the mean 10 ms RMS from 50 to 150 ms after the loudest, over the
-    /// loudest (a held note near 1, a hit's decay far less).
     body: f64,
-    /// How pitched: the normalised autocorrelation's highest peak at lags of 2 to 20 ms over
-    /// 2048 samples from 30 ms after the loudest (a tone near 1, noise near 0).
     periodic: f64,
 }
 
@@ -412,8 +309,6 @@ fn traits(x: &[f32]) -> Traits {
     }
 }
 
-/// Step key `step` held for `hold_ms`, let go (a toggle), and `total_ms` from its press
-/// recorded, with voice `voice`'s registers each ms.
 fn step_tap(
     m: &mut Machine,
     fw: &Firmware,
@@ -430,8 +325,6 @@ fn step_tap(
     })
 }
 
-/// `ms` of audio and registers (voice `voice`'s, and every voice's gate) each ms, `each`
-/// called before each ms.
 fn listen(
     m: &mut Machine,
     fw: &Firmware,
@@ -451,7 +344,6 @@ fn listen(
     Heard { audio, regs, gates }
 }
 
-/// The frequency the voice settled on while gated (the last gated ms's), in Hz.
 fn settled_hz(h: &Heard) -> Option<f64> {
     h.regs
         .iter()
@@ -460,18 +352,10 @@ fn settled_hz(h: &Heard) -> Option<f64> {
         .map(|r| hz_of_freq(r.freq))
 }
 
-// ---- the template's instruments ----
-
-/// A NEW song's instruments (app/song_io.c's template; core/song/gt2_kit.c; decision record
-/// 0009): number, name, and the note its pitch settles on where it has one (None: the lane's
-/// note, the step's own; Some(n): the drum's table's last absolute note).
 #[derive(Clone, Copy, Debug)]
 enum Pitch {
-    /// The step's note (the lead, the bass).
     Played,
-    /// The drum's table ends on this absolute note (KICK's body, the toms).
     Fixed(u32),
-    /// Noise or a sample: no pitch to hear.
     None,
 }
 
@@ -492,9 +376,6 @@ const INSTRUMENTS: [(u8, &str, Pitch); 14] = [
     (14, "DG HAT", Pitch::None),
 ];
 
-/// The audio's fundamental over 8192 samples (186 ms) from 50 ms after the sound starts (its
-/// first 5 ms over half the floor): past the onset's thump, which an estimate over the start
-/// takes for a low note.
 fn heard_pitch(x: &[f32]) -> Option<f64> {
     let w = (FS / 200.0) as usize;
     let k = envelope(x).iter().position(|&r| r > AUDIBLE_RMS / 2.0)?;
@@ -502,19 +383,13 @@ fn heard_pitch(x: &[f32]) -> Option<f64> {
     (from + 8192 <= x.len()).then(|| pitch(&x[from..from + 8192]))
 }
 
-/// A sound as an ear takes it: the audio's traits, its pitch (where the instrument has one:
-/// the chip's frequency where it settles), the waveforms it goes through (the control
-/// register's waveform bits while gated, repeats dropped) and its pulse width.
 #[derive(Clone, Debug)]
 struct Sound {
     traits: Traits,
     pitch: Option<f64>,
-    /// The audio's own fundamental over the note's first 8192 samples, for the played ones.
     heard_f0: Option<f64>,
     waves: Vec<u8>,
     pw: Option<u32>,
-    /// AD and SR while gated (not part of telling sounds apart: an ear hardly hears PULSE's
-    /// 19 A8 from BASS's 12 98 on a short note; the first-press test reads them).
     adsr: Vec<(u8, u8)>,
 }
 
@@ -545,9 +420,6 @@ fn sound(h: &Heard, kind: Pitch) -> Sound {
     }
 }
 
-/// Whether an ear tells a and b apart: a clear difference in loudness, length, brightness or
-/// busyness, in how pitched they sound where both hold on (a tone from a hit's thud), in pitch (more than a semitone) where both have one, in the waveforms they go
-/// through, or in pulse width (a tenth) where both are pulses.
 fn tell_apart(a: &Sound, b: &Sound) -> bool {
     let ratio = |x: f64, y: f64| x.max(y) / x.min(y).max(1e-9);
     let (s, t) = (&a.traits, &b.traits);
@@ -561,9 +433,6 @@ fn tell_apart(a: &Sound, b: &Sound) -> bool {
         || matches!((a.pw, b.pw), (Some(x), Some(y)) if ratio(f64::from(x), f64::from(y)) > 1.1)
 }
 
-/// Whether two presses sounded the same instrument: on the chip its envelope, its first
-/// waveform, its pulse width and its pitch; a digi drum (its voice muted, the sample on the
-/// volume register) by length and brightness, which a noise burst's hits do not vary much.
 fn same_instrument(a: &Sound, b: &Sound) -> bool {
     let ratio = |x: f64, y: f64| x.max(y) / x.min(y).max(1e-9);
     if a.waves.is_empty() || b.waves.is_empty() {
@@ -581,16 +450,10 @@ fn same_instrument(a: &Sound, b: &Sound) -> bool {
         }
 }
 
-/// A step key's audition: held this long (a tap), listened to this long from its press.
 const TAP_HOLD_MS: u64 = 200;
 const TAP_MS: u64 = 600;
-/// PRESETS turned, then a step pressed this soon after, as a user's hand moves from the knob
-/// to the keys.
 const KNOB_TO_KEY_MS: u64 = 150;
 
-/// Every template instrument picked on V1 with PRESETS and auditioned on step 1, empty: the
-/// first press after the change (it toggles the step on) and the second (off again, so the
-/// step is empty for the next): (first, second) for each, in INSTRUMENTS' order.
 fn audition_every_instrument(fw: &Firmware) -> Vec<(Sound, Sound)> {
     let mut m = new_song_on_step(fw);
     let mut heard = Vec::new();
@@ -623,8 +486,6 @@ fn assert_audible(what: &str, s: &Sound) {
     );
 }
 
-/// The pitch an instrument should be heard at: the lane's note for the lead (and the bass's
-/// pitch class: its octave is new_bass's), the drum's last table note for KICK and the toms.
 fn assert_pitch(name: &str, kind: Pitch, s: &Sound) {
     let want = match kind {
         Pitch::Played => hz_of_note(LANE_NOTE),
@@ -638,7 +499,7 @@ fn assert_pitch(name: &str, kind: Pitch, s: &Sound) {
         let Some(hz) = hz else { continue };
         let mut off = cents_off(hz, want);
         if name == "BASS" {
-            off = (off + 600.0).rem_euclid(1200.0) - 600.0; // its pitch class
+            off = (off + 600.0).rem_euclid(1200.0) - 600.0;
         }
         assert!(
             off.abs() < 25.0,
@@ -647,14 +508,11 @@ fn assert_pitch(name: &str, kind: Pitch, s: &Sound) {
     }
 }
 
-/// NEW, STEP, and every instrument of the template picked with PRESETS (its popup naming it)
-/// and auditioned on an empty step: each is heard (RMS over 10 ms, not a peak), at its pitch
-/// where it has one (PULSE at the lane's C-3, KICK's body at A#1, TOM LO and TOM HI ending at
-/// C#3 and G#3), and an ear tells each from every other (PULSE from BASS is new_bass's test).
-/// The second press of each is judged here, the first is the next test's.
 #[test]
 fn every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_own() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let heard = audition_every_instrument(&fw);
     for (&(n, name, kind), (first, second)) in INSTRUMENTS.iter().zip(&heard) {
         println!(
@@ -670,7 +528,7 @@ fn every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_o
         for j in i + 1..INSTRUMENTS.len() {
             let (a, b) = (INSTRUMENTS[i].1, INSTRUMENTS[j].1);
             if (a, b) == ("PULSE", "BASS") {
-                continue; // new_bass_sounds_an_octave_below_the_lead_and_thinner
+                continue;
             }
             if !tell_apart(&heard[i].1, &heard[j].1) {
                 alike.push((a, b));
@@ -683,15 +541,11 @@ fn every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_o
     );
 }
 
-/// The first press on an empty step 150 ms after PRESETS auditions the instrument PRESETS
-/// picked, not the one before it: the same instrument as the second press (same_instrument:
-/// its envelope, first waveform, pulse width and pitch; a digi drum by length and
-/// brightness). v0.4.0's device session heard the previous instrument on the first press;
-/// in fm1-emu it passes on c104d1e5 (also with SONG_SLICE_UNITS at 8 and with chip A handed
-/// back first), so the device's case is not reproduced here yet: it stays on as the guard.
 #[test]
 fn the_first_step_press_after_presets_auditions_the_instrument_picked() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let heard = audition_every_instrument(&fw);
     let mut wrong = Vec::new();
     for (&(n, name, _), (first, second)) in INSTRUMENTS.iter().zip(&heard) {
@@ -709,11 +563,11 @@ fn the_first_step_press_after_presets_auditions_the_instrument_picked() {
     );
 }
 
-/// NEW's BASS is heard as a bass, not as the lead again: on the same step an octave below
-/// PULSE, and thinner (a quarter pulse, $400, against the lead's square).
 #[test]
 fn new_bass_sounds_an_octave_below_the_lead_and_thinner() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     let tap = |m: &mut Machine, n: u8, name: &str| {
         presets_to(m, &fw, 0, n, name);
@@ -746,10 +600,6 @@ fn new_bass_sounds_an_octave_below_the_lead_and_thinner() {
     );
 }
 
-// ---- PLAY: the steps heard on time ----
-
-/// The RMS over 10 ms every 5 ms, from each 5 ms on (a kick's 58 Hz body does not flicker
-/// in it as it does in a 5 ms window).
 fn envelope(x: &[f32]) -> Vec<f64> {
     let hop = (FS / 200.0) as usize;
     (0..x.len() / hop)
@@ -757,10 +607,6 @@ fn envelope(x: &[f32]) -> Vec<f64> {
         .collect()
 }
 
-/// Where a new sound starts near `at_ms` (searched from `at_ms` - 40 to + 80), in ms, as an
-/// ear hears a hit start: a window over half the floor and at least 1.8 times the quietest of
-/// the 20 ms before it (a rise, not the last note's tail); of those the nearest to `at_ms`.
-/// None: nothing starts there.
 fn onset_near(env: &[f64], at_ms: f64) -> Option<f64> {
     let k = |ms: f64| (ms.max(20.0) / 5.0) as usize;
     (k(at_ms - 40.0)..k(at_ms + 80.0).min(env.len()))
@@ -772,7 +618,6 @@ fn onset_near(env: &[f64], at_ms: f64) -> Option<f64> {
         .min_by(|a, b| (a - at_ms).abs().total_cmp(&(b - at_ms).abs()))
 }
 
-/// When PLAY's first note went on: the first ms a voice's gate is on.
 fn first_gate(h: &Heard) -> f64 {
     h.gates
         .iter()
@@ -780,7 +625,6 @@ fn first_gate(h: &Heard) -> f64 {
         .expect("PLAY gated no voice") as f64
 }
 
-/// What PLAY played: the audio from the press and voice `v`'s registers each ms.
 fn play_for(m: &mut Machine, fw: &Firmware, ms: u64, v: usize) -> Heard {
     m.key(PLAY, true);
     listen(m, fw, v, ms, |m, i| {
@@ -790,15 +634,12 @@ fn play_for(m: &mut Machine, fw: &Firmware, ms: u64, v: usize) -> Heard {
     })
 }
 
-/// PLAY again: stopped, the releases rung out.
 fn stop(m: &mut Machine, fw: &Firmware) {
     press(m, PLAY);
     m.run_ms(800);
     assert!(!playing(m, fw), "PLAY stops the song");
 }
 
-/// Step `row` of the selected lane toggled on with a short tap (ALGORITHM pages there), the
-/// edit applied.
 fn toggle_row(m: &mut Machine, fw: &Firmware, voice: u32, row: u32) {
     let page = m
         .soc
@@ -823,11 +664,8 @@ fn is_note(b: u8) -> bool {
     (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&b)
 }
 
-/// How far from its time an onset may be: half a frame of the player and a 5 ms window.
 const ON_TIME_MS: f64 = 15.0;
 
-/// When INSTRUMENTS[i] sounds after its row: the chip kit a frame later (its first frame is
-/// the test bit; core/song/gt2_kit.c), the lead, the bass and the digi drums at once.
 fn drum_delay(i: usize) -> f64 {
     if (2..10).contains(&i) {
         20.0
@@ -836,13 +674,10 @@ fn drum_delay(i: usize) -> f64 {
     }
 }
 
-/// Rows a NEW song's pattern plays in `ms`.
 fn rows_ms(rows: u32) -> u64 {
     (f64::from(rows) * ROW_MS) as u64
 }
 
-/// What PLAY did with one instrument's step: its row's time and its onset (ms from the
-/// press), the loudest 10 ms of its row's time, and whether the chip played its envelope.
 struct Played {
     name: &'static str,
     row_at: f64,
@@ -851,9 +686,6 @@ struct Played {
     own: bool,
 }
 
-/// NEW, and on V1's lane the fourteen instruments one after another (PRESETS, then a step:
-/// rows 0, 4, 8 .. 52, over the four pages), then PLAY over them; the first note's time
-/// (ms from the press) and each step's.
 fn play_every_instrument(fw: &Firmware) -> (f64, Vec<Played>) {
     let mut m = new_song_on_step(fw);
     for (i, &(n, name, _)) in INSTRUMENTS.iter().enumerate() {
@@ -861,7 +693,7 @@ fn play_every_instrument(fw: &Firmware) -> (f64, Vec<Played>) {
         toggle_row(&mut m, fw, 0, 4 * i as u32);
     }
     turn(&mut m, ALGORITHM, -4);
-    m.run_ms(2_500); // the audition hands chip A back
+    m.run_ms(AUDITION_HANDS_CHIP_A_BACK_MS);
     let instr = song(&mut m, fw).raw().instr;
     let h = play_for(&mut m, fw, rows_ms(4 * INSTRUMENTS.len() as u32) + 400, 0);
     stop(&mut m, fw);
@@ -899,17 +731,11 @@ fn play_every_instrument(fw: &Firmware) -> (f64, Vec<Played>) {
     (t0, played)
 }
 
-/// NEW, the fourteen instruments one after another on V1's steps, PLAY: each is heard in its
-/// row's time (RMS over a floor), plays its own instrument (the chip's envelope its AD and SR;
-/// the digi drums mute their voice and play on the volume register), and is on time: the
-/// lead, the bass and the digi drums within ON_TIME_MS of their row (rows 480 ms apart from
-/// the first note), the chip kit within its row's first 80 ms (its exact frame is the next
-/// test's). The first note comes within a row and 60 ms of PLAY: the player sounds row 0 a
-/// row after it starts (140 ms at tempo 6; SIDOU LOOP's too, bit-exact with the host's
-/// GoatTracker render: song.rs).
 #[test]
 fn every_template_instrument_on_steps_plays_heard_and_on_time() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let (t0, played) = play_every_instrument(&fw);
     println!("the first note {t0} ms after PLAY");
     assert!(
@@ -946,13 +772,11 @@ fn every_template_instrument_on_steps_plays_heard_and_on_time() {
     );
 }
 
-/// The chip kit's drums sound one frame after their row (decision record 0009: their first
-/// frame is the test bit with the gate off, "so every drum sounds one frame after its row").
-/// With a release of their own in that frame they sounded about 55 ms after it (the ADSR
-/// delay bug), KICK's first gated frame lost, a flam against a lead note on the same row.
 #[test]
 fn the_kits_drums_sound_one_frame_after_their_row() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let (_, played) = play_every_instrument(&fw);
     let late: Vec<_> = played
         .iter()
@@ -970,12 +794,11 @@ fn the_kits_drums_sound_one_frame_after_their_row() {
     );
 }
 
-/// GLO held and a lane's key (1-3) mutes it: NEW, V1 PULSE on rows 0, 4, 8, 12, V2 KICK on
-/// 2, 6, 10, 14; PLAY: a hit on every even row. V1 muted: PLAY again, the kicks only (no onset
-/// on V1's rows, its gate never on). V2 muted as well: silence. Both back: both heard.
 #[test]
 fn glo_mutes_a_lane_and_only_that_lane_falls_silent() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     for row in [0, 4, 8, 12] {
         toggle_row(&mut m, &fw, 0, row);
@@ -997,13 +820,11 @@ fn glo_mutes_a_lane_and_only_that_lane_falls_silent() {
         m.soc
             .read8(fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::mute) as u32)
     };
-    // Each PLAY's row 0 comes as long after the press as the first's: its first gate.
     let hits = |m: &mut Machine, t0: Option<f64>| -> (Vec<Option<f64>>, Heard, f64) {
         let h = play_for(m, &fw, rows_ms(16) + 300, 0);
         stop(m, &fw);
         let env = envelope(&h.audio);
         let t0 = t0.unwrap_or_else(|| first_gate(&h));
-        // heard in its row's time (the kick's exact frame is the_kits_drums_sound_..'s)
         let at = |row: u32| t0 + f64::from(row) * ROW_MS;
         let onsets = (0..8)
             .map(|i| {
@@ -1054,15 +875,11 @@ fn glo_mutes_a_lane_and_only_that_lane_falls_silent() {
     assert!(again.iter().all(Option::is_some), "both back: {again:?}");
 }
 
-// ---- TRACKER: REC enters a note, SEQ walks the song views ----
-
-/// NEW, SEQ to STEP and TRACKER, REC: a note key writes its note and the instrument (01) into
-/// row 0 and the cursor moves on; REC off and PLAY: the note is heard at its pitch from the
-/// start (the audio's fundamental and the chip's). Then SEQ walks ORDER, INSTR, TABLE, STEP,
-/// TRACKER: the view on top each time.
 #[test]
 fn tracker_rec_enters_a_note_that_plays_and_seq_walks_every_song_view() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     press(&mut m, SEQ);
     m.run_ms(WIPE_MS);
@@ -1071,7 +888,7 @@ fn tracker_rec_enters_a_note_that_plays_and_seq_walks_every_song_view() {
     press(&mut m, REC);
     m.run_ms(100);
     assert_eq!(m.soc.read8(sv + ilp32::song_view::rec as u32), 1, "REC on");
-    let key = 7u8; // C4 on the panel at octave 0 (app/panel.h: key 0 is F3)
+    let key = C4_KEY_INDEX;
     m.key(KEY0 + key, true);
     m.run_ms(200);
     m.key(KEY0 + key, false);
@@ -1133,13 +950,6 @@ fn tracker_rec_enters_a_note_that_plays_and_seq_walks_every_song_view() {
     }
 }
 
-// ---- REC from the keys, compensated (1.1 item 14) ----
-
-/// The DAC's clock against song control's sample count: the cycle at which song sample `x`
-/// leaves the DAC. Each snapshot (an audio interrupt) gives the count after its block and the
-/// cycle it was entered; that block plays from the end of the half then playing (the first
-/// `half_played` after the entry), a sample every 1/FS on, and the DAC never stops, so one
-/// block whose start is known places every sample.
 fn heard_cycle(m: &Machine, x: f64) -> f64 {
     let hz = m.soc.periph.hz as f64;
     for snap in m.buffer_snapshots.iter().rev() {
@@ -1152,8 +962,6 @@ fn heard_cycle(m: &Machine, x: f64) -> f64 {
     panic!("no block heard yet");
 }
 
-/// A key pressed `d_ms` from when row `row` (of the play's count) is heard, with `quant`: the
-/// pattern row its note lands on (voice 1's pattern 0, a NEW song: tempo 6, rows `rows` long).
 fn rec_trial(m: &mut Machine, fw: &Firmware, quant: u32, row: u32, d_ms: f64) -> usize {
     let ui = fw.symbol("ui");
     m.soc.write8(
@@ -1162,7 +970,6 @@ fn rec_trial(m: &mut Machine, fw: &Firmware, quant: u32, row: u32, d_ms: f64) ->
     );
     let ctl = fw.symbol("song_transport");
     let seen = fw.symbol("song_seen");
-    // The row now and the call it began on, the last call and its sample, the period.
     let row_now = u32::from(m.soc.read8(seen + ilp32::song_status::row as u32));
     let row_call = m.soc.read16(seen + ilp32::song_status::row_call as u32);
     let calls = m.soc.read32(ctl + ilp32::song_ctl::calls as u32);
@@ -1202,19 +1009,11 @@ fn rec_trial(m: &mut Machine, fw: &Firmware, quant: u32, row: u32, d_ms: f64) ->
     }
 }
 
-/// 1.1 item 14, REC timing measured in the emulator: a NEW song plays in TRACKER with REC on;
-/// a key goes down a known time before or after a row's first sample leaves the DAC (what the
-/// player hears), and lands on the row it was played in. The device places a key 6.0 ms before
-/// it reads it (main.c REC_LAG_SAMPLES: the double buffer, less half a block, and the
-/// debounce), so a key 5 ms early lands a row early in OFF, and one 5 ms late on the row; in
-/// NEAREST the half-way point is where it was heard. Uncompensated, the key 5 ms early landed on
-/// the row (what was rendered, not heard, had passed it). The sweep finds where OFF turns over:
-/// the compensation's error against the emulated delays (0 at best; 1.1's first estimate, 8.9
-/// ms, counted a block's wait the main loop does not have and turned over past +3 ms; 6.0 turns
-/// over at 0).
 #[test]
 fn rec_places_a_key_where_it_was_heard() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     press(&mut m, SEQ);
     m.run_ms(WIPE_MS);
@@ -1235,7 +1034,6 @@ fn rec_places_a_key_where_it_was_heard() {
     let rows = song(&mut m, &fw).pattern(0).unwrap().len() as u32;
     let half_row = ROW_MS / 2.0;
     let (off, near) = (SONG_VIEW_QUANT_OFF, SONG_VIEW_QUANT_NEAREST);
-    // (quantise, ms from the row's start heard, the row it lands on, relative)
     let cases: [(u32, f64, i32); 4] = [
         (off, -5.0, -1),
         (off, 5.0, 0),
@@ -1279,14 +1077,11 @@ fn rec_places_a_key_where_it_was_heard() {
     stop(&mut m, &fw);
 }
 
-// ---- SONG: the built-in loop, SAVE AS and a power cycle ----
-
-/// NEW (unsaved changes), then SONG's LOAD and its first entry, SIDOU LOOP, confirmed (YES):
-/// the built-in song back as the boot had it, unnamed; PLAY: heard all through four seconds
-/// (every half second over the floor), its voices moving through several notes.
 #[test]
 fn song_load_sidou_loop_plays_it_heard_all_through() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = booted(&fw);
     let builtin = song(&mut m, &fw).write(false);
     new_song(&mut m, &fw);
@@ -1294,9 +1089,9 @@ fn song_load_sidou_loop_plays_it_heard_all_through() {
     open_song_page(&mut m, &fw, SONG_LOAD);
     turn(&mut m, ALGORITHM, 1);
     m.run_ms(300);
-    turn(&mut m, ALGORITHM, 1); // its first entry, SIDOU LOOP
+    turn(&mut m, ALGORITHM, 1);
     m.run_ms(200);
-    turn(&mut m, SELECT, 1); // the confirmation's YES (NEW left changes)
+    turn(&mut m, SELECT, 1);
     turn(&mut m, ALGORITHM, 1);
     idle(&mut m, &fw);
     assert_eq!(
@@ -1335,13 +1130,11 @@ fn song_load_sidou_loop_plays_it_heard_all_through() {
     assert!(notes.len() >= 6, "SIDOU LOOP plays few notes: {notes:?}");
 }
 
-/// NEW, four steps of PULSE on STEP, SONG's SAVE AS (NEW SONG, one character added: NEW SONG1,
-/// SAVE), and SETTINGS' TRACKER ROWS changed to SCROLL; once the settings stored themselves,
-/// a power cycle with the flash kept: the song is loaded at power-on by its name, its steps and
-/// the setting are there, and PLAY plays the steps at C-3.
 #[test]
 fn save_as_and_a_power_cycle_bring_back_the_song_and_a_setting() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     for row in [0, 4, 8, 12] {
         toggle_row(&mut m, &fw, 0, row);
@@ -1365,7 +1158,7 @@ fn save_as_and_a_power_cycle_bring_back_the_song_and_a_setting() {
     turn(&mut m, ALGORITHM, 1);
     assert_eq!(scroll(&mut m), 1, "TRACKER ROWS: SCROLL");
     home_to_live(&mut m, &fw);
-    m.run_ms(6_000); // the settings' debounce: stored
+    m.run_ms(SETTINGS_DEBOUNCE_MS);
     let flash = m.soc.flash.mem.clone();
     drop(m);
     let mut m = Machine::boot_blank(&fw.image);
@@ -1399,17 +1192,12 @@ fn save_as_and_a_power_cycle_bring_back_the_song_and_a_setting() {
     );
 }
 
-// ---- STEP's generative play ----
-
-/// The minor pentatonic on the lane's C-3 and the octave above (docs/reference/controls.md
-/// "Chance, MUTATE and DICE").
 fn in_key(note: u32) -> bool {
     note >= LANE_NOTE
         && [0, 3, 5, 7, 10].contains(&((note - LANE_NOTE) % 12))
         && note <= LANE_NOTE + 24
 }
 
-/// STEP's editor quiet: no generative run, no action queued, no edit in flight.
 fn step_settled(m: &mut Machine, fw: &Firmware) {
     let st = fw.symbol("ui") + ilp32::views::step as u32;
     let gen_at = fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::gen_) as u32;
@@ -1440,22 +1228,20 @@ fn notes_of(p: &[[u8; 4]]) -> Vec<(usize, u32)> {
         .collect()
 }
 
-/// NEW, STEP: EDIT + SCL held with each of K1-K4 turned at once sets DICE's density (every
-/// step), range (one octave), scale (major pentatonic) and rhythm (FOUR, which FULL fills) in the
-/// song and rolls nothing at the release; the next EDIT + SCL rolls them: a note on every row,
-/// all in the major pentatonic in the octave of the lane's C-3.
 #[test]
 fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     let before = song(&mut m, &fw).pattern(0).unwrap();
     m.key(EDIT, true);
     m.run_ms(40);
     m.key(SCL, true);
-    turn(&mut m, PANEL_ENC_K1 as u8, 4); // at once: SCL's press is in before the knob's
-    turn(&mut m, PANEL_ENC_K1 as u8 + 1, -1);
-    turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
-    turn(&mut m, PANEL_ENC_K1 as u8 + 3, 3);
+    turn(&mut m, K1, 4);
+    turn(&mut m, K1 + 1, -1);
+    turn(&mut m, K1 + 2, 1);
+    turn(&mut m, K1 + 3, 3);
     m.key(SCL, false);
     m.key(EDIT, false);
     m.run_ms(400);
@@ -1470,7 +1256,7 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
         "the song holds FULL, 1 OCT, MAJ PENT and FOUR"
     );
     chord(&mut m, EDIT, SCL);
-    assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
+    assert_eq!(toast_text(&mut m, &fw), "NEW PATTERN");
     step_settled(&mut m, &fw);
     let diced = song(&mut m, &fw).pattern(0).unwrap();
     let notes = notes_of(&diced);
@@ -1491,13 +1277,11 @@ fn dice_settings_on_step_are_kept_in_the_song_and_the_next_roll_uses_them() {
     }
 }
 
-/// NEW, TRACKER: EDIT + SCL held shows DICE's frame; K1 and K2 turned at once set FULL and 1 OCT,
-/// a note key the lane's root (C-4), and the release rolls nothing (a turn spoils it). The next
-/// EDIT + SCL rolls the shown voice's pattern: a note on every row, in the minor pentatonic in the
-/// octave from C-4. EDIT + ENV then writes the filter sweep: a C command every second row.
 #[test]
 fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     press(&mut m, SEQ);
     m.run_ms(WIPE_MS);
@@ -1508,9 +1292,9 @@ fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
     m.key(EDIT, true);
     m.run_ms(40);
     m.key(SCL, true);
-    turn(&mut m, PANEL_ENC_K1 as u8, 2); // at once: SCL's press is in before the knob's
-    turn(&mut m, PANEL_ENC_K1 as u8 + 1, -1);
-    let key = 7u8; // C4 on the panel at octave 0 (app/panel.h: key 0 is F3)
+    turn(&mut m, K1, 2);
+    turn(&mut m, K1 + 1, -1);
+    let key = C4_KEY_INDEX;
     m.key(KEY0 + key, true);
     m.run_ms(100);
     m.key(KEY0 + key, false);
@@ -1522,7 +1306,7 @@ fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
         " DICE - LET GO TO ROLL ",
         "the frame"
     );
-    let root = 48u8; // C-4: the jam's note 0 is key note 12
+    let root = JAM_ROOT_NOTE;
     assert_eq!(
         m.soc.read8(gen_at + ilp32::song_gen::root as u32),
         root,
@@ -1538,7 +1322,7 @@ fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
     assert_eq!(unsafe { song_ext_get_dice(s.ptr(), &mut dice) }, 1);
     assert_eq!((dice.density, dice.range), (4, 0), "FULL and 1 OCT");
     chord(&mut m, EDIT, SCL);
-    assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
+    assert_eq!(toast_text(&mut m, &fw), "NEW PATTERN");
     step_settled(&mut m, &fw);
     let diced = song(&mut m, &fw).pattern(0).unwrap();
     let notes = notes_of(&diced);
@@ -1551,7 +1335,7 @@ fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
         );
     }
     chord(&mut m, EDIT, PANEL_BTN_ENV as u8);
-    let said = toast(&mut m, &fw);
+    let said = toast_text(&mut m, &fw);
     assert!(said == "SWEEP UP" || said == "SWEEP DOWN", "{said}");
     step_settled(&mut m, &fw);
     let swept = song(&mut m, &fw).pattern(0).unwrap();
@@ -1562,13 +1346,11 @@ fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
     }
 }
 
-/// NEW, STEP (1.5): PRESETS with EDIT + SCL held sets V1's role to BASS+DRUMS (the frame says it
-/// beside the root, the song's SCNE chunk keeps it) and rolls nothing; the next EDIT + SCL puts the
-/// NEW song's kit on the strong rows (STRAIGHT: KICK 03 on beats 1 and 3, SNARE 04 on 2 and 4 of
-/// each bar) and the lane's instrument between, pattern cells only.
 #[test]
 fn a_bass_and_drums_lane_rolls_the_kit_and_the_bass_time_shared() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     let waves = song(&mut m, &fw).raw().ltable;
     m.key(EDIT, true);
@@ -1599,7 +1381,7 @@ fn a_bass_and_drums_lane_rolls_the_kit_and_the_bass_time_shared() {
         (3, SONG_ROLE_BASS_DRUMS as u8)
     );
     chord(&mut m, EDIT, SCL);
-    assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
+    assert_eq!(toast_text(&mut m, &fw), "NEW PATTERN");
     step_settled(&mut m, &fw);
     let s = song(&mut m, &fw);
     let p = s.pattern(0).unwrap();
@@ -1623,12 +1405,11 @@ fn a_bass_and_drums_lane_rolls_the_kit_and_the_bass_time_shared() {
     assert_eq!(s.raw().ltable, waves, "no table writes");
 }
 
-/// NEW, TRACKER (1.5): PRESETS with EDIT + SCL held sets V1's role to ARP; the next EDIT + SCL
-/// writes the four chord programs once into the wavetable and chords on the lane: each hit a note,
-/// the current instrument and 8XX at a program.
 #[test]
 fn an_arp_lane_rolls_chords_in_tracker() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     press(&mut m, SEQ);
     m.run_ms(WIPE_MS);
@@ -1643,7 +1424,7 @@ fn an_arp_lane_rolls_chords_in_tracker() {
     m.run_ms(400);
     step_settled(&mut m, &fw);
     chord(&mut m, EDIT, SCL);
-    assert_eq!(toast(&mut m, &fw), "NEW CHORDS");
+    assert_eq!(toast_text(&mut m, &fw), "NEW CHORDS");
     let start = m.ms();
     loop {
         step_settled(&mut m, &fw);
@@ -1670,12 +1451,11 @@ fn an_arp_lane_rolls_chords_in_tracker() {
     }
 }
 
-/// EDIT + SCL is one chord whichever finger lands first: SCL 5 ms before EDIT (two fingers
-/// pressing together), K1 and K3 turned at once, set DICE's density and scale; SCL selects no
-/// effect slot and the EDIT layer's knobs stay as they were; the release rolls nothing.
 #[test]
 fn scl_before_edit_is_dices_chord_too() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     let before = song(&mut m, &fw).pattern(0).unwrap();
     let live = fw.symbol("instrument");
@@ -1688,8 +1468,8 @@ fn scl_before_edit_is_dices_chord_too() {
     m.key(SCL, true);
     m.run_ms(5);
     m.key(EDIT, true);
-    turn(&mut m, PANEL_ENC_K1 as u8, 4);
-    turn(&mut m, PANEL_ENC_K1 as u8 + 2, 1);
+    turn(&mut m, K1, 4);
+    turn(&mut m, K1 + 2, 1);
     m.key(SCL, false);
     m.key(EDIT, false);
     m.run_ms(400);
@@ -1710,11 +1490,11 @@ fn scl_before_edit_is_dices_chord_too() {
     );
 }
 
-/// EDIT + ARP is MUTATE whichever finger lands first: ARP 5 ms before EDIT mutates the diced
-/// lane and leaves the lane's gate (ARP alone's) as it was; LFO 5 ms before EDIT undoes an edit.
 #[test]
 fn arp_or_lfo_before_edit_mutate_and_undo_on_step() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     chord(&mut m, EDIT, SCL);
     m.run_ms(400);
@@ -1733,7 +1513,7 @@ fn arp_or_lfo_before_edit_mutate_and_undo_on_step() {
         step_settled(m, &fw);
     };
     lead(&mut m, ARP);
-    assert_eq!(toast(&mut m, &fw), "MUTATED");
+    assert_eq!(toast_text(&mut m, &fw), "MUTATED");
     let mutated = song(&mut m, &fw).pattern(0).unwrap();
     assert_ne!(mutated, diced, "mutated");
     assert_eq!(m.soc.read8(gate), lanes, "ARP's gate left alone");
@@ -1745,14 +1525,11 @@ fn arp_or_lfo_before_edit_mutate_and_undo_on_step() {
     );
 }
 
-/// NEW, STEP: a step with a note held and ALGORITHM turned back five detents: the popup says
-/// CHANCE 75%, the step keeps its note and the song holds the lock. EDIT + SCL (DICE): NEW
-/// PATTERN, the lane's notes on the eighths, all in key (C minor pentatonic over two octaves),
-/// a key off after each, and PLAY plays them, heard, through several pitches. EDIT + ARP
-/// (MUTATE): MUTATED, one or two notes changed, still in key.
 #[test]
 fn chance_dice_and_mutate_on_step_do_what_they_say() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = new_song_on_step(&fw);
     toggle_row(&mut m, &fw, 0, 0);
     m.key(KEY0, true);
@@ -1783,7 +1560,7 @@ fn chance_dice_and_mutate_on_step_do_what_they_say() {
     assert_eq!(chance, [(0, 0, 75)], "the song holds the chance on row 0");
 
     chord(&mut m, EDIT, SCL);
-    assert_eq!(toast(&mut m, &fw), "NEW PATTERN", "DICE's toast");
+    assert_eq!(toast_text(&mut m, &fw), "NEW PATTERN", "DICE's toast");
     step_settled(&mut m, &fw);
     let diced = song(&mut m, &fw).pattern(0).unwrap();
     let notes = notes_of(&diced);
@@ -1819,7 +1596,7 @@ fn chance_dice_and_mutate_on_step_do_what_they_say() {
     );
 
     chord(&mut m, EDIT, ARP);
-    assert_eq!(toast(&mut m, &fw), "MUTATED", "MUTATE's toast");
+    assert_eq!(toast_text(&mut m, &fw), "MUTATED", "MUTATE's toast");
     step_settled(&mut m, &fw);
     let mutated = song(&mut m, &fw).pattern(0).unwrap();
     let changed: Vec<usize> = (0..diced.len())
@@ -1841,15 +1618,11 @@ fn chance_dice_and_mutate_on_step_do_what_they_say() {
     }
 }
 
-// ---- LIVE: the keys as a tuner and the eye see them ----
-
-/// After the boot LIVE is silent until a key is played (every 10 ms of a second under the
-/// silence floor), then each of the 27 note keys at OCTAVE 0 sounds its note (key 1 F3,
-/// 174.61 Hz, up a semitone a key to G5): heard, the audio's fundamental within 0.5 % of the
-/// note, and its LED lit while it is held.
 #[test]
 fn every_note_key_sounds_its_note_and_lights_while_held() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = booted(&fw);
     let quiet = record(&mut m, 1_000);
     let loudest = rms_windows(&quiet).into_iter().fold(0.0, f64::max);
@@ -1879,14 +1652,11 @@ fn every_note_key_sounds_its_note_and_lights_while_held() {
     );
 }
 
-/// PLAY on a fresh boot (SIDOU LOOP, from LIVE) is quiet until the song's first note: nothing
-/// in the 140 ms the player takes to sound row 0. It thudded before (an RMS of about 700 over
-/// 10 ms, from 9 ms after the press): chip B, never rendered since its boot reset, played its
-/// power-on envelope release (sid_init's 0xaa) when the keys moved to it, under their setup;
-/// chip B's new sid now plays it out at once (app/reg_ring.c power_on_out).
 #[test]
 fn play_is_quiet_until_the_first_note() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
     let mut m = booted(&fw);
     let h = play_for(&mut m, &fw, 300, 0);
     stop(&mut m, &fw);

@@ -454,7 +454,7 @@ unsafe extern "C" fn copy_erase(ctx: *mut std::ffi::c_void, off: u32) -> i32 {
     sidou_sys::STORE_OK
 }
 
-pub fn put_file(flash: &mut [u8], name: &str, file_type: u32, bytes: &[u8]) {
+fn with_writable_store(flash: &mut [u8], write: impl FnOnce(&mut sidou_sys::store)) {
     use sidou_sys::*;
     let hooks = store_flash {
         map: Some(copy_map),
@@ -463,31 +463,49 @@ pub fn put_file(flash: &mut [u8], name: &str, file_type: u32, bytes: &[u8]) {
         ctx: flash.as_mut_ptr().cast(),
     };
     let mut st = Box::<store>::default();
-    let name = std::ffi::CString::new(name).unwrap();
     unsafe {
         store_init(&mut *st, &hooks, STORE_WINDOW_MAX);
         store_mount(&mut *st);
         store_quiet(&mut *st, 1);
         while store_poll(&mut *st) != 0 {}
+    }
+    write(&mut st);
+}
+
+pub fn put_file(flash: &mut [u8], name: &str, file_type: u32, bytes: &[u8]) {
+    use sidou_sys::*;
+    let name = std::ffi::CString::new(name).unwrap();
+    with_writable_store(flash, |st| unsafe {
         assert_eq!(
-            store_file_begin(&mut *st, name.as_ptr(), file_type as u8, bytes.len() as u32),
+            store_file_begin(st, name.as_ptr(), file_type as u8, bytes.len() as u32),
             STORE_OK
         );
         let mut offset = 0;
         while offset < bytes.len() {
             offset += store_file_write(
-                &mut *st,
+                st,
                 bytes.as_ptr().add(offset).cast(),
                 (bytes.len() - offset) as u32,
             ) as usize;
-            store_poll(&mut *st);
+            store_poll(st);
         }
-        assert_eq!(store_file_end(&mut *st), STORE_OK);
-        while store_file_result(&*st) == STORE_BUSY {
-            store_poll(&mut *st);
+        assert_eq!(store_file_end(st), STORE_OK);
+        while store_file_result(st) == STORE_BUSY {
+            store_poll(st);
         }
-        assert_eq!(store_file_result(&*st), STORE_OK);
-    }
+        assert_eq!(store_file_result(st), STORE_OK);
+    });
+}
+
+pub fn put_value(flash: &mut [u8], key: u32, value_type: u8, data: &[u8]) {
+    use sidou_sys::*;
+    with_writable_store(flash, |st| unsafe {
+        assert_eq!(
+            store_put(st, key, value_type, data.as_ptr().cast(), data.len() as u32),
+            STORE_OK
+        );
+        while store_poll(st) != 0 {}
+    });
 }
 
 pub const SETTLE_MS: u64 = 7_000;
@@ -1063,6 +1081,19 @@ pub fn rendered_sid(m: &mut Machine, fw: &Firmware, chip: usize) -> u32 {
 pub fn ui_live(m: &mut Machine, fw: &Firmware) -> u32 {
     m.soc
         .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32)
+}
+
+pub fn text_at(m: &mut Machine, address: u32, length: u32) -> String {
+    (0..length)
+        .map(|i| m.soc.read8(address + i) as char)
+        .take_while(|&c| c != '\0')
+        .collect()
+}
+
+pub fn toast_text(m: &mut Machine, fw: &Firmware) -> String {
+    let at =
+        fw.symbol("ui") + (sidou_sys::ilp32::views::s + sidou_sys::ilp32::screen::toast) as u32;
+    text_at(m, at, sidou_sys::SCREEN_TOAST_CHARS)
 }
 
 pub fn screen_animating(m: &mut Machine, fw: &Firmware) -> bool {
