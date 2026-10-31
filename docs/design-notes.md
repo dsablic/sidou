@@ -14,7 +14,15 @@ The cleanup before 1.5's release moves the decisions now written as code comment
 
 ## Flash and build flags
 
-- The app slot is 581,564 bytes; each release plan sets a ceiling (`flash_budget.rs`).
+- The app slot is 581,564 bytes; each release plan sets a ceiling, `IMAGE_CEILING` in emu-gate's
+  `tests/flash_plan`, which `flash_budget.rs` and `psid_budget.rs` both check (`psid_budget.rs`
+  kept a copy once, stale at 552,000 through 1.1). A compile-time assertion keeps 13,564 bytes
+  of the slot free above the ceiling for felucca-bsp and later.
+- The ceilings by plan: M2a 372,000, M2b 384,000, M2c 414,000, M2d 440,000, M2e 452,000, M2f
+  512,000; M3 534,000 (its 506,000 start plus 28,000); 1.0 552,000 (LAB's estimate and 1.0's
+  small features, the user's raise on 2026-10-28); 1.1 556,000 (after a 3-5 KB win-back, the
+  user's decision on 2026-10-29); 1.5 568,000 (after a 2-4 KB win-back, 2026-10-30). A raise is
+  the owner's decision, recorded in the release's plan.
 - Cold code builds at `-Os`/`-Oz`; files on instruction-budget paths keep `-O2`. `gt2_song.c`
   stays at `-Os`: at `-Oz` it moved four LCD goldens, cause not yet found.
 - The voice shadow (`core/sid/sid_shadow.c`, the .sid player's main-loop copy of the voices)

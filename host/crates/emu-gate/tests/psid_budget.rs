@@ -18,13 +18,15 @@
 //!   PSID_SLICE_WORST, every pass within POLL_INSTRUCTIONS;
 //! * the memory: free RAM within FREE_RAM_MIN and each region within REGION_FREE_MIN, M3's
 //!   RAMTEXT (psid_ctl's interrupt half, sid_advance, audio.c's player paths and swap hook)
-//!   within its 1,536 bytes, the image within the flash stage (M3's, then LAB's).
+//!   within its 1,536 bytes, the image within the plan's ceiling (flash_plan).
 //!
 //! Instructions are not device cycles (docs/hardware.md, "Open checks").
 
 mod common;
+mod flash_plan;
 
 use common::*;
+use flash_plan::{IMAGE_CEILING, PLAN};
 use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::psid::{packed, songs};
@@ -37,10 +39,6 @@ const MEM_ADDR: u32 = 0x01CC_0000;
 const PASSES: u32 = 40;
 /// RAMTEXT M3 may take (the plan's "Budgets").
 const M3_RAMTEXT: u64 = 1_536;
-/// The image's flash stage: flash_budget.rs `IMAGE_CEILING`, 1.5's stage (M3's was 534,000;
-/// LAB's own 541,000, 1.0's 552,000, 1.1's 556,000, 1.5's 568,000 since 2026-10-30). A copy:
-/// keep it equal to flash_budget.rs's.
-const IMAGE_CEILING: u64 = 568_000;
 
 fn build() -> Option<std::path::PathBuf> {
     let b = build_dir();
@@ -414,11 +412,11 @@ fn a_tunes_memory_fits_m3s_budgets() {
         .map(|s| (s.name().unwrap().to_string(), s.size()))
         .collect();
     let m3_text: u64 = m3.iter().map(|x| x.1).sum();
-    let image = fw.image.len() as u64;
+    let image = fw.image.len();
     println!(
         "free RAM {} (RAM region {ram_free}, POOL {pool_free}; FREE_RAM_MIN {FREE_RAM_MIN}); \
          the tune's state {} bytes in the song's {union}; RAMTEXT {} bytes, M3's {m3_text} \
-         ({m3:?}, of {M3_RAMTEXT}); the image {image} of the stage's {IMAGE_CEILING}",
+         ({m3:?}, of {M3_RAMTEXT}); the image {image} of {PLAN}'s ceiling {IMAGE_CEILING}",
         ram_free + pool_free,
         ilp32::psid_ctl::SIZE + ilp32::psid_work::SIZE + ilp32::psid_header::SIZE,
         size(".ram_text")
