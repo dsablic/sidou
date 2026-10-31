@@ -1047,3 +1047,143 @@ muted (or held by the keys, KEYS A) plays no part. From the instrument (no song 
 note-on is a hit by its voice's waveform as LIVE shows it: with noise a drum by its pitch, as
 above; else the lowest note held is the bass, the others the arp. A free clock makes a row every
 `SCENE_SONG_FREE_FRAMES` (3) frames while a note is held.
+
+## CHIP
+
+**Chip control (chip_ctl).** A reset is never sent unprepared: the chip's first one included (chip
+B's at boot). When following, the controls are sent first: the sink keeps them for the preparation
+and the ramp, then the profile just before the reset so the prepared spare chip is for it.
+
+**Chip mixing (chip_mix).** The fade is CHIP_MIX_FADE samples (128: one audio block). Chip B going
+in or out of use fades linearly over that block, so the level a silent chip has of its own (DC,
+thump, output filter settling) never steps: sample i of a fade-in takes (i + 1) / 128 of B, of a
+fade-out (127 - i) / 128. Integer-only: b × w >> 7, an arithmetic shift, so the host mixes bit for
+bit as the device does. Headroom: two chips at full scale do not fit int16, so the sum is kept
+whole — in a[i] (the sum itself when it fits, bit for bit as ever) and, in a block where some sum
+does not fit, a[i] saturated to int16 and over[i] what saturating took off — so the slots' soft
+limiter is the one place the sum is limited. One chip's loudest steady sample on the bench
+scenarios is 20,274: two that loud and in phase reach the limiter, one never does.
+
+**Chip spread (chip_spread).** SPREAD separates the chips, so it acts only while both sound: a chip
+sounding alone stays in the centre as mono at any SPREAD. With phi = SPREAD / 100 × π / 4, the mid
+(A + B) takes cos phi and the side (A - B) sin phi: L = mid cos phi + side sin phi, R = mid cos phi
+- side sin phi. Equal power at every SPREAD (cos² + sin² = 1 for each chip), and at 100 % chip A is
+on the left alone, B on the right, each √2 (+3 dB) where mono gave it 1 on both sides. The gains
+are computed by Taylor series to phi^9 and phi^8 (the terms left under 3×10⁻⁸ there). The
+separation glides in as the second chip starts sounding and out as one goes quiet: phi is SPREAD's
+angle times the glide's share g, 0 to 1 over CHIP_SPREAD_GLIDE blocks (32: about 0.1 s), and the
+gains move linearly between the mono pair and SPREAD's (within 0.7 dB of equal power half way). At
+g = 0 the stage does not run: mono, bit for bit. A chip sounds while one of its envelopes is at
+CHIP_SPREAD_ON or more (16: -24 dB); both stay sounding until one has had all three under
+CHIP_SPREAD_OFF (4: -36 dB) for CHIP_SPREAD_HOLD blocks (16: 46 ms): the hysteresis keeps the gaps
+between a phrase's notes from fluttering the image. The thresholds are powers of two so one test
+runs on the counters' OR. Every slot's wet path takes the mono mix (the FX slot's always took (L +
+R) / 2), so the side passes the slots' dry paths only: a reverb or a delay keeps the dry spread and
+adds its own stereo tail; a slot fully wet hears the chips as one. Each slot taking a stereo input
+would run Distortion and Modulation twice (about 300 instructions a sample at their heaviest): over
+the slots' budget.
+
+**CHIP view (chip_view).** A frame sends at most CHIP_VIEW_FRAME_CELLS cells (200: about 17.5 ms
+of SPI with their windows, inside the 20 ms budget). The page is built off the grid in a canvas,
+then its changed cells are copied onto the grid within the budget less what the toast, the raster
+and a cover take; what does not fit goes on from that cell the next frame. Cells covered this frame
+(MIDI learn's frame, a toast) are left alone; the border's cells while the raster runs too. Under a
+wipe or a banded cut, the rows it reveals are copied whole. The tabs: chip A during a song is the
+song's, so its tab shows the song's setup and edits it (K1-K4 turned by the view itself,
+PANEL_PAGE_NONE, which MIDI learn binds nothing to); every other tab shows the keys' setup, live's.
+When a knob just turned (SCREEN_POPUP_MS), its label is shown reversed in the knob's readable
+colour (a dim label stays dim): the canvas after the page is built.
+
+## Views, screen and panel
+
+**View dispatch (views).** The menu's frame is MENU_FRAME_CELLS cells (178): a scroll's third line waits a frame, so a scroll over the shorter menu's
+action lines stays within 15.1 ms. The MIDI page draws MIDI_LINES lines per frame (2): the
+compose's cost is its ui_poll's. Every frame the instrument's state is compared with the last
+frame's: a change of octave, effect slot or algorithm shows a toast, whatever made it (panel, menu
+or MIDI), and a chip model change also runs the raster over the border; not while the boot shows,
+which nothing draws over. A control's own popup says what it changed: no toast then.
+
+**Screen (screen).** The layers: a wipe reveals SCREEN_WIPE_ROWS rows a frame (4: 5 rows of 30
+cells, 19.3 KB, 12.8 ms of SPI, inside the 20 ms budget), behind a one-row white edge; a banded cut
+SCREEN_BAND_ROWS rows a frame with no edge (6 rows, 23 KB, 15.4 ms, a full screen in 5 frames). The
+raster moves every other frame (SCREEN_RASTER_FRAMES): a step recolours the 116 border cells
+(15.5 KB and 10.3 ms of SPI), so 5.2 ms a frame on average. The border's cells carry the view's
+text (MODEL, the first digits): purple on black is 2.6:1, so the band that would be purple is light
+grey (6.9:1) for readability; the ramp itself stays. The toast: large text (2 times the font) on
+SCREEN_TOAST_ROW and the row below it, SCREEN_TOAST_LINE characters a line at most (13); a text of
+more than a line breaks at a space into a second line above (rows 25-28), or when its words do not
+fit two lines, ordinary text on one row. The popup opens and closes SCREEN_POPUP_STEP rows a frame
+(3: 78 cells). The block cursor is on for SCREEN_BLINK_FRAMES frames, then off as long (8 frames:
+320 ms at 25 fps).
+
+**Grid (grid).** The 240 × 240 screen as 30 × 30 cells of 8 × 8 pixels. Only changed cells go out:
+grid_next_run hands out the changed cells one run at a time, a run being horizontally adjacent
+changed cells on one row (one LCD window). A cell can carry a pixel overlay: GRID_OVERLAYS at once
+(255: LIVE's three scopes take about 240; one costs 10 bytes of RAM, 2,550 bytes total). Large text
+draws each character scale × scale cells (2 or 3), from the same 8 × 8 font: a cell's code is its
+part's (a piece, GRID_BIG_FIRST..) and the grid keeps the character it is a piece of. Dirty cells
+are marked against the composed cell, not the shown one: comparing with shown_ch/shown_attr saves
+nothing while a screen clears before it redraws (1 % more main-loop instructions per composed
+frame). The cell arrays are word-aligned for may_alias access (dirty4's).
+
+**Widgets (widget).** A menu at scale 2 (a line is up to 60 cells) draws the lines whose text
+changed since they were drawn, the selected one first, while what the grid has pending
+(grid_pending) leaves room for another line within the budget (0: no limit); the first line makes
+progress even while a view switch has old cells pending. Rows in force_rows are drawn regardless of
+budget unless force_rows includes MENU_BUDGET_FORCED. Deferred forced rows are invalidated so the
+next call restores them.
+
+**Panel (panel).** The note keys have no velocity: 127 sounds as velocity off does, whatever the
+preset's velocity target. The MASTER pot's gain follows a change of PANEL_MASTER_HYSTERESIS counts
+(4: 0.4 % of the travel, no audible step on the audio taper); the popup only a turn of
+PANEL_MASTER_POPUP counts from where the pot last rested (16: 1.6 %), so a reading that wanders by
+up to 15 counts at rest may nudge the gain but never shows it. The last PANEL_MASTER_END counts at
+either end read as that end (8): 0 and 1023 land exactly, and a pot resting there holds them
+through the noise. The asks are at least PANEL_MASTER_ASK_GAP calls apart (12: 120 ms at
+LIVE_TICK_HZ, three 40 ms frames), so the screen opens the popup only in a frame without an ask,
+and a turn that landed a change every frame does not keep it shut. A character control's detent
+moves PANEL_CHARACTER_DETENT steps (4): 32 detents end to end, as a slot's. GLO's layer: keys 0-2
+mute voices 1-3, keys 3-5 solo them.
+
+**Keys routing (keys_route).** live plays the instrument through this sink, which sends its writes
+to the chip the keys play: chip A with no song playing; chip B while a song plays
+on chip A (KEYS AUTO, the default); chip A always with KEYS A, where during a song a key takes a
+voice from it. While a song plays on chip A with the keys on it, chip A is the song's: live's setup
+writes (the character, resets, the gate reset) and its writes to $15-$18 (the filter and the
+volume) are dropped, and of a voice's registers only those of the voices the keys hold get through,
+and each voice's gate-off as the keys let it go. The setup chip A is to have (the song's CHPA, at
+its start and at every change) goes to keys_route_song_wants, the one writer of song_want:
+keys_route brings chip A to it in the background (prepared, a slice a tick). A profile change of
+chip A during a song is a chip reset (prepared, then swapped in): the reset chip has none of the
+song's registers, so the register shadow rewrites them after the swap. A voice the keys take goes
+to the taking callback before the first of its registers goes to chip A's sink, so the song can
+leave it alone from the block those registers reach. The keys' setup travels with the keys: live's
+model, profile, character and envelope mode are the keys' setup; the chip the keys play gets it
+from live, and the other chip follows it in the background, a slice a tick after the keys' own
+chip, so chip B holds the keys' setup whenever the keys move to it. Moves happen in
+keys_route_tick, once a pass after the live ticks: to chip B, once chip B has the keys' setup (the
+notes the keys hold on chip A are released there, and every register is written to chip B, so the
+keys still down sound again on it); back to chip A, once chip A has the keys' setup again and no
+key is held, so nothing is cut; until then the keys stay on chip B, which sounds the same.
+
+**Themes (theme).** Two themes: HIGH CONTRAST (the default, black with white values, light grey
+labels, dark grey for inactive) and C64 (blue background, reverse-video menu bars). A view never
+names a colour of the 16 for a purpose of its own: it asks the theme for the role (`t->value`,
+`t->knob[0]`) and builds its cell attributes with THEME_ATTR. THEME_ACCENT: a popup colour that
+takes the accent of the control (the knob's colour).
+
+**The view stack (screen).** A view is a table of functions in flash (enter, exit, input,
+compose, changed); the view on top has the focus, is composed and gets the events, and a pop
+gives the view under it the focus back with its state as it left it. Push and pop are for input
+handlers and the code that drives the screen: from a view's enter or exit the screen refuses
+(-1). An event goes to the capture first (a modal grab such as MIDI learn, which sees HOME too
+and may take it as cancel), then the global handler (HOME), then the view on top; 0 from all of
+them lets the caller fall back on the panel's own mapping. A capture belongs to the stack as it
+was when set and is released when a pop takes the stack below that depth. One slot past
+`SCREEN_DEPTH` is kept for the help card (`screen_push_over`), so a held HOME shows it over a
+full stack. A view composes only when its changed function says so (or it has none) or the
+screen forces it (a switch, `screen_redraw`, while a layer runs and on the frame after), so an
+idle screen sends nothing; a compose that leaves a cell alone keeps whatever the grid holds. The
+layers are run by one test of `layers`, so a frame with none costs that alone. The popup's
+state sits after the screen's other fields: the views reach those through small offsets, which
+it must not move.

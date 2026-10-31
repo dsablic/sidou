@@ -27,36 +27,32 @@ void panel_init(panel* p) {
 static void key_up(panel* p, live* l, uint32_t k) {
     live_note_off(l, p->key_note[k]);
     p->key_note[k] = LIVE_NO_NOTE;
-    p->sounding ^= 1u << k; /* set: key_up runs on a sounding key only */
+    p->sounding ^= 1u << k;
 }
 
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
     if (!(down | pressed | p->sounding | p->quiet)) {
-        return; /* most calls: no key */
+        return;
     }
-    int glo = ((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u; /* held, or latched */
-    /* Kept in a local and stored once, a known-set bit cleared with ^= (fewer memory
-     * read-modify-writes in the loop; it began as a dodge of an and-not form fm1-emu could not
-     * decode, fixed upstream in #33). */
+    int glo = ((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u;
     uint32_t quiet = p->quiet;
     uint32_t toggles = 0;
     for (uint32_t k = 0; k < PANEL_NOTE_KEYS; ++k) {
         uint32_t bit = 1u << k;
         if (quiet & bit) {
             if ((pressed & bit) && glo && k < PANEL_GLO_KEYS) {
-                toggles |= bit; /* pressed again */
+                toggles |= bit;
             }
             if (!(down & bit)) {
-                quiet ^= bit; /* gone up: the panel's again from the next press */
+                quiet ^= bit;
             }
             continue;
         }
         if (p->key_note[k] != LIVE_NO_NOTE && (pressed & bit)) {
-            key_up(p, l, k); /* let go and pressed again since the last call */
+            key_up(p, l, k);
         }
         if (p->key_note[k] == LIVE_NO_NOTE && ((down | pressed) & bit)) {
             if (glo && k < PANEL_GLO_KEYS) {
-                /* GLO's layer: the key is a mute or a solo, and sounds nothing */
                 toggles |= bit;
                 quiet |= down & bit;
                 continue;
@@ -117,16 +113,15 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
     }
     uint32_t k = enc - PANEL_ENC_K1;
     uint32_t page = p ? p->page : PANEL_PAGE_LIVE;
-    if (page >= PANEL_PAGE_LAB_FIRST) { /* LAB's cards, EDIT held or not */
+    if (page >= PANEL_PAGE_LAB_FIRST) {
         return panel_lab_param(l, page - PANEL_PAGE_LAB_FIRST, k);
     }
     if ((held & (1u << PANEL_BTN_EDIT)) || page == PANEL_PAGE_SLOT) {
-        /* K1..K4: Amount, A, B, Mix */
         return LIVE_PARAM_SLOT + l->fx_select * LIVE_SLOT_FIELDS +
                LIVE_SLOT_AMOUNT + k;
     }
     if (page == PANEL_PAGE_CHARACTER) {
-        return LIVE_PARAM_AGE + k; /* age, DAC, thump, bleed */
+        return LIVE_PARAM_AGE + k;
     }
     if (page == PANEL_PAGE_NONE) {
         return LIVE_PARAM_COUNT;
@@ -135,7 +130,7 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
         uint32_t index = (page - PANEL_PAGE_EXPERT_FIRST) * 4u + k;
         return index < SID_EXPERT_COUNT ? LIVE_PARAM_EXPERT + index : LIVE_PARAM_COUNT;
     }
-    if (k == 2u) { /* the sound's own control */
+    if (k == 2u) {
         uint32_t tone = live_tone(l);
         return tone == LIVE_TONE_PULSE ? LIVE_PARAM_PULSE_WIDTH
                : tone == LIVE_TONE_DECAY ? LIVE_PARAM_DECAY
@@ -151,7 +146,7 @@ uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
         {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE, LIVE_PARAM_FILTER_VOICES, LIVE_PARAM_FILTER_LFO},
         {LIVE_PARAM_VIBRATO_RATE, LIVE_PARAM_VIBRATO_DEPTH, LIVE_PARAM_VIBRATO_DELAY,
          LIVE_PARAM_ARP_RATE},
-        {0, 0, 0, 0}, /* FX: the selected slot's */
+        {0, 0, 0, 0},
         {LIVE_PARAM_RESO_LINK, LIVE_PARAM_PWM_LINK, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT},
     };
     _Static_assert(PANEL_PAGE_LAB_END - PANEL_PAGE_LAB_FIRST == sizeof CARDS / sizeof CARDS[0],
@@ -164,7 +159,7 @@ uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
         return LIVE_PARAM_SLOT + l->fx_select * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT + k;
     }
     if (page == 0u && k == 0u && l->mono_sync && !(l->control & 0x40u)) {
-        return LIVE_PARAM_COUNT; /* RATIO: the sync ratio's semitones, no parameter */
+        return LIVE_PARAM_COUNT;
     }
     return CARDS[page][k];
 }
@@ -174,8 +169,6 @@ _Static_assert(LIVE_PARAM_DAC == LIVE_PARAM_AGE + 1 && LIVE_PARAM_THUMP == LIVE_
                "K1..K4 are the character's controls in order");
 _Static_assert(LIVE_SLOT_MIX == LIVE_SLOT_AMOUNT + 3, "K1..K4 are a slot's controls in order");
 
-/* live_knob's knobs are K1..K4 in order: the cutoff, resonance, the sound's own control and the
- * release that panel_knob_param names. */
 _Static_assert(LIVE_KNOB_CUTOFF == 0 && LIVE_KNOB_RESONANCE == 1 && LIVE_KNOB_TONE == 2 &&
                    LIVE_KNOB_RELEASE == 3 && PANEL_ENC_K4 - PANEL_ENC_K1 == 3,
                "K1..K4 are live_knob's knobs");
@@ -194,25 +187,21 @@ _Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_AGE + 1u == PANEL_ENC_K4 - PANEL_EN
 
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     uint32_t k = enc - PANEL_ENC_K1;
-    if (steps == 0 || k > PANEL_ENC_K4 - PANEL_ENC_K1) { /* not K1..K4 */
+    if (steps == 0 || k > PANEL_ENC_K4 - PANEL_ENC_K1) {
         if (steps != 0 && enc == PANEL_ENC_PRESETS) {
             live_preset_step(l, steps, p->held >> PANEL_BTN_EDIT & 1u);
         }
         return;
     }
-    /* What panel_knob_param names, by the page: each page's own turn, without the parameter's
-     * number between (the K1 input is gated by its cost: emu-gate screen.rs CHIP_INPUT and
-     * POPUP_INPUT). */
     uint32_t page = p->page;
     uint32_t edit = p->held >> PANEL_BTN_EDIT & 1u;
     if (page == PANEL_PAGE_LIVE && !edit) {
-        live_knob(l, (live_knob_id)k, steps); /* the common case */
+        live_knob(l, (live_knob_id)k, steps);
     } else if (edit || page == PANEL_PAGE_SLOT) {
-        live_slot_turn(l, l->fx_select, LIVE_SLOT_AMOUNT + k, steps); /* Amount, A, B, Mix */
+        live_slot_turn(l, l->fx_select, LIVE_SLOT_AMOUNT + k, steps);
     } else if (page == PANEL_PAGE_CHARACTER) {
-        uint32_t param = LIVE_PARAM_AGE + k; /* age, DAC, thump, bleed */
-        int32_t d = steps > 64 ? 64 : steps < -64 ? -64 : steps; /* 0..127 end to end in 32 */
-        /* live_param_get's and live_param_max's answers for these four, read directly */
+        uint32_t param = LIVE_PARAM_AGE + k;
+        int32_t d = steps > 64 ? 64 : steps < -64 ? -64 : steps;
         int32_t v = (int32_t)l->character[k] + d * PANEL_CHARACTER_DETENT;
         int32_t max = (int32_t)SID_CHARACTER_MAX;
         live_param_set(l, param, (uint32_t)(v < 0 ? 0 : v > max ? max : v));
@@ -221,7 +210,7 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
         if (param != LIVE_PARAM_COUNT) {
             expert_turn(l, param, steps);
         }
-    } /* PANEL_PAGE_NONE: the view's own */
+    }
 }
 
 void panel_master(panel* p, live* l, int32_t raw) {
@@ -236,12 +225,11 @@ void panel_master(panel* p, live* l, int32_t raw) {
     int first = p->master_raw < 0;
     int32_t d = raw - p->master_raw;
     if (p->master_follow && !--p->master_follow) {
-        p->master_shown = p->master_raw; /* the turn is over: the next is measured from here */
+        p->master_shown = p->master_raw;
     }
     if (p->master_wait) {
         p->master_wait--;
     }
-    /* the ends always land, so the volume can reach 0 and 15 */
     if (first || d >= PANEL_MASTER_HYSTERESIS || d <= -PANEL_MASTER_HYSTERESIS ||
         ((raw == 0 || raw == (int32_t)LIVE_MASTER_MAX) && d != 0)) {
         p->master_raw = (int16_t)raw;
@@ -255,8 +243,6 @@ void panel_master(panel* p, live* l, int32_t raw) {
             p->master_pending = 1;
         }
     }
-    /* An ask at most every PANEL_MASTER_ASK_GAP calls, the last value asked once it is free:
-     * the screen opens the popup only in frames that bring no ask (app/screen.c popup_step). */
     if (p->master_pending && !p->master_wait) {
         p->master_pending = 0;
         p->master_wait = first ? 0u : (uint8_t)PANEL_MASTER_ASK_GAP;
@@ -268,8 +254,6 @@ void panel_master(panel* p, live* l, int32_t raw) {
 
 static const panel_led_in NO_IN = {0, PANEL_BEAT_NONE, 0, 0, 0, 0, 0, PANEL_NO_STEP, 0, 0, 0};
 
-/* ARP's flash: the arpeggio steps, and its step began less than half a step ago (a clock rate
- * with a clock counts its clocks, else frames). The fastest rates flash once a cycle. */
 static int arp_flash(const live* l) {
     if (l->arp_voice == LIVE_ARP_NO_VOICE) {
         return 0;
@@ -291,7 +275,7 @@ __attribute__((noinline, unused)) static void glo_layer(const panel_led_in* in, 
     o->notes_dim &= ~keys;
     for (uint32_t v = 0; v < PANEL_GLO_KEYS / 2u; ++v) {
         if (!(in->silent >> v & 1u)) {
-            o->notes |= 1u << v; /* sounding */
+            o->notes |= 1u << v;
         }
         if (in->solo >> v & 1u) {
             if (blink) {
@@ -312,7 +296,7 @@ __attribute__((noinline, unused)) static void step_page(const panel_led_in* in, 
     o->notes_dim |= in->step_rows & ~set;
     uint32_t bit = in->step_head < PANEL_STEPS ? 1u << in->step_head : 0u;
     if ((bit & in->step_rows) && in->ms - in->head_ms < PANEL_FLICK_MS) {
-        o->notes ^= bit; /* a note goes dark, an empty step lights */
+        o->notes ^= bit;
         o->notes_dim &= ~bit;
     }
 }

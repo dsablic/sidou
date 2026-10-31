@@ -17,16 +17,13 @@ const uint8_t screen_ramp[SCREEN_RAMP] = {GRID_WHITE, GRID_YELLOW,     GRID_LIGH
 #define TOAST_SHOWING 1u
 #define TOAST_WAITING 2u
 #define ALL_ROWS ((1u << GRID_ROWS) - 1u)
-/* The border: the top and bottom rows and the end cells of the rows between. */
 #define RASTER_CELLS (2u * GRID_COLS + 2u * (GRID_ROWS - 2u))
 
-/* The next frame composes, with the rows in mask to put back. */
 static void redraw(screen* s, uint32_t mask) {
     s->redraw = 1;
     s->redraw_rows |= mask;
 }
 
-/* The top view's enter or exit, with push and pop refused while it runs. */
 static void call(screen* s, void (*fn)(screen*, void*)) {
     if (fn) {
         s->busy = 1;
@@ -35,8 +32,6 @@ static void call(screen* s, void (*fn)(screen*, void*)) {
     }
 }
 
-/* The view on top changed: the old one's overlays and pixel region (unless it shows on,
- * SCREEN_OVER) go, a capture set above the stack goes, and the new view comes in. */
 static void switched(screen* s, screen_wipe w) {
     if (w == SCREEN_OVER) {
         w = SCREEN_CUT;
@@ -50,8 +45,6 @@ static void switched(screen* s, screen_wipe w) {
     s->wipe = (uint8_t)w;
     s->wipe_rows = 0;
     redraw(s, ALL_ROWS);
-    /* A wipe holds every row until it reveals it (the next frame on): the panel keeps the old
-     * view meanwhile, overlays included, which the clear above would otherwise send away. */
     grid_hold(s->g, w == SCREEN_CUT ? 0u : (1u << GRID_ROWS) - 1u);
 }
 
@@ -142,7 +135,6 @@ int screen_animating(const screen* s) {
     return s->wipe != SCREEN_CUT || s->raster_frames != 0;
 }
 
-/* Rows a wipe from the top reveals each frame. */
 static uint32_t step_rows(const screen* s) {
     return s->wipe == SCREEN_BANDS ? SCREEN_BAND_ROWS : SCREEN_WIPE_ROWS;
 }
@@ -155,7 +147,6 @@ uint32_t screen_reach(const screen* s) {
     return n < GRID_ROWS ? n : GRID_ROWS;
 }
 
-/* The border's colours: the ramp in bands by row, moving down a row a step. */
 static void raster(screen* s) {
     if (!s->raster_frames || s->wipe != SCREEN_CUT) {
         return;
@@ -166,8 +157,6 @@ static void raster(screen* s) {
     redraw(s, ALL_ROWS);
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         uint32_t fg = screen_ramp[(r + phase) % SCREEN_RAMP];
-        /* The border's cells carry the view's text (MODEL, the first digits): purple on black is
-         * 2.6:1, so the band that would be purple is light grey (6.9:1); the ramp itself stays. */
         fg = fg == GRID_PURPLE ? GRID_LIGHT_GREY : fg;
         uint32_t i = r * GRID_COLS;
         uint32_t step = r == 0 || r == GRID_ROWS - 1u ? 1u : GRID_COLS - 1u;
@@ -177,8 +166,6 @@ static void raster(screen* s) {
     }
 }
 
-/* Rows [0, n) revealed (bottom up: [GRID_ROWS - n, GRID_ROWS)), the next one the edge, the
- * rest held; a banded cut has no edge. */
 static void wipe(screen* s) {
     if (s->wipe == SCREEN_CUT) {
         return;
@@ -209,9 +196,6 @@ static void wipe(screen* s) {
     redraw(s, ALL_ROWS);
 }
 
-/* ---- the toast ---- */
-
-/* The rows [row, row + n) as a mask. */
 static uint32_t rows_mask(uint32_t row, uint32_t n) {
     return ((1u << n) - 1u) << row;
 }
@@ -220,10 +204,6 @@ static uint32_t toast_row(const screen* s) {
     return SCREEN_TOAST_FIRST_ROW(s);
 }
 
-/* The toast's layout of a text of more than SCREEN_TOAST_LINE characters (screen_toast lays out
- * a shorter one at once, and a longer one for the largest it can take until the frame does it):
- * at 2 times the font broken at a space into two lines, or, when its words do not fit two
- * lines, ordinary text on one row. */
 static void toast_layout(screen* s) {
     uint32_t n = 0;
     while (s->toast[n]) {
@@ -234,7 +214,7 @@ static void toast_layout(screen* s) {
         brk--;
     }
     if (!brk || n - brk - 1u > SCREEN_TOAST_LINE) {
-        s->toast_h = 1; /* ordinary text */
+        s->toast_h = 1;
         s->toast_w = (uint8_t)n;
         return;
     }
@@ -249,8 +229,6 @@ void screen_toast(screen* s, const char* text, uint32_t ms) {
         s->toast[n] = text[n];
     }
     s->toast[n] = 0;
-    /* Up to a line: 2 x 2 cells a character on the toast's row and the next. A longer text is
-     * laid out in the frame (toast_layout): until then it takes the four rows and the width. */
     if (n <= SCREEN_TOAST_LINE) {
         s->toast_h = 2;
         s->toast_w = (uint8_t)(2u * n);
@@ -262,7 +240,7 @@ void screen_toast(screen* s, const char* text, uint32_t ms) {
     s->toast_on = TOAST_WAITING;
     s->toast_until = ms;
     s->layers = 1;
-    redraw(s, rows_mask(SCREEN_TOAST_ROW - 2u, 4u)); /* what it takes, and what it leaves */
+    redraw(s, rows_mask(SCREEN_TOAST_ROW - 2u, 4u));
 }
 
 uint32_t screen_toast_take(screen* s) {
@@ -271,13 +249,11 @@ uint32_t screen_toast_take(screen* s) {
                                                                             : 0u;
     if (s->toast_on) {
         s->toast_on = 0;
-        redraw(s, rows_mask(SCREEN_TOAST_ROW - 2u, 4u)); /* what it took, the view's again */
+        redraw(s, rows_mask(SCREEN_TOAST_ROW - 2u, 4u));
     }
     return left;
 }
 
-/* The toast, drawn over the view: its time runs from its first frame (a toast set before the
- * first frame, or after a long pause between frames, still shows for all of it). */
 static void toast(screen* s) {
     if (s->toast_h == 4u && !s->toast_brk) {
         toast_layout(s);
@@ -313,12 +289,8 @@ static void toast(screen* s) {
     redraw(s, rows_mask(row, s->toast_h));
 }
 
-/* ---- the popup ---- */
-
-/* The box's colours, from the theme and the control's accent (screen_popup_state.accent). */
 #define POPUP_ROLE(th, role, accent) ((th)->role == THEME_ACCENT ? (accent) : (th)->role)
 #define POPUP_BODY(th) GRID_ATTR((th)->value, (th)->popup_bg)
-/* The box's row of the name's text, of the value's, and of the bar (from the box's top). */
 #define POPUP_NAME_ROW 1u
 #define POPUP_VALUE_ROW 4u
 #define POPUP_BAR_ROW 7u
@@ -352,7 +324,7 @@ void screen_popup(screen* s, const char* name, const char* value, uint32_t fill,
     p->accent = screen_theme(s)->hot;
     p->bar = (uint8_t)(max ? (fill > max ? max : fill) * (SCREEN_POPUP_BAR_CELLS * 8u) / max
                            : 0u);
-    p->alive = 2; /* its time runs from its first frame, as the toast's */
+    p->alive = 2;
     p->fresh = 1;
     s->layers = 1;
 }
@@ -394,7 +366,6 @@ int screen_popup_shows(const screen* s) {
     return s->popup && (s->popup->rows != 0 || s->popup->alive != 0);
 }
 
-/* The popup goes at once: the next compose has all the rows. */
 static void popup_cancel(screen* s) {
     s->popup_ask = 0;
     s->popup_defer = 0;
@@ -407,29 +378,20 @@ static void popup_cancel(screen* s) {
     grid_big_guard(s->g, 0);
 }
 
-/* The frame's popup before the view composes: the control asked for puts its text up (or keeps
- * it), the time ends, and it opens or closes a step. What the frame draws covers its rows and
- * guards them from the view's large text; the rows it lets go are blanked and composed again
- * by the view (forced). */
 __attribute__((noinline, unused)) static void popup_step(screen* s) {
     screen_popup_state* p = s->popup;
     if (!p) {
-        s->popup_ask = 0; /* none to show */
+        s->popup_ask = 0;
         s->popup_defer = 0;
         s->layers = (uint8_t)(s->toast_on != 0);
         return;
     }
     int asked = 0;
-    /* A toast replaces a popup that is open, opening or closing (the OCTAVE +1 under VOLUME
-     * would stack): the frame the toast first shows in closes it at once, its rows blanked and
-     * composed again by the view below (not in screen_toast, which an input calls: SELECT's toast
-     * in SCENE has 3 instructions to spare). */
     int dropped = s->toast_on == TOAST_WAITING && (p->rows | p->alive);
     if (dropped) {
         p->alive = 0;
         s->popup_defer = 0;
     }
-    /* The view the popup is for goes (a switch, a title card, MIDI learn): it and an ask go. */
     const view* top = s->stack[s->depth - 1u].v;
     if (s->popup_view && s->popup_view != top) {
         popup_cancel(s);
@@ -466,7 +428,7 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
         }
     }
     if (!s->popup_view) {
-        s->popup_view = top; /* an ask from nowhere in particular: the view it found */
+        s->popup_view = top;
     }
     if (p->alive == 2u) {
         p->alive = 1;
@@ -477,13 +439,11 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     uint32_t rows = p->rows;
     uint32_t next = rows;
     if (p->alive) {
-        /* The frame that asks for it opens nothing (the view's own compose of a changed control
-         * costs the frame most of its budget: the box starts in the next one). */
         if (rows < SCREEN_POPUP_ROWS && !screen_animating(s) && !asked) {
             next = rows + SCREEN_POPUP_STEP;
             next = next < SCREEN_POPUP_ROWS ? next : SCREEN_POPUP_ROWS;
         } else if (!rows) {
-            p->until = s->now + SCREEN_POPUP_MS; /* its time starts when it opens */
+            p->until = s->now + SCREEN_POPUP_MS;
         }
     } else if (rows) {
         next = dropped || rows <= SCREEN_POPUP_STEP ? 0u : rows - SCREEN_POPUP_STEP;
@@ -503,8 +463,6 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     }
 }
 
-/* The characters of the largest text that fits a text's length: 3 times the font up to
- * SCREEN_POPUP_BIG characters, else 2 times. */
 static uint32_t popup_scale(const char* t) {
     uint32_t n = 0;
     while (t[n]) {
@@ -513,13 +471,10 @@ static uint32_t popup_scale(const char* t) {
     return n <= SCREEN_POPUP_BIG ? 3u : 2u;
 }
 
-/* The text in the box's row `row`, as large as it can be, padded with blanks to the box's width
- * so that the cells it covers are written once (the popup draws every frame: a cell written
- * twice, blank then text, would be marked to be sent again each time). */
 static void popup_text(screen* s, uint32_t row, const char* t, uint8_t attr) {
     char pad[SCREEN_POPUP_TEXT];
     uint32_t scale = popup_scale(t);
-    uint32_t width = SCREEN_POPUP_BAR_CELLS / scale; /* characters in the box's width */
+    uint32_t width = SCREEN_POPUP_BAR_CELLS / scale;
     uint32_t n = 0;
     for (; t[n] && n < width; n++) {
         pad[n] = t[n];
@@ -531,9 +486,6 @@ static void popup_text(screen* s, uint32_t row, const char* t, uint8_t attr) {
     grid_text_big(s->g, POPUP_COL, SCREEN_POPUP_ROW + row, scale, pad, attr);
 }
 
-/* The box's rows [0, next): the frame, the text and the bar, each cell written once. Only the
- * rows not drawn yet, and the text once its rows are in, unless the text changed or the view
- * composed (it may have drawn over the cells): then all of it. */
 __attribute__((noinline, unused)) static void popup_draw(screen* s) {
     screen_popup_state* p = s->popup;
     grid* g = s->g;
@@ -545,13 +497,12 @@ __attribute__((noinline, unused)) static void popup_draw(screen* s) {
     uint32_t guard = g->big_guard;
     uint32_t last = SCREEN_POPUP_COL + SCREEN_POPUP_W - 1u;
     uint32_t rows = p->next;
-    uint32_t from = s->composed || p->fresh ? 0u : p->rows; /* the rows drawn */
+    uint32_t from = s->composed || p->fresh ? 0u : p->rows;
     uint32_t ns = popup_scale(p->name);
     uint32_t vs = popup_scale(p->value);
-    /* The text once the rows it needs are in the box. */
     int name = POPUP_NAME_ROW + ns <= rows;
     int value = POPUP_VALUE_ROW + vs <= rows;
-    g->big_guard = 0; /* the popup's own large text */
+    g->big_guard = 0;
     (void)grid_big_touched(g);
     for (uint32_t r = from; r < rows; r++) {
         uint32_t y = SCREEN_POPUP_ROW + r;
@@ -565,10 +516,10 @@ __attribute__((noinline, unused)) static void popup_draw(screen* s) {
         }
         grid_put_top(g, SCREEN_POPUP_COL, y, FONT_BOX_V, frame);
         grid_put_top(g, last, y, FONT_BOX_V, frame);
-        grid_put_top(g, SCREEN_POPUP_COL + 1u, y, ' ', body); /* the margins */
+        grid_put_top(g, SCREEN_POPUP_COL + 1u, y, ' ', body);
         grid_put_top(g, last - 1u, y, ' ', body);
         if ((name && r - POPUP_NAME_ROW < ns) || (value && r - POPUP_VALUE_ROW < vs)) {
-            continue; /* the text's */
+            continue;
         }
         if (r == POPUP_BAR_ROW && p->has_bar) {
             uint32_t px = p->bar;
@@ -581,22 +532,18 @@ __attribute__((noinline, unused)) static void popup_draw(screen* s) {
         }
         grid_fill_top(g, POPUP_COL, y, SCREEN_POPUP_BAR_CELLS, 1, ' ', body);
     }
-    /* The text, once its rows are in (drawn whole again when `from` is 0 or it was not in before). */
     if (name && (from == 0 || from < POPUP_NAME_ROW + ns)) {
         popup_text(s, POPUP_NAME_ROW, p->name, name_attr);
     }
     if (value && (from == 0 || from < POPUP_VALUE_ROW + vs)) {
         popup_text(s, POPUP_VALUE_ROW, p->value, body);
     }
-    /* Cells the view's overlays changed under the box are not sent for it (they show none), unless
-     * a piece's character changed. */
     if (!grid_big_touched(g)) {
         grid_unstale(g, SCREEN_POPUP_COL, SCREEN_POPUP_ROW, SCREEN_POPUP_W, rows);
     }
     g->big_guard = guard;
 }
 
-/* The layers drawn over the view after it composes: the toast, the popup. */
 __attribute__((noinline, unused)) static void layers_post(screen* s) {
     screen_popup_state* p = s->popup;
     toast(s);
@@ -612,10 +559,9 @@ __attribute__((noinline, unused)) static void layers_post(screen* s) {
                           (p && (p->alive != 0 || p->rows != 0 || p->watch != NULL)));
 }
 
-/* The toast draws this frame (toast() above, at s->now): from its first frame to its last. */
 static int toast_shows(const screen* s) {
     if (s->toast_on == TOAST_WAITING) {
-        return (int32_t)(0u - s->toast_until) < 0; /* its length: 0 ends it at once */
+        return (int32_t)(0u - s->toast_until) < 0;
     }
     return s->toast_on == TOAST_SHOWING && (int32_t)(s->now - s->toast_until) < 0;
 }
@@ -632,7 +578,6 @@ static int in_cover(const screen* s, uint32_t col, uint32_t row) {
     return col - s->cover_col < s->cover_w && row - s->cover_row < s->cover_h;
 }
 
-/* The toast's cells (while it shows). */
 static int in_toast(const screen* s, uint32_t col, uint32_t row) {
     return col - SCREEN_TOAST_COL < s->toast_w && row - toast_row(s) < s->toast_h &&
            toast_shows(s);
@@ -646,7 +591,6 @@ uint32_t screen_pending(const screen* s) {
     uint32_t n = grid_pending(s->g) -
                  grid_pending_in(s->g, s->cover_col, s->cover_row, s->cover_w, s->cover_h);
     if (s->toast_on && toast_shows(s)) {
-        /* The toast's cells less those the cover has taken off already. */
         uint32_t row = toast_row(s);
         uint32_t c0 = s->cover_col > SCREEN_TOAST_COL ? s->cover_col : SCREEN_TOAST_COL;
         uint32_t c1 = s->cover_col + s->cover_w < SCREEN_TOAST_COL + s->toast_w
@@ -674,7 +618,6 @@ uint32_t screen_layer_cells(const screen* s) {
     return n;
 }
 
-/* The layers set redraw when they draw: the next frame composes over what they drew. */
 void screen_frame(screen* s, uint32_t now_ms) {
     s->now = now_ms;
     s->frame++;
@@ -684,11 +627,11 @@ void screen_frame(screen* s, uint32_t now_ms) {
     const screen_entry* top = &s->stack[s->depth - 1u];
     if (s->redraw || !top->v->changed || top->v->changed(s, top->state)) {
         top->v->compose(s, top->state, s->g);
-        s->composed = 1; /* the popup draws again over what it drew over */
+        s->composed = 1;
     }
     s->redraw = 0;
     s->redraw_rows = 0;
-    if (s->cover_w) { /* (an empty cover has no cells: screen_cover) */
+    if (s->cover_w) {
         screen_cover(s, 0, 0, 0, 0, 0);
     }
     if (s->layers) {

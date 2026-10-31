@@ -12,7 +12,7 @@ void widget_frame(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, u
     if (!title || w < 3u) {
         return;
     }
-    uint32_t end = col + w - 1u; /* the other corner */
+    uint32_t end = col + w - 1u;
     uint32_t c = col + 1u;
     grid_put(g, c++, row, ' ', attr);
     while (*title && c < end) {
@@ -100,7 +100,6 @@ void menu_turn(menu* m, int32_t steps) {
     }
 }
 
-/* Line k of the menu at scale 2: n characters in text, the colour into *attr. */
 static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t base,
                      uint8_t* attr, uint32_t* value_at) {
     uint32_t i = m->top + k;
@@ -140,10 +139,6 @@ static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t 
     }
 }
 
-/* The menu at scale 2: each item a line of (w - 2) / 2 characters in large text, a cell in from
- * each side (a panel's bezel hides the edge): the label, the value right-aligned or the
- * action's arrow, the selected one in sel_attr (its whole line, the margins too). Lines are
- * drawn as menu.budget and menu.force_rows say. */
 void widget_blank_pieces(grid* g, uint32_t col, uint32_t row, uint32_t w) {
     for (uint32_t y = row; y < row + 2u && y < GRID_ROWS; y++) {
         for (uint32_t x = col; x < col + w && x < GRID_COLS; x++) {
@@ -164,7 +159,7 @@ void widget_blank_pieces(grid* g, uint32_t col, uint32_t row, uint32_t w) {
 
 __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_t col,
                                                     uint32_t row, uint32_t w, uint8_t attr) {
-    uint32_t n = (w - 2u) / 2u; /* characters a line */
+    uint32_t n = (w - 2u) / 2u;
     char line[GRID_COLS / 2u + 1u];
     if (n >= sizeof line) {
         n = sizeof line - 1u;
@@ -172,8 +167,6 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
     uint32_t drawn = 0;
     uint32_t done = 0;
     m->pending = 0;
-    /* The selected line makes progress first; forced restorations then share the remaining
-     * quota with ordinary changes. */
     uint32_t sel = m->cursor >= m->top ? (uint32_t)m->cursor - m->top : 0u;
     for (uint32_t pass = 0; pass < 3u; pass++) {
         for (uint32_t j = 0; j < m->rows; j++) {
@@ -209,7 +202,7 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
                 (m->lines ? drawn >= m->lines
                           : ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && m->budget &&
                              grid_pending(g) + MENU_LINE_CELLS > m->budget))) {
-                m->pending = 1; /* the next call */
+                m->pending = 1;
                 m->valid = (uint8_t)(m->valid & ~(1u << k));
                 if (forced) {
                     for (uint32_t y = r; y < r + 3u && y < GRID_ROWS; y++) {
@@ -228,10 +221,9 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
                 m->barred = (uint8_t)(m->barred & ~(1u << k));
             }
             m->valid = (uint8_t)(m->valid | 1u << k);
-            grid_fill(g, col, r, w, 3, ' ', a); /* the margins, a selected line's bar, the gap row */
+            grid_fill(g, col, r, w, 3, ' ', a);
             grid_fill(g, col, r + 2u, w, 1, ' ', attr);
             if (m->value_attr && a == attr && value_at < n) {
-                /* The label and the gap, then the value in its own colour: no cell twice. */
                 char cut = line[value_at];
                 line[value_at] = 0;
                 grid_text_big(g, col + 1u, r, 2, line, a);
