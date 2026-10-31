@@ -67,6 +67,28 @@ button can never stay stuck if the page goes away while you hold it.
 play MIDI notes on channel 1 to the FM-1, as a keyboard plugged into the computer would (SIDOU
 plays notes from every channel unless its MIDI page says otherwise).
 
+## Computer keyboard
+
+Press **Computer keyboard: Off** to turn on keyboard control. While it is on, the computer
+keyboard drives the FM-1 through PANEL frames (buttons and encoders) and MIDI notes. The device
+stays the source of truth. Typing in the port selectors or other inputs does not send.
+
+### Piano keys (two rows, GoatTracker-style)
+
+- **Lower row:** `Z S X D C V G B H N J M ,` — C to C (white and black keys)
+- **Upper row:** `Q 2 W 3 E R 5 T 6 Y 7 U I` — C to C, one octave up
+
+### Navigation and buttons
+
+- **↑ ↓** — SELECT: TRACKER's cursor up and down a row (and SELECT's job in the other views)
+- **← →** — ALGORITHM: TRACKER's voice, and ALGORITHM's job elsewhere
+- **Page Up / Page Down** — EDIT + SELECT: a page up or down (8 rows in TRACKER)
+- **Enter** SAVE, **Esc** HOME, **Backspace** ARP (a key off in TRACKER with REC on), **Space** PLAY
+- **Shift** — EDIT, held while it is down, for the EDIT layers
+
+The page's keymap card is drawn from the same table the keys use. Keys typed in a text field or
+on a focused button or knob are theirs, not the FM-1's.
+
 ## Notes
 
 - The font and the colours are built into the page. If a firmware's differ, the page fetches them

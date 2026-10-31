@@ -74,6 +74,12 @@
   .key.black { background: #070514; height: 34px; }
   .fm1[data-on="false"] .btn, .fm1[data-on="false"] .enc, .fm1[data-on="false"] .key { opacity: .5; pointer-events: none; }
   footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  .keymap { display: grid; gap: 20px; }
+  .keymap-group h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--accent); }
+  .keymap-items { display: grid; gap: 4px; }
+  .keymap-item { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: baseline; }
+  .keymap-item code { font-size: 12px; background: var(--well); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+  .keymap-item span { color: var(--dim); font-size: 13px; }
   @media (max-width: 720px) {
     .brand img { width: 160px; }
     .fm1 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "screen screen" "left right" "buttons buttons" "keys keys"; }
@@ -122,6 +128,7 @@
       <button type="button" id="start" class="primary" disabled>Start</button>
       <button type="button" id="stop" disabled>Stop</button>
       <button type="button" id="keyframe" disabled title="Ask the FM-1 for its whole screen again">Redraw</button>
+      <button type="button" id="keyboard-toggle" disabled>Computer keyboard: Off</button>
     </div>
     <p id="status" role="status" aria-live="polite">No session.</p>
     <div class="fm1" id="fm1" data-on="false">
@@ -138,6 +145,14 @@
       switch away from it, and starts again when you come back.</p>
   </section>
 
+  <section id="keyboard-section" hidden>
+    <h2>Computer keyboard</h2>
+    <p>While keyboard control is on, the computer keyboard drives the FM-1. The device stays the source
+      of truth: the page sends PANEL frames (buttons and encoders) and MIDI notes. Typing in the port
+      selectors or other inputs does not send.</p>
+    <div class="keymap" id="keymap"></div>
+  </section>
+
   <footer>
     SIDOU · <a href="https://github.com/dsablic/sidou">github.com/dsablic/sidou</a> · how to use this page:
     <a href="https://github.com/dsablic/sidou/blob/main/docs/manual/live-link.md">docs/manual/live-link.md</a> · the protocol:
@@ -146,13 +161,18 @@
 </main>
 <script type="module">
 import { BUTTONS, ENCODERS, LinkClient, WIDTH, HEIGHT, loadViewer } from "./link.js";
+import { KeyboardController, keymapCard } from "./link-keyboard.js";
 
 const DEVICE_PORT = "SIDOU FM-1";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const say = (node, text, kind = "") => { node.textContent = text; node.dataset.state = kind; };
 
-const state = { access: null, client: null, viewer: null, output: null, input: null, notes: new Set() };
+$("keymap").replaceChildren(...keymapCard().map(({ title, items }) =>
+  el("div", { className: "keymap-group" }, el("h3", { textContent: title }),
+    el("div", { className: "keymap-items" }, ...items.map(([k, what]) =>
+      el("div", { className: "keymap-item" }, el("code", { textContent: k }), el("span", { textContent: what })))))));
+const state = { access: null, client: null, viewer: null, output: null, input: null, notes: new Set(), keyboard: null, keyboardOn: false };
 window.__link = state; // the smoke test (web/check.mjs) reads it
 
 // ---- the screen: 240 x 240, scaled by a whole number of device pixels to fit
@@ -263,6 +283,7 @@ function showState() {
   $("start").textContent = s === "ended" || s === "stopped" ? "Restart" : "Start";
   $("stop").disabled = !(on || s === "starting");
   $("keyframe").disabled = s !== "on";
+  $("keyboard-toggle").disabled = s !== "on";
   if (s === "on") say($("status"), `Live: ${c.hello.name || "an FM-1"}${rate}`, "ok");
   else if (s === "stopped" && c.why && c.why !== "hidden") say($("status"), `Stopped: ${c.why}.`, "error");
   else say($("status"), STATE_TEXT[s] ?? s, s === "ended" || s === "silent" ? "error" : "");
@@ -296,6 +317,25 @@ async function start() {
 }
 
 function stop() { allNotesOff(); state.client?.stop(); }
+
+function toggleKeyboard() {
+  state.keyboardOn = !state.keyboardOn;
+  $("keyboard-toggle").textContent = `Computer keyboard: ${state.keyboardOn ? "On" : "Off"}`;
+  $("keyboard-section").hidden = !state.keyboardOn;
+
+  if (state.keyboardOn) {
+    if (!state.keyboard) {
+      state.keyboard = new KeyboardController({
+        client: () => state.client,
+        playNote: (n) => note(n, true),
+        stopNote: (n) => note(n, false),
+      });
+    }
+    state.keyboard.attach();
+  } else {
+    state.keyboard?.detach();
+  }
+}
 
 function fillPorts() {
   for (const [id, ports] of [["out", state.access.outputs], ["in", state.access.inputs]]) {
@@ -348,6 +388,7 @@ if (!navigator.requestMIDIAccess) {
   $("start").addEventListener("click", start);
   $("stop").addEventListener("click", stop);
   $("keyframe").addEventListener("click", () => state.client?.keyframe());
+  $("keyboard-toggle").addEventListener("click", toggleKeyboard);
 }
 window.addEventListener("resize", fit);
 fit();

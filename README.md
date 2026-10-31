@@ -81,7 +81,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   FM-1 under a name or loads it there at once ([the manual](docs/manual/editor.md)).
 - **See and play the FM-1 from a computer.** The site's [Live Link](https://dsablic.github.io/sidou/link.html)
   page shows the FM-1's screen live, pixel for pixel, and presses its buttons and turns its
-  encoders over the USB cable (Chrome or Edge; [the manual](docs/manual/live-link.md)).
+  encoders over the USB cable, with the mouse or the computer keyboard (piano keys on two rows,
+  arrow keys for navigation, Enter/Esc/Space for buttons; Chrome or Edge; [the manual](docs/manual/live-link.md)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
   page turns any GoatTracker 2 `.sng`, from a file or read straight from the connected FM-1 (the
   current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where
