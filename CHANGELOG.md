@@ -31,7 +31,15 @@ All notable changes are documented here. The format follows
   10 KB wasm, `tools/wasm-link`), with the panel's buttons and encoders (hold, drag, wheel, −/+,
   arrow keys) and an octave of note keys; Connect, Start, Stop and Redraw, frames and bytes a
   second; STOP when the tab is closed or hidden, starting again when it comes back; the font and
-  palette fetched only when the FM-1's differ, then kept. ([the manual](docs/manual/live-link.md))
+  palette fetched only when the FM-1's differ, then kept. **Computer keyboard control** (off by
+  default): piano keys on two rows (Z S X D C... and Q 2 W 3 E..., GoatTracker-style), arrow keys
+  for SELECT and ALGORITHM encoders, Page Up/Down for paging, Enter/Esc/Backspace/Space for buttons
+  (SAVE, HOME, ARP, PLAY), Shift for EDIT layers. The device stays the source of truth (PANEL frames
+  and MIDI notes); typing in inputs does not send. A reference card shows the whole keymap.
+  ([the manual](docs/manual/live-link.md))
+- **MIDI controller maps** (docs/manual/controllers.md): ready-made CC maps for 8-knob controllers
+  covering LAB's six pages and LIVE, with a printable reference card. The full CC table from
+  docs/reference/midi.md and notes on using MIDI learn.
 - **FM-1 Live Link, the device's side: a computer mirrors the screen and presses the buttons over
   the USB cable** ([live-link.md](docs/reference/live-link.md), an open protocol for any FM-1
   firmware; the site's Live Link page is its viewer). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,

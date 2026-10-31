@@ -210,6 +210,12 @@ sessions).
 
 ## Later and ideas
 
+- **A second engine on the FM-1's second core:** shape one sound and keep it, using a second SID
+  engine alongside polyphonic synthesis without re-flashing. Users want SID beside polyphonic
+  synthesis. Research after the felucca-bsp move makes the second core's code usable; flash
+  (~25 KB left in the slot) and CPU measured first.
+- **Faster firmware switching from the site (the Library page):** load a different firmware build
+  from the browser without waiting for a flash write. Research item.
 - **BLE MIDI as a user-built variant.** Source only (`SIDOU_WIRELESS=ble`), never published or
   built by CI: M-VAVE's BLE library is closed, and linking it into a distributed image would
   need every copyleft owner in the image to agree; a private build is allowed by the GPL. L.
