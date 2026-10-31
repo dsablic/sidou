@@ -210,12 +210,20 @@ sessions).
 
 ## Later and ideas
 
-- **A second engine on the FM-1's second core:** shape one sound and keep it, using a second SID
-  engine alongside polyphonic synthesis without re-flashing. Users want SID beside polyphonic
-  synthesis. Research after the felucca-bsp move makes the second core's code usable; flash
-  (~25 KB left in the slot) and CPU measured first.
-- **Faster firmware switching from the site (the Library page):** load a different firmware build
-  from the browser without waiting for a flash write. Research item.
+- **SIDOU as a DAW plugin: a SIDOU edition of fm1-emu's FM-1 plugin** (the user, 2026-10-31). fm1-emu
+  ships an FM-1 instrument plugin (AU, VST3, CLAP; MIT; macOS on Apple silicon) that runs any
+  firmware package, SIDOU's included. A SIDOU edition adds what the panel lacks: a large mirror of
+  the screen, real knobs for LAB's pages and LIVE, tracker entry from the computer keyboard, and
+  side panels drawn from the firmware's state (the song's patterns, instrument and table rows,
+  scopes), so songs and sounds are the same on the FM-1 and in the DAW. It runs the real
+  firmware, so nothing is reimplemented. A standalone SID plugin is not the aim: Plogue's
+  chipsynth C64 already is the reference SID instrument. First a spike (build the plugin, run
+  SIDOU in it, measure the CPU, one side panel and LAB's knobs), then a design session. M-L.
+- **A second engine on the FM-1's second core** (research): users want SID beside polyphonic
+  synthesis without re-flashing. After the felucca-bsp move makes the second core's code usable;
+  flash (about 25 KB left in the slot) and CPU measured first.
+- **Faster firmware switching from the site** (research): the Library page installs another
+  firmware package and brings SIDOU back, keeping the songs and sounds on the FM-1.
 - **BLE MIDI as a user-built variant.** Source only (`SIDOU_WIRELESS=ble`), never published or
   built by CI: M-VAVE's BLE library is closed, and linking it into a distributed image would
   need every copyleft owner in the image to agree; a private build is allowed by the GPL. L.
