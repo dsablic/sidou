@@ -1170,3 +1170,317 @@ fn a_turn_after_boot_opens_the_master_popup_mid_travel() {
         );
     }
 }
+
+const ALG: u8 = 1;
+const KNOBS: u8 = 0b11110;
+const PRE: u8 = 0b100000;
+const EVERY: u8 = ALG | KNOBS | PRE;
+const SWEPT: [(&str, u32); 6] = [
+    ("ALGORITHM", PANEL_ENC_ALGORITHM),
+    ("K1", PANEL_ENC_K1),
+    ("K2", K2),
+    ("K3", K3),
+    ("K4", PANEL_ENC_K4),
+    ("PRESETS", PANEL_ENC_PRESETS),
+];
+
+struct NoPopup {
+    state: &'static str,
+    plain: u8,
+    edit: u8,
+    why: &'static str,
+}
+
+const NO_POPUP: &[NoPopup] = &[
+    NoPopup {
+        state: "LIVE",
+        plain: EVERY,
+        edit: ALG | PRE,
+        why: "the knob row's values at 3x, the profile word at 3x, the slot band at 2x, the header names the preset at 2x",
+    },
+    NoPopup {
+        state: "LIVE slot page",
+        plain: EVERY,
+        edit: ALG | PRE,
+        why: "the slot's Amount, A, B, Mix at 3x on the knob row, its algorithm at 2x in the band",
+    },
+    NoPopup {
+        state: "LIVE ARP held",
+        plain: EVERY,
+        edit: EVERY,
+        why: "the arpeggio's rate, order and span at 3x on the knob row, which follows ARP",
+    },
+    NoPopup {
+        state: "CHIP tabs",
+        plain: ALG | KNOBS,
+        edit: ALG,
+        why: "the chip tab at 2x in the header, the four controls at 3x",
+    },
+    NoPopup {
+        state: "CHIP chip",
+        plain: ALG | KNOBS,
+        edit: 0,
+        why: "the profile at 3x, the four controls at 3x",
+    },
+    NoPopup {
+        state: "CHIP slot",
+        plain: ALG | KNOBS,
+        edit: KNOBS,
+        why: "the slot's algorithm at 3x, its four controls at 3x",
+    },
+    NoPopup {
+        state: "CHIP expert",
+        plain: ALG,
+        edit: 0,
+        why: "EXPERT 1/4 at 3x",
+    },
+    NoPopup {
+        state: "LAB",
+        plain: EVERY,
+        edit: EVERY,
+        why: "the four cards at 3x, the choice at 2x, the header names the sound at 2x",
+    },
+    NoPopup {
+        state: "LAB name",
+        plain: EVERY,
+        edit: EVERY,
+        why: "the name at 2x; K2-K4 and PRESETS do nothing there",
+    },
+    NoPopup {
+        state: "SCENE",
+        plain: ALG,
+        edit: ALG,
+        why: "the piece's name in the large toast",
+    },
+    NoPopup {
+        state: "SONG",
+        plain: ALG,
+        edit: ALG,
+        why: "an action: it opens the page under the cursor",
+    },
+    NoPopup {
+        state: "SAVE AS",
+        plain: ALG,
+        edit: ALG,
+        why: "the name at 2x with the cursor under the character",
+    },
+    NoPopup {
+        state: "SIDS",
+        plain: ALG,
+        edit: ALG,
+        why: "an action on the list",
+    },
+    NoPopup {
+        state: "STATUS",
+        plain: ALG,
+        edit: ALG,
+        why: "nothing to change",
+    },
+    NoPopup {
+        state: "ABOUT",
+        plain: ALG,
+        edit: ALG,
+        why: "nothing to change",
+    },
+    NoPopup {
+        state: "TRACKER",
+        plain: ALG,
+        edit: ALG,
+        why: "the voice at 2x in the header",
+    },
+    NoPopup {
+        state: "TRACKER REC",
+        plain: ALG,
+        edit: PRE,
+        why: "the voice at 2x in the header; EDIT + PRESETS inserts or removes a row, which the rows show",
+    },
+    NoPopup {
+        state: "TRACKER EDIT+SCL",
+        plain: ALG,
+        edit: ALG,
+        why: "the voice at 2x in the header",
+    },
+    NoPopup {
+        state: "ORDER subtune",
+        plain: K1BIT | K2BIT,
+        edit: K1BIT | K2BIT,
+        why: "K1 and K2 belong to the entries: nothing to change on the selector",
+    },
+    NoPopup {
+        state: "ORDER entry",
+        plain: K2BIT,
+        edit: K2BIT,
+        why: "the device song refuses a kind change here: the large toast says INVALID EDIT",
+    },
+    NoPopup {
+        state: "ORDER end",
+        plain: K2BIT,
+        edit: K2BIT,
+        why: "the restart marker has only K1's value",
+    },
+    NoPopup {
+        state: "INSTR",
+        plain: ALG,
+        edit: ALG,
+        why: "nothing to change",
+    },
+];
+
+const K1BIT: u8 = 1 << 1;
+const K2BIT: u8 = 1 << 2;
+
+fn menu_item(h: &mut crate::song_view::Song, item: u32) {
+    h.ui.press(PANEL_BTN_HOME);
+    crate::song_view::settle(&mut h.ui);
+    h.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    h.ui.turn(PANEL_ENC_SELECT, item as i32);
+    h.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    crate::song_view::settle(&mut h.ui);
+}
+
+fn song_page(h: &mut crate::song_view::Song, name: &str) {
+    for _ in 0..SONG_VIEW_COUNT + 1 {
+        h.ui.press(PANEL_BTN_SEQ);
+        crate::song_view::settle(&mut h.ui);
+        if h.ui.top() == name {
+            return;
+        }
+    }
+    panic!("SEQ never reached {name}");
+}
+
+fn select(h: &mut crate::song_view::Song, steps: i32) {
+    h.ui.turn(PANEL_ENC_SELECT, steps);
+    crate::song_view::settle(&mut h.ui);
+}
+
+type Opener = fn(&mut crate::song_view::Song);
+
+fn swept_states() -> Vec<(&'static str, Opener)> {
+    vec![
+        ("LIVE", |_| {}),
+        ("LIVE slot page", |h| select(h, 1)),
+        ("LIVE ARP held", |h| h.ui.down(PANEL_BTN_ARP)),
+        ("CHIP tabs", |h| {
+            menu_item(h, VIEWS_MENU_CHIP);
+            select(h, -1);
+        }),
+        ("CHIP chip", |h| menu_item(h, VIEWS_MENU_CHIP)),
+        ("CHIP slot", |h| {
+            menu_item(h, VIEWS_MENU_CHIP);
+            select(h, 1);
+        }),
+        ("CHIP expert", |h| {
+            menu_item(h, VIEWS_MENU_CHIP);
+            select(h, CHIP_VIEW_EXPERT as i32);
+        }),
+        ("LAB", |h| menu_item(h, VIEWS_MENU_LAB)),
+        ("LAB name", |h| {
+            menu_item(h, VIEWS_MENU_LAB);
+            h.ui.down(PANEL_BTN_EDIT);
+            h.ui.press(SAVE_KEY_BUTTON);
+            h.ui.up(PANEL_BTN_EDIT);
+            crate::song_view::settle(&mut h.ui);
+        }),
+        ("SCENE", |h| menu_item(h, VIEWS_MENU_SCENE)),
+        ("SONG", |h| menu_item(h, VIEWS_MENU_SONG)),
+        ("SAVE AS", |h| {
+            menu_item(h, VIEWS_MENU_SONG);
+            h.ui.turn(PANEL_ENC_SELECT, 2);
+            h.ui.turn(PANEL_ENC_ALGORITHM, 1);
+            crate::song_view::settle(&mut h.ui);
+        }),
+        ("SIDS", |h| menu_item(h, VIEWS_MENU_SIDS)),
+        ("STATUS", |h| menu_item(h, VIEWS_MENU_STATUS)),
+        ("MIDI", |h| menu_item(h, VIEWS_MENU_MIDI)),
+        ("SETTINGS", |h| menu_item(h, VIEWS_MENU_SETTINGS)),
+        ("ABOUT", |h| menu_item(h, VIEWS_MENU_ABOUT)),
+        ("MENU", |h| {
+            h.ui.press(PANEL_BTN_HOME);
+            crate::song_view::settle(&mut h.ui);
+            h.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_OCTAVE as i32);
+        }),
+        ("STEP", |h| song_page(h, "STEP")),
+        ("STEP step held", |h| {
+            song_page(h, "STEP");
+            h.ui.note_keys(1, 1);
+        }),
+        ("TRACKER", |h| song_page(h, "TRACKER")),
+        ("TRACKER REC", |h| {
+            song_page(h, "TRACKER");
+            h.ui.press(PANEL_BTN_REC);
+        }),
+        ("TRACKER EDIT+SCL", |h| {
+            song_page(h, "TRACKER");
+            h.ui.down(PANEL_BTN_EDIT);
+            h.ui.down(PANEL_BTN_SCL);
+        }),
+        ("ORDER subtune", |h| {
+            song_page(h, "ORDER");
+            select(h, -1);
+        }),
+        ("ORDER entry", |h| song_page(h, "ORDER")),
+        ("ORDER end", |h| {
+            song_page(h, "ORDER");
+            select(h, 1);
+        }),
+        ("INSTR", |h| song_page(h, "INSTR")),
+        ("TABLE", |h| song_page(h, "TABLE")),
+        ("TABLE ARP helper", |h| {
+            song_page(h, "TABLE");
+            h.ui.press(PANEL_BTN_ARP);
+            crate::song_view::settle(&mut h.ui);
+        }),
+    ]
+}
+
+fn turn_opens_a_popup(open: Opener, enc: u32, edit: bool) -> bool {
+    let mut h = crate::song_view::Song::playing(Some(sidou_tests::song::Song::device()));
+    open(&mut h);
+    h.ui.frame();
+    if edit {
+        h.ui.hold(PANEL_BTN_EDIT, true);
+    }
+    h.ui.turn(enc, 1);
+    (0..4).any(|_| {
+        h.ui.frame();
+        shown(&h.ui)
+    })
+}
+
+#[test]
+fn every_encoder_in_every_view_opens_the_popup_unless_the_view_shows_it_large() {
+    let states = swept_states();
+    for exception in NO_POPUP {
+        assert!(
+            states.iter().any(|(name, _)| *name == exception.state),
+            "{} is not swept",
+            exception.state
+        );
+    }
+    let mut wrong = Vec::new();
+    for (state, open) in states {
+        let off = NO_POPUP.iter().find(|e| e.state == state);
+        for edit in [false, true] {
+            let mask = off.map_or(0, |e| if edit { e.edit } else { e.plain });
+            for (bit, (control, enc)) in SWEPT.into_iter().enumerate() {
+                let expected = mask >> bit & 1 == 0;
+                if turn_opens_a_popup(open, enc, edit) != expected {
+                    wrong.push(format!(
+                        "{state}: {}{control} {}",
+                        if edit { "EDIT + " } else { "" },
+                        if expected {
+                            "opens no popup".to_owned()
+                        } else {
+                            format!(
+                                "opens a popup, though NO_POPUP says {}",
+                                off.map_or("", |e| e.why)
+                            )
+                        }
+                    ));
+                }
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}

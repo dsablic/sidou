@@ -217,8 +217,12 @@ CHIP, its label under the choice) is shown in reverse video, in the knob's own c
 second after its last detent. EDIT held is the exception on LIVE: the effect slot's controls
 are small on the knob row, so EDIT + K1-K4 opens the popup with the effect's name. The profile word and the selected slot's algorithm on LIVE do the
 same when ALGORITHM changes them, and on CHIP the choice at 3x is the display of ALGORITHM. A
-control the slot does not use stays dim. MASTER keeps its popup everywhere. STATUS, the menu and
-SCENE keep every popup.
+control the slot does not use stays dim. With ARP held the knob row is the arpeggio's, EDIT held
+or not, and lights the same way. MASTER keeps its popup everywhere. STATUS, the menu and
+SCENE keep every popup. On ORDER, INSTR and TABLE, K1 and K2 belong to the page: where they
+change nothing (ORDER's subtune selector, K2 on the restart marker) they open no popup either.
+Every turn that opens none is listed, with where the value shows instead, in one table
+(`NO_POPUP`, [design notes](../design-notes.md#ergonomics)).
 
 SELECT never opens it (it moves a cursor or a focus, which the screen shows); the buttons
 (OCT-, OCT+, SCL) say what they changed in a toast, as before, and a control's popup

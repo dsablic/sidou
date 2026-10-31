@@ -2752,11 +2752,15 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         return 1;
     }
     if (song_view_is(shows(v)) && shows(v) != &tracker_view_view &&
-        shows(v) != &step_view_view &&
-        song_pages_popup(&v->pages, shows(v), enc, (ask & ASK_EDIT) != 0u, name, value, fill, max)) {
-        *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 ?
-                                          enc - PANEL_ENC_K1 : 0u];
-        return 1;
+        shows(v) != &step_view_view) {
+        if (song_pages_popup(&v->pages, shows(v), enc, (ask & ASK_EDIT) != 0u, name, value, fill, max)) {
+            *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 ?
+                                              enc - PANEL_ENC_K1 : 0u];
+            return 1;
+        }
+        if (enc == PANEL_ENC_K1 || enc == SONG_PAGES_ENC_K2) {
+            return 0;
+        }
     }
     if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
         *accent = theme_get(l->theme)->knob[enc - PANEL_ENC_K1]; /* the knob's colour, as on the page */
@@ -3291,7 +3295,7 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
             v->live.beat = 0;
             v->live.row_seen = 0xffu; /* the song's first row is a beat */
         }
-        if (control && !(ask & ASK_EDIT)) { /* EDIT held: the slot's control in the popup */
+        if (control && (!(ask & ASK_EDIT) || v->live.arp)) {
             live_view_flash(&v->live, enc - PANEL_ENC_K1 + 1u, now_ms);
             v->s.popup_ask = 0;
         } else if ((ask & (ASK_BASE | ASK_PARAM)) == ASK_BASE) {

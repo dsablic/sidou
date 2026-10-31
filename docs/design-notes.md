@@ -54,3 +54,25 @@ The cleanup before 1.5's release moves the decisions now written as code comment
   LAB's ARP and LFO, STEP's LFO) or held back (`SCREEN_LONE_HELD_BACK`: SCL's next effect slot,
   STEP's ARP gate, TRACKER's key off and rest with REC on) until it is let go or another control
   is used, which does the held-back action first.
+
+## Ergonomics
+
+- The popup rule: an encoder that changes a parameter shown in small print opens the value
+  popup, its name and value large. A view that already shows the turned value large (3x, or 2x
+  where the text is short) lights it in place instead: the popup would cover the very value and
+  meters being tuned. The views that do: LIVE (the knob row's values at 3x, the profile word,
+  the slot band at 2x, the arpeggio's rate, order and span on the knob row while ARP is held),
+  CHIP (its four controls, the profile or the slot's algorithm, EXPERT 1/4, all at 3x), LAB
+  (the cards at 3x, the choice at 2x). EDIT + K1-K4 over LIVE turns the selected slot, whose
+  controls are small on the knob row: that one opens the popup.
+- The other turns that open none: TRACKER's ALGORITHM (the voice at 2x in the header), SCENE's
+  ALGORITHM (the piece's name in the large toast), SAVE AS's ALGORITHM (the name at 2x), the
+  list actions (SONG, SIDS) and the turns that change nothing (STATUS, ABOUT, INSTR's
+  ALGORITHM, K1 and K2 on ORDER's subtune selector, K2 on its restart marker). SELECT never
+  opens it: it moves a cursor or a focus, which the screen shows.
+- One table holds every exception, `NO_POPUP` in sidou-tests' `app/popup.rs`; the sweep beside
+  it turns every encoder, with EDIT and without, in every view and state it lists, and fails on
+  a turn that opens no popup and is not in the table, and on one that opens a popup the table
+  says it does not. It found two popups that named the wrong control: EDIT + K1-K4 with ARP
+  held on LIVE (the arpeggio turns, the popup said the slot's control) and K1 or K2 where
+  ORDER, INSTR or TABLE take the knob for nothing (the popup said LIVE's cutoff or resonance).

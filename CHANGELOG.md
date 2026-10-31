@@ -109,6 +109,11 @@ All notable changes are documented here. The format follows
   `REC SEND`.
 
 ### Fixed
+- **Two value popups named the wrong control**: EDIT + K1-K4 with ARP held on LIVE turns the
+  arpeggio but said the effect slot's control (the knob row lights, as without EDIT), and K1 or
+  K2 on ORDER's subtune selector or K2 on its restart marker, which change nothing there, said
+  LIVE's cutoff or resonance (no popup now). A host test turns every encoder in every view and
+  state and checks each opens the popup or is in one table of views that show the value large.
 - **A DICE setting turned while a roll is still writing its cells** says `WAITING`; it said
   `SONG FULL`, and the song had room.
 
