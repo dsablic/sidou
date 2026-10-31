@@ -12,8 +12,6 @@
 #define TEXT_COL 2u
 #define LOAD_ROW 8u
 #define RUN_ROW 13u
-/* The title card for a logo without a scene: on black, the logo between two ramp lines
- * (app/boot.h). */
 #define TITLE_ATTR GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLACK)
 #define TITLE_NAME_ROW 16u
 #define TITLE_VERSION_ROW 18u
@@ -30,7 +28,6 @@ static const char RUN_CMD[] = "RUN";
 #define LOAD_CHARS (sizeof LOAD_CMD - 1u)
 #define RUN_CHARS (sizeof RUN_CMD - 1u)
 
-/* The loading stripes' colours (the prototype's). */
 static const uint8_t STRIPES[9] = {GRID_LIGHT_BLUE,  GRID_YELLOW, GRID_RED,
                                    GRID_CYAN,        GRID_WHITE,  GRID_PURPLE,
                                    GRID_LIGHT_GREEN, GRID_BLUE,   GRID_ORANGE};
@@ -61,8 +58,6 @@ boot_phase boot_phase_at(const boot* b, uint32_t ms) {
                                   : BOOT_PROMPT;
 }
 
-/* A note held, or one played since the start however short (a gate can open and close
- * between two frames). */
 static int notes_played(const boot* b) {
     const live* l = b->l;
     if (!l) {
@@ -104,14 +99,12 @@ boot_step boot_update(boot* b, uint32_t now_ms) {
 int boot_capture(void* ctx, const screen_event* e) {
     boot* b = ctx;
     if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME && b->home_edge) {
-        b->home_edge = 0; /* the press edge of HOME held at power-on */
+        b->home_edge = 0;
     } else {
         b->skip = 1;
     }
     return 1;
 }
-
-/* ---- the prompt ---- */
 
 static uint32_t length(const char* s) {
     uint32_t n = 0;
@@ -121,21 +114,18 @@ static uint32_t length(const char* s) {
     return n;
 }
 
-/* s centred on row (inside the border), then the column after it. */
 static uint32_t center(grid* g, uint32_t row, const char* s, uint8_t attr) {
     uint32_t n = length(s);
     uint32_t col = n < GRID_COLS ? (GRID_COLS - n) / 2u : 0u;
     return grid_text(g, col, row, s, attr);
 }
 
-/* The first n characters of s at (col, row). */
 static void typed(grid* g, uint32_t row, const char* s, uint32_t n) {
     for (uint32_t i = 0; i < n && s[i]; i++) {
         grid_put(g, TEXT_COL + i, row, (uint8_t)s[i], TEXT);
     }
 }
 
-/* A step of xorshift32: the stripes are the same for the same step. */
 static uint32_t next(uint32_t* x) {
     *x ^= *x << 13;
     *x ^= *x >> 17;
@@ -143,15 +133,13 @@ static uint32_t next(uint32_t* x) {
     return *x;
 }
 
-/* The border in stripes: each cell row of it two colours split at a random height (a lower
- * eighths glyph, FONT_V0..V8: the top in the background colour, the bottom in the glyph's). */
 static void stripes(grid* g, uint32_t step) {
     uint32_t x = step * 7919u + 1u;
     const uint32_t last = GRID_COLS - 1u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         uint8_t top = STRIPES[next(&x) % 9u];
         uint8_t bottom = STRIPES[next(&x) % 9u];
-        uint8_t ch = (uint8_t)(FONT_V0 + 2u + next(&x) % 5u); /* 2..6 rows of the bottom */
+        uint8_t ch = (uint8_t)(FONT_V0 + 2u + next(&x) % 5u);
         uint8_t attr = GRID_ATTR(bottom, top);
         if (r == 0 || r == last) {
             grid_fill(g, 0, r, GRID_COLS, 1, ch, attr);
@@ -166,7 +154,6 @@ static void prompt(boot* b, grid* g, int blink) {
     uint32_t t = b->at;
     char line[32];
     widget_screen(g, FONT_FULL, TEXT);
-    /* "*** SIDOU <version> ***": at most 28 characters, inside the border. */
     static const char HEAD[] = "*** SIDOU ";
     uint32_t n = 0;
     for (const char* s = HEAD; *s;) {
@@ -223,8 +210,6 @@ static void prompt(boot* b, grid* g, int blink) {
     }
 }
 
-/* ---- the title card ---- */
-
 static void ramp_line(grid* g, uint32_t row) {
     for (uint32_t c = 0; c < GRID_COLS; c++) {
         uint8_t fg = screen_ramp[c * SCREEN_RAMP / GRID_COLS];
@@ -237,7 +222,6 @@ static void title(boot* b, grid* g, int blink) {
     uint32_t version_row = BOOT_SCENE_VERSION_ROW;
     uint32_t key_row = BOOT_SCENE_KEY_ROW;
     if (l->scene) {
-        /* The scene has its own tagline ("FORGED IN SILICON FOR THE FM-1"). */
         l->scene(g, b->logo_frame);
     } else {
         grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', TITLE_ATTR);
@@ -263,8 +247,6 @@ static void title(boot* b, grid* g, int blink) {
     }
 }
 
-/* ---- the view ---- */
-
 static void boot_enter(screen* s, void* state) {
     screen_capture(s, boot_capture, state);
 }
@@ -273,8 +255,6 @@ static void boot_compose(screen* s, void* state, grid* g) {
     boot* b = state;
     if (b->title) {
         title(b, g, screen_blink(s));
-        /* The logo holds still while the wipe into the card runs (app/screen.h sizes a wipe
-         * for a view that does not move). */
         if (!screen_animating(s)) {
             b->logo_frame++;
         }
@@ -283,6 +263,4 @@ static void boot_compose(screen* s, void* state, grid* g) {
     }
 }
 
-/* Composed every frame (no changed function): the cursor, the typing, the stripes and the
- * logo move most frames, and it lasts seconds. */
 const view boot_view = {"BOOT", boot_enter, NULL, NULL, boot_compose, NULL};

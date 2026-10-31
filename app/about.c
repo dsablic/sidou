@@ -10,35 +10,26 @@
 
 #define BLACK GRID_ATTR(GRID_WHITE, GRID_BLACK)
 
-/* The stars: pixel rows between the ramp lines. The scroller bobs SCROLL_AMP rows. */
 #define STAR_Y0 ((ABOUT_RAMP_TOP + 1u) * 8u)
 #define STAR_H ((ABOUT_RAMP_BOTTOM - ABOUT_RAMP_TOP - 1u) * 8u)
 #define SCROLL_AMP 2
 
-/* The bars: 5 bands of 4 pixels (half a cell row), their centres between half rows 3 and 15
- * of their band's 18. */
 #define BAR_BANDS 5u
 #define BAR_MID 9
 #define BAR_AMP 6
-/* A turn is 256: 3 a frame is 1.8 rad/s; the second bar runs 98 behind (2.4 rad). */
 #define BAR_SPEED 3u
 #define BAR_OFFSET 98u
-/* Cracktro Chrome's two raster bars, the cold and the warm one, with no white: the
- * scroller's white letters read over every band. */
 static const uint8_t BARS[ABOUT_BARS][BAR_BANDS] = {
     {GRID_BLUE, GRID_LIGHT_BLUE, GRID_CYAN, GRID_LIGHT_BLUE, GRID_BLUE},
     {GRID_BROWN, GRID_ORANGE, GRID_LIGHT_RED, GRID_ORANGE, GRID_BROWN},
 };
 
-/* The credits' fade, dark to full: the heading, a line naming someone, the other lines. */
 static const uint8_t FADE_HEADING[4] = {GRID_BLUE, GRID_PURPLE, GRID_LIGHT_BLUE, GRID_CYAN};
 static const uint8_t FADE_NAME[4] = {GRID_DARK_GREY, GRID_GREY, GRID_LIGHT_GREY, GRID_WHITE};
 static const uint8_t FADE_TEXT[4] = {GRID_DARK_GREY, GRID_DARK_GREY, GRID_GREY, GRID_LIGHT_GREY};
 
-/* The stars' layers, far to near. */
 static const uint8_t STAR_COLOR[3] = {GRID_DARK_GREY, GRID_GREY, GRID_WHITE};
 
-/* The scroller's letters, over the bars. */
 #define SCROLL_COLOR GRID_WHITE
 
 static const char SCROLL[] =
@@ -49,9 +40,6 @@ static const char SCROLL[] =
 static const char SILENT_SCROLL[] = "SAVE YOUR SONG FOR MUSIC ...      ";
 _Static_assert(sizeof SILENT_SCROLL - 1u >= GRID_COLS, "the scroller wraps at most once per row");
 
-/* The page before the credits, under its heading at 2x (SIDOU and the version), which takes two
- * rows: its lines run a step later than a credits page's, so that a frame still changes two
- * rows at most. */
 #define FIRST_COUNT 4u
 static const char* const FIRST_LINES[CREDITS_LINES] = {
     "SID SOUNDS FOR THE FM-1", "", "FREE SOFTWARE", "GPL-3.0-OR-LATER", NULL, NULL, NULL, NULL};
@@ -105,7 +93,6 @@ void about_init(about* a, const char* version) {
     }
 }
 
-/* Bar b moves one band toward its sine on frames 1 + 2b mod 4. */
 static void move_bars(about* a, uint32_t f) {
     for (uint32_t b = 0; b < ABOUT_BARS; b++) {
         if (f % 4u != 1u + 2u * b) {
@@ -120,7 +107,6 @@ static void move_bars(about* a, uint32_t f) {
     }
 }
 
-/* The colour of half row h: the last bar over it wins, black where none is. */
 static uint8_t bar_color(const about* a, uint32_t h) {
     uint8_t c = GRID_BLACK;
     for (uint32_t b = ABOUT_BARS; b-- > 0;) {
@@ -148,10 +134,6 @@ static void ramp_line(grid* g, uint32_t row, int reverse) {
     }
 }
 
-/* Row i of the page (0 the heading, 1.. the lines) at frame k of the page: -1 hidden, else
- * its fade level 0..3. Each row runs ABOUT_ROW_DELAY frames behind the one above it: it
- * appears at level 0, brightens a level every other frame, and fades out the same way, so at
- * most two rows change in a frame, all on even frames. */
 static int32_t level_at(uint32_t i, uint32_t k) {
     int32_t x = (int32_t)k - (int32_t)(i * ABOUT_ROW_DELAY);
     int32_t shown = (int32_t)ABOUT_ROW_FRAMES;
@@ -170,11 +152,9 @@ static void credits(const about* a, grid* g, uint32_t f) {
     const char* heading;
     const char* const* lines;
     uint8_t names;
-    uint32_t skip = 0; /* rows the heading takes past its first */
+    uint32_t skip = 0;
     char first[24] = "SIDOU ";
     if (page == 0) {
-        /* SIDOU and the version while both fit at 2x, else the version alone (the logo says
-         * SIDOU) */
         uint32_t n = length(a->version) + 6u <= GRID_COLS / 2u ? 6u : 0u;
         for (const char* s = a->version; *s && n + 1u < sizeof first;) {
             first[n++] = *s++;
@@ -209,8 +189,6 @@ static void credits(const about* a, grid* g, uint32_t f) {
     }
 }
 
-/* Row r's overlays: a mask and colour a cell, set where the mask has pixels and cleared
- * elsewhere. */
 static void overlays(grid* g, uint32_t r, uint8_t mask[GRID_COLS][8], const uint8_t* color) {
     for (uint32_t c = 0; c < GRID_COLS; c++) {
         uint8_t any = 0;
@@ -232,7 +210,6 @@ static uint32_t next(uint32_t* x) {
     return *x;
 }
 
-/* One-pixel stars (two pixels for the near layer) drifting left, on blank cells only. */
 static void stars(grid* g, uint32_t f) {
     uint16_t sx[ABOUT_STARS];
     uint8_t sy[ABOUT_STARS];
@@ -254,12 +231,12 @@ static void stars(grid* g, uint32_t f) {
             }
             uint32_t c = sx[i] / 8u;
             if (g->ch[r * GRID_COLS + c] != ' ') {
-                continue; /* the credits' text */
+                continue;
             }
             uint32_t layer = i % 3u;
             uint32_t bit = 0x80u >> (sx[i] % 8u);
             if (layer == 2u) {
-                bit |= bit >> 1; /* its second pixel, within the cell */
+                bit |= bit >> 1;
             }
             mask[c][sy[i] % 8u] |= (uint8_t)bit;
             if (layer >= layer_at[c]) {
@@ -271,21 +248,15 @@ static void stars(grid* g, uint32_t f) {
     }
 }
 
-/* The scroller: the text moves left ABOUT_SCROLL_PX pixels a frame; each screen column shows
- * the right part of one letter and the left part of the next, each in the row its letter has
- * on the sine (by its x on the screen, the wave moving as well). The wave is two screens long
- * (a turn every 448 pixels, travelling 4/256 of a turn a frame), so neighbouring letters
- * mostly share a row and words read whole. */
 static void scroller(const about* a, grid* g, uint32_t f) {
     const char* text = a->silent ? SILENT_SCROLL : SCROLL;
     uint32_t chars = a->silent ? sizeof SILENT_SCROLL - 1u : SCROLL_CHARS;
     uint32_t s = f * ABOUT_SCROLL_PX % (chars * 8u);
     uint32_t first = s / 8u;
     uint32_t shift = s % 8u;
-    /* The rows of the 31 letters on the screen. */
     uint8_t row[GRID_COLS + 1u];
     for (uint32_t j = 0; j <= GRID_COLS; j++) {
-        uint32_t x = j * 8u + 8u - shift; /* the letter's screen x, plus 8 */
+        uint32_t x = j * 8u + 8u - shift;
         row[j] = (uint8_t)(ABOUT_SCROLL_ROW + sine_scaled(x * 4u / 7u + f * 4u, SCROLL_AMP));
     }
     for (uint32_t r = ABOUT_SCROLL_ROW - (uint32_t)SCROLL_AMP;
@@ -317,8 +288,6 @@ static void scroller(const about* a, grid* g, uint32_t f) {
 static void about_compose(screen* s, void* state, grid* g) {
     about* a = state;
     uint32_t f = a->frame;
-    /* Still while a wipe or a raster runs: they are sized for a view that does not move
-     * (app/screen.h), and the cracktro's own cells on top would overrun the SPI budget. */
     if (!screen_animating(s)) {
         a->frame++;
         move_bars(a, f);
@@ -343,5 +312,4 @@ static void about_exit(screen* s, void* state) {
     }
 }
 
-/* Composed every frame (no changed function). */
 const view about_view = {"ABOUT", NULL, about_exit, NULL, about_compose, NULL};

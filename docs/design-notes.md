@@ -428,3 +428,122 @@ while one is written is refused (try again).
 The unsaved edit (key 0x109, type 4): [version][preset][edited][name][sound bytes][sound]. The
 preset byte is the settings record's: 0..LIVE_PRESET_SLOTS − 1 a built-in or DICE,
 LIVE_PRESET_SLOTS + n USER n + 1.
+
+## Boot, help, about and the scope
+
+**Scope (LIVE's audio tap).** The ring is a history, not a queue: single producer (audio
+interrupt), single consumer (main loop), one core; the producer never waits or looks at the
+consumer, overwrites the oldest point, and publishes the head once a block (after the points);
+the consumer takes the newest points it wants and drops what it overtook. Drawn phase-folded (an
+equivalent-time display): each waveform point lands by its oscillator's phase, not its time, so
+the trace stays still and shows a waveform whole at any pitch. Points are decimated (every 16
+samples: 2757 points a second, 110 a frame) to keep far fewer than a time-base display would
+need. The ring's size is a power of two for masking. One render a block keeps a render's
+per-call setup out of the tap's cost. The tap runs only while the consumer asks for it (`on`):
+nothing is added to the interrupt while LIVE is not showing. Compiler fences order memory
+accesses (the points before the head, the head before the points, the copy before the head that
+says whether it held); the pi32v2 compiler has no `__atomic_signal_fence`. Peak meter: 6 dB per
+8 steps (8 log₂(amplitude); 64 and below empty, 32768 full).
+
+**Help.** Drawn in units (the title bar, then each line), sized so no frame sends more than 200
+cells (HELP_FRAME_CELLS) whatever it covers. A card takes at most two pages, eight lines each;
+what a line does can be the state's own words (a first byte HELP_TEXT_K1..K4 the name of that
+knob's control of the slot in `arg`, HELP_TEXT_QUANT the quantise in `arg`). Lines fit 14
+characters, the control and what it does.
+
+**About.** Frame-by-frame cost planning: the logo is still (a bitmap sent once, under the
+wipe); the bars are five bands of 4 pixels, one moves a band on each odd frame, so each moves
+at most every 4 frames; the credits fade on even frames, two text rows at most at a time; the
+scroller moves 2 pixels a frame, each letter a white overlay over the bars' cells (no bar has
+white in it), bobbing a whole cell row at a time on a sine; the stars are one-pixel overlays in
+three layers, moving a pixel every 4, 2 or 1 frames. It composes every frame and holds still
+while a wipe or a raster runs (screen_animating): the wipe sends its own rows and nothing else.
+The credits pages cascade: each row appears ABOUT_ROW_DELAY frames (4) after the one above and
+is shown ABOUT_ROW_FRAMES frames (86), fading through 4 levels a level every other frame (so at
+most two rows change in a frame, all on even frames). The bars' budget: moving them recolours
+the border's 116 cells, about 10 ms of SPI, so they change every other frame at most
+(BOOT_STRIPE_MS = 80 ms). Silent mode (unsaved changes) selects different scroller text.
+Credits are generated from CREDITS.md by a host test (with SIDOU_CREDITS_UPDATE=1): a page per
+section, each line wrapped to CREDITS_COLS characters (26, inside the frame and its margin) in
+upper case and the screen font's ASCII (accented letters lose their accents); a credit longer
+than a page starts one and goes on under "<SECTION> (CONT.)", and nothing shares a page with its
+tail.
+
+**Logo (pluggable asset).** A logo is a table in flash: its footprint, cost, a draw function
+for one frame of its animation into the footprint, and optionally a full-screen scene. Draw
+sets every cell of the footprint (glyph, colours, overlay, pixel region), so the caller
+composes it like any other part, every frame or once. Its animation runs on the caller's frame
+count (25 fps); frame 0 is the still. Its background is its own: no transparent one. The grid
+has one pixel region and it is the logo's: a screen shows one bitmap logo at a time, and a view
+switch clears it. Pulse Train is drawn in code with font glyphs and overlays; it changes only
+on odd frames (the stripes on frames 2, 6, 10, ..., the pulse on 4, 8, ...). The chrome logos
+(Metal Chrome and Cracktro Chrome) are bitmaps (generated from assets/logo/*.png): their draw
+hands the footprint to the renderer's pixel region, which shows the bitmap's cells pixel for
+pixel; the cells are blank (white on the background, no overlay) so the bitmap shows alone, and
+what the caller writes in them afterwards draws over it. Still: no overlays, and no cell
+changes after the first frame.
+
+**Title card.** Sequence: the glow fades in through ordered-dither levels (a purple and red
+glow drawn a cell at a time with the font's dither glyphs in two neighbouring stops of black,
+blue, purple and red), each level holding TITLE_CARD_LEVEL_HOLD frames (2, the page's preview)
+once all its cells are out; the title wipes in from the left, TITLE_CARD_WIPE_COLS columns (3)
+a frame, the bitmap growing over the same bitmap cells, so each frame sends the cells it adds
+and no others; it holds TITLE_CARD_HOLD_FRAMES frames (25, 1 s); it ends. Budget: every frame
+sends at most TITLE_CARD_FRAME_CELLS cells (200, about 17.5 ms of SPI, inside the 20 ms
+budget). A step that changes more goes out in bands, top first, from where the last frame
+stopped, until every cell of it is out. Ends on: a button or an encoder (swallows the event
+and does nothing else), or a note from the keys or MIDI (which also plays).
+
+**Boot.** Two sequences: the full one (after an install, or HOME held at power-on) is the
+banner and READY., LOAD"SIDOU",8,1 typed, SEARCHING FOR SIDOU, LOADING with raster stripes in
+the border, READY. and RUN, then the title card (the logo's scene or a slot with ramp lines);
+the short one (the default) is the title card alone. HOME held at power-on: the first HOME
+press edge reported by the key scan (after the debounce, about 3 ms) is part of the hold, not
+a skip. The boot never holds the instrument up: audio, the tick, MIDI and the interrupts start
+before the screen's first frame, and the main loop plays the keys and MIDI while it runs.
+Anything ends it: a button or encoder (swallows the event), and a note from the keys or MIDI
+(which also plays). The loading stripes: xorshift32 for repeatability (the same step gives the
+same stripes), each cell row of the border two colours split at a random height (a lower
+eighths glyph); 116 border cells, about 10 ms of SPI, change every other frame at most
+(BOOT_STRIPE_MS = 80 ms). The logo holds still while the wipe into the card runs (the wipe is
+sized for a view that does not move).
+
+**Boot guard.** Firmware that crashes or hangs early in every boot ends in UBOOT after
+BOOTGUARD_FAILED_MAX failed boots (2), which still accepts updates. The state lives in .noinit
+RAM: a reset keeps it, power-on fills it with noise. A magic word and a check word (magic ^
+pending ^ failed ^ BOOTGUARD_CHECK) seal the guard: a guard whose check does not match is taken
+for power-on noise or another firmware's, so only counts SIDOU wrote send a boot to UBOOT. Each
+boot that finds the previous one still pending counts it as failed (a crash, a watchdog reset
+or a power cut before it was stable); a boot is stable once the main loop has run
+BOOTGUARD_STABLE_MS (10 s), and the count is cleared. An intentional reset (an update's commit)
+is not a failure (bootguard_leave clears `pending`).
+
+**UI sounds (chip B's spare voice).** Each sound is data in GoatTracker's sound-effect format
+(readme section 6.3): attack/decay, sustain/release, a pulse byte, then the frames: $01-$81 a
+waveform kept until the next, $82-$DF a note (D-0 to B-7, which every frame has), $00 the end.
+Stepped at 50 Hz (every other live_tick). A sound never steals: it plays on a voice of chip B
+that is free. The keys play chip A: chip B is all free (voice 3, chip B's volume up, no
+filter). The keys play chip B (a song on chip A): a free voice is one whose gate is off and
+whose release has run out (live's voice state and the release time), the newest of them (so not
+the one live's allocator takes next); none under mono sync (voices 1 and 3). While a sound
+holds the voice, live's allocator skips it (`live.ui_voice`, the voice number plus one) and its
+writes to the voice (and its $D417 filter bit) are held back by a filter on live's sink; a note
+that finds the other two voices busy takes the voice back at once, and the sound stops. When
+the sound and its release are done, the voice gets live's registers back (live_rewrite_voice).
+A sound stops, writing nothing more, if the keys move between chips while it plays.
+
+**SAVE gesture.** SAVE pressed and released with no knob turned and no other button pressed
+while it was down is a save (save_key_buttons returns SAVE_KEY_SAVE at the release); a knob
+turned or another button pressed while SAVE is down spoils that save (save_key_spoil), and the
+release saves nothing. SAVE's press never reaches the views or the panel (the views read
+save_key's held bit directly for cycle savings while routing).
+
+**Sine (screen animations).** Integer only, from a quarter-wave table in flash (65 entries,
+sin(2π i / 256) × 127 for i = 0..64); symmetry gives the full turn.
+
+**Bitmap codec.** Run dictionary and checkpointed row packets (documented in
+docs/art/bitmap-codec.md). Nibble cursors for decoding. Raw vs coded modes (bit 128 of byte
+15): raw mode uses byte runs and cumulative row offsets; coded mode uses a dictionary and delta
+offsets. The logos' scenes and the title cards are coded bitmaps: Metal Chrome 9730 bytes (vs
+28800 unpacked), Cracktro Chrome 3971 bytes, title cards 19754 bytes (17729 coded data, 1440
+row offsets, 360 cell bits, 225 glow levels). Generated by host tests from assets/logo/*.png.
