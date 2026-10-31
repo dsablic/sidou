@@ -263,6 +263,7 @@ name = "emu-gate"
 version = "0.0.0"
 dependencies = [
  "fm1-core",
+ "fm1-live-link",
  "fm1-soc",
  "gt2-ref",
  "object",
@@ -330,6 +331,10 @@ dependencies = [
 name = "fm1-isa"
 version = "0.3.0"
 source = "git+https://github.com/joakimeriksson/fm1-emu?rev=93cb7ee3f7008b27959ba73073b864e37efd7289#93cb7ee3f7008b27959ba73073b864e37efd7289"
+
+[[package]]
+name = "fm1-live-link"
+version = "0.0.0"
 
 [[package]]
 name = "fm1-soc"
@@ -745,6 +750,7 @@ dependencies = [
 name = "sidou-tests"
 version = "0.0.0"
 dependencies = [
+ "fm1-live-link",
  "fm1-soc",
  "gt2-ref",
  "png",

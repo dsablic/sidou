@@ -26,6 +26,7 @@ lists the prerequisites.
 | The starter pack (M3 Task 13, `assets/starter`: the signed-off eleven tunes and nothing else; each with its `.md`, a licence on the allowlist and the file's SHA-256; each parses, is not RSID and the device accepts it; every song of every tune 10 s in the host render on its chip with no overrun, no late write, no clipping; the files in step with their `.sng` sources; `sidou-sysex sid --pack` on the pack equal to the tunes' uploads end to end; in fm1-emu the pack's one `.syx` over TRS a second a message into the store, byte for byte, with its bytes and keys printed, and the first and eighth tune of the browser playing) | `SIDOU_STARTER_UPDATE=1 cargo test --release -p sidou-tests --test starter` writes the files; `cargo test --release -p sidou-tests --test starter`; `cargo test --release -p sidou-sysex`; `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test psid_store starter -- --nocapture` (about a minute) | `crates/sidou-tests/tests/starter.rs`, `src/starter.rs` (the list and the generator), `crates/sidou-sysex/tests/sid.rs`, `crates/emu-gate/tests/psid_store.rs`, [LICENSING.md](LICENSING.md#the-starter-pack) |
 | SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks; on fm1-emu: Dormann, the cost per cycle: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget -- --nocapture`) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
+| FM-1 Live Link (docs/reference/live-link.md: the frames and the spec's test vectors, the reference decoder; the device's side against it: the session, the dirty bitmap, the rate cap, the give-way rules, the auto-stop, the host's buttons let go, a mirror equal to the panel pixel for pixel; on fm1-emu with its USB host: the mirror against the LCD over LIVE, TRACKER, the menu and SCENE, the costs, clock out and MIDI out under a session, remote control: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate -E 'binary(link)'`) | `cargo test --release -p fm1-live-link`; `cargo test --release -p sidou-tests --test app link::` | `crates/live-link/`, `crates/sidou-tests/tests/app/link.rs`, `crates/emu-gate/tests/link.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -41,6 +42,8 @@ lists the prerequisites.
 | Ergonomics harness (readability, knob feel, effort per task, feedback speed, consistency, journeys; a report for review, not a gate) | `cargo run --release -p ergo -- --out ../build/ergo` (needs the fm1 build); its unit tests run with the workspace | `crates/ergo/`, [the section below](#the-ergonomics-harness-ergo) |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 | Songs page's SysEx code, in Node (no browser, no MIDI) | `node web/sysex.test.mjs` (`tools/web-demo --check` runs it first) | `web/sysex.test.mjs`, `web/sysex.js`, `web/sysex-vectors.txt` |
+| Library page's store work and backups, in Node (a simulated FM-1, no MIDI) | `node web/library.test.mjs` (`tools/web-demo --check` runs it first) | `web/library.test.mjs`, `web/store.js`, `web/zip.js`, `web/fake-fm1.mjs` |
+| The site's wasm core against the host build (every song in `assets/songs` and GoatTracker's examples, cut files, an ambiguous mono/stereo file: the read, the `.sng` with and without the trailer, the plain file's check and GoatTracker 2.77 loading it unchanged, every GTI5, two seconds of the player and an instrument at a note, byte for byte) | `tools/wasm-core && node web/core.test.mjs`; the fixtures: `cargo test --release -p sidou-tests --test web_core` (`SIDOU_WEB_CORE_FIXTURE_UPDATE=1` rewrites `web/core-fixtures.json`) | `web/core.test.mjs`, `web/core.js`, `platform/web/core_api.c`, `crates/sidou-tests/tests/web_core.rs` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -1836,7 +1839,18 @@ the other port, does not ask for SysEx, does not find the device (INQ and DIR), 
 one replace question (the simulated store has a different IRON RITE), or the PUTs it sent do not
 carry the four `.sng` files byte for byte (CRC included).
 
-Before the browser, `web/check.sh` runs `node web/sysex.test.mjs`, which needs no browser: the
+The same run covers the Library page (`web/library.html`) with the same fake MIDI: a song picked
+from a file opens through the wasm core with no MIDI used, and its exports are the FM-1's save
+byte for byte, a plain GoatTracker file and a GTI5; then, connected, the listing, a delete, a
+rename (GET, PUT, DEL), a backup `.zip` with its manifest and an Open of a stored song. It fails
+on any of those, on a frame to the other port, or on a sideways scroll at phone width.
+
+Before the browser, `web/check.sh` runs `node web/library.test.mjs` (the Library's store work,
+`web/store.js`, and its `.zip`, against `web/fake-fm1.mjs`: list, download, send with the
+overwrite check, delete, rename, backup and restore round trips, the refusals; the `.zip` opened by
+`unzip` and a deflated one read) and `node web/core.test.mjs` (the built `sidou-core.wasm` against
+`web/core-fixtures.json`, which the host build writes: `sidou-tests`' `web_core` test fails when
+the committed file is not what the host build makes). It also runs `node web/sysex.test.mjs`, which needs no browser: the
 page's SysEx encoder and decoder (`web/sysex.js`) against `web/sysex-vectors.txt` (the frames
 Rust's `sidou-sysex` also encodes and decodes: its test `web_vectors_match_the_canonical_encoder_and_decoder`
 fails when the file and the crate disagree), the packing at every payload length, a PUT's three

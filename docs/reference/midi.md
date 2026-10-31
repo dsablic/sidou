@@ -345,7 +345,9 @@ FOLLOW, OFF; AUTO at power-on) and CLOCK OUT (OFF at power-on) set it
 
 [SysEx protocol, version 1](sysex.md) specifies framing, packing, payload fields,
 CRC-32, refusals and transfer pacing. SIDOU frames begin `F0 7D 53 44` (`SD`);
-they are separate from the firmware updater. Universal device inquiry to id 0
+they are separate from the firmware updater. FM-1 Live Link's frames (the screen mirror and
+remote control, `F0 7D 46 4D 31 4C`) are in [live-link.md](live-link.md): on USB only, each
+whole, after MIDI out's and clock out's room in the ring. Universal device inquiry to id 0
 or broadcast `7F` has an identity reply on USB only.
 
 | Byte | Command | Function |

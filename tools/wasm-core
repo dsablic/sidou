@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The site's wasm core: SIDOU's song reader and writer, GTI5 export and song player
+# (core/song, core/player, core/sid) with platform/web/core_api.c, as one WebAssembly module
+# with no imports. web/core.js is its JavaScript side.
+#   tools/wasm-core [OUT.wasm]     (default build/wasm-core/sidou-core.wasm)
+# The toolchain is what the build image already has: clang (its wasm32 target) compiles, and
+# the Rust toolchain's rust-lld (-flavor wasm) links; a wasm-ld on PATH is used if there is one
+# (SIDOU_WASM_LD names another; SIDOU_WASM_RUST_LLD=1 insists on rust-lld). No libc: platform/fm1/libc_min.c, as on the device.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+out="${1:-$root/build/wasm-core/sidou-core.wasm}"
+obj="$root/build/wasm-core/obj"
+mkdir -p "$obj" "$(dirname "$out")"
+
+cc="${SIDOU_WASM_CC:-clang}"
+ld="${SIDOU_WASM_LD:-}"
+if [ -z "$ld" ]; then
+    if [ -z "${SIDOU_WASM_RUST_LLD:-}" ] && command -v wasm-ld >/dev/null; then
+        ld=wasm-ld
+    else
+        sysroot=$(rustc --print sysroot)
+        host=$(rustc -vV | sed -n 's/^host: //p')
+        # (its libLLVM is in the sysroot's lib, where rustc points it when rustc runs it)
+        export LD_LIBRARY_PATH="$sysroot/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export DYLD_LIBRARY_PATH="$sysroot/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+        ld="$sysroot/lib/rustlib/$host/bin/rust-lld -flavor wasm"
+    fi
+fi
+
+sources=(
+    platform/web/core_api.c
+    platform/fm1/libc_min.c platform/web/libm_min.c
+    core/song/gt2_song.c core/song/gt2_sng.c core/song/gt2_stream.c core/song/gt2_ins.c
+    core/song/song_ext.c
+    core/player/gt2_play.c core/player/gt2_shape.c core/player/song_ctl.c
+    core/sid/sid.c core/sid/sid_shadow.c core/sid/sid_character.c core/sid/sid_dac.c
+    core/sid/sid_filter.c
+)
+flags=(--target=wasm32-unknown-unknown -std=c11 -Os -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory
+       -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Wno-unused-parameter
+       -isystem "$root/platform/web/include" -I"$root/core")
+objs=()
+for s in "${sources[@]}"; do
+    o="$obj/$(echo "$s" | tr / _).o"
+    "$cc" "${flags[@]}" -c "$root/$s" -o "$o"
+    objs+=("$o")
+done
+# A 64 KiB stack; memory grows as needed (the song region, the buffers and the player are
+# static data, about 0.5 MiB).
+$ld --no-entry --gc-sections --strip-all -z stack-size=65536 --initial-memory=1048576 \
+    "${objs[@]}" -o "$out"
+echo "wasm-core: $out ($(wc -c <"$out" | tr -d ' ') bytes)"

@@ -2612,7 +2612,83 @@ JCH or DMC tune with pulse sweeps, one with a filtered bass), and a song of your
   `sidou-tests/tests/app/sid_view.rs::rec_on_now_playing_lifts_the_soloed_voice`.
   *Device-only:* whether a real digi tune trips it (eight writes a call to one register).
 
-## 28. Chords and time-shared drums from DICE (1.5)
+## 28. FM-1 Live Link (1.5)
+
+What it decides: whether a computer can mirror the screen and press the buttons over the USB
+cable on a real FM-1 (docs/reference/live-link.md). Needs section 8.1 (USB-MIDI out) passed. The
+viewer page comes later on the site; until then any Web MIDI page or tool that sends the frames
+of live-link.md's test vectors will do (Chrome or Edge, the FM-1's MIDI port). Never send
+anything else to the FM-1 while you test.
+
+- [ ] **A session starts only from the host and shows LINK:** START, then the font and the palette
+  requested; the FM-1 shows `LINK` in the bottom-left corner, and nothing on it changes otherwise.
+  *Emulator:* `emu-gate/tests/link.rs::the_mirror_follows_live_tracker_the_menu_and_scene` (HELLO,
+  the font, the stamp), `sidou-tests/tests/app/link.rs::hello_says_what_the_device_offers`.
+  *Device-only:* that the host's MIDI driver passes the frames both ways (HELLO comes back), and
+  `LINK` readable at arm's length.
+- [ ] **The mirror keeps up:** LIVE with a chord's scopes, TRACKER playing (PLAY), the menu, SCENE.
+  The mirror shows each view; the moving ones at a lower frame rate than the LCD, never behind by
+  more than a moment; at rest exactly the LCD.
+  *Emulator:* the same test (pixel for pixel at rest, within 2 s while moving, the rates in
+  `link_mirror.json`).
+  *Device-only:* the rates a real host's USB reads give (the emulator's host takes one IN packet a
+  millisecond); no click, gap or drift in the sound while it streams (listen to a held chord and
+  a playing song with and without a session).
+- [ ] **MIDI out and clock out are unchanged:** with CLOCK OUT on and a DAW following, PLAY, stop,
+  EDIT + PLAY, while the mirror streams; K1 swept on LIVE with the DAW recording CCs.
+  *Emulator:* `emu-gate/tests/link.rs::clock_outs_song_position_goes_as_without_a_session`,
+  `emu-gate/tests/link.rs::midi_outs_ccs_go_as_without_a_session`.
+  *Device-only:* the DAW follows as without a session, records every CC, and its MIDI monitor shows
+  no broken SysEx.
+- [ ] **Remote control:** the host holds EDIT and turns K1 (a PANEL frame every 200 ms), taps HOME,
+  turns PRESETS; then stops sending with EDIT held.
+  *Emulator:* `emu-gate/tests/link.rs::a_hosts_panel_frame_presses_turns_and_is_let_go`,
+  `sidou-tests/tests/app/link.rs::the_hosts_buttons_are_let_go_half_a_second_after_its_last_panel_frame`.
+  *Device-only:* the FM-1 answers as to its own buttons, and EDIT lets go half a second after the
+  host stops (the slot's popup closes, K1 turns the cutoff again).
+- [ ] **The end:** close the page (no STOP sent): `LINK` goes about 3 s later. Start again, then
+  unplug the cable: `LINK` goes at once. A file transfer over SysEx (the Songs page) during a
+  session finishes as without one.
+  *Emulator:* `emu-gate/tests/link.rs::a_session_ends_three_seconds_after_the_last_heartbeat`,
+  `sidou-tests/tests/app/link.rs::a_session_ends_three_seconds_after_the_last_heartbeat`.
+  *Device-only:* all of it on the device (unplugging and a real transfer are not in the
+  emulator's link test).
+
+Notes:
+
+## 29. The site's Library page (1.5)
+
+What it decides: whether the Library page (docs/manual/library.md) works with a real FM-1 over a
+real USB-MIDI link in Chrome: the protocol, the store and the wasm core are tested against a
+simulated FM-1 and the host build, never against the device. Set up: SIDOU on the FM-1 with a few
+songs, a `.sid` tune and a lifted sound on the store; Chrome on a computer with the site (or
+`tools/web-demo`) at `library.html`.
+
+- [ ] **List:** Connect: the line names the firmware, the file count and the free space; every
+  file of the FM-1's SONG and SIDS menus is listed (no `MIDI SONG`, `MIDI INSTRUMENT` or staging
+  file), with sizes that match the menus.
+  *Emulator:* `web/library.test.mjs` and `web/check.mjs` (the fake Web MIDI).
+  *Device-only:* the real port pair found by name; DIR over the real link.
+- [ ] **Send, download, rename, delete:** send a `.sng` and a `.sid` (Send files…), download them
+  back and compare (`cmp`); send the same song again (left alone) and a different one under its
+  name (asked first); rename a song (it loads under the new name, the old one is gone); delete one
+  (gone from SONG, LOAD).
+  *Emulator:* as above; `emu-gate`'s SysEx tests for PUT, GET and DEL on the firmware.
+  *Device-only:* DEL and the PUTs on the real flash, while a song plays (the page says it waits
+  for quiet; the music never dips) and while silent.
+- [ ] **Back up and restore:** Back up all; delete two files; Restore the `.zip`: the two come
+  back, the rest are left alone; the restored song loads and plays.
+  *Emulator:* `web/library.test.mjs` (the round trip).
+  *Device-only:* a full store's backup (every file, the largest one too) and its restore.
+- [ ] **Export:** Open the current song; Download .sng loads in GoatTracker 2.77 and back on the
+  FM-1 the same; the plain GoatTracker file loads in GoatTracker; an instrument's `.ins` loads in
+  GoatTracker's instrument load.
+  *Emulator:* `web/core.test.mjs` (the bytes against the host build, the plain file loaded and
+  saved unchanged by GoatTracker's own code); `web/check.mjs`.
+  *Device-only:* GoatTracker 2 itself on a computer for the `.ins` (no test loads a GTI5 in
+  GoatTracker's code).
+
+## 30. Chords and time-shared drums from DICE (1.5)
 
 What it decides: whether DICE's chords and its time-shared drums and bass sound like C64 music
 on the chip, and whether setting a lane's role reads and feels right (docs/reference/controls.md
@@ -2677,4 +2753,6 @@ Notes:
 | 25 Knob curves | | |
 | 26 LAB's song bridge | | |
 | 27 Lift a sound from a .sid | | |
-| 28 Chords and time-shared drums from DICE | | |
+| 28 FM-1 Live Link | | |
+| 29 The site's Library page | | |
+| 30 Chords and time-shared drums from DICE | | |

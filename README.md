@@ -65,6 +65,14 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). Solo a voice and press REC
   to lift its next note as a GoatTracker instrument for your own song
   ([lift a sound](docs/manual/sid-tunes.md#5-lift-a-sound)).
+- **Keep the FM-1's store from a browser.** The site's [Library](https://dsablic.github.io/sidou/library.html)
+  page lists everything on a connected FM-1 (songs, `.sid` tunes, instruments) with its size and
+  CRC and the free space, downloads, sends (an identical file is left alone, a different one
+  replaced only after you confirm), renames and deletes files, and backs the whole store up to one
+  `.zip` and restores it. It exports any song, from the FM-1 or a file, as a `.sng` with SIDOU's
+  settings or as a plain GoatTracker file, and each instrument as a GoatTracker `.ins`, with SIDOU's
+  own song code compiled to WebAssembly, so it accepts and refuses what the FM-1 does
+  ([the manual](docs/manual/library.md)).
 - **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
   page turns any GoatTracker 2 `.sng`, from a file or read straight from the connected FM-1 (the
   current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where
@@ -148,11 +156,17 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
 - **Over USB:** SysEx GET reads a song from the device and PUT writes one to it
   ([protocol](docs/reference/sysex.md)); while a song plays, an upload waits for quiet so the
   music never dips.
+- **Screen mirror (FM-1 Live Link):** a computer can show the FM-1's screen and press its
+  buttons over the same USB-MIDI port ([protocol](docs/reference/live-link.md), open to the other
+  FM-1 firmwares); the browser viewer comes later.
 - **The showcase songs:** a fresh install lists only the built-in SIDOU LOOP. The
   [Songs page](https://dsablic.github.io/sidou/songs.html) of the browser demo sends
   CHROME COMET, IRON RITE, NEON HIGHWAY and PAPER LANTERNS ([`assets/songs`](assets/songs/)) to a
   connected FM-1 in one click (Chrome or Edge: Web MIDI with SysEx; Safari has none). Run locally,
   `tools/web-demo` serves it at `http://localhost:8642/songs.html`.
+- **Your own files:** the [Library](https://dsablic.github.io/sidou/library.html) page lists,
+  downloads, sends, renames, deletes, backs up and restores the FM-1's files, and exports a song
+  for GoatTracker 2 with its instruments ([docs/manual/library.md](docs/manual/library.md)).
 - **On your computer:** the `.sng` opens in GoatTracker 2, and a GoatTracker 2 song put on the
   device plays there if it fits the device's limits. The device refuses one it cannot play, with
   a message.

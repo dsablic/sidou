@@ -15,6 +15,10 @@ dir="$root/build/web-check"
 node "$root/web/sysex.test.mjs"
 # the Songs -> MIDI code against GoatTracker's own player (fixtures from gt2-ref), also in plain Node
 node "$root/web/songmidi.test.mjs"
+# the Library page's store work and backups against a simulated FM-1, and the site's wasm core
+# against the host build of the same C (fixtures from sidou-tests' web_core test)
+node "$root/web/library.test.mjs"
+node "$root/web/core.test.mjs" "$site/sidou-core.wasm"
 mkdir -p "$dir"
 if [ "$(node -p 'require(process.argv[1]).version' "$dir/node_modules/playwright/package.json" 2>/dev/null)" != "$playwright" ]; then
     (cd "$dir" && npm install --no-audit --no-fund --silent "playwright@$playwright")

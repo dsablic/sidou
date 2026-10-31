@@ -249,8 +249,9 @@ and git. `--check` also needs Node.js 20 or later. The wasm needs Rust's
 3. puts SIDOU's layer from `web/` on top: `index.html` (the SIDOU page, in
    place of upstream's), `sidou.js`, `firmwares.json` (a catalog of SIDOU
    alone, the package served next to the page), the logo, the licence
-   texts the package and the emulator need, and `version.json` (the commit,
-   its date, whether the tree had local changes);
+   texts the package and the emulator need, `version.json` (the commit,
+   its date, whether the tree had local changes), the other pages, and
+   `sidou-core.wasm` for the Library page (`tools/wasm-core`, below);
 4. patches upstream's `main.js` with `web/patch-main.sh` (two lines: a
    default clock of 240 MHz, and Start enabled once its handler is attached;
    each edit must apply exactly once, so a new upstream revision that moves
@@ -260,9 +261,33 @@ and git. `--check` also needs Node.js 20 or later. The wasm needs Rust's
 
 Upstream's files are copied at build time, never committed: they stay at
 the pinned revision and under fm1-emu's MIT licence. SIDOU's own files for
-the page live in `web/` (`platform/web` in the design document is kept for
-a future native wasm build of the core). `.github/workflows/pages.yml`
+the page live in `web/`. `.github/workflows/pages.yml`
 runs `tools/web-demo --check` and deploys `build/web/` to GitHub Pages.
+
+### The site's wasm core (`tools/wasm-core`)
+
+The Library page reads, writes and plays songs with SIDOU's own C: `core/song`,
+`core/player` and `core/sid` with `platform/web/core_api.c` (the calls the page
+makes) as one WebAssembly module with no imports, `sidou-core.wasm`, and
+`web/core.js` as its JavaScript side.
+
+```sh
+tools/wasm-core                 # build/wasm-core/sidou-core.wasm
+tools/wasm-core OUT.wasm        # elsewhere (tools/web-demo builds it into build/web)
+```
+
+No new toolchain: clang compiles for `wasm32` (the build image's Ubuntu clang
+and Apple's clang both have the target) and the Rust toolchain's own
+`rust-lld` links (a `wasm-ld` on `PATH` is used if there is one;
+`SIDOU_WASM_LD` names another). There is no libc: the device's
+`platform/fm1/libc_min.c` and `platform/web/libm_min.c` (`fminf`, `fmaxf`).
+Flags as the host build's where results matter (`-ffp-contract=off`), the
+firmware's combined-waveform profiles, `-Os`. The module is about 130 KB
+(57 KB gzipped); its budget is 160 KiB, which `web/core.test.mjs` checks. The
+song region is the device's (64 KiB) and the reader has the device's
+multispeed cap, so the page refuses what the FM-1 refuses, with its messages;
+`web/core.test.mjs` checks every output against the host build
+(`web/core-fixtures.json`, TESTING.md).
 
 ## The pinned toolchain
 

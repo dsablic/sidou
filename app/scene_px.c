@@ -113,6 +113,11 @@ static void paint(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
     sp->painted++;
 }
 
+/* The same pixels for another reader (the Live Link mirror, grid.h region_peek): no hash. */
+static void peek(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
+    scene_px_tile(ctx, col, row, px);
+}
+
 void scene_px_init(scene_px* sp, grid* g) {
     for (uint32_t i = 0; i < SCENE_PX_LAYERS; i++) {
         sp->layer[i] = NONE;
@@ -136,6 +141,7 @@ void scene_px_init(scene_px* sp, grid* g) {
     sp->fresh = 0;
     /* Every cell goes out with the region; each takes its hash as it is sent. */
     grid_region_painter(g, 0, 0, GRID_COLS, GRID_ROWS, paint, sp, SCENE_PX_RUN_CELLS);
+    g->region_peek = peek;
     grid_invalidate(g); /* the region is the whole screen: every cell marked */
 }
 

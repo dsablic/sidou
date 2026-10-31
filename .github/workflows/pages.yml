@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 # The browser demo on GitHub Pages: tools/web-demo builds the site (the firmware, its package,
-# fm1-emu's web frontend at the pinned revision) and smoke-tests it in headless Chromium;
+# fm1-emu's web frontend at the pinned revision, the Library page's wasm core with tools/wasm-core:
+# the image's clang and Rust's rust-lld) and smoke-tests it in headless Chromium;
 # only a build that passes is deployed. Pages must be enabled with "GitHub Actions" as its
 # source.
 name: pages
@@ -13,7 +14,7 @@ on:
     branches: [main]
     tags: ['v*']
     paths: ['app/**', 'core/**', 'platform/**', 'assets/**', 'web/**', 'README.md', 'CMakeLists.txt',
-            'tools/web-demo', 'docs/media/videos/**', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
+            'tools/web-demo', 'tools/wasm-core', 'docs/media/videos/**', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read

@@ -39,6 +39,13 @@ path = ["web/songmidi-fixtures/*.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# What the host build of SIDOU's song code makes of SIDOU's songs and GoatTracker's examples (and a
+# few files embedded as hex), made by host/crates/sidou-tests/tests/web_core.rs for web/core.test.mjs.
+[[annotations]]
+path = ["web/core-fixtures.json"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # The starter pack (assets/starter, LICENSING.md "The starter pack"): the .sid tunes, written by
 # host/crates/sidou-tests/tests/starter.rs from the .sng in assets/songs (SIDOU's, GPL-3.0-or-later)
 # and in third_party/goattracker2/examples (Cadaver's, GPL-2.0-or-later), each with

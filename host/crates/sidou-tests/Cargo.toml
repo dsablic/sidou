@@ -21,6 +21,7 @@ sidou-sys = { path = "../sidou-sys" }
 sidou-tablegen = { path = "../sidou-tablegen" }
 
 [dev-dependencies]
+fm1-live-link = { path = "../live-link" }
 sidou-sysex = { path = "../sidou-sysex" }
 # The store's layout against the package's region descriptors (tests/app/store_layout.rs).
 fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "93cb7ee3f7008b27959ba73073b864e37efd7289" }

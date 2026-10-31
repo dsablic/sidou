@@ -9,6 +9,31 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **FM-1 Live Link, the device's side: a computer mirrors the screen and presses the buttons over
+  the USB cable** ([live-link.md](docs/reference/live-link.md), an open protocol for any FM-1
+  firmware; the browser viewer comes later). SysEx on the USB-MIDI port (`F0 7D 46 4D 31 4C`,
+  "FM1L"), started only by the host: START (the FM-1 answers its capabilities: the grid, the
+  palette, the font's CRC), a heartbeat every 2 s, STOP, and an end by itself 3 s after the last
+  heartbeat. While a session runs the FM-1 shows `LINK` in the bottom-left corner. The mirror
+  sends the cells the LCD was sent (code, colour, large text's pieces, the scopes' overlays;
+  SCENE's pixel art as 4-bit pixels), the newest state of each, in frames of at most 48 bytes that
+  give way to SysEx transfers, MIDI out and clock out and stay within 22 KB/s; the font and
+  palette on request. A PANEL frame holds and presses buttons and turns encoders (Felucca's ids),
+  all let go 500 ms after the last one; the keys stay MIDI notes. The reference decoder is the
+  `fm1-live-link` crate (`host/crates/live-link`), which rebuilds the screen pixel for pixel.
+- **The site's Library page** ([library.html](https://dsablic.github.io/sidou/library.html)):
+  everything in a connected FM-1's store (songs, `.sid` tunes, instruments) with its type, size
+  and CRC, and the free space; download, send (an identical file is left alone, a different one
+  replaced only after you confirm), rename (the old file stays until the new one is stored),
+  delete, and a backup of the whole store as one `.zip` (with a manifest keeping the FM-1's names
+  and types) that restores in one go. Any song, from the FM-1 or a file, exports as a `.sng` with
+  SIDOU's trailer, as a plain GoatTracker file (with a warning when GoatTracker would read it with
+  another channel count), and each instrument as a GoatTracker `.ins` (GTI5). The FM-1's private
+  files are never listed, so never touched. The songs go through SIDOU's own C, compiled to
+  WebAssembly (`sidou-core.wasm`, 130 KB, `tools/wasm-core` with the build image's clang and
+  Rust's linker): it accepts and refuses what the FM-1 does, with the FM-1's messages, and its
+  bytes and player output match the host build's exactly (`web/core.test.mjs`). The Songs and
+  Songs to MIDI pages stay, linked from it. ([the manual](docs/manual/library.md))
 - **LAB's song bridge: send a sound to the song, pull one back.** **REC** in LAB writes the sound
   into the song's lowest free instrument as a plain GoatTracker 2 instrument, a byte at a time
   through the edit queue, so the song plays on (`SENT AS I06 SAW LEAD`); **EDIT + REC** writes it

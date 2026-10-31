@@ -22,6 +22,7 @@ add_library(sidou_live STATIC
     help_view.c
     learn_view.c
     keys_route.c
+    link.c
     lab_draw.c
     lab_edit.c
     lab_song.c
@@ -89,6 +90,9 @@ set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS 
 # LAB's sound and its undo (docs/plans/2026-10-25-lab-plan.md): checked, compared and recorded once
 # a turn or a load; the song bridge's send and pull, once a press.
 set_source_files_properties(lab_sound.c lab_song.c lab_edit.c user_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
+# Live Link (docs/reference/live-link.md): a frame at most a main-loop pass, its work bounded by
+# the frame's 48 bytes.
+set_source_files_properties(link.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)
