@@ -8,6 +8,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-31
+
+LAB's song bridge (send a sound to the song, pull one back); instruments lifted from a .sid;
+chords and time-shared drums from DICE; a popup for every small-print edit, page jumps and INSTR's
+pointer summaries; Live Link (the screen mirrored, the buttons and the computer keyboard from a
+browser); the site's library, song editor and preview; MIDI controller maps; 8.5 KB smaller with
+nothing changed.
+
 ### Added
 - **The site's song editor** ([editor.html](https://dsablic.github.io/sidou/editor.html)): a song
   from a file, the FM-1's current song or one saved on it (or the Library's new **Edit**), its

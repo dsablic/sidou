@@ -8,6 +8,9 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.5.0](https://github.com/dsablic/sidou/releases/tag/v1.5.0)** (2026-10-31): LAB's
+  song bridge, sounds lifted from a `.sid`, chords and drums from DICE, Live Link, the site's
+  editor and library (the list below).
 - **[1.1.0](https://github.com/dsablic/sidou/releases/tag/v1.1.0)** (2026-10-30): LAB's
   filter LFO, ARP RATE, MACRO links and peek, the auditions, generative TRACKER, DICE's range
   and rhythm, knob curves (the list below).
@@ -71,30 +74,23 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
-## 1.5 (next)
+## 1.5
 
-The user, 2026-10-30: 1.1.x and what was 1.2 roll into one release, 1.5; a quality pass follows
-it. Each large item gets its own design first (as LAB did).
+Released in 1.5.0: LAB's song bridge, instruments lifted from a `.sid`, chords and time-shared
+drums from DICE, a popup for every small-print edit (with a check that enforces it), page jumps
+and INSTR's pointer summaries, FM-1 Live Link with the computer keyboard, the site's library,
+song editor and preview, MIDI controller maps, and the test and code cleanup (no code comments:
+the decisions are in [design-notes.md](design-notes.md)).
 
-- **SIDOU's own USB ID** (0x51D0, pid.codes request #1341).
-- **LAB's song bridge** and **instruments from a `.sid`** (below, Sound and play).
-- ~~**Generated arpeggio chords and multiplexed drums in TRACKER** (1.1's cut left them out).~~
-  Done: a lane's role in DICE's frame (EDIT + SCL held, PRESETS); DICE writes chords on an ARP
-  lane (four shared wavetable chord programs, `8XX` cells) and the kit's kick and snare with a
-  bass between on a BASS+DRUMS lane (time-shared). Combined drum-and-bass instruments later.
-- **A browser editor and librarian** and **the screen mirror (FM-1 Live Link)** (below,
-  Connectivity).
-- **A popup for every encoder edit** (the user, 2026-10-30): turning an encoder that changes a
-  parameter shown in small print brings up its name and value, large. An audit of every view
-  (TABLE, INSTR, ORDER, the EDIT layers, CHIP, SETTINGS) and an ergonomics-gate check that
-  enforces it; 1.1 does the effect knobs (EDIT + K1-K4) with a reusable popup.
-- **The move to felucca-bsp** (below, Platform), if felucca-bsp #14 and #15 are settled in time;
-  SIDOU takes upstream code only byte for byte.
+**1.5.x**
+- **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341.
+- **The move to felucca-bsp**: waits for felucca-bsp's PR #21 (the raw MIDI-in hook, our patch);
+  #14 and #16 are fixed upstream. SIDOU's USB audio hand-over needs adapting to its newer
+  recording path (found in the trial: 22 of 23 USB tests pass).
 
-Before 1.5 is released: a test and code cleanup (DRY, deduplication and simplification wherever
-possible; the user, 2026-10-30). After 1.5: the rest of the quality pass (performance headroom,
-the faster ergonomics gate, suggested automations, knob-curve follow-ups from the device
-sessions).
+**After 1.5:** the quality pass: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of
+250, the MIDI floods at 98 % of their budget), the faster ergonomics gate, suggested automations,
+knob-curve follow-ups from the device sessions.
 
 ## 1.x
 
@@ -129,6 +125,8 @@ sessions).
 
 **Songs**
 
+- **Combined drum-and-bass instruments** from DICE: a drum's first frames, then the bass's wave
+  program, in one instrument (1.5 did the time-shared form). M.
 - ~~**Generative play in TRACKER:** the same chance, MUTATE and DICE as STEP, C64 idioms
   (generated arpeggio chords, multiplexed drums, filter sweeps), a scale per lane. M each.~~
   Done in 1.1 (the cut): MUTATE, DICE and a filter sweep (EDIT + ENV) in TRACKER, a root and a

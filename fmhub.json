@@ -1,5 +1,5 @@
 {
-  "what": "Turns the FM-1 into a C64 SID machine: two SIDs with the 6581 and 8580 character, a GoatTracker 2 compatible tracker and step sequencer that both generate patterns, SID drums, .sid tune playback and LAB to shape, link and keep sounds. Play live or over MIDI, record over USB audio.",
+  "what": "Turns the FM-1 into a C64 SID machine: two SIDs, a GoatTracker 2 compatible tracker and step sequencer that generate patterns, chords and drums, .sid playback and LAB to shape sounds and send them to songs. Mirror and play it from a browser, edit songs on the site, record over USB.",
   "kinds": ["tracker"],
   "play": "https://dsablic.github.io/sidou/"
 }
