@@ -1,7 +1,5 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
-/* Everything the host tooling reaches through FFI. The include roots are core/, bench/
- * and app/. */
 #include "cpu6502/cpu6502.h"
 #include "fx/fx.h"
 #include "fx/fx_limit.h"

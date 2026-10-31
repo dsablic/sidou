@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Signal measurements for comparing renders.
-//!
-//! All functions panic on degenerate input (too few samples, an empty window, an empty
-//! or out-of-range window range).
 
 use std::f64::consts::PI;
 use std::fs::File;
@@ -21,55 +17,59 @@ fn dft_magnitude(x: &[f32], window: &[f64], f: f64, fs: f64) -> f64 {
     (re * re + im * im).sqrt()
 }
 
-/// Fundamental frequency as the peak of a Hann-windowed DFT magnitude searched
-/// between f_lo and f_hi. Unlike autocorrelation it is not biased by how sharp
-/// (aliased or band-limited) the waveform is.
 pub fn estimate_f0(x: &[f32], fs: f64, f_lo: f64, f_hi: f64) -> f64 {
     assert!(x.len() >= 2, "estimate_f0: need at least 2 samples");
-    let window: Vec<f64> = (0..x.len())
-        .map(|i| 0.5 - 0.5 * (2.0 * PI * i as f64 / (x.len() - 1) as f64).cos())
-        .collect();
-    // Coarse scan, then golden-section search around the best bin.
+    let window = hann_window(x.len());
     let step = fs / x.len() as f64 / 4.0;
+    let coarse = coarse_dft_peak(x, &window, fs, f_lo, f_hi, step);
+    golden_section_dft_peak(x, &window, fs, coarse - step, coarse + step)
+}
+
+fn hann_window(n: usize) -> Vec<f64> {
+    (0..n)
+        .map(|i| 0.5 - 0.5 * (2.0 * PI * i as f64 / (n - 1) as f64).cos())
+        .collect()
+}
+
+fn coarse_dft_peak(x: &[f32], window: &[f64], fs: f64, f_lo: f64, f_hi: f64, step: f64) -> f64 {
     let mut best_f = f_lo;
     let mut best = -1.0;
     let mut f = f_lo;
     while f <= f_hi {
-        let m = dft_magnitude(x, &window, f, fs);
+        let m = dft_magnitude(x, window, f, fs);
         if m > best {
             best = m;
             best_f = f;
         }
         f += step;
     }
-    let mut a = best_f - step;
-    let mut b = best_f + step;
+    best_f
+}
+
+fn golden_section_dft_peak(x: &[f32], window: &[f64], fs: f64, mut a: f64, mut b: f64) -> f64 {
     let g = (5.0f64.sqrt() - 1.0) / 2.0;
     let mut c = b - g * (b - a);
     let mut d = a + g * (b - a);
-    let mut mc = dft_magnitude(x, &window, c, fs);
-    let mut md = dft_magnitude(x, &window, d, fs);
+    let mut mc = dft_magnitude(x, window, c, fs);
+    let mut md = dft_magnitude(x, window, d, fs);
     while b - a > 1e-4 {
         if mc > md {
             b = d;
             d = c;
             md = mc;
             c = b - g * (b - a);
-            mc = dft_magnitude(x, &window, c, fs);
+            mc = dft_magnitude(x, window, c, fs);
         } else {
             a = c;
             c = d;
             mc = md;
             d = a + g * (b - a);
-            md = dft_magnitude(x, &window, d, fs);
+            md = dft_magnitude(x, window, d, fs);
         }
     }
     0.5 * (a + b)
 }
 
-/// Mean-removed RMS per window of `w` samples, in dB (not normalised). For a
-/// periodic tone, make the window a whole number of periods, or the RMS ripples
-/// with the phase at which each window starts.
 pub fn rms_envelope_db(x: &[f32], w: usize) -> Vec<f64> {
     assert!(w != 0, "rms_envelope_db: window must not be empty");
     x.chunks_exact(w)
@@ -95,10 +95,8 @@ fn check_range(env: &[f64], first: usize, last: usize, what: &str) {
     );
 }
 
-/// Shift an envelope so that the loudest of windows [first, last) is 0 dB.
 pub fn normalized_to_max(mut env: Vec<f64>, first: usize, last: usize) -> Vec<f64> {
     check_range(&env, first, last, "normalized_to_max");
-    // Like std::max_element: the first of equal maxima, and NaN never replaces it.
     let mut reference = env[first];
     for &v in &env[first + 1..last] {
         if reference < v {
@@ -111,7 +109,6 @@ pub fn normalized_to_max(mut env: Vec<f64>, first: usize, last: usize) -> Vec<f6
     env
 }
 
-/// Shift an envelope so that the mean of windows [first, last) is 0 dB.
 pub fn normalized_to_mean(mut env: Vec<f64>, first: usize, last: usize) -> Vec<f64> {
     check_range(&env, first, last, "normalized_to_mean");
     let mut sum = 0.0;
@@ -125,8 +122,6 @@ pub fn normalized_to_mean(mut env: Vec<f64>, first: usize, last: usize) -> Vec<f
     env
 }
 
-/// Largest |a - b| over windows from `first` on where the reference b is above
-/// floor_db. NaN if any compared window is NaN, so a comparison against it fails.
 pub fn max_envelope_diff_db(a: &[f64], b: &[f64], floor_db: f64, first: usize) -> f64 {
     let mut worst: f64 = 0.0;
     for (&ai, &bi) in a.iter().zip(b).skip(first) {
@@ -140,9 +135,6 @@ pub fn max_envelope_diff_db(a: &[f64], b: &[f64], floor_db: f64, first: usize) -
     worst
 }
 
-/// RMS of a - b over the windows max_envelope_diff_db compares (from `first` on, where
-/// the reference b is above floor_db): how far off the curves are overall, next to the
-/// largest single window. 0 if no window is compared; NaN if any compared window is NaN.
 pub fn rms_envelope_diff_db(a: &[f64], b: &[f64], floor_db: f64, first: usize) -> f64 {
     let (mut sum, mut n) = (0.0, 0u32);
     for (&ai, &bi) in a.iter().zip(b).skip(first) {
@@ -161,7 +153,9 @@ pub fn rms_envelope_diff_db(a: &[f64], b: &[f64], floor_db: f64, first: usize) -
     }
 }
 
-/// Writes a mono 16-bit PCM WAV file.
+const WAV_FORMAT_PCM: u16 = 1;
+const WAV_CHANNELS_MONO: u16 = 1;
+
 pub fn write_wav16(path: &Path, x: &[f32], fs: u32) -> std::io::Result<()> {
     let bytes = u32::try_from(x.len() * 2).expect("WAV data fits in 4 GiB");
     let mut f = BufWriter::new(File::create(path)?);
@@ -169,8 +163,8 @@ pub fn write_wav16(path: &Path, x: &[f32], fs: u32) -> std::io::Result<()> {
     f.write_all(&(36 + bytes).to_le_bytes())?;
     f.write_all(b"WAVEfmt ")?;
     f.write_all(&16u32.to_le_bytes())?;
-    f.write_all(&1u16.to_le_bytes())?; // PCM
-    f.write_all(&1u16.to_le_bytes())?; // mono
+    f.write_all(&WAV_FORMAT_PCM.to_le_bytes())?;
+    f.write_all(&WAV_CHANNELS_MONO.to_le_bytes())?;
     f.write_all(&fs.to_le_bytes())?;
     f.write_all(&(fs * 2).to_le_bytes())?;
     f.write_all(&2u16.to_le_bytes())?;

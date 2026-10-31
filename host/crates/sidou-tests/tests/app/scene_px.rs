@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The tile compositor (app/scene_px.c) and the grid's painter region: tiles against a Rust
-//! model of the same layers and against frames that assets/scene/red-moon-rite.js drew
-//! (tests/golden/scene/, `SIDOU_SCENE_UPDATE=1` regenerates them when Node is installed);
-//! the hash marking every change and nothing else; the scan's slices.
 
 use std::ffi::c_void;
 use std::path::PathBuf;
@@ -13,17 +9,17 @@ use sidou_sys::*;
 use sidou_tests::font::repo_root;
 use sidou_tests::scene_art::{self, Picture, CLEAR};
 
+use crate::STATUS_BAR_H;
+
 const W: usize = 240;
 const TILES: usize = (GRID_COLS * GRID_ROWS) as usize;
 
-/// A grid and a compositor owning its painter region, and the panel the grid's runs drew.
 struct Rig {
     g: Box<grid>,
     sp: Box<scene_px>,
     panel: Vec<u8>,
-    /// The longest run sent, and how many times each cell was.
-    longest: usize,
-    sent: Vec<u32>,
+    longest_run: usize,
+    sends_per_cell: Vec<u32>,
 }
 
 impl Rig {
@@ -38,8 +34,8 @@ impl Rig {
             g,
             sp,
             panel: vec![0x55; W * W],
-            longest: 0,
-            sent: vec![0; TILES],
+            longest_run: 0,
+            sends_per_cell: vec![0; TILES],
         }
     }
 
@@ -47,13 +43,11 @@ impl Rig {
         unsafe { scene_px_set(&mut *self.sp, i as u32, l.map_or(std::ptr::null(), |l| l)) };
     }
 
-    /// Scans every candidate, then sends every marked cell to the panel; the cells sent.
-    fn frame(&mut self) -> usize {
+    fn scan_all_and_send(&mut self) -> usize {
         while unsafe { scene_px_scan(&mut *self.sp, &mut *self.g, 64) } != 0 {}
         self.send(usize::MAX)
     }
 
-    /// Sends up to `most` marked cells, run by run, as the view does.
     fn send(&mut self, most: usize) -> usize {
         let pal: [u16; 16] = std::array::from_fn(|c| c as u16);
         let mut buf = vec![0u32; GRID_RUN_PIXELS as usize / 2];
@@ -71,9 +65,9 @@ impl Rig {
                 }
             }
             sent += usize::from(run.len);
-            self.longest = self.longest.max(usize::from(run.len));
+            self.longest_run = self.longest_run.max(usize::from(run.len));
             for c in run.col..run.col + run.len {
-                self.sent[usize::from(run.row) * 30 + usize::from(c)] += 1;
+                self.sends_per_cell[usize::from(run.row) * 30 + usize::from(c)] += 1;
             }
         }
         sent
@@ -86,7 +80,6 @@ impl Rig {
         out
     }
 
-    /// The whole screen composited.
     fn screen(&self) -> Vec<u8> {
         let mut out = vec![0u8; W * W];
         for t in 0..TILES {
@@ -122,6 +115,10 @@ fn fill(x0: i16, y0: i16, x1: i16, y1: i16, c: u32) -> scene_px_layer {
     }
 }
 
+fn full_screen(c: u32) -> scene_px_layer {
+    fill(0, 0, 240, 240, c)
+}
+
 fn image(s: &'static scene_image, x: i16, y: i16, mirror: bool) -> scene_px_layer {
     scene_px_layer {
         mirror: u8::from(mirror),
@@ -132,7 +129,6 @@ fn image(s: &'static scene_image, x: i16, y: i16, mirror: bool) -> scene_px_laye
     }
 }
 
-/// Every compiled image with its PNG frame (scene_art::sources()'s order).
 fn images() -> Vec<(&'static scene_image, Picture)> {
     let mut out: Vec<&'static scene_image> = Vec::new();
     unsafe {
@@ -152,7 +148,6 @@ fn images() -> Vec<(&'static scene_image, Picture)> {
         .collect()
 }
 
-/// The model: the layers drawn over a black screen, pixel by pixel, from the PNGs.
 struct Model<'a> {
     images: &'a [(&'static scene_image, Picture)],
 }
@@ -243,7 +238,6 @@ impl Model<'_> {
     }
 }
 
-/// The CALL layer the tests use: a checkerboard of one colour (ctx points at it).
 unsafe extern "C" fn checker(ctx: *const c_void, x: u32, y: u32, n: u32, out: *mut u8) {
     let c = unsafe { *ctx.cast::<u8>() };
     for k in 0..n {
@@ -276,8 +270,6 @@ impl Rng {
     }
 }
 
-/// A random layer of any kind, as C's and as the model's. A marks layer's marks go into
-/// `kept`, which must outlive the rig the layer is set in (C keeps the pointer).
 fn random_layer(
     rng: &mut Rng,
     imgs: &[(&'static scene_image, Picture)],
@@ -395,8 +387,7 @@ fn random_layers_composite_as_the_model_draws_them() {
         }
         let want = model.draw(&ml);
         assert_eq!(rig.screen(), want, "round {round}");
-        // And as the grid sends it.
-        rig.frame();
+        rig.scan_all_and_send();
         assert_eq!(rig.panel, want, "round {round}: the panel");
     }
 }
@@ -411,9 +402,7 @@ fn mirroring_transparency_order_and_remaps() {
         .position(|(s, _)| std::ptr::eq(*s, guard))
         .unwrap();
     let mut rig = Rig::new();
-    // A fill under the fighter shows through his transparent pixels; mirrored, remapped,
-    // and a fill over him hides him where it covers.
-    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
+    rig.set(0, Some(&full_screen(GRID_BLUE)));
     let mut l = image(guard, 60, 100, true);
     l.remap = REMAP.as_ptr();
     rig.set(1, Some(&l));
@@ -427,7 +416,6 @@ fn mirroring_transparency_order_and_remaps() {
     let blue = want.iter().filter(|&&c| c == GRID_BLUE as u8).count();
     assert!(blue > 240 * 240 - 128 * 124, "the fill shows round him");
     assert!(want.contains(&(GRID_WHITE as u8)), "the remap");
-    // Swapping the order puts the fill under him.
     rig.set(2, None);
     rig.set(0, Some(&fill(100, 150, 120, 170, GRID_RED)));
     let want = model.draw(&[
@@ -435,7 +423,6 @@ fn mirroring_transparency_order_and_remaps() {
         ML::Image(k, 60, 100, true, [0, 0, 240, 240], Some(REMAP)),
     ]);
     assert_eq!(rig.screen(), want);
-    // Unmirrored, his pixels are the PNG's.
     let mut rig = Rig::new();
     rig.set(0, Some(&image(guard, 0, 0, false)));
     let png = &imgs[k].1;
@@ -453,8 +440,6 @@ fn mirroring_transparency_order_and_remaps() {
 fn the_hash_marks_every_change_and_nothing_else() {
     let imgs = images();
     let mut rng = Rng(0xfeed_beef_0001);
-    // Every layer's marks, for the test's length: a replaced layer is still the scene's
-    // until the next set.
     let mut kept = Vec::new();
     let mut rig = Rig::new();
     let mut layers: Vec<scene_px_layer> = (0..12)
@@ -463,10 +448,13 @@ fn the_hash_marks_every_change_and_nothing_else() {
     for (i, l) in layers.iter().enumerate() {
         rig.set(i, Some(l));
     }
-    assert_eq!(rig.frame(), TILES, "the first frame sends the whole screen");
+    assert_eq!(
+        rig.scan_all_and_send(),
+        TILES,
+        "the first frame sends the whole screen"
+    );
     assert_eq!(rig.panel, rig.screen());
     for step in 0..200 {
-        // Change one layer at random, or nothing, or set every layer again unchanged.
         match rng.below(4) {
             0 => {}
             1 => {
@@ -482,9 +470,8 @@ fn the_hash_marks_every_change_and_nothing_else() {
         }
         let before = rig.panel.clone();
         let want = rig.screen();
-        let sent = rig.frame();
+        let sent = rig.scan_all_and_send();
         assert_eq!(rig.panel, want, "step {step}: the panel");
-        // Only tiles that changed were sent.
         let changed = (0..TILES)
             .filter(|&t| {
                 let (c, r) = (t % 30, t / 30);
@@ -501,21 +488,19 @@ fn the_hash_marks_every_change_and_nothing_else() {
 fn an_unchanged_frame_scans_and_sends_nothing() {
     let mut rig = Rig::new();
     let arena = unsafe { &scene_rmr_arena };
-    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_PURPLE)));
+    rig.set(0, Some(&full_screen(GRID_PURPLE)));
     rig.set(1, Some(&image(arena, 0, 0, false)));
-    rig.frame();
+    rig.scan_all_and_send();
     let scanned = rig.sp.scanned;
-    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_PURPLE)));
+    rig.set(0, Some(&full_screen(GRID_PURPLE)));
     rig.set(1, Some(&image(arena, 0, 0, false)));
-    assert_eq!(rig.frame(), 0);
+    assert_eq!(rig.scan_all_and_send(), 0);
     assert_eq!(rig.sp.scanned, scanned, "nothing was a candidate");
-    // A change that leaves the pixels as they were (the same fill under a new `param`)
-    // composites its tiles and sends none.
-    let mut again = fill(0, 0, 240, 240, GRID_PURPLE);
+    let mut again = full_screen(GRID_PURPLE);
     again.param = 1;
     rig.set(0, Some(&again));
     let painted = rig.sp.painted;
-    assert_eq!(rig.frame(), 0);
+    assert_eq!(rig.scan_all_and_send(), 0);
     assert!(rig.sp.scanned > scanned);
     assert_eq!(rig.sp.painted, painted);
 }
@@ -523,21 +508,20 @@ fn an_unchanged_frame_scans_and_sends_nothing() {
 #[test]
 fn the_scan_works_in_slices_and_drops_cells_already_marked() {
     let mut rig = Rig::new();
-    rig.frame();
-    rig.set(0, Some(&fill(0, 0, 240, 80, GRID_RED))); // ten rows of tiles
+    rig.scan_all_and_send();
+    let ten_tile_rows = 80;
+    rig.set(0, Some(&fill(0, 0, 240, ten_tile_rows, GRID_RED)));
     assert_eq!(rig.sp.ncand, 300);
     let before = rig.sp.scanned;
     let left = unsafe { scene_px_scan(&mut *rig.sp, &mut *rig.g, 50) };
     assert_eq!((left, rig.sp.scanned - before), (250, 50));
-    // The 50 are marked; touching them again drops them uncomposited.
-    rig.set(0, Some(&fill(0, 0, 240, 80, GRID_GREEN)));
+    rig.set(0, Some(&fill(0, 0, 240, ten_tile_rows, GRID_GREEN)));
     while unsafe { scene_px_scan(&mut *rig.sp, &mut *rig.g, 50) } != 0 {}
     assert_eq!(
         rig.sp.scanned - before,
         300,
         "50 + the other 250, the 50 dropped"
     );
-    // The send keeps to a budget a frame and goes on where it stopped, so every tile goes out.
     let mut frames = 0;
     while rig.send(200) > 0 {
         frames += 1;
@@ -549,8 +533,7 @@ fn the_scan_works_in_slices_and_drops_cells_already_marked() {
 #[test]
 fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
     let mut rig = Rig::new();
-    rig.frame();
-    // A bitmap region over the painter's: its cells go out as the bitmap.
+    rig.scan_all_and_send();
     unsafe {
         assert_eq!(
             grid_region(&mut *rig.g, 0, 0, 30, 30, &logo_metal_chrome_bitmap, 0, 0),
@@ -559,11 +542,9 @@ fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
     }
     assert!(rig.g.region_painter.is_none());
     assert_eq!(rig.send(usize::MAX), TILES);
-    // Back to the painter: every cell again.
     unsafe { scene_px_init(&mut *rig.sp, &mut *rig.g) };
     assert_eq!(rig.send(usize::MAX), TILES);
     assert_eq!(rig.panel, rig.screen());
-    // The same painter again sends nothing; a clear sends the cells in their colour.
     let ctx: *mut c_void = (&mut *rig.sp as *mut scene_px).cast();
     let paint = rig.g.region_painter;
     unsafe {
@@ -586,11 +567,10 @@ fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
     }
     assert!(rig.g.region_painter.is_none());
     assert_eq!(rig.send(usize::MAX), TILES);
-    // Text drawn on the grid over the painter's cells shows its glyphs over the pixels.
     unsafe { scene_px_init(&mut *rig.sp, &mut *rig.g) };
-    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
+    rig.set(0, Some(&full_screen(GRID_BLUE)));
     unsafe { grid_text(&mut *rig.g, 0, 0, c"A".as_ptr(), GRID_WHITE as u8) };
-    rig.frame();
+    rig.scan_all_and_send();
     let glyph = sidou_tests::font::compiled_glyph(b'A');
     for (y, bits) in glyph.iter().enumerate() {
         for x in 0..8 {
@@ -604,8 +584,12 @@ fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
     }
 }
 
-/// A painter that fills its cells in colour 5 and counts its calls (ctx: a usize).
-unsafe extern "C" fn counting(ctx: *mut c_void, _col: u32, _row: u32, px: *mut u8) {
+unsafe extern "C" fn paint_colour_5_and_count_calls(
+    ctx: *mut c_void,
+    _col: u32,
+    _row: u32,
+    px: *mut u8,
+) {
     unsafe {
         *ctx.cast::<usize>() += 1;
         std::ptr::write_bytes(px, 5, 64);
@@ -614,15 +598,12 @@ unsafe extern "C" fn counting(ctx: *mut c_void, _col: u32, _row: u32, px: *mut u
 
 #[test]
 fn a_run_takes_at_most_the_painters_cap_of_its_cells() {
-    // The scene's region: the first frame sends the whole screen in runs of the cap.
     let mut rig = Rig::new();
-    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
-    assert_eq!(rig.frame(), TILES);
-    assert_eq!(rig.longest, SCENE_PX_RUN_CELLS as usize);
-    assert!(rig.sent.iter().all(|&n| n == 1));
+    rig.set(0, Some(&full_screen(GRID_BLUE)));
+    assert_eq!(rig.scan_all_and_send(), TILES);
+    assert_eq!(rig.longest_run, SCENE_PX_RUN_CELLS as usize);
+    assert!(rig.sends_per_cell.iter().all(|&n| n == 1));
     assert_eq!(rig.panel, rig.screen());
-    // A region over part of the screen: a run counts only the region's cells against the cap,
-    // and every changed cell goes out once.
     let mut g = Box::<grid>::default();
     let mut calls = 0usize;
     let mut run = grid_run::default();
@@ -630,11 +611,29 @@ fn a_run_takes_at_most_the_painters_cap_of_its_cells() {
         grid_init(&mut *g, b' ', 0x10);
         let ctx = (&mut calls as *mut usize).cast();
         assert_eq!(
-            grid_region_painter(&mut *g, 5, 2, 20, 3, Some(counting), ctx, 3),
+            grid_region_painter(
+                &mut *g,
+                5,
+                2,
+                20,
+                3,
+                Some(paint_colour_5_and_count_calls),
+                ctx,
+                3
+            ),
             0
         );
         assert_eq!(
-            grid_region_painter(&mut *g, 5, 2, 20, 3, Some(counting), ctx, 0),
+            grid_region_painter(
+                &mut *g,
+                5,
+                2,
+                20,
+                3,
+                Some(paint_colour_5_and_count_calls),
+                ctx,
+                0
+            ),
             -1
         );
         while grid_next_run(&mut *g, &mut run) != 0 {}
@@ -678,34 +677,30 @@ fn the_refresh_sweep_resends_every_tile_and_heals_a_missed_change() {
         .collect();
     let p = marks.as_mut_ptr();
     let mut rig = Rig::new();
-    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
+    rig.set(0, Some(&full_screen(GRID_BLUE)));
     let l = scene_px_layer {
         n: 4,
         src: p.cast_const().cast(),
         ..layer(SCENE_PX_MARKS)
     };
     rig.set(1, Some(&l));
-    rig.frame();
+    rig.scan_all_and_send();
     assert_eq!(rig.panel, rig.screen());
-    // A mark changes colour in place and no one bumps the layer's param: a change the scene
-    // misses.
     unsafe { (*p).colour = GRID_YELLOW as u8 };
-    assert_eq!(rig.frame(), 0);
+    assert_eq!(rig.scan_all_and_send(), 0);
     assert_ne!(rig.panel, rig.screen());
-    // Two tiles a frame: every tile once in 450 frames, and the panel heals.
-    rig.sent.fill(0);
+    rig.sends_per_cell.fill(0);
     let painted = rig.sp.painted;
     for f in 0..450 {
         unsafe { scene_px_refresh(&mut *rig.sp, &mut *rig.g, 2) };
-        assert_eq!(rig.frame(), 2, "frame {f}");
+        assert_eq!(rig.scan_all_and_send(), 2, "frame {f}");
     }
-    assert!(rig.sent.iter().all(|&n| n == 1), "each tile once");
+    assert!(rig.sends_per_cell.iter().all(|&n| n == 1), "each tile once");
     assert_eq!(rig.sp.painted - painted, TILES as u32);
     assert_eq!(rig.panel, rig.screen());
     assert_eq!(rig.sp.sweep, 0, "round to the first tile again");
 }
 
-/// A golden frame: its layers, as red-moon-rite.js recorded them, and its pixels.
 struct Golden {
     name: String,
     sky: Vec<usize>,
@@ -750,10 +745,7 @@ fn goldens() -> Vec<Golden> {
         .collect()
 }
 
-/// A golden frame's layers on the compositor: the status bar's rows black, the sky a band per
-/// run of cell rows in one palette (gradient and overlay), the arena, then what the sprites
-/// stage drew. Returns the slots used.
-fn stack(rig: &mut Rig, f: &Golden, marks: &mut Vec<Vec<scene_px_mark>>) -> usize {
+fn stack_golden_layers(rig: &mut Rig, f: &Golden, marks: &mut Vec<Vec<scene_px_mark>>) -> usize {
     let imgs = images();
     let by_name = |n: &str| {
         let i = scene_art::sources()
@@ -767,16 +759,22 @@ fn stack(rig: &mut Rig, f: &Golden, marks: &mut Vec<Vec<scene_px_mark>>) -> usiz
         rig.set(slot, Some(&l));
         slot += 1;
     };
-    push(rig, fill(0, 0, 240, 16, GRID_BLACK));
-    // The JS: cell row r shows sky rowPal[min(r, 16)] from row 2 on, over rows 16-139.
-    let pal = |r: usize| f.sky[r.min(16)];
-    let mut r0 = 2;
-    while r0 < 18 {
+    const SKY_END_Y: usize = 140;
+    const FIRST_SKY_CELL_ROW: usize = 2;
+    const LAST_SKY_PALETTE_ROW: usize = 16;
+    const SKY_CELL_ROWS_END: usize = 18;
+    push(rig, fill(0, 0, 240, STATUS_BAR_H as i16, GRID_BLACK));
+    let pal = |r: usize| f.sky[r.min(LAST_SKY_PALETTE_ROW)];
+    let mut r0 = FIRST_SKY_CELL_ROW;
+    while r0 < SKY_CELL_ROWS_END {
         let mut r1 = r0 + 1;
-        while r1 < 18 && pal(r1) == pal(r0) {
+        while r1 < SKY_CELL_ROWS_END && pal(r1) == pal(r0) {
             r1 += 1;
         }
-        let (y0, y1) = ((r0 * 8).max(16) as i16, (r1 * 8).min(140) as i16);
+        let (y0, y1) = (
+            (r0 * 8).max(STATUS_BAR_H) as i16,
+            (r1 * 8).min(SKY_END_Y) as i16,
+        );
         let i = pal(r0);
         push(
             rig,
@@ -843,7 +841,7 @@ fn red_moon_rites_frames_composite_as_the_script_drew_them() {
     for f in &frames {
         let mut rig = Rig::new();
         let mut marks = Vec::new();
-        let slots = stack(&mut rig, f, &mut marks);
+        let slots = stack_golden_layers(&mut rig, f, &mut marks);
         assert!(
             slots <= SCENE_PX_LAYERS as usize,
             "{}: {slots} slots",
@@ -861,7 +859,7 @@ fn red_moon_rites_frames_composite_as_the_script_drew_them() {
                 );
             }
         }
-        rig.frame();
+        rig.scan_all_and_send();
         assert!(rig.panel == f.png.px, "{}: the panel", f.name);
         println!(
             "{}: {slots} layers, {} tiles composited to send the screen",
@@ -896,8 +894,6 @@ fn the_golden_frames_are_what_the_script_draws() {
     if update {
         return;
     }
-    // The vignette's state frame by frame (tests/app/scene_rmr.rs checks the device's against
-    // it).
     let trace = std::fs::read_to_string(out.join("rmr-trace.tsv")).unwrap();
     let want = std::fs::read_to_string(golden_dir().join("rmr-trace.tsv")).unwrap();
     assert!(
@@ -923,14 +919,12 @@ fn the_golden_frames_are_what_the_script_draws() {
     }
 }
 
-/// What compositing costs on the host: a tile of each golden frame composited, timed (the
-/// device's instruction counts come with the view, M2f Task 4), and the layers a tile visits.
 #[test]
 fn compositing_a_tile_visits_only_the_layers_over_it() {
     for f in goldens() {
         let mut rig = Rig::new();
         let mut marks = Vec::new();
-        let slots = stack(&mut rig, &f, &mut marks);
+        let slots = stack_golden_layers(&mut rig, &f, &mut marks);
         let boxes = &rig.sp.box_;
         let mut visits = 0usize;
         for t in 0..TILES {
@@ -961,11 +955,6 @@ fn compositing_a_tile_visits_only_the_layers_over_it() {
     }
 }
 
-/// The hashes hold under any interleaving the view can make: slots changed at random, the
-/// scan in slices of any size, a run rendered and left waiting for the panel while the scene
-/// changes on (as platform/fm1/ui.c keeps one), sends delayed, rows held and released, and
-/// the refresh sweep. However they interleave, once everything is scanned and sent the
-/// panel is the screen. (The invariant in app/scene_px.h: every rendered run reaches it.)
 #[test]
 fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
     let imgs = images();
@@ -993,7 +982,6 @@ fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
         let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         let mut rig = Rig::new();
         let mut buf = vec![0u32; GRID_RUN_PIXELS as usize / 2];
-        // A rendered run waiting for the panel.
         let mut waiting: Option<(grid_run, Vec<u16>)> = None;
         let apply = |panel: &mut Vec<u8>, run: &grid_run, px: &[u16]| {
             let w = usize::from(run.len) * 8;
@@ -1011,8 +999,6 @@ fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
                     let l = if rng.below(8) == 0 {
                         marks[rng.below(8) as usize]
                     } else {
-                        // A layer of any other kind: a marks layer drawn here is never
-                        // set, so its marks go with it.
                         loop {
                             let (l, _) = random_layer(&mut rng, &imgs, &mut Vec::new());
                             if u32::from(l.kind) != SCENE_PX_MARKS {
@@ -1056,7 +1042,7 @@ fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
         if let Some((run, px)) = waiting.take() {
             apply(&mut rig.panel, &run, &px);
         }
-        rig.frame();
+        rig.scan_all_and_send();
         let want = rig.screen();
         let stale = (0..TILES)
             .filter(|t| {

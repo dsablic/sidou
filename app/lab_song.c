@@ -11,9 +11,7 @@
 _Static_assert(LAB_SONG_ROWS == SONG_PAGES_ARP_ROWS, "an arpeggio's rows fit a program");
 
 #define JUMP 0xffu
-/* GoatTracker's default gate timer: 2 ticks, the hard restart on. */
 #define GATE_TIMER 2u
-/* A chunk: its version, the rows of each table, the CRC, the sound. */
 #define KEPT_VERSION 1u
 #define KEPT_HEAD (1u + GT2_TABLES + 4u)
 
@@ -30,12 +28,9 @@ static int32_t clampi(int32_t v, int32_t lo, int32_t hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* a / b to the nearest, b > 0. */
 static int32_t ratio(int32_t a, int32_t b) {
     return (a + b / 2) / b;
 }
-
-/* ---- send ---- */
 
 typedef struct {
     lab_song_instr* o;
@@ -48,9 +43,6 @@ static void row(prog* p, uint32_t left, uint32_t right) {
     p->o->right[p->t][n] = (uint8_t)right;
 }
 
-/* A triangle from `top`'s side: a climb of q rows' speed s from where it is to the top, then the
- * sweep of `span` down and up again, round and round. The speed a frame (1..127), the frames of
- * a sweep (two rows at most) and the climb follow the band and the period (frames a cycle). */
 static void loop(prog* p, int32_t at, int32_t lo, int32_t hi, int32_t period, int32_t top_max) {
     int32_t span = hi - lo, half = period / 2;
     int32_t s = clampi(ratio(span, half > 0 ? half : 1), 1, 127);
@@ -77,7 +69,6 @@ static void loop(prog* p, int32_t at, int32_t lo, int32_t hi, int32_t period, in
     row(p, JUMP, down);
 }
 
-/* The place on the model's cutoff walk of c: the last entry at or below it. */
 static int32_t place(uint32_t model, uint32_t c) {
     const uint16_t* w = live_cutoff_steps[model & 1u];
     int32_t i = 0;
@@ -86,14 +77,10 @@ static int32_t place(uint32_t model, uint32_t c) {
     return i;
 }
 
-/* 65,536 a cycle each 10 ms tick: the frames (50 Hz) of a cycle. */
 static int32_t frames(uint32_t rate) {
     return (int32_t)(32768u / rate);
 }
 
-/* GoatTracker's optimisations (on by default) rest the pulse program on each row's gate-off tick
- * and the vibrato on tick 0: one frame in six at tempo 6, the default, which the pulse loop's and
- * the vibrato's frames make up for. */
 #define RUNS(f) ((f) * 5 / 6)
 
 static void arp_chord(const uint8_t* sound, uint8_t wave, prog* p) {
@@ -116,10 +103,9 @@ void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uin
     uint8_t* ins = o->instr;
     prog p = {o, GT2_WTBL, first[GT2_WTBL]};
     uint32_t notes = 0u;
-    /* the waveform: the wave table holds $10..$DF; $E0..$EF are the waveforms $00..$0F */
     uint32_t ctrl = sound[LAB_SOUND_CONTROL];
     if (ctrl >= 0xe0u) {
-        ctrl &= 0x7fu; /* noise with all three: no wave table row says it */
+        ctrl &= 0x7fu;
         notes |= LAB_SONG_WAVE;
     }
     uint8_t wave = (uint8_t)(ctrl | 1u);
@@ -136,11 +122,10 @@ void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uin
     ins[GT2_INS_AD] = sound[LAB_SOUND_AD];
     ins[GT2_INS_SR] = sound[LAB_SOUND_SR];
     if (!(ins[GT2_INS_AD] & 0xf0u)) {
-        ins[GT2_INS_AD] |= 0x10u; /* attack 0 under the hard restart's ADSR clicks (GoatTracker) */
+        ins[GT2_INS_AD] |= 0x10u;
         notes |= LAB_SONG_ATTACK;
     }
     uint32_t rate = u16_at(sound, LAB_SOUND_PWM_RATE);
-    /* the pulse: its width, and the PWM as a loop (the link baked, LIVE's room kept) */
     if (ctrl & 0x40u) {
         p = (prog){o, GT2_PTBL, first[GT2_PTBL]};
         int32_t pw = (int32_t)u16_at(sound, LAB_SOUND_PULSE);
@@ -158,7 +143,6 @@ void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uin
             row(&p, JUMP, 0u);
         ins[GT2_INS_PULSE] = (uint8_t)p.first;
     }
-    /* the filter, on the song's voice: mode, resonance (RESO LINK at the cutoff), cutoff */
     if (sound[LAB_SOUND_FILTER_VOICES]) {
         p = (prog){o, GT2_FTBL, first[GT2_FTBL]};
         int32_t c = (int32_t)u16_at(sound, LAB_SOUND_CUTOFF);
@@ -180,18 +164,15 @@ void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uin
             row(&p, JUMP, 0u);
         ins[GT2_INS_FILTER] = (uint8_t)p.first;
     }
-    /* the vibrato: a calculated speed, a cycle of 2S + 4 frames that run (50 / (2S + 4) Hz less
-     * the tick 0s), peaking near (S + 2) / 2 >> shift semitones; LIVE's peaks at depth / 128 */
     uint32_t vr = sound[LAB_SOUND_VIBRATO_RATE], vd = sound[LAB_SOUND_VIBRATO_DEPTH];
     if (vr && vd) {
         p = (prog){o, GT2_STBL, first[GT2_STBL]};
-        int32_t s = clampi(ratio(625, 3 * (int32_t)vr) - 2, 0, 127); /* 250 x 5/6 */
+        int32_t s = clampi(ratio(625, 3 * (int32_t)vr) - 2, 0, 127);
         uint32_t x = (uint32_t)(s + 2) * 64u * 1024u / vd, shift = 0u;
-        while (shift < 15u && x >= 1448u << shift) /* 1448: the square root of 2, Q10 */
+        while (shift < 15u && x >= 1448u << shift)
             shift++;
         row(&p, 0x80u | (uint32_t)s, shift);
         ins[GT2_INS_VIBPARAM] = (uint8_t)p.first;
-        /* frames before it; 0 would be none (GoatTracker's), so 1 more */
         ins[GT2_INS_VIBDELAY] = (uint8_t)(1u + sound[LAB_SOUND_VIBRATO_DELAY] / 2u);
         notes |= LAB_SONG_VIB;
     }
@@ -205,8 +186,6 @@ void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uin
     o->notes = (uint16_t)notes;
 }
 
-/* ---- the chunk ---- */
-
 uint32_t lab_song_tag(uint32_t instr) {
     static const char HEX[] = "0123456789ABCDEF";
     return SONG_TAG('L', 'B', HEX[instr >> 4 & 15u], HEX[instr & 15u]);
@@ -214,7 +193,6 @@ uint32_t lab_song_tag(uint32_t instr) {
 
 static const uint8_t PTR[GT2_TABLES] = {GT2_INS_WAVE, GT2_INS_PULSE, GT2_INS_FILTER, GT2_INS_VIBPARAM};
 
-/* The CRC of an instrument's bytes and its programs' rows, read through get. */
 static uint32_t crc_rows(const uint8_t* ins, const uint8_t rows[GT2_TABLES],
                          const uint8_t* (*get)(const void*, uint32_t, uint32_t, uint32_t), const void* ctx) {
     uint32_t crc = song_crc32(0u, ins, GT2_INSTR_BYTES);
@@ -284,7 +262,7 @@ int lab_song_keep(gt2_song* s, uint32_t instr, const lab_song_instr* in,
         for (uint32_t i = 1u; kept >= LAB_SONG_KEPT_MAX && i <= GT2_MAX_INSTR; i++) {
             if (song_ext_find(s, lab_song_tag(i), &len) && !lab_song_kept(s, i, rows, snd) &&
                 song_ext_remove(s, lab_song_tag(i)) == 1)
-                kept--; /* a chunk whose instrument has been edited since: no longer exact */
+                kept--;
         }
         if (kept >= LAB_SONG_KEPT_MAX)
             return -1;
@@ -299,10 +277,6 @@ int lab_song_keep(gt2_song* s, uint32_t instr, const lab_song_instr* in,
     return song_ext_set(s, lab_song_tag(instr), d, sizeof d) ? -1 : 0;
 }
 
-/* ---- pull ---- */
-
-/* A pulse or filter program as it plays: its first set value, the band it moves in after that,
- * the frames of a loop (0: none), and whether it moves at all. */
 typedef struct {
     int32_t set, lo, hi, loop;
     uint32_t moves, sets;
@@ -335,7 +309,7 @@ static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
             r->set = r->sets++ ? r->set : v;
             frame++;
         } else if (t == GT2_FTBL && (l & 0x80u || !l)) {
-            if (l) { /* the type row: a cutoff row right below runs with it */
+            if (l) {
                 if (at < GT2_TABLE_ROWS && !s->ltable[t][at]) {
                     at++;
                     rt = s->rtable[t][at - 1u];
@@ -374,7 +348,6 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
     sound[LAB_SOUND_RESO_LINK] = sound[LAB_SOUND_PWM_LINK] = 0u;
     for (uint32_t k = 0u; k < LIVE_SLOTS; k++)
         sound[LAB_SOUND_SLOTS + k * LIVE_SLOT_FIELDS] = 0u;
-    /* the wave program: one waveform row, or an arpeggio, else a drum's */
     uint32_t w = ins[GT2_INS_WAVE];
     uint32_t ctrl = ins[GT2_INS_FIRSTWAVE];
     sound[LAB_SOUND_ARP + LIVE_ARP_ON] = 0u;
@@ -395,13 +368,12 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
             ctrl = l[0] >= 0xe0u && l[0] < 0xf0u ? l[0] & 0x0fu : l[0];
             if (l[0] < 0x10u || l[0] >= 0xf0u || (r[0] && r[0] != 0x80u) ||
                 (w < GT2_TABLE_ROWS && l[1] != JUMP))
-                notes |= LAB_SONG_DRUM; /* a delay or command first, a note, more waveforms */
+                notes |= LAB_SONG_DRUM;
         }
     }
-    if ((ctrl & 0xf0u) && ctrl < 0xf0u) /* a waveform: not $09's hard restart, not a command */
+    if ((ctrl & 0xf0u) && ctrl < 0xf0u)
         sound[LAB_SOUND_CONTROL] = (uint8_t)(ctrl & 0xf6u);
-    /* the pulse program: its width, a loop as the PWM */
-    run pr, fr; /* each played before it is read */
+    run pr, fr;
     uint32_t p = ins[GT2_INS_PULSE], rate = 0u, depth = 0u;
     if (p) {
         play(s, GT2_PTBL, p, &pr);
@@ -409,13 +381,12 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
             put16(sound, LAB_SOUND_PULSE, (uint32_t)pr.set);
         if (pr.loop && pr.moves) {
             depth = (uint32_t)(pr.hi - pr.lo) / 2u;
-            rate = (uint32_t)clampi(ratio(163840, 6 * pr.loop), 1, LIVE_PWM_STEP_MAX); /* RUNS */
+            rate = (uint32_t)clampi(ratio(163840, 6 * pr.loop), 1, LIVE_PWM_STEP_MAX);
         } else if (pr.moves) {
             notes |= LAB_SONG_SWEEP;
         }
     }
     put16(sound, LAB_SOUND_PWM_DEPTH, depth > LIVE_PWM_DEPTH_MAX ? LIVE_PWM_DEPTH_MAX : depth);
-    /* the filter program: its mode, resonance and routing, cutoff, a loop as the filter LFO */
     uint32_t f = ins[GT2_INS_FILTER];
     sound[LAB_SOUND_FILTER_VOICES] = 0u;
     sound[LAB_SOUND_FILTER_LFO] = 0u;
@@ -434,15 +405,14 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
             sound[LAB_SOUND_FILTER_LFO] = (uint8_t)clampi(d, 1, LIVE_FILTER_LFO_MAX);
             uint32_t frate = (uint32_t)clampi(ratio(32768, fr.loop), 1, LIVE_PWM_STEP_MAX);
             if (rate && (rate > frate ? rate - frate : frate - rate) * 8u > rate)
-                notes |= LAB_SONG_LFO; /* one LFO in LIVE: the PWM's rate (an eighth apart) */
+                notes |= LAB_SONG_LFO;
             rate = rate ? rate : frate;
         } else if (fr.moves) {
             notes |= LAB_SONG_SWEEP;
         }
     }
     put16(sound, LAB_SOUND_PWM_RATE, rate ? rate : u16_at(sound, LAB_SOUND_PWM_RATE));
-    /* the vibrato: a calculated speed back to LIVE's rate and depth; another as near as C-4's */
-    uint32_t v = ins[GT2_INS_VIBDELAY] ? ins[GT2_INS_VIBPARAM] : 0u; /* delay 0: none */
+    uint32_t v = ins[GT2_INS_VIBDELAY] ? ins[GT2_INS_VIBPARAM] : 0u;
     sound[LAB_SOUND_VIBRATO_DEPTH] = 0u;
     if (v) {
         uint8_t l = s->ltable[GT2_STBL][v - 1u], r = s->rtable[GT2_STBL][v - 1u];
@@ -455,8 +425,6 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
     }
     return notes;
 }
-
-/* ---- the words, the free instrument and rows ---- */
 
 void lab_song_words(uint32_t notes, int dropped, char* out, uint32_t max) {
     static const char* const WORDS[] = {"ATTACK", "PWM",  "FILTER", "LFO",  "VIB", "ARP", "WAVE",

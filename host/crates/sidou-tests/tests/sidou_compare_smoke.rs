@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Smoke test: the compare tool runs and writes its WAV pairs.
 
 use std::path::Path;
 use std::process::Command;

@@ -1,20 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! IRON RITE: dark and heavy, the barbarian theme for RED MOON RITE, E Phrygian (the F
-//! above E, the B-flat tritone), 107 BPM (tempo 7, sixteenths), the 6581.
-//!
-//! Plan. Voice 1 the riff: palm-muted pulse chugs on low E, each note through a resonant
-//! low-pass whose cutoff snaps shut (the filter bites), and the master oscillator of voice
-//! 2's hard sync and ring modulation; voice 2 a ring-modulated bell over the drone, then a
-//! hard-synced growl that rides the riff's pitch, the lead theme, and sync screams in the
-//! duel; voice 3 the drums: a heavy kick that doubles the chugs, a long noise snare, war
-//! toms, and an anvil (a triangle ring-modulated by voice 2).
-//!
-//! Bars: intro 4 (the drone under an opening filter, bells, war toms) | riff 8 (the riff
-//! alone, then with the synced growl) | theme 8 (the lead over the riff) | duel 8 (a
-//! sawtooth drone whose cutoff is set row by row, sync screams answered by anvils, a snare
-//! build) | return 8 (the riff, the theme an octave higher) | ending 2. 38 bars, 85 s; the
-//! loop restarts at the riff.
 
 use super::*;
 
@@ -28,14 +13,10 @@ pub const SONG: Showcase = Showcase {
 pub fn kit() -> Kit {
     let mut k = Kit::new("IRON RITE");
 
-    // the wavetable
     k.wave("pulse", &[(0x41, 0x00), jump(0)]);
     k.wave("saw", &[(0x21, 0x00), jump(0)]);
-    // a chug: a frame of noise for the pick, then the pulse
     k.wave("chug", &[(0x81, 0x24), (0x41, 0x00), jump(0)]);
-    // the triangle ring-modulated by voice 1
     k.wave("bell", &[(0x15, 0x00), jump(0)]);
-    // the sawtooth hard-synced to voice 1
     k.wave("sync", &[(0x23, 0x00), jump(0)]);
     k.wave("lead", &[(0x21, 0x0c), (0x41, 0x00), jump(0)]);
     k.wave(
@@ -78,11 +59,9 @@ pub fn kit() -> Kit {
             jump(0),
         ],
     );
-    // the anvil: a noise strike, then the triangle ring-modulated by voice 2
     k.wave("anvil", &[(0x81, abs(90)), (0x15, abs(76)), jump(0)]);
     k.wave("crash", &[(0x81, abs(84)), (0x81, abs(78)), jump(0)]);
 
-    // the pulse table
     k.pulse("chug", &[(0x83, 0x00), (0x40, 0x08), (0x40, 0xf8), jump(2)]);
     k.pulse("lead", &[(0x84, 0x00), (0x50, 0x10), (0x50, 0xf0), jump(2)]);
     k.pulse("mid", &[(0x88, 0x00), jump(0)]);
@@ -91,7 +70,6 @@ pub fn kit() -> Kit {
         &[(0x81, 0x00), (0x7f, 0x04), (0x7f, 0xfc), jump(2)],
     );
 
-    // the filter table: low-pass on voice 1
     k.filter(
         "rite",
         &[
@@ -102,11 +80,9 @@ pub fn kit() -> Kit {
             jump(3),
         ],
     );
-    // the bite: a chug's cutoff snaps open, then shuts
     k.filter("bite", &[(0x90, 0xd1), (0x00, 0xa8), (0x06, 0xf4), jump(0)]);
     k.filter("duel", &[(0x90, 0xf1), (0x00, 0x20), jump(0)]);
 
-    // the speed table
     k.speed("vib", 0x05, 0x18);
     k.speed("wobble", 0x08, 0x60);
     k.speed("up", 0x00, 0xc0);
@@ -134,7 +110,6 @@ pub fn kit() -> Kit {
     k.alias("t2", "E-2/tom");
     k.alias("t3", "B-1/tom");
 
-    // voice 1: the drone, the riff, the duel's cutoff row by row
     k.pattern("drone", 64, "E-1/drone@A=rite .63");
     k.pattern(
         "r1",
@@ -170,7 +145,6 @@ pub fn kit() -> Kit {
     k.pattern("duel-a", 16, &format!("A-1/grind@C20 {bite_a}"));
     k.pattern("end1", 32, "E-1/drone@A=rite .31");
 
-    // voice 2
     k.pattern("bells", 64, "E-5/bell .15 Bb4 .15 E-5 .15 Bb4 .7 F-5 .7");
     k.pattern("rest", 64, ".64");
     k.pattern("growl", 64, "B-3/growl .31 C-4 .15 D-4 .15");
@@ -213,7 +187,6 @@ pub fn kit() -> Kit {
     k.pattern("silence", 16, ".16");
     k.pattern("end2", 32, "E-5/bell .15 Bb4 .15");
 
-    // voice 3: the drums
     k.pattern(
         "war",
         64,
@@ -229,7 +202,6 @@ pub fn kit() -> Kit {
     k.pattern("build", 16, "k . s . k . s . k s k s s s s s");
     k.pattern("end3", 32, "x .31");
 
-    // intro 4 | riff 8 | theme 8 | duel 8 | return 8 | ending 2
     let riff = "r1 r2 r1 r2 r1 r2 rc +2 rc +0";
     k.order(
         0,

@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! RED MOON RITE's art in flash: app/scene_rmr_art.c is generated from assets/scene/*.png
-//! (sidou_tests::scene_art). SIDOU_SCENE_UPDATE=1 rewrites it.
 
 use sidou_sys::*;
 use sidou_tests::scene_art::{self, Picture, CLEAR, SKY_Y};
 
-/// Each image's compiled struct, by its place in scene_art::sources().
+use crate::STATUS_BAR_H;
+
 fn compiled() -> Vec<&'static scene_image> {
     let mut out = Vec::new();
     unsafe {
@@ -30,7 +29,6 @@ fn compiled() -> Vec<&'static scene_image> {
     out
 }
 
-/// A compiled image's frame, a row at a time, through scene_image_row.
 fn frame_of(s: &scene_image, mirror: bool) -> Picture {
     let (w, h) = (usize::from(s.fw), usize::from(s.fh));
     let mut px = Vec::with_capacity(w * h);
@@ -101,15 +99,14 @@ fn the_header_and_the_converter_agree_on_the_set() {
             src.png
         );
     }
-    // A fighter's anchor is his feet: the prototype drew him from (x - 58, FEET - 112), and
-    // mirrored from (x - 70, ...): 70 = 128 - 58.
     let guard = unsafe { &scene_rmr_barb[1][SCENE_RMR_GUARD as usize] };
     assert_eq!(
         (
             u32::from(guard.fw) * u32::from(guard.gx) - u32::from(guard.ax),
             guard.ay
         ),
-        (70, 112)
+        (70, 112),
+        "a fighter's anchor is his feet, mirrored 128 - 58 from his left"
     );
     assert_eq!(SCENE_RMR_FEET, 228);
 }
@@ -120,7 +117,6 @@ fn every_image_decodes_to_its_png_pixel_for_pixel() {
     let clear = scene_art::clear_colour(&srcs);
     let coded = scene_art::code(&srcs, clear);
     for (i, (src, s)) in srcs.iter().zip(compiled()).enumerate() {
-        // The converter's own model, then the firmware's decoder, both ways round.
         assert_eq!(
             scene_art::decode(&coded, i, &srcs, clear),
             src.frame,
@@ -135,7 +131,6 @@ fn every_image_decodes_to_its_png_pixel_for_pixel() {
             "{}: mirrored",
             src.png
         );
-        // Any span of a row, entered part way, writes exactly its n pixels.
         for y in (0..c.h).step_by(7) {
             let spans = [(0, 1), (1, 3), (5, 8), (c.w / 2, 4), (c.w - 4, 4)];
             for (x, n) in spans.into_iter().filter(|&(x, n)| x + n <= c.w) {
@@ -185,7 +180,6 @@ fn each_sky_is_its_gradient_with_the_moon_wisps_and_hills_over_it() {
                 let got = if p == CLEAR { g } else { p };
                 assert_eq!(got, want.at(x, y), "sky {i} ({x}, {y})");
             }
-            // Part way along the row.
             let mut part = vec![0x55u8; 9];
             unsafe { scene_gradient_row(g, 37, (y + SKY_Y) as u32, 8, part.as_mut_ptr()) };
             assert_eq!(part[..8], row[37..45], "sky {i} row {y} from 37");
@@ -197,14 +191,16 @@ fn each_sky_is_its_gradient_with_the_moon_wisps_and_hills_over_it() {
 #[test]
 fn the_arena_leaves_the_sky_band_clear_and_covers_the_floor() {
     let arena = scene_art::load("arena");
-    // Under the sky's last rows (136-139) and below, the arena is opaque.
-    for y in 140..240 {
+    let under_the_skys_last_row = 140;
+    for y in under_the_skys_last_row..240 {
         assert!((0..240).all(|x| arena.at(x, y) != CLEAR), "row {y}");
     }
-    // The sky shows through above the steps, between the columns.
-    assert!((60..180).all(|x| arena.at(x, 40) == CLEAR), "row 40");
     assert!(
-        arena.px[..16 * 240].iter().all(|&p| p == CLEAR),
+        (60..180).all(|x| arena.at(x, 40) == CLEAR),
+        "row 40: the sky between the columns"
+    );
+    assert!(
+        arena.px[..STATUS_BAR_H * 240].iter().all(|&p| p == CLEAR),
         "the HUD rows"
     );
 }
@@ -236,11 +232,9 @@ fn the_unarmed_poses_are_patches_where_that_is_smaller() {
 fn the_flames_are_the_torches() {
     let f = unsafe { scene_rmr_flames };
     assert_eq!(f, scene_art::flames());
-    // The prototype's flame mask: 10 x 12 above each torch at (26, 104) and (212, 104).
     assert_eq!(f, [[21, 90, 10, 12], [207, 90, 10, 12]]);
 }
 
-/// What the art costs in flash, against the plan's 48 KB ceiling.
 #[test]
 fn the_art_fits_its_flash_ceiling() {
     let (runs, offs, structs, total) = scene_art::flash();
@@ -290,8 +284,6 @@ fn the_converter_takes_art_colours_and_full_transparency_only() {
     assert!(e.contains("art palette"), "{e}");
 }
 
-/// The run that holds pixel x of a coded row (x from the coded rectangle's left), and the
-/// pixel it starts at, walking from the row's start.
 fn runs_of(s: &scene_image, r: usize) -> Vec<(usize, usize)> {
     let row = usize::from(unsafe { *s.rows.add(r) });
     let flags = unsafe { *s.data.add(15) };
@@ -381,8 +373,9 @@ fn a_blended_span_draws_its_opaque_pixels_over_what_is_there() {
         for i in 0..300 {
             let y = rng.below(f.h);
             let h = 1 + rng.below((f.h - y).min(8));
-            let (sx, n) = if i < 4 {
-                (0, sw) // whole rows
+            let whole_rows = i < 4;
+            let (sx, n) = if whole_rows {
+                (0, sw)
             } else {
                 let sx = rng.below(sw);
                 (sx, 1 + rng.below((sw - sx).min(12)))
@@ -431,9 +424,6 @@ fn a_blended_span_draws_its_opaque_pixels_over_what_is_there() {
     }
 }
 
-/// The motion tables in flash are red-moon-rite-motion.txt's: each fighter's flight and where
-/// his sword sticks, and the spark's stages, row by row as the script draws them (a pixel
-/// drawn twice keeping its last colour).
 #[test]
 fn the_motion_tables_are_the_scripts() {
     let m = scene_art::motion();
@@ -480,9 +470,9 @@ fn the_motion_tables_are_the_scripts() {
         }
         assert_eq!(got, want, "spark stage {}", i + 1);
     }
-    // The script's stages: 141, 109 and 77 pixels drawn, a disc of 29 among them.
     assert_eq!(
         m.sparks.iter().map(Vec::len).collect::<Vec<_>>(),
-        [77, 109, 141]
+        [77, 109, 141],
+        "the script's spark stages, in pixels drawn"
     );
 }

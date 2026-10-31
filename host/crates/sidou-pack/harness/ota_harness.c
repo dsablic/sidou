@@ -1,17 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* Felucca's ota.c (platform/fm1/src/ota.c, GPL-3.0-only), step 1 of the update protocol as the
- * firmware runs it, built for the host with test hooks: the host side of the protocol is the
- * test's (callbacks), the flash is a RAM array with NOR semantics (erase to 0xFF, program
- * clears bits), time advances one millisecond per idle call. */
 #include <stdint.h>
 #include <string.h>
 
-/* The identity the firmware answers (platform/fm1/CMakeLists.txt SIDOU_PRODUCT). */
 #define FELUCCA_ID "FM-1_900"
 #define FELUCCA_OTA_DRYRUN 0
-/* ota.c puts its large buffers in the device's .pool section; Mach-O section names need a
- * segment, so the host build aligns them instead. */
 #define section(x) aligned(4)
 
 typedef struct {
@@ -80,9 +73,6 @@ static void ota_commit(const uint8_t* parm) {
 
 #include "ota.c"
 
-/* The update loader's session (platform/fm1/loader/ldr_core.c, Felucca's, unmodified) on the same
- * host: its flash hooks count every erase, program and record clear, so a test can show that a
- * refused package touched nothing. */
 static uint32_t ldr_writes;
 static int ldr_fread(uint32_t off, void* p, uint32_t n);
 static int ldr_erase(uint32_t off);

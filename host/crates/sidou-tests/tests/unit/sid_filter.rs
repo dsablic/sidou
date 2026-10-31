@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use sidou_sys::*;
 
-use crate::{assert_float_eq, assert_near};
+use crate::{assert_float_eq, assert_near, chip};
 
-const FS: f32 = 44100.0;
-/// SIDOU_PI is a float literal in C, which bindgen exposes as f64; both round to this f32.
+const FS: f32 = crate::FS as f32;
+const FC_HI_1024: u8 = 0x80;
+const VOICES_1_TO_3_FILTERED_AT_RESONANCE_0: u8 = 0x07;
+const STALE_DAMPING: f32 = 9.0;
 const PI: f32 = SIDOU_PI as f32;
 const _: () = assert!(PI == std::f32::consts::PI);
 
@@ -30,8 +32,7 @@ fn tick_6581(f: &mut sid_svf, n: &sid_nonlin, v0: f32) {
     unsafe { sid_svf_tick_6581(f, n, v0) }
 }
 
-/// A 6581 filter (sid_svf_set_6581) with no DC load.
-fn svf_6581(n: &sid_nonlin, hz: f32, q: f32) -> sid_svf {
+fn svf_6581_without_dc_load(n: &sid_nonlin, hz: f32, q: f32) -> sid_svf {
     let mut f = sid_svf::default();
     unsafe {
         sid_svf_reset(&mut f);
@@ -40,11 +41,8 @@ fn svf_6581(n: &sid_nonlin, hz: f32, q: f32) -> sid_svf {
     f
 }
 
-/// A chip's 6581 non-linearity at the default amount (sid_set_filter_nonlinearity).
 fn default_nonlin() -> sid_nonlin {
-    let mut s = Box::<sid>::default();
-    unsafe { sid_init(&mut *s, SID_MODEL_6581, SID_CLOCK_PAL, 44100) };
-    s.nl
+    chip(SID_MODEL_6581).nl
 }
 
 fn cutoff(model: sid_model, fc: u32) -> f32 {
@@ -85,14 +83,12 @@ fn low_pass_gain_at_cutoff_equals_q() {
     assert_near!(peak, q, 0.01);
 }
 
-/// With no non-linearity (amount 0) the 6581's tick is the linear filter, up to the
-/// rounding of its Newton step and of the band-pass it rebuilds.
 #[test]
 fn the_6581_tick_without_non_linearity_is_the_linear_filter() {
     let n = sid_nonlin::default();
     for (hz, q) in [(240.0f32, 0.8f32), (2000.0, 3.0), (12000.0, 0.7)] {
         let mut linear = linear_svf(hz, q);
-        let mut shaped = svf_6581(&n, hz, q);
+        let mut shaped = svf_6581_without_dc_load(&n, hz, q);
         for i in 0..4410 {
             let x = 1.5 * (2.0 * PI * 440.0 * i as f32 / FS).sin() + 0.8;
             tick(&mut linear, x);
@@ -105,10 +101,8 @@ fn the_6581_tick_without_non_linearity_is_the_linear_filter() {
     }
 }
 
-/// The RMS of the low-pass output for a 1 kHz square of the given swing around `dc`, after
-/// the filter settles, relative to the swing: how far the cutoff is from 1 kHz.
-fn lp_gain_6581(n: &sid_nonlin, hz: f32, swing: f32, dc: f32) -> f32 {
-    let mut f = svf_6581(n, hz, 1.0);
+fn lp_rms_gain_6581_of_a_1khz_square(n: &sid_nonlin, hz: f32, swing: f32, dc: f32) -> f32 {
+    let mut f = svf_6581_without_dc_load(n, hz, 1.0);
     let mut sum = 0.0f32;
     let mut mean = 0.0f32;
     let mut out = Vec::new();
@@ -127,22 +121,17 @@ fn lp_gain_6581(n: &sid_nonlin, hz: f32, swing: f32, dc: f32) -> f32 {
     (sum / out.len() as f32).sqrt() / swing
 }
 
-/// The 6581's cutoff, as reSIDfp's: in the threshold region it rises with the swing; a DC
-/// load lowers it; neither moves the 8580's, which stays linear.
 #[test]
 fn the_6581_cutoff_rises_with_swing_and_falls_with_load() {
     let n = default_nonlin();
-    let quiet = lp_gain_6581(&n, 240.0, 0.1, 0.0);
-    let loud = lp_gain_6581(&n, 240.0, 1.0, 0.0);
+    let quiet = lp_rms_gain_6581_of_a_1khz_square(&n, 240.0, 0.1, 0.0);
+    let loud = lp_rms_gain_6581_of_a_1khz_square(&n, 240.0, 1.0, 0.0);
     assert!(loud > 1.5 * quiet, "threshold region: {quiet} -> {loud}");
-    let unloaded = lp_gain_6581(&n, 1000.0, 0.1, n.load_ref);
-    let loaded = lp_gain_6581(&n, 1000.0, 0.1, n.load_ref + 3.0);
+    let unloaded = lp_rms_gain_6581_of_a_1khz_square(&n, 1000.0, 0.1, n.load_ref);
+    let loaded = lp_rms_gain_6581_of_a_1khz_square(&n, 1000.0, 0.1, n.load_ref + 3.0);
     assert!(loaded < 0.8 * unloaded, "loaded: {unloaded} -> {loaded}");
 }
 
-/// Whatever goes in (beyond any voice mix, at every cutoff and resonance) the 6581's
-/// filter stays finite and bounded: the Newton step only ever underestimates a1, and any
-/// 0 < a1 <= 1 / (1 + g (g + k)) is stable.
 #[test]
 fn the_6581_filter_stays_bounded_under_extreme_input() {
     let n = default_nonlin();
@@ -188,7 +177,7 @@ fn silence_never_leaves_subnormal_state() {
     for hz in [30.0f32, 220.0, 6000.0] {
         for shaped in [false, true] {
             let mut f = if shaped {
-                svf_6581(&n, hz, 0.707)
+                svf_6581_without_dc_load(&n, hz, 0.707)
             } else {
                 linear_svf(hz, 0.707)
             };
@@ -226,8 +215,6 @@ fn the_8580_cutoff_rises_with_fc() {
     }
 }
 
-/// The 6581's cutoff follows its kinked cutoff DAC (reSIDfp's), not FC: ordered by what
-/// the DAC outputs it never falls, and where a high bit turns on it drops with the DAC.
 #[test]
 fn the_6581_cutoff_follows_its_cutoff_dac() {
     let dac = residfp_sys::filter6581_dac(0.5);
@@ -256,19 +243,16 @@ fn resonance_lowers_the_damping() {
     }
 }
 
-/// A resonance write sets the filter's damping from the table, and an FC write its
-/// cutoff, prewarped at the sample rate.
 #[test]
 fn the_chip_takes_cutoff_and_damping_from_the_tables() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
-        let mut s = Box::<sid>::default();
+        let mut s = chip(model);
         unsafe {
-            sid_init(&mut *s, model, SID_CLOCK_PAL, 44100);
             sid_write(&mut *s, 0x17, 0xa1);
             sid_write(&mut *s, 0x15, 0x05);
             sid_write(&mut *s, 0x16, 0x60);
         }
-        crate::settle(&mut s);
+        crate::settle_filter_coefficients(&mut s);
         assert_eq!(s.svf.k, damping(model, 10));
         let fc = (0x60 << 3) | 5;
         let g = tanf(PI * cutoff(model, fc) / FS);
@@ -276,29 +260,21 @@ fn the_chip_takes_cutoff_and_damping_from_the_tables() {
     }
 }
 
-/// The curve settings of M1c Task 3's chip profiles (gen/filter.h; sidou-tablegen's
-/// FILTER_CURVES): five on the 6581 (reSIDfp's default, R2, R3, worn, age/heat's), two on
-/// the 8580 (the default, age/heat's).
 #[test]
 fn each_model_has_its_filter_curves() {
     for (model, curves) in [(SID_MODEL_6581, 5), (SID_MODEL_8580, 2)] {
         assert_eq!(unsafe { sid_filter_curves(model) }, curves);
-        // Out of range: the default curve, row 0.
         for fc in [0u32, 1023, 2047] {
-            assert_eq!(unsafe { sid_cutoff_hz(model, 7, fc) }, cutoff(model, fc));
+            assert_eq!(
+                unsafe { sid_cutoff_hz(model, 7, fc) },
+                cutoff(model, fc),
+                "a curve out of range is the default"
+            );
         }
         assert_eq!(unsafe { sid_resonance_k(model, 7, 15) }, damping(model, 15));
     }
 }
 
-fn chip(model: sid_model) -> Box<sid> {
-    let mut s = Box::<sid>::default();
-    unsafe { sid_init(&mut *s, model, SID_CLOCK_PAL, 44100) };
-    s
-}
-
-/// sid_set_filter_curve rebuilds the chip's cutoff and damping tables (outside the audio
-/// path) and they apply at the next filter register write, as sid_init's do.
 #[test]
 fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
@@ -308,7 +284,7 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
             sid_write(&mut *s, 0x16, 0x40);
             sid_write(&mut *s, 0x17, 0xf1);
         }
-        crate::settle(&mut s);
+        crate::settle_filter_coefficients(&mut s);
         let svf = s.svf;
         s.cutoff_g.fill(0.25);
         s.res_k.fill(1.5);
@@ -316,32 +292,33 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
         assert_eq!(s.cutoff_g, fresh.cutoff_g);
         assert_eq!(s.res_k, fresh.res_k);
         assert_eq!(s.filter_curve, 0);
-        // Not applied yet: the audio path's coefficients are the old ones.
-        assert_eq!(format!("{:?}", s.svf), format!("{svf:?}"));
+        assert_eq!(
+            format!("{:?}", s.svf),
+            format!("{svf:?}"),
+            "not applied before a filter write"
+        );
         let mut expect = chip(model);
         unsafe {
             sid_write(&mut *expect, 0x16, 0x40);
             sid_write(&mut *expect, 0x17, 0xf1);
-            s.svf.k = 9.0; // whatever the coefficients were
+            s.svf.k = STALE_DAMPING;
             sid_write(&mut *s, 0x17, 0xf1);
         }
-        crate::settle(&mut s);
-        crate::settle(&mut expect);
+        crate::settle_filter_coefficients(&mut s);
+        crate::settle_filter_coefficients(&mut expect);
         assert_eq!(format!("{:?}", s.svf), format!("{:?}", expect.svf));
-        // A curve the model does not have changes nothing.
         s.cutoff_g[5] = 0.25;
         let past = unsafe { sid_filter_curves(model) };
-        assert_eq!(unsafe { sid_set_filter_curve(&mut *s, past) }, -1);
+        assert_eq!(
+            unsafe { sid_set_filter_curve(&mut *s, past) },
+            -1,
+            "a curve the model lacks changes nothing"
+        );
         assert_eq!(s.cutoff_g[5], 0.25);
         assert_eq!(s.filter_curve, 0);
     }
 }
 
-/// sid_set_filter_blend: the tables for both curve settings (the first's bit for bit
-/// sid_set_filter_curve's g, the second's their angles, whose tangents are another chip's g),
-/// and at each filter write the cutoff's angle and the damping (1 - t) of the first's plus t
-/// of the second's; t 0 is the first curve's coefficients exactly, t is clamped, and a curve
-/// the model lacks changes nothing.
 #[test]
 fn a_filter_blend_runs_between_two_curve_settings() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
@@ -351,10 +328,10 @@ fn a_filter_blend_runs_between_two_curve_settings() {
         let mut s = chip(model);
         let filter = |c: &mut sid| {
             unsafe {
-                sid_write(c, 0x16, 0x80); // FC 1024
+                sid_write(c, 0x16, FC_HI_1024);
                 sid_write(c, 0x17, 0xf1);
             }
-            crate::settle(c);
+            crate::settle_filter_coefficients(c);
         };
         unsafe {
             sid_set_filter_curve(&mut *a, 0);
@@ -400,16 +377,14 @@ fn a_filter_blend_runs_between_two_curve_settings() {
             s.svf.g,
             b.svf.g
         );
-        // Not applied until a filter write.
         unsafe { sid_set_filter_blend(&mut *s, 0, last, 0.0) };
-        assert_eq!(s.svf.g, blend(1.0));
+        assert_eq!(s.svf.g, blend(1.0), "not applied until a filter write");
         let past = last + 1;
         s.cutoff_g[5] = 0.25;
         assert_eq!(unsafe { sid_set_filter_blend(&mut *s, 0, past, 0.5) }, -1);
         assert_eq!(unsafe { sid_set_filter_blend(&mut *s, past, 0, 0.5) }, -1);
         assert_eq!(unsafe { sid_set_filter_toward(&mut *s, past) }, -1);
         assert_eq!(s.cutoff_g[5], 0.25);
-        // sid_set_filter_toward builds the second tables alone.
         let mut u = chip(model);
         assert_eq!(unsafe { sid_set_filter_toward(&mut *u, last) }, 0);
         assert_eq!(u.cutoff_g, a.cutoff_g);
@@ -418,10 +393,6 @@ fn a_filter_blend_runs_between_two_curve_settings() {
     }
 }
 
-/// The blend is of the cutoff in Hz (sid.h, sid_set_filter_blend: of the angles, each end
-/// clamped to the tables' range): over every 8th FC of every profile's curve and hot row
-/// (age/heat's two ends) at every 4th age, the cutoff the chip's filter takes is the Hz blend
-/// of the two ends' table cutoffs, to the approximants' and float's rounding.
 #[test]
 fn the_blend_is_of_the_cutoff_in_hz() {
     let mut worst = (0.0f64, 0u32, 0u32, 0u32);
@@ -438,7 +409,7 @@ fn the_blend_is_of_the_cutoff_in_hz() {
                     sid_write(&mut *s, 0x15, (fc & 7) as u8);
                     sid_write(&mut *s, 0x16, (fc >> 3) as u8);
                 }
-                crate::settle(&mut s);
+                crate::settle_filter_coefficients(&mut s);
                 let hz = |c: u32| {
                     let f = f64::from(unsafe { sid_cutoff_hz(model, c, fc) });
                     f.clamp(30.0, 0.45 * f64::from(FS))
@@ -459,33 +430,24 @@ fn the_blend_is_of_the_cutoff_in_hz() {
     assert!(worst.0 < 1e-5, "{worst:?}");
 }
 
-/// The 6581's coefficients come from one Newton step for 1 / (1 + g (g + k)), and the step's
-/// error is the model: under load the cutoff falls and the step underestimates a1, which
-/// raises the damping the filter runs at (k', what bpn carries: bpn = k' bp) above the
-/// table's k, as reSIDfp's damping grows under the load. An exact divide would keep k and
-/// change the sound. Pinned at FC 1024, resonance 0, three voices routed into the filter.
 #[test]
 fn the_6581_newton_step_is_the_load_damping() {
-    let mut s = Box::<sid>::default();
+    let mut s = chip(SID_MODEL_6581);
     unsafe {
-        sid_init(&mut *s, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
         sid_write(&mut *s, 0x15, 0x00);
-        sid_write(&mut *s, 0x16, 0x80); // FC 1024
-        sid_write(&mut *s, 0x17, 0x07); // resonance 0, voices 1-3 into the filter
+        sid_write(&mut *s, 0x16, FC_HI_1024);
+        sid_write(&mut *s, 0x17, VOICES_1_TO_3_FILTERED_AT_RESONANCE_0);
         sid_write(&mut *s, 0x18, 0x1f);
     }
-    crate::settle(&mut s);
+    crate::settle_filter_coefficients(&mut s);
     let n = s.nl;
     let mut f = s.svf;
     let (g0, k) = (s.cutoff_g[1024], s.res_k[0]);
-    // At rest but for the band-pass integrator, with the swing at the tables' reference:
-    // only the load moves the cutoff.
     f.ic1 = 0.1;
     f.ic2 = 0.0;
     f.hp = n.level_ref;
     tick_6581(&mut f, &n, 0.0);
     let k_run = f.bpn / f.bp;
-    // The model, written out: the load's cutoff and the Newton step from the table's a1.
     let m = 1.0 + n.load * (n.load_ref - 3.0 * 1.15625);
     let g = g0 * m;
     let a10 = 1.0 / (1.0 + g0 * (g0 + k));
@@ -498,7 +460,6 @@ fn the_6581_newton_step_is_the_load_damping() {
         k_run > 1.05 * k,
         "the load's damping: k' {k_run} against the table's {k}"
     );
-    // An exact divide keeps the table's damping: the step's error is what damps.
     let exact = 1.0 / (1.0 + g * (g + k));
     assert_near!((1.0 / exact - 1.0) / g - g, k, 1e-3 * k);
 }

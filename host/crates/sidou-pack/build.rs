@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Builds the host harnesses (harness/): the firmware's step 1 of the update protocol
-//! (ota.c), its flash hooks (platform/fm1/ota_flash.h) and the flash spike's bounds
-//! (platform/fm1/flash_spike_guard.h), for the tests.
 
 use std::env;
 use std::path::PathBuf;
@@ -50,12 +47,6 @@ fn main() {
     uac_harnesses(&manifest, &fm1);
 }
 
-/// USB audio out: SIDOU's harness (harness/uac_harness.c: usb.c as midi.c builds it, with
-/// usb_audio.c's hand-over) and Felucca's own test of usb.c's audio input, as it is
-/// (harness/felucca/uac_test.c, from Felucca's tests/, run by tests/usb_audio.rs: its `main`
-/// renamed). That test includes `../firmware/src/usb.c`: OUT_DIR gets Felucca's layout, a
-/// `firmware` link to platform/fm1 (whose src/ and hal/ are Felucca's) beside the `tests` the
-/// include is looked up from.
 fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("felucca");
     let tests = out.join("tests");
@@ -83,8 +74,6 @@ fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
         .file(manifest.join("harness/uac_harness.c"))
         .include(fm1)
         .flag("-std=c11")
-        // Optimised in every profile, as Felucca builds its own test: usb.c's SIE functions,
-        // unused here, hold pi32v2 instructions, and GCC emits unused static functions at -O0.
         .opt_level(2)
         .warnings(true)
         .flag_if_supported("-Wno-unused-function")

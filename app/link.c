@@ -8,13 +8,11 @@
 #include "panel.h"
 #include "store.h"
 
-/* Replies waiting (link_state.want). */
 #define WANT_HELLO 1u
 #define WANT_STOPPED 2u
 #define WANT_BEAT 4u
 #define WANT_COLOURS 8u
 #define NO_GLYPH 0xFFu
-/* Glyphs a GLYPHS frame carries: its first code, then 8 rows each. */
 #define GLYPHS_A_FRAME ((LINK_PAYLOAD_MAX - 1u) / 8u)
 _Static_assert(FONT_LAST < NO_GLYPH, "a glyph code is never NO_GLYPH");
 _Static_assert(PANEL_ENCODERS <= 8u && PANEL_KEY_ID0 <= 16u, "the panel fits link_state");
@@ -51,13 +49,12 @@ static void command(link_state* l, uint32_t now) {
         sum += l->in[i];
     }
     if (!n || (sum & 0x7Fu)) {
-        return; /* no checksum, or a wrong one */
+        return;
     }
-    /* The payload unpacked in place: groups of a mask and up to 7 low parts. */
     uint8_t* p = l->in;
     uint32_t len = 0;
     for (uint32_t i = 0; i + 1u < n; i += 8u) {
-        uint32_t mask = p[i]; /* before the first byte lands on it */
+        uint32_t mask = p[i];
         for (uint32_t k = 1; k < 8u && i + k + 1u < n; k++) {
             p[len++] = (uint8_t)(p[i + k] | ((mask >> (k - 1u)) & 1u) << 7);
         }
@@ -74,7 +71,7 @@ static void command(link_state* l, uint32_t now) {
         return;
     }
     if (!l->on) {
-        l->want |= WANT_STOPPED; /* no session: the host is told to start one */
+        l->want |= WANT_STOPPED;
         return;
     }
     switch (l->cmd) {
@@ -130,7 +127,7 @@ void link_byte(link_state* l, uint8_t b, uint32_t now_ms) {
     } else if (l->n < LINK_IN_MAX) {
         l->in[l->n++] = b;
     } else {
-        l->stage = 0; /* longer than any host frame */
+        l->stage = 0;
     }
 }
 
@@ -178,15 +175,12 @@ static uint32_t hello(const link_state* l, uint8_t* p) {
     return n;
 }
 
-/* 1 if cell i is in the region and its pixels can be read. */
 static int pixel_cell(const grid* g, uint32_t i) {
     uint32_t col = i % GRID_COLS, row = i / GRID_COLS;
     return (g->region_bitmap || (g->region_painter && g->region_peek)) &&
            col - g->region_col < g->region_w && row - g->region_row < g->region_h;
 }
 
-/* Cell i's record: its code, its colour and its third byte (the character of a piece outside
- * a pixel region; else 0, or LINK_OVERLAY with the overlay's colour and its mask after). */
 static uint32_t record(const grid* g, uint32_t i, int pixels, uint8_t* o) {
     uint8_t ch = g->shown_ch[i];
     o[0] = ch;
@@ -205,7 +199,6 @@ static uint32_t record(const grid* g, uint32_t i, int pixels, uint8_t* o) {
     return 11;
 }
 
-/* The region's 64 background pixels of cell i, two to a byte (the left one high). */
 static void pixels(const grid* g, uint32_t i, uint8_t* o) {
     uint32_t col = i % GRID_COLS, row = i / GRID_COLS;
     uint8_t px[64];
@@ -231,10 +224,6 @@ static void clean(link_state* l, uint32_t i) {
     l->dirty[i >> 3] &= (uint8_t)~(1u << (i & 7u));
 }
 
-/* The next marked cells: a CELLS frame of a row's marked cells from the first, or a PIXELS
- * frame of one region cell, in screen order from where the last one stopped. 0: none
- * marked. Rows are searched by their bits (link_state.rows), so a screen at rest costs a
- * test. */
 static uint32_t cells(link_state* l, const grid* g, uint8_t* cmd, uint8_t* p) {
     uint32_t i = GRID_CELLS;
     for (uint32_t k = 0; k <= GRID_ROWS && l->rows; k++) {
@@ -247,7 +236,7 @@ static uint32_t cells(link_state* l, const grid* g, uint8_t* cmd, uint8_t* p) {
                 break;
             }
             if (l->scan % GRID_COLS == 0u) {
-                l->rows &= ~(1u << r); /* only a whole row's search clears it */
+                l->rows &= ~(1u << r);
             }
         }
         l->scan = (uint16_t)(r + 1u == GRID_ROWS ? 0u : (r + 1u) * GRID_COLS);
@@ -284,9 +273,6 @@ static uint32_t cells(link_state* l, const grid* g, uint8_t* cmd, uint8_t* p) {
     return n;
 }
 
-/* The frame: F0 7D 'F' 'M' '1' 'L' cmd, the payload packed (a mask of the high bits, bit k
- * for byte k, then up to 7 low parts), the checksum (cmd, packed bytes and it sum to 0 modulo
- * 128), F7. */
 static uint32_t frame(uint8_t* out, uint32_t cmd, const uint8_t* p, uint32_t n) {
     out[0] = 0xF0u;
     memcpy(out + 1, magic, sizeof magic);
@@ -330,7 +316,6 @@ uint32_t link_poll(link_state* l, const grid* g, uint32_t now_ms, uint32_t room,
     uint32_t n = 0;
     uint32_t want = l->want;
     if (want) {
-        /* The replies, one a frame, ahead of the rate. */
         uint32_t bit = want & -want;
         l->want = (uint8_t)(want & ~bit);
         if (bit == WANT_HELLO) {

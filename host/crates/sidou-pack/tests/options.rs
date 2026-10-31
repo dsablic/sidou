@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The build-option record (platform/fm1/build_options.c): its reading, what differs from a
-//! release's defaults, and that the defaults agree with the CMake files' `option()` lines and
-//! `sidou_option_defaults`. Needs no inputs.
 
 use sidou_pack::{build_options, option_problems, DEFAULT_OPTIONS};
 
@@ -50,9 +47,6 @@ fn a_missing_record_or_option_is_not_a_pass() {
     assert_eq!(option_problems(&o).len(), DEFAULT_OPTIONS.len() - 1);
 }
 
-/// The `sidou_option_defaults` list in platform/fm1/CMakeLists.txt and the `option()` and
-/// cached `set()` lines of the CMake files, against `DEFAULT_OPTIONS`: a new option or default
-/// in one place and not the others fails here.
 #[test]
 fn the_defaults_agree_with_the_cmake_files() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -80,7 +74,6 @@ fn the_defaults_agree_with_the_cmake_files() {
         "sidou_option_defaults and DEFAULT_OPTIONS differ"
     );
 
-    // Every SIDOU_ option() and cached set() in the CMake files is in the list, with its default.
     for file in [
         "platform/fm1/CMakeLists.txt",
         "core/CMakeLists.txt",

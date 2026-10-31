@@ -1,18 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The firmware's flash hooks for ota.c (platform/fm1/ota_flash.h) on the host: the same code,
- * with the flash driver, the interrupt mask, the audio and the LEDs played by stand-ins that
- * record how they are used. ota.c (platform/fm1/src/ota.c) supplies OTA_AREA and the hooks'
- * declarations. */
 #include <stdint.h>
 #include <string.h>
 
 #define FELUCCA_ID "FM-1_900"
 #define FELUCCA_OTA_DRYRUN 0
-#define section(x) aligned(4) /* ota.c's .pool buffers (Mach-O section names) */
+#define section(x) aligned(4)
 
-/* hal/fm1_flash.h's range check, verbatim (tests/flash_hooks.rs compares the text): the
- * header's driver is pi32v2 code in .ram_text and does not build here. */
 #define FL_IN(off, n, lo, hi) ((uint32_t)(off) >= (lo) && (uint32_t)(off) <= (hi) && \
                                (uint32_t)(n) <= (hi) - (uint32_t)(off))
 #define FL_FAR(fn) (fn)
@@ -44,7 +38,6 @@ static int fl_read_ram(uint32_t off, uint8_t* dst, uint32_t n) {
     memcpy(dst, flash + off, n);
     return 0;
 }
-/* The real fl_write masks interrupts per 256-byte page itself (fm1_flash.h). */
 static int fl_write(uint32_t off, const uint8_t* src, uint32_t n) {
     writes++;
     for (uint32_t i = 0; i < n; i++) {
@@ -59,7 +52,6 @@ static void input_leds_dark(void) {
     leds_dark++;
 }
 
-/* ota.c's other hooks: not used here. */
 static int ota_wire_send(const uint8_t* p, uint32_t n) {
     (void)p;
     (void)n;

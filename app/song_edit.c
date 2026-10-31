@@ -179,7 +179,7 @@ int song_edit_poll(song_editor* editor) {
     }
     if (!guarded(editor, &editor->request)) {
         if (editor->status == SONG_EDIT_SAVING && editor->prepared)
-            editor->status = SONG_EDIT_WAITING; /* Accepted by the model before SAVE froze it. */
+            editor->status = SONG_EDIT_WAITING;
         else {
             if (editor->status != SONG_EDIT_SAVING) {
                 if (editor->prepared)

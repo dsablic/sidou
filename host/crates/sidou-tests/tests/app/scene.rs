@@ -1,19 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SCENE (app/scene.c, app/scene_view.c): each piece's rules against a model of its own (rule
-//! 30, Langton's ants, the starfield's flight, the fire's and the plasma's bounds), what the
-//! music moves in each, and the view: reached from the menu, SELECT stepping the pieces, the
-//! tap while it shows, and every frame inside the SPI budget.
-
-use std::ffi::CStr;
 
 use sidou_sys::*;
 
-use crate::cutoff_after;
 use crate::views::Ui;
 use crate::{
     assert_wipe_holds_still, drain, petscii, petscii_mut, wipe_frames, Sent, SPI_BUDGET_MS,
 };
+use crate::{c_text, cutoff_after};
 
 const COLS: usize = GRID_COLS as usize;
 const ROWS: usize = GRID_ROWS as usize;
@@ -22,7 +16,7 @@ const BLANK: (u8, u8) = (b' ', 0);
 
 fn new_scene(piece: u32) -> Box<scene> {
     let mut s = Box::<scene>::default();
-    unsafe { scene_start(&mut *s, piece, &quiet()) };
+    unsafe { scene_start(&mut *s, piece, &no_voice_playing()) };
     s
 }
 
@@ -30,8 +24,7 @@ fn step(s: &mut scene, m: &scene_music) {
     unsafe { scene_step(s, m) };
 }
 
-/// No voice playing; the default preset's cutoff and resonance.
-fn quiet() -> scene_music {
+fn no_voice_playing() -> scene_music {
     scene_music {
         gate: [0; 3],
         trig: [0; 3],
@@ -43,7 +36,6 @@ fn quiet() -> scene_music {
     }
 }
 
-/// Voice v held at note with envelope env (no note-on this frame).
 fn held(mut m: scene_music, v: usize, note: u8, env: u8) -> scene_music {
     m.gate[v] = 1;
     m.note[v] = note;
@@ -51,8 +43,7 @@ fn held(mut m: scene_music, v: usize, note: u8, env: u8) -> scene_music {
     m
 }
 
-/// Voice v's note-on this frame.
-fn hit(m: scene_music, v: usize, note: u8, env: u8) -> scene_music {
+fn note_on(m: scene_music, v: usize, note: u8, env: u8) -> scene_music {
     let mut m = held(m, v, note, env);
     m.trig[v] = 1;
     m
@@ -62,8 +53,7 @@ fn cell(s: &scene, c: usize, r: usize) -> (u8, u8) {
     (s.cv.ch[r][c], s.cv.attr[r][c])
 }
 
-/// Cells of the canvas that differ between two snapshots.
-fn changed(a: &scene_canvas, b: &scene_canvas) -> usize {
+fn cells_changed(a: &scene_canvas, b: &scene_canvas) -> usize {
     (0..ROWS)
         .flat_map(|r| (0..COLS).map(move |c| (r, c)))
         .filter(|&(r, c)| a.ch[r][c] != b.ch[r][c] || a.attr[r][c] != b.attr[r][c])
@@ -74,10 +64,7 @@ fn attr(fg: u32, bg: u32) -> u8 {
     ((bg << 4) | fg) as u8
 }
 
-// ---- RULE 30 ----
-
-/// Rule 30 on a ring of 60, as Wolfram states it: new = left XOR (centre OR right).
-fn rule30_model(cur: &[bool; W60]) -> [bool; W60] {
+fn rule30_as_wolfram_states_it(cur: &[bool; W60]) -> [bool; W60] {
     std::array::from_fn(|i| cur[(i + W60 - 1) % W60] ^ (cur[i] | cur[(i + 1) % W60]))
 }
 
@@ -91,11 +78,10 @@ fn rule30_steps_by_the_rule_on_a_ring_of_60() {
     let mut model = bits(x);
     for g in 0..200 {
         x = unsafe { scene_rule30_next(x) };
-        model = rule30_model(&model);
+        model = rule30_as_wolfram_states_it(&model);
         assert_eq!(bits(x), model, "generation {}", g + 1);
         assert_eq!(x >> W60, 0, "bits past the ring");
     }
-    // The first generations of a single cell: the familiar triangle.
     let one = unsafe { scene_rule30_next(1 << 30) };
     assert_eq!(one, 0b111 << 29);
     assert_eq!(
@@ -103,7 +89,6 @@ fn rule30_steps_by_the_rule_on_a_ring_of_60() {
         0b10011 << 28,
         "cells 28..32: 1 1 0 0 1"
     );
-    // Round the ring's ends.
     assert_eq!(
         unsafe { scene_rule30_next(1) },
         1 << 59 | 0b11,
@@ -115,8 +100,6 @@ fn r30(s: &scene) -> scene_rule30 {
     unsafe { s.u.rule30 }
 }
 
-/// The canvas's cell (c, r): the quadrants of generation rows 2r and 2r + 1, cells 2c and
-/// 2c + 1, in the colour of the lower row where it has a pixel.
 fn rule30_cell(t: &scene_rule30, c: usize, r: usize) -> (u8, u8) {
     let (a, b) = (2 * r, 2 * r + 1);
     let bit = |row: usize, x: usize| (t.row[row] >> x & 1) as u32;
@@ -152,15 +135,15 @@ fn rule30_starts_with_its_pattern_in_grey_and_holds_still_in_silence() {
     assert_rule30_canvas(&s);
     let before = s.cv;
     for _ in 0..50 {
-        step(&mut s, &quiet());
+        step(&mut s, &no_voice_playing());
     }
-    assert_eq!(changed(&before, &s.cv), 0, "silence moved it");
+    assert_eq!(cells_changed(&before, &s.cv), 0, "silence moved it");
 }
 
 #[test]
 fn rule30_steps_at_each_note_on_in_the_voices_colour() {
     let mut s = new_scene(SCENE_RULE30);
-    let mut m = hit(quiet(), 1, 60, 0);
+    let mut m = note_on(no_voice_playing(), 1, 60, 0);
     m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_LIGHT_GREEN as u8];
     let head = usize::from(r30(&s).head);
     let cur = r30(&s).cur;
@@ -169,21 +152,22 @@ fn rule30_steps_at_each_note_on_in_the_voices_colour() {
     assert_eq!(usize::from(t.head), head + 1);
     assert_eq!(t.row[head], unsafe { scene_rule30_next(cur) });
     assert_eq!(u32::from(t.color[head]), GRID_YELLOW);
-    // The two rows ahead of the head are cleared.
-    assert_eq!((t.row[head + 1], t.row[head + 2]), (0, 0));
+    assert_eq!(
+        (t.row[head + 1], t.row[head + 2]),
+        (0, 0),
+        "the two rows ahead of the head are cleared"
+    );
     assert_rule30_canvas(&s);
 
-    // Two voices' note-ons: two generations, each in its colour.
-    let mut m2 = hit(hit(quiet(), 0, 60, 0), 2, 40, 0);
+    let mut m2 = note_on(note_on(no_voice_playing(), 0, 60, 0), 2, 40, 0);
     m2.color = m.color;
     step(&mut s, &m2);
     let t = r30(&s);
     assert_eq!(usize::from(t.head), head + 3);
     assert_eq!(u32::from(t.color[head + 1]), GRID_CYAN);
     assert_eq!(u32::from(t.color[head + 2]), GRID_LIGHT_GREEN);
-    // Voice 3's note-on flips the cell its pitch picks before its generation.
-    let frame = 1usize; // the second step
-    let flip = (40 * 7 + frame * 11) % W60;
+    let second_step = 1usize;
+    let flip = (40 * 7 + second_step * 11) % W60;
     let before = unsafe { scene_rule30_next(t.row[head]) };
     assert_eq!(
         t.row[head + 2],
@@ -193,8 +177,7 @@ fn rule30_steps_at_each_note_on_in_the_voices_colour() {
     assert_ne!(t.row[head + 2], before);
     assert_rule30_canvas(&s);
 
-    // A low cutoff darkens the colour.
-    let mut dark = hit(quiet(), 1, 60, 0);
+    let mut dark = note_on(no_voice_playing(), 1, 60, 0);
     dark.color = m.color;
     dark.cutoff = SCENE_DARK_CUTOFF as u16 - 1;
     step(&mut s, &dark);
@@ -208,36 +191,30 @@ fn rule30_keeps_stepping_while_a_voice_sounds_and_stops_with_it() {
     let mut s = new_scene(SCENE_RULE30);
     let head = |s: &scene| usize::from(r30(s).head);
     let h0 = head(&s);
-    // A full envelope held: a generation every other frame.
     for _ in 0..20 {
-        step(&mut s, &held(quiet(), 0, 60, 255));
+        step(&mut s, &held(no_voice_playing(), 0, 60, 255));
     }
     let steps = (head(&s) + W60 - h0) % W60;
     assert!(
         (9..=10).contains(&steps),
         "{steps} generations in 20 frames"
     );
-    // Released, silent: no more.
     let h1 = head(&s);
     for _ in 0..20 {
-        step(&mut s, &quiet());
+        step(&mut s, &no_voice_playing());
     }
     assert_eq!(head(&s), h1);
-    // Many note-ons in one frame step at most SCENE_RULE30_MAX_STEPS times.
-    let mut all = quiet();
+    let mut all = no_voice_playing();
     for v in 0..3 {
-        all = hit(all, v, 60, 255);
+        all = note_on(all, v, 60, 255);
     }
     step(&mut s, &all);
     assert!((head(&s) + W60 - h1) % W60 <= SCENE_RULE30_MAX_STEPS as usize);
-    // It wraps round the screen.
     for _ in 0..80 {
-        step(&mut s, &hit(quiet(), 0, 60, 0));
+        step(&mut s, &note_on(no_voice_playing(), 0, 60, 0));
     }
     assert_rule30_canvas(&s);
 }
-
-// ---- ANT ----
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Ant {
@@ -246,8 +223,6 @@ struct Ant {
     d: usize,
 }
 
-/// Langton's ants on a 30 x 30 torus: on an empty cell turn right and paint it, on a painted
-/// one turn left and clear it, then step forward.
 struct AntModel {
     cell: [[u8; COLS]; ROWS],
     a: [Ant; 3],
@@ -316,13 +291,13 @@ fn the_ants_follow_langtons_rules() {
     let mut model = AntModel::new();
     let mut rng = 12345u32;
     for f in 0..600u32 {
-        let mut m = quiet();
+        let mut m = no_voice_playing();
         m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_LIGHT_GREEN as u8];
         m.cutoff = if f % 200 < 100 { 1200 } else { 300 };
         for v in 0..3 {
             let r = unsafe { scene_random(&mut rng) };
             if r % 7 == 0 {
-                m = hit(m, v, 60, 0);
+                m = note_on(m, v, 60, 0);
             }
             if (f / 50 + v as u32).is_multiple_of(3) {
                 m.env[v] = (r >> 8) as u8 | 1;
@@ -344,8 +319,6 @@ fn the_ants_follow_langtons_rules() {
             );
         }
         assert_eq!(a.cell, model.cell, "frame {f}");
-        // The canvas: a pip in the trail's colour, the ants as balls on top (a silent voice's
-        // grey), blank elsewhere.
         for r in 0..ROWS {
             for c in 0..COLS {
                 let k = a.cell[r][c];
@@ -377,7 +350,7 @@ fn the_ants_follow_langtons_rules() {
 #[test]
 fn the_ants_start_again_after_scene_ant_reset_steps() {
     let mut s = new_scene(SCENE_ANT);
-    let mut m = quiet();
+    let mut m = no_voice_playing();
     for v in 0..3 {
         m = held(m, v, 60, 255);
     }
@@ -396,8 +369,6 @@ fn the_ants_start_again_after_scene_ant_reset_steps() {
     assert!(u32::from(most) < SCENE_ANT_RESET);
 }
 
-// ---- STARS ----
-
 fn stars(s: &scene) -> scene_stars {
     unsafe { s.u.stars }
 }
@@ -406,11 +377,10 @@ fn stars(s: &scene) -> scene_stars {
 fn the_stars_fly_out_faster_with_the_envelope_and_steer_with_the_pitch() {
     let mut s = new_scene(SCENE_STARS);
     let z = |s: &scene| -> Vec<i32> { stars(s).st.iter().map(|p| i32::from(p.z)).collect() };
-    // In silence each star comes closer by the cruising speed, the cutoff's.
     let cruise = |cutoff: u32| 8 + cutoff as i32 * 24 / 2047;
     for cutoff in [0u16, 1200, 2047] {
         let before = z(&s);
-        let mut m = quiet();
+        let mut m = no_voice_playing();
         m.cutoff = cutoff;
         step(&mut s, &m);
         for (i, (&b, &a)) in before.iter().zip(&z(&s)).enumerate() {
@@ -425,16 +395,14 @@ fn the_stars_fly_out_faster_with_the_envelope_and_steer_with_the_pitch() {
             }
         }
     }
-    // A sounding voice speeds its third of the stars.
     let before = z(&s);
-    step(&mut s, &held(quiet(), 1, 60, 255));
+    step(&mut s, &held(no_voice_playing(), 1, 60, 255));
     for (i, (&b, &a)) in before.iter().zip(&z(&s)).enumerate() {
         if a <= b {
             let boost = if i % 3 == 1 { 255 * 180 / 256 } else { 0 };
             assert_eq!(b - a, cruise(1200) + boost, "star {i}");
         }
     }
-    // Every star stays in its box, deeper than the near plane.
     for p in stars(&s).st {
         assert!(
             (-768..=768).contains(&p.x) && (-768..=768).contains(&p.y),
@@ -442,25 +410,21 @@ fn the_stars_fly_out_faster_with_the_envelope_and_steer_with_the_pitch() {
         );
         assert!((205..=4096).contains(&p.z), "{p:?}");
     }
-    // The centre steers toward the latest note: right of the middle for high notes.
     for _ in 0..40 {
-        step(&mut s, &hit(quiet(), 2, 80, 200));
+        step(&mut s, &note_on(no_voice_playing(), 2, 80, 200));
     }
     assert_eq!(stars(&s).cx, 80, "steered to (80 - 60) * 4");
     for _ in 0..40 {
-        step(&mut s, &hit(quiet(), 0, 40, 200));
+        step(&mut s, &note_on(no_voice_playing(), 0, 40, 200));
     }
     assert_eq!(stars(&s).cx, -80);
 }
 
-/// A note-on lights its voice's stars even before its envelope rises (the tap's ENV3 is still
-/// 0 when the note-on comes before the audio has run a block): the light goes early only once
-/// the voice is let go and silent.
 #[test]
-fn a_note_on_lights_the_stars_before_its_envelope_rises() {
+fn a_note_on_lights_the_stars_before_its_envelope_rises_until_let_go_and_silent() {
     let lit = SCENE_STARS_LIT as u8;
     let mut s = new_scene(SCENE_STARS);
-    let mut m = hit(quiet(), 0, 60, 0);
+    let mut m = note_on(no_voice_playing(), 0, 60, 0);
     m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_YELLOW as u8];
     step(&mut s, &m);
     assert_eq!(
@@ -473,19 +437,18 @@ fn a_note_on_lights_the_stars_before_its_envelope_rises() {
     };
     assert!(cyan(&s), "no star in the voice's colour");
     m.trig = [0; 3];
-    step(&mut s, &m); // held, ENV3 still 0
+    step(&mut s, &m);
     assert_eq!(stars(&s).lit[0], lit - 1);
     m.gate = [0; 3];
     m.env[0] = 30;
-    step(&mut s, &m); // let go, still sounding
+    step(&mut s, &m);
     assert_eq!(stars(&s).lit[0], lit - 2);
     m.env[0] = 0;
-    step(&mut s, &m); // let go and silent
+    step(&mut s, &m);
     assert_eq!(stars(&s).lit[0], 0);
     assert!(!cyan(&s));
 }
 
-/// The canvas from the stars as the piece projects them.
 fn star_canvas(s: &scene, m: &scene_music) -> Vec<(usize, usize, u8, u8)> {
     let t = stars(s);
     let mut out = Vec::new();
@@ -526,11 +489,11 @@ fn star_canvas(s: &scene, m: &scene_music) -> Vec<(usize, usize, u8, u8)> {
 #[test]
 fn the_stars_are_drawn_far_to_near_and_light_with_their_voice() {
     let mut s = new_scene(SCENE_STARS);
-    let mut m = quiet();
+    let mut m = no_voice_playing();
     m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_LIGHT_GREEN as u8];
     for f in 0..60 {
         let m = if f == 10 {
-            hit(m, 1, 60, 200)
+            note_on(m, 1, 60, 200)
         } else if f > 10 && f < 30 {
             held(m, 1, 60, 200)
         } else {
@@ -555,15 +518,11 @@ fn the_stars_are_drawn_far_to_near_and_light_with_their_voice() {
     }
 }
 
-// ---- FIRE ----
-
 fn fire(s: &scene) -> scene_fire {
     unsafe { s.u.fire }
 }
 
 const FIRE_TOP: usize = ROWS - SCENE_FIRE_ROWS as usize;
-/// The fire's ramp, coolest first: brown only in the ember bed, and no orange (olive-brown on
-/// this palette).
 const FIRE_COLORS: [u32; 6] = [
     GRID_BLACK,
     GRID_BROWN,
@@ -573,8 +532,8 @@ const FIRE_COLORS: [u32; 6] = [
     GRID_WHITE,
 ];
 const FIRE_WHITE: usize = 5;
+const FIRE_IDLE_HOT: u8 = 120;
 
-/// The fire's level (0..5) of a cell row's half: top or bottom.
 fn fire_levels(s: &scene) -> Vec<Vec<usize>> {
     (FIRE_TOP..ROWS)
         .flat_map(|r| {
@@ -591,9 +550,7 @@ fn fire_levels(s: &scene) -> Vec<Vec<usize>> {
         .collect()
 }
 
-/// How many heat rows (half cells) up from the bottom the flame of voice v reaches: the
-/// highest with a cell of level 3 (light red) or more.
-fn flame_height(s: &scene, v: usize) -> usize {
+fn flame_height_in_heat_rows(s: &scene, v: usize) -> usize {
     let lv = fire_levels(s);
     let h = lv.len();
     (0..h)
@@ -604,7 +561,6 @@ fn flame_height(s: &scene, v: usize) -> usize {
 #[test]
 fn the_fire_burns_in_its_rows_with_each_voices_envelope() {
     let mut s = new_scene(SCENE_FIRE);
-    // The rows above it stay blank.
     let check_above = |s: &scene| {
         for r in 0..FIRE_TOP {
             for c in 0..COLS {
@@ -613,54 +569,50 @@ fn the_fire_burns_in_its_rows_with_each_voices_envelope() {
         }
     };
     check_above(&s);
-    // In silence only the idle flame burns, low and red: no light red anywhere.
     for _ in 0..60 {
-        step(&mut s, &quiet());
+        step(&mut s, &no_voice_playing());
     }
-    assert_eq!((0..3).map(|v| flame_height(&s, v)).max(), Some(0));
-    // Voice 2 held at full envelope: its flame, not the others'.
-    let m = held(quiet(), 1, 60, 255);
+    assert_eq!(
+        (0..3).map(|v| flame_height_in_heat_rows(&s, v)).max(),
+        Some(0)
+    );
+    let m = held(no_voice_playing(), 1, 60, 255);
     for _ in 0..60 {
         step(&mut s, &m);
     }
     check_above(&s);
-    let h = [0, 1, 2].map(|v| flame_height(&s, v));
+    let h = [0, 1, 2].map(|v| flame_height_in_heat_rows(&s, v));
     assert!(h[1] >= 8, "voice 2's flame: {h:?}");
     assert_eq!((h[0], h[2]), (0, 0), "{h:?}");
-    // Higher notes burn higher.
     let mut tall = new_scene(SCENE_FIRE);
     let mut short = new_scene(SCENE_FIRE);
     let (mut sum_tall, mut sum_short) = (0, 0);
     for _ in 0..100 {
-        step(&mut tall, &held(quiet(), 0, 84, 255));
-        step(&mut short, &held(quiet(), 0, 36, 255));
-        sum_tall += flame_height(&tall, 0);
-        sum_short += flame_height(&short, 0);
+        step(&mut tall, &held(no_voice_playing(), 0, 84, 255));
+        step(&mut short, &held(no_voice_playing(), 0, 36, 255));
+        sum_tall += flame_height_in_heat_rows(&tall, 0);
+        sum_short += flame_height_in_heat_rows(&short, 0);
     }
     assert!(
         sum_tall > sum_short * 5 / 4,
         "{sum_tall} against {sum_short}"
     );
-    // Released, the flame dies back to the embers.
     for _ in 0..100 {
-        step(&mut s, &quiet());
+        step(&mut s, &no_voice_playing());
     }
-    assert_eq!(flame_height(&s, 1), 0);
+    assert_eq!(flame_height_in_heat_rows(&s, 1), 0);
 }
 
-/// A silent fire is not dark: its flames fall to FIRE_IDLE_HOT and flicker a few cell rows
-/// high in red, and never reach light red or the cell rows above them.
 #[test]
-fn a_silent_fire_keeps_a_low_flame() {
+fn a_silent_fire_keeps_a_low_red_flame_that_never_reaches_light_red() {
     let mut s = new_scene(SCENE_FIRE);
     let (mut flickers, mut tallest) = (0usize, 0usize);
     for f in 0..200 {
-        step(&mut s, &quiet());
+        step(&mut s, &no_voice_playing());
         if f < 60 {
             continue;
         }
         let lv = fire_levels(&s);
-        // The half cells at level 2 (red) or more above the bed; the highest one's height.
         let red = |y: usize| lv[y].iter().filter(|&&l| l >= 2).count();
         flickers += (0..lv.len() - 1).map(red).sum::<usize>();
         let top = (0..lv.len())
@@ -670,8 +622,6 @@ fn a_silent_fire_keeps_a_low_flame() {
         assert!(lv.iter().flatten().all(|&l| l <= 2), "frame {f}: above red");
     }
     println!("idle fire: {flickers} red half cells above the bed in 140 frames, up to {tallest}");
-    // On average a few half cells a column (a cell row or two), now and then a tongue to
-    // about eight cell rows, nothing taller.
     let mean = flickers as f64 / (140.0 * COLS as f64);
     assert!(
         (2.0..=10.0).contains(&mean),
@@ -681,8 +631,11 @@ fn a_silent_fire_keeps_a_low_flame() {
         (8..=20).contains(&tallest),
         "the idle flame is {tallest} half cells high"
     );
-    // Each voice's hot value rests at the idle level.
-    assert!(fire(&s).hot.iter().all(|&h| h == 120), "{:?}", fire(&s).hot);
+    assert!(
+        fire(&s).hot.iter().all(|&h| h == FIRE_IDLE_HOT),
+        "{:?}",
+        fire(&s).hot
+    );
 }
 
 #[test]
@@ -691,7 +644,7 @@ fn the_cutoff_sets_how_hot_the_fire_burns() {
         let mut s = new_scene(SCENE_FIRE);
         let mut most = 0;
         for _ in 0..80 {
-            let mut m = held(quiet(), 0, 60, 255);
+            let mut m = held(no_voice_playing(), 0, 60, 255);
             m.cutoff = cutoff;
             step(&mut s, &m);
             most = most.max(fire_levels(&s).iter().flatten().copied().max().unwrap());
@@ -705,11 +658,10 @@ fn the_cutoff_sets_how_hot_the_fire_burns() {
         FIRE_WHITE,
         "the preset's cutoff burns white at the bed"
     );
-    // The cutoff moves the top of the ramp, not the heat: the flames burn the same.
     let heat = |cutoff: u16| {
         let mut s = new_scene(SCENE_FIRE);
         for _ in 0..40 {
-            let mut m = held(quiet(), 0, 60, 255);
+            let mut m = held(no_voice_playing(), 0, 60, 255);
             m.cutoff = cutoff;
             step(&mut s, &m);
         }
@@ -718,14 +670,11 @@ fn the_cutoff_sets_how_hot_the_fire_burns() {
     assert_eq!(heat(0), heat(2047));
 }
 
-/// The ramp: brown only in the ember bed (the bottom heat row), and there only where it just
-/// glows; yellow a thin band between light red and white; the hottest near the bed; and the
-/// flames break into tongues (columns of differing height), not one mound.
 #[test]
 fn the_fire_burns_up_its_ramp_in_tongues() {
     let mut s = new_scene(SCENE_FIRE);
     for _ in 0..30 {
-        step(&mut s, &quiet());
+        step(&mut s, &no_voice_playing());
     }
     let lv = fire_levels(&s);
     let bed = lv.len() - 1;
@@ -737,7 +686,7 @@ fn the_fire_burns_up_its_ramp_in_tongues() {
     let mut count = [0usize; 6];
     let mut heights = Vec::new();
     for f in 0..200 {
-        let mut m = quiet();
+        let mut m = no_voice_playing();
         m.cutoff = 2047;
         for v in 0..3 {
             m = held(m, v, 48 + 12 * v as u8, 230);
@@ -750,7 +699,6 @@ fn the_fire_burns_up_its_ramp_in_tongues() {
                 assert!(l != 1 || y == bed, "brown above the bed, frame {f}");
             }
         }
-        // Each column's flame top (level 2, red, or more).
         heights
             .extend((0..COLS).map(|x| (0..lv.len()).find(|&y| lv[y][x] >= 2).unwrap_or(lv.len())));
     }
@@ -777,7 +725,7 @@ fn the_fire_burns_up_its_ramp_in_tongues() {
 #[test]
 fn the_fire_steps_every_other_frame_and_draws_half_its_rows_a_frame() {
     let mut s = new_scene(SCENE_FIRE);
-    let m = held(quiet(), 0, 60, 255);
+    let m = held(no_voice_playing(), 0, 60, 255);
     for f in 0..40u32 {
         let heat = fire(&s).heat;
         let before = s.cv;
@@ -794,8 +742,6 @@ fn the_fire_steps_every_other_frame_and_draws_half_its_rows_a_frame() {
     }
 }
 
-// ---- PLASMA ----
-
 const PLASMA_RAMP: [u32; 6] = [
     GRID_BLACK,
     GRID_BLUE,
@@ -805,7 +751,6 @@ const PLASMA_RAMP: [u32; 6] = [
     GRID_WHITE,
 ];
 
-/// The plasma level (0..19) of each cell: a dither glyph over two neighbours of the ramp.
 fn plasma_levels(s: &scene) -> Vec<usize> {
     let mut out = Vec::new();
     for r in 0..ROWS {
@@ -834,11 +779,11 @@ fn the_plasma_fills_the_screen_and_the_cutoff_speeds_it() {
         let mut total = 0;
         for _ in 0..50 {
             let before = s.cv;
-            let mut m = held(quiet(), 0, 60, env);
+            let mut m = held(no_voice_playing(), 0, 60, env);
             m.cutoff = cutoff;
             step(&mut s, &m);
             plasma_levels(&s);
-            total += changed(&before, &s.cv);
+            total += cells_changed(&before, &s.cv);
         }
         total
     };
@@ -850,7 +795,6 @@ fn the_plasma_fills_the_screen_and_the_cutoff_speeds_it() {
     );
     assert!(fast > 3 * slow, "the cutoff: {fast} against {slow}");
     assert!(loud > 2 * slow, "the envelope: {loud} against {slow}");
-    // Levels from the bottom of the ramp to the top.
     let s = new_scene(SCENE_PLASMA);
     let lv = plasma_levels(&s);
     assert!(
@@ -864,7 +808,7 @@ fn the_plasma_draws_every_other_row_a_frame() {
     let mut s = new_scene(SCENE_PLASMA);
     for f in 0..20usize {
         let before = s.cv;
-        let mut m = held(quiet(), 0, 60, 255);
+        let mut m = held(no_voice_playing(), 0, 60, 255);
         m.cutoff = 2047;
         step(&mut s, &m);
         for r in 0..ROWS {
@@ -881,15 +825,14 @@ fn the_plasma_draws_every_other_row_a_frame() {
 fn a_note_on_drops_a_ripple_where_its_pitch_says() {
     for (note, x, y) in [(72u8, 3u8, 15u8), (60, 3, 21), (83, 25, 10), (127, 17, 0)] {
         let mut s = new_scene(SCENE_PLASMA);
-        step(&mut s, &hit(quiet(), 2, note, 200));
+        step(&mut s, &note_on(no_voice_playing(), 2, note, 200));
         let r = unsafe { s.u.plasma }.rip[2];
         assert_eq!((r.x, r.y, r.age), (x, y, 1), "note {note}");
-        // A ring grows from there: brighter than the plasma without it, half a cell a frame.
         let mut plain = new_scene(SCENE_PLASMA);
-        step(&mut plain, &held(quiet(), 2, note, 200));
+        step(&mut plain, &held(no_voice_playing(), 2, note, 200));
         for _ in 0..7 {
-            step(&mut s, &held(quiet(), 2, note, 200));
-            step(&mut plain, &held(quiet(), 2, note, 200));
+            step(&mut s, &held(no_voice_playing(), 2, note, 200));
+            step(&mut plain, &held(no_voice_playing(), 2, note, 200));
         }
         let (a, b) = (plasma_levels(&s), plasma_levels(&plain));
         let ring: Vec<usize> = (0..COLS * ROWS).filter(|&i| a[i] != b[i]).collect();
@@ -904,11 +847,10 @@ fn a_note_on_drops_a_ripple_where_its_pitch_says() {
             );
         }
     }
-    // It fades out.
     let mut s = new_scene(SCENE_PLASMA);
-    step(&mut s, &hit(quiet(), 0, 72, 200));
+    step(&mut s, &note_on(no_voice_playing(), 0, 72, 200));
     for _ in 0..SCENE_RIPPLE_FRAMES {
-        step(&mut s, &held(quiet(), 0, 72, 200));
+        step(&mut s, &held(no_voice_playing(), 0, 72, 200));
     }
     assert_eq!(
         u32::from(unsafe { s.u.plasma }.rip[0].age),
@@ -916,7 +858,6 @@ fn a_note_on_drops_a_ripple_where_its_pitch_says() {
     );
 }
 
-/// The plasma's distance table, generated into app/scene.c: round(4 hypot(dx, dy)).
 #[test]
 fn the_distance_table_is_four_times_the_distance() {
     let table = unsafe { scene_dist4 };
@@ -928,9 +869,6 @@ fn the_distance_table_is_four_times_the_distance() {
     }
 }
 
-// ---- every piece ----
-
-/// The plasma's whole-turn sine is sine_q7, byte for byte.
 #[test]
 fn the_plasmas_sine_table_is_sine_q7() {
     for phase in 0..256u32 {
@@ -948,33 +886,37 @@ fn a_piece_starts_and_plays_the_same_every_time() {
     for piece in 0..SCENE_PETSCII {
         let mut a = new_scene(piece);
         let mut b = new_scene(piece);
-        assert_eq!(changed(&a.cv, &b.cv), 0, "piece {piece}");
+        assert_eq!(cells_changed(&a.cv, &b.cv), 0, "piece {piece}");
         let mut rng = 7u32;
         for f in 0..200 {
             let r = unsafe { scene_random(&mut rng) };
             let m = if r % 5 == 0 {
-                hit(quiet(), (r % 3) as usize, 48 + (r >> 8) as u8 % 36, 220)
+                note_on(
+                    no_voice_playing(),
+                    (r % 3) as usize,
+                    48 + (r >> 8) as u8 % 36,
+                    220,
+                )
             } else {
-                held(quiet(), 0, 60, (r >> 16) as u8)
+                held(no_voice_playing(), 0, 60, (r >> 16) as u8)
             };
             step(&mut a, &m);
             step(&mut b, &m);
-            assert_eq!(changed(&a.cv, &b.cv), 0, "piece {piece}, frame {f}");
+            assert_eq!(cells_changed(&a.cv, &b.cv), 0, "piece {piece}, frame {f}");
         }
-        // scene_start brings it back to its first frame.
-        unsafe { scene_start(&mut *a, piece, &quiet()) };
-        assert_eq!(changed(&a.cv, &new_scene(piece).cv), 0, "piece {piece}");
+        unsafe { scene_start(&mut *a, piece, &no_voice_playing()) };
+        assert_eq!(
+            cells_changed(&a.cv, &new_scene(piece).cv),
+            0,
+            "piece {piece}"
+        );
     }
-    // Pieces wrap, among the five drawn in cells.
     assert_eq!(new_scene(SCENE_PETSCII + 2).piece, 2);
 }
 
-/// A piece begun (scene_begin) and drawn a wipe's rows at a time (scene_fill) is the piece
-/// started whole (scene_start), and plays on the same; PLASMA, the costliest start, draws no
-/// row before it is asked for it. A step draws what is left first.
 #[test]
 fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
-    let mut m = quiet();
+    let mut m = no_voice_playing();
     m.resonance = 11;
     m.cutoff = 1900;
     for piece in 0..SCENE_PETSCII {
@@ -999,38 +941,37 @@ fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
         unsafe { scene_begin(&mut *lazy, piece) };
         for f in 0..20 {
             let mf = if f % 5 == 0 {
-                hit(m, f % 3, 60 + f as u8, 200)
+                note_on(m, f % 3, 60 + f as u8, 200)
             } else {
                 m
             };
             step(&mut part, &mf);
             step(&mut lazy, &mf);
             step(&mut whole, &mf);
-            assert_eq!(changed(&part.cv, &whole.cv), 0, "piece {piece}, frame {f}");
-            assert_eq!(changed(&lazy.cv, &whole.cv), 0, "piece {piece}, frame {f}");
+            assert_eq!(
+                cells_changed(&part.cv, &whole.cv),
+                0,
+                "piece {piece}, frame {f}"
+            );
+            assert_eq!(
+                cells_changed(&lazy.cv, &whole.cv),
+                0,
+                "piece {piece}, frame {f}"
+            );
         }
     }
 }
 
-// ---- the view ----
-
 fn piece_name(k: u32) -> String {
-    unsafe { CStr::from_ptr(scene_names[k as usize]) }
-        .to_string_lossy()
-        .into_owned()
+    c_text(unsafe { scene_names[k as usize] })
 }
 
-/// The menu, then SCENE, settled.
 pub(crate) fn open_scene(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SCENE as i32);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.choose_menu_item(VIEWS_MENU_SCENE);
     ui.settle();
 }
 
-/// The grid's composed cells as the piece has them: the canvas's, or RED MOON RITE's blank
-/// cells over its painter region.
 fn grid_is_canvas(ui: &Ui) -> bool {
     if u32::from(ui.v.scene.which) == SCENE_RMR {
         return ui.g.region_painter.is_some()
@@ -1051,13 +992,9 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     assert_eq!(u32::from(ui.v.scene.which), SCENE_FIRE);
     assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
     assert_eq!(ui.toast().as_deref(), Some("FIRE"), "the name on entry");
-    for _ in 0..40 {
-        ui.frame(); // the toast gone
-        drain(&mut ui.g);
-    }
+    ui.frames_sent(40);
     assert!(ui.toast().is_none());
     assert!(grid_is_canvas(&ui), "the grid is not the fire's canvas");
-    // SELECT: the next piece wipes in, and a toast names it; round and back.
     for k in 1..=SCENE_PIECES {
         ui.turn(PANEL_ENC_SELECT, 1);
         assert_eq!(u32::from(ui.v.scene.which), k % SCENE_PIECES);
@@ -1072,23 +1009,18 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
         );
         ui.settle();
         if k % SCENE_PIECES == SCENE_RMR {
-            for _ in 0..40 {
-                ui.frame(); // the toast gone
-                drain(&mut ui.g);
-            }
+            ui.frames_sent(40);
             assert!(grid_is_canvas(&ui), "RED MOON RITE's cells are not blank");
         }
     }
     ui.turn(PANEL_ENC_SELECT, -2);
     assert_eq!(u32::from(ui.v.scene.which), SCENE_PIECES - 2);
-    // Every other control plays: K1 the cutoff, the octave.
     let cutoff = ui.live().cutoff;
     ui.turn(PANEL_ENC_K1, 3);
     assert_eq!(ui.live().cutoff, cutoff_after(ui.live().model, cutoff, 3));
     assert!(ui.live().cutoff > cutoff);
     ui.press(PANEL_BTN_OCT_UP);
     assert_eq!(ui.live().octave, 1);
-    // HOME goes back; SCENE comes back with the piece it showed, from its start.
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
     ui.settle();
@@ -1098,15 +1030,12 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_PIECES - 2);
 }
 
-/// ALGORITHM steps the piece exactly as SELECT does: the same piece, the wipe, the name.
 #[test]
 fn algorithm_steps_the_piece_as_select_does() {
     let step_with = |enc: u32, steps: i32| {
         let mut ui = Ui::without_cards();
         open_scene(&mut ui);
-        for _ in 0..40 {
-            ui.frame();
-        }
+        ui.frames(40);
         ui.turn(enc, steps);
         ui.frame();
         let text = ui.toast();
@@ -1125,17 +1054,13 @@ fn algorithm_steps_the_piece_as_select_does() {
     }
 }
 
-/// The piece's name is toasted once, when SCENE first shows, and again at each step, never
-/// twice for one entry.
 #[test]
 fn entering_scene_names_the_piece_once() {
     let mut ui = Ui::without_cards();
     open_scene(&mut ui);
     assert_eq!(ui.toast().as_deref(), Some("FIRE"));
     assert_eq!(ui.v.scene.say, 0);
-    for _ in 0..60 {
-        ui.frame();
-    }
+    ui.frames(60);
     assert!(ui.toast().is_none(), "the toast ends and is not said again");
 }
 
@@ -1152,12 +1077,7 @@ fn the_tap_runs_while_scene_shows() {
     assert_eq!(ui.sc.on, 1, "the tap is off under SCENE");
     assert_eq!(ui.v.scene.on, 1);
     assert_eq!(ui.v.live.on, 0, "LIVE's use of the tap while SCENE shows");
-    // Under MIDI learn's frame too.
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
+    let _ml = ui.attach_learn();
     ui.learn_on(PANEL_ENC_K1);
     ui.frame();
     assert_eq!(ui.top(), "LEARN");
@@ -1170,13 +1090,10 @@ fn the_tap_runs_while_scene_shows() {
     assert_eq!((ui.sc.on, ui.v.scene.on), (0, 0), "the tap stayed on");
 }
 
-/// A band for the pieces: an arpeggio every 4 frames, a bass every 8 and a high note every 16,
-/// each released a few frames later, and a simple envelope a voice standing in for the chip's
-/// (the tap's ENV3, which the host's views read from the Ui's scope).
 struct Band {
     env: [u8; 3],
     frame: u32,
-    playing: Vec<(u8, u32)>, // a note and the frame it ends
+    notes_and_their_end_frames: Vec<(u8, u32)>,
 }
 
 impl Band {
@@ -1184,11 +1101,10 @@ impl Band {
         Band {
             env: [0; 3],
             frame: 0,
-            playing: Vec::new(),
+            notes_and_their_end_frames: Vec::new(),
         }
     }
 
-    /// The next frame's notes and envelopes, then a frame and what it sent.
     fn frame(&mut self, ui: &mut Ui, playing: bool) -> Sent {
         const CHORDS: [[u8; 3]; 4] = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
         let f = self.frame;
@@ -1196,7 +1112,7 @@ impl Band {
         let ch = CHORDS[(f / 64 % 4) as usize];
         let mut on = |note: u8, len: u32| {
             ui.rig.note_on(note);
-            self.playing.push((note, f + len));
+            self.notes_and_their_end_frames.push((note, f + len));
         };
         if playing && f.is_multiple_of(4) {
             on(ch[(f / 4 % 3) as usize] + 12, 3);
@@ -1207,12 +1123,13 @@ impl Band {
         if playing && f % 16 == 2 {
             on(ch[2] + 24, 2);
         }
-        for &(note, end) in &self.playing {
+        for &(note, end) in &self.notes_and_their_end_frames {
             if end == f || !playing {
                 ui.rig.note_off(note);
             }
         }
-        self.playing.retain(|&(_, end)| playing && end > f);
+        self.notes_and_their_end_frames
+            .retain(|&(_, end)| playing && end > f);
         for v in 0..3 {
             let gate = ui.live().voice[v].gate != 0;
             self.env[v] = if gate {
@@ -1227,7 +1144,6 @@ impl Band {
     }
 }
 
-/// Opens SCENE on `piece`, settled, everything sent; the title cards off (title_card.rs).
 fn scene_on(piece: u32) -> Ui {
     let mut ui = Ui::without_cards();
     open_scene(&mut ui);
@@ -1235,15 +1151,12 @@ fn scene_on(piece: u32) -> Ui {
         ui.turn(PANEL_ENC_SELECT, 1);
         ui.settle();
     }
-    // The cutoff wide open: the busiest plasma and the hottest fire.
-    ui.turn(PANEL_ENC_K1, 64);
-    // The knob's popup (app/screen.h) opens over the piece and closes, which restores the cells
-    // under it a few frames at a time as a piece does: sent frame by frame as the panel takes
-    // them.
-    for _ in 0..80 {
-        ui.frame();
-        drain(&mut ui.g);
-    }
+    let cutoff_wide_open_for_the_busiest_plasma_and_hottest_fire = 64;
+    ui.turn(
+        PANEL_ENC_K1,
+        cutoff_wide_open_for_the_busiest_plasma_and_hottest_fire,
+    );
+    ui.frames_sent(80);
     ui.v.scene.held = 0;
     ui
 }
@@ -1271,7 +1184,6 @@ fn every_piece_stays_within_the_budget_while_the_band_plays() {
             piece_name(piece)
         );
         assert!(worst.spi_ms() <= SPI_BUDGET_MS, "{}", piece_name(piece));
-        // A band playing moves every piece.
         assert!(avg >= 2.0, "{}: {avg:.1} cells a frame", piece_name(piece));
     }
 }
@@ -1291,8 +1203,12 @@ fn a_note_moves_the_scene_and_silence_calms_it() {
             "{}: cells in 50 frames quiet {quiet}, playing {playing}, after {calmed}",
             piece_name(piece)
         );
-        // FIRE's idle flame flickers in silence (about a third of what the band moves).
-        let times = if piece == SCENE_FIRE { 2 } else { 3 };
+        let fires_idle_flame_moves_a_third_as_much = piece == SCENE_FIRE;
+        let times = if fires_idle_flame_moves_a_third_as_much {
+            2
+        } else {
+            3
+        };
         assert!(
             playing > times * quiet.max(10) && playing > times * calmed.max(10),
             "{}: quiet {quiet}, playing {playing}, after {calmed}",
@@ -1303,8 +1219,6 @@ fn a_note_moves_the_scene_and_silence_calms_it() {
 
 #[test]
 fn the_grid_catches_up_with_the_canvas_within_a_few_frames() {
-    // The ant draws only the cells it changes: a canvas changed whole (as its board clearing
-    // at SCENE_ANT_RESET changes it) is far more than a frame's budget.
     let mut ui = scene_on(SCENE_ANT);
     let cv = &mut petscii_mut(&mut ui.v.scene).cv;
     for r in 0..ROWS {
@@ -1328,8 +1242,6 @@ fn the_grid_catches_up_with_the_canvas_within_a_few_frames() {
     assert!(grid_is_canvas(&ui));
 }
 
-/// Whatever the grid held (another view, the update's frame: screen_redraw), the canvas comes
-/// back whole within a few frames, each inside the budget.
 #[test]
 fn every_cell_comes_back_when_the_screen_asks() {
     for piece in 0..SCENE_PIECES {
@@ -1337,7 +1249,7 @@ fn every_cell_comes_back_when_the_screen_asks() {
         for i in 0..COLS * ROWS {
             unsafe { grid_put(&mut *ui.g, (i % COLS) as u32, (i / COLS) as u32, b'X', 0x52) };
         }
-        drain(&mut ui.g); // on the panel
+        drain(&mut ui.g);
         unsafe { screen_redraw(&mut ui.v.s) };
         let mut frames = 0;
         while !grid_is_canvas(&ui) {
@@ -1350,7 +1262,6 @@ fn every_cell_comes_back_when_the_screen_asks() {
     }
 }
 
-/// The wipe into SCENE, and from one piece to the next: the piece holds still under it.
 #[test]
 fn the_wipes_into_scene_send_only_their_rows() {
     for piece in 0..SCENE_PIECES {
@@ -1376,10 +1287,6 @@ fn the_wipes_into_scene_send_only_their_rows() {
     }
 }
 
-/// MIDI learn's frame (SAVE) over each piece and over LIVE while the band plays: the frame
-/// comes in at once, over a view that composes every frame within its budget, so the view
-/// leaves the frame's cells alone and counts what the frame sends (app/screen.h
-/// screen_cover); no frame sends more than the budget, and the frame shows whole.
 #[test]
 fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
     for piece in 0..=SCENE_PIECES {
@@ -1392,11 +1299,7 @@ fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
             drain(&mut ui.g);
             (ui, "LIVE".to_string())
         };
-        let mut ml = Box::<midi_learn>::default();
-        unsafe {
-            midi_learn_init(&mut *ml);
-            views_learn(&mut *ui.v, &mut *ml);
-        }
+        let _ml = ui.attach_learn();
         let mut band = Band::new();
         for _ in 0..20 {
             band.frame(&mut ui, true);
@@ -1421,8 +1324,6 @@ fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
     }
 }
 
-/// A toast's text is the toast's while it shows: the copy spends none of the budget on the
-/// cells under it, so a canvas changed whole catches up as fast as without it.
 #[test]
 fn the_copy_leaves_a_showing_toast_alone() {
     let mut ui = scene_on(SCENE_ANT);
@@ -1472,9 +1373,6 @@ fn the_copy_leaves_a_showing_toast_alone() {
     );
 }
 
-/// SELECT, and the menu's ALGORITHM on SCENE, only pick the piece: it starts in the compose of
-/// the wipe's first frame (ui_poll's), not in the input's call (ui_encoder's, in the same
-/// main-loop pass as that ui_poll), and that frame reveals the start's top rows.
 #[test]
 fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
     let mut ui = scene_on(SCENE_FIRE);
@@ -1487,7 +1385,7 @@ fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
         "started in the input"
     );
     assert_eq!(
-        changed(&petscii(&ui.v.scene).cv, &before),
+        cells_changed(&petscii(&ui.v.scene).cv, &before),
         0,
         "drawn in the input"
     );
@@ -1505,14 +1403,13 @@ fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
         assert_eq!(shown, start, "row {r}");
     }
     ui.settle();
-    // From the menu.
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     let before = petscii(&ui.v.scene).cv;
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(
-        changed(&petscii(&ui.v.scene).cv, &before),
+        cells_changed(&petscii(&ui.v.scene).cv, &before),
         0,
         "drawn in the input"
     );
@@ -1521,9 +1418,6 @@ fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
     assert_eq!(petscii(&ui.v.scene).cv.ch[..4], fresh.cv.ch[..4]);
 }
 
-/// SYNC LEAD makes sound on voice 1 alone (voices 2 and 3 have no waveform: they clock the
-/// sync): SCENE hears them as silent, so their parts of a piece stay still while the band
-/// plays, and voice 1's moves.
 #[test]
 fn sync_leads_silent_voices_stop_their_parts() {
     let sync = (0..4u8)
@@ -1551,8 +1445,17 @@ fn sync_leads_silent_voices_stop_their_parts() {
         );
         if piece == SCENE_FIRE {
             let s = petscii(&ui.v.scene);
-            assert!(flame_height(s, 0) > 0, "voice 1's flame is out");
-            assert_eq!((flame_height(s, 1), flame_height(s, 2)), (0, 0));
+            assert!(
+                flame_height_in_heat_rows(s, 0) > 0,
+                "voice 1's flame is out"
+            );
+            assert_eq!(
+                (
+                    flame_height_in_heat_rows(s, 1),
+                    flame_height_in_heat_rows(s, 2)
+                ),
+                (0, 0)
+            );
         } else {
             let now = unsafe { petscii(&ui.v.scene).u.ant.a };
             assert_ne!(

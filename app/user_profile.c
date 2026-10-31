@@ -23,8 +23,6 @@ void user_profiles_init(user_profiles* u, live* l, store* st) {
     u->since = 0;
 }
 
-/* A stored record as slot n of l: 1 if it is a profile this firmware reads. A later schema's
- * extra bytes are ignored. */
 static int take(live* l, uint32_t n, const uint8_t* rec, uint32_t len) {
     uint32_t count = len > 2u ? rec[2] : 0u;
     if (len < 3u || rec[0] < 1u || count < LIVE_CHAR_FIELDS - 1u ||
@@ -108,8 +106,6 @@ int user_profiles_busy(const user_profiles* u) {
     return u->queued || u->sent || u->result;
 }
 
-/* The lowest queued slot's record, from live's cache, to the store: taken, or never taken
- * (a result), or asked again next tick. */
 __attribute__((noinline, unused)) static void submit(user_profiles* u) {
     const live* l = u->l;
     uint32_t n = 0;
@@ -136,30 +132,28 @@ __attribute__((noinline, unused)) static void submit(user_profiles* u) {
         u->queued = (uint8_t)(u->queued & ~(1u << n));
         u->result = rc == STORE_ERROR ? USER_PROFILE_FAILED : USER_PROFILE_FOREIGN;
         u->result_slot = (uint8_t)n;
-    } /* STORE_BUSY: asked again next tick */
+    }
 }
 
-/* One tick of work: submit, commit, force. */
 __attribute__((noinline, unused)) static void work(user_profiles* u, uint32_t now_ms,
                                                    void (*force)(int on)) {
     if (!u->sent && u->queued && !u->result && !store_busy(u->st)) {
         submit(u);
     }
     if (u->sent && !store_busy(u->st)) {
-        /* Idle after it took the record: committed, unless a program failed meanwhile. */
         u->result = (uint8_t)u->st->errors != u->errors ? USER_PROFILE_FAILED
                     : u->forcing                         ? USER_PROFILE_SAVED_GAPS
                                                          : USER_PROFILE_SAVED;
         u->result_slot = (uint8_t)(u->sent - 1u);
         u->sent = 0;
-        u->since = now_ms; /* the next slot's wait starts when this one ended */
+        u->since = now_ms;
     }
     if (u->queued | u->sent) {
         if (!u->forcing && force && now_ms - u->since >= USER_PROFILE_FORCE_MS) {
             u->forcing = 1;
         }
         if (u->forcing) {
-            force(1); /* idempotent: the settings' save may have released it meanwhile */
+            force(1);
         }
     } else if (u->forcing) {
         u->forcing = 0;

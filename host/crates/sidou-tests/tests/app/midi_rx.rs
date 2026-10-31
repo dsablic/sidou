@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! MIDI input onto the live instrument (`app/midi_rx.c`): ring entries by source through
-//! their parsers, and the M1a default mapping.
 
 use sidou_sys::*;
 
@@ -12,11 +10,9 @@ const TRS: u8 = MIDI_SRC_TRS as u8;
 const C4: u8 = 60;
 const E4: u8 = 64;
 
-/// A live instrument (writing into a recorder) fed by a `midi_rx`.
 struct Midi {
     rig: Rig,
     rx: Box<midi_rx>,
-    /// The ring epoch the next entries carry.
     epoch: u8,
 }
 
@@ -53,7 +49,6 @@ impl Midi {
         &self.rig.live
     }
 
-    /// The notes held (gated), in voice order.
     fn held(&self) -> Vec<u8> {
         self.live()
             .voice
@@ -155,8 +150,6 @@ fn ccs_follow_the_default_mapping() {
 fn other_ccs_change_nothing() {
     let mut m = Midi::new();
     m.rig.clear();
-    // The CCs the published map gives a parameter (tested in midi_map.rs; the effect slots'
-    // in fx_live.rs) and the channel-mode CCs 120 and 123.
     let mapped = |cc: u8| {
         let e = unsafe { midi_map_for_cc(cc) };
         !e.is_null() && u32::from(unsafe { (*e).param }) != MIDI_MAP_RESERVED
@@ -222,7 +215,7 @@ fn a_bend_over_trs_reaches_the_frequency_at_the_tick() {
     m.trs(&[0x90, C4, 100, 0xE0, 0x00, 0x00]);
     unsafe { live_tick(&mut *m.rig.live) };
     assert_eq!(m.rig.voice_freq(0), crate::freq_table()[58]);
-    m.trs(&[0x7F, 0x7F]); // running status
+    m.trs(&[0x7F, 0x7F]);
     unsafe { live_tick(&mut *m.rig.live) };
     assert_eq!(m.rig.voice_freq(0), unsafe { live_freq_at(C4, 8191 * 2) });
 }
@@ -231,7 +224,7 @@ fn a_bend_over_trs_reaches_the_frequency_at_the_tick() {
 fn a_gap_resets_the_controllers() {
     let mut m = Midi::new();
     m.trs(&[0x90, C4, 100, 0xE0, 0x00, 0x00, 0xD0, 50]);
-    m.epoch = 1; // the bend's return to the centre may be among the lost
+    m.epoch = 1;
     m.trs(&[0xFE]);
     assert_eq!(m.rx.restarts, 1);
     assert_eq!(m.live().bend, LIVE_BEND_CENTRE as u16);
@@ -256,11 +249,10 @@ fn a_gap_restarts_the_parsers_at_the_first_entry_after_it() {
     let mut m = Midi::new();
     m.trs(&[0x90, E4, 100]);
     m.usb(0x9, [0x90, 67, 100]);
-    // The tail before the gap is taken whole: this note-on starts before it, ends after it.
     m.trs(&[0x90, C4]);
     assert_eq!(m.held(), [E4, 67]);
     assert_eq!(m.rx.restarts, 0);
-    m.epoch = 1; // input lost here
+    m.epoch = 1;
     m.trs(&[100]);
     assert_eq!(m.rx.restarts, 1);
     assert_eq!(
@@ -282,14 +274,10 @@ fn a_gap_restarts_the_parsers_at_the_first_entry_after_it() {
 fn a_gap_inside_a_sysex_leaves_nothing_behind() {
     let mut m = Midi::new();
     m.trs(&[0x90, C4, 100]);
-    // A SysEx (which also cancels running status) cut by a gap.
     m.trs(&[0xF0, 0x7D, 0x01]);
     m.usb(0x4, [0xF0, 0x7E, 0x00]);
     m.rig.clear();
     m.epoch = 1;
-    // Its tail after the gap: data bytes, then F7, on both sources. None of it may be read
-    // as channel data (with no running status left, nothing can play), and the gap releases
-    // the note.
     m.trs(&[E4, 100, 0x7F, 0xF7]);
     m.usb(0x7, [E4, 100, 0xF7]);
     m.trs(&[67, 100]);
@@ -303,7 +291,6 @@ fn a_gap_inside_a_sysex_leaves_nothing_behind() {
         "writes other than gate releases: {:?}",
         m.rig.log()
     );
-    // The parsers work afterwards.
     m.trs(&[0x90, C4, 100]);
     m.usb(0x9, [0x90, E4, 100]);
     let mut held = m.held();
@@ -317,10 +304,8 @@ fn a_gap_after_the_last_entry_releases_the_notes_at_once() {
     m.trs(&[0x90, C4, 100]);
     assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 0, 0) }, 0, "no gap");
     assert_eq!(m.held(), [C4]);
-    // The note-off may be among what was lost: nothing comes after it yet.
     assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1, 0) }, 1);
     assert_eq!(m.held(), [] as [u8; 0]);
-    // The entries after the gap carry its epoch: no second restart.
     m.epoch = 1;
     m.trs(&[0x90, C4, 100]);
     assert_eq!(m.held(), [C4]);
@@ -330,7 +315,6 @@ fn a_gap_after_the_last_entry_releases_the_notes_at_once() {
 #[test]
 fn an_epoch_that_is_not_newer_never_restarts() {
     let mut m = Midi::new();
-    // The drain read epoch 0, then took an entry from epoch 1 that came in meanwhile.
     m.epoch = 1;
     m.trs(&[0x90, C4, 100]);
     assert_eq!(m.rx.restarts, 1);
@@ -373,7 +357,6 @@ fn losses_from_before_init_are_not_held_against_it() {
 }
 
 thread_local! {
-    /// SysEx events the parsers passed on, by source: (TRS, event, byte).
     static SYSEX: std::cell::RefCell<Vec<(bool, u32, u8)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -386,7 +369,6 @@ unsafe extern "C" fn usb_sysex(_: *mut std::ffi::c_void, event: midi_sysex_event
 }
 
 impl Midi {
-    /// The parsers pass SysEx on, as the device's platform sets them (platform/fm1/midi.c).
     fn with_sysex() -> Self {
         let mut m = Midi::new();
         m.rx.trs.on_sysex = Some(trs_sysex);
@@ -407,7 +389,6 @@ impl Midi {
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }
 
-    /// The SysEx bytes a source passed on since the last call, and whether a frame ended.
     fn sysex(&mut self, trs: bool) -> (Vec<u8>, bool) {
         SYSEX.with(|s| {
             let mut s = s.borrow_mut();
@@ -419,9 +400,6 @@ impl Midi {
     }
 }
 
-/// A gap that lost TRS input only leaves a USB SysEx frame alone, and TRS running status
-/// survives a USB gap: only the parser of the source that lost input restarts (review 4.1:
-/// a TRS overflow used to cut a USB transfer). Every note is released either way.
 #[test]
 fn a_gap_restarts_only_the_parser_of_the_source_it_lost() {
     let mut m = Midi::with_sysex();
@@ -437,13 +415,11 @@ fn a_gap_restarts_only_the_parser_of_the_source_it_lost() {
         (vec![0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7], true),
         "the USB frame, whole, across a TRS gap"
     );
-    // And the other way round: TRS running status across a USB gap.
     m.trs(&[0x90, C4, 100]);
     m.gap_entry(USB, u32::from_le_bytes([0xF, 0xFE, 0, 0]), USB);
     assert_eq!(m.held(), [] as [u8; 0]);
     m.trs(&[E4, 100]);
     assert_eq!(m.held(), [E4], "TRS running status kept");
-    // A gap whose sources are unknown restarts both, as before.
     m.gap_entry(USB, u32::from_le_bytes([0xF, 0xFE, 0, 0]), 0);
     m.trs(&[C4, 100]);
     assert_eq!(
@@ -453,9 +429,6 @@ fn a_gap_restarts_only_the_parser_of_the_source_it_lost() {
     );
 }
 
-/// A restart keeps the SysEx callbacks (review 4.1: it cleared them, so the rest of the pass,
-/// a whole frame after the gap included, never reached SysEx): the frame cut by the gap is
-/// dropped, and the next one, from its F0, is passed on whole.
 #[test]
 fn a_restart_keeps_sysex_and_takes_the_next_frame_from_its_f0() {
     let mut m = Midi::with_sysex();
@@ -473,7 +446,6 @@ fn a_restart_keeps_sysex_and_takes_the_next_frame_from_its_f0() {
         m.sysex(true),
         (vec![0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7], true)
     );
-    // The same for a gap found at the end of the ring, on USB.
     m.usb(0x4, [0xF0, 0x7D, 0x53]);
     let epoch = m.epoch.wrapping_add(1);
     assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, epoch, USB) }, 1);
@@ -491,8 +463,6 @@ fn a_restart_keeps_sysex_and_takes_the_next_frame_from_its_f0() {
     );
 }
 
-/// The chord arpeggio over MIDI (app/live.h live_arp_set): its CC switches it, MIDI's held notes
-/// are its cycle, and a clock rate steps on the MIDI clock (TRS and USB), routed or not.
 #[test]
 fn midi_notes_arpeggiate_and_the_clock_steps_a_clock_rate() {
     for routed in [false, true] {
@@ -510,7 +480,6 @@ fn midi_notes_arpeggiate_and_the_clock_steps_a_clock_rate() {
             }
         }
         m.trs(&[0xB0, LIVE_CC_ARP as u8, 127]);
-        // A 16th of the clock: CC 28 at 7 of the 9 rates.
         m.trs(&[LIVE_CC_ARP_RATE as u8, 100]);
         assert_eq!(u32::from(m.live().arp_rate), LIVE_ARP_RATE_CLOCK + 1);
         m.trs(&[0x90, C4, 100, E4, 100]);

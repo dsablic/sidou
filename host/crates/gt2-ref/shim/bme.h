@@ -1,31 +1,22 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
-/* The gt2-ref harness's stand-in for GoatTracker's BME library header (bme/bme.h, which
- * needs SDL). GoatTracker's song, table and relocation code includes "bme.h"; the harness
- * puts this directory first on the include path. It declares what that code calls and
- * gives the editor's key codes distinct values: the editor's key handling compiles but
- * never runs. Written for SIDOU; no BME code is copied. */
 #ifndef GT2REF_BME_H
 #define GT2REF_BME_H
 
 #include <stdio.h>
 
-/* bme_end.h: one byte, or a little-endian word, to or from a file. */
 unsigned fread8(FILE* file);
 void fwrite8(FILE* file, unsigned data);
 void fwritele16(FILE* file, unsigned data);
 
-/* bme_io.h: the linked datafile, here the player sources (gt2ref_shim.c). */
 int io_openlinkeddatafile(unsigned char* datafile);
 int io_open(char* name);
 int io_lseek(int handle, int bytes, int whence);
 int io_read8(int handle);
 void io_close(int handle);
 
-/* bme_win.h */
 extern int win_quitted;
 
-/* bme_main.h's key codes, which the editor's code names. */
 #define KEY_0 1
 #define KEY_1 2
 #define KEY_2 3

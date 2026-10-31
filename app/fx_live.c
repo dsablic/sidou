@@ -10,8 +10,6 @@ void fx_live_init(fx_live* f, sid_slots* slots) {
     }
 }
 
-/* The slots' range, 0xA0..0xBF, the register ring's REG_RING_IS_SLOT: clear of both chips'
- * registers and pseudo-registers. */
 _Static_assert((LIVE_REG_SLOT_BASE & 0xe0u) == 0xa0u &&
                    (LIVE_REG_SLOT(SID_SLOT_COUNT - 1u, LIVE_SLOT_FIELDS - 1u) & 0xe0u) == 0xa0u,
                "the slots' pseudo-registers are 0xA0..0xBF");

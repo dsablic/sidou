@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! TABLE's ARP helper writes plain GT2 wavetable rows (`song_pages_arp_encode`); GoatTracker
-//! 2.77's own packed player, run in gt2-ref's host 6502, plays them as the helper says: each
-//! step's pitch (the note played plus the step's semitones) for `speed` ticks, the steps
-//! repeating from the loop step, or the last held.
 
 use gt2_ref::trace::trace;
 use gt2_ref::Options;
@@ -11,7 +7,14 @@ use sidou_sys::*;
 use sidou_tests::song::SngSpec;
 
 const FRAMES: usize = 160;
-const TABLE_ROW: u32 = 1; // the instrument's wave pointer: the helper's rows start at row 1
+type WaveRow = (u8, u8);
+
+const WAVE_PROGRAM_ROW: u32 = 1;
+const PATTERN_NOTE_C3: i32 = 0x60 + 36;
+const VOICE_REGISTERS: usize = 7;
+const FREQ_LO: usize = 0;
+const FREQ_HI: usize = 1;
+const CONTROL: usize = 4;
 
 fn arp(offsets: &[i8], speed: u8, loop_step: u8) -> song_pages_arp {
     let mut a = song_pages_arp {
@@ -32,69 +35,61 @@ fn rows(a: &song_pages_arp, first: u32) -> Vec<(u8, u8)> {
     (0..n as usize).map(|i| (left[i], right[i])).collect()
 }
 
-/// C-3 (pattern note value 0x60 + 36) plus `semis`, played by instrument 1 on voice 1.
-fn song(wave_rows: Vec<(u8, u8)>, semis: i32) -> Vec<u8> {
+fn song_playing_c3_plus(wave_rows: Vec<(u8, u8)>, semis: i32) -> Vec<u8> {
     let mut s = SngSpec::new();
     let mut i = [0u8; 25];
-    i[..9].copy_from_slice(&[0x09, 0x00, TABLE_ROW as u8, 0, 0, 0, 0, 2, 0x09]);
+    i[..9].copy_from_slice(&[0x09, 0x00, WAVE_PROGRAM_ROW as u8, 0, 0, 0, 0, 2, 0x09]);
     s.instr = vec![i];
     s.tables[0] = wave_rows;
-    s.patterns[0].0[0] = [(0x60 + 36 + semis) as u8, 1, 0, 0];
+    s.patterns[0].0[0] = [(PATTERN_NOTE_C3 + semis) as u8, 1, 0, 0];
     s.encode()
 }
 
-/// Voice 1's frequency register after each frame's writes.
-fn freqs(sng: &[u8]) -> Vec<u16> {
+fn voice1_registers_per_frame(sng: &[u8]) -> Vec<[u8; VOICE_REGISTERS]> {
     let t = trace(sng, 0, FRAMES, &Options::default()).expect("the reference plays the song");
-    let (mut lo, mut hi) = (0u8, 0u8);
+    let mut regs = [0u8; VOICE_REGISTERS];
     t.frames
         .iter()
         .map(|f| {
             for &(reg, value) in f.calls.iter().flatten() {
-                match reg {
-                    0 => lo = value,
-                    1 => hi = value,
-                    _ => {}
+                if let Some(r) = regs.get_mut(usize::from(reg)) {
+                    *r = value;
                 }
             }
-            u16::from(hi) << 8 | u16::from(lo)
+            regs
         })
         .collect()
 }
 
-/// Voice 1's control register after each frame's writes.
-fn controls(sng: &[u8]) -> Vec<u8> {
-    let t = trace(sng, 0, FRAMES, &Options::default()).expect("the reference plays the song");
-    let mut ctl = 0u8;
-    t.frames
+fn voice1_freqs(sng: &[u8]) -> Vec<u16> {
+    voice1_registers_per_frame(sng)
         .iter()
-        .map(|f| {
-            for &(reg, value) in f.calls.iter().flatten() {
-                if reg == 4 {
-                    ctl = value;
-                }
-            }
-            ctl
-        })
+        .map(|r| u16::from(r[FREQ_HI]) << 8 | u16::from(r[FREQ_LO]))
         .collect()
 }
 
-/// The pitch GT2 gives C-3 plus `semis` semitones (a plain held note), by playing it.
-fn pitch(semis: i32) -> u16 {
-    let f = freqs(&song(vec![(0x41, 0x00), (0xff, 0x00)], semis));
+fn voice1_controls(sng: &[u8]) -> Vec<u8> {
+    voice1_registers_per_frame(sng)
+        .iter()
+        .map(|r| r[CONTROL])
+        .collect()
+}
+
+fn held_note_pitch(semis: i32) -> u16 {
+    let f = voice1_freqs(&song_playing_c3_plus(
+        vec![(0x41, 0x00), (0xff, 0x00)],
+        semis,
+    ));
     *f.last().unwrap()
 }
 
-/// The frames from the first sound on.
-fn played(a: &song_pages_arp) -> Vec<u16> {
-    let f = freqs(&song(rows(a, TABLE_ROW), 0));
+fn freqs_from_first_sound(a: &song_pages_arp) -> Vec<u16> {
+    let f = voice1_freqs(&song_playing_c3_plus(rows(a, WAVE_PROGRAM_ROW), 0));
     let at = f.iter().position(|&x| x != 0).expect("a note sounds");
     f[at..].to_vec()
 }
 
-/// What the helper says should sound: each step `speed` frames, then from the loop step round
-/// and round (the last step held with no loop).
-fn expected(a: &song_pages_arp, frames: usize) -> Vec<u16> {
+fn freqs_the_helper_promises(a: &song_pages_arp, frames: usize) -> Vec<u16> {
     let mut steps: Vec<usize> = Vec::new();
     let n = a.steps as usize;
     let mut k = 0;
@@ -112,13 +107,13 @@ fn expected(a: &song_pages_arp, frames: usize) -> Vec<u16> {
     steps.truncate(frames);
     steps
         .into_iter()
-        .map(|k| pitch(i32::from(a.off[k])))
+        .map(|k| held_note_pitch(i32::from(a.off[k])))
         .collect()
 }
 
 fn check(name: &str, a: &song_pages_arp) {
-    let got = played(a);
-    let want = expected(a, 100);
+    let got = freqs_from_first_sound(a);
+    let want = freqs_the_helper_promises(a, 100);
     let distinct: std::collections::BTreeSet<u16> = want.iter().copied().collect();
     assert!(!distinct.contains(&0), "{name}: a step is silent");
     let offsets: std::collections::BTreeSet<i8> =
@@ -132,7 +127,7 @@ fn check(name: &str, a: &song_pages_arp) {
         &got[..want.len()],
         &want[..],
         "{name}: {:?}",
-        rows(a, TABLE_ROW)
+        rows(a, WAVE_PROGRAM_ROW)
     );
 }
 
@@ -177,25 +172,35 @@ fn the_reference_player_plays_what_the_helper_wrote() {
 
 #[test]
 fn the_rows_are_plain_gt2() {
-    // 1 tick: the waveform in every row, a jump to the loop step.
-    assert_eq!(
-        rows(&arp(&[0, 4, 7], 1, 1), 5),
-        [(0x41, 0), (0x41, 4), (0x41, 7), (0xff, 5)]
-    );
-    // 3 ticks: a delay of two in the later rows; looping at the first takes one more row.
-    assert_eq!(
-        rows(&arp(&[0, 4, 7], 3, 1), 1),
-        [(0x41, 0), (2, 4), (2, 7), (2, 0), (0xff, 2)]
-    );
-    assert_eq!(
-        rows(&arp(&[0, 4, 7], 3, 2), 1),
-        [(0x41, 0), (2, 4), (2, 7), (0xff, 2)]
-    );
-    // Below the note: relative offsets are 7-bit two's complement.
-    assert_eq!(
-        rows(&arp(&[0, -1, -12], 2, 0), 1),
-        [(0x41, 0), (1, 0x7f), (1, 0x74), (0xff, 0)]
-    );
+    let cases: [(&str, song_pages_arp, u32, &[WaveRow]); 4] = [
+        (
+            "1 tick: the waveform in every row, a jump to the loop step",
+            arp(&[0, 4, 7], 1, 1),
+            5,
+            &[(0x41, 0), (0x41, 4), (0x41, 7), (0xff, 5)],
+        ),
+        (
+            "3 ticks looping at the first: delays of two and one more row",
+            arp(&[0, 4, 7], 3, 1),
+            1,
+            &[(0x41, 0), (2, 4), (2, 7), (2, 0), (0xff, 2)],
+        ),
+        (
+            "3 ticks: a delay of two in the later rows",
+            arp(&[0, 4, 7], 3, 2),
+            1,
+            &[(0x41, 0), (2, 4), (2, 7), (0xff, 2)],
+        ),
+        (
+            "below the note: 7-bit two's complement offsets",
+            arp(&[0, -1, -12], 2, 0),
+            1,
+            &[(0x41, 0), (1, 0x7f), (1, 0x74), (0xff, 0)],
+        ),
+    ];
+    for (name, a, first, want) in cases {
+        assert_eq!(rows(&a, first), want, "{name}");
+    }
 }
 
 fn decode(rows: &[(u8, u8)], first: u32) -> Option<song_pages_arp> {
@@ -232,7 +237,6 @@ fn every_arpeggio_reads_back_as_the_rows_it_wrote() {
                 let first = 1 + rng.below(240);
                 let r = rows(&a, first);
                 let back = decode(&r, first).unwrap_or_else(|| panic!("{r:?} is an arpeggio"));
-                // The same rows again (steps 1 and a loop of one are the same sound as a hold).
                 assert_eq!(
                     rows(&back, first),
                     r,
@@ -255,43 +259,46 @@ fn every_arpeggio_reads_back_as_the_rows_it_wrote() {
 
 #[test]
 fn hand_made_and_other_rows_are_told_apart() {
-    // GoatTracker's hand-made form: the waveform in each row, a jump back to the first.
     let a = decode(&[(0x41, 0), (0x41, 4), (0x41, 7), (0xff, 3)], 3).unwrap();
     assert_eq!((a.steps, a.speed, a.loop_, a.wave), (3, 1, 1, 0x41));
     assert_eq!(a.off[..3], [0, 4, 7]);
-    // Not arpeggios: an absolute note, keep, a delay first, mixed delays, a jump out of the rows
-    // or onto the waveform row of a delayed one, no end, a command, too many steps.
-    let no = |rows: &[(u8, u8)]| assert!(decode(rows, 1).is_none(), "{rows:?}");
-    no(&[(0x41, 0x81), (0xff, 0)]);
-    no(&[(0x41, 0), (0x41, 0x80), (0xff, 0)]);
-    no(&[(2, 0), (2, 4), (0xff, 0)]);
-    no(&[(0x41, 0), (2, 4), (3, 7), (0xff, 0)]);
-    no(&[(0x41, 0), (2, 4), (0xff, 7)]);
-    no(&[(0x41, 0), (2, 4), (0xff, 1)]);
-    no(&[(0x41, 0), (2, 4)]);
-    no(&[(0xf1, 0), (0xff, 0)]);
-    no(&[(0x41, 0), (0x21, 4), (0xff, 0)]);
     let nine: Vec<(u8, u8)> = (0..9).map(|_| (0x41, 0)).chain([(0xff, 0)]).collect();
-    no(&nine);
-    // A blank row, a stop and a wave program the helper does not write.
-    no(&[(0, 0), (0, 0)]);
-    no(&[(0xff, 0), (0xff, 0)]);
+    let not_arpeggios: [(&str, &[(u8, u8)]); 12] = [
+        ("an absolute note", &[(0x41, 0x81), (0xff, 0)]),
+        ("keep", &[(0x41, 0), (0x41, 0x80), (0xff, 0)]),
+        ("a delay first", &[(2, 0), (2, 4), (0xff, 0)]),
+        ("mixed delays", &[(0x41, 0), (2, 4), (3, 7), (0xff, 0)]),
+        ("a jump out of the rows", &[(0x41, 0), (2, 4), (0xff, 7)]),
+        (
+            "a jump onto a delayed program's waveform row",
+            &[(0x41, 0), (2, 4), (0xff, 1)],
+        ),
+        ("no end", &[(0x41, 0), (2, 4)]),
+        ("a command", &[(0xf1, 0), (0xff, 0)]),
+        (
+            "a waveform change the helper does not write",
+            &[(0x41, 0), (0x21, 4), (0xff, 0)],
+        ),
+        ("too many steps", &nine),
+        ("a blank row", &[(0, 0), (0, 0)]),
+        ("a stop", &[(0xff, 0), (0xff, 0)]),
+    ];
+    for (name, rows) in not_arpeggios {
+        assert!(decode(rows, 1).is_none(), "{name}: {rows:?}");
+    }
 }
 
-/// Every waveform the helper offers (PRESETS' list: the top nibble 1, 2, 4, 8 and the combined
-/// 3, 5, 6, 7, with the gate) reaches the reference player's control register while the steps
-/// still play as the helper says; a waveform's sync and ring bits stay with the byte.
 #[test]
 fn the_reference_player_plays_each_waveform_the_helper_chooses() {
     for wave in [0x11u8, 0x21, 0x41, 0x81, 0x31, 0x51, 0x61, 0x71, 0x45, 0x23] {
         let mut a = arp(&[0, 4, 7, 12], 2, 1);
         a.wave = wave;
-        let r = rows(&a, TABLE_ROW);
+        let r = rows(&a, WAVE_PROGRAM_ROW);
         assert!(
             r.iter().all(|&(l, _)| l == wave || l < 0x10 || l == 0xff),
             "{wave:02X}: the rows carry the waveform: {r:?}"
         );
-        let ctl = controls(&song(r, 0));
+        let ctl = voice1_controls(&song_playing_c3_plus(r, 0));
         let at = ctl
             .iter()
             .position(|&c| c & 0xf0 != 0)
@@ -301,8 +308,8 @@ fn the_reference_player_plays_each_waveform_the_helper_chooses() {
             ctl[at..at + 60].iter().all(|&c| c == wave),
             "{wave:02X}: it holds through the steps"
         );
-        let got = played(&a);
-        let want = expected(&a, 60);
+        let got = freqs_from_first_sound(&a);
+        let want = freqs_the_helper_promises(&a, 60);
         assert_eq!(&got[..60], &want[..], "{wave:02X}: the steps");
     }
 }

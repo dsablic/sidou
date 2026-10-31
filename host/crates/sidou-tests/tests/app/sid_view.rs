@@ -1,11 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The SID views (M3 Task 11, app/sid_view.h): the SIDS browser of the store's .sid files, the
-//! question before a tune takes an unsaved song's memory, NOW PLAYING, PLAY and EDIT + PLAY with a
-//! tune loaded, GLO's mutes and solos to the tune, the song views' SID PLAYING and STATUS's 6502
-//! rows, against a fake of the tune's player (app/sid_transport.h) that main.c's binding stands
-//! for on the device. The screens against their golden images (tests/golden/lcd/, written with
-//! SIDOU_LCD_GOLDEN_UPDATE=1), every frame within the song views' 200 cells.
 
 use std::ffi::{c_char, c_void, CStr};
 use std::path::{Path, PathBuf};
@@ -14,12 +8,13 @@ use sidou_sys::*;
 
 use super::sid_io::put;
 use super::store::{fresh, Rig};
-use crate::views::Ui;
-use crate::{drain, pixels};
+use crate::views::{ascii_or_hash, Ui};
+use crate::{c_text, drain, pixels};
 
 const COLS: usize = GRID_COLS as usize;
+const GLO_MUTE_VOICE_2_KEY: u32 = 1 << 1;
+const GLO_SOLO_VOICE_3_KEY: u32 = 1 << 5;
 
-/// What the views asked of the player.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TuneCall {
     Play(String),
@@ -33,8 +28,6 @@ pub(crate) enum TuneCall {
     Import(i32),
 }
 
-/// The player, as main.c's binding shows it: a play loads at once (`loading` holds it in
-/// SID_T_LOADING), with the header `h` for whatever file it plays.
 pub(crate) struct Tune {
     pub(crate) calls: Vec<TuneCall>,
     pub(crate) st: sid_status,
@@ -47,16 +40,12 @@ fn tune(ctx: *mut c_void) -> &'static mut Tune {
     unsafe { &mut *ctx.cast::<Tune>() }
 }
 
-fn name_of(p: *const c_char) -> String {
-    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
-}
-
 unsafe extern "C" fn t_play(ctx: *mut c_void, name: *const c_char) -> i32 {
     let t = tune(ctx);
     if t.refuse {
         return 0;
     }
-    let n = name_of(name);
+    let n = c_text(name);
     t.calls.push(TuneCall::Play(n.clone()));
     t.st.name = [0; STORE_NAME_MAX as usize + 1];
     for (i, b) in n.bytes().enumerate() {
@@ -114,7 +103,6 @@ unsafe extern "C" fn t_mute(ctx: *mut c_void, mask: u32) -> i32 {
 unsafe extern "C" fn t_status(ctx: *mut c_void, out: *mut sid_status) {
     unsafe { *out = tune(ctx).st };
 }
-/// The lift: armed for the voice (3: off), as the binding shows it.
 unsafe extern "C" fn t_lift(ctx: *mut c_void, voice: u32) -> i32 {
     let t = tune(ctx);
     t.calls.push(TuneCall::Lift(voice));
@@ -122,7 +110,6 @@ unsafe extern "C" fn t_lift(ctx: *mut c_void, voice: u32) -> i32 {
     t.st.lift_voice = if voice < 3 { voice as u8 } else { 0 };
     1
 }
-/// The offer's answer: an import runs (IMPORTING) until the test ends it; a skip ends the offer.
 unsafe extern "C" fn t_import(ctx: *mut c_void, go: i32) -> i32 {
     let t = tune(ctx);
     t.calls.push(TuneCall::Import(go));
@@ -134,7 +121,6 @@ unsafe extern "C" fn t_import(ctx: *mut c_void, go: i32) -> i32 {
     1
 }
 
-/// A lifted instrument offered, as the binding offers it once the song is back.
 pub(crate) fn offer(t: &mut Tune, name: &str, instr: u8) {
     t.st.offer = SID_OFFER_READY as u8;
     t.st.offer_instr = instr;
@@ -148,8 +134,12 @@ fn text(field: &mut [c_char], s: &str) {
     }
 }
 
-/// A header as psid_parse leaves it: PAL, a 6581, one chip, `songs` songs from song 1.
-pub(crate) fn header(title: &str, author: &str, released: &str, songs: u16) -> psid_header {
+pub(crate) fn pal_6581_header(
+    title: &str,
+    author: &str,
+    released: &str,
+    songs: u16,
+) -> psid_header {
     let mut h = psid_header {
         version: 2,
         load: 0x1000,
@@ -169,14 +159,11 @@ pub(crate) fn header(title: &str, author: &str, released: &str, songs: u16) -> p
     h
 }
 
-/// The fake player's binding and the store holding the browser's .sid files (bind's); everything
-/// C keeps a pointer to boxed.
 pub(crate) struct Bound {
     _t: Box<sid_transport>,
     pub(crate) rig: Rig,
 }
 
-/// The fake player bound to the views and a store of `names` as .sid files for the browser.
 pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
     let mut rig = fresh(1103, STORE_WINDOW_MAX);
     for n in names {
@@ -185,7 +172,7 @@ pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
     let mut tune = Box::new(Tune {
         calls: Vec::new(),
         st: sid_status::default(),
-        h: Box::new(header(
+        h: Box::new(pal_6581_header(
             "NIGHT DRIVE ON THE MOTORWAY",
             "A. Composer",
             "2026 SIDOU",
@@ -213,8 +200,6 @@ pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
     (tune, Bound { _t: t, rig })
 }
 
-/// The views with the fake player bound (bind), and the song files' controller (`io`: its song
-/// unchanged, over a model of its own).
 pub(crate) struct Sids {
     pub(crate) ui: Ui,
     pub(crate) tune: Box<Tune>,
@@ -258,8 +243,6 @@ impl Sids {
     }
 }
 
-/// Frames until the screen is still: no transition, the browser's scan done, the canvas copied;
-/// every frame within SONG_VIEW_FRAME_CELLS. The most a frame sent.
 pub(crate) fn settle(ui: &mut Ui) -> usize {
     let mut most = 0;
     for _ in 0..200 {
@@ -286,15 +269,12 @@ pub(crate) fn settle(ui: &mut Ui) -> usize {
     panic!("the screen kept changing");
 }
 
-/// SIDS from the menu (HOME, SELECT to it, ALGORITHM clockwise), its page read.
 pub(crate) fn open_sids(ui: &mut Ui) {
     if ui.top() != "MENU" {
         ui.press(PANEL_BTN_HOME);
         ui.settle();
     }
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SIDS as i32);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.choose_menu_item(VIEWS_MENU_SIDS);
     settle(ui);
     assert_eq!(ui.top(), "SIDS");
 }
@@ -303,25 +283,6 @@ fn golden_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/golden/lcd")
 }
 
-/// The art palette (docs/art/README.md) in sRGB, as emu-gate's screen.rs writes the goldens.
-const SRGB: [[u8; 3]; 16] = [
-    [0x00, 0x00, 0x00],
-    [0xff, 0xff, 0xff],
-    [0x68, 0x37, 0x2b],
-    [0x70, 0xa4, 0xb2],
-    [0x6f, 0x3d, 0x86],
-    [0x58, 0x8d, 0x43],
-    [0x35, 0x28, 0x79],
-    [0xb8, 0xc7, 0x6f],
-    [0x6f, 0x4f, 0x25],
-    [0x43, 0x39, 0x00],
-    [0x9a, 0x67, 0x59],
-    [0x44, 0x44, 0x44],
-    [0x6c, 0x6c, 0x6c],
-    [0x9a, 0xd2, 0x84],
-    [0x6c, 0x5e, 0xb5],
-    [0x95, 0x95, 0x95],
-];
 const W: usize = COLS * 8;
 
 fn write_png(path: &Path, idx: &[u8]) {
@@ -330,7 +291,7 @@ fn write_png(path: &Path, idx: &[u8]) {
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), W as u32, W as u32);
     enc.set_color(png::ColorType::Indexed);
     enc.set_depth(png::BitDepth::Four);
-    enc.set_palette(SRGB.concat());
+    enc.set_palette(sidou_tests::logo::PALETTE.concat());
     let packed: Vec<u8> = idx.chunks(2).map(|p| p[0] << 4 | p[1]).collect();
     let mut w = enc.write_header().expect("PNG header");
     w.write_image_data(&packed).expect("PNG data");
@@ -356,7 +317,6 @@ fn read_png(path: &Path) -> Vec<u8> {
     buf.iter().flat_map(|&b| [b >> 4, b & 15]).collect()
 }
 
-/// The panel as the grid shows it against tests/golden/lcd/<name>.png.
 pub(crate) fn golden(ui: &Ui, name: &str) {
     let got = pixels(&ui.g);
     let path = golden_dir().join(format!("{name}.png"));
@@ -382,9 +342,6 @@ fn names(n: usize) -> Vec<String> {
     (0..n).map(|i| format!("TUNE {:02}", i + 1)).collect()
 }
 
-/// The browser: an empty store says NO TUNES: SEE MANUAL; the store's .sid files in name order at
-/// 2x, eight a page, a long name ending in an arrow, the page and its arrows under them; SELECT
-/// past the eighth reads the next page, and back.
 #[test]
 fn the_browser_lists_the_stores_tunes_eight_a_page() {
     let mut s = Sids::new(&[]);
@@ -392,7 +349,6 @@ fn the_browser_lists_the_stores_tunes_eight_a_page() {
     assert_eq!(s.ui.big(6, 2, 2, 9), "NO TUNES:");
     assert_eq!(s.ui.big(8, 2, 2, 10), "SEE MANUAL");
     golden(&s.ui, "sids-empty");
-    // ALGORITHM on an empty page does nothing.
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!((s.ui.top().as_str(), s.calls()), ("SIDS", vec![]));
@@ -429,9 +385,6 @@ fn the_browser_lists_the_stores_tunes_eight_a_page() {
     assert_eq!((s.ui.v.sids.page, s.ui.v.sids.cursor), (0, 7));
 }
 
-/// ALGORITHM clockwise (or SAVE) on a tune plays it and opens NOW PLAYING; on the loaded tune
-/// NOW PLAYING opens as it is; the browser marks it (a play mark while it plays, a square while
-/// it is stopped) and keeps its place; HOME out of the browser with the tune stopped ends it.
 #[test]
 fn choosing_a_tune_plays_it_and_opens_now_playing() {
     let mut s = Sids::new(&["ALPHA", "BETA", "GAMMA"]);
@@ -446,7 +399,6 @@ fn choosing_a_tune_plays_it_and_opens_now_playing() {
     assert_eq!(s.ui.top(), "SIDS");
     assert_eq!(s.ui.v.sids.cursor, 1, "its place kept");
     assert_eq!(s.ui.g.src[8 * COLS], FONT_PLAY as u8, "the play mark");
-    // the loaded one: NOW PLAYING again, nothing played
     s.ui.press(SAVE_KEY_BUTTON);
     settle(&mut s.ui);
     assert_eq!((s.ui.top().as_str(), s.calls()), ("NOW PLAYING", vec![]));
@@ -455,24 +407,21 @@ fn choosing_a_tune_plays_it_and_opens_now_playing() {
     settle(&mut s.ui);
     assert_eq!(s.calls(), vec![TuneCall::Stop]);
     assert_eq!(s.ui.g.src[8 * COLS], FONT_SQUARE as u8, "stopped: a square");
-    // another tune while one is loaded: played in its place (no question: the song is away)
     s.io.dirty = 1;
     s.ui.turn(PANEL_ENC_SELECT, 1);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.calls(), vec![TuneCall::Play("GAMMA".into())]);
-    s.ui.press(PANEL_BTN_PLAY); // stopped
+    s.ui.press(PANEL_BTN_PLAY);
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!(s.calls(), vec![TuneCall::Stop]);
-    // HOME out of the browser: the stopped tune ends for good
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!(
         (s.ui.top().as_str(), s.calls()),
         ("MENU", vec![TuneCall::End])
     );
-    // a playing one is left playing
     s.io.dirty = 0;
     open_sids(&mut s.ui);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -482,7 +431,6 @@ fn choosing_a_tune_plays_it_and_opens_now_playing() {
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!((s.ui.top().as_str(), s.calls()), ("MENU", vec![]));
-    // a refused file (the binding's toast): the browser stays
     s.tune.st.state = SID_T_NONE as u8;
     s.tune.refuse = true;
     s.io.dirty = 0;
@@ -492,10 +440,6 @@ fn choosing_a_tune_plays_it_and_opens_now_playing() {
     assert_eq!(s.ui.top(), "SIDS");
 }
 
-/// The unsaved-song question: with the song changed and no tune loaded, a tune asks first (SONG NOT
-/// SAVED and the song's name); HOME cancels, ALGORITHM again discards the song's edits and plays;
-/// SAVE saves a named song and plays the tune once it is saved (a save that fails asks again); an
-/// unnamed song opens SAVE AS, and back from it the question asks again until it is saved.
 #[test]
 fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
     let mut s = Sids::new(&["ALPHA"]);
@@ -510,19 +454,16 @@ fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
     assert_eq!(s.ui.big(8, 2, 2, 5), "NIGHT");
     assert!(s.calls().is_empty());
     golden(&s.ui, "sids-unsaved");
-    // HOME: nothing, the browser again
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!((s.ui.top().as_str(), s.ui.v.sids.asking), ("SIDS", 0));
     assert_eq!(s.ui.big(6, 2, 2, 5), "ALPHA");
-    // ALGORITHM again: discarded, played
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.calls(), vec![TuneCall::Play("ALPHA".into())]);
     assert_eq!(s.ui.top(), "NOW PLAYING");
 
-    // SAVE: the named song saved first
     let mut s = Sids::new(&["ALPHA"]);
     s.io.dirty = 1;
     for (i, b) in b"NIGHT".iter().enumerate() {
@@ -533,10 +474,9 @@ fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
     s.ui.press(SAVE_KEY_BUTTON);
     settle(&mut s.ui);
     assert_eq!(s.io.state, SONG_IO_SAVE_WAIT as u8);
-    assert_eq!(name_of(s.io.target.as_ptr()), "NIGHT");
+    assert_eq!(c_text(s.io.target.as_ptr()), "NIGHT");
     assert!(s.calls().is_empty(), "not before it is saved");
     assert_eq!(s.ui.big(4, 2, 2, 6), "SAVING");
-    // the save fails (the song still changed): the question again
     s.io.state = SONG_IO_IDLE as u8;
     s.model.frozen = 0;
     settle(&mut s.ui);
@@ -546,12 +486,11 @@ fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
     settle(&mut s.ui);
     s.io.state = SONG_IO_IDLE as u8;
     s.model.frozen = 0;
-    s.io.dirty = 0; // saved
+    s.io.dirty = 0;
     settle(&mut s.ui);
     assert_eq!(s.calls(), vec![TuneCall::Play("ALPHA".into())]);
     assert_eq!(s.ui.top(), "NOW PLAYING");
 
-    // an unnamed song: SAVE AS first
     let mut s = Sids::new(&["ALPHA"]);
     s.io.dirty = 1;
     open_sids(&mut s.ui);
@@ -562,12 +501,10 @@ fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
     settle(&mut s.ui);
     assert_eq!(s.ui.top(), "SONG");
     assert_eq!(s.ui.big(2, 2, 2, 7), "SAVE AS");
-    // HOME out of SAVE AS: the question again
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!((s.ui.top().as_str(), s.ui.v.sids.asking), ("SIDS", 1));
     assert!(s.calls().is_empty());
-    // SAVE AS's SAVE: once the song is saved, the tune
     s.ui.press(SAVE_KEY_BUTTON);
     settle(&mut s.ui);
     s.ui.press(SAVE_KEY_BUTTON);
@@ -590,10 +527,6 @@ fn now_playing(s: &mut Sids) {
     s.calls();
 }
 
-/// NOW PLAYING: the title at 2x on two lines (broken at a space), author and released at 1x, SONG
-/// n/m, the time and the state, PAL or NTSC and each chip's model, the 2SID and 3SID marks, the
-/// voice lanes with GLO's mutes and solos and chip A's envelopes, and the overruns and late
-/// writes when not zero.
 #[test]
 fn now_playing_shows_the_tune_and_its_state() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
@@ -649,7 +582,6 @@ fn now_playing_shows_the_tune_and_its_state() {
     assert_eq!(s.ui.big(12, 16, 2, 7), "STOPPED");
     golden(&s.ui, "playing-counts");
 
-    // GLO: voice 2 muted, voice 3 soloed
     s.tune.st.overruns = 0;
     s.tune.st.late = 0;
     s.tune.st.state = SID_T_PLAYING as u8;
@@ -661,8 +593,6 @@ fn now_playing_shows_the_tune_and_its_state() {
     golden(&s.ui, "playing-mutes");
 }
 
-/// The time and the envelopes move: each frame sends what changed and stays within 200 cells, an
-/// idle one nothing.
 #[test]
 fn now_playing_composes_what_moves_within_the_frame_budget() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
@@ -685,10 +615,8 @@ fn now_playing_composes_what_moves_within_the_frame_budget() {
     assert!(most > 0);
 }
 
-/// ALGORITHM steps the song, restarting it, clamped at 1 and the header's songs; SELECT does
-/// nothing to it.
 #[test]
-fn algorithm_steps_the_song_on_now_playing() {
+fn algorithm_steps_and_restarts_the_song_on_now_playing_within_the_headers_songs() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
     now_playing(&mut s);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -703,9 +631,6 @@ fn algorithm_steps_the_song_on_now_playing() {
     );
 }
 
-/// PLAY with a tune loaded is the tune's: it stops a playing or paused tune and plays a stopped
-/// one from init; EDIT + PLAY pauses and resumes; in another view PLAY on a stopped tune ends it
-/// (the song is back for the next); with no tune, PLAY is the song's.
 #[test]
 fn play_and_edit_play_drive_the_tune() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
@@ -731,7 +656,6 @@ fn play_and_edit_play_drive_the_tune() {
             TuneCall::Resume,
         ]
     );
-    // elsewhere (LIVE, the tune left playing): PLAY stops it, and on the stopped tune ends it
     s.ui.press(PANEL_BTN_HOME);
     s.ui.press(PANEL_BTN_HOME);
     s.ui.press(PANEL_BTN_HOME);
@@ -740,13 +664,10 @@ fn play_and_edit_play_drive_the_tune() {
     s.ui.press(PANEL_BTN_PLAY);
     s.ui.press(PANEL_BTN_PLAY);
     assert_eq!(s.calls(), vec![TuneCall::Stop, TuneCall::End]);
-    // no tune: the song's (no player bound here: nothing reaches the tune)
     s.ui.press(PANEL_BTN_PLAY);
     assert!(s.calls().is_empty());
 }
 
-/// GLO's mutes and solos reach the tune while it has the song's memory (the song views' transport
-/// unbound): the mask with solo folded in, and the whole mask again when the tune takes over.
 #[test]
 fn glo_mutes_and_solos_reach_the_tune() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
@@ -757,9 +678,9 @@ fn glo_mutes_and_solos_reach_the_tune() {
     }
     assert_eq!(s.calls(), vec![TuneCall::Mute(0)], "GLO's mask to the tune");
     s.ui.hold(PANEL_BTN_GLO, true);
-    s.ui.note_keys(1 << 1, 1 << 1); // voice 2 muted
+    s.ui.note_keys(GLO_MUTE_VOICE_2_KEY, GLO_MUTE_VOICE_2_KEY);
     s.ui.note_keys(0, 0);
-    s.ui.note_keys(1 << 5, 1 << 5); // voice 3 soloed
+    s.ui.note_keys(GLO_SOLO_VOICE_3_KEY, GLO_SOLO_VOICE_3_KEY);
     s.ui.note_keys(0, 0);
     s.ui.hold(PANEL_BTN_GLO, false);
     assert_eq!(s.calls(), vec![TuneCall::Mute(2), TuneCall::Mute(3)]);
@@ -768,9 +689,6 @@ fn glo_mutes_and_solos_reach_the_tune() {
     assert_eq!(s.calls(), vec![TuneCall::Mute(3)], "again, to the new tune");
 }
 
-/// A song view showing when a tune takes the song's memory shows SID PLAYING: STOP TO EDIT and
-/// takes no edits (the toast says why); the song views refuse to open while the tune plays, and
-/// with it stopped give it up for the song.
 #[test]
 fn the_song_views_show_sid_playing_while_a_tune_has_the_song() {
     let mut song = crate::song_view::Song::new();
@@ -794,7 +712,6 @@ fn the_song_views_show_sid_playing_while_a_tune_has_the_song() {
     assert_eq!(s.ui.v.song.away, 1);
     s.ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(s.ui.toast().as_deref(), Some("SID PLAYING: STOP TO EDIT"));
-    // SEQ: refused while it plays; with it stopped, it gives way
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_SEQ);
@@ -811,17 +728,12 @@ fn the_song_views_show_sid_playing_while_a_tune_has_the_song() {
     drop(song);
 }
 
-/// STATUS's 6502 rows in the sound's parameters' place while a tune is loaded: the state, cycles a
-/// second, the main loop's share (Task 12's meter: tenths of a percent and ticks a thousand cycles), overruns, late writes, the shadow and a
-/// third SID's dropped writes; the parameters back once it has ended.
 #[test]
 fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
     s.ui.press(PANEL_BTN_HOME);
     s.ui.settle();
-    s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_STATUS as i32);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.choose_menu_item(VIEWS_MENU_STATUS);
     s.ui.settle();
     assert_eq!(s.ui.top(), "STATUS");
     assert_eq!(s.ui.big(5, 2, 2, 6), "CUTOFF");
@@ -831,12 +743,11 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     s.tune.st.shadow = 1;
     s.tune.st.chips = 1;
     s.ui.settle();
-    assert_eq!(s.ui.big(8, 24, 2, 2), "--"); // no meter reading yet
+    assert_eq!(s.ui.big(8, 24, 2, 2), "--", "no meter reading yet");
     assert_eq!(s.ui.big(11, 24, 2, 2), "--");
     s.tune.st.load = 32;
     s.tune.st.ticks_k = 412;
     s.ui.settle();
-    // Page 1, at 2x a line every three rows: the label from column 2, the value ending at column 28.
     assert_eq!(s.ui.big(2, 22, 2, 3), "1/3");
     assert_eq!(s.ui.big(5, 2, 2, 4), "6502");
     assert_eq!(s.ui.big(5, 14, 2, 7), "PLAYING");
@@ -855,7 +766,6 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     assert_eq!(s.ui.big(26, 2, 2, 7), "3RD SID");
     assert_eq!(s.ui.big(26, 26, 2, 1), "0");
     golden(&s.ui, "status-tune");
-    // only a number moves: its rows alone
     drain(&mut s.ui.g);
     s.tune.st.cycles = 985_249;
     s.ui.frame();
@@ -868,7 +778,6 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     s.tune.st.state = SID_T_NONE as u8;
     s.ui.settle();
     assert_eq!(s.ui.big(5, 2, 2, 6), "CUTOFF");
-    // the other pages show the rest as without a tune: the 6502's rows are page 1's alone
     s.tune.st.state = SID_T_PLAYING as u8;
     s.ui.settle();
     s.ui.turn(PANEL_ENC_SELECT, 1);
@@ -880,10 +789,8 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
     assert_eq!(s.ui.big(5, 2, 2, 4), "6502");
 }
 
-/// SETTINGS' SID MODEL: AUTO (the default) and KEYS, clockwise and back, persisted (settings'
-/// sid_model, the record's schema 7); the page's title keeps its position at the tenth item.
 #[test]
-fn sid_model_is_a_setting() {
+fn sid_model_is_a_persisted_setting_of_auto_or_keys() {
     let mut ui = Ui::without_cards();
     let mut set = Box::<settings>::default();
     set.l = &mut *ui.rig.live;
@@ -901,28 +808,22 @@ fn sid_model_is_a_setting() {
     assert_eq!(line(&ui), "SID MODEL AUTO");
     ui.turn(PANEL_ENC_SELECT, 9);
     ui.settle();
-    let heading: String = ui
-        .big(1, 1, 2, 14)
-        .chars()
-        .map(|c| if c.is_ascii() { c } else { '#' })
-        .collect();
+    let heading = ascii_or_hash(ui.big(1, 1, 2, 14));
     assert_eq!(heading, "SETTINGS#10/10");
     unsafe { views_settings(&mut *ui.v, std::ptr::null_mut()) };
 }
 
-/// The SID views' help cards (HOME held): SIDS, PLAYING (NOW PLAYING's) and UNSAVED (the
-/// question's), each drawn whole within the card's frame budget, against their goldens.
 #[test]
 fn the_sid_views_help_cards_match_their_goldens() {
-    for (card, open) in [("SIDS", 0), ("PLAYING", 2), ("UNSAVED", 1), ("LIFT", 0)] {
+    for (card, algorithm_turns) in [("SIDS", 0), ("PLAYING", 2), ("UNSAVED", 1), ("LIFT", 0)] {
         let mut s = Sids::new(&["NIGHT DRIVE"]);
         s.io.dirty = 1;
         open_sids(&mut s.ui);
-        for _ in 0..open {
-            s.ui.turn(PANEL_ENC_ALGORITHM, 1); // the question, then discarded: NOW PLAYING
+        for _ in 0..algorithm_turns {
+            s.ui.turn(PANEL_ENC_ALGORITHM, 1);
         }
         if card == "LIFT" {
-            offer(&mut s.tune, "NIGHT DRIVE V2", 5); // over the browser
+            offer(&mut s.tune, "NIGHT DRIVE V2", 5);
         }
         settle(&mut s.ui);
         s.ui.down(PANEL_BTN_HOME);
@@ -937,9 +838,6 @@ fn the_sid_views_help_cards_match_their_goldens() {
     }
 }
 
-/// REC on NOW PLAYING lifts the one voice GLO solos: armed (its lane says ARM, then REC while the
-/// note is taken), REC again disarms; with no voice or two soloed, or the tune not playing, a toast
-/// says why and nothing is asked. Elsewhere REC stays the song's.
 #[test]
 fn rec_on_now_playing_lifts_the_soloed_voice() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
@@ -976,9 +874,6 @@ fn rec_on_now_playing_lifts_the_soloed_voice() {
     assert_eq!(s.ui.v.song.rec, 0, "not the song's REC");
 }
 
-/// Once the song is back, the lifted instrument is offered over the menu: its name and the
-/// instrument it goes into; SAVE imports it (the song must be stopped: with it playing the screen
-/// and a toast say so, and nothing is asked), HOME skips it; the offer goes once answered.
 #[test]
 fn the_lifted_instrument_is_offered_once_the_song_is_back() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);

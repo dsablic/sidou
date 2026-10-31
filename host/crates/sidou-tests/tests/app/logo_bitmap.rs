@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The logos' bitmaps: app/logo_bitmap.c is generated from assets/logo/metal-chrome.png and
-//! assets/logo/cracktro-chrome.png (sidou_tests::logo). SIDOU_LOGO_UPDATE=1 rewrites it.
 
 use sidou_sys::*;
 use sidou_tests::logo::{self, Image};
 
-fn scene() -> Image {
+fn cracktro() -> Image {
     logo::load("cracktro-chrome")
 }
 
@@ -14,8 +12,7 @@ fn metal() -> Image {
     logo::load("metal-chrome")
 }
 
-/// Each logo's compiled bitmap, by its PNG's name.
-fn compiled(name: &str) -> &'static grid_bitmap {
+fn compiled_bitmap_of(name: &str) -> &'static grid_bitmap {
     match name {
         "metal-chrome" => unsafe { &logo_metal_chrome_bitmap },
         "cracktro-chrome" => unsafe { &logo_cracktro_chrome_bitmap },
@@ -46,8 +43,6 @@ fn metal_chromes_scene_is_a_full_screen_in_the_art_palette() {
     let img = metal();
     assert_eq!((img.w, img.h), (240, 240));
     assert!(img.px.iter().all(|&c| c < 16));
-    // The chrome ramp (red, light red, orange, yellow, white), the purple shadow and the glow's
-    // blue are all there.
     for c in [
         GRID_RED,
         GRID_LIGHT_RED,
@@ -62,11 +57,10 @@ fn metal_chromes_scene_is_a_full_screen_in_the_art_palette() {
 }
 
 #[test]
-fn the_scene_is_a_full_screen_in_the_art_palette() {
-    let img = scene();
+fn cracktro_chromes_scene_is_a_full_screen_in_the_art_palette() {
+    let img = cracktro();
     assert_eq!((img.w, img.h), (240, 240));
     assert!(img.px.iter().all(|&c| c < 16));
-    // The lettering's colours (its raster bands, the purple shadow) are all there.
     for c in [
         GRID_WHITE,
         GRID_LIGHT_GREY,
@@ -86,8 +80,6 @@ fn the_scene_is_a_full_screen_in_the_art_palette() {
 #[test]
 fn encoding_round_trips_every_kind_of_row() {
     let mut px = Vec::new();
-    // A flat row (runs of 16 and a remainder), alternating pixels, every colour once, runs
-    // across the 16-pixel limit, and two rows alike (they share their runs).
     px.extend(std::iter::repeat_n(5, 40));
     px.extend((0..40).map(|x| (x % 2) as u8 * 15));
     px.extend((0..40).map(|x| (x % 16) as u8));
@@ -123,7 +115,6 @@ fn encoding_round_trips_every_kind_of_row() {
     for img in &imgs {
         assert_eq!(logo::decode(&logo::encode(img), img.w, img.h), img.px);
     }
-    // Encoded together, each image decodes to itself from the shared runs.
     let input: Vec<_> = imgs
         .iter()
         .zip(logo::LOGOS)
@@ -148,14 +139,13 @@ fn the_compiled_bitmaps_are_the_pngs_pixel_for_pixel() {
 
 fn compiled_is_png(name: &str) {
     let img = logo::load(name);
-    let b = compiled(name);
+    let b = compiled_bitmap_of(name);
     assert_eq!((usize::from(b.w), usize::from(b.h)), (img.w, img.h));
     for y in 0..img.h {
         let want = &img.px[y * img.w..(y + 1) * img.w];
         let mut row = vec![0xffu8; img.w];
         unsafe { grid_bitmap_row(b, 0, y as u32, img.w as u32, row.as_mut_ptr()) };
         assert_eq!(row, want, "row {y}");
-        // From any pixel on: a run is entered part way.
         for x in [1usize, 7, 8, 63, 100, 239] {
             let n = (img.w - x).min(37);
             let mut part = vec![0xffu8; n + 1];
@@ -166,9 +156,6 @@ fn compiled_is_png(name: &str) {
     }
 }
 
-/// What each scene costs in flash: its runs and row offsets, against 4 bits a pixel raw.
-/// Cracktro Chrome is a quarter of raw; Metal Chrome's dithered glow (single pixels of blue,
-/// purple and light red over black) makes short runs: a third.
 #[test]
 fn the_bitmaps_are_a_quarter_and_a_third_of_their_raw_size() {
     let mut total = 0;
@@ -214,7 +201,6 @@ fn png_bytes(w: u32, h: u32, palette: &[[u8; 3]], px: &[u8]) -> Vec<u8> {
 
 #[test]
 fn the_converter_takes_art_colours_only_in_whole_cells() {
-    // Palette entries in any order map to the art palette by colour.
     let pal = [logo::PALETTE[7], logo::PALETTE[0], logo::PALETTE[14]];
     let px: Vec<u8> = (0..64).map(|i| (i % 3) as u8).collect();
     let img = logo::parse_png(&png_bytes(8, 8, &pal, &px)).unwrap();

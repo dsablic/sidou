@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Unit tests of the portable app logic (`app/`) through FFI.
 
 mod about;
 mod boot;
@@ -86,11 +85,64 @@ mod user_sound;
 mod views;
 mod widget;
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void, CStr};
 
 use sidou_sys::*;
 
-/// SCENE's PETSCII piece: the view's union holds one unless RED MOON RITE runs.
+pub(crate) const SAW_LEAD: u8 = 0;
+pub(crate) const PWM_BASS: u8 = 1;
+pub(crate) const SYNC_LEAD: u8 = 2;
+pub(crate) const NOISE_PERC: u8 = 3;
+pub(crate) const PANEL_ENC_K2: u32 = PANEL_ENC_K1 + 1;
+pub(crate) const PANEL_ENC_K3: u32 = PANEL_ENC_K1 + 2;
+pub(crate) const STATUS_BAR_H: usize = 16;
+pub(crate) const CHARACTER: usize = LIVE_CHAR_FIELDS as usize;
+pub(crate) const RELEASE_TO_ZERO_MS: [u32; 16] = [
+    6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000,
+];
+
+pub(crate) fn c_text(p: *const c_char) -> String {
+    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+pub(crate) fn c_utf8(p: *const c_char) -> String {
+    assert!(!p.is_null());
+    unsafe { CStr::from_ptr(p) }.to_str().unwrap().to_owned()
+}
+
+pub(crate) fn shown_preset_name(l: &live) -> String {
+    let mut buf = [0 as c_char; LIVE_PRESET_NAME_CHARS as usize];
+    unsafe { live_preset_name(l, buf.as_mut_ptr()) };
+    c_text(buf.as_ptr())
+}
+
+pub(crate) fn map_entry(param: u32) -> &'static midi_map_entry {
+    let e = unsafe { midi_map_for_param(param) };
+    assert!(!e.is_null());
+    unsafe { &*e }
+}
+
+pub(crate) fn cc_packet(channel: u8, cc: u8, value: u8) -> u32 {
+    u32::from_le_bytes([
+        0x0B | (MIDI_OUT_CABLE as u8) << 4,
+        0xB0 | channel,
+        cc,
+        value,
+    ])
+}
+
+pub(crate) fn rms(x: &[f64]) -> f64 {
+    (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt()
+}
+
+pub(crate) fn hex_bytes(text: &str) -> Vec<u8> {
+    text.lines()
+        .filter(|line| !line.starts_with('#'))
+        .flat_map(str::split_whitespace)
+        .map(|v| u8::from_str_radix(v, 16).unwrap())
+        .collect()
+}
+
 pub fn petscii(sv: &scene_view) -> &sidou_sys::scene {
     unsafe { &sv.u.piece }
 }
@@ -99,8 +151,6 @@ pub fn petscii_mut(sv: &mut scene_view) -> &mut sidou_sys::scene {
     unsafe { &mut sv.u.piece }
 }
 
-/// The part of a character a grid cell's piece code draws (app/grid.h GRID_BIG_FIRST): its
-/// scale (2, 3, or 1 for a plain glyph) and the cell's place in it (y * scale + x).
 pub(crate) fn piece_part(piece: usize) -> (usize, usize) {
     match piece {
         0..=3 => (2, piece),
@@ -109,8 +159,6 @@ pub(crate) fn piece_part(piece: usize) -> (usize, usize) {
     }
 }
 
-/// A register sink that records every write and mirrors the register file. The character's
-/// tick (LIVE_REG_CHAR_TICK, sent every live_tick) is counted, not logged.
 #[derive(Default)]
 pub struct Recorder {
     pub log: Vec<(u8, u8)>,
@@ -130,7 +178,6 @@ pub(crate) unsafe extern "C" fn record(ctx: *mut c_void, reg: u8, value: u8) {
     }
 }
 
-/// A `live` writing into a [`Recorder`]. Both are boxed: C keeps pointers to them.
 pub struct Rig {
     pub live: Box<live>,
     pub rec: Box<Recorder>,
@@ -145,7 +192,6 @@ impl Rig {
         Rig { live: l, rec }
     }
 
-    /// Forgets what was written so far.
     pub fn clear(&mut self) {
         self.rec.log.clear();
     }
@@ -182,13 +228,10 @@ impl Rig {
         unsafe { live_note_off(&mut *self.live, note) }
     }
 
-    /// The preset stepped, as PRESETS and the menu's PRE do.
     pub fn preset_step(&mut self, steps: i32) {
         unsafe { live_preset_step(&mut *self.live, steps, 0) };
     }
 
-    /// The pulse width moved by `detents` of 32 (what K3 turned before it became the sound's own
-    /// control): a test helper, through the parameter.
     pub fn pulse(&mut self, detents: i32) {
         let pw = (i64::from(self.live.pulse_width) + i64::from(detents) * 32).clamp(0, 4095);
         unsafe { live_param_set(&mut *self.live, LIVE_PARAM_PULSE_WIDTH, pw as u32) };
@@ -221,6 +264,57 @@ impl Rig {
     pub fn key_note(&self, base: u8) -> u8 {
         unsafe { live_key_note(&*self.live, base) }
     }
+
+    pub fn param(&self, p: u32) -> u32 {
+        unsafe { live_param_get(&*self.live, p) }
+    }
+
+    pub fn set_param(&mut self, p: u32, v: u32) {
+        unsafe { live_param_set(&mut *self.live, p, v) }
+    }
+
+    pub fn sound(&self) -> [u8; LAB_SOUND_BYTES as usize] {
+        let mut s = [0u8; LAB_SOUND_BYTES as usize];
+        unsafe { live_sound_get(&*self.live, s.as_mut_ptr()) };
+        s
+    }
+}
+
+pub(crate) struct LiveChip {
+    pub(crate) chip: Box<sid>,
+    pub(crate) target: Box<live_sid_target>,
+    _dacs: Box<[sid_dac; 2]>,
+    pub(crate) live: Box<live>,
+}
+
+impl LiveChip {
+    pub(crate) fn new(model: sid_model, rate: u32) -> Self {
+        let mut chip = Box::<sid>::default();
+        unsafe { sid_init(&mut *chip, model, SID_CLOCK_PAL, rate) };
+        let mut dacs = Box::<[sid_dac; 2]>::default();
+        let mut target = Box::new(live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: rate,
+            dacs: dacs.as_mut_ptr(),
+            ..Default::default()
+        });
+        let mut l = Box::<live>::default();
+        let ctx: *mut live_sid_target = &mut *target;
+        unsafe { live_init(&mut *l, Some(live_sid_sink), ctx.cast::<c_void>(), model) };
+        LiveChip {
+            chip,
+            target,
+            _dacs: dacs,
+            live: l,
+        }
+    }
+
+    pub(crate) fn render(&mut self, n: usize) -> Vec<i16> {
+        let mut out = vec![0i16; n];
+        unsafe { sid_render(&mut *self.chip, out.as_mut_ptr(), n as u32) };
+        out
+    }
 }
 
 pub fn preset(index: u8) -> &'static live_preset {
@@ -230,15 +324,9 @@ pub fn preset(index: u8) -> &'static live_preset {
 }
 
 pub fn preset_name(p: &live_preset) -> String {
-    unsafe { std::ffi::CStr::from_ptr(p.name) }
-        .to_str()
-        .unwrap()
-        .to_owned()
+    c_utf8(p.name)
 }
 
-/// Where K1 leaves a cutoff after `steps` detents (K1's walk, live.h): from the table's entry that
-/// holds it, `steps` entries on; from any other register, the first entry past it in the turn's
-/// direction (by the buckets of live_cutoff_up and _down) and the rest of the steps from there.
 pub fn cutoff_after(model: u32, cutoff: u16, steps: i32) -> u16 {
     let t = unsafe { live_cutoff_steps }[model as usize];
     let top = t.len() as i32 - 1;
@@ -263,16 +351,16 @@ pub fn freq_table() -> [u16; 128] {
     unsafe { live_freq_table }
 }
 
-/// The panel as palette indexes, 240 x 240, from the composed grid: each row of cells as
-/// grid_render_run draws it (glyphs, overlays and the pixel region), with the palette mapping
-/// each colour to itself.
+fn run_pixel_buffer() -> Vec<u32> {
+    vec![0u32; GRID_RUN_PIXELS as usize / 2]
+}
+
 pub fn pixels(g: &sidou_sys::grid) -> Vec<u8> {
     let cols = GRID_COLS as usize;
     let w = cols * 8;
     let pal: [u16; 16] = std::array::from_fn(|c| c as u16);
     let mut out = vec![0u8; w * w];
-    // 4-byte aligned, as grid_render_run takes it.
-    let mut buf = vec![0u32; GRID_RUN_PIXELS as usize / 2];
+    let mut buf = run_pixel_buffer();
     for row in 0..cols {
         let run = grid_run {
             row: row as u8,
@@ -289,22 +377,20 @@ pub fn pixels(g: &sidou_sys::grid) -> Vec<u8> {
     out
 }
 
-/// What one drain of a grid's changed runs sent.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Sent {
     pub windows: usize,
     pub cells: usize,
 }
 
-/// platform/fm1/lcd.c: SPI1 at 60 MHz / (4 + 1); lcd.h: 11 command bytes a window.
 pub const SPI_HZ: f64 = 12e6;
 pub const WINDOW_BYTES: usize = 11;
-/// docs/art/README.md: at most about 20 ms of SPI per 40 ms frame.
 pub const SPI_BUDGET_MS: f64 = 20.0;
+const CELL_BYTES: usize = 8 * 8 * 2;
 
 impl Sent {
     pub fn bytes(self) -> usize {
-        self.cells * 128 + self.windows * WINDOW_BYTES
+        self.cells * CELL_BYTES + self.windows * WINDOW_BYTES
     }
 
     pub fn spi_ms(self) -> f64 {
@@ -312,15 +398,12 @@ impl Sent {
     }
 }
 
-/// Every changed run of g, counted as shown, as platform/fm1/ui.c sends them.
 pub fn drain(g: &mut sidou_sys::grid) -> Sent {
     let mut sent = Sent::default();
     let mut run = grid_run::default();
     let pal = [0u16; 16];
-    let mut px = vec![0u32; GRID_RUN_PIXELS as usize / 2]; // 4-byte aligned
+    let mut px = run_pixel_buffer();
     while unsafe { grid_next_run(g, &mut run) } != 0 {
-        // Rendered, as platform/fm1/ui.c renders every run it is handed: a painter region
-        // (RED MOON RITE's) takes each tile's hash as it is painted (app/scene_px.h).
         unsafe { grid_render_run(g, &run, pal.as_ptr(), px.as_mut_ptr().cast()) };
         sent.windows += 1;
         sent.cells += usize::from(run.len);
@@ -328,41 +411,37 @@ pub fn drain(g: &mut sidou_sys::grid) -> Sent {
     sent
 }
 
-/// Cell row `row` of a grid as text, '#' for codes outside printable ASCII.
 pub fn grid_row(g: &sidou_sys::grid, row: usize) -> String {
     let cols = GRID_COLS as usize;
-    (0..cols)
-        .map(|c| g.ch[row * cols + c])
-        .map(|b| {
-            if (0x20..0x7f).contains(&b) {
-                b as char
-            } else {
-                '#'
-            }
-        })
-        .collect()
+    (0..cols).map(|c| printable(g.ch[row * cols + c])).collect()
 }
 
-/// A wipe's frames: each sends its SCREEN_WIPE_ROWS new rows and its edge row at most
-/// (app/screen.h), so the view under it must hold still. Runs frames with `frame` until a wipe
-/// has started and ended (at most 40 frames), and returns what each frame of it sent.
+pub(crate) fn printable(code: u8) -> char {
+    if (0x20..0x7f).contains(&code) {
+        code as char
+    } else {
+        '#'
+    }
+}
+
+const WIPE_FRAMES_MAX: usize = 40;
+
 pub fn wipe_frames(frame: &mut dyn FnMut() -> (Sent, bool)) -> Vec<Sent> {
     let mut out = Vec::new();
-    let mut was = false;
-    for _ in 0..40 {
+    let mut wiping_before = false;
+    for _ in 0..WIPE_FRAMES_MAX {
         let (sent, wiping) = frame();
-        if wiping || was {
+        if wiping || wiping_before {
             out.push(sent);
         }
-        if was && !wiping {
+        if wiping_before && !wiping {
             return out;
         }
-        was = wiping;
+        wiping_before = wiping;
     }
-    panic!("no wipe ran and ended in 40 frames: {out:?}");
+    panic!("no wipe ran and ended in {WIPE_FRAMES_MAX} frames: {out:?}");
 }
 
-/// Asserts every frame of a wipe sends its rows and nothing else, inside the SPI budget.
 pub fn assert_wipe_holds_still(what: &str, frames: &[Sent]) {
     let most = (SCREEN_WIPE_ROWS as usize + 1) * GRID_COLS as usize;
     assert!(frames.len() >= 6, "{what}: {} wipe frames", frames.len());

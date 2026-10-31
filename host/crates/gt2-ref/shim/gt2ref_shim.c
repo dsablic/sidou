@@ -1,14 +1,5 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
-/* What GoatTracker's song and relocation code needs from outside it, for the gt2-ref
- * harness (third_party/goattracker2/VENDORED.md lists every stub):
- * - the BME calls it makes: bytes to and from files, and the "linked datafile" the
- *   relocator reads player.s and altplayer.s from (here the vendored files, by path);
- * - files in memory: GoatTracker's sources are compiled with fopen renamed to
- *   gt2ref_fopen, which hands out the song to read and collects the files written;
- * - the membuf the relocator builds its source and output in;
- * - the editor's screen, sound and playback calls, as stubs that do nothing.
- * Written for SIDOU; nothing in it is GoatTracker's or BME's code. */
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +9,6 @@
 #include "gt2ref_shim.h"
 #include "membuf.h"
 
-/* Files in memory. */
 
 static const unsigned char* in_data;
 static size_t in_len;
@@ -41,7 +31,6 @@ int gt2ref_input_short(void) {
 
 size_t gt2ref_fread(void* p, size_t size, size_t n, FILE* f) {
     size_t got = fread(p, size, n, f);
-    /* fread returns 0 for a size of 0 (an empty table): that is no short read. */
     if (f == in_file && size != 0 && got < n)
         in_short = 1;
     return got;
@@ -75,8 +64,6 @@ FILE* gt2ref_fopen(const char* name, const char* mode) {
         if (strcmp(name, GT2REF_INPUT) != 0 || in_data == NULL)
             return NULL;
         static unsigned char none[1];
-        /* An empty song as one byte (fmemopen refuses a size of 0): its ident's read is
-         * short all the same. */
         in_file = in_len ? fmemopen((void*)in_data, in_len, "rb") : fmemopen(none, 1, "rb");
         return in_file;
     }
@@ -89,7 +76,6 @@ FILE* gt2ref_fopen(const char* name, const char* mode) {
     return NULL;
 }
 
-/* BME's file helpers (bme_end.h). */
 
 unsigned fread8(FILE* file) {
     unsigned char b = 0;
@@ -108,7 +94,6 @@ void fwritele16(FILE* file, unsigned data) {
     fwrite8(file, data >> 8);
 }
 
-/* The linked datafile: the player sources, read from the vendored tree. */
 
 static unsigned char* io_data[4];
 static long io_len[4], io_pos[4];
@@ -166,7 +151,6 @@ void io_close(int h) {
     io_data[h] = NULL;
 }
 
-/* GoatTracker's stdout */
 
 FILE* gt2ref_quiet(void) {
     static FILE* quiet;
@@ -175,14 +159,10 @@ FILE* gt2ref_quiet(void) {
     return quiet ? quiet : stderr;
 }
 
-/* exit, returning to gt2ref_guard */
 
 static jmp_buf guard;
 static int guarded;
 
-/* The blocks GoatTracker allocates inside gt2ref_guard and has not freed: the relocator's
- * work buffers (greloc.c's songwork, pattwork, instrwork), which are its locals, so its
- * exit on an assembly error loses them. gt2ref_guard frees them on that path. */
 #define GUARDED_BLOCKS 16
 static void* guarded_block[GUARDED_BLOCKS];
 static int guarded_blocks;
@@ -233,8 +213,6 @@ int gt2ref_guard(void (*fn)(void)) {
 
 int win_quitted = 0;
 
-/* The editor's state and calls that the song, table and relocation code names: stubs.
- * gt2reloc's main reads the datafile; the harness never calls it (gt2ref.c). */
 unsigned char datafile[1];
 int key, rawkey, shiftpressed;
 unsigned char sidreg[0x19];
@@ -248,8 +226,6 @@ void incrementtime(void) {}
 void sound_suspend(void) {}
 void sound_flush(void) {}
 
-/* membuf (left out when the harness is checked against GoatTracker's own assembler,
- * which brings its own: GT2REF_EXOMIZER_ASM, docs in VENDORED.md) */
 
 #ifndef GT2REF_EXOMIZER_ASM
 void membuf_free(struct membuf* sb) {

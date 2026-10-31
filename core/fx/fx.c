@@ -12,10 +12,6 @@ void sid_fx_init(sid_fx* fx, uint32_t sample_rate, uint32_t seed) {
     sid_fx_params zero = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     fx->target = zero;
     fx->cur = zero;
-    /* CRT's amount is smoothed on every sample; the others, whose blocks respond to it
-     * smoothly enough (the click tests check), on every other sample, with the
-     * coefficient for two steps: 1 - (1 - k)^2. That halves the smoothing and the
-     * coefficient updates while parameters move. */
     float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
     fx->smooth_coef = k;
     fx->smooth_coef2 = k * (2.0f - k);
@@ -23,7 +19,6 @@ void sid_fx_init(sid_fx* fx, uint32_t sample_rate, uint32_t seed) {
     fx->clock = 0;
     sid_fx_crush_init(&fx->crush, sample_rate);
     sid_fx_tape_init(&fx->tape, sample_rate);
-    /* Different streams for the drift and the hiss. */
     sid_fx_wow_init(&fx->wow, sample_rate, seed * 0x9e3779b9u + 1u);
     sid_fx_crt_init(&fx->crt, sample_rate);
     sid_fx_noise_init(&fx->noise, seed);
@@ -47,7 +42,6 @@ static int idle(const sid_fx* fx) {
            !sid_fx_wow_busy(&fx->wow);
 }
 
-/* Every 32 samples of the chain's own clock. */
 #define SNAP_MASK 31u
 
 static void smooth(sid_fx* fx) {
@@ -80,8 +74,6 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
     const sid_fx_params* t = &fx->target;
     uint32_t active = fx->active;
     if (active == 0) {
-        /* Starting from rest (just initialised, or after the bypass): restart the snap
-         * grid here, so where it falls does not depend on how earlier calls were split. */
         fx->clock = 0;
     }
     int settled = c->tape_drive == t->tape_drive && c->wow == t->wow &&
@@ -92,7 +84,6 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
             smooth(fx);
         }
         float x = (float)io[i] * (1.0f / 32768.0f);
-        /* A block entering the path starts from its rest state. */
         if (c->crush > 0.0f) {
             if (!(active & ON_CRUSH)) {
                 sid_fx_crush_reset(&fx->crush);
@@ -117,8 +108,6 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
                 active |= ON_WOW;
             }
             x = sid_fx_wow_tick(&fx->wow, x, c->wow, c->flutter);
-            /* It can finish fading out on this very sample, maybe the last before the
-             * bypass: leave the path now, so the next start resets it. */
             if (c->wow == 0.0f && c->flutter == 0.0f && !sid_fx_wow_busy(&fx->wow)) {
                 active &= ~ON_WOW;
             }

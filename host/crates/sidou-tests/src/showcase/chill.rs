@@ -1,19 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! PAPER LANTERNS: chill and melodic, D major, a swung 94 BPM (funktempo 9/7, sixteenths),
-//! the 8580.
-//!
-//! Plan. Gmaj7 F#m7 Em7 A7 | Gmaj7 F#m7 Bm7 Asus, then Em7 F#m7 Gmaj7 A6 | Bm7 Gmaj7 Em9
-//! Asus-A. Voice 1 a round triangle bass whose downbeats open with a pitch-dropped thump (a
-//! kick and a bass in one note), multiplexed with a soft rim click on the backbeats; voice 2
-//! the melody, a slowly pulse-width modulated lead with delayed gentle vibrato, then a
-//! pulse-to-triangle flute; voice 3 seventh-chord arpeggios, two frames a note (a shimmer
-//! rather than a buzz), the only filtered voice: a low-pass that opens through the intro
-//! and then breathes, a two-bar swell.
-//!
-//! Bars: intro 4 (the chords and the bass, the filter opening, a pickup) | A 8 (the
-//! melody) | B 8 (the second melody, rising) | A' 8 (the melody, its second half higher,
-//! on the flute) | ending 4 (Gmaj7 A6 Dmaj9). 32 bars, 82 s; the loop restarts at A.
 
 use super::*;
 
@@ -24,7 +10,6 @@ pub const SONG: Showcase = Showcase {
     kit,
 };
 
-/// A chord program: the intervals, two frames each, looping.
 fn chord(k: &mut Kit, name: &str, notes: &[u8]) {
     let mut rows = vec![(0x41, 0x00), (0x00, 0x00)];
     for &n in &notes[1..] {
@@ -36,7 +21,6 @@ fn chord(k: &mut Kit, name: &str, notes: &[u8]) {
     k.wave(name, &rows);
 }
 
-/// A bar of voice 3: the chord struck on the downbeat and again on the and of three.
 fn chords(root: &str, kind: &str) -> String {
     format!("{root}/{kind} .9 {root}/{kind} .5")
 }
@@ -44,9 +28,7 @@ fn chords(root: &str, kind: &str) -> String {
 pub fn kit() -> Kit {
     let mut k = Kit::new("PAPER LANTERNS");
 
-    // the wavetable
     k.wave("tri", &[(0x11, 0x00), jump(0)]);
-    // the kick-bass: the triangle dropping two octaves onto the note
     k.wave(
         "kb",
         &[
@@ -75,7 +57,6 @@ pub fn kit() -> Kit {
     chord(&mut k, "sus", &[0, 5, 7, 10]);
     chord(&mut k, "maj9", &[0, 4, 7, 11, 14]);
 
-    // the pulse table
     k.pulse("lead", &[(0x86, 0x00), (0x7f, 0x06), (0x7f, 0xfa), jump(2)]);
     k.pulse(
         "chord",
@@ -83,7 +64,6 @@ pub fn kit() -> Kit {
     );
     k.pulse("rim", &[(0x84, 0x00), jump(0)]);
 
-    // the filter table: low-pass on voice 3
     k.filter(
         "dawn",
         &[
@@ -117,7 +97,6 @@ pub fn kit() -> Kit {
         ],
     );
 
-    // the speed table
     k.speed("swing", 0x09, 0x07);
     k.speed("vib", 0x06, 0x0c);
     k.speed("glide", 0x01, 0x80);
@@ -143,7 +122,6 @@ pub fn kit() -> Kit {
 
     k.alias("r", "C-4/rim");
 
-    // voice 1: the bass and the rim, on D
     let groove = "D-2/kb . . D-2/bass r . A-2/bass . D-2/kb . D-2/bass . r . D-3/bass .";
     k.pattern("groove", 16, groove);
     k.pattern(
@@ -158,7 +136,6 @@ pub fn kit() -> Kit {
     );
     k.pattern("bass-final", 32, "D-2/kb .7 A-2/bass .7 D-2/bass .15");
 
-    // voice 2: the melody
     k.pattern("pickup", 64, ".48 .10 A-4/lead . D-5 . E-5 .");
     k.pattern(
         "a1",
@@ -214,7 +191,6 @@ pub fn kit() -> Kit {
         "F#5/lead .7 E-5 .3 D-5 .3 | E-5 .11 F#5@3=glide .@3=glide .2 | .32",
     );
 
-    // voice 3: the chords
     let a = [
         ("G-3", "maj7"),
         ("F#3", "min7"),
@@ -253,7 +229,6 @@ pub fn kit() -> Kit {
         "G-3/maj7@A=dusk .9 G-3/maj7 .5 A-3/six .9 A-3/six .5 D-3/maj9 .31",
     );
 
-    // intro 4 | A 8 | B 8 | A' 8 | ending 4
     let bass_a = "+5 groove +4 groove +2 groove +7 groove +5 groove +4 groove +9 groove +7 groove";
     let bass_b =
         "+2 groove +4 groove +5 groove +7 groove +9 groove +5 groove +2 groove +7 groove-turn";

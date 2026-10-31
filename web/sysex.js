@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// SIDOU's SysEx protocol, version 1 (docs/reference/sysex.md), for the Library, Songs and Songs to MIDI
-// pages: the packing, the frames, the CRC, and a stop-and-wait client that does INQ, DIR, GET, PUT and DEL
-// over any transport that can send a frame and hand back the frames the device sends. No Web MIDI in
-// here: web/sysex.test.mjs runs it in Node against the vectors Rust's sidou-sysex checks too
-// (web/sysex-vectors.txt) and against a simulated device. Ported from tools/sysex_roundtrip.py's
-// packing and framing.
-
 export const INQ = 0x01, DIR = 0x02, GET = 0x03, PUT = 0x04, DATA = 0x05, END = 0x06, DEL = 0x07,
   ABORT = 0x08, WAIT = 0x7d, ACK = 0x7e, NAK = 0x7f;
 export const MAX_DATA = 256;
@@ -33,7 +26,6 @@ export class SysexError extends Error {
   }
 }
 
-// What a person should do about a NAK (the sysex.md reasons).
 export function nakMessage(reason, pool) {
   const base = NAK_TEXT[reason] ?? `the FM-1 refused with reason ${reason}`;
   if (reason === 4) {
@@ -48,8 +40,6 @@ export function nakMessage(reason, pool) {
   return base;
 }
 
-// How long a sender waits between tries when the FM-1 answers BUSY: 1 s, 2 s, 4 s, then 5 s each,
-// until about `total` ms are spent (sysex.md: a NAK ends the transfer, so the whole PUT is sent again).
 export function busyWaits(total = 60000, first = 1000, cap = 5000) {
   const waits = [];
   for (let w = first, sum = 0; sum < total; w = Math.min(w * 2, cap)) {
@@ -64,14 +54,12 @@ const TABLE = new Uint32Array(256).map((_, n) => {
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
 });
-// IEEE reflected CRC-32, the same as the store and zlib
 export function crc32(bytes) {
   let c = 0xffffffff;
   for (const b of bytes) c = TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 
-// Groups of up to seven bytes: a high-bit mask (bit 0 is the first byte), then the low seven bits.
 export function pack(bytes) {
   const out = [];
   for (let i = 0; i < bytes.length; i += 7) {
@@ -97,7 +85,6 @@ export function unpack(packed) {
   return Uint8Array.from(out);
 }
 
-// F0 7D 53 44 command sequence packed checksum F7
 export function encodeFrame(command, sequence, payload = new Uint8Array()) {
   if (payload.length > MAX_DATA) throw new SysexError("payload over 256 bytes");
   const packed = pack(payload);
@@ -106,7 +93,6 @@ export function encodeFrame(command, sequence, payload = new Uint8Array()) {
   return Uint8Array.from([0xf0, ...HEADER, command, sequence & 0x7f, ...packed, -sum & 0x7f, 0xf7]);
 }
 
-// One frame from the device (real-time bytes dropped); null when it is not a SIDOU frame.
 export function decodeFrame(frame) {
   const b = Array.from(frame).filter((x) => x < 0xf8);
   if (b[0] !== 0xf0 || b[b.length - 1] !== 0xf7 || HEADER.some((x, i) => b[i + 1] !== x)) return null;
@@ -116,7 +102,6 @@ export function decodeFrame(frame) {
   return { command: body[0], sequence: body[1], data: unpack(body.slice(2, -1)) };
 }
 
-// Names: one to sixteen characters in 20-5F, not starting with a space (not the two reserved ones).
 export function validName(name) {
   return /^[\x21-\x5f][\x20-\x5f]{0,15}$/.test(name) && name !== "MIDI INSTRUMENT" && name !== "MIDI SONG";
 }
@@ -128,10 +113,8 @@ function name16(name) {
   return out;
 }
 
-// The songs among a DIR listing (type 1): not the `.sid` tunes (2) or whatever else the store holds.
 export const songsIn = (files) => files.filter((f) => f.type === 1);
 
-// What a person should do about a NAK to a GET (target 0 a stored song, 2 the current song).
 export function getNakMessage(e) {
   switch (e.nak) {
     case 4: return "the FM-1 is busy (saving, loading, or in the middle of an import): wait a moment and try again";
@@ -146,7 +129,6 @@ function u32(n) {
   return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
 }
 
-// PUT's metadata: target 0 a named store file, 2 the current song (no name; type 1).
 export function putPayload(name, type, length, crc, target = 0) {
   return Uint8Array.from([target, 0, ...(target === 0 ? name16(name) : new Uint8Array(16)), type, ...u32(length), ...u32(crc)]);
 }
@@ -154,8 +136,6 @@ export function putPayload(name, type, length, crc, target = 0) {
 const text = (b) => String.fromCharCode(...b).replace(/\0+$/, "");
 const le32 = (b, i) => (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)) >>> 0;
 
-// The stop-and-wait client. `send(bytes)` writes one frame to the device; `push(bytes)` takes each
-// message the device sends (any bytes: non-SIDOU ones are ignored).
 export class Client {
   constructor(send, { timeout = 3000, ackTimeout = 10000, busy = busyWaits(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
     this.busy = busy;
@@ -202,9 +182,6 @@ export class Client {
     return s;
   }
 
-  // The ACK of `sequence`. A WAIT for it (sysex.md, "Waiting for quiet": a song plays on the FM-1,
-  // or a computer records its USB audio, and the write waits for quiet) starts the timeout again
-  // and calls onWait; the device sends one every 2 s while it waits, and gives up after a minute.
   async expectAck(sequence, ms = this.ackTimeout, onWait = () => {}) {
     for (;;) {
       const f = await this.recv(ms);
@@ -240,7 +217,6 @@ export class Client {
     };
   }
 
-  // The store's files: [{ name, type, length, crc }]. ACKs each reply, as the protocol asks.
   async dir() {
     this.drain();
     let seq = this.next();
@@ -259,10 +235,6 @@ export class Client {
     }
   }
 
-  // GET a song: { target: 0, name } a stored file, or { target: 2 } the current song. SIDOU answers with
-  // the file's metadata (a PUT frame), its DATA packets and an END, each ACKed here before the next
-  // comes; the length and CRC it announced are checked. Resolves to the file's bytes. A refusal
-  // (BUSY while the song is saving or loading, not found, FULL) is a SysexError with `.nak`.
   async get({ target = 0, name = "" } = {}, { onProgress = () => {} } = {}) {
     this.drain();
     const request = new Uint8Array(18);
@@ -276,7 +248,6 @@ export class Client {
     try {
       const seq = this.next();
       this.send(encodeFrame(GET, seq, request));
-      // the current song is counted and checksummed in a pass before the first reply
       const meta = await wait(this.ackTimeout);
       if (meta.command !== PUT || meta.data.length !== 27 || meta.data[0] !== target) {
         throw new SysexError("a damaged reply to the FM-1's GET");
@@ -311,12 +282,6 @@ export class Client {
     }
   }
 
-  // PUT a named store file (target 0), one packet at a time; onProgress(done, total) after each ACK.
-  // loadNow() is PUT target 2: the FM-1 loads the song at once (below).
-  // On NAK BUSY (the store is short of clean sectors or writing) the whole PUT is sent again after
-  // a wait, as a NAK ends the transfer; onBusy(waitMs, attempt) says so. Other NAKs fail at once,
-  // and so does a BUSY that ends a wait for quiet (the minute is up: someone has to stop the song).
-  // onWait() each time the FM-1 says it is waiting for quiet.
   async put(name, data, { type = 1, onProgress = () => {}, onBusy = () => {}, onWait = () => {} } = {}) {
     for (let attempt = 0; ; attempt++) {
       try {
@@ -330,19 +295,11 @@ export class Client {
     }
   }
 
-  // PUT target 2: a song the FM-1 loads now in place of its current one, as if from SONG, LOAD;
-  // resolves once it has loaded (the ACK of END follows the load). It refuses (NAK BUSY) while
-  // its current song has unsaved edits, or came over USB and was not given a name yet (its screen
-  // says SAVE AS FIRST), and while the song is busy or saving: no retry here, as what ends those
-  // is the player's to do; a song that does not load is refused with its NAK.
   async loadNow(data, { onProgress = () => {}, onWait = () => {} } = {}) {
     this.waited = false;
     return this.putOnce("", data, 1, onProgress, onWait, 2);
   }
 
-  // DEL a named store file; resolves once the deletion has committed (the FM-1's ACK). NAK 6 when
-  // there is no such file. BUSY is retried as put() retries it (a record being written), except
-  // after a wait for quiet; onWait() each time the FM-1 says it is waiting for quiet.
   async del(name, { onBusy = () => {}, onWait = () => {} } = {}) {
     const payload = name16(name);
     for (let attempt = 0; ; attempt++) {

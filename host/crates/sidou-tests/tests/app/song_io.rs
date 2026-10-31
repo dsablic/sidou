@@ -545,7 +545,6 @@ fn a_failed_about_restore_releases_ownership_and_marks_the_remaining_tune_unsave
     assert_eq!(unsafe { song_io_new(&mut *r.io, 1) }, 1);
 }
 
-/// What song_io_returning says to each read's loaded hook, in order.
 struct Returning {
     io: *const song_io,
     seen: Vec<i32>,
@@ -568,9 +567,6 @@ unsafe extern "C" fn returning_builtin(
     unsafe { builtin_read((&mut r.builtin as *mut Vec<u8>).cast(), off, buf, n) }
 }
 
-/// Ergonomics review E27 (M2 review 5.10): ABOUT's tune and the song coming back at its close
-/// are returning reads (the song views keep their places); a load, NEW and a lost file's
-/// built-in stand-in are not.
 #[test]
 fn abouts_tune_and_its_restore_are_returning_reads_and_a_load_is_not() {
     let mut r = Rig::new();
@@ -593,7 +589,6 @@ fn abouts_tune_and_its_restore_are_returning_reads_and_a_load_is_not() {
     assert_eq!(ret.seen, [0, 1, 1], "load, ABOUT's tune, the song back");
     assert_eq!(unsafe { song_io_new(&mut *r.io, 1) }, 1);
     r.finish();
-    // ABOUT with the file gone meanwhile: its close falls back to the built-in, a new song.
     r.save(c"NIGHT");
     assert_eq!(unsafe { song_io_about(&mut *r.io, 1) }, 1);
     r.finish();
@@ -604,10 +599,6 @@ fn abouts_tune_and_its_restore_are_returning_reads_and_a_load_is_not() {
     assert_eq!(ret.seen[3..], [0, 1, 0], "NEW, ABOUT's tune, the stand-in");
 }
 
-/// LOAD's built-in song (SIDOU LOOP, in the firmware image): loaded like a file, it is the
-/// song, unnamed and unchanged, nothing remembered for the next power-on (which plays the
-/// built-in anyway) and no stored file it would replace: a SAVE writes a store copy. Unsaved
-/// edits ask first, as a file's load does; a failed read gives the previous file back.
 #[test]
 fn the_builtin_song_loads_like_a_file_and_saving_it_makes_a_store_copy() {
     let mut r = Rig::new();
@@ -626,14 +617,12 @@ fn the_builtin_song_loads_like_a_file_and_saving_it_makes_a_store_copy() {
     assert_eq!(r.io.fid, 0, "no stored file");
     assert_eq!(unsafe { song_io_changed(&*r.io) }, 0);
     assert_eq!(r.io.builtin, 1);
-    // SAVE AS: a store copy, the built-in left as it is.
     r.save(c"MY LOOP");
     let mut f = store_file::default();
     assert_eq!(
         unsafe { store_file_open(&*r.store.st, c"MY LOOP".as_ptr(), &mut f) },
         STORE_OK
     );
-    // A built-in that fails to read: the previous file comes back.
     assert_eq!(unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) }, 1);
     r.finish();
     let broken: Box<Vec<u8>> = Box::new(b"GTS5".to_vec());
@@ -667,8 +656,6 @@ fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_template_with_the_k
         assert_eq!(unsafe { gt2_order_entries(r.song.ptr(), 0, p) }, 1);
         assert_eq!(unsafe { gt2_pattern_rows(r.song.ptr(), p) }, 65);
     }
-    // the lead and the bass, the SID drum kit (core/song/gt2_kit.h, tests/kit.rs), then the
-    // digi drums, which the DIGI chunk marks (tests/digi.rs)
     assert_eq!(
         unsafe { gt2_saved_instruments(r.song.ptr()) },
         SONG_IO_DIGI - 1 + SONG_DIGI_KINDS - 1
@@ -873,8 +860,6 @@ fn about_keeps_the_original_runtime_snapshot_until_close_and_restore_verificatio
     assert_eq!(r.io.dirty, 0);
 }
 
-/// SAVE on a store that was never mounted (an unknown flash part, review 1.1) says it failed
-/// at once and gives the song back: before, it waited on STORE_BUSY for ever, frozen.
 #[test]
 fn a_save_on_an_unmounted_store_fails_at_once_and_unfreezes_the_song() {
     let mut r = Rig::on(crate::store::Rig::new(crate::store::Sim::new(5), 16));
@@ -890,16 +875,12 @@ fn a_save_on_an_unmounted_store_fails_at_once_and_unfreezes_the_song() {
     assert_eq!(r.store.sim.ops, 0);
 }
 
-/// An unchanged SAVE is skipped only while the file it would save to is still the one the
-/// song was loaded or saved as (review 1.3): after a SysEx DEL of it, or a PUT that replaced
-/// it, SAVE writes the song again.
 #[test]
 fn an_unchanged_save_writes_again_once_its_file_was_deleted_or_replaced() {
     let mut r = Rig::new();
     let song = r.song.write(true);
     r.save(c"NIGHT");
     assert_eq!(r.store.file("NIGHT"), Some(song.clone()));
-    // A SysEx DEL of the saved file.
     r.store.maintain();
     assert_eq!(r.store.file_delete("NIGHT"), STORE_OK);
     r.store.settle();
@@ -915,7 +896,6 @@ fn an_unchanged_save_writes_again_once_its_file_was_deleted_or_replaced() {
     r.finish();
     assert_eq!(r.message(), "SONG SAVED");
     assert_eq!(r.store.file("NIGHT"), Some(song.clone()), "written again");
-    // A SysEx PUT of other bytes under its name.
     let other = sidou_tests::song::SngSpec::new().encode();
     r.typed_file(c"NIGHT", STORE_FILE_SONG as u8, &other);
     assert_eq!(
@@ -928,7 +908,6 @@ fn an_unchanged_save_writes_again_once_its_file_was_deleted_or_replaced() {
         Some(song.clone()),
         "the song, not the host's"
     );
-    // Unchanged and untouched since: skipped, as before.
     let seq = r.store.st.seq;
     assert_eq!(
         unsafe { song_io_save(&mut *r.io, c"NIGHT".as_ptr(), r.now) },
@@ -939,8 +918,6 @@ fn an_unchanged_save_writes_again_once_its_file_was_deleted_or_replaced() {
     assert_eq!(r.store.st.seq, seq, "nothing written");
 }
 
-/// The same for a song loaded from the store: the load's file is the one an unchanged SAVE
-/// skips for, and a PUT that replaced it meanwhile makes SAVE write the loaded song back.
 #[test]
 fn an_unchanged_save_after_a_load_writes_once_the_loaded_file_was_replaced() {
     let mut r = Rig::new();
@@ -970,15 +947,21 @@ fn an_unchanged_save_after_a_load_writes_once_the_loaded_file_was_replaced() {
     assert_eq!(r.store.file("FOO"), Some(song));
 }
 
-/// A .sid tune takes the song's memory (song_io_away, M3 Task 9): every action is refused, the
-/// song counts as unchanged and nothing is read; when the tune is done the song comes back from
-/// its file, by name, as it was saved (the memory was overwritten meanwhile), its edits gone.
+fn a_tune_overwrites_the_songs_memory(r: &mut Rig, fill: u8) -> bool {
+    unsafe {
+        let s = r.song.ptr_mut();
+        let bytes = (*s).region_bytes;
+        std::ptr::write_bytes(s.cast::<u8>(), fill, bytes as usize);
+        !gt2_song_init_wiped(s.cast(), bytes).is_null()
+    }
+}
+
 #[test]
 fn away_refuses_everything_and_back_reads_the_song_from_its_file() {
     let mut r = Rig::new();
     r.save(c"NIGHT");
     let saved = r.song.write(true);
-    r.io.dirty = 1; // an unsaved edit, lost with the model
+    r.io.dirty = 1;
     assert_eq!(unsafe { song_io_away(&mut *r.io, 1) }, 1);
     assert_eq!(
         unsafe { song_io_changed(&*r.io) },
@@ -994,13 +977,10 @@ fn away_refuses_everything_and_back_reads_the_song_from_its_file() {
         assert_eq!(song_io_program(&mut *r.io, 0), 0);
         assert_eq!(song_io_about(&mut *r.io, 1), 0);
     }
-    // The tune overwrites the model: the song's region is the 6502's memory.
-    unsafe {
-        let s = r.song.ptr_mut();
-        let bytes = (*s).region_bytes;
-        std::ptr::write_bytes(s.cast::<u8>(), 0xA5, bytes as usize);
-        assert!(!gt2_song_init_wiped(s.cast(), bytes).is_null());
-    }
+    assert!(
+        a_tune_overwrites_the_songs_memory(&mut r, 0xA5),
+        "the wiped region holds a song again"
+    );
     for _ in 0..100 {
         r.step();
     }
@@ -1030,11 +1010,6 @@ unsafe extern "C" fn keeping_loaded(ctx: *mut std::ffi::c_void) -> i32 {
     1
 }
 
-/// A sound edit is no edit a tune would lose: the keys' runtime (the generation) changed, the
-/// song's own data did not, so song_io_edited says 0 (SIDS plays a tune without asking) while
-/// song_io_changed says 1 (the file lacks the sound). Read back after the tune, the loaded hook
-/// is told to keep the runtime (song_io_keeping), and the song still counts as changed: its file
-/// lacks the edit, as before the tune. A pattern edit is the song's (song_io_edited 1).
 #[test]
 fn a_sound_edit_is_not_the_songs_and_a_tune_keeps_it() {
     let mut r = Rig::new();
@@ -1048,15 +1023,12 @@ fn a_sound_edit_is_not_the_songs_and_a_tune_keeps_it() {
     r.io.hooks.loaded = Some(keeping_loaded);
     r.save(c"NIGHT");
     let saved = r.song.write(true);
-    k.generation = 1; // the LIVE sound edited
+    k.generation = 1;
     unsafe {
         assert_eq!(song_io_changed(&*r.io), 1, "the file lacks the sound");
         assert_eq!(song_io_edited(&*r.io), 0, "the song itself is as saved");
         assert_eq!(song_io_away(&mut *r.io, 1), 1);
-        let s = r.song.ptr_mut();
-        let bytes = (*s).region_bytes;
-        std::ptr::write_bytes(s.cast::<u8>(), 0xA5, bytes as usize);
-        gt2_song_init_wiped(s.cast(), bytes);
+        a_tune_overwrites_the_songs_memory(&mut r, 0xA5);
         assert_eq!(song_io_away(&mut *r.io, 0), 1);
     }
     r.finish();
@@ -1071,15 +1043,17 @@ fn a_sound_edit_is_not_the_songs_and_a_tune_keeps_it() {
         );
         assert_eq!(song_io_edited(&*r.io), 0);
     }
-    // a load is not a tune's return: the file's keys apply
     assert_eq!(unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) }, 1);
     r.finish();
     assert_eq!(k.kept, 0);
-    r.io.dirty = 1; // a song edit
-    assert_eq!(unsafe { song_io_edited(&*r.io) }, 1);
+    r.io.dirty = 1;
+    assert_eq!(
+        unsafe { song_io_edited(&*r.io) },
+        1,
+        "a pattern edit is the song's"
+    );
 }
 
-/// NEW's song, never saved, comes back as NEW's empty song.
 #[test]
 fn away_from_an_unsaved_new_song_comes_back_new() {
     let mut r = Rig::new();
@@ -1087,20 +1061,13 @@ fn away_from_an_unsaved_new_song_comes_back_new() {
     r.finish();
     let fresh = r.song.write(true);
     assert_eq!(unsafe { song_io_away(&mut *r.io, 1) }, 1);
-    unsafe {
-        let s = r.song.ptr_mut();
-        let bytes = (*s).region_bytes;
-        std::ptr::write_bytes(s.cast::<u8>(), 0x5A, bytes as usize);
-        gt2_song_init_wiped(s.cast(), bytes);
-    }
+    a_tune_overwrites_the_songs_memory(&mut r, 0x5A);
     assert_eq!(unsafe { song_io_away(&mut *r.io, 0) }, 1);
     r.finish();
     assert_eq!(r.song.write(true), fresh);
     assert_eq!(r.io.name[0], 0, "unnamed, as NEW leaves it");
 }
 
-/// LAB's USER sounds' file (app/user_sound.h) is no song's: SAVE AS, a load and a delete refuse
-/// its name, and SONG's list leaves it out.
 #[test]
 fn save_as_refuses_the_user_sounds_name() {
     let mut r = Rig::new();
@@ -1124,6 +1091,5 @@ fn save_as_refuses_the_user_sounds_name() {
     assert_eq!(r.store.file("USER SOUNDS"), Some(bytes), "untouched");
     let f = r.store.file_open("USER SOUNDS").unwrap();
     assert_eq!(unsafe { song_io_listed(&f) }, 0);
-    // a name that only starts like it is a song's
     r.save(c"USER SOUNDS 2");
 }

@@ -1,14 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The firmware's step 1 of the update protocol (Felucca's ota.c, built for the host by
-//! harness/ota_harness.c) against packages from this crate, with this test as the installer
-//! (fm1_install.py's side: identity, read requests, "success"). fm1-emu has no USB, so this
-//! is where the protocol and the package format meet before hardware.
-//!
-//! Offline, with stand-in SDK files; the device's own head is a synthetic one (the chip key
-//! in an isd_config blob). With M-VAVE's V15 package in the cache (`build/stock/FM-1.fwsc`,
-//! SHA-256 checked; only ever read by these tests, never put into a package), the device
-//! carries V15's head as a real FM-1 does, and the way back to stock is tested too.
 
 use std::collections::VecDeque;
 use std::ffi::c_void;
@@ -27,7 +18,6 @@ const OTA_AREA: usize = 0xE0000;
 const OTA_RES: usize = 0xE4F00;
 const PRODUCT: &str = "FM-1_900";
 
-/// ota.c keeps static state and the harness one global device: one test at a time.
 static HARNESS: Mutex<()> = Mutex::new(());
 
 fn exclusive() -> MutexGuard<'static, ()> {
@@ -65,7 +55,6 @@ fn unpack7(s: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The installer: answers the device's read requests from the package's logical image.
 struct Installer {
     image: Vec<u8>,
     queue: VecDeque<Vec<u8>>,
@@ -85,7 +74,6 @@ impl Installer {
         })
     }
 
-    /// fm1_install.py `response`: the frame between F0 and F7.
     fn respond(&mut self, addr: u32, data: &[u8]) {
         let n = data.len();
         let mut body = vec![0x00, 0x59, 0x30, (n + 8) as u8, ((n + 8) >> 8) as u8, 0, 0];
@@ -144,7 +132,6 @@ unsafe extern "C" fn frame(ctx: *mut c_void, p: *mut *const u8, n: *mut u32) -> 
 
 unsafe extern "C" fn frame_done(_ctx: *mut c_void) {}
 
-/// A device: its flash (1 MiB, the head at 0) and the harness's state.
 struct Device {
     flash: Vec<u8>,
     host: Box<OtaHost>,
@@ -178,14 +165,12 @@ impl Device {
         unsafe { ota_h_session(&mut *self.host) }
     }
 
-    /// The update loader's session; its erases, programs and record clears are counted.
     fn loader_session(&mut self) -> (i32, u32) {
         let rc = unsafe { ldr_h_session(&mut *self.host) };
         (rc, unsafe { ldr_h_writes() })
     }
 }
 
-/// A 32-byte JLFS entry (fm1pkg_make.py `entry`).
 fn jlfs(dcrc: u16, off: u32, size: u32, flags: u8, resvd: u8, index: u16, name: &[u8]) -> [u8; 32] {
     let mut e = [0xFFu8; 32];
     e[2..4].copy_from_slice(&dcrc.to_le_bytes());
@@ -201,8 +186,6 @@ fn jlfs(dcrc: u16, off: u32, size: u32, flags: u8, resvd: u8, index: u16, name: 
     e
 }
 
-/// A head with only what the package and the loader need: a flash header and an isd_config
-/// entry whose blob decodes to the chip key (fm1pkg_make.py `key_blob`).
 fn synthetic_head() -> Vec<u8> {
     let mut blob = [0x10u8; 32];
     for i in 0..16 {
@@ -252,7 +235,6 @@ fn loader() -> Vec<u8> {
     l
 }
 
-/// M-VAVE's official V15 package (the SHA-256 Felucca's installer pins), if the cache has it.
 const STOCK_V15_SHA256: &str = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a";
 
 fn stock_v15() -> Option<Vec<u8>> {
@@ -269,7 +251,6 @@ fn stock_v15() -> Option<Vec<u8>> {
     }
 }
 
-/// The head a real FM-1 carries: V15's (no package of ours ever writes it).
 fn device_head(stock: &[u8]) -> Vec<u8> {
     ufw_file(stock, 0).unwrap().1[..HEAD_SIZE].to_vec()
 }
@@ -283,7 +264,6 @@ fn the_identity_request_is_answered() {
     let _one = exclusive();
     let pkg = package();
     let mut inst = Installer::new(&pkg);
-    // fm1_install.py HS_QUERY: F0 00 32 45 00 00 00 40 7F F7, the frame between F0 and F7.
     inst.queue
         .push_back(vec![0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F]);
     let mut dev = Device::new(&synthetic_head(), &mut inst);
@@ -304,7 +284,6 @@ fn a_package_stages_its_loader_and_commits() {
         "step 1 failed: ota.c code {rc}"
     );
     let (_, ota) = ufw_file(&pkg, 100).unwrap();
-    // The staged loader: a "LOADER.BIN" head, then ota.bin's body.
     let staged = &dev.flash[OTA_AREA..OTA_AREA + ota.len()];
     assert_eq!(&staged[16..26], b"LOADER.BIN");
     assert_eq!(
@@ -312,8 +291,6 @@ fn a_package_stages_its_loader_and_commits() {
         crc16(&staged[2..32], 0)
     );
     assert_eq!(&staged[32..], &ota[32..]);
-    // The update record: in flash and handed to the commit, with its CRC and the loader's
-    // identity.
     let parm = dev.host.parm;
     assert_eq!(&dev.flash[OTA_RES..OTA_RES + 112], &parm);
     assert_eq!(
@@ -330,12 +307,10 @@ fn a_package_stages_its_loader_and_commits() {
         Some(&(0xE000_0000, 8)),
         "no confirmation asked"
     );
-    // Nothing outside the staging area was written.
     assert_eq!(&dev.flash[..0x4000], synthetic_head().as_slice());
     assert!(dev.flash[0x4000..OTA_AREA].iter().all(|&b| b == 0xFF));
     assert!(dev.flash[OTA_AREA + 0x5000..].iter().all(|&b| b == 0xFF));
     println!("step 1: {} read requests", inst.reads.len());
-    // The next boot finds the staging area and clears it.
     assert_eq!(unsafe { ota_h_boot_cleanup(&mut *dev.host) }, 1);
     assert!(dev.flash[OTA_AREA..OTA_AREA + 0x5000]
         .iter()
@@ -363,13 +338,11 @@ fn the_loader_refuses_another_boards_package_before_anything_is_erased() {
     let inputs = inputs();
     let full = sidou_pack::flash_image(&inputs, &app()).unwrap();
     let ota = wrap_loader(&loader()).unwrap();
-    // The control: the right size goes through, so the harness drives the loader's session.
     let pkg = ufw(&full, &ota, PRODUCT).unwrap();
     let mut inst = Installer::new(&pkg);
     let mut dev = Device::new(&synthetic_head(), &mut inst);
     let (rc, writes) = dev.loader_session();
     assert_eq!((rc, writes > 0), (0, true), "the control package");
-    // 4 KiB short, and 4 KiB over (the other direction): refused with -14, nothing written.
     for len in [full.len() - 0x1000, full.len() + 0x1000] {
         let mut flash = full.clone();
         flash.resize(len, 0xFF);
@@ -386,8 +359,6 @@ fn the_loader_refuses_another_boards_package_before_anything_is_erased() {
 fn a_loader_without_the_marker_is_refused() {
     let _one = exclusive();
     let mut ota = wrap_loader(&loader()).unwrap();
-    // The marker sits in the first block's literals: spoil one of its bytes there (ota.c
-    // checks the heads' CRCs, not the body's, before it looks for the marker).
     let at = ota
         .windows(16)
         .position(|w| w == b"FELUCCA-LOADER-1")
@@ -425,8 +396,6 @@ fn the_way_back_to_stock_v15_stays_open() {
     let Some(stock) = stock_v15() else {
         return;
     };
-    // V15's package carries the official loader, which rewrites the head: ota.c lets it in only
-    // when its head is the device's, which ours never changed.
     let mut inst = Installer::new(&stock);
     let mut dev = Device::new(&device_head(&stock), &mut inst);
     let rc = dev.session();
@@ -439,8 +408,6 @@ fn the_way_back_to_stock_v15_stays_open() {
         (0, 1),
         "the return to V15 was refused"
     );
-    // Had a tool written another head (say an SDK-default one), V15 would be refused before
-    // anything is erased.
     let mut inst = Installer::new(&stock);
     let other = sidou_pack::head(&[0x33; 14536], CHIP_KEY).unwrap();
     let mut dev = Device::new(&other, &mut inst);
@@ -449,7 +416,6 @@ fn the_way_back_to_stock_v15_stays_open() {
     assert!(dev.flash == before, "flash written");
 }
 
-/// Felucca's loader as the fm1 build makes it (`platform/fm1/loader/loader.bin`), if built.
 fn built_loader() -> Option<Vec<u8>> {
     let dir = std::env::var_os("SIDOU_FM1_BUILD")
         .map(std::path::PathBuf::from)
@@ -500,21 +466,18 @@ fn a_wrong_size_package_with_the_built_loader_is_refused_before_anything_is_eras
         let mut flash = full.clone();
         flash.resize(len, 0xFF);
         let pkg = ufw(&flash, &ota, PRODUCT).unwrap();
-        // sidou-pack --verify, and so tools/preflash, refuses it too.
         let v = sidou_pack::verify(&pkg);
         assert!(
             v.problems.iter().any(|p| p.contains("(-14)")),
             "{:?}",
             v.problems
         );
-        // Step 1 in the app: FAILED -15, nothing erased.
         let mut inst = Installer::new(&pkg);
         let mut dev = Device::new(&synthetic_head(), &mut inst);
         let before = dev.flash.clone();
         assert_eq!(dev.session(), -15, "step 1, flash.bin of {len} bytes");
         assert_eq!(dev.host.committed, 0);
         assert!(dev.flash == before, "step 1 wrote the flash");
-        // The loader (after a commit made by an older app's step 1): -14, nothing erased.
         let mut inst = Installer::new(&pkg);
         let mut dev = Device::new(&synthetic_head(), &mut inst);
         let before = dev.flash.clone();

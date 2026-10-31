@@ -1,23 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Songs -> MIDI page's code (web/songmidi.js) in plain Node. The note walk is compared, note by
-// note, with GoatTracker 2.77's own packed player: web/songmidi-fixtures/*.json hold each voice's
-// gate runs and the frequency it plays, call by call, for SIDOU's four showcase songs, SIDOU LOOP and
-// GoatTracker's examples (funktempo, tempo commands, repeats, transposes, wavetable commands), made
-// by host/crates/gt2-ref/tests/midi_walk.rs. The .mid is read back with a small SMF reader here.
-// Opens no MIDI port.
-//   node web/songmidi.test.mjs        (web/check.sh, so tools/web-demo --check and Pages, run it)
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { SongError, callRate, parseSong, songToMidi, toMidi, walkSong } from "./songmidi.js";
+import { FIRSTNOTE, MIDI_GT2_C0, SongError, callRate, parseSong, songToMidi, toMidi, walkSong } from "./songmidi.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const root = `${here}../`;
 let n = 0;
+const SONGS_WITH_GT2_EXAMPLES = 17, WRONG_PITCH_AT_MOST_ONE_IN = 2000;
 const test = async (name, fn) => { await fn(); n++; console.log(`ok - ${name}`); };
 
-// --- the songs and the reference's fixtures --------------------------------------------------------
 const songFiles = [];
 for (const dir of ["assets/songs", "third_party/goattracker2/examples"]) {
   if (!existsSync(`${root}${dir}`)) continue;
@@ -30,8 +23,6 @@ const showcase = ["chrome-comet", "iron-rite", "neon-highway", "paper-lanterns"]
 assert.ok(showcase.every((s) => songFiles.some((f) => f.stem === s)), "the showcase songs and their fixtures");
 const fixture = (stem) => JSON.parse(readFileSync(`${here}songmidi-fixtures/${stem}.json`, "utf8"));
 
-// Joins a voice's notes into the gate runs the SID hears: a tied note begins in the call the one
-// before it ends.
 function gateRuns(notes) {
   const runs = [];
   for (const nt of notes) {
@@ -46,12 +37,6 @@ function gateRuns(notes) {
   return runs;
 }
 
-// Every call a note sounds, from the call after it starts (the register still holds the note before
-// at its first call, and the wavetable's first step names the pitch a call later), the voice's
-// frequency register, when it holds a note of GoatTracker's table, is that note's pitch. A slide,
-// vibrato or tone portamento (pattern commands 1-4) puts the register between table notes, which
-// the walk does not follow: those calls are skipped, and the few where a glide lands on a table
-// note the walk's pitch is not (the end of a tone portamento) are counted apart.
 let compared = 0, ties = 0, truncated = 0, arps = 0, calls = 0, wrong = 0, glided = 0;
 function comparePitches(stem, v, notes, course, end) {
   const at = (c) => {
@@ -67,7 +52,7 @@ function comparePitches(stem, v, notes, course, end) {
       const ref = at(c);
       if (ref < 0) { glided++; continue; }
       calls++;
-      if (ref !== nt.pitch - 12) wrong++;
+      if (ref !== nt.pitch - MIDI_GT2_C0) wrong++;
     }
   }
 }
@@ -83,8 +68,6 @@ for (const { stem, path } of songFiles) {
     for (let v = 0; v < 3; v++) {
       const end = walk.ends[v];
       const mine = gateRuns(walk.notes.filter((x) => x.voice === v));
-      // the reference's runs that begin before the voice's orderlist comes round again, the last
-      // one cut where the voice's pass ends
       const theirs = fx.voices[v].filter(([s]) => s < end).map(([s, e, f]) => [s, Math.min(e, end), f, e > end]);
       assert.deepEqual(mine.map((r) => [r.start, r.end]), theirs.map(([s, e]) => [s, e]), `${stem} voice ${v + 1}: gate runs`);
       compared += mine.length;
@@ -98,13 +81,10 @@ for (const { stem, path } of songFiles) {
   });
 }
 console.log(`  ${compared} gate runs' start and end compared (${truncated} held across the loop point, ${ties} tied notes inside them); ${calls} calls' pitch compared with the register, ${wrong} differ, ${glided} skipped (a slide or vibrato)`);
-// a glide ending on a table note the walk does not follow is the only way the two differ
-assert.ok(wrong <= calls / 2000, `${wrong} of ${calls} calls sound another pitch than the walk's`);
-// with the GoatTracker examples checked out (the submodule) the whole set is compared
-if (songFiles.length >= 17) assert.ok(compared > 17000 && calls > 100000 && ties > 20000, "the comparison is big enough to mean something");
+assert.ok(wrong <= calls / WRONG_PITCH_AT_MOST_ONE_IN, `${wrong} of ${calls} calls sound another pitch than the walk's`);
+if (songFiles.length >= SONGS_WITH_GT2_EXAMPLES) assert.ok(compared > 17000 && calls > 100000 && ties > 20000, "the comparison is big enough to mean something");
 else assert.ok(compared > 0);
 
-// --- the .mid file ---------------------------------------------------------------------------------
 function readVlq(b, at) {
   let v = 0;
   for (;;) {
@@ -113,8 +93,6 @@ function readVlq(b, at) {
     if (!(x & 0x80)) return [v, at];
   }
 }
-// A Standard MIDI File reader: { format, ppq, tracks: [[{ tick, kind, ... }]] }; throws on any
-// structural fault (chunk lengths, running status is not used, a missing end of track).
 function readSmf(b) {
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
   const tag = (at) => String.fromCharCode(...b.subarray(at, at + 4));
@@ -173,7 +151,6 @@ await test("the .mid: structure, one channel a voice, ticks are exact player cal
     assert.equal(tempos.length, 1, "one tempo event: the tick-to-time map never changes");
     const us = (tempos[0].data[0] << 16) | (tempos[0].data[1] << 8) | tempos[0].data[2];
     assert.equal(us, r.midi.tempoUs);
-    // a beat is 4 rows of the song's rows, and the tick is a whole fraction of a player call
     assert.equal(r.midi.beatCalls * r.midi.ticksPerCall, smf.ppq);
     const callUs = callRate(r.song.options).us;
     for (let v = 0; v < 3; v++) {
@@ -183,7 +160,6 @@ await test("the .mid: structure, one channel a voice, ticks are exact player cal
       const ons = ev.filter((e) => e.kind === "on"), offs = ev.filter((e) => e.kind === "off");
       assert.equal(ons.length, mine.length);
       assert.equal(offs.length, mine.length);
-      // every note on and off lands on its player call's time, to the microsecond
       const seconds = (tick) => (tick * us) / smf.ppq;
       for (const [i, x] of mine.entries()) {
         const on = ons.find((e) => e.tick === (x.start - r.walk.origin) * r.midi.ticksPerCall && e.key === x.pitch);
@@ -191,7 +167,6 @@ await test("the .mid: structure, one channel a voice, ticks are exact player cal
         assert.ok(Math.abs(seconds(on.tick) - (x.start - r.walk.origin) * callUs) < 1);
         assert.ok(offs.some((e) => e.tick === (x.end - r.walk.origin) * r.midi.ticksPerCall && e.key === x.pitch), `note ${i} off`);
       }
-      // no key is left sounding, none sounds twice
       const open = new Map();
       for (const e of ev) {
         if (e.kind === "on") { assert.ok(!open.has(e.key), "no double on"); open.set(e.key, e.tick); }
@@ -216,10 +191,6 @@ await test("timing options: NTSC and multispeed set the call rate; 25 Hz is ever
   assert.equal(Math.round(callRate({ multispeed: 1, ntsc: true }).us), 16667);
 });
 
-// --- hand-made songs -------------------------------------------------------------------------------
-// A GTS5 song of one subtune with the given orderlists (3 or 6 of them: arrays of entries, restart
-// position last), instruments [{ ad, sr, wave, gate, first }], wavetable rows, patterns (rows of
-// [note, instrument, command, data]) and, optionally, SIDOU's OPTS chunk.
 function build({ orders, instruments = [], wave = [], speed = [], patterns, opts = null }) {
   const out = [..."GTS5"].map((c) => c.charCodeAt(0));
   out.push(...new Array(96).fill(0), 1);
@@ -247,7 +218,7 @@ function build({ orders, instruments = [], wave = [], speed = [], patterns, opts
   }
   return Uint8Array.from(out);
 }
-const N = (k) => 0x60 + k; // C-0 plus k semitones
+const fromC0 = (semitones) => FIRSTNOTE + semitones;
 const plain = [{ ad: 0x09, sr: 0xf0, gate: 2 }];
 const ones = (len) => Array.from({ length: len }, () => [0xbd, 0, 0, 0]);
 const sec = (b, sub = 0) => walkSong(parseSong(b), sub);
@@ -256,29 +227,24 @@ const first = (w, voice = 0) => w.notes.filter((x) => x.voice === voice).map((x)
 const lead = (w) => w.ends.map((e) => e - w.origin);
 
 await test("speed, tempo commands and funktempo set a row's length in calls", () => {
-  // six rows of speed 6, except that the third row's F04 makes it and the rows after it 4 long
-  const rows = [[N(24), 1, 0, 0], [0xbd, 0, 0, 0], [N(26), 1, 0xf, 0x04], [0xbd, 0, 0, 0], [N(28), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const rows = [[fromC0(24), 1, 0, 0], [0xbd, 0, 0, 0], [fromC0(26), 1, 0xf, 0x04], [0xbd, 0, 0, 0], [fromC0(28), 1, 0, 0], [0xbd, 0, 0, 0]];
   const b = build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: [[0x41, 0x80], [0xff, 0]], patterns: [rows, ones(6)] });
   const w = sec(b);
   assert.deepEqual(first(w).map((x) => x[0]), [0, 12, 20]);
   assert.deepEqual(lead(w), [28, 28, 28], "6 + 6 + 4 + 4 + 4 + 4: the global tempo moves every voice");
-  // E01 with speed table row 1 = 3 and 9: the rows alternate between 3 and 9 calls
-  const f = [[N(24), 1, 0xe, 0x01], [0xbd, 0, 0, 0], [N(26), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const f = [[fromC0(24), 1, 0xe, 0x01], [0xbd, 0, 0, 0], [fromC0(26), 1, 0, 0], [0xbd, 0, 0, 0]];
   const w2 = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: [[0x41, 0x80], [0xff, 0]], speed: [[3, 9]], patterns: [f, ones(4)] }));
   assert.deepEqual(first(w2).map((x) => x[0]), [0, 12]);
   assert.deepEqual(lead(w2), [24, 24, 24], "3 + 9 + 3 + 9");
-  // F83 (a voice's own tempo) leaves the other voices at 6
-  const own = [[N(24), 1, 0xf, 0x83], [0xbd, 0, 0, 0], [N(26), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const own = [[fromC0(24), 1, 0xf, 0x83], [0xbd, 0, 0, 0], [fromC0(26), 1, 0, 0], [0xbd, 0, 0, 0]];
   const w3 = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: [[0x41, 0x80], [0xff, 0]], patterns: [own, ones(4)] }));
   assert.deepEqual(first(w3).map((x) => x[0]), [0, 6]);
   assert.deepEqual(lead(w3), [12, 24, 24], "voice 1 at 3 calls a row, the others at 6");
 });
 
 await test("orderlist repeats, transposes and the restart position", () => {
-  const p0 = [[N(12), 1, 0, 0], [0xbd, 0, 0, 0]];
-  const p1 = [[N(24), 1, 0, 0], [0xbd, 0, 0, 0]];
-  // voice 1: p0, then transpose +7 and p1 three times (R3, two repeats more), then back to the
-  // transpose; the walk stops where it comes round
+  const p0 = [[fromC0(12), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const p1 = [[fromC0(24), 1, 0, 0], [0xbd, 0, 0, 0]];
   const b = build({ orders: [[0, 0xf7, 0xd2, 1, 1], [0, 0], [0, 0]], instruments: plain, wave: [[0x41, 0x80], [0xff, 0]], patterns: [p0, p1] });
   const w = sec(b);
   assert.deepEqual(first(w).map((x) => [x[0], x[2]]), [[0, 24], [12, 43], [24, 43], [36, 43]]);
@@ -286,57 +252,48 @@ await test("orderlist repeats, transposes and the restart position", () => {
 });
 
 await test("key off, key on, hard restart: where a note ends", () => {
-  const rows = [[N(24), 1, 0, 0], [0xbd, 0, 0, 0], [0xbe, 0, 0, 0], [0xbd, 0, 0, 0], [N(26), 1, 0, 0], [N(28), 1, 0, 0], [0xbf, 0, 0, 0], [0xbd, 0, 0, 0]];
-  // gate timer 2: a row is read two calls before it starts, and a key off or the next note's
-  // hard restart closes the note then
+  const rows = [[fromC0(24), 1, 0, 0], [0xbd, 0, 0, 0], [0xbe, 0, 0, 0], [0xbd, 0, 0, 0], [fromC0(26), 1, 0, 0], [fromC0(28), 1, 0, 0], [0xbf, 0, 0, 0], [0xbd, 0, 0, 0]];
   const w = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: [{ gate: 2 }], wave: [[0x41, 0x80], [0xff, 0]], patterns: [rows, ones(8)] }));
   assert.deepEqual(first(w).map((x) => x.slice(0, 3)), [
-    [0, 10, 36],  // key off, read at 10 for the row at 12
-    [24, 28, 38], // the next note's hard restart, read at 28 for the row at 30
-    [30, 46, 40], // key on at 34 only re-opens the gate; the loop's first note hard-restarts it at 46
-  ]);
+    [0, 10, 36],
+    [24, 28, 38],
+    [30, 46, 40],
+  ], "key off read at 10 for the row at 12; the next note's hard restart read at 28 for the row at 30; key on at 34 only re-opens the gate, the loop's first note hard-restarts it at 46");
 });
 
 await test("wavetable arpeggios: each pitch step is a tied note, a delay holds the note, $80 changes nothing", () => {
-  // C-2 held for a row of 6 calls (gate timer 2): the wavetable sets +0 a call after the row's own
-  // call, then +4, +7, waits out a two-call delay and sets +12
   const arp = [[0x41, 0x00], [0x41, 0x04], [0x41, 0x07], [0x02, 0x80], [0x41, 0x0c], [0xff, 0x00]];
-  const rows = [[N(24), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const rows = [[fromC0(24), 1, 0, 0], [0xbd, 0, 0, 0]];
   const w = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: arp, patterns: [rows, ones(2)] }));
-  // the +0 step names the pitch the note already has, so the first note is not cut at call 1; the
-  // delay ends at call 6 and its $80 leaves the pitch, the +12 step comes at call 7
   assert.deepEqual(first(w), [[0, 2, 36, false], [2, 3, 40, true], [3, 7, 43, true], [7, 10, 48, true]]);
   assert.equal(gateRuns(w.notes.filter((x) => x.voice === 0)).length, 1, "one gate, four notes");
-  // $80 in a plain step (no note change) between the notes
   const hold = [[0x41, 0x05], [0x41, 0x80], [0x41, 0x00], [0xff, 0x00]];
-  const w2 = sec(build({ orders: [[0xf2, 0, 0], [1, 0], [1, 0]], instruments: plain, wave: hold, patterns: [[[N(12), 1, 0, 0], [0xbd, 0, 0, 0]], ones(2)] }));
-  // the row's C-1 under the orderlist's +2 is 26 after a +0, and 31 under the first step's +5
+  const w2 = sec(build({ orders: [[0xf2, 0, 0], [1, 0], [1, 0]], instruments: plain, wave: hold, patterns: [[[fromC0(12), 1, 0, 0], [0xbd, 0, 0, 0]], ones(2)] }));
   assert.deepEqual(first(w2).slice(0, 2), [[0, 3, 31, false], [3, 10, 26, true]]);
 });
 
 await test("a fixed-note step ($81 and up) names the note itself; a wavetable command's column is not a note", () => {
-  const rows = [[N(10), 1, 0, 0], [0xbd, 0, 0, 0]];
-  const fixed = [[0x81, 0xa4], [0xff, 0x00]]; // noise at note $24 (C-3): a drum
+  const rows = [[fromC0(10), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const fixed = [[0x81, 0xa4], [0xff, 0x00]];
   const w = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: fixed, patterns: [rows, ones(2)] }));
-  assert.deepEqual(first(w), [[0, 10, 12 + 0x24, false]], "the row's note is not what sounds, and the note is not cut at call 1");
-  const cmd = [[0x41, 0x00], [0xf7, 0x41], [0xff, 0x00]]; // $F7 sets the waveform ($41 is its parameter)
+  assert.deepEqual(first(w), [[0, 10, MIDI_GT2_C0 + 0x24, false]], "the row's note is not what sounds, and the note is not cut at call 1");
+  const cmd = [[0x41, 0x00], [0xf7, 0x41], [0xff, 0x00]];
   const w2 = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: cmd, patterns: [rows, ones(2)] }));
-  assert.deepEqual(first(w2), [[0, 10, 12 + 10, false]]);
+  assert.deepEqual(first(w2), [[0, 10, MIDI_GT2_C0 + 10, false]]);
 });
 
 await test("a legato instrument ties notes; tone portamento changes pitch without a new gate", () => {
   const w = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: [{ gate: 0x42 }], wave: [[0x41, 0x80], [0xff, 0]],
-    patterns: [[[N(24), 1, 0, 0], [N(26), 1, 0, 0], [N(28), 1, 0, 0], [0xbe, 0, 0, 0]], ones(4)] }));
+    patterns: [[[fromC0(24), 1, 0, 0], [fromC0(26), 1, 0, 0], [fromC0(28), 1, 0, 0], [0xbe, 0, 0, 0]], ones(4)] }));
   assert.deepEqual(first(w), [[0, 6, 36, false], [6, 12, 38, true], [12, 16, 40, true]]);
   const tp = sec(build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: [[0x41, 0x80], [0xff, 0]], speed: [[0, 0]],
-    patterns: [[[N(24), 1, 0, 0], [N(31), 1, 3, 0x00], [0xbd, 0, 0, 0], [0xbd, 0, 0, 0]], ones(4)] }));
-  assert.deepEqual(first(tp), [[0, 6, 36, false], [6, 22, 43, true]]); // to the loop's first note's hard restart
+    patterns: [[[fromC0(24), 1, 0, 0], [fromC0(31), 1, 3, 0x00], [0xbd, 0, 0, 0], [0xbd, 0, 0, 0]], ones(4)] }));
+  assert.deepEqual(first(tp), [[0, 6, 36, false], [6, 22, 43, true]]);
 });
 
 await test("a GoatTracker Stereo song gets six voices, six MIDI channels", () => {
   const { path } = songFiles.find((f) => f.stem === "chrome-comet");
   const b = readFileSync(path);
-  // the mono file with each orderlist copied as voices 4-6
   const lists = [];
   let at = 101;
   for (let i = 0; i < 3; i++) { const len = b[at] + 2; lists.push(b.subarray(at, at + len)); at += len; }
@@ -356,7 +313,7 @@ await test("a GoatTracker Stereo song gets six voices, six MIDI channels", () =>
 });
 
 await test("SIDOU's OPTS chunk (multispeed, NTSC) scales the time", () => {
-  const rows = [[N(24), 1, 0, 0], [0xbd, 0, 0, 0]];
+  const rows = [[fromC0(24), 1, 0, 0], [0xbd, 0, 0, 0]];
   const make = (opts) => build({ orders: [[0, 0], [1, 0], [1, 0]], instruments: plain, wave: [[0x41, 0x80], [0xff, 0]], patterns: [rows, ones(2)], opts });
   const base = songToMidi(make(null));
   const fast = songToMidi(make({ multispeed: 2, ntsc: false }));

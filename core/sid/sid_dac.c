@@ -3,23 +3,14 @@
 // SPDX-FileCopyrightText: 2004,2010 Dag Lem <resid@nimrod.no>
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
-/* A port of reSIDfp's Dac (libresidfp c1791383, Dac.cpp) to float, and how SID.cpp and
- * FilterModelConfig6581 turn it into a voice's output. */
 #include "sid_dac.h"
 
-/* reSIDfp's cubic saturation of the 6581's waveform DAC (Dac::getOutput). */
 #define SAT_GAIN 1.1f
 #define SAT 1.1f
-/* The waveform DAC input reSIDfp takes as the voice's zero (SID::setChipModel). */
 #define ZERO_6581 0x380u
 #define ZERO_8580 0x800u
-/* The 6581's voice DC that follows the envelope DAC (FilterModelConfig6581: 0.2143 V
- * per unit), over its voice voltage range (1.5 V). The 8580's is constant, and the
- * output's DC blocker removes it. */
 #define VOICE_DC_6581 (0.2143f / 1.5f)
 
-/* Dac::kinkedDac: the weight of each bit of a `bits`-bit R-2R ladder, unterminated (the
- * 6581) or terminated by 2R (the 8580), normalised to sum to 1. */
 static void ladder(float* dac, uint32_t bits, float kink, int terminated) {
     const float r_infinity = 1e6f;
     const float r = 1.0f;
@@ -29,18 +20,15 @@ static void ladder(float* dac, uint32_t bits, float kink, int terminated) {
         float vn = 1.0f;
         float rn = terminated ? r2 : r_infinity;
         uint32_t bit;
-        /* The ladder's "tail" resistance, by repeated parallel substitution. */
         for (bit = 0; bit < set_bit; ++bit) {
             rn = rn == r_infinity ? r + r2 : r + (r2 * rn) / (r2 + rn);
         }
-        /* Source transformation for the bit's voltage. */
         if (rn == r_infinity) {
             rn = r2;
         } else {
             rn = (r2 * rn) / (r2 + rn);
             vn = vn * rn / r2;
         }
-        /* The output voltage, by repeated source transformation from the tail. */
         for (++bit; bit < bits; ++bit) {
             rn += r;
             float i = vn / rn;
@@ -55,8 +43,6 @@ static void ladder(float* dac, uint32_t bits, float kink, int terminated) {
     }
 }
 
-/* Dac::getOutput for every input: an on bit adds its weight, an off bit its leakage.
- * Built up a bit at a time: out[2^b + j] = out[j] + (1 - leakage) w[b]. */
 static void outputs(float* out, const float* w, uint32_t bits, float leakage) {
     float base = 0.0f;
     for (uint32_t i = 0; i < bits; ++i) {
@@ -75,7 +61,6 @@ const float SID_DAC_MISMATCH_WAVE[12] = {0.6f, -0.5f, 0.7f, -0.8f, 0.9f, -1.0f,
                                          0.8f, -0.6f, 0.5f, -0.4f, 0.3f,  -0.2f};
 const float SID_DAC_MISMATCH_ENV[8] = {1.0f, -0.8f, -0.6f, 0.7f, -0.5f, 0.4f, 0.2f, -0.15f};
 
-/* The bit errors on a ladder's weights (sid_dac.h); nothing at 0. */
 static void mismatch(float* w, const float* pattern, uint32_t bits, float m) {
     if (m == 0.0f) {
         return;
@@ -100,7 +85,6 @@ void sid_dac_job_start(sid_dac_job* j, sid_dac* d, int is6581, float kink, float
     j->step = 0;
 }
 
-/* The waveform DAC entries a finishing step takes (steps 1.. of SID_DAC_BUILD_STEPS). */
 #define FINISH_SHARE ((4096u + SID_DAC_BUILD_STEPS - 2u) / (SID_DAC_BUILD_STEPS - 1u))
 
 int sid_dac_job_step(sid_dac_job* j) {
@@ -110,8 +94,6 @@ int sid_dac_job_step(sid_dac_job* j) {
         return 1;
     }
     if (j->step == 0u) {
-        /* The ladders and the raw outputs; the voice's zero, as the 6581's saturation leaves
-         * it (the same value the finished table subtracts from every entry). */
         float w[12];
         ladder(w, 12, j->kink, !is6581);
         mismatch(w, SID_DAC_MISMATCH_WAVE, 12, j->mismatch);
@@ -122,8 +104,6 @@ int sid_dac_job_step(sid_dac_job* j) {
         mismatch(w, SID_DAC_MISMATCH_ENV, 8, j->mismatch);
         outputs(d->env, w, 8, j->leakage);
     } else {
-        /* Saturated (the 6581), twice reSIDfp's scale, the voice DC added (riding on the
-         * envelope DAC). */
         const float zero = j->zero;
         const float dc = j->voice_dc;
         uint32_t from = (j->step - 1u) * FINISH_SHARE;
@@ -144,9 +124,6 @@ void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage) {
     }
 }
 
-/* The shared default tables: 0 unbuilt, 1 being built, 2 ready. On hosts, tests build
- * chips from several threads; the device builds them in its main loop only, and its
- * compiler has no inline atomics. */
 static sid_dac shared[2];
 static int shared_state[2];
 
@@ -159,8 +136,6 @@ static float default_leakage(int is6581) {
 }
 
 #ifdef __PI32V2__
-/* One context, the main loop: a table can be built a step at a time (sid_dac_default_step)
- * and finished at once by sid_dac_default. */
 static sid_dac_job shared_job[2];
 
 int sid_dac_default_step(int is6581) {
@@ -200,12 +175,10 @@ const sid_dac* sid_dac_default(int is6581) {
         publish(&shared_state[m]);
     }
     while (!ready(&shared_state[m])) {
-        /* another thread is building it */
     }
     return &shared[m];
 }
 
-/* Hosts build a table at once: the step is the whole of it. */
 int sid_dac_default_step(int is6581) {
     (void)sid_dac_default(is6581);
     return 1;

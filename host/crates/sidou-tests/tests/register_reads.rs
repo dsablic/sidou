@@ -1,15 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU against reSIDfp, register by register: ENV3 (`$1C`) and OSC3 (`$1B`) must read
-//! back exactly the same values at the same chip cycles, for both chip models.
-//!
-//! Each case runs a script of register writes on both engines and reads once per PAL
-//! frame, or every 100 (ENV3) or 7 (OSC3) cycles where the timing inside a frame
-//! matters. A read at
-//! the start of frame N comes after frame N's writes; messages give its cycle and N. Cases that
-//! fail for a known reason a later M1b task fixes, or that stay off by decision (the plan's
-//! Task 7), are `#[ignore]`d with that reason; `cargo test -- --ignored` shows where they
-//! stand.
 
 use sidou_sys::{sid_model, SID_MODEL_6581, SID_MODEL_8580};
 use sidou_tests::register_probe::{
@@ -19,24 +9,27 @@ use sidou_tests::register_probe::{
 const ENV3: u8 = 0x1c;
 const OSC3: u8 = 0x1b;
 
-/* Voice 3's registers. */
-const FREQ_LO: u8 = 0x0e;
-const FREQ_HI: u8 = 0x0f;
-const PW_LO: u8 = 0x10;
-const PW_HI: u8 = 0x11;
-const CONTROL: u8 = 0x12;
-const AD: u8 = 0x13;
-const SR: u8 = 0x14;
+const VOICE2_FREQ_LO: u8 = 0x07;
+const VOICE2_FREQ_HI: u8 = 0x08;
+const VOICE2_PW_LO: u8 = 0x09;
+const VOICE2_PW_HI: u8 = 0x0a;
+const VOICE2_CONTROL: u8 = 0x0b;
+
+const VOICE3_FREQ_LO: u8 = 0x0e;
+const VOICE3_FREQ_HI: u8 = 0x0f;
+const VOICE3_PW_LO: u8 = 0x10;
+const VOICE3_PW_HI: u8 = 0x11;
+const VOICE3_CONTROL: u8 = 0x12;
+const VOICE3_AD: u8 = 0x13;
+const VOICE3_SR: u8 = 0x14;
 
 const GATE: u8 = 0x01;
+const TEST: u8 = 0x08;
 
-/* reSID's rate periods, only to size the scripts: long enough for the slowest phase. */
-const RATE_PERIOD: [u64; 16] = [
+const RESID_RATE_PERIODS: [u64; 16] = [
     9, 32, 63, 95, 149, 220, 267, 313, 392, 977, 1954, 3126, 3907, 11720, 19532, 31251,
 ];
-/* Rate periods from 0xff down to 0 through the exponential divider:
- * 162 * 1 + 39 * 2 + 28 * 4 + 12 * 8 + 8 * 16 + 6 * 30. */
-const FALL_PERIODS: u64 = 756;
+const RATE_PERIODS_FROM_FF_DOWN_TO_0: u64 = 756;
 
 struct Script {
     writes: Vec<TimedWrite>,
@@ -64,7 +57,6 @@ fn model_name(model: sid_model) -> &'static str {
     }
 }
 
-/// None if every read matches, else where they first differ.
 fn reads_mismatch(model: sid_model, reg: u8, script: &Script) -> Option<String> {
     let total = script.frames * CYCLES_PER_FRAME;
     let ours = probe(
@@ -103,21 +95,28 @@ fn reads_mismatch(model: sid_model, reg: u8, script: &Script) -> Option<String> 
     })
 }
 
-/* ENV3 scripts. Voice 3's control register gets only the gate bit: ENV3 does not
- * depend on the waveform. Frame 0 runs the power-on release from 0xaa to 0. */
-
 fn attack(rate: u8) -> Script {
     Script {
-        writes: vec![at(0, AD, rate << 4), at(0, SR, 0xf0), at(1, CONTROL, GATE)],
-        frames: 1 + frames_for(RATE_PERIOD[rate as usize] * 255) + 10,
+        writes: vec![
+            at(0, VOICE3_AD, rate << 4),
+            at(0, VOICE3_SR, 0xf0),
+            at(1, VOICE3_CONTROL, GATE),
+        ],
+        frames: 1 + frames_for(RESID_RATE_PERIODS[rate as usize] * 255) + 10,
         interval: CYCLES_PER_FRAME,
     }
 }
 
 fn decay(rate: u8) -> Script {
     Script {
-        writes: vec![at(0, AD, rate), at(0, SR, 0x00), at(1, CONTROL, GATE)],
-        frames: 2 + frames_for(RATE_PERIOD[rate as usize] * FALL_PERIODS) + 10,
+        writes: vec![
+            at(0, VOICE3_AD, rate),
+            at(0, VOICE3_SR, 0x00),
+            at(1, VOICE3_CONTROL, GATE),
+        ],
+        frames: 2
+            + frames_for(RESID_RATE_PERIODS[rate as usize] * RATE_PERIODS_FROM_FF_DOWN_TO_0)
+            + 10,
         interval: CYCLES_PER_FRAME,
     }
 }
@@ -125,73 +124,73 @@ fn decay(rate: u8) -> Script {
 fn release(rate: u8) -> Script {
     Script {
         writes: vec![
-            at(0, AD, 0x00),
-            at(0, SR, 0xf0 | rate),
-            at(1, CONTROL, GATE),
-            at(3, CONTROL, 0x00),
+            at(0, VOICE3_AD, 0x00),
+            at(0, VOICE3_SR, 0xf0 | rate),
+            at(1, VOICE3_CONTROL, GATE),
+            at(3, VOICE3_CONTROL, 0x00),
         ],
-        frames: 3 + frames_for(RATE_PERIOD[rate as usize] * FALL_PERIODS) + 10,
+        frames: 3
+            + frames_for(RESID_RATE_PERIODS[rate as usize] * RATE_PERIODS_FROM_FF_DOWN_TO_0)
+            + 10,
         interval: CYCLES_PER_FRAME,
     }
 }
 
-/* Attack 8 and decay 8 (392 cycles per step) take about 5 frames from 0 to 0xff, and
- * about 4 more down to sustain 0x44; release 8 takes about 15 frames to 0. */
 fn gate_toggles(interval: u64) -> Script {
     Script {
         writes: vec![
-            at(0, AD, 0x88),
-            at(0, SR, 0x48),
-            at(1, CONTROL, GATE),
-            at(3, CONTROL, 0x00),  // mid-attack
-            at(5, CONTROL, GATE),  // mid-release
-            at(12, CONTROL, 0x00), // mid-decay
-            at(14, CONTROL, GATE), // mid-release
-            at(30, CONTROL, 0x00), // from sustain
+            at(0, VOICE3_AD, 0x88),
+            at(0, VOICE3_SR, 0x48),
+            at(1, VOICE3_CONTROL, GATE),
+            at(3, VOICE3_CONTROL, 0x00),
+            at(5, VOICE3_CONTROL, GATE),
+            at(12, VOICE3_CONTROL, 0x00),
+            at(14, VOICE3_CONTROL, GATE),
+            at(30, VOICE3_CONTROL, 0x00),
         ],
         frames: 60,
         interval,
     }
 }
 
-/* The ADSR delay bug: attack 15's period is 31251. One frame into it the rate counter
- * is at about 19705; lowering the period to 9 makes it count on to 0x7fff and wrap
- * before the first step. */
 fn adsr_delay_bug(interval: u64) -> Script {
     Script {
         writes: vec![
-            at(0, AD, 0xf0),
-            at(0, SR, 0xf0),
-            at(1, CONTROL, GATE),
-            at(2, AD, 0x00),
+            at(0, VOICE3_AD, 0xf0),
+            at(0, VOICE3_SR, 0xf0),
+            at(1, VOICE3_CONTROL, GATE),
+            at(2, VOICE3_AD, 0x00),
         ],
         frames: 8,
         interval,
     }
 }
 
-/* Decay 9 (977 cycles per step) from 0xff: sustain moves down mid-decay, then up past
- * the counter, which then falls through to 0 and freezes there. */
-fn sustain_changes() -> Script {
+fn sustain_lowered_then_raised_past_the_counter() -> Script {
     Script {
         writes: vec![
-            at(0, AD, 0x09),
-            at(0, SR, 0x80),
-            at(1, CONTROL, GATE),
-            at(4, SR, 0x40),
-            at(9, SR, 0xc0),
+            at(0, VOICE3_AD, 0x09),
+            at(0, VOICE3_SR, 0x80),
+            at(1, VOICE3_CONTROL, GATE),
+            at(4, VOICE3_SR, 0x40),
+            at(9, VOICE3_SR, 0xc0),
         ],
         frames: 150,
         interval: CYCLES_PER_FRAME,
     }
 }
 
-/* No writes at all: the power-on release from 0xaa, every 100 cycles. */
-fn power_on() -> Script {
+fn power_on_release() -> Script {
     Script {
         writes: Vec::new(),
         frames: 1,
         interval: 100,
+    }
+}
+
+fn assert_reads_match(model: sid_model, reg: u8, script: &Script) {
+    if let Some(m) = reads_mismatch(model, reg, script) {
+        panic!("{m}");
     }
 }
 
@@ -200,28 +199,21 @@ macro_rules! env3_cases {
         #[test]
         $(#[$attr])*
         fn $name() {
-            if let Some(m) = reads_mismatch($model, ENV3, &$script) {
-                panic!("{m}");
-            }
+            assert_reads_match($model, ENV3, &$script);
         }
     )*};
 }
 
-/* OSC3: voice 3 alone, one waveform, at a few frequencies over 100 frames. */
-
 const FREQS: [u16; 4] = [0x0123, 0x1d45, 0x7531, 0xfedc];
 
-/* Once per frame over 100 frames, or every 7 cycles over one frame: 7 is prime to
- * every frequency's step pattern, so the reads land on every phase of the one- and
- * two-cycle OSC3 delays. */
 fn single_waveform(control: u8, pw: u16, freq: u16, interval: u64) -> Script {
     Script {
         writes: vec![
-            at(0, FREQ_LO, freq as u8),
-            at(0, FREQ_HI, (freq >> 8) as u8),
-            at(0, PW_LO, pw as u8),
-            at(0, PW_HI, (pw >> 8) as u8),
-            at(0, CONTROL, control),
+            at(0, VOICE3_FREQ_LO, freq as u8),
+            at(0, VOICE3_FREQ_HI, (freq >> 8) as u8),
+            at(0, VOICE3_PW_LO, pw as u8),
+            at(0, VOICE3_PW_HI, (pw >> 8) as u8),
+            at(0, VOICE3_CONTROL, control),
         ],
         frames: if interval == CYCLES_PER_FRAME { 100 } else { 1 },
         interval,
@@ -239,28 +231,30 @@ fn assert_osc3_matches(model: sid_model, control: u8, pw: u16, interval: u64) {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/* With no waveform selected, SIDOU's OSC3 reads 0. reSIDfp holds the last waveform
- * output on its floating DAC input and fades it bit by bit only after 54,000 (6581)
- * or 800,000 (8580) cycles. Programs rarely read OSC3 with the waveform off, so
- * SIDOU keeps 0 (M1b Task 2 decision); this pins both behaviours. */
 #[test]
 fn osc3_with_no_waveform_reads_0_where_residfp_holds_the_last_value() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
         let writes = [
-            at(0, FREQ_LO, 0x45),
-            at(0, FREQ_HI, 0x1d),
-            at(0, CONTROL, 0x20),
-            at(1, CONTROL, 0x00),
+            at(0, VOICE3_FREQ_LO, 0x45),
+            at(0, VOICE3_FREQ_HI, 0x1d),
+            at(0, VOICE3_CONTROL, 0x20),
+            at(1, VOICE3_CONTROL, 0x00),
         ];
         let total = 2 * CYCLES_PER_FRAME;
         let ours = probe(&mut Sidou::new(model), &writes, OSC3, 100, total);
         let reference = probe(&mut Residfp::new(model), &writes, OSC3, 100, total);
-        let off = (CYCLES_PER_FRAME / 100) as usize; // the first read after the write
-        assert!(ours[off..].iter().all(|&v| v == 0), "{}", model_name(model));
-        let held = reference[off];
+        let first_read_after_the_write = (CYCLES_PER_FRAME / 100) as usize;
+        assert!(
+            ours[first_read_after_the_write..].iter().all(|&v| v == 0),
+            "{}",
+            model_name(model)
+        );
+        let held = reference[first_read_after_the_write];
         assert_ne!(held, 0, "{}", model_name(model));
         assert!(
-            reference[off..].iter().all(|&v| v == held),
+            reference[first_read_after_the_write..]
+                .iter()
+                .all(|&v| v == held),
             "{}",
             model_name(model)
         );
@@ -330,8 +324,8 @@ env3_cases! {
     env3_gate_toggles_per_100_cycles_mos6581: SID_MODEL_6581, gate_toggles(100);
     env3_adsr_delay_bug_per_frame_mos6581: SID_MODEL_6581, adsr_delay_bug(CYCLES_PER_FRAME);
     env3_adsr_delay_bug_per_100_cycles_mos6581: SID_MODEL_6581, adsr_delay_bug(100);
-    env3_sustain_changes_mos6581: SID_MODEL_6581, sustain_changes();
-    env3_power_on_release_mos6581: SID_MODEL_6581, power_on();
+    env3_sustain_changes_mos6581: SID_MODEL_6581, sustain_lowered_then_raised_past_the_counter();
+    env3_power_on_release_mos6581: SID_MODEL_6581, power_on_release();
     env3_attack_0_csg8580: SID_MODEL_8580, attack(0);
     env3_attack_1_csg8580: SID_MODEL_8580, attack(1);
     env3_attack_2_csg8580: SID_MODEL_8580, attack(2);
@@ -384,8 +378,8 @@ env3_cases! {
     env3_gate_toggles_per_100_cycles_csg8580: SID_MODEL_8580, gate_toggles(100);
     env3_adsr_delay_bug_per_frame_csg8580: SID_MODEL_8580, adsr_delay_bug(CYCLES_PER_FRAME);
     env3_adsr_delay_bug_per_100_cycles_csg8580: SID_MODEL_8580, adsr_delay_bug(100);
-    env3_sustain_changes_csg8580: SID_MODEL_8580, sustain_changes();
-    env3_power_on_release_csg8580: SID_MODEL_8580, power_on();
+    env3_sustain_changes_csg8580: SID_MODEL_8580, sustain_lowered_then_raised_past_the_counter();
+    env3_power_on_release_csg8580: SID_MODEL_8580, power_on_release();
 }
 
 osc3_cases! {
@@ -471,20 +465,19 @@ osc3_cases! {
     osc3_combined_npst_every_7_cycles_csg8580: SID_MODEL_8580, 0xf0, 0x100, 7;
 }
 
-/* Noise through TEST and combined waveforms, read every 7 cycles where it matters.
- * Voice 3 at 0x7531, which clocks the LFSR every 35 or 36 cycles (accumulator bit 19
- * rises at cycles 6, 41, 76, ... from power-on, and 18 cycles after a TEST release). */
-fn noise_script(model_writes: &[(u64, u8)], frames: u64, interval: u64) -> Script {
+const NOISE_SCRIPT_FREQ: u16 = 0x7531;
+
+fn noise_script(control_writes: &[(u64, u8)], frames: u64, interval: u64) -> Script {
     let mut writes = vec![
-        at(0, FREQ_LO, 0x31),
-        at(0, FREQ_HI, 0x75),
-        at(0, PW_LO, 0x00),
-        at(0, PW_HI, 0x01),
+        at(0, VOICE3_FREQ_LO, NOISE_SCRIPT_FREQ as u8),
+        at(0, VOICE3_FREQ_HI, (NOISE_SCRIPT_FREQ >> 8) as u8),
+        at(0, VOICE3_PW_LO, 0x00),
+        at(0, VOICE3_PW_HI, 0x01),
     ];
-    for &(cycle, control) in model_writes {
+    for &(cycle, control) in control_writes {
         writes.push(TimedWrite {
             cycle,
-            reg: CONTROL,
+            reg: VOICE3_CONTROL,
             value: control,
         });
     }
@@ -498,53 +491,32 @@ fn noise_script(model_writes: &[(u64, u8)], frames: u64, interval: u64) -> Scrip
 
 const F: u64 = CYCLES_PER_FRAME;
 
-fn osc3_script_matches(model: sid_model, script: &Script) {
-    if let Some(m) = reads_mismatch(model, OSC3, script) {
-        panic!("{m}");
-    }
-}
-
 macro_rules! osc3_script_cases {
     ($($name:ident: $writes:expr, $frames:expr, $interval:expr;)*) => {$(
         #[test]
         fn $name() {
             for model in [SID_MODEL_6581, SID_MODEL_8580] {
-                osc3_script_matches(model, &noise_script(&$writes, $frames, $interval));
+                assert_reads_match(model, OSC3, &noise_script(&$writes, $frames, $interval));
             }
         }
     )*};
 }
 
 osc3_script_cases! {
-    /* The power-on LFSR, then TEST for less than the reset time, and for longer
-     * (on the 6581 the register then fades towards all ones). */
     osc3_noise_from_power_on_every_7_cycles: [(0, 0x80)], 1, 7;
     osc3_noise_through_short_test: [(0, 0x80), (2 * F, 0x88), (3 * F, 0x80)], 6, 7;
     osc3_noise_through_long_test: [(0, 0x80), (F, 0x88), (40 * F, 0x80)], 45, 101;
-    /* A TEST set one cycle (42) or right (78) after bit 19 rises flushes the pending
-     * shift. */
-    osc3_noise_test_right_after_a_clock: [(0, 0x80), (42, 0x88), (60, 0x80), (78, 0x88), (100, 0x80)], 1, 1;
-    /* Combined with noise, the output pulls the LFSR bits down until it locks up;
-     * TEST brings it back. */
+    osc3_noise_test_right_after_a_clock_flushes_the_pending_shift: [(0, 0x80), (42, 0x88), (60, 0x80), (78, 0x88), (100, 0x80)], 1, 1;
     osc3_noise_locks_up_combined_with_pulse: [(0, 0x80), (F, 0xc0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
     osc3_noise_locks_up_combined_with_saw: [(0, 0x80), (F, 0xa0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
     osc3_noise_locks_up_combined_with_triangle: [(0, 0x80), (F, 0x90), (3 * F, 0xf0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
-    /* The 8580's triangle/saw latch, one cycle after switching into triangle or saw:
-     * from power-on (it holds 0x555), and from waveforms without triangle or saw (it
-     * holds the last triangle/saw value). Read every cycle. */
     osc3_latch_from_power_on: [(100, 0x10)], 1, 1;
     osc3_latch_from_other_waveforms: [(0, 0x20), (3000, 0x40), (5000, 0x10), (9000, 0x80), (12000, 0x20), (15000, 0xc0), (17000, 0x30)], 1, 1;
-    /* Long stretches without noise (SIDOU defers the shifts), then noise again: the
-     * register must come back where it would have shifted to. */
     osc3_noise_after_long_saw_and_pulse: [(0, 0x80), (F, 0x20), (30 * F, 0x80), (31 * F, 0x40), (60 * F, 0x80), (61 * F, 0x10), (61 * F + 333, 0x80)], 62, 13;
     osc3_noise_back_from_triangle_every_cycle: [(0, 0x80), (100, 0x10), (5000, 0x80), (5017, 0x20), (9001, 0x80)], 1, 1;
-    /* Releasing TEST into another waveform: the write-back rules of shift_phase2. */
     osc3_test_release_into_combined_waveforms: [(0, 0x80), (F, 0xb8), (2 * F, 0xa0), (3 * F, 0xd8), (4 * F, 0xe0), (5 * F, 0x98), (6 * F, 0x80), (7 * F, 0xf8), (8 * F, 0xc0)], 10, 7;
 }
 
-/* Switching between sawtooth combinations every 997 cycles lands some switches with the
- * accumulator in its upper half, where the 6581 pulls the MSB down only once the new
- * output's top bit is low. */
 fn saw_switches() -> Vec<(u64, u8)> {
     let controls = [0x20u8, 0x60, 0x30, 0x20, 0x70, 0x60, 0x40, 0x30];
     (0..20u64)
@@ -552,11 +524,10 @@ fn saw_switches() -> Vec<(u64, u8)> {
         .collect()
 }
 
-/* Ring modulation by voice 2, alone and with noise combinations (cycle by cycle). */
 fn ring_script(control: u8) -> Script {
     let mut script = noise_script(&[(0, control)], 1, 7);
-    script.writes.push(at(0, 0x07, 0x89));
-    script.writes.push(at(0, 0x08, 0x2b));
+    script.writes.push(at(0, VOICE2_FREQ_LO, 0x89));
+    script.writes.push(at(0, VOICE2_FREQ_HI, 0x2b));
     script.writes.sort_by_key(|w| w.cycle);
     script
 }
@@ -564,7 +535,7 @@ fn ring_script(control: u8) -> Script {
 #[test]
 fn osc3_switching_saw_combinations_every_7_cycles() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
-        osc3_script_matches(model, &noise_script(&saw_switches(), 1, 7));
+        assert_reads_match(model, OSC3, &noise_script(&saw_switches(), 1, 7));
     }
 }
 
@@ -578,13 +549,10 @@ fn osc3_ring_modulation_every_7_cycles() {
     }
 }
 
-/* Locked up with noise+pulse, switched to a waveform with a nonzero output, then back to
- * a noise combination at every offset across a shift: the pending shift's write-back
- * takes the old waveform's output (from the second review). */
 #[test]
-fn osc3_relock_after_a_nonzero_output_writes_back() {
+fn osc3_relock_after_a_nonzero_output_writes_back_the_old_waveforms_output() {
     let f = CYCLES_PER_FRAME;
-    let mut bad = Vec::new();
+    let mut scripts = Vec::new();
     for (into, back) in [
         (0x20u8, 0xa0u8),
         (0x20, 0xc0),
@@ -593,56 +561,41 @@ fn osc3_relock_after_a_nonzero_output_writes_back() {
         (0x20, 0xe0),
     ] {
         for off in 0..40u64 {
-            // lock with noise+pulse, switch to `into` (output nonzero), back to a noise combo
             let w = vec![(0, 0x80), (f, 0xc0), (3 * f, into), (4 * f + off, back)];
-            let mut s = noise_script(&w, 6, 1);
-            s.frames = 6;
-            for model in [SID_MODEL_6581, SID_MODEL_8580] {
-                if let Some(m) = reads_mismatch(model, OSC3, &s) {
-                    bad.push(format!(
-                        "{into:#04x}->{back:#04x} off {off}: {}",
-                        &m[..m.len().min(200)]
-                    ));
-                }
-            }
+            scripts.push((
+                format!("{into:#04x}->{back:#04x} off {off}"),
+                noise_script(&w, 6, 1),
+            ));
         }
     }
-    assert!(
-        bad.is_empty(),
-        "{} mismatches:\n{}",
-        bad.len(),
-        bad.iter().take(6).cloned().collect::<Vec<_>>().join("\n")
-    );
+    assert_osc3_matches_on_both_models(&scripts, 200);
 }
 
-/* Ring modulation from a 6581 voice 2 whose sawtooth combination pulls its MSB low:
- * voice 3 sees the source's accumulator after the pull (from the second review). */
 #[test]
-fn osc3_ring_from_a_6581_source_with_its_msb_pulled() {
+fn osc3_ring_from_a_6581_source_with_its_msb_pulled_sees_the_pulled_accumulator() {
     let mut bad = Vec::new();
     for c2 in [0x61u8, 0x31, 0x71, 0x21] {
         for c3 in [0x94u8, 0xd4, 0x14] {
             for interval in [1u64, 7, 22] {
                 let mut w = vec![
-                    at(0, 0x07, 0x00),
-                    at(0, 0x08, 0x90),
-                    at(0, 0x09, 0x00),
-                    at(0, 0x0a, 0x08),
-                    at(0, 0x0b, c2),
-                    at(0, 0x12, c3),
+                    at(0, VOICE2_FREQ_LO, 0x00),
+                    at(0, VOICE2_FREQ_HI, 0x90),
+                    at(0, VOICE2_PW_LO, 0x00),
+                    at(0, VOICE2_PW_HI, 0x08),
+                    at(0, VOICE2_CONTROL, c2),
+                    at(0, VOICE3_CONTROL, c3),
                 ];
                 w.extend([
-                    at(0, 0x0e, 0x31),
-                    at(0, 0x0f, 0x07),
-                    at(0, 0x10, 0x00),
-                    at(0, 0x11, 0x08),
+                    at(0, VOICE3_FREQ_LO, 0x31),
+                    at(0, VOICE3_FREQ_HI, 0x07),
+                    at(0, VOICE3_PW_LO, 0x00),
+                    at(0, VOICE3_PW_HI, 0x08),
                 ]);
-                // keep voice 3's noise alive: TEST pulse every frame
                 for f in 1..3u64 {
-                    w.push(at(f, 0x12, c3 | 0x08));
+                    w.push(at(f, VOICE3_CONTROL, c3 | TEST));
                     w.push(TimedWrite {
                         cycle: f * CYCLES_PER_FRAME + 50,
-                        reg: 0x12,
+                        reg: VOICE3_CONTROL,
                         value: c3,
                     });
                 }
@@ -682,89 +635,103 @@ fn timed_script(writes: Vec<(u64, u8, u8)>, frames: u64, interval: u64) -> Scrip
     }
 }
 
-/* Deferred noise shifts (SIDOU counts them while noise is not selected or the register
- * is locked up, and applies them when needed) against reSIDfp, read every cycle around
- * every way back: long high-pitch saws then noise, combined noise or TEST at each
- * phase; frequency writes mid-deferral; and long lock-ups then a TEST release or a
- * switch. (From the M1b review.) */
-#[test]
-fn deferred_noise_shifts_survive_adversarial_switches() {
+type LabelledScripts = Vec<(String, Script)>;
+
+fn long_high_pitch_saws_then_noise_at_every_phase() -> LabelledScripts {
     let f = CYCLES_PER_FRAME;
-    let mut bad = Vec::new();
-    let mut n = 0;
-    // 1. Long saw at high pitch (jump-table path), then noise / noise combo / TEST at every phase.
+    let mut scripts = Vec::new();
     for (fhi, flo) in [(0xffu8, 0xffu8), (0x75, 0x31), (0x01, 0x23)] {
         for target in [0x80u8, 0xa0, 0x88, 0xc0] {
             for off in 0..40u64 {
                 let at0 = 25 * f + off * 3;
                 let w = vec![
-                    (0, 0x0e, flo),
-                    (0, 0x0f, fhi),
-                    (0, 0x10, 0),
-                    (0, 0x11, 8),
-                    (0, 0x12, 0x20),
-                    (at0, 0x12, target),
-                    (at0 + 400, 0x12, 0x80),
+                    (0, VOICE3_FREQ_LO, flo),
+                    (0, VOICE3_FREQ_HI, fhi),
+                    (0, VOICE3_PW_LO, 0),
+                    (0, VOICE3_PW_HI, 8),
+                    (0, VOICE3_CONTROL, 0x20),
+                    (at0, VOICE3_CONTROL, target),
+                    (at0 + 400, VOICE3_CONTROL, 0x80),
                 ];
-                let s = timed_script(w, 26, 1);
-                n += 2;
-                for model in [SID_MODEL_6581, SID_MODEL_8580] {
-                    if let Some(m) = reads_mismatch(model, OSC3, &s) {
-                        bad.push(format!(
-                            "long saw {fhi:02x}{flo:02x} -> {target:#04x} +{off}: {}",
-                            &m[..m.len().min(160)]
-                        ));
-                    }
-                }
+                scripts.push((
+                    format!("long saw {fhi:02x}{flo:02x} -> {target:#04x} +{off}"),
+                    timed_script(w, 26, 1),
+                ));
             }
         }
     }
-    // 2. Frequency writes mid-deferral, then noise.
-    for off in 0..30u64 {
-        let w = vec![
-            (0, 0x0e, 0xff),
-            (0, 0x0f, 0xff),
-            (0, 0x12, 0x10),
-            (3 * f + off, 0x0f, 0x13),
-            (3 * f + off + 5, 0x0e, 0x77),
-            (5 * f + off, 0x0f, 0xfe),
-            (6 * f + off, 0x12, 0x80),
-        ];
-        let s = timed_script(w, 7, 1);
-        n += 2;
-        for model in [SID_MODEL_6581, SID_MODEL_8580] {
-            if let Some(m) = reads_mismatch(model, OSC3, &s) {
-                bad.push(format!("freq writes +{off}: {}", &m[..m.len().min(160)]));
-            }
-        }
-    }
-    // (Hard sync while deferring: hard_sync_while_deferring_reads_osc3_exactly, ignored,
-    // as OSC3 on the cycles right after a sync is not exact; the state is, and the fuzz,
-    // sid_osc_fuzz.rs, covers it.)
-    // 3. Lock up with noise+pulse, sit locked (deferred) for long, TEST release / switch, at every phase.
+    scripts
+}
+
+fn frequency_writes_mid_deferral_then_noise() -> LabelledScripts {
+    let f = CYCLES_PER_FRAME;
+    (0..30u64)
+        .map(|off| {
+            let w = vec![
+                (0, VOICE3_FREQ_LO, 0xff),
+                (0, VOICE3_FREQ_HI, 0xff),
+                (0, VOICE3_CONTROL, 0x10),
+                (3 * f + off, VOICE3_FREQ_HI, 0x13),
+                (3 * f + off + 5, VOICE3_FREQ_LO, 0x77),
+                (5 * f + off, VOICE3_FREQ_HI, 0xfe),
+                (6 * f + off, VOICE3_CONTROL, 0x80),
+            ];
+            (format!("freq writes +{off}"), timed_script(w, 7, 1))
+        })
+        .collect()
+}
+
+fn long_lockups_then_test_release_or_switch_at_every_phase() -> LabelledScripts {
+    let f = CYCLES_PER_FRAME;
+    let mut scripts = Vec::new();
     for off in 0..40u64 {
         for (a, b) in [(0x20u8, 0xa0u8), (0x88, 0x80), (0x80, 0x80)] {
             let w = vec![
-                (0, 0x0e, 0xff),
-                (0, 0x0f, 0xff),
-                (0, 0x10, 0),
-                (0, 0x11, 1),
-                (0, 0x12, 0xc0),
-                (20 * f + off, 0x12, a),
-                (20 * f + off + 3, 0x12, b),
+                (0, VOICE3_FREQ_LO, 0xff),
+                (0, VOICE3_FREQ_HI, 0xff),
+                (0, VOICE3_PW_LO, 0),
+                (0, VOICE3_PW_HI, 1),
+                (0, VOICE3_CONTROL, 0xc0),
+                (20 * f + off, VOICE3_CONTROL, a),
+                (20 * f + off + 3, VOICE3_CONTROL, b),
             ];
-            let s = timed_script(w, 21, 1);
-            n += 2;
-            for model in [SID_MODEL_6581, SID_MODEL_8580] {
-                if let Some(m) = reads_mismatch(model, OSC3, &s) {
-                    bad.push(format!(
-                        "locked {a:#04x}->{b:#04x} +{off}: {}",
-                        &m[..m.len().min(160)]
-                    ));
-                }
+            scripts.push((
+                format!("locked {a:#04x}->{b:#04x} +{off}"),
+                timed_script(w, 21, 1),
+            ));
+        }
+    }
+    scripts
+}
+
+fn hard_syncs_while_deferring_then_noise() -> LabelledScripts {
+    let f = CYCLES_PER_FRAME;
+    (0..30u64)
+        .map(|off| {
+            let w = vec![
+                (0, VOICE2_FREQ_LO, 0x00),
+                (0, VOICE2_FREQ_HI, 0xf0),
+                (0, VOICE2_CONTROL, 0x20),
+                (0, VOICE3_FREQ_LO, 0x31),
+                (0, VOICE3_FREQ_HI, 0x45),
+                (0, VOICE3_CONTROL, 0x22),
+                (4 * f + off * 7, VOICE3_CONTROL, 0x82),
+            ];
+            (format!("sync +{off}"), timed_script(w, 5, 1))
+        })
+        .collect()
+}
+
+fn assert_osc3_matches_on_both_models(scripts: &[(String, Script)], message_len: usize) {
+    let mut bad = Vec::new();
+    for (label, script) in scripts {
+        for model in [SID_MODEL_6581, SID_MODEL_8580] {
+            if let Some(m) = reads_mismatch(model, OSC3, script) {
+                bad.push(format!("{label}: {}", &m[..m.len().min(message_len)]));
             }
         }
     }
+    let n = 2 * scripts.len();
     eprintln!("{n} scripts");
     assert!(
         bad.is_empty(),
@@ -774,72 +741,40 @@ fn deferred_noise_shifts_survive_adversarial_switches() {
     );
 }
 
-/* The review's hard-sync scripts for the deferral test above: a fast voice 2 syncs voice 3
- * while voice 3 defers its noise shifts, then voice 3 switches to noise. The restarted
- * accumulator is exact, but OSC3 on the cycles right after each sync is not: read_osc3
- * rebuilds the previous cycle from the current state, and the restarted accumulator has
- * lost it. On the 6581 one read per sync differs: reSIDfp still reads the last value
- * before the sync for one cycle (0x48, 0x49, 0x49, 0x49, 0 at cycles 316-320 of the
- * first script), SIDOU already reads 0 (0x48, 0x49, 0x49, 0, 0). On the 8580 two
- * differ, as its triangle/saw reach OSC3 a cycle late (reSIDfp 0x49, 0x49, then 0;
- * SIDOU 0xff, 0). Read-only and inaudible; the plan's Task 7 lists it among what
- * remains off. */
+#[test]
+fn deferred_noise_shifts_survive_adversarial_switches() {
+    let scripts: LabelledScripts = [
+        long_high_pitch_saws_then_noise_at_every_phase(),
+        frequency_writes_mid_deferral_then_noise(),
+        long_lockups_then_test_release_or_switch_at_every_phase(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    assert_osc3_matches_on_both_models(&scripts, 160);
+}
+
 #[test]
 #[ignore = "OSC3 on the cycles right after a hard sync: read_osc3 rebuilds the previous cycle from \
             the restarted accumulator (one read per sync on the 6581, two on the 8580)"]
 fn hard_sync_while_deferring_reads_osc3_exactly() {
-    let f = CYCLES_PER_FRAME;
-    let mut bad = Vec::new();
-    let mut n = 0;
-    for off in 0..30u64 {
-        let w = vec![
-            (0, 0x07, 0x00),
-            (0, 0x08, 0xf0),
-            (0, 0x0b, 0x20),
-            (0, 0x0e, 0x31),
-            (0, 0x0f, 0x45),
-            (0, 0x12, 0x22),
-            (4 * f + off * 7, 0x12, 0x82),
-        ];
-        let s = timed_script(w, 5, 1);
-        n += 2;
-        for model in [SID_MODEL_6581, SID_MODEL_8580] {
-            if let Some(m) = reads_mismatch(model, OSC3, &s) {
-                bad.push(format!("sync +{off}: {}", &m[..m.len().min(220)]));
-            }
-        }
-    }
-    assert!(
-        bad.is_empty(),
-        "{} of {n} mismatch:\n{}",
-        bad.len(),
-        bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n")
-    );
+    assert_osc3_matches_on_both_models(&hard_syncs_while_deferring_then_noise(), 220);
 }
 
-/* A pulse width write lands on OSC3 a cycle late on the chip, and SIDOU misses it: with
- * pulse at PW 0 (always low), a write of PW 0x800 at cycle 100 reads 255 at cycle 101 in
- * reSIDfp and 0 in SIDOU, on both models. read_osc3 recomputes the pulse comparison
- * from the current pulse width and ignores pulse_held, the comparison sid_write latched
- * before the write. Read-only and inaudible; the plan's Task 7 lists it among what
- * remains off. */
 #[test]
 #[ignore = "OSC3 a cycle after a pulse width write: read_osc3 ignores pulse_held"]
 fn pulse_width_write_reads_osc3_exactly() {
-    let mut bad = Vec::new();
-    for model in [SID_MODEL_6581, SID_MODEL_8580] {
-        let w = vec![
-            (0, FREQ_LO, 0x00),
-            (0, FREQ_HI, 0x10),
-            (0, PW_LO, 0x00),
-            (0, PW_HI, 0x00),
-            (0, CONTROL, 0x40),
-            (100, PW_LO, 0x00),
-            (100, PW_HI, 0x08),
-        ];
-        if let Some(m) = reads_mismatch(model, OSC3, &timed_script(w, 1, 1)) {
-            bad.push(m);
-        }
-    }
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    let w = vec![
+        (0, VOICE3_FREQ_LO, 0x00),
+        (0, VOICE3_FREQ_HI, 0x10),
+        (0, VOICE3_PW_LO, 0x00),
+        (0, VOICE3_PW_HI, 0x00),
+        (0, VOICE3_CONTROL, 0x40),
+        (100, VOICE3_PW_LO, 0x00),
+        (100, VOICE3_PW_HI, 0x08),
+    ];
+    assert_osc3_matches_on_both_models(
+        &[("pw write at cycle 100".to_string(), timed_script(w, 1, 1))],
+        usize::MAX,
+    );
 }

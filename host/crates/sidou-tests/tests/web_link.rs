@@ -1,37 +1,14 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The fixture for the Live Link viewer (`tools/wasm-link`, `web/link.js`, `web/link.html`):
-//! SIDOU's device side (app/link.c) over a screen with plain text, large text at 2 and 3 times,
-//! overlays, a plain piece and a painter region with text and an overlay on it, and the frames
-//! it sends: START's HELLO, PALETTE's COLOURS, FONT's GLYPHS and a KEYFRAME's CELLS and PIXELS.
-//! With them the spec's test vectors and the panel's picture (the grid's own runs, as the LCD
-//! gets them) as the CRC-32 of its RGB565 pixels, little-endian, which the reference decoder's
-//! Mirror::render must give too. `web/link.test.mjs` decodes the frames with the wasm viewer
-//! and checks its picture against it; `web/fake-fm1.mjs` and `web/check.mjs` answer with them
-//! as a simulated FM-1. The test checks the committed fixture is what this build makes now;
-//! `SIDOU_WEB_LINK_FIXTURE_UPDATE=1` rewrites it.
-//!
-//!   SIDOU_WEB_LINK_FIXTURE_UPDATE=1 cargo nextest run --release -p sidou-tests -E 'test(web_link)'
 
 use std::ffi::{c_void, CString};
-use std::fmt::Write as _;
-use std::path::PathBuf;
 
 use fm1_live_link as ll;
 use sidou_sys::*;
+use sidou_tests::font::repo_root;
+use sidou_tests::hex;
 
 const W: usize = GRID_COLS as usize * 8;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
-}
-
-fn hex(b: &[u8]) -> String {
-    b.iter().fold(String::new(), |mut s, x| {
-        let _ = write!(s, "{x:02x}");
-        s
-    })
-}
 
 fn attr(fg: u32, bg: u32) -> u8 {
     ((bg << 4) | fg) as u8
@@ -46,20 +23,18 @@ fn picture_crc(px: &[u16]) -> u32 {
     crc(&bytes)
 }
 
-extern "C" fn paint(ctx: *mut c_void, col: u32, row: u32, px: *mut u8) {
+extern "C" fn paint_diagonal_stripes(ctx: *mut c_void, col: u32, row: u32, px: *mut u8) {
     let px = unsafe { std::slice::from_raw_parts_mut(px, 64) };
     let _ = ctx;
     let shade = 1;
     for (k, v) in px.iter_mut().enumerate() {
-        // diagonal stripes of four colours, so a pixel out of place shows
         *v = [GRID_PURPLE, GRID_BLUE, GRID_LIGHT_BLUE, GRID_CYAN]
             [(col as usize * 8 + k % 8 + row as usize * 8 + k / 8 + shade) / 3 % 4]
             as u8;
     }
 }
 
-/// The screen: every kind of cell the link sends.
-fn screen(g: &mut grid) {
+fn screen_with_every_cell_kind(g: &mut grid) {
     let text = |g: &mut grid, col, row, s: &str, a| {
         let c = CString::new(s).unwrap();
         unsafe { grid_text(g, col, row, c.as_ptr(), a) };
@@ -79,7 +54,6 @@ fn screen(g: &mut grid) {
         let mask = [1u8 << (col % 8), 0, 0x18, 0, 0, 0x81, 0, 0xff];
         unsafe { grid_overlay(g, col, 12, mask.as_ptr(), (col % 16) as u8) };
     }
-    // an overlay over a glyph, and a plain piece over an overlay (which then does not show)
     let solid = [0x0fu8, 0x0f, 0x0f, 0x0f, 0xf0, 0xf0, 0xf0, 0xf0];
     text(g, 2, 14, "XYZ", attr(GRID_WHITE, GRID_RED));
     for col in 2..5 {
@@ -87,21 +61,29 @@ fn screen(g: &mut grid) {
     }
     unsafe { grid_overlay(g, 8, 14, solid.as_ptr(), GRID_GREEN as u8) };
     unsafe { grid_put_top(g, 8, 14, b'Q', attr(GRID_RED, GRID_BLACK)) };
-    // a painter region with text and an overlay on it
     assert_eq!(
-        unsafe { grid_region_painter(g, 2, 18, 20, 6, Some(paint), std::ptr::null_mut(), 8) },
+        unsafe {
+            grid_region_painter(
+                g,
+                2,
+                18,
+                20,
+                6,
+                Some(paint_diagonal_stripes),
+                std::ptr::null_mut(),
+                8,
+            )
+        },
         0
     );
-    g.region_peek = Some(paint);
+    g.region_peek = Some(paint_diagonal_stripes);
     text(g, 3, 19, "ON PIXELS", attr(GRID_WHITE, GRID_BLACK));
     unsafe { grid_overlay(g, 5, 21, [0xffu8; 8].as_ptr(), GRID_YELLOW as u8) };
     unsafe { grid_overlay(g, 6, 21, [0x3cu8; 8].as_ptr(), GRID_RED as u8) };
     text(g, 1, 27, "\u{7f}", attr(GRID_GREY, GRID_BLACK));
 }
 
-/// The panel as the LCD gets it: every run the grid hands out, through grid_render_run, each
-/// run marked to the link as platform/fm1/ui.c does.
-fn send(g: &mut grid, l: &mut link_state) -> Vec<u16> {
+fn panel_as_the_lcd_gets_it(g: &mut grid, l: &mut link_state) -> Vec<u16> {
     let mut panel = vec![0u16; W * W];
     let mut r = grid_run::default();
     while unsafe { grid_next_run(g, &mut r) } != 0 {
@@ -139,7 +121,6 @@ impl Device {
         }
     }
 
-    /// A host frame in, and every frame the device then sends.
     fn ask(&mut self, g: &grid, frame: &[u8]) -> Vec<Vec<u8>> {
         for &b in frame {
             unsafe { link_byte(&mut *self.l, b, self.now) };
@@ -161,8 +142,7 @@ impl Device {
     }
 }
 
-/// A frame as the spec writes it, in hex.
-fn spec(s: &str) -> String {
+fn spec_hex(s: &str) -> String {
     s.split_whitespace().collect::<String>().to_lowercase()
 }
 
@@ -181,8 +161,8 @@ fn cmds(fs: &[Vec<u8>]) -> Vec<u8> {
 fn web_link_fixture() {
     let mut g = Box::<grid>::default();
     let mut dev = Device::new();
-    screen(&mut g);
-    let panel = send(&mut g, &mut dev.l);
+    screen_with_every_cell_kind(&mut g);
+    let panel = panel_as_the_lcd_gets_it(&mut g, &mut dev.l);
 
     let start = dev.ask(&g, &ll::start());
     assert_eq!(cmds(&start[..1]), [ll::HELLO]);
@@ -202,7 +182,6 @@ fn web_link_fixture() {
     let stopped = dev.ask(&g, &ll::stop());
     assert_eq!(cmds(&stopped), [ll::STOPPED]);
 
-    // the reference decoder draws the panel from them, and from them alone
     let mut m = ll::Mirror::default();
     for f in hello.iter().chain(&palette).chain(&font).chain(&keyframe) {
         assert!(m.take(f), "the mirror refused {f:02x?}");
@@ -231,8 +210,8 @@ fn web_link_fixture() {
          \"hello\": {},\n  \"palette\": {},\n  \"font\": {},\n  \"keyframe\": {},\n  \"beat\": {},\n  \
          \"stopped\": {}\n}}\n",
         vectors.join(",\n    "),
-        spec("F0 7D 46 4D 31 4C 46 00 00 00 41 0E 00 6B F7"),
-        spec("F0 7D 46 4D 31 4C 46 20 05 03 20 0E 13 00 40 00 00 00 00 00 00 01 01 00 7E 41 50 F7"),
+        spec_hex("F0 7D 46 4D 31 4C 46 00 00 00 41 0E 00 6B F7"),
+        spec_hex("F0 7D 46 4D 31 4C 46 20 05 03 20 0E 13 00 40 00 00 00 00 00 00 01 01 00 7E 41 50 F7"),
         h.name,
         h.font_crc,
         h.palette_crc,
@@ -244,7 +223,7 @@ fn web_link_fixture() {
         frames(&beat),
         frames(&stopped),
     );
-    let path = root().join("web/link-fixtures.json");
+    let path = repo_root().join("web/link-fixtures.json");
     if std::env::var_os("SIDOU_WEB_LINK_FIXTURE_UPDATE").is_some() {
         std::fs::write(&path, &json).unwrap();
     }

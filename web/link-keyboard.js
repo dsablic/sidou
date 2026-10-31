@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Keyboard control for the Live Link page: computer keyboard drives the FM-1's panel through PANEL
-// frames and plays notes over MIDI. The device stays the source of truth. Designed from
-// docs/reference/controls.md so each key maps to exactly what the device does.
-
 export const KEYMAP = [
   { keys: ['KeyZ'], note: 60, label: 'C', black: false },
   { keys: ['KeyS'], note: 61, label: 'C#', black: true },

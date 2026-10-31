@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Both renderers apply writes at PAL frame (50 Hz) boundaries and return
-//! float samples in [-1, 1].
 
-use sidou_sys::{sid, sid_init, sid_model, sid_render, sid_write, SID_CLOCK_PAL};
+use sidou_sys::{
+    sid, sid_advance, sid_init, sid_model, sid_next_cycles, sid_render, sid_write, SID_CLOCK_PAL,
+};
 
 use crate::residfp_engine::ResidfpEngine;
 
@@ -17,7 +17,7 @@ pub struct RegWrite {
 pub const REF_SAMPLE_RATE: f64 = 44100.0;
 
 const SAMPLES_PER_FRAME: u32 = 882;
-const CYCLES_PER_FRAME: u32 = 19705; // 985248 / 50, rounded
+const CYCLES_PER_FRAME: u32 = crate::PAL_CYCLES_PER_FRAME;
 
 fn apply(writes: &[RegWrite], mut next: usize, frame: u32, mut write: impl FnMut(u8, u8)) -> usize {
     while next < writes.len() && writes[next].frame <= frame {
@@ -45,8 +45,6 @@ pub fn render_sidou(model: sid_model, writes: &[RegWrite], frames: u32) -> Vec<f
     to_float(&out)
 }
 
-/// decimate: see [`ResidfpEngine::new`]. Use it when timing or pitch is measured; the
-/// true output rate is then `residfp_decimate_rate(REF_SAMPLE_RATE)`.
 pub fn render_residfp(
     model: sid_model,
     writes: &[RegWrite],
@@ -61,4 +59,31 @@ pub fn render_residfp(
         e.render_cycles(CYCLES_PER_FRAME, &mut out);
     }
     to_float(&out)
+}
+
+pub fn device_sid(model: sid_model) -> Box<sid> {
+    let mut s = Box::<sid>::default();
+    unsafe { sid_init(&mut *s, model, SID_CLOCK_PAL, crate::DEVICE_SAMPLE_RATE) };
+    s
+}
+
+pub fn is_voice_control(reg: u8) -> bool {
+    reg < 0x15 && reg % 7 == 4
+}
+
+pub fn render_then_advance_to(s: &mut sid, clocked: &mut u64, x: u64) -> Vec<i16> {
+    let mut out = Vec::new();
+    loop {
+        let next = u64::from(unsafe { sid_next_cycles(s) });
+        if *clocked + next > x {
+            break;
+        }
+        let mut sample = [0i16; 1];
+        unsafe { sid_render(s, sample.as_mut_ptr(), 1) };
+        out.extend(sample);
+        *clocked += next;
+    }
+    unsafe { sid_advance(s, (x - *clocked) as u32) };
+    *clocked = x;
+    out
 }

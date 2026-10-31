@@ -1,17 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! USB audio out on the host (fm1-emu has no USB controller): Felucca's src/usb.c built as
-//! midi.c builds it, with SIDOU's TIMER5 side, which takes each block from the I2S half buffer
-//! (platform/fm1/usb_audio.h; harness/uac_harness.c), and Felucca's own test of usb.c's audio
-//! input, as it is (harness/felucca/uac_test.c).
-//!
-//! - The descriptors a host reads: one composite device, USB-MIDI and a class-compliant UAC1
-//!   audio input, with SIDOU's strings.
-//! - The hand-over in time: blocks of 128 frames at the I2S rate, each taken by TIMER5 (10 kHz)
-//!   at its first tick after the render ends (as late as the load makes it) unless the next
-//!   block has begun, the host taking a packet each USB frame. Every frame the host records is the producer's, in order, against Felucca's
-//!   producer fed the same frames directly: bit for bit at 44.1 kHz, and the same resampled
-//!   frames at 48 kHz.
 
 use std::sync::{Mutex, MutexGuard};
 
@@ -21,17 +9,14 @@ use sidou_pack::harness::{
     uac_h_take, uac_h_tick, UacState,
 };
 
-/// usb.c keeps static state, and so does Felucca's test: one test at a time.
 static HARNESS: Mutex<()> = Mutex::new(());
 
 fn exclusive() -> MutexGuard<'static, ()> {
     HARNESS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// SIDOU's block (audio.h AUDIO_HALF_FRAMES) and TIMER5's tap (usb_audio.h USB_AUDIO_CHUNK).
 const BLOCK: usize = 128;
 const CHUNK: usize = 32;
-/// The I2S rate: 24 MHz / 544 (Felucca's audio.c DAC_TICKS).
 const FS_DEV: f64 = 24.0e6 / 544.0;
 const TICK_NS: u64 = 100_000;
 const MS: u64 = 1_000_000;
@@ -65,10 +50,6 @@ fn string(i: u32) -> String {
     String::from_utf16(&units).unwrap()
 }
 
-/// Felucca's tests/uac_test.c, as it is, on SIDOU's copy of usb.c (no CDC, SIDOU's block):
-/// the descriptors as a host parses them, the ring against packets at 1 kHz with renders of
-/// 7..85 % of a block, SET_CUR's rate, the 44.1 -> 48 kHz resampler against a double-precision
-/// one (every frame within 1 LSB, the response and SNR of sines), and the 48 kHz stream.
 #[test]
 fn feluccas_own_usb_audio_test_passes_on_sidous_usb_c() {
     let _g = exclusive();
@@ -77,8 +58,6 @@ fn feluccas_own_usb_audio_test_passes_on_sidous_usb_c() {
     assert_eq!(fails, 0, "Felucca's uac_test failed (its output above)");
 }
 
-/// The descriptors SIDOU presents: one device, USB-MIDI (unchanged) and the UAC1 audio input
-/// (EP4), class compliant, with the strings the installers look for.
 #[test]
 fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
     let _g = exclusive();
@@ -91,7 +70,6 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
         "class per interface (no IAD)"
     );
     assert_eq!((le16(&dev[8..]), le16(&dev[10..])), (0x1209, 0x0001));
-    // bcdDevice: 3.00 MIDI + 0.20 the audio input at 44.1 and 48 kHz + 0.08 AS first (usb.c)
     assert_eq!(le16(&dev[12..]), 0x0328);
     assert_eq!(string(dev[15] as u32), "SIDOU FM-1");
     assert_eq!(string(dev[14] as u32), "SIDOU contributors");
@@ -105,11 +83,10 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
     );
     assert_eq!(cfg[7] & 0x80, 0x80, "bus powered");
 
-    // Walk it: each interface setting's class and endpoints, the class-specific blocks.
     let mut off = 0;
     let (mut iface, mut alt) = (u8::MAX, u8::MAX);
-    let mut settings: Vec<(u8, u8, u8, u8, u8)> = Vec::new(); // if, alt, eps, class, sub
-    let mut eps: Vec<(u8, u8, u8, u32, u8)> = Vec::new(); // if, alt, address, attributes, maxp, interval
+    let mut settings: Vec<(u8, u8, u8, u8, u8)> = Vec::new();
+    let mut eps: Vec<(u8, u8, u8, u32, u8)> = Vec::new();
     let mut ac_total = 0;
     let mut ac_header: Option<Vec<u8>> = None;
     let mut fmt: Option<Vec<u8>> = None;
@@ -180,7 +157,6 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
             "interface {i} alt {a}: bNumEndpoints"
         );
     }
-    // MIDI's bulk endpoints as they were; EP4 IN isochronous asynchronous, 49 frames, 1 ms.
     assert_eq!(
         eps_detail,
         vec![(0x01, 2, 64, 0), (0x81, 2, 64, 0), (0x84, 0x05, 196, 1)]
@@ -225,8 +201,6 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
     );
 }
 
-/// The frames a block carries: frame n is (n, !n) as 16-bit samples, so a lost, repeated or
-/// reordered frame shows; or full-scale extremes (levels).
 #[derive(Clone, Copy, PartialEq)]
 enum Signal {
     Count,
@@ -257,8 +231,6 @@ fn start(hz: u32) {
     }
 }
 
-/// Felucca's producer fed `frames` frames directly, 32 at a time as int32 samples (its audio.c's
-/// way), the ring drained after each: what a host must record, after the primed silence.
 fn reference(hz: u32, sig: Signal, frames: u32) -> Vec<u32> {
     start(hz);
     let mut out = Vec::new();
@@ -285,40 +257,25 @@ fn reference(hz: u32, sig: Signal, frames: u32) -> Vec<u32> {
     out
 }
 
-/// How long a block's render takes, as a share of the block. The block goes to TIMER5 when its
-/// render ends, so how much that moves from block to block is how much the ring's fill at the
-/// hand-over moves. SIDOU's audio budget, 2,700 instructions a sample, is about half a block at
-/// the 240 MHz the budget assumes (the FM-1 runs at 360 MHz).
 #[derive(Clone, Copy)]
 enum Render {
-    /// 7 % .. 85 %, each block on its own: Felucca's test's stress (its overload shedding starts
-    /// above 85 %), far beyond SIDOU's steps between blocks.
     Random,
-    /// 7 % .. 50 %, each block on its own: anything within SIDOU's budget, from one block to the
-    /// next.
     Budget,
-    /// 45 % .. 55 %: a steady load.
     Steady,
 }
 
 struct Run {
-    /// The frames the host recorded, packet after packet.
     recorded: Vec<u32>,
     sizes: [u32; 64],
     produced: u32,
     state: UacState,
 }
 
-/// `ms` of recording: blocks written to the half buffer at their render's end; TIMER5 at 10 kHz
-/// (none while `starve` holds it off, as a flash operation's masked interrupts do) takes a block
-/// at its first tick after that, or skips it once the DMA has moved on (the next block began),
-/// as main.c's fm1_timer5_irq does; a packet each USB frame at a random point in it.
 fn record(hz: u32, sig: Signal, render: Render, ms: u64, starve: Option<(u64, u64)>) -> Run {
     start(hz);
     let half = (BLOCK as f64 / FS_DEV * 1e9) as u64;
     let (mut now, mut next_half, mut next_tick, mut next_pkt) = (0u64, 300_000u64, 37_000u64, MS);
     let mut render_end: Option<u64> = None;
-    // The block in the half buffer, waiting for TIMER5, and when the DMA moves on from it.
     let mut pending: Option<u64> = None;
     let mut lcg = 12_345u32;
     let mut rnd = |m: u64| {
@@ -345,7 +302,6 @@ fn record(hz: u32, sig: Signal, render: Render, ms: u64, starve: Option<(u64, u6
         .min()
         .unwrap();
         if render_end == Some(now) {
-            // audio.c's output: int16 * 256 (the counter goes on only for blocks taken).
             for (i, f) in half_buf.chunks_mut(2).enumerate() {
                 let (l, r) = frame(sig, run.produced + i as u32);
                 f[0] = i32::from(l) * 256;
@@ -391,8 +347,6 @@ fn record(hz: u32, sig: Signal, render: Render, ms: u64, starve: Option<(u64, u6
     run
 }
 
-/// Where the producer's frames start in what the host recorded (after silence and the prime),
-/// and how many follow in order.
 fn in_order(recorded: &[u32], want: &[u32]) -> (usize, usize) {
     let probe = &want[..64];
     let at = (0..recorded.len() - 64)
@@ -456,11 +410,6 @@ fn check_recording(hz: u32, render: Render, label: &str) {
     );
     let nominal = f64::from(hz) / 1000.0;
     assert!((mean - nominal).abs() < 0.1, "{label}: mean packet {mean}");
-    // The ring's lowest fill, at the hand-over: under a steady load a packet and more, as
-    // Felucca's test asks of its own (its taps are spread over the render, SIDOU's block goes in
-    // at once). Renders anywhere in the budget, block after block, move the hand-over by up to
-    // 43 % of a block, 55 frames, against the band's floor of 80 (UA_LO): measured 32 at 44.1
-    // kHz, 38 at 48. Under the stress load the ring only has to hold every frame (above).
     match render {
         Render::Steady => assert!(s.fill_lo >= s.maxf, "{label}: within a packet of empty"),
         Render::Budget => assert!(
@@ -475,7 +424,6 @@ fn check_recording(hz: u32, render: Render, label: &str) {
 #[test]
 fn a_host_records_every_frame_in_order_at_44_1_khz_bit_for_bit() {
     let _g = exclusive();
-    // 44.1 kHz is not resampled: the reference is the input itself.
     let want = reference(44_100, Signal::Count, 4096);
     let input: Vec<u32> = (0..4096)
         .map(|n| {
@@ -497,7 +445,6 @@ fn a_host_records_every_resampled_frame_in_order_at_48_khz() {
     check_recording(48_000, Render::Random, "48 kHz, renders of 7..85 %");
 }
 
-/// Full-scale samples reach the host unchanged at 44.1 kHz: no gain, no clipping.
 #[test]
 fn full_scale_reaches_the_host_unchanged() {
     let _g = exclusive();
@@ -515,17 +462,16 @@ fn full_scale_reaches_the_host_unchanged() {
         .any(|&f| f == pack(i16::MAX, i16::MIN)));
 }
 
-/// A held block (the store's flash hold: the half buffer silent) goes to the host as silence.
 #[test]
 fn a_held_block_is_recorded_as_silence() {
     let _g = exclusive();
     start(44_100);
     let mut d = [0u32; 1024];
     let half = [0x1234i32 * 256; 2 * BLOCK];
-    let held = [0i32; 2 * BLOCK]; // audio.c's held block: the half buffer silent
-                                  // SAFETY: the harness, under `exclusive`.
+    let held = [0i32; 2 * BLOCK];
+    // SAFETY: the harness, under `exclusive`.
     unsafe {
-        uac_h_tick(); // want: a host records
+        uac_h_tick();
         assert_eq!(state().want, 1);
         uac_h_take(half.as_ptr());
         for _ in 0..4 {
@@ -548,21 +494,20 @@ fn a_held_block_is_recorded_as_silence() {
     }
 }
 
-/// While no host records, TIMER5 copies nothing and the ring stays as it is.
 #[test]
 fn nothing_is_copied_while_no_host_records() {
     let _g = exclusive();
     let lr = [0x1234i32 * 256; 2 * BLOCK];
     // SAFETY: the harness, under `exclusive`.
     unsafe {
-        uac_h_reset(); // configured, alt 0
+        uac_h_reset();
         for _ in 0..100 {
             uac_h_tick();
             uac_h_take(lr.as_ptr());
         }
         let s = state();
         assert_eq!((s.want, s.left, s.blocks, s.ring_w), (0, 0, 0, 0));
-        uac_h_stream(1); // alt 1, but the host has not taken a packet yet
+        uac_h_stream(1);
         for _ in 0..100 {
             uac_h_tick();
             uac_h_take(lr.as_ptr());
@@ -572,8 +517,6 @@ fn nothing_is_copied_while_no_host_records() {
     }
 }
 
-/// TIMER5 held off for 6 ms (a flash operation with the interrupts masked): the block it could
-/// not take is counted and lost, and the stream recovers on its own.
 #[test]
 fn a_starved_timer5_skips_a_block_and_the_stream_recovers() {
     let _g = exclusive();
@@ -591,7 +534,6 @@ fn a_starved_timer5_skips_a_block_and_the_stream_recovers() {
     );
     assert!(s.skipped >= 1, "no block skipped while TIMER5 was held off");
     assert!(s.underruns > 0, "the ring did not run dry in 6 ms");
-    // The last half second: every packet full of the producer's frames again, in order.
     let tail = &run.recorded[run.recorded.len() - 22_050..];
     let first = tail[0] as u16;
     for (i, &f) in tail.iter().enumerate() {

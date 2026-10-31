@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The wasm core (sidou-core.wasm, tools/wasm-core; web/core.js) in plain Node, against what the
-// host build of the same C makes (web/core-fixtures.json, host/crates/sidou-tests/tests/web_core.rs):
-// for SIDOU's songs and GoatTracker's examples the read, the .sng written back with and without
-// SIDOU's trailer (and the plain file's check), every instrument's GTI5, and the device's player's
-// samples for the song and an instrument at a note, byte for byte; refusals with the device's
-// messages. Opens no MIDI port.
-//   node web/core.test.mjs [sidou-core.wasm]    (tools/web-demo --check runs it)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";

@@ -1,15 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The clock follower (app/midi_clock.h) against synthetic clocks: the TRS poll's and USB's
-//! jitter, tempo steps and ramps, dropped clocks, a clock that stops, a store hold, the
-//! transport, and the player's frame period.
 
 use sidou_sys::*;
 
 const RATE: f64 = 44118.0;
 const MS: f64 = RATE / 1000.0;
 
-/// xorshift64*: deterministic, no dependencies.
 struct Rng(u64);
 
 impl Rng {
@@ -20,26 +16,19 @@ impl Rng {
         self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
     }
 
-    /// Uniform in [0, 1).
     fn unit(&mut self) -> f64 {
         (self.next() >> 11) as f64 / (1u64 << 53) as f64
     }
 }
 
-/// How a clock sent at a time (in samples) is stamped.
 #[derive(Debug, Clone, Copy)]
 enum Port {
-    /// The TRS jack: the sender's own jitter (up to 0.5 ms), the byte's 0.32 ms on the wire,
-    /// then the 2 kHz poll that takes it.
     Trs,
-    /// USB: the host's scheduling (up to 1 ms), the 1 ms frame that carries the packet, then
-    /// the 2 kHz poll.
     Usb,
 }
 
 struct Wire {
     port: Port,
-    /// The poll's and the USB frames' phases, in samples.
     poll_phase: f64,
     frame_phase: f64,
     rng: std::cell::RefCell<Rng>,
@@ -110,7 +99,6 @@ impl Follower {
         unsafe { midi_clock_hold(&mut *self.0, start, end) }
     }
 
-    /// Samples a clock, or None with no tempo.
     fn period(&self) -> Option<f64> {
         let q = unsafe { midi_clock_period_q16(&*self.0) };
         (q != 0).then(|| f64::from(q) / 65536.0)
@@ -130,25 +118,20 @@ fn period_of(bpm: f64) -> f64 {
     RATE * 60.0 / bpm / 24.0
 }
 
-/// The worst errors after the lock: tempo (relative) and phase (ms).
 #[derive(Debug, Default)]
 struct Worst {
     tempo: f64,
     phase: f64,
 }
 
-/// A stamp as the device holds it: samples, wrapping.
-fn s32(x: f64) -> u32 {
+fn wrapped_stamp(x: f64) -> u32 {
     x as u64 as u32
 }
 
-/// `got - want` in ms, wrapping.
 fn phase_ms(got: u32, want: f64) -> f64 {
-    f64::from(got.wrapping_sub(s32(want)) as i32) / MS
+    f64::from(got.wrapping_sub(wrapped_stamp(want)) as i32) / MS
 }
 
-/// Clocks with periods from `period(k)` (samples, clock k's interval to the next), from `t0`,
-/// through a wire: (time sent, stamp, clock number). `skip(k)` drops clock k.
 fn clocks(
     wire: &Wire,
     t0: f64,
@@ -167,28 +150,33 @@ fn clocks(
     out
 }
 
-/// The wire's mean delay over a run (a constant latency is not phase error).
 fn mean_delay(sent: &[(f64, f64, u32)]) -> f64 {
     sent.iter().map(|&(t, s, _)| s - t).sum::<f64>() / sent.len() as f64
 }
 
-/// A follower started (FA) at t0.
-fn started(t0: f64) -> Follower {
+fn started_at(t0: f64) -> Follower {
     let mut f = Follower::new();
-    assert_eq!(f.msg(rt(0xfa), s32(t0)), MIDI_CLOCK_EV_START);
+    assert_eq!(f.msg(rt(0xfa), wrapped_stamp(t0)), MIDI_CLOCK_EV_START);
     f
 }
 
-/// Plays the clocks after a start just before them and checks each from clock `from` on:
-/// the tempo against `period(k - 1)`, the phase (midi_clock_time_of) against the clock's time
-/// sent plus the wire's mean delay. No tempo before MIDI_CLOCK_LOCK clocks.
-fn check(wire: &Wire, t0: f64, n: usize, period: &dyn Fn(usize) -> f64, from: usize) -> Worst {
+fn worst_after_lock(
+    wire: &Wire,
+    t0: f64,
+    n: usize,
+    period: &dyn Fn(usize) -> f64,
+    from: usize,
+) -> Worst {
     let sent = clocks(wire, t0, n, period, &|_| false);
     let delay = mean_delay(&sent);
-    let mut f = started(t0 - 10.0);
+    let mut f = started_at(t0 - 10.0);
     let mut w = Worst::default();
     for (k, &(t, stamp, number)) in sent.iter().enumerate() {
-        assert_eq!(f.clock(s32(stamp)), MIDI_CLOCK_EV_NONE, "clock {k}");
+        assert_eq!(
+            f.clock(wrapped_stamp(stamp)),
+            MIDI_CLOCK_EV_NONE,
+            "clock {k}"
+        );
         if k + 1 < MIDI_CLOCK_LOCK as usize {
             assert_eq!(f.period(), None, "a tempo after {} clocks", k + 1);
         }
@@ -215,7 +203,7 @@ fn steady_tempos_lock_within_two_beats_and_hold() {
                 let wire = Wire::new(port, &mut rng);
                 let t0 = 1000.0 + rng.unit() * 4e9;
                 let p = period_of(bpm);
-                let w = check(&wire, t0, 24 * 40, &|_| p, 2 * 24);
+                let w = worst_after_lock(&wire, t0, 24 * 40, &|_| p, 2 * 24);
                 println!("{port:?} {bpm} BPM trial {trial}: {w:?}");
                 assert!(
                     w.tempo < 0.001 && w.phase < 1.0,
@@ -227,12 +215,12 @@ fn steady_tempos_lock_within_two_beats_and_hold() {
 }
 
 #[test]
-fn stamps_wrap() {
+fn tempo_and_phase_hold_across_the_stamps_wrap() {
     let mut rng = Rng(7);
     let wire = Wire::new(Port::Trs, &mut rng);
     let p = period_of(120.0);
     let t0 = f64::from(u32::MAX) - 30.0 * p;
-    let w = check(&wire, t0, 24 * 8, &|_| p, 2 * 24);
+    let w = worst_after_lock(&wire, t0, 24 * 8, &|_| p, 2 * 24);
     assert!(w.tempo < 0.001 && w.phase < 1.0, "{w:?}");
 }
 
@@ -252,9 +240,9 @@ fn a_tempo_step_settles_within_the_window_without_overshoot() {
                 &period,
                 &|_| false,
             );
-            let mut f = started(4990.0);
+            let mut f = started_at(4990.0);
             for (k, &(_, stamp, _)) in sent.iter().enumerate() {
-                f.clock(s32(stamp));
+                f.clock(wrapped_stamp(stamp));
                 if k < 2 * 24 {
                     continue;
                 }
@@ -289,15 +277,14 @@ fn a_tempo_ramp_is_followed_without_overshooting() {
             let period = |k: usize| period_of(bpm(k));
             let n = start + len + MIDI_CLOCK_WINDOW as usize + 24 * 2;
             let sent = clocks(&wire, 100.0, n, &period, &|_| false);
-            let mut f = started(0.0);
+            let mut f = started_at(0.0);
             let mut worst: f64 = 0.0;
             for (k, &(_, stamp, _)) in sent.iter().enumerate() {
-                f.clock(s32(stamp));
+                f.clock(wrapped_stamp(stamp));
                 if k < 2 * 24 {
                     continue;
                 }
                 let got = 60.0 * RATE / 24.0 / f.period().unwrap();
-                // Overshoot: beyond the tempos of the clocks the window has seen.
                 let seen = (k.saturating_sub(MIDI_CLOCK_WINDOW as usize)..k).map(bpm);
                 let (lo, hi) = seen.fold((f64::MAX, 0.0f64), |(l, h), b| (l.min(b), h.max(b)));
                 let over = (got / hi - 1.0).max(1.0 - got / lo).max(0.0);
@@ -325,9 +312,9 @@ fn dropped_clocks_disturb_the_tempo_for_a_window_at_most() {
     let p = period_of(120.0);
     let drops = [24 * 4 + 5, 24 * 12 + 17, 24 * 20];
     let sent = clocks(&wire, 100.0, 24 * 26, &|_| p, &|k| drops.contains(&k));
-    let mut f = started(0.0);
+    let mut f = started_at(0.0);
     for (i, &(_, stamp, k)) in sent.iter().enumerate() {
-        f.clock(s32(stamp));
+        f.clock(wrapped_stamp(stamp));
         if i < 2 * 24 {
             continue;
         }
@@ -346,8 +333,8 @@ fn a_clock_that_stops_is_lost_after_300_ms() {
     let mut f = Follower::new();
     assert_eq!(f.poll(0), MIDI_CLOCK_EV_NONE, "no clock yet");
     let mut t = 100.0;
-    tick(&mut f, &mut t, p, 24 * 4);
-    let last = s32(t - p);
+    send_clocks(&mut f, &mut t, p, 24 * 4);
+    let last = wrapped_stamp(t - p);
     assert!(f.period().is_some());
     let lost = MIDI_CLOCK_LOST_MS * RATE as u32 / 1000;
     assert_eq!(f.poll(last + lost), MIDI_CLOCK_EV_NONE);
@@ -357,7 +344,6 @@ fn a_clock_that_stops_is_lost_after_300_ms() {
     assert_eq!(f.poll(last + lost + 2), MIDI_CLOCK_EV_NONE, "reported once");
     assert_eq!(f.poll(last + 10 * lost), MIDI_CLOCK_EV_NONE);
 
-    // It comes back at another tempo and locks afresh.
     let p2 = period_of(90.0);
     let mut t = f64::from(last) + 2.0 * f64::from(lost);
     for k in 0..48 {
@@ -368,16 +354,13 @@ fn a_clock_that_stops_is_lost_after_300_ms() {
         }
     }
 
-    // Without a poll, the clock after the gap reports the loss itself.
     let t = t + 2.0 * f64::from(lost);
     assert_eq!(f.clock(t as u32), MIDI_CLOCK_EV_LOST);
     assert_eq!(f.period(), None);
     assert_eq!(f.poll(t as u32 + 1), MIDI_CLOCK_EV_NONE);
 }
 
-/// A 35 ms hold in a steady clock: the bytes that arrive in it are stamped at the first poll
-/// after it. Returns the worst errors from the hold on.
-fn hold_run(port: Port, bpm: f64, told: bool, seed: u64) -> Worst {
+fn worst_from_a_35_ms_hold(port: Port, bpm: f64, told: bool, seed: u64) -> Worst {
     let mut rng = Rng(seed);
     let wire = Wire::new(port, &mut rng);
     let p = period_of(bpm);
@@ -387,7 +370,7 @@ fn hold_run(port: Port, bpm: f64, told: bool, seed: u64) -> Worst {
     let hold_start = t0 + 24.0 * 6.0 * p + rng.unit() * p;
     let hold_end = hold_start + 35.0 * MS;
     let after = ceil_to(hold_end, 0.5 * MS, wire.poll_phase);
-    let mut f = started(t0 - 10.0);
+    let mut f = started_at(t0 - 10.0);
     let mut reported = false;
     let mut late = 0;
     let mut w = Worst::default();
@@ -399,10 +382,10 @@ fn hold_run(port: Port, bpm: f64, told: bool, seed: u64) -> Worst {
             stamp
         };
         if told && !reported && stamp >= hold_start {
-            f.hold(s32(hold_start), s32(hold_end));
+            f.hold(wrapped_stamp(hold_start), wrapped_stamp(hold_end));
             reported = true;
         }
-        f.clock(s32(stamp));
+        f.clock(wrapped_stamp(stamp));
         if t < hold_start {
             continue;
         }
@@ -419,25 +402,23 @@ fn hold_run(port: Port, bpm: f64, told: bool, seed: u64) -> Worst {
 fn a_35_ms_hold_keeps_the_tempo_and_phase() {
     for port in [Port::Trs, Port::Usb] {
         for seed in 1..=16 {
-            let w = hold_run(port, 120.0, true, seed);
+            let w = worst_from_a_35_ms_hold(port, 120.0, true, seed);
             assert!(
                 w.tempo < 0.001 && w.phase < 1.0,
                 "{port:?} seed {seed}: {w:?}"
             );
         }
     }
-    // The test bites: untold, the late stamps pull the fit off.
     let bad = (1..=16)
-        .map(|seed| hold_run(Port::Trs, 120.0, false, seed))
+        .map(|seed| worst_from_a_35_ms_hold(Port::Trs, 120.0, false, seed))
         .filter(|w| w.tempo > 0.001 || w.phase > 1.0)
         .count();
     assert!(bad >= 4, "untold, {bad} of 16 holds broke a bound");
 }
 
-/// n clocks a period apart from *t, which ends at the next clock's time.
-fn tick(f: &mut Follower, t: &mut f64, p: f64, n: usize) {
+fn send_clocks(f: &mut Follower, t: &mut f64, p: f64, n: usize) {
     for _ in 0..n {
-        assert_eq!(f.clock(s32(*t)), MIDI_CLOCK_EV_NONE);
+        assert_eq!(f.clock(wrapped_stamp(*t)), MIDI_CLOCK_EV_NONE);
         *t += p;
     }
 }
@@ -447,20 +428,18 @@ fn transport_events_and_the_song_position() {
     let p = period_of(120.0);
     let mut f = Follower::new();
     let mut t = 0.0f64;
-    // Clocks before a start: a tempo, no position.
-    tick(&mut f, &mut t, p, 30);
+    send_clocks(&mut f, &mut t, p, 30);
     assert!(f.period().is_some());
     assert_eq!(f.time_of(0), None, "stopped");
     assert_eq!(f.0.position, 0);
 
-    // FA: the next clock is position 0.
-    assert_eq!(f.msg(rt(0xfa), s32(t) - 100), MIDI_CLOCK_EV_START);
+    assert_eq!(f.msg(rt(0xfa), wrapped_stamp(t) - 100), MIDI_CLOCK_EV_START);
     assert_eq!(f.time_of(0), None, "no clock since the start");
     let first = t;
-    tick(&mut f, &mut t, p, 1);
+    send_clocks(&mut f, &mut t, p, 1);
     assert_eq!(f.0.position, 1);
     assert!(phase_ms(f.time_of(0).unwrap(), first).abs() < 0.05);
-    tick(&mut f, &mut t, p, 47);
+    send_clocks(&mut f, &mut t, p, 47);
     assert_eq!(f.0.position, 48);
     assert!(
         phase_ms(f.time_of(48).unwrap(), t).abs() < 0.05,
@@ -468,27 +447,24 @@ fn transport_events_and_the_song_position() {
     );
     assert!(phase_ms(f.time_of(24).unwrap(), first + 24.0 * p).abs() < 0.05);
 
-    // FC: clocks keep the tempo but not the position.
-    assert_eq!(f.msg(rt(0xfc), s32(t)), MIDI_CLOCK_EV_STOP);
-    tick(&mut f, &mut t, p, 10);
+    assert_eq!(f.msg(rt(0xfc), wrapped_stamp(t)), MIDI_CLOCK_EV_STOP);
+    send_clocks(&mut f, &mut t, p, 10);
     assert_eq!(f.0.position, 48);
     assert_eq!(f.time_of(48), None);
 
-    // F2 while stopped: the position in 16ths; FB: on from it with the next clock.
-    assert_eq!(f.msg(spp(33), s32(t)), MIDI_CLOCK_EV_POSITION);
+    assert_eq!(f.msg(spp(33), wrapped_stamp(t)), MIDI_CLOCK_EV_POSITION);
     assert_eq!(f.0.position, 33 * MIDI_CLOCK_PER_16TH);
-    assert_eq!(f.msg(rt(0xfb), s32(t)), MIDI_CLOCK_EV_CONTINUE);
+    assert_eq!(f.msg(rt(0xfb), wrapped_stamp(t)), MIDI_CLOCK_EV_CONTINUE);
     let next = t;
-    tick(&mut f, &mut t, p, 1);
+    send_clocks(&mut f, &mut t, p, 1);
     assert_eq!(f.0.position, 33 * 6 + 1);
     assert!(phase_ms(f.time_of(33 * 6).unwrap(), next).abs() < 0.05);
     assert!(phase_ms(f.time_of(33 * 6 + 24).unwrap(), next + 24.0 * p).abs() < 0.05);
 
-    // FA again restarts from 0; the other real-time bytes and other messages are ignored.
-    assert_eq!(f.msg(rt(0xfa), s32(t)), MIDI_CLOCK_EV_START);
+    assert_eq!(f.msg(rt(0xfa), wrapped_stamp(t)), MIDI_CLOCK_EV_START);
     assert_eq!(f.0.position, 0);
     for other in [0xf9u8, 0xfd, 0xfe, 0xff] {
-        assert_eq!(f.msg(rt(other), s32(t)), MIDI_CLOCK_EV_NONE);
+        assert_eq!(f.msg(rt(other), wrapped_stamp(t)), MIDI_CLOCK_EV_NONE);
     }
     let note = midi_msg {
         kind: MIDI_NOTE_ON,
@@ -496,12 +472,11 @@ fn transport_events_and_the_song_position() {
         data2: 100,
         ..Default::default()
     };
-    assert_eq!(f.msg(note, s32(t)), MIDI_CLOCK_EV_NONE);
-    tick(&mut f, &mut t, p, 3);
+    assert_eq!(f.msg(note, wrapped_stamp(t)), MIDI_CLOCK_EV_NONE);
+    send_clocks(&mut f, &mut t, p, 3);
     assert_eq!(f.0.position, 3);
 }
 
-/// One PAL frame in samples: 312 lines of 63 cycles at 985,248 Hz.
 const PAL_FRAME: f64 = RATE * 19656.0 / 985248.0;
 
 #[test]
@@ -510,7 +485,7 @@ fn the_frame_period_lands_rows_on_the_clock() {
     let mut f = Follower::new();
     assert_eq!(f.frame(6, 6, 4, 0), 0.0, "no tempo yet");
     let mut t = 0.0;
-    tick(&mut f, &mut t, p, 48);
+    send_clocks(&mut f, &mut t, p, 48);
     let frame = f.frame(6, 6, 4, 0);
     assert!(
         (frame / PAL_FRAME - 1.0).abs() < 0.001,
@@ -521,12 +496,10 @@ fn the_frame_period_lands_rows_on_the_clock() {
         "a beat is 6 x 4 frames: {frame}"
     );
 
-    // Funktempo: the pair's average.
     assert!((f.frame(5, 7, 4, 0) - frame).abs() < 0.01);
     assert!((f.frame(3, 3, 8, 0) - frame).abs() < 0.01);
     assert!((f.frame(6, 6, 2, 0) - 2.0 * frame).abs() < 0.02);
 
-    // Late: the next beat is shorter by the lateness, spread over its frames, at most 1 %.
     let beat = 24.0 * p;
     let late = (beat * 0.005) as i32;
     let want = (beat - f64::from(late)) / 24.0;

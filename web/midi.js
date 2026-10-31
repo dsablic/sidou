@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Songs to MIDI page: a .sng (dropped, chosen, one of the four showcase songs, or read from a
-// connected FM-1) becomes a Standard MIDI File with songmidi.js, offered as a download. Nothing is
-// uploaded. A MIDI port is opened only after the Connect button (Web MIDI with SysEx, the same way as the
-// Songs page), and only to ask the FM-1 for its list of songs (DIR) and read the one chosen (GET).
 import { SongError, songToMidi } from "./songmidi.js";
 import { Client, songsIn } from "./sysex.js";
 
@@ -23,7 +19,7 @@ const el = (tag, props = {}, ...kids) => {
   return e;
 };
 
-let current = null; // { bytes, stem }
+let current = null;
 let url = null;
 
 const stemOf = (name) => name.replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "song";
@@ -102,9 +98,6 @@ for (const type of ["dragenter", "dragover"]) drop.addEventListener(type, (e) =>
 for (const type of ["dragleave", "drop"]) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.remove("over"); });
 drop.addEventListener("drop", (e) => readFile(e.dataTransfer.files[0]));
 
-// ---------------------------------------------------------------------------------------------
-// From the connected FM-1
-
 const fm1 = { access: null, client: null, busy: false, files: [] };
 
 function say(text, kind = "") {
@@ -142,7 +135,6 @@ function forget() {
   setBusy(false);
 }
 
-// What to read: the current song (GET target 2) and each stored song (DIR; GET target 0)
 function listSongs() {
   const card = (title, about, target, name) => {
     const button = el("button", { type: "button", textContent: "Make .mid", disabled: !fm1.client });

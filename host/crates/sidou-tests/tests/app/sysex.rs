@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Wire-level tests against the C engine, simulated NOR, and USB event packets.
 use super::store::{fresh, Rig, Rng};
 use sidou_sys::*;
 use std::ffi::c_void;
@@ -216,7 +215,6 @@ impl Engine {
 
     fn poll(&mut self) {
         unsafe { sysex_poll(&mut *self.engine, self.now) };
-        // The platform supplies its current window afresh on every store pass.
         self.rig.st.window = self.rig.window;
         self.rig.poll();
     }
@@ -505,7 +503,6 @@ fn disabled_windows_accept_explicit_writes_and_preserve_another_owner() {
     let mut e = Engine::new(true);
     e.request(4, 0, &upload_metadata(named("OUR CLAIM"), &[1]));
     e.ack(0);
-    // An independent store backstop may end our claim before the engine runs.
     unsafe { store_file_abort(&mut *e.rig.st) };
     assert_eq!(e.rig.file_begin("NEW OWNER", 1), STORE_OK);
     unsafe { sysex_reset(&mut *e.engine) };
@@ -548,7 +545,6 @@ fn delayed_ack_excludes_storage_backpressure_and_end_waits_for_commit() {
     e.request(4, 10, &upload_metadata(named("DELAYED"), &data));
     e.ack(10);
     e.request(5, 11, &data[..256]);
-    // A real flash hook may defer programming for longer than the sender deadline.
     e.rig.sim.later = 100;
     for _ in 0..5 {
         e.now += 1000;
@@ -1187,8 +1183,6 @@ fn deterministic_random_and_mutated_streams_recover() {
     e.rig.assert_clean();
 }
 
-// ---- .sid files (M3 Task 10): the header checked at the first DATA, before any claim ----
-
 fn sid_metadata(name: &str, data: &[u8]) -> Vec<u8> {
     let mut p = upload_metadata(named(name), data);
     p[18] = STORE_FILE_SID as u8;
@@ -1200,17 +1194,14 @@ fn sid_tune() -> Vec<u8> {
     sidou_tests::psid::packed(&sng, 0xD400)
 }
 
-/// A tune whose header psid_parse refuses with `reason`, and that reason.
 fn refused_tunes() -> Vec<(&'static str, Vec<u8>, u32)> {
     let good = sid_tune();
     let mut rsid = good.clone();
     rsid[..4].copy_from_slice(b"RSID");
     let mut mus = good.clone();
     mus[0x77] |= 1;
-    // FM-1 SID's bounds bug's fixture (docs/upstream-reports.md, 1): a data offset past the
-    // file's end, in a file of a header and one 16-byte packet.
-    let mut crafted = good[..0x80].to_vec();
-    crafted[6..8].copy_from_slice(&0x0200u16.to_be_bytes());
+    let mut data_offset_past_the_end = good[..0x80].to_vec();
+    data_offset_past_the_end[6..8].copy_from_slice(&0x0200u16.to_be_bytes());
     let mut long = good.clone();
     long[8..10].copy_from_slice(&0xFF00u16.to_be_bytes());
     let mut wav = b"RIFF\0\0\0\0WAVEfmt ".to_vec();
@@ -1218,7 +1209,7 @@ fn refused_tunes() -> Vec<(&'static str, Vec<u8>, u32)> {
     vec![
         ("RSID", rsid, SYSEX_RSID),
         ("MUS", mus, SYSEX_MUS),
-        ("CRAFTED", crafted, SYSEX_BROKEN),
+        ("CRAFTED", data_offset_past_the_end, SYSEX_BROKEN),
         ("LONG", long, SYSEX_TOO_LONG),
         ("WAV", wav, SYSEX_BROKEN),
     ]
@@ -1231,7 +1222,6 @@ fn a_sid_put_is_acknowledged_before_its_claim_and_claimed_at_its_first_data() {
     let programs = e.rig.sim.progs;
     e.request(4, 40, &sid_metadata("TUNE", &tune));
     e.ack(40);
-    // Nothing claimed or owned yet: the header has not come.
     assert_eq!(e.engine.claimed, 0);
     assert_eq!(e.rig.st.f.phase, 0);
     assert!(e.hooks.writing.is_empty());
@@ -1255,7 +1245,6 @@ fn a_sid_put_is_acknowledged_before_its_claim_and_claimed_at_its_first_data() {
     assert_eq!(e.rig.file("TUNE"), Some(tune.clone()));
     let f = e.rig.file_open("TUNE").unwrap();
     assert_eq!(u32::from(f.type_), STORE_FILE_SID);
-    // Over TRS, the same without replies.
     e.bytes(1, &frame(4, 0, &sid_metadata("TRS TUNE", &tune)));
     for (i, part) in tune.chunks(256).enumerate() {
         e.bytes(1, &frame(5, i as u8 + 1, part));
@@ -1296,7 +1285,6 @@ fn rsid_mus_and_broken_sid_puts_are_refused_before_any_claim_or_program() {
                 }
                 e.bytes(1, &frame(6, file.len().div_ceil(256) as u8 + 8, &[]));
                 e.poll();
-                // The refusal's toast stands: the tail was dropped.
                 assert_eq!(e.hooks.toasts, [reason as u8], "{name} over TRS");
                 assert!(e.wire().is_empty());
             }
@@ -1307,10 +1295,8 @@ fn rsid_mus_and_broken_sid_puts_are_refused_before_any_claim_or_program() {
             assert!(e.rig.file(name).is_none());
         }
     }
-    // Shorter than any header: refused at PUT.
     e.request(4, 20, &sid_metadata("TINY", &[0x50; 0x75]));
     e.nak(20, SYSEX_BROKEN);
-    // The first DATA must hold the first 128 bytes (or the whole of a shorter file).
     let tune = sid_tune();
     e.request(4, 21, &sid_metadata("SPLIT", &tune));
     e.ack(21);
@@ -1318,7 +1304,6 @@ fn rsid_mus_and_broken_sid_puts_are_refused_before_any_claim_or_program() {
     e.nak(22, SYSEX_MALFORMED);
     assert!(e.rig.file("SPLIT").is_none());
     assert_eq!(e.rig.file("KEEP"), Some(vec![9, 8, 7]));
-    // A song (type 1) is never checked as a tune, and an RSID's bytes go in as one.
     let rsid = refused_tunes().remove(0).1;
     e.upload(named("NOT A TUNE"), &rsid, 256);
     assert_eq!(e.rig.file("NOT A TUNE"), Some(rsid));
@@ -1342,10 +1327,8 @@ fn a_sid_put_with_the_store_keys_used_up_answers_full_at_its_first_data() {
     e.nak(4, SYSEX_FULL);
     assert_eq!(e.rig.sim.progs, programs);
     assert!(e.rig.file("NO KEY").is_none());
-    // A song's PUT says so at its metadata.
     e.request(4, 5, &upload_metadata(named("NO KEY"), &[1; 32]));
     e.nak(5, SYSEX_FULL);
-    // A file deleted: its key is free again, and the tune goes in.
     assert_eq!(e.rig.file_delete("OLD"), STORE_OK);
     e.rig.settle();
     e.rig.maintain();
@@ -1368,12 +1351,10 @@ fn a_sid_put_whose_claim_waits_for_a_record_programs_its_held_first_data() {
     let tune = sid_tune();
     e.request(4, 9, &sid_metadata("HELD", &tune));
     e.ack(9);
-    // A settings save in flight: the claim waits for it as the transfer's (OPEN).
     assert_eq!(e.rig.put(77, &[0x77; 64]), STORE_OK);
     e.request(5, 10, &tune[..256]);
     assert_eq!(e.engine.held, 1, "the first DATA held for the claim");
     assert_eq!(e.engine.claimed, 0);
-    // A byte of another frame while it is held is BUSY, never written over the held packet.
     e.ack(10);
     assert_eq!(e.engine.held, 0);
     let mut seq = 11;
@@ -1388,9 +1369,6 @@ fn a_sid_put_whose_claim_waits_for_a_record_programs_its_held_first_data() {
     assert_eq!(e.rig.get(77), Some(vec![0x77; 64]));
 }
 
-/// The fuzz of M2e's, with .sid uploads: mutated headers (any byte of the first 128, the
-/// declared length) and corrupted frames over both ports. A file is stored only if its header
-/// checks and its bytes arrived whole; a header psid_parse refuses programs nothing.
 #[test]
 fn mutated_sid_uploads_store_only_tunes_and_refusals_program_nothing() {
     let mut e = Engine::new(true);
@@ -1459,10 +1437,8 @@ fn mutated_sid_uploads_store_only_tunes_and_refusals_program_nothing() {
     e.rig.assert_clean();
 }
 
-/// LAB's USER sounds' file (app/user_sound.h) is the firmware's own: SysEx never lists, fetches,
-/// replaces or deletes it.
 #[test]
-fn sysex_refuses_the_user_sounds_name() {
+fn sysex_never_lists_fetches_replaces_or_deletes_the_user_sounds_file() {
     let mut e = Engine::new(true);
     let bytes = vec![0x3c; USER_SOUND_FILE_BYTES as usize];
     e.rig.maintain();
@@ -1491,9 +1467,8 @@ fn sysex_refuses_the_user_sounds_name() {
     assert_eq!(e.rig.file("USER SOUNDS"), Some(bytes), "untouched");
 }
 
-// ---- 1.1 item 13: a write waits for quiet (sysex.loud), and says so with WAIT ----
+const WAIT_COMMAND: u8 = 0x7d;
 
-/// Polls until a whole frame is out or `polls` run, the clock where it is: the frame, or None.
 fn frame_within(e: &mut Engine, polls: usize) -> Option<(u8, u8, Vec<u8>)> {
     let mut wire = Vec::new();
     for _ in 0..polls {
@@ -1507,10 +1482,6 @@ fn frame_within(e: &mut Engine, polls: usize) -> Option<(u8, u8, Vec<u8>)> {
     None
 }
 
-/// While the platform says its held programs wait (a song plays, a computer records the USB
-/// audio), a DATA's ACK waits: a WAIT with that DATA's sequence goes out at once and every
-/// SYSEX_WAIT_EVERY_MS, each with the toast UPLOAD WAITS FOR QUIET; once quiet, the ACK, the
-/// toast RECEIVING again, and the upload ends as any other.
 #[test]
 fn a_loud_device_holds_a_datas_ack_and_says_wait_until_quiet() {
     let mut e = Engine::new(false);
@@ -1519,13 +1490,13 @@ fn a_loud_device_holds_a_datas_ack_and_says_wait_until_quiet() {
     e.ack(10);
     e.engine.loud = 1;
     e.request(5, 11, &data[..256]);
-    assert_eq!(e.response(), (0x7d, 11, vec![]), "WAIT at once");
+    assert_eq!(e.response(), (WAIT_COMMAND, 11, vec![]), "WAIT at once");
     assert_eq!(e.hooks.toasts.last(), Some(&(SYSEX_WAITING as u8)));
     for step in 1..=3u32 {
         e.now += SYSEX_WAIT_EVERY_MS - 1;
         assert_eq!(frame_within(&mut e, 300), None, "nothing between the WAITs");
         e.now += 1;
-        assert_eq!(e.response(), (0x7d, 11, vec![]), "WAIT {step}");
+        assert_eq!(e.response(), (WAIT_COMMAND, 11, vec![]), "WAIT {step}");
     }
     let waits = e
         .hooks
@@ -1547,8 +1518,6 @@ fn a_loud_device_holds_a_datas_ack_and_says_wait_until_quiet() {
     assert_eq!(e.hooks.writing.last(), Some(&false));
 }
 
-/// A wait has a limit: SYSEX_QUIET_MAX_MS after it began, NAK BUSY ends the transfer (nothing
-/// replaced, the ownership given back), and the next transfer's wait starts afresh.
 #[test]
 fn a_wait_for_quiet_gives_up_with_busy_after_its_limit() {
     let mut e = Engine::new(false);
@@ -1557,30 +1526,26 @@ fn a_wait_for_quiet_gives_up_with_busy_after_its_limit() {
     e.ack(20);
     e.engine.loud = 1;
     e.request(5, 21, &data);
-    assert_eq!(e.response(), (0x7d, 21, vec![]));
+    assert_eq!(e.response(), (WAIT_COMMAND, 21, vec![]));
     while e.now + SYSEX_WAIT_EVERY_MS < SYSEX_QUIET_MAX_MS {
         e.now += SYSEX_WAIT_EVERY_MS;
-        assert_eq!(e.response(), (0x7d, 21, vec![]), "at {} ms", e.now);
+        assert_eq!(e.response(), (WAIT_COMMAND, 21, vec![]), "at {} ms", e.now);
     }
     e.now = SYSEX_QUIET_MAX_MS;
     e.nak(21, SYSEX_BUSY);
     assert!(!e.active());
     assert_eq!(e.hooks.writing.last(), Some(&false));
     assert_eq!(e.rig.file("GIVEN UP"), None);
-    // The next one waits from its own start.
     e.engine.loud = 0;
     e.request(4, 30, &upload_metadata(named("GIVEN UP"), &data));
     e.ack(30);
     e.engine.loud = 1;
     e.request(5, 31, &data);
-    assert_eq!(e.response(), (0x7d, 31, vec![]), "a fresh wait");
+    assert_eq!(e.response(), (WAIT_COMMAND, 31, vec![]), "a fresh wait");
     e.engine.loud = 0;
     e.ack(31);
 }
 
-/// TRS has no reply path: a wait there is the toast alone, and the frame gap a TRS sender keeps
-/// (one second) is not enough for a wait, so a frame that comes while it waits aborts (as any
-/// packet before the last is programmed); the next PUT starts again.
 #[test]
 fn a_trs_upload_waits_with_the_toast_alone() {
     let mut e = Engine::new(false);
@@ -1604,7 +1569,6 @@ fn a_trs_upload_waits_with_the_toast_alone() {
     assert_eq!(e.rig.file("TRS WAIT"), Some(data));
 }
 
-/// A device that is not loud never sends WAIT: the ACKs come as before.
 #[test]
 fn a_quiet_device_never_says_wait() {
     let mut e = Engine::new(false);

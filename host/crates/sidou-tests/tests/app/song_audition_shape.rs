@@ -34,9 +34,7 @@ fn fixture(include_audition: bool, empty_third: bool, note: u8) -> Song {
             (rows, [0xff, 0, 0, 0])
         })
         .collect();
-    let mut song = Song::host();
-    song.read(&spec.encode(), 0).unwrap();
-    song
+    Song::host_from(&spec.encode())
 }
 
 fn compare_audition(voice: u32, empty_third: bool, note: u8, already_used: bool) {
@@ -382,9 +380,7 @@ fn pulse_switch_song(old_simple: bool, next: bool) -> Song {
         vec![[0x90, if next { 3 } else { 2 }, 0, 0]],
         [0xff, 0, 0, 0],
     )];
-    let mut song = Song::host();
-    song.read(&spec.encode(), 0).unwrap();
-    song
+    Song::host_from(&spec.encode())
 }
 
 fn pulse_width(player: &gt2_player) -> u16 {
@@ -691,9 +687,7 @@ fn encoding_song(include_second: bool, features: u8) -> Song {
         ],
         [0xff, 0, 0, 0],
     )];
-    let mut song = Song::host();
-    song.read(&spec.encode(), 0).unwrap();
-    song
+    Song::host_from(&spec.encode())
 }
 
 unsafe extern "C" fn chip_write(ctx: *mut std::ffi::c_void, reg: u8, value: u8) {

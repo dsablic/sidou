@@ -14,19 +14,13 @@
 #define SIDOU_VERSION "0.0.0"
 #endif
 
-/* "V" SIDOU_VERSION ends before column 21 (app/views.c), after SIDOU, and must stay inside the 9
- * cells from column 12 that host/crates/emu-gate/tests/screen.rs (VERSION_CELLS) leaves out of the
- * golden images. */
 #define VERSION_CELLS 9u
 _Static_assert(sizeof SIDOU_VERSION <= VERSION_CELLS, "SIDOU_VERSION is too long for row 2");
 
-/* A run (one row of up to GRID_COLS cells) is rendered into one LCD buffer. */
 _Static_assert(GRID_RUN_PIXELS <= LCD_BUFFER_PIXELS, "a grid run does not fit an LCD buffer");
 
-/* In POOL (app.ld): the grid is big and the RAM region the tighter of the two. */
 static grid cells __attribute__((section(".pool")));
 static views ui;
-/* What persists (app/settings.h): on the device's store, ticked in the views' frame. */
 static settings persisted;
 static uint8_t settings_forced, song_forced;
 
@@ -41,31 +35,20 @@ void ui_song_force(int on) {
     store_fm1_force(settings_forced || song_forced || persisted.forcing ||
                     ui.users.forcing || ui.formatting);
 }
-/* grid_palette in the panel's byte order. */
 static uint16_t palette[16];
 static uint32_t last_compose;
-/* When the next frame or half-frame preparation is due. */
 static uint32_t next_at;
-/* A run rendered into lcd_buffer(), waiting for the panel. */
 static grid_run run;
 static uint8_t pending;
-/* The display is on: the first frame has reached the panel whole. */
 static uint8_t shown;
-/* The view may have work between frames (views_idle): from a frame that leaves some (SCENE's
- * idle, RED MOON RITE's scan) until views_idle says it has none. */
 static uint8_t idle_work;
-/* A call with nothing to send has nothing to do either: the display is on and the view has no
- * work between frames (the one test such calls make, most calls). */
 static uint8_t at_rest;
 
-/* LINK, drawn over the bottom-left corner's two cells while a Live Link session runs (on the
- * panel only): a row of 16 pixels a bit, bit 15 the leftmost. */
 #define STAMP_ROW (GRID_ROWS - 1u)
 #define STAMP_CELLS 2u
 static const uint16_t stamp_rows[8] = {0, 0x452A, 0x45AC, 0x4568, 0x452C, 0x752A, 0, 0};
 static uint8_t stamped;
 
-/* Over the run in px, rendered: the stamp's pixels in its cells. */
 __attribute__((noinline)) static void stamp(uint16_t* px) {
     uint32_t w = run.len * GRID_CELL_PX;
     uint32_t x0 = run.col * GRID_CELL_PX;
@@ -78,8 +61,6 @@ __attribute__((noinline)) static void stamp(uint16_t* px) {
     }
 }
 
-/* The next changed run rendered into the free buffer, unless one waits already. 0: nothing to
- * send. */
 static int prepare(void) {
     if (!pending && grid_next_run(&cells, &run)) {
         grid_render_run(&cells, &run, palette, lcd_buffer());
@@ -102,18 +83,15 @@ static void send(void) {
 
 void ui_link(uint32_t now_ms) {
     midi_link_run(&cells, now_ms);
-    /* After the run: a session it ended (its STOPPED sent, or the host gone) takes the stamp
-     * with it in this call, the last before midi_link_active is set again. */
     uint8_t on = (uint8_t)midi_link_on();
     if (on != stamped) {
         stamped = on;
         for (uint32_t c = 0; c < STAMP_CELLS; c++) {
-            grid_mark(&cells, c, STAMP_ROW); /* drawn again, with the stamp or without */
+            grid_mark(&cells, c, STAMP_ROW);
         }
     }
 }
 
-/* Everything that changed, waiting for the panel (blocking). */
 static void flush(void) {
     while (prepare()) {
         send();
@@ -129,7 +107,6 @@ void ui_set_panel(panel* p) {
     views_set_panel(&ui, p);
 }
 
-/* The song views' transport, as main.c bound it (ui_tune takes it away and gives it back). */
 static const song_transport* song_bound;
 
 void ui_set_song(const song_transport* t) {
@@ -152,7 +129,7 @@ int ui_tune(int on) {
     }
     views_set_song(&ui, NULL);
     if (ui.song.t) {
-        return 0; /* an edit in flight keeps it: views_set_song did nothing */
+        return 0;
     }
     views_tune(&ui, 1);
     return 1;
@@ -192,14 +169,11 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     grid_init(&cells, ' ', VIEWS_TEXT);
     views_init(&ui, &cells, l, audio_scope(), "V" SIDOU_VERSION);
     views_set_sounds(&ui, us);
-    views_learn(&ui, midi_learned()); /* midi_init ran before */
+    views_learn(&ui, midi_learned());
     views_route(&ui, midi_routed());
     views_sync(&ui, midi_synced());
-    /* The settings as they were left (the store mounted in lcd_init's wake-up wait); the full
-     * boot once after an install: no record, or another version's. */
     settings_init(&persisted, l, midi_learned(), &ui.cards, &ui.song.scroll, us, store_fm1(), "V" SIDOU_VERSION,
                   settings_force);
-    /* LAB's USER sounds first: the settings' preset may be one of them. */
     views_sounds(&ui, store_fm1());
     settings_sounds(&persisted, &ui.sounds);
     int known = settings_load(&persisted, now_ms);
@@ -210,8 +184,6 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     views_frame(&ui, now_ms);
 }
 
-/* The first frame has gone out whole and nothing is in transfer: the display can come on
- * without showing the panel's power-on contents. */
 static void display_on_when_drawn(void) {
     if (!shown && !pending && !(cells.rows & ~cells.hold) && !lcd_busy()) {
         lcd_on();
@@ -219,9 +191,6 @@ static void display_on_when_drawn(void) {
     }
 }
 
-/* A call with nothing to send: the display on once the first frame is out, and a slice of the
- * view's work between frames if it has any (a call renders runs or works a slice, never
- * both). Out of line: the calls at rest test one flag. */
 __attribute__((noinline, unused)) static void between(void) {
     display_on_when_drawn();
     if (idle_work) {
@@ -235,14 +204,12 @@ __attribute__((noinline, unused)) static uint32_t unheld_rows(uint32_t rows) {
 }
 
 void ui_poll(uint32_t now_ms) {
-    /* A frame, half a frame later its preparation (views_prepare), and the runs: each in a
-     * call of its own, so no call is long and the main loop drains MIDI between them. */
     if ((int32_t)(now_ms - next_at) >= 0) {
         if (now_ms - last_compose >= UI_PERIOD_MS) {
             last_compose = now_ms;
             next_at = now_ms + UI_PERIOD_MS / 2u;
             views_frame(&ui, now_ms);
-            if (ui.scene.idle) { /* the frame left work between frames (views_idle) */
+            if (ui.scene.idle) {
                 idle_work = 1;
                 at_rest = 0;
             }
@@ -253,7 +220,6 @@ void ui_poll(uint32_t now_ms) {
         return;
     }
     if (!pending && (!cells.rows || !unheld_rows(cells.rows))) {
-        /* nothing to send: most calls, between frames and on an idle screen */
         if (!at_rest) {
             between();
         }
@@ -261,7 +227,7 @@ void ui_poll(uint32_t now_ms) {
     }
     if (prepare() && !lcd_busy()) {
         send();
-        prepare(); /* rendered while this one transfers */
+        prepare();
     }
 }
 
@@ -290,10 +256,10 @@ void ui_note_keys(panel* p, uint32_t down, uint32_t pressed) {
 }
 
 void ui_update(uint32_t step, int32_t code) {
-    grid_hold(&cells, 0); /* a wipe's held rows go out too */
+    grid_hold(&cells, 0);
     views_update(&ui, step, code);
     flush();
-    if (!shown) { /* an update that starts before the first frame was out */
+    if (!shown) {
         lcd_on();
         shown = 1;
     }

@@ -1,18 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The demo's smoke test, in headless Chromium (Playwright): load the page, press Start, wait for
-// SIDOU to boot past its title card, check the LCD shows something and nothing went to the
-// console as an error, then hold a note key and check the screen changes and the audio thread
-// makes sound, and press PLAY (Space, button 12) and check the song sounds and PLAY again
-// stops it. Then save, reload and Start again, and check the boot got the saved flash back
-// (fm1-emu's persistence.js: the sectors SIDOU wrote, kept in IndexedDB per package). Exits
-// non-zero on any failure. Then the Songs page (songs.html) against a simulated FM-1 in a fake
-// Web MIDI: Connect, Send all, and the frames it sent (web/sysex.js's own decoder checks them
-// against the site's .sng files), and nothing sent to the other port; the Songs to MIDI page; the
-// Library page (a song's exports through the wasm core, then the store: list, delete, rename, back
-// up, open); the editor (a song from a file edited, undone, previewed, saved to the FM-1 and loaded
-// there, and the Library's Edit handing it over); the cheat sheet. Run by web/check.sh (tools/web-demo --check).
-//   node check.mjs http://127.0.0.1:8642/ [screenshot.png]
 import { chromium } from "playwright";
 
 const url = process.argv[2];
@@ -20,18 +7,20 @@ const shot = process.argv[3];
 const failures = [];
 const fail = (msg) => { failures.push(msg); console.error(`FAIL: ${msg}`); };
 
-// Watches the page's AudioWorkletNode (main.js creates one on Start): every frame message the
-// audio thread posts, summarised, and an analyser on its output.
+const KEY_A4 = "h", KEY_PLAY = " ", KEY_C5 = "q";
+const LCD_ON_CANVAS = { x: 370, y: 42, size: 480 };
+const NOTE_RELEASE_MS = 800, KEY_DEBOUNCE_MS = 150, RING_OUT_MS = 1500;
+
 function watch() {
+  const BOOT_SECTOR_BYTES = 4 + 4096, PAST_TITLE_CARD_START_MS = 500;
   const w = (window.__sidou = { frames: 0, title: null, last: null, errors: [], analyser: null, bootSectors: null });
   const Base = window.AudioWorkletNode;
   window.AudioWorkletNode = class extends Base {
     constructor(ctx, name, opts) {
       super(ctx, name, opts);
-      // the flash sectors main.js hands the audio thread with a boot (packed: 4 + 4096 bytes each)
       const post = this.port.postMessage.bind(this.port);
       this.port.postMessage = (m, ...rest) => {
-        if (m?.type === "boot") w.bootSectors = m.sectors ? m.sectors.byteLength / 4100 : 0;
+        if (m?.type === "boot") w.bootSectors = m.sectors ? m.sectors.byteLength / BOOT_SECTOR_BYTES : 0;
         return post(m, ...rest);
       };
       w.analyser = ctx.createAnalyser();
@@ -41,7 +30,6 @@ function watch() {
         const m = e.data;
         if (m.type === "error") w.errors.push(m.message);
         if (m.type !== "frame") return;
-        // fm1-emu sends the picture only when it changed (lcd is null otherwise): keep the last
         if (m.lcd) {
           let lit = 0, hash = 0;
           for (let i = 0; i < m.lcd.length; i++) {
@@ -53,11 +41,10 @@ function watch() {
         const { lit, hash } = w.picture || { lit: 0, hash: 0 };
         w.frames++;
         w.last = { ms: m.ms, lit, hash, halted: m.halted, short: m.short, minsns: m.minsns };
-        if (!w.title && m.ms >= 500) w.title = w.last;   // the short boot's title card: 0..1.2 s
+        if (!w.title && m.ms >= PAST_TITLE_CARD_START_MS) w.title = w.last;
       });
     }
   };
-  // the output level over `ms` milliseconds of wall time (RMS of the analyser's window)
   w.level = async (ms) => {
     const buf = new Float32Array(w.analyser.fftSize);
     let sum = 0, n = 0;
@@ -71,11 +58,6 @@ function watch() {
   };
 }
 
-
-// The Songs page's fake Web MIDI: two port pairs, "Other Synth" (must stay silent) and "SIDOU FM-1",
-// a simulated device behind the second that follows docs/reference/sysex.md (INQ, DIR, PUT/DATA/END,
-// DEL, and GET of a stored file or the current song, whose bytes it fetches from the site's songs/
-// unless it holds them).
 function fakeMidi() {
   const log = (window.__midi = { other: [], fm1: [], requested: null });
   const inputs = new Map([["i1", { id: "i1", name: "Other Synth", onmidimessage: null }],
@@ -87,8 +69,6 @@ function fakeMidi() {
   };
   const u32 = (v) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
   let upload = null, listing = null, dirSeq = 0;
-  // the store: what DIR lists, and the bytes of the files sent (PUT) or held here; a song with no
-  // bytes here is read from the site's songs/ by its name
   const tune = new Uint8Array(400);
   tune.set([0x50, 0x53, 0x49, 0x44, 0, 2, 0, 0x7c]);
   let files = [{ name: "IRON RITE", type: 1, length: 10, crc: 1 }, { name: "A TUNE", type: 2, length: 400, crc: 2 }];
@@ -103,7 +83,6 @@ function fakeMidi() {
     [...e.name].forEach((c, i) => { name[i] = c.charCodeAt(0); });
     return reply(2, seq, [...name, e.type ?? 1, ...u32(e.length), ...u32(e.crc)]);
   };
-  // GET: the metadata (a PUT frame), DATA packets and END, one after each ACK
   let out = null, outSeq = 0;
   const outNext = async () => {
     const next = out.shift();
@@ -116,7 +95,7 @@ function fakeMidi() {
     const { crc32 } = await import("./sysex.js");
     const d = f.data;
     let file, name = new Array(16).fill(0), bytes, type = 1;
-    if (d[0] === 2 && log.current) bytes = log.current; // a song loaded by PUT target 2 (Load now)
+    if (d[0] === 2 && log.current) bytes = log.current;
     if (d[0] === 2) file = "chrome-comet.sng";
     else {
       const n = String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, "");
@@ -157,7 +136,7 @@ function fakeMidi() {
     if (f.command === 6) {
       const { crc32 } = await import("./sysex.js");
       const bytes = Uint8Array.from(upload.data);
-      if (upload.target === 2) { // Load now: the current song from here on
+      if (upload.target === 2) {
         log.current = bytes;
         log.loads = [...(log.loads || []), bytes.length];
         upload = null;
@@ -198,7 +177,6 @@ try {
   console.log(`page: ${await page.title()} · ${await build.textContent()}`);
 
   const status = () => page.locator("#status").textContent();
-  // past the title card: 3 s of emulated time (the card is 1.2 s, then the status screen wipes in)
   const start = async () => {
     await page.locator("#start").click();
     try {
@@ -220,57 +198,52 @@ try {
     if (!s.title || s.title.hash === s.last.hash) fail("the screen did not change after the title card");
   }
 
-  // the LCD as drawn on the canvas (fm1-live's panel: the LCD at 2x from (370, 42))
-  const canvasLit = await page.evaluate(() => {
+  const canvasLit = await page.evaluate(({ x, y, size }) => {
     const c = document.getElementById("panel");
-    const d = c.getContext("2d").getImageData(370, 42, 480, 480).data;
+    const d = c.getContext("2d").getImageData(x, y, size, size).data;
     let n = 0;
     for (let i = 0; i < d.length; i += 4) if (d[i] | d[i + 1] | d[i + 2]) n++;
     return n;
-  });
-  console.log(`canvas LCD: ${canvasLit} of ${480 * 480} pixels not black`);
+  }, LCD_ON_CANVAS);
+  console.log(`canvas LCD: ${canvasLit} of ${LCD_ON_CANVAS.size ** 2} pixels not black`);
   if (canvasLit < 20_000) fail("the canvas LCD is nearly black");
 
-  // a note: H is A4. The LIVE view draws the voice; the audio thread plays it.
   const quiet = await page.evaluate(() => window.__sidou.level(400));
   const before = await page.evaluate(() => window.__sidou.last?.hash);
-  await page.keyboard.down("h");
+  await page.keyboard.down(KEY_A4);
   await page.waitForTimeout(300);
   const note = await page.evaluate(() => window.__sidou.level(500));
   const during = await page.evaluate(() => window.__sidou.last?.hash);
-  await page.keyboard.up("h");
+  await page.keyboard.up(KEY_A4);
   console.log(`A4 held: output RMS ${quiet.toFixed(5)} -> ${note.toFixed(5)}; screen ${before === during ? "unchanged" : "changed"}`);
   if (before === during) fail("holding a note key did not change the screen");
   if (!(note > 4 * quiet + 1e-4)) fail("holding a note key made no sound");
 
-  // the song: Space is PLAY (button 12), which plays SIDOU's first song; PLAY again stops it
-  await page.waitForTimeout(800); // A4's release
+  await page.waitForTimeout(NOTE_RELEASE_MS);
   const still = await page.evaluate(() => window.__sidou.level(300));
   const play = async () => {
-    await page.keyboard.down(" ");
-    await page.waitForTimeout(150); // past the key scan's debounce
-    await page.keyboard.up(" ");
+    await page.keyboard.down(KEY_PLAY);
+    await page.waitForTimeout(KEY_DEBOUNCE_MS);
+    await page.keyboard.up(KEY_PLAY);
   };
   await play();
   await page.waitForTimeout(600);
   const song = await page.evaluate(() => window.__sidou.level(1000));
   await play();
-  await page.waitForTimeout(1500); // the releases ring out
+  await page.waitForTimeout(RING_OUT_MS);
   const after = await page.evaluate(() => window.__sidou.level(400));
   console.log(`PLAY: output RMS ${still.toFixed(5)} -> ${song.toFixed(5)}, stopped ${after.toFixed(5)}`);
   if (!(song > 4 * still + 1e-4)) fail("PLAY made no sound");
   if (!(after < song / 4)) fail("PLAY again did not stop the song");
 
   if (shot) {
-    await page.keyboard.down("h");
+    await page.keyboard.down(KEY_A4);
     await page.waitForTimeout(400);
     await page.screenshot({ path: shot, fullPage: false });
-    await page.keyboard.up("h");
+    await page.keyboard.up(KEY_A4);
     console.log(`screenshot: ${shot}`);
   }
 
-  // the save: SIDOU stored its settings 5 s after the first boot; Save now keeps the flash in
-  // this browser, and the next visit boots with it
   const saveStatus = () => page.locator("#save-status").textContent();
   await page.locator("#save-now").click();
   try {
@@ -288,7 +261,6 @@ try {
   const again = await page.evaluate(() => window.__sidou);
   if (again.last?.halted) fail("the emulated CPU halted after the reload");
 
-  // the Songs page, against the simulated FM-1
   const songs = await browser.newPage({ viewport: { width: 900, height: 900 } });
   songs.on("console", (m) => { if (m.type() === "error") fail(`songs page console error: ${m.text()}`); });
   songs.on("pageerror", (e) => fail(`songs page error: ${e.message}`));
@@ -334,8 +306,6 @@ try {
   if (!sent.requested?.sysex) fail("Web MIDI was not asked for SysEx");
   await songs.close();
 
-  // the Songs to MIDI page: a showcase song becomes a valid .mid (the notes are checked in
-  // web/songmidi.test.mjs); no MIDI is involved
   const midi = await browser.newPage({ viewport: { width: 390, height: 800 } });
   midi.on("console", (m) => { if (m.type() === "error") fail(`midi page console error: ${m.text()}`); });
   midi.on("pageerror", (e) => fail(`midi page error: ${e.message}`));
@@ -361,8 +331,6 @@ try {
   if (mid.head !== "MThd" || mid.tracks !== 4 || mid.name !== "chrome-comet.mid" || mid.size < 5000) fail(`the MIDI page's download is wrong: ${JSON.stringify(mid)}`);
   if (!mid.wide) fail("the MIDI page scrolls sideways at phone width");
 
-  // "From the connected FM-1": nothing is asked or sent before Connect; then the songs (not the .sid
-  // tune) are listed, and the current song and a stored one are read with GET and converted
   const touched = () => midi.evaluate(() => window.__midi.fm1.length + window.__midi.other.length + (window.__midi.requested ? 1 : 0));
   if (await touched() !== 0) fail("the MIDI page used MIDI before Connect");
   await midi.locator("#connect").click();
@@ -393,8 +361,6 @@ try {
   if (await midi.evaluate(() => window.__midi.other.length) !== 0) fail("the MIDI page sent to the other port");
   await midi.close();
 
-  // the Library page: a song from a file through the wasm core (export .sng, plain and GTI5) with no
-  // MIDI; then against the simulated FM-1: the listing, delete, rename, back up, open a stored song
   const lib = await browser.newPage({ viewport: { width: 390, height: 900 } });
   lib.on("console", (m) => { if (m.type() === "error") fail(`library page console error: ${m.text()}`); });
   lib.on("pageerror", (e) => fail(`library page error: ${e.message}`));
@@ -465,9 +431,6 @@ try {
   if (!(await lib.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the Library page scrolls sideways at phone width");
   await lib.close();
 
-  // the editor (editor.html): a song from a file, an instrument byte and a note through the wasm
-  // core, undo and redo, the preview (its AudioWorklet sounds), then against the simulated FM-1:
-  // save to a named file and Load now (PUT target 2); and the Library's Edit handing a song over
   const ed = await browser.newPage({ viewport: { width: 390, height: 900 } });
   ed.on("console", (m) => { if (m.type() === "error") fail(`editor console error: ${m.text()}`); });
   ed.on("pageerror", (e) => fail(`editor page error: ${e.message}`));
@@ -490,7 +453,7 @@ try {
   await ed.locator(".tabs button", { hasText: "Patterns" }).click();
   const edP = await ed.evaluate(() => window.__editor.pattern);
   await ed.locator(`[data-key="p${edP}.0.0"]`).focus();
-  await ed.keyboard.press("q"); // the piano's C an octave up: C-5
+  await ed.keyboard.press(KEY_C5);
   const edited = await ed.evaluate((p) => ({ ad: window.__editor.core.instrument(1)[0], cell: window.__editor.core.pattern(p)[0], status: document.getElementById("status").textContent, undo: window.__editor.session.undoStack.length }), edP);
   console.log(`editor: ${edited.status}; ${edited.undo} edits`);
   if (edited.ad !== 0x0a || edited.cell[0] !== 0x60 + 60 || edited.cell[1] !== 1 || edited.undo !== 2) fail(`the editor's edits are wrong: ${JSON.stringify(edited)}`);
@@ -529,7 +492,6 @@ try {
   if (await ed.evaluate(() => window.__editor.saved.at(-1)?.filename) !== "CHROME-COMET.sng") fail("the editor's .sng download is missing");
   if (!(await ed.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the editor scrolls sideways at phone width");
   await ed.close();
-  // the Library's Edit: the song panel's song opens in the editor
   const handoff = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   handoff.on("pageerror", (e) => fail(`library to editor page error: ${e.message}`));
   await handoff.goto(new URL("library.html", url).href);
@@ -540,7 +502,6 @@ try {
   if (await handoff.locator("#s-name").textContent() !== "CHROME COMET") fail("the Library's Edit opened the wrong song");
   await handoff.close();
 
-  // the cheat sheet: it loads (the logo too), names its version and fits a phone's width
   const sheet = await browser.newPage({ viewport: { width: 390, height: 844 } });
   sheet.on("pageerror", (e) => fail(`cheat sheet error: ${e.message}`));
   sheet.on("requestfailed", (r) => fail(`cheat sheet request failed: ${r.url()}`));
@@ -554,11 +515,6 @@ try {
   if (!cs.wide) fail("the cheat sheet scrolls sideways at phone width");
   await sheet.close();
 
-  // ---- the Live Link page (link.html) against a simulated FM-1 that answers with the frames SIDOU's
-  // device side sent (link-fixtures.json, host/crates/sidou-tests/tests/web_link.rs): nothing sent
-  // before Start; Start, and the canvas shows the panel's picture (its RGB565 CRC-32); a button held
-  // and let go and an encoder step as PANEL frames; the page hidden sends STOP; nothing to the
-  // other port; no sideways scroll at a phone's width
   {
     const { readFileSync } = await import("node:fs");
     const linkFx = JSON.parse(readFileSync(new URL("link-fixtures.json", import.meta.url), "utf8"));
@@ -631,12 +587,14 @@ if (failures.length) {
 }
 console.log("smoke test passed");
 
-// The Live Link page's fake Web MIDI: "Other Synth" (must stay silent) and "SIDOU FM-1", a simulated
-// FM-1 behind it that answers Live Link frames with SIDOU's own (link-fixtures.json, passed in):
-// START with HELLO and the keyframe, HEARTBEAT with BEAT, KEYFRAME, FONT and PALETTE with theirs,
-// STOP with STOPPED, and STOPPED 3 s after the last heartbeat. It logs PANEL frames and counts
-// frames with a bad checksum or magic. (A function declaration: hoisted, and passed to the page.)
 function fakeLinkMidi(fx) {
+  const START = 0x01, HEARTBEAT = 0x02, STOP = 0x03, KEYFRAME = 0x04, FONT = 0x05, PALETTE = 0x06, PANEL = 0x07;
+  const AUTO_STOP_MS = 3000;
+  const unpack = (packed) => {
+    const d = [];
+    for (let i = 0; i < packed.length; i += 8) packed.slice(i + 1, i + 8).forEach((x, k) => d.push(x | (((packed[i] >> k) & 1) << 7)));
+    return d;
+  };
   const bytes = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
   const f = Object.fromEntries(["hello", "palette", "font", "keyframe", "beat", "stopped"].map((k) => [k, fx[k].map(bytes)]));
   const log = (window.__midi = { other: [], fm1: [], requested: null, panels: [], notes: [], bad: 0, on: false });
@@ -644,7 +602,7 @@ function fakeLinkMidi(fx) {
     ["i2", { id: "i2", name: "SIDOU FM-1", onmidimessage: null }]]);
   let heard = 0;
   const reply = (list) => { for (const x of list) setTimeout(() => inputs.get("i2").onmidimessage?.({ data: x }), 0); };
-  setInterval(() => { if (log.on && performance.now() - heard >= 3000) { log.on = false; reply(f.stopped); } }, 100);
+  setInterval(() => { if (log.on && performance.now() - heard >= AUTO_STOP_MS) { log.on = false; reply(f.stopped); } }, 100);
   const device = (b) => {
     b = Array.from(b);
     log.fm1.push(b);
@@ -652,17 +610,15 @@ function fakeLinkMidi(fx) {
     const magic = [0x7d, 0x46, 0x4d, 0x31, 0x4c];
     if (!magic.every((x, i) => b[i + 1] === x) || b.at(-1) !== 0xf7 || b.slice(6, -1).reduce((s, x) => s + x, 0) & 0x7f) { log.bad++; return; }
     const cmd = b[6];
-    if (cmd === 0x01) { log.on = true; heard = performance.now(); return reply([...f.hello, ...f.keyframe]); }
+    if (cmd === START) { log.on = true; heard = performance.now(); return reply([...f.hello, ...f.keyframe]); }
     if (!log.on) return reply(f.stopped);
-    if (cmd === 0x02) { heard = performance.now(); return reply(f.beat); }
-    if (cmd === 0x03) { log.on = false; return reply(f.stopped); }
-    if (cmd === 0x04) return reply(f.keyframe);
-    if (cmd === 0x05) return reply(f.font);
-    if (cmd === 0x06) return reply(f.palette);
-    if (cmd === 0x07) {
-      // unpack: a mask byte, then up to seven low bytes
-      const packed = b.slice(7, -2), d = [];
-      for (let i = 0; i < packed.length; i += 8) packed.slice(i + 1, i + 8).forEach((x, k) => d.push(x | (((packed[i] >> k) & 1) << 7)));
+    if (cmd === HEARTBEAT) { heard = performance.now(); return reply(f.beat); }
+    if (cmd === STOP) { log.on = false; return reply(f.stopped); }
+    if (cmd === KEYFRAME) return reply(f.keyframe);
+    if (cmd === FONT) return reply(f.font);
+    if (cmd === PALETTE) return reply(f.palette);
+    if (cmd === PANEL) {
+      const d = unpack(b.slice(7, -2));
       log.panels.push({ held: d[0] | (d[1] << 8), pressed: d[2] | (d[3] << 8), steps: d.slice(4).map((s) => (s << 24) >> 24) });
     }
   };

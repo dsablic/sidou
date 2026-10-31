@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The libc the compiler calls on its own (struct zeroing and copies) and the song reader's
- * memcmp; there is no libc. In flash: the audio interrupt calls none of them. */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -11,7 +9,6 @@ int memcmp(const void* a, const void* b, size_t n);
 int strcmp(const char* a, const char* b);
 char* strcpy(char* dst, const char* src);
 
-/* A word of the bytes it aliases (the copies and fills go a word at a time where they can). */
 typedef uint32_t __attribute__((may_alias)) word;
 
 void* memset(void* dst, int c, size_t n) {
@@ -22,7 +19,7 @@ void* memset(void* dst, int c, size_t n) {
         }
         word* dw = (word*)(void*)d;
         uint32_t w = (unsigned char)c * 0x01010101u;
-        size_t k = n >> 2; /* at least one: n was 8 or more, at most 3 went */
+        size_t k = n >> 2;
         n &= 3u;
         do {
             *dw++ = w;
@@ -35,8 +32,6 @@ void* memset(void* dst, int c, size_t n) {
     return dst;
 }
 
-/* A word at a time while both are at the same offset in a word (a canvas row into the grid's,
- * a struct copy), else a byte. */
 void* memcpy(void* dst, const void* src, size_t n) {
     unsigned char* d = dst;
     const unsigned char* s = src;
@@ -46,7 +41,7 @@ void* memcpy(void* dst, const void* src, size_t n) {
         }
         word* dw = (word*)(void*)d;
         const word* sw = (const word*)(const void*)s;
-        size_t k = n >> 2; /* at least one: n was 8 or more, at most 3 went */
+        size_t k = n >> 2;
         n &= 3u;
         do {
             *dw++ = *sw++;

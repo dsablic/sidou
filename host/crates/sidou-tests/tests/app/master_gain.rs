@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! MASTER as a digital gain on the final output (`app/master_gain.c`): the gain's endpoints,
-//! unity untouched, the ramp, silence staying silent, and what the move from the chip's
-//! volume register costs live play.
 
 use sidou_sys::*;
 
@@ -27,10 +24,8 @@ fn db(g: u32) -> f64 {
     20.0 * (f64::from(g) / f64::from(MASTER_UNITY)).log10()
 }
 
-/// The taper's table: 0, then round(32768 * 10^(-3 (1 - i / 64))) for i = 1..64 (-60 dB at 1,
-/// 0 dB at 64), a pot step 16 apart sitting on the entries.
 #[test]
-fn the_taper_table_is_the_formula() {
+fn the_taper_table_is_minus_60_db_to_0_db_in_64_even_steps() {
     let table = |i: u32| {
         if i == 0 {
             0.0
@@ -38,7 +33,6 @@ fn the_taper_table_is_the_formula() {
             (f64::from(MASTER_UNITY) * 10f64.powf(-3.0 * (1.0 - f64::from(i) / 64.0))).round()
         }
     };
-    // The pots whose x = (p * 1024 + 511) / 1023 is 16 i exactly sit on the entry itself.
     let mut found = 0;
     for p in 0..LIVE_MASTER_MAX {
         let x = (p * 1024 + 511) / 1023;
@@ -66,7 +60,6 @@ fn master_has_an_even_db_taper() {
         assert!(g >= last, "monotonic at {p}");
         last = g;
     }
-    // From -40 dB up, every 16 pot steps rise between 0.8 and 1.1 dB: even in dB.
     let first = (1..=LIVE_MASTER_MAX)
         .find(|&p| db(gain(p)) >= -40.0)
         .unwrap();
@@ -78,9 +71,8 @@ fn master_has_an_even_db_taper() {
     }
 }
 
-/// Full MASTER leaves the output alone, bit for bit: the stage does not run.
 #[test]
-fn unity_changes_nothing() {
+fn unity_gain_changes_no_sample_bit_for_bit() {
     let x = block(|i| (i as i32 * 509 % 65536) - 32768);
     assert_eq!(apply(&x, MASTER_UNITY, MASTER_UNITY), x);
 }
@@ -105,9 +97,8 @@ fn a_constant_gain_scales_every_sample_rounded_to_nearest() {
     );
 }
 
-/// 0 stays 0 at every gain, so a silent tail stays exactly silent.
 #[test]
-fn silence_stays_silent() {
+fn silence_stays_exactly_silent_at_every_gain() {
     let z = block(|_| 0);
     for (from, to) in [
         (0, MASTER_UNITY),
@@ -119,8 +110,6 @@ fn silence_stays_silent() {
     }
 }
 
-/// A change ramps over the block, sample i at from + (to - from) (i + 1) / 128, the block ending
-/// on `to`: a DC input shows the ramp, and its step is the one gain step per sample.
 #[test]
 fn a_change_ramps_linearly_over_the_block() {
     let x = block(|_| 20000);
@@ -159,9 +148,7 @@ fn chip() -> Box<sid> {
     s
 }
 
-/// A held chord (a saw, a pulse and a triangle) at chip volume `volume`, rendered in blocks of
-/// 128 for 0.5 s: the mono samples as the firmware's blocks have them.
-fn chord(volume: u8) -> Vec<i16> {
+fn held_chord_at_chip_volume(volume: u8) -> Vec<i16> {
     let mut s = chip();
     let w = |s: &mut sid, r: u8, v: u8| unsafe { sid_write(s, r, v) };
     for (r, v) in [
@@ -193,13 +180,9 @@ fn chord(volume: u8) -> Vec<i16> {
     out
 }
 
-/// MASTER as a digital gain on live play: the chip's volume register stays at 15, and the output at
-/// any pot is the chip's output scaled by the taper's gain, within the integer stage's rounding (a
-/// LSB). At full MASTER the register is 15 and the stage is not there: the output is the chip's,
-/// bit for bit.
 #[test]
 fn live_play_is_the_chips_output_scaled_by_the_taper() {
-    let full = chord(0x0f);
+    let full = held_chord_at_chip_volume(0x0f);
     let peak = full.iter().map(|&v| i32::from(v).abs()).max().unwrap();
     assert!(peak > 3000, "a chord that sounds: {peak}");
     for pot in (0..=LIVE_MASTER_MAX).step_by(7).chain([LIVE_MASTER_MAX]) {
@@ -227,11 +210,12 @@ fn live_play_is_the_chips_output_scaled_by_the_taper() {
     }
 }
 
-/// MASTER's gain scales a song's own volume writes: a fade to volume 8 reaches half of what
-/// the register fade alone gives, at any MASTER: the two compose multiplicatively.
 #[test]
 fn a_songs_volume_writes_compose_with_master() {
-    let (loud, soft) = (chord(0x0f), chord(0x08));
+    let (loud, soft) = (
+        held_chord_at_chip_volume(0x0f),
+        held_chord_at_chip_volume(0x08),
+    );
     let peak = |v: &[i16]| v.iter().map(|&x| i32::from(x).abs()).max().unwrap();
     let g = gain(256);
     let scale = |v: &[i16]| -> Vec<i16> {

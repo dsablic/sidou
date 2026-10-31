@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The Modulation slot: chorus/ensemble, flanger, phaser, tremolo and auto-pan.
 
 use sidou_sys::*;
 
 use crate::slots::*;
+use crate::{ac_rms, db, sine, tone_amp, xorshift_noise, FS, FSF, RESIDUAL_MAX};
 
-/// Frequency and half peak-to-peak of a slowly oscillating trace sampled at FS.
-fn oscillation(trace: &[f32]) -> (f64, f64) {
+fn rate_and_half_peak_to_peak(trace: &[f32]) -> (f64, f64) {
     let mean = trace.iter().map(|&v| f64::from(v)).sum::<f64>() / trace.len() as f64;
     let ups: Vec<usize> = (1..trace.len())
         .filter(|&i| f64::from(trace[i - 1]) < mean && f64::from(trace[i]) >= mean)
@@ -30,8 +29,13 @@ fn correlation(a: &[i16], b: &[i16]) -> f64 {
     ab / (aa * bb).sqrt()
 }
 
-/// Through the Modulation slot at full mix, from a cold start; the second half.
-fn through(alg: u32, input: &[i16], amount: f32, a: f32, b: f32) -> (Vec<i16>, Vec<i16>) {
+fn second_half_through_mod_at_full_mix(
+    alg: u32,
+    input: &[i16],
+    amount: f32,
+    a: f32,
+    b: f32,
+) -> (Vec<i16>, Vec<i16>) {
     let mut s = Slots::new(1);
     s.set(MOD, params(alg, amount, a, b, 1.0));
     let out = s.run(input);
@@ -46,18 +50,16 @@ fn chorus_lfo_rate_and_depth() {
     let (mut l, mut r) = (0.0f32, 0.0f32);
     let mut d0 = Vec::new();
     let mut d3 = Vec::new();
-    // A = 2/3 is the base rate; no ensemble: the slow LFO alone.
     for _ in 0..(5 * FS) {
         unsafe { sid_fx_chorus_tick(&mut *c, 0.0, 1.0, 2.0 / 3.0, 0.0, &mut l, &mut r) };
         d0.push(c.delay[0]);
         d3.push(c.delay[3]);
     }
-    let (hz, depth) = oscillation(&d0);
+    let (hz, depth) = rate_and_half_peak_to_peak(&d0);
     let want = SID_FX_CHORUS_SLOW_MS * 1e-3 * FSF;
     println!("chorus: {hz:.3} Hz, depth {depth:.1} samples (want {want:.1})");
     assert!((hz / SID_FX_CHORUS_SLOW_HZ - 1.0).abs() < 0.02);
     assert!((depth / want - 1.0).abs() < 0.01);
-    // The right side's first tap runs 60 degrees on.
     let lag = (0..FS as usize)
         .max_by(|&i, &j| d3[i].total_cmp(&d3[j]))
         .unwrap() as f64
@@ -71,20 +73,16 @@ fn chorus_lfo_rate_and_depth() {
 
 #[test]
 fn chorus_is_wide_and_keeps_the_level() {
-    let input = test_noise(4 * FS as usize, 11);
-    let (l, r) = through(SID_MOD_CHORUS, &input, 1.0, 0.7, 1.0);
+    let input = xorshift_noise(4 * FS as usize, 11);
+    let (l, r) = second_half_through_mod_at_full_mix(SID_MOD_CHORUS, &input, 1.0, 0.7, 1.0);
     let rho = correlation(&l, &r);
-    let lvl = db(rms(&l) / rms(&input));
+    let lvl = db(ac_rms(&l) / ac_rms(&input));
     println!("chorus on noise: L/R correlation {rho:.3}, level {lvl:.2} dB");
     assert!(rho < 0.5, "L and R correlate at {rho}");
-    // Three taps of white noise at different delays sum incoherently (-4.8 dB), and
-    // linear interpolation at random fractions loses ~1.8 dB of white noise more.
     assert!((lvl + 6.5).abs() < 1.0, "level {lvl} dB");
-    // On a tone, three taps 120 degrees apart, each phase-modulated by beta = 2 pi f D (D
-    // the excursion), average to J0(beta) (plus J3 terms, negligible here).
     let tone = sine(220.0, 0.5, 4 * FS as usize);
-    let (l, r) = through(SID_MOD_CHORUS, &tone, 0.3, 0.7, 0.0);
-    let lvl = db(rms(&l) / rms(&tone));
+    let (l, r) = second_half_through_mod_at_full_mix(SID_MOD_CHORUS, &tone, 0.3, 0.7, 0.0);
+    let lvl = db(ac_rms(&l) / ac_rms(&tone));
     let beta = 2.0 * std::f64::consts::PI * 220.0 * 0.3 * SID_FX_CHORUS_SLOW_MS * 1e-3;
     let j0: f64 = (0..20)
         .map(|k| {
@@ -112,18 +110,17 @@ fn flanger_sweeps_its_range_and_stays_stable() {
         dl.push(f.delay_l);
         dr.push(f.delay_r);
     }
-    let (hz, half) = oscillation(&dl);
+    let (hz, half) = rate_and_half_peak_to_peak(&dl);
     let lo = dl.iter().fold(f32::MAX, |m, &v| m.min(v));
-    let want_hz = SID_FX_FLANGER_MIN_HZ * 10.0; // A = 0.5: geometric middle
+    let geometric_middle_hz = SID_FX_FLANGER_MIN_HZ * 10.0;
     println!(
         "flanger: {hz:.3} Hz, {:.2} .. {:.2} ms",
         f64::from(lo) / 44.1,
         (f64::from(lo) + 2.0 * half) / 44.1
     );
-    assert!((hz / want_hz - 1.0).abs() < 0.03);
+    assert!((hz / geometric_middle_hz - 1.0).abs() < 0.03);
     assert!((f64::from(lo) / 44.1 - SID_FX_FLANGER_MIN_MS).abs() < 0.01);
     assert!(((f64::from(lo) + 2.0 * half) / 44.1 - SID_FX_FLANGER_MAX_MS).abs() < 0.05);
-    // Right: 90 degrees on, so when the left is at its middle the right is at an extreme.
     let mid = dl
         .iter()
         .position(|&v| (v - (lo + half as f32)).abs() < 2.0)
@@ -134,11 +131,10 @@ fn flanger_sweeps_its_range_and_stays_stable() {
         "right is {r_off} from the middle"
     );
 
-    // Full feedback of either sign on full-scale noise: bounded, finite.
     for fb in [0.0f32, 1.0] {
         let mut f = Box::<sid_fx_flanger>::default();
         unsafe { sid_fx_flanger_init(&mut *f, FS) };
-        let noise = test_noise(5 * FS as usize, 3);
+        let noise = xorshift_noise(5 * FS as usize, 3);
         let mut peak = 0.0f32;
         for &v in &noise {
             unsafe {
@@ -159,12 +155,10 @@ fn flanger_sweeps_its_range_and_stays_stable() {
     }
 }
 
-/// Response of the phaser's wet left side to a tone, in dB, with the LFO frozen in the
-/// middle of the sweep (depth 0).
-fn phaser_gain(hz: f64, feedback: f32) -> f64 {
+fn phaser_wet_left_db_with_the_lfo_frozen_mid_sweep(hz: f64, feedback: f32) -> f64 {
     let n = FS as usize / 2;
     let input = sine(hz, 0.25, n);
-    let (l, _) = through(SID_MOD_PHASER, &input, 0.0, 0.5, feedback);
+    let (l, _) = second_half_through_mod_at_full_mix(SID_MOD_PHASER, &input, 0.0, 0.5, feedback);
     db(tone_amp(&l, hz) / tone_amp(&input[n / 2..], hz))
 }
 
@@ -173,7 +167,7 @@ fn phaser_has_notches_and_quadrature_sides() {
     let mut worst = (0.0, 0.0f64);
     let mut hz = 100.0;
     while hz < 12000.0 {
-        let g = phaser_gain(hz, 0.0);
+        let g = phaser_wet_left_db_with_the_lfo_frozen_mid_sweep(hz, 0.0);
         if g < worst.1 {
             worst = (hz, g);
         }
@@ -181,12 +175,11 @@ fn phaser_has_notches_and_quadrature_sides() {
     }
     println!("phaser notch: {:.1} dB at {:.0} Hz", worst.1, worst.0);
     assert!(worst.1 < -20.0, "no notch: deepest {:.1} dB", worst.1);
-    // Feedback sharpens the peaks between the notches.
     let peak = |fb: f32| {
         let mut best = -100.0f64;
         let mut hz = 100.0;
         while hz < 12000.0 {
-            best = best.max(phaser_gain(hz, fb));
+            best = best.max(phaser_wet_left_db_with_the_lfo_frozen_mid_sweep(hz, fb));
             hz *= 1.05;
         }
         best
@@ -205,7 +198,6 @@ fn phaser_has_notches_and_quadrature_sides() {
         al.push(p.a_l);
         ar.push(p.a_r);
     }
-    // Quadrature: the two coefficient traces are uncorrelated around their means.
     let mean = |v: &[f32]| v.iter().map(|&x| f64::from(x)).sum::<f64>() / v.len() as f64;
     let (ml, mr) = (mean(&al), mean(&ar));
     let (mut c, mut vl, mut vr) = (0.0, 0.0, 0.0);
@@ -227,7 +219,6 @@ fn tremolo_depth_and_rate() {
         let mut t = sid_fx_tremolo::default();
         unsafe { sid_fx_tremolo_init(&mut t, FS) };
         let (mut l, mut r) = (0.0f32, 0.0f32);
-        // A constant input of 1 reads the gain directly.
         let mut gains = Vec::new();
         for _ in 0..n {
             unsafe { sid_fx_tremolo_tick(&mut t, 1.0, depth, 0.5, 0.0, &mut l, &mut r) };
@@ -235,7 +226,7 @@ fn tremolo_depth_and_rate() {
         }
         let lo = gains.iter().fold(f32::MAX, |m, &v| m.min(v));
         let hi = gains.iter().fold(f32::MIN, |m, &v| m.max(v));
-        let (hz, _) = oscillation(&gains);
+        let (hz, _) = rate_and_half_peak_to_peak(&gains);
         println!("tremolo depth {depth}: gain {lo:.3} .. {hi:.3} at {hz:.3} Hz");
         assert!((hi - 1.0).abs() < 1e-3 && (lo - (1.0 - depth)).abs() < 2e-3);
         assert!((hz - 1.0).abs() < 0.02, "rate {hz} Hz, want 1 at A = 0.5");
@@ -246,9 +237,8 @@ fn tremolo_depth_and_rate() {
 fn autopan_is_equal_power_and_moves() {
     let tone = sine(500.0, 0.5, 4 * FS as usize);
     for shape in [0.0f32, 1.0] {
-        let (l, r) = through(SID_MOD_AUTOPAN, &tone, 1.0, 0.5, shape);
+        let (l, r) = second_half_through_mod_at_full_mix(SID_MOD_AUTOPAN, &tone, 1.0, 0.5, shape);
         let x = &tone[tone.len() / 2..];
-        // Power per 10 ms window: L^2 + R^2 against 2 x^2.
         let w = 441;
         let mut worst = 0.0f64;
         let mut swing = (f64::MAX, f64::MIN);
@@ -290,7 +280,7 @@ fn modulation_parameter_jumps_are_click_free() {
 
 #[test]
 fn switching_modulations_is_click_free() {
-    let (sw, steady) = switch_steps(
+    let (sw, steady) = worst_second_diff_at_and_between_switches(
         MOD,
         &[
             SID_MOD_CHORUS,

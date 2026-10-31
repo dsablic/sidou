@@ -1,24 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* SIDOU boot and main loop. Init order after fm1-sid's firmware/main.c (fm1-emu) and
- * Felucca's src/main.c: watchdog first, fatal vectors, memory, then the LCD, the live
- * instrument, the key matrix and MIDI in (TRS UART, USB), audio (ALNK0 IRQ) and the 10 kHz
- * tick (TIMER5 IRQ, which also polls MIDI), interrupts on, the screen's first frame (sent by
- * the main loop), and a main loop that plays MIDI and the panel into the instrument, redraws
- * the screen, answers the update protocol and feeds the watchdog. The boot-loop guard comes first of all (fm1_cstart).
- *
- * This file includes the HAL's interrupt, audio and timer headers; input.c and lcd.c include
- * the input and LCD ones (platform/fm1/VENDORED.md). */
 #include <stdint.h>
 #include <string.h>
 
-/* The HAL's second-core hold (fm1_cpu1_halt), which Felucca's fm1_cstart runs first at every
- * boot and before every reset. SIDOU never starts the second core, but one left running (by the
- * ROM, another firmware, a reset that did not hold it) would run whatever its PC points at while
- * SIDOU clears and fills RAM. The HAL builds the hold only with FM1_CPU1_USED; fm1_irq.h's
- * second-core fault paths, which need Felucca's fm1_cpu1.S, stay out (FM1_CPU1_USED 0 for it). */
 #define FM1_CPU1_USED 1
-#include "fm1_sys.h" /* before fm1_irq.h: FM1_RESET_PREP, here the hold */
+#include "fm1_sys.h"
 #undef FM1_CPU1_USED
 #define FM1_CPU1_USED 0
 
@@ -60,33 +46,23 @@ extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 typedef void (*ctor_fn)(void);
 extern ctor_fn __init_array_start[], __init_array_end[];
 
-/* The IRQ entry wrappers (hal/fm1_isr.S) and the C bodies they call. */
 void isr_alnk0(void);
 void isr_timer5(void);
 void fm1_alnk0_irq(void);
 void fm1_timer5_irq(void);
 void fm1_cstart(void);
 
-/* Priorities: TIMER5 above ALNK0, so the tick keeps its pace while a half buffer renders. */
 #define PRIO_ALNK0 3u
 #define PRIO_TIMER5 4u
-/* fm1_wdt_arm: 0x0A is 1 s, each step doubles it. */
 #define WDT_TIMEOUT 0x0Du
 #define TICK_MS (1000u / LIVE_TICK_HZ)
-/* live_tick catches up at most this many ticks in one pass (reg_ring.h's worst pass). A pass
- * runs at most one slice of the spare chip's preparation however many ticks it catches up
- * (reg_ring_pass_end, from audio_commit at the pass's end): two would be 2 x 40k on top of a
- * view's 68k, past the 120k poll allowance. */
 #define TICK_CATCH_UP 2u
 
 static int32_t abuf[2u * AUDIO_HALF_WORDS] __attribute__((aligned(4)));
-/* Survives resets (.noinit): boots that die early in a row end in UBOOT (app/bootguard.h). */
 static bootguard boot_guard __attribute__((section(".noinit")));
 static volatile uint32_t uptime_ms;
 static live instrument;
-/* Which chip the keys play, and the two chips' setups (app/keys_route.h). */
 static keys_route keys_router;
-/* The UI sounds on chip B's spare voice, off by default (app/ui_sound.h). */
 static ui_sound ui_sounds;
 static panel front;
 static song_io songs;
@@ -104,10 +80,7 @@ enum { MIDI_OBJECT_FROZEN = 1u, MIDI_OBJECT_WORKSPACE = 2u };
 _Static_assert(sizeof(sysex) + sizeof(midi_object) + 16u <= 1024u,
                "MIDI dump state, packet buffer and binding globals fit the new RAM budget");
 
-/* The audio interrupt renders: a TIMER5 tick nested in it leaves USB's poll for later
- * (fm1_timer5_irq). */
 static volatile uint8_t in_audio;
-/* TIMER5 interrupts so far: the main loop's wait for the next one while a host is there. */
 static volatile uint32_t timer_irqs;
 
 void fm1_alnk0_irq(void) {
@@ -118,15 +91,10 @@ void fm1_alnk0_irq(void) {
         audio_fill(&abuf[fm1_audio_free_half() * AUDIO_HALF_WORDS]);
         fm1_audio_ack_half();
     }
-    audio_block_end = fm1_ticks(); /* a write window may start now (store_fm1.c) */
+    audio_block_end = fm1_ticks();
     in_audio = 0;
 }
 
-/* Every 5th tick (2 kHz) each, on different ticks, as Felucca does: USB on tick 0, the TRS
- * UART on tick 2. The UART's poll runs nested in the audio ISR too (it touches nothing the
- * render does). USB's never does, as in Felucca's fm1_timer5_irq: a poll due while a block
- * renders is owed, and runs at the first tick after the render (within a render's length,
- * about 0.2 ms idle and at most a block's 2.9 ms). */
 #define MIDI_POLL_TICKS 5u
 
 void fm1_timer5_irq(void) {
@@ -145,10 +113,8 @@ void fm1_timer5_irq(void) {
         usb_owed = 0;
         midi_usb_isr();
     } else if (sub == 0u && in_audio) {
-        usb_audio_isr(); /* USB audio's packet, one a USB frame (usb_audio.h) */
+        usb_audio_isr();
     }
-    /* USB audio out (usb_audio.h): a block rendered since the last tick is in the free half
-     * buffer until the DMA moves on, which raises the half's pending flag. */
     uint32_t block_end = audio_block_end;
     if (block_end != block_seen && !in_audio) {
         block_seen = block_end;
@@ -170,25 +136,14 @@ void fm1_timer5_irq(void) {
     }
 }
 
-/* fm1_fault_c (fm1_irq.h) has already recorded the crash in fm1_crash (.noinit), where the
- * next boot can find it. Stop the DMA so the buffer does not loop, then reset. */
 static void fm1_fault(const fm1_crash_t* c) {
     (void)c;
     fm1_audio_stop();
     fm1_reboot();
 }
 
-/* --- The song (M2c Task 6): SIDOU's first song, played by the song views' transport
- * (app/song_view.h, bound below). --- */
-
-/* 1 while a .sid tune has the song's memory (M3 Task 9, "A .sid tune" below): song control's
- * state, the song's model and its work space are the tune's, so nothing here reads them (the
- * transport's members answer as a stopped song's, the song views have none, song_io refuses
- * everything, the MIDI objects are busy) until the song is made again and read back. */
 static uint8_t song_away;
 
-/* The first song (app/demo_song.h) from flash into the song's region: the audio interrupt never
- * reads flash. */
 static uint32_t read_demo(void* ctx, uint32_t offset, uint8_t* buf, uint32_t len) {
     (void)ctx;
     if (offset >= demo_song_sng_bytes) {
@@ -202,13 +157,7 @@ static uint32_t read_demo(void* ctx, uint32_t offset, uint8_t* buf, uint32_t len
     return n;
 }
 
-/* The song's chip A (song_chip_hooks, app/keys_route.h's contract). Called a poll at a time
- * from PLAY on: once the keys have left chip A (or KEYS is A), the song's setup (its CHPA, or
- * the keys' with AUTHENTIC envelopes, decision record 0005) is what chip A should have
- * (keys_route_song_wants, the one writer of song_want: keys_route's tick brings chip A
- * there, preparing it in the background, as it does the other chip for the keys); the song
- * starts once chip A has it. M2c Task 8's save writes song_want back into the CHPA. */
-static uint8_t song_setup_on; /* chip A's setup for the song is asked for */
+static uint8_t song_setup_on;
 static chip_setup song_want;
 static int song_base_get(chip_setup* setup);
 static void song_base_set(const chip_setup* setup);
@@ -221,11 +170,11 @@ static int song_chip_ready(void* ctx, const song_chip_setup* c) {
     }
     if (!song_setup_on) {
         if (!song_base_get(&song_want)) {
-            song_want = kr->ctl[0].has; /* chip A as the song finds it (the keys' setup) */
+            song_want = kr->ctl[0].has;
             if (c) {
                 setup_decode(&song_want, c);
             } else {
-                song_want.gate_reset = 0u; /* AUTHENTIC */
+                song_want.gate_reset = 0u;
             }
         }
         keys_route_song_wants(kr, &song_want);
@@ -240,31 +189,24 @@ static int song_chip_ready(void* ctx, const song_chip_setup* c) {
     return 1;
 }
 
-/* Once a stop has reached the interrupt: chip A back to the keys (keys_route takes it back to
- * their setup, and the keys back to it). */
-static uint8_t song_mine; /* keys_route_set_song(1) is the transport's */
+static uint8_t song_mine;
 
 static void song_chip_back(void* ctx) {
     keys_route_set_song(ctx, 0);
     song_mine = 0;
 }
 
-/* In the LCD's reset wait, before anything else: the song's region and the first song in it. */
 static void song_load(void) {
     gt2_song* s = audio_song_boot();
     gt2_caps caps = {SONG_MULTISPEED_MAX};
     gt2_read_info info;
-    /* The song is SIDOU's own: it always reads (host tests check it does, with these caps). */
     gt2_sng_read(s, read_demo, 0, &caps, &info);
 }
 
-/* A row's character locks (M2c Task 7): chip A's controls move to them with chip_ctl's glide,
- * as a MIDI CC moves them (decision record 0006: 0.32 s end to end, so coarse by nature),
- * and back to the song's own setup after (what chip A wanted when the first lock came). */
 static chip_setup song_char_base;
 static uint8_t song_base_valid;
 static int16_t song_char_on[4] = {-1, -1, -1, -1};
-static uint32_t song_warned; /* warnings shown since PLAY */
+static uint32_t song_warned;
 
 __attribute__((noinline, unused)) static int song_base_get(chip_setup* setup) {
     if (!song_base_valid) {
@@ -299,11 +241,10 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
     keys_route_song_wants(kr, &want);
 }
 
-static const midi_sync* sync_state; /* midi_synced(), for play()'s look at CLOCK OUT */
+static const midi_sync* sync_state;
 static int song_chip_edit(void* ctx, const chip_setup* setup, uint32_t fields) {
     keys_route* kr = ctx;
     if (song_away) {
-        /* A tune's chip A: the edit straight to what it follows (no song base, no locks). */
         chip_setup want = kr->song_want;
         if (fields & KEYS_ROUTE_EDIT_PROFILE) {
             want.profile = setup->profile;
@@ -453,8 +394,6 @@ __attribute__((noinline, unused)) static void song_collect(song_save_data* out) 
     gt2_song* s = sc->song;
     song_chip_setup chip;
     int has_chip = song_ext_get_chip(s, SONG_TAG_CHPA, &chip);
-    /* Ownership changes can temporarily set song_want to the keys' setup. Only explicit
-     * song edits and the song's own start change its authoritative, unlocked base. */
     if (song_base_valid) {
         setup_encode(&chip, &song_char_base);
     } else if (!has_chip) {
@@ -511,8 +450,6 @@ __attribute__((noinline, unused)) static int song_capture_fits(
             gt2_saved_trailer_size(ext) > STORE_FILE_MAX) {
         return 0;
     }
-    /* Shrink before growing; check every intermediate trailer padding transition before
-     * changing a byte, so the sequence cannot fail after a partial capture. */
     uint32_t at = s->ext_used;
     for (uint32_t pass = 0; pass < 2u; pass++) {
         for (uint32_t i = 0; i < 5u; i++) {
@@ -622,7 +559,6 @@ static void song_apply_keys(const uint16_t* param, uint32_t count, uint8_t prese
     }
     instrument.expert_dirty = 1;
     instrument.expert_version += changed != 0;
-    /* the sound's own past the experts (a song saved before them keeps the preset's) */
     for (uint32_t p = LIVE_PARAM_EXPERT_END; p < count && p < LIVE_PARAM_COUNT; p++) {
         if (param[p] <= live_param_max(p)) {
             live_param_set(&instrument, p, param[p]);
@@ -676,10 +612,6 @@ static int song_loaded(void* ctx) {
     }
     ui_song_loaded(song_io_returning(&songs));
     if (songs.restoring || song_io_keeping(&songs)) {
-        /* Runtime was untouched or restored already; reapplying KEYS releases held notes. Back
-         * from a tune, the keys' sound, slots, MIDI and chip A's base are as the tune left them
-         * (a sound edit made before or during it is the player's, not the file's to undo); the
-         * song's chip A wants its base again, as a read sets it. */
         if (!songs.restoring && song_base_valid) {
             keys_route_song_wants(&keys_router, &song_char_base);
             keys_router.song_user = 0;
@@ -709,7 +641,7 @@ static int song_loaded(void* ctx) {
     } else {
         chip_setup_of(&instrument, &base);
         base.profile = instrument.profile_req;
-        base.gate_reset = 0; /* plain songs default to AUTHENTIC */
+        base.gate_reset = 0;
     }
     song_base_set(&base);
     keys_route_song_wants(&keys_router, &base);
@@ -729,7 +661,6 @@ static int midi_object_stopped(const song_ctl* sc) {
            sc->stage == sc->cmd_tail;
 }
 
-/* The song after an instrument import (SysEx's and the lift's): stopped, its shapes derived anew. */
 static void song_after_import(song_ctl* sc) {
     sc->state = SONG_IDLE;
     sc->shapes_used = 0;
@@ -749,7 +680,7 @@ static int midi_object_open(void* ctx, uint8_t target, uint8_t index, int writin
     gt2_song* s = sc->song;
     if (writing && target == 2u && memcmp(songs.name, "MIDI SONG", 10u) == 0) {
         midi_object.staging_busy = 1;
-        return SYSEX_BUSY; /* keep the current import's rollback file immutable */
+        return SYSEX_BUSY;
     }
     if (song_io_busy(&songs) || songs.about || songs.external || s->frozen || s->pending || s->pending_loose ||
         (target == 1u && !midi_object_stopped(sc)) ||
@@ -894,7 +825,7 @@ static void midi_sysex_toast(void* ctx, uint8_t reason) {
     case SYSEX_TIMEOUT: text = "MIDI: TIMEOUT"; break;
     case SYSEX_ABORTED: text = "MIDI: ABORTED"; break;
     case SYSEX_IO: text = "MIDI: FILE ERROR"; break;
-    case SYSEX_RSID: text = sid_io_message(SID_IO_RSID); break; /* a .sid's refusals */
+    case SYSEX_RSID: text = sid_io_message(SID_IO_RSID); break;
     case SYSEX_MUS: text = sid_io_message(SID_IO_MUS); break;
     case SYSEX_BROKEN: text = sid_io_message(SID_IO_BROKEN); break;
     case SYSEX_TOO_LONG: text = sid_io_message(SID_IO_TOO_LONG); break;
@@ -916,14 +847,12 @@ __attribute__((noinline, unused)) static void midi_objects_bind(void) {
     midi_sysex_bind(&binding, &uptime_ms);
 }
 
-static int16_t song_error;    /* the refusal last shown */
+static int16_t song_error;
 
-/* A refusal or a warning as a toast (the SONG view's hint until it exists, M2c Task 8). */
 static void song_tell(song_ctl* sc) {
     if (sc->error != song_error) {
         song_error = sc->error;
         if (song_error == SONG_ERR_MULTISPEED) {
-            /* as the reader says it (gt2_sng.c) */
             char t[32] = "SNG: MULTISPEED ";
             uint32_t k = 16u, m = sc->opts.multispeed;
             if (m >= 10u) {
@@ -954,12 +883,6 @@ static void song_tell(song_ctl* sc) {
     song_warned |= w;
 }
 
-/* fm1-emu's tests only (emu-gate tests/song.rs, "edits while playing"): edit requests a test
- * writes into RAM, which the main loop makes with the song model's primitives and sends as
- * M2d's editor will. op: 0 none, 1 a row write (a: pattern, b: row, cell), 2 a row inserted
- * and 3 a row deleted (a rebuild: a swap); the main loop clears op once the edit is sent and
- * records the song's block count then (the edit applies at the next block). Nothing on the
- * device writes it. */
 typedef struct {
     volatile uint32_t op;
     uint32_t a, b;
@@ -985,7 +908,7 @@ static void song_test_edits(song_ctl* sc) {
             err = gt2_pattern_delete_row(sc->song, r->a, r->b, &e);
         }
         if (err == GT2_ERR_PENDING) {
-            return; /* in order: this one again next pass */
+            return;
         }
         if (err != GT2_OK) {
             ui_toast(sc->song->frozen ? "SAVING" : "SONG FULL", 2000u);
@@ -999,7 +922,6 @@ static void song_test_edits(song_ctl* sc) {
     }
 }
 
-/* RAM-only requests for emulator integration tests; no device input writes this hook. */
 typedef struct {
     volatile uint32_t op;
     char name[STORE_NAME_MAX + 1u];
@@ -1021,34 +943,30 @@ static void song_io_test(void) {
     r->op = 0;
 }
 
-/* --- The song views' player (app/song_transport.h) over song_ctl --- */
-
-/* An audition (jams with the song stopped, song_ctl_audition) ends this long after its last
- * jam is let go, and chip A goes back to the keys. */
 #define AUDITION_HOLD_MS 2000u
 
-static song_status song_seen; /* the row events' positions, kept between frames */
-static uint8_t jam_wait[3];   /* a jam note waiting for the audition: on, voice, note */
+static song_status song_seen;
+static uint8_t jam_wait[3];
 static uint8_t jam_instr;
-static uint8_t jam_wait_off;  /* and its release */
-static uint8_t jam_held;      /* a jam note sounds and is not let go */
-static uint32_t jam_last_ms;  /* the last jam's time */
+static uint8_t jam_wait_off;
+static uint8_t jam_held;
+static uint32_t jam_last_ms;
 
 static int st_play_from(void* ctx, uint32_t sub, uint32_t pos) {
     song_ctl* sc = ctx;
     if (song_away) {
-        return 1; /* a tune has the song's memory: nothing to play (Task 11 routes PLAY) */
+        return 1;
     }
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
     }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
-        return 1; /* transport requests during a load do not play a half-read model */
+        return 1;
     }
     if (!song_ctl_play(sc, sub, pos)) {
         return 0;
     }
-    sc->chance_seed = uptime_ms; /* each PLAY rolls its chances afresh */
+    sc->chance_seed = uptime_ms;
     song_warned = 0;
     song_setup_on = 0;
     for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
@@ -1066,7 +984,7 @@ static int st_stop(void* ctx) {
     if (song_away) {
         return 1;
     }
-    return song_ctl_stop(ctx); /* 0 while it starts: asked again until it plays */
+    return song_ctl_stop(ctx);
 }
 
 static int st_resume(void* ctx) {
@@ -1091,8 +1009,6 @@ static int st_mute(void* ctx, uint32_t mask) {
     return song_ctl_mute(ctx, mask);
 }
 
-/* While the song plays, straight to the player; stopped, through the audition, which may
- * take a few ticks to start (chip A taken for the song): the note waits for it. */
 static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
     song_ctl* sc = ctx;
     if (song_away) {
@@ -1139,7 +1055,6 @@ static int st_held(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n) 
     return song_away ? 0 : song_ctl_held(ctx, voice, locks, n);
 }
 
-/* The song views' listener of the event ring (song_events below): each voice's place. */
 static void song_seen_rows(const song_event* ev, uint32_t n) {
     for (uint32_t i = 0; i < n; i++) {
         uint32_t ch = SONG_EV_CHANNEL(&ev[i]);
@@ -1151,14 +1066,6 @@ static void song_seen_rows(const song_event* ev, uint32_t n) {
     }
 }
 
-/* REC from the keys (1.1 item 14): how long before the main loop's now a key it reads was
- * played against what was heard, in samples, the middle of each delay. The clock's now is the
- * end of the block last rendered, which the DAC plays two blocks after that block's interrupt
- * (the double buffer); the key counts as pressed INPUT_PRESS_FRAMES scan frames after it closes
- * (the first one a frame or less after: 1.5 frames on average, 1.1 to 2.2 ms), and the pass
- * that follows that frame reads it, half a block on average after the last interrupt, which
- * is that much less of the double buffer still to play. 2 x 128 - 64 + 73 = 265 samples, 6.0
- * ms (emu-gate first_use.rs rec_places_a_key_where_it_was_heard measures it). */
 #define REC_LAG_SAMPLES                                                                         \
     (2u * AUDIO_HALF_FRAMES - AUDIO_HALF_FRAMES / 2u +                                          \
      ((2u * INPUT_PRESS_FRAMES - 1u) * INPUT_FRAME_US * AUDIO_SAMPLE_RATE + 1000000u) /          \
@@ -1168,19 +1075,17 @@ _Static_assert(REC_LAG_SAMPLES == 265u, "REC's lag, as docs/reference/controls.m
 static void st_status(void* ctx, song_status* out) {
     song_ctl* sc = ctx;
     if (song_away) {
-        memset(out, 0, sizeof *out); /* a song that has not played */
+        memset(out, 0, sizeof *out);
         for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
             out->order_pos[v] = out->row[v] = SONG_T_NOWHERE;
         }
         return;
     }
-    *out = song_seen; /* the rows song_events has heard, up to this pass */
+    *out = song_seen;
     out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
     out->subtune = sc->play_sub;
     out->again = (uint8_t)song_ctl_again(sc);
-    /* REC's clock: the last call, and the samples since it over the call period (read as
-     * st_clock does: the interrupt moves them) */
     {
         const volatile song_ctl* vc = sc;
         uint32_t samples, calls, at, q;
@@ -1196,7 +1101,6 @@ static void st_status(void* ctx, song_status* out) {
         out->now_frac = (uint8_t)(frac > 255u ? 255u : frac);
         out->rec_lag = (uint16_t)(q ? REC_LAG_SAMPLES * 256u / q : 0u);
     }
-    /* the play's options; before one, the song's (or the defaults), read again each second */
     static gt2_options before;
     static uint8_t frames;
     gt2_options o = sc->opts;
@@ -1209,11 +1113,10 @@ static void st_status(void* ctx, song_status* out) {
     out->multispeed = o.multispeed;
     out->ntsc = o.ntsc;
     out->mute = sc->mute;
-    /* the player's tempo: calls a row, its packed form less one (funktempo below 2) */
     const gt2_player* p = &sc->player;
     uint8_t t = p->shape ? p->chn[0].tempo : 0u;
     if (!p->shape) {
-        out->speed[0] = out->speed[1] = 6u; /* GoatTracker's default until a play */
+        out->speed[0] = out->speed[1] = 6u;
     } else if (t < 2u) {
         out->speed[0] = p->funktempo[0];
         out->speed[1] = p->funktempo[1];
@@ -1227,8 +1130,6 @@ static void st_status(void* ctx, song_status* out) {
     }
 }
 
-/* M2e's MIDI clock (app/midi_sync.h): the held start, the align, the period, the seeks and
- * the calls' samples, through the same transport as the song views'. */
 static int st_hold(void* ctx, uint32_t on) {
     if (song_away) {
         return 1;
@@ -1307,7 +1208,7 @@ static int st_seek_further(void* ctx, uint32_t call) {
 static void st_clock(void* ctx, song_clock* out) {
     const volatile song_ctl* sc = ctx;
     if (song_away) {
-        memset(out, 0, sizeof *out); /* stopped, no tempo: MIDI's clock out sends nothing */
+        memset(out, 0, sizeof *out);
         out->state = SONG_IDLE;
         return;
     }
@@ -1319,7 +1220,7 @@ static void st_clock(void* ctx, song_clock* out) {
         const volatile gt2_player* p = &sc->player;
         uint8_t t = p->shape ? p->chn[0].tempo : 0u;
         if (!sc->shapes_used || !p->shape) {
-            out->speed[0] = out->speed[1] = 0u; /* no tempo before a play */
+            out->speed[0] = out->speed[1] = 0u;
         } else if (t < 2u) {
             out->speed[0] = p->funktempo[0];
             out->speed[1] = p->funktempo[1];
@@ -1360,8 +1261,6 @@ static int st_edit_with_locks(void* ctx, const gt2_edit* edit, const uint8_t* lo
     return 1;
 }
 
-/* The primitives make the authoritative prospective size reservation. Only an edit
- * prepared before a save freeze may still drain through the transport. */
 static int st_song_edit_saving_and_size_guard(void* ctx, const song_edit_request* request) {
     (void)request;
     const song_ctl* sc = ctx;
@@ -1397,20 +1296,12 @@ static const song_transport song_binding = {
 };
 static song_transport song_bound;
 
-/* Once a pass: the audition's jam that waited and its end, the transport's poll (a slice of
- * its analysis), and chip A with the song or the keys. */
-
-/* The voices the keys take from the song under KEYS A (song_ctl_take, read by the interrupt at
- * each block's start): taken at once, before the voice's first register goes to the ring
- * (keys_route.taking), so the song never writes over a key's first note (the M2 review's
- * 2.1); given back in commit_pass, after the ring is committed with the key's gate-off, so
- * the song's registers come back after the keys' last write. */
 static uint8_t song_taken;
 
 static void song_keys_take(void* ctx, uint32_t voices) {
     (void)ctx;
     if (song_away) {
-        return; /* a tune's voices are never the keys' (KEYS A acts as AUTO) */
+        return;
     }
     song_taken = (uint8_t)(song_taken | voices);
     (void)song_ctl_take(audio_song(), song_taken);
@@ -1431,15 +1322,9 @@ __attribute__((noinline, unused)) static void song_file_pass(song_ctl* sc, uint3
     }
 }
 
-/* The event ring's one reader (core/player/song_ctl.h song_ctl_events), once a pass: every
- * event goes, in order, to each of the song's listeners, the song views' places
- * (song_seen_rows) and SCENE's music hooks (ui_song), so no reader takes one from another. A
- * pass drains at most a ring of them. */
 #define SONG_EVENTS_AT_ONCE 16u
-static uint8_t song_heard_state; /* the transport's state the listeners last heard */
+static uint8_t song_heard_state;
 
-/* Called only when there are events or the state changed (song_pass): most passes have
- * neither, and the test costs them a few instructions. */
 __attribute__((noinline, unused)) static void song_events(song_ctl* sc) {
     song_heard_state = sc->state;
     song_event ev[SONG_EVENTS_AT_ONCE];
@@ -1470,7 +1355,7 @@ static void song_pass(void) {
     uint32_t st = song_ctl_state(sc);
     int engaged = st == SONG_LOADING || st == SONG_PLAYING || sc->auditioning || sc->handback;
     if (engaged && !song_mine) {
-        keys_route_set_song(&keys_router, 1); /* the keys leave chip A */
+        keys_route_set_song(&keys_router, 1);
         song_mine = 1;
     }
     song_test_edits(sc);
@@ -1480,7 +1365,7 @@ static void song_pass(void) {
     uint32_t slices = sc->slices;
     audio_song_poll();
     if (sc->ev_head != sc->ev_tail || sc->state != song_heard_state) {
-        song_events(sc); /* song_ctl_state's, read in place */
+        song_events(sc);
     }
     if (songs.state || songs.about_play || songs.message[0]) {
         song_file_pass(sc, slices);
@@ -1488,7 +1373,7 @@ static void song_pass(void) {
     st = song_ctl_state(sc);
     engaged = st == SONG_LOADING || st == SONG_PLAYING || sc->auditioning || sc->handback;
     if (song_mine && !engaged) {
-        keys_route_set_song(&keys_router, 0); /* stopped, or a refused play: the keys come back */
+        keys_route_set_song(&keys_router, 0);
         song_mine = 0;
     }
     song_tell(sc);
@@ -1496,85 +1381,54 @@ static void song_pass(void) {
     front.playing = st == SONG_PLAYING || st == SONG_LOADING;
 }
 
-
-/* --- A .sid tune (M3 Task 9; https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md, "Memory" and "The keys,
- * chip B and the rest of the firmware while a tune plays"): the tune over the song's memory,
- * its 6502 a frame ahead in the main loop (psid_ctl, a slice a pass at most), its writes placed
- * at their cycles by the audio interrupt (audio.c). It starts once the song has stopped and gone
- * idle and the interrupt has left it (AUDIO_NONE), on chips made fresh for it with its setup and
- * clock, the keys on chip B (a 2SID tune: silent); it ends for good once its stop has played out,
- * the interrupt has left it, the song's memory is the song's again and the song is read back
- * from the store (song_io_away). Its file is read by sid_io (app/sid_io.h, Task 10): the header
- * checked at the request and again once the song has let go, then the 64 KiB cleared and the
- * data read in, a part a pass in passes the store does no work in. The SID views (app/sid_view.h,
- * Task 11) play it through the binding at the end of this part (tune_binding), and MIDI's start,
- * stop and continue (tune_midi). A song change, a restart and another file are a stop played
- * out and the file read again (TUNE_RELOAD: a tune loaded in parts has no song change of its
- * own), on the same chips (made again if the new file asks for another setup; ended for good
- * and played again if it has another number of chips). --- */
-
 enum {
-    TUNE_OFF,        /* the song has its memory */
-    TUNE_SONG_STOP,  /* asked for: the song stops and goes idle, its views and files let go */
-    TUNE_TO_NONE,    /* the interrupt leaves the song */
-    TUNE_TO_PSID,    /* the tune's state made; the interrupt takes the tune */
-    TUNE_PREP,       /* the memory and the data from the store, a part a pass (sid_io_poll); the
-                      * keys leave the tune's chips, which are made fresh with its setup */
-    TUNE_ON,         /* psid_ctl has it: playing, paused, stopped or failed */
-    TUNE_RELOAD,     /* a song change, a restart or another file: the stop plays out, the file is
-                      * opened again, then TUNE_PREP's loading */
-    TUNE_END,        /* ending for good: its stop plays out */
-    TUNE_BACK_NONE,  /* the interrupt leaves the tune */
-    TUNE_BACK_SONG,  /* the song's state made again; the interrupt takes the song */
-    TUNE_BACK_READ   /* the song read back from the store; then its views have it again */
+    TUNE_OFF,
+    TUNE_SONG_STOP,
+    TUNE_TO_NONE,
+    TUNE_TO_PSID,
+    TUNE_PREP,
+    TUNE_ON,
+    TUNE_RELOAD,
+    TUNE_END,
+    TUNE_BACK_NONE,
+    TUNE_BACK_SONG,
+    TUNE_BACK_READ
 };
-/* What a request asks of TUNE_ON (sid_tune.ask). */
 enum { TUNE_ASK_NONE, TUNE_ASK_START, TUNE_ASK_SWITCH };
 static struct {
     uint8_t state;
-    uint8_t chips;   /* the tune's: 1, or 2 for a 2SID tune */
-    uint8_t fresh;   /* TUNE_PREP: 0 the chips' resets to ask for, 1 asked, 2 none needed */
-    uint8_t toasted; /* KEYS OFF: 2SID TUNE shown since power-on */
-    uint8_t clocked; /* the chips have the tune's sample step (theirs again at the end) */
-    uint16_t song;   /* the song asked for, 0 the header's start song */
-    int16_t told;    /* the failure last shown */
-    uint8_t turn;    /* TUNE_PREP: a part every other pass, the store's work in the others */
-    sid_io io;       /* the file, and its loading */
-    uint32_t pal_q16; /* the chips' sample step at the PAL clock */
-    /* each chip's sid before its fresh reset; from the start on, the one its shadow follows */
+    uint8_t chips;
+    uint8_t fresh;
+    uint8_t toasted;
+    uint8_t clocked;
+    uint16_t song;
+    int16_t told;
+    uint8_t turn;
+    sid_io io;
+    uint32_t pal_q16;
     sid* was[2];
-    chip_setup want[2]; /* the tune's chip A and chip B setups */
-    uint8_t ask;       /* TUNE_ASK_*: a start of `song`, or the file `next`, for TUNE_ON */
-    uint8_t hold_stop; /* a stop asked while the tune loads: it stops as it starts */
-    uint8_t queued;    /* `next` plays once the song is back (a tune ending, or other chips) */
-    uint8_t mute;      /* GLO's mask (bit v voice v; both chips' for a 2SID tune) */
+    chip_setup want[2];
+    uint8_t ask;
+    uint8_t hold_stop;
+    uint8_t queued;
+    uint8_t mute;
     char next[STORE_NAME_MAX + 1u];
-    uint32_t cycles;   /* the 6502's cycles over the last second (STATUS) */
+    uint32_t cycles;
     uint32_t cycles_from, cycles_ms;
-    /* The meter (Task 12): TIMER4 ticks the passes' slices took (a pass that ran one), over a
-     * window of about a second; the window's start. An audio interrupt landing in a slice counts
-     * in it, so the share reads at most a little high (the pessimistic side of the 15 % rule). */
     uint32_t busy, window_t;
-    uint16_t load;    /* the 6502's share of the CPU over the last window, in tenths of a percent */
-    uint16_t ticks_k; /* ticks a thousand 6502 cycles took */
-    /* The lift's hand-over (lift_pass): LIFT_BEGIN while its file waits for the store, its
-     * length, its flags (PSID_LIFT_F_*) and since when it waits. */
+    uint16_t load;
+    uint16_t ticks_k;
     uint8_t lift;
     uint8_t lift_flags;
     uint16_t lift_len;
     uint32_t lift_ms;
 } sid_tune;
 
-/* A chip's sample step at `clock` (sid.c sid_init_begin's, at the device's rate). */
 static uint32_t tune_step_q16(uint32_t clock) {
     return ((clock / AUDIO_SAMPLE_RATE) << 16) |
            (((clock % AUDIO_SAMPLE_RATE) << 16) / AUDIO_SAMPLE_RATE);
 }
 
-/* A chip's setup for the header's 2-bit model code: with SID MODEL at AUTO (app/settings.h) a
- * named model plays reSIDfp's default profile of it at character 0, "unknown" and "both" the
- * keys' setup; at KEYS every tune the keys' setup. A tune's envelopes are always the chip's own
- * (AUTHENTIC). */
 static void tune_setup(chip_setup* out, uint32_t model) {
     chip_setup_of(&instrument, out);
     if ((model == 1u || model == 2u) && ui_settings()->sid_model == SETTINGS_SID_AUTO) {
@@ -1589,7 +1443,6 @@ static void tune_setup(chip_setup* out, uint32_t model) {
     out->gate_reset = 0;
 }
 
-/* The store's .sid file `name` opened and its header parsed into h: 1, or 0 with a toast. */
 static int tune_open(const char* name, psid_header* h) {
     int r = sid_io_open(&sid_tune.io, store_fm1(), name, h);
     if (r != SID_IO_OK) {
@@ -1599,12 +1452,9 @@ static int tune_open(const char* name, psid_header* h) {
     return 1;
 }
 
-/* Asks for the store's file `name` to play, song `song` (0 the header's start song): 1 if it
- * goes (the song stops first; a tune loaded stops and the file loads in its place; one ending
- * ends, then the file plays), 0 with a toast if it cannot. */
 static int tune_play(const char* name, uint32_t song) {
     psid_header h;
-    sid_io probe; /* the file checked first: a loading tune's io stays as it is */
+    sid_io probe;
     int r = sid_io_open(&probe, store_fm1(), name, &h);
     if (r != SID_IO_OK) {
         ui_toast(sid_io_message(r), 2000u);
@@ -1615,29 +1465,27 @@ static int tune_play(const char* name, uint32_t song) {
     if (sid_tune.state > TUNE_TO_NONE) {
         memcpy(sid_tune.next, probe.file.name, sizeof sid_tune.next);
         if (sid_tune.state >= TUNE_END) {
-            sid_tune.queued = 1; /* once the song is back */
+            sid_tune.queued = 1;
         } else {
-            sid_tune.ask = TUNE_ASK_SWITCH; /* once it is on: its stop, then this file */
+            sid_tune.ask = TUNE_ASK_SWITCH;
         }
         return 1;
     }
     if (keys_router.player) {
-        ui_toast("MIDI MODE HAS CHIP A", 2000u); /* MULTITIMBRAL, WHOLE-CHIP: chip A is theirs */
+        ui_toast("MIDI MODE HAS CHIP A", 2000u);
         return 0;
     }
-    /* Before TUNE_TO_PSID only the file is kept (its header is read again there). */
     sid_tune.io = probe;
     sid_tune.chips = (uint8_t)(h.sid2 ? 2u : 1u);
     sid_tune.told = 0;
     sid_tune.ask = TUNE_ASK_NONE;
     sid_tune.queued = 0;
     if (sid_tune.state == TUNE_OFF) {
-        sid_tune.state = TUNE_SONG_STOP; /* else it is on its way already */
+        sid_tune.state = TUNE_SONG_STOP;
     }
     return 1;
 }
 
-/* The loaded tune's song `song` from init (a restart, a song change): 1 if a tune is loaded. */
 static int tune_start(uint32_t song) {
     if (sid_tune.state == TUNE_OFF || sid_tune.state >= TUNE_END) {
         return 0;
@@ -1645,7 +1493,7 @@ static int tune_start(uint32_t song) {
     sid_tune.song = (uint16_t)song;
     sid_tune.hold_stop = 0;
     if (sid_tune.state == TUNE_ON && sid_tune.ask == TUNE_ASK_NONE) {
-        sid_tune.ask = TUNE_ASK_START; /* loading: its start takes the song */
+        sid_tune.ask = TUNE_ASK_START;
     }
     return 1;
 }
@@ -1655,11 +1503,10 @@ static void tune_stop(void) {
         sid_tune.ask = TUNE_ASK_NONE;
         (void)psid_ctl_stop(audio_psid());
     } else if (sid_tune.state != TUNE_OFF && sid_tune.state < TUNE_END) {
-        sid_tune.hold_stop = 1; /* loading: it stops as it starts */
+        sid_tune.hold_stop = 1;
     }
 }
 
-/* Ends the tune for good: the song back. Before the song let go of its memory, nothing more. */
 static void tune_end(void) {
     sid_tune.ask = TUNE_ASK_NONE;
     sid_tune.queued = 0;
@@ -1670,13 +1517,10 @@ static void tune_end(void) {
     }
 }
 
-/* GLO's mask as psid_ctl takes it: voice v of both chips for a 2SID tune. */
 static uint32_t tune_mutes(void) {
     return sid_tune.chips == 2u ? (uint32_t)sid_tune.mute * 9u : sid_tune.mute;
 }
 
-/* The meter's window ends: the share of the CPU the slices took (their ticks over the window's)
- * and the ticks a thousand 6502 cycles took, both 0 while the tune ran nothing. */
 static void tune_meter(uint32_t cycles) {
     uint32_t now = fm1_ticks(), span = (now - sid_tune.window_t) / 1000u, busy = sid_tune.busy;
     uint32_t k = cycles / 1000u;
@@ -1686,7 +1530,6 @@ static void tune_meter(uint32_t cycles) {
     sid_tune.window_t = now;
 }
 
-/* A failure psid_ctl stopped the tune with, as a toast, once. */
 static void tune_tell(const psid_ctl* c) {
     if (psid_ctl_state(c) != PSID_FAILED || c->error == sid_tune.told) {
         return;
@@ -1705,22 +1548,19 @@ static void tune_tell(const psid_ctl* c) {
     }
 }
 
-/* TUNE_PREP's pass: a part of the loading (every other pass, and only in a pass no chip's
- * preparation ran in: the store does no work in it, audio_work_slice), the chips' fresh resets
- * once the keys have left them, and the start once both are done. */
 static void tune_prep(psid_ctl* c) {
     const psid_header* h = audio_psid_header();
     if (sid_io_busy(&sid_tune.io) && (sid_tune.turn++ & 1u) && audio_work_slice()) {
         int r = sid_io_poll(&sid_tune.io);
         if (r < 0) {
-            ui_toast(sid_io_message(-r), 2000u); /* the file went: the song back */
+            ui_toast(sid_io_message(-r), 2000u);
             tune_end();
             return;
         }
     }
     if (sid_tune.fresh == 0u) {
         if (!keys_route_ready_for_song(&keys_router)) {
-            return; /* the keys still play chip A */
+            return;
         }
         for (uint32_t k = 0; k < sid_tune.chips; k++) {
             sid_tune.was[k] = audio_chip(k);
@@ -1733,14 +1573,12 @@ static void tune_prep(psid_ctl* c) {
     }
     for (uint32_t k = 0; k < sid_tune.chips && sid_tune.fresh == 1u; k++) {
         if (audio_chip(k) == sid_tune.was[k] || !chip_ctl_has(&keys_router.ctl[k], &sid_tune.want[k])) {
-            return; /* its reset has not reached the interrupt yet */
+            return;
         }
     }
-    /* The chips the tune starts on, fresh (or as a restart leaves them), at its clock (the
-     * interrupt renders neither now). */
     uint32_t q16 = tune_step_q16(h->clock == 2u ? PSID_CLOCK_NTSC : PSID_CLOCK_PAL);
     if (!sid_tune.clocked || sid_tune.fresh == 1u) {
-        sid_tune.pal_q16 = audio_chip(0)->cycles_per_sample_q16; /* a fresh chip's: PAL */
+        sid_tune.pal_q16 = audio_chip(0)->cycles_per_sample_q16;
     }
     for (uint32_t k = 0; k < sid_tune.chips; k++) {
         sid_tune.was[k] = audio_chip(k);
@@ -1767,11 +1605,8 @@ static void tune_prep(psid_ctl* c) {
     sid_tune.state = TUNE_ON;
 }
 
-/* TUNE_RELOAD's pass, once the stop has played out: the file asked for (the loaded one again for a
- * song change) opened, its chips' setups compared with the ones the tune has, and its loading
- * started (TUNE_PREP); another number of chips ends this tune for good and plays the file after. */
 static void tune_reload(psid_ctl* c) {
-    (void)psid_ctl_poll(c); /* sees the stop played out; runs nothing once stopped */
+    (void)psid_ctl_poll(c);
     if (c->stop_wait || !audio_work_slice()) {
         return;
     }
@@ -1784,7 +1619,7 @@ static void tune_reload(psid_ctl* c) {
     sid_tune.ask = TUNE_ASK_NONE;
     psid_header* h = audio_psid_header();
     if (!tune_open(name, h)) {
-        sid_tune.state = TUNE_END; /* the file went: the song back */
+        sid_tune.state = TUNE_END;
         return;
     }
     if ((h->sid2 ? 2u : 1u) != sid_tune.chips) {
@@ -1799,7 +1634,6 @@ static void tune_reload(psid_ctl* c) {
     sid_tune.fresh = 2u;
     if (memcmp(&want[0], &sid_tune.want[0], sizeof want[0]) != 0 ||
         (sid_tune.chips == 2u && memcmp(&want[1], &sid_tune.want[1], sizeof want[1]) != 0)) {
-        /* another setup: the chips made fresh with it, as at the start */
         sid_tune.want[0] = want[0];
         sid_tune.want[1] = want[1];
         keys_route_song_wants(&keys_router, &sid_tune.want[0]);
@@ -1808,27 +1642,17 @@ static void tune_reload(psid_ctl* c) {
         }
         sid_tune.fresh = 0;
     }
-    (void)sid_io_load(&sid_tune.io, c, h); /* quiet: the stop has played out */
+    (void)sid_io_load(&sid_tune.io, c, h);
     sid_tune.turn = 0;
     sid_tune.state = TUNE_PREP;
 }
 
-/* --- The lift (core/psid/psid_lift.h; docs/manual/sid-tunes.md, "Lift a sound"): NOW PLAYING's
- * REC arms it for the soloed voice (tb_lift); psid_ctl's sink and play calls feed it; once its note
- * is taken, a pass that ran no slice converts it (about 20,000 instructions at most) and the GTI5
- * file goes to the store as LIFTED SOUND (STORE_FILE_GTI), whole into the store's staging buffer
- * (256 bytes), so the store programs it once the device is quiet, the tune stopped, and the lift's
- * state over the song's work space (audio_lift) is free again. The song back, the file committed,
- * the views offer it (sid_view_offer) and tb_import imports it with the song's importer. --- */
-
 #define LIFT_FILE "LIFTED SOUND"
 enum { LIFT_IDLE, LIFT_BEGIN };
-#define LIFT_GIVE_UP_MS 3000u /* the tune ending: how long its file may wait for the store */
+#define LIFT_GIVE_UP_MS 3000u
 
-/* The offer, kept over the song's return: the file's CRC (the one it waits to see committed),
- * its length, the instrument it goes into and its name. */
 static struct {
-    uint8_t state; /* SID_OFFER_*; LIFT_WAITING while its file is not committed */
+    uint8_t state;
     uint8_t instr;
     uint16_t len;
     uint32_t crc;
@@ -1837,7 +1661,6 @@ static struct {
 } lift_offer;
 #define LIFT_WAITING 3u
 
-/* The instrument's name: the tune's title in the font's characters, cut to 13, and the voice. */
 static void lift_name(char out[SID_OFFER_NAME + 1u], uint32_t voice) {
     const char* t = audio_psid_header()->name;
     uint32_t n = 0;
@@ -1855,7 +1678,6 @@ static void lift_name(char out[SID_OFFER_NAME + 1u], uint32_t voice) {
     out[n] = 0;
 }
 
-/* The first instrument with nothing in it, 0 for none. */
 static uint32_t lift_free_instr(const gt2_song* s) {
     for (uint32_t i = 0; i < GT2_MAX_INSTR; i++) {
         uint8_t any = 0;
@@ -1869,8 +1691,6 @@ static uint32_t lift_free_instr(const gt2_song* s) {
     return 0;
 }
 
-/* A pass of the lift while it holds its state (a note taken, a file for the store): 1 until it
- * lets go. `ending`: the tune ends, so a store that stays busy LIFT_GIVE_UP_MS loses the file. */
 static int lift_pass(int ending) {
     psid_lift* l = audio_lift();
     store* st = store_fm1();
@@ -1878,16 +1698,16 @@ static int lift_pass(int ending) {
         return l->state == PSID_LIFT_TAKING;
     }
     if (!audio_work_slice()) {
-        return 1; /* the conversion and the store's begin take a pass of their own */
+        return 1;
     }
     if (sid_tune.lift == LIFT_IDLE) {
         uint32_t flags;
         lift_name(lift_offer.name, l->voice);
         int n = psid_lift_convert(l, audio_psid_header()->clock == 2u, lift_offer.name, &flags);
         if (n == PSID_LIFT_AGAIN) {
-            return 1; /* fewer frames, at the next pass */
+            return 1;
         }
-        psid_lift_arm(l, 3u, sid_tune.chips); /* off; the file stays in it */
+        psid_lift_arm(l, 3u, sid_tune.chips);
         if (n < 0) {
             ui_toast(n == PSID_LIFT_E_DIGI ? "DIGI: CAN'T LIFT" : "LIFT: NOTE TOO SHORT", 2000u);
             return 0;
@@ -1899,7 +1719,7 @@ static int lift_pass(int ending) {
     }
     int rc = store_file_begin(st, LIFT_FILE, STORE_FILE_GTI, sid_tune.lift_len);
     if (rc == STORE_BUSY) {
-        store_file_wait(st, store_busy(st)); /* a record commits first: asked again */
+        store_file_wait(st, store_busy(st));
         if (!ending || uptime_ms - sid_tune.lift_ms < LIFT_GIVE_UP_MS) {
             return 1;
         }
@@ -1908,7 +1728,7 @@ static int lift_pass(int ending) {
     sid_tune.lift = LIFT_IDLE;
     if (rc == STORE_OK && store_file_write(st, l->file, sid_tune.lift_len) == sid_tune.lift_len &&
         store_file_end(st) == STORE_OK) {
-        lift_offer.state = LIFT_WAITING; /* offered once committed and the song is back */
+        lift_offer.state = LIFT_WAITING;
         lift_offer.len = sid_tune.lift_len;
         lift_offer.crc = store_crc32(0, l->file, sid_tune.lift_len);
         char t[8u + SID_OFFER_NAME + 1u] = "LIFTED: ";
@@ -1929,8 +1749,6 @@ static int lift_pass(int ending) {
     return 0;
 }
 
-/* Once a pass: the offer's file seen committed (or lost) once the song is back, and an import's
- * steps. */
 static void lift_offer_pass(void) {
     if (sid_tune.state != TUNE_OFF) {
         return;
@@ -1938,7 +1756,7 @@ static void lift_offer_pass(void) {
     if (lift_offer.state == LIFT_WAITING) {
         store* st = store_fm1();
         if (store_file_result(st) == STORE_BUSY) {
-            return; /* a file open or committing: perhaps this one */
+            return;
         }
         if (store_file_open(st, LIFT_FILE, &lift_offer.file) == STORE_OK &&
             lift_offer.file.type == STORE_FILE_GTI && lift_offer.file.crc == lift_offer.crc) {
@@ -1971,8 +1789,6 @@ static void lift_offer_pass(void) {
     }
 }
 
-/* Once a pass, where the song's pass runs: the tune's steps (above), and while it plays its
- * slice, its shadows following a chip swapped under it, its failures told. */
 static void tune_pass(void) {
     psid_ctl* c = audio_psid();
     switch (sid_tune.state) {
@@ -1981,7 +1797,7 @@ static void tune_pass(void) {
     case TUNE_SONG_STOP: {
         song_ctl* sc = audio_song();
         if (lift_offer.state == SID_OFFER_IMPORTING) {
-            return; /* the lifted instrument's import finishes first */
+            return;
         }
         if (song_ctl_state(sc) == SONG_PLAYING || song_ctl_state(sc) == SONG_LOADING) {
             (void)song_ctl_stop(sc);
@@ -1993,10 +1809,10 @@ static void tune_pass(void) {
         }
         if (!midi_object_stopped(sc) || song_mine || midi_object.owned || jam_wait[0] ||
             !ui_tune(1)) {
-            return; /* the song's own pass brings it there */
+            return;
         }
         if (!song_io_away(&songs, 1)) {
-            (void)ui_tune(0); /* a load or a save in hand: again next pass */
+            (void)ui_tune(0);
             return;
         }
         song_away = 1;
@@ -2009,8 +1825,6 @@ static void tune_pass(void) {
         if (audio_player_now() != AUDIO_NONE || !audio_work_slice()) {
             return;
         }
-        /* The song's state is free: the tune's is made over it, its header read again; the lift
-         * over the song's work space. */
         c = audio_psid_init();
         psid_lift_init(audio_lift());
         c->lift = audio_lift();
@@ -2019,7 +1833,7 @@ static void tune_pass(void) {
         char name[STORE_NAME_MAX + 1u];
         memcpy(name, sid_tune.io.file.name, sizeof name);
         if (!tune_open(name, h)) {
-            sid_tune.state = TUNE_END; /* the file changed under it: the song back */
+            sid_tune.state = TUNE_END;
             return;
         }
         tune_setup(&sid_tune.want[0], h->model1);
@@ -2036,7 +1850,7 @@ static void tune_pass(void) {
                 sid_tune.toasted = 1;
             }
         }
-        (void)sid_io_load(&sid_tune.io, c, h); /* the memory and the data follow, in parts */
+        (void)sid_io_load(&sid_tune.io, c, h);
         (void)psid_ctl_mute(c, tune_mutes());
         sid_tune.turn = 0;
         sid_tune.fresh = 0;
@@ -2050,7 +1864,7 @@ static void tune_pass(void) {
             return;
         }
         if (sid_tune.chips == 2u) {
-            audio_chip_b_use(AUDIO_B_TUNE, 1); /* the interrupt renders it with chip A */
+            audio_chip_b_use(AUDIO_B_TUNE, 1);
         }
         sid_tune.state = TUNE_PREP;
         return;
@@ -2063,15 +1877,13 @@ static void tune_pass(void) {
             for (uint32_t k = 0; k < sid_tune.chips; k++) {
                 sid* s = audio_chip(k);
                 if (s != sid_tune.was[k]) {
-                    /* A model or profile change swapped the chip (its registers came with it,
-                     * audio.c psid_swapped): its reads follow the new one from here. */
                     sid_tune.was[k] = s;
                     sid_shadow_init(&c->w->shadow[k], s, psid_env_now(&c->w->env));
                 }
             }
         }
         if (sid_tune.ask != TUNE_ASK_NONE) {
-            (void)psid_ctl_stop(c); /* a restart or another file: the stop plays out first */
+            (void)psid_ctl_stop(c);
             sid_tune.state = TUNE_RELOAD;
             return;
         }
@@ -2082,12 +1894,11 @@ static void tune_pass(void) {
         tune_tell(c);
         st = psid_ctl_state(c);
         if (st != PSID_INIT && st != PSID_PLAYING && st != PSID_PAUSED) {
-            psid_lift_stop(audio_lift()); /* stopped: a note under way is what it has */
+            psid_lift_stop(audio_lift());
         }
         (void)lift_pass(0);
         front.playing = st == PSID_INIT || st == PSID_PLAYING;
         if (uptime_ms - sid_tune.cycles_ms >= 1000u) {
-            /* STATUS's cycles a second (none while it stands still) */
             uint32_t now = st == PSID_INIT || st == PSID_PLAYING ? psid_env_now(&c->w->env) : 0u;
             sid_tune.cycles = sid_tune.cycles_from && now ? now - sid_tune.cycles_from : 0u;
             tune_meter(sid_tune.cycles);
@@ -2101,10 +1912,10 @@ static void tune_pass(void) {
         return;
     case TUNE_END:
         (void)psid_ctl_stop(c);
-        (void)psid_ctl_poll(c); /* sees the stop played out; runs nothing once stopped */
+        (void)psid_ctl_poll(c);
         psid_lift_stop(audio_lift());
         if (c->stop_wait || lift_pass(1)) {
-            return; /* the lift's file to the store first: the song's work space is its */
+            return;
         }
         if (sid_tune.clocked) {
             for (uint32_t k = 0; k < sid_tune.chips; k++) {
@@ -2121,7 +1932,7 @@ static void tune_pass(void) {
         if (audio_player_now() != AUDIO_NONE) {
             return;
         }
-        (void)audio_song_remake(); /* the song's region and transport, the song wiped */
+        (void)audio_song_remake();
         song_boot();
         audio_player(AUDIO_SONG);
         sid_tune.state = TUNE_BACK_SONG;
@@ -2137,18 +1948,17 @@ static void tune_pass(void) {
         keys_route_set_tune(&keys_router, 0);
         keys_route_set_song(&keys_router, 0);
         song_away = 0;
-        (void)song_io_away(&songs, 0); /* the song read back, by song_io's own passes */
+        (void)song_io_away(&songs, 0);
         sid_tune.state = TUNE_BACK_READ;
         return;
     case TUNE_BACK_READ:
-        /* The song views get their transport back once the song is whole again. */
         if (song_io_busy(&songs)) {
             return;
         }
         (void)ui_tune(0);
         sid_tune.state = TUNE_OFF;
         if (sid_tune.queued) {
-            sid_tune.queued = 0; /* a file asked for while it ended */
+            sid_tune.queued = 0;
             (void)tune_play(sid_tune.next, sid_tune.song);
         }
         return;
@@ -2157,10 +1967,6 @@ static void tune_pass(void) {
     }
 }
 
-/* A wake that ran no pass (play runs at the key scan's frames and the ticks, about 1.1 kHz, three
- * passes a block): a slice of the tune's 6502 all the same, so it keeps ahead of the audio at
- * the interrupts' pace (a slice is at most PSID_SLICE_CYCLES, about a third of a block's). No
- * chip preparation or store work runs in such a wake, so the slice is the wake's only one. */
 static void tune_idle(void) {
     if (sid_tune.state == TUNE_ON) {
         uint32_t t0 = fm1_ticks();
@@ -2170,7 +1976,6 @@ static void tune_idle(void) {
     }
 }
 
-/* The tune's binding for the SID views (app/sid_transport.h). */
 static int tb_play(void* ctx, const char* name) {
     (void)ctx;
     return tune_play(name, 0);
@@ -2207,7 +2012,7 @@ static int tb_mute(void* ctx, uint32_t mask) {
     (void)ctx;
     sid_tune.mute = (uint8_t)(mask & 7u);
     if (sid_tune.state >= TUNE_TO_PSID && sid_tune.state <= TUNE_END) {
-        (void)psid_ctl_mute(audio_psid(), tune_mutes()); /* also at each song's start */
+        (void)psid_ctl_mute(audio_psid(), tune_mutes());
     }
     return 1;
 }
@@ -2223,7 +2028,7 @@ static void tb_status(void* ctx, sid_status* out) {
         memcpy(out->offer_name, lift_offer.name, sizeof out->offer_name);
     }
     if (t == TUNE_OFF) {
-        return; /* SID_T_NONE (zeroed by the caller) */
+        return;
     }
     if (t >= TUNE_TO_PSID && t <= TUNE_END) {
         const psid_lift* l = audio_lift();
@@ -2233,7 +2038,7 @@ static void tb_status(void* ctx, sid_status* out) {
         out->lift_voice = l->voice;
     }
     const psid_ctl* c = audio_psid();
-    int has = t >= TUNE_TO_PSID && t <= TUNE_END; /* the tune's state is made */
+    int has = t >= TUNE_TO_PSID && t <= TUNE_END;
     out->state = (uint8_t)(t >= TUNE_END ? SID_T_ENDING : SID_T_LOADING);
     if (t == TUNE_ON && sid_tune.ask == TUNE_ASK_NONE) {
         static const uint8_t STATE[] = {SID_T_LOADING, SID_T_LOADING, SID_T_PLAYING, SID_T_PLAYING,
@@ -2268,18 +2073,16 @@ static int tb_lift(void* ctx, uint32_t voice) {
     (void)ctx;
     if (sid_tune.state != TUNE_ON || audio_lift()->state == PSID_LIFT_TAKEN ||
         sid_tune.lift != LIFT_IDLE) {
-        return 0; /* the last note still on its way to the store */
+        return 0;
     }
     psid_lift_arm(audio_lift(), voice, sid_tune.chips);
     return 1;
 }
 
-/* The offer's answer: the import (the song stopped and settled, no other import or load in hand)
- * or the skip. */
 static int tb_import(void* ctx, int go) {
     (void)ctx;
     if (lift_offer.state != SID_OFFER_READY || sid_tune.state != TUNE_OFF) {
-        return 0; /* offered only while the song has its memory */
+        return 0;
     }
     if (!go) {
         lift_offer.state = SID_OFFER_NONE;
@@ -2313,9 +2116,6 @@ static const sid_transport tune_binding = {tb_play,   tb_start,  tb_stop,   tb_p
                                            tb_resume, tb_end,    tb_mute,   tb_status,
                                            tb_lift,   tb_import, NULL};
 
-/* MIDI's start, stop and continue while a tune is loaded (app/midi_sync.h midi_sync_tune): start
- * restarts its song from init, stop holds it where it is (pause), continue goes on (a stopped
- * tune: from init). */
 static int tune_midi(void* ctx, uint32_t b) {
     (void)ctx;
     if (sid_tune.state == TUNE_OFF) {
@@ -2341,12 +2141,9 @@ static int tune_midi(void* ctx, uint32_t b) {
     return 1;
 }
 
-/* The end of a pass: MASTER (the pot or MIDI's volume) to the audio path as its output gain,
- * the pass's register writes made visible to the interrupt, then the voices the keys let go
- * in them given back to the song (song_taken). */
 static void commit_pass(void) {
-    static uint16_t master_sent = 0xffffu; /* (a pass at idle does this compare and the take's) */
-    static uint8_t spread_sent = 0u;          /* mono at boot, as the interrupt starts */
+    static uint16_t master_sent = 0xffffu;
+    static uint8_t spread_sent = 0u;
     if (instrument.master != master_sent) {
         master_sent = instrument.master;
         audio_set_master(master_sent);
@@ -2358,15 +2155,11 @@ static void commit_pass(void) {
     audio_commit();
     uint8_t taken = keys_route_voices_taken(&keys_router);
     if (taken != song_taken && !song_away) {
-        song_taken = taken; /* the voices let go (the gate-offs are in), or held at a start */
+        song_taken = taken;
         (void)song_ctl_take(audio_song(), taken);
     }
 }
 
-/* One main-loop pass: the panel into the instrument, the 100 Hz work, then the queued
- * register writes go to the audio interrupt in one batch. The panel only changes when the
- * key scan finishes a frame (~1.1 ms), so a wake-up from the 10 kHz tick in between does
- * nothing here. */
 static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     uint32_t frame = input_frame();
     int tick_due = (int32_t)(now - *next_tick) >= 0;
@@ -2380,7 +2173,7 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         panel_master(&front, &instrument, input_master());
         live_tick(&instrument);
         ui_sound_tick(&ui_sounds);
-        midi_tick(); /* MIDI's mode: its bends, filter and ARP steps */
+        midi_tick();
         static uint8_t player_seen;
         if (player_seen != keys_router.player) {
             player_seen = keys_router.player;
@@ -2388,7 +2181,7 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         }
         if (route_state->song_req != MIDI_ROUTE_NO_REQUEST) {
             int32_t program = midi_route_take_song(route_state);
-            if (sid_tune.state == TUNE_OFF) { /* a tune has the song's memory: ignored */
+            if (sid_tune.state == TUNE_OFF) {
                 (void)song_io_program(&songs, (uint32_t)program);
             }
         }
@@ -2399,25 +2192,18 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         song_pass();
     }
     if (tick_due) {
-        /* Once a pass, after its live ticks: the keys' chip has had its turn, then the other
-         * chip follows the keys' setup (chip B's first reset at boot among it) and the keys
-         * move. */
         keys_route_tick(&keys_router);
-        audio_chip_b_use(AUDIO_B_UI, ui_sound_busy(&ui_sounds)); /* chip B in use for a sound */
-        midi_send(); /* once a pass at most, so at most once a tick */
+        audio_chip_b_use(AUDIO_B_UI, ui_sound_busy(&ui_sounds));
+        midi_send();
     }
     if ((int32_t)(now - *next_tick) >= 0) {
-        *next_tick = now + TICK_MS; /* too far behind: skip, the LFO only slows down */
+        *next_tick = now + TICK_MS;
     }
-    /* The store (store_fm1.h): at every key-scan frame (about 1.1 kHz) while it has work in
-     * hand, else once a tick; its share of the pass within STORE_POLL_WORST, none in a pass
-     * that ran a chip, character-table or song slice. Here, not after every wake: an idle
-     * store costs the main loop nothing between frames. */
     if (tick_due || store_fm1_active || songs.state) {
         store_fm1_service(now, &instrument, &keys_router, ui_sound_busy(&ui_sounds));
     }
     if (sync_state->clock_out) {
-        midi_sync_pass(); /* clock out's times, about once a millisecond */
+        midi_sync_pass();
     }
     commit_pass();
     input_leds(&front, &instrument, now);
@@ -2425,16 +2211,8 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
 }
 
 #if defined(SIDOU_TEST_DEATH_MS)
-/* Hardware-checklist builds only (docs/hardware-test.md; CMake SIDOU_TEST_DEATH): with OCT-
- * held at power-on, die SIDOU_TEST_DEATH_MS after boot as an early crash would, before the
- * boot is stable, so the boot guard sends the third such boot to UBOOT. Without the key the
- * build runs as the normal one, so the normal installer always reaches it. A hang with
- * interrupts off lets the watchdog reset the chip; SIDOU_TEST_DEATH_REBOOT resets it through
- * P33 as the fault handler does. */
 static uint8_t test_death_armed;
 
-/* Right after interrupts are on: the key scan needs a few frames to debounce (as Felucca reads
- * its power-on combinations). */
 static void test_death_arm(void) {
     fm1_delay_ms(30);
     test_death_armed = (input_buttons() >> PANEL_BTN_OCT_DOWN) & 1u;
@@ -2454,14 +2232,10 @@ static void test_death(uint32_t now) {
 }
 #endif
 
-/* Before an intentional reset: not a failed boot. */
 static void leave_on_purpose(void) {
     bootguard_leave(&boot_guard);
 }
 
-/* The host asked to upgrade (update.h): the audio stops for good, step 1 runs, and on success
- * the chip restarts into the update loader. If nothing was committed (refused, failed), the
- * firmware restarts the same way it booted. */
 static void upgrade(void) {
     fm1_audio_stop();
     audio_halted();
@@ -2470,14 +2244,6 @@ static void upgrade(void) {
     fm1_reboot();
 }
 
-/* The end of a main-loop pass: until the next interrupt. With no USB host, or one asleep or
- * gone, the core sleeps in `idle` (it saves power, and fm1-emu skips ahead). While a host has
- * the device configured, it spins until the next TIMER5 tick instead, as Felucca's main loop,
- * ChoralRoot's and the update loader's never idle: on the device, a host saw no IN packet
- * from SIDOU's `idle` build (docs/hardware-test.md, section 8), while the controller's DMA
- * reads each IN packet from RAM when the host's token comes, likely while the core sleeps.
- * The spin wakes the loop at the tick as `idle` does, so a pass's work is the same either way;
- * fm1-emu, which has no host, always takes the `idle`. */
 static void wait_for_interrupt(void) {
     if (midi_usb_live()) {
         uint32_t t = timer_irqs;
@@ -2489,8 +2255,6 @@ static void wait_for_interrupt(void) {
 }
 
 #if defined(SIDOU_FLASH_SPIKE)
-/* The flash spike's build only (flash_spike.h): what its waits run, the main loop's services
- * but play and the screen, so the normal installer reaches it at any time but mid-measurement. */
 static void spike_service(void) {
     uint32_t now = uptime_ms;
     fm1_wdt_feed();
@@ -2502,19 +2266,10 @@ static void spike_service(void) {
 }
 #endif
 
-/* During the panel's wake-up wait (lcd_init's 120 ms, whatever this takes): the plain XIP
- * window for the store (update.h; its cache invalidation takes milliseconds), then the store's
- * mount, its recovery and the pool's fill (store_fm1.h; a few milliseconds, but a blank
- * region's first format, up to 22 erases), before the audio starts. */
-/* The boot's watchdog feed, for store_fm1_boot: a function of its own, so the main loop's
- * fm1_wdt_feed stays inlined (taking the inline's address made the compiler call it there). */
 static void boot_feed(void) {
     fm1_wdt_feed();
 }
 
-/* During the panel's reset wait (lcd_init's 150 ms): the audio path's noise tables, built in
- * POOL (core/sid/sid.c; about 0.2 ms, before anything plays), then the song's region. In the
- * wait, so the boot's timeline stays as it was. */
 static void while_lcd_resets(void) {
     sid_noise_tables_init();
     song_load();
@@ -2527,19 +2282,13 @@ static void while_lcd_wakes(void) {
 }
 
 static void sidou_main(void) {
-    /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. The
-     * noise tables are built and the song's region loads in the panel's reset wait
-     * (while_lcd_resets), the store in its wake-up wait (while_lcd_wakes). */
     lcd_init(while_lcd_resets, while_lcd_wakes);
     audio_init();
-    /* The keys play chip A, as in M1; chip B is made with the keys' setup from the first
-     * ticks, prepared in the background (its first reset at boot only: app/reg_ring.h). */
     keys_route_init(&keys_router, &instrument, reg_ring_sink, reg_ring_prepare_step,
                     audio_sink_ctx(), audio_sink_ctx_b());
     keys_router.moved = audio_keys;
     keys_router.taking = song_keys_take;
     live_init(&instrument, keys_route_sink, &keys_router, SID_MODEL_6581);
-    /* From here on a profile or model change prepares the spare chip a slice a tick. */
     live_set_preparer(&instrument, keys_route_prepare, &keys_router);
     keys_route_start(&keys_router);
     ui_sound_init(&ui_sounds, &instrument, reg_ring_sink, audio_sink_ctx_b());
@@ -2547,32 +2296,24 @@ static void sidou_main(void) {
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());
-    audio_set_master(instrument.master); /* the interrupt's first block has it */
+    audio_set_master(instrument.master);
     midi_init(&instrument, &keys_router);
     route_state = midi_routed();
-    midi_sync_bind(midi_synced(), &song_bound); /* MIDI's clock plays the song */
+    midi_sync_bind(midi_synced(), &song_bound);
     sync_state = midi_synced();
     update_boot();
 #if defined(SIDOU_FLASH_SPIKE)
-    /* Not SIDOU: the flash spike, with the audio never started (flash_spike.h). The views are
-     * set up only for the update protocol's progress frame (ui_update). */
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();
     ui_init(&instrument, &ui_sounds, uptime_ms, 0);
     flash_spike_run(spike_service);
 #endif
     audio_start();
-    /* Sound first: the audio interrupt, the tick (the key scan, MIDI, the clock) and the
-     * interrupts start before the screen's first frame, which the main loop then sends without
-     * waiting on it (ui_init). */
     fm1_audio_init(abuf, AUDIO_HALF_WORDS, isr_alnk0, PRIO_ALNK0);
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();
     audio_irqs_on();
-    /* HOME held at power-on plays the full boot (app/boot.h): its level once the key scan
-     * has debounced it, about 3 ms after the tick started; the audio already runs. */
     uint32_t held = input_buttons_at_power_on();
-    /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
     ui_init(&instrument, &ui_sounds, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
     ui_set_keys(&keys_router);
     ui_set_panel(&front);
@@ -2581,7 +2322,7 @@ static void sidou_main(void) {
     song_bound.song = audio_song()->song;
     ui_set_song(&song_bound);
     ui_set_tune(&tune_binding);
-    midi_sync_tune(midi_synced(), tune_midi, NULL); /* MIDI's transport plays a loaded tune */
+    midi_sync_tune(midi_synced(), tune_midi, NULL);
     song_io_hooks io_hooks = {song_capture, song_loaded, read_demo, 0, song_generation,
                               ui_song_force, song_snapshot, song_restore};
     (void)song_capture(0);
@@ -2621,19 +2362,6 @@ static void sidou_main(void) {
 }
 
 #if !defined(SIDOU_TEST_DEATH_MS)
-/* The power-on UBOOT gesture, SIDOU's own way back that needs nothing of it but this: OCT-
- * alone held while powering on, and still alone a second later, enters the mask ROM's USB
- * boot (UBOOT), where MvaveFM1Unbricker or jl-uboot-tool install whatever the update path no
- * longer can (docs/reference/controls.md, "At power-on"). It runs first of all, before
- * memory, the boot guard, interrupts, the LCD, audio, the store, settings and USB. Before it
- * only crt0 (the stack), fm1_time_init (TIMER4's three registers) and fm1_wdt_arm (P33
- * writes, the same as the boot guard's path relies on), none of which waits on anything that
- * can fail; it reads the matrix with input_raw_keys, GPIO only, no variable. UBOOT_SAMPLES
- * whole-matrix scans UBOOT_GAP_MS apart (~1 s) must each see OCT- and nothing else: any other
- * button or note key, or OCT- open in any one of them, and the boot goes on as usual. The
- * first scan costs a normal boot about 0.3 ms. The confirmation: the backlight goes dark
- * (PA2 high), then the ROM's black screen. The checklist's dying builds leave it out: there
- * OCT- held at power-on is theirs (docs/hardware-test.md, section 10). */
 #define UBOOT_SAMPLES 21u
 #define UBOOT_GAP_MS 50u
 #define UBOOT_KEY (1u << PANEL_BTN_OCT_DOWN)
@@ -2650,7 +2378,6 @@ static void uboot_gesture(void) {
         fm1_delay_ms(UBOOT_GAP_MS);
     }
     input_raw_dark();
-    /* The watchdog would reset the chip out of UBOOT while a host installs. */
     fm1_wdt_stop();
     fm1_enter_uboot();
 }
@@ -2658,16 +2385,13 @@ static void uboot_gesture(void) {
 
 void fm1_cstart(void) {
     uint32_t *d, *s;
-    fm1_cpu1_halt(); /* first thing, as Felucca's fm1_cstart (registers only) */
+    fm1_cpu1_halt();
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
 #if !defined(SIDOU_TEST_DEATH_MS)
     uboot_gesture();
 #endif
-    /* First, before anything that may crash: the third boot in a row that dies before it is
-     * stable goes to UBOOT, which still accepts updates (not the 7D soft key: a direct entry). */
     if (bootguard_boot(&boot_guard)) {
-        /* The watchdog armed above would reset the chip out of UBOOT while a host installs. */
         fm1_wdt_stop();
         fm1_enter_uboot();
     }

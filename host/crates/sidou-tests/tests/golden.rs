@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Golden renders of the shared workload, recorded as FNV-1a 64 hashes in
-//! tests/golden/hashes.txt. SIDOU_GOLDEN_UPDATE=1 rewrites the file.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -106,9 +104,8 @@ fn renders_match_recorded_hashes() {
 
 #[test]
 fn workload_never_clips_and_has_no_dc_offset() {
-    // The 6581's volume write at frame 0 is a real DC step; the 16 Hz blocker needs
-    // ~50 ms to absorb it, so the mean is taken after that.
-    const SETTLE: usize = 2205;
+    const DC_BLOCKER_SETTLE_SAMPLES: usize = 2205;
+    const MAX_DC_OF_RMS: f64 = 0.07;
     let mut failures = Vec::new();
     for c in &CASES {
         let out = render(c);
@@ -116,21 +113,18 @@ fn workload_never_clips_and_has_no_dc_offset() {
         for (i, &s) in out.iter().enumerate() {
             assert!(s > -32768, "{}", c.name);
             assert!(s < 32767, "{}", c.name);
-            if i >= SETTLE {
+            if i >= DC_BLOCKER_SETTLE_SAMPLES {
                 sum += f64::from(s);
             }
         }
-        let mean = sum / (out.len() - SETTLE) as f64;
-        let rms = (out[SETTLE..]
+        let mean = sum / (out.len() - DC_BLOCKER_SETTLE_SAMPLES) as f64;
+        let rms = (out[DC_BLOCKER_SETTLE_SAMPLES..]
             .iter()
             .map(|&s| (f64::from(s) - mean).powi(2))
             .sum::<f64>()
-            / (out.len() - SETTLE) as f64)
+            / (out.len() - DC_BLOCKER_SETTLE_SAMPLES) as f64)
             .sqrt();
-        // Relative to the signal, so the output level does not move the bound: 7% of the
-        // RMS (M1b: the 6581's is 5.6%, from its voice DC that follows the envelopes; it
-        // was 200 LSB until the output was scaled to reSIDfp's level, 7-8% then).
-        if (mean / rms).abs().partial_cmp(&0.07) != Some(std::cmp::Ordering::Less) {
+        if (mean / rms).abs().partial_cmp(&MAX_DC_OF_RMS) != Some(std::cmp::Ordering::Less) {
             failures.push(format!("{}: mean {mean:.1}, RMS {rms:.1}", c.name));
         }
     }

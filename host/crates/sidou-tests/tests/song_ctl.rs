@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The player in the audio interrupt (M2c Task 6), on the host: the shape's analysis in
-//! slices, the frame clock, the transport's commands, and edits while a song plays, whose
-//! widened shape plays them as a player re-initialised on the edited song and fast-forwarded
-//! to the same call would.
 
 use sidou_sys::*;
 use sidou_tests::player::*;
@@ -17,14 +13,8 @@ fn ins(ad: u8, sr: u8, w: u8, p: u8, f: u8, vib: u8, vd: u8, gt: u8, fw: u8) -> 
     i
 }
 
-const R: [u8; 4] = [0xbd, 0, 0, 0];
-
-fn n(octave: u8, semi: u8) -> u8 {
+fn note(octave: u8, semi: u8) -> u8 {
     0x60 + octave * 12 + semi
-}
-
-fn row(note: u8, instr: u8) -> [u8; 4] {
-    [note, instr, 0, 0]
 }
 
 fn shape_bytes(s: &gt2_shape) -> &[u8] {
@@ -93,8 +83,6 @@ fn options_of(g: &gt2_ref::Options) -> gt2_options {
     o
 }
 
-/// Every example and a hundred generated songs, every subtune: the analysis in slices of any
-/// size makes the same shape as at once.
 #[test]
 fn the_sliced_analysis_makes_the_same_shape() {
     let mut cases: Vec<(String, Vec<u8>, gt2_options)> = gt2_ref::examples()
@@ -107,8 +95,7 @@ fn the_sliced_analysis_makes_the_same_shape() {
     }
     let mut shapes = 0;
     for (name, sng, o) in &cases {
-        let mut song = Song::host();
-        song.read(sng, 0).unwrap();
+        let song = Song::host_from(sng);
         for sub in 0..u32::from(sng[100]) {
             let (r, whole) = analyse(&song, sub, o, None);
             for budget in [1u32, 3, 64, SONG_SLICE_UNITS] {
@@ -131,7 +118,6 @@ fn the_sliced_analysis_makes_the_same_shape() {
     assert!(shapes > 100);
 }
 
-/// The call period: gt2reloc's CIA timer, cycles x 24 MHz / 544 / the clock, exact.
 #[test]
 fn the_frame_clock_is_the_cia_period_exactly() {
     for ntsc in [0u32, 1] {
@@ -143,7 +129,6 @@ fn the_frame_clock_is_the_cia_period_exactly() {
                 (0x4cc7, 985_248)
             };
             let cycles = if ms == 0 { base * 2 } else { base / ms as u128 } + 1;
-            // q + r / den == cycles * 24e6 / (clock * 544)
             let lhs = (p.q as u128 * p.den as u128 + p.r as u128) * clock * 544;
             let rhs = cycles * 24_000_000 * p.den as u128;
             assert_eq!(lhs, rhs, "multispeed {ms} ntsc {ntsc}: {p:?}");
@@ -155,38 +140,61 @@ fn the_frame_clock_is_the_cia_period_exactly() {
     assert_eq!(pal.q, 880, "19,656 cycles at 985,248 Hz is 880.16 samples");
 }
 
-/// A short song: channel 1 plays pattern 0 then pattern 1, channels 2 and 3 their own.
+fn short_song_patterns(channel_3_plays: bool) -> Vec<(Vec<[u8; 4]>, [u8; 4])> {
+    let mut p0 = vec![
+        row(note(3, 0), 1),
+        REST,
+        REST,
+        REST,
+        row(note(3, 4), 0),
+        REST,
+        REST,
+        REST,
+    ];
+    p0.extend(vec![
+        row(note(3, 7), 1),
+        REST,
+        REST,
+        REST,
+        REST,
+        REST,
+        REST,
+        REST,
+    ]);
+    let p1 = vec![row(note(4, 0), 1), REST, REST, REST, REST, REST, REST, REST];
+    let p2 = vec![row(note(2, 0), 1), REST, REST, REST, REST, REST, REST, REST];
+    let p3 = if channel_3_plays {
+        vec![row(note(1, 7), 1), REST, REST, REST, REST, REST, REST, REST]
+    } else {
+        vec![REST; 8]
+    };
+    vec![p0, p1, p2, p3]
+        .into_iter()
+        .map(|p| (p, [0xff, 0, 0, 0]))
+        .collect()
+}
+
 fn simple_song() -> Vec<u8> {
     simple_spec().encode()
 }
 
 fn simple_spec() -> SngSpec {
-    let mut p0 = vec![row(n(3, 0), 1), R, R, R, row(n(3, 4), 0), R, R, R];
-    p0.extend(vec![row(n(3, 7), 1), R, R, R, R, R, R, R]);
-    let p1 = vec![row(n(4, 0), 1), R, R, R, R, R, R, R];
-    let p2 = vec![row(n(2, 0), 1), R, R, R, R, R, R, R];
-    let p3 = vec![row(n(1, 7), 1), R, R, R, R, R, R, R];
     let mut s = SngSpec::new();
     s.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![3], 0)]];
     s.instr = vec![ins(0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09)];
     s.tables = vec![vec![(0x41, 0x00), (0xff, 0x00)], vec![], vec![], vec![]];
-    s.patterns = vec![p0, p1, p2, p3]
-        .into_iter()
-        .map(|p| (p, [0xff, 0, 0, 0]))
-        .collect();
+    s.patterns = short_song_patterns(true);
     s
 }
 
 fn song_of(sng: &[u8], o: Option<&gt2_options>) -> Song {
-    let mut song = Song::host();
-    song.read(sng, 0).unwrap();
+    let mut song = Song::host_from(sng);
     if let Some(o) = o {
         assert_eq!(unsafe { song_ext_set_options(song.ptr_mut(), o) }, 0);
     }
     song
 }
 
-/// Plays through song_ctl until `calls` calls; each call's player state.
 fn transport_states(t: &mut Transport, calls: u32) -> Vec<Vec<u8>> {
     let mut states = Vec::new();
     let mut guard = 0u32;
@@ -203,7 +211,7 @@ fn transport_states(t: &mut Transport, calls: u32) -> Vec<Vec<u8>> {
     states
 }
 
-fn player_states(song: &Song, sub: u32, o: &gt2_options, calls: u32) -> Vec<Vec<u8>> {
+fn reference_player_states(song: &Song, sub: u32, o: &gt2_options, calls: u32) -> Vec<Vec<u8>> {
     let mut p = Player::new(song, sub, o).expect("plays");
     (0..calls)
         .map(|_| {
@@ -213,8 +221,6 @@ fn player_states(song: &Song, sub: u32, o: &gt2_options, calls: u32) -> Vec<Vec<
         .collect()
 }
 
-/// The transport's player plays what gt2_play_init's plays, call for call, with the call
-/// at the clock's sample (every call at floor(k x samples a call) from the play's block).
 #[test]
 fn the_transport_plays_what_the_player_plays_at_the_clocks_samples() {
     for (name, sng) in gt2_ref::examples().into_iter().take(4) {
@@ -222,7 +228,7 @@ fn the_transport_plays_what_the_player_plays_at_the_clocks_samples() {
             let mut o = default_options();
             o.multispeed = ms;
             let mut song = song_of(&sng, Some(&o));
-            let want = player_states(&song, 0, &o, 600);
+            let want = reference_player_states(&song, 0, &o, 600);
             let mut t = Transport::new(&mut song);
             assert!(t.play(0, 0));
             let mut got = Vec::new();
@@ -253,12 +259,9 @@ fn the_transport_plays_what_the_player_plays_at_the_clocks_samples() {
     }
 }
 
-/// A primitive of the song model (gt2_song.h) making one edit.
 type Prim = Box<dyn Fn(*mut gt2_song, &mut gt2_edit) -> gt2_err>;
 
-/// Sends each primitive's edit to the transport as the song's editor would (again after a
-/// pass when the model or the transport asks to wait).
-fn send(t: &mut Transport, song: *mut gt2_song, p: &Prim) {
+fn send_as_the_editor_does(t: &mut Transport, song: *mut gt2_song, p: &Prim) {
     for _ in 0..1000 {
         let mut e = gt2_edit::default();
         match p(song, &mut e) {
@@ -277,9 +280,6 @@ fn send(t: &mut Transport, song: *mut gt2_song, p: &Prim) {
     panic!("an edit never went");
 }
 
-/// At call `at` the edits go; from then (or from the hand-over, when the shape's change is
-/// one the state cannot follow) the transport's player is the reference's: a player started
-/// on the edited song and fast-forwarded to the same call. The calls the hand-over took.
 fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Prim]) -> u32 {
     let o = default_options();
     let mut live = song_of(sng, None);
@@ -296,7 +296,7 @@ fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Pr
     let before = shape_bytes(t.shape()).to_vec();
     let sent = t.calls();
     for p in prims {
-        send(&mut t, song, p);
+        send_as_the_editor_does(&mut t, song, p);
     }
     let handovers = t.sc.handovers;
     let mut states = Vec::new();
@@ -307,8 +307,6 @@ fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Pr
         let c = t.calls();
         t.block_silent();
         if t.calls() != c {
-            // from the call after every edit has reached the interrupt (a widening's edit
-            // waits for its shape) and, if one is due, the hand-over
             let settled = t.sc.inflight_n == 0 || t.sc.cmd_tail == t.sc.stage;
             if first.is_none()
                 && settled
@@ -326,7 +324,7 @@ fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Pr
         expect_handover,
         "{name}: hand-over"
     );
-    let want = player_states(&reference, 0, &o, total);
+    let want = reference_player_states(&reference, 0, &o, total);
     for (call, state) in states.iter().filter(|(c, _)| *c >= first) {
         assert!(
             *state == want[*call as usize],
@@ -338,7 +336,6 @@ fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Pr
         before != shape_bytes(t.shape()),
         "{name}: the shape did not change"
     );
-    // a fresh analysis of the edited song, once quiet, is the shape the player ends on
     let (r, fresh) = analyse(&reference, 0, &o, None);
     assert_eq!(r, 0);
     assert!(
@@ -374,19 +371,7 @@ fn insert_row(pattern: u32, r: u32) -> Prim {
     Box::new(move |s, e| unsafe { gt2_pattern_insert_row(s, pattern, r, e) })
 }
 
-/// A song for the edits: channel 1 plays pattern 0 (16 rows), then pattern 1, which nothing
-/// before call 90 reads (16 rows of 6 ticks: pattern 1 starts at call 96); instrument 2 and
-/// the tables' rows past 2 are free.
-fn edit_song(channel_3: bool) -> Vec<u8> {
-    let mut p0 = vec![row(n(3, 0), 1), R, R, R, row(n(3, 4), 0), R, R, R];
-    p0.extend(vec![row(n(3, 7), 1), R, R, R, R, R, R, R]);
-    let p1 = vec![row(n(4, 0), 1), R, R, R, R, R, R, R];
-    let p2 = vec![row(n(2, 0), 1), R, R, R, R, R, R, R];
-    let p3 = if channel_3 {
-        vec![row(n(1, 7), 1), R, R, R, R, R, R, R]
-    } else {
-        vec![R; 8]
-    };
+fn edit_song(channel_3_plays: bool) -> Vec<u8> {
     let mut s = SngSpec::new();
     s.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![3], 0)]];
     s.instr = vec![
@@ -406,21 +391,18 @@ fn edit_song(channel_3: bool) -> Vec<u8> {
         vec![(0, 0); 4],
         vec![(0, 0); 4],
     ];
-    s.patterns = vec![p0, p1, p2, p3]
-        .into_iter()
-        .map(|p| (p, [0xff, 0, 0, 0]))
-        .collect();
+    s.patterns = short_song_patterns(channel_3_plays);
     s.encode()
 }
 
-const AT: u32 = 40;
+const EDIT_CALL: u32 = 40;
 
 #[test]
 fn a_note_past_the_range_widens_the_frequency_table() {
     edit_case(
         "note range",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         false,
         &[set_row(1, 2, row(0xbc, 1))],
     );
@@ -428,14 +410,13 @@ fn a_note_past_the_range_widens_the_frequency_table() {
 
 #[test]
 fn a_first_command_of_a_class_widens_the_handlers() {
-    // AD (5XY) and a tempo (FXY), never used before
     edit_case(
         "commands",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         false,
         &[
-            set_row(1, 3, [n(4, 2), 0, 5, 0x22]),
+            set_row(1, 3, [note(4, 2), 0, 5, 0x22]),
             set_row(1, 5, [0xbd, 0, 0x0f, 0x05]),
         ],
     );
@@ -446,7 +427,7 @@ fn a_filter_command_writes_the_cutoff_from_then_on() {
     edit_case(
         "filter",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         false,
         &[
             set_table(GT2_FTBL, 1, 0, 0x90),
@@ -460,50 +441,45 @@ fn a_filter_command_writes_the_cutoff_from_then_on() {
 
 #[test]
 fn a_new_instrument_reaches_its_tables() {
-    // instrument 2's wavetable program (rows 3-4), first named by pattern 1; a calculated
-    // speed (portamento with a left byte of $80 and up) besides
     edit_case(
         "instrument",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         false,
         &[
             set_table(GT2_WTBL, 3, 1, 0x8c),
             set_table(GT2_STBL, 1, 0, 0x80),
             set_table(GT2_STBL, 1, 1, 0x02),
-            set_row(1, 0, [n(4, 0), 2, 1, 0x01]),
+            set_row(1, 0, [note(4, 0), 2, 1, 0x01]),
         ],
     );
 }
 
 #[test]
 fn an_orderlist_rebuild_plays_its_new_pattern() {
-    // a new entry naming pattern 4 (an empty pattern from the reader's) after pattern 1
     edit_case(
         "orderlist",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         false,
         &[
             insert_order(0, 2, 2),
             insert_row(1, 4),
-            set_row(1, 4, [n(5, 1), 1, 0, 0]),
+            set_row(1, 4, [note(5, 1), 1, 0, 0]),
         ],
     );
 }
 
-/// A wave delay changes how the player's wavetable state reads (the packer recodes the
-/// waveforms): the player is handed over to one fast-forwarded with the new shape.
 #[test]
 fn a_wave_delay_hands_the_player_over() {
     let took = edit_case(
         "wave delay",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         true,
         &[
             set_table(GT2_WTBL, 3, 0, 0x03),
-            set_row(1, 0, row(n(4, 0), 2)),
+            set_row(1, 0, row(note(4, 0), 2)),
         ],
     );
     eprintln!("the wave delay's hand-over: {took} calls after the edit");
@@ -514,26 +490,25 @@ fn a_pulse_low_nybble_hands_the_player_over() {
     edit_case(
         "pulse",
         &edit_song(true),
-        AT,
+        EDIT_CALL,
         true,
         &[
             set_table(GT2_PTBL, 1, 0, 0x88),
             set_table(GT2_PTBL, 1, 1, 0x08),
             set_instr(2, GT2_INS_PULSE, 1),
-            set_row(1, 0, row(n(4, 0), 2)),
+            set_row(1, 0, row(note(4, 0), 2)),
         ],
     );
 }
 
-/// A channel's first note (it held only rests, so the packer played two channels).
 #[test]
 fn a_channels_first_note_hands_the_player_over() {
     let took = edit_case(
         "channels",
         &edit_song(false),
-        AT,
+        EDIT_CALL,
         true,
-        &[set_row(3, 0, row(n(2, 7), 1))],
+        &[set_row(3, 0, row(note(2, 7), 1))],
     );
     eprintln!("the third channel's hand-over: {took} calls after the edit");
     assert!(took < 50, "the hand-over took {took} calls");
@@ -544,7 +519,7 @@ fn play_simple() -> (Song, Transport) {
     let mut t = Transport::new(&mut song);
     assert!(t.play(0, 0));
     assert!(t.run_until(100, |t| t.calls() > 0));
-    t.pass(); // the play known applied: its other shape buffer free
+    t.pass();
     (song, t)
 }
 
@@ -552,8 +527,6 @@ fn env_state(t: &Transport, v: usize) -> u32 {
     t.chip.env[v].state
 }
 
-/// Stop: each voice's gate goes off and its envelope releases; continue: the next call is at
-/// the block it reaches; mute: a muted voice's gate goes off and its writes stay out.
 #[test]
 fn stop_releases_continue_resumes_mute_silences() {
     let (_song, mut t) = play_simple();
@@ -579,7 +552,6 @@ fn stop_releases_continue_resumes_mute_silences() {
     t.pass();
     let at = t.block_silent();
     assert_eq!(at, Some(0), "continue: the call at the block's start");
-    // mute voice 1: its gate off, then nothing of its writes
     assert!(t.mute(1));
     t.pass();
     t.block_silent();
@@ -597,7 +569,6 @@ fn stop_releases_continue_resumes_mute_silences() {
         t.sc.shadow[..2] != shadow[..2],
         "the player wrote it all the same"
     );
-    // unmuted, the shadow goes back
     assert!(t.mute(0));
     t.pass();
     t.block_silent();
@@ -607,8 +578,6 @@ fn stop_releases_continue_resumes_mute_silences() {
     let _ = f;
 }
 
-/// More edits than the ring and the edits in flight hold: each waits (0) and goes later;
-/// none is lost, and no block applies more than SONG_EDITS_PER_BLOCK.
 #[test]
 fn a_flood_of_edits_waits_and_is_never_lost() {
     let (mut song, mut t) = play_simple();
@@ -619,7 +588,7 @@ fn a_flood_of_edits_waits_and_is_never_lost() {
     while sent < target {
         let r = sent % 8;
         let mut e = gt2_edit::default();
-        let cell = [n(3, (sent % 12) as u8), 1, 0, 0];
+        let cell = [note(3, (sent % 12) as u8), 1, 0, 0];
         match unsafe { gt2_set_row(s, 2, r, cell.as_ptr(), &mut e) } {
             GT2_OK => {}
             GT2_ERR_PENDING => {
@@ -634,7 +603,6 @@ fn a_flood_of_edits_waits_and_is_never_lost() {
         } else {
             unsafe { gt2_edit_cancel(s, &e) };
             refused += 1;
-            // no pass: the next tries find it full too, then a block drains 8
             if refused % 4 == 0 {
                 t.pass();
                 t.block_silent();
@@ -650,7 +618,7 @@ fn a_flood_of_edits_waits_and_is_never_lost() {
         let k = (0..target).rev().find(|k| k % 8 == r).unwrap();
         assert_eq!(
             last[r as usize][0],
-            n(3, (k % 12) as u8),
+            note(3, (k % 12) as u8),
             "row {r}: the last edit"
         );
     }
@@ -816,8 +784,8 @@ fn split_delete_case(playing: bool) {
         .collect();
     fixture.instr = vec![ins(0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09)];
     fixture.tables = vec![vec![(0x41, 0x00), (0xff, 0x00)], vec![], vec![], vec![]];
-    let mut body = vec![R; GT2_MAX_ROWS as usize];
-    body[0] = row(n(3, 0), 1);
+    let mut body = vec![REST; GT2_MAX_ROWS as usize];
+    body[0] = row(note(3, 0), 1);
     fixture.patterns = vec![(body, [0xff, 0, 0, 0]); 4];
     let mut model = fixture.clone();
     let mut song = Song::device();
@@ -964,7 +932,7 @@ fn split_delete_case(playing: bool) {
     }
     let first = t.calls();
     let got = transport_states(&mut t, first + 24);
-    let expected = player_states(&reference, 0, &default_options(), first + 24);
+    let expected = reference_player_states(&reference, 0, &default_options(), first + 24);
     assert_eq!(
         got,
         expected[first as usize..],
@@ -976,7 +944,6 @@ fn split_delete_case(playing: bool) {
     );
 }
 
-/// A rebuild's old copy stays allocated until the interrupt has applied its swap.
 #[test]
 fn a_swapped_patterns_old_space_is_freed_only_after_it_is_applied() {
     let (mut song, mut t) = play_simple();
@@ -1002,7 +969,6 @@ fn a_swapped_patterns_old_space_is_freed_only_after_it_is_applied() {
     );
 }
 
-/// A jam: the voice's next tick 0 starts the note with the instrument.
 #[test]
 fn a_jam_plays_at_the_voices_next_tick_0() {
     let (_song, mut t) = play_simple();
@@ -1024,14 +990,13 @@ fn a_jam_plays_at_the_voices_next_tick_0() {
     assert!(found, "the jammed note started");
 }
 
-/// A seek: the player fast-forwarded to call 500 takes over at the interrupt's next call.
 #[test]
 fn a_seek_hands_over_a_fast_forwarded_player() {
     let (song, mut t) = play_simple();
     assert!(t.seek(500));
     assert!(t.run_until(5000, |t| t.sc.handovers > 0));
     let o = default_options();
-    let want = player_states(&song, 0, &o, 700);
+    let want = reference_player_states(&song, 0, &o, 700);
     let calls = t.calls();
     let got = transport_states(&mut t, calls + 100);
     for (k, s) in got.iter().enumerate() {
@@ -1043,8 +1008,6 @@ fn a_seek_hands_over_a_fast_forwarded_player() {
     }
 }
 
-/// The events are the player's, with the call's number; when the main loop does not read
-/// them the oldest go, counted.
 #[test]
 fn the_events_follow_the_player_and_overflow_drops_the_oldest() {
     let (song, mut t) = play_simple();
@@ -1075,7 +1038,6 @@ fn the_events_follow_the_player_and_overflow_drops_the_oldest() {
         .map(|e| (e.frame, e.flags, e.pattern, e.row, e.note))
         .collect();
     assert_eq!(got, want);
-    // unread for long: the ring keeps the newest
     let lost = t.sc.ev_lost;
     let until = t.calls() + 2000;
     transport_states(&mut t, until);
@@ -1090,9 +1052,6 @@ fn the_events_follow_the_player_and_overflow_drops_the_oldest() {
     );
 }
 
-/// song_ctl_again (ergonomics review E04): on channel 1's orderlist `D2 00 01`, at each pass's
-/// last row, from its start to its end, it says whether the pattern plays again, as the next
-/// pass then shows.
 #[test]
 fn again_says_whether_a_repeated_pattern_plays_once_more() {
     let mut spec = simple_spec();
@@ -1101,7 +1060,7 @@ fn again_says_whether_a_repeated_pattern_plays_once_more() {
     let mut t = Transport::new(&mut song);
     assert_eq!(unsafe { song_ctl_again(&*t.sc) }, 0, "nothing plays");
     assert!(t.play(0, 0));
-    let mut last: Option<(u8, bool)> = None; // a pass's last row: its pattern, and again
+    let mut last: Option<(u8, bool)> = None;
     let mut seen = Vec::new();
     let mut guard = 0;
     while seen.len() < 6 {
@@ -1146,7 +1105,6 @@ fn again_says_whether_a_repeated_pattern_plays_once_more() {
     );
 }
 
-/// A multispeed the device cannot play in one call a block is refused.
 #[test]
 fn multispeed_past_4_is_refused() {
     let mut o = default_options();
@@ -1158,7 +1116,6 @@ fn multispeed_past_4_is_refused() {
     assert_eq!(t.state(), SONG_IDLE);
 }
 
-/// A chip swapped in (a profile change) gets the player's registers before it renders.
 #[test]
 fn a_swapped_chip_gets_the_players_registers() {
     let (_song, mut t) = play_simple();
@@ -1188,9 +1145,6 @@ fn a_swapped_chip_gets_the_players_registers() {
     assert_eq!(fresh.fc, t.chip.fc);
 }
 
-/// KEYS A (M2b's keys_route): a voice the keys take keeps their writes (the song's are
-/// dropped, and no gate-off is written over the keys' note); given back, it gets the song's
-/// registers again at the next block.
 #[test]
 fn a_voice_the_keys_take_is_left_to_them_and_given_back() {
     let (_song, mut t) = play_simple();
@@ -1198,7 +1152,6 @@ fn a_voice_the_keys_take_is_left_to_them_and_given_back() {
     assert!(t.take(1));
     t.pass();
     t.block_silent();
-    // the keys play voice 1: a note of theirs
     unsafe {
         sid_write(&mut *t.chip, 0, 0x34);
         sid_write(&mut *t.chip, 1, 0x12);
@@ -1216,9 +1169,6 @@ fn a_voice_the_keys_take_is_left_to_them_and_given_back() {
     assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
 }
 
-/// KEYS A (the M2 review's 2.1): a take holds from the interrupt's next block with no command
-/// behind it, so no pass, full ring or edit in the way leaves the song a call in which to write
-/// over the keys' first note; given back the same way, the voice gets the song's registers.
 #[test]
 fn a_take_holds_from_the_next_block_with_no_command_and_no_pass() {
     let (_song, mut t) = play_simple();
@@ -1231,7 +1181,6 @@ fn a_take_holds_from_the_next_block_with_no_command_and_no_pass() {
         sid_write(&mut *t.chip, 1, 0x12);
         sid_write(&mut *t.chip, 4, 0x41);
     }
-    // Blocks alone, no main-loop pass in between: the song's calls go on over the take.
     let until = t.calls() + 20;
     while t.calls() < until {
         t.block_silent();
@@ -1245,8 +1194,6 @@ fn a_take_holds_from_the_next_block_with_no_command_and_no_pass() {
     assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
 }
 
-/// PLAY (the M2 review's 2.2) starts the song from a silent chip, less the voices the keys
-/// hold: their note sounds on, and the song gets them when the keys let go.
 #[test]
 fn play_leaves_the_voices_the_keys_hold_sounding() {
     let (_song, mut t) = play_simple();
@@ -1276,7 +1223,6 @@ fn play_leaves_the_voices_the_keys_hold_sounding() {
     assert_eq!(t.chip.osc[0].freq, f, "the song's frequency again");
 }
 
-/// A jam's release while the song plays: the voice's gate goes off at the next call.
 #[test]
 fn a_jam_release_lets_the_voice_go_at_the_next_call() {
     let (_song, mut t) = play_simple();
@@ -1292,8 +1238,7 @@ fn a_jam_release_lets_the_voice_go_at_the_next_call() {
     assert_eq!(t.sc.shadow[gated * 7 + 4] & 1, 0);
 }
 
-/// The calls a block makes and the row events, for `blocks` blocks.
-fn rows_seen(t: &mut Transport, blocks: usize) -> (u32, usize) {
+fn calls_and_row_events(t: &mut Transport, blocks: usize) -> (u32, usize) {
     let calls = t.calls();
     let mut rows = 0;
     for _ in 0..blocks {
@@ -1308,9 +1253,6 @@ fn rows_seen(t: &mut Transport, blocks: usize) -> (u32, usize) {
     (t.calls() - calls, rows)
 }
 
-/// The audition with no song played yet: the analysis, then a paused start; a jam sounds the
-/// instrument on its voice at the next call, no row is read, the release lets it go, and the
-/// end stops the calls.
 #[test]
 fn an_audition_sounds_jams_with_the_song_stopped() {
     let mut song = song_of(&simple_song(), None);
@@ -1331,24 +1273,22 @@ fn an_audition_sounds_jams_with_the_song_stopped() {
     assert_ne!(t.chip.env[2].gate, 0, "the jam sounds on voice 3");
     let f = u32::from(t.sc.shadow[14]) | u32::from(t.sc.shadow[15]) << 8;
     assert_ne!(f, 0, "at the note's frequency");
-    let (calls, rows) = rows_seen(&mut t, 100);
+    let (calls, rows) = calls_and_row_events(&mut t, 100);
     assert!(calls >= 14, "the calls run, 50 a second: {calls}");
     assert_eq!(rows, 0, "no row read with the song stopped");
     for v in 0..2 {
         assert_eq!(t.chip.env[v].gate, 0, "voice {v} stays silent");
     }
     assert!(t.jam(2, SONG_JAM_RELEASE, 1));
-    rows_seen(&mut t, 5);
+    calls_and_row_events(&mut t, 5);
     assert_eq!(t.chip.env[2].gate, 0, "released");
     assert!(t.audition_end());
-    rows_seen(&mut t, 2);
-    let (calls, _) = rows_seen(&mut t, 50);
+    calls_and_row_events(&mut t, 2);
+    let (calls, _) = calls_and_row_events(&mut t, 50);
     assert_eq!(calls, 0, "no call once it ends");
     assert!(!t.jam_ready());
 }
 
-/// An audition after a stop, chip A handed back meanwhile, takes chip A again and leaves the
-/// song where it stopped: continue goes on from the row after the stop's.
 #[test]
 fn an_audition_after_a_stop_keeps_where_continue_goes_on() {
     let (_song, mut t) = play_simple();
@@ -1363,9 +1303,9 @@ fn an_audition_after_a_stop_keeps_where_continue_goes_on() {
     assert!(t.audition());
     assert!(t.run_until(20, |t| t.jam_ready()));
     assert!(t.jam(0, 40, 1));
-    rows_seen(&mut t, 60);
+    calls_and_row_events(&mut t, 60);
     assert!(t.audition_end());
-    rows_seen(&mut t, 4);
+    calls_and_row_events(&mut t, 4);
     assert_eq!(
         t.sc.player.chn.map(|c| (c.songptr, c.pattptr)),
         stopped,
@@ -1373,18 +1313,14 @@ fn an_audition_after_a_stop_keeps_where_continue_goes_on() {
     );
     assert!(t.resume());
     assert!(t.run_until(20, |t| t.state() == SONG_PLAYING));
-    let (calls, rows) = rows_seen(&mut t, 100);
+    let (calls, rows) = calls_and_row_events(&mut t, 100);
     assert!(
         calls >= 14 && rows > 0,
         "{calls} calls, {rows} rows after continue"
     );
 }
 
-// ---- 1.1: TABLE's ARP helper heard before SAVE (song_ctl_draft) ----
-
-/// The ARP helper's rows for a major arpeggio at speed 2 (delay rows), looping at step 1, from
-/// table row `first` (1 based).
-fn arp_rows(first: u32, offsets: &[i8], speed: u8) -> (Vec<u8>, Vec<u8>) {
+fn arp_helper_rows(first: u32, offsets: &[i8], speed: u8) -> (Vec<u8>, Vec<u8>) {
     let mut a = song_pages_arp {
         steps: offsets.len() as u8,
         speed,
@@ -1399,9 +1335,6 @@ fn arp_rows(first: u32, offsets: &[i8], speed: u8) -> (Vec<u8>, Vec<u8>) {
     (left[..n as usize].to_vec(), right[..n as usize].to_vec())
 }
 
-/// Instrument 1 plays the wavetable's row 1 (a plain sawtooth, no delays); instrument 2 row 3,
-/// where the draft goes: blank, or with `saved` the rows SAVE writes there. Every channel plays
-/// instrument 2.
 fn draft_song(saved: Option<&(Vec<u8>, Vec<u8>)>) -> Vec<u8> {
     let mut s = simple_spec();
     s.instr = vec![
@@ -1429,13 +1362,11 @@ fn draft(t: &mut Transport, ch: u32, first: u32, rows: &(Vec<u8>, Vec<u8>)) {
     );
 }
 
-/// Voice v's frequency, pulse and control as the chip holds them.
-fn voice(t: &Transport, v: usize) -> (u32, u32, u8) {
+fn voice_freq_pulse_control(t: &Transport, v: usize) -> (u32, u32, u8) {
     let o = &t.chip.osc[v];
     (o.freq, o.pw, o.control)
 }
 
-/// Voice 1 from the call its jam sounds, `calls` calls of it.
 fn jam_heard(t: &mut Transport, note: u32, calls: u32) -> Vec<(u32, u32, u8)> {
     assert!(t.jam(0, note, 2));
     let mut out = Vec::new();
@@ -1445,7 +1376,7 @@ fn jam_heard(t: &mut Transport, note: u32, calls: u32) -> Vec<(u32, u32, u8)> {
         t.pass();
         t.block_silent();
         if t.calls() != c && (!out.is_empty() || t.chip.env[0].gate != 0) {
-            out.push(voice(t, 0));
+            out.push(voice_freq_pulse_control(t, 0));
         }
         guard += 1;
         assert!(guard < 10_000, "the jam did not sound");
@@ -1458,13 +1389,9 @@ fn auditioning(t: &mut Transport) {
     assert!(t.run_until(400, |t| t.jam_ready()));
 }
 
-/// The keys play the draft as they play the rows SAVE writes: a jam of instrument 2 with the
-/// draft heard (the song has no wave delays, the draft has: the shape widens first) sounds,
-/// call for call, as the same jam once the rows are in the table; the song's own rows are
-/// untouched, and a draft taken off plays the table again.
 #[test]
 fn a_drafts_jam_sounds_as_the_saved_rows_do() {
-    let rows = arp_rows(3, &[0, 4, 7, 12], 2);
+    let rows = arp_helper_rows(3, &[0, 4, 7, 12], 2);
     assert!(rows.0.iter().any(|&l| (1..0x10).contains(&l)), "delay rows");
     let mut saved = song_of(&draft_song(Some(&rows)), None);
     let mut t = Transport::new(&mut saved);
@@ -1501,7 +1428,6 @@ fn a_drafts_jam_sounds_as_the_saved_rows_do() {
     assert!(t.jam(0, SONG_JAM_RELEASE, 2));
     assert_eq!(blank.write(false), before, "nothing written");
 
-    // taken off: the table's (blank) rows again, as the song without the draft plays them
     let mut t2_song = song_of(&draft_song(None), None);
     let mut t2 = Transport::new(&mut t2_song);
     auditioning(&mut t2);
@@ -1513,7 +1439,6 @@ fn a_drafts_jam_sounds_as_the_saved_rows_do() {
     t.run_until(20, |t| t.sc.draft.channel == GT2_DRAFT_OFF as u8);
     assert_eq!(t.sc.draft.channel, GT2_DRAFT_OFF as u8, "the draft is off");
     let heard = jam_heard(&mut t, 36, 30);
-    // (the note's first call holds the voice's last frequency: the hard restart's)
     assert_eq!(
         heard[1..].iter().map(|v| v.0).collect::<Vec<_>>(),
         plain[1..].iter().map(|v| v.0).collect::<Vec<_>>(),
@@ -1521,11 +1446,9 @@ fn a_drafts_jam_sounds_as_the_saved_rows_do() {
     );
 }
 
-/// A turn on a held note is heard at once: the draft changed while voice 1 holds its jam
-/// plays the new step's pitch within a few calls, with no new note.
 #[test]
 fn a_drafts_change_is_heard_on_the_held_note() {
-    let rows = arp_rows(3, &[0, 0, 0, 0], 1);
+    let rows = arp_helper_rows(3, &[0, 0, 0, 0], 1);
     let mut blank = song_of(&draft_song(None), None);
     let mut t = Transport::new(&mut blank);
     auditioning(&mut t);
@@ -1534,15 +1457,14 @@ fn a_drafts_change_is_heard_on_the_held_note() {
     let held = jam_heard(&mut t, 36, 10);
     let base = held.last().unwrap().0;
     assert!(held[1..].iter().all(|v| v.0 == base), "one pitch: {held:?}");
-    // speed 2 (delays the song lacks) and an octave on step 3
-    draft(&mut t, 0, 3, &arp_rows(3, &[0, 0, 12, 0], 2));
+    draft(&mut t, 0, 3, &arp_helper_rows(3, &[0, 0, 12, 0], 2));
     let mut seen = Vec::new();
     for _ in 0..40 {
         let c = t.calls();
         t.pass();
         t.block_silent();
         if t.calls() != c {
-            seen.push(voice(&t, 0).0);
+            seen.push(voice_freq_pulse_control(&t, 0).0);
         }
     }
     assert!(
@@ -1555,13 +1477,10 @@ fn a_drafts_change_is_heard_on_the_held_note() {
     );
 }
 
-/// The draft is its channel's only: with the song playing and every channel on instrument 2,
-/// channels 2 and 3 play the table's rows call for call as without a draft, channel 1 the
-/// draft's.
 #[test]
 fn a_draft_plays_only_on_its_channel() {
-    let saved = arp_rows(3, &[0, 0, 0, 0], 1);
-    let rows = arp_rows(3, &[0, 7, 12, 19], 2);
+    let saved = arp_helper_rows(3, &[0, 0, 0, 0], 1);
+    let rows = arp_helper_rows(3, &[0, 7, 12, 19], 2);
     let run = |with: bool| {
         let mut song = song_of(&draft_song(Some(&saved)), None);
         let mut t = Transport::new(&mut song);
@@ -1575,7 +1494,11 @@ fn a_draft_plays_only_on_its_channel() {
             t.pass();
             t.block_silent();
             if t.calls() != c {
-                out.push([voice(&t, 0), voice(&t, 1), voice(&t, 2)]);
+                out.push([
+                    voice_freq_pulse_control(&t, 0),
+                    voice_freq_pulse_control(&t, 1),
+                    voice_freq_pulse_control(&t, 2),
+                ]);
             }
         }
         out

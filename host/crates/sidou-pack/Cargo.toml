@@ -6,7 +6,6 @@ description = "Packs the SIDOU firmware and its update loader into an FM-1 updat
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-# A port of Felucca's GPL-3.0-only packer (src/lib.rs).
 license = "GPL-3.0-only"
 publish.workspace = true
 

@@ -1,20 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-FileCopyrightText: Lasse Öörni and GoatTracker 2's contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The .sng reader and writer (gt2_sng.h).
- *
- * The format, the older idents' conversions and what the writer trims follow GoatTracker
- * 2.77's gsong.c (loadsong, savesong, countpatternlengths) and gtable.c (makespeedtable),
- * GPL-2.0-or-later, whose "any later version" lets this file stay GPL-3.0-or-later; the
- * channel count follows GoatTracker Stereo 2.77's determinechannels. Decision record 0007
- * quotes and explains each. */
 #include "gt2_sng.h"
 
 #include <string.h>
 
 #include "song_ext.h"
 
-/* A cursor over the reader, through a small buffer. */
 typedef struct {
     gt2_read_fn read;
     void* ctx;
@@ -56,7 +48,6 @@ static uint32_t le32(const uint8_t* p) {
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
 
-/* The CRC-32 of the file's bytes [from, to); -1 in *ok if the file is shorter. */
 static uint32_t crc_range(gt2_read_fn read, void* ctx, uint32_t from, uint32_t to, int* ok) {
     uint8_t buf[64];
     uint32_t crc = 0;
@@ -93,15 +84,12 @@ uint32_t gt2_sng_channels(gt2_read_fn read, void* ctx) {
             for (uint32_t i = 0; i < loadsize; i++)
                 if (cur_byte(&c, &buf[i]) != 0)
                     buf[i] = 0;
-            /* A length of 0 makes GoatTracker Stereo read buf[-1]: SIDOU calls it a fail. */
             if (loadsize < 2u || buf[loadsize - 2u] != 0xffu || buf[loadsize - 1u] >= loadsize)
                 return GT2_MONO_CHANNELS;
         }
     }
     return GT2_MAX_CHANNELS;
 }
-
-/* Messages. */
 
 static void msg_set(char* m, const char* a) {
     uint32_t i = 0;
@@ -135,8 +123,6 @@ static void msg_num(char* m, uint32_t v) {
     msg_add(m, r);
 }
 
-/* GoatTracker's makespeedtable (gtable.c), on the song's speedtable, makenew 0: an equal
- * entry if there is one, else the first empty one; -1 if data is 0 or the table is full. */
 enum { MST_NOFINEVIB, MST_FINEVIB, MST_FUNKTEMPO, MST_PORTAMENTO };
 
 static int speed_entry(uint32_t data, int mode, uint8_t* left, uint8_t* right) {
@@ -156,7 +142,7 @@ static int speed_entry(uint32_t data, int mode, uint8_t* left, uint8_t* right) {
         l = (uint8_t)((data & 0xf0u) >> 4);
         r = (uint8_t)(data & 0x0fu);
         break;
-    default: /* MST_PORTAMENTO */
+    default:
         l = (uint8_t)((data << 2) >> 8);
         r = (uint8_t)((data << 2) & 0xffu);
         break;
@@ -199,19 +185,17 @@ static void preflight_speed(uint8_t speed[GT2_TABLE_ROWS][2], uint32_t data, int
     }
 }
 
-/* GTS2's commands with a speedtable parameter (loadsong's "Convert speedtable-requiring
- * commands"); fine vibrato is GoatTracker's default, on. */
 static void gts2_row(gt2_song* s, uint8_t* row) {
     switch (row[2]) {
-    case 14: /* CMD_FUNKTEMPO */
+    case 14:
         row[3] = (uint8_t)(makespeedtable(s, row[3], MST_FUNKTEMPO) + 1);
         break;
-    case 1: /* CMD_PORTAUP */
-    case 2: /* CMD_PORTADOWN */
-    case 3: /* CMD_TONEPORTA */
+    case 1:
+    case 2:
+    case 3:
         row[3] = (uint8_t)(makespeedtable(s, row[3], MST_PORTAMENTO) + 1);
         break;
-    case 4: /* CMD_VIBRATO */
+    case 4:
         row[3] = (uint8_t)(makespeedtable(s, row[3], MST_FINEVIB) + 1);
         break;
     default:
@@ -219,10 +203,8 @@ static void gts2_row(gt2_song* s, uint8_t* row) {
     }
 }
 
-/* The conversions loadsong makes after any older ident. */
 static void convert_old(gt2_song* s, uint32_t version) {
     if (version < 4u) {
-        /* Pulse modulation speeds of songs before v2.4, doubled. */
         for (uint32_t c = 0; c < GT2_TABLE_ROWS; c++) {
             if (s->ltable[GT2_PTBL][c] < 0x80u && s->rtable[GT2_PTBL][c]) {
                 int speed = (int)(int8_t)s->rtable[GT2_PTBL][c] * 2;
@@ -235,7 +217,6 @@ static void convert_old(gt2_song* s, uint32_t version) {
         }
     }
     if (version < 5u) {
-        /* The old legato and no-hard-restart parameters, for every instrument slot. */
         for (uint32_t c = 0; c < GT2_MAX_INSTR; c++) {
             uint8_t* in = s->instr[c];
             if (in[GT2_INS_FIRSTWAVE] >= 0x80u) {
@@ -255,9 +236,6 @@ static int has_ff(uint32_t v) {
     return 0;
 }
 
-/* The trailer at e: GT2_TRAILER_*; the chunk bytes to keep in *keep; the options, and the
- * multispeed byte as the file has it (before song_opts_decode clamps it); the GT2 part's
- * channel count it records (0 if none). Loads the kept chunks into s if s is not NULL. */
 static int trailer(gt2_read_fn read, void* ctx, uint32_t e, gt2_song* s, uint32_t* keep,
                    uint32_t* length, gt2_options* opts, int* has_opts, uint8_t* ms_file,
                    uint8_t* channels) {
@@ -292,7 +270,6 @@ static int trailer(gt2_read_fn read, void* ctx, uint32_t e, gt2_song* s, uint32_
     uint8_t chans = h[SONG_TRAILER_CHANNELS];
     if (chans == GT2_MONO_CHANNELS || chans == GT2_MAX_CHANNELS)
         *channels = chans;
-    /* The chunks: well-formed, and what is kept fits the extension area. */
     uint32_t at = e + SONG_TRAILER_CHUNKS, end = e + len - 4u, kept = 0;
     while (at < end) {
         uint8_t ch[SONG_CHUNK_HEADER];
@@ -334,11 +311,6 @@ static int trailer(gt2_read_fn read, void* ctx, uint32_t e, gt2_song* s, uint32_
     return gt2_ok ? GT2_TRAILER_READ : GT2_TRAILER_LOCKS_DROPPED;
 }
 
-/* One pass over the GT2 part: checks it (s NULL) or loads it into s. 0, or -1 and the
- * message. The patterns the orderlists name are marked in named[]. *canonical (if not NULL)
- * is 1 if every count is what savesong would write for the content read (gt2_saved_*), as
- * in any file GoatTracker or SIDOU saved: the last subtune's first three orderlists, the last
- * instrument, each table's last row and the last pattern all in use. */
 static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* info,
                     uint8_t named[GT2_MAX_PATTERNS], int* canonical) {
     cursor c;
@@ -386,7 +358,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         s->channels = info->channels;
         s->version = (uint8_t)version;
     }
-    /* Orderlists. */
     for (uint32_t d = 0; d < subtunes; d++) {
         int used_subtune = 1;
         for (uint32_t ch = 0; ch < info->channels; ch++) {
@@ -396,9 +367,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
             uint32_t i = 0;
             while (i < n && o[i] != GT2_LOOPSONG)
                 i++;
-            /* A stereo song's orderlist must stay one GoatTracker Stereo's check passes once
-             * saved ($FF, then a restart below the entries plus two), or the file it is
-             * saved as would read as mono. */
             if (n == 0u || i >= n ||
                 (info->channels == GT2_MAX_CHANNELS && o[i + 1u] >= i + 2u)) {
                 msg_set(info->msg, "SNG: BAD ORDERLIST V");
@@ -431,7 +399,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         if (used_subtune)
             saved_subtunes = d + 1u;
     }
-    /* Instruments. */
     uint8_t instruments = 0;
     if (cur_byte(&c, &instruments) != 0)
         goto short_file;
@@ -451,7 +418,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
             for (uint32_t k = 0; k < GT2_INSTR_BYTES; k++)
                 to[k] = in[k];
             if (version == 2u) {
-                /* GTS2: the vibrato delay, then an old vibrato parameter. */
                 to[GT2_INS_VIBDELAY] = in[5];
                 to[GT2_INS_VIBPARAM] = (uint8_t)(makespeedtable(s, in[6], MST_FINEVIB) + 1);
             }
@@ -459,7 +425,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         if (version == 2u)
             preflight_speed(speed, in[6], MST_FINEVIB);
     }
-    /* Tables: three in GTS2, four after. */
     uint32_t tables = version == 2u ? 3u : GT2_TABLES;
     for (uint32_t t = 0; t < tables; t++) {
         uint8_t rows = 0, l = 0, r = 0;
@@ -493,7 +458,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         }
         table_bytes += used_rows * 2u;
     }
-    /* Patterns. */
     uint8_t patterns = 0;
     if (cur_byte(&c, &patterns) != 0)
         goto short_file;
@@ -508,8 +472,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         uint32_t end = m, ok = m >= 1u && m <= GT2_MAX_ROWS + 1u, deflt = 1;
         uint8_t* dst = NULL;
         if (ok && s) {
-            /* The rows up to the end row; a file whose second pass disagrees is a read
-             * error, found when the end row is not where the first pass saw it. */
             uint32_t off4 = 0;
             if (gt2_arena_alloc(s, m * GT2_ROW_BYTES, &off4) != 0)
                 goto read_error;
@@ -557,8 +519,6 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         }
         pattern_bytes[p] = (uint16_t)(1u + (end + 1u) * GT2_ROW_BYTES);
         if (deflt && end == GT2_DEFAULT_ROWS && !named[p]) {
-            /* An empty 64-row pattern no orderlist names is what the writer writes for a
-             * pattern not held: not held, it takes no arena. */
             if (s) {
                 gt2_arena_release(s, GT2_SPAN_OFF4(s->pattern[p]), m * GT2_ROW_BYTES);
                 s->pattern[p] = 0u;
@@ -567,13 +527,11 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         }
         need += (end + 1u) * GT2_ROW_BYTES;
         if (s && end + 1u < m) {
-            /* Give back the rows after the end row. */
             gt2_span sp = s->pattern[p];
             gt2_arena_release(s, GT2_SPAN_OFF4(sp) + end + 1u, (m - end - 1u) * GT2_ROW_BYTES);
             s->pattern[p] = GT2_SPAN(GT2_SPAN_OFF4(sp), end + 1u);
         }
     }
-    /* Patterns the orderlists name that the file does not hold: empty, 64 rows. */
     for (uint32_t p = patterns; p < GT2_MAX_PATTERNS; p++) {
         if (!named[p])
             continue;
@@ -621,18 +579,17 @@ read_error:
     return -1;
 }
 
-/* One reading of the file with a channel count: the GT2 part checked, then the trailer. */
 typedef struct {
     gt2_read_info info;
     uint8_t named[GT2_MAX_PATTERNS];
     uint32_t keep, length;
     gt2_options opts;
     int has_opts;
-    int ok;        /* the GT2 part parsed */
-    int canonical; /* and its counts are savesong's */
+    int ok;
+    int canonical;
     uint8_t ms_file;
     uint8_t trailer_channels;
-    int t;  /* GT2_TRAILER_* after it */
+    int t;
 } attempt;
 
 static void attempt_run(attempt* a, gt2_read_fn read, void* ctx, uint32_t channels) {
@@ -645,10 +602,6 @@ static void attempt_run(attempt* a, gt2_read_fn read, void* ctx, uint32_t channe
     a->info.saved_bytes += gt2_saved_trailer_size(a->keep);
 }
 
-/* How well the reading's GT2 part ends where a song file ends, best first: at a trailer
- * whose CRCs hold (and better if it records this reading's channel count), at one whose own
- * CRC holds (the GT2 part's failed; the same), at a trailer's magic (the trailer damaged),
- * at the file's last byte; 0 anywhere else or if the part did not parse. */
 static int attempt_rank(const attempt* a, gt2_read_fn read, void* ctx) {
     uint8_t b = 0;
     int match = a->trailer_channels == a->info.channels;
@@ -666,19 +619,7 @@ static int attempt_rank(const attempt* a, gt2_read_fn read, void* ctx) {
     }
 }
 
-/* The reading the file is taken as, in *a (other is scratch). */
 static void choose(attempt* a, attempt* other, gt2_read_fn read, void* ctx) {
-    /* GoatTracker Stereo's check is a guess ("not certain", 0007): a GT2 part can pass it,
-     * or fail it, by chance, and a mono part's six-channel misreading, shifted by a few
-     * bytes, can even fall back into step and end where the right reading ends. So the file
-     * is also read with the other channel count, and the reading that ends better wins
-     * (attempt_rank): at a SIDOU trailer that records its channel count, so SIDOU always
-     * reads its own files right; then at any trailer, then at the file's end, so a mono file
-     * whose instrument bytes pass the trial reads but whose six-channel reading stops short
-     * reads as mono, as GoatTracker 2.77 opens it. When both end equally well, the one whose
-     * counts are savesong's wins (gt2_part's canonical): a file GoatTracker or SIDOU saved
-     * has them, a misreading almost never. A plain file both readings take as canonical is
-     * the save of a mono song and of a stereo one alike; the guess stands. */
     uint32_t guess = gt2_sng_channels(read, ctx);
     attempt_run(a, read, ctx, guess);
     int ra = attempt_rank(a, read, ctx);
@@ -742,13 +683,12 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     uint32_t ms = has_opts ? opts.multispeed : 1u;
     if (caps && caps->max_multispeed && (ms == 0u || ms > caps->max_multispeed)) {
         msg_set(info->msg, "SNG: MULTISPEED ");
-        msg_num(info->msg, a.ms_file); /* the file's value, not the clamped one */
+        msg_num(info->msg, a.ms_file);
         msg_add(info->msg, " (MAX ");
         msg_num(info->msg, caps->max_multispeed);
         msg_add(info->msg, ")");
         return -1;
     }
-    /* Pass 2: load. */
     uint8_t version = info->version, channels = info->channels;
     uint32_t need = info->need_bytes;
     uint32_t revision = s->revision;
@@ -783,8 +723,6 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     s->revision = revision + 1u;
     return 0;
 }
-
-/* The writer. */
 
 typedef struct {
     gt2_write_fn write;

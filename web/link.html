@@ -1,11 +1,6 @@
 <!doctype html>
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- SIDOU's Live Link page: the FM-1's screen in the browser and its panel's buttons and encoders,
-     over Web MIDI (FM-1 Live Link, docs/reference/live-link.md). link.js is the protocol and the
-     session, sidou-link.wasm (tools/wasm-link) draws the screen with SIDOU's own grid and font;
-     web/link.test.mjs tests them in Node, web/check.mjs the page with a simulated FM-1. Same palette
-     as library.html. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -44,8 +39,6 @@
   [data-state="error"] { color: var(--bad); }
   #device, #status { margin: 0; font-variant-numeric: tabular-nums; }
 
-  /* The FM-1, roughly: SELECT and ALGORITHM and the octave buttons left of the screen, K1-K4 and
-     PRESETS right of it, the other buttons under it; stacked on a phone. */
   .fm1 { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid;
          grid-template-columns: auto auto auto; grid-template-areas: "left screen right" "buttons buttons buttons" "keys keys keys";
          justify-content: center; align-items: center; gap: 12px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
@@ -173,17 +166,18 @@ $("keymap").replaceChildren(...keymapCard().map(({ title, items }) =>
     el("div", { className: "keymap-items" }, ...items.map(([k, what]) =>
       el("div", { className: "keymap-item" }, el("code", { textContent: k }), el("span", { textContent: what })))))));
 const state = { access: null, client: null, viewer: null, output: null, input: null, notes: new Set(), keyboard: null, keyboardOn: false };
-window.__link = state; // the smoke test (web/check.mjs) reads it
+window.__link = state;
 
-// ---- the screen: 240 x 240, scaled by a whole number of device pixels to fit
+const AROUND_SCREEN_PX = { narrow: 26, wide: 300 };
+const DRAG_PX_PER_DETENT = 10, WHEEL_DELTA_PER_DETENT = 40;
+const MIDI_C4 = 60;
 const canvas = $("screen");
 const ctx = canvas.getContext("2d");
 let frame = 0;
 function fit() {
   const dpr = window.devicePixelRatio || 1;
   const narrow = window.innerWidth <= 720;
-  // the panel's width less its padding, and on a wide screen the controls either side
-  const room = Math.min($("fm1").clientWidth - (narrow ? 26 : 300), 720);
+  const room = Math.min($("fm1").clientWidth - (narrow ? AROUND_SCREEN_PX.narrow : AROUND_SCREEN_PX.wide), 720);
   const k = Math.max(1, Math.floor((Math.max(room, 240) * dpr) / WIDTH));
   canvas.style.width = canvas.style.height = `${(WIDTH * k) / dpr}px`;
 }
@@ -194,7 +188,6 @@ function draw() {
 }
 const picture = () => { if (!frame) frame = requestAnimationFrame(draw); };
 
-// ---- the panel
 const client = () => state.client;
 function button(id) {
   const b = el("button", { type: "button", className: "btn", textContent: BUTTONS[id], title: `${BUTTONS[id]} (button ${id})` });
@@ -218,22 +211,20 @@ function encoder(id, big = false) {
     el("span", { className: "taps" },
       el("button", { type: "button", textContent: "−", ariaLabel: `${ENCODERS[id]} one step back`, onclick: () => turn(-1) }),
       el("button", { type: "button", textContent: "+", ariaLabel: `${ENCODERS[id]} one step on`, onclick: () => turn(1) })));
-  // drag: a detent every 10 px, up clockwise
   let drag = null;
   knob.addEventListener("pointerdown", (e) => { e.preventDefault(); knob.setPointerCapture?.(e.pointerId); drag = { y: e.clientY }; });
   knob.addEventListener("pointermove", (e) => {
     if (!drag) return;
-    const n = Math.trunc((drag.y - e.clientY) / 10);
-    if (n) { drag.y -= n * 10; turn(n); }
+    const n = Math.trunc((drag.y - e.clientY) / DRAG_PX_PER_DETENT);
+    if (n) { drag.y -= n * DRAG_PX_PER_DETENT; turn(n); }
   });
   for (const t of ["pointerup", "pointercancel"]) knob.addEventListener(t, () => { drag = null; });
-  // the wheel: a detent a notch (a trackpad's small deltas add up)
   let wheel = 0;
   enc.addEventListener("wheel", (e) => {
     e.preventDefault();
-    wheel += e.deltaMode ? e.deltaY * 40 : e.deltaY;
-    const n = Math.trunc(wheel / 40);
-    if (n) { wheel -= n * 40; turn(-n); }
+    wheel += e.deltaMode ? e.deltaY * WHEEL_DELTA_PER_DETENT : e.deltaY;
+    const n = Math.trunc(wheel / WHEEL_DELTA_PER_DETENT);
+    if (n) { wheel -= n * WHEEL_DELTA_PER_DETENT; turn(-n); }
   }, { passive: false });
   enc.addEventListener("keydown", (e) => {
     const n = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 5, PageDown: -5 }[e.key];
@@ -245,7 +236,6 @@ $("left").append(encoder(0), encoder(1), el("div", { className: "octave" }, butt
 $("right").append(encoder(2), encoder(3), encoder(4), encoder(5), encoder(6, true));
 $("buttons").append(...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(button));
 
-// note keys: an octave from C4, MIDI notes on channel 1 to the FM-1's output (not part of PANEL)
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C"];
 const note = (n, on) => {
   if (!state.output || !client()?.on) return;
@@ -255,7 +245,7 @@ const note = (n, on) => {
 };
 const allNotesOff = () => { for (const n of [...state.notes]) note(n, false); };
 $("keys").append(...NOTE_NAMES.map((name, i) => {
-  const n = 60 + i;
+  const n = MIDI_C4 + i;
   const k = el("button", { type: "button", className: `key${name.includes("#") ? " black" : ""}`, textContent: name.includes("#") ? "" : name, ariaLabel: `${name}${i === 12 ? 5 : 4}` });
   const up = () => { k.classList.remove("held"); note(n, false); };
   k.addEventListener("pointerdown", (e) => { e.preventDefault(); k.setPointerCapture?.(e.pointerId); k.classList.add("held"); note(n, true); });
@@ -265,7 +255,6 @@ $("keys").append(...NOTE_NAMES.map((name, i) => {
   return k;
 }));
 
-// ---- the session
 const STATE_TEXT = {
   off: "No session.",
   starting: "Starting…",
@@ -300,7 +289,7 @@ setInterval(() => {
 
 const cache = {
   getItem: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-  setItem: (k, v) => { try { localStorage.setItem(k, v); } catch { /* not kept */ } },
+  setItem: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
 
 async function start() {
@@ -350,7 +339,6 @@ function fillPorts() {
   pick();
 }
 
-// The selected pair; a change stops a running session first.
 function pick() {
   const output = state.access.outputs.get($("out").value) ?? null;
   const input = state.access.inputs.get($("in").value) ?? null;

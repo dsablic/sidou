@@ -1,12 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-FileCopyrightText: 2026 Joakim Eriksson
  * SPDX-License-Identifier: GPL-3.0-or-later AND BSD-2-Clause */
-/* The PSID header parser (psid_file.h; docs/reference/psid.md). The design follows FM-1
- * SID's psid.c (BSD-2-Clause, Joakim Eriksson); its notice is in psid_file.h and applies to
- * this file as well.
- *
- * Every read of b[] is behind a check against n, and every length is computed in 32 bits
- * from values already known to be inside the file. */
 #include "psid_file.h"
 
 #include <string.h>
@@ -28,13 +22,11 @@ static uint32_t be16(const uint8_t* p)
     return (uint32_t)p[0] << 8 | p[1];
 }
 
-/* A string byte SIDOU's font can show: ASCII $20-$7E; anything else is '?'. */
 static char shown(uint8_t c)
 {
     return (c >= 0x20u && c < 0x7Fu) ? (char)c : '?';
 }
 
-/* Copies s[0..len) to out, NUL-terminated and cut to PSID_STRING_MAX - 1. */
 static void put_string(char* out, const uint8_t* s, uint32_t len)
 {
     uint32_t i;
@@ -53,9 +45,6 @@ static uint32_t cstr_len(const uint8_t* s, uint32_t max)
     return i;
 }
 
-/* v5's packed layout: three non-empty strings, the first two NUL-terminated, each starting
- * at the first non-NUL byte after the previous one. 1 and the three (start, length) pairs,
- * or 0 when the area does not hold them. */
 static int packed_strings(const uint8_t* m, uint32_t st[3], uint32_t len[3])
 {
     uint32_t pos = 0, f;
@@ -89,16 +78,11 @@ static void read_strings(const uint8_t* b, uint32_t version, psid_header* h)
     put_string(h->released, m + 64, cstr_len(m + 64, 32));
 }
 
-/* A SID address byte: even, $42-$7E or $E0-$FE; the address is $D000 + a * 16. */
 static int sid_byte_valid(uint32_t a)
 {
     return !(a & 1u) && ((a >= 0x42u && a <= 0x7Eu) || (a >= 0xE0u && a <= 0xFEu));
 }
 
-/* v5's multi-SID scheme: the addresses of up to `want` chips, SID #1 first; how many the
- * scheme reaches. A step that lands in $D800-$DDFF continues at $DE00 with its offset; one
- * past $DFE0 ends the list. The steps cycle from the first one for the move to the second
- * chip (the scheme's own start) or to the third (an explicit start). */
 static uint32_t v5_addresses(uint32_t cfg, uint32_t start, uint32_t want, uint16_t out[SID_ADDR_MAX])
 {
     static const uint16_t steps[7][2] = {{0x20, 0x20}, {0x40, 0x40}, {0x80, 0x80}, {0x100, 0x100},
@@ -152,7 +136,6 @@ int psid_parse(const uint8_t* b, uint32_t n, psid_header* out)
     if (flags & FLAG_MUS)
         return PSID_E_MUS;
 
-    /* The data: after the header, minus v5's song-length table, minus the load address. */
     avail = n - off;
     if (version == 5u && (flags & FLAG_LENGTHS)) {
         table = (uint32_t)h->songs * 4u;

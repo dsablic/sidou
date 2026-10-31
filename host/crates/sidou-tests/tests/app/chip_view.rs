@@ -1,59 +1,39 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The CHIP view (app/chip_view.c) over the views (app/views.c): opened from the menu behind
-//! THE CHIP's card, its page, the focus (SELECT), the profile picker and the slots' algorithms
-//! (ALGORITHM), K1..K4 on the focused section through the view-aware panel_knob_param (which
-//! MIDI learn and MIDI out follow), the EDIT shortcut kept in every view, MIDI's changes on
-//! the page, and its budget.
-
-use std::ffi::CStr;
 
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{cutoff_after, drain, Sent, SPI_BUDGET_MS};
+use crate::{c_text, cutoff_after, drain, Sent, PANEL_ENC_K2, PANEL_ENC_K3, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
-const K1: u32 = PANEL_ENC_K1;
-/// docs/reference/midi.md: the character's CCs (profile, age, DAC, thump, bleed).
 const CC_PROFILE: u32 = 85;
 const CC_AGE: u32 = 86;
 const CC_DAC: u32 = 87;
 const CC_THUMP: u32 = 89;
 const CC_BLEED: u32 = 90;
 
-/// A frame, and what it sent, as the panel takes it.
-fn step(ui: &mut Ui) -> Sent {
-    ui.frame();
-    drain(&mut ui.g)
-}
-
-/// Frames, each sent, until no transition runs and the page is whole on the grid.
-fn settle(ui: &mut Ui) {
+fn settle_chip_page(ui: &mut Ui) {
     for _ in 0..200 {
-        step(ui);
+        ui.frame_sent();
         let card = ui.top() == "TITLE";
         if !card
             && unsafe { screen_animating(&ui.v.s) } == 0
             && unsafe { screen_popup_shows(&ui.v.s) } == 0
             && ui.v.chip.copying == 0
         {
-            step(ui);
+            ui.frame_sent();
             return;
         }
     }
     panic!("the screen kept changing");
 }
 
-/// The menu, then CHIP (the menu's first item, ALGORITHM clockwise), settled: behind THE CHIP's
-/// card with the cards on.
 fn open_chip(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
-    settle(ui);
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHIP as i32);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
-    settle(ui);
+    settle_chip_page(ui);
+    ui.choose_menu_item(VIEWS_MENU_CHIP);
+    settle_chip_page(ui);
     assert_eq!(ui.top(), "CHIP");
 }
 
@@ -61,6 +41,29 @@ fn chip_ui() -> Ui {
     let mut ui = Ui::without_cards();
     open_chip(&mut ui);
     ui
+}
+
+fn song_keys(ui: &mut Ui) -> Box<keys_route> {
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    kr
+}
+
+fn assert_no_help_line(ui: &Ui) {
+    assert_eq!(
+        small(ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
+        "",
+        "no help line: the help card says what the controls do"
+    );
+}
+
+fn fg(ui: &Ui, row: u32, col: usize) -> u8 {
+    ui.g.attr[row as usize * COLS + col] & 15
+}
+
+fn expert_cell(k: usize) -> (u32, usize) {
+    (9 + (k / 2 * 8) as u32, k % 2 * 15)
 }
 
 fn focus(ui: &Ui) -> u32 {
@@ -72,25 +75,25 @@ fn shared_canvas_rebuilds_chip_after_tracker_is_popped_without_enter() {
     let mut ui = chip_ui();
     ui.turn(PANEL_ENC_SELECT, 4);
     ui.turn(PANEL_ENC_ALGORITHM, 2);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     let chip = (ui.g.ch, ui.g.attr);
     assert_eq!(ui.v.song.cv.ch.as_flattened(), &chip.0);
     assert_eq!(ui.v.song.cv.attr.as_flattened(), &chip.1);
     for partial in [false, true] {
         ui.press(PANEL_BTN_SEQ);
         if ui.top() == "STEP" {
-            ui.press(PANEL_BTN_SEQ); // the first time; then SEQ reopens TRACKER, used last
+            ui.press(PANEL_BTN_SEQ);
         }
         assert_eq!(ui.top(), "TRACKER");
         if partial {
-            step(&mut ui);
+            ui.frame_sent();
             assert_ne!(ui.v.song.unbuilt, 0);
         } else {
             crate::song_view::settle(&mut ui);
         }
         ui.press(PANEL_BTN_HOME);
         assert_eq!(ui.top(), "CHIP");
-        settle(&mut ui);
+        settle_chip_page(&mut ui);
         assert_eq!((ui.g.ch, ui.g.attr), chip);
         assert_eq!(ui.v.chip.expert_page, 2);
         assert_eq!(ui.v.song.built, 0);
@@ -106,37 +109,33 @@ fn shared_canvas_rebuilds_chip_after_tracker_is_popped_without_enter() {
 #[test]
 fn shared_canvas_is_acquired_by_the_view_composed_under_midi_learn_not_by_input() {
     let mut ui = chip_ui();
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
+    let _learn = ui.attach_learn();
     let chip_canvas = ui.v.song.cv;
     ui.press(PANEL_BTN_SEQ);
     ui.press(PANEL_BTN_SEQ);
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
     assert_eq!(ui.v.song.cv.ch, chip_canvas.ch);
-    step(&mut ui);
+    ui.frame_sent();
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_TRACKER);
     assert_ne!(ui.v.song.unbuilt, 0);
     ui.press(PANEL_BTN_HOME);
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_TRACKER);
-    ui.learn_on(K1);
+    ui.learn_on(PANEL_ENC_K1);
     assert_eq!(ui.top(), "LEARN");
-    step(&mut ui);
+    ui.frame_sent();
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
     assert_eq!(ui.v.song.built, 0);
     assert_eq!(ui.v.song.dirty, 0);
     assert_eq!(ui.v.song.unbuilt, 0);
     ui.turn(PANEL_ENC_SELECT, 1);
     for _ in 0..8 {
-        step(&mut ui);
+        ui.frame_sent();
     }
     assert_eq!(ui.top(), "LEARN");
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
     ui.press(PANEL_BTN_HOME);
-    settle(&mut ui);
-    assert_eq!(choice(&ui, 3), "OFF");
+    settle_chip_page(&mut ui);
+    assert_eq!(choice_word(&ui, 3), "OFF");
     ui.press(PANEL_BTN_SEQ);
     crate::song_view::settle(&mut ui);
     assert_eq!(ui.big(0, 0, 2, 2), "V1");
@@ -166,7 +165,7 @@ fn shared_canvas_restores_song_menu_after_tracker_and_chip_used_it() {
             SCREEN_CUT,
         );
     }
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
     ui.press(PANEL_BTN_HOME);
     crate::song_view::settle(&mut ui);
@@ -213,21 +212,21 @@ fn expert_pages_bind_four_direct_knobs_and_leave_unused_knobs_inert() {
             let preset = ui.live().preset;
             if index < SID_EXPERT_COUNT {
                 unsafe { live_param_set(&mut *ui.rig.live, want, 40) };
-                ui.turn(K1 + k, 1);
+                ui.turn(PANEL_ENC_K1 + k, 1);
                 assert_eq!(
-                    param(&ui, want),
+                    ui.rig.param(want),
                     41,
                     "expert controls have one raw step per detent"
                 );
             } else {
-                ui.turn(K1 + k, 1);
+                ui.turn(PANEL_ENC_K1 + k, 1);
                 assert_eq!(
                     ui.live().preset,
                     preset,
                     "an empty expert cell is not LIVE's K4"
                 );
             }
-            let named = unsafe { panel_knob_param(&*ui.p, ui.live(), 0, K1 + k) };
+            let named = unsafe { panel_knob_param(&*ui.p, ui.live(), 0, PANEL_ENC_K1 + k) };
             assert_eq!(named, want, "page {page}, K{}", k + 1);
         }
     }
@@ -245,36 +244,35 @@ fn expert_pages_bind_four_direct_knobs_and_leave_unused_knobs_inert() {
     let effect =
         LIVE_PARAM_SLOT + u32::from(ui.live().fx_select) * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT;
     assert_eq!(
-        unsafe { panel_knob_param(&*ui.p, ui.live(), ui.p.held, K1) },
+        unsafe { panel_knob_param(&*ui.p, ui.live(), ui.p.held, PANEL_ENC_K1) },
         effect
     );
-    ui.turn(K1, 1);
-    // a detent along the slot's walk (NONE's Amount: linear, 32 detents end to end)
+    ui.turn(PANEL_ENC_K1, 1);
     let w = unsafe { live_walk_of(ui.live(), effect) };
-    assert_eq!(param(&ui, effect), unsafe { live_walk_at(w, 1) });
+    assert_eq!(ui.rig.param(effect), unsafe { live_walk_at(w, 1) });
 }
 
 #[test]
 fn first_expert_detent_starts_at_the_resolved_macro_value_not_the_follow_sentinel() {
     let mut ui = chip_ui();
     assert_eq!(ui.live().expert[0], SID_EXPERT_DEFAULT as u8);
-    let before = param(&ui, LIVE_PARAM_EXPERT);
+    let before = ui.rig.param(LIVE_PARAM_EXPERT);
     assert!(before < 127);
     ui.turn(PANEL_ENC_SELECT, 4);
-    ui.turn(K1, 1);
-    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), before + 1);
-    ui.turn(K1, i32::MAX);
-    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 127);
-    ui.turn(K1, i32::MIN);
-    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 0);
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(ui.rig.param(LIVE_PARAM_EXPERT), before + 1);
+    ui.turn(PANEL_ENC_K1, i32::MAX);
+    assert_eq!(ui.rig.param(LIVE_PARAM_EXPERT), 127);
+    ui.turn(PANEL_ENC_K1, i32::MIN);
+    assert_eq!(ui.rig.param(LIVE_PARAM_EXPERT), 0);
 }
 
 #[test]
 fn expert_uses_readable_coloured_pairs_and_refreshes_after_an_external_edit() {
     let mut ui = chip_ui();
     ui.turn(PANEL_ENC_SELECT, 4);
-    settle(&mut ui);
-    assert_eq!(choice(&ui, 10), "EXPERT 1/4");
+    settle_chip_page(&mut ui);
+    assert_eq!(choice_word(&ui, 10), "EXPERT 1/4");
     assert_eq!(
         big(&ui, 20, 15, 3, 4),
         "100%",
@@ -285,21 +283,17 @@ fn expert_uses_readable_coloured_pairs_and_refreshes_after_an_external_edit() {
         .into_iter()
         .enumerate()
     {
-        let col = k % 2 * 15;
-        let row = 9 + k / 2 * 8;
-        assert_eq!(big(&ui, row as u32, col, 2, label.len()), label);
+        let (row, col) = expert_cell(k);
+        assert_eq!(big(&ui, row, col, 2, label.len()), label);
         let active = unsafe { sid_character_expert_active(SID_MODEL_6581, k as u32) } != 0;
-        assert_eq!(
-            ui.g.attr[row * COLS + col] & 15,
-            if active { t.knob[k] } else { t.dim }
-        );
+        assert_eq!(fg(&ui, row, col), if active { t.knob[k] } else { t.dim });
         if !active {
-            assert_eq!(big(&ui, row as u32 + 3, col, 3, 3), "N/A");
+            assert_eq!(big(&ui, row + 3, col, 3, 3), "N/A");
         }
-        assert_eq!(small(&ui, row as u32 - 1, col, 2), format!("K{}", k + 1));
+        assert_eq!(small(&ui, row - 1, col, 2), format!("K{}", k + 1));
     }
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT, 127) };
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     let value = format!("{}%", (SID_EXPERT_CURVE_6581_MAX * 100.0).round() as u32);
     assert_eq!(
         big(&ui, 12, 0, 3, value.len()),
@@ -307,8 +301,8 @@ fn expert_uses_readable_coloured_pairs_and_refreshes_after_an_external_edit() {
         "units are part of the large value"
     );
     ui.turn(PANEL_ENC_ALGORITHM, 3);
-    settle(&mut ui);
-    assert_eq!(choice(&ui, 10), "EXPERT 4/4");
+    settle_chip_page(&mut ui);
+    assert_eq!(choice_word(&ui, 10), "EXPERT 4/4");
     assert_eq!(big(&ui, 9, 0, 2, 6), "EXT HP");
     assert_eq!(big(&ui, 9, 15, 2, 7), "VOICEDC");
     assert_eq!(
@@ -363,10 +357,10 @@ fn expert_pages_and_their_popups_stay_within_the_frame_budget() {
             let index = page * 4 + k;
             if index < SID_EXPERT_COUNT {
                 unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT + index, 126) };
-                ui.turn(K1 + k, 1);
+                ui.turn(PANEL_ENC_K1 + k, 1);
             }
             for frame in 0..50 {
-                let sent = step(&mut ui);
+                let sent = ui.frame_sent();
                 assert!(
                     sent.cells <= CHIP_VIEW_FRAME_CELLS as usize && sent.spi_ms() <= SPI_BUDGET_MS,
                     "expert page {page}, K{}, frame {frame}: {sent:?}",
@@ -385,22 +379,20 @@ fn expert_pages_and_their_popups_stay_within_the_frame_budget() {
 fn song_expert_edits_and_macro_releases_do_not_touch_the_keys_setup() {
     let mut ui = chip_ui();
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT, 20) };
-    let mut kr = Box::<keys_route>::default();
-    kr.l = &mut *ui.rig.live;
-    kr.song = 1;
+    let mut kr = song_keys(&mut ui);
     kr.song_want.profile = SID_CHIP_6581_R2 as u8;
     kr.song_want.expert.fill(70);
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
     ui.turn(PANEL_ENC_SELECT, 4);
-    ui.turn(K1, 1);
+    ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(kr.song_want.expert[0], 71);
-    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 20);
+    assert_eq!(ui.rig.param(LIVE_PARAM_EXPERT), 20);
     assert_eq!(ui.p.page, PANEL_PAGE_NONE as u8);
     ui.turn(PANEL_ENC_SELECT, -4);
-    ui.turn(K1, 1);
+    ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(&kr.song_want.expert[..4], &[SID_EXPERT_DEFAULT as u8; 4]);
     assert_eq!(kr.song_want.expert[SID_EXPERT_DAC_KINK as usize], 70);
-    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 20);
+    assert_eq!(ui.rig.param(LIVE_PARAM_EXPERT), 20);
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }
 
@@ -437,9 +429,7 @@ fn expert_save_targets_user_profiles_and_song_picker_restores_the_expert_tail() 
         SID_EXPERT_DEFAULT as u8,
         "follow stays follow"
     );
-    let mut kr = Box::<keys_route>::default();
-    kr.l = &mut *ui.rig.live;
-    kr.song = 1;
+    let mut kr = song_keys(&mut ui);
     kr.song_want.profile = (SID_CHIPS - 1) as u8;
     kr.song_want.expert.fill(SID_EXPERT_DEFAULT as u8);
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
@@ -453,11 +443,6 @@ fn expert_save_targets_user_profiles_and_song_picker_restores_the_expert_tail() 
     }
 }
 
-fn param(ui: &Ui, p: u32) -> u32 {
-    unsafe { live_param_get(&*ui.rig.live, p) }
-}
-
-/// The knobs' columns on the page: where each control's label, value and bar start, and its width.
 const KNOB_COL: [usize; 4] = [0, 8, 15, 22];
 const KNOB_W: [usize; 4] = [8, 7, 7, 8];
 
@@ -469,14 +454,11 @@ fn small(ui: &Ui, row: u32, col: usize, n: usize) -> String {
     ui.small(row as usize, col, n)
 }
 
-/// The theme the page is drawn in.
 fn theme_of(ui: &Ui) -> &'static theme {
     unsafe { &*theme_get(u32::from(ui.live().theme)) }
 }
 
-/// Control k's (0..4) label and value as the page shows them: the label small, the value at 3x
-/// (rows 10-12) or, from 100, at 2x (rows 11-12).
-fn control(ui: &Ui, k: usize) -> (String, String) {
+fn knob_label_and_value(ui: &Ui, k: usize) -> (String, String) {
     let col = KNOB_COL[k];
     let label = small(ui, CHIP_VIEW_LABEL_ROW, col, KNOB_W[k] - 1)
         .trim_end()
@@ -499,9 +481,7 @@ fn control(ui: &Ui, k: usize) -> (String, String) {
     (label, value)
 }
 
-/// The choice at 3x: its first word (the model, or the slot's algorithm) and the second (the
-/// profile), blank for a slot.
-fn choice(ui: &Ui, n: usize) -> String {
+fn choice_word(ui: &Ui, n: usize) -> String {
     big(ui, CHIP_VIEW_CHOICE_ROW, 0, 3, n)
 }
 
@@ -509,8 +489,7 @@ fn profile_word(ui: &Ui, n: usize) -> String {
     big(ui, CHIP_VIEW_CHOICE_ROW, 13, 3, n)
 }
 
-/// The profile's short word as the page says it: the name without the model, "R4AR", "WORN".
-fn word_of(id: u32) -> String {
+fn profile_short_word(id: u32) -> String {
     let name = profile_name(id);
     if name.starts_with(|c: char| c.is_ascii_digit()) {
         name.split_once(' ').unwrap().1.to_owned()
@@ -519,33 +498,25 @@ fn word_of(id: u32) -> String {
     }
 }
 
-/// The 2x line of the other sections: the row of the `line`th of them, its name and its value.
-fn summary(ui: &Ui, line: u32, name_len: usize, value_len: usize) -> (String, String) {
+fn section_line(ui: &Ui, line: u32, name_len: usize, value_len: usize) -> (String, String) {
     let row = CHIP_VIEW_SUMMARY_ROW + 2 * line;
     (big(ui, row, 0, 2, name_len), big(ui, row, 9, 2, value_len))
 }
 
-/// Which tab of the row has what background: the focused one yellow, the others the screen's.
 fn tab_bg(ui: &Ui, section: usize) -> u8 {
     let cols = [0usize, 8, 15, 22];
     ui.g.attr[CHIP_VIEW_TAB_ROW as usize * COLS + cols[section]] >> 4
 }
 
-/// A slot field's name for an algorithm, and whether the algorithm uses it.
-fn label(slot: u32, alg: u32, field: u32) -> (String, bool) {
+fn slot_field_label(slot: u32, alg: u32, field: u32) -> (String, bool) {
     let mut buf = [0 as std::ffi::c_char; CHIP_VIEW_LABEL as usize];
     let used = unsafe { chip_view_label(slot, alg, field, buf.as_mut_ptr()) } != 0;
-    let s = unsafe { CStr::from_ptr(buf.as_ptr()) }
-        .to_string_lossy()
-        .into_owned();
-    (s, used)
+    (c_text(buf.as_ptr()), used)
 }
 
 fn profile_name(id: u32) -> String {
     let p = unsafe { &*sid_chip_profile_get(id) };
-    unsafe { CStr::from_ptr(p.name) }
-        .to_string_lossy()
-        .to_uppercase()
+    c_text(p.name).to_uppercase()
 }
 
 #[test]
@@ -561,26 +532,24 @@ fn chip_text_uses_readable_roles() {
                         live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, algorithm as i32)
                     };
                 }
-                settle(&mut ui);
+                settle_chip_page(&mut ui);
                 let t = theme_of(&ui);
                 let used: [bool; 4] = std::array::from_fn(|k| {
-                    section == CHIP_VIEW_CHIP || label(0, algorithm, LIVE_SLOT_AMOUNT + k as u32).1
+                    section == CHIP_VIEW_CHIP
+                        || slot_field_label(0, algorithm, LIVE_SLOT_AMOUNT + k as u32).1
                 });
                 for (k, &col) in KNOB_COL.iter().enumerate() {
                     assert_eq!(
-                        ui.g.attr[CHIP_VIEW_LABEL_ROW as usize * COLS + col] & 15,
+                        fg(&ui, CHIP_VIEW_LABEL_ROW, col),
                         if used[k] { t.knob_text[k] } else { t.dim }
                     );
-                    assert_eq!(
-                        ui.g.attr[CHIP_VIEW_TAG_ROW as usize * COLS + col] & 15,
-                        t.hint
-                    );
+                    assert_eq!(fg(&ui, CHIP_VIEW_TAG_ROW, col), t.hint);
                     assert_eq!(
                         tab_bg(&ui, k),
                         if k == section as usize { t.hot } else { t.bg }
                     );
                 }
-                assert_eq!(ui.g.attr[CHIP_VIEW_NAMES_ROW as usize * COLS] & 15, t.hint);
+                assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
                 for row in 0..GRID_ROWS as usize {
                     if row == CHIP_VIEW_BAR_ROW as usize {
                         continue;
@@ -624,18 +593,15 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
     ui.settle();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    // The menu's first item opens the view: an arrow, no value.
     assert_eq!(&ui.menu_line(0)[..4], "CHIP");
     assert_eq!(ui.g.src[4 * COLS + 28], FONT_ARROW_RIGHT as u8);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.top(), "TITLE");
     assert_eq!(u32::from(ui.v.card.id), TITLE_CARD_CHIP);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(ui.top(), "CHIP");
-    // HOME back to the menu, and again to LIVE.
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
-    // Counter-clockwise on an action does nothing.
     ui.settle();
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     assert_eq!(ui.top(), "MENU");
@@ -646,9 +612,8 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
     for id in [THEME_HIGH_CONTRAST, THEME_C64] {
         let mut ui = chip_ui();
         unsafe { live_set_theme(&mut *ui.rig.live, id) };
-        settle(&mut ui);
+        settle_chip_page(&mut ui);
         let t = theme_of(&ui);
-        let fg = |ui: &Ui, row: u32, col: usize| ui.g.attr[row as usize * COLS + col] & 15;
         assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
         assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 13), t.hint);
         for (k, col) in KNOB_COL.into_iter().enumerate() {
@@ -662,10 +627,10 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
         ui.turn(PANEL_ENC_SELECT, 1);
         for alg in [SID_DIST_OVERDRIVE, 0] {
             unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, alg as i32) };
-            settle(&mut ui);
+            settle_chip_page(&mut ui);
             assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
             for (k, col) in KNOB_COL.into_iter().enumerate() {
-                let active = alg != 0 && label(0, alg, LIVE_SLOT_AMOUNT + k as u32).1;
+                let active = alg != 0 && slot_field_label(0, alg, LIVE_SLOT_AMOUNT + k as u32).1;
                 assert_eq!(
                     fg(&ui, CHIP_VIEW_LABEL_ROW, col),
                     if active { t.knob_text[k] } else { t.dim }
@@ -679,15 +644,14 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
         }
         ui.turn(PANEL_ENC_SELECT, 3);
         for page in 0..SID_EXPERT_COUNT.div_ceil(4) {
-            settle(&mut ui);
+            settle_chip_page(&mut ui);
             assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
             for k in 0..4 {
                 let index = page * 4 + k;
                 if index >= SID_EXPERT_COUNT {
                     continue;
                 }
-                let col = (k % 2 * 15) as usize;
-                let row = 9 + k / 2 * 8;
+                let (row, col) = expert_cell(k as usize);
                 assert_eq!(fg(&ui, row - 1, col), t.hint);
                 let active = unsafe { sid_character_expert_active(SID_MODEL_6581, index) } != 0;
                 assert_eq!(
@@ -704,11 +668,9 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
 fn the_page_shows_the_profile_the_character_and_the_other_sections() {
     let ui = chip_ui();
     let t = theme_of(&ui);
-    // The title at 2x says which chip's page, in white while the tabs have no focus.
     assert_eq!(big(&ui, 0, 0, 2, 6), "CHIP A");
-    assert_eq!(ui.g.attr[0] & 15, t.value);
+    assert_eq!(fg(&ui, 0, 0), t.value);
     assert_eq!(u32::from(ui.g.attr[0] >> 4), GRID_BLACK);
-    // The section tabs across the width: CHIP focused (yellow), the others dark grey.
     for (i, (name, col)) in [("CHIP", 2), ("DIST", 9), ("MOD", 17), ("FX", 25)]
         .into_iter()
         .enumerate()
@@ -720,45 +682,30 @@ fn the_page_shows_the_profile_the_character_and_the_other_sections() {
             "tab {name}"
         );
     }
-    // The choice at 3x: the model and the profile; their names under it.
-    assert_eq!(choice(&ui, 4), "6581");
+    assert_eq!(choice_word(&ui, 4), "6581");
     assert_eq!(profile_word(&ui, 4), "R4AR");
-    assert_eq!(
-        ui.g.attr[CHIP_VIEW_CHOICE_ROW as usize * COLS] & 15,
-        t.value
-    );
-    assert_eq!(
-        ui.g.attr[CHIP_VIEW_CHOICE_ROW as usize * COLS + 13] & 15,
-        t.hot
-    );
+    assert_eq!(fg(&ui, CHIP_VIEW_CHOICE_ROW, 0), t.value);
+    assert_eq!(fg(&ui, CHIP_VIEW_CHOICE_ROW, 13), t.hot);
     assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 0, 5), "MODEL");
     assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 13, 7), "PROFILE");
-    // The character in the knobs' places: label in the knob's colour, value, bar, name.
     for (k, name) in ["AGE", "DAC", "THUMP", "BLEED"].iter().enumerate() {
-        assert_eq!(control(&ui, k), (name.to_string(), "0".into()));
+        assert_eq!(knob_label_and_value(&ui, k), (name.to_string(), "0".into()));
         let col = KNOB_COL[k];
         assert_eq!(
-            ui.g.attr[CHIP_VIEW_LABEL_ROW as usize * COLS + col] & 15,
+            fg(&ui, CHIP_VIEW_LABEL_ROW, col),
             t.knob_text[k],
             "{name}'s colour"
         );
-        assert_eq!(
-            ui.g.attr[CHIP_VIEW_BAR_ROW as usize * COLS + col] & 15,
-            t.knob[k]
-        );
-        assert_eq!(
-            ui.g.attr[CHIP_VIEW_VALUE_ROW as usize * COLS + col] & 15,
-            t.value
-        );
+        assert_eq!(fg(&ui, CHIP_VIEW_BAR_ROW, col), t.knob[k]);
+        assert_eq!(fg(&ui, CHIP_VIEW_VALUE_ROW, col), t.value);
         assert_eq!(small(&ui, CHIP_VIEW_TAG_ROW, col, 2), format!("K{}", k + 1));
     }
-    // The other sections, one line each at 2x: DIST, MOD and FX.
     for (line, (name, value)) in [("DIST", "OFF"), ("MOD", "OFF"), ("FX", "OFF")]
         .into_iter()
         .enumerate()
     {
         assert_eq!(
-            summary(&ui, line as u32, name.len(), value.len()),
+            section_line(&ui, line as u32, name.len(), value.len()),
             (name.to_string(), value.to_string())
         );
         assert_eq!(
@@ -767,17 +714,12 @@ fn the_page_shows_the_profile_the_character_and_the_other_sections() {
             "OFF is dark grey"
         );
     }
-    assert_eq!(
-        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
-        "",
-        "no help line: the help card says what the controls do"
-    );
+    assert_no_help_line(&ui);
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
 }
 
 #[test]
 fn every_algorithm_names_its_controls() {
-    // core/fx/fx_slots.h: what Amount, A and B do per algorithm; Mix is always the mix.
     let want: [&[[&str; 3]]; 3] = [
         &[
             ["AMT", "A", "B"],
@@ -810,15 +752,17 @@ fn every_algorithm_names_its_controls() {
         for alg in 0..algs {
             for (k, &name) in want[slot as usize][alg as usize].iter().enumerate() {
                 let field = LIVE_SLOT_AMOUNT + k as u32;
-                // The generic names are the unused fields' (and an off slot's).
                 let generic = ["AMT", "A", "B"][k] == name;
                 assert_eq!(
-                    label(slot, alg, field),
+                    slot_field_label(slot, alg, field),
                     (name.to_string(), !generic),
                     "slot {slot} algorithm {alg} field {field}"
                 );
             }
-            assert_eq!(label(slot, alg, LIVE_SLOT_MIX), ("MIX".into(), alg != 0));
+            assert_eq!(
+                slot_field_label(slot, alg, LIVE_SLOT_MIX),
+                ("MIX".into(), alg != 0)
+            );
         }
     }
 }
@@ -832,7 +776,6 @@ fn select_moves_the_focus_and_selects_the_slot() {
         assert_eq!(focus(&ui), want);
         assert_eq!(u32::from(ui.live().fx_select), want - 1, "the slot follows");
     }
-    // Clamped at both ends.
     ui.turn(PANEL_ENC_SELECT, 5);
     assert_eq!(focus(&ui), CHIP_VIEW_EXPERT);
     ui.turn(PANEL_ENC_SELECT, -9);
@@ -843,55 +786,48 @@ fn select_moves_the_focus_and_selects_the_slot() {
     );
     ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
-    // On the chip, the selected slot stays as it was.
     assert_eq!(ui.live().fx_select, 2);
-    // SCL on a slot moves the focus with the slot; on the chip only the slot.
     ui.press(PANEL_BTN_SCL);
     assert_eq!((focus(&ui), ui.live().fx_select), (CHIP_VIEW_CHIP, 0));
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.press(PANEL_BTN_SCL);
     assert_eq!((focus(&ui), ui.live().fx_select), (2, 1));
-    // The page shows the focus: the MOD tab is yellow and its section the page, the others
-    // are the lines below.
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     let t = theme_of(&ui);
     assert_eq!(tab_bg(&ui, 2), t.hot);
     assert_eq!(tab_bg(&ui, 0), t.bg);
     assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 0, 9), "ALGORITHM");
     assert_eq!(
-        summary(&ui, 0, 4, 9),
+        section_line(&ui, 0, 4, 9),
         ("CHIP".into(), "6581 R4AR".into()),
         "the chip's line among the others"
     );
-    // The focus stays between visits.
     ui.press(PANEL_BTN_HOME);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(focus(&ui), 2);
 }
 
 #[test]
 fn algorithm_steps_the_profile_and_the_model_follows() {
     let mut ui = chip_ui();
-    let profile = |ui: &Ui| param(ui, LIVE_PARAM_PROFILE);
+    let profile = |ui: &Ui| ui.rig.param(LIVE_PARAM_PROFILE);
     assert_eq!(profile(&ui), SID_CHIP_6581_R4AR);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(profile(&ui), SID_CHIP_8580_R5);
-    // The chip changes at the next tick (a reset), and the page shows both.
     ui.rig.tick();
     assert_eq!(ui.live().model, SID_MODEL_8580);
-    settle(&mut ui);
-    assert_eq!(choice(&ui, 4), "8580");
+    settle_chip_page(&mut ui);
+    assert_eq!(choice_word(&ui, 4), "8580");
     assert_eq!(profile_word(&ui, 2), "R5");
-    // Clamped at both ends; every profile in order on the way.
     ui.turn(PANEL_ENC_ALGORITHM, 9);
     assert_eq!(profile(&ui), SID_CHIPS - 1);
     for id in (0..SID_CHIPS).rev() {
         ui.rig.tick();
-        settle(&mut ui);
+        settle_chip_page(&mut ui);
         assert_eq!(profile(&ui), id);
-        let word = word_of(id);
+        let word = profile_short_word(id);
         assert_eq!(profile_word(&ui, word.len()), word, "profile {id}");
         ui.turn(PANEL_ENC_ALGORITHM, -1);
     }
@@ -909,26 +845,25 @@ fn algorithm_steps_the_focused_slots_algorithm() {
         let last = unsafe { live_slot_algorithms(slot) } as u8 - 1;
         ui.turn(PANEL_ENC_ALGORITHM, 1);
         assert_eq!(alg(&ui), 1);
-        settle(&mut ui);
+        settle_chip_page(&mut ui);
         let names = ["TAPE", "CHORUS", "DELAY"];
         let name = names[slot as usize];
-        assert_eq!(choice(&ui, name.len()), name);
+        assert_eq!(choice_word(&ui, name.len()), name);
         ui.turn(PANEL_ENC_ALGORITHM, 99);
         assert_eq!(alg(&ui), last, "clamped at the last");
         ui.turn(PANEL_ENC_ALGORITHM, -99);
         assert_eq!(alg(&ui), 0, "clamped at OFF");
         ui.turn(PANEL_ENC_ALGORITHM, 2);
     }
-    // The other slots kept theirs; nothing moved the profile.
     for slot in 0..LIVE_SLOTS as usize {
         assert_eq!(ui.live().slot[slot][LIVE_SLOT_ALGORITHM as usize], 2);
     }
-    assert_eq!(param(&ui, LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
-    settle(&mut ui);
+    assert_eq!(ui.rig.param(LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
+    settle_chip_page(&mut ui);
     ui.turn(PANEL_ENC_SELECT, -2);
-    settle(&mut ui);
-    assert_eq!(choice(&ui, 9), "OVERDRIVE");
-    assert_eq!(control(&ui, 1).0, "TONE");
+    settle_chip_page(&mut ui);
+    assert_eq!(choice_word(&ui, 9), "OVERDRIVE");
+    assert_eq!(knob_label_and_value(&ui, 1).0, "TONE");
 }
 
 #[test]
@@ -943,30 +878,27 @@ fn the_knobs_turn_the_character_on_the_chip() {
     let cutoff = ui.live().cutoff;
     let preset = ui.live().preset;
     for (k, &p) in params.iter().enumerate() {
-        ui.turn(K1 + k as u32, 3 + k as i32);
-        assert_eq!(param(&ui, p), 4 * (3 + k as u32), "K{}", k + 1);
+        ui.turn(PANEL_ENC_K1 + k as u32, 3 + k as i32);
+        assert_eq!(ui.rig.param(p), 4 * (3 + k as u32), "K{}", k + 1);
     }
     assert_eq!(
         (ui.live().cutoff, ui.live().preset),
         (cutoff, preset),
         "K1..K4 also turned LIVE's knobs"
     );
-    settle(&mut ui);
-    assert_eq!(control(&ui, 0).1, "12");
-    assert_eq!(control(&ui, 3).1, "24");
-    // The bar: K1's column is 7 cells for 0..127, 12 of 127 over 56 pixels: 5.
+    settle_chip_page(&mut ui);
+    assert_eq!(knob_label_and_value(&ui, 0).1, "12");
+    assert_eq!(knob_label_and_value(&ui, 3).1, "24");
     let bar: Vec<u8> = (0..7)
         .map(|c| ui.g.ch[CHIP_VIEW_BAR_ROW as usize * COLS + c])
         .collect();
-    assert_eq!(bar[0], FONT_BAR0 as u8 + 5);
+    assert_eq!(bar[0], FONT_BAR0 as u8 + 5, "12 of 127 over 56 pixels");
     assert_eq!(bar[1], FONT_BAR0 as u8);
-    // Clamped at both ends.
-    ui.turn(K1, 99);
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 127);
-    ui.turn(K1, -99);
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 0);
-    // The tick sends what changed to the chip (live.h LIVE_REG_CHAR).
-    ui.turn(K1, 5);
+    ui.turn(PANEL_ENC_K1, 99);
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), 127);
+    ui.turn(PANEL_ENC_K1, -99);
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), 0);
+    ui.turn(PANEL_ENC_K1, 5);
     ui.rig.clear();
     ui.rig.tick();
     assert!(
@@ -983,8 +915,7 @@ fn the_knobs_turn_the_focused_slot() {
     for slot in 0..LIVE_SLOTS {
         ui.turn(PANEL_ENC_SELECT, 1);
         for k in 0..4 {
-            ui.turn(K1 + k, 1 + k as i32 + slot as i32);
-            // along the control's walk from 0 (knob_curves.rs): Mix's starts 0, 5, 6, ...
+            ui.turn(PANEL_ENC_K1 + k, 1 + k as i32 + slot as i32);
             let w = unsafe { live_walk_slot(slot, 0, LIVE_SLOT_AMOUNT + k) };
             assert_eq!(
                 u32::from(ui.live().slot[slot as usize][(LIVE_SLOT_AMOUNT + k) as usize]),
@@ -995,27 +926,29 @@ fn the_knobs_turn_the_focused_slot() {
         }
     }
     assert_eq!(ui.live().cutoff, cutoff);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(
-        control(&ui, 3),
-        ("MIX".into(), "10".into()), // position 6 of Mix's walk (knob_curves.rs)
-        "FX is in focus"
+        knob_label_and_value(&ui, 3),
+        ("MIX".into(), "10".into()),
+        "FX is in focus, its Mix at position 6 of its walk"
     );
     ui.turn(PANEL_ENC_SELECT, -1);
-    settle(&mut ui);
-    assert_eq!(control(&ui, 0), ("AMT".into(), "8".into()), "MOD's Amount");
+    settle_chip_page(&mut ui);
+    assert_eq!(
+        knob_label_and_value(&ui, 0),
+        ("AMT".into(), "8".into()),
+        "MOD's Amount"
+    );
 }
 
-/// The EDIT layer stays a shortcut in every view: on the CHIP view, EDIT held turns the
-/// selected slot from the chip's focus too, and in LIVE as before.
 #[test]
 fn the_edit_shortcut_turns_the_selected_slot_in_every_view() {
     let mut ui = chip_ui();
     ui.press(PANEL_BTN_SCL);
     assert_eq!(ui.live().fx_select, 1);
     ui.hold(PANEL_BTN_EDIT, true);
-    ui.turn(K1, 2);
-    ui.turn(K1 + 3, 1);
+    ui.turn(PANEL_ENC_K1, 2);
+    ui.turn(PANEL_ENC_K4, 1);
     ui.hold(PANEL_BTN_EDIT, false);
     assert_eq!(ui.live().slot[1][LIVE_SLOT_AMOUNT as usize], 8);
     assert_eq!(
@@ -1023,22 +956,20 @@ fn the_edit_shortcut_turns_the_selected_slot_in_every_view() {
         5,
         "Mix's walk (knob_curves.rs): 0, then 5"
     );
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 0, "EDIT + K1 turned the age");
-    // ENV does nothing here (on LIVE it opens LAB; ALGORITHM on a slot page steps the algorithm).
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), 0, "EDIT + K1 turned the age");
     ui.press(PANEL_BTN_ENV);
     assert_eq!(ui.live().slot[1][LIVE_SLOT_ALGORITHM as usize], 0);
     assert_eq!(ui.top(), "CHIP");
-    // Back in LIVE: K1 is the cutoff again, EDIT + K1 the slot.
     ui.press(PANEL_BTN_HOME);
     ui.press(PANEL_BTN_HOME);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.p.page, PANEL_PAGE_LIVE as u8);
     let cutoff = ui.live().cutoff;
-    ui.turn(K1, -1);
+    ui.turn(PANEL_ENC_K1, -1);
     assert_eq!(ui.live().cutoff, cutoff_after(ui.live().model, cutoff, -1));
     ui.hold(PANEL_BTN_EDIT, true);
-    ui.turn(K1, 1);
+    ui.turn(PANEL_ENC_K1, 1);
     ui.hold(PANEL_BTN_EDIT, false);
     assert_eq!(ui.live().slot[1][LIVE_SLOT_AMOUNT as usize], 12);
 }
@@ -1050,37 +981,33 @@ fn the_panel_plays_on_the_chip_view() {
     ui.press(PANEL_BTN_OCT_UP);
     assert_eq!(ui.live().octave, octave + 1);
     ui.press(PANEL_BTN_OCT_DOWN);
-    // FX does nothing here: the chip model is CHIP's ALGORITHM (or LIVE's), not a button.
     ui.press(PANEL_BTN_FX);
     assert_eq!(ui.live().model, SID_MODEL_6581, "FX");
-    assert_eq!(param(&ui, LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
+    assert_eq!(ui.rig.param(LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
     assert_eq!(ui.top(), "CHIP");
-    // HOME goes back to the menu.
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
 }
 
-/// panel_knob_param on the CHIP view names what the panel turns, for every focus and knob, with
-/// EDIT held or not: the page the views set is the one MIDI learn reads.
 #[test]
 fn the_knobs_parameters_follow_the_view() {
     let edit = 1 << PANEL_BTN_EDIT;
+    let views_own_encoders = [PANEL_ENC_SELECT, PANEL_ENC_ALGORITHM, PANEL_ENC_PRESETS];
     for f in 0..CHIP_VIEW_SECTIONS {
         for held in [0, edit] {
             for enc in 0..PANEL_ENCODERS {
-                if enc == PANEL_ENC_SELECT || enc == PANEL_ENC_ALGORITHM || enc == PANEL_ENC_PRESETS
-                {
-                    continue; // the view's own, and the preset's
+                if views_own_encoders.contains(&enc) {
+                    continue;
                 }
                 let mut ui = chip_ui();
                 ui.turn(PANEL_ENC_SELECT, f as i32);
                 ui.hold(PANEL_BTN_EDIT, held != 0);
                 let want = unsafe { panel_knob_param(&*ui.p, &*ui.rig.live, held, enc) };
-                let before: Vec<u32> = (0..LIVE_PARAM_EXPERT).map(|q| param(&ui, q)).collect();
+                let before: Vec<u32> = (0..LIVE_PARAM_EXPERT).map(|q| ui.rig.param(q)).collect();
                 let expert_before = ui.live().expert;
                 ui.turn(enc, 1);
                 let changed: Vec<u32> = (0..LIVE_PARAM_EXPERT)
-                    .filter(|&q| param(&ui, q) != before[q as usize])
+                    .filter(|&q| ui.rig.param(q) != before[q as usize])
                     .collect();
                 assert_eq!(
                     ui.live().expert,
@@ -1092,7 +1019,7 @@ fn the_knobs_parameters_follow_the_view() {
                     continue;
                 }
                 assert_eq!(changed, [want], "focus {f} enc {enc} held {held}");
-                let k = enc - K1;
+                let k = enc - PANEL_ENC_K1;
                 let slot = u32::from(ui.live().fx_select);
                 let expect = if held != 0 || f != CHIP_VIEW_CHIP {
                     LIVE_PARAM_SLOT + slot * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT + k
@@ -1105,18 +1032,12 @@ fn the_knobs_parameters_follow_the_view() {
     }
 }
 
-/// MIDI learn over the CHIP view: K1 on the chip picks the age, the CC binds to it and moves
-/// it, the page shows the value; on a slot K4 picks its Mix.
 #[test]
 fn midi_learn_binds_a_chip_view_knob() {
     let mut ui = chip_ui();
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
-    ui.learn_on(K1);
-    step(&mut ui);
+    let mut ml = ui.attach_learn();
+    ui.learn_on(PANEL_ENC_K1);
+    ui.frame_sent();
     assert_eq!(ui.top(), "LEARN");
     assert_eq!(
         ui.p.page, PANEL_PAGE_CHARACTER as u8,
@@ -1124,8 +1045,12 @@ fn midi_learn_binds_a_chip_view_knob() {
     );
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
     assert_eq!(u32::from(ml.param), LIVE_PARAM_AGE);
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 0, "the knob picked and turned");
-    step(&mut ui);
+    assert_eq!(
+        ui.rig.param(LIVE_PARAM_AGE),
+        0,
+        "the knob picked and turned"
+    );
+    ui.frame_sent();
     assert_eq!(
         ui.big(LEARN_VIEW_ROW as usize, 1, 2, 14).trim_end(),
         "LEARN AGE"
@@ -1134,7 +1059,6 @@ fn midi_learn_binds_a_chip_view_knob() {
         ui.big(LEARN_VIEW_ROW as usize + 2, 1, 2, 14).trim_end(),
         "SEND A CC"
     );
-    // A CC from MIDI binds, closes the frame, and from then on moves the age.
     let cc = 21u8;
     let route = |ui: &mut Ui, ml: &mut midi_learn, value: u8| {
         let e = unsafe { midi_learn_route(ml, cc) };
@@ -1144,13 +1068,12 @@ fn midi_learn_binds_a_chip_view_knob() {
     };
     route(&mut ui, &mut ml, 100);
     assert_eq!(unsafe { midi_learn_cc_of(&*ml, LIVE_PARAM_AGE) }, cc);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(ui.top(), "CHIP");
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 100);
-    assert_eq!(control(&ui, 0).1, "100", "three digits: 2x");
-    // On the FX slot, K4 is its Mix.
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), 100);
+    assert_eq!(knob_label_and_value(&ui, 0).1, "100", "three digits: 2x");
     ui.turn(PANEL_ENC_SELECT, 3);
-    ui.learn_on(K1 + 3);
+    ui.learn_on(PANEL_ENC_K4);
     assert_eq!(
         u32::from(ml.param),
         LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS + LIVE_SLOT_MIX
@@ -1159,21 +1082,14 @@ fn midi_learn_binds_a_chip_view_knob() {
     assert_eq!(ui.top(), "CHIP", "HOME cancelled learn and stayed");
 }
 
-/// Under MIDI learn's frame the CHIP view keeps SELECT and ALGORITHM: SELECT moves the focus
-/// off the chip to DIST, so K4 then learns DIST's Mix, not the bleed; ALGORITHM steps DIST's
-/// algorithm. The knobs stay learn's: they pick and do not turn.
 #[test]
 fn select_and_algorithm_work_under_the_learn_frame() {
     let mut ui = chip_ui();
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
+    let ml = ui.attach_learn();
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
     assert_eq!(ui.live().fx_select, 0);
-    ui.learn_on(K1);
-    step(&mut ui);
+    ui.learn_on(PANEL_ENC_K1);
+    ui.frame_sent();
     assert_eq!(ui.top(), "LEARN");
     ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(focus(&ui), 1, "SELECT moved the focus under the frame");
@@ -1185,7 +1101,7 @@ fn select_and_algorithm_work_under_the_learn_frame() {
     );
     assert_eq!(ui.top(), "LEARN", "the frame stays");
     let mix = ui.live().slot[0][LIVE_SLOT_MIX as usize];
-    ui.turn(K1 + 3, 1);
+    ui.turn(PANEL_ENC_K4, 1);
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
     assert_eq!(
         u32::from(ml.param),
@@ -1201,15 +1117,12 @@ fn select_and_algorithm_work_under_the_learn_frame() {
     assert_eq!(ui.top(), "CHIP");
 }
 
-/// The page's names for the learn frame and its toasts: the character's controls.
 #[test]
 fn the_character_parameters_have_names() {
     let name = |p: u32| {
         let mut buf = [0 as std::ffi::c_char; LEARN_VIEW_NAME as usize];
         unsafe { learn_view_param_name(p, buf.as_mut_ptr()) };
-        unsafe { CStr::from_ptr(buf.as_ptr()) }
-            .to_string_lossy()
-            .into_owned()
+        c_text(buf.as_ptr())
     };
     assert_eq!(name(LIVE_PARAM_PROFILE), "PROFILE");
     assert_eq!(name(LIVE_PARAM_AGE), "AGE");
@@ -1218,7 +1131,6 @@ fn the_character_parameters_have_names() {
     assert_eq!(name(LIVE_PARAM_BLEED), "BLEED");
 }
 
-/// MIDI out sends what the CHIP view's knobs turn as their CCs (docs/reference/midi.md).
 #[test]
 fn midi_out_sends_the_chip_views_knobs() {
     let mut ui = chip_ui();
@@ -1237,8 +1149,8 @@ fn midi_out_sends_the_chip_views_knobs() {
             midi_map_to_cc(std::ptr::null(), e, value)
         }]
     };
-    ui.turn(K1, 2);
-    ui.turn(K1 + 2, 1);
+    ui.turn(PANEL_ENC_K1, 2);
+    ui.turn(PANEL_ENC_K3, 1);
     assert_eq!(cc(LIVE_PARAM_AGE, 8), [0x0B, 0xB0, CC_AGE as u8, 8]);
     assert_eq!(
         tick(&ui, &mut out),
@@ -1246,7 +1158,7 @@ fn midi_out_sends_the_chip_views_knobs() {
     );
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    ui.turn(K1 + 1, 3);
+    ui.turn(PANEL_ENC_K2, 3);
     let dist = LIVE_PARAM_SLOT;
     assert_eq!(cc(dist + LIVE_SLOT_A, 12)[2], LIVE_CC_SLOT_FIRST as u8 + 2);
     assert_eq!(
@@ -1260,16 +1172,13 @@ fn midi_out_sends_the_chip_views_knobs() {
     );
 }
 
-/// What MIDI changes while the page shows is on it at the next frame; nothing new, nothing
-/// composed.
 #[test]
 fn midi_changes_show_on_the_page() {
     let mut ui = chip_ui();
-    // An idle page: nothing sent, no compose (the probe cell stays).
     let probe = 24 * COLS + 20;
     ui.g.ch[probe] = b'@';
     for _ in 0..30 {
-        assert_eq!(step(&mut ui), Sent::default());
+        assert_eq!(ui.frame_sent(), Sent::default());
     }
     assert_eq!(ui.g.ch[probe], b'@', "the idle page was composed");
     ui.g.ch[probe] = b' ';
@@ -1281,34 +1190,40 @@ fn midi_changes_show_on_the_page() {
         (CC_BLEED, 99, 3),
     ] {
         ui.rig.cc(cc, value);
-        step(&mut ui);
+        ui.frame_sent();
         let want = unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_AGE + row) };
-        assert_eq!(control(&ui, row as usize).1, want.to_string(), "CC {cc}");
+        assert_eq!(
+            knob_label_and_value(&ui, row as usize).1,
+            want.to_string(),
+            "CC {cc}"
+        );
     }
-    ui.rig.cc(LIVE_CC_SLOT_FIRST + 5, 127); // MOD's algorithm: the last, WOW
-    ui.rig.cc(LIVE_CC_SLOT_FIRST + 6, 50);
-    step(&mut ui);
-    assert_eq!(summary(&ui, 1, 3, 3), ("MOD".into(), "WOW".into()));
+    let (mod_algorithm_cc, mod_amount_cc) = (LIVE_CC_SLOT_FIRST + 5, LIVE_CC_SLOT_FIRST + 6);
+    ui.rig.cc(mod_algorithm_cc, 127);
+    ui.rig.cc(mod_amount_cc, 50);
+    ui.frame_sent();
+    assert_eq!(section_line(&ui, 1, 3, 3), ("MOD".into(), "WOW".into()));
     ui.turn(PANEL_ENC_SELECT, 2);
-    settle(&mut ui);
-    assert_eq!(choice(&ui, 3), "WOW");
-    // CC 50 on WOW's walk (knob_curves.rs: logarithmic): position 12 of 32, 18
-    assert_eq!(control(&ui, 0), ("WOW".into(), "18".into()));
+    settle_chip_page(&mut ui);
+    assert_eq!(choice_word(&ui, 3), "WOW");
+    assert_eq!(
+        knob_label_and_value(&ui, 0),
+        ("WOW".into(), "18".into()),
+        "CC 50 on WOW's logarithmic walk"
+    );
     ui.turn(PANEL_ENC_SELECT, -2);
-    settle(&mut ui);
-    ui.rig.cc(CC_PROFILE, 40); // 4, worn: CC 85 spans the five built-in profiles, then USER 1..8
-    step(&mut ui);
+    settle_chip_page(&mut ui);
+    ui.rig.cc(CC_PROFILE, 40);
+    ui.frame_sent();
     assert_eq!(profile_word(&ui, 4), "WORN");
 }
 
-/// Everything changing at once from MIDI, with a toast and the chip's raster: no frame sends
-/// more than CHIP_VIEW_FRAME_CELLS or the SPI budget, and the page ends whole.
 #[test]
 fn a_burst_of_changes_stays_within_the_budget() {
     let mut ui = chip_ui();
     let mut most = Sent::default();
     for round in 0..3u8 {
-        ui.press(PANEL_BTN_OCT_UP); // a toast
+        ui.press(PANEL_BTN_OCT_UP);
         for cc in LIVE_CC_SLOT_FIRST..=LIVE_CC_SLOT_LAST {
             ui.rig.cc(cc, 127 - round * 60);
         }
@@ -1316,10 +1231,10 @@ fn a_burst_of_changes_stays_within_the_budget() {
             ui.rig.cc(cc, 127 - round * 60);
         }
         ui.turn(PANEL_ENC_SELECT, if round == 1 { -3 } else { 3 });
-        ui.press(PANEL_BTN_FX); // a chip change: the raster
+        ui.press(PANEL_BTN_FX);
         let mut frames = 0;
         loop {
-            let s = step(&mut ui);
+            let s = ui.frame_sent();
             assert!(
                 s.cells <= CHIP_VIEW_FRAME_CELLS as usize && s.spi_ms() <= SPI_BUDGET_MS,
                 "round {round} frame {frames}: {s:?}, {:.1} ms",
@@ -1338,25 +1253,20 @@ fn a_burst_of_changes_stays_within_the_budget() {
     }
     assert!(ui.v.chip.held > 0, "the budget never held a frame back");
     println!("CHIP busiest frame {most:?}, {:.1} ms", most.spi_ms());
-    // The page is whole: what a fresh compose would draw.
     let now: Vec<u8> = ui.g.ch.to_vec();
     ui.press(PANEL_BTN_HOME);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(ui.g.ch.to_vec(), now);
 }
 
-/// The tabs (M2b Task 5): SELECT moves up from CHIP into them (clamped), ALGORITHM there
-/// switches A and B (clamped); the title says which chip's page, in yellow with the tabs' focus,
-/// KEYS:A or KEYS:B on the keys' chip; with no song the B tab shows the keys' setup, FOLLOWS KEYS
-/// and the slots SHARED in its note, and K1..K4 turn the keys' setup on either tab.
 #[test]
 fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     let mut ui = chip_ui();
     ui.rig.live.two_chips = 1;
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_AGE, 40) };
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     let t = theme_of(&ui);
     assert_eq!(big(&ui, 0, 0, 2, 6), "CHIP A");
     assert_eq!(small(&ui, 0, 24, 6), "KEYS:A", "the keys play chip A");
@@ -1364,12 +1274,8 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     assert_eq!(focus(&ui), CHIP_VIEW_TABS);
     ui.turn(PANEL_ENC_SELECT, -3);
     assert_eq!(focus(&ui), CHIP_VIEW_TABS, "clamped above the tabs");
-    settle(&mut ui);
-    assert_eq!(
-        ui.g.attr[0] & 15,
-        t.hot,
-        "the tabs' focus: the title yellow"
-    );
+    settle_chip_page(&mut ui);
+    assert_eq!(fg(&ui, 0, 0), t.hot, "the tabs' focus: the title yellow");
     assert_eq!(
         tab_bg(&ui, 0),
         t.label,
@@ -1385,7 +1291,7 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     assert_eq!(ui.v.chip.tab, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 3);
     assert_eq!(ui.v.chip.tab, 1, "clamped at B");
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(big(&ui, 0, 0, 2, 6), "CHIP B");
     assert_eq!(
         small(&ui, 0, 24, 6),
@@ -1401,45 +1307,29 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
         small(&ui, CHIP_VIEW_NOTE_ROW, 0, 26).trim(),
         "FOLLOWS KEYS  SLOTS SHARED"
     );
-    assert_eq!(
-        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
-        "",
-        "no help line: the help card says what the controls do"
-    );
-    // K1 on the tabs and on the chip turns the keys' age, on the B tab too.
+    assert_no_help_line(&ui);
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_CHARACTER);
     ui.turn(PANEL_ENC_K1, 1);
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 44);
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), 44);
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_K1, 1);
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), 48);
-    // The keys on chip B: KEYS moves, and the B tab's note says the slots are A's too.
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), 48);
     ui.rig.live.keys_chip = 1;
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(small(&ui, 0, 24, 6), "KEYS:B");
     assert_eq!(
         small(&ui, CHIP_VIEW_NOTE_ROW, 0, 26).trim(),
         "SLOTS SHARED WITH CHIP A"
     );
-    assert_eq!(
-        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
-        "",
-        "no help line: the help card says what the controls do"
-    );
+    assert_no_help_line(&ui);
 }
 
-/// During a song the A tab shows the song's setup (keys_route.song_want) and edits it: the
-/// profile on ALGORITHM, the controls on K1..K4 (the view's own: the panel's page names
-/// nothing there, so MIDI learn binds nothing), and the keys' setup is left alone; the B tab
-/// shows and edits the keys'.
 #[test]
 fn during_a_song_the_a_tab_edits_the_songs_setup() {
     let mut ui = chip_ui();
     ui.rig.live.two_chips = 1;
     ui.rig.live.keys_chip = 1;
-    let mut kr = Box::<keys_route>::default();
-    kr.l = &mut *ui.rig.live;
-    kr.song = 1;
+    let mut kr = song_keys(&mut ui);
     kr.song_want = chip_setup {
         profile: SID_CHIP_6581_R2 as u8,
         controls: [10, 20, 30, 40],
@@ -1447,23 +1337,21 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
         expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
-    settle(&mut ui);
+    settle_chip_page(&mut ui);
     assert_eq!(unsafe { chip_view_song_tab(&ui.v.chip) }, 1);
     assert_eq!(profile_word(&ui, 2), "R2");
-    assert_eq!(control(&ui, 0).1, "10");
+    assert_eq!(knob_label_and_value(&ui, 0).1, "10");
     assert_eq!(
         small(&ui, CHIP_VIEW_NOTE_ROW, 0, 26).trim(),
         "SONG SETUP  SLOTS SHARED"
     );
-    assert_eq!(
-        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
-        "",
-        "no help line: the help card says what the controls do"
-    );
+    assert_no_help_line(&ui);
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_NONE);
-    let (age, profile) = (param(&ui, LIVE_PARAM_AGE), param(&ui, LIVE_PARAM_PROFILE));
+    let (age, profile) = (
+        ui.rig.param(LIVE_PARAM_AGE),
+        ui.rig.param(LIVE_PARAM_PROFILE),
+    );
     ui.turn(PANEL_ENC_K1, 2);
-    // The panel's page as the event left it (views set it before and after each event).
     let p: *const panel = &*ui.p;
     let learn = unsafe { panel_knob_param(p, &*ui.rig.live, 0, PANEL_ENC_K1) };
     assert_eq!(
@@ -1475,18 +1363,20 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
     assert_eq!(kr.song_want.controls, [18, 20, 30, 36]);
     assert_eq!(u32::from(kr.song_want.profile), SID_CHIP_6581_R2 + 1);
     assert_eq!(
-        (param(&ui, LIVE_PARAM_AGE), param(&ui, LIVE_PARAM_PROFILE)),
+        (
+            ui.rig.param(LIVE_PARAM_AGE),
+            ui.rig.param(LIVE_PARAM_PROFILE)
+        ),
         (age, profile)
     );
-    settle(&mut ui);
-    assert_eq!(control(&ui, 0).1, "18");
-    // The B tab: the keys' setup, the knobs on it.
+    settle_chip_page(&mut ui);
+    assert_eq!(knob_label_and_value(&ui, 0).1, "18");
     ui.turn(PANEL_ENC_SELECT, -1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_CHARACTER);
     ui.turn(PANEL_ENC_K1, 1);
-    assert_eq!(param(&ui, LIVE_PARAM_AGE), age + 4);
+    assert_eq!(ui.rig.param(LIVE_PARAM_AGE), age + 4);
     assert_eq!(kr.song_want.controls[0], 18, "the song's age moved");
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }
@@ -1505,9 +1395,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
 
     let mut ui = chip_ui();
     let mut edits = Vec::<(chip_setup, u32)>::new();
-    let mut kr = Box::<keys_route>::default();
-    kr.l = &mut *ui.rig.live;
-    kr.song = 1;
+    let mut kr = song_keys(&mut ui);
     kr.song_want.controls = [10, 20, 30, 40];
     kr.song_want.expert.fill(70);
     kr.song_edit = Some(edited);
@@ -1555,7 +1443,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     assert_eq!(edits[3].0.expert, ui.rig.live.user_expert[0]);
 
     ui.turn(PANEL_ENC_SELECT, 4);
-    ui.turn(PANEL_ENC_K1 + 1, 1);
+    ui.turn(PANEL_ENC_K2, 1);
     assert_eq!(edits[4].1, 1 << (KEYS_ROUTE_EDIT_EXPERT_FIRST + 1));
     assert_eq!(edits[4].0.expert[1], 71);
     assert_eq!(
@@ -1592,9 +1480,7 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
 
     let mut ui = chip_ui();
     let mut calls = 0u32;
-    let mut kr = Box::<keys_route>::default();
-    kr.l = &mut *ui.rig.live;
-    kr.song = 1;
+    let mut kr = song_keys(&mut ui);
     kr.song_want.profile = SID_CHIP_6581_R3 as u8;
     kr.song_want.controls = [10, 20, 30, 40];
     kr.song_want.expert.fill(70);
@@ -1620,7 +1506,6 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
         assert_eq!(kr.song_user, 1);
         assert_eq!(unsafe { chip_view_user(&ui.v.chip) }, 1);
         ui.frame();
-        // The page shows the choice (ALGORITHM) and the knob's label highlights (K1): no popup.
         assert_eq!(ui.v.s.popup_ask, 0);
         if encoder != PANEL_ENC_ALGORITHM {
             assert_eq!(ui.v.chip.hl, 1);
@@ -1636,24 +1521,16 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }
 
-/// MIDI learn over the song's A tab (PANEL_PAGE_NONE): K1..K4 pick nothing, and the toast says
-/// why (SONG SETUP: NO CC), not K4's preset message.
 #[test]
 fn learn_over_the_songs_tab_says_its_knobs_have_no_cc() {
     let mut ui = chip_ui();
     ui.rig.live.two_chips = 1;
     ui.rig.live.keys_chip = 1;
-    let mut kr = Box::<keys_route>::default();
-    kr.l = &mut *ui.rig.live;
-    kr.song = 1;
+    let mut kr = song_keys(&mut ui);
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
-    let mut ml = Box::<midi_learn>::default();
-    unsafe {
-        midi_learn_init(&mut *ml);
-        views_learn(&mut *ui.v, &mut *ml);
-    }
-    ui.learn_on(K1);
-    step(&mut ui);
+    let ml = ui.attach_learn();
+    ui.learn_on(PANEL_ENC_K1);
+    ui.frame_sent();
     assert_eq!(ui.p.page, PANEL_PAGE_NONE as u8);
     assert_eq!(ui.top(), "CHIP", "no frame on the song's tab");
     assert_eq!(

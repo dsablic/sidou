@@ -1,37 +1,27 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* USB audio out on the host: Felucca's src/usb.c (GPL-3.0-only) built as midi.c builds it
- * (platform/fm1/usb_config.h: FELUCCA_UAC on, no CDC, SIDOU's strings), with SIDOU's TIMER5
- * side (platform/fm1/usb_audio.c) after it. The tests
- * (tests/usb_audio.rs) play both interrupts and the host's packets in time; the SIE is never
- * touched (uac_service and usb_poll are not called: uac_h_packet is the packet uac_service
- * would send). */
 #include <stdint.h>
 #include <string.h>
 
 #define AUDIO_HALF_FRAMES 128u
 #include "usb_config.h"
-/* usb_audio.c's buffer is in the device's .pool; Mach-O section names need a segment. */
 #define USB_AUDIO_POOL
 static void fm1_delay_ms(uint32_t ms) {
     (void)ms;
 }
-#pragma GCC diagnostic ignored "-Wint-to-pointer-cast" /* SIE register macros (never touched) */
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
 #include "src/usb.c"
-/* usb.c's update-protocol hooks (FELUCCA_OTA), which midi.c's ota.c defines: unused here. */
 static uint32_t ota_now_ms(void) {
     return 0;
 }
 static void ota_idle(void) {
 }
-/* usb_audio_isr's uac_service talks to the SIE (and its pi32v2 sync instructions): not here. */
 static void uac_h_no_sie(void) {
 }
 #define uac_service uac_h_no_sie
 #include "usb_audio.c"
 #undef uac_service
 
-/* usb.c's descriptor for GET_DESCRIPTOR's wValue; its length, or 0 when it stalls. */
 uint32_t uac_h_desc(uint32_t wvalue, const uint8_t** d) {
     uint16_t l = 0;
     if (!get_desc(wvalue, d, &l)) {
@@ -40,7 +30,6 @@ uint32_t uac_h_desc(uint32_t wvalue, const uint8_t** d) {
     return l;
 }
 
-/* A configured device, no stream; the hand-over idle. */
 void uac_h_reset(void) {
     memset(&usb, 0, sizeof usb);
     memset(&uac, 0, sizeof uac);
@@ -52,19 +41,16 @@ void uac_h_reset(void) {
     usb.config = 1;
 }
 
-/* SET_INTERFACE on the audio streaming interface (alt 0 or 1), SET_CUR's rate. */
 void uac_h_stream(uint32_t alt) {
     uac_stream(alt);
 }
 void uac_h_rate(uint32_t hz) {
     uac_rate_set(hz);
 }
-/* The host takes our packets (uac_service sets it once the first has gone). */
 void uac_h_flowing(uint32_t on) {
     uac.flowing = (uint8_t)on;
 }
 
-/* TIMER5's calls (usb_audio.h). */
 void uac_h_take(const int32_t* half) {
     usb_audio_take(half);
 }
@@ -75,13 +61,10 @@ void uac_h_tick(void) {
     usb_audio_tick();
 }
 
-/* The next packet, as uac_service queues it: its frames into d (at least UA_MAXF), the count. */
 uint32_t uac_h_packet(uint32_t* d) {
     return uac_packet(d);
 }
 
-/* Felucca's producer straight from int32 blocks of 32 frames, as Felucca's audio.c calls it
- * (render start, then each block): the reference the hand-over must match. */
 void uac_h_direct_start(void) {
     uac_render_start();
 }
@@ -89,7 +72,6 @@ void uac_h_direct_tap(const int32_t* out, uint32_t n) {
     uac_tap(out, n);
 }
 
-/* The ring's frames as they are, oldest first, up to max: the reference's read side. */
 uint32_t uac_h_drain(uint32_t* d, uint32_t max) {
     uint32_t n = ua_w - ua_r;
     if (n > max) {

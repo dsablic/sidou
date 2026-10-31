@@ -1,51 +1,21 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Measures reSIDfp's filter and fits SIDOU's state-variable filter to it: an effective
-//! cutoff per FC value and a damping (k = 1/Q) per resonance value, for one filter curve
-//! setting of one chip model (`CurveSetting`; M1c generates more of them).
-//!
-//! Measurement: one voice plays noise (frequency 0xffff, a broadband sample-and-hold at
-//! about 61.6 kHz) at a small envelope level, once straight to the output and once
-//! through the filter in one mode. The noise is the same in every run (reSIDfp is
-//! deterministic and the filter registers do not touch the voices), so the filter's
-//! transfer function is the cross spectrum of the two outputs over the direct one's power
-//! (Welch, Hann windows), averaged in twelfth-octave bands from 20 Hz to 19 kHz. The
-//! external filter and the resampler are on both paths and cancel.
-//!
-//! Fit: the analogue prototype of SIDOU's filter (sid_svf_tick is its trapezoidal
-//! discretisation, prewarped at the cutoff): with W = f / f0,
-//! |LP| = 1 / |1 - W^2 + j k W|, |BP| = W |LP|, |HP| = W^2 |LP|, each with its own level,
-//! least squares in dB, the three modes together, over the bands within 24 dB of each
-//! mode's maximum and within a factor of three of the cutoff (starting from the band-pass
-//! peak). Then (fit_setting): k per resonance value from six FC values mid-range, the
-//! cutoff per measured FC with those k, and every FC value in between from what the
-//! chip's cutoff DAC outputs there (CurveSetting::control).
 
 use std::f64::consts::PI;
 
 use residfp_sys::{filter6581_dac, Model, Sampling, Sid};
 
-/// PAL.
 pub const CLOCK_HZ: f64 = 985_248.0;
-/// reSIDfp's output rate for the measurement.
 pub const FS: f64 = 44_100.0;
-/// Welch segments: 8192 samples (5.4 Hz bins), half overlapping.
 const SEGMENT: usize = 8192;
 const SEGMENTS: usize = 7;
 pub const CAPTURE: usize = SEGMENT * (SEGMENTS + 1) / 2;
-/// Cycles before the capture: the envelope reaches its sustain level and the filter and
-/// the external filter's DC blocker settle.
 pub const SETTLE_CYCLES: u32 = 250_000;
-/// The voice's sustain nibble: envelope 0x44, about a quarter of full scale (the
-/// small-signal level, where SIDOU's linear filter should match).
 pub const SUSTAIN: u8 = 0x4;
-/// Bands: twelfth octaves from 20 Hz up to 19 kHz.
 const BAND_LO_HZ: f64 = 20.0;
 const BAND_HI_HZ: f64 = 19_000.0;
-/// The fit uses the bands within this many dB of each mode's maximum.
 const FIT_RANGE_DB: f64 = 24.0;
 
-/// A filter output mode: the $18 bits 4-6.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Lp,
@@ -72,7 +42,6 @@ impl Mode {
         }
     }
 
-    /// The prototype's magnitude in dB at W = f / f0 (before the mode's level).
     fn model_db(self, w: f64, k: f64) -> f64 {
         let d = (1.0 - w * w).powi(2) + (k * w).powi(2);
         let num = match self {
@@ -84,20 +53,14 @@ impl Mode {
     }
 }
 
-/// One filter setting of reSIDfp to fit: a chip model and its curve parameters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CurveSetting {
     pub model: Model,
-    /// setFilter6581Curve / setFilter8580Curve, 0..1 (reSIDfp's default 0.5).
     pub curve: f64,
-    /// setFilter6581Range, 0..1, or None for reSIDfp's default (never set: uCox 20e-6).
-    /// reSIDfp keeps it once per process (residfp_sys::Sid::set_filter6581_range), so
-    /// settings with different ranges must not be measured at the same time.
     pub range6581: Option<f64>,
 }
 
 impl CurveSetting {
-    /// reSIDfp's defaults: the "6581 R4AR" and "8580 R5" profiles of M1c.
     pub const fn default_for(model: Model) -> Self {
         Self {
             model,
@@ -114,9 +77,6 @@ impl CurveSetting {
         }
     }
 
-    /// What the cutoff follows, FC value by FC value: on the 6581 its cutoff DAC's output
-    /// (the VCR gate voltage, kinked), on the 8580 the W/L its DAC switches in (FC, and
-    /// half of bit 0's for FC 0). The cutoff rises with it.
     pub fn control(&self) -> Vec<f64> {
         match self.model {
             Model::Mos6581 => filter6581_dac(self.curve)
@@ -130,7 +90,6 @@ impl CurveSetting {
     }
 }
 
-/// A measured transfer function: band centre frequencies and |H| in dB.
 #[derive(Clone, Debug)]
 pub struct Response {
     pub hz: Vec<f64>,
@@ -147,8 +106,6 @@ fn new_sid(s: &CurveSetting) -> Sid {
     sid
 }
 
-/// The measurement's register writes: the noise voice, filtered in `mode` (or straight
-/// out for None) at FC `fc` and resonance `res`. Then SETTLE_CYCLES, then the capture.
 pub fn register_writes(fc: u32, res: u8, mode: Option<Mode>) -> [(u8, u8); 9] {
     let (routing, bits) = match mode {
         Some(m) => (0x01, m.bits()),
@@ -167,7 +124,6 @@ pub fn register_writes(fc: u32, res: u8, mode: Option<Mode>) -> [(u8, u8); 9] {
     ]
 }
 
-/// Renders the capture on reSIDfp (register_writes).
 fn render(s: &CurveSetting, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
     let mut sid = new_sid(s);
     for (reg, value) in register_writes(fc, res, mode) {
@@ -186,7 +142,6 @@ fn render(s: &CurveSetting, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
     out
 }
 
-/// In-place radix-2 FFT of (re, im).
 fn fft(re: &mut [f64], im: &mut [f64], twiddle: &[(f64, f64)]) {
     let n = re.len();
     let mut j = 0;
@@ -221,7 +176,6 @@ fn fft(re: &mut [f64], im: &mut [f64], twiddle: &[(f64, f64)]) {
     }
 }
 
-/// Welch spectra of a capture: per segment, the first half of the windowed FFT.
 pub struct Spectra(Vec<(Vec<f64>, Vec<f64>)>);
 
 pub fn spectra(x: &[f64]) -> Spectra {
@@ -254,7 +208,6 @@ pub fn spectra(x: &[f64]) -> Spectra {
     )
 }
 
-/// The band edges, as FFT bins [lo, hi), and their centres.
 fn bands() -> Vec<(f64, usize, usize)> {
     let bin = FS / SEGMENT as f64;
     let mut out = Vec::new();
@@ -273,7 +226,6 @@ fn bands() -> Vec<(f64, usize, usize)> {
     }
 }
 
-/// |H| per band from the filtered output's and the direct output's spectra.
 pub fn transfer(filtered: &Spectra, direct: &Spectra) -> Response {
     let mut hz = Vec::new();
     let mut db = Vec::new();
@@ -294,18 +246,14 @@ pub fn transfer(filtered: &Spectra, direct: &Spectra) -> Response {
     Response { hz, db }
 }
 
-/// The direct (unfiltered) output's spectra, shared by every measurement of a setting.
 pub fn direct_spectra(s: &CurveSetting) -> Spectra {
     spectra(&render(s, 0, 0, None))
 }
 
-/// The transfer function of one filter setting in one mode.
 pub fn measure(s: &CurveSetting, direct: &Spectra, fc: u32, res: u8, mode: Mode) -> Response {
     transfer(&spectra(&render(s, fc, res, Some(mode))), direct)
 }
 
-/// A fit: cutoff, damping, and each mode's RMS and largest error in dB (at its best
-/// level).
 #[derive(Clone, Copy, Debug)]
 pub struct Fit {
     pub f0: f64,
@@ -314,8 +262,6 @@ pub struct Fit {
     pub max_db: [f64; 3],
 }
 
-/// The bands a mode's fit uses: within FIT_RANGE_DB of the mode's maximum and, with a
-/// window, from f0 / WINDOW to f0 * WINDOW.
 fn selected(r: &Response, window: Option<f64>) -> Vec<(f64, f64)> {
     let top = r.db.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     r.hz.iter()
@@ -327,13 +273,8 @@ fn selected(r: &Response, window: Option<f64>) -> Vec<(f64, f64)> {
         .collect()
 }
 
-/// The fit uses f0 / WINDOW .. f0 * WINDOW: further away reSIDfp's 6581 filter levels off
-/// (its band-pass about 15 dB under the low-pass level, its high-pass about 28 dB) where a
-/// state-variable filter keeps falling, and the fit is about the corner.
 const WINDOW: f64 = 3.0;
 
-/// Squared error of the prototype at (f0, k), each mode at its best level; with errors,
-/// also each mode's RMS and largest error.
 fn cost(data: &[(Mode, Vec<(f64, f64)>)], f0: f64, k: f64) -> (f64, [f64; 3], [f64; 3]) {
     let mut total = 0.0;
     let mut rms = [0.0; 3];
@@ -358,9 +299,6 @@ fn cost(data: &[(Mode, Vec<(f64, f64)>)], f0: f64, k: f64) -> (f64, [f64; 3], [f
     (total, rms, max)
 }
 
-/// Minimises the cost over ln f0 within a factor of two of `around` (and ln k unless
-/// fixed): a grid (sixteenth octaves; k in eighth octaves from 0.02), then a pattern
-/// search.
 fn minimise(data: &[(Mode, Vec<(f64, f64)>)], around: f64, k_fixed: Option<f64>) -> (f64, f64) {
     let c = |lf: f64, lk: f64| cost(data, libm::exp(lf), libm::exp(lk)).0;
     let (mut lf, mut lk) = (libm::log(around), 0.0f64);
@@ -406,7 +344,6 @@ fn minimise(data: &[(Mode, Vec<(f64, f64)>)], around: f64, k_fixed: Option<f64>)
     (libm::exp(lf), libm::exp(lk))
 }
 
-/// The band-pass response's peak: where the fit starts.
 fn bp_peak(responses: &[(Mode, Response)]) -> f64 {
     let (_, r) = responses
         .iter()
@@ -421,9 +358,6 @@ fn bp_peak(responses: &[(Mode, Response)]) -> f64 {
     best.1
 }
 
-/// Fits f0 and k to the three modes' responses (with `k_fixed`, f0 only) around the
-/// cutoff (WINDOW), starting from the band-pass peak, twice (the window follows the first
-/// result).
 pub fn fit(responses: &[(Mode, Response)], k_fixed: Option<f64>) -> Fit {
     let pick = |f0: f64| -> Vec<(Mode, Vec<(f64, f64)>)> {
         responses
@@ -445,15 +379,10 @@ pub fn fit(responses: &[(Mode, Response)], k_fixed: Option<f64>) -> Fit {
     }
 }
 
-/// Whether a fitted cutoff is within the measurement's reach: the corner inside the bands
-/// with room above it.
 pub fn in_reach(f0: f64) -> bool {
     f0 >= 2.0 * BAND_LO_HZ && f0 * 1.25 <= BAND_HI_HZ
 }
 
-/// How far `ours` is from `reference`, mode by mode (RMS, largest; dB), each at its best
-/// level, over the bands from `lo_hz` to `hi_hz` within FIT_RANGE_DB of the reference
-/// mode's maximum.
 pub fn compare(
     reference: &[(Mode, Response)],
     ours: &[(Mode, Response)],
@@ -484,8 +413,6 @@ pub fn compare(
     (rms, max)
 }
 
-/// The error of a given (f0, k) against the responses, mode by mode (RMS, largest), over
-/// the bands the fit uses around f0.
 pub fn errors(responses: &[(Mode, Response)], f0: f64, k: f64) -> ([f64; 3], [f64; 3]) {
     let data: Vec<(Mode, Vec<(f64, f64)>)> = responses
         .iter()
@@ -495,7 +422,6 @@ pub fn errors(responses: &[(Mode, Response)], f0: f64, k: f64) -> ([f64; 3], [f6
     (rms, max)
 }
 
-/// All three modes of one (FC, resonance) setting.
 pub fn measure_modes(
     s: &CurveSetting,
     direct: &Spectra,
@@ -508,8 +434,6 @@ pub fn measure_modes(
         .collect()
 }
 
-/// The FC values the cutoff is measured at: every 32 steps, the top, and on the 6581 the
-/// step below its 1023 -> 1024 discontinuity.
 pub fn fc_grid(model: Model) -> Vec<u32> {
     let mut g: Vec<u32> = (0..2048).step_by(32).collect();
     g.push(2047);
@@ -520,15 +444,10 @@ pub fn fc_grid(model: Model) -> Vec<u32> {
     g
 }
 
-/// The resonance values measured at every grid FC.
 pub const GRID_RES: [u8; 3] = [0, 8, 15];
-/// How many FC values the damping table averages over, every resonance value at each.
 const K_FCS: usize = 6;
-/// They are grid FC values whose cutoff is between these (at resonance 8), clear of the
-/// 6581's threshold region (FC up to about 600 by default), where its damping drifts.
 const K_FC_HZ: (f64, f64) = (1000.0, 10000.0);
 
-/// Runs `jobs` on every core, results in job order.
 fn parallel<T: Sync, R: Send>(jobs: Vec<T>, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
@@ -552,34 +471,24 @@ fn parallel<T: Sync, R: Send>(jobs: Vec<T>, f: impl Fn(&T) -> R + Sync) -> Vec<R
         .collect()
 }
 
-/// One measured grid point.
 pub struct GridPoint {
     pub fc: u32,
     pub res: u8,
     pub responses: Vec<(Mode, Response)>,
-    /// f0 and k fitted freely.
     pub free: Fit,
-    /// f0 fitted with k from the damping table.
     pub f0_fixed_k: f64,
 }
 
-/// A curve setting, measured and fitted.
 pub struct FilterFit {
     pub setting: CurveSetting,
-    /// k = 1/Q for each resonance value.
     pub k: [f64; 16],
-    /// The FC values the damping table averages over.
     pub k_fcs: Vec<u32>,
-    /// Each resonance value's k at those FC values, the spread (largest / smallest).
     pub k_spread: [f64; 16],
     pub points: Vec<GridPoint>,
-    /// The measured cutoff per grid FC (geometric mean over GRID_RES), None out of reach.
     pub grid_hz: Vec<(u32, Option<f64>)>,
-    /// The cutoff for every FC value.
     pub cutoff_hz: Vec<f64>,
 }
 
-/// Pool-adjacent-violators: the closest non-decreasing sequence (least squares).
 fn isotonic(y: &[f64]) -> Vec<f64> {
     let mut blocks: Vec<(f64, usize)> = Vec::new();
     for &v in y {
@@ -601,10 +510,6 @@ fn isotonic(y: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// The cutoff for every FC value from the measured grid: ln f0 against the control
-/// (CurveSetting::control; its logarithm on the 8580, where the cutoff is nearly
-/// proportional to it) made non-decreasing, then linear between the points, and beyond
-/// them along the straight line through the last (first) few.
 fn interpolate(setting: &CurveSetting, grid_hz: &[(u32, Option<f64>)]) -> Vec<f64> {
     let control = setting.control();
     let x_of = |fc: u32| {
@@ -621,7 +526,6 @@ fn interpolate(setting: &CurveSetting, grid_hz: &[(u32, Option<f64>)]) -> Vec<f6
         .collect();
     pts.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     let ys = isotonic(&pts.iter().map(|p| p.1).collect::<Vec<_>>());
-    // Merge equal controls.
     let mut xs: Vec<(f64, f64)> = Vec::new();
     for (p, y) in pts.iter().zip(ys) {
         match xs.last_mut() {
@@ -630,7 +534,6 @@ fn interpolate(setting: &CurveSetting, grid_hz: &[(u32, Option<f64>)]) -> Vec<f6
         }
     }
     assert!(xs.len() >= 4, "too few measured cutoffs to interpolate");
-    // Least-squares line through a few end points.
     let line = |p: &[(f64, f64)]| {
         let n = p.len() as f64;
         let mx = p.iter().map(|q| q.0).sum::<f64>() / n;
@@ -668,15 +571,8 @@ fn geomean(v: impl Iterator<Item = f64>) -> Option<f64> {
     (n > 0).then(|| libm::exp(s / f64::from(n)))
 }
 
-/// Measures a curve setting and fits SIDOU's filter to it. Takes about half a minute of
-/// CPU time per model; it runs on every core.
-/// Sets reSIDfp's 6581 filter range for `setting` (its default when None), which reSIDfp
-/// keeps once per process: before measuring a 6581 setting, and never while another 6581
-/// measurement with another range runs. Nothing for the 8580.
 pub fn apply_range(setting: &CurveSetting) {
     if setting.model == Model::Mos6581 {
-        // reSIDfp's default is never calling it: uCox 20e-6, which (1 + 39 r) 1e-6 gives
-        // at r = 19 / 39 (it ignores changes under 1e-12).
         Sid::new().set_filter6581_range(setting.range6581.unwrap_or(19.0 / 39.0));
     }
 }
@@ -693,7 +589,6 @@ pub fn fit_setting(setting: &CurveSetting) -> FilterFit {
         let free = fit(&responses, None);
         (fc, res, responses, free)
     });
-    // The damping table: every resonance value at a few FC values mid-range.
     let candidates: Vec<u32> = measured
         .iter()
         .filter(|m| m.1 == 8 && m.3.f0 >= K_FC_HZ.0 && m.3.f0 <= K_FC_HZ.1)
@@ -763,8 +658,6 @@ pub fn fit_setting(setting: &CurveSetting) -> FilterFit {
     }
 }
 
-/// The fit's error against reSIDfp, per mode and grid resonance: RMS over the grid FC
-/// values in reach, and the largest, in dB, with the table's cutoff and damping.
 pub struct ErrorSummary {
     pub res: u8,
     pub mode: Mode,
@@ -807,7 +700,6 @@ impl FilterFit {
         out
     }
 
-    /// A human-readable account of the fit.
     pub fn report(&self) -> String {
         use std::fmt::Write;
         let mut s = String::new();
@@ -905,7 +797,6 @@ mod tests {
         }
     }
 
-    /// The fit recovers the prototype it fits, whatever each mode's level.
     #[test]
     fn fit_recovers_a_state_variable_filter() {
         let (f0, k) = (1234.5, 0.6);
@@ -931,8 +822,6 @@ mod tests {
         assert!((fixed.f0 / f0 - 1.0).abs() < 1e-5);
     }
 
-    /// Interpolation follows the control, stays monotonic in it and extrapolates both
-    /// ends along their lines (here f0 proportional to the 8580's FC).
     #[test]
     fn the_8580_cutoff_interpolates_in_proportion_to_fc() {
         let s = CurveSetting::default_for(Model::Csg8580);

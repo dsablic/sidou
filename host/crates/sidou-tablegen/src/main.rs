@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Writes the generated tables into core/sid/gen/: all of them, or with `fit-filter` the
-//! filter's alone (gen/filter.h), printing how well the fit matches reSIDfp.
 
 use sidou_tablegen::Generated;
 

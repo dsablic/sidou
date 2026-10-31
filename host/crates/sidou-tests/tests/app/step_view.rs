@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! STEP (app/step_view.c, M2d Task 5): the layout, the 16 keys as steps, paging, the lanes' gate,
-//! SET and LOCK shown and kept apart, through the views with the fake player (song_view.rs), which
-//! applies an edit as the player does between blocks.
 
 use std::ffi::CStr;
 
@@ -10,13 +7,12 @@ use gt2_ref::trace::trace;
 use gt2_ref::Options;
 use sidou_sys::*;
 use sidou_tests::player::{default_options, Player};
-use sidou_tests::song::{SngSpec, Song as Model};
+use sidou_tests::song::{SngSpec, Song as Model, REST as R};
 use sidou_tests::transport::Transport;
 
 use crate::song_view::{attr, ch, Song};
+use crate::{PANEL_ENC_K2, PANEL_ENC_K3};
 
-/// The song view whole on the grid, the knob's popup gone from over it, and what the view
-/// holds for the editor written (a frame runs one of its actions).
 pub(crate) fn settle(ui: &mut crate::views::Ui) {
     for _ in 0..400 {
         let st = &ui.v.step;
@@ -31,7 +27,6 @@ pub(crate) fn settle(ui: &mut crate::views::Ui) {
     crate::song_view::settle(ui);
 }
 
-pub(crate) const R: [u8; 4] = [GT2_REST as u8, 0, 0, 0];
 const OFF: [u8; 4] = [GT2_KEYOFF as u8, 0, 0, 0];
 pub(crate) const C3: u8 = GT2_FIRSTNOTE as u8 + 36;
 
@@ -39,8 +34,6 @@ fn th() -> &'static theme {
     unsafe { &*theme_get(THEME_HIGH_CONTRAST) }
 }
 
-/// Three voices with 64-row patterns 0, 1 and 2 (voice 1's with a few notes and a command),
-/// pattern 3 of 128 rows on voice 3's second entry; two instruments.
 pub(crate) fn fixed_song() -> Model {
     let mut p0 = vec![R; 64];
     p0[0] = [C3 + 7, 1, 0, 0];
@@ -84,7 +77,7 @@ pub(crate) fn pattern(s: &Song, p: u32) -> Vec<[u8; 4]> {
         .to_vec()
 }
 
-fn locks(s: &Song) -> Vec<(u8, u8, u8, u16)> {
+pub(crate) fn locks(s: &Song) -> Vec<(u8, u8, u8, u16)> {
     let mut out = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
     let n = unsafe { song_ext_get_locks(s.ui.v.song.song, out.as_mut_ptr(), SONG_LOCKS_MAX) };
     out[..n as usize]
@@ -93,7 +86,6 @@ fn locks(s: &Song) -> Vec<(u8, u8, u8, u16)> {
         .collect()
 }
 
-/// A step key pressed and let go.
 pub(crate) fn tap(s: &mut Song, k: u32) {
     s.ui.note_keys(1 << k, 1 << k);
     s.ui.note_keys(0, 0);
@@ -109,17 +101,18 @@ pub(crate) fn release(s: &mut Song) {
     settle(&mut s.ui);
 }
 
-/// Cell (col, row) of a lane's step i: the pip, and the notch under it.
-fn pip(s: &Song, lane: usize, i: usize) -> (u8, u8) {
+fn lane_cell(s: &Song, lane: usize, i: usize, row_in_lane: usize) -> (u8, u8) {
     let col = 5 + i + i / 4;
-    let r = 5 + 4 * lane;
+    let r = row_in_lane + 4 * lane;
     (ch(&s.ui, col, r), attr(&s.ui, col, r))
 }
 
+fn pip(s: &Song, lane: usize, i: usize) -> (u8, u8) {
+    lane_cell(s, lane, i, 5)
+}
+
 fn notch(s: &Song, lane: usize, i: usize) -> (u8, u8) {
-    let col = 5 + i + i / 4;
-    let r = 6 + 4 * lane;
-    (ch(&s.ui, col, r), attr(&s.ui, col, r))
+    lane_cell(s, lane, i, 6)
 }
 
 #[test]
@@ -149,13 +142,11 @@ fn the_song_views_start_with_step() {
 fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     let s = step();
     let t = th();
-    // The header, as TRACKER's: V1 at 2x in its colour, its pattern, the stop square, the tempo.
     assert_eq!(s.ui.big(0, 0, 2, 2), "V1");
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[0]);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 00");
     assert_eq!(ch(&s.ui, 22, 0), FONT_SQUARE as u8);
     assert_eq!(s.ui.small(0, 26, 4), " 125");
-    // The page selector and the length; the ruler.
     assert_eq!(s.ui.small(2, 0, 4), "PAGE");
     assert_eq!(s.ui.small(2, 5, 7), "1 2 3 4");
     assert_eq!(
@@ -169,7 +160,6 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     assert_eq!(s.ui.big(3, 10, 2, 1), "5");
     assert_eq!(s.ui.big(3, 15, 2, 1), "9");
     assert_eq!(s.ui.big(3, 20, 2, 2), "13");
-    // The lanes: V1 with notes on steps 1, 5 (a note, a command, a key off after it on 10).
     assert_eq!(s.ui.big(5, 0, 2, 2), "V1");
     assert_eq!(s.ui.big(9, 0, 2, 2), "V2");
     assert_eq!(s.ui.big(13, 0, 2, 2), "V3");
@@ -181,13 +171,11 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     assert_eq!(pip(&s, 0, 4).0, FONT_BALL as u8);
     assert_eq!(pip(&s, 0, 9).0, FONT_PIP as u8, "a key off is not a note");
     assert_eq!(pip(&s, 1, 0).0, FONT_PIP as u8);
-    // A group gap of one column between the fours.
     assert_eq!(ch(&s.ui, 9, 5), b' ');
     assert_eq!(ch(&s.ui, 14, 5), b' ');
     assert_eq!(s.ui.big(7, 5, 2, 12), "C-3 I01 STAC");
     assert_eq!(attr(&s.ui, 5, 7) & 15, t.value, "the selected lane's line");
     assert_eq!(attr(&s.ui, 5, 11) & 15, t.hint);
-    // The held step's frame: nothing held.
     assert_eq!(s.ui.small(17, 2, 14), " HELD STEP -- ");
     assert_eq!(s.ui.small(18, 2, 9), "K1 CUTOFF");
     assert_eq!(s.ui.small(18, 17, 7), "K2 RESO");
@@ -203,9 +191,6 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
         !s.ui.small(22, 2, 27).contains("EDIT"),
         "the frame's foot names nothing: the help card says what EDIT does"
     );
-    // The pads: two rows of eight in beats of four, numbered by beat at 2x (1 2 3 4  1 2 3 4);
-    // the second and fourth beats shaded, a beat's first number white, the others light grey; a
-    // note's pad in the lane's colour (steps 1 and 5 have notes).
     let numbers: String = (0..16)
         .map(|i| s.ui.big(pad_row(i), pad_col(i), 2, 1))
         .collect();
@@ -231,8 +216,6 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     );
 }
 
-/// Step i's pad: two rows of eight from STEP_VIEW_PADS_ROW, three rows apart; a pad two cells
-/// and a cell apart, a beat two cells more.
 fn pad_col(i: usize) -> usize {
     let j = i % 8;
     STEP_VIEW_PAD_COL as usize + 3 * j + j / 4 * 2
@@ -243,8 +226,6 @@ fn pad_row(i: usize) -> usize {
 }
 
 const PRESETS: u32 = 6;
-const PANEL_ENC_K2: u32 = PANEL_ENC_K1 + 1;
-const PANEL_ENC_K3: u32 = PANEL_ENC_K1 + 2;
 
 #[test]
 fn a_step_pressed_and_let_go_toggles_a_note_with_a_key_off_after_it() {
@@ -264,10 +245,8 @@ fn a_step_pressed_and_let_go_toggles_a_note_with_a_key_off_after_it() {
     let p = pattern(&s, 0);
     assert_eq!((p[6], p[7]), (R, R), "off: a rest, and its key off goes");
     assert_eq!(pip(&s, 0, 6).0, FONT_PIP as u8);
-    // An existing note goes the same way, its instrument with it.
     tap(&mut s, 4);
     assert_eq!(pattern(&s, 0)[4], R);
-    // The key off of a note before it stays where the step was: a staccato lane keeps it.
     tap(&mut s, 1);
     let p = pattern(&s, 0);
     assert_eq!((p[1], p[2]), ([C3, 1, 0, 0], OFF));
@@ -286,7 +265,6 @@ fn a_key_off_never_goes_over_a_note_and_a_command_row_counts_as_empty() {
     let p = pattern(&s, 0);
     assert_eq!(p[3], [C3, 1, 0, 0]);
     assert_eq!(p[4], [C3 + 12, 2, 0, 0], "row 4's note stays");
-    // Off: the key off now stands where the note was, for the note before it (none: a rest).
     tap(&mut s, 4);
     tap(&mut s, 4);
     let p = pattern(&s, 0);
@@ -330,7 +308,6 @@ fn a_legato_lane_writes_no_key_off_and_taking_a_note_away_leaves_the_one_before(
     s.ui.press(PANEL_BTN_ARP);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(7, 5, 2, 12), "C-3 I01 STAC");
-    // The gate belongs to the lane.
     s.ui.press(PANEL_BTN_ARP);
     s.ui.turn(PANEL_ENC_SELECT, 1);
     settle(&mut s.ui);
@@ -356,7 +333,6 @@ fn select_picks_the_lane_and_the_keys_write_into_its_pattern() {
         "voice 1's own pattern is untouched"
     );
     assert_eq!(pip(&s, 1, 0).0, FONT_BALL as u8);
-    // Three lanes, round: B is not a lane to pick.
     s.ui.turn(PANEL_ENC_SELECT, 2);
     assert_eq!(s.ui.v.song.voice, 0);
     s.ui.turn(PANEL_ENC_SELECT, -1);
@@ -375,7 +351,6 @@ fn presets_sets_the_lanes_instrument_or_with_a_step_held_the_steps_note() {
     );
     tap(&mut s, 2);
     assert_eq!(pattern(&s, 0)[2], [C3, 2, 0, 0]);
-    // A step held: its note, and the lane's note from then on.
     hold(&mut s, 8);
     s.ui.turn(PRESETS, 5);
     release(&mut s);
@@ -387,13 +362,11 @@ fn presets_sets_the_lanes_instrument_or_with_a_step_held_the_steps_note() {
     assert_eq!(s.ui.big(7, 5, 2, 7), "F-3 I02");
     tap(&mut s, 10);
     assert_eq!(pattern(&s, 0)[10][0], C3 + 5);
-    // The note of a step with one moves from its own.
     hold(&mut s, 4);
     s.ui.turn(PRESETS, -2);
     release(&mut s);
     assert_eq!(pattern(&s, 0)[4][0], C3 + 12 - 2);
     assert_eq!(pattern(&s, 0)[4][1], 2, "its own instrument stays");
-    // The instrument stays within 1..63.
     s.ui.turn(PRESETS, -100);
     assert_eq!(s.ui.v.step.instr[0], 1);
     s.ui.turn(PRESETS, 100);
@@ -402,7 +375,6 @@ fn presets_sets_the_lanes_instrument_or_with_a_step_held_the_steps_note() {
 
 #[test]
 fn a_held_steps_note_stops_at_g_sharp_7_the_patterns_last_note() {
-    // Above G#7 (92) a pattern byte is REST, KEYOFF or KEYON, not a note.
     let last = GT2_LASTNOTE as u8;
     let mut s = step();
     hold(&mut s, 8);
@@ -442,11 +414,9 @@ fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     s.ui.turn(PANEL_ENC_ALGORITHM, -20);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(3, 5, 2, 2), "1 ", "page 1");
-    // A pattern of another length shows as many pages as it needs: 64 rows, 4 pages.
     s.ui.v.song.order_pos = 0;
     settle(&mut s.ui);
     assert_eq!(s.ui.small(2, 5, 15).trim_end(), "1 2 3 4");
-    // The popup names the page.
     let (name, value, fill, max) = popup(&s, PANEL_ENC_ALGORITHM, false).unwrap();
     assert_eq!(
         (name.as_str(), value.as_str(), fill, max),
@@ -477,11 +447,9 @@ fn while_the_song_plays_the_page_and_the_white_step_follow_it() {
         th().cursor,
         "the pads are the keys, not the playhead"
     );
-    // ALGORITHM does not page against the playhead.
     s.ui.turn(PANEL_ENC_ALGORITHM, -3);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(3, 5, 2, 3), "65 ");
-    // Stopped, the page stays where the playhead left it.
     s.f.st.state = SONG_T_STOPPED as u8;
     settle(&mut s.ui);
     assert_eq!(s.ui.big(3, 5, 2, 3), "65 ");
@@ -542,7 +510,7 @@ fn a_held_step_and_a_knob_is_a_lock_that_the_step_shows_and_keeps_for_its_row_on
     assert_eq!(s.ui.small(19, 26, 3), "---", "the others have none");
     s.ui.turn(PANEL_ENC_K1, 2);
     s.ui.turn(PANEL_ENC_K2, 1);
-    s.ui.turn(PANEL_ENC_K3, -1); // (the first scale is the floor)
+    s.ui.turn(PANEL_ENC_K3, -1);
     settle(&mut s.ui);
     assert_eq!(
         locks(&s),
@@ -552,7 +520,6 @@ fn a_held_step_and_a_knob_is_a_lock_that_the_step_shows_and_keeps_for_its_row_on
             (0, 3, SONG_LOCK_PULSE as u8, 1984),
         ]
     );
-    // The knob's popup says what it holds, with the bar's fill.
     assert_eq!(
         popup(&s, PANEL_ENC_K1, false),
         Some(("CUTOFF".into(), "1120".into(), 1120, 2047))
@@ -562,15 +529,12 @@ fn a_held_step_and_a_knob_is_a_lock_that_the_step_shows_and_keeps_for_its_row_on
         Some(("PULSE WIDTH".into(), "1984".into(), 1984, 4095))
     );
     release(&mut s);
-    // A lock is no toggle, and the notch stays after the key.
     assert_eq!(pattern(&s, 0)[3], R);
     assert_eq!(s.f.cell_writes, 0);
     assert_eq!(notch(&s, 0, 3), (FONT_V4 as u8, t.hot | t.bg << 4));
     assert_eq!(notch(&s, 0, 2).0, b' ');
-    // A knob without a held step is LIVE's: no lock.
     s.ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(locks(&s).len(), 3);
-    // EDIT held: the character.
     hold(&mut s, 3);
     s.ui.hold(PANEL_BTN_EDIT, true);
     s.ui.turn(PANEL_ENC_K1, 1);
@@ -580,7 +544,6 @@ fn a_held_step_and_a_knob_is_a_lock_that_the_step_shows_and_keeps_for_its_row_on
     let l = locks(&s);
     assert!(l.contains(&(0, 3, SONG_LOCK_AGE as u8, 66)));
     assert!(l.contains(&(0, 3, SONG_LOCK_BLEED as u8, 62)));
-    // Values stay in range.
     hold(&mut s, 3);
     s.ui.turn(PANEL_ENC_K2, 100);
     s.ui.turn(PANEL_ENC_K1, -1000);
@@ -627,7 +590,6 @@ fn a_held_step_and_k4_is_a_set_the_players_own_waveform_command_shown_apart_from
         "a SET is a cyan notch"
     );
     assert!(locks(&s).is_empty(), "a SET is no lock");
-    // Both on one step: the lock's yellow notch, and the frame says both.
     hold(&mut s, 3);
     s.ui.turn(PANEL_ENC_K1, 1);
     settle(&mut s.ui);
@@ -635,7 +597,6 @@ fn a_held_step_and_k4_is_a_set_the_players_own_waveform_command_shown_apart_from
     assert_eq!(s.ui.small(20, 25, 3), "SET");
     release(&mut s);
     assert_eq!(notch(&s, 0, 3).0, FONT_V4 as u8);
-    // Down to none: the command goes.
     hold(&mut s, 3);
     s.ui.turn(PANEL_ENC_K4, -10);
     release(&mut s);
@@ -651,7 +612,6 @@ fn a_set_is_refused_where_the_rows_command_column_is_taken() {
     assert_eq!(pattern(&s, 0)[5], [GT2_REST as u8, 0, 4, 0x22]);
     assert_eq!(s.ui.v.s.popup_ask, 0, "no popup over the refusal");
     release(&mut s);
-    // A lock needs no command column.
     hold(&mut s, 5);
     s.ui.turn(PANEL_ENC_K1, 1);
     release(&mut s);
@@ -758,7 +718,6 @@ fn glo_and_a_step_key_mutes_and_toggles_no_step() {
     assert_eq!(attr(&s.ui, 0, 0) & 15, th().dim, "V1 grey");
 }
 
-/// A latched GLO (a double tap) is the layer too: the key mutes and toggles no step, as held.
 #[test]
 fn a_latched_glo_and_a_step_key_mutes_and_toggles_no_step() {
     let mut s = step();
@@ -788,11 +747,10 @@ fn an_edit_that_waits_is_retried_and_the_second_row_follows_the_first() {
 #[test]
 fn knob_turns_and_taps_that_arrive_while_the_editor_is_busy_wait_their_turn_in_order() {
     let mut s = step();
-    // The player takes nothing for now (the audition starting holds edits for a while).
     s.f.refuse = true;
     hold(&mut s, 5 + 3);
-    s.ui.turn(PANEL_ENC_K1 + 3, 1);
-    s.ui.turn(PANEL_ENC_K1 + 3, 1);
+    s.ui.turn(PANEL_ENC_K4, 1);
+    s.ui.turn(PANEL_ENC_K4, 1);
     s.ui.turn(PRESETS, 2);
     s.ui.turn(PRESETS, 3);
     s.ui.frame();
@@ -806,7 +764,6 @@ fn knob_turns_and_taps_that_arrive_while_the_editor_is_busy_wait_their_turn_in_o
         "both SET detents (sawtooth) and both note turns (+5) arrived: {:?}",
         p[8]
     );
-    // Taps in a row: all of them, in order, however busy the editor.
     s.f.refuse = true;
     for k in [1, 3, 5] {
         s.ui.note_keys(1 << k, 1 << k);
@@ -825,8 +782,6 @@ fn knob_turns_and_taps_that_arrive_while_the_editor_is_busy_wait_their_turn_in_o
             k + 1
         );
     }
-    // The queue holds four besides the one in flight: the sixth action is refused with a
-    // toast, nothing else lost.
     s.f.refuse = true;
     for k in [10, 11, 12, 13, 14, 15] {
         s.ui.note_keys(1 << k, 1 << k);
@@ -856,8 +811,6 @@ fn no_song_no_edit_and_a_toast_says_so() {
     assert!(s.ui.toast().is_some());
 }
 
-/// A song of three 8-row patterns (6 calls a row): voice 1 plays notes on rows 0 and 4 with a
-/// pulse instrument whose wavetable and pulse table give the voice something to hold.
 pub(crate) fn loop_song() -> Model {
     let row = |note: u8, instr: u8| [note, instr, 0, 0];
     let p0 = vec![row(C3, 1), R, R, R, row(C3 + 4, 0), R, R, R];
@@ -883,7 +836,6 @@ pub(crate) fn loop_song() -> Model {
     m
 }
 
-/// The song the view edits, as a model of its own (the region copied).
 pub(crate) fn snapshot(s: &Song) -> Model {
     let mut m = Model::host();
     let n = m.bytes().len();
@@ -899,13 +851,11 @@ fn loop_step() -> Song {
     s
 }
 
-/// A song's SID writes call by call from SIDOU's player, as one list a call.
 pub(crate) fn sidou_calls(song: &Model, calls: usize) -> Vec<Vec<(u8, u8)>> {
     let mut p = Player::new(song, 0, &default_options()).expect("the player takes the song");
     (0..calls).map(|_| p.call()).collect()
 }
 
-/// GoatTracker's own player's writes for the same file, a list a call.
 pub(crate) fn reference_calls(sng: &[u8], calls: usize) -> Vec<Vec<(u8, u8)>> {
     let o = default_options();
     let opts = Options {
@@ -930,14 +880,21 @@ pub(crate) fn reference_calls(sng: &[u8], calls: usize) -> Vec<Vec<(u8, u8)>> {
         .collect()
 }
 
-/// Voice 1's control register after each call: the last write to register 4 so far.
-fn control(calls: &[Vec<(u8, u8)>]) -> Vec<u8> {
+const VOICE_1_CONTROL: u8 = 4;
+const FIRST_ROW_CALL: usize = 7;
+const CALLS_A_ROW: usize = 6;
+
+fn row_start(row: usize) -> usize {
+    FIRST_ROW_CALL + row * CALLS_A_ROW
+}
+
+fn voice_1_control_after_each_call(calls: &[Vec<(u8, u8)>]) -> Vec<u8> {
     let mut at = 0u8;
     calls
         .iter()
         .map(|c| {
             for &(reg, v) in c {
-                if reg == 4 {
+                if reg == VOICE_1_CONTROL {
                     at = v;
                 }
             }
@@ -949,12 +906,10 @@ fn control(calls: &[Vec<(u8, u8)>]) -> Vec<u8> {
 #[test]
 fn a_step_made_song_plays_as_goattrackers_player_does_with_its_set_and_without_the_chunk_locks() {
     let mut s = loop_step();
-    // Steps 2 and 3 of voice 1 (the lane's note and instrument, a key off after each), and a SET
-    // (sawtooth) on row 5, after the note on row 4.
     tap(&mut s, 1);
     tap(&mut s, 2);
     hold(&mut s, 5);
-    s.ui.turn(PANEL_ENC_K1 + 3, 2);
+    s.ui.turn(PANEL_ENC_K4, 2);
     release(&mut s);
     let song = snapshot(&s);
     let p = pattern(&s, 0);
@@ -966,7 +921,6 @@ fn a_step_made_song_plays_as_goattrackers_player_does_with_its_set_and_without_t
         song.ext_find(sidou_tests::song::TAG_LOCK).is_none(),
         "no chunk locks"
     );
-    // SIDOU's player against GoatTracker's own, call for call, over three patterns of rows.
     let sng = song.write(false);
     let (ours, theirs) = (sidou_calls(&song, 400), reference_calls(&sng, 400));
     assert_eq!(ours.len(), theirs.len());
@@ -974,19 +928,23 @@ fn a_step_made_song_plays_as_goattrackers_player_does_with_its_set_and_without_t
         assert_eq!(a, b, "call {k}");
     }
     assert!(ours.iter().any(|c| !c.is_empty()));
-    // The SET persists over the following rows: from row 5 (call 37: a row is 6 calls, the first
-    // starting at call 7) voice 1's waveform is the sawtooth's with the gate as the notes left
-    // it, through rows 6 and 7, until the next bar's note sets its own.
-    let ctrl = control(&ours);
-    assert_eq!(ctrl[36] & 0xf0, 0x40, "the pulse before it");
-    for (call, c) in ctrl.iter().enumerate().take(55).skip(37) {
+    let ctrl = voice_1_control_after_each_call(&ours);
+    assert_eq!(ctrl[row_start(5) - 1] & 0xf0, 0x40, "the pulse before it");
+    for (call, c) in ctrl
+        .iter()
+        .enumerate()
+        .take(row_start(8))
+        .skip(row_start(5))
+    {
         assert_eq!(c & 0xf0, 0x20, "call {call}: control {c:#x}");
     }
-    assert_eq!(ctrl[57] & 0xf0, 0x40, "the next bar's note");
+    assert_eq!(ctrl[row_start(8) + 2] & 0xf0, 0x40, "the next bar's note");
 }
 
-/// Cutoff and voice 1's pulse width after each call, and the row voice 1 plays.
-fn play(s: &mut Model, calls: u32) -> (Transport, Vec<(u32, u32, u8, u8)>) {
+fn cutoff_pulse_width_and_row_each_call(
+    s: &mut Model,
+    calls: u32,
+) -> (Transport, Vec<(u32, u32, u8, u8)>) {
     let mut t = Transport::new(s);
     assert!(t.play(0, 0));
     let mut out = Vec::new();
@@ -1022,8 +980,8 @@ fn a_lock_made_on_a_held_step_holds_for_its_row_only_in_the_players_output() {
         ]
     );
     let mut plain = loop_song();
-    let (t0, base) = play(&mut plain, 300);
-    let (t, got) = play(&mut locked, 300);
+    let (t0, base) = cutoff_pulse_width_and_row_each_call(&mut plain, 300);
+    let (t, got) = cutoff_pulse_width_and_row_each_call(&mut locked, 300);
     let mut held = 0;
     for (k, (&(fc, pw, pat, r), &(fc0, pw0, _, _))) in got.iter().zip(&base).enumerate() {
         if (pat, r) == (0, 3) {
@@ -1045,10 +1003,8 @@ fn a_lock_made_on_a_held_step_holds_for_its_row_only_in_the_players_output() {
     );
 }
 
-/// PRESETS names the lane's instrument (the kit's drums in a NEW song, core/song/gt2_kit.h):
-/// its number and its name in the popup, so the kit is picked by name.
 #[test]
-fn presets_names_the_lanes_instrument() {
+fn presets_names_the_lanes_instrument_by_number_and_name() {
     let mut m = fixed_song();
     let mut drum = [0u8; 25];
     drum[GT2_INS_NAME as usize..][..6].copy_from_slice(b"CL HAT");
@@ -1071,9 +1027,6 @@ fn presets_names_the_lanes_instrument() {
     );
 }
 
-// ---- generative play: chance, MUTATE and DICE ----
-
-/// EDIT + button, as the panel reports it, until the edits it makes are written.
 pub(crate) fn edit_press(s: &mut Song, b: u32) {
     s.ui.hold(PANEL_BTN_EDIT, true);
     s.ui.press(b);
@@ -1085,9 +1038,8 @@ pub(crate) fn is_note(n: u8) -> bool {
     (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n)
 }
 
-/// The root C-3 and its minor pentatonic, as semitones above the root.
-fn in_scale(note: u8) -> bool {
-    [0, 3, 5, 7, 10].contains(&((note - C3) % 12))
+fn in_c3_minor_pentatonic(note: u8) -> bool {
+    MINOR_PENTATONIC.contains(&((note - C3) % 12))
 }
 
 fn pattern_ok(p: &[[u8; 4]]) {
@@ -1098,7 +1050,6 @@ fn pattern_ok(p: &[[u8; 4]]) {
             || (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n);
         assert!(ok, "row {r}: {c:?} is no GT2 note column");
         if n == GT2_KEYOFF as u8 && c[2] == 0 {
-            // (a key off sharing a row with a command stays, as taking a note away leaves it)
             assert!(r > 0 && is_note(p[r - 1][0]), "row {r}: an orphan key off");
         }
     }
@@ -1155,7 +1106,7 @@ fn dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits() {
     for &r in &notes {
         assert_eq!(r % 2, 0, "row {r}: off the eighth grid");
         assert!(
-            in_scale(p[r][0]),
+            in_c3_minor_pentatonic(p[r][0]),
             "row {r}: {} is out of the scale",
             p[r][0]
         );
@@ -1163,19 +1114,16 @@ fn dice_writes_a_new_pattern_in_the_scale_on_the_grid_as_ordinary_edits() {
     }
     assert_eq!(p[5][2..], [4, 0x22], "the row's command stays");
     assert!(s.f.cell_writes > 0, "the player applied them as edits");
-    // Plain GT2 data: the song writes and reads back with it.
     let file = snapshot(&s).write(false);
     let mut back = Model::host();
     back.read(&file, 0).unwrap();
     assert_eq!(back.write(false), file);
-    // One undo steps back one cell, as for any edit.
     let again = p.clone();
     s.ui.hold(PANEL_BTN_EDIT, true);
     s.ui.press(PANEL_BTN_LFO);
     s.ui.hold(PANEL_BTN_EDIT, false);
     settle(&mut s.ui);
     assert_ne!(pattern(&s, 0), again);
-    // The same seed, the same pattern: a second song with the same start.
     let mut t = step();
     t.ui.v.song.gen_.seed = 7;
     edit_press(&mut t, PANEL_BTN_SCL);
@@ -1225,11 +1173,13 @@ fn mutate_changes_a_little_stays_in_the_scale_and_valid_every_time() {
         let changed: Vec<usize> = (0..after.len())
             .filter(|&r| before[r] != after[r])
             .collect();
-        // two changes at most, each a note and its key off
         assert!(changed.len() <= 4, "{changed:?}");
         for &r in &changed {
             if is_note(after[r][0]) {
-                assert!(in_scale(after[r][0]), "row {r}: out of the scale");
+                assert!(
+                    in_c3_minor_pentatonic(after[r][0]),
+                    "row {r}: out of the scale"
+                );
             }
         }
         assert_eq!(after[5][2..], [4, 0x22]);
@@ -1255,10 +1205,6 @@ fn mutate_and_dice_wait_for_a_step_to_be_let_go_and_leave_rec_alone() {
     assert_eq!(pattern(&s, 0)[0][0], C3 + 7, "nothing was diced");
 }
 
-// ---- DICE's settings: EDIT + SCL held, K1 the density, K3 the scale ----
-
-/// The note column of the lane's pattern as DICE rolled it, seed 7, with no settings (frozen
-/// from the roll before the settings existed: a song with no DICE chunk rolls as it always did).
 const FROZEN_MELODIC: [u8; 64] = [
     189, 189, 189, 189, 137, 190, 189, 189, 144, 190, 154, 190, 142, 190, 189, 189, 142, 190, 135,
     190, 135, 190, 135, 190, 142, 190, 189, 189, 151, 190, 189, 189, 135, 190, 137, 190, 139, 190,
@@ -1282,7 +1228,6 @@ pub(crate) fn dice_of(s: &Song) -> (song_dice, i32) {
     (v, r)
 }
 
-/// The density, the scale and whether the song has the chunk.
 fn dice_chunk(s: &Song) -> (u8, u8, i32) {
     let (v, r) = dice_of(s);
     (v.density, v.scale[0], r)
@@ -1299,8 +1244,7 @@ pub(crate) fn set_dice_all(s: &mut Song, density: u32, scale: u32, rhythm: u32, 
     assert_eq!(r, 0);
 }
 
-/// Density and scale, straight and two octaves (1.0's roll).
-fn set_dice(s: &mut Song, density: u32, scale: u32) {
+fn set_density_and_scale(s: &mut Song, density: u32, scale: u32) {
     set_dice_all(s, density, scale, 0, SONG_DICE_RANGE_DEFAULT);
 }
 
@@ -1316,19 +1260,19 @@ pub(crate) fn drums(s: &mut Song) {
     );
 }
 
-/// A roll with seed 7 on a fresh song with the settings given (None: no chunk).
-fn rolled(settings: Option<(u32, u32)>) -> Vec<u8> {
+fn rolled_with_seed_7(settings: Option<(u32, u32)>) -> Vec<u8> {
     let mut s = step();
     if let Some((d, sc)) = settings {
-        set_dice(&mut s, d, sc);
+        set_density_and_scale(&mut s, d, sc);
     }
     s.ui.v.song.gen_.seed = 7;
     edit_press(&mut s, PANEL_BTN_SCL);
     notes_col(&s)
 }
 
+const MINOR_PENTATONIC: &[u8] = &[0, 3, 5, 7, 10];
 pub(crate) const SCALES: [&[u8]; 6] = [
-    &[0, 3, 5, 7, 10],
+    MINOR_PENTATONIC,
     &[0, 2, 4, 7, 9],
     &[0, 2, 3, 5, 7, 8, 10],
     &[0, 2, 4, 5, 7, 9, 11],
@@ -1336,7 +1280,6 @@ pub(crate) const SCALES: [&[u8]; 6] = [
     &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
 ];
 
-/// A note's semitones above the root, whatever the octave.
 pub(crate) fn degree(n: u8) -> u8 {
     (i32::from(n) - i32::from(C3)).rem_euclid(12) as u8
 }
@@ -1347,12 +1290,12 @@ pub(crate) fn hits(col: &[u8]) -> Vec<u8> {
 
 #[test]
 fn dice_still_rolls_as_before_with_no_chunk_and_with_the_defaults_chosen() {
-    assert_eq!(rolled(None), FROZEN_MELODIC);
-    assert_eq!(rolled(Some((2, 0))), FROZEN_MELODIC);
+    assert_eq!(rolled_with_seed_7(None), FROZEN_MELODIC);
+    assert_eq!(rolled_with_seed_7(Some((2, 0))), FROZEN_MELODIC);
     for settings in [None, Some((2, 0))] {
         let mut s = step();
         if let Some((d, sc)) = settings {
-            set_dice(&mut s, d, sc);
+            set_density_and_scale(&mut s, d, sc);
         }
         drums(&mut s);
         edit_press(&mut s, PANEL_BTN_SCL);
@@ -1363,7 +1306,7 @@ fn dice_still_rolls_as_before_with_no_chunk_and_with_the_defaults_chosen() {
 #[test]
 fn each_scale_rolls_only_its_notes_and_the_chromatic_one_uses_them_all() {
     for (i, scale) in SCALES.iter().enumerate() {
-        let col = rolled(Some((2, i as u32)));
+        let col = rolled_with_seed_7(Some((2, i as u32)));
         let h = hits(&col);
         assert!(h.len() > 8, "scale {i}: {} notes", h.len());
         let mut seen = std::collections::BTreeSet::new();
@@ -1381,16 +1324,17 @@ fn each_scale_rolls_only_its_notes_and_the_chromatic_one_uses_them_all() {
 
 #[test]
 fn density_counts_sparse_to_every_step() {
-    let counts: Vec<usize> = (0..5).map(|d| hits(&rolled(Some((d, 0)))).len()).collect();
+    let counts: Vec<usize> = (0..5)
+        .map(|d| hits(&rolled_with_seed_7(Some((d, 0)))).len())
+        .collect();
     println!("notes by density: {counts:?}");
     assert!(counts.windows(2).all(|w| w[0] < w[1]), "{counts:?}");
     assert_eq!(counts[4], 64, "every step has a note");
     assert!(counts[0] > 0 && counts[0] < 16, "sparse: {counts:?}");
-    // a drum lane too
     let mut last = 0;
     for d in 0..5 {
         let mut s = step();
-        set_dice(&mut s, d, 0);
+        set_density_and_scale(&mut s, d, 0);
         drums(&mut s);
         s.ui.v.song.gen_.seed = 7;
         edit_press(&mut s, PANEL_BTN_SCL);
@@ -1410,7 +1354,7 @@ fn k1_and_k3_with_edit_and_scl_held_set_the_song_and_a_turn_spoils_the_roll() {
     s.ui.frame();
     assert_eq!(s.ui.small(17, 2, 23), " DICE - LET GO TO ROLL ");
     s.ui.turn(PANEL_ENC_K1, 3);
-    s.ui.turn(PANEL_ENC_K3, -1); // (the first scale is the floor)
+    s.ui.turn(PANEL_ENC_K3, -1);
     s.ui.turn(PANEL_ENC_K3, 1);
     s.ui.frame();
     assert_eq!(dice_chunk(&s), (4, 1, 1), "density clamps at the end");
@@ -1434,24 +1378,18 @@ fn k1_and_k3_with_edit_and_scl_held_set_the_song_and_a_turn_spoils_the_roll() {
     );
     assert_eq!(s.ui.v.song.gen_.scl_down, 0);
     assert_eq!(s.ui.small(17, 2, 9), " HELD STE", "the frame is back");
-    // Letting go with no turn rolls, with what was set.
     edit_press(&mut s, PANEL_BTN_SCL);
     let col = notes_col(&s);
     assert_ne!(col, before);
     let h = hits(&col);
     assert!(!h.is_empty() && h.len() < 16, "sparse");
     assert!(h.iter().all(|n| SCALES[1].contains(&degree(*n))));
-    // The settings are the song's: written with it and read back.
     let file = snapshot(&s).write(true);
     let mut back = Model::host();
     back.read(&file, 0).unwrap();
     assert_eq!(back.write(true), file);
 }
 
-/// EDIT + SCL is a chord whichever lands first: SCL a few milliseconds before EDIT (a hand
-/// pressing both at once), then K1 and K3 at once, set DICE's density and scale, as with EDIT
-/// first; SCL selects no slot and the EDIT layer's effect knobs are left alone, and the release
-/// rolls nothing (a turn spoils it).
 #[test]
 fn scl_landing_before_edit_is_the_same_chord_and_k1_goes_to_dice() {
     let mut s = step();
@@ -1474,7 +1412,6 @@ fn scl_landing_before_edit_is_the_same_chord_and_k1_goes_to_dice() {
     settle(&mut s.ui);
     assert_eq!(notes_col(&s), before, "a turn while held: no roll");
     assert_eq!(s.ui.live().fx_select, slot);
-    // and with no turn, SCL then EDIT let go rolls, as EDIT + SCL does
     s.ui.down(PANEL_BTN_SCL);
     s.ui.down(PANEL_BTN_EDIT);
     s.ui.up(PANEL_BTN_SCL);
@@ -1484,20 +1421,17 @@ fn scl_landing_before_edit_is_the_same_chord_and_k1_goes_to_dice() {
     assert_eq!(s.ui.live().fx_select, slot);
 }
 
-/// SCL alone on STEP still selects the next effect slot, once it is let go (it waits for EDIT
-/// that long) or as soon as another control is used while it is down, which then acts as it
-/// always did.
 #[test]
-fn scl_alone_on_step_selects_the_next_slot() {
+fn scl_alone_on_step_selects_the_next_slot_when_let_go_or_another_control_is_used() {
     let mut s = step();
     let before = notes_col(&s);
     let slot = s.ui.live().fx_select;
     s.ui.press(PANEL_BTN_SCL);
     assert_eq!(s.ui.live().fx_select, (slot + 1) % LIVE_SLOTS as u8);
     s.ui.down(PANEL_BTN_SCL);
-    s.ui.turn(PANEL_ENC_K1, 1); // a knob while it is down: the slot first, then the knob
+    s.ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(s.ui.live().fx_select, (slot + 2) % LIVE_SLOTS as u8);
-    s.ui.down(PANEL_BTN_EDIT); // EDIT after the knob: no chord any more
+    s.ui.down(PANEL_BTN_EDIT);
     s.ui.up(PANEL_BTN_SCL);
     s.ui.up(PANEL_BTN_EDIT);
     settle(&mut s.ui);
@@ -1506,8 +1440,6 @@ fn scl_alone_on_step_selects_the_next_slot() {
     assert_eq!(dice_chunk(&s).2, 0, "nothing of DICE's set");
 }
 
-/// EDIT + ARP is MUTATE whichever finger lands first: ARP a few milliseconds before EDIT mutates
-/// the lane's pattern as EDIT first does, and ARP's own action (the lane's gate) is spoilt.
 #[test]
 fn arp_landing_before_edit_is_mutate_and_leaves_the_gate() {
     let mut s = step();
@@ -1523,19 +1455,17 @@ fn arp_landing_before_edit_is_mutate_and_leaves_the_gate() {
     assert_eq!(s.ui.v.step.gate, gate, "ARP's gate left alone");
 }
 
-/// ARP alone on STEP still switches the lane's gate: when it is let go, or as soon as another
-/// control is used while it is down.
 #[test]
-fn arp_alone_on_step_switches_the_gate() {
+fn arp_alone_on_step_switches_the_gate_when_let_go_or_another_control_is_used() {
     let mut s = step();
     let before = notes_col(&s);
     let gate = s.ui.v.step.gate;
     s.ui.press(PANEL_BTN_ARP);
     assert_eq!(s.ui.v.step.gate, gate ^ 1, "at its release");
     s.ui.down(PANEL_BTN_ARP);
-    s.ui.turn(PANEL_ENC_SELECT, 1); // a knob while it is down: the gate first
+    s.ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(s.ui.v.step.gate, gate, "switched back on voice 1");
-    s.ui.down(PANEL_BTN_EDIT); // EDIT after the knob: no chord any more
+    s.ui.down(PANEL_BTN_EDIT);
     s.ui.up(PANEL_BTN_ARP);
     s.ui.up(PANEL_BTN_EDIT);
     settle(&mut s.ui);
@@ -1543,8 +1473,6 @@ fn arp_alone_on_step_switches_the_gate() {
     assert_eq!(notes_col(&s), before, "no MUTATE");
 }
 
-/// EDIT + LFO is undo whichever finger lands first: LFO a few milliseconds before EDIT undoes
-/// what EDIT first does, on a twin song.
 #[test]
 fn lfo_landing_before_edit_is_the_same_undo_on_step() {
     let mut s = step();
@@ -1569,7 +1497,7 @@ fn another_button_while_scl_is_held_spoils_the_roll_too() {
     let before = notes_col(&s);
     s.ui.hold(PANEL_BTN_EDIT, true);
     s.ui.down(PANEL_BTN_SCL);
-    s.ui.press(PANEL_BTN_ARP); // MUTATE would run on a press of its own: not here
+    s.ui.press(PANEL_BTN_ARP);
     s.ui.up(PANEL_BTN_SCL);
     s.ui.hold(PANEL_BTN_EDIT, false);
     settle(&mut s.ui);
@@ -1581,7 +1509,7 @@ fn another_button_while_scl_is_held_spoils_the_roll_too() {
 fn mutate_keeps_to_the_chosen_scale() {
     for scale in [1u32, 3, 4, 5] {
         let mut s = step();
-        set_dice(&mut s, 3, scale);
+        set_density_and_scale(&mut s, 3, scale);
         edit_press(&mut s, PANEL_BTN_SCL);
         for _ in 0..20 {
             edit_press(&mut s, PANEL_BTN_ARP);
@@ -1596,19 +1524,14 @@ fn mutate_keeps_to_the_chosen_scale() {
     }
 }
 
-// ---- DICE's range (K2) and rhythm (K4) ----
-
 const MEDIUM: u32 = SONG_DICE_DENSITY_DEFAULT;
-/// The rhythms past STRAIGHT: the chance in percent of a hit on each place of two beats of
-/// sixteenths (docs/reference/controls.md "STEP"), as rolled at MEDIUM.
-const RHYTHM_WEIGHTS: [[u32; 8]; 4] = [
+const RHYTHM_HIT_PERCENT_AT_MEDIUM: [[u32; 8]; 4] = [
     [10, 0, 90, 0, 10, 0, 90, 20],
     [95, 0, 0, 85, 0, 0, 85, 0],
     [100, 0, 20, 0, 100, 0, 20, 0],
     [90, 0, 30, 65, 0, 45, 75, 20],
 ];
 
-/// A roll with `seed` on a fresh song with every setting given, on a drum lane or not.
 fn rolled_all(dice: (u32, u32, u32, u32), drum: bool, seed: u32) -> Vec<u8> {
     let mut s = step();
     set_dice_all(&mut s, dice.0, dice.1, dice.2, dice.3);
@@ -1634,7 +1557,7 @@ fn straight_and_two_octaves_roll_as_one_point_zero_did_and_drums_ignore_the_rang
 
 #[test]
 fn each_rhythm_hits_as_its_weights_say_on_melodic_and_drum_lanes() {
-    for (i, weights) in RHYTHM_WEIGHTS.iter().enumerate() {
+    for (i, weights) in RHYTHM_HIT_PERCENT_AT_MEDIUM.iter().enumerate() {
         let rhythm = i as u32 + 1;
         for drum in [false, true] {
             let seeds = if drum { 8 } else { 32 };
@@ -1684,7 +1607,6 @@ fn the_rhythms_scale_with_the_density_and_full_is_every_step() {
 #[test]
 fn each_range_keeps_to_its_octaves() {
     let root = i32::from(C3);
-    // (range, lowest, highest past the root, the lowest and highest a few rolls reach)
     for (range, lo, hi) in [(0u32, 0, 11), (1, 0, 23), (2, 0, 35), (3, -12, 11)] {
         let (mut low, mut high) = (99, -99);
         for seed in 0..6 {
@@ -1760,9 +1682,6 @@ fn k2_and_k4_with_edit_and_scl_held_set_the_range_and_the_rhythm_and_the_frame_s
     assert_eq!(s.ui.small(17, 2, 9), " HELD STE", "the frame is back");
 }
 
-/// 1.1: a held step sounds with its filter and pulse locks. The key gives the player the step's
-/// cutoff, resonance, filter mode, route and pulse locks (not its chance or character), a K1 turn
-/// on it gives them again at once with the new cutoff, and its release lets them go.
 #[test]
 fn a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back() {
     let mut s = step();
@@ -1776,7 +1695,7 @@ fn a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back() {
     ] {
         assert_eq!(unsafe { song_lock_put(song, 0, 0, p, v) }, 0);
     }
-    s.f.helds.clear();
+    s.f.held_step_locks.clear();
     hold(&mut s, 0);
     let want = vec![
         (SONG_LOCK_CUTOFF as u8, 700u16),
@@ -1784,7 +1703,7 @@ fn a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back() {
         (SONG_LOCK_PULSE as u8, 0x456),
     ];
     assert_eq!(
-        s.f.helds,
+        s.f.held_step_locks,
         vec![(0, want.clone())],
         "the step's filter and pulse locks"
     );
@@ -1792,17 +1711,17 @@ fn a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back() {
     let mut after = want;
     after[0].1 = 700 + 32;
     assert_eq!(
-        s.f.helds.last(),
+        s.f.held_step_locks.last(),
         Some(&(0, after)),
         "the turn heard at once"
     );
     release(&mut s);
     assert_eq!(
-        s.f.helds.last(),
+        s.f.held_step_locks.last(),
         Some(&(0, vec![])),
         "let go at the release"
     );
-    let n = s.f.helds.len();
-    tap(&mut s, 1); // a step without locks: none, then let go
-    assert_eq!(s.f.helds[n..], [(0, vec![]), (0, vec![])]);
+    let n = s.f.held_step_locks.len();
+    tap(&mut s, 1);
+    assert_eq!(s.f.held_step_locks[n..], [(0, vec![]), (0, vec![])]);
 }

@@ -1,28 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The fixtures for the Songs -> MIDI page's note walk (`web/songmidi.js`): what GoatTracker 2.77's
-//! packed player does with each voice's gate, call by call, for SIDOU's songs and GoatTracker's
-//! examples. `web/songmidi.test.mjs` runs the JavaScript walk and compares every note's start,
-//! end and pitch with these runs.
-//!
-//! A run is a stretch of calls with the voice's gate bit (SID register 4, bit 0) high:
-//! `[first call, first call after, frequency a call after the first]` (the frequency register
-//! at a note's first call is the previous note's; the wavetable's first step sets it on the
-//! next). Call 0 is the first play call after init. Each voice also has its frequency's course
-//! as the notes of GoatTracker's frequency table it sounds (`[call, note]` at each change of
-//! the register's table note, -1 when the register holds no table frequency, as in a slide or
-//! vibrato), which the node test compares with the pitch of every note the walk makes, wavetable
-//! arpeggios included. The test checks the committed fixtures are
-//! what the reference makes now; `SIDOU_MIDI_FIXTURE_UPDATE=1` rewrites them.
-//!
-//!   SIDOU_MIDI_FIXTURE_UPDATE=1 cargo test --release -p gt2-ref --test midi_walk
 
 use gt2_ref::trace::trace;
 use gt2_ref::*;
 use std::path::PathBuf;
 
-/// Calls traced of each song: its orderlists' one pass (the walk's `ends`, which the node test
-/// checks) and a margin, so a note held across the loop point can be compared too.
 const CALLS: &[(&str, usize)] = &[
     ("chrome-comet", 4200),
     ("iron-rite", 4500),
@@ -68,7 +50,6 @@ fn songs() -> Vec<(String, Vec<u8>)> {
     v
 }
 
-/// One voice's runs of a high gate bit, and the frequency a call after each run starts.
 fn runs(regs: &[[u8; 25]], voice: usize) -> Vec<[u32; 3]> {
     let (gate, lo) = (4 + 7 * voice, 7 * voice);
     let freq = |f: usize| regs[f][lo] as u32 | (regs[f][lo + 1] as u32) << 8;
@@ -89,7 +70,6 @@ fn runs(regs: &[[u8; 25]], voice: usize) -> Vec<[u32; 3]> {
     out
 }
 
-/// GoatTracker's frequency table (gplay.c `freqtbllo`/`freqtblhi`: 128 entries, C-0 up).
 fn freq_table() -> Vec<u16> {
     let src = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -113,7 +93,6 @@ fn freq_table() -> Vec<u16> {
     lo.iter().zip(&hi).map(|(l, h)| l | h << 8).collect()
 }
 
-/// One voice's table note at each change, per call (-1: not a table frequency).
 fn course(regs: &[[u8; 25]], voice: usize, table: &[u16]) -> Vec<[i32; 2]> {
     let lo = 7 * voice;
     let mut out: Vec<[i32; 2]> = Vec::new();

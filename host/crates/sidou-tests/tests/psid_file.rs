@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The PSID header parser (M3 Task 4, docs/reference/psid.md): every row of the plan's table,
-//! v1-v5 headers built field by field, the strings, the crafted files FM-1 SID's loader
-//! mishandles, and a fuzz. Every file here is built by the test; none is a tune.
 use sidou_sys::*;
 use sidou_tests::song::Rng;
 
-/// A PSID file, field by field. `data` is everything after the header (a load-address
-/// prefix included when `load` is 0).
+const FLAGS_NTSC_8580: u16 = 0x28;
+
 #[derive(Clone)]
 struct Psid {
     magic: [u8; 4],
@@ -95,7 +92,6 @@ impl Psid {
 }
 
 fn parse(b: &[u8]) -> Result<psid_header, i32> {
-    // An exact-size heap copy, so a sanitizer sees any read past the end.
     let exact: Box<[u8]> = b.into();
     let mut h = psid_header::default();
     let r = unsafe { psid_parse(exact.as_ptr(), exact.len() as u32, &mut h) };
@@ -126,7 +122,7 @@ fn a_plain_v2_file_is_read_field_by_field() {
     p.songs = 5;
     p.start = 3;
     p.speed = 0x8000_0001;
-    p.flags = 0x28; // NTSC, 8580
+    p.flags = FLAGS_NTSC_8580;
     p.data = vec![0xEA; 100];
     let h = p.ok();
     assert_eq!(
@@ -168,7 +164,6 @@ fn not_a_sid_file() {
         );
     }
     parse(&full[..0x76 + 1]).unwrap();
-    // Too short is "not a SID" before the magic is looked at, so a short RSID is too.
     let mut rsid = Psid::new(2);
     rsid.magic = *b"RSID";
     assert_eq!(
@@ -186,7 +181,6 @@ fn rsid_is_refused_with_its_own_code() {
         p.play = 0;
         refused(&p, PSID_E_RSID as i32);
     }
-    // Even one that is otherwise malformed: the magic is what the user needs to hear.
     let mut p = Psid::new(9);
     p.magic = *b"RSID";
     refused(&p, PSID_E_RSID as i32);
@@ -227,7 +221,6 @@ fn the_data_offset_is_the_versions_and_inside_the_file() {
             PSID_E_HEADER as i32,
         );
     }
-    // Right offset, file ends exactly there: no data.
     let mut p = Psid::new(2);
     p.data.clear();
     refused(&p, PSID_E_TOO_LONG as i32);
@@ -239,7 +232,6 @@ fn a_v2_header_needs_its_flag_bytes_in_the_file() {
     for n in 0x76..0x7C {
         assert_eq!(parse(&full[..n]).err(), Some(PSID_E_HEADER as i32), "n {n}");
     }
-    // The same cut at a v1-sized offset is still a v2 file with the wrong offset.
     let mut p = Psid::new(2);
     p.off = Some(0x76);
     refused(&p, PSID_E_HEADER as i32);
@@ -256,7 +248,6 @@ fn the_mus_flag_is_refused_from_v2_and_ignored_in_v1() {
             PSID_E_MUS as i32,
         );
     }
-    // A v1 header has no flags; the bytes after it are data.
     let mut p = Psid::new(1);
     p.data = vec![0x00, 0x01, 0, 0, 0x60];
     assert_eq!(p.ok().flags, 0);
@@ -272,7 +263,6 @@ fn load_address_zero_reads_two_more_bytes_of_the_file() {
     let h = p.ok();
     assert_eq!((h.load, h.init, h.play), (0xC000, 0xC000, 0));
     assert_eq!((h.data_off, h.data_len), (0x7E, 3));
-    // The prefix's last byte, then data: n = offset + 2 has the prefix and nothing else.
     for (len, want) in [
         (0, Err(PSID_E_HEADER)),
         (1, Err(PSID_E_HEADER)),
@@ -322,7 +312,6 @@ fn the_data_may_not_cover_the_6510_port() {
     p.load = 1;
     p.data = vec![0x60; 8];
     refused(&p, PSID_E_LOAD as i32);
-    // Load address 0 reads the effective one from the data's first two bytes.
     p.load = 0;
     p.data = vec![0x00, 0x00, 0x60];
     refused(&p, PSID_E_LOAD as i32);
@@ -415,7 +404,6 @@ fn clock_models_and_the_playsid_flag() {
     .ok();
     assert_eq!(h.warn, PSID_W_PLAYSID as u8);
     assert_eq!(h.speed_repeats, 1);
-    // A v1 file has no flags to read.
     let h = Psid::new(1).ok();
     assert_eq!(
         (h.flags, h.clock, h.model1, h.warn, h.speed_repeats),
@@ -433,7 +421,6 @@ fn psid_speed_bit_of(h: &psid_header, song: u32) -> i32 {
 
 #[test]
 fn the_speed_bit_follows_the_flags() {
-    // Bit n-1 for song n; the last bit set, and the first.
     let mut p = Psid::new(2);
     p.songs = 64;
     p.speed = 0x8000_0001;
@@ -441,7 +428,6 @@ fn the_speed_bit_follows_the_flags() {
         (speed(&p, 1), speed(&p, 2), speed(&p, 31), speed(&p, 32)),
         (1, 0, 0, 1)
     );
-    // Above 32 a v2+ file with the PlaySID flag clear keeps using bit 31.
     for song in [33, 40, 64] {
         assert_eq!(speed(&p, song), 1, "song {song}");
     }
@@ -449,7 +435,6 @@ fn the_speed_bit_follows_the_flags() {
     for song in [33, 40, 64] {
         assert_eq!(speed(&p, song), 0, "song {song}");
     }
-    // With the PlaySID flag, or in a v1 file, the 32 bits repeat.
     for mut q in [
         Psid {
             flags: 2,
@@ -492,7 +477,6 @@ fn a_second_sid_in_v3_and_v4() {
     }
     let h = Psid::new(3).ok();
     assert_eq!((h.sid2, h.sids, h.warn), (0, 1, 0));
-    // v2: reserved, ignored.
     let h = Psid {
         sid2: 0x42,
         sid3: 0x44,
@@ -536,7 +520,6 @@ fn a_third_sid_only_in_v4_and_never_the_second_s_address() {
 
 #[test]
 fn the_second_and_third_model_in_v3_and_v4() {
-    // Bits 6-7 and 8-9; 0 means "as the first".
     let f = |m1: u16, m2: u16, m3: u16| (0x10 * m1) | (0x40 * m2) | (0x100 * m3);
     let h = Psid {
         flags: f(2, 0, 0),
@@ -560,7 +543,6 @@ fn the_second_and_third_model_in_v3_and_v4() {
     }
     .ok();
     assert_eq!((h.model2, h.model3), (2, 0));
-    // v2 has no such bits: the second's model is the first's.
     let h = Psid {
         flags: f(1, 2, 2),
         ..Psid::new(2)
@@ -579,7 +561,6 @@ fn strings_with_no_nul_bytes_after_one_and_high_bytes() {
     assert_eq!(text(&h.name), vec![b'A'; 32]);
     assert_eq!(text(&h.author), b"Author");
     assert_eq!(text(&h.released), b"?x???~ ?");
-    // The last byte of every string is a NUL, whatever the file holds.
     p.meta = [b'Z'; 96];
     let h = p.ok();
     for s in [&h.name, &h.author, &h.released] {
@@ -600,7 +581,6 @@ fn v5_packs_the_strings_and_falls_back_to_three_fields() {
     assert_eq!(text(&h.name), long);
     assert_eq!(text(&h.author), b"Author");
     assert_eq!(text(&h.released), b"Released");
-    // Released may fill the area to its end without a NUL.
     p.meta = [b'r'; 96];
     p.meta[0] = b'n';
     p.meta[1] = 0;
@@ -612,7 +592,6 @@ fn v5_packs_the_strings_and_falls_back_to_three_fields() {
         (b"n".to_vec(), b"a".to_vec())
     );
     assert_eq!(text(&h.released).len(), 63);
-    // The format's own example: 32-byte name with no NUL falls back to three fields.
     let mut q = Psid::new(5);
     q.string(0, b"TitleThatIsExactly32OfCharacters");
     q.string(1, b"Author");
@@ -623,7 +602,6 @@ fn v5_packs_the_strings_and_falls_back_to_three_fields() {
         (text(&h.author), text(&h.released)),
         (b"Author".to_vec(), b"Released".to_vec())
     );
-    // Fixed fields are all that v4 knows, even where a packed reading would work.
     let mut r = Psid::new(4);
     r.meta[..5].copy_from_slice(b"n\0a\0r");
     let h = r.ok();
@@ -644,7 +622,6 @@ fn v5(count: u8, scheme: u8, start: u8) -> Psid {
 fn v5_multi_sid_addresses() {
     let one = Psid::new(5).ok();
     assert_eq!((one.sids, one.sid2, one.sid3), (1, 0, 0));
-    // The format's own lists: scheme -> SID 2..5 (and 6).
     for (scheme, want) in [
         (0u8, vec![0xD420u16, 0xD440, 0xD460, 0xD480]),
         (1, vec![0xD440, 0xD480, 0xD4C0, 0xD500]),
@@ -667,7 +644,6 @@ fn v5_multi_sid_addresses() {
             "scheme {scheme}"
         );
     }
-    // The largest counts each scheme reaches (from its own start), and one more is refused.
     for (scheme, most) in [
         (0u8, 15u8),
         (1, 15),
@@ -682,29 +658,22 @@ fn v5_multi_sid_addresses() {
             refused(&v5(most + 1, scheme, 0), PSID_E_HEADER as i32);
         }
     }
-    // An explicit start: scheme 3 from $DE00 reaches $DF00 and no further.
     let h = v5(3, 3, 0xE0).ok();
     assert_eq!((h.sid2, h.sid3), (0xDE00, 0xDF00));
     refused(&v5(4, 3, 0xE0), PSID_E_HEADER as i32);
-    // Example 2 of the format: scheme 0 from $D600.
     let h = v5(4, 0, 0x60).ok();
     assert_eq!((h.sid2, h.sid3), (0xD600, 0xD620));
-    // Alternating schemes take their first step from SID 2 to SID 3 when a start is given.
     let h = v5(3, 4, 0x60).ok();
     assert_eq!((h.sid2, h.sid3), (0xD600, 0xD620));
-    // An invalid start is the scheme's own.
     let h = v5(3, 0, 0x43).ok();
     assert_eq!((h.sid2, h.sid3), (0xD420, 0xD440));
-    // Reserved schemes are refused; a count of 0 or 1 is one chip.
     for scheme in 7..16 {
         refused(&v5(2, scheme, 0), PSID_E_HEADER as i32);
     }
     assert_eq!(v5(1, 0, 0).ok().sids, 1);
     assert_eq!(v5(0, 3, 0x42).ok().sids, 1);
-    // Fifteen chips: the first three are listed, the rest dropped with a warning.
     let h = v5(15, 0, 0).ok();
     assert_eq!((h.sids, h.warn), (15, PSID_W_MORE_SIDS as u8));
-    // v5 ignores v3's model bits: every chip is the first's.
     let h = Psid {
         flags: 0x10 | 0x80 | 0x200,
         ..v5(3, 0, 0)
@@ -717,11 +686,10 @@ fn v5_multi_sid_addresses() {
 fn v5_fm_opl_and_the_embedded_song_lengths() {
     let mut p = v5(6, 3, 0);
     p.flags = 1 << 11;
-    refused(&p, PSID_E_HEADER as i32); // DF00 holds a chip
+    refused(&p, PSID_E_HEADER as i32);
     let mut q = v5(3, 3, 0);
     q.flags = 1 << 11;
     assert_eq!(q.ok().warn, PSID_W_FM_OPL as u8);
-    // v4's second SID in $DF00 is not v5's concern.
     Psid {
         sid2: 0xF0,
         flags: 1 << 11,
@@ -739,21 +707,17 @@ fn v5_fm_opl_and_the_embedded_song_lengths() {
         (h.data_off, h.data_len, h.lengths_off),
         (0x7C, 20, 0x7C + 20)
     );
-    // With a load-address prefix, the table is still not data.
     p.load = 0;
     p.data = vec![0x00, 0x10, 0x60, 0x60];
     let h = p.ok();
     assert_eq!((h.data_off, h.data_len), (0x7E, 2));
-    // A table the file cannot hold.
     p.data = vec![];
     p.tail = vec![0; 11];
     refused(&p, PSID_E_HEADER as i32);
-    // No data left once the table is cut off.
     p.tail = vec![0; 12];
     refused(&p, PSID_E_HEADER as i32);
     p.load = 0x1000;
     refused(&p, PSID_E_TOO_LONG as i32);
-    // Bit 10 means nothing before v5: the tail is data.
     let mut q = Psid::new(4);
     q.flags = 1 << 10;
     q.data = vec![0x60; 20];
@@ -763,18 +727,23 @@ fn v5_fm_opl_and_the_embedded_song_lengths() {
 
 #[test]
 fn fm1_sids_bounds_bug_files_are_refused() {
-    // The minimal crafted file: 124 bytes, v2, load address 0, data offset at the end.
     let mut b = vec![0u8; 124];
     b[..4].copy_from_slice(b"PSID");
     b[5] = 2;
     b[7] = 0x7C;
     b[15] = 1;
     b[17] = 1;
-    assert_eq!(parse(&b).err(), Some(PSID_E_HEADER as i32));
-    // One byte of data after it still leaves the load address short.
+    assert_eq!(
+        parse(&b).err(),
+        Some(PSID_E_HEADER as i32),
+        "the minimal crafted file: 124 bytes, the data offset at its end"
+    );
     b.push(0);
-    assert_eq!(parse(&b).err(), Some(PSID_E_HEADER as i32));
-    // The upstream report's file: data offset 0x2000, far beyond the end.
+    assert_eq!(
+        parse(&b).err(),
+        Some(PSID_E_HEADER as i32),
+        "one byte of data still leaves the load address short"
+    );
     let mut c = vec![0u8; 124];
     c[..4].copy_from_slice(b"PSID");
     c[5] = 2;
@@ -784,10 +753,17 @@ fn fm1_sids_bounds_bug_files_are_refused() {
     c[13] = 0x10;
     c[15] = 1;
     c[17] = 1;
-    assert_eq!(parse(&c).err(), Some(PSID_E_HEADER as i32));
-    // The same with a nonzero load address: the old loader's length wrapped.
+    assert_eq!(
+        parse(&c).err(),
+        Some(PSID_E_HEADER as i32),
+        "the upstream report's file: the data offset $2000, past the end"
+    );
     c[8] = 0x10;
-    assert_eq!(parse(&c).err(), Some(PSID_E_HEADER as i32));
+    assert_eq!(
+        parse(&c).err(),
+        Some(PSID_E_HEADER as i32),
+        "a nonzero load address: the old loader's length wrapped"
+    );
 }
 
 #[test]
@@ -879,7 +855,6 @@ fn fuzz(seeds: u64) -> (u64, u64) {
         let mut b = random_header(&mut rng);
         check(&b);
         accepted += parse(&b).is_ok() as u64;
-        // Mutations of the same file: flip bytes, cut it anywhere, extend it.
         for _ in 0..8 {
             let mut m = b.clone();
             for _ in 0..rng.below(4) {
@@ -896,7 +871,6 @@ fn fuzz(seeds: u64) -> (u64, u64) {
             check(&m);
             mutated_accepted += parse(&m).is_ok() as u64;
         }
-        // Every prefix of the header region.
         if seed % 16 == 0 {
             for n in 0..b.len().min(0x90) {
                 check(&b[..n]);
@@ -913,7 +887,6 @@ fn fuzz(seeds: u64) -> (u64, u64) {
 #[test]
 fn fuzz_headers() {
     let (a, m) = fuzz(200);
-    // The generator must reach acceptance, or the invariants prove nothing.
     assert!(a > 10 && m > 100, "accepted {a} and {m}");
 }
 

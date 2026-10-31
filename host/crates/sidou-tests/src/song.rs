@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The song model from Rust (M2c Task 2): a safe wrapper over `core/song` (a region, the
-//! reader, the writer), a `.sng` builder for fixtures, and an independent transcription of
-//! GoatTracker Stereo's channel detection (decision record 0007).
 
 use std::os::raw::c_void;
 
@@ -18,6 +15,37 @@ pub const TAG_SCNE: u32 = tag(b"SCNE");
 pub const TAG_KEYS: u32 = tag(b"KEYS");
 pub const TAG_PAD: u32 = tag(b"PAD ");
 
+pub const REST: [u8; 4] = [GT2_REST as u8, 0, 0, 0];
+pub const KEY_OFF: u8 = GT2_KEYOFF as u8;
+pub const KEY_ON: u8 = GT2_KEYON as u8;
+pub const PATTERN_NOTE_C3: u8 = GT2_FIRSTNOTE as u8 + 36;
+
+pub fn row(note: u8, instr: u8) -> [u8; 4] {
+    [note, instr, 0, 0]
+}
+
+pub fn kit_instr(d: usize) -> [u8; 25] {
+    // SAFETY: a kit drum is 25 bytes, an instrument's.
+    unsafe { std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[d]) }
+}
+
+pub fn kit_tables() -> [Vec<(u8, u8)>; 4] {
+    // SAFETY: plain constant data.
+    let (wave, pulse) = unsafe {
+        (
+            (&raw const gt2_kit_wave).read(),
+            (&raw const gt2_kit_pulse).read(),
+        )
+    };
+    let table = |l: &[u8], r: &[u8]| l.iter().copied().zip(r.iter().copied()).collect();
+    [
+        table(&wave[0], &wave[1]),
+        table(&pulse[0], &pulse[1]),
+        vec![],
+        vec![],
+    ]
+}
+
 pub const fn tag(t: &[u8; 4]) -> u32 {
     u32::from_le_bytes(*t)
 }
@@ -30,7 +58,6 @@ pub fn span_len(s: u32) -> u32 {
     s >> 16
 }
 
-/// A song in its own region (4-byte aligned).
 pub struct Song {
     region: Vec<u32>,
 }
@@ -52,7 +79,6 @@ unsafe extern "C" fn write_vec(ctx: *mut c_void, buf: *const u8, len: u32) -> i3
     0
 }
 
-/// What `gt2_sng_read` reports, its message as a string.
 #[derive(Debug, Clone)]
 pub struct ReadInfo {
     pub msg: String,
@@ -65,7 +91,6 @@ pub struct ReadInfo {
 }
 
 impl Song {
-    /// A fresh song (GoatTracker's cleared song) in a region of `bytes`.
     pub fn new(bytes: u32) -> Song {
         let mut region = vec![0u32; bytes.div_ceil(4) as usize];
         let s = unsafe { gt2_song_init(region.as_mut_ptr().cast(), bytes) };
@@ -73,12 +98,16 @@ impl Song {
         Song { region }
     }
 
-    /// The device's 64 KiB region.
     pub fn device() -> Song {
         Song::new(SONG_REGION_BYTES)
     }
 
-    /// The host's largest region.
+    pub fn host_from(file: &[u8]) -> Song {
+        let mut song = Song::host();
+        song.read(file, 0).unwrap();
+        song
+    }
+
     pub fn host() -> Song {
         Song::new(GT2_REGION_MAX)
     }
@@ -95,19 +124,15 @@ impl Song {
         unsafe { &*self.ptr() }
     }
 
-    /// Another song of the same region size, byte for byte (the region holds no pointers, so
-    /// the copy is a whole song).
     pub fn copy_from(&mut self, other: &Song) {
         assert_eq!(self.region.len(), other.region.len());
         self.region.copy_from_slice(&other.region);
     }
 
-    /// The whole region's bytes.
     pub fn bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.region.as_ptr().cast(), self.region.len() * 4) }
     }
 
-    /// Reads a file; `max_multispeed` 0 is no cap. Ok(info) or Err(info) with the message.
     pub fn read(&mut self, file: &[u8], max_multispeed: u8) -> Result<ReadInfo, ReadInfo> {
         let data = file.to_vec();
         let caps = gt2_caps { max_multispeed };
@@ -157,8 +182,6 @@ impl Song {
         out
     }
 
-    /// `gt2_sng_check_plain` over a file written from this song: 0, 1 and the warning, or
-    /// -1 and the message.
     pub fn check_plain(&self, file: &[u8]) -> (i32, String) {
         let data = file.to_vec();
         let mut msg = [0 as std::os::raw::c_char; 32];
@@ -189,7 +212,6 @@ impl Song {
         Some((d[..n].to_vec(), d[n + 1]))
     }
 
-    /// A held pattern's rows, the end row included.
     pub fn pattern(&self, p: u32) -> Option<Vec<[u8; 4]>> {
         let d = unsafe { gt2_pattern_data(self.ptr(), p) };
         if d.is_null() {
@@ -200,7 +222,6 @@ impl Song {
         Some(d.chunks(4).map(|r| [r[0], r[1], r[2], r[3]]).collect())
     }
 
-    /// Sets the name (0), author (1) or copyright (2) string.
     pub fn set_string(&mut self, which: usize, v: &[u8; 32]) {
         let s = unsafe { &mut *self.ptr_mut() };
         let field = match which {
@@ -227,7 +248,6 @@ impl Song {
         }
     }
 
-    /// The chunks in the extension area, in order.
     pub fn ext_chunks(&self) -> Vec<(u32, Vec<u8>)> {
         let s = self.raw();
         let ext = &s.ext[..s.ext_used as usize];
@@ -242,7 +262,6 @@ impl Song {
         out
     }
 
-    /// The allocation bitmap, as a bool per arena unit.
     pub fn bitmap(&self) -> Vec<bool> {
         let s = self.raw();
         let b = self.bytes();
@@ -253,9 +272,6 @@ impl Song {
     }
 }
 
-/// GoatTracker Stereo 2.77's `determinechannels`, transcribed on its own (not from SIDOU's
-/// C): 6 if every trial read passes, else 3. A length of 0 (GoatTracker's `songbuffer[-1]`)
-/// counts as a fail, as SIDOU defines it; bytes past the end read as 0.
 pub fn determinechannels(file: &[u8]) -> u32 {
     let at = |i: usize| file.get(i).copied().unwrap_or(0);
     let songs = at(100) as usize;
@@ -275,17 +291,13 @@ pub fn determinechannels(file: &[u8]) -> u32 {
     6
 }
 
-/// A `.sng` file's content, written by [`SngSpec::encode`] exactly as given (no trimming).
 #[derive(Clone, Debug)]
 pub struct SngSpec {
     pub ident: [u8; 4],
     pub strings: [[u8; 32]; 3],
-    /// `[subtune][channel]`: the entries (no $FF) and the restart position.
     pub orders: Vec<Vec<(Vec<u8>, u8)>>,
     pub instr: Vec<[u8; 25]>,
-    /// Three in GTS2, four after: each a list of (left, right).
     pub tables: Vec<Vec<(u8, u8)>>,
-    /// The rows before the end row, and the end row.
     pub patterns: Vec<(Vec<[u8; 4]>, [u8; 4])>,
 }
 
@@ -345,7 +357,6 @@ impl Default for SngSpec {
     }
 }
 
-/// A small xorshift generator for the tests' random songs and edits.
 pub struct Rng(pub u64);
 
 impl Rng {
@@ -369,7 +380,6 @@ impl Rng {
     }
 }
 
-/// A valid orderlist of `steps` steps over `patterns` patterns: [transpose] [repeat] pattern.
 pub fn random_order(rng: &mut Rng, steps: u32, patterns: u32) -> (Vec<u8>, u8) {
     let mut e = Vec::new();
     for _ in 0..steps {
@@ -385,8 +395,8 @@ pub fn random_order(rng: &mut Rng, steps: u32, patterns: u32) -> (Vec<u8>, u8) {
     (e, restart)
 }
 
-/// A random canonical GTS5 song: one that GoatTracker's load and save leave unchanged (no
-/// trailing unused instrument, table row or pattern; every subtune's channels non-empty).
+const USED_INSTRUMENT_AD_BIT: u8 = 1;
+
 pub fn random_canonical(rng: &mut Rng, stereo: bool) -> SngSpec {
     let channels = if stereo { 6 } else { 3 };
     let npat = 1 + rng.below(12);
@@ -407,7 +417,6 @@ pub fn random_canonical(rng: &mut Rng, stereo: bool) -> SngSpec {
                 .collect()
         })
         .collect();
-    // The last pattern is named, so the count is not trimmed.
     s.orders[0][0].0.push(npat as u8 - 1);
     s.instr = (0..ninstr)
         .map(|_| {
@@ -419,7 +428,7 @@ pub fn random_canonical(rng: &mut Rng, stereo: bool) -> SngSpec {
         })
         .collect();
     if let Some(last) = s.instr.last_mut() {
-        last[0] |= 1; // AD not zero: the last instrument counts as used
+        last[0] |= USED_INSTRUMENT_AD_BIT;
     }
     s.tables = (0..4)
         .map(|_| {
@@ -450,8 +459,6 @@ pub fn random_canonical(rng: &mut Rng, stereo: bool) -> SngSpec {
     s
 }
 
-/// Builds a one-subtune mono spec's song through the edit primitives (the reader would take
-/// an ambiguous file as stereo).
 pub fn set_mono_from_spec(s: &mut Song, spec: &SngSpec) {
     let p = s.ptr_mut();
     let commit = |e: &gt2_edit| unsafe { gt2_edit_commit(p, e) };
@@ -486,7 +493,6 @@ pub fn set_mono_from_spec(s: &mut Song, spec: &SngSpec) {
                 assert_eq!(gt2_order_insert(p, 0, c, k as u32, *v, &mut e), GT2_OK);
                 commit(&e);
             }
-            // Drop clearsong's entry, now last.
             assert_eq!(
                 gt2_order_delete(p, 0, c, entries.len() as u32, &mut e),
                 GT2_OK

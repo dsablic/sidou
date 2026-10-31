@@ -9,11 +9,6 @@
 extern "C" {
 #endif
 
-/* The song and source file stay frozen until done.
- * Readers are destructive: the caller restores its previous file on failure.
- * Each step handles at most one pattern (516 bytes), otherwise about 256 bytes.
- * The reader's step returns 0 pending, 1 done, -1 error.
- * Do not resume a workspace after starting another operation in it. */
 typedef struct {
     gt2_song* song;
     const gt2_song* source;
@@ -35,9 +30,6 @@ typedef struct {
 void gt2_stream_read_begin(gt2_stream* w, gt2_song* song, gt2_read_fn read,
                            void* ctx, const gt2_caps* caps);
 int gt2_stream_read_step(gt2_stream* w);
-/* The song's save accounting must be current (edits released, or recount completed).
- * step returns 1..min(capacity,256) bytes, 0 complete, -1 error. capacity must be positive.
- * Keep the returned bytes until the sink accepts them; only then call step again. */
 void gt2_stream_write_begin(gt2_stream* w, const gt2_song* song, int with_trailer);
 int gt2_stream_write_step(gt2_stream* w, uint8_t* buf, uint32_t capacity);
 const gt2_read_info* gt2_stream_info(const gt2_stream* w);

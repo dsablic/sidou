@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! LAB's sound (`app/lab_sound.h`, `live_sound_*` in `app/live.h`): the voice and the effect
-//! slots as one packed image, the current sound's base and the per-sound fields.
 
 use sidou_sys::*;
 
@@ -10,17 +8,11 @@ use crate::{preset, preset_name, Rig};
 const BYTES: usize = LAB_SOUND_BYTES as usize;
 pub(crate) type Sound = [u8; BYTES];
 
-fn sound_of(rig: &Rig) -> Sound {
-    let mut s = [0u8; BYTES];
-    unsafe { live_sound_get(&*rig.live, s.as_mut_ptr()) };
-    s
-}
-
 fn apply(rig: &mut Rig, s: &Sound) {
     unsafe { live_sound_apply(&mut *rig.live, s.as_ptr()) };
 }
 
-fn valid(s: &Sound) -> bool {
+pub(crate) fn valid(s: &Sound) -> bool {
     unsafe { lab_sound_valid(s.as_ptr()) != 0 }
 }
 
@@ -28,11 +20,11 @@ fn edited(rig: &Rig) -> bool {
     unsafe { live_preset_edited(&*rig.live) != 0 }
 }
 
-fn u16_at(s: &Sound, at: u32) -> u32 {
+pub(crate) fn u16_at(s: &Sound, at: u32) -> u32 {
     u32::from(s[at as usize]) | u32::from(s[at as usize + 1]) << 8
 }
 
-fn put16(s: &mut Sound, at: u32, v: u32) {
+pub(crate) fn put16(s: &mut Sound, at: u32, v: u32) {
     s[at as usize] = v as u8;
     s[at as usize + 1] = (v >> 8) as u8;
 }
@@ -48,7 +40,6 @@ fn base_name(rig: &Rig) -> String {
     String::from_utf8(n).unwrap()
 }
 
-/// A xorshift32 for the random sounds (the same numbers on every run).
 pub(crate) struct Xs(pub u32);
 
 impl Xs {
@@ -66,7 +57,6 @@ impl Xs {
     }
 }
 
-/// A sound with every field drawn within its range.
 pub(crate) fn random_sound(r: &mut Xs) -> Sound {
     let mut s = [0u8; BYTES];
     s[LAB_SOUND_CONTROL as usize] = (r.below(16) << 4 | r.below(2) << 2 | r.below(2) << 1) as u8;
@@ -124,13 +114,13 @@ fn a_sound_round_trips_through_live() {
     for p in 0..LIVE_PRESET_COUNT as u8 {
         let mut rig = Rig::new(SID_MODEL_6581);
         rig.set_preset(p);
-        sounds.push(sound_of(&rig));
+        sounds.push(rig.sound());
     }
     let mut rig = Rig::new(SID_MODEL_6581);
     unsafe { live_slot_pick(&mut *rig.live, 1, 2) };
     for seed in [1u32, 7, 99, 12_345, 0xdead_beef] {
         unsafe { live_dice_roll(&mut *rig.live, seed) };
-        sounds.push(sound_of(&rig));
+        sounds.push(rig.sound());
     }
     let mut r = Xs(0x1234_5678);
     for _ in 0..200 {
@@ -140,22 +130,20 @@ fn a_sound_round_trips_through_live() {
         assert!(valid(s), "sound {i} is valid");
         let mut fresh = Rig::new(SID_MODEL_6581);
         apply(&mut fresh, s);
-        assert_eq!(&sound_of(&fresh), s, "sound {i} through a fresh instrument");
-        // and over another sound, with notes held
+        assert_eq!(&fresh.sound(), s, "sound {i} through a fresh instrument");
         let mut busy = Rig::new(SID_MODEL_8580);
         apply(&mut busy, &sounds[(i + 3) % sounds.len()]);
         busy.note_on(60);
         busy.note_on(64);
         apply(&mut busy, s);
-        assert_eq!(&sound_of(&busy), s, "sound {i} over another");
+        assert_eq!(&busy.sound(), s, "sound {i} over another");
     }
 }
 
 #[test]
 fn the_base_is_the_preset_as_loaded() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    assert_eq!(rig.live.base, sound_of(&rig), "SAW LEAD at power-on");
-    // the slots as they are: a built-in has none of its own
+    assert_eq!(rig.live.base, rig.sound(), "SAW LEAD at power-on");
     unsafe { live_slot_pick(&mut *rig.live, 0, 3) };
     let slots = rig.live.slot;
     for p in 0..LIVE_PRESET_COUNT as u8 {
@@ -207,41 +195,43 @@ fn the_base_is_the_preset_as_loaded() {
         );
         assert_eq!(
             &b[LAB_SOUND_SLOTS as usize..LAB_SOUND_BYTES_1_0 as usize],
-            slots.as_flattened()
+            slots.as_flattened(),
+            "a built-in has no slots of its own: they stay as they are"
         );
         assert_eq!(
             b[LAB_SOUND_BYTES_1_0 as usize..],
             [0, 0, 0],
             "no filter LFO, no links"
         );
-        assert_eq!(b, sound_of(&rig), "loaded, so not edited");
+        assert_eq!(b, rig.sound(), "loaded, so not edited");
         assert!(!edited(&rig));
         assert!(valid(&b));
     }
-    // A bend range RPN 0 set is the channel's, not the sound's.
     unsafe { live_bend_range_rpn(&mut *rig.live, 12) };
     rig.set_preset(0);
     assert_eq!(
         rig.live.base[LAB_SOUND_BEND_RANGE as usize],
-        preset(0).bend_range
+        preset(0).bend_range,
+        "a bend range set by RPN 0 is the channel's, not the sound's"
     );
     assert!(!edited(&rig));
-    // DICE's base is its roll, and the roll as it was left when PRESETS comes back to it.
     rig.preset_step(4);
     assert_eq!(rig.live.preset, LIVE_PRESET_DICE as u8);
-    assert_eq!(rig.live.base, sound_of(&rig));
+    assert_eq!(rig.live.base, rig.sound(), "DICE's base is its roll");
     assert_eq!(base_name(&rig), "DICE");
     unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_RESONANCE, 15) };
-    let left = sound_of(&rig);
+    let left = rig.sound();
     rig.preset_step(-1);
     rig.preset_step(1);
-    assert_eq!(rig.live.base, left);
+    assert_eq!(
+        rig.live.base, left,
+        "DICE's base is the roll as it was left"
+    );
 }
 
-/// SAW LEAD's sound with one field changed to another valid value, for each field.
 fn one_field_changes() -> Vec<(&'static str, Sound)> {
     let rig = Rig::new(SID_MODEL_6581);
-    let base = sound_of(&rig);
+    let base = rig.sound();
     let mut out = Vec::new();
     let mut with = |name: &'static str, f: &dyn Fn(&mut Sound)| {
         let mut s = base;
@@ -329,7 +319,6 @@ fn an_edit_marks_the_sound_and_a_revert_clears_it() {
         apply(&mut rig, &base);
         assert!(!edited(&rig), "{name} put back clears the mark");
     }
-    // A slot changed from the panel marks it too; a load takes the slots as they are.
     unsafe { live_slot_pick(&mut *rig.live, 2, 1) };
     assert!(edited(&rig), "a slot change marks the sound");
     rig.set_preset(1);
@@ -338,25 +327,27 @@ fn an_edit_marks_the_sound_and_a_revert_clears_it() {
         "a built-in's load leaves the slots as they are"
     );
     assert_eq!(rig.live.slot[2][LIVE_SLOT_ALGORITHM as usize], 1);
-    // Setting the base keeps what sounds and moves the mark.
     rig.knob(LIVE_KNOB_RESONANCE, 2);
     assert!(edited(&rig));
-    let kept = sound_of(&rig);
+    let kept = rig.sound();
     let name = c"KEPT ONE";
     unsafe { live_sound_set_base(&mut *rig.live, kept.as_ptr(), name.as_ptr()) };
-    assert!(!edited(&rig));
+    assert!(!edited(&rig), "setting the base moves the mark");
     assert_eq!(base_name(&rig), "KEPT ONE");
-    assert_eq!(sound_of(&rig), kept, "nothing sounds different");
+    assert_eq!(rig.sound(), kept, "nothing sounds different");
     let mut buf = [0 as std::ffi::c_char; LIVE_PRESET_NAME_CHARS as usize];
     unsafe { live_preset_name(&*rig.live, buf.as_mut_ptr()) };
     let shown = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
     assert_eq!(shown.to_str().unwrap(), "KEPT ONE");
-    // A NULL name keeps the name; a long one is cut to LAB_SOUND_NAME characters.
     unsafe { live_sound_set_base(&mut *rig.live, kept.as_ptr(), std::ptr::null()) };
-    assert_eq!(base_name(&rig), "KEPT ONE");
+    assert_eq!(base_name(&rig), "KEPT ONE", "a NULL name keeps the name");
     let long = c"ABCDEFGHIJKLMNOP";
     unsafe { live_sound_set_base(&mut *rig.live, kept.as_ptr(), long.as_ptr()) };
-    assert_eq!(base_name(&rig), "ABCDEFGHIJKL");
+    assert_eq!(
+        base_name(&rig),
+        "ABCDEFGHIJKL",
+        "a long name is cut to LAB_SOUND_NAME characters"
+    );
 }
 
 #[test]
@@ -369,17 +360,17 @@ fn pwm_and_tune_are_kept_per_preset_as_the_knobs_are() {
         (rig.live.pwm_depth, rig.live.pwm_rate, rig.live.tune),
         (p.pwm_depth, p.pwm_rate, 0)
     );
-    let mut s = sound_of(&rig);
+    let mut s = rig.sound();
     put16(&mut s, LAB_SOUND_PWM_DEPTH, 1500);
     put16(&mut s, LAB_SOUND_PWM_RATE, 655);
     s[LAB_SOUND_TUNE as usize] = -20i8 as u8;
     apply(&mut rig, &s);
     assert!(edited(&rig));
-    // SYNC LEAD has its own (none), and PWM BASS's come back with it.
     rig.preset_step(1);
     assert_eq!(
         (rig.live.pwm_depth, rig.live.pwm_rate, rig.live.tune),
-        (0, 0, 0)
+        (0, 0, 0),
+        "SYNC LEAD has none of its own"
     );
     assert_eq!(
         (rig.live.mono_sync, rig.live.sync_base_q8),
@@ -388,22 +379,26 @@ fn pwm_and_tune_are_kept_per_preset_as_the_knobs_are() {
     rig.preset_step(-1);
     assert_eq!(
         (rig.live.pwm_depth, rig.live.pwm_rate, rig.live.tune),
-        (1500, 655, -20)
+        (1500, 655, -20),
+        "PWM BASS's edits come back with it"
     );
     assert!(edited(&rig));
-    // A program change loads the factory's, over the kept ones.
     rig.set_preset(1);
     assert_eq!(
         (rig.live.pwm_depth, rig.live.pwm_rate, rig.live.tune),
-        (p.pwm_depth, p.pwm_rate, 0)
+        (p.pwm_depth, p.pwm_rate, 0),
+        "a program change loads the factory's over the kept ones"
     );
     assert!(!edited(&rig));
-    // The LFO runs at the edited rate: a tick moves its phase by it.
     put16(&mut s, LAB_SOUND_PWM_RATE, 1000);
     apply(&mut rig, &s);
     let phase = rig.live.lfo_phase;
     rig.tick();
-    assert_eq!(rig.live.lfo_phase, phase.wrapping_add(1000));
+    assert_eq!(
+        rig.live.lfo_phase,
+        phase.wrapping_add(1000),
+        "a tick moves the LFO's phase by the edited rate"
+    );
 }
 
 #[test]
@@ -411,39 +406,44 @@ fn a_fine_tune_moves_the_frequency_by_cents() {
     let at = |note: u8, offset: i32| unsafe { live_freq_at(note, offset) };
     for (tune, offset) in [(0i8, 0), (50, 4096), (-50, -4096), (1, 81), (-1, -81)] {
         let mut rig = Rig::new(SID_MODEL_6581);
-        let mut s = sound_of(&rig);
+        let mut s = rig.sound();
         s[LAB_SOUND_TUNE as usize] = tune as u8;
         apply(&mut rig, &s);
         rig.note_on(60);
         assert_eq!(rig.voice_freq(0), at(60, offset), "{tune} cents");
-        // the note sounds the tune's cents off the table's note: 2^(cents / 1200)
         let ratio = f64::from(rig.voice_freq(0)) / f64::from(at(60, 0));
         let cents = 1200.0 * ratio.log2();
         assert!(
             (cents - f64::from(tune)).abs() < 0.5,
             "{tune} cents sounds {cents:.2}"
         );
-        // and holds through a tick (the main loop's frequency writes)
         rig.tick();
-        assert_eq!(rig.voice_freq(0), at(60, offset));
+        assert_eq!(
+            rig.voice_freq(0),
+            at(60, offset),
+            "{tune} cents hold through the main loop's frequency writes"
+        );
     }
-    // A tune turned while a note sounds moves it at once.
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.note_on(69);
-    let mut s = sound_of(&rig);
+    let mut s = rig.sound();
     s[LAB_SOUND_TUNE as usize] = 25;
     apply(&mut rig, &s);
-    assert_eq!(rig.voice_freq(0), at(69, 2048));
-    // SYNC LEAD's two voices move together.
+    assert_eq!(
+        rig.voice_freq(0),
+        at(69, 2048),
+        "a tune turned under a sounding note moves it at once"
+    );
     rig.set_preset(2);
-    let mut s = sound_of(&rig);
+    let mut s = rig.sound();
     s[LAB_SOUND_TUNE as usize] = -50i8 as u8;
     apply(&mut rig, &s);
     rig.note_on(60);
     assert_eq!(rig.voice_freq(2), at(60, -4096));
     assert_eq!(
         u32::from(rig.voice_freq(0)),
-        (u32::from(at(60, -4096)) * u32::from(rig.live.sync_q8)) >> 8
+        (u32::from(at(60, -4096)) * u32::from(rig.live.sync_q8)) >> 8,
+        "SYNC LEAD's two voices move together"
     );
 }
 
@@ -535,17 +535,16 @@ fn an_invalid_sound_is_refused() {
             bad("a slot's control", &|s| s[at + f] = LIVE_SLOT_MAX as u8 + 1);
         }
     }
-    // Equal is byte for byte.
     let mut other = base;
-    assert!(unsafe { lab_sound_equal(base.as_ptr(), other.as_ptr()) } != 0);
+    let equal = |a: &Sound, b: &Sound| unsafe { lab_sound_equal(a.as_ptr(), b.as_ptr()) } != 0;
+    assert!(equal(&base, &other));
     other[BYTES - 1] ^= 1;
-    assert!(unsafe { lab_sound_equal(base.as_ptr(), other.as_ptr()) } == 0);
+    assert!(!equal(&base, &other), "equal is byte for byte");
 }
 
 #[test]
-fn pwm_rate_10_is_pwm_bass() {
-    // 0.05 Hz a step: PWM BASS's 2 s cycle (a phase step of 328 a tick) is rate 10.
-    assert_eq!(unsafe { live_pwm_step(10) }, 328);
+fn pwm_rates_step_by_a_twentieth_of_a_hertz_so_pwm_bass_is_rate_10() {
+    assert_eq!(unsafe { live_pwm_step(10) }, 328, "rate 10 is a 2 s cycle");
     assert_eq!(u32::from(preset(1).pwm_rate), unsafe { live_pwm_step(10) });
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.preset_step(1);
@@ -556,15 +555,14 @@ fn pwm_rate_10_is_pwm_bass() {
         u32::from(preset(1).pwm_depth)
     );
     assert_eq!(get(&rig, LIVE_PARAM_TUNE), LIVE_TUNE_CENTS, "in tune");
-    // Every rate's step reads back as that rate, and the top one is the sound's largest step.
     for r in 0..=LIVE_PWM_RATE_MAX {
         assert_eq!(unsafe { live_pwm_rate(live_pwm_step(r)) }, r, "rate {r}");
     }
     assert_eq!(
         unsafe { live_pwm_step(LIVE_PWM_RATE_MAX) },
-        LIVE_PWM_STEP_MAX
+        LIVE_PWM_STEP_MAX,
+        "the top rate is the sound's largest step"
     );
-    // The parameters move the sound's fields and what sounds, at once.
     unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_PWM_RATE, 20) };
     assert_eq!(rig.live.pwm_rate, 655);
     unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_PWM_DEPTH, 2048) };

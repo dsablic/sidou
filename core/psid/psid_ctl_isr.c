@@ -1,19 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The .sid player's interrupt half (psid_ctl.h): a block of each chip, the ring's writes placed
- * at their cycles. On the device every function here runs from SRAM (platform/fm1/app.ld, Task
- * 9: .text.psid_ctl_block and the psid_isr_* helpers, if the compiler keeps them out of line),
- * built -O2 without jump tables (core/CMakeLists.txt); it calls only sid.c's RAMTEXT functions
- * and the render pointer. */
 #include "psid_ctl.h"
 
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
-/* The last SID register a stop clears: $18, the mode and volume. */
 #define PSID_ISR_LAST_REG 0x18u
 
-/* audio_ramp's ramp (platform/fm1/audio.c) on one chip's samples: down from full to 0 (down 1)
- * or up from 0 (down 0). */
 _Static_assert(PSID_BLOCK == 128u, "psid_isr_ramp's shift");
 static void psid_isr_ramp(int16_t* x, int down)
 {
@@ -23,12 +15,6 @@ static void psid_isr_ramp(int16_t* x, int down)
     }
 }
 
-/* Chip k's block into out: its writes from its cursor on, each at its cycle, while the block's
- * renders last (PSID_SPLITS), then late at the block's end; of at most `window` entries from
- * its cursor (its own and the other chip's: the rest wait for the next block). The ring is in
- * cycle order (one 6502), so the first entry of either chip at or past the block's last cycle
- * ends the scan. The block's cycles are the samples' Q16 steps summed, which no sid_advance
- * changes (it moves cycles from the next sample to before it), so they are known at the start. */
 static void psid_isr_chip(psid_ctl* c, uint32_t k, sid* s, int16_t* out, int tapped,
                           psid_render_fn render, uint32_t head, uint32_t window)
 {
@@ -37,18 +23,16 @@ static void psid_isr_chip(psid_ctl* c, uint32_t k, sid* s, int16_t* out, int tap
     const uint32_t end = now + ((s->cycle_frac_q16 + PSID_BLOCK * cps) >> 16);
     uint32_t n = PSID_BLOCK, parts = 0, late = 0, i;
     if ((uint32_t)(head - c->cur[k]) > window)
-        head = c->cur[k] + window; /* the entries a block looks at */
+        head = c->cur[k] + window;
     for (i = c->cur[k]; i != head; i++) {
         uint32_t j = i & (PSID_RING - 1u);
         uint32_t x = c->ring_cycle[j];
         if ((int32_t)(x - end) >= 0)
-            break; /* this entry and every later one: a later block's */
+            break;
         uint32_t e = c->ring_entry[j];
         if (PSID_RING_CHIP(e) != k)
-            continue; /* the other chip's, which its own cursor takes */
+            continue;
         if (parts < PSID_SPLITS - 1u) {
-            /* The whole samples that end at or before x (x is before the block's end: fewer
-             * than n), stepped as the render steps them. */
             uint32_t q = s->cycle_frac_q16, t = now, m = 0;
             for (;;) {
                 uint32_t step = (q + cps) >> 16;
@@ -67,19 +51,19 @@ static void psid_isr_chip(psid_ctl* c, uint32_t k, sid* s, int16_t* out, int tap
             }
             int32_t d = (int32_t)(x - now);
             if (d > 0) {
-                sid_advance(s, (uint32_t)d); /* d is under the next sample's cycles */
+                sid_advance(s, (uint32_t)d);
                 now = x;
             } else if (d < 0) {
-                late++; /* the chip has passed it: the 6502 fell behind */
+                late++;
             }
         } else {
-            if (n) { /* the split budget is spent: the rest of the block in one render */
+            if (n) {
                 render(s, out, n, tapped);
                 n = 0;
                 now = end;
                 parts++;
             }
-            late++; /* at the block's end */
+            late++;
         }
         sid_write(s, (uint8_t)PSID_RING_REG(e), (uint8_t)PSID_RING_VALUE(e));
     }
@@ -108,10 +92,10 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
     int fade_out = 0, stop = 0;
     uint32_t rendered = 0;
     if (seq != c->done_seq) {
-        COMPILER_FENCE(); /* the number before the request it publishes */
+        COMPILER_FENCE();
         switch (c->want) {
         case PSID_ISR_PLAY:
-            if (c->mode == PSID_ISR_OFF) { /* a song's start: the ring and clocks are from 0 */
+            if (c->mode == PSID_ISR_OFF) {
                 c->cur[0] = c->cur[1] = c->tail;
                 c->blocks = 0;
                 c->fade_in = 0;
@@ -134,8 +118,7 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
     }
     if (c->mode == PSID_ISR_PLAY) {
         uint32_t head = c->head;
-        COMPILER_FENCE(); /* the head before the entries it publishes */
-        /* The entries a chip's block looks at: a 2SID tune's chips each half of them. */
+        COMPILER_FENCE();
         const uint32_t window = two ? PSID_BLOCK_ENTRIES / 2u : PSID_BLOCK_ENTRIES;
         psid_isr_chip(c, 0, a, sa, (int)(tapped & 1u), render, head, window);
         rendered = 1;
@@ -146,7 +129,7 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
             if ((int32_t)(c->cur[1] - t) < 0)
                 t = c->cur[1];
         }
-        COMPILER_FENCE(); /* the entries are read before their slots are handed back */
+        COMPILER_FENCE();
         c->tail = t;
         c->blocks++;
         if (fade_out || c->fade_in) {
@@ -165,7 +148,7 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
                 sb[f] = 0;
     }
     if (stop) {
-        if (c->mode != PSID_ISR_OFF) { /* the tune has written the chips: clear them */
+        if (c->mode != PSID_ISR_OFF) {
             psid_isr_clear(a);
             if (two)
                 psid_isr_clear(b);
@@ -174,7 +157,7 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
         c->tail = c->head;
     }
     if (seq != c->done_seq) {
-        COMPILER_FENCE(); /* the request carried out before the number that says so */
+        COMPILER_FENCE();
         c->done_seq = seq;
     }
     return rendered;

@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The build line on SIDOU's demo page: version.json, which tools/web-demo writes from git.
 const el = document.getElementById("build");
 try {
   const v = await (await fetch("version.json", { cache: "no-store" })).json();

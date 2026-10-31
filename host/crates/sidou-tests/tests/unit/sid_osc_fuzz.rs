@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Adversarial fuzz (from the Task 3 reviews): noise combined with other waveforms,
-//! sid_osc_advance's bulk steps against strictly cycle by cycle, every field after every
-//! step: long TEST holds through fade events, rich register refills, every waveform,
-//! the output updated as clock_voices does, random hard syncs and ring sources that
-//! leave their linear course. FUZZ_OPS and FUZZ_SEEDS scale it up.
+
 use sidou_sys::*;
 
 struct Rng(u64);
@@ -20,8 +16,7 @@ impl Rng {
     }
 }
 
-fn same(a: &sid_osc, b: &sid_osc, at: &str) {
-    // A locked-up register defers its (no-op) shifts: compare it settled.
+fn assert_same_noise_combined(a: &sid_osc, b: &sid_osc, at: &str) {
     let mut a = *a;
     unsafe { sid_noise_settle(&mut a) };
     let fields = [
@@ -40,8 +35,6 @@ fn same(a: &sid_osc, b: &sid_osc, at: &str) {
         assert_eq!(x, y, "{n} differs, {at}: fast {a:?}\nslow {b:?}");
     }
     if a.cycle_mode == 1 {
-        // Kept current only cycle by cycle; locked up, the inline path recomputes them
-        // when needed (the pulse on re-entry, the latch on a control write).
         assert_eq!(a.pulse, b.pulse, "pulse, {at}");
         if a.is6581 == 0 {
             assert_eq!(a.tri_saw, b.tri_saw, "tri_saw, {at}");
@@ -55,7 +48,7 @@ fn same(a: &sid_osc, b: &sid_osc, at: &str) {
     }
 }
 
-fn same_settled(a: &sid_osc, b: &sid_osc, at: &str) {
+fn assert_same_once_settled(a: &sid_osc, b: &sid_osc, at: &str) {
     let mut a = *a;
     unsafe { sid_noise_settle(&mut a) };
     let fields = [
@@ -105,12 +98,9 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                 c |= SID_CTRL_TEST as u8;
                 held = 2000;
             } else if wf < 8 && r.below(10) == 0 {
-                // A long stretch without noise (its shifts deferred), then whatever
-                // the next write selects.
                 held = 500;
             }
             unsafe {
-                // As sid_write: latch the 8580's triangle/saw, then write.
                 sid_osc_latch_ramp(&mut fast, src_acc);
                 sid_osc_latch_ramp(&mut slow, src_acc);
                 sid_osc_write_control(&mut fast, c);
@@ -147,7 +137,6 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                 }
             }
         } else if op < 12 && r.below(2) == 0 {
-            // the source deviates slightly from its linear course (as a pulled MSB or sync would)
             src_acc = (src_acc ^ 0x800000) & 0xffffff;
         } else if op < 12 {
             src_freq = [0u32, 0xffff, r.below(0x10000)][r.below(3) as usize];
@@ -155,21 +144,17 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
         } else if op < 13
             && fast.control >> 4 > 8
             && {
-                // Poked below behind the core's back: apply any deferred shifts first.
                 unsafe { sid_noise_settle(&mut fast) };
                 fast.shift_pipeline == 0
             }
             && slow.shift_pipeline == 0
         {
-            // refill the register with a rich, consistent state
             let sr = r.below(1 << 23);
             for x in [&mut fast, &mut slow] {
                 x.sr = sr;
                 x.latch = sr;
                 x.noise = unsafe { sid_noise_output(sr) };
                 x.test_or_reset = 0;
-                // Poking the state behind the core's back: recompute what it derives
-                // from it, as a write would (the register can only refill through one).
                 unsafe {
                     let control = x.control;
                     sid_osc_latch_ramp(x, src_acc);
@@ -198,23 +183,19 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                     sid_osc_advance_cycles(&mut slow, cycles, src_acc, src_freq);
                 }
                 src_acc = (src_acc + cycles * src_freq) & 0xffffff;
-                // As clock_voices does after each step.
                 fast.pulse_held = 0;
                 slow.pulse_held = 0;
                 if fast.control >> 4 != 0 {
-                    // As clock_voices does with the envelope nonzero.
                     fast.out = unsafe { sid_osc_output(&fast, src_acc) };
                 }
                 if fast.control >> 4 > 8 {
-                    same(
+                    assert_same_noise_combined(
                         &fast,
                         &slow,
                         &format!("seed {seed} model {is6581} profile {profile} step {step}"),
                     );
                 } else {
-                    // Without noise combined: the register as it is once its deferred
-                    // shifts are applied (as a control write or a hard sync would).
-                    same_settled(
+                    assert_same_once_settled(
                         &fast,
                         &slow,
                         &format!("seed {seed} model {is6581} profile {profile} step {step}"),
@@ -227,7 +208,7 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
 }
 
 #[test]
-fn reviewer_fuzz_bulk_vs_strict() {
+fn bulk_steps_match_strictly_cycle_by_cycle_under_adversarial_fuzz() {
     let ops: u32 = std::env::var("FUZZ_OPS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -247,15 +228,8 @@ fn reviewer_fuzz_bulk_vs_strict() {
     assert!(total > 0);
 }
 
-/// Directed (from the M1b review, which found the fuzz misses it): with the accumulator
-/// standing still, a pulse width written above it turns the pulse off after the first
-/// cycle (the first compares as latched, the rest with the accumulator), so the bulk
-/// window for pulse combined with noise must end there (`sid_osc_bulk_limit`'s
-/// `lim = 1`). Both models and every combined-waveform profile, waveforms 0xc to 0xf,
-/// registers whose noise survives the pulldown for some of them (only those reach the
-/// bulk window: 0xff0, 0xf80, 0xfe0 and 0x3f0).
 #[test]
-fn zero_frequency_pulse_width_write_above_the_accumulator() {
+fn a_pulse_width_written_above_a_still_accumulator_ends_the_bulk_window_after_one_cycle() {
     let registers = [0x52_2914u32, 0x00_2914, 0x12_2914, 0x52_2900];
     let accumulators = [0x10_0000u32, 0x7f_f000, 0x80_0000, 0xc0_0123, 0xff_e000];
     let mut checked = 0;
@@ -286,7 +260,6 @@ fn zero_frequency_pulse_width_write_above_the_accumulator() {
                         sid_osc_write_control(&mut o, wf << 4);
                     }
                     o.pulse_held = 0;
-                    // The pulse is on (PW 0); now a width above the accumulator.
                     unsafe { sid_osc_write_pw(&mut o, (acc >> 12) + 1) };
                     let (mut fast, mut slow) = (o, o);
                     for cycles in [16u32, 1, 7] {
@@ -296,7 +269,7 @@ fn zero_frequency_pulse_width_write_above_the_accumulator() {
                         }
                         fast.pulse_held = 0;
                         slow.pulse_held = 0;
-                        same(
+                        assert_same_noise_combined(
                             &fast,
                             &slow,
                             &format!("model {is6581} profile {profile} wf {wf:#x} sr {sr:#x} acc {acc:#x}"),

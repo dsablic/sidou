@@ -1,12 +1,5 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Serve the demo (build/web) on localhost: http.server with the types the page needs and no
-caching, so a rebuild shows on reload. fm1-emu's page needs no COOP/COEP headers: it uses no
-SharedArrayBuffer (frames reach the page by postMessage).
-
-    python3 web/serve.py build/web 8642    (port 0: any free port; the first line says which)
-"""
-
 import functools
 import http.server
 import sys

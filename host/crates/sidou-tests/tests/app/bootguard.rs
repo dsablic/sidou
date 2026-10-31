@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The boot-loop guard (`app/bootguard.c`): resets are played by calling `bootguard_boot`
-//! again on the same state, as .noinit RAM keeps it.
 
 use sidou_sys::*;
 
@@ -31,7 +29,6 @@ fn power_on_noise_starts_a_fresh_guard() {
 fn two_failed_boots_enter_uboot_on_the_third() {
     let mut g = bootguard::default();
     assert!(!boot(&mut g), "first boot");
-    // It crashes before it is stable (no poll past the window), and so does the next.
     poll(&mut g, BOOTGUARD_STABLE_MS - 1);
     assert!(!boot(&mut g), "after one failed boot");
     assert_eq!(g.failed, 1);
@@ -48,10 +45,9 @@ fn two_failed_boots_enter_uboot_on_the_third() {
 fn a_stable_boot_clears_the_count() {
     let mut g = bootguard::default();
     assert!(!boot(&mut g));
-    assert!(!boot(&mut g)); // one failed boot
+    assert!(!boot(&mut g), "one failed boot");
     poll(&mut g, BOOTGUARD_STABLE_MS);
     assert_eq!((g.pending, g.failed), (0, 0));
-    // A later crash counts from zero again.
     assert!(!boot(&mut g));
     assert!(!boot(&mut g));
     assert_eq!(g.failed, 1);
@@ -69,8 +65,6 @@ fn an_intentional_reset_is_not_a_failure() {
 
 #[test]
 fn another_firmwares_words_over_the_guard_start_a_fresh_one() {
-    // SIDOU's magic kept, the rest Felucca's: its boot guard (magic "DRGB", failed, pending)
-    // one word in, or anything else it keeps there.
     for (pending, failed, check) in [
         (0x4247_5244, 0, 1),
         (0x4247_5244, 3, 0),

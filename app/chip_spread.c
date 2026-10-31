@@ -10,7 +10,6 @@ void chip_spread_gains(uint32_t spread, float* mid, float* side) {
     if (spread > CHIP_SPREAD_MAX) {
         spread = CHIP_SPREAD_MAX;
     }
-    /* phi in [0, pi / 4]: Taylor to phi^9 and phi^8, the terms left under 3e-8 there. */
     float p = (float)spread * (0.785398163f / (float)CHIP_SPREAD_MAX);
     float q = p * p;
     *side = p * (1.0f - q / 6.0f * (1.0f - q / 20.0f * (1.0f - q / 42.0f * (1.0f - q / 72.0f))));
@@ -26,8 +25,6 @@ void chip_spread_side(int16_t* side, const int16_t* a, const int16_t* b, chip_mi
     }
 }
 
-/* A level in LSBs to int16 through the limiter, rounded half away from zero: as
- * sid_fx_to_i16_limited converts the slots' output. */
 static int16_t spread_out(float o) {
     if (o > (float)SID_FX_LIMIT_KNEE || o < -(float)SID_FX_LIMIT_KNEE) {
         return sid_fx_limit_round(o);
@@ -38,7 +35,6 @@ static int16_t spread_out(float o) {
 
 void chip_spread_apply(int16_t* out, const float* in, const int16_t* side, float m0, float m1,
                        float k0, float k1) {
-    /* The mid in LSBs: x 32768, a power of two, so a gain of 1 is exactly the slots' level. */
     const float dm = (m1 - m0) * (32768.0f / (float)CHIP_SPREAD_BLOCK);
     const float dk = (k1 - k0) * (1.0f / (float)CHIP_SPREAD_BLOCK);
     float m = m0 * 32768.0f, k = k0;
@@ -52,24 +48,22 @@ void chip_spread_apply(int16_t* out, const float* in, const int16_t* side, float
 }
 
 uint32_t chip_spread_glide_step(chip_spread_glide* g, uint32_t a, uint32_t b) {
-    /* Both sound while the quieter does: its level against the threshold, the hold refreshed
-     * while it is loud and run down while it is not. */
     uint32_t quieter = a < b ? a : b;
-    uint32_t h = g->held;
-    if (quieter >= (h ? CHIP_SPREAD_OFF : CHIP_SPREAD_ON)) {
-        h = CHIP_SPREAD_HOLD;
-    } else if (h) {
-        h--;
+    uint32_t hold = g->held;
+    if (quieter >= (hold ? CHIP_SPREAD_OFF : CHIP_SPREAD_ON)) {
+        hold = CHIP_SPREAD_HOLD;
+    } else if (hold) {
+        hold--;
     }
-    g->held = (uint8_t)h;
-    uint32_t w = g->g;
-    if (h) {
-        w += w < CHIP_SPREAD_GLIDE;
+    g->held = (uint8_t)hold;
+    uint32_t share = g->share;
+    if (hold) {
+        share += share < CHIP_SPREAD_GLIDE;
     } else {
-        w -= w != 0u;
+        share -= share != 0u;
     }
-    g->g = (uint8_t)w;
-    return w;
+    g->share = (uint8_t)share;
+    return share;
 }
 
 void chip_spread_set(live* l, uint32_t spread) {

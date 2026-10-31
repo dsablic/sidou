@@ -8,10 +8,8 @@
 #include "font.h"
 #include "widget.h"
 
-/* The theme's values on its background: the frame stands out from the labels under it. */
 #define ATTR_OF(l) THEME_ATTR(theme_get((l)->theme), value)
 #define TEXT_COL (LEARN_VIEW_COL + 2u)
-/* A toast's text, terminator included. */
 #define LINE (SCREEN_TOAST_CHARS + 1u)
 
 _Static_assert(LEARN_VIEW_COL + LEARN_VIEW_W <= GRID_COLS &&
@@ -19,7 +17,6 @@ _Static_assert(LEARN_VIEW_COL + LEARN_VIEW_W <= GRID_COLS &&
                "the band stays on the grid and above the toast");
 _Static_assert(LEARN_VIEW_CHARS * 2u + 2u == LEARN_VIEW_W, "a cell of margin either side");
 
-/* s after buf's text, buf holding at most cap - 1 characters. */
 static void append(char* buf, uint32_t cap, const char* s) {
     uint32_t n = 0;
     while (buf[n]) {
@@ -31,7 +28,6 @@ static void append(char* buf, uint32_t cap, const char* s) {
     buf[n] = 0;
 }
 
-/* v (0..999) in decimal after buf's text, buf holding at most cap - 1 characters. */
 static void append_number(char* buf, uint32_t cap, uint32_t v) {
     uint32_t n = 0;
     while (buf[n]) {
@@ -72,7 +68,6 @@ void learn_view_param_name(uint32_t param, char* buf) {
                                                           "PWM LNK"};
         append(buf, LEARN_VIEW_NAME, TAIL[param - LIVE_PARAM_EXPERT_END]);
     } else {
-        /* LAB's cards past the ones above (each at most 8 characters: "LEARN " fits) */
         static const struct {
             uint8_t param;
             const char* name;
@@ -85,12 +80,11 @@ void learn_view_param_name(uint32_t param, char* buf) {
                 return;
             }
         }
-        append(buf, LEARN_VIEW_NAME, "PARAM "); /* not on a knob: the panel never picks it */
+        append(buf, LEARN_VIEW_NAME, "PARAM ");
         append_number(buf, LEARN_VIEW_NAME, param);
     }
 }
 
-/* The band's three 2x lines, with the same short expert names as CHIP. */
 static void lines(const learn_view* lv, char out[3][LEARN_VIEW_CHARS + 1u]) {
     const midi_learn* ml = lv->ml;
     char name[LEARN_VIEW_NAME];
@@ -106,7 +100,7 @@ static void lines(const learn_view* lv, char out[3][LEARN_VIEW_CHARS + 1u]) {
         };
         const char* shown = ml->param >= LIVE_PARAM_EXPERT && ml->param < LIVE_PARAM_EXPERT_END
                                 ? EXPERT[ml->param - LIVE_PARAM_EXPERT]
-                            : ml->param == LIVE_PARAM_PWM_DEPTH ? "PW DEPTH" /* "LEARN " fits */
+                            : ml->param == LIVE_PARAM_PWM_DEPTH ? "PW DEPTH"
                                                                 : name;
         append(out[0], cap, "LEARN ");
         append(out[0], cap, shown);
@@ -119,7 +113,7 @@ static void lines(const learn_view* lv, char out[3][LEARN_VIEW_CHARS + 1u]) {
         }
         break;
     }
-    default: /* MIDI_LEARN_CONFIRM */
+    default:
         append(out[0], cap, "CLEAR ALL?");
         append(out[1], cap, "SAVE YES");
         append(out[2], cap, "HOME NO");
@@ -133,14 +127,8 @@ static void look(const learn_view* lv, uint8_t out[3]) {
     out[2] = midi_learn_cc_of(lv->ml, lv->ml->param);
 }
 
-/* The rows of the frame. */
 #define FRAME_ROWS (((1u << LEARN_VIEW_H) - 1u) << LEARN_VIEW_ROW)
 
-/* The view under it, as it composes; then the frame over it, clear of the overlays the view
- * under it draws there (About's scroller, the glyph sheet's wave). The frame covers its cells
- * (screen_cover): a view under it that holds to a budget (LIVE, SCENE) leaves them alone and
- * counts what the frame sends this frame: all of it when its text changes or the screen drew
- * over its rows (a switch, the raster), nothing otherwise (it draws the same cells again). */
 static void compose(screen* s, void* state, grid* g) {
     learn_view* lv = state;
     const screen_entry* below = &s->stack[s->depth - 2u];
@@ -194,9 +182,6 @@ static int changed(screen* s, void* state) {
     return now[0] != lv->drawn[0] || now[1] != lv->drawn[1] || now[2] != lv->drawn[2];
 }
 
-/* What the capture leaves goes to the CHIP view under the frame, as if the frame were not
- * there: SELECT moves its focus, ALGORITHM steps its choice. Only to CHIP: the menu's
- * ALGORITHM would open a view over the frame, SCENE's SELECT wipe in a piece under it. */
 static int input(screen* s, void* state, const screen_event* e) {
     (void)state;
     const screen_entry* below = &s->stack[s->depth - 2u];
@@ -213,7 +198,6 @@ void learn_view_init(learn_view* lv, live* l, midi_learn* ml) {
     lv->drawn[0] = lv->drawn[1] = lv->drawn[2] = 0;
 }
 
-/* Learn has ended: its toast, and the view closes (which releases the capture). */
 static void finish(learn_view* lv) {
     if (!lv->s || screen_top(lv->s) != &learn_view_view) {
         return;
@@ -249,9 +233,6 @@ static void finish(learn_view* lv) {
     lv->s = NULL;
 }
 
-/* Knob enc's parameter (with the buttons held), picked: 1, or 0 and a toast when it has no
- * CC (the CHIP view's song tab turns the song's setup, which no CC reaches; K3 on a sync sound
- * is the ratio, the panel's alone). */
 static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_t held) {
     uint32_t param = panel_knob_param(p, lv->l, held, enc);
     if (midi_learn_open(lv->ml, param, s->now)) {
@@ -259,7 +240,7 @@ static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_
     }
     int none = p && p->page == PANEL_PAGE_NONE && !(held & (1u << PANEL_BTN_EDIT));
     if (p && p->page >= PANEL_PAGE_LAB_FIRST && (p->page != PANEL_PAGE_LAB_FIRST || enc != PANEL_ENC_K1)) {
-        char t[] = "K?: NOTHING"; /* a card with no parameter */
+        char t[] = "K?: NOTHING";
         t[1] = (char)('1' + enc - PANEL_ENC_K1);
         screen_toast(s, t, SCREEN_TOAST_MS);
         return 0;
@@ -275,15 +256,12 @@ static int capture(void* ctx, const screen_event* e) {
     }
     midi_learn* ml = lv->ml;
     if (ml->state == MIDI_LEARN_IDLE) {
-        /* A CC ended learn since the last frame (learn_view_frame would close it): it closes
-         * now, with its toast. A knob turns as if learn were not there; HOME, meant for the
-         * frame, does nothing more. */
         finish(lv);
         return e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME;
     }
     if (e->kind == SCREEN_PRESS) {
         if (e->id != PANEL_BTN_HOME) {
-            return 0; /* the panel's */
+            return 0;
         }
         midi_learn_cancel(ml);
         finish(lv);
@@ -293,14 +271,14 @@ static int capture(void* ctx, const screen_event* e) {
         return 0;
     }
     (void)pick(lv, lv->s, lv->p, e->id, e->held);
-    return 1; /* the knob picks, it does not turn */
+    return 1;
 }
 
 int learn_view_open(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_t held) {
     if (!lv->ml || lv->s) {
         return -1;
     }
-    midi_learn_cancel(lv->ml); /* from idle, whatever it was in */
+    midi_learn_cancel(lv->ml);
     (void)midi_learn_take(lv->ml);
     if (!pick(lv, s, p, enc, held) || screen_push(s, &learn_view_view, lv, SCREEN_OVER) != 0) {
         midi_learn_cancel(lv->ml);
@@ -329,7 +307,7 @@ void learn_view_save(learn_view* lv) {
         t[0] = 0;
         learn_view_param_name(ml->param, t);
         append(t, LINE, ": NO CC");
-        screen_toast(lv->s, t, SCREEN_TOAST_MS); /* nothing to forget: the frame stays */
+        screen_toast(lv->s, t, SCREEN_TOAST_MS);
         return;
     }
     if (ml->state == MIDI_LEARN_IDLE) {

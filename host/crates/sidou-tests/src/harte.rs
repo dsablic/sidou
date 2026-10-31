@@ -1,19 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Tom Harte's SingleStepTests for the 6502 (`6502/v1`, MIT): one JSON file per opcode, each
-//! test an initial and a final state (registers and the memory it touches) and the bus's
-//! cycles (address, value, read or write). The converter keeps the first tests of each file in
-//! a compact binary, the subset SIDOU commits (`third_party/6502-tests/harte/`, see its
-//! VENDORED.md); the reader reads that binary, and the JSON for the full `--ignored` run.
-//!
-//! The binary, little-endian: a `u32` count, then per test the initial and the final state
-//! (`pc: u16, s, a, x, y, p: u8, n: u16`, then `n` times `address: u16, value: u8`) and the
-//! cycles (`n: u16`, then `n` times `address: u16, value: u8, read: u8`: 1 a read, 0 a write).
-//! It is the layout of the study's `harte2bin.py`.
 
 use std::path::Path;
 
-/// A CPU state: the registers and the memory cells the test sets or checks.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct State {
     pub pc: u16,
@@ -25,7 +14,6 @@ pub struct State {
     pub ram: Vec<(u16, u8)>,
 }
 
-/// One bus cycle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cycle {
     pub addr: u16,
@@ -33,7 +21,6 @@ pub struct Cycle {
     pub read: bool,
 }
 
-/// One test: a single instruction from `initial` to `fin`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Test {
     pub name: String,
@@ -42,7 +29,6 @@ pub struct Test {
     pub cycles: Vec<Cycle>,
 }
 
-/// The first `count` tests of an opcode's JSON file (all of them for `usize::MAX`).
 pub fn parse_json(text: &str, count: usize) -> Result<Vec<Test>, String> {
     let mut p = Json {
         s: text.as_bytes(),
@@ -59,7 +45,6 @@ pub fn parse_json(text: &str, count: usize) -> Result<Vec<Test>, String> {
     list.iter().take(count).map(json_test).collect()
 }
 
-/// A JSON value, as much of JSON as the tests use: no escapes in strings, no fractions.
 #[derive(Debug)]
 enum Value {
     Num(u64),
@@ -123,7 +108,6 @@ impl Json<'_> {
         self.at += 1;
         Ok(())
     }
-    /// The items of a list or an object up to `close`, each read by `item`.
     fn items(
         &mut self,
         close: u8,
@@ -257,7 +241,6 @@ fn put_state(out: &mut Vec<u8>, s: &State) {
     }
 }
 
-/// The binary form of `tests` (the module's layout).
 pub fn to_bin(tests: &[Test]) -> Vec<u8> {
     let mut out = (tests.len() as u32).to_le_bytes().to_vec();
     for t in tests {
@@ -310,7 +293,6 @@ impl Bytes<'_> {
     }
 }
 
-/// The tests of a binary file (the module's layout); the names are not kept.
 pub fn from_bin(bin: &[u8]) -> Result<Vec<Test>, String> {
     let mut b = Bytes(bin);
     let count = u32::from_le_bytes(b.take(4)?.try_into().unwrap());
@@ -343,8 +325,6 @@ pub fn from_bin(bin: &[u8]) -> Result<Vec<Test>, String> {
     Ok(tests)
 }
 
-/// Converts the first `count` tests of each of the 256 opcode files in `src` (`00.json` to
-/// `ff.json`) into `dst/<op>.bin`. Returns the bytes written.
 pub fn convert(src: &Path, dst: &Path, count: usize) -> Result<usize, String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("{}: {e}", dst.display()))?;
     let mut total = 0;

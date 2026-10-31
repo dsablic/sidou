@@ -1,19 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The editor's preview in the audio thread (preview.js makes it): its own copy of SIDOU's wasm
-// core plays the song, a pattern or the keys, a block of 128 samples at a time as the FM-1's audio
-// interrupt does, through the effect slots, resampled from 44,118 Hz to the context's rate.
 import { Core } from "./core.js";
 import { Resampler } from "./preview.js";
 
-const TAIL_SECONDS = 2; // after a stop, the releases and the effects' tails ring this long
+const TAIL_SECONDS = 2;
 
 class SidouPreview extends AudioWorkletProcessor {
   constructor() {
     super();
     this.core = null;
-    this.song = null; // the newest song; read at the next start
-    this.read = null; // the song the core holds
+    this.song = null;
+    this.read = null;
     this.mode = "idle";
     this.tail = 0;
     this.blocks = 0;
@@ -50,7 +47,7 @@ class SidouPreview extends AudioWorkletProcessor {
       if (m.type === "song") { this.song = m.bytes; return; }
       if (!this.core || !this.song) return;
       if (m.type === "play") {
-        this.read = null; // a fresh read: the transport starts from the song as saved
+        this.read = null;
         this.load();
         this.core.play(m.subtune, m.pos);
         this.state("song");

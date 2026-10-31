@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! FM-1 Live Link's device side (app/link.c) against the reference decoder (the fm1-live-link
-//! crate): the session, the frames, the dirty bitmap, the rate cap, the give-way rules, the
-//! auto-stop and the remote control's release, and a mirror rebuilt from the frames that
-//! draws what the panel shows, pixel for pixel.
 
 use std::ffi::c_void;
 
@@ -12,8 +8,7 @@ use sidou_sys::*;
 
 const COLS: usize = GRID_COLS as usize;
 const W: usize = COLS * 8;
-/// A ring with nothing in it (the platform's 64 slots).
-const EMPTY: u32 = 64;
+const EMPTY_RING_ROOM: u32 = 64;
 const FRAME_ROOM: u32 = LINK_FRAME_PACKETS + LINK_RING_KEEP;
 
 fn attr(fg: u32, bg: u32) -> u8 {
@@ -57,16 +52,15 @@ impl Link {
     }
 
     fn poll(&mut self, g: &grid) -> Option<(u8, Vec<u8>)> {
-        let f = self.poll_with(g, EMPTY, false)?;
+        let f = self.poll_with(g, EMPTY_RING_ROOM, false)?;
         Some(ll::parse(&f).unwrap_or_else(|| panic!("an unreadable frame {f:02x?}")))
     }
 
-    /// Every frame the link has now, with the time moving on so the rate never holds it.
     fn drain(&mut self, g: &grid, m: &mut ll::Mirror) -> usize {
         let mut frames = 0;
         for _ in 0..100_000 {
             self.now += 3;
-            let Some(f) = self.poll_with(g, EMPTY, false) else {
+            let Some(f) = self.poll_with(g, EMPTY_RING_ROOM, false) else {
                 if self.l.on != 0 && self.pending(g) {
                     continue;
                 }
@@ -87,7 +81,6 @@ impl Link {
     }
 }
 
-/// A grid, and a panel its runs are drawn into, each run marked to the link as ui.c does.
 struct Screen {
     g: Box<grid>,
     panel: Vec<u16>,
@@ -132,7 +125,6 @@ impl Screen {
     }
 }
 
-/// A started session's mirror, the palette and the font fetched.
 fn session(link: &mut Link, s: &Screen) -> ll::Mirror {
     let mut m = ll::Mirror::default();
     link.feed(&ll::start());
@@ -212,16 +204,18 @@ fn a_frame_with_a_bad_checksum_or_another_magic_is_ignored() {
     let mut other = ll::start();
     other[5] = b'X';
     link.feed(&other);
-    // SIDOU's own SysEx and a frame cut by a status byte
     link.feed(&[0xf0, 0x7d, 0x53, 0x44, 0x01, 0x00, 0x7f, 0xf7]);
     let cut = ll::start();
     link.feed(&cut[..8]);
     link.feed(&[0x90, 0x40, 0x7f]);
     assert_eq!(link.l.on, 0);
     assert_eq!(link.poll(&s.g), None);
-    // nothing but START begins a session; another command is answered STOPPED
     link.feed(&ll::heartbeat());
-    assert_eq!(link.poll(&s.g).map(|f| f.0), Some(ll::STOPPED));
+    assert_eq!(
+        link.poll(&s.g).map(|f| f.0),
+        Some(ll::STOPPED),
+        "nothing but START begins a session; another command is answered STOPPED"
+    );
     assert_eq!(link.l.on, 0);
 }
 
@@ -234,7 +228,6 @@ fn the_mirror_draws_what_the_panel_shows() {
     assert_eq!(m.font.len(), 256);
     assert_same(&m, &s, "the first keyframe");
 
-    // text, large text at 2 and 3 times, overlays, a plain piece and a bitmap region
     s.text(1, 1, "LIVE LINK", attr(GRID_WHITE, GRID_BLACK));
     s.big(1, 3, 2, "AB", attr(GRID_YELLOW, GRID_BLUE));
     s.big(10, 3, 3, "C", attr(GRID_CYAN, GRID_BLACK));
@@ -257,8 +250,6 @@ fn the_mirror_draws_what_the_panel_shows() {
     assert_same(&m, &s, "text, pieces, overlays, a region");
     assert_eq!(m.rejected, 0);
 
-    // the newest state wins: cells changed again before the link sent them go once, as they
-    // are then
     for k in 0..3u8 {
         s.text(1, 1, &format!("FRAME {k}"), attr(GRID_GREEN, GRID_BLACK));
         unsafe { grid_overlay_clear(&mut *s.g, u32::from(k), 12) };
@@ -270,7 +261,6 @@ fn the_mirror_draws_what_the_panel_shows() {
     assert_same(&m, &s, "changed three times, the region gone");
 }
 
-/// A painter region with a peek: a pattern by position and a counter the painter keeps.
 struct Painted {
     shade: u8,
     painted: u32,
@@ -321,7 +311,6 @@ fn a_painter_regions_cells_go_as_pixels_through_its_peek_alone() {
     link.drain(&s.g, &mut m);
     assert_same(&m, &s, "six cells painted again");
 
-    // a new painter without a peek: its cells go as cells (the mirror cannot read them)
     unsafe {
         grid_region_painter(
             &mut *s.g,
@@ -351,7 +340,6 @@ fn only_marked_cells_go_and_a_row_goes_in_frames_of_at_most_48_bytes() {
     assert_eq!(&p[..2], &[2, 5]);
     assert_eq!(link.poll(&s.g), None);
 
-    // a row of overlays: 4 cells a frame (11 bytes each)
     let mask = [0x55u8; 8];
     for col in 0..30 {
         unsafe { grid_overlay(&mut *s.g, col, 9, mask.as_ptr(), 3) };
@@ -365,7 +353,11 @@ fn only_marked_cells_go_and_a_row_goes_in_frames_of_at_most_48_bytes() {
         m.apply(cmd, &p);
         link.now += 5;
     }
-    assert_eq!(sizes.len(), 8, "{sizes:?}");
+    assert_eq!(
+        sizes.len(),
+        8,
+        "a row of overlays, 4 cells a frame: {sizes:?}"
+    );
     assert_eq!(sizes.iter().sum::<usize>(), 8 * 2 + 30 * 11);
 }
 
@@ -380,7 +372,7 @@ fn the_rate_cap_holds_a_busy_screen_to_22_bytes_a_millisecond() {
     let t0 = link.now;
     for _ in 0..2000 {
         for row in 0..GRID_ROWS {
-            link.mark(row, 0, GRID_COLS); // everything, all the time
+            link.mark(row, 0, GRID_COLS);
         }
         link.now += 1;
         while let Some((_, p)) = link.poll(&s.g) {
@@ -404,7 +396,7 @@ fn it_gives_way_to_other_output_and_keeps_the_rings_last_slots() {
     link.feed(&ll::start());
     link.now += 1;
     assert_eq!(
-        link.poll_with(&s.g, EMPTY, true),
+        link.poll_with(&s.g, EMPTY_RING_ROOM, true),
         None,
         "busy: a SysEx reply going out"
     );
@@ -418,8 +410,10 @@ fn it_gives_way_to_other_output_and_keeps_the_rings_last_slots() {
         .expect("room for a frame");
     assert_eq!(ll::parse(&hello).unwrap().0, ll::HELLO);
     assert!(hello.len().div_ceil(3) <= LINK_FRAME_PACKETS as usize);
-    // the longest frame fits the packets the rule reserves
-    assert_eq!(LINK_FRAME_MAX, 64);
+    assert_eq!(
+        LINK_FRAME_MAX, 64,
+        "the longest frame fits the reserved packets"
+    );
     assert_eq!(
         ll::frame(ll::CELLS, &[0x80; 48]).len(),
         LINK_FRAME_MAX as usize
@@ -451,16 +445,18 @@ fn a_session_ends_three_seconds_after_the_last_heartbeat() {
     assert_eq!(link.poll(&s.g).map(|f| f.0), Some(ll::STOPPED));
     assert_eq!(link.l.on, 0);
     assert_eq!(link.poll(&s.g), None);
-    // STOP ends it at once, answered
     link.feed(&ll::start());
     link.drain(&s.g, &mut m);
     link.feed(&ll::stop());
-    assert_eq!(link.l.on, 0);
-    assert_eq!(link.poll(&s.g).map(|f| f.0), Some(ll::STOPPED));
-    // the host gone: dropped, nothing sent
+    assert_eq!(link.l.on, 0, "STOP ends it at once");
+    assert_eq!(
+        link.poll(&s.g).map(|f| f.0),
+        Some(ll::STOPPED),
+        "STOP is answered"
+    );
     link.feed(&ll::start());
     unsafe { link_drop(&mut *link.l) };
-    assert_eq!(link.poll(&s.g), None);
+    assert_eq!(link.poll(&s.g), None, "the host gone: nothing sent");
 }
 
 #[test]
@@ -481,11 +477,14 @@ fn the_hosts_buttons_are_let_go_half_a_second_after_its_last_panel_frame() {
     assert_eq!(unsafe { link_steps(&mut *link.l, 2) }, 3);
     assert_eq!(unsafe { link_steps(&mut *link.l, 3) }, -2);
     assert_eq!(unsafe { link_steps(&mut *link.l, 2) }, 0, "taken");
-    // a tap between two frames: pressed, not held
     link.now += 100;
     link.feed(&ll::panel(edit, home, &[]));
     let held = unsafe { link_take(&mut *link.l, &mut pressed) };
-    assert_eq!((held, pressed), (edit.into(), home.into()));
+    assert_eq!(
+        (held, pressed),
+        (edit.into(), home.into()),
+        "a tap between two frames: pressed, not held"
+    );
     link.now += LINK_RELEASE_MS - 1;
     link.poll(&s.g);
     assert_eq!(
@@ -499,10 +498,13 @@ fn the_hosts_buttons_are_let_go_half_a_second_after_its_last_panel_frame() {
         0,
         "let go"
     );
-    // nothing without a session
     link.feed(&ll::stop());
     link.feed(&ll::panel(home, home, &[5]));
-    assert_eq!(unsafe { link_take(&mut *link.l, &mut pressed) }, 0);
+    assert_eq!(
+        unsafe { link_take(&mut *link.l, &mut pressed) },
+        0,
+        "nothing without a session"
+    );
     assert_eq!(pressed, 0);
 }
 

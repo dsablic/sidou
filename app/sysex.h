@@ -7,8 +7,6 @@
 
 #define SYSEX_PACKET_MAX 256u
 #define SYSEX_TIMEOUT_MS 2000u
-/* A write that waits for quiet (sysex.loud): a WAIT to a USB sender this often, so its ACK
- * timeout keeps waiting, and the toast again; given up with BUSY after SYSEX_QUIET_MAX_MS. */
 #define SYSEX_WAIT_EVERY_MS 2000u
 #define SYSEX_QUIET_MAX_MS 60000u
 enum { SYSEX_USB = 0, SYSEX_TRS = 1 };
@@ -17,37 +15,10 @@ enum {
     SYSEX_MALFORMED = 1, SYSEX_CHECKSUM, SYSEX_SEQUENCE, SYSEX_BUSY,
     SYSEX_FULL, SYSEX_NOT_FOUND, SYSEX_IO, SYSEX_TIMEOUT, SYSEX_ABORTED,
     SYSEX_RECEIVING = 10, SYSEX_SAVED = 11,
-    /* A .sid's refusals (type STORE_FILE_SID, its header checked by psid_parse at its first
-     * DATA, before anything is claimed or written): RSID, MUS, a broken header, data past $FFFF. */
     SYSEX_RSID = 12, SYSEX_MUS, SYSEX_BROKEN, SYSEX_TOO_LONG,
-    /* A toast, never a NAK: the write waits for quiet (UPLOAD WAITS FOR QUIET). */
     SYSEX_WAITING = 16
 };
 
-/* All hooks run in the main loop. Errors use the positive SYSEX_* reasons.
- * open freezes/prepares target 1/2 (index is 1..63 for instruments), before a
- * claim or read; length is the declared upload size, zero for downloads.
- * Every successful open is paired with close, including errors and lost input.
- * size/read describe the frozen download; read returns exactly n, or a negative
- * error. Indexed reads allow a bounded CRC prepass, without buffering the dump.
- * complete accepts a committed temporary file (MIDI INSTRUMENT / MIDI SONG).
- * It returns zero on success, a positive SYSEX_* refusal without modifying on
- * refusal, or SYSEX_PENDING while bounded import/load work continues. Pending
- * calls repeat once per poll with the same committed file, keeping ownership,
- * the source open and the quiet veto until acceptance/refusal (no sender timeout).
- * After abort/reset/lost, pending work still drains before close; it no longer
- * produces SAVED or an END ACK. New requests cannot replace its pinned file.
- * send accepts one USB-MIDI event packet, returns 1 accepted / 0 backpressure.
- * Its bytes must be copied before returning. toast receives a SYSEX_* reason/status.
- * writing(1) follows a successful PUT claim (or accepted DEL), before any ACK; also a
- * PUT or DEL that waits (at most SYSEX_TIMEOUT_MS, else BUSY) for a record being written
- * to commit in its holds before it claims or deletes (store_file_wait);
- * writing(0) releases program ownership after completion or failure. Ownership
- * covers any irrevocable commit still draining after abort/reset. It permits
- * explicit program holds, never maintenance erases. open/read/close are unchanged.
- * available checks the shared save/load freeze before any PUT/DEL claim, including
- * target 0. Zero permits the claim, a positive SYSEX_* refuses without ownership.
- */
 typedef struct {
     void* ctx;
     int (*open)(void* ctx, uint8_t target, uint8_t index, int writing, uint32_t length);
@@ -82,44 +53,17 @@ typedef struct {
     uint8_t tx_command, tx_sequence, tx_sum, tx_active, tx_identity, tx_wait;
     uint8_t packet[4], packet_length, packet_final;
     uint8_t error, error_sequence, refused;
-    /* A .sid's PUT: checking, its first DATA (the header) not yet in; held, that DATA waiting in
-     * buffer for its sectors' claim (a record being written: OPEN). */
     uint8_t checking, held;
-    /* The platform's, before each poll: 1 while its held programs wait for quiet (a song plays,
-     * a computer records the USB audio), so a write's ACK waits; waiting: the wait under way,
-     * since wait_start, the last WAIT (and toast) at wait_sent. */
     uint8_t loud, waiting;
     uint32_t wait_start, wait_sent;
 } sysex;
 
 _Static_assert(sizeof(sysex) <= 1024, "SysEx state includes its one packet buffer");
 
-/* State may live in POOL. windows reports the platform's write-window capability;
- * zero still accepts explicit PUT/DEL through writing's program ownership.
- * Version bytes are seven-bit. Nonfinal upload DATA lengths are multiples of 16,
- * and each accepted DATA starts at a 16-byte-aligned file offset. Only the final
- * DATA may be short; packing itself supports every length from zero to 256.
- * poll does protocol work only: the platform independently calls store_poll.
- * now_ms is a wrapping monotonic millisecond clock, also passed to byte.
- * Sender idle time starts at the accepted final USB ACK packet (TRS: completion);
- * storage/import work and transmit backpressure do not consume that interval.
- * Feed raw MIDI bytes, including F0/F7; real-time bytes are ignored everywhere.
- * A PUT of type STORE_FILE_SID to target 0 is acknowledged before any claim: its first DATA
- * must hold the file's first 128 bytes (all of a shorter file), whose header psid_parse checks
- * against the declared length. A refusal (SYSEX_RSID, _MUS, _BROKEN, _TOO_LONG) comes before
- * store_file_begin, so nothing of the tune is programmed; the claim's BUSY or FULL answers that
- * DATA, and from there it is any PUT.
- * While loud, a write whose programs are due (a DATA's, END's record, a DEL's, a record a PUT
- * or DEL waits for) waits: a WAIT (empty, the pending packet's sequence) to a USB sender at
- * once and every SYSEX_WAIT_EVERY_MS, the toast SYSEX_WAITING as often; the ACK once quiet
- * lets the programs go; BUSY after SYSEX_QUIET_MAX_MS of waiting.
- */
 void sysex_init(sysex* s, store* storage, const sysex_hooks* hooks,
                 const uint8_t version[4], int windows);
 void sysex_byte(sysex* s, uint8_t port, uint8_t byte, uint32_t now_ms);
 void sysex_poll(sysex* s, uint32_t now_ms);
-/* reset cancels our own work only. lost cancels only the affected input owner.
- * Irrevocable commits and pending imports stay active, keeping ownership until drained. */
 void sysex_reset(sysex* s);
 void sysex_lost(sysex* s, uint8_t port);
 int sysex_active(const sysex* s);

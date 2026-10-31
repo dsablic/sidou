@@ -1,11 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Generates SIDOU's checked-in C tables in `core/sid/gen/` from reSIDfp (test-only, never
-//! linked into firmware). The tables are data derived from reSIDfp, so the generated files
-//! carry its licence (GPL-2.0-or-later) and its authors.
-//!
-//! `cargo run --release -p sidou-tablegen` (from `host/`) rewrites them; the drift test
-//! fails when the checked-in files differ from what this produces.
 
 pub mod digi;
 pub mod filter_fit;
@@ -17,16 +11,13 @@ use std::path::{Path, PathBuf};
 use filter_fit::FilterFit;
 use residfp_sys::{pulldown_table, CombinedWaveforms, Model, PULLDOWN_ROWS};
 
-/// The libresidfp revision the tables come from (the third_party/libresidfp submodule).
 pub const RESIDFP_REV: &str = "c1791383";
 
-/// One generated file: its path relative to the repository root, and its contents.
 pub struct Generated {
     pub path: &'static str,
     pub contents: String,
 }
 
-/// The repository root, from this crate's manifest directory.
 pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
@@ -34,8 +25,6 @@ pub fn repo_root() -> PathBuf {
         .expect("repository root")
 }
 
-/// Packs 12-bit entries two to three bytes: e0 low 8 bits; e0 high 4 | e1 low 4 << 4;
-/// e1 high 8 bits.
 fn pack12(row: &[u16; 4096]) -> Vec<u8> {
     row.chunks(2)
         .flat_map(|p| {
@@ -50,22 +39,14 @@ fn pack12(row: &[u16; 4096]) -> Vec<u8> {
         .collect()
 }
 
-/// The combined-waveform profiles: reSIDfp's three sampled chips, in the order of the
-/// C enum in gen/grid.h. AVERAGE is reSIDfp's default and the only one compiled for a
-/// model unless its flag (`all_profiles_flag`) is defined.
 pub const PROFILES: [(CombinedWaveforms, &str); 3] = [
     (CombinedWaveforms::Weak, "WEAK"),
     (CombinedWaveforms::Average, "AVERAGE"),
     (CombinedWaveforms::Strong, "STRONG"),
 ];
 
-/// Bytes of one profile's table for one model, packed but not shared: what a profile
-/// would cost without the shared blocks (gen/pulldown.h).
 pub const PROFILE_BYTES: usize = 5 * 6144;
 
-/// The define that compiles all three of a model's combined-waveform profiles, not just
-/// AVERAGE: each model has its own, since the device's chip profiles play WEAK and STRONG
-/// on the 6581 only (gen/profiles.h), and the 8580's would sit unused.
 pub fn all_profiles_flag(model: Model) -> &'static str {
     match model {
         Model::Mos6581 => "SIDOU_ALL_COMBINED_PROFILES",
@@ -73,14 +54,10 @@ pub fn all_profiles_flag(model: Model) -> &'static str {
     }
 }
 
-/// Entries in one block of a pulldown row, and its bytes packed (pack12).
 pub const PD_BLOCK: usize = 16;
 pub const PD_BLOCK_BYTES: usize = PD_BLOCK * 3 / 2;
-/// Bytes of one row's index: a u16 for each of its blocks.
 pub const PD_INDEX_BYTES: usize = 4096 / PD_BLOCK * 2;
 
-/// The profiles compiled for a model, in table order: all three with its flag, else
-/// AVERAGE alone.
 pub fn compiled_profiles(all: bool) -> Vec<(CombinedWaveforms, &'static str)> {
     PROFILES
         .iter()
@@ -89,7 +66,6 @@ pub fn compiled_profiles(all: bool) -> Vec<(CombinedWaveforms, &'static str)> {
         .collect()
 }
 
-/// reSIDfp's pulldown rows for every profile of both models, PROFILES order.
 pub struct PulldownSource {
     pub mos6581: Vec<Vec<[u16; 4096]>>,
     pub csg8580: Vec<Vec<[u16; 4096]>>,
@@ -109,7 +85,6 @@ impl PulldownSource {
         }
     }
 
-    /// One profile's five rows for a model.
     pub fn profile(&self, model: Model, cws: CombinedWaveforms) -> &[[u16; 4096]] {
         let i = PROFILES.iter().position(|p| p.0 == cws).unwrap();
         match model {
@@ -118,8 +93,6 @@ impl PulldownSource {
         }
     }
 
-    /// The rows SID_PD holds with the flags given: the 6581's compiled profiles, then the
-    /// 8580's, five rows each.
     pub fn compiled_rows(&self, all_6581: bool, all_8580: bool) -> Vec<[u16; 4096]> {
         let mut rows = Vec::new();
         for (model, all) in [(Model::Mos6581, all_6581), (Model::Csg8580, all_8580)] {
@@ -137,14 +110,6 @@ impl Default for PulldownSource {
     }
 }
 
-/// SID_PD's bytes as the device holds them (gen/pulldown.h): each distinct row's index,
-/// PD_INDEX_BYTES of little-endian u16s, then the pool of distinct blocks, PD_BLOCK_BYTES
-/// each. Index entry k of index row r is the offset from that row's first byte to the block
-/// holding the row's entries 16k .. 16k + 15, so the audio path needs no other base address.
-/// Rows with the same entries share one index row (the 6581's three NP rows are alike, and
-/// so are the 8580's): `row_map` gives each compiled row's. The pool is one string in which
-/// the blocks overlap wherever one ends with the bytes another begins with (greedy, longest
-/// overlap first), since the offsets are byte offsets.
 pub struct PulldownLayout {
     pub rows: usize,
     pub blocks: usize,
@@ -152,15 +117,11 @@ pub struct PulldownLayout {
     pub bytes: Vec<u8>,
 }
 
-/// The blocks laid out as one string, each overlapping the one before it as far as their
-/// bytes agree: greedy merging of chains, the longest overlap first (ties in block order).
-/// Returns the string and each block's offset in it.
 fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
     let n = blocks.len();
     let len = PD_BLOCK_BYTES;
-    let mut next: Vec<Option<(usize, usize)>> = vec![None; n]; // (block, overlap)
+    let mut next_block_and_overlap: Vec<Option<(usize, usize)>> = vec![None; n];
     let mut has_prev = vec![false; n];
-    // For a chain's tail, its head; for a chain's head, its tail.
     let mut head_of: Vec<usize> = (0..n).collect();
     let mut tail_of: Vec<usize> = (0..n).collect();
     for l in (1..len).rev() {
@@ -172,19 +133,18 @@ fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
             }
         }
         for i in 0..n {
-            if next[i].is_some() {
+            if next_block_and_overlap[i].is_some() {
                 continue;
             }
             let Some(heads) = by_prefix.get_mut(&blocks[i][len - l..]) else {
                 continue;
             };
-            // The first free head that is not this chain's own (no cycles); the others stay.
             let pos = heads.iter().rposition(|&j| !has_prev[j] && j != head_of[i]);
             let Some(pos) = pos else {
                 continue;
             };
             let j = heads.remove(pos);
-            next[i] = Some((j, l));
+            next_block_and_overlap[i] = Some((j, l));
             has_prev[j] = true;
             let (h, t) = (head_of[i], tail_of[j]);
             tail_of[h] = t;
@@ -197,7 +157,7 @@ fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
         at[h] = out.len();
         out.extend_from_slice(&blocks[h]);
         let mut b = h;
-        while let Some((c, l)) = next[b] {
+        while let Some((c, l)) = next_block_and_overlap[b] {
             at[c] = out.len() - l;
             out.extend_from_slice(&blocks[c][l..]);
             b = c;
@@ -208,7 +168,6 @@ fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
 
 impl PulldownLayout {
     pub fn new(rows: &[[u16; 4096]]) -> Self {
-        // The distinct rows, and the distinct blocks in the order they first appear.
         let mut unique: Vec<&[u16; 4096]> = Vec::new();
         let mut row_map = Vec::with_capacity(rows.len());
         for row in rows {
@@ -250,19 +209,16 @@ impl PulldownLayout {
         }
     }
 
-    /// Index entry k of index row r.
     pub fn index(&self, r: usize, k: usize) -> u16 {
         let at = r * PD_INDEX_BYTES + k * 2;
         u16::from_le_bytes([self.bytes[at], self.bytes[at + 1]])
     }
 
-    /// The pool, after the indexes.
     pub fn pool(&self) -> &[u8] {
         &self.bytes[self.rows * PD_INDEX_BYTES..]
     }
 }
 
-/// Entry x of index row r of SID_PD's bytes, as sid_pulldown() in sid_osc.h reads it.
 pub fn pulldown_entry(sid_pd: &[u8], r: usize, x: usize) -> u16 {
     let row = r * PD_INDEX_BYTES;
     let k = row + (x >> 4) * 2;
@@ -275,8 +231,6 @@ pub fn pulldown_entry(sid_pd: &[u8], r: usize, x: usize) -> u16 {
     }
 }
 
-/// The four combinations of the two models' flags, the device's (the 6581's three, the
-/// 8580's AVERAGE) first.
 pub const PULLDOWN_SETS: [(bool, bool); 4] =
     [(true, false), (true, true), (false, false), (false, true)];
 
@@ -446,22 +400,15 @@ fn grid_header() -> Generated {
     }
 }
 
-/// One plain shift of the noise register (reSIDfp's order, no TEST): up one, the new
-/// bit 22 = bit 0 ^ bit 5.
 fn noise_shift(sr: u32) -> u32 {
     (sr >> 1) | (((sr ^ (sr >> 5)) & 1) << 22)
 }
 
-/// The 2^k-shift maps of the noise register for k = 0..22, as GF(2) matrices: entry [k][i] is
-/// the register after 2^k shifts of bit i alone. Our own derivation from the shift, no
-/// reSIDfp data. The device builds the same table at boot (SID_NOISE_JUMP, core/sid/sid.c);
-/// this is the oracle the host tests hold it to (unit/sid_noise.rs).
 pub fn noise_jump_matrices() -> [[u32; 23]; 23] {
     let mut m = [[0u32; 23]; 23];
     let mut cols: Vec<u32> = (0..23).map(|i| noise_shift(1 << i)).collect();
     for row in &mut m {
         row.copy_from_slice(&cols);
-        // Square: apply the map to each column again.
         let apply = |m: &[u32], v: u32| -> u32 {
             (0..23)
                 .filter(|i| v >> i & 1 != 0)
@@ -472,15 +419,8 @@ pub fn noise_jump_matrices() -> [[u32; 23]; 23] {
     m
 }
 
-/// The filter curve settings fitted, in table order per model (index 0 is the one
-/// sid_init uses, reSIDfp's default): the chip profiles' (profiles.rs).
 pub use profiles::FILTER_CURVES;
 
-/// Measures and fits every filter curve setting (filter_fit.rs), in FILTER_CURVES order.
-/// Each 6581 range setting must be measured on its own (reSIDfp keeps the range once per
-/// process), so this runs the settings one after another. The same holds across threads:
-/// no other 6581 measurement with another range may run in the process meanwhile (tests in
-/// one binary run in parallel threads), unless they share a lock.
 pub fn filter_fits() -> Vec<FilterFit> {
     FILTER_CURVES.iter().map(filter_fit::fit_setting).collect()
 }
@@ -495,7 +435,6 @@ fn c_floats(s: &mut String, values: &[f64], decimals: usize, per_line: usize) {
 const CUTOFF_CODE_BIAS: u32 = 126;
 
 fn cutoff_code(hz: f64) -> u16 {
-    // Preserve the measured table's 0.1 Hz precision before encoding its float bits.
     let hz = format!("{hz:.1}").parse::<f32>().unwrap().max(0.5);
     let code = (hz.to_bits() - (CUTOFF_CODE_BIAS << 23) + (1 << 10)) >> 11;
     let code = u16::try_from(code).expect("cutoff fits in a 16-bit code");
@@ -504,16 +443,9 @@ fn cutoff_code(hz: f64) -> u16 {
     code
 }
 
-/// FC values in one block of the delta-coded cutoff codes (gen/filter.h).
 pub const CUTOFF_BLOCK: usize = 32;
-/// The byte in a block that escapes an absolute code (a delta of -128 is not coded).
 pub const CUTOFF_ESCAPE: u8 = 0x80;
 
-/// One model's cutoff codes, delta-coded as gen/filter.h holds them: per curve, a block of
-/// CUTOFF_BLOCK codes starts at its offset in the stream (`at`, u16s, one a block) with its
-/// first code (two bytes, big-endian); every further code is a signed byte, its difference
-/// from the code before, or CUTOFF_ESCAPE and the code itself (two bytes) when the difference
-/// is out of a signed byte's range. Returns the offsets, curve by curve, and the stream.
 pub fn delta_code_cutoffs(curves: &[Vec<u16>]) -> (Vec<u16>, Vec<u8>) {
     let (mut at, mut run) = (Vec::new(), Vec::new());
     for codes in curves {
@@ -535,8 +467,6 @@ pub fn delta_code_cutoffs(curves: &[Vec<u16>]) -> (Vec<u16>, Vec<u8>) {
     (at, run)
 }
 
-/// The cutoff code for FC value fc of a curve, decoded from delta_code_cutoffs' offsets
-/// and stream as sid_cutoff_seq_hz (sid_filter.h) does.
 pub fn cutoff_code_at(at: &[u16], run: &[u8], curve: usize, fc: usize) -> u16 {
     let mut p = usize::from(at[curve * (2048 / CUTOFF_BLOCK) + fc / CUTOFF_BLOCK]);
     let mut code = u16::from_be_bytes([run[p], run[p + 1]]);
@@ -553,8 +483,6 @@ pub fn cutoff_code_at(at: &[u16], run: &[u8], curve: usize, fc: usize) -> u16 {
     code
 }
 
-/// gen/filter.h: per model and curve setting, the cutoff code for each FC value
-/// (delta-coded, delta_code_cutoffs) and the damping k = 1/Q for each resonance value.
 pub fn filter_header(fits: &[FilterFit]) -> Generated {
     let mut s = String::new();
     // REUSE-IgnoreStart
@@ -658,8 +586,6 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
     }
 }
 
-/// The generated files that are computed, not measured: integer tables, exact on every
-/// platform, and cheap to make.
 pub fn generate_computed() -> Vec<Generated> {
     vec![
         grid_header(),
@@ -669,15 +595,12 @@ pub fn generate_computed() -> Vec<Generated> {
     ]
 }
 
-/// Every generated file. The filter tables are measured (about half a minute of CPU).
 pub fn generate() -> Vec<Generated> {
     let mut all = generate_computed();
     all.push(filter_header(&filter_fits()));
     all
 }
 
-/// The number of decimals of a C float literal as filter_header writes them (`-12.5f`), or
-/// None for any other token.
 fn float_decimals(token: &str) -> Option<(f64, usize)> {
     let body = token.strip_suffix('f')?;
     let (int, frac) = body.split_once('.')?;
@@ -688,12 +611,6 @@ fn float_decimals(token: &str) -> Option<(f64, usize)> {
     Some((body.parse().ok()?, frac.len()))
 }
 
-/// The first difference between two generated texts beyond the last printed digit of a
-/// float literal: the texts must agree token by token (split at whitespace and commas),
-/// except that two float literals with the same number of decimals may differ by one unit
-/// in their last place. reSIDfp builds its filter model with the platform's libm (`pow`,
-/// `exp`, `log`), and its output resampler too, so a measurement can land on the other
-/// side of a rounding boundary on another platform. None if they agree.
 pub fn differs_beyond_last_digit(a: &str, b: &str) -> Option<String> {
     let (la, lb): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
     if la.len() != lb.len() {
@@ -733,8 +650,6 @@ mod tests {
         assert_eq!(cutoff_code(8193.0), 57345);
     }
 
-    /// The delta coding reads back every code: steps within a byte's range, escapes beyond
-    /// it in both directions, and a jump right at a block's start.
     #[test]
     fn delta_coded_cutoffs_read_back() {
         let mut a: Vec<u16> = (0..2048).map(|i| (i * 13 % 251) as u16 + 1000).collect();
@@ -770,10 +685,6 @@ mod tests {
         }
     }
 
-    /// SID_PD is lossless: under every combination of the flags, each compiled row of
-    /// each profile and model reads back, entry for entry, as reSIDfp's table, through its
-    /// index row; the device's set holds the 6581's three profiles and the 8580's AVERAGE;
-    /// every block in a pool is one a row uses, and every index row one a compiled row uses.
     #[test]
     fn shared_pulldown_blocks_read_back_as_residfps_tables() {
         let src = PulldownSource::new();
@@ -814,8 +725,6 @@ mod tests {
         );
     }
 
-    /// Overlapping blocks: each block starts where the layout says, in a string no longer
-    /// than the blocks laid end to end, and chains never close on themselves.
     #[test]
     fn overlapped_blocks_are_where_their_offsets_say() {
         let blocks: Vec<Vec<u8>> = (0..200u32)

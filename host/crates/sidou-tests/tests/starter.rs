@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The starter pack (M3 Task 13, `assets/starter`): every tune has its `.md` with an allowlisted
-//! licence and the file's SHA-256, parses, is not RSID, plays 10 s in the host render on its
-//! chip with no overrun, no late write and no clipping; the files are in step with their
-//! sources. (`sidou-sysex sid --pack` on the pack is sidou-sysex's tests; the pack loaded into an
-//! emulated store over TRS is emu-gate's `psid_store`.)
-//!
-//! SIDOU_STARTER_UPDATE=1 rewrites the files from their sources.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,7 +16,6 @@ fn files(ext: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// The `| Key | value |` rows of a tune's `.md`.
 fn fields(md: &str) -> BTreeMap<String, String> {
     md.lines()
         .filter_map(|l| l.strip_prefix("| "))
@@ -91,7 +83,7 @@ fn every_tune_has_its_metadata_an_allowlisted_licence_and_its_hash() {
             "{stem}: licence {licence} is not on the allowlist"
         );
         if licence == "written permission" {
-            let perm = starter::root().join("docs/permissions");
+            let perm = sidou_tests::font::repo_root().join("docs/permissions");
             let has = std::fs::read_dir(&perm)
                 .map(|d| {
                     d.filter_map(|e| e.ok())
@@ -133,8 +125,6 @@ fn every_tune_parses_is_not_rsid_and_the_device_accepts_it() {
     }
 }
 
-/// Every song of every tune, 10 s in the host render on its chip: the 6502 in time (no play call
-/// past its period), no write applied late, no sample at full scale, and not silent.
 #[test]
 fn every_tune_plays_10_s_on_its_chip_without_overrun_late_writes_or_clipping() {
     let seconds = 10;
@@ -160,7 +150,6 @@ fn every_tune_plays_10_s_on_its_chip_without_overrun_late_writes_or_clipping() {
                         );
                         let peak = a.iter().map(|&x| i32::from(x).abs()).max().unwrap();
                         assert!(peak < 32_767, "{name} song {song}: clipped");
-                        // the chip is the tune's: its model
                         assert_eq!(
                             p.chips[0].model,
                             if h.model1 == 2 {

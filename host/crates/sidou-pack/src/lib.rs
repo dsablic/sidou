@@ -1,29 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-only
-//! SIDOU's FM-1 update package (`.fwsc`): a port of Felucca's `tools/fm1pkg_make.py` and the
-//! loader wrapping in its `tools/build.py` (Felucca a53ecf42, GPL-3.0-only, © 2026 Leo
-//! Kuroshita). Its output is byte for byte what fm1pkg_make.py makes from the same inputs.
-//!
-//! The package (Felucca's layout, the JieLi SDK's file formats):
-//! - `flash.bin`, the flash from 0 to the PRCT end (0x93000):
-//!   - the head `[0, 0x4000)`: the JieLi SDK's default flash header, the JLFS entries, the
-//!     SDK's SPL (`uboot.boot`) and an isd_config blob that decodes to the chip key. It only
-//!     has to look like a package head: the update loader (Felucca's, SIDOU's) writes the
-//!     app area only, so a device keeps its own head (M-VAVE's isd_config) whatever this
-//!     one holds; the stock V15 package, on the way back, is checked against the device's
-//!     head by ota.c;
-//!   - the app area from 0x4000: `app_area_head`, `app.bin` (the firmware, padded to its
-//!     slot), the SDK's `cfg_tool.bin`, the region descriptors, and a `cfg` directory with
-//!     the SDK's default EQ table, scrambled per 32 bytes with the chip key (SFC);
-//! - `ota.bin`, the update loader: two 32-byte JLFS heads, then the RAM image in LZ4 blocks of
-//!   4096 bytes;
-//! - in a `ufw` container whose first 20 blocks of 0x2F bytes are each followed by one marker
-//!   byte: together they spell the package identity (`FM-1_900`).
-//!
-//! The inputs that are not ours, three AC79 SDK files (Apache-2.0), are fetched on first use
-//! into a cache, checked against pinned SHA-256s (`inputs.toml`), and never committed. No
-//! byte of M-VAVE's firmware goes into a package.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -33,42 +10,21 @@ use sha2::{Digest, Sha256};
 
 pub mod lz4blk;
 
-/// The app slot in the app area (Felucca's APP_SLOT): the firmware image is padded to it.
 pub const APP_SLOT: usize = 0x8DFBC;
-/// flash.bin: the head and this board's app area, up to the PRCT end.
 pub const FLASH_SIZE: usize = 0x93000;
-/// The flash head.
 pub const HEAD_SIZE: usize = 0x4000;
-/// The FM-1's chip key (the device head's isd_config decodes to it).
 pub const CHIP_KEY: u16 = 0x980F;
-/// Where the SPL loads the update loader (its loader.ld), and its largest size.
 pub const LOADER_LOAD: u32 = 0x01C0_A800;
 pub const LOADER_MAX: usize = 0x14000;
-/// How Felucca, sloop and melodee (and SIDOU's ota.c) recognise a package's loader: in the
-/// first literals of ota.bin's first LZ4 block.
 pub const LOADER_MARK: &[u8; 16] = b"FELUCCA-LOADER-1";
-/// Felucca 1.6.1's update loader, the RAM image its tools/build.py `build_loader()` makes from
-/// the tag `v1.6.1` (commit a53ecf42), which SIDOU's fm1 build makes byte for byte from the
-/// vendored copy (platform/fm1/VENDORED.md): its SHA-256. The loader in Felucca's own
-/// felucca-1.6.1.fwsc unwraps to the same bytes. It refuses a flash.bin of any size but
-/// `FLASH_SIZE` (-14) before it erases anything.
 pub const FELUCCA_LOADER_SHA256: &str =
     "2cde42b729d787a3e591ed4eaaffbbf33cebee7d58421d33bf6b6d27cc03f1aa";
-/// The release `FELUCCA_LOADER_SHA256` is the loader of.
 pub const FELUCCA_LOADER_RELEASE: &str = "Felucca 1.6.1";
-/// What that loader answers the update protocol's handshake with (its loader.c `FELUCCA_ID`).
 pub const FELUCCA_LOADER_ID: &str = "ota-FM-1_900";
-/// ota.c stages at most 0x5000 - 0x200 bytes of ota.bin's body.
 pub const OTA_BODY_MAX: usize = 0x5000 - 0x200;
-/// The identity of development builds, as every community firmware's.
 pub const DEFAULT_PRODUCT: &str = "FM-1_900";
 
-/// The record of the build options in the firmware image (platform/fm1/build_options.c):
-/// `SIDOU-OPTIONS 1 NAME=VALUE ...`, NUL-terminated.
 pub const OPTIONS_MARK: &[u8] = b"SIDOU-OPTIONS 1 ";
-/// The defaults of the options that change the image, in the record's order (`-` is empty):
-/// what a release is built with. platform/fm1/CMakeLists.txt's `sidou_option_defaults` is the
-/// same list (SIDOU_PRODUCT aside: it is the identity, per release, checked on its own).
 pub const DEFAULT_OPTIONS: [(&str, &str); 10] = [
     ("SIDOU_ALL_COMBINED_PROFILES", "ON"),
     ("SIDOU_ALL_COMBINED_PROFILES_8580", "ON"),
@@ -82,15 +38,10 @@ pub const DEFAULT_OPTIONS: [(&str, &str); 10] = [
     ("CMAKE_BUILD_TYPE", "Release"),
 ];
 
-/// The file name the SPL looks for in the update record.
 const LOADER_NAME: &[u8; 16] = b"usb_hid_ota.bin\0";
 const UFW_CHIP: &[u8] = b"AC791N";
-/// The flash header: JieLi SDK defaults (burner size 544, VID "0.01", flash size 0xFF000,
-/// fs_ver 0x10, PID "AC791N_STORY"), plain, without its CRC (fm1pkg_make.py FLASH_HDR).
 const FLASH_HDR: &str = "20022f104cc900f00f001010a4ff4e5d0b41e0cd781dc856417fb367cf9f";
-/// After the key blob in isd_config.ini, as Felucca's packages carry it.
 const ISD_TAIL: &[u8] = b"[FELUCCA]\r\n";
-/// Where the SPL goes in the head.
 const SPL_OFF: usize = 0xA0;
 const MARK_BLOCKS: usize = 20;
 const MARK_KEEP: usize = 0x2F;
@@ -113,7 +64,6 @@ fn err<T>(msg: impl Into<String>) -> Result<T> {
     Err(Error(msg.into()))
 }
 
-/// CRC-16/XMODEM (poly 0x1021), from `init`.
 pub fn crc16(data: &[u8], init: u16) -> u16 {
     let mut crc = init;
     for &b in data {
@@ -129,7 +79,6 @@ pub fn crc16(data: &[u8], init: u16) -> u16 {
     crc
 }
 
-/// JieLi's ENC stream cipher, in place: XOR with a CRC-16 LFSR's low byte. Its own inverse.
 pub fn enc(buf: &mut [u8], mut key: u16) {
     for b in buf {
         *b ^= key as u8;
@@ -137,14 +86,12 @@ pub fn enc(buf: &mut [u8], mut key: u16) {
     }
 }
 
-/// The SFC cipher: ENC per 32-byte block, the key mixed with the block's offset.
 pub fn sfc(buf: &mut [u8], key: u16) {
     for (i, block) in buf.chunks_mut(32).enumerate() {
         enc(block, key ^ ((i * 32) >> 2) as u16);
     }
 }
 
-/// The 16-bit chip key from isd_config.ini's 32-byte blob.
 pub fn chip_key(blob: &[u8]) -> u16 {
     let sum = blob[..16].iter().map(|&b| u32::from(b)).sum::<u32>() & 0xFF;
     let sum = if sum >= 0xE0 {
@@ -159,15 +106,11 @@ pub fn chip_key(blob: &[u8]) -> u16 {
         .fold(0u16, |k, i| k | 1 << i)
 }
 
-/// A JLFS entry's 16-byte name field.
 enum Name<'a> {
-    /// The name, a NUL, then 0xFF.
     Text(&'a str),
-    /// 16 raw bytes: a name and the SDK packer's trailing fields.
     Raw([u8; 16]),
 }
 
-/// A 32-byte JLFS entry: its CRC-16, then data CRC, offset, size, flags, reserved, index, name.
 fn entry(
     dcrc: u16,
     offset: u32,
@@ -211,20 +154,15 @@ fn len32(n: usize) -> u32 {
     u32::try_from(n).expect("fits 32 bits")
 }
 
-/// The inputs that are not SIDOU's: three files of JieLi's AC79 SDK (Apache-2.0).
 pub struct Inputs {
-    /// `cpu/wl82/tools/uboot.boot`: the SPL.
     pub uboot: Vec<u8>,
-    /// The AC79 SDK's `cpu/wl82/tools/cfg_tool.bin`.
     pub cfg_tool: Vec<u8>,
-    /// The AC79 SDK's `cpu/wl82/tools/cfg/eq_cfg_hw.bin`.
     pub eq_cfg_hw: Vec<u8>,
 }
 
-/// 32 bytes that `chip_key` turns into `key`, then their CRC-16 (fm1pkg_make.py `key_blob`).
 pub fn key_blob(key: u16) -> [u8; 34] {
     let mut d = [0u8; 34];
-    d[..16].fill(0x10); // sum 0 (mod 256): the threshold 0x55
+    d[..16].fill(0x10);
     for i in 0..16 {
         d[16 + i] = d[15 - i] ^ if key >> i & 1 != 0 { 0x00 } else { 0xFF };
     }
@@ -233,8 +171,6 @@ pub fn key_blob(key: u16) -> [u8; 34] {
     d
 }
 
-/// The head (fm1pkg_make.py `flash_image`'s first part): the flash header and four JLFS
-/// entries (each ENC 0xFFFF), the SPL at 0xA0, isd_config right after it.
 pub fn head(uboot: &[u8], key: u16) -> Result<Vec<u8>> {
     let mut isd = key_blob(key).to_vec();
     isd.extend_from_slice(ISD_TAIL);
@@ -297,7 +233,6 @@ pub fn head(uboot: &[u8], key: u16) -> Result<Vec<u8>> {
     Ok(h)
 }
 
-/// flash.bin as Felucca's fm1pkg_make.py builds it: the head, then the app area.
 pub fn flash_image(inputs: &Inputs, app: &[u8]) -> Result<Vec<u8>> {
     if app.len() > APP_SLOT {
         return err(format!(
@@ -333,7 +268,6 @@ pub fn flash_image(inputs: &Inputs, app: &[u8]) -> Result<Vec<u8>> {
             0,
             Name::Text("cfg_tool.bin"),
         ),
-        // The region descriptors; the bytes after the names are SDK packer fields.
         entry(
             0xFFFF,
             0x93000,
@@ -408,7 +342,6 @@ pub fn flash_image(inputs: &Inputs, app: &[u8]) -> Result<Vec<u8>> {
     Ok(flash)
 }
 
-/// The chip key in a flash head: its JLFS top entries (ENC 0xFFFF) lead to isd_config.ini.
 pub fn head_chip_key(head: &[u8]) -> Result<u16> {
     for o in (32..0x400).step_by(32) {
         let mut e = head[o..o + 32].to_vec();
@@ -445,10 +378,6 @@ fn ldr_head(dcrc: u16, a: u32, b: u32, attr: u8) -> [u8; 32] {
     h
 }
 
-/// ota.bin from the loader's RAM image (Felucca's build.py `ldr_wrap`): an outer JLFS head,
-/// an inner head with the load address, then `[clen u32][dlen u32][LZ4 block]` per 4096
-/// bytes, compressed with Felucca's own compressor (lz4blk), so ota.bin is byte for byte the
-/// one Felucca's packer makes from the same loader image.
 pub fn wrap_loader(image: &[u8]) -> Result<Vec<u8>> {
     if image.is_empty() || image.len() > LOADER_MAX {
         return err(format!(
@@ -485,7 +414,6 @@ pub fn wrap_loader(image: &[u8]) -> Result<Vec<u8>> {
     Ok(ota)
 }
 
-/// The loader's RAM image back from ota.bin (for checks and tests).
 pub fn unwrap_loader(ota: &[u8]) -> Result<Vec<u8>> {
     let inner = ota.get(32..64).ok_or(Error("ota.bin too short".into()))?;
     let size = u32::from_le_bytes([inner[4], inner[5], inner[6], inner[7]]) as usize;
@@ -509,8 +437,6 @@ pub fn unwrap_loader(ota: &[u8]) -> Result<Vec<u8>> {
     Ok(image)
 }
 
-/// The `ufw` container with flash.bin (type 0) and ota.bin (type 100), the identity spelled by
-/// marker bytes (Felucca's fm1pkg_make.py `ufw`).
 pub fn ufw(flash: &[u8], ota: &[u8], product: &str) -> Result<Vec<u8>> {
     let p = product.as_bytes();
     if !product.is_ascii()
@@ -542,7 +468,7 @@ pub fn ufw(flash: &[u8], ota: &[u8], product: &str) -> Result<Vec<u8>> {
     let mut hdr = [0u8; 0x40];
     hdr[4..8].copy_from_slice(&len32(total).to_le_bytes());
     hdr[8..10].copy_from_slice(&(files.len() as u16).to_le_bytes());
-    hdr[10..12].copy_from_slice(&0x0004u16.to_le_bytes()); // as the SDK packer writes them
+    hdr[10..12].copy_from_slice(&0x0004u16.to_le_bytes());
     hdr[12..14].copy_from_slice(&0x0200u16.to_le_bytes());
     hdr[16..16 + UFW_CHIP.len()].copy_from_slice(UFW_CHIP);
     let mut list = Vec::new();
@@ -574,7 +500,6 @@ pub fn ufw(flash: &[u8], ota: &[u8], product: &str) -> Result<Vec<u8>> {
     Ok(raw)
 }
 
-/// A package's identity, from its marker bytes.
 pub fn product_of(package: &[u8]) -> String {
     (0..MARK_BLOCKS)
         .filter_map(|i| {
@@ -584,7 +509,6 @@ pub fn product_of(package: &[u8]) -> String {
         .collect()
 }
 
-/// The package without its marker bytes: what the device reads during an update.
 pub fn logical_image(package: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(package.len());
     for i in 0..MARK_BLOCKS {
@@ -594,7 +518,6 @@ pub fn logical_image(package: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A file in a package's `ufw` container by type: (offset in the logical image, bytes).
 pub fn ufw_file(package: &[u8], typ: u16) -> Result<(usize, Vec<u8>)> {
     let logical = logical_image(package);
     let mut hdr = logical[..0x40].to_vec();
@@ -622,7 +545,6 @@ pub fn ufw_file(package: &[u8], typ: u16) -> Result<(usize, Vec<u8>)> {
     err(format!("no file of type {typ} in the package"))
 }
 
-/// The data CRC16 in a package's entry for a file type.
 fn ufw_entry_crc(package: &[u8], typ: u16) -> Option<u16> {
     let logical = logical_image(package);
     let mut hdr = logical[..0x40].to_vec();
@@ -638,8 +560,6 @@ fn ufw_entry_crc(package: &[u8], typ: u16) -> Option<u16> {
     None
 }
 
-/// Checks that the app answers the update protocol with `product` (the identity string is in
-/// its image, NUL-terminated): an installer verifies the identity after the install.
 pub fn check_app_identity(app: &[u8], product: &str) -> Result<()> {
     let mut want = product.as_bytes().to_vec();
     want.push(0);
@@ -652,8 +572,6 @@ pub fn check_app_identity(app: &[u8], product: &str) -> Result<()> {
     }
 }
 
-/// The build options recorded in a firmware image, as `(name, value)` in the record's order;
-/// `None` if the image has no record (built before the record, or not by SIDOU's build).
 pub fn build_options(app: &[u8]) -> Option<Vec<(String, String)>> {
     let at = app
         .windows(OPTIONS_MARK.len())
@@ -668,8 +586,6 @@ pub fn build_options(app: &[u8]) -> Option<Vec<(String, String)>> {
         .collect()
 }
 
-/// Every way a recorded option differs from `DEFAULT_OPTIONS`, as sentences: a release is
-/// built from the defaults. SIDOU_PRODUCT is not among them (the identity says it).
 pub fn option_problems(options: &[(String, String)]) -> Vec<String> {
     let mut out = Vec::new();
     for (name, default) in DEFAULT_OPTIONS {
@@ -685,48 +601,30 @@ pub fn option_problems(options: &[(String, String)]) -> Vec<String> {
     out
 }
 
-/// The whole package from the firmware image and the loader's RAM image.
 pub fn package(inputs: &Inputs, app: &[u8], loader: &[u8], product: &str) -> Result<Vec<u8>> {
     check_app_identity(app, product)?;
     ufw(&flash_image(inputs, app)?, &wrap_loader(loader)?, product)
 }
 
-/// What `verify` found in a package.
 #[derive(Debug, Default)]
 pub struct Verified {
     pub sha256: String,
     pub size: usize,
     pub identity: String,
-    /// flash.bin's length (`FLASH_SIZE` for this board).
     pub flash_len: usize,
-    /// The firmware image's length in the app slot (its trailing 0xFF padding trimmed).
     pub app_len: usize,
-    /// The update loader's RAM image, unwrapped from ota.bin.
     pub loader_len: usize,
-    /// The unwrapped loader's SHA-256.
     pub loader_sha256: String,
-    /// The handshake identity in the loader's image (the first NUL-terminated `ota-…`
-    /// string), empty if it has none.
     pub loader_identity: String,
     pub marker: bool,
-    /// The build options the app image records, `NAME=VALUE`, space-separated; empty if it
-    /// records none.
     pub options: String,
-    /// Every check that failed; empty when the package is sound.
     pub problems: Vec<String>,
 }
 
-/// An identity a SIDOU package may answer with: the development build's or a release's,
-/// `FM-1_9XY`.
 pub fn identity_ok(id: &str) -> bool {
     id.len() == 8 && id.starts_with("FM-1_9") && id[6..].bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Checks a finished package without any input file or device: the container's CRCs and the
-/// two files' CRCs, the identity (and that the app carries it), flash.bin's size (the size a
-/// loader of this board accepts), the head's chip key, the app area's own CRCs, and the update
-/// loader's unwrapped image (size, load marker). The problems are collected, not just the
-/// first.
 pub fn verify(package: &[u8]) -> Verified {
     let mut v = Verified {
         sha256: sha256_hex(package),
@@ -796,8 +694,6 @@ pub fn verify(package: &[u8]) -> Verified {
     v
 }
 
-/// The first NUL-terminated printable string starting `ota-` in a loader image: what the loader
-/// answers an installer's handshake with. Empty if there is none.
 pub fn loader_identity(image: &[u8]) -> String {
     let mut from = 0;
     while let Some(at) = image[from..].windows(4).position(|w| w == b"ota-") {
@@ -813,7 +709,6 @@ pub fn loader_identity(image: &[u8]) -> String {
     String::new()
 }
 
-/// The release a loader image is, by its SHA-256: `FELUCCA_LOADER_RELEASE` or None.
 pub fn loader_release(sha256: &str) -> Option<&'static str> {
     (sha256 == FELUCCA_LOADER_SHA256).then_some(FELUCCA_LOADER_RELEASE)
 }
@@ -878,10 +773,8 @@ pub fn sha256_hex(data: &[u8]) -> String {
         .collect()
 }
 
-/// `inputs.toml`: the fetched files' URLs and SHA-256s.
 pub struct Pins {
     pub ac79_base: String,
-    /// (path under the SDK's tools directory and the cache, SHA-256)
     pub uboot: (String, String),
     pub cfg_tool: (String, String),
     pub eq_cfg_hw: (String, String),
@@ -910,7 +803,6 @@ impl Pins {
     }
 }
 
-/// `path` if it holds the pinned bytes, else a fresh download from `url` (curl), checked.
 pub fn fetched(path: &Path, url: &str, sha: &str, fetch: bool) -> Result<Vec<u8>> {
     if let Ok(d) = std::fs::read(path) {
         if sha256_hex(&d) == sha {
@@ -957,12 +849,10 @@ pub fn fetched(path: &Path, url: &str, sha: &str, fetch: bool) -> Result<Vec<u8>
     Ok(d)
 }
 
-/// The repository's `build/` directory, the default cache.
 pub fn default_cache() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../build")
 }
 
-/// The inputs from the cache (`build/ac79/`), downloading what is missing when `fetch` is set.
 pub fn inputs(cache: &Path, fetch: bool) -> Result<Inputs> {
     let pins = Pins::get();
     let sdk = |(rel, sha): &(String, String)| {
@@ -980,9 +870,6 @@ pub fn inputs(cache: &Path, fetch: bool) -> Result<Inputs> {
     })
 }
 
-/// The ota.c harness (harness/ota_harness.c): Felucca's ota.c, SIDOU's step 1 of the update
-/// protocol, built for the host, so the tests can run it against packages from this crate; and
-/// the flash spike's bounds (harness/flash_spike_guard.c).
 #[doc(hidden)]
 pub mod harness {
     use std::ffi::c_void;
@@ -1002,7 +889,6 @@ pub mod harness {
         pub shown_code: i32,
     }
 
-    /// harness/flash_hooks.c's counters.
     #[repr(C)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct FhCounters {
@@ -1017,7 +903,6 @@ pub mod harness {
         pub area_len: u32,
     }
 
-    /// harness/flash_spike_guard.c's counters and the spike's bounds.
     #[repr(C)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct FsCounters {
@@ -1060,8 +945,6 @@ pub mod harness {
         pub fn ldr_h_writes() -> u32;
     }
 
-    /// harness/uac_harness.c's view of USB audio out: TIMER5's block (platform/fm1/usb_audio.h)
-    /// and usb.c's audio input state and constants.
     #[repr(C)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct UacState {
@@ -1093,8 +976,6 @@ pub mod harness {
         pub ring_n: u32,
     }
 
-    // USB audio out (harness/uac_harness.c) and Felucca's own test of usb.c's audio input
-    // (harness/felucca/uac_test.c). Both keep static state: one test at a time.
     extern "C" {
         pub fn uac_h_desc(wvalue: u32, d: *mut *const u8) -> u32;
         pub fn uac_h_reset();
@@ -1168,7 +1049,6 @@ mod tests {
             u32::from_le_bytes(ota[40..44].try_into().unwrap()),
             LOADER_LOAD
         );
-        // ota.c finds the marker among the first LZ4 literals: bytes 0x48..0x88.
         assert!(ota[0x48..0x48 + 80].windows(16).any(|w| w == LOADER_MARK));
         assert!(wrap_loader(&image[2..]).is_err() || image[2..].starts_with(LOADER_MARK));
         assert!(wrap_loader(&[0u8; 100]).is_err(), "no marker");

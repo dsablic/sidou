@@ -3,19 +3,6 @@
 #ifndef SIDOU_FX_H
 #define SIDOU_FX_H
 
-/* The post-chip colour chain, in a fixed order: crush -> tape -> wow and flutter -> CRT
- * -> noise. A thin composition of the blocks in fx_*.h, each with its own state, reset
- * and tick function, so other chains can reuse and reorder them. Every block accepts any
- * amounts in [0, 1] on any sample; this chain drives crush's rate and bits from `crush`,
- * and CRT's tone and hum from `crt`.
- *
- * Every parameter is smoothed with a one-pole (SID_FX_SMOOTH_MS): crt on every sample,
- * the others on every other sample (see sid_fx_init), and each snaps onto its target on a
- * 32-sample grid that restarts whenever the chain starts from rest. A block whose smoothed
- * parameter is 0 is out of the signal path. When every target and smoothed value is 0
- * (and wow has glided back to no delay) sid_fx_process returns at once without touching
- * the samples or the state, so the bypass is exact. */
-
 #include <stdint.h>
 
 #include "fx_crt.h"
@@ -29,20 +16,19 @@ extern "C" {
 #endif
 
 typedef struct {
-    float tape_drive; /* 0..1 */
-    float wow;        /* 0..1 depth */
-    float flutter;    /* 0..1 depth */
-    float noise;      /* 0..1 hiss level */
-    float crt;        /* 0..1 low-pass amount + hum level */
-    float crush;      /* 0..1 sample-rate / bit-depth reduction */
+    float tape_drive;
+    float wow;
+    float flutter;
+    float noise;
+    float crt;
+    float crush;
 } sid_fx_params;
 
-/* Fields are private to fx.c; the struct is public so callers can allocate it. */
 typedef struct {
     sid_fx_params target, cur;
-    float smooth_coef, smooth_coef2; /* per sample (CRT), per two samples (the rest) */
-    uint32_t active; /* blocks in the path on the last sample, one bit each */
-    uint32_t clock;  /* samples processed, for the smoothing's snap grid */
+    float smooth_coef, smooth_coef2;
+    uint32_t active;
+    uint32_t clock;
     sid_fx_crush crush;
     sid_fx_tape tape;
     sid_fx_wow wow;
@@ -50,9 +36,7 @@ typedef struct {
     sid_fx_noise noise;
 } sid_fx;
 
-/* sample_rate must be in [8000, 96000]. */
 void sid_fx_init(sid_fx* fx, uint32_t sample_rate, uint32_t seed);
-/* New targets, each clamped to [0, 1] (NaN gives 0); smoothed from the current values. */
 void sid_fx_set(sid_fx* fx, const sid_fx_params* p);
 void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n);
 

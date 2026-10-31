@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# The browser demo: the working tree's firmware in fm1-emu's web page, built and served locally.
-#   tools/web-demo                 build everything into build/web and serve it on localhost:8642
-#   tools/web-demo --check         build, then run the headless smoke test (web/check.mjs) and exit
-#   tools/web-demo --no-serve      build only
-#   tools/web-demo --port N        serve on another port
-#   tools/web-demo --skip-firmware reuse build/fm1's firmware (no Docker); the package is redone
-# Steps: the fm1 firmware (tools/fm1-docker), its package (sidou-pack), fm1-emu's fm1-web crate
-# to wasm at the revision host/crates/emu-gate pins (fetched into build/fm1-emu), then the site:
-# upstream's web files at that revision, web/ on top, and SIDOU's own song code as wasm for the
-# Library page and the editor (tools/wasm-core) (docs: BUILDING.md "Browser demo").
 set -euo pipefail
+usage() {
+    cat <<'USAGE'
+The browser demo: the working tree's firmware in fm1-emu's web page, built and served locally.
+  tools/web-demo                 build everything into build/web and serve it on localhost:8642
+  tools/web-demo --check         build, then run the headless smoke test (web/check.mjs) and exit
+  tools/web-demo --no-serve      build only
+  tools/web-demo --port N        serve on another port
+  tools/web-demo --skip-firmware reuse build/fm1's firmware (no Docker); the package is redone
+Steps: the fm1 firmware (tools/fm1-docker), its package (sidou-pack), fm1-emu's fm1-web crate
+to wasm at the revision host/crates/emu-gate pins (fetched into build/fm1-emu), then the site:
+upstream's web files at that revision, web/ on top, and SIDOU's own song code as wasm for the
+Library page and the editor (tools/wasm-core) (docs: BUILDING.md "Browser demo").
+USAGE
+}
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="$root/build/web"
 port=8642
@@ -22,14 +26,13 @@ while [ $# -gt 0 ]; do
         --no-serve) serve=0 ;;
         --skip-firmware) firmware=0 ;;
         --port) port="$2"; shift ;;
-        -h|--help) sed -n '4,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) usage; exit 0 ;;
         *) echo "web-demo: unknown option $1" >&2; exit 2 ;;
     esac
     shift
 done
 say() { printf '\n== %s\n' "$*"; }
 
-# ---- the firmware and its package
 if [ "$firmware" = 1 ]; then
     say "firmware (tools/fm1-docker)"
     "$root/tools/fm1-docker" cmake --preset fm1
@@ -41,7 +44,6 @@ say "package (sidou-pack)"
     --loader ../build/fm1/platform/fm1/loader/loader.bin \
     -o ../build/fm1/sidou.fwsc)
 
-# ---- fm1-emu at the pinned revision (one pin for the gate and the demo: emu-gate's Cargo.toml)
 rev=$(sed -n 's/^fm1-core = {.*rev = "\([0-9a-f]\{40\}\)".*/\1/p' "$root/host/crates/emu-gate/Cargo.toml")
 [ -n "$rev" ] || { echo "web-demo: no fm1-core rev in host/crates/emu-gate/Cargo.toml" >&2; exit 1; }
 emu="$root/build/fm1-emu"
@@ -52,18 +54,15 @@ if [ "$(git -C "$emu" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$rev"
     git -C "$emu" remote add origin https://github.com/joakimeriksson/fm1-emu
     git -C "$emu" fetch -q --depth 1 origin "$rev"
 fi
-git -C "$emu" checkout -q -f --detach "$rev"   # (also undoes any edit to a tracked file)
+git -C "$emu" checkout -q -f --detach "$rev"
 [ "$(git -C "$emu" rev-parse HEAD)" = "$rev" ]
 
-# ---- the wasm and upstream's page files, by upstream's own build script
 say "fm1-web to wasm (fm1-emu's web/build.sh)"
-# (The build image has its toolchain with the target already, and no "stable".)
 if command -v rustup >/dev/null && [ -z "${SIDOU_BUILD_IMAGE:-}" ]; then
     rustup target add --toolchain stable wasm32-unknown-unknown >/dev/null
 fi
 "$emu/web/build.sh" "$out" >/dev/null
 
-# ---- SIDOU's layer: the page, the catalog, the package, the version
 say "site (build/web)"
 commit=$(git -C "$root" rev-parse HEAD)
 short=$(git -C "$root" rev-parse --short=8 HEAD)
@@ -83,7 +82,6 @@ cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/w
 cp "$root/web/editor.html" "$root/web/editor.js" "$root/web/song-edit.js" "$root/web/preview.js" "$root/web/preview-worklet.js" "$out/"
 say "the Library page's wasm core (tools/wasm-core)"
 "$root/tools/wasm-core" "$out/sidou-core.wasm"
-# the Live Link page and its viewer's wasm (tools/wasm-link)
 say "the Live Link page's viewer (tools/wasm-link)"
 cp "$root/web/link.html" "$root/web/link.js" "$root/web/link-keyboard.js" "$out/"
 "$root/tools/wasm-link" "$out/sidou-link.wasm"
@@ -94,7 +92,6 @@ mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && 
 mkdir -p "$out/licenses"
 cp "$root/LICENSES/GPL-3.0-only.txt" "$root/LICENSES/Apache-2.0.txt" "$out/licenses/"
 cp "$emu/LICENSE" "$out/licenses/fm1-emu-MIT.txt"
-# (upstream's link preview shows other firmwares)
 rm -f "$out/og.png"
 "$root/web/patch-main.sh" "$out/main.js"
 du -h "$out"/* | sed "s|$out/||"

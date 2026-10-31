@@ -1,11 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* SIDOU's 6502 (cpu6502.h): one switch over the opcodes, the registers in locals, the flags
- * unpacked (N and Z kept as the last result's byte), the cycle count added from a table before
- * an instruction runs so its accesses can be stamped back from the end. */
 #include "cpu6502.h"
 
-/* Base cycles per opcode (NMOS); page crossings and taken branches add theirs. JAMs are 0. */
 static const uint8_t cpu6502_cycles[256] = {
     7, 6, 0, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6, 2, 5, 0, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
     6, 6, 0, 8, 3, 3, 5, 5, 4, 2, 2, 2, 4, 4, 6, 6, 2, 5, 0, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
@@ -17,11 +13,6 @@ static const uint8_t cpu6502_cycles[256] = {
     2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6, 2, 5, 0, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
 };
 
-/* --- Memory accesses ---------------------------------------------------------------------
- * An operand access to $D000-$DFFF goes to a hook while `io` is set and $01 maps I/O in; the
- * zero page and the stack never are I/O. The stamps count back from the instruction's end:
- * `cyc` already holds its last cycle + 1. CPU6502_HOOK_ALL (the tests') makes the address and
- * bank tests true and sends the zero page's and the stack's writes through the hooks too. */
 #ifdef CPU6502_HOOK_ALL
 #define IO_ON(b) ((void)(b), 1)
 #define IN_IO(ea) ((void)(ea), 1)
@@ -37,8 +28,6 @@ static const uint8_t cpu6502_cycles[256] = {
 #define ABS16() (lo = FETCH(), (uint32_t)lo | (uint32_t)FETCH() << 8)
 
 #ifndef CPU6502_SMALL
-/* RDK: a read `k` cycles from the end; WR: a write on the last; WR2: a read-modify-write's
- * two writes, the old value, then the new one */
 #define RDK(ea, k) (IS_IO(ea) ? c->rd(c->user, (ea), cyc - (k)) : mem[(ea)])
 #define WR(ea, v)                                                                                  \
     do {                                                                                           \
@@ -57,7 +46,6 @@ static const uint8_t cpu6502_cycles[256] = {
         }                                                                                          \
     } while (0)
 #else
-/* The I/O page's accesses out of line: one compare inline. */
 __attribute__((noinline)) static uint32_t rd_slow(cpu6502* c, uint32_t ea, uint32_t cycle) {
     return IO_ON(c->mem[1]) ? c->rd(c->user, ea, cycle) : c->mem[ea];
 }
@@ -89,7 +77,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
 #endif
 #define RD(ea) RDK(ea, 1u)
 
-/* The zero page: memory, or the hooks under CPU6502_HOOK_ALL. */
 #define ZRDK(ea, k) (HOOK_ZP ? RDK(ea, k) : mem[(ea)])
 #define ZWR(ea, v)                                                                                 \
     do {                                                                                           \
@@ -106,8 +93,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
             mem[(ea)] = (uint8_t)(v);                                                              \
     } while (0)
 
-/* The stack: a push `k` cycles from the end (stamped only under CPU6502_HOOK_ALL); pulls
- * read memory. */
 #define PUSH(v, k)                                                                                 \
     do {                                                                                           \
         if (HOOK_ZP)                                                                               \
@@ -119,7 +104,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
 #define PULL() (s = (s + 1u) & 0xFFu, mem[0x100u | s])
 #define NZ(v) (n = z = (v))
 
-/* Effective addresses; the *_R forms add the page-crossing cycle. */
 #define EA_ZP() (ea = FETCH())
 #define EA_ZPX() (ea = (FETCH() + x) & 0xFFu)
 #define EA_ZPY() (ea = (FETCH() + y) & 0xFFu)
@@ -134,7 +118,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
     (t = FETCH(), t = mem[t] | (uint32_t)mem[(t + 1u) & 0xFFu] << 8, ea = (t + y) & 0xFFFFu,       \
      cyc += ((t ^ ea) >> 8) & 1u)
 
-/* The operations on v, a read operand. */
 #define OP_ORA() (a |= v, NZ(a))
 #define OP_AND() (a &= v, NZ(a))
 #define OP_EOR() (a ^= v, NZ(a))
@@ -144,8 +127,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
 #define OP_LAX() (a = x = v, NZ(a))
 #define OP_CMP(r) (t = (r) - v, cf = (r) >= v, NZ(t & 0xFFu))
 #define OP_BIT() (z = a & v, n = v, vf = (v >> 6) & 1u)
-/* NMOS decimal mode: Z from the binary sum, N and V from the high digit before its carry
- * adjustment. */
 #define OP_ADC()                                                                                   \
     do {                                                                                           \
         uint32_t r_ = a + v + cf;                                                                  \
@@ -170,7 +151,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
             a = ((hi_ << 4) | (lo_ & 0x0Fu)) & 0xFFu;                                              \
         }                                                                                          \
     } while (0)
-/* NMOS decimal mode: every flag from the binary difference. */
 #define OP_SBC()                                                                                   \
     do {                                                                                           \
         uint32_t r_ = a - v - (1u - cf);                                                           \
@@ -198,7 +178,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
 #define OP_INC() (v = (v + 1u) & 0xFFu, NZ(v))
 #define OP_DEC() (v = (v - 1u) & 0xFFu, NZ(v))
 
-/* A read instruction in each addressing mode. */
 #define R_IMM(op)                                                                                  \
     v = FETCH();                                                                                   \
     op;                                                                                            \
@@ -244,7 +223,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
     op;                                                                                            \
     break
 
-/* A store in each addressing mode. */
 #define W_ZP(r)                                                                                    \
     EA_ZP();                                                                                       \
     ZWR(ea, (r));                                                                                  \
@@ -278,8 +256,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
     WR(ea, (r));                                                                                   \
     break
 
-/* A read-modify-write: the read on the third last cycle, the two writes on the last two;
- * `op2` (the undocumented combinations' second operation) runs after them. */
 #define M_ZPEA(op, op2)                                                                            \
     old = v = ZRDK(ea, 3u);                                                                        \
     op;                                                                                            \
@@ -314,7 +290,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
     EA_IZY();                                                                                      \
     M_EA(op, op2)
 
-/* A branch: a cycle more when taken, another when it lands on another page. */
 #define BRANCH(cond)                                                                               \
     t = FETCH();                                                                                   \
     if (cond) {                                                                                    \
@@ -324,8 +299,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
     }                                                                                              \
     break
 
-/* The unstable stores: the value & (the base's high byte + 1); when the index crosses a
- * page, that value is also the address's high byte. */
 #define SH_STORE(base, idx, val)                                                                   \
     t = (base);                                                                                    \
     ea = (t + (idx)) & 0xFFFFu;                                                                    \
@@ -341,8 +314,6 @@ __attribute__((noinline)) static void wr_slow(cpu6502* c, uint32_t ea, uint32_t 
     (n = (pv), vf = ((pv) >> 6) & 1u, df = ((pv) >> 3) & 1u, ifl = ((pv) >> 2) & 1u,               \
      z = ((pv) & 2u) ^ 2u, cf = (pv) & 1u)
 
-/* Where a call ends (with `stops`): the sentinel's return ($0000 pushed, so RTS lands on
- * $0001) and the KERNAL's interrupt exits. */
 #define STOPS(addr)                                                                                \
     (stops && ((addr) <= 1u || (addr) == CPU6502_KERNAL_IRQ_EXIT ||                                \
                (addr) == CPU6502_KERNAL_IRQ_EXIT_SHORT || (addr) == CPU6502_KERNAL_NMI_EXIT))
@@ -367,7 +338,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         uint32_t op = FETCH();
         cyc += cpu6502_cycles[op];
         switch (op) {
-        /* ORA */
         case 0x09: R_IMM(OP_ORA());
         case 0x05: R_ZP(OP_ORA());
         case 0x15: R_ZPX(OP_ORA());
@@ -376,7 +346,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0x19: R_ABY(OP_ORA());
         case 0x01: R_IZX(OP_ORA());
         case 0x11: R_IZY(OP_ORA());
-        /* AND */
         case 0x29: R_IMM(OP_AND());
         case 0x25: R_ZP(OP_AND());
         case 0x35: R_ZPX(OP_AND());
@@ -385,7 +354,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0x39: R_ABY(OP_AND());
         case 0x21: R_IZX(OP_AND());
         case 0x31: R_IZY(OP_AND());
-        /* EOR */
         case 0x49: R_IMM(OP_EOR());
         case 0x45: R_ZP(OP_EOR());
         case 0x55: R_ZPX(OP_EOR());
@@ -394,7 +362,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0x59: R_ABY(OP_EOR());
         case 0x41: R_IZX(OP_EOR());
         case 0x51: R_IZY(OP_EOR());
-        /* ADC */
         case 0x69: R_IMM(OP_ADC());
         case 0x65: R_ZP(OP_ADC());
         case 0x75: R_ZPX(OP_ADC());
@@ -403,7 +370,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0x79: R_ABY(OP_ADC());
         case 0x61: R_IZX(OP_ADC());
         case 0x71: R_IZY(OP_ADC());
-        /* SBC, and the undocumented $EB */
         case 0xE9:
         case 0xEB: R_IMM(OP_SBC());
         case 0xE5: R_ZP(OP_SBC());
@@ -413,7 +379,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0xF9: R_ABY(OP_SBC());
         case 0xE1: R_IZX(OP_SBC());
         case 0xF1: R_IZY(OP_SBC());
-        /* CMP, CPX, CPY */
         case 0xC9: R_IMM(OP_CMP(a));
         case 0xC5: R_ZP(OP_CMP(a));
         case 0xD5: R_ZPX(OP_CMP(a));
@@ -428,10 +393,8 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0xC0: R_IMM(OP_CMP(y));
         case 0xC4: R_ZP(OP_CMP(y));
         case 0xCC: R_ABS(OP_CMP(y));
-        /* BIT */
         case 0x24: R_ZP(OP_BIT());
         case 0x2C: R_ABS(OP_BIT());
-        /* Loads */
         case 0xA9: R_IMM(OP_LDA());
         case 0xA5: R_ZP(OP_LDA());
         case 0xB5: R_ZPX(OP_LDA());
@@ -450,14 +413,12 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0xB4: R_ZPX(OP_LDY());
         case 0xAC: R_ABS(OP_LDY());
         case 0xBC: R_ABX(OP_LDY());
-        /* LAX */
         case 0xA7: R_ZP(OP_LAX());
         case 0xB7: R_ZPY(OP_LAX());
         case 0xAF: R_ABS(OP_LAX());
         case 0xBF: R_ABY(OP_LAX());
         case 0xA3: R_IZX(OP_LAX());
         case 0xB3: R_IZY(OP_LAX());
-        /* Stores */
         case 0x85: W_ZP(a);
         case 0x95: W_ZPX(a);
         case 0x8D: W_ABS(a);
@@ -471,12 +432,10 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0x84: W_ZP(y);
         case 0x94: W_ZPX(y);
         case 0x8C: W_ABS(y);
-        /* SAX */
         case 0x87: W_ZP(a & x);
         case 0x97: W_ZPY(a & x);
         case 0x8F: W_ABS(a & x);
         case 0x83: W_IZX(a & x);
-        /* Shifts, rotates, INC and DEC, on A and on memory */
         case 0x0A:
             v = a;
             OP_ASL();
@@ -521,8 +480,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0xD6: M_ZPX(OP_DEC(), (void)0);
         case 0xCE: M_ABS(OP_DEC(), (void)0);
         case 0xDE: M_ABX(OP_DEC(), (void)0);
-/* The undocumented read-modify-writes: a shift, rotate, INC or DEC, then an operation on A
- * with the result, in seven addressing modes. */
 #define RMW7(base, op, op2)                                                                        \
     case base + 0x07: M_ZP(op, op2);                                                               \
     case base + 0x17: M_ZPX(op, op2);                                                              \
@@ -531,13 +488,12 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
     case base + 0x1B: M_ABY(op, op2);                                                              \
     case base + 0x03: M_IZX(op, op2);                                                              \
     case base + 0x13: M_IZY(op, op2);
-            RMW7(0x00, OP_ASL(), OP_ORA()) /* SLO */
-            RMW7(0x20, OP_ROL(), OP_AND()) /* RLA */
-            RMW7(0x40, OP_LSR(), OP_EOR()) /* SRE */
-            RMW7(0x60, OP_ROR(), OP_ADC()) /* RRA */
-            RMW7(0xC0, OP_DEC(), OP_CMP(a)) /* DCP */
-            RMW7(0xE0, OP_INC(), OP_SBC()) /* ISC */
-        /* Transfers, increments and decrements of the registers */
+            RMW7(0x00, OP_ASL(), OP_ORA())
+            RMW7(0x20, OP_ROL(), OP_AND())
+            RMW7(0x40, OP_LSR(), OP_EOR())
+            RMW7(0x60, OP_ROR(), OP_ADC())
+            RMW7(0xC0, OP_DEC(), OP_CMP(a))
+            RMW7(0xE0, OP_INC(), OP_SBC())
         case 0xAA:
             x = a;
             NZ(x);
@@ -577,7 +533,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
             y = (y - 1u) & 0xFFu;
             NZ(y);
             break;
-        /* Flags */
         case 0x18:
             cf = 0;
             break;
@@ -599,7 +554,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0xF8:
             df = 1;
             break;
-        /* Branches */
         case 0x10: BRANCH(!(n & 0x80u));
         case 0x30: BRANCH(n & 0x80u);
         case 0x50: BRANCH(!vf);
@@ -608,16 +562,15 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
         case 0xB0: BRANCH(cf);
         case 0xD0: BRANCH(z & 0xFFu);
         case 0xF0: BRANCH(!(z & 0xFFu));
-        /* Jumps, calls, returns, the stack */
         case 0x4C:
             t = ABS16();
             pc = t;
             JUMPED();
-        case 0x6C: /* the pointer's high byte from the same page */
+        case 0x6C:
             t = ABS16();
             pc = mem[t] | (uint32_t)mem[(t & 0xFF00u) | ((t + 1u) & 0xFFu)] << 8;
             JUMPED();
-        case 0x20: /* the high byte is fetched after the pushes, as the real CPU does */
+        case 0x20:
             lo = FETCH();
             PUSH(pc >> 8, 3u);
             PUSH(pc, 2u);
@@ -656,22 +609,21 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
             t = PULL();
             UNPACK_P(t);
             break;
-        /* The undocumented immediates */
-        case 0x0B: /* ANC */
+        case 0x0B:
         case 0x2B:
             v = FETCH();
             a &= v;
             NZ(a);
             cf = a >> 7;
             break;
-        case 0x4B: /* ALR */
+        case 0x4B:
             v = FETCH();
             a &= v;
             cf = a & 1u;
             a >>= 1;
             NZ(a);
             break;
-        case 0x6B: /* ARR */
+        case 0x6B:
             v = FETCH();
             t = a & v;
             a = (t >> 1) | cf << 7;
@@ -690,40 +642,38 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
                     a = (a + 0x60u) & 0xFFu;
             }
             break;
-        case 0xCB: /* SBX */
+        case 0xCB:
             v = FETCH();
             t = a & x;
             cf = t >= v;
             x = (t - v) & 0xFFu;
             NZ(x);
             break;
-        case 0x8B: /* ANE, with the magic constant */
+        case 0x8B:
             v = FETCH();
             a = (a | 0xEEu) & x & v;
             NZ(a);
             break;
-        case 0xAB: /* LXA, with the magic constant */
+        case 0xAB:
             v = FETCH();
             a = x = (a | 0xEEu) & v;
             NZ(a);
             break;
-        case 0xBB: /* LAS */
+        case 0xBB:
             EA_ABY_R();
             v = RD(ea) & s;
             a = x = s = v;
             NZ(a);
             break;
-        /* The unstable stores */
-        case 0x93: /* SHA (zp),Y */
+        case 0x93:
             t = FETCH();
             SH_STORE(mem[t] | (uint32_t)mem[(t + 1u) & 0xFFu] << 8, y, a & x);
-        case 0x9F: SH_STORE(ABS16(), y, a & x); /* SHA abs,Y */
-        case 0x9E: SH_STORE(ABS16(), y, x);     /* SHX */
-        case 0x9C: SH_STORE(ABS16(), x, y);     /* SHY */
-        case 0x9B:                              /* TAS */
+        case 0x9F: SH_STORE(ABS16(), y, a & x);
+        case 0x9E: SH_STORE(ABS16(), y, x);
+        case 0x9C: SH_STORE(ABS16(), x, y);
+        case 0x9B:
             s = a & x;
             SH_STORE(ABS16(), y, a & x);
-        /* NOPs, documented and not: their operands are skipped; an absolute one's is read */
         case 0xEA:
         case 0x1A:
         case 0x3A:
@@ -761,7 +711,6 @@ int cpu6502_run(cpu6502* c, uint32_t limit, int stops) {
             EA_ABX_R();
             (void)RD(ea);
             break;
-        /* JAM: the CPU stops, the PC on the opcode */
         default:
             pc = (pc - 1u) & 0xFFFFu;
             state = CPU6502_JAM;

@@ -1,11 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's PSID environment against the oracle, m6502.h and FM-1 SID's `psid.c` (M3 Task 7;
-//! TESTING.md, "The PSID oracle"): the vendored files and the derived copy; the corpus
-//! (GoatTracker's examples and SIDOU's songs, every subtune, packed at `$D400` and as a 2SID
-//! tune at `$D420`; Task 6's fixtures, each with the rule its first difference must be); the
-//! crafted headers only SIDOU reads; and, `--ignored`, the user's own tunes in
-//! `SIDOU_PSID_DIR`, reported to `build/psid-ref/report.txt`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -32,7 +26,6 @@ fn sha256(p: &Path) -> String {
 const BEGIN: &str = "/* psid-ref: begin */";
 const END: &str = "/* psid-ref: end */";
 
-/// What the derived copy adds besides its notice: the blocks after the first, in order.
 const ADDED: [&str; 4] = [
     "/* an I/O-page read: cycle = cycles since the start of this call, as a write's */\n\
      typedef void (*psid_read_fn)(void *user, uint32_t cycle, uint32_t addr, uint32_t val);\n",
@@ -86,7 +79,6 @@ fn the_vendored_files_are_unmodified_and_the_copy_only_adds_its_marked_lines() {
     let copy =
         std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("c/psid_oracle.c"))
             .unwrap();
-    // The copy without its blocks is the original; the blocks are exactly the notice and ADDED.
     let (mut kept, mut blocks) = (Vec::new(), Vec::new());
     let mut block: Option<String> = None;
     for line in copy.split('\n') {
@@ -123,14 +115,12 @@ fn the_vendored_files_are_unmodified_and_the_copy_only_adds_its_marked_lines() {
     }
 }
 
-/// A tune of the corpus: its name, file and song.
 struct Job {
     name: String,
     file: Vec<u8>,
     song: u32,
 }
 
-/// One comparison: SIDOU's side and the oracle for `seconds`, then the comparison and E8.
 fn check(job: &Job, seconds: u32) -> Result<Outcome, String> {
     let h = header(&job.file).map_err(|c| format!("refused ({c})"))?;
     let s = sidou::run(&job.file, job.song, seconds)?;
@@ -139,7 +129,6 @@ fn check(job: &Job, seconds: u32) -> Result<Outcome, String> {
     compare(&h, &s, &o)
 }
 
-/// Runs the jobs on every core: each one's result, in the jobs' order.
 fn run_all(jobs: &[Job], seconds: u32) -> Vec<Result<Outcome, String>> {
     let next = AtomicUsize::new(0);
     let out: Mutex<Vec<Option<Result<Outcome, String>>>> =
@@ -164,8 +153,6 @@ fn run_all(jobs: &[Job], seconds: u32) -> Vec<Result<Outcome, String>> {
         .collect()
 }
 
-/// A song packed by GoatTracker's own packer (gt2-ref) at `sid` into a PSID file of its
-/// subtunes: v2, PAL, VBI; with `sid` at `$D420`, a v3 header naming it the second SID.
 fn packed(sng: &[u8], sid: u32) -> Vec<u8> {
     let o = gt2_ref::Options {
         sid_address: sid,
@@ -230,7 +217,6 @@ fn goattracker_songs_play_exactly_as_the_oracle_plays_them() {
     let (mut calls, mut writes) = (0, 0);
     for (job, r) in jobs.iter().zip(&results) {
         let o = r.as_ref().unwrap_or_else(|e| panic!("{}: {e}", job.name));
-        // GoatTracker's player reads no I/O and sets no bank: nothing may differ.
         assert_eq!(o.first, None, "{}", job.name);
         assert!(o.writes > 0, "{}", job.name);
         calls += o.calls;
@@ -242,16 +228,11 @@ fn goattracker_songs_play_exactly_as_the_oracle_plays_them() {
     );
 }
 
-/// Task 6's fixtures, each with the rule its first difference must be and its call (None:
-/// none). Most play routines record `$01` and leave it at `$35`, so from the second play call
-/// `psid.c` (which sets `$01` once, at load) starts them with `$35` where SIDOU sets `$37`
-/// again: E1 at call 2. The E7 and E10 tunes leave `$01` alone.
 type Expected = Option<(Rule, usize)>;
 
 fn fixtures() -> Vec<(&'static str, Psid, u32, Expected)> {
     use Rule::*;
     let e1 = Some((E1Bank, 2));
-    // A play routine that counts its calls and hangs or JAMs on the third.
     let plain = |end: &str| {
         let play = format!("{COUNT}cmp #$03\nbne done\n{end}done: rts\n");
         Psid::new(&[(INIT, "rts\n"), (PLAY, &play)])
@@ -368,7 +349,6 @@ fn fixtures() -> Vec<(&'static str, Psid, u32, Expected)> {
         ),
         ("two SIDs' buses", two_sid_buses(), 1, Some((E2SidRead, 0))),
         ("I/O read back", io_readback(), 1, Some((E6OtherRead, 0))),
-        // Init leaves $01 at $34; psid.c's play calls keep it.
         ("I/O as RAM", io_ram(), 1, Some((E1Bank, 1))),
         ("read-modify-write", rmw(), 1, Some((E2SidRead, 0))),
     ];
@@ -416,8 +396,6 @@ fn task_6s_fixtures_differ_only_where_their_rule_says() {
 
 #[test]
 fn the_crafted_headers_are_sidous_alone() {
-    // Task 4's crafted files (docs/upstream-reports.md, 1): psid.c reads past its buffer on
-    // them, so the oracle refuses them before psid.c sees them; SIDOU's parser refuses them.
     let mut b = vec![0u8; 124];
     b[..4].copy_from_slice(b"PSID");
     b[5] = 2;
@@ -436,7 +414,6 @@ fn the_crafted_headers_are_sidous_alone() {
     }
 }
 
-/// Every `.sid` under `dir`, in path order.
 fn sid_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
@@ -452,10 +429,6 @@ fn sid_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The user's tunes (`SIDOU_PSID_DIR`, every `.sid` under it, every subtune; never in the
-/// repository): the same comparison for `SIDOU_PSID_SECONDS` (60) each, a table of the tunes,
-/// the calls compared and the rule that ended each in `build/psid-ref/report.txt`. Fails if any
-/// tune differs where no rule says it may.
 #[test]
 #[ignore]
 fn the_users_tunes_against_the_oracle() {

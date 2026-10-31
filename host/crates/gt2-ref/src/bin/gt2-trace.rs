@@ -1,16 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `gt2-trace song.sng [--subtune N] [--frames N] [gt2reloc options]`: prints each frame's
-//! SID writes from GoatTracker's packed player, for debugging SIDOU's player against it.
-//! The options are gt2reloc's (readme 4.4): `-Axxxx -Sn -Bn -Cn -Dn -En -Gf -Hn -In -Jn
-//! -Lxxxx -N -On -P -Rn -Vn -Wxx -Zxx`. Every value is checked: the on/off flags and
-//! `-O`, `-R`, `-V` take 0 or 1, `-S` 0 to 16, `-W` and `-Z` a hex byte, `-A` and `-L` a
-//! hex word, `-N` and `-P` nothing, `--subtune` 0 to 31; anything else is an error.
 
 use gt2_ref::trace::trace;
 use gt2_ref::*;
 
-/// A number in the radix, digits only (no sign, no prefix), at most `max`.
 fn number(flag: &str, s: &str, radix: u32, max: u32) -> Result<u32, String> {
     let bad = || {
         let kind = if radix == 16 { "hex" } else { "decimal" };
@@ -25,7 +18,6 @@ fn number(flag: &str, s: &str, radix: u32, max: u32) -> Result<u32, String> {
     }
 }
 
-/// An on/off flag: 0 or 1.
 fn flag(o: &mut Options, name: &str, bit: u32, v: &str) -> Result<(), String> {
     if number(name, v, 10, 1)? != 0 {
         o.player_version |= bit;
@@ -46,7 +38,6 @@ fn run() -> Result<(), String> {
         if a == "--subtune" || a == "--frames" {
             let v = args.get(i + 1).ok_or(format!("{a} needs a value"))?;
             if a == "--subtune" {
-                // GoatTracker's 32 subtunes (gcommon.h MAX_SONGS).
                 subtune = number(a, v, 10, 31)? as u8;
             } else {
                 frames = number(a, v, 10, u32::MAX)? as usize;
@@ -75,8 +66,6 @@ fn run() -> Result<(), String> {
                 'D' => flag(&mut o, a, PLAYER_SOUNDEFFECTS, v)?,
                 'E' => flag(&mut o, a, PLAYER_VOLUME, v)?,
                 'H' => flag(&mut o, a, PLAYER_AUTHORINFO, v)?,
-                // -I1: optimisations on (gt2reloc's -I also falls through into -J; here it
-                // does not)
                 'I' => flag(
                     &mut o,
                     a,

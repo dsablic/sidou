@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The tail after notes (`app/tail_gate.c`): once the chip's voices are all done the leak the
-//! voice DACs put out through the envelope's zero is faded out and the output is exactly silent,
-//! with no click, a bleed keeps it, and a later note is the chip's own output untouched.
 
 use sidou_sys::*;
 
+use crate::RELEASE_TO_ZERO_MS;
+
 const BLOCK: usize = TAIL_BLOCK as usize;
+const RATE: usize = 44100;
+const HELD_SAMPLES: usize = RATE / 10;
+const HALF_SECOND: usize = RATE / 2 / BLOCK * BLOCK;
+const FADE_BLOCKS: usize = 1;
+const SLACK_BLOCKS: usize = 1;
 
 fn chip(model: sid_model) -> Box<sid> {
     let mut s = Box::<sid>::default();
-    unsafe { sid_init(&mut *s, model, SID_CLOCK_PAL, 44100) };
+    unsafe { sid_init(&mut *s, model, SID_CLOCK_PAL, RATE as u32) };
     s
 }
 
@@ -18,8 +22,6 @@ fn write(s: &mut sid, reg: u8, value: u8) {
     unsafe { sid_write(s, reg, value) }
 }
 
-/// A saw (or `ctrl1`'s waveform) on voice 1 and a pulse (or `ctrl3`'s) on voice 3 at release rate
-/// `release`, held for 4410 samples, then released.
 fn released_chord(model: sid_model, release: u8, ctrl1: u8, ctrl3: u8) -> Box<sid> {
     let mut s = chip(model);
     for (r, v) in [
@@ -39,16 +41,14 @@ fn released_chord(model: sid_model, release: u8, ctrl1: u8, ctrl3: u8) -> Box<si
     ] {
         write(&mut s, r, v);
     }
-    let mut out = vec![0i16; 4410];
-    unsafe { sid_render(&mut *s, out.as_mut_ptr(), 4410) };
+    let mut out = vec![0i16; HELD_SAMPLES];
+    unsafe { sid_render(&mut *s, out.as_mut_ptr(), HELD_SAMPLES as u32) };
     write(&mut s, 0x04, ctrl1 & 0xfe);
     write(&mut s, 0x12, ctrl3 & 0xfe);
     s
 }
 
-/// `n` samples in the firmware's blocks, the tail gate run after each as audio_fill runs it
-/// (chip A alone), or not (`gate` None: the chip's own output).
-fn render(s: &mut sid, gate: Option<&mut tail_gate>, n: usize) -> Vec<i16> {
+fn render_in_blocks(s: &mut sid, gate: Option<&mut tail_gate>, n: usize) -> Vec<i16> {
     let mut out = vec![0i16; n];
     let mut gate = gate;
     for b in out.chunks_mut(BLOCK) {
@@ -67,12 +67,7 @@ fn silent(s: &sid) -> bool {
     s.env.iter().all(|e| e.counter == 0 && e.gate == 0)
 }
 
-/// The envelope's release from sustain 15 to 0, in ms (R = the release nibble).
-const RELEASE_MS: [usize; 16] = [
-    6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000,
-];
-/// The hold (16 blocks) and the fade (one) after the release's end, and a block of slack.
-const SETTLE_SAMPLES: usize = (TAIL_HOLD_BLOCKS as usize + 2) * BLOCK;
+const SETTLE_SAMPLES: usize = (TAIL_HOLD_BLOCKS as usize + FADE_BLOCKS + SLACK_BLOCKS) * BLOCK;
 
 #[test]
 fn the_tail_after_notes_reaches_exact_silence() {
@@ -80,9 +75,10 @@ fn the_tail_after_notes_reaches_exact_silence() {
         for release in [0u8, 4, 8] {
             let mut s = released_chord(model, release, 0x21, 0x41);
             let mut gate = tail_gate::default();
-            let deadline = RELEASE_MS[release as usize] * 44100 / 1000 + SETTLE_SAMPLES;
+            let deadline =
+                RELEASE_TO_ZERO_MS[release as usize] as usize * RATE / 1000 + SETTLE_SAMPLES;
             let blocks = deadline.div_ceil(BLOCK) * BLOCK;
-            let out = render(&mut s, Some(&mut gate), blocks + 344 * BLOCK);
+            let out = render_in_blocks(&mut s, Some(&mut gate), blocks + 344 * BLOCK);
             assert!(silent(&s));
             let last = out.iter().rposition(|&x| x != 0);
             assert!(
@@ -94,18 +90,15 @@ fn the_tail_after_notes_reaches_exact_silence() {
     }
 }
 
-/// Fading the leak out leaves no step: against the chip's own output, the stage's effect is a
-/// ramp. A hard mute would step by the output's value at that sample, which is the leak (about
-/// 100 LSB on a triangle, whose leak has no edge of its own) and the DC blocker's tail.
 #[test]
 fn the_leak_fades_out_without_a_click() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
         let mut gated = released_chord(model, 0, 0x11, 0x11);
         let mut kept = released_chord(model, 0, 0x11, 0x11);
         let mut gate = tail_gate::default();
-        let n = 44100 / 2 / BLOCK * BLOCK;
-        let a = render(&mut gated, Some(&mut gate), n);
-        let b = render(&mut kept, None, n);
+        let n = HALF_SECOND;
+        let a = render_in_blocks(&mut gated, Some(&mut gate), n);
+        let b = render_in_blocks(&mut kept, None, n);
         let d: Vec<i32> = a
             .iter()
             .zip(&b)
@@ -125,55 +118,50 @@ fn the_leak_fades_out_without_a_click() {
     }
 }
 
-/// With the bleed on the leak stays: a deliberate effect of the character.
 #[test]
 fn a_chip_with_bleed_keeps_its_leak() {
     let mut s = released_chord(SID_MODEL_6581, 0, 0x21, 0x41);
     s.bleed = 0.25;
     let mut gate = tail_gate::default();
-    render(&mut s, Some(&mut gate), 44100 / 2 / BLOCK * BLOCK);
+    render_in_blocks(&mut s, Some(&mut gate), HALF_SECOND);
     assert!(silent(&s));
-    let tail = render(&mut s, Some(&mut gate), 4096);
+    let tail = render_in_blocks(&mut s, Some(&mut gate), 4096);
     assert!(
         tail.iter().any(|&v| v != 0),
         "the bleed's leak is a deliberate effect"
     );
 }
 
-/// A note after the silence is the chip's own output, sample for sample: the gate lifts at the
-/// gate-on, with the chip untouched.
 #[test]
 fn a_note_after_the_silence_is_the_chips_own_output() {
     let mut gated = released_chord(SID_MODEL_6581, 0, 0x21, 0x41);
     let mut kept = released_chord(SID_MODEL_6581, 0, 0x21, 0x41);
     let mut gate = tail_gate::default();
-    let n = 44100 / 2 / BLOCK * BLOCK;
-    render(&mut gated, Some(&mut gate), n);
-    render(&mut kept, None, n);
+    let n = HALF_SECOND;
+    render_in_blocks(&mut gated, Some(&mut gate), n);
+    render_in_blocks(&mut kept, None, n);
     assert_eq!(gate.n, TAIL_HOLD_BLOCKS + 2, "the gate is shut");
     write(&mut gated, 0x04, 0x21);
     write(&mut kept, 0x04, 0x21);
-    let a = render(&mut gated, Some(&mut gate), 4096);
-    let b = render(&mut kept, None, 4096);
+    let a = render_in_blocks(&mut gated, Some(&mut gate), 4096);
+    let b = render_in_blocks(&mut kept, None, 4096);
     assert_eq!(a, b);
     assert_eq!(gate.n, 0);
 }
 
-/// Notes closer than the hold play untouched: a gap of a few blocks between two notes is never
-/// muted.
 #[test]
 fn notes_within_a_phrase_play_untouched() {
     let mut gated = released_chord(SID_MODEL_6581, 0, 0x21, 0x41);
     let mut kept = released_chord(SID_MODEL_6581, 0, 0x21, 0x41);
     let mut gate = tail_gate::default();
     let gap = (TAIL_HOLD_BLOCKS as usize - 2) * BLOCK;
-    let a1 = render(&mut gated, Some(&mut gate), gap);
-    let b1 = render(&mut kept, None, gap);
+    let a1 = render_in_blocks(&mut gated, Some(&mut gate), gap);
+    let b1 = render_in_blocks(&mut kept, None, gap);
     assert_eq!(a1, b1);
     write(&mut gated, 0x04, 0x21);
     write(&mut kept, 0x04, 0x21);
     assert_eq!(
-        render(&mut gated, Some(&mut gate), 4096),
-        render(&mut kept, None, 4096)
+        render_in_blocks(&mut gated, Some(&mut gate), 4096),
+        render_in_blocks(&mut kept, None, 4096)
     );
 }

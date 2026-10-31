@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A main-loop editor over the real command ring, checked against independent row shifts.
 
 use std::ffi::c_void;
 
 use sidou_sys::*;
 use sidou_tests::song::Song;
 use sidou_tests::transport::Transport;
+
+fn interrupt_starts_row(sc: &mut song_ctl, voice: usize, row: u8) {
+    sc.row_row[voice] = row;
+    sc.row_seq[voice] = sc.row_seq[voice].wrapping_add(1);
+}
 
 struct Binding {
     ctl: *mut song_ctl,
@@ -437,7 +441,6 @@ fn a_shift_publishes_its_post_edit_lock_cache_in_the_same_block_as_the_pattern_s
     assert_ne!(engine.editor.sent, 0);
     unsafe { song_ctl_commit(&mut *engine.player.sc) };
     engine.player.block_silent();
-    // Check before the main loop gets to release the swap: the ISR may start row 1 now.
     let cache = &engine.player.sc.lock_next[0][engine.player.sc.lock_pub[0] as usize];
     assert!(
         !cache.e[..cache.n as usize].iter().any(|lock| lock.row == 1),
@@ -597,9 +600,7 @@ fn a_row_advanced_before_command_visibility_rebuilds_the_reserved_cache_before_a
     assert_ne!(unsafe { song_edit_shift(&mut engine.editor, 4, 2, 0) }, 0);
     unsafe { song_edit_poll(&mut engine.editor) };
     assert_ne!(engine.editor.sent, 0);
-    // An interrupt just before the command's commit started the next row.
-    engine.player.sc.row_row[0] = 1;
-    engine.player.sc.row_seq[0] = engine.player.sc.row_seq[0].wrapping_add(1);
+    interrupt_starts_row(&mut engine.player.sc, 0, 1);
     unsafe {
         song_ctl_commit(&mut *engine.player.sc);
         song_ctl_block(&mut *engine.player.sc, &mut *engine.player.chip);
@@ -656,9 +657,7 @@ fn a_reserved_edit_cache_does_not_delay_another_channels_character_row_locks() {
     unsafe { song_edit_poll(&mut engine.editor) };
     assert_ne!(engine.editor.sent, 0);
 
-    // The unrelated channel starts its locked row before the edit becomes visible.
-    engine.player.sc.row_row[1] = 1;
-    engine.player.sc.row_seq[1] = engine.player.sc.row_seq[1].wrapping_add(1);
+    interrupt_starts_row(&mut engine.player.sc, 1, 1);
     unsafe {
         song_ctl_commit(&mut *engine.player.sc);
         song_ctl_block(&mut *engine.player.sc, &mut *engine.player.chip);
@@ -675,8 +674,7 @@ fn a_reserved_edit_cache_does_not_delay_another_channels_character_row_locks() {
         "the character lock must reach the hook this pass"
     );
 
-    engine.player.sc.row_row[1] = 2;
-    engine.player.sc.row_seq[1] = engine.player.sc.row_seq[1].wrapping_add(1);
+    interrupt_starts_row(&mut engine.player.sc, 1, 2);
     engine.player.pass();
     assert_eq!(
         told,
@@ -1058,7 +1056,6 @@ fn check_restore_serialization(lock_limit: bool) {
         "the settled full limit is authoritative"
     );
 
-    // Ordinary shifts may move or discard records, but never consume restore capacity.
     for push in [true, false, false] {
         let previous = unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) };
         commit(&mut song, |s, e| unsafe {
@@ -1068,7 +1065,10 @@ fn check_restore_serialization(lock_limit: bool) {
                 gt2_pattern_pull_row(s, 2, 0, e)
             }
         });
-        assert!(unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) } <= previous);
+        assert!(
+            unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) } <= previous,
+            "an ordinary shift consumed restore capacity"
+        );
     }
     assert_eq!(prepare(&mut song, 1, &locks_b, &mut b), GT2_OK);
     unsafe {

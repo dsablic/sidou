@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `gt2-trace`'s command line: every flag strict, a mistake an error rather than a guess.
 
 use std::process::Command;
 
@@ -49,28 +48,28 @@ fn good_command_lines_trace() {
 #[test]
 fn bad_command_lines_are_refused() {
     for args in [
-        vec!["SONG", "-Nx"], // a value on a flag that takes none
+        vec!["SONG", "-Nx"],
         vec!["SONG", "-P1"],
-        vec!["SONG", "-B2"], // on/off flags are 0 or 1
+        vec!["SONG", "-B2"],
         vec!["SONG", "-B"],
         vec!["SONG", "-O7"],
         vec!["SONG", "-V3"],
-        vec!["SONG", "--subtune", "300"], // past a byte
-        vec!["SONG", "--subtune", "32"],  // past GoatTracker's 32 subtunes
+        vec!["SONG", "--subtune", "300"],
+        vec!["SONG", "--subtune", "32"],
         vec!["SONG", "--frames", "x"],
         vec!["SONG", "--frames"],
-        vec!["SONG", "-W100"], // a page is a byte
+        vec!["SONG", "-W100"],
         vec!["SONG", "-Z100"],
         vec!["SONG", "-A10000"],
         vec!["SONG", "-L10000"],
-        vec!["SONG", "-S17"], // gt2reloc's limit is 16
+        vec!["SONG", "-S17"],
         vec!["SONG", "-Gx"],
         vec!["SONG", "-G-1"],
-        vec!["SONG", "-X1"], // no such option
+        vec!["SONG", "-X1"],
         vec!["SONG", "--bogus"],
         vec!["SONG", "-"],
-        vec!["SONG", "SONG"], // two songs
-        vec![],               // none
+        vec!["SONG", "SONG"],
+        vec![],
     ] {
         let (ok, out) = gt2_trace(&args);
         assert!(!ok, "{args:?} was taken: {}", &out[..out.len().min(200)]);

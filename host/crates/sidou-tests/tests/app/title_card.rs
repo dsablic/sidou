@@ -1,35 +1,27 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The title cards (app/title_card.c) over the views (app/views.c): when they show, their
-//! sequence frame by frame (the glow's levels, the title's wipe, the hold, the banded cut),
-//! the budget, skipping by any control without its action, a note that plays and ends it,
-//! nothing drawn over it, and the menu's CARDS option.
 
 use sidou_sys::*;
 use sidou_tests::title_card as tc;
 
-use crate::views::Ui;
+use crate::views::{Ui, CARDS_ALWAYS, CARDS_OFF, CARDS_ONCE};
 use crate::{drain, petscii, pixels, Sent, SPI_BUDGET_MS};
 
 const W: usize = 240;
 
-/// Frames, each sent whole as the panel would, until no transition runs.
 fn settle(ui: &mut Ui) {
     ui.settle();
-    step(ui);
+    ui.frame_sent();
 }
 
-/// From LIVE: HOME, SELECT to `item`, ALGORITHM clockwise; what the menu drew sent.
 fn open_from_menu(ui: &mut Ui, item: u32) {
     ui.press(PANEL_BTN_HOME);
     settle(ui);
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, item as i32);
-    step(ui);
+    ui.highlight_menu_item(item);
+    ui.frame_sent();
     ui.turn(PANEL_ENC_ALGORITHM, 1);
 }
 
-/// LIVE with nothing left to send.
 fn at_rest() -> Ui {
     let mut ui = Ui::new();
     ui.settle();
@@ -41,17 +33,10 @@ fn card(ui: &Ui) -> &title_card {
     &ui.v.card
 }
 
-/// A frame, and what it sent.
-fn step(ui: &mut Ui) -> Sent {
-    ui.frame();
-    drain(&mut ui.g)
-}
-
-/// What the card did each frame until it ended: (phase, level, columns, cells sent).
 fn run_card(ui: &mut Ui) -> Vec<(u32, u8, u8, Sent)> {
     let mut out = Vec::new();
     for _ in 0..200 {
-        let sent = step(ui);
+        let sent = ui.frame_sent();
         if ui.top() != "TITLE" {
             return out;
         }
@@ -82,7 +67,6 @@ fn scene_from_the_menu_shows_its_card_then_cuts_to_scene() {
     assert_eq!(ui.top(), "TITLE");
     assert_eq!(u32::from(card(&ui).id), TITLE_CARD_SCENE);
     let frames = run_card(&mut ui);
-    // Every frame inside the budget.
     for (k, f) in frames.iter().enumerate() {
         assert!(
             f.3.cells <= TITLE_CARD_FRAME_CELLS as usize && f.3.spi_ms() <= SPI_BUDGET_MS,
@@ -91,7 +75,6 @@ fn scene_from_the_menu_shows_its_card_then_cuts_to_scene() {
             f.3.spi_ms()
         );
     }
-    // The glow's levels in order, then the wipe 3 columns a frame, then the hold.
     let phases: Vec<u32> = frames.iter().map(|f| f.0).collect();
     let glow = phases.iter().filter(|&&p| p == TITLE_CARD_GLOW).count();
     let wipe = phases.iter().filter(|&&p| p == TITLE_CARD_WIPE).count();
@@ -112,8 +95,6 @@ fn scene_from_the_menu_shows_its_card_then_cuts_to_scene() {
     assert_eq!(cols, (1..=10).map(|k| 3 * k).collect::<Vec<u8>>());
     assert_eq!(wipe, 10);
     assert_eq!(hold, TITLE_CARD_HOLD_FRAMES as usize);
-    // The glow: each level's cells in frames of at most 200, then 2 frames still; the first
-    // level changes the whole menu (900 cells, 5 frames).
     println!(
         "THE SCENE: {glow} frames of glow, {wipe} of wipe, {hold} of hold, {} in all; {} cells",
         frames.len(),
@@ -124,28 +105,24 @@ fn scene_from_the_menu_shows_its_card_then_cuts_to_scene() {
         frames[..4].iter().all(|f| f.3.cells == 200),
         "the first level in bands"
     );
-    // The wipe sends the columns it adds: 90 cells a frame.
     for f in frames.iter().filter(|f| f.0 == TITLE_CARD_WIPE) {
         assert!(f.3.cells <= 90, "{:?}", f.3);
     }
-    // The hold sends nothing.
     for f in frames.iter().filter(|f| f.0 == TITLE_CARD_HOLD) {
         assert_eq!(f.3.cells, 0);
     }
-    // Then the cut to SCENE, in bands.
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(ui.v.s.wipe, SCREEN_BANDS as u8);
     let mut bands = 0;
     while unsafe { screen_animating(&ui.v.s) } != 0 {
-        let sent = step(&mut ui);
+        let sent = ui.frame_sent();
         assert!(sent.spi_ms() <= SPI_BUDGET_MS, "{sent:?}");
         bands += 1;
     }
     assert!(bands <= 5, "{bands} frames of bands");
-    // SCENE started its piece in the cut, and the cut showed all of it.
     assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
     for _ in 0..60 {
-        step(&mut ui); // the name's toast, shown and gone
+        ui.frame_sent();
     }
     let cv = &petscii(&ui.v.scene).cv;
     assert!(
@@ -160,12 +137,10 @@ fn the_held_frame_is_the_cards_png_pixel_for_pixel() {
     let mut ui = at_rest();
     open_from_menu(&mut ui, VIEWS_MENU_SCENE);
     while card(&ui).phase != TITLE_CARD_HOLD as u8 {
-        step(&mut ui);
+        ui.frame_sent();
     }
-    step(&mut ui);
+    ui.frame_sent();
     assert_shows_png(&ui, "title-scene");
-    // The glow cells keep a dither glyph, the cells that differ from it are blank over the
-    // bitmap.
     let cells = unsafe { &title_card_cells[TITLE_CARD_SCENE as usize] };
     for (r, bits) in cells.iter().enumerate() {
         for c in 0..30 {
@@ -179,7 +154,6 @@ fn the_held_frame_is_the_cards_png_pixel_for_pixel() {
     }
 }
 
-/// Each level of the glow, once its cells are out, is the art's glow at that level.
 #[test]
 fn the_glow_fades_in_through_its_dither_levels() {
     let levels = tc::glow_levels(&sidou_tests::logo::load("title-glow")).unwrap();
@@ -187,7 +161,7 @@ fn the_glow_fades_in_through_its_dither_levels() {
     open_from_menu(&mut ui, VIEWS_MENU_SCENE);
     let mut seen = Vec::new();
     while card(&ui).phase == TITLE_CARD_GLOW as u8 {
-        step(&mut ui);
+        ui.frame_sent();
         let c = card(&ui);
         if c.settled != 0 && c.phase == TITLE_CARD_GLOW as u8 && !seen.contains(&c.level) {
             seen.push(c.level);
@@ -201,7 +175,7 @@ fn the_glow_fades_in_through_its_dither_levels() {
 #[test]
 fn home_from_the_menu_to_live_shows_the_oscillator_card() {
     let mut ui = at_rest();
-    ui.v.cards = 2; // ALWAYS: ONCE never plays THE OSCILLATOR
+    ui.v.cards = CARDS_ALWAYS;
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     assert_eq!(ui.top(), "MENU");
@@ -209,9 +183,9 @@ fn home_from_the_menu_to_live_shows_the_oscillator_card() {
     assert_eq!(ui.top(), "TITLE");
     assert_eq!(u32::from(card(&ui).id), TITLE_CARD_OSCILLATOR);
     while card(&ui).phase != TITLE_CARD_HOLD as u8 {
-        step(&mut ui);
+        ui.frame_sent();
     }
-    step(&mut ui);
+    ui.frame_sent();
     assert_shows_png(&ui, "title-oscillator");
     run_card(&mut ui);
     assert_eq!(ui.top(), "LIVE");
@@ -227,7 +201,6 @@ fn power_on_the_boot_and_back_from_a_view_to_the_menu_show_no_card() {
         assert_ne!(ui.top(), "TITLE");
     }
     assert_eq!(ui.top(), "LIVE");
-    // STATUS back to the menu: no card.
     open_from_menu(&mut ui, VIEWS_MENU_STATUS);
     ui.settle();
     assert_eq!(ui.top(), "STATUS");
@@ -235,8 +208,6 @@ fn power_on_the_boot_and_back_from_a_view_to_the_menu_show_no_card() {
     assert_eq!(ui.top(), "MENU");
 }
 
-/// Any button or encoder ends the card at the next frame and does nothing else: no octave
-/// step, no chip toggle, no menu, no piece picked.
 #[test]
 fn a_button_or_a_knob_skips_and_does_nothing_else() {
     let buttons = [
@@ -252,7 +223,7 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
     for b in buttons {
         let mut ui = at_rest();
         open_from_menu(&mut ui, VIEWS_MENU_SCENE);
-        step(&mut ui);
+        ui.frame_sent();
         let (octave, model, which) = (ui.live().octave, ui.live().model, ui.v.scene.which);
         ui.press(b);
         assert_eq!(ui.top(), "TITLE", "button {b}: at once");
@@ -272,7 +243,7 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
         PANEL_ENC_K4,
     ] {
         let mut ui = at_rest();
-        ui.v.cards = 2;
+        ui.v.cards = CARDS_ALWAYS;
         ui.press(PANEL_BTN_HOME);
         ui.settle();
         ui.press(PANEL_BTN_HOME);
@@ -286,14 +257,13 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
     }
 }
 
-/// A note plays, and ends the card: from the keys or MIDI, however short.
 #[test]
 fn a_note_plays_and_ends_the_card() {
     for short in [false, true] {
         let mut ui = at_rest();
         open_from_menu(&mut ui, VIEWS_MENU_SCENE);
-        step(&mut ui);
-        step(&mut ui);
+        ui.frame_sent();
+        ui.frame_sent();
         ui.rig.note_on(69);
         assert!(ui.live().voice.iter().any(|v| v.gate != 0 && v.note == 69));
         if short {
@@ -304,15 +274,12 @@ fn a_note_plays_and_ends_the_card() {
     }
 }
 
-/// A held note does not keep the card away: only a note played while it shows ends it.
 #[test]
 fn a_note_held_from_before_does_not_end_the_card() {
     let mut ui = at_rest();
     ui.rig.note_on(60);
     open_from_menu(&mut ui, VIEWS_MENU_SCENE);
-    for _ in 0..10 {
-        ui.frame();
-    }
+    ui.frames(10);
     assert_eq!(ui.top(), "TITLE");
 }
 
@@ -320,7 +287,7 @@ fn a_note_held_from_before_does_not_end_the_card() {
 fn nothing_draws_over_the_card() {
     let mut ui = at_rest();
     open_from_menu(&mut ui, VIEWS_MENU_SCENE);
-    ui.rig.button(LIVE_BUTTON_FX); // MIDI or the panel's chip toggle, as it were
+    ui.rig.button(LIVE_BUTTON_FX);
     ui.rig.button(LIVE_BUTTON_OCT_UP);
     for _ in 0..5 {
         ui.frame();
@@ -335,12 +302,10 @@ fn nothing_draws_over_the_card() {
     );
 }
 
-/// SETTINGS' CARDS item: OFF, ONCE (the default) and ALWAYS; ALGORITHM steps through them and
-/// stops at the ends. OFF shows neither SCENE's nor LIVE's card.
 #[test]
 fn the_cards_option_steps_off_once_always() {
     let mut ui = at_rest();
-    assert_eq!(ui.v.cards, 1, "ONCE at power-on");
+    assert_eq!(ui.v.cards, CARDS_ONCE, "ONCE at power-on");
     crate::views::open_setting(&mut ui, VIEWS_SETTINGS_CARDS);
     assert_eq!(
         ui.menu_line(VIEWS_SETTINGS_CARDS as usize),
@@ -348,7 +313,7 @@ fn the_cards_option_steps_off_once_always() {
         "SETTINGS shows CARDS ONCE"
     );
     ui.turn(PANEL_ENC_ALGORITHM, -1);
-    assert_eq!(ui.v.cards, 0);
+    assert_eq!(ui.v.cards, CARDS_OFF);
     crate::views::settings_settle(&mut ui);
     assert_eq!(
         ui.menu_line(VIEWS_SETTINGS_CARDS as usize),
@@ -356,11 +321,11 @@ fn the_cards_option_steps_off_once_always() {
         "SETTINGS shows CARDS OFF"
     );
     ui.turn(PANEL_ENC_ALGORITHM, -1);
-    assert_eq!(ui.v.cards, 0, "OFF is the end");
+    assert_eq!(ui.v.cards, CARDS_OFF, "OFF is the end");
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.v.cards, 1);
+    assert_eq!(ui.v.cards, CARDS_ONCE);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.v.cards, 2);
+    assert_eq!(ui.v.cards, CARDS_ALWAYS);
     crate::views::settings_settle(&mut ui);
     assert_eq!(
         ui.menu_line(VIEWS_SETTINGS_CARDS as usize),
@@ -368,15 +333,15 @@ fn the_cards_option_steps_off_once_always() {
         "SETTINGS shows CARDS ALWAYS"
     );
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.v.cards, 2, "ALWAYS is the end");
+    assert_eq!(ui.v.cards, CARDS_ALWAYS, "ALWAYS is the end");
     ui.turn(PANEL_ENC_ALGORITHM, -1);
-    assert_eq!(ui.v.cards, 1);
+    assert_eq!(ui.v.cards, CARDS_ONCE);
 }
 
 #[test]
 fn cards_off_plays_none() {
     let mut ui = at_rest();
-    ui.v.cards = 0;
+    ui.v.cards = CARDS_OFF;
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.press(PANEL_BTN_HOME);
@@ -387,14 +352,10 @@ fn cards_off_plays_none() {
     ui.settle();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHIP as i32);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.choose_menu_item(VIEWS_MENU_CHIP);
     assert_eq!(ui.top(), "CHIP", "no card into CHIP");
 }
 
-/// ONCE: THE CHIP and THE SCENE the first time each since power-on, never THE OSCILLATOR; the
-/// way back to LIVE is a wipe with no card.
 #[test]
 fn a_card_plays_once_then_not() {
     let mut ui = at_rest();
@@ -406,16 +367,14 @@ fn a_card_plays_once_then_not() {
             ui.press(PANEL_BTN_HOME);
             ui.settle();
         }
-        ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-        ui.turn(PANEL_ENC_SELECT, item as i32);
-        step(&mut ui);
+        ui.highlight_menu_item(item);
+        ui.frame_sent();
         ui.turn(PANEL_ENC_ALGORITHM, 1);
         assert_eq!(ui.top(), "TITLE", "{name}: the card the first time");
         assert_eq!(u32::from(card(&ui).id), id);
         run_card(&mut ui);
         settle(&mut ui);
         assert_eq!(ui.top(), name);
-        // Back to the menu and in again: no card.
         ui.press(PANEL_BTN_HOME);
         ui.settle();
         assert_eq!(ui.top(), "MENU");
@@ -426,7 +385,6 @@ fn a_card_plays_once_then_not() {
         ui.press(PANEL_BTN_HOME);
         ui.settle();
     }
-    // The menu is open: HOME goes to LIVE with no card.
     assert_eq!(ui.top(), "MENU");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "LIVE", "no THE OSCILLATOR");
@@ -435,7 +393,7 @@ fn a_card_plays_once_then_not() {
 #[test]
 fn cards_always_plays_every_card() {
     let mut ui = at_rest();
-    ui.v.cards = 2;
+    ui.v.cards = CARDS_ALWAYS;
     for _ in 0..2 {
         open_from_menu(&mut ui, VIEWS_MENU_CHIP);
         assert_eq!(ui.top(), "TITLE");
@@ -454,8 +412,6 @@ fn cards_always_plays_every_card() {
     }
 }
 
-/// THE CHIP before the CHIP view, from the menu's first item: its held frame is its PNG, and
-/// the CHIP view cuts in under it.
 #[test]
 fn chip_from_the_menu_shows_its_card_then_cuts_to_chip() {
     let mut ui = at_rest();
@@ -463,9 +419,9 @@ fn chip_from_the_menu_shows_its_card_then_cuts_to_chip() {
     assert_eq!(ui.top(), "TITLE");
     assert_eq!(u32::from(card(&ui).id), TITLE_CARD_CHIP);
     while u32::from(card(&ui).phase) != TITLE_CARD_HOLD {
-        step(&mut ui);
+        ui.frame_sent();
     }
-    step(&mut ui);
+    ui.frame_sent();
     assert_shows_png(&ui, "title-chip");
     let frames = run_card(&mut ui);
     assert!(frames.len() >= TITLE_CARD_HOLD_FRAMES as usize - 2);

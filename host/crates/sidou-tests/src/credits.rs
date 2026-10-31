@@ -1,34 +1,17 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The About cracktro's credits: `app/credits.c`, generated from `CREDITS.md`.
-//!
-//! Each `## Section` becomes one or more pages headed by its title. A bullet
-//! `- **Who**: what` gives "who" lines (shown brighter) and "what" lines; so does a bullet
-//! that starts in bold without a colon (`- **Who** what`); a paragraph or any other bullet
-//! gives "what" lines only. The text before the first section goes under the heading
-//! "CREDITS". Names wrap between names, never inside one that fits a line ("who", and a
-//! "what" that is a list of names); other text wraps at any space. Lines wrap at `CREDITS_COLS` (app/credits.h) in upper case; accented Latin
-//! letters lose their accents and any other character outside the font's ASCII becomes '?'.
-//!
-//! A bullet stays on one page when it fits one, after the bullets before it if they leave
-//! room. One longer than a page starts a page of its own, and goes on over as many pages as it
-//! needs, each headed `<SECTION> (CONT.)`, cut where who ends and what begins rather than
-//! inside a sentence when each fits a page. Nothing follows it on its last page: the credits
-//! are attribution, and a bullet's tail never runs into the next one.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use crate::font::repo_root;
 
-/// app/credits.h
 pub const COLS: usize = 26;
 pub const LINES: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     pub text: String,
-    /// Names who is credited.
     pub name: bool,
 }
 
@@ -46,14 +29,11 @@ pub fn generated_path() -> PathBuf {
     repo_root().join("app/credits.c")
 }
 
-/// The characters the font draws as themselves (upper case ASCII and punctuation).
 pub fn in_font(c: char) -> bool {
     (' '..='_').contains(&c)
 }
 
-/// One character in the font's terms: upper case, accents dropped, quotes and dashes made
-/// ASCII; '?' for the rest.
-fn fold(c: char, out: &mut String) {
+fn fold_into_font(c: char, out: &mut String) {
     let base = match c {
         'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => "A",
         'ç' | 'Ç' => "C",
@@ -78,7 +58,6 @@ fn fold(c: char, out: &mut String) {
     out.push(if in_font(up) { up } else { '?' });
 }
 
-/// Markdown inline text to the font: emphasis and code marks dropped, links to their text.
 pub fn plain(md: &str) -> String {
     let mut s = String::new();
     let mut chars = md.chars().peekable();
@@ -94,13 +73,12 @@ pub fn plain(md: &str) -> String {
                     }
                 }
             }
-            _ => fold(c, &mut s),
+            _ => fold_into_font(c, &mut s),
         }
     }
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Words into lines of at most `COLS` characters; a longer word is cut.
 pub fn wrap(text: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -129,7 +107,6 @@ pub fn wrap(text: &str) -> Vec<String> {
     lines
 }
 
-/// `text` split after each `sep`, which stays (trimmed) at the end of the part before it.
 fn split_after(text: &str, sep: &str) -> Vec<String> {
     let parts: Vec<&str> = text.split(sep).collect();
     let last = parts.len() - 1;
@@ -146,10 +123,7 @@ fn split_after(text: &str, sep: &str) -> Vec<String> {
         .collect()
 }
 
-/// A list of names in parts never to be cut: after each ", " and " AND ", and a part longer
-/// than a line before its " (" when both halves fit one ("EMILIE GILLET" and "(MUTABLE
-/// INSTRUMENTS)").
-fn name_units(text: &str) -> Vec<String> {
+fn unbreakable_name_parts(text: &str) -> Vec<String> {
     let mut units = Vec::new();
     for part in split_after(text, ", ") {
         for p in split_after(&part, " AND ") {
@@ -167,19 +141,16 @@ fn name_units(text: &str) -> Vec<String> {
     units
 }
 
-/// Whether text is a list of names (each part of it at most 4 words), not a sentence.
 pub fn is_name_list(text: &str) -> bool {
-    name_units(text)
+    unbreakable_name_parts(text)
         .iter()
         .all(|u| u.split_whitespace().count() <= 4)
 }
 
-/// A list of names into lines of at most `COLS` characters, each name whole on one line when
-/// it fits one (`wrap` cuts at any space: "VADIM / ZAVALISHIN").
 pub fn wrap_names(text: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let mut cur = String::new();
-    for u in name_units(text) {
+    for u in unbreakable_name_parts(text) {
         if u.len() > COLS {
             if !cur.is_empty() {
                 lines.push(std::mem::take(&mut cur));
@@ -200,8 +171,6 @@ pub fn wrap_names(text: &str) -> Vec<String> {
     lines
 }
 
-/// A block of the file: a bullet or a paragraph, under a heading; who is credited, then what
-/// for.
 struct Block {
     heading: String,
     who: Vec<Line>,
@@ -218,8 +187,6 @@ impl Block {
     }
 }
 
-/// A bullet's who and what: `**Who**: what` splits at the colon after the bold, and a bullet
-/// that starts in bold without one at the bold's end (`**M-VAVE** for publishing ...`).
 fn who_and_what(md: &str) -> (Option<&str>, &str) {
     let md = md.trim_start();
     if !md.starts_with("**") {
@@ -234,9 +201,8 @@ fn who_and_what(md: &str) -> (Option<&str>, &str) {
     }
 }
 
-fn block(heading: &str, md: &str, bullet: bool) -> Block {
+fn parse_block(heading: &str, md: &str, bullet: bool) -> Block {
     let (who, what) = if bullet { who_and_what(md) } else { (None, md) };
-    // Who is credited, and a list of names after the colon, wrap between names.
     let lines = |text: &str, name: bool| {
         let text = plain(text);
         let wrapped = if name || (bullet && is_name_list(&text)) {
@@ -256,7 +222,6 @@ fn block(heading: &str, md: &str, bullet: bool) -> Block {
     }
 }
 
-/// The heading of the pages a block goes on over.
 pub fn continued(heading: &str) -> String {
     let h = format!("{heading} (CONT.)");
     if h.len() <= COLS {
@@ -266,9 +231,7 @@ pub fn continued(heading: &str) -> String {
     }
 }
 
-/// A block longer than a page in page-sized parts: who and what apart when each fits a page,
-/// else page-sized cuts of the whole.
-fn parts(b: &Block) -> Vec<Vec<Line>> {
+fn page_sized_parts(b: &Block) -> Vec<Vec<Line>> {
     if b.who.len() <= LINES && b.what.len() <= LINES {
         return [&b.who, &b.what]
             .into_iter()
@@ -280,14 +243,13 @@ fn parts(b: &Block) -> Vec<Vec<Line>> {
     all.chunks(LINES).map(<[Line]>::to_vec).collect()
 }
 
-/// CREDITS.md into pages.
 pub fn parse(md: &str) -> Vec<Page> {
     let mut blocks: Vec<Block> = Vec::new();
     let mut heading = String::from("CREDITS");
     let mut cur: Option<(String, bool)> = None;
     let flush = |cur: &mut Option<(String, bool)>, heading: &str, blocks: &mut Vec<Block>| {
         if let Some((text, bullet)) = cur.take() {
-            blocks.push(block(heading, &text, bullet));
+            blocks.push(parse_block(heading, &text, bullet));
         }
     };
     let mut in_comment = false;
@@ -317,7 +279,6 @@ pub fn parse(md: &str) -> Vec<Page> {
     flush(&mut cur, &heading, &mut blocks);
 
     let mut pages: Vec<Page> = Vec::new();
-    // The last page ends a split block: nothing goes after it.
     let mut sealed = false;
     for b in blocks {
         if b.len() == 0 {
@@ -339,7 +300,7 @@ pub fn parse(md: &str) -> Vec<Page> {
             sealed = false;
             continue;
         }
-        for (i, part) in parts(&b).into_iter().enumerate() {
+        for (i, part) in page_sized_parts(&b).into_iter().enumerate() {
             pages.push(Page {
                 heading: if i == 0 {
                     b.heading.clone()
@@ -380,7 +341,6 @@ const HEADER: &str = "// SPDX-FileCopyrightText: 2026 SIDOU contributors\n\
                       do not edit. */\n";
 // REUSE-IgnoreEnd
 
-/// `app/credits.c`.
 pub fn c_source(pages: &[Page]) -> String {
     let mut s = String::from(HEADER);
     s.push_str("#include \"credits.h\"\n\n#include <stddef.h>\n\n");
@@ -413,7 +373,6 @@ pub fn c_source(pages: &[Page]) -> String {
     s
 }
 
-/// Writes `app/credits.c` if `update`, else returns whether it is stale.
 pub fn check_or_write(pages: &[Page], update: bool) -> bool {
     let path = generated_path();
     let want = c_source(pages);

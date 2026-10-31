@@ -1,12 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The starter pack (M3 Task 13, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md): `assets/starter/`'s
-//! `.sid` tunes, each GoatTracker's own packer's PSID v2 of a `.sng` that is in the
-//! repository, and one `.md` of metadata for each. The list is the user's (signed off
-//! 2026-10-24); what is left out, and why, is in LICENSING.md.
-//!
-//! `check_or_write` is the generator and the check: `SIDOU_STARTER_UPDATE=1` writes the files,
-//! otherwise it lists the stale ones.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -14,11 +7,10 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use sidou_sys::*;
 
+use crate::font::repo_root;
 use crate::psid_fixtures::{Psid, CLOCK_PAL};
 use crate::song::{Song, TAG_CHPA};
 
-/// The licences a starter tune may be under (the plan's allowlist); a `written permission`
-/// needs a file in `docs/permissions/`.
 pub const LICENCES: [&str; 6] = [
     "GPL-3.0-or-later",
     "GPL-2.0-or-later",
@@ -28,17 +20,11 @@ pub const LICENCES: [&str; 6] = [
     "CC-BY-SA-4.0",
 ];
 
-/// One tune of the pack.
 pub struct Tune {
-    /// The file's name in `assets/starter`, without `.sid`.
     pub stem: &'static str,
-    /// The `.sng` it is packed from, from the repository's root.
     pub source: String,
     pub licence: &'static str,
-    /// The composer as the metadata and CREDITS.md name them.
     pub composer: &'static str,
-    /// `-S` of gt2reloc: 1 is one call a frame (a VBI tune); more is CIA-timed (the packed
-    /// init sets the timer, the header's speed bits say so).
     pub multiplier: u32,
 }
 
@@ -66,7 +52,6 @@ fn cadaver(stem: &'static str, multiplier: u32) -> Tune {
     }
 }
 
-/// The pack, in the order of its table in LICENSING.md.
 pub fn tunes() -> Vec<Tune> {
     vec![
         own("chrome-comet"),
@@ -83,15 +68,10 @@ pub fn tunes() -> Vec<Tune> {
     ]
 }
 
-pub fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
-}
-
 pub fn dir() -> PathBuf {
-    root().join("assets/starter")
+    repo_root().join("assets/starter")
 }
 
-/// A `.sng`'s three header strings: title, author, copyright (32 bytes each after `GTS5`).
 pub fn sng_strings(sng: &[u8]) -> [String; 3] {
     let text = |i: usize| {
         let field = &sng[4 + 32 * i..4 + 32 * (i + 1)];
@@ -101,8 +81,6 @@ pub fn sng_strings(sng: &[u8]) -> [String; 3] {
     [text(0), text(1), text(2)]
 }
 
-/// The chip a song's trailer names (`CHPA`): 6581 or 8580; a song without one is GoatTracker's
-/// default, a 6581.
 pub fn sng_model(sng: &[u8]) -> sid_model {
     let mut song = Song::device();
     if song.read(sng, 4).is_err() {
@@ -118,13 +96,9 @@ pub fn sng_model(sng: &[u8]) -> sid_model {
 }
 
 pub fn source_bytes(t: &Tune) -> Vec<u8> {
-    std::fs::read(root().join(&t.source)).unwrap_or_else(|e| panic!("{}: {e}", t.source))
+    std::fs::read(repo_root().join(&t.source)).unwrap_or_else(|e| panic!("{}: {e}", t.source))
 }
 
-/// The tune's `.sid`: PSID v2, PAL, the song's chip, GoatTracker's packer at its default
-/// options (and `-S` for a multispeed tune, as GoatTracker's own `.sid` writer makes it: the timer's
-/// stub before the player, every song's speed bit set), the name, author and released fields from the
-/// song's own header.
 pub fn sid_file(t: &Tune) -> Vec<u8> {
     let sng = source_bytes(t);
     let o = gt2_ref::Options {
@@ -138,10 +112,6 @@ pub fn sid_file(t: &Tune) -> Vec<u8> {
     } else {
         1
     };
-    // GoatTracker's own `.sid` writer (greloc.c) puts ten bytes before a multispeed tune's player:
-    // LDX #lo / STX $DC04 / LDX #hi / STX $DC05, which set CIA 1's timer to a frame's cycles
-    // over the multiple (PAL: $4CC7 / n); the tune loads ten bytes lower and inits there, and the
-    // stub falls through into the player's init. The packed `.prg` has no such stub.
     let (load, init, code) = if t.multiplier == 1 {
         (packed.load, packed.init(), packed.code.clone())
     } else {
@@ -193,7 +163,6 @@ pub fn sha256(bytes: &[u8]) -> String {
         })
 }
 
-/// The tune's `.md`.
 pub fn md(t: &Tune, sid: &[u8]) -> String {
     let sng = source_bytes(t);
     let [title, _, _] = sng_strings(&sng);
@@ -216,7 +185,6 @@ pub fn md(t: &Tune, sid: &[u8]) -> String {
     } else {
         "the repository's song, packed"
     };
-    // The generated file's own licence header; reuse must not read it as this file's.
     // REUSE-IgnoreStart
     format!(
         "<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->\n\
@@ -251,8 +219,6 @@ pub fn md(t: &Tune, sid: &[u8]) -> String {
     // REUSE-IgnoreEnd
 }
 
-/// The pack's files that are not as their sources make them (or, with `update`, that were
-/// written): the names, relative to `assets/starter`.
 pub fn check_or_write(update: bool) -> Vec<String> {
     let out = dir();
     if update {

@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""SIDOU SysEx v1 over USB (docs/reference/sysex.md): INQ, DIR, then PUT/GET/DEL of a disposable
-file, stop-and-wait. Only manufacturer 7D 'SD' frames are sent.
-
-    sysex_roundtrip.py [PORT] [SIZE]
-"""
 import os, sys, time, zlib, struct
 import mido
 
@@ -17,8 +12,6 @@ INQ, DIR, GET, PUT, DATA, END, DEL, ABORT, ACK, NAK = 1, 2, 3, 4, 5, 6, 7, 8, 0x
 NAKS = {1: "malformed", 2: "checksum", 3: "sequence", 4: "BUSY", 5: "FULL", 6: "not found",
         7: "I/O", 8: "timeout", 9: "aborted", 12: "RSID", 13: "MUS", 14: "broken .sid",
         15: "too long"}
-# The disposable file's store type: one nothing on the device reads (1 is a song, 2 a .sid,
-# whose header the device checks, 3 SysEx's instrument staging; app/store.h).
 TYPE = 0x7F
 
 

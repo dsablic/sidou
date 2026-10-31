@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's 6502 (core/cpu6502) under GoatTracker's packed player (M3 Task 3): every example
-//! song, subtune and option set the harness runs, on `mos6502` and on SIDOU's core in each
-//! of its three builds; the ordered SID writes of every call, the cycles of every call, the
-//! registers it returns with and the whole memory at the end are equal.
 
 use gt2_ref::cpu::{Access, Cpu6502, Mos6502, Ram, Regs, Sidou6502};
 use gt2_ref::trace::cross_check;
@@ -135,11 +131,8 @@ fn every_example_matches_on_sidou_s_6502_in_every_option_set() {
     assert!(writes > 0 && timed == calls);
 }
 
-/// `mos6502` takes 8 cycles for INC abs,X across a page; the NMOS 6502 takes 7 (Tom Harte's
-/// tests, and SIDOU's core). The wrapper takes the extra cycle back; JAM is not decodable.
 #[test]
 fn rmw_absolute_x_is_seven_cycles_on_both() {
-    // LDX #$FF / INC $10F0,X (crosses) / INC $1000,X (does not cross for X=0 after INX)
     let code = [0xa2, 0xff, 0xfe, 0xf1, 0x10, 0xe8, 0xfe, 0x00, 0x20, 0x02];
     let mk = || {
         let mut ram = Ram::new(0xd400);

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "master_gain.h"
 
-/* MASTER_TAPER[0] = 0 and MASTER_TAPER[i] = round(32768 * 10^(-3 * (1 - i / 64))), i = 1..64:
- * -60 dB at 1, rising 0.94 dB an entry to unity at 64, so the pot's steps are even in dB. */
 static const uint16_t MASTER_TAPER[65] = {
     0, 37, 41, 45, 50, 56, 63, 70, 78, 87, 96, 107, 120,
     133, 148, 165, 184, 205, 229, 255, 284, 316, 352, 392, 437, 487,
@@ -16,7 +14,7 @@ uint32_t master_gain_of(uint32_t value, uint32_t max) {
     if (value >= max) {
         return MASTER_UNITY;
     }
-    uint32_t x = (value * 1024u + max / 2u) / max; /* 0..1023 */
+    uint32_t x = (value * 1024u + max / 2u) / max;
     uint32_t i = x >> 4, f = x & 15u;
     return (MASTER_TAPER[i] * (16u - f) + MASTER_TAPER[i + 1u] * f + 8u) >> 4;
 }
@@ -32,7 +30,6 @@ void master_gain_apply(int16_t* lr, uint32_t frames_log2, uint32_t from, uint32_
         return;
     }
     if (from == to) {
-        /* Four samples a pass: the loop's own instructions are a quarter of a sample's. */
         const int32_t g = (int32_t)to;
         int16_t* p = lr;
         for (uint32_t i = 0; i < 2u << frames_log2; i += 4u, p += 4) {

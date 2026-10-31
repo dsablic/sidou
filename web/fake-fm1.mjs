@@ -1,25 +1,19 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// A simulated FM-1 for the Node tests (web/sysex.test.mjs, web/library.test.mjs): SIDOU's SysEx
-// protocol as docs/reference/sysex.md has it, stop-and-wait, with INQ, DIR, GET, PUT, DEL and the
-// NAKs, BUSY and WAIT. Each frame it gets is checked as the real one checks it. Opens no MIDI port.
 import assert from "node:assert/strict";
 import { ACK, ABORT, Client, DATA, DEL, DIR, END, GET, INQ, NAK, PUT, WAIT, crc32, decodeFrame, encodeFrame, validName } from "./sysex.js";
 
 const hex = (b) => Buffer.from(b).toString("hex");
-// A device that follows sysex.md: it checks every frame it gets as the real one would and answers
-// into the client. `fail` names a NAK to send for a given command: { DATA: [index, reason, pool] }.
 export class Device {
-  constructor({ files = [], free = 40000, nak = null, mute = null, quiet = null, current = null, refuse = null, chunk = 256, flip = null, saveAsFirst = false } = {}) {
-    this.saveAsFirst = saveAsFirst; // PUT target 2 refused with BUSY (the screen's SAVE AS FIRST)
-    this.flip = flip; // flip a bit of the first DATA packet's byte at this index
-    this.current = current; // the current song's bytes, for GET target 2
-    this.refuse = refuse; // a NAK reason for every GET
+  constructor({ files = [], free = 40000, nak = null, mute = null, waitForQuiet = null, current = null, nakEveryGet = null, chunk = 256, corruptDataByte = null, saveAsFirst = false } = {}) {
+    this.saveAsFirst = saveAsFirst;
+    this.corruptDataByte = corruptDataByte;
+    this.current = current;
+    this.nakEveryGet = nakEveryGet;
     this.chunk = chunk;
     this.out = null;
-    // a file may come with its bytes: { name, type, bytes } (its length and CRC follow)
     this.files = files.map(({ bytes, ...f }) => (bytes ? { ...f, length: bytes.length, crc: crc32(bytes) } : { ...f }));
-    this.quiet = quiet; // { at: a DATA's index, waits: WAITs before its answer, every: ms, give_up: NAK BUSY then }
+    this.waitForQuiet = waitForQuiet;
     this.free = free;
     this.nak = nak;
     this.mute = mute;
@@ -72,7 +66,6 @@ export class Device {
       assert.equal(d.length, 2 + 16 + 1 + 4 + 4);
       assert.ok([0, 2].includes(d[0]) && d[1] === 0, "target 0 or 2, instrument 0");
       if (d[0] === 2) {
-        // the current song: no name, a song; refused (BUSY, SAVE AS FIRST) before anything is taken
         assert.ok(d.slice(2, 18).every((b) => b === 0), "target 2 has no name");
         assert.equal(d[18], 1, "target 2 is a song");
         if (this.saveAsFirst) return this.reply(NAK, f.sequence, Uint8Array.from([4, 0]));
@@ -99,10 +92,10 @@ export class Device {
       assert.ok(f.data.length >= 1 && f.data.length <= 256);
       assert.equal(have % 16, 0, "DATA starts 16-byte aligned");
       u.data.push(...f.data);
-      const q = this.quiet;
+      const q = this.waitForQuiet;
       u.packets = (u.packets ?? 0) + 1;
       if (q && q.at === u.packets - 1) {
-        this.quiet = null;
+        this.waitForQuiet = null;
         for (let i = 0; i < q.waits; i++) {
           setTimeout(() => this.client.push(encodeFrame(WAIT, f.sequence)), i * q.every);
         }
@@ -120,7 +113,6 @@ export class Device {
     assert.equal(u.data.length, u.length, "exact length");
     assert.equal(crc32(Uint8Array.from(u.data)), u.crc, "CRC");
     if (u.target === 2) {
-      // loaded at once: the FM-1's current song from now on (GET target 2 reads it back)
       this.current = Uint8Array.from(u.data);
       this.loads = [...(this.loads ?? []), this.current];
       this.upload = null;
@@ -133,12 +125,11 @@ export class Device {
     this.upload = null;
     this.reply(ACK, f.sequence);
   }
-  // GET: the metadata (a PUT frame), the DATA packets and END, one at a time, each after the ACK of the one before
   get(f) {
     const d = f.data;
     assert.equal(d.length, 18, "GET is target, instrument and a name");
     assert.equal(d[1], 0, "no instrument");
-    if (this.refuse) return this.reply(NAK, f.sequence, Uint8Array.from([this.refuse, 3]));
+    if (this.nakEveryGet) return this.reply(NAK, f.sequence, Uint8Array.from([this.nakEveryGet, 3]));
     let bytes, type = 1, name = new Uint8Array(16);
     if (d[0] === 2) {
       assert.ok(d.slice(2).every((b) => b === 0), "target 2 has no name");
@@ -155,7 +146,7 @@ export class Device {
     let seq = f.sequence;
     this.out = [[PUT, Uint8Array.from([d[0], 0, ...name, type, ...u32(bytes.length), ...u32(crc32(bytes))])]];
     for (let o = 0; o < bytes.length; o += this.chunk) this.out.push([DATA, bytes.slice(o, o + this.chunk)]);
-    if (this.flip !== null) this.out[1][1] = this.out[1][1].map((b, i) => (i === this.flip ? b ^ 1 : b));
+    if (this.corruptDataByte !== null) this.out[1][1] = this.out[1][1].map((b, i) => (i === this.corruptDataByte ? b ^ 1 : b));
     this.out.push([END, new Uint8Array()]);
     this.outSeq = seq;
     this.outNext();
@@ -186,14 +177,6 @@ export const connect = (opts, copts = { timeout: 300, ackTimeout: 300, busy: [] 
   return { device, client };
 };
 
-// ---------------------------------------------------------------------------------------------
-// Live Link (docs/reference/live-link.md), for web/link.test.mjs: an FM-1's device side that
-// answers with the frames SIDOU's app/link.c sent in host/crates/sidou-tests/tests/web_link.rs
-// (web/link-fixtures.json). START: HELLO and the keyframe; PALETTE: COLOURS; FONT: GLYPHS;
-// KEYFRAME: the cells; HEARTBEAT: BEAT; STOP: STOPPED; any of them but START with no session:
-// STOPPED; the session ends by itself (STOPPED) 3 s after the last START or HEARTBEAT. PANEL
-// frames are recorded as { held, pressed, steps, at }. Every frame it gets must have the magic
-// and a good checksum. `deaf`: heartbeats are lost on the way; `mute`: it answers nothing.
 import { FONT as LL_FONT, HEARTBEAT as LL_HEARTBEAT, KEYFRAME as LL_KEYFRAME, PALETTE as LL_PALETTE,
   PANEL as LL_PANEL, START as LL_START, STOP as LL_STOP, Splitter as LinkSplitter, isLink, parse as linkParse } from "./link.js";
 
@@ -208,7 +191,7 @@ export class LiveLinkDevice {
     this.mute = mute;
     this.on = false;
     this.heard = 0;
-    this.got = []; // every command received, in order
+    this.got = [];
     this.panels = [];
     this.splitter = new LinkSplitter();
     this.timer = clock.setInterval(() => this.tick(), 50);

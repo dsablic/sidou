@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Library page: the FM-1's store over Web MIDI (SysEx; store.js does the work, sysex.js the
-// protocol) and a song's export through SIDOU's own reader and writer in wasm (core.js,
-// sidou-core.wasm). Nothing is sent before the Connect button, and only to the port pair selected;
-// a song picked from a file needs no MIDI at all.
 import { CoreError, loadCore } from "./core.js";
 import { Library, extOf, storeName, typeLabel, typeOfFile } from "./store.js";
 import { Client } from "./sysex.js";
@@ -38,10 +34,7 @@ function save(bytes, filename, type = "application/octet-stream") {
 }
 
 const state = { access: null, lib: null, busy: false, core: null, song: null, saved: [] };
-window.__library = state; // the smoke test (web/check.mjs) reads what was saved
-
-// ---------------------------------------------------------------------------------------------
-// The FM-1's store
+window.__library = state;
 
 function setBusy(busy) {
   state.busy = busy;
@@ -128,7 +121,6 @@ function showFiles() {
   $("store").hidden = false;
 }
 
-// Runs one store operation with the page busy, its progress shown and its outcome said.
 async function run(what, fn) {
   if (state.busy || !state.lib) return;
   setBusy(true);
@@ -179,7 +171,6 @@ function rename(f) {
   });
 }
 
-// Sends picked files: each one's type from its content, its name asked (from the file name).
 async function sendFiles(list) {
   for (const file of list) {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -235,9 +226,6 @@ async function restore(file) {
   });
 }
 
-// ---------------------------------------------------------------------------------------------
-// A song: open, export
-
 async function core() {
   if (!state.core) state.core = await loadCore("sidou-core.wasm");
   return state.core;
@@ -269,11 +257,10 @@ function openFromFm1(name) {
   });
 }
 
-// The editor (editor.html) takes a song over in this tab's sessionStorage and opens it.
 function editSong(bytes, source) {
   try {
     sessionStorage.setItem("sidou-edit", JSON.stringify({ hex: Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(""), source }));
-  } catch { /* no storage: the editor opens empty */ }
+  } catch {}
   state.edited = source.name;
   location.href = "editor.html";
 }
@@ -357,8 +344,6 @@ async function pickSong(file) {
   if (!file) return;
   await openSong(new Uint8Array(await file.arrayBuffer()), { name: file.name });
 }
-
-// ---------------------------------------------------------------------------------------------
 
 $("file").addEventListener("change", (e) => { pickSong(e.target.files[0]); e.target.value = ""; });
 const drop = $("drop");

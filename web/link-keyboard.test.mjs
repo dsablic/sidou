@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//   node web/link-keyboard.test.mjs
 import assert from "node:assert/strict";
 import { KeyboardController } from "./link-keyboard.js";
 

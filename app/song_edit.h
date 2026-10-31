@@ -15,7 +15,6 @@ enum {
     SONG_EDIT_FULL, SONG_EDIT_INVALID, SONG_EDIT_UNAVAILABLE, SONG_EDIT_BUSY
 };
 
-/* A shift's inverse needs only the row it discarded and that row's locks. */
 typedef struct {
     song_edit_request request;
     uint8_t before[GT2_ROW_BYTES];
@@ -35,19 +34,10 @@ typedef struct {
 } song_editor;
 
 void song_edit_init(song_editor* editor, const song_transport* transport);
-/* 1: retained (possibly awaiting transport room or compaction), 0: refused. No further
- * edit is accepted while pending. Poll after song_ctl_poll; revision changes only after
- * completion. The caller must finish pending work before rebinding/loading the song. */
 int song_edit_row(song_editor* editor, uint32_t pattern, uint32_t row, const uint8_t cell[4]);
 int song_edit_shift(song_editor* editor, uint32_t pattern, uint32_t row, int insert);
-/* One history entry: undo, then redo, alternating. */
 int song_edit_undo(song_editor* editor);
-/* At most one rebuild/compaction step per poll. Rebuild preparation runs here, not in the
- * input handler; row writes may be prepared immediately. SAVING blocks new preparation,
- * not submission of an edit the model already accepted. 1: a user edit completed. */
 int song_edit_poll(song_editor* editor);
-/* Current row, including an unacknowledged row write (for consecutive knob changes).
- * Returns 0 for an invalid/unheld row. Shift previews wait for completion. */
 int song_edit_read_row(const song_editor* editor, uint32_t pattern, uint32_t row, uint8_t cell[4]);
 const char* song_edit_message(const song_editor* editor);
 

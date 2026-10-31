@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# The site's wasm core: SIDOU's song reader and writer, GTI5 export and song player
-# (core/song, core/player, core/sid) with platform/web/core_api.c, as one WebAssembly module
-# with no imports. web/core.js is its JavaScript side.
-#   tools/wasm-core [OUT.wasm]     (default build/wasm-core/sidou-core.wasm)
-# The toolchain is what the build image already has: clang (its wasm32 target) compiles, and
-# the Rust toolchain's rust-lld (-flavor wasm) links; a wasm-ld on PATH is used if there is one
-# (SIDOU_WASM_LD names another; SIDOU_WASM_RUST_LLD=1 insists on rust-lld). No libc: platform/fm1/libc_min.c, as on the device.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="${1:-$root/build/wasm-core/sidou-core.wasm}"
@@ -22,7 +15,6 @@ if [ -z "$ld" ]; then
     else
         sysroot=$(rustc --print sysroot)
         host=$(rustc -vV | sed -n 's/^host: //p')
-        # (its libLLVM is in the sysroot's lib, where rustc points it when rustc runs it)
         export LD_LIBRARY_PATH="$sysroot/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         export DYLD_LIBRARY_PATH="$sysroot/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
         ld="$sysroot/lib/rustlib/$host/bin/rust-lld -flavor wasm"
@@ -49,8 +41,6 @@ for s in "${sources[@]}"; do
     "$cc" "${flags[@]}" -c "$root/$s" -o "$o"
     objs+=("$o")
 done
-# A 64 KiB stack; memory grows as needed (the song region, the buffers and the player are
-# static data, about 1.1 MiB: the effect slots' pool and a pattern preview's copy of the song too).
 $ld --no-entry --gc-sections --strip-all -z stack-size=65536 --initial-memory=2097152 \
     "${objs[@]}" -o "$out"
 echo "wasm-core: $out ($(wc -c <"$out" | tr -d ' ') bytes)"

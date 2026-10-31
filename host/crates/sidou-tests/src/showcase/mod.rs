@@ -1,29 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's showcase songs: four original songs written for SIDOU's demo videos, tutorials
-//! and manual, each as data in its own file here (the song's source), written out as a
-//! GoatTracker 2 `.sng` with a SIDOU trailer (`assets/songs/<name>.sng`, which GoatTracker
-//! opens; the trailer's `CHPA` names the chip the song is written for). They are not
-//! compiled into the firmware: they are files for the store, the demos and the starter pack.
-//! `tests/showcase.rs` keeps the files in step with this source (SIDOU_SONG_UPDATE=1
-//! rewrites them), plays each on GoatTracker's own packed player against SIDOU's, and
-//! renders each one (SIDOU_SHOWCASE_WAV=<dir> writes the renders as WAV files).
-//!
-//! Every sound is GoatTracker's own, so each song plays the same in GoatTracker: the
-//! row-by-row filter moves are its `C` command and filter table rather than SIDOU's parameter
-//! locks, and a song plays on chip A only (chip B's tracks are M5's). The trailer adds only
-//! the chip each song is written for.
-//!
-//! The songs are written in a small text notation ([`Kit`]): a pattern is a list of rows
-//! separated by spaces (bar lines `|` are ignored), each row one of
-//! - `.` a rest, `.N` N rests; `^` key off, `+` key on;
-//! - a note, `C-4`, `C#4` or `Eb4` (GoatTracker's C-0 to G#7);
-//! - an alias the song defines (a drum, say), standing for a row;
-//!
-//! then optionally `/instrument` (by name) and `@X` with the command's digit and its data,
-//! two hex digits (`@F05`) or `=` and a speedtable entry's name (`@3=slide`). An orderlist
-//! is a list of pattern names, `+N` / `-N` (a transpose), `xN` (repeat the next pattern N
-//! times) and `|` (the restart position).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -42,9 +18,7 @@ pub mod outrun;
 pub const AUTHOR: &str = "SIDOU contributors";
 pub const COPYRIGHT: &str = "2026 GPL-3.0-or-later";
 
-/// A showcase song: its file name, title, the chip it is written for, and its source.
 pub struct Showcase {
-    /// The file's name in assets/songs, without `.sng`.
     pub name: &'static str,
     pub title: &'static str,
     pub model: sid_model,
@@ -55,29 +29,26 @@ pub fn all() -> [Showcase; 4] {
     [outrun::SONG, game::SONG, barbarian::SONG, chill::SONG]
 }
 
-/// The four tables' indexes in [`Kit::tables`].
 pub const WAVE: usize = 0;
 pub const PULSE: usize = 1;
 pub const FILTER: usize = 2;
 pub const SPEED: usize = 3;
 
-/// A table program's jump (left `$FF`): `jump(k)` jumps to the program's own row k
-/// (1-based), `jump(0)` stops. [`Kit::table`] makes it absolute.
+const PROFILE_6581_R2: u8 = 0;
+const ENVELOPE_AUTHENTIC: u8 = 1;
+
 pub const fn jump(k: u8) -> (u8, u8) {
     (0xff, k)
 }
 
-/// A wavetable absolute note (GoatTracker's numbering, C-0 is 0).
 pub const fn abs(note: u8) -> u8 {
     0x80 + note
 }
 
-/// A wavetable relative note down by `k` semitones.
 pub const fn down(k: u8) -> u8 {
     0x80 - k
 }
 
-/// A song being written: its instruments, tables and patterns by name.
 #[derive(Default)]
 pub struct Kit {
     pub title: String,
@@ -91,7 +62,6 @@ pub struct Kit {
     orders: [(Vec<u8>, u8); 3],
 }
 
-/// A note's name to GoatTracker's number (C-0 is 0).
 pub fn note(name: &str) -> Option<u8> {
     let b = name.as_bytes();
     if b.len() != 3 {
@@ -127,7 +97,6 @@ impl Kit {
         }
     }
 
-    /// A table program; its jumps are its own rows (see [`jump`]). Its first row's index.
     pub fn table(&mut self, table: usize, name: &str, rows: &[(u8, u8)]) -> u8 {
         let start = self.tables[table].len() as u8 + 1;
         for &(l, r) in rows {
@@ -168,9 +137,6 @@ impl Kit {
             .unwrap_or_else(|| panic!("no table program {name:?}"))
     }
 
-    /// An instrument: AD, SR, its wave, pulse and filter programs (by name, "" none), its
-    /// vibrato (a speedtable name, "" none) and delay, the gate-off timer, the first-frame
-    /// waveform.
     #[allow(clippy::too_many_arguments)]
     pub fn instrument(
         &mut self,
@@ -204,7 +170,6 @@ impl Kit {
             .insert(name.to_string(), self.instr.len() as u8);
     }
 
-    /// A shorthand row for patterns (a drum hit, say).
     pub fn alias(&mut self, name: &str, row: &str) {
         self.aliases.insert(name.to_string(), row.to_string());
     }
@@ -280,7 +245,6 @@ impl Kit {
         (digit, data)
     }
 
-    /// A pattern from rows in the notation above. It must be `rows` long.
     pub fn pattern(&mut self, name: &str, rows: usize, text: &str) {
         let p: Vec<[u8; 4]> = text
             .split_whitespace()
@@ -299,7 +263,6 @@ impl Kit {
         assert!(self.patterns.len() <= 208);
     }
 
-    /// A channel's orderlist in the notation above.
     pub fn order(&mut self, channel: usize, text: &str) {
         let mut e = Vec::new();
         let mut restart = None;
@@ -330,7 +293,6 @@ impl Kit {
         self.orders[channel] = (e, restart.unwrap_or(0));
     }
 
-    /// The rows one pass of channel 1's orderlist plays, from the start to its end.
     pub fn rows(&self) -> u32 {
         let (e, _) = &self.orders[0];
         let mut rows = 0;
@@ -348,7 +310,6 @@ impl Kit {
         rows
     }
 
-    /// The plain GoatTracker file, as written exactly from the kit.
     pub fn spec(&self) -> SngSpec {
         let string = |s: &str| {
             let mut b = [0u8; 32];
@@ -374,31 +335,26 @@ impl Showcase {
         repo_root().join(format!("assets/songs/{}.sng", self.name))
     }
 
-    /// The song read into SIDOU's model, its chip's setup added (`CHPA`).
     pub fn song(&self) -> Song {
         let plain = (self.kit)().spec().encode();
         let mut s = Song::host();
         s.read(&plain, 0)
             .unwrap_or_else(|e| panic!("{}: {}", self.name, e.msg));
-        // The profile must be one of the model's: the device refuses a CHPA whose profile's
-        // model is not its model (SNG: BAD CHIP SETUP). 0, the 6581 R2, suits a 6581 song.
         let profile = if self.model == SID_MODEL_8580 {
             unsafe { sid_chip_default(self.model) as u8 }
         } else {
-            0
+            PROFILE_6581_R2
         };
         let c = song_chip_setup {
             model: (self.model == SID_MODEL_8580) as u8,
             profile,
-            envelope: 1, // AUTHENTIC, a song's default (decision record 0005)
+            envelope: ENVELOPE_AUTHENTIC,
             ..Default::default()
         };
         assert_eq!(unsafe { song_ext_set_chip(s.ptr_mut(), TAG_CHPA, &c) }, 0);
         s
     }
 
-    /// The play routine's calls in one pass: up to the call that starts channel 1's first
-    /// row after its orderlist's end.
     pub fn frames(&self) -> u32 {
         let rows = (self.kit)().rows();
         let song = self.song();
@@ -416,18 +372,15 @@ impl Showcase {
         unreachable!()
     }
 
-    /// The file: SIDOU's writer's output, with its trailer.
     pub fn sng(&self) -> Vec<u8> {
         self.song().write(true)
     }
 
-    /// The song without its trailer, as GoatTracker saves it.
     pub fn plain(&self) -> Vec<u8> {
         self.song().write(false)
     }
 }
 
-/// The files that differ from what the sources make; with `update`, rewritten.
 pub fn check_or_write(update: bool) -> Vec<PathBuf> {
     let mut stale = Vec::new();
     for s in all() {
@@ -444,23 +397,15 @@ pub fn check_or_write(update: bool) -> Vec<PathBuf> {
     stale
 }
 
-/// The render's sample rate.
 pub const RATE: u32 = 44_100;
-/// A PAL frame in C64 cycles, and the clock (decision record 0007, "The player's place").
 const FRAME_CYCLES: u64 = 19_656;
 const PAL_HZ: u64 = 985_248;
-/// The release after the last frame, in frames.
 pub const TAIL_FRAMES: u32 = 100;
 
-/// One pass of the song on SIDOU's player and SID core, at 44.1 kHz on the PAL frame clock;
-/// then every gate off and a short tail for the releases.
 pub fn render(song: &Song, model: sid_model, frames: u32) -> Vec<i16> {
     render_voices(song, model, frames, 7)
 }
 
-/// [`render`] with only the voices in `voices` (bit 0 voice 1) sounding: the others' voice
-/// registers are not written (a stem; a voice synced or ring-modulated by a silent one
-/// loses that).
 pub fn render_voices(song: &Song, model: sid_model, frames: u32, voices: u8) -> Vec<i16> {
     let mut chip = Box::<sid>::default();
     unsafe { sid_init(&mut *chip, model, SID_CLOCK_PAL, RATE) };
@@ -494,7 +439,6 @@ pub fn render_voices(song: &Song, model: sid_model, frames: u32, voices: u8) -> 
     out
 }
 
-/// A 16-bit mono WAV file.
 pub fn wav(samples: &[i16], rate: u32) -> Vec<u8> {
     let data = samples.len() as u32 * 2;
     let mut w = Vec::with_capacity(44 + data as usize);

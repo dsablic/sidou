@@ -4,8 +4,6 @@
 
 #include <string.h>
 
-/* Orders memory accesses against an interrupt on the same core; emits no instruction (as in
- * reg_ring.c: the pi32v2 compiler has no __atomic_signal_fence). */
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
 #define MASK (SCOPE_RING - 1u)
@@ -30,11 +28,9 @@ void scope_set_race_hook(void (*hook)(void* ctx), void* ctx) {
 #endif
 
 void scope_init(scope* sc) {
-    memset(sc, 0, sizeof *sc); /* not a const template: 1.5 KB of zeros in flash */
+    memset(sc, 0, sizeof *sc);
 }
 
-/* A point after each SCOPE_DECIMATE samples (sid_render_tap): each voice's waveform output
- * and phase. h is the producer's own count, published once a block (scope_render). */
 typedef struct {
     scope* sc;
     uint32_t h;
@@ -52,10 +48,6 @@ static void scope_tap_point(void* ctx, const sid* chip) {
     p->phase[2] = (uint8_t)(o[2].acc >> 16);
 }
 
-/* The audio interrupt (SRAM on the device, platform/fm1/app.ld): kept short. One render a
- * block, the points from inside it, so the tap adds none of a render's per-call setup. The
- * interrupt cannot be preempted by the consumer, so the head is published once, after the
- * block's points. */
 void scope_render(scope* sc, sid* chip, int16_t* out, uint32_t frames) {
     if (!sc->on) {
         sid_render(chip, out, frames);
@@ -69,7 +61,7 @@ void scope_render(scope* sc, sid* chip, int16_t* out, uint32_t frames) {
         sc->state[v] = (uint8_t)e->state;
         sc->sustain[v] = e->sustain;
     }
-    COMPILER_FENCE(); /* the points before the head that publishes them */
+    COMPILER_FENCE();
     sc->head = t.h;
 }
 
@@ -102,19 +94,16 @@ uint32_t scope_read(const scope* sc, uint32_t since, scope_point* out, uint32_t 
         n = avail;
     }
     uint32_t oldest = h - n;
-    COMPILER_FENCE(); /* the head before the points it publishes */
-    /* The ring's points from oldest, in two pieces where they wrap round its end. */
+    COMPILER_FENCE();
     uint32_t at = oldest & MASK;
     uint32_t first = n < SCOPE_RING - at ? n : SCOPE_RING - at;
     memcpy(out, &sc->point[at], first * sizeof *out);
     memcpy(out + first, &sc->point[0], (n - first) * sizeof *out);
-    COMPILER_FENCE(); /* the copy before the head that says whether it held */
+    COMPILER_FENCE();
     return scope_intact(oldest, sc->head) ? n : 0u;
 }
 
 void scope_take_peaks(scope* sc, uint16_t out[2]) {
-    /* The producer's next blocks raise the other slot: one byte, a single store. Its block
-     * cannot be under way here (it is the interrupt), so this slot is the consumer's alone. */
     uint32_t k = sc->peak_slot & 1u;
     sc->peak_slot = (uint8_t)(k ^ 1u);
     COMPILER_FENCE();
@@ -131,7 +120,7 @@ void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, 
     uint8_t count[SCOPE_W];
     uint8_t bin[SCOPE_W];
     cycles = cycles < 1u ? 1u : cycles > 8u ? 8u : cycles;
-    uint32_t per = SCOPE_W / cycles; /* columns a period */
+    uint32_t per = SCOPE_W / cycles;
     for (uint32_t b = 0; b < per; b++) {
         sum[b] = 0;
         count[b] = 0;
@@ -154,7 +143,6 @@ void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, 
     for (uint32_t b = 0; b < per; b++) {
         bin[b] = count[b] ? (uint8_t)((sum[b] + count[b] / 2u) / count[b]) : 0u;
     }
-    /* From each column with points to the next one round the period, a straight line. */
     uint32_t a = first;
     do {
         uint32_t d = 1;
@@ -183,7 +171,7 @@ uint32_t scope_meter(uint32_t amplitude) {
         msb++;
     }
     uint32_t frac = (msb >= 3u ? amplitude >> (msb - 3u) : amplitude << (3u - msb)) & 7u;
-    uint32_t eighths = msb * 8u + frac; /* 8 log2(amplitude), rounded down */
+    uint32_t eighths = msb * 8u + frac;
     if (eighths <= 48u) {
         return 0;
     }

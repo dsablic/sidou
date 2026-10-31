@@ -1,19 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The song transport from Rust (M2c Task 6): `core/player/song_ctl.h`'s main-loop and
-//! audio-interrupt sides on the host, run as the device runs them (a block's commands, its
-//! render split at the call, a main-loop pass between blocks).
 
 use sidou_sys::*;
 
 use crate::song::Song;
 
-/// The samples a block (platform/fm1/audio.h AUDIO_HALF_FRAMES).
 pub const BLOCK: usize = SONG_BLOCK as usize;
-/// The device's sample rate (24 MHz / 544, rounded).
-pub const SAMPLE_RATE: u32 = 44_118;
+pub const SAMPLE_RATE: u32 = crate::DEVICE_SAMPLE_RATE;
 
-/// song_ctl over a song, with its shape buffers, its work space and chip A.
 pub struct Transport {
     pub sc: Box<song_ctl>,
     _shapes: Box<[gt2_shape; 2]>,
@@ -22,7 +16,6 @@ pub struct Transport {
 }
 
 impl Transport {
-    /// The song must outlive the transport and stay where it is (its region is on the heap).
     pub fn new(song: &mut Song) -> Transport {
         let mut sc = Box::<song_ctl>::default();
         let mut shapes = Box::<[gt2_shape; 2]>::default();
@@ -43,27 +36,22 @@ impl Transport {
         }
     }
 
-    /// The audio interrupt's block: the commands, chip A's render split at the call, the
-    /// block's end. The call's sample, if one fell in the block.
     pub fn block(&mut self, out: &mut [i16]) -> Option<usize> {
         let n = out.len() as u32;
         unsafe {
             song_ctl_block(&mut *self.sc, &mut *self.chip);
             let at = song_ctl_due(&*self.sc, n);
             song_ctl_render(&mut *self.sc, &mut *self.chip, out.as_mut_ptr(), n);
-            // with the digi drums, as audio_fill adds them (after its tail gate)
             song_ctl_block_end(&mut *self.sc, out.as_mut_ptr(), n);
             (at < n).then_some(at as usize)
         }
     }
 
-    /// A block whose samples are dropped.
     pub fn block_silent(&mut self) -> Option<usize> {
         let mut out = [0i16; BLOCK];
         self.block(&mut out)
     }
 
-    /// A main-loop pass: what the interrupt applied, a slice, the commands made visible.
     pub fn pass(&mut self) {
         unsafe {
             song_ctl_poll(&mut *self.sc, SONG_POLL_SLICE | SONG_POLL_RING);
@@ -71,7 +59,6 @@ impl Transport {
         }
     }
 
-    /// Passes and blocks, one each, until `done` or `limit` blocks.
     pub fn run_until(&mut self, limit: usize, mut done: impl FnMut(&Transport) -> bool) -> bool {
         for _ in 0..limit {
             if done(self) {
@@ -111,7 +98,6 @@ impl Transport {
         unsafe { song_ctl_jam(&mut *self.sc, voice, note, instr) != 0 }
     }
 
-    /// The audition: jams with the song stopped (M2d).
     pub fn audition(&mut self) -> bool {
         unsafe { song_ctl_audition(&mut *self.sc) != 0 }
     }
@@ -139,27 +125,23 @@ impl Transport {
         out
     }
 
-    /// The interrupt's play routine calls since the play.
     pub fn calls(&self) -> u32 {
         self.sc.calls
     }
 
-    /// The shape the interrupt's player follows.
     pub fn shape(&self) -> &gt2_shape {
         unsafe { &*self.sc.player.shape }
     }
 }
 
-/// A player's state as bytes, its pointers and start positions left out: two players that
-/// would make the same writes from here on have the same bytes.
 pub fn player_state(p: &gt2_player) -> Vec<u8> {
     let mut q = *p;
     q.song = std::ptr::null();
     q.shape = std::ptr::null();
     q.draft = std::ptr::null();
     q.start = [0; 3];
-    // up to the last field (the struct's tail padding is not data)
-    let bytes = std::mem::offset_of!(gt2_player, ev) + size_of::<[gt2_event; 3]>();
+    let field_bytes = std::mem::offset_of!(gt2_player, ev) + size_of::<[gt2_event; 3]>();
     // SAFETY: gt2_player is plain data, and these bytes are its fields.
-    unsafe { std::slice::from_raw_parts((&q as *const gt2_player).cast::<u8>(), bytes) }.to_vec()
+    unsafe { std::slice::from_raw_parts((&q as *const gt2_player).cast::<u8>(), field_bytes) }
+        .to_vec()
 }

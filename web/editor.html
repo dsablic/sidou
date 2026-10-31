@@ -1,11 +1,6 @@
 <!doctype html>
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- SIDOU's song editor: a song from the FM-1 (Web MIDI, SysEx v1) or a file, edited with the
-     FM-1's own song code in wasm (sidou-core.wasm: the edit primitives, LOCK and the save-size
-     cap as on the device), previewed with its own player (preview.js, preview-worklet.js), saved
-     back. editor.js is the page, song-edit.js its work (web/editor.test.mjs tests that in Node),
-     web/check.mjs the page with a simulated FM-1. Same palette as library.html. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -52,7 +47,6 @@
   label.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
   #song-error { color: var(--bad); margin: 8px 0 0; }
   #song-error:empty { display: none; }
-  /* the song's bar: name, size, undo, what the last edit did */
   .songbar { position: sticky; top: 0; z-index: 2; background: var(--room); border-bottom: 1px solid var(--rule); padding: 8px 0; display: grid; gap: 6px; }
   .songbar .row { margin: 0; }
   #s-name { margin: 0; font-family: var(--mono); }
@@ -82,7 +76,6 @@
   .params label { color: var(--dim); }
   .orders { display: flex; gap: 10px; flex-wrap: nowrap; }
   .hint { color: var(--dim); font-size: 12.5px; margin: 0; }
-  /* the preview's keys */
   .keys { position: relative; display: flex; height: 92px; user-select: none; touch-action: none; max-width: 100%; overflow-x: auto; }
   .keys button { flex: 0 0 32px; height: 92px; padding: 0; border-radius: 0 0 5px 5px; background: #e8e6f4; color: #0f0c22; font-size: 11px; display: flex; align-items: flex-end; justify-content: center; border-color: #352879; }
   .keys button.black { flex: 0 0 22px; height: 58px; margin: 0 -11px; z-index: 1; background: #0f0c22; color: var(--dim); border-color: var(--line); }

@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Serialised access to the shared benchmark workload.
-//!
-//! The C workload keeps global state and is neither reentrant nor thread-safe, while Rust
-//! runs tests in parallel. Every caller goes through [`Workload::lock`].
 
 use std::cell::Cell;
 use std::marker::PhantomData;
@@ -16,10 +12,8 @@ use crate::{
 
 static LOCK: Mutex<()> = Mutex::new(());
 
-/// Exclusive access to the workload for as long as it lives.
 pub struct Workload {
     _guard: MutexGuard<'static, ()>,
-    /// Not `Sync`: `&Workload` must not reach a second thread.
     _not_sync: PhantomData<Cell<()>>,
 }
 
@@ -31,17 +25,14 @@ impl Workload {
         }
     }
 
-    /// Samples in one run of the workload.
     pub fn sample_count(&self) -> usize {
         unsafe { workload_sample_count() as usize }
     }
 
-    /// Start a run with `chips` chips (clamped to [1, WORKLOAD_MAX_CHIPS]).
     pub fn begin(&self, chips: u32, model: sid_model) {
         unsafe { workload_begin(chips, model) }
     }
 
-    /// Start a run of one of the scenarios in `workload.h` (an unknown one plays the triad).
     pub fn begin_scenario(&self, chips: u32, model: sid_model, scenario: u32) {
         unsafe { workload_begin_scenario(chips, model, scenario) }
     }
@@ -52,7 +43,6 @@ impl Workload {
     }
 }
 
-/// One whole run of the workload.
 pub fn render(chips: u32, model: sid_model) -> Vec<i16> {
     let w = Workload::lock();
     let mut out = vec![0i16; w.sample_count()];
@@ -61,7 +51,6 @@ pub fn render(chips: u32, model: sid_model) -> Vec<i16> {
     out
 }
 
-/// One whole run of a scenario.
 pub fn render_scenario(chips: u32, model: sid_model, scenario: u32) -> Vec<i16> {
     let w = Workload::lock();
     let mut out = vec![0i16; w.sample_count()];
@@ -70,7 +59,6 @@ pub fn render_scenario(chips: u32, model: sid_model, scenario: u32) -> Vec<i16> 
     out
 }
 
-/// Every scenario's number and name, in order.
 pub fn scenarios() -> Vec<(u32, String)> {
     (0..WORKLOAD_SCENARIOS)
         .map(|i| {

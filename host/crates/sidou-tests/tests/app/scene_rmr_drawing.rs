@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! RED MOON RITE's art: the PNGs in assets/scene/ are what assets/scene/red-moon-rite.js
-//! draws, and the script draws the same PNGs on every run (pixels, palette and transparency:
-//! Node's zlib may compress them to other bytes); so are its motion tables
-//! (red-moon-rite-motion.txt). Needs Node; skipped without it.
-//! `node assets/scene/red-moon-rite.js` rewrites them.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -20,7 +15,6 @@ fn node_available() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// A PNG's size, bit depth, palette, transparency and pixel rows, decoded.
 type Decoded = (u32, u32, u8, Vec<u8>, Vec<u8>, Vec<u8>);
 
 fn decode(name: &str, bytes: &[u8]) -> Decoded {
@@ -44,7 +38,6 @@ fn decode(name: &str, bytes: &[u8]) -> Decoded {
     (head.0, head.1, head.2, head.3, head.4, buf)
 }
 
-/// Every PNG in `dir`, by name, decoded.
 fn pngs(dir: &Path) -> BTreeMap<String, Decoded> {
     fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
@@ -60,8 +53,6 @@ fn pngs(dir: &Path) -> BTreeMap<String, Decoded> {
 
 const MOTION: &str = "red-moon-rite-motion.txt";
 
-/// Runs the script into a fresh directory and returns the PNGs it wrote, and its motion
-/// tables.
 fn export(run: &str) -> (BTreeMap<String, Decoded>, String) {
     let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("red-moon-rite-{run}"));
     let _ = fs::remove_dir_all(&out);

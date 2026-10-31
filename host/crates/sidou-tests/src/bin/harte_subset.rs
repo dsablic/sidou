@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Writes the committed subset of Tom Harte's 6502 tests: the first tests of each opcode's
-//! JSON file, in the binary `sidou_tests::harte` reads (third_party/6502-tests/VENDORED.md).
-//!
-//! `cargo run --release -p sidou-tests --bin harte-subset -- <json dir> <out dir> [count]`
-//! (count 100 by default).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+const DEFAULT_TESTS_PER_OPCODE: usize = 100;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -16,7 +13,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let count = match args.get(2).map(|s| s.parse::<usize>()) {
-        None => 100,
+        None => DEFAULT_TESTS_PER_OPCODE,
         Some(Ok(n)) => n,
         Some(Err(e)) => {
             eprintln!("count: {e}");
