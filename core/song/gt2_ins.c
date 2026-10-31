@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <string.h>
 
-/* Commands use the same operands in patterns and in wavetable $F0..$FE. */
 static int command_table(uint32_t command) {
     if ((command >= 1u && command <= 4u) || command == 14u)
         return GT2_STBL;
@@ -32,8 +31,6 @@ static void protect_command(const gt2_song* s, uint8_t high[4], uint32_t command
         protect(s, high, (uint32_t)table, ptr);
 }
 
-/* Expand a contiguous snapshot through a referenced sequence, without a bitmap.
- * The table's deterministic next-row graph needs at most 255 steps per root. */
 static int extend(gt2_ins_export* out, uint32_t table, uint32_t ptr) {
     uint32_t start = out->start[table];
     if (ptr == 0u)
@@ -46,7 +43,7 @@ static int extend(gt2_ins_export* out, uint32_t table, uint32_t ptr) {
         if (ptr < start || ptr > GT2_TABLE_ROWS)
             return -1;
         if (ptr - start < out->rows[table])
-            return 0; /* already covered; the outer scan checks newly included command rows */
+            return 0;
         uint32_t rows = ptr - start + 1u;
         if (rows > out->rows[table])
             out->rows[table] = (uint8_t)rows;
@@ -77,7 +74,6 @@ gt2_err gt2_ins_export_begin(gt2_ins_export* out, const gt2_song* s, uint32_t in
         if (extend(out, t, out->start[t]) != 0)
             return GT2_ERR_RANGE;
     }
-    /* Expansion can include rows between two referenced sequences. Check those too. */
     for (uint32_t t = 0u; t < GT2_TABLES; t++) {
         for (uint32_t r = 0u; r < out->rows[t]; r++) {
             uint32_t at = out->start[t] - 1u + r;
@@ -247,7 +243,6 @@ int gt2_ins_import_step(gt2_ins_import_state* in) {
         } else if (in->phase == INS_TABLE_ROOTS) {
             uint32_t t = in->index / GT2_TABLE_ROWS, r = in->index % GT2_TABLE_ROWS;
             uint8_t left = s->ltable[t][r], right = s->rtable[t][r];
-            /* Retain references even in currently unreachable table data. */
             if (t != GT2_STBL && left == 0xffu)
                 protect(s, in->dest, t, right);
             else if (t == GT2_WTBL && left >= 0xf0u && left < 0xffu)
@@ -282,7 +277,6 @@ int gt2_ins_import_step(gt2_ins_import_state* in) {
                     in->table = 0u;
                     return 0;
                 }
-                /* Keep every original base intact until all table operands are replayed. */
                 for (uint32_t table = 0u; table < GT2_TABLES; table++)
                     in->instr[GT2_INS_WAVE + table] = in->rows[table] ? (uint8_t)(in->dest[table] + 1u) : 0u;
                 memcpy(s->instr[in->instrument - 1u], in->instr, GT2_INSTR_BYTES);

@@ -109,7 +109,6 @@ static uint8_t* allocate(gt2_stream* w, uint32_t bytes, gt2_span* span, uint32_t
     gt2_song* s = w->song;
     if (w->info.need_bytes + bytes > gt2_arena_capacity(s))
         return NULL;
-    /* Loading appends packed objects to an empty arena, never first-fit's O(file) search. */
     uint32_t off = s->used_units, units = (bytes + 3u) / GT2_UNIT;
     uint32_t* bitmap = (uint32_t*)((uint8_t*)s + s->bitmap_offset);
     for (uint32_t u = off; u < off + units; u++)
@@ -119,7 +118,6 @@ static uint8_t* allocate(gt2_stream* w, uint32_t bytes, gt2_span* span, uint32_t
     return (uint8_t*)s + s->arena_offset + off * GT2_UNIT;
 }
 
-/* GoatTracker's makespeedtable, fine-vibrato enabled, same conversion as gt2_sng. */
 static uint8_t speed(gt2_song* s, uint8_t data, uint32_t mode) {
     if (!data)
         return 0;

@@ -1,9 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-FileCopyrightText: 2026 Joakim Eriksson
  * SPDX-License-Identifier: GPL-3.0-or-later AND BSD-2-Clause */
-/* The PSID environment (psid_env.h; docs/reference/psid.md, "The environment"). The design
- * follows FM-1 SID's psid.c (BSD-2-Clause, Joakim Eriksson); its notice is in psid_env.h and
- * applies to this file as well. */
 #include "psid_env.h"
 
 #include <string.h>
@@ -12,41 +9,33 @@
 #define PORT_DDR_POWER_ON 0x2Fu
 #define PORT_POWER_ON 0x37u
 #define STACK 0x100u
-#define KERNAL_IRQ_VECTOR 0x0314u /* the KERNAL's IRQ entry jumps through it */
+#define KERNAL_IRQ_VECTOR 0x0314u
 #define HW_IRQ_VECTOR 0xFFFEu
-#define PORT_HIRAM 0x02u   /* $01 bit 1: the KERNAL ROM at $E000 */
-#define IRQ_PUSHED_P 0x20u /* an IRQ's pushed P: B clear, I clear (it was taken) */
-#define SID_FIRST 0xD400u /* chip A: $D400-$D7FF, every 32 bytes a mirror */
+#define PORT_HIRAM 0x02u
+#define IRQ_PUSHED_P 0x20u
+#define SID_FIRST 0xD400u
 #define SID_END 0xD800u
-#define SID_WINDOW 0x20u /* a SID's registers */
+#define SID_WINDOW 0x20u
 #define SID_REG_MASK 0x1Fu
-#define VIC_MASK 0x3Fu /* $D000-$D3FF, every 64 bytes a mirror */
+#define VIC_MASK 0x3Fu
 #define VIC_CTRL1 0x11u
 #define VIC_RASTER 0x12u
 #define VIC_IRQ_FLAGS 0x19u
-#define CIA1_FIRST 0xDC00u /* $DC00-$DCFF and $DD00-$DDFF, every 16 bytes a mirror */
+#define CIA1_FIRST 0xDC00u
 #define CIA2_FIRST 0xDD00u
 #define CIA_SIZE 0x100u
 #define CIA_MIRROR_MASK 0x0Fu
 #define CIA_TA_LO 0x04u
 #define CIA_TA_HI 0x05u
 #define CIA_ICR 0x0Du
-#define IRQ_FLAGS_SET 0x81u /* an interrupt flag and its summary bit */
+#define IRQ_FLAGS_SET 0x81u
 
-/* Where a call ends: the sentinel's $0000/$0001 and the KERNAL's interrupt exits, as
- * cpu6502_run's `stops` (a call that starts there has nothing to run). */
 static int is_stop(uint32_t addr)
 {
     return addr <= 1u || addr == CPU6502_KERNAL_IRQ_EXIT ||
            addr == CPU6502_KERNAL_IRQ_EXIT_SHORT || addr == CPU6502_KERNAL_NMI_EXIT;
 }
 
-/* --- The I/O page ------------------------------------------------------------------------
- * While $01 maps it in (the CPU checks), $D000-$DFFF goes here (docs/reference/psid.md, "The
- * I/O page"): the SIDs, VIC, CIA 1 and 2; colour RAM and the expansion areas keep nothing. */
-
-/* Which SID a $D000-$DFFF address belongs to: 0 chip A, 1 chip B (a second SID's window, which
- * takes priority over A's mirrors), 2 a third SID's, -1 none. */
 static int sid_window(const psid_env* e, uint32_t addr)
 {
     const psid_header* h = e->h;
@@ -57,9 +46,6 @@ static int sid_window(const psid_env* e, uint32_t addr)
     return addr >= SID_FIRST && addr < SID_END ? 0 : -1;
 }
 
-/* CIA 1 timer A's counter: counting down from the latch, a period of latch + 1, from the
- * last underflow: a CIA song's play interrupt (call_due), else cycle 0. FM-1 SID returns the
- * latch itself. */
 static uint32_t cia1_counter(const psid_env* e, uint32_t cycle)
 {
     uint32_t len = (uint32_t)e->latch + 1u;
@@ -73,7 +59,6 @@ static uint8_t vic_read(psid_env* e, uint32_t reg, uint32_t cycle)
     switch (reg) {
     case VIC_CTRL1:
     case VIC_RASTER:
-        /* The raster line from the absolute cycle (FM-1 SID counts from each call's start). */
         line = cycle % e->frame / e->line;
         return reg == VIC_RASTER
                    ? (uint8_t)line
@@ -105,7 +90,7 @@ static uint8_t io_read(void* user, uint32_t addr, uint32_t cycle)
         if (reg == CIA_TA_HI)
             return (uint8_t)(cia1_counter(e, cycle) >> 8);
         if (reg == CIA_ICR) {
-            v = e->cia1_icr; /* a read acknowledges */
+            v = e->cia1_icr;
             e->cia1_icr = 0;
             return v;
         }
@@ -113,7 +98,7 @@ static uint8_t io_read(void* user, uint32_t addr, uint32_t cycle)
     }
     if (addr >= CIA2_FIRST && addr < CIA2_FIRST + CIA_SIZE)
         return reg == CIA_ICR ? 0 : e->cia[1][reg];
-    return 0; /* colour RAM, the expansion areas */
+    return 0;
 }
 
 static void io_write(void* user, uint32_t addr, uint32_t value, uint32_t cycle)
@@ -135,7 +120,7 @@ static void io_write(void* user, uint32_t addr, uint32_t value, uint32_t cycle)
         reg = addr & VIC_MASK;
         e->vic[reg] = (uint8_t)value;
         if (reg == VIC_IRQ_FLAGS)
-            e->vic_irq = 0; /* any write acknowledges */
+            e->vic_irq = 0;
     } else if (addr >= CIA1_FIRST && addr < CIA1_FIRST + CIA_SIZE) {
         e->cia[0][reg] = (uint8_t)value;
         if (reg == CIA_TA_LO)
@@ -147,9 +132,6 @@ static void io_write(void* user, uint32_t addr, uint32_t value, uint32_t cycle)
     }
 }
 
-/* --- Loading ------------------------------------------------------------------------------ */
-
-/* Everything but the memory's clear and the data. */
 static void env_setup(psid_env* e, uint8_t* mem, const psid_header* h)
 {
     int ntsc = h->clock == 2u;
@@ -189,7 +171,7 @@ void psid_env_load_part(psid_env* e, uint32_t offset, const uint8_t* bytes, uint
     if (!h || !e->cpu.mem)
         return;
     lo = h->data_off;
-    hi = h->data_off + h->data_len; /* psid_parse: within the file, and load + len <= $10000 */
+    hi = h->data_off + h->data_len;
     if (n == 0u || offset >= hi)
         return;
     if (n > hi - offset)
@@ -216,8 +198,6 @@ void psid_env_set_sink(psid_env* e, psid_sink sink, void* ctx)
     e->sink_ctx = ctx;
 }
 
-/* --- Calls -------------------------------------------------------------------------------- */
-
 uint8_t psid_env_bank(uint32_t addr)
 {
     if (addr < 0xA000u)
@@ -236,13 +216,6 @@ uint32_t psid_env_period(const psid_env* e)
     return e->frame;
 }
 
-/* Starts a call at the current cycle: the registers as a call starts (A, X, Y 0, I set, D
- * clear), the sentinel $0000 pushed below S = $FF so an RTS lands on $0001. A call to an
- * address sets the bank register from it. An interrupt call (play address 0) leaves $01 as
- * the tune set it and goes through the vector it maps in, with the stack as an IRQ leaves it
- * (P pushed); through the KERNAL's $0314, also as the KERNAL's entry ($FF48) leaves it: A, X
- * and Y pushed and X = S, so a handler may end with the KERNAL exit's own PLA, TAY, PLA,
- * TAX, PLA, RTI. */
 static void begin(psid_env* e, uint32_t addr, uint32_t a, int irq)
 {
     cpu6502* c = &e->cpu;
@@ -255,7 +228,7 @@ static void begin(psid_env* e, uint32_t addr, uint32_t a, int irq)
         mem[STACK | s--] = IRQ_PUSHED_P;
         if (mem[1] & PORT_HIRAM) {
             addr = mem[KERNAL_IRQ_VECTOR] | (uint32_t)mem[KERNAL_IRQ_VECTOR + 1u] << 8;
-            mem[STACK | s--] = 0; /* A, X and Y */
+            mem[STACK | s--] = 0;
             mem[STACK | s--] = 0;
             mem[STACK | s--] = 0;
             c->x = (uint8_t)s;
@@ -309,11 +282,6 @@ static int stop(psid_env* e, int code)
     return code;
 }
 
-/* A call returned at the current cycle: schedules the next play call. The first after init is
- * at the first period boundary after it; each next one a period after the last one's
- * interrupt. A call that ran past that is an overrun: the interrupts it missed are one pending
- * interrupt, taken at its return, as a C64's are (the IRQ line stays low until acknowledged),
- * and the ones after it keep their grid. */
 static int returned(psid_env* e)
 {
     uint32_t now = e->cpu.cycles;
@@ -359,7 +327,6 @@ int psid_env_run(psid_env* e, uint32_t cycles)
             e->calls++;
             e->phase = PSID_PHASE_PLAY;
             begin(e, e->h->play, 0, e->h->play == 0u);
-            /* The interrupt that started the call: CIA 1 timer A's or the frame's (VIC's). */
             if (psid_speed_bit(e->h, e->song))
                 e->cia1_icr = IRQ_FLAGS_SET;
             else
@@ -370,7 +337,7 @@ int psid_env_run(psid_env* e, uint32_t cycles)
             limit = e->call_start +
                     (e->phase == PSID_PHASE_INIT ? PSID_INIT_SECONDS * e->clock : e->clock);
             if (c->state == CPU6502_RET)
-                r = CPU6502_RET; /* a call to a stop address */
+                r = CPU6502_RET;
             else
                 r = cpu6502_run(c, (int32_t)(limit - end) < 0 ? limit : end, 1);
             if (r == CPU6502_JAM)
