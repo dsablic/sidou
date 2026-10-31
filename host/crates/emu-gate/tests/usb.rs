@@ -64,7 +64,7 @@ fn up_and_config(m: &mut Machine, fw: &Firmware) -> (u8, u8) {
 /// checked on what crossed EP0.
 fn enumerate(m: &mut Machine, fw: &Firmware) {
     host(m).start();
-    host(m).in0.clear();
+    host(m).ep0_in.clear();
     for _ in 0..2_000 {
         if UsbHost::configured(&m.soc) {
             break;
@@ -89,7 +89,7 @@ fn enumerate(m: &mut Machine, fw: &Firmware) {
         !events.iter().any(|e| matches!(e, UsbEvent::Failed(_))),
         "{events:?}"
     );
-    let in0 = host(m).in0.clone();
+    let in0 = host(m).ep0_in.clone();
     let dev = in0
         .iter()
         .find(|p| p.len() == 18 && p[1] == 1)
@@ -269,10 +269,10 @@ fn a_host_gets_the_identity_and_the_knobs_over_usb() {
     );
 
     // The handshake, as fm1_install.py --info sends it.
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     send(&mut m, &sysex_packets(&message(0x11, &[])));
     m.usb_frames(50);
-    let in1 = host(&mut m).in1.clone();
+    let in1 = host(&mut m).ep1_in.clone();
     let sizes: Vec<usize> = in1.iter().map(Vec::len).collect();
     println!("identity reply in IN packets of {sizes:?} bytes");
     let r = replies(&in1);
@@ -289,26 +289,26 @@ fn a_host_gets_the_identity_and_the_knobs_over_usb() {
     assert!(sizes.iter().all(|&n| n > 0 && n <= IN_MAX && n % 4 == 0));
 
     // K1: CC 74 on channel 1.
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     m.turn(K1, 3);
     m.usb_frames(60);
-    let ev = events(&host(&mut m).in1);
+    let ev = events(&host(&mut m).ep1_in);
     println!("K1: {ev:02x?}");
     assert!(
         !ev.is_empty() && ev.iter().all(|p| p[..3] == [0x0B, 0xB0, CC_CUTOFF]),
         "K1 sent no CC 74 alone"
     );
     // PRESETS: a program change.
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     m.turn(PRESETS, 1);
     m.usb_frames(60);
-    let ev = events(&host(&mut m).in1);
+    let ev = events(&host(&mut m).ep1_in);
     println!("PRESETS: {ev:02x?}");
     assert!(
         ev.iter().any(|p| p[..2] == [0x0C, 0xC0]),
         "PRESETS sent no program change"
     );
-    assert!(host(&mut m).in1.iter().all(|p| p.len() <= IN_MAX));
+    assert!(host(&mut m).ep1_in.iter().all(|p| p.len() <= IN_MAX));
 
     let (sie, in_audio) = (
         UsbHost::sie_accesses(&m.soc),
@@ -329,14 +329,14 @@ fn an_upgrade_request_gets_the_first_read_request_out() {
     run_past_boot(&mut m, &fw);
     m.usb_frames(20);
     enumerate(&mut m, &fw);
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     // The upgrade request (src/usb.c sysex_byte), then step 1's first read request (cmd 0x30).
     send(
         &mut m,
         &sysex_packets(&[0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7]),
     );
     m.usb_frames(100);
-    let in1 = host(&mut m).in1.clone();
+    let in1 = host(&mut m).ep1_in.clone();
     let r = replies(&in1);
     println!("after the upgrade request: {:02x?}", r);
     assert!(
@@ -421,7 +421,7 @@ impl Link {
     fn recv(&mut self, m: &mut Machine, timeout: u64) -> (u8, u8, Vec<u8>) {
         let start = m.ms();
         loop {
-            let in1 = &host(m).in1;
+            let in1 = &host(m).ep1_in;
             for packet in in1[self.taken..].concat().chunks(4) {
                 let n = match packet[0] & 15 {
                     4 | 7 => 3,
@@ -500,7 +500,7 @@ fn usb_machine_sie(fw: &Firmware, sie_cycles: Option<u64>) -> Machine {
         m.usb_frames(1);
     }
     assert_eq!(m.soc.read8(songs), sidou_sys::SONG_IO_IDLE as u8);
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     m
 }
 
@@ -716,11 +716,11 @@ fn an_updater_identity_reply_cannot_overtake_sidous_queued_end_packet() {
     };
     let mut m = usb_machine(&fw);
     put_file(&mut m, &mut Link::default(), "ARBITRATION", &reply_file());
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     get_part_way(&mut m, &fw, &mut Link::default(), "ARBITRATION", 20);
     send(&mut m, &sysex_packets(&message(0x11, &[])));
     m.usb_frames(100);
-    let packets = host(&mut m).in1.clone();
+    let packets = host(&mut m).ep1_in.clone();
     let mut frames = Vec::new();
     let mut frame = Vec::new();
     for packet in packets.concat().as_chunks::<4>().0 {
@@ -790,7 +790,7 @@ fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
     let restarts = fw.symbol("midi_stats") + 8;
     let before = m.soc.read32(restarts);
 
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     let mut link = Link::default();
     get_part_way(&mut m, &fw, &mut link, "GAP", 20);
     ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_TRS as u8);
@@ -807,23 +807,23 @@ fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
         before + 1,
         "the gap restarted TRS's parser"
     );
-    assert_eq!(sidou_frames(&host(&mut m).in1).len(), 3);
+    assert_eq!(sidou_frames(&host(&mut m).ep1_in).len(), 3);
 
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     get_part_way(&mut m, &fw, &mut Link::default(), "GAP", 40);
     ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_USB as u8);
     m.usb_frames(100);
-    let frames = sidou_frames(&host(&mut m).in1);
+    let frames = sidou_frames(&host(&mut m).ep1_in);
     assert_eq!(frames.len(), 3, "the metadata, the DATA, then a NAK");
     assert_eq!(&frames[1][4..6], &[5, 41], "the DATA, whole to its F7");
     assert_eq!(frames[1].len(), 8 + 256 + 37);
     assert_eq!(frames[2][4], 0x7f, "a NAK");
     assert_eq!(frames[2][7], sidou_sys::SYSEX_ABORTED as u8, "ABORTED");
 
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     send(&mut m, &sysex_packets(&sd_frame(1, 2, &[])));
     m.usb_frames(100);
-    let frames = sidou_frames(&host(&mut m).in1);
+    let frames = sidou_frames(&host(&mut m).ep1_in);
     assert_eq!(frames.len(), 1, "the next INQ is answered: {frames:02x?}");
     assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 2]);
 }
@@ -879,7 +879,7 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
     m.usb_frames(300);
     let mut held = 0;
     for delay in 0..16u64 {
-        host(&mut m).in1.clear();
+        host(&mut m).ep1_in.clear();
         let mut link = Link::default();
         let mut get = vec![0, 0];
         get.extend(name16("SPP"));
@@ -923,7 +923,7 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
             m.soc.read32(calls) > before,
             "EDIT + PLAY went on from call {before}: a continue, not a play from the top"
         );
-        let inside = spp_inside(&host(&mut m).in1);
+        let inside = spp_inside(&host(&mut m).ep1_in);
         println!(
             "continue {delay} ms before the DATA's ACK (stopped at call {stopped_at}): song \
              position inside {inside:?}"
@@ -1000,13 +1000,13 @@ fn clock_out_starts_a_play_from_the_top_and_continues_edit_play() {
     let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
     let stopped_at = m.soc.read32(calls);
     assert!(stopped_at > 20, "stopped part way: call {stopped_at}");
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     tap_keys(&mut m, &[play]);
     m.usb_frames(100);
     let now = m.soc.read32(calls);
     assert!(now < stopped_at, "PLAY played from the top: call {now}");
     assert_eq!(
-        transport_out(&host(&mut m).in1),
+        transport_out(&host(&mut m).ep1_in),
         [(0xfa, 0)],
         "PLAY alone: a start"
     );
@@ -1015,11 +1015,11 @@ fn clock_out_starts_a_play_from_the_top_and_continues_edit_play() {
     tap_keys(&mut m, &[play]);
     m.usb_frames(300);
     let stopped_at = m.soc.read32(calls);
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     tap_keys(&mut m, &[edit, play]);
     m.usb_frames(100);
     assert!(m.soc.read32(calls) > stopped_at, "EDIT + PLAY went on");
-    let out = transport_out(&host(&mut m).in1);
+    let out = transport_out(&host(&mut m).ep1_in);
     assert_eq!(out.len(), 2, "a song position and a continue: {out:x?}");
     assert_eq!(out[0].0, 0xf2, "{out:x?}");
     assert!(out[0].1 > 0, "the song position where it stopped: {out:x?}");
@@ -1053,7 +1053,7 @@ fn clock_outs_start_goes_out_during_a_sysex_reply() {
         tap_keys(&mut m, &[play]); // stopped part way
         m.usb_frames(100);
         let stopped_at = m.soc.read32(calls);
-        host(&mut m).in1.clear();
+        host(&mut m).ep1_in.clear();
         let mut link = Link::default();
         let mut get = vec![0, 0];
         get.extend(name16("SPP"));
@@ -1084,7 +1084,7 @@ fn clock_outs_start_goes_out_during_a_sysex_reply() {
         assert_eq!((command, s), (6, 32), "GET's END");
         link.send(&mut m, 0x7e, 32, &[]);
         m.usb_frames(40);
-        let out = transport_out(&host(&mut m).in1);
+        let out = transport_out(&host(&mut m).ep1_in);
         println!(
             "PLAY {delay} ms before the DATA's ACK (stopped at call {stopped_at}): \
              overlap {overlap}, clock out {out:x?}"
@@ -1150,7 +1150,7 @@ fn clocks_stamped_late_by_a_flash_hold_stay_out_of_the_clocks_fit() {
     let mut m = usb_machine(&fw);
     let per = 60.0 / 120.0 / 24.0 * m.soc.periph.hz as f64;
     let start = m.soc.periph.cycles as f64;
-    m.trs_at = (0..24 * 2 * 8)
+    m.trs_scheduled = (0..24 * 2 * 8)
         .map(|i| ((start + f64::from(i) * per) as u64, 0xf8))
         .collect();
     m.usb_frames(3_000);
@@ -1158,20 +1158,24 @@ fn clocks_stamped_late_by_a_flash_hold_stay_out_of_the_clocks_fit() {
     println!("before the PUT: {n} clocks in the fit, the worst {before:.2} ms off its line");
     assert!(n >= 90 && before < 0.6, "the fit before the holds");
     let hold = m.soc.periph.cycle_of_ms(30);
-    m.stalls = vec![
+    m.masked_stalls = vec![
         (fw.symbol("flash_store_prog"), hold),
         (fw.symbol("flash_store_erase"), hold),
     ];
     let data: Vec<u8> = (0..1024u32).map(|i| (i * 13) as u8).collect();
     put_file(&mut m, &mut Link::default(), "HOLDS", &data);
-    m.stalls.clear();
+    m.masked_stalls.clear();
     m.usb_frames(100);
     let (n, after) = fit_residual(&mut m, &fw);
     println!(
         "after {} holds of 30 ms: {n} clocks in the fit, the worst {after:.2} ms off its line",
-        m.stalled
+        m.masked_stalls_taken
     );
-    assert!(m.stalled >= 4, "{} holds", m.stalled);
+    assert!(
+        m.masked_stalls_taken >= 4,
+        "{} holds",
+        m.masked_stalls_taken
+    );
     assert!(after < 0.6, "a clock {after:.2} ms off the fit's line");
 }
 
@@ -1210,7 +1214,7 @@ fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
     UsbHost::send(&mut m.soc, &dump);
     while UsbHost::pending(&m.soc) > 0 {
         if m.ms() >= next_pass {
-            m.busy = Some((drain, long_pass));
+            m.long_pass = Some((drain, long_pass));
             held += 1;
             next_pass = m.ms() + 40;
         }
@@ -1761,7 +1765,7 @@ fn read_response(flags: u8, addr: u32, data: &[u8]) -> Vec<u8> {
 fn installer_step_one(m: &mut Machine, fw: &Firmware, image: &[u8]) -> (Vec<(u32, u32)>, bool) {
     const FINISH_CHECK: u32 = 0xE000_0000;
     const STEP_ONE_NAK_MS: u64 = 1_000;
-    host(m).in1.clear();
+    host(m).ep1_in.clear();
     UsbHost::send(&mut m.soc, &[0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7]);
     let mut served = Vec::new();
     let (mut taken, mut idle, mut naked) = (0usize, 0u64, 0u64);
@@ -1791,11 +1795,11 @@ fn installer_step_one(m: &mut Machine, fw: &Firmware, image: &[u8]) -> (Vec<(u32
         );
         // Only the packets read since the last look: a request is whole in them, as the
         // device sends one whole (usb.c ep1_tx, SysEx first).
-        let fresh = host(m).in1.len();
+        let fresh = host(m).ep1_in.len();
         if fresh == taken {
             continue;
         }
-        let r = replies(&host(m).in1[taken..fresh]);
+        let r = replies(&host(m).ep1_in[taken..fresh]);
         taken = fresh;
         for d in &r {
             if d[0] != 0x30 || d.len() != 13 {
@@ -1939,11 +1943,11 @@ fn first_identity(m: &mut Machine, fw: &Firmware, limit_ms: u64) -> (u64, u64) {
     let attached = attached.expect("USB attached");
     loop {
         assert!(m.ms() < limit_ms, "no identity reply in {limit_ms} ms");
-        host(m).in1.clear();
+        host(m).ep1_in.clear();
         send(m, &sysex_packets(&message(0x11, &[])));
         for _ in 0..1_000 {
             m.usb_frames(1);
-            if replies(&host(m).in1).iter().any(|r| r[0] == 0x11) {
+            if replies(&host(m).ep1_in).iter().any(|r| r[0] == 0x11) {
                 return (attached, m.ms());
             }
         }
@@ -1977,7 +1981,7 @@ fn a_first_boot_over_another_firmwares_sectors_answers_usb_at_once() {
         let mut m = Machine::boot_blank(&fw.image);
         m.soc.flash.mem.copy_from_slice(&flash);
         let ms = |m: &Machine, n: u64| m.soc.periph.cycle_of_ms(n);
-        m.stalls = vec![
+        m.masked_stalls = vec![
             (fw.symbol("fl_prog_ram"), ms(&m, prog_ms)),
             (fw.symbol("fl_erase4k_ram"), ms(&m, erase_ms)),
         ];
@@ -2120,7 +2124,7 @@ fn record(m: &mut Machine, hz: u32) {
         "recording at {hz}: {:?}",
         m.soc.usb.events
     );
-    host(m).in4.clear();
+    host(m).ep4_in.clear();
 }
 
 /// IN tokens on EP4 that found no packet (UnderRun) so far.
@@ -2181,7 +2185,7 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
     let empty = ep4_empty(&m);
     m.usb_frames(1000);
     let u = uac(&mut m, &fw);
-    let packets = host(&mut m).in4.clone();
+    let packets = host(&mut m).ep4_in.clone();
     let (lo, hi, mean) = packet_sizes(&packets[100..]);
     println!(
         "44.1 kHz: {} packets, {lo}..{hi} frames (mean {mean:.4}); fill {}..{}; {:?}",
@@ -2244,7 +2248,7 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
     let dac_from = m.left().len();
     m.usb_frames(1000);
     let u48 = uac(&mut m, &fw);
-    let packets = host(&mut m).in4.clone();
+    let packets = host(&mut m).ep4_in.clone();
     let (lo, hi, mean) = packet_sizes(&packets[100..]);
     let usb = frames(&packets[100..]);
     let dac = m.left();
@@ -2289,9 +2293,9 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
         m.usb_frames(1);
         assert!(m.ms() - unplugged < 1_000, "no bus reset");
     }
-    host(&mut m).in4.clear();
+    host(&mut m).ep4_in.clear();
     m.usb_frames(15);
-    assert!(host(&mut m).in4.is_empty(), "packets after alt 0");
+    assert!(host(&mut m).ep4_in.is_empty(), "packets after alt 0");
     let (want, left, ..) = hand_over(&mut m, &fw);
     assert_eq!((want, left), (0, 0), "the hand-over goes on after alt 0");
 }

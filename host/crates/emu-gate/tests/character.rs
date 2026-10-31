@@ -12,10 +12,7 @@ mod common;
 
 use fm1_core::Bus;
 
-use common::{
-    build_dir, master_stage, max_diff, tail_stage, thump_stage, Firmware, Machine, HALF_FRAMES,
-    POT, SAMPLE_RATE, SLOTS_SEED,
-};
+use common::{build_dir, max_diff, Firmware, Machine, HALF_FRAMES, SAMPLE_RATE};
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
 /// The A4 key (Felucca's id) and its note.
@@ -90,65 +87,19 @@ fn schedules(first: usize) -> Vec<Vec<usize>> {
 /// (the device's), and the note on before `note_block`.
 fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]) -> Vec<i16> {
     use sidou_sys::*;
-    let mut chip = Box::<sid>::default();
-    let mut spare = Box::<sid>::default();
-    let mut dacs = Box::<[sid_dac; 2]>::default();
-    let mut pool = Box::<sid_slot_pool>::default();
-    let mut slots = Box::<sid_slots>::default();
-    let mut fx = Box::<fx_live>::default();
-    let mut target = Box::new(fx_live_target {
-        sid: live_sid_target {
-            chip: &mut *chip,
-            clock_hz: SID_CLOCK_PAL,
-            sample_rate: SAMPLE_RATE,
-            dacs: dacs.as_mut_ptr(),
-            spare: &mut *spare,
-            ..Default::default()
-        },
-        fx: &mut *fx,
-    });
-    let mut l = Box::<live>::default();
-    let t: *mut fx_live_target = &mut *target;
-    let mut out = vec![0i16; 2 * frames];
-    let mut mono = vec![0i16; HALF_FRAMES];
-    let mut gate = tail_gate::default();
-    let mut thump = thump_out::default();
-    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
-    unsafe {
-        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
-        fx_live_init(&mut *fx, &mut *slots);
-        live_init(
-            &mut *l,
-            Some(fx_live_sid_sink),
-            t.cast::<std::ffi::c_void>(),
-            SID_MODEL_6581,
-        );
-        // The device's preparer (platform/fm1/main.c): a profile step's reset at its tick.
-        let sid_target: *mut live_sid_target = &mut (*t).sid;
-        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
-        live_set_master(&mut *l, POT);
-        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
-            for (k, &(cc, value)) in CCS.iter().enumerate() {
-                if blocks[k] == i {
-                    live_cc(&mut *l, cc, value);
-                }
+    common::render_instrument(frames, |i, l| unsafe {
+        for (k, &(cc, value)) in CCS.iter().enumerate() {
+            if blocks[k] == i {
+                live_cc(l, cc, value);
             }
-            // Preset 0 has no LFO or vibrato: a tick writes only the character's.
-            for _ in 0..ticks.get(i).copied().unwrap_or(0) {
-                live_tick(&mut *l);
-            }
-            if i == note_block {
-                live_note_on(&mut *l, A4, 100);
-            }
-            let n = half.len() / 2;
-            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
-            tail_stage(&mut gate, &chip, None, &mut mono, n);
-            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
-            thump_stage(&mut thump, &mut chip, None, half, n);
-            master_stage(half, POT);
         }
-    }
-    out
+        for _ in 0..ticks.get(i).copied().unwrap_or(0) {
+            live_tick(l);
+        }
+        if i == note_block {
+            live_note_on(l, A4, 100);
+        }
+    })
 }
 
 /// The rendered chip's address in emulated RAM.
@@ -594,68 +545,23 @@ fn render_host_ages(
     ticks: &[u32],
 ) -> Vec<i16> {
     use sidou_sys::*;
-    let mut chip = Box::<sid>::default();
-    let mut spare = Box::<sid>::default();
-    let mut dacs = Box::<[sid_dac; 2]>::default();
-    let mut pool = Box::<sid_slot_pool>::default();
-    let mut slots = Box::<sid_slots>::default();
-    let mut fx = Box::<fx_live>::default();
-    let mut target = Box::new(fx_live_target {
-        sid: live_sid_target {
-            chip: &mut *chip,
-            clock_hz: SID_CLOCK_PAL,
-            sample_rate: SAMPLE_RATE,
-            dacs: dacs.as_mut_ptr(),
-            spare: &mut *spare,
-            ..Default::default()
-        },
-        fx: &mut *fx,
-    });
-    let mut l = Box::<live>::default();
-    let t: *mut fx_live_target = &mut *target;
-    let mut out = vec![0i16; 2 * frames];
-    let mut mono = vec![0i16; HALF_FRAMES];
-    let mut gate = tail_gate::default();
-    let mut thump = thump_out::default();
-    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
-    unsafe {
-        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
-        fx_live_init(&mut *fx, &mut *slots);
-        live_init(
-            &mut *l,
-            Some(fx_live_sid_sink),
-            t.cast::<std::ffi::c_void>(),
-            SID_MODEL_6581,
-        );
-        // The device's preparer (platform/fm1/main.c): a profile step's reset at its tick.
-        let sid_target: *mut live_sid_target = &mut (*t).sid;
-        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
-        live_set_master(&mut *l, POT);
-        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
-            let age = u32::from(ages.get(i).copied().unwrap_or(AGE));
-            let n_ticks = ticks.get(i).copied().unwrap_or(0);
-            if split.get(i) == Some(&true) {
-                live_tick(&mut *l);
-                live_param_set(&mut *l, LIVE_PARAM_AGE, age);
-                live_tick(&mut *l);
-            } else {
-                live_param_set(&mut *l, LIVE_PARAM_AGE, age);
-                for _ in 0..n_ticks {
-                    live_tick(&mut *l);
-                }
+    common::render_instrument(frames, |i, l| unsafe {
+        let age = u32::from(ages.get(i).copied().unwrap_or(AGE));
+        let n_ticks = ticks.get(i).copied().unwrap_or(0);
+        if split.get(i) == Some(&true) {
+            live_tick(l);
+            live_param_set(l, LIVE_PARAM_AGE, age);
+            live_tick(l);
+        } else {
+            live_param_set(l, LIVE_PARAM_AGE, age);
+            for _ in 0..n_ticks {
+                live_tick(l);
             }
-            if i == note_block {
-                live_note_on(&mut *l, A4, 100);
-            }
-            let n = half.len() / 2;
-            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
-            tail_stage(&mut gate, &chip, None, &mut mono, n);
-            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
-            thump_stage(&mut thump, &mut chip, None, half, n);
-            master_stage(half, POT);
         }
-    }
-    out
+        if i == note_block {
+            live_note_on(l, A4, 100);
+        }
+    })
 }
 
 /// The views' instrument (platform/fm1/ui.c `ui`, its live pointer).

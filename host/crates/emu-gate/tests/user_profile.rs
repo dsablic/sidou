@@ -13,8 +13,7 @@ mod common;
 use fm1_core::Bus;
 
 use common::{
-    build_dir, master_stage, max_diff, run_past_boot, stored_value, tail_stage, thump_stage,
-    top_view, Firmware, Machine, HALF_FRAMES, POT, SAMPLE_RATE, SLOTS_SEED,
+    build_dir, max_diff, run_past_boot, stored_value, top_view, Firmware, Machine, HALF_FRAMES,
 };
 use sidou_sys::*;
 
@@ -191,65 +190,23 @@ fn flash_with_user_3(fw: &Firmware) -> Vec<u8> {
 /// profile, CC 85 (USER 3) sent to live before block `cc_block`, ticks[i] live_ticks before
 /// block i (the device's), and the note on before `note_block`.
 fn render_host(frames: usize, cc_block: usize, note_block: usize, ticks: &[u32]) -> Vec<i16> {
-    let mut chip = Box::<sid>::default();
-    let mut spare = Box::<sid>::default();
-    let mut dacs = Box::<[sid_dac; 2]>::default();
-    let mut pool = Box::<sid_slot_pool>::default();
-    let mut slots = Box::<sid_slots>::default();
-    let mut fx = Box::<fx_live>::default();
-    let mut target = Box::new(fx_live_target {
-        sid: live_sid_target {
-            chip: &mut *chip,
-            clock_hz: SID_CLOCK_PAL,
-            sample_rate: SAMPLE_RATE,
-            dacs: dacs.as_mut_ptr(),
-            spare: &mut *spare,
-            ..Default::default()
-        },
-        fx: &mut *fx,
-    });
-    let mut l = Box::<live>::default();
-    let t: *mut fx_live_target = &mut *target;
-    let mut out = vec![0i16; 2 * frames];
-    let mut mono = vec![0i16; HALF_FRAMES];
-    let mut gate = tail_gate::default();
-    let mut thump = thump_out::default();
-    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
-    unsafe {
-        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
-        fx_live_init(&mut *fx, &mut *slots);
-        live_init(
-            &mut *l,
-            Some(fx_live_sid_sink),
-            t.cast::<std::ffi::c_void>(),
-            SID_MODEL_6581,
-        );
-        let sid_target: *mut live_sid_target = &mut (*t).sid;
-        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
-        live_set_master(&mut *l, POT);
-        l.user_valid = 1 << 2;
-        l.user_base[2] = SID_CHIP_6581_WORN as u8;
-        l.user_ctl[2] = SAVED_CONTROLS;
-        l.user_expert[2] = saved_expert();
-        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
-            if i == cc_block {
-                live_cc(&mut *l, 85, CC_USER_3);
-            }
-            for _ in 0..ticks.get(i).copied().unwrap_or(0) {
-                live_tick(&mut *l);
-            }
-            if i == note_block {
-                live_note_on(&mut *l, A4, 100);
-            }
-            let n = half.len() / 2;
-            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
-            tail_stage(&mut gate, &chip, None, &mut mono, n);
-            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
-            thump_stage(&mut thump, &mut chip, None, half, n);
-            master_stage(half, POT);
+    common::render_instrument(frames, |i, l| unsafe {
+        if i == 0 {
+            l.user_valid = 1 << 2;
+            l.user_base[2] = SID_CHIP_6581_WORN as u8;
+            l.user_ctl[2] = SAVED_CONTROLS;
+            l.user_expert[2] = saved_expert();
         }
-    }
-    out
+        if i == cc_block {
+            live_cc(l, 85, CC_USER_3);
+        }
+        for _ in 0..ticks.get(i).copied().unwrap_or(0) {
+            live_tick(l);
+        }
+        if i == note_block {
+            live_note_on(l, A4, 100);
+        }
+    })
 }
 
 fn active_sid(m: &mut Machine, fw: &Firmware) -> u32 {

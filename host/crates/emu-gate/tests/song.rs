@@ -774,11 +774,11 @@ fn the_song_region_and_the_free_ram() {
     // The stacks every machine checks when it goes (common::Machine's Drop).
     assert_eq!(
         (fw.symbol("_ustack_lo"), fw.symbol("_ustack_top")),
-        (USTACK.start, USTACK.end)
+        (USER_STACK.start, USER_STACK.end)
     );
     assert_eq!(
         (fw.symbol("_sstack_lo"), fw.symbol("_sstack_top")),
-        (SSTACK.start, SSTACK.end)
+        (SYSTEM_STACK.start, SYSTEM_STACK.end)
     );
     println!(
         "RAM region: {} used of {ram_bytes}, {ram_free} free; POOL: {} used of {POOL_BYTES}, \

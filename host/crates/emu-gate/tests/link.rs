@@ -64,7 +64,7 @@ fn usb_machine(fw: &Firmware) -> Machine {
     }
     assert!(UsbHost::configured(&m.soc), "not enumerated");
     m.usb_frames(200);
-    host(&mut m).in1.clear();
+    host(&mut m).ep1_in.clear();
     m
 }
 
@@ -143,7 +143,7 @@ impl Host {
 
     fn take(&mut self, m: &mut Machine) {
         let now = m.ms();
-        let in1 = &m.usb.as_ref().expect("a host").in1;
+        let in1 = &m.usb.as_ref().expect("a host").ep1_in;
         let mut frames = Vec::new();
         for p in in1[self.taken..].concat().as_chunks::<4>().0 {
             let cin = p[0] & 15;
