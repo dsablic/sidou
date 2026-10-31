@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The test vectors of docs/reference/live-link.md, byte for byte, and the reference decoder
-//! on them.
 
 use fm1_live_link::*;
 
@@ -11,6 +9,9 @@ fn hex(s: &str) -> Vec<u8> {
         .collect()
 }
 
+const HOME_BUTTON: u32 = 8;
+const FIRST_MASK_BYTE: usize = 7;
+
 #[test]
 fn the_host_frames_are_the_specs_vectors() {
     assert_eq!(start(), hex("F0 7D 46 4D 31 4C 01 00 01 7E F7"));
@@ -19,9 +20,14 @@ fn the_host_frames_are_the_specs_vectors() {
     assert_eq!(keyframe(), hex("F0 7D 46 4D 31 4C 04 7C F7"));
     assert_eq!(font(), hex("F0 7D 46 4D 31 4C 05 7B F7"));
     assert_eq!(palette(), hex("F0 7D 46 4D 31 4C 06 7A F7"));
-    // HOME (button 8) held and pressed, K1 (encoder 2) a detent clockwise
+    let home_held_and_pressed = 1 << HOME_BUTTON;
+    let k1_a_detent_clockwise = [0, 0, 1];
     assert_eq!(
-        panel(1 << 8, 1 << 8, &[0, 0, 1]),
+        panel(
+            home_held_and_pressed,
+            home_held_and_pressed,
+            &k1_a_detent_clockwise
+        ),
         hex("F0 7D 46 4D 31 4C 07 00 00 01 00 01 00 00 01 76 F7")
     );
 }
@@ -37,7 +43,7 @@ fn packing_round_trips_and_refuses_what_is_not_canonical() {
         assert_eq!(parse(&f), Some((CELLS, p.clone())));
         if n > 0 {
             let mut bad = f.clone();
-            bad[7] ^= 1; // a mask bit flipped: the checksum fails
+            bad[FIRST_MASK_BYTE] ^= 1;
             assert_eq!(parse(&bad), None);
         }
     }
@@ -61,7 +67,6 @@ fn cells_frames_decode_into_the_mirror() {
     assert!(m.take(&hex("F0 7D 46 4D 31 4C 46 00 00 00 41 0E 00 6B F7")));
     assert_eq!(m.cells[0].ch, b'A');
     assert_eq!(m.cells[0].attr, 0x0e);
-    // an overlay cell (colour 3) and a piece (the top left of an 'A' at twice the size)
     assert!(m.take(&hex(
         "F0 7D 46 4D 31 4C 46 20 05 03 20 0E 13 00 40 00 00 00 00 00 00 01 01 00 7E 41 50 F7"
     )));
@@ -79,18 +84,15 @@ fn a_piece_draws_its_part_of_the_character_scaled() {
     for i in 0..16u16 {
         m.palette[usize::from(i)] = i;
     }
-    // the four pieces of a 2x character, fg 1 on bg 0
     for (k, piece) in (1u8..=4).enumerate() {
         assert!(m.take(&frame(CELLS, &[0, k as u8, piece, 0x01, b'A'])));
     }
     let fb = m.render();
     let w = 240;
-    // the glyph's top-left pixel is a 2 x 2 block in piece 1 (cell 0)
     assert_eq!(
         [fb[0], fb[1], fb[w], fb[w + 1], fb[2]],
         [1, 1, 1, 1, 0],
         "piece 1's top left"
     );
-    // its bottom-right pixel the bottom-right 2 x 2 of piece 4 (cell 3, the lower right part)
     assert_eq!([fb[7 * w + 3 * 8 + 7], fb[6 * w + 3 * 8 + 6]], [1, 1]);
 }

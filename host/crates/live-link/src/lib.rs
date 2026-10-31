@@ -1,19 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! FM-1 Live Link's host side (docs/reference/live-link.md): the frames, the host's requests,
-//! and the reference decoder, which rebuilds the device's screen from what it streams and
-//! draws it as the device's LCD shows it.
-//!
-//! No dependencies and no I/O: the bytes come and go through the caller (Web MIDI in a page,
-//! the emulator's USB host in the tests), so it compiles to wasm as it is.
 
-/// After `F0`: the non-commercial manufacturer id and "FM1L".
 pub const MAGIC: [u8; 5] = [0x7d, b'F', b'M', b'1', b'L'];
 pub const VERSION: u8 = 1;
-/// A frame's decoded payload at most.
 pub const PAYLOAD_MAX: usize = 48;
 
-// Host to device.
 pub const START: u8 = 0x01;
 pub const HEARTBEAT: u8 = 0x02;
 pub const STOP: u8 = 0x03;
@@ -21,7 +12,6 @@ pub const KEYFRAME: u8 = 0x04;
 pub const FONT: u8 = 0x05;
 pub const PALETTE: u8 = 0x06;
 pub const PANEL: u8 = 0x07;
-// Device to host.
 pub const HELLO: u8 = 0x41;
 pub const BEAT: u8 = 0x42;
 pub const STOPPED: u8 = 0x43;
@@ -30,11 +20,8 @@ pub const GLYPHS: u8 = 0x45;
 pub const CELLS: u8 = 0x46;
 pub const PIXELS: u8 = 0x47;
 
-/// A cell record's third byte, for a cell that is no piece: an overlay follows.
 pub const OVERLAY: u8 = 0x10;
 
-/// The payload packed: for each group of up to seven bytes, a mask of their high bits (bit k
-/// for byte k), then their low seven bits.
 pub fn pack(payload: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(payload.len() + payload.len().div_ceil(7));
     for group in payload.chunks(7) {
@@ -49,8 +36,6 @@ pub fn pack(payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The payload of packed bytes; None for a group with no byte after its mask, a mask bit with
-/// no byte, or a byte with its high bit set.
 pub fn unpack(packed: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(packed.len());
     for group in packed.chunks(8) {
@@ -67,8 +52,6 @@ pub fn unpack(packed: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// A whole frame: `F0 7D 46 4D 31 4C cmd packed checksum F7`, the command, the packed bytes and
-/// the checksum summing to 0 modulo 128.
 pub fn frame(cmd: u8, payload: &[u8]) -> Vec<u8> {
     let mut out = vec![0xf0];
     out.extend(MAGIC);
@@ -80,7 +63,6 @@ pub fn frame(cmd: u8, payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A frame's command and payload, None if it is not a well-formed Live Link frame.
 pub fn parse(f: &[u8]) -> Option<(u8, Vec<u8>)> {
     if f.len() < 9 || f[0] != 0xf0 || f[1..6] != MAGIC || *f.last()? != 0xf7 {
         return None;
@@ -92,7 +74,6 @@ pub fn parse(f: &[u8]) -> Option<(u8, Vec<u8>)> {
     Some((body[0], unpack(&body[1..body.len() - 1])?))
 }
 
-/// START: a session, asking for HELLO; the protocol version the host speaks.
 pub fn start() -> Vec<u8> {
     frame(START, &[VERSION])
 }
@@ -111,8 +92,6 @@ pub fn font() -> Vec<u8> {
 pub fn palette() -> Vec<u8> {
     frame(PALETTE, &[])
 }
-/// PANEL: the buttons held now, those pressed since the last (even if let go again), and each
-/// encoder's detents since the last (+ clockwise), by the device's ids.
 pub fn panel(held: u16, pressed: u16, steps: &[i8]) -> Vec<u8> {
     let mut p = Vec::new();
     p.extend(held.to_le_bytes());
@@ -121,8 +100,6 @@ pub fn panel(held: u16, pressed: u16, steps: &[i8]) -> Vec<u8> {
     frame(PANEL, &p)
 }
 
-/// The SysEx frames in a byte stream (the device's IN data, real-time bytes and channel
-/// messages between frames left out), as they complete.
 #[derive(Default)]
 pub struct Splitter {
     frame: Vec<u8>,
@@ -150,8 +127,6 @@ impl Splitter {
         }
     }
 
-    /// USB-MIDI event packets (4 bytes each): their MIDI bytes pushed, as many as each one's
-    /// code index number says.
     pub fn packets(&mut self, packets: &[u8], out: &mut Vec<Vec<u8>>) {
         for p in packets.as_chunks::<4>().0 {
             let n = match p[0] & 15 {
@@ -167,7 +142,6 @@ impl Splitter {
     }
 }
 
-/// HELLO: what the device offers.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hello {
     pub version: u8,
@@ -217,29 +191,22 @@ impl Hello {
     }
 }
 
-/// One cell as the device sent it last.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cell {
     pub ch: u8,
     pub attr: u8,
-    /// A piece's character, or 0 / OVERLAY | colour.
     pub x: u8,
     pub mask: [u8; 8],
-    /// A pixel cell's background, a colour a pixel, row by row.
     pub pixels: Option<[u8; 64]>,
 }
 
-/// The device's screen, rebuilt from its frames.
 pub struct Mirror {
     pub hello: Option<Hello>,
     pub cells: Vec<Cell>,
     pub font: Vec<[u8; 8]>,
     pub palette: [u16; 16],
-    /// A session runs (HELLO came, STOPPED did not since).
     pub on: bool,
-    /// Frames that were not Live Link's or did not decode.
     pub rejected: usize,
-    /// Payload bytes of the cell frames taken.
     pub cell_bytes: usize,
 }
 
@@ -266,7 +233,6 @@ impl Mirror {
         self.hello.as_ref().map_or(0, |h| h.rows)
     }
 
-    /// One whole frame from the device; false if it was not taken.
     pub fn take(&mut self, f: &[u8]) -> bool {
         let Some((cmd, p)) = parse(f) else {
             self.rejected += 1;
@@ -357,7 +323,6 @@ impl Mirror {
             .is_some_and(|h| ch.wrapping_sub(h.piece_first) < h.pieces)
     }
 
-    /// The screen as RGB565 pixels, row by row, drawn as the device draws it.
     pub fn render(&self) -> Vec<u16> {
         let Some(h) = &self.hello else {
             return Vec::new();
@@ -373,7 +338,6 @@ impl Mirror {
         fb
     }
 
-    /// A cell's 64 pixels as (y, x, colour).
     fn cell_pixels(&self, c: &Cell) -> impl Iterator<Item = (usize, usize, u8)> + '_ {
         let c = *c;
         let (fg, bg) = (c.attr & 15, c.attr >> 4);
