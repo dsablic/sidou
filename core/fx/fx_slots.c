@@ -6,11 +6,8 @@
 
 #include "fx_limit.h"
 
-/* Every 32 samples of the slots' own clock. */
 #define SNAP_MASK 31u
 
-/* Read by sid_slots_set in the audio path: RAM on the device, not flash
- * (emu-gate tests/ram_audio.rs). */
 #ifdef __PI32V2__
 __attribute__((section(".data.sid_slots_algorithms")))
 #endif
@@ -21,7 +18,6 @@ _Static_assert(SID_DIST_COUNT <= SID_SLOT_ALGS && SID_MOD_COUNT <= SID_SLOT_ALGS
                    SID_FXSLOT_COUNT <= SID_SLOT_ALGS,
                "every algorithm has a start");
 _Static_assert(sizeof(sid_slots) <= 0xffffu, "a start's offsets fit 16 bits");
-/* A start clears the `clear` floats just before its state's `line`: the line's samples. */
 #define LINE_FIRST(type, len)                                                                \
     (offsetof(type, buf) == 0 && offsetof(type, line) == (len) * sizeof(float))
 _Static_assert(LINE_FIRST(sid_fx_chorus, SID_FX_CHORUS_LEN) &&
@@ -30,9 +26,6 @@ _Static_assert(LINE_FIRST(sid_fx_chorus, SID_FX_CHORUS_LEN) &&
                "the delay lines' samples come just before their line");
 #undef LINE_FIRST
 
-/* Every algorithm's start: its running state, its template and the line it clears (none
- * for the algorithms without one, and nothing at all for NONE). Read by slot_start in the
- * audio path: RAM on the device, not flash (emu-gate tests/ram_audio.rs). */
 #define START(state, tpl, clear)                                                              \
     {offsetof(sid_slots, state), offsetof(sid_slots, tpl), sizeof(((sid_slots*)0)->tpl), clear}
 #ifdef __PI32V2__
@@ -78,16 +71,11 @@ void sid_slots_set(sid_slots* s, uint32_t slot, const sid_slot_params* p) {
     sl->target.mix = sid_fx_unit(p->mix);
 }
 
-/* Out of the path: Mix 0 and settled, no switch under way or pending. */
 static int resting(const sid_slot* sl) {
     return sl->mix == 0.0f && sl->target.mix == 0.0f && sl->phase == SID_SLOT_RUN &&
            sl->algorithm == sl->target.algorithm;
 }
 
-/* ---- per-slot algorithms ---- */
-
-/* A template's bytes into the running state. char copies: well defined whatever the
- * types (and a byte loop, so no library call, which the audio context could not reach). */
 static void slot_copy(void* dst, const void* src, uint32_t n) {
     unsigned char* d = dst;
     const unsigned char* q = src;
@@ -96,7 +84,6 @@ static void slot_copy(void* dst, const void* src, uint32_t n) {
     }
 }
 
-/* A delay line's samples to silence, as the line's init leaves them. */
 static void slot_clear(float* buf, uint32_t n) {
     for (uint32_t i = 0; i < n; ++i) {
         buf[i] = 0.0f;
@@ -144,13 +131,10 @@ static void mod_tick(sid_slots* s, uint32_t alg, float x, float amount, float a,
     *r = x;
 }
 
-/* Does the algorithm keep state in the pool (which must be cleared before it starts)? */
 static int fx_uses_pool(uint32_t alg) {
     return alg != SID_FXSLOT_NONE;
 }
 
-/* Wet output from the stereo input in *l, *r (which stays the wet when NONE). `in` scales
- * the wet path's input. */
 static void fx_tick(sid_slots* s, uint32_t alg, float in, float amount, float a, float b,
                     float* l, float* r) {
     sid_slot_fx_state* f = &s->fx;
@@ -170,8 +154,6 @@ static void fx_tick(sid_slots* s, uint32_t alg, float in, float amount, float a,
     }
 }
 
-/* An algorithm into its running state as its init leaves it (STARTS). Out of
- * line: one copy for step_switch's two starts. */
 __attribute__((noinline)) static void slot_start(sid_slots* s, uint32_t k, uint32_t alg) {
     alg = alg < SID_SLOT_ALGS ? alg : 0u;
     const sid_slot_start* st = &STARTS[k][alg];
@@ -181,9 +163,6 @@ __attribute__((noinline)) static void slot_start(sid_slots* s, uint32_t k, uint3
     slot_copy(base + st->dst, base + st->src, st->n);
 }
 
-/* ---- switching ---- */
-
-/* Enter the new algorithm: clear the pool first if it needs it, else start fading in. */
 static void enter(sid_slots* s, uint32_t k) {
     sid_slot* sl = &s->slot[k];
     sl->algorithm = sl->target.algorithm;
@@ -197,13 +176,12 @@ static void enter(sid_slots* s, uint32_t k) {
     }
 }
 
-/* One sample of the switch state machine; returns the wet path's gain. */
 static float step_switch(sid_slots* s, uint32_t k) {
     sid_slot* sl = &s->slot[k];
     switch (sl->phase) {
     case SID_SLOT_RUN:
         if (sl->algorithm == sl->target.algorithm || !sl->may_switch) {
-            return 1.0f; /* switches take turns: see plan_turns */
+            return 1.0f;
         }
         sl->phase = SID_SLOT_FADE_OUT;
         /* fall through */
@@ -229,7 +207,7 @@ static float step_switch(sid_slots* s, uint32_t k) {
         }
         return 0.0f;
     }
-    default: /* FADE_IN: completes before any new switch, so the fade never reverses */
+    default:
         if (sl->warm > 0) {
             --sl->warm;
             return 0.0f;
@@ -245,16 +223,8 @@ static float step_switch(sid_slots* s, uint32_t k) {
     return sid_fx_smoothstep(sl->fade);
 }
 
-/* ---- the frame ----
- *
- * Samples go through in chunks of up to CHUNK, cut on the slots' own clock (so the result
- * does not depend on how calls split the stream). At each chunk start every control's
- * one-pole is evaluated CHUNK samples ahead and the chunk follows it as a straight line:
- * one add per control per sample instead of a full one-pole step. */
-
 #define CHUNK 16u
 
-/* At a chunk start: snap (on the 32-sample grid) and set the controls' slopes. */
 static void plan_controls(sid_slots* s, sid_slot* sl) {
     float* cur[4] = {&sl->amount, &sl->a, &sl->b, &sl->mix};
     const float tgt[4] = {sl->target.amount, sl->target.a, sl->target.b, sl->target.mix};
@@ -267,19 +237,10 @@ static void plan_controls(sid_slots* s, sid_slot* sl) {
     }
 }
 
-/* Is the slot running its algorithm undisturbed (no switch under way, none it may start
- * in this chunk)? */
 static int steady(const sid_slot* sl) {
     return sl->phase == SID_SLOT_RUN && (sl->algorithm == sl->target.algorithm || !sl->may_switch);
 }
 
-/* At a chunk start: which slot may start a switch in this chunk. A preset change that
- * switches every slot would otherwise run three switches at once (three old algorithms
- * fading out, each on the per-sample switching path); taking turns bounds the extra cost
- * to one slot's, and a full preset change takes up to three switch times. Only a slot
- * with a switch pending may start one, only while no other is mid-switch, and the first
- * such slot in order goes first. Decided per chunk on the slots' clock, so where calls
- * end cannot change it. */
 static void plan_turns(sid_slots* s, uint32_t live) {
     int busy = 0;
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
@@ -298,9 +259,6 @@ static void plan_turns(sid_slots* s, uint32_t live) {
     }
 }
 
-/* The per-sample ticks for the switching path, kept out of line so that the steady
- * path's per-algorithm loops below stay small (fm1-emu does not decode the long-range
- * conditional branches clang emits for one loop holding every algorithm). */
 __attribute__((noinline)) static float dist_tick_any(sid_slots* s, uint32_t alg, float x,
                                                      float amount, float a, float b) {
     return dist_tick(s, alg, x, amount, a, b);
@@ -318,15 +276,12 @@ __attribute__((noinline)) static void fx_tick_any(sid_slots* s, uint32_t alg, fl
     fx_tick(s, alg, in, amount, a, b, l, r);
 }
 
-/* Loads a slot's controls and slopes into locals; SAVE writes them back. */
 #define LOAD(sl)                                                                      \
     float amount = (sl)->amount, a = (sl)->a, b = (sl)->b, mix = (sl)->mix;           \
     const float ia = (sl)->inc[0], ib = (sl)->inc[1], ic = (sl)->inc[2], im = (sl)->inc[3]
 #define ADVANCE() (amount += ia, a += ib, b += ic, mix += im)
 #define SAVE(sl) ((sl)->amount = amount, (sl)->a = a, (sl)->b = b, (sl)->mix = mix)
 
-/* Steady distortion: one loop per algorithm, on the input lifted to the algorithms' level (xg,
- * SID_SLOT_DIST_GAIN) and the wet brought back down. */
 #define DIST_LOOP(expr)                                              \
     for (uint32_t i = 0; i < len; ++i) {                             \
         ADVANCE();                                                   \
@@ -374,7 +329,6 @@ static void dist_run(sid_slots* s, float* x, uint32_t len) {
     SAVE(sl);
 }
 
-/* Steady modulation: one loop per algorithm. */
 #define MOD_LOOP(call)                                  \
     for (uint32_t i = 0; i < len; ++i) {                \
         ADVANCE();                                      \
@@ -430,7 +384,6 @@ static void mod_run(sid_slots* s, const float* x, float* l, float* r, uint32_t l
     SAVE(sl);
 }
 
-/* Steady FX: one loop per algorithm; the wet path takes (L + R) / 2. */
 #define FX_LOOP(call)                                   \
     for (uint32_t i = 0; i < len; ++i) {                \
         ADVANCE();                                      \
@@ -454,8 +407,6 @@ static void fx_run(sid_slots* s, float* l, float* r, uint32_t len) {
             if (sl->phase != SID_SLOT_CLEAR) {
                 float wl = l[i];
                 float wr = r[i];
-                /* A fresh line records from the switch on: fading its input in with the
-                 * wet path makes the first echo start smoothly, not mid-waveform. */
                 fx_tick_any(s, sl->algorithm, sl->phase == SID_SLOT_FADE_IN ? g : 1.0f, amount,
                             a, b, &wl, &wr);
                 float k = mix * g;
@@ -486,9 +437,6 @@ static void fx_run(sid_slots* s, float* l, float* r, uint32_t len) {
     SAVE(sl);
 }
 
-/* Every slot out of the path: the input to both sides; the whole sum, with over, through the
- * limiter as the path's output would go; or, into fout, as floats before the conversion. Out of
- * line, so its loops keep their pointers in registers. */
 __attribute__((noinline, unused)) static void slots_bypass(const int16_t* in, const int16_t* over,
                                                            int16_t* out, float* fout, uint32_t n) {
     if (fout) {
@@ -510,8 +458,6 @@ __attribute__((noinline, unused)) static void slots_bypass(const int16_t* in, co
     }
 }
 
-/* The slots on in (+ over, or NULL) into out (int16) or fout (float), the other NULL. Out of
- * line: one copy for every entry below. */
 __attribute__((noinline, unused)) static void slots_run(sid_slots* s, const int16_t* in,
                                                         const int16_t* over, int16_t* out,
                                                         float* fout, uint32_t n) {
@@ -519,11 +465,7 @@ __attribute__((noinline, unused)) static void slots_run(sid_slots* s, const int1
     uint32_t awake = 0;
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         sid_slot* sl = &s->slot[k];
-        /* A slot in the path leaves it only on the snap grid (where the chunk loop
-         * checks too), so where calls end cannot move that point; one already out stays
-         * out. */
         if (resting(sl) && (!sl->awake || (s->clock & SNAP_MASK) == 0)) {
-            /* At rest from here on, however the last call ended: waking up restarts it. */
             sl->awake = 0;
         } else {
             live |= 1u << k;
@@ -535,23 +477,17 @@ __attribute__((noinline, unused)) static void slots_run(sid_slots* s, const int1
         return;
     }
     if (!awake) {
-        /* From rest: restart the clock, so where the chunks and the snap grid fall does
-         * not depend on how earlier calls were split. */
         s->clock = 0;
     }
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         if ((live >> k & 1u) && !s->slot[k].awake) {
-            /* Back from rest: start clean, but in turn like any switch (a start-up on top
-             * of another slot's switch would exceed the switching allowance). Until its
-             * turn the slot runs no algorithm (WAKING: the dry path passes); then, with
-             * nothing to fade out, it enters at once. */
             sid_slot* sl = &s->slot[k];
             sl->algorithm = SID_SLOT_WAKING;
             sl->phase = SID_SLOT_RUN;
             sl->fade = 0.0f;
             sl->may_switch = 0;
             for (int i = 0; i < 4; ++i) {
-                sl->inc[i] = 0.0f; /* held until the next chunk start plans them */
+                sl->inc[i] = 0.0f;
             }
         }
     }
@@ -566,7 +502,7 @@ __attribute__((noinline, unused)) static void slots_run(sid_slots* s, const int1
                 if (live >> k & 1u) {
                     plan_controls(s, &s->slot[k]);
                     if ((s->clock & SNAP_MASK) == 0 && resting(&s->slot[k])) {
-                        live &= ~(1u << k); /* out of the path from here */
+                        live &= ~(1u << k);
                     }
                 }
             }
@@ -631,12 +567,11 @@ void sid_slots_process_float(sid_slots* s, const int16_t* in, const int16_t* ove
     slots_run(s, in, over, NULL, out, n);
 }
 
-/* A slot's share of sid_slots_dry. Out of line: one copy for the three (SRAM is scarce). */
 __attribute__((noinline, unused)) static float slot_dry(const sid_slot* sl) {
     if (!sl->awake || sl->algorithm == 0u || sl->algorithm == SID_SLOT_WAKING) {
-        return 1.0f; /* out of the path, or its wet path is its dry one */
+        return 1.0f;
     }
-    float g = 1.0f; /* RUN */
+    float g = 1.0f;
     if (sl->phase == SID_SLOT_CLEAR || (sl->phase == SID_SLOT_FADE_IN && sl->warm > 0u)) {
         g = 0.0f;
     } else if (sl->phase != SID_SLOT_RUN) {
