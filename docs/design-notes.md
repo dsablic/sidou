@@ -307,10 +307,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Instruction budgets and SRAM placement
 
-- `sid.c`, `sid_osc.h` and `sid_env.h` run in the audio interrupt from SRAM. `sid_clock`'s step is
-  16 cycles: no longer than `sid_render`'s step at any PAL rate up to 61.5 kHz, so `sid_clock` is
-  never coarser than rendering. The loop's cost does not matter: `sid_clock` is for tests and
-  register-accurate seeking, not the audio path.
+- The audio path's functions in `sid.c`, `sid_osc.h` and `sid_env.h` (those `app.ld` names) run in
+  the audio interrupt from SRAM; `sid_init` runs from flash. `sid_clock`'s step is 16 cycles: no
+  longer than `sid_render`'s step at any PAL rate up to 61.5 kHz, so `sid_clock` is never coarser
+  than rendering. The loop's cost does not matter: `sid_clock` is for tests and register-accurate
+  seeking, not the audio path.
 - Deferred noise shifts repeat with the register's period (2^23 - 1): fold the count before it can
   wrap (after about 19 hours at the top pitch). A call adds at most one rise per 16 cycles, well
   inside the 2^31 left.
@@ -495,8 +496,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - Whilst a voice has SYNC set it steps at most `SID_SHADOW_SYNC_STEP` 16u, `sid_clock`'s step, never
   coarser than the chip's own render at any PAL rate up to 61.5 kHz: hard sync's stepping difference
   is then no larger than the chip's own against reSIDfp.
-- Main context only, from flash on the device. 11,382 bytes of code (`-Os`: a second instance of the
-  voices' code, the chip's being in SRAM) and 64 of tables; the struct is 704 bytes on the device.
+- Main context only, from flash on the device; it calls the chip's own out-of-line voice helpers in
+  SRAM (Flash and build flags). The struct is 704 bytes on the device.
   The cost, measured on fm1-emu: about 45,000 instructions a PAL frame for a GoatTracker tune (under
   1% of the core), and up to about 26 an idle cycle whilst every voice runs a combined waveform
   with noise cycle by cycle.
@@ -520,7 +521,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `sidou_tanf`: tan for 0 <= x < ~1.4 without libm. Taylor series of sin and cos; error < 1e-6
   relative. Pure float ops, so host and target agree.
 - `sidou_tanf_fast`: tan for 0 <= x <= 0.45 pi (the filter tables' range) without a series: its Pade
-  approximant of order [7/6], within 4e-9 relative there. One divide, for where `sidou_tanf`'s
+  approximant of order [7/6], within 4e-9 relative there in exact arithmetic (float rounding
+  dominates). One divide, for where `sidou_tanf`'s
   twelve are too dear (the age/heat blend after each filter write).
 - `sidou_atanf`: atan for g >= 0, within 3e-9 relative in exact arithmetic: reduced to [0, 2 - sqrt
   3], then the Pade approximant of order [5/4]. Three divides at most.
@@ -536,9 +538,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   and from reSIDfp; reSIDfp is under 0.0001 cents from theory.
 - `MAX_ENVELOPE_DB_8580` (0.2 dB) is coupled to `ENVELOPE_FLOOR_DB`: the 8580's worst window sat at
   the floor, where the release-slope difference grows largest, so a new floor means re-checking it.
-  Measured 0.030 with reSIDfp's DACs (0.44 without them).
+  Measured 0.030 with reSIDfp's DACs (0.40 without them).
   `MAX_ENVELOPE_DB_6581` (0.5 dB): measured 0.31 with reSIDfp's DACs and the envelope-following
-  voice DC (2.04 without the 6581's kinked envelope DAC).
+  voice DC (2.07 without the 6581's kinked envelope DAC).
 - `ENVELOPE_FLOOR_DB` (-20 dB): the 8580's release fell about 5.5% steeper than reSIDfp's (55.9
   against 53.0 dB/s) with both envelope counters releasing alike, so the difference was in the
   output path: the envelope DAC's leakage, which keeps an off bit conducting (0.35% of its weight on
@@ -593,8 +595,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (sidou-tablegen fit-filter), where SIDOU's linear filter should match: the transfer functions
   (noise through the filter against the same noise unfiltered, measured alike on both engines,
   LP/BP/HP around the cutoff) and each mode's passband gain; and the sweeps as RMS envelopes, at the
-  small-signal level and, recorded only, at full scale. `below_and_not_nan` makes a NaN measurement
-  fail.
+  small-signal level and at full scale, there with ceilings at the measured values.
+  `below_and_not_nan` makes a NaN measurement fail.
 - `TOP_HZ` (7 kHz): transfer functions are compared from half to twice reSIDfp's cutoff and below 7
   kHz. Higher up SIDOU's trapezoidal filter, exact at its cutoff, departs from the analogue response
   it is fitted to (frequency warping: 1.6 dB at 8 kHz for a 3.5 kHz low-pass). Each transfer
@@ -620,7 +622,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   baseline on the filtered noise.
 - `SMALL` (sustain 4) is the small-signal level the tables were fitted at (envelope 0x44, about a
   quarter of full scale); `FULL` (15) is full scale, where the 6581's filter is level-dependent. The
-  reference tests assert the small-signal sweeps; sidou-compare writes both as WAV files.
+  reference tests assert both; sidou-compare writes both as WAV files.
 - `SWEEP_SMALL_*`, largest window LP/BP/HP: 8580 1.62, 2.02, 1.70; 6581 4.84, 2.46, 1.01, RMS 1.07,
   0.68, 0.43. The 8580's 1.0 dB target is missed while the near-cutoff transfer functions are within
   1 dB: the low-pass's largest window is a normalisation artefact at low FC, the band-pass's
@@ -630,9 +632,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   kHz: reSIDfp's band-pass levels off while SIDOU's falls away. Its low-pass's largest window is the
   fourth, where reSIDfp's output still carries the volume write's DC step through its 1.6 Hz
   high-pass (SIDOU's DC blocker is at 16 Hz).
-- `SWEEP_FULL_*`, recorded only (SIDOU's filter is linear and fitted at the small-signal level): the
-  6581's met their targets (LP and BP 2.0, HP 2.1) at 1.88, 1.89, 1.49, RMS 0.52, 0.58, 0.84. The
-  6581's high-pass is level-dependent at FC >= 1,760, around SIDOU's 0.45 fs cutoff clamp.
+- `SWEEP_FULL_*`, ceilings at the measured values (SIDOU's filter is linear and fitted at the
+  small-signal level): the 6581's met their targets (LP and BP 2.0, HP 2.1) at 1.88, 1.89, 1.49, RMS
+  0.52, 0.58, 0.84.
 - `LOUD_6581` (`loud_filter_sweeps_mos6581`, `loud_writes`): three voices at full sustain into the
   filter, three noise voices or a C major chord (saw, 50% pulse, triangle), where reSIDfp's 6581
   filter is furthest from linear (its cutoff halves and its damping doubles under the voices' DC
@@ -919,7 +921,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - LFOs, depth and rate are evaluated every 16 samples, at the segment's end, and the tap delays move
   linearly between. The depth goes through one more one-pole per segment, so even a smoothed jump
   changes the taps' read speed (their pitch) a little per segment rather than all at once.
-- The two LFOs start out of step: `fast_phase = 0x2aaaaaabu` (2/3 of a turn).
+- The two LFOs start out of step: `fast_phase = 0x2aaaaaabu` (1/6 of a turn).
 
 ### CRT / TV speaker
 
@@ -931,13 +933,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   work: the high-pass then integrates and holds an offset that steps out when the block leaves.
 - Hum: 50 Hz with 2nd and 3rd harmonics, read from a one-period wavetable built at init. Harmonic
   formulas: `sin 2t = 2 s c`, `sin 3t = 3 s - 4 s^3`.
-- Coefficients come from tables over tone on 128 log-spaced points, interpolated linearly. Reset:
+- Coefficients come from tables over tone on 32 log-spaced intervals, interpolated linearly. Reset:
   filters start settled on current input x, so nothing jumps.
 
 ### Crush / bit-crush
 
 - Sample-and-hold decimation plus coarser quantiser, each continuous in its own amount. Both at 1
-  leave 2 bits at 1 kHz; both at 0 is the identity on int16 input.
+  leave 4 bits at 4,410 Hz; both at 0 is the identity on int16 input.
 - No anti-alias filter: the aliasing is the sound.
 - Step inverse from exact power of two of integer part and second fit for `2^-f`, so no division.
 - Phase initialised to 1.0 so capture happens on the first sample.
@@ -958,7 +960,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   with feedback from 2T, so echoes alternate left, right, left at T apart from a single line.
 - Feedback goes through one-pole damping low-pass, and what is written (input plus feedback) through
   soft clip, so loop saturates smoothly.
-- Time glides instead of jumping: speed eases up to at most one sample per sample and eases off
+- Time glides instead of jumping: speed eases up to at most half a sample per sample and eases off
   approaching the target (tape-style pitch bend of at most an octave down or fifth up, which itself
   starts and ends smoothly). A fresh start takes the asked time at once.
 - Log2 of max/min time ratio by halving (no libm), then `log2(r)` for r in [1, 2) by atanh series.
@@ -998,7 +1000,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 - Tape-like hiss. White noise from seeded xorshift32 (so host and target agree) through `1 - 0.6
   z^-1`, which tilts it towards highs (-8 dB at DC, +4 dB at Nyquist relative to white).
-- RMS at amount 1 is the uniform white RMS times the tilt filter's gain.
+- RMS `SID_FX_NOISE_RMS` (0.0158, -36 dBFS) at amount 1, linear in the amount: uniform [-1, 1) has
+  RMS 1/sqrt(3) and the tilt filter multiplies it by sqrt(1 + 0.36), which `SID_FX_NOISE_GAIN`
+  divides out.
 
 ### Overdrive
 
@@ -1049,8 +1053,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   samples; input is mono (FX slot: (L + R) / 2), so input gain doubled to match original's L + R;
   values clamped into int16 range before conversion via explicit comparison (original converts then
   clips; results same in range, nothing undefined out of it).
-- Reverb time mapping gives range RT60 about 8 s at top, where Clouds goes to 0.98 (minutes):
-  SIDOU's reverb is a song's tail, not a freeze.
+- Reverb time capped at 0.82 (RT60 about 8 s) where Clouds goes to 0.98 (minutes): SIDOU's reverb is
+  a song's tail, not a freeze.
 - Lines scaled to sample rate, but never past ring: above ~70 kHz lines keep their length in samples
   (shorter in time, smaller room).
 - Compression: truncation as original's `static_cast<int32_t>`, not rounding.
@@ -1152,8 +1156,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   sample rate and seed). Starting one copies its template, so audio context never runs an init (on
   device inits stay out of SRAM). Delay-line algorithms keep only what follows their line: start
   clears line and copies rest.
-- `fx_slots_init.c` in its own file so device builds it for size (`-Os`) whilst `fx_slots.c` whose
-  render is SRAM code stays at `-O2`.
+- `fx_slots_init.c` holds the slots' start-up, run once at boot from flash, in its own file apart
+  from `fx_slots.c`, whose render is SRAM code. Neither has per-file flags: both build at the
+  default `-O2`.
 - STARTS table and ALGORITHMS array marked for RAM on device (`__attribute__((section(".data.*")))`)
   because read by audio path.
 - Slot leaving path only on snap grid (32-sample boundaries), so where calls end cannot move that
@@ -1226,9 +1231,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - Tape compresses highs before lows at SID-like levels; far hotter high tones clip less, because the
   residual ADAA lags the linear part by half a sample: at 0.7 full scale the 8 kHz gain is about
   that of 200 Hz. The test pins that inversion too.
-- Tape aliasing: an 8 kHz half-scale tone folds back every harmonic from the 3rd; the 4.1 kHz alias
-  is the worst. Without ADAA, full drive would give 4.1 kHz -16.8, worst -10.9, total -9.7 dBc. ADAA
-  acts on the clip's residual only, so a tiny tone passes at unity up to 16 kHz.
+- Tape aliasing: an 8 kHz half-scale tone folds back every harmonic from the 3rd; the test measures
+  the alias at 4.1 kHz, the worst of all, the worst below 15 kHz and all together. Without ADAA,
+  full drive would give 4.1 kHz -16.8, worst -10.9, total -9.7 dBc. ADAA acts on the clip's residual
+  only, so a tiny tone passes at unity up to 16 kHz.
 - A tape reset straight into full drive can produce NaN with Newton-tracked reciprocals if not
   guarded; the reciprocals stay within the square of a 1 % step (1e-4).
   `blocks_accept_any_amount_on_any_sample` draws mostly the extremes, which jump the furthest.
@@ -4034,8 +4040,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   the clock's fit before the drain takes them.
 - The MIDI inputs' non-real-time activity includes completed messages and every SysEx byte for
   the store's quiet detector. Clock and sensing do not disturb it.
-- FM-1 Live Link runs over USB SysEx; without a session, the main loop pays one test of each
-  byte.
+- FM-1 Live Link runs over USB SysEx; without a session, the main loop pays one test of a
+  byte where it would make the session's calls.
 - MIDI send runs at 100 Hz: panel parameter changes go out over USB as CCs, NRPNs and program
   changes into the IN endpoint's ring, which the TIMER5 interrupt sends. It never waits: no room
   means the change stays pending; no host means the change is dropped.
@@ -4248,13 +4254,15 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   file's metadata, then DATA messages of the file, then END), PUT (the host sends metadata, the
   device acknowledges, the host sends DATA messages, then END; the device acknowledges each and
   commits at END), DEL (the host names a file to delete), ABORT.
-- Replies: ACK, NAK (with error code), STILL (the device is busy, sent every 2 seconds during a
-  long operation, value 0x7D). A message times out after 2 seconds.
+- Replies: ACK, NAK (with error code), STILL (0x7D, WAIT on the wire: empty, with the sequence
+  of the packet whose ACK waits for quiet, sent at once and every 2 seconds while it waits). A
+  message times out after 2 seconds.
 - The frame: F0, 7D 'SD', command, sequence (0..127, wraps), payload (7-bit encoded as Link's:
   mask byte + 7 data bytes, repeated), checksum (sum of command, sequence, payload and checksum
   is 0 mod 128), F7.
-- The sequence is the sender's, incremented per message; the receiver's reply carries it back. A
-  command after ACK or NAK that does not match the sequence fails with `SYSEX_SEQUENCE`.
+- The sequence is the sender's, incremented per message; the receiver's reply carries it back. An
+  ACK whose sequence is not the awaited reply's, or an upload packet out of sequence, fails with
+  `SYSEX_SEQUENCE`.
 - Reserved names: "MIDI INSTRUMENT", "MIDI SONG", the sounds file; PUT or DEL of them fails with
   `SYSEX_MALFORMED`.
 - The device has one 256-byte packet buffer; PUT with the buffer busy (another operation
@@ -4315,14 +4323,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Live Link protocol
 
-- Carries the screen to a Mac client over a SysEx stream (USB only, not TRS) at 22 bytes per
-  ms, burst 96.
-- Commands are 7-bit encoded: a mask byte (high bit of the next 7 data bytes, bits 0..6)
-  followed by the 7 data bytes with their high bits cleared, repeated; a checksum (the two's
-  complement of the sum, masked to 7 bits) follows.
+- A computer mirrors the screen and drives the panel over a SysEx stream (USB only, not TRS) at
+  22 bytes per ms, burst 96.
+- The payload is packed: a mask byte (the high bits of up to 7 following bytes, bit k for byte
+  k) followed by their low seven bits, repeated; a checksum follows, making the command, every
+  packed byte and itself sum to 0 modulo 128.
 - Frame: F0, magic (7D 'FM1L'), command, payload (7-bit encoded), checksum, F7.
-- Commands from the client: START (opens the link, the device responds with HELLO, then sends
-  the font, palette and screen), HEARTBEAT (the client sends every 600 ms, the device responds
+- Commands from the client: START (opens the link, the device responds with HELLO and marks
+  every cell to be sent), HEARTBEAT (the client sends at least every 2 s, the device responds
   with BEAT), STOP, KEYFRAME (the device resends everything), FONT (the device sends the
   glyphs), PALETTE (the device sends the colours), PANEL (the client's held keys and encoder
   steps).
@@ -4330,8 +4338,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (the 16 palette entries, 2 bytes each), GLYPHS (up to 5 glyphs, 8 bytes each), CELLS (a run
   of character cells: row, column, then records), PIXELS (a pixel cell: row, column, record,
   then 32 bytes of 4-bit pixels).
-- `LINK_TIMEOUT_MS` (3000) without a message from the client closes the link. Panel keys held
-  for `LINK_RELEASE_MS` (500) without a PANEL message are released.
+- `LINK_TIMEOUT_MS` (3000) without a START or HEARTBEAT from the client closes the link. Panel keys
+  held for `LINK_RELEASE_MS` (500) without a PANEL message are released.
 
 ### Live Link mirror
 
@@ -4448,11 +4456,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   nothing playing; with a chord held on the keys, 263.2 ms up, because the store waits
   `STORE_SYSEX_GAP_MS` (250 ms by default, the build option `SIDOU_SYSEX_GAP_MS`) between two
   packets' flash holds while the keys sound, and 10.4 ms down.
-- Recording over USB audio adds 3.0 instructions a sample to the audio interrupt with fm1-emu's
-  estimated SIE round trip of 1 us (measured 2.72 at 44.1 kHz, 2.76 at 48), and
-  `USB_AUDIO_PER_SAMPLE` with the SIE answering at once, the firmware's own cost (0.73 and
-  0.76). The device's real round trip is unmeasured (docs/hardware-test.md section 19), so the
-  tests measure both.
+- Recording over USB audio adds at most 3.0 instructions a sample to the audio interrupt with
+  fm1-emu's estimated SIE round trip of 1 us (measured 2.72 at 44.1 kHz, 2.76 at 48), and
+  `USB_AUDIO_PER_SAMPLE` with the SIE answering at once, the firmware's own cost (0.73 and 0.76).
+  The device's real round trip is unmeasured (docs/hardware-test.md section 19), so the tests
+  measure both.
 - The USB rules the tests hold: packets carry at most 64 bytes (whole event packets), no SIE
   access happens inside the audio interrupt, and the main loop never sleeps in `idle` while a
   host is configured. A device that broke them received packets but a host saw almost none of
@@ -4616,7 +4624,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `STORE_WINDOW_US`: 1000 (a write window masks interrupts at most this long).
 - `STORE_WINDOW_LEAD_US`: 250 (a window starts at most this long after the block's end).
 - The window's test takes the program's own way in off the lead, so the program starts within it;
-  the test passed when the program started at the lead's last tick reached 0.004 µs past it.
+  a test passed at the lead's last tick started a program 0.004 µs past it (emu-gate store.rs).
 - `STORE_HOLD_US`: 35000 (held operation masks interrupts at most this long).
 - `STORE_HOLD_GAP_MS`: 10 (the gap between held operations, during which TIMER5 drains the TRS
   ring).
@@ -4639,12 +4647,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 - The build option `-DSIDOU_FLASH_SPIKE=ON` produces a test firmware (never released) that measures
   flash timing on the device.
-- The spike includes a second copy of `fm1_flash.h` whose `FL_RANGE_OK` covers the spike's two
-  sectors instead of the staging area. RAMFN code is static to that file, so the copies do not
-  clash.
-- The spike's functions measure the status registers read, the SFDP read, page erase time, and
-  erase-suspend behaviour: the function starts a sector erase, waits, suspends it with 0x75, reads,
-  resumes with 0x7A, waits for completion, and measures the suspend, read and resume times.
+- The spike includes a second copy of `fm1_flash.h` whose `FL_RANGE_OK` covers only the spike's two
+  sectors: it never reaches the staging area, unlike midi.c's. RAMFN code is static to that file, so
+  the copies do not clash.
+- The spike reads the part's status and configure registers and the SFDP header, times page
+  erase (0x81), and tries erase suspend: it starts a sector erase, waits, suspends it with 0x75,
+  reads while suspended, resumes with 0x7A and waits for completion, recording the suspend latency,
+  SUS1 and whether the read while suspended returned the data.
 
 ### Settings record
 
@@ -4660,13 +4669,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - A later schema appends fields. This firmware reads a newer record's v1 part and skips a later
   schema's extra expert values before the learn bindings. Schema 6 appended SPREAD (a schema 5
   record, or a SPREAD over 100, loads 0); schema 7 appended SID MODEL (which loads as AUTO
-  otherwise); schema 8 appended the learned CCs of the parameters past the experts, which schema 9
-  ends with their count, so a later schema's longer list is read for the ones this firmware knows.
-  Those parameters' values are the sound's, not this record's.
+  otherwise); schema 8 appended the count of the parameters past the experts and each one's learned
+  CC, and schema 9 counts more of them (the record's count says how many), so a later schema's
+  longer list is read for the ones this firmware knows. Those parameters' values are the sound's,
+  not this record's.
 - An out-of-range value (a corrupt field the CRC still matched, or a range a later firmware
   narrowed) is skipped and the parameter keeps its value.
 - The settings record's byte layout is 6 header bytes, then the parameters with the cutoff and the
-  pulse width two bytes each (`app/settings.h` defines the structure).
+  pulse width two bytes each (docs/reference/settings-format.md is the layout).
 
 ### Settings save
 
@@ -4833,9 +4843,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Tests: settings record (settings.rs)
 
-- `tests/data/settings-v1.bin` (schema 1) and `settings-v3.bin` (schema 2 with THEME appended) are
-  fixtures every later schema must load to the same values; `SIDOU_SETTINGS_FIXTURE_UPDATE=1`
-  writes the v1 fixture, for schema 1 only.
+- `tests/data/settings-v1.bin` (schema 1) and `settings-v3.bin` (schema 3: schema 2's with THEME
+  appended) are fixtures every later schema must load to the same values;
+  `SIDOU_SETTINGS_FIXTURE_UPDATE=1` writes the v1 fixture, for schema 1 only.
 - `a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once` needs a failure rate at
   which the save keeps failing over four debounces; which rate does depends on the simulated draws
   and so on the records' sizes, so it tries a list (`failure_rates_to_try`).
@@ -5521,7 +5531,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (two-pass sinc) sounds better but runs about 0.02 % fast (44,110 samples per 44,100 expected).
 - reSIDfp's `reset()` leaves each envelope counter at its power-on 0xAA and each accumulator at
   0x555555, as on the chip; `sid_init` powers SIDOU up in the same state, so both engines start a
-  script of writes alike, with no warm-up.
+  script of writes alike.
 - `render_sidou` / `render_residfp` apply writes at PAL frame (50 Hz) boundaries and return float
   samples in [-1, 1]; `PAL_CYCLES_PER_FRAME` is 985,248 / 50 rounded, 19,705.
 - `register_probe::probe` reads OSC3 and ENV3 from both engines at the same chip cycles without
@@ -5588,7 +5598,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   renders no sample, so the voices and the output stage are as they were.
 - `FIRMWARE_BLOCK` (128 samples) is the block the firmware renders the colour chain and the effect
   slots in; `Fx::run` and `Slots::run` use it.
-- `rough_pitch_hz` counts rising zero crossings per second: a rough pitch for the real-chip tests.
+- `rough_pitch_hz` counts rising zero crossings per second: a rough pitch.
 
 ### Benchmark and golden workload
 
@@ -5662,7 +5672,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Budgets (emu-gate's common::budgets)
 
-- A budget is set from a measurement plus a margin, and raising one is the owner's decision.
+- Raising a budget is the owner's decision.
 - `AUDIO_TARGET`, 2,700 instructions a sample, is everything the audio interrupt may do. Two
   compile-time assertions keep a song (two chips at their worst, the effects at their cap, the
   ISR, the tap, the player, a digi drum, USB audio recording) and a .sid tune (two chips, the
@@ -5712,11 +5722,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Benchmark gates (sid_budget, fx_budget, slots_budget, scene_budget, cpu6502_budget, psid_budget)
 
-- The benchmark images (`bench/fm1`) run bare in fm1-emu and count instructions between
-  `bench_mark` calls; fm1-emu runs one instruction a cycle, so the counts are a lower bound on
-  the chip's cycles. Each gate also renders the same workload with the host build and requires
-  the target's samples to match it (the SID gate within 1 LSB), so a budget is never met by a
-  broken render.
+- The benchmark images (`bench/fm1`) run bare in fm1-emu and count instructions between `bench_mark`
+  calls; the counts are a lower bound on the chip's cycles. Each gate also renders the same workload
+  with the host build and requires the target's samples to match it (the SID gate within 1 LSB), so
+  a budget is never met by a broken render.
 - `fx_budget`: the post-chip effects with everything on cost at most 500 instructions a sample,
   steady and in the worst case (targets alternating every block so the smoothing never
   settles, the crusher capturing nearly every sample); with two chips at the SID's worst block
@@ -5818,12 +5827,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   and libclang, Node and Playwright's Chromium with its system libraries), so no job installs
   anything with apt: an apt step hung `pages.yml` and `ci.yml`'s tag runs. It marks the
   checkout a safe directory, because CI checks the repository out as another user.
-- `tools/gcc-check` compiles every C file the host tests build (sidou-sys's `SOURCES`, in
-  `build.rs` order, plus the 6502's and the chip's test-only variants, the gt2-ref shim, the
-  PSID oracle and sidou-pack's harnesses) with GCC 13 and the cc crate's release flags, warnings
-  as errors: macOS's clang hides errors GCC reports, and Linux CI compiles with GCC. GoatTracker's
-  own files build without warnings. `uac_harness.c` builds at `-O2`, as its `build.rs` builds it:
-  `usb.c`'s unused SIE functions hold pi32v2 instructions.
+- `tools/gcc-check` compiles every C file the host tests build (sidou-sys's `SOURCES`, in `build.rs`
+  order, plus the 6502's and the chip's test-only variants, the gt2-ref shim, the PSID oracle and
+  sidou-pack's harnesses) with GCC 13 and the cc crate's release flags, warnings as errors: macOS's
+  clang hides errors GCC reports, and Linux CI compiles with GCC. Of gt2-ref only SIDOU's shim is
+  compiled; GoatTracker's own files are compiled with their warnings silenced (gt2-ref's
+  `build.rs`). `uac_harness.c` builds at `-O2`, as its `build.rs` builds it: `usb.c`'s unused SIE
+  functions hold pi32v2 instructions.
 - `tools/wasm-core` and `tools/wasm-link` build the site's two WebAssembly modules with no
   imports and no libc (`platform/fm1/libc_min.c`, as on the device), compiled by the image's
   clang and linked by the Rust toolchain's `rust-lld -flavor wasm` (or a `wasm-ld` on PATH;
@@ -5907,22 +5917,36 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Web platform files
 
-- `platform/web/core_api.c` is the WASM export interface for the song player. The EXPORT macro is
-  `__attribute__((export_name(#name)))` when `__wasm__` defined. Buffers: `IN_MAX` = 4 ×
-  `SONG_REGION_BYTES`, `OUT_MAX` = `GT2_SAVED_MAX` + 1024, `PCM_MAX` = `PCM_BLOCKS` ×
-  `SONG_BLOCK` (`PCM_BLOCKS` = 345). Region 64 KiB aligned (uint32_t array). Song region,
-  input/output buffers, PCM buffer all static. Sample rate: `SC_RATE` = 44118.
+- `platform/web/core_api.c` is the C side of the site's wasm core (`tools/wasm-core` builds it,
+  `web/core.js` is its JavaScript side): the device's own .sng reader and writer, GTI5 export and
+  song player, behind calls that pass bytes through buffers in the module's memory. One song at a
+  time, in a region the size of the device's (`SONG_REGION_BYTES`, a `uint32_t` array), read with
+  the device's multispeed cap, so a file is refused here as the FM-1 refuses it, with the same
+  message. Every call is synchronous and allocation-free; the region and the buffers are static.
+  `EXPORT` is `__attribute__((export_name(#name)))` when `__wasm__` is defined. `IN_MAX` (4 ×
+  `SONG_REGION_BYTES`): the store holds at most 64 KiB, but a picked GoatTracker file may be larger
+  and is then refused by the reader with the device's message. `OUT_MAX` (1024 bytes over
+  `GT2_SAVED_MAX`): the trailer-inclusive save cap and room for the plain part. `SC_RATE` (44,118)
+  is the device's sample rate (24 MHz / 544), and `PCM_MAX` (`PCM_BLOCKS` 345 × `SONG_BLOCK`) a
+  second of blocks.
 - `platform/web/libm_min.c` is minimal libm for WASM: fmaxf and fminf only. Handles NaN: if
   either arg is NaN, returns other arg. If both NaN, returns second.
-- `platform/web/link_api.c` implements the FM-1 Live Link protocol for web
-  (`docs/reference/live-link.md`). Grid dimensions: W = `GRID_COLS` × `GRID_CELL_PX`.
-  `PAYLOAD_MAX` = 48. Protocol commands: HELLO 0x41, COLOURS 0x44, GLYPHS 0x45, CELLS 0x46,
-  PIXELS 0x47. OVERLAY 0x10, BLANK 0x20. Two framebuffers: fb565 (RGB565) and rgba (RGBA8888),
-  both W × W. Palette: pal565 (RGB565) and pal_rgba (RGBA8888), 16 colours each. Per-cell state:
-  character, attribute, x-position, 8-byte mask, is_pixel flag, 64-byte pixel data. Two
-  `GRID_RUN_PIXELS` buffers for double-buffering, aligned(4). Dirty rows: 32-bit bitmask tracking
-  which rows need redrawing. Colour conversion: RGB565 to RGBA8888 - r expanded 5→8 bits, g
-  expanded 6→8 bits, b expanded 5→8 bits, alpha = 0xFF.
+- `platform/web/link_api.c` is the Live Link viewer's screen (`tools/wasm-link` builds it,
+  `web/link.js` is its JavaScript side): the device's cells as its frames leave them
+  (`docs/reference/live-link.md`), drawn by the device's own `app/grid.c` and `app/font.c`, so the
+  picture is the LCD's pixel for pixel. A CELLS or PIXELS record sets a cell's code and colour.
+  Each row is drawn with `grid_render_run` as the LCD's runs are, each cell's overlay put on the
+  grid for that row only (a row has at most 30, so the grid's slots never run out however far the
+  mirror is behind). A pixel cell keeps its 64 background pixels; a row that has any is drawn a
+  second time (`run_px[1]`, the plain pass in `run_px[0]`) with a painter region over the whole
+  screen whose painter hands back those pixels, and the pixel cells are taken from that pass:
+  `grid_render_run` draws a region cell's glyph and overlay over the painter's pixels, which is
+  the spec's rule for a pixel cell. The palette given to `grid_render_run` is the colour indexes
+  themselves (`INDEX`), so a pass yields colours, and `lv_render` maps them to RGBA for a canvas
+  (`rgba`) and to RGB565 for the tests (`fb565`), redrawing only the rows in `dirty_rows`. GLYPHS
+  overwrite the font `grid.c` draws from and COLOURS the palette; a code past HELLO's last font
+  code (or past this font's) draws nothing, and `BLANK` (0x20, a space) is drawn in its
+  background colour alone. Every call is synchronous and allocation-free.
 - `platform/web/link_font.c` copies the built-in font to a modifiable font_glyphs array.
   `font_glyphs`: `FONT_LAST` + 1 glyphs, 8 bytes each, aligned(4). `link_font_init` copies from
   `font_glyphs_built` to runtime `font_glyphs`.
@@ -5967,10 +5991,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   holds a key past the key scan's debounce; `NOTE_RELEASE_MS` (800) is A4's release;
   `RING_OUT_MS` (1500) lets the song's releases ring out before "stopped" is measured.
 - The fake Web MIDI has two port pairs: "Other Synth" must stay silent and "SIDOU FM-1" is a
-  simulated device following `docs/reference/sysex.md`. `fakeLinkMidi` answers with SIDOU's own
-  Live Link frames (`link-fixtures.json`) and ends the session `AUTO_STOP_MS` (3 s) after the
-  last heartbeat, as the device does; it is a function declaration because Playwright serialises
-  it into the page.
+  simulated device following `docs/reference/sysex.md`. `fakeLinkMidi` answers with SIDOU's own Live
+  Link frames (`link-fixtures.json`) and ends the session `AUTO_STOP_MS` (3 s) after the last
+  heartbeat, as the device does; it is a function declaration: hoisted (the test uses it above its
+  definition) and passed to the page.
 
 ### Wasm core
 
