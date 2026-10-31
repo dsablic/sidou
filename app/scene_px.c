@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The tile compositor for pixel scenes (app/scene_px.h). */
 #include "scene_px.h"
 
 #include <stddef.h>
@@ -9,7 +8,6 @@
 
 #define TILE 8
 
-/* An empty slot (SCENE_PX_NONE is 0). */
 static const scene_px_layer NONE;
 
 static int32_t lo(int32_t a, int32_t b) {
@@ -20,8 +18,6 @@ static int32_t hi(int32_t a, int32_t b) {
     return a > b ? a : b;
 }
 
-/* The frame rectangle an image's pixels can cover, in stored pixels: its coded rectangle and
- * its base's. */
 static void image_rect(const scene_image* s, int32_t* x0, int32_t* y0, int32_t* x1,
                        int32_t* y1) {
     *x0 = s->x;
@@ -38,7 +34,6 @@ static void image_rect(const scene_image* s, int32_t* x0, int32_t* y0, int32_t* 
     }
 }
 
-/* A layer's box on the screen, clipped to it. */
 static void layer_box(const scene_px_layer* l, int16_t box[4]) {
     int32_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     switch (l->kind) {
@@ -105,7 +100,6 @@ static void touch_box(scene_px* sp, const int16_t box[4]) {
     scene_px_touch(sp, box[0], box[1], box[2], box[3]);
 }
 
-/* The grid's painter: the tile, and its hash as the panel will show it. */
 static void paint(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
     scene_px* sp = ctx;
     scene_px_tile(sp, col, row, px);
@@ -113,7 +107,6 @@ static void paint(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
     sp->painted++;
 }
 
-/* The same pixels for another reader (the Live Link mirror, grid.h region_peek): no hash. */
 static void peek(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
     scene_px_tile(ctx, col, row, px);
 }
@@ -139,10 +132,9 @@ void scene_px_init(scene_px* sp, grid* g) {
     sp->painted = 0;
     sp->marked = 0;
     sp->fresh = 0;
-    /* Every cell goes out with the region; each takes its hash as it is sent. */
     grid_region_painter(g, 0, 0, GRID_COLS, GRID_ROWS, paint, sp, SCENE_PX_RUN_CELLS);
     g->region_peek = peek;
-    grid_invalidate(g); /* the region is the whole screen: every cell marked */
+    grid_invalidate(g);
 }
 
 void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
@@ -163,7 +155,6 @@ void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
     if (!sp->fresh) {
         touch_box(sp, sp->box[i]);
     }
-    /* The slots with something on the screen, in order: all a tile looks at. */
     sp->nlive = 0;
     for (uint32_t k = 0; k < SCENE_PX_LAYERS; k++) {
         if (sp->box[k][0] < sp->box[k][2]) {
@@ -204,7 +195,7 @@ uint32_t scene_px_scan(scene_px* sp, grid* g, uint32_t most) {
         sp->ncand--;
         uint32_t col = t % GRID_COLS, row = t / GRID_COLS;
         if (grid_marked(g, col, row)) {
-            continue; /* it goes out as it will be then, and takes its hash */
+            continue;
         }
         uint8_t px[64];
         scene_px_tile(sp, col, row, px);
@@ -229,7 +220,6 @@ void scene_px_refresh(scene_px* sp, grid* g, uint32_t n) {
 }
 
 uint32_t scene_px_hash(const uint8_t px[64]) {
-    /* FNV-1a, 32 bits. */
     uint32_t h = 2166136261u;
     for (uint32_t i = 0; i < 64u; i++) {
         h = (h ^ px[i]) * 16777619u;
@@ -237,8 +227,6 @@ uint32_t scene_px_hash(const uint8_t px[64]) {
     return h;
 }
 
-/* Draws layer l over the tile at (tx, ty) where its box [x0, x1) x [y0, y1) (clipped to
- * the tile) covers it. */
 static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, int32_t y0,
                  int32_t x1, int32_t y1, uint8_t out[64]) {
     switch (l->kind) {
@@ -256,7 +244,6 @@ static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, in
         }
         break;
     case SCENE_PX_IMAGE:
-        /* The box is within the frame: x0 - l->x and y - l->y are >= 0. */
         scene_image_blend(l->src, (uint32_t)(x0 - l->x), (uint32_t)(y0 - l->y),
                           (uint32_t)(x1 - x0), (uint32_t)(y1 - y0), TILE, l->mirror, l->remap,
                           out + (y0 - ty) * TILE + (x0 - tx));
@@ -296,7 +283,7 @@ static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, in
 
 void scene_px_tile(const scene_px* sp, uint32_t col, uint32_t row, uint8_t out[64]) {
     int32_t tx = (int32_t)col * TILE, ty = (int32_t)row * TILE;
-    int blank = 1; /* out is still to be cleared to black */
+    int blank = 1;
     for (uint32_t k = 0; k < sp->nlive; k++) {
         uint32_t i = sp->live[k];
         const int16_t* b = sp->box[i];
@@ -304,7 +291,6 @@ void scene_px_tile(const scene_px* sp, uint32_t col, uint32_t row, uint8_t out[6
         int32_t x1 = lo(b[2], tx + TILE), y1 = lo(b[3], ty + TILE);
         if (x0 < x1 && y0 < y1) {
             const scene_px_layer* l = &sp->layer[i];
-            /* A fill or a gradient over the whole tile hides the black under it. */
             if (blank && !((l->kind == SCENE_PX_FILL || l->kind == SCENE_PX_GRADIENT) &&
                            x1 - x0 == TILE && y1 - y0 == TILE)) {
                 for (uint32_t p = 0; p < 64u; p++) {

@@ -14,7 +14,6 @@ _Static_assert(SID_EXPERT_COUNT <= UINT8_MAX, "the expert count fits one byte");
 _Static_assert(LIVE_PARAM_CUTOFF < LIVE_PARAM_PULSE_WIDTH, "the two wide parameters, in order");
 _Static_assert(SETTINGS_BYTES <= STORE_VALUE_MAX, "the record fits a store value");
 
-/* The parameters a record holds in two bytes: their ranges pass 255. */
 static int wide(uint32_t p) {
     return p == LIVE_PARAM_CUTOFF || p == LIVE_PARAM_PULSE_WIDTH;
 }
@@ -35,7 +34,6 @@ void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t
     }
 }
 
-/* Setters write 1; 2 keeps the debounce, retry or unconsumed toast awake without gathering. */
 static void pending(settings* s) {
     s->l->settings_dirty =
         (s->seen != s->saved || s->edit_seen != s->edit_saved || s->asked || s->watch || s->result) ? 2u : 0u;
@@ -55,7 +53,7 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     out[n++] = user_sound_preset_byte(l);
     out[n++] = SETTINGS_PARAMS_V1;
     for (uint32_t p = 0; p < SETTINGS_PARAMS_V1; p++) {
-        uint32_t v = p == LIVE_PARAM_VOLUME ? 0u : live_param_get(l, p); /* the pot's */
+        uint32_t v = p == LIVE_PARAM_VOLUME ? 0u : live_param_get(l, p);
         out[n++] = (uint8_t)v;
         if (wide(p)) {
             out[n++] = (uint8_t)(v >> 8);
@@ -92,7 +90,6 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
 }
 
 int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
-    /* Schema 1 or later: the v1 part (a later schema appends). */
     if (len < SETTINGS_V1_BYTES || rec[0] < 1u || rec[5] < SETTINGS_PARAMS_V1 ||
         (rec[0] >= 2u && len < SETTINGS_V2_BYTES) ||
         (rec[0] >= 3u && len < SETTINGS_V3_BYTES) ||
@@ -115,8 +112,6 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             return 0;
         }
     }
-    /* Schema 8: the parameters past the experts, a count and each one's learned CC (schema 9 counts
-     * 1.1's too: the count is the record's). */
     uint32_t tail_at = SETTINGS_V4_BYTES + 3u + 2u * experts, tail = 0;
     if (rec[0] >= 8u) {
         if (len < tail_at + 1u || len < tail_at + 1u + rec[tail_at]) {
@@ -125,13 +120,11 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         tail = rec[tail_at];
     }
     live* l = s->l;
-    *s->cards = rec[1] <= 2u ? rec[1] : 1u; /* an old record's 1 (ON) is ONCE */
+    *s->cards = rec[1] <= 2u ? rec[1] : 1u;
     if (s->snd) {
         ui_sound_set(s->snd, rec[2] != 0);
     }
     live_set_keys_mode(l, rec[3]);
-    /* first: a preset resets its edits. A USER sound's from the store (an empty slot: SAW LEAD);
-     * past the USER sounds, clamped to DICE as an older firmware does. */
     uint32_t user = (uint32_t)rec[4] - LIVE_PRESET_SLOTS;
     if (user >= USER_SOUNDS) {
         live_set_preset(l, rec[4]);
@@ -145,7 +138,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             v |= (uint32_t)rec[n++] << 8;
         }
         if (p != LIVE_PARAM_VOLUME && v <= live_param_max(p)) {
-            live_param_set(l, p, v); /* the volume is the MASTER pot's */
+            live_param_set(l, p, v);
         }
     }
     if (s->ml) {
@@ -158,7 +151,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     }
     n += SETTINGS_PARAMS_V1;
     *s->tracker_rows = (uint8_t)(rec[0] >= 2u && rec[SETTINGS_V1_BYTES] == 1u);
-    live_set_theme(l, rec[0] >= 3u ? rec[SETTINGS_V2_BYTES] : 0u); /* an older record: HIGH CONTRAST */
+    live_set_theme(l, rec[0] >= 3u ? rec[SETTINGS_V2_BYTES] : 0u);
     memset(s->last_song, 0, sizeof s->last_song);
     if (rec[0] >= 4u) {
         for (uint32_t i = 0; i < STORE_NAME_MAX && rec[SETTINGS_V3_BYTES + i]; i++) {
@@ -192,10 +185,8 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             (void)midi_learn_bind(s->ml, cc, LIVE_PARAM_EXPERT_END + i);
         }
     }
-    /* SPREAD: mono in an older record, and for a value this firmware does not know. */
     uint8_t spread = rec[0] >= 6u ? rec[SETTINGS_V4_BYTES + 1u + 2u * experts] : 0u;
     chip_spread_set(l, spread <= CHIP_SPREAD_MAX ? spread : 0u);
-    /* SID MODEL: AUTO in an older record, and for a value this firmware does not know. */
     uint8_t model = rec[0] >= 7u ? rec[SETTINGS_V4_BYTES + 2u + 2u * experts] : SETTINGS_SID_AUTO;
     s->sid_model = model == SETTINGS_SID_KEYS ? SETTINGS_SID_KEYS : SETTINGS_SID_AUTO;
     l->expert_dirty = 1;
@@ -218,14 +209,12 @@ int settings_load(settings* s, uint32_t now_ms) {
         int n = store_get(s->st, SETTINGS_KEY, rec, sizeof rec, 0);
         same = n > 0 && settings_apply(s, rec, (uint32_t)n);
     }
-    /* The unsaved edit over what they loaded, when it is of the sound they loaded. */
     int edit = 0;
     if (s->st) {
         int n = store_get(s->st, USER_SOUND_EDIT_KEY, rec, sizeof rec, 0);
         edit = n > 0 && user_sound_edit_apply(s->l, rec, (uint32_t)n > sizeof rec ? sizeof rec
                                                                                   : (uint32_t)n);
     }
-    /* What was loaded counts as saved; a new version differs, and the debounce stores it. */
     uint8_t now[SETTINGS_BYTES];
     uint32_t len = settings_gather(s, now);
     s->seen = store_crc32(0, now, len);
@@ -242,8 +231,6 @@ int settings_load(settings* s, uint32_t now_ms) {
     return same;
 }
 
-/* A background save failed: the next debounce writes it again; the second failure in a row says so
- * once (a toast), and a success clears the count. */
 static void retry_later(settings* s, uint32_t now_ms) {
     s->changed_at = now_ms;
     s->tries += s->tries < 255u;
@@ -252,18 +239,16 @@ static void retry_later(settings* s, uint32_t now_ms) {
     }
 }
 
-/* A background write refused with a flash error (an unmounted store has none to retry). */
 static int background_error(const settings* s, int rc) {
     return rc == STORE_ERROR && !s->asked && store_state(s->st) != STORE_STATE_UNMOUNTED;
 }
 
-/* Hands the record to the store: 1 if it took it (it commits on its own polls). */
 static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc, uint32_t now_ms) {
     if (!s->st) {
         return 1;
     }
     if (store_busy(s->st)) {
-        return 0; /* the last write still programs from out */
+        return 0;
     }
     memcpy(s->out, rec, len);
     int rc = store_put(s->st, SETTINGS_KEY, SETTINGS_TYPE, s->out, len);
@@ -274,11 +259,11 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc, ui
         return 1;
     }
     if (background_error(s, rc)) {
-        retry_later(s, now_ms); /* not saved: it stays unsaved */
+        retry_later(s, now_ms);
         return 0;
     }
     if (rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID || rc == STORE_ERROR) {
-        s->saved = crc; /* nothing to wait for */
+        s->saved = crc;
         if (s->asked) {
             s->result = rc == STORE_ERROR ? SETTINGS_FAILED : SETTINGS_FOREIGN;
             s->asked = 0;
@@ -287,7 +272,6 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc, ui
     return 0;
 }
 
-/* The unsaved edit to the store, once it is free: 1 if it took it. */
 static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc, uint32_t now_ms) {
     if (!s->st) {
         s->edit_saved = crc;
@@ -304,7 +288,7 @@ static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t cr
     }
     if (rc == STORE_OK || rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID ||
         rc == STORE_ERROR) {
-        s->edit_saved = crc; /* taken, or nothing to wait for */
+        s->edit_saved = crc;
     }
     if (rc == STORE_OK) {
         s->errors = (uint8_t)s->st->errors;
@@ -313,7 +297,6 @@ static int write_edit(settings* s, const uint8_t* rec, uint32_t len, uint32_t cr
     return rc == STORE_OK;
 }
 
-/* Gather a changed record, save when due, and finish an explicit save. */
 __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_ms) {
     uint8_t rec[SETTINGS_BYTES];
     uint32_t len = settings_gather(s, rec);
@@ -330,24 +313,17 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         s->edit_seen = edit_crc;
         s->changed_at = now_ms;
     }
-    /* A background write the store took, now committed: a program error meanwhile left it
-     * undecided, so both records are written again by the next debounce (an explicit save
-     * checks its own). The second failure in a row says so once; a success clears the count. */
     if (s->watch && s->st && !store_busy(s->st)) {
         s->watch = 0;
         if (s->asked) {
-            /* its own check follows */
         } else if ((uint8_t)s->st->errors != s->errors) {
-            s->saved = ~s->seen; /* unsaved, whatever it was: an inversion of one already unsaved would mark it saved */
+            s->saved = ~s->seen;
             s->edit_saved = ~s->edit_seen;
             retry_later(s, now_ms);
         } else {
             s->tries = 0;
         }
     }
-    /* The unsaved edit first, then the settings record: a cut between them leaves the new
-     * sound over the old settings (it holds all of the sound), never the old edit over a newer
-     * record, and SAVE says SAVED once both are kept. */
     if (s->asked == 1 || now_ms - s->changed_at >= SETTINGS_DEBOUNCE_MS) {
         if (edit_crc != s->edit_saved) {
             (void)write_edit(s, edit, edit_len, edit_crc, now_ms);
@@ -364,11 +340,9 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         return;
     }
     if (s->asked == 2 && (!s->st || !store_busy(s->st))) {
-        /* Idle after it took the record: committed, unless a program failed meanwhile (the
-         * write is undecided then): not saved, and the debounce writes it again. */
         if (s->st && (uint8_t)s->st->errors != s->errors) {
             s->result = SETTINGS_FAILED;
-            s->saved = ~s->seen; /* unsaved, whatever it was: an inversion of one already unsaved would mark it saved */
+            s->saved = ~s->seen;
             s->changed_at = now_ms;
         } else {
             s->result = s->forcing ? SETTINGS_SAVED_GAPS : SETTINGS_SAVED;
@@ -390,8 +364,6 @@ void settings_tick(settings* s, uint32_t now_ms) {
         return;
     }
     int dirty = (s->l->settings_dirty & 1u) || (s->ml && s->ml->settings_dirty);
-    /* A record waiting for the store (seconds while the keys play: the other record programs)
-     * is gathered again once the store can take it, not every frame. */
     int waiting = (s->seen != s->saved || s->edit_seen != s->edit_saved) &&
                   !(s->st && store_busy(s->st));
     if (dirty || s->asked || (s->watch && !(s->st && store_busy(s->st))) ||
@@ -413,13 +385,13 @@ void settings_save_now(settings* s, uint32_t now_ms) {
 
 void settings_reset(settings* s) {
     uint8_t rec[SETTINGS_BYTES];
-    uint32_t len = settings_gather(s, rec); /* the version and the last song stay */
+    uint32_t len = settings_gather(s, rec);
     uint16_t factory[LIVE_PARAM_COUNT] = {0};
     live_preset_params(0, factory);
     factory[LIVE_PARAM_ENVELOPE_MODE] = LIVE_ENVELOPE_INSTANT;
     factory[LIVE_PARAM_PROFILE] = (uint16_t)sid_chip_default(SID_MODEL_6581);
-    rec[1] = 1u; /* CARDS: ONCE */
-    rec[2] = 0u; /* SOUNDS off */
+    rec[1] = 1u;
+    rec[2] = 0u;
     rec[3] = LIVE_KEYS_AUTO;
     rec[4] = 0u;
     uint32_t n = 6;
@@ -429,13 +401,13 @@ void settings_reset(settings* s) {
             rec[n++] = (uint8_t)(factory[p] >> 8);
         }
     }
-    rec[SETTINGS_V1_BYTES] = 0u;                         /* TRACKER ROWS: BAR */
-    rec[SETTINGS_V2_BYTES] = 0u;                         /* THEME: HIGH CONTRAST */
+    rec[SETTINGS_V1_BYTES] = 0u;
+    rec[SETTINGS_V2_BYTES] = 0u;
     memset(rec + SETTINGS_V4_BYTES + 1u, SID_EXPERT_DEFAULT, SID_EXPERT_COUNT);
-    rec[SETTINGS_V5_BYTES] = 0u; /* SPREAD: mono */
+    rec[SETTINGS_V5_BYTES] = 0u;
     rec[SETTINGS_V6_BYTES] = SETTINGS_SID_AUTO;
     for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; i++) {
-        s->l->edits[i].valid = 0; /* every preset's edits: the factory's */
+        s->l->edits[i].valid = 0;
     }
     (void)settings_apply(s, rec, len);
     s->l->settings_dirty = 1;

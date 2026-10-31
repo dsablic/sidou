@@ -12,16 +12,15 @@ _Static_assert(SCENE_VOICES == LIVE_VOICES, "a piece's voice per voice");
 _Static_assert(SCENE_NO_NOTE == LIVE_NO_NOTE, "the same no-note");
 _Static_assert(SCOPE_VOICES == SCENE_VOICES, "an envelope per voice");
 
-/* RED MOON RITE's blank cell: the painter's pixels show through it; and a row of them. */
 #define BLANK GRID_ATTR(GRID_BLACK, GRID_BLACK)
 static const uint8_t BLANK_CH[GRID_COLS] = {
     ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
     ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
-static const uint8_t BLANK_ATTR[GRID_COLS]; /* BLANK is 0 */
+static const uint8_t BLANK_ATTR[GRID_COLS];
 _Static_assert(BLANK == 0u, "a row of zeros is a row of blank cells' colours");
 
 void scene_view_init(scene_view* sv, const live* l, scope* sc) {
-    memset(sv, 0, sizeof *sv); /* not a const template: 3 KB of zeros in flash */
+    memset(sv, 0, sizeof *sv);
     sv->l = l;
     sv->tap = sc;
     scene_song_init(&sv->song);
@@ -32,10 +31,6 @@ void scene_view_song(scene_view* sv, const song_ctl* sc, const song_event* ev, u
     scene_song_events(&sv->song, sc, ev, n);
 }
 
-/* ---- RED MOON RITE ---- */
-
-/* What the screen drew over the scene: each such cell's own background under its glyph (the
- * cells are the tiles, so a span is within one). */
 static void cover_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
     const grid* g = ctx;
     uint32_t i = y / GRID_CELL_PX * GRID_COLS + x / GRID_CELL_PX;
@@ -46,9 +41,6 @@ static void cover_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8
     }
 }
 
-/* The cover layer over what the screen draws over the scene this frame, known before it draws
- * it: MIDI learn's frame (screen_cover), the toast's row, the raster's border (the whole
- * screen); none: no layer. Each cell under it that is not blank shows its own background. */
 static void cover(scene_view_rite* rt, const screen* s) {
     int32_t x0 = SCENE_PX_W, y0 = SCENE_PX_H, x1 = 0, y1 = 0;
     const int32_t px = (int32_t)GRID_CELL_PX;
@@ -79,9 +71,6 @@ static void cover(scene_view_rite* rt, const screen* s) {
     scene_px_set(&rt->px, SCENE_RMR_SLOT_COVER, &l);
 }
 
-/* The compositor from nothing: the painter region over the whole screen, every cell to be
- * sent, the layers set (making no candidates: every tile goes out anyway). The cover comes with
- * the next step. */
 static void rite_reset(scene_view* sv, grid* g) {
     scene_view_rite* rt = &sv->u.rite;
     rt->g = g;
@@ -93,7 +82,6 @@ static void rite_reset(scene_view* sv, grid* g) {
 
 static void rite_start(scene_view* sv, grid* g) {
     scene_rmr_init(&sv->u.rite.rmr);
-    /* the music from now: nothing queued before, no note-on older than this */
     sv->song.n = 0;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         sv->song.stamp[v] = sv->l->voice[v].stamp;
@@ -101,7 +89,6 @@ static void rite_start(scene_view* sv, grid* g) {
     rite_reset(sv, g);
 }
 
-/* A frame of the vignette: its music, its state, its layers. */
 static void rite_step(scene_view* sv) {
     scene_view_rite* rt = &sv->u.rite;
     scene_song_frame_out m;
@@ -113,14 +100,10 @@ static void rite_step(scene_view* sv) {
     scene_rmr_draw(&rt->rmr, &rt->px);
 }
 
-/* The cells blank, as the PETSCII pieces' canvas is copied: under a wipe the rows it asks
- * for whole, and nothing more (the vignette holds still, the scan waits); else the vignette's
- * frame, what the screen drew over within the frame's budget, round the screen from where the
- * last frame stopped, the refresh sweep's tile, and what the budget leaves the scan. */
 static void rite_compose(screen* s, scene_view* sv, grid* g) {
     scene_view_rite* rt = &sv->u.rite;
     if (g->region_ctx != &rt->px) {
-        rite_reset(sv, g); /* a view switch took the region */
+        rite_reset(sv, g);
     }
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
@@ -128,7 +111,7 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
             continue;
         }
         if (r - SCREEN_TOAST_FIRST_ROW(s) >= s->toast_h && (!s->cover_w || r - s->cover_row >= s->cover_h)) {
-            grid_row(g, r, BLANK_CH, BLANK_ATTR); /* nothing over this row */
+            grid_row(g, r, BLANK_CH, BLANK_ATTR);
             continue;
         }
         for (uint32_t c = 0; c < GRID_COLS; c++) {
@@ -138,7 +121,6 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
         }
     }
     if (screen_animating(s)) {
-        /* a wipe sends its rows alone; the raster's cells show their colours over the scene */
         cover(rt, s);
         rt->left = 0;
         return;
@@ -162,7 +144,6 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
         grid_put(g, c, r, ' ', BLANK);
         left--;
     }
-    /* the sweep only while the music moves the vignette, so silence sends nothing */
     if (left && rt->rmr.quiet < SCENE_RMR_CALM_FRAMES) {
         scene_px_refresh(&rt->px, g, 1);
         left--;
@@ -196,14 +177,12 @@ void scene_view_tap(scene_view* sv, int on) {
     sv->on = (uint8_t)(on != 0);
 }
 
-/* The voices' stamps now: a note-on before this is not the piece's. */
 static void listened(scene_view* sv) {
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         sv->stamp[v] = sv->l->voice[v].stamp;
     }
 }
 
-/* What the music does this frame. */
 static void listen(scene_view* sv, scene_music* m) {
     const live* l = sv->l;
     int heard = sv->tap && sv->on;
@@ -212,7 +191,7 @@ static void listen(scene_view* sv, scene_music* m) {
         uint8_t ctrl = live_view_voice_control(l, v);
         uint8_t gate = (uint8_t)(x->gate && ctrl);
         m->gate[v] = gate;
-        m->trig[v] = (uint8_t)(gate && x->stamp != sv->stamp[v]); /* a note-off changes it too */
+        m->trig[v] = (uint8_t)(gate && x->stamp != sv->stamp[v]);
         m->note[v] = ctrl ? x->note : SCENE_NO_NOTE;
         m->env[v] = heard && ctrl ? sv->tap->env[v] : 0u;
         m->color[v] = live_view_wave_color(ctrl);
@@ -228,14 +207,12 @@ static void step(scene_view* sv) {
 }
 
 void scene_view_prepare(scene_view* sv) {
-    /* RED MOON RITE steps in its compose: its scan and sends follow it within the frame */
     if (sv->on && !sv->starting && sv->which != SCENE_RMR) {
         step(sv);
         sv->prepared = 1;
     }
 }
 
-/* The piece from its start, at the next compose (compose): not here, in the input's call. */
 static void enter(screen* s, void* state) {
     (void)s;
     scene_view* sv = state;
@@ -245,7 +222,6 @@ static void enter(screen* s, void* state) {
     sv->cursor = 0;
 }
 
-/* SELECT or ALGORITHM: the next piece (or the one before), wiped in; the compose names it. */
 static int input(screen* s, void* state, const screen_event* e) {
     scene_view* sv = state;
     if (e->kind != SCREEN_TURN || (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
@@ -258,28 +234,19 @@ static int input(screen* s, void* state, const screen_event* e) {
     return 1;
 }
 
-/* The canvas onto the grid: the changed cells from where the last frame stopped, until the
- * frame's budget is spent; what the screen drew over (a toast, the raster) is put back the
- * same way. What is covered this frame (a toast that shows, MIDI learn's frame:
- * screen_covered) stays as it is and costs nothing. Under a wipe, every row whole: the wipe
- * holds the rows it has not reached, and the ones it reveals must be SCENE's. */
 static void compose(screen* s, void* state, grid* g) {
     scene_view* sv = state;
-    /* The piece's name, once, as soon as SCENE shows (not under a title card). */
     if (sv->say && screen_top(s) == &scene_view_view) {
         sv->say = 0;
         screen_toast(s, scene_names[sv->which], SCREEN_TOAST_MS);
     }
-    /* The piece picked (enter) starts as the music now shows it, its canvas drawn as far as
-     * the wipe reveals it this frame (scene_fill; PLASMA's rows are costly): whole once no wipe
-     * from the top runs. */
     if (sv->starting) {
         sv->starting = 0;
         if (sv->which == SCENE_RMR) {
             rite_start(sv, g);
         } else {
             if (g->region_painter) {
-                grid_region_clear(g); /* RED MOON RITE's, if it showed before */
+                grid_region_clear(g);
             }
             listen(sv, &sv->music);
             scene_begin(&sv->u.piece, sv->which);
@@ -290,7 +257,6 @@ static void compose(screen* s, void* state, grid* g) {
         return;
     }
     scene_fill(&sv->u.piece, &sv->music, screen_reach(s));
-    /* Still while a wipe or a raster runs (app/screen.h). */
     if (!screen_animating(s)) {
         if (!sv->prepared) {
             step(sv);
@@ -324,5 +290,4 @@ static void compose(screen* s, void* state, grid* g) {
     }
 }
 
-/* Composed every frame (no changed function). */
 const view scene_view_view = {"SCENE", enter, NULL, input, compose, NULL};

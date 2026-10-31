@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* RED MOON RITE's music hooks (app/scene_song.h). */
 #include "scene_song.h"
 
 #include <stddef.h>
@@ -10,14 +9,13 @@
 #include "song/song_ext.h"
 
 #define NONE SCENE_SONG_NO_NOTE
-/* A GT2 note (0 is C-0) as a MIDI note. */
 #define MIDI_OF(note) ((uint32_t)(note) + 12u)
 
 void scene_song_init(scene_song* ss) {
     static const scene_song empty;
     *ss = empty;
     ss->rpb = SCENE_SONG_RPB;
-    ss->bar = 3; /* the first bar's first row makes it bar 0 */
+    ss->bar = 3;
     for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
         ss->note[v] = NONE;
         ss->low[0][v] = ss->low[1][v] = NONE;
@@ -31,7 +29,6 @@ uint32_t scene_song_drum_of_pitch(uint32_t pitch) {
                                           : SONG_DRUM_SNARE;
 }
 
-/* A play started: the song's chunks, and the place and history from nothing. */
 static void setup(scene_song* ss, const gt2_song* s) {
     const song_ctl* sc = ss->sc;
     scene_song_init(ss);
@@ -54,7 +51,6 @@ static void setup(scene_song* ss, const gt2_song* s) {
     }
 }
 
-/* Instrument i's first wavetable step: its left (waveform) and right (note) bytes. */
 static int first_wave(const gt2_song* s, uint32_t i, uint8_t* left, uint8_t* right) {
     if (!s || i < 1u || i > GT2_MAX_INSTR) {
         return 0;
@@ -68,13 +64,11 @@ static int first_wave(const gt2_song* s, uint32_t i, uint8_t* left, uint8_t* rig
     return 1;
 }
 
-/* The instrument's wavetable starts with noise (a waveform byte, $10-$DF, with bit 7). */
 static int starts_with_noise(const gt2_song* s, uint32_t i) {
     uint8_t l, r;
     return first_wave(s, i, &l, &r) && l >= 0x80u && l <= 0xdfu;
 }
 
-/* A drum's pitch (MIDI): the first step's note, absolute or relative to the row's. */
 static uint32_t drum_pitch(const gt2_song* s, uint32_t i, uint32_t note) {
     uint8_t l, r;
     if (!first_wave(s, i, &l, &r) || r == 0x80u) {
@@ -109,7 +103,6 @@ static void push(scene_song* ss, const scene_rmr_beat* b) {
     ss->beat[ss->n++] = *b;
 }
 
-/* A new bar: this bar's history becomes the last's. */
 static void new_bar(scene_song* ss) {
     for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
         ss->noise[1][v] = ss->noise[0][v];
@@ -123,7 +116,6 @@ static void new_bar(scene_song* ss) {
     ss->bhi[0] = 0;
 }
 
-/* The bass's note against its range over this bar and the last. */
 static uint8_t bass_of(scene_song* ss, uint32_t pitch) {
     uint8_t p = (uint8_t)(pitch < 0xffu ? pitch : 0xfeu);
     if (p < ss->blo[0]) {
@@ -138,7 +130,6 @@ static uint8_t bass_of(scene_song* ss, uint32_t pitch) {
     return high ? SCENE_RMR_BASS_HIGH : SCENE_RMR_BASS_LOW;
 }
 
-/* The voices' roles now: the chunk's, else guessed (noise DRUMS, the lowest BASS). */
 static void roles(const scene_song* ss, uint8_t out[SCENE_SONG_VOICES]) {
     uint32_t bass = SCENE_SONG_VOICES;
     uint32_t lowest = NONE;
@@ -168,7 +159,6 @@ static void roles(const scene_song* ss, uint8_t out[SCENE_SONG_VOICES]) {
     }
 }
 
-/* The call gathered so far, as a step. */
 static void flush(scene_song* ss) {
     if (!ss->open) {
         return;
@@ -211,7 +201,7 @@ static void flush(scene_song* ss) {
             b.hits |= (uint8_t)hit_of(drum_of(ss, s, ss->instr[v], ss->note[v]));
             break;
         case SONG_ROLE_BASS: b.bass = bass_of(ss, MIDI_OF(ss->note[v])); break;
-        case SONG_ROLE_BASS_DRUMS: /* the kit's kick and snare (DICE's), the rest the bass */
+        case SONG_ROLE_BASS_DRUMS:
             if (s && ss->instr[v] && ss->instr[v] == gt2_kit_find(s, GT2_KIT_KICK)) {
                 b.hits |= SCENE_RMR_KICK;
             } else if (s && ss->instr[v] && ss->instr[v] == gt2_kit_find(s, GT2_KIT_SNARE)) {
@@ -277,7 +267,6 @@ void scene_song_events(scene_song* ss, const song_ctl* sc, const song_event* ev,
     }
 }
 
-/* With no song: the instrument's note-ons since the last frame, and the free clock. */
 static void from_live(scene_song* ss, const live* l, scene_song_frame_out* out) {
     scene_rmr_beat b = {0, 0, 0, ss->rpb, 0, SCENE_RMR_BASS_NONE};
     uint32_t lowest = NONE, bass = SCENE_SONG_VOICES;
@@ -329,7 +318,7 @@ static void from_live(scene_song* ss, const live* l, scene_song_frame_out* out) 
 void scene_song_frame(scene_song* ss, const live* l, scene_song_frame_out* out) {
     if (ss->playing && ss->sc) {
         for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
-            ss->stamp[v] = l->voice[v].stamp; /* the keys' notes are not the song's */
+            ss->stamp[v] = l->voice[v].stamp;
         }
         flush(ss);
         const uint8_t* reg = ss->sc->shadow;

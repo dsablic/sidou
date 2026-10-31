@@ -801,3 +801,249 @@ fail there.
   user's registers (a 150 ms DC decay, a thud before the first note). Each sid made for chip B is
   set to where that release ends before any write, set rather than rendered: rendering the
   release (about 450 samples) took a pass past its instruction budget (`song_store.rs`).
+
+## Store and settings
+
+**Format and versioning.** The store is format version 1 (`STORE_FORMAT`); every erase header
+carries it. Settings use schema version 9 (`SETTINGS_VERSION`); a later schema only appends
+fields, so an older firmware reads a newer record's v1 part and a newer one fills what an older
+record lacks with defaults.
+
+**Power-loss safety.** Every sector has an erase header (magic, format, erase count, CRC)
+programmed right after the erase, then a claim (its number—the erase count again—a CRC and a
+claim word), programmed when taken into use, with the erase header again (the same bytes). A
+record is data first, then header, then commit word; it counts only with a good CRC and the
+commit word programmed (any of its bits). Each write takes the next sequence number; the newest
+wins. Before a sector with a valid header is erased, its magic is killed: its 1 bits that read 1
+are programmed to 0 (never a 0 over a bit that reads 0). A cut during a program or erase can
+leave faint bits (neither programmed nor erased, read one way at one mount and another at the
+next): every boot starts a fresh head (no sector from before the mount takes another record), a
+commit or claim word counts with any of its bits programmed, the newest record counts when its
+CRC checks whatever its commit word reads, and ambiguous sectors (a cut tail, a killed sector, a
+torn erase or claim) are erased before the session writes. A claimed one is evacuated first.
+Until recovery is done, writes and collections answer `STORE_BUSY`. A hook error leaves its write
+undecided as a cut does; a later mount may read it either way until maintenance has evacuated and
+erased its sector.
+
+**Erase-ahead pool.** Clean, unclaimed sectors. Whoever writes claims from the pool before the
+first byte, so no write waits for an erase: a small record's new head sector takes one (refused
+with `STORE_BUSY` if that would take the pool under `STORE_POOL_MIN`: 20), a file's sectors
+claim all of them at once (the file waits if the pool cannot cover it and the garbage
+collector's reserve). Erases and garbage collection run only when the caller says the device is
+quiet (`store_quiet`), and refill the pool toward `STORE_POOL_TARGET` (22). A collection takes
+the least-live sector when collecting the least-live sectors one after another would fill fewer
+sectors with their copies than it frees.
+
+**Wear leveling.** Sectors are taken from the pool and erased lowest erase count first. When the
+erase counts spread more than `STORE_WEAR_SPREAD` (4), maintenance moves the coldest claimed
+sector's live records so it cycles too; a live file's sectors never move, so stored files take
+their sectors out of the rotation. NOR parts endure about 100k erases a sector. Settings saved
+once a minute for ten years is about 5.3M record writes; at about 200 records a sector (records
+of ~16 bytes of data) that is 26k sector fills, spread over the 53 sectors outside the pool's
+minimum: under 500 erases a sector. Files wear far more, a save erasing as many sectors as the
+file has: a 20 KB song (6 sectors) saved every 2 min for 4 h a day, one 64 KB song stored
+besides (55 sectors rotate): 720 erases a day, ~13 a sector, ~21 years to 100k; a 64 KB
+autosave (18 sectors) every minute for 8 h a day, two 64 KB songs stored besides (37 sectors
+rotate): 8,640 a day, ~233 a sector, ~1.2 years. So large files are never autosaved by the
+minute, and a save of a file that has not changed since its last save is skipped. Each boot's
+fresh head adds at most one sector fill a boot.
+
+**Partial programs.** A page takes at most `STORE_PAGE_PROGS` (34) programs between erases.
+Bytes already programmed are programmed again only by a claim (the erase header's same bytes, and
+a claim's same bytes again after a cut left it reading never made) and by a kill after a kill
+cut short or failed, over the bits it left faint and reading 1 (a kill programs only the magic's
+bits that read 1). A part with ECC would need 16-byte units each programmed once (a format
+rework).
+
+**Work budgets.** `store_put`, `store_delete`, `store_file_begin`, `store_file_rename`,
+`store_collect` and `store_erase_wanted` each do at most `STORE_POLL_WORK` (7,168 units of about
+4 instructions each): a record's CRC alone, a walk of a sector's records, a slice
+(`STORE_MOUNT_SLICE`: 512 bytes) and garbage collection's plan. The mount works in slices of
+`STORE_MOUNT_SLICE` bytes of checks in each poll (a record's CRC may take one poll alone).
+`store.work` counts: a byte scanned or copied 1 unit, a CRC byte 4, a key compared 1, a `map()`
+call 3, a sector visited in a loop over them 3, a byte programmed 8, a flash operation 300, an
+erase 500, a byte the mount checks for 0xFF 2, and a record the mount checks 64.
+
+**Files.** A name, a type and up to `STORE_FILE_MAX` (65,536) bytes, written as chunk records of
+`STORE_CHUNK` (1,248) bytes, three to a sector, into sectors claimed for the file alone, then
+committed whole by one FILE record in the head. `store_file_begin` claims every sector the file
+needs, and the FILE record's place, before it returns, so a file never waits for an erase. Until
+its FILE record commits a file does not exist: replacing one leaves the old until the new
+commits, and a cut at any point leaves the old file or the new. Chunks never move: a live file's
+sectors are never collected. One file is written at a time; small writes go on meanwhile while
+the head sector has room. The store struct is under 2 KB: a sector index, a key index, a
+256-byte buffer that also stages a file's bytes, the file being written.
+
+**Guard band.** Bytes 0xF00..0xFFF of every store sector are never programmed. An update record
+the SPL or the loader could take for one is 80 bytes at a sector's 0xF00 ("4K boundary - 256"),
+with the magic 0x5441 at +6 and a matching CRC16. An erased band reads 0xFFFF there, so nothing
+in the store can ever look like a record, wherever the SPL scans (the loader skips the range
+already). 80 bytes (0xF00..0xF4F) would be enough; the band keeps the whole 256-byte page, so a
+page program, which wraps inside its page, can never reach it.
+
+**Memory layout.** The store is [0x97000, 0xE0000): 292 KiB, 73 sectors of 4 KiB. It is the
+range the update loader never writes or erases (`LDR_DATA_LO/HI`: its record scan skips it),
+between the app area (which ends at 0x93000 whatever the store's size) and the update protocol's
+staging area (`OTA_AREA`, 0xE0000), inside the package's VM descriptor ([0x93000, 0xE9000)).
+Felucca keeps its main store in the same range.
+
+**Settings record.** One record on the store, versioned. Holds: CARDS, UI sounds, KEYS, the
+preset and every live parameter (the keys' chip model, profile and character, effect slots,
+envelope mode and preset's edits—the instrument as it was left; not the MASTER volume, which is
+the pot), MIDI learn's bindings, firmware version last booted (for the full boot once after an
+install), TRACKER ROWS, THEME, the last song, SPREAD and SID MODEL. Not the octave, held notes,
+controllers or view on screen. Schema 1 or later; a later schema only appends fields.
+
+**Settings save.** Background save 5 s (`SETTINGS_DEBOUNCE_MS`) after the last change of a
+persisted value, the record written whole as one `store_put`. A store that cannot take it now
+(`STORE_BUSY`: a write runs, the pool is short, or the device is not quiet yet with programs
+held) is asked again on later ticks; an explicit save (`settings_save_now`) still waiting after
+`SETTINGS_FORCE_MS` (2,000 ms) forces the held operations (the force hook: short gaps the user
+asked for) and says so (SAVED (GAPS)). The unsaved edit (the current USER sound's record) is
+written by the same debounce, before the settings record: a cut between them leaves the new
+sound, never an older edit over a newer record. A background write the store took, now
+committed: a program error meanwhile left it undecided, so both records are written again by the
+next debounce (an explicit save checks its own). The second failure in a row says so once; a
+success clears the count.
+
+## SCENE
+
+**Frame budgets.** A frame sends at most `SCENE_VIEW_FRAME_CELLS` (200) cells: 200 cells and
+their windows are about 17.5 ms of SPI (one window a cell), inside the 20 ms budget. FIRE burns
+every other frame, two steps at once (12.5 fps, rising as fast as at 25), and each frame draws
+half its rows, alternately, so a frame sends at most half the area. PLASMA draws every other row
+a frame. The tile compositor's grid run takes at most `SCENE_PX_RUN_CELLS` (4) cells: two runs
+of them, each at the worst cell RED MOON RITE draws, stay within a ui_poll's allowance with a
+song's analysis slice in the same pass. The scan works in slices of `SCENE_PX_SCAN_SLICE` (8)
+candidates a ui_poll: a slice of the worst tiles RED MOON RITE draws, with the scan's walk over
+the candidate bits, stays within the pass's allowance, a song's analysis slice with it. A pass
+that scans a slice renders no run.
+
+**Randomness.** Seeded xorshift for determinism: the same music gives the same frames. The state
+is `scene_random(uint32_t* state)`.
+
+**FIRE.** Three flames, a voice each (columns 0-9, 10-19, 20-29), in the bottom
+`SCENE_FIRE_ROWS` (14) rows, two heat rows a cell (an upper-half glyph). A voice's envelope
+heats its flame, a note-on flares it, its pitch sets how high it burns (higher notes cool
+slower: the cooling is `13 - (pitch - 36) * 6 / 48 - resonance / 4`, clamped to 2), the cutoff
+how hot it looks (red, up to yellow and white near the bed: the white starts at
+`fire_white(cutoff)` on a curve that rises fast and flattens), the resonance lowers the cooling.
+The fuel sways along the bed (two sines drifting apart) and a cell in eight cools by 3 cool
+more: the flames break into tongues. A silent voice's flame dies down to the brown ember bed
+(`FIRE_IDLE_HOT`: 120), which holds still. The ember bed: the bottom heat row glows at least
+`FIRE_EMBER` (38, brown), and heat at or below `FIRE_DARK` (48) goes out. The fire burns every
+other frame, two steps at once so the flames rise as fast as at 25 fps, and draws half its rows
+a frame, the even ones on the frame it burns and the odd ones on the next: 12.5 fps, half the
+area a frame.
+
+**PLASMA.** Four sines over the screen in a dither ramp. The cutoff sets its speed (0.1 to
+0.8 rad a second, on its square), the resonance its twist, the voices' envelopes speed it up
+(silence runs an eighth of it) and voice 3's warms it (up to 0.18 of the range, moving at most
+`WARM_STEP` (4) a frame toward its envelope, so a drum's envelope does not move every cell at
+once); a note-on drops a bright ring, growing from a place its pitch sets (the pitch class
+across, the pitch up). Each sine runs at its own multiple of the speed (1, 0.7 back, 1.3 and 1.7
+back). The four sums' range is -508..508; a level is one of 20 (5 ramp steps of 4 dithers). A
+frame draws every other row, alternately. A ripple: a bright ring `RING_W` (8) quarter cells
+wide each side, growing `RING_SPEED` (2) quarter cells a frame from its note-on; its strength at
+the note-on (`RIPPLE_AMP`: 224, 0.22 of the plasma's range) falls exp(-3 t), 0.887 a frame. One
+ring, not a train of them: a frame changes the cells on its edge, not every cell round it.
+
+**RULE 30.** Wolfram's rule 30 on a ring of 60 cells (`SCENE_RULE30_W`), a generation a row of
+quadrant pixels, written down the screen by a moving head that clears two rows ahead of it. Each
+note-on steps it once (`SCENE_RULE30_MAX_STEPS`: 3 at most), the row in that voice's colour;
+voice 3's note-on also flips the cell its pitch picks; a held voice keeps it stepping with its
+envelope (`SCENE_ENV_STEP`: 512, so a full envelope is every other frame). A low cutoff darkens
+the colours (under `SCENE_DARK_CUTOFF`: 512). The start draws `SCENE_RULE30_START` (24)
+generations in grey, so it starts with its pattern.
+
+**STARS.** A starfield flying out of the centre, a third of the stars a voice's. A voice's
+envelope speeds its stars (cruise + envelope * 180 / 256), a note-on lights them in its colour
+for `SCENE_STARS_LIT` (5) frames, the latest note's pitch steers the centre across, and the
+cutoff sets the cruising speed (`8 + cutoff * 24 / 2047`). Depth layers: 0..3 (far to near),
+each drawn with a different glyph and colour. The stars come closer at their speed; a star at
+`STAR_NEAR` (205) or closer wraps to `STAR_FAR` (4,096) and a new place.
+
+**ANT.** Three Langton's ants, a voice each. A note-on walks its ant `SCENE_ANT_STEPS` (3) steps
+and a sounding voice keeps it walking with its envelope (the envelope adds up each frame, a step
+every `SCENE_ENV_STEP` of it); the trail takes the voice's colour, darker under a low cutoff. A
+silent voice's ant stops and greys. The board clears and the ants start again after
+`SCENE_ANT_RESET` (9,000) steps.
+
+**Pixel art images.** Format: a frame of fw x fh stored pixels (gx screen pixels wide: 2 for C64
+wide multicolour, 1 for backgrounds), of which the w x h rectangle from (x, y) is coded; the
+rest is transparent or, for a patch, the base image's. Rows use the shared pool format in
+raw-run mode at `SCENE_ART_SEEK` (32) pixels: `rows[r]` is a byte offset from data, the runs
+adding up to w exactly. The colour `clear` codes a transparent run. A row wider than
+`SCENE_ART_SEEK` has a run start at every `SCENE_ART_SEEK` pixels of it (the converter splits a
+run there), and the row packet holds its checkpoints, so a span part way along a row is found
+from the checkpoint before it. The decoders trust the converter for what they do not check:
+every row's runs add up to w exactly, a patch's frame (fw, fh, gx) is its base's, and gx is 1 or
+2. (ax, ay) is the anchor, in screen pixels of the unmirrored frame. Drawn mirrored, the frame's
+stored pixel x is read from fw - 1 - x and the anchor is (fw * gx - ax, ay); no mirrored copies
+are stored.
+
+**Tile compositor.** No frame buffer (240 x 240 at 4 bits would be 28.8 KB). The scene is a
+stack of layers in slots (`SCENE_PX_LAYERS`: 24), drawn bottom first: fills, gradients (a
+computed sky), images (backgrounds and sprites, each placed by its frame's top-left, mirrored or
+not, with an optional colour remap), marks (single pixels: sparks, arcs, small discs), text in
+the 8 x 8 font and calls (a function that paints a row span: colour cycling over a mask). Each
+layer knows its box, so a tile visits only the layers over it. The scene owns the grid's painter
+region: the grid sends only the cells it marks, and composites each again as it sends it.
+Setting a slot to a layer that differs from what it held makes candidates of the tiles under
+both its old and its new box; `scene_px_scan` composites each candidate into a scratch tile,
+hashes it (FNV-1a, 32 bits), and marks it only if the hash differs from that of what the panel
+shows. The hash of a tile is taken again as it is sent, so it is always the panel's. The scan
+works in slices between frames. The grid sends the marked cells round the screen from where it
+stopped, so none waits more than a sweep. A layer's identity is its fields: a layer whose
+drawing changes while its fields do not changes `param`. A refresh sweep (`scene_px_refresh`, a
+tile or two a frame) sends every tile again in turn regardless, so a change missed that way
+heals within a sweep. The invariant: every run `grid_next_run` hands out with the scene's cells
+in it reaches the panel, or the grid is invalidated. A run is counted as shown, and its tiles'
+hashes are taken, when it is rendered; one rendered and then dropped leaves hashes of pixels the
+panel never got. So a view that has the screen back without its painter region being set again
+through `grid_region_painter` calls `scene_px_init` or `grid_invalidate` before its next frame.
+The cost: `grid_render_run` composites a run's tiles as it renders it (ui_poll renders up to two
+runs a call), so a run takes at most `SCENE_PX_RUN_CELLS` of them.
+
+**RED MOON RITE.** Two barbarians duel under a blood moon, and the music plays the fight. The
+vignette (240 x 240 pixels) runs on the tile compositor. Deterministic: the same music gives the
+same frames. A kick: the leader raises his sword and chops overhead; a snare: the other parries,
+a spark where the blades meet, and the leader loses a stamina notch; a hat: both shift between
+their two guards; the bass (high/low): gives the right/left barbarian the lead, the pair drifts
+toward the one giving ground; an arp note: the torches flare; the fill (the last beat of every
+fourth bar): the leader's spinning attack disarms the other, his sword flies up spinning (the
+eight `scene_rmr_sword` frames, `scene_rmr_flights`' path) and sticks point-down in the
+flagstones with a small shake; while one is unarmed nobody attacks or parries; each bar's first
+row refills an empty stamina meter; the cutoff: the sky's palette (0..2, from darkest to
+brightest), wiped down a cell row a frame. Silence calms it: `SCENE_RMR_CALM_FRAMES` (25) frames
+after the last gate went off, the torches and the spin's arc hold still, and once the timers
+have run out nothing changes. The torches' flames: six colours cycling up through the flame,
+which wobbles; flared, taller and with sparks over it. The prototype's cycle stage, in fixed
+point (Q12) with the screen's sine: `sin(y * 0.9 + frame * 0.7)` as 256ths of a turn. The
+spin's arc: 14 pixels on an ellipse round the spinning fighter, turning. A frame is spread over
+the main loop's passes: the compose (the vignette's step: its music, its state, its layers set
+again, which makes candidates of the tiles under what moved; a top layer over what the screen
+draws over the scene this frame; the cells the screen drew over put back blank within the
+frame's budget; the refresh sweep's tile while the music moves it; the cells the budget leaves
+for the scan); the scan, a slice of `SCENE_PX_SCAN_SLICE` candidates in each ui_poll that has
+nothing to send: each composited, and marked to be sent only if it changed. The scan stops
+marking once the frame has spent its `SCENE_VIEW_FRAME_CELLS`, and goes on from that tile at the
+next frame.
+
+**RED MOON RITE music.** From a song: the voices' roles (DRUMS, BASS, ARP/LEAD) from the song's
+SCNE chunk, and where it leaves a voice AUTO, guessed from the current and the last bar: a voice
+that played an instrument whose wavetable starts with noise (a waveform byte with bit 7) is
+DRUMS; of the others, the one whose lowest note is lowest is BASS, the rest ARP. A drum voice's
+note is a KICK, SNARE or HAT: the SCNE chunk's drum table's for its instrument, else by the
+drum's pitch, the first wavetable step's note (an absolute note, or the row's note moved by a
+relative one): below `SCENE_SONG_KICK_BELOW` (100) a kick, from `SCENE_SONG_HAT_FROM` (106) a
+hat, a snare between (MIDI numbers). The place: a row is each row event of voice 1
+(`SCENE_SONG_CLOCK`); its place in the bar is the pattern's row modulo 4 beats of the song's
+rows a beat (the MIDI chunk's, else `SCENE_SONG_RPB`: 4), and the bar counts each time that
+place goes back; the fill is the last beat of every fourth bar. The bass's note is high when it
+is above the middle of the bass's range over the current and the last bar (the prototype's 50,
+D3, while that range is a single note: `SCENE_SONG_BASS_SPLIT`). Every voice's gate; a voice
+muted (or held by the keys, KEYS A) plays no part. From the instrument (no song playing): each
+note-on is a hit by its voice's waveform as LIVE shows it: with noise a drum by its pitch, as
+above; else the lowest note held is the bass, the others the arp. A free clock makes a row every
+`SCENE_SONG_FREE_FRAMES` (3) frames while a note is held.
