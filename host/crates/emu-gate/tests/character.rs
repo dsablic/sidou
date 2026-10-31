@@ -6,7 +6,10 @@ mod common;
 use fm1_core::Bus;
 
 use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1, SELECT};
-use common::{firmware, max_diff, top_view, Firmware, Machine, HALF_FRAMES, SAMPLE_RATE};
+use common::{
+    firmware, max_diff, rendered_sid, top_view, ui_live, Firmware, Machine, HALF_FRAMES,
+    SAMPLE_RATE,
+};
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
 const MAX_SILENT_HALVES: usize = 4;
@@ -66,12 +69,6 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
     })
 }
 
-fn active_sid(m: &mut Machine, fw: &Firmware) -> u32 {
-    let base = fw.chips();
-    let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
-    base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32
-}
-
 fn read_f32(m: &mut Machine, addr: u32) -> f32 {
     f32::from_bits(m.soc.read32(addr))
 }
@@ -85,7 +82,7 @@ fn expert_nrpn_changes_a_held_notes_sound_without_a_reset() {
     common::run_past_boot(&mut m, &fw);
     m.key(A4_KEY, true);
     m.run_ms(400);
-    let s = active_sid(&mut m, &fw);
+    let s = rendered_sid(&mut m, &fw, 0);
     let pole = read_f32(&mut m, s + ilp32::sid::out_c as u32);
     let energy = |audio: &[i16]| -> f64 {
         audio[audio.len().saturating_sub(8192)..]
@@ -109,7 +106,7 @@ fn expert_nrpn_changes_a_held_notes_sound_without_a_reset() {
     ]);
     m.run_ms(2000);
     assert_eq!(
-        active_sid(&mut m, &fw),
+        rendered_sid(&mut m, &fw, 0),
         s,
         "expert edits must not swap/reset a chip"
     );
@@ -146,7 +143,7 @@ fn expert_filter_builds_are_sliced_and_never_reset_a_held_gate() {
         }
         m.key(A4_KEY, true);
         m.run_ms(400);
-        let s = active_sid(&mut m, &fw);
+        let s = rendered_sid(&mut m, &fw, 0);
         m.watch_calls(fw.symbol("sid_character_filter_job_step"));
         m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
         let fields: &[u32] = if model == SID_MODEL_6581 {
@@ -175,7 +172,11 @@ fn expert_filter_builds_are_sliced_and_never_reset_a_held_gate() {
                 );
                 assert!(slice < u64::from(sidou_sys::REG_RING_PREPARE_SLICE));
                 assert!(pass < common::POLL_INSTRUCTIONS);
-                assert_eq!(active_sid(&mut m, &fw), s, "the expert edit reset a SID");
+                assert_eq!(
+                    rendered_sid(&mut m, &fw, 0),
+                    s,
+                    "the expert edit reset a SID"
+                );
                 let gate = s + ilp32::sid::env as u32 + ilp32::sid_env::gate as u32;
                 assert_eq!(m.soc.read8(gate), 1, "the held gate was lost");
             }
@@ -271,7 +272,7 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
             .read32(base + ilp32::reg_ring_chips::lost_resets as u32),
         0
     );
-    let s = active_sid(&mut m, &fw);
+    let s = rendered_sid(&mut m, &fw, 0);
     assert_eq!(
         m.soc.read8(s + ilp32::sid::model as u32),
         SID_MODEL_6581 as u8
@@ -494,10 +495,6 @@ fn render_host_ages(
     })
 }
 
-fn ui_live(m: &mut Machine, fw: &Firmware) -> u32 {
-    m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32)
-}
-
 #[test]
 fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
     let Some(fw) = firmware("the character test") else {
@@ -540,7 +537,7 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
     let now = base + (ilp32::reg_ring_chips::ramp + ilp32::sid_character_ramp::now) as u32;
     let settings: Vec<u8> = (0..5).map(|i| m.soc.read8(now + i)).collect();
     assert_eq!(settings[1..], [AGE, 0, 0, 0], "the ramp got to the age");
-    let s = active_sid(&mut m, &fw);
+    let s = rendered_sid(&mut m, &fw, 0);
     let mut want = Box::<sidou_sys::sid>::default();
     let mut want_dac = Box::<sidou_sys::sid_dac>::default();
     let c = sidou_sys::sid_character {

@@ -6,8 +6,8 @@ mod common;
 use fm1_core::Bus;
 
 use common::{
-    booted, firmware, max_diff, render_host_chips, ChipEvent, Firmware, Machine, AUDIO_TARGET,
-    HALF_FRAMES, ISR_OVERHEAD, SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
+    booted, firmware, max_diff, render_host_chips, rendered_sid, ChipEvent, Firmware, Machine,
+    AUDIO_TARGET, HALF_FRAMES, ISR_OVERHEAD, SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
 };
 use sidou_sys::ilp32;
 
@@ -53,14 +53,6 @@ fn chip_b_use(m: &mut Machine, fw: &Firmware, on: bool) {
     m.soc.write8(fw.symbol("b_want"), u8::from(on));
 }
 
-fn sid_of(m: &mut Machine, fw: &Firmware, x: usize) -> u32 {
-    let base = fw.chips();
-    let active = m
-        .soc
-        .read8(base + (ilp32::reg_ring_chips::active + x) as u32);
-    base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32
-}
-
 fn note(voice: u8, freq: u16, control: u8) -> Vec<(u8, u8)> {
     let v = voice * 7;
     vec![
@@ -89,7 +81,7 @@ fn the_zeroed_chip_b_is_never_rendered() {
         chip_b_use(&mut m, &fw, true);
         m.run_ms(1);
         if m.soc.read8(b_on) != 0 {
-            let s = sid_of(&mut m, &fw, 1);
+            let s = rendered_sid(&mut m, &fw, 1);
             let rate = m.soc.read32(s + ilp32::sid::sample_rate as u32);
             assert_ne!(rate, 0, "at {ms} ms chip B rendered from a zeroed sid");
             first_on.get_or_insert(ms);
@@ -195,7 +187,7 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         constant <= MASTER_PER_SAMPLE,
         "MASTER's gain costs {constant:.2} a sample"
     );
-    let s = sid_of(&mut m, &fw, 1);
+    let s = rendered_sid(&mut m, &fw, 1);
     assert_eq!(
         m.soc.read8(s + ilp32::sid::mode_vol as u32),
         0x0f,

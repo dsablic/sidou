@@ -1053,6 +1053,18 @@ pub fn top_view(m: &mut Machine, fw: &Firmware) -> u32 {
     m.soc.read32(ui + SCREEN_STACK + 8 * u32::from(depth - 1))
 }
 
+pub fn rendered_sid(m: &mut Machine, fw: &Firmware, chip: usize) -> u32 {
+    use sidou_sys::ilp32::{reg_ring_chips, sid};
+    let base = fw.chips();
+    let active = m.soc.read8(base + (reg_ring_chips::active + chip) as u32);
+    base + (reg_ring_chips::chip + usize::from(active) * sid::SIZE) as u32
+}
+
+pub fn ui_live(m: &mut Machine, fw: &Firmware) -> u32 {
+    m.soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32)
+}
+
 pub fn screen_animating(m: &mut Machine, fw: &Firmware) -> bool {
     let ui = fw.symbol("ui");
     m.soc.read8(ui + SCREEN_WIPE) != 0 || m.soc.read8(ui + SCREEN_RASTER) != 0
