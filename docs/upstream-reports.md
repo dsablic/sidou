@@ -45,6 +45,13 @@ SIDOU's own audio path has no 64-bit multiplies); felucca-bsp's own `chip/usb.c`
 the same loop. Filed as [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16). Until a fix lands, 44.1 kHz recording
 is the safe setting; a long 48 kHz recording is part of 1.0's device session.
 
+**Status on 2026-10-31.** felucca-bsp `14610bd` fixes both: **#14 closed** (`sie_wr` and `sie_rd`
+`noinline`, reproduced and verified on an FM-1 at `-O2 -mcpu=r3`; the buffers stay `aligned(4)`),
+and **#16** (each 48 kHz tap through an out-of-line `uac_mac48`, bit for bit the same output, about
+2.4x the resampler's instructions while recording at 48 kHz) waits for a long 48 kHz recording on an
+FM-1 before the maintainer closes it. **#15** (the raw MIDI-in hook) is open with no reply. SIDOU's
+vendored 1.6.1 `usb.c` has neither fix until it moves to felucca-bsp.
+
 **Offers rather than bugs** (also shown to the user first): SIDOU's USB host model for
 fm1-emu's tests ([TESTING.md](../TESTING.md#fm1-emus-limits)), more instruction classes in fm1-emu if profiling needs them (saturating `R += R`, register `&=`/`^=` masks, some FPU and accumulator classes), and macOS support for the FM-1's ROM-boot recovery
 (`tools/fm1-unbrick-mac`) for MvaveFM1Unbricker / jl-uboot-tool. Later: FM-1 Live Link (the roadmap's companion module) for the other FM-1 firmwares.
