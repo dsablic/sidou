@@ -588,6 +588,13 @@ int song_pages_jump(song_pages* p, screen* s, const screen_event* e) {
     return 1;
 }
 
+static void note_name(uint32_t note, char out[4]) {
+    out[0] = screen_note_names[note % 12u][0];
+    out[1] = screen_note_names[note % 12u][1];
+    out[2] = (char)('0' + note / 12u);
+    out[3] = 0;
+}
+
 void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char out[31]) {
     const char* what;
     if (table != GT2_STBL && left == 0xffu)
@@ -612,11 +619,7 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     out[n++] = ' ';
     if (table == GT2_WTBL && left >= 0x10u && left < 0xf0u) {
         if (right > 0x80u && (right & 0x7fu) < 96u) {
-            uint32_t note = right & 0x7fu;
-            out[n++] = screen_note_names[note % 12u][0];
-            out[n++] = screen_note_names[note % 12u][1];
-            out[n++] = (char)('0' + note / 12u);
-            out[n] = 0;
+            note_name(right & 0x7fu, out + n);
             return;
         }
         if (right == 0x80u) {
@@ -1140,6 +1143,133 @@ static void arp_row(song_pages* p, uint32_t j) {
     }
 }
 
+#define PROGRAM_WORDS 5u
+#define PROGRAM_WORD 6u
+#define PROGRAM_ROWS 8u
+#define PROGRAM_TAG_COL 26u
+#define TABLE_END 0xffu
+
+typedef struct {
+    char word[PROGRAM_WORDS][PROGRAM_WORD];
+    uint32_t n;
+} program_words;
+
+static const char WAVE_WORDS[16][4] = {"OFF", "TRI", "SAW", "T+S", "PUL", "T+P", "S+P", "TSP",
+                                       "NOI", "N+T", "N+S", "NTS", "N+P", "NTP", "NSP", "ALL"};
+static const char FILTER_WORDS[8][5] = {"OFF", "LP", "BP", "LBP", "HP", "NTCH", "BHP", "ALL"};
+
+static void add_word(program_words* w, const char* text) {
+    if (w->n >= PROGRAM_WORDS)
+        return;
+    uint32_t k = 0u;
+    while (text[k] && k < PROGRAM_WORD - 1u) {
+        w->word[w->n][k] = text[k];
+        k++;
+    }
+    w->word[w->n++][k] = 0;
+}
+
+static void wave_words(const gt2_song* song, uint32_t row, program_words* w) {
+    int waved = 0;
+    for (uint32_t k = 0u; k < PROGRAM_ROWS && row < GT2_TABLE_ROWS; k++, row++) {
+        uint8_t left = song->ltable[GT2_WTBL][row], right = song->rtable[GT2_WTBL][row];
+        if (left == TABLE_END)
+            break;
+        if (left >= 0xf0u)
+            continue;
+        if (!waved && left >= 0x10u) {
+            add_word(w, WAVE_WORDS[left >= 0xe0u ? 0u : left >> 4]);
+            waved = 1;
+        }
+        if (right == 0x80u)
+            continue;
+        char note[PROGRAM_WORD];
+        if (right > 0x80u)
+            note_name((right & 0x7fu) % 96u, note);
+        else
+            arp_num(note, arp_off(right), 1);
+        add_word(w, note);
+    }
+}
+
+static void pulse_words(const gt2_song* song, uint32_t row, program_words* w) {
+    int set = 0, slides = 0;
+    for (uint32_t k = 0u; k < PROGRAM_ROWS && row < GT2_TABLE_ROWS; k++, row++) {
+        uint8_t left = song->ltable[GT2_PTBL][row];
+        if (left == TABLE_END)
+            break;
+        if (!(left & 0x80u)) {
+            slides = 1;
+        } else if (!set) {
+            uint32_t width = (left & 0x0fu) << 8 | song->rtable[GT2_PTBL][row];
+            char percent[PROGRAM_WORD];
+            uint32_t n = screen_decimal(percent, (width * 100u + 2047u) / 4095u);
+            percent[n] = '%';
+            percent[n + 1u] = 0;
+            add_word(w, percent);
+            set = 1;
+        }
+    }
+    if (slides)
+        add_word(w, "PWM");
+}
+
+static void filter_words(const gt2_song* song, uint32_t row, program_words* w) {
+    int mode = -1, cutoff = -1, slides = 0;
+    for (uint32_t k = 0u; k < PROGRAM_ROWS && row < GT2_TABLE_ROWS; k++, row++) {
+        uint8_t left = song->ltable[GT2_FTBL][row];
+        if (left == TABLE_END)
+            break;
+        if (left & 0x80u) {
+            if (mode < 0)
+                mode = left >> 4 & 7u;
+        } else if (!left) {
+            if (cutoff < 0)
+                cutoff = song->rtable[GT2_FTBL][row];
+        } else {
+            slides = 1;
+        }
+    }
+    char hex[3];
+    if (mode >= 0)
+        add_word(w, FILTER_WORDS[mode]);
+    if (cutoff >= 0) {
+        hex2((uint32_t)cutoff, hex);
+        add_word(w, hex);
+    }
+    if (slides)
+        add_word(w, "SLIDE");
+}
+
+static int program_of(const gt2_song* song, uint32_t instr, uint32_t field, program_words* w) {
+    w->n = 0u;
+    if (field < GT2_INS_WAVE || field > GT2_INS_FILTER)
+        return 0;
+    uint32_t ptr = song->instr[instr - 1u][field];
+    if (!ptr)
+        return 1;
+    static void (*const WORDS[])(const gt2_song*, uint32_t, program_words*) = {wave_words, pulse_words,
+                                                                              filter_words};
+    WORDS[field - GT2_INS_WAVE](song, ptr - 1u, w);
+    return 1;
+}
+
+static void program_line(const program_words* w, char out[GRID_COLS / 2u + 1u]) {
+    uint32_t n = 0u;
+    out[0] = 0;
+    for (uint32_t i = 0u; i < w->n; i++) {
+        uint32_t len = 0u;
+        while (w->word[i][len])
+            len++;
+        if (n + (n ? 1u : 0u) + len > GRID_COLS / 2u)
+            break;
+        if (n)
+            out[n++] = ' ';
+        memcpy(out + n, w->word[i], len + 1u);
+        n += len;
+    }
+}
+
 static void build_row(song_pages* p, uint32_t j) {
     if (p->arp && p->page == SONG_VIEW_TABLE) {
         arp_row(p, j);
@@ -1194,6 +1324,11 @@ static void build_row(song_pages* p, uint32_t j) {
             big(c, 0u, r, PARAM_SHORT[j], GRID_ATTR(on ? th->hot : th->label, bg));
             hex2(song->instr[sv->instr - 1u][j], num);
             big(c, 22u, r, num, on ? GRID_ATTR(th->bg, th->hot) : base);
+            program_words w;
+            if (program_of(song, sv->instr, j, &w)) {
+                for (uint32_t line = 0u; line < 2u && line < w.n; line++)
+                    grid_canvas_text(c, PROGRAM_TAG_COL, r + line, w.word[line], GRID_ATTR(th->label, bg));
+            }
         } else if (j < GT2_INS_NAME + 2u) {
             char name[NAME_LINE + 1u];
             uint32_t start = (j - GT2_INS_NAME) * NAME_LINE;
@@ -1270,6 +1405,11 @@ static void build_footer(song_pages* p) {
     if (!*say && p->page == SONG_VIEW_ORDER && sv->song && p->order_cursor) {
         order_kind(p, kind);
         say = kind;
+    }
+    program_words w;
+    if (!*say && p->page == SONG_VIEW_INSTR && sv->song && program_of(sv->song, sv->instr, p->instr_cursor, &w)) {
+        program_line(&w, meaning);
+        say = w.n ? meaning : "NO PROGRAM";
     }
     if (!*say && p->page == SONG_VIEW_INSTR)
         say = p->instr_cursor < GT2_INS_NAME ? PARAM_NAMES[p->instr_cursor] : "INSTRUMENT NAME";

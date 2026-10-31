@@ -492,6 +492,16 @@ untouched imported bytes are preserved, and name-only instruments follow GoatTra
 save rules. TABLE's footer spells out the selected operation, including absolute/relative
 wavetable notes and jumps (SPEED's FF is a speed value, not a jump).
 
+INSTR says what its WAVE, PULSE and FILTER pointers point to, so the program needs no trip to
+TABLE: beside each pointer's hex, small, the program's first two words, and at the foot, at 2x,
+the whole summary of the pointer under the cursor (up to 15 characters, the program's first 8
+rows up to its jump). WAVE: the first waveform (`TRI`, `SAW`, `PUL`, `NOI`, combinations such
+as `S+P`, `OFF` for an inaudible one) and the notes in order, relative in semitones (`+0 +4 +7`)
+or absolute (`C-4`): `PUL +0 +4 +7`. PULSE: the first width set, as a percent, and `PWM` when
+a slide follows: `50% PWM`. FILTER: the mode (`LP`, `BP`, `HP`, `LBP`, `NTCH`, `BHP`, `ALL`), the
+first cutoff in hex and `SLIDE` when one follows: `LP 40 SLIDE`. A pointer of 00 shows nothing
+beside it and `NO PROGRAM` at the foot.
+
 ### ARP helper
 
 An arpeggio in GoatTracker's wavetable is relative note steps, a delay between them and a jump

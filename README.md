@@ -50,7 +50,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
   its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
-  the rest. REC records the keys and the filter knobs while the song plays, each note where you
+  the rest, and INSTR says what each table pointer plays (`PUL +0 +4 +7`). REC records the keys and the filter knobs while the song plays, each note where you
   played it against what you heard, and parameter locks are on STEP, with a chance for each step;
   a held step sounds with its locks. TABLE's ARP helper writes arpeggios as wavetable rows, and the
   keys play the draft before you save it. MUTATE, DICE (density, range, scale, rhythm and a root

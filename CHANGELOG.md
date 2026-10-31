@@ -99,6 +99,12 @@ All notable changes are documented here. The format follows
   [song format](docs/reference/song-format.md))
 
 ### Changed
+- **INSTR says what its table pointers point to**: beside the WAVE, PULSE and FILTER pointers'
+  hex, small, the program's first two words (`SAW` `+0`, `50%` `PWM`, `LP` `40`), and at the
+  foot, at 2x, the whole summary of the pointer under the cursor: the waveform and the first
+  notes (`PUL +0 +4 +7`), the start width and whether it sweeps (`50% PWM`), the filter's mode,
+  cutoff and slide (`LP 40 SLIDE`), `NO PROGRAM` for 00. No trip to TABLE to know what an
+  instrument plays.
 - **EDIT + SELECT jumps a page on ORDER and TABLE** (12 entries or rows, a screenful), as it
   jumps 8 rows on TRACKER, and **8 on INSTR** (ATK/DEC to 1ST WAVE, then the same character on
   the name's other line). Their help cards say `E+SELECT PAGE`.

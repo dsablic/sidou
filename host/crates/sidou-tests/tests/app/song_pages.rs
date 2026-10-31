@@ -867,6 +867,56 @@ fn page_values_and_parameter_names_are_readable_at_two_times_the_font() {
     assert_eq!(h.ui.big(3, 12, 2, 2), "00");
 }
 
+fn instrument_with_programs() -> SngSpec {
+    let mut spec = SngSpec::new();
+    let mut instr = [0u8; 25];
+    instr[GT2_INS_WAVE as usize] = 1;
+    instr[GT2_INS_PULSE as usize] = 1;
+    instr[GT2_INS_FILTER as usize] = 1;
+    spec.instr = vec![instr, [0; 25]];
+    spec.tables[GT2_WTBL as usize] = vec![(0x41, 0x00), (0x01, 0x04), (0x01, 0x07), (0xff, 0x01)];
+    spec.tables[GT2_PTBL as usize] = vec![(0x88, 0x00), (0x20, 0x40), (0xff, 0x02)];
+    spec.tables[GT2_FTBL as usize] = vec![(0x90, 0xf1), (0x00, 0x40), (0x10, 0x01), (0xff, 0x00)];
+    spec
+}
+
+#[test]
+fn instr_says_what_each_table_pointer_points_to() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    h.model
+        .read(&instrument_with_programs().encode(), 0)
+        .unwrap();
+    h.ui.v.song.song_edits += 1;
+    h.settle();
+    let beside = |h: &Pages, field: u32| {
+        let row = (SONG_PAGES_TOP + 2 * field) as usize;
+        (
+            h.ui.small(row, 26, 4).trim_end().to_owned(),
+            h.ui.small(row + 1, 26, 4).trim_end().to_owned(),
+        )
+    };
+    let footer = |h: &Pages| h.ui.row(28).trim_end().to_owned();
+    for (field, tag, said) in [
+        (GT2_INS_WAVE, ("PUL", "+0"), "PUL +0 +4 +7"),
+        (GT2_INS_PULSE, ("50%", "PWM"), "50% PWM"),
+        (GT2_INS_FILTER, ("LP", "40"), "LP 40 SLIDE"),
+    ] {
+        assert_eq!(
+            beside(&h, field),
+            (tag.0.to_owned(), tag.1.to_owned()),
+            "field {field}"
+        );
+        h.turn(PANEL_ENC_SELECT, -(GT2_INSTR_BYTES as i16));
+        h.turn(PANEL_ENC_SELECT, field as i16);
+        h.settle();
+        assert_eq!(footer(&h), said, "the footer at 2x, field {field}");
+    }
+    h.turn(PANEL_ENC_PRESETS, 1);
+    h.settle();
+    assert_eq!(beside(&h, GT2_INS_FILTER), (String::new(), String::new()));
+    assert_eq!(footer(&h), "NO PROGRAM");
+}
+
 #[test]
 fn solo_wins_over_mute_and_the_order_voice_header_uses_the_effective_mask() {
     let mut h = Pages::new(unsafe { &song_pages_order_view });
