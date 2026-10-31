@@ -552,6 +552,457 @@ A budget is set from a measurement plus a margin, and raising one is the owner's
 - Live Link's tests run on USB frames (`usb_frames`), so their panel presses are timed in
   frames rather than with the panel helpers.
 
+### LCD goldens (emu-gate's `screen`)
+
+- The goldens in `tests/golden/lcd/` are 4-bit indexed PNGs in the art palette
+  (docs/art/README.md), the panel's RGB565 truncation of it, so every pixel of the screen must
+  be one of the 16 colours. `SIDOU_LCD_GOLDEN_UPDATE=1` rewrites them; a mismatch writes the
+  screen as `<name>.actual.png` into the fm1 build directory.
+- A PNG is written whole under a name of its own and renamed into place: two tests that write
+  the same `<name>.actual.png` (the golden test on a mismatch, the song pages' review test
+  always) never leave a torn file for the reader.
+- Cells left out of a comparison are painted blue in both images. The version text changes with
+  every release, so it is masked: the status screen's (row 2, right-aligned before column 21;
+  platform/fm1/ui.c asserts at compile time that "V" and the version fit those cells), the boot
+  prompt's banner (row 3), the title card's version line and About's 2x heading.
+- A shot is taken half way between two frames (`to_mid_frame`): the panel then holds a whole
+  frame, and what follows starts at the same phase every run. `settle` waits 700 ms first,
+  long enough for a wipe (8 frames) or a raster (14 frames) to end.
+- HOME acts on its release, at the next frame (app/views.c `views_flow`). The wipe and budget
+  tests hold it two frame periods (`tap_home`), so the frames that follow are the navigation's
+  and the time to the middle of a frame stays where the goldens were made.
+- The LIVE reference shot waits for the boot's last rows: the boot can end with rows still to
+  go out (a frame sends at most `LIVE_VIEW_FRAME_CELLS`).
+- The preset's cutoff is off K1's table: the highlight test turns K1 one detent first, so that
+  the turn back lands where it started.
+- The C64-theme golden starts its note on the views' frame 139, and About's goldens are taken at
+  its animation's frames 9 and 40 (the first page whole: its last line at full brightness from
+  frame 26, the heading fading from 80). The tests wait for those frames, so the shots do not
+  move when the menu gains items.
+
+### The value popup's budgets
+
+- The popup gate turns K1 once (the popup opens, holds a second and closes: 3 rows, 78 cells, a
+  frame each way, within `POPUP_OPEN_FRAMES`, 70), then every other frame for a second, then
+  holds it static, over LIVE and SCENE with a note held, STATUS, the menu, CHIP and the MIDI
+  page. K1 opens no popup over LIVE and CHIP (they highlight the knob), so the MASTER pot, whose
+  popup shows everywhere, stands for it there. A static popup draws its box again only when the
+  view under it composed and sends nothing; LIVE, SCENE and the MIDI page move on their own, so
+  their windows are not counted. The bounds are about 15 % over the measurement with the
+  large text (most cells a frame 132, 158 over RULE 30; worst SPI 11.3 ms, 13.6 over SCENE;
+  busiest `ui_poll` 30.7k LIVE, 33.7k STATUS, 36.5k menu, 35.4k CHIP, 31.3k SCENE; a static
+  popup's extra a frame 7.3k over LIVE, 12.5k over SCENE, about 0.15k elsewhere):
+  `POPUP_WORST_POLL` 42,000, `POPUP_STATIC_EXTRA` 15,000.
+- A turn that asks for the popup: the input's call (`ui_encoder`, which stores the ask) within
+  `POPUP_INPUT`, 250, and the busiest pass after it (the frame asks the views for the text and
+  draws the popup's first rows) within `POPUP_PASS`, 70,000. Measured: K1 218 on LIVE and STATUS
+  (234 over the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass
+  37.2k on the views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and
+  is no popup's cost (1,185 and a pass of 89k over LIVE). CHIP has its own bound (`CHIP_INPUT`).
+- `POPUP_GONE_MS`, 2 s: a popup closes a second after its last detent, plus the three frames
+  it takes to close, with room. The gates of what a view itself costs when a control changes
+  clear the popup's source (`without_popups`): its hundreds of cells would drown the view's.
+- The MIDI page's busiest `ui_poll`, `MIDI_PAGE_WORST_POLL` 23,000, is about 10 % over the
+  measurement (20.6k, the wipe that opens it; an edit of MODE 20.3k). The large list stays
+  within 190 cells a frame and does not blink.
+
+### LCD budgets (emu-gate's `screen`)
+
+- `SPI_HZ`, 12 MHz: platform/fm1/lcd.c runs SPI1 at 60 MHz / (4 + 1). `SPI_BUDGET_MS`, 20:
+  docs/art/README.md allows at most about 20 ms of SPI per 40 ms frame at steady state.
+- A frame's cost is counted per compose, not per 40 ms of time: from its compose (ui.c's
+  `last_compose`, stamped as the compose starts; its cells go out in later `ui_poll` calls) to
+  the next one's. A window of time can hold the tail of one frame and the whole of the next,
+  which no frame sends. The stamp is read every 100 us: a compose's own call is longer, so its
+  cells are never counted before it. A sent cell is a 128-byte window body, each window 11
+  command bytes (platform/fm1/lcd.h `lcd_count`).
+- The wipe test samples the panel every frame from half way between two frames and classes
+  each cell row as the view under the menu's, the menu's, both, the wipe's white edge or
+  neither: every sample must be the menu over the view with at most an edge between them.
+- The raster on a chip change is checked on the left border: screen_ramp's bands in order (its
+  purple band shows as light grey there) against the status screen's ring in the theme's dim
+  colour.
+- An idle frame composes nothing (app/screen.h): the views compare what they show with their
+  last compose, and the polls between frames (about 390, one per wake-up) return at once with
+  nothing to send. Measured 6.6k instructions a frame on the status screen (37k when every
+  frame composed); bounded at 7,500. One note on the status screen is one run of two or three
+  cells, under 1 ms of SPI, and costs one compose (about 26k) and the run over idle: under
+  30,000. The menu blinks its cursor, one cell every 8 frames.
+- A wipe sends each row that changes once and its edge row once more (at most the screen and 8
+  rows), and renders a full screen (about 580 instructions a cell) and the edge rows: under
+  800k over idle. A raster step sends the 116 border cells every other frame. Every
+  transition's `ui_poll` stays under 100k.
+
+### The boot and the tour
+
+- The short boot shows the title card for 1.2 s from about 0.4 s in, then an 8-frame wipe to
+  LIVE: it ends between 1.6 and 2.2 s.
+- HOME held at power-on is held 600 ms: the key scan starts with the interrupts after the LCD's
+  init, about 400 ms in, and platform/fm1/main.c reads it 3 ms later. From the full boot's
+  first frame (about 400 ms in, app/boot.h): LOADING from 3.0 s to 5.6 s, RUN typed by 6.5 s,
+  the title card from 7.0 s to 10.0 s, then the wipe. The shots fall at 4.3 s (the loading
+  stripes on the border), 7.2 s (the prompt: rows 7-13 hold READY., LOAD..., SEARCHING...,
+  LOADING, READY. and RUN, where LIVE has its second voice), 8.0 s (the title card) and 11.2 s
+  (LIVE); the title card's wipe starts 7.0 s in, so its budget is measured from 6.8 s.
+- The title card is Metal Chrome's scene (assets/logo/metal-chrome.png) pixel for pixel but for
+  its version and key lines.
+- The tour's step (`views.tour`): 0 off, 1 the boot, 2 TURN K1, 3 and 5 the gaps, 4 PRESS ENV,
+  6 HOLD HOME FOR HELP; each toast waits for its action, 1.6 s after the one before.
+- A button during the boot skips it and does nothing else: FX would open LAB and OCT+ step the
+  octave, both visible on the screen. HOME not held at power-on is a skip like any other.
+- The full boot is measured for 260 frames from HOME held at power-on: every frame after the
+  first (drawn whole before the display is on) within the SPI budget. About is measured over a
+  full round of its pages (the first, SIDOU's, and the credits, 4.8 s each).
+- About sends at most 120 cells a frame on average (the prototype sent 240). It composes every
+  frame, so its busiest `ui_poll` is one compose and a run and every frame costs about the
+  same. With Cracktro Chrome (a still bitmap at the top, the bars behind the scroller) its
+  busiest `ui_poll` measured 72k and 118k instructions a frame with the rendering of its 87
+  cells, 3.0M a second (1.2 % of 240 MHz): bounded at 80,000 and 130,000. The full boot
+  measured 33k and 37k: bounded at 38,000 and 42,000.
+- A wipe frame sends at most `SCREEN_WIPE_ROWS` rows and its edge row; the view under a wipe
+  holds still (app/screen.h). The wipe into About is started at every 5 ms phase against the
+  firmware's frames. Revealing a bitmap a few rows a frame (all of the title card, About's
+  lettering band) costs no more than revealing cells: measured with Cracktro Chrome, About's
+  wipe 65k busiest `ui_poll` and 118k a frame, the title card's 30k and 134k (4 rows of its
+  scene and the edge a frame); bounded at `WIPE_WORST_POLL` 72,000 and `WIPE_PER_FRAME`
+  150,000.
+
+### LIVE's scope and meter goldens (`LiveShot`)
+
+- The LIVE goldens with notes (live-a4, live-chord) are captured as a function of the audio
+  alone, not of where the main loop's passes, its frames and the key scan's frames fall against
+  the audio blocks, which code changes anywhere move (live-chord flipped between two scope
+  phases; the L and R meters moved by a column with commits that changed no level, by moving
+  the main loop and the audio interrupt against the frames). Three things decide the picture:
+  - which blocks a note's register writes land in: each press goes in right after a scan frame
+    closes, so the scan takes it a fixed number of frames later (a press 2, a release 8:
+    FM1_DEB_PRESS, FM1_DEB_RELEASE), chosen so that it falls 10 % to 50 % into the block it is
+    meant for (the main loop's note-on and commit then have half a block before the next);
+  - which blocks the frame's preparation reads (`live_view_prepare`: the newest points, the
+    peaks since the last): the shot is a frame whose preparation falls 40 % to 60 % into a
+    block, so its own and the last one's (40 ms earlier, 21 % on) are far from either edge;
+  - the traces' and meters' hold (a trace that moves by a pixel or less, a meter that drops by
+    two steps or less, stays as drawn): it depends on every frame before, so both are let go
+    just before the shot (the drawn traces marked as moved, the meters at 0), and the shot's
+    frame draws them from its own preparation alone.
+  The voices' oscillators run from the machine's boot (no note before), so their phases follow
+  from the blocks the notes land in, and the shot is a fixed 517 blocks (1.5 s) after the note.
+- fm1-emu's audio block is 128 samples of 5,440 cycles (240 MHz, 24 MHz / 544 a sample); the
+  key scan's frame is 11 TIMER5 ticks of 100 us (platform/fm1/hal/fm1_input.h), and
+  `fm1_in.frames`, the scan frames closed, sits at offset 276 in its struct.
+- The chord's notes (A3, E4, E5, so the scopes show 2, 3 and 4 periods) go in two blocks
+  (5.8 ms) apart, more than a key scan frame (about 1.1 ms) and its debounce: each is its own
+  note-on, in order, and live's voice allocation, not where the passes fall against the scan,
+  puts them on voices 1, 2 and 3. Elsewhere chords held on chip B are pressed 5 ms apart for
+  the same reason.
+- At rest a scope's trace is a flat line two pixels thick across its 160 columns (the dotted
+  centre line under it); a held note stands still, its trace folded by the oscillator's phase.
+
+### LIVE's budgets
+
+- LIVE draws each part of its canvas again only when it changes. Measured (docs/art/README.md,
+  "LIVE"): at rest 13.7k instructions a frame (it composes, sends nothing); a chord of saws
+  47.5k (5 cells a frame once it holds still); three voices of noise at full sustain 141.2k
+  (146 cells a frame: noise moves every scope cell its trace crosses, every frame, so the
+  voices take turns at the frame's cells). The busiest `ui_poll`, 60.5k, is a frame of noise's
+  compose; the tap is read half way between frames. Bounds: `LIVE_WORST_POLL` 68,000, idle
+  15,500, the saw chord 53,000, noise 155,000.
+- The chord arpeggio at its fastest rate (1F: a note a frame, a frame being two steps) changes
+  its voice's note and trace every frame. Measured 58.5k a frame (the saw chord's three still
+  voices 42.5k; noise's 138.3k), the worst `ui_poll` 27.1k, 80 cells at most; bounded with the
+  saw chord's margin (11 %) at `LIVE_ARP_PER_FRAME` 65,000. ARP held while K1 turns sets the
+  rate, and its release then switches nothing.
+
+### SCENE's budgets
+
+- A SCENE golden is a fixed frame with a known audio state: a chord held for a second from the
+  piece's start. The tap runs under SCENE and goes off under the menu.
+- A chord's note-ons show on every piece within two frames (the key scan's debounce, then a
+  frame). FIRE's idle flame flickers in silence (about half of what a chord moves), so the
+  chord must move it at least half as much again; the other pieces calm to a third.
+- SCENE is measured with the band playing (an arpeggio note every 4 frames, let go after 3, a
+  bass note every 8, let go after 6) and the filter wide open (the busiest PLASMA, the hottest
+  FIRE), 150 frames a piece, and the wipe to the next piece with a chord held. The bounds are
+  about 10 % over the measurement (docs/art/README.md, "SCENE"), never looser than at first:
+  cells a frame (average, most) FIRE 125.0 and 159, PLASMA 138.4 and 200 (the cap), RULE 30 18.9
+  and 76, STARS 39.5 and 68, ANT 2.7 and 9; instructions a frame 101.6k, 141.4k, 32.7k, 74.1k
+  and 29.3k; SPI a frame at worst 13.85, 17.64, 6.60, 6.16 and 0.80 ms. RED MOON RITE drifts its
+  pair a pixel a frame: 133 cells and 1.14M instructions a frame. The busiest `ui_poll` of any
+  PETSCII piece is FIRE's (58.9k: its two burns, half way between frames): `SCENE_WORST_POLL`
+  62,000. RED MOON RITE's `ui_poll`s render the compositor's runs (two of 8 painted cells,
+  bounded by scene_budget.rs) and have their own bound, as has the wipe into it from ANT.
+- MIDI learn's frame over SCENE and LIVE comes in at once over a view that composes every frame:
+  the view leaves it the cells it covers (app/screen.h `screen_cover`) and its overlays stay
+  (`SCREEN_OVER`), so no frame, the frame's first and the one after it closes included, sends
+  more than the view's frame cells or the SPI budget.
+- A piece starts in the compose of the first frame of the wipe that brings it in (SELECT, or
+  the menu's ALGORITHM on SCENE), inside `ui_poll`, not in the input's call (`ui_encoder`).
+  The input and a frame can fall in one main-loop pass, between two drains of MIDI, so the
+  busiest input and the busiest pass after it (from `midi_drain` to `midi_service`: the drain,
+  `play()` and `ui_poll`'s frame with the start) stay within the poll allowance together.
+  Measured, the busiest of every piece: SELECT 203 (to RULE 30) and a pass of 60.7k (to FIRE:
+  a frame of its burns); the menu's ALGORITHM 170 and 60.7k. Bounded about 10 % over:
+  `SCENE_INPUT` 230, `SCENE_START_PASS` 67,000. PLASMA, the costliest start, drew its whole
+  canvas in the input's call (48.8k) until the start moved into the frame (32.7k a pass).
+- With the title cards on, the menu's ALGORITHM pushes THE SCENE's card over SCENE as well
+  (350, within `TITLE_CARD_INPUT`) and the piece starts in the cut after the card; those passes
+  are measured from the card's hold.
+- SELECT from RED MOON RITE to FIRE clears its painter region, which marks every cell, and the
+  busiest pass after SELECT to it, or the menu into it, is one of its `ui_poll`s (its start, or
+  two runs of the compositor): `RMR_INPUT` 1,050 and `RMR_START_PASS` 65,000, about 10 % over
+  the measurement.
+
+### CHIP's budgets
+
+- CHIP's bounds are about 10 % over the measurement (docs/art/README.md, "CHIP"): idle 6.3k
+  instructions a frame (it composes nothing), a knob's detent 7.7k (it builds the page in its
+  canvas and copies the two cells that changed; its busiest `ui_poll`, 34.2k, is the build and
+  the scan of 900 cells), the busiest 37.4k: a burst of every control over MIDI with a focus
+  move and a chip change (its raster and toast), whose first frame fills the frame's cells
+  and the rest goes out in the frames after (26.9 cells a frame, 17.62 ms of SPI at worst).
+  Bounds: 7,000, 8,500 (a tab switch shares it), 41,000; `CHIP_WORST_POLL` 38,000.
+- SELECT, ALGORITHM and a knob on CHIP: the input's call (`ui_encoder`) within `CHIP_INPUT`,
+  245, and the busiest pass after it within `CHIP_PASS`, 49,000. Measured: the input 240 at
+  most (K1 on DIST, which stores the popup's ask and finds the control's place on its knob
+  curve by halves), the busiest pass 44.5k (SELECT from FX back to the chip: three frames
+  change colour).
+- ALGORITHM on a slot that has never been touched: `live_slot_pick` loads the algorithm's start
+  (up to four registers sent from the input, each about 70 instructions through the ring's
+  sink), so it has its own bound, `CHIP_PICK_INPUT` 400 (measured 301, 360 and 389 at most; an
+  edited slot's, 202).
+- A profile step (ALGORITHM on the chip, as LIVE's ALGORITHM, CC 25 and CC 85 do) prepares the
+  spare chip a slice a tick (app/reg_ring.h `reg_ring_prepare_step`; decision record 0006,
+  "Cost") and swaps it in once it is whole, so its passes are the others' plus one slice
+  (`REG_RING_PREPARE_SLICE`, the most one slice may take, measured at full character onto every
+  profile), within the poll allowance like every pass. A pass runs one slice however many ticks
+  it catches up (`reg_ring_pass_end`, platform/fm1/main.c `TICK_CATCH_UP`), and no ramp table
+  step in it, so the busiest view's pass and a slice fit together.
+- The chip reset test sets the character to full (age, DAC, thump and bleed at 127) and waits
+  2.5 s: the DACs' ramp, the longest, takes 1.72 s. It counts the slices of each reset against
+  the host's `sid_character_prep_slices`; the first preparation onto the 8580 spends
+  `SID_DAC_BUILD_STEPS` more on its default DACs (`default_8580_spent`). CC 85 spans 0..12 over
+  0..127 (the profiles, then USER 1..8). Only live_init's reset is unprepared.
+- The DAC sweep test moves CC 87 every 10 ms while CC 85 steps R4AR to WORN and back on LIVE with
+  a chord of noise held (its busiest view), at several phases of the sweep against the step:
+  no pass runs a slice and a ramp table step together.
+
+### Title cards and the help card
+
+- The cards' setting defaults to ONCE (THE CHIP and THE SCENE the first time each, never THE
+  OSCILLATOR); the tests that need every card set ALWAYS in the views' RAM, the menu's walk to
+  it being the host tests'. THE OSCILLATOR's budget is counted from the frame after HOME is let
+  go, so its tap is not waited out.
+- A card's held frame is shot a frame after its phase reaches `TITLE_CARD_HOLD`, half way
+  between two frames, and compared with its golden and with its source PNG
+  (assets/logo/title-<name>.png) pixel for pixel.
+- A card from its start to the end of the cut under it (the glow, the wipe, the 1 s hold, the
+  cut) takes 60 to 72 frames. Bounds about 10 % over the cards' measurement: 66 frames, 72.4
+  cells a frame (200 at most: the glow's first level, and its scan of the screen's 900 cells
+  for those that differ), 17.14 ms of SPI at worst, 55.1k to 56.0k instructions a frame, busiest
+  `ui_poll` 71.2k to 71.6k, the input 350 to 387 (`ui_encoder` for CHIP and SCENE, `ui_buttons`
+  for HOME), the busiest pass 72.8k to 73.1k: `TITLE_CARD_WORST_POLL` 79,000,
+  `TITLE_CARD_PER_FRAME` 62,000, `TITLE_CARD_INPUT` 430, `TITLE_CARD_PASS` 80,000.
+- Any control on a card ends it at the next frame and does nothing else (FX would open LAB from
+  LIVE, OCT+ step the octave, SELECT pick a piece); a note on a card plays at once, from the
+  keys or MIDI, and ends it.
+- The help card shows once HOME has been held about 600 ms (the test accepts 560 ms on, at the
+  frames' granularity, and a second and a half at most); it is drawn whole in six frames
+  (400 ms). Letting HOME go leaves it; K1 closes it and does nothing else; SELECT turns a card
+  of two pages. HOME tapped still acts on its release.
+
+### The song views' budgets
+
+- TRACKER idle composes nothing. The header and the heads are built again when they change
+  (REC, the meters), the rows when the window, the bar, a pattern or a mute does (a row step:
+  the build reads 25 rows of three patterns), and only the rows built are compared and copied.
+  Measured with SIDOU LOOP and bounded at most 10 % over: idle 7.2k instructions a frame (the
+  song pages' idle frames, 6.7k, share the bound), REC on 9.2k (26 cells at most), playing in
+  BAR 24.2k (158 cells, 13.8 ms of SPI), GLO and a key 9.0k: `TRACKER_IDLE_PER_FRAME` 7,900,
+  `TRACKER_CHANGE_PER_FRAME` 10,100, `TRACKER_PLAYING_PER_FRAME` 26,600. `TRACKER_WORST_POLL`,
+  33,000, is 7 % over its busiest user, the song pages' encoder redraws (INSTR's PRESETS,
+  30,744).
+- With REC on TRACKER's cursor, and so the bar, stays where it is, so the playing measurement
+  turns REC off first; otherwise it measures a still view. The song plays on under REC (its
+  calls go on), which keeps the REC golden still.
+- The inputs (`ui_buttons` for SEQ, REC and PLAY; GLO's key goes through the note keys' pass,
+  `ui_note_keys` being inlined into `input_poll`'s caller, so only its pass is measured) and the
+  busiest pass after each: SEQ from LIVE 3.5k (the push: the wipe's set-up over LIVE's
+  overlays) and a pass of 45.1k (the wipe's first frame: the whole canvas built and copied);
+  PLAY 2.0k (`song_ctl_play`) and 24.1k; SEQ in TRACKER and REC 0.4k and 22.8k to 34.9k; GLO's
+  key 26.5k. `TRACKER_INPUT` 4,600, `TRACKER_PASS` 55,000.
+- STEP is bounded about 10 % over its measurement (docs/art/README.md, "STEP"). The step keys go
+  through the note keys' pass, so only their pass is measured.
+- The playing runs, 30 s each, use SIDOU LOOP (tempo 6) and a tempo 3 song (a row every 3 calls,
+  251 BPM: every voice a note on every row of a 64-row pattern), in BAR and SCROLL (the views'
+  TRACKER ROWS, set in RAM; the menu's path is the host tests'). Measured (docs/art/README.md,
+  "TRACKER"): SIDOU LOOP in BAR 27.6k instructions a frame, 129 cells at most, no frame at the
+  cap; in SCROLL 51.0k, 256 frames at the cap; the tempo 3 song in BAR 49.8k (38 frames at the
+  cap: page turns), in SCROLL 89.9k; busiest `ui_poll` 38.4k. BAR keeps every frame within
+  `SONG_VIEW_FRAME_CELLS` and the SPI budget; SCROLL holds to the cells as well, and what does
+  not fit waits (the frames cut short, `song_view.held`: its lag). Bounds: BAR 55,000, SCROLL
+  99,000, `TRACKER_PLAY_WORST_POLL` 42,000.
+- TRACKER's row 0 is window row 4 (the page starts at row -4): its note and instrument are 2x
+  from cell row 11 (each character's top left piece, its character in the grid's `src`), the
+  command small on row 12.
+- A tracker compaction makes at most two moves a block, with a preparation and an
+  acknowledgement poll each, so it completes within 4 frames a block and 4 more.
+- Every view's `ui_poll` and input bounds are checked against `POLL_INSTRUCTIONS` at compile
+  time: a compose that grows past it fails here, not as a late note somewhere else. A pass that runs a slice of the song's analysis or
+  fast-forward (`song_ctl_poll`, never in a pass that ran a chip preparation's slice,
+  platform/fm1/audio.c `audio_song_poll`) and the busiest view's work still fit; song.rs
+  measures the slices against `SONG_SLICE_INSTRUCTIONS`.
+
+### UI sounds
+
+- A UI sound plays on chip B and marks it in use with `b_want`'s UI bit (platform/fm1/audio.h
+  `AUDIO_B_UI`). The menu-move blip is C-6 (1,046.5 Hz) on a triangle; the test reads the DFT's
+  magnitude at that pitch over the first 4,096 samples of the move against the same run with
+  SOUNDS off, after 800 ms for the SOUNDS confirm's own sound and its release.
+- With three notes held on chip B (a song's hook on, so the keys play chip B) a blip finds no
+  free voice: it does not sound, and the output is the SOUNDS-off run's sample for sample.
+
+### RED MOON RITE
+
+- RED MOON RITE is measured over a minute of the demo song: cells a frame against the
+  prototype's 117 on average and 176 at most, SPI, the main loop's instructions a frame, the
+  busiest `ui_poll` and pass; then, on runs of 20 s each (fm1-emu is deterministic), the busiest
+  call of each kind a `ui_poll` makes for it: a scan slice (`scene_view_idle`), a run rendered
+  (`grid_render_run`, two a `ui_poll` at most) and the costliest tile (`scene_px_tile`).
+  Measured: 98.8 cells a frame on average and 170 at most (the plan allowed 180), 8.7 ms of SPI
+  a frame and 15.0 at worst, 904k instructions a frame, the busiest `ui_poll` 56.4k, pass 57.5k,
+  scan slice 56.3k, run 24.6k, the costliest tile 5,930. That tile is over the bench's
+  (scene_budget.rs `TILE_WORST` 5,300: two fighters, the spark and the arc over the arena), so
+  the run and slice caps are 4 and 8 cells (app/scene_px.h): two runs, or a slice, and a song's
+  analysis slice fit a pass. Bounds about 10 % over.
+- The demo song's fourth bar ends in the fill (about 8 s in, at 6 frames a row): the spinning
+  attack lands and knocks the sword from his hand, then the sword sticks in the floor; the
+  goldens are taken before the sword's recovery. Voice 3 is the drums: with its bit set in the
+  interrupt's mute mask (`song_ctl.mute`, as a mute command sets it) the chops and parries stop.
+
+### USER profiles (`user_profile.rs`)
+
+- The character's DACs ramp over 1.72 s, so the test waits 2.5 s after any profile change before
+  it reads the instrument.
+- CC 85 spans the five profiles and the eight USER slots in steps of 128/13: 43 is the worn
+  6581, 70 is USER 3. A CC takes effect within 8 blocks of its arrival, the window the host
+  render's search covers.
+
+### The store on the device (`store.rs`)
+
+- fm1-emu's flash is instant: its operations take no time and never tear, so a power cut is the
+  flash as it is after the k-th operation. The cut test checks after every operation of a
+  settings save, every third of a file replaced (with the collection and erases it leaves) and
+  every 24th of a 64 KiB file, each plus the last; the host store mounts and checks each dump.
+- The program timings in `store_fm1.h` are provisional, the P25Q80H datasheet's maxima. No
+  write window fits them, so programs are held operations; the tests that need windows set
+  `store_fm1_window` in RAM.
+- The tests drive the store through `store_fm1_hook`, written in emulated RAM as a debugger
+  would; nothing on the device writes it. They mirror `store.c`'s private enums (the jobs and
+  their phases, the mount's phases) and `store_fm1_state`'s layout: a change there is mirrored
+  in the test.
+- A boot runs 400 ms before a test reaches the store: `lcd_init`'s reset (150 ms) and wake-up
+  wait (120 ms), during which the store mounts, recovers and fills its pool, then the main loop.
+- `STORE_POLL_WORST`, 30,000 instructions, is the store's share of a main-loop pass ; each kind of `store_poll` work's cost a unit, measured on polls of at least
+  256 units, times `STORE_POLL_WORK` stays within it.
+- A hold fades the output to silence over two halves (256 frames), which play after the
+  operation; a DAW's clock (F8 at 120 BPM) and active sensing do not keep the store from
+  going quiet, a CC every 100 ms, a held chord and a playing song do.
+- The peak scan turns on at maintenance's next ask (`WANT_MS`, once a second); the test waits
+  1.3 s, a full period and a little over, whatever phase the last write left it in, and holds
+  a chord throughout so that no hold changes the cost it measures (2 instructions a sample at
+  most).
+
+### .sid tunes against the host (`psid.rs`, `psid_views.rs`)
+
+- The DMA plays the zeroed buffer before the first half the audio interrupt fills, so a
+  comparison with a host render tries up to four leading silent halves.
+- Under a 1SID tune the keys' registers reach chip B in the block it goes in use or one either
+  side; the comparison tries the three.
+- A CIA tune is made from a GoatTracker example by setting song 1's speed bit: the KERNAL's
+  CIA 1 latch, which the tune's init leaves as it is, times it.
+- The tests read the song back from `__song_region` byte for byte into a host `Song`: the
+  model holds offsets, not pointers, laid out alike on the device and the host. Its file
+  leaves out the free arena, as the store keeps it.
+- A tune whose play call never returns stops after one second of 6502 time with PLAY HUNG;
+  the keys go on playing on chip B.
+
+### .sid files into the store (`psid_store.rs`)
+
+- The tests send `sidou-sysex`'s frames into the emulated TRS jack, a second after each frame's
+  last byte on the wire (320 us a byte), as docs/reference/sysex.md asks of a sender over TRS.
+  The 64 KiB tune goes faster, each frame once the last is programmed (the transfer back in
+  UPLOAD with the next sequence and the store's staging empty, or idle once END commits): the
+  fastest a sender may go.
+- The crafted refusal is FM-1 SID's bounds bug (docs/upstream-reports.md, row 1): a data offset
+  past the file's end.
+- Loading a 64 KiB tune, `sid_io_poll` clears the tune's memory in four passes of 16 KiB, then
+  copies the data 2 KiB a pass; each stays within `STORE_POLL_WORST`.
+- The starter pack takes at most a quarter of the store's bytes and leaves at least 20 of its
+  keys free.
+
+### The SID views (`psid_views.rs`)
+
+- `SIDS_WORST_POLL`, 39,500 instructions: the SID views' busiest `ui_poll`, measured 35,909
+  (the browser's first frames as it opens from the menu, its canvas built whole and copied; a
+  page read 35,489; NOW PLAYING as a tune plays 18,048) plus 10 %. A compile-time assertion
+  ties it to `POLL_INSTRUCTIONS`, as every view's is (`screen.rs`).
+- `LIFT_CONVERT_WORST`, 40,000: `psid_lift_convert` runs in a main-loop pass of its own
+  (`lift_pass`), so it stays within the slice a tune's pass may take (`PSID_SLICE_WORK`).
+- A frame's cells come from `lcd_count` between two composes: each LCD window costs 11 bytes
+  and a cell 128; the song views' frames stay within 200 cells.
+- GLO pressed again within 450 ms latches its layer (a double tap), so the test waits that long
+  after each GLO chord.
+- With voice 2 muted, a solo of voice 3 wins: voices 1 and 2 are muted on the chip.
+- PLAY on any view stops a playing tune; STATUS's meter (the last four bytes of its look: the
+  CPU share in tenths of a percent and the ticks a thousand cycles) then reads 0.
+- A sound edit on the built-in loop (PRESETS, a knob) lives in the song's trailer (KEYS, SLOT),
+  so the test compares the loop's GoatTracker part alone after a tune.
+
+### Song files in the store (`song_store.rs`, `song_bank.rs`)
+
+- The tests drive song I/O through `song_io_test_hook` (`main.c`: op, a 17-byte name, the
+  result after padding) and row edits through `song_test_hook`, both written in emulated RAM;
+  the main loop takes a request and clears its op.
+- A broken file is the song with its last 17 bytes cut: its headers are valid, so the load
+  fails only after the reader has overwritten RAM, and the previous song must be restored.
+- A byte flipped in a stored song's GoatTracker title after the mount is store corruption
+  (FILE CRC on the next load), not an edit.
+- A song SAVE during playback forces held programs; LIVE's SAVE meanwhile is a separate
+  settings transaction with its own force permission, and neither stops the song.
+- On a flash part the store does not know, `store_fm1_boot` leaves the store unmounted (the test
+  unmounts it after the boot): SAVE fails within 500 ms and leaves no freeze, hold or force.
+- A pitched note crosses zero hundreds of times a second; an envelope on an oscillator whose
+  frequency is never set only thumps, so the NEW song's audition and playback are checked by
+  zero crossings and RMS.
+
+### The song player on the device (`song.rs`)
+
+- At PLAY the device puts chip B in use at once and the keys' writes reach it at the main-loop
+  pass's end, so a host comparison tries the rewrite in the block chip B goes in use and one
+  either side.
+- `PLAYER_WORST_BLOCK`'s gate runs 193 benches, each in its own fm1-emu: every example song and
+  subtune at multispeed 1 and 4 for 3,000 calls (a call every 880 / multispeed samples),
+  each first subtune locked (five locks a row, filter and pulse, up to `SONG_LOCKS_MAX`) and
+  chanced (a 50 % chance on as many rows), and 40 generated songs within the device's caps;
+  SONG_EDITS_PER_BLOCK name-cell edits every block, swaps on a quarter of the runs (they cost
+  less). The benches spread over every core and their results are taken in order, so the
+  maxima and the worst's name are a sequential run's: 14 minutes on one core, under 4 on ten.
+  The isolated row-apply cost is added to the worst block. The song player and the 6502 never
+  run together, so the 6502's headroom is what the audio target leaves after two chips at their
+  worst, the tap, the ISR, the slots' worst switching block and the player.
+- K1 turns STEP's cutoff lock 32 a detent from the middle, 1024: 30 detents down is 64.
+- The darker-bar checks measure the power above 1.5 kHz over 8,192 samples of the whole mix
+  (the bass and drums are not filtered) in the locked bar's middle and two bars on: the locked
+  bar under 0.85 of the unlocked, two bars on within 5 %.
+- A song's own `$D418` writes (volume 15) would override a chip-volume MASTER; MASTER is a gain
+  stage after the chips, so the song scales with the pot along the audio taper and at full
+  MASTER is the song's own output, which the bit-exact tests compare with.
+- REC timing: a play starts from a fast-forwarded hand-over, so the song's call count does not
+  begin at its first row; the test counts calls from the first row the player starts after
+  PLAY. A key pressed in a row's first half lands on that row, in its second half on the next
+  (tempo 6: six calls a row).
+- The song-view mute (GLO and the first key) reaches the interrupt within a UI frame (40 ms).
+
 ### Live Link
 
 - The host side of FM-1 Live Link (`host/crates/live-link`, the protocol in
