@@ -14,13 +14,9 @@
 #include "theme.h"
 #include "views.h"
 
-/* The knobs' columns, as LIVE's knob row and CHIP's have them: 8, 7, 7 and 8 cells side by
- * side, a bar a cell shorter than its column. */
 static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
 static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
-/* The header's page number, `2/6`, at 2x on the right. */
 #define PLACE_COL 24u
-/* ALG's legend on the choice's first row, ENVELOPE's ALL SOUNDS on its second. */
 #define ALG_COL 27u
 #define ALL_COL 20u
 
@@ -39,21 +35,17 @@ _Static_assert(LIVE_PARAM_ATTACK + 3 == LIVE_PARAM_RELEASE &&
 static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "MOD", "FX",
                                                   "MACRO"};
 
-/* OSC's choices: $d404's waveform, ring and sync bits, and their names. */
 static const uint8_t WAVES[LAB_VIEW_WAVES] = {0x10, 0x20, 0x40, 0x80, 0x30, 0x50,
                                               0x60, 0x70, 0x14, 0x22, 0x42};
 static const char* const WAVE_NAMES[LAB_VIEW_WAVES] = {
     "TRIANGLE",  "SAW",       "PULSE",       "NOISE",    "TRI+SAW",  "TRI+PULSE",
     "SAW+PULSE", "TRI+SAW+PUL", "TRI RING", "SAW SYNC", "PULSE SYNC"};
-/* The bits a choice sets: the waveform, ring and sync (never the gate or the test bit). */
 #define WAVE_BITS 0xF6u
-/* FILTER's choices, as the filter mode ($d418 bits 4-6, shifted down): LP, BP, HP, NOTCH. */
 static const uint8_t MODES[4] = {1, 2, 4, 5};
 static const char* const MODE_NAMES[8] = {"OFF", "LP",    "BP",    "LP+BP",
                                           "HP",  "NOTCH", "BP+HP", "ALL"};
 static const char* const ARP_NAMES[5] = {"ARP OFF", "ARP UP", "ARP DOWN", "ARP UP-DOWN",
                                          "ARP PLAYED"};
-/* The hint line's phrases: every LAB gesture, a phrase at a time. */
 static const char* const HINTS[LAB_VIEW_HINTS] = {
     "EDIT A/B  +LFO UNDO  +ARP VARY",
     "EDIT +SCL ROLL  +SAVE NAME",
@@ -80,15 +72,13 @@ uint32_t lab_view_wave_of(uint8_t control) {
             return i;
         }
     }
-    for (uint32_t i = 0; i < 8u; i++) { /* the waveform alone, without its ring or sync */
+    for (uint32_t i = 0; i < 8u; i++) {
         if (WAVES[i] == (c & 0xF0u)) {
             return i;
         }
     }
     return 0;
 }
-
-/* ---- text ---- */
 
 static char* number(char* out, int32_t n, int sign) {
     if (n < 0) {
@@ -100,7 +90,6 @@ static char* number(char* out, int32_t n, int sign) {
     return out + screen_decimal(out, (uint32_t)n);
 }
 
-/* tenths of a unit as at most 3 characters: "0", "0.5", "9.9", then whole: "12". */
 static void tenths(char* out, uint32_t t) {
     if (t == 0u) {
         out[0] = '0';
@@ -115,11 +104,8 @@ static void tenths(char* out, uint32_t t) {
     }
 }
 
-/* The PWM's (and the filter LFO's) rate from its phase step: in tenths, as tenths(), or in
- * hundredths below 1 Hz where tenths would not tell the walk's slow positions apart ("0.05",
- * ".05" when brief, for the name line). */
 static void lfo_hz(char* out, uint32_t step, int brief) {
-    uint32_t c = (step * 10000u + 32768u) >> 16; /* 65536 a cycle a tick, 100 ticks a second */
+    uint32_t c = (step * 10000u + 32768u) >> 16;
     if (c >= 100u || c % 10u == 0u) {
         tenths(out, (c + 5u) / 10u);
         return;
@@ -141,7 +127,6 @@ static void copy(char* out, const char* s) {
     out[n] = 0;
 }
 
-/* The pulse width as one side of the square in percent, as LIVE's K3 says it ("50%"). */
 static void pulse_percent(char* out, uint32_t pw) {
     uint32_t side = pw > 2048u ? 4096u - pw : pw;
     char* e = number(out, (int32_t)((side * 99u + 2047u) / 4095u), 0);
@@ -186,7 +171,7 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             }
         } else if (k == 1u) {
             copy(name, "PWM");
-            v = live_pwm_depth_effective(l); /* with PWM LINK's term: what the chip has */
+            v = live_pwm_depth_effective(l);
             *fill = v;
             char* e = number(value, (int32_t)((v * 100u + 2048u) / 4096u), 0);
             e[0] = '%';
@@ -200,7 +185,6 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         }
         return 1;
     case LAB_PAGE_ENVELOPE: {
-        /* SUS: SUSTAIN would fill K3's column to K4's name */
         static const char* const NAMES[4] = {"ATTACK", "DECAY", "SUS", "RELEASE"};
         copy(name, NAMES[k & 3u]);
         (void)number(value, (int32_t)v, 0);
@@ -208,8 +192,6 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
     }
     case LAB_PAGE_FILTER:
         if (k == 3u) {
-            /* the depth; the rate it shares with OSC's PWM HZ on the name line: "LFO1.3HZ",
-             * "LFO 12HZ" (the space where the column has room) */
             char hz[6];
             lfo_hz(hz, l->pwm_rate, 1);
             char* e = append(name, length(hz) < 3u ? "LFO " : "LFO");
@@ -220,7 +202,7 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         }
         if (k < 2u) {
             copy(name, k ? "RESO" : "CUTOFF");
-            live_view_knob_text(l, k, value); /* LIVE's: what the chip has now */
+            live_view_knob_text(l, k, value);
             *fill = k ? l->res_out : l->cutoff_out;
         } else {
             copy(name, "VOICES");
@@ -241,8 +223,6 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             copy(name, "VIB HZ");
             tenths(value, v);
         } else if (k == 3u) {
-            /* the arpeggio's rate: frames of 50 Hz ("3FR"), or the clock's note ("1/16"); dark
-             * while ARP is off, and turned all the same */
             copy(name, "RATE");
             if (v >= LIVE_ARP_RATE_CLOCK) {
                 char* e = append(value, "1/");
@@ -258,7 +238,7 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         return 1;
     case LAB_PAGE_MACRO:
         if (k >= 2u) {
-            return 0; /* no link there */
+            return 0;
         }
         copy(name, k ? "PWM LNK" : "RES LNK");
         (void)number(value, (int32_t)v - LIVE_LINK_MAX, 1);
@@ -285,7 +265,6 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
             copy(out, WAVE_NAMES[i]);
             return;
         }
-        /* A mix no choice has (MIDI's): its parts, "SAW+NOI SYNC". */
         static const char* const PART[4] = {"TRI", "SAW", "PUL", "NOI"};
         char buf[24];
         uint32_t n = 0;
@@ -331,9 +310,6 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
     }
 }
 
-/* ---- the canvas ---- */
-
-/* "U03" for slot n (0..15) at out, the end. */
 static char* slot_label(char* out, uint32_t n) {
     out[0] = 'U';
     out[1] = (char)('0' + (n + 1u) / 10u);
@@ -348,7 +324,6 @@ static char* append(char* out, const char* s) {
     return out;
 }
 
-/* The automatic name for slot n: "LAB 03". */
 static void auto_name(char* out, uint32_t n) {
     char* e = append(out, "LAB ");
     e[0] = (char)('0' + (n + 1u) / 10u);
@@ -380,7 +355,6 @@ static uint32_t length(const char* s) {
     return n;
 }
 
-/* 1 while the choice is off (the filter, ARP, the slot): it shows dim. */
 static int choice_off(const lab_view* lv) {
     const live* l = lv->l;
     switch (lv->page) {
@@ -392,9 +366,6 @@ static int choice_off(const lab_view* lv) {
     }
 }
 
-/* Card k in its knob's column: its name small in the knob's readable colour (reversed while it
- * is lit), its value in white at 3x (2x when it takes 3 characters), a bar in the knob's colour
- * and the knob's name. A card the page has no use for is dark grey. */
 static void draw_card(const lab_view* lv, canvas* c, const theme* th, uint32_t k) {
     char name[LAB_VIEW_TEXT];
     char value[LAB_VIEW_TEXT];
@@ -424,14 +395,10 @@ static void draw_card(const lab_view* lv, canvas* c, const theme* th, uint32_t k
     text(c, col, LAB_VIEW_TAG_ROW, tag, THEME_ATTR(th, hint));
 }
 
-/* The hint phrase that shows at now (ms). */
 static uint32_t hint_phase(uint32_t now) {
     return now / LAB_VIEW_HINT_MS % LAB_VIEW_HINTS;
 }
 
-/* What the canvas shows, hashed (FNV-1a): the page, the theme, what is lit, the hint's phrase,
- * the sound (its every field, its name and mark), and what the cards and the choice read
- * besides it (the envelope mode, the selected slot, the cutoff the chip has now). */
 static uint32_t look(const lab_view* lv, uint32_t now) {
     const live* l = lv->l;
     uint8_t b[LAB_SOUND_BYTES + LIVE_PRESET_NAME_CHARS + 12u + 4u + LAB_SOUND_NAME];
@@ -446,14 +413,14 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     b[n++] = l->theme;
     b[n++] = (uint8_t)(lv->hl | lv->hl_link << 4);
     b[n++] = (uint8_t)hint_phase(now);
-    b[n++] = (int32_t)(lv->sent_until - now) > 0; /* a send's note on the hint line */
+    b[n++] = (int32_t)(lv->sent_until - now) > 0;
     b[n++] = l->envelope_mode;
     b[n++] = l->fx_select;
     b[n++] = (uint8_t)l->model;
     b[n++] = (uint8_t)l->cutoff_out;
     b[n++] = (uint8_t)(l->cutoff_out >> 8);
     b[n++] = (uint8_t)(lv->ab | lv->peek << 4);
-    if (lv->mode) { /* the name page: what it shows besides the sound */
+    if (lv->mode) {
         b[n++] = lv->mode;
         b[n++] = (uint8_t)(lv->slot | (l->sounds_valid >> lv->slot & 1u) << 7);
         b[n++] = lv->cursor_at;
@@ -468,8 +435,6 @@ static uint32_t look(const lab_view* lv, uint32_t now) {
     return h;
 }
 
-/* The name page, all at 2x: the slot and whether it holds a sound (and its name), the name with
- * the cursor on its character, the keys' legend, and the question before an overwrite. */
 static void build_name(lab_view* lv, canvas* c, const theme* th) {
     const live* l = lv->l;
     uint32_t n = lv->slot;
@@ -514,7 +479,6 @@ static void build_name(lab_view* lv, canvas* c, const theme* th) {
     }
 }
 
-/* The whole page into the canvas, and what it shows remembered. */
 static void build(lab_view* lv, uint32_t now) {
     canvas* c = &lv->canvas->cv;
     const live* l = lv->l;
@@ -528,24 +492,21 @@ static void build(lab_view* lv, uint32_t now) {
         lv->copying = 1;
         return;
     }
-    /* The header: the page's name and its place, at 2x. */
     (void)grid_canvas_text_big(c, 0, 0, 2, PAGE_NAMES[lv->page], THEME_ATTR(th, hot));
     char place[4] = {(char)('1' + lv->page), '/', (char)('0' + LAB_PAGES), 0};
     (void)grid_canvas_text_big(c, PLACE_COL, 0, 2, place, THEME_ATTR(th, hint));
-    /* The sound's name and its mark, at 2x. */
     char name[LIVE_PRESET_NAME_CHARS + 2u];
     live_preset_name(l, name);
     (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ROW, 2, name, THEME_ATTR(th, value));
-    if (lv->peek) { /* a peek: A, outlined (not reversed: the comparing's is) */
+    if (lv->peek) {
         (void)grid_canvas_text_big(c, LAB_VIEW_AB_COL, LAB_VIEW_NAME_ROW, 2, "A",
                                    GRID_ATTR(th->hot, th->bg));
-    } else if (lv->ab) { /* comparing: which of the two plays, reversed */
+    } else if (lv->ab) {
         char ab[2] = {lv->ab == LAB_VIEW_AB_A ? 'A' : 'B', 0};
         (void)grid_canvas_text_big(c, LAB_VIEW_AB_COL, LAB_VIEW_NAME_ROW, 2, ab,
                                    GRID_ATTR(th->bg, th->hot));
     }
     lab_draw_guides(c, l, lv->page, lv->hl, th, LAB_VIEW_ART_ROW);
-    /* The choice at 2x (lit in reverse video), ALG small on the right. */
     char choice[LAB_VIEW_TEXT];
     lab_view_choice(lv, lv->page, choice);
     uint8_t ca = lv->hl == LAB_VIEW_HL_CHOICE ? GRID_ATTR(th->bg, th->value)
@@ -565,7 +526,6 @@ static void build(lab_view* lv, uint32_t now) {
     lv->copying = 1;
 }
 
-/* A highlight whose time is up goes: the look changes with it, so the page is built again. */
 static void expire(lab_view* lv, const screen* s) {
     if ((lv->hl | lv->hl_link) && (int32_t)(s->now - lv->hl_until) >= 0) {
         lv->hl = 0;
@@ -573,9 +533,6 @@ static void expire(lab_view* lv, const screen* s) {
     }
 }
 
-/* ---- A/B ---- */
-
-/* A: the sound's base, with a bend range RPN 0 set kept (the channel's, not the sound's). */
 static void a_sound(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     memcpy(out, l->base, LAB_SOUND_BYTES);
     if (l->bend_range_rpn) {
@@ -583,20 +540,16 @@ static void a_sound(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     }
 }
 
-/* Another sound loaded since LAB last looked: comparing ends, and the undo history goes (undoing
- * past a load would mix two sounds). */
 static void sync(lab_view* lv) {
     if (lv->loads != lv->l->loads) {
         lv->loads = lv->l->loads;
         lv->ab = LAB_VIEW_AB_OFF;
-        lv->peek = 0; /* B was the other sound's */
+        lv->peek = 0;
         lab_edit_clear(&lv->undo);
         lv->run = LAB_VIEW_NO_RUN;
     }
 }
 
-/* The change from before (lab_edit_get's) to the sound as it is as one undo step: the newest
- * step again when it continues run's run of turns (LAB_VIEW_NO_RUN: never). */
 static void record(lab_view* lv, const uint8_t before[LAB_EDIT_BYTES], uint32_t run) {
     uint8_t after[LAB_EDIT_BYTES];
     lab_edit_get(lv->l, after);
@@ -604,8 +557,6 @@ static void record(lab_view* lv, const uint8_t before[LAB_EDIT_BYTES], uint32_t 
     lv->run = lab_edit_push(&lv->undo, before, after, merge) ? (uint8_t)run : LAB_VIEW_NO_RUN;
 }
 
-/* A change of LAB's to the sound while A plays: A is the edit from now on, and B's difference
- * from it one undo step. */
 static void a_becomes_edit(lab_view* lv) {
     sync(lv);
     if (lv->ab == LAB_VIEW_AB_A) {
@@ -617,15 +568,13 @@ static void a_becomes_edit(lab_view* lv) {
     }
 }
 
-/* A change of LAB's begins: the sound before it into before. */
 static void begin(lab_view* lv, uint8_t before[LAB_EDIT_BYTES]) {
     a_becomes_edit(lv);
     lab_edit_get(lv->l, before);
 }
 
-/* EDIT + LFO: the newest step undone, and a toast of the steps left. */
 static void undo(lab_view* lv, screen* s) {
-    a_becomes_edit(lv); /* while A plays: B back */
+    a_becomes_edit(lv);
     lv->run = LAB_VIEW_NO_RUN;
     if (!lab_edit_undo(&lv->undo, lv->l)) {
         screen_toast(s, "NOTHING TO UNDO", SCREEN_TOAST_MS);
@@ -643,7 +592,6 @@ static void undo(lab_view* lv, screen* s) {
     screen_toast(s, t, SCREEN_TOAST_MS);
 }
 
-/* A peek ends: B back, comparing as it was. */
 static void peek_end(lab_view* lv) {
     if (lv->peek) {
         lv->ab = (uint8_t)(lv->peek - 1u);
@@ -652,13 +600,12 @@ static void peek_end(lab_view* lv) {
     }
 }
 
-/* A note key while EDIT is down: A plays (B aside) until EDIT is let go; no tap then. */
 static void peek_start(lab_view* lv) {
     live* l = lv->l;
     sync(lv);
     lv->edit_spoiled = 1;
     if (lv->peek || lv->ab == LAB_VIEW_AB_A) {
-        return; /* A plays already */
+        return;
     }
     uint8_t now[LAB_SOUND_BYTES];
     uint8_t a[LAB_SOUND_BYTES];
@@ -671,7 +618,6 @@ static void peek_start(lab_view* lv) {
     }
 }
 
-/* EDIT's tap: B aside and A, or B again. */
 static void ab_tap(lab_view* lv, screen* s) {
     live* l = lv->l;
     sync(lv);
@@ -685,7 +631,7 @@ static void ab_tap(lab_view* lv, screen* s) {
             lv->ab = LAB_VIEW_AB_B;
             return;
         }
-        a_becomes_edit(lv); /* A changed outside LAB (LIVE, MIDI): it is the edit now */
+        a_becomes_edit(lv);
     }
     if (lab_sound_equal(now, a)) {
         lv->ab = LAB_VIEW_AB_OFF;
@@ -701,14 +647,14 @@ void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, 
     uint32_t bit = 1u << PANEL_BTN_EDIT;
     if (pressed & bit) {
         lv->edit_down = (uint8_t)(top != 0);
-        lv->edit_spoiled = (held & ~bit) != 0; /* EDIT after another button: a combination */
+        lv->edit_spoiled = (held & ~bit) != 0;
     }
     if (!lv->edit_down) {
         return;
     }
     if (pressed & ~bit) {
-        lv->edit_spoiled = 1; /* another button while EDIT is down */
-        peek_end(lv);         /* it acts on B */
+        lv->edit_spoiled = 1;
+        peek_end(lv);
     }
     if (!(held & bit)) {
         lv->edit_down = 0;
@@ -719,21 +665,15 @@ void lab_view_buttons(lab_view* lv, screen* s, uint32_t pressed, uint32_t held, 
     }
 }
 
-/* ---- input ---- */
-
 static int32_t clamp(int32_t v, int32_t lo, int32_t hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* A parameter moved by delta, clamped to its range. */
 static void add(live* l, uint32_t param, int32_t delta) {
     int32_t v = (int32_t)live_param_get(l, param) + delta;
     live_param_set(l, param, (uint32_t)clamp(v, 0, (int32_t)live_param_max(param)));
 }
 
-/* OSC's K1: LIVE's pulse walk (LIVE_PULSE_POSITIONS of LIVE_PULSE_STEP, one side of the
- * square), for any waveform; on a mono-sync sound without the pulse bit the sync ratio's
- * semitones, LIVE's K3 on SYNC LEAD. */
 static void pulse_turn(live* l, int32_t d) {
     if (ratio_card(l)) {
         live_knob(l, LIVE_KNOB_TONE, d);
@@ -745,8 +685,6 @@ static void pulse_turn(live* l, int32_t d) {
     live_param_set(l, LIVE_PARAM_PULSE_WIDTH, (uint32_t)(LIVE_PULSE_FIRST + LIVE_PULSE_STEP * pos));
 }
 
-/* Card k turned by d detents: each by its detent (docs/plans/2026-10-25-lab-plan.md "The
- * pages"), as LIVE where LIVE has the control. */
 static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
     live* l = lv->l;
     d = clamp(d, -64, 64);
@@ -768,7 +706,7 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
             add(l, LIVE_PARAM_FILTER_VOICES, d);
         } else {
             if (d > 0 && !l->filter_lfo && !l->pwm_rate) {
-                live_param_set(l, LIVE_PARAM_PWM_RATE, 20u); /* no rate yet: 1 Hz, so it is heard */
+                live_param_set(l, LIVE_PARAM_PWM_RATE, 20u);
             }
             add(l, LIVE_PARAM_FILTER_LFO, d);
         }
@@ -777,7 +715,7 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
         if (k == 3u) {
             add(l, LIVE_PARAM_ARP_RATE, d);
         } else {
-            live_walk_turn(l, LIVE_PARAM_VIBRATO_RATE + k, d); /* rate, depth, delay */
+            live_walk_turn(l, LIVE_PARAM_VIBRATO_RATE + k, d);
         }
         break;
     case LAB_PAGE_MACRO:
@@ -789,7 +727,6 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
     }
 }
 
-/* ALGORITHM: the page's choice stepped, clamped. */
 static void choice_turn(lab_view* lv, int32_t steps) {
     live* l = lv->l;
     switch (lv->page) {
@@ -807,9 +744,8 @@ static void choice_turn(lab_view* lv, int32_t steps) {
     case LAB_PAGE_ENVELOPE:
         live_param_set(l, LIVE_PARAM_ENVELOPE_MODE, (uint32_t)clamp(l->envelope_mode + steps, 0, 1));
         break;
-    case LAB_PAGE_MACRO: break; /* no choice */
+    case LAB_PAGE_MACRO: break;
     case LAB_PAGE_FILTER: {
-        /* From a mode no choice has (OFF, LP+BP, BP+HP, ALL): the next one the turn's way. */
         int32_t mode = l->filter_mode >> 4 & 7u;
         int32_t at = -1;
         for (int32_t i = 0; i < 4; i++) {
@@ -818,12 +754,12 @@ static void choice_turn(lab_view* lv, int32_t steps) {
             }
         }
         if (at < 0) {
-            int32_t below = 0; /* the choices under the mode: it sits between below - 1 and below */
+            int32_t below = 0;
             while (below < 4 && MODES[below] < mode) {
                 below++;
             }
             if ((below == 0 && steps < 0) || (below == 4 && steps > 0)) {
-                break; /* nothing that way */
+                break;
             }
             at = below + (steps > 0 ? -1 : 0);
         }
@@ -864,7 +800,6 @@ void lab_view_lone_released(lab_view* lv, uint32_t held) {
     lone_due(lv, screen_lone_released(&lv->lone, held));
 }
 
-/* SELECT the pages, K1..K4 the cards, ALGORITHM the choice; ENV, LFO and FX their pages. */
 static int input(screen* s, void* state, const screen_event* e) {
     lab_view* lv = state;
     if (lv->lone.waiting) {
@@ -881,10 +816,10 @@ static int input(screen* s, void* state, const screen_event* e) {
         lone_due(lv, screen_lone_take(&lv->lone));
     }
     if (e->kind == SCREEN_TURN && lv->edit_down) {
-        lv->edit_spoiled = 1; /* a control turned while EDIT is down: no A/B at its release */
-        peek_end(lv);         /* a peek's B back: the turn is B's */
+        lv->edit_spoiled = 1;
+        peek_end(lv);
     }
-    if (lv->mode) { /* the name page takes every control but the ones that are not LAB's */
+    if (lv->mode) {
         if (e->kind == SCREEN_PRESS) {
             return e->id == PANEL_BTN_ENV || e->id == PANEL_BTN_LFO || e->id == PANEL_BTN_FX;
         }
@@ -927,10 +862,9 @@ static int input(screen* s, void* state, const screen_event* e) {
     uint8_t before[LAB_EDIT_BYTES];
     if (e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
         begin(lv, before);
-        /* a link's card moved by K1 (the cutoff's RESO LINK, the width's PWM LINK) lights too */
         uint32_t linked = lv->page == LAB_PAGE_FILTER ? l->res_out : live_pwm_depth_effective(l);
         card_turn(lv, e->id - PANEL_ENC_K1, e->steps);
-        live_links_update(l); /* the linked resonance at once, not at the tick: the card shows it */
+        live_links_update(l);
         if (e->id == PANEL_ENC_K1 && (lv->page == LAB_PAGE_FILTER || lv->page == LAB_PAGE_OSC) &&
             linked != (lv->page == LAB_PAGE_FILTER ? l->res_out : live_pwm_depth_effective(l))) {
             lv->hl_link = 2u;
@@ -945,14 +879,12 @@ static int input(screen* s, void* state, const screen_event* e) {
         record(lv, before, e->id);
         return 1;
     }
-    lv->run = LAB_VIEW_NO_RUN; /* SELECT, PRESETS: another control */
+    lv->run = LAB_VIEW_NO_RUN;
     if (e->id == PANEL_ENC_SELECT) {
         lv->page = (uint8_t)clamp((int32_t)lv->page + e->steps, 0, LAB_PAGES - 1);
         return 1;
     }
     if (e->id == PANEL_ENC_PRESETS && edit) {
-        /* EDIT + PRESETS, the panel's revert, as one undo step (a built-in's reloads it: not
-         * another sound) */
         begin(lv, before);
         live_preset_step(l, e->steps, 1);
         lv->loads = l->loads;
@@ -961,8 +893,6 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     return 0;
 }
-
-/* ---- the rolls ---- */
 
 static uint32_t rnd(lab_view* lv) {
     uint32_t x = lv->rng | 1u;
@@ -973,8 +903,6 @@ static uint32_t rnd(lab_view* lv) {
     return x;
 }
 
-/* The sound as it is: a roll's result to keep (heard, not the sound before it, not the last
- * result)? */
 static int fresh(const lab_view* lv, const uint8_t before[LAB_EDIT_BYTES]) {
     uint8_t now[LAB_SOUND_BYTES];
     live_sound_get(lv->l, now);
@@ -982,15 +910,12 @@ static int fresh(const lab_view* lv, const uint8_t before[LAB_EDIT_BYTES]) {
            lab_edit_hash(now) != lv->rolled;
 }
 
-/* 1 when the page's card k is one it uses. */
 static int card_used(const lab_view* lv, uint32_t k) {
     char name[LAB_VIEW_TEXT], value[LAB_VIEW_TEXT];
     uint32_t fill, max;
     return lab_view_card(lv, lv->page, k, name, value, &fill, &max);
 }
 
-/* One variation of the page: each card it uses 1 to 3 detents either way, and one time in four
- * (always when it uses no card: an effect slot that is off) the choice a step. */
 static void vary_once(lab_view* lv) {
     uint32_t used = 0;
     for (uint32_t k = 0; k < 4u; k++) {
@@ -1007,7 +932,6 @@ static void vary_once(lab_view* lv) {
     }
 }
 
-/* EDIT + ARP (vary) or EDIT + SCL (roll): a result tried until it is fresh, as one undo step. */
 static void roll(lab_view* lv, screen* s, int whole) {
     live* l = lv->l;
     uint8_t before[LAB_EDIT_BYTES];
@@ -1017,20 +941,16 @@ static void roll(lab_view* lv, screen* s, int whole) {
     uint32_t pw = (uint32_t)(before[LAB_SOUND_PULSE] | before[LAB_SOUND_PULSE + 1u] << 8);
     for (uint32_t t = 0; t < (whole ? LAB_VIEW_ROLL_TRIES : LAB_VIEW_VARY_TRIES) && !ok; t++) {
         if (whole) {
-            /* a roll sets all it sets each time but the pulse width (a pulse's): no more to put
-             * back between tries */
             live_param_set(l, LIVE_PARAM_PULSE_WIDTH, pw);
             live_dice_shape(l, rnd(lv));
         } else {
             if (t) {
-                live_sound_apply(l, before); /* back to try again */
+                live_sound_apply(l, before);
             }
             vary_once(lv);
         }
         ok = fresh(lv, before);
     }
-    /* A variation's last resort: the smallest moves, a card a detent either way, then the
-     * choice a step (not ENVELOPE's). */
     for (uint32_t k = 0; k < 10u && !ok && !whole; k++) {
         live_sound_apply(l, before);
         int32_t d = k & 1u ? -1 : 1;
@@ -1056,10 +976,6 @@ static void roll(lab_view* lv, screen* s, int whole) {
     screen_toast(s, whole ? "ROLLED" : "VARIED", SCREEN_TOAST_MS);
 }
 
-/* ---- keeping ---- */
-
-/* The sound as it is now into a keep of slot n under name: the toast of a refusal, or the keep
- * queued (its toast follows its commit, at once without a store). 1 if it was queued. */
 static int keep(lab_view* lv, screen* s, uint32_t n, const char* name) {
     live* l = lv->l;
     uint8_t sound[LAB_SOUND_BYTES];
@@ -1071,13 +987,12 @@ static int keep(lab_view* lv, screen* s, uint32_t n, const char* name) {
         return 0;
     }
     lv->kept_new = fresh;
-    if (r > 0) { /* no store: kept in RAM, nothing to wait for */
+    if (r > 0) {
         lab_view_kept(lv, n, 0, s);
     }
     return 1;
 }
 
-/* The lowest free slot, USER_SOUNDS when all hold a sound. */
 static uint32_t free_slot(const live* l) {
     uint32_t n = 0;
     while (n < USER_SOUNDS && (l->sounds_valid >> n & 1u)) {
@@ -1086,7 +1001,6 @@ static uint32_t free_slot(const live* l) {
     return n;
 }
 
-/* The name page's name: from, or the slot's automatic one (NULL), then spaces to the end. */
 static void name_set(lab_view* lv, const char* from) {
     char auto_[LAB_SOUND_NAME + 1u];
     if (!from) {
@@ -1103,8 +1017,6 @@ static void name_set(lab_view* lv, const char* from) {
     lv->name[LAB_SOUND_NAME] = 0;
 }
 
-/* The name page opened: on the sound's own slot with its name, else on the lowest free slot (the
- * first when all are full: K1 chooses) with that slot's automatic name. */
 static void name_open(lab_view* lv) {
     const live* l = lv->l;
     uint32_t n = l->user_sound ? l->user_sound - 1u : free_slot(l);
@@ -1115,8 +1027,6 @@ static void name_open(lab_view* lv) {
     lv->mode = LAB_VIEW_MODE_NAME;
 }
 
-/* SAVE on the name page: the name without its spaces (the slot's automatic one if there is none),
- * a used slot asked once more. */
 static void name_write(lab_view* lv, screen* s) {
     const char* first = lv->name;
     uint32_t n = LAB_SOUND_NAME;
@@ -1145,7 +1055,7 @@ static void name_write(lab_view* lv, screen* s) {
 
 void lab_view_save(lab_view* lv, screen* s, int edit) {
     live* l = lv->l;
-    lv->run = LAB_VIEW_NO_RUN; /* another control */
+    lv->run = LAB_VIEW_NO_RUN;
     if (lv->mode) {
         name_write(lv, s);
         return;
@@ -1170,7 +1080,7 @@ void lab_view_save(lab_view* lv, screen* s, int edit) {
 void lab_view_kept(const lab_view* lv, uint32_t slot, int gaps, screen* s) {
     char name[LAB_SOUND_NAME + 1u];
     uint8_t sound[LAB_SOUND_BYTES];
-    if (!user_sound_read(lv->us, slot, name, sound)) { /* no store: the sound as live has it */
+    if (!user_sound_read(lv->us, slot, name, sound)) {
         memcpy(name, lv->l->base_name, sizeof name);
     }
     char text[SCREEN_TOAST_CHARS + 8u];
@@ -1196,13 +1106,13 @@ int lab_view_home(lab_view* lv) {
 uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed) {
     uint32_t keys = pressed & ((1u << LAB_VIEW_NAME_KEYS) - 1u);
     if (!lv->mode && pressed && lv->edit_down) {
-        peek_start(lv); /* EDIT held and a key: A, before the key's note starts */
+        peek_start(lv);
         return 0;
     }
     if (!lv->mode || !keys) {
         return 0;
     }
-    if (!lv->named) { /* the slot's automatic name: typing starts a name of the player's */
+    if (!lv->named) {
         memset(lv->name, ' ', LAB_SOUND_NAME);
     }
     for (uint32_t k = 0; k < LAB_VIEW_NAME_KEYS; k++) {
@@ -1218,8 +1128,6 @@ uint32_t lab_view_name_keys(lab_view* lv, uint32_t pressed) {
     return keys;
 }
 
-/* The name page's controls: K1 the slot, SELECT the cursor, ALGORITHM the character. Each
- * cancels a question; the rest of the controls wait. */
 static void name_turn(lab_view* lv, uint32_t id, int32_t steps) {
     lv->mode = LAB_VIEW_MODE_NAME;
     if (id == PANEL_ENC_K1) {
@@ -1230,14 +1138,11 @@ static void name_turn(lab_view* lv, uint32_t id, int32_t steps) {
     } else if (id == PANEL_ENC_SELECT) {
         lv->cursor_at = (uint8_t)clamp((int32_t)lv->cursor_at + steps, 0, LAB_SOUND_NAME - 1);
     } else if (id == PANEL_ENC_ALGORITHM) {
-        /* SAVE AS's alphabet: space to underscore, wrapping */
         int32_t ch = ((int32_t)lv->name[lv->cursor_at] - ' ' + steps) % 64;
         lv->name[lv->cursor_at] = (char)(' ' + (ch < 0 ? ch + 64 : ch));
         lv->named = 1;
     }
 }
-
-/* ---- the view ---- */
 
 void lab_view_init(lab_view* lv, live* l, user_sounds* us, song_view* shared, const scope* sc) {
     memset(lv, 0, sizeof *lv);
@@ -1264,22 +1169,19 @@ void lab_view_flash(lab_view* lv, uint32_t k, uint32_t now_ms) {
     lv->hl_until = now_ms + SCREEN_POPUP_MS;
 }
 
-/* Built anew at its first compose: what changed while it was away. */
 static void enter(screen* s, void* state) {
     (void)s;
     lab_view* lv = state;
     lv->built = 0;
     lv->cursor = 0;
     lv->hl = 0;
-    lv->art_done = 0; /* a switch cleared the overlays */
+    lv->art_done = 0;
 }
 
-/* The page whose drawing shows: none on the name page. */
 static uint32_t art_page(const lab_view* lv) {
     return lv->mode ? LAB_DRAW_BLANK : lv->page;
 }
 
-/* The drawing's look, and whether it is drawn whole. */
 static int art_stale(const lab_view* lv) {
     return !lv->art_done || lab_draw_look(lv->l, lv->sc, art_page(lv), lv->hl) != lv->art;
 }
@@ -1292,14 +1194,10 @@ static int changed(screen* s, void* state) {
            look(lv, s->now) != lv->look || art_stale(lv);
 }
 
-/* 1 for a cell of the screen's outer ring. */
 static int border(uint32_t c, uint32_t r) {
     return r == 0 || r == GRID_ROWS - 1u || c == 0 || c == GRID_COLS - 1u;
 }
 
-/* The canvas onto the grid, as CHIP copies its own: under a wipe the rows it reveals whole;
- * otherwise the changed cells from where the last frame stopped, within the frame's budget,
- * leaving alone what is covered this frame and the border while the raster draws over it. */
 static void compose(screen* s, void* state, grid* g) {
     lab_view* lv = state;
     if (song_view_acquire_canvas(lv->canvas, SONG_VIEW_CANVAS_LAB)) {
@@ -1309,7 +1207,7 @@ static void compose(screen* s, void* state, grid* g) {
     expire(lv, s);
     int text = !lv->built || look(lv, s->now) != lv->look;
     int art = art_stale(lv);
-    if (text && art && lv->built) { /* one a frame, by turns */
+    if (text && art && lv->built) {
         if (lv->art_turn) {
             text = 0;
         } else {
@@ -1354,7 +1252,6 @@ static void compose(screen* s, void* state, grid* g) {
         left--;
     }
     lv->copying = 0;
-    /* The drawing, in what is left of the frame's cells. */
     if (art) {
         lv->art = lab_draw_look(lv->l, lv->sc, art_page(lv), lv->hl);
         lv->art_done = (uint8_t)lab_draw_page(lv->l, lv->sc, art_page(lv), lv->hl,
@@ -1364,8 +1261,6 @@ static void compose(screen* s, void* state, grid* g) {
 }
 
 const view lab_view_view = {"LAB", enter, NULL, input, compose, changed};
-
-/* ---- the song bridge ---- */
 
 LIVE_COLD void lab_view_sent(lab_view* lv, uint32_t notes, uint32_t now) {
     lv->sent = (uint16_t)(notes & (LAB_SONG_DROPPED | LAB_SONG_APPROX));
