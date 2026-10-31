@@ -1187,3 +1187,120 @@ idle screen sends nothing; a compose that leaves a cell alone keeps whatever the
 layers are run by one test of `layers`, so a frame with none costs that alone. The popup's
 state sits after the screen's other fields: the views reach those through small offsets, which
 it must not move.
+
+## Songs: STEP, TRACKER, SONG and SIDS
+
+### Song editing and transport
+
+- A shift's inverse (undo) records only the row it discarded and that row's locks; shift previews
+  wait for completion before showing. Row writes may be prepared immediately.
+- Main-loop edits: completion means applied AND released, including the main-loop lock move, not
+  just a command acknowledgement. A save must not start while accepted edits await completion;
+  guard refusals cannot revoke an edit after ownership has transferred to the player.
+- Unchanged SAVE is skipped only while `target` names the same store file the model came from
+  (`io->fid`); a SysEx DEL or PUT may have deleted or replaced it meanwhile.
+- The song's edit queue and file I/O share one gt2_stream workspace; reads and writes reuse it.
+- `GT2_SAVED_MAX == STORE_FILE_MAX` (a static assertion): device song edits keep within the
+  store's file capacity.
+
+### NEW's template
+
+- NEW's song is produced byte by byte (no buffer held): a plain GTS5 stream with subtune 1, three
+  64-row patterns, a pulse lead and a bass (instruments 1-2), then the SID drum kit (3-10, its
+  table rows first), and the digi drums (11-14, each a copy of its chip drum). The DIGI chunk
+  marks them.
+- The lead and the bass attack at 1 (8 ms), not 0: at the gate the chip compares the envelope's
+  rate counter with decay's period for a cycle, and one phase in nine the counter stepped past
+  attack 0's 9 and the note waited out its wrap (33 ms). The ADSR delay bug; the kit's drums
+  share this workaround.
+
+### Generative play (DICE, MUTATE, sweep)
+
+- Each run is ordinary cell writes through the song's editor (`song_edit.h`), one a turn of
+  `song_gen_drain`, so each is an edit as any other: the pattern stays plain GT2 data and undo
+  steps back a cell at a time.
+- What "random" means: `song_mix` of the seed and the row. The same seed makes the same pattern.
+- DICE on an ARP lane writes chords: each hit a note, the lane's instrument and GoatTracker's 8XX
+  (wavetable pointer) at one of the song's shared chord programs (MAJ, MIN, SUS4, dominant
+  seventh). The missing programs are written first through the batch writer. A chord whose tones
+  are in the lane's scale, the seed's pick.
+- BASS+DRUMS lane: the kit's kick and snare (from `gt2_kit.h`) on the rhythm's strong rows and
+  the lane's instrument (the bass) between. STRAIGHT and OFFBEAT have a backbeat, 3-3-2 the
+  tresillo's kicks, FOUR a kick on every beat, BROKEN a breakbeat.
+- The filter sweep: a C command (FILTER CUTOFF) every `SONG_GEN_SWEEP_EVERY` (2) rows from
+  `SWEEP_LOW` (0x10) to `SWEEP_HIGH` (0xF0) or back, where the row has no command.
+
+### SONG pages (ORDER, INSTR, TABLE)
+
+- Prospective `edit_guard` requests: `pattern` = subtune/instrument/table, `row` =
+  entry/field/row, `cell[0]` = value, `cell[1]` = voice (ORDER) or side (TABLE). RST uses `row
+  == entries`. Storage guards must handle these kinds as well as pattern-row requests.
+- An empty pattern is published first; only a later acknowledged step can name it (`auxiliary`
+  flag).
+- The batch writer: runs of instrument bytes and table rows, written one differing byte per
+  acknowledged edit through the edit queue. A byte the song already has is skipped. A write the
+  guard refuses ends them (the status says why).
+- TABLE's ARP helper: an arpeggio as semitone offsets over the played note, written as plain GT2
+  wavetable rows. The draft goes to the player (the keys play it) while the helper is open, on
+  the voice the keys play; once closed and its rows written, the draft is taken off.
+- LAB's send: the sound as instrument, named, its filter on the song views' voice, through the
+  batch writer (works while the song plays). Each program goes after its table's last row, or
+  over the rows the instrument's own kept programs had (an unedited sent instrument's that no
+  other instrument points into), the rows they no longer need blanked. A speed row the table has
+  already is shared.
+
+### REC while the song plays
+
+- REC records the note keys and K1/K2 knobs (cutoff and resonance locks) through the editor's
+  cell writes and the lock table, as the views' own edits. "SONG FULL" and other refusals toast.
+- REC's clock: the call each voice's row began on and the last call made, in the play's count
+  (low 16 bits), and how far toward the next call it is now, in 256ths. Where in its row a key
+  pressed now falls.
+- The lag: what the player heard lags the render by the output's double buffer, and the key
+  reaches the main loop after its debounce (`REC_LAG_SAMPLES` in `platform/fm1/main.c`). REC
+  places a key that much earlier.
+- Quantise: QUANT_NEAREST (default) places a key at the nearest row (halfway rounds up);
+  QUANT_OFF at the row it is in; QUANT_COUNT with a bar's count-in (four times rows-per-beat),
+  which starts only when a song view shows.
+
+### STEP
+
+- Two kinds of parameter lock: LOCK (K1 cutoff, K2 resonance, K3 pulse width; with EDIT held
+  K1-K4 the character, `SONG_LOCK_*`) holds for that row only and lives in the LOCK chunk; SET
+  (K4's waveform) is GoatTracker's own `7XY` command on that row, which holds until the next
+  waveform change, and is refused where the row's command column is taken.
+- A step that needs two rows written (the note and the key off after it) sends the second once
+  the first is applied (`follow`).
+
+### TRACKER
+
+- Two modes (`song_view.scroll`, kept with the settings): BAR (default) the rows stand still and
+  the bar (dark grey) moves down them; the window is the 8-row page the bar's row is in, with 4
+  rows of context above it, and moves a page at a time. SCROLL (GoatTracker's) the bar's row
+  stays on the window's row 5 and the rows move under it. Every row step can change every row: at
+  fast tempos the copy lags.
+- The row drawing takes the cursor row, the voice's colour and a field to highlight
+  (`TRACKER_VIEW_FIELD_*`): an edit cursor on a note, an instrument or a command is the same
+  drawing with a field named.
+
+### .sid tunes (SIDS)
+
+- Each `sid_io_poll` pass's part is within the store's share of a pass (`STORE_POLL_WORST`:
+  30,000 instructions); the caller gives `sid_io_poll` only passes the store does no work in
+  (`audio_work_slice` on the device). The emulator test `psid_store.rs` measures it.
+- A song change of a tune loaded so (`psid_ctl_load`'s file NULL: `psid_ctl_subtune` refuses) is
+  the caller's: `psid_ctl_stop`, and once the stop has played out, `sid_io_load` again and the
+  parts, then `psid_ctl_play` with the song. The file is opened again by name for each load, so a
+  file replaced or deleted meanwhile (a SysEx PUT or DEL) is read as it is then, or refused.
+- With no tune loaded and the song edited since its last save (`song_io_edited`: its patterns,
+  tables, instruments, settings; a sound edit on LIVE or in LAB is not the song's, and the tune
+  leaves it as it is), a tune asks first: SAVE saves the song and the tune loads once it is
+  saved; the question waits for an unnamed song's SAVE AS.
+
+### Song views' transport and keys
+
+- The mutes to the player: the song's, or while a tune has the song's memory the tune's
+  (`song_view.tune`). GLO's mutes and solos reach the tune while away: voice v of both chips for
+  a 2SID tune.
+- The keys' notes are live's MIDI notes: GoatTracker's C-0 is MIDI's 12 (`GT2_NOTE0`). A jam note
+  that cannot go now is dropped (late notes being worse than none).

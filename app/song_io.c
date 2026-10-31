@@ -34,7 +34,7 @@ static int name_copy(char out[STORE_NAME_MAX + 1u], const char* in) {
         next[i] = in[i];
     }
     if (in[i] || !strcmp(next, STORE_SOUNDS_NAME)) {
-        return 0; /* LAB's USER sounds' file is no song's to save, load or delete */
+        return 0;
     }
     memcpy(out, next, sizeof next);
     return 1;
@@ -60,7 +60,7 @@ void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* wo
 
 int song_io_changed(const song_io* io) {
     if (io->away) {
-        return 0; /* the model is a tune's memory: nothing of the song's is there to lose */
+        return 0;
     }
     return io->dirty || (io->ctl && io->ctl->song->revision != io->saved_revision) ||
            (io->hooks.generation && io->hooks.generation(io->hooks.ctx) != io->saved_live);
@@ -126,7 +126,7 @@ int song_io_load_builtin(song_io* io, int confirmed) {
         text(io->message, "SONG NOT FOUND");
         return 0;
     }
-    memset(io->target, 0, sizeof io->target); /* read_done names it: none */
+    memset(io->target, 0, sizeof io->target);
     io->action = LOAD_BUILTIN;
     io->restoring = 0;
     io->failure[0] = 0;
@@ -239,21 +239,17 @@ int song_io_away(song_io* io, int on) {
         if (song_io_busy(io) || io->about || io->external || !io->ctl || io->ctl->song->frozen) {
             return 0;
         }
-        /* 2: NEW's song, never saved (no name, unsaved from its start); 1 a file's or the
-         * built-in (the one the boot reads has no name either, and no unsaved start) */
         io->away = (uint8_t)(!io->name[0] && !io->builtin && io->dirty ? 2u : 1u);
-        io->dirty = 0; /* its edits go with the model */
+        io->dirty = 0;
         return 1;
     }
     if (!io->away) {
         return 1;
     }
-    /* The song back as ABOUT's close brings it (its file by name, or the built-in it was), or
-     * NEW's empty song. */
     io->action = io->away == 2u ? LOAD_NEW : LOAD_RESTORE;
-    io->keeping = io->away == 1u; /* the file's song, the keys' runtime as the tune left it */
+    io->keeping = io->away == 1u;
     io->away = 0;
-    io->message[0] = 0; /* a refusal while away is old news */
+    io->message[0] = 0;
     io->restoring = 0;
     io->rollback = 0;
     io->failure[0] = 0;
@@ -267,7 +263,7 @@ int song_io_keeping(const song_io* io) {
 
 int song_io_returning(const song_io* io) {
     if (io->restoring || io->action == LOAD_RESTORE) {
-        return !io->builtin; /* the file, not the built-in standing in for a lost one */
+        return !io->builtin;
     }
     return io->action == LOAD_ABOUT;
 }
@@ -278,16 +274,9 @@ static uint32_t read_file(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
     return got > 0 ? (uint32_t)got : 0u;
 }
 
-/* The template is a plain GTS5 stream: one subtune, three 64-row patterns, a pulse lead and a
- * bass (instruments 1 and 2), then the SID drum kit (core/song/gt2_kit.h) as instruments 3-10,
- * its table rows first (the kit's pointers are rows from 1), the lead's and the bass's after,
- * and the digi drums 11-14, each a copy of its chip drum (the fallback GoatTracker plays;
- * read_done adds the DIGI chunk that marks them). Producing its bytes instead of holding
- * another model keeps one content region. */
 _Static_assert(SONG_IO_KIT == 3u, "the kit follows the lead and the bass");
 _Static_assert(SONG_IO_DIGI == SONG_IO_KIT + GT2_KIT_DRUMS, "the digi drums follow the kit");
 #define DIGI_DRUMS (SONG_DIGI_KINDS - 1u)
-/* Each digi drum's chip drum and name, in SONG_DIGI_* order. */
 static const uint8_t template_digi_kit[DIGI_DRUMS] = {GT2_KIT_KICK, GT2_KIT_SNARE, GT2_KIT_CLAP,
                                                       GT2_KIT_CLOSED_HAT};
 static const char template_digi_name[DIGI_DRUMS][9] = {"DG KICK", "DG SNARE", "DG CLAP",
@@ -300,27 +289,18 @@ static uint8_t template_digi(uint32_t at) {
     b -= GT2_INS_NAME;
     return b < sizeof template_digi_name[0] ? (uint8_t)template_digi_name[d][b] : 0u;
 }
-/* The bass's pulse rows after the kit's: the width $400 (a quarter), then the table stops. */
 #define BASS_PULSE_ROWS 2u
 static const uint8_t template_bass_pulse[2][BASS_PULSE_ROWS] = {{0x84, 255}, {0x00, 0}};
 #define LEAD_WAVE (GT2_KIT_WAVE_ROWS + 1u)
-/* The lead and the bass attack at 1 (8 ms), not 0: at the gate the chip compares the
- * envelope's rate counter with the decay's period for a cycle, and one phase in nine the
- * counter stepped past attack 0's 9 and the note waited out its wrap, 33 ms (the ADSR delay
- * bug; decision record 0009, as the kit's drums). */
 static const uint8_t template_orders[] = {1, 2, 0, 255, 0, 2, 1, 255, 0, 2, 2, 255, 0};
 static const uint8_t template_lead[2][GT2_INSTR_BYTES] = {
     {0x19, 0xa8, LEAD_WAVE, 1, 0, 0, 0, 2, 0x41, 'P', 'U', 'L', 'S', 'E'},
     {0x12, 0x98, LEAD_WAVE + 2u, GT2_KIT_PULSE_ROWS + 1u, 0, 0, 0, 2, 0x41, 'B', 'A', 'S', 'S'}};
-/* The lead's and the bass's rows: a gated pulse at the note played (the right column's
- * relative note 0; $80 there would keep the frequency unchanged, so never set it: silence),
- * then a jump to 0, which stops the table and leaves the pitch to the pattern's commands. The
- * bass's relative note is -12 ($74: GoatTracker's $60-$7F are negative), an octave down. */
 static const uint8_t template_lead_wave[2][4] = {{0x41, 255, 0x41, 255}, {0, 0, 0x74, 0}};
 static const uint8_t template_counts[] = {2u + GT2_KIT_DRUMS + DIGI_DRUMS,
                                           GT2_KIT_WAVE_ROWS + 4u,
                                           GT2_KIT_PULSE_ROWS + BASS_PULSE_ROWS,
-                                          0, 0, 3}; /* filter, speed; the patterns */
+                                          0, 0, 3};
 typedef struct {
     const uint8_t* p;
     uint16_t n;
@@ -331,7 +311,7 @@ static const template_piece template_pieces[] = {
     {template_counts, 1},
     PIECE(template_lead),
     PIECE(gt2_kit_instr),
-    {NULL, DIGI_DRUMS * GT2_INSTR_BYTES}, /* template_digi */
+    {NULL, DIGI_DRUMS * GT2_INSTR_BYTES},
     {template_counts + 1, 1},
     {gt2_kit_wave[0], GT2_KIT_WAVE_ROWS},
     {template_lead_wave[0], 4},
@@ -404,7 +384,6 @@ static void force_end(song_io* io) {
 static void finish_save(song_io* io, int ok) {
     if (ok && io->set && !io->remembering) {
         settings_set_song(io->set, io->target);
-        /* A prior explicit settings write must finish before this generation is asked. */
         io->remembering = 1;
         io->state = SONG_IO_REMEMBER;
         return;
@@ -414,7 +393,7 @@ static void finish_save(song_io* io, int ok) {
     io->state = SONG_IO_IDLE;
     if (ok) {
         memcpy(io->name, io->target, sizeof io->name);
-        io->fid = io->file.fid; /* SONG_IO_COMMIT opened it */
+        io->fid = io->file.fid;
         io->saved_revision = io->ctl->song->revision;
         io->saved_live = io->captured_live;
         io->dirty = 0;
@@ -444,7 +423,6 @@ static void start_read(song_io* io) {
     gt2_read_fn read = read_file;
     void* ctx = io;
     if ((io->restoring || io->action == LOAD_RESTORE) && io->rollback) {
-        /* Restore inherited metadata before VERIFY reuses the shared byte buffer. */
         if (io->rollback & ROLLBACK_APPLIED) {
             io->hooks.restore(io->hooks.ctx, io->data);
         }
@@ -513,7 +491,6 @@ static void read_done(song_io* io) {
         if (io->action == LOAD_NEW) {
             memset(io->name, 0, sizeof io->name);
             io->dirty = 1;
-            /* the digi drums: instruments SONG_IO_DIGI on, the built-in samples in order */
             song_digi digi = {DIGI_DRUMS, {{0}}};
             for (uint32_t d = 0; d < DIGI_DRUMS; d++) {
                 digi.entry[d][0] = (uint8_t)(SONG_IO_DIGI + d);
@@ -530,11 +507,9 @@ static void read_done(song_io* io) {
     }
     io->saved_revision = io->ctl->song->revision;
     if (io->hooks.generation && !io->keeping) {
-        /* (kept: the runtime is what it was before the tune, and so is its unsaved mark) */
         io->saved_live = io->hooks.generation(io->hooks.ctx);
     }
     io->keeping = 0;
-    /* The model is now what was read: a stored file (start_read's read_file), or none. */
     io->fid = io->builtin || io->action == LOAD_NEW ? 0u : io->file.fid;
     io->state = SONG_IO_IDLE;
     if (io->action != LOAD_ABOUT || io->restoring) {
@@ -646,7 +621,7 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
         if (sc->song->pending || sc->song->pending_loose) {
             break;
         }
-        sc->song->frozen = 0; /* the main loop's internal capture, with no edit caller interleaved */
+        sc->song->frozen = 0;
         if (io->hooks.prepare && !io->hooks.prepare(io->hooks.ctx)) {
             text(io->message, io->failure[0] ? io->failure : "SONG FULL");
             io->failure[0] = 0;
@@ -656,8 +631,6 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
             break;
         }
         sc->song->frozen = 1;
-        /* Unchanged, and the file it would replace is still the one it was loaded or saved as
-         * (io->file is free while saving: SONG_IO_COMMIT opens it again). */
         if (!io->dirty && sc->song->revision == io->saved_revision &&
             io->captured_live == io->saved_live &&
             memcmp(io->name, io->target, sizeof io->name) == 0 &&
@@ -673,7 +646,7 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
         io->length = gt2_saved_size(sc->song);
         int r = store_file_begin(io->st, io->target, STORE_FILE_SONG, io->length);
         if (r == STORE_OK) {
-            io->snapshot = 0; /* the metadata is in the model; reuse data for streamed bytes */
+            io->snapshot = 0;
             io->fill = io->sent = 0;
             io->offset = 0;
             gt2_stream_write_begin(io->work, sc->song, 1);
@@ -726,7 +699,7 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
         int r = store_file_result(io->st);
         if (r != STORE_BUSY) {
             if (r != STORE_OK || store_file_open(io->st, io->target, &io->file) != STORE_OK) {
-                io->file.fid = 0; /* unknown: the next SAVE writes */
+                io->file.fid = 0;
             }
             finish_save(io, r == STORE_OK);
         }

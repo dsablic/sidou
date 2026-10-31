@@ -11,21 +11,16 @@
 
 typedef song_view_canvas canvas;
 
-/* NOW PLAYING's zones (sid_view.zones), each built when what it shows changed: the header (the
- * title, author and released, rows 0-7), the song, its time and state and the chips (rows 8-16),
- * the voice lanes (rows 17-24) and the counters (rows 25-26). */
 #define ZONE_HEAD 1u
 #define ZONE_PLAY 2u
 #define ZONE_LANES 4u
 #define ZONE_COUNT 8u
 #define ZONES_ALL 15u
-#define ZONE_REST 16u /* the rows no zone owns, blanked */
-/* Their rows. */
+#define ZONE_REST 16u
 #define HEAD_ROWS 0x000000ffu
 #define PLAY_ROWS 0x0001ff00u
 #define LANE_ROWS 0x01fe0000u
 #define COUNT_ROWS 0x06000000u
-/* Where each zone's bytes are in the look (sid_view.drawn), and how many. */
 #define LOOK_HEAD 0u
 #define LOOK_HEAD_N 4u
 #define LOOK_PLAY 4u
@@ -36,7 +31,6 @@ typedef song_view_canvas canvas;
 #define LOOK_COUNT_N 4u
 #define LOOK_THEME 27u
 _Static_assert(LOOK_THEME < SID_VIEW_LOOK, "NOW PLAYING's look");
-/* The rows of NOW PLAYING's parts. */
 #define TITLE_ROW 1u
 #define AUTHOR_ROW 6u
 #define SONG_ROW 9u
@@ -45,15 +39,11 @@ _Static_assert(LOOK_THEME < SID_VIEW_LOOK, "NOW PLAYING's look");
 #define LANE_ROW 18u
 #define BAR_COL 14u
 #define COUNT_ROW 25u
-/* The browser's: the files a line every two rows, the status under them, the legends. */
 #define FILE_ROW 6u
 #define BROWSE_STATUS_ROW 22u
 #define LEGEND_ROW 24u
 #define BACK_ROW 26u
-/* The largest number a counter shows. */
 #define COUNT_MAX 9999u
-
-/* ---- small helpers ---- */
 
 static uint32_t length(const char* s) {
     uint32_t n = 0;
@@ -85,8 +75,6 @@ static void blank(canvas* c, uint32_t rows, uint8_t a) {
     }
 }
 
-/* A name at 2x from column 2, padded to SID_VIEW_NAME_CELLS characters (the selection is a whole
- * bar); a longer one's last is an arrow. */
 static void name_line(canvas* c, uint32_t row, const char* name, uint8_t a) {
     char line[SID_VIEW_NAME_CELLS + 1u];
     uint32_t n = 0;
@@ -104,15 +92,10 @@ static void name_line(canvas* c, uint32_t row, const char* name, uint8_t a) {
     big(c, 2, row, line, a);
 }
 
-/* A header string's character as the font shows it: ASCII as itself (the font draws lower case as
- * upper case), anything else a '?'. */
 static char shown(char ch) {
     return (uint8_t)ch >= 0x20u && (uint8_t)ch < 0x7fu ? ch : '?';
 }
 
-/* The title on two lines of SID_VIEW_NAME_CELLS: the first broken at its last space within them
- * when the title is longer, the second the rest, its last character an arrow when it is longer
- * still. */
 static void title_lines(const char* t, char l1[SID_VIEW_NAME_CELLS + 1u],
                         char l2[SID_VIEW_NAME_CELLS + 1u]) {
     uint32_t n = length(t), cut = n;
@@ -144,7 +127,6 @@ static void title_lines(const char* t, char l1[SID_VIEW_NAME_CELLS + 1u],
     l2[i] = 0;
 }
 
-/* A header string at 1x from column 2, within the border: 27 characters. */
 static void line_1x(canvas* c, uint32_t row, const char* s, uint8_t a) {
     char t[GRID_COLS - 2u];
     uint32_t i = 0;
@@ -154,8 +136,6 @@ static void line_1x(canvas* c, uint32_t row, const char* s, uint8_t a) {
     t[i] = 0;
     grid_canvas_text(c, 2, row, t, a);
 }
-
-/* ---- the player ---- */
 
 static void status_of(const sid_view* sd, sid_status* st) {
     memset(st, 0, sizeof *st);
@@ -194,23 +174,18 @@ int sid_view_play(sid_view* sd, int edit, int here) {
     case SID_T_PAUSED: (void)(edit ? t->resume(t->ctx) : t->stop(t->ctx)); break;
     case SID_T_STOPPED:
     case SID_T_FAILED:
-        /* Here, or EDIT held: the song from init; in another view the tune gives way. */
         (void)(here || edit ? t->start(t->ctx, st.song) : t->end(t->ctx));
         break;
     case SID_T_LOADING:
         if (!edit) {
-            (void)t->stop(t->ctx); /* it stops as it starts */
+            (void)t->stop(t->ctx);
         }
         break;
-    default: break; /* ending: the song comes back */
+    default: break;
     }
     return 1;
 }
 
-/* ---- SIDS: the browser ---- */
-
-/* Page `page` read again from the store's first file, the pages before it skipped: one store
- * entry a frame (scan_step). */
 static void browse(sid_view* sd, uint8_t page) {
     sd->page = page;
     sd->skip = (uint8_t)(page * SID_VIEW_FILES);
@@ -220,7 +195,6 @@ static void browse(sid_view* sd, uint8_t page) {
     sd->built = 0;
 }
 
-/* The scan's next .sid file: the page's own after the ones before it (one a frame). */
 static void scan_step(sid_view* sd) {
     store_file f;
     memset(&f, 0, sizeof f);
@@ -246,8 +220,6 @@ void sid_view_open(sid_view* sd, screen* s) {
     screen_push(s, &sid_view_browser, sd, SCREEN_WIPE_DOWN);
 }
 
-/* The store's tune `name` to the player, and NOW PLAYING on top if it took it (its refusals are
- * the binding's toasts). */
 static void load(sid_view* sd, screen* s, const char* name) {
     sd->asking = sd->saving = 0;
     sd->built = 0;
@@ -256,12 +228,9 @@ static void load(sid_view* sd, screen* s, const char* name) {
     }
 }
 
-/* The highlighted tune chosen (ALGORITHM clockwise, SAVE): the loaded one opens NOW PLAYING as it
- * is; another loads, after the question when the song has unsaved edits of its own (a sound edit
- * is not one: the tune leaves the keys as they are) and has its memory. */
 static void choose(sid_view* sd, screen* s) {
     if (sd->asking) {
-        load(sd, s, sd->chosen); /* ALGORITHM again: the song's edits go */
+        load(sd, s, sd->chosen);
         return;
     }
     if (sd->scanning || !sd->count) {
@@ -292,7 +261,7 @@ static int browser_input(screen* s, void* state, const screen_event* e) {
     }
     if (e->id == PANEL_ENC_SELECT) {
         if (sd->asking) {
-            return 0; /* nothing to move on the question */
+            return 0;
         }
         int32_t next = (int32_t)sd->cursor + e->steps;
         if (!sd->scanning && next >= (int32_t)SID_VIEW_FILES && sd->count == SID_VIEW_FILES &&
@@ -326,7 +295,7 @@ int sid_view_home(sid_view* sd) {
     }
     uint32_t st = sid_view_state(sd);
     if (st == SID_T_STOPPED || st == SID_T_FAILED) {
-        (void)sd->t->end(sd->t->ctx); /* out of the browser: the song back */
+        (void)sd->t->end(sd->t->ctx);
     }
     return 0;
 }
@@ -342,7 +311,7 @@ int sid_view_save(sid_view* sd, screen* s) {
     }
     sd->built = 0;
     if (!io->name[0]) {
-        sd->saving = 1; /* SAVE AS first (the views open it), then the tune */
+        sd->saving = 1;
         return SID_VIEW_SAVE_AS;
     }
     if (song_io_save(io, io->name, s->now)) {
@@ -358,14 +327,13 @@ void sid_view_frame(sid_view* sd, screen* s) {
         return;
     }
     if (!song_io_edited(io)) {
-        load(sd, s, sd->chosen); /* saved: the tune */
+        load(sd, s, sd->chosen);
     } else {
-        sd->saving = 0; /* not saved (refused, failed, SAVE AS left): the question again */
+        sd->saving = 0;
         sd->built = 0;
     }
 }
 
-/* The loaded tune's mark in the browser: its line on this page and its state; 0xff none. */
 static uint8_t mark_of(const sid_view* sd, const sid_status* st) {
     if (st->state == SID_T_NONE || sd->scanning) {
         return 0xffu;
@@ -378,7 +346,6 @@ static uint8_t mark_of(const sid_view* sd, const sid_status* st) {
     return 0xfeu;
 }
 
-/* What else the browser shows: the question, its save, the song files' state. */
 static uint8_t browse_flags(const sid_view* sd) {
     const song_io* io = sd->sv->io;
     return (uint8_t)(sd->asking | sd->saving << 1 | (io && song_io_busy(io)) << 2 |
@@ -400,7 +367,6 @@ static void build_browser(sid_view* sd, uint8_t mark) {
         big(c, 2, 4, song_io_saving(io) ? "SAVING" : "BUSY", THEME_ATTR(th, hot));
     }
     if (sd->asking) {
-        /* The song would lose its edits: its name, and what each answer does. */
         big(c, 2, FILE_ROW, "SONG NOT SAVED", THEME_ATTR(th, alert));
         name_line(c, FILE_ROW + 2u, io && io->name[0] ? io->name : "NEW SONG", THEME_ATTR(th, value));
         big(c, 2, FILE_ROW + 6u, "SAVE   SAVE IT", legend);
@@ -411,7 +377,6 @@ static void build_browser(sid_view* sd, uint8_t mark) {
             name_line(c, FILE_ROW + 2u * i, sd->files[i], i == sd->cursor ? selected : text);
         }
         if (mark < 0xfeu) {
-            /* the loaded tune: a play mark while it plays, a square while it waits */
             const char m[2] = {(char)(mark & 1u ? FONT_PLAY : FONT_SQUARE), 0};
             big(c, 0, FILE_ROW + 2u * (mark >> 4), m, THEME_ATTR(th, hot));
         }
@@ -448,8 +413,6 @@ static void browser_compose(screen* s, void* state, grid* g) {
         sd->built = 0;
     }
     if (sd->scanning && !screen_animating(s)) {
-        /* (not under the wipe: a line that changes in what it has revealed would be sent
-         * with the rows it reveals) */
         scan_step(sd);
         sd->built = 0;
         if (!sd->scanning && sd->cursor >= sd->count) {
@@ -480,9 +443,6 @@ static void browser_enter(screen* s, void* state) {
 const view sid_view_browser = {"SIDS", browser_enter, NULL, browser_input, browser_compose,
                                browser_changed};
 
-/* ---- NOW PLAYING ---- */
-
-/* The song shown: the one playing or asked for, else the header's start song. */
 static uint32_t song_of(const sid_status* st) {
     return st->song ? st->song : st->h ? st->h->start : 0u;
 }
@@ -491,8 +451,6 @@ static uint32_t capped(uint32_t n) {
     return n > COUNT_MAX ? COUNT_MAX : n;
 }
 
-/* What NOW PLAYING shows, as bytes: each zone's (the header's as a hash of the file's name and
- * whether its header is read), and the theme. */
 static void playing_look(const sid_view* sd, const sid_status* st, uint8_t out[SID_VIEW_LOOK]) {
     memset(out, 0, SID_VIEW_LOOK);
     uint32_t hash = 2166136261u;
@@ -563,7 +521,6 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
         screen_decimal(t + n, h->songs);
         big(c, 2, SONG_ROW, t, THEME_ATTR(th, value));
     }
-    /* The time since the song started, M:SS, and the state at the right. */
     char t[16];
     screen_decimal(t, st->seconds / 60u);
     uint32_t n = length(t);
@@ -573,7 +530,7 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     t[n] = 0;
     big(c, 2, TIME_ROW, t, THEME_ATTR(th, value));
     static const char* const WORD[] = {"", "LOADING", "PLAYING", "PAUSED", "STOPPED", "FAILED", "ENDING"};
-    static const uint8_t COLOUR[] = {0, 1, 2, 0, 1, 3, 1}; /* value, label, hot, alert */
+    static const uint8_t COLOUR[] = {0, 1, 2, 0, 1, 3, 1};
     uint32_t s = st->state < 7u ? st->state : 0u;
     const uint8_t roles[4] = {THEME_ATTR(th, value), THEME_ATTR(th, label), THEME_ATTR(th, hot),
                               THEME_ATTR(th, alert)};
@@ -581,7 +538,6 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     if (!h) {
         return;
     }
-    /* The clock and each chip's model; a 2SID tune's mark, a third SID's. */
     const uint8_t label = THEME_ATTR(th, label);
     grid_canvas_text(c, 2, CHIPS_ROW, h->clock == 2u ? "NTSC" : "PAL", label);
     grid_canvas_text(c, 8, CHIPS_ROW, st->model[0] == SID_MODEL_8580 ? "8580" : "6581",
@@ -596,9 +552,6 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     }
 }
 
-/* The voices: the number in the voice's colour (dark grey while GLO silences it, reversed while
- * soloed), MUT or SOL (ARM and REC on the voice the lift takes), and chip A's envelope as a
- * bar. */
 static void build_lanes(sid_view* sd, const sid_status* st, const theme* th) {
     const song_view* sv = sd->sv;
     canvas* c = &sd->sv->cv;
@@ -615,7 +568,6 @@ static void build_lanes(sid_view* sd, const sid_status* st, const theme* th) {
                               : off              ? THEME_ATTR(th, dim)
                                                  : GRID_ATTR(th->voice[v], th->bg));
         if (st->lift && v == st->lift_voice) {
-            /* the lift: armed for the voice's next note, then taking it */
             big(c, 6, row, st->lift == SID_LIFT_ARMED ? "ARM" : "REC",
                 st->lift == SID_LIFT_ARMED ? THEME_ATTR(th, hot) : THEME_ATTR(th, alert));
         } else if (sv->solo >> v & 1u) {
@@ -679,7 +631,6 @@ static void playing_compose(screen* s, void* state, grid* g) {
     if (now[LOOK_THEME] != sd->drawn[LOOK_THEME]) {
         sd->zones = 0;
     }
-    /* Each zone when its bytes changed, rows on screen only while a wipe reveals them. */
     uint32_t reach = screen_animating(s) ? screen_reach(s) : GRID_ROWS;
     static const uint8_t AT[4] = {LOOK_HEAD, LOOK_PLAY, LOOK_LANES, LOOK_COUNT};
     static const uint8_t N[4] = {LOOK_HEAD_N, LOOK_PLAY_N, LOOK_LANES_N, LOOK_COUNT_N};
@@ -687,8 +638,6 @@ static void playing_compose(screen* s, void* state, grid* g) {
     static const uint32_t ROWS[4] = {HEAD_ROWS, PLAY_ROWS, LANE_ROWS, COUNT_ROWS};
     for (uint32_t z = 0; z < 4u; z++) {
         uint32_t bit = 1u << z;
-        /* Under a wipe only a zone not built yet: what changes in what it has revealed would go
-         * with the rows it reveals. */
         if (FIRST[z] >= reach || ((sd->zones & bit) && (reach < GRID_ROWS ||
                                    memcmp(now + AT[z], sd->drawn + AT[z], N[z]) == 0))) {
             continue;
@@ -706,7 +655,6 @@ static void playing_compose(screen* s, void* state, grid* g) {
         sd->zones |= (uint8_t)bit;
         sv->dirty |= ROWS[z];
     }
-    /* The rows no zone owns: blank once. */
     if (!(sd->zones & ZONE_REST)) {
         uint32_t rest = ~(HEAD_ROWS | PLAY_ROWS | LANE_ROWS | COUNT_ROWS) & ((1u << GRID_ROWS) - 1u);
         blank(&sv->cv, rest, THEME_ATTR(th, value));
@@ -717,7 +665,6 @@ static void playing_compose(screen* s, void* state, grid* g) {
     song_view_copy(sv, s, g);
 }
 
-/* ALGORITHM steps the song (restarting it from init); clamped at both ends. */
 static int playing_input(screen* s, void* state, const screen_event* e) {
     (void)s;
     sid_view* sd = state;
@@ -764,14 +711,12 @@ void sid_view_rec(sid_view* sd, screen* s) {
     } else if (solo != 1u && solo != 2u && solo != 4u) {
         say = "LIFT: SOLO ONE VOICE";
     } else {
-        uint32_t v = solo >> 1; /* 1, 2, 4: voice 0, 1, 2 */
+        uint32_t v = solo >> 1;
         msg[7] = (char)('1' + v);
         (void)t->lift(t->ctx, v);
     }
     screen_toast(s, say, SCREEN_TOAST_MS);
 }
-
-/* ---- The lifted instrument's offer ---- */
 
 int sid_view_offered(const sid_view* sd) {
     sid_status st;
@@ -779,7 +724,6 @@ int sid_view_offered(const sid_view* sd) {
     return st.offer != SID_OFFER_NONE;
 }
 
-/* What the offer shows: its state, the instrument, the song playing, the theme. */
 static void offer_look(const sid_view* sd, const sid_status* st, uint8_t out[4]) {
     out[0] = st->offer;
     out[1] = st->offer_instr;
@@ -857,8 +801,6 @@ void sid_view_offer_answer(sid_view* sd, screen* s, int go) {
     (void)t->import(t->ctx, go);
 }
 
-/* ---- STATUS's rows ---- */
-
 int sid_view_status_look(const sid_view* sd, uint8_t drawn[SID_VIEW_STATUS_LOOK], int update) {
     sid_status st;
     status_of(sd, &st);
@@ -887,7 +829,6 @@ int sid_view_status_look(const sid_view* sd, uint8_t drawn[SID_VIEW_STATUS_LOOK]
     return changed;
 }
 
-/* One of STATUS's lines at 2x: the label from column 2, the value ending at column 28. */
 static void status_line(grid* g, const theme* th, uint32_t row, const char* label, const char* value) {
     uint32_t n = 0;
     while (value[n]) {
@@ -906,7 +847,6 @@ void sid_view_status_draw(const sid_view* sd, grid* g, const theme* th, uint32_t
     grid_text_big(g, 2, row, 2, "6502", THEME_ATTR(th, hot));
     char t[12];
     char m[8];
-    /* the main loop's share (tenths of a percent) and the ticks a thousand cycles took */
     if (st.load) {
         uint32_t k = screen_decimal(m, st.load / 10u);
         m[k++] = '.';
