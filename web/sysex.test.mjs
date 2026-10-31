@@ -1,10 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Songs page's SysEx code (web/sysex.js) in plain Node: the vectors Rust's sidou-sysex checks
-// too (web/sysex-vectors.txt), a PUT's frames against Python's reference encoder
-// (tools/sysex_roundtrip.py's packing), and whole INQ, DIR and PUT runs against a simulated device
-// that follows docs/reference/sysex.md (stop-and-wait, ACKs, NAKs; web/fake-fm1.mjs). Opens no MIDI port.
-//   node web/sysex.test.mjs        (tools/web-demo --check runs it)
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { crc32 as zlibCrc32 } from "node:zlib";
@@ -31,7 +26,7 @@ await test("vectors from sidou-sysex: encode and decode", () => {
     const d = decodeFrame(unhex(frame));
     assert.deepEqual([d.command, d.sequence, hex(d.data)], [parseInt(cmd, 16), Number(seq), data === "-" ? "" : data], label);
   }
-  assert.equal(hex(encodeFrame(INQ, 0)), "f07d534401007ff7"); // sysex.md's example
+  assert.equal(hex(encodeFrame(INQ, 0)), "f07d534401007ff7");
 });
 
 await test("CRC-32 is zlib's; packing round-trips every length and refuses damage", () => {
@@ -55,7 +50,6 @@ await test("names follow the store's rules", () => {
   for (const ok of ["CHROME COMET", "A", "0123456789ABCDEF", "SIDOU LOOP", "!A_"]) assert.ok(validName(ok), ok);
   for (const bad of ["", " LEAD", "lower", "SEVENTEEN CHARS!!", "MIDI SONG", "MIDI INSTRUMENT", "TAB\t"]) assert.ok(!validName(bad), bad);
 });
-
 
 await test("a PUT's frames are byte for byte Python's reference encoder's", async () => {
   const data = Uint8Array.from({ length: 20 }, (_, i) => (i * 7 + 200) & 0xff);
@@ -86,12 +80,10 @@ await test("INQ, DIR and a whole multi-packet PUT against the device", async () 
   assert.equal(seen.length, 1 + 23);
   assert.equal(device.sent.length, 1 + 1 + 2 + 1 + 23 + 1, "INQ, DIR, 2 ACKs, PUT, 23 DATA, END");
   assert.deepEqual((await client.dir()).map((f) => f.name), ["OLD SONG", "CHROME COMET"]);
-  // overwriting: the same name again replaces it
   await client.put("CHROME COMET", song.slice(0, 100));
   assert.equal(device.stored.get("CHROME COMET").length, 100);
 });
 
-// one of the site's songs
 const songBytes = (name) => {
   const a = Array.from(readFileSync(`${here}../assets/songs/${name}`));
   return Uint8Array.from(a);
@@ -112,7 +104,6 @@ await test("the Songs to MIDI flow: DIR lists the songs, GET reads one, the file
   await client.inquire();
   const listed = songsIn(await client.dir());
   assert.deepEqual(listed.map((f) => f.name), ["CHROME COMET", "IRON RITE"], "the .sid tune is not a song");
-  // a stored song, in 100-byte packets (any length up to 256 is allowed), is the file's bytes
   device.chunk = 100;
   const seen = [];
   const got = await client.get({ target: 0, name: listed[0].name }, { onProgress: (d, t) => seen.push([d, t]) });
@@ -121,13 +112,11 @@ await test("the Songs to MIDI flow: DIR lists the songs, GET reads one, the file
   const direct = songToMidi(comet);
   const viaFm1 = songToMidi(got);
   assert.deepEqual(viaFm1.midi.bytes, direct.midi.bytes, "the same .mid as the picked file's");
-  // the current song (target 2), GET's frame byte for byte: target 2, instrument 0, sixteen zeros
   device.chunk = 256;
   const cur = await client.get({ target: 2 });
   assert.deepEqual(cur, iron);
   assert.ok(device.sent.some((h) => h.startsWith("f07d534403") && decodeFrame(unhex(h)).data.length === 18 && decodeFrame(unhex(h)).data[0] === 2));
   assert.equal(songToMidi(cur).song.name, "IRON RITE");
-  // the sequence goes on after a GET: a DIR and another GET still work
   assert.equal((await client.dir()).length, 3);
   assert.deepEqual(await client.get({ target: 0, name: "IRON RITE" }), iron);
 });
@@ -135,25 +124,20 @@ await test("the Songs to MIDI flow: DIR lists the songs, GET reads one, the file
 await test("GET refusals: busy, no such song, full; a damaged transfer is an error and an ABORT", async () => {
   const comet = songBytes("chrome-comet.sng");
   for (const [reason, text] of [[4, /busy.*try again/], [5, /too big/], [6, /no such song/], [7, /I\/O error/]]) {
-    const { device, client } = connect({ current: comet, refuse: reason });
+    const { device, client } = connect({ current: comet, nakEveryGet: reason });
     await assert.rejects(client.get({ target: 2 }), (e) => e.nak === reason && text.test(e.message));
     assert.ok(!device.sent.some((h) => h.startsWith("f07d534408")), "no ABORT after a NAK");
   }
-  // a stored name the device does not hold
   let c = connect({ files: [{ name: "GONE", type: 1, length: 1, crc: 0 }] });
   await assert.rejects(c.client.get({ target: 0, name: "GONE" }), (e) => e.nak === 6 && /Check this pair/.test(e.message));
-  // a song that arrives with a wrong CRC is not handed on
-  c = connect({ current: comet, flip: 5 });
+  c = connect({ current: comet, corruptDataByte: 5 });
   await assert.rejects(c.client.get({ target: 2 }), /damaged/);
   assert.equal(decodeFrame(unhex(c.device.sent.at(-1))).command, ABORT);
-  // silence: the page's wait ends with a sentence, not a hang
   c = connect({ current: comet }, { timeout: 50, ackTimeout: 50, busy: [] });
   c.device.get = () => {};
   await assert.rejects(c.client.get({ target: 2 }), /no answer/);
-  // a GET of another target or an invalid name is refused before anything is sent
   await assert.rejects(connect().client.get({ target: 1 }), /GET reads/);
   await assert.rejects(connect().client.get({ target: 0, name: "lower" }), /valid SIDOU file name/);
-  // a file that is not a song reaches the converter's own refusal
   assert.throws(() => songToMidi(Uint8Array.from({ length: 200 }, () => 7)), SongError);
 });
 
@@ -200,9 +184,8 @@ await test("NAK BUSY waits and sends the whole PUT again, then succeeds", async 
 });
 
 await test("WAIT keeps a PUT waiting past its ACK timeout, says so, and the upload goes on", async () => {
-  // Three WAITs 200 ms apart, then the ACK: 600 ms against an ACK timeout of 300.
   const data = Uint8Array.from({ length: 700 }, (_, i) => i & 0xff);
-  const { device, client } = connect({ quiet: { at: 1, waits: 3, every: 200 } });
+  const { device, client } = connect({ waitForQuiet: { at: 1, waits: 3, every: 200 } });
   const seen = [];
   await client.put("QUIET SONG", data, { onWait: () => seen.push("wait"), onProgress: (d) => seen.push(d) });
   assert.deepEqual(device.stored.get("QUIET SONG"), data);
@@ -210,7 +193,7 @@ await test("WAIT keeps a PUT waiting past its ACK timeout, says so, and the uplo
 });
 
 await test("a WAIT that ends in BUSY is not retried and says to stop the song", async () => {
-  const { client } = connect({ quiet: { at: 0, waits: 2, every: 100, give_up: true } },
+  const { client } = connect({ waitForQuiet: { at: 0, waits: 2, every: 100, give_up: true } },
     { timeout: 300, ackTimeout: 300, busy: [1, 1], sleep: async () => { throw new Error("must not retry"); } });
   let waits = 0;
   await assert.rejects(client.put("GAVE UP", new Uint8Array(300), { onWait: () => waits++ }),

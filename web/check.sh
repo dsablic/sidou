@@ -1,39 +1,27 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Serve a built demo on a free localhost port and run the smoke test (web/check.mjs) on it.
-# Playwright, at the version below, and its headless Chromium are installed into
-# build/web-check on first use (with the system libraries it needs when CI is set).
-#   web/check.sh build/web [screenshot.png]    (tools/web-demo --check runs it)
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 site=$(cd "$1" && pwd)
 shot="${2:-${SIDOU_WEB_SCREENSHOT:-$root/build/web-check/screenshot.png}}"
 playwright=1.63.0
 dir="$root/build/web-check"
-# the SysEx code in plain Node first (no browser, no MIDI): web/sysex.test.mjs
 node "$root/web/sysex.test.mjs"
-# the Songs -> MIDI code against GoatTracker's own player (fixtures from gt2-ref), also in plain Node
 node "$root/web/songmidi.test.mjs"
-# the Library page's store work and backups against a simulated FM-1, and the site's wasm core
-# against the host build of the same C (fixtures from sidou-tests' web_core test)
 node "$root/web/library.test.mjs"
 node "$root/web/core.test.mjs" "$site/sidou-core.wasm"
-# the editor's edits, previews and saving, against the host build and a simulated FM-1
 node "$root/web/editor.test.mjs" "$site/sidou-core.wasm"
-# the Live Link viewer's code and its wasm against SIDOU's device side (fixtures from sidou-tests'
-# web_link test) and a simulated FM-1
 node "$root/web/link.test.mjs" "$site/sidou-link.wasm"
 mkdir -p "$dir"
 if [ "$(node -p 'require(process.argv[1]).version' "$dir/node_modules/playwright/package.json" 2>/dev/null)" != "$playwright" ]; then
     (cd "$dir" && npm install --no-audit --no-fund --silent "playwright@$playwright")
 fi
 deps=()
-# On CI the system libraries too, unless the build image already has them (tools/docker/Dockerfile).
 [ -z "${CI:-}" ] || [ -n "${SIDOU_BUILD_IMAGE:-}" ] || deps=(--with-deps)
 (cd "$dir" && npx --no-install playwright install "${deps[@]}" --only-shell chromium)
 cp "$root/web/check.mjs" "$dir/check.mjs"
-cp "$root/web/link-fixtures.json" "$dir/link-fixtures.json"   # (the Live Link page's simulated FM-1)
+cp "$root/web/link-fixtures.json" "$dir/link-fixtures.json"
 
 log="$dir/serve.log"
 python3 "$root/web/serve.py" "$site" 0 >"$log" 2>&1 &

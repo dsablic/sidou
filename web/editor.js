@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The song editor page: a song from a file or the FM-1 (Web MIDI with SysEx: store.js and
-// sysex.js, as the Library page), edited through SIDOU's own song code in wasm (song-edit.js over
-// core.js), previewed by its own player (preview.js), saved back. Nothing is sent to MIDI before
-// Connect, and only to the pair selected; nothing sounds before a press of Play or a key.
 import { CoreError, EditError, loadCore } from "./core.js";
 import { Preview } from "./preview.js";
 import { FIRSTNOTE, INSTR_PARAMS, KEYOFF, KEYON, LASTNOTE, REST, SongSession, cellText, hex2, noteText,
@@ -29,7 +25,7 @@ const state = {
   access: null, lib: null, client: null, port: "", busy: false, wasm: null, core: null, session: null, preview: null,
   tab: "instr", instr: 1, table: 0, tableAll: false, pattern: 0, row: 0, subtune: 0, octave: 4, voice: 0, saved: [],
 };
-window.__editor = state; // the smoke test (web/check.mjs) reads it
+window.__editor = state;
 
 function save(bytes, filename) {
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
@@ -50,9 +46,6 @@ async function core() {
   }
   return state.core;
 }
-
-// ---------------------------------------------------------------------------------------------
-// The FM-1 (as the Library page connects)
 
 function setBusy(busy) {
   state.busy = busy;
@@ -149,9 +142,6 @@ async function run(what, fn, note = $("save-state")) {
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Opening a song
-
 async function openSong(bytes, source) {
   $("song-error").textContent = "";
   await core();
@@ -198,9 +188,6 @@ function openCurrent() {
   }, $("device"));
 }
 
-// ---------------------------------------------------------------------------------------------
-// Editing: every change through the session, the page drawn again with the focus kept
-
 function edit(label, fn) {
   try {
     state.session.apply(label, fn);
@@ -239,8 +226,6 @@ function draw() {
   drawKeys();
 }
 
-// A cell: an input that shows `text`, checks what is typed with parse (null: refused) and makes
-// the change with commit(value).
 function cell(key, text, width, parse, commit, { readOnly = false, label = "" } = {}) {
   const input = el("input", { type: "text", className: `cell ${width}`, value: text, spellcheck: false, autocomplete: "off", readOnly });
   input.dataset.key = key;
@@ -258,8 +243,6 @@ function cell(key, text, width, parse, commit, { readOnly = false, label = "" } 
   input.addEventListener("focus", () => input.select());
   return input;
 }
-
-// ---- Instruments (INSTR)
 
 function drawInstr() {
   const c = state.core;
@@ -287,8 +270,6 @@ function drawInstr() {
   $("params").replaceChildren(...rows);
 }
 
-// ---- Tables (TABLE)
-
 function drawTable() {
   const t = state.table, tb = state.core.table(t);
   $("table").value = String(t);
@@ -304,8 +285,6 @@ function drawTable() {
   }
   $("rows").replaceChildren(...rows);
 }
-
-// ---- Patterns (a basic TRACKER grid)
 
 function drawPattern() {
   const c = state.core, held = c.heldPatterns();
@@ -344,8 +323,6 @@ function selectRow(r) {
   $("sel-row").textContent = `Row ${hex2(r)}:`;
 }
 
-// The computer keyboard as a piano: Z S X D C V G B H N J M , L . ; / from the octave's C, and Q 2
-// W 3 E R 5 T 6 Y 7 U I 9 O 0 P an octave up (GoatTracker's layout).
 const PIANO = {};
 "zsxdcvgbhnjm,l.;/".split("").forEach((k, i) => { PIANO[k] = i; });
 "q2w3er5t6y7ui9o0p".split("").forEach((k, i) => { PIANO[k] = 12 + i; });
@@ -375,8 +352,6 @@ function noteKey(e, p, r, b) {
   const next = document.querySelector(`[data-key="p${p}.${r + 1}.0"]`);
   if (next) next.focus();
 }
-
-// ---- Orderlists (ORDER)
 
 function drawOrder() {
   const s = state.session.song, sub = Math.min(state.subtune, s.subtunes - 1);
@@ -414,9 +389,6 @@ function drawOrder() {
   $("from").max = String(Math.max(0, longest - 1));
 }
 
-// ---------------------------------------------------------------------------------------------
-// Preview
-
 function previewNews(m) {
   if (m.type === "error") say($("pv-state"), m.message, "error");
   else if (m.type === "state") {
@@ -439,7 +411,7 @@ function sound(n) {
   guard(() => state.preview.note(state.voice, n, state.instr));
 }
 
-const held = new Map(); // a key or pointer: its voice
+const held = new Map();
 function keyDown(id, n) {
   if (held.has(id)) return;
   sound(n);
@@ -474,9 +446,6 @@ function drawKeys() {
   }
   $("keys").replaceChildren(...keys);
 }
-
-// ---------------------------------------------------------------------------------------------
-// Saving
 
 function saveName() {
   const name = $("save-name").value.trim().toUpperCase();
@@ -527,8 +496,6 @@ function download(plain) {
   }
   save(bytes, `${stem}-goattracker.sng`);
 }
-
-// ---------------------------------------------------------------------------------------------
 
 $("file").addEventListener("change", (e) => { pickFile(e.target.files[0]); e.target.value = ""; });
 const drop = $("drop");
@@ -618,7 +585,6 @@ if (!navigator.requestMIDIAccess) {
 }
 setBusy(false);
 
-// A song handed over by the Library page's Edit (sessionStorage, this tab only).
 try {
   const handed = JSON.parse(sessionStorage.getItem("sidou-edit") ?? "null");
   sessionStorage.removeItem("sidou-edit");
@@ -626,4 +592,4 @@ try {
     const bytes = Uint8Array.from(handed.hex.match(/../g), (h) => parseInt(h, 16));
     openSong(bytes, handed.source ?? { name: "song" });
   }
-} catch { /* no storage: nothing handed over */ }
+} catch {}

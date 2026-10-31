@@ -1,12 +1,6 @@
 <!doctype html>
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- SIDOU's page around fm1-emu's web frontend (MIT, Joakim Eriksson): main.js, persistence.js, worklet.js, jit.js,
-     fwsc.js and fm1_web.wasm are upstream's, copied at the pinned revision by tools/web-demo.
-     main.js finds its elements by id (title, status, fw, mhz, midi, midich, midiact, midiin, open,
-     bank, bankname, about, panel, start, fwlist, fullpage, perfwarn and its -text, -fix, -copy and
-     -close, save-status, save-now, export-save, import-save, browse-saves, saved-versions,
-     open-saved-version, update-firmware, reset-save) and observes <header> and .bar: keep them all. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -15,7 +9,6 @@
 <meta name="description" content="SIDOU, a C64 SID instrument firmware for the M-VAVE FM-1, running in the fm1-emu emulator in your browser.">
 <link rel="icon" href="data:,">
 <style>
-  /* the C64 palette (docs/art/README.md): blue, light blue, cyan, light green, yellow, light red */
   :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
           --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --lb: #6c5eb5; --ok: #9ad284; --warn: #9a6759;
           --yellow: #b8c76f; color-scheme: dark; }
@@ -29,13 +22,11 @@
   h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
   #status { color: var(--dim); font-variant-numeric: tabular-nums; }
   .stage { position: relative; }
-  /* the whole synth in view on a laptop (upstream's rule; --above and --aspect come from main.js);
-     the box is the canvas's size, so Start can sit on the LCD */
   .panel-box { position: relative; margin: 0 auto;
                max-width: min(100%, max(560px, calc((100svh - var(--above, 140px) - 52px) * var(--aspect, 1.56)))); }
   canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
-  /* the LCD's centre: 480 x 480 at (370, 42) on fm1-emu's 1280 x 820 panel (fm1-live/src/panel.rs) */
-  #start { position: absolute; left: 47.656%; top: 34.390%; transform: translate(-50%, -50%);
+  #start { --lcd-centre-x: calc((370 + 240) / 1280 * 100%); --lcd-centre-y: calc((42 + 240) / 820 * 100%);
+           position: absolute; left: var(--lcd-centre-x); top: var(--lcd-centre-y); transform: translate(-50%, -50%);
            width: clamp(110px, 30%, 220px); height: clamp(36px, 9vw, 56px);
            border: 0; border-radius: 28px; background: var(--accent); color: #0f0c22; font-size: clamp(14px, 3.5vw, 17px);
            font-weight: 700; letter-spacing: .04em; cursor: pointer; }
@@ -80,7 +71,6 @@
   td:first-child { white-space: nowrap; }
   #build { font-variant-numeric: tabular-nums; }
   footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 8px; }
-  /* fm1-emu's "the device can't keep up" warning (main.js perf): between the controls and the synth */
   #perfwarn { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between;
               border: 1px solid var(--yellow); border-radius: 10px; background: var(--card); padding: 9px 12px; }
   #perfwarn[hidden] { display: none; }
@@ -90,7 +80,6 @@
                      border-radius: 6px; padding: 5px 10px; cursor: pointer; }
   #perfwarn button.primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
   #perfwarn button[hidden] { display: none; }
-  /* fm1-emu's saves (main.js, persistence.js): the flash kept in this browser, per package */
   .saves { color: var(--dim); font-size: 13px; }
   .saves button, .saves summary { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line);
                                   border-radius: 6px; padding: 4px 10px; cursor: pointer; }

@@ -1,34 +1,13 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// A GoatTracker 2 song (.sng, SIDOU's song file; docs/reference/song-format.md) as a Standard MIDI
-// File, for the Songs -> MIDI page. No DOM in here: web/songmidi.test.mjs runs it in Node and compares
-// every note it finds with what GoatTracker's own packed player does (host/crates/gt2-ref).
-//
-// The walk (walkSong) follows GoatTracker 2.77's playroutine (player.s, as gplay.c's editor player
-// has it) call by call: each channel's tick counter and tempo (speed, funktempo, the F and E
-// commands, channel-specific tempo), the sequencer (orderlist repeats, transposes, the loop), the
-// pattern fetch gatetimer frames before a row starts (which is when a hard restart or a key off
-// closes the previous note), the instruments' first-frame waveform and their legato and
-// no-hard-restart flags. A note is the row's note plus the orderlist transpose. The wavetable's
-// note column moves it: a step with a relative note ($00-$7F, added to the row's note) or a fixed
-// one ($81-$FF, the note itself) sets the pitch, and when that differs from the sounding note's the
-// file ends it and starts the next in the same call (an arpeggio is a run of tied notes). Vibrato,
-// portamento and the other pattern effects do not move it.
-//
-// A note is a stretch with the SID's gate bit high, as the player sets it: the gate flag (pattern
-// key on and off, the hard restart before a note, the instrument's first-frame waveform) and the
-// waveform byte (the wavetable's and the 7xx and 8xx commands'), so a drum whose wavetable drops the
-// gate is as short as it sounds.
-//
-// Time is counted in player calls: call 0 is the first play call after init, which only sets the
-// voices up. A call is 1/50 s on PAL, 1/60 on NTSC, divided by the multispeed (multispeed 0 is
-// 25 Hz: 1/25 s).
-
 export const FIRSTNOTE = 0x60, REST = 0xbd, KEYOFF = 0xbe, KEYON = 0xbf, ENDPATT = 0xff;
 const CMD_TONEPORTA = 3, CMD_SETWAVE = 7, CMD_SETWAVEPTR = 8, CMD_FUNKTEMPO = 0xe, CMD_SETTEMPO = 0xf;
 const LOOPSONG = 0xff, REPEAT = 0xd0, TRANSDOWN = 0xe0, TRANSUP = 0xf0;
-const MAX_FRAMES = 60 * 60 * 50 * 4; // four minutes of 60 Hz at 4x, a hang guard
+const MAX_FRAMES = 60 * 60 * 50 * 4;
 const MAX_INSTR = 64;
+const MISSING_PATTERN_ROWS = 64;
+export const MIDI_GT2_C0 = 12;
+const TICKS_PER_CALL = 20, MAX_PPQ = 32767;
 
 export class SongError extends Error {
   constructor(message) {
@@ -43,11 +22,6 @@ const text = (b, at, n) => {
   return s;
 };
 
-// ---------------------------------------------------------------------------------------------
-// Reading the file
-
-// One read of the GT2 part with `channels` orderlists a subtune. Returns the song and the offset
-// where the part ends, or null if the file is too short or its counts are out of range.
 function readGt2(b, channels) {
   const ident = text(b, 0, 4);
   let at = 4 + 96;
@@ -70,7 +44,7 @@ function readGt2(b, channels) {
       for (let c = 0; c < channels; c++) {
         const n = byte();
         const o = Uint8Array.from(take(n + 1));
-        if (n < 2 || o[n - 1] !== LOOPSONG) return null; // entries, then the $FF, then the restart
+        if (n < 2 || o[n - 1] !== LOOPSONG) return null;
         row.push(o);
       }
       orders.push(row);
@@ -82,7 +56,6 @@ function readGt2(b, channels) {
       const r = take(25);
       let gate = r[7];
       let first = r[8];
-      // GTS3 and GTS4 kept legato and no-hard-restart in the first-frame waveform (gsong.c)
       if (ident < "GTS5") {
         if (first >= 0x80) {
           gate |= 0x80;
@@ -117,8 +90,6 @@ function readGt2(b, channels) {
   }
 }
 
-// GoatTracker Stereo's determinechannels (docs/reference/song-format.md "Mono or stereo"): trial-read
-// 6 x S orderlists; stereo only if every one passes.
 function guessStereo(b) {
   let at = 101;
   const subtunes = b[100];
@@ -135,9 +106,6 @@ function guessStereo(b) {
 
 const MAGIC = [0x53, 0x49, 0x44, 0x4f, 0x55, 0x2d, 0x58, 0x00];
 
-// The trailer's chunks (docs/reference/song-format.md "SIDOU's trailer"), if one starts at `at`:
-// { channels, chunks: Map(tag -> data) }. Its CRCs are not checked: only OPTS, MIDI and the
-// channel count are read, and a damaged one cannot do more than give a wrong tempo.
 function readTrailer(b, at) {
   if (at + 263 > b.length || MAGIC.some((m, i) => b[at + i] !== m)) return null;
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
@@ -156,8 +124,6 @@ function readTrailer(b, at) {
   return { channels: b[at + 14], chunks };
 }
 
-// Reads a .sng (GTS3-GTS5, mono or GoatTracker Stereo) and the parts of SIDOU's trailer that decide
-// the timing. Throws SongError.
 export function parseSong(bytes) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (b.length < 101) throw new SongError("This is not a GoatTracker 2 song (the file is too short).");
@@ -166,8 +132,6 @@ export function parseSong(bytes) {
   if (ident === "GTS2") throw new SongError("This is an old three-table GTS2 song; open it in GoatTracker 2 and save it again.");
   if (!["GTS3", "GTS4", "GTS5"].includes(ident)) throw new SongError("This is not a GoatTracker 2 song (.sng).");
   const guess = guessStereo(b) ? 6 : 3;
-  // Both readings, as SIDOU does: the one that ends at a trailer that records its channel count,
-  // then at any trailer, then at the file's end, wins; a tie goes to the guess.
   let best = null;
   for (const channels of [guess, guess === 6 ? 3 : 6]) {
     const r = readGt2(b, channels);
@@ -188,14 +152,10 @@ export function parseSong(bytes) {
   return song;
 }
 
-// ---------------------------------------------------------------------------------------------
-// The walk
-
 function rowsOf(song, num) {
-  // a pattern the file lacks is 64 empty rows, as GoatTracker's loader leaves one
   const p = song.patterns[num];
   const rows = [];
-  if (!p) return Array.from({ length: 64 }, () => [REST, 0, 0, 0]);
+  if (!p) return Array.from({ length: MISSING_PATTERN_ROWS }, () => [REST, 0, 0, 0]);
   for (let i = 0; i < p.length; i += 4) {
     if (p[i] === ENDPATT) break;
     rows.push([p[i], p[i + 1], p[i + 2], p[i + 3]]);
@@ -203,15 +163,6 @@ function rowsOf(song, num) {
   return rows;
 }
 
-// Walks one subtune call by call until every voice has played its orderlist once. Returns
-//   notes   [{ voice, start, end, pitch, tie, instr }] in player calls from the first call, pitch a MIDI
-//           note number (GT2's C-0 is 12); tie: it began without the gate falling (legato
-//           instrument, tone portamento, a wavetable step that changes the pitch): the note before
-//           it ended in the same call
-//   ends    each voice's call where its orderlist came round again (the walk stops there)
-//   origin  the call of the first row
-//   tempo   [{ frame, kind: "speed"|"funk", text }] changes
-//   rows    each voice's row count in its pass
 export function walkSong(song, subtune = 0) {
   const orders = song.subtunes[subtune];
   if (!orders) throw new SongError(`The song has no subtune ${subtune + 1}.`);
@@ -226,11 +177,8 @@ export function walkSong(song, subtune = 0) {
   for (const o of orders) {
     if (o.indexOf(LOOPSONG) <= 0) throw new SongError("A voice's orderlist is empty.");
   }
-  // 18 of the 63 instruments' AD in the last slot is GoatTracker's default speed (greloc.c)
   const last = song.instruments[MAX_INSTR - 1];
   const defaultTempo = last && last.ad >= 2 && !last.wavePtr ? last.ad - 1 : (mult ? mult * 6 - 1 : 5);
-  // gt2reloc's packed player starts the funktempo pair at 8 and 5 calls (mt_funktempotbl); the
-  // counter value is one less than the call count
   const funk = [8 - 1, 5 - 1];
   const tempoLog = [];
   const chn = orders.map((order, c) => ({
@@ -250,10 +198,8 @@ export function walkSong(song, subtune = 0) {
     ch.cur = null;
   };
   const clampPitch = (p) => Math.max(0, Math.min(127, p));
-  // `pending`: the note began in the call that set its row note, before the wavetable's first step
-  // ran; that step (the next call's) names the pitch the voice sounds, with no change in between
   const openNote = (ch, frame, tie, pending = false) => {
-    const pitch = ch.sound ?? clampPitch(12 + ch.pitch);
+    const pitch = ch.sound ?? clampPitch(MIDI_GT2_C0 + ch.pitch);
     ch.cur = { voice: ch.c, start: frame, pitch, tie, instr: ch.instr, pending };
   };
 
@@ -282,7 +228,7 @@ export function walkSong(song, subtune = 0) {
   };
 
   const fetch = (ch, frame) => {
-    if (ch.pattptr >= ch.rows.length || ch.pattptr < 0) return; // an empty pattern
+    if (ch.pattptr >= ch.rows.length || ch.pattptr < 0) return;
     const [note, instr, cmd, data] = ch.rows[ch.pattptr];
     if (instr) ch.instr = instr;
     ch.newcmd = cmd;
@@ -297,9 +243,6 @@ export function walkSong(song, subtune = 0) {
     }
   };
 
-  // The wavetable's step for this call (gplay.c WAVEEXEC): the waveform it sets decides whether
-  // the gate bit is high, and its note column the pitch (the MIDI note it sets, or null); the
-  // commands only move other registers, which the walk does not follow.
   const waveExec = (ch) => {
     if (!ch.waveptr) return null;
     const wt = song.tables[0];
@@ -316,10 +259,9 @@ export function walkSong(song, subtune = 0) {
     ch.wavetime = 0;
     ch.waveptr++;
     if (wt.left[ch.waveptr - 1] === 0xff) ch.waveptr = wt.right[ch.waveptr - 1];
-    if (left >= 0xf0 || right === 0x80) return null; // a command, or "no change"
-    // an unsigned byte sum, as the player's: a relative note under the transpose wraps
+    if (left >= 0xf0 || right === 0x80) return null;
     const note = (right < 0x80 ? (right + ch.pitch) & 0xff : right) & 0x7f;
-    ch.sound = clampPitch(12 + note);
+    ch.sound = clampPitch(MIDI_GT2_C0 + note);
     return ch.sound;
   };
 
@@ -377,8 +319,6 @@ export function walkSong(song, subtune = 0) {
         ch.wavetime = 0;
       } else if (ch.newcmd === CMD_FUNKTEMPO) {
         const p = ch.newdata;
-        // E00 leaves the pair as it is (the editor's player; the packed one reads a byte before
-        // the speedtable)
         if (p && tables(song, 3, p)) {
           funk[0] = song.tables[3].left[p - 1] - 1;
           funk[1] = song.tables[3].right[p - 1] - 1;
@@ -403,7 +343,6 @@ export function walkSong(song, subtune = 0) {
       sound = waveExec(ch);
       if (ch.tick === ch.gatetimer) fetch(ch, frame);
     }
-    // the SID's gate bit: the waveform byte and the gate flag both
     if (ch.end === null) {
       if ((ch.wave & ch.gate & 1) === 1) {
         if (!ch.cur) openNote(ch, frame, false, retune);
@@ -424,8 +363,6 @@ export function walkSong(song, subtune = 0) {
     }
   };
 
-  // call 0 only sets the channels up (mt_play's song initialisation returns before any channel
-  // runs): the first tick 0 is call 1
   let frame = 1;
   for (; chn.some((ch) => ch.end === null); frame++) {
     if (frame > MAX_FRAMES) throw new SongError("The song runs for too long without coming round again.");
@@ -444,10 +381,6 @@ export function walkSong(song, subtune = 0) {
 
 const tables = (song, t, p) => p >= 1 && p <= song.tables[t].left.length;
 
-// ---------------------------------------------------------------------------------------------
-// The MIDI file
-
-// Microseconds in one player call, and calls a second.
 export function callRate(options) {
   const base = options.ntsc ? 60 : 50;
   const hz = options.multispeed ? base * options.multispeed : base / 2;
@@ -464,7 +397,6 @@ const ascii = (s) => [...s].map((ch) => (ch.charCodeAt(0) < 128 ? ch.charCodeAt(
 const meta = (type, data) => [0xff, type, ...vlq(data.length), ...data];
 
 function track(events) {
-  // events: { tick, order, bytes }; stable by time, then order (offs before ons)
   const sorted = events.map((e, i) => ({ ...e, i })).sort((a, b) => a.tick - b.tick || a.order - b.order || a.i - b.i);
   const body = [];
   let last = 0;
@@ -476,21 +408,14 @@ function track(events) {
   return [...ascii("MTrk"), ...u32(body.length), ...body];
 }
 
-// The MIDI file of a walk: format 1, a conductor track and one track a voice (MIDI channel =
-// voice, 0-2, or 0-5 for a GoatTracker Stereo song). One MIDI tick is 1/20 of a player call
-// (less if the beat would need more than the 32767 a header can hold), so every call, and so
-// every note start and end the player makes, lands on a whole tick and the file plays back in
-// the player's own time with one constant tempo: a beat is `rowsPerBeat` rows of the song's
-// average row length, rounded to whole calls. Speed and funktempo changes are markers in the
-// conductor track, not tempo events, which would move every later tick.
 export function toMidi(song, walk, { name = song.name, rowsPerBeat = song.rowsPerBeat } = {}) {
   const { us } = callRate(song.options);
   const rows = walk.rows.reduce((a, b) => a + b, 0);
   const span = walk.ends.reduce((a, e) => a + (e - walk.origin), 0);
   const avgRow = rows ? span / rows : 6;
   const beat = Math.max(1, Math.round(rowsPerBeat * avgRow));
-  const perCall = Math.max(1, Math.min(20, Math.floor(32767 / beat)));
-  const ppq = Math.min(32767, beat * perCall);
+  const perCall = Math.max(1, Math.min(TICKS_PER_CALL, Math.floor(MAX_PPQ / beat)));
+  const ppq = Math.min(MAX_PPQ, beat * perCall);
   const tempoUs = Math.max(1, Math.min(0xffffff, Math.round(beat * us)));
   const at = (frame) => (frame - walk.origin) * perCall;
 
@@ -527,7 +452,6 @@ export function toMidi(song, walk, { name = song.name, rowsPerBeat = song.rowsPe
   return { bytes: out, ppq, tempoUs, beatCalls: beat, bpm: 60e6 / tempoUs, ticksPerCall: perCall };
 }
 
-// One call: the page's whole job.
 export function songToMidi(bytes, { subtune = 0, name } = {}) {
   const song = parseSong(bytes);
   const walk = walkSong(song, subtune);

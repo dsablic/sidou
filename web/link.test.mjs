@@ -1,14 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Live Link viewer's code (web/link.js, sidou-link.wasm) in plain Node: the frames against
-// the spec's test vectors (docs/reference/live-link.md), the session against a simulated FM-1
-// (web/fake-fm1.mjs) that answers with what SIDOU's device side sent in
-// host/crates/sidou-tests/tests/web_link.rs (web/link-fixtures.json), with fake time: START,
-// the heartbeat, STOP on stop and when the page is hidden, the device's auto-stop and a
-// restart; the wasm viewer's picture of those frames against the panel's own (its RGB565
-// CRC-32); the font fetched only when HELLO's CRC differs and cached; PANEL for held, re-sent and
-// released buttons and encoder steps; nothing sent before start. Opens no MIDI port.
-//   node web/link.test.mjs [sidou-link.wasm]    (web/check.sh runs it)
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -29,7 +20,6 @@ let n = 0;
 const test = async (name, fn) => { await fn(); n++; console.log(`ok - ${name}`); };
 const settle = () => new Promise((r) => setImmediate(r));
 
-// Time that moves only when told: timers run in order as it passes.
 class Clock {
   constructor() { this.t = 0; this.timers = new Map(); this.id = 0; }
   now() { return this.t; }
@@ -54,7 +44,6 @@ class Clock {
   }
 }
 
-// A page's window and document for watchPage.
 class Page extends EventTarget {
   constructor() { super(); this.document = new EventTarget(); this.document.visibilityState = "visible"; }
   hide() { this.document.visibilityState = "hidden"; this.document.dispatchEvent(new Event("visibilitychange")); }
@@ -64,7 +53,6 @@ class Page extends EventTarget {
 const viewer = () => loadViewer(wasm);
 const picture = (v) => { v.render(); const p = v.rgb565(); return crc32(new Uint8Array(p.buffer, p.byteOffset, p.byteLength)); };
 
-// A client and a simulated FM-1 joined: what the client sends is logged as commands.
 async function session(opts = {}) {
   const clock = new Clock();
   const device = new LiveLinkDevice(fx, { clock, ...opts.device });
@@ -91,7 +79,6 @@ await test("the host frames are the spec's vectors, byte for byte", () => {
   assert.equal(hex(keyframeFrame()), v.KEYFRAME);
   assert.equal(hex(fontFrame()), v.FONT);
   assert.equal(hex(paletteFrame()), v.PALETTE);
-  // HOME (button 8) held and pressed, K1 (encoder 2) a detent clockwise
   assert.equal(hex(panelFrame(1 << 8, 1 << 8, [0, 0, 1])), v.PANEL);
   assert.equal(hex(panelFrame(1 << 8, 1 << 8, [0, 0, 1, 0, 0])), v.PANEL, "trailing zero steps are left out");
 });
@@ -150,11 +137,9 @@ await test("the wasm viewer draws the device's frames as the panel shows them (R
     assert.ok(v.apply(p.cmd, p.payload), `refused ${h}`);
   }
   assert.equal(picture(v), fx.picture_crc);
-  // the keyframe alone, on the built-in font and palette, and again after a HELLO: the same
   const w = await viewer();
   for (const h of [...fx.hello, ...fx.keyframe, ...fx.hello, ...fx.keyframe]) w.apply(parse(bytes(h)).cmd, parse(bytes(h)).payload);
   assert.equal(picture(w), fx.picture_crc);
-  // RGBA: the same colours, expanded
   const rgba = w.render();
   const p565 = w.rgb565();
   for (const i of [0, 1234, 30000, 57599]) {
@@ -260,7 +245,6 @@ await test("the font and palette are fetched when HELLO's CRCs differ, then cach
   assert.deepEqual(s.cmds(), [START, FONT, PALETTE]);
   assert.equal(picture(v), fx.picture_crc);
   assert.equal(store.size, 2);
-  // another page, the same cache: nothing asked
   const w = await viewer();
   w.setFont(new Uint8Array(w.fontRows().length));
   w.setPalette(new Uint8Array(32));
@@ -293,11 +277,11 @@ await test("a frame that fails its checksum asks for a keyframe, at most once a 
 
 await test("PANEL: a held button is sent, again while held, and let go; encoder steps add up", async () => {
   const s = await session();
-  s.client.press(8); // nothing without a session
+  s.client.press(8);
   assert.deepEqual(s.sent, []);
   s.client.start();
   await settle();
-  s.client.press(8); // HOME
+  s.client.press(8);
   await s.clock.advance(1000);
   s.client.release(8);
   await settle();
@@ -310,19 +294,16 @@ await test("PANEL: a held button is sent, again while held, and let go; encoder 
   const count = p.length;
   await s.clock.advance(2000);
   assert.equal(p.length, count, "nothing more while nothing is held");
-  // K1 (encoder 2): +1 and +2 within the coalescing window go as one PANEL, then PRESETS -1
   s.client.turn(2, 1);
   s.client.turn(2, 2);
   await s.clock.advance(30);
   s.client.turn(6, -1);
   await s.clock.advance(30);
   assert.deepEqual(p.slice(count).map((x) => x.steps), [[0, 0, 3], [0, 0, 0, 0, 0, 0, -1]]);
-  // more than a byte holds goes in two frames
   s.client.turn(0, 100);
   s.client.turn(0, 100);
   await s.clock.advance(30);
   assert.deepEqual(p.slice(count + 2).map((x) => x.steps), [[100], [100]]);
-  // two buttons: held together, each let go
   s.client.press(6);
   s.client.press(9);
   s.client.release(9);

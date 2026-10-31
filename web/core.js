@@ -1,13 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The JavaScript side of SIDOU's wasm core (sidou-core.wasm, built by tools/wasm-core from
-// core/song, core/player, core/sid and platform/web/core_api.c): the FM-1's own .sng reader
-// and writer, GTI5 export and song player, in the browser and in Node. One song at a time;
-// a file is refused here as the FM-1 refuses it, with the message its screen shows.
-//   const core = await loadCore(await (await fetch("sidou-core.wasm")).arrayBuffer());
-//   const song = core.read(bytes);   // throws CoreError with the device's message
-//   core.write({ trailer: false })   // { bytes, warning }
-
 export class CoreError extends Error {
   constructor(message, code = null) {
     super(message);
@@ -16,23 +8,18 @@ export class CoreError extends Error {
   }
 }
 
-// gt2_read_info.trailer
 export const TRAILER = ["none", "read", "dropped", "locks-dropped"];
-// gt2_err, for a refused instrument export
 const GT2_ERR = ["OK", "RANGE", "ORDER RULE", "ORDER FULL", "ROWS", "PATTERNS", "IN USE", "FULL",
   "FRAGMENTED", "REGION", "PENDING", "SONG FULL", "SAVING"];
+const BLOCK_FRAMES = 128, STEREO_BLOCK_SAMPLES = BLOCK_FRAMES * 2;
+const JAM_RELEASE = 0xff, NOTE_C4 = 48;
 export const TABLE_NAMES = ["wave", "pulse", "filter", "speed"];
-// GoatTracker's notes: C-0 is 0
 const NOTE_NAMES = ["C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"];
 export const noteName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12)}`;
-// A GoatTracker Stereo song is refused by the packer's player (GT2_PLAY_ERR_STEREO)
 const PLAY_ERR = { "-1": "the subtune is not in the song", "-2": "a GoatTracker Stereo song (6 channels) has no preview yet", "-10": "multispeed above 4" };
 
-// platform/web/core_api.c's sc_edit operations
 export const EDIT = { INSTR: 0, TABLE: 1, ROW: 2, ORDER: 3, ORDER_INSERT: 4, ORDER_DELETE: 5, PUSH_ROW: 6, PULL_ROW: 7,
   INSERT_ROW: 8, DELETE_ROW: 9, RESIZE: 10, PATTERN_ADD: 11, PATTERN_REMOVE: 12 };
-// What each refusal means (gt2_err), the FM-1's own word first where its screen has one
-// (app/song_edit.c: SONG FULL, INVALID EDIT).
 export const EDIT_ERR = {
   1: "INVALID EDIT: out of range",
   2: "INVALID EDIT: a transpose cannot follow a repeat, and an orderlist ends with a pattern",
@@ -51,7 +38,6 @@ export class EditError extends Error {
     this.code = code;
   }
 }
-// A lock's parameter (song_ext.h's SONG_LOCK_*)
 export const LOCK_NAMES = ["CUTOFF", "RESONANCE", "FILTER MODE", "ROUTE", "PULSE", "AGE", "DAC", "THUMP", "BLEED", "CHANCE"];
 
 const text = (mem, ptr, max) => {
@@ -84,9 +70,6 @@ export class Core {
     };
   }
 
-  // Reads a .sng into the core. Resolves to the read's info ({ version, channels, trailer,
-  // message: a warning such as SNG: EXTRAS DROPPED, or "" }); a refused file throws a CoreError
-  // whose message is the device's (SNG: BAD PATTERNS, SNG: TOO BIG (70K OF 64K), ...).
   read(bytes) {
     if (bytes.length > this.x.sc_in_max()) throw new CoreError("SNG: TOO BIG");
     new Uint8Array(this.mem.buffer, this.x.sc_in(), bytes.length).set(bytes);
@@ -101,9 +84,6 @@ export class Core {
     if (!this.loaded) throw new CoreError("no song loaded");
   }
 
-  // The song as a .sng: with SIDOU's trailer (the FM-1's own save, the default), or plain
-  // GoatTracker. A plain file is read back as GoatTracker reads it; `warning` says when that gives
-  // another channel count (SNG: READS BACK AS STEREO / MONO: only the trailer told them apart).
   write({ trailer = true } = {}) {
     this.#need();
     const n = this.x.sc_write(trailer ? 1 : 0);
@@ -117,7 +97,6 @@ export class Core {
     return { bytes, warning };
   }
 
-  // Instrument i (1-63) as a GoatTracker GTI5 instrument file, its tables with it.
   exportInstrument(i) {
     this.#need();
     const n = this.x.sc_export_instrument(i);
@@ -125,7 +104,6 @@ export class Core {
     return new Uint8Array(this.mem.buffer, this.x.sc_out(), n).slice();
   }
 
-  // The loaded song for display: strings, instruments, tables, orderlists and patterns.
   song() {
     this.#need();
     const x = this.x, mem = this.mem;
@@ -164,41 +142,27 @@ export class Core {
     };
   }
 
-  // ---- Edits: the FM-1's own primitives (gt2_song.h), so a refusal is the FM-1's. Each throws an
-  // EditError (its code a gt2_err) and changes nothing then.
-
   edit(op, a = 0, b = 0, c = 0, d = 0) {
     this.#need();
     const r = this.x.sc_edit(op, a, b, c, d >>> 0);
     if (r !== 0) throw new EditError(r);
   }
 
-  // Instrument i (1-63), byte field (0-8 the parameters, 9-24 the name).
   setInstrument(i, field, value) { this.edit(EDIT.INSTR, i, field, value); }
-  // Table t (0 wave, 1 pulse, 2 filter, 3 speed), row 0-254, side 0 left or 1 right.
   setTable(t, row, side, value) { this.edit(EDIT.TABLE, t, row, side, value); }
-  // A pattern row's four bytes: note, instrument, command, parameter.
   setRow(p, row, cell) { this.edit(EDIT.ROW, p, row, 0, cell[0] | (cell[1] << 8) | (cell[2] << 16) | (cell[3] << 24)); }
-  // An orderlist entry (pos === entries: the restart position).
   setOrder(subtune, channel, pos, value) { this.edit(EDIT.ORDER, subtune, channel, pos, value); }
   insertOrder(subtune, channel, pos, value) { this.edit(EDIT.ORDER_INSERT, subtune, channel, pos, value); }
   deleteOrder(subtune, channel, pos) { this.edit(EDIT.ORDER_DELETE, subtune, channel, pos); }
-  // TRACKER's INS and DEL: the pattern keeps its length (push drops the last row, pull adds an
-  // empty one at the end); the rows' locks move with them.
   pushRow(p, row) { this.edit(EDIT.PUSH_ROW, p, row); }
   pullRow(p, row) { this.edit(EDIT.PULL_ROW, p, row); }
-  // A row inserted or deleted, the pattern a row longer or shorter.
   insertRow(p, row) { this.edit(EDIT.INSERT_ROW, p, row); }
   deleteRow(p, row) { this.edit(EDIT.DELETE_ROW, p, row); }
   resizePattern(p, rows) { this.edit(EDIT.RESIZE, p, rows); }
-  // A new empty pattern of `rows` rows: the lowest number free; returns it.
   addPattern(rows = 64) { this.edit(EDIT.PATTERN_ADD, rows); return this.x.sc_added(); }
-  // A pattern no orderlist plays.
   removePattern(p) { this.edit(EDIT.PATTERN_REMOVE, p); }
-  // The song as the FM-1 saves it, in bytes (trailer included); the cap is 65,536.
   get savedBytes() { return this.loaded ? this.x.sc_song_word(4) : 0; }
 
-  // A row's parameter locks: [{ param, name, value }].
   locks(p, row) {
     this.#need();
     const n = this.x.sc_locks_row(p, row);
@@ -206,18 +170,15 @@ export class Core {
     return Array.from({ length: n }, (_, k) => ({ param: b[k * 5 + 2], name: LOCK_NAMES[b[k * 5 + 2]] ?? "?", value: b[k * 5 + 3] | (b[k * 5 + 4] << 8) }));
   }
 
-  // Instrument i (1-63): its 25 bytes, the name's 16 last (a free one is all zeros).
   instrument(i) {
     this.#need();
     return Array.from(new Uint8Array(this.mem.buffer, this.x.sc_instrument(i), 25));
   }
-  // Table t's 255 rows, left and right, and how many the song saves.
   table(t) {
     this.#need();
     const side = (k) => Array.from(new Uint8Array(this.mem.buffer, this.x.sc_table(t, k), 255));
     return { rows: this.x.sc_table_rows(t), left: side(0), right: side(1) };
   }
-  // Pattern p (0-207): null if the song does not hold it, else its rows (4 bytes each).
   pattern(p) {
     this.#need();
     const ptr = this.x.sc_pattern(p);
@@ -226,7 +187,6 @@ export class Core {
     const d = new Uint8Array(this.mem.buffer, ptr, rows * 4);
     return Array.from({ length: rows }, (_, r) => Array.from(d.subarray(r * 4, r * 4 + 4)));
   }
-  // The patterns the song holds, by number.
   heldPatterns() {
     this.#need();
     const out = [];
@@ -234,7 +194,6 @@ export class Core {
     return out;
   }
 
-  // The whole song's state, for an undo, and back.
   snapshot() {
     this.#need();
     return new Uint8Array(this.mem.buffer, this.x.sc_region(), this.x.sc_region_bytes()).slice();
@@ -247,13 +206,13 @@ export class Core {
   get sampleRate() { return this.x.sc_rate(); }
 
   #pcm(seconds) {
-    const blocks = Math.ceil((seconds * this.sampleRate) / 128);
-    const out = new Int16Array(blocks * 128);
-    const max = this.x.sc_pcm_max() / 128;
+    const blocks = Math.ceil((seconds * this.sampleRate) / BLOCK_FRAMES);
+    const out = new Int16Array(blocks * BLOCK_FRAMES);
+    const max = this.x.sc_pcm_max() / BLOCK_FRAMES;
     for (let done = 0; done < blocks;) {
       const n = this.x.sc_render(Math.min(max, blocks - done));
-      out.set(new Int16Array(this.mem.buffer, this.x.sc_pcm(), n), done * 128);
-      done += n / 128;
+      out.set(new Int16Array(this.mem.buffer, this.x.sc_pcm(), n), done * BLOCK_FRAMES);
+      done += n / BLOCK_FRAMES;
     }
     return out;
   }
@@ -264,65 +223,52 @@ export class Core {
     return new CoreError(`no preview: ${msg}`, e);
   }
 
-  // ---- Streaming (the editor's AudioWorklet): start something, then take blocks of it.
-  // The song (a subtune from orderlist position `pos` of each voice).
   play(subtune = 0, pos = 0) {
     this.#need();
     if (!this.x.sc_play_from(subtune, pos)) throw this.#refused();
   }
-  // Pattern p over and over on voice `channel` (0-2), the others muted; the song is untouched.
   playPattern(p, channel = 0) {
     this.#need();
     if (!this.x.sc_play_pattern(p, channel)) throw this.#refused();
   }
-  // The song stopped, the instruments playable at notes (jam).
   audition() {
     this.#need();
     if (!this.x.sc_audition()) throw new CoreError("no preview: the audition did not start");
   }
-  // Voice v plays note (0 C-0 .. 95) with instrument i; note null lets it go.
-  jam(voice, note, i = 0) { return this.x.sc_jam(voice, note ?? 0xff, i) !== 0; }
+  jam(voice, note, i = 0) { return this.x.sc_jam(voice, note ?? JAM_RELEASE, i) !== 0; }
   stop() { this.x.sc_stop(); }
-  // The next `blocks` blocks of 128 samples through the effect slots: interleaved stereo.
   renderBlocks(blocks) {
     const n = this.x.sc_render_out(blocks);
     return new Int16Array(this.mem.buffer, this.x.sc_pcm_out(), n * 2).slice();
   }
 
-  // `seconds` of whatever was started, through the effect slots: interleaved stereo PCM.
   renderOut(seconds) {
-    const blocks = Math.ceil((seconds * this.sampleRate) / 128);
-    const out = new Int16Array(blocks * 256);
-    const max = this.x.sc_pcm_max() / 128;
+    const blocks = Math.ceil((seconds * this.sampleRate) / BLOCK_FRAMES);
+    const out = new Int16Array(blocks * STEREO_BLOCK_SAMPLES);
+    const max = this.x.sc_pcm_max() / BLOCK_FRAMES;
     for (let done = 0; done < blocks;) {
       const k = Math.min(max, blocks - done);
-      out.set(this.renderBlocks(k), done * 256);
+      out.set(this.renderBlocks(k), done * STEREO_BLOCK_SAMPLES);
       done += k;
     }
     return out;
   }
 
-  // The song (a subtune from its start) through the FM-1's player and SID: mono 16-bit PCM at
-  // sampleRate (the device's 44,118 Hz), `seconds` long: chip A, before the effect slots.
   renderSong({ subtune = 0, pos = 0, seconds = 10 } = {}) {
     this.play(subtune, pos);
     return this.#pcm(seconds);
   }
 
-  // Pattern p on voice `channel` (mono, chip A).
   renderPattern(p, { channel = 0, seconds = 2 } = {}) {
     this.playPattern(p, channel);
     return this.#pcm(seconds);
   }
 
-  // Instrument i (1-63) at a note (0 C-0 .. 95; 48 is C-4) on voice 1 with the song stopped,
-  // held for `hold` seconds and released, `seconds` long in all.
-  renderInstrument(i, { note = 48, hold = 0.5, seconds = 1.5 } = {}) {
-    this.#need();
-    if (!this.x.sc_audition()) throw new CoreError("no preview: the audition did not start");
+  renderInstrument(i, { note = NOTE_C4, hold = 0.5, seconds = 1.5 } = {}) {
+    this.audition();
     if (!this.x.sc_jam(0, note, i)) throw new CoreError("no preview: the note was refused");
     const held = this.#pcm(hold);
-    this.x.sc_jam(0, 0xff, 0);
+    this.x.sc_jam(0, JAM_RELEASE, 0);
     const rest = this.#pcm(Math.max(0, seconds - hold));
     const out = new Int16Array(held.length + rest.length);
     out.set(held);

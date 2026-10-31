@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Songs page: Web MIDI (SysEx) to a connected FM-1, the songs from songs/*.sng, one PUT each
-// through sysex.js. Nothing is sent before the Connect button, and only to the port pair selected.
 import { Client, crc32 } from "./sysex.js";
 
 const DEVICE_PORT = "SIDOU FM-1";
-// name: the store file's name (a title, <= 16 characters in 20-5F); about: one line of its .md
 const SONGS = [
   { file: "chrome-comet.sng", name: "CHROME COMET",
     about: "Mid-eighties game music in D minor at 150 BPM: bouncing pulse bass, a chirping lead, laser zaps and multiplexed drums. 80 s." },
@@ -147,7 +144,6 @@ function showFiles() {
   }
 }
 
-// What a send of `songs` would overwrite: same name, different bytes.
 async function plan(songs) {
   const todo = [], same = [], replace = [];
   for (const song of songs) {

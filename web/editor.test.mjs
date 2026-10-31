@@ -1,15 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The song editor's work in plain Node (web/song-edit.js and the wasm core's edits and previews,
-// web/core.js), against what the host build of the same C makes (web/core-fixtures.json's
-// "editor", host/crates/sidou-tests/tests/web_core.rs): a script of edits through the FM-1's own
-// primitives, refusals among them, each step's .sng byte for byte; both save-size refusals; the
-// parameter locks following the rows; undo and redo; the previews' samples (the song from an
-// orderlist position through the effect slots, a pattern on one voice, an instrument at a note);
-// the FM-1's words for cells, orderlist entries and table rows; then saving to a simulated FM-1
-// (web/fake-fm1.mjs: PUT target 0 with the overwrite check, PUT target 2 and SAVE AS FIRST).
-// Opens no MIDI port.
-//   node web/editor.test.mjs [sidou-core.wasm]    (tools/web-demo --check runs it)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -83,15 +73,15 @@ await test("parameter locks follow the rows: INS, DEL, a row inserted or deleted
   const at = (row) => core.locks(P, row).map((l) => `${l.name}=${l.value}`).join(",");
   assert.equal(at(4), "CUTOFF=900,AGE=100");
   assert.equal(at(10), "PULSE=2048");
-  core.pushRow(P, 2); // TRACKER's INS above them: they move down a row
+  core.pushRow(P, 2);
   assert.deepEqual([at(4), at(5), at(11)], ["", "CUTOFF=900,AGE=100", "PULSE=2048"]);
-  core.pullRow(P, 5); // DEL on the locked row: its locks go, the rest move up
+  core.pullRow(P, 5);
   assert.deepEqual([at(5), at(10), at(11)], ["", "PULSE=2048", ""]);
   core.insertRow(P, 0);
   assert.equal(at(11), "PULSE=2048");
   core.deleteRow(P, 0);
   assert.equal(at(10), "PULSE=2048");
-  core.resizePattern(P, 8); // cut: the locks past the end go
+  core.resizePattern(P, 8);
   assert.equal(at(10), "");
   core.resizePattern(P, 32);
   assert.equal(at(10), "", "and do not come back");
@@ -134,7 +124,6 @@ await test("the previews' samples are the host build's", () => {
   const before = core.write().bytes;
   core.renderPattern(P, { channel: 0, seconds: 0.1 });
   assert.deepEqual(core.write().bytes, before, "a pattern's preview leaves the song as it was");
-  // an effect slot is heard: the output's two sides differ (the chorus spreads it)
   core.play(0, 0);
   const lr = core.renderOut(1);
   let diff = 0;
@@ -188,13 +177,11 @@ await test("saving to the FM-1: a named file (the overwrite check), and Load now
   assert.equal(await s.saveToFm1(lib, "COMET"), "same", "identical: nothing sent");
   assert.equal(await s.saveToFm1(lib, "NEW ONE"), "sent");
   assert.equal(lib.find("NEW ONE").crc, crc32(s.bytes()));
-  // Load now: the FM-1's current song from now on, as GET target 2 reads it
   s.apply("instrument", (c) => c.setInstrument(1, 0, 0x22));
   await s.loadNow(client);
   assert.deepEqual(device.current, s.bytes());
   assert.deepEqual(await client.get({ target: 2 }), s.bytes());
   assert.equal(device.sent.filter((h) => h.startsWith("f07d534404")).length, 3, "three PUTs in all");
-  // SAVE AS FIRST: BUSY at once, no retry
   device.saveAsFirst = true;
   const puts = device.sent.length;
   await assert.rejects(() => s.loadNow(client), (e) => e.nak === 4);

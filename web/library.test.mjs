@@ -1,9 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The Library page's store work (web/store.js) and its .zip (web/zip.js) in plain Node, against a
-// simulated FM-1 (web/fake-fm1.mjs): list, download, send with the overwrite check, delete,
-// rename, back up and restore, and the refusals. Opens no MIDI port.
-//   node web/library.test.mjs        (tools/web-demo --check runs it)
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -132,7 +128,6 @@ await test("backup and restore round trip: names, types and bytes come back, pri
   const entries = await unzip(b.bytes);
   assert.deepEqual(entries.map((e) => e.name), [MANIFEST, "CHROME COMET.sng", "SANCTION.sid", "LIFTED SOUND.ins"]);
   assert.ok(!entries.some((e) => /MIDI (SONG|INSTRUMENT)/.test(e.name)));
-  // onto an empty FM-1
   const empty = fm1();
   await empty.lib.refresh();
   const done = await empty.lib.restore(b.bytes);
@@ -141,7 +136,6 @@ await test("backup and restore round trip: names, types and bytes come back, pri
     assert.deepEqual(empty.device.stored.get(f.name), await lib.download(f.name), f.name);
     assert.equal(empty.lib.find(f.name).type, f.type);
   }
-  // again: all identical, nothing sent
   const before = empty.device.sent.length;
   const again = await empty.lib.restore(b.bytes);
   assert.deepEqual([again.sent, again.same], [[], ["CHROME COMET", "SANCTION", "LIFTED SOUND"]]);
@@ -191,7 +185,6 @@ await test("the .zip opens in unzip, and a deflated .zip reads too", async () =>
       execFileSync("unzip", ["-q", join(dir, "t.zip"), "-d", join(dir, "out")]);
       assert.deepEqual(Uint8Array.from(readFileSync(join(dir, "out", "CHROME COMET.sng"))), comet);
     }
-    // deflated by Python's zipfile (what a person's own zip tool might make)
     let python = true;
     try {
       execFileSync("python3", ["-I", "-c", "import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED) as z: z.write(sys.argv[2],'x.sng')", join(dir, "d.zip"), `${here}../assets/songs/chrome-comet.sng`]);
