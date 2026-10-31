@@ -30,33 +30,39 @@ pub fn read(path: &Path, what: &str) -> Vec<u8> {
         .unwrap_or_else(|e| panic!("read {what} {}: {e}; build the fm1 preset", path.display()))
 }
 
-/// One instruction through fm1-core's step. Panics on a fault.
+/// One instruction through fm1-core's step, on the FM-1's alignment rule (`AlignBus`).
+/// Panics on a fault, the emulator's or the chip's.
 pub fn step(cpu: &mut Cpu, soc: &mut Soc) {
     let pc = cpu.pc;
-    cpu.step(soc)
+    cpu.step(&mut AlignBus { soc, pc })
         .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
 }
 
-/// A misaligned access the FM-1 faults on: (pc, address, bytes).
-pub type Misaligned = (u32, u32, u8);
-
-/// The FM-1's alignment rule over fm1-emu's bus: on the chip a 16- or 32-bit RAM access at an
-/// address that is not a multiple of its size faults, always (fm1-emu's paper, "Misaligned
-/// 16/32-bit RAM access": the `align` probe); fm1-emu carries it out. This bus does too, and
-/// records each one.
+/// fm1-emu's bus with the FM-1's alignment rule (docs/design-notes.md, Hardware): a 16- or
+/// 32-bit RAM access at an address that is not a multiple of its size panics, as the chip
+/// faults on it where fm1-emu carries it out.
 struct AlignBus<'a> {
     soc: &'a mut Soc,
     pc: u32,
-    seen: &'a mut Vec<Misaligned>,
 }
 
 impl AlignBus<'_> {
-    fn check(&mut self, addr: u32, bytes: u8) {
-        let ram = fm1_soc::RAM_BASE..fm1_soc::RAM_BASE + RAM_SIZE as u32;
-        if !addr.is_multiple_of(u32::from(bytes)) && ram.contains(&addr) {
-            self.seen.push((self.pc, addr, bytes));
+    #[inline(always)]
+    fn check(&self, addr: u32, bytes: u32) {
+        if addr & (bytes - 1) != 0 {
+            misaligned(self.pc, addr, bytes);
         }
     }
+}
+
+#[cold]
+#[inline(never)]
+fn misaligned(pc: u32, addr: u32, bytes: u32) {
+    let ram = fm1_soc::RAM_BASE..fm1_soc::RAM_BASE + RAM_SIZE as u32;
+    assert!(
+        !ram.contains(&addr),
+        "pc {pc:#010x}: a {bytes}-byte RAM access at {addr:#010x}, which the FM-1 faults on"
+    );
 }
 
 impl Bus for AlignBus<'_> {
@@ -330,10 +336,6 @@ pub struct Machine {
     /// With true, `run_cycles` stops at a reset that is due instead of carrying it out, so a
     /// test sees the chip as it asked for it (`reset_due`); `reset` then carries it out.
     pub stop_at_reset: bool,
-    /// With true, `run_cycles` records in `misaligned` each 16- or 32-bit RAM access the FM-1
-    /// would fault on (`AlignBus`): fm1-emu carries them out.
-    pub align_check: bool,
-    pub misaligned: Vec<Misaligned>,
 }
 
 /// P33 `RST_SRC`'s causes (fm1-soc p33.rs): the watchdog ran out, or PR_PWR (fm1_reboot).
@@ -644,8 +646,6 @@ impl Machine {
             jit_tick: false,
             resets: Vec::new(),
             stop_at_reset: false,
-            align_check: false,
-            misaligned: Vec::new(),
         }
     }
 
@@ -898,17 +898,7 @@ impl Machine {
             }
             feed_trs(&mut self.trs_at, soc);
             let (pc, skipped) = (cpu.pc, soc.periph.skipped);
-            if self.align_check {
-                let mut bus = AlignBus {
-                    soc,
-                    pc,
-                    seen: &mut self.misaligned,
-                };
-                cpu.step(&mut bus)
-                    .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
-            } else {
-                step(cpu, soc);
-            }
+            step(cpu, soc);
             if !in_isr && soc.periph.skipped != skipped {
                 *self.idles.entry(pc).or_insert(0) += 1;
             }
