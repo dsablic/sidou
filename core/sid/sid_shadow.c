@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* Main-loop code, from flash: the envelope tables it reads stay there (sid_env.h). */
 #define SID_ENV_TABLES_IN_FLASH
+#define SID_VOICE_FAR
 #include "sid_shadow.h"
 
 #include <string.h>

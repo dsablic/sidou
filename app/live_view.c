@@ -52,8 +52,6 @@ _Static_assert(LIVE_VIEW_ARP_ROW >= LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS &&
                "the arpeggio's badge is under the band");
 _Static_assert(SCOPE_VOICES == LIVE_VOICES, "a scope per voice");
 
-static const char* const NOTE_NAMES[12] = {"C-", "C#", "D-", "D#", "E-", "F-",
-                                           "F#", "G-", "G#", "A-", "A#", "B-"};
 static const char* const MODE_NAMES[8] = {"OFF", "LP",    "BP",    "LP+BP",
                                           "HP",  "NOTCH", "BP+HP", "ALL"};
 
@@ -551,8 +549,8 @@ static void note_text(const live_view* lv, uint32_t v, char note[4]) {
     note[0] = note[1] = note[2] = '-';
     note[3] = 0;
     if (voice_control(lv->l, v) && x->note != LIVE_NO_NOTE) {
-        note[0] = NOTE_NAMES[x->note % 12u][0];
-        note[1] = NOTE_NAMES[x->note % 12u][1];
+        note[0] = screen_note_names[x->note % 12u][0];
+        note[1] = screen_note_names[x->note % 12u][1];
         note[2] = x->note < 12u ? '-' : (char)('0' + x->note / 12u - 1u);
     }
 }

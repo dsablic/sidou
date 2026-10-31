@@ -42,8 +42,6 @@ static const uint16_t DRUM_KICK[SONG_DICE_RHYTHMS] = {0x0101, 0x0101, 0x0909, 0x
 static const uint16_t DRUM_SNARE[SONG_DICE_RHYTHMS] = {0x1010, 0x1010, 0x4040, 0x0000, 0x1010};
 /* GoatTracker's WAVETABLE POINTER command, the chords'. */
 #define CMD_WAVEPTR 0x08u
-static const char NOTE_NAMES[12][3] = {"C-", "C#", "D-", "D#", "E-", "F-",
-                                       "F#", "G-", "G#", "A-", "A#", "B-"};
 
 /* DICE's scales (0 is the minor pentatonic it always rolled): the length, then the semitones
  * above the root. */
@@ -560,37 +558,31 @@ void song_gen_drain(song_view* sv, screen* s) {
 
 void song_gen_stop(song_view* sv) {
     sv->gen.run = 0u;
-    sv->gen.scl_down = sv->gen.scl_spoiled = sv->gen.arp_alone = sv->gen.lfo_alone = 0u;
+    sv->gen.scl_down = sv->gen.scl_spoiled = 0u;
+    sv->gen.lone.waiting = SCREEN_LONE_NONE;
 }
 
-/* ---- the chord ---- */
-
-void song_gen_scl_alone(song_view* sv) {
-    if (sv->gen.scl_down == SONG_GEN_SCL_ALONE) {
-        sv->gen.scl_down = 0u;
-        live_fx_select_next(sv->l);
+uint32_t song_gen_lone_chord(song_view* sv, const screen_event* e) {
+    uint32_t chord = screen_lone_chord(&sv->gen.lone, e);
+    if (chord == PANEL_BTN_SCL) {
+        sv->gen.scl_down = 1u;
+        sv->gen.scl_spoiled = 0u;
     }
+    return chord;
 }
 
 int song_gen_press(song_view* sv, uint32_t id, int edit, int free) {
     song_gen* g = &sv->gen;
-    if (g->scl_down == SONG_GEN_SCL_ALONE) {
-        if (id == PANEL_BTN_EDIT) {
-            g->scl_down = SONG_GEN_SCL_CHORD; /* EDIT after SCL: the same chord */
-            g->scl_spoiled = 0u;
-            return 1;
-        }
-        song_gen_scl_alone(sv); /* another button: SCL was alone */
-    }
     if (g->scl_down && id != PANEL_BTN_SCL) {
-        g->scl_spoiled = 1u; /* another button: a combination of its own, which does nothing */
+        g->scl_spoiled = 1u;
         return 1;
     }
     if (free && id == PANEL_BTN_SCL) {
-        /* With EDIT: DICE rolls at SCL's release, unless a knob is turned first. Alone: it waits
-         * for EDIT a while (a hand's two fingers rarely land together). */
-        g->scl_down = edit ? SONG_GEN_SCL_CHORD : SONG_GEN_SCL_ALONE;
+        g->scl_down = (uint8_t)edit;
         g->scl_spoiled = 0u;
+        if (!edit) {
+            screen_lone_wait(&g->lone, id, SCREEN_LONE_HELD_BACK);
+        }
         return 1;
     }
     return 0;
@@ -599,10 +591,6 @@ int song_gen_press(song_view* sv, uint32_t id, int edit, int free) {
 int song_gen_release(song_view* sv, uint32_t held) {
     song_gen* g = &sv->gen;
     if (!g->scl_down || held >> PANEL_BTN_SCL & 1u) {
-        return 0;
-    }
-    if (g->scl_down == SONG_GEN_SCL_ALONE) {
-        song_gen_scl_alone(sv);
         return 0;
     }
     int roll = !g->scl_spoiled;
@@ -646,7 +634,7 @@ static void role_turn(song_view* sv, screen* s, int32_t steps) {
 }
 
 int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
-    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD) {
+    if (!sv->gen.scl_down) {
         return 0;
     }
     if (enc == SONG_GEN_ENC_ROLE) {
@@ -672,23 +660,14 @@ int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
     return 1;
 }
 
-static void copy_text(char out[SCREEN_POPUP_TEXT], const char* text) {
-    uint32_t n = 0u;
-    while (n < SCREEN_POPUP_TEXT - 1u && text[n]) {
-        n++;
-    }
-    memcpy(out, text, n);
-    out[n] = 0;
-}
-
 int song_gen_popup(const song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEXT],
                    char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
-    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD) {
+    if (!sv->gen.scl_down) {
         return 0;
     }
     if (enc == SONG_GEN_ENC_ROLE) {
-        copy_text(name, "ROLE");
-        copy_text(value, ROLE_NAMES[song_gen_role(sv, sv->voice)]);
+        screen_popup_copy(name, "ROLE");
+        screen_popup_copy(value, ROLE_NAMES[song_gen_role(sv, sv->voice)]);
         *fill = role_place(sv);
         *max = SONG_ROLES - 1u;
         return 1;
@@ -699,15 +678,15 @@ int song_gen_popup(const song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEX
     uint32_t k = enc - PANEL_ENC_K1;
     song_dice d;
     song_gen_dice(sv, &d);
-    copy_text(name, DICE_NAMES[k]);
-    copy_text(value, dice_text(&d, k, sv->voice));
+    screen_popup_copy(name, DICE_NAMES[k]);
+    screen_popup_copy(value, dice_text(&d, k, sv->voice));
     *fill = *dice_field(&d, k, sv->voice);
     *max = DICE_TOPS[k];
     return 1;
 }
 
 uint32_t song_gen_keys(song_view* sv, uint32_t down, uint32_t pressed) {
-    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD) {
+    if (!sv->gen.scl_down) {
         return 0u;
     }
     for (uint32_t k = 0; pressed >> k; k++) {
@@ -725,13 +704,6 @@ uint32_t song_gen_keys(song_view* sv, uint32_t down, uint32_t pressed) {
 /* ---- the frame ---- */
 
 typedef song_view_canvas canvas;
-
-static void small(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
-    for (; *s && col < GRID_COLS; s++, col++) {
-        c->ch[row][col] = (uint8_t)*s;
-        c->attr[row][col] = a;
-    }
-}
 
 static void put(canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t a) {
     c->ch[row][col] = ch;
@@ -763,31 +735,31 @@ void song_gen_frame(song_view* sv, uint32_t top) {
     put(c, GRID_COLS - 1u, top, FONT_ROUND_TR, frame);
     put(c, 0, bottom, FONT_ROUND_BL, frame);
     put(c, GRID_COLS - 1u, bottom, FONT_ROUND_BR, frame);
-    small(c, 2, top, " DICE - LET GO TO ROLL ", THEME_ATTR(th, hot));
+    grid_canvas_text(c, 2, top, " DICE - LET GO TO ROLL ", THEME_ATTR(th, hot));
     for (uint32_t k = 0; k < 4u; k++) {
         uint32_t r = top + 1u + 2u * k;
         uint8_t a = drums && (k == 1u || k == 2u) ? THEME_ATTR(th, dim)
                                                   : GRID_ATTR(th->knob_text[k], th->bg);
         char tag[3] = {'K', (char)('1' + k), 0};
-        small(c, 2, r, tag, THEME_ATTR(th, hint));
-        small(c, 2, r + 1u, DICE_LABELS[k], a);
+        grid_canvas_text(c, 2, r, tag, THEME_ATTR(th, hint));
+        grid_canvas_text(c, 2, r + 1u, DICE_LABELS[k], a);
         (void)grid_canvas_text_big(c, 11, r, 2, dice_text(&d, k, v), a);
     }
     uint32_t root = sv->gen.root[v];
-    char nn[4] = {NOTE_NAMES[root % 12u][0], NOTE_NAMES[root % 12u][1],
-                  (char)('0' + root / 12u % 10u), 0};
-    small(c, 2, top + 10u, "ROOT", THEME_ATTR(th, label));
+    char nn[4];
+    screen_note_text(root, nn);
+    grid_canvas_text(c, 2, top + 10u, "ROOT", THEME_ATTR(th, label));
     (void)grid_canvas_text_big(c, 11, top + 9u, 2, nn, THEME_ATTR(th, value));
     /* the lane's role beside it, PRESETS's (small: its popup says it large) */
-    small(c, 19, top + 9u, "PRE", THEME_ATTR(th, hint));
-    small(c, 23, top + 9u, "ROLE", THEME_ATTR(th, label));
-    small(c, 19, top + 10u, ROLE_NAMES[song_gen_role(sv, v)], THEME_ATTR(th, value));
+    grid_canvas_text(c, 19, top + 9u, "PRE", THEME_ATTR(th, hint));
+    grid_canvas_text(c, 23, top + 9u, "ROLE", THEME_ATTR(th, label));
+    grid_canvas_text(c, 19, top + 10u, ROLE_NAMES[song_gen_role(sv, v)], THEME_ATTR(th, value));
     sv->dirty |= ((1u << SONG_GEN_FRAME_ROWS) - 1u) << top;
 }
 
 int song_gen_look(const song_view* sv, uint8_t out[SONG_GEN_LOOK]) {
     memset(out, 0, SONG_GEN_LOOK);
-    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD) {
+    if (!sv->gen.scl_down) {
         return 0;
     }
     song_dice d;

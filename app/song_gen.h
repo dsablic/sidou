@@ -22,9 +22,8 @@
  * effect slot (as everywhere) at its release or as soon as another control is used. While the
  * chord is held K1-K4 set the density, the range, the selected lane's scale and the rhythm, a
  * note key the lane's root; a knob turned or another button pressed spoils the roll at SCL's
- * release; PRESETS sets the selected lane's role (the SCNE chunk). EDIT + ARP is MUTATE whichever lands first too: a view holds ARP's lone action back
- * (song_gen.arp_alone) while EDIT may still arrive; TRACKER holds LFO's back the same way
- * (song_gen.lfo_alone), as EDIT + LFO is undo.
+ * release; PRESETS sets the selected lane's role (the SCNE chunk). EDIT + ARP is MUTATE and
+ * EDIT + LFO undo whichever lands first too (song_gen.lone, screen_lone).
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_SONG_GEN_H
@@ -44,8 +43,6 @@ struct song_pages;
 
 /* A run's kind (song_gen.run; 0: none). */
 enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP };
-/* SCL's hold (song_gen.scl_down): with EDIT, or alone waiting for it. */
-enum { SONG_GEN_SCL_CHORD = 1, SONG_GEN_SCL_ALONE = 2 };
 /* The lanes, a root each. */
 #define SONG_GEN_LANES 3u
 /* The settings frame's rows (song_gen_frame), and the bytes of its look (song_gen_look). */
@@ -67,12 +64,7 @@ typedef struct {
     uint8_t root[SONG_GEN_LANES]; /* each lane's note, 0..95 (C-3, 36, by default) */
     const uint8_t* gate;          /* STEP's lanes' gate (bit v legato), NULL: staccato */
     uint8_t scl_down, scl_spoiled;
-    /* ARP pressed alone and still down, its lone action held back (STEP's gate, TRACKER's key
-     * off with REC on): EDIT pressed now is MUTATE, whichever finger lands first. The view does
-     * the lone action at ARP's release or as soon as another control is used. */
-    uint8_t arp_alone;
-    /* The same for LFO (TRACKER's rest with REC on): EDIT + LFO is undo, whichever lands first. */
-    uint8_t lfo_alone;
+    screen_lone lone;
     /* The run: its kind, its pattern and rows, the lane, the next row (or MUTATE's count), the
      * lane's instrument and gate, whether it is the song's drums, DICE's settings as it started,
      * the sweep's direction, the seed its random is made from. */
@@ -127,8 +119,7 @@ void song_gen_stop(struct song_view* sv);
 int song_gen_press(struct song_view* sv, uint32_t id, int edit, int free);
 /* The buttons held, once a pass while SCL is down: 1 when the chord's release is a roll. */
 int song_gen_release(struct song_view* sv, uint32_t held);
-/* SCL that was down alone: the next effect slot, and no chord now. */
-void song_gen_scl_alone(struct song_view* sv);
+uint32_t song_gen_lone_chord(struct song_view* sv, const screen_event* e);
 /* A view's knob turn: K1-K4 while the chord is held set DICE's settings. 1: taken. */
 int song_gen_turn(struct song_view* sv, screen* s, uint32_t enc, int32_t steps);
 /* The popup of K1-K4 while the chord is held (screen_popup_fn's text). 0: not the chord's. */

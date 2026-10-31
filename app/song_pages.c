@@ -234,14 +234,6 @@ static uint8_t popup_byte(const song_pages* p, uint32_t kind, uint32_t index, ui
     return current;
 }
 
-static void popup_text(char out[SCREEN_POPUP_TEXT], const char* text) {
-    uint32_t n = 0u;
-    while (n < SCREEN_POPUP_TEXT - 1u && text[n])
-        n++;
-    memcpy(out, text, n);
-    out[n] = 0;
-}
-
 /* The waveforms the helper offers, as the control byte's top nibble (triangle, sawtooth, pulse,
  * noise, then the combined ones; the low nibble, the gate and its sync and ring bits, stays). */
 #define ARP_SHAPES 8u
@@ -266,17 +258,11 @@ static void arp_wave_name(uint8_t wave, char out[SCREEN_POPUP_TEXT]) {
         hex2(wave, out);
 }
 
-/* A number into popup text, with its sign when `sign` or negative. */
 static void arp_num(char out[SCREEN_POPUP_TEXT], int32_t v, int sign) {
-    uint32_t n = 0u, a = (uint32_t)(v < 0 ? -v : v);
+    uint32_t n = 0u;
     if (v < 0 || sign)
         out[n++] = v < 0 ? '-' : '+';
-    if (a >= 100u)
-        out[n++] = (char)('0' + a / 100u);
-    if (a >= 10u)
-        out[n++] = (char)('0' + a / 10u % 10u);
-    out[n++] = (char)('0' + a % 10u);
-    out[n] = 0;
+    (void)screen_decimal(out + n, (uint32_t)(v < 0 ? -v : v));
 }
 
 /* The helper's controls' popups: the offset, the speed, the loop step (HOLD for none) and the
@@ -301,7 +287,7 @@ static int arp_popup(const song_pages* p, uint32_t encoder, char name[SCREEN_POP
         if (a->loop)
             arp_num(text, a->loop, 0);
         else
-            popup_text(text, "HOLD");
+            screen_popup_copy(text, "HOLD");
         *fill = a->loop;
         *max = a->steps;
     } else if (encoder == PANEL_ENC_ALGORITHM) {
@@ -317,8 +303,8 @@ static int arp_popup(const song_pages* p, uint32_t encoder, char name[SCREEN_POP
     } else {
         return 0;
     }
-    popup_text(name, label);
-    popup_text(value, text);
+    screen_popup_copy(name, label);
+    screen_popup_copy(value, text);
     return 1;
 }
 
@@ -361,7 +347,7 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
                     return 0;
                 label = entry < GT2_REPEAT ? "PATTERN" : entry < GT2_TRANSDOWN ? "REPEAT" : "TRANSPOSE";
                 if (encoder == SONG_PAGES_ENC_K2) {
-                    popup_text(text, label);
+                    screen_popup_copy(text, label);
                     label = "ORDER KIND";
                     hi = 0u;
                 } else if (entry < GT2_REPEAT) {
@@ -372,7 +358,7 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
                     lo = 1u;
                     hi = 16u;
                     if (v == 16u)
-                        popup_text(text, "R16");
+                        screen_popup_copy(text, "R16");
                     else
                         tracker_view_order_entry(entry, text);
                 } else {
@@ -404,7 +390,7 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
                     lo = 32u;
                     hi = 126u;
                     if (v == 32u)
-                        popup_text(text, "SPACE");
+                        screen_popup_copy(text, "SPACE");
                     else {
                         text[0] = text[2] = '\'';
                         text[1] = (char)v;
@@ -421,7 +407,7 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
             return 0;
         if (encoder == PANEL_ENC_ALGORITHM) {
             label = "TABLE";
-            popup_text(text, TABLE_NAMES[p->table]);
+            screen_popup_copy(text, TABLE_NAMES[p->table]);
             hi = 0u;
         } else {
             if (!sv->song || p->table_row >= GT2_TABLE_ROWS ||
@@ -438,8 +424,8 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
     }
     if (!text[0])
         hex2(v, text);
-    popup_text(name, label);
-    popup_text(value, text);
+    screen_popup_copy(name, label);
+    screen_popup_copy(value, text);
     *fill = hi > lo ? v - lo : 0u;
     *max = hi > lo ? hi - lo : 0u;
     return 1;
@@ -594,8 +580,6 @@ int song_pages_jump(song_pages* p, screen* s, const screen_event* e) {
 }
 
 void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char out[31]) {
-    static const char NOTES[12][3] = {"C-", "C#", "D-", "D#", "E-", "F-",
-                                     "F#", "G-", "G#", "A-", "A#", "B-"};
     const char* what;
     if (table != GT2_STBL && left == 0xffu)
         what = right ? "JUMP " : "STOP ";
@@ -620,8 +604,8 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     if (table == GT2_WTBL && left >= 0x10u && left < 0xf0u) {
         if (right > 0x80u && (right & 0x7fu) < 96u) {
             uint32_t note = right & 0x7fu;
-            out[n++] = NOTES[note % 12u][0];
-            out[n++] = NOTES[note % 12u][1];
+            out[n++] = screen_note_names[note % 12u][0];
+            out[n++] = screen_note_names[note % 12u][1];
             out[n++] = (char)('0' + note / 12u);
             out[n] = 0;
             return;
@@ -1031,17 +1015,6 @@ static int arp_input(song_pages* p, const screen_event* e) {
     return 1;
 }
 
-__attribute__((noinline, unused)) static void small(song_view_canvas* c, uint32_t col, uint32_t row,
-                                                 const char* text, uint8_t attr) {
-    if (col >= GRID_COLS)
-        return;
-    uint32_t n = 0u;
-    while (n < GRID_COLS - col && text[n])
-        n++;
-    memcpy(c->ch[row] + col, text, n);
-    memset(c->attr[row] + col, attr, n);
-}
-
 static void big(song_view_canvas* c, uint32_t col, uint32_t row, const char* text, uint8_t attr) {
     (void)grid_canvas_text_big(c, col, row, 2u, text, attr);
 }
@@ -1073,26 +1046,30 @@ static void build_head(song_pages* p) {
         char vn[3] = {'V', (char)('1' + sv->voice), 0};
         big(c, 12u, 0u, vn, GRID_ATTR(song_view_mute_mask(sv) >> sv->voice & 1u ?
                                     th->dim : th->voice[sv->voice], th->bg));
-        small(c, 0u, 2u, "SUBTUNE", THEME_ATTR(th, hint));
+        grid_canvas_text(c, 0u, 2u, "SUBTUNE", THEME_ATTR(th, hint));
         hex2(p->subtune + 1u, number);
-        small(c, 8u, 2u, number, GRID_ATTR(th->value, !p->order_cursor ? th->cursor : th->bg));
+        grid_canvas_text(c, 8u, 2u, number,
+                         GRID_ATTR(th->value, !p->order_cursor ? th->cursor : th->bg));
         uint32_t col = SONG_PAGES_OTHER_COL;
         for (uint32_t v = 0u; v < SONG_T_VOICES; v++) {
             if (v == sv->voice)
                 continue;
             char tag[3] = {'V', (char)('1' + v), 0};
-            small(c, col, 2u, tag, GRID_ATTR(song_view_mute_mask(sv) >> v & 1u ? th->dim : th->voice_text[v], th->bg));
+            grid_canvas_text(c, col, 2u, tag,
+                             GRID_ATTR(song_view_mute_mask(sv) >> v & 1u ? th->dim
+                                                                          : th->voice_text[v],
+                                       th->bg));
             col += SONG_PAGES_OTHER_STEP;
         }
     } else if (p->page == SONG_VIEW_INSTR) {
         hex2(sv->instr, number);
         big(c, 12u, 0u, number, GRID_ATTR(th->voice[sv->voice], th->bg));
-        small(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
+        grid_canvas_text(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
     } else {
         /* which knob turns which column, at 2x beside the name (the columns' colours) */
         if (p->arp) {
             big(c, 0u, 0u, "ARP   ", base); /* over the table's name */
-            small(c, 0u, 2u, "HEARING DRAFT", THEME_ATTR(th, hint)); /* the keys play it */
+            grid_canvas_text(c, 0u, 2u, "HEARING DRAFT", THEME_ATTR(th, hint));
         }
         big(c, 12u, 0u, "K1", GRID_ATTR(th->knob_text[0], th->bg));
         big(c, 17u, 0u, "K2", GRID_ATTR(th->knob_text[1], th->bg));
@@ -1108,14 +1085,14 @@ static void build_head(song_pages* p) {
             bpm /= 10u;
         }
     }
-    small(c, 26u, 0u, tempo, THEME_ATTR(th, label));
-    small(c, 26u, 1u, "BPM", THEME_ATTR(th, hint));
+    grid_canvas_text(c, 26u, 0u, tempo, THEME_ATTR(th, label));
+    grid_canvas_text(c, 26u, 1u, "BPM", THEME_ATTR(th, hint));
     if (sv->rec)
-        small(c, 22u, 1u, "REC", THEME_ATTR(th, alert));
+        grid_canvas_text(c, 22u, 1u, "REC", THEME_ATTR(th, alert));
     if (sv->solo >> sv->voice & 1u)
-        small(c, 18u, 1u, "SOL", base);
+        grid_canvas_text(c, 18u, 1u, "SOL", base);
     else if (sv->mute >> sv->voice & 1u)
-        small(c, 18u, 1u, "MUT", THEME_ATTR(th, alert));
+        grid_canvas_text(c, 18u, 1u, "MUT", THEME_ATTR(th, alert));
     sv->dirty |= 7u;
 }
 
@@ -1304,7 +1281,7 @@ static void build_footer(song_pages* p) {
     if (n <= GRID_COLS / 2u)
         big(&sv->cv, 0u, 28u, say, THEME_ATTR(th, hot));
     else
-        small(&sv->cv, 0u, 29u, say, THEME_ATTR(th, hot));
+        grid_canvas_text(&sv->cv, 0u, 29u, say, THEME_ATTR(th, hot));
     sv->dirty |= 7u << 27u;
 }
 

@@ -412,6 +412,10 @@ static inline uint32_t sid_env_run_linear(sid_env* e, uint32_t cycles) {
  * sequence at a time where it can, and the cycles around writes, state changes and
  * period changes one at a time. With may_rest, it ends with the envelope at rest
  * (`idle` or `dormant` set) when it can; without, it ends settled. */
+extern void (*const sid_env_run_far)(sid_env* e, uint32_t cycles, int may_rest);
+#ifdef SID_VOICE_FAR
+#define sid_env_run sid_env_run_far
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -480,6 +484,7 @@ static void sid_env_run(sid_env* e, uint32_t cycles, int may_rest) {
         --cycles;
     }
 }
+#endif
 
 /* At rest, sid_env_advance only counts `idle` down, and some fields are stale:
  * - idle (not dormant): the envelope is quiet and the LFSR reaches the rate in `idle`
@@ -538,6 +543,10 @@ static inline void sid_env_settle(sid_env* e) {
 }
 
 /* sid_env_advance's work when the envelope is not at rest, out of line. */
+extern void (*const sid_env_advance_slow_far)(sid_env* e, uint32_t cycles);
+#ifdef SID_VOICE_FAR
+#define sid_env_advance_slow sid_env_advance_slow_far
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline, unused))
 #endif
@@ -552,6 +561,7 @@ static void sid_env_advance_slow(sid_env* e, uint32_t cycles) {
     }
     sid_env_run(e, cycles, 1);
 }
+#endif
 
 /* For tests: 0 if the resting-mode invariants hold, else the number of the first that
  * fails. Nothing on the device calls it. */

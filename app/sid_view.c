@@ -72,28 +72,6 @@ static void copy_name(char* out, const char* in) {
     out[n] = 0;
 }
 
-/* n (any) in decimal into buf (11 characters). */
-static uint32_t decimal(char* buf, uint32_t n) {
-    char d[10];
-    uint32_t k = 0;
-    do {
-        d[k++] = (char)('0' + n % 10u);
-        n /= 10u;
-    } while (n);
-    for (uint32_t i = 0; i < k; i++) {
-        buf[i] = d[k - 1u - i];
-    }
-    buf[k] = 0;
-    return k;
-}
-
-static void small(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
-    for (; *s && col < GRID_COLS; s++, col++) {
-        c->ch[row][col] = (uint8_t)*s;
-        c->attr[row][col] = a;
-    }
-}
-
 static void big(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
     (void)grid_canvas_text_big(c, col, row, 2, s, a);
 }
@@ -174,7 +152,7 @@ static void line_1x(canvas* c, uint32_t row, const char* s, uint8_t a) {
         t[i] = shown(s[i]);
     }
     t[i] = 0;
-    small(c, 2, row, t, a);
+    grid_canvas_text(c, 2, row, t, a);
 }
 
 /* ---- the player ---- */
@@ -579,15 +557,15 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     }
     if (h) {
         char t[24] = "SONG ";
-        decimal(t + 5, song_of(st));
+        screen_decimal(t + 5, song_of(st));
         uint32_t n = length(t);
         t[n++] = '/';
-        decimal(t + n, h->songs);
+        screen_decimal(t + n, h->songs);
         big(c, 2, SONG_ROW, t, THEME_ATTR(th, value));
     }
     /* The time since the song started, M:SS, and the state at the right. */
     char t[16];
-    decimal(t, st->seconds / 60u);
+    screen_decimal(t, st->seconds / 60u);
     uint32_t n = length(t);
     t[n++] = ':';
     t[n++] = (char)('0' + st->seconds % 60u / 10u);
@@ -605,15 +583,16 @@ static void build_play(sid_view* sd, const sid_status* st, const theme* th) {
     }
     /* The clock and each chip's model; a 2SID tune's mark, a third SID's. */
     const uint8_t label = THEME_ATTR(th, label);
-    small(c, 2, CHIPS_ROW, h->clock == 2u ? "NTSC" : "PAL", label);
-    small(c, 8, CHIPS_ROW, st->model[0] == SID_MODEL_8580 ? "8580" : "6581", THEME_ATTR(th, value));
+    grid_canvas_text(c, 2, CHIPS_ROW, h->clock == 2u ? "NTSC" : "PAL", label);
+    grid_canvas_text(c, 8, CHIPS_ROW, st->model[0] == SID_MODEL_8580 ? "8580" : "6581",
+                     THEME_ATTR(th, value));
     if (st->chips == 2u) {
-        small(c, 13, CHIPS_ROW, st->model[1] == SID_MODEL_8580 ? "8580" : "6581",
-              THEME_ATTR(th, value));
-        small(c, 18, CHIPS_ROW, "2SID", THEME_ATTR(th, hot));
+        grid_canvas_text(c, 13, CHIPS_ROW, st->model[1] == SID_MODEL_8580 ? "8580" : "6581",
+                         THEME_ATTR(th, value));
+        grid_canvas_text(c, 18, CHIPS_ROW, "2SID", THEME_ATTR(th, hot));
     }
     if (h->sid3) {
-        small(c, 2, CHIPS_ROW + 1u, "3SID: 3RD SILENT", THEME_ATTR(th, alert));
+        grid_canvas_text(c, 2, CHIPS_ROW + 1u, "3SID: 3RD SILENT", THEME_ATTR(th, alert));
     }
 }
 
@@ -662,13 +641,13 @@ static void build_count(sid_view* sd, const sid_status* st, const theme* th) {
     char t[24];
     if (st->overruns) {
         memcpy(t, "OVERRUNS ", 9);
-        decimal(t + 9, capped(st->overruns));
-        small(c, 2, COUNT_ROW, t, THEME_ATTR(th, alert));
+        screen_decimal(t + 9, capped(st->overruns));
+        grid_canvas_text(c, 2, COUNT_ROW, t, THEME_ATTR(th, alert));
     }
     if (st->late) {
         memcpy(t, "LATE ", 5);
-        decimal(t + 5, capped(st->late));
-        small(c, 17, COUNT_ROW, t, THEME_ATTR(th, alert));
+        screen_decimal(t + 5, capped(st->late));
+        grid_canvas_text(c, 17, COUNT_ROW, t, THEME_ATTR(th, alert));
     }
 }
 
@@ -929,25 +908,25 @@ void sid_view_status_draw(const sid_view* sd, grid* g, const theme* th, uint32_t
     char m[8];
     /* the main loop's share (tenths of a percent) and the ticks a thousand cycles took */
     if (st.load) {
-        uint32_t k = decimal(m, st.load / 10u);
+        uint32_t k = screen_decimal(m, st.load / 10u);
         m[k++] = '.';
         m[k++] = (char)('0' + st.load % 10u);
         m[k++] = '%';
         m[k] = 0;
         status_line(g, th, row + STATUS_LINE_ROWS, "CPU", m);
-        decimal(t, st.ticks_k);
+        screen_decimal(t, st.ticks_k);
         status_line(g, th, row + 2u * STATUS_LINE_ROWS, "T/KC", t);
     } else {
         status_line(g, th, row + STATUS_LINE_ROWS, "CPU", "--");
         status_line(g, th, row + 2u * STATUS_LINE_ROWS, "T/KC", "--");
     }
-    decimal(t, capped(st.late));
+    screen_decimal(t, capped(st.late));
     status_line(g, th, row + 3u * STATUS_LINE_ROWS, "LATE", t);
-    decimal(t, capped(st.overruns));
+    screen_decimal(t, capped(st.overruns));
     status_line(g, th, row + 4u * STATUS_LINE_ROWS, "OVERRUNS", t);
-    decimal(t, st.cycles);
+    screen_decimal(t, st.cycles);
     status_line(g, th, row + 5u * STATUS_LINE_ROWS, "CYC/S", t);
     status_line(g, th, row + 6u * STATUS_LINE_ROWS, "SHADOW", st.shadow ? "ON" : "OFF");
-    decimal(t, capped(st.dropped));
+    screen_decimal(t, capped(st.dropped));
     status_line(g, th, row + 7u * STATUS_LINE_ROWS, "3RD SID", t);
 }

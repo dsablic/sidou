@@ -209,6 +209,13 @@ uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, cons
     return col + n * scale;
 }
 
+void grid_canvas_text(grid_canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t attr) {
+    for (; *s && col < GRID_COLS; s++, col++) {
+        c->ch[row][col] = (uint8_t)*s;
+        c->attr[row][col] = attr;
+    }
+}
+
 uint32_t grid_canvas_text_big(grid_canvas* c, uint32_t col, uint32_t row, uint32_t scale,
                               const char* s, uint8_t attr) {
     uint32_t n = 0;

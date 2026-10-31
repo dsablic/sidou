@@ -43,8 +43,6 @@
 /* A parameter changed, not a control: ASK_PARAM and its parameter (live.h), from MIDI's watcher. */
 #define ASK_PARAM 0x40u
 
-static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
-                                           "F#", "G",  "G#", "A",  "A#", "B"};
 
 /* The effect slots (core/fx/fx_slots.h), as the screen names them (at most 9 cells). */
 static const char* const SLOT_NAMES[LIVE_SLOTS] = {"DIST", "MOD", "FX"};
@@ -232,8 +230,9 @@ static void status_notes(grid* g, uint8_t attr, const live* l) {
         }
         char t[5];
         uint32_t len = 0;
-        for (const char* c = NOTE_NAMES[n % 12u]; *c; c++) {
-            t[len++] = *c;
+        t[len++] = screen_note_names[n % 12u][0];
+        if (screen_note_names[n % 12u][1] == '#') {
+            t[len++] = '#';
         }
         if (n < 12u) {
             t[len++] = '-';
@@ -2741,7 +2740,7 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         return param_text(v, LIVE_PARAM_VOLUME, name, value, fill, max);
     }
     if (shows(v) == &tracker_view_view &&
-        (v->song.rec || v->song.gen.scl_down == SONG_GEN_SCL_CHORD)) {
+        (v->song.rec || v->song.gen.scl_down)) {
         *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4
                                                     ? enc - PANEL_ENC_K1 : 0u];
         return tracker_view_popup(&v->song, enc, (ask & ASK_EDIT) != 0u, name, value, fill, max);
@@ -2944,12 +2943,10 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if ((pressed | v->key.down) & (1u << SAVE_KEY_BUTTON)) {
         pressed = save_buttons(v, pressed, held);
     }
-    if (v->lab.scl_alone) {
-        lab_view_scl(&v->lab, held); /* SCL alone on LAB waits for EDIT: its release */
+    if (v->lab.lone.waiting) {
+        lab_view_lone_released(&v->lab, held);
     }
-    if (v->song.gen.scl_down | v->song.gen.arp_alone | v->song.gen.lfo_alone) {
-        /* SCL's release: DICE rolls; ARP's alone: STEP's gate, TRACKER's key off; LFO's alone:
-         * TRACKER's rest */
+    if (v->song.gen.scl_down | v->song.gen.lone.waiting) {
         if (screen_top(&v->s) == &tracker_view_view) {
             tracker_view_buttons(&v->song, &v->s, held);
         } else {
@@ -2999,7 +2996,7 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
         int take = !glo && sv->t && song_view_is(top);
         uint32_t steps = 0u, jam_down = down, jam_pressed = pressed;
         if ((top == &step_view_view || top == &tracker_view_view) &&
-            sv->gen.scl_down == SONG_GEN_SCL_CHORD) {
+            sv->gen.scl_down) {
             /* EDIT + SCL held: a key is the lane's root (app/song_gen.h), and sounds nothing */
             steps = song_gen_keys(sv, down, pressed);
             jam_down = jam_pressed = 0u;

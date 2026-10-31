@@ -3,8 +3,10 @@
 #include "screen.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "font.h"
+#include "panel.h"
 
 const uint8_t screen_ramp[SCREEN_RAMP] = {GRID_WHITE, GRID_YELLOW,     GRID_LIGHT_GREEN,
                                           GRID_CYAN,  GRID_LIGHT_BLUE, GRID_PURPLE,
@@ -694,4 +696,62 @@ void screen_frame(screen* s, uint32_t now_ms) {
     }
     raster(s);
     wipe(s);
+}
+
+void screen_lone_wait(screen_lone* l, uint32_t button, uint32_t waiting) {
+    l->button = (uint8_t)button;
+    l->waiting = (uint8_t)waiting;
+}
+
+uint32_t screen_lone_chord(screen_lone* l, const screen_event* e) {
+    if (l->waiting && e->kind == SCREEN_PRESS && e->id == PANEL_BTN_EDIT &&
+        (e->held >> l->button & 1u)) {
+        l->waiting = SCREEN_LONE_NONE;
+        return l->button;
+    }
+    return SCREEN_LONE_NO_BUTTON;
+}
+
+uint32_t screen_lone_take(screen_lone* l) {
+    uint32_t due = l->waiting == SCREEN_LONE_HELD_BACK ? l->button : SCREEN_LONE_NO_BUTTON;
+    l->waiting = SCREEN_LONE_NONE;
+    return due;
+}
+
+uint32_t screen_lone_released(screen_lone* l, uint32_t held) {
+    return l->waiting && !(held >> l->button & 1u) ? screen_lone_take(l) : SCREEN_LONE_NO_BUTTON;
+}
+
+const char screen_note_names[12][2] = {{'C', '-'}, {'C', '#'}, {'D', '-'}, {'D', '#'},
+                                       {'E', '-'}, {'F', '-'}, {'F', '#'}, {'G', '-'},
+                                       {'G', '#'}, {'A', '-'}, {'A', '#'}, {'B', '-'}};
+
+void screen_note_text(uint32_t note, char out[4]) {
+    out[0] = screen_note_names[note % 12u][0];
+    out[1] = screen_note_names[note % 12u][1];
+    out[2] = (char)('0' + note / 12u % 10u);
+    out[3] = 0;
+}
+
+uint32_t screen_decimal(char* out, uint32_t n) {
+    char reverse[10];
+    uint32_t k = 0;
+    do {
+        reverse[k++] = (char)('0' + n % 10u);
+        n /= 10u;
+    } while (n);
+    for (uint32_t i = 0; i < k; i++) {
+        out[i] = reverse[k - 1u - i];
+    }
+    out[k] = 0;
+    return k;
+}
+
+void screen_popup_copy(char out[SCREEN_POPUP_TEXT], const char* text) {
+    uint32_t n = 0u;
+    while (n < SCREEN_POPUP_TEXT - 1u && text[n]) {
+        n++;
+    }
+    memcpy(out, text, n);
+    out[n] = 0;
 }

@@ -107,6 +107,10 @@ All notable changes are documented here. The format follows
   [song format](docs/reference/song-format.md))
 
 ### Changed
+- **The firmware is 8.5 KB smaller** with nothing heard or seen changed: the .sid player's voice
+  shadow calls the chip's own voice code instead of a copy of it, EDIT + SCL, EDIT + ARP and
+  EDIT + LFO share one either-finger mechanism in LAB, STEP and TRACKER, and the views share their
+  note names, number and popup text helpers and one CRC-32.
 - **The LAB help cards** list REC (to the song) and EDIT + REC (replace) in place of SAVE + K
   (MIDI learn, the same everywhere: MACRO's card keeps it); ENV, LFO and FX share a line (`ENV LFO
   FX LAB`, as LIVE's). INSTR's card has `ENV LFO FX LAB`. LAB's hint line's last phrase ends

@@ -90,7 +90,6 @@ uint32_t lab_view_wave_of(uint8_t control) {
 
 /* ---- text ---- */
 
-/* n as decimal digits into out (a sign first with sign: "+20", "-5", "0"); returns the end. */
 static char* number(char* out, int32_t n, int sign) {
     if (n < 0) {
         *out++ = '-';
@@ -98,18 +97,7 @@ static char* number(char* out, int32_t n, int sign) {
     } else if (sign && n > 0) {
         *out++ = '+';
     }
-    char d[6];
-    uint32_t k = 0;
-    uint32_t u = (uint32_t)n;
-    do {
-        d[k++] = (char)('0' + u % 10u);
-        u /= 10u;
-    } while (u);
-    while (k) {
-        *out++ = d[--k];
-    }
-    *out = 0;
-    return out;
+    return out + screen_decimal(out, (uint32_t)n);
 }
 
 /* tenths of a unit as at most 3 characters: "0", "0.5", "9.9", then whole: "12". */
@@ -866,31 +854,31 @@ static void choice_turn(lab_view* lv, int32_t steps) {
 static void name_turn(lab_view* lv, uint32_t id, int32_t steps);
 static void roll(lab_view* lv, screen* s, int whole);
 
-/* SCL that was down alone: SCL's everywhere, the next effect slot, and no chord now. */
-static void scl_alone(lab_view* lv) {
-    if (lv->scl_alone) {
-        lv->scl_alone = 0;
+static void lone_due(lab_view* lv, uint32_t button) {
+    if (button == PANEL_BTN_SCL) {
         live_fx_select_next(lv->l);
     }
 }
 
-void lab_view_scl(lab_view* lv, uint32_t held) {
-    if (!(held >> PANEL_BTN_SCL & 1u)) {
-        scl_alone(lv);
-    }
+void lab_view_lone_released(lab_view* lv, uint32_t held) {
+    lone_due(lv, screen_lone_released(&lv->lone, held));
 }
 
 /* SELECT the pages, K1..K4 the cards, ALGORITHM the choice; ENV, LFO and FX their pages. */
 static int input(screen* s, void* state, const screen_event* e) {
     lab_view* lv = state;
-    if (lv->scl_alone) {
-        if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_EDIT) {
-            lv->scl_alone = 0; /* EDIT after SCL: the same chord, the whole roll */
+    if (lv->lone.waiting) {
+        uint32_t chord = screen_lone_chord(&lv->lone, e);
+        if (chord != SCREEN_LONE_NO_BUTTON) {
             lv->run = LAB_VIEW_NO_RUN;
-            roll(lv, s, 1);
+            if (chord == PANEL_BTN_LFO) {
+                undo(lv, s);
+            } else {
+                roll(lv, s, chord == PANEL_BTN_SCL);
+            }
             return 1;
         }
-        scl_alone(lv); /* another control: SCL was alone, its slot first */
+        lone_due(lv, screen_lone_take(&lv->lone));
     }
     if (e->kind == SCREEN_TURN && lv->edit_down) {
         lv->edit_spoiled = 1; /* a control turned while EDIT is down: no A/B at its release */
@@ -908,27 +896,22 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     live* l = lv->l;
     int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
-    uint32_t chord = lv->chord;
-    lv->chord = 0;
     if (e->kind == SCREEN_PRESS) {
-        lv->run = LAB_VIEW_NO_RUN; /* another control: a run of turns ends */
+        lv->run = LAB_VIEW_NO_RUN;
         uint32_t id = e->id;
-        if (id == PANEL_BTN_EDIT && chord && (e->held >> (chord - 1u) & 1u)) {
-            id = chord - 1u; /* EDIT after ARP or LFO: the same chord (LFO's page is no matter) */
-        } else if (!edit && (id == PANEL_BTN_ARP || id == PANEL_BTN_LFO)) {
-            lv->chord = (uint8_t)(id + 1u); /* EDIT may land after it */
-        }
-        edit |= id != e->id;
         if (edit && id == PANEL_BTN_LFO) {
             undo(lv, s);
             return 1;
         }
         if (edit && (id == PANEL_BTN_ARP || id == PANEL_BTN_SCL)) {
-            roll(lv, s, id == PANEL_BTN_SCL); /* consumed: SCL selects no slot */
+            roll(lv, s, id == PANEL_BTN_SCL);
             return 1;
         }
-        if (e->id == PANEL_BTN_SCL) {
-            lv->scl_alone = 1; /* waits for EDIT a while: a hand's two fingers rarely land together */
+        if (id == PANEL_BTN_ARP || id == PANEL_BTN_LFO) {
+            screen_lone_wait(&lv->lone, id, SCREEN_LONE_DONE);
+        }
+        if (id == PANEL_BTN_SCL) {
+            screen_lone_wait(&lv->lone, id, SCREEN_LONE_HELD_BACK);
             return 1;
         }
         uint32_t to = e->id == PANEL_BTN_ENV   ? LAB_PAGE_ENVELOPE

@@ -247,7 +247,7 @@ fn trackers_arp_alone_with_rec_on_writes_the_key_off() {
     s.ui.down(PANEL_BTN_ARP);
     settle(&mut s.ui);
     assert_eq!(at(&s, row), GT2_KEYOFF as u8, "at once while recording");
-    assert_eq!(s.ui.v.song.gen_.arp_alone, 0);
+    assert_eq!(s.ui.v.song.gen_.lone.waiting, SCREEN_LONE_NONE as u8);
     s.ui.up(PANEL_BTN_ARP);
 }
 
@@ -270,7 +270,10 @@ fn trackers_lfo_landing_before_edit_is_the_same_undo_and_no_rest() {
         assert_ne!(pattern(&s, 0), before);
         if lfo_first {
             s.ui.down(PANEL_BTN_LFO);
-            assert_eq!(s.ui.v.song.gen_.lfo_alone, 1, "LFO waits for EDIT");
+            assert_eq!(
+                s.ui.v.song.gen_.lone.waiting, SCREEN_LONE_HELD_BACK as u8,
+                "LFO waits for EDIT"
+            );
             s.ui.down(PANEL_BTN_EDIT);
         } else {
             s.ui.down(PANEL_BTN_EDIT);
@@ -280,7 +283,7 @@ fn trackers_lfo_landing_before_edit_is_the_same_undo_and_no_rest() {
         s.ui.up(PANEL_BTN_EDIT);
         settle(&mut s.ui);
         assert_eq!(pattern(&s, 0), before, "undone, lfo_first {lfo_first}");
-        assert_eq!(s.ui.v.song.gen_.lfo_alone, 0);
+        assert_eq!(s.ui.v.song.gen_.lone.waiting, SCREEN_LONE_NONE as u8);
     }
 }
 
@@ -321,7 +324,7 @@ fn trackers_lfo_alone_with_rec_on_writes_the_rest() {
     s.ui.down(PANEL_BTN_LFO);
     settle(&mut s.ui);
     assert_eq!(at(&s, row), GT2_REST as u8, "at once while recording");
-    assert_eq!(s.ui.v.song.gen_.lfo_alone, 0);
+    assert_eq!(s.ui.v.song.gen_.lone.waiting, SCREEN_LONE_NONE as u8);
     s.ui.up(PANEL_BTN_LFO);
 }
 

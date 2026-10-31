@@ -36,8 +36,6 @@ static const char* const KNOB_NAMES[4] = {"CUTOFF", "RESONANCE", "PULSE WIDTH", 
 static const char* const KNOB_SHORT[4] = {"CUTOFF", "RESO", "PULSE", "WAVE"};
 static const char* const CHAR_NAMES[4] = {"AGE", "DAC", "THUMP", "BLEED"};
 static const char HEX[] = "0123456789ABCDEF";
-static const char NOTE_NAMES[12][3] = {"C-", "C#", "D-", "D#", "E-", "F-",
-                                       "F#", "G-", "G#", "A-", "A#", "B-"};
 
 void step_view_init(step_view* st, song_view* sv) {
     memset(st, 0, sizeof *st);
@@ -227,13 +225,6 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
 
 typedef song_view_canvas canvas;
 
-static void small(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
-    for (; *s && col < GRID_COLS; s++, col++) {
-        c->ch[row][col] = (uint8_t)*s;
-        c->attr[row][col] = a;
-    }
-}
-
 static void big(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t a) {
     (void)grid_canvas_text_big(c, col, row, 2, s, a);
 }
@@ -248,30 +239,6 @@ static void blank(canvas* c, uint32_t row, uint32_t rows, uint8_t a) {
 static void put(canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t a) {
     c->ch[row][col] = ch;
     c->attr[row][col] = a;
-}
-
-/* n in decimal, at most 4 digits, into out; returns its length. */
-static uint32_t decimal(uint32_t n, char out[5]) {
-    uint32_t len = 0;
-    if (n >= 1000u) {
-        out[len++] = (char)('0' + n / 1000u % 10u);
-    }
-    if (n >= 100u) {
-        out[len++] = (char)('0' + n / 100u % 10u);
-    }
-    if (n >= 10u) {
-        out[len++] = (char)('0' + n / 10u % 10u);
-    }
-    out[len++] = (char)('0' + n % 10u);
-    out[len] = 0;
-    return len;
-}
-
-static void note_name(uint32_t note, char out[4]) {
-    out[0] = NOTE_NAMES[note % 12u][0];
-    out[1] = NOTE_NAMES[note % 12u][1];
-    out[2] = (char)('0' + note / 12u % 10u);
-    out[3] = 0;
 }
 
 static uint32_t step_col(uint32_t i) {
@@ -295,9 +262,9 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     }
     big(c, 5, 0, sv->io && song_io_saving(sv->io) ? "SAVING" : pat, base);
     if (sv->solo >> v & 1u) {
-        small(c, 18, 0, "SOL", base);
+        grid_canvas_text(c, 18, 0, "SOL", base);
     } else if (sv->mute >> v & 1u) {
-        small(c, 18, 0, "MUT", THEME_ATTR(th, alert));
+        grid_canvas_text(c, 18, 0, "MUT", THEME_ATTR(th, alert));
     }
     put(c, 22, 0, song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE, base);
     uint32_t bpm = song_view_shown_bpm(sv);
@@ -309,25 +276,25 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
             bpm /= 10u;
         }
     }
-    small(c, 26, 0, t, THEME_ATTR(th, label));
-    small(c, 26, 1, "BPM", THEME_ATTR(th, hint));
+    grid_canvas_text(c, 26, 0, t, THEME_ATTR(th, label));
+    grid_canvas_text(c, 26, 1, "BPM", THEME_ATTR(th, hint));
     if (sv->rec) {
-        small(c, 22, 1, "REC", THEME_ATTR(th, alert));
+        grid_canvas_text(c, 22, 1, "REC", THEME_ATTR(th, alert));
     }
     /* Row 2: the pages, the shown one reversed, and the pattern's length. */
-    small(c, 0, STEP_VIEW_PAGE_ROW, "PAGE", THEME_ATTR(th, hint));
+    grid_canvas_text(c, 0, STEP_VIEW_PAGE_ROW, "PAGE", THEME_ATTR(th, hint));
     uint32_t pages = pages_of(lanes[v].rows);
     for (uint32_t p = 0; p < pages && p < 8u; p++) {
         put(c, 5u + 2u * p, STEP_VIEW_PAGE_ROW, (uint8_t)('1' + p),
             p == page ? GRID_ATTR(th->bg, th->hot) : THEME_ATTR(th, label));
     }
     char len[5];
-    uint32_t n = decimal(lanes[v].rows, len);
-    small(c, 21, STEP_VIEW_PAGE_ROW, len, THEME_ATTR(th, value));
-    small(c, 21u + n, STEP_VIEW_PAGE_ROW, " STEPS", THEME_ATTR(th, hint));
+    uint32_t n = screen_decimal(len, lanes[v].rows);
+    grid_canvas_text(c, 21, STEP_VIEW_PAGE_ROW, len, THEME_ATTR(th, value));
+    grid_canvas_text(c, 21u + n, STEP_VIEW_PAGE_ROW, " STEPS", THEME_ATTR(th, hint));
     /* Rows 3-4, at 2x: the number of each group's first step. */
     for (uint32_t g = 0; g < 4u; g++) {
-        decimal(page * STEP_VIEW_STEPS + g * 4u + 1u, len);
+        screen_decimal(len, page * STEP_VIEW_STEPS + g * 4u + 1u);
         big(c, step_col(g * 4u), STEP_VIEW_RULER_ROW, len, THEME_ATTR(th, label));
     }
     sv->dirty |= HEAD_ROWS;
@@ -388,7 +355,7 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     }
     char text[24];
     uint32_t n = 0;
-    note_name(sv->gen.root[l], text);
+    screen_note_text(sv->gen.root[l], text);
     n = 3u;
     text[n++] = ' ';
     text[n++] = 'I';
@@ -434,8 +401,9 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     uint32_t col = k & 1u ? 17u : 2u;
     char tag[3] = {'K', (char)('1' + k), 0};
     /* The legend reads at 1x with nothing held too: hint, not dim (2.16:1). */
-    small(c, col, row, tag, THEME_ATTR(th, hint));
-    small(c, col + 3u, row, KNOB_SHORT[k], GRID_ATTR(held ? th->knob_text[k] : th->hint, th->bg));
+    grid_canvas_text(c, col, row, tag, THEME_ATTR(th, hint));
+    grid_canvas_text(c, col + 3u, row, KNOB_SHORT[k],
+                     GRID_ATTR(held ? th->knob_text[k] : th->hint, th->bg));
     uint32_t value = 0u, max = 0u;
     int tagged = 0;
     char text[8] = "---";
@@ -445,7 +413,7 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
             tagged = lock_get(s, ln->pattern, at, p, &value);
             max = song_lock_max(p);
             if (tagged) {
-                decimal(k == 1u ? value : (value * 100u + max / 2u) / max, text);
+                screen_decimal(text, k == 1u ? value : (value * 100u + max / 2u) / max);
             }
         } else {
             const uint8_t* cell = cell_of(s, ln, at);
@@ -462,10 +430,10 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
         }
     }
     bar(c, col, row + 1u, value, max, th->knob[k], th->dim);
-    small(c, col + 9u, row + 1u, text, GRID_ATTR(tagged ? th->value : th->dim, th->bg));
+    grid_canvas_text(c, col + 9u, row + 1u, text, GRID_ATTR(tagged ? th->value : th->dim, th->bg));
     if (tagged) {
-        small(c, col + (k & 1u ? 8u : 10u), row, k == 3u ? "SET" : "LOCK",
-              GRID_ATTR(k == 3u ? th->knob[1] : th->hot, th->bg));
+        grid_canvas_text(c, col + (k & 1u ? 8u : 10u), row, k == 3u ? "SET" : "LOCK",
+                         GRID_ATTR(k == 3u ? th->knob[1] : th->hot, th->bg));
     }
 }
 
@@ -529,7 +497,7 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     const uint8_t frame = THEME_ATTR(th, dim);
     blank(c, 17u, GRID_ROWS - 17u, THEME_ATTR(th, value));
     sv->dirty |= LOWER_ROWS;
-    if (sv->gen.scl_down == SONG_GEN_SCL_CHORD) {
+    if (sv->gen.scl_down) {
         song_gen_frame(sv, STEP_VIEW_HELD_ROW); /* over the HELD STEP frame and the pads */
         return;
     }
@@ -540,26 +508,26 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     char title[16] = " HELD STEP ";
     uint32_t n = 11u;
     if (held) {
-        n += decimal(at + 1u, title + n);
+        n += screen_decimal(title + n, at + 1u);
     } else {
         title[n++] = '-';
         title[n++] = '-';
     }
     title[n++] = ' ';
     title[n] = 0;
-    small(c, 2, 17u, title, held ? THEME_ATTR(th, hot) : THEME_ATTR(th, hint));
+    grid_canvas_text(c, 2, 17u, title, held ? THEME_ATTR(th, hot) : THEME_ATTR(th, hint));
     if (held) {
         const uint8_t* cell = cell_of(s, ln, at);
         if (is_note(cell[0])) {
             char nn[4];
-            note_name(cell[0] - GT2_FIRSTNOTE, nn);
-            small(c, 17, 17u, nn, THEME_ATTR(th, value));
+            screen_note_text(cell[0] - GT2_FIRSTNOTE, nn);
+            grid_canvas_text(c, 17, 17u, nn, THEME_ATTR(th, value));
         }
         char pc[6];
         uint32_t chance = 100u;
         if (lock_get(s, ln->pattern, at, SONG_LOCK_CHANCE, &chance)) {
-            pc[decimal(chance, pc)] = '%';
-            small(c, 22, 17u, pc, THEME_ATTR(th, hot));
+            pc[screen_decimal(pc, chance)] = '%';
+            grid_canvas_text(c, 22, 17u, pc, THEME_ATTR(th, hot));
         }
     }
     for (uint32_t k = 0; k < 4u; k++) {
@@ -961,10 +929,10 @@ static void gen_start(screen* s, step_view* st, uint32_t kind) {
     drain(s, st);
 }
 
-/* ARP that was down alone: the lane's gate switched, and no chord now. */
-static void arp_alone(step_view* st) {
-    if (st->sv->gen.arp_alone) {
-        st->sv->gen.arp_alone = 0u;
+static void lone_due(step_view* st, uint32_t button) {
+    if (button == PANEL_BTN_SCL) {
+        live_fx_select_next(st->sv->l);
+    } else if (button == PANEL_BTN_ARP) {
         st->gate ^= (uint8_t)(1u << st->sv->voice);
     }
 }
@@ -979,9 +947,7 @@ static void undo(screen* s, song_view* sv) {
 }
 
 void step_view_buttons(step_view* st, screen* s, uint32_t held) {
-    if (st->sv->gen.arp_alone && !(held >> PANEL_BTN_ARP & 1u)) {
-        arp_alone(st);
-    }
+    lone_due(st, screen_lone_released(&st->sv->gen.lone, held));
     if (song_gen_release(st->sv, held) && screen_top(s) == &step_view_view) {
         gen_start(s, st, SONG_GEN_DICE);
     }
@@ -998,23 +964,16 @@ static int input(screen* s, void* state, const screen_event* e) {
     target t;
     if (e->kind == SCREEN_PRESS) {
         int free = st->held == STEP_VIEW_NONE && !song_view_recording(sv) && sv->editor;
-        uint32_t lfo = st->lfo_alone;
-        st->lfo_alone = 0u;
-        if (e->id == PANEL_BTN_EDIT && ((sv->gen.arp_alone && (e->held >> PANEL_BTN_ARP & 1u)) ||
-                                        (lfo && (e->held >> PANEL_BTN_LFO & 1u)))) {
-            /* EDIT after ARP or LFO: the same chord; ARP's gate is spoilt */
-            if (sv->gen.arp_alone) {
-                sv->gen.arp_alone = 0u;
-                if (free) {
-                    gen_start(s, st, SONG_GEN_MUTATE);
-                }
-            } else {
-                undo(s, sv);
-            }
+        uint32_t chord = song_gen_lone_chord(sv, e);
+        if (chord == PANEL_BTN_ARP && free) {
+            gen_start(s, st, SONG_GEN_MUTATE);
+        } else if (chord == PANEL_BTN_LFO) {
+            undo(s, sv);
+        }
+        if (chord != SCREEN_LONE_NO_BUTTON) {
             return 1;
         }
-        arp_alone(st); /* another button: ARP was alone */
-        /* SCL: DICE's chord (EDIT + SCL, either order) and what it spoils (app/song_gen.h). */
+        lone_due(st, screen_lone_take(&sv->gen.lone));
         if (song_gen_press(sv, e->id, edit, free)) {
             return 1;
         }
@@ -1039,18 +998,18 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         if (e->id == PANEL_BTN_ARP) {
-            sv->gen.arp_alone = 1u; /* the gate at its release: EDIT may land after it */
+            screen_lone_wait(&sv->gen.lone, PANEL_BTN_ARP, SCREEN_LONE_HELD_BACK);
             return 1;
         }
-        st->lfo_alone = e->id == PANEL_BTN_LFO && !edit;
+        if (e->id == PANEL_BTN_LFO && !edit) {
+            screen_lone_wait(&sv->gen.lone, PANEL_BTN_LFO, SCREEN_LONE_DONE);
+        }
         return 0;
     }
     if (e->kind != SCREEN_TURN) {
         return 0;
     }
-    song_gen_scl_alone(sv); /* a knob while SCL is down alone: the slot first, then the knob */
-    arp_alone(st);
-    st->lfo_alone = 0u;
+    lone_due(st, screen_lone_take(&sv->gen.lone));
     if (e->id == PANEL_ENC_SELECT) {
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
@@ -1114,17 +1073,6 @@ static int input(screen* s, void* state, const screen_event* e) {
     return 1;
 }
 
-/* ---- the popup ---- */
-
-static void copy_text(char out[SCREEN_POPUP_TEXT], const char* text) {
-    uint32_t n = 0u;
-    while (n < SCREEN_POPUP_TEXT - 1u && text[n]) {
-        n++;
-    }
-    memcpy(out, text, n);
-    out[n] = 0;
-}
-
 int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[SCREEN_POPUP_TEXT],
                     char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
     const song_view* sv = st->sv;
@@ -1144,15 +1092,15 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
         cur = 100u;
         (void)lock_get(sv->song, ln->pattern, at, SONG_LOCK_CHANCE, &cur);
         top = 100u;
-        text[decimal(cur, text)] = '%';
+        text[screen_decimal(text, cur)] = '%';
     } else if (encoder == PANEL_ENC_ALGORITHM) {
         label = "PAGE";
         uint32_t pages = pages_of(ln->rows);
         cur = page;
         top = pages - 1u;
-        uint32_t n = decimal(page + 1u, text);
+        uint32_t n = screen_decimal(text, page + 1u);
         text[n++] = '/';
-        decimal(pages, text + n);
+        screen_decimal(text + n, pages);
     } else if (encoder == 6u) {
         if (held) {
             label = "NOTE";
@@ -1160,7 +1108,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
                                cell_of(sv->song, ln, at) : NULL;
             cur = c && is_note(c[0]) ? c[0] - GT2_FIRSTNOTE : sv->gen.root[v];
             top = 95u;
-            note_name(cur, text);
+            screen_note_text(cur, text);
         } else {
             label = "INSTRUMENT";
             cur = st->instr[v];
@@ -1176,7 +1124,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
         if (k == 0u) {
             live_view_fc_text(sv->l, cur, text); /* in Hz, as every view says the cutoff */
         } else {
-            decimal(cur, text);
+            screen_decimal(text, cur);
         }
     } else if (encoder >= PANEL_ENC_K1 && encoder <= PANEL_ENC_K4 && held && sv->song &&
                ln->pattern != 0xffu && at < ln->rows) {
@@ -1188,7 +1136,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
                 cur = LOCK_START[p];
             }
             top = song_lock_max(p);
-            decimal(cur, text);
+            screen_decimal(text, cur);
         } else if (k == 3u) {
             label = KNOB_NAMES[3];
             const uint8_t* c = cell_of(sv->song, ln, at);
@@ -1196,7 +1144,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
                 cur = c[3] == WAVES[w] ? w : cur;
             }
             top = STEP_VIEW_WAVES - 1u;
-            copy_text(text, WAVE_NAMES[cur]);
+            screen_popup_copy(text, WAVE_NAMES[cur]);
         } else {
             label = KNOB_NAMES[k];
             uint32_t p = k == 0u ? SONG_LOCK_CUTOFF : k == 1u ? SONG_LOCK_RESONANCE : SONG_LOCK_PULSE;
@@ -1204,13 +1152,13 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
                 cur = LOCK_START[p];
             }
             top = song_lock_max(p);
-            decimal(cur, text);
+            screen_decimal(text, cur);
         }
     } else {
         return 0;
     }
-    copy_text(name, label);
-    copy_text(value, text);
+    screen_popup_copy(name, label);
+    screen_popup_copy(value, text);
     *fill = cur;
     *max = top;
     return 1;
@@ -1230,16 +1178,13 @@ static void enter(screen* s, void* state) {
     st->held = STEP_VIEW_NONE;
     st->zones = 0u;
     song_gen_stop(st->sv);
-    st->lfo_alone = 0u;
     st->down = st->touched = 0u;
     st->sv->instr = st->instr[st->sv->voice];
 }
 
 static void leave(screen* s, void* state) {
     step_view* st = state;
-    song_gen_scl_alone(st->sv);
-    arp_alone(st);
-    st->lfo_alone = 0u;
+    lone_due(st, screen_lone_take(&st->sv->gen.lone));
     if (st->follow | st->qn | st->sv->gen.follow) {
         drain(s, st);
     }
