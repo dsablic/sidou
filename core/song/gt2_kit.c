@@ -23,6 +23,8 @@
  *   top), which a counter below 10 always reaches. */
 #include "gt2_kit.h"
 
+#include <string.h>
+
 #define N(n) (0x80u + (n)) /* an absolute note in a wavetable row: 0 is C-0 */
 #define END 0xffu          /* the jump: with 0, the table stops */
 
@@ -80,3 +82,10 @@ const uint8_t gt2_kit_wave[2][GT2_KIT_WAVE_ROWS] = {
 
 /* Row 1: the pulse width $800 (a square), then the table stops. */
 const uint8_t gt2_kit_pulse[2][GT2_KIT_PULSE_ROWS] = {{0x88, END}, {0x00, 0}};
+
+uint32_t gt2_kit_find(const gt2_song* s, uint32_t drum) {
+    for (uint32_t i = 1u; i <= GT2_MAX_INSTR; i++)
+        if (!memcmp(s->instr[i - 1u], gt2_kit_instr[drum].head, GT2_INS_NAME))
+            return i;
+    return 0u;
+}

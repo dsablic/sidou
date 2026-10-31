@@ -1562,6 +1562,114 @@ fn tracker_dices_the_shown_voice_on_its_root_and_sweeps_its_filter() {
     }
 }
 
+/// NEW, STEP (1.5): PRESETS with EDIT + SCL held sets V1's role to BASS+DRUMS (the frame says it
+/// beside the root, the song's SCNE chunk keeps it) and rolls nothing; the next EDIT + SCL puts the
+/// NEW song's kit on the strong rows (STRAIGHT: KICK 03 on beats 1 and 3, SNARE 04 on 2 and 4 of
+/// each bar) and the lane's instrument between, pattern cells only.
+#[test]
+fn a_bass_and_drums_lane_rolls_the_kit_and_the_bass_time_shared() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    let waves = song(&mut m, &fw).raw().ltable;
+    m.key(EDIT, true);
+    m.run_ms(40);
+    m.key(SCL, true);
+    turn(&mut m, PRESETS, 3);
+    m.run_ms(100);
+    let sv = fw.symbol("ui") + ilp32::views::song as u32;
+    let canvas = sv + (ilp32::song_view::cv + ilp32::grid_canvas::ch) as u32;
+    let top = STEP_VIEW_HELD_ROW;
+    assert_eq!(
+        text_at(&mut m, canvas + (top + 9) * GRID_COLS + 19, 8),
+        "PRE ROLE"
+    );
+    assert_eq!(
+        text_at(&mut m, canvas + (top + 10) * GRID_COLS + 19, 10),
+        "BASS+DRUMS"
+    );
+    m.key(SCL, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    let s = song(&mut m, &fw);
+    let mut scene = song_scene::default();
+    assert_eq!(unsafe { song_ext_get_scene(s.ptr(), &mut scene) }, 1);
+    assert_eq!(
+        (scene.count, scene.role[0]),
+        (3, SONG_ROLE_BASS_DRUMS as u8)
+    );
+    chord(&mut m, EDIT, SCL);
+    assert_eq!(toast(&mut m, &fw), "NEW PATTERN");
+    step_settled(&mut m, &fw);
+    let s = song(&mut m, &fw);
+    let p = s.pattern(0).unwrap();
+    let mut bass = 0;
+    for (row, c) in p.iter().enumerate().take(p.len() - 1) {
+        match row % 8 {
+            0 => assert_eq!(c[..2], [GT2_FIRSTNOTE as u8 + 36, 3], "row {row}: the kick"),
+            4 => assert_eq!(
+                c[..2],
+                [GT2_FIRSTNOTE as u8 + 36, 4],
+                "row {row}: the snare"
+            ),
+            _ if is_note(c[0]) => {
+                assert_eq!(c[1], 1, "row {row}: the lane's instrument");
+                bass += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(bass > 4, "the bass between: {bass}");
+    assert_eq!(s.raw().ltable, waves, "no table writes");
+}
+
+/// NEW, TRACKER (1.5): PRESETS with EDIT + SCL held sets V1's role to ARP; the next EDIT + SCL
+/// writes the four chord programs once into the wavetable and chords on the lane: each hit a note,
+/// the current instrument and 8XX at a program.
+#[test]
+fn an_arp_lane_rolls_chords_in_tracker() {
+    let Some(fw) = fixture() else { return };
+    let mut m = new_song_on_step(&fw);
+    press(&mut m, SEQ);
+    m.run_ms(WIPE_MS);
+    assert_view(&mut m, &fw, "tracker_view_view", "SEQ from STEP");
+    m.key(EDIT, true);
+    m.run_ms(40);
+    m.key(SCL, true);
+    turn(&mut m, PRESETS, 4);
+    m.run_ms(100);
+    m.key(SCL, false);
+    m.key(EDIT, false);
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    chord(&mut m, EDIT, SCL);
+    assert_eq!(toast(&mut m, &fw), "NEW CHORDS");
+    let start = m.ms();
+    loop {
+        step_settled(&mut m, &fw);
+        let s = song(&mut m, &fw);
+        if s.pattern(0).unwrap().iter().any(|c| c[2] == 8) {
+            break;
+        }
+        assert!(m.ms() - start < 20_000, "no chords written");
+        m.run_ms(100);
+    }
+    m.run_ms(400);
+    step_settled(&mut m, &fw);
+    let s = song(&mut m, &fw);
+    let starts: Vec<u32> = (0..SONG_GEN_CHORDS)
+        .map(|c| unsafe { song_gen_chord_find(s.ptr(), c) })
+        .collect();
+    assert!(starts.iter().all(|&p| p > 0), "the programs: {starts:?}");
+    let p = s.pattern(0).unwrap();
+    let hits: Vec<&[u8; 4]> = p.iter().filter(|c| is_note(c[0])).collect();
+    assert!(hits.len() > 8);
+    for c in hits {
+        assert_eq!(c[2], 8, "{c:02x?}");
+        assert!(starts.contains(&u32::from(c[3])), "{c:02x?}");
+    }
+}
+
 /// EDIT + SCL is one chord whichever finger lands first: SCL 5 ms before EDIT (two fingers
 /// pressing together), K1 and K3 turned at once, set DICE's density and scale; SCL selects no
 /// effect slot and the EDIT layer's knobs stay as they were; the release rolls nothing.

@@ -78,7 +78,10 @@ it. Each large item gets its own design first (as LAB did).
 
 - **SIDOU's own USB ID** (0x51D0, pid.codes request #1341).
 - **LAB's song bridge** and **instruments from a `.sid`** (below, Sound and play).
-- **Generated arpeggio chords and multiplexed drums in TRACKER** (1.1's cut left them out).
+- ~~**Generated arpeggio chords and multiplexed drums in TRACKER** (1.1's cut left them out).~~
+  Done: a lane's role in DICE's frame (EDIT + SCL held, PRESETS); DICE writes chords on an ARP
+  lane (four shared wavetable chord programs, `8XX` cells) and the kit's kick and snare with a
+  bass between on a BASS+DRUMS lane (time-shared). Combined drum-and-bass instruments later.
 - **A browser editor and librarian** and **the screen mirror (FM-1 Live Link)** (below,
   Connectivity).
 - **A popup for every encoder edit** (the user, 2026-10-30): turning an encoder that changes a
@@ -129,8 +132,8 @@ sessions).
 - ~~**Generative play in TRACKER:** the same chance, MUTATE and DICE as STEP, C64 idioms
   (generated arpeggio chords, multiplexed drums, filter sweeps), a scale per lane. M each.~~
   Done in 1.1 (the cut): MUTATE, DICE and a filter sweep (EDIT + ENV) in TRACKER, a root and a
-  scale per lane, chance shown as a mark (edited in STEP). Still to come: generated arpeggio
-  chords and multiplexed drums (instrument and wavetable writing: L).
+  scale per lane, chance shown as a mark (edited in STEP). Generated arpeggio chords and
+  time-shared drums followed in 1.5.
 - ~~**MIDI export on the device,** not only on the site; wavetable arpeggios and TRKB subtunes
   in the export. M.~~ Done on the site instead (1.1): its Songs to MIDI page pulls the current
   or a stored song from the connected FM-1 over SysEx (the FM-1 shows no files over USB), and

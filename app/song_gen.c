@@ -5,7 +5,10 @@
 #include <string.h>
 
 #include "font.h"
+#include "lab_song.h"
+#include "song/gt2_kit.h"
 #include "song/gt2_song.h"
+#include "song_pages.h"
 #include "song_view.h"
 #include "theme.h"
 
@@ -22,6 +25,23 @@ static const char* const DICE_LABELS[4] = {"DENS", "RANGE", "SCALE", "RHYTHM"};
 static const char* const DICE_NAMES[4] = {"DENSITY", "RANGE", "SCALE", "RHYTHM"};
 static const uint8_t DICE_TOPS[4] = {SONG_DICE_DENSITIES - 1u, SONG_DICE_RANGES - 1u,
                                      SONG_DICE_SCALES - 1u, SONG_DICE_RHYTHMS - 1u};
+/* The roles in the order PRESETS turns through them, and their names by SONG_ROLE_*. */
+static const uint8_t ROLE_ORDER[SONG_ROLES] = {SONG_ROLE_AUTO, SONG_ROLE_DRUMS, SONG_ROLE_BASS,
+                                               SONG_ROLE_BASS_DRUMS, SONG_ROLE_ARP, SONG_ROLE_LEAD,
+                                               SONG_ROLE_NONE};
+static const char* const ROLE_NAMES[SONG_ROLES] = {"AUTO", "DRUMS", "BASS", "ARP",
+                                                   "LEAD", "NONE", "BASS+DRUMS"};
+/* The chord programs' rows after the root's (0): the semitones over the note, a row a frame. */
+static const uint8_t CHORD_TONES[SONG_GEN_CHORDS][SONG_GEN_CHORD_ROWS - 2u] = {
+    {4, 7}, {3, 7}, {5, 7}, {4, 7, 10}};
+static const char CHORD_NAMES[SONG_GEN_CHORDS][5] = {"MAJ", "MIN", "SUS4", "7"};
+/* BASS+DRUMS: the kit's kick and snare on a bar of 16 rows by rhythm (bit r: row r), the bass
+ * between. STRAIGHT and OFFBEAT a backbeat (OFFBEAT's bass on the offbeats), 3-3-2 the tresillo's
+ * kicks, FOUR a kick on every beat, BROKEN a breakbeat. */
+static const uint16_t DRUM_KICK[SONG_DICE_RHYTHMS] = {0x0101, 0x0101, 0x0909, 0x1111, 0x0481};
+static const uint16_t DRUM_SNARE[SONG_DICE_RHYTHMS] = {0x1010, 0x1010, 0x4040, 0x0000, 0x1010};
+/* GoatTracker's WAVETABLE POINTER command, the chords'. */
+#define CMD_WAVEPTR 0x08u
 static const char NOTE_NAMES[12][3] = {"C-", "C#", "D-", "D#", "E-", "F-",
                                        "F#", "G-", "G#", "A-", "A#", "B-"};
 
@@ -70,9 +90,63 @@ void song_gen_dice(const song_view* sv, song_dice* d) {
 }
 
 int song_gen_drums(const song_view* sv, uint32_t voice) {
+    return song_gen_role(sv, voice) == SONG_ROLE_DRUMS;
+}
+
+uint32_t song_gen_role(const song_view* sv, uint32_t voice) {
     song_scene scene;
     return sv->song && song_ext_get_scene(sv->song, &scene) && voice < scene.count &&
-           scene.role[voice] == SONG_ROLE_DRUMS;
+                   scene.role[voice] < SONG_ROLES
+               ? scene.role[voice]
+               : SONG_ROLE_AUTO;
+}
+
+/* ---- the chord programs ---- */
+
+static uint32_t chord_len(uint32_t c) {
+    return c == SONG_GEN_7 ? 4u : 3u;
+}
+
+uint32_t song_gen_chord_rows(uint32_t c, uint32_t first, uint8_t left[SONG_GEN_CHORD_ROWS],
+                             uint8_t right[SONG_GEN_CHORD_ROWS]) {
+    uint32_t n = chord_len(c);
+    memset(left, 0, SONG_GEN_CHORD_ROWS);
+    right[0] = 0u;
+    memcpy(right + 1, CHORD_TONES[c], n - 1u);
+    left[n] = 0xffu; /* the jump back to the root's row */
+    right[n] = (uint8_t)first;
+    return n + 1u;
+}
+
+static int chord_is(const gt2_song* s, uint32_t ptr, uint32_t c) {
+    uint8_t left[SONG_GEN_CHORD_ROWS], right[SONG_GEN_CHORD_ROWS];
+    uint32_t n = song_gen_chord_rows(c, ptr, left, right);
+    if (ptr < 1u || ptr - 1u + n > GT2_TABLE_ROWS) {
+        return 0;
+    }
+    return !memcmp(&s->ltable[GT2_WTBL][ptr - 1u], left, n) &&
+           !memcmp(&s->rtable[GT2_WTBL][ptr - 1u], right, n);
+}
+
+uint32_t song_gen_chord_at(const gt2_song* s, uint32_t ptr) {
+    uint32_t c = 0u;
+    while (c < SONG_GEN_CHORDS && !chord_is(s, ptr, c)) {
+        c++;
+    }
+    return c;
+}
+
+uint32_t song_gen_chord_find(const gt2_song* s, uint32_t c) {
+    for (uint32_t p = 1u; p <= GT2_TABLE_ROWS; p++) {
+        if (chord_is(s, p, c)) {
+            return p;
+        }
+    }
+    return 0u;
+}
+
+const char* song_gen_chord_name(uint32_t c) {
+    return CHORD_NAMES[c];
 }
 
 /* Knob k's setting of d (K1 density, K2 range, K3 the lane's scale, K4 rhythm), and its name. */
@@ -196,26 +270,78 @@ static void toggle(screen* s, song_view* sv, uint32_t row, uint32_t note) {
     }
 }
 
+/* Row r's hit: 0 none, 1 the lane's note, 2 the kit's kick, 3 its snare (BASS+DRUMS). */
+static uint32_t hit_kind(const song_gen* g, uint32_t r) {
+    if (g->role == SONG_ROLE_BASS_DRUMS) {
+        uint32_t bit = 1u << (r & 15u);
+        if (DRUM_KICK[g->rhythm] & bit) {
+            return 2u;
+        }
+        if (DRUM_SNARE[g->rhythm] & bit) {
+            return 3u;
+        }
+    }
+    return (uint32_t)song_gen_hit(g, r);
+}
+
+/* A chord on a random value h: the note of the scale it starts from (the next degree up where
+ * none fits) and one of the chords whose tones are all in the scale, the seed's pick. */
+static uint32_t chord_pick(const song_gen* g, uint32_t h, uint32_t* note) {
+    uint32_t root = g->root[g->voice], fits = 0u, n = 0u, count = 0u;
+    for (uint32_t k = 0; k < 12u && !fits; k++) {
+        n = song_gen_note(g, h + k);
+        for (uint32_t c = 0; c < SONG_GEN_CHORDS; c++) {
+            uint32_t ok = 1u;
+            for (uint32_t i = 0; i + 1u < chord_len(c); i++) {
+                ok &= (uint32_t)in_scale(g, root, n + CHORD_TONES[c][i]);
+            }
+            fits |= ok << c;
+            count += ok;
+        }
+    }
+    uint32_t pick = count ? (h >> 16) % count : 0u, c = 0u;
+    for (; c < SONG_GEN_CHORDS - 1u; c++) {
+        if (fits >> c & 1u && !pick--) {
+            break;
+        }
+    }
+    while (n + CHORD_TONES[c][chord_len(c) - 2u] > GT2_NOTE_MAX) {
+        n -= 12u;
+    }
+    *note = n;
+    return c;
+}
+
 /* DICE's row r: its note, or what follows one (a key off on a staccato lane), or a rest; only a
- * row that differs is written (its command and data stay). 1: written, or the run is over. */
+ * row that differs is written (its command and data stay, but an ARP lane's: a hit's is its
+ * chord, 8XX, and a rest's 8XX goes). 1: written, or the run is over. */
 static int dice_row(screen* s, song_view* sv, uint32_t r) {
     song_gen* g = &sv->gen;
-    uint8_t cell[4];
+    uint8_t cell[4], was[4];
     if (!read_cell(sv, r, cell)) {
         feedback(s, sv);
         g->run = 0u;
         return 1;
     }
-    int hit = song_gen_hit(g, r);
-    uint8_t want = hit ? (uint8_t)(GT2_FIRSTNOTE + song_gen_note(g, song_mix(g->seed ^ r)))
-                   : r && !g->legato && song_gen_hit(g, r - 1u) ? GT2_KEYOFF
-                                                                : GT2_REST;
-    uint8_t instr = hit ? g->instr : 0u;
-    if (cell[0] == want && cell[1] == instr) {
+    memcpy(was, cell, 4u);
+    uint32_t kind = hit_kind(g, r), h = song_mix(g->seed ^ r), n = song_gen_note(g, h);
+    int arp = g->role == SONG_ROLE_ARP;
+    if (kind > 1u) {
+        n = g->root[g->voice];
+    } else if (kind && arp) {
+        uint32_t c = chord_pick(g, h, &n);
+        cell[2] = CMD_WAVEPTR;
+        cell[3] = g->chord[c];
+    } else if (!kind && arp && cell[2] == CMD_WAVEPTR) {
+        cell[2] = cell[3] = 0u;
+    }
+    cell[0] = kind ? (uint8_t)(GT2_FIRSTNOTE + n)
+              : r && !g->legato && hit_kind(g, r - 1u) ? GT2_KEYOFF
+                                                       : GT2_REST;
+    cell[1] = kind == 1u ? g->instr : kind == 2u ? g->kick : kind == 3u ? g->snare : 0u;
+    if (!memcmp(cell, was, 4u)) {
         return 0;
     }
-    cell[0] = want;
-    cell[1] = instr;
     if (!write_cell(s, sv, r, cell)) {
         g->run = 0u;
     }
@@ -285,6 +411,20 @@ static void run_now(screen* s, song_view* sv) {
     } else if (g->run == SONG_GEN_MUTATE) {
         mutate_now(s, sv);
         g->run = ++g->row < 2u ? g->run : 0u;
+    } else if (g->wait) {
+        /* the chord programs being written: the cells once the batch is done and they are there */
+        const song_pages* p = g->pages;
+        if (p->pending || song_pages_batch_busy(p)) {
+            return;
+        }
+        g->wait = 0u;
+        for (uint32_t c = 0; c < SONG_GEN_CHORDS; c++) {
+            g->chord[c] = (uint8_t)song_gen_chord_find(sv->song, c);
+            if (!g->chord[c]) {
+                g->run = 0u;
+                refuse(s, *song_pages_message(p) ? song_pages_message(p) : "TABLE FULL");
+            }
+        }
     } else {
         uint32_t every = g->run == SONG_GEN_SWEEP ? SONG_GEN_SWEEP_EVERY : 1u;
         while (g->run && g->row < rows) {
@@ -296,6 +436,47 @@ static void run_now(screen* s, song_view* sv) {
         }
         g->run = 0u;
     }
+}
+
+/* The chord programs in the song's wavetable (g->chord): 1 all there; 0 the missing ones go
+ * after the table's last row through the batch writer (run_now waits for them); -1 refused, a
+ * toast says why (TABLE FULL, WAITING). */
+static int chords_ready(song_view* sv, screen* s) {
+    song_gen* g = &sv->gen;
+    song_pages* p = g->pages;
+    const gt2_song* song = sv->song;
+    uint32_t missing = 0u;
+    for (uint32_t c = 0; c < SONG_GEN_CHORDS; c++) {
+        g->chord[c] = (uint8_t)song_gen_chord_find(song, c);
+        missing |= (uint32_t)!g->chord[c] << c;
+    }
+    if (!missing) {
+        return 1;
+    }
+    if (!p || p->pending || !song_pages_batch_begin(p)) {
+        refuse(s, "WAITING");
+        return -1;
+    }
+    const char* why = NULL;
+    uint32_t at = lab_song_table_end(song, GT2_WTBL);
+    for (uint32_t c = 0; !why && c < SONG_GEN_CHORDS; c++) {
+        uint8_t left[SONG_GEN_CHORD_ROWS], right[SONG_GEN_CHORD_ROWS];
+        if (missing >> c & 1u) {
+            uint32_t n = song_gen_chord_rows(c, at + 1u, left, right);
+            why = song_pages_batch_rows(p, GT2_WTBL, at, n, 0u, left, right);
+            at += n;
+        }
+    }
+    if (why) {
+        p->batch_runs = p->batch_end = p->batch_used = 0u;
+    } else if (!song_pages_batch_go(p)) {
+        why = song_pages_message(p);
+    }
+    if (why) {
+        refuse(s, why);
+        return -1;
+    }
+    return 0;
 }
 
 void song_gen_start(song_view* sv, screen* s, uint32_t kind, uint32_t pattern, uint32_t voice,
@@ -312,7 +493,24 @@ void song_gen_start(song_view* sv, screen* s, uint32_t kind, uint32_t pattern, u
     song_dice d;
     song_gen_dice(sv, &d);
     g->seed = song_mix(g->seed ^ s->now ^ s->frame);
-    g->drums = (uint8_t)song_gen_drums(sv, voice);
+    g->role = (uint8_t)song_gen_role(sv, voice);
+    g->drums = g->role == SONG_ROLE_DRUMS;
+    g->wait = 0u;
+    if (kind == SONG_GEN_DICE && g->role == SONG_ROLE_BASS_DRUMS) {
+        g->kick = (uint8_t)gt2_kit_find(sv->song, GT2_KIT_KICK);
+        g->snare = (uint8_t)gt2_kit_find(sv->song, GT2_KIT_SNARE);
+        if (!g->kick || !g->snare) {
+            refuse(s, "NO DRUM KIT");
+            return;
+        }
+    }
+    if (kind == SONG_GEN_DICE && g->role == SONG_ROLE_ARP) {
+        int ready = chords_ready(sv, s);
+        if (ready < 0) {
+            return;
+        }
+        g->wait = (uint8_t)!ready;
+    }
     g->pattern = (uint8_t)pattern;
     g->voice = (uint8_t)voice;
     g->row = 0u;
@@ -325,7 +523,7 @@ void song_gen_start(song_view* sv, screen* s, uint32_t kind, uint32_t pattern, u
     g->up = (uint8_t)(g->seed >> 9 & 1u);
     g->run = (uint8_t)kind;
     refuse(s, kind == SONG_GEN_MUTATE ? "MUTATED"
-              : kind == SONG_GEN_DICE ? "NEW PATTERN"
+              : kind == SONG_GEN_DICE ? (g->role == SONG_ROLE_ARP ? "NEW CHORDS" : "NEW PATTERN")
               : g->up                 ? "SWEEP UP"
                                       : "SWEEP DOWN");
 }
@@ -412,8 +610,51 @@ int song_gen_release(song_view* sv, uint32_t held) {
     return roll;
 }
 
+/* A chunk write the song refused (song_ext_set's r < 0): saving, an edit in flight, or full. */
+__attribute__((noinline)) static void ext_refused(screen* s, int r) {
+    refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING"
+                                                                                : "SONG FULL");
+}
+
+/* The place of lane voice's role in ROLE_ORDER. */
+static uint32_t role_place(const song_view* sv) {
+    uint32_t role = song_gen_role(sv, sv->voice), k = 0u;
+    while (ROLE_ORDER[k] != role) {
+        k++;
+    }
+    return k;
+}
+
+/* PRESETS with the chord held: the selected lane's role, a detent a step in ROLE_ORDER, stopping
+ * at the ends, into the SCNE chunk (made with every other lane AUTO if the song has none). */
+static void role_turn(song_view* sv, screen* s, int32_t steps) {
+    song_scene scene;
+    if (!sv->song) {
+        return;
+    }
+    (void)song_ext_get_scene(sv->song, &scene); /* none: zeros, every role AUTO */
+    if (scene.count < SONG_GEN_LANES) {
+        scene.count = SONG_GEN_LANES;
+    }
+    int32_t k = (int32_t)role_place(sv) + steps;
+    k = k < 0 ? 0 : k >= (int32_t)SONG_ROLES ? (int32_t)SONG_ROLES - 1 : k;
+    scene.role[sv->voice] = ROLE_ORDER[k];
+    int r = song_ext_set_scene((gt2_song*)sv->song, &scene);
+    if (r < 0) {
+        ext_refused(s, r);
+    }
+}
+
 int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
-    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
+    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD) {
+        return 0;
+    }
+    if (enc == SONG_GEN_ENC_ROLE) {
+        role_turn(sv, s, steps);
+        sv->gen.scl_spoiled = 1u;
+        return 1;
+    }
+    if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return 0;
     }
     /* One detent a step, stopping at the ends; a turn spoils the roll at SCL's release. */
@@ -426,7 +667,7 @@ int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
     sv->gen.scl_spoiled = 1u;
     int r = sv->song ? song_ext_set_dice((gt2_song*)sv->song, &d) : -1;
     if (r < 0) {
-        refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : "SONG FULL");
+        ext_refused(s, r);
     }
     return 1;
 }
@@ -442,7 +683,17 @@ static void copy_text(char out[SCREEN_POPUP_TEXT], const char* text) {
 
 int song_gen_popup(const song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEXT],
                    char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
-    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
+    if (sv->gen.scl_down != SONG_GEN_SCL_CHORD) {
+        return 0;
+    }
+    if (enc == SONG_GEN_ENC_ROLE) {
+        copy_text(name, "ROLE");
+        copy_text(value, ROLE_NAMES[song_gen_role(sv, sv->voice)]);
+        *fill = role_place(sv);
+        *max = SONG_ROLES - 1u;
+        return 1;
+    }
+    if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return 0;
     }
     uint32_t k = enc - PANEL_ENC_K1;
@@ -527,6 +778,10 @@ void song_gen_frame(song_view* sv, uint32_t top) {
                   (char)('0' + root / 12u % 10u), 0};
     small(c, 2, top + 10u, "ROOT", THEME_ATTR(th, label));
     (void)grid_canvas_text_big(c, 11, top + 9u, 2, nn, THEME_ATTR(th, value));
+    /* the lane's role beside it, PRESETS's (small: its popup says it large) */
+    small(c, 19, top + 9u, "PRE", THEME_ATTR(th, hint));
+    small(c, 23, top + 9u, "ROLE", THEME_ATTR(th, label));
+    small(c, 19, top + 10u, ROLE_NAMES[song_gen_role(sv, v)], THEME_ATTR(th, value));
     sv->dirty |= ((1u << SONG_GEN_FRAME_ROWS) - 1u) << top;
 }
 
@@ -537,7 +792,7 @@ int song_gen_look(const song_view* sv, uint8_t out[SONG_GEN_LOOK]) {
     }
     song_dice d;
     song_gen_dice(sv, &d);
-    out[0] = 1u;
+    out[0] = (uint8_t)(1u + song_gen_role(sv, sv->voice)); /* the chord, and the lane's role */
     out[1] = d.density;
     out[2] = d.scale[sv->voice];
     out[3] = d.rhythm;

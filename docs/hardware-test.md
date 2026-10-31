@@ -2687,9 +2687,39 @@ songs, a `.sid` tune and a lifted sound on the store; Chrome on a computer with 
   *Device-only:* GoatTracker 2 itself on a computer for the `.ins` (no test loads a GTI5 in
   GoatTracker's code).
 
+## 30. Chords and time-shared drums from DICE (1.5)
+
+What it decides: whether DICE's chords and its time-shared drums and bass sound like C64 music
+on the chip, and whether setting a lane's role reads and feels right (docs/reference/controls.md
+"Roles"). A NEW song, STEP.
+
+- [ ] **The role:** hold EDIT, then SCL, and turn PRESETS: the frame says `PRE ROLE` and the role
+  beside the root, the popup says it large; letting go rolls nothing.
+  *Emulator:* `emu-gate/tests/first_use.rs::a_bass_and_drums_lane_rolls_the_kit_and_the_bass_time_shared`,
+  `sidou-tests/tests/app/song_gen_roles.rs::presets_with_edit_and_scl_held_sets_the_lanes_role_into_the_scene_chunk`,
+  goldens `step-dice` and `tracker-dice`, the ergo journey `roles`.
+  *Device-only:* whether the small `PRE ROLE` line is found, and the PRESETS turn feels like part
+  of the chord.
+- [ ] **BASS+DRUMS:** V1 BASS+DRUMS, PRESETS (outside the chord) to the BASS instrument 02, range
+  BASS (K2), EDIT + SCL, PLAY; then each rhythm (K4) in turn.
+  *Emulator:* `emu-gate/tests/first_use.rs::a_bass_and_drums_lane_rolls_the_kit_and_the_bass_time_shared`,
+  `sidou-tests/tests/app/song_gen_roles.rs::dice_on_a_bass_and_drums_lane_puts_the_kit_on_the_strong_beats_and_the_bass_between`
+  (GoatTracker's player plays it as SIDOU's, call for call).
+  *Device-only:* by ear, on both chip models: does one voice switching between the kick, the snare
+  and the bass sound like C64 music, or does the bass's cut at each drum hit jar; the kit's hard
+  restarts against the bass's.
+- [ ] **Chords:** V2 ARP, its instrument 01 (PULSE), scale MAJOR (K3), EDIT + SCL (`NEW CHORDS`),
+  PLAY with the BASS+DRUMS lane; SEQ to TRACKER, ALGORITHM to V2: the command line names each row's
+  chord (`CHORD A MIN`). A second roll writes no more table rows (TABLE: the 17 chord rows once).
+  *Emulator:* `emu-gate/tests/first_use.rs::an_arp_lane_rolls_chords_in_tracker`,
+  `sidou-tests/tests/app/song_gen_roles.rs::goattrackers_player_plays_a_chord_lane_as_sidous_does`,
+  `sidou-tests/tests/app/song_gen_roles.rs::dice_on_an_arp_lane_writes_chords_in_the_scale_and_the_programs_once`.
+  *Device-only:* by ear: the 50 Hz chords (a frame a tone) on the 6581 and the 8580; whether the
+  chords chosen fit the scale musically; the same song in GoatTracker 2 on a computer.
+
 Notes:
 
-## 30. The site's editor and Live Link page (1.5)
+## 31. The site's editor and Live Link page (1.5)
 
 What it decides: whether the editor (docs/manual/editor.md) and the Live Link page
 (docs/manual/live-link.md) work with a real FM-1 over a real USB-MIDI link in Chrome, and whether
@@ -2794,4 +2824,5 @@ Notes:
 | 27 Lift a sound from a .sid | | |
 | 28 FM-1 Live Link | | |
 | 29 The site's Library page | | |
-| 30 The site's editor and Live Link page | | |
+| 30 Chords and time-shared drums from DICE | | |
+| 31 The site's editor and Live Link page | | |

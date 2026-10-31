@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "live_view.h"
+#include "song/gt2_kit.h"
 #include "song/song_ext.h"
 
 #define NONE SCENE_SONG_NO_NOTE
@@ -158,7 +159,7 @@ static void roles(const scene_song* ss, uint8_t out[SCENE_SONG_VOICES]) {
     }
     int chunk_bass = 0;
     for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
-        chunk_bass |= ss->role[v] == SONG_ROLE_BASS;
+        chunk_bass |= ss->role[v] == SONG_ROLE_BASS || ss->role[v] == SONG_ROLE_BASS_DRUMS;
     }
     for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
         if (out[v] == SONG_ROLE_AUTO) {
@@ -210,6 +211,15 @@ static void flush(scene_song* ss) {
             b.hits |= (uint8_t)hit_of(drum_of(ss, s, ss->instr[v], ss->note[v]));
             break;
         case SONG_ROLE_BASS: b.bass = bass_of(ss, MIDI_OF(ss->note[v])); break;
+        case SONG_ROLE_BASS_DRUMS: /* the kit's kick and snare (DICE's), the rest the bass */
+            if (s && ss->instr[v] && ss->instr[v] == gt2_kit_find(s, GT2_KIT_KICK)) {
+                b.hits |= SCENE_RMR_KICK;
+            } else if (s && ss->instr[v] && ss->instr[v] == gt2_kit_find(s, GT2_KIT_SNARE)) {
+                b.hits |= SCENE_RMR_SNARE;
+            } else {
+                b.bass = bass_of(ss, MIDI_OF(ss->note[v]));
+            }
+            break;
         case SONG_ROLE_ARP:
         case SONG_ROLE_LEAD: b.hits |= SCENE_RMR_ARP; break;
         default: break;

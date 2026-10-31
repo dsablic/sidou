@@ -109,6 +109,21 @@ journey generate | Roll a pattern in the tracker
   step stop | Stop | PLAY again stops it | press PLAY; wait 600 | silent
   step back | Back to LIVE | HOME goes back | press HOME | view live
 
+journey roles | Chords and time-shared drums from DICE
+  goal Give two lanes of a new song a role, then let DICE write the kit and a bass on one and chords on the other.
+  prereq On LIVE after the boot.
+  skills a lane's role; DICE's chords; BASS+DRUMS
+  related generate; build
+  step new-song | A new song, and STEP | HOME, SONG, NEW; HOME back to LIVE, then SEQ | press HOME; select-item SONG; press SAVE; wait 800; turn SELECT -5; turn SELECT 1; press SAVE; wait 2600; press HOME; wait 500; press HOME; wait 1000; press SEQ; wait 900 | view step; setup
+  step role-drums | V1 is BASS+DRUMS | Hold EDIT, then SCL, and turn PRESETS: the lane's role | hold2turn EDIT SCL PRESETS 3; wait 900 | text BASS+DRUMS; setup; task give a lane a role
+  step roll-drums | Roll the kit and the bass | EDIT + SCL: the kick and snare on the beats, the bass between | holdpress EDIT SCL; wait 300 | toast; text NEW PATTERN; change; setup
+  step to-v2 | The next lane | SELECT to V2, once the roll is written | wait 5000; turn SELECT 1; wait 300 | change
+  step role-arp | V2 is ARP | Hold EDIT, then SCL, and turn PRESETS to ARP | hold2turn EDIT SCL PRESETS 4; wait 900 | text ARP; setup; task give a lane a role
+  step roll-chords | Roll chords | EDIT + SCL: chords of the scale, the programs written once | holdpress EDIT SCL; wait 300 | toast; text NEW CHORDS; change; setup
+  step play | Hear it | PLAY starts the song, once the chords are written | wait 3000; press PLAY; wait 2500 | sound; clip 2000
+  step stop | Stop | PLAY again stops it | press PLAY; wait 600 | silent
+  step back | Back to LIVE | HOME goes back | press HOME | view live
+
 journey perform | Perform
   goal Play along with a MIDI clock, switch sounds, mute and solo live.
   prereq On LIVE after the boot; a sequencer on the TRS jack.

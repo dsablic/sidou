@@ -1717,7 +1717,9 @@ fn k2_and_k4_with_edit_and_scl_held_set_the_range_and_the_rhythm_and_the_frame_s
                 (
                     s.ui.small(r, 2, 2),
                     s.ui.small(r + 1, 2, 6).trim_end().to_string(),
-                    s.ui.big(r, 11, 2, 9).trim_end().to_string(),
+                    s.ui.big(r, 11, 2, if i == 4 { 3 } else { 9 })
+                        .trim_end()
+                        .to_string(),
                 )
             })
             .collect()

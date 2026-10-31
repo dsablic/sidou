@@ -19,7 +19,7 @@
 #define LANES_AT (HEAD_AT + HEAD_N)
 #define LANES_N 24u
 #define LOWER_AT (LANES_AT + LANES_N)
-#define LOWER_N 17u
+#define LOWER_N (11u + SONG_GEN_LOOK)
 _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
 #define HEAD_ROWS 0x0000001Fu
 #define LANES_ROWS 0x0001FFE0u

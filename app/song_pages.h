@@ -58,7 +58,7 @@ typedef struct {
     uint8_t kind, index, n, at;
 } song_pages_run;
 
-typedef struct {
+typedef struct song_pages {
     song_view* sv;
     /* Retained while an edit waits, even if the user leaves the page. */
     const song_transport* transport;

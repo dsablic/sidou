@@ -77,7 +77,9 @@ fn frame(s: &Song, top: usize) -> Vec<(String, String, String)> {
             (
                 s.ui.small(r, 2, 2),
                 s.ui.small(r + 1, 2, 6).trim_end().to_string(),
-                s.ui.big(r, 11, 2, 9).trim_end().to_string(),
+                s.ui.big(r, 11, 2, if i == 4 { 3 } else { 9 })
+                    .trim_end()
+                    .to_string(),
             )
         })
         .collect()

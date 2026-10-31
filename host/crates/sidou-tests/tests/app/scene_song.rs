@@ -192,6 +192,40 @@ fn the_scne_chunk_names_the_roles_and_the_drums() {
     assert_eq!((back.count, back.drums), (3, 0));
 }
 
+/// 1.5: a BASS+DRUMS voice (DICE's time-shared kit and bass): the kit's kick and snare are its
+/// drums, its other notes the bass. A SIDOU before 1.5 takes the role as none of its own: the
+/// voice plays no part, as NONE.
+#[test]
+fn a_bass_and_drums_voice_is_the_kits_drums_and_the_bass() {
+    let mut song = crate::song_gen_roles::song(true, 0);
+    let mut v = song_scene {
+        count: 3,
+        ..Default::default()
+    };
+    v.role[0] = SONG_ROLE_BASS_DRUMS as u8;
+    v.role[1] = SONG_ROLE_NONE as u8;
+    v.role[2] = SONG_ROLE_NONE as u8;
+    assert_eq!(unsafe { song_ext_set_scene(song.ptr_mut(), &v) }, 0);
+    let sc = playing(&mut song);
+    let mut e = Ears::new();
+    e.feed(&sc, &call(0, 0, [Some((36, 3)), None, None]));
+    e.feed(&sc, &call(1, 1, [Some((24, 1)), None, None]));
+    e.feed(&sc, &call(2, 2, [Some((36, 4)), None, None]));
+    let out = e.frame();
+    let got: Vec<(u8, bool)> = out.beat[..3]
+        .iter()
+        .map(|b| (b.hits, b.bass != SCENE_RMR_BASS_NONE as u8))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (SCENE_RMR_KICK as u8, false),
+            (0, true),
+            (SCENE_RMR_SNARE as u8, false)
+        ]
+    );
+}
+
 /// Four bars of a 16-row pattern, a kick on every beat: the rows' places, and the fill on bar
 /// 4's last beat, which the vignette turns into the spinning attack and the disarm.
 #[test]
