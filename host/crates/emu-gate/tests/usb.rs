@@ -5,7 +5,9 @@ mod common;
 
 use common::panel::*;
 use common::usb_host::UsbHost;
-use common::{firmware, Firmware, Machine, USB_AUDIO_PER_SAMPLE};
+use common::{
+    build_dir, firmware, run_past_boot, Firmware, Machine, STORE_POLL_WORST, USB_AUDIO_PER_SAMPLE,
+};
 use fm1_core::Bus;
 use fm1_soc::usb::UsbEvent;
 
@@ -500,8 +502,6 @@ fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (f64, f64) {
 fn transfer_file() -> Vec<u8> {
     (0..4096u32).map(|i| (i * 31 + i / 256) as u8).collect()
 }
-
-const STORE_POLL_WORST: u64 = 30_000;
 
 fn timed_round_trip(fw: &Firmware, name: &str, chord: bool) -> (f64, f64) {
     let mut m = usb_machine(fw);

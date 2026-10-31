@@ -3,7 +3,6 @@
 
 mod common;
 
-use common::panel::*;
 use common::{firmware, mount_dump, Firmware, Machine, POLL_INSTRUCTIONS};
 use fm1_core::Bus;
 use sidou_sys::*;
@@ -143,7 +142,9 @@ fn upload(
 
 #[test]
 fn a_current_song_put_finishes_the_normal_loader_before_releasing_the_transfer() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, true);
     let song = sidou_tests::song_embed::sng();
     put(&mut m, &fw, 2, 0, "", &song);
@@ -242,7 +243,9 @@ fn full_file() -> Vec<u8> {
 
 #[test]
 fn a_trs_put_commits_a_song_byte_exact_and_bank_one_loads_it() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, true);
     let song = sidou_tests::song_embed::sng();
     put(&mut m, &fw, 0, 0, "MIDI TEST", &song);
@@ -284,7 +287,9 @@ fn a_trs_put_commits_a_song_byte_exact_and_bank_one_loads_it() {
 
 #[test]
 fn a_pool_drained_put_is_refused_before_any_program_or_claim() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, true);
     chord(&mut m);
     let storage = fw.symbol("store_fm1_store");
@@ -334,7 +339,9 @@ fn a_pool_drained_put_is_refused_before_any_program_or_claim() {
 
 #[test]
 fn a_trs_instrument_put_relocates_tables_into_the_current_song() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, true);
     let ctl = fw.symbol("song_transport");
     m.key(PANEL_BTN_PLAY as u8, true);
@@ -438,7 +445,9 @@ fn a_trs_instrument_put_relocates_tables_into_the_current_song() {
 
 #[test]
 fn a_full_size_trs_put_with_a_chord_never_erases_or_holds() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, true);
     chord(&mut m);
     let counts = fw.symbol("store_fm1_counts");
@@ -461,7 +470,9 @@ fn a_full_size_trs_put_with_a_chord_never_erases_or_holds() {
 
 #[test]
 fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, false);
     chord(&mut m);
     assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
@@ -572,7 +583,9 @@ fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_
 
 #[test]
 fn a_production_trs_put_with_keys_held_waits_out_a_record_and_commits() {
-    let Some(fw) = firmware() else { return };
+    let Some(fw) = firmware("the SysEx emulator tests") else {
+        return;
+    };
     let mut m = boot(&fw, false);
     assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
     chord(&mut m);

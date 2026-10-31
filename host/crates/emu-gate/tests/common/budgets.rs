@@ -45,3 +45,5 @@ const _: () = assert!(
 pub const CPU_HZ: u64 = 240_000_000;
 pub const POLL_HZ: u64 = 2000;
 pub const POLL_INSTRUCTIONS: u64 = CPU_HZ / POLL_HZ;
+
+pub const STORE_POLL_WORST: u64 = 30_000;

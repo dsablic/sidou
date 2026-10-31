@@ -5,7 +5,7 @@ mod common;
 
 use std::ffi::CString;
 
-use common::panel::{press, turn, wait_for_within, ALGORITHM, HOME, SELECT};
+use common::panel::{open_midi_page, turn, wait_for_within, ALGORITHM, SELECT};
 use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
@@ -27,8 +27,6 @@ const C4: u8 = 48;
 const G4: u8 = 55;
 const C5: u8 = 60;
 const MISSING_PROGRAM: u8 = 127;
-const MENU_MIDI: i32 = VIEWS_MENU_MIDI as i32;
-const MENU_WIPE_MS: u64 = 700;
 const MIDI_MODE: i32 = 0;
 const MIDI_OPTION: i32 = 2;
 const MIDI_LEGATO: i32 = 3;
@@ -55,14 +53,6 @@ fn name(m: &mut Machine, fw: &Firmware) -> String {
         m,
         fw.symbol("songs") + ilp32::song_io::name as u32,
         STORE_NAME_MAX + 1,
-    )
-}
-
-fn toast(m: &mut Machine, fw: &Firmware) -> String {
-    text(
-        m,
-        fw.symbol("ui") + ilp32::screen::toast as u32,
-        SCREEN_TOAST_CHARS,
     )
 }
 
@@ -227,7 +217,7 @@ fn bank_one_loads_name_order_stopped_and_missing_index_preserves_song() {
     assert_eq!(song(&mut m, &fw).write(true), alpha);
     program(&mut m, MISSING_PROGRAM);
     until(&mut m, "missing song is reported", |m| {
-        toast(m, &fw) == "SONG NOT FOUND"
+        toast_text(m, &fw) == "SONG NOT FOUND"
     });
     idle(&mut m, &fw);
     assert_eq!(name(&mut m, &fw), "ALPHA");
@@ -248,7 +238,7 @@ fn bank_one_refuses_unsaved_row_edits_without_discarding_them() {
     assert_ne!(edited, alpha, "row hook did not make an unsaved edit");
     program(&mut m, 1);
     until(&mut m, "unsaved bank selection is refused", |m| {
-        toast(m, &fw) == "SAVE YOUR SONG FIRST"
+        toast_text(m, &fw) == "SAVE YOUR SONG FIRST"
     });
     m.run_ms(100);
     assert_eq!(name(&mut m, &fw), "ALPHA");
@@ -271,7 +261,7 @@ fn bank_one_refuses_a_program_while_save_is_busy() {
     );
     program(&mut m, 1);
     until(&mut m, "busy bank selection is refused", |m| {
-        toast(m, &fw) == "SAVING"
+        toast_text(m, &fw) == "SAVING"
     });
     idle(&mut m, &fw);
     m.run_ms(100);
@@ -283,15 +273,6 @@ fn bank_one_refuses_a_program_while_save_is_busy() {
     assert_eq!(song(&mut m, &fw).write(true), alpha);
     assert_stopped(&mut m, &fw);
     check_passes(&m);
-}
-
-fn open_midi_page(m: &mut Machine) {
-    press(m, HOME);
-    m.run_ms(MENU_WIPE_MS);
-    turn(m, SELECT, -(VIEWS_MENU_ITEMS as i32));
-    turn(m, SELECT, MENU_MIDI);
-    turn(m, ALGORITHM, 1);
-    m.run_ms(MENU_WIPE_MS);
 }
 
 fn edit_midi_items(m: &mut Machine, mut cursor: i32, edits: &[(i32, i32)]) -> i32 {
@@ -542,7 +523,7 @@ fn refused_chip_setup_restores_plain_song_and_runtime_metadata() {
         ("FULL SETUP", "SNG: SAVED FORM TOO BIG"),
     ] {
         complete(&mut m, &fw, LOAD, candidate);
-        assert_eq!(toast(&mut m, &fw), reason);
+        assert_eq!(toast_text(&mut m, &fw), reason);
         assert_eq!(
             held_keys(&mut m),
             before_held,

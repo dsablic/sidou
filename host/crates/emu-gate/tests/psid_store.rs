@@ -9,7 +9,6 @@ use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::psid::{full_size, packed};
 
-const STORE_POLL_WORST: u64 = 30_000;
 const TRS_GAP_MS: u64 = 1_000;
 const TRS_US_PER_BYTE: u64 = 320;
 const WAIT_MS: u64 = 20_000;
@@ -102,15 +101,6 @@ fn stored(m: &Machine, name: &str) -> Option<(u8, Vec<u8>)> {
     stored_file(&m.soc.flash.mem, name)
 }
 
-fn toast(m: &mut Machine, fw: &Firmware) -> String {
-    let at = fw.symbol("ui") + ilp32::screen::toast as u32;
-    (0..SCREEN_TOAST_CHARS)
-        .map(|i| m.soc.read8(at + i))
-        .take_while(|&b| b != 0)
-        .map(char::from)
-        .collect()
-}
-
 fn tune_state(m: &mut Machine, fw: &Firmware) -> u8 {
     m.soc.read8(fw.symbol("sid_tune"))
 }
@@ -192,7 +182,7 @@ fn the_clis_syx_over_trs_stores_a_tune_byte_for_byte_and_it_loads_and_plays() {
         frames(&syx).len(),
         m.ms() - start
     );
-    assert_eq!(toast(&mut m, &fw), "SAVED");
+    assert_eq!(toast_text(&mut m, &fw), "SAVED");
     assert_eq!(stored(&m, &name), Some((STORE_FILE_SID as u8, file)));
     plays(&mut m, &fw, &name);
     check_passes(&m, "a tune over TRS");
@@ -229,7 +219,7 @@ fn rsid_mus_and_crafted_files_are_refused_over_trs_before_any_flash_program() {
             m.midi(f);
             m.run_ms(wire_ms(f) + TOAST_LOOK_MS);
             if shown.is_empty() {
-                let t = toast(&mut m, &fw);
+                let t = toast_text(&mut m, &fw);
                 if !t.is_empty() && t != "RECEIVING" {
                     shown = t;
                 }
@@ -402,11 +392,11 @@ fn with_the_stores_keys_used_up_a_tunes_put_is_refused_store_full() {
         m.midi(f);
         m.run_ms(wire_ms(f) + TOAST_LOOK_MS);
     }
-    assert_eq!(toast(&mut m, &fw), "STORE FULL");
+    assert_eq!(toast_text(&mut m, &fw), "STORE FULL");
     for f in &all[FRAMES_BEFORE_THE_REFUSAL..] {
         m.midi(f);
         m.run_ms(wire_ms(f) + TOAST_LOOK_MS);
-        assert_eq!(toast(&mut m, &fw), "STORE FULL", "the refusal stands");
+        assert_eq!(toast_text(&mut m, &fw), "STORE FULL", "the refusal stands");
     }
     assert_eq!(m.soc.read32(counts + STAT_PROGS), progs, "a program");
     assert_eq!(stored(&m, "NO ROOM"), None);

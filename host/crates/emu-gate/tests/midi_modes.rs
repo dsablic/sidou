@@ -9,7 +9,6 @@ use common::panel::*;
 use common::{firmware, Firmware, Machine};
 use sidou_sys::ilp32;
 
-const MENU_MIDI: i32 = sidou_sys::VIEWS_MENU_MIDI as i32;
 const A4: u8 = 69;
 
 fn booted(fw: &Firmware) -> Machine {
@@ -17,15 +16,6 @@ fn booted(fw: &Firmware) -> Machine {
     common::run_past_boot(&mut m, fw);
     m.run_ms(300);
     m
-}
-
-fn open_midi_page(m: &mut Machine) {
-    press(m, HOME);
-    m.run_ms(700);
-    turn(m, SELECT, -MENU_ITEMS);
-    turn(m, SELECT, MENU_MIDI);
-    turn(m, ALGORITHM, 1);
-    m.run_ms(700);
 }
 
 fn route_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {

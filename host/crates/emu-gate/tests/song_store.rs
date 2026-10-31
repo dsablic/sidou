@@ -72,14 +72,6 @@ fn name(m: &mut Machine, fw: &Firmware) -> String {
     )
 }
 
-fn toast(m: &mut Machine, fw: &Firmware) -> String {
-    text(
-        m,
-        fw.symbol("ui") + ilp32::screen::toast as u32,
-        SCREEN_TOAST_CHARS,
-    )
-}
-
 fn ctl_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
     m.soc.read8(fw.symbol("song_transport") + offset as u32)
 }
@@ -243,7 +235,7 @@ fn row_write(m: &mut Machine, fw: &Firmware, pattern: u32, row: u32, cell: [u8; 
         m.soc.read32(hook) == 0
     });
     if frozen {
-        assert_eq!(toast(m, fw), "SAVING");
+        assert_eq!(toast_text(m, fw), "SAVING");
         return;
     }
     until(m, "row write applies and releases", |m| {
@@ -445,7 +437,7 @@ fn save_freezes_edits_and_keeps_the_snapshot_at_save() {
     assert_eq!(frozen.write(false), before);
     let expected = frozen.write(true);
     row_write(&mut m, &fw, 4, 2, gt2_note(A4, 2));
-    assert_eq!(toast(&mut m, &fw), "SAVING");
+    assert_eq!(toast_text(&mut m, &fw), "SAVING");
     assert_eq!(
         song(&mut m, &fw).write(true),
         expected,
@@ -553,7 +545,7 @@ fn refused_corrupt_and_oversized_files_restore_the_previous_saved_song() {
         ("BAD SETUP", "BAD CHIP SETUP"),
     ] {
         complete(&mut m, &fw, LOAD, file);
-        let message = toast(&mut m, &fw);
+        let message = toast_text(&mut m, &fw);
         assert!(
             message.contains(reason),
             "{file}: refusal toast {message:?}"
@@ -591,7 +583,7 @@ fn refused_corrupt_and_oversized_files_restore_the_previous_saved_song() {
         + GT2_TITLE;
     m.soc.flash.mem[at as usize] ^= 1;
     complete(&mut m, &fw, LOAD, "NIGHT");
-    assert!(toast(&mut m, &fw).contains("FILE CRC"));
+    assert!(toast_text(&mut m, &fw).contains("FILE CRC"));
     assert_eq!(song(&mut m, &fw).write(true), expected);
     check_passes(&m, "failed loads and previous-song reloads");
 }
@@ -743,7 +735,7 @@ fn save_on_an_unknown_flash_part_fails_at_once_and_holds_nothing() {
         "SAVE took {} ms",
         m.ms() - start
     );
-    assert_eq!(toast(&mut m, &fw), "SONG: SAVE FAILED");
+    assert_eq!(toast_text(&mut m, &fw), "SONG: SAVE FAILED");
     assert_eq!(song(&mut m, &fw).raw().frozen, 0);
     m.run_ms(3 * SETTINGS_FORCE_MS as u64);
     let service = fw.symbol("store_fm1_state");

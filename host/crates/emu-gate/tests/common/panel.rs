@@ -118,3 +118,15 @@ pub fn select_menu_item(m: &mut Machine, item: i32) {
     m.turn(SELECT, item);
     m.run_ms(turn_time(item));
 }
+
+pub const MENU_WIPE_MS: u64 = 700;
+pub const MENU_MIDI: i32 = sidou_sys::VIEWS_MENU_MIDI as i32;
+
+pub fn open_midi_page(m: &mut Machine) {
+    press(m, HOME);
+    m.run_ms(MENU_WIPE_MS);
+    turn(m, SELECT, -MENU_ITEMS);
+    turn(m, SELECT, MENU_MIDI);
+    turn(m, ALGORITHM, 1);
+    m.run_ms(MENU_WIPE_MS);
+}

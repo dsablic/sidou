@@ -8,11 +8,11 @@ use std::collections::BTreeMap;
 use common::panel::{note_key, A4_KEY};
 use common::{
     assert_within_budget, mount_dump, Firmware, Machine, CPU_HZ, HALF_FRAMES, POLL_INSTRUCTIONS,
+    STORE_POLL_WORST,
 };
 use fm1_core::Bus;
 use sidou_sys::*;
 
-const STORE_POLL_WORST: u64 = 30_000;
 const OP_PUT: u32 = 1;
 const OP_GET: u32 = 2;
 const OP_FILE: u32 = 3;
