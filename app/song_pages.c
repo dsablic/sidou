@@ -588,13 +588,6 @@ int song_pages_jump(song_pages* p, screen* s, const screen_event* e) {
     return 1;
 }
 
-static void note_name(uint32_t note, char out[4]) {
-    out[0] = screen_note_names[note % 12u][0];
-    out[1] = screen_note_names[note % 12u][1];
-    out[2] = (char)('0' + note / 12u);
-    out[3] = 0;
-}
-
 void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char out[31]) {
     const char* what;
     if (table != GT2_STBL && left == 0xffu)
@@ -619,7 +612,7 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     out[n++] = ' ';
     if (table == GT2_WTBL && left >= 0x10u && left < 0xf0u) {
         if (right > 0x80u && (right & 0x7fu) < 96u) {
-            note_name(right & 0x7fu, out + n);
+            screen_note_text(right & 0x7fu, out + n);
             return;
         }
         if (right == 0x80u) {
@@ -1185,7 +1178,7 @@ static void wave_words(const gt2_song* song, uint32_t row, program_words* w) {
             continue;
         char note[PROGRAM_WORD];
         if (right > 0x80u)
-            note_name((right & 0x7fu) % 96u, note);
+            screen_note_text(right & 0x7fu, note);
         else
             arp_num(note, arp_off(right), 1);
         add_word(w, note);
@@ -1268,6 +1261,27 @@ static void program_line(const program_words* w, char out[GRID_COLS / 2u + 1u]) 
         memcpy(out + n, w->word[i], len + 1u);
         n += len;
     }
+}
+
+static const char ATTACK_TIMES[16][6] = {"2MS",  "8MS",   "16MS", "24MS", "38MS", "56MS", "68MS", "80MS",
+                                         "0.1S", "0.25S", "0.5S", "0.8S", "1S",   "3S",   "5S",   "8S"};
+static const char RELEASE_TIMES[16][6] = {"6MS",  "24MS",  "48MS", "72MS", "0.11S", "0.17S", "0.2S", "0.24S",
+                                          "0.3S", "0.75S", "1.5S", "2.4S", "3S",    "9S",    "15S",  "24S"};
+
+static uint32_t put(char* out, uint32_t n, const char* text) {
+    while (*text)
+        out[n++] = *text++;
+    out[n] = 0;
+    return n;
+}
+
+static void envelope_line(uint32_t field, uint8_t byte, char out[GRID_COLS / 2u + 1u]) {
+    char level[3];
+    (void)screen_decimal(level, byte >> 4);
+    uint32_t n = put(out, 0u, field == GT2_INS_AD ? "A " : "S ");
+    n = put(out, n, field == GT2_INS_AD ? ATTACK_TIMES[byte >> 4] : level);
+    n = put(out, n, field == GT2_INS_AD ? " D " : " R ");
+    (void)put(out, n, RELEASE_TIMES[byte & 15u]);
 }
 
 static void build_row(song_pages* p, uint32_t j) {
@@ -1410,6 +1424,10 @@ static void build_footer(song_pages* p) {
     if (!*say && p->page == SONG_VIEW_INSTR && sv->song && program_of(sv->song, sv->instr, p->instr_cursor, &w)) {
         program_line(&w, meaning);
         say = w.n ? meaning : "NO PROGRAM";
+    }
+    if (!*say && p->page == SONG_VIEW_INSTR && sv->song && p->instr_cursor <= GT2_INS_SR) {
+        envelope_line(p->instr_cursor, sv->song->instr[sv->instr - 1u][p->instr_cursor], meaning);
+        say = meaning;
     }
     if (!*say && p->page == SONG_VIEW_INSTR)
         say = p->instr_cursor < GT2_INS_NAME ? PARAM_NAMES[p->instr_cursor] : "INSTRUMENT NAME";

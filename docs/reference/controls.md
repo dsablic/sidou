@@ -500,7 +500,9 @@ as `S+P`, `OFF` for an inaudible one) and the notes in order, relative in semito
 or absolute (`C-4`): `PUL +0 +4 +7`. PULSE: the first width set, as a percent, and `PWM` when
 a slide follows: `50% PWM`. FILTER: the mode (`LP`, `BP`, `HP`, `LBP`, `NTCH`, `BHP`, `ALL`), the
 first cutoff in hex and `SLIDE` when one follows: `LP 40 SLIDE`. A pointer of 00 shows nothing
-beside it and `NO PROGRAM` at the foot.
+beside it and `NO PROGRAM` at the foot. On ATK/DEC and SUS/REL the foot spells the envelope out in the SID's
+times: `A 2MS D 1.5S` (attack 2 ms to 8 s, decay 6 ms to 24 s), `S 4 R 0.3S` (the sustain level
+0-15, release 6 ms to 24 s).
 
 ### ARP helper
 

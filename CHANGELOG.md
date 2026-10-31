@@ -104,7 +104,8 @@ All notable changes are documented here. The format follows
   foot, at 2x, the whole summary of the pointer under the cursor: the waveform and the first
   notes (`PUL +0 +4 +7`), the start width and whether it sweeps (`50% PWM`), the filter's mode,
   cutoff and slide (`LP 40 SLIDE`), `NO PROGRAM` for 00. No trip to TABLE to know what an
-  instrument plays.
+  instrument plays. On ATK/DEC and SUS/REL the foot spells the envelope out in the SID's times
+  (`A 2MS D 1.5S`, `S 4 R 0.3S`) instead of the field's name.
 - **EDIT + SELECT jumps a page on ORDER and TABLE** (12 entries or rows, a screenful), as it
   jumps 8 rows on TRACKER, and **8 on INSTR** (ATK/DEC to 1ST WAVE, then the same character on
   the name's other line). Their help cards say `E+SELECT PAGE`.

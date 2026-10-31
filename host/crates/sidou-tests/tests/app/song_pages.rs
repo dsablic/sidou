@@ -856,7 +856,10 @@ fn page_values_and_parameter_names_are_readable_at_two_times_the_font() {
     h.settle();
     assert_eq!(h.ui.big(3, 0, 2, 7), "ATK/DEC");
     assert_eq!(h.ui.big(19, 0, 2, 8), "1ST WAVE");
-    assert_eq!(h.ui.big(28, 0, 2, 12), "ATTACK/DECAY");
+    assert_eq!(h.ui.big(28, 0, 2, 11), "A 2MS D 6MS");
+    h.turn(PANEL_ENC_SELECT, GT2_INS_VIBPARAM as i16);
+    h.settle();
+    assert_eq!(h.ui.big(28, 0, 2, 7), "VIBRATO");
     let mut h = Pages::new(unsafe { &song_pages_table_view });
     h.settle();
     assert_eq!(h.ui.big(0, 0, 2, 4), "WAVE");
@@ -915,6 +918,23 @@ fn instr_says_what_each_table_pointer_points_to() {
     h.settle();
     assert_eq!(beside(&h, GT2_INS_FILTER), (String::new(), String::new()));
     assert_eq!(footer(&h), "NO PROGRAM");
+}
+
+#[test]
+fn instr_spells_the_envelope_out_in_times() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    let mut spec = SngSpec::new();
+    let mut instr = [0u8; 25];
+    instr[GT2_INS_AD as usize] = 0x09;
+    instr[GT2_INS_SR as usize] = 0xf9;
+    spec.instr = vec![instr];
+    h.model.read(&spec.encode(), 0).unwrap();
+    h.ui.v.song.song_edits += 1;
+    h.settle();
+    assert_eq!(h.ui.row(28).trim_end(), "A 2MS D 0.75S");
+    h.turn(PANEL_ENC_SELECT, 1);
+    h.settle();
+    assert_eq!(h.ui.row(28).trim_end(), "S 15 R 0.75S");
 }
 
 #[test]
