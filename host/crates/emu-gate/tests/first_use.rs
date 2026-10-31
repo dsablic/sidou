@@ -3,13 +3,14 @@
 
 mod common;
 
-use common::panel::{self, press, turn, *};
+use common::panel::{self, press, *};
 use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::song::Song;
 
 const CHORD_RELEASE_MS: u64 = 40;
+const NEXT_FRAME_SHOWN_MS: u64 = 20;
 const AUDITION_HANDS_CHIP_A_BACK_MS: u64 = 2_500;
 const C4_KEY_INDEX: u8 = note_key(60) - KEY0;
 const SETTINGS_DEBOUNCE_MS: u64 = 6_000;
@@ -26,6 +27,11 @@ const CHIP_HZ: f64 = SID_CLOCK_PAL as f64;
 
 const AUDIBLE_RMS: f64 = 250.0;
 const SILENT_RMS: f64 = 40.0;
+
+fn turn(m: &mut Machine, enc: u8, clicks: i32) {
+    panel::turn(m, enc, clicks);
+    m.run_ms(NEXT_FRAME_SHOWN_MS);
+}
 
 fn chord(m: &mut Machine, held: u8, id: u8) {
     panel::chord(m, held, id);
