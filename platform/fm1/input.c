@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The only file that includes fm1_input.h and fm1_adc.h: the scan state they define is
- * static, and the TIMER5 interrupt reaches it through input_tick_isr. Neither includes
- * fm1_irq.h (platform/fm1/VENDORED.md). */
 #include "input.h"
 
 #include "midi.h"
@@ -21,11 +18,9 @@ static uint8_t shown_valid;
 void input_init(void) {
     fm1_input_init();
     fm1_adc_init();
-    (void)fm1_adc_read(FM1_ADC_MASTER); /* the first conversion after power-on is off */
+    (void)fm1_adc_read(FM1_ADC_MASTER);
 }
 
-/* The matrix's pins as fm1_input_init sets them, without its scan state (fm1_in, in .bss,
- * which is not set up yet when input_raw_keys runs). */
 static void raw_pins(void) {
     static const uint8_t LEDP[4][2] = {{FM1_PH, 6}, {FM1_PH, 9}, {FM1_PA, 9}, {FM1_PA, 10}};
     const uint32_t rows_a = (1u << 0) | (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8);
@@ -51,7 +46,7 @@ static void raw_pins(void) {
     FM1_PR(FM1_PA, FM1_DIR) &= ~sr;
 }
 
-#define RAW_OE (1u << 2) /* PA2: the 595's /OE, the backlight (active low) */
+#define RAW_OE (1u << 2)
 
 uint32_t input_raw_keys(void) {
     raw_pins();
@@ -59,7 +54,7 @@ uint32_t input_raw_keys(void) {
     FM1_PR(FM1_PA, FM1_OUT) &= ~RAW_OE;
     FM1_PR(FM1_PA, FM1_DIR) &= ~RAW_OE;
     uint32_t keys = 0;
-    for (uint32_t p = 0; p < FM1_NCOL; p++) { /* fm1_input_scan's column order and select */
+    for (uint32_t p = 0; p < FM1_NCOL; p++) {
         fm1__sr_word(0xFFFFu ^ (1u << p) ^ (p < 2u ? 1u << (11u + p) : 0u));
         fm1_delay_us(FM1_SETTLE_US);
         uint32_t raw = fm1__rows();
@@ -70,7 +65,7 @@ uint32_t input_raw_keys(void) {
             }
         }
     }
-    fm1__sr_word(0xFFFFu); /* no column, as fm1_input_init leaves it */
+    fm1__sr_word(0xFFFFu);
     FM1_PR(FM1_PA, FM1_OUT) = (FM1_PR(FM1_PA, FM1_OUT) & ~RAW_OE) | out;
     FM1_PR(FM1_PA, FM1_DIR) = (FM1_PR(FM1_PA, FM1_DIR) & ~RAW_OE) | dir;
     return keys;
@@ -89,9 +84,6 @@ uint32_t input_frame(void) {
     return fm1_in.frames;
 }
 
-/* MASTER: the mean of INPUT_MASTER_READS conversions, which halves the pot's noise before
- * panel_master's thresholds see it (a timeout in any of them is the reading's: -1). Called once
- * a live tick; a conversion is a few tens of microseconds, so four cost well under 1 % of it. */
 #define INPUT_MASTER_READS 4
 
 int32_t input_master(void) {
@@ -107,18 +99,14 @@ int32_t input_master(void) {
 }
 
 void input_poll(panel* p, live* l) {
-    (void)l; /* the views play the one they were given (ui_init), the same */
+    (void)l;
     uint32_t pressed = fm1_input_edges(0);
-    /* The held keys and their press edges in one go: a press between two separate reads
-     * would play twice or blip. */
     uint32_t k = fm1__lock();
     uint32_t down = fm1_in.notes;
     uint32_t note_pressed = fm1_in.notes_pressed;
     fm1_in.notes_pressed = 0;
     fm1__unlock(k);
 
-    /* A Live Link host's buttons and encoders with the panel's (midi.h; none without a
-     * session, which only a host starts, after the boot's combinations were read). */
     uint32_t held = fm1_in.buttons;
     uint8_t linked = midi_link_active;
     if (linked) {
@@ -139,8 +127,6 @@ void input_poll(panel* p, live* l) {
     }
 }
 
-/* The glow of key id: fm1_led_dim as fm1_led_key sets fm1_led (the HAL's scan pulses it, a
- * thirtieth of lit, fm1_input.h; vendored code is not touched). */
 static void dim_key(uint32_t id, int on) {
     for (uint32_t p = 0; p < FM1_NCOL; p++) {
         for (uint32_t r = 1; r < 5u; r++) {
@@ -169,7 +155,6 @@ static void led_key(uint32_t id, int on) {
     fm1_led_key(id, on);
 }
 
-/* The LEDs follow the panel at most this often: the blinks and the beat move at tens of ms. */
 #define LEDS_PERIOD_MS 10u
 
 void input_leds(const panel* p, const live* l, uint32_t now_ms) {
@@ -198,11 +183,9 @@ uint32_t input_buttons(void) {
 }
 
 uint32_t input_buttons_at_power_on(void) {
-    /* A key held since power-on counts as pressed after FM1_DEB_PRESS frames closed in a
-     * row; one more covers the frame the scan was in when this started. */
     uint32_t from = fm1_in.frames;
     while (fm1_in.frames - from < FM1_DEB_PRESS + 1u) {
-        __asm__ volatile("idle" ::: "memory"); /* the next TIMER5 tick */
+        __asm__ volatile("idle" ::: "memory");
     }
     return fm1_in.buttons;
 }

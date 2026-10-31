@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The store on the device (store_fm1.h). */
 #include "store_fm1.h"
 
 #include <stdint.h>
@@ -14,52 +13,36 @@
 #include "store_layout.h"
 #include "ui.h"
 
-/* ALNK0's pending register: a free half (a block due) is bit 7 (hal/fm1_audio.h, which only
- * main.c includes). */
 #define ALNK_CON2 (*(volatile uint8_t*)0x12E08u)
 #define ALNK_HALF 0x80u
 
-/* The most store_polls the boot gives the mount and the pool's fill (a blank region's first
- * format is about 100). */
 #define BOOT_POLLS 20000u
-/* The most flash work the boot does once the mount is done: within the LCD's wake-up wait
- * (120 ms). The rest (a blank region's first format, recovery: every sector of another
- * firmware's in SIDOU's region erased before the session's first write) goes on in the main
- * loop's passes, an operation a pass, held while quiet, with USB and the watchdog served
- * between: a real FM-1 that Felucca had written 40-odd sectors of spent seconds here before
- * USB started (2026-10-23; emu-gate usb.rs a_first_boot_over_another_firmwares_sectors_...). */
 #define BOOT_WORK_MS 100u
-/* How often an idle store asks whether maintenance has work (store_erase_wanted: a plan of a
- * few thousand instructions; quiet takes 500 ms anyway). */
 #define WANT_MS 1000u
 
-/* The device's store (a global: the emulator tests read it). */
 store store_fm1_store;
 store_fm1_stats store_fm1_counts;
 store_fm1_test store_fm1_hook;
-/* The program window in bytes, STORE_WINDOW_BYTES (0: programs are held operations); the
- * emulator tests set it to try either. */
 volatile uint32_t store_fm1_window = STORE_WINDOW_BYTES;
 
-/* The service's state (a global: the emulator tests read it). */
 struct {
-    uint32_t now;        /* the main loop's ms, for the hooks */
-    uint32_t last_ms;    /* the last service's */
-    uint32_t last_hold;  /* the last held operation's end */
-    uint32_t inputs;     /* midi_inputs as last seen, and when it changed */
+    uint32_t now;
+    uint32_t last_ms;
+    uint32_t last_hold;
+    uint32_t inputs;
     uint32_t input_ms;
-    uint32_t wanted_at;  /* when store_erase_wanted was last asked */
-    uint32_t file_at;    /* the test hook's file: bytes offered */
-    uint8_t wanted;      /* maintenance has work */
+    uint32_t wanted_at;
+    uint32_t file_at;
+    uint8_t wanted;
     uint8_t quiet;
     uint8_t force;
-    uint8_t holding;     /* audio_hold is on */
-    uint8_t polled;      /* the last store_poll had work */
-    uint8_t file;        /* the test hook's file: 1 streaming, 2 ended */
+    uint8_t holding;
+    uint8_t polled;
+    uint8_t file;
     uint8_t sysex_turn;
-    uint8_t silent;      /* as quiet, but for MIDI input (a SysEx transfer's own bytes) */
-    uint8_t programmed;  /* a held operation ran in this hold */
-    uint8_t loud;        /* a song plays, or a computer records the USB audio */
+    uint8_t silent;
+    uint8_t programmed;
+    uint8_t loud;
 } store_fm1_state;
 #define fm store_fm1_state
 
@@ -87,26 +70,13 @@ static void hold_off(void) {
     fm.holding = 0;
 }
 
-/* A held operation may run now: the device quiet (or a forced save), the gap since the last
- * one passed, and the audio silent. Asks for the hold if it is not on.
- * A SysEx write's programs (midi_sysex_writing, sysex.h) go a batch a hold: a DATA packet's
- * pages, its chunk header and commit word, at END the FILE record (store_file_pending); before
- * a PUT claims (a DEL deletes), the record it waits for (a save, a collection's copy: sysex.c
- * OPEN, UNLINK); one a store_poll, at least STORE_PROGRAM_GAP_MS apart with the interrupts on
- * between them; the hold ends with the batch (store_fm1_service). While a song plays or a
- * computer records the USB audio (fm.loud) there is no hold: the write waits for quiet (its ACK
- * waits, sysex.c), so the music never dips. While only the keys sound, the device plays between
- * two holds, STORE_SYSEX_GAP_MS apart, ramped down and back up; a silent one (fm.silent) hears
- * no mute, so its hold stays on between packets, as the quiet store's, and starts
- * STORE_HOLD_GAP_MS after the last. One program a hold, each STORE_FORCE_GAP_MS apart, took 280
- * ms a 256-byte packet (docs/hardware-results/2026-10-22-flash-day.md). */
 static int hold_ready(void) {
     if (!fm.quiet && !fm.force && !midi_sysex_writing) {
         return 0;
     }
     if (midi_sysex_writing && fm.loud && !fm.force) {
         if (fm.holding) {
-            hold_off(); /* a song started under a silent device's hold */
+            hold_off();
         }
         return 0;
     }
@@ -131,11 +101,9 @@ static int hold_ready(void) {
     return fm.now - fm.last_hold >= gap && audio_held();
 }
 
-/* Before the audio starts the operation runs at once; after, in a window or held. `erase`: a
- * sector erase, else a program. */
 static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
     int rc, held = 0;
-    uint32_t masked = fm1_ticks(); /* MIDI's polls wait from here: midi_clock_held */
+    uint32_t masked = fm1_ticks();
     if (!audio_running()) {
         cli();
     } else if (!erase && store_fm1_window) {
@@ -194,7 +162,7 @@ void store_fm1_boot(void (*feed)(void)) {
     static const store_flash flash = {map, prog, erase, 0};
     store_init(&store_fm1_store, &flash, store_fm1_window ? store_fm1_window : STORE_WINDOW_MAX);
     if (!flash_store_ok()) {
-        return; /* not the part we know: the store stays unmounted, and refuses everything */
+        return;
     }
     store_mount(&store_fm1_store);
     store_quiet(&store_fm1_store, 1);
@@ -203,15 +171,12 @@ void store_fm1_boot(void (*feed)(void)) {
         feed();
         if (store_fm1_store.state != STORE_STATE_MOUNTING &&
             fm1_ticks() - start >= BOOT_WORK_MS * 1000u * FM1_TICKS_PER_US) {
-            break; /* the main loop goes on with it (store_fm1_service) */
+            break;
         }
     }
     store_quiet(&store_fm1_store, 0);
 }
 
-/* 1 while the device is silent: no song plays, no voice is gated, no UI sound plays, no button
- * is down, and the output's peak low for STORE_QUIET_MS (the peak scan runs while the store
- * wants a held operation). */
 static int silent(const live* l, const keys_route* kr, int sounding) {
     if (kr->song || sounding || input_buttons()) {
         return 0;
@@ -224,8 +189,6 @@ static int silent(const live* l, const keys_route* kr, int sounding) {
     return audio_quiet_blocks() * STORE_BLOCK_US >= STORE_QUIET_MS * 1000u;
 }
 
-/* fm.silent, and 1 while the device is quiet: silent, with no MIDI input but real-time bytes
- * for STORE_QUIET_MS. */
 static int quiet(const live* l, const keys_route* kr, int sounding) {
     uint32_t in = midi_inputs();
     if (in != fm.inputs) {
@@ -236,7 +199,6 @@ static int quiet(const live* l, const keys_route* kr, int sounding) {
     return fm.silent && !midi_sysex_running && fm.now - fm.input_ms >= STORE_QUIET_MS;
 }
 
-/* The test hook (store_fm1_test): one operation once the store rests. */
 static void test_hook(keys_route* kr) {
     store_fm1_test* t = &store_fm1_hook;
     if (fm.file == 1) {
@@ -299,7 +261,7 @@ static void test_hook(keys_route* kr) {
         t->result = STORE_INVALID;
         break;
     }
-    fm.wanted_at = fm.now - WANT_MS; /* ask again at once */
+    fm.wanted_at = fm.now - WANT_MS;
     t->op = 0;
 }
 
@@ -311,14 +273,13 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     if (!fm.wanted && !fm.polled && !store_fm1_hook.op && !fm.holding && !writing &&
         !midi_sysex_running &&
         now_ms - fm.wanted_at < WANT_MS) {
-        fm.last_ms = now_ms; /* idle: nothing until the next ask */
+        fm.last_ms = now_ms;
         store_fm1_active = 0;
         return;
     }
     fm.now = now_ms;
     fm.loud = (uint8_t)(kr->song || midi_usb_recording());
     if (midi_sysex_running && (++fm.sysex_turn & 1u) && audio_work_slice()) {
-        /* A write waits for quiet where its programs would be held through the music. */
         midi_sysex_service(now_ms, fm.loud && !fm.force && !store_fm1_window);
     }
     if (store_fm1_hook.op) {
@@ -326,14 +287,11 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     }
     fm.quiet = (uint8_t)quiet(l, kr, sounding);
     store_fm1_store.window = store_fm1_window ? store_fm1_window : STORE_WINDOW_MAX;
-    /* Whether maintenance has work: asked at most every WANT_MS, and never in a pass whose
-     * store_poll had work (the two together could pass the poll allowance). */
     int ask = !fm.polled && now_ms - fm.wanted_at >= WANT_MS;
     if (ask) {
         fm.wanted = (uint8_t)store_erase_wanted(&store_fm1_store);
         fm.wanted_at = now_ms;
     }
-    /* A held operation is wanted: maintenance, or (no window) a write. */
     int want_hold = fm.wanted || (!store_fm1_window && writing);
     audio_peak_scan(want_hold && !kr->song);
     if (fm.holding && (!want_hold || (!fm.quiet && !fm.force && !midi_sysex_writing))) {
@@ -341,14 +299,12 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     }
     store_quiet(&store_fm1_store, !midi_sysex_running && (fm.quiet || fm.force) && fm.wanted);
     fm.polled = 0;
-    int sliced = audio_pass_sliced(); /* read every pass: it is this pass's */
+    int sliced = audio_pass_sliced();
     if (!ask && !sliced) {
         fm.polled = (uint8_t)store_poll(&store_fm1_store);
         if (!fm.polled && (fm.quiet || fm.force) && fm.wanted) {
-            fm.wanted = 0; /* maintenance found nothing more to do */
+            fm.wanted = 0;
         }
-        /* A SysEx write's hold ends with its batch (hold_ready), on a sounding device: a
-         * packet's programs, or a record's that the write waits for (sysex.c OPEN, UNLINK). */
         if (fm.holding && midi_sysex_writing && fm.programmed && !fm.silent &&
             !store_file_pending(&store_fm1_store) && !s->w.phase) {
             hold_off();
