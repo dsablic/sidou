@@ -1,17 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Host-only SIDOU SysEx packets. This crate does not open MIDI or USB devices.
-//! [`put_frames`] writes a store file's whole upload (PUT, DATA, END) and [`sid`] checks a
-//! `.sid` tune with the device's own parser and names it (the `sidou-sysex sid` CLI's work).
-//!
-//! [`Packet`] accepts the request and response forms documented by the protocol.
-//! It validates individual packets, not transfer sequencing, file contents or CRCs.
-//! [`Packet::decode`] expects exactly one frame, ignoring MIDI real-time bytes.
-//! Upload sessions require 16-byte-aligned DATA offsets and nonfinal DATA lengths
-//! divisible by 16; only the final DATA may be short. Individual DATA validation
-//! cannot know the final file offset, so it accepts every nonempty packet length.
-
 use std::fmt;
 
 pub mod sid;
@@ -24,20 +13,14 @@ pub const DATA: u8 = 0x05;
 pub const END: u8 = 0x06;
 pub const DEL: u8 = 0x07;
 pub const ABORT: u8 = 0x08;
-/// The device's "still waiting for quiet" (docs/reference/sysex.md, "Waiting for quiet"): empty, the
-/// sequence of the packet whose ACK it holds back.
 pub const WAIT: u8 = 0x7d;
 pub const ACK: u8 = 0x7e;
 pub const NAK: u8 = 0x7f;
 
 pub const MAX_DATA_LEN: usize = 256;
-/// The largest store file (app/store.h STORE_FILE_MAX).
 pub const MAX_FILE_LEN: usize = 65_536;
-/// Store file types (app/store.h STORE_FILE_*): a GoatTracker 2 song, a PSID `.sid` tune.
 pub const FILE_SONG: u8 = 1;
 pub const FILE_SID: u8 = 2;
-/// NAK reasons (docs/reference/sysex.md): 1-9, and a `.sid`'s refusals 12-15 (10 and 11 are
-/// the device's own toasts, never sent).
 pub const NAK_RSID: u8 = 12;
 pub const NAK_MUS: u8 = 13;
 pub const NAK_BROKEN: u8 = 14;
@@ -82,7 +65,6 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// A command and sequence with unpacked payload bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Packet {
     pub command: u8,
@@ -91,7 +73,6 @@ pub struct Packet {
 }
 
 impl Packet {
-    /// Validate and encode one complete frame, including checksum and delimiters.
     pub fn encode(&self) -> Result<Vec<u8>, Error> {
         self.validate()?;
         let packed = pack(&self.data)?;
@@ -104,8 +85,6 @@ impl Packet {
         Ok(frame)
     }
 
-    /// Decode one frame, discarding bytes `F8`–`FF` even outside its delimiters.
-    /// Foreign manufacturers/families return [`Error::ForeignHeader`].
     pub fn decode(frame: &[u8]) -> Result<Self, Error> {
         let mut bytes = Vec::with_capacity(MAX_PACKED_LEN + 8);
         for byte in frame.iter().copied().filter(|byte| *byte < 0xf8) {
@@ -142,7 +121,6 @@ impl Packet {
         Ok(packet)
     }
 
-    /// Validate the documented request or response payload for this command.
     pub fn validate(&self) -> Result<(), Error> {
         if self.sequence >= 0x80 {
             return Err(Error::Sequence);
@@ -185,9 +163,6 @@ impl Packet {
     }
 }
 
-/// The whole upload of `data` as the store file `name` (target 0) of `file_type`, one frame a
-/// packet: PUT at sequence 0 (the length and CRC), DATA of 256 bytes (the last one shorter),
-/// then END, each sequence one more than the last, modulo 128.
 pub fn put_frames(name: &str, file_type: u8, data: &[u8]) -> Result<Vec<Vec<u8>>, Error> {
     if data.len() > MAX_FILE_LEN {
         return Err(Error::TooLong);
@@ -222,7 +197,6 @@ pub fn put_frames(name: &str, file_type: u8, data: &[u8]) -> Result<Vec<Vec<u8>>
     Ok(frames)
 }
 
-/// CRC-32 (IEEE 802.3, reflected, as zlib's and the store's `store_crc32`).
 pub fn crc32(data: &[u8]) -> u32 {
     !data.iter().fold(!0u32, |crc, &byte| {
         (0..8).fold(crc ^ u32::from(byte), |c, _| {
@@ -235,7 +209,6 @@ pub fn crc32(data: &[u8]) -> u32 {
     })
 }
 
-/// Pack zero to 256 raw bytes into canonical seven-bit groups, mask first.
 pub fn pack(data: &[u8]) -> Result<Vec<u8>, Error> {
     if data.len() > MAX_DATA_LEN {
         return Err(Error::TooLong);
@@ -252,7 +225,6 @@ pub fn pack(data: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(packed)
 }
 
-/// Unpack canonical groups, rejecting lone masks, status bytes and unused bits.
 pub fn unpack(packed: &[u8]) -> Result<Vec<u8>, Error> {
     if packed.len() > MAX_PACKED_LEN {
         return Err(Error::TooLong);
@@ -365,7 +337,6 @@ mod tests {
             .collect()
     }
 
-    /// web/sysex-vectors.txt: the frames the browser's Songs page (web/sysex.js) must produce.
     #[test]
     fn web_vectors_match_the_canonical_encoder_and_decoder() {
         let mut checked = 0;

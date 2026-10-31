@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Minimal FFI to reSIDfp, through the extern "C" shim in `shim.cpp`. Test-only: reSIDfp
-//! (GPL-2.0-or-later) is the reference SIDOU is compared against, never part of firmware.
 
 use std::ptr::NonNull;
 
@@ -41,7 +39,6 @@ pub enum Model {
     Csg8580,
 }
 
-/// reSIDfp's combined-waveform strength profiles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CombinedWaveforms {
     Average = 0,
@@ -49,11 +46,8 @@ pub enum CombinedWaveforms {
     Strong = 2,
 }
 
-/// Rows of reSIDfp's pulldown table, in its order.
 pub const PULLDOWN_ROWS: [&str; 5] = ["ST", "PT", "PS", "PST", "NP"];
 
-/// reSIDfp's combined-waveform pulldown tables, `PULLDOWN_ROWS` by 4096 inputs (12-bit
-/// waveform outputs before pulldown). Each entry is the 12-bit output after it.
 pub fn pulldown_table(model: Model, cws: CombinedWaveforms) -> Vec<[u16; 4096]> {
     let mut flat = vec![0i16; 5 * 4096];
     let status = unsafe {
@@ -67,8 +61,6 @@ pub fn pulldown_table(model: Model, cws: CombinedWaveforms) -> Vec<[u16; 4096]> 
     rows(&flat)
 }
 
-/// reSIDfp's waveform table: rows none (0xfff), triangle, sawtooth and ST (saw & saw << 1),
-/// each indexed by the accumulator's top 12 bits.
 pub fn wave_table() -> Vec<[u16; 4096]> {
     let mut flat = vec![0i16; 4 * 4096];
     let status = unsafe { residfp_wave_table(flat.as_mut_ptr()) };
@@ -76,10 +68,6 @@ pub fn wave_table() -> Vec<[u16; 4096]> {
     rows(&flat)
 }
 
-/// reSIDfp's DAC output for every input below `2^bits`, as `SID::setChipModel` builds
-/// it: `Dac(bits).kinkedDac(model, leak_level)`, then `getOutput(i, saturate)`. reSIDfp
-/// uses 12 bits for the waveform DAC (saturating on the 6581) and 8 for the envelope's,
-/// with `leak_level` 1 by default.
 pub fn dac_table(model: Model, bits: u32, leak_level: f64, saturate: bool) -> Vec<f64> {
     assert!((1..=12).contains(&bits));
     let mut out = vec![0f64; 1 << bits];
@@ -96,9 +84,6 @@ pub fn dac_table(model: Model, bits: u32, leak_level: f64, saturate: bool) -> Ve
     out
 }
 
-/// The 6581 filter's cutoff DAC for a curve setting (0..1, reSIDfp's default 0.5):
-/// `FilterModelConfig6581::getDAC(curve)`, the normalised gate voltage Vw of the filter's
-/// VCRs for each FC value. The cutoff rises with Vw.
 pub fn filter6581_dac(curve: f64) -> Vec<u16> {
     let mut out = vec![0u16; 2048];
     let status = unsafe { residfp_filter6581_dac(curve, out.as_mut_ptr()) };
@@ -120,9 +105,7 @@ fn rows(flat: &[i16]) -> Vec<[u16; 4096]> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sampling {
-    /// DECIMATE: the ZeroOrderResampler (linear interpolation).
     Decimate,
-    /// RESAMPLE: the two-pass sinc resampler.
     Resample,
 }
 
@@ -137,10 +120,8 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// One reSIDfp chip.
 pub struct Sid {
     raw: NonNull<RawSid>,
-    /// Output samples per chip cycle, once the sampling parameters are set.
     samples_per_cycle: Option<f64>,
 }
 
@@ -191,30 +172,22 @@ impl Sid {
         u8::try_from(value).expect("reSIDfp read threw")
     }
 
-    /// The filter's curve setting for `model` (0..1; reSIDfp's default 0.5). Each chip
-    /// keeps one per model.
     pub fn set_filter_curve(&mut self, model: Model, curve: f64) {
         let csg8580 = i32::from(model == Model::Csg8580);
         let status = unsafe { residfp_set_filter_curve(self.raw.as_ptr(), csg8580, curve) };
         assert_eq!(status, 0, "reSIDfp setFilterCurve threw");
     }
 
-    /// The 6581 filter's range setting (0..1). reSIDfp keeps it once per process, so it
-    /// changes every 6581 chip, existing ones included; its default is no call at all
-    /// (uCox 20e-6, about 0.487 on this scale).
     pub fn set_filter6581_range(&mut self, range: f64) {
         let status = unsafe { residfp_set_filter6581_range(self.raw.as_ptr(), range) };
         assert_eq!(status, 0, "reSIDfp setFilter6581Range threw");
     }
 
-    /// The combined-waveform strength (`setCombinedWaveforms`; AVERAGE by default). Set it
-    /// after the chip model: it rebuilds that model's pulldown tables.
     pub fn set_combined_waveforms(&mut self, cws: CombinedWaveforms) {
         let status = unsafe { residfp_set_combined_waveforms(self.raw.as_ptr(), cws as i32) };
         assert_eq!(status, 0, "reSIDfp setCombinedWaveforms threw");
     }
 
-    /// A buffer size that holds every sample `cycles` chip cycles can produce.
     pub fn max_samples(&self, cycles: u32) -> usize {
         let ratio = self
             .samples_per_cycle
@@ -222,9 +195,6 @@ impl Sid {
         (f64::from(cycles) * ratio) as usize + 64
     }
 
-    /// Runs `cycles` chip cycles into `buf` and returns how many samples were produced.
-    /// `buf` must hold at least [`Sid::max_samples`]`(cycles)` samples, because reSIDfp
-    /// writes without a bound.
     pub fn clock(&mut self, cycles: u32, buf: &mut [i16]) -> usize {
         assert!(
             buf.len() >= self.max_samples(cycles),
@@ -241,9 +211,6 @@ impl Sid {
         n
     }
 
-    /// Runs `cycles` chip cycles without producing output: reSIDfp's `clockSilent`. It
-    /// clocks the three waveform generators and voice 3's envelope only, which is all
-    /// that OSC3 (`$1B`) and ENV3 (`$1C`) read. Voices 1 and 2's envelopes stand still.
     pub fn clock_silent(&mut self, cycles: u32) {
         let status = unsafe { residfp_clock_silent(self.raw.as_ptr(), cycles) };
         assert_eq!(status, 0, "reSIDfp clockSilent threw");
@@ -270,9 +237,7 @@ mod tests {
     fn the_6581_cutoff_dac_rises_with_fc_except_at_its_kinks() {
         let dac = filter6581_dac(0.5);
         assert!(dac[2047] > dac[0]);
-        // The kinked ladder steps down where a high bit turns on (1023 -> 1024).
         assert!(dac[1024] < dac[1023]);
-        // A darker curve lowers every value.
         let dark = filter6581_dac(0.0);
         assert!(dark.iter().zip(&dac).all(|(d, m)| d <= m));
         assert!(dark != dac);

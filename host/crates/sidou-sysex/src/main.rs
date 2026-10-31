@@ -1,16 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `sidou-sysex sid FILE.sid... [--out DIR] [--trs] [--pack]`: one `.syx` per tune, each the tune's
-//! upload to the device's store (docs/reference/sysex.md: PUT, DATA, END, one SysEx message a
-//! packet), named from its title (sidou_sysex::sid::store_name). A tune the device would refuse
-//! is reported with the device's reason and written nowhere. The `.syx` goes to DIR (the current
-//! directory by default) as the `.sid`'s own file name with `.syx`. This program opens no MIDI
-//! port: a SysEx tool sends the file (docs/manual/sid-tunes.md). A directory among the files
-//! stands for its `.sid` files, by name. With `--pack` the tunes go into one `pack.syx` (the
-//! starter pack, assets/starter): their uploads end to end, one set of store names across them,
-//! each tune checked as above, and a refused tune named and left out.
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -19,8 +9,7 @@ use sidou_sysex::sid;
 
 const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]";
 
-/// `--pack`'s file, in DIR.
-const PACK: &str = "pack.syx";
+const PACK_FILE_NAME: &str = "pack.syx";
 
 struct Args {
     files: Vec<PathBuf>,
@@ -56,7 +45,6 @@ fn args() -> Result<Args, String> {
     Ok(a)
 }
 
-/// `args` with each directory replaced by its `.sid` files, by name.
 fn expand(args: Vec<PathBuf>) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     for arg in args {
@@ -75,7 +63,6 @@ fn expand(args: Vec<PathBuf>) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-/// The `.syx`'s path for `file`: DIR and its file name, `-2`, `-3`, ... on a clash in this run.
 fn target(out: &Path, file: &Path, used: &mut HashSet<PathBuf>) -> PathBuf {
     let stem = file
         .file_stem()
@@ -137,7 +124,7 @@ fn main() -> ExitCode {
         let name = sid::store_name(&sid::title(&h), &stem, &mut names);
         let syx = sid::syx(&name, &bytes).expect("a checked tune's frames");
         let path = if a.pack {
-            a.out.join(PACK)
+            a.out.join(PACK_FILE_NAME)
         } else {
             target(&a.out, file, &mut paths)
         };
@@ -165,7 +152,7 @@ fn main() -> ExitCode {
         }
     }
     if a.pack && !pack.is_empty() {
-        let path = a.out.join(PACK);
+        let path = a.out.join(PACK_FILE_NAME);
         if let Err(e) = std::fs::write(&path, &pack) {
             eprintln!("{}: {e}", path.display());
             return ExitCode::FAILURE;
@@ -178,7 +165,6 @@ fn main() -> ExitCode {
         );
     }
     if frames > 0 {
-        // docs/reference/sysex.md, "Pacing and transactions".
         if a.trs {
             println!(
                 "TRS: pause one second after every message (about {} s for these)",

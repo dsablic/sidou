@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Compiles the C core, the workload and the portable app logic (`app/`) with `cc` and generates their FFI with bindgen.
-//! `wrap_static_fns` makes the header-only `static inline` functions callable: bindgen writes
-//! an extern wrapper for each into a C file, which is compiled with the rest.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -117,26 +114,17 @@ const SOURCES: &[&str] = &[
     "bench/workload_scene.c",
 ];
 
-/// Include roots, relative to the repository: core headers are "sid/...", the others bare.
 const INCLUDES: [&str; 3] = ["core", "bench", "app"];
 
-/// The CC/NRPN map's text for the generated reference (app/midi_map.h); the device leaves it
-/// out.
 const MIDI_MAP_DOC: &str = "SIDOU_MIDI_MAP_DOC";
 
-/// The register ring's test hook (app/reg_ring.h): the tests play the audio interrupt inside
-/// the producer's choice of a free DAC table. The device leaves it out.
 const RACE_HOOK: &str = "SIDOU_REG_RING_RACE_HOOK";
+const HEADER_PRIVATE_TABLES: &str = "SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PD|SID_NOISE_WB";
 
 include!("../../build-support/sanitize.rs");
 
-/// `pub mod <struct> { pub const SIZE: usize; pub const <field>: usize; }` for every
-/// struct, from bindgen's layout assertions:
-/// `["Size of sid"][size_of::<sid>() - 8728usize]` and
-/// `["Offset of field: sid::fc"][offset_of!(sid, fc) - 1132usize]`.
-fn ilp32_layout(bindings: &str) -> String {
+fn layout_modules_from_assertions(bindings: &str) -> String {
     let mut structs: Vec<(String, Vec<(String, String)>)> = Vec::new();
-    // Each assertion: `["<label>"][<expression> - <n>usize]`, possibly over several lines.
     for chunk in bindings.split("[\"").skip(1) {
         let Some((label, rest)) = chunk.split_once("\"]") else {
             continue;
@@ -174,11 +162,7 @@ fn c_build(root: &Path) -> cc::Build {
     }
     build
         .flag("-std=c11")
-        // Float results must be identical on host and pi32v2 so their outputs can be compared.
         .flag("-ffp-contract=off")
-        // The host tests check every combined-waveform profile of both models; the firmware
-        // has the 6581's three and the 8580's AVERAGE (core/CMakeLists.txt), and a profile
-        // not compiled in plays AVERAGE.
         .define("SIDOU_ALL_COMBINED_PROFILES", None)
         .define("SIDOU_ALL_COMBINED_PROFILES_8580", None)
         .warnings(true)
@@ -186,8 +170,6 @@ fn c_build(root: &Path) -> cc::Build {
         .flag("-Wshadow")
         .define(MIDI_MAP_DOC, None)
         .define(RACE_HOOK, None)
-        // The font reads only FONT_FIRST..FONT_LAST in flash; the host build aborts on a code
-        // outside them (app/font.h).
         .define("SIDOU_FONT_CHECK", None)
         .warnings_into_errors(true);
     sanitize::apply_sanitizer(&mut build);
@@ -268,8 +250,7 @@ fn main() {
                 "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*",
             ),
         )
-        // `static const` tables private to the headers; they have no symbol to link to.
-        .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PD|SID_NOISE_WB")
+        .blocklist_item(HEADER_PRIVATE_TABLES)
         .prepend_enum_name(false)
         .derive_default(true)
         .derive_debug(true)
@@ -282,12 +263,6 @@ fn main() {
         .write_to_file(out.join("bindings.rs"))
         .expect("write bindings.rs");
 
-    // Field offsets and sizes of the structs as the pi32v2 lays them out (ILP32: 4-byte
-    // pointers and ints; no 64-bit fields in them), for the emulator tests, which read
-    // the firmware's chips, MIDI out's state, its MIDI in ring, the LIVE view's tap, the
-    // views' title card and the song transport from its RAM. The host's own layout differs
-    // wherever a struct holds a pointer. bindgen's layout assertions carry clang's numbers for
-    // the target.
     let ilp32 = bindgen::Builder::default()
         .header(wrapper.to_str().unwrap())
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
@@ -303,26 +278,27 @@ fn main() {
         .generate()
         .expect("bindgen (ILP32 layout) failed")
         .to_string();
-    std::fs::write(out.join("ilp32.rs"), ilp32_layout(&ilp32)).expect("write ilp32.rs");
+    std::fs::write(out.join("ilp32.rs"), layout_modules_from_assertions(&ilp32))
+        .expect("write ilp32.rs");
 
     c_build(&root)
         .files(SOURCES.iter().map(|s| root.join(s)))
         .file(static_fns.with_extension("c"))
         .include(&manifest)
-        // The 6502's device variant (core/cpu6502/cpu6502.h); nothing else reads it.
         .define("CPU6502_SMALL", None)
         .compile("sidou");
 
-    // The 6502 again for the tests only: every operand access through the hooks
-    // (CPU6502_HOOK_ALL), so Tom Harte's tests check each one's cycle stamp. Once as the
-    // device builds it (the I/O accesses out of line) and once with them inline, under
-    // their own names.
+    compile_cpu6502_hook_all_builds(&root);
+    compile_zero_voice_chip(&root);
+}
+
+fn compile_cpu6502_hook_all_builds(root: &Path) {
     let cpu = root.join("core/cpu6502/cpu6502.c");
     for (name, small) in [
         ("cpu6502_run_hook_all", true),
         ("cpu6502_run_hook_inline", false),
     ] {
-        let mut build = c_build(&root);
+        let mut build = c_build(root);
         build
             .file(&cpu)
             .define("CPU6502_HOOK_ALL", None)
@@ -333,12 +309,10 @@ fn main() {
         }
         build.compile(name);
     }
+}
 
-    // The chip again for the mute's reference (core/sid/sid.c, SID_TEST_ZERO_VOICE): the
-    // voices sid_test_set_zero_voices names output 0 (on the calling thread). Each of its
-    // symbols under a `_zero_voice` name, beside the real one; it shares the other files'
-    // (the DACs, the filter curves).
-    let mut zero = c_build(&root);
+fn compile_zero_voice_chip(root: &Path) {
+    let mut zero = c_build(root);
     zero.file(root.join("core/sid/sid.c"))
         .define("SID_TEST_ZERO_VOICE", None);
     for symbol in ZERO_VOICE_SYMBOLS {
@@ -347,7 +321,6 @@ fn main() {
     zero.compile("sid_zero_voice");
 }
 
-/// core/sid/sid.c's external symbols, renamed in its zero-voice build (above).
 const ZERO_VOICE_SYMBOLS: &[&str] = &[
     "SID_NOISE_JUMP",
     "SID_NOISE_WB",

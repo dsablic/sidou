@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Builds reSIDfp from the third_party/libresidfp submodule, plus our extern "C" shim.
 
 use std::env;
 use std::fs;
@@ -29,7 +28,6 @@ const SOURCES: [&str; 18] = [
     "resample/SincResampler.cpp",
 ];
 
-/// The values the CMake build passed to configure_file.
 const CONFIG: [(&str, &str); 7] = [
     ("RESIDFP_INLINING", "1"),
     ("RESIDFP_INLINE", "inline"),
@@ -41,8 +39,6 @@ const CONFIG: [(&str, &str); 7] = [
 ];
 const LIB_LEVEL: (&str, &str) = ("LIB_LEVEL", "0");
 
-/// The first `@NAME@` (upper case, digits, underscores) still in `text`, as configure_file
-/// with @ONLY would substitute it.
 fn leftover_placeholder(text: &str) -> Option<&str> {
     let parts: Vec<&str> = text.split('@').collect();
     let between = parts.get(1..parts.len().saturating_sub(1)).unwrap_or(&[]);
@@ -95,12 +91,8 @@ fn main() {
         .std("c++17")
         .include(&src)
         .include(&gen)
-        // Upstream builds with -ffast-math -fno-unsafe-math-optimizations. We deliberately
-        // don't: the reference should follow strict IEEE semantics like our own core.
         .warnings(false)
         .flag("-w")
-        // No fused multiply-add, so the tables sidou-tablegen takes from reSIDfp come out
-        // the same on every host (arm64 compilers contract by default, x86-64 ones don't).
         .flag("-ffp-contract=off")
         .files(SOURCES.iter().map(|s| src.join(s)))
         .file(manifest.join("shim.cpp"));

@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `sidou-sysex sid` (M3 Task 10): the checks (the device's own parser), the store names, the
-//! frames, and the CLI on files in a scratch directory. Files are built here; none is a tune
-//! from anywhere.
 
 use std::collections::HashSet;
 use std::process::Command;
@@ -10,8 +7,8 @@ use std::process::Command;
 use sidou_sysex::sid::{self, Refusal};
 use sidou_sysex::{crc32, put_frames, Packet, DATA, END, FILE_SID, PUT};
 
-/// A PSID v2 file: `title` in its name field, one song, `data` at $1000 (init $1000, play
-/// $1003).
+const PAL_FLAGS_AND_RESERVED: [u8; 6] = [0, 4, 0, 0, 0, 0];
+
 fn psid(title: &[u8], data: &[u8]) -> Vec<u8> {
     let mut b = b"PSID".to_vec();
     for w in [2u16, 0x7C, 0x1000, 0x1000, 0x1003, 1, 1] {
@@ -22,7 +19,7 @@ fn psid(title: &[u8], data: &[u8]) -> Vec<u8> {
     meta[..title.len()].copy_from_slice(title);
     meta[32..37].copy_from_slice(b"SIDOU");
     b.extend(meta);
-    b.extend([0, 4, 0, 0, 0, 0]); // PAL
+    b.extend(PAL_FLAGS_AND_RESERVED);
     b.extend(data);
     b
 }
@@ -32,7 +29,7 @@ fn tune(title: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn the_devices_refusals_and_the_stores_size() {
+fn a_tune_is_refused_for_the_devices_reasons_and_for_the_stores_size() {
     let good = tune(b"Fine");
     assert_eq!(sid::title(&sid::check(&good).unwrap()), "Fine");
     let mut rsid = good.clone();
@@ -122,7 +119,6 @@ fn a_tunes_frames_are_put_data_and_end_with_its_length_crc_and_type() {
     assert_eq!(packets.last().unwrap().command, END);
     assert_eq!(sid::syx("FRAMES", &file).unwrap(), frames.concat());
     assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
-    // The sequence wraps at 128 (a 64 KiB file is 258 messages).
     let big = vec![7u8; 65_536];
     let frames = put_frames("BIG", 1, &big).unwrap();
     assert_eq!(frames.len(), 258);
@@ -182,9 +178,6 @@ fn the_cli_writes_one_syx_a_tune_and_refuses_the_rest_by_name() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// `--pack`: one `pack.syx` of the tunes' uploads end to end under one set of store names (a
-/// repeated title gets `-2`), a refused tune named on stderr and left out, a directory standing
-/// for its `.sid` files by name; and the starter pack (`assets/starter`) as the real case.
 #[test]
 fn pack_writes_one_syx_with_one_set_of_names() {
     let dir = std::env::temp_dir().join(format!("sidou-sysex-pack-{}", std::process::id()));
