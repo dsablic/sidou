@@ -13,8 +13,8 @@ All notable changes are documented here. The format follows
 LAB's song bridge (send a sound to the song, pull one back); instruments lifted from a .sid;
 chords and time-shared drums from DICE; a popup for every small-print edit, page jumps and INSTR's
 pointer summaries; Live Link (the screen mirrored, the buttons and the computer keyboard from a
-browser); the site's library, song editor and preview; MIDI controller maps; 8.5 KB smaller with
-nothing changed.
+browser); the site's library, song editor and preview; MIDI controller maps; 8.5 KB of duplicated
+code removed.
 
 ### Added
 - **The site's song editor** ([editor.html](https://dsablic.github.io/sidou/editor.html)): a song
