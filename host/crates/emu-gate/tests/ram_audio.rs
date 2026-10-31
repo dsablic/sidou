@@ -1,44 +1,14 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The audio path runs from SRAM (`.ram_text`, placed by `platform/fm1/app.ld`): the boot
-//! copies it there, the ALNK0 interrupt executes nothing else, and no direct branch crosses
-//! between flash and SRAM code (at the edge of the pi32v2's branch reach).
-//!
-//! What catches what: a function the audio path calls directly but the `.ram_text` rules
-//! miss stays in `.text`, at least 0x400158 bytes from SRAM, and the link usually fails with
-//! "relocation truncated to fit" (R_PI32V2_LONG_JUMP_23M2). It need not: the relocation
-//! test below is the guard, and rejects crossings that happen to be in reach. Only code entered through an absolute
-//! address (the ISR vector, a future callback through a pointer) can run from flash with
-//! everything linking; the interrupt test catches that.
-//!
-//! fm1-emu does not model the I-cache, so the timing benefit is left to hardware
-//! (docs/hardware.md, open checks).
 
 mod common;
 
-use std::path::PathBuf;
-
-use common::{build_dir, Firmware, Machine, APP_BASE, TAP_PER_SAMPLE};
+use common::panel::{note_key, press, A4_KEY, HOME, PLAY};
+use common::{booted, build_and_firmware, Firmware, Machine, APP_BASE, TAP_PER_SAMPLE};
 use fm1_core::Bus;
 
-/// RAMTEXT's size in app.ld: 48 KB, ending at Felucca's RAM-run debug area (0x01C0C000), which
-/// code does not reach until a device check shows that SRAM is the app's (app.ld).
 const RAMTEXT_BYTES: u32 = 48 * 1024;
-/// Where Felucca's RAM-run debug area starts: RAMTEXT ends here (app.ld).
 const DEBUG_AREA: u32 = 0x01C0_C000;
-/// A4's key id, held so the render has a voice to run.
-const A4_KEY: u8 = 30;
-/// PLAY (app/panel.h PANEL_BTN_PLAY): the song player runs in the interrupt too.
-const PLAY: u8 = sidou_sys::PANEL_BTN_PLAY as u8;
-
-fn fixture(what: &str) -> Option<(PathBuf, Firmware)> {
-    let Some(build) = build_dir() else {
-        common::skip_message(what);
-        return None;
-    };
-    let fw = Firmware::load(&build);
-    Some((build, fw))
-}
 
 fn ram_text(fw: &Firmware) -> std::ops::Range<u32> {
     fw.symbol("_rt_start")..fw.symbol("_rt_end")
@@ -46,7 +16,7 @@ fn ram_text(fw: &Firmware) -> std::ops::Range<u32> {
 
 #[test]
 fn the_boot_copies_the_audio_path_to_sram() {
-    let Some((_, fw)) = fixture("the SRAM audio test") else {
+    let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
         return;
     };
     let rt = ram_text(&fw);
@@ -80,17 +50,14 @@ fn the_boot_copies_the_audio_path_to_sram() {
 
 #[test]
 fn the_audio_interrupt_runs_only_from_sram() {
-    let Some((_, fw)) = fixture("the SRAM audio test") else {
+    let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     m.key(A4_KEY, true);
-    m.run_ms(500); // past the LCD's start-up delays: the audio starts after them
+    m.run_ms(500);
     common::run_past_boot(&mut m, &fw);
-    // and the song player (M2c Task 6): PLAY plays SIDOU's first song in the interrupt
-    m.key(PLAY, true);
-    m.run_ms(30);
-    m.key(PLAY, false);
+    press(&mut m, PLAY);
     m.run_ms(100);
     m.watch_alnk_pcs(ram_text(&fw));
     m.run_ms(400);
@@ -123,12 +90,9 @@ fn the_audio_interrupt_runs_only_from_sram() {
     );
 }
 
-/// And while a .sid tune plays (M3 Task 9: psid_ctl's interrupt half, sid_advance, audio.c's
-/// player paths), one chip and two, LIVE showing: the tune's writes placed at their cycles run
-/// only from SRAM too.
 #[test]
 fn the_audio_interrupt_runs_only_from_sram_while_a_tune_plays() {
-    let Some((_, fw)) = fixture("the SRAM audio test") else {
+    let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
         return;
     };
     let example = gt2_ref::examples()
@@ -143,10 +107,9 @@ fn the_audio_interrupt_runs_only_from_sram_while_a_tune_plays() {
         let mut m = Machine::boot_blank(&fw.image);
         m.soc.flash.mem.copy_from_slice(&flash);
         common::run_past_boot(&mut m, &fw);
-        // played from the panel (the menu's SIDS), then LIVE again (its tap)
         common::ui_play_tune(&mut m, &fw, 0);
         common::ui_back_to(&mut m, &fw, "live_view_view");
-        m.run_ms(700); // the song let go, the chips made fresh, the tune's init and its start
+        m.run_ms(700);
         m.watch_alnk_pcs(ram_text(&fw));
         m.run_ms(400);
         let ctl = fw.symbol("player_isr");
@@ -178,27 +141,16 @@ fn the_audio_interrupt_runs_only_from_sram_while_a_tune_plays() {
     }
 }
 
-/// pi32v2 ELF relocation types (JieLi's binutils; the numbers checked against
-/// `objdump -r` names on the build's objects).
-const R_LONG_JUMP_23M2: u32 = 2; // call and goto: PC-relative, about +-4 MB
-const R_MOV_ABS32: u32 = 5; // a 32-bit address loaded into a register
-const R_ABS32: u32 = 8; // a 32-bit address in data (tables, vectors)
+const R_LONG_JUMP_23M2: u32 = 2;
+const R_MOV_ABS32: u32 = 5;
+const R_ABS32: u32 = 8;
 
-/// No direct `call` or `goto` crosses between flash (XIP, 0x02000000..) and SRAM
-/// (`.ram_text`) code: SRAM is about 4 MB below XIP, the edge of a branch's reach, so such a
-/// branch either fails the link ("relocation truncated to fit") or links only while the code
-/// happens to lie close enough, and breaks with an unrelated change. The linker is the
-/// authority: the firmware links with --emit-relocs, and every branch relocation's site and
-/// target must lie in the same region. Address loads (`MOV_ABS32`, `ABS32`) may cross: that
-/// is how flash code calls SRAM code through a pointer (audio.c `far_drain`) and how the
-/// vector table reaches `isr_alnk0`. Any other relocation type fails the test until it is
-/// classified here.
 #[test]
 fn no_direct_branch_crosses_between_flash_and_sram() {
     use object::{
         Object, ObjectSection, ObjectSymbol, RelocationFlags, RelocationTarget, SectionIndex,
     };
-    let Some((_, fw)) = fixture("the SRAM audio test") else {
+    let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
         return;
     };
     let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
@@ -256,21 +208,12 @@ fn no_direct_branch_crosses_between_flash_and_sram() {
     );
 }
 
-/// The flash region the core executes and reads in place (XIP), app.ld's `XIP`.
 const XIP: std::ops::Range<u64> = 0x0200_0000..0x0300_0000;
 
-/// The audio path reads no data from flash: every address the `.ram_text` code loads
-/// (`MOV_ABS32`, `ABS32`) lies in SRAM (RAM, POOL), not in XIP, where a read in the audio
-/// interrupt can miss the cache and wait on the flash. A constant table that code inlined into
-/// the audio path reads (the compiler places `static const` in `.rodata`, in flash) goes to
-/// `.data` on the device (`__attribute__((section(".data.<name>")))` under `__PI32V2__`, as
-/// `SID_NOISE_WB`). This sees only addresses the code itself names: data reached through a
-/// pointer set up outside the audio path (the combined waveforms' pulldown rows,
-/// `sid_osc.pulldown`, in flash by design; the DAC tables, in POOL) is not checked here.
 #[test]
 fn the_audio_path_reads_no_data_from_flash() {
     use object::{Object, ObjectSection, ObjectSymbol, RelocationFlags, RelocationTarget};
-    let Some((_, fw)) = fixture("the SRAM audio test") else {
+    let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
         return;
     };
     let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
@@ -283,7 +226,7 @@ fn the_audio_path_reads_no_data_from_flash() {
             panic!("not an ELF relocation");
         };
         if r_type == R_LONG_JUMP_23M2 {
-            continue; // no_direct_branch_crosses_between_flash_and_sram
+            continue;
         }
         assert!(
             matches!(r_type, R_MOV_ABS32 | R_ABS32),
@@ -322,11 +265,8 @@ fn the_audio_path_reads_no_data_from_flash() {
     );
 }
 
-/// A chord's note keys (14 + note - 53): A3, E4, E5.
-const CHORD: [u8; 3] = [18, 25, 37];
-const HOME: u8 = 8;
+const CHORD: [u8; 3] = [note_key(57), note_key(64), note_key(76)];
 
-/// The audio interrupt's mean instructions a sample over `ms`.
 fn per_sample(m: &mut Machine, ms: u64) -> (f64, usize) {
     let from = m.alnk_blocks.len();
     m.run_ms(ms);
@@ -337,35 +277,25 @@ fn per_sample(m: &mut Machine, ms: u64) -> (f64, usize) {
     )
 }
 
-/// The tap runs while LIVE shows and costs the audio interrupt at most TAP_PER_SAMPLE
-/// instructions a sample: the same build with the menu on top (the tap off), against LIVE on
-/// top (after its title card), a chord held throughout, by turns.
 #[test]
 fn the_live_view_tap_costs_the_audio_interrupt_little() {
-    let Some((_, fw)) = fixture("the tap cost test") else {
+    let Some((_, fw)) = build_and_firmware("the tap cost test") else {
         return;
     };
-    let mut m = Machine::boot(&fw.image);
-    common::run_past_boot(&mut m, &fw);
+    let mut m = booted(&fw);
     for k in CHORD {
         m.key(k, true);
     }
-    m.run_ms(1500); // to the sustain level: the chip's cost steady
+    m.run_ms(1500);
     let (mut on, mut off) = (Vec::new(), Vec::new());
     for _ in 0..3 {
         assert!(common::tap_on(&mut m, &fw), "the tap is off under LIVE");
         on.push(per_sample(&mut m, 400));
-        m.key(HOME, true);
-        m.run_ms(30);
-        m.key(HOME, false);
+        press(&mut m, HOME);
         m.run_ms(400);
         assert!(!common::tap_on(&mut m, &fw), "the tap runs under the menu");
         off.push(per_sample(&mut m, 400));
-        m.key(HOME, true);
-        m.run_ms(30);
-        m.key(HOME, false);
-        // Back to LIVE behind THE OSCILLATOR's title card (app/title_card.h), which the held
-        // chord does not end: the tap is off under it.
+        press(&mut m, HOME);
         let back = m.ms();
         while common::top_view(&mut m, &fw) != fw.symbol("live_view_view")
             || common::screen_animating(&mut m, &fw)

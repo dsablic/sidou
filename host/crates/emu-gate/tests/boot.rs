@@ -1,39 +1,34 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: boots the SIDOU firmware image (`sidou_app.bin`) in fm1-emu with the A4 key
-//! held, and checks that the audio interrupt plays the live instrument sample for sample as
-//! the host build of the same code does.
-//!
-//! The image is booted as fm1-emu's CLI boots a bare `app.bin` (common::Machine).
 
 mod common;
 
-use common::{build_dir, max_diff, render_host, Firmware, Machine, HALF_FRAMES};
+use common::panel::KEY0;
+use common::{build_and_firmware, firmware, max_diff, render_host, Machine, FS, HALF_FRAMES};
 use sidou_tests::signal_metrics::estimate_f0;
 
 const RUN_MS: u64 = 900;
-/// The LCD's reset and wake-up delays come before the audio starts.
 const BOOT_MS_MAX: u64 = 400;
-/// 24 MHz / 544, the I2S frame rate.
-const FS: f64 = 24e6 / 544.0;
-/// The A4 key (note key 16 = MIDI 69, Felucca id 30) and its pitch.
-const A4_KEY: u8 = 30;
+const A4_KEY: u8 = KEY0 + 16;
 const A4: u8 = 69;
 const TONE_HZ: f64 = 440.0;
-/// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
-/// The note-on lands in one of the first blocks (the key debounce is ~2 ms).
 const MAX_NOTE_BLOCK: usize = 16;
-/// The tone is checked after this much output, once the attack and DC blocker settled.
 const SETTLE_MS: f64 = 100.0;
+const AUDIBLE_PEAK_AT_THE_CHIPS: f64 = 2000.0;
+const STORE_BYTES: [u8; 4] = [0x53, 0x49, 0xD0, 0x0A];
+const XIP_PLAIN_WINDOW_FLASH: u32 = 0x93000;
+const SFCENC_CON: u32 = 0x40300;
+const SFCENC_UNENC_H: u32 = 0x40308;
+const SFCENC_UNENC_L: u32 = 0x4030C;
+const SFCENC_PLAIN_WINDOW_ON: u32 = 1 << 1;
+const XIP_WINDOW_TOP: u32 = 0x07FF_FFFF;
 
 #[test]
 fn boots_and_plays_a_held_key_sample_exact() {
-    let Some(build) = build_dir() else {
-        common::skip_message("the boot test");
+    let Some((build, fw)) = build_and_firmware("the boot test") else {
         return;
     };
-    let fw = Firmware::load(&build);
     let mut m = Machine::boot(&fw.image);
     m.key(A4_KEY, true);
     m.run_ms(RUN_MS);
@@ -57,14 +52,11 @@ fn boots_and_plays_a_held_key_sample_exact() {
         "every effect slot is off at boot: L and R must match"
     );
 
-    // Sample-exact against the host, both channels: the emulator turns each int32 word back
-    // into the int16 the firmware rendered (>> 8). The block the note-on reached the chip in
-    // depends on the key scan, so find it.
     let mut best: Option<(usize, usize)> = None;
     let mut min_diff = i32::MAX;
     'search: for silent in 0..=MAX_SILENT_HALVES {
         if audio[..2 * silent * HALF_FRAMES].iter().any(|&s| s != 0) {
-            break; // the DMA's zeros only come before the first rendered half
+            break;
         }
         let played = &audio[2 * silent * HALF_FRAMES..];
         for k in 0..MAX_NOTE_BLOCK {
@@ -105,9 +97,8 @@ fn boots_and_plays_a_held_key_sample_exact() {
         "the firmware's audio matches no host render with the note-on in blocks \
          0..{MAX_NOTE_BLOCK}: closest max difference {min_diff} LSB"
     );
-    // 2000 at the chips' own output, at the MASTER pot's gain (the audio taper)
     assert!(
-        f64::from(peak) > 2000.0 * f64::from(common::boot_gain()),
+        f64::from(peak) > AUDIBLE_PEAK_AT_THE_CHIPS * f64::from(common::boot_gain()),
         "the output is silent (peak {peak})"
     );
     assert!(
@@ -116,16 +107,11 @@ fn boots_and_plays_a_held_key_sample_exact() {
     );
 }
 
-/// The audio starts before the screen's first frame (platform/fm1/main.c), and the main loop
-/// plays a key held at power-on while that frame goes out (platform/fm1/ui.h ui_init): the
-/// boot holds no sound up. Also the time to first audio, for docs/art/README.md "Boot".
 #[test]
 fn the_audio_and_the_keys_start_before_the_display() {
-    let Some(build) = build_dir() else {
-        common::skip_message("the boot order test");
+    let Some(fw) = firmware("the boot order test") else {
         return;
     };
-    let fw = Firmware::load(&build);
     let mut m = Machine::boot(&fw.image);
     m.key(A4_KEY, true);
     let (mut audio_at, mut note_at, mut display_at) = (None, None, None);
@@ -151,9 +137,6 @@ fn the_audio_and_the_keys_start_before_the_display() {
     let display_at = display_at.expect("the display came on");
     let audio_at = audio_at.expect("the audio started");
     let note_at = note_at.expect("the key played");
-    // The display comes on once the first frame is out. On the device that frame is a full
-    // screen of SPI, about 80 ms; fm1-emu sends SPI without its transfer time, so here only the
-    // order shows: the sound and the key come before it.
     assert!(
         audio_at < display_at,
         "the audio started at {audio_at} ms, after the display at {display_at} ms"
@@ -162,30 +145,19 @@ fn the_audio_and_the_keys_start_before_the_display() {
         note_at < display_at,
         "the key played at {note_at} ms, after the display came on at {display_at} ms"
     );
-    // The LCD's reset and wake-up delays (lcd_init) come first.
     assert!(audio_at < BOOT_MS_MAX, "the audio started at {audio_at} ms");
 }
 
-/// The flash from 0x93000 up is mapped as a plain (unencrypted) XIP window at boot
-/// (platform/fm1/midi.c `flash_plain_window`, Felucca's `fl_plain_window_init`), before the
-/// audio starts, so the store (app/store_layout.h) reads through XIP as stored. fm1-emu does
-/// not decrypt a bare image's XIP, so here the window's registers show it was set up, and a byte written into
-/// the flash chip at the store's first byte reads back through XIP.
 #[test]
 fn the_store_reads_through_a_plain_xip_window() {
     use fm1_core::Bus;
-    let Some(build) = build_dir() else {
-        common::skip_message("the plain window test");
+    let Some(fw) = firmware("the plain window test") else {
         return;
     };
-    let fw = Firmware::load(&build);
     let mut m = Machine::boot_blank(&fw.image);
     let lo = sidou_sys::STORE_LO as usize;
-    m.soc.flash.mem[lo..lo + 4].copy_from_slice(&[0x53, 0x49, 0xD0, 0x0A]);
+    m.soc.flash.mem[lo..lo + 4].copy_from_slice(&STORE_BYTES);
     let xip = |off: u32| 0x0200_0000 + off - 0x4000;
-    // Before the audio starts (the LCD's delays come first): the window is set up by then.
-    // SFCENC_UNENC_L/H and SFCENC_CON (fm1_flash.h) read back since fm1-emu models SFCENC (it
-    // used to log them as unknown accesses, a log that kept only the last 8,192 to 16,384).
     let mut audio_at = None;
     let cycles = m.soc.periph.cycle_of_ms(1) / 10;
     while m.ms() < BOOT_MS_MAX && audio_at.is_none() {
@@ -194,37 +166,30 @@ fn the_store_reads_through_a_plain_xip_window() {
             audio_at = Some(m.ms());
         }
     }
-    let low = m.soc.read32(0x4030C) == xip(0x93000);
-    let high = m.soc.read32(0x40308) == 0x07FF_FFFF;
-    let on = m.soc.read32(0x40300) & 2 != 0;
+    let low = m.soc.read32(SFCENC_UNENC_L) == xip(XIP_PLAIN_WINDOW_FLASH);
+    let high = m.soc.read32(SFCENC_UNENC_H) == XIP_WINDOW_TOP;
+    let on = m.soc.read32(SFCENC_CON) & SFCENC_PLAIN_WINDOW_ON != 0;
     assert!(audio_at.is_some(), "the audio did not start");
     assert!(low, "the window's low end is not flash 0x93000");
     assert!(high, "the window's high end");
     assert!(on, "SFCENC_CON's plain-window bit");
     assert_eq!(
         m.soc.read32(xip(sidou_sys::STORE_LO)),
-        0x0AD0_4953,
+        u32::from_le_bytes(STORE_BYTES),
         "the store's first word through XIP"
     );
     assert_eq!(m.soc.read32(xip(sidou_sys::STORE_HI - 4)), 0xFFFF_FFFF);
-    // Booting wrote nothing into the store: the bytes above are not SIDOU's, so the store
-    // mounts the region foreign and writes nothing (a blank one it formats: emu-gate store.rs).
-    assert_eq!(&m.soc.flash.mem[lo..lo + 4], &[0x53, 0x49, 0xD0, 0x0A]);
+    assert_eq!(&m.soc.flash.mem[lo..lo + 4], &STORE_BYTES);
     assert!(m.soc.flash.mem[lo + 4..sidou_sys::STORE_HI as usize]
         .iter()
         .all(|&b| b == 0xFF));
 }
 
-/// The settled flash every `Machine::boot` starts from is made with fm1-core's JIT
-/// (`Machine::run_ms_jit`). It must be the flash the stepped run leaves, which is what the
-/// gate's counts were measured on: the JIT runs the same guest instructions.
 #[test]
 fn the_jit_settles_the_flash_as_the_stepped_run_does() {
-    let Some(build) = build_dir() else {
-        common::skip_message("the JIT settle test");
+    let Some(fw) = firmware("the JIT settle test") else {
         return;
     };
-    let fw = Firmware::load(&build);
     let mut m = Machine::boot_blank(&fw.image);
     m.run_ms(common::SETTLE_MS);
     assert!(

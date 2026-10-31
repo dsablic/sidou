@@ -1,25 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Every instruction of the linked image decodes and has semantics in the pinned fm1-emu.
-//!
-//! A compiler idiom fm1-emu lacks stops the emulator only when a test happens to run its path
-//! (the and-not read-modify-write with r8-r15 stopped the keys test and the browser demo at the
-//! first key release). This test walks the code sections of the ELF (`.entry`, `.ram_text`,
-//! `.text`) function by function (the symbol table's sizes), asks fm1-core's decoder
-//! (`fm1_core::decode_info`, the one `fm1-emu --check-decode` uses) for each instruction's length
-//! and class, and steps the instruction once on a scratch machine, as `--check-decode` does: a
-//! class that decodes but has no semantics (`Cpu::step`'s `Unsupported`) fails too. A dual-issue
-//! head is stepped with its tail (`pair_pending`), as it runs.
-//!
-//! What is not instructions, and skipped: the jump tables the compiler leaves in `.text`, between
-//! its `.GJTIS`/`.GJTIL` and `.GJTIE` marker symbols (the same names recur per object file, so a
-//! start pairs with the next end above it). The boundaries are fm1-core's own, not the vendor
-//! objdump's: that one shows the 6-byte compare-and-branch (`4x ff ..`) as unknown and
-//! disassembles the jump tables as code.
-//!
-//! A failure lists address, bytes, function and the reason. A walk that does not land exactly on
-//! the end of its function, or on a jump table's start, is a failure too: it means a length
-//! disagrees with the compiler's.
 
 mod common;
 
@@ -28,13 +8,8 @@ use fm1_core::{Bus, CoreError, Cpu};
 use fm1_soc::{Soc, RAM_BASE, XIP_BASE};
 use object::{Object, ObjectSection, ObjectSymbol, SectionFlags, SymbolKind};
 
-/// ELF `SHF_EXECINSTR`.
 const SHF_EXECINSTR: u64 = 4;
 
-/// One instruction (and a dual-issue head's tail) stepped at its real address, from the image
-/// mapped into the scratch machine: what `fm1-emu --check-decode` does for each line. The
-/// registers point at free RAM, so a load or store lands harmlessly; a fault from the scratch
-/// state itself is not a gap in the emulator, only a missing class or semantics is.
 fn exec_status(soc: &mut Soc, cpu: &mut Cpu, pc: u32) -> Result<(), String> {
     cpu.pc = pc;
     cpu.pair_pending = None;
@@ -55,7 +30,6 @@ fn exec_status(soc: &mut Soc, cpu: &mut Cpu, pc: u32) -> Result<(), String> {
     }
 }
 
-/// Free RAM in the scratch machine, past `.ram_text`.
 const SCRATCH: u32 = RAM_BASE + 0x20000;
 
 #[test]
@@ -91,7 +65,6 @@ fn every_instruction_of_the_image_decodes() {
     starts.dedup();
     ends.sort_unstable();
     ends.dedup();
-    // a table: [start, the first end above it)
     let tables: Vec<(u64, u64)> = starts
         .iter()
         .map(|&a| {
@@ -104,7 +77,6 @@ fn every_instruction_of_the_image_decodes() {
         .collect();
     funcs.sort();
     labels.sort();
-    // the nearest function or label symbol at or below `pc`, as `name+offset`
     let label = |pc: u64| {
         let i = labels.partition_point(|l| l.0 <= pc);
         i.checked_sub(1)
@@ -118,7 +90,6 @@ fn every_instruction_of_the_image_decodes() {
             .map(|i| tables[i].1)
     };
 
-    // the image as the chip maps it: XIP code at XIP_BASE, `.ram_text` at the start of RAM
     let mut xip = Vec::new();
     let mut ram = vec![0u8; 0];
     for sec in file.sections() {
@@ -160,9 +131,6 @@ fn every_instruction_of_the_image_decodes() {
         let (base, data) = (sec.address(), sec.data().expect("section data"));
         let end = base + data.len() as u64;
         code_bytes += data.len() as u64;
-        // each sized function, and the code between them that has no symbol of its own (local
-        // stubs and labels, padding); what follows the last function in `.text` is read-only data
-        // (strings, tables: the linker script puts `.rodata` after the code), not walked
         let mut ranges: Vec<(u64, u64, String)> = Vec::new();
         let mut at = base;
         let mut prev = String::from("the section's start");
@@ -207,7 +175,6 @@ fn every_instruction_of_the_image_decodes() {
                             &data[off..off + take.min(6)],
                             label(pc)
                         ));
-                        // resynchronise as the shortest length
                         pc += 2;
                     }
                     Some((len, class)) => {
@@ -251,8 +218,6 @@ fn every_instruction_of_the_image_decodes() {
     );
 }
 
-/// The gate's two failure paths work, on instructions known to fail: a window no class decodes,
-/// and `trigger` (decoded, no semantics in the pinned fm1-emu).
 #[test]
 fn the_gate_sees_what_it_should() {
     assert_eq!(fm1_core::decode_info(u64::MAX, XIP_BASE), None);

@@ -1,67 +1,26 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The pixel scene in fm1-emu (`bench_scene_main.c`, `bench/workload_scene.h`): what the tile
-//! compositor (app/scene_px.h) costs on the device in a frame like RED MOON RITE's (13
-//! slots), a tile, a cell sent, a run, a scan and a frame's send, with the log checked against
-//! the host build's (the same runs, and every tile's hash the same: the device composites the
-//! host's pixels). Instructions are a lower bound on cycles.
-//!
-//! The bounds are about 10 % over what M2f Task 3 measured; RED MOON RITE's own frames (M2f
-//! Task 4) are measured with the view. Measured (instructions), against the compositor as
-//! first written, before the run checkpoints (app/scene_art.h), the run-at-a-time sprite
-//! blend, the list of slots in use and the cap on a run's painted cells:
-//!
-//! | | Before | Now |
-//! |---|---|---|
-//! | A tile, average / worst | 4.8k / 8.7k | 1,959 / 4,826 |
-//! | A cell sent (alone), average / worst | ~5.6k | 2,779 / 5,646 |
-//! | A run, worst (30 cells before; 8 now) | 230k | 35.5k |
-//! | The first frame's send, 900 cells | 5.00M | 2.49M |
-//! | The fighters' move: scan of 132 + send of 123 | 1.66M | 0.89M |
-//! | The sky's change: scan of 480 + send of 247 | 4.44M | 1.99M |
-//! | A scan, per candidate | | 2,829 (42 a 120k pass) |
-//! | A slice of 16 candidates, worst | | 51.9k |
-//! | The refresh sweep's two tiles, marked and sent | | 4.4k |
 
 mod common;
 
 use sidou_sys::{SCENE_PX_RUN_CELLS, SCENE_PX_SCAN_SLICE};
 
-/// A tile composited (scene_px_tile): on average, and the worst of the 900.
 const TILE_AVERAGE: f64 = 2_150.0;
 const TILE_WORST: u64 = 5_300;
-/// A cell rendered alone, as a run of one: the painter (the tile and its hash), the panel's
-/// pixels and the glyph pass. The worst of the 900.
 const CELL_WORST: u64 = 6_200;
-/// grid_next_run finding a run, and finding none.
 const NEXT_RUN: u64 = 1_400;
-/// A run: grid_next_run and grid_render_run, at most SCENE_PX_RUN_CELLS cells of the scene.
 const RUN_WORST: u64 = SCENE_PX_RUN_CELLS as u64 * CELL_WORST + NEXT_RUN;
-/// What a ui_poll that renders two runs (platform/fm1/ui.c: one before the send, one while it
-/// transfers) spends besides them: its own bookkeeping and the window it starts (lcd_send).
-/// Allowed, not measured here: the view's gate measures the whole ui_poll (M2f Task 4).
 const POLL_REST: u64 = 10_000;
-/// A song's analysis or derivation slice, which a main-loop pass may run beside ui_poll
-/// (core/player/song_ctl.h SONG_SLICE_INSTRUCTIONS).
 const SONG_SLICE: u64 = sidou_sys::SONG_SLICE_INSTRUCTIONS as u64;
-// Two runs of the scene's worst cells fit a ui_poll's allowance, with a song's slice in the
-// pass: SCENE_PX_RUN_CELLS and CELL_WORST cannot grow past it.
 const _: () = assert!(2 * RUN_WORST + POLL_REST + SONG_SLICE <= common::POLL_INSTRUCTIONS);
-/// A scan's cost per candidate composited (the tile and its hash).
 const SCAN_PER_TILE: f64 = 3_100.0;
-/// A slice of the scan (SCENE_PX_SCAN_SLICE candidates): a tile at TILE_WORST each, with its
-/// hash, and the walk over the candidate bits round the screen.
 const SCAN_HASH: u64 = 500;
 const SCAN_WALK: u64 = 8_000;
 const SLICE_WORST: u64 = SCENE_PX_SCAN_SLICE as u64 * (TILE_WORST + SCAN_HASH) + SCAN_WALK;
-// A pass that scans a slice fits the allowance with the rest of a ui_poll and a song's slice.
 const _: () = assert!(SLICE_WORST + POLL_REST + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 
-/// A scan: the candidates before it, those composited, the cells marked after it, and its
-/// cost.
 type Scan = (u32, u32, u32, u64);
 
-/// The log's sections and the measured steps, read in order.
 struct Log<'a> {
     log: &'a [i16],
     at: usize,
@@ -76,15 +35,12 @@ impl Log<'_> {
         u32::from(v)
     }
 
-    /// The next measured step's instructions (0 while only counting the steps).
     fn step(&mut self) -> u64 {
         let v = self.phases.get(2 * self.step).copied().unwrap_or(0);
         self.step += 1;
         v
     }
 
-    /// A send: each run's cost (grid_next_run and grid_render_run), the empty grid_next_run,
-    /// the cells sent and the windows.
     fn send(&mut self) -> Send {
         let runs = self.word();
         let mut s = Send::default();
@@ -115,20 +71,18 @@ impl Send {
         self.runs.iter().sum::<u64>() + self.empty
     }
 
-    /// Its SPI time: each cell's 128 bytes, and each window's 11 bytes of commands
-    /// (platform/fm1/lcd.c: CASET and RASET with 4 bytes each, RAMWR).
     fn spi_ms(&self) -> f64 {
         spi_ms(self.cells, self.runs.len() as u32)
     }
 }
 
 fn spi_ms(cells: u32, windows: u32) -> f64 {
-    f64::from(cells * 128 + windows * 11) * 8.0 / SPI_HZ * 1e3
+    f64::from(cells * CELL_BYTES + windows * WINDOW_COMMAND_BYTES) * 8.0 / SPI_HZ * 1e3
 }
 
-/// platform/fm1/lcd.c: SPI1 at 60 MHz / (4 + 1).
 const SPI_HZ: f64 = 12e6;
-/// docs/art/README.md: at most about 20 ms of SPI per 40 ms frame.
+const CELL_BYTES: u32 = 128;
+const WINDOW_COMMAND_BYTES: u32 = 11;
 const SPI_BUDGET_MS: f64 = 20.0;
 
 struct Measured {
@@ -244,7 +198,6 @@ fn the_pixel_scene_fits_its_budgets_and_matches_host() {
     let run_worst = *runs.iter().max().unwrap();
     let empty_worst = *empties.iter().max().unwrap();
     let slice_worst = *slices.iter().max().unwrap();
-    // The worst frame SCENE can send: SCENE_VIEW_FRAME_CELLS cells, each a window of its own.
     let cells = sidou_sys::SCENE_VIEW_FRAME_CELLS;
     let worst_spi = spi_ms(cells, cells);
     let report = serde_json::json!({

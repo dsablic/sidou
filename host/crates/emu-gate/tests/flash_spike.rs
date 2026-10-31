@@ -1,27 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The flash timing spike (M2a Task 3b, platform/fm1/flash_spike.c): a test firmware for the
-//! user's FM-1, built with `-DSIDOU_FLASH_SPIKE=ON` (docs/hardware-test.md, section 12).
-//!
-//! - The default image (SIDOU_FM1_BUILD) has none of it: no spike symbol in its ELF, as `nm`
-//!   would list them, and not the spike's sector mark in its bytes.
-//! - The spike's image (SIDOU_FM1_SPIKE_BUILD, e.g. `$PWD/../build/fm1-spike` from host/) runs
-//!   in fm1-emu to its result screen with the TRS jack busy throughout: every time 0 (the
-//!   model's flash is instantaneous), every check clean, no TRS byte lost. Its writes are
-//!   bounded: with every byte of the flash outside the store's last two sectors set to a
-//!   sentinel no erase or program could leave alone, none of them changes, and the guard
-//!   band of both sectors stays erased.
-//! - It writes nothing when a sector holds data that is neither blank nor its own, or when its
-//!   round-trip pattern is damaged; on a second run it finds the pattern intact.
-//!
-//! The bounds themselves, at every address, are sidou-pack's tests/flash_spike_guard.rs.
 
 mod common;
 
+use common::panel::SAVE;
 use common::{build_dir, Firmware, Machine};
 use fm1_core::Bus;
 
-/// The spike build's directory, made absolute, or None to skip.
 fn spike_dir() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("SIDOU_FM1_SPIKE_BUILD").filter(|d| !d.is_empty())?;
     Some(std::path::absolute(&dir).expect("resolve SIDOU_FM1_SPIKE_BUILD"))
@@ -39,13 +24,10 @@ const PATTERN: usize = 0xDE000;
 const MEASURE: usize = 0xDF000;
 const SPIKE: std::ops::Range<usize> = PATTERN..0xE0000;
 const SECTOR: usize = 0x1000;
-/// The update staging area and its record (ota.c OTA_AREA).
 const OTA: std::ops::Range<usize> = 0xE0000..0xE5000;
 const BAND: usize = 0xF00;
 const MARK: &[u8; 16] = b"SIDOU FLASHSPIKE";
-const SAVE: u8 = 9;
 
-/// flash_spike_res's words (flash_spike.c).
 const WORDS: usize = 55;
 const STATE: usize = 0;
 const STEP: usize = 1;
@@ -56,7 +38,6 @@ const CLASS_PATTERN: usize = 7;
 const CLASS_MEASURE: usize = 8;
 const PATTERN_AT_START: usize = 9;
 const STORE_USED: usize = 10;
-/// The five timed stats (n, min, max, sum), erase 4K to the page erase, and the suspend's.
 const STATS: [(usize, &str, u32); 6] = [
     (11, "erase 4K", 20),
     (15, "program 16", 20),
@@ -66,7 +47,9 @@ const STATS: [(usize, &str, u32); 6] = [
     (32, "suspend", 5),
 ];
 const PAGE_ERASE_WORKS: usize = 31;
-const CHECKS: std::ops::Range<usize> = 37..44; // sus_read_bad .. twice_bad
+const SUS_READ_BAD: usize = 37;
+const TWICE_BAD: usize = 43;
+const CHECKS: std::ops::RangeInclusive<usize> = SUS_READ_BAD..=TWICE_BAD;
 const TRS: usize = 44;
 const FINAL_BAD: usize = 54;
 
@@ -74,15 +57,13 @@ const BOOT: u32 = 0;
 const WAIT: u32 = 1;
 const DONE: u32 = 3;
 const REFUSED_STATE: u32 = 4;
-/// flash_spike_guard.h's sector classes and pattern states.
 const BLANK: u32 = 0;
 const OURS: u32 = 1;
 const FOREIGN: u32 = 2;
 const ABSENT: u32 = 0;
 const INTACT: u32 = 1;
 const DAMAGED: u32 = 2;
-/// fm1-emu ignores the page erase (0x81): it is not in its flash model.
-const PE_IGNORED: u32 = 0;
+const PAGE_ERASE_IGNORED_BY_FM1_EMU: u32 = 0;
 
 fn results(m: &mut Machine, fw: &Firmware) -> Vec<u32> {
     use object::{Object, ObjectSymbol};
@@ -102,9 +83,7 @@ fn results(m: &mut Machine, fw: &Firmware) -> Vec<u32> {
         .collect()
 }
 
-/// What the spike's screen shows (its grid's shown_ch), row by row.
 fn screen_text(m: &mut Machine, fw: &Firmware) -> Vec<String> {
-    // The grid sits in the song's region; flash_spike_screen_at holds its address.
     let shown = m.soc.read32(fw.symbol("flash_spike_screen_at")) + 3 * 900;
     (0..30u32)
         .map(|r| {
@@ -117,10 +96,7 @@ fn screen_text(m: &mut Machine, fw: &Firmware) -> Vec<String> {
         .collect()
 }
 
-/// Boots the spike on `flash`, waits for its start screen, presses SAVE and runs to the end
-/// with the TRS jack busy (active sensing, one byte a message) throughout.
 fn run(fw: &Firmware, flash: &[u8]) -> (Machine, Vec<u32>) {
-    // A blank-flash boot: the spike stores no settings, and the test sets the flash itself.
     let mut m = Machine::boot_blank(&fw.image);
     m.soc.flash.mem.copy_from_slice(flash);
     let mut r = results(&mut m, fw);
@@ -152,11 +128,6 @@ fn run(fw: &Firmware, flash: &[u8]) -> (Machine, Vec<u32>) {
     );
 }
 
-/// Every byte outside the spike's sectors a sentinel (alternately 0x5A and 0xA5: an erase
-/// sets it to 0xFF, and the spike programs no data that keeps both); the two sectors blank,
-/// and the update staging area blank too, as on a unit after a completed install: the boot's
-/// `update_boot` (midi.c, SIDOU's as in every build) erases a staging area it finds in use,
-/// which is the update protocol's cleanup, not the spike's.
 fn sentinel_flash() -> Vec<u8> {
     let mut f: Vec<u8> = (0..FLASH)
         .map(|i| if i % 2 == 0 { 0x5A } else { 0xA5 })
@@ -186,7 +157,6 @@ fn the_default_image_has_no_spike() {
     use object::{Object, ObjectSymbol, SymbolKind};
     let fw = Firmware::load(&build);
     let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
-    // nm's view: every named symbol but the file names (the build path may hold "spike").
     let spike: Vec<String> = file
         .symbols()
         .filter(|s| s.kind() != SymbolKind::File)
@@ -238,14 +208,11 @@ fn the_spike_runs_to_its_result_screen_and_writes_only_its_two_sectors() {
             "{name}: fm1-emu's flash is instantaneous"
         );
     }
-    assert_eq!(r[PAGE_ERASE_WORKS], PE_IGNORED);
-    // The suspend's SUS1 count (36) is 0 here: fm1-emu has no suspend. Every read-back clean.
+    assert_eq!(r[PAGE_ERASE_WORKS], PAGE_ERASE_IGNORED_BY_FM1_EMU);
     for i in CHECKS {
         assert_eq!(r[i], 0, "check word {i}");
     }
     assert_eq!(r[FINAL_BAD], 0);
-    // The TRS jack was busy: about 3125 bytes in the open second, some in each masked run,
-    // and nothing lost, not even across a 35 ms mask (109 bytes, under the 128-byte ring).
     let trs = &r[TRS..TRS + 6];
     assert!(
         (3000..=3200).contains(&trs[0]),
@@ -287,14 +254,11 @@ fn the_spike_runs_to_its_result_screen_and_writes_only_its_two_sectors() {
     assert!(text[11].starts_with("ERASE 4K"), "{:?}", text[11]);
     assert!(text[27].starts_with("DONE."), "{:?}", text[27]);
 
-    // A second run on what the first left: its own sectors are taken, the pattern is intact.
     let (_, r2) = run(&fw, &after);
     assert_eq!(r2[STATE], DONE);
     assert_eq!((r2[CLASS_PATTERN], r2[CLASS_MEASURE]), (OURS, BLANK));
     assert_eq!(r2[PATTERN_AT_START], INTACT);
 
-    // The pattern damaged since (by the stock firmware, say), the mark intact: refused, and
-    // nothing written, so the finding stays for the user to record.
     let mut damaged = after.clone();
     damaged[PATTERN + 0x800] ^= 0x10;
     let (m3, r3) = run(&fw, &damaged);

@@ -1,28 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! SIDOU's 6502 on fm1-emu (M3 Task 2, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md): the device
-//! build of core/cpu6502 (CPU6502_SMALL, -Os) in a bench image (bench/fm1/bench_6502_main.c),
-//! stepped as pi32v2 code.
-//!
-//! * Dormann's functional test reaches its success trap: the decoder check. fm1-emu stops on an
-//!   encoding it cannot decode (decision record 0008, Risks), so a run that finishes means the
-//!   compiler's output for the dispatch decodes at the pinned emulator.
-//! * Three GoatTracker example songs, packed by gt2-ref's `pack` with its default options, play
-//!   for 10 s of 6502 time (init, then a play call every PAL frame): the SID writes the 6502
-//!   makes equal the host 6502's, and the instructions a 6502 cycle costs, on average, stay
-//!   within CPU6502_INSTR_PER_CYCLE (set from the worst song's average plus 5 %); the worst
-//!   call is reported.
-//! * Each of the 256 opcodes alone, the call's own cost taken off: instructions an opcode, by
-//!   its cycle count and by opcode, and the I/O page's accesses through the hooks.
-//!
-//! * The voice shadow (M3 Task 5b, core/sid/sid_shadow.h) beside the same players: what a
-//!   tune's writes and a frame's catch-up cost on average (SHADOW_FRAME_MEAN), and its dearest
-//!   catch-up of a 1,500-cycle slice (SHADOW_SLICE_WORST).
-//! * The .sid player's look-ahead slices (M3 Task 8, core/psid/psid_ctl.h): a main-loop pass
-//!   that runs one, the 6502, the shadows and the write ring together, on the shadow's worst
-//!   voices with a write every 4 cycles, within PSID_SLICE_WORST.
-//!
-//! Instructions are not device cycles (docs/hardware.md, "Open checks").
 
 mod common;
 
@@ -34,21 +11,17 @@ use gt2_ref::{pack, Options};
 const PARAM_ADDR: u32 = 0x01CB_0000;
 const MEM_ADDR: u32 = 0x01CC_0000;
 const PAL_FRAME_CYCLES: u32 = 19_656;
-/// 10 s of 6502 time at the PAL clock (985,248 Hz): 501 frames of 19,656 cycles.
 const FRAMES: u32 = 501;
 const DORMANN_SUCCESS: u32 = 0x3469;
+const NOP: usize = 0xEA;
+const LDA_ABS: usize = 0xAD;
+const STA_ABS: usize = 0x8D;
+const INC_ABS: usize = 0xEE;
+const HOOK_ACCESSES: [&str; 3] = ["LDA $D400", "STA $D400", "INC $D400"];
+const OPCODE_RUNS: usize = 256 + HOOK_ACCESSES.len();
+const PHASES_PER_RUN: usize = 4;
 
-/// The three example songs of the workload: the costliest per 6502 cycle of GoatTracker's 14
-/// (the `every_example_song` survey, run with `--ignored`: 8.12 to 8.88 instructions a cycle).
 const SONGS: [&str; 3] = ["wavecmdtest.sng", "dojo.sng", "funktest.sng"];
-
-fn build() -> Option<std::path::PathBuf> {
-    let b = build_dir();
-    if b.is_none() {
-        skip_message("the 6502 on fm1-emu");
-    }
-    b
-}
 
 fn dormann_image() -> Vec<u8> {
     let path = concat!(
@@ -71,9 +44,7 @@ fn load(soc: &mut fm1_soc::Soc, image: &[u8], params: &[u32]) {
     }
 }
 
-/// What one run of a player gave.
 struct Workload {
-    /// Instructions of each call (init first) and the 6502 cycles it took.
     calls: Vec<(u64, u32)>,
     writes: u32,
     sum: u32,
@@ -91,7 +62,6 @@ impl Workload {
     fn per_cycle(&self) -> f64 {
         self.instructions() as f64 / self.busy_cycles() as f64
     }
-    /// The call with the most instructions, and the one with the most per cycle.
     fn worst(&self) -> ((u64, u32), f64) {
         let most = *self.calls.iter().max_by_key(|c| c.0).unwrap();
         let ratio = self
@@ -135,7 +105,6 @@ fn play(build: &std::path::Path, song: &[u8]) -> (Workload, Vec<(u8, u8)>) {
         .map(|i| (r.phases[2 * i], r.samples[i] as u16 as u32))
         .collect();
 
-    // The host 6502's writes: the same player, the same frames.
     let mut cpu = gt2_ref::trace::load(&packed, setup.sid).expect("place");
     let t = run(&mut cpu, &setup, 0, FRAMES as usize).expect("host trace");
     let mut expect: Vec<(u8, u8)> = t.init.clone();
@@ -191,7 +160,9 @@ fn check_workload(build: &std::path::Path, name: &str) -> f64 {
 
 #[test]
 fn dormanns_functional_test_reaches_its_success_trap_at_the_pinned_emulator() {
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the 6502 on fm1-emu") else {
+        return;
+    };
     let image = dormann_image();
     let r = run_with(&build, "sid_bench_6502", 2, |soc| load(soc, &image, &[0]));
     assert_eq!(
@@ -210,7 +181,9 @@ fn dormanns_functional_test_reaches_its_success_trap_at_the_pinned_emulator() {
 
 #[test]
 fn the_workload_costs_at_most_the_constant_per_cycle() {
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the 6502 on fm1-emu") else {
+        return;
+    };
     let worst = SONGS
         .iter()
         .map(|n| check_workload(&build, n))
@@ -225,7 +198,9 @@ fn the_workload_costs_at_most_the_constant_per_cycle() {
 #[test]
 #[ignore = "the survey that picked SONGS"]
 fn every_example_song() {
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the 6502 on fm1-emu") else {
+        return;
+    };
     for (name, _) in gt2_ref::examples() {
         check_workload(&build, &name);
     }
@@ -233,20 +208,33 @@ fn every_example_song() {
 
 #[test]
 fn each_opcode_alone_and_the_io_page() {
-    let Some(build) = build() else { return };
-    let r = run_with(&build, "sid_bench_6502", 4 * 259, |soc| {
-        load(soc, &[], &[2])
-    });
+    let Some(build) = build_or_skip("the 6502 on fm1-emu") else {
+        return;
+    };
+    let r = run_with(
+        &build,
+        "sid_bench_6502",
+        PHASES_PER_RUN * OPCODE_RUNS,
+        |soc| load(soc, &[], &[2]),
+    );
     assert_eq!(r.words[2], 1);
-    // Per opcode: the run that executes nothing (the call's own cost, with the dispatch's
-    // loop test), the run that executes one instruction.
-    let call = (0..259).map(|k| r.phases[4 * k]).collect::<Vec<_>>();
-    let one = (0..259)
-        .map(|k| (r.phases[4 * k + 2] - call[k], r.samples[k] as u32))
+    let empty_call = (0..OPCODE_RUNS)
+        .map(|k| r.phases[PHASES_PER_RUN * k])
         .collect::<Vec<_>>();
-    let overhead = call[0xEA];
-    assert!(call.iter().all(|&c| c == overhead), "the empty call varies");
-    let nop = one[0xEA];
+    let one = (0..OPCODE_RUNS)
+        .map(|k| {
+            (
+                r.phases[PHASES_PER_RUN * k + 2] - empty_call[k],
+                r.samples[k] as u32,
+            )
+        })
+        .collect::<Vec<_>>();
+    let overhead = empty_call[NOP];
+    assert!(
+        empty_call.iter().all(|&c| c == overhead),
+        "the empty call varies"
+    );
+    let nop = one[NOP];
     println!(
         "a call that runs nothing: {overhead} instructions; NOP ($EA, {} cycles): {} instructions \
          more, which is the dispatch's fetch, table lookup, jump and the loop test",
@@ -283,26 +271,21 @@ fn each_opcode_alone_and_the_io_page() {
             hi.2
         );
     }
-    let name = ["LDA $D400", "STA $D400", "INC $D400"];
-    for k in 0..3 {
+    for (k, name) in HOOK_ACCESSES.iter().enumerate() {
         let (i, c) = one[256 + k];
         println!(
-            "{} through the hooks: {i} instructions in {c} cycles ({:.2} per cycle)",
-            name[k],
+            "{name} through the hooks: {i} instructions in {c} cycles ({:.2} per cycle)",
             i as f64 / f64::from(c)
         );
     }
     let ram = |op: usize| one[op].0;
-    // The out-of-line hook costs more than the inline memory access of the same opcode.
-    assert!(one[256].0 > ram(0xAD) && one[257].0 > ram(0x8D) && one[258].0 > ram(0xEE));
+    let hooked = |k: usize| one[256 + k].0;
+    assert!(
+        hooked(0) > ram(LDA_ABS) && hooked(1) > ram(STA_ABS) && hooked(2) > ram(INC_ABS),
+        "an access through the out-of-line hooks costs no more than the inline memory access"
+    );
 }
 
-/// The voice shadow (M3 Task 5b, core/sid/sid_shadow.h) on the device build: the instructions a
-/// tune's SID writes and a frame's catch-up cost the main loop. Each SONGS player runs 10 s
-/// twice, without the shadow and with it (bench mode 3: every write also into a 6581's shadow at
-/// its cycle, and the shadow clocked to each frame's end as the look-ahead's idle slices will);
-/// the difference over the calls, plus the catch-ups, is the shadow's. Reported per frame and as
-/// a share of the 240 MHz core at 50 frames a second.
 fn shadow_cost(build: &std::path::Path, name: &str) -> (f64, u64) {
     let o = Options::default();
     let packed = pack(&example(name), &o).expect("pack");
@@ -346,9 +329,6 @@ fn shadow_cost(build: &std::path::Path, name: &str) -> (f64, u64) {
     (mean, worst)
 }
 
-/// The shadow's dearest catch-up: every voice on a combined waveform with noise (the voices run
-/// cycle by cycle while the register shifts towards its lock-up: the chip's worst block,
-/// decision record 0004), clocked in slices of the look-ahead's PSID_SLICE_CYCLES.
 fn shadow_slices(build: &std::path::Path, model: u32, control: u32, others: u32, freq: u32) -> u64 {
     const SLICES: usize = 40;
     let r = run_with(build, "sid_bench_6502", 2 * SLICES, |soc| {
@@ -380,13 +360,13 @@ fn shadow_slices(build: &std::path::Path, model: u32, control: u32, others: u32,
     worst
 }
 
-/// The slice the shadow's catch-up was measured over: the plan's first estimate of the
-/// look-ahead's (Task 8 set psid_ctl's PSID_SLICE_CYCLES to 1,000 from it).
 const PSID_SLICE_CYCLES: u32 = 1_500;
 
 #[test]
 fn the_voice_shadow_costs_the_main_loop_little() {
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the 6502 on fm1-emu") else {
+        return;
+    };
     let mut worst_mean = 0f64;
     for name in SONGS {
         let (mean, _) = shadow_cost(&build, name);
@@ -411,7 +391,6 @@ fn the_voice_shadow_costs_the_main_loop_little() {
     assert!(worst_slice <= SHADOW_SLICE_WORST);
 }
 
-/// What one look-ahead run gave: each pass's instructions and the 6502 cycles it ran.
 fn look_ahead(build: &std::path::Path, file: &[u8], passes: usize, model: u32) -> Vec<(u64, u32)> {
     const FILE_ADDR: u32 = PARAM_ADDR + 0x100;
     assert!(FILE_ADDR as usize + file.len() <= MEM_ADDR as usize);
@@ -427,14 +406,11 @@ fn look_ahead(build: &std::path::Path, file: &[u8], passes: usize, model: u32) -
         .collect()
 }
 
-/// The look-ahead's passes (core/psid/psid_ctl.h: a slice's runs while its work estimate lasts)
-/// on the device build, each pass running a slice: the shadow's dearest voices (noise with
-/// triangle from power-on, until the noise register locks up) on one chip and two, an access
-/// every 4 cycles (writes to voice 3 and to the volume, reads of OSC3), and a GoatTracker tune.
-/// Every pass within PSID_SLICE_WORST; the first passes and the means are reported.
 #[test]
 fn a_look_ahead_slice_holds_its_budget() {
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the 6502 on fm1-emu") else {
+        return;
+    };
     let song = sidou_tests::psid::packed(&example("wavecmdtest.sng"), 0xD400);
     let runs: Vec<(&str, Vec<u8>, u32)> = vec![
         (

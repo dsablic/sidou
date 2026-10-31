@@ -1,44 +1,38 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: the effect slots in the firmware (platform/fm1/audio.c runs them after the
-//! chip, in stereo), switched on from the front panel's EDIT layer and over TRS MIDI CCs, and
-//! their cost in the audio interrupt with every slot's heaviest algorithm.
 
 mod common;
 
 use fm1_core::Bus;
 
+use common::panel::{
+    holding, note_key, press, A4, A4_KEY, ALGORITHM, ARP, EDIT, K1, K4, OCT_UP, SELECT,
+};
 use common::{
-    build_dir, max_diff, peak, power_above, render_host, Firmware, Machine, AUDIO_TARGET,
-    HALF_FRAMES,
+    booted, firmware, max_diff, peak, power_above, render_host, Machine, AUDIO_TARGET, HALF_FRAMES,
 };
 use sidou_sys::{
     LIVE_CC_SLOT_FIRST, LIVE_SLOT_FIELDS, SID_DIST_COUNT, SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT,
     SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
 };
 
-/// Felucca's ids: the effect layer's EDIT (app/panel.h), SELECT, ALGORITHM, K1 and K4, the A4
-/// key.
-const EDIT: u8 = 6;
-const SELECT: u8 = 0;
-const ALGORITHM: u8 = 1;
-const K1: u8 = 2;
-const K4: u8 = 5;
-const A4_KEY: u8 = 30;
-const A4: u8 = 69;
-/// A block of 128 frames.
+const AMOUNT: u8 = K1;
+const TONE: u8 = K1 + 1;
+const MIX: u8 = K4;
+const FULL_TRAVEL: i32 = sidou_sys::LIVE_SLOT_DETENTS as i32;
+const KNOB_SETTLE_MS: u64 = 400;
+const SWITCH_AND_SMOOTHING_MS: u64 = 200;
+const DISTORTION_SLOT: u32 = 0;
+const FX_SLOT: u32 = 2;
+const ALGORITHM_FIELD: u32 = sidou_sys::LIVE_SLOT_ALGORITHM;
+const AMOUNT_FIELD: u32 = sidou_sys::LIVE_SLOT_AMOUNT;
+const MIX_FIELD: u32 = sidou_sys::LIVE_SLOT_MIX;
+const CHORD_KEYS: [u8; 3] = [A4_KEY, note_key(73), note_key(76)];
 const BLOCK_FRAMES: f64 = 128.0;
-/// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
-/// How many blocks after it was sent a CC or a key press may reach the interrupt.
 const LATE_BLOCKS: usize = 8;
-/// How many blocks after the first a later CC of the same burst may reach the interrupt:
-/// over TRS a CC takes about 1 ms at 31,250 baud and a block 2.9 ms, and the main loop
-/// commits what has arrived, so a burst of CCs spreads over a few blocks.
 const CC_SPREAD: usize = 3;
 
-/// Every way the CCs of a burst can land: the first in `first`, each later one in the same
-/// block as the one before it or a later one, within CC_SPREAD blocks of the first.
 fn cc_schedules(first: usize, ccs: &[(u8, u8)]) -> Vec<Vec<(usize, u8, u8)>> {
     let mut all: Vec<Vec<(usize, u8, u8)>> = vec![Vec::new()];
     for (i, &(cc, value)) in ccs.iter().enumerate() {
@@ -57,30 +51,6 @@ fn cc_schedules(first: usize, ccs: &[(u8, u8)]) -> Vec<Vec<(usize, u8, u8)>> {
     all
 }
 
-fn fixture(what: &str) -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        common::skip_message(what);
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
-
-/// Past the boot animation (app/boot.h), which a control would skip instead of playing:
-/// until the boot view is gone from the screen (common::run_past_boot).
-fn booted(fw: &Firmware) -> Machine {
-    let mut m = Machine::boot(&fw.image);
-    common::run_past_boot(&mut m, fw);
-    m
-}
-
-fn tap(m: &mut Machine, id: u8) {
-    m.key(id, true);
-    m.run_ms(30);
-    m.key(id, false);
-    m.run_ms(30);
-}
-
-/// Both channels played during the next `ms`.
 fn record_lr(m: &mut Machine, ms: u64) -> (Vec<f32>, Vec<f32>) {
     let from = m.soc.periph.audio.len() / 2;
     m.run_ms(ms);
@@ -103,8 +73,6 @@ fn correlation(a: &[f32], b: &[f32]) -> f64 {
     ab / (aa * bb).sqrt()
 }
 
-/// The CC value that selects algorithm `alg` of a slot with `count` algorithms (the middle
-/// of its band: live_cc maps value * count / 128).
 fn algorithm_cc(alg: u32, count: u32) -> u8 {
     ((2 * alg + 1) * 128 / (2 * count)) as u8
 }
@@ -119,47 +87,36 @@ fn slot_cc(m: &mut Machine, slot: u32, field: u32, value: u8) {
 
 #[test]
 fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
-    let Some(fw) = fixture("the effects test") else {
+    let Some(fw) = firmware("the effects test") else {
         return;
     };
     let mut m = booted(&fw);
-    // A4, C#5, E5: a chord, so the slot's input is about as loud as one SAW LEAD note was
-    // before M1b Task 6 put the 6581's filter at reSIDfp's level, 3.3 dB lower (one note
-    // now clips to 0.82 of its undriven crest factor, short of the 0.8 below).
-    for k in [A4_KEY, 34, 37] {
+    for k in CHORD_KEYS {
         m.key(k, true);
     }
     m.run_ms(200);
     m.soc.periph.led_take();
     let (dry, dry_r) = record_lr(&mut m, 300);
     let edit_before = m.soc.periph.led_take()[usize::from(EDIT)];
-    // Distortion's page (SELECT), ALGORITHM two clicks: OVERDRIVE (OFF, TAPE, ...); then back
-    // to TONE, where EDIT holds the slot's layer.
     slot_algorithm(&mut m, 2);
-    // fm1-emu turns a knob one click at a time: hold EDIT until every click has landed.
-    // First the slot on at no drive, with the tone and mix the driven take has: what the
-    // slot does besides the drive (its tone filter, its mix) is in both takes.
-    m.key(EDIT, true);
-    m.run_ms(30);
-    m.turn(K1, -32); // Amount (drive) to the bottom
-    m.run_ms(400);
-    m.turn(K1 + 1, 32); // A (tone) to the brightest
-    m.run_ms(400);
-    m.turn(K4, 32); // Mix to the top
-    m.run_ms(400);
-    m.key(EDIT, false);
-    m.run_ms(200); // past the switch (20 ms) and the smoothing
+    holding(&mut m, EDIT, |m| {
+        for (knob, travel) in [
+            (AMOUNT, -FULL_TRAVEL),
+            (TONE, FULL_TRAVEL),
+            (MIX, FULL_TRAVEL),
+        ] {
+            m.turn(knob, travel);
+            m.run_ms(KNOB_SETTLE_MS);
+        }
+    });
+    m.run_ms(SWITCH_AND_SMOOTHING_MS);
     let (undriven, _) = record_lr(&mut m, 300);
-    m.key(EDIT, true);
-    m.run_ms(30);
-    m.turn(K1, 32); // Amount to the top
-    m.run_ms(400);
-    m.key(EDIT, false);
-    m.run_ms(200);
+    holding(&mut m, EDIT, |m| {
+        m.turn(AMOUNT, FULL_TRAVEL);
+        m.run_ms(KNOB_SETTLE_MS);
+    });
+    m.run_ms(SWITCH_AND_SMOOTHING_MS);
     let (wet, wet_r) = record_lr(&mut m, 300);
-    // Clipping squares the wave off: the crest factor (peak / rms) falls and the harmonics come
-    // up, at about the level it had (the drive's makeup; before the slot lifted its input to
-    // the algorithms' level, the drive was mostly a volume knob: rms 890 -> 3177).
     let crest = |x: &[f32]| f64::from(peak(x)) / rms(x);
     let (cd, c0, cw) = (crest(&dry), crest(&undriven), crest(&wet));
     println!(
@@ -172,8 +129,6 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     );
     assert_eq!(dry, dry_r, "dry is mono");
     assert_eq!(wet, wet_r, "the distortion slot is mono");
-    // Against the slot at no drive, so the drive alone counts, whatever the source's level
-    // and the tone filter do to the crest factor.
     assert!(cw < 0.8 * c0, "no clipping: crest factor {c0} -> {cw}");
     assert!(
         power_above(&wet, 2000.0) > 2.0 * power_above(&dry, 2000.0),
@@ -183,7 +138,6 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
         (rms(&wet) / rms(&dry)).log10().abs() * 20.0 < 6.0,
         "the drive changed the level more than the sound"
     );
-    // EDIT's LED shows the selected slot is on (the LEDs are multiplexed: lit is above 0).
     m.soc.periph.led_take();
     m.run_ms(50);
     let lit = m.soc.periph.led_take()[usize::from(EDIT)];
@@ -193,23 +147,22 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
 
 #[test]
 fn trs_ccs_turn_on_the_reverb_in_stereo_with_a_tail() {
-    let Some(fw) = fixture("the effects test") else {
+    let Some(fw) = firmware("the effects test") else {
         return;
     };
-    // The same note with the FX slot off and with the light reverb.
     let tail = |reverb: bool| {
         let mut m = booted(&fw);
         if reverb {
             let alg = algorithm_cc(SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_COUNT);
-            slot_cc(&mut m, 2, 0, alg);
-            slot_cc(&mut m, 2, 1, 100); // Amount: a long decay
-            slot_cc(&mut m, 2, 4, 90); // Mix
+            slot_cc(&mut m, FX_SLOT, ALGORITHM_FIELD, alg);
+            slot_cc(&mut m, FX_SLOT, AMOUNT_FIELD, 100);
+            slot_cc(&mut m, FX_SLOT, MIX_FIELD, 90);
             m.run_ms(200);
         }
         m.midi(&[0x90, A4, 100]);
         let (on_l, on_r) = record_lr(&mut m, 300);
         m.midi(&[0x80, A4, 0]);
-        m.run_ms(400); // past the preset's release
+        m.run_ms(400);
         let (l, r) = record_lr(&mut m, 300);
         (on_l, on_r, l, r)
     };
@@ -234,27 +187,27 @@ fn trs_ccs_turn_on_the_reverb_in_stereo_with_a_tail() {
     assert!(correlation(&wtl, &wtr) < 0.8, "the tail is not wide");
 }
 
-/// The slot CCs of the sample-exact test: OVERDRIVE in Distortion, the light reverb in FX.
 fn overdrive_and_reverb_ccs() -> Vec<(u8, u8)> {
     let cc = |slot: u32, field: u32| (LIVE_CC_SLOT_FIRST + slot * LIVE_SLOT_FIELDS + field) as u8;
     vec![
-        (cc(0, 0), algorithm_cc(SID_DIST_OVERDRIVE, SID_DIST_COUNT)),
-        (cc(0, 1), 100),
-        (cc(0, 4), 127),
         (
-            cc(2, 0),
+            cc(DISTORTION_SLOT, ALGORITHM_FIELD),
+            algorithm_cc(SID_DIST_OVERDRIVE, SID_DIST_COUNT),
+        ),
+        (cc(DISTORTION_SLOT, AMOUNT_FIELD), 100),
+        (cc(DISTORTION_SLOT, MIX_FIELD), 127),
+        (
+            cc(FX_SLOT, ALGORITHM_FIELD),
             algorithm_cc(SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_COUNT),
         ),
-        (cc(2, 1), 100),
-        (cc(2, 4), 90),
+        (cc(FX_SLOT, AMOUNT_FIELD), 100),
+        (cc(FX_SLOT, MIX_FIELD), 90),
     ]
 }
 
-/// The device's audio_fill with two slots on matches the host build sample for sample on
-/// both channels: the slots switched on over TRS MIDI, then the A4 key pressed.
 #[test]
 fn the_slots_on_the_device_match_the_host_sample_exact() {
-    let Some(fw) = fixture("the effects test") else {
+    let Some(fw) = firmware("the effects test") else {
         return;
     };
     let ccs = overdrive_and_reverb_ccs();
@@ -270,22 +223,16 @@ fn the_slots_on_the_device_match_the_host_sample_exact() {
     m.run_ms(400);
     let audio = m.soc.periph.audio.clone();
     assert!(m.left() != m.right(), "the reverb's output is mono");
-    // LIVE, the root, on top all along: the audio interrupt rendered through the tap
-    // (app/scope.h), which must change nothing in the audio.
     assert!(
         common::tap_on(&mut m, &fw),
         "the tap is off: the match says nothing about it"
     );
 
-    // The blocks the CCs and the note-on reached the interrupt in depend on the MIDI drain
-    // and the key scan: search a few blocks after each was sent. The chip plays before the
-    // note (its silent voices leak, as reSIDfp's), so the slots' output there already shows
-    // which block each CC reached: find that from the audio before the note, then the note.
     let mut found = None;
     let mut min_diff = i32::MAX;
     'search: for silent in 0..=MAX_SILENT_HALVES {
         if audio[..2 * silent * HALF_FRAMES].iter().any(|&s| s != 0) {
-            break; // the DMA's zeros only come before the first rendered half
+            break;
         }
         let played = &audio[2 * silent * HALF_FRAMES..];
         let before_note = (key_sent - silent) * HALF_FRAMES;
@@ -323,15 +270,13 @@ fn the_slots_on_the_device_match_the_host_sample_exact() {
 
 #[test]
 fn every_slots_heaviest_fits_the_audio_budget_and_runs_from_sram() {
-    let Some(fw) = fixture("the effects test") else {
+    let Some(fw) = firmware("the effects test") else {
         return;
     };
     let mut m = booted(&fw);
     m.midi(&[0x90, 57, 100, 0x90, 64, 100, 0x90, 69, 100]);
     m.run_ms(200);
     let quiet = m.alnk_blocks.len();
-    // Every slot's heaviest (docs/decisions/0004: overdrive, chorus, lush) at full, switched
-    // in from MIDI while the chord plays; switching included in what is measured.
     m.watch_alnk_pcs(fw.symbol("_rt_start")..fw.symbol("_rt_end"));
     let from = m.alnk_blocks.len();
     for (slot, alg, count) in [
@@ -345,7 +290,7 @@ fn every_slots_heaviest_fits_the_audio_budget_and_runs_from_sram() {
         }
     }
     let switching_main = m.main_steps;
-    m.run_ms(400); // the three switches take turns: ~150 ms
+    m.run_ms(400);
     let switch_blocks: Vec<u64> = m.alnk_blocks[from..].to_vec();
     let main_before = m.main_steps;
     m.run_ms(1000);
@@ -382,7 +327,6 @@ fn every_slots_heaviest_fits_the_audio_budget_and_runs_from_sram() {
         "the main loop runs {:.2}M/s",
         main_rate / 1e6
     );
-    // Stereo out: the chorus and the plate make the sides differ.
     let l = m.left();
     let r = m.right();
     let n = l.len();
@@ -392,7 +336,6 @@ fn every_slots_heaviest_fits_the_audio_budget_and_runs_from_sram() {
     );
 }
 
-/// SELECT to the Distortion slot's page, ALGORITHM `clicks` clicks, SELECT back to TONE.
 fn slot_algorithm(m: &mut Machine, clicks: i32) {
     m.turn(SELECT, 1);
     m.run_ms(100);
@@ -404,7 +347,7 @@ fn slot_algorithm(m: &mut Machine, clicks: i32) {
 
 #[test]
 fn a_slot_algorithm_on_live_is_heard() {
-    let Some(fw) = fixture("the effects test") else {
+    let Some(fw) = firmware("the effects test") else {
         return;
     };
     let mut m = booted(&fw);
@@ -417,28 +360,23 @@ fn a_slot_algorithm_on_live_is_heard() {
     assert_eq!(got, [1, 80, 0, 0, 127], "TAPE at its musical start");
 }
 
-/// A dim LED glows, a thirtieth as bright as a lit one (the HAL's dim pulse, which the LEDs'
-/// panel_leds.*_dim reach through fm1_led_dim): ARP is dark with the arpeggio off, dim with it on
-/// and nothing held, against OCT+ lit at full.
 #[test]
 fn a_dim_led_is_lit_but_far_less_than_a_full_one() {
-    let Some(fw) = fixture("the dim LED test") else {
+    let Some(fw) = firmware("the dim LED test") else {
         return;
     };
     let mut m = booted(&fw);
-    const ARP: usize = 10;
-    const OCT_UP: u8 = 1;
     m.run_ms(100);
     m.soc.periph.led_take();
     m.run_ms(100);
     let off = m.soc.periph.led_take();
-    assert_eq!(off[ARP], 0.0, "ARP off: dark");
-    m.midi(&[0xB0, 27, 127]); // LIVE_CC_ARP: on
+    assert_eq!(off[usize::from(ARP)], 0.0, "ARP off: dark");
+    m.midi(&[0xB0, sidou_sys::LIVE_CC_ARP as u8, 127]);
     m.run_ms(100);
     m.soc.periph.led_take();
     m.run_ms(100);
-    let dim = m.soc.periph.led_take()[ARP];
-    tap(&mut m, OCT_UP);
+    let dim = m.soc.periph.led_take()[usize::from(ARP)];
+    press(&mut m, OCT_UP);
     m.run_ms(100);
     m.soc.periph.led_take();
     m.run_ms(100);

@@ -1,70 +1,37 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: the chip's character (M1c Task 3) from TRS MIDI CCs on the firmware. The
-//! profile CC resets the chip into the worn 6581, the four controls ramp it there without a
-//! reset, a tick at a time, the rendered chip in emulated RAM has them all (the spare got them
-//! before the swap), and the audio matches the host build sample for sample, its ticks where
-//! the device's were (each tick's REG_RING_CHARACTER counted by the drain, read after every
-//! block). The CHIP view (M1c Task 4) does the same from the panel: K1 on its chip turns the
-//! age, end to end.
 
 mod common;
 
 use fm1_core::Bus;
 
-use common::{build_dir, max_diff, Firmware, Machine, HALF_FRAMES, SAMPLE_RATE};
+use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1, SELECT};
+use common::{firmware, max_diff, top_view, Firmware, Machine, HALF_FRAMES, SAMPLE_RATE};
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
-/// The A4 key (Felucca's id) and its note.
-const A4_KEY: u8 = 30;
-const A4: u8 = 69;
 const MAX_SILENT_HALVES: usize = 4;
-/// How many blocks after it was sent a CC may take effect: the MIDI drain, then live_tick
-/// (every 10 ms, about 3.4 blocks) applies it.
+const MENU_WIPE_MS: u64 = 670;
 const LATE_BLOCKS: usize = 8;
-/// A burst of CCs can straddle a tick: a later one takes effect in the same block as the one
-/// before it or up to this many blocks after (the next tick).
 const SPREAD: usize = 5;
 
-/// docs/reference/midi.md's Character rows: profile (steps over the five profiles and the eight
-/// USER slots: 43 is 4, worn 6581), age/heat, DAC sloppiness, output thump, filter bleed.
-const CCS: [(u8, u8); 5] = [(85, 43), (86, 100), (87, 127), (89, 64), (90, 90)];
+const PROFILE_WORN_6581: u8 = 43;
+const CC_PROFILE: u8 = 85;
+const CC_AGE: u8 = 86;
+const CC_DAC: u8 = 87;
+const CC_THUMP: u8 = 89;
+const CC_BLEED: u8 = 90;
+const CCS: [(u8, u8); 5] = [
+    (CC_PROFILE, PROFILE_WORN_6581),
+    (CC_AGE, 100),
+    (CC_DAC, 127),
+    (CC_THUMP, 64),
+    (CC_BLEED, 90),
+];
 
-/// The thump's output stage (app/thump_out.c), instructions a sample (a stereo frame) while a
-/// thump sounds: the decay of both chips' levels and, per side, the room left, the soft limit's
-/// test and the rounding; measured 30.86 on this image. A bound set from this measurement (new
-/// code); idle the stage is a take and one test a block. It takes that much from the 6502's
-/// headroom while a thump sounds (chip_b.rs).
 const THUMP_PER_SAMPLE: f64 = 31.0;
 
-/// DAC's grit (core/sid/sid.c `grit`, sid.h), instructions a sample on one chip while DAC is
-/// not 0: the noise, the bow and the slew; measured 19.13 on this image. A bound set from
-/// this measurement (new code); at DAC 0 the render tests two halfwords. Like the thump's stage,
-/// it is outside the SID's worst blocks (bench/workload.c) and takes its share from the 6502's
-/// headroom while DAC is up.
 const GRIT_PER_SAMPLE: f64 = 19.2;
 
-/// A function's address range in the firmware ELF.
-fn function(fw: &Firmware, name: &str) -> std::ops::Range<u32> {
-    use object::{Object, ObjectSymbol};
-    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
-    let s = file
-        .symbols()
-        .find(|s| s.name() == Ok(name))
-        .unwrap_or_else(|| panic!("no symbol {name}"));
-    s.address() as u32..(s.address() + s.size()) as u32
-}
-
-fn fixture() -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        common::skip_message("the character test");
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
-
-/// Every way the burst can take effect: the first CC in `first`, each later one in the same
-/// block as the one before or within SPREAD blocks of it.
 fn schedules(first: usize) -> Vec<Vec<usize>> {
     let mut all: Vec<Vec<usize>> = vec![vec![first]];
     for _ in 1..CCS.len() {
@@ -82,9 +49,6 @@ fn schedules(first: usize) -> Vec<Vec<usize>> {
     all
 }
 
-/// The firmware's instrument at boot rendered by the host build (common::render_host), with
-/// CC i sent to live before block blocks[i] (live_cc), ticks[i] live_ticks before block i
-/// (the device's), and the note on before `note_block`.
 fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]) -> Vec<i16> {
     use sidou_sys::*;
     common::render_instrument(frames, |i, l| unsafe {
@@ -102,7 +66,6 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
     })
 }
 
-/// The rendered chip's address in emulated RAM.
 fn active_sid(m: &mut Machine, fw: &Firmware) -> u32 {
     let base = fw.chips();
     let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
@@ -115,7 +78,7 @@ fn read_f32(m: &mut Machine, addr: u32) -> f32 {
 
 #[test]
 fn expert_nrpn_changes_a_held_notes_sound_without_a_reset() {
-    let Some(fw) = fixture() else {
+    let Some(fw) = firmware("the character test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
@@ -171,7 +134,7 @@ fn expert_nrpn_changes_a_held_notes_sound_without_a_reset() {
 
 #[test]
 fn expert_filter_builds_are_sliced_and_never_reset_a_held_gate() {
-    let Some(fw) = fixture() else {
+    let Some(fw) = firmware("the character test") else {
         return;
     };
     for model in [SID_MODEL_6581, sidou_sys::SID_MODEL_8580] {
@@ -222,11 +185,10 @@ fn expert_filter_builds_are_sliced_and_never_reset_a_held_gate() {
 
 #[test]
 fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
-    let Some(fw) = fixture() else {
+    let Some(fw) = firmware("the character test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
-    // After every block, the drain's tick count (its low byte): the ticks before each block.
     let base = fw.chips();
     m.snapshot_bytes = vec![base + ilp32::reg_ring_chips::ticks as u32];
     m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
@@ -240,10 +202,7 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     m.midi(&burst);
     m.run_ms(100);
     let key_sent = halves(&m);
-    // The thump's output stage (app/thump_out.c) while the note's thump sounds (thump 64: its
-    // first 100 ms, the stage running every sample), instructions a sample (a stereo frame).
     m.alnk_pcs_inside = 0;
-    // The whole stage: its four functions, side by side in SRAM (app.ld; nothing between).
     let parts: Vec<_> = [
         "thump_out_take",
         "thump_out_drop",
@@ -251,7 +210,7 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         "thump_out_apply",
     ]
     .iter()
-    .map(|f| function(&fw, f))
+    .map(|f| fw.function_range(f))
     .collect();
     let stage =
         parts.iter().map(|r| r.start).min().unwrap()..parts.iter().map(|r| r.end).max().unwrap();
@@ -274,10 +233,8 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         thump <= THUMP_PER_SAMPLE,
         "the thump's stage costs {thump:.2} a sample"
     );
-    // DAC's grit (core/sid/sid.c grit, sid.h), instructions a sample while DAC is at 127: the
-    // pass runs on every render while it is not 0.
     m.alnk_pcs_inside = 0;
-    m.watch_alnk_pcs(function(&fw, "grit"));
+    m.watch_alnk_pcs(fw.function_range("grit"));
     let from = m.alnk_blocks.len();
     m.run_ms(100);
     let n = (m.alnk_blocks.len() - from) as f64 * HALF_FRAMES as f64;
@@ -292,7 +249,6 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     );
     m.run_ms(100);
 
-    // Each block's ticks, from the counts after each block (one ALNK0 interrupt a block).
     let mut ticks = Vec::new();
     let mut count = 0u8;
     for snap in &m.buffer_snapshots {
@@ -310,7 +266,6 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
             % 256,
         0
     );
-    // The chip the interrupt renders has the profile and every control.
     assert_eq!(
         m.soc
             .read32(base + ilp32::reg_ring_chips::lost_resets as u32),
@@ -340,7 +295,6 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         (0..3).any(|i| dac == tables + i * table),
         "the chip's DACs are one of the character's tables: {dac:#x}"
     );
-    // The host's chip with the same character has the same output stage.
     let mut want = Box::<sidou_sys::sid>::default();
     let mut want_dac = Box::<sidou_sys::sid_dac>::default();
     let c = sidou_sys::sid_character {
@@ -370,9 +324,6 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         assert_eq!(read_f32(&mut m, s + offset as u32), value, "{name}");
     }
 
-    // The audio: search the blocks the burst and the note took effect in, as fx_live.rs
-    // does. The chip plays before the note (its silent voices leak), so the audio before
-    // the note settles the CCs' blocks first.
     let audio = m.soc.periph.audio.clone();
     let mut found = None;
     let mut min_diff = i32::MAX;
@@ -413,7 +364,6 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     );
 }
 
-/// A data symbol's bytes in the firmware ELF.
 fn symbol_bytes(fw: &Firmware, name: &str) -> Vec<u8> {
     use object::{Object, ObjectSection, ObjectSymbol};
     let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
@@ -428,11 +378,6 @@ fn symbol_bytes(fw: &Firmware, name: &str) -> Vec<u8> {
         .to_vec()
 }
 
-/// The device compiles all three strengths for both models: built-in profiles and the
-/// independent expert selector use them, as SID_PD's shared blocks (gen/pulldown.h).
-/// Each of those profiles reads
-/// back as reSIDfp's table, its blocks are the ones sidou-tablegen lays out for it, and the
-/// pool holds no block they leave unused. The host keeps all six (sidou-sys).
 #[test]
 fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
     use residfp_sys::Model;
@@ -441,7 +386,7 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
         compiled_profiles, pulldown_entry, PulldownLayout, PulldownSource, PD_BLOCK_BYTES,
         PD_INDEX_BYTES, PROFILE_BYTES,
     };
-    let Some(fw) = fixture() else {
+    let Some(fw) = firmware("the character test") else {
         return;
     };
     for id in 0..SID_CHIPS {
@@ -457,7 +402,6 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
     let src = PulldownSource::new();
     let want = PulldownLayout::new(&src.compiled_rows(true, true));
     let mut sid_pd = symbol_bytes(&fw, "SID_PD");
-    // The struct's size rounds its bytes up to its u16 index's alignment.
     assert_eq!(
         sid_pd.len(),
         want.bytes.len().next_multiple_of(2),
@@ -507,8 +451,6 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
         "SID_PD's pool holds blocks no profile uses"
     );
     assert_eq!(sid_pd, want.bytes);
-    // Each compiled row's pointer (SID_PD_ROWS, in RAM: sid_osc_update_mode reads it in the
-    // audio path) is its index row's in SID_PD.
     let base = fw.symbol("SID_PD");
     let rows: Vec<u32> = symbol_bytes(&fw, "SID_PD_ROWS")
         .chunks(4)
@@ -522,21 +464,9 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
     assert_eq!(rows, want_rows, "SID_PD_ROWS");
 }
 
-// ---- the CHIP view's knobs (M1c Task 4) ----
-
-/// app/panel.h: the buttons and encoders the CHIP view is reached and played with.
-const HOME: u8 = 8;
-const SELECT: u8 = 0;
-const ALGORITHM: u8 = 1;
-const K1: u8 = 2;
-/// K1's detents on the CHIP view's chip: the age, 4 a detent (app/panel.h
-/// PANEL_CHARACTER_DETENT).
 const DETENTS: i32 = 8;
-const AGE: u8 = 4 * DETENTS as u8;
+const AGE: u8 = sidou_sys::PANEL_CHARACTER_DETENT as u8 * DETENTS as u8;
 
-/// The firmware's instrument at boot rendered by the host build, as render_host, with the age
-/// set to `ages[i]` before block i's ticks (`split[i]`: between its two ticks instead) and
-/// the note on before `note_block`.
 fn render_host_ages(
     frames: usize,
     ages: &[u8],
@@ -564,25 +494,13 @@ fn render_host_ages(
     })
 }
 
-/// The views' instrument (platform/fm1/ui.c `ui`, its live pointer).
 fn ui_live(m: &mut Machine, fw: &Firmware) -> u32 {
     m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32)
 }
 
-/// The view on top (platform/fm1/ui.c `ui`, its screen's stack).
-fn top_view(m: &mut Machine, fw: &Firmware) -> u32 {
-    common::top_view(m, fw)
-}
-
-/// End to end, a control round trip on the panel: CHIP from the menu (THE CHIP's card skipped
-/// by SELECT, which does nothing else), K1 turned on the chip's focus, and the age reaches the
-/// instrument (8 detents, 4 each), the chip's ramp and the chip the interrupt renders, which
-/// has what the host's chip with that character has; the audio, a note after it, matches the
-/// host build sample for sample, the age changing where the device's drain took it (the
-/// ramp's settings read after every block).
 #[test]
 fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
-    let Some(fw) = fixture() else {
+    let Some(fw) = firmware("the character test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
@@ -594,11 +512,8 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
     m.snapshot_bytes = vec![base + ilp32::reg_ring_chips::ticks as u32, target_age];
     m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
     common::run_past_boot(&mut m, &fw);
-    // HOME, then ALGORITHM on the menu's first item, CHIP; SELECT skips the card.
-    m.key(HOME, true);
-    m.run_ms(30);
-    m.key(HOME, false);
-    m.run_ms(700);
+    press(&mut m, HOME);
+    m.run_ms(MENU_WIPE_MS);
     m.turn(ALGORITHM, 1);
     m.run_ms(300);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("title_card_view"));
@@ -618,7 +533,6 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
     m.key(A4_KEY, true);
     m.run_ms(300);
 
-    // The instrument, the ramp and the rendered chip.
     let character: Vec<u8> = (0..4)
         .map(|i| m.soc.read8(l + (ilp32::live::character + i) as u32))
         .collect();
@@ -655,7 +569,6 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
         assert_eq!(read_f32(&mut m, s + offset as u32), value, "{name}");
     }
 
-    // Each block's ticks and the age its drain had, from the snapshots after every block.
     let mut ticks = Vec::new();
     let mut ages = Vec::new();
     let mut count = 0u8;
@@ -671,7 +584,6 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
         steps >= 2,
         "the age took {steps} steps: one jump is not a turn"
     );
-    // A block with two ticks whose age changed: it changed at either tick.
     let ambiguous: Vec<usize> = (1..ages.len())
         .filter(|&i| ticks[i] == 2 && ages[i] != ages[i - 1])
         .collect();

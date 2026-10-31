@@ -212,6 +212,16 @@ impl Firmware {
         sym.address() as u32
     }
 
+    pub fn function_range(&self, name: &str) -> std::ops::Range<u32> {
+        use object::{Object, ObjectSymbol};
+        let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
+        let s = file
+            .symbols()
+            .find(|s| s.name() == Ok(name))
+            .unwrap_or_else(|| panic!("no symbol {name}"));
+        s.address() as u32..(s.address() + s.size()) as u32
+    }
+
     pub fn chips(&self) -> u32 {
         use object::{Object, ObjectSymbol};
         let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
@@ -1161,12 +1171,22 @@ pub fn tap_on(m: &mut Machine, fw: &Firmware) -> bool {
         != 0
 }
 
-pub fn firmware(what: &str) -> Option<Firmware> {
-    let Some(build) = build_dir() else {
+pub fn build_or_skip(what: &str) -> Option<PathBuf> {
+    let build = build_dir();
+    if build.is_none() {
         skip_message(what);
-        return None;
-    };
-    Some(Firmware::load(&build))
+    }
+    build
+}
+
+pub fn build_and_firmware(what: &str) -> Option<(PathBuf, Firmware)> {
+    let build = build_or_skip(what)?;
+    let fw = Firmware::load(&build);
+    Some((build, fw))
+}
+
+pub fn firmware(what: &str) -> Option<Firmware> {
+    build_and_firmware(what).map(|(_, fw)| fw)
 }
 
 pub fn booted(fw: &Firmware) -> Machine {

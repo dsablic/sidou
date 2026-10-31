@@ -1,15 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: the update package (`sidou.fwsc`, from `sidou-pack`) booted as fm1-emu boots a
-//! package (`stock_from_package` + `stock_boot`): the app comes from the package's scrambled
-//! app area, the flash chip holds its flash.bin. The live instrument plays, sample for sample
-//! as the bare image does.
-//!
-//! The package is `$SIDOU_FWSC`, else `sidou.fwsc` in the fm1 build directory (CI:
-//! `cargo run -p sidou-pack -- ... -o build/fm1/sidou.fwsc`); without it the test skips.
-//! It writes `sidou_package.json` and the audio, `sidou_package.wav` (A4 held from power-on),
-//! into the fm1 build directory. A package older than the build's `sidou_app.bin` fails the
-//! test: it holds an earlier build, so it would be compared with an image it was not made from.
 
 mod common;
 
@@ -18,8 +8,7 @@ use std::path::{Path, PathBuf};
 use common::{build_dir, peak, pitch, Firmware, Machine};
 
 const RUN_MS: u64 = 900;
-/// The A4 key (Felucca id 30), held from power-on.
-const A4_KEY: u8 = 30;
+const A4_KEY: u8 = common::panel::KEY0 + 16;
 
 fn package_path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("SIDOU_FWSC").filter(|p| !p.is_empty()) {
@@ -28,8 +17,6 @@ fn package_path() -> Option<PathBuf> {
     Some(build_dir()?.join("sidou.fwsc"))
 }
 
-/// Why `package` cannot stand for `image`: it was written before the image was, so it holds an
-/// earlier build. None when it is at least as new.
 fn stale(package: &Path, image: &Path) -> Option<String> {
     let modified = |p: &Path| {
         std::fs::metadata(p)
@@ -112,9 +99,8 @@ fn the_package_boots_and_plays_as_the_bare_image() {
         "peak": peak(&tail),
         "first_difference_from_bare_image": first_diff,
     });
-    // Something to listen to: the package boot's left channel (it is mono) as a WAV.
     let wav = build.join("sidou_package.wav");
-    std::fs::write(&wav, wav_mono(&a, 44_118))
+    std::fs::write(&wav, sidou_tests::showcase::wav(&a, common::SAMPLE_RATE))
         .unwrap_or_else(|e| panic!("write {}: {e}", wav.display()));
     let out = build.join("sidou_package.json");
     std::fs::write(&out, report.to_string())
@@ -137,26 +123,4 @@ fn the_package_boots_and_plays_as_the_bare_image() {
         first_diff, None,
         "the package boot differs from the bare image"
     );
-}
-
-/// A 16-bit mono PCM WAV file.
-fn wav_mono(samples: &[i16], rate: u32) -> Vec<u8> {
-    let data = (samples.len() * 2) as u32;
-    let mut w = Vec::with_capacity(44 + data as usize);
-    w.extend_from_slice(b"RIFF");
-    w.extend_from_slice(&(36 + data).to_le_bytes());
-    w.extend_from_slice(b"WAVEfmt ");
-    w.extend_from_slice(&16u32.to_le_bytes());
-    w.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    w.extend_from_slice(&1u16.to_le_bytes()); // mono
-    w.extend_from_slice(&rate.to_le_bytes());
-    w.extend_from_slice(&(rate * 2).to_le_bytes());
-    w.extend_from_slice(&2u16.to_le_bytes());
-    w.extend_from_slice(&16u16.to_le_bytes());
-    w.extend_from_slice(b"data");
-    w.extend_from_slice(&data.to_le_bytes());
-    for s in samples {
-        w.extend_from_slice(&s.to_le_bytes());
-    }
-    w
 }

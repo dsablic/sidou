@@ -25,6 +25,13 @@ pub const PLAY: u8 = sidou_sys::PANEL_BTN_PLAY as u8;
 pub const REC: u8 = sidou_sys::PANEL_BTN_REC as u8;
 pub const KEY0: u8 = sidou_sys::PANEL_KEY_ID0 as u8;
 
+pub const A4: u8 = 69;
+pub const A4_KEY: u8 = note_key(A4);
+
+pub const fn note_key(midi_note: u8) -> u8 {
+    KEY0 + midi_note - sidou_sys::PANEL_BASE_NOTE as u8
+}
+
 pub const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
 
 pub const DEBOUNCED_MS: u64 = 30;

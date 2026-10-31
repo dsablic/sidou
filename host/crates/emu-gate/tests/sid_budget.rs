@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Runs the pi32v2 SID benchmark in fm1-emu and enforces the M0 budget.
-//! Instructions are not cycles: pi32v2 mostly issues one per cycle, but XIP loads
-//! and divides take longer, so treat the result as a lower bound.
 
 mod common;
 
@@ -17,34 +14,25 @@ use sidou_sys::{sid_model, SID_MODEL_6581, SID_MODEL_8580};
 
 const RESULT_ADDR: u32 = 0x01C8_0000;
 const RESULT_MAGIC: u32 = 0x5349_4442;
-/// bench_main.c reads the scenario number here before it starts.
 const SCENARIO_ADDR: u32 = RESULT_ADDR + 8;
-/// And the model here: 0 for the 6581, 1 for the 8580.
 const MODEL_ADDR: u32 = RESULT_ADDR + 12;
 const CORE_HZ: f64 = 240e6;
 const SAMPLE_RATE: f64 = 44_100.0;
-/// Design doc section 8: at most 900 instructions per sample per chip.
 const BUDGET_PER_CHIP: f64 = 900.0;
 const MAX_STEPS: u64 = 1_000_000_000;
-/// workload.c's block size and frame length in samples.
 const WORKLOAD_BLOCK: u32 = 128;
 const SAMPLES_PER_FRAME: u32 = 882;
 
 struct Run {
-    /// Instructions per sample in the most expensive block.
     worst_block: f64,
     init: u64,
     render: u64,
     samples: Vec<i16>,
-    /// Render instructions per function, when profiling.
     profile: Vec<(String, u64)>,
-    /// The same for the most expensive block alone.
     worst_block_profile: Vec<(String, u64)>,
-    /// Instructions per sample, block by block, when profiling.
     blocks: Vec<f64>,
 }
 
-/// SIDOU_GATE_PROFILE=1 counts the render instructions per function (slower).
 fn profiling() -> bool {
     std::env::var_os("SIDOU_GATE_PROFILE").is_some_and(|v| v == "1")
 }
@@ -91,7 +79,6 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
     functions.sort();
     let profile = profiling();
     let mut counts = vec![0u64; functions.len() + 1];
-    // Per block (counted in sid_render calls of the first chip), when profiling.
     let mut block_counts: Vec<Vec<u64>> = Vec::new();
 
     let mut soc = Soc::new(1 << 20, bin);
@@ -161,8 +148,6 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
         p
     };
     let profile_all = by_function(&counts);
-    // Blocks as workload_render_samples cuts them: at most 128 samples, never across a
-    // frame; each block calls sid_render once per chip.
     assert_eq!(render_calls.len() % chips as usize, 0);
     let mut starts: Vec<u64> = render_calls
         .iter()
@@ -206,7 +191,6 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
     }
 }
 
-/// Runs one scenario; returns its report and any failure.
 fn check_scenario(
     build: &Path,
     chips: u32,
@@ -221,11 +205,9 @@ fn check_scenario(
     };
     let name = &format!("{scenario_name} ({model_name})");
     let r = run(build, chips, model, scenario);
-    let host = emu_gate::render_host(chips, model, scenario);
+    let host = emu_gate::render_host_workload(chips, model, scenario);
     let mut failures = Vec::new();
     assert_eq!(r.samples.len(), host.len());
-    // Equal outputs prove nothing if both are silent. The idle scenario is near-silent
-    // by design; it is there for its cost.
     let host_peak = host.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
     if scenario_name != "idle" && host_peak <= 1000 {
         failures.push(format!(
@@ -255,7 +237,6 @@ fn check_scenario(
              {budget}"
         ));
     }
-    // The budget holds block by block too: audio is produced a block at a time.
     if r.worst_block > budget {
         failures.push(format!(
             "{name}: its worst block takes {:.0} instructions/sample, over the {chips}-chip \
@@ -294,9 +275,6 @@ fn check_scenario(
     (report, failures)
 }
 
-/// Runs every scenario on both models with `chips` chips. The top-level fields of the
-/// JSON report are the triad's on the 6581, comparable with earlier milestones;
-/// "scenarios" has them all.
 fn check(chips: u32) {
     let Some(build) = build_dir() else {
         common::skip_message("the emulator gate");

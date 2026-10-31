@@ -1,45 +1,20 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! End to end: chip B rendered beside chip A on the firmware (M2b Task 3,
-//! platform/fm1/audio.c). Until M2b Task 4 nothing on the device writes chip B or puts it in
-//! use, so these tests do it as the main loop would: chip B's register writes go into the
-//! register ring in emulated RAM (`ring`, entries with chip B's bit, app/reg_ring.h), and its
-//! use is `b_want` (audio_chip_b_use), both between two instructions of the main loop.
 
 mod common;
 
 use fm1_core::Bus;
 
 use common::{
-    build_dir, max_diff, render_host_chips, ChipEvent, Firmware, Machine, AUDIO_TARGET,
+    booted, firmware, max_diff, render_host_chips, ChipEvent, Firmware, Machine, AUDIO_TARGET,
     HALF_FRAMES, ISR_OVERHEAD, SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
 };
 use sidou_sys::ilp32;
 
 const BLOCK_FRAMES: f64 = 128.0;
-/// Chip B's bit on an entry's register (app/reg_ring.h REG_RING_CHIP_B).
 const B: u8 = sidou_sys::REG_RING_CHIP_B as u8;
-/// The audio interrupt's mean instructions a sample with chip B out of use, a held chord on
-/// LIVE (the tap on): measured on main at 2e1bc4d, before chip B could render (M1's path).
-/// Chip B out of use must cost the same within 1 a sample.
 const M1_CHORD_PER_SAMPLE: f64 = 397.87;
 
-fn fixture(what: &str) -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        common::skip_message(what);
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
-
-fn booted(fw: &Firmware) -> Machine {
-    let mut m = Machine::boot(&fw.image);
-    common::run_past_boot(&mut m, fw);
-    m
-}
-
-/// Runs on until the main loop is outside the audio interrupt with nothing pushed and not
-/// committed, so an injection lands whole before the next block.
 fn settle(m: &mut Machine, fw: &Firmware) {
     let r = fw.symbol("ring");
     loop {
@@ -52,8 +27,6 @@ fn settle(m: &mut Machine, fw: &Firmware) {
     }
 }
 
-/// Pushes entries into the device's register ring and commits them, as reg_ring_sink and
-/// reg_ring_commit would (settle first).
 fn push(m: &mut Machine, fw: &Firmware, entries: &[(u8, u8)]) {
     let r = fw.symbol("ring");
     let size = sidou_sys::REG_RING_SIZE;
@@ -80,7 +53,6 @@ fn chip_b_use(m: &mut Machine, fw: &Firmware, on: bool) {
     m.soc.write8(fw.symbol("b_want"), u8::from(on));
 }
 
-/// The sid chip `x` renders (platform/fm1/audio.c `chips`).
 fn sid_of(m: &mut Machine, fw: &Firmware, x: usize) -> u32 {
     let base = fw.chips();
     let active = m
@@ -89,18 +61,6 @@ fn sid_of(m: &mut Machine, fw: &Firmware, x: usize) -> u32 {
     base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32
 }
 
-/// A function's address range in the firmware ELF.
-fn function(fw: &Firmware, name: &str) -> std::ops::Range<u32> {
-    use object::{Object, ObjectSymbol};
-    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
-    let s = file
-        .symbols()
-        .find(|s| s.name() == Ok(name))
-        .unwrap_or_else(|| panic!("no symbol {name}"));
-    s.address() as u32..(s.address() + s.size()) as u32
-}
-
-/// A voice's frequency, controls, envelope and the volume: writes for one chip.
 fn note(voice: u8, freq: u16, control: u8) -> Vec<(u8, u8)> {
     let v = voice * 7;
     vec![
@@ -117,12 +77,9 @@ fn with_b(w: &[(u8, u8)]) -> Vec<(u8, u8)> {
     w.iter().map(|&(r, v)| (r | B, v)).collect()
 }
 
-/// Chip B is never rendered before its boot preparation has made it (its sid is zeroed until
-/// then, its sample rate 0): asked into use from the first millisecond, the interrupt takes it
-/// only once that sid has its rate, and then it renders.
 #[test]
 fn the_zeroed_chip_b_is_never_rendered() {
-    let Some(fw) = fixture("the chip B boot test") else {
+    let Some(fw) = firmware("the chip B boot test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
@@ -142,16 +99,12 @@ fn the_zeroed_chip_b_is_never_rendered() {
     assert!(first_on.is_some(), "chip B never went in use");
 }
 
-/// Chip B out of use (as on every M1 scenario): the interrupt costs what M1's did, within 1 a
-/// sample, with a chord held on LIVE (the tap on).
 #[test]
 fn chip_b_out_of_use_costs_the_interrupt_what_m1_did() {
-    let Some(fw) = fixture("the chip B cost test") else {
+    let Some(fw) = firmware("the chip B cost test") else {
         return;
     };
     let mut m = booted(&fw);
-    // MASTER full: its gain stage (app/master_gain.c, measured on its own below, in
-    // two_chips_at_their_worst...) does not run at unity, so this measures what chip B costs.
     m.pot(1023);
     m.midi(&[0x90, 57, 100, 0x90, 64, 100, 0x90, 69, 100]);
     m.run_ms(300);
@@ -166,18 +119,13 @@ fn chip_b_out_of_use_costs_the_interrupt_what_m1_did() {
     );
 }
 
-/// The real interrupt with two chips: both at their worst (noise with ring modulation at
-/// 0x0800 on every voice, the bench's worst two-chip scenario, noise_tri_ring_0800), chip B in
-/// use, every slot's heaviest at full: the worst block within the audio target, and chip B's
-/// mix (chip_mix, measured by its own instructions) under 10 a sample, so the 6502's headroom
-/// (the gates' 205.5) keeps about 200.
 #[test]
 fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
     use sidou_sys::{
         LIVE_CC_SLOT_FIRST, LIVE_SLOT_FIELDS, SID_DIST_COUNT, SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT,
         SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
     };
-    let Some(fw) = fixture("the two-chip budget test") else {
+    let Some(fw) = firmware("the two-chip budget test") else {
         return;
     };
     let mut m = booted(&fw);
@@ -193,14 +141,14 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
             m.midi(&[0xB0, cc(f), 127]);
         }
     }
-    m.run_ms(500); // the switches
+    m.run_ms(500);
     let worst: Vec<(u8, u8)> = (0..3u8).flat_map(|v| note(v, 0x0800, 0x95)).collect();
     settle(&mut m, &fw);
     let mut both = worst.clone();
     both.extend(with_b(&worst));
     push(&mut m, &fw, &both);
     chip_b_use(&mut m, &fw, true);
-    m.watch_alnk_pcs(function(&fw, "chip_mix"));
+    m.watch_alnk_pcs(fw.function_range("chip_mix"));
     let from = m.alnk_blocks.len();
     m.run_ms(1000);
     let blocks = &m.alnk_blocks[from..];
@@ -210,7 +158,7 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         - SID_WORST_BLOCK_TWO_CHIPS
         - TAP_PER_SAMPLE
         - ISR_OVERHEAD
-        - SLOTS_WORST_SWITCH;
+        - common::SLOTS_SWITCH_WORST;
     let report = serde_json::json!({
         "worst_block_instructions_per_sample": worst_block,
         "chip_mix_instructions_per_sample": mix,
@@ -224,10 +172,8 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         "two chips at their worst and every slot's heaviest: {worst_block:.1} a sample"
     );
     assert!(mix < 10.0, "chip B's mix costs {mix:.2} a sample");
-    // MASTER's gain stage (app/master_gain.c) at the pot's power-on reading, 900: a constant
-    // gain; and its ramp after the pot moved. A bound set from this measurement (new code).
     m.alnk_pcs_inside = 0;
-    m.watch_alnk_pcs(function(&fw, "master_gain_apply"));
+    m.watch_alnk_pcs(fw.function_range("master_gain_apply"));
     let from = m.alnk_blocks.len();
     m.run_ms(500);
     let n = (m.alnk_blocks.len() - from) as f64 * BLOCK_FRAMES;
@@ -257,31 +203,13 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
     );
 }
 
-/// MASTER's gain stage, instructions a sample (a stereo frame, as every gate here counts) at a
-/// constant gain (the pot at its power-on 900, so every block of the gates runs it): measured
-/// 12.04 on this image, a little over 5 an audio sample (a load, a multiply, the rounding add,
-/// a shift, a store) in a loop unrolled by four. It takes that much from the gates' headroom
-/// for the 6502 (205.5, less the chip B mix's 8.1: about 185 are left). A ramping block
-/// measures the same.
 const MASTER_PER_SAMPLE: f64 = 12.5;
 
-/// slots_budget.rs's worst switching block (https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-15-m2-overview.md: 964).
-const SLOTS_WORST_SWITCH: f64 = 964.0;
-
-/// A step of a script: the ms after the last, chip A's writes, chip B's, chip B's use.
 type Step = (u64, Vec<(u8, u8)>, Vec<(u8, u8)>, Option<bool>);
 
-/// Chip B in and out of use with both chips playing, against the host's render
-/// (render_host_chips) sample for sample: chip B goes in use with a note just started on it
-/// (its attack, faded in over the block; its level there was once its power-on release's, gone
-/// since chip B plays that out where it is made, app/reg_ring.h), a note on chip A, B's release,
-/// and B out of use once its envelopes are at 0 (a DC-only chip faded out), then A's release.
-/// Neither fade steps the output by more than B's own step, 1/128 of its sample and 1 (the
-/// rounding) at any sample, the block's boundaries included (a click test, on the host's render
-/// the device matches).
 #[test]
 fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
-    let Some(fw) = fixture("the chip B mix test") else {
+    let Some(fw) = firmware("the chip B mix test") else {
         return;
     };
     let mut m = booted(&fw);
@@ -309,8 +237,6 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
     m.run_ms(200);
     let audio = m.soc.periph.audio.clone();
     let frames = audio.len() / 2;
-    // The halves played lag the blocks rendered: search the lag as the other host
-    // comparisons do.
     let mut found = None;
     'search: for silent in 0..=4usize {
         if audio[..2 * silent * HALF_FRAMES].iter().any(|&v| v != 0) {
@@ -338,8 +264,6 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
         panic!("the device's two chips match no host render");
     };
     println!("chip B on the device vs host: silent halves {silent}, lag {lag}: bit-exact");
-    // The fades: chip B's share of the output (the output less chip A's own) against B's own
-    // samples, from the sample before the fade's block to its last and the one after.
     for (what, e) in [("in", &events[0]), ("out", &events[3])] {
         let from = e.block * HALF_FRAMES;
         let share = |i: usize| i32::from(host.out[2 * i]) - i32::from(host.a[i]);
@@ -375,18 +299,11 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
             );
         }
     }
-    // Chip B stayed in use through its release: out of use only from the block it was asked to.
     assert!(events[3].block > events[2].block + 10);
 }
 
-/// CHIP SPREAD's stage (app/chip_spread.c: the side, the stage, which converts the slots' output
-/// in their place, and the slots' dry gain), its own instructions a sample (a stereo frame) with
-/// two chips at their worst, every slot's heaviest at full and SPREAD 100: measured 50.56 on
-/// this image (a bound set from the measurement: new code). The interrupt's mean rises by about
-/// 33 to 35: the slots' own conversion, about 17, does not run.
 const SPREAD_PER_SAMPLE: f64 = 51.0;
 
-/// The mean of the audio interrupt's blocks from `from` on, and the worst, a sample.
 fn block_costs(m: &Machine, from: usize) -> (f64, f64) {
     let blocks = &m.alnk_blocks[from..];
     let mean = blocks.iter().sum::<u64>() as f64 / blocks.len() as f64 / BLOCK_FRAMES;
@@ -394,7 +311,6 @@ fn block_costs(m: &Machine, from: usize) -> (f64, f64) {
     (mean, worst)
 }
 
-/// The power of a Hann-windowed block at `hz` (the Goertzel recurrence).
 fn goertzel(x: &[i16], hz: f64, fs: f64) -> f64 {
     let n = x.len() as f64;
     let c = 2.0 * (2.0 * std::f64::consts::PI * hz / fs).cos();
@@ -412,11 +328,6 @@ fn rms(x: &[i16]) -> f64 {
     (x.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / x.len() as f64).sqrt()
 }
 
-/// SPREAD on the device (CC 117, SETTINGS' SPREAD; app/chip_spread.h): at 0 both sides are the
-/// same (mono, as ever); at 100 a saw on chip A sounding alone stays centred, as does one on chip
-/// B alone, and with both sounding A plays on the left and B on the right. Then the cost: two chips at their worst with every slot's heaviest at full,
-/// SPREAD 100 against SPREAD 0: the worst block within the audio target, the stage within its
-/// bound.
 #[test]
 fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
     use sidou_sys::{
@@ -424,18 +335,16 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
         SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS,
         SID_MOD_COUNT,
     };
-    let Some(fw) = fixture("the spread test") else {
+    let Some(fw) = firmware("the spread test") else {
         return;
     };
     let mut m = booted(&fw);
     let spread = |m: &mut Machine, v: u8| m.midi(&[0xB0, MIDI_MAP_CC_SPREAD as u8, v]);
     m.run_ms(300);
     settle(&mut m, &fw);
-    // Chip B's volume (chip A's register 24 is live's: its filter mode), and B in use.
     push(&mut m, &fw, &with_b(&[(0x18, 0x0f)]));
     chip_b_use(&mut m, &fw, true);
     m.run_ms(200);
-    // Chip A as the keys play it (a MIDI note), chip B from the ring, as in the tests above.
     let sides = |m: &mut Machine, a: bool| {
         if a {
             m.midi(&[0x90, 57, 100]);
@@ -455,7 +364,7 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
             settle(m, &fw);
             push(m, &fw, &with_b(&[(0x04, 0x20)]));
         }
-        m.run_ms(600); // the release
+        m.run_ms(600);
         (rms(&l), rms(&r))
     };
     let mono = sides(&mut m, true);
@@ -466,20 +375,16 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
     );
     spread(&mut m, 127);
     m.run_ms(50);
-    // A chip sounding alone stays centred: the stage does not run, mono's output bit for bit.
     let (al, ar) = sides(&mut m, true);
     let (bl, br) = sides(&mut m, false);
     println!("SPREAD 100 alone: chip A's saw L {al:.0} R {ar:.0}, chip B's L {bl:.0} R {br:.0}");
     assert!(al == ar && bl == br, "a chip alone is centred");
     assert!((al / mono.0 - 1.0).abs() < 0.02, "at mono's level");
-    // Both sounding (chip A's note held as the keys play it, chip B's from the ring): A on the
-    // left, B on the right, each at its fundamental (A3, 220 Hz; B's E4, 329.6 Hz) more than
-    // 30 dB under on the other side.
     m.midi(&[0x90, 57, 100]);
     m.run_ms(100);
     settle(&mut m, &fw);
     push(&mut m, &fw, &with_b(&note(0, 0x15ed, 0x21)));
-    m.run_ms(300); // the glide (93 ms) and more
+    m.run_ms(300);
     let n = m.left().len();
     let (l, r) = (
         m.left()[n - 4096..].to_vec(),
@@ -503,7 +408,6 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
         a_l > 1000.0 * a_r && b_r > 1000.0 * b_l,
         "both sounding: A on the left, B on the right"
     );
-    // The cost: both chips at their worst, every slot's heaviest at full.
     let alg = |a: u32, n: u32| ((2 * a + 1) * 128 / (2 * n)) as u8;
     for (slot, a, n) in [
         (0, SID_DIST_OVERDRIVE, SID_DIST_COUNT),
@@ -516,17 +420,15 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
             m.midi(&[0xB0, cc(f), 127]);
         }
     }
-    m.run_ms(500); // the switches
+    m.run_ms(500);
     let worst: Vec<(u8, u8)> = (0..3u8).flat_map(|v| note(v, 0x0800, 0x95)).collect();
     settle(&mut m, &fw);
     let mut both = worst.clone();
     both.extend(with_b(&worst));
     push(&mut m, &fw, &both);
-    // From the push, as two_chips_at_their_worst... measures it at SPREAD 0 (2,387.4 there).
     let from = m.alnk_blocks.len();
     m.run_ms(1000);
     let (_, worst_block) = block_costs(&m, from);
-    // The stage's cost: the steady blocks at SPREAD 0, then at 100 again.
     spread(&mut m, 0);
     m.run_ms(100);
     let from = m.alnk_blocks.len();
@@ -537,10 +439,8 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
     let from = m.alnk_blocks.len();
     m.run_ms(1000);
     let (mean, steady_worst) = block_costs(&m, from);
-    // The stage's own instructions: the side, the stage and the glide (adjacent in SRAM, app.ld),
-    // then the dry gain, each a window of its own.
     let span = |names: &[&str]| {
-        let r: Vec<_> = names.iter().map(|n| function(&fw, n)).collect();
+        let r: Vec<_> = names.iter().map(|n| fw.function_range(n)).collect();
         r.iter().map(|x| x.start).min().unwrap()..r.iter().map(|x| x.end).max().unwrap()
     };
     let mut stage = 0.0;

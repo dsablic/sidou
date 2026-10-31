@@ -1,34 +1,25 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The effects scenarios in fm1-emu: the triad workload, then the post-chip chain with every
-//! effect at full, steady or in the worst case (targets alternating every block so the
-//! smoothing never settles, crush capturing nearly every sample). Enforces the M1c budgets (design doc section 8) and bit-exactness with
-//! the host build. Instructions are a lower bound on cycles, as in sid_budget.rs.
 
 mod common;
 
 const CORE_HZ: f64 = 240e6;
 const SAMPLE_RATE: f64 = 44_100.0;
-/// The post-chip effects, everything on.
 const FX_BUDGET: f64 = 500.0;
-/// Two chips plus the effects (M1c plan), with the chips at the SID's worst block and the
-/// LIVE view's tap (on at power-on).
 const TWO_CHIPS_PLUS_FX_BUDGET: f64 = common::TWO_CHIPS_PLUS_EFFECTS;
 const TWO_CHIPS_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS + common::TAP_PER_SAMPLE;
 
 fn check(chips: u32, worst: bool) {
     let Some(build) = common::build_dir() else {
-        println!(
-            "skipping the emulator gate: set SIDOU_FM1_BUILD to the fm1 build directory \
-             (e.g. $PWD/../build/fm1 from host/) after building the fm1 preset"
-        );
+        common::skip_message("the effects gate");
         return;
     };
     let name = if worst { "fx_worst" } else { "fx" };
     let r = common::run(&build, &format!("sid_bench_{name}_{chips}"), 4);
     let host = emu_gate::render_host_fx(chips, worst);
     assert_eq!(r.samples.len(), host.len());
-    let dry = emu_gate::render_host(chips, sidou_sys::SID_MODEL_6581, sidou_sys::WORKLOAD_TRIAD);
+    let dry =
+        emu_gate::render_host_workload(chips, sidou_sys::SID_MODEL_6581, sidou_sys::WORKLOAD_TRIAD);
     let changed = dry.iter().zip(&host).filter(|(a, b)| a != b).count();
     assert!(
         changed > host.len() / 2,
@@ -75,8 +66,6 @@ fn check(chips: u32, worst: bool) {
         fx <= FX_BUDGET,
         "the effects cost {fx:.0} instructions/sample, over the budget of {FX_BUDGET}"
     );
-    // Two chips at the SID's worst block and the tap plus the effects (the workload's chips cost
-    // less).
     assert!(
         TWO_CHIPS_AT_WORST + fx <= TWO_CHIPS_PLUS_FX_BUDGET,
         "two chips at the SID's worst block and the tap plus effects cost {:.0} instructions/sample, over \

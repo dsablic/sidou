@@ -1,26 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! A .sid tune's budgets on fm1-emu (M3 Task 9, https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-19-m3-sid-files.md,
-//! "Budgets"):
-//!
-//! * the audio interrupt's .sid path (psid_ctl_block: the ring's pops, the split renders'
-//!   steps and their calls' setup, sid_advance, sid_write and what a write runs, the fades)
-//!   beside the chips' own work (their render loops and voice clocking, which the SID's gates
-//!   bound), its worst 128-sample block within PSID_ISR_WORST, on the device build in the 6502
-//!   bench (bench/fm1/bench_6502_main.c mode 6, each instruction of the block's call told by
-//!   its function): over the oracle's corpus (GoatTracker's examples and SIDOU's songs, 1SID and
-//!   2SID) and over synthetic worst tunes, an access every 4 cycles for whole frames (about 700
-//!   writes a block: PSID_SPLITS renders, PSID_BLOCK_ENTRIES entries, the rest late), to a
-//!   voice, the cutoff (each render part then recomputes the filter) and the volume;
-//!   and one write on every sample (a block at its PSID_SPLITS render limit);
-//! * the firmware's main loop with a tune playing (platform/fm1/main.c, the test hook) and LIVE
-//!   showing (the busiest view: its tap on, LIVE_WORST_POLL): each psid_ctl_poll within
-//!   PSID_SLICE_WORST, every pass within POLL_INSTRUCTIONS;
-//! * the memory: free RAM within FREE_RAM_MIN and each region within REGION_FREE_MIN, M3's
-//!   RAMTEXT (psid_ctl's interrupt half, sid_advance, audio.c's player paths and swap hook)
-//!   within its 1,536 bytes, the image within the plan's ceiling (flash_plan).
-//!
-//! Instructions are not device cycles (docs/hardware.md, "Open checks").
 
 mod common;
 mod flash_plan;
@@ -35,22 +14,15 @@ use sidou_tests::psid_fixtures::{exact, Psid, INIT};
 const PARAM_ADDR: u32 = 0x01CB_0000;
 const FILE_ADDR: u32 = PARAM_ADDR + 0x100;
 const MEM_ADDR: u32 = 0x01CC_0000;
-/// Main-loop passes before each bench block, at most (the device makes about 30 a block).
-const PASSES: u32 = 40;
-/// RAMTEXT M3 may take (the plan's "Budgets").
+const PASSES_BEFORE_A_BLOCK: u32 = 40;
+const WRITTEN_REGISTERS: [(&str, u32); 3] = [
+    ("voice 2's", 0x0f),
+    ("the cutoff", 0x16),
+    ("the volume", 0x18),
+];
+const SID_VOLUME: u32 = 0x18;
 const M3_RAMTEXT: u64 = 1_536;
 
-fn build() -> Option<std::path::PathBuf> {
-    let b = build_dir();
-    if b.is_none() {
-        skip_message("the .sid budgets");
-    }
-    b
-}
-
-/// One tune's blocks in the bench: each block's instructions in psid_ctl_block's call, and of
-/// them the .sid path's own (every function but the chips' per-sample work: `chip_work`), the
-/// entries each took, the writes, the late ones and the most renders a chip's block took.
 struct Blocks {
     blocks: Vec<(u64, u64)>,
     entries: Vec<u32>,
@@ -59,11 +31,6 @@ struct Blocks {
     splits: u32,
 }
 
-/// The chips' own work, which the SID's gates bound (sid_budget.rs, SID_WORST_BLOCK_*): the
-/// render loops and the voices' clocking with the oscillator, envelope and noise steps it runs
-/// (sid_advance's clocking among it: the cycles it clocks come off the next sample's). Not the
-/// settles a write runs first, the render's per-call setup (sid_render, sid_render_tap) or
-/// OSC3's latch at a write: those are the .sid path's.
 fn chip_work(name: &str) -> bool {
     matches!(
         name,
@@ -93,7 +60,6 @@ fn bench_blocks(build: &std::path::Path, file: &[u8], blocks: usize, model: u32)
         .find(|s| s.name() == Ok("bench_mark"))
         .expect("bench_mark")
         .address() as u32;
-    // Each instruction's address in the image: the chips' own work, or not.
     let base = u64::from(fm1_soc::XIP_BASE);
     let mut work = vec![false; bin.len()];
     for sym in obj
@@ -110,9 +76,15 @@ fn bench_blocks(build: &std::path::Path, file: &[u8], blocks: usize, model: u32)
     for (i, &b) in file.iter().enumerate() {
         soc.write8(FILE_ADDR + i as u32, b);
     }
-    for (i, v) in [6, file.len() as u32, blocks as u32, model, PASSES]
-        .into_iter()
-        .enumerate()
+    for (i, v) in [
+        6,
+        file.len() as u32,
+        blocks as u32,
+        model,
+        PASSES_BEFORE_A_BLOCK,
+    ]
+    .into_iter()
+    .enumerate()
     {
         soc.write32(PARAM_ADDR + 4 * i as u32, v);
     }
@@ -152,10 +124,6 @@ fn bench_blocks(build: &std::path::Path, file: &[u8], blocks: usize, model: u32)
     }
 }
 
-/// A tune whose init sets the voices up as `worst_tune` and then writes `reg` of chip A with a
-/// changing value, one write every 24 cycles (a sample is 22.3: each at its own sample, so a
-/// block has as many distinct positions as PSID_BLOCK_ENTRIES allows, the most renders: 80
-/// entries, 23 renders).
 fn one_write_a_sample_tune(reg: u32) -> Vec<u8> {
     let mut init = String::new();
     for v in 0..3 {
@@ -174,9 +142,8 @@ fn one_write_a_sample_tune(reg: u32) -> Vec<u8> {
     }
     init += "lda #$0f\nsta $d418\nloop:\n";
     for k in 0..120u32 {
-        // the cutoff's low bits, a voice's frequency, the volume's low nibble: all change
         let value = (k * 37 + 5) as u8;
-        let value = if reg == 0x18 {
+        let value = if reg == SID_VOLUME {
             0x10 | (value & 0x0f)
         } else {
             value
@@ -191,7 +158,6 @@ fn one_write_a_sample_tune(reg: u32) -> Vec<u8> {
     Psid::new(&[(INIT, &init), (0x8000, "rts\n")]).bytes()
 }
 
-/// The worst block's .sid path in instructions a sample, and its index.
 fn worst(b: &Blocks) -> (f64, usize) {
     b.blocks
         .iter()
@@ -202,8 +168,9 @@ fn worst(b: &Blocks) -> (f64, usize) {
 
 #[test]
 fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
-    let Some(build) = build() else { return };
-    // 2 s of each of the corpus' songs (subtune 1), 1SID; and as 2SID at $D420 for a few.
+    let Some(build) = build_or_skip("the .sid budgets") else {
+        return;
+    };
     let mut runs: Vec<(String, Vec<u8>, u32, usize)> = Vec::new();
     for (name, sng) in songs() {
         runs.push((name.clone(), packed(&sng, 0xD400), 0, 690));
@@ -211,13 +178,7 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
     for (name, sng) in songs().into_iter().take(3) {
         runs.push((format!("{name} (2SID)"), packed(&sng, 0xD420), 0, 690));
     }
-    // An access every 4 cycles for whole frames: a voice's register, the cutoff, the volume;
-    // one chip and two.
-    for (what, reg) in [
-        ("voice 2's", 0x0f),
-        ("the cutoff", 0x16),
-        ("the volume", 0x18),
-    ] {
+    for (what, reg) in WRITTEN_REGISTERS {
         for model in [0u32, 1] {
             runs.push((
                 format!(
@@ -236,13 +197,7 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
             300,
         ));
     }
-    // One write on every sample (each block hits the render limit): a voice's, the cutoff's and
-    // the volume's.
-    for (what, reg) in [
-        ("voice 2's", 0x0f),
-        ("the cutoff", 0x16),
-        ("the volume", 0x18),
-    ] {
+    for (what, reg) in WRITTEN_REGISTERS {
         for model in [0u32, 1] {
             runs.push((
                 format!(
@@ -255,7 +210,6 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
             ));
         }
     }
-    // SIDOU_PSID_RUNS: only the runs whose name has it (a quick look at one).
     if let Some(only) = std::env::var_os("SIDOU_PSID_RUNS") {
         runs.retain(|r| r.0.contains(only.to_str().unwrap()));
     }
@@ -289,12 +243,11 @@ fn the_interrupts_worst_tune_block_holds_psid_isr_worst() {
     assert!(dearest <= PSID_ISR_WORST, "{which}: {dearest:.1} a sample");
 }
 
-/// A tune playing with LIVE showing: each psid_ctl_poll (the pass's slice, or a wake's) within
-/// PSID_SLICE_WORST, every main-loop pass within POLL_INSTRUCTIONS; for GoatTracker tunes and the
-/// look-ahead's dearest (cpu6502_budget.rs: the shadow's noisy voices, an access every 4 cycles).
 #[test]
 fn a_playing_tune_holds_the_main_loops_budgets() {
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the .sid budgets") else {
+        return;
+    };
     let fw = Firmware::load(&build);
     let example = |n: &str| {
         gt2_ref::examples()
@@ -324,7 +277,6 @@ fn a_playing_tune_holds_the_main_loops_budgets() {
         run_past_boot(&mut m, &fw);
         m.watch_calls(fw.symbol("psid_ctl_poll"));
         m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-        // Played from the panel, then LIVE again, the busiest view (its tap on): the tune on.
         ui_play_tune(&mut m, &fw, 0);
         ui_back_to(&mut m, &fw, "live_view_view");
         assert!(tap_on(&mut m, &fw), "LIVE is not showing");
@@ -359,13 +311,12 @@ fn a_playing_tune_holds_the_main_loops_budgets() {
     assert!(pass_worst <= POLL_INSTRUCTIONS);
 }
 
-/// The memory a tune takes: none of its own state outside the song's (audio.c's union fits the
-/// song transport's, the 6502's 64 KiB is the song's region), so free RAM holds FREE_RAM_MIN and
-/// each region REGION_FREE_MIN; M3's code in SRAM within its share; the image within the stage.
 #[test]
 fn a_tunes_memory_fits_m3s_budgets() {
     use object::{Object, ObjectSection, ObjectSymbol};
-    let Some(build) = build() else { return };
+    let Some(build) = build_or_skip("the .sid budgets") else {
+        return;
+    };
     let fw = Firmware::load(&build);
     let file = object::File::parse(&*fw.elf).unwrap();
     let size = |name: &str| file.section_by_name(name).map_or(0, |s| s.size());
@@ -374,7 +325,6 @@ fn a_tunes_memory_fits_m3s_budgets() {
             .find(|s| s.name() == Ok(name))
             .unwrap_or_else(|| panic!("no {name}"))
     };
-    // The union is the song's: as large as the song transport and its shapes, which it holds.
     let union = sym("player_isr").size();
     assert_eq!(
         union,
@@ -395,8 +345,6 @@ fn a_tunes_memory_fits_m3s_budgets() {
     let ram_free =
         u64::from(POOL_START - RAM_START) - size(".data") - size(".bss") - size(".song_ram");
     let pool_free = POOL_BYTES - size(".pool");
-    // M3's code in SRAM: psid_ctl's interrupt half, sid_advance, audio.c's player paths and its
-    // swap hook (with the register rewrite it inlines).
     let m3: Vec<(String, u64)> = file
         .symbols()
         .filter(|s| {

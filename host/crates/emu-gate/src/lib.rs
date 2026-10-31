@@ -1,20 +1,14 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Host build of the SIDOU workload, for comparing against the pi32v2 build.
 
 use sidou_sys::{sid_model, workload, SID_MODEL_6581};
 
 pub use sidou_sys::workload::scenarios;
 
-/// The workload keeps global state and is not thread-safe; tests run in parallel by default.
-/// `workload::render` holds sidou-sys's workload Mutex for the whole run.
-pub fn render_host(chips: u32, model: sid_model, scenario: u32) -> Vec<i16> {
+pub fn render_host_workload(chips: u32, model: sid_model, scenario: u32) -> Vec<i16> {
     workload::render_scenario(chips, model, scenario)
 }
 
-/// Host build of the effects scenario: the workload's output through the post-chip chain
-/// with every effect at full (or the worst case of `workload_fx.h`), as `bench_fx_main.c`
-/// runs it on the target.
 pub fn render_host_fx(chips: u32, worst: bool) -> Vec<i16> {
     let w = workload::Workload::lock();
     let mut out = vec![0i16; w.sample_count()];
@@ -32,8 +26,6 @@ pub fn render_host_fx(chips: u32, worst: bool) -> Vec<i16> {
     out
 }
 
-/// Host build of the effect-slot scenarios (`bench_slots_main.c`): the workload's output
-/// through each scenario of `workload_slots.h`, their stereo outputs one after another.
 pub fn render_host_slots(chips: u32) -> Vec<i16> {
     let w = workload::Workload::lock();
     let mut sid = vec![0i16; w.sample_count()];
@@ -69,8 +61,6 @@ pub fn render_host_slots(chips: u32) -> Vec<i16> {
     out
 }
 
-/// Host build of the pixel scene's benchmark (`bench/workload_scene.h`): its log, as
-/// `bench_scene_main.c` leaves it on the target.
 pub fn render_host_scene() -> Vec<i16> {
     unsafe extern "C" fn no_mark() {}
     let mut w = Box::<sidou_sys::workload_scene>::default();
