@@ -1,28 +1,43 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Bank-1 song selection and per-song MIDI setup, entirely inside fm1-emu.
 
 mod common;
 
-use std::ffi::{c_void, CString};
+use std::ffi::CString;
 
+use common::panel::{press, turn, wait_for_within, ALGORITHM, HOME, SELECT};
 use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::song::Song;
 
 const NEW: u32 = 1;
-const SAVE: u32 = 2;
+const SAVE_AS: u32 = 2;
 const LOAD: u32 = 3;
 const TIMEOUT_MS: u64 = 15_000;
-
-fn fixture() -> Option<Firmware> {
-    let Some(build) = build_dir() else {
-        skip_message("the song bank tests");
-        return None;
-    };
-    Some(Firmware::load(&build))
-}
+const SONG_IO_HOOK_NAME: u32 = 4;
+const SONG_IO_HOOK_RESULT: u32 = 24;
+const SONG_HOOK_WRITE_ROW: u32 = 1;
+const SONG_HOOK_PATTERN: u32 = 4;
+const SONG_HOOK_ROW: u32 = 8;
+const SONG_HOOK_CELL: u32 = 12;
+const SPAN_ROWS_SHIFT: u32 = 16;
+const SPAN_OFFSET_MASK: u32 = 0xffff;
+const C4: u8 = 48;
+const G4: u8 = 55;
+const C5: u8 = 60;
+const MISSING_PROGRAM: u8 = 127;
+const MENU_MIDI: i32 = VIEWS_MENU_MIDI as i32;
+const MENU_WIPE_MS: u64 = 700;
+const MIDI_MODE: i32 = 0;
+const MIDI_OPTION: i32 = 2;
+const MIDI_LEGATO: i32 = 3;
+const MIDI_CHORD_2: i32 = 4;
+const MIDI_CHORD_3: i32 = 5;
+const MIDI_ROWS_PER_BEAT: i32 = 7;
+const MODE_DOWN_TO_LIVE: i32 = -9;
+const CC_AGE: u8 = 86;
+const EDITED_AGE: u8 = 60;
 
 fn byte(m: &mut Machine, fw: &Firmware, symbol: &str, offset: usize) -> u8 {
     m.soc.read8(fw.symbol(symbol) + offset as u32)
@@ -51,12 +66,8 @@ fn toast(m: &mut Machine, fw: &Firmware) -> String {
     )
 }
 
-fn until(m: &mut Machine, what: &str, mut done: impl FnMut(&mut Machine) -> bool) {
-    let start = m.ms();
-    while !done(m) {
-        assert!(m.ms() - start < TIMEOUT_MS, "timed out: {what}");
-        m.run_ms(1);
-    }
+fn until(m: &mut Machine, what: &str, done: impl FnMut(&mut Machine) -> bool) {
+    wait_for_within(m, TIMEOUT_MS, what, done);
 }
 
 fn idle(m: &mut Machine, fw: &Firmware) {
@@ -65,12 +76,21 @@ fn idle(m: &mut Machine, fw: &Firmware) {
     });
 }
 
-fn boot(fw: &Firmware) -> Machine {
-    let mut m = Machine::boot(&fw.image);
+fn past_boot_and_song_load(mut m: Machine, fw: &Firmware) -> Machine {
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
     run_past_boot(&mut m, fw);
     idle(&mut m, fw);
     m
+}
+
+fn boot(fw: &Firmware) -> Machine {
+    past_boot_and_song_load(Machine::boot(&fw.image), fw)
+}
+
+fn boot_with(fw: &Firmware, flash: &[u8]) -> Machine {
+    let mut m = Machine::boot_blank(&fw.image);
+    m.soc.flash.mem.copy_from_slice(flash);
+    past_boot_and_song_load(m, fw)
 }
 
 fn request(m: &mut Machine, fw: &Firmware, op: u32, requested_name: &str) {
@@ -79,7 +99,7 @@ fn request(m: &mut Machine, fw: &Firmware, op: u32, requested_name: &str) {
     assert_eq!(m.soc.read32(hook), 0);
     for i in 0..=STORE_NAME_MAX {
         m.soc.write8(
-            hook + 4 + i,
+            hook + SONG_IO_HOOK_NAME + i,
             requested_name
                 .as_bytes()
                 .get(i as usize)
@@ -87,12 +107,16 @@ fn request(m: &mut Machine, fw: &Firmware, op: u32, requested_name: &str) {
                 .unwrap_or(0),
         );
     }
-    m.soc.write32(hook + 24, u32::MAX);
+    m.soc.write32(hook + SONG_IO_HOOK_RESULT, u32::MAX);
     m.soc.write32(hook, op);
     until(m, "main consumes song I/O hook", |m| {
         m.soc.read32(hook) == 0
     });
-    assert_eq!(m.soc.read32(hook + 24) as i32, 1, "operation {op}");
+    assert_eq!(
+        m.soc.read32(hook + SONG_IO_HOOK_RESULT) as i32,
+        1,
+        "operation {op}"
+    );
 }
 
 fn complete(m: &mut Machine, fw: &Firmware, op: u32, requested_name: &str) {
@@ -100,22 +124,23 @@ fn complete(m: &mut Machine, fw: &Firmware, op: u32, requested_name: &str) {
     idle(m, fw);
 }
 
-fn row_write(m: &mut Machine, fw: &Firmware, note: u8) {
+fn first_row_write(m: &mut Machine, fw: &Firmware, semitone: u8) {
+    let note = GT2_FIRSTNOTE as u8 + semitone;
     let hook = fw.symbol("song_test_hook");
     assert_eq!(m.soc.read32(hook), 0);
-    m.soc.write32(hook + 4, 0);
-    m.soc.write32(hook + 8, 0);
+    m.soc.write32(hook + SONG_HOOK_PATTERN, 0);
+    m.soc.write32(hook + SONG_HOOK_ROW, 0);
     for (i, value) in [note, 1, 0, 0].into_iter().enumerate() {
-        m.soc.write8(hook + 12 + i as u32, value);
+        m.soc.write8(hook + SONG_HOOK_CELL + i as u32, value);
     }
-    m.soc.write32(hook, 1);
+    m.soc.write32(hook, SONG_HOOK_WRITE_ROW);
     until(m, "main consumes row edit", |m| m.soc.read32(hook) == 0);
     let base = fw.symbol("__song_region");
     until(m, "row edit applies and releases", |m| {
         let span = m.soc.read32(base + ilp32::gt2_song::pattern as u32);
         let arena = m.soc.read32(base + ilp32::gt2_song::arena_offset as u32);
-        let row = base + arena + (span & 0xffff) * GT2_UNIT;
-        span >> 16 > 1
+        let row = base + arena + (span & SPAN_OFFSET_MASK) * GT2_UNIT;
+        span >> SPAN_ROWS_SHIFT > 1
             && [note, 1, 0, 0]
                 .into_iter()
                 .enumerate()
@@ -144,12 +169,12 @@ fn song(m: &mut Machine, fw: &Firmware) -> Song {
 
 fn two_songs(m: &mut Machine, fw: &Firmware) -> (Vec<u8>, Vec<u8>) {
     complete(m, fw, NEW, "");
-    row_write(m, fw, GT2_FIRSTNOTE as u8 + 48);
-    complete(m, fw, SAVE, "ZED");
+    first_row_write(m, fw, C4);
+    complete(m, fw, SAVE_AS, "ZED");
     let zed = song(m, fw).write(true);
     complete(m, fw, NEW, "");
-    row_write(m, fw, GT2_FIRSTNOTE as u8 + 55);
-    complete(m, fw, SAVE, "ALPHA");
+    first_row_write(m, fw, G4);
+    complete(m, fw, SAVE_AS, "ALPHA");
     let alpha = song(m, fw).write(true);
     assert_ne!(zed, alpha);
     (zed, alpha)
@@ -185,23 +210,22 @@ fn assert_stopped(m: &mut Machine, fw: &Firmware) {
 
 fn check_passes(m: &Machine) {
     let worst = m.passes.iter().copied().max().expect("no measured passes");
-    println!(
-        "song bank: {} passes, worst {worst}/{POLL_INSTRUCTIONS}",
-        m.passes.len()
-    );
-    assert!(worst <= POLL_INSTRUCTIONS, "song bank pass cost {worst}");
+    println!("song bank: {} passes, worst {worst}", m.passes.len());
+    assert_within_budget("the song bank's busiest pass", worst, POLL_INSTRUCTIONS);
 }
 
 #[test]
 fn bank_one_loads_name_order_stopped_and_missing_index_preserves_song() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the song bank tests") else {
+        return;
+    };
     let mut m = boot(&fw);
     let (zed, alpha) = two_songs(&mut m, &fw);
     selected(&mut m, &fw, 1, "ZED");
     assert_eq!(song(&mut m, &fw).write(true), zed);
     selected(&mut m, &fw, 0, "ALPHA");
     assert_eq!(song(&mut m, &fw).write(true), alpha);
-    program(&mut m, 127);
+    program(&mut m, MISSING_PROGRAM);
     until(&mut m, "missing song is reported", |m| {
         toast(m, &fw) == "SONG NOT FOUND"
     });
@@ -214,10 +238,12 @@ fn bank_one_loads_name_order_stopped_and_missing_index_preserves_song() {
 
 #[test]
 fn bank_one_refuses_unsaved_row_edits_without_discarding_them() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the song bank tests") else {
+        return;
+    };
     let mut m = boot(&fw);
     let (_, alpha) = two_songs(&mut m, &fw);
-    row_write(&mut m, &fw, GT2_FIRSTNOTE as u8 + 60);
+    first_row_write(&mut m, &fw, C5);
     let edited = song(&mut m, &fw).write(true);
     assert_ne!(edited, alpha, "row hook did not make an unsaved edit");
     program(&mut m, 1);
@@ -233,10 +259,12 @@ fn bank_one_refuses_unsaved_row_edits_without_discarding_them() {
 
 #[test]
 fn bank_one_refuses_a_program_while_save_is_busy() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the song bank tests") else {
+        return;
+    };
     let mut m = boot(&fw);
     let (_, alpha) = two_songs(&mut m, &fw);
-    request(&mut m, &fw, SAVE, "BUSY");
+    request(&mut m, &fw, SAVE_AS, "BUSY");
     assert_ne!(
         byte(&mut m, &fw, "songs", ilp32::song_io::state),
         SONG_IO_IDLE as u8
@@ -257,25 +285,24 @@ fn bank_one_refuses_a_program_while_save_is_busy() {
     check_passes(&m);
 }
 
-fn press(m: &mut Machine, id: u8) {
-    m.key(id, true);
-    m.run_ms(30);
-    m.key(id, false);
-    m.run_ms(30);
-}
-
-fn turn(m: &mut Machine, encoder: u8, clicks: i32) {
-    m.turn(encoder, clicks);
-    m.run_ms(10 * u64::from(clicks.unsigned_abs()) + 20);
-}
-
 fn open_midi_page(m: &mut Machine) {
-    press(m, PANEL_BTN_HOME as u8);
-    m.run_ms(700);
-    turn(m, PANEL_ENC_SELECT as u8, -(VIEWS_MENU_ITEMS as i32));
-    turn(m, PANEL_ENC_SELECT as u8, VIEWS_MENU_MIDI as i32);
-    turn(m, PANEL_ENC_ALGORITHM as u8, 1);
-    m.run_ms(700);
+    press(m, HOME);
+    m.run_ms(MENU_WIPE_MS);
+    turn(m, SELECT, -(VIEWS_MENU_ITEMS as i32));
+    turn(m, SELECT, MENU_MIDI);
+    turn(m, ALGORITHM, 1);
+    m.run_ms(MENU_WIPE_MS);
+}
+
+fn edit_midi_items(m: &mut Machine, mut cursor: i32, edits: &[(i32, i32)]) -> i32 {
+    for &(item, clicks) in edits {
+        if item != cursor {
+            turn(m, SELECT, item - cursor);
+            cursor = item;
+        }
+        turn(m, ALGORITHM, clicks);
+    }
+    cursor
 }
 
 fn setup(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
@@ -287,23 +314,24 @@ fn setup(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
 
 #[test]
 fn save_and_load_restore_midi_chunk_and_sync_rows() {
-    let Some(fw) = fixture() else { return };
+    let Some(fw) = firmware("the song bank tests") else {
+        return;
+    };
     let mut m = boot(&fw);
     complete(&mut m, &fw, NEW, "");
     open_midi_page(&mut m);
-    let select = PANEL_ENC_SELECT as u8;
-    let algorithm = PANEL_ENC_ALGORITHM as u8;
-    turn(&mut m, algorithm, -9);
-    turn(&mut m, select, 2);
-    turn(&mut m, algorithm, 1);
-    turn(&mut m, select, 1);
-    turn(&mut m, algorithm, 1);
-    turn(&mut m, select, 1);
-    turn(&mut m, algorithm, 1);
-    turn(&mut m, select, 1);
-    turn(&mut m, algorithm, 2);
-    turn(&mut m, select, 2);
-    turn(&mut m, algorithm, 2);
+    let cursor = edit_midi_items(
+        &mut m,
+        MIDI_MODE,
+        &[
+            (MIDI_MODE, MODE_DOWN_TO_LIVE),
+            (MIDI_OPTION, 1),
+            (MIDI_LEGATO, 1),
+            (MIDI_CHORD_2, 1),
+            (MIDI_CHORD_3, 2),
+            (MIDI_ROWS_PER_BEAT, 2),
+        ],
+    );
     let expected = setup(&mut m, &fw);
     assert_eq!(
         expected[ilp32::midi_route_setup::mode],
@@ -315,7 +343,7 @@ fn save_and_load_restore_midi_chunk_and_sync_rows() {
         MIDI_WHOLE_CHORD as u8
     );
     assert_eq!(expected[ilp32::midi_route_setup::legato], 1);
-    complete(&mut m, &fw, SAVE, "MIDI SETUP");
+    complete(&mut m, &fw, SAVE_AS, "MIDI SETUP");
     let saved = song(&mut m, &fw);
     let mut chunk = song_midi::default();
     assert_eq!(
@@ -327,9 +355,11 @@ fn save_and_load_restore_midi_chunk_and_sync_rows() {
         chunk.rows_per_beat,
         expected[ilp32::midi_route_setup::rows_per_beat]
     );
-    turn(&mut m, algorithm, -3);
-    turn(&mut m, select, -4);
-    turn(&mut m, algorithm, -1);
+    edit_midi_items(
+        &mut m,
+        cursor,
+        &[(MIDI_ROWS_PER_BEAT, -3), (MIDI_LEGATO, -1)],
+    );
     assert_ne!(setup(&mut m, &fw), expected);
     complete(&mut m, &fw, LOAD, "MIDI SETUP");
     assert_eq!(
@@ -344,66 +374,6 @@ fn save_and_load_restore_midi_chunk_and_sync_rows() {
     );
     assert_stopped(&mut m, &fw);
     check_passes(&m);
-}
-
-unsafe extern "C" fn copy_map(ctx: *mut c_void, off: u32) -> *const u8 {
-    unsafe { ctx.cast::<u8>().add(off as usize) }
-}
-
-unsafe extern "C" fn copy_prog(ctx: *mut c_void, off: u32, data: *const c_void, n: u32) -> i32 {
-    for i in 0..n as usize {
-        unsafe { *ctx.cast::<u8>().add(off as usize + i) &= *data.cast::<u8>().add(i) };
-    }
-    STORE_OK
-}
-
-unsafe extern "C" fn copy_erase(ctx: *mut c_void, off: u32) -> i32 {
-    for i in 0..STORE_SECTOR as usize {
-        unsafe { *ctx.cast::<u8>().add(off as usize + i) = 0xff };
-    }
-    STORE_OK
-}
-
-fn put_file(flash: &mut [u8], name: &str, bytes: &[u8]) {
-    let hooks = store_flash {
-        map: Some(copy_map),
-        prog: Some(copy_prog),
-        erase: Some(copy_erase),
-        ctx: flash.as_mut_ptr().cast(),
-    };
-    let mut st = Box::<store>::default();
-    let name = CString::new(name).unwrap();
-    unsafe {
-        store_init(&mut *st, &hooks, STORE_WINDOW_MAX);
-        store_mount(&mut *st);
-        store_quiet(&mut *st, 1);
-        while store_poll(&mut *st) != 0 {}
-        assert_eq!(
-            store_file_begin(
-                &mut *st,
-                name.as_ptr(),
-                STORE_FILE_SONG as u8,
-                bytes.len() as u32,
-            ),
-            STORE_OK
-        );
-        let mut offset = 0;
-        while offset < bytes.len() {
-            let written = store_file_write(
-                &mut *st,
-                bytes.as_ptr().add(offset).cast(),
-                (bytes.len() - offset) as u32,
-            );
-            assert!(written as usize <= bytes.len() - offset);
-            offset += written as usize;
-            store_poll(&mut *st);
-        }
-        assert_eq!(store_file_end(&mut *st), STORE_OK);
-        while store_file_result(&*st) == STORE_BUSY {
-            store_poll(&mut *st);
-        }
-        assert_eq!(store_file_result(&*st), STORE_OK);
-    }
 }
 
 fn stored_song(flash: &[u8], name: &str) -> Song {
@@ -455,10 +425,12 @@ fn assert_song_want(m: &mut Machine, fw: &Firmware, expected: &song_chip_setup) 
 
 #[test]
 fn refused_chip_setup_restores_plain_song_and_runtime_metadata() {
-    let Some(fw) = fixture() else { return };
-    let mut flash = Machine::boot(&fw.image).soc.flash.mem.clone();
+    let Some(fw) = firmware("the song bank tests") else {
+        return;
+    };
+    let mut flash = settled_flash(&fw.image);
     let plain = sidou_tests::song::SngSpec::new().encode();
-    put_file(&mut flash, "PLAIN", &plain);
+    put_file(&mut flash, "PLAIN", STORE_FILE_SONG, &plain);
     let mut candidate = Song::device();
     candidate.read(&plain, SONG_MULTISPEED_MAX as u8).unwrap();
     let bad_chip = song_chip_setup {
@@ -491,7 +463,12 @@ fn refused_chip_setup_restores_plain_song_and_runtime_metadata() {
             0
         );
     }
-    put_file(&mut flash, "BAD CHIP", &candidate.write(true));
+    put_file(
+        &mut flash,
+        "BAD CHIP",
+        STORE_FILE_SONG,
+        &candidate.write(true),
+    );
     let valid_chip = song_chip_setup {
         model: 0,
         ..bad_chip
@@ -518,12 +495,13 @@ fn refused_chip_setup_restores_plain_song_and_runtime_metadata() {
         },
         0
     );
-    put_file(&mut flash, "FULL SETUP", &candidate.write(true));
-    let mut m = Machine::boot_blank(&fw.image);
-    m.soc.flash.mem.copy_from_slice(&flash);
-    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    run_past_boot(&mut m, &fw);
-    idle(&mut m, &fw);
+    put_file(
+        &mut flash,
+        "FULL SETUP",
+        STORE_FILE_SONG,
+        &candidate.write(true),
+    );
+    let mut m = boot_with(&fw, &flash);
     complete(&mut m, &fw, LOAD, "PLAIN");
     let bend_range = byte(&mut m, &fw, "instrument", ilp32::live::bend_range);
     m.midi(&[
@@ -591,8 +569,10 @@ fn refused_chip_setup_restores_plain_song_and_runtime_metadata() {
 
 #[test]
 fn stopped_multi_load_refreshes_chpa_and_cc_save_keeps_the_loaded_base() {
-    let Some(fw) = fixture() else { return };
-    let mut flash = Machine::boot(&fw.image).soc.flash.mem.clone();
+    let Some(fw) = firmware("the song bank tests") else {
+        return;
+    };
+    let mut flash = settled_flash(&fw.image);
     let alpha = song_chip_setup {
         model: 0,
         profile: SID_CHIP_6581_R3 as u8,
@@ -627,13 +607,9 @@ fn stopped_multi_load_refreshes_chpa_and_cc_save_keeps_the_loaded_base() {
             unsafe { song_ext_set_chip(fixture.ptr_mut(), sidou_tests::song::TAG_CHPA, chip) },
             0
         );
-        put_file(&mut flash, name, &fixture.write(true));
+        put_file(&mut flash, name, STORE_FILE_SONG, &fixture.write(true));
     }
-    let mut m = Machine::boot_blank(&fw.image);
-    m.soc.flash.mem.copy_from_slice(&flash);
-    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    run_past_boot(&mut m, &fw);
-    idle(&mut m, &fw);
+    let mut m = boot_with(&fw, &flash);
     let mut first_setup = None;
     for (loaded_name, chip) in [("ALPHA", &alpha), ("BETA", &beta)] {
         complete(&mut m, &fw, LOAD, loaded_name);
@@ -660,18 +636,21 @@ fn stopped_multi_load_refreshes_chpa_and_cc_save_keeps_the_loaded_base() {
         }
         assert_song_want(&mut m, &fw, chip);
     }
-    m.midi(&[0xb0, 86, 60]);
+    m.midi(&[0xb0, CC_AGE, EDITED_AGE]);
     until(&mut m, "CC86 edits stopped chip A's AGE", |m| {
         byte(
             m,
             &fw,
             "keys_router",
             ilp32::keys_route::song_want + ilp32::chip_setup::controls,
-        ) == 60
+        ) == EDITED_AGE
     });
-    let expected = song_chip_setup { age: 60, ..beta };
+    let expected = song_chip_setup {
+        age: EDITED_AGE,
+        ..beta
+    };
     assert_song_want(&mut m, &fw, &expected);
-    complete(&mut m, &fw, SAVE, "BETA");
+    complete(&mut m, &fw, SAVE_AS, "BETA");
     let saved = stored_song(&m.soc.flash.mem, "BETA");
     let mut chip = song_chip_setup::default();
     assert_eq!(

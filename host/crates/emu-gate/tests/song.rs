@@ -1,44 +1,60 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The song player in the audio interrupt (M2c Task 6), end to end in fm1-emu: PLAY plays
-//! SIDOU's first song and the firmware's audio equals the host build's render of the same
-//! song, with the same calls at the same samples, sample for sample (at multispeed 1 and 4,
-//! through edits while it plays and a profile change of chip A); the player's worst block
-//! against PLAYER_WORST_BLOCK on every example song and generated songs (a bench image, the
-//! songs written into its RAM one at a time); the main loop's passes while a song loads;
-//! the memory map (the song's region, the free RAM).
 
 mod common;
 
+use common::panel::{
+    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, GLO, HOME, K1, K4, KEY0, PLAY,
+    REC, SELECT, SEQ,
+};
 use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::song::Song;
 use sidou_tests::song_embed;
 
-/// app/panel.h PANEL_BTN_PLAY (Felucca's id for button 12).
-const PLAY: u8 = PANEL_BTN_PLAY as u8;
-/// How long a test plays a song.
+const K2: u8 = K1 + 1;
 const PLAY_MS: u64 = 10_000;
-/// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
+const AUDIBLE_PEAK: i32 = 1000;
+const PRESS_MS: u64 = 30;
+const DURING_STEP_MS: u64 = 100;
+const SAMPLES_A_CALL: usize = 880;
+const CALLS_A_ROW: usize = 6;
+const CUTOFF_MIDDLE: u16 = 1024;
+const CUTOFF_DETENT: u16 = 32;
+const CUTOFF_DOWN_TO_64: i32 = -30;
+const CUTOFF_64: u16 = CUTOFF_MIDDLE - 30 * CUTOFF_DETENT;
+const BAR_ROWS: u32 = 16;
+const LEAD_FIRST_BAR_PATTERN: u32 = 4;
+const SPECTRUM_WINDOW: usize = 8192;
+const BRIGHTNESS_HZ: f64 = 1500.0;
+const DARKER_THAN: f64 = 0.85;
+const SAME_WITHIN: f64 = 0.05;
+const SONG_HOOK_WRITE_ROW: u32 = 1;
+const SONG_HOOK_INSERT_ROW: u32 = 2;
+const SONG_HOOK_DELETE_ROW: u32 = 3;
+const SONG_HOOK_REQUEST_BYTES: u32 = 20;
+const SONG_HOOK_A: u32 = 4;
+const SONG_HOOK_B: u32 = 8;
+const SONG_HOOK_CELL: u32 = 12;
+const A1: u8 = 12 + 9;
+const C3: u8 = 36;
+const A4: u8 = 4 * 12 + 9;
+const PAGES_TO_TABLE: usize = 5;
+const PAGES_TO_INSTR: usize = 4;
+const SNG_SUBTUNES: usize = 100;
+const BUDGET_CALLS: u32 = 3000;
+const BUDGET_CALLS_MIN: u32 = 2900;
+const GENERATED_SEEDS: u64 = 40;
+const DIGI_KICK_INSTRUMENT: u8 = GT2_KIT_DRUMS as u8 + 1;
 
-fn fixture(what: &str) -> Option<(std::path::PathBuf, Firmware)> {
-    let Some(build) = build_dir() else {
-        skip_message(what);
-        return None;
-    };
-    let fw = Firmware::load(&build);
-    Some((build, fw))
-}
-
-fn press(m: &mut Machine, id: u8) {
+fn press_up_at_once(m: &mut Machine, id: u8) {
     m.key(id, true);
-    m.run_ms(30);
+    m.run_ms(PRESS_MS);
     m.key(id, false);
 }
 
-/// The firmware's song_ctl (platform/fm1/audio.c `song_transport`) and one of its fields.
 fn transport(fw: &Firmware) -> u32 {
     fw.symbol("song_transport")
 }
@@ -47,8 +63,6 @@ fn field32(m: &mut Machine, fw: &Firmware, offset: usize) -> u32 {
     m.soc.read32(transport(fw) + offset as u32)
 }
 
-/// A song written over the device's region (its main loop leaves the region alone until
-/// PLAY).
 fn inject(m: &mut Machine, fw: &Firmware, song: &Song) {
     let base = fw.symbol("__song_region");
     for (i, &b) in song.bytes().iter().enumerate() {
@@ -56,18 +70,132 @@ fn inject(m: &mut Machine, fw: &Firmware, song: &Song) {
     }
 }
 
-/// What the firmware did: its audio, the block PLAY applied at (0: the first the interrupt
-/// rendered), the blocks each later command applied at.
+fn region_song(m: &mut Machine, fw: &Firmware) -> Song {
+    let mut song = Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(song.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    song
+}
+
+fn set_cell(song: &mut Song, pattern: u32, row: u32, cell: [u8; 4]) {
+    let mut edit = gt2_edit::default();
+    unsafe {
+        assert_eq!(
+            gt2_set_row(song.ptr_mut(), pattern, row, cell.as_ptr(), &mut edit),
+            GT2_OK
+        );
+        gt2_edit_commit(song.ptr_mut(), &edit);
+    }
+}
+
+fn cell_of(song: &Song, pattern: u32, row: u32) -> [u8; 4] {
+    let d = unsafe { gt2_pattern_data(song.ptr(), pattern).add(4 * row as usize) };
+    unsafe { std::slice::from_raw_parts(d, 4) }
+        .try_into()
+        .unwrap()
+}
+
+fn key_note(key: u8) -> u8 {
+    (GT2_FIRSTNOTE + PANEL_BASE_NOTE + u32::from(key) - 12) as u8
+}
+
+fn first_pattern_of_voice(song: &Song, voice: u32) -> u32 {
+    u32::from(unsafe { *gt2_order_data(song.ptr(), 0, voice) })
+}
+
+fn adopt_the_auditions_setup_chunks(actual: &Song, expected: &mut Song) {
+    let setup = [
+        sidou_tests::song::TAG_CHPA,
+        sidou_tests::song::TAG_CHPB,
+        sidou_tests::song::TAG_OPTS,
+        sidou_tests::song::TAG_KEYS,
+        sidou_tests::song::TAG_SLOT,
+        sidou_tests::song::TAG_MIDI,
+    ];
+    for (tag, data) in actual.ext_chunks() {
+        if tag != sidou_tests::song::TAG_LOCK && expected.ext_find(tag).is_none() {
+            assert!(
+                setup.contains(&tag),
+                "unexpected audition metadata tag {tag:#x}"
+            );
+            assert_eq!(expected.ext_set(tag, &data), 0);
+        }
+    }
+}
+
+fn open_song_pages(m: &mut Machine, pages: usize, each_ms: u64) {
+    for _ in 0..pages {
+        press(m, SEQ);
+        m.run_ms(each_ms);
+    }
+}
+
+fn plain_play(
+    song: &Song,
+    play_block: usize,
+    b_use: Option<usize>,
+    rewrite: Option<usize>,
+) -> SongPlay<'_> {
+    SongPlay {
+        song,
+        play_block,
+        ccs: &[],
+        ticks: &[],
+        edits: &[],
+        stop_block: None,
+        b_use_block: b_use,
+        b_rewrite_block: rewrite,
+    }
+}
+
+fn assert_the_locked_bar_is_darker_and_the_next_as_it_was(p: &Played, locked: &Song, plain: &Song) {
+    let frames = (p.play_block + 400) * HALF_FRAMES + 40 * CALLS_A_ROW * SAMPLES_A_CALL;
+    let host = |s: &Song| render_host_song(frames, &plain_play(s, p.play_block, p.b_use, p.b_use));
+    let (locked, unlocked) = (host(locked), host(plain));
+    let brightness = |v: &[i16], from: usize| {
+        let left: Vec<f32> = v
+            .iter()
+            .step_by(2)
+            .skip(from)
+            .take(SPECTRUM_WINDOW)
+            .map(|&s| f32::from(s))
+            .collect();
+        power_above(&left, BRIGHTNESS_HZ)
+    };
+    let from = p.play_block * HALF_FRAMES + 20 * SAMPLES_A_CALL;
+    let dark = brightness(&locked, from);
+    let bright = brightness(&unlocked, from);
+    let two_bars_on = from + 2 * BAR_ROWS as usize * CALLS_A_ROW * SAMPLES_A_CALL;
+    let (l2, p2) = (
+        brightness(&locked, two_bars_on),
+        brightness(&unlocked, two_bars_on),
+    );
+    println!(
+        "the power above 1.5 kHz (the whole mix: the bass and drums are not filtered): the \
+         locked bar {dark:.4}, unlocked {bright:.4}; two bars on {l2:.4} and {p2:.4}"
+    );
+    assert!(
+        dark < DARKER_THAN * bright,
+        "the locked bar is not darker: {dark} against {bright}"
+    );
+    assert!(
+        (l2 - p2).abs() <= SAME_WITHIN * p2,
+        "the song's cutoff did not return: {l2} against {p2}"
+    );
+}
+
 struct Played {
     audio: Vec<i16>,
     play_block: usize,
     command_blocks: Vec<usize>,
-    /// The block chip B went in use (the keys' move at PLAY: app/keys_route.h).
     b_use: Option<usize>,
 }
 
-/// Boots past the boot, writes `song` into the region if given, presses PLAY, runs `ms`
-/// with `during` called every 100 ms (the time since PLAY).
 fn play(
     fw: &Firmware,
     song: Option<&Song>,
@@ -77,7 +205,6 @@ fn play(
     play_after(fw, song, ms, |_| {}, during)
 }
 
-/// `play`, with `before` run between the boot and PLAY (a view opened, say).
 fn play_after(
     fw: &Firmware,
     song: Option<&Song>,
@@ -88,7 +215,6 @@ fn play_after(
     play_at_pot(fw, None, song, ms, before, during)
 }
 
-/// `play_after` with the MASTER pot at `pot` from power-on (None: fm1-emu's POT).
 fn play_at_pot(
     fw: &Firmware,
     pot: Option<u16>,
@@ -114,12 +240,12 @@ fn play_at_pot(
         inject(&mut m, fw, s);
     }
     before(&mut m);
-    press(&mut m, PLAY);
-    let mut elapsed = 30;
+    press_up_at_once(&mut m, PLAY);
+    let mut elapsed = PRESS_MS;
     while elapsed < ms {
         during(&mut m, elapsed);
-        m.run_ms(100);
-        elapsed += 100;
+        m.run_ms(DURING_STEP_MS);
+        elapsed += DURING_STEP_MS;
     }
     let play_block = field32(&mut m, fw, ilp32::song_ctl::play_block) as usize;
     assert!(play_block > 0, "PLAY never reached the interrupt");
@@ -145,10 +271,6 @@ fn play_at_pot(
     }
 }
 
-/// The device's audio against a host render, over the silent halves the DMA may lead with
-/// and the block the keys' registers reach chip B in (around the one it goes in use: the
-/// device sets the use at once and its writes go at the pass's end): the halves found, or the
-/// closest difference.
 fn matches(p: &Played, host: impl Fn(usize, Option<usize>) -> Vec<i16>) -> Result<usize, i32> {
     let mut closest = i32::MAX;
     let rewrites: Vec<Option<usize>> = match p.b_use {
@@ -193,19 +315,7 @@ fn check_song_after(
         c
     });
     let r = matches(&p, |frames, rewrite| {
-        render_host_song(
-            frames,
-            &SongPlay {
-                song: &s,
-                play_block: p.play_block,
-                ccs: &[],
-                ticks: &[],
-                edits: &[],
-                stop_block: None,
-                b_use_block: p.b_use,
-                b_rewrite_block: rewrite,
-            },
-        )
+        render_host_song(frames, &plain_play(&s, p.play_block, p.b_use, rewrite))
     });
     let peak = p
         .audio
@@ -219,7 +329,7 @@ fn check_song_after(
         p.audio.len() / 2
     );
     assert!(
-        peak > 1000,
+        peak > AUDIBLE_PEAK,
         "{name}: the song is silent (peak {peak}): the comparison would be vacuous"
     );
     assert!(
@@ -229,103 +339,52 @@ fn check_song_after(
     p
 }
 
-/// PLAY plays SIDOU's first song, sample for sample as the host renders it (10 s, PAL).
 #[test]
 fn play_plays_the_first_song_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the song test") else {
+    let Some((_, fw)) = build_and_firmware("the song test") else {
         return;
     };
     let p = check_song("sidou-loop", &fw, None);
-    // The start: PLAY's press to the block it applied at (the analysis's slices, chip A ready
-    // at once without M2b Task 4's chip_ctl).
     println!("{} blocks from power-on to the play", p.play_block);
 }
 
 #[test]
 fn a_four_note_tracker_phrase_is_the_expected_song_and_plays_bit_exact() {
-    let Some((_, fw)) = fixture("the TRACKER phrase test") else {
+    let Some((_, fw)) = build_and_firmware("the TRACKER phrase test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
     let mut expected = demo();
-    let order = unsafe { gt2_order_data(expected.ptr(), 0, 0) };
-    let pattern = u32::from(unsafe { *order });
-    press(&mut m, PANEL_BTN_SEQ as u8); // STEP, then TRACKER
+    let pattern = first_pattern_of_voice(&expected, 0);
+    press(&mut m, SEQ);
     m.run_ms(300);
-    press(&mut m, PANEL_BTN_SEQ as u8);
+    press(&mut m, SEQ);
     m.run_ms(500);
-    press(&mut m, PANEL_BTN_REC as u8);
+    press(&mut m, REC);
     for (row, key) in [16u8, 18, 20, 23].into_iter().enumerate() {
-        press(&mut m, PANEL_KEY_ID0 as u8 + key);
+        press(&mut m, KEY0 + key);
         m.run_ms(300);
-        let old = unsafe { gt2_pattern_data(expected.ptr(), pattern).add(row * 4) };
-        let mut cell: [u8; 4] = unsafe { std::slice::from_raw_parts(old, 4) }
-            .try_into()
-            .unwrap();
-        cell[0] = (GT2_FIRSTNOTE + PANEL_BASE_NOTE + u32::from(key) - 12) as u8;
+        let mut cell = cell_of(&expected, pattern, row as u32);
+        cell[0] = key_note(key);
         cell[1] = 1;
-        let mut edit = gt2_edit::default();
-        unsafe {
-            assert_eq!(
-                gt2_set_row(
-                    expected.ptr_mut(),
-                    pattern,
-                    row as u32,
-                    cell.as_ptr(),
-                    &mut edit
-                ),
-                GT2_OK
-            );
-            gt2_edit_commit(expected.ptr_mut(), &edit);
-        }
+        set_cell(&mut expected, pattern, row as u32, cell);
     }
-    let mut actual = Song::device();
-    let base = fw.symbol("__song_region");
-    let bytes = unsafe {
-        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
-    };
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = m.soc.read8(base + i as u32);
-    }
-    // M2c captures runtime setup on first audition. Keep pre-existing chunks and the
-    // independently expected GT2 data exact; only known new setup chunks are admitted.
+    let actual = region_song(&mut m, &fw);
     assert_eq!(
         actual.write(false),
         expected.write(false),
         "the panel programmed the expected GT2 data"
     );
-    for (tag, data) in actual.ext_chunks() {
-        if expected.ext_find(tag).is_none() {
-            assert!(
-                [
-                    sidou_tests::song::TAG_CHPA,
-                    sidou_tests::song::TAG_CHPB,
-                    sidou_tests::song::TAG_OPTS,
-                    sidou_tests::song::TAG_KEYS,
-                    sidou_tests::song::TAG_SLOT,
-                    sidou_tests::song::TAG_MIDI
-                ]
-                .contains(&tag),
-                "unexpected audition metadata tag {tag:#x}"
-            );
-            assert_eq!(expected.ext_set(tag, &data), 0);
-        }
-    }
+    adopt_the_auditions_setup_chunks(&actual, &mut expected);
     assert_eq!(
         actual.write(true),
         expected.write(true),
         "the panel programmed the expected phrase"
     );
-    // A fresh playback starts from the same SID state on both builds, independent of the
-    // audition's oscillator/envelope history while entering the notes.
     check_song("TRACKER four-note phrase", &fw, Some(&actual));
 }
 
-/// What STEP's toggle does to a pattern (app/step_view.h): a rest or key off becomes the lane's
-/// note C-3 with instrument 1, an existing note a rest, and on a staccato lane the key off after
-/// a note (on the next row if that is a rest; where the row before holds a note, the removed
-/// note's row is a key off).
 fn step_toggle(song: &mut Song, pattern: u32, row: u32) {
     let rows = unsafe { gt2_pattern_rows(song.ptr(), pattern) } - 1;
     let cell = |s: &Song, r: u32| -> [u8; 4] {
@@ -335,16 +394,7 @@ fn step_toggle(song: &mut Song, pattern: u32, row: u32) {
         d[4 * r as usize..4 * r as usize + 4].try_into().unwrap()
     };
     let is_note = |n: u8| (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n);
-    let write = |s: &mut Song, r: u32, c: [u8; 4]| {
-        let mut edit = gt2_edit::default();
-        unsafe {
-            assert_eq!(
-                gt2_set_row(s.ptr_mut(), pattern, r, c.as_ptr(), &mut edit),
-                GT2_OK
-            );
-            gt2_edit_commit(s.ptr_mut(), &edit);
-        }
-    };
+    let write = |s: &mut Song, r: u32, c: [u8; 4]| set_cell(s, pattern, r, c);
     let mut c = cell(song, row);
     let next = (row + 1 < rows).then(|| cell(song, row + 1));
     if is_note(c[0]) {
@@ -363,7 +413,7 @@ fn step_toggle(song: &mut Song, pattern: u32, row: u32) {
             }
         }
     } else {
-        c[0] = GT2_FIRSTNOTE as u8 + 36;
+        c[0] = GT2_FIRSTNOTE as u8 + C3;
         c[1] = 1;
         write(song, row, c);
         if let Some(mut n) = next {
@@ -375,110 +425,62 @@ fn step_toggle(song: &mut Song, pattern: u32, row: u32) {
     }
 }
 
-/// STEP (M2d Task 5): steps toggled from the keys, a lock on one held step and a SET on another,
-/// make the expected song (the model's own edits, independently applied), and it plays bit-exact
-/// with the host, the lock in the host's render too.
 #[test]
 fn a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact() {
-    let Some((_, fw)) = fixture("the STEP programming test") else {
+    let Some((_, fw)) = build_and_firmware("the STEP programming test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
     let mut expected = demo();
-    // V2's first pattern.
-    let order = unsafe { gt2_order_data(expected.ptr(), 0, 1) };
-    let pattern = u32::from(unsafe { *order });
+    let pattern = first_pattern_of_voice(&expected, 1);
     let rows = unsafe { gt2_pattern_rows(expected.ptr(), pattern) } - 1;
-    press(&mut m, PANEL_BTN_SEQ as u8);
+    press(&mut m, SEQ);
     m.run_ms(500);
-    m.turn(PANEL_ENC_SELECT as u8, 1);
+    m.turn(SELECT, 1);
     m.run_ms(300);
-    let key = |m: &mut Machine, k: u32, down: bool| m.key(PANEL_KEY_ID0 as u8 + k as u8, down);
+    let step_key = |k: u32| KEY0 + k as u8;
     for step in [2u32, 9, 12, 5, 2] {
-        key(&mut m, step, true);
-        m.run_ms(30);
-        key(&mut m, step, false);
+        press(&mut m, step_key(step));
         m.run_ms(400);
         step_toggle(&mut expected, pattern, step);
     }
-    // A lock on step 7 (K1 four detents up from the middle), a SET on a step whose command
-    // column is free (K4 two detents: sawtooth).
-    assert!(rows >= 16);
-    key(&mut m, 7, true);
-    m.run_ms(60);
-    m.turn(PANEL_ENC_K1 as u8, 4);
+    assert!(rows >= BAR_ROWS);
+    const LOCKED_STEP: u32 = 7;
+    const CUTOFF_UP_CLICKS: i32 = 4;
+    const SET_SAWTOOTH_CLICKS: i32 = 2;
+    holding(&mut m, step_key(LOCKED_STEP), |m| {
+        m.turn(K1, CUTOFF_UP_CLICKS);
+        m.run_ms(300);
+    });
     m.run_ms(300);
-    key(&mut m, 7, false);
-    m.run_ms(300);
-    let free = (0..16u32)
-        .find(|&r| {
-            let d = unsafe { gt2_pattern_data(expected.ptr(), pattern) };
-            let c = unsafe { std::slice::from_raw_parts(d.add(4 * r as usize), 4) };
-            r != 7 && c[2] == 0
-        })
+    let free = (0..BAR_ROWS)
+        .find(|&r| r != LOCKED_STEP && cell_of(&expected, pattern, r)[2] == 0)
         .expect("a row with no command");
-    key(&mut m, free, true);
-    m.run_ms(60);
-    m.turn(PANEL_ENC_K1 as u8 + 3, 2);
+    holding(&mut m, step_key(free), |m| {
+        m.turn(K4, SET_SAWTOOTH_CLICKS);
+        m.run_ms(300);
+    });
     m.run_ms(300);
-    key(&mut m, free, false);
-    m.run_ms(300);
-    {
-        let d = unsafe { gt2_pattern_data(expected.ptr(), pattern) };
-        let mut c: [u8; 4] = unsafe { std::slice::from_raw_parts(d.add(4 * free as usize), 4) }
-            .try_into()
-            .unwrap();
-        c[2] = 7;
-        c[3] = 0x21;
-        let mut edit = gt2_edit::default();
-        unsafe {
-            assert_eq!(
-                gt2_set_row(expected.ptr_mut(), pattern, free, c.as_ptr(), &mut edit),
-                GT2_OK
-            );
-            gt2_edit_commit(expected.ptr_mut(), &edit);
-        }
-    }
-    let mut actual = Song::device();
-    let base = fw.symbol("__song_region");
-    let bytes = unsafe {
-        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
-    };
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = m.soc.read8(base + i as u32);
-    }
+    let mut c = cell_of(&expected, pattern, free);
+    c[2] = 7;
+    c[3] = 0x21;
+    set_cell(&mut expected, pattern, free, c);
+    let actual = region_song(&mut m, &fw);
     assert_eq!(
         actual.write(false),
         expected.write(false),
         "the keys programmed the expected GT2 data"
     );
-    for (tag, data) in actual.ext_chunks() {
-        if tag != sidou_tests::song::TAG_LOCK && expected.ext_find(tag).is_none() {
-            assert!(
-                [
-                    sidou_tests::song::TAG_CHPA,
-                    sidou_tests::song::TAG_CHPB,
-                    sidou_tests::song::TAG_OPTS,
-                    sidou_tests::song::TAG_KEYS,
-                    sidou_tests::song::TAG_SLOT,
-                    sidou_tests::song::TAG_MIDI
-                ]
-                .contains(&tag),
-                "unexpected audition metadata tag {tag:#x}"
-            );
-            assert_eq!(expected.ext_set(tag, &data), 0);
-        }
-    }
-    // The lock went in after the audition's chunks, as the chunks stand in the file.
+    adopt_the_auditions_setup_chunks(&actual, &mut expected);
     assert_eq!(
         unsafe {
             song_lock_put(
                 expected.ptr_mut(),
                 pattern,
-                7,
+                LOCKED_STEP,
                 SONG_LOCK_CUTOFF,
-                1024 + 4 * 32,
+                u32::from(CUTOFF_MIDDLE) + CUTOFF_UP_CLICKS as u32 * u32::from(CUTOFF_DETENT),
             )
         },
         0
@@ -491,97 +493,49 @@ fn a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact() {
     check_song("STEP-programmed pattern", &fw, Some(&actual));
 }
 
-/// STEP (M2d Task 5): a step held and K1 turned down locks that step's cutoff; SIDOU LOOP's
-/// lead bar locked step by step from the keys plays bit-exact with the host and is darker than
-/// the song without the locks (less of its power above 1.5 kHz), the bar after it as it was.
 #[test]
 fn a_held_step_and_k1_darkens_that_step_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the STEP lock spectrum test") else {
+    let Some((_, fw)) = build_and_firmware("the STEP lock spectrum test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    let key = |m: &mut Machine, k: u32, down: bool| m.key(PANEL_KEY_ID0 as u8 + k as u8, down);
-    press(&mut m, PANEL_BTN_SEQ as u8);
-    m.run_ms(500); // STEP, V1: the lead's first bar (pattern 4), 16 steps
-    for step in 0..16u32 {
-        key(&mut m, step, true);
-        m.run_ms(60);
-        m.turn(PANEL_ENC_K1 as u8, -30); // 1024 - 30 * 32; the emulator turns a detent every 8 ms
-        m.run_ms(300);
-        key(&mut m, step, false);
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    for step in 0..BAR_ROWS as u8 {
+        holding(&mut m, KEY0 + step, |m| {
+            m.turn(K1, CUTOFF_DOWN_TO_64);
+            m.run_ms(300);
+        });
         m.run_ms(100);
     }
-    let mut song = Song::device();
-    let base = fw.symbol("__song_region");
-    let bytes = unsafe {
-        std::slice::from_raw_parts_mut(song.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
-    };
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = m.soc.read8(base + i as u32);
-    }
+    let song = region_song(&mut m, &fw);
     let mut got = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
     let n = unsafe { song_ext_get_locks(song.ptr(), got.as_mut_ptr(), SONG_LOCKS_MAX) } as usize;
     let got: Vec<_> = got[..n]
         .iter()
         .map(|l| (l.pattern, l.row, l.param, l.value))
         .collect();
-    let want: Vec<_> = (0..16u8)
-        .map(|r| (4u8, r, SONG_LOCK_CUTOFF as u8, 64u16))
+    let want: Vec<_> = (0..BAR_ROWS as u8)
+        .map(|r| {
+            (
+                LEAD_FIRST_BAR_PATTERN as u8,
+                r,
+                SONG_LOCK_CUTOFF as u8,
+                CUTOFF_64,
+            )
+        })
         .collect();
     assert_eq!(got, want, "a lock on each of the bar's 16 steps");
     let plain = demo();
     assert_eq!(song.write(false), plain.write(false), "no step was toggled");
     let p = check_song("STEP-locked lead", &fw, Some(&song));
-    let host = |s: &Song| {
-        render_host_song(
-            (p.play_block + 400) * HALF_FRAMES + 40 * 6 * 880,
-            &SongPlay {
-                song: s,
-                play_block: p.play_block,
-                ccs: &[],
-                ticks: &[],
-                edits: &[],
-                stop_block: None,
-                b_use_block: p.b_use,
-                b_rewrite_block: p.b_use,
-            },
-        )
-    };
-    let (locked, unlocked) = (host(&song), host(&plain));
-    let left = |v: &[i16], from: usize, n: usize| -> Vec<f32> {
-        v.iter()
-            .step_by(2)
-            .skip(from)
-            .take(n)
-            .map(|&s| f32::from(s))
-            .collect()
-    };
-    let from = p.play_block * HALF_FRAMES + 20 * 880;
-    let dark = power_above(&left(&locked, from, 8192), 1500.0);
-    let bright = power_above(&left(&unlocked, from, 8192), 1500.0);
-    let later = from + 32 * 6 * 880;
-    let (l2, p2) = (
-        power_above(&left(&locked, later, 8192), 1500.0),
-        power_above(&left(&unlocked, later, 8192), 1500.0),
-    );
-    println!(
-        "STEP's locks: the power above 1.5 kHz of the locked bar {dark:.4}, unlocked {bright:.4}; \
-         two bars on {l2:.4} and {p2:.4}"
-    );
-    assert!(
-        dark < 0.85 * bright,
-        "the locked bar is not darker: {dark} against {bright}"
-    );
-    assert!(
-        (l2 - p2).abs() <= 0.05 * p2,
-        "the song's cutoff did not return: {l2} against {p2}"
-    );
+    assert_the_locked_bar_is_darker_and_the_next_as_it_was(&p, &song, &plain);
 }
 
 #[test]
 fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the INSTR edit audio test") else {
+    let Some((_, fw)) = build_and_firmware("the INSTR edit audio test") else {
         return;
     };
     let source = demo();
@@ -599,14 +553,11 @@ fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
     ];
     m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
     run_past_boot(&mut m, &fw);
-    for _ in 0..4 {
-        press(&mut m, PANEL_BTN_SEQ as u8);
-        m.run_ms(400);
-    }
+    open_song_pages(&mut m, PAGES_TO_INSTR, 400);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("song_pages_instr_view"));
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(1000);
-    m.turn(PANEL_ENC_K1 as u8, 1);
+    m.turn(K1, 1);
     m.run_ms(2000);
     assert_eq!(
         m.soc.read8(ad),
@@ -625,14 +576,7 @@ fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
         .buffer_snapshots
         .iter()
         .position(|snap| snap.bytes[2] != 0);
-    let mut actual = Song::device();
-    let region = fw.symbol("__song_region");
-    let bytes = unsafe {
-        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
-    };
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = m.soc.read8(region + i as u32);
-    }
+    let actual = region_song(&mut m, &fw);
     let mut expected = demo();
     let mut expected_edit = gt2_edit::default();
     unsafe {
@@ -692,34 +636,24 @@ fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
     );
 }
 
-/// The first song while SCENE shows RED MOON RITE, which the song's events drive
-/// (app/scene_song.h): the audio is the host's, sample for sample, the vignette touching none
-/// of it.
 #[test]
 fn the_first_song_is_bit_exact_while_red_moon_rite_plays_it() {
-    let Some((_, fw)) = fixture("the song test under RED MOON RITE") else {
+    let Some((_, fw)) = build_and_firmware("the song test under RED MOON RITE") else {
         return;
     };
     let f = &fw;
     check_song_after("sidou-loop under RED MOON RITE", &fw, None, |m| {
-        // HOME, SELECT to SCENE in the menu, ALGORITHM: THE SCENE's card, then SCENE on FIRE;
-        // SELECT back once: RED MOON RITE.
-        const HOME: u8 = PANEL_BTN_HOME as u8;
-        let items = VIEWS_MENU_ITEMS as i32;
         press(m, HOME);
         m.run_ms(700);
-        m.turn(PANEL_ENC_SELECT as u8, -items);
-        m.run_ms(10 * items as u64);
-        m.turn(PANEL_ENC_SELECT as u8, VIEWS_MENU_SCENE as i32);
-        m.run_ms(10 * VIEWS_MENU_SCENE as u64);
-        m.turn(PANEL_ENC_ALGORITHM as u8, 1);
+        select_menu_item(m, VIEWS_MENU_SCENE as i32);
+        m.turn(ALGORITHM, 1);
         m.run_ms(4000);
         assert_eq!(
             top_view(m, f),
             f.symbol("scene_view_view"),
             "SCENE did not open"
         );
-        m.turn(PANEL_ENC_SELECT as u8, -1);
+        m.turn(SELECT, -1);
         m.run_ms(1000);
         let which = f.symbol("ui") + (ilp32::views::scene + ilp32::scene_view::which) as u32;
         assert_eq!(
@@ -730,10 +664,9 @@ fn the_first_song_is_bit_exact_while_red_moon_rite_plays_it() {
     });
 }
 
-/// The same song at multispeed 4 (four calls a frame, one in a block at most).
 #[test]
 fn the_first_song_at_multispeed_4_is_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the song test") else {
+    let Some((_, fw)) = build_and_firmware("the song test") else {
         return;
     };
     let mut o = sidou_tests::player::default_options();
@@ -742,12 +675,9 @@ fn the_first_song_at_multispeed_4_is_bit_exact_with_the_host() {
     check_song("sidou-loop x4", &fw, Some(&song));
 }
 
-/// app.ld's map: the song's region is 64 KiB, 4 KiB aligned, at POOL's start; RAM (the RAM
-/// region and POOL) keeps at least FREE_RAM_MIN bytes free (common/mod.rs), each region at
-/// least REGION_FREE_MIN (5,120).
 #[test]
-fn the_song_region_and_the_free_ram() {
-    let Some((build, fw)) = fixture("the map test") else {
+fn the_song_region_is_64_kib_at_pools_start_and_ram_keeps_its_free_minimum() {
+    let Some((build, fw)) = build_and_firmware("the map test") else {
         return;
     };
     let region = fw.symbol("__song_region");
@@ -771,7 +701,6 @@ fn the_song_region_and_the_free_ram() {
         u64::from(fw.symbol("_ustack_lo")),
         "POOL ends at the user stack's guard band"
     );
-    // The stacks every machine checks when it goes (common::Machine's Drop).
     assert_eq!(
         (fw.symbol("_ustack_lo"), fw.symbol("_ustack_top")),
         (USER_STACK.start, USER_STACK.end)
@@ -798,13 +727,15 @@ fn the_song_region_and_the_free_ram() {
     );
 }
 
-/// One bench run (bench/fm1/bench_song_main.c): the song in the bench's RAM, `blocks`
-/// blocks with SONG_EDITS_PER_BLOCK edits of `kind` (0 name cells, 1 swaps, 2 none,
-/// 3 isolated real row cells) each after the first.
+const BENCH_NAME_CELLS: u32 = 0;
+const BENCH_SWAPS: u32 = 1;
+const BENCH_NO_EDITS: u32 = 2;
+const BENCH_ROW_CELLS: u32 = 3;
+const SWAPS_EVERY: usize = 4;
+const ROW_DELTA_BLOCKS: u32 = 192;
+
 struct Bench {
-    /// Instructions of each block.
     blocks: Vec<u64>,
-    /// The main loop's sending of a block's edits (song_ctl_edit eight times), at most.
     edits_main: u64,
     analysis: u64,
     derive: u64,
@@ -820,7 +751,6 @@ fn bench(build: &std::path::Path, song: &Song, sub: u32, blocks: u32, kind: u32)
     bench_bytes(build, song.bytes(), sub, blocks, kind)
 }
 
-/// `bench` on a song's packed bytes (`Song::bytes`), which a thread may take.
 fn bench_bytes(build: &std::path::Path, song: &[u8], sub: u32, blocks: u32, kind: u32) -> Bench {
     let r = run_with(build, "sid_bench_song", 3 + 2 * blocks as usize, |soc| {
         for (i, &b) in song.iter().enumerate() {
@@ -848,8 +778,8 @@ fn bench_bytes(build: &std::path::Path, song: &[u8], sub: u32, blocks: u32, kind
 
 fn row_delta_apply_cost(build: &std::path::Path) -> u64 {
     let song = demo();
-    let baseline = bench(build, &song, 0, 192, 2);
-    let rows = bench(build, &song, 0, 192, 3);
+    let baseline = bench(build, &song, 0, ROW_DELTA_BLOCKS, BENCH_NO_EDITS);
+    let rows = bench(build, &song, 0, ROW_DELTA_BLOCKS, BENCH_ROW_CELLS);
     assert_eq!(baseline.error, 0);
     assert_eq!(rows.error, 0);
     assert!(
@@ -892,15 +822,17 @@ fn row_delta_apply_cost(build: &std::path::Path) -> u64 {
 
 #[test]
 fn real_row_delta_accounting_is_included_in_the_interrupt_cost() {
-    let Some((build, _)) = fixture("the row-delta apply microcase") else {
+    let Some((build, _)) = build_and_firmware("the row-delta apply microcase") else {
         return;
     };
     let additional = row_delta_apply_cost(&build);
-    assert!(additional as f64 / HALF_FRAMES as f64 <= PLAYER_WORST_BLOCK);
+    assert_within_budget(
+        "eight isolated row applies a sample",
+        additional as f64 / HALF_FRAMES as f64,
+        PLAYER_WORST_BLOCK,
+    );
 }
 
-/// The songs the budget is measured over: every example, every subtune, and generated
-/// songs within the device's caps, with the options to play them with.
 fn budget_songs() -> Vec<(String, Song, u32)> {
     let mut v = Vec::new();
     for (name, sng) in gt2_ref::examples() {
@@ -923,8 +855,6 @@ fn budget_songs() -> Vec<(String, Song, u32)> {
     v
 }
 
-/// A song with a 50 % chance on as many of its rows as SONG_LOCKS_MAX allows: the main loop's
-/// rolls and the player's dropped notes at their most (a roll for every row a channel reads).
 fn chanced(sng: &[u8]) -> Song {
     let mut song = device_song(sng, None);
     let mut n = 0;
@@ -942,8 +872,6 @@ fn chanced(sng: &[u8]) -> Song {
     song
 }
 
-/// A song with locks on as many of its rows as SONG_LOCKS_MAX allows: every filter and pulse
-/// parameter (five locks a row), on the rows of the patterns its first subtune names, in order.
 fn locked(sng: &[u8]) -> Song {
     let mut song = device_song(sng, None);
     let mut pats: Vec<u32> = Vec::new();
@@ -984,25 +912,18 @@ fn locked(sng: &[u8]) -> Song {
     song
 }
 
-/// PLAYER_WORST_BLOCK: the player's call and SONG_EDITS_PER_BLOCK of the costliest edit in
-/// one block, at most 60 instructions a sample, over every example song and subtune at
-/// multispeed 1 and 4 (3,000 calls each) and generated songs. Then the whole interrupt with
-/// two chips at their worst, the slots' heaviest and the player within the audio target, and
-/// the 6502's headroom (M3: the song player and the 6502 never run together). The runs (193,
-/// each a bench in its own fm1-emu) go to every core, and their maxima are taken in their
-/// order, so the numbers are a sequential run's: 14 minutes on one core, under 4 on ten.
 #[test]
 fn the_players_worst_block_fits_its_budget() {
-    let Some((build, _)) = fixture("the player's budget") else {
+    let Some((build, _)) = build_and_firmware("the player's budget") else {
         return;
     };
     let mut worst = (0u64, String::new());
-    let mut worst_edits = 0u64; // a block with the edits and no call
-    let mut worst_call = 0u64; // a call and its block's handling, no edits besides
+    let mut worst_edits_without_a_call = 0u64;
+    let mut worst_call_beyond_the_edits = 0u64;
     let mut edits_main = 0u64;
     let (mut analysis, mut derive) = (0u64, 0u64);
     let mut songs = budget_songs();
-    for seed in 0..40u64 {
+    for seed in 0..GENERATED_SEEDS {
         let g = gt2_ref::gen::generate(seed);
         if g.options.multiplier == 0 || g.options.multiplier > SONG_MULTISPEED_MAX {
             continue;
@@ -1012,7 +933,7 @@ fn the_players_worst_block_fits_its_budget() {
         o.hr_adsr = g.options.hr_adsr as u16;
         o.optimize_pulse = g.options.optimize_pulse as u8;
         o.optimize_realtime = g.options.optimize_realtime as u8;
-        for sub in 0..u32::from(g.sng[100]) {
+        for sub in 0..u32::from(g.sng[SNG_SUBTUNES]) {
             songs.push((
                 format!("seed {seed} {sub}"),
                 device_song(&g.sng, Some(&o)),
@@ -1020,9 +941,6 @@ fn the_players_worst_block_fits_its_budget() {
             ));
         }
     }
-    // The runs, in order (swaps on a quarter of them: they cost less, reported), each an
-    // independent bench in its own fm1-emu, spread over the cores; their results are then taken
-    // in this order, so the maxima and the worst's name are a sequential run's.
     struct Job<'a> {
         name: &'a str,
         song: Vec<u8>,
@@ -1037,10 +955,9 @@ fn the_players_worst_block_fits_its_budget() {
             song_ext_get_options(song.ptr(), &mut o);
             u32::from(o.multispeed.max(1))
         };
-        // 3,000 calls: a call every 880 / ms samples
-        let blocks = (3000 * 880 / ms / HALF_FRAMES as u32) + 8;
-        for kind in [0u32, 1] {
-            if kind == 1 && jobs.len() % 4 != 0 {
+        let blocks = (BUDGET_CALLS * SAMPLES_A_CALL as u32 / ms / HALF_FRAMES as u32) + 8;
+        for kind in [BENCH_NAME_CELLS, BENCH_SWAPS] {
+            if kind == BENCH_SWAPS && !jobs.len().is_multiple_of(SWAPS_EVERY) {
                 continue;
             }
             jobs.push(Job {
@@ -1078,21 +995,29 @@ fn the_players_worst_block_fits_its_budget() {
     results.sort_by_key(|&(i, _)| i);
     for (i, b) in &results {
         let Job { name, kind, .. } = &jobs[*i];
-        if b.error != 0 {
-            continue; // a subtune the packed song does not hold
+        let a_subtune_the_packed_song_does_not_hold = b.error != 0;
+        if a_subtune_the_packed_song_does_not_hold {
+            continue;
         }
-        assert!(b.calls >= 2900, "{name}: {} calls", b.calls);
+        assert!(b.calls >= BUDGET_CALLS_MIN, "{name}: {} calls", b.calls);
         analysis = analysis.max(b.analysis);
         derive = derive.max(b.derive);
         let max = *b.blocks.iter().max().unwrap();
         let min = *b.blocks.iter().skip(1).min().unwrap();
-        worst_edits = worst_edits.max(min);
-        worst_call = worst_call.max(max - min);
+        worst_edits_without_a_call = worst_edits_without_a_call.max(min);
+        worst_call_beyond_the_edits = worst_call_beyond_the_edits.max(max - min);
         edits_main = edits_main.max(b.edits_main);
         if max > worst.0 {
             worst = (
                 max,
-                format!("{name} ({})", if *kind == 0 { "cells" } else { "swaps" }),
+                format!(
+                    "{name} ({})",
+                    if *kind == BENCH_NAME_CELLS {
+                        "cells"
+                    } else {
+                        "swaps"
+                    }
+                ),
             );
         }
     }
@@ -1106,8 +1031,8 @@ fn the_players_worst_block_fits_its_budget() {
     println!(
         "the player's worst block: {} + {row_delta} isolated row-apply instructions = {charged} \
          instructions ({per_sample:.1} a sample, budget \
-         {PLAYER_WORST_BLOCK}) in {}; a block of 8 edits and no call {worst_edits}, a call at most \
-         {worst_call} besides; over {} runs of {} songs; the main loop's sending of 8 edits at \
+         {PLAYER_WORST_BLOCK}) in {}; a block of 8 edits and no call {worst_edits_without_a_call}, a call at most \
+         {worst_call_beyond_the_edits} besides; over {} runs of {} songs; the main loop's sending of 8 edits at \
          most {edits_main}. The play's analysis at most {analysis} instructions (all its slices), a \
          whole derivation {derive}. With two chips at their worst ({SID_WORST_BLOCK_TWO_CHIPS}), \
          the tap, the ISR and the slots' worst switching block ({SLOTS_SWITCH_WORST}): \
@@ -1122,47 +1047,39 @@ fn the_players_worst_block_fits_its_budget() {
         "the player's worst block costs {per_sample:.1} a sample (in {}), over {PLAYER_WORST_BLOCK}",
         worst.1
     );
-    // a fast-forward's slice: SONG_FF_CALLS calls at the worst (and its bookkeeping)
     assert!(
         u64::from(SONG_FF_CALLS) * charged <= u64::from(SONG_SLICE_INSTRUCTIONS),
-        "{SONG_FF_CALLS} calls of {worst_call} are over the slice of {SONG_SLICE_INSTRUCTIONS}"
+        "{SONG_FF_CALLS} calls of {worst_call_beyond_the_edits} are over the slice of {SONG_SLICE_INSTRUCTIONS}"
     );
 }
 
-/// platform/fm1/main.c `song_test_hook`: four requests of 20 bytes (op, a, b, cell, block).
-const HOOK_REQ: u32 = 20;
-
-/// Edits while the song plays: row writes and rebuilds (swaps), made by the device's main
-/// loop with the model's primitives as M2d's editor will. The audio equals the host's render
-/// with the same edits applied at the same blocks (each command's block from the interrupt's
-/// applied count, read after every block).
 #[test]
 fn edits_while_playing_are_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the song edit test") else {
+    let Some((_, fw)) = build_and_firmware("the song edit test") else {
         return;
     };
     let hook = fw.symbol("song_test_hook");
-    // (op, pattern, row, cell): notes the song already has, so the shape stays as it is
+    const EDITS_AT_MS: u64 = 2_000 + PRESS_MS;
+    let note = |semitone: u8, instrument: u8| [GT2_FIRSTNOTE as u8 + semitone, instrument, 0, 0];
     let reqs: [(u32, u32, u32, [u8; 4]); 4] = [
-        (1, 4, 2, [0x60 + 4 * 12 + 9, 2, 0, 0]),
-        (2, 8, 3, [0; 4]),
-        (1, 0, 5, [0x60 + 12 + 9, 1, 0, 0]),
-        (3, 9, 1, [0; 4]),
+        (SONG_HOOK_WRITE_ROW, 4, 2, note(A4, 2)),
+        (SONG_HOOK_INSERT_ROW, 8, 3, [0; 4]),
+        (SONG_HOOK_WRITE_ROW, 0, 5, note(A1, 1)),
+        (SONG_HOOK_DELETE_ROW, 9, 1, [0; 4]),
     ];
     let p = play(&fw, None, 6_000, |m, ms| {
-        if ms == 2_030 {
+        if ms == EDITS_AT_MS {
             for (i, &(op, a, b, cell)) in reqs.iter().enumerate() {
-                let r = hook + HOOK_REQ * i as u32;
-                m.soc.write32(r + 4, a);
-                m.soc.write32(r + 8, b);
+                let r = hook + SONG_HOOK_REQUEST_BYTES * i as u32;
+                m.soc.write32(r + SONG_HOOK_A, a);
+                m.soc.write32(r + SONG_HOOK_B, b);
                 for (k, &c) in cell.iter().enumerate() {
-                    m.soc.write8(r + 12 + k as u32, c);
+                    m.soc.write8(r + SONG_HOOK_CELL + k as u32, c);
                 }
                 m.soc.write32(r, op);
             }
         }
     });
-    // the play's command, then the four edits
     assert_eq!(
         p.command_blocks.len(),
         1 + reqs.len(),
@@ -1176,8 +1093,8 @@ fn edits_while_playing_are_bit_exact_with_the_host() {
         .map(|(&(op, a, b, cell), &block)| {
             let f: SongPrim = Box::new(move |s, e| unsafe {
                 match op {
-                    1 => gt2_set_row(s, a, b, cell.as_ptr(), e),
-                    2 => gt2_pattern_insert_row(s, a, b, e),
+                    SONG_HOOK_WRITE_ROW => gt2_set_row(s, a, b, cell.as_ptr(), e),
+                    SONG_HOOK_INSERT_ROW => gt2_pattern_insert_row(s, a, b, e),
                     _ => gt2_pattern_delete_row(s, a, b, e),
                 }
             });
@@ -1189,14 +1106,8 @@ fn edits_while_playing_are_bit_exact_with_the_host() {
         render_host_song(
             frames,
             &SongPlay {
-                song: &song,
-                play_block: p.play_block,
-                ccs: &[],
-                ticks: &[],
                 edits: &prims,
-                stop_block: None,
-                b_use_block: p.b_use,
-                b_rewrite_block: rewrite,
+                ..plain_play(&song, p.play_block, p.b_use, rewrite)
             },
         )
     });
@@ -1210,11 +1121,9 @@ fn edits_while_playing_are_bit_exact_with_the_host() {
     );
 }
 
-/// A song the device cannot play in one call a block (multispeed 8) is refused with a toast,
-/// and nothing plays.
 #[test]
 fn multispeed_8_is_refused_with_its_toast() {
-    let Some((_, fw)) = fixture("the song refusal test") else {
+    let Some((_, fw)) = build_and_firmware("the song refusal test") else {
         return;
     };
     let mut o = sidou_tests::player::default_options();
@@ -1223,7 +1132,7 @@ fn multispeed_8_is_refused_with_its_toast() {
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
     inject(&mut m, &fw, &song);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(200);
     let toast = fw.symbol("ui") + ilp32::screen::toast as u32;
     let text: String = (0..SCREEN_TOAST_CHARS)
@@ -1238,23 +1147,18 @@ fn multispeed_8_is_refused_with_its_toast() {
     );
 }
 
-/// PLAY again stops the song: every voice's gate goes off and its envelope releases (as on
-/// a C64), and chip A goes back to the keys (keys_route_set_song: keys_route takes it back).
 #[test]
-fn play_again_stops_and_releases() {
-    let Some((_, fw)) = fixture("the song stop test") else {
+fn play_again_stops_the_song_releases_every_voice_and_hands_chip_a_back() {
+    let Some((_, fw)) = build_and_firmware("the song stop test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(3_000);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(100);
-    let chips = fw.chips();
-    let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
-    let chip =
-        chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+    let chip = rendered_sid(&mut m, &fw, 0);
     for v in 0..3u32 {
         let env = chip + (ilp32::sid::env + v as usize * ilp32::sid_env::SIZE) as u32;
         assert_eq!(
@@ -1275,12 +1179,9 @@ fn play_again_stops_and_releases() {
     );
 }
 
-/// The main loop while a song loads: PLAY on the largest example, its analysis a slice a
-/// pass; each slice (song_ctl_poll) within SONG_SLICE_INSTRUCTIONS, each pass within
-/// POLL_INSTRUCTIONS. The start's delay reported.
 #[test]
 fn the_analysis_runs_in_slices_within_the_poll_allowance() {
-    let Some((_, fw)) = fixture("the song pass test") else {
+    let Some((_, fw)) = build_and_firmware("the song pass test") else {
         return;
     };
     let (name, sng) = gt2_ref::examples()
@@ -1294,7 +1195,7 @@ fn the_analysis_runs_in_slices_within_the_poll_allowance() {
     m.watch_calls(fw.symbol("song_ctl_poll"));
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
     let blocks0 = field32(&mut m, &fw, ilp32::song_ctl::blocks);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(1_000);
     let play_block = field32(&mut m, &fw, ilp32::song_ctl::play_block);
     assert!(play_block > 0, "{name} never played");
@@ -1309,87 +1210,37 @@ fn the_analysis_runs_in_slices_within_the_poll_allowance() {
         f64::from(delay) * HALF_FRAMES as f64 * 1000.0 / FS,
         field32(&mut m, &fw, ilp32::song_ctl::slices)
     );
-    assert!(slice <= u64::from(SONG_SLICE_INSTRUCTIONS));
-    assert!(pass <= POLL_INSTRUCTIONS);
+    assert_within_budget("song_ctl_poll", slice, u64::from(SONG_SLICE_INSTRUCTIONS));
+    assert_within_budget("the busiest pass", pass, POLL_INSTRUCTIONS);
 }
 
-/// Parameter locks (M2c Task 7): the first song with the lead's first bar's cutoff locked low
-/// plays bit-exact with the host's render, and that bar is darker than without the locks (less
-/// of its power above 1.5 kHz), the rest as it was.
 #[test]
 fn a_locked_cutoff_plays_a_darker_bar_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the song lock test") else {
+    let Some((_, fw)) = build_and_firmware("the song lock test") else {
         return;
     };
+    const LOW_CUTOFF: u32 = 40;
     let mut song = demo();
-    for row in 0..16 {
+    for row in 0..BAR_ROWS {
         assert_eq!(
-            unsafe { song_lock_put(song.ptr_mut(), 4, row, SONG_LOCK_CUTOFF, 40) },
+            unsafe {
+                song_lock_put(
+                    song.ptr_mut(),
+                    LEAD_FIRST_BAR_PATTERN,
+                    row,
+                    SONG_LOCK_CUTOFF,
+                    LOW_CUTOFF,
+                )
+            },
             0
         );
     }
     let p = check_song("sidou-loop locked", &fw, Some(&song));
-    let host = |s: &Song| {
-        render_host_song(
-            (p.play_block + 400) * HALF_FRAMES + 40 * 6 * 880,
-            &SongPlay {
-                song: s,
-                play_block: p.play_block,
-                ccs: &[],
-                ticks: &[],
-                edits: &[],
-                stop_block: None,
-                b_use_block: p.b_use,
-                b_rewrite_block: p.b_use,
-            },
-        )
-    };
-    // the device's equals the locked host render (check_song); the two host renders compared
-    let (locked, plain) = (host(&song), host(&demo()));
-    let left = |v: &[i16], from: usize, n: usize| -> Vec<f32> {
-        v.iter()
-            .step_by(2)
-            .skip(from)
-            .take(n)
-            .map(|&s| f32::from(s))
-            .collect()
-    };
-    // the bar: 16 rows of 6 calls, 880 samples a call; its middle, from the play's block
-    let from = p.play_block * HALF_FRAMES + 20 * 880;
-    let dark = power_above(&left(&locked, from, 8192), 1500.0);
-    let bright = power_above(&left(&plain, from, 8192), 1500.0);
-    // the bar after next (rows 32-47): the song's own cutoff again
-    let later = from + 32 * 6 * 880;
-    let (l2, p2) = (
-        power_above(&left(&locked, later, 8192), 1500.0),
-        power_above(&left(&plain, later, 8192), 1500.0),
-    );
-    println!(
-        "the power above 1.5 kHz (the whole mix: the bass and drums are not filtered): the \
-         locked bar {dark:.4}, unlocked {bright:.4}; two bars on {l2:.4} and {p2:.4}"
-    );
-    assert!(
-        dark < 0.85 * bright,
-        "the locked bar is not darker: {dark} against {bright}"
-    );
-    assert!(
-        (l2 - p2).abs() <= 0.05 * p2,
-        "the song's cutoff did not return: {l2} against {p2}"
-    );
+    assert_the_locked_bar_is_darker_and_the_next_as_it_was(&p, &song, &demo());
 }
 
-/// app/panel.h: GLO, SEQ and the first note key's id (Felucca's ids).
-const GLO: u8 = PANEL_BTN_GLO as u8;
-const SEQ: u8 = PANEL_BTN_SEQ as u8;
-const KEY0: u8 = 14;
-
-/// Chip A's voice v as the interrupt renders it: its frequency, its control register's
-/// waveform and its envelope's gate.
 fn chip_a_voice(m: &mut Machine, fw: &Firmware, v: usize) -> (u32, u8, u8) {
-    let chips = fw.chips();
-    let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
-    let chip =
-        chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+    let chip = rendered_sid(m, fw, 0);
     let o = chip + (ilp32::sid::osc + v * ilp32::sid_osc::SIZE) as u32;
     let e = chip + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
     (
@@ -1399,18 +1250,14 @@ fn chip_a_voice(m: &mut Machine, fw: &Firmware, v: usize) -> (u32, u8, u8) {
     )
 }
 
-/// The song views' mute (M2d Task 1): GLO held and the leftmost key while SIDOU LOOP plays.
-/// The mute reaches the interrupt within a frame, voice 1's gate goes off and its writes
-/// stop (chip A's voice stays as it was while the song plays on), the other voices play on;
-/// GLO and the key again give it back.
 #[test]
-fn glo_and_the_first_key_mute_voice_1_and_its_writes_stop() {
-    let Some((_, fw)) = fixture("the song mute test") else {
+fn glo_and_the_first_key_mute_voice_1_within_a_frame_and_again_give_it_back() {
+    let Some((_, fw)) = build_and_firmware("the song mute test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(2_000);
     let t = transport(&fw);
     let mut before = std::collections::HashSet::new();
@@ -1419,21 +1266,23 @@ fn glo_and_the_first_key_mute_voice_1_and_its_writes_stop() {
         before.insert(chip_a_voice(&mut m, &fw, 0).0);
     }
     assert!(before.len() > 2, "voice 1 plays: {before:?}");
-    m.key(GLO, true);
-    m.run_ms(30);
-    m.key(KEY0, true);
-    let from = m.ms();
-    while m.soc.read8(t + ilp32::song_ctl::mute as u32) != 1 {
-        m.run_ms(1);
-        assert!(m.ms() - from <= 40, "the mute took more than a frame");
-    }
-    println!(
-        "the mute reached the interrupt {} ms after the key",
-        m.ms() - from
-    );
-    m.key(KEY0, false);
-    m.key(GLO, false);
-    m.run_ms(40);
+    holding(&mut m, GLO, |m| {
+        m.key(KEY0, true);
+        let from = m.ms();
+        while m.soc.read8(t + ilp32::song_ctl::mute as u32) != 1 {
+            m.run_ms(1);
+            assert!(
+                m.ms() - from <= UI_FRAME_MS,
+                "the mute took more than a frame"
+            );
+        }
+        println!(
+            "the mute reached the interrupt {} ms after the key",
+            m.ms() - from
+        );
+        m.key(KEY0, false);
+    });
+    m.run_ms(UI_FRAME_MS);
     let held = chip_a_voice(&mut m, &fw, 0);
     assert_eq!(held.2, 0, "voice 1's gate off");
     let mut others = std::collections::HashSet::new();
@@ -1450,12 +1299,7 @@ fn glo_and_the_first_key_mute_voice_1_and_its_writes_stop() {
         ));
     }
     assert!(others.len() > 2, "voices 2 and 3 play on");
-    m.key(GLO, true);
-    m.run_ms(30);
-    m.key(KEY0, true);
-    m.run_ms(30);
-    m.key(KEY0, false);
-    m.key(GLO, false);
+    chord(&mut m, GLO, KEY0);
     let mut after = std::collections::HashSet::new();
     for _ in 0..100 {
         m.run_ms(20);
@@ -1465,24 +1309,18 @@ fn glo_and_the_first_key_mute_voice_1_and_its_writes_stop() {
     assert!(after.len() > 2, "voice 1 plays again: {after:?}");
 }
 
-/// KEYS A over a playing song (the M2 review's 2.1): a MIDI note takes its voice from the song
-/// before the note's first register reaches chip A, so the song never writes over the note.
-/// SIDOU LOOP plays on chip A with the keys on it; notes come in over TRS at phases spread
-/// over the song's 20 ms calls, and every held note's voice keeps the frequency the keys
-/// wrote (live's freq_out) and its gate until its note-off; the voice then plays the song
-/// again.
 #[test]
 fn keys_a_over_a_playing_song_keeps_every_midi_notes_pitch_and_gate() {
-    let Some((_, fw)) = fixture("the KEYS A song test") else {
+    let Some((_, fw)) = build_and_firmware("the KEYS A song test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    let l = m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32);
+    let l = ui_live(&mut m, &fw);
     m.soc
         .write8(l + ilp32::live::keys_mode as u32, LIVE_KEYS_A as u8);
     m.run_ms(100);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(2_000);
     let t = transport(&fw);
     assert_eq!(m.soc.read8(t + ilp32::song_ctl::isr_playing as u32), 1);
@@ -1511,7 +1349,6 @@ fn keys_a_over_a_playing_song_keeps_every_midi_notes_pitch_and_gate() {
             assert!(m.ms() - from < 30, "attempt {i}: the note took no voice");
             m.run_ms(1);
         };
-        // The keys' registers reach chip A within the main loop's latency, and stay.
         let mut held = 0;
         for ms in 0..60 {
             let (gate, freq) = gated(&mut m, v);
@@ -1534,7 +1371,6 @@ fn keys_a_over_a_playing_song_keeps_every_midi_notes_pitch_and_gate() {
         "the song wrote over the keys' note (attempt, voice, ms it held, the keys' freq, \
          chip A's freq, control, envelope gate): {overwritten:?}"
     );
-    // Given back: the voices play the song again.
     let mut heard = std::collections::HashSet::new();
     for _ in 0..100 {
         m.run_ms(20);
@@ -1543,13 +1379,9 @@ fn keys_a_over_a_playing_song_keeps_every_midi_notes_pitch_and_gate() {
     assert!(heard.len() > 2, "voice 1 plays the song again: {heard:?}");
 }
 
-/// The audition (M2d Task 1): in TRACKER with the song stopped, a key sounds the song's
-/// instrument on the cursor's voice (voice 1) on chip A, its release lets it go, no row is
-/// read (the song stays where it was: never played), and two seconds later chip A goes back
-/// to the keys.
 #[test]
-fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
-    let Some((_, fw)) = fixture("the song audition test") else {
+fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped_and_hands_chip_a_back() {
+    let Some((_, fw)) = build_and_firmware("the song audition test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
@@ -1559,7 +1391,7 @@ fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
     m.run_ms(500);
     let t = transport(&fw);
     let from = m.ms();
-    m.key(KEY0 + 16, true); // A4
+    m.key(A4_KEY, true);
     while chip_a_voice(&mut m, &fw, 0).2 == 0 {
         m.run_ms(1);
         assert!(m.ms() - from <= 400, "the audition did not sound");
@@ -1573,7 +1405,7 @@ fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
     for v in 1..3 {
         assert_eq!(chip_a_voice(&mut m, &fw, v).2, 0, "voice {} silent", v + 1);
     }
-    m.key(KEY0 + 16, false);
+    m.key(A4_KEY, false);
     m.run_ms(100);
     assert_eq!(chip_a_voice(&mut m, &fw, 0).2, 0, "released");
     assert_eq!(field32(&mut m, &fw, ilp32::song_ctl::handed_back), 0);
@@ -1590,37 +1422,19 @@ fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
     );
 }
 
-/// MASTER scales a playing song (the hardware test's first find: a song played at full volume
-/// whatever the pot said, its own $D418 writes, 15, overriding the chip volume MASTER used to
-/// set). With the pot at 1023, 256 and 64 the firmware's audio equals the host's render of the
-/// same song through the same MASTER gain stage, sample for sample; the loudest sample scales
-/// as the pot does; and at full MASTER the output is the song's, as before the fix (the host
-/// render at unity, which is what the bit-exact tests above compare with at POT).
 #[test]
 fn master_scales_a_playing_song_and_full_master_leaves_it_alone() {
-    let Some((_, fw)) = fixture("the MASTER song test") else {
+    let Some((_, fw)) = build_and_firmware("the MASTER song test") else {
         return;
     };
     let s = demo();
     let peak = |a: &[i16]| a.iter().map(|&v| i32::from(v).abs()).max().unwrap_or(0);
     let mut full_peak = 0;
-    for pot in [1023u16, 256, 64] {
+    const FULL_MASTER: u16 = 1023;
+    for pot in [FULL_MASTER, 256, 64] {
         let p = play_at_pot(&fw, Some(pot), None, PLAY_MS, |_| {}, |_, _| {});
         let r = matches(&p, |frames, rewrite| {
-            render_host_song_master(
-                frames,
-                &SongPlay {
-                    song: &s,
-                    play_block: p.play_block,
-                    ccs: &[],
-                    ticks: &[],
-                    edits: &[],
-                    stop_block: None,
-                    b_use_block: p.b_use,
-                    b_rewrite_block: rewrite,
-                },
-                pot,
-            )
+            render_host_song_master(frames, &plain_play(&s, p.play_block, p.b_use, rewrite), pot)
         });
         let loudest = peak(&p.audio);
         println!("MASTER {pot}: peak {loudest}: {r:?}");
@@ -1628,14 +1442,13 @@ fn master_scales_a_playing_song_and_full_master_leaves_it_alone() {
             r.is_ok(),
             "pot {pot}: the firmware differs from the host: {r:?}"
         );
-        if pot == 1023 {
+        if pot == FULL_MASTER {
             full_peak = loudest;
             assert!(
-                full_peak > 1000,
+                full_peak > AUDIBLE_PEAK,
                 "the song is silent: the scaling would be vacuous"
             );
         } else {
-            // the audio taper (app/master_gain.h): the pot's gain as a share of unity
             let gain = unsafe { master_gain_of(u32::from(pot), LIVE_MASTER_MAX) };
             let want = f64::from(full_peak) * f64::from(gain) / f64::from(MASTER_UNITY);
             assert!(
@@ -1646,33 +1459,24 @@ fn master_scales_a_playing_song_and_full_master_leaves_it_alone() {
     }
 }
 
-/// REC while the song plays (M2d Task 6): with SIDOU LOOP playing at tempo 6 (six calls a row)
-/// in TRACKER and REC on, a key script timed against the player's own call count lands on the
-/// expected rows (a key a quarter or less into a row on that row, three quarters or more on the
-/// next: the nearest), the K1 turns become cutoff locks on the rows they were turned in, the
-/// pattern the firmware holds is the expected one (cell writes and the lock table only), and
-/// playing that song again is bit-exact with the host's render.
 #[test]
 fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact() {
-    let Some((_, fw)) = fixture("the REC recording test") else {
+    let Some((_, fw)) = build_and_firmware("the REC recording test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
     let mut expected = demo();
-    let order = unsafe { gt2_order_data(expected.ptr(), 0, 0) };
-    let pattern = u32::from(unsafe { *order });
+    let pattern = first_pattern_of_voice(&expected, 0);
     let t = transport(&fw);
     press(&mut m, SEQ);
     m.run_ms(300);
     press(&mut m, SEQ);
     m.run_ms(500);
-    press(&mut m, PANEL_BTN_REC as u8);
+    press(&mut m, REC);
     m.run_ms(100);
-    press(&mut m, PLAY);
+    press_up_at_once(&mut m, PLAY);
     let calls = |m: &mut Machine| m.soc.read32(t + ilp32::song_ctl::calls as u32);
-    // The play starts from a fast-forwarded hand-over, so its call count does not begin at
-    // the first row: the calls are counted from the first row the player starts after PLAY.
     let row_of = |m: &mut Machine| m.soc.read8(t + ilp32::song_ctl::row_row as u32);
     let from = m.ms();
     let first = row_of(&mut m);
@@ -1680,16 +1484,15 @@ fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact(
         m.run_ms(1);
         assert!(m.ms() - from < 3_000, "the song never started");
     }
-    let (base, row0) = (calls(&mut m) - 1, u32::from(row_of(&mut m)));
-    // (call of the row a key is pressed in, which key): in calls from the play's start,
-    // the row's own call 0, 1, 4 or 5 (the key goes 10 ms into the call: 0.5 of a call).
-    let script: [(u32, u8); 4] = [(1, 16), (4, 18), (5, 20), (0, 23)];
-    let mut landed: Vec<(u32, u8)> = Vec::new(); // (row, key)
+    let (first_row_call, row0) = (calls(&mut m) - 1, u32::from(row_of(&mut m)));
+    const HALF_A_CALL_MS: u64 = 10;
+    const ROWS_BETWEEN_KEYS: u32 = 3;
+    let call_in_row_and_key: [(u32, u8); 4] = [(1, 16), (4, 18), (5, 20), (0, 23)];
+    let mut landed_rows_and_keys: Vec<(u32, u8)> = Vec::new();
     let mut knob_rows: Vec<u32> = Vec::new();
-    let mut at_row = row0 + 2; // the row the first key's call is on
-    for (i, &(phase, key)) in script.iter().enumerate() {
-        // Wait for call `phase` of row `at_row` (calls from the play's start), then half a call.
-        let want = base + 6 * (at_row - row0) + phase;
+    let mut key_row = row0 + 2;
+    for (i, &(call_in_row, key)) in call_in_row_and_key.iter().enumerate() {
+        let want = first_row_call + CALLS_A_ROW as u32 * (key_row - row0) + call_in_row;
         let from = m.ms();
         loop {
             let n = calls(&mut m).wrapping_sub(1);
@@ -1700,59 +1503,36 @@ fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact(
             m.run_ms(1);
             assert!(m.ms() - from < 6_000, "call {want} never came");
         }
-        m.run_ms(10);
-        // The premise: the player is on the row the calls say (tempo 6, from row 0).
+        m.run_ms(HALF_A_CALL_MS);
         let row_now = u32::from(row_of(&mut m));
-        assert_eq!(row_now, at_row, "voice 1's row at call {want}");
-        m.key(PANEL_KEY_ID0 as u8 + key, true);
-        m.run_ms(30);
-        m.key(PANEL_KEY_ID0 as u8 + key, false);
-        // phase 0 and 1 are before halfway into the row: that row; 4 and 5: the next.
-        let row = at_row + u32::from(phase >= 3);
-        landed.push((row, key));
-        if i == 1 || i == 3 {
-            // A K1 turn on the row the player is on now.
+        assert_eq!(row_now, key_row, "voice 1's row at call {want}");
+        press_up_at_once(&mut m, KEY0 + key);
+        let past_halfway = call_in_row >= CALLS_A_ROW as u32 / 2;
+        landed_rows_and_keys.push((key_row + u32::from(past_halfway), key));
+        let turns_k1_after = i == 1 || i == 3;
+        if turns_k1_after {
             m.run_ms(20);
             let r = u32::from(row_of(&mut m));
-            m.turn(PANEL_ENC_K1 as u8, if i == 1 { 2 } else { 1 });
+            m.turn(K1, if i == 1 { 2 } else { 1 });
             knob_rows.push(r);
         }
-        at_row += 3;
+        key_row += ROWS_BETWEEN_KEYS;
     }
     m.run_ms(400);
-    press(&mut m, PLAY); // stop
+    press_up_at_once(&mut m, PLAY);
     m.run_ms(500);
-    for &(row, key) in &landed {
-        let d = unsafe { gt2_pattern_data(expected.ptr(), pattern).add(row as usize * 4) };
-        let mut cell: [u8; 4] = unsafe { std::slice::from_raw_parts(d, 4) }
-            .try_into()
-            .unwrap();
-        cell[0] = (GT2_FIRSTNOTE + PANEL_BASE_NOTE + u32::from(key) - 12) as u8;
+    for &(row, key) in &landed_rows_and_keys {
+        let mut cell = cell_of(&expected, pattern, row);
+        cell[0] = key_note(key);
         cell[1] = 1;
-        let mut edit = gt2_edit::default();
-        unsafe {
-            assert_eq!(
-                gt2_set_row(expected.ptr_mut(), pattern, row, cell.as_ptr(), &mut edit),
-                GT2_OK
-            );
-            gt2_edit_commit(expected.ptr_mut(), &edit);
-        }
+        set_cell(&mut expected, pattern, row, cell);
     }
-    let mut actual = Song::device();
-    let base = fw.symbol("__song_region");
-    let bytes = unsafe {
-        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
-    };
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = m.soc.read8(base + i as u32);
-    }
+    let actual = region_song(&mut m, &fw);
     assert_eq!(
         actual.write(false),
         expected.write(false),
-        "the keys, timed, wrote the expected rows ({landed:?})"
+        "the keys, timed, wrote the expected rows ({landed_rows_and_keys:?})"
     );
-    // The locks: two K1 turns, the second 32 above the first (1 detent after 2), on the rows
-    // the player was on.
     let mut recs = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
     let n = unsafe { song_ext_get_locks(actual.ptr(), recs.as_mut_ptr(), SONG_LOCKS_MAX) } as usize;
     let got: Vec<(u32, u32, u32)> = recs[..n]
@@ -1769,14 +1549,10 @@ fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact(
     );
     assert_eq!(
         u32::from(recs[1].value),
-        u32::from(recs[0].value) + 32,
+        u32::from(recs[0].value) + u32::from(CUTOFF_DETENT),
         "K1's detents are 32 apart"
     );
-    for (tag, data) in actual.ext_chunks() {
-        if tag != sidou_tests::song::TAG_LOCK && expected.ext_find(tag).is_none() {
-            assert_eq!(expected.ext_set(tag, &data), 0, "setup chunk {tag:#x}");
-        }
-    }
+    adopt_the_auditions_setup_chunks(&actual, &mut expected);
     for l in &recs[..n] {
         assert_eq!(
             unsafe {
@@ -1799,12 +1575,9 @@ fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact(
     check_song("REC-recorded pattern", &fw, Some(&actual));
 }
 
-/// PLAY's LED (app/panel.c): dark while stopped; with the song playing dim between the beats and
-/// lit for the first quarter of each, which the emulator's LED lines show as a level well above
-/// the dim glow's (the HAL's glow is a pulse a thirtieth as long).
 #[test]
 fn the_play_led_is_dim_between_beats_and_lit_on_each_beat() {
-    let Some((_, fw)) = fixture("the PLAY LED test") else {
+    let Some((_, fw)) = build_and_firmware("the PLAY LED test") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
@@ -1817,8 +1590,8 @@ fn the_play_led_is_dim_between_beats_and_lit_on_each_beat() {
         0.0,
         "stopped: dark"
     );
-    press(&mut m, PLAY);
-    m.run_ms(1500); // the load, and the first beats
+    press_up_at_once(&mut m, PLAY);
+    m.run_ms(1500);
     m.soc.periph.led_take();
     let mut levels = Vec::new();
     for _ in 0..400 {
@@ -1837,9 +1610,6 @@ fn the_play_led_is_dim_between_beats_and_lit_on_each_beat() {
     );
 }
 
-/// The SID drum kit (core/song/gt2_kit.h) on voices 2 and 3, and on voice 1 a digi drum
-/// (decision record 0009): the kit's kick, marked by the DIGI chunk as the built-in KICK, every
-/// row (`every_row`) or on the beat.
 fn kit_digi_song(every_row: bool) -> Song {
     use sidou_tests::song::SngSpec;
     let kit = |d: u32| unsafe {
@@ -1850,7 +1620,7 @@ fn kit_digi_song(every_row: bool) -> Song {
     let mut dg = kit(GT2_KIT_KICK);
     dg[GT2_INS_NAME as usize..].fill(0);
     dg[GT2_INS_NAME as usize..][..7].copy_from_slice(b"DG KICK");
-    s.instr.push(dg); // instrument 9
+    s.instr.push(dg);
     let (wave, pulse) = unsafe {
         (
             (&raw const gt2_kit_wave).read(),
@@ -1872,19 +1642,24 @@ fn kit_digi_song(every_row: bool) -> Song {
         vec![],
     ];
     let r = [GT2_REST as u8, 0, 0, 0];
-    let note = |i: u8| [GT2_FIRSTNOTE as u8 + 36, i, 0, 0];
+    let note = |i: u8| [GT2_FIRSTNOTE as u8 + C3, i, 0, 0];
+    let kit_instrument = |drum: u32| drum as u8 + 1;
     let mut v1 = vec![r; 16];
     let mut v2 = vec![r; 16];
     let mut v3 = vec![r; 16];
     for k in 0..16 {
         if every_row || k % 4 == 0 {
-            v1[k] = note(9);
+            v1[k] = note(DIGI_KICK_INSTRUMENT);
         }
-        v3[k] = note(if k == 14 { 4 } else { 3 }); // the hats
+        v3[k] = note(kit_instrument(if k == 14 {
+            GT2_KIT_OPEN_HAT
+        } else {
+            GT2_KIT_CLOSED_HAT
+        }));
     }
-    v2[4] = note(2);
-    v2[12] = note(2);
-    v2[10] = note(5); // the clap
+    v2[4] = note(kit_instrument(GT2_KIT_SNARE));
+    v2[12] = note(kit_instrument(GT2_KIT_SNARE));
+    v2[10] = note(kit_instrument(GT2_KIT_CLAP));
     s.patterns = vec![
         (v1, [0xff, 0, 0, 0]),
         (v2, [0xff, 0, 0, 0]),
@@ -1892,36 +1667,29 @@ fn kit_digi_song(every_row: bool) -> Song {
     ];
     let mut song = device_song(&s.encode(), None);
     assert_eq!(
-        song.ext_set(sidou_tests::song::tag(b"DIGI"), &[1, 1, 9, 1]),
+        song.ext_set(
+            sidou_tests::song::tag(b"DIGI"),
+            &[1, 1, DIGI_KICK_INSTRUMENT, SONG_DIGI_KICK as u8]
+        ),
         0
     );
     song
 }
 
-/// The SID drum kit and a digi drum play on the device as the host renders them, sample for
-/// sample: the digi's codes from its notes' calls on, its voice muted for its instrument's own
-/// sound, the kit on the chip.
 #[test]
 fn the_drum_kit_and_a_digi_drum_play_bit_exact_with_the_host() {
-    let Some((_, fw)) = fixture("the drum kit test") else {
+    let Some((_, fw)) = build_and_firmware("the drum kit test") else {
         return;
     };
     check_song("kit and digi", &fw, Some(&kit_digi_song(false)));
 }
 
-/// DIGI_PER_SAMPLE: what the digi drums cost the audio interrupt while one plays.
 #[test]
-fn a_playing_digi_drum_costs_the_interrupt_its_bound() {
-    let Some((_, fw)) = fixture("the digi cost test") else {
+fn a_playing_digi_drum_costs_the_interrupt_within_digi_per_sample() {
+    let Some((_, fw)) = build_and_firmware("the digi cost test") else {
         return;
     };
-    use object::{Object, ObjectSymbol};
-    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
-    let f = file
-        .symbols()
-        .find(|s| s.name() == Ok("song_ctl_block_end"))
-        .expect("song_ctl_block_end");
-    let range = f.address() as u32..(f.address() + f.size()) as u32;
+    let range = fw.function_range("song_ctl_block_end");
     let mut window = None;
     let song = kit_digi_song(true);
     play_after(
@@ -1930,12 +1698,11 @@ fn a_playing_digi_drum_costs_the_interrupt_its_bound() {
         3000,
         |_| {},
         |m, elapsed| {
-            // from a second in (the song started, its digi playing), for a second
-            if elapsed == 1030 {
+            if elapsed == 1000 + PRESS_MS {
                 m.watch_alnk_pcs(range.clone());
                 m.alnk_pcs_inside = 0;
                 window = Some((m.alnk_blocks.len(), 0));
-            } else if elapsed == 2030 {
+            } else if elapsed == 2000 + PRESS_MS {
                 let (from, _) = window.unwrap();
                 window = Some((from, m.alnk_blocks.len()));
                 let n = (m.alnk_blocks.len() - from) as f64 * HALF_FRAMES as f64;
@@ -1945,10 +1712,7 @@ fn a_playing_digi_drum_costs_the_interrupt_its_bound() {
                     serde_json::json!({ "digi_instructions_per_sample": digi })
                 );
                 assert!(digi > 3.0, "no digi played: {digi:.2} a sample");
-                assert!(
-                    digi <= DIGI_PER_SAMPLE,
-                    "the digi drums cost {digi:.2} a sample, over {DIGI_PER_SAMPLE}"
-                );
+                assert_within_budget("the digi drums a sample", digi, DIGI_PER_SAMPLE);
             }
         },
     );
@@ -1958,7 +1722,6 @@ fn a_playing_digi_drum_costs_the_interrupt_its_bound() {
     );
 }
 
-/// The firmware's song_ctl draft (1.1, song_ctl_draft): channel, first row, rows.
 fn draft_of(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
     let d = transport(fw) + ilp32::song_ctl::draft as u32;
     (
@@ -1968,7 +1731,6 @@ fn draft_of(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
     )
 }
 
-/// Voice 1's frequency every 5 ms for `ms`.
 fn freqs_for(m: &mut Machine, fw: &Firmware, ms: u64) -> Vec<u32> {
     (0..ms / 5)
         .map(|_| {
@@ -1978,41 +1740,34 @@ fn freqs_for(m: &mut Machine, fw: &Firmware, ms: u64) -> Vec<u32> {
         .collect()
 }
 
-/// 1.1: TABLE's ARP helper heard before SAVE. The helper opens on row 01 (the first song's own
-/// one-step program) and the draft is on voice 1 (the cursor's); made two steps, the second an
-/// octave up, looping, a key held there plays both on chip A (the highest twice the lowest); a K2
-/// turn on step 2 is heard on the held note at once; HOME takes the draft off with nothing
-/// written.
 #[test]
-fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
-    let Some((_, fw)) = fixture("the ARP helper's audition") else {
+fn the_arp_helpers_draft_plays_on_chip_a_before_save_and_home_takes_it_off_unwritten() {
+    let Some((_, fw)) = build_and_firmware("the ARP helper's audition") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
-    for _ in 0..5 {
-        press(&mut m, SEQ); // STEP, TRACKER, ORDER, INSTR, TABLE
-        m.run_ms(300);
-    }
+    open_song_pages(&mut m, PAGES_TO_TABLE, 300);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("song_pages_table_view"));
     let region = fw.symbol("__song_region");
     let before: Vec<u8> = (0..SONG_REGION_BYTES)
         .map(|i| m.soc.read8(region + i))
         .collect();
-    press(&mut m, PANEL_BTN_ARP as u8);
+    press(&mut m, ARP);
     m.run_ms(200);
     assert_eq!(
         draft_of(&mut m, &fw),
         (0, 1, 2),
         "the draft on voice 1 from row 01"
     );
-    m.turn(PANEL_ENC_ALGORITHM as u8, 1); // two steps
+    let (two_steps, to_step_2, an_octave, looping_at_step_1) = (1, 1, 1, 1);
+    m.turn(ALGORITHM, two_steps);
     m.run_ms(100);
-    m.turn(PANEL_ENC_SELECT as u8, 1); // on step 2
+    m.turn(SELECT, to_step_2);
     m.run_ms(100);
-    m.turn(PANEL_ENC_K1 as u8, 1); // an octave
+    m.turn(K1, an_octave);
     m.run_ms(100);
-    m.turn(PANEL_ENC_K1 as u8 + 3, 1); // looping at step 1
+    m.turn(K4, looping_at_step_1);
     m.run_ms(200);
     assert_eq!(draft_of(&mut m, &fw), (0, 1, 3), "each change heard");
     m.key(KEY0 + 12, true);
@@ -2028,8 +1783,8 @@ fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
         (ratio - 2.0).abs() < 0.02,
         "an octave over the lowest: {ratio}"
     );
-    // K2 on step 2: a semitone more, on the held note
-    m.turn(PANEL_ENC_K1 as u8 + 1, 1);
+    let a_semitone = 1;
+    m.turn(K2, a_semitone);
     m.run_ms(100);
     let g = freqs_for(&mut m, &fw, 400);
     let top = *g.iter().max().unwrap();
@@ -2040,7 +1795,7 @@ fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
     );
     m.key(KEY0 + 12, false);
     m.run_ms(200);
-    press(&mut m, PANEL_BTN_HOME as u8);
+    press(&mut m, HOME);
     m.run_ms(200);
     assert_eq!(
         draft_of(&mut m, &fw).0,
@@ -2053,56 +1808,51 @@ fn the_arp_helpers_draft_plays_on_chip_a_before_save() {
     assert!(before == after, "nothing written");
 }
 
-/// 1.1: a held STEP step plays its locks. A cutoff lock put on step 1 of the lead's first bar
-/// (K1 with the step held), then the step held again: chip A's cutoff is the lock's while the key
-/// is down, the song's own once it is let go, and the lock is pinned only while held.
 #[test]
-fn a_held_step_sounds_its_cutoff_lock_on_chip_a() {
-    let Some((_, fw)) = fixture("the held step's audition") else {
+fn a_held_step_sounds_its_cutoff_lock_on_chip_a_only_while_held() {
+    let Some((_, fw)) = build_and_firmware("the held step's audition") else {
         return;
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
     press(&mut m, SEQ);
-    m.run_ms(500); // STEP, V1
+    m.run_ms(500);
     let t = transport(&fw);
     let pin = t + ilp32::song_ctl::lock_pin as u32;
     let chip_fc = |m: &mut Machine| {
-        let chips = fw.chips();
-        let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
-        let chip =
-            chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+        let chip = rendered_sid(m, &fw, 0);
         m.soc.read32(chip + ilp32::sid::fc as u32)
     };
-    m.key(KEY0, true);
-    m.run_ms(60);
-    m.turn(PANEL_ENC_K1 as u8, -30); // 1024 - 30 * 32 = 64
-    m.run_ms(300);
-    assert_eq!(chip_fc(&mut m), 64, "the turn heard at once");
-    assert_eq!(m.soc.read8(pin) & 1, 1, "pinned while held");
-    m.key(KEY0, false);
+    holding(&mut m, KEY0, |m| {
+        m.turn(K1, CUTOFF_DOWN_TO_64);
+        m.run_ms(300);
+        assert_eq!(chip_fc(m), u32::from(CUTOFF_64), "the turn heard at once");
+        assert_eq!(m.soc.read8(pin) & 1, 1, "pinned while held");
+    });
     m.run_ms(300);
     assert_eq!(m.soc.read8(pin), 0, "let go");
-    m.run_ms(2500); // the audition ends
+    const AUDITION_ENDS_MS: u64 = 2500;
+    m.run_ms(AUDITION_ENDS_MS);
     m.key(KEY0, true);
     m.run_ms(200);
-    assert_eq!(chip_fc(&mut m), 64, "held again: its lock");
+    assert_eq!(
+        chip_fc(&mut m),
+        u32::from(CUTOFF_64),
+        "held again: its lock"
+    );
     m.key(KEY0, false);
     m.run_ms(300);
     assert_eq!(m.soc.read8(pin), 0);
-    assert_ne!(chip_fc(&mut m), 64, "the song's own cutoff after it");
+    assert_ne!(
+        chip_fc(&mut m),
+        u32::from(CUTOFF_64),
+        "the song's own cutoff after it"
+    );
 }
 
-/// 1.1 release blocker: the ARP helper on an empty row of the built-in loop, stopped. On the
-/// FM-1 it rebooted: song_draft copied the draft word by word to song_ctl.draft at an odd
-/// address, and the chip faults on a misaligned word access (fm1-emu carries it out, so the
-/// machine here fails on them). For each row (the first blank one after the
-/// song's, one in the middle, and the last ones, where a draft would run past row FF), a fresh
-/// boot, TABLE, the WAVE table, SELECT to the row, ARP, two seconds and a key: no reset, and no
-/// access the chip would fault on.
 #[test]
 fn the_arp_helper_on_an_empty_row_of_the_built_in_loop_does_not_crash() {
-    let Some((_, fw)) = fixture("the ARP helper on a blank row") else {
+    let Some((_, fw)) = build_and_firmware("the ARP helper on a blank row") else {
         return;
     };
     let song = transport(&fw) + ilp32::song_ctl::song as u32;
@@ -2126,19 +1876,17 @@ fn the_arp_helper_on_an_empty_row_of_the_built_in_loop_does_not_crash() {
     for row in [used, 0x80, 0xf5, 0xfe] {
         let mut m = Machine::boot(&fw.image);
         run_past_boot(&mut m, &fw);
-        for _ in 0..5 {
-            press(&mut m, SEQ); // STEP, TRACKER, ORDER, INSTR, TABLE
-            m.run_ms(300);
-        }
+        open_song_pages(&mut m, PAGES_TO_TABLE, 300);
         assert_eq!(top_view(&mut m, &fw), fw.symbol("song_pages_table_view"));
-        for _ in 0..row / 8 {
-            m.turn(PANEL_ENC_SELECT as u8, 8);
+        const TABLE_PAGE: u32 = 8;
+        for _ in 0..row / TABLE_PAGE {
+            m.turn(SELECT, TABLE_PAGE as i32);
             m.run_ms(100);
         }
-        m.turn(PANEL_ENC_SELECT as u8, (row % 8) as i32);
+        m.turn(SELECT, (row % TABLE_PAGE) as i32);
         m.run_ms(200);
         assert_eq!(wave(&mut m, row), (0, 0), "row {row:02X} blank");
-        press(&mut m, PANEL_BTN_ARP as u8);
+        press(&mut m, ARP);
         m.run_ms(1000);
         let d = draft_of(&mut m, &fw);
         println!("row {row:02X}: draft {d:?}");
