@@ -113,9 +113,22 @@ int song_io_load(song_io* io, const char* name, int confirmed) {
     }
     io->action = LOAD_FILE;
     io->restoring = 0;
+    io->keys_kept = 0;
     io->failure[0] = 0;
     io->state = SONG_IO_STOP;
     return 1;
+}
+
+int song_io_load_last(song_io* io, const char* name) {
+    if (!song_io_load(io, name, 1)) {
+        return 0;
+    }
+    io->keys_kept = 1;
+    return 1;
+}
+
+int song_io_keeps_keys(const song_io* io) {
+    return io->keys_kept;
 }
 
 int song_io_load_builtin(song_io* io, int confirmed) {
@@ -451,6 +464,7 @@ static void start_read(song_io* io) {
 
 static void read_failed(song_io* io, const char* reason, int touched) {
     io->keeping = 0;
+    io->keys_kept = 0;
     if (io->restoring || io->action == LOAD_RESTORE) {
         text(io->message, "SONG: RELOAD FAILED");
         io->state = SONG_IO_IDLE;
@@ -510,6 +524,7 @@ static void read_done(song_io* io) {
         io->saved_live = io->hooks.generation(io->hooks.ctx);
     }
     io->keeping = 0;
+    io->keys_kept = 0;
     io->fid = io->builtin || io->action == LOAD_NEW ? 0u : io->file.fid;
     io->state = SONG_IO_IDLE;
     if (io->action != LOAD_ABOUT || io->restoring) {

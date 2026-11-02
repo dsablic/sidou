@@ -6,7 +6,8 @@ mod common;
 use std::ffi::CString;
 
 use common::panel::{
-    press, wait_for_within, ALGORITHM, HOME, KEY0, PLAY, PRESETS, SAVE, SELECT, SEQ,
+    holding, press, turn, wait_for_within, ALGORITHM, EDIT, HOME, KEY0, PLAY, PRESETS, SAVE,
+    SELECT, SEQ,
 };
 use common::*;
 use fm1_core::Bus;
@@ -42,6 +43,9 @@ const SERVICE_HOLDING: u32 = 31;
 const SAVE_FAILS_WITHIN_MS: u64 = 500;
 const SETTINGS_REC_CARDS: usize = 1;
 const SETTINGS_REC_ROWS: usize = 106;
+const SETTINGS_REC_DISTORTION: usize = 22;
+const LOFI: i32 = SID_DIST_LOFI as i32;
+const REST_MS: u64 = 500;
 const SETTINGS_DEBOUNCE_MS: u64 = 6_000;
 const RESET_STORED_WITHIN_MS: u64 = 3_000;
 const GATE_ON: u8 = 0xff;
@@ -419,6 +423,49 @@ fn saved_song_survives_reboot_stopped_and_plays_bit_exact() {
     assert_eq!(song(&mut m, &fw).write(true), bytes);
     assert_bit_exact(&mut m, &fw, &expected);
     check_passes(&m, "boot load and playback");
+}
+
+fn distortion(m: &mut Machine, fw: &Firmware) -> u8 {
+    m.soc
+        .read8(fw.symbol("instrument") + (ilp32::live::slot + LIVE_SLOT_ALGORITHM as usize) as u32)
+}
+
+#[test]
+fn the_last_song_at_power_on_leaves_the_keys_effects_as_the_settings_kept_them() {
+    let Some(fw) = firmware("the song store tests") else {
+        return;
+    };
+    let mut m = boot(&fw, None);
+    holding(&mut m, EDIT, |m| turn(m, ALGORITHM, LOFI));
+    assert_eq!(
+        distortion(&mut m, &fw),
+        LOFI as u8,
+        "EDIT + ALGORITHM picked LO-FI"
+    );
+    complete(&mut m, &fw, SAVE_AS, "NIGHT");
+    holding(&mut m, EDIT, |m| turn(m, ALGORITHM, -LOFI));
+    until(&mut m, "the settings keep the distortion off", |m| {
+        stored_value(&m.soc.flash.mem, SETTINGS_KEY)
+            .is_some_and(|r| r[SETTINGS_REC_DISTORTION] == 0)
+    });
+    let flash = m.soc.flash.mem.clone();
+    let mut m = boot(&fw, Some(&flash));
+    assert_eq!(
+        name(&mut m, &fw),
+        "NIGHT",
+        "the last song was not loaded at boot"
+    );
+    assert_eq!(
+        distortion(&mut m, &fw),
+        0,
+        "the boot's song load switched the song's LO-FI back on over the settings"
+    );
+    let rest = record(&mut m, REST_MS);
+    assert!(
+        rest.iter().all(|&s| s == 0.0),
+        "the keys hiss at rest after the boot: peak {}",
+        peak(&rest)
+    );
 }
 
 #[test]

@@ -73,6 +73,7 @@ typedef struct {
     uint8_t external;
     uint8_t away;
     uint8_t keeping;
+    uint8_t keys_kept;
 } song_io;
 
 void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* workspace,
@@ -83,6 +84,8 @@ int song_io_busy(const song_io* io);
 int song_io_saving(const song_io* io);
 int song_io_listed(const store_file* file);
 int song_io_load(song_io* io, const char* name, int confirmed);
+int song_io_load_last(song_io* io, const char* name);
+int song_io_keeps_keys(const song_io* io);
 int song_io_program(song_io* io, uint32_t program);
 int song_io_load_builtin(song_io* io, int confirmed);
 int song_io_new(song_io* io, int confirmed);

@@ -623,11 +623,12 @@ static int song_loaded(void* ctx) {
     song_base_valid = 0;
     song_keys keys;
     song_apply_midi(&setup);
-    if (song_ext_get_keys(s, &keys)) {
+    const int keys_from_song = !song_io_keeps_keys(&songs);
+    if (keys_from_song && song_ext_get_keys(s, &keys)) {
         song_apply_keys(keys.param, keys.count, keys.preset);
     }
     song_slots slots;
-    if (song_ext_get_slots(s, &slots)) {
+    if (keys_from_song && song_ext_get_slots(s, &slots)) {
         for (uint32_t k = 0; k < slots.count && k < LIVE_SLOTS; k++) {
             for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
                 live_param_set(&instrument, LIVE_PARAM_SLOT + k * LIVE_SLOT_FIELDS + f,
@@ -2329,7 +2330,7 @@ static void sidou_main(void) {
     song_io_init(&songs, audio_song(), store_fm1(), ui_settings(), &song_stream.stream, &io_hooks);
     ui_set_song_io(&songs);
     if (ui_settings()->last_song[0]) {
-        (void)song_io_load(&songs, ui_settings()->last_song, 1);
+        (void)song_io_load_last(&songs, ui_settings()->last_song);
     }
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();

@@ -142,6 +142,10 @@ code removed.
   cannot reset, format, discard or delete. The RESET, STORE, CONFIRM and UNSAVED help cards say so.
 
 ### Fixed
+- **No effect switches itself on after a power-on.** The last song comes back at power-on with the
+  keys' sound and effect slots left as the settings kept them: a song saved with LO-FI on, then
+  LO-FI turned off, no longer turns LO-FI (and its noise floor, a faint hiss at rest) back on a few
+  seconds after the boot. SONG's LOAD still brings the song's sound and slots, as before.
 - **Two value popups named the wrong control**: EDIT + K1-K4 with ARP held on LIVE turns the
   arpeggio but said the effect slot's control (the knob row lights, as without EDIT), and K1 or
   K2 on ORDER's subtune selector or K2 on its restart marker, which change nothing there, said

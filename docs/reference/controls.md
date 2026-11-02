@@ -1350,7 +1350,9 @@ its NRPN sets any value 0..127.
 
 Settings load at power-on: CARDS, KEYS, SOUNDS, TRACKER ROWS, THEME, SPREAD, SID MODEL, the preset and its edits, the keys' chip
 model, profile and character, the effect slots, envelope mode, MIDI-learn bindings and the
-last firmware version booted. Missing or unreadable settings use the defaults. Octave,
+last firmware version booted. The last song comes back too, stopped, with the keys' sound and
+effect slots left as the settings have them (SONG's LOAD brings the song's own). Missing or
+unreadable settings use the defaults. Octave,
 held notes, controllers and the view on screen are not restored; volume follows MASTER.
 
 Changes are saved in the background **5 s after the last change to a persisted value**,
