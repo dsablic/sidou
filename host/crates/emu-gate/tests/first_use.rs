@@ -1097,8 +1097,7 @@ fn song_load_sidou_loop_plays_it_heard_all_through() {
     m.run_ms(300);
     turn(&mut m, ALGORITHM, 1);
     m.run_ms(200);
-    turn(&mut m, SELECT, 1);
-    turn(&mut m, ALGORITHM, 1);
+    press(&mut m, SAVE);
     idle(&mut m, &fw);
     assert_eq!(
         song(&mut m, &fw).write(false),
