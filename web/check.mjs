@@ -568,6 +568,12 @@ try {
     const after = panels.slice(panels.indexOf(homes.at(-1)) + 1);
     if (!after.length || after[0].held !== 0) fail(`HOME let go did not send a PANEL with nothing held: ${JSON.stringify(panels)}`);
     if (!panels.some((p) => p.held === 0 && JSON.stringify(p.steps) === "[0,0,1]")) fail(`K1's + did not send a step: ${JSON.stringify(panels)}`);
+    await link.locator("#keyboard-toggle").click();
+    await link.keyboard.press("ArrowRight");
+    await link.waitForTimeout(200);
+    const algorithmKnob = await link.locator(".enc", { hasText: "ALGORITHM" }).locator(".knob").evaluate((k) => k.style.getPropertyValue("--a"));
+    if (algorithmKnob !== "15deg") fail(`the computer keyboard's → did not turn the page's ALGORITHM knob: ${algorithmKnob}`);
+    if (!(await link.evaluate(() => window.__midi.panels)).some((p) => JSON.stringify(p.steps) === "[0,1]")) fail("the computer keyboard's → did not send ALGORITHM a step");
     if (await link.evaluate(() => window.__midi.bad)) fail("the Live Link page sent a frame with a bad checksum or magic");
     await link.evaluate(() => window.dispatchEvent(new Event("pagehide")));
     await link.waitForTimeout(100);

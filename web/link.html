@@ -57,6 +57,7 @@
           position: relative; cursor: ns-resize; touch-action: none; }
   .big .knob { width: 72px; height: 72px; }
   .knob::after { content: ""; position: absolute; left: 50%; top: 4px; width: 3px; height: 30%; margin-left: -1.5px; background: var(--ink); border-radius: 2px; transform-origin: 50% calc(var(--r) * 1px); transform: rotate(var(--a, 0deg)); }
+  .knob.turned { border-color: var(--accent); }
   .knob { --r: 22; }
   .big .knob { --r: 32; }
   .enc .name { font-size: 11.5px; font-weight: 600; color: var(--dim); letter-spacing: .04em; }
@@ -169,7 +170,7 @@ const state = { access: null, client: null, viewer: null, output: null, input: n
 window.__link = state;
 
 const AROUND_SCREEN_PX = { narrow: 26, wide: 300 };
-const DRAG_PX_PER_DETENT = 10, WHEEL_DELTA_PER_DETENT = 40;
+const DRAG_PX_PER_DETENT = 10, WHEEL_DELTA_PER_DETENT = 40, TURN_SHOWN_MS = 180;
 const MIDI_C4 = 60;
 const canvas = $("screen");
 const ctx = canvas.getContext("2d");
@@ -189,8 +190,9 @@ function draw() {
 const picture = () => { if (!frame) frame = requestAnimationFrame(draw); };
 
 const client = () => state.client;
+const buttonViews = [], knobViews = [], keyViews = new Map();
 function button(id) {
-  const b = el("button", { type: "button", className: "btn", textContent: BUTTONS[id], title: `${BUTTONS[id]} (button ${id})` });
+  const b = buttonViews[id] = el("button", { type: "button", className: "btn", textContent: BUTTONS[id], title: `${BUTTONS[id]} (button ${id})` });
   const down = (e) => { e.preventDefault(); b.classList.add("held"); client()?.press(id); };
   const up = () => { b.classList.remove("held"); client()?.release(id); };
   b.addEventListener("pointerdown", (e) => { b.setPointerCapture?.(e.pointerId); down(e); });
@@ -203,9 +205,16 @@ function button(id) {
   return b;
 }
 function encoder(id, big = false) {
-  let angle = 0;
+  let angle = 0, settle = 0;
   const knob = el("div", { className: "knob" });
-  const turn = (n) => { if (!n) return; angle += n * 15; knob.style.setProperty("--a", `${angle}deg`); client()?.turn(id, n); };
+  const spin = knobViews[id] = (n) => {
+    angle += n * 15;
+    knob.style.setProperty("--a", `${angle}deg`);
+    knob.classList.add("turned");
+    clearTimeout(settle);
+    settle = setTimeout(() => knob.classList.remove("turned"), TURN_SHOWN_MS);
+  };
+  const turn = (n) => { if (!n) return; spin(n); client()?.turn(id, n); };
   const enc = el("div", { className: `enc${big ? " big" : ""}`, tabIndex: 0, role: "slider", ariaLabel: `${ENCODERS[id]} (encoder ${id})`, title: `${ENCODERS[id]} (encoder ${id}): drag up or down, the wheel, or − and +` },
     knob, el("span", { className: "name", textContent: ENCODERS[id] }),
     el("span", { className: "taps" },
@@ -252,6 +261,7 @@ $("keys").append(...NOTE_NAMES.map((name, i) => {
   k.addEventListener("pointerup", up);
   k.addEventListener("pointercancel", up);
   k.addEventListener("lostpointercapture", up);
+  keyViews.set(n, k);
   return k;
 }));
 
@@ -307,6 +317,15 @@ async function start() {
 
 function stop() { allNotesOff(); state.client?.stop(); }
 
+function shownClient() {
+  const c = state.client;
+  return c && {
+    press: (id) => { buttonViews[id]?.classList.add("held"); c.press(id); },
+    release: (id) => { buttonViews[id]?.classList.remove("held"); c.release(id); },
+    turn: (id, n) => { knobViews[id]?.(n); c.turn(id, n); },
+    flush: () => c.flush(),
+  };
+}
 function toggleKeyboard() {
   state.keyboardOn = !state.keyboardOn;
   $("keyboard-toggle").textContent = `Computer keyboard: ${state.keyboardOn ? "On" : "Off"}`;
@@ -315,12 +334,13 @@ function toggleKeyboard() {
   if (state.keyboardOn) {
     if (!state.keyboard) {
       state.keyboard = new KeyboardController({
-        client: () => state.client,
-        playNote: (n) => note(n, true),
-        stopNote: (n) => note(n, false),
+        client: shownClient,
+        playNote: (n) => { keyViews.get(n)?.classList.add("held"); note(n, true); },
+        stopNote: (n) => { keyViews.get(n)?.classList.remove("held"); note(n, false); },
       });
     }
     state.keyboard.attach();
+    $("keyboard-toggle").blur();
   } else {
     state.keyboard?.detach();
   }
