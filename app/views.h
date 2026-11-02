@@ -74,7 +74,7 @@ extern "C" {
 #define VIEWS_SONG_FILES 8u
 typedef struct {
     const view* return_view;
-    uint8_t page, cursor, action, confirm, direct, built;
+    uint8_t page, cursor, action, direct, built;
     uint8_t scanning, skip, count, directory_page, io_state, drawn_theme;
     char after[17];
     char name[17];

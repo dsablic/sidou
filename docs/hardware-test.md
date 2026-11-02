@@ -369,7 +369,7 @@ which printed control did it.
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 turns grey and says MUT in red beside the pattern (a muted voice shown as a strip: grey and short), LIVE's top line M1 in red in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL beside V1's pattern | | [ ] | *Emulator:* `emu-gate/tests/first_use.rs::glo_mutes_a_lane_and_only_that_lane_falls_silent` (muted lane silent, only that lane), `sidou-tests/tests/app/song_view.rs::glo_and_the_leftmost_keys_mute_and_solo_and_sound_nothing`, `sidou-tests/tests/app/tracker_view.rs::a_muted_voice_is_grey_in_the_header_and_its_strip_and_says_so`, `emu-gate/tests/screen.rs::live_shows_the_song_and_the_mutes` (M1 on LIVE); *device-only:* the printed control |
 | SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, SCENE, SONG, LAB, SIDS, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up`, `emu-gate/tests/screen.rs::the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink`, `sidou-tests/tests/app/views.rs::the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video`; *device-only:* the printed control |
 | SAVE (button 9), in the menu | the menu's OK: opens the item under the selection (CHIP, TRACKER, SCENE, SONG, LAB, SIDS, SETTINGS, STATUS, MIDI, CHARSET, ABOUT); on PRE or OCTAVE nothing happens and no SAVED toast shows | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::save_opens_the_menus_item_and_does_nothing_on_a_value`, `sidou-tests/tests/app/help_view.rs::save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`, `sidou-tests/tests/app/save_key.rs::saves_press_saves_the_settings_in_scene_status_and_chip_not_in_the_menu` (no SAVED toast) |
-| ALGORITHM (encoder 1), in SETTINGS | changes the item under the selection (KEYS, SOUNDS, ROWS, CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; STORE; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, SETTINGS included, changes colours at once; REC); HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::settings_draws_its_seven_items_like_the_menu_and_home_goes_back`, `sidou-tests/tests/app/title_card.rs::the_cards_option_steps_off_once_always` (CARDS), `sidou-tests/tests/app/theme.rs::the_menu_item_turns_the_theme_and_the_menu_follows_it` (THEME), `emu-gate/tests/screen.rs::live_matches_its_golden_image_in_the_c64_theme_and_back`, `sidou-tests/tests/app/tracker_view.rs::scroll_keeps_the_bar_on_the_windows_row_5` (ROWS), `sidou-tests/tests/app/save_key.rs::reset_asks_first_only_save_confirms_and_cancels_write_nothing`; *emulator (no test yet):* KEYS, SOUNDS, STORE and REC stepping one value a detent in one test; *device-only:* the colours of the C64 theme on the real LCD |
+| ALGORITHM (encoder 1), in SETTINGS | changes the item under the selection (KEYS, SOUNDS, ROWS, CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; STORE; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, SETTINGS included, changes colours at once; REC); HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::settings_draws_its_seven_items_like_the_menu_and_home_goes_back`, `sidou-tests/tests/app/title_card.rs::the_cards_option_steps_off_once_always` (CARDS), `sidou-tests/tests/app/theme.rs::the_menu_item_turns_the_theme_and_the_menu_follows_it` (THEME), `emu-gate/tests/screen.rs::live_matches_its_golden_image_in_the_c64_theme_and_back`, `sidou-tests/tests/app/tracker_view.rs::scroll_keeps_the_bar_on_the_windows_row_5` (ROWS), `sidou-tests/tests/app/save_key.rs::reset_asks_on_save_only_save_again_resets_and_saves_at_once_and_cancels_write_nothing`; *emulator (no test yet):* KEYS, SOUNDS, STORE and REC stepping one value a detent in one test; *device-only:* the colours of the C64 theme on the real LCD |
 | ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_menu_changes_the_preset_and_octave`, `sidou-tests/tests/app/chip_view.rs::chip_opens_from_the_menu_behind_the_chip_card`, `emu-gate/tests/screen.rs::the_glyph_sheet_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::entering_scene_names_the_piece`, `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`; *device-only:* the About scroller and fades as seen on the LCD |
 | SELECT (encoder 0), on STATUS | turns its three pages, either way round (`1/3`, `2/3`, `3/3` in the title): 1 the knobs with their bars (the 6502's rows with a tune loaded), 2 the chip, preset, octave and notes, 3 the effect slots; all at 2×; a new opening starts on page 1; the help card (hold HOME) names SELECT | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`, `sidou-tests/tests/app/sid_view.rs::status_shows_the_6502s_rows_while_a_tune_is_loaded`, `emu-gate/tests/screen.rs::the_status_screen_matches_its_golden_image`; *device-only:* the 2× text readable on the LCD |
 | SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves tabs, CHIP, DIST, MOD, FX, EXPERT and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] | *Emulator:* `sidou-tests/tests/app/chip_view.rs::select_moves_the_focus_and_selects_the_slot` (CHIP, DIST, MOD, FX, EXPERT, clamped, the slot follows), `sidou-tests/tests/app/chip_view.rs::expert_is_one_more_select_stop_without_changing_the_selected_slot`; *emulator (no test yet):* the toast SLOT DIST, MOD, FX on a slot change and none for the slot already selected |
@@ -1226,24 +1226,25 @@ it without the menu's confirmation; preserve wanted data with the previous firmw
   unformatted.
 - [ ] **Only with unwanted foreign data and permission to destroy it:** STORE says FOREIGN.
   A plain SAVE says STORE FOREIGN: NOT SAVED; power-cycling without formatting leaves the
-  region foreign. ALGORITHM clockwise once on STORE says FORMAT?; counter-clockwise
-  cancels, as does moving SELECT away and back. Nothing is erased by those cancelled steps.
+  region foreign. ALGORITHM on STORE changes nothing (its popup says FOREIGN); SAVE on STORE
+  says FORMAT? (the popup WIPE STORE? over SAVE AGAIN); moving SELECT away and back cancels it.
+  Nothing is erased by those steps.
   *Emulator:*
-  `sidou-tests/tests/app/save_key.rs::a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it`,
+  `sidou-tests/tests/app/save_key.rs::a_foreign_store_reads_foreign_save_asks_and_only_save_again_formats_it`,
   `sidou-tests/tests/app/settings.rs::a_foreign_store_keeps_nothing_and_an_explicit_save_says_so`,
   `sidou-tests/tests/app/user_profile.rs::a_foreign_store_keeps_nothing_and_says_so_but_the_slot_serves_until_reboot`
   (FOREIGN, NOT SAVED, FORMAT? and cancelling erase nothing).
-- [ ] On FOREIGN, spin ALGORITHM clockwise fast: STORE says FORMAT? and nothing is erased.
+- [ ] On FOREIGN, spin ALGORITHM clockwise fast: STORE still says FOREIGN and nothing is erased.
   *Emulator:*
-  `sidou-tests/tests/app/save_key.rs::a_fast_algorithm_spin_on_a_foreign_store_never_formats_it`.
-- [ ] **Destructive confirmation:** on FOREIGN, turn ALGORITHM clockwise (FORMAT?, the popup
-  says SAVE FORMATS), then press SAVE without leaving STORE. The store's 73 sectors are erased; STORE shows ERASE n (sound can have
+  `sidou-tests/tests/app/save_key.rs::a_fast_algorithm_spin_on_a_foreign_store_never_arms_nor_formats_it_nor_does_save_off_store`.
+- [ ] **Destructive confirmation:** on FOREIGN, press SAVE (FORMAT?, the popup says
+  SAVE AGAIN), then press SAVE again without leaving STORE. The store's 73 sectors are erased; STORE shows ERASE n (sound can have
   gaps), then STORE FORMATTED and nK. Let settings save, power-cycle, and check that
   STORE is no longer FOREIGN and settings persist. Never format automatically just to
   proceed with the checklist.
   *Emulator:*
-  `emu-gate/tests/settings.rs::a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings`,
-  `sidou-tests/tests/app/save_key.rs::a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it`
+  `emu-gate/tests/settings.rs::a_foreign_store_formats_on_the_menus_save_again_never_on_a_spin_and_then_keeps_the_settings`,
+  `sidou-tests/tests/app/save_key.rs::a_foreign_store_reads_foreign_save_asks_and_only_save_again_formats_it`
   (the confirmation, ERASE n, FORMATTED, settings kept); *device-only:* the real flash chip
   erasing the 73 sectors, its timing and the gaps in the sound (real silicon, flash chip timing;
   destructive).
@@ -1986,9 +1987,9 @@ Notes:
 
 These checks are for the user to run on hardware; automated testing uses fm1-emu only.
 
-- [ ] Open SONG, choose NEW, and confirm discarding changes if asked. Check the three
+- [ ] Open SONG, choose NEW, and confirm discarding changes if asked (SAVE AGAIN). Check the three
   64-row patterns and the pulse lead, bass and noise drum instruments.
-  *Emulator:* `emu-gate/tests/song_store.rs::new_template_save_as_and_delete_keep_the_right_identity` (three patterns, a pulse lead, a different bass, the drum kit from instrument 3), `sidou-tests/tests/app/views.rs::new_requires_confirmation_and_home_keeps_the_unsaved_song`, `emu-gate/tests/first_use.rs::every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_own`.
+  *Emulator:* `emu-gate/tests/song_store.rs::new_template_save_as_and_delete_keep_the_right_identity` (three patterns, a pulse lead, a different bass, the drum kit from instrument 3), `sidou-tests/tests/app/views.rs::new_asks_on_save_no_encoder_confirms_and_home_keeps_the_unsaved_song`, `emu-gate/tests/first_use.rs::every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_own`.
 - [ ] Choose SAVE AS, enter a 16-character name with SELECT and ALGORITHM, and save.
   Wait for SONG SAVED before switching the power off.
   *Emulator:* `emu-gate/tests/first_use.rs::save_as_and_a_power_cycle_bring_back_the_song_and_a_setting` (the name editor with SELECT and ALGORITHM), `sidou-tests/tests/app/views.rs::save_routes_named_songs_to_io_and_save_as_accepts_all_sixteen_characters`, `emu-gate/tests/store.rs::a_cut_after_any_operation_leaves_the_old_value_or_the_new` (a power cut at any point leaves the old value or the new).
@@ -2006,8 +2007,9 @@ These checks are for the user to run on hardware; automated testing uses fm1-emu
   restores the loaded song, stopped. With unsaved changes, ABOUT stays silent and
   its scroller says SAVE YOUR SONG FOR MUSIC.
   *Emulator:* `emu-gate/tests/song_store.rs::about_music_restores_the_saved_song_and_leaves_unsaved_edits_silent`, `sidou-tests/tests/app/about.rs::clean_about_requests_its_tune_once_and_close_requests_restoration`, `sidou-tests/tests/app/about.rs::unsaved_song_keeps_about_silent_and_the_silent_scroller_stays_in_budget`.
-- [ ] DELETE asks for confirmation. Cancelling keeps the file; confirming removes it.
-  *Emulator:* `sidou-tests/tests/app/views.rs::load_directory_pages_and_delete_waits_for_yes` (the default NO deletes nothing, YES starts the delete), `emu-gate/tests/song_store.rs::new_template_save_as_and_delete_keep_the_right_identity` (the file is gone, the loaded song stays).
+- [ ] DELETE asks for confirmation (DELETE SONG?, SAVE AGAIN). Turning SELECT or ALGORITHM
+  there does nothing; HOME keeps the file; SAVE removes it.
+  *Emulator:* `sidou-tests/tests/app/views.rs::load_directory_pages_and_delete_waits_for_save_again` (no encoder turn deletes, SAVE starts the delete), `emu-gate/tests/song_store.rs::new_template_save_as_and_delete_keep_the_right_identity` (the file is gone, the loaded song stays).
 
 ## 14. Make a song on the device (M2d)
 

@@ -170,7 +170,7 @@ impl Saving {
             .to_string()
     }
 
-    fn algorithm_popup_value(&mut self) -> String {
+    fn popup_for(&mut self, ask: u32) -> (String, String) {
         let mut name = [0 as std::ffi::c_char; SCREEN_POPUP_TEXT as usize];
         let mut value = [0 as std::ffi::c_char; SCREEN_POPUP_TEXT as usize];
         let (mut fill, mut max, mut accent) = (0, 0, 0);
@@ -178,7 +178,7 @@ impl Saving {
         let shown = unsafe {
             (self.popup_source.unwrap())(
                 ctx.cast(),
-                PANEL_ENC_ALGORITHM,
+                ask,
                 name.as_mut_ptr(),
                 value.as_mut_ptr(),
                 &mut fill,
@@ -187,7 +187,20 @@ impl Saving {
             )
         };
         assert_eq!(shown, 1);
-        c_text(value.as_ptr())
+        (c_text(name.as_ptr()), c_text(value.as_ptr()))
+    }
+
+    fn algorithm_popup_value(&mut self) -> String {
+        self.popup_for(PANEL_ENC_ALGORITHM).1
+    }
+
+    fn save_asks(&mut self) -> (String, String) {
+        self.ui.press(SAVE);
+        let ask = u32::from(self.ui.v.s.popup_ask);
+        assert_ne!(ask, 0, "the SAVE that asks brings up the popup");
+        let asked = self.popup_for(ask);
+        self.polled_quiet_frame();
+        asked
     }
 
     fn open_store_item(&mut self) {
@@ -462,8 +475,12 @@ fn foreign_region_of_one_stray_byte() -> Vec<u8> {
     region
 }
 
+fn asked(name: &str) -> (String, String) {
+    (name.to_string(), "SAVE AGAIN".to_string())
+}
+
 #[test]
-fn a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it() {
+fn a_foreign_store_reads_foreign_save_asks_and_only_save_again_formats_it() {
     let (mut s, region) = Saving::on_a_foreign_store();
     assert_eq!(
         s.save_and_wait_for_its_toast().as_deref(),
@@ -473,32 +490,31 @@ fn a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it() {
     assert_eq!(s.store_item_value(), store_line("FOREIGN"));
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.polled_quiet_frame();
-    assert_eq!(s.store_item_value(), store_line("FORMAT?"));
+    assert_eq!(
+        s.store_item_value(),
+        store_line("FOREIGN"),
+        "a turn arms nothing"
+    );
     assert_eq!(
         s.algorithm_popup_value(),
-        "SAVE FORMATS",
-        "the popup names the confirm"
+        "FOREIGN",
+        "a turn reads the store"
     );
+    assert_eq!(s.save_asks(), asked("WIPE STORE?"));
+    assert_eq!(s.store_item_value(), store_line("FORMAT?"));
     s.ui.turn(PANEL_ENC_SELECT, 1);
     s.ui.turn(PANEL_ENC_SELECT, -1);
-    s.polled_quiet_frame();
-    assert_eq!(s.store_item_value(), store_line("FOREIGN"));
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
     s.polled_quiet_frame();
     assert_eq!(
         s.store_item_value(),
         store_line("FOREIGN"),
-        "counter-clockwise"
+        "SELECT cancels"
     );
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.polled_quiet_frame();
-    assert_eq!(s.store_item_value(), store_line("FORMAT?"));
+    assert_eq!(s.save_asks(), asked("WIPE STORE?"));
     assert_eq!(
         s.st.sim.region(),
         &region[..],
-        "not a byte before the confirm"
+        "not a byte before SAVE AGAIN"
     );
     s.ui.press(SAVE);
     assert!(FORCE.with(std::cell::Cell::get), "the erases forced");
@@ -560,16 +576,17 @@ fn status_shows_the_stores_health_only_when_it_is_not_healthy() {
     assert_eq!(ready(&s), "READY.");
 }
 
+fn reset_item(s: &mut Saving) -> String {
+    crate::views::settings_settle(&mut s.ui);
+    s.ui.menu_line(VIEWS_SETTINGS_RESET as usize)
+        .trim()
+        .to_string()
+}
+
 #[test]
-fn reset_asks_first_only_save_confirms_and_saves_at_once_and_cancels_write_nothing() {
+fn reset_asks_on_save_only_save_again_resets_and_saves_at_once_and_cancels_write_nothing() {
     let mut s = Saving::new();
     s.frames(150);
-    let reset_item = |s: &mut Saving| {
-        crate::views::settings_settle(&mut s.ui);
-        s.ui.menu_line(VIEWS_SETTINGS_RESET as usize)
-            .trim()
-            .to_string()
-    };
     crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_ROWS);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     unsafe { live_param_set(&mut *s.ui.rig.live, LIVE_PARAM_CUTOFF, 1500) };
@@ -581,33 +598,31 @@ fn reset_asks_first_only_save_confirms_and_saves_at_once_and_cancels_write_nothi
     crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_RESET);
     s.polled_quiet_frame();
     assert_eq!(reset_item(&mut s), "RESET");
-    s.ui.press(SAVE);
-    s.polled_quiet_frame();
-    assert_eq!(s.ui.v.song.scroll, 1);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.polled_quiet_frame();
+    assert_eq!(reset_item(&mut s), "RESET", "a turn arms nothing");
+    assert_eq!(s.save_asks(), asked("RESET ALL?"));
     assert_eq!(reset_item(&mut s), format!("{:<5}{:>9}", "RESET", "RESET?"));
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
-    s.ui.press(SAVE);
-    s.ticks_for_the_debounce();
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 5);
+    s.polled_quiet_frame();
+    assert_eq!(s.ui.v.song.scroll, 1, "no turn confirms");
     s.ui.turn(PANEL_ENC_SELECT, -1);
     s.ui.turn(PANEL_ENC_SELECT, 1);
-    s.ui.press(SAVE);
+    assert_eq!(
+        s.save_asks(),
+        asked("RESET ALL?"),
+        "SELECT cancelled: it asks again"
+    );
     s.ticks_for_the_debounce();
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.ui.press(PANEL_BTN_HOME);
     s.ui.settle();
     crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_RESET);
-    s.ui.press(SAVE);
+    assert_eq!(reset_item(&mut s), "RESET", "HOME cancelled");
+    assert_eq!(s.save_asks(), asked("RESET ALL?"));
     s.ticks_for_the_debounce();
     assert_eq!(s.ui.v.song.scroll, 1, "nothing was reset");
     assert_eq!(s.ui.live().cutoff, 1500);
     assert_eq!(s.stored(), before, "nothing was written");
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.polled_quiet_frame();
-    assert_eq!(s.algorithm_popup_value(), "SAVE RESETS");
     s.ui.press(SAVE);
     assert_eq!(
         s.the_next_toast_within(40).as_deref(),
@@ -633,9 +648,7 @@ fn a_forced_reset_says_reset_and_saved_with_gaps() {
     s.ticks_for_the_debounce();
     crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_RESET);
     s.polled_quiet_frame();
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.polled_quiet_frame();
-    assert_eq!(s.algorithm_popup_value(), "SAVE RESETS");
+    assert_eq!(s.save_asks(), asked("RESET ALL?"));
     s.ui.press(SAVE);
     s.set.forcing = 1;
     assert_eq!(
@@ -645,7 +658,7 @@ fn a_forced_reset_says_reset_and_saved_with_gaps() {
 }
 
 #[test]
-fn a_fast_algorithm_spin_on_a_foreign_store_arms_and_never_formats_it_nor_does_save_off_store() {
+fn a_fast_algorithm_spin_on_a_foreign_store_never_arms_nor_formats_it_nor_does_save_off_store() {
     let (mut s, region) = Saving::on_a_foreign_store();
     s.open_store_item();
     s.ui.turn(PANEL_ENC_ALGORITHM, 7);
@@ -654,13 +667,14 @@ fn a_fast_algorithm_spin_on_a_foreign_store_arms_and_never_formats_it_nor_does_s
     }
     s.frames(30);
     assert!(!FORCE.with(std::cell::Cell::get));
-    assert_eq!(s.store_item_value(), store_line("FORMAT?"));
+    assert_eq!(s.store_item_value(), store_line("FOREIGN"));
     assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
+    assert_eq!(s.save_asks(), asked("WIPE STORE?"));
     s.ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(s.save_and_wait_for_its_toast(), None);
     assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
     s.ui.turn(PANEL_ENC_SELECT, -1);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(s.save_asks(), asked("WIPE STORE?"));
     s.ui.press(PANEL_BTN_HOME);
     s.ui.settle();
     s.open_store_item();
@@ -670,7 +684,7 @@ fn a_fast_algorithm_spin_on_a_foreign_store_arms_and_never_formats_it_nor_does_s
 }
 
 #[test]
-fn a_newer_sidou_store_reads_newer() {
+fn a_newer_sidou_store_reads_newer_and_save_asks_to_format_it() {
     let mut r = fresh(11, 256);
     assert_eq!(r.put_now(1, b"x"), STORE_OK);
     let mut region = r.sim.region().to_vec();
@@ -694,6 +708,8 @@ fn a_newer_sidou_store_reads_newer() {
     assert_eq!(s.algorithm_popup_value(), "NEWER SIDOU");
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.polled_quiet_frame();
+    assert_eq!(s.store_item_value(), store_line("NEWER"));
+    assert_eq!(s.save_asks(), asked("WIPE STORE?"));
     assert_eq!(s.store_item_value(), store_line("FORMAT?"));
 }
 

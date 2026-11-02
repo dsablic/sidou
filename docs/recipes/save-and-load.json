@@ -340,8 +340,8 @@
       "title": "*LOAD* it back"
     },
     {
-      "caption": "SELECT down to it, ALGORITHM loads it. It asks first, as the new song was never saved: SELECT YES, ALGORITHM, done.",
-      "control": "turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s, then turn SELECT clockwise by 1 detent, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "caption": "SELECT down to it, ALGORITHM loads it. It asks first, as the new song was never saved: SAVE AGAIN, and it is done.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.1 s, then press SAVE, then wait 1.5 s",
       "expect": [
         {
           "kind": "text_absent",
@@ -392,7 +392,7 @@
         }
       ],
       "focus": {
-        "callout": "ALGORITHM, SELECT YES",
+        "callout": "ALGORITHM, SAVE AGAIN",
         "screen": {
           "col": 0,
           "cols": 30,
@@ -426,22 +426,12 @@
           "op": "turn"
         },
         {
-          "ms": 1500,
+          "ms": 2100,
           "op": "wait"
         },
         {
-          "detents": 1,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
+          "button": "SAVE",
+          "op": "press"
         },
         {
           "ms": 1500,

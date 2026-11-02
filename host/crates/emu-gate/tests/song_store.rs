@@ -789,6 +789,9 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
     m.run_ms(150);
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
+    press(&mut m, SAVE);
+    m.run_ms(100);
+    assert_eq!((cards(&mut m), rows(&mut m)), (0, 1), "the first SAVE asks");
     press(&mut m, HOME);
     m.run_ms(500);
     assert_eq!((cards(&mut m), rows(&mut m)), (0, 1), "HOME cancelled");
@@ -798,7 +801,7 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
         "nothing written"
     );
     settings_item(&mut m, VIEWS_SETTINGS_RESET);
-    m.turn(ALGORITHM, 1);
+    press(&mut m, SAVE);
     m.run_ms(100);
     let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY).expect("settings stored");
     press(&mut m, SAVE);

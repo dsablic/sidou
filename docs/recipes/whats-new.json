@@ -534,8 +534,8 @@
       "title": "Into *LAB*, and back"
     },
     {
-      "caption": "HOME to the menu, SONG, NEW: YES lets the old one go. SEQ round to STEP.",
-      "control": "press HOME, then wait 0.4 s, then press HOME, then wait 0.5 s, then turn SELECT counter-clockwise by 2 detents, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.8 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then press SAVE, then wait 4.2 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 0.8 s",
+      "caption": "HOME to the menu, SONG, NEW: SAVE AGAIN lets the old one go. SEQ round to STEP.",
+      "control": "press HOME, then wait 0.4 s, then press HOME, then wait 0.5 s, then turn SELECT counter-clockwise by 2 detents, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.1 s, then press SAVE, then wait 4.2 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 0.8 s",
       "expect": [
         {
           "kind": "view",
@@ -616,16 +616,7 @@
           "op": "turn"
         },
         {
-          "ms": 800,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 300,
+          "ms": 1100,
           "op": "wait"
         },
         {

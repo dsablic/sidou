@@ -25,9 +25,9 @@ static const char* const MENU_LINES[] = {"SELECT\0MOVE", "SAVE\0OPEN", "ALG\0CHA
                                          "ALG\0OPEN",    "HOME\0BACK", "HOLD HOME\0HELP"};
 static const char* const SETTINGS_LINES[] = {"SELECT\0MOVE",  "ALG\0CHANGE", "SETTINGS\0KEPT",
                                              "SPREAD\0A/B L/R", "HOME\0BACK", "HOLD HOME\0HELP"};
-static const char* const STORE_LINES[] = {"SELECT\0MOVE", "ALG\0ARM FORMAT", "SAVE\0FORMAT",
+static const char* const STORE_LINES[] = {"SELECT\0MOVE", "SAVE\0FORMAT?", "AGAIN\0FORMATS",
                                           "WIPES\0ALL DATA", "HOME\0BACK"};
-static const char* const RESET_LINES[] = {"SELECT\0MOVE", "ALG\0ARM RESET", "SAVE\0RESET",
+static const char* const RESET_LINES[] = {"SELECT\0MOVE", "SAVE\0RESET?", "AGAIN\0RESETS",
                                           "KEEPS\0SONGS", "KEEPS\0PROFILES", "KEEPS\0MIDI MAP",
                                           "HOME\0BACK"};
 static const char* const MIDI_LINES[] = {"SELECT\0MOVE",   "ALG\0CHANGE", "SETUP\0RAM ONLY",
@@ -106,8 +106,7 @@ static const char* const FILES_LINES[] = {"SELECT\0FILE", "SAVE\0CHOOSE", "ALG\0
                                           "HOME\0BACK",   "HOLD HOME\0HELP"};
 static const char* const NAME_LINES[] = {"SELECT\0CURSOR", "ALG\0CHARACTER", "SAVE\0WRITE",
                                          "HOME\0BACK",    "HOLD HOME\0HELP"};
-static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "SAVE\0CHOOSE", "ALG\0CONFIRM",
-                                            "HOME\0BACK",    "HOLD HOME\0HELP"};
+static const char* const CONFIRM_LINES[] = {"SAVE\0YES", "HOME\0NO", "HOLD HOME\0HELP"};
 
 static const char* const SIDS_LINES[] = {"SELECT\0TUNE",    "SAVE\0CHOOSE",  "ALG\0CHOOSE",
                                          "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "HOME\0BACK",

@@ -136,7 +136,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end, along each control's [curve](#knob-curves)), in every view but TRACKER with REC on, STEP with a step held, and K1 and K2 on ORDER, INSTR and TABLE (the view's own, [below](#song-views)); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, SETTINGS, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing; a toast raised meanwhile waits and shows once the card closes |
-| **SAVE (button 9)** | clean press and release: on every list its **OK**, opening or choosing the highlighted item: the menu's item (nothing on a value item; on SETTINGS it only confirms STORE's format or RESET), [SONG](#song)'s action, the file LOAD or DELETE lists, a confirmation's answer (NO goes back a page, as HOME); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
+| **SAVE (button 9)** | clean press and release: on every list its **OK**, opening or choosing the highlighted item: the menu's item (nothing on a value item; on SETTINGS it only asks, then does, STORE's format or RESET), [SONG](#song)'s action, the file LOAD or DELETE lists, a confirmation's yes (SAVE AGAIN; HOME is the no); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**); in LAB it [sends the sound to the song](#send-a-lab-sound-to-the-song) instead, and in NOW PLAYING it lifts the soloed voice ([Lift a sound](#lift-a-sound)) |
@@ -145,7 +145,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SELECT (encoder 0)**, in the menu or SETTINGS | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
 | **SAVE**, in the menu | the menu's **OK**: opens the item under the selection: CHIP the CHIP view, TRACKER the song views, SCENE the generative pieces, SONG the [song-file actions](#song), SETTINGS the settings page, STATUS the status screen, MIDI the MIDI page, CHARSET the glyph sheet, ABOUT the credits. On PRE or OCTAVE it does nothing (and saves nothing: the settings save themselves) |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE; turned clockwise on a view's item opens it, as SAVE does |
-| **ALGORITHM (encoder 1)**, in SETTINGS | changes the item under the selection, which the popup also says in full: KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME, REC QUANTISE (REC), [SPREAD](#spread), [RESET](#settings-and-store) |
+| **ALGORITHM (encoder 1)**, in SETTINGS | changes the item under the selection, which the popup also says in full: KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE (its state; SAVE [asks to format](#settings-and-store)), THEME, REC QUANTISE (REC), [SPREAD](#spread); on RESET it changes nothing (SAVE [asks](#settings-and-store)) |
 | **ARP (button 10)**, on LIVE | the [chord arpeggio](#chord-arpeggio) on or off, when ARP is let go; **held**, K1..K3 turn its rate, order and span instead (the knob row shows ARP's page), and the release then switches nothing |
 | **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
 | **ALGORITHM (encoder 1)**, on LIVE | steps the chip's profile on TONE (R2, R3, R4AR, R5, WORN; the 6581s and the 8580 R5 among them, so it is the chip model too; it stops at either end; the band's profile word shows the change), or the selected slot's algorithm on a slot's page or with EDIT held (counter-clockwise down to OFF, which turns the slot off; it starts from a musical setting, so it is heard at once: [Effect slots](#effect-slots)) |
@@ -209,7 +209,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | EDIT held + K1-K4 on LIVE (either page), with the focus on CHIP's chip section, and on STATUS, the menu, SCENE and the song views where EDIT + the knob turns the slot | the selected slot's effect by name and the control in the algorithm's own word with its value (0-127), at 2x: `OVERDRIVE` over `DRIVE 91`, `CHORUS` over `RATE 40`, and a bar; a slot that is off says `DIST OFF` over `AMT 40` |
 | MASTER | VOLUME (0-100%, the bar the pot's travel), in every view, once the pot turns by about 1.5 % of its travel (a pot at rest never shows it) |
 | ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
-| ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE`, `SPREAD` (`OFF`, `10%` .. `100%`), `RESET ALL?` (`SAVE RESETS` once asked) |
+| ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE`, `SPREAD` (`OFF`, `10%` .. `100%`); SAVE on STORE or RESET brings it up too, asking: `WIPE STORE?` or `RESET ALL?` over `SAVE AGAIN` |
 
 **LIVE and CHIP show a turned knob where it is instead of opening the popup over it** (the popup
 would hide the very controls and meters being tuned): the knob's label (on LIVE, in row 15; on
@@ -648,8 +648,8 @@ means something else there:
 | STEP, REC on and the song playing | **STEP REC** | the keys record, K1 and K2 record locks; QUANT says SETTINGS' REC QUANTISE |
 | TRACKER, REC on and the song stopped | **TRACK EDIT** | the keys write notes, ARP a key off, LFO clears, K1..K4 the row's instrument, command and data, PRESETS the instrument, EDIT + PRESETS inserts or deletes a row |
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
-| SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
-| SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
+| SETTINGS on STORE | **STORE** | SAVE asks to format a foreign store (FORMAT?), SAVE again formats it (WIPES ALL DATA) |
+| SETTINGS on RESET | **RESET** | SAVE asks (RESET?), SAVE again puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
 | LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
@@ -667,7 +667,7 @@ own input handler every button and encoder, alone and with EDIT held, each on a 
 and looks for a line naming each control the handler takes (E+ or EDIT+ names EDIT held; a control
 alone also covers EDIT + it where the view takes both). It adds what acts outside the handler:
 HOME everywhere, SAVE where it has a meaning of its own (a USER slot on CHIP, the menu's and SONG's
-pages' OK, the song in a song view, SAVE AS's name, STORE's format), the keys and SEQ in a song view (EDIT + SEQ on
+pages' OK and a confirmation's yes, the song in a song view, SAVE AS's name, STORE's format and RESET), the keys and SEQ in a song view (EDIT + SEQ on
 INSTR), and K1..K4 where the view turns the panel's knobs to its own page (CHIP). A view that
 learns a control without a line fails it. A walk opens every state, holds HOME and reads the card;
 each card (and each second page) has a golden (`tests/golden/lcd/help-*.png`).
@@ -684,7 +684,7 @@ plays it (over a song view its instrument, and REC records it), and the card sta
 - On SONG's pages HOME acts on its release as everywhere (back a page; a hold shows the page's
   card).
 - **SAVE is the OK of every list.** Wherever ALGORITHM clockwise opens or chooses the highlighted
-  item (the menu, SONG's actions, LOAD's and DELETE's files, a confirmation's YES, SIDS' tunes), a
+  item (the menu, SONG's actions, LOAD's and DELETE's files, SIDS' tunes), a
   clean SAVE does the same, and HOME goes back. The one exception is SIDS' question (UNSAVED),
   where the two are its two answers: SAVE saves the song, ALGORITHM discards it. A host test (`help_view.rs`,
   `save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`) walks every state
@@ -1364,10 +1364,11 @@ the region contains data SIDOU does not own; NEWER means it is a newer SIDOU ver
 (after a downgrade: install that version again to keep its songs). Either is left untouched,
 and settings cannot persist.
 
-On FOREIGN or NEWER, turn **ALGORITHM clockwise**: **FORMAT?**, and the popup says **SAVE
-FORMATS**. Then press **SAVE**, without leaving the item, to confirm. Further turns never
-confirm, so a fast spin of ALGORITHM cannot format. Counter-clockwise, moving SETTINGS' cursor
-or leaving SETTINGS cancels the confirmation. **Formatting destroys the other firmware's data in the store**, erases
+On FOREIGN or NEWER, press **SAVE**: the item says **FORMAT?**, and the popup **WIPE STORE?**
+over **SAVE AGAIN**. Press **SAVE** again, without leaving the item, to confirm. ALGORITHM only
+reads the item (the popup says FOREIGN or NEWER SIDOU) and never asks nor confirms, so a fast
+spin of ALGORITHM cannot format. Moving SETTINGS' cursor or leaving SETTINGS (HOME) cancels the
+question. **Formatting destroys the other firmware's data in the store**, erases
 all 73 sectors and can interrupt the sound. STORE shows **ERASE n**, then the toast
 **STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
 is never automatic; ALGORITHM does not format a SIDOU store.
@@ -1383,11 +1384,11 @@ SETTINGS' last item, **RESET**, puts everything that is not a song back to facto
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting
 that is saved (KEYS, SOUNDS, TRACKER ROWS, CARDS, THEME, SPREAD, SID MODEL, the playing preset, the chip
 model, profile and character, the EXPERT overrides, the effect slots, and the envelope mode).
-**Songs, USER chip profiles and MIDI learn mappings stay**, and so does the last song that boots. Turn **ALGORITHM clockwise**: the item says **RESET?** and the popup **SAVE
-RESETS** under the name **RESET ALL?** (the question: reset all sounds and settings?). Then
-press **SAVE**, without leaving the item, to do it: the settings are saved at once and the
-toast says **RESET AND SAVED** (**RESET AND SAVED (GAPS)** when the save had to be forced). Further turns never confirm, and counter-clockwise, moving
-SETTINGS' cursor or leaving SETTINGS (HOME) cancels it with nothing written. REC QUANTISE and
+**Songs, USER chip profiles and MIDI learn mappings stay**, and so does the last song that boots. Press **SAVE**: the item says **RESET?** and the popup **SAVE
+AGAIN** under the name **RESET ALL?** (the question: reset all sounds and settings?). Then
+press **SAVE** again, without leaving the item, to do it: the settings are saved at once and the
+toast says **RESET AND SAVED** (**RESET AND SAVED (GAPS)** when the save had to be forced). ALGORITHM does nothing on RESET, and
+moving SETTINGS' cursor or leaving SETTINGS (HOME) cancels it with nothing written. REC QUANTISE and
 the MIDI page's setup are RAM-only and are not part of it.
 
 ## SONG
@@ -1400,9 +1401,12 @@ song edits are refused with the same toast. Already queued edits finish first;
 playback, mute, solo and jam continue. Songs are not autosaved.
 
 The menu's **SONG** item opens the song-file actions. On each of its pages **SAVE is the OK**,
-as in the menu: it opens the highlighted action, chooses the highlighted file, or answers the
-confirmation (NO goes back a page, as HOME); ALGORITHM clockwise does the same, and HOME goes
-back a page.
+as in the menu: it opens the highlighted action or chooses the highlighted file; ALGORITHM
+clockwise does the same, and HOME goes back a page. **A confirmation** (DISCARD UNSAVED SONG? on
+LOAD and NEW, DELETE SONG? with the file's name) has no choice to turn to: it says **SAVE AGAIN**
+in the alert colour, a SAVE on that page does it and HOME goes back a page. SELECT and ALGORITHM
+do nothing there, so the SAVE or the turn that opened the question never answers it, and a spun
+encoder cannot discard or delete a song.
 
 - **LOAD** lists the built-in **SIDOU LOOP** first (in the firmware, marked
   built-in by a dot after its name: `SIDOU LOOP ·`), then the store's songs, at 2×
@@ -1551,7 +1555,7 @@ another button while SAVE is down prevents that release from saving.
 
 | Gesture | Result |
 |---|---|
-| SAVE pressed and released, no encoder turned or other button pressed while down | saves the song in a song view (above); in the menu opens the item under the selection (its OK; nothing on a value item), and on SETTINGS confirms an armed STORE format or RESET and does nothing else (the settings save themselves 5 s after a change); elsewhere saves settings now, skipping the 5 s debounce; **SAVED** when committed |
+| SAVE pressed and released, no encoder turned or other button pressed while down | saves the song in a song view (above); in the menu opens the item under the selection (its OK; nothing on a value item), and on SETTINGS asks on STORE (a foreign store's format) or RESET, a second SAVE does it, and does nothing else (the settings save themselves 5 s after a change); elsewhere saves settings now, skipping the 5 s debounce; **SAVED** when committed |
 | the same, on the CHIP view's chip focus with a USER slot as the save target, or applied | stores the tab's profile and controls into that slot ([USER profiles](#chip)); **OVERWRITE USER 3?** first when it holds one, then **SAVED TO USER 3** |
 | SAVE held + K1..K4, with or without EDIT | opens MIDI LEARN on that knob's parameter on the turn, not the press; the parameter does not move and SAVE's release saves nothing |
 | Another knob turned while the learn frame waits, SAVE held or not | picks that knob's parameter instead |

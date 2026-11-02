@@ -486,7 +486,8 @@ enum Ctl {
 }
 
 fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
-    const INFO: [&str; 8] = [
+    const INFO: [&str; 9] = [
+        "AGAIN",
         "SETTINGS",
         "SETUP",
         "MACROS",
@@ -1095,20 +1096,12 @@ fn place(ui: &Ui) -> String {
 fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
     let mut lists = Vec::new();
     let mut wrong = Vec::new();
-    let names: Vec<&str> = CONTEXTS.iter().copied().chain(["CONFIRM YES"]).collect();
-    for name in names {
+    for name in CONTEXTS {
         let has_its_own_answers_checked_in_sid_view = name == "UNSAVED";
         if has_its_own_answers_checked_in_sid_view {
             continue;
         }
-        let ctx = |n: &str| {
-            let mut c = open_ctx(if n == "CONFIRM YES" { "CONFIRM" } else { n });
-            if n == "CONFIRM YES" {
-                c.s.ui.turn(PANEL_ENC_SELECT, 1);
-                c.s.ui.settle();
-            }
-            c
-        };
+        let ctx = open_ctx;
         let mut c = ctx(name);
         let before = place(&c.s.ui);
         c.s.ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -1136,15 +1129,7 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
             wrong.push(format!("{name}: HOME stays ({back})"));
         }
     }
-    let mut c = open_ctx("CONFIRM");
-    c.s.ui.press(SAVE_KEY_BUTTON);
-    c.s.ui.settle();
-    let by_save = place(&c.s.ui);
-    let mut c = open_ctx("CONFIRM");
-    c.s.ui.press(PANEL_BTN_HOME);
-    c.s.ui.settle();
-    assert_eq!(by_save, place(&c.s.ui), "CONFIRM: SAVE on NO is HOME");
-    for want in ["MENU", "SONG", "FILES", "CONFIRM YES"] {
+    for want in ["MENU", "SONG", "FILES"] {
         assert!(lists.contains(&want), "{want} is a list screen: {lists:?}");
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));

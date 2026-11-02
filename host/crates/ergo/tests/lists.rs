@@ -97,7 +97,7 @@ fn lists() -> Vec<List> {
                 "SONG DELETE confirm",
                 "@;turn SELECT 3; press SAVE; wait 1500; press SAVE; wait 800",
                 "song_menu",
-                None,
+                Some("SAVE AGAIN"),
             )
         },
         list(
@@ -167,17 +167,25 @@ fn every_list_takes_save_and_home_and_leads_back_to_live() {
     let all = lists();
     let problems: Vec<String> = ergo::par_map(&all, |l| {
         let (list, reach, view, text) = (l.name, l.reach, l.view, &l.text);
-        let mut d = Dev::power_on_with(
-            &build,
-            &["chrome-comet".to_string()][..usize::from(l.own_song)],
-            &[],
-        );
-        ergo::common::run_past_boot(&mut d.m, &d.fw);
-        d.run(300);
-        d.mid_frame();
+        let power_on = || {
+            let mut d = Dev::power_on_with(
+                &build,
+                &["chrome-comet".to_string()][..usize::from(l.own_song)],
+                &[],
+            );
+            ergo::common::run_past_boot(&mut d.m, &d.fw);
+            d.run(300);
+            d.mid_frame();
+            d
+        };
+        let mut d = power_on();
         let mut problems: Vec<String> = Vec::new();
         for (action, script) in ACTIONS {
             let case = format!("{list} then {action}");
+            let an_action_may_delete_the_song = l.own_song;
+            if an_action_may_delete_the_song {
+                d = power_on();
+            }
             if let Err(seen) = home_to_live(&mut d) {
                 problems.push(format!("{case}: could not start from LIVE: {seen:?}"));
                 continue;

@@ -3750,6 +3750,18 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   says it does not. It found two popups that named the wrong control: EDIT + K1-K4 with ARP held on
   LIVE (the arpeggio turns, the popup said the slot's control) and K1 or K2 where ORDER, INSTR or
   TABLE take the knob for nothing (the popup said LIVE's cutoff or resonance).
+- One confirmation pattern: SAVE asks, SAVE AGAIN does it, HOME backs out. LAB's overwrite
+  (`OVERWRITE U01?` over `SAVE AGAIN` in the alert colour) set it; SETTINGS' RESET (`RESET?`, the
+  popup `RESET ALL?` over `SAVE AGAIN`), a foreign store's format (`FORMAT?`, `WIPE STORE?`) and
+  SONG's discard and delete page follow it, as CHIP's `OVERWRITE USER n?`, MIDI learn's
+  `CLEAR ALL?` and EDIT + REC's replace already did. No encoder ever confirms: an encoder is turned
+  by accident, spun fast or nudged while reaching for another, and a detent has no "are you sure".
+  On SONG's question SELECT and ALGORITHM are not taken at all (the help card lists only SAVE YES
+  and HOME NO), so neither the SAVE nor the turn that opened the page can answer it. Moving SELECT
+  off a SETTINGS item drops its question, so the second SAVE has to be on the item that asked.
+- SIDS' unsaved-song question is the one left with an encoder answer (SAVE saves the song first,
+  ALGORITHM discards it): SAVE already means the safe answer there, so SAVE AGAIN cannot also be
+  the destructive one without a third control.
 
 ### Screen layers and view stack
 

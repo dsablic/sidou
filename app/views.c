@@ -92,6 +92,8 @@ static void sound(views* v, ui_sound_id id) {
     }
 }
 
+enum { ARMED_NONE, ARMED_FORMAT, ARMED_RESET };
+
 enum {
     STORE_LOOK_NONE, STORE_LOOK_FREE, STORE_LOOK_FOREIGN, STORE_LOOK_NEWER, STORE_LOOK_ARMED,
     STORE_LOOK_ERASING
@@ -103,7 +105,7 @@ static uint32_t store_look(const views* v, uint32_t* n) {
     }
     store_state_id state = store_state(st);
     if (state == STORE_STATE_FOREIGN) {
-        return v->format_arm == 1u ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
+        return v->format_arm == ARMED_FORMAT ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
                                                                    : STORE_LOOK_FOREIGN;
     }
     if (state != STORE_STATE_BLANK && state != STORE_STATE_SIDOU) {
@@ -464,44 +466,19 @@ static void store_value(void* ctx, char* buf) {
     }
 }
 
-static void store_turn(void* ctx, int32_t steps) {
-    views* v = ctx;
-    store* st = v->set ? v->set->st : NULL;
-    if (!st || store_state(st) != STORE_STATE_FOREIGN || steps == 0) {
-        v->format_arm = 0;
-        return;
-    }
-    v->format_arm = steps > 0;
-}
-
 static void reset_value(void* ctx, char* buf) {
     const views* v = ctx;
-    join(buf, MENU_VALUE_CHARS, v->format_arm == 2u ? "RESET?" : "", "");
+    join(buf, MENU_VALUE_CHARS, v->format_arm == ARMED_RESET ? "RESET?" : "", "");
 }
 
-static void reset_turn(void* ctx, int32_t steps) {
-    views* v = ctx;
-    v->format_arm = steps > 0 ? 2u : 0u;
-}
-
-static int reset_confirm(views* v) {
-    if (v->format_arm != 2u || v->setup.cursor != VIEWS_SETTINGS_RESET || !v->set) {
-        return 0;
-    }
-    v->format_arm = 0;
+static void reset_now(views* v) {
     settings_reset(v->set);
     v->resetting = 1;
     settings_save_now(v->set, v->s.now);
-    return 1;
 }
 
-static int store_confirm(views* v) {
-    store* st = v->set ? v->set->st : NULL;
-    if (v->format_arm != 1u || v->setup.cursor != VIEWS_SETTINGS_STORE || !st ||
-        store_state(st) != STORE_STATE_FOREIGN) {
-        return 0;
-    }
-    v->format_arm = 0;
+static void format_now(views* v) {
+    store* st = v->set->st;
     store_format(st);
     settings_forget(v->set);
     user_profiles_forget(&v->users);
@@ -510,7 +487,19 @@ static int store_confirm(views* v) {
     if (v->set->force) {
         v->set->force(1);
     }
-    return 1;
+}
+
+static uint32_t settings_armable(const views* v) {
+    if (!v->set) {
+        return ARMED_NONE;
+    }
+    if (v->setup.cursor == VIEWS_SETTINGS_RESET) {
+        return ARMED_RESET;
+    }
+    const store* st = v->set->st;
+    return v->setup.cursor == VIEWS_SETTINGS_STORE && st && store_state(st) == STORE_STATE_FOREIGN
+               ? ARMED_FORMAT
+               : ARMED_NONE;
 }
 
 static void show_card(views* v, title_card_id id) {
@@ -756,7 +745,6 @@ static void song_menu_execute(views* v, int confirmed) {
     if (!confirmed && ((song_io_changed(io) && (m->action == SONG_MENU_LOAD || m->action == SONG_MENU_NEW)) ||
                        m->action == SONG_MENU_DELETE)) {
         m->page = SONG_MENU_CONFIRM;
-        m->confirm = 0;
         song_menu_changed(v);
         return;
     }
@@ -838,7 +826,7 @@ static void song_menu_open(views* v) {
         song_menu_execute(v, 0);
     } else if (m->page == SONG_MENU_NAME) {
         song_menu_save_name(v);
-    } else if (m->page == SONG_MENU_CONFIRM && m->confirm) {
+    } else if (m->page == SONG_MENU_CONFIRM) {
         song_menu_execute(v, 1);
     }
 }
@@ -849,15 +837,13 @@ static int song_menu_input(void* ctx, const screen_event* e) {
     if (screen_top(&v->s) != &views_song_menu_view) {
         return 0;
     }
-    if (e->kind != SCREEN_TURN ||
+    if (e->kind != SCREEN_TURN || m->page == SONG_MENU_CONFIRM ||
         (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
         return 0;
     }
     int32_t steps = e->steps;
     if (e->id == PANEL_ENC_SELECT) {
-        if (m->page == SONG_MENU_CONFIRM) {
-            m->confirm = (uint8_t)song_clamp((int32_t)m->confirm + steps, 1);
-        } else if (m->page == SONG_MENU_DIR) {
+        if (m->page == SONG_MENU_DIR) {
             int32_t next = (int32_t)m->cursor + steps;
             if (!m->scanning && next >= (int32_t)VIEWS_SONG_FILES && m->count == VIEWS_SONG_FILES &&
                 (uint32_t)(m->directory_page + 1u) * VIEWS_SONG_FILES < STORE_KEYS_MAX) {
@@ -888,8 +874,6 @@ static void song_menu_ok(views* v) {
     views_song_menu* m = &v->songs;
     if (m->page == SONG_MENU_NAME) {
         song_menu_save_name(v);
-    } else if (m->page == SONG_MENU_CONFIRM && !m->confirm) {
-        (void)song_menu_back(v);
     } else {
         song_menu_open(v);
     }
@@ -1076,14 +1060,10 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
             if (m->action != SONG_MENU_NEW) {
                 song_canvas_name(v, 10, m->name, value);
             }
-            song_canvas_big(v, 14, 2, "NO", m->confirm ? text : selected);
-            song_canvas_big(v, 14, 16, "YES", m->confirm ? selected : text);
+            song_canvas_big(v, 14, 2, "SAVE AGAIN", alert);
         }
-        if (m->page != SONG_MENU_NAME) {
-            song_canvas_big(v, 24, 2, m->page == SONG_MENU_CONFIRM ? "SAVE CONFIRM"
-                                      : m->page == SONG_MENU_DIR   ? "SAVE CHOOSE"
-                                                                   : "SAVE OPEN",
-                            legend);
+        if (m->page == SONG_MENU_ROOT || m->page == SONG_MENU_DIR) {
+            song_canvas_big(v, 24, 2, m->page == SONG_MENU_DIR ? "SAVE CHOOSE" : "SAVE OPEN", legend);
         }
         song_canvas_big(v, 26, 2, "HOME BACK", legend);
         v->song.dirty = (1u << GRID_ROWS) - 1u;
@@ -1189,10 +1169,10 @@ _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_S
 static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
-    {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
+    {"STORE", store_value, NULL},    {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
     {"SID MODEL", sid_model_value, sid_model_turn},
-    {"RESET", reset_value, reset_turn},
+    {"RESET", reset_value, NULL},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
@@ -1626,13 +1606,10 @@ static int settings_input(screen* s, void* state, const screen_event* e) {
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
         v->menu_ask = v->setup.cursor;
-        int does = 1;
-        if (v->setup.cursor == VIEWS_SETTINGS_STORE) {
-            does = v->set && v->set->st && store_state(v->set->st) == STORE_STATE_FOREIGN;
-        }
+        int does = v->setup.items[v->setup.cursor].turn != NULL;
         menu_turn(&v->setup, e->steps);
         sound(v, does ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
-        return 1;
+        return does;
     }
     return 0;
 }
@@ -2474,11 +2451,9 @@ static int menu_choice_text(const views* v, int set, char* name, char* value) {
     text[0] = 0;
     if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_THEME) {
         join(text, sizeof text, theme_get(v->l->theme)->name, "");
-    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_RESET && v->format_arm == 2u) {
-        join(name, SCREEN_POPUP_TEXT, "RESET ALL?", "");
-        join(text, sizeof text, "SAVE RESETS", "");
-    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->format_arm == 1u) {
-        join(text, sizeof text, "SAVE FORMATS", "");
+    } else if (set && v->format_arm) {
+        join(name, SCREEN_POPUP_TEXT, v->format_arm == ARMED_RESET ? "RESET ALL?" : "WIPE STORE?", "");
+        join(text, sizeof text, "SAVE AGAIN", "");
     } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->set && v->set->st && v->set->st->mount_newer &&
                store_state(v->set->st) == STORE_STATE_FOREIGN) {
         join(text, sizeof text, "NEWER SIDOU", "");
@@ -2582,6 +2557,26 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
     return 0;
 }
 
+static void settings_save(views* v) {
+    uint32_t armable = settings_armable(v);
+    if (armable == ARMED_NONE) {
+        return;
+    }
+    if (v->format_arm != armable) {
+        v->format_arm = (uint8_t)armable;
+        v->menu_ask = v->setup.cursor;
+        screen_popup_ask(&v->s, ASK_BASE | PANEL_ENC_ALGORITHM);
+        sound(v, UI_SOUND_CONFIRM);
+        return;
+    }
+    v->format_arm = ARMED_NONE;
+    if (armable == ARMED_RESET) {
+        reset_now(v);
+    } else {
+        format_now(v);
+    }
+}
+
 static void save(views* v, uint32_t held) {
     if (learn_view_is_open(&v->learn)) {
         learn_view_save(&v->learn);
@@ -2643,9 +2638,7 @@ static void save(views* v, uint32_t held) {
         return;
     }
     if (shows(v) == &views_settings_view) {
-        if (!store_confirm(v)) {
-            (void)reset_confirm(v);
-        }
+        settings_save(v);
         return;
     }
     if (v->set) {
@@ -3152,7 +3145,7 @@ static int save_asked(const views* v) {
     if (top == &sid_view_browser) {
         return v->sids.asking;
     }
-    return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
+    return top == &views_settings_view && v->format_arm;
 }
 
 static uint32_t beat_phase(const views* v) {

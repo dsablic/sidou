@@ -148,16 +148,21 @@ fn glo_inputs_are_the_mutes_and_solos() {
 }
 
 #[test]
-fn a_question_waits_for_save_in_settings_store() {
+fn a_question_waits_for_save_in_settings_store_and_reset() {
     let mut s = Song::new();
     assert_eq!(inputs(&mut s, 0).ask, 0);
-    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_STORE);
-    s.ui.frame();
-    assert_eq!(inputs(&mut s, 0).ask, 0, "not armed");
-    s.ui.v.format_arm = 1;
-    assert_eq!(inputs(&mut s, 0).ask, 1, "FORMAT? waits for SAVE");
-    s.ui.v.format_arm = 0;
-    assert_eq!(inputs(&mut s, 0).ask, 0);
+    for (item, armed, what) in [
+        (VIEWS_SETTINGS_STORE, 1, "FORMAT? waits for SAVE"),
+        (VIEWS_SETTINGS_RESET, 2, "RESET? waits for SAVE"),
+    ] {
+        crate::views::open_setting(&mut s.ui, item);
+        s.ui.frame();
+        assert_eq!(inputs(&mut s, 0).ask, 0, "not armed");
+        s.ui.v.format_arm = armed;
+        assert_eq!(inputs(&mut s, 0).ask, 1, "{what}");
+        s.ui.v.format_arm = 0;
+        assert_eq!(inputs(&mut s, 0).ask, 0);
+    }
 }
 
 #[test]

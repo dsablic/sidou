@@ -151,15 +151,30 @@ fn song_name_editor_and_confirmation_keep_distinct_roles_when_the_theme_changes(
         assert!(ui.row(6).contains("DISCARD"));
         song_attr(&ui, 6, 2, 14, th.alert, th.bg);
         song_attr(&ui, 8, 2, 26, th.alert, th.bg);
-        song_attr(&ui, 14, 2, 4, th.sel_fg, th.sel_bg);
-        song_attr(&ui, 14, 16, 6, th.menu_item, th.bg);
-        ui.turn(PANEL_ENC_SELECT, 1);
-        song_frames(&mut ui);
-        song_attr(&ui, 14, 2, 4, th.menu_item, th.bg);
-        song_attr(&ui, 14, 16, 6, th.sel_fg, th.sel_bg);
-        ui.turn(PANEL_ENC_SELECT, -1);
-        song_frames(&mut ui);
+        assert_save_again_asked(&ui, th);
     }
+}
+
+fn assert_save_again_asked(ui: &Ui, th: &theme) {
+    assert_eq!(ui.big(14, 2, 2, 10), "SAVE AGAIN");
+    song_attr(ui, 14, 2, 20, th.alert, th.bg);
+    assert_eq!(ui.big(24, 2, 2, 12), " ".repeat(12), "one SAVE on the page");
+    assert_eq!(ui.big(26, 2, 2, 9), "HOME BACK");
+}
+
+fn encoders_never_confirm(ui: &mut Ui, io: *const song_io) {
+    for (enc, steps) in [
+        (PANEL_ENC_ALGORITHM, 4),
+        (PANEL_ENC_SELECT, 1),
+        (PANEL_ENC_ALGORITHM, 1),
+        (PANEL_ENC_SELECT, -3),
+    ] {
+        ui.turn(enc, steps);
+        ui.settle();
+        let state = unsafe { (*io).state };
+        assert_eq!(state, SONG_IO_IDLE as u8, "{enc} {steps}: no turn confirms");
+    }
+    assert!(ui.row(6).contains("DISCARD") || ui.row(6).contains("DELETE"));
 }
 
 #[test]
@@ -262,7 +277,7 @@ fn save_in_an_unnamed_song_opens_the_name_editor_not_settings() {
 }
 
 #[test]
-fn new_requires_confirmation_and_home_keeps_the_unsaved_song() {
+fn new_asks_on_save_no_encoder_confirms_and_home_keeps_the_unsaved_song() {
     let mut ui = Ui::without_cards();
     let mut io = Box::new(song_io {
         dirty: 1,
@@ -271,12 +286,15 @@ fn new_requires_confirmation_and_home_keeps_the_unsaved_song() {
     unsafe { views_song_io(&mut *ui.v, &mut *io) };
     open_song(&mut ui);
     ui.turn(PANEL_ENC_SELECT, 1);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.press(SAVE_KEY_BUTTON);
     ui.settle();
     assert!(ui.row(6).contains("DISCARD"));
     assert!(ui.row(8).contains("UNSAVED SONG?"));
-    ui.turn(PANEL_ENC_ALGORITHM, 4);
-    assert_eq!(io.state, SONG_IO_IDLE as u8, "NO is selected initially");
+    assert_eq!(
+        io.state, SONG_IO_IDLE as u8,
+        "the SAVE that asks does not confirm"
+    );
+    encoders_never_confirm(&mut ui, &*io);
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "SONG");
     assert_eq!(io.dirty, 1);
@@ -344,7 +362,7 @@ fn unnamed_save_works_when_the_song_view_already_fills_the_stack() {
 }
 
 #[test]
-fn load_directory_pages_and_delete_waits_for_yes() {
+fn load_directory_pages_and_delete_waits_for_save_again() {
     let mut ui = Ui::without_cards();
     let mut flash = crate::store::fresh(808, STORE_WINDOW_MAX);
     for i in (0..10).rev() {
@@ -375,11 +393,14 @@ fn load_directory_pages_and_delete_waits_for_yes() {
     ui.frames_sent(60);
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(io.state, SONG_IO_IDLE as u8);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(io.state, SONG_IO_IDLE as u8, "default NO must not delete");
-    ui.turn(PANEL_ENC_SELECT, 1);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert!(ui.row(6).contains("DELETE SONG?"));
+    assert_eq!(
+        io.state, SONG_IO_IDLE as u8,
+        "the turn that asks does not confirm"
+    );
+    encoders_never_confirm(&mut ui, &*io);
+    ui.press(SAVE_KEY_BUTTON);
     assert_eq!(io.state, SONG_IO_DELETE as u8);
     assert_eq!(unsafe { CStr::from_ptr(io.target.as_ptr()) }, c"SONG 01");
 }
@@ -499,8 +520,7 @@ fn model_revision_alone_requires_new_confirmation() {
     assert!(ui.row(6).contains("DISCARD"));
     assert!(ui.row(8).contains("UNSAVED SONG?"));
     assert_eq!(io.state, SONG_IO_IDLE as u8);
-    ui.turn(PANEL_ENC_SELECT, 1);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.press(SAVE_KEY_BUTTON);
     assert_eq!(io.state, SONG_IO_STOP as u8);
 }
 

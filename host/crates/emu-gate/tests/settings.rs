@@ -173,7 +173,7 @@ fn saves_press_on_live_stores_the_settings_within_a_second() {
 }
 
 #[test]
-fn a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings() {
+fn a_foreign_store_formats_on_the_menus_save_again_never_on_a_spin_and_then_keeps_the_settings() {
     let Some(fw) = firmware("the settings test") else {
         return;
     };
@@ -182,21 +182,16 @@ fn a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings
     let mut m = power_on(&fw, &flash);
     assert_eq!(store_state(&mut m, &fw), STORE_STATE_FOREIGN as u8);
     setting_item(&mut m, VIEWS_SETTINGS_STORE);
-    m.turn(ALGORITHM, 1);
-    m.run_ms(100);
     let region = (STORE_LO as usize)..(STORE_HI as usize);
-    assert_eq!(
-        m.soc.flash.mem[region.clone()],
-        flash[region.clone()],
-        "armed only"
-    );
     m.turn(ALGORITHM, 6);
     m.turn(ALGORITHM, 1);
+    m.run_ms(300);
+    press(&mut m, SAVE);
     m.run_ms(300);
     assert_eq!(
         m.soc.flash.mem[region.clone()],
         flash[region.clone()],
-        "a fast spin formats nothing"
+        "a fast spin and the SAVE that asks format nothing"
     );
     press(&mut m, SAVE);
     let start = m.ms();

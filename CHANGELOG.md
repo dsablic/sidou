@@ -133,6 +133,11 @@ code removed.
   (MIDI learn, the same everywhere: MACRO's card keeps it); ENV, LFO and FX share a line (`ENV LFO
   FX LAB`, as LIVE's). INSTR's card has `ENV LFO FX LAB`. LAB's hint line's last phrase ends
   `REC SEND`.
+- **Every confirmation is SAVE, then SAVE AGAIN**: SETTINGS' RESET (`RESET?`, the popup `RESET
+  ALL?` over `SAVE AGAIN`), a foreign store's format (`FORMAT?`, `WIPE STORE?`), and SONG's
+  discard and delete questions (`SAVE AGAIN` in the alert colour where NO and YES were) no longer
+  need an encoder turn. HOME, or moving SELECT off the item, backs out; no encoder confirms, so a
+  spun one cannot reset, format, discard or delete. The RESET, STORE and CONFIRM help cards say so.
 
 ### Fixed
 - **Two value popups named the wrong control**: EDIT + K1-K4 with ARP held on LIVE turns the
