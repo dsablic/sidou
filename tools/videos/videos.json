@@ -75,6 +75,6 @@
     "preview_step": "send"
   },
   "lift-a-sound": {
-    "preview_step": "lift"
+    "preview_step": "ask"
   }
 }
