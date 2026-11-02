@@ -837,9 +837,11 @@ static int song_menu_input(void* ctx, const screen_event* e) {
     if (screen_top(&v->s) != &views_song_menu_view) {
         return 0;
     }
-    if (e->kind != SCREEN_TURN || m->page == SONG_MENU_CONFIRM ||
-        (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
+    if (e->kind != SCREEN_TURN || (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
         return 0;
+    }
+    if (m->page == SONG_MENU_CONFIRM) {
+        return 1;
     }
     int32_t steps = e->steps;
     if (e->id == PANEL_ENC_SELECT) {
