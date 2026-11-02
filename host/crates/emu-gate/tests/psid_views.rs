@@ -7,6 +7,7 @@ use common::panel::{
     chord, press, wait_for_within, ALGORITHM, EDIT, GLO, HOME, K1, KEY0, PLAY, PRESETS, REC, SAVE,
     SELECT,
 };
+use common::screen_animating;
 use common::*;
 use fm1_core::Bus;
 use sidou_sys::*;
@@ -43,7 +44,6 @@ const SNAP_ACTIVE: usize = 3;
 const SNAP_MUTE: usize = 5;
 const GLO_DOUBLE_TAP_MS: u64 = 450;
 const GLO_MUTE_VOICE_2: u8 = 1;
-const GLO_SOLO_VOICE_1: u8 = 3;
 const GLO_SOLO_VOICE_3: u8 = 5;
 const VOICE_2_MUTED: u8 = 0b010;
 const VOICES_1_AND_2_MUTED: u8 = 0b011;

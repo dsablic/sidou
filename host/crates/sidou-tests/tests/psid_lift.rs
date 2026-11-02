@@ -285,6 +285,7 @@ fn calls(l: &mut Lift, v: usize, r: FrameRegs, n: usize) {
     }
 }
 
+type Burst<'a> = (&'a dyn Fn(&mut Lift), bool);
 #[test]
 fn the_capture_starts_at_the_gate_on_and_ends_at_the_gate_off() {
     let mut l = Lift::new();
@@ -502,7 +503,7 @@ fn a_digi_burst_is_refused_live_or_from_the_history() {
     let on = FrameRegs::new(note_freq(C4), 0x800, 0x41, 0x09, 0xa0);
     let digi = |l: &mut Lift| (0..40u8).for_each(|k| l.write(0, 0x18, k & 15));
     let a_busy_player = |l: &mut Lift| (0..7).for_each(|_| l.write(0, 4, 0x41));
-    let bursts: [(&dyn Fn(&mut Lift), bool); 2] = [(&digi, true), (&a_busy_player, false)];
+    let bursts: [Burst; 2] = [(&digi, true), (&a_busy_player, false)];
     for taken_after in [false, true] {
         for (burst, refused) in bursts {
             let mut l = Lift::new();
