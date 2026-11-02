@@ -353,8 +353,8 @@
       "title": "What it *approximates*"
     },
     {
-      "caption": "SEQ round to INSTR, PRESETS to 06: SAW LEAD, a song instrument now. The foot says what each program plays.",
-      "control": "press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.8 s, then turn PRESETS clockwise by 5 detents, then wait 0.7 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s",
+      "caption": "SEQ round to INSTR: it opens on 06, SAW LEAD, a song instrument now. The foot says what each program plays.",
+      "control": "press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.8 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s",
       "expect": [
         {
           "kind": "view",
@@ -374,7 +374,7 @@
         }
       ],
       "focus": {
-        "callout": "SEQ TO INSTR, PRESETS 06, SELECT",
+        "callout": "SEQ TO INSTR, SELECT",
         "control": "SELECT",
         "screen": {
           "col": 0,
@@ -424,15 +424,6 @@
         },
         {
           "ms": 800,
-          "op": "wait"
-        },
-        {
-          "detents": 5,
-          "encoder": "PRESETS",
-          "op": "turn"
-        },
-        {
-          "ms": 700,
           "op": "wait"
         },
         {

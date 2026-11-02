@@ -190,8 +190,7 @@ journey send | Send a LAB sound to the song
   step play | Play the song | PLAY: the song plays on in LAB | press PLAY; wait 400 | -
   step shape | Turn the decay with a key down | Hold a key and turn K2 | down A3; turn K2 3; up A3 | change; sound; task send a LAB sound to the song
   step send | Send it | REC sends the sound to the song's lowest free instrument | press REC; wait 400 | toast; text SENT AS; task send a LAB sound to the song
-  step to-instr | Open INSTR | SEQ to INSTR (STEP, TRACKER, ORDER, INSTR) | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500 | view song_pages_instr
-  step pick | Its instrument | PRESETS to 06, the one the toast named | turn PRESETS -63; turn PRESETS 5 | change
+  step to-instr | Open INSTR | SEQ to INSTR (STEP, TRACKER, ORDER, INSTR): it opens on 06, the one the toast named | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500 | view song_pages_instr; text SAW LEAD
   step pull | Pull it back | ENV on INSTR takes the instrument into LAB | press ENV; wait 600 | view lab; toast; text PULLED
 
 journey songs | Work with the song lists
