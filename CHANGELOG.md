@@ -8,7 +8,7 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.5.0] - 2026-10-31
+## [1.5.0] - 2026-11-02
 
 LAB's song bridge (send a sound to the song, pull one back); a .sid voice lifted into LAB;
 chords and time-shared drums from DICE; a popup for every small-print edit, page jumps and INSTR's
