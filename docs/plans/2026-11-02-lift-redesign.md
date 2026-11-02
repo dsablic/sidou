@@ -50,15 +50,18 @@ second-long note that ended a quarter second ago.
 1,384 bytes). The ring cannot join it: POOL has 5,328 free against `REGION_FREE_MIN` 5,120. It
 goes in `.bss` (the RAM region, `audio.c`), which has 9,804 free. Measured before the change (emu
 gate `the_song_region_is_64_kib_at_pools_start_and_ram_keeps_its_free_minimum`): RAM region 9,804,
-POOL 5,328, together 15,132 against `FREE_RAM_MIN` 8,976. After: about 8,120, 5,328 and 13,450.
+POOL 5,328, together 15,132 against `FREE_RAM_MIN` 8,976. After (measured): 8,156, 5,328 and
+13,484.
 No budget changes. Overlays considered and not taken: `player_isr`'s psid half leaves 432 bytes
 of the song half's 8,532 idle and `song_space` 180, together not enough.
 
 **Cost.** Each register write (in the main loop's 6502 slice, as now) updates the chip's shadow,
 its count and the gate flags: a few instructions more than the armed-only path. Each play call
 writes one record a chip (about 60 bytes copied, 50 counts scanned): within the slice budget
-`PSID_SLICE_WORST` (40,000), measured in emu-gate. The conversion stays a main-loop pass of its
-own within `LIFT_CONVERT_WORST` (40,000).
+`PSID_SLICE_WORST` (40,000; the dearest slice measured 33,008 in emu-gate `psid_budget.rs`). The
+conversion was one pass of 67,282 instructions on The Consultant's voice 2 (its vibrato search),
+over `LIFT_CONVERT_WORST` (40,000): it now runs in passes (the wave table, the vibrato fit a
+speed a pass, the other tables), the dearest 20,611, with the same result.
 
 ## Code
 
@@ -111,8 +114,9 @@ NOW PLAYING, asked            waiting                    LAB
 - sidou-tests `psid_lift.rs`: the history keeps the last records of both chips; a take finds the
   most recent note (an ended one, a sounding one followed live), arms with none, prefers the more
   recent chip, refuses a digi; the conversion tests stay.
-- sidou-tests `lab_song.rs`: a lifted GTI file pulls into a LAB sound (waveform, ADSR, PWM from a
-  back-and-forth run, filter, vibrato); a song's pull unchanged.
+- sidou-tests `psid_lift.rs`: a lifted GTI file pulls into a LAB sound (waveform, ADSR, PWM from a
+  back-and-forth run, a one-way sweep named, filter, vibrato); `lab_view.rs`: SAVE keeps it as a
+  new USER sound under its name; a song's pull unchanged (`lab_song.rs`).
 - sidou-tests `sid_view.rs`: REC asks (golden), keys 1-3 lit and answering, REC/HOME cancel,
   paused says why, waiting (golden), a ready lift opens LAB named `LIFTED V2`, HOME back.
 - emu-gate `psid_views.rs`: a tune, REC, key 2: LAB with `LIFTED V2` and the lifted AD/SR and
