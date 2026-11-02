@@ -794,7 +794,7 @@ fn a_voice_lifted_from_a_tune_opens_in_lab_save_keeps_it_and_home_goes_back() {
     let w = writes(&mut m, &fw);
     press(&mut m, HOME);
     frames_until(&mut m, &fw, &mut cells, "back on NOW PLAYING", |m| {
-        top_view(m, &fw) == fw.symbol("sid_view_playing") && !common::screen_animating(m, &fw)
+        top_view(m, &fw) == fw.symbol("sid_view_playing") && !screen_animating(m, &fw)
     });
     frames(&mut m, &fw, TUNE_PLAYS_A_WHILE_MS, &mut cells);
     assert_eq!(
