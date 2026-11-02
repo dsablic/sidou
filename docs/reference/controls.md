@@ -652,7 +652,7 @@ means something else there:
 | SETTINGS on RESET | **RESET** | SAVE asks (RESET?), SAVE again puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
 | LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
-| SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE saves the song first, ALG discards its changes, HOME cancels |
+| SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE discards the song's changes and plays the tune, HOME goes back; SELECT and ALG do nothing |
 | the lifted instrument's offer | **LIFT** | SAVE imports it, HOME skips it |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
@@ -685,8 +685,8 @@ plays it (over a song view its instrument, and REC records it), and the card sta
   card).
 - **SAVE is the OK of every list.** Wherever ALGORITHM clockwise opens or chooses the highlighted
   item (the menu, SONG's actions, LOAD's and DELETE's files, SIDS' tunes), a
-  clean SAVE does the same, and HOME goes back. The one exception is SIDS' question (UNSAVED),
-  where the two are its two answers: SAVE saves the song, ALGORITHM discards it. A host test (`help_view.rs`,
+  clean SAVE does the same, and HOME goes back. A question (SONG's CONFIRM, SIDS' UNSAVED) is
+  not a list: SAVE answers it and ALGORITHM does nothing there. A host test (`help_view.rs`,
   `save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`) walks every state
   above and checks both, so a new list is covered without being named.
 - Over the boot, a title card and MIDI learn's frame HOME keeps its own meaning (it ends the
@@ -1485,10 +1485,11 @@ is the song's, as always.
 
 **Before a tune takes the song's memory**: the song and a tune share it, so a tune loaded over
 a song with unsaved edits of its own (patterns, orders, tables, instruments, the song's settings;
-an unsaved NEW) asks first, **SONG NOT SAVED** and the song's name (SIDOU LOOP for the
-built-in loop, NEW SONG for one never named): **SAVE** saves it (in place, or through SAVE AS
-for an unnamed song, back to the question after), and the tune plays once it is saved; **ALGORITHM** clockwise again discards
-the changes and plays the tune; **HOME** cancels. When the tune ends for good, the song comes
+an unsaved NEW) asks first, as SONG's LOAD does: **DISCARD UNSAVED SONG?**, the song's name
+(SIDOU LOOP for the built-in loop, NEW SONG for one never named) and **SAVE AGAIN** in the
+alert colour. **SAVE** discards the changes and plays the tune; **HOME** goes back to the list
+with the song untouched (to keep it, save it and choose the tune again). SELECT and ALGORITHM
+do nothing on the question, so neither the SAVE nor the turn that asked it answers it. When the tune ends for good, the song comes
 back from the store (the last one opened, by name), stopped. The keys' sound (a PRESETS change,
 a knob on LIVE, a LAB edit), their effect slots, MIDI and chip A's setup are not in the song's
 memory: a change to them asks nothing, and they stay as they are when the song comes back (the

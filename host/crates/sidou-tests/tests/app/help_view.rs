@@ -720,7 +720,7 @@ fn open_ctx(name: &str) -> Ctx {
                 ui.turn(PANEL_ENC_ALGORITHM, 1);
             }
             if discarded_now_playing {
-                ui.turn(PANEL_ENC_ALGORITHM, 1);
+                ui.press(SAVE_KEY_BUTTON);
             }
             ui.settle();
             tune = Some(bound);
@@ -916,6 +916,11 @@ fn takes(ui: &mut Ui, e: &screen_event) -> bool {
     false
 }
 
+fn a_question_takes_it_for_nothing(name: &str, ctl: Ctl) -> bool {
+    matches!(name, "CONFIRM" | "UNSAVED")
+        && matches!(ctl, Ctl::Encoder(e) if e == PANEL_ENC_SELECT || e == PANEL_ENC_ALGORITHM)
+}
+
 fn saves(name: &str) -> bool {
     matches!(
         name,
@@ -963,6 +968,9 @@ fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
         need.insert((Ctl::Button(PANEL_BTN_SAVE), false));
     }
     for (e, ctl, edit) in probes() {
+        if a_question_takes_it_for_nothing(name, ctl) {
+            continue;
+        }
         let mut c = open_ctx(name);
         if takes(&mut c.s.ui, &e) {
             if scl_waits(&c.s.ui.v.song.gen_.lone) || scl_waits(&c.s.ui.v.lab.lone) {
@@ -1097,10 +1105,6 @@ fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
     let mut lists = Vec::new();
     let mut wrong = Vec::new();
     for name in CONTEXTS {
-        let has_its_own_answers_checked_in_sid_view = name == "UNSAVED";
-        if has_its_own_answers_checked_in_sid_view {
-            continue;
-        }
         let ctx = open_ctx;
         let mut c = ctx(name);
         let before = place(&c.s.ui);

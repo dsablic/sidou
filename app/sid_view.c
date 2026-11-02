@@ -69,19 +69,12 @@ static void blank(canvas* c, uint32_t rows, uint8_t a) {
 
 static void name_line(canvas* c, uint32_t row, const char* name, uint8_t a) {
     char line[SID_VIEW_NAME_CELLS + 1u];
-    uint32_t n = 0;
-    while (n < SID_VIEW_NAME_CELLS && name[n]) {
-        line[n] = name[n];
-        n++;
-    }
-    if (n == SID_VIEW_NAME_CELLS && name[n]) {
-        line[n - 1u] = (char)FONT_ARROW_RIGHT;
-    }
-    while (n < SID_VIEW_NAME_CELLS) {
-        line[n++] = ' ';
-    }
-    line[n] = 0;
+    song_view_name_cells(name, line);
     big(c, 2, row, line, a);
+}
+
+static void ask_big(void* ctx, uint32_t row, const char* text, uint8_t a) {
+    big(ctx, 2, row, text, a);
 }
 
 static char shown(char ch) {
@@ -207,13 +200,13 @@ static void scan_step(sid_view* sd) {
 }
 
 void sid_view_open(sid_view* sd, screen* s) {
-    sd->asking = sd->saving = 0;
+    sd->asking = 0;
     browse(sd, sd->page);
     screen_push(s, &sid_view_browser, sd, SCREEN_WIPE_DOWN);
 }
 
 static void load(sid_view* sd, screen* s, const char* name) {
-    sd->asking = sd->saving = 0;
+    sd->asking = 0;
     sd->built = 0;
     if (sd->t && sd->t->play(sd->t->ctx, name)) {
         screen_push(s, &sid_view_playing, sd, SCREEN_WIPE_DOWN);
@@ -221,10 +214,6 @@ static void load(sid_view* sd, screen* s, const char* name) {
 }
 
 static void choose(sid_view* sd, screen* s) {
-    if (sd->asking) {
-        load(sd, s, sd->chosen);
-        return;
-    }
     if (sd->scanning || !sd->count) {
         return;
     }
@@ -239,7 +228,6 @@ static void choose(sid_view* sd, screen* s) {
     if (st.state == SID_T_NONE && io && song_io_edited(io)) {
         copy_name(sd->chosen, name);
         sd->asking = 1;
-        sd->saving = 0;
         sd->built = 0;
         return;
     }
@@ -248,13 +236,13 @@ static void choose(sid_view* sd, screen* s) {
 
 static int browser_input(screen* s, void* state, const screen_event* e) {
     sid_view* sd = state;
-    if (e->kind != SCREEN_TURN) {
+    if (e->kind != SCREEN_TURN || (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
         return 0;
     }
+    if (sd->asking) {
+        return 1;
+    }
     if (e->id == PANEL_ENC_SELECT) {
-        if (sd->asking) {
-            return 0;
-        }
         int32_t next = (int32_t)sd->cursor + e->steps;
         if (!sd->scanning && next >= (int32_t)SID_VIEW_FILES && sd->count == SID_VIEW_FILES &&
             (uint32_t)(sd->page + 1u) * SID_VIEW_FILES < STORE_KEYS_MAX) {
@@ -270,18 +258,15 @@ static int browser_input(screen* s, void* state, const screen_event* e) {
         }
         return 1;
     }
-    if (e->id == PANEL_ENC_ALGORITHM) {
-        if (e->steps > 0) {
-            choose(sd, s);
-        }
-        return 1;
+    if (e->steps > 0) {
+        choose(sd, s);
     }
-    return 0;
+    return 1;
 }
 
 int sid_view_home(sid_view* sd) {
     if (sd->asking) {
-        sd->asking = sd->saving = 0;
+        sd->asking = 0;
         sd->built = 0;
         return 1;
     }
@@ -292,37 +277,11 @@ int sid_view_home(sid_view* sd) {
     return 0;
 }
 
-int sid_view_save(sid_view* sd, screen* s) {
-    if (!sd->asking) {
-        choose(sd, s);
-        return 1;
-    }
-    song_io* io = sd->sv->io;
-    if (!io) {
-        return 1;
-    }
-    sd->built = 0;
-    if (!io->name[0]) {
-        sd->saving = 1;
-        return SID_VIEW_SAVE_AS;
-    }
-    if (song_io_save(io, io->name, s->now)) {
-        sd->saving = 1;
-    }
-    return 1;
-}
-
-void sid_view_frame(sid_view* sd, screen* s) {
-    const song_io* io = sd->sv->io;
-    if (!sd->asking || !sd->saving || !io || song_io_busy(io) ||
-        screen_top(s) != &sid_view_browser) {
-        return;
-    }
-    if (!song_io_edited(io)) {
+void sid_view_save(sid_view* sd, screen* s) {
+    if (sd->asking) {
         load(sd, s, sd->chosen);
     } else {
-        sd->saving = 0;
-        sd->built = 0;
+        choose(sd, s);
     }
 }
 
@@ -340,8 +299,7 @@ static uint8_t mark_of(const sid_view* sd, const sid_status* st) {
 
 static uint8_t browse_flags(const sid_view* sd) {
     const song_io* io = sd->sv->io;
-    return (uint8_t)(sd->asking | sd->saving << 1 | (io && song_io_busy(io)) << 2 |
-                     (io && song_io_saving(io)) << 3);
+    return (uint8_t)(sd->asking | (io && song_io_busy(io)) << 1 | (io && song_io_saving(io)) << 2);
 }
 
 static void build_browser(sid_view* sd, uint8_t mark) {
@@ -359,14 +317,10 @@ static void build_browser(sid_view* sd, uint8_t mark) {
         big(c, 2, 4, song_io_saving(io) ? "SAVING" : "BUSY", THEME_ATTR(th, hot));
     }
     if (sd->asking) {
-        big(c, 2, FILE_ROW, "SONG NOT SAVED", THEME_ATTR(th, alert));
         const char* name = io && io->name[0]   ? io->name
                            : io && io->builtin ? SONG_IO_BUILTIN_NAME
                                                : "NEW SONG";
-        name_line(c, FILE_ROW + 2u, name, THEME_ATTR(th, value));
-        big(c, 2, FILE_ROW + 6u, "SAVE   SAVE IT", legend);
-        big(c, 2, FILE_ROW + 8u, "ALG    DISCARD", legend);
-        big(c, 2, FILE_ROW + 10u, "HOME    CANCEL", legend);
+        song_view_ask_discard(ask_big, c, name, THEME_ATTR(th, alert), THEME_ATTR(th, value));
     } else {
         for (uint32_t i = 0; i < sd->count; i++) {
             name_line(c, FILE_ROW + 2u * i, sd->files[i], i == sd->cursor ? selected : text);

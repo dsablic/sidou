@@ -206,7 +206,7 @@ pub(crate) struct Sids {
     _bound: Bound,
     pub(crate) io: Box<song_io>,
     _ctl: Box<song_ctl>,
-    pub(crate) model: Box<gt2_song>,
+    _model: Box<gt2_song>,
 }
 
 impl Sids {
@@ -234,7 +234,7 @@ impl Sids {
             _bound: b,
             io,
             _ctl: ctl,
-            model,
+            _model: model,
         }
     }
 
@@ -440,83 +440,83 @@ fn choosing_a_tune_plays_it_and_opens_now_playing() {
     assert_eq!(s.ui.top(), "SIDS");
 }
 
-#[test]
-fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
+fn edited_song_named(name: &[u8]) -> Sids {
     let mut s = Sids::new(&["ALPHA"]);
     s.io.dirty = 1;
-    for (i, b) in b"NIGHT".iter().enumerate() {
+    for (i, b) in name.iter().enumerate() {
         s.io.name[i] = *b as c_char;
     }
     open_sids(&mut s.ui);
+    s
+}
+
+fn asked_with(s: &mut Sids, name: &str) {
+    assert_eq!(s.ui.v.sids.asking, 1, "no question");
+    assert_eq!(s.ui.big(6, 2, 2, 7), "DISCARD");
+    assert_eq!(s.ui.big(8, 2, 2, 13), "UNSAVED SONG?");
+    assert_eq!(s.ui.big(10, 2, 2, name.len()), name);
+    assert_eq!(s.ui.big(14, 2, 2, 10), "SAVE AGAIN");
+    assert!(s.calls().is_empty(), "a tune before the answer");
+}
+
+#[test]
+fn an_unsaved_song_is_asked_about_and_save_again_discards_it_for_the_tune() {
+    let mut s = edited_song_named(b"NIGHT");
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(6, 2, 2, 14), "SONG NOT SAVED");
-    assert_eq!(s.ui.big(8, 2, 2, 5), "NIGHT");
-    assert!(s.calls().is_empty());
+    asked_with(&mut s, "NIGHT");
     golden(&s.ui, "sids-unsaved");
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!((s.ui.top().as_str(), s.ui.v.sids.asking), ("SIDS", 0));
     assert_eq!(s.ui.big(6, 2, 2, 5), "ALPHA");
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert!(s.calls().is_empty());
+    s.ui.press(SAVE_KEY_BUTTON);
+    settle(&mut s.ui);
+    asked_with(&mut s, "NIGHT");
+    s.ui.press(SAVE_KEY_BUTTON);
     settle(&mut s.ui);
     assert_eq!(s.calls(), vec![TuneCall::Play("ALPHA".into())]);
     assert_eq!(s.ui.top(), "NOW PLAYING");
+    assert_eq!(s.io.state, SONG_IO_IDLE as u8, "the song was not saved");
+}
 
-    let mut s = Sids::new(&["ALPHA"]);
-    s.io.dirty = 1;
-    for (i, b) in b"NIGHT".iter().enumerate() {
-        s.io.name[i] = *b as c_char;
+#[test]
+fn no_encoder_answers_the_unsaved_question_nor_the_control_that_asked_it() {
+    for opener in ["ALGORITHM", "SAVE"] {
+        let mut s = edited_song_named(b"NIGHT");
+        if opener == "SAVE" {
+            s.ui.press(SAVE_KEY_BUTTON);
+        } else {
+            s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+        }
+        settle(&mut s.ui);
+        asked_with(&mut s, "NIGHT");
+        for (enc, steps) in [
+            (PANEL_ENC_ALGORITHM, 1),
+            (PANEL_ENC_ALGORITHM, -1),
+            (PANEL_ENC_SELECT, 1),
+            (PANEL_ENC_SELECT, -1),
+        ] {
+            s.ui.turn(enc, steps);
+            settle(&mut s.ui);
+            assert_eq!(
+                s.ui.top(),
+                "SIDS",
+                "{opener}, then encoder {enc} by {steps}"
+            );
+            asked_with(&mut s, "NIGHT");
+        }
+        assert_eq!(s.io.state, SONG_IO_IDLE as u8, "{opener} saved the song");
     }
-    open_sids(&mut s.ui);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
-    s.ui.press(SAVE_KEY_BUTTON);
-    settle(&mut s.ui);
-    assert_eq!(s.io.state, SONG_IO_SAVE_WAIT as u8);
-    assert_eq!(c_text(s.io.target.as_ptr()), "NIGHT");
-    assert!(s.calls().is_empty(), "not before it is saved");
-    assert_eq!(s.ui.big(4, 2, 2, 6), "SAVING");
-    s.io.state = SONG_IO_IDLE as u8;
-    s.model.frozen = 0;
-    settle(&mut s.ui);
-    assert_eq!((s.ui.v.sids.asking, s.ui.v.sids.saving), (1, 0));
-    assert!(s.calls().is_empty());
-    s.ui.press(SAVE_KEY_BUTTON);
-    settle(&mut s.ui);
-    s.io.state = SONG_IO_IDLE as u8;
-    s.model.frozen = 0;
-    s.io.dirty = 0;
-    settle(&mut s.ui);
-    assert_eq!(s.calls(), vec![TuneCall::Play("ALPHA".into())]);
-    assert_eq!(s.ui.top(), "NOW PLAYING");
+}
 
-    let mut s = Sids::new(&["ALPHA"]);
-    s.io.dirty = 1;
-    open_sids(&mut s.ui);
+#[test]
+fn the_unsaved_question_names_a_new_song() {
+    let mut s = edited_song_named(b"");
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(8, 2, 2, 8), "NEW SONG");
-    s.ui.press(SAVE_KEY_BUTTON);
-    settle(&mut s.ui);
-    assert_eq!(s.ui.top(), "SONG");
-    assert_eq!(s.ui.big(2, 2, 2, 7), "SAVE AS");
-    s.ui.press(PANEL_BTN_HOME);
-    settle(&mut s.ui);
-    assert_eq!((s.ui.top().as_str(), s.ui.v.sids.asking), ("SIDS", 1));
-    assert!(s.calls().is_empty());
-    s.ui.press(SAVE_KEY_BUTTON);
-    settle(&mut s.ui);
-    s.ui.press(SAVE_KEY_BUTTON);
-    settle(&mut s.ui);
-    assert_eq!(s.io.state, SONG_IO_SAVE_WAIT as u8);
-    assert_eq!(s.ui.top(), "SIDS");
-    s.io.state = SONG_IO_IDLE as u8;
-    s.model.frozen = 0;
-    s.io.dirty = 0;
-    settle(&mut s.ui);
-    assert_eq!(s.calls(), vec![TuneCall::Play("ALPHA".into())]);
-    assert_eq!(s.ui.top(), "NOW PLAYING");
+    asked_with(&mut s, "NEW SONG");
 }
 
 #[test]
@@ -527,7 +527,7 @@ fn the_unsaved_question_names_the_built_in_loop() {
     open_sids(&mut s.ui);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(8, 2, 2, 10), "SIDOU LOOP");
+    asked_with(&mut s, "SIDOU LOOP");
 }
 
 fn now_playing(s: &mut Sids) {
@@ -840,12 +840,20 @@ fn sid_model_is_a_persisted_setting_of_auto_or_keys() {
 
 #[test]
 fn the_sid_views_help_cards_match_their_goldens() {
-    for (card, algorithm_turns) in [("SIDS", 0), ("PLAYING", 2), ("UNSAVED", 1), ("LIFT", 0)] {
+    for (card, asks, discards) in [
+        ("SIDS", false, false),
+        ("PLAYING", true, true),
+        ("UNSAVED", true, false),
+        ("LIFT", false, false),
+    ] {
         let mut s = Sids::new(&["NIGHT DRIVE"]);
         s.io.dirty = 1;
         open_sids(&mut s.ui);
-        for _ in 0..algorithm_turns {
+        if asks {
             s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+        }
+        if discards {
+            s.ui.press(SAVE_KEY_BUTTON);
         }
         if card == "LIFT" {
             offer(&mut s.tune, "NIGHT DRIVE V2", 5);

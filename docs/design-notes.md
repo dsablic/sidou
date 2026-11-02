@@ -3759,9 +3759,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   On SONG's question SELECT and ALGORITHM are not taken at all (the help card lists only SAVE YES
   and HOME NO), so neither the SAVE nor the turn that opened the page can answer it. Moving SELECT
   off a SETTINGS item drops its question, so the second SAVE has to be on the item that asked.
-- SIDS' unsaved-song question is the one left with an encoder answer (SAVE saves the song first,
-  ALGORITHM discards it): SAVE already means the safe answer there, so SAVE AGAIN cannot also be
-  the destructive one without a third control.
+- SIDS' unsaved-song question follows it too: DISCARD UNSAVED SONG?, the song's name and SAVE
+  AGAIN, drawn by the same `song_view_ask` as SONG's page; SAVE discards the song and plays the
+  tune, HOME goes back, SELECT and ALGORITHM are taken for nothing. Its old "save it first"
+  answer is gone: SAVE cannot mean both the safe answer and the destructive one, and a third
+  control for the safe one would be the encoder the pattern removed. SONG's LOAD and NEW do the
+  same (to keep the song, back out and save it), so the two questions read and answer alike.
 
 ### Screen layers and view stack
 
@@ -5415,8 +5418,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - A card line's control words map to controls in `controls_of`: E+ or EDIT+ means with EDIT held;
   another modifier (STEP+, GLO+, SAVE+, ARP+, SCL+) names a gesture no probe makes; info lines
   (SETTINGS KEPT, MACROS RESET, ...) name no control.
-- The list-screen check skips UNSAVED: its question has its own answers, checked in sid_view.rs.
-  SAVE AS's name is a value ALGORITHM edits, not an item.
+- SAVE AS's name is a value ALGORITHM edits, not an item. The questions (CONFIRM, UNSAVED) take
+  SELECT and ALGORITHM for nothing, so their cards name neither and the completeness check does
+  not ask for them (`a_question_takes_it_for_nothing`).
 - The help card shows once HOME has been held about 600 ms (the test accepts 560 ms on, at the
   frames' granularity, and a second and a half at most); it is drawn whole in six frames (the test
   waits 400 ms). Letting HOME go leaves it; K1 closes it and does nothing else; SELECT turns a card

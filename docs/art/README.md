@@ -1187,9 +1187,9 @@ the wipe takes; under a wipe only what it reveals is built.
   2** with its arrows at 2× in `label` on rows 22-23, **SAVE CHOOSE** and **HOME BACK** at 2× in
   `hint` on rows 24-27. An empty store: **NO TUNES:** / **SEE MANUAL** at 2× in `label` (rows
   6-9). The references are `sids-empty`, `sids-one`, `sids-full` and `sids-scrolled`.
-- **The question** (`sids-unsaved`): **SONG NOT SAVED** at 2× in `alert` (row 6), the song's name
-  at 2× in `value` (row 8), and the answers at 2× in `hint`: `SAVE   SAVE IT`, `ALG    DISCARD`,
-  `HOME    CANCEL` (rows 12-17).
+- **The question** (`sids-unsaved`), drawn by SONG's confirmation's own code: **DISCARD** /
+  **UNSAVED SONG?** at 2× in `alert` (rows 6-9), the song's name at 2× in `value` (rows 10-11),
+  **SAVE AGAIN** at 2× in `alert` (rows 14-15) and **HOME BACK** at 2× in `hint` (rows 26-27).
 - **NOW PLAYING** is built in four zones, each when what it shows changes, so a playing tune
   sends its time and its envelopes, not the screen: the title at 2× in `value` on rows 1-4 (two
   lines of 14, broken at a space; a longer second line ends in an arrow), the author and

@@ -44,6 +44,12 @@ extern "C" {
 
 typedef grid_canvas song_view_canvas;
 
+#define SONG_VIEW_NAME_CELLS 14u
+#define SONG_VIEW_ASK_ROW 6u
+#define SONG_VIEW_ASK_NAME_ROW 10u
+#define SONG_VIEW_ASK_AGAIN_ROW 14u
+typedef void song_view_big_text(void* ctx, uint32_t row, const char* text, uint8_t attr);
+
 typedef struct song_view {
     const song_transport* t;
     song_io* io;
@@ -103,6 +109,11 @@ int song_view_acquire_canvas(song_view* sv, uint32_t owner);
 void song_view_set_transport(song_view* sv, const song_transport* t);
 void song_view_loaded(song_view* sv);
 void song_view_copy_large(song_view* sv, screen* s, grid* g, uint32_t big_rows);
+void song_view_name_cells(const char* name, char line[SONG_VIEW_NAME_CELLS + 1u]);
+void song_view_ask(song_view_big_text* big, void* ctx, const char* first, const char* second,
+                   const char* name, uint8_t alert, uint8_t value);
+void song_view_ask_discard(song_view_big_text* big, void* ctx, const char* name, uint8_t alert,
+                           uint8_t value);
 int song_view_is(const view* v);
 const view* song_view_next(const view* top);
 void song_view_play(song_view* sv, int resume);

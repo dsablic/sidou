@@ -17,11 +17,10 @@ extern "C" {
 #endif
 
 #define SID_VIEW_FILES 8u
-#define SID_VIEW_NAME_CELLS 14u
+#define SID_VIEW_NAME_CELLS SONG_VIEW_NAME_CELLS
 #define SID_VIEW_LOOK 28u
 #define SID_VIEW_STATUS_LOOK 16u
 #define SID_VIEW_BAR_CHARS 7u
-#define SID_VIEW_SAVE_AS 2
 
 typedef struct {
     const sid_transport* t;
@@ -29,7 +28,6 @@ typedef struct {
     const store* st;
     uint8_t cursor, page, count, scanning, skip, built, drawn_theme;
     uint8_t asking;
-    uint8_t saving;
     uint8_t mark;
     uint8_t flags;
     uint8_t zones;
@@ -55,8 +53,7 @@ int sid_view_offered(const sid_view* sd);
 void sid_view_offer_answer(sid_view* sd, screen* s, int go);
 int sid_view_play(sid_view* sd, int edit, int here);
 int sid_view_home(sid_view* sd);
-int sid_view_save(sid_view* sd, screen* s);
-void sid_view_frame(sid_view* sd, screen* s);
+void sid_view_save(sid_view* sd, screen* s);
 #define STATUS_LINES 8u
 #define STATUS_LINE_ROWS 3u
 int sid_view_status_look(const sid_view* sd, uint8_t drawn[SID_VIEW_STATUS_LOOK], int update);

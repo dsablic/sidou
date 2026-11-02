@@ -124,9 +124,10 @@ the time, PAL or NTSC, its chips, and its three voices.
 - From a sequencer, MIDI start plays the song from its start, stop holds it, continue goes on.
 
 A tune takes the memory your song uses. If the song has changes that are not saved (its
-patterns, tables, instruments or settings), the browser asks first, **SONG NOT SAVED**: SAVE saves
-the song (an unnamed one asks for its name), ALGORITHM again throws the changes away, HOME keeps
-both. When the tune ends, your song comes back as it was last saved. The sound on the keys is not
+patterns, tables, instruments or settings), the browser asks first, as SONG's LOAD does:
+**DISCARD UNSAVED SONG?** over **SAVE AGAIN**. SAVE again throws the changes away and plays the
+tune; HOME goes back and keeps the song (to keep its changes, save it from SONG, then choose the
+tune). The knobs do nothing on the question. When the tune ends, your song comes back as it was last saved. The sound on the keys is not
 the song's memory: a sound changed on LIVE or in LAB asks nothing, and stays as it is when the
 song comes back.
 
