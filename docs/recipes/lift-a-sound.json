@@ -1,0 +1,514 @@
+{
+  "goal": "Take an instrument out of a .sid tune: solo a voice, lift its next note, import it into the song and play it in LAB.",
+  "id": "lift-a-sound",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot; THE CONSULTANT, a GoatTracker tune by Cadaver, in the store.",
+    "tunes": [
+      "consultant"
+    ]
+  },
+  "related": [
+    "play-a-sid",
+    "send-to-song",
+    "whats-new"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SIDS",
+    "GLO solos",
+    "REC lifts a voice's note",
+    "the lifted sound's offer",
+    "INSTR's pointer summaries",
+    "ENV on INSTR pulls into LAB"
+  ],
+  "steps": [
+    {
+      "caption": "HOME, SIDS, SAVE for the list: ALGORITHM plays THE CONSULTANT.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then press SAVE, then wait 1.2 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "sid_view_playing"
+        },
+        {
+          "kind": "text",
+          "value": "PLAYING"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "MENU > SIDS, ALGORITHM",
+        "control": "ALGORITHM"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SIDS"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 2600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *.sid* tune"
+    },
+    {
+      "caption": "GLO and the fourth key: only voice 1 plays, SOL says so.",
+      "control": "hold GLO and press note key G#3, then wait 2.0 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SOL"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEY 4",
+        "control": "GLO"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "solo",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "G#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 2000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Solo* a voice"
+    },
+    {
+      "caption": "REC takes the voice's next note: ARM until it starts, REC while it plays, a second at most. Then it is a GoatTracker 2 instrument.",
+      "control": "press REC, then wait 2.3 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "LIFTED"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS REC",
+        "control": "REC"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "lift",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 2300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* lifts it"
+    },
+    {
+      "caption": "GLO + 4 lets the others in, PLAY stops, HOME twice for the menu. With your song back, SIDOU offers the sound: INTO I06, the first empty instrument.",
+      "control": "hold GLO and press note key G#3, then wait 1.2 s, then press PLAY, then wait 0.6 s, then press HOME, then wait 0.6 s, then press HOME, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "sid_view_offer"
+        },
+        {
+          "kind": "text",
+          "value": "LIFTED SOUND"
+        },
+        {
+          "kind": "text",
+          "value": "INTO I06"
+        }
+      ],
+      "focus": {
+        "callout": "GLO + 4, PLAY, HOME, HOME",
+        "control": "HOME"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "offer",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "G#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The *offer*"
+    },
+    {
+      "caption": "SAVE: the instrument and its table rows go into the song. HOME would skip it, leaving it on the store.",
+      "control": "wait 2.5 s, then press SAVE, then wait 1.0 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "IMPORTED AS"
+        },
+        {
+          "kind": "text_absent",
+          "value": "LIFTED SOUND"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SAVE",
+        "control": "SAVE"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "import",
+      "inputs": [
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SAVE* imports it"
+    },
+    {
+      "caption": "SEQ round to INSTR, PRESETS to 06. The foot spells out each program: the wave rows' noise and notes, the pulse's sweep.",
+      "control": "press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.8 s, then turn PRESETS clockwise by 5 detents, then wait 0.7 s, then turn SELECT clockwise by 2 detents, then wait 1.8 s, then turn SELECT clockwise by 1 detent, then wait 1.8 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_pages_instr"
+        },
+        {
+          "kind": "text_large",
+          "value": "50% PWM"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ TO INSTR, PRESETS, SELECT",
+        "control": "SELECT",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "instr",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 5,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "What it *plays*"
+    },
+    {
+      "caption": "ENV on INSTR takes it into LAB. The toast names what LAB could only approximate: ~DRUM SWEEP.",
+      "control": "press ENV, then wait 1.3 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "kind": "text",
+          "value": "~DRUM"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV ON INSTR",
+        "control": "ENV"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "lab",
+      "inputs": [
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 1300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Into *LAB*"
+    },
+    {
+      "caption": "The keys play the lifted sound: shape it, keep it with SAVE, or send it back with REC.",
+      "control": "play 8 notes at 120 BPM, then wait 0.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS",
+        "control": "A3"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "keys",
+      "inputs": [
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Play* it"
+    }
+  ],
+  "title": "Lift a sound from a .sid"
+}

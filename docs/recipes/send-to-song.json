@@ -1,0 +1,635 @@
+{
+  "goal": "Shape a sound in LAB while the song plays, send it into the song as a GoatTracker 2 instrument, find it on INSTR, pull it back and replace it.",
+  "id": "send-to-song",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, SIDOU LOOP the song loaded: its lowest free instrument is 06."
+  },
+  "related": [
+    "shape-in-lab",
+    "lift-a-sound",
+    "whats-new"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "LAB",
+    "REC sends a LAB sound to the song",
+    "the hint line",
+    "INSTR",
+    "ENV on INSTR pulls the instrument into LAB",
+    "EDIT + REC replaces INSTR's instrument"
+  ],
+  "steps": [
+    {
+      "caption": "ENV on LIVE opens LAB at its envelope page, with SAW LEAD. Listen first.",
+      "control": "press ENV, then wait 0.8 s, then play 4 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "kind": "text",
+          "value": "ENVELOPE"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV",
+        "control": "ENV"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open",
+      "inputs": [
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*ENV* opens LAB"
+    },
+    {
+      "caption": "PLAY in LAB plays SIDOU LOOP; the keys play your sound over it.",
+      "control": "press PLAY, then wait 1.0 s, then wait for the song's next pattern, then play 6 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY, THEN THE KEYS",
+        "control": "PLAY"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "The song plays *on*"
+    },
+    {
+      "caption": "K2 shortens the decay. SELECT to FILTER, and K1 closes the filter a little.",
+      "control": "turn K2 slowly counter-clockwise by 3 detents over 0.6 s, then turn SELECT clockwise by 1 detent, then wait 0.5 s, then turn K1 slowly counter-clockwise by 20 detents over 0.9 s, then play 6 notes at 125 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "FILTER"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K2, SELECT, TURN K1",
+        "control": "K1"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "shape",
+      "inputs": [
+        {
+          "detents": -3,
+          "encoder": "K2",
+          "ms": 600,
+          "op": "sweep"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": -20,
+          "encoder": "K1",
+          "ms": 900,
+          "op": "sweep"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*Shape* it"
+    },
+    {
+      "caption": "REC: the sound goes into the song's lowest free instrument as a plain GoatTracker 2 one, a byte at a time, so the song plays on.",
+      "control": "press REC, then wait 1.3 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SENT AS I06"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS REC",
+        "control": "REC"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "send",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 1300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* sends it"
+    },
+    {
+      "caption": "For six seconds the hint line says what GoatTracker could only come close to, or what stayed behind.",
+      "control": "wait 3.0 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "APPROX"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "THE HINT LINE",
+        "control": "screen",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "hint",
+      "inputs": [
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "What it *approximates*"
+    },
+    {
+      "caption": "SEQ round to INSTR, PRESETS to 06: SAW LEAD, a song instrument now. The foot says what each program plays.",
+      "control": "press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.8 s, then turn PRESETS clockwise by 5 detents, then wait 0.7 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_pages_instr"
+        },
+        {
+          "kind": "text",
+          "value": "SAW LEAD"
+        },
+        {
+          "kind": "text_large",
+          "value": "LP"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ TO INSTR, PRESETS 06, SELECT",
+        "control": "SELECT",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "instr",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 5,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1600,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "On *INSTR*"
+    },
+    {
+      "caption": "ENV on INSTR takes it into LAB again. Sent and not edited since, it comes back exactly: PULLED I06.",
+      "control": "press ENV, then wait 1.3 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "kind": "text",
+          "value": "PULLED I06"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV ON INSTR",
+        "control": "ENV"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "pull",
+      "inputs": [
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 1300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*ENV* pulls it back"
+    },
+    {
+      "caption": "K4 lets the notes ring on.",
+      "control": "turn K4 slowly clockwise by 4 detents over 0.8 s, then wait for the song's next pattern, then play 6 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K4",
+        "control": "K4"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "longer",
+      "inputs": [
+        {
+          "detents": 4,
+          "encoder": "K4",
+          "ms": 800,
+          "op": "sweep"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "A longer *release*"
+    },
+    {
+      "caption": "EDIT + REC writes over INSTR's instrument instead. It asks first, REPLACE I06?, and EDIT + REC again does it.",
+      "control": "hold EDIT and press REC, then wait 1.5 s, then hold EDIT and press REC, then wait 1.3 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SENT AS I06"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + REC, TWICE",
+        "control": "REC"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "replace",
+      "inputs": [
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "REC"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "REC"
+        },
+        {
+          "ms": 1300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*EDIT + REC* replaces"
+    }
+  ],
+  "title": "Send a LAB sound to the song"
+}

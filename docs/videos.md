@@ -14,13 +14,14 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.1.0 release](https://github.com/dsablic/sidou/releases/tag/v1.1.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.5.0 release](https://github.com/dsablic/sidou/releases/tag/v1.5.0).
 
 - [SIDOU in 79 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.1](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 1.5](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
+- [Send a LAB sound to the song](https://dsablic.github.io/sidou/videos.html#send-to-song)
 - [Chord arpeggios](https://dsablic.github.io/sidou/videos.html#chord-arpeggio)
 - [Add an effect](https://dsablic.github.io/sidou/videos.html#add-an-effect)
 - [The chip's character](https://dsablic.github.io/sidou/videos.html#chip-character)
@@ -34,6 +35,7 @@ All of them play on the [videos page](https://dsablic.github.io/sidou/videos.htm
 - [Play over a song](https://dsablic.github.io/sidou/videos.html#play-over-a-song)
 - [Remix a song](https://dsablic.github.io/sidou/videos.html#remix-a-song)
 - [Play a .sid tune](https://dsablic.github.io/sidou/videos.html#play-a-sid)
+- [Lift a sound from a .sid](https://dsablic.github.io/sidou/videos.html#lift-a-sound)
 - [Save and load a song](https://dsablic.github.io/sidou/videos.html#save-and-load)
 - [MIDI learn](https://dsablic.github.io/sidou/videos.html#midi-learn)
 
@@ -47,10 +49,11 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.6 s, 7.9 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.1 highlights: LAB's filter LFO and the MACRO page's RESO link, hold EDIT and play to peek at A, DICE's range and rhythm on STEP, a held step sounding its locks, generative TRACKER (MUTATE, DICE, the filter sweep), the ARP helper heard before SAVE | 60.3 s, 5.7 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.5 highlights: a sound lifted from a .sid (solo a voice, REC, the offer, SAVE imports it), INSTR's pointer summaries, EDIT + SELECT a page at a time, LAB's song bridge (ENV pulls an instrument in, REC sends it back), a lane's role with BASS+DRUMS and DICE's chords heard in TRACKER, a card for the site's song editor, Library and Live Link | 72.3 s, 5.7 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.2 s, 4.5 MB |
+| [send-to-song](recipes/send-to-song.json) | ![send-to-song](media/videos/send-to-song.webp) | LAB while SIDOU LOOP plays: shape SAW LEAD, REC sends it as SENT AS I06, the hint line's APPROX, INSTR shows it, ENV pulls it back exactly (PULLED I06), EDIT + REC replaces it after REPLACE I06? | 36.7 s, 3.7 MB |
 | [mute-and-solo](recipes/mute-and-solo.json) | ![mute-and-solo](media/videos/mute-and-solo.webp) | PLAY the built-in loop, GLO + a key mutes or solos a voice | 27.0 s, 2.8 MB |
 | [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a lane on STEP, KICK, SNARE and the hats picked by name, four pages with a tom fill, PLAY, a digi clap on every page | 51.2 s, 4.1 MB |
 | [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.6 MB |
@@ -66,6 +69,7 @@ marks.
 | [play-over-a-song](recipes/play-over-a-song.json) | ![play-over-a-song](media/videos/play-over-a-song.webp) | Load NEON HIGHWAY, play it on chip A, jam on chip B, K1, DELAY (SELECT, ALGORITHM), a mute, REC the jam | 46.4 s, 4.0 MB |
 | [remix-a-song](recipes/remix-a-song.json) | ![remix-a-song](media/videos/remix-a-song.webp) | Load PAPER LANTERNS, change it in STEP, a new instrument, a mute, SAVE AS PAPER LANTERNS 2 | 41.4 s, 3.0 MB |
 | [play-a-sid](recipes/play-a-sid.json) | ![play-a-sid](media/videos/play-a-sid.webp) | Menu, SIDS, a tune from the store, NOW PLAYING, ALGORITHM changes song, GLO mutes and solos a voice, EDIT + PLAY pauses, PLAY stops | 36.1 s, 2.5 MB |
+| [lift-a-sound](recipes/lift-a-sound.json) | ![lift-a-sound](media/videos/lift-a-sound.webp) | THE CONSULTANT in NOW PLAYING: GLO solos voice 1, REC lifts its next note (LIFTED), the offer INTO I06 after the tune, SAVE imports it, INSTR spells out its programs, ENV takes it into LAB (~DRUM SWEEP) and the keys play it | 39.2 s, 2.9 MB |
 
 ## What a video is
 
@@ -80,7 +84,8 @@ marks.
   result shows once the inputs are done. A raster-bar wipe runs through the border at each
   step, and the screen's frame glows on the song's beat.
 - **The end**: the result held, the screen easing back out.
-- **The sound**: the capture's own audio, normalised to -16 LUFS (true peak -1.5 dBTP).
+- **The sound**: the capture's own audio, normalised to -16 LUFS (true peak -1.5 dBTP), turned
+  down where the AAC encode would take a sample peak over -1.5 dB.
 
 The look lives in `tools/videos/template.py` (layouts, colours, fonts, wipes, cards), the
 panel's geometry in `tools/videos/panel.py` (after fm1-emu's panel drawing, MIT), what happens
@@ -98,7 +103,7 @@ tools/make-videos                       # every video's recipe, all three cuts, 
 tools/make-videos --recipe step-a-beat  # one (repeatable)
 tools/make-videos --fast                # half resolution, fast x264: a quick look
 tools/make-videos --formats wide        # only some cuts
-SIDOU_VIDEOS_VERSION=1.1.0 tools/make-videos   # the corner's version, before CMakeLists.txt has it
+SIDOU_VIDEOS_VERSION=1.5.0 tools/make-videos   # the corner's version, before CMakeLists.txt has it
 ```
 
 It needs the fm1 build (`build/fm1`, or `SIDOU_FM1_BUILD`), Rust, `uv` (Python with Pillow
