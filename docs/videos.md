@@ -57,7 +57,7 @@ marks.
 | [mute-and-solo](recipes/mute-and-solo.json) | ![mute-and-solo](media/videos/mute-and-solo.webp) | PLAY the built-in loop, GLO + a key mutes or solos a voice | 27.0 s, 2.8 MB |
 | [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a lane on STEP, KICK, SNARE and the hats picked by name, four pages with a tom fill, PLAY, a digi clap on every page | 51.2 s, 4.1 MB |
 | [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.6 MB |
-| [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 35.0 s, 2.5 MB |
+| [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 35.1 s, 2.5 MB |
 | [chord-arpeggio](recipes/chord-arpeggio.json) | ![chord-arpeggio](media/videos/chord-arpeggio.webp) | ARP on LIVE: a held chord as one voice stepping through its notes, ARP + K1, K2 and K3 for rate, order and span | 21.9 s, 2.1 MB |
 | [chip-spread](recipes/chip-spread.json) | ![chip-spread](media/videos/chip-spread.webp) | A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right | 28.6 s, 2.3 MB |
 | [chip-character](recipes/chip-character.json) | ![chip-character](media/videos/chip-character.webp) | CHIP: AGE, DAC, THUMP and BLEED, each heard on a riff | 28.5 s, 2.8 MB |
