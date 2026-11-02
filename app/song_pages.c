@@ -1458,17 +1458,12 @@ static void look(const song_pages* p, uint8_t out[SONG_PAGES_LOOK]) {
     out[48] = p->arp_draft.wave;
 }
 
-static int model_loading(const song_view* sv) {
-    return sv->io && (sv->io->state == SONG_IO_STOP || sv->io->state == SONG_IO_READ ||
-                      sv->io->state == SONG_IO_VERIFY);
-}
-
 static int changed(screen* s, void* state) {
     (void)s;
     song_pages* p = state;
     if (p->sv->away)
         return song_view_away_changed(p->sv);
-    if (model_loading(p->sv))
+    if (song_view_loading(p->sv))
         return p->sv->which == p->page && p->sv->dirty != 0;
     uint8_t now[SONG_PAGES_LOOK];
     look(p, now);
@@ -1483,7 +1478,7 @@ static void compose(screen* s, void* state, grid* g) {
         song_view_away_compose(sv, s, g);
         return;
     }
-    if (model_loading(sv)) {
+    if (song_view_loading(sv)) {
         if (sv->which == p->page)
             song_view_copy(sv, s, g);
         return;
@@ -1540,6 +1535,7 @@ static void order_enter(screen* s, void* state) {
 static void instr_enter(screen* s, void* state) {
     (void)s;
     enter_page(state, SONG_VIEW_INSTR);
+    ((song_pages*)state)->sv->instr_from_lab = 0u;
 }
 
 static void table_enter(screen* s, void* state) {

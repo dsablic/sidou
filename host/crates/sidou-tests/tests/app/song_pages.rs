@@ -2091,3 +2091,111 @@ fn env_lfo_and_fx_on_instr_pull_a_sent_instrument_exactly_and_a_kit_drum_decoded
         "{toast}"
     );
 }
+
+fn used_instrument(h: &mut Pages, i: usize, name: &[u8]) {
+    unsafe {
+        let ins = &mut (*h.model.ptr_mut()).instr[i - 1];
+        ins[GT2_INS_AD as usize] = 0x29;
+        ins[GT2_INS_NAME as usize..][..name.len()].copy_from_slice(name);
+    }
+}
+
+fn instrument_name(h: &Pages, i: usize) -> String {
+    let ins = &h.model.raw().instr[i - 1];
+    ins[GT2_INS_NAME as usize..]
+        .iter()
+        .take_while(|&&b| b != 0)
+        .map(|&b| char::from(b))
+        .collect()
+}
+
+fn lab_name(h: &Pages) -> String {
+    unsafe { CStr::from_ptr(h.ui.rig.live.base_name.as_ptr()) }
+        .to_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn lab_over_live(h: &mut Pages) {
+    unsafe {
+        screen_pop(&mut h.ui.v.s, SCREEN_CUT);
+        h.ui.v.song_last = std::ptr::null();
+        screen_push(
+            &mut h.ui.v.s,
+            &lab_view_view,
+            (&mut h.ui.v.lab as *mut lab_view).cast(),
+            SCREEN_CUT,
+        );
+    }
+}
+
+fn send_from_lab(h: &mut Pages) -> String {
+    h.ui.press(PANEL_BTN_REC);
+    let toast = h.ui.toast().unwrap();
+    for _ in 0..64 {
+        h.ack();
+        h.ui.frame();
+    }
+    toast
+}
+
+fn seq_to(h: &mut Pages, name: &str) {
+    for _ in 0..=SONG_VIEW_COUNT {
+        h.ui.press(PANEL_BTN_SEQ);
+        settle(&mut h.ui);
+        if h.ui.top() == name {
+            return;
+        }
+    }
+    panic!("SEQ never reached {name}");
+}
+
+#[test]
+fn a_pulled_sound_takes_the_instruments_name_and_a_send_back_keeps_it() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    used_instrument(&mut h, 2, b"THE CONSULTAN V1");
+    h.ui.v.song.instr = 2;
+    h.ui.press(PANEL_BTN_ENV);
+    assert_eq!(h.ui.top(), "LAB");
+    assert_eq!(lab_name(&h), "THE CONSULTA", "its first twelve characters");
+    assert_eq!(send_from_lab(&mut h), "SENT AS I01 THE CONSULTA");
+    assert_eq!(instrument_name(&h, 1), "THE CONSULTA");
+    used_instrument(&mut h, 3, b"");
+    h.ui.press(PANEL_BTN_HOME);
+    h.ui.v.song.instr = 3;
+    h.ui.press(PANEL_BTN_ENV);
+    assert_eq!(lab_name(&h), "I03", "an unnamed one by its number");
+}
+
+#[test]
+fn seq_after_a_send_lands_instr_on_the_sent_instrument_once() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    used_instrument(&mut h, 1, b"BASS");
+    lab_over_live(&mut h);
+    assert!(send_from_lab(&mut h).starts_with("SENT AS I02"));
+    seq_to(&mut h, "STEP");
+    seq_to(&mut h, "INSTR");
+    assert_eq!(h.ui.v.song.instr, 2, "INSTR on the instrument just sent");
+    seq_to(&mut h, "STEP");
+    seq_to(&mut h, "INSTR");
+    assert_eq!(h.ui.v.song.instr, 1, "through STEP again: the lane's");
+}
+
+#[test]
+fn home_from_a_pull_goes_back_to_instr_once_and_then_past_the_first_lab() {
+    let mut h = Pages::new(unsafe { &song_pages_instr_view });
+    used_instrument(&mut h, 1, b"BASS");
+    lab_over_live(&mut h);
+    send_from_lab(&mut h);
+    seq_to(&mut h, "INSTR");
+    h.ui.press(PANEL_BTN_ENV);
+    assert_eq!(h.ui.top(), "LAB");
+    let back: Vec<String> = (0..2)
+        .map(|_| {
+            h.ui.press(PANEL_BTN_HOME);
+            settle(&mut h.ui);
+            h.ui.top()
+        })
+        .collect();
+    assert_eq!(back, ["INSTR", "LIVE"]);
+}

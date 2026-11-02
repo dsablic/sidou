@@ -360,7 +360,10 @@ static void build_browser(sid_view* sd, uint8_t mark) {
     }
     if (sd->asking) {
         big(c, 2, FILE_ROW, "SONG NOT SAVED", THEME_ATTR(th, alert));
-        name_line(c, FILE_ROW + 2u, io && io->name[0] ? io->name : "NEW SONG", THEME_ATTR(th, value));
+        const char* name = io && io->name[0]   ? io->name
+                           : io && io->builtin ? SONG_IO_BUILTIN_NAME
+                                               : "NEW SONG";
+        name_line(c, FILE_ROW + 2u, name, THEME_ATTR(th, value));
         big(c, 2, FILE_ROW + 6u, "SAVE   SAVE IT", legend);
         big(c, 2, FILE_ROW + 8u, "ALG    DISCARD", legend);
         big(c, 2, FILE_ROW + 10u, "HOME    CANCEL", legend);

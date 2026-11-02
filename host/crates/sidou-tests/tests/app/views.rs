@@ -163,6 +163,22 @@ fn song_name_editor_and_confirmation_keep_distinct_roles_when_the_theme_changes(
 }
 
 #[test]
+fn seq_while_the_song_loads_keeps_the_screen_clean_and_says_loading() {
+    let mut ui = Ui::without_cards();
+    let mut io = Box::<song_io>::default();
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    open_song(&mut ui);
+    song_frames(&mut ui);
+    io.state = SONG_IO_READ as u8;
+    ui.press(PANEL_BTN_SEQ);
+    assert_eq!(ui.toast().as_deref(), Some("LOADING"));
+    song_frames(&mut ui);
+    let band = |r: usize| (0..COLS).all(|c| ui.g.ch[r * COLS + c] == FONT_FULL as u8);
+    assert_eq!((0..GRID_ROWS as usize).filter(|&r| band(r)).count(), 0);
+    assert_eq!(ui.top(), "SONG", "the switch waits for the song");
+}
+
+#[test]
 fn song_menu_has_load_new_save_as_delete_and_home_cancels_a_page() {
     let mut ui = Ui::without_cards();
     open_song(&mut ui);

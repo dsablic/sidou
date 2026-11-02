@@ -142,6 +142,20 @@ code removed.
   state and checks each opens the popup or is in one table of views that show the value large.
 - **A DICE setting turned while a roll is still writing its cells** says `WAITING`; it said
   `SONG FULL`, and the song had room.
+- **A pulled sound takes the instrument's name.** INSTR → ENV / LFO / FX kept LAB's old name
+  (`SAW LEAD*`), and a send back renamed the instrument after it. LAB now shows the instrument's
+  first 12 characters (`I05` for an unnamed one), and a send writes all 12 (it cut them to 10).
+- **SEQ while a song loads** (NEW, LOAD, the song coming back after a tune or ABOUT) painted white
+  bands over the SONG page for about a second before STEP appeared. It says `LOADING` and the
+  screen stays as it is; the song views open once the song is in.
+- **A tune's mutes and solos stay the tune's.** A GLO solo set in NOW PLAYING was still on in the
+  song after the tune ended (`SOL` in INSTR's header). A tune now starts with every voice on, and
+  the song comes back with its own mutes and solos.
+- **SEQ after a send lands INSTR on the instrument sent** (or pulled), through STEP or not; STEP
+  had set the lane's instrument on the way. STEP sets it again after that, as before.
+- **HOME after a pull goes back once.** INSTR → ENV stacked a second LAB over the one the send came
+  from, so HOME went INSTR → LAB → LIVE; it goes INSTR → LIVE now.
+- **The unsaved-song question names the built-in loop** `SIDOU LOOP`; it said `NEW SONG`.
 
 ## [1.1.0] - 2026-10-30
 

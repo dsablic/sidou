@@ -2801,6 +2801,16 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The song views send their mutes to the song's player, or, while a tune has the song's memory, to
   the tune's (`song_view.tune`). GLO's mutes and solos reach the tune while away: voice v of both
   chips for a 2SID tune.
+- The mutes and solos belong to the session: `song_view_away` keeps the song's
+  (`song_view.song_mutes`) and starts the tune with every voice on, and gives the song its own back
+  when the tune ends for good. A tune's GLO edits are about that tune; carried into the song they
+  silence voices nobody muted there, as the other state a tune borrows (the transport, the views)
+  comes back as it was.
+- A song view does not open while the song loads (`song_view_loading`: song_io's STOP, READ and
+  VERIFY). The views keep the canvas they had through a streaming load, so a view switched to then
+  draws nothing, and the wipe's white edge row stays on each row it passes (white bands for about
+  a second of NEW). SEQ and the menu's TRACKER say `LOADING` instead, as over ABOUT's
+  tune.
 - The keys' notes are live's MIDI notes: GoatTracker's C-0 is MIDI's 12 (`GT2_NOTE0`). A jam note
   that cannot go now is dropped, as a late note is worse than none.
 
@@ -3615,6 +3625,20 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   in the trailer, which GoatTracker's own player skips.
 - A pull of an edited instrument decodes: a GT2 instrument has no room for the effect slots (off),
   the tune or the sync (none); the player's bend range is kept.
+- A pull names the sound after the instrument (`lab_song_name`): the first LAB_SOUND_NAME (12) of
+  GoatTracker's 16 characters, unprintable ones as spaces, trailing spaces dropped, `Inn` for an
+  unnamed one. The name is LAB's `base_name`, so the header shows it with the `*` of an unsaved
+  sound and a send writes it back. A send takes `base_name` whole, not `live_preset_name`, which
+  cuts to 10 for the 2× header; DICE keeps its roll number (`DICE 42`).
+- The name is not in the undo ring: a step holds byte changes of the sound (LAB_EDIT_BYTES, a ring
+  of 52), and a pull already fills most of one. Undoing a pull gives the sound back under the
+  instrument's name.
+- A pull drops any LAB below from the screen's stack (`lab_unstack` in `views.c`) before LAB opens
+  over INSTR: LIVE → LAB → SEQ → INSTR → ENV leaves LIVE, INSTR, LAB, and HOME goes INSTR, then
+  LIVE. LAB has no exit hook, so a lower entry goes without a callback.
+- After a send or a pull `song_view.instr_from_lab` keeps the instrument for INSTR: STEP's enter
+  sets the lane's instrument only without it, so SEQ from LAB through STEP lands INSTR on the
+  instrument sent. INSTR's enter clears it, and so do STEP's own choices (SELECT, PRESETS).
 
 ### LAB sound image
 

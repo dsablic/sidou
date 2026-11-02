@@ -156,6 +156,10 @@ fn the_song_views_do_not_open_while_abouts_tune_is_the_song() {
     io.about = 0;
     ui.press(PANEL_BTN_SEQ);
     ui.settle();
+    assert_eq!(ui.top(), "MENU", "SEQ waits for the restore");
+    io.state = SONG_IO_IDLE as u8;
+    ui.press(PANEL_BTN_SEQ);
+    ui.settle();
     assert_eq!(ui.top(), "STEP");
 }
 

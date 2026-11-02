@@ -112,6 +112,13 @@ void song_view_init(song_view* sv, live* l) {
     sv->rec_n = 0;
     sv->tune = NULL;
     sv->away = 0;
+    sv->song_mutes = 0;
+    sv->instr_from_lab = 0;
+}
+
+int song_view_loading(const song_view* sv) {
+    return sv->io && (sv->io->state == SONG_IO_STOP || sv->io->state == SONG_IO_READ ||
+                      sv->io->state == SONG_IO_VERIFY);
 }
 
 uint32_t song_view_mute_mask(const song_view* sv) {
@@ -743,7 +750,19 @@ void song_view_instr_text(const song_view* sv, uint32_t instr, char out[SCREEN_P
     out[n] = 0;
 }
 
+static void hand_over_mutes(song_view* sv, int to_tune) {
+    if (to_tune) {
+        sv->song_mutes = (uint8_t)song_view_mutes(sv);
+    }
+    uint32_t back = to_tune ? 0u : sv->song_mutes;
+    sv->mute = (uint8_t)(back & ALL_VOICES);
+    sv->solo = (uint8_t)(back >> SONG_T_VOICES);
+}
+
 void song_view_away(song_view* sv, int on) {
+    if (sv->away != (on != 0)) {
+        hand_over_mutes(sv, on);
+    }
     sv->away = (uint8_t)(on != 0);
     sv->built = 0;
     sv->sent = 0xffu;

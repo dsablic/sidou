@@ -255,7 +255,7 @@ GoatTracker does). TRACKER ROWS is saved with the settings.
 
 | Control | Does |
 |---|---|
-| **SEQ** | from any view, opens the song view used last over it (STEP the first time after power-on; HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER. Not over [ABOUT](#song)'s tune |
+| **SEQ** | from any view, opens the song view used last over it (STEP the first time after power-on; HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER. Not over [ABOUT](#song)'s tune, and not while a song loads (a LOAD, NEW, or the song coming back after a tune: `LOADING`, and the screen stays as it is; press again once it is in) |
 | **PLAY** | in every view: plays the song from the orderlist entry the song views show (the cursor's), or stops it (releases ring on). While it starts (the keys moving off chip A, [which chip the keys play](#which-chip-the-keys-play)) it shows as playing; PLAY again stops it |
 | **EDIT held + PLAY** | goes on from where the song stopped (from the cursor if it never played) |
 | **PLAY**, **EDIT held + PLAY**, a `.sid` tune loaded | the tune's: see [SIDS and NOW PLAYING](#sids-and-now-playing). The song views do not open while it plays (`SID PLAYING: STOP TO EDIT`); one that showed when the tune took the song's memory says **SID PLAYING / STOP TO EDIT** and takes no edits. With the tune stopped, SEQ or the menu's TRACKER gives it up for the song (`LOADING`: press again once it is back) |
@@ -924,10 +924,11 @@ the smallest moves; a roll 16 times); if none passes the sound stays and the toa
 [the design](../plans/2026-10-30-1.5-design.md#2-labs-song-bridge), `app/lab_song.h`) as a plain
 GoatTracker 2 instrument: into the song's **lowest free instrument** (all 25 bytes 0), its
 programs after each table's last row. The toast says where: `SENT AS I0F LAB 03` (the instrument
-in hex, the sound's name, which the instrument takes). It is written through the song's edit
-queue a byte at a time, so the song plays on; INSTR's cursor goes to it (STEP, when SEQ
-passes through it, sets its lane's instrument there, as it always has). **EDIT + REC** writes
-it over **INSTR's instrument** instead: a used one asks first (`REPLACE I05? EDIT+REC`; EDIT + REC
+in hex, the sound's name, which the instrument takes, all of LAB's 12 characters). It is written
+through the song's edit queue a byte at a time, so the song plays on; INSTR's cursor goes to it,
+and INSTR opens on it the next time SEQ reaches it, through STEP or not. STEP sets the lane's
+instrument again after that, as it always has, or at once when its SELECT or PRESETS picks one.
+**EDIT + REC** writes it over **INSTR's instrument** instead: a used one asks first (`REPLACE I05? EDIT+REC`; EDIT + REC
 again within 4 s replaces it). An unedited instrument sent before keeps its rows: the new
 programs go where they were, the rows they no longer need blanked; any other instrument's rows
 stay as they are and the new programs go after the tables' last rows. Refusals: `NO SONG`,
@@ -954,7 +955,10 @@ gives this exact sound.
 
 On **INSTR**, **ENV**, **LFO** or **FX** take the instrument under the cursor into LAB, which
 opens at ENVELOPE, MOD or FX, as they open LAB from LIVE. The pull is one undo step (EDIT + LFO
-gives the sound before it back), and the sound keeps its name with a `*`. An instrument sent from
+gives the sound before it back; the name stays the instrument's), and the sound takes the
+instrument's name, its first 12 characters (`I05` for one without a name), with a `*`: a send
+back keeps it. LAB opens over INSTR in the place of the LAB a send came from, so HOME goes back
+to INSTR once, then to where that LAB was opened from. An instrument sent from
 LAB and not edited since comes back exactly (`PULLED I05`). Any other is decoded: one-row wave
 programs, the send's own loops and a calculated vibrato come back close; what could only be
 approximated is in the toast (`I05 ~DRUM GATE`): `DRUM` (absolute notes, or a program of several
@@ -1464,7 +1468,7 @@ on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). 
 | **ALGORITHM** clockwise, or **SAVE** | plays the highlighted tune from its start song and opens NOW PLAYING; on the tune that is loaded, opens NOW PLAYING as it is | turned either way: the song before or after (clamped at 1 and the last), which plays from its init |
 | **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
 | **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
-| **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune |
+| **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune. They are the tune's: a tune starts with every voice on, and when it ends for good the song comes back with its own mutes and solos |
 | **REC** | | lifts the one voice GLO solos: its next note becomes an instrument ([below](#lift-a-sound)); REC again while it waits disarms it |
 | **HOME** | back to the menu; with the tune stopped (or failed) it ends for good there, and the song comes back from the store | back to the browser, the tune playing on |
 
@@ -1477,9 +1481,9 @@ is the song's, as always.
 
 **Before a tune takes the song's memory**: the song and a tune share it, so a tune loaded over
 a song with unsaved edits of its own (patterns, orders, tables, instruments, the song's settings;
-an unsaved NEW) asks first, **SONG NOT SAVED** and the song's name (NEW SONG for one
-never named): **SAVE** saves it (in place, or through SAVE AS for an unnamed song, back to the
-question after), and the tune plays once it is saved; **ALGORITHM** clockwise again discards
+an unsaved NEW) asks first, **SONG NOT SAVED** and the song's name (SIDOU LOOP for the
+built-in loop, NEW SONG for one never named): **SAVE** saves it (in place, or through SAVE AS
+for an unnamed song, back to the question after), and the tune plays once it is saved; **ALGORITHM** clockwise again discards
 the changes and plays the tune; **HOME** cancels. When the tune ends for good, the song comes
 back from the store (the last one opened, by name), stopped. The keys' sound (a PRESETS change,
 a knob on LIVE, a LAB edit), their effect slots, MIDI and chip A's setup are not in the song's

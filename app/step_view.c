@@ -948,6 +948,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
         sv->instr = st->instr[sv->voice];
+        sv->instr_from_lab = 0;
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM && st->held != STEP_VIEW_NONE && target_of(st, st->held, &t)) {
@@ -977,6 +978,7 @@ static int input(screen* s, void* state, const screen_event* e) {
             int32_t i = (int32_t)st->instr[sv->voice] + e->steps;
             st->instr[sv->voice] = (uint8_t)(i < 1 ? 1 : i > (int32_t)GT2_MAX_INSTR ? (int32_t)GT2_MAX_INSTR : i);
             sv->instr = st->instr[sv->voice];
+            sv->instr_from_lab = 0;
         }
         return 1;
     }
@@ -1096,11 +1098,6 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     return 1;
 }
 
-static int model_loading(const song_view* sv) {
-    return sv->io && (sv->io->state == SONG_IO_STOP || sv->io->state == SONG_IO_READ ||
-                      sv->io->state == SONG_IO_VERIFY);
-}
-
 static void enter(screen* s, void* state) {
     step_view* st = state;
     st->sv->built = 0;
@@ -1109,7 +1106,9 @@ static void enter(screen* s, void* state) {
     st->zones = 0u;
     song_gen_stop(st->sv);
     st->down = st->touched = 0u;
-    st->sv->instr = st->instr[st->sv->voice];
+    if (!st->sv->instr_from_lab) {
+        st->sv->instr = st->instr[st->sv->voice];
+    }
 }
 
 static void leave(screen* s, void* state) {
@@ -1139,7 +1138,7 @@ static int changed(screen* s, void* state) {
     if (st->follow | st->qn | song_gen_busy(sv)) {
         drain(s, st);
     }
-    if (model_loading(sv)) {
+    if (song_view_loading(sv)) {
         return sv->which == SONG_VIEW_STEP && sv->dirty != 0;
     }
     uint8_t now[STEP_VIEW_LOOK];
@@ -1176,7 +1175,7 @@ static void compose(screen* s, void* state, grid* g) {
         song_view_away_compose(sv, s, g);
         return;
     }
-    if (model_loading(sv)) {
+    if (song_view_loading(sv)) {
         if (sv->which == SONG_VIEW_STEP) {
             song_view_copy(sv, s, g);
         }

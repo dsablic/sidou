@@ -519,6 +519,17 @@ fn an_unsaved_song_is_asked_about_before_a_tune_takes_its_memory() {
     assert_eq!(s.ui.top(), "NOW PLAYING");
 }
 
+#[test]
+fn the_unsaved_question_names_the_built_in_loop() {
+    let mut s = Sids::new(&["ALPHA"]);
+    s.io.dirty = 1;
+    s.io.builtin = 1;
+    open_sids(&mut s.ui);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(8, 2, 2, 10), "SIDOU LOOP");
+}
+
 fn now_playing(s: &mut Sids) {
     open_sids(&mut s.ui);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -669,14 +680,19 @@ fn play_and_edit_play_drive_the_tune() {
 }
 
 #[test]
-fn glo_mutes_and_solos_reach_the_tune() {
+fn glo_mutes_and_solos_reach_the_tune_and_the_song_gets_its_own_back() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
+    s.ui.v.song.mute = 0b001;
     now_playing(&mut s);
     unsafe {
         views_set_song(&mut *s.ui.v, std::ptr::null());
         views_tune(&mut *s.ui.v, 1);
     }
-    assert_eq!(s.calls(), vec![TuneCall::Mute(0)], "GLO's mask to the tune");
+    assert_eq!(
+        s.calls(),
+        vec![TuneCall::Mute(0)],
+        "the tune starts with every voice"
+    );
     s.ui.hold(PANEL_BTN_GLO, true);
     s.ui.note_keys(GLO_MUTE_VOICE_2_KEY, GLO_MUTE_VOICE_2_KEY);
     s.ui.note_keys(0, 0);
@@ -685,8 +701,17 @@ fn glo_mutes_and_solos_reach_the_tune() {
     s.ui.hold(PANEL_BTN_GLO, false);
     assert_eq!(s.calls(), vec![TuneCall::Mute(2), TuneCall::Mute(3)]);
     unsafe { views_tune(&mut *s.ui.v, 0) };
+    assert_eq!(
+        (s.ui.v.song.mute, s.ui.v.song.solo),
+        (0b001, 0),
+        "the song's own"
+    );
     unsafe { views_tune(&mut *s.ui.v, 1) };
-    assert_eq!(s.calls(), vec![TuneCall::Mute(3)], "again, to the new tune");
+    assert_eq!(
+        s.calls(),
+        vec![TuneCall::Mute(0)],
+        "the next tune starts afresh"
+    );
 }
 
 #[test]

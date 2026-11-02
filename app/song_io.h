@@ -9,6 +9,7 @@
 #include "store.h"
 
 #define SONG_IO_BUFFER_BYTES 160u
+#define SONG_IO_BUILTIN_NAME "SIDOU LOOP"
 
 typedef struct {
     int (*prepare)(void* ctx);

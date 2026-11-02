@@ -617,7 +617,7 @@ static int song_refused(views* v) {
         }
         return 1;
     }
-    if (!v->song.io || !v->song.io->about) {
+    if (!v->song.io || !(v->song.io->about || song_view_loading(&v->song))) {
         return 0;
     }
     screen_toast(&v->s, screen_top(&v->s) == &about_view ? "LEAVE ABOUT FIRST" : "LOADING",
@@ -676,7 +676,6 @@ static void song_menu_changed(views* v) {
 
 static const char SONG_BUILTIN[] = {'S', 'I', 'D', 'O', 'U', ' ', 'L', 'O', 'O', 'P', ' ',
                                     (char)FONT_MIDDOT, 0};
-#define SONG_BUILTIN_NAME "SIDOU LOOP"
 
 static int song_builtin_listed(const views* v) {
     return v->songs.action == SONG_MENU_LOAD && v->song.io && v->song.io->hooks.builtin;
@@ -702,7 +701,7 @@ static void song_name(views* v, int direct) {
     views_song_menu* m = &v->songs;
     const song_io* io = v->song.io;
     const char* name = io && io->name[0] ? io->name
-                       : io && io->hooks.builtin && !io->dirty ? SONG_BUILTIN_NAME
+                       : io && io->hooks.builtin && !io->dirty ? SONG_IO_BUILTIN_NAME
                                                                : "NEW SONG";
     uint32_t n = 0;
     while (name[n] && n < STORE_NAME_MAX) {
@@ -1138,6 +1137,16 @@ static void midi_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
     screen_push(&v->s, &views_midi, v, SCREEN_CUT);
+}
+
+static void lab_unstack(screen* s) {
+    uint32_t kept = 0u;
+    for (uint32_t i = 0u; i < s->depth; i++) {
+        if (s->stack[i].v != &lab_view_view) {
+            s->stack[kept++] = s->stack[i];
+        }
+    }
+    s->depth = (uint8_t)kept;
 }
 
 static void lab_show(views* v, uint32_t page) {
@@ -1765,10 +1774,10 @@ __attribute__((noinline, unused)) LIVE_COLD static void lab_send(views* v, int e
     uint8_t sound[LAB_SOUND_BYTES];
     char name[LIVE_PRESET_NAME_CHARS + 2u];
     live_sound_get(v->l, sound);
-    live_preset_name(v->l, name);
-    for (char* c = name; *c; c++)
-        if (*c == '*')
-            *c = 0;
+    if (v->l->preset == LIVE_PRESET_DICE)
+        live_preset_name(v->l, name);
+    else
+        memcpy(name, v->l->base_name, sizeof v->l->base_name);
     const char* why = song_pages_lab_send(&v->pages, sound, name, (uint32_t)v->l->model, &instr, &notes);
     if (why) {
         screen_toast(&v->s, why, SCREEN_TOAST_MS);
@@ -1786,6 +1795,7 @@ __attribute__((noinline, unused)) LIVE_COLD static void lab_send(views* v, int e
     screen_toast(&v->s, t, SCREEN_TOAST_MS);
     lab_view_sent(&v->lab, notes, v->s.now);
     v->song.instr = (uint8_t)instr;
+    v->song.instr_from_lab = 1;
     if (v->pages.arp && v->s.depth < SCREEN_DEPTH) {
         (void)screen_push(&v->s, &song_pages_table_view, &v->pages, SCREEN_WIPE_DOWN);
     } else {
@@ -1809,6 +1819,11 @@ __attribute__((noinline, unused)) LIVE_COLD static int lab_pull(views* v) {
     uint8_t sound[LAB_SOUND_BYTES];
     live_sound_get(v->l, sound);
     uint32_t notes = lab_song_pull(song, instr, (uint32_t)v->l->model, sound);
+    char name[LAB_SOUND_NAME + 1u];
+    lab_song_name(song, instr, name);
+    live_sound_set_base(v->l, v->l->base, name);
+    v->song.instr_from_lab = 1;
+    lab_unstack(&v->s);
     lab_view_pull(&v->lab, &v->s, sound, instr, notes);
     return 1;
 }

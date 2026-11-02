@@ -93,6 +93,8 @@ typedef struct song_view {
     uint8_t rec_q[SONG_VIEW_REC_QUEUE][4];
     const sid_transport* tune;
     uint8_t away;
+    uint8_t song_mutes;
+    uint8_t instr_from_lab;
     song_gen gen;
 } song_view;
 
@@ -114,6 +116,7 @@ int song_view_record_knob(song_view* sv, screen* s, uint32_t knob, int32_t steps
 uint32_t song_view_rec_value(const song_view* sv, uint32_t knob);
 void song_view_rec_drain(song_view* sv);
 void song_view_glo(song_view* sv, uint32_t toggles);
+int song_view_loading(const song_view* sv);
 uint32_t song_view_mute_mask(const song_view* sv);
 uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t owned,
                         int take, screen* recording_screen, screen* live_screen);

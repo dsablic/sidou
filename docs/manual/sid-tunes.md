@@ -116,6 +116,7 @@ the time, PAL or NTSC, its chips, and its three voices.
 - **PLAY** stops the tune, and plays it again from the start; **EDIT held + PLAY** pauses it and
   goes on.
 - **GLO held + the first three keys** mutes a voice, **+ the next three** solos one, as for a song.
+  They are the tune's: it starts with every voice on, and your song comes back with its own.
 - **REC** with one voice soloed lifts its next note as an instrument ([5. Lift a sound](#5-lift-a-sound)).
 - **HOME** goes back to the browser and on to the menu with the tune still playing; the keys
   play the second chip meanwhile (a tune for two chips silences them). HOME out of the browser

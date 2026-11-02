@@ -108,7 +108,8 @@ K3 and K4 have no link yet.
 ## Send it to the song, and pull one back
 
 **REC** sends the sound to the song as a GoatTracker instrument, into the lowest free one, while
-the song plays on: the toast says which (`SENT AS I06 SAW LEAD`). It is a plain GoatTracker 2
+the song plays on: the toast says which (`SENT AS I06 SAW LEAD`), and the instrument takes the
+sound's name. SEQ then finds it on INSTR, through STEP or not. It is a plain GoatTracker 2
 instrument with its wave, pulse, filter and speed rows, so the song still opens in GoatTracker.
 **EDIT + REC** writes it over the instrument INSTR shows instead, asking first if that one is in
 use (`REPLACE I05? EDIT+REC`, then EDIT + REC again).
@@ -124,5 +125,7 @@ slots stay behind. For six seconds the hint line says what was approximated or l
 On **INSTR**, **ENV**, **LFO** or **FX** pull the instrument under the cursor into LAB, at that
 page. A sound you sent and nobody edited comes back exactly (`PULLED I06`), its effect slots and
 tune too; any other instrument is read as near as LAB can play it, and the toast names what it
-could only approximate (`I01 ~DRUM`). The pull is one undo step: EDIT + LFO gives your sound
-back. The table of what goes how is in [controls.md](../reference/controls.md#send-a-lab-sound-to-the-song).
+could only approximate (`I01 ~DRUM`). The sound takes the instrument's name (its first 12
+characters), so sending it back keeps the name. HOME goes back to INSTR, and from there to where
+you opened LAB. The pull is one undo step: EDIT + LFO gives your sound back. The table of what
+goes how is in [controls.md](../reference/controls.md#send-a-lab-sound-to-the-song).

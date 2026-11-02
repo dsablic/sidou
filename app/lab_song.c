@@ -333,6 +333,22 @@ static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
     }
 }
 
+void lab_song_name(const gt2_song* s, uint32_t instr, char out[LAB_SOUND_NAME + 1u]) {
+    static const char HEX[] = "0123456789ABCDEF";
+    const uint8_t* name = s->instr[instr - 1u] + GT2_INS_NAME;
+    uint32_t n = 0u;
+    for (; n < LAB_SOUND_NAME && name[n]; n++)
+        out[n] = name[n] >= ' ' && name[n] <= '~' ? (char)name[n] : ' ';
+    while (n && out[n - 1u] == ' ')
+        n--;
+    if (!n) {
+        out[n++] = 'I';
+        out[n++] = HEX[instr >> 4 & 15u];
+        out[n++] = HEX[instr & 15u];
+    }
+    out[n] = 0;
+}
+
 uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
                        uint8_t sound[LAB_SOUND_BYTES]) {
     uint8_t rows[GT2_TABLES];

@@ -901,11 +901,6 @@ static int looks_changed(const song_view* sv) {
     return 0;
 }
 
-static int model_loading(const song_view* sv) {
-    return sv->io && (sv->io->state == SONG_IO_STOP || sv->io->state == SONG_IO_READ ||
-                      sv->io->state == SONG_IO_VERIFY);
-}
-
 static int changed(screen* s, void* state) {
     song_view* sv = state;
     if (song_gen_busy(sv) && !sv->away) {
@@ -914,7 +909,7 @@ static int changed(screen* s, void* state) {
     if (sv->away) {
         return song_view_away_changed(sv);
     }
-    if (model_loading(sv)) {
+    if (song_view_loading(sv)) {
         return sv->which == SONG_VIEW_TRACKER && sv->dirty != 0;
     }
     return !sv->built || sv->dirty || sv->unbuilt || looks_changed(sv) ||
@@ -927,7 +922,7 @@ static void compose(screen* s, void* state, grid* g) {
         song_view_away_compose(sv, s, g);
         return;
     }
-    if (model_loading(sv)) {
+    if (song_view_loading(sv)) {
         if (sv->which == SONG_VIEW_TRACKER) {
             song_view_copy(sv, s, g);
         }

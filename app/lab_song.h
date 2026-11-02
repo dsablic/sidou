@@ -57,6 +57,8 @@ uint32_t lab_song_crc_of(const lab_song_instr* in);
 uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
                        uint8_t sound[LAB_SOUND_BYTES]);
 
+void lab_song_name(const gt2_song* s, uint32_t instr, char out[LAB_SOUND_NAME + 1u]);
+
 void lab_song_words(uint32_t notes, int dropped, char* out, uint32_t max);
 
 uint32_t lab_song_free(const gt2_song* s);
