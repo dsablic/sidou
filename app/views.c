@@ -943,22 +943,14 @@ static void song_canvas_big(views* v, uint32_t row, uint32_t col, const char* te
     }
 }
 
-#define SONG_NAME_CELLS 14u
 static void song_canvas_name(views* v, uint32_t row, const char* name, uint8_t a) {
-    char line[SONG_NAME_CELLS + 1u];
-    uint32_t n = 0;
-    while (n < SONG_NAME_CELLS && name[n]) {
-        line[n] = name[n];
-        n++;
-    }
-    if (n == SONG_NAME_CELLS && name[n]) {
-        line[n - 1u] = (char)FONT_ARROW_RIGHT;
-    }
-    while (n < SONG_NAME_CELLS) {
-        line[n++] = ' ';
-    }
-    line[n] = 0;
+    char line[SONG_VIEW_NAME_CELLS + 1u];
+    song_view_name_cells(name, line);
     song_canvas_big(v, row, 2, line, a);
+}
+
+static void song_canvas_ask_big(void* ctx, uint32_t row, const char* text, uint8_t a) {
+    song_canvas_big(ctx, row, 2, text, a);
 }
 
 static uint32_t song_menu_big_rows(const views_song_menu* m) {
@@ -973,7 +965,8 @@ static uint32_t song_menu_big_rows(const views_song_menu* m) {
     } else if (m->page == SONG_MENU_DIR) {
         rows |= ((1u << (2u * VIEWS_SONG_FILES + 2u)) - 1u) << 6;
     } else if (m->page == SONG_MENU_CONFIRM) {
-        rows |= (3u << 6) | (3u << 8) | (3u << 10) | (3u << 14);
+        rows |= (3u << SONG_VIEW_ASK_ROW) | (3u << (SONG_VIEW_ASK_ROW + 2u)) |
+                (3u << SONG_VIEW_ASK_NAME_ROW) | (3u << SONG_VIEW_ASK_AGAIN_ROW);
     }
     if (m->page != SONG_MENU_NAME) {
         rows |= 3u << 24;
@@ -1055,14 +1048,12 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
             song_canvas_big(v, 20, 2, "ALG CHARACTER", legend);
             song_canvas_big(v, 22, 2, "SAVE WRITE", legend);
         } else {
-            song_canvas_big(v, 6, 2, m->action == SONG_MENU_DELETE ? "DELETE SONG?" : "DISCARD", alert);
-            if (m->action != SONG_MENU_DELETE) {
-                song_canvas_big(v, 8, 2, "UNSAVED SONG?", alert);
+            const char* name = m->action == SONG_MENU_NEW ? NULL : m->name;
+            if (m->action == SONG_MENU_DELETE) {
+                song_view_ask(song_canvas_ask_big, v, "DELETE SONG?", NULL, name, alert, value);
+            } else {
+                song_view_ask_discard(song_canvas_ask_big, v, name, alert, value);
             }
-            if (m->action != SONG_MENU_NEW) {
-                song_canvas_name(v, 10, m->name, value);
-            }
-            song_canvas_big(v, 14, 2, "SAVE AGAIN", alert);
         }
         if (m->page == SONG_MENU_ROOT || m->page == SONG_MENU_DIR) {
             song_canvas_big(v, 24, 2, m->page == SONG_MENU_DIR ? "SAVE CHOOSE" : "SAVE OPEN", legend);
@@ -2606,10 +2597,7 @@ static void save(views* v, uint32_t held) {
         return;
     }
     if (shows(v) == &sid_view_browser) {
-        if (sid_view_save(&v->sids, &v->s) == SID_VIEW_SAVE_AS) {
-            song_name(v, 1);
-            screen_push(&v->s, &views_song_menu_view, v, SCREEN_WIPE_DOWN);
-        }
+        sid_view_save(&v->sids, &v->s);
         return;
     }
     if (shows(v) == &song_pages_table_view && v->pages.arp) {
@@ -3091,9 +3079,6 @@ void views_frame(views* v, uint32_t now_ms) {
         }
     }
     toast_hold(v);
-    if (v->sids.saving) {
-        sid_view_frame(&v->sids, &v->s);
-    }
     const view* now = screen_top(&v->s);
     if (sid_view_offered(&v->sids)) {
         if (now == &live_view_view || now == &views_menu || now == &sid_view_browser) {

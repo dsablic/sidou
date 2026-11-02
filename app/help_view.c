@@ -115,8 +115,7 @@ static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP",
                                             "GLO+KEY\0MUTE",  "REC\0LIFT SOLO",  "KEYS\0PLAY",
                                             "HOME\0BACK",     "HOLD HOME\0HELP"};
 static const char* const LIFT_LINES[] = {"SAVE\0IMPORT", "HOME\0SKIP", "HOLD HOME\0HELP"};
-static const char* const UNSAVED_LINES[] = {"SAVE\0SAVE SONG", "ALG\0DISCARD", "HOME\0CANCEL",
-                                            "HOLD HOME\0HELP"};
+static const char* const UNSAVED_LINES[] = {"SAVE\0DISCARD", "HOME\0BACK", "HOLD HOME\0HELP"};
 
 #define LAB_TAIL_A "SELECT\0PAGE", "ENV LFO FX\0LAB"
 #define LAB_TAIL_B "SAVE\0KEEP", "E+SAVE\0NAME", "E+LFO\0UNDO", "E+ARP\0VARY", "E+SCL\0ROLL", \

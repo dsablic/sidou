@@ -558,7 +558,7 @@ fn the_sid_views_stay_within_their_budgets() {
 }
 
 #[test]
-fn the_unsaved_song_question_cancels_discards_or_saves_first() {
+fn the_unsaved_song_question_cancels_on_home_ignores_algorithm_and_discards_on_save() {
     let Some(fw) = firmware("the SID views' question test") else {
         return;
     };
@@ -569,40 +569,33 @@ fn the_unsaved_song_question_cancels_discards_or_saves_first() {
     song_io(&mut m, &fw, IO_SAVE, "NIGHT");
     song_io(&mut m, &fw, IO_LOAD, "NIGHT");
     let saved = song_file(&mut m, &fw);
-    for saves_first in [false, true] {
-        edit_a_row(&mut m, &fw);
-        let edited = song_file(&mut m, &fw);
-        assert!(edited != saved, "the edit changed nothing");
-        open_sids(&mut m, &fw);
-        m.turn(ALGORITHM, 1);
-        m.run_ms(200);
-        assert_eq!(m.soc.read8(asking), 1, "no question");
-        assert_eq!(tune_state(&mut m, &fw), TUNE_OFF);
-        if !saves_first {
-            press(&mut m, HOME);
-            m.run_ms(200);
-            assert_eq!(m.soc.read8(asking), 0);
-            assert_eq!(top_view(&mut m, &fw), fw.symbol("sid_view_browser"));
-            assert_eq!(tune_state(&mut m, &fw), TUNE_OFF);
-            m.turn(ALGORITHM, 1);
-            m.run_ms(200);
-            assert_eq!(m.soc.read8(asking), 1);
-            m.turn(ALGORITHM, 1);
-        } else {
-            press(&mut m, SAVE);
-        }
-        until(&mut m, "the tune plays", |m| tune_state(m, &fw) == TUNE_ON);
-        m.run_ms(1_000);
-        ui_end_tune(&mut m, &fw);
-        until(&mut m, "the song back", |m| tune_state(m, &fw) == TUNE_OFF);
-        song_idle(&mut m, &fw);
-        let back = song_file(&mut m, &fw);
-        if saves_first {
-            assert!(back == edited, "the song did not come back with its edit");
-        } else {
-            assert!(back == saved, "the discarded edit came back");
-        }
-    }
+    edit_a_row(&mut m, &fw);
+    assert!(song_file(&mut m, &fw) != saved, "the edit changed nothing");
+    open_sids(&mut m, &fw);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(200);
+    assert_eq!(m.soc.read8(asking), 1, "no question");
+    press(&mut m, HOME);
+    m.run_ms(200);
+    assert_eq!(m.soc.read8(asking), 0);
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("sid_view_browser"));
+    m.turn(ALGORITHM, 1);
+    m.run_ms(200);
+    assert_eq!(m.soc.read8(asking), 1);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(500);
+    assert_eq!(m.soc.read8(asking), 1, "ALGORITHM answered the question");
+    assert_eq!(tune_state(&mut m, &fw), TUNE_OFF);
+    press(&mut m, SAVE);
+    until(&mut m, "the tune plays", |m| tune_state(m, &fw) == TUNE_ON);
+    m.run_ms(1_000);
+    ui_end_tune(&mut m, &fw);
+    until(&mut m, "the song back", |m| tune_state(m, &fw) == TUNE_OFF);
+    song_idle(&mut m, &fw);
+    assert!(
+        song_file(&mut m, &fw) == saved,
+        "the discarded edit came back"
+    );
     assert_within_budget(
         "the question's busiest pass",
         busiest_pass(&m),

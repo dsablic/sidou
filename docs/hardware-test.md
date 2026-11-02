@@ -2367,9 +2367,17 @@ and after 60 s, and listen for clicks, dropouts, a tune that stops early or hang
 - [ ] **Stop and back:** PLAY stops the tune to silence and returns the song; the next tune
   starts from silence. `CPU` reads `--` when no tune runs:
 - [ ] **A sound edit is not the song's:** on the built-in loop, turn PRESETS and K1 on LIVE, then
-  play a tune from SIDS: no `SONG NOT SAVED`; once it ends the sound on the keys is the edited one.
+  play a tune from SIDS: no `DISCARD UNSAVED SONG?`; once it ends the sound on the keys is the edited one.
   *Emulator:* `emu-gate/tests/psid_views.rs::a_sound_edit_asks_nothing_and_survives_a_tune`,
   `sidou-tests/tests/app/song_io.rs::a_sound_edit_is_not_the_songs_and_a_tune_keeps_it`.
+- [ ] **A song edit is asked about:** edit a row of a saved song, then choose a tune in SIDS:
+  `DISCARD` / `UNSAVED SONG?`, the song's name and `SAVE AGAIN` in the alert colour, as SONG's
+  LOAD shows it. Spin ALGORITHM and SELECT both ways: nothing happens. HOME goes back to the list;
+  choose the tune again, press SAVE: the tune plays, and once it ends the song comes back without
+  the edit.
+  *Emulator:* `emu-gate/tests/psid_views.rs::the_unsaved_song_question_cancels_on_home_ignores_algorithm_and_discards_on_save`,
+  `sidou-tests/tests/app/sid_view.rs::no_encoder_answers_the_unsaved_question_nor_the_control_that_asked_it`;
+  *device-only:* the real encoders' detents and the colours on the LCD.
 - [ ] **At the unit's other clock,** only if the first run is over the rule below: the same
   tune, the same reads, at the other clock. Record the clock:
 

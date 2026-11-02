@@ -684,6 +684,40 @@ static void canvas_large_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, ui
     grid_put(g, col, row, ch, a);
 }
 
+void song_view_name_cells(const char* name, char line[SONG_VIEW_NAME_CELLS + 1u]) {
+    uint32_t n = 0;
+    while (n < SONG_VIEW_NAME_CELLS && name[n]) {
+        line[n] = name[n];
+        n++;
+    }
+    if (n == SONG_VIEW_NAME_CELLS && name[n]) {
+        line[n - 1u] = (char)FONT_ARROW_RIGHT;
+    }
+    while (n < SONG_VIEW_NAME_CELLS) {
+        line[n++] = ' ';
+    }
+    line[n] = 0;
+}
+
+void song_view_ask(song_view_big_text* big, void* ctx, const char* first, const char* second,
+                   const char* name, uint8_t alert, uint8_t value) {
+    big(ctx, SONG_VIEW_ASK_ROW, first, alert);
+    if (second) {
+        big(ctx, SONG_VIEW_ASK_ROW + 2u, second, alert);
+    }
+    if (name) {
+        char line[SONG_VIEW_NAME_CELLS + 1u];
+        song_view_name_cells(name, line);
+        big(ctx, SONG_VIEW_ASK_NAME_ROW, line, value);
+    }
+    big(ctx, SONG_VIEW_ASK_AGAIN_ROW, "SAVE AGAIN", alert);
+}
+
+void song_view_ask_discard(song_view_big_text* big, void* ctx, const char* name, uint8_t alert,
+                           uint8_t value) {
+    song_view_ask(big, ctx, "DISCARD", "UNSAVED SONG?", name, alert, value);
+}
+
 void song_view_copy_large(song_view* sv, screen* s, grid* g, uint32_t big_rows) {
     const song_view_canvas* cv = &sv->cv;
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
