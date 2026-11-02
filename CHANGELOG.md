@@ -10,7 +10,7 @@ All notable changes are documented here. The format follows
 
 ## [1.5.0] - 2026-10-31
 
-LAB's song bridge (send a sound to the song, pull one back); instruments lifted from a .sid;
+LAB's song bridge (send a sound to the song, pull one back); a .sid voice lifted into LAB;
 chords and time-shared drums from DICE; a popup for every small-print edit, page jumps and INSTR's
 pointer summaries; Live Link (the screen mirrored, the buttons and the computer keyboard from a
 browser); the site's library, song editor and preview; MIDI controller maps; 8.5 KB of duplicated
@@ -87,16 +87,17 @@ code removed.
   naming what was approximated (`I01 ~DRUM`). The ARP helper's SAVE now writes through the same
   batch writer. ([controls](docs/reference/controls.md#send-a-lab-sound-to-the-song),
   [LAB](docs/manual/lab.md#send-it-to-the-song-and-pull-one-back))
-- **Lift a sound from a `.sid`.** In NOW PLAYING, solo a voice and press REC: its next note
-  (a second at most, to its gate-off) becomes a GoatTracker 2 instrument: wave rows with notes
-  relative to the note it started on, the envelope (later changes as `F5`/`F6` rows), the pulse
-  sweep, a calculated vibrato when one follows the tune's (else the note held at its centre:
-  `LIFTED, VIBRATO DROPPED`), filter rows when the voice is filtered (approximate). It goes to the
-  store as `LIFTED SOUND` (a GTI5 file, type 3, one store entry, replaced by the next lift), and
-  once the tune ends and the song is back, SIDOU offers it: SAVE imports it into the song's first
-  empty instrument (the song stopped), HOME skips it. Digis are refused (`DIGI: CAN'T LIFT`).
-  The capture reads the 6502's writes in the main loop; the audio interrupt is unchanged. Help:
-  PLAYING's REC line and the LIFT card ([controls](docs/reference/controls.md#lift-a-sound),
+- **Lift a sound from a `.sid` into LAB.** In NOW PLAYING, REC asks `LIFT WHICH VOICE? 1 2 3`
+  (large, note keys 1-3 lit); a key takes that voice's most recent note from a rolling history of
+  the tune's registers (its last 64 play calls, 1,728 bytes) and LAB opens with it as
+  `LIFTED V2`: waveform, ADSR, pulse width and PWM, filter and vibrato, the toast naming what
+  LAB could only approximate (`LIFTED V2 ~SWEEP`). A voice silent lately says `WAITING FOR V2`
+  and its next note is taken; REC again or HOME cancels. SAVE keeps the sound as a new USER sound
+  under its name, HOME goes back to the tune still playing. Digis are refused (`DIGI: CAN'T
+  LIFT`). The capture reads the 6502's writes in the main loop and converts in passes within the
+  slice budget; the audio interrupt is unchanged. LAB's pull keeps a wave row of `00`'s first
+  waveform and makes PWM or the filter LFO of a run that swings back and forth. Help: PLAYING's
+  REC line and the LIFT card for the question ([controls](docs/reference/controls.md#lift-a-sound),
   [manual](docs/manual/sid-tunes.md#5-lift-a-sound)).
 
 - **Chords and time-shared drums from DICE.** A lane's **role** is set in DICE's frame: hold EDIT

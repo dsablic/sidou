@@ -32,7 +32,7 @@ much room is free. Free space is a guide: the FM-1 says when a file does not fit
 ## 2. The files on the FM-1
 
 Each file has its name (as the FM-1's menus show it), its type (song, `.sid` tune or
-instrument; a lifted sound is an instrument), its size and its CRC-32 (the same number `crc32` or
+instrument; a `LIFTED SOUND` file from a 1.5 preview build is an instrument), its size and its CRC-32 (the same number `crc32` or
 zlib gives for the downloaded file). For each:
 
 - **Download** saves it: a song as `.sng`, a tune as `.sid`, an instrument as `.ins`.

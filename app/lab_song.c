@@ -278,22 +278,55 @@ int lab_song_keep(gt2_song* s, uint32_t instr, const lab_song_instr* in,
 }
 
 typedef struct {
+    const uint8_t* ins;
+    const uint8_t* left[GT2_TABLES];
+    const uint8_t* right[GT2_TABLES];
+    uint32_t rows[GT2_TABLES];
+} source;
+
+typedef struct {
     int32_t set, lo, hi, loop;
-    uint32_t moves, sets;
+    uint32_t moves, sets, swings;
 } run;
 
 #define RUN_FRAMES 1200u
 #define RUN_ROWS 24u
 
-static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
+typedef struct {
+    int32_t dir;
+    uint32_t from, longest;
+} turns;
+
+static void turn(run* r, turns* w, int32_t step, uint32_t frame) {
+    int32_t dir = step > 0 ? 1 : step < 0 ? -1 : 0;
+    if (!dir || dir == w->dir)
+        return;
+    if (w->dir) {
+        r->swings++;
+        w->longest = frame - w->from > w->longest ? frame - w->from : w->longest;
+    }
+    w->dir = dir;
+    w->from = frame;
+}
+
+static void swing(run* r, const turns* w, uint32_t frame) {
+    if (r->loop || !r->swings)
+        return;
+    uint32_t last = frame - w->from;
+    r->loop = 2 * (int32_t)(last > w->longest ? last : w->longest);
+    r->set = (r->lo + r->hi) / 2;
+}
+
+static void play(const source* s, uint32_t t, uint32_t ptr, run* r) {
     uint16_t seen[RUN_ROWS] = {0};
     uint32_t at = ptr, frame = 0u;
     int32_t v = 0;
+    turns w = {0, 0u, 0u};
     memset(r, 0, sizeof *r);
     r->lo = 0x7fffffff;
     r->hi = -1;
-    while (at && at <= GT2_TABLE_ROWS && frame < RUN_FRAMES) {
-        uint8_t l = s->ltable[t][at - 1u], rt = s->rtable[t][at - 1u];
+    while (at && at <= s->rows[t] && frame < RUN_FRAMES) {
+        uint8_t l = s->left[t][at - 1u], rt = s->right[t][at - 1u];
         if (at >= ptr && at - ptr < RUN_ROWS && !seen[at - ptr])
             seen[at - ptr] = (uint16_t)(frame + 1u);
         if (l == JUMP) {
@@ -310,9 +343,9 @@ static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
             frame++;
         } else if (t == GT2_FTBL && (l & 0x80u || !l)) {
             if (l) {
-                if (at < GT2_TABLE_ROWS && !s->ltable[t][at]) {
+                if (at < s->rows[t] && !s->left[t][at]) {
                     at++;
-                    rt = s->rtable[t][at - 1u];
+                    rt = s->right[t][at - 1u];
                 } else {
                     at++;
                     continue;
@@ -322,6 +355,7 @@ static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
             r->set = r->sets++ ? r->set : v;
             frame++;
         } else {
+            turn(r, &w, (int8_t)rt, frame);
             for (uint32_t k = 0u; k < l; k++, frame++) {
                 v = t == GT2_PTBL ? (v + (int8_t)rt) & 0xfff : (v + rt) & 0xff;
                 r->lo = v < r->lo ? v : r->lo;
@@ -331,6 +365,7 @@ static void play(const gt2_song* s, uint32_t t, uint32_t ptr, run* r) {
         }
         at++;
     }
+    swing(r, &w, frame);
 }
 
 void lab_song_name(const gt2_song* s, uint32_t instr, char out[LAB_SOUND_NAME + 1u]) {
@@ -349,12 +384,8 @@ void lab_song_name(const gt2_song* s, uint32_t instr, char out[LAB_SOUND_NAME + 
     out[n] = 0;
 }
 
-uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
-                       uint8_t sound[LAB_SOUND_BYTES]) {
-    uint8_t rows[GT2_TABLES];
-    if (lab_song_kept(s, instr, rows, sound))
-        return LAB_SONG_EXACT;
-    const uint8_t* ins = s->instr[instr - 1u];
+static uint32_t fit(const source* s, uint32_t model, uint8_t sound[LAB_SOUND_BYTES]) {
+    const uint8_t* ins = s->ins;
     uint32_t notes = 0u;
     sound[LAB_SOUND_AD] = ins[GT2_INS_AD];
     sound[LAB_SOUND_SR] = ins[GT2_INS_SR];
@@ -367,12 +398,12 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
     uint32_t w = ins[GT2_INS_WAVE];
     uint32_t ctrl = ins[GT2_INS_FIRSTWAVE];
     sound[LAB_SOUND_ARP + LIVE_ARP_ON] = 0u;
-    if (w) {
-        const uint8_t* l = s->ltable[GT2_WTBL] + w - 1u;
-        const uint8_t* r = s->rtable[GT2_WTBL] + w - 1u;
+    if (w && w <= s->rows[GT2_WTBL]) {
+        const uint8_t* l = s->left[GT2_WTBL] + w - 1u;
+        const uint8_t* r = s->right[GT2_WTBL] + w - 1u;
         song_pages_arp a;
         uint32_t used = 0u;
-        if (song_pages_arp_decode(l, r, w, GT2_TABLE_ROWS + 1u - w, &a, &used) && a.steps > 1u) {
+        if (song_pages_arp_decode(l, r, w, s->rows[GT2_WTBL] + 1u - w, &a, &used) && a.steps > 1u) {
             uint32_t k = 0u;
             while (k + 1u < LIVE_ARP_RATE_CLOCK && live_arp_steps[k] < a.speed)
                 k++;
@@ -381,9 +412,9 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
             ctrl = a.wave;
             notes |= LAB_SONG_ARP;
         } else {
-            ctrl = l[0] >= 0xe0u && l[0] < 0xf0u ? l[0] & 0x0fu : l[0];
-            if (l[0] < 0x10u || l[0] >= 0xf0u || (r[0] && r[0] != 0x80u) ||
-                (w < GT2_TABLE_ROWS && l[1] != JUMP))
+            ctrl = !l[0] ? ctrl : l[0] >= 0xe0u && l[0] < 0xf0u ? l[0] & 0x0fu : l[0];
+            if ((l[0] && l[0] < 0x10u) || l[0] >= 0xf0u || (r[0] && r[0] != 0x80u) ||
+                (w < s->rows[GT2_WTBL] && l[1] != JUMP))
                 notes |= LAB_SONG_DRUM;
         }
     }
@@ -406,8 +437,8 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
     uint32_t f = ins[GT2_INS_FILTER];
     sound[LAB_SOUND_FILTER_VOICES] = 0u;
     sound[LAB_SOUND_FILTER_LFO] = 0u;
-    if (f) {
-        uint8_t l = s->ltable[GT2_FTBL][f - 1u], r = s->rtable[GT2_FTBL][f - 1u];
+    if (f && f <= s->rows[GT2_FTBL]) {
+        uint8_t l = s->left[GT2_FTBL][f - 1u], r = s->right[GT2_FTBL][f - 1u];
         if ((l & 0x80u) && l != JUMP) {
             sound[LAB_SOUND_FILTER_MODE] = l & 0x70u;
             sound[LAB_SOUND_RESONANCE] = r >> 4;
@@ -430,8 +461,8 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
     put16(sound, LAB_SOUND_PWM_RATE, rate ? rate : u16_at(sound, LAB_SOUND_PWM_RATE));
     uint32_t v = ins[GT2_INS_VIBDELAY] ? ins[GT2_INS_VIBPARAM] : 0u;
     sound[LAB_SOUND_VIBRATO_DEPTH] = 0u;
-    if (v) {
-        uint8_t l = s->ltable[GT2_STBL][v - 1u], r = s->rtable[GT2_STBL][v - 1u];
+    if (v && v <= s->rows[GT2_STBL]) {
+        uint8_t l = s->left[GT2_STBL][v - 1u], r = s->right[GT2_STBL][v - 1u];
         int32_t sp = l & 0x7f;
         int32_t d = l & 0x80u ? (r < 16u ? ((sp + 2) * 64) >> r : 0) : (sp + 2) * r * 64 / 265;
         notes |= l & 0x80u ? 0u : LAB_SONG_VIB;
@@ -440,6 +471,41 @@ uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
         sound[LAB_SOUND_VIBRATO_DELAY] = (uint8_t)clampi((ins[GT2_INS_VIBDELAY] - 1) * 2, 0, LIVE_EXPRESSION_MAX);
     }
     return notes;
+}
+
+uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
+                       uint8_t sound[LAB_SOUND_BYTES]) {
+    uint8_t rows[GT2_TABLES];
+    if (lab_song_kept(s, instr, rows, sound))
+        return LAB_SONG_EXACT;
+    source src = {s->instr[instr - 1u], {0}, {0}, {0}};
+    for (uint32_t t = 0u; t < GT2_TABLES; t++) {
+        src.left[t] = s->ltable[t];
+        src.right[t] = s->rtable[t];
+        src.rows[t] = GT2_TABLE_ROWS;
+    }
+    return fit(&src, model, sound);
+}
+
+#define GTI_HEAD 4u
+
+int lab_song_pull_gti(const uint8_t* gti, uint32_t len, uint32_t model,
+                      uint8_t sound[LAB_SOUND_BYTES], uint32_t* notes) {
+    uint32_t at = GTI_HEAD + GT2_INSTR_BYTES;
+    if (len < at || memcmp(gti, "GTI5", GTI_HEAD))
+        return 0;
+    source src = {gti + GTI_HEAD, {0}, {0}, {0}};
+    for (uint32_t t = 0u; t < GT2_TABLES; t++) {
+        uint32_t n = at < len ? gti[at++] : len;
+        if (at + 2u * n > len)
+            return 0;
+        src.left[t] = gti + at;
+        src.right[t] = gti + at + n;
+        src.rows[t] = n;
+        at += 2u * n;
+    }
+    *notes = fit(&src, model, sound);
+    return 1;
 }
 
 void lab_song_words(uint32_t notes, int dropped, char* out, uint32_t max) {

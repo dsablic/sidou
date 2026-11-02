@@ -252,7 +252,7 @@ void panel_master(panel* p, live* l, int32_t raw) {
     }
 }
 
-static const panel_led_in NO_IN = {0, PANEL_BEAT_NONE, 0, 0, 0, 0, 0, PANEL_NO_STEP, 0, 0, 0};
+static const panel_led_in NO_IN = {.beat = PANEL_BEAT_NONE, .step_head = PANEL_NO_STEP};
 
 static int arp_flash(const live* l) {
     if (l->arp_voice == LIVE_ARP_NO_VOICE) {
@@ -349,6 +349,7 @@ panel_leds panel_get_leds(const panel* p, const live* l, const panel_led_in* in)
     if (((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u) {
         glo_layer(in, blink, &o);
     }
+    o.notes |= in->pick;
     o.buttons_dim &= ~o.buttons;
     o.notes_dim &= ~o.notes;
     return o;

@@ -11,8 +11,8 @@ What plays: PSID tunes, one or two SID chips, PAL or NTSC, up to 65,536 bytes a 
 PSID fits). What does not: RSID tunes (`RSID: NOT YET`: they need a real C64's interrupts and
 ROMs), MUS files (`MUS: NOT SUPPORTED`), and damaged files (`BROKEN .SID`, `TOO LONG`).
 [docs/reference/psid.md](../reference/psid.md) has the details. Once a tune is on the store, the
-menu's **SIDS** plays it ([4. Play it](#4-play-it)), and **REC** lifts a voice's instrument into
-your song ([5. Lift a sound](#5-lift-a-sound)).
+menu's **SIDS** plays it ([4. Play it](#4-play-it)), and **REC** takes a voice's sound into LAB
+([5. Lift a sound](#5-lift-a-sound)).
 
 ## 1. Make the .syx
 
@@ -117,7 +117,8 @@ the time, PAL or NTSC, its chips, and its three voices.
   goes on.
 - **GLO held + the first three keys** mutes a voice, **+ the next three** solos one, as for a song.
   They are the tune's: it starts with every voice on, and your song comes back with its own.
-- **REC** with one voice soloed lifts its next note as an instrument ([5. Lift a sound](#5-lift-a-sound)).
+- **REC** asks which voice to lift, and note key 1, 2 or 3 takes its sound into LAB
+  ([5. Lift a sound](#5-lift-a-sound)).
 - **HOME** goes back to the browser and on to the menu with the tune still playing; the keys
   play the second chip meanwhile (a tune for two chips silences them). HOME out of the browser
   with the tune stopped ends it, and your song comes back.
@@ -136,33 +137,32 @@ song comes back.
 
 ## 5. Lift a sound
 
-A tune's instrument can come with you into your own song. In NOW PLAYING, solo the voice that
-plays it (**GLO held + note key 4, 5 or 6**), then press **REC**: the voice's lane says **ARM**,
-and its next note is taken (**REC**) as it plays, a frame a play call, for a second at most or
-until the note ends. A toast says what it became: `LIFTED: CONSULTANT V1`. It is a GoatTracker 2
-instrument, kept on the store as **LIFTED SOUND** (the next lift replaces it).
+A tune's sound can come with you. In NOW PLAYING, while the tune plays, press **REC**: the
+screen asks **LIFT WHICH VOICE? 1 2 3** and note keys 1, 2 and 3 light up. Watch the voice bars
+for the one that plays the part you want and press its key. SIDOU keeps the last second or so of
+the tune's registers, so it takes that voice's most recent note at once; **LAB** opens with it,
+named **LIFTED V2** (for voice 2). If the voice has played nothing lately, the screen says
+**WAITING FOR V2** and takes its next note. REC again or HOME cancels the question or the wait.
 
-When the tune ends and your song is back, SIDOU offers it: **LIFTED SOUND**, its name, and the
-song's first empty instrument (**INTO I05**). **SAVE** imports it there, with its tables, as an
-instrument sent over SysEx would be; **HOME** leaves it on the store. Stop the song first: the
-import does not run while it plays. Then save the song to keep it.
+In LAB the lifted sound is a sound like any other: the keys play it, every page shapes it, and
+**SAVE** keeps it as a USER sound named LIFTED V2 (**EDIT + SAVE** gives it a name of your own).
+A USER sound you were playing before stays as it was. **HOME** goes back to the tune, still
+playing. To put the sound in a song, REC in LAB sends it to the song once the tune is over
+([LAB's song bridge](lab.md#send-it-to-the-song-and-pull-one-back)).
 
-What the instrument holds, read from the voice's registers as the tune writes them:
+What LAB takes from the voice, read from its registers as the tune writes them:
 
-- **Waveform and pitch**: a wavetable row a frame that changes, the pitch as notes relative to the
-  note it started on, so it plays at whatever note you give it. A note between notes (a slide)
-  lands on the nearest one. The first frame is the instrument's first waveform, attack, decay,
-  sustain and release; a later change of the envelope is a `F5` or `F6` row.
-- **Vibrato**: a pitch that swings around a note becomes GoatTracker's instrument vibrato
-  (calculated, so it scales with the note), when one follows it closely enough; otherwise the
-  note is held at its centre (`LIFTED, VIBRATO DROPPED`).
-- **Pulse width**: its sweep as steps, a new start where it jumps.
-- **Filter**: only if the voice goes through the filter; the cutoff (GoatTracker's 8 bits), mode
-  and resonance, routed to the voice it came from. Approximate: the filter is the whole chip's,
-  so it takes over the song's filter while it plays.
-- **Not held**: what the tune does before the note starts (its hard restart), the other voices
-  that sync or ring-modulate it, the volume.
+- **Waveform and envelope**: the note's waveform, attack, decay, sustain and release.
+- **Pulse width**: where it starts; a width that swings up and down becomes LAB's PWM, at the
+  depth and rate it swung.
+- **Filter**: only if the voice goes through the filter; the cutoff, mode and resonance, and a
+  cutoff that swings becomes the filter LFO.
+- **Vibrato**: a pitch that swings around the note becomes LAB's vibrato, its rate, depth and
+  delay.
+- **Not held**: a sweep that only goes one way (the toast names it: `LIFTED V2 ~SWEEP`), notes
+  that change within the sound (`~DRUM`), what the tune does before the note starts (its hard
+  restart), the other voices that sync or ring-modulate it, the volume.
 
-**Digis** (samples played through the registers) cannot be an instrument: `DIGI: CAN'T LIFT`.
-GoatTracker's own optimisations skip a pulse or vibrato step at the song's row ticks, as they do
-for every instrument, so a sweep in your song can sit a frame apart from the tune's.
+**Digis** (samples played through the registers) cannot be lifted: `DIGI: CAN'T LIFT`. A tune
+for two chips silences the keys while it plays, so LAB plays the lifted sound once the tune
+stops.

@@ -711,26 +711,21 @@ fn open_ctx(name: &str) -> Ctx {
             ui.press(PANEL_BTN_ARP);
             ui.settle();
         }
-        "SIDS" | "PLAYING" | "UNSAVED" => {
+        "SIDS" | "PLAYING" | "UNSAVED" | "LIFT" => {
             let bound = crate::sid_view::bind(ui, &["ALPHA", "BETA"]);
             crate::sid_view::open_sids(ui);
             let to_the_unsaved_question = name != "SIDS";
-            let discarded_now_playing = name == "PLAYING";
+            let discarded_now_playing = name == "PLAYING" || name == "LIFT";
             if to_the_unsaved_question {
                 ui.turn(PANEL_ENC_ALGORITHM, 1);
             }
             if discarded_now_playing {
                 ui.press(SAVE_KEY_BUTTON);
             }
+            if name == "LIFT" {
+                ui.press(PANEL_BTN_REC);
+            }
             ui.settle();
-            tune = Some(bound);
-        }
-        "LIFT" => {
-            let mut bound = crate::sid_view::bind(ui, &["ALPHA"]);
-            open(ui, &Open::Menu);
-            crate::sid_view::offer(&mut bound.0, "ALPHA V1", 1);
-            ui.settle();
-            assert_eq!(ui.top(), "LIFTED SOUND");
             tune = Some(bound);
         }
         "STEP FULL" => fill_the_stack_song_load_then_step(ui),
@@ -917,7 +912,7 @@ fn takes(ui: &mut Ui, e: &screen_event) -> bool {
 }
 
 fn a_question_takes_it_for_nothing(name: &str, ctl: Ctl) -> bool {
-    matches!(name, "CONFIRM" | "UNSAVED")
+    matches!(name, "CONFIRM" | "UNSAVED" | "LIFT")
         && matches!(ctl, Ctl::Encoder(e) if e == PANEL_ENC_SELECT || e == PANEL_ENC_ALGORITHM)
 }
 
@@ -953,7 +948,6 @@ fn saves(name: &str) -> bool {
             | "STEP FULL"
             | "SIDS"
             | "UNSAVED"
-            | "LIFT"
     )
 }
 

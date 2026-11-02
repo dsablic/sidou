@@ -56,16 +56,20 @@ impl FrameRegs {
     }
 }
 
-struct Lift(Box<psid_lift>);
+struct Lift(Box<psid_lift>, #[allow(dead_code)] Box<psid_lift_past>);
 
 impl Lift {
     fn new() -> Lift {
-        let mut l = Box::<psid_lift>::default();
-        unsafe { psid_lift_init(&mut *l) };
-        Lift(l)
+        Lift::of_chips(1)
     }
-    fn arm(&mut self, voice: u32, chips: u32) {
-        unsafe { psid_lift_arm(&mut *self.0, voice, chips) };
+    fn of_chips(chips: u32) -> Lift {
+        let mut past = Box::<psid_lift_past>::default();
+        let mut l = Box::<psid_lift>::default();
+        unsafe { psid_lift_init(&mut *l, &mut *past, chips) };
+        Lift(l, past)
+    }
+    fn take(&mut self, voice: u32) -> u32 {
+        unsafe { psid_lift_take(&mut *self.0, voice) as u32 }
     }
     fn write(&mut self, chip: u32, reg: u32, value: u8) {
         unsafe { psid_lift_write(&mut *self.0, chip, reg, u32::from(value)) };
@@ -131,7 +135,7 @@ const C4: u8 = 48;
 
 fn lifted_after_a_gate_off_frame(frames: &[FrameRegs], v: usize) -> Lift {
     let mut l = Lift::new();
-    l.arm(v as u32, 1);
+    l.take(v as u32);
     l.frame(v, FrameRegs::new(note_freq(C4 - 5), 0, 0x40, 0x0f, 0x00));
     for r in frames {
         l.frame(v, *r);
@@ -266,17 +270,29 @@ fn options_playing_as_captured() -> gt2_options {
     o
 }
 
+const ON: FrameRegs = FrameRegs([0x67, 0x11, 0x00, 0x08, 0x41, 0x09, 0xa0, 0, 0, 0, 0x0f]);
+const OFF: FrameRegs = FrameRegs([0x67, 0x11, 0x00, 0x08, 0x40, 0x09, 0xa0, 0, 0, 0, 0x0f]);
+
+fn with_ad(r: FrameRegs, ad: u8) -> FrameRegs {
+    let mut r = r;
+    r.0[AD] = ad;
+    r
+}
+
+fn calls(l: &mut Lift, v: usize, r: FrameRegs, n: usize) {
+    for _ in 0..n {
+        l.frame(v, r);
+    }
+}
+
 #[test]
 fn the_capture_starts_at_the_gate_on_and_ends_at_the_gate_off() {
     let mut l = Lift::new();
-    l.arm(1, 1);
-    let on = FrameRegs::new(note_freq(C4), 0x800, 0x41, 0x09, 0xa0);
-    l.frame(0, on);
+    assert_eq!(l.take(1), PSID_LIFT_ARMED, "no note yet: it waits");
+    l.frame(0, ON);
     l.frame(1, FrameRegs([0; 11]));
     assert_eq!(l.state(), PSID_LIFT_ARMED);
-    for _ in 0..5 {
-        l.frame(1, on);
-    }
+    calls(&mut l, 1, ON, 5);
     assert_eq!(l.state(), PSID_LIFT_TAKING);
     assert_eq!(l.0.frames, 5);
     l.frame(1, FrameRegs([0x40; 11]));
@@ -288,20 +304,16 @@ fn the_capture_starts_at_the_gate_on_and_ends_at_the_gate_off() {
 
 #[test]
 fn the_capture_ends_at_the_next_gate_on_or_after_a_second() {
-    let on = FrameRegs::new(note_freq(C4), 0x800, 0x41, 0x09, 0xa0);
     let mut l = Lift::new();
-    l.arm(2, 1);
-    l.frame(2, on);
-    l.frame(2, on);
+    l.take(2);
+    calls(&mut l, 2, ON, 2);
     l.write(0, 2 * 7 + 4, 0x40);
     l.write(0, 2 * 7 + 4, 0x41);
     l.call();
     assert_eq!((l.state(), l.0.frames), (PSID_LIFT_TAKEN, 2));
     let mut l = Lift::new();
-    l.arm(0, 1);
-    for _ in 0..80 {
-        l.frame(0, on);
-    }
+    l.take(0);
+    calls(&mut l, 0, ON, 80);
     assert_eq!(
         (l.state(), u32::from(l.0.frames)),
         (PSID_LIFT_TAKEN, PSID_LIFT_FRAMES)
@@ -309,20 +321,96 @@ fn the_capture_ends_at_the_next_gate_on_or_after_a_second() {
 }
 
 #[test]
-fn a_2sid_tune_lifts_from_the_chip_whose_voice_gates_first() {
+fn a_take_lifts_the_voices_most_recent_note_from_the_history() {
     let mut l = Lift::new();
-    l.arm(0, 2);
-    l.write(1, 0, 0x34);
-    l.write(1, 4, 0x11);
-    l.write(0, 4, 0x21);
+    calls(&mut l, 2, ON, 6);
+    l.frame(2, OFF);
+    let before = OFF.set_freq(note_freq(C4 - 5));
+    l.frame(2, before);
+    calls(&mut l, 2, with_ad(ON, 0x3c), 4);
+    calls(&mut l, 2, OFF, 3);
+    assert_eq!(l.take(2), PSID_LIFT_TAKEN, "ended: taken at once");
+    assert_eq!(l.0.frames, 4);
+    assert_eq!(l.0.frame[0][AD], 0x3c, "the last note, not the one before");
+    assert_eq!(&l.0.before, &[before.0[0], before.0[1]]);
+    assert!(l.convert(false).is_ok());
+}
+
+#[test]
+fn a_sounding_note_is_followed_live_to_its_end() {
+    let mut l = Lift::new();
+    l.frame(0, OFF);
+    calls(&mut l, 0, ON, 3);
+    assert_eq!((l.take(0), l.0.frames), (PSID_LIFT_TAKING, 3));
+    calls(&mut l, 0, ON, 2);
+    l.frame(0, OFF);
+    assert_eq!((l.state(), l.0.frames), (PSID_LIFT_TAKEN, 5));
+}
+
+#[test]
+fn a_voice_silent_in_the_history_is_taken_at_its_next_note() {
+    let mut l = Lift::new();
+    calls(&mut l, 0, ON, 10);
+    assert_eq!(l.take(1), PSID_LIFT_ARMED);
+    calls(&mut l, 1, ON, 2);
+    assert_eq!((l.state(), l.0.frames), (PSID_LIFT_TAKING, 2));
+    assert_eq!(l.take(PSID_LIFT_NO_VOICE), PSID_LIFT_OFF, "cancelled");
+}
+
+#[test]
+fn the_history_holds_the_last_calls_of_every_chip() {
+    for chips in [1u32, 2] {
+        let depth = PSID_LIFT_PAST / chips;
+        for (held, kept) in [(depth, true), (depth + 1, false)] {
+            let mut l = Lift::of_chips(chips);
+            l.frame(0, OFF);
+            calls(&mut l, 0, ON, held as usize);
+            assert_eq!(
+                l.take(0) != PSID_LIFT_ARMED,
+                kept,
+                "{chips} chips, a note {held} calls old"
+            );
+        }
+    }
+    let mut l = Lift::new();
+    calls(&mut l, 0, ON, 3);
+    unsafe { psid_lift_forget(&mut *l.0) };
+    assert_eq!(l.take(0), PSID_LIFT_ARMED, "forgotten");
+}
+
+#[test]
+fn a_2sid_tune_lifts_the_more_recent_note_of_either_chip() {
+    let gate = |l: &mut Lift, chip: u32| l.write(chip, 4, 0x11);
+    let mut l = Lift::of_chips(2);
+    gate(&mut l, 1);
     l.call();
-    assert_eq!(l.0.chip, 1);
-    assert_eq!(l.0.frame[0][4], 0x11);
+    gate(&mut l, 0);
+    l.call();
+    assert_eq!(
+        (l.take(0), l.0.chip),
+        (PSID_LIFT_TAKING, 0),
+        "chip A's, later"
+    );
+    let mut l = Lift::of_chips(2);
+    gate(&mut l, 0);
+    l.call();
+    gate(&mut l, 1);
+    l.call();
+    assert_eq!(l.take(0), PSID_LIFT_TAKING);
+    assert_eq!((l.0.chip, l.0.frames), (1, 1), "chip B's, later");
+    let mut l = Lift::of_chips(2);
+    gate(&mut l, 1);
+    gate(&mut l, 0);
+    l.call();
+    assert_eq!(
+        (l.take(0), l.0.chip),
+        (PSID_LIFT_TAKING, 0),
+        "one call: chip A's"
+    );
     let mut one = Lift::new();
-    one.arm(0, 1);
     one.write(1, 4, 0x11);
     one.call();
-    assert_eq!(one.state(), PSID_LIFT_ARMED);
+    assert_eq!(one.take(0), PSID_LIFT_ARMED, "a 1SID tune's chip B");
 }
 
 #[test]
@@ -410,25 +498,30 @@ fn a_filter_routed_voice_gets_filter_rows() {
 }
 
 #[test]
-fn a_digi_burst_is_refused() {
+fn a_digi_burst_is_refused_live_or_from_the_history() {
     let on = FrameRegs::new(note_freq(C4), 0x800, 0x41, 0x09, 0xa0);
-    let mut l = Lift::new();
-    l.arm(0, 1);
-    l.frame(0, on);
-    for k in 0..40u8 {
-        l.write(0, 0x18, k & 15);
+    let digi = |l: &mut Lift| (0..40u8).for_each(|k| l.write(0, 0x18, k & 15));
+    let a_busy_player = |l: &mut Lift| (0..7).for_each(|_| l.write(0, 4, 0x41));
+    let bursts: [(&dyn Fn(&mut Lift), bool); 2] = [(&digi, true), (&a_busy_player, false)];
+    for taken_after in [false, true] {
+        for (burst, refused) in bursts {
+            let mut l = Lift::new();
+            if !taken_after {
+                l.take(0);
+            }
+            l.frame(0, on);
+            burst(&mut l);
+            calls(&mut l, 0, on, 2);
+            if taken_after {
+                l.take(0);
+            }
+            assert_eq!(
+                l.convert(false).err() == Some(PSID_LIFT_E_DIGI),
+                refused,
+                "taken after the burst: {taken_after}"
+            );
+        }
     }
-    l.frame(0, on);
-    l.frame(0, on);
-    assert_eq!(l.convert(false), Err(PSID_LIFT_E_DIGI));
-    let mut l = Lift::new();
-    l.arm(0, 1);
-    l.frame(0, on);
-    for _ in 0..7 {
-        l.write(0, 4, 0x41);
-    }
-    l.frame(0, on);
-    assert!(l.convert(false).is_ok());
 }
 
 fn vibrato(note: u8, speed: u8, shift: u32, delay: u32, frames: usize) -> Vec<u16> {
@@ -536,9 +629,9 @@ fn a_starter_tune_s_voices_lift_and_play_back() {
     .unwrap();
     for (voice, at) in (0..3u32).flat_map(|v| [(v, 1000), (v, 3000)]) {
         let mut p = psid::Player::new(&file);
-        let mut l = Box::<psid_lift>::default();
-        unsafe { psid_lift_init(&mut *l) };
-        p.ctl.lift = &mut *l;
+        let mut lift = Lift::new();
+        let l = &mut *lift.0;
+        p.ctl.lift = l;
         assert!(p.play(1));
         let mut blocks = 0;
         while l.state != PSID_LIFT_TAKEN as u8 {
@@ -546,7 +639,7 @@ fn a_starter_tune_s_voices_lift_and_play_back() {
             p.block();
             blocks += 1;
             if blocks == at {
-                unsafe { psid_lift_arm(&mut *l, voice, 1) };
+                unsafe { psid_lift_take(l, voice) };
             }
             assert!(blocks < at + 20_000, "voice {voice}: no note");
         }
@@ -556,7 +649,7 @@ fn a_starter_tune_s_voices_lift_and_play_back() {
         let mut flags = 0;
         let mut n = PSID_LIFT_AGAIN as i32;
         while n == PSID_LIFT_AGAIN as i32 {
-            n = unsafe { psid_lift_convert(&mut *l, 0, c"CONSULTANT".as_ptr(), &mut flags) };
+            n = unsafe { psid_lift_convert(l, 0, c"CONSULTANT".as_ptr(), &mut flags) };
         }
         assert!(n > 0, "voice {voice}: {n}");
         let g = parse(&l.file[..n as usize]);
@@ -596,5 +689,147 @@ fn a_starter_tune_s_voices_lift_and_play_back() {
         } else {
             assert_eq!(err, 0, "voice {voice}: the frequency");
         }
+    }
+}
+
+const LAB_BYTES: usize = LAB_SOUND_BYTES as usize;
+const NOISE: u8 = 0x80;
+
+fn lab(sound: &[u8; LAB_BYTES], field: u32) -> u8 {
+    sound[field as usize]
+}
+
+fn lab16(sound: &[u8; LAB_BYTES], field: u32) -> u32 {
+    u32::from(u16::from_le_bytes([
+        sound[field as usize],
+        sound[field as usize + 1],
+    ]))
+}
+
+fn pulled(frames: &[FrameRegs], voice: usize) -> ([u8; LAB_BYTES], u32) {
+    let mut l = lifted_after_a_gate_off_frame(frames, voice);
+    let (f, _) = l.convert(false).unwrap();
+    let mut sound = [0u8; LAB_BYTES];
+    sound[LAB_SOUND_CONTROL as usize] = NOISE;
+    let mut notes = 0;
+    let ok = unsafe {
+        lab_song_pull_gti(
+            f.as_ptr(),
+            f.len() as u32,
+            0,
+            sound.as_mut_ptr(),
+            &mut notes,
+        )
+    };
+    assert_eq!(ok, 1, "the lifted file reads");
+    (sound, notes)
+}
+
+fn triangle(lo: u16, step: u16, half: u16, frames: u16) -> Vec<FrameRegs> {
+    (0..frames)
+        .map(|k| {
+            let phase = k % (2 * half);
+            let up = if phase < half {
+                phase
+            } else {
+                2 * half - phase
+            };
+            FrameRegs::new(note_freq(C4), lo + step * up, 0x41, 0x09, 0xa0)
+        })
+        .collect()
+}
+
+const PWM_PERIOD_FRAMES: u32 = 32;
+
+fn lab_pwm_period_frames(rate: u32) -> u32 {
+    32_768 * 5 / 6 / rate
+}
+
+#[test]
+fn a_lifted_note_pulls_into_lab_with_its_wave_envelope_and_pwm() {
+    let saw = vec![FrameRegs::new(note_freq(C4), 0, 0x21, 0x2a, 0xb9); 10];
+    let (s, notes) = pulled(&saw, 0);
+    assert_eq!(
+        (
+            lab(&s, LAB_SOUND_CONTROL),
+            lab(&s, LAB_SOUND_AD),
+            lab(&s, LAB_SOUND_SR)
+        ),
+        (0x20, 0x2a, 0xb9),
+        "the note's own wave, not the sound's before"
+    );
+    assert_eq!(notes & LAB_SONG_APPROX, 0, "nothing approximated");
+
+    let (s, notes) = pulled(&triangle(0x600, 0x40, 16, 50), 0);
+    assert_eq!(lab(&s, LAB_SOUND_CONTROL), 0x40);
+    assert_eq!(notes & LAB_SONG_SWEEP, 0, "a modulation, not a sweep");
+    assert!(
+        lab16(&s, LAB_SOUND_PULSE).abs_diff(0x800) <= 0x40,
+        "the centre width"
+    );
+    assert!(
+        lab16(&s, LAB_SOUND_PWM_DEPTH).abs_diff(0x200) <= 0x40,
+        "half the swing"
+    );
+    let period = lab_pwm_period_frames(lab16(&s, LAB_SOUND_PWM_RATE));
+    assert!(
+        period.abs_diff(PWM_PERIOD_FRAMES) <= 2,
+        "the period: {period} frames"
+    );
+
+    let (s, notes) = pulled(&triangle(0x600, 0x10, 40, 30), 0);
+    assert_ne!(notes & LAB_SONG_SWEEP, 0, "a sweep one way is named");
+    assert_eq!(lab16(&s, LAB_SOUND_PWM_DEPTH), 0);
+}
+
+#[test]
+fn a_lifted_filter_and_vibrato_pull_into_lab() {
+    let mut frames = Vec::new();
+    for k in 0..10u8 {
+        let mut r = FrameRegs::new(note_freq(C4), 0, 0x21, 0x0a, 0x00);
+        r.0[CUTOFF_HI] = 0x20 + 4 * k;
+        r.0[RES_FILT] = 0x76;
+        r.0[MODE_VOL] = 0x1f;
+        frames.push(r);
+    }
+    let (s, notes) = pulled(&frames, 2);
+    assert_eq!(
+        (
+            lab(&s, LAB_SOUND_FILTER_VOICES),
+            lab(&s, LAB_SOUND_RESONANCE),
+            lab(&s, LAB_SOUND_FILTER_MODE)
+        ),
+        (7, 7, 0x10)
+    );
+    let swept = (0x20u32 << 3)..=(0x44 << 3);
+    assert!(
+        swept.contains(&lab16(&s, LAB_SOUND_CUTOFF)),
+        "the cutoff where it starts"
+    );
+    assert_ne!(notes & LAB_SONG_SWEEP, 0, "its sweep named");
+    let wobble: Vec<FrameRegs> = vibrato(C4, 3, 2, 4, 40)
+        .iter()
+        .map(|&f| FrameRegs::new(f, 0, 0x11, 0x0a, 0xa9))
+        .collect();
+    let (s, _) = pulled(&wobble, 0);
+    assert!(lab(&s, LAB_SOUND_VIBRATO_DEPTH) > 0, "the vibrato kept");
+    assert!(lab(&s, LAB_SOUND_VIBRATO_DELAY) > 0, "after its delay");
+}
+
+#[test]
+fn a_file_that_is_no_gti_is_refused() {
+    let mut sound = [0u8; LAB_BYTES];
+    let mut notes = 0;
+    for f in [&b"GTI4"[..], &b"GTI5\0\0"[..]] {
+        let ok = unsafe {
+            lab_song_pull_gti(
+                f.as_ptr(),
+                f.len() as u32,
+                0,
+                sound.as_mut_ptr(),
+                &mut notes,
+            )
+        };
+        assert_eq!(ok, 0);
     }
 }

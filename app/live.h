@@ -479,6 +479,7 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]);
 void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);
 void live_sound_set_base(live* l, const uint8_t in[LAB_SOUND_BYTES], const char* name);
 void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND_BYTES], const char* name);
+void live_sound_detach(live* l, const char* name);
 
 uint32_t live_slot_algorithms(uint32_t slot);
 void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value);

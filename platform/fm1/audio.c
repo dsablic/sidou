@@ -66,6 +66,7 @@ static union {
     psid_lift lift;
 } song_space __attribute__((section(".pool.song_noinit")));
 _Static_assert(sizeof(psid_lift) <= sizeof(song_work), "the lift fits the song's work space");
+static psid_lift_past lift_past;
 _Static_assert(sizeof player_isr.psid <= sizeof player_isr.song,
                "a tune's state fits the song transport's and its shapes'");
 #define song_transport (player_isr.song.transport)
@@ -152,6 +153,11 @@ psid_ctl* audio_psid(void) {
 }
 
 psid_lift* audio_lift(void) {
+    return &song_space.lift;
+}
+
+psid_lift* audio_lift_init(uint32_t tune_chips) {
+    psid_lift_init(&song_space.lift, &lift_past, tune_chips);
     return &song_space.lift;
 }
 

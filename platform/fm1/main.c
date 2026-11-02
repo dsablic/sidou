@@ -1420,7 +1420,6 @@ static struct {
     uint16_t load;
     uint16_t ticks_k;
     uint8_t lift;
-    uint8_t lift_flags;
     uint16_t lift_len;
     uint32_t lift_ms;
 } sid_tune;
@@ -1587,6 +1586,7 @@ static void tune_prep(psid_ctl* c) {
     }
     sid_tune.clocked = 1;
     (void)psid_ctl_mute(c, tune_mutes());
+    psid_lift_forget(audio_lift());
     if (!psid_ctl_play(c, sid_tune.song)) {
         ui_toast("SID: NO SUCH SONG", 2000u);
     } else {
@@ -1648,146 +1648,36 @@ static void tune_reload(psid_ctl* c) {
     sid_tune.state = TUNE_PREP;
 }
 
-#define LIFT_FILE "LIFTED SOUND"
-enum { LIFT_IDLE, LIFT_BEGIN };
+enum { LIFT_IDLE, LIFT_READY };
 #define LIFT_GIVE_UP_MS 3000u
-
-static struct {
-    uint8_t state;
-    uint8_t instr;
-    uint16_t len;
-    uint32_t crc;
-    store_file file;
-    char name[SID_OFFER_NAME + 1u];
-} lift_offer;
-#define LIFT_WAITING 3u
-
-static void lift_name(char out[SID_OFFER_NAME + 1u], uint32_t voice) {
-    const char* t = audio_psid_header()->name;
-    uint32_t n = 0;
-    for (; n < 13u && t[n]; n++) {
-        char ch = t[n];
-        ch = ch >= 'a' && ch <= 'z' ? (char)(ch - 32) : ch;
-        out[n] = (uint8_t)ch >= 0x20u && (uint8_t)ch < 0x60u ? ch : '?';
-    }
-    while (n && out[n - 1u] == ' ') {
-        n--;
-    }
-    out[n++] = ' ';
-    out[n++] = 'V';
-    out[n++] = (char)('1' + voice);
-    out[n] = 0;
-}
-
-static uint32_t lift_free_instr(const gt2_song* s) {
-    for (uint32_t i = 0; i < GT2_MAX_INSTR; i++) {
-        uint8_t any = 0;
-        for (uint32_t b = 0; b < GT2_INSTR_BYTES; b++) {
-            any |= s->instr[i][b];
-        }
-        if (!any) {
-            return i + 1u;
-        }
-    }
-    return 0;
-}
 
 static int lift_pass(int ending) {
     psid_lift* l = audio_lift();
-    store* st = store_fm1();
-    if (sid_tune.lift == LIFT_IDLE && l->state != PSID_LIFT_TAKEN) {
+    if (sid_tune.lift == LIFT_READY) {
+        return ending && uptime_ms - sid_tune.lift_ms < LIFT_GIVE_UP_MS;
+    }
+    if (l->state != PSID_LIFT_TAKEN) {
         return l->state == PSID_LIFT_TAKING;
     }
     if (!audio_work_slice()) {
         return 1;
     }
-    if (sid_tune.lift == LIFT_IDLE) {
-        uint32_t flags;
-        lift_name(lift_offer.name, l->voice);
-        int n = psid_lift_convert(l, audio_psid_header()->clock == 2u, lift_offer.name, &flags);
-        if (n == PSID_LIFT_AGAIN) {
-            return 1;
-        }
-        psid_lift_arm(l, 3u, sid_tune.chips);
-        if (n < 0) {
-            ui_toast(n == PSID_LIFT_E_DIGI ? "DIGI: CAN'T LIFT" : "LIFT: NOTE TOO SHORT", 2000u);
-            return 0;
-        }
-        sid_tune.lift = LIFT_BEGIN;
-        sid_tune.lift_len = (uint16_t)n;
-        sid_tune.lift_flags = (uint8_t)flags;
-        sid_tune.lift_ms = uptime_ms;
+    char name[] = "LIFTED V1";
+    name[sizeof name - 2u] = (char)('1' + l->voice);
+    uint32_t flags;
+    int n = psid_lift_convert(l, audio_psid_header()->clock == 2u, name, &flags);
+    if (n == PSID_LIFT_AGAIN) {
+        return 1;
     }
-    int rc = store_file_begin(st, LIFT_FILE, STORE_FILE_GTI, sid_tune.lift_len);
-    if (rc == STORE_BUSY) {
-        store_file_wait(st, store_busy(st));
-        if (!ending || uptime_ms - sid_tune.lift_ms < LIFT_GIVE_UP_MS) {
-            return 1;
-        }
+    if (n < 0) {
+        (void)psid_lift_take(l, PSID_LIFT_NO_VOICE);
+        ui_toast(n == PSID_LIFT_E_DIGI ? "DIGI: CAN'T LIFT" : "LIFT: NOTE TOO SHORT", 2000u);
+        return 0;
     }
-    store_file_wait(st, 0);
-    sid_tune.lift = LIFT_IDLE;
-    if (rc == STORE_OK && store_file_write(st, l->file, sid_tune.lift_len) == sid_tune.lift_len &&
-        store_file_end(st) == STORE_OK) {
-        lift_offer.state = LIFT_WAITING;
-        lift_offer.len = sid_tune.lift_len;
-        lift_offer.crc = store_crc32(0, l->file, sid_tune.lift_len);
-        char t[8u + SID_OFFER_NAME + 1u] = "LIFTED: ";
-        memcpy(t + 8, lift_offer.name, SID_OFFER_NAME + 1u);
-        ui_toast(sid_tune.lift_flags & PSID_LIFT_F_NO_VIBRATO ? "LIFTED, VIBRATO DROPPED"
-                 : sid_tune.lift_flags & PSID_LIFT_F_SHORT    ? "LIFTED, CUT TO FIT"
-                                                              : t,
-                 2000u);
-    } else {
-        if (rc == STORE_OK) {
-            store_file_abort(st);
-        }
-        ui_toast(rc == STORE_FULL ? "STORE FULL: NOT LIFTED"
-                 : rc == STORE_BUSY ? "LIFT LOST: STORE BUSY"
-                                    : "LIFT: STORE ERROR",
-                 2000u);
-    }
-    return 0;
-}
-
-static void lift_offer_pass(void) {
-    if (sid_tune.state != TUNE_OFF) {
-        return;
-    }
-    if (lift_offer.state == LIFT_WAITING) {
-        store* st = store_fm1();
-        if (store_file_result(st) == STORE_BUSY) {
-            return;
-        }
-        if (store_file_open(st, LIFT_FILE, &lift_offer.file) == STORE_OK &&
-            lift_offer.file.type == STORE_FILE_GTI && lift_offer.file.crc == lift_offer.crc) {
-            lift_offer.instr = (uint8_t)lift_free_instr(audio_song()->song);
-            lift_offer.state = SID_OFFER_READY;
-        } else {
-            lift_offer.state = SID_OFFER_NONE;
-            ui_toast("LIFT: NOT SAVED", 2000u);
-        }
-    } else if (lift_offer.state == SID_OFFER_IMPORTING) {
-        song_ctl* sc = audio_song();
-        int r = gt2_ins_import_step(&song_stream.instrument);
-        if (r == 0) {
-            return;
-        }
-        sc->song->frozen = 0;
-        lift_offer.state = SID_OFFER_NONE;
-        if (r > 0) {
-            song_after_import(sc);
-            char t[] = "IMPORTED AS I00";
-            t[13] = "0123456789ABCDEF"[lift_offer.instr >> 4];
-            t[14] = "0123456789ABCDEF"[lift_offer.instr & 15u];
-            ui_toast(t, 2000u);
-        } else {
-            gt2_err e = song_stream.instrument.error;
-            ui_toast(e == GT2_ERR_FULL || e == GT2_ERR_SONG_FULL ? "SONG FULL: NOT IMPORTED"
-                                                                 : "IMPORT FAILED",
-                     2000u);
-        }
-    }
+    sid_tune.lift = LIFT_READY;
+    sid_tune.lift_len = (uint16_t)n;
+    sid_tune.lift_ms = uptime_ms;
+    return ending;
 }
 
 static void tune_pass(void) {
@@ -1797,9 +1687,6 @@ static void tune_pass(void) {
         return;
     case TUNE_SONG_STOP: {
         song_ctl* sc = audio_song();
-        if (lift_offer.state == SID_OFFER_IMPORTING) {
-            return;
-        }
         if (song_ctl_state(sc) == SONG_PLAYING || song_ctl_state(sc) == SONG_LOADING) {
             (void)song_ctl_stop(sc);
             return;
@@ -1827,8 +1714,7 @@ static void tune_pass(void) {
             return;
         }
         c = audio_psid_init();
-        psid_lift_init(audio_lift());
-        c->lift = audio_lift();
+        c->lift = audio_lift_init(sid_tune.chips);
         sid_tune.lift = LIFT_IDLE;
         psid_header* h = audio_psid_header();
         char name[STORE_NAME_MAX + 1u];
@@ -2021,22 +1907,19 @@ static int tb_mute(void* ctx, uint32_t mask) {
 static void tb_status(void* ctx, sid_status* out) {
     (void)ctx;
     uint32_t t = sid_tune.state;
-    if (t == TUNE_OFF &&
-        (lift_offer.state == SID_OFFER_READY || lift_offer.state == SID_OFFER_IMPORTING)) {
-        out->offer = lift_offer.state;
-        out->offer_instr = lift_offer.instr;
-        out->offer_playing = (uint8_t)!midi_object_stopped(audio_song());
-        memcpy(out->offer_name, lift_offer.name, sizeof out->offer_name);
-    }
     if (t == TUNE_OFF) {
         return;
     }
     if (t >= TUNE_TO_PSID && t <= TUNE_END) {
         const psid_lift* l = audio_lift();
-        out->lift = (uint8_t)(l->state == PSID_LIFT_ARMED ? SID_LIFT_ARMED
-                              : l->state || sid_tune.lift ? SID_LIFT_TAKING
-                                                          : SID_LIFT_OFF);
+        int ready = sid_tune.lift == LIFT_READY;
+        out->lift = (uint8_t)(ready                          ? SID_LIFT_READY
+                              : l->state == PSID_LIFT_ARMED ? SID_LIFT_ARMED
+                              : l->state                    ? SID_LIFT_TAKING
+                                                            : SID_LIFT_OFF);
         out->lift_voice = l->voice;
+        out->lift_gti = ready ? l->file : NULL;
+        out->lift_len = ready ? sid_tune.lift_len : 0u;
     }
     const psid_ctl* c = audio_psid();
     int has = t >= TUNE_TO_PSID && t <= TUNE_END;
@@ -2072,50 +1955,24 @@ static void tb_status(void* ctx, sid_status* out) {
 
 static int tb_lift(void* ctx, uint32_t voice) {
     (void)ctx;
-    if (sid_tune.state != TUNE_ON || audio_lift()->state == PSID_LIFT_TAKEN ||
-        sid_tune.lift != LIFT_IDLE) {
-        return 0;
-    }
-    psid_lift_arm(audio_lift(), voice, sid_tune.chips);
-    return 1;
-}
-
-static int tb_import(void* ctx, int go) {
-    (void)ctx;
-    if (lift_offer.state != SID_OFFER_READY || sid_tune.state != TUNE_OFF) {
-        return 0;
-    }
-    if (!go) {
-        lift_offer.state = SID_OFFER_NONE;
+    int lifting = sid_tune.state >= TUNE_TO_PSID && sid_tune.state <= TUNE_END;
+    psid_lift* l = audio_lift();
+    if (voice >= SID_LIFT_NO_VOICE) {
+        sid_tune.lift = LIFT_IDLE;
+        if (lifting) {
+            (void)psid_lift_take(l, PSID_LIFT_NO_VOICE);
+        }
         return 1;
     }
-    song_ctl* sc = audio_song();
-    gt2_song* s = sc->song;
-    lift_offer.instr = (uint8_t)lift_free_instr(s);
-    if (!lift_offer.instr) {
-        ui_toast("NO FREE INSTRUMENT", 2000u);
+    if (sid_tune.state != TUNE_ON || sid_tune.lift != LIFT_IDLE || l->state == PSID_LIFT_TAKEN) {
         return 0;
     }
-    if (!midi_object_stopped(sc) || song_io_busy(&songs) || songs.about || songs.external ||
-        s->frozen || s->pending || s->pending_loose || midi_object.owned) {
-        ui_toast("SONG BUSY: TRY AGAIN", 2000u);
-        return 0;
-    }
-    s->frozen = 1;
-    if (gt2_ins_import_begin(&song_stream.instrument, s, lift_offer.instr, midi_file_read,
-                             &lift_offer.file, lift_offer.len, 1) != GT2_OK) {
-        s->frozen = 0;
-        lift_offer.state = SID_OFFER_NONE;
-        ui_toast("IMPORT FAILED", 2000u);
-        return 0;
-    }
-    lift_offer.state = SID_OFFER_IMPORTING;
+    (void)psid_lift_take(l, voice);
     return 1;
 }
 
-static const sid_transport tune_binding = {tb_play,   tb_start,  tb_stop,   tb_pause,
-                                           tb_resume, tb_end,    tb_mute,   tb_status,
-                                           tb_lift,   tb_import, NULL};
+static const sid_transport tune_binding = {tb_play, tb_start, tb_stop,   tb_pause, tb_resume,
+                                           tb_end,  tb_mute,  tb_status, tb_lift,  NULL};
 
 static int tune_midi(void* ctx, uint32_t b) {
     (void)ctx;
@@ -2188,7 +2045,6 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         }
     }
     tune_pass();
-    lift_offer_pass();
     if (!song_away) {
         song_pass();
     }

@@ -23,10 +23,8 @@ extern "C" {
 #define SID_LIFT_OFF 0u
 #define SID_LIFT_ARMED 1u
 #define SID_LIFT_TAKING 2u
-#define SID_OFFER_NONE 0u
-#define SID_OFFER_READY 1u
-#define SID_OFFER_IMPORTING 2u
-#define SID_OFFER_NAME 16u
+#define SID_LIFT_READY 3u
+#define SID_LIFT_NO_VOICE 3u
 
 typedef struct {
     uint8_t state;
@@ -46,10 +44,8 @@ typedef struct {
     const psid_header* h;
     uint8_t lift;
     uint8_t lift_voice;
-    uint8_t offer;
-    uint8_t offer_instr;
-    uint8_t offer_playing;
-    char offer_name[SID_OFFER_NAME + 1u];
+    uint16_t lift_len;
+    const uint8_t* lift_gti;
 } sid_status;
 
 typedef struct {
@@ -62,7 +58,6 @@ typedef struct {
     int (*mute)(void* ctx, uint32_t mask);
     void (*status)(void* ctx, sid_status* out);
     int (*lift)(void* ctx, uint32_t voice);
-    int (*import)(void* ctx, int go);
     void* ctx;
 } sid_transport;
 

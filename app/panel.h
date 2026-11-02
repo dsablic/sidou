@@ -98,6 +98,7 @@ typedef struct {
     uint8_t rec;
     uint8_t silent;
     uint8_t solo;
+    uint8_t pick;
     uint8_t ask;
     uint8_t step_on;
     uint8_t step_head;

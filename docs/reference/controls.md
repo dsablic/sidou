@@ -632,7 +632,7 @@ TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), STAT
 glyph sheet (CHARSET), the SONG menu's actions and each of its pages: the list of files LOAD
 and DELETE browse (**FILES**), SAVE AS's name and a confirmation; and the SID views: the browser
 (**SIDS**), **NOW PLAYING** (its card is **PLAYING**), the browser's question (**UNSAVED**) and
-the lifted instrument's offer (**LIFT**).
+NOW PLAYING's question which voice to lift (**LIFT**).
 
 **The card is the one for the state the view is in when HOME has been held**, where a control
 means something else there:
@@ -653,7 +653,7 @@ means something else there:
 | LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE discards the song's changes and plays the tune, HOME goes back; SELECT and ALG do nothing |
-| the lifted instrument's offer | **LIFT** | SAVE imports it, HOME skips it |
+| NOW PLAYING, REC's question which voice to lift | **LIFT** | note keys 1-3 pick the voice, REC and HOME cancel; ALG does nothing |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
 it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
@@ -807,7 +807,8 @@ LAB (the menu's LAB, after SONG; `app/lab_view.h`; [the art page](../art/README.
 it) is where one LIVE sound is shaped with every parameter in sight
 ([LAB's design](../plans/2026-10-25-lab-design.md)). The menu's LAB takes the menu's place, so
 **HOME** goes back to LIVE, the sound kept as edited. It opens at OSC from the menu, and from
-LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX.
+LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX. A [lifted sound](#lift-a-sound)
+opens it over NOW PLAYING, and HOME goes back there.
 
 **SELECT** steps the six pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
 **MOD**, **FX**, **MACRO**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
@@ -960,7 +961,9 @@ instrument's name, its first 12 characters (`I05` for one without a name), with 
 back keeps it. LAB opens over INSTR in the place of the LAB a send came from, so HOME goes back
 to INSTR once, then to where that LAB was opened from. An instrument sent from
 LAB and not edited since comes back exactly (`PULLED I05`). Any other is decoded: one-row wave
-programs, the send's own loops and a calculated vibrato come back close; what could only be
+programs (a row of `00` keeps the first waveform), the send's own loops, a pulse or filter run
+that turns back and forth (it becomes PWM or the filter LFO, at the rate of its longest swing)
+and a calculated vibrato come back close; what could only be
 approximated is in the toast (`I05 ~DRUM GATE`): `DRUM` (absolute notes, or a program of several
 waveforms), `SWEEP` (a one-shot pulse or filter sweep), `GATE` (another gate timer, no hard
 restart, legato), `ARP` (an arpeggio: LIVE's chord arpeggio plays the keys held), `VIB` (an
@@ -1475,8 +1478,8 @@ on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). 
 | **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
 | **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
 | **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune. They are the tune's: a tune starts with every voice on, and when it ends for good the song comes back with its own mutes and solos |
-| **REC** | | lifts the one voice GLO solos: its next note becomes an instrument ([below](#lift-a-sound)); REC again while it waits disarms it |
-| **HOME** | back to the menu; with the tune stopped (or failed) it ends for good there, and the song comes back from the store | back to the browser, the tune playing on |
+| **REC** | | asks which voice to lift; note key 1, 2 or 3 answers and LAB opens with its sound ([below](#lift-a-sound)); REC again cancels the question or the wait |
+| **HOME** | back to the menu; with the tune stopped (or failed) it ends for good there, and the song comes back from the store | back to the browser, the tune playing on; with the lift's question or wait up, cancels it and stays |
 
 An empty store says **NO TUNES: SEE MANUAL**. The loaded tune keeps its place in the browser:
 a play mark at its left while it plays, a square while it is paused or stopped. The tune plays
@@ -1523,33 +1526,34 @@ FOUND`, `SID: READ ERROR` (the file went while it loaded), `INIT TOO LONG`, `PLA
 
 ### Lift a sound
 
-**REC in NOW PLAYING** lifts an instrument out of the tune: solo a voice first (GLO held + note
-key 4, 5 or 6), then REC. The voice's lane says **ARM** (`LIFT: V2'S NEXT NOTE`) until the voice's
-next note starts, then **REC** while it is taken: a frame a play call (50 a second on a PAL tune)
-for a second at most, or until the note's gate goes off or the next note starts. REC again while
-it waits disarms it (`LIFT OFF`). Without exactly one voice soloed it says `LIFT: SOLO ONE VOICE`;
-with the tune paused or stopped, `LIFT: PLAY THE TUNE`. REC was free there: it only set the
-song's record flag, which a tune cannot use. A 2SID tune's solo is the voice on both chips: the
-chip whose voice starts a note first is lifted.
+**REC in NOW PLAYING** takes a voice's sound into LAB. While a tune plays, REC asks at 2×
+**LIFT WHICH** / **VOICE? 1 2 3**, with `KEY 1-3 PICKS  HOME: CANCEL` under it, and note keys
+1, 2 and 3 light up. The voice lanes and their bars stay on screen, so the voice that carries the
+lead is in sight. ALGORITHM does nothing while it asks; REC again or HOME takes the question
+away and changes nothing. With the tune paused or stopped REC says `LIFT: PLAY THE TUNE` and asks
+nothing. The question's card is **LIFT**.
 
-The note becomes a GoatTracker 2 instrument ([the manual](../manual/sid-tunes.md#5-lift-a-sound)
-says what it holds) and goes to the store as one file, **LIFTED SOUND** (a GTI5 instrument,
-replaced by the next lift): `LIFTED: <NAME>` (the tune's title and the voice, `CONSULTANT V1`),
-`LIFTED, VIBRATO DROPPED` (a swing no GoatTracker vibrato follows: the note is held at its
-centre), `LIFTED, CUT TO FIT` (a busy note's last frames dropped). Refusals: `DIGI: CAN'T LIFT`
-(samples played through the registers), `LIFT: NOTE TOO SHORT` (the gate went off in the note's
-first call), `STORE FULL: NOT LIFTED`, `LIFT: STORE ERROR`, `LIFT LOST: STORE BUSY` (the tune
-ended while the store stayed busy for 3 s). The store writes the file once the device is quiet
-(the tune stopped), as it writes everything.
+**Note key 1, 2 or 3** picks the voice (the key does not sound). SIDOU keeps the registers of the
+tune's last 64 play calls (1.28 s of a PAL 1SID tune, 0.64 s of a 2SID tune's two chips), so the
+voice's most recent note is taken at once: from its gate-on to its gate-off, the next note or a
+second (50 calls), whichever comes first. A note still sounding is followed to its end
+(**LIFTING V2** meanwhile). A voice with no note in those calls says **WAITING FOR V2** at 2×,
+with `REC OR HOME: CANCEL`, and its next note is taken. In a 2SID tune the voice is either chip's,
+whichever started the more recent note (in the same call, chip A's).
 
-**The offer.** Once the tune has ended and the song is back, and the file is on the store, a page
-opens over LIVE, the menu or SIDS: **LIFTED SOUND**, the instrument's name and **INTO I05** (the
-song's first empty instrument; **NO FREE INSTR** when all 63 are used). Its card is **LIFT**.
+**LAB opens** with the sound, named **LIFTED V2**, decoded as [a pulled
+instrument](#pull-an-instrument-into-lab) is: waveform, ADSR, pulse width and PWM, filter,
+vibrato. The toast says what LAB could only approximate (`LIFTED V2 ~SWEEP`). The keys play it,
+every page edits it, and EDIT + LFO gives the sound before it back. It is a new sound, so a
+USER sound that played before is left as it was: **SAVE** keeps it in the next free USER slot
+under its name (`KEPT AS U02 LIFTED V2`), **EDIT + SAVE** names it first. **HOME** goes back to
+NOW PLAYING with the tune as it was. LAB takes the menu's place in the views behind it, so HOME
+from NOW PLAYING then goes to the browser and on to LIVE. A 2SID tune's keys are off, so LAB is
+silent until the tune stops.
 
-| Control | Result |
-|---|---|
-| **SAVE** | imports it into that instrument with its tables (the importer SysEx uses): `IMPORTED AS I05`, the song changed (unsaved). The song must be stopped: while it plays the page says **SONG PLAYING: STOP IT FIRST** and SAVE says `STOP THE SONG FIRST`. Refusals: `NO FREE INSTRUMENT`, `SONG BUSY: TRY AGAIN` (a load, a save or a SysEx import in hand), `SONG FULL: NOT IMPORTED` |
-| **HOME** | skips it: the file stays on the store (a SysEx GET of `LIFTED SOUND` reads it) until the next lift replaces it |
+Refusals: `DIGI: CAN'T LIFT` (samples played through the registers) and `LIFT: NOTE TOO SHORT`
+(the gate went off in the note's first call). Nothing goes to the store. A `LIFTED SOUND` file
+already there is a GTI5 instrument (type 3) like any other: SysEx DIR lists it and GET reads it.
 
 ## SAVE
 

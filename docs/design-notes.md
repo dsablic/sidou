@@ -129,7 +129,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The `player_isr` union in `audio.c` holds either the song transport/shapes state or the psid
   ctl/work/header state: both players' interrupt-side state, but never both live at once. The
   union sits in `.song_noinit` (not zeroed at boot). The `song_space` union holds `song_work` or
-  `psid_lift`; a static assertion checks `sizeof(psid_lift) <= sizeof(song_work)`.
+  `psid_lift`; a static assertion checks `sizeof(psid_lift) <= sizeof(song_work)`. The lift's
+  history ring (`psid_lift_past`, 1,728 bytes) is `lift_past` in `.bss`, not in the union: POOL,
+  where `song_space` lives, had 5,328 bytes free against `REGION_FREE_MIN` (5,120), the RAM region
+  9,804.
 - `audio.c` exports `song_transport` as a symbol with `__asm__(".set song_transport,
   player_isr")`: emu-gate's tests read the transport there, at the union's start.
 - `audio_ramp` in `audio.c` fades over one block (128 samples). A static assertion checks
@@ -1851,17 +1854,43 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Instrument lift
 
-- The lift (in `core/psid/psid_lift.h`) captures a voice's registers over time and converts them to
-  a GTI5 instrument.
-- A lift captures a voice's next note from a tune's writes and turns it into a GT2 instrument. The
-  capture starts at the armed voice's gate-on, keeps a frame a call, and ends at the gate-off (that
-  call not kept), at the next gate-on (also a hard restart inside a call), or after a second. In a
-  2SID tune either chip's voice starts the lift; a 1SID lift never watches chip B.
+- Lifting a sound is taking a voice into LAB (the owner, 2026-11-02, after the first device try of
+  1.5's lift found it "complicated... everything about it"). One gesture, REC then the voice's
+  key, and LAB is the one place sounds are shaped and kept; the solo, the arming, the store file
+  and the import into the song are gone. A song gets the sound through LAB's send, as any sound.
+- The lift (`core/psid/psid_lift.h`) keeps a history: at each play call's return a record a chip
+  of the 25 registers and two flag bytes (gates on, gates changed; a voice's or the shared
+  registers written more than `PSID_LIFT_DIGI` times). The ring is `PSID_LIFT_PAST` (64) records:
+  64 calls of a 1SID tune, 32 of a 2SID tune. 64 covers the longest note a lift keeps
+  (`PSID_LIFT_FRAMES`, 50 calls) and a quarter second after it ends on a PAL 1SID tune; 1,728
+  bytes was what the RAM region could give without touching POOL. Records and not register deltas:
+  a fixed size a call keeps the newest record and the walk back simple.
+- A take finds the voice's most recent gate-on in the ring (the gate bit on at the call's end, so
+  a hard restart's off-on in one call counts and an on-off does not); newest call first, in the
+  same call chip A's. It keeps frames from there to the gate's next change (that call not kept),
+  the next gate-on (a hard restart inside a call) or 50 calls; a note not yet ended goes on live.
+  No gate-on in the ring arms the lift: each new record is checked as it is kept, so the armed,
+  live and history captures are one path. The tune's history is forgotten at each start or
+  restart (`psid_lift_forget`).
 - The base note is the nearest note of the first frame that sets the pitch: frame 0, unless its
-  frequency is the note before's, as GoatTracker's players leave it; then frame 1. An SR change
-  becomes a $F6 wave row; a filter-routed voice gets filter rows.
+  frequency is the call before's, as GoatTracker's players leave it; then frame 1 (with no call
+  before in the ring, frame 0). An SR change becomes a $F6 wave row; a filter-routed voice gets
+  filter rows.
 - A register written on and on within a call is a digi and is refused; eight writes of a register
   in a call are a player's business, not a digi.
+- The conversion runs in passes: the wave table, the vibrato fit one speed a pass (eight shifts
+  each), then the pulse, filter and speed tables. The fit was one pass of up to 67,000
+  instructions on a note of The Consultant's voice 2, over `LIFT_CONVERT_WORST`; a pass now takes
+  at most about 21,000 (emu-gate `psid_views.rs`), and the result is the one-pass result.
+- LAB reads the converted GTI5 file as a song's instrument (`lab_song_pull_gti`: the same fit,
+  over the file's tables). A lifted wave table starts with a row of 00 (no waveform change), so
+  a 00 row keeps the instrument's first waveform. A lifted pulse or filter table is runs, never a
+  loop: a run that turns back and forth becomes PWM or the filter LFO, its period twice its
+  longest swing and its centre between the extremes; a run one way stays a dropped SWEEP.
+- The lifted sound detaches from a USER sound playing before (`live_sound_detach`), so SAVE keeps
+  a new one, named as LAB shows it (`LIFTED V2`) while that name is the base's.
+- LAB opens over NOW PLAYING; the screen's stack is four deep (LIVE, the menu, SIDS, NOW
+  PLAYING), so the menu leaves the stack as it does when LAB opens from the menu.
 - GoatTracker's pulse and realtime optimisations skip table steps and effects at the song's own row
   ticks, so they are off when a lift plays back. Under a fitted vibrato the frequency is approximate
   (GoatTracker's calculated vibrato steps by the note's step >> a shift): its mean difference is at
@@ -1969,7 +1998,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   browser's first frames as it opens from the menu, its canvas built whole and copied; a page read
   35,489; NOW PLAYING as a tune plays 18,048) plus 10 %. A compile-time assertion ties it to
   POLL_INSTRUCTIONS, as every view's is (emu-gate `tests/screen.rs`).
-- LIFT_CONVERT_WORST (40,000): `psid_lift_convert` runs in a main-loop pass of its own
+- LIFT_CONVERT_WORST (40,000): each call of `psid_lift_convert` runs in a main-loop pass of its own
   (`lift_pass`), so it stays within the slice budget a tune's pass may take (PSID_SLICE_WORST,
   40,000).
 - A frame's cells come from `lcd_count` between two composes: each LCD window costs 11 bytes and a

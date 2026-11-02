@@ -56,6 +56,8 @@ uint32_t lab_song_crc_of(const lab_song_instr* in);
 
 uint32_t lab_song_pull(const gt2_song* s, uint32_t instr, uint32_t model,
                        uint8_t sound[LAB_SOUND_BYTES]);
+int lab_song_pull_gti(const uint8_t* gti, uint32_t len, uint32_t model,
+                      uint8_t sound[LAB_SOUND_BYTES], uint32_t* notes);
 
 void lab_song_name(const gt2_song* s, uint32_t instr, char out[LAB_SOUND_NAME + 1u]);
 

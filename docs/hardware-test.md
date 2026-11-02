@@ -2597,29 +2597,46 @@ Set up as section 22, a song loaded (SIDOU LOOP or one of your own).
 
 ## 27. Lift a sound from a .sid (1.5)
 
-What it decides: whether a lifted instrument sounds like the tune's voice by ear, on HVSC tunes
-the emulator never played (docs/manual/sid-tunes.md "5. Lift a sound"). Set up: a few tunes on
-the store (section 20): the starter pack's The Consultant, and three or four HVSC tunes of
-different players (a GoatTracker tune, a Rob Hubbard or Martin Galway lead with vibrato, a
-JCH or DMC tune with pulse sweeps, one with a filtered bass), and a song of your own, saved.
+What it decides: whether REC and one key take the voice you hear into LAB, and whether the
+lifted sound is close to the voice in the tune by ear, on HVSC tunes the emulator never played
+(docs/manual/sid-tunes.md "5. Lift a sound"). Set up: a few tunes on the store (section 20): the
+starter pack's The Consultant, and three or four HVSC tunes of different players: a lead with
+vibrato (Rob Hubbard or Martin Galway), a pulse sweep or PWM lead (JCH or DMC), a filtered bass,
+and one digi tune (a sampled drum).
 
-- [ ] **Lift:** play a tune, solo a voice (GLO + key 4-6), REC: the lane says ARM, then REC as a
-  note starts; the toast names it (`LIFTED: ...`, or `LIFTED, VIBRATO DROPPED`).
-  *Emulator:* `emu-gate/tests/psid_views.rs::a_voice_lifted_from_a_tune_is_imported_into_the_song`,
-  `sidou-tests/tests/psid_lift.rs` (the capture and conversion; The Consultant's six notes played
-  back register for register, the vibrato within half of the held note's difference).
-  *Device-only:* none for the steps; the audio never dips while the note is taken.
-- [ ] **Import and play:** stop the tune, HOME out of SIDS: the song comes back and LIFTED SOUND is
-  offered; SAVE: `IMPORTED AS I0x`. In TRACKER, play the instrument at the note the tune used and
-  an octave either side.
-  *Emulator:* as above (the instrument's bytes and wave rows in the song).
-  *Device-only:* by ear, against the tune's voice soloed: the attack, the waveform changes, the
-  pulse sweep and the vibrato's speed and depth; note what differs (a filter that took over the
-  song's, a vibrato dropped, a drum's noise pitch).
-- [ ] **Refusals:** a digi tune (a sampled drum): `DIGI: CAN'T LIFT`. REC with no voice soloed:
-  `LIFT: SOLO ONE VOICE`.
-  *Emulator:* `sidou-tests/tests/psid_lift.rs::a_digi_burst_is_refused`,
-  `sidou-tests/tests/app/sid_view.rs::rec_on_now_playing_lifts_the_soloed_voice`.
+- [ ] **The question:** play a tune, press REC: `LIFT WHICH` / `VOICE? 1 2 3` is large and
+  readable at arm's length, note keys 1, 2 and 3 are lit and the others dark; the voice bars
+  keep moving. REC again: the question goes and the tune's page is as it was; REC, then HOME: the
+  same, and NOW PLAYING stays. Pause the tune (EDIT + PLAY), REC: `LIFT: PLAY THE TUNE`.
+  *Emulator:* `sidou-tests/tests/app/sid_view.rs::rec_on_now_playing_asks_which_voice_and_a_key_lifts_it`,
+  `::rec_or_home_cancels_and_a_paused_tune_says_why` (the goldens `playing-lift-ask`,
+  `playing-lift-waiting`).
+  *Device-only:* the keys' lights themselves, and the text's size on the real LCD.
+- [ ] **The lift:** REC, then the key of the voice that carries the lead: LAB opens within about
+  a second as `LIFTED V2*` (or V1, V3), the toast naming anything approximated; the keys play it
+  at once. Do it for each tune's lead, a bass and a pulse voice.
+  *Emulator:* `emu-gate/tests/psid_views.rs::a_voice_lifted_from_a_tune_opens_in_lab_save_keeps_it_and_home_goes_back`
+  (The Consultant's voice 2: the lifted envelope and wave in LAB, each conversion pass within its
+  budget), `sidou-tests/tests/psid_lift.rs` (the history, the capture, the conversion and LAB's
+  fit: PWM from a swinging width, the filter, the vibrato).
+  *Device-only:* by ear, the lifted sound against the voice soloed in the tune (GLO + key 4-6):
+  the lead's vibrato (its speed and depth, and its delay), the pulse sweep or PWM (its rate and
+  width), the filtered bass (cutoff and resonance); note what differs. The audio never dips while
+  the note is taken.
+- [ ] **The wait:** on a tune whose third voice enters late (or right after a song starts), REC
+  and key 3 before it plays: `WAITING FOR V3`, large; LAB opens at its first note. REC while it
+  waits cancels it.
+  *Emulator:* `emu-gate/tests/psid_views.rs::a_voice_silent_so_far_waits_and_is_lifted_at_its_next_note`.
+  *Device-only:* none beyond the look.
+- [ ] **Keep it and go back:** in LAB, SAVE: `KEPT AS U0x LIFTED V2`; PRESETS later finds it
+  among the USER sounds, the USER sound that played before unchanged. HOME: NOW PLAYING, the tune
+  still playing; HOME again: the browser.
+  *Emulator:* the emulator test above (SAVE keeps a USER sound, HOME back with the tune playing),
+  `sidou-tests/tests/app/lab_view.rs::a_lifted_sound_is_kept_as_a_new_user_sound_under_its_name`.
+  *Device-only:* a power cycle: the kept sound is still there.
+- [ ] **Refusals:** the digi tune, REC and the drum's voice: `DIGI: CAN'T LIFT`, no LAB.
+  *Emulator:* `emu-gate/tests/psid_views.rs::a_digi_tune_refuses_the_lift`,
+  `sidou-tests/tests/psid_lift.rs::a_digi_burst_is_refused_live_or_from_the_history`.
   *Device-only:* whether a real digi tune trips it (eight writes a call to one register).
 
 ## 28. FM-1 Live Link (1.5)

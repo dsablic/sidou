@@ -26,6 +26,7 @@ psid_ctl* audio_psid_init(void);
 psid_ctl* audio_psid(void);
 psid_header* audio_psid_header(void);
 psid_lift* audio_lift(void);
+psid_lift* audio_lift_init(uint32_t tune_chips);
 int audio_psid_poll(void);
 sid* audio_chip(uint32_t chip);
 void audio_song_anchor(uint32_t* ticks, uint32_t* samples);

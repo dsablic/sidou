@@ -59,17 +59,17 @@ const MIDI_CONTINUE: u8 = 0xFB;
 const MIDI_STOP: u8 = 0xFC;
 const MIDI_CLOCK: u8 = 0xF8;
 const CLOCKS_WHILE_STOPPED: usize = 24;
-const OFFER_WAITING: u8 = 3;
-const OFFER_INSTRUMENT: u32 = 1;
-const OFFER_POLL_MS: u64 = 20;
+const FRAME_POLL_MS: u64 = 20;
 const GTI_MAGIC: usize = 4;
-const GTI_NAME: usize = 13;
-const GTI_WAVE_ROWS: usize = 29;
-const GTI_WAVE_LEFT: usize = 30;
-const INSTR_WAVE_POINTER: usize = 2;
-const INSTR_NAME: usize = 9;
-const INSTR_AD_SR_VIBRATO_DELAY_GATE_TIMER_FIRST_WAVE: [usize; 5] = [0, 1, 6, 7, 8];
-const WAVE_END: u8 = 0xff;
+const GTI_AD: usize = GTI_MAGIC + GT2_INS_AD as usize;
+const GTI_SR: usize = GTI_MAGIC + GT2_INS_SR as usize;
+const WAVEFORMS: u8 = 0xf0;
+const VOICE_2: u8 = 1;
+const HISTORY_FILL_MS: u64 = 1_500;
+const LIFTED_V2: &str = "LIFTED V2";
+const LATE_VOICE_AD: u8 = 0x09;
+const LATE_VOICE_SR: u8 = 0xa0;
+const TUNE_PLAYS_A_WHILE_MS: u64 = 500;
 
 fn until(m: &mut Machine, what: &str, done: impl FnMut(&mut Machine) -> bool) {
     wait_for_within(m, WAIT_MS, what, done);
@@ -243,7 +243,7 @@ fn frames_until(
     let start = m.ms();
     while !done(m) {
         assert!(m.ms() - start < WAIT_MS, "timed out: {what}");
-        frames(m, fw, OFFER_POLL_MS, cost);
+        frames(m, fw, FRAME_POLL_MS, cost);
     }
 }
 
@@ -378,7 +378,7 @@ fn check_budgets(m: &Machine, fw: &Firmware, cost: &Cost, what: &str) {
         [
             "sid_view_browser",
             "sid_view_playing",
-            "sid_view_offer",
+            "lab_view_view",
             "views_menu",
             "views_status",
             "live_view_view",
@@ -685,17 +685,79 @@ fn midi_start_stop_and_continue_over_trs_drive_the_tune() {
     );
 }
 
-#[test]
-fn a_voice_lifted_from_a_tune_is_imported_into_the_song() {
-    let Some(fw) = firmware("the lift test") else {
-        return;
-    };
-    let file = std::fs::read(
+fn lift_at(fw: &Firmware, field: usize) -> u32 {
+    fw.symbol("song_space") + field as u32
+}
+
+fn live_at(fw: &Firmware, field: usize) -> u32 {
+    fw.symbol("instrument") + field as u32
+}
+
+fn sound_name(m: &mut Machine, fw: &Firmware) -> String {
+    text_at(m, live_at(fw, ilp32::live::base_name), LAB_SOUND_NAME)
+}
+
+fn lifted_gti(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
+    let at = lift_at(fw, ilp32::psid_lift::file);
+    (0..PSID_LIFT_FILE_MAX)
+        .map(|i| m.soc.read8(at + i))
+        .collect()
+}
+
+fn lift_voice(m: &mut Machine, key: u8) {
+    press(m, REC);
+    m.run_ms(100);
+    press(m, KEY0 + key);
+}
+
+fn in_lab(m: &mut Machine, fw: &Firmware) -> bool {
+    top_view(m, fw) == fw.symbol("lab_view_view")
+}
+
+fn first_audible_wave(m: &mut Machine, fw: &Firmware) -> u8 {
+    let frames = u32::from(m.soc.read8(lift_at(fw, ilp32::psid_lift::frames)));
+    let at = lift_at(fw, ilp32::psid_lift::frame);
+    (0..frames)
+        .map(|k| m.soc.read8(at + k * PSID_LIFT_REGS + PSID_LIFT_CTRL) & WAVEFORMS)
+        .find(|&w| w != 0)
+        .expect("a waveform")
+}
+
+fn assert_lab_holds_the_lifted_sound(m: &mut Machine, fw: &Firmware, ad: u8, sr: u8) {
+    assert_eq!(sound_name(m, fw), LIFTED_V2);
+    let gti = lifted_gti(m, fw);
+    assert_eq!(&gti[..GTI_MAGIC], b"GTI5");
+    assert_eq!(
+        (gti[GTI_AD], gti[GTI_SR]),
+        (ad, sr),
+        "the voice's envelope lifted"
+    );
+    let wave = first_audible_wave(m, fw);
+    assert_eq!(
+        (
+            m.soc.read8(live_at(fw, ilp32::live::attack_decay)),
+            m.soc.read8(live_at(fw, ilp32::live::sustain_release)),
+            m.soc.read8(live_at(fw, ilp32::live::control)) & WAVEFORMS
+        ),
+        (ad, sr, wave),
+        "LAB plays the lifted envelope and the wave the voice sounded"
+    );
+}
+
+fn consultant() -> Vec<u8> {
+    std::fs::read(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../assets/starter/consultant.sid"),
     )
-    .expect("assets/starter/consultant.sid");
-    let mut m = booted_with(&fw, &[("CONSULTANT", &file)]);
+    .expect("assets/starter/consultant.sid")
+}
+
+#[test]
+fn a_voice_lifted_from_a_tune_opens_in_lab_save_keeps_it_and_home_goes_back() {
+    let Some(fw) = firmware("the lift test") else {
+        return;
+    };
+    let mut m = booted_with(&fw, &[("CONSULTANT", &consultant())]);
     m.watch_calls(fw.symbol("ui_poll"));
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
     let mut cells = Cost::default();
@@ -703,71 +765,115 @@ fn a_voice_lifted_from_a_tune_is_imported_into_the_song() {
     until(&mut m, "the tune plays", |m| {
         tune_state(m, &fw) == TUNE_ON && writes(m, &fw) > PLAYING_WRITES
     });
-    glo_key(&mut m, GLO_SOLO_VOICE_1);
+    frames(&mut m, &fw, HISTORY_FILL_MS, &mut cells);
     let polls = m.watched_calls.len();
     m.watch_calls(fw.symbol("psid_lift_convert"));
-    press(&mut m, REC);
-    let offer = fw.symbol("lift_offer");
-    frames_until(
-        &mut m,
-        &fw,
-        &mut cells,
-        "the lift handed to the store",
-        |m| m.soc.read8(offer) == OFFER_WAITING,
-    );
+    lift_voice(&mut m, VOICE_2);
+    frames_until(&mut m, &fw, &mut cells, "LAB with the lifted sound", |m| {
+        in_lab(m, &fw)
+    });
     let convert = m.watched_calls[polls..].to_vec();
     println!("psid_lift_convert: {convert:?} instructions");
-    assert_eq!(convert.len(), 1, "one conversion");
-    assert_within_budget("psid_lift_convert", convert[0], LIFT_CONVERT_WORST);
+    assert!(!convert.is_empty(), "converted");
+    for pass in convert {
+        assert_within_budget("a pass of psid_lift_convert", pass, LIFT_CONVERT_WORST);
+    }
     m.watch_calls(fw.symbol("ui_poll"));
-    ui_end_tune(&mut m, &fw);
-    frames_until(&mut m, &fw, &mut cells, "the offer", |m| {
-        m.soc.read8(offer) == SID_OFFER_READY as u8
-            && top_view(m, &fw) == fw.symbol("sid_view_offer")
-    });
-    assert_eq!(tune_state(&mut m, &fw), TUNE_OFF);
-    let instr = u32::from(m.soc.read8(offer + OFFER_INSTRUMENT));
-    assert!(instr >= 1, "a free instrument");
-    let (typ, gti) = stored_file(&m.soc.flash.mem, "LIFTED SOUND").expect("LIFTED SOUND stored");
-    assert_eq!(u32::from(typ), STORE_FILE_GTI);
-    assert_eq!(&gti[..GTI_MAGIC], b"GTI5");
-    println!("lifted: {gti:02X?}, into instrument {instr}");
-    press(&mut m, SAVE);
-    frames_until(&mut m, &fw, &mut cells, "the import", |m| {
-        m.soc.read8(offer) == SID_OFFER_NONE as u8
-    });
-    frames(&mut m, &fw, 300, &mut cells);
-    assert_ne!(
-        top_view(&mut m, &fw),
-        fw.symbol("sid_view_offer"),
-        "the offer answered"
-    );
-    let mut song = Song::device();
-    song.read(&song_file(&mut m, &fw), 0)
-        .map_err(|i| i.msg)
-        .expect("the song reads");
-    let ins = song.raw().instr[instr as usize - 1];
-    for f in INSTR_AD_SR_VIBRATO_DELAY_GATE_TIMER_FIRST_WAVE {
-        assert_eq!(ins[f], gti[GTI_MAGIC + f], "instrument byte {f}");
-    }
+    let gti = lifted_gti(&mut m, &fw);
+    assert_lab_holds_the_lifted_sound(&mut m, &fw, gti[GTI_AD], gti[GTI_SR]);
     assert_eq!(
-        &ins[INSTR_NAME..],
-        &gti[GTI_NAME..GTI_WAVE_ROWS],
-        "the name"
+        m.soc.read8(live_at(&fw, ilp32::live::user_sound)),
+        0,
+        "a new sound, no USER sound yet"
     );
-    let rows = usize::from(gti[GTI_WAVE_ROWS]);
-    let at = usize::from(ins[INSTR_WAVE_POINTER]) - 1;
-    for r in 0..rows {
-        let (l, rr) = (gti[GTI_WAVE_LEFT + r], gti[GTI_WAVE_LEFT + rows + r]);
-        assert_eq!(song.raw().ltable[0][at + r], l, "wave row {r}");
-        if l != WAVE_END {
-            assert_eq!(song.raw().rtable[0][at + r], rr, "wave row {r}");
-        }
-    }
-    check_budgets(
-        &m,
-        &fw,
-        &cells,
-        "a tune, GLO, REC, the tune's end, the offer, SAVE",
+    press(&mut m, SAVE);
+    frames_until(&mut m, &fw, &mut cells, "kept as a USER sound", |m| {
+        m.soc.read8(live_at(&fw, ilp32::live::user_sound)) != 0
+    });
+    assert_eq!(sound_name(&mut m, &fw), LIFTED_V2, "kept under its name");
+    let w = writes(&mut m, &fw);
+    press(&mut m, HOME);
+    frames_until(&mut m, &fw, &mut cells, "back on NOW PLAYING", |m| {
+        top_view(m, &fw) == fw.symbol("sid_view_playing") && !common::screen_animating(m, &fw)
+    });
+    frames(&mut m, &fw, TUNE_PLAYS_A_WHILE_MS, &mut cells);
+    assert_eq!(
+        (tune_state(&mut m, &fw), psid_state(&mut m, &fw)),
+        (TUNE_ON, PSID_PLAYING),
+        "the tune plays on"
+    );
+    assert!(writes(&mut m, &fw) > w, "and writes");
+    until(&mut m, "the USER sounds' file", |m| {
+        stored_file(&m.soc.flash.mem, "USER SOUNDS").is_some_and(|(_, f)| {
+            f.windows(LIFTED_V2.len())
+                .any(|w| w == LIFTED_V2.as_bytes())
+        })
+    });
+    assert!(
+        stored_file(&m.soc.flash.mem, "LIFTED SOUND").is_none(),
+        "no file is lifted to the store"
+    );
+    check_budgets(&m, &fw, &cells, "a tune, REC, key 2, LAB, SAVE, HOME");
+}
+
+fn a_voice_starting_late() -> Vec<u8> {
+    let init = format!(
+        "lda #$0f\nsta $d418\nlda #${LATE_VOICE_AD:02x}\nsta $d40c\nlda #${LATE_VOICE_SR:02x}\n\
+         sta $d40d\nlda #$11\nsta $d404\nlda #0\nsta <$fb\nrts\n"
+    );
+    let play = "inc <$fb\nlda <$fb\ncmp #150\nbne wait\nlda #$21\nsta $d40b\nwait: rts\n";
+    sidou_tests::psid_fixtures::Psid::new(&[(0x1000, &init), (0x1100, play)]).bytes()
+}
+
+fn digi() -> Vec<u8> {
+    let init = "lda #$09\nsta $d405\nrts\n";
+    let play = "lda #$10\nsta $d404\nlda #$11\nsta $d404\nldx #20\n\
+                burst: stx $d418\ndex\nbne burst\nrts\n";
+    sidou_tests::psid_fixtures::Psid::new(&[(0x1000, init), (0x1100, play)]).bytes()
+}
+
+#[test]
+fn a_voice_silent_so_far_waits_and_is_lifted_at_its_next_note() {
+    let Some(fw) = firmware("the lift wait test") else {
+        return;
+    };
+    let mut m = booted_with(&fw, &[("LATE", &a_voice_starting_late())]);
+    ui_play_tune(&mut m, &fw, 0);
+    until(&mut m, "the tune plays", |m| tune_state(m, &fw) == TUNE_ON);
+    lift_voice(&mut m, VOICE_2);
+    m.run_ms(200);
+    assert_eq!(
+        u32::from(m.soc.read8(lift_at(&fw, ilp32::psid_lift::state))),
+        PSID_LIFT_ARMED,
+        "voice 2 has played nothing: it waits"
+    );
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("sid_view_playing"));
+    until(&mut m, "LAB at voice 2's first note", |m| in_lab(m, &fw));
+    assert_lab_holds_the_lifted_sound(&mut m, &fw, LATE_VOICE_AD, LATE_VOICE_SR);
+}
+
+#[test]
+fn a_digi_tune_refuses_the_lift() {
+    let Some(fw) = firmware("the digi lift test") else {
+        return;
+    };
+    let mut m = booted_with(&fw, &[("DIGI", &digi())]);
+    ui_play_tune(&mut m, &fw, 0);
+    until(&mut m, "the tune plays", |m| {
+        tune_state(m, &fw) == TUNE_ON && writes(m, &fw) > PLAYING_WRITES
+    });
+    lift_voice(&mut m, 0);
+    until(&mut m, "the refusal", |m| {
+        toast_text(m, &fw) == "DIGI: CAN'T LIFT"
+    });
+    m.run_ms(300);
+    assert_eq!(
+        top_view(&mut m, &fw),
+        fw.symbol("sid_view_playing"),
+        "no LAB"
+    );
+    assert_eq!(
+        u32::from(m.soc.read8(lift_at(&fw, ilp32::psid_lift::state))),
+        PSID_LIFT_OFF
     );
 }

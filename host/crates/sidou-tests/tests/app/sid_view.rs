@@ -25,7 +25,6 @@ pub(crate) enum TuneCall {
     End,
     Mute(u32),
     Lift(u32),
-    Import(i32),
 }
 
 pub(crate) struct Tune {
@@ -34,6 +33,7 @@ pub(crate) struct Tune {
     pub(crate) h: Box<psid_header>,
     pub(crate) refuse: bool,
     pub(crate) loading: bool,
+    pub(crate) gti: Vec<u8>,
 }
 
 fn tune(ctx: *mut c_void) -> &'static mut Tune {
@@ -106,25 +106,41 @@ unsafe extern "C" fn t_status(ctx: *mut c_void, out: *mut sid_status) {
 unsafe extern "C" fn t_lift(ctx: *mut c_void, voice: u32) -> i32 {
     let t = tune(ctx);
     t.calls.push(TuneCall::Lift(voice));
-    t.st.lift = if voice < 3 { SID_LIFT_ARMED as u8 } else { 0 };
-    t.st.lift_voice = if voice < 3 { voice as u8 } else { 0 };
-    1
-}
-unsafe extern "C" fn t_import(ctx: *mut c_void, go: i32) -> i32 {
-    let t = tune(ctx);
-    t.calls.push(TuneCall::Import(go));
-    t.st.offer = if go != 0 {
-        SID_OFFER_IMPORTING as u8
+    let lifting = voice < SID_LIFT_NO_VOICE;
+    t.st.lift = if lifting {
+        SID_LIFT_TAKING as u8
     } else {
-        SID_OFFER_NONE as u8
+        SID_LIFT_OFF as u8
     };
+    t.st.lift_voice = if lifting { voice as u8 } else { 0 };
+    t.st.lift_gti = std::ptr::null();
+    t.st.lift_len = 0;
     1
 }
 
-pub(crate) fn offer(t: &mut Tune, name: &str, instr: u8) {
-    t.st.offer = SID_OFFER_READY as u8;
-    t.st.offer_instr = instr;
-    text(&mut t.st.offer_name, name);
+pub(crate) const LIFTED_AD: u8 = 0x2a;
+pub(crate) const LIFTED_SR: u8 = 0xb9;
+pub(crate) const LIFTED_WAVE: u8 = 0x21;
+
+pub(crate) fn lifted_gti() -> Vec<u8> {
+    let mut ins = [0u8; GT2_INSTR_BYTES as usize];
+    ins[GT2_INS_AD as usize] = LIFTED_AD;
+    ins[GT2_INS_SR as usize] = LIFTED_SR;
+    ins[GT2_INS_WAVE as usize] = 1;
+    ins[GT2_INS_GATETIMER as usize] = 2;
+    ins[GT2_INS_FIRSTWAVE as usize] = LIFTED_WAVE;
+    let mut f = b"GTI5".to_vec();
+    f.extend_from_slice(&ins);
+    f.extend_from_slice(&[2, 0x00, 0xff, 0x00, 0x00, 0, 0, 0]);
+    f
+}
+
+pub(crate) fn lifted(t: &mut Tune, voice: u8) {
+    t.gti = lifted_gti();
+    t.st.lift = SID_LIFT_READY as u8;
+    t.st.lift_voice = voice;
+    t.st.lift_gti = t.gti.as_ptr();
+    t.st.lift_len = t.gti.len() as u16;
 }
 
 fn text(field: &mut [c_char], s: &str) {
@@ -180,6 +196,7 @@ pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
         )),
         refuse: false,
         loading: false,
+        gti: Vec::new(),
     });
     let ctx: *mut Tune = &mut *tune;
     let t = Box::new(sid_transport {
@@ -192,7 +209,6 @@ pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
         mute: Some(t_mute),
         status: Some(t_status),
         lift: Some(t_lift),
-        import: Some(t_import),
         ctx: ctx.cast(),
     });
     unsafe { views_set_tune(&mut *ui.v, &*t) };
@@ -844,7 +860,7 @@ fn the_sid_views_help_cards_match_their_goldens() {
         ("SIDS", false, false),
         ("PLAYING", true, true),
         ("UNSAVED", true, false),
-        ("LIFT", false, false),
+        ("LIFT", true, true),
     ] {
         let mut s = Sids::new(&["NIGHT DRIVE"]);
         s.io.dirty = 1;
@@ -856,7 +872,7 @@ fn the_sid_views_help_cards_match_their_goldens() {
             s.ui.press(SAVE_KEY_BUTTON);
         }
         if card == "LIFT" {
-            offer(&mut s.tune, "NIGHT DRIVE V2", 5);
+            s.ui.press(PANEL_BTN_REC);
         }
         settle(&mut s.ui);
         s.ui.down(PANEL_BTN_HOME);
@@ -871,71 +887,146 @@ fn the_sid_views_help_cards_match_their_goldens() {
     }
 }
 
+const LIFT_LINE_ROW: usize = 9;
+const LIFT_HINT_ROW: usize = 15;
+const VOICE_2_KEY: u32 = 1 << 1;
+const VOICE_KEYS: u32 = 0b111;
+
+fn lift_line(s: &Sids) -> String {
+    s.ui.big(LIFT_LINE_ROW, 2, 2, 14).trim_end().to_string()
+}
+
+fn asked_which_voice(s: &mut Sids) {
+    now_playing(s);
+    s.ui.press(PANEL_BTN_REC);
+    settle(&mut s.ui);
+    assert_eq!(lift_line(s), "LIFT WHICH");
+}
+
+fn key_lights(s: &mut Sids) -> u32 {
+    let mut i = panel_led_in::default();
+    unsafe { views_leds(&mut *s.ui.v, s.ui.now, &mut i) };
+    unsafe { panel_get_leds(&*s.ui.p, &*s.ui.rig.live, &i) }.notes
+}
+
 #[test]
-fn rec_on_now_playing_lifts_the_soloed_voice() {
+fn rec_on_now_playing_asks_which_voice_and_a_key_lifts_it() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
-    now_playing(&mut s);
-    s.calls();
-    s.ui.press(PANEL_BTN_REC);
-    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: SOLO ONE VOICE"));
-    s.ui.v.song.solo = 6;
-    s.ui.press(PANEL_BTN_REC);
-    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: SOLO ONE VOICE"));
-    assert!(s.calls().is_empty());
-    s.ui.v.song.solo = 2;
-    s.ui.press(PANEL_BTN_REC);
-    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: V2'S NEXT NOTE"));
+    asked_which_voice(&mut s);
+    assert_eq!(s.ui.big(12, 2, 2, 12), "VOICE? 1 2 3");
+    assert_eq!(
+        s.ui.small(LIFT_HINT_ROW, 2, 27),
+        "KEY 1-3 PICKS  HOME: CANCEL"
+    );
+    assert_eq!(
+        key_lights(&mut s) & VOICE_KEYS,
+        VOICE_KEYS,
+        "keys 1 to 3 lit"
+    );
+    assert!(s.calls().is_empty(), "nothing lifted yet");
+    golden(&s.ui, "playing-lift-ask");
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert!(
+        s.calls().is_empty(),
+        "ALGORITHM does not change the song under the question"
+    );
+    s.ui.note_keys(VOICE_2_KEY, VOICE_2_KEY);
+    s.ui.note_keys(0, 0);
     assert_eq!(s.calls(), vec![TuneCall::Lift(1)]);
-    while s.ui.toast().is_some() {
-        s.ui.frame();
-    }
+    assert_eq!(s.ui.live().note_ons, 0, "the answer does not sound");
+    assert_eq!(key_lights(&mut s) & VOICE_KEYS, 0);
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(20, 6, 2, 3), "ARM");
-    golden(&s.ui, "playing-lift-armed");
-    s.tune.st.lift = SID_LIFT_TAKING as u8;
+    assert_eq!(lift_line(&s), "LIFTING V2");
+    s.tune.st.lift = SID_LIFT_ARMED as u8;
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(20, 6, 2, 3), "REC");
+    assert_eq!(lift_line(&s), "WAITING FOR V2");
+    assert_eq!(s.ui.small(LIFT_HINT_ROW, 2, 19), "REC OR HOME: CANCEL");
+    golden(&s.ui, "playing-lift-waiting");
     s.ui.press(PANEL_BTN_REC);
-    assert_eq!(s.ui.toast().as_deref(), Some("LIFT OFF"));
-    assert_eq!(s.calls(), vec![TuneCall::Lift(3)]);
+    assert_eq!(s.calls(), vec![TuneCall::Lift(SID_LIFT_NO_VOICE)]);
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(20, 6, 2, 3), "SOL");
-    s.tune.st.state = SID_T_PAUSED as u8;
-    s.ui.press(PANEL_BTN_REC);
-    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: PLAY THE TUNE"));
-    assert!(s.calls().is_empty());
+    assert_eq!(s.ui.big(LIFT_LINE_ROW, 2, 2, 8), "SONG 1/3");
     assert_eq!(s.ui.v.song.rec, 0, "not the song's REC");
 }
 
 #[test]
-fn the_lifted_instrument_is_offered_once_the_song_is_back() {
+fn rec_or_home_cancels_and_a_paused_tune_says_why() {
     let mut s = Sids::new(&["NIGHT DRIVE"]);
+    asked_which_voice(&mut s);
+    s.ui.press(PANEL_BTN_REC);
+    settle(&mut s.ui);
+    assert_eq!(
+        s.ui.big(LIFT_LINE_ROW, 2, 2, 8),
+        "SONG 1/3",
+        "REC again: gone"
+    );
+    s.ui.press(PANEL_BTN_REC);
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
-    offer(&mut s.tune, "NIGHT DRIVE V2", 5);
-    settle(&mut s.ui);
-    assert_eq!(s.ui.top(), "LIFTED SOUND");
-    assert_eq!(s.ui.big(6, 2, 2, 14), "NIGHT DRIVE V2");
-    assert_eq!(s.ui.big(9, 2, 2, 8), "INTO I05");
-    golden(&s.ui, "lift-offer");
-    s.ui.press(SAVE_KEY_BUTTON);
-    assert_eq!(s.calls(), vec![TuneCall::Import(1)]);
-    settle(&mut s.ui);
-    assert_eq!(s.ui.big(9, 2, 2, 9), "IMPORTING");
-    s.tune.st.offer = SID_OFFER_NONE as u8;
-    settle(&mut s.ui);
-    assert_eq!(s.ui.top(), "MENU", "answered: gone");
-
-    offer(&mut s.tune, "NIGHT DRIVE V3", 0);
-    s.tune.st.offer_playing = 1;
-    settle(&mut s.ui);
-    assert_eq!(s.ui.big(9, 2, 2, 13), "NO FREE INSTR");
-    assert_eq!(s.ui.big(15, 2, 2, 13), "STOP IT FIRST");
-    s.ui.press(SAVE_KEY_BUTTON);
-    assert_eq!(s.ui.toast().as_deref(), Some("STOP THE SONG FIRST"));
+    assert_eq!(
+        (s.ui.top(), s.ui.big(LIFT_LINE_ROW, 2, 2, 8)),
+        ("NOW PLAYING".to_string(), "SONG 1/3".to_string()),
+        "HOME: the question gone, the tune's page stays"
+    );
     assert!(s.calls().is_empty());
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.note_keys(VOICE_2_KEY, VOICE_2_KEY);
+    s.ui.note_keys(0, 0);
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
-    assert_eq!(s.calls(), vec![TuneCall::Import(0)]);
-    assert_eq!(s.ui.top(), "MENU");
+    assert_eq!(
+        s.calls(),
+        vec![TuneCall::Lift(1), TuneCall::Lift(SID_LIFT_NO_VOICE)]
+    );
+    assert_eq!(
+        s.ui.top(),
+        "NOW PLAYING",
+        "HOME: the wait cancelled, the page stays"
+    );
+    s.tune.st.state = SID_T_PAUSED as u8;
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFT: PLAY THE TUNE"));
+    settle(&mut s.ui);
+    assert_eq!(
+        s.ui.big(LIFT_LINE_ROW, 2, 2, 8),
+        "SONG 1/3",
+        "nothing asked"
+    );
+}
+
+#[test]
+fn a_lifted_sound_opens_lab_named_for_its_voice_and_home_goes_back_to_the_tune() {
+    let mut s = Sids::new(&["NIGHT DRIVE"]);
+    asked_which_voice(&mut s);
+    s.ui.note_keys(VOICE_2_KEY, VOICE_2_KEY);
+    s.ui.note_keys(0, 0);
+    s.calls();
+    lifted(&mut s.tune, 1);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "LAB");
+    assert_eq!(
+        s.calls(),
+        vec![TuneCall::Lift(SID_LIFT_NO_VOICE)],
+        "the lift taken"
+    );
+    assert_eq!(s.ui.toast().as_deref(), Some("LIFTED V2"));
+    assert_eq!(
+        s.ui.row(LAB_VIEW_NAME_ROW as usize).trim_end(),
+        "LIFTED V2*",
+        "LAB names the sound for its voice, starred till it is kept"
+    );
+    let l = s.ui.live();
+    assert_eq!(
+        (l.attack_decay, l.sustain_release, l.control & 0xf0),
+        (LIFTED_AD, LIFTED_SR, LIFTED_WAVE & 0xf0),
+        "the lifted envelope and wave"
+    );
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "NOW PLAYING");
+    assert_eq!(s.tune.st.state, SID_T_PLAYING as u8, "the tune plays on");
+    assert!(s.calls().is_empty(), "HOME asks the tune nothing");
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "SIDS", "and on, as before the lift");
 }

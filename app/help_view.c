@@ -112,9 +112,10 @@ static const char* const SIDS_LINES[] = {"SELECT\0TUNE",    "SAVE\0CHOOSE",  "AL
                                          "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "HOME\0BACK",
                                          "HOLD HOME\0HELP"};
 static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE",
-                                            "GLO+KEY\0MUTE",  "REC\0LIFT SOLO",  "KEYS\0PLAY",
+                                            "GLO+KEY\0MUTE",  "REC\0LIFT VOICE", "KEYS\0PLAY",
                                             "HOME\0BACK",     "HOLD HOME\0HELP"};
-static const char* const LIFT_LINES[] = {"SAVE\0IMPORT", "HOME\0SKIP", "HOLD HOME\0HELP"};
+static const char* const LIFT_LINES[] = {"KEY 1-3\0VOICE", "REC\0CANCEL", "HOME\0CANCEL",
+                                         "HOLD HOME\0HELP"};
 static const char* const UNSAVED_LINES[] = {"SAVE\0DISCARD", "HOME\0BACK", "HOLD HOME\0HELP"};
 
 #define LAB_TAIL_A "SELECT\0PAGE", "ENV LFO FX\0LAB"

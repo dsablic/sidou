@@ -129,3 +129,7 @@ could only approximate (`I01 ~DRUM`). The sound takes the instrument's name (its
 characters), so sending it back keeps the name. HOME goes back to INSTR, and from there to where
 you opened LAB. The pull is one undo step: EDIT + LFO gives your sound back. The table of what
 goes how is in [controls.md](../reference/controls.md#send-a-lab-sound-to-the-song).
+
+A voice of a `.sid` tune comes into LAB the same way: REC in NOW PLAYING, then the voice's key
+([lift a sound](sid-tunes.md#5-lift-a-sound)). LAB opens with it as **LIFTED V2**; SAVE keeps
+it as a USER sound and HOME goes back to the tune.

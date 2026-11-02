@@ -1112,14 +1112,18 @@ static void midi_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_midi, v, SCREEN_CUT);
 }
 
-static void lab_unstack(screen* s) {
+static void unstack(screen* s, const view* gone) {
     uint32_t kept = 0u;
     for (uint32_t i = 0u; i < s->depth; i++) {
-        if (s->stack[i].v != &lab_view_view) {
+        if (s->stack[i].v != gone) {
             s->stack[kept++] = s->stack[i];
         }
     }
     s->depth = (uint8_t)kept;
+}
+
+static void lab_unstack(screen* s) {
+    unstack(s, &lab_view_view);
 }
 
 static void lab_show(views* v, uint32_t page) {
@@ -1798,6 +1802,25 @@ __attribute__((noinline, unused)) LIVE_COLD static int lab_pull(views* v) {
     return 1;
 }
 
+__attribute__((noinline, unused)) LIVE_COLD static void lab_lift(views* v) {
+    sid_status st;
+    if (!sid_view_lifted(&v->sids, &st)) {
+        return;
+    }
+    uint8_t sound[LAB_SOUND_BYTES];
+    uint32_t notes = 0u;
+    live_sound_get(v->l, sound);
+    int read = lab_song_pull_gti(st.lift_gti, st.lift_len, (uint32_t)v->l->model, sound, &notes);
+    (void)v->sids.t->lift(v->sids.t->ctx, SID_LIFT_NO_VOICE);
+    if (!read) {
+        return;
+    }
+    lab_unstack(&v->s);
+    unstack(&v->s, &views_menu);
+    lab_view_lift(&v->lab, &v->s, sound, st.lift_voice, notes);
+    (void)screen_push(&v->s, &lab_view_view, &v->lab, SCREEN_WIPE_DOWN);
+}
+
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
     if (e->kind != SCREEN_PRESS) {
@@ -2111,8 +2134,8 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &sid_view_browser && sid_view_home(&v->sids)) {
         return;
     }
-    if (from == &sid_view_offer) {
-        sid_view_offer_answer(&v->sids, &v->s, 0);
+    if (from == &sid_view_playing && sid_view_lift_cancel(&v->sids)) {
+        return;
     }
     if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
         return;
@@ -2157,10 +2180,7 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         return v->sids.asking ? HELP_CARD_UNSAVED : HELP_CARD_SIDS;
     }
     if (top == &sid_view_playing) {
-        return HELP_CARD_PLAYING;
-    }
-    if (top == &sid_view_offer) {
-        return HELP_CARD_LIFT;
+        return sid_view_lift_keys(&v->sids) ? HELP_CARD_LIFT : HELP_CARD_PLAYING;
     }
     if (top == &views_charset) {
         return HELP_CARD_CHARSET;
@@ -2579,10 +2599,6 @@ static void save(views* v, uint32_t held) {
         lab_view_save(&v->lab, &v->s, (int)(held >> PANEL_BTN_EDIT & 1u));
         return;
     }
-    if (shows(v) == &sid_view_offer) {
-        sid_view_offer_answer(&v->sids, &v->s, 1);
-        return;
-    }
     if (shows(v) == &chip_view_view) {
         chip_view_save_result r = chip_view_save(&v->chip, v->s.now);
         if (r) {
@@ -2739,7 +2755,10 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
             jam_down &= ~((1u << STEP_VIEW_STEPS) - 1u);
             jam_pressed &= ~((1u << STEP_VIEW_STEPS) - 1u);
         }
-        uint32_t typed = top == &lab_view_view ? lab_view_name_keys(&v->lab, pressed) : 0u;
+        uint32_t typed = top == &lab_view_view ? lab_view_name_keys(&v->lab, pressed)
+                         : top == &sid_view_playing && !glo
+                             ? sid_view_lift_pick(&v->sids, &v->s, pressed)
+                             : 0u;
         uint32_t owned = take ? panel_owned(p, jam_down & ~jam_pressed & ~sv->jam_keys) : 0u;
         uint32_t taken = steps | typed | song_view_keys(sv, jam_down, jam_pressed, owned, take,
                                         top == &tracker_view_view ? &v->s : NULL,
@@ -3079,13 +3098,8 @@ void views_frame(views* v, uint32_t now_ms) {
         }
     }
     toast_hold(v);
-    const view* now = screen_top(&v->s);
-    if (sid_view_offered(&v->sids)) {
-        if (now == &live_view_view || now == &views_menu || now == &sid_view_browser) {
-            screen_push(&v->s, &sid_view_offer, &v->sids, SCREEN_WIPE_DOWN);
-        }
-    } else if (now == &sid_view_offer) {
-        screen_pop(&v->s, SCREEN_WIPE_UP);
+    if (screen_top(&v->s) == &sid_view_playing) {
+        lab_lift(v);
     }
     v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);
@@ -3168,6 +3182,7 @@ void views_leds(views* v, uint32_t now_ms, panel_led_in* out) {
                                                               : PANEL_REC_COUNT;
     out->silent = (uint8_t)song_view_mute_mask(&v->song);
     out->solo = v->song.solo;
+    out->pick = (uint8_t)(top == &sid_view_playing ? sid_view_lift_keys(&v->sids) : 0u);
     out->ask = (uint8_t)save_asked(v);
     out->step_on = (uint8_t)(top == &step_view_view);
     out->step_head = PANEL_NO_STEP;

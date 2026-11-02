@@ -1450,6 +1450,37 @@ fn save_keeps_a_built_in_in_the_next_free_slot_with_its_automatic_name() {
 }
 
 #[test]
+fn a_lifted_sound_is_kept_as_a_new_user_sound_under_its_name() {
+    let mut k = Stored::new();
+    k.shape_and_keep();
+    k.toast_within(2000, "KEPT").unwrap();
+    k.frames(60);
+    let (_, user_1) = k.slot(0).unwrap();
+    let mut lifted = k.sound();
+    lifted[LAB_SOUND_AD as usize] = 0x3c;
+    unsafe { lab_view_lift(&mut k.ui.v.lab, &mut k.ui.v.s, lifted.as_ptr(), 1, 0) };
+    k.frames(3);
+    assert_eq!(
+        k.name_row(),
+        "LIFTED V2*",
+        "LAB shows the lifted sound, not kept"
+    );
+    assert_eq!(k.ui.live().user_sound, 0, "USER 1 left as it was");
+    k.ui.press(SAVE);
+    assert_eq!(
+        k.toast_within(2000, "KEPT").as_deref(),
+        Some("KEPT AS U02 LIFTED V2")
+    );
+    assert_eq!(k.slot(1), Some(("LIFTED V2".to_string(), k.sound())));
+    assert_eq!(k.sound()[LAB_SOUND_AD as usize], 0x3c);
+    assert_eq!(
+        k.slot(0),
+        Some(("LAB 01".to_string(), user_1)),
+        "USER 1 untouched"
+    );
+}
+
+#[test]
 fn save_updates_a_user_sound_in_place() {
     let mut k = Stored::new();
     k.shape_and_keep();

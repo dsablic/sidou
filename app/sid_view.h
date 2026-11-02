@@ -35,13 +35,11 @@ typedef struct {
     char files[SID_VIEW_FILES][STORE_NAME_MAX + 1u];
     char chosen[STORE_NAME_MAX + 1u];
     uint8_t drawn[SID_VIEW_LOOK];
-    uint8_t offer_built;
-    uint8_t offer_drawn[4];
+    uint8_t lift_ask;
 } sid_view;
 
 extern const view sid_view_browser;
 extern const view sid_view_playing;
-extern const view sid_view_offer;
 
 void sid_view_init(sid_view* sd, song_view* sv);
 void sid_view_set_transport(sid_view* sd, const sid_transport* t);
@@ -49,8 +47,10 @@ void sid_view_open(sid_view* sd, screen* s);
 int sid_view_is(const view* v);
 uint32_t sid_view_state(const sid_view* sd);
 void sid_view_rec(sid_view* sd, screen* s);
-int sid_view_offered(const sid_view* sd);
-void sid_view_offer_answer(sid_view* sd, screen* s, int go);
+int sid_view_lift_cancel(sid_view* sd);
+uint32_t sid_view_lift_keys(const sid_view* sd);
+uint32_t sid_view_lift_pick(sid_view* sd, screen* s, uint32_t pressed);
+int sid_view_lifted(const sid_view* sd, sid_status* st);
 int sid_view_play(sid_view* sd, int edit, int here);
 int sid_view_home(sid_view* sd);
 void sid_view_save(sid_view* sd, screen* s);

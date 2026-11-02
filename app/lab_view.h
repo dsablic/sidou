@@ -78,6 +78,7 @@ typedef struct {
     uint8_t slot;
     uint8_t cursor_at;
     uint8_t named;
+    uint8_t lifted;
     char name[LAB_SOUND_NAME + 1u];
     screen_lone lone;
     uint8_t edit_down;
@@ -109,6 +110,8 @@ void lab_view_kept(const lab_view* lv, uint32_t slot, int gaps, screen* s);
 #define LAB_VIEW_SENT_MS 6000u
 void lab_view_sent(lab_view* lv, uint32_t notes, uint32_t now);
 void lab_view_pull(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES], uint32_t instr,
+                   uint32_t notes);
+void lab_view_lift(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES], uint32_t voice,
                    uint32_t notes);
 const char* lab_view_hint_text(const lab_view* lv, uint32_t now, char* out);
 

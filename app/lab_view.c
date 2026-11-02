@@ -329,6 +329,21 @@ static void auto_name(char* out, uint32_t n) {
     e[2] = 0;
 }
 
+static void lifted_name(char out[LAB_SOUND_NAME + 1u], uint32_t voice) {
+    char* e = append(out, "LIFTED V");
+    *e++ = (char)('1' + voice);
+    *e = 0;
+}
+
+static int lifted_shown(const lab_view* lv) {
+    char name[LAB_SOUND_NAME + 1u];
+    if (!lv->lifted || lv->l->user_sound) {
+        return 0;
+    }
+    lifted_name(name, lv->lifted - 1u);
+    return strcmp(name, lv->l->base_name) == 0;
+}
+
 typedef grid_canvas canvas;
 
 static void put(canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
@@ -1012,7 +1027,7 @@ static void name_open(lab_view* lv) {
     uint32_t n = l->user_sound ? l->user_sound - 1u : free_slot(l);
     lv->slot = (uint8_t)(n < USER_SOUNDS ? n : 0u);
     lv->cursor_at = 0;
-    lv->named = l->user_sound != 0;
+    lv->named = l->user_sound != 0 || lifted_shown(lv);
     name_set(lv, lv->named ? l->base_name : NULL);
     lv->mode = LAB_VIEW_MODE_NAME;
 }
@@ -1056,7 +1071,7 @@ void lab_view_save(lab_view* lv, screen* s, int edit) {
     }
     uint32_t n = l->user_sound ? l->user_sound - 1u : free_slot(l);
     char name[LAB_SOUND_NAME + 1u];
-    if (l->user_sound) {
+    if (l->user_sound || (lifted_shown(lv) && n < USER_SOUNDS)) {
         memcpy(name, l->base_name, sizeof name);
     } else if (n == USER_SOUNDS) {
         screen_toast(s, "USER FULL: EDIT+SAVE", SCREEN_TOAST_MS);
@@ -1268,13 +1283,28 @@ LIVE_COLD const char* lab_view_hint_text(const lab_view* lv, uint32_t now, char*
     return out;
 }
 
-LIVE_COLD void lab_view_pull(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES],
-                             uint32_t instr, uint32_t notes) {
+static void take_in(lab_view* lv, const uint8_t sound[LAB_SOUND_BYTES]) {
     uint8_t before[LAB_EDIT_BYTES];
     begin(lv, before);
     live_sound_apply(lv->l, sound);
     lv->run = LAB_VIEW_NO_RUN;
     record(lv, before, LAB_VIEW_NO_RUN);
+    lv->sent = 0u;
+}
+
+static void toast_approx(screen* s, char* t, char* e, uint32_t notes) {
+    if (notes & LAB_SONG_APPROX) {
+        e = append(e, " ~");
+        lab_song_words(notes, 0, e, SCREEN_TOAST_CHARS + 1u - (uint32_t)(e - t));
+    } else {
+        *e = 0;
+    }
+    screen_toast(s, t, SCREEN_TOAST_MS);
+}
+
+LIVE_COLD void lab_view_pull(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES],
+                             uint32_t instr, uint32_t notes) {
+    take_in(lv, sound);
     static const char HEX[] = "0123456789ABCDEF";
     char t[SCREEN_TOAST_CHARS + 1u];
     char* e = t;
@@ -1284,12 +1314,16 @@ LIVE_COLD void lab_view_pull(lab_view* lv, screen* s, const uint8_t sound[LAB_SO
     *e++ = 'I';
     *e++ = HEX[instr >> 4 & 15u];
     *e++ = HEX[instr & 15u];
-    if (notes & LAB_SONG_APPROX) {
-        e = append(e, " ~");
-        lab_song_words(notes, 0, e, SCREEN_TOAST_CHARS + 1u - (uint32_t)(e - t));
-    } else {
-        *e = 0;
-    }
-    lv->sent = 0u;
-    screen_toast(s, t, SCREEN_TOAST_MS);
+    toast_approx(s, t, e, notes);
+}
+
+LIVE_COLD void lab_view_lift(lab_view* lv, screen* s, const uint8_t sound[LAB_SOUND_BYTES],
+                             uint32_t voice, uint32_t notes) {
+    char name[LAB_SOUND_NAME + 1u];
+    lifted_name(name, voice);
+    live_sound_detach(lv->l, name);
+    take_in(lv, sound);
+    lv->lifted = (uint8_t)(voice + 1u);
+    char t[SCREEN_TOAST_CHARS + 1u];
+    toast_approx(s, t, append(t, name), notes);
 }

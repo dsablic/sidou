@@ -279,13 +279,19 @@ reads; every other read matches reSIDfp's, on both models and every combined-wav
 
 ### The lift
 
-NOW PLAYING's REC (`core/psid/psid_lift.h`; [controls](controls.md#lift-a-sound)) reads the
-same write sink, in the main loop: armed for a voice, it starts at the voice's next gate-on (the
-control register's gate bit written 0 then 1) on the chips the tune has, and keeps the voice's
-seven registers and `$15-$18` as they stand at each play call's return, for 50 calls at most, up
-to the gate's next change (that call not kept). More than eight writes to one of those
-registers in a call is a digi, refused. The audio interrupt never sees the lift; its state
-overlays the song's work space while the tune has the song's memory.
+NOW PLAYING's lift (`core/psid/psid_lift.h`; [controls](controls.md#lift-a-sound)) reads the
+same write sink, in the main loop. At each play call's return it keeps a record a chip: the chip's
+25 registers as they stand, which voices' gates went on or changed in the call, and which
+voices' registers (or `$15-$18`) were written more than eight times (a digi). The records are a
+ring of 64 (`psid_lift_past`, 1,728 bytes): 64 calls of a 1SID tune, 32 of a 2SID tune's two
+chips. A lift of a voice takes its most recent gate-on in the ring (the gate bit written 0 then 1
+and on at the call's end; in the same call, chip A's) and keeps the voice's seven registers and
+`$15-$18` from there, for 50 calls at most, up to the gate's next change (that call not kept);
+a note that has not ended is followed call by call, and with no gate-on in the ring the lift
+waits for the next. A digi is refused. The conversion to a GoatTracker instrument runs in passes
+(the wave table, the vibrato fit a speed a pass, the other tables), each within a main-loop
+pass's slice. The audio interrupt never sees the lift; its state overlays the song's work space
+while the tune has the song's memory, and the ring sits in `.bss`.
 
 ## Known limits
 

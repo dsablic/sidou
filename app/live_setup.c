@@ -632,6 +632,14 @@ LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     li_update_pws(l);
 }
 
+LIVE_COLD void live_sound_detach(live* l, const char* name) {
+    if (l->user_sound) {
+        user_leave(l);
+        l->user_sound = 0;
+    }
+    live_sound_set_base(l, l->base, name);
+}
+
 LIVE_COLD void live_load_user(live* l, uint32_t n, const uint8_t sound[LAB_SOUND_BYTES],
                               const char* name) {
     l->settings_dirty = 1;
