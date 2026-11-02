@@ -36,7 +36,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
-- **Shape a sound and keep it (LAB, new in 1.0).** ENV, LFO and FX on LIVE open LAB: six
+- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: six
   pages (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) draw what their four cards do, so you turn K1 to K4
   and see it: a filter LFO on FILTER, the arpeggio's rate on MOD, and on MACRO links that make the
   resonance follow the cutoff and the PWM follow the width. EDIT's tap compares A and B, holding
@@ -45,7 +45,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   sounds, which PRESETS plays after DICE; EDIT + SAVE names it on the keys. A slot turned to OFF
   on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)). REC in LAB
   sends the sound to the song as a GoatTracker instrument while it plays, and ENV on INSTR pulls
-  one back into LAB (new in 1.5).
+  one back into LAB.
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on

@@ -21,6 +21,7 @@ for link in ("CHANGELOG.md", "https://github.com/dsablic/sidou/releases", "docs/
     if link not in readme:
         errors.append(f"README.md does not link {link}")
 named = sorted(set(re.findall(r"(?<![\d.])v?\d+\.\d+\.\d+(?![\d])", readme)))
+named += sorted(set(re.findall(r"\bnew in v?\d+\.\d+\b", readme)))
 if named:
     errors.append(f"README.md names releases ({', '.join(named)}): version information belongs in CHANGELOG.md")
 for h in re.finditer(r"^## \[(\d+\.\d+\.\d+[^\]]*)\](.*)\n\n(.)", changelog, re.M):

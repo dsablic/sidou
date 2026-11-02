@@ -8,7 +8,7 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
-- **[1.5.0](https://github.com/dsablic/sidou/releases/tag/v1.5.0)** (2026-10-31): LAB's
+- **[1.5.0](https://github.com/dsablic/sidou/releases/tag/v1.5.0)** (2026-11-02): LAB's
   song bridge, sounds lifted from a `.sid`, chords and drums from DICE, Live Link, the site's
   editor and library (the list below).
 - **[1.1.0](https://github.com/dsablic/sidou/releases/tag/v1.1.0)** (2026-10-30): LAB's
@@ -88,9 +88,12 @@ the decisions are in [design-notes.md](design-notes.md)).
   #14 and #16 are fixed upstream. SIDOU's USB audio hand-over needs adapting to its newer
   recording path (found in the trial: 22 of 23 USB tests pass).
 
-**After 1.5:** the quality pass: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of
-250, the MIDI floods at 98 % of their budget), the faster ergonomics gate, suggested automations,
-knob-curve follow-ups from the device sessions.
+- **The quality pass**: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of 250, the
+  MIDI floods at 98 % of their budget, the SID views' UI poll 452 under its budget after the
+  lift), the faster ergonomics gate, suggested automations, knob-curve follow-ups from the device
+  sessions, and the two `-Oz` puzzles (`gt2_song.c`'s goldens, `fx_slots_init.c`'s timing).
+- **Small fixes**: a pulled LAB name comes back after a power cycle (today the sound does, the
+  name not); the Live Link smoke test's HOME hold no longer depends on wall-clock timing.
 
 ## 1.x
 
