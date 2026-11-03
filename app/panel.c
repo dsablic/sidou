@@ -140,7 +140,7 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
 }
 
 uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
-    static const uint8_t CARDS[6][4] = {
+    static const uint8_t CARDS[7][4] = {
         {LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE},
         {LIVE_PARAM_ATTACK, LIVE_PARAM_DECAY, LIVE_PARAM_SUSTAIN, LIVE_PARAM_RELEASE},
         {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE, LIVE_PARAM_FILTER_VOICES, LIVE_PARAM_FILTER_LFO},
@@ -148,6 +148,7 @@ uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
          LIVE_PARAM_ARP_RATE},
         {0, 0, 0, 0},
         {LIVE_PARAM_RESO_LINK, LIVE_PARAM_PWM_LINK, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT},
+        {LIVE_PARAM_COUNT, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT, LIVE_PARAM_FILTER_VOICES},
     };
     _Static_assert(PANEL_PAGE_LAB_END - PANEL_PAGE_LAB_FIRST == sizeof CARDS / sizeof CARDS[0],
                    "a row of cards a LAB page");

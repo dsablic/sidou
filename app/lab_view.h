@@ -23,7 +23,8 @@ extern "C" {
 #define LAB_PAGE_MOD 3u
 #define LAB_PAGE_FX 4u
 #define LAB_PAGE_MACRO 5u
-#define LAB_PAGES 6u
+#define LAB_PAGE_LAYERS 6u
+#define LAB_PAGES 7u
 #define LAB_VIEW_FRAME_CELLS 200u
 #define LAB_VIEW_NAME_ROW 2u
 #define LAB_VIEW_ART_ROW 4u

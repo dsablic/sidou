@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "lab_edit.h"
 
+#include <string.h>
+
 #include "sid/sid_filter.h"
 
 void lab_edit_clear(lab_edit* e) {
@@ -150,7 +152,7 @@ static int32_t filter_db(uint32_t mode, float hz, float note, int tri, int m6581
     }
 }
 
-uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
+static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
     uint32_t wave = s[LAB_SOUND_CONTROL] >> 4;
     int32_t db = WAVE_DB[model ? 1 : 0][wave];
     if (db == NONE) {
@@ -232,6 +234,26 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
         }
     }
     return db >= LAB_AUDIBLE_DB;
+}
+
+uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
+    if (audible_one(s, model)) {
+        return 1;
+    }
+    uint8_t as_first[LAB_SOUND_BYTES];
+    for (uint32_t n = 0; n < s[LAB_SOUND_LAYERS] && n < LIVE_LAYERS_MAX; n++) {
+        const uint8_t* v = &s[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
+        memcpy(as_first, s, LAB_SOUND_BYTES);
+        as_first[LAB_SOUND_CONTROL] = v[0];
+        as_first[LAB_SOUND_AD] = v[1];
+        as_first[LAB_SOUND_SR] = v[2];
+        as_first[LAB_SOUND_PULSE] = v[3];
+        as_first[LAB_SOUND_PULSE + 1u] = v[4];
+        if (audible_one(as_first, model)) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 uint32_t lab_edit_hash(const uint8_t s[LAB_SOUND_BYTES]) {

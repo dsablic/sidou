@@ -627,9 +627,17 @@ LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     }
 }
 
+LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);
+
 LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
-    l->settings_dirty = 1;
+    uint8_t edit = l->layer_edit;
     l->layer_edit = 0;
+    sound_apply(l, in);
+    live_layer_edit_set(l, edit);
+}
+
+LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
+    l->settings_dirty = 1;
     uint8_t mono = in[LAB_SOUND_MONO_SYNC] ? 1u : 0u;
     uint8_t layers = mono || in[LAB_SOUND_LAYERS] > LIVE_LAYERS_MAX ? 0u : in[LAB_SOUND_LAYERS];
     layers_apply(l, in);
@@ -988,12 +996,24 @@ LIVE_COLD uint32_t live_layers_set(live* l, uint32_t extra) {
     return 1;
 }
 
+uint8_t live_layer_control_of(const live* l, uint32_t v) {
+    return layer_control(l, (int)v);
+}
+
 uint8_t live_edit_control(const live* l) {
     return layer_control(l, l->layer_edit);
 }
 
 uint16_t live_edit_pulse_width(const live* l) {
     return layer_pulse_width(l, l->layer_edit);
+}
+
+uint8_t live_edit_attack_decay(const live* l) {
+    return layer_attack_decay(l, l->layer_edit);
+}
+
+uint8_t live_edit_sustain_release(const live* l) {
+    return layer_sustain_release(l, l->layer_edit);
 }
 
 void live_layer_edit_set(live* l, uint32_t n) {

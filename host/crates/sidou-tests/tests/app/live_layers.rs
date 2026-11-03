@@ -270,3 +270,13 @@ fn fewer_layers_pull_the_edit_back_and_one_voice_sync_refuses_layers() {
     assert!(!set_layers(&mut rig, 1));
     assert_eq!(rig.live.layers, 0);
 }
+
+#[test]
+fn a_layered_sound_is_audible_when_any_layer_is() {
+    let mut s = layered(2);
+    s[LAB_SOUND_CONTROL as usize] = 0;
+    let audible = |s: &Sound| unsafe { lab_audible(s.as_ptr(), SID_MODEL_6581) != 0 };
+    assert!(audible(&s), "layer 2 sounds");
+    s[voice_at(1)] = 0;
+    assert!(!audible(&s), "no layer has a waveform");
+}

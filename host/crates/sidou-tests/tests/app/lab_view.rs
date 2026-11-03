@@ -68,25 +68,29 @@ pub(crate) fn to_page(ui: &mut Ui, page: u32) {
     assert_eq!(u32::from(ui.v.lab.page), page);
 }
 
-fn choice(ui: &Ui) -> String {
+pub(crate) fn choice(ui: &Ui) -> String {
     let mut out = [0 as std::os::raw::c_char; LAB_VIEW_TEXT as usize];
     unsafe { lab_view_choice(&ui.v.lab, u32::from(ui.v.lab.page), out.as_mut_ptr()) };
     c_text(out.as_ptr())
 }
 
 #[test]
-fn select_steps_the_six_pages_and_stops_at_the_ends() {
+fn select_steps_the_seven_pages_and_stops_at_the_ends() {
     let mut ui = lab_ui();
-    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX", "MACRO"];
+    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX", "MACRO", "LAYERS"];
     assert_eq!(ui.v.lab.page, 0, "LAB opens at OSC");
     for (i, name) in names.iter().enumerate() {
         settle(&mut ui);
         assert_eq!(usize::from(ui.v.lab.page), i);
         assert_eq!(ui.big(0, 0, 2, name.len()), *name, "the page's name at 2x");
-        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/6", i + 1), "its place");
+        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/7", i + 1), "its place");
         ui.turn(PANEL_ENC_SELECT, 1);
     }
-    assert_eq!(u32::from(ui.v.lab.page), LAB_PAGE_MACRO, "clamped at MACRO");
+    assert_eq!(
+        u32::from(ui.v.lab.page),
+        LAB_PAGE_LAYERS,
+        "clamped at LAYERS"
+    );
     ui.turn(PANEL_ENC_SELECT, -9);
     assert_eq!(ui.v.lab.page, 0, "clamped at OSC");
 }
@@ -698,7 +702,15 @@ fn the_pages_match_their_goldens() {
         (LAB_PAGE_MOD, "lab-mod"),
         (LAB_PAGE_FX, "lab-fx"),
         (LAB_PAGE_MACRO, "lab-macro"),
+        (LAB_PAGE_LAYERS, "lab-layers"),
     ] {
+        if page == LAB_PAGE_LAYERS {
+            to_page(&mut ui, page);
+            ui.turn(PANEL_ENC_ALGORITHM, 2);
+            ui.turn(PANEL_ENC_K1, 1);
+            ui.turn(PANEL_ENC_K2, 12);
+            settle(&mut ui);
+        }
         to_page(&mut ui, page);
         if page == LAB_PAGE_FX {
             ui.turn(PANEL_ENC_ALGORITHM, 2);
