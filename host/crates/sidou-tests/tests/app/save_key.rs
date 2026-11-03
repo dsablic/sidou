@@ -5,7 +5,7 @@ use sidou_sys::*;
 
 use crate::c_text;
 use crate::store::{fresh, Rig as Store};
-use crate::views::{Ui, CARDS_OFF};
+use crate::views::Ui;
 
 const SAVE: u32 = SAVE_KEY_BUTTON;
 const A_PRESET_CHANGE_ONLY_A_SAVE_STORES_BEFORE_THE_DEBOUNCE: u8 = 3;
@@ -74,7 +74,7 @@ thread_local! {
 
 impl Saving {
     fn on(st: Store) -> Self {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let popup_source = ui.v.popup.source.take();
         let mut set = Box::<settings>::default();
         let mut ml = ui.attach_learn();
@@ -84,7 +84,6 @@ impl Saving {
                 &mut *set,
                 &mut *ui.rig.live,
                 &mut *ml,
-                &mut ui.v.cards,
                 &mut ui.v.song.scroll,
                 std::ptr::null_mut(),
                 &mut *st.st,
@@ -333,11 +332,11 @@ fn a_learned_binding_alone_is_background_saved_through_views_frame() {
 }
 
 #[test]
-fn a_menu_cards_change_is_background_saved_without_save() {
+fn a_menu_rows_change_is_background_saved_without_save() {
     let mut s = Saving::new();
     s.frames(150);
     let before = s.stored();
-    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_CARDS);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_ROWS);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.frames(120);
     assert_eq!(s.stored(), before, "the menu edit must debounce");
@@ -350,7 +349,7 @@ fn a_menu_cards_change_is_background_saved_without_save() {
 fn saves_press_saves_the_settings_now_on_live_and_says_saved() {
     let mut s = Saving::new();
     let first = s.stored();
-    s.ui.v.cards = 1 - s.ui.v.cards;
+    s.ui.v.song.scroll = 1 - s.ui.v.song.scroll;
     assert_eq!(s.save_and_wait_for_its_toast().as_deref(), Some("SAVED"));
     assert_ne!(s.stored(), first);
     assert_eq!(
@@ -402,7 +401,6 @@ fn saves_press_saves_the_settings_in_scene_status_and_chip_not_in_the_menu() {
 fn a_knob_turned_while_save_is_down_saves_nothing() {
     let mut s = Saving::new();
     let first = s.stored();
-    s.ui.v.cards = CARDS_OFF;
     s.ui.down(SAVE);
     s.ui.turn(PANEL_ENC_K1, 1);
     s.ui.up(SAVE);
@@ -444,7 +442,6 @@ fn save_ends_the_boot_and_saves_nothing() {
     unsafe { views_boot(&mut *s.ui.v, 0, 0) };
     s.polled_quiet_frame();
     assert_eq!(s.ui.top(), "BOOT");
-    s.ui.v.cards = CARDS_OFF;
     s.ui.press(SAVE);
     s.polled_quiet_frame();
     s.ui.settle();
@@ -715,7 +712,7 @@ fn a_newer_sidou_store_reads_newer_and_save_asks_to_format_it() {
 
 #[test]
 fn no_store_reads_none_and_save_does_nothing_visible() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(SAVE);
     ui.frames(10);
     assert_eq!((ui.top().as_str(), ui.toast()), ("LIVE", None));

@@ -277,7 +277,7 @@ fn view_tile(ui: &crate::views::Ui, col: usize, row: usize) -> [u8; 64] {
 #[test]
 fn red_moon_rite_is_scenes_sixth_piece_and_paints_under_the_screens_overlays() {
     use crate::views::Ui;
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     crate::scene::open_scene(&mut ui);
     ui.turn(PANEL_ENC_SELECT, -1);
     assert_eq!(u32::from(ui.v.scene.which), SCENE_RMR);

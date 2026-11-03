@@ -423,7 +423,6 @@ impl Dev {
             .collect();
         out.push(self.live_u8(ilp32::live::theme));
         out.push(self.live_u8(ilp32::live::keys_mode));
-        out.push(self.m.soc.read8(ui + ilp32::views::cards as u32));
         out
     }
 

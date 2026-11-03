@@ -46,7 +46,7 @@ impl Prof {
     }
 
     fn with(st: Store, quiet: bool) -> Self {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let mut set = Box::<settings>::default();
         let mut ml = ui.attach_learn();
         let mut st = st;
@@ -55,7 +55,6 @@ impl Prof {
                 &mut *set,
                 &mut *ui.rig.live,
                 &mut *ml,
-                &mut ui.v.cards,
                 &mut ui.v.song.scroll,
                 std::ptr::null_mut(),
                 &mut *st.st,

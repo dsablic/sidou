@@ -227,7 +227,7 @@ pub(crate) struct Sids {
 
 impl Sids {
     pub(crate) fn new(names: &[&str]) -> Sids {
-        let ui = Ui::without_cards();
+        let ui = Ui::new();
         Sids::with(ui, names)
     }
 
@@ -736,10 +736,7 @@ fn the_song_views_show_sid_playing_while_a_tune_has_the_song() {
     song.ui.press(PANEL_BTN_SEQ);
     crate::song_view::settle(&mut song.ui);
     assert_eq!(song.ui.top(), "STEP");
-    let mut s = Sids::with(
-        std::mem::replace(&mut song.ui, Ui::without_cards()),
-        &["NIGHT"],
-    );
+    let mut s = Sids::with(std::mem::replace(&mut song.ui, Ui::new()), &["NIGHT"]);
     s.tune.st.state = SID_T_PLAYING as u8;
     unsafe {
         views_set_song(&mut *s.ui.v, std::ptr::null());
@@ -832,7 +829,7 @@ fn status_shows_the_6502s_rows_while_a_tune_is_loaded() {
 
 #[test]
 fn sid_model_is_a_persisted_setting_of_auto_or_keys() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut set = Box::<settings>::default();
     set.l = &mut *ui.rig.live;
     unsafe { views_settings(&mut *ui.v, &mut *set) };
@@ -850,7 +847,7 @@ fn sid_model_is_a_persisted_setting_of_auto_or_keys() {
     ui.turn(PANEL_ENC_SELECT, 9);
     ui.settle();
     let heading = ascii_or_hash(ui.big(1, 1, 2, 14));
-    assert_eq!(heading, "SETTINGS#10/10");
+    assert_eq!(heading, "SETTINGS#  9/9");
     unsafe { views_settings(&mut *ui.v, std::ptr::null_mut()) };
 }
 

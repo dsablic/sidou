@@ -56,7 +56,7 @@ pub(crate) fn open_lab(ui: &mut Ui) {
 }
 
 pub(crate) fn lab_ui() -> Ui {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_lab(&mut ui);
     ui
 }
@@ -377,7 +377,7 @@ fn a_link_lights_the_card_it_moves() {
 
 #[test]
 fn osc_k1_is_the_ratio_on_a_mono_sync_sound_without_pulse() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe { live_set_preset(&mut *ui.rig.live, 2) };
     open_lab(&mut ui);
     assert_eq!(ui.small(LAB_VIEW_LABEL_ROW as usize, 0, 5), "RATIO");
@@ -478,7 +478,7 @@ fn algorithm_steps_each_pages_choice() {
 
 #[test]
 fn a_turn_lights_its_card_and_opens_no_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     settle(&mut ui);
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_LAB as i32);
@@ -612,7 +612,7 @@ fn env_lfo_and_fx_open_their_page_in_lab() {
 
 #[test]
 fn env_lfo_and_fx_on_live_open_lab_at_their_page() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     settle(&mut ui);
     let algorithm = ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize];
     let model = ui.live().model_req;
@@ -668,7 +668,7 @@ fn home_goes_back_to_live_from_lab_and_from_the_menus_lab() {
 
 #[test]
 fn the_frame_stays_within_200_cells() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     menu_at_lab(&mut ui);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     let mut most = 0;
@@ -901,7 +901,7 @@ fn osc_draws_each_waveform() {
         settle_hint(&mut ui);
         golden(&ui, name);
     }
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe { live_set_preset(&mut *ui.rig.live, 1) };
     open_lab(&mut ui);
     settle_hint(&mut ui);
@@ -1034,7 +1034,7 @@ fn a_turned_card_lights_its_part() {
         settle(&mut ui);
         assert!(cells_in(&ui.g, th.knob[k as usize]).is_empty(), "and back");
     }
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe { live_set_preset(&mut *ui.rig.live, 1) };
     open_lab(&mut ui);
     ui.turn(PANEL_ENC_K1, 1);
@@ -1349,7 +1349,7 @@ struct Stored {
 
 impl Stored {
     fn new() -> Self {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let mut set = Box::<settings>::default();
         let mut ml = ui.attach_learn();
         let mut st = fresh(7, 256);
@@ -1358,7 +1358,6 @@ impl Stored {
                 &mut *set,
                 &mut *ui.rig.live,
                 &mut *ml,
-                &mut ui.v.cards,
                 &mut ui.v.song.scroll,
                 std::ptr::null_mut(),
                 &mut *st.st,
@@ -2745,7 +2744,7 @@ fn lab_presets_loads_and_resets_undo() {
 }
 
 fn learn_ui(preset: Option<u8>) -> (Ui, Box<midi_learn>) {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let ml = ui.attach_learn();
     unsafe {
         if let Some(p) = preset {

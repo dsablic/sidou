@@ -7,7 +7,6 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::store::{fresh, Rig as Store};
-use crate::views::{CARDS_ALWAYS, CARDS_OFF};
 use crate::{hex_bytes, record, Recorder, Rig};
 
 const VERSION: &CStr = c"V1.2.3";
@@ -15,23 +14,22 @@ const TICK: u32 = 10;
 const SPREAD_MONO: u8 = 0;
 
 #[test]
-fn the_cards_byte_reads_off_once_always_and_anything_else_as_once() {
+fn the_reserved_byte_is_written_as_zero_and_ignored_on_read() {
     let mut a = Set::blank();
     let mut rec = a.gather();
     let version = rec[0];
-    for (byte, want) in [(0u8, 0u8), (1, 1), (2, 2), (3, 1), (255, 1)] {
+    assert_eq!(rec[1], SETTINGS_RESERVED as u8);
+    for byte in [0u8, 1, 2, 3, 255] {
         rec[1] = byte;
         assert_eq!(
             unsafe { settings_apply(&mut *a.set, rec.as_ptr(), rec.len() as u32) },
-            1
+            1,
+            "byte {byte}"
         );
-        assert_eq!(*a.cards, want, "byte {byte}");
         let out = a.gather();
-        assert_eq!(out[1], want, "gathered after {byte}");
+        assert_eq!(out[1], SETTINGS_RESERVED as u8, "gathered after {byte}");
         assert_eq!(out[0], version, "no schema change");
     }
-    *a.cards = CARDS_ALWAYS;
-    assert_eq!(a.gather()[1], 2, "ALWAYS is saved as 2");
 }
 
 #[test]
@@ -225,7 +223,6 @@ fn forced() -> (u32, u32) {
 struct Set {
     rig: Rig,
     ml: Box<midi_learn>,
-    cards: Box<u8>,
     rows: Box<u8>,
     snd: Box<ui_sound>,
     st: Store,
@@ -240,7 +237,6 @@ impl Set {
     fn new(st: Store, version: &CStr) -> Self {
         let mut rig = Rig::new(SID_MODEL_6581);
         let mut ml = Box::<midi_learn>::default();
-        let mut cards = Box::new(1u8);
         let mut rows = Box::new(0u8);
         let mut snd = Box::<ui_sound>::default();
         let rec: *mut Recorder = &mut *rig.rec;
@@ -248,7 +244,6 @@ impl Set {
             set: Box::default(),
             rig,
             ml: Box::default(),
-            cards: Box::new(0),
             rows: Box::new(0),
             snd: Box::default(),
             st,
@@ -264,7 +259,6 @@ impl Set {
                 &mut *s.set,
                 &mut *s.rig.live,
                 &mut *ml,
-                &mut *cards,
                 &mut *rows,
                 &mut *snd,
                 &mut *s.st.st,
@@ -273,7 +267,6 @@ impl Set {
             );
         }
         s.ml = ml;
-        s.cards = cards;
         s.rows = rows;
         s.snd = snd;
         FORCED.with(|f| f.set((0, 0)));
@@ -341,7 +334,7 @@ impl Set {
         unsafe { settings_take_result(&mut *self.set) }
     }
 
-    fn persisted_state(&self) -> (Vec<u32>, u8, u8, u8, u8, Vec<u8>) {
+    fn persisted_state(&self) -> (Vec<u32>, u8, u8, u8, Vec<u8>) {
         let params = (0..LIVE_PARAM_COUNT)
             .filter(|&p| p != LIVE_PARAM_VOLUME)
             .map(|p| self.param(p))
@@ -351,7 +344,6 @@ impl Set {
             .collect();
         (
             params,
-            *self.cards,
             self.snd.on,
             self.rig.live.keys_mode,
             self.rig.live.preset,
@@ -360,7 +352,6 @@ impl Set {
     }
 
     fn move_every_persisted_value_off_its_default(&mut self) {
-        *self.cards = CARDS_OFF;
         unsafe { ui_sound_set(&mut *self.snd, 1) };
         unsafe { live_set_keys_mode(&mut *self.rig.live, LIVE_KEYS_A) };
         self.rig.set_preset(2);
@@ -443,7 +434,10 @@ fn the_record_is_v9s_layout_with_the_original_offsets_and_raw_expert_defaults() 
         rec.len(),
         128 + 2 * SID_EXPERT_COUNT as usize + SETTINGS_PARAMS_V9 as usize
     );
-    assert_eq!(rec[..6], [9, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(
+        rec[..6],
+        [9, SETTINGS_RESERVED as u8, 0, LIVE_KEYS_AUTO as u8, 0, 42]
+    );
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -1119,7 +1113,7 @@ fn a_burst_of_changes_is_one_write_five_seconds_after_the_last() {
 fn save_now_skips_the_debounce_and_tells_when_it_commits() {
     let mut s = Set::blank();
     s.load();
-    *s.cards = CARDS_OFF;
+    *s.rows = 1;
     unsafe { settings_save_now(&mut *s.set, s.now) };
     assert_eq!(s.result(), SETTINGS_NOTHING, "not committed yet");
     s.tick();
@@ -1411,7 +1405,7 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
     let mut s = Set::blank();
     s.load();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    *s.cards = CARDS_OFF;
+    *s.rows = 1;
     s.st.sim.fail = 100;
     unsafe { settings_save_now(&mut *s.set, s.now) };
     let mut result = SETTINGS_NOTHING;
@@ -1444,7 +1438,7 @@ fn a_failed_background_save_is_retried_lands_on_recovery_and_says_so_once() {
             s.load();
             s.ticks(SETTINGS_DEBOUNCE_MS + 100);
             s.result();
-            *s.cards = CARDS_OFF;
+            *s.rows = 1;
             s.rig.live.settings_dirty = 1;
             s.st.sim.fail = rate;
             let mut failed = 0;
@@ -1474,7 +1468,7 @@ fn one_failed_background_save_retries_without_a_toast() {
     s.load();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
     s.result();
-    *s.cards = CARDS_OFF;
+    *s.rows = 1;
     s.rig.live.settings_dirty = 1;
     s.st.sim.fail = 25;
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
@@ -1510,7 +1504,7 @@ fn reset_puts_every_setting_and_preset_edit_back_to_factory_keeping_version_song
     }
     s.rig.tick();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
-    let learned = s.persisted_state().5;
+    let learned = s.persisted_state().4;
     assert!(learned.iter().any(|&cc| cc != MIDI_MAP_NO_CC as u8));
     let before_record = s.gather();
     let song = vec![0x5a; 40];
@@ -1525,7 +1519,7 @@ fn reset_puts_every_setting_and_preset_edit_back_to_factory_keeping_version_song
     s.ticks(100);
     assert_eq!(s.result(), SETTINGS_SAVED);
     let mut want = factory.clone();
-    want.5 = learned;
+    want.4 = learned;
     assert_eq!(
         s.persisted_state(),
         want,

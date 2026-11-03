@@ -1114,14 +1114,6 @@ pub fn run_script(d: &mut Dev, text: &str) {
     }
 }
 
-pub fn view_depth(view: &str, depth: u8) -> u8 {
-    if view == "title_card" {
-        depth.saturating_sub(1)
-    } else {
-        depth
-    }
-}
-
 fn tail_stats(x: &[f32]) -> (f64, f64) {
     let n = (FS * 0.4) as usize;
     let t = &x[x.len().saturating_sub(n)..];

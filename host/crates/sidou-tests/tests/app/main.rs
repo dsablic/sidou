@@ -79,8 +79,6 @@ mod sysex;
 mod tail_gate;
 mod theme;
 mod thump_out;
-mod title_card;
-mod title_card_bitmap;
 mod tracker_view;
 mod ui_sound;
 mod user_profile;
