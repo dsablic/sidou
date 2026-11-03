@@ -35,6 +35,7 @@ lists the prerequisites.
 | Expert parameter transport (macro releases, ordered restore, learned maximum and no echo) | `cargo test --locked --release -p sidou-tests --test expert_transport` | `crates/sidou-tests/tests/expert_transport.rs` |
 | Generated tables (drift) | `cargo test --release -p sidou-tablegen`; the filter tables with `cargo nextest run --release -p sidou-tablegen --profile release` or plain `cargo test --release -p sidou-tablegen --test drift` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
+| Real chips and harmonics (SOASC recordings kept outside the repository; the harmonic probe against reSIDfp) | `cargo run --release -p sidou-tests --bin filter-metrics -- chips <dir>` or `-- harmonics` | `crates/sidou-tests/src/bin/filter_metrics.rs`, `src/band_energy.rs`, [the section below](#real-chips-filter-metrics) |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package, flash budget) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate` | `crates/emu-gate/tests/` |
@@ -975,6 +976,23 @@ prints the largest and the RMS envelope difference per scenario and model. It is
 listening and for tracking the filter's distance from reSIDfp between
 milestones. The `sidou_compare_smoke` test only checks that it runs and
 writes all 24 files.
+
+### Real chips (`filter-metrics`)
+
+`filter-metrics` measures the filter against real chips and reSIDfp. It has four commands:
+
+- `chips <dir>` renders each tune's first 30 s with SIDOU and reSIDfp, on both models. It aligns
+  each render to every SOASC recording of that tune and prints the band-energy distances, along
+  with the distances between the chips. The layout it expects is `<dir>/<tune>/sid/tune.sid` and
+  `<dir>/<tune>/<CHIP>/rec.f32`. Each `rec.f32` is the recording decoded to mono 44.1 kHz float:
+  `ffmpeg -i rec.flac -t 45 -ac 1 -ar 44100 -f f32le rec.f32`.
+- `harmonics` runs the harmonic probe against reSIDfp.
+- `usage <sid>...` prints how much of each tune uses the filter.
+- `render <sid> <out dir>` writes the four renders as WAV files.
+
+The recordings have no licence, so they are never committed, and CI downloads nothing. The method
+is in design-notes, "Tests: Real chips (filter-metrics)". The results and how to fetch the
+recordings are in `docs/plans/2026-11-03-filter-model-feasibility.md`.
 
 ### Host benchmark
 

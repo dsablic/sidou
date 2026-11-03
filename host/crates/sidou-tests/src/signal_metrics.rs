@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-fn dft_magnitude(x: &[f32], window: &[f64], f: f64, fs: f64) -> f64 {
+pub(crate) fn dft_magnitude(x: &[f32], window: &[f64], f: f64, fs: f64) -> f64 {
     let w = 2.0 * PI * f / fs;
     let mut re = 0.0;
     let mut im = 0.0;
@@ -25,7 +25,7 @@ pub fn estimate_f0(x: &[f32], fs: f64, f_lo: f64, f_hi: f64) -> f64 {
     golden_section_dft_peak(x, &window, fs, coarse - step, coarse + step)
 }
 
-fn hann_window(n: usize) -> Vec<f64> {
+pub(crate) fn hann_window(n: usize) -> Vec<f64> {
     (0..n)
         .map(|i| 0.5 - 0.5 * (2.0 * PI * i as f64 / (n - 1) as f64).cos())
         .collect()

@@ -673,6 +673,40 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   band-pass misses: reSIDfp's saturating op-amps keep it louder, which the bound on the load,
   `SID_NL_M_MIN`, stands in for at the headroom the 6581 must keep.
 
+### Tests: Real chips (filter-metrics)
+
+`band_energy.rs`, `alignment.rs` and `harmonics.rs` are tested in `tests/unit/filter_metrics.rs`.
+Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.md), "Measured".
+
+- **Why bands, not the envelope.** The sweeps' broadband RMS sees only the level contour. Real
+  chips differ in spectral shape (cutoff, resonance, distortion), so `band_energy` compares 26
+  1/3-octave bands, 49.6 Hz to 15.9 kHz, centred on 1 kHz.
+  - Windows are 8192 samples (186 ms) with a 4096-sample hop. That is long enough that the lowest
+    band has its own FFT bin, and short enough to follow the notes.
+  - Each window of the test is shifted to the reference's total level. Shape (the mean absolute
+    band difference) is therefore separate from level, and level is reported as the RMS of those
+    shifts around their mean. The mean is the least-squares gain in dB.
+  - Bands more than 60 dB below the window's total are clamped to that floor, so the recordings'
+    hiss and MP3 holes do not count.
+  - Windows more than 40 dB below the reference's loudest are skipped.
+- **Output stage.** The C64's output stage and the recording chain are unknown, so the test gets
+  a one-pole high-pass (0 to 160 Hz) and a one-pole low-pass (6 kHz to none). The fit runs on a
+  grid, in the band domain. It stops at 6 kHz so that it cannot absorb a filter's brightness
+  wholesale. Chip pairs get the same fit, so the chip spread and the emulator's distance are
+  measured alike.
+- **Alignment by spectrogram.** Envelope and onset cross-correlation locked onto the wrong bar of
+  repetitive music, and that moved a tune by up to 3 dB. `alignment` instead correlates the log
+  band energies: 2048-sample frames with a 256-sample hop, clamped to 70 dB below the loudest. It
+  then refines by waveform correlation within one hop and keeps the polarity (the 6581's filter
+  inverts).
+- **Harmonic probe.** A triangle has no even harmonics, so H2 and H4 show distortion alone, and
+  the DAC's kink sets the floor. Each tone is measured routed through the filter and also past it
+  ("direct"): the probe then tells the filter's distortion from the mixer's. The tone is placed
+  from reSIDfp's measured f0: f0/5 for the LP (H5 at the cutoff) and f0 for the BP. The probe
+  steps the level from one voice at sustain 4, 8 and 15 up to three voices in unison.
+- **`$D418` at cycle 0.** The harness writes `$0F` before the tune starts, as the recordings'
+  player did: a tune that never sets the volume (Parallax) is otherwise silent on SIDOU.
+
 ### Tests: Chip profiles (profiles.rs)
 
 - Each profile at zero character is compared with reSIDfp at its settings: the filter as filter.rs

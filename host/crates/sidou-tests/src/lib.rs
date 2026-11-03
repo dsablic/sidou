@@ -7,12 +7,15 @@ use std::fmt::Write as _;
 pub const DEVICE_SAMPLE_RATE: u32 = 44_118;
 pub const PAL_CYCLES_PER_FRAME: u32 = 19_705;
 
+pub mod alignment;
+pub mod band_energy;
 pub mod bitmap_codec;
 pub mod credits;
 pub mod filter_limits;
 pub mod filter_passband;
 pub mod filter_sweeps;
 pub mod font;
+pub mod harmonics;
 pub mod harte;
 pub mod logo;
 pub mod player;

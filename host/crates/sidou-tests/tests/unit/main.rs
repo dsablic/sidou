@@ -3,6 +3,7 @@
 
 use std::f64::consts::PI;
 
+mod filter_metrics;
 mod fx;
 mod sid;
 mod sid_character;
