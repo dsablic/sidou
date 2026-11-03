@@ -91,7 +91,7 @@ fn about_opens_from_the_menu_plays_the_keys_and_home_goes_back() {
 
 #[test]
 fn unsaved_song_keeps_about_silent_and_the_silent_scroller_stays_in_budget() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut io = Box::new(song_io {
         dirty: 1,
         ..Default::default()
@@ -114,7 +114,7 @@ fn unsaved_song_keeps_about_silent_and_the_silent_scroller_stays_in_budget() {
 
 #[test]
 fn clean_about_requests_its_tune_once_and_close_requests_restoration() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut tune = SongWithBuiltinTune::new();
     let io = &mut *tune.io;
     unsafe { views_song_io(&mut *ui.v, io) };
@@ -132,7 +132,7 @@ fn clean_about_requests_its_tune_once_and_close_requests_restoration() {
 
 #[test]
 fn the_song_views_do_not_open_while_abouts_tune_is_the_song() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut tune = SongWithBuiltinTune::new();
     let io = &mut *tune.io;
     unsafe { views_song_io(&mut *ui.v, io) };

@@ -3,7 +3,7 @@
 # Which text a player reads while playing. One rule a line: view | class | pattern.
 #
 #   view     a view's name as the firmware's view table is named (live, menu, chip, tracker,
-#            status, scene, about, charset, midi, learn, title_card, boot) or * for every view
+#            status, scene, about, charset, midi, learn, boot) or * for every view
 #   class    play   - read while playing (values, notes, names): must be big and contrasty
 #            glance - read between sets, labels and help: contrast only
 #            hint   - legends/help: contrast even when dim; never size
@@ -19,7 +19,6 @@
 about   | ignore | any
 charset | ignore | any
 boot    | ignore | any
-title_card | ignore | any
 status  | glance | any
 learn   | glance | any
 tracker | glance | hex

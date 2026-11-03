@@ -113,7 +113,7 @@ fn trace_rows(masks: &[[u8; 8]]) -> std::collections::BTreeSet<usize> {
 
 #[test]
 fn live_is_the_root_and_the_tap_runs_only_while_it_shows() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.sc.on, 1, "the tap is off under LIVE");
     ui.press(PANEL_BTN_HOME);
@@ -534,7 +534,7 @@ fn the_filter_mode_and_the_knob_values_follow_the_filter() {
 
 #[test]
 fn live_holds_still_under_a_transition() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
@@ -701,7 +701,7 @@ fn what_changed_draws_as_the_whole_canvas_built_again() {
 
 #[test]
 fn back_from_the_menu_the_scopes_and_envelopes_start_flat() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut chip = Chip::new();
     settle_and_send_everything(&mut ui);
     ui.rig.note_on(69);
@@ -887,7 +887,7 @@ fn the_octave_shows_at_2x_when_not_0() {
 
 #[test]
 fn arp_switches_the_arpeggio_and_held_turns_its_settings() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     assert_eq!(ui.top(), "LIVE");
     let badge = LIVE_VIEW_ARP_ROW as usize;

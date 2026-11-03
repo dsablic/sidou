@@ -30,7 +30,6 @@ pub mod signal_metrics;
 pub mod song;
 pub mod song_embed;
 pub mod starter;
-pub mod title_card;
 pub mod transport;
 
 pub fn below_and_not_nan(x: f64, limit: f64) -> bool {

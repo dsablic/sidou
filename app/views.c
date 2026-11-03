@@ -145,7 +145,6 @@ static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
             out[n++] = l->slot[k][f];
         }
     }
-    out[n++] = v->cards;
     out[n++] = v->home.cursor;
     out[n++] = v->home.top;
     const store* st = v->set ? v->set->st : NULL;
@@ -400,22 +399,6 @@ static void octave_turn(void* ctx, int32_t steps) {
     }
 }
 
-static void cards_value(void* ctx, char* buf) {
-    const views* v = ctx;
-    static const char* const NAME[3] = {"OFF", "ONCE", "ALWAYS"};
-    join(buf, MENU_VALUE_CHARS, NAME[v->cards < 3u ? v->cards : 1u], "");
-}
-
-static void cards_turn(void* ctx, int32_t steps) {
-    views* v = ctx;
-    int32_t to = (int32_t)v->cards + steps;
-    to = to < 0 ? 0 : (to > 2 ? 2 : to);
-    if (to != (int32_t)v->cards) {
-        v->cards = (uint8_t)to;
-        v->l->settings_dirty = 1;
-    }
-}
-
 static void keys_value(void* ctx, char* buf) {
     const views* v = ctx;
     join(buf, MENU_VALUE_CHARS, v->l->keys_mode == LIVE_KEYS_A ? "A" : "AUTO", "");
@@ -502,25 +485,10 @@ static uint32_t settings_armable(const views* v) {
                : ARMED_NONE;
 }
 
-static void show_card(views* v, title_card_id id) {
-    uint8_t seen = (uint8_t)(1u << id);
-    if (v->cards == 1u) {
-        if (id == TITLE_CARD_OSCILLATOR || (v->cards_seen & seen)) {
-            return;
-        }
-        v->cards_seen |= seen;
-    }
-    if (v->cards) {
-        title_card_init(&v->card, id, v->l);
-        screen_push(&v->s, &title_card_view, &v->card, SCREEN_CUT);
-    }
-}
-
 static void chip_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
     screen_push(&v->s, &chip_view_view, &v->chip, SCREEN_WIPE_DOWN);
-    show_card(v, TITLE_CARD_CHIP);
 }
 
 static void rows_value(void* ctx, char* buf) {
@@ -634,7 +602,6 @@ static void scene_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
     screen_push(&v->s, &scene_view_view, &v->scene, SCREEN_WIPE_DOWN);
-    show_card(v, TITLE_CARD_SCENE);
 }
 
 static void charset_open(void* ctx, int32_t steps) {
@@ -1165,17 +1132,17 @@ _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_S
                "the menu's items");
 static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
-    {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
-    {"STORE", store_value, NULL},    {"THEME", theme_value, theme_turn},
+    {"ROWS", rows_value, rows_turn},       {"STORE", store_value, NULL},
+    {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
     {"SID MODEL", sid_model_value, sid_model_turn},
     {"RESET", reset_value, NULL},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
-                   VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
-                   VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
-                   VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u &&
-                   VIEWS_SETTINGS_SID_MODEL == 8u && VIEWS_SETTINGS_RESET == 9u,
+                   VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_STORE == 3u &&
+                   VIEWS_SETTINGS_THEME == 4u && VIEWS_SETTINGS_REC == 5u &&
+                   VIEWS_SETTINGS_SPREAD == 6u && VIEWS_SETTINGS_SID_MODEL == 7u &&
+                   VIEWS_SETTINGS_RESET == 8u,
                "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1573,16 +1540,15 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[0] = l->keys_mode;
     out[1] = (uint8_t)(v->snd && v->snd->on);
     out[2] = v->song.scroll;
-    out[3] = v->cards;
-    out[4] = (uint8_t)store_look(v, &kb);
-    out[5] = (uint8_t)kb;
-    out[6] = l->theme;
-    out[7] = v->song.quant;
-    out[8] = l->spread;
-    out[9] = v->setup.cursor;
-    out[10] = v->setup.top;
-    out[11] = v->format_arm;
-    out[12] = v->set ? v->set->sid_model : 0xffu;
+    out[3] = (uint8_t)store_look(v, &kb);
+    out[4] = (uint8_t)kb;
+    out[5] = l->theme;
+    out[6] = v->song.quant;
+    out[7] = l->spread;
+    out[8] = v->setup.cursor;
+    out[9] = v->setup.top;
+    out[10] = v->format_arm;
+    out[11] = v->set ? v->set->sid_model : 0xffu;
 }
 
 static int settings_input(screen* s, void* state, const screen_event* e) {
@@ -1621,8 +1587,8 @@ static int settings_changed(screen* s, void* state) {
 
 static void settings_compose(screen* s, void* state, grid* g) {
     views* v = state;
-    uint8_t cursor = v->setup_drawn[9];
-    uint8_t top = v->setup_drawn[10];
+    uint8_t cursor = v->setup_drawn[8];
+    uint8_t top = v->setup_drawn[9];
     settings_look(v, v->setup_drawn);
     uint32_t parts = MENU_PART_LINES;
     if (s->redraw) {
@@ -1630,7 +1596,7 @@ static void settings_compose(screen* s, void* state, grid* g) {
         if (s->redraw_rows == (1u << GRID_ROWS) - 1u) {
             parts &= ~MENU_PART_LINES;
         }
-    } else if (cursor != v->setup_drawn[9] || top != v->setup_drawn[10]) {
+    } else if (cursor != v->setup_drawn[8] || top != v->setup_drawn[9]) {
         parts |= MENU_PART_TITLE;
     }
     big_menu_compose(s, v, &v->setup, "SETTINGS", g, parts);
@@ -1986,8 +1952,6 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
     v->version = version;
-    v->cards = 1;
-    v->cards_seen = 0;
     v->home_down = 0;
     v->help.done = 0;
     v->tour = 0;
@@ -2088,13 +2052,6 @@ static void boot_frame(views* v, uint32_t now_ms) {
     }
 }
 
-static void card_frame(views* v) {
-    if (screen_top(&v->s) == &title_card_view && title_card_done(&v->card)) {
-        screen_pop(&v->s, SCREEN_BANDS);
-        v->s.popup_ask = 0;
-    }
-}
-
 __attribute__((always_inline)) static inline const view* shown(const views* v) {
     const screen* s = &v->s;
     const view* top = screen_top(s);
@@ -2115,7 +2072,7 @@ __attribute__((always_inline)) static inline void knob_page(views* v, panel* p) 
 
 static int curtain(const views* v) {
     const view* top = screen_top(&v->s);
-    return top == &boot_view || top == &title_card_view || top == &help_view_view;
+    return top == &boot_view || top == &help_view_view;
 }
 
 #define HOME_HELP_MS 600u
@@ -2142,8 +2099,6 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     }
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
-    } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
-        show_card(v, TITLE_CARD_OSCILLATOR);
     }
 }
 
@@ -3073,7 +3028,6 @@ __attribute__((noinline, unused)) static void toast_hold(views* v) {
 
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
-    card_frame(v);
     if (curtain(v)) {
         remember(v);
     } else {

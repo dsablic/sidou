@@ -21,7 +21,6 @@ struct Unit {
     st: Store,
     set: Box<settings>,
     sounds: Box<user_sounds>,
-    _cards: Box<u8>,
     _rows: Box<u8>,
     now: u32,
 }
@@ -33,7 +32,6 @@ impl Unit {
             st,
             set: Box::default(),
             sounds: Box::default(),
-            _cards: Box::new(1),
             _rows: Box::new(0),
             now: 1000,
         };
@@ -43,7 +41,6 @@ impl Unit {
                 &mut *u.set,
                 &mut *u.rig.live,
                 std::ptr::null_mut(),
-                &mut *u._cards,
                 &mut *u._rows,
                 std::ptr::null_mut(),
                 &mut *u.st.st,
@@ -684,7 +681,6 @@ fn an_older_firmware_ignores_the_chunk_and_the_record() {
 
 fn instrument_0_5_0_boots_from(st: &Store, v7: &[u8]) -> (Vec<u32>, u8, u8, Vec<u8>) {
     let mut rig = Rig::new(SID_MODEL_6581);
-    let mut cards = Box::new(1u8);
     let mut rows = Box::new(0u8);
     let mut set = Box::<settings>::default();
     let mut users = Box::<user_profiles>::default();
@@ -695,7 +691,6 @@ fn instrument_0_5_0_boots_from(st: &Store, v7: &[u8]) -> (Vec<u32>, u8, u8, Vec<
             &mut *set,
             &mut *rig.live,
             std::ptr::null_mut(),
-            &mut *cards,
             &mut *rows,
             std::ptr::null_mut(),
             std::ptr::null_mut(),

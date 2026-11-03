@@ -154,7 +154,7 @@ pub struct RunReport {
 }
 
 pub fn judge(shot: &Shot, rules: &[Rule], cfg: &Config) -> Vec<RunReport> {
-    if shot.transient || shot.view == "title_card" {
+    if shot.transient {
         return Vec::new();
     }
     let pal = palette_rgb();
@@ -459,10 +459,8 @@ mod tests {
 
     #[test]
     fn the_raster_is_not_read() {
-        let mut s = shot_with("title_card", "M6", 0x04);
+        let mut s = shot_with("chip", "M6", 0x04);
         let rules = parse_rules("* | play | any").unwrap();
-        assert!(judge(&s, &rules, &Config::default()).is_empty());
-        s.view = "chip".into();
         s.transient = true;
         assert!(judge(&s, &rules, &Config::default()).is_empty());
         s.transient = false;

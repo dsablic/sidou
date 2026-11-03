@@ -159,7 +159,6 @@ journey explore | Explore the chip, the effects and the scene
   related jam
   step live-profile | Pick the next profile on LIVE | ALGORITHM steps the profile | turn ALGORITHM 1; note A3 500 | sound; clip 300; task change the profile
   step open-chip | Open CHIP from LIVE | HOME, then ALGORITHM on CHIP | press HOME; turn ALGORITHM 1 | -
-  step chip-wait | Wait out THE CHIP's title card | - | wait 2800 | view chip
   step chip-profile | Pick the next profile | ALGORITHM steps the profile | turn ALGORITHM 1; note A3 500 | text PROFILE; sound; clip 300
   step chip-age | Turn the chip's age | K1 turns AGE here | down A3; turn K1 40; up A3 | change; clip 600
   step chip-dist | Pick DIST's algorithm on CHIP | SELECT to DIST, ALGORITHM to step | turn SELECT 1; turn ALGORITHM 1; note A3 500 | sound; clip 300; task change DIST algorithm (from CHIP)

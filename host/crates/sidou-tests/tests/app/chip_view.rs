@@ -16,9 +16,7 @@ const CC_BLEED: u32 = 90;
 fn settle_chip_page(ui: &mut Ui) {
     for _ in 0..200 {
         ui.frame_sent();
-        let card = ui.top() == "TITLE";
-        if !card
-            && unsafe { screen_animating(&ui.v.s) } == 0
+        if unsafe { screen_animating(&ui.v.s) } == 0
             && unsafe { screen_popup_shows(&ui.v.s) } == 0
             && ui.v.chip.copying == 0
         {
@@ -38,7 +36,7 @@ fn open_chip(ui: &mut Ui) {
 }
 
 fn chip_ui() -> Ui {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_chip(&mut ui);
     ui
 }
@@ -143,7 +141,7 @@ fn shared_canvas_is_acquired_by_the_view_composed_under_midi_learn_not_by_input(
 
 #[test]
 fn shared_canvas_restores_song_menu_after_tracker_and_chip_used_it() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe {
         screen_push(
             &mut ui.v.s,
@@ -588,7 +586,7 @@ fn chip_text_uses_readable_roles() {
 }
 
 #[test]
-fn chip_opens_from_the_menu_behind_the_chip_card() {
+fn chip_opens_from_the_menu() {
     let mut ui = Ui::new();
     ui.settle();
     ui.press(PANEL_BTN_HOME);
@@ -596,8 +594,6 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
     assert_eq!(&ui.menu_line(0)[..4], "CHIP");
     assert_eq!(ui.g.src[4 * COLS + 28], FONT_ARROW_RIGHT as u8);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.top(), "TITLE");
-    assert_eq!(u32::from(ui.v.card.id), TITLE_CARD_CHIP);
     settle_chip_page(&mut ui);
     assert_eq!(ui.top(), "CHIP");
     ui.press(PANEL_BTN_HOME);

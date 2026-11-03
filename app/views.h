@@ -31,7 +31,6 @@
 #include "step_view.h"
 #include "theme.h"
 #include "tracker_view.h"
-#include "title_card.h"
 #include "widget.h"
 
 #ifdef __cplusplus
@@ -54,22 +53,21 @@ extern "C" {
 #define VIEWS_MENU_MIDI 10u
 #define VIEWS_MENU_CHARSET 11u
 #define VIEWS_MENU_ABOUT 12u
-#define VIEWS_SETTINGS_ITEMS 10u
+#define VIEWS_SETTINGS_ITEMS 9u
 #define VIEWS_SETTINGS_KEYS 0u
 #define VIEWS_SETTINGS_SOUNDS 1u
 #define VIEWS_SETTINGS_ROWS 2u
-#define VIEWS_SETTINGS_CARDS 3u
-#define VIEWS_SETTINGS_STORE 4u
-#define VIEWS_SETTINGS_THEME 5u
-#define VIEWS_SETTINGS_REC 6u
-#define VIEWS_SETTINGS_SPREAD 7u
-#define VIEWS_SETTINGS_SID_MODEL 8u
-#define VIEWS_SETTINGS_RESET 9u
-#define VIEWS_SETTINGS_LOOK 13u
+#define VIEWS_SETTINGS_STORE 3u
+#define VIEWS_SETTINGS_THEME 4u
+#define VIEWS_SETTINGS_REC 5u
+#define VIEWS_SETTINGS_SPREAD 6u
+#define VIEWS_SETTINGS_SID_MODEL 7u
+#define VIEWS_SETTINGS_RESET 8u
+#define VIEWS_SETTINGS_LOOK 12u
 #define VIEWS_MIDI_ITEMS 10u
 #define VIEWS_MIDI_LOOK 14u
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
-#define VIEWS_LOOK (19u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+#define VIEWS_LOOK (18u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 #define VIEWS_SONG_FILES 8u
 typedef struct {
@@ -102,10 +100,8 @@ typedef struct {
     learn_view learn;
     live_view live;
     scene_view scene;
-    title_card card;
     song_view song;
     views_song_menu songs;
-    uint8_t cards;
     ui_sound* snd;
     settings* set;
     uint8_t formatting;
@@ -123,7 +119,6 @@ typedef struct {
     uint32_t send_ask_at;
     uint8_t send_ask;
     step_view step;
-    uint8_t cards_seen;
     uint8_t home_down;
     uint32_t home_at;
     help_view help;

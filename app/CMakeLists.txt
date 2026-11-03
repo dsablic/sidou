@@ -70,8 +70,6 @@ add_library(sidou_live STATIC
     store.c
     sysex.c
     theme.c
-    title_card.c
-    title_card_bitmap.c
     tracker_view.c
     ui_sound.c
     user_profile.c

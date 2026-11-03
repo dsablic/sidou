@@ -86,7 +86,6 @@
 #include "sysex.h"
 #include "store_layout.h"
 #include "theme.h"
-#include "title_card.h"
 #include "tracker_view.h"
 #include "ui_sound.h"
 #include "user_profile.h"

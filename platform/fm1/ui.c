@@ -172,7 +172,7 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     views_learn(&ui, midi_learned());
     views_route(&ui, midi_routed());
     views_sync(&ui, midi_synced());
-    settings_init(&persisted, l, midi_learned(), &ui.cards, &ui.song.scroll, us, store_fm1(), "V" SIDOU_VERSION,
+    settings_init(&persisted, l, midi_learned(), &ui.song.scroll, us, store_fm1(), "V" SIDOU_VERSION,
                   settings_force);
     views_sounds(&ui, store_fm1());
     settings_sounds(&persisted, &ui.sounds);

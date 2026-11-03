@@ -986,7 +986,7 @@ fn grid_is_canvas(ui: &Ui) -> bool {
 
 #[test]
 fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_scene(&mut ui);
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(u32::from(ui.v.scene.which), SCENE_FIRE);
@@ -1033,7 +1033,7 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
 #[test]
 fn algorithm_steps_the_piece_as_select_does() {
     let step_with = |enc: u32, steps: i32| {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         open_scene(&mut ui);
         ui.frames(40);
         ui.turn(enc, steps);
@@ -1056,7 +1056,7 @@ fn algorithm_steps_the_piece_as_select_does() {
 
 #[test]
 fn entering_scene_names_the_piece_once() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_scene(&mut ui);
     assert_eq!(ui.toast().as_deref(), Some("FIRE"));
     assert_eq!(ui.v.scene.say, 0);
@@ -1066,7 +1066,7 @@ fn entering_scene_names_the_piece_once() {
 
 #[test]
 fn the_tap_runs_while_scene_shows() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     assert_eq!(ui.sc.on, 1, "LIVE");
     ui.press(PANEL_BTN_HOME);
     ui.frame();
@@ -1145,7 +1145,7 @@ impl Band {
 }
 
 fn scene_on(piece: u32) -> Ui {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_scene(&mut ui);
     for _ in 0..piece {
         ui.turn(PANEL_ENC_SELECT, 1);

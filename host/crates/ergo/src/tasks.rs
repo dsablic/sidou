@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 use crate::config::Config;
 use crate::findings::{metric, Finding, Metric, Sev, ShotRef};
-use crate::journeys::{view_depth, JourneyResult, Status, StepResult};
+use crate::journeys::{JourneyResult, Status, StepResult};
 
 #[derive(Clone, Debug)]
 pub struct Task {
@@ -68,7 +68,7 @@ fn task_of(name: &str, journey: &str, g: &[&StepResult]) -> Task {
         two_handed: false,
         shot: g.last().and_then(|s| s.shot.clone()),
     };
-    let d0 = view_depth(&g[0].view_before, g[0].depth_before);
+    let d0 = g[0].depth_before;
     let mut deepest = d0;
     for s in g {
         match &s.status {
@@ -90,7 +90,7 @@ fn task_of(name: &str, journey: &str, g: &[&StepResult]) -> Task {
         t.frames += s.frames_to_done;
         t.wait_ms += s.wait_ms;
         t.two_handed |= s.two_handed;
-        deepest = deepest.max(view_depth(&s.view_after, s.depth_after));
+        deepest = deepest.max(s.depth_after);
     }
     t.levels = u32::from(deepest.saturating_sub(d0));
     t
@@ -176,8 +176,12 @@ pub fn judge(tasks: &[Task], cfg: &Config) -> (Vec<Finding>, Vec<Metric>) {
                     format!("TASK.wait.{id}"),
                     Sev::Low,
                     "tasks",
-                    format!("\"{}\" makes the player wait {:.1} s", t.name, t.wait_ms as f64 / 1000.0),
-                    "A common task does not hold the player up for seconds (a title card is 2.6 s).",
+                    format!(
+                        "\"{}\" makes the player wait {:.1} s",
+                        t.name,
+                        t.wait_ms as f64 / 1000.0
+                    ),
+                    "A common task does not hold the player up for seconds.",
                 )
                 .numbers(nums.clone()),
             ));
@@ -229,9 +233,11 @@ pub fn journey_findings(
                 Sev::High,
                 "harness",
                 format!("{} changed the settings it only meant to look at", j.title),
-                "A tour only looks: MIDI setup, theme, KEYS and CARDS are what they were at its start.",
+                "A tour only looks: MIDI setup, theme and KEYS are what they were at its start.",
             )
-            .detail(format!("The persisted settings bytes went from {was:?} to {now:?}."))
+            .detail(format!(
+                "The persisted settings bytes went from {was:?} to {now:?}."
+            ))
             .numbers(json!({"journey": j.id})),
         );
     }
@@ -472,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_steps_with_one_task_name_are_one_task_and_a_title_card_is_not_a_level() {
+    fn consecutive_steps_with_one_task_name_are_one_task() {
         let j = JourneyResult {
             id: "j".into(),
             title: "J".into(),
@@ -480,7 +486,7 @@ mod tests {
             captured: vec![],
             settings_drift: None,
             steps: vec![
-                step("a", Some("open CHIP"), 2, 4, "title_card"),
+                step("a", Some("open CHIP"), 2, 3, "chip"),
                 step("b", Some("open CHIP"), 1, 3, "chip"),
                 step("c", None, 5, 3, "chip"),
                 step("d", Some("other"), 1, 1, "live"),
