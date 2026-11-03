@@ -509,21 +509,26 @@ fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
 }
 
 #[test]
-fn a_1_0_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites_them_with_the_defaults(
+fn an_older_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites_them_with_the_defaults(
 ) {
-    const OLD: usize = LAB_SOUND_BYTES_1_0 as usize;
+    for old in [LAB_SOUND_BYTES_1_0, LAB_SOUND_BYTES_1_5] {
+        older_file_reads(old as usize);
+    }
+}
+
+fn older_file_reads(old: usize) {
     let mut s = sounds(47, 3);
     for x in &mut s {
-        x[OLD..].fill(0);
+        x[old..].fill(0);
     }
-    let stride = 1 + LAB_SOUND_NAME as usize + OLD;
-    let mut f = vec![1u8, OLD as u8, USER_SOUNDS as u8];
+    let stride = 1 + LAB_SOUND_NAME as usize + old;
+    let mut f = vec![1u8, old as u8, USER_SOUNDS as u8];
     f.resize(HEADER + USER_SOUNDS as usize * stride, 0);
     for (n, name, x) in [(0usize, "OLD A", s[0]), (15, "OLD LAST", s[1])] {
         let at = HEADER + n * stride;
         f[at] = 1;
         f[at + 1..at + 1 + name.len()].copy_from_slice(name.as_bytes());
-        f[at + 13..at + 13 + OLD].copy_from_slice(&x[..OLD]);
+        f[at + 13..at + 13 + old].copy_from_slice(&x[..old]);
     }
     let mut st = fresh(5, 256);
     put_user_sounds_file(&mut st, STORE_FILE_SOUNDS, &f);
@@ -539,6 +544,9 @@ fn a_1_0_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites_th
     let mut new = s[2];
     new[LAB_SOUND_FILTER_LFO as usize] = 9;
     new[LAB_SOUND_RESO_LINK as usize] = -3i8 as u8;
+    new[LAB_SOUND_MONO_SYNC as usize] = 0;
+    new[LAB_SOUND_LAYERS as usize] = 1;
+    new[LAB_SOUND_FILTER_ENV as usize] = -9i8 as u8;
     u.keep(4, "NEW", &new);
     let u = u.power_cycle();
     assert_eq!(u.rig.live.sounds_valid, 1 | 1 << 4 | 1 << 15);
@@ -552,15 +560,16 @@ fn a_1_0_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites_th
     u.apply(&on);
     let mut rec = vec![1u8, user_sound_preset_byte_of(&u), 1];
     rec.extend_from_slice(b"SAW LEAD\0\0\0\0");
-    rec.push(OLD as u8);
-    rec.extend_from_slice(&s[0][..OLD]);
+    rec.push(old as u8);
+    rec.extend_from_slice(&s[0][..old]);
     assert_eq!(
         unsafe { user_sound_edit_apply(&mut *u.rig.live, rec.as_ptr(), rec.len() as u32) },
         1
     );
     assert_eq!(u.sound(), s[0], "the tail at its defaults");
-    rec[15] = OLD as u8 - 1;
-    rec.pop();
+    let too_short = LAB_SOUND_BYTES_1_0 as usize - 1;
+    rec[15] = too_short as u8;
+    rec.truncate(16 + too_short);
     assert_eq!(
         unsafe { user_sound_edit_apply(&mut *u.rig.live, rec.as_ptr(), rec.len() as u32) },
         0
