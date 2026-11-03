@@ -64,28 +64,12 @@ impl Decoded {
     }
 }
 
-fn swapped(byte: u8) -> u8 {
-    byte << 4 | byte >> 4
-}
-
 pub fn dump(prefix: &[u8], declared_size: u16, decoded: &Decoded) -> Vec<u8> {
-    let mut message = vec![0xF0];
-    message.extend_from_slice(prefix);
-    message.extend([
-        0x02,
-        0x00,
-        (declared_size >> 7) as u8,
-        (declared_size & 0x7F) as u8,
-    ]);
-    message.extend([0x2D; 24]);
-    message.push(0x45);
-    message.extend_from_slice(&decoded.0[..NAME_BYTES]);
-    for &byte in &decoded.0[NAME_BYTES..] {
-        let stored = swapped(byte);
-        message.extend([stored >> 4, stored & 0x0F]);
+    let mut m = sidou_patch::patch_dump(&decoded.0, declared_size);
+    if prefix != PREFIX_LIBRARIAN {
+        m.splice(1..1 + PREFIX_LIBRARIAN.len(), prefix.iter().copied());
     }
-    message.push(0xF7);
-    message
+    m
 }
 
 pub fn all_clear(prefix: &[u8]) -> Vec<u8> {

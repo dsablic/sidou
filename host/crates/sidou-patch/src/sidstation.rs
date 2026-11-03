@@ -12,7 +12,7 @@ const SYSEX_END: u8 = 0xF7;
 const PREFIX_LIBRARIAN: [u8; 4] = [0x00, 0x45, 0x01, 0x00];
 const PREFIX_HARDWARE: [u8; 5] = [0x00, 0x20, 0x3C, 0x01, 0x00];
 const TYPE_PATCH_DUMP: u8 = 0x02;
-const HEADER_AFTER_TYPE: usize = 3 + 24 + 1;
+const HEADER_AFTER_TYPE: usize = 3 + HEADER_PADS + 1;
 const NAME_BYTES: usize = 10;
 
 const CONTROLLERS_AT: usize = 10;
@@ -60,6 +60,30 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+const HEADER_PAD: u8 = 0x2D;
+const HEADER_PADS: usize = 24;
+
+pub fn patch_dump(decoded: &[u8], declared_size: u16) -> Vec<u8> {
+    let mut m = vec![SYSEX_START];
+    m.extend_from_slice(&PREFIX_LIBRARIAN);
+    m.extend([
+        TYPE_PATCH_DUMP,
+        0x00,
+        (declared_size >> 7) as u8,
+        (declared_size & 0x7F) as u8,
+    ]);
+    m.extend([HEADER_PAD; HEADER_PADS]);
+    m.push(0x45);
+    let name = decoded.len().min(NAME_BYTES);
+    m.extend_from_slice(&decoded[..name]);
+    for &byte in &decoded[name..] {
+        let stored = byte << 4 | byte >> 4;
+        m.extend([stored >> 4, stored & 0x0F]);
+    }
+    m.push(SYSEX_END);
+    m
+}
 
 pub fn parse_bank(bytes: &[u8]) -> Result<Vec<Patch>, Error> {
     let mut patches = Vec::new();

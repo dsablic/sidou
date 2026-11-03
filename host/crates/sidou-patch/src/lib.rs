@@ -9,4 +9,4 @@ pub mod sidstation;
 pub use model::{
     Controller, Filter, Lfo, Oscillator, Patch, Table, TableNote, TableStep, VoiceMode,
 };
-pub use sidstation::{parse_bank, Error};
+pub use sidstation::{parse_bank, patch_dump, Error};

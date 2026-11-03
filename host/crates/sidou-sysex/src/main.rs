@@ -5,9 +5,12 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use sidou_sysex::import::{bank_files, Model};
 use sidou_sysex::sid;
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]";
+const IMPORT_NAME: &str = "SIDSTN";
+const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
 
@@ -18,11 +21,8 @@ struct Args {
     pack: bool,
 }
 
-fn args() -> Result<Args, String> {
-    let mut it = std::env::args().skip(1);
-    if it.next().as_deref() != Some("sid") {
-        return Err(USAGE.to_string());
-    }
+fn args(rest: Vec<String>) -> Result<Args, String> {
+    let mut it = rest.into_iter();
     let mut a = Args {
         files: Vec::new(),
         out: PathBuf::from("."),
@@ -78,8 +78,105 @@ fn target(out: &Path, file: &Path, used: &mut HashSet<PathBuf>) -> PathBuf {
     path
 }
 
+struct Import {
+    bank: PathBuf,
+    out: PathBuf,
+    model: Model,
+    name: String,
+}
+
+fn import_args(rest: Vec<String>) -> Result<Import, String> {
+    let mut it = rest.into_iter();
+    let mut bank = None;
+    let mut i = Import {
+        bank: PathBuf::new(),
+        out: PathBuf::from("."),
+        model: Model::Mos6581,
+        name: IMPORT_NAME.to_string(),
+    };
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--out" => i.out = it.next().ok_or(USAGE)?.into(),
+            "--8580" => i.model = Model::Csg8580,
+            "--name" => i.name = it.next().ok_or(USAGE)?.to_ascii_uppercase(),
+            _ if arg.starts_with("--") => return Err(format!("unknown option {arg}\n{USAGE}")),
+            _ if bank.is_none() => bank = Some(PathBuf::from(arg)),
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    i.bank = bank.ok_or(USAGE)?;
+    if i.name.is_empty() || i.name.len() > IMPORT_NAME_MAX {
+        return Err(format!("--name takes 1 to {IMPORT_NAME_MAX} characters"));
+    }
+    Ok(i)
+}
+
+fn import_main(rest: Vec<String>) -> ExitCode {
+    let i = match import_args(rest) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let bank = match std::fs::read(&i.bank) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: {e}", i.bank.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let files = match bank_files(&bank, i.model, &i.name) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("{}: {e}", i.bank.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let stem = |name: &str| name.replace(' ', "-");
+    for song in &files.songs {
+        for (ext, bytes) in [("sng", &song.sng), ("syx", &song.syx)] {
+            let path = i.out.join(format!("{}.{ext}", stem(&song.name)));
+            if let Err(e) = std::fs::write(&path, bytes) {
+                eprintln!("{}: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+        }
+        println!(
+            "{} -> {}.syx",
+            song.name,
+            i.out.join(stem(&song.name)).display()
+        );
+    }
+    let report = i.out.join(format!("{}.txt", stem(&i.name)));
+    if let Err(e) = std::fs::write(&report, &files.report) {
+        eprintln!("{}: {e}", report.display());
+        return ExitCode::FAILURE;
+    }
+    println!(
+        "{}: what each patch keeps and loses. On the FM-1: load a song, pull an instrument into LAB \
+         (INSTR, ENV), then SAVE",
+        report.display()
+    );
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
-    let a = match args() {
+    let mut all = std::env::args().skip(1);
+    let command = all.next();
+    let rest: Vec<String> = all.collect();
+    match command.as_deref() {
+        Some("import") => import_main(rest),
+        Some("sid") => sid_main(rest),
+        _ => {
+            eprintln!("{USAGE}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn sid_main(rest: Vec<String>) -> ExitCode {
+    let a = match args(rest) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("{e}");

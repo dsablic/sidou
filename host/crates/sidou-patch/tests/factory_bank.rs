@@ -49,7 +49,10 @@ fn every_factory_patch_maps_to_a_valid_lab_sound() {
 fn the_factory_bank_packs_into_songs_the_device_reads() {
     let patches = factory_bank();
     let songs = sidou_patch::bank::bank_songs(&patches, sidou_sys::SID_MODEL_6581, "SIDSTN");
-    assert_eq!(songs.iter().map(|s| s.patches).sum::<usize>(), FACTORY_PATCHES);
+    assert_eq!(
+        songs.iter().map(|s| s.patches).sum::<usize>(),
+        FACTORY_PATCHES
+    );
     for s in &songs {
         let mut song = sidou_sys::song::Song::device();
         song.read(&s.sng, 0).unwrap();
