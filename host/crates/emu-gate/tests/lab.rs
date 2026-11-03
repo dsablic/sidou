@@ -1109,3 +1109,54 @@ fn rec_in_lab_sends_to_the_playing_song_and_env_on_instr_pulls_it_back() {
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("lab_view_view"));
     assert_eq!(attack_decay(&mut m, &fw), ad, "the sound sent, exactly");
 }
+
+#[test]
+fn a_layered_sound_built_on_layers_plays_three_oscillators_on_one_key() {
+    let Some(fw) = firmware("the LAB layers test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_lab(&mut m, &fw);
+    for (enc, detents) in [
+        (SELECT, LAB_PAGE_LAYERS as i32),
+        (ALGORITHM, 2),
+        (K1, 1),
+        (K1 + 1, 12),
+    ] {
+        turn(&mut m, enc, detents);
+    }
+    assert_eq!(u32::from(lab_page(&mut m, &fw)), LAB_PAGE_LAYERS);
+    m.key(F4_KEY, true);
+    m.run_ms(60);
+    let s = common::rendered_sid(&mut m, &fw, 0);
+    let osc = |v: u32, field: usize| {
+        s + (ilp32::sid::osc + v as usize * ilp32::sid_osc::SIZE + field) as u32
+    };
+    let gate = |m: &mut Machine, v: u32| {
+        let at =
+            s + (ilp32::sid::env + v as usize * ilp32::sid_env::SIZE + ilp32::sid_env::gate) as u32;
+        m.soc.read8(at)
+    };
+    for v in 0..3 {
+        assert_eq!(gate(&mut m, v), 1, "voice {v} plays the key");
+    }
+    let freq = |m: &mut Machine, v: u32| {
+        let at = osc(v, ilp32::sid_osc::freq);
+        f64::from(m.soc.read32(at))
+    };
+    let (first, second, third) = (freq(&mut m, 0), freq(&mut m, 1), freq(&mut m, 2));
+    assert!(
+        (second / first - 2.0).abs() < 0.01,
+        "layer 2 an octave up: {first} {second}"
+    );
+    assert!(
+        (third / first - 1.0).abs() < 0.01,
+        "layer 3 at the key's pitch: {third}"
+    );
+    m.key(F4_KEY, false);
+    m.run_ms(60);
+    assert!(
+        (0..3).all(|v| gate(&mut m, v) == 0),
+        "the key's release lets all three go"
+    );
+}
