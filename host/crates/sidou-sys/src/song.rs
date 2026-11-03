@@ -219,6 +219,7 @@ impl Song {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct SngSpec {
     pub ident: [u8; 4],
     pub strings: [[u8; 32]; 3],

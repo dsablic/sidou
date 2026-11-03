@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::os::raw::c_void;
-
 use sidou_sys::*;
 
 pub const TAG_OPTS: u32 = tag(b"OPTS");
@@ -78,7 +76,6 @@ pub fn determinechannels(file: &[u8]) -> u32 {
     6
 }
 
-#[derive(Clone, Debug)]
 pub struct Rng(pub u64);
 
 impl Rng {

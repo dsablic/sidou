@@ -10,8 +10,8 @@ use common::panel::{
     KEY0, LFO, MENU_ITEMS, OCT_UP, PLAY, PRESETS, REC, SAVE, SCL, SELECT, SEQ,
 };
 use common::{
-    booted, open_status, run_past_boot, screen_animating, screen_wiping, settings_item, tap_on,
-    to_mid_frame, top_view, Firmware, Machine, POLL_INSTRUCTIONS, UI_FRAME_MS,
+    booted, open_status, run_past_boot, screen_wiping, settings_item, tap_on, to_mid_frame,
+    top_view, Firmware, Machine, POLL_INSTRUCTIONS, UI_FRAME_MS,
 };
 use fm1_core::Bus;
 
@@ -140,13 +140,6 @@ fn live_ptr(m: &mut Machine, fw: &Firmware) -> u32 {
 fn live_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
     let l = live_ptr(m, fw);
     m.soc.read8(l + field as u32)
-}
-
-fn octave_and_model(m: &mut Machine, fw: &Firmware) -> (u8, u8) {
-    (
-        live_byte(m, fw, sidou_sys::ilp32::live::octave),
-        live_byte(m, fw, sidou_sys::ilp32::live::model),
-    )
 }
 
 fn song_on_chip_a(m: &mut Machine, fw: &Firmware) {

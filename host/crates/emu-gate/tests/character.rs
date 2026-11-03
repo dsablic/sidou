@@ -5,7 +5,7 @@ mod common;
 
 use fm1_core::Bus;
 
-use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1, SELECT};
+use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1};
 use common::{
     firmware, max_diff, rendered_sid, top_view, ui_live, Firmware, Machine, HALF_FRAMES,
     SAMPLE_RATE,
