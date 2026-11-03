@@ -365,6 +365,22 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   kHz, and 27% low at `sid_init`'s lowest rate, 4 kHz, where exp(-x) is 1e-9. `out_c = 1 - exp_neg`
   is within 5 ULP of exact at every rate `sid_init` accepts.
 
+- The 6581's loud chord (three voices, resonance 0, cutoff swept above the chord): reSIDfp's
+  band-pass stays about 4.5 dB louder than SIDOU's and its low-pass about 3 dB quieter, a steady
+  offset over the sweep. Tried on 2026-11-03, each against the whole `filter` test, none kept:
+  - `SID_NL_M_MIN` 0.30, 0.25, 0.20: the chord band-pass only moves 4.37 to 4.25, 4.18, 4.13 dB,
+    and the noise3 high-pass and the chord high-pass leave their ceilings. The lower bound on the
+    load is not the cause.
+  - A soft saturation `x / (1 + K |x|)` on both integrator states: K 0.02 brings the chord
+    band-pass to 0.88 dB and the chord low-pass to 7.1 dB; the small-signal low-pass is 6.7 dB.
+  - The same on the band-pass state alone: K 0.08 gives chord band-pass 1.04 dB, low-pass 5.0 dB.
+    K 0.02 gives 2.71 and 4.75.
+  - On the filter's input (K 0.01, 0.03, 0.1): the chord band-pass does not improve (4.47, 4.66,
+    5.20 dB) and the chord high-pass leaves its ceiling.
+  Every cheap saturation moves the band-pass and low-pass errors in opposite directions. A fit
+  that holds all three modes needs the op-amp's transfer curve itself (reSIDfp's `opamp_rev`
+  table) and the integrator's gate-voltage dependence. Their cost on the pi32v2 is not measured.
+
 ### Oscillator
 
 - Noise tables the audio path reads: built once before anything runs instead of loaded from the
@@ -379,23 +395,6 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The waveform output of the last cycle: what the voice's DAC sees, and OSC3 on the 6581. `src_acc`
   is the ring source's accumulator as this voice's output sees it (after the source's own MSB pull
   for voices 2 and 3, before it for voice 1: reSIDfp computes the outputs in voice order).
-
-- The 6581's loud chord (three voices, resonance 0, cutoff swept above the chord): reSIDfp's
-  band-pass stays about 4.5 dB louder than SIDOU's and its low-pass about 3 dB quieter, a steady
-  offset over the sweep. Tried on 2026-11-03, each against the whole `filter` test, none kept:
-  - `SID_NL_M_MIN` 0.30, 0.25, 0.20: the chord band-pass only moves 4.37 to 4.25, 4.18, 4.13 dB,
-    and the noise3 high-pass and the chord high-pass leave their ceilings. The lower bound on the
-    load is not the cause.
-  - A soft saturation `x / (1 + K |x|)` on both integrator states: K 0.02 brings the chord
-    band-pass to 0.88 dB and the chord low-pass to 7.1 dB; the small-signal low-pass is 6.7 dB.
-  - The same on the band-pass state alone: K 0.08 gives chord band-pass 1.04 dB, low-pass 5.0 dB.
-    K 0.02 gives 2.71 and 4.75.
-  - On the filter's input: no chord band-pass gain below K 0.1, and the chord high-pass leaves its
-    ceiling.
-  Every cheap saturation moves the band-pass and low-pass errors in opposite directions. A fit
-  that holds all three modes needs the op-amp's transfer curve itself (reSIDfp's `opamp_rev`
-  table) and the integrator's gate-voltage dependence, which costs more than the filter's share
-  of the 900 instructions a sample.
 
 ### Waveforms and noise
 
