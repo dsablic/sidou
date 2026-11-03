@@ -160,7 +160,14 @@ Steps 1, 3 and 4 do not depend on the budget decision. Steps 5 and 6 do.
 - A table ends with `FF`, with `FE <loop>`, or where the data ends (the last tables may be absent).
 - The filter cutoff byte reaches 127 and the filter type 1 to 7 in the bank.
 - The 6581 filter's chord band-pass: three cheap saturation models were tried and none kept
-  (`docs/design-notes.md`, the 6581 filter section). Track B step 1 is not closed.
+  (`docs/design-notes.md`, the 6581 filter section). A port of reSIDfp's op-amp model does not
+  fit the device (over 4.7 MB of tables, per-cycle clocking, RAMTEXT full). Track B step 1 is not
+  closed.
+- The layered sound's budget, measured on the 1.5 image: flash 557,920 of 568,000 (10,080 free);
+  RAM 13,484 free against `FREE_RAM_MIN` 8,976; RAMTEXT 49,136 of 49,152. The SID already
+  renders three voices a chip, so the audio path's cost does not change (360 to 540 instructions a
+  sample a chip today, of 900). The layering lives in flash code; each RAM copy of a sound grows
+  by about 32 bytes (the edit's base, the user edit, LAB's A/B) and the USER SOUNDS file by 512.
 
 ## Not decided
 

@@ -379,7 +379,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
     5.20 dB) and the chord high-pass leaves its ceiling.
   Every cheap saturation moves the band-pass and low-pass errors in opposite directions. A fit
   that holds all three modes needs the op-amp's transfer curve itself (reSIDfp's `opamp_rev`
-  table) and the integrator's gate-voltage dependence. Their cost on the pi32v2 is not measured.
+  table) and the integrator's gate-voltage dependence. Measured against reSIDfp's source and the
+  1.5 image on 2026-11-03, a port does not fit: the 6581 model's tables are over 4.7 MB (`volume`
+  and `resonance` 2 MB each, `opamp_rev` and `vcr_nVg` 128 KB each, `vcr_n_Ids_term` 512 KB, plus
+  the summer and mixer tables) against 10,080 bytes free below the image ceiling; reSIDfp clocks
+  the filter every SID cycle, about 22 times SIDOU's per-sample step; and the filter runs in the
+  audio path, whose RAMTEXT has 16 of 49,152 bytes free. Only a fitted curve could stand in, as the
+  present model does.
 
 ### Oscillator
 
