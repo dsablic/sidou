@@ -16,7 +16,31 @@ static inline void put(live* l, uint8_t reg, uint8_t value) {
 }
 
 static inline uint8_t voice_count(const live* l) {
-    return l->mono_sync ? 1 : LIVE_VOICES;
+    return l->mono_sync || l->layers ? 1 : LIVE_VOICES;
+}
+
+static inline int voice_source(const live* l, int v) {
+    return l->mono_sync || l->layers ? 0 : v;
+}
+
+static inline uint8_t layer_control(const live* l, int v) {
+    return l->layers && v ? l->layer[v - 1].control : l->control;
+}
+
+static inline uint8_t layer_attack_decay(const live* l, int v) {
+    return l->layers && v ? l->layer[v - 1].attack_decay : l->attack_decay;
+}
+
+static inline uint8_t layer_sustain_release(const live* l, int v) {
+    return l->layers && v ? l->layer[v - 1].sustain_release : l->sustain_release;
+}
+
+static inline uint16_t layer_pulse_width(const live* l, int v) {
+    return l->layers && v ? l->layer[v - 1].pulse_width : l->pulse_width;
+}
+
+static inline int layer_tuning(const live* l, int v) {
+    return l->layers ? v : 0;
 }
 
 static inline int older(uint32_t a, uint32_t b) {

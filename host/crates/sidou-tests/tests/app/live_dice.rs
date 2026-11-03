@@ -182,8 +182,8 @@ fn two_thousand_rolls_on_each_model_hash_to_the_measured_sounds() {
             let sound_bytes_1_0 = LAB_SOUND_BYTES_1_0 as usize;
             assert_eq!(
                 s[sound_bytes_1_0..],
-                [0, 0, 0],
-                "DICE leaves 1.1's filter LFO and links off"
+                [0; (LAB_SOUND_BYTES - LAB_SOUND_BYTES_1_0) as usize],
+                "DICE leaves 1.1's filter LFO and links off, and rolls one layer"
             );
             for b in s[..sound_bytes_1_0]
                 .iter()

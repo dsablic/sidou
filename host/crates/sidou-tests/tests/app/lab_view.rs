@@ -2563,10 +2563,11 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
     assert_eq!((e.steps, e.n), (10, 20), "ten steps of two bytes each");
     let all = vec![0xAAu8; n];
     unsafe { lab_edit_push(&mut *e, zero.as_ptr(), all.as_ptr(), 0) };
+    let small_left = (LAB_EDIT_ENTRIES - LAB_EDIT_BYTES) / 2;
     assert_eq!(
         (u32::from(e.steps), u32::from(e.n)),
-        (2, 2 + LAB_EDIT_BYTES),
-        "a step of every byte drops the oldest whole steps: the newest small one and the big one stay"
+        (small_left + 1, 2 * small_left + LAB_EDIT_BYTES),
+        "a step of every byte drops the oldest whole steps: the newest small ones that fit and the big one stay"
     );
     let mut more = all.clone();
     more[3] = 0x55;
@@ -2576,7 +2577,7 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
     );
     assert_eq!(
         u32::from(e.n),
-        2 + LAB_EDIT_BYTES,
+        2 * small_left + LAB_EDIT_BYTES,
         "a merge adds only what the newest step does not hold: byte 3 is in it"
     );
     assert_eq!(
@@ -2584,14 +2585,14 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
         0,
         "nothing changed and no merge: no step"
     );
-    assert_eq!(e.steps, 2);
+    assert_eq!(u32::from(e.steps), small_left + 1);
     let firsts = (0..e.n as usize)
         .filter(|k| {
             let i = (e.first as usize + k) % LAB_EDIT_ENTRIES as usize;
             e.at[i] & LAB_EDIT_FIRST as u8 != 0
         })
         .count();
-    assert_eq!(firsts, 2, "each step's first entry is marked");
+    assert_eq!(firsts as u32, small_left + 1, "each step's first entry is marked");
 }
 
 #[test]

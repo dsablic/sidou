@@ -224,13 +224,22 @@ static int32_t pitch_offset(const live* l, int v) {
     return off;
 }
 
+static int voice_silent(const live* l, int v) {
+    return (l->mono_sync && v == 1) || (l->layers && v > l->layers);
+}
+
+static int32_t layer_offset(const live* l, int v) {
+    int t = layer_tuning(l, v);
+    return l->transpose[t] * LIVE_PITCH_SEMITONE + l->detune[t] * LIVE_PITCH_SEMITONE / 100;
+}
+
 static uint16_t voice_freq(const live* l, int v) {
-    int src = l->mono_sync ? 0 : v;
+    int src = voice_source(l, v);
     uint8_t note = l->voice[src].note;
-    if (note == LIVE_NO_NOTE || (l->mono_sync && v == 1)) {
+    if (note == LIVE_NO_NOTE || voice_silent(l, v)) {
         return 0;
     }
-    uint32_t f = live_freq_at(note, pitch_offset(l, src));
+    uint32_t f = live_freq_at(note, pitch_offset(l, src) + layer_offset(l, v));
     if (l->mono_sync && v == 0) {
         f = (f * l->sync_q8) >> 8;
         if (f > 0xffffu) {
@@ -241,10 +250,10 @@ static uint16_t voice_freq(const live* l, int v) {
 }
 
 static uint8_t voice_control(const live* l, int v) {
-    if (l->mono_sync && v != 0) {
+    if ((l->mono_sync && v != 0) || voice_silent(l, v)) {
         return 0;
     }
-    return (uint8_t)(l->control | (l->voice[v].gate ? CTRL_GATE : 0u));
+    return (uint8_t)(layer_control(l, v) | (l->voice[voice_source(l, v)].gate ? CTRL_GATE : 0u));
 }
 
 static void write_freq(live* l, int v) {
@@ -279,11 +288,12 @@ static void write_cutoff(live* l) {
 }
 
 static uint8_t voice_sr(const live* l, int v) {
+    uint8_t sr = layer_sustain_release(l, v);
     if (l->velocity_target != LIVE_VELOCITY_SUSTAIN) {
-        return l->sustain_release;
+        return sr;
     }
-    uint32_t s = ((uint32_t)(l->sustain_release >> 4) * l->voice[v].velocity + 63u) / 127u;
-    return (uint8_t)(s << 4 | (l->sustain_release & 0x0fu));
+    uint32_t s = ((uint32_t)(sr >> 4) * l->voice[voice_source(l, v)].velocity + 63u) / 127u;
+    return (uint8_t)(s << 4 | (sr & 0x0fu));
 }
 
 uint32_t live_resonance_effective(const live* l) {
@@ -306,7 +316,7 @@ void li_write_mode_vol(live* l) {
 
 void li_write_envelopes(live* l) {
     for (int v = 0; v < LIVE_VOICES; ++v) {
-        put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
+        put(l, (uint8_t)(v * 7 + 5), layer_attack_decay(l, v));
         put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
     }
 }
@@ -343,7 +353,7 @@ void li_reset_chip(live* l) {
 
 void li_write_all(live* l) {
     for (int v = 0; v < LIVE_VOICES; ++v) {
-        put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
+        put(l, (uint8_t)(v * 7 + 5), layer_attack_decay(l, v));
         put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
         write_freq(l, v);
         write_pw(l, v);
@@ -371,8 +381,8 @@ uint32_t live_pwm_depth_effective(const live* l) {
     return (uint32_t)d;
 }
 
-static uint16_t pw_effective(const live* l) {
-    int32_t pw = l->pulse_width;
+static uint16_t pw_effective(const live* l, int v) {
+    int32_t pw = layer_pulse_width(l, v);
     int32_t depth = (int32_t)live_pwm_depth_effective(l);
     int32_t room = pw - LIVE_PULSE_FIRST;
     int32_t top = (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - LIVE_PULSE_FIRST - pw;
@@ -396,13 +406,14 @@ static uint16_t clamp_u16(int32_t x, int32_t max) {
 }
 
 static uint16_t voice_pw(const live* l, int v) {
-    int32_t pw = pw_effective(l);
+    int32_t pw = pw_effective(l, v);
+    int src = voice_source(l, v);
     if (l->pressure_target == LIVE_PRESSURE_PULSE_WIDTH) {
-        pw = clamp_u16(pw + voice_pressure(l, v) * PW_PER_VALUE, (int32_t)LIVE_PULSE_WIDTH_MAX);
+        pw = clamp_u16(pw + voice_pressure(l, src) * PW_PER_VALUE, (int32_t)LIVE_PULSE_WIDTH_MAX);
     }
     if (l->velocity_target == LIVE_VELOCITY_PULSE_WIDTH) {
         int32_t edge = pw <= 2048 ? pw : 4096 - pw;
-        int32_t d = (edge * l->voice[v].velocity + 63) / 127;
+        int32_t d = (edge * l->voice[src].velocity + 63) / 127;
         pw = clamp_u16(pw <= 2048 ? d : 4096 - d, (int32_t)LIVE_PULSE_WIDTH_MAX);
     }
     return (uint16_t)pw;
@@ -495,6 +506,15 @@ static int pick_voice(const live* l, uint8_t gated) {
     return best;
 }
 
+static void write_layers(live* l) {
+    for (int v = 1; v <= l->layers; ++v) {
+        put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
+        update_pw(l, v);
+        write_freq(l, v);
+        write_control(l, v);
+    }
+}
+
 static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     live_voice* x = &l->voice[v];
     if (x->gate) {
@@ -519,6 +539,7 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
         write_freq(l, 2);
     }
     write_control(l, v);
+    write_layers(l);
 }
 
 static int free_voice(live* l) {
@@ -526,7 +547,7 @@ static int free_voice(live* l) {
     if (v < 0 && l->ui_voice) {
         v = l->ui_voice - 1;
         l->ui_voice = 0;
-        put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
+        put(l, (uint8_t)(v * 7 + 5), layer_attack_decay(l, v));
         put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
     }
     if (v < 0) {
@@ -567,6 +588,9 @@ void li_release(live* l, int v) {
     l->voice[v].gate = 0;
     l->voice[v].stamp = ++l->clock;
     write_control(l, v);
+    for (int f = 1; v == 0 && f <= l->layers; ++f) {
+        write_control(l, f);
+    }
 }
 
 void live_note_off(live* l, uint8_t note) {
@@ -624,6 +648,9 @@ void li_arp_sound(live* l) {
     li_update_freq(l, v);
     if (l->mono_sync) {
         li_update_freq(l, 2);
+    }
+    for (int f = 1; f <= l->layers; ++f) {
+        li_update_freq(l, f);
     }
 }
 

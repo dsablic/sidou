@@ -9,8 +9,9 @@
 extern "C" {
 #endif
 
-#define LAB_SOUND_BYTES 48u
+#define LAB_SOUND_BYTES 65u
 #define LAB_SOUND_BYTES_1_0 45u
+#define LAB_SOUND_BYTES_1_5 48u
 #define LAB_SOUND_NAME 12u
 
 #define LAB_SOUND_CONTROL 0u
@@ -39,6 +40,11 @@ extern "C" {
 #define LAB_SOUND_FILTER_LFO 45u
 #define LAB_SOUND_RESO_LINK 46u
 #define LAB_SOUND_PWM_LINK 47u
+#define LAB_SOUND_LAYERS 48u
+#define LAB_SOUND_LAYER_TUNING 49u
+#define LAB_SOUND_LAYER_TUNING_BYTES 2u
+#define LAB_SOUND_LAYER_VOICE 55u
+#define LAB_SOUND_LAYER_VOICE_BYTES 5u
 
 #define LAB_SOUND_SYNC_BASE_MAX 4095u
 

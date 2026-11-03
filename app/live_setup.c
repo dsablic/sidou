@@ -126,6 +126,10 @@ static void load_preset(live* l, uint8_t index) {
     l->filter_lfo = 0;
     l->reso_link = 0;
     l->pwm_link = 0;
+    l->layers = 0;
+    memset(l->transpose, 0, sizeof l->transpose);
+    memset(l->detune, 0, sizeof l->detune);
+    memset(l->layer, 0, sizeof l->layer);
     l->lfo_phase = LFO_CENTRE;
     l->arp_on = 0;
     l->arp_rate = LIVE_ARP_RATE_DEFAULT;
@@ -372,6 +376,10 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->filter_lfo = l->filter_lfo;
     e->reso_link = l->reso_link;
     e->pwm_link = l->pwm_link;
+    e->layers = l->layers;
+    memcpy(e->transpose, l->transpose, sizeof e->transpose);
+    memcpy(e->detune, l->detune, sizeof e->detune);
+    memcpy(e->layer, l->layer, sizeof e->layer);
     e->valid = 1;
 }
 
@@ -409,6 +417,10 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->filter_lfo = e->filter_lfo;
     l->reso_link = e->reso_link;
     l->pwm_link = e->pwm_link;
+    l->layers = e->layers;
+    memcpy(l->transpose, e->transpose, sizeof l->transpose);
+    memcpy(l->detune, e->detune, sizeof l->detune);
+    memcpy(l->layer, e->layer, sizeof l->layer);
 }
 
 static void user_leave(live* l) {
@@ -550,6 +562,19 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_FILTER_LFO] = l->filter_lfo;
     out[LAB_SOUND_RESO_LINK] = (uint8_t)l->reso_link;
     out[LAB_SOUND_PWM_LINK] = (uint8_t)l->pwm_link;
+    out[LAB_SOUND_LAYERS] = l->layers;
+    for (uint32_t n = 0; n < LIVE_VOICES; n++) {
+        uint8_t* t = &out[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
+        t[0] = (uint8_t)l->transpose[n];
+        t[1] = (uint8_t)l->detune[n];
+    }
+    for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
+        uint8_t* v = &out[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
+        v[0] = l->layer[n].control;
+        v[1] = l->layer[n].attack_decay;
+        v[2] = l->layer[n].sustain_release;
+        put16(v, 3u, l->layer[n].pulse_width);
+    }
 }
 
 static const struct {
@@ -580,14 +605,39 @@ static int8_t link_of(uint8_t b) {
     return (int8_t)(v < -LIVE_LINK_MAX ? -LIVE_LINK_MAX : v > LIVE_LINK_MAX ? LIVE_LINK_MAX : v);
 }
 
+static int8_t clamped(uint8_t b, int32_t max) {
+    int32_t v = (int8_t)b;
+    return (int8_t)(v < -max ? -max : v > max ? max : v);
+}
+
+LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
+    for (uint32_t n = 0; n < LIVE_VOICES; n++) {
+        const uint8_t* t = &in[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
+        l->transpose[n] = clamped(t[0], LIVE_TRANSPOSE_MAX);
+        l->detune[n] = clamped(t[1], LIVE_DETUNE_CENTS);
+    }
+    for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
+        const uint8_t* v = &in[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
+        uint32_t pw = get16(v, 3u);
+        l->layer[n].control = (uint8_t)(v[0] & ~0x09u);
+        l->layer[n].attack_decay = v[1];
+        l->layer[n].sustain_release = v[2];
+        l->layer[n].pulse_width = (uint16_t)(pw < LIVE_PULSE_WIDTH_MAX ? pw : LIVE_PULSE_WIDTH_MAX);
+    }
+}
+
 LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->settings_dirty = 1;
     uint8_t mono = in[LAB_SOUND_MONO_SYNC] ? 1u : 0u;
-    if (mono != l->mono_sync) {
+    uint8_t layers = mono || in[LAB_SOUND_LAYERS] > LIVE_LAYERS_MAX ? 0u : in[LAB_SOUND_LAYERS];
+    layers_apply(l, in);
+    if (mono != l->mono_sync || layers != l->layers) {
         live_all_notes_off(l);
         l->mono_sync = mono;
+        l->layers = layers;
         li_write_controls(l);
     }
+    li_write_envelopes(l);
     uint32_t base = get16(in, LAB_SOUND_SYNC_BASE);
     int32_t semis = (int8_t)in[LAB_SOUND_SYNC_SEMIS];
     semis = semis < -LIVE_RATIO_SEMIS ? -LIVE_RATIO_SEMIS

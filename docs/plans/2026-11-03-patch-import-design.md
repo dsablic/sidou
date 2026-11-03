@@ -161,7 +161,7 @@ Steps 1, 3 and 4 do not depend on the budget decision. Steps 5 and 6 do.
 - The filter cutoff byte reaches 127 and the filter type 1 to 7 in the bank.
 - The 6581 filter's chord band-pass: three cheap saturation models were tried and none kept
   (`docs/design-notes.md`, the 6581 filter section). A port of reSIDfp's op-amp model does not
-  fit the device (over 4.7 MB of tables, per-cycle clocking, RAMTEXT full). Track B step 1 is not
+  fit the device (about 11 MB of tables, per-cycle clocking, RAMTEXT full). Track B step 1 is not
   closed.
 - The layered sound's budget, measured on the 1.5 image: flash 557,920 of 568,000 (10,080 free);
   RAM 13,484 free against `FREE_RAM_MIN` 8,976; RAMTEXT 49,136 of 49,152. The SID already

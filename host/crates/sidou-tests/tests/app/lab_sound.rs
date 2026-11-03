@@ -199,9 +199,13 @@ fn the_base_is_the_preset_as_loaded() {
             "a built-in has no slots of its own: they stay as they are"
         );
         assert_eq!(
-            b[LAB_SOUND_BYTES_1_0 as usize..],
+            b[LAB_SOUND_BYTES_1_0 as usize..LAB_SOUND_BYTES_1_5 as usize],
             [0, 0, 0],
             "no filter LFO, no links"
+        );
+        assert!(
+            b[LAB_SOUND_BYTES_1_5 as usize..].iter().all(|&x| x == 0),
+            "one layer, untransposed"
         );
         assert_eq!(b, rig.sound(), "loaded, so not edited");
         assert!(!edited(&rig));
