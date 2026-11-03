@@ -6,11 +6,13 @@ pub const PATCH_MODE: usize = 22;
 pub const FILTER_ROUTING: usize = 24;
 pub const FILTER_TYPE_LFO: usize = 25;
 pub const FILTER_CUTOFF: usize = 26;
+pub const FILTER_ENV_DEPTH: usize = 27;
 pub const OSCILLATOR_BASE: [usize; 3] = [36, 57, 78];
 pub const LFO_BASE: [usize; 4] = [99, 110, 121, 132];
 pub const TABLES_AT: usize = 143;
 
 pub const OSC_FLAGS: usize = 0;
+pub const OSC_TRACK: usize = 1;
 pub const OSC_TRANSPOSE: usize = 3;
 pub const OSC_DETUNE: usize = 4;
 pub const OSC_ATTACK: usize = 6;

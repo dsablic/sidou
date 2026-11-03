@@ -726,6 +726,9 @@ dependencies = [
 [[package]]
 name = "sidou-patch"
 version = "0.0.0"
+dependencies = [
+ "sidou-sys",
+]
 
 [[package]]
 name = "sidou-sys"

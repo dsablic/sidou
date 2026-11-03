@@ -28,3 +28,18 @@ fn the_factory_bank_decodes_to_valid_ranges() {
         }
     }
 }
+
+#[test]
+#[ignore = "needs Elektron's SidStation_Presets_r1.syx in SIDSTATION_PRESETS"]
+fn every_factory_patch_maps_to_a_valid_lab_sound() {
+    for patch in factory_bank() {
+        let (sound, losses) = sidou_patch::lab::lab_sound(&patch);
+        assert!(
+            unsafe { sidou_sys::lab_sound_valid(sound.as_ptr()) } != 0,
+            "{}",
+            patch.name
+        );
+        let lines: Vec<String> = losses.iter().map(ToString::to_string).collect();
+        println!("{:<10} {}", patch.name, lines.join(", "));
+    }
+}

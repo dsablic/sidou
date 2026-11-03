@@ -11,3 +11,6 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sidou-sys = { path = "../sidou-sys" }

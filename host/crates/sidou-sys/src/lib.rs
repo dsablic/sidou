@@ -15,6 +15,8 @@ mod bindings {
 
 pub use bindings::*;
 
+pub mod song;
+
 extern "C" {
     pub fn cpu6502_run_hook_all(
         c: *mut cpu6502,
