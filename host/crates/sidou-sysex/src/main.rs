@@ -5,11 +5,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use sidou_sysex::import::{bank_files, Model};
+use sidou_sysex::import::{bank_files, default_name, Model};
 use sidou_sysex::sid;
 
 const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]";
-const IMPORT_NAME: &str = "SIDSTN";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -82,7 +81,7 @@ struct Import {
     bank: PathBuf,
     out: PathBuf,
     model: Model,
-    name: String,
+    name: Option<String>,
 }
 
 fn import_args(rest: Vec<String>) -> Result<Import, String> {
@@ -92,20 +91,23 @@ fn import_args(rest: Vec<String>) -> Result<Import, String> {
         bank: PathBuf::new(),
         out: PathBuf::from("."),
         model: Model::Mos6581,
-        name: IMPORT_NAME.to_string(),
+        name: None,
     };
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--out" => i.out = it.next().ok_or(USAGE)?.into(),
             "--8580" => i.model = Model::Csg8580,
-            "--name" => i.name = it.next().ok_or(USAGE)?.to_ascii_uppercase(),
+            "--name" => i.name = Some(it.next().ok_or(USAGE)?.to_ascii_uppercase()),
             _ if arg.starts_with("--") => return Err(format!("unknown option {arg}\n{USAGE}")),
             _ if bank.is_none() => bank = Some(PathBuf::from(arg)),
             _ => return Err(USAGE.to_string()),
         }
     }
     i.bank = bank.ok_or(USAGE)?;
-    if i.name.is_empty() || i.name.len() > IMPORT_NAME_MAX {
+    if i.name
+        .as_ref()
+        .is_some_and(|n| n.is_empty() || n.len() > IMPORT_NAME_MAX)
+    {
         return Err(format!("--name takes 1 to {IMPORT_NAME_MAX} characters"));
     }
     Ok(i)
@@ -126,7 +128,8 @@ fn import_main(rest: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let files = match bank_files(&bank, i.model, &i.name) {
+    let name = i.name.unwrap_or_else(|| default_name(&bank).to_string());
+    let files = match bank_files(&bank, i.model, &name) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("{}: {e}", i.bank.display());
@@ -148,7 +151,7 @@ fn import_main(rest: Vec<String>) -> ExitCode {
             i.out.join(stem(&song.name)).display()
         );
     }
-    let report = i.out.join(format!("{}.txt", stem(&i.name)));
+    let report = i.out.join(format!("{}.txt", stem(&name)));
     if let Err(e) = std::fs::write(&report, &files.report) {
         eprintln!("{}: {e}", report.display());
         return ExitCode::FAILURE;

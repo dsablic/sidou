@@ -6,9 +6,8 @@ use std::fmt;
 use crate::model::{
     Controller, Filter, Lfo, Oscillator, Patch, Table, TableNote, TableStep, VoiceMode, OSCILLATORS,
 };
+use crate::sysex::{ascii_name, messages, Framing, END, START};
 
-const SYSEX_START: u8 = 0xF0;
-const SYSEX_END: u8 = 0xF7;
 const PREFIX_LIBRARIAN: [u8; 4] = [0x00, 0x45, 0x01, 0x00];
 const PREFIX_HARDWARE: [u8; 5] = [0x00, 0x20, 0x3C, 0x01, 0x00];
 const TYPE_PATCH_DUMP: u8 = 0x02;
@@ -61,11 +60,20 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl From<Framing> for Error {
+    fn from(framing: Framing) -> Self {
+        match framing {
+            Framing::NotSysex { at } => Self::NotSysex { at },
+            Framing::Unterminated { at } => Self::Unterminated { at },
+        }
+    }
+}
+
 const HEADER_PAD: u8 = 0x2D;
 const HEADER_PADS: usize = 24;
 
 pub fn patch_dump(decoded: &[u8], declared_size: u16) -> Vec<u8> {
-    let mut m = vec![SYSEX_START];
+    let mut m = vec![START];
     m.extend_from_slice(&PREFIX_LIBRARIAN);
     m.extend([
         TYPE_PATCH_DUMP,
@@ -78,31 +86,21 @@ pub fn patch_dump(decoded: &[u8], declared_size: u16) -> Vec<u8> {
     let name = decoded.len().min(NAME_BYTES);
     m.extend_from_slice(&decoded[..name]);
     for &byte in &decoded[name..] {
-        let stored = byte << 4 | byte >> 4;
+        let stored = byte.rotate_right(4);
         m.extend([stored >> 4, stored & 0x0F]);
     }
-    m.push(SYSEX_END);
+    m.push(END);
     m
 }
 
 pub fn parse_bank(bytes: &[u8]) -> Result<Vec<Patch>, Error> {
     let mut patches = Vec::new();
-    let mut at = 0;
-    while at < bytes.len() {
-        if bytes[at] != SYSEX_START {
-            return Err(Error::NotSysex { at });
-        }
-        let end = bytes[at..]
-            .iter()
-            .position(|&b| b == SYSEX_END)
-            .ok_or(Error::Unterminated { at })?
-            + at;
-        let body = &bytes[at + 1..end];
+    for message in messages(bytes) {
+        let (at, body) = message?;
         let after_prefix = strip_prefix(body).ok_or(Error::ForeignMessage { at })?;
         if after_prefix.first() == Some(&TYPE_PATCH_DUMP) {
             patches.push(parse_patch(&after_prefix[1..], patches.len())?);
         }
-        at = end + 1;
     }
     if patches.is_empty() {
         return Err(Error::NoPatches);
@@ -125,7 +123,7 @@ fn parse_patch(after_type: &[u8], index: usize) -> Result<Patch, Error> {
     }
     let tables = parse_tables(&data[TABLES_AT..]).ok_or(Error::TableOverrun { index })?;
     Ok(Patch {
-        name: name_of(&data[..NAME_BYTES]),
+        name: ascii_name(&data[..NAME_BYTES]),
         controllers: std::array::from_fn(|n| controller_at(&data, n)),
         mode: if data[PATCH_MODE] & 0x08 != 0 {
             VoiceMode::Poly
@@ -142,32 +140,18 @@ fn parse_patch(after_type: &[u8], index: usize) -> Result<Patch, Error> {
         }),
         lfos: std::array::from_fn(|n| lfo_at(&data[LFO_AT + n * LFO_BYTES..])),
         tables,
+        unmapped: Vec::new(),
     })
 }
 
 fn decode_payload(payload: &[u8]) -> Vec<u8> {
     let name = payload.len().min(NAME_BYTES);
     let mut data = payload[..name].to_vec();
-    for pair in payload[name..].chunks_exact(2) {
+    for pair in payload[name..].as_chunks::<2>().0 {
         let stored = pair[0] << 4 | pair[1] & 0x0F;
-        data.push(stored << 4 | stored >> 4);
+        data.push(stored.rotate_right(4));
     }
     data
-}
-
-fn name_of(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|&b| {
-            if (0x20..0x7F).contains(&b) {
-                b as char
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .trim_end()
-        .to_string()
 }
 
 fn controller_at(data: &[u8], n: usize) -> Controller {
@@ -257,10 +241,7 @@ fn parse_tables(mut rest: &[u8]) -> Option<[Table; OSCILLATORS]> {
             break;
         }
         let mut steps = Vec::new();
-        loop {
-            let Some((&control, tail)) = rest.split_first() else {
-                break;
-            };
+        while let Some((&control, tail)) = rest.split_first() {
             match control {
                 TABLE_END => {
                     rest = tail;

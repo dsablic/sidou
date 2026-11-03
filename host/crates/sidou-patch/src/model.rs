@@ -123,6 +123,16 @@ pub struct Table {
     pub loop_to: Option<u8>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Unmapped {
+    ModulationPath(usize),
+    Wavetable(usize),
+    Arpeggio(usize),
+    Portamento(usize),
+    FilterKeyTracking,
+    RightSid,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Patch {
     pub name: String,
@@ -136,4 +146,5 @@ pub struct Patch {
     pub oscillators: [Oscillator; OSCILLATORS],
     pub lfos: [Lfo; LFOS],
     pub tables: [Table; OSCILLATORS],
+    pub unmapped: Vec<Unmapped>,
 }
