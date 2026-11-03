@@ -57,7 +57,7 @@ pub fn span_off4(s: u32) -> u32 {
 pub fn span_len(s: u32) -> u32 {
     s >> 16
 }
-pub use sidou_sys::song::{ReadInfo, Song};
+pub use sidou_sys::song::{ReadInfo, SngSpec, Song};
 
 pub fn determinechannels(file: &[u8]) -> u32 {
     let at = |i: usize| file.get(i).copied().unwrap_or(0);
@@ -79,71 +79,6 @@ pub fn determinechannels(file: &[u8]) -> u32 {
 }
 
 #[derive(Clone, Debug)]
-pub struct SngSpec {
-    pub ident: [u8; 4],
-    pub strings: [[u8; 32]; 3],
-    pub orders: Vec<Vec<(Vec<u8>, u8)>>,
-    pub instr: Vec<[u8; 25]>,
-    pub tables: Vec<Vec<(u8, u8)>>,
-    pub patterns: Vec<(Vec<[u8; 4]>, [u8; 4])>,
-}
-
-impl SngSpec {
-    pub fn new() -> SngSpec {
-        SngSpec {
-            ident: *b"GTS5",
-            strings: [[0; 32]; 3],
-            orders: vec![vec![(vec![0], 0), (vec![1], 0), (vec![2], 0)]],
-            instr: Vec::new(),
-            tables: vec![Vec::new(); 4],
-            patterns: (0..3)
-                .map(|_| (vec![[0xbd, 0, 0, 0]; 64], [0xff, 0, 0, 0]))
-                .collect(),
-        }
-    }
-
-    pub fn encode(&self) -> Vec<u8> {
-        let mut f = Vec::new();
-        f.extend_from_slice(&self.ident);
-        for s in &self.strings {
-            f.extend_from_slice(s);
-        }
-        f.push(self.orders.len() as u8);
-        for sub in &self.orders {
-            for (entries, restart) in sub {
-                f.push(entries.len() as u8 + 1);
-                f.extend_from_slice(entries);
-                f.push(0xff);
-                f.push(*restart);
-            }
-        }
-        f.push(self.instr.len() as u8);
-        for i in &self.instr {
-            f.extend_from_slice(i);
-        }
-        for t in &self.tables {
-            f.push(t.len() as u8);
-            f.extend(t.iter().map(|r| r.0));
-            f.extend(t.iter().map(|r| r.1));
-        }
-        f.push(self.patterns.len() as u8);
-        for (rows, end) in &self.patterns {
-            f.push(rows.len() as u8 + 1);
-            for r in rows {
-                f.extend_from_slice(r);
-            }
-            f.extend_from_slice(end);
-        }
-        f
-    }
-}
-
-impl Default for SngSpec {
-    fn default() -> Self {
-        SngSpec::new()
-    }
-}
-
 pub struct Rng(pub u64);
 
 impl Rng {

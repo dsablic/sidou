@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub mod bank;
 pub mod lab;
 pub mod model;
 pub mod sidstation;

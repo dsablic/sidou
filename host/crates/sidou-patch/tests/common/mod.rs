@@ -22,6 +22,7 @@ pub const OSC_RELEASE: usize = 9;
 pub const OSC_PULSE_WIDTH: usize = 11;
 pub const OSC_WAVE: usize = 15;
 pub const OSC_TABLE_SPEED: usize = 20;
+pub const SYNC_SPEED: usize = 34;
 
 pub const LFO_TYPE: usize = 0;
 pub const LFO_OPTIONS: usize = 1;

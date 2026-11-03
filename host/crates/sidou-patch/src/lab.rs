@@ -47,6 +47,10 @@ pub fn lab_name(name: &str) -> String {
         .to_string()
 }
 
+pub fn layer_oscillators(patch: &Patch) -> Vec<usize> {
+    sounding(patch, &mut Vec::new())
+}
+
 fn sounding(patch: &Patch, losses: &mut Vec<Loss>) -> Vec<usize> {
     let active: Vec<usize> = (0..OSCILLATORS).filter(|&n| patch.active[n]).collect();
     if active.is_empty() {
