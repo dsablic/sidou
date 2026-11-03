@@ -4,8 +4,7 @@
 use std::fmt;
 
 use crate::model::{
-    Controller, Filter, Lfo, Oscillator, Patch, Table, TableNote, TableStep, VoiceMode,
-    OSCILLATORS,
+    Controller, Filter, Lfo, Oscillator, Patch, Table, TableNote, TableStep, VoiceMode, OSCILLATORS,
 };
 
 const SYSEX_START: u8 = 0xF0;
@@ -136,7 +135,13 @@ fn decode_payload(payload: &[u8]) -> Vec<u8> {
 fn name_of(bytes: &[u8]) -> String {
     bytes
         .iter()
-        .map(|&b| if (0x20..0x7F).contains(&b) { b as char } else { ' ' })
+        .map(|&b| {
+            if (0x20..0x7F).contains(&b) {
+                b as char
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .trim_end()
         .to_string()

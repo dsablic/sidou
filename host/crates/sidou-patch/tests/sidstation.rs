@@ -125,10 +125,7 @@ fn bad_input_is_refused_with_the_reason() {
     assert_eq!(parse_bank(b"not sysex"), Err(Error::NotSysex { at: 0 }));
 
     let unterminated = &good[..good.len() - 1];
-    assert_eq!(
-        parse_bank(unterminated),
-        Err(Error::Unterminated { at: 0 })
-    );
+    assert_eq!(parse_bank(unterminated), Err(Error::Unterminated { at: 0 }));
 
     let mut foreign = good.clone();
     foreign[1] = 0x7D;

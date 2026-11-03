@@ -68,7 +68,12 @@ fn swapped(byte: u8) -> u8 {
 pub fn dump(prefix: &[u8], declared_size: u16, decoded: &Decoded) -> Vec<u8> {
     let mut message = vec![0xF0];
     message.extend_from_slice(prefix);
-    message.extend([0x02, 0x00, (declared_size >> 7) as u8, (declared_size & 0x7F) as u8]);
+    message.extend([
+        0x02,
+        0x00,
+        (declared_size >> 7) as u8,
+        (declared_size & 0x7F) as u8,
+    ]);
     message.extend([0x2D; 24]);
     message.push(0x45);
     message.extend_from_slice(&decoded.0[..NAME_BYTES]);
