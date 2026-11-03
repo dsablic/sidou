@@ -149,6 +149,19 @@ This will not change the character of a patch. It closes measured differences of
 
 Steps 1, 3 and 4 do not depend on the budget decision. Steps 5 and 6 do.
 
+## Findings so far
+
+- Elektron's factory bank (`SidStation_Presets_r1.syx`, 90 patches, published on Elektron's
+  support site) parses with `sidou-patch`; the local check is `tests/factory_bank.rs` with
+  `SIDSTATION_PRESETS` set (the bank is not committed).
+- In it, 65 patches are single mode with all three oscillators, 13 with two, 12 with one; 8 are
+  poly. 61 patches have a table. Layering and tables are therefore most of the bank, which is why
+  the video's one-oscillator conversion sounded thin.
+- A table ends with `FF`, with `FE <loop>`, or where the data ends (the last tables may be absent).
+- The filter cutoff byte reaches 127 and the filter type 1 to 7 in the bank.
+- The 6581 filter's chord band-pass: three cheap saturation models were tried and none kept
+  (`docs/design-notes.md`, the 6581 filter section). Track B step 1 is not closed.
+
 ## Not decided
 
 - The conversion of a SidStation table speed to GT2 frames: measured against the emulator.
