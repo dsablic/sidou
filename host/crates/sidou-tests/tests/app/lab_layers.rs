@@ -143,3 +143,27 @@ fn a_one_voice_sync_sound_keeps_one_oscillator_and_says_why() {
     assert_eq!(ui.live().layers, 0);
     assert_eq!(choice(&ui), "ONE OSC: SYNC");
 }
+
+#[test]
+fn filter_env_shapes_the_cutoff_sweep_with_its_depth_on_algorithm() {
+    let mut ui = lab_ui();
+    to_page(&mut ui, LAB_PAGE_FILTER_ENV);
+    assert_eq!(choice(&ui), "ENV OFF");
+    ui.turn(PANEL_ENC_ALGORITHM, 20);
+    ui.turn(PANEL_ENC_K1, 3);
+    ui.turn(PANEL_ENC_K3, -15);
+    settle(&mut ui);
+    assert_eq!(choice(&ui), "DEPTH +20");
+    assert_eq!(
+        card(&ui, LAB_PAGE_FILTER_ENV, 0),
+        ("ATTACK".into(), "3".into())
+    );
+    assert_eq!(
+        card(&ui, LAB_PAGE_FILTER_ENV, 2),
+        ("SUS".into(), "0".into())
+    );
+    let s = sound(&ui);
+    assert_eq!(s[LAB_SOUND_FILTER_ENV as usize] as i8, 20);
+    assert_eq!(s[LAB_SOUND_FILTER_ENV_AD as usize] >> 4, 3);
+    assert_eq!(s[LAB_SOUND_FILTER_ENV_SR as usize] >> 4, 0);
+}

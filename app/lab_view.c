@@ -32,8 +32,8 @@ _Static_assert(LIVE_PARAM_ATTACK + 3 == LIVE_PARAM_RELEASE &&
                    LIVE_PARAM_VIBRATO_RATE + 2 == LIVE_PARAM_VIBRATO_DELAY,
                "ENVELOPE's and MOD's cards are consecutive parameters");
 
-static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "MOD", "FX",
-                                                  "MACRO", "LAYERS"};
+static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "FILTER ENV",
+                                                  "MOD", "FX", "MACRO", "LAYERS"};
 static const char* const OSC_COUNT[LIVE_LAYERS_MAX + 1u] = {"ONE OSC", "TWO OSC", "THREE OSC"};
 
 static const uint8_t WAVES[LAB_VIEW_WAVES] = {0x10, 0x20, 0x40, 0x80, 0x30, 0x50,
@@ -213,9 +213,15 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             (void)number(value, (int32_t)v - LIVE_TUNE_CENTS, 1);
         }
         return 1;
-    case LAB_PAGE_ENVELOPE: {
+    case LAB_PAGE_ENVELOPE:
+    case LAB_PAGE_FILTER_ENV: {
         static const char* const NAMES[4] = {"ATTACK", "DECAY", "SUS", "RELEASE"};
         copy(name, NAMES[k & 3u]);
+        if (page == LAB_PAGE_FILTER_ENV) {
+            v = live_filter_env(l, LIVE_FENV_ATTACK + k);
+            *fill = v;
+            *max = 15u;
+        }
         (void)number(value, (int32_t)v, 0);
         return 1;
     }
@@ -336,6 +342,13 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
     case LAB_PAGE_LAYERS:
         copy(out, l->mono_sync ? "ONE OSC: SYNC" : OSC_COUNT[l->layers]);
         return;
+    case LAB_PAGE_FILTER_ENV:
+        if (!l->fenv_depth) {
+            copy(out, "ENV OFF");
+        } else {
+            *number(append(out, "DEPTH "), l->fenv_depth, 1) = 0;
+        }
+        return;
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
         copy(out, views_algorithm_name(slot, l->slot[slot][LIVE_SLOT_ALGORITHM]));
@@ -404,6 +417,7 @@ static int choice_off(const lab_view* lv) {
     case LAB_PAGE_FX: return l->slot[l->fx_select % LIVE_SLOTS][LIVE_SLOT_ALGORITHM] == 0u;
     case LAB_PAGE_MACRO: return !l->reso_link && !l->pwm_link;
     case LAB_PAGE_LAYERS: return !l->layers;
+    case LAB_PAGE_FILTER_ENV: return !l->fenv_depth;
     default: return 0;
     }
 }
@@ -792,6 +806,11 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
         }
         break;
     case LAB_PAGE_LAYERS: layers_turn(l, k, d); break;
+    case LAB_PAGE_FILTER_ENV:
+        live_filter_env_set(
+            l, LIVE_FENV_ATTACK + k,
+            (uint32_t)clamp((int32_t)live_filter_env(l, LIVE_FENV_ATTACK + k) + d, 0, 15));
+        break;
     default: live_slot_turn(l, l->fx_select % LIVE_SLOTS, LIVE_SLOT_AMOUNT + k, d); break;
     }
 }
@@ -816,6 +835,11 @@ static void choice_turn(lab_view* lv, int32_t steps) {
     case LAB_PAGE_MACRO: break;
     case LAB_PAGE_LAYERS:
         (void)live_layers_set(l, (uint32_t)clamp((int32_t)l->layers + steps, 0, LIVE_LAYERS_MAX));
+        break;
+    case LAB_PAGE_FILTER_ENV:
+        live_filter_env_set(l, LIVE_FENV_DEPTH,
+                            (uint32_t)clamp(l->fenv_depth + steps, -LIVE_FENV_DEPTH_MAX,
+                                            LIVE_FENV_DEPTH_MAX) + LIVE_FENV_DEPTH_MAX);
         break;
     case LAB_PAGE_FILTER: {
         int32_t mode = l->filter_mode >> 4 & 7u;

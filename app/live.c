@@ -4,6 +4,7 @@
 #include "live_int.h"
 
 #include "fx_live.h"
+#include "lab_draw.h"
 #include "midi_map.h"
 
 #include <stddef.h>
@@ -453,8 +454,38 @@ static int32_t lfo_swing(const live* l) {
     return at - t[pos];
 }
 
+#define FENV_TICK_US 10000u
+#define FENV_TAIL_US 30000000u
+
+static int32_t fenv_swing(const live* l) {
+    if (!l->fenv_depth || l->fenv_t_us == LIVE_FENV_IDLE) {
+        return 0;
+    }
+    uint32_t level = lab_draw_level(l->fenv_ad, l->fenv_sr, l->fenv_gate_us, l->fenv_t_us);
+    return l->fenv_depth * (int32_t)LIVE_FENV_CUTOFF_UNIT * (int32_t)level / 255;
+}
+
+static void fenv_tick(live* l) {
+    if (l->fenv_t_us == LIVE_FENV_IDLE) {
+        return;
+    }
+    l->fenv_t_us += FENV_TICK_US;
+    if (l->fenv_gate_us != LIVE_FENV_IDLE && l->fenv_t_us - l->fenv_gate_us > FENV_TAIL_US) {
+        l->fenv_t_us = LIVE_FENV_IDLE;
+    }
+}
+
+static int any_gate(const live* l) {
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        if (l->voice[v].gate) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static uint16_t cutoff_effective(const live* l) {
-    int32_t c = l->cutoff;
+    int32_t c = l->cutoff + fenv_swing(l);
     if (l->filter_lfo) {
         c += lfo_swing(l);
     }
@@ -529,6 +560,8 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     x->vibrato_phase = 0;
     x->vibrato_wait = l->vibrato_delay;
     l->last_velocity = velocity;
+    l->fenv_t_us = 0;
+    l->fenv_gate_us = LIVE_FENV_IDLE;
     if (l->velocity_target == LIVE_VELOCITY_SUSTAIN) {
         put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
     }
@@ -590,6 +623,9 @@ void li_release(live* l, int v) {
     write_control(l, v);
     for (int f = 1; v == 0 && f <= l->layers; ++f) {
         write_control(l, f);
+    }
+    if (!any_gate(l) && l->fenv_gate_us == LIVE_FENV_IDLE && l->fenv_t_us != LIVE_FENV_IDLE) {
+        l->fenv_gate_us = l->fenv_t_us;
     }
 }
 
@@ -1179,6 +1215,7 @@ void live_tick(live* l) {
     if (l->arp_voice != LIVE_ARP_NO_VOICE || l->arp_clock_seen) {
         arp_tick(l);
     }
+    fenv_tick(l);
     for (int v = 0; v < LIVE_VOICES; ++v) {
         li_update_freq(l, v);
     }

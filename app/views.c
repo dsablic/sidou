@@ -2186,7 +2186,11 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         return HELP_CARD_CHARSET;
     }
     if (top == &lab_view_view) {
-        return v->lab.mode ? HELP_CARD_LAB_NAME : HELP_CARD_LAB_OSC + v->lab.page;
+        static const uint8_t LAB_HELP[LAB_PAGES] = {
+            HELP_CARD_LAB_OSC, HELP_CARD_LAB_ENVELOPE, HELP_CARD_LAB_FILTER,
+            HELP_CARD_LAB_FILTER_ENV, HELP_CARD_LAB_MOD, HELP_CARD_LAB_FX,
+            HELP_CARD_LAB_MACRO, HELP_CARD_LAB_LAYERS};
+        return v->lab.mode ? HELP_CARD_LAB_NAME : LAB_HELP[v->lab.page % LAB_PAGES];
     }
     if (top == &chip_view_view) {
         uint32_t f = chip_view_focus(&v->chip);

@@ -13,8 +13,9 @@ _Static_assert(LAB_SOUND_LAYER_TUNING + LIVE_VOICES * LAB_SOUND_LAYER_TUNING_BYT
                    LAB_SOUND_LAYER_VOICE,
                "each layer's tuning, then the voices of layers 2 and 3");
 _Static_assert(LAB_SOUND_LAYER_VOICE + LIVE_LAYERS_MAX * LAB_SOUND_LAYER_VOICE_BYTES ==
-                   LAB_SOUND_BYTES,
-               "1.6's layers are the last bytes");
+                   LAB_SOUND_FILTER_ENV,
+               "the layers, then the filter envelope");
+_Static_assert(LAB_SOUND_FILTER_ENV_SR + 1u == LAB_SOUND_BYTES, "the filter envelope is last");
 _Static_assert(LAB_SOUND_ARP + LIVE_ARP_SPAN + 1u == LAB_SOUND_SLOTS,
                "the arpeggio's four fields, then the slots");
 
@@ -56,7 +57,8 @@ static int within(uint8_t b, int32_t max) {
 
 static int layers_ok(const uint8_t s[LAB_SOUND_BYTES]) {
     uint32_t layers = s[LAB_SOUND_LAYERS];
-    if (layers > LIVE_LAYERS_MAX || (layers && s[LAB_SOUND_MONO_SYNC])) {
+    if (layers > LIVE_LAYERS_MAX || (layers && s[LAB_SOUND_MONO_SYNC]) ||
+        !within(s[LAB_SOUND_FILTER_ENV], LIVE_FENV_DEPTH_MAX)) {
         return 0;
     }
     for (uint32_t n = 0; n < LIVE_VOICES; n++) {

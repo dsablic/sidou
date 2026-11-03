@@ -857,6 +857,13 @@ fn voice_fields(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
         (ilp32::live::pwm_depth, 2),
         (ilp32::live::pwm_rate, 2),
         (ilp32::live::tune, 1),
+        (ilp32::live::layers, 1),
+        (ilp32::live::transpose, 3),
+        (ilp32::live::detune, 3),
+        (ilp32::live::layer, ilp32::live_layer::SIZE as u32 * 2),
+        (ilp32::live::fenv_depth, 1),
+        (ilp32::live::fenv_ad, 1),
+        (ilp32::live::fenv_sr, 1),
     ] {
         for i in 0..n {
             out.push(m.soc.read8(live_at(fw, f) + i));

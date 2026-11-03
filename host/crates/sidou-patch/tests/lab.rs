@@ -127,11 +127,6 @@ fn what_lab_cannot_hold_is_reported() {
             Loss::Table(1),
         ),
         (
-            "a filter envelope",
-            three().set(FILTER_ENV_DEPTH, 40),
-            Loss::FilterEnvelope,
-        ),
-        (
             "a fixed note",
             three().osc(1, OSC_TRACK, 40),
             Loss::FixedNote(2),
@@ -156,5 +151,29 @@ fn what_lab_cannot_hold_is_reported() {
 #[test]
 fn a_loss_reads_as_a_short_line() {
     assert_eq!(Loss::Table(2).to_string(), "OSC 2 TABLE: SONG INSTRUMENT");
-    assert_eq!(Loss::FilterEnvelope.to_string(), "FILTER ENVELOPE DROPPED");
+    assert_eq!(
+        Loss::FixedNote(3).to_string(),
+        "OSC 3 FIXED NOTE: PLAYS THE KEY"
+    );
+}
+
+#[test]
+fn the_filter_envelope_maps_its_depth_direction_and_rates() {
+    let envelope = |d: Decoded| {
+        d.set(FILTER_ENV_DEPTH, 100)
+            .set(FILTER_ENV_DEPTH + 1, 16)
+            .set(FILTER_ENV_DEPTH + 2, 127)
+            .set(FILTER_ENV_DEPTH + 3, 64)
+            .set(FILTER_ENV_DEPTH + 4, 8)
+    };
+    let (s, _) = mapped(envelope(three()));
+    assert_eq!(s[LAB_SOUND_FILTER_ENV as usize] as i8, 50);
+    assert_eq!(s[LAB_SOUND_FILTER_ENV_AD as usize], 0x2f);
+    assert_eq!(s[LAB_SOUND_FILTER_ENV_SR as usize], 0x81);
+    let inverted = envelope(three()).set(PATCH_MODE, SINGLE_ALL | 0x80);
+    let (s, _) = mapped(inverted);
+    assert_eq!(
+        s[LAB_SOUND_FILTER_ENV as usize] as i8, -50,
+        "an inverted envelope sweeps down"
+    );
 }

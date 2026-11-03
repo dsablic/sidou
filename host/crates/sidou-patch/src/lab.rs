@@ -13,6 +13,8 @@ const PULSE_UNIT: u16 = 32;
 const CUTOFF_UNIT: u16 = 16;
 const DETUNE_STEPS_PER_SEMITONE: i32 = 64;
 const LAB_NAME: usize = LAB_SOUND_NAME as usize;
+const SIDSTATION_TO_NIBBLE: u32 = 3;
+const SIDSTATION_DEPTH_TO_LAB: i32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Loss {
@@ -21,7 +23,6 @@ pub enum Loss {
     FixedNote(usize),
     TransposeClamped(usize),
     DetuneClamped(usize),
-    FilterEnvelope,
 }
 
 impl fmt::Display for Loss {
@@ -32,7 +33,6 @@ impl fmt::Display for Loss {
             Self::FixedNote(n) => write!(f, "OSC {n} FIXED NOTE: PLAYS THE KEY"),
             Self::TransposeClamped(n) => write!(f, "OSC {n} TRANSPOSE CLAMPED"),
             Self::DetuneClamped(n) => write!(f, "OSC {n} DETUNE CLAMPED"),
-            Self::FilterEnvelope => f.write_str("FILTER ENVELOPE DROPPED"),
         }
     }
 }
@@ -107,9 +107,20 @@ fn report(patch: &Patch, layers: &[usize], losses: &mut Vec<Loss>) {
             losses.push(Loss::Table(n + 1));
         }
     }
-    if patch.filter.envelope_depth != 0 {
-        losses.push(Loss::FilterEnvelope);
-    }
+}
+
+fn nibble(value: u8) -> u8 {
+    (u32::from(value) >> SIDSTATION_TO_NIBBLE).min(15) as u8
+}
+
+fn filter_envelope(patch: &Patch, s: &mut [u8; BYTES]) {
+    let f = &patch.filter;
+    let depth =
+        (i32::from(f.envelope_depth) / SIDSTATION_DEPTH_TO_LAB).min(LIVE_FENV_DEPTH_MAX as i32);
+    let signed = if f.envelope_invert { -depth } else { depth };
+    s[LAB_SOUND_FILTER_ENV as usize] = signed as i8 as u8;
+    s[LAB_SOUND_FILTER_ENV_AD as usize] = nibble(f.attack) << 4 | nibble(f.decay);
+    s[LAB_SOUND_FILTER_ENV_SR as usize] = nibble(f.sustain) << 4 | nibble(f.release);
 }
 
 pub fn lab_sound(patch: &Patch) -> ([u8; BYTES], Vec<Loss>) {
@@ -145,6 +156,7 @@ pub fn lab_sound(patch: &Patch) -> ([u8; BYTES], Vec<Loss>) {
         .bend_range
         .min(LIVE_BEND_RANGE_MAX as u8);
     s[LAB_SOUND_ARP as usize + LIVE_ARP_SPAN as usize] = 1;
+    filter_envelope(patch, &mut s);
     report(patch, &layers, &mut losses);
     (s, losses)
 }

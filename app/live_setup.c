@@ -128,6 +128,11 @@ static void load_preset(live* l, uint8_t index) {
     l->pwm_link = 0;
     l->layers = 0;
     l->layer_edit = 0;
+    l->fenv_depth = 0;
+    l->fenv_ad = 0;
+    l->fenv_sr = 0;
+    l->fenv_t_us = LIVE_FENV_IDLE;
+    l->fenv_gate_us = LIVE_FENV_IDLE;
     memset(l->transpose, 0, sizeof l->transpose);
     memset(l->detune, 0, sizeof l->detune);
     memset(l->layer, 0, sizeof l->layer);
@@ -381,6 +386,9 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     memcpy(e->transpose, l->transpose, sizeof e->transpose);
     memcpy(e->detune, l->detune, sizeof e->detune);
     memcpy(e->layer, l->layer, sizeof e->layer);
+    e->fenv_depth = l->fenv_depth;
+    e->fenv_ad = l->fenv_ad;
+    e->fenv_sr = l->fenv_sr;
     e->valid = 1;
 }
 
@@ -422,6 +430,9 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     memcpy(l->transpose, e->transpose, sizeof l->transpose);
     memcpy(l->detune, e->detune, sizeof l->detune);
     memcpy(l->layer, e->layer, sizeof l->layer);
+    l->fenv_depth = e->fenv_depth;
+    l->fenv_ad = e->fenv_ad;
+    l->fenv_sr = e->fenv_sr;
 }
 
 static void user_leave(live* l) {
@@ -576,6 +587,9 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
         v[2] = l->layer[n].sustain_release;
         put16(v, 3u, l->layer[n].pulse_width);
     }
+    out[LAB_SOUND_FILTER_ENV] = (uint8_t)l->fenv_depth;
+    out[LAB_SOUND_FILTER_ENV_AD] = l->fenv_ad;
+    out[LAB_SOUND_FILTER_ENV_SR] = l->fenv_sr;
 }
 
 static const struct {
@@ -625,6 +639,9 @@ LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
         l->layer[n].sustain_release = v[2];
         l->layer[n].pulse_width = (uint16_t)(pw < LIVE_PULSE_WIDTH_MAX ? pw : LIVE_PULSE_WIDTH_MAX);
     }
+    l->fenv_depth = clamped(in[LAB_SOUND_FILTER_ENV], LIVE_FENV_DEPTH_MAX);
+    l->fenv_ad = in[LAB_SOUND_FILTER_ENV_AD];
+    l->fenv_sr = in[LAB_SOUND_FILTER_ENV_SR];
 }
 
 LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);
@@ -994,6 +1011,37 @@ LIVE_COLD uint32_t live_layers_set(live* l, uint32_t extra) {
     li_write_controls(l);
     li_update_pws(l);
     return 1;
+}
+
+static uint8_t nibble_set(uint8_t byte, int high, uint32_t value) {
+    uint32_t v = value < 15u ? value : 15u;
+    return (uint8_t)(high ? (byte & 0x0fu) | v << 4 : (byte & 0xf0u) | v);
+}
+
+void live_filter_env_set(live* l, uint32_t field, uint32_t value) {
+    l->settings_dirty = 1;
+    switch (field) {
+    case LIVE_FENV_DEPTH: {
+        int32_t d = (int32_t)value - LIVE_FENV_DEPTH_MAX;
+        l->fenv_depth = (int8_t)(d > LIVE_FENV_DEPTH_MAX ? LIVE_FENV_DEPTH_MAX : d);
+        break;
+    }
+    case LIVE_FENV_ATTACK: l->fenv_ad = nibble_set(l->fenv_ad, 1, value); break;
+    case LIVE_FENV_DECAY: l->fenv_ad = nibble_set(l->fenv_ad, 0, value); break;
+    case LIVE_FENV_SUSTAIN: l->fenv_sr = nibble_set(l->fenv_sr, 1, value); break;
+    default: l->fenv_sr = nibble_set(l->fenv_sr, 0, value); break;
+    }
+    li_update_cutoff(l);
+}
+
+uint32_t live_filter_env(const live* l, uint32_t field) {
+    switch (field) {
+    case LIVE_FENV_DEPTH: return (uint32_t)(l->fenv_depth + LIVE_FENV_DEPTH_MAX);
+    case LIVE_FENV_ATTACK: return l->fenv_ad >> 4;
+    case LIVE_FENV_DECAY: return l->fenv_ad & 15u;
+    case LIVE_FENV_SUSTAIN: return l->fenv_sr >> 4;
+    default: return l->fenv_sr & 15u;
+    }
 }
 
 uint8_t live_layer_control_of(const live* l, uint32_t v) {

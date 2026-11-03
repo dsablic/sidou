@@ -378,6 +378,25 @@ static void env_dot(env_ctx* c, const scope* sc) {
     c->dot_y = y_of(level, ENV_TOP, ENV_SPAN);
 }
 
+static uint32_t fenv_now(const live* l) {
+    return l->fenv_t_us == LIVE_FENV_IDLE ? 0u : l->fenv_t_us / 10000u + 1u;
+}
+
+static void fenv_dot(env_ctx* c, const live* l) {
+    c->dot_x = LAB_DRAW_NONE;
+    if (!l->fenv_depth || l->fenv_t_us == LIVE_FENV_IDLE) {
+        return;
+    }
+    uint32_t level = lab_draw_level(l->fenv_ad, l->fenv_sr, l->fenv_gate_us, l->fenv_t_us);
+    uint32_t shown_gate = c->e.gate;
+    uint32_t t = l->fenv_gate_us == LIVE_FENV_IDLE
+                     ? (l->fenv_t_us < shown_gate ? l->fenv_t_us : shown_gate)
+                     : shown_gate + (l->fenv_t_us - l->fenv_gate_us);
+    uint32_t x = lab_draw_x_of_us(t);
+    c->dot_x = (uint8_t)(x < LAB_DRAW_W - 4u ? x : LAB_DRAW_W - 4u);
+    c->dot_y = y_of(level, ENV_TOP, ENV_SPAN);
+}
+
 #define FILT_X0 8u
 #define FILT_X1 232u
 #define FILT_PX_OCT 26u
@@ -769,6 +788,10 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
         if (v >= 0) {
             h = (h ^ sc->env[v] ^ (uint32_t)sc->state[v] << 8) * 16777619u;
         }
+    } else if (page == LAB_PAGE_FILTER_ENV) {
+        h = (h ^ l->fenv_ad ^ (uint32_t)l->fenv_sr << 8 ^ (uint32_t)(uint8_t)l->fenv_depth << 16) *
+            16777619u;
+        h = (h ^ fenv_now(l)) * 16777619u;
     } else if (page == LAB_PAGE_FILTER) {
         h = (h ^ l->cutoff_out ^ (uint32_t)l->resonance << 12 ^ (uint32_t)l->filter_mode << 16 ^
              (uint32_t)l->model << 24) * 16777619u;
@@ -823,6 +846,13 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         env_dot(&e, sc);
         d.fn = env_col;
         d.ctx = &e;
+    } else if (page == LAB_PAGE_FILTER_ENV) {
+        env_init(&e.e, l->fenv_ad, l->fenv_sr, lab_draw_gate_us(l->fenv_ad, l->fenv_sr));
+        e.hl = (uint8_t)(hl <= 4u ? hl : 0u);
+        fenv_dot(&e, l);
+        d.fn = env_col;
+        d.ctx = &e;
+        d.color[0] = l->fenv_depth ? th->value : th->dim;
     } else if (page == LAB_PAGE_FILTER) {
         filt_init(&f, l, hl);
         d.fn = filt_col;
@@ -1020,9 +1050,10 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
         gtext(c, row, 16, "WIDTH>PWM", THEME_ATTR(th, hint));
     } else if (page == LAB_PAGE_FILTER || page == LAB_PAGE_MOD || page == LAB_PAGE_FX) {
         guides_page(c, l, page, hl, th, row0);
-    } else if (page == LAB_PAGE_ENVELOPE) {
-        uint32_t x = lab_draw_x_of_us(lab_draw_gate_us(live_edit_attack_decay(l),
-                                                       live_edit_sustain_release(l)));
+    } else if (page == LAB_PAGE_ENVELOPE || page == LAB_PAGE_FILTER_ENV) {
+        int filter = page == LAB_PAGE_FILTER_ENV;
+        uint32_t x = lab_draw_x_of_us(lab_draw_gate_us(filter ? l->fenv_ad : live_edit_attack_decay(l),
+                                                       filter ? l->fenv_sr : live_edit_sustain_release(l)));
         uint32_t key = (x + 4u) / 8u;
         for (uint32_t r = 0; r + 1u < LAB_DRAW_ROWS; r++) {
             c->ch[row0 + r][key] = FONT_H1;

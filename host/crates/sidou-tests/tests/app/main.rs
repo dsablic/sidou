@@ -27,6 +27,7 @@ mod link;
 mod live_arp;
 mod live_cutoff;
 mod live_dice;
+mod live_filter_env;
 mod live_freq;
 mod live_instrument;
 mod live_layers;

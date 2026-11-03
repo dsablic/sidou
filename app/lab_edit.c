@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "lab_edit.h"
+#include "lab_draw.h"
 
 #include <string.h>
 
@@ -152,7 +153,40 @@ static int32_t filter_db(uint32_t mode, float hz, float note, int tri, int m6581
     }
 }
 
-static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
+#define SEMITONE_RATIO 1.0594631f
+#define CENT_RATIO 0.00057779f
+
+static float layer_ratio(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
+    const uint8_t* t = &s[LAB_SOUND_LAYER_TUNING + layer * LAB_SOUND_LAYER_TUNING_BYTES];
+    int32_t semis = (int8_t)t[0];
+    float r = 1.0f + (float)(int8_t)t[1] * CENT_RATIO;
+    for (int32_t k = 0; k < (semis < 0 ? -semis : semis); k++) {
+        r = semis < 0 ? r / SEMITONE_RATIO : r * SEMITONE_RATIO;
+    }
+    return r;
+}
+
+#define SYNC_SOURCE_STEP 2u
+
+static uint32_t pitch_layer(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
+    uint32_t source = (layer + SYNC_SOURCE_STEP) % LIVE_VOICES;
+    return s[LAB_SOUND_LAYERS] && (s[LAB_SOUND_CONTROL] & 0x02u) && source <= s[LAB_SOUND_LAYERS]
+               ? source
+               : layer;
+}
+
+static uint32_t held_cutoff(const uint8_t s[LAB_SOUND_BYTES]) {
+    int32_t fc = (int32_t)((uint32_t)(s[LAB_SOUND_CUTOFF] | s[LAB_SOUND_CUTOFF + 1u] << 8) & 2047u);
+    int32_t depth = (int8_t)s[LAB_SOUND_FILTER_ENV];
+    if (depth) {
+        uint32_t level = lab_draw_level(s[LAB_SOUND_FILTER_ENV_AD], s[LAB_SOUND_FILTER_ENV_SR],
+                                        LIVE_FENV_IDLE, LAB_SILENT_MS * 1000u);
+        fc += depth * (int32_t)LIVE_FENV_CUTOFF_UNIT * (int32_t)level / 255;
+    }
+    return (uint32_t)(fc < 0 ? 0 : fc > 2047 ? 2047 : fc);
+}
+
+static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, uint32_t layer) {
     uint32_t wave = s[LAB_SOUND_CONTROL] >> 4;
     int32_t db = WAVE_DB[model ? 1 : 0][wave];
     if (db == NONE) {
@@ -172,7 +206,7 @@ static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
         }
         db += p;
     }
-    float note = 261.6f;
+    float note = 261.6f * layer_ratio(s, pitch_layer(s, layer));
     if (s[LAB_SOUND_MONO_SYNC]) {
         int32_t semis = (int8_t)s[LAB_SOUND_SYNC_SEMIS];
         semis = semis < -LIVE_RATIO_SEMIS  ? -LIVE_RATIO_SEMIS
@@ -196,12 +230,14 @@ static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
     if (s[LAB_SOUND_ARP + LIVE_ARP_ON]) {
         db -= 3;
     }
-    if (s[LAB_SOUND_FILTER_VOICES] & 7u) {
+    uint32_t routed = s[LAB_SOUND_LAYERS] ? s[LAB_SOUND_FILTER_VOICES] >> layer & 1u
+                                          : s[LAB_SOUND_FILTER_VOICES] & 7u;
+    if (routed) {
         uint32_t mode = s[LAB_SOUND_FILTER_MODE] >> 4 & 7u;
         if (!mode) {
             return 0;
         }
-        uint32_t fc = (uint32_t)(s[LAB_SOUND_CUTOFF] | s[LAB_SOUND_CUTOFF + 1u] << 8) & 2047u;
+        uint32_t fc = held_cutoff(s);
         sid_model m = model ? SID_MODEL_8580 : SID_MODEL_6581;
         int low;
         int32_t f = filter_db(mode, sid_cutoff_hz(m, 0, fc), note, (int)(wave & 1u), !model, &low);
@@ -237,7 +273,7 @@ static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
 }
 
 uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
-    if (audible_one(s, model)) {
+    if (audible_one(s, model, 0u)) {
         return 1;
     }
     uint8_t as_first[LAB_SOUND_BYTES];
@@ -249,7 +285,7 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
         as_first[LAB_SOUND_SR] = v[2];
         as_first[LAB_SOUND_PULSE] = v[3];
         as_first[LAB_SOUND_PULSE + 1u] = v[4];
-        if (audible_one(as_first, model)) {
+        if (audible_one(as_first, model, n + 1u)) {
             return 1;
         }
     }
