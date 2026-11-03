@@ -93,6 +93,22 @@ fn tables_decode_steps_notes_loops_and_ends() {
 }
 
 #[test]
+fn tables_after_the_last_one_with_content_may_be_absent() {
+    let patch = one(&Decoded::new("Body").tables(&[&[0x40, 0xC0, 0x90, 0xFF, 0xFE, 0x00]]));
+    assert_eq!(patch.tables[0].steps.len(), 2);
+    assert_eq!(patch.tables[0].steps[1].note, TableNote::Up(63));
+    assert_eq!(patch.tables[0].loop_to, Some(0));
+    assert!(patch.tables[1].steps.is_empty() && patch.tables[2].steps.is_empty());
+}
+
+#[test]
+fn a_table_the_data_ends_in_has_no_terminator() {
+    let patch = one(&Decoded::new("Fatburger").tables(&[&[0x90, 0xFF]]));
+    assert_eq!(patch.tables[0].steps.len(), 1);
+    assert_eq!(patch.tables[0].loop_to, None);
+}
+
+#[test]
 fn both_prefixes_parse_and_a_wrong_size_field_is_ignored() {
     let decoded = Decoded::new("Both");
     for prefix in [&PREFIX_LIBRARIAN[..], &PREFIX_HARDWARE[..]] {
@@ -136,9 +152,9 @@ fn bad_input_is_refused_with_the_reason() {
     short.push(0xF7);
     assert_eq!(parse_bank(&short), Err(Error::Truncated { index: 0 }));
 
-    let runaway = Decoded::new("Run").tables(&[&[0x40, 0x10], &[0xFF], &[0xFF]]);
+    let cut_mid_step = Decoded::new("Run").tables(&[&[0x40]]);
     assert_eq!(
-        parse_bank(&dump(&PREFIX_LIBRARIAN, 0, &runaway)),
+        parse_bank(&dump(&PREFIX_LIBRARIAN, 0, &cut_mid_step)),
         Err(Error::TableOverrun { index: 0 })
     );
 }

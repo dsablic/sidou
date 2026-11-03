@@ -52,7 +52,7 @@ impl Decoded {
         self.set(LFO_BASE[n] + field, value)
     }
 
-    pub fn tables(mut self, tables: &[&[u8]; 3]) -> Self {
+    pub fn tables(mut self, tables: &[&[u8]]) -> Self {
         self.0.truncate(TABLES_AT);
         for table in tables {
             self.0.extend_from_slice(table);

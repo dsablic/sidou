@@ -14,7 +14,6 @@ const PREFIX_HARDWARE: [u8; 5] = [0x00, 0x20, 0x3C, 0x01, 0x00];
 const TYPE_PATCH_DUMP: u8 = 0x02;
 const HEADER_AFTER_TYPE: usize = 3 + 24 + 1;
 const NAME_BYTES: usize = 10;
-const DATA_MARKER: u8 = 0x45;
 
 const CONTROLLERS_AT: usize = 10;
 const CONTROLLER_BYTES: usize = 3;
@@ -230,9 +229,14 @@ fn lfo_at(b: &[u8]) -> Lfo {
 fn parse_tables(mut rest: &[u8]) -> Option<[Table; OSCILLATORS]> {
     let mut tables: [Table; OSCILLATORS] = Default::default();
     for table in &mut tables {
+        if rest.is_empty() {
+            break;
+        }
         let mut steps = Vec::new();
         loop {
-            let (&control, tail) = rest.split_first()?;
+            let Some((&control, tail)) = rest.split_first() else {
+                break;
+            };
             match control {
                 TABLE_END => {
                     rest = tail;
