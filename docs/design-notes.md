@@ -287,10 +287,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (at `-Os`) and `step_view.c` and `song_gen.c` (both at `-Oz`) also take `-fno-inline-functions
   -fno-jump-tables`, so their rendering and edit helpers stay outlined.
 - Measured and left at `-O2`: `live.c` (`ui_encoder` over `CHIP_PICK_INPUT` 400, K1 over
-  `POPUP_INPUT` 250), `title_card.c` (THE CHIP's worst `ui_poll` 79,349 against 79,000), `views.c`
+  `POPUP_INPUT` 250), `views.c`
   at `-Oz` (880 bytes, but K1's popup input reaches 250 of 250; it stays `-Os`), `chip_view.c` at
   `-Oz` (240 bytes; CHIP K1 on DIST reaches 245 of `CHIP_INPUT` 245), `grid.c` (3,360 bytes, but
-  the tile renderer's frame grows 15 %: THE CHIP's `ui_poll` 79,774 over 79,000), `live_view.c`
+  the tile renderer's frame grows 15 %), `live_view.c`
   (the instrument's frame, nearest its noise-chord gate) and `reg_ring.c` (the audio interrupt's
   pops). `boot.c`, `sid_character.c` and `sid_dac.c` stay at `-O2`: at `-Os` they moved the thump
   stage over its 31 instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's
@@ -3484,7 +3484,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   shows, including under MIDI learn's frame over LIVE, and not under learn over the menu.
 - The tap's cost (emu-gate `ram_audio.rs`) is measured on the same build by turns: LIVE on top
   (the tap on) against the menu on top (the tap off), a chord held at its sustain level
-  throughout. LIVE behind THE OSCILLATOR's title card keeps the tap off until the card ends.
+  throughout.
 
 ### The LIVE view
 
@@ -3865,7 +3865,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   or when its words do not fit two lines, ordinary text on one row. The popup opens and closes
   `SCREEN_POPUP_STEP` rows a frame (3: 78 cells). The block cursor is on for `SCREEN_BLINK_FRAMES`
   frames, then off as long (8 frames: 320 ms at 25 fps).
-- A banded cut (`SCREEN_BANDS`, the title cards' end) reveals the view below `SCREEN_BAND_ROWS`
+- A banded cut (`SCREEN_BANDS`, the help card's close) reveals the view below `SCREEN_BAND_ROWS`
   rows a frame, top first, with no edge row. A reveal (`screen_reveal`, the boot's title card
   changing its whole look) wipes the same view in anew but keeps the stack, the focus and the
   capture.
@@ -3946,7 +3946,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   app/grid.c, and works large text out with divisions, so the composed frame is an independent
   reference (`Screen::composed_from_scratch`).
 - A region that grows or shrinks over the same bitmap cells sends only the cells it adds or leaves,
-  so a picture revealed a few columns a frame (a title card's wipe) sends each cell once.
+  so a picture revealed a few columns a frame (the boot title card's wipe) sends each cell once.
 - The overlay pool holds `GRID_OVERLAYS` slots, between 240 and 255: LIVE's three scopes of 20 x 4
   cells take 240, and a slot index still fits the u8 each cell keeps.
 
@@ -4122,9 +4122,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 
 ### View tests
 
-- `Ui::without_cards` (sidou-tests' views.rs) turns the title cards off for the routing and
-  transition tests, which the cards would sit over. `Ui::press` runs the frame's flow step after a
-  HOME tap, because HOME acts on its release. `Ui::frame` runs views_idle until it reports no work,
+- `Ui::press` runs the frame's flow step after a HOME tap, because HOME acts on its release. `Ui::frame` runs views_idle until it reports no work,
   as platform/fm1/ui.c does (RED MOON RITE's scan).
 
 ### The ergonomics harness
@@ -4798,14 +4796,15 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 ### Settings record
 
 - The settings are one record on the store, versioned with schema 1 or later; a later schema only
-  appends fields. The record holds: CARDS, UI sounds, KEYS, the preset and every live parameter
+  appends fields. The record holds: UI sounds, KEYS, the preset and every live parameter
   (the keys' chip model, profile and character, effect slots, envelope mode and preset's edits—the
   instrument as it was left; not the MASTER volume, which is the pot), MIDI learn's bindings,
   firmware version last booted (for the full boot once after an install), TRACKER ROWS, THEME, the
   last song, SPREAD and SID MODEL. It does not hold the octave, held notes, controllers or view on
   screen.
-- Byte 1 of the record is CARDS: 0 is OFF, 1 is ONCE (an old record's ON), 2 is ALWAYS; anything
-  else reads as ONCE. The meaning was widened without a schema change.
+- Byte 1 of the record is reserved: it held CARDS (0 OFF, 1 ONCE, 2 ALWAYS) until the title cards
+  were removed. The firmware writes 0 and ignores it on read, so an older record still loads and
+  the layout and schema version stay as they were.
 - A later schema appends fields. This firmware reads a newer record's v1 part and skips a later
   schema's extra expert values before the learn bindings. Schema 6 appended SPREAD (a schema 5
   record, or a SPREAD over 100, loads 0); schema 7 appended SID MODEL (which loads as AUTO
@@ -5167,9 +5166,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   directly and its checkpoints are absolute byte offsets from the payload's start; coded mode reads
   runs through the pool's fifteen-byte codebook and its checkpoints count coded nibbles from the one
   before.
-- The logos' scenes and the title cards are coded bitmaps: Metal Chrome 9730 bytes (vs 28800
-  unpacked), Cracktro Chrome 3971 bytes, title cards 19754 bytes (17729 coded data, 1440 row
-  offsets, 360 cell bits, 225 glow levels). Generated by host tests from `assets/logo/*.png`.
+- The logos' scenes are coded bitmaps: Metal Chrome 9730 bytes (vs 28800
+  unpacked), Cracktro Chrome 3971 bytes. Generated by host tests from `assets/logo/*.png`.
 
 ### Tile compositor
 
@@ -5306,9 +5304,6 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   the menu's ALGORITHM 170 and 60.7k. Bounded about 10 % over: `SCENE_INPUT` 230,
   `SCENE_START_PASS` 67,000. PLASMA, the costliest start, drew its whole canvas in the input's
   call (48.8k) until the start moved into the frame (32.7k a pass).
-- With the title cards on, the menu's ALGORITHM pushes THE SCENE's card over SCENE as well (350,
-  within `TITLE_CARD_INPUT`) and the piece starts in the cut after the card; those passes are
-  measured from the card's hold.
 - SELECT from RED MOON RITE to FIRE clears its painter region, which marks every cell, and the
   busiest pass after SELECT to it, or the menu into it, is one of its `ui_poll`s (its start, or
   two runs of the compositor): `RMR_INPUT` 1,050 and `RMR_START_PASS` 65,000, about 10 % over the
@@ -5431,55 +5426,16 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   interrupts off, the watchdog resets it 8 s after the last feed, twice, and the third boot enters
   UBOOT. In that build `fm1_enter_uboot` is inlined into `fm1_cstart`.
 
-### Title cards
+### Title cards removed
 
-- Sequence: the glow fades in through ordered-dither levels (a purple and red glow drawn a cell at
-  a time with the font's dither glyphs in two neighbouring stops of black, blue, purple and red),
-  each level holding `TITLE_CARD_LEVEL_HOLD` frames (2, the page's preview) once all its cells are
-  out; the title wipes in from the left, `TITLE_CARD_WIPE_COLS` columns (3) a frame, the bitmap
-  growing over the same bitmap cells, so each frame sends the cells it adds and no others; it holds
-  `TITLE_CARD_HOLD_FRAMES` frames (25, 1 s); it ends.
-- Budget: every frame sends at most `TITLE_CARD_FRAME_CELLS` cells (200, about 17.5 ms of SPI,
-  inside the 20 ms budget). A step that changes more goes out in bands, top first, from where the
-  last frame stopped, until every cell of it is out. Ends on: a button or an encoder (swallows the
-  event and does nothing else), or a note from the keys or MIDI (which also plays).
-- The glow is drawn a cell at a time with the font's dither glyphs D0..D15 in two neighbouring
-  stops of its colours (black, blue, purple, red), at level L = 16 i + n (stop i, 0..`MAX_LEVEL`
-  47: red never shows whole). The firmware keeps a quarter of the level table (the glow is symmetric
-  about the centre) and fades in through k = 1..4 (floor(L * k / 4)).
-- A card's bitmap holds only the cells that differ from the glow (letters, halos, rule, glint,
-  stars), the glow's background stop flat in the others, and a bit a cell says which. `glow_levels`
-  reads a cell's background at pixel (0, 3) (`NEVER_DITHERED_X`/`Y`): Bayer's 15 there is never set
-  below D16.
-- The glow is brightest at the centre and black at the corners, and never goes past stop 2 (purple,
-  with red as its dither): the firmware's colours are a stop and the next one. The font's dither
-  glyphs D0..D16 are the 4 x 4 Bayer matrix the art dithers with (Dn sets a pixel where the matrix
-  is below n), so the glow drawn in glyphs is the art's.
-- All three cards, their glow from 225 bytes of levels, stay within `CARDS_FLASH_BYTES_MAX`
-  (27,087), under half the whole-PNG byte-run control (57,190 bytes when the ceiling was set).
-- The title glow sends each level's cells in frames of at most 200 cells; the first level changes
-  the whole menu (900 cells, 5 frames). The wipe adds 3 columns a frame (90 cells), the hold sends
-  nothing, and the cut to the view comes in bands.
-- The cards' setting defaults to ONCE (THE CHIP and THE SCENE the first time each, never THE
-  OSCILLATOR); the tests that need every card set ALWAYS in the views' RAM, the menu's walk to it
-  being the host tests'. THE OSCILLATOR's budget is counted from the frame after HOME is let go, so
-  its tap is not waited out.
-- A card's held frame is shot a frame after its phase reaches `TITLE_CARD_HOLD`, half way between
-  two frames, and compared with its golden and with its source PNG (assets/logo/title-<name>.png)
-  pixel for pixel.
-- A card from its start to the end of the cut under it (the glow, the wipe, the 1 s hold, the cut)
-  takes 60 to 72 frames. Bounds about 10 % over the cards' measurement: 64 to 66 frames, 68.7 to
-  72.4 cells a frame (200 at most: the glow's first level, and its scan of the screen's 900 cells
-  for those that differ), 17.14 ms of SPI at worst, 55.1k to 56.0k instructions a frame, busiest
-  `ui_poll` 71.2k to 71.6k, the input 350 to 387 (`ui_encoder` for CHIP and SCENE, `ui_buttons` for
-  HOME), the busiest pass 72.8k to 73.1k: `TITLE_CARD_WORST_POLL` 79,000, `TITLE_CARD_PER_FRAME`
-  62,000, `TITLE_CARD_INPUT` 430, `TITLE_CARD_PASS` 80,000 (host/crates/emu-gate/tests/screen.rs).
-- Any control on a card ends it at the next frame and does nothing else (FX would open LAB from
-  LIVE, OCT+ step the octave, SELECT pick a piece); a note on a card plays at once, from the keys or
-  MIDI, and ends it.
-- The title card is Metal Chrome's scene (assets/logo/metal-chrome.png) pixel for pixel but for the
-  version and PRESS ANY KEY rows (`BOOT_SCENE_VERSION_ROW`, `BOOT_SCENE_KEY_ROW`), which are black
-  in the scene so the text reads as on any black row.
+- The full-screen title cards (THE OSCILLATOR, THE SCENE, THE CHIP) and the CARDS setting are gone.
+  The owner decided they add little and slow down switching between views: CHIP and SCENE now open
+  at once from the menu and HOME from the menu returns to LIVE directly. Removing them frees about
+  20 KB of flash, their bitmaps, glow and tests included.
+- SETTINGS' byte 1 stays in the record as a reserved byte (written as 0, ignored on read), so the
+  layout and schema version are unchanged and every older record still loads.
+- The boot's own title card (the Metal Chrome scene with the version and PRESS ANY KEY) is not one
+  of them and stays, with the bitmap codec, the screen's reveal and its banded cut.
 
 ### Help card
 
@@ -5578,7 +5534,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   scroller) its busiest `ui_poll` measured 72k and 118k instructions a frame with the rendering of
   its 87 cells, 3.0M a second (1.2 % of 240 MHz): bounded at 80,000 and 130,000.
 - The wipe into About is started at every 5 ms phase against the firmware's frames. Revealing a
-  bitmap a few rows a frame (all of the title card, About's lettering band) costs no more than
+  bitmap a few rows a frame (all of the boot's title card, About's lettering band) costs no more than
   revealing cells: measured with Cracktro Chrome, About's wipe 65k busiest `ui_poll` and 118k a
   frame, the title card's 30k and 134k (4 rows of its scene and the edge a frame); bounded at
   `WIPE_WORST_POLL` 72,000 and `WIPE_PER_FRAME` 150,000 (host/crates/emu-gate/tests/screen.rs).
@@ -5636,7 +5592,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - `bitmap_codec`'s run dictionary (a pool's first fifteen bytes are its codebook) and checkpointed
   row packets (docs/art/bitmap-codec.md) let any row or span decode without another row or a scratch
   buffer; a byte holds a run of at most 16 pixels; checkpoints at an interval each pool carries
-  (`GRID_BITMAP_SEEK`, 64, is the tools' default: the title cards use 64, the logos 256, RED MOON
+  (`GRID_BITMAP_SEEK`, 64, is the tools' default: the logos use 256, RED MOON
   RITE 32). Pools are shared across images or kept independent, whichever is smaller.
   `byte_run_size` is the original byte-run coding, kept as the size comparison's control.
 - Each logo's run pool is its own array, named after its first logo: the firmware links only the
@@ -5707,7 +5663,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - A second bindgen pass for `--target=i686-unknown-none` gives the structs' field offsets and
   sizes as the pi32v2 lays them out (ILP32: 4-byte pointers and ints, no 64-bit fields in them),
   from bindgen's layout assertions (`sidou_sys::ilp32`). The emulator tests read the firmware's
-  chips, MIDI state, the LIVE view's tap, the title card and the song transport from its RAM with
+  chips, MIDI state, the LIVE view's tap and the song transport from its RAM with
   them; the host's own layout differs wherever a struct holds a pointer.
 - The 6502 is built twice more for the tests only, with every operand access through the hooks
   (`CPU6502_HOOK_ALL`) so that Tom Harte's tests check each access's cycle stamp:
@@ -6014,7 +5970,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 ### Generators and their checks
 
 - The generated C files (`app/font.c` and `font.h`, `credits.c`, `demo_song.c`,
-  `logo_bitmap.c`, `title_card_bitmap.c`, `scene_rmr_art.c`, `live_cutoff.c`, `live_freq.c`)
+  `logo_bitmap.c`, `scene_rmr_art.c`, `live_cutoff.c`, `live_freq.c`)
   carry only their SPDX header and one "Generated by ...; do not edit" line naming the generator.
   Their up-to-date tests compare the whole file, and each generator's update variable rewrites it
   (`check_or_write(update)` both generates and lists stale files). Generated lines stay within
@@ -6025,8 +5981,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   song region) are generated from `sidou_tests::song_embed` (`SIDOU_SONG_UPDATE=1`). The song is
   a canonical GTS5 file (decision record 0007): GoatTracker's own load and save give it back byte
   for byte, so it opens in GoatTracker unchanged.
-- `app/logo_bitmap.c` and `app/title_card_bitmap.c` come from `assets/logo/`
-  (`SIDOU_LOGO_UPDATE=1` rewrites both); `app/live_cutoff.c` and `app/live_freq.c` from
+- `app/logo_bitmap.c` comes from `assets/logo/` (`SIDOU_LOGO_UPDATE=1` rewrites it); `app/live_cutoff.c` and `app/live_freq.c` from
   `SIDOU_CUTOFF_TABLE_UPDATE=1` and `SIDOU_FREQ_TABLE_UPDATE=1`.
 
 ### sidou-sysex

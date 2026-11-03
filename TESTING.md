@@ -227,7 +227,7 @@ picker and empty-slot skipping, target changes without chip writes, overwrite co
 both keys and song-chip setups, profile preparation/ramping, boot load, retries and forced
 gaps, foreign-store refusal and clearing the slots on format.
 
-In fm1-emu, `settings.rs` changes CARDS, envelope mode and a learned TRS CC, then reboots
+In fm1-emu, `settings.rs` changes ROWS, envelope mode and a learned TRS CC, then reboots
 with the same flash and checks all three. It checks the full boot once per firmware version,
 an explicit SAVE within a second without the debounce, and menu-confirmed foreign formatting.
 `user_profile.rs` saves USER 3 from CHIP, reboots, picks it over CC 85 and compares the sound
@@ -1229,10 +1229,7 @@ SELECT, ALGORITHM):
   LEARNED toast, the menu, the glyph sheet (every glyph, the palette
   and a pixel overlay), the boot's prompt, loading and title card, About,
   each SCENE piece a second into a held chord, each CHIP page (the focus on
-  the chip, DIST, MOD and FX, the character and slots set over MIDI), and
-  the held frames of THE CHIP's, THE SCENE's and THE OSCILLATOR's title
-  cards (also checked against `assets/logo/title-chip.png`, `title-scene.png`
-  and `title-oscillator.png` pixel for pixel)
+  the chip, DIST, MOD and FX, the character and slots set over MIDI)
   match the golden images in `tests/golden/lcd/`, pixel
   for pixel, and every pixel is one of the 16 palette colours. The title
   card (but for its version and PRESS ANY KEY rows) and About's top 72 pixel
@@ -1265,13 +1262,7 @@ SELECT, ALGORITHM):
   it, a compile-time tie and a measured check; MIDI learn's frame over each
   piece and over LIVE, the band playing, keeps every frame within 200 cells
   and the SPI budget, opening and closing; a chord's note-ons change every
-  piece within two frames, and silence calms it. Each title card, from the
-  input to the end of the cut after it, keeps every frame within 200 cells
-  and the SPI budget, and is bounded in instructions a frame and in its
-  busiest `ui_poll`; the input that brings it in and the busiest main-loop
-  pass while it shows stay within the poll allowance together (compile-time
-  ties); any control skips it without its action, and a note from the keys
-  or MIDI plays and ends it. The CHIP view, idle, for a knob's detent and for
+  piece within two frames, and silence calms it. The CHIP view, idle, for a knob's detent and for
   its busiest frames (every control over MIDI at once, a focus move and a
   chip change), keeps every frame within 200 cells and the SPI budget and is
   bounded in instructions a frame and in its busiest `ui_poll`; SELECT,
@@ -1321,12 +1312,6 @@ its layers against the script's golden frames; its painter region, toast and
 MIDI learn's frame in SCENE), `scene_song.rs` (its music hooks: roles and
 drums guessed and from the `SCNE` chunk, the place in the bar and the fill,
 the bass, mutes, SIDOU LOOP through the transport, and the keys);
-`title_card.rs` (the cards' sequence
-frame by frame, the glow's levels against the art's, the held frames against
-their PNGs, the budget, skipping, notes playing through, nothing drawn over
-them, the CARDS option) and `title_card_bitmap.rs` (their converter: the drift
-test, the round trip, the compiled tables against the PNGs, the font's dither
-glyphs against the art's Bayer order, refusals and the size);
 `midi_learn.rs` has learn's state machine and its bindings through MIDI in and out.
 
 **A failure means** the screen looks different or costs more. If you meant
@@ -1937,7 +1922,7 @@ severity is high, medium, low or info.
 |---|---|---|
 | Readability (`READ.size.<view>`, `READ.contrast.<view>`) | each text on each captured screen: its scale (1x, 2x, 3x) from the grid's cell codes, its physical glyph height at 23.4 mm per 240 px (8 px x scale x 0.0975 mm), its colour pair's WCAG contrast from the 16-colour palette | text read while playing (values, notes, names) is at least 1.5 mm (2x); contrast at least 4.5:1 at 1x and 3:1 at 2x and larger. Which text is "read while playing" is the table `tables/readability.txt` (per view, by content: notes, values, names), editable, and it adapts to a redesign because it reads the grid, not coordinates |
 | Knob feel (`KNOB.<rule>.<control>.<view>`) | each of K1-K4 (LIVE page, EDIT held, CHIP), MASTER and the CHIP profile encoder swept end to end a detent at a time: the parameter read from the live instrument, the detent count, the step in cents (cutoff, from the firmware's own cutoff curve), dB (level) or % (others), and the spectral centroid and RMS of a held note rendered after each step (for the controls heard where a note starts, LIVE K3's decay on SAW LEAD and CHIP K3's thump, a new note from its first sample after each step) | `range`: a cutoff sweep covers 3 octaves or more; `audible`: the whole travel changes brightness by 600 cents or level by 3 dB; `dead`: no 4 detents leave both brightness (5%) and level (1 dB) unchanged; `fine`: a step is above its just-noticeable difference; `jump`: no step above its limit; `mono`: monotonic; `uneven`: step spread under 0.5; `detents`: 8 to 64 detents end to end |
-| Effort per task (`TASK.*`) | the journeys' steps tagged `task NAME`: presses, holds, turns and detents, menu levels (views pushed on the stack, a title card not counted), frames, forced waiting | at most 3 actions and 1 menu level (`task_max_actions`, `task_max_menu_levels`); a task that cannot be done is `TASK.missing` |
+| Effort per task (`TASK.*`) | the journeys' steps tagged `task NAME`: presses, holds, turns and detents, menu levels (views pushed on the stack), frames, forced waiting | at most 3 actions and 1 menu level (`task_max_actions`, `task_max_menu_levels`); a task that cannot be done is `TASK.missing` |
 | Feedback speed (`FEED.*`) | milliseconds from an input to the first changed pixel and to the value popup, over four phases of the 40 ms frame | the screen answers within 100 ms, the popup within 200 ms |
 | Consistency (`CONS.*`) | each of K1-K4, SELECT, ALGORITHM and HOME tried in LIVE, the menu, CHIP, TRACKER, SCENE, STATUS, MIDI and About: did the screen, a parameter or the view change | K1-K4 change a parameter, SELECT moves a focus or cursor (and no parameter), ALGORITHM steps a choice, HOME goes back; a control that does nothing is an exception, listed and compared with `docs/reference/controls.md` (`DOCUMENTED_INERT` in `consistency.rs`); drift between the two is a finding |
 | Journeys (`JOUR.*`, `SAFE.*`) | the table `tables/journeys.txt`: pick up and jam, sketch a loop, build a song, perform, keep what you made, explore, work with the song lists, keep a happy accident (from LIVE: ENV opens LAB, two knobs turned with a key down, SAVE keeps it as a USER sound; at most 3 actions for the task); per journey the time and actions to the first sound and first loop, mode switches, menu trips, dead ends, steps that take both hands off the keys or leave a note unable to sound, forced waiting | a step the firmware cannot do yet is recorded `not yet possible` (`JOUR.nyp`), not failed; an expectation that does not hold is a dead end (`JOUR.dead`); two hands off the keys is `JOUR.hands`; a step that overwrites edits unasked is `SAFE.destructive`; no undo is `SAFE.undo` |

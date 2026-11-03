@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+The title cards (THE OSCILLATOR, THE SCENE, THE CHIP) and the CARDS setting are gone.
+
+### Removed
+- **The title cards and SETTINGS' CARDS row.** CHIP and SCENE open at once from the menu and
+  HOME from the menu returns to LIVE directly; SETTINGS has nine items (KEYS, SOUNDS, ROWS,
+  STORE, THEME, REC, SPREAD, SID MODEL, RESET). The image is about 20 KB smaller. The boot's own
+  title screen stays. The settings record's byte 1, CARDS until now, is reserved: written as 0
+  and ignored on read, so older records still load; the layout and schema version are unchanged.
+
 ## [1.5.0] - 2026-11-02
 
 LAB's song bridge (send a sound to the song, pull one back); a .sid voice lifted into LAB;
