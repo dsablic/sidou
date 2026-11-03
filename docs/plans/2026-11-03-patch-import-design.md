@@ -94,10 +94,23 @@ channels and a pattern that triggers them together, so PLAY auditions it.
 
 ### MidiBox SID
 
-Not yet verified. The layout is in the MIOS SVN (`sid_sysex_table.inc`,
-`mbsidv2_sysex_implementation.txt`) and the JSynthLib module. The parser starts only after those
-are read and a patch file is checked against them; if the layout cannot be established from
-sources, that parser is dropped from the scope and the owner is told.
+Established from sources on 2026-11-03, and implemented (`sidou-patch`'s `mbsid`,
+`docs/design-notes.md`, "MIDIbox SID import", has the sources by file and commit and the mapping
+field by field). The format is the MIDIbox SID V2 patch: 512 bytes, sent as
+`F0 00 00 7E 4B <device> 02 <type> <bank> <patch>`, 1024 nibbles low first, a checksum, `F7`.
+The V2 PIC sources (`midibox/mios8`) and the V3 C struct (`midibox/mios32`, `MbSidStructs.h`)
+agree on every offset, and the four V2 preset banks shipped with the project decode with every
+checksum matching; the vintage bank matches V3's `sid_bank_preset_a.inc` byte for byte.
+
+- Only the Lead engine imports (three oscillators a SID, the closest to the SidStation). Bassline,
+  Drum and Multi patches are refused with their slot and engine, and the rest of the bank goes on.
+- The left SID is played; a right SID unlike it is reported.
+- Pitch follows V2's arithmetic: finetune and the global detune scale with the pitch range.
+- Losses, reported per patch: modulation paths (and with them the LFOs and envelopes, including
+  the filter envelope), wavetable sequencers, arpeggios, portamento, filter key tracking.
+- `sidou-sysex import` tells the formats apart by the header; the default song name is `MBSID`.
+- The local check is `tests/mbsid_presets.rs` with `MBSID_PRESETS` set to a bank (not
+  committed). In the vintage bank 119 of 128 patches are Lead and import.
 
 ### Tests
 
@@ -145,7 +158,7 @@ This will not change the character of a patch. It closes measured differences of
 5. The layered LAB sound and its cards, in fm1-emu.
 6. Table instruments and the patch song.
 7. The `import` command and docs.
-8. Track B step 2, and the MidiBox SID parser if its sources check out.
+8. Track B step 2. The MidiBox SID parser is done (its sources checked out).
 
 Steps 1, 3 and 4 do not depend on the budget decision. Steps 5 and 6 do.
 
