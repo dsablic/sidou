@@ -5,7 +5,7 @@ use std::fmt;
 
 use sidou_sys::*;
 
-use crate::model::{Oscillator, Patch, VoiceMode, OSCILLATORS};
+use crate::model::{Oscillator, Patch, Unmapped, VoiceMode, OSCILLATORS};
 
 pub const BYTES: usize = LAB_SOUND_BYTES as usize;
 const CONTROL_KEPT: u8 = 0xF6;
@@ -23,6 +23,7 @@ pub enum Loss {
     FixedNote(usize),
     TransposeClamped(usize),
     DetuneClamped(usize),
+    Unmapped(Unmapped),
 }
 
 impl fmt::Display for Loss {
@@ -33,6 +34,14 @@ impl fmt::Display for Loss {
             Self::FixedNote(n) => write!(f, "OSC {n} FIXED NOTE: PLAYS THE KEY"),
             Self::TransposeClamped(n) => write!(f, "OSC {n} TRANSPOSE CLAMPED"),
             Self::DetuneClamped(n) => write!(f, "OSC {n} DETUNE CLAMPED"),
+            Self::Unmapped(u) => match u {
+                Unmapped::ModulationPath(n) => write!(f, "MOD PATH {n}: DROPPED"),
+                Unmapped::Wavetable(n) => write!(f, "WAVETABLE {n}: DROPPED"),
+                Unmapped::Arpeggio(n) => write!(f, "OSC {n} ARP: DROPPED"),
+                Unmapped::Portamento(n) => write!(f, "OSC {n} PORTAMENTO: DROPPED"),
+                Unmapped::FilterKeyTracking => f.write_str("FILTER KEYTRACK: DROPPED"),
+                Unmapped::RightSid => f.write_str("RIGHT SID: LEFT KEPT"),
+            },
         }
     }
 }
@@ -162,5 +171,6 @@ pub fn lab_sound(patch: &Patch) -> ([u8; BYTES], Vec<Loss>) {
     s[LAB_SOUND_ARP as usize + LIVE_ARP_SPAN as usize] = 1;
     filter_envelope(patch, &mut s);
     report(patch, &layers, &mut losses);
+    losses.extend(patch.unmapped.iter().copied().map(Loss::Unmapped));
     (s, losses)
 }

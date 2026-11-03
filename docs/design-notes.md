@@ -6049,6 +6049,63 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   pack), a refused tune named on stderr and left out; emu-gate's `psid_store` loads the pack into
   an emulated store.
 
+### MIDIbox SID import
+
+`sidou-patch`'s `mbsid` reads MIDIbox SID V2 patch dumps into the shared patch model, and
+`sidou-sysex import` tells the two formats apart by the first message's header (`F0 00 00 7E 4B`
+is MIDIbox SID, anything else goes to the SidStation reader). The MIDIbox sources are "personal
+non-commercial use only", so they were read as a specification and no code was copied.
+
+Sources, each checked against the others:
+
+| Source | What it settles |
+|---|---|
+| [midibox/mios8](https://github.com/midibox/mios8) `apps/synthesizers/midibox_sid_v2/doc/mbsidv2_sysex_implementation.txt`, commit `98251ece` | The dump (`02`), the 512-byte layout, the Lead engine's fields |
+| the same tree's `src/app_defines.h` (`SID_Ix_*`) | Every offset, the same as the text, plus `OSC_DTM` at `0x0DE` |
+| the same tree's `src/sid_se.inc` (`SIDSE_Pitch_*`, `SIDSE_Filter`), `src/sid_se_l.inc` (`SIDSE_L_MOD`, `SIDSE_L_WT_*`) | Pitch and detune arithmetic, the 12-bit cutoff, a path at depth `0x80` doing nothing, a wavetable step's relative zero |
+| [midibox/mios32](https://github.com/midibox/mios32) `apps/synthesizers/midibox_sid_v3/core/MbSidStructs.h` (`sid_patch_t`), `MbSidSysEx.cpp`, `doc/mbsidv3_sysex_implementation.txt`, commit `44d8e6af` | The same layout as a C struct; the checksum and the low nibble first |
+| the same tree's `tools/v2_to_c.pl` and `core/sid_bank_preset_a.inc` | A second reader of the dump; the vintage bank decoded by hand matches the `.inc` byte for byte |
+| `mios8` `apps/synthesizers/midibox_sid_v2/presets/*.syx` (4 banks of 128) | Real data: every checksum matches, 1036 bytes a message |
+
+The dump: `F0 00 00 7E 4B <device> 02 <type> <bank> <patch>`, 1024 bytes holding the patch's
+512 bytes low nibble first, a checksum that brings the nibbles' sum to zero modulo 128, `F7`.
+Types `00` to `0F` are patches (`08` the edit buffer), `70` ensembles; other commands and types are
+skipped. Bytes `0x00` to `0x4F` are common to every engine; `0x10` bits 1:0 pick the engine.
+
+The Lead engine is two SIDs of three voices. SIDOU plays the left one:
+
+| MIDIbox SID (Lead) | Model |
+|---|---|
+| Name `0x00`, 16 characters | The name; a blank one is named after its slot (`B045`) |
+| `0x50` bit 0 | `legato`; every Lead patch layers its voices on one key (`VoiceMode::Single`) |
+| Voice `0x61` bits 3:0, 5, 6 (tri, saw, pulse, noise; sync; ring) | `control` in SID layout |
+| Voice `0x61` bit 4, filter `0x54` bit 7 (OSC3 off), no waveform | The oscillator is not active |
+| Voice `0x62`, `0x63` | ADSR (sustain in the high nibble, as the SID takes it) |
+| Voice `0x64`, `0x65` 12-bit pulse | `pulse_width_start`, to the nearest 32 |
+| Transpose `0x68` (`0x40` is zero), finetune `0x69`, pitch range `0x6A`, detune `0x51` | `transpose` and `detune`, folded: whole semitones in `transpose`, the rest in 64ths |
+| Pitch range `0x6A` | `bend_range` (semitones a full bend) |
+| Filter `0x54` bits 2:0, 6:4; `0x55`/`0x56` 12-bit cutoff; `0x57` | Routing, mode, cutoff (12 bits to the model's 7), resonance (its top nibble) |
+
+Pitch follows V2's engine: an offset of `pitchrange * (2 * (finetune - 0x80) + d) / 256`
+semitones, with d the detune `0x51`'s share for the voice (OSC1 `+d/4`, OSC2 `+d`, OSC3 `-d`),
+and no offset at all at pitch range 0. The V3 port scales finetune by a quarter of that; V2 is the
+engine these patches were made on, so V2 wins.
+
+Lost, and reported in the import's loss lines (`Unmapped` in the model, `Loss::Unmapped` in
+`lab.rs`): a modulation path with a non-zero operator, depth other than `0x80` and a target; a
+wavetable sequencer with an assignment and a step in its range other than `0x40`; an arpeggio or a
+portamento on a sounding voice; filter key tracking on a used filter; a right SID unlike the
+left. ENV1/ENV2 and the six LFOs act only through modulation paths, so the paths stand for them.
+Left out silently: volume, oscillator phase, `OSC_DTM`'s super-saw modes, the trigger matrix,
+knobs, external parameters, the SwinSID fields, the envelope delay, WTO and SusKey, the filter's
+interpolation bit and the hardware flags (the SID model is chosen with `--8580`). Bassline, Drum
+and Multi patches are refused with their slot, name and engine; a damaged checksum is refused
+the same way, and the rest of the bank still imports.
+
+A filter envelope is a modulation path from ENV1 or ENV2 to the cutoff on the MIDIbox, so it is a
+loss today; mapping that one shape of path to the model's filter envelope is the obvious next
+gain.
+
 ### sidou-pack
 
 - `harness/felucca/uac_test.c` is Felucca's upstream test code (GPL-3.0-only), kept byte for
