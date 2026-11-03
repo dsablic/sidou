@@ -2592,7 +2592,11 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
             e.at[i] & LAB_EDIT_FIRST as u8 != 0
         })
         .count();
-    assert_eq!(firsts as u32, small_left + 1, "each step's first entry is marked");
+    assert_eq!(
+        firsts as u32,
+        small_left + 1,
+        "each step's first entry is marked"
+    );
 }
 
 #[test]

@@ -21,9 +21,30 @@ struct Layer {
 }
 
 const LAYERS: [Layer; 3] = [
-    Layer { control: SAW, ad: 0x12, sr: 0xa3, pulse: 0x800, transpose: 0, detune: 0 },
-    Layer { control: PULSE, ad: 0x45, sr: 0x86, pulse: 0x400, transpose: 12, detune: 0 },
-    Layer { control: TRIANGLE, ad: 0x78, sr: 0x59, pulse: 0x200, transpose: -12, detune: 25 },
+    Layer {
+        control: SAW,
+        ad: 0x12,
+        sr: 0xa3,
+        pulse: 0x800,
+        transpose: 0,
+        detune: 0,
+    },
+    Layer {
+        control: PULSE,
+        ad: 0x45,
+        sr: 0x86,
+        pulse: 0x400,
+        transpose: 12,
+        detune: 0,
+    },
+    Layer {
+        control: TRIANGLE,
+        ad: 0x78,
+        sr: 0x59,
+        pulse: 0x200,
+        transpose: -12,
+        detune: 25,
+    },
 ];
 
 fn tuning_at(layer: usize) -> usize {
@@ -157,4 +178,95 @@ fn layers_out_of_range_or_with_one_voice_sync_are_no_sound() {
     for (what, s) in broken {
         assert!(!valid(&s), "{what}");
     }
+}
+
+fn set_layers(rig: &mut Rig, extra: u32) -> bool {
+    unsafe { live_layers_set(&mut *rig.live, extra) != 0 }
+}
+
+fn edit_layer(rig: &mut Rig, n: u32) {
+    unsafe { live_layer_edit_set(&mut *rig.live, n) };
+}
+
+#[test]
+fn a_new_layer_starts_as_a_copy_of_the_first_and_sounds() {
+    let mut rig = rig_with(&layered(1));
+    assert!(set_layers(&mut rig, 2));
+    let s = rig.sound();
+    for n in 1..3 {
+        let at = voice_at(n);
+        assert_eq!(s[at], s[LAB_SOUND_CONTROL as usize], "layer {n}'s waveform");
+        assert_eq!(s[at + 1], s[LAB_SOUND_AD as usize]);
+        assert_eq!(s[at + 2], s[LAB_SOUND_SR as usize]);
+    }
+    rig.note_on(NOTE);
+    assert!((0..3).all(|v| rig.gated(v)));
+}
+
+#[test]
+fn the_edited_layer_takes_the_waveform_envelope_and_pulse_parameters() {
+    let mut rig = rig_with(&layered(3));
+    edit_layer(&mut rig, 2);
+    rig.set_param(LIVE_PARAM_WAVEFORM, u32::from(SAW >> 4));
+    rig.set_param(LIVE_PARAM_ATTACK, 9);
+    rig.set_param(LIVE_PARAM_RELEASE, 2);
+    rig.set_param(LIVE_PARAM_PULSE_WIDTH, 0x300);
+    assert_eq!(rig.param(LIVE_PARAM_WAVEFORM), u32::from(SAW >> 4));
+    assert_eq!(rig.param(LIVE_PARAM_ATTACK), 9);
+    rig.note_on(NOTE);
+    assert_eq!(rig.control(2), SAW | 1);
+    assert_eq!(rig.reg(2 * 7 + 5) >> 4, 9);
+    assert_eq!(rig.reg(2 * 7 + 6) & 0x0f, 2);
+    assert_eq!(rig.voice_pw(2), 0x300);
+    for (v, layer) in LAYERS.iter().enumerate().take(2) {
+        assert_eq!(
+            rig.control(v as u8),
+            layer.control | 1,
+            "layer {v} untouched"
+        );
+        assert_eq!(rig.reg(v as u8 * 7 + 5), layer.ad);
+    }
+    edit_layer(&mut rig, 0);
+    assert_eq!(
+        rig.param(LIVE_PARAM_WAVEFORM),
+        u32::from(LAYERS[0].control >> 4)
+    );
+}
+
+#[test]
+fn transpose_and_detune_move_only_the_edited_layer() {
+    let mut rig = rig_with(&layered(2));
+    rig.note_on(NOTE);
+    let first = rig.voice_freq(0);
+    edit_layer(&mut rig, 1);
+    unsafe {
+        live_layer_transpose_set(&mut *rig.live, 7);
+        live_layer_detune_set(&mut *rig.live, -10);
+    }
+    assert_eq!(rig.voice_freq(0), first);
+    let fifth_flat = 2f64.powf((7.0 - 0.1) / 12.0);
+    assert!((ratio(rig.voice_freq(1), first) - fifth_flat).abs() < 0.002);
+    assert_eq!(unsafe { live_layer_transpose(&*rig.live) }, 7);
+    assert_eq!(unsafe { live_layer_detune(&*rig.live) }, -10);
+    unsafe { live_layer_transpose_set(&mut *rig.live, 99) };
+    assert_eq!(
+        unsafe { live_layer_transpose(&*rig.live) },
+        LIVE_TRANSPOSE_MAX as i32
+    );
+}
+
+#[test]
+fn fewer_layers_pull_the_edit_back_and_one_voice_sync_refuses_layers() {
+    let mut rig = rig_with(&layered(3));
+    edit_layer(&mut rig, 2);
+    assert!(set_layers(&mut rig, 1));
+    assert_eq!(rig.live.layer_edit, 1);
+    edit_layer(&mut rig, 2);
+    assert_eq!(rig.live.layer_edit, 1, "no layer past the count");
+
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.set_preset(2);
+    assert_eq!(rig.live.mono_sync, 1, "SYNC LEAD");
+    assert!(!set_layers(&mut rig, 1));
+    assert_eq!(rig.live.layers, 0);
 }

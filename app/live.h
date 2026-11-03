@@ -356,6 +356,7 @@ typedef struct {
     int8_t transpose[LIVE_VOICES];
     int8_t detune[LIVE_VOICES];
     live_layer layer[LIVE_LAYERS_MAX];
+    uint8_t layer_edit;
 } live;
 
 #define LIVE_PROFILE_NONE 0xffu
@@ -418,6 +419,14 @@ uint32_t live_pwm_step(uint32_t rate);
 uint32_t live_pwm_rate(uint32_t step);
 
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
+uint32_t live_layers_set(live* l, uint32_t extra);
+uint8_t live_edit_control(const live* l);
+uint16_t live_edit_pulse_width(const live* l);
+void live_layer_edit_set(live* l, uint32_t n);
+void live_layer_transpose_set(live* l, int32_t semis);
+void live_layer_detune_set(live* l, int32_t cents);
+int32_t live_layer_transpose(const live* l);
+int32_t live_layer_detune(const live* l);
 uint8_t live_voice_control(const live* l, uint32_t v);
 void live_rewrite_voice(live* l, uint32_t v);
 void live_rewrite(live* l);
