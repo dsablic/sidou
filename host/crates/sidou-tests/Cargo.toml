@@ -31,6 +31,10 @@ name = "sidou-compare"
 path = "src/bin/sidou_compare.rs"
 
 [[bin]]
+name = "filter-metrics"
+path = "src/bin/filter_metrics.rs"
+
+[[bin]]
 name = "harte-subset"
 path = "src/bin/harte_subset.rs"
 

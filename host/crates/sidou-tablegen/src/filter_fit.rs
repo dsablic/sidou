@@ -142,7 +142,7 @@ fn render(s: &CurveSetting, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
     out
 }
 
-fn fft(re: &mut [f64], im: &mut [f64], twiddle: &[(f64, f64)]) {
+pub fn fft(re: &mut [f64], im: &mut [f64], twiddle: &[(f64, f64)]) {
     let n = re.len();
     let mut j = 0;
     for i in 1..n {
@@ -178,13 +178,17 @@ fn fft(re: &mut [f64], im: &mut [f64], twiddle: &[(f64, f64)]) {
 
 pub struct Spectra(Vec<(Vec<f64>, Vec<f64>)>);
 
-pub fn spectra(x: &[f64]) -> Spectra {
-    let twiddle: Vec<(f64, f64)> = (0..SEGMENT / 2)
+pub fn twiddles(n: usize) -> Vec<(f64, f64)> {
+    (0..n / 2)
         .map(|k| {
-            let a = -2.0 * PI * k as f64 / SEGMENT as f64;
+            let a = -2.0 * PI * k as f64 / n as f64;
             (libm::cos(a), libm::sin(a))
         })
-        .collect();
+        .collect()
+}
+
+pub fn spectra(x: &[f64]) -> Spectra {
+    let twiddle = twiddles(SEGMENT);
     let window: Vec<f64> = (0..SEGMENT)
         .map(|i| 0.5 - 0.5 * libm::cos(2.0 * PI * i as f64 / SEGMENT as f64))
         .collect();
@@ -775,14 +779,8 @@ mod tests {
     fn fft_matches_a_direct_dft() {
         let n = 64;
         let x: Vec<f64> = (0..n).map(|i| ((i * 7919) % 13) as f64 - 6.0).collect();
-        let twiddle: Vec<(f64, f64)> = (0..n / 2)
-            .map(|k| {
-                let a = -2.0 * PI * k as f64 / n as f64;
-                (libm::cos(a), libm::sin(a))
-            })
-            .collect();
         let (mut re, mut im) = (x.clone(), vec![0.0; n]);
-        fft(&mut re, &mut im, &twiddle);
+        fft(&mut re, &mut im, &twiddles(n));
         for k in 0..n {
             let (mut r, mut i) = (0.0, 0.0);
             for (j, &v) in x.iter().enumerate() {
