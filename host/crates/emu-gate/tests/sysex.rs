@@ -640,3 +640,88 @@ fn a_production_trs_put_with_keys_held_waits_out_a_record_and_commits() {
     );
     check_passes(&m);
 }
+
+const LAYERED_PATCH: [(usize, u8); 8] = [
+    (22, 0b111),
+    (36 + 15, 0x20),
+    (57 + 15, 0x40),
+    (78 + 15, 0x10),
+    (36 + 8, 15),
+    (57 + 8, 15),
+    (78 + 8, 15),
+    (57 + 3, 12),
+];
+const DECODED_PATCH_BYTES: usize = 146;
+
+fn layered_bank() -> Vec<u8> {
+    let mut decoded = b"LAYERED   ".to_vec();
+    decoded.resize(DECODED_PATCH_BYTES - 3, 0);
+    decoded.extend([0xFF; 3]);
+    for (at, value) in LAYERED_PATCH {
+        decoded[at] = value;
+    }
+    sidou_patch::patch_dump(&decoded, 0)
+}
+
+#[test]
+fn an_imported_sidstation_song_pulls_its_layered_sound_into_lab() {
+    let Some(fw) = firmware("the SidStation import test") else {
+        return;
+    };
+    let bank = layered_bank();
+    let files =
+        sidou_sysex::import::bank_files(&bank, sidou_sysex::import::Model::Mos6581, "SIDSTN")
+            .unwrap();
+    let patch = sidou_patch::parse_bank(&bank).unwrap().remove(0);
+    let (want, _) = sidou_patch::lab::lab_sound(&patch);
+    assert_eq!(want[LAB_SOUND_LAYERS as usize], 2, "three oscillators");
+    let mut m = boot(&fw, false);
+    put(&mut m, &fw, 2, 0, "", &files.songs[0].sng);
+    common::panel::open_lab(&mut m, &fw);
+    for _ in 0..4 {
+        common::panel::press(&mut m, common::panel::SEQ);
+        m.run_ms(400);
+    }
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("song_pages_instr_view")
+    );
+    let presets = SONG_PAGES_ENC_PRESETS as u8;
+    m.turn(presets, -(GT2_MAX_INSTR as i32));
+    m.run_ms(common::panel::turn_time(GT2_MAX_INSTR as i32) + 2 * common::panel::TURN_SETTLE_MS);
+    common::panel::press(&mut m, common::panel::ENV);
+    m.run_ms(400);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("lab_view_view"));
+    let live = fw.symbol("instrument");
+    let field = |m: &mut Machine, at: usize| m.soc.read8(live + at as u32);
+    let layer_voice =
+        |n: usize| (LAB_SOUND_LAYER_VOICE + n as u32 * LAB_SOUND_LAYER_VOICE_BYTES) as usize;
+    let tuning =
+        |n: usize| (LAB_SOUND_LAYER_TUNING + n as u32 * LAB_SOUND_LAYER_TUNING_BYTES) as usize;
+    assert_eq!(
+        field(&mut m, ilp32::live::layers),
+        want[LAB_SOUND_LAYERS as usize]
+    );
+    assert_eq!(
+        field(&mut m, ilp32::live::control),
+        want[LAB_SOUND_CONTROL as usize]
+    );
+    for n in 0..2 {
+        let at = ilp32::live::layer + n * ilp32::live_layer::SIZE + ilp32::live_layer::control;
+        assert_eq!(
+            field(&mut m, at),
+            want[layer_voice(n)],
+            "layer {}'s waveform",
+            n + 2
+        );
+    }
+    for n in 0..3 {
+        let at = ilp32::live::transpose + n;
+        assert_eq!(
+            field(&mut m, at),
+            want[tuning(n)],
+            "layer {}'s transpose",
+            n + 1
+        );
+    }
+}
