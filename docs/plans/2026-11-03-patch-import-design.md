@@ -184,6 +184,7 @@ Steps 1, 3 and 4 do not depend on the budget decision. Steps 5 and 6 do.
 
 ## Not decided
 
-- The conversion of a SidStation table speed to GT2 frames: measured against the emulator.
+- The conversion of a SidStation table speed to GT2 frames: 50 × speed / sync speed frames a
+  step, fixed notes as MIDI numbers; both by ear on the factory bank on a real FM-1, 2026-11-04.
 - Whether the filter envelope needs its own LAB control: if the filter LFO stands in for it
   poorly, the owner chooses between a new control and a reported loss.

@@ -47,5 +47,5 @@ so the pulled sound plays without it; the report says so.
 | The filter envelope (depth, direction, ADSR) | LFOs, the modulation matrix, the arpeggiator, portamento (MIDIbox SID: its modulation paths, wavetables and right SID) |
 
 Two SidStation details are not documented and are read as best known: a table's fixed notes as
-MIDI note numbers, and a table's speed as a divider of the patch's update rate. A table that
-plays at the wrong pitch or speed is worth reporting.
+MIDI note numbers, and a table's speed as a divider of the patch's update rate. Both sound right
+on the factory bank; a table that plays at the wrong pitch or speed is worth reporting.
