@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 
+#include "lab_cards.h"
 #include "live.h"
 
 #ifdef __cplusplus
@@ -18,6 +19,8 @@ extern "C" {
 #define MIDI_MAP_CC_SPREAD 117u
 #define MIDI_MAP_NRPN(msb, lsb) ((uint16_t)((msb) << 7 | (lsb)))
 #define MIDI_MAP_NULL 127u
+#define MIDI_MAP_LAB_FIRST 0xc0u
+#define MIDI_MAP_LAB_CARD(card) (MIDI_MAP_LAB_FIRST + (card))
 
 typedef enum {
     MIDI_CURVE_LINEAR = 0,
@@ -39,7 +42,7 @@ typedef struct {
     uint8_t curve;
 } midi_map_entry;
 
-enum { MIDI_MAP_ROWS = 43u + SID_EXPERT_COUNT + LIVE_PARAM_TAIL };
+enum { MIDI_MAP_ROWS = 43u + SID_EXPERT_COUNT + LIVE_PARAM_TAIL + LAB_CARDS };
 
 extern const midi_map_entry midi_map_rows[MIDI_MAP_ROWS];
 const midi_map_entry* midi_map_row(uint32_t i);

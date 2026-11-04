@@ -1032,7 +1032,9 @@ static void table_fresh(live* l, uint32_t r) {
     uint32_t layer = l->layers ? l->layer_edit : 0u;
     t[0] = (uint8_t)(LAB_TABLE_ON | layer << LAB_TABLE_LAYER_SHIFT | 1u);
     t[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE] = live_layer_control_of(l, l->layer_edit);
-    t[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 1u] = (uint8_t)(1u + r % VARY_NOTE_SPAN);
+    int32_t off = (int32_t)(r % (2u * VARY_NOTE_SPAN)) - (int32_t)VARY_NOTE_SPAN;
+    off += off >= 0 ? 1 : 0;
+    t[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 1u] = (uint8_t)(off < 0 ? (int32_t)LAB_TABLE_NOTE_NONE + off : off);
     live_table_set(l, t);
 }
 
@@ -1040,6 +1042,7 @@ static void vary_once(lab_view* lv) {
     uint32_t used = 0;
     if (lv->page == LAB_PAGE_TABLE && !lab_table_on(lv->l)) {
         table_fresh(lv->l, rnd(lv));
+        return;
     }
     for (uint32_t k = 0; k < 4u; k++) {
         uint32_t r = rnd(lv);
@@ -1087,7 +1090,10 @@ static void roll(lab_view* lv, screen* s, int whole) {
     for (uint32_t k = 0; k < 10u && !ok && !whole; k++) {
         live_sound_apply(l, before);
         int32_t d = k & 1u ? -1 : 1;
-        if (k >= 8u) {
+        if (lv->page == LAB_PAGE_TABLE && !lab_table_on(l)) {
+            table_fresh(l, k & 1u ? VARY_NOTE_SPAN - 1u - k / 2u : VARY_NOTE_SPAN + k / 2u);
+            ok = fresh(lv, before);
+        } else if (k >= 8u) {
             if (lv->page != LAB_PAGE_ENVELOPE) {
                 choice_turn(lv, d);
                 ok = fresh(lv, before);

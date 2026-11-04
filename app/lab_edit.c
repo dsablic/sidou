@@ -333,6 +333,7 @@ static int32_t pair_db(const uint8_t s[LAB_SOUND_BYTES], const int32_t db[LIVE_V
 #define TABLE_CLOSE_DB 3
 #define HALVING_DB 3
 #define TEST_BIT 0x08u
+#define NOISE_WAVE 0x08u
 #define TABLE_C0 12
 #define TABLE_C4 60
 #define TABLE_ABOVE_C4 67
@@ -372,7 +373,8 @@ static int32_t table_db(const uint8_t s[LAB_SOUND_BYTES], const uint8_t layer_so
             continue;
         }
         const uint8_t* st = &s[LAB_SOUND_TABLE_STEPS + 2u * i];
-        if (st[0] & TEST_BIT) {
+        uint32_t wave = st[0] >> 4;
+        if ((st[0] & TEST_BIT) || ((wave & NOISE_WAVE) && wave != NOISE_WAVE)) {
             continue;
         }
         memcpy(step_sound, layer_sound, LAB_SOUND_BYTES);
@@ -387,15 +389,16 @@ static int32_t table_db(const uint8_t s[LAB_SOUND_BYTES], const uint8_t layer_so
     if (loud == NONE) {
         return NONE;
     }
-    uint32_t near = 0;
+    uint32_t near = 0, played = 0;
     for (uint32_t i = 0; i < LAB_TABLE_STEPS_MAX; i++) {
         near += db[i] >= loud - TABLE_CLOSE_DB ? count[i] : 0u;
+        played += count[i] != 0u;
     }
     while (near < TABLE_FRAMES) {
         near *= 2u;
         loud -= HALVING_DB;
     }
-    return loud - TABLE_CLOSE_DB;
+    return played > 1u ? loud - TABLE_CLOSE_DB : loud;
 }
 
 uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {

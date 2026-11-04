@@ -18,6 +18,9 @@ All notable changes are documented here. The format follows
   oscillator's SidStation table on the LAB sound; the others still play from their song
   instruments, and the report names them.
 
+- **An NRPN for every LAB card.** FILTER ENV, LAYERS and TABLE's cards, which had none, are NRPN
+  group 7 (7/0..7/14), one a card, its value the card's position: a DAW can automate each.
+
 ### Fixed
 - An imported SidStation table played each step a frame too long when a step lasted two frames or
   more (GoatTracker holds a delay row one frame past its value).

@@ -113,7 +113,7 @@ int lab_table_card(const live* l, uint32_t step, uint32_t k, char* name, char* v
         } else {
             lab_table_note_text(st[1], value);
         }
-        *fill = fresh ? 0u : (uint32_t)(lab_table_offset(st[1]) + LAB_TABLE_NOTE_SPAN);
+        *fill = (uint32_t)((fresh ? 0 : lab_table_offset(st[1])) + LAB_TABLE_NOTE_SPAN);
         *max = 2u * LAB_TABLE_NOTE_SPAN;
         break;
     default: {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "midi_map.h"
 
+#include "lab_table.h"
+
 #include <stddef.h>
 
 #include "chip_spread.h"
@@ -30,6 +32,7 @@
 #define NRPN_CHARACTER 2u
 #define NRPN_SLOT 3u
 #define NRPN_EXPRESSION 6u
+#define NRPN_LAB 7u
 #define NO_CC MIDI_MAP_NO_CC
 
 #define RPN_BEND_RANGE 0u
@@ -202,6 +205,35 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
         "(of 2048) / 8 on top of it; a preset's (none)",
         LIVE_PARAM_PWM_LINK, NO_CC, NRPN(NRPN_LIVE, 11), 2 * LIVE_LINK_MAX, LIVE_LINK_MAX, STEPS),
 
+#define LAB_ROW_CURVE(card, n, v, mx, def, cv)                                                    \
+    ROW("LAB", n, v, MIDI_MAP_LAB_CARD(card), NO_CC, NRPN(NRPN_LAB, card), mx, def, cv)
+#define LAB_ROW(card, n, v, mx, def) LAB_ROW_CURVE(card, n, v, mx, def, STEPS)
+    LAB_ROW(LAB_CARD_FENV_DEPTH, "FILTER ENV depth",
+            "0..126 = -63..+63, 63 off: the cutoff moves by the depth x 32 at the envelope's peak", 2u * LIVE_FENV_DEPTH_MAX,
+            LIVE_FENV_DEPTH_MAX),
+    LAB_ROW(LAB_CARD_FENV_ATTACK, "FILTER ENV attack", "0..15, the SID's rates", 15u, 0),
+    LAB_ROW(LAB_CARD_FENV_DECAY, "FILTER ENV decay", "0..15, the SID's rates", 15u, 0),
+    LAB_ROW(LAB_CARD_FENV_SUSTAIN, "FILTER ENV sustain", "0..15, the level", 15u, 0),
+    LAB_ROW(LAB_CARD_FENV_RELEASE, "FILTER ENV release", "0..15, the SID's rates", 15u, 0),
+    LAB_ROW(LAB_CARD_LAYERS, "LAYERS count", "0 one oscillator, 1 two, 2 three (not on a one-voice sync sound)", LIVE_LAYERS_MAX, 0),
+    LAB_ROW(LAB_CARD_LAYER_EDIT, "LAYERS edit", "0..2: the layer OSC, ENVELOPE and the cards below edit, up to the count", LIVE_LAYERS_MAX, 0),
+    LAB_ROW(LAB_CARD_LAYER_TRANSPOSE, "LAYERS transpose", "0..48 = -24..+24 semitones, the edited layer's", 2u * LIVE_TRANSPOSE_MAX, LIVE_TRANSPOSE_MAX),
+    LAB_ROW_CURVE(LAB_CARD_LAYER_DETUNE, "LAYERS detune", "0..198 = -99..+99 cents, the edited layer's",
+                  2u * LIVE_DETUNE_CENTS, LIVE_DETUNE_CENTS, LINEAR),
+    LAB_ROW(LAB_CARD_LAYER_FILTER, "LAYERS filter", "0 off, 1 on: the edited layer into the filter", 1u, 1),
+    LAB_ROW(LAB_CARD_TABLE_END, "TABLE ending",
+            "0 off, 1 play once, 1 + n loop from step n (up to the steps); on from off: step 1 is the layer's waveform", 1u + LAB_TABLE_STEPS_MAX,
+            0),
+    LAB_ROW(LAB_CARD_TABLE_STEP, "TABLE step", "0..15 = step 1..16, the step the cards below edit; one past the end adds one", LAB_TABLE_STEPS_MAX - 1u, 0),
+    LAB_ROW(LAB_CARD_TABLE_WAVE, "TABLE wave",
+            "the edited step's: 0 END (from OFF only: ends the table there), 1 OFF, 2 TRI, 3 SAW, 4 PUL, 5 NOI, "
+            "6 T+S, 7 T+P, 8 S+P, 9 TSP, 10 TRR, 11 SAS, 12 PUS; on NEW it adds the step", LAB_TABLE_WAVE_CODES - 1u,
+            0),
+    LAB_ROW(LAB_CARD_TABLE_NOTE, "TABLE note", "0..48 = -24..+24 semitones from the key, the edited step's", 2u * LAB_TABLE_NOTE_SPAN, LAB_TABLE_NOTE_SPAN),
+    LAB_ROW(LAB_CARD_TABLE_FRAMES, "TABLE frames", "0..15 = 1..16 frames of 50 Hz a step", LAB_TABLE_RATE_MAX - 1u, 0),
+#undef LAB_ROW
+#undef LAB_ROW_CURVE
+
     ROW("Output", "Spread",
         "SETTINGS' SPREAD, 0..100 %: 0 mono, 100 chip A left and chip B right, equal power; "
         "saved with the settings (not a preset's, not learned, not sent)",
@@ -303,19 +335,31 @@ uint8_t midi_map_to_cc(const live* l, const midi_map_entry* e, uint32_t value) {
     return (uint8_t)((value * 127u + max / 2u) / max);
 }
 
+static int lab_card_param(uint32_t param) {
+    return param >= MIDI_MAP_LAB_FIRST && param < MIDI_MAP_LAB_CARD(LAB_CARDS);
+}
+
 uint32_t midi_map_param_get(const live* l, uint32_t param) {
+    if (lab_card_param(param)) {
+        return lab_card_get(l, param - MIDI_MAP_LAB_FIRST);
+    }
     return param == MIDI_MAP_SPREAD ? l->spread : live_param_get(l, param);
 }
 
 void midi_map_param_set(live* l, uint32_t param, uint32_t value) {
     if (param == MIDI_MAP_SPREAD) {
         chip_spread_set(l, value);
+    } else if (lab_card_param(param)) {
+        lab_card_set(l, param - MIDI_MAP_LAB_FIRST, value);
     } else {
         live_param_set(l, param, value);
     }
 }
 
 uint32_t midi_map_param_max(uint32_t param) {
+    if (lab_card_param(param)) {
+        return lab_card_max(param - MIDI_MAP_LAB_FIRST);
+    }
     return param == MIDI_MAP_SPREAD ? CHIP_SPREAD_MAX : live_param_max(param);
 }
 

@@ -3785,9 +3785,28 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   the layer with that step's control and pitch (a step with the test bit is silent); the level is
   the loudest step's less 3 dB for each halving of the time the steps within 3 dB of it play, and
   a 3 dB margin: the estimate errs quiet, as the random sounds' worst cases showed it must.
+- The margin is only for a table whose first 500 ms play more than one step: a table of one step
+  plays as its layer with another waveform or pitch, which the layer's own estimate covers, and the
+  margin there refused borderline sounds that sounded as before. A step that mixes noise with
+  another waveform counts as silent (on the chip the mix locks the noise to near zero). Known gap:
+  the default seed passes, and so do most others, but a few random tables with ring or sync steps
+  on a layered sound pass the estimate and render under -40 dB on other seeds (`LAB_SEED=1`, `9`,
+  `5`, `123456`); the partner model reads the layers' own controls, not their tables'. The
+  variations and rolls in LAB never make such steps themselves except by turning WAVE to `TRR`,
+  `SAS` or `PUS`.
 - A roll rests (turns off) the table on the layer it reshapes: the table would replace the rolled
   waveform, and a table varied silent would leave every roll refused. A variation of a table that
   is off starts a new one-step table, so EDIT + ARP on TABLE always has something to move.
+
+### LAB cards over MIDI (1.7)
+
+- The cards that are no instrument parameter get NRPN group 7 (`midi_map.c`'s `LAB_ROW`, `lab_cards.c`):
+  numbered by card, not by page, so a page added later moves no number; the value is the card's
+  bar position and a set is the card turned by the difference, so an NRPN clamps exactly as the
+  knob does (EDIT past the count, a step past the end, END only from OFF). They are not
+  `live_param`s: MIDI out's masks hold 64 parameters and are full (62), and its floods are at 98 %
+  of their budget. MIDI out does not send them and MIDI learn does not bind them; the maxima
+  live in the map's rows alone (`lab_card_max` reads them).
 
 ### View composition
 

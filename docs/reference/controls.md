@@ -1267,7 +1267,9 @@ the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sy
 envelope, filter routing and mode) and expression settings over any edits, even when it
 selects the preset already playing; volume, octave, chip, envelope mode, effects and a bend
 range set by RPN 0 are kept. Every parameter has an NRPN, and all but the bend range and the
-expression targets a CC: the map, generated from the code, is [midi.md](midi.md). The
+expression targets a CC: the map, generated from the code, is [midi.md](midi.md). LAB's cards
+that are no parameter (FILTER ENV, LAYERS, TABLE) have an NRPN each in group 7, numbered by card
+(7/0..7/14), the card's position as the value, as if the card were turned there. The
 numbers M1a and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and
 the effect slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116:
 algorithm, Amount, A, B, Mix). CC 27..30 are the [chord arpeggio](#chord-arpeggio)'s (on, rate,

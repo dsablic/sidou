@@ -5,7 +5,9 @@
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
 the bend range, three expression targets, the expert layer, the PWM, the fine tune and the macro links also
-have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
+have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. LAB's cards that are
+no instrument parameter (FILTER ENV, LAYERS, TABLE) have an NRPN each in group 7, LAB, numbered by card, the card's
+own position as its value (LAB, below the map's group 6). The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..3 selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
@@ -24,7 +26,7 @@ high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 c
 mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the chord
 arpeggio in 27..30 and the filter LFO in 31, the character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
 117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM, the fine
-tune, the filter LFO, the arpeggio's rate and the macro links, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
+tune, the filter LFO, the arpeggio's rate and the macro links, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression, 7 LAB's cards. The spread
 (SETTINGS' SPREAD) is a setting, not the instrument's: no preset holds it, MIDI learn does not
 bind it and SIDOU does not send it (Output, below).
 
@@ -450,6 +452,21 @@ In NRPN order.
 | Expression | Vibrato rate | 76 | 6/4 (772) | 0..127 | walk | 60 | 0..12.7 Hz in 0.1 Hz steps |
 | Expression | Vibrato depth | 77 | 6/5 (773) | 0..127 | walk | 0 | 0 off .. 127 +-99 cents, a triangle |
 | Expression | Vibrato delay | 78 | 6/6 (774) | 0..127 | walk | 0 | 0..1.27 s after each note-on, in 10 ms |
+| LAB | FILTER ENV depth | - | 7/0 (896) | 0..126 | steps | 63 | 0..126 = -63..+63, 63 off: the cutoff moves by the depth x 32 at the envelope's peak |
+| LAB | FILTER ENV attack | - | 7/1 (897) | 0..15 | steps | 0 | 0..15, the SID's rates |
+| LAB | FILTER ENV decay | - | 7/2 (898) | 0..15 | steps | 0 | 0..15, the SID's rates |
+| LAB | FILTER ENV sustain | - | 7/3 (899) | 0..15 | steps | 0 | 0..15, the level |
+| LAB | FILTER ENV release | - | 7/4 (900) | 0..15 | steps | 0 | 0..15, the SID's rates |
+| LAB | LAYERS count | - | 7/5 (901) | 0..2 | steps | 0 | 0 one oscillator, 1 two, 2 three (not on a one-voice sync sound) |
+| LAB | LAYERS edit | - | 7/6 (902) | 0..2 | steps | 0 | 0..2: the layer OSC, ENVELOPE and the cards below edit, up to the count |
+| LAB | LAYERS transpose | - | 7/7 (903) | 0..48 | steps | 24 | 0..48 = -24..+24 semitones, the edited layer's |
+| LAB | LAYERS detune | - | 7/8 (904) | 0..198 | linear | 99 | 0..198 = -99..+99 cents, the edited layer's |
+| LAB | LAYERS filter | - | 7/9 (905) | 0..1 | steps | 1 | 0 off, 1 on: the edited layer into the filter |
+| LAB | TABLE ending | - | 7/10 (906) | 0..17 | steps | 0 | 0 off, 1 play once, 1 + n loop from step n (up to the steps); on from off: step 1 is the layer's waveform |
+| LAB | TABLE step | - | 7/11 (907) | 0..15 | steps | 0 | 0..15 = step 1..16, the step the cards below edit; one past the end adds one |
+| LAB | TABLE wave | - | 7/12 (908) | 0..12 | steps | 0 | the edited step's: 0 END (from OFF only: ends the table there), 1 OFF, 2 TRI, 3 SAW, 4 PUL, 5 NOI, 6 T+S, 7 T+P, 8 S+P, 9 TSP, 10 TRR, 11 SAS, 12 PUS; on NEW it adds the step |
+| LAB | TABLE note | - | 7/13 (909) | 0..48 | steps | 24 | 0..48 = -24..+24 semitones from the key, the edited step's |
+| LAB | TABLE frames | - | 7/14 (910) | 0..15 | steps | 0 | 0..15 = 1..16 frames of 50 Hz a step |
 
 ## By CC
 
