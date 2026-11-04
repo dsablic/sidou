@@ -6,6 +6,7 @@ pub mod lab;
 pub mod mbsid;
 pub mod model;
 pub mod sidstation;
+pub mod sounds;
 mod sysex;
 
 pub use model::{

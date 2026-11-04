@@ -370,6 +370,11 @@ try {
   lib.on("dialog", (d) => (d.type() === "prompt" ? d.accept(prompts.shift() ?? d.defaultValue()) : d.accept()));
   await lib.addInitScript(fakeMidi);
   await lib.goto(new URL("library.html", url).href);
+  try {
+    await lib.waitForFunction(() => document.querySelectorAll("#sound-list li").length === 16, null, { timeout: 10_000 });
+  } catch {
+    fail(`the Library page did not list SIDOU's sixteen sounds: ${await lib.locator("#sounds-state").textContent()}`);
+  }
   const comet = new Uint8Array(await (await fetch(new URL("songs/chrome-comet.sng", url))).arrayBuffer());
   await lib.setInputFiles("#file", { name: "chrome-comet.sng", mimeType: "application/octet-stream", buffer: Buffer.from(comet) });
   try {
@@ -421,6 +426,11 @@ try {
   console.log(`library page: deleted ${zipped.dels.join(", ")}, renamed by PUT ${zipped.puts.join(", ")}, backup ${zipped.filename}: ${zipped.entries.join(", ")}`);
   if (!/^fm1-backup-\d{4}-\d\d-\d\d\.zip$/.test(zipped.filename) || zipped.entries.join("|") !== "sidou-backup.json|RITE.sng") fail(`the backup is wrong: ${JSON.stringify(zipped)}`);
   if (zipped.dels.join("|") !== "A TUNE|IRON RITE" || zipped.puts.join("|") !== "RITE") fail(`the store saw ${JSON.stringify(zipped)}`);
+  await lib.locator("#send-sounds").click();
+  await settle("send SIDOU's sounds", () => /SIDOU SOUNDS sent/.test(document.getElementById("store-state").textContent));
+  const sent = await lib.evaluate(() => window.__midi.puts.map((p) => p.name));
+  if (sent.at(-1) !== "SIDOU SOUNDS") fail(`the sounds went to the store as ${JSON.stringify(sent)}`);
+  console.log("library page: sent SIDOU's sixteen sounds as SIDOU SOUNDS");
   await lib.locator('#files tr[data-name="RITE"] button', { hasText: "Open" }).click();
   try {
     await lib.waitForFunction(() => document.getElementById("s-name").textContent === "IRON RITE", null, { timeout: 10_000 });

@@ -258,6 +258,21 @@ impl Builder {
     }
 }
 
+pub fn sound_song(sounds: &[([u8; BYTES], String)], model: u32, name: &str) -> Option<BankSong> {
+    let mut b = Builder::new();
+    for (sound, sound_name) in sounds {
+        let kept = b.place(sound, sound_name, model);
+        let number = b.instr.len() as u32;
+        b.kept.push((number, kept, *sound));
+        b.lines.push(format!("I{number:02} {sound_name}"));
+        b.patches += 1;
+    }
+    if !b.fits() {
+        return None;
+    }
+    b.finish(name)
+}
+
 pub fn bank_songs(patches: &[Patch], model: u32, base: &str) -> Vec<BankSong> {
     let mut songs = Vec::new();
     let mut b = Builder::new();

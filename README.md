@@ -80,7 +80,9 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   `.zip` and restores it. It exports any song, from the FM-1 or a file, as a `.sng` with SIDOU's
   settings or as a plain GoatTracker file, and each instrument as a GoatTracker `.ins`, with SIDOU's
   own song code compiled to WebAssembly, so it accepts and refuses what the FM-1 does
-  ([the manual](docs/manual/library.md)).
+  ([the manual](docs/manual/library.md)). It also offers SIDOU's own sixteen LAB sounds (a table
+  kick and snare, a chip chord, wobble and acid basses, LFO strings, layered saws and more) as one
+  song to send: ENV on INSTR opens each in LAB.
 - **Edit a song in the browser.** The site's [editor](https://dsablic.github.io/sidou/editor.html)
   opens a song from a file or the connected FM-1 and edits its instruments, tables, patterns and
   orderlists with the FM-1's own song code (an edit the FM-1 would refuse is refused, parameter

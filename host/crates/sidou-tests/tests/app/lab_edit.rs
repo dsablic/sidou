@@ -695,3 +695,13 @@ fn a_silent_page_varies_nothing_and_says_so() {
         "the roll sets a waveform"
     );
 }
+
+#[test]
+fn every_sound_of_the_sidou_bank_is_heard_on_both_chips() {
+    for s in sidou_patch::sounds::sidou_sounds() {
+        for (model, mode) in [(SID_MODEL_6581, 0), (SID_MODEL_8580, 1)] {
+            let db = held_c4_db(&s.bytes, model, mode);
+            assert!(!silent(db), "{} on {model:?}: {db:.1} dB", s.name);
+        }
+    }
+}

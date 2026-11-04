@@ -133,8 +133,22 @@
       never dips: the page says it is waiting for the FM-1 to be quiet until you stop the song.</p>
   </section>
 
+  <section id="sounds">
+    <h2>3. SIDOU's sounds</h2>
+    <p>Sixteen LAB sounds made with SIDOU's own pages (the table, the LFOs, the layers, the filter
+      envelope), in one song. Send it, then on the FM-1: menu, SONG, LOAD <code>SIDOU SOUNDS</code>, SEQ to
+      INSTR, PRESETS to a sound and ENV: it opens in LAB as it was made, and SAVE keeps it as one of your
+      USER sounds.</p>
+    <div class="row">
+      <button type="button" id="send-sounds" class="primary needs-fm1" disabled>Send to FM-1</button>
+      <a id="sounds-file" href="sounds/sidou-sounds.sng" download="sidou-sounds.sng">Download the song</a>
+    </div>
+    <ol id="sound-list"></ol>
+    <p id="sounds-state" role="status" aria-live="polite"></p>
+  </section>
+
   <section id="song">
-    <h2>3. A song: export</h2>
+    <h2>4. A song: export</h2>
     <label class="drop" id="drop">
       <input type="file" id="file" accept=".sng,application/octet-stream">
       <b>Drop a <code>.sng</code> here</b>, or press to choose one; or <b>Open</b> one on the FM-1 above.

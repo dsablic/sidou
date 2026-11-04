@@ -21,6 +21,8 @@ All notable changes are documented here. The format follows
   saw down, square or sample and hold, on the pitch, the pulse width, the cutoff or the chip's
   volume, 0.05 to 12.75 Hz, depth -63..+63, drawn side by side. The import maps a SidStation
   patch's vibrato, PWM and filter LFOs onto them. A sound grows to 109 bytes.
+- **SIDOU's sounds on the site.** The Library page lists sixteen original LAB sounds and sends
+  them to the FM-1 as one song, `SIDOU SOUNDS`; ENV on INSTR opens each in LAB as made.
 - **An NRPN for every LAB card.** FILTER ENV, LAYERS, TABLE and LFO's cards, which had none, are NRPN
   group 7 (7/0..7/19), one a card, its value the card's position: a DAW can automate each.
 
