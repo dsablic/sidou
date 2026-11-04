@@ -8,6 +8,8 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.6.0](https://github.com/dsablic/sidou/releases/tag/v1.6.0)** (2026-11-04): layered LAB
+  sounds, LAB's filter envelope, SidStation and MIDIbox SID patch import, no title cards.
 - **[1.5.0](https://github.com/dsablic/sidou/releases/tag/v1.5.0)** (2026-11-02): LAB's
   song bridge, sounds lifted from a `.sid`, chords and drums from DICE, Live Link, the site's
   editor and library (the list below).
@@ -73,6 +75,14 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows in a 1.1.x): [the 1.1 design](plans/2026-10-29-1.1-design.md)
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
+
+## 1.6
+
+Released in 1.6.0: layered LAB sounds (up to three oscillators on one key, the LAYERS
+page), FILTER ENV, `sidou-sysex import` for SidStation and MIDIbox SID V2 banks (songs of sixteen
+patches, tables as GoatTracker wave programs), filter metrics against real chips (the 6581 filter
+is inside their spread, so the op-amp port is parked), and the title cards removed
+([the design](plans/2026-11-03-patch-import-design.md)).
 
 ## 1.5
 

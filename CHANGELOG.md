@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-04
+
 Layered LAB sounds, a filter envelope, and SidStation and MIDIbox SID patch import; the title cards are gone.
 
 ### Added
