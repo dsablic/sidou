@@ -85,6 +85,14 @@ is inside their spread, so the op-amp port is parked), and the title cards remov
 ([the design](plans/2026-11-03-patch-import-design.md)).
 
 **After 1.6**
+- **Bluetooth MIDI on an open stack: first after 1.7** (the owner, 2026-11-04, ahead of the plugin; research on branch `ble-research`). The old blocker, M-VAVE's closed BLE
+  library, is gone: Optimist's stack (Henri David, `GPL-3.0-only OR MPL-2.0`) runs Bluetooth MIDI,
+  pairing and the FM-1 as central on felucca-bsp's radio drivers (MPL-2.0, the radio tables
+  Apache-2.0), with nothing of JieLi's linked; fm1-base (`ble_stack = "own"`) and CTL-1 ship it.
+  Every part is GPL-3.0 compatible, so a published SIDOU may carry it. Open: its flash, RAM and
+  RAMTEXT against SIDOU's (25 KB of flash, 16 B of RAMTEXT free; fm1-base says a radio fills most of
+  the FM-1), the radio's time beside two SIDs' audio, and the felucca-bsp move first. A measurement
+  spike first (BLE MIDI only, no A2DP). L.
 - **The 8580 mixer's grit (a spike).** SIDOU's 8580 voice and mixer path is linear; reSIDfp's adds
   a second harmonic of -52 to -30 dB, which may be why SIDOU's 8580 is 0.4 to 1.0 dB farther from
   the CSG8580R5 recordings on some tunes ([the measurements](plans/2026-11-03-filter-model-feasibility.md#measured)).
@@ -250,14 +258,6 @@ the decisions are in [design-notes.md](design-notes.md)).
   flash (about 25 KB left in the slot) and CPU measured first.
 - **Faster firmware switching from the site** (research): the Library page installs another
   firmware package and brings SIDOU back, keeping the songs and sounds on the FM-1.
-- **Bluetooth MIDI on an open stack** (research, 2026-11-04). The old blocker, M-VAVE's closed BLE
-  library, is gone: Optimist's stack (Henri David, `GPL-3.0-only OR MPL-2.0`) runs Bluetooth MIDI,
-  pairing and the FM-1 as central on felucca-bsp's radio drivers (MPL-2.0, the radio tables
-  Apache-2.0), with nothing of JieLi's linked; fm1-base (`ble_stack = "own"`) and CTL-1 ship it.
-  Every part is GPL-3.0 compatible, so a published SIDOU may carry it. Open: its flash, RAM and
-  RAMTEXT against SIDOU's (25 KB of flash, 16 B of RAMTEXT free; fm1-base says a radio fills most of
-  the FM-1), the radio's time beside two SIDs' audio, and the felucca-bsp move first. A measurement
-  spike first (BLE MIDI only, no A2DP). L.
 - **Layer mode.** Two sounds on one key. L; audio interrupt.
 - **FM-1 Live Link extras:** a tray app, a share link, iOS.
 - **RSID playback.** Not now (see below); revisit if there is demand.
