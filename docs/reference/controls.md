@@ -631,7 +631,7 @@ means something else there:
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
 | SETTINGS on STORE | **STORE** | SAVE asks to format a foreign store (FORMAT?), SAVE again formats it (WIPES ALL DATA) |
 | SETTINGS on RESET | **RESET** | SAVE asks (RESET?), SAVE again puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
-| LAB, each page (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB MOD**, **LAB FX**, **LAB MACRO** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
+| LAB, each page (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS) | **LAB OSC**, **LAB ENV**, **LAB FILTER**, **LAB F ENV**, **LAB MOD**, **LAB FX**, **LAB MACRO**, **LAB LAYERS** | K1..K4 named as the page's cards (FX: the slot's, named for its algorithm), ALG the page's choice; SELECT the page, ENV LFO and FX open theirs, SAVE keeps, EDIT + SAVE names, EDIT + LFO / ARP / SCL undo, vary, roll, EDIT + PRESETS reverts, SAVE + K learns (FX has SCL NEXT SLOT in its place) |
 | LAB's name page (EDIT + SAVE) | **LAB NAME** | the keys type, SELECT the cursor, ALG the character, K1 the slot, SAVE writes; K2-K4 and the page buttons do nothing |
 | SIDS, a tune chosen over an unsaved song | **UNSAVED** | SAVE discards the song's changes and plays the tune, HOME goes back; SELECT and ALG do nothing |
 | NOW PLAYING, REC's question which voice to lift | **LIFT** | note keys 1-3 pick the voice, REC and HOME cancel; ALG does nothing |
@@ -791,8 +791,8 @@ it) is where one LIVE sound is shaped with every parameter in sight
 LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX. A [lifted sound](#lift-a-sound)
 opens it over NOW PLAYING, and HOME goes back there.
 
-**SELECT** steps the six pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
-**MOD**, **FX**, **MACRO**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
+**SELECT** steps the eight pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**FILTER ENV**, **MOD**, **FX**, **MACRO**, **LAYERS**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
 ALGORITHM on the FX page (OFF included: a slot turned to OFF is bypassed, what ENV's cycle
 through OFF once did). On every page:
 
@@ -825,6 +825,8 @@ with the point the sound is at now; a graph with no link is a dark flat line.
 | MOD | VIB HZ: the vibrato's rate, 24 detents from 0.5 to 12.7 Hz, even in pitch | DEPTH: 0, then 31 detents from +-4.7 to +-99 cents, even in ratio | DELAY: 0, then 23 detents from 40 ms to 1.27 s, even in ratio (in 10 ms) | RATE: the arpeggio's rate, as LIVE's ARP + K1 (`3FR`: a note every 3 frames of 50 Hz, then `1/32`, `1/16`, `1/8` of the MIDI clock); dark grey while ARP is off, and set all the same. The velocity target, which this card had in 1.0, is NRPN 6/1's | ARP OFF, ARP UP, ARP DOWN, ARP UP-DOWN, ARP PLAYED |
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; along each control's [curve](#knob-curves)) | the slot's algorithm, OFF included |
 | MACRO | RES LNK: RESO LINK, `-8` to `+8` (`0` none): the resonance follows the cutoff, the link times the cutoff's distance below the middle of K1's walk, in 8ths of a step a detent of it (positive: it rises as the cutoff closes; negative, a squelch: as it opens), on top of RESO, clamped | PWM LNK: PWM LINK, `-8` to `+8`: the PWM's depth follows the width, the link times the width's distance from 50 % in 8ths, on top of PWM | dark, unused | dark, unused | no choice: the line says `LINKED` or `NO LINKS` (dark) |
+| FILTER ENV | ATTACK | DECAY | SUS | RELEASE (each `0..15`, the SID envelope's timing; the drawing is the envelope's, a dot following the note) | DEPTH `-63..+63`: the cutoff moves by the depth times 32 at the envelope's peak, up or down; `ENV OFF` at `0` (dark) |
+| LAYERS | EDIT: the layer OSC and ENVELOPE edit (`L1`..`L3`, dark on one oscillator); their header says `OSC L2` | TRANS: the edited layer's transpose, `-24..+24` semitones | DETUNE: its detune, `-99..+99` cents | FILT: the edited layer into the filter, `ON` / `OFF` | ONE OSC, TWO OSC, THREE OSC: how many oscillators a note plays, one a voice (`ONE OSC: SYNC` on a one-voice sync sound, which keeps one) |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
 page follows it); alone it waits for EDIT a moment (EDIT + SCL is the roll whichever finger lands

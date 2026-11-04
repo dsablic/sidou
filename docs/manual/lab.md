@@ -13,7 +13,7 @@ you like. LAB came in 1.0.
   algorithm; they are LAB's now. The chip model is ALGORITHM on LIVE's TONE page.)
 - Or HOME, then LAB in the menu (after SONG). It opens at OSC.
 
-**SELECT** steps the six pages (OSC, ENVELOPE, FILTER, MOD, FX, MACRO), and ENV, LFO and FX jump to
+**SELECT** steps the eight pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS), and ENV, LFO and FX jump to
 theirs. **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
 and FX do nothing.
 
@@ -93,7 +93,7 @@ here; it is NRPN 6/1 now.)
 
 ## Link the knobs: MACRO
 
-The sixth page, **MACRO**, links what one knob does to another, for this sound:
+The seventh page, **MACRO**, links what one knob does to another, for this sound:
 
 - **K1, RES LNK** (`-8` to `+8`): the resonance follows the cutoff. Positive, it rises as you close
   the filter (the classic sweep); negative, as you open it (a squelch).
@@ -133,3 +133,29 @@ goes how is in [controls.md](../reference/controls.md#send-a-lab-sound-to-the-so
 A voice of a `.sid` tune comes into LAB the same way: REC in NOW PLAYING, then the voice's key
 ([lift a sound](sid-tunes.md#5-lift-a-sound)). LAB opens with it as **LIFTED V2**; SAVE keeps
 it as a USER sound and HOME goes back to the tune.
+
+## Sweep the filter on every note: FILTER ENV
+
+**FILTER ENV**, after FILTER, moves the cutoff with an envelope of its own each time a note
+starts. ALGORITHM is its **DEPTH**, `-63` to `+63` (`ENV OFF` at `0`): how far the cutoff goes at
+the envelope's peak, up for a positive depth and down for a negative one. K1 to K4 are its
+**ATTACK**, **DECAY**, **SUS** and **RELEASE**, with the SID envelope's own timing, so the drawing
+reads as ENVELOPE's does; a dot rides the curve while the note plays.
+
+## Play three oscillators on one key: LAYERS
+
+**LAYERS**, the last page, makes a note play up to three oscillators at once, one on each of the
+chip's voices, as a SidStation's single mode does. ALGORITHM sets how many: **ONE OSC** (the
+sound plays three-note chords, as before), **TWO OSC** or **THREE OSC** (one note at a time, on
+two or three voices). A sound with SYNC LEAD's one-voice sync keeps one (`ONE OSC: SYNC`).
+
+- **K1 EDIT** picks the layer OSC and ENVELOPE edit; their header then says `OSC L2` or
+  `ENVELOPE L3`, and their cards and drawing are that layer's.
+- **K2 TRANS** transposes the layer, `-24` to `+24` semitones; **K3 DETUNE** detunes it, `-99`
+  to `+99` cents; **K4 FILT** routes it into the filter or not.
+
+The page shows the three layers side by side, each with its waveform, transpose and detune, the
+one you edit reversed and an unused one dark. A new layer starts as a copy of the first, so it is
+heard at once. A layered sound is kept, compared, undone, varied and rolled as one sound; a roll
+reshapes the first layer, as DICE does.
+
