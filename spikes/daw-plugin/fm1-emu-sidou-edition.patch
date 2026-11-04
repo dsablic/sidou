@@ -1,0 +1,391 @@
+diff --git a/crates/fm1-plugin/src/editor.rs b/crates/fm1-plugin/src/editor.rs
+index 720ef1c..38f6e19 100644
+--- a/crates/fm1-plugin/src/editor.rs
++++ b/crates/fm1-plugin/src/editor.rs
+@@ -147,6 +147,21 @@ pub fn create(params: Arc<Fm1Params>, link: Arc<Link>) -> Option<Box<dyn Editor>
+             });
+         });
+ 
++        let panel = link.shared.view.lock().ok().and_then(|v| crate::sidou::Panel::read(&v.peek));
++        if let Some(panel) = panel {
++            egui::SidePanel::right("sidou").min_width(220.0).show(ctx, |side| {
++                side.heading("SIDOU");
++                for line in panel.lines() {
++                    side.monospace(line);
++                }
++                side.separator();
++                for (i, p) in params.knobs().into_iter().enumerate() {
++                    side.label(format!("K{}", i + 1));
++                    side.add(widgets::ParamSlider::for_param(p, setter).with_width(180.0));
++                }
++            });
++        }
++
+         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(0x18, 0x19, 0x1b))).show(ctx, |c| {
+             let avail = c.available_rect_before_wrap();
+             let k = (avail.width() / w as f32).min(avail.height() / h as f32);
+diff --git a/crates/fm1-plugin/src/engine.rs b/crates/fm1-plugin/src/engine.rs
+index 5a1c9a9..2016ba2 100644
+--- a/crates/fm1-plugin/src/engine.rs
++++ b/crates/fm1-plugin/src/engine.rs
+@@ -44,6 +44,8 @@ pub enum Cmd {
+     Vel(u32),
+     /// The ring's lead in frames (from the host's block size).
+     Lead(usize),
++    /// RAM regions (address, length) copied into the view with the screen.
++    Watch(Vec<(u32, u32)>),
+ }
+ 
+ /// What the editor shows: the screen, the LEDs and how the machine is doing.
+@@ -61,6 +63,8 @@ pub struct View {
+     /// frames the host found missing (the machine fell behind): all, and in the last second
+     pub starved: u64,
+     pub late: u64,
++    /// the watched regions' bytes, in the order of the last `Cmd::Watch`
++    pub peek: Vec<Vec<u8>>,
+ }
+ 
+ /// The flash sectors that differ from the package's.
+@@ -198,6 +202,7 @@ pub fn run(
+     // the sectors last put in the project's state
+     let mut saved: Sectors = Vec::new();
+     let mut last_view = Instant::now();
++    let mut watch: Vec<(u32, u32)> = Vec::new();
+     // when the host last took frames, and the free run's start (wall time, emulated ms)
+     let mut last_take = Instant::now();
+     let mut free: Option<(Instant, u64)> = None;
+@@ -261,6 +266,7 @@ pub fn run(
+                     }
+                 }
+                 Cmd::Lead(l) => lead = l,
++                Cmd::Watch(w) => watch = w,
+             }
+         }
+         // a new clock: the machine's timers count its cycles, so boot it again on the new one,
+@@ -350,6 +356,7 @@ pub fn run(
+                 mm.soc.periph.led_take()
+             };
+             v.pads = mm.soc.periph.smk.pads;
++            v.peek = watch.iter().map(|&(at, len)| (at..at + len).map(|a| mm.soc.read8(a)).collect()).collect();
+             v.halted = mm.halted;
+             if speed_t.elapsed() >= Duration::from_secs(1) {
+                 let ms = mm.soc.periph.ms();
+diff --git a/crates/fm1-plugin/src/lib.rs b/crates/fm1-plugin/src/lib.rs
+index 6fd75ea..150a958 100644
+--- a/crates/fm1-plugin/src/lib.rs
++++ b/crates/fm1-plugin/src/lib.rs
+@@ -17,6 +17,7 @@ use std::sync::{mpsc, Arc, Mutex};
+ mod editor;
+ pub mod engine;
+ pub mod savefile;
++pub mod sidou;
+ #[path = "../../fm1-live/src/panel.rs"]
+ #[allow(dead_code)]
+ mod panel;
+@@ -60,6 +61,28 @@ pub struct Fm1Params {
+     /// The emulated CPU's clock. Changing it reboots the firmware (its flash is kept).
+     #[id = "clock"]
+     pub clock: EnumParam<Clock>,
++    #[id = "k1"]
++    pub k1: FloatParam,
++    #[id = "k2"]
++    pub k2: FloatParam,
++    #[id = "k3"]
++    pub k3: FloatParam,
++    #[id = "k4"]
++    pub k4: FloatParam,
++}
++
++const KNOB_DEFAULT: f32 = 0.5;
++const KNOB_STEP: f32 = 1.0 / 4096.0;
++
++fn knob(name: &str) -> FloatParam {
++    FloatParam::new(name, KNOB_DEFAULT, FloatRange::Linear { min: 0.0, max: 1.0 })
++        .with_value_to_string(formatters::v2s_f32_percentage(0))
++}
++
++impl Fm1Params {
++    pub fn knobs(&self) -> [&FloatParam; 4] {
++        [&self.k1, &self.k2, &self.k3, &self.k4]
++    }
+ }
+ 
+ /// The emulated clock. The emulator runs one instruction a cycle at the chip's nominal 240 MHz,
+@@ -121,6 +144,10 @@ impl Default for Fm1Params {
+             channel: IntParam::new("MIDI channel", 0, IntRange::Linear { min: 0, max: 16 })
+                 .with_value_to_string(Arc::new(|v| if v == 0 { "as sent".into() } else { v.to_string() })),
+             clock: EnumParam::new("CPU clock", Clock::Mhz240).non_automatable(),
++            k1: knob("LAB K1"),
++            k2: knob("LAB K2"),
++            k3: knob("LAB K3"),
++            k4: knob("LAB K4"),
+         }
+     }
+ }
+@@ -162,6 +189,7 @@ pub struct Fm1 {
+     frac: f64,
+     cur: [f32; 2],
+     next: [f32; 2],
++    knobs_sent: [f32; 4],
+ }
+ 
+ impl Default for Fm1 {
+@@ -178,6 +206,7 @@ impl Default for Fm1 {
+             frac: 0.0,
+             cur: [0.0; 2],
+             next: [0.0; 2],
++            knobs_sent: [KNOB_DEFAULT; 4],
+         }
+     }
+ }
+@@ -198,7 +227,7 @@ impl Fm1 {
+                 halted: false,
+                 speed: 0.0,
+                 starved: 0,
+-                late: 0,
++                late: 0, peek: Vec::new(),
+             }),
+             quit: Default::default(),
+         });
+@@ -231,6 +260,28 @@ impl Drop for Fm1 {
+     }
+ }
+ 
++impl Fm1 {
++    fn lab_place(&self) -> (u8, u8) {
++        let panel = self.link.as_ref().and_then(|l| l.shared.view.try_lock().ok().and_then(|v| sidou::Panel::read(&v.peek)));
++        panel.map_or((0, 0), |p| (p.lab_page, p.fx_select))
++    }
++
++    fn send_knobs(&mut self, frame: u64, channel: u8) {
++        let values = self.params.knobs().map(|p| p.value());
++        let (page, fx_select) = self.lab_place();
++        for (k, &v) in values.iter().enumerate() {
++            if (v - self.knobs_sent[k]).abs() < KNOB_STEP {
++                continue;
++            }
++            self.knobs_sent[k] = v;
++            let Some(m) = self.midi.as_mut() else { continue };
++            for bytes in sidou::messages(sidou::target(page, fx_select, k), v, channel) {
++                let _ = m.push(Midi { frame, bytes, len: 3 });
++            }
++        }
++    }
++}
++
+ /// The length of a channel message from its status byte (0: not one).
+ fn midi_len(status: u8) -> u8 {
+     match status & 0xf0 {
+@@ -273,6 +324,10 @@ impl Plugin for Fm1 {
+         // a host block's frames, and room for a DMA half and the emulation's unevenness
+         self.lead = (cfg.max_buffer_size as f64 * self.ratio).ceil() as usize + 1024;
+         let _ = link.cmds.send(Cmd::Lead(self.lead));
++        if let Some(map) = sidou::StateMap::from_env() {
++            let _ = link.cmds.send(Cmd::Watch(map.regions()));
++        }
++        self.knobs_sent = self.params.knobs().map(|p| p.value());
+         ctx.set_latency_samples((self.lead as f64 / self.ratio).round() as u32);
+         let fw = self.params.firmware.lock().unwrap().clone();
+         let sectors = self.params.flash.lock().unwrap().clone();
+@@ -298,6 +353,7 @@ impl Plugin for Fm1 {
+                 let _ = m.push(Midi { frame, bytes: b, len });
+             }
+         }
++        self.send_knobs(start + self.lead as u64, ch.saturating_sub(1));
+         let Some(rx) = self.audio.as_mut() else { return ProcessStatus::Normal };
+         let out = buffer.as_slice();
+         let n = out[0].len();
+diff --git a/crates/fm1-plugin/src/sidou.rs b/crates/fm1-plugin/src/sidou.rs
+new file mode 100644
+index 0000000..a4de2ce
+--- /dev/null
++++ b/crates/fm1-plugin/src/sidou.rs
+@@ -0,0 +1,153 @@
++use serde::Deserialize;
++
++#[derive(Clone, Copy, Deserialize)]
++pub struct Field {
++    pub at: u32,
++    pub len: u32,
++}
++
++#[derive(Clone, Deserialize)]
++pub struct StateMap {
++    pub lab_page: Field,
++    pub fx_select: Field,
++    pub preset: Field,
++    pub name: Field,
++    pub cutoff: Field,
++    pub resonance: Field,
++    pub attack_decay: Field,
++    pub sustain_release: Field,
++}
++
++pub const STATE_ENV: &str = "SIDOU_STATE";
++
++impl StateMap {
++    pub fn from_env() -> Option<StateMap> {
++        let text = std::fs::read_to_string(std::env::var(STATE_ENV).ok()?).ok()?;
++        serde_json::from_str(&text).ok()
++    }
++
++    pub fn regions(&self) -> Vec<(u32, u32)> {
++        [self.lab_page, self.fx_select, self.preset, self.name, self.cutoff, self.resonance, self.attack_decay, self.sustain_release]
++            .iter()
++            .map(|f| (f.at, f.len))
++            .collect()
++    }
++}
++
++#[derive(Clone, Debug, Default, PartialEq)]
++pub struct Panel {
++    pub lab_page: u8,
++    pub fx_select: u8,
++    pub preset: u8,
++    pub name: String,
++    pub cutoff: u16,
++    pub resonance: u8,
++    pub adsr: [u8; 4],
++}
++
++pub const LAB_PAGES: [&str; 8] = ["OSC", "ENVELOPE", "FILTER", "FILTER ENV", "MOD", "FX", "MACRO", "LAYERS"];
++
++impl Panel {
++    pub fn read(peek: &[Vec<u8>]) -> Option<Panel> {
++        let [page, fx, preset, name, cutoff, reso, ad, sr] = peek else { return None };
++        let byte = |v: &Vec<u8>| v.first().copied().unwrap_or(0);
++        Some(Panel {
++            lab_page: byte(page),
++            fx_select: byte(fx),
++            preset: byte(preset),
++            name: name.iter().take_while(|&&c| c != 0).map(|&c| char::from(c)).collect(),
++            cutoff: u16::from_le_bytes([cutoff[0], cutoff[1]]),
++            resonance: byte(reso),
++            adsr: [byte(ad) >> 4, byte(ad) & 15, byte(sr) >> 4, byte(sr) & 15],
++        })
++    }
++
++    pub fn lines(&self) -> Vec<String> {
++        let page = LAB_PAGES.get(self.lab_page as usize).copied().unwrap_or("?");
++        let [a, d, s, r] = self.adsr;
++        vec![
++            format!("SOUND  {} (preset {})", self.name, self.preset),
++            format!("LAB    {page}, FX slot {}", self.fx_select + 1),
++            format!("ADSR   {a} {d} {s} {r}"),
++            format!("CUTOFF {}  RESO {}", self.cutoff, self.resonance),
++        ]
++    }
++}
++
++#[derive(Clone, Copy)]
++pub enum Target {
++    Cc { cc: u8 },
++    Nrpn { number: u16, max: u16 },
++    None,
++}
++
++use Target::{Cc, None as Unmapped, Nrpn};
++
++const FX_SLOT_CCS: [[u8; 4]; 3] = [[103, 104, 105, 106], [108, 109, 110, 111], [113, 114, 115, 116]];
++
++const PAGE_TARGETS: [[Target; 4]; 8] = [
++    [Nrpn { number: 2, max: 4095 }, Nrpn { number: 5, max: 2048 }, Nrpn { number: 6, max: 255 }, Nrpn { number: 7, max: 100 }],
++    [Cc { cc: 73 }, Cc { cc: 75 }, Cc { cc: 79 }, Cc { cc: 72 }],
++    [Nrpn { number: 0, max: 2047 }, Cc { cc: 71 }, Cc { cc: 24 }, Cc { cc: 31 }],
++    [Unmapped, Unmapped, Unmapped, Unmapped],
++    [Cc { cc: 76 }, Cc { cc: 77 }, Cc { cc: 78 }, Cc { cc: 28 }],
++    [Unmapped, Unmapped, Unmapped, Unmapped],
++    [Nrpn { number: 10, max: 16 }, Nrpn { number: 11, max: 16 }, Unmapped, Unmapped],
++    [Unmapped, Unmapped, Unmapped, Unmapped],
++];
++
++const FX_PAGE: usize = 5;
++
++pub fn target(page: u8, fx_select: u8, knob: usize) -> Target {
++    if page as usize == FX_PAGE {
++        return FX_SLOT_CCS.get(fx_select as usize).map_or(Unmapped, |ccs| Cc { cc: ccs[knob] });
++    }
++    PAGE_TARGETS.get(page as usize).map_or(Unmapped, |t| t[knob])
++}
++
++pub fn messages(target: Target, value: f32, channel: u8) -> Vec<[u8; 3]> {
++    let status = 0xb0 | (channel & 15);
++    let v = value.clamp(0.0, 1.0);
++    match target {
++        Cc { cc } => vec![[status, cc, (v * 127.0).round() as u8]],
++        Nrpn { number, max } => {
++            let data = (v * f32::from(max)).round() as u16;
++            vec![
++                [status, 99, (number >> 7) as u8],
++                [status, 98, (number & 127) as u8],
++                [status, 6, (data >> 7) as u8],
++                [status, 38, (data & 127) as u8],
++            ]
++        }
++        Unmapped => Vec::new(),
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn an_envelope_knob_sends_its_cc_scaled_to_seven_bits() {
++        assert_eq!(messages(target(1, 0, 0), 1.0, 0), vec![[0xb0, 73, 127]]);
++        assert_eq!(messages(target(1, 0, 3), 0.5, 2), vec![[0xb2, 72, 64]]);
++    }
++
++    #[test]
++    fn the_cutoff_goes_as_an_nrpn_with_all_eleven_bits() {
++        assert_eq!(messages(target(2, 0, 0), 1.0, 0), vec![[0xb0, 99, 0], [0xb0, 98, 0], [0xb0, 6, 15], [0xb0, 38, 127]]);
++    }
++
++    #[test]
++    fn the_fx_page_follows_the_selected_slot() {
++        assert_eq!(messages(target(5, 2, 1), 0.0, 0), vec![[0xb0, 114, 0]]);
++        assert!(messages(target(5, 7, 1), 0.0, 0).is_empty());
++    }
++
++    #[test]
++    fn the_panel_decodes_the_watched_bytes() {
++        let peek = vec![vec![1], vec![0], vec![3], b"BASS\0\0".to_vec(), vec![0xb0, 0x04], vec![6], vec![0x09], vec![0xa6]];
++        let p = Panel::read(&peek).unwrap();
++        assert_eq!((p.name.as_str(), p.cutoff, p.adsr), ("BASS", 1200, [0, 9, 10, 6]));
++    }
++}
+diff --git a/crates/fm1-plugin/tests/engine.rs b/crates/fm1-plugin/tests/engine.rs
+index 86de093..5d6b48c 100644
+--- a/crates/fm1-plugin/tests/engine.rs
++++ b/crates/fm1-plugin/tests/engine.rs
+@@ -12,7 +12,7 @@ fn a_note_sounds_when_it_is_due() {
+         Err(_) => return eprintln!("no reference/firmwares/felucca.fwsc: skipped"),
+     };
+     let shared = Arc::new(Shared {
+-        view: Mutex::new(View { lcd: vec![0; 240 * 240], leds: [0.0; 41], pads: [0; 16], board: fm1_soc::Board::Fm1, booted: false, halted: false, speed: 0.0, starved: 0, late: 0 }),
++        view: Mutex::new(View { lcd: vec![0; 240 * 240], leds: [0.0; 41], pads: [0; 16], board: fm1_soc::Board::Fm1, booted: false, halted: false, speed: 0.0, starved: 0, late: 0, peek: Vec::new() }),
+         quit: Default::default(),
+     });
+     let params = Arc::new(fm1_plugin::Fm1Params::default());
+@@ -55,7 +55,7 @@ fn it_runs_when_the_host_takes_no_audio() {
+         Err(_) => return eprintln!("no reference/firmwares/felucca.fwsc: skipped"),
+     };
+     let shared = Arc::new(Shared {
+-        view: Mutex::new(View { lcd: vec![0; 240 * 240], leds: [0.0; 41], pads: [0; 16], board: fm1_soc::Board::Fm1, booted: false, halted: false, speed: 0.0, starved: 0, late: 0 }),
++        view: Mutex::new(View { lcd: vec![0; 240 * 240], leds: [0.0; 41], pads: [0; 16], board: fm1_soc::Board::Fm1, booted: false, halted: false, speed: 0.0, starved: 0, late: 0, peek: Vec::new() }),
+         quit: Default::default(),
+     });
+     let params = Arc::new(fm1_plugin::Fm1Params::default());
+diff --git a/crates/fm1-plugin/tests/portable.rs b/crates/fm1-plugin/tests/portable.rs
+index 727f43e..a32a810 100644
+--- a/crates/fm1-plugin/tests/portable.rs
++++ b/crates/fm1-plugin/tests/portable.rs
+@@ -15,7 +15,7 @@ impl Engine {
+     fn new() -> Self {
+         let shared = Arc::new(Shared {
+             view: Mutex::new(View { lcd: vec![0; 240 * 240], leds: [0.0; 41], pads: [0; 16],
+-                board: fm1_soc::Board::Fm1, booted: false, halted: false, speed: 0.0, starved: 0, late: 0 }),
++                board: fm1_soc::Board::Fm1, booted: false, halted: false, speed: 0.0, starved: 0, late: 0, peek: Vec::new() }),
+             quit: Default::default(),
+         });
+         let params = Arc::new(Fm1Params::default());

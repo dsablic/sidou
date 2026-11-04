@@ -28,7 +28,9 @@ opened. The plugin takes MIDI only from its host, and the probe below passes MID
 
 ## What was built
 
-All of it is in `build/ext/` (git-ignored). None of it is vendored or tracked.
+The fm1-emu patch and the headless host are kept in `spikes/daw-plugin/` (the owner, 2026-11-04):
+`fm1-emu-sidou-edition.patch` applies to fm1-emu `9de1ef0` cloned into `build/ext/fm1-emu`, and
+`probe/` builds against that clone. The outputs stay in `build/ext/` (git-ignored).
 
 | Piece | Where | What |
 |---|---|---|
@@ -158,6 +160,4 @@ ENV and LAYERS proven in emu-gate first.
 7. **An Apple Developer ID** for signing and notarizing a published build (yearly fee), or
    source and ad hoc builds only.
 8. **VIBE FM:** ask for SDK access and treat a port as a separate, later item?
-9. **Keep the spike code?** The fm1-emu patch and the probe are untracked in `build/ext/`. Say
-   whether they should go into the repo (for example under `tools/`) before that directory is
-   cleaned.
+9. ~~**Keep the spike code?**~~ Kept in `spikes/daw-plugin/` (the owner, 2026-11-04).
