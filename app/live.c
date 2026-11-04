@@ -216,6 +216,7 @@ static int32_t pitch_offset(const live* l, int v) {
     if (l->tune) {
         off += l->tune * LIVE_PITCH_SEMITONE / 100;
     }
+    off += l->lfo_out[LAB_LFO_PITCH];
     const live_voice* x = &l->voice[v];
     uint32_t depth = vibrato_depth(l, v);
     if (depth && !x->vibrato_wait) {
@@ -351,7 +352,9 @@ void li_write_res_filt(live* l) {
 }
 
 void li_write_mode_vol(live* l) {
-    put(l, REG_MODE_VOL, (uint8_t)(l->filter_mode | LIVE_CHIP_VOLUME));
+    int32_t vol = (int32_t)LIVE_CHIP_VOLUME - l->lfo_out[LAB_LFO_VOLUME];
+    l->vol_out = (uint8_t)(vol < 0 ? 0 : vol);
+    put(l, REG_MODE_VOL, (uint8_t)(l->filter_mode | l->vol_out));
 }
 
 void li_write_envelopes(live* l) {
@@ -456,6 +459,9 @@ static uint16_t voice_pw(const live* l, int v) {
         int32_t d = (edge * l->voice[src].velocity + 63) / 127;
         pw = clamp_u16(pw <= 2048 ? d : 4096 - d, (int32_t)LIVE_PULSE_WIDTH_MAX);
     }
+    if (l->lfo_out[LAB_LFO_PULSE]) {
+        pw = clamp_u16(pw + l->lfo_out[LAB_LFO_PULSE], (int32_t)LIVE_PULSE_WIDTH_MAX);
+    }
     return (uint16_t)pw;
 }
 
@@ -531,6 +537,7 @@ static uint16_t cutoff_effective(const live* l) {
     if (l->filter_lfo) {
         c += lfo_swing(l);
     }
+    c += l->lfo_out[LAB_LFO_CUTOFF];
     if (l->mod_target == LIVE_MOD_CUTOFF) {
         c += l->mod_wheel * CUTOFF_PER_VALUE;
     }
@@ -1256,6 +1263,68 @@ LIVE_COLD static void table_tick(live* l) {
     }
 }
 
+#define LFO_HALF 32768
+#define LFO_RNG_MUL 1664525u
+#define LFO_RNG_ADD 1013904223u
+#define LFO_PITCH_SPAN 12
+#define LFO_WIDTH_SPAN 2048
+#define LFO_CUTOFF_SPAN 1024
+
+int32_t live_lfo_value(const live* l, uint32_t n) {
+    int32_t p = l->lfo_phase_n[n];
+    switch (l->lfo[n][0] & LAB_LFO_SHAPE_MASK) {
+    case LAB_LFO_TRIANGLE: return (p < LFO_HALF ? 2 * p : 2 * (65535 - p)) - LFO_HALF;
+    case LAB_LFO_SAW_UP: return p - LFO_HALF;
+    case LAB_LFO_SAW_DOWN: return LFO_HALF - 1 - p;
+    case LAB_LFO_SQUARE: return p < LFO_HALF ? LFO_HALF - 1 : -LFO_HALF;
+    case LAB_LFO_SAMPLE_HOLD: return l->lfo_held[n];
+    default: return 0;
+    }
+}
+
+static int32_t lfo_scaled(int32_t v, int32_t depth, int32_t span) {
+    return (int32_t)((int64_t)v * depth * span / ((int64_t)LFO_HALF * LAB_LFO_DEPTH_MAX));
+}
+
+LIVE_COLD static void lfo_tick(live* l) {
+    int32_t out[LAB_LFO_DESTS] = {0};
+    for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+        const uint8_t* f = l->lfo[n];
+        int32_t depth = (int8_t)f[2];
+        if (!(f[0] & LAB_LFO_SHAPE_MASK) || !depth) {
+            continue;
+        }
+        uint32_t was = l->lfo_phase_n[n];
+        l->lfo_phase_n[n] = (uint16_t)(was + live_walk_at(LIVE_WALK_PWM_RATE, f[1]));
+        if (l->lfo_phase_n[n] < was) {
+            l->lfo_rng = l->lfo_rng * LFO_RNG_MUL + LFO_RNG_ADD;
+            l->lfo_held[n] = (int16_t)(l->lfo_rng >> 16);
+        }
+        int32_t v = live_lfo_value(l, n);
+        uint32_t dest = (f[0] & LAB_LFO_DEST_MASK) >> LAB_LFO_DEST_SHIFT;
+        out[dest] += dest == LAB_LFO_PITCH    ? lfo_scaled(v, depth, LFO_PITCH_SPAN * LIVE_PITCH_SEMITONE)
+                     : dest == LAB_LFO_PULSE  ? lfo_scaled(v, depth, LFO_WIDTH_SPAN)
+                     : dest == LAB_LFO_CUTOFF ? lfo_scaled(v, depth, LFO_CUTOFF_SPAN)
+                                              : lfo_scaled(LFO_HALF + 1 + (depth < 0 ? -v - 1 : v), depth < 0 ? -depth : depth,
+                                                           (int32_t)LIVE_CHIP_VOLUME) / 2;
+    }
+    for (uint32_t d = 0; d < LAB_LFO_DESTS; d++) {
+        l->lfo_out[d] = out[d];
+    }
+    int32_t vol = (int32_t)LIVE_CHIP_VOLUME - out[LAB_LFO_VOLUME];
+    if ((uint8_t)(vol < 0 ? 0 : vol > (int32_t)LIVE_CHIP_VOLUME ? LIVE_CHIP_VOLUME : vol) != l->vol_out) {
+        li_write_mode_vol(l);
+    }
+}
+
+LIVE_COLD void live_lfo_set(live* l, uint32_t n, const uint8_t lfo[LAB_SOUND_LFO_BYTES]) {
+    if (n >= LAB_SOUND_LFOS) {
+        return;
+    }
+    l->settings_dirty = 1;
+    memcpy(l->lfo[n], lfo, LAB_SOUND_LFO_BYTES);
+}
+
 LIVE_COLD void live_table_set(live* l, const uint8_t table[LAB_SOUND_TABLE_BYTES]) {
     l->settings_dirty = 1;
     memcpy(l->table, table, LAB_SOUND_TABLE_BYTES);
@@ -1301,6 +1370,10 @@ void live_tick(live* l) {
     fenv_tick(l);
     if (table_steps(l)) {
         table_tick(l);
+    }
+    if (((l->lfo[0][0] | l->lfo[1][0]) & LAB_LFO_SHAPE_MASK) || l->lfo_out[LAB_LFO_PITCH] ||
+        l->lfo_out[LAB_LFO_PULSE] || l->lfo_out[LAB_LFO_CUTOFF] || l->lfo_out[LAB_LFO_VOLUME]) {
+        lfo_tick(l);
     }
     for (int v = 0; v < LIVE_VOICES; ++v) {
         li_update_freq(l, v);

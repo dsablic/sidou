@@ -17,9 +17,9 @@ _Static_assert(LAB_SOUND_LAYER_VOICE + LIVE_LAYERS_MAX * LAB_SOUND_LAYER_VOICE_B
                "the layers, then the filter envelope");
 _Static_assert(LAB_SOUND_FILTER_ENV_SR + 1u == LAB_SOUND_BYTES_1_6, "1.6's filter envelope");
 _Static_assert(LAB_SOUND_TABLE == LAB_SOUND_BYTES_1_6 &&
-                   LAB_SOUND_TABLE_STEPS + 2u * LAB_TABLE_STEPS_MAX == LAB_SOUND_BYTES &&
-                   LAB_SOUND_TABLE + LAB_SOUND_TABLE_BYTES == LAB_SOUND_BYTES,
-               "the table after 1.6's bytes, its steps last");
+                   LAB_SOUND_TABLE + LAB_SOUND_TABLE_BYTES == LAB_SOUND_LFO &&
+                   LAB_SOUND_LFO + LAB_SOUND_LFOS * LAB_SOUND_LFO_BYTES == LAB_SOUND_BYTES,
+               "the table after 1.6's bytes, then the two LFOs");
 _Static_assert(LAB_SOUND_ARP + LIVE_ARP_SPAN + 1u == LAB_SOUND_SLOTS,
                "the arpeggio's four fields, then the slots");
 
@@ -108,6 +108,18 @@ static int table_ok(const uint8_t s[LAB_SOUND_BYTES]) {
     return 1;
 }
 
+static int lfos_ok(const uint8_t s[LAB_SOUND_BYTES]) {
+    for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+        const uint8_t* f = &s[LAB_SOUND_LFO + n * LAB_SOUND_LFO_BYTES];
+        if ((f[0] & ~(LAB_LFO_SHAPE_MASK | LAB_LFO_DEST_MASK)) ||
+            (f[0] & LAB_LFO_SHAPE_MASK) >= LAB_LFO_SHAPES || f[1] >= LAB_LFO_RATES ||
+            !within(f[2], LAB_LFO_DEPTH_MAX)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 LIVE_COLD uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]) {
     for (uint32_t i = 0; i < sizeof BYTE_MAX / sizeof BYTE_MAX[0]; i++) {
         if (s[BYTE_MAX[i].at] > BYTE_MAX[i].max) {
@@ -123,7 +135,7 @@ LIVE_COLD uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]) {
         semis > LIVE_RATIO_SEMIS || u16_at(s, LAB_SOUND_PWM_DEPTH) > LIVE_PWM_DEPTH_MAX ||
         u16_at(s, LAB_SOUND_PWM_RATE) > LIVE_PWM_STEP_MAX || tune < -LIVE_TUNE_CENTS ||
         tune > LIVE_TUNE_CENTS || s[LAB_SOUND_ARP + LIVE_ARP_SPAN] < 1u ||
-        !link_ok(s[LAB_SOUND_RESO_LINK]) || !link_ok(s[LAB_SOUND_PWM_LINK]) || !layers_ok(s) || !table_ok(s)) {
+        !link_ok(s[LAB_SOUND_RESO_LINK]) || !link_ok(s[LAB_SOUND_PWM_LINK]) || !layers_ok(s) || !table_ok(s) || !lfos_ok(s)) {
         return 0;
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {

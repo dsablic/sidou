@@ -426,7 +426,7 @@ writes 3 bytes back: the rhythm and the range go back to their defaults and lane
 lane 1's scale. GoatTracker skips the chunk. A lane's root (the note DICE rolls on) is not saved:
 every lane starts at C-3 when a song loads.
 
-**`LBnn`** (9 + 103 bytes): the LAB sound sent as instrument nn (two upper-case hex digits,
+**`LBnn`** (9 + 109 bytes): the LAB sound sent as instrument nn (two upper-case hex digits,
 `01`..`3F`; [controls](controls.md#send-a-lab-sound-to-the-song): REC in LAB), so that the
 instrument pulled back into LAB, unedited, is that sound exactly (`app/lab_song.h`). One chunk
 an instrument, written when the sound is sent.
@@ -436,11 +436,11 @@ an instrument, written when the sound is sent.
 | 0 | 1 | version, 1 |
 | 1 | 4 | the rows of the wave, pulse, filter and speed programs the send wrote, from the instrument's pointer into each table (0: none) |
 | 5 | 4 | CRC-32 (as the trailer's) of the instrument's 25 bytes, then, table by table, each of those rows' left and right bytes |
-| 9 | 103 | the sound, as a USER sound's ([sound-format.md](sound-format.md#a-sound)); at least 45 bytes, the missing tail its defaults |
+| 9 | 109 | the sound, as a USER sound's ([sound-format.md](sound-format.md#a-sound)); at least 45 bytes, the missing tail its defaults |
 
 A pull uses the sound only while the CRC of the song's bytes matches: an instrument, row or name
 edited since (here or in GoatTracker) is decoded instead, and a chunk whose sound is not valid
-counts for nothing. SIDOU keeps at most 16 of them (1,920 bytes of the area's 4,096, each with its chunk header): a send past
+counts for nothing. SIDOU keeps at most 16 of them (2,016 bytes of the area's 4,096, each with its chunk header): a send past
 that removes a chunk whose CRC no longer matches, and when none does it keeps no chunk (the
 instrument is sent all the same; its pull decodes). GoatTracker skips the chunks; an older SIDOU
 keeps them.

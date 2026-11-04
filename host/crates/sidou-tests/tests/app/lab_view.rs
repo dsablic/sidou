@@ -83,6 +83,7 @@ fn select_steps_the_pages_and_stops_at_the_ends() {
         "FILTER",
         "FILTER ENV",
         "MOD",
+        "LFO",
         "FX",
         "MACRO",
         "LAYERS",
@@ -93,10 +94,12 @@ fn select_steps_the_pages_and_stops_at_the_ends() {
         settle(&mut ui);
         assert_eq!(usize::from(ui.v.lab.page), i);
         assert_eq!(ui.big(0, 0, 2, name.len()), *name, "the page's name at 2x");
+        let place = format!("{}/{LAB_PAGES}", i + 1);
+        let col = 30 - 2 * place.len();
         assert_eq!(
-            ui.big(0, 24, 2, 3),
-            format!("{}/{LAB_PAGES}", i + 1),
-            "its place"
+            ui.big(0, col, 2, place.len()),
+            place,
+            "its place, on the right"
         );
         ui.turn(PANEL_ENC_SELECT, 1);
     }
@@ -715,7 +718,16 @@ fn the_pages_match_their_goldens() {
         (LAB_PAGE_MACRO, "lab-macro"),
         (LAB_PAGE_LAYERS, "lab-layers"),
         (LAB_PAGE_TABLE, "lab-table"),
+        (LAB_PAGE_LFO, "lab-lfo"),
     ] {
+        if page == LAB_PAGE_LFO {
+            to_page(&mut ui, page);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.turn(PANEL_ENC_K2, 2);
+            ui.turn(PANEL_ENC_K1, 1);
+            ui.turn(PANEL_ENC_ALGORITHM, 5);
+            settle(&mut ui);
+        }
         if page == LAB_PAGE_TABLE {
             to_page(&mut ui, page);
             ui.turn(PANEL_ENC_ALGORITHM, 2);

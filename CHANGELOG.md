@@ -12,14 +12,17 @@ All notable changes are documented here. The format follows
 - **TABLE in LAB.** A sound carries a step table: up to 16 steps, each a waveform and a pitch
   (relative to the key or a fixed note), so many frames a step, played once or looped from a step,
   on every note (on a layered sound, on one layer). REC sends it as the instrument's GoatTracker
-  wave program and ENV on INSTR reads a wave program back as a table. A sound grows from 68 to
-  103 bytes; a 1.6 sound loads with its table off.
+  wave program and ENV on INSTR reads a wave program back as a table. A 1.6 sound loads with its table off.
 - **Imported table patches keep their table.** `sidou-sysex import` puts the first playing
   oscillator's SidStation table on the LAB sound; the others still play from their song
   instruments, and the report names them.
 
-- **An NRPN for every LAB card.** FILTER ENV, LAYERS and TABLE's cards, which had none, are NRPN
-  group 7 (7/0..7/14), one a card, its value the card's position: a DAW can automate each.
+- **LFO in LAB.** Two free LFOs on MOD's second page (LFO on MOD goes there): triangle, saw up,
+  saw down, square or sample and hold, on the pitch, the pulse width, the cutoff or the chip's
+  volume, 0.05 to 12.75 Hz, depth -63..+63, drawn side by side. The import maps a SidStation
+  patch's vibrato, PWM and filter LFOs onto them. A sound grows to 109 bytes.
+- **An NRPN for every LAB card.** FILTER ENV, LAYERS, TABLE and LFO's cards, which had none, are NRPN
+  group 7 (7/0..7/19), one a card, its value the card's position: a DAW can automate each.
 
 ### Fixed
 - An imported SidStation table played each step a frame too long when a step lasted two frames or

@@ -36,10 +36,11 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
-- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: nine
-  pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS, TABLE) draw what their four cards do,
+- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: ten
+  pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, LFO, FX, MACRO, LAYERS, TABLE) draw what their four cards do,
   so you turn K1 to K4 and see it: a filter LFO on FILTER, a filter envelope that sweeps the cutoff
-  on every note, the arpeggio's rate on MOD, links on MACRO that make the resonance follow the
+  on every note, the arpeggio's rate on MOD, two free LFOs on LFO (triangle, saws, square or sample and hold, on
+  the pitch, pulse width, cutoff or volume), links on MACRO that make the resonance follow the
   cutoff and the PWM follow the width, and on LAYERS up to three oscillators on one key, each with
   its own waveform, envelope, pulse, transpose and detune, and on TABLE a step table of up to 16
   waveform and pitch steps that plays on every note. EDIT's tap compares A and B, holding

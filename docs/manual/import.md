@@ -47,7 +47,7 @@ second oscillator's table plays only from the song; the report says so.
 | The first playing oscillator's step table, on its layer | Its steps past 16 (`OSC 1 TABLE CUT TO 16`); a speed slower than 16 frames a step (`OSC 1 TABLE SPEED CLAMPED`) |
 | Transpose and detune | A fixed-note oscillator: it plays the key |
 | The filter's mode, cutoff, resonance and routing | A transpose beyond two octaves or a detune beyond 99 cents: clamped |
-| The filter envelope (depth, direction, ADSR) | LFOs, the modulation matrix, the arpeggiator, portamento (MIDIbox SID: its modulation paths, wavetables and right SID) |
+| The first oscillator's vibrato, PWM and filter LFOs, the first two of them, as LAB's two LFOs (shape, speed, depth and inversion; read as best known) | A third of those (`FILTER LFO: DROPPED (TWO LFOS)`), the modulation matrix, the arpeggiator, portamento (MIDIbox SID: its modulation paths, wavetables and right SID) |
 
 Two SidStation details are not documented and are read as best known: a table's fixed notes as
 MIDI note numbers, and a table's speed as a divider of the patch's update rate. Both sound right

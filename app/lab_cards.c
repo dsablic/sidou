@@ -4,11 +4,13 @@
 
 #include <stddef.h>
 
+#include "lab_lfo.h"
 #include "lab_table.h"
 #include "midi_map.h"
 
 #define FENV_FIELDS (LIVE_FENV_RELEASE + 1u)
 #define TABLE_CARD(card) ((card) - LAB_CARD_TABLE_STEP)
+#define LFO_CARD(card) ((card) - LAB_CARD_LFO_EDIT)
 
 _Static_assert(LAB_CARD_FENV_RELEASE - LAB_CARD_FENV_DEPTH == LIVE_FENV_RELEASE - LIVE_FENV_DEPTH,
                "the filter envelope's cards are its fields in order");
@@ -20,6 +22,13 @@ uint32_t lab_card_max(uint32_t card) {
 
 static uint32_t table_end(const live* l) {
     return lab_table_on(l) ? 1u + l->table[LAB_SOUND_TABLE_LOOP - LAB_SOUND_TABLE] : 0u;
+}
+
+static uint32_t lfo_card(const live* l, uint32_t k) {
+    char name[16], value[16];
+    uint32_t fill, max;
+    (void)lab_lfo_card(l, k, name, value, &fill, &max);
+    return fill;
 }
 
 static uint32_t table_card(const live* l, uint32_t k) {
@@ -40,6 +49,11 @@ uint32_t lab_card_get(const live* l, uint32_t card) {
     case LAB_CARD_LAYER_DETUNE: return (uint32_t)(live_layer_detune(l) + LIVE_DETUNE_CENTS);
     case LAB_CARD_LAYER_FILTER: return l->filter_voices >> l->layer_edit & 1u;
     case LAB_CARD_TABLE_END: return table_end(l);
+    case LAB_CARD_LFO_SHAPE: return lab_lfo_shape_of(l, l->lfo_edit);
+    case LAB_CARD_LFO_EDIT:
+    case LAB_CARD_LFO_DEST:
+    case LAB_CARD_LFO_RATE:
+    case LAB_CARD_LFO_DEPTH: return lfo_card(l, LFO_CARD(card));
     default: return card < LAB_CARDS ? table_card(l, TABLE_CARD(card)) : 0u;
     }
 }
@@ -66,6 +80,11 @@ void lab_card_set(live* l, uint32_t card, uint32_t value) {
         break;
     }
     case LAB_CARD_TABLE_END: lab_table_choice_turn(l, delta); break;
+    case LAB_CARD_LFO_SHAPE: lab_lfo_choice_turn(l, delta); break;
+    case LAB_CARD_LFO_EDIT:
+    case LAB_CARD_LFO_DEST:
+    case LAB_CARD_LFO_RATE:
+    case LAB_CARD_LFO_DEPTH: lab_lfo_turn(l, LFO_CARD(card), delta); break;
     default: {
         uint32_t k = TABLE_CARD(card);
         if (k != 0u && k != 3u && l->table_edit >= lab_table_steps(l)) {

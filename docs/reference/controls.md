@@ -791,14 +791,15 @@ it) is where one LIVE sound is shaped with every parameter in sight
 LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX. A [lifted sound](#lift-a-sound)
 opens it over NOW PLAYING, and HOME goes back there.
 
-**SELECT** steps the nine pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
-**FILTER ENV**, **MOD**, **FX**, **MACRO**, **LAYERS**, **TABLE**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
+**SELECT** steps the ten pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**FILTER ENV**, **MOD**, **LFO**, **FX**, **MACRO**, **LAYERS**, **TABLE**. **LFO** pressed on MOD goes to
+the LFO page, and on the LFO page back to MOD. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
 ALGORITHM on the FX page (OFF included: a slot turned to OFF is bypassed, what ENV's cycle
 through OFF once did). On every page:
 
 | Rows | Shows |
 |---|---|
-| 0-1 | the page's name at 2× in yellow, its place (`2/9`) on the right |
+| 0-1 | the page's name at 2× in yellow, its place (`2/10`) on the right |
 | 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares; **A** outlined during a peek (EDIT held + a key) |
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
@@ -826,6 +827,7 @@ with the point the sound is at now; a graph with no link is a dark flat line.
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; along each control's [curve](#knob-curves)) | the slot's algorithm, OFF included |
 | MACRO | RES LNK: RESO LINK, `-8` to `+8` (`0` none): the resonance follows the cutoff, the link times the cutoff's distance below the middle of K1's walk, in 8ths of a step a detent of it (positive: it rises as the cutoff closes; negative, a squelch: as it opens), on top of RESO, clamped | PWM LNK: PWM LINK, `-8` to `+8`: the PWM's depth follows the width, the link times the width's distance from 50 % in 8ths, on top of PWM | dark, unused | dark, unused | no choice: the line says `LINKED` or `NO LINKS` (dark) |
 | FILTER ENV | ATTACK | DECAY | SUS | RELEASE (each `0..15`, the SID envelope's timing; the drawing is the envelope's, a dot following the note) | DEPTH `-63..+63`: the cutoff moves by the depth times 32 at the envelope's peak, up or down; `ENV OFF` at `0` (dark) |
+| LFO | EDIT: the LFO the page edits, `1` or `2` (the header says `LFO 2`) | DEST: `PCH` (every layer's pitch), `PW` (every layer's pulse width), `CUT` (the cutoff), `VOL` (the chip's volume) | RATE: 32 detents from 0.05 to 12.75 Hz, even in pitch, as PWM HZ (`.05`, `2.8`, `13`) | DEPTH: `-63..+63`, the sign inverting; at 63 an octave each way, half the width or the cutoff's range, the volume from 15 to 0 | the shape: `LFO OFF`, `TRIANGLE`, `SAW UP`, `SAW DOWN`, `SQUARE`, `S&H`; turned on from off with no depth, it starts at RATE 20 (about 2 Hz) and DEPTH 16; free-running, not restarted by a note |
 | TABLE | STEP: the step the other cards edit, `1`..the last, then `NEW` (up to 16): a WAVE or NOTE turn there adds a step, a copy of the one before | WAVE: the step's waveform, `OFF` (silent), `TRI`, `SAW`, `PUL`, `NOI`, `T+S`, `T+P`, `S+P`, `TSP`, `TRR` (tri ring), `SAS` (saw sync), `PUS` (pulse sync); a turn counter-clockwise from `OFF` is `END`, which ends the table before the step; an imported control outside the list shows as hex (`88`) and turns to the nearest | NOTE: the step's pitch from the key, `-24..+24` semitones; an imported absolute note by its name (`C-4`), a semitone a detent | FRAMES: each step's length, `1..16` frames of 50 Hz | `TABLE OFF`, `PLAY ONCE` (the last step holds), `LOOP FROM 1`..`LOOP FROM n`; turned on from off on a sound with no steps, step 1 is the layer's waveform at `0`; on a layered sound the table plays on the layer LAYERS' EDIT picked as it was turned on (`TABLE L2`) |
 | LAYERS | EDIT: the layer OSC and ENVELOPE edit (`L1`..`L3`, dark on one oscillator); their header says `OSC L2` | TRANS: the edited layer's transpose, `-24..+24` semitones | DETUNE: its detune, `-99..+99` cents | FILT: the edited layer into the filter, `ON` / `OFF` | ONE OSC, TWO OSC, THREE OSC: how many oscillators a note plays, one a voice (`ONE OSC: SYNC` on a one-voice sync sound, which keeps one) |
 
@@ -1269,7 +1271,7 @@ selects the preset already playing; volume, octave, chip, envelope mode, effects
 range set by RPN 0 are kept. Every parameter has an NRPN, and all but the bend range and the
 expression targets a CC: the map, generated from the code, is [midi.md](midi.md). LAB's cards
 that are no parameter (FILTER ENV, LAYERS, TABLE) have an NRPN each in group 7, numbered by card
-(7/0..7/14), the card's position as the value, as if the card were turned there. The
+(7/0..7/19, LFO's at 7/15..19), the card's position as the value, as if the card were turned there. The
 numbers M1a and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and
 the effect slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116:
 algorithm, Amount, A, B, Mix). CC 27..30 are the [chord arpeggio](#chord-arpeggio)'s (on, rate,

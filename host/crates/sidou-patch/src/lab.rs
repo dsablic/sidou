@@ -23,6 +23,7 @@ pub enum Loss {
     Table(usize),
     TableCut(usize),
     TableRate(usize),
+    LfoDropped(&'static str),
     FixedNote(usize),
     TransposeClamped(usize),
     DetuneClamped(usize),
@@ -36,6 +37,7 @@ impl fmt::Display for Loss {
             Self::Table(n) => write!(f, "OSC {n} TABLE: SONG INSTRUMENT"),
             Self::TableCut(n) => write!(f, "OSC {n} TABLE CUT TO {LAB_TABLE_STEPS_MAX}"),
             Self::TableRate(n) => write!(f, "OSC {n} TABLE SPEED CLAMPED"),
+            Self::LfoDropped(what) => write!(f, "{what} LFO: DROPPED (TWO LFOS)"),
             Self::FixedNote(n) => write!(f, "OSC {n} FIXED NOTE: PLAYS THE KEY"),
             Self::TransposeClamped(n) => write!(f, "OSC {n} TRANSPOSE CLAMPED"),
             Self::DetuneClamped(n) => write!(f, "OSC {n} DETUNE CLAMPED"),
@@ -177,6 +179,55 @@ fn filter_envelope(patch: &Patch, s: &mut [u8; BYTES]) {
     s[LAB_SOUND_FILTER_ENV_SR as usize] = nibble(f.sustain) << 4 | nibble(f.release);
 }
 
+const SIDSTATION_LFO_FLAT: u8 = 5;
+const SIDSTATION_SPEED_MAX: u32 = 127;
+const SIDSTATION_DEPTH_MAX: i32 = 127;
+const PITCH_DEPTH_A_SEMITONE: i32 = LAB_LFO_DEPTH_MAX as i32 / 12;
+
+fn lfos(patch: &Patch, first: usize, s: &mut [u8; BYTES], losses: &mut Vec<Loss>) {
+    let osc = &patch.oscillators[first];
+    let wanted = [
+        ("VIBRATO", osc.vibrato_lfo, osc.vibrato_depth, LAB_LFO_PITCH),
+        (
+            "PWM",
+            osc.pulse_width_lfo,
+            osc.pulse_width_lfo_depth,
+            LAB_LFO_PULSE,
+        ),
+        (
+            "FILTER",
+            patch.filter.lfo,
+            patch.filter.lfo_depth,
+            LAB_LFO_CUTOFF,
+        ),
+    ];
+    let mut n = 0;
+    for (what, select, depth, dest) in wanted {
+        let lfo = &patch.lfos[usize::from(select) % patch.lfos.len()];
+        if depth == 0 || lfo.shape == SIDSTATION_LFO_FLAT {
+            continue;
+        }
+        if n == LAB_SOUND_LFOS as usize {
+            losses.push(Loss::LfoDropped(what));
+            continue;
+        }
+        let depth = i32::from(depth);
+        let scaled = if dest == LAB_LFO_PITCH {
+            (depth * PITCH_DEPTH_A_SEMITONE + SIDSTATION_DEPTH_MAX / 2) / SIDSTATION_DEPTH_MAX
+        } else {
+            depth * LAB_LFO_DEPTH_MAX as i32 / SIDSTATION_DEPTH_MAX
+        }
+        .clamp(1, LAB_LFO_DEPTH_MAX as i32);
+        let signed = if lfo.invert { -scaled } else { scaled };
+        let at = (LAB_SOUND_LFO + n as u32 * LAB_SOUND_LFO_BYTES) as usize;
+        s[at] = (u32::from(lfo.shape) + LAB_LFO_TRIANGLE | dest << LAB_LFO_DEST_SHIFT) as u8;
+        s[at + 1] = (u32::from(lfo.speed).min(SIDSTATION_SPEED_MAX) * (LAB_LFO_RATES - 1)
+            / SIDSTATION_SPEED_MAX) as u8;
+        s[at + 2] = signed as i8 as u8;
+        n += 1;
+    }
+}
+
 pub fn lab_sound(patch: &Patch) -> ([u8; BYTES], Vec<Loss>) {
     let mut losses = Vec::new();
     let layers = sounding(patch, &mut losses);
@@ -212,6 +263,7 @@ pub fn lab_sound(patch: &Patch) -> ([u8; BYTES], Vec<Loss>) {
     s[LAB_SOUND_ARP as usize + LIVE_ARP_SPAN as usize] = 1;
     filter_envelope(patch, &mut s);
     let carried = table(patch, &layers, &mut s, &mut losses);
+    lfos(patch, layers[0], &mut s, &mut losses);
     report(patch, &layers, carried, &mut losses);
     losses.extend(patch.unmapped.iter().copied().map(Loss::Unmapped));
     (s, losses)

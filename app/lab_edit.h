@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 #define LAB_EDIT_STEPS 16u
-#define LAB_EDIT_ENTRIES 104u
+#define LAB_EDIT_ENTRIES 110u
 #define LAB_EDIT_MODE LAB_SOUND_BYTES
 #define LAB_EDIT_BYTES (LAB_SOUND_BYTES + 1u)
 #define LAB_EDIT_FIRST 0x80u

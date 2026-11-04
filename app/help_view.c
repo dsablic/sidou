@@ -148,6 +148,9 @@ static const char* const LAB_LAYERS_LINES[] = {
 static const char* const LAB_TABLE_LINES[] = {
     "K1\0STEP", "K2\0WAVE  END", "K3\0NOTE", "K4\0FRAMES",
     "ALG\0ONCE LOOP", LAB_TAIL_A,  LAB_TAIL_B,   "E+REC\0REPLACE", "HOME\0LIVE"};
+static const char* const LAB_LFO_LINES[] = {
+    "K1\0LFO 1 OR 2", "K2\0DESTINATION", "K3\0RATE", "K4\0DEPTH",
+    "ALG\0SHAPE",     "LFO\0MOD / LFO",  LAB_TAIL_A,  LAB_TAIL_B,  "HOME\0LIVE"};
 static const char* const LAB_NAME_LINES[] = {
     "KEYS\0LETTERS", "SELECT\0CURSOR", "ALG\0CHARACTER", "K1\0SLOT",
     "SAVE\0WRITE",   "HOME\0BACK",     "K2-K4\0NOTHING", "ENV LFO FX\0OFF"};
@@ -189,6 +192,7 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LAB_FILTER_ENV] = CARD("LAB F ENV", LAB_FILTER_ENV_LINES),
     [HELP_CARD_LAB_LAYERS] = CARD("LAB LAYERS", LAB_LAYERS_LINES),
     [HELP_CARD_LAB_TABLE] = CARD("LAB TABLE", LAB_TABLE_LINES),
+    [HELP_CARD_LAB_LFO] = CARD("LAB LFO", LAB_LFO_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&

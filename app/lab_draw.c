@@ -6,6 +6,7 @@
 
 #include "font.h"
 #include "fx/fx_slots.h"
+#include "lab_lfo.h"
 #include "lab_table.h"
 #include "lab_view.h"
 #include "live_view.h"
@@ -819,6 +820,59 @@ static void tbl_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     }
 }
 
+#define LFO_PANEL_W 120u
+#define LFO_PANEL_PAD 6u
+#define LFO_AMP 44
+#define LFO_SH_STEPS 6u
+
+typedef struct {
+    uint8_t shape[LAB_SOUND_LFOS];
+    uint8_t edit, hl;
+    uint16_t phase[LAB_SOUND_LFOS];
+} lfo_ctx;
+
+static int32_t lfo_shape_at(uint32_t shape, uint32_t p) {
+    static const int8_t HOLD[LFO_SH_STEPS] = {40, -70, 90, -20, 60, -100};
+    switch (shape) {
+    case LAB_LFO_TRIANGLE: return (int32_t)(p < 32768u ? 2u * p : 2u * (65535u - p)) - 32768;
+    case LAB_LFO_SAW_UP: return (int32_t)p - 32768;
+    case LAB_LFO_SAW_DOWN: return 32767 - (int32_t)p;
+    case LAB_LFO_SQUARE: return p < 32768u ? 32767 : -32768;
+    case LAB_LFO_SAMPLE_HOLD: return HOLD[p * LFO_SH_STEPS >> 16] * 327;
+    default: return 0;
+    }
+}
+
+static void lfo_init(lfo_ctx* c, const live* l, uint32_t hl) {
+    for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+        c->shape[n] = (uint8_t)lab_lfo_shape_of(l, n);
+        c->phase[n] = l->lfo_phase_n[n];
+    }
+    c->edit = l->lfo_edit;
+    c->hl = (uint8_t)hl;
+}
+
+static void lfo_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const lfo_ctx* c = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = 0;
+    uint32_t n = x / LFO_PANEL_W, in = x % LFO_PANEL_W;
+    if (n >= LAB_SOUND_LFOS || in < LFO_PANEL_PAD || in >= LFO_PANEL_W - LFO_PANEL_PAD) {
+        return;
+    }
+    uint32_t w = LFO_PANEL_W - 2u * LFO_PANEL_PAD;
+    uint32_t p = (in - LFO_PANEL_PAD) * 65536u / w;
+    int32_t y = (int32_t)(LAB_DRAW_H / 2u) - lfo_shape_at(c->shape[n], p) * LFO_AMP / 32768;
+    uint32_t layer = n == c->edit ? 0u : 1u;
+    out->lo[layer] = out->hi[layer] = (uint8_t)y;
+    out->lit = (uint8_t)(layer == 0u && c->hl >= 1u && c->hl <= 4u);
+    uint32_t at = LFO_PANEL_PAD + (uint32_t)c->phase[n] * w / 65536u;
+    if (c->shape[n] && (in & ~1u) == (at & ~1u)) {
+        out->lo[2] = (uint8_t)(y > 4 ? y - 4 : 0);
+        out->hi[2] = (uint8_t)(y + 4);
+    }
+}
+
 static void none_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     (void)ctx;
     (void)x;
@@ -864,6 +918,12 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
             h = (h ^ live_layer_control_of(l, v) ^ (uint32_t)(uint8_t)l->transpose[v] << 8 ^
                  (uint32_t)(uint8_t)l->detune[v] << 16) * 16777619u;
         }
+    } else if (page == LAB_PAGE_LFO) {
+        for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+            h = (h ^ l->lfo[n][0] ^ (uint32_t)l->lfo[n][1] << 8 ^ (uint32_t)l->lfo[n][2] << 16 ^
+                 (uint32_t)(l->lfo_phase_n[n] >> 11) << 24) * 16777619u;
+        }
+        h = (h ^ l->lfo_edit) * 16777619u;
     } else if (page == LAB_PAGE_TABLE) {
         for (uint32_t i = 0; i < LAB_SOUND_TABLE_BYTES; i++) {
             h = (h ^ l->table[i]) * 16777619u;
@@ -890,6 +950,7 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
     fx_ctx x;
     mac_ctx mc;
     tbl_ctx tb;
+    lfo_ctx lc;
     if (hl >= 1u && hl <= 4u) {
         d.lit_color = th->knob[hl - 1u];
     }
@@ -932,6 +993,13 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         d.ctx = &mc;
         d.color[0] = l->reso_link ? th->value : th->dim;
         d.color[1] = l->pwm_link ? th->value : th->dim;
+        d.color[LAB_DRAW_MARKER] = th->hot;
+    } else if (page == LAB_PAGE_LFO) {
+        lfo_init(&lc, l, hl);
+        d.fn = lfo_col;
+        d.ctx = &lc;
+        d.color[0] = lc.shape[lc.edit] ? th->value : th->dim;
+        d.color[1] = th->dim;
         d.color[LAB_DRAW_MARKER] = th->hot;
     } else if (page == LAB_PAGE_TABLE) {
         tbl_init(&tb, l, hl);
@@ -1123,6 +1191,18 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
         guides_layers(c, l, th, row0);
     } else if (page == LAB_PAGE_TABLE) {
         guides_table(c, l, th, row0);
+    } else if (page == LAB_PAGE_LFO) {
+        uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
+        for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+            char t[6] = {(char)('1' + n), ' ', 0};
+            const char* code = lab_lfo_shape_of(l, n) ? lab_lfo_dest_code(lab_lfo_dest_of(l, n)) : "OFF";
+            for (uint32_t i = 0; code[i]; i++) {
+                t[2u + i] = code[i];
+                t[3u + i] = 0;
+            }
+            gtext(c, row, 1u + n * (LFO_PANEL_W / 8u), t,
+                  n == l->lfo_edit ? THEME_ATTR(th, value) : THEME_ATTR(th, hint));
+        }
     } else if (page == LAB_PAGE_MACRO) {
         uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
         gtext(c, row, 1, "CUT>RESO", THEME_ATTR(th, hint));

@@ -106,6 +106,12 @@ pub(crate) fn random_sound(r: &mut Xs) -> Sound {
     }
     random_layers(r, &mut s);
     random_table(r, &mut s);
+    for n in 0..LAB_SOUND_LFOS {
+        let at = (LAB_SOUND_LFO + n * LAB_SOUND_LFO_BYTES) as usize;
+        s[at] = (r.below(LAB_LFO_SHAPES) | r.below(LAB_LFO_DESTS) << LAB_LFO_DEST_SHIFT) as u8;
+        s[at + 1] = r.below(LAB_LFO_RATES) as u8;
+        s[at + 2] = signed_below(r, LAB_LFO_DEPTH_MAX as u32);
+    }
     assert!(valid(&s), "{s:?}");
     s
 }
@@ -359,6 +365,7 @@ fn one_field_changes() -> Vec<(&'static str, Sound)> {
     for (i, name) in SLOT_FIELD.iter().enumerate() {
         with(name, &|s| s[LAB_SOUND_SLOTS as usize + i] = 1);
     }
+    with("lfo", &|s| s[LAB_SOUND_LFO as usize + 2] = 5);
     with("table", &|s| {
         s[LAB_SOUND_TABLE as usize] = (LAB_TABLE_ON | 1) as u8;
         s[LAB_SOUND_TABLE_STEPS as usize] = 0x80;

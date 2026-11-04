@@ -23,6 +23,7 @@ add_library(sidou_live STATIC
     lab_song.c
     lab_table.c
     lab_cards.c
+    lab_lfo.c
     lab_sound.c
     lab_view.c
     live.c

@@ -3798,6 +3798,22 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   waveform, and a table varied silent would leave every roll refused. A variation of a table that
   is off starts a new one-step table, so EDIT + ARP on TABLE always has something to move.
 
+### The free LFOs (1.7)
+
+- MOD's four cards are taken, so the LFOs are MOD's second page, reached by LFO again on MOD:
+  one button for both, no new gesture.
+- A layer's level is not a destination: the SID has no per-voice volume, a gain per voice would be
+  in the audio interrupt (RAMTEXT, 16 bytes free), and the sustain level cannot stand in (the
+  envelope only falls to a lower sustain). VOL is the chip's volume (`$d418`), every layer at once.
+- They run free (no restart at a note-on), so `lab_audible` takes the worst of each moving LFO's
+  two extremes (pitch, width, cutoff) and a volume LFO at its trough (`VOLUME_LOSS_DB`): a note can
+  land anywhere in a slow cycle. A roll that finds nothing audible tries again with the LFOs resting,
+  and a variation on LFO tries a smaller depth. Known gap: the default seed and most others pass;
+  `LAB_SEED=1` and `4242` still find a variation the estimate passes that renders under -40 dB.
+- The import's mapping is best known (the SidStation format is not documented): shapes 0..4 as
+  triangle, saw up, saw down, square and random (5, flat, skipped), speed 0..127 onto the 32 rates,
+  the vibrato's depth 127 as about a semitone.
+
 ### LAB cards over MIDI (1.7)
 
 - The cards that are no instrument parameter get NRPN group 7 (`midi_map.c`'s `LAB_ROW`, `lab_cards.c`):

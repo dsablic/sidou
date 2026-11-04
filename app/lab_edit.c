@@ -401,7 +401,7 @@ static int32_t table_db(const uint8_t s[LAB_SOUND_BYTES], const uint8_t layer_so
     return played > 1u ? loud - TABLE_CLOSE_DB : loud;
 }
 
-uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
+static uint32_t audible_once(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, int32_t loss) {
     int32_t db[LIVE_VOICES];
     uint8_t as_layer[LAB_SOUND_BYTES];
     memcpy(as_layer, s, LAB_SOUND_BYTES);
@@ -418,11 +418,82 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
         db[n] = table_plays_on(s, n) ? table_db(s, as_layer, model, n) : level_db(as_layer, model, n);
     }
     for (uint32_t n = 0; n <= layers; n++) {
-        if (db[n] + pair_db(s, db, n) >= LAB_AUDIBLE_DB) {
+        if (db[n] + pair_db(s, db, n) - loss >= LAB_AUDIBLE_DB) {
             return 1;
         }
     }
     return 0;
+}
+
+static const uint8_t VOLUME_LOSS_DB[LIVE_CHIP_VOLUME + 1u] = {99, 24, 18, 14, 12, 10, 8, 7,
+                                                              6,  5,  4,  3,  2,  2,  1,  0};
+#define LFO_PITCH_SPAN 12
+#define LFO_WIDTH_SPAN 2048
+#define LFO_CUTOFF_SPAN 1024
+
+static uint32_t clamp_u(int32_t v, int32_t max) {
+    return (uint32_t)(v < 0 ? 0 : v > max ? max : v);
+}
+
+static void nudge16(uint8_t* at, int32_t by, int32_t max) {
+    uint32_t v = clamp_u((int32_t)(at[0] | at[1] << 8) + by, max);
+    at[0] = (uint8_t)v;
+    at[1] = (uint8_t)(v >> 8);
+}
+
+static void lfo_extreme(uint8_t s[LAB_SOUND_BYTES], uint32_t dest, int32_t depth) {
+    if (dest == LAB_LFO_PITCH) {
+        for (uint32_t n = 0; n < LIVE_VOICES; n++) {
+            uint8_t* t = &s[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
+            t[0] = (uint8_t)(int8_t)((int8_t)t[0] + depth * LFO_PITCH_SPAN / LAB_LFO_DEPTH_MAX);
+        }
+    } else if (dest == LAB_LFO_PULSE) {
+        int32_t by = depth * LFO_WIDTH_SPAN / LAB_LFO_DEPTH_MAX;
+        nudge16(&s[LAB_SOUND_PULSE], by, (int32_t)LIVE_PULSE_WIDTH_MAX);
+        for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
+            nudge16(&s[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES + 3u], by,
+                    (int32_t)LIVE_PULSE_WIDTH_MAX);
+        }
+    } else {
+        nudge16(&s[LAB_SOUND_CUTOFF], depth * LFO_CUTOFF_SPAN / LAB_LFO_DEPTH_MAX, (int32_t)LIVE_CUTOFF_MAX);
+    }
+}
+
+uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
+    int32_t loss = 0;
+    uint32_t moving = 0;
+    for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+        const uint8_t* f = &s[LAB_SOUND_LFO + n * LAB_SOUND_LFO_BYTES];
+        int32_t depth = (int8_t)f[2];
+        if (!(f[0] & LAB_LFO_SHAPE_MASK) || !depth) {
+            continue;
+        }
+        if ((f[0] & LAB_LFO_DEST_MASK) >> LAB_LFO_DEST_SHIFT == LAB_LFO_VOLUME) {
+            depth = depth < 0 ? -depth : depth;
+            int32_t low = (int32_t)LIVE_CHIP_VOLUME - (depth * (int32_t)LIVE_CHIP_VOLUME + LAB_LFO_DEPTH_MAX - 1) / LAB_LFO_DEPTH_MAX;
+            loss += VOLUME_LOSS_DB[low < 0 ? 0 : low];
+        } else {
+            moving |= 1u << n;
+        }
+    }
+    if (!moving) {
+        return audible_once(s, model, loss);
+    }
+    uint8_t v[LAB_SOUND_BYTES];
+    for (uint32_t ends = 0; ends < 1u << LAB_SOUND_LFOS; ends++) {
+        memcpy(v, s, LAB_SOUND_BYTES);
+        for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+            const uint8_t* f = &s[LAB_SOUND_LFO + n * LAB_SOUND_LFO_BYTES];
+            if (moving >> n & 1u) {
+                int32_t depth = (int8_t)f[2];
+                lfo_extreme(v, (f[0] & LAB_LFO_DEST_MASK) >> LAB_LFO_DEST_SHIFT, ends >> n & 1u ? depth : -depth);
+            }
+        }
+        if (!audible_once(v, model, loss)) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 uint32_t lab_edit_hash(const uint8_t s[LAB_SOUND_BYTES]) {

@@ -231,6 +231,17 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
             0),
     LAB_ROW(LAB_CARD_TABLE_NOTE, "TABLE note", "0..48 = -24..+24 semitones from the key, the edited step's", 2u * LAB_TABLE_NOTE_SPAN, LAB_TABLE_NOTE_SPAN),
     LAB_ROW(LAB_CARD_TABLE_FRAMES, "TABLE frames", "0..15 = 1..16 frames of 50 Hz a step", LAB_TABLE_RATE_MAX - 1u, 0),
+    LAB_ROW(LAB_CARD_LFO_SHAPE, "LFO shape",
+            "the edited LFO's: 0 off, 1 triangle, 2 saw up, 3 saw down, 4 square, 5 sample and hold",
+            LAB_LFO_SHAPES - 1u, 0),
+    LAB_ROW(LAB_CARD_LFO_EDIT, "LFO edit", "0 LFO 1, 1 LFO 2: the LFO the cards edit", LAB_SOUND_LFOS - 1u, 0),
+    LAB_ROW(LAB_CARD_LFO_DEST, "LFO destination", "0 pitch, 1 pulse width, 2 cutoff, 3 the chip's volume",
+            LAB_LFO_DESTS - 1u, 0),
+    LAB_ROW(LAB_CARD_LFO_RATE, "LFO rate", "0..31: 0.05..12.75 Hz, even in pitch (OSC's PWM HZ walk)",
+            LAB_LFO_RATES - 1u, 0),
+    LAB_ROW(LAB_CARD_LFO_DEPTH, "LFO depth",
+            "0..126 = -63..+63, 63 none: an octave, half the width or the cutoff's range, all the volume at the ends",
+            2u * LAB_LFO_DEPTH_MAX, LAB_LFO_DEPTH_MAX),
 #undef LAB_ROW
 #undef LAB_ROW_CURVE
 

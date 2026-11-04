@@ -1182,3 +1182,38 @@ fn a_table_built_on_table_steps_the_keys_pitch_on_the_device() {
     );
     m.key(F4_KEY, false);
 }
+
+#[test]
+fn an_lfo_built_on_lfo_swings_the_keys_pitch_on_the_device() {
+    let Some(fw) = firmware("the LAB LFO test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_lab(&mut m, &fw);
+    for (enc, detents) in [
+        (SELECT, LAB_PAGE_LFO as i32),
+        (ALGORITHM, 1),
+        (K1 + 2, 31),
+        (K1 + 3, 47),
+    ] {
+        turn(&mut m, enc, detents);
+    }
+    assert_eq!(u32::from(lab_page(&mut m, &fw)), LAB_PAGE_LFO);
+    m.key(F4_KEY, true);
+    m.run_ms(40);
+    let s = common::rendered_sid(&mut m, &fw, 0);
+    let mut seen = Vec::new();
+    for _ in 0..20 {
+        m.run_ms(10);
+        seen.push(
+            m.soc
+                .read32(s + (ilp32::sid::osc + ilp32::sid_osc::freq) as u32),
+        );
+    }
+    let (lo, hi) = (*seen.iter().min().unwrap(), *seen.iter().max().unwrap());
+    assert!(
+        f64::from(hi) / f64::from(lo) > 2.5,
+        "a full-depth triangle at 12.75 Hz swings the pitch: {lo}..{hi}"
+    );
+    m.key(F4_KEY, false);
+}

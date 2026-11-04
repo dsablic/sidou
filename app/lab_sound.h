@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define LAB_SOUND_BYTES 103u
+#define LAB_SOUND_BYTES 109u
 #define LAB_SOUND_BYTES_1_0 45u
 #define LAB_SOUND_BYTES_1_5 48u
 #define LAB_SOUND_BYTES_1_6 68u
@@ -54,6 +54,33 @@ extern "C" {
 #define LAB_SOUND_TABLE_RATE 70u
 #define LAB_SOUND_TABLE_STEPS 71u
 #define LAB_SOUND_TABLE_BYTES 35u
+#define LAB_SOUND_LFO 103u
+#define LAB_SOUND_LFO_BYTES 3u
+#define LAB_SOUND_LFOS 2u
+
+#define LAB_LFO_SHAPE_MASK 0x07u
+#define LAB_LFO_DEST_SHIFT 4u
+#define LAB_LFO_DEST_MASK 0x30u
+#define LAB_LFO_RATES 32u
+#define LAB_LFO_DEPTH_MAX 63
+
+typedef enum {
+    LAB_LFO_OFF = 0,
+    LAB_LFO_TRIANGLE = 1,
+    LAB_LFO_SAW_UP = 2,
+    LAB_LFO_SAW_DOWN = 3,
+    LAB_LFO_SQUARE = 4,
+    LAB_LFO_SAMPLE_HOLD = 5,
+    LAB_LFO_SHAPES = 6
+} lab_lfo_shape;
+
+typedef enum {
+    LAB_LFO_PITCH = 0,
+    LAB_LFO_PULSE = 1,
+    LAB_LFO_CUTOFF = 2,
+    LAB_LFO_VOLUME = 3,
+    LAB_LFO_DESTS = 4
+} lab_lfo_dest;
 
 #define LAB_TABLE_ON 0x80u
 #define LAB_TABLE_LAYER_SHIFT 5u

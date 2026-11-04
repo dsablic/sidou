@@ -13,8 +13,8 @@ you like. LAB came in 1.0.
   algorithm; they are LAB's now. The chip model is ALGORITHM on LIVE's TONE page.)
 - Or HOME, then LAB in the menu (after SONG). It opens at OSC.
 
-**SELECT** steps the nine pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS, TABLE), and ENV, LFO and FX jump to
-theirs. **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
+**SELECT** steps the ten pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, LFO, FX, MACRO, LAYERS, TABLE), and ENV, LFO and FX jump to
+theirs (LFO again on MOD goes to the LFO page, and back). **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
 and FX do nothing.
 
 ## 2. Turn the cards
@@ -190,3 +190,22 @@ back); EDIT + ARP on TABLE varies the steps, and on a table that is off starts a
 REC sends the table as the instrument's GoatTracker wave program (with ARP on, or on a layer other
 than the first, it stays behind: `NOT SENT: TABLE`), and ENV on INSTR reads a wave program back as
 a table.
+
+## Two free LFOs: the LFO page
+
+**LFO**, after MOD (press **LFO** on MOD to get there, and again to go back), has two LFOs of
+their own, free-running (they do not restart at a note-on):
+
+- **ALGORITHM** is the edited LFO's shape: `LFO OFF`, `TRIANGLE`, `SAW UP`, `SAW DOWN`, `SQUARE`,
+  `S&H` (a new random level each cycle). Turned on from off with no depth yet, it starts at about
+  2 Hz and a quarter of the depth, so you hear it at once.
+- **K1 EDIT** picks LFO `1` or `2` (the header says `LFO 2`).
+- **K2 DEST** is where it goes: `PCH` (the pitch of every layer), `PW` (every layer's pulse width),
+  `CUT` (the cutoff) or `VOL` (the chip's volume: a tremolo).
+- **K3 RATE** runs from 0.05 to 12.75 Hz in 32 detents, even in pitch, as OSC's PWM HZ.
+- **K4 DEPTH**, `-63` to `+63` (the sign turns it upside down): at 63 the pitch swings an octave
+  each way, the width and the cutoff half their range, the volume all the way down.
+
+The page draws both, one cycle each: the edited one bright, the other dim, with its destination
+under it and a dot where it is now. The SID has no volume per voice, so `VOL` moves every layer at
+once. A roll that finds nothing audible tries again with the LFOs resting.

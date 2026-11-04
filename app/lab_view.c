@@ -8,6 +8,7 @@
 #include "font.h"
 #include "lab_draw.h"
 #include "lab_song.h"
+#include "lab_lfo.h"
 #include "lab_table.h"
 #include "live_dice.h"
 #include "live_view.h"
@@ -17,7 +18,6 @@
 
 static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
 static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
-#define PLACE_COL 24u
 #define ALG_COL 27u
 #define ALL_COL 20u
 
@@ -34,7 +34,7 @@ _Static_assert(LIVE_PARAM_ATTACK + 3 == LIVE_PARAM_RELEASE &&
                "ENVELOPE's and MOD's cards are consecutive parameters");
 
 static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "FILTER ENV",
-                                                  "MOD", "FX", "MACRO", "LAYERS", "TABLE"};
+                                                  "MOD", "LFO", "FX", "MACRO", "LAYERS", "TABLE"};
 static const char* const OSC_COUNT[LIVE_LAYERS_MAX + 1u] = {"ONE OSC", "TWO OSC", "THREE OSC"};
 
 static const uint8_t WAVES[LAB_VIEW_WAVES] = {0x10, 0x20, 0x40, 0x80, 0x30, 0x50,
@@ -283,6 +283,8 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         return layers_card(l, k, name, value, fill, max);
     case LAB_PAGE_TABLE:
         return lab_table_card(l, l->table_edit, k, name, value, fill, max);
+    case LAB_PAGE_LFO:
+        return lab_lfo_card(l, k, name, value, fill, max);
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
         char label[CHIP_VIEW_LABEL];
@@ -347,6 +349,9 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
         return;
     case LAB_PAGE_TABLE:
         lab_table_choice(l, out);
+        return;
+    case LAB_PAGE_LFO:
+        lab_lfo_choice(l, out);
         return;
     case LAB_PAGE_FILTER_ENV:
         if (!l->fenv_depth) {
@@ -425,6 +430,7 @@ static int choice_off(const lab_view* lv) {
     case LAB_PAGE_LAYERS: return !l->layers;
     case LAB_PAGE_FILTER_ENV: return !l->fenv_depth;
     case LAB_PAGE_TABLE: return !lab_table_on(l);
+    case LAB_PAGE_LFO: return lab_lfo_shape_of(l, l->lfo_edit) == LAB_LFO_OFF;
     default: return 0;
     }
 }
@@ -434,6 +440,9 @@ static void page_title(const live* l, uint32_t page, char* out) {
     if (l->layer_edit && (page == LAB_PAGE_OSC || page == LAB_PAGE_ENVELOPE)) {
         e = append(e, " L");
         *e++ = (char)('1' + l->layer_edit);
+    }
+    if (page == LAB_PAGE_LFO) {
+        e = append(e, l->lfo_edit ? " 2" : " 1");
     }
     if (page == LAB_PAGE_TABLE && l->layers && lab_table_layer(l)) {
         e = append(e, " L");
@@ -571,8 +580,12 @@ static void build(lab_view* lv, uint32_t now) {
     char title[LAB_VIEW_TEXT];
     page_title(l, lv->page, title);
     (void)grid_canvas_text_big(c, 0, 0, 2, title, THEME_ATTR(th, hot));
-    char place[4] = {(char)('1' + lv->page), '/', (char)('0' + LAB_PAGES), 0};
-    (void)grid_canvas_text_big(c, PLACE_COL, 0, 2, place, THEME_ATTR(th, hint));
+    char place[8];
+    uint32_t n = screen_decimal(place, lv->page + 1u);
+    place[n++] = '/';
+    n += screen_decimal(place + n, LAB_PAGES);
+    place[n] = 0;
+    (void)grid_canvas_text_big(c, GRID_COLS - 2u * n, 0, 2, place, THEME_ATTR(th, hint));
     char name[LIVE_PRESET_NAME_CHARS + 2u];
     live_preset_name(l, name);
     (void)grid_canvas_text_big(c, 0, LAB_VIEW_NAME_ROW, 2, name, THEME_ATTR(th, value));
@@ -818,6 +831,7 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
         break;
     case LAB_PAGE_LAYERS: layers_turn(l, k, d); break;
     case LAB_PAGE_TABLE: l->table_edit = (uint8_t)lab_table_turn(l, l->table_edit, k, d); break;
+    case LAB_PAGE_LFO: lab_lfo_turn(l, k, d); break;
     case LAB_PAGE_FILTER_ENV:
         live_filter_env_set(
             l, LIVE_FENV_ATTACK + k,
@@ -849,6 +863,7 @@ static void choice_turn(lab_view* lv, int32_t steps) {
         (void)live_layers_set(l, (uint32_t)clamp((int32_t)l->layers + steps, 0, LIVE_LAYERS_MAX));
         break;
     case LAB_PAGE_TABLE: lab_table_choice_turn(l, steps); break;
+    case LAB_PAGE_LFO: lab_lfo_choice_turn(l, steps); break;
     case LAB_PAGE_FILTER_ENV:
         live_filter_env_set(l, LIVE_FENV_DEPTH,
                             (uint32_t)clamp(l->fenv_depth + steps, -LIVE_FENV_DEPTH_MAX,
@@ -959,7 +974,7 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         uint32_t to = e->id == PANEL_BTN_ENV   ? LAB_PAGE_ENVELOPE
-                      : e->id == PANEL_BTN_LFO ? LAB_PAGE_MOD
+                      : e->id == PANEL_BTN_LFO ? (lv->page == LAB_PAGE_MOD ? LAB_PAGE_LFO : LAB_PAGE_MOD)
                       : e->id == PANEL_BTN_FX  ? LAB_PAGE_FX
                                                : LAB_PAGES;
         if (to == LAB_PAGES) {
@@ -1067,6 +1082,20 @@ static void table_rests(live* l) {
     }
 }
 
+static void lfos_rest(live* l) {
+    for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+        uint8_t f[LAB_SOUND_LFO_BYTES] = {(uint8_t)(l->lfo[n][0] & ~LAB_LFO_SHAPE_MASK), l->lfo[n][1],
+                                          l->lfo[n][2]};
+        live_lfo_set(l, n, f);
+    }
+}
+
+static void lfo_shallower(live* l, int32_t by) {
+    const uint8_t* f = l->lfo[l->lfo_edit];
+    uint8_t g[LAB_SOUND_LFO_BYTES] = {f[0], f[1], (uint8_t)(int8_t)((int8_t)f[2] / by)};
+    live_lfo_set(l, l->lfo_edit, g);
+}
+
 static void roll(lab_view* lv, screen* s, int whole) {
     live* l = lv->l;
     uint8_t before[LAB_EDIT_BYTES];
@@ -1102,6 +1131,17 @@ static void roll(lab_view* lv, screen* s, int whole) {
             card_turn(lv, k >> 1, d);
             ok = fresh(lv, before);
         }
+    }
+    for (uint32_t t = 0; t < LAB_VIEW_ROLL_TRIES && !ok && whole; t++) {
+        live_param_set(l, LIVE_PARAM_PULSE_WIDTH, pw);
+        live_dice_shape(l, rnd(lv));
+        lfos_rest(l);
+        ok = fresh(lv, before);
+    }
+    for (int32_t d = 2; d <= 8 && !ok && !whole && lv->page == LAB_PAGE_LFO; d *= 2) {
+        live_sound_apply(l, before);
+        lfo_shallower(l, d);
+        ok = fresh(lv, before);
     }
     if (!ok) {
         live_sound_apply(l, before);

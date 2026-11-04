@@ -557,12 +557,13 @@ struct Ctx {
     _tune: Option<(Box<crate::sid_view::Tune>, crate::sid_view::Bound)>,
 }
 
-const CONTEXTS: [&str; 46] = [
+const CONTEXTS: [&str; 47] = [
     "LIVE",
     "LAB OSC",
     "LAB ENV",
     "LAB FILTER",
     "LAB MOD",
+    "LAB LFO",
     "LAB FX",
     "LAB MACRO",
     "LAB F ENV",
@@ -642,8 +643,8 @@ fn open_ctx(name: &str) -> Ctx {
         "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
         "RESET" => crate::views::open_setting(ui, VIEWS_SETTINGS_RESET),
         "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
-        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB F ENV" | "LAB MOD" | "LAB FX" | "LAB MACRO"
-        | "LAB LAYERS" | "LAB TABLE" | "LAB NAME" => {
+        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB F ENV" | "LAB MOD" | "LAB LFO" | "LAB FX"
+        | "LAB MACRO" | "LAB LAYERS" | "LAB TABLE" | "LAB NAME" => {
             menu_item(ui, VIEWS_MENU_LAB);
             let page = [
                 "LAB OSC",
@@ -651,6 +652,7 @@ fn open_ctx(name: &str) -> Ctx {
                 "LAB FILTER",
                 "LAB F ENV",
                 "LAB MOD",
+                "LAB LFO",
                 "LAB FX",
                 "LAB MACRO",
                 "LAB LAYERS",
@@ -793,6 +795,7 @@ fn lab_help_cards_match_their_goldens() {
         ("LAB ENV", "help-lab-envelope", 2),
         ("LAB FILTER", "help-lab-filter", 2),
         ("LAB MOD", "help-lab-mod", 2),
+        ("LAB LFO", "help-lab-lfo", 2),
         ("LAB FX", "help-lab-fx", 2),
         ("LAB MACRO", "help-lab-macro", 2),
         ("LAB F ENV", "help-lab-filter-env", 2),

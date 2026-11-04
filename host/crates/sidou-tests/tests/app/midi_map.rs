@@ -1085,7 +1085,7 @@ edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
 the bend range, three expression targets, the expert layer, the PWM, the fine tune and the macro links also
 have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. LAB's cards that are
-no instrument parameter (FILTER ENV, LAYERS, TABLE) have an NRPN each in group 7, LAB, numbered by card, the card's
+no instrument parameter (FILTER ENV, LAYERS, TABLE, LFO) have an NRPN each in group 7, LAB, numbered by card, the card's
 own position as its value (LAB, below the map's group 6). The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..{last} selects the

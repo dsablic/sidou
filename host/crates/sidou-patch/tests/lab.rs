@@ -234,3 +234,54 @@ fn a_table_that_does_not_play_is_neither_kept_nor_reported() {
     );
     assert!(!losses.iter().any(|l| matches!(l, Loss::Table(_))));
 }
+
+fn lfo_of(s: &[u8], n: usize) -> [u8; 3] {
+    let at = (LAB_SOUND_LFO + n as u32 * LAB_SOUND_LFO_BYTES) as usize;
+    s[at..at + 3].try_into().unwrap()
+}
+
+#[test]
+fn the_first_oscillators_vibrato_pwm_and_filter_lfos_take_labs_two() {
+    const VIBRATO_LFO: usize = 17;
+    const VIBRATO_DEPTH: usize = 18;
+    const PWM_LFO: usize = 13;
+    const PWM_DEPTH: usize = 14;
+    const LFO_DEPTH_FIELD: usize = 4;
+    let d = three()
+        .osc(0, VIBRATO_LFO, 1)
+        .osc(0, VIBRATO_DEPTH, 127)
+        .osc(0, PWM_LFO, 3)
+        .osc(0, PWM_DEPTH, 64)
+        .set(FILTER_TYPE_LFO, 0x01 | 2 << 4)
+        .set(FILTER_CUTOFF + 6, 40)
+        .set(LFO_BASE[1] + LFO_TYPE, 4)
+        .set(LFO_BASE[1] + LFO_SPEED, 127)
+        .set(LFO_BASE[1] + LFO_DEPTH_FIELD, 127)
+        .set(LFO_BASE[3] + LFO_TYPE, 3)
+        .set(LFO_BASE[3] + LFO_OPTIONS, 0x02)
+        .set(LFO_BASE[3] + LFO_SPEED, 64);
+    let (s, losses) = mapped(d);
+    assert_eq!(
+        lfo_of(&s, 0),
+        [
+            (LAB_LFO_SAMPLE_HOLD | LAB_LFO_PITCH << LAB_LFO_DEST_SHIFT) as u8,
+            31,
+            5
+        ],
+        "LFO 2's random shape, full speed, a full vibrato as about a semitone"
+    );
+    assert_eq!(
+        lfo_of(&s, 1),
+        [
+            (LAB_LFO_SQUARE | LAB_LFO_PULSE << LAB_LFO_DEST_SHIFT) as u8,
+            15,
+            (-31i8) as u8
+        ],
+        "LFO 4 inverted on the width, half speed, half depth"
+    );
+    assert!(losses.contains(&Loss::LfoDropped("FILTER")), "{losses:?}");
+    assert_eq!(
+        Loss::LfoDropped("FILTER").to_string(),
+        "FILTER LFO: DROPPED (TWO LFOS)"
+    );
+}

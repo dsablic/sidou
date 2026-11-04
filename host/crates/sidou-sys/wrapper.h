@@ -47,6 +47,7 @@
 #include "lab_song.h"
 #include "lab_table.h"
 #include "lab_cards.h"
+#include "lab_lfo.h"
 #include "lab_sound.h"
 #include "live.h"
 #include "live_dice.h"

@@ -2349,12 +2349,17 @@ their goldens and budgets, the store, undo and the rolls) is named under each it
 only what it cannot see: the LCD at arm's length, the ear, the flash across a real power cut and
 the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold.
 
-- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the nine pages** (OSC,
-  ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS, TABLE); HOME goes back to LIVE.
+- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the ten pages** (OSC,
+  ENVELOPE, FILTER, FILTER ENV, MOD, LFO, FX, MACRO, LAYERS, TABLE); HOME goes back to LIVE.
   *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`,
   `emu-gate/tests/lab.rs::lab_opens_from_the_menu_and_home_goes_back_to_live`.
   *Device-only:* the pages' drawings readable at arm's length on the LCD, the lit card visible in
   daylight.
+- [ ] **An LFO on LFO:** ALGORITHM to TRIANGLE, K3 up to 13, K4 to +63: a held key swings an
+  octave each way; DEST to VOL is a tremolo (listen for clicks on the 6581: the volume register's DC step).
+  *Emulator:* `emu-gate/tests/lab.rs::an_lfo_built_on_lfo_swings_the_keys_pitch_on_the_device`,
+  `sidou-tests/tests/app/live_lfo.rs`, `lab_lfo_page.rs`.
+  *Device-only:* VOL's clicks by ear on both chips.
 - [ ] **A step table on TABLE:** ALGORITHM to PLAY ONCE, K3 +12, K1 to NEW, K3 back to 0, K4 to 10:
   a held key plays an octave up for a fifth of a second, then at its pitch; LOOP FROM 1 repeats it.
   *Emulator:* `emu-gate/tests/lab.rs::a_table_built_on_table_steps_the_keys_pitch_on_the_device`,

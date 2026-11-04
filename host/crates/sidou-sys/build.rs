@@ -52,6 +52,7 @@ const SOURCES: &[&str] = &[
     "app/lab_song.c",
     "app/lab_table.c",
     "app/lab_cards.c",
+    "app/lab_lfo.c",
     "app/lab_sound.c",
     "app/lab_view.c",
     "app/live.c",
