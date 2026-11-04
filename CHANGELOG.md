@@ -8,6 +8,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **The 1.6 videos.** "What's new in 1.6" (layers, FILTER ENV, the layered sound sent to the song
+  and pulled back exactly, the import) replaces 1.5's, every video is re-rendered on 1.6 (LAB's
+  eight pages, no title cards), and the v1.6.0 release carries them. `tools/readme-check` fails a
+  release whose whats-new video names an earlier one.
+
 ## [1.6.0] - 2026-11-04
 
 Layered LAB sounds, a filter envelope, and SidStation and MIDIbox SID patch import; the title cards are gone.

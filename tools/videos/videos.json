@@ -12,15 +12,10 @@
   "whats-new": {
     "teaser": false,
     "bed": [
-      "lift-offer",
-      "lift-import",
-      "instr-pointers",
-      "page-jump",
-      "roles-new",
-      "role-drums",
-      "role-chords"
+      "send",
+      "pull"
     ],
-    "preview_step": "role-drums"
+    "preview_step": "layers"
   },
   "rec-over-loop": {
     "bpm": 125
