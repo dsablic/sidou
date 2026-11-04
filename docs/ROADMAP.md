@@ -84,6 +84,15 @@ patches, tables as GoatTracker wave programs), filter metrics against real chips
 is inside their spread, so the op-amp port is parked), and the title cards removed
 ([the design](plans/2026-11-03-patch-import-design.md)).
 
+**After 1.6**
+- **The 8580 mixer's grit (a spike).** SIDOU's 8580 voice and mixer path is linear; reSIDfp's adds
+  a second harmonic of -52 to -30 dB, which may be why SIDOU's 8580 is 0.4 to 1.0 dB farther from
+  the CSG8580R5 recordings on some tunes ([the measurements](plans/2026-11-03-filter-model-feasibility.md#measured)).
+  A short interpolated curve, a few hundred bytes, judged by the harmonic probe, the real-chip
+  distance and the owner's ears; its RAMTEXT and instructions measured before anything is kept.
+  S-M. The reSIDfp op-amp port stays parked for good (the owner, 2026-11-04): it would move SIDOU
+  closer to reSIDfp, not to the chips, and the filter's SRAM, not flash, is what it lacks.
+
 ## 1.5
 
 Released in 1.5.0: LAB's song bridge, instruments lifted from a `.sid`, chords and time-shared
