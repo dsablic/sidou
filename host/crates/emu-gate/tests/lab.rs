@@ -1144,3 +1144,41 @@ fn a_layered_sound_built_on_layers_plays_three_oscillators_on_one_key() {
         "the key's release lets all three go"
     );
 }
+
+#[test]
+fn a_table_built_on_table_steps_the_keys_pitch_on_the_device() {
+    let Some(fw) = firmware("the LAB table test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_lab(&mut m, &fw);
+    let (k3, k4) = (K1 + 2, K1 + 3);
+    for (enc, detents) in [
+        (SELECT, LAB_PAGE_TABLE as i32),
+        (ALGORITHM, 1),
+        (k3, 12),
+        (K1, 1),
+        (k3, -12),
+        (k4, 9),
+    ] {
+        turn(&mut m, enc, detents);
+    }
+    assert_eq!(u32::from(lab_page(&mut m, &fw)), LAB_PAGE_TABLE);
+    m.key(F4_KEY, true);
+    m.run_ms(60);
+    let s = common::rendered_sid(&mut m, &fw, 0);
+    let freq = |m: &mut Machine| {
+        f64::from(
+            m.soc
+                .read32(s + (ilp32::sid::osc + ilp32::sid_osc::freq) as u32),
+        )
+    };
+    let first = freq(&mut m);
+    m.run_ms(340);
+    let second = freq(&mut m);
+    assert!(
+        (first / second - 2.0).abs() < 0.01,
+        "step 1 an octave up for ten frames, then step 2 at the key: {first} {second}"
+    );
+    m.key(F4_KEY, false);
+}

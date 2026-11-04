@@ -508,7 +508,11 @@ fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
 #[test]
 fn an_older_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites_them_with_the_defaults(
 ) {
-    for old in [LAB_SOUND_BYTES_1_0, LAB_SOUND_BYTES_1_5] {
+    for old in [
+        LAB_SOUND_BYTES_1_0,
+        LAB_SOUND_BYTES_1_5,
+        LAB_SOUND_BYTES_1_6,
+    ] {
         older_file_reads(old as usize);
     }
 }
@@ -544,6 +548,8 @@ fn older_file_reads(old: usize) {
     new[LAB_SOUND_MONO_SYNC as usize] = 0;
     new[LAB_SOUND_LAYERS as usize] = 1;
     new[LAB_SOUND_FILTER_ENV as usize] = -9i8 as u8;
+    new[LAB_SOUND_TABLE as usize] = (LAB_TABLE_ON | 2) as u8;
+    new[LAB_SOUND_TABLE_STEPS as usize + 3] = 12;
     u.keep(4, "NEW", &new);
     let u = u.power_cycle();
     assert_eq!(u.rig.live.sounds_valid, 1 | 1 << 4 | 1 << 15);

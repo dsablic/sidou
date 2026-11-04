@@ -791,14 +791,14 @@ it) is where one LIVE sound is shaped with every parameter in sight
 LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX. A [lifted sound](#lift-a-sound)
 opens it over NOW PLAYING, and HOME goes back there.
 
-**SELECT** steps the eight pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
-**FILTER ENV**, **MOD**, **FX**, **MACRO**, **LAYERS**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
+**SELECT** steps the nine pages, clamped at both ends: **OSC**, **ENVELOPE**, **FILTER**,
+**FILTER ENV**, **MOD**, **FX**, **MACRO**, **LAYERS**, **TABLE**. **ENV**, **LFO** and **FX** step to ENVELOPE, MOD and FX. A slot's algorithm is
 ALGORITHM on the FX page (OFF included: a slot turned to OFF is bypassed, what ENV's cycle
 through OFF once did). On every page:
 
 | Rows | Shows |
 |---|---|
-| 0-1 | the page's name at 2× in yellow, its place (`2/8`) on the right |
+| 0-1 | the page's name at 2× in yellow, its place (`2/9`) on the right |
 | 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares; **A** outlined during a peek (EDIT held + a key) |
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
@@ -826,6 +826,7 @@ with the point the sound is at now; a graph with no link is a dark flat line.
 | FX | the selected slot's Amount | A | B | Mix (named for its algorithm, as on CHIP; dark grey where it has no use; along each control's [curve](#knob-curves)) | the slot's algorithm, OFF included |
 | MACRO | RES LNK: RESO LINK, `-8` to `+8` (`0` none): the resonance follows the cutoff, the link times the cutoff's distance below the middle of K1's walk, in 8ths of a step a detent of it (positive: it rises as the cutoff closes; negative, a squelch: as it opens), on top of RESO, clamped | PWM LNK: PWM LINK, `-8` to `+8`: the PWM's depth follows the width, the link times the width's distance from 50 % in 8ths, on top of PWM | dark, unused | dark, unused | no choice: the line says `LINKED` or `NO LINKS` (dark) |
 | FILTER ENV | ATTACK | DECAY | SUS | RELEASE (each `0..15`, the SID envelope's timing; the drawing is the envelope's, a dot following the note) | DEPTH `-63..+63`: the cutoff moves by the depth times 32 at the envelope's peak, up or down; `ENV OFF` at `0` (dark) |
+| TABLE | STEP: the step the other cards edit, `1`..the last, then `NEW` (up to 16): a WAVE or NOTE turn there adds a step, a copy of the one before | WAVE: the step's waveform, `OFF` (silent), `TRI`, `SAW`, `PUL`, `NOI`, `T+S`, `T+P`, `S+P`, `TSP`, `TRR` (tri ring), `SAS` (saw sync), `PUS` (pulse sync); a turn counter-clockwise from `OFF` is `END`, which ends the table before the step; an imported control outside the list shows as hex (`88`) and turns to the nearest | NOTE: the step's pitch from the key, `-24..+24` semitones; an imported absolute note by its name (`C-4`), a semitone a detent | FRAMES: each step's length, `1..16` frames of 50 Hz | `TABLE OFF`, `PLAY ONCE` (the last step holds), `LOOP FROM 1`..`LOOP FROM n`; turned on from off on a sound with no steps, step 1 is the layer's waveform at `0`; on a layered sound the table plays on the layer LAYERS' EDIT picked as it was turned on (`TABLE L2`) |
 | LAYERS | EDIT: the layer OSC and ENVELOPE edit (`L1`..`L3`, dark on one oscillator); their header says `OSC L2` | TRANS: the edited layer's transpose, `-24..+24` semitones | DETUNE: its detune, `-99..+99` cents | FILT: the edited layer into the filter, `ON` / `OFF` | ONE OSC, TWO OSC, THREE OSC: how many oscillators a note plays, one a voice (`ONE OSC: SYNC` on a one-voice sync sound, which keeps one) |
 
 EDIT held turns the cards as without it. **SCL** selects the next slot, as everywhere (on FX the
@@ -900,7 +901,11 @@ and cutoff against the note), and refuses one under -38 dBFS, where -40 dBFS is 
 tests prove no sound it passes renders under -40. A result is **never the same twice**: not the
 sound before it, not the last result. A refused result is tried again (a variation 8 times, then
 the smallest moves; a roll 16 times); if none passes the sound stays and the toast says
-`NOTHING AUDIBLE` (a sound with no waveform varied on ENVELOPE, say).
+`NOTHING AUDIBLE` (a sound with no waveform varied on ENVELOPE, say). With a TABLE, the estimate
+follows the steps a held C4 plays in the first 500 ms: the loudest steps, their share of the time
+and a 3 dB margin (a step with the test bit is silent). A roll rests the table of the layer it
+reshapes (its steps stay for ALGORITHM to turn on again); a variation on TABLE with the table off
+starts a new one-step table.
 
 ### Send a LAB sound to the song
 
@@ -929,7 +934,8 @@ stay as they are and the new programs go after the tables' last rows. Refusals: 
 | filter LFO | a filter loop over the same band at the PWM's rate | approximate |
 | vibrato | the vibrato delay and a calculated-mode speed row (a speed row the table has already is shared) | approximate: a cycle of 2S + 4 frames, a depth of a power of two |
 | ARP on | the [ARP helper](#arp-helper)'s default chord (major; DOWN and UP-DOWN in their order) at the arpeggio's rate, and TABLE opens with the helper on its rows | the helper decides |
-| one-voice sync, fine tune, the velocity, wheel and pressure targets, the effect slots | nothing | dropped (the hint line says `NOT SENT: SYNC TUNE PLAY FX`) |
+| TABLE (on the first layer, ARP off) | the wave program: a row a step (its waveform and GoatTracker's right byte: relative or absolute), a delay row of the step's frames less two (GoatTracker holds a delay row its value plus one frame), and a jump to the loop's step or `FF 00` (once: the last step holds); it replaces the waveform's one row, up to 33 rows | exact from the second step on (GoatTracker's first step also has the instrument's first frame) |
+| one-voice sync, fine tune, the velocity, wheel and pressure targets, the effect slots; a table with ARP on or on layer 2 or 3 | nothing | dropped (the hint line says `NOT SENT: SYNC TUNE PLAY FX TABLE`) |
 
 The sound goes with the instrument in the song's trailer (`LBnn`,
 [song-format.md](song-format.md#sidous-trailer)), so pulling the instrument back, unedited,
@@ -947,8 +953,10 @@ LAB and not edited since comes back exactly (`PULLED I05`). Any other is decoded
 programs (a row of `00` keeps the first waveform), the send's own loops, a pulse or filter run
 that turns back and forth (it becomes PWM or the filter LFO, at the rate of its longest swing)
 and a calculated vibrato come back close; what could only be
-approximated is in the toast (`I05 ~DRUM GATE`): `DRUM` (absolute notes, or a program of several
-waveforms), `SWEEP` (a one-shot pulse or filter sweep), `GATE` (another gate timer, no hard
+approximated is in the toast (`I05 ~DRUM GATE`): a wave program of waveform and delay rows comes
+back as a TABLE (up to 16 steps, the first step's length the table's FRAMES; `WAVE` when the steps
+differ in length, it has more steps or its loop lands mid-step), `DRUM` (a program with wave
+commands, `F0`..`FE`, which a table cannot hold), `SWEEP` (a one-shot pulse or filter sweep), `GATE` (another gate timer, no hard
 restart, legato), `ARP` (an arpeggio: LIVE's chord arpeggio plays the keys held), `VIB` (an
 absolute vibrato speed), `LFO` (a filter loop at another rate than the pulse loop: LIVE has one
 LFO). The bend range and the three targets stay the sound's; the effect slots go off.

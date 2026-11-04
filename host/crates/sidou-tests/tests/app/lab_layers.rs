@@ -9,7 +9,7 @@ use crate::lab_view::{choice, lab_ui, settle, to_page};
 use crate::views::Ui;
 use crate::{c_text, PANEL_ENC_K2, PANEL_ENC_K3};
 
-fn card(ui: &Ui, page: u32, k: u32) -> (String, String) {
+pub(crate) fn card(ui: &Ui, page: u32, k: u32) -> (String, String) {
     let mut name = [0 as c_char; LAB_VIEW_TEXT as usize];
     let mut value = [0 as c_char; LAB_VIEW_TEXT as usize];
     let (mut fill, mut max) = (0u32, 0u32);
@@ -27,7 +27,7 @@ fn card(ui: &Ui, page: u32, k: u32) -> (String, String) {
     (c_text(name.as_ptr()), c_text(value.as_ptr()))
 }
 
-fn sound(ui: &Ui) -> [u8; LAB_SOUND_BYTES as usize] {
+pub(crate) fn sound(ui: &Ui) -> [u8; LAB_SOUND_BYTES as usize] {
     let mut s = [0u8; LAB_SOUND_BYTES as usize];
     unsafe { live_sound_get(ui.live(), s.as_mut_ptr()) };
     s

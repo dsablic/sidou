@@ -8,6 +8,7 @@
 #include "font.h"
 #include "lab_draw.h"
 #include "lab_song.h"
+#include "lab_table.h"
 #include "live_dice.h"
 #include "live_view.h"
 #include "panel.h"
@@ -33,7 +34,7 @@ _Static_assert(LIVE_PARAM_ATTACK + 3 == LIVE_PARAM_RELEASE &&
                "ENVELOPE's and MOD's cards are consecutive parameters");
 
 static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "FILTER ENV",
-                                                  "MOD", "FX", "MACRO", "LAYERS"};
+                                                  "MOD", "FX", "MACRO", "LAYERS", "TABLE"};
 static const char* const OSC_COUNT[LIVE_LAYERS_MAX + 1u] = {"ONE OSC", "TWO OSC", "THREE OSC"};
 
 static const uint8_t WAVES[LAB_VIEW_WAVES] = {0x10, 0x20, 0x40, 0x80, 0x30, 0x50,
@@ -280,6 +281,8 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         return 1;
     case LAB_PAGE_LAYERS:
         return layers_card(l, k, name, value, fill, max);
+    case LAB_PAGE_TABLE:
+        return lab_table_card(l, l->table_edit, k, name, value, fill, max);
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
         char label[CHIP_VIEW_LABEL];
@@ -341,6 +344,9 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
         return;
     case LAB_PAGE_LAYERS:
         copy(out, l->mono_sync ? "ONE OSC: SYNC" : OSC_COUNT[l->layers]);
+        return;
+    case LAB_PAGE_TABLE:
+        lab_table_choice(l, out);
         return;
     case LAB_PAGE_FILTER_ENV:
         if (!l->fenv_depth) {
@@ -418,6 +424,7 @@ static int choice_off(const lab_view* lv) {
     case LAB_PAGE_MACRO: return !l->reso_link && !l->pwm_link;
     case LAB_PAGE_LAYERS: return !l->layers;
     case LAB_PAGE_FILTER_ENV: return !l->fenv_depth;
+    case LAB_PAGE_TABLE: return !lab_table_on(l);
     default: return 0;
     }
 }
@@ -427,6 +434,10 @@ static void page_title(const live* l, uint32_t page, char* out) {
     if (l->layer_edit && (page == LAB_PAGE_OSC || page == LAB_PAGE_ENVELOPE)) {
         e = append(e, " L");
         *e++ = (char)('1' + l->layer_edit);
+    }
+    if (page == LAB_PAGE_TABLE && l->layers && lab_table_layer(l)) {
+        e = append(e, " L");
+        *e++ = (char)('1' + lab_table_layer(l));
     }
     *e = 0;
 }
@@ -806,6 +817,7 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
         }
         break;
     case LAB_PAGE_LAYERS: layers_turn(l, k, d); break;
+    case LAB_PAGE_TABLE: l->table_edit = (uint8_t)lab_table_turn(l, l->table_edit, k, d); break;
     case LAB_PAGE_FILTER_ENV:
         live_filter_env_set(
             l, LIVE_FENV_ATTACK + k,
@@ -836,6 +848,7 @@ static void choice_turn(lab_view* lv, int32_t steps) {
     case LAB_PAGE_LAYERS:
         (void)live_layers_set(l, (uint32_t)clamp((int32_t)l->layers + steps, 0, LIVE_LAYERS_MAX));
         break;
+    case LAB_PAGE_TABLE: lab_table_choice_turn(l, steps); break;
     case LAB_PAGE_FILTER_ENV:
         live_filter_env_set(l, LIVE_FENV_DEPTH,
                             (uint32_t)clamp(l->fenv_depth + steps, -LIVE_FENV_DEPTH_MAX,
@@ -1012,8 +1025,22 @@ static int card_used(const lab_view* lv, uint32_t k) {
     return lab_view_card(lv, lv->page, k, name, value, &fill, &max);
 }
 
+#define VARY_NOTE_SPAN 12u
+
+static void table_fresh(live* l, uint32_t r) {
+    uint8_t t[LAB_SOUND_TABLE_BYTES] = {0};
+    uint32_t layer = l->layers ? l->layer_edit : 0u;
+    t[0] = (uint8_t)(LAB_TABLE_ON | layer << LAB_TABLE_LAYER_SHIFT | 1u);
+    t[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE] = live_layer_control_of(l, l->layer_edit);
+    t[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 1u] = (uint8_t)(1u + r % VARY_NOTE_SPAN);
+    live_table_set(l, t);
+}
+
 static void vary_once(lab_view* lv) {
     uint32_t used = 0;
+    if (lv->page == LAB_PAGE_TABLE && !lab_table_on(lv->l)) {
+        table_fresh(lv->l, rnd(lv));
+    }
     for (uint32_t k = 0; k < 4u; k++) {
         uint32_t r = rnd(lv);
         if (card_used(lv, k)) {
@@ -1028,6 +1055,15 @@ static void vary_once(lab_view* lv) {
     }
 }
 
+static void table_rests(live* l) {
+    if (lab_table_on(l) && (!l->layers || !lab_table_layer(l))) {
+        uint8_t t[LAB_SOUND_TABLE_BYTES];
+        memcpy(t, l->table, sizeof t);
+        t[0] &= (uint8_t)~LAB_TABLE_ON;
+        live_table_set(l, t);
+    }
+}
+
 static void roll(lab_view* lv, screen* s, int whole) {
     live* l = lv->l;
     uint8_t before[LAB_EDIT_BYTES];
@@ -1039,6 +1075,7 @@ static void roll(lab_view* lv, screen* s, int whole) {
         if (whole) {
             live_param_set(l, LIVE_PARAM_PULSE_WIDTH, pw);
             live_dice_shape(l, rnd(lv));
+            table_rests(l);
         } else {
             if (t) {
                 live_sound_apply(l, before);

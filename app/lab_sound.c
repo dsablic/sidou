@@ -15,7 +15,11 @@ _Static_assert(LAB_SOUND_LAYER_TUNING + LIVE_VOICES * LAB_SOUND_LAYER_TUNING_BYT
 _Static_assert(LAB_SOUND_LAYER_VOICE + LIVE_LAYERS_MAX * LAB_SOUND_LAYER_VOICE_BYTES ==
                    LAB_SOUND_FILTER_ENV,
                "the layers, then the filter envelope");
-_Static_assert(LAB_SOUND_FILTER_ENV_SR + 1u == LAB_SOUND_BYTES, "the filter envelope is last");
+_Static_assert(LAB_SOUND_FILTER_ENV_SR + 1u == LAB_SOUND_BYTES_1_6, "1.6's filter envelope");
+_Static_assert(LAB_SOUND_TABLE == LAB_SOUND_BYTES_1_6 &&
+                   LAB_SOUND_TABLE_STEPS + 2u * LAB_TABLE_STEPS_MAX == LAB_SOUND_BYTES &&
+                   LAB_SOUND_TABLE + LAB_SOUND_TABLE_BYTES == LAB_SOUND_BYTES,
+               "the table after 1.6's bytes, its steps last");
 _Static_assert(LAB_SOUND_ARP + LIVE_ARP_SPAN + 1u == LAB_SOUND_SLOTS,
                "the arpeggio's four fields, then the slots");
 
@@ -76,6 +80,34 @@ static int layers_ok(const uint8_t s[LAB_SOUND_BYTES]) {
     return 1;
 }
 
+int32_t lab_table_offset(uint8_t note) {
+    if (note <= LAB_TABLE_NOTE_UP_MAX) {
+        return note;
+    }
+    return note < LAB_TABLE_NOTE_NONE ? (int32_t)note - (int32_t)LAB_TABLE_NOTE_NONE : 0;
+}
+
+uint32_t lab_table_absolute(uint8_t note) {
+    return note > LAB_TABLE_NOTE_NONE && note <= LAB_TABLE_NOTE_LAST;
+}
+
+static int table_ok(const uint8_t s[LAB_SOUND_BYTES]) {
+    uint32_t head = s[LAB_SOUND_TABLE];
+    uint32_t steps = head & LAB_TABLE_COUNT_MASK;
+    uint32_t layer = (head & LAB_TABLE_LAYER_MASK) >> LAB_TABLE_LAYER_SHIFT;
+    if (steps > LAB_TABLE_STEPS_MAX || layer > LIVE_LAYERS_MAX || ((head & LAB_TABLE_ON) && !steps) ||
+        s[LAB_SOUND_TABLE_LOOP] > steps || s[LAB_SOUND_TABLE_RATE] >= LAB_TABLE_RATE_MAX) {
+        return 0;
+    }
+    for (uint32_t n = 0; n < LAB_TABLE_STEPS_MAX; n++) {
+        const uint8_t* step = &s[LAB_SOUND_TABLE_STEPS + 2u * n];
+        if ((step[0] & 0x01u) || step[1] > LAB_TABLE_NOTE_LAST) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 LIVE_COLD uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]) {
     for (uint32_t i = 0; i < sizeof BYTE_MAX / sizeof BYTE_MAX[0]; i++) {
         if (s[BYTE_MAX[i].at] > BYTE_MAX[i].max) {
@@ -91,7 +123,7 @@ LIVE_COLD uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]) {
         semis > LIVE_RATIO_SEMIS || u16_at(s, LAB_SOUND_PWM_DEPTH) > LIVE_PWM_DEPTH_MAX ||
         u16_at(s, LAB_SOUND_PWM_RATE) > LIVE_PWM_STEP_MAX || tune < -LIVE_TUNE_CENTS ||
         tune > LIVE_TUNE_CENTS || s[LAB_SOUND_ARP + LIVE_ARP_SPAN] < 1u ||
-        !link_ok(s[LAB_SOUND_RESO_LINK]) || !link_ok(s[LAB_SOUND_PWM_LINK]) || !layers_ok(s)) {
+        !link_ok(s[LAB_SOUND_RESO_LINK]) || !link_ok(s[LAB_SOUND_PWM_LINK]) || !layers_ok(s) || !table_ok(s)) {
         return 0;
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {

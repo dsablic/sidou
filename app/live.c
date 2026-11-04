@@ -17,6 +17,7 @@
 #define NOTE_TOP 106
 #define CUTOFF_PER_VALUE 8
 #define PW_PER_VALUE 16
+#define TABLE_NOTE_C0 12u
 
 _Static_assert(LIVE_PITCH_SEMITONE == 8192 && LIVE_BEND_CENTRE == 8192u,
                "a bend times the range is the offset in 1/8192 semitone");
@@ -225,6 +226,34 @@ static int32_t pitch_offset(const live* l, int v) {
     return off;
 }
 
+static uint32_t table_steps(const live* l) {
+    return l->table[0] & LAB_TABLE_ON ? l->table[0] & LAB_TABLE_COUNT_MASK : 0u;
+}
+
+uint32_t live_table_voice(const live* l, uint32_t v) {
+    if (!table_steps(l)) {
+        return 0;
+    }
+    if (l->layers) {
+        uint32_t layer = (l->table[0] & LAB_TABLE_LAYER_MASK) >> LAB_TABLE_LAYER_SHIFT;
+        return v == layer && layer <= l->layers;
+    }
+    return !l->mono_sync || v == 0u;
+}
+
+static const uint8_t* table_step(const live* l, int v) {
+    return &l->table[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 2u * l->table_pos[v]];
+}
+
+uint32_t live_table_playing(const live* l) {
+    for (uint32_t v = 0; v < LIVE_VOICES; v++) {
+        if (live_table_voice(l, v) && l->voice[voice_source(l, (int)v)].note != LIVE_NO_NOTE) {
+            return v + 1u;
+        }
+    }
+    return 0;
+}
+
 static int voice_silent(const live* l, int v) {
     return (l->mono_sync && v == 1) || (l->layers && v > l->layers);
 }
@@ -240,7 +269,16 @@ static uint16_t voice_freq(const live* l, int v) {
     if (note == LIVE_NO_NOTE || voice_silent(l, v)) {
         return 0;
     }
-    uint32_t f = live_freq_at(note, pitch_offset(l, src) + layer_offset(l, v));
+    int32_t step = 0;
+    if (live_table_voice(l, (uint32_t)v)) {
+        uint8_t n = table_step(l, v)[1];
+        if (lab_table_absolute(n)) {
+            note = (uint8_t)(n - LAB_TABLE_NOTE_NONE + TABLE_NOTE_C0);
+        } else {
+            step = lab_table_offset(n) * LIVE_PITCH_SEMITONE;
+        }
+    }
+    uint32_t f = live_freq_at(note, pitch_offset(l, src) + layer_offset(l, v) + step);
     if (l->mono_sync && v == 0) {
         f = (f * l->sync_q8) >> 8;
         if (f > 0xffffu) {
@@ -254,7 +292,8 @@ static uint8_t voice_control(const live* l, int v) {
     if ((l->mono_sync && v != 0) || voice_silent(l, v)) {
         return 0;
     }
-    return (uint8_t)(layer_control(l, v) | (l->voice[voice_source(l, v)].gate ? CTRL_GATE : 0u));
+    uint8_t control = live_table_voice(l, (uint32_t)v) ? table_step(l, v)[0] : layer_control(l, v);
+    return (uint8_t)(control | (l->voice[voice_source(l, v)].gate ? CTRL_GATE : 0u));
 }
 
 static void write_freq(live* l, int v) {
@@ -562,6 +601,10 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     x->pressure = 0;
     x->vibrato_phase = 0;
     x->vibrato_wait = l->vibrato_delay;
+    for (int t = l->layers ? 0 : v; t <= (l->layers ? LIVE_VOICES - 1 : v); ++t) {
+        l->table_pos[t] = 0;
+        l->table_wait[t] = 0;
+    }
     l->last_velocity = velocity;
     l->fenv_t_us = 0;
     l->fenv_gate_us = LIVE_FENV_IDLE;
@@ -1189,6 +1232,43 @@ static void apply_profile(live* l) {
     set_profile(l, l->profile_req);
 }
 
+LIVE_COLD static void table_tick(live* l) {
+    l->table_frame ^= 1u;
+    if (l->table_frame) {
+        return;
+    }
+    uint32_t steps = table_steps(l);
+    uint32_t loop = l->table[LAB_SOUND_TABLE_LOOP - LAB_SOUND_TABLE];
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        if (!live_table_voice(l, (uint32_t)v) || l->voice[voice_source(l, v)].note == LIVE_NO_NOTE) {
+            continue;
+        }
+        if (++l->table_wait[v] <= l->table[LAB_SOUND_TABLE_RATE - LAB_SOUND_TABLE]) {
+            continue;
+        }
+        l->table_wait[v] = 0;
+        uint32_t next = l->table_pos[v] + 1u;
+        next = next < steps ? next : loop ? loop - 1u : steps - 1u;
+        if (next != l->table_pos[v]) {
+            l->table_pos[v] = (uint8_t)next;
+            write_control(l, v);
+        }
+    }
+}
+
+LIVE_COLD void live_table_set(live* l, const uint8_t table[LAB_SOUND_TABLE_BYTES]) {
+    l->settings_dirty = 1;
+    memcpy(l->table, table, LAB_SOUND_TABLE_BYTES);
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        uint32_t steps = l->table[0] & LAB_TABLE_COUNT_MASK;
+        if (l->table_pos[v] >= steps) {
+            l->table_pos[v] = 0;
+        }
+        write_control(l, v);
+        li_update_freq(l, v);
+    }
+}
+
 void live_tick(live* l) {
     if (l->expert_dirty) {
         l->expert_active = 0;
@@ -1219,6 +1299,9 @@ void live_tick(live* l) {
         arp_tick(l);
     }
     fenv_tick(l);
+    if (table_steps(l)) {
+        table_tick(l);
+    }
     for (int v = 0; v < LIVE_VOICES; ++v) {
         li_update_freq(l, v);
     }

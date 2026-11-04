@@ -32,16 +32,19 @@ FM-1, load the song, go to **INSTR** (SEQ until it shows), turn PRESETS to the p
 instrument (the report lists them: `I09 VELOBASS`), and press **ENV**: LAB opens on the sound,
 layers and all (`PULLED I09`). **SAVE** keeps it as a USER sound.
 
-A patch with a table (a SidStation oscillator's step table) also gets one instrument per
-oscillator that plays its table as a GoatTracker wave program, and a pattern that plays them
-together: PLAY auditions the song's table patches one after another. LAB sounds carry no table,
-so the pulled sound plays without it; the report says so.
+A patch with a table (a SidStation oscillator's step table) keeps it on the LAB sound: the first
+oscillator that plays a table brings it to its layer (LAB's [TABLE page](lab.md#play-a-step-table-table)),
+up to 16 steps. The patch also gets one instrument per oscillator that plays its table as a
+GoatTracker wave program, and a pattern that plays them together: PLAY auditions the song's table
+patches one after another, every oscillator's table included. A LAB sound holds one table, so a
+second oscillator's table plays only from the song; the report says so.
 
 ## What comes across, and what does not
 
 | Comes across | Does not (the report names it) |
 |---|---|
-| Each oscillator's waveform, ring, sync, ADSR and pulse width, as a layer | A step table: an instrument in the song, not part of the LAB sound |
+| Each oscillator's waveform, ring, sync, ADSR and pulse width, as a layer | A second or third oscillator's table: an instrument in the song (`OSC 2 TABLE: SONG INSTRUMENT`) |
+| The first playing oscillator's step table, on its layer | Its steps past 16 (`OSC 1 TABLE CUT TO 16`); a speed slower than 16 frames a step (`OSC 1 TABLE SPEED CLAMPED`) |
 | Transpose and detune | A fixed-note oscillator: it plays the key |
 | The filter's mode, cutoff, resonance and routing | A transpose beyond two octaves or a detune beyond 99 cents: clamped |
 | The filter envelope (depth, direction, ADSR) | LFOs, the modulation matrix, the arpeggiator, portamento (MIDIbox SID: its modulation paths, wavetables and right SID) |

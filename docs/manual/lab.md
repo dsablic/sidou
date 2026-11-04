@@ -13,7 +13,7 @@ you like. LAB came in 1.0.
   algorithm; they are LAB's now. The chip model is ALGORITHM on LIVE's TONE page.)
 - Or HOME, then LAB in the menu (after SONG). It opens at OSC.
 
-**SELECT** steps the eight pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS), and ENV, LFO and FX jump to
+**SELECT** steps the nine pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS, TABLE), and ENV, LFO and FX jump to
 theirs. **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
 and FX do nothing.
 
@@ -159,3 +159,34 @@ one you edit reversed and an unused one dark. A new layer starts as a copy of th
 heard at once. A layered sound is kept, compared, undone, varied and rolled as one sound; a roll
 reshapes the first layer, as DICE does.
 
+
+## Play a step table: TABLE
+
+**TABLE**, the last page, gives the sound a step table, as a SidStation or a C64 tune does: each
+step sets the waveform and the pitch for a few frames, so one key plays a noise attack into a
+pulse, an octave arpeggio or a drum that drops in pitch. The table starts on each note-on and runs
+on through the release.
+
+- **ALGORITHM** is how it ends: `TABLE OFF`, `PLAY ONCE` (the last step holds) or `LOOP FROM 1`
+  to `LOOP FROM n` (after the last step it goes back to that one). Turned on from off, step 1 is
+  the sound's own waveform at the key's pitch, so nothing changes until you edit it. Turned off,
+  the steps wait for the next time.
+- **K1 STEP** picks the step the other cards edit, `1` to the last, then `NEW`: a WAVE or NOTE
+  turn there adds a step, a copy of the one before (up to 16).
+- **K2 WAVE** is the step's waveform: `TRI`, `SAW`, `PUL`, `NOI`, the mixes (`T+S`, `T+P`, `S+P`,
+  `TSP`), ring and sync (`TRR`, `SAS`, `PUS`), or `OFF` (silent). Turned counter-clockwise past
+  `OFF` it says `END`: the table ends before that step.
+- **K3 NOTE** is the step's pitch from the key, `-24` to `+24` semitones; an imported step on a
+  fixed note shows its name (`C-4`).
+- **K4 FRAMES** is how long each step lasts, `1` to `16` frames of 50 Hz.
+
+The drawing shows each step's pitch as a bar from the middle, the edited step in K1's colour, a dot
+on the step the last note plays and `^LOOP` under the step the loop goes back to. On a
+one-oscillator sound every note of a chord runs the table from its own note-on; on a layered sound
+it plays on one layer, the one LAYERS' EDIT picked when you turned it on (the header says
+`TABLE L2`). EDIT + SCL's roll rests the table of the layer it reshapes (turn ALGORITHM to bring it
+back); EDIT + ARP on TABLE varies the steps, and on a table that is off starts a new one-step table.
+
+REC sends the table as the instrument's GoatTracker wave program (with ARP on, or on a layer other
+than the first, it stays behind: `NOT SENT: TABLE`), and ENV on INSTR reads a wave program back as
+a table.

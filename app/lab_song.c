@@ -8,9 +8,12 @@
 #include "song/song_ext.h"
 #include "song_pages.h"
 
-_Static_assert(LAB_SONG_ROWS == SONG_PAGES_ARP_ROWS, "an arpeggio's rows fit a program");
+_Static_assert(LAB_SONG_ROWS >= SONG_PAGES_ARP_ROWS, "an arpeggio's rows fit a program");
+_Static_assert(LAB_TABLE_RATE_MAX - 2u <= 0x0fu, "a step's wait is one delay row of its frames less two");
 
 #define JUMP 0xffu
+#define WAVE_SILENT 0xe0u
+#define WAVE_DELAY_MAX 0x0fu
 #define GATE_TIMER 2u
 #define KEPT_VERSION 1u
 #define KEPT_HEAD (1u + GT2_TABLES + 4u)
@@ -97,6 +100,31 @@ static void arp_chord(const uint8_t* sound, uint8_t wave, prog* p) {
                                                           p->o->right[GT2_WTBL]);
 }
 
+static uint32_t table_head(const uint8_t* sound) {
+    return sound[LAB_SOUND_TABLE] & LAB_TABLE_ON ? sound[LAB_SOUND_TABLE] : 0u;
+}
+
+static uint32_t wave_left(uint32_t ctrl, uint32_t* notes) {
+    if (ctrl >= WAVE_SILENT) {
+        ctrl &= 0x7fu;
+        *notes |= LAB_SONG_WAVE;
+    }
+    return ctrl & 0xf0u ? ctrl | 1u : WAVE_SILENT | ctrl;
+}
+
+static void table_program(const uint8_t* sound, prog* p, uint32_t* notes) {
+    uint32_t steps = sound[LAB_SOUND_TABLE] & LAB_TABLE_COUNT_MASK;
+    uint32_t wait = sound[LAB_SOUND_TABLE_RATE];
+    for (uint32_t i = 0u; i < steps; i++) {
+        const uint8_t* st = &sound[LAB_SOUND_TABLE_STEPS + 2u * i];
+        row(p, wave_left(st[0], notes), st[1] == LAB_TABLE_NOTE_NONE ? 0u : st[1]);
+        if (wait)
+            row(p, wait - 1u, LAB_TABLE_NOTE_NONE);
+    }
+    uint32_t loop = sound[LAB_SOUND_TABLE_LOOP];
+    row(p, JUMP, loop ? p->first + (loop - 1u) * (wait ? 2u : 1u) : 0u);
+}
+
 void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uint32_t voice, uint32_t model,
                      const uint8_t first[GT2_TABLES], lab_song_instr* o) {
     memset(o, 0, sizeof *o);
@@ -109,9 +137,15 @@ void lab_song_encode(const uint8_t sound[LAB_SOUND_BYTES], const char* name, uin
         notes |= LAB_SONG_WAVE;
     }
     uint8_t wave = (uint8_t)(ctrl | 1u);
+    uint32_t head = table_head(sound);
+    if (head && (sound[LAB_SOUND_ARP + LIVE_ARP_ON] || (head & LAB_TABLE_LAYER_MASK)))
+        notes |= LAB_SONG_TABLE;
     if (sound[LAB_SOUND_ARP + LIVE_ARP_ON]) {
         arp_chord(sound, wave, &p);
         notes |= LAB_SONG_ARP;
+    } else if (head && !(head & LAB_TABLE_LAYER_MASK)) {
+        table_program(sound, &p, &notes);
+        wave = o->left[GT2_WTBL][0] < WAVE_SILENT ? o->left[GT2_WTBL][0] : wave;
     } else {
         row(&p, wave < 0x10u ? wave | 0xe0u : wave, 0u);
         row(&p, JUMP, 0u);
@@ -384,6 +418,63 @@ void lab_song_name(const gt2_song* s, uint32_t instr, char out[LAB_SOUND_NAME + 
     out[n] = 0;
 }
 
+static uint32_t step_frames(uint32_t steps, uint32_t frames, uint32_t* rate, uint32_t* notes) {
+    if (steps == 1u)
+        *rate = frames;
+    else if (frames != *rate)
+        *notes |= LAB_SONG_WAVE;
+    return 0u;
+}
+
+static int table_fit(const uint8_t* l, const uint8_t* r, uint32_t first, uint32_t n, uint32_t ctrl,
+                     uint8_t sound[LAB_SOUND_BYTES], uint32_t* notes) {
+    uint8_t start[LAB_TABLE_STEPS_MAX];
+    uint8_t* t = &sound[LAB_SOUND_TABLE];
+    uint32_t steps = 0u, frames = 0u, rate = 1u, note = 0u, i = 0u, found = *notes;
+    for (; i < n && l[i] != JUMP; i++) {
+        uint32_t a = l[i];
+        if (a >= 0xf0u || r[i] > LAB_TABLE_NOTE_LAST || (a && a <= WAVE_DELAY_MAX && !steps))
+            return 0;
+        if ((a && a <= WAVE_DELAY_MAX) || (!a && r[i] == LAB_TABLE_NOTE_NONE && steps)) {
+            frames += a + 1u;
+            continue;
+        }
+        if (steps == LAB_TABLE_STEPS_MAX) {
+            found |= LAB_SONG_WAVE;
+            break;
+        }
+        frames = steps ? step_frames(steps, frames, &rate, &found) : 0u;
+        ctrl = !a ? ctrl : a >= WAVE_SILENT ? a & 0x0fu : a & 0xfeu;
+        note = r[i] == LAB_TABLE_NOTE_NONE ? note : r[i];
+        start[steps] = (uint8_t)i;
+        t[3u + 2u * steps] = (uint8_t)(ctrl & 0xfeu);
+        t[4u + 2u * steps++] = (uint8_t)note;
+        frames++;
+    }
+    if (!steps)
+        return 0;
+    (void)step_frames(steps, frames, &rate, &found);
+    uint32_t loop = 0u;
+    if (i < n && l[i] == JUMP && r[i]) {
+        for (uint32_t k = 0u; k < steps; k++)
+            loop = r[i] == first + start[k] ? k + 1u : loop;
+        found |= loop ? 0u : LAB_SONG_WAVE;
+    }
+    if (steps == 1u && !note && !loop) {
+        memset(t, 0, LAB_SOUND_TABLE_BYTES);
+        return 0;
+    }
+    if (rate > LAB_TABLE_RATE_MAX) {
+        rate = LAB_TABLE_RATE_MAX;
+        found |= LAB_SONG_WAVE;
+    }
+    t[0] = (uint8_t)(LAB_TABLE_ON | steps);
+    t[1] = (uint8_t)loop;
+    t[2] = (uint8_t)(rate - 1u);
+    *notes = found;
+    return 1;
+}
+
 static uint32_t fit(const source* s, uint32_t model, uint8_t sound[LAB_SOUND_BYTES]) {
     const uint8_t* ins = s->ins;
     uint32_t notes = 0u;
@@ -397,6 +488,7 @@ static uint32_t fit(const source* s, uint32_t model, uint8_t sound[LAB_SOUND_BYT
         sound[LAB_SOUND_SLOTS + k * LIVE_SLOT_FIELDS] = 0u;
     uint32_t w = ins[GT2_INS_WAVE];
     uint32_t ctrl = ins[GT2_INS_FIRSTWAVE];
+    memset(&sound[LAB_SOUND_TABLE], 0, LAB_SOUND_TABLE_BYTES);
     sound[LAB_SOUND_ARP + LIVE_ARP_ON] = 0u;
     if (w && w <= s->rows[GT2_WTBL]) {
         const uint8_t* l = s->left[GT2_WTBL] + w - 1u;
@@ -411,6 +503,8 @@ static uint32_t fit(const source* s, uint32_t model, uint8_t sound[LAB_SOUND_BYT
             sound[LAB_SOUND_ARP + LIVE_ARP_RATE] = (uint8_t)k;
             ctrl = a.wave;
             notes |= LAB_SONG_ARP;
+        } else if (table_fit(l, r, w, s->rows[GT2_WTBL] + 1u - w, ctrl, sound, &notes)) {
+            ctrl = sound[LAB_SOUND_TABLE_STEPS];
         } else {
             ctrl = !l[0] ? ctrl : l[0] >= 0xe0u && l[0] < 0xf0u ? l[0] & 0x0fu : l[0];
             if ((l[0] && l[0] < 0x10u) || l[0] >= 0xf0u || (r[0] && r[0] != 0x80u) ||
@@ -510,9 +604,9 @@ int lab_song_pull_gti(const uint8_t* gti, uint32_t len, uint32_t model,
 
 void lab_song_words(uint32_t notes, int dropped, char* out, uint32_t max) {
     static const char* const WORDS[] = {"ATTACK", "PWM",  "FILTER", "LFO",  "VIB", "ARP", "WAVE",
-                                        "DRUM",   "SWEEP", "GATE",  "SYNC", "TUNE", "PLAY", "FX"};
+                                        "DRUM",   "SWEEP", "GATE",  "SYNC", "TUNE", "PLAY", "FX",  "TABLE"};
     uint32_t n = 0u;
-    for (uint32_t b = dropped ? 10u : 0u; b < (dropped ? 14u : 10u); b++) {
+    for (uint32_t b = dropped ? 10u : 0u; b < (dropped ? 15u : 10u); b++) {
         const char* w = WORDS[b];
         uint32_t k = 0u;
         while (w[k])

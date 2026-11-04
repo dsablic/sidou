@@ -8,6 +8,20 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **TABLE in LAB.** A sound carries a step table: up to 16 steps, each a waveform and a pitch
+  (relative to the key or a fixed note), so many frames a step, played once or looped from a step,
+  on every note (on a layered sound, on one layer). REC sends it as the instrument's GoatTracker
+  wave program and ENV on INSTR reads a wave program back as a table. A sound grows from 68 to
+  103 bytes; a 1.6 sound loads with its table off.
+- **Imported table patches keep their table.** `sidou-sysex import` puts the first playing
+  oscillator's SidStation table on the LAB sound; the others still play from their song
+  instruments, and the report names them.
+
+### Fixed
+- An imported SidStation table played each step a frame too long when a step lasted two frames or
+  more (GoatTracker holds a delay row one frame past its value).
+
 ## [1.6.0] - 2026-11-04
 
 Layered LAB sounds, a filter envelope, and SidStation and MIDIbox SID patch import; the title cards are gone.

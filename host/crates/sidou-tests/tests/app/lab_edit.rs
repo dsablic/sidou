@@ -347,7 +347,7 @@ fn what_lab_audible_refuses_is_silent() {
     assert!(silent(held_c4_db(&pulse, SID_MODEL_8580, 0)));
 }
 
-fn edit_with(ui: &mut Ui, b: u32) -> Option<String> {
+pub(crate) fn edit_with(ui: &mut Ui, b: u32) -> Option<String> {
     ui.down(EDIT);
     ui.press(b);
     ui.up(EDIT);

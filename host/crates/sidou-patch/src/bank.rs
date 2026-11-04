@@ -37,7 +37,7 @@ pub struct BankSong {
     pub lines: Vec<String>,
 }
 
-fn right_of(note: TableNote, transpose: i32) -> u8 {
+pub(crate) fn right_of(note: TableNote, transpose: i32) -> u8 {
     match note {
         TableNote::Absolute(n) => {
             let idx = (i32::from(n) - MIDI_C0).clamp(ABSOLUTE_LOWEST, ABSOLUTE_HIGHEST);
@@ -82,9 +82,9 @@ pub fn wave_rows(
         rows.push((left_of(s.control), right_of(s.note, transpose)));
         let mut wait = frames_per_step.saturating_sub(1);
         while wait > 0 {
-            let d = wait.min(DELAY_MAX);
-            rows.push((d as u8, KEEP_PITCH));
-            wait -= d;
+            let frames = wait.min(DELAY_MAX + 1);
+            rows.push(((frames - 1) as u8, KEEP_PITCH));
+            wait -= frames;
         }
     }
     let target = table
@@ -95,7 +95,7 @@ pub fn wave_rows(
     rows
 }
 
-fn frames_per_step(patch: &Patch, n: usize) -> u32 {
+pub(crate) fn frames_per_step(patch: &Patch, n: usize) -> u32 {
     let hz = if patch.sync_speed == 0 {
         DEFAULT_UPDATE_HZ
     } else {
@@ -105,7 +105,7 @@ fn frames_per_step(patch: &Patch, n: usize) -> u32 {
     ((FRAME_HZ * speed + hz / 2) / hz).max(1)
 }
 
-fn has_table(patch: &Patch, n: usize) -> bool {
+pub(crate) fn has_table(patch: &Patch, n: usize) -> bool {
     !patch.tables[n].steps.is_empty() && patch.oscillators[n].table_speed != 0
 }
 

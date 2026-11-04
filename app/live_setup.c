@@ -130,6 +130,7 @@ static void load_preset(live* l, uint8_t index) {
     l->layer_edit = 0;
     l->fenv_depth = 0;
     l->fenv_ad = 0;
+    memset(l->table, 0, sizeof l->table);
     l->fenv_sr = 0;
     l->fenv_t_us = LIVE_FENV_IDLE;
     l->fenv_gate_us = LIVE_FENV_IDLE;
@@ -389,6 +390,7 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->fenv_depth = l->fenv_depth;
     e->fenv_ad = l->fenv_ad;
     e->fenv_sr = l->fenv_sr;
+    memcpy(e->table, l->table, sizeof e->table);
     e->valid = 1;
 }
 
@@ -433,6 +435,7 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->fenv_depth = e->fenv_depth;
     l->fenv_ad = e->fenv_ad;
     l->fenv_sr = e->fenv_sr;
+    memcpy(l->table, e->table, sizeof l->table);
 }
 
 static void user_leave(live* l) {
@@ -468,12 +471,12 @@ uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
     if (l->preset == LIVE_PRESET_DICE) {
         return 0;
     }
-    for (uint32_t i = 0; i < LAB_SOUND_BYTES; i++) {
-        if (now[i] != l->base[i] && (i != LAB_SOUND_BEND_RANGE || !l->bend_range_rpn)) {
-            return 1;
-        }
+    if (!l->bend_range_rpn) {
+        return memcmp(now, l->base, LAB_SOUND_BYTES) != 0;
     }
-    return 0;
+    const uint32_t after = LAB_SOUND_BEND_RANGE + 1u;
+    return memcmp(now, l->base, LAB_SOUND_BEND_RANGE) != 0 ||
+           memcmp(now + after, l->base + after, LAB_SOUND_BYTES - after) != 0;
 }
 
 uint32_t live_preset_edited(const live* l) {
@@ -590,6 +593,7 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_FILTER_ENV] = (uint8_t)l->fenv_depth;
     out[LAB_SOUND_FILTER_ENV_AD] = l->fenv_ad;
     out[LAB_SOUND_FILTER_ENV_SR] = l->fenv_sr;
+    memcpy(&out[LAB_SOUND_TABLE], l->table, LAB_SOUND_TABLE_BYTES);
 }
 
 static const struct {
@@ -642,6 +646,7 @@ LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->fenv_depth = clamped(in[LAB_SOUND_FILTER_ENV], LIVE_FENV_DEPTH_MAX);
     l->fenv_ad = in[LAB_SOUND_FILTER_ENV_AD];
     l->fenv_sr = in[LAB_SOUND_FILTER_ENV_SR];
+    memcpy(l->table, &in[LAB_SOUND_TABLE], LAB_SOUND_TABLE_BYTES);
 }
 
 LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);

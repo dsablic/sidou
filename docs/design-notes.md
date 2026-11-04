@@ -3764,6 +3764,31 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   reader takes any sound of at least `LAB_SOUND_BYTES_1_0` bytes; the bytes it does not have are at
   their defaults (0).
 
+### The step table (1.7)
+
+- One table a sound, on one layer (`LAB_SOUND_TABLE`, 35 bytes): three tables would take the sound
+  past 127 bytes, which the undo ring's positions (`LAB_EDIT_FIRST`) cannot address, and cost 70
+  more bytes in each of the nine copies of a sound in RAM. Of the SidStation factory bank's 13
+  patches with a playing table, 9 have it on their first oscillator; the importer carries the first
+  playing one and leaves the others to their song instruments.
+- The rows are GoatTracker's encoding (the wave program's left control and right note byte), so a
+  table goes to a wave program and back with no translation of its notes. GoatTracker's player
+  (`gt2_play.c`) is not what runs it: it lives in RAMTEXT, which has 16 bytes free, and runs per
+  song channel. `live_tick` runs the table every second tick (a 50 Hz frame), per voice, from flash.
+- GoatTracker holds a delay row of value `d` for `d + 1` frames (its `wavetime` counts to `d` and the
+  row advances on the next frame), so a step of `n` frames is its row and a delay row of `n - 2`; a
+  `00 80` row is a one-frame wait on the way back. 1.6's import wrote `n - 1`, a frame too long a
+  step for every table slower than one frame; `wave_rows` writes `n - 2` since 1.7.
+- The card values are three characters at most (the codes `T+S`, `TRR`, `SAS`), so the TABLE page
+  keeps LAB's rule and lights its cards instead of opening the popup.
+- `lab_audible` with a table: the steps a held C4 plays in the first 500 ms are each estimated as
+  the layer with that step's control and pitch (a step with the test bit is silent); the level is
+  the loudest step's less 3 dB for each halving of the time the steps within 3 dB of it play, and
+  a 3 dB margin: the estimate errs quiet, as the random sounds' worst cases showed it must.
+- A roll rests (turns off) the table on the layer it reshapes: the table would replace the rolled
+  waveform, and a table varied silent would leave every roll refused. A variation of a table that
+  is off starts a new one-step table, so EDIT + ARP on TABLE always has something to move.
+
 ### View composition
 
 - LAB composes as CHIP does: the text is built in the canvas when what it shows changed (a hash of

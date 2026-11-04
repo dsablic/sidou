@@ -264,6 +264,7 @@ typedef struct {
     live_layer layer[LIVE_LAYERS_MAX];
     int8_t fenv_depth;
     uint8_t fenv_ad, fenv_sr;
+    uint8_t table[LAB_SOUND_TABLE_BYTES];
 } live_edit;
 
 typedef struct {
@@ -375,6 +376,11 @@ typedef struct {
     uint8_t fenv_sr;
     uint32_t fenv_t_us;
     uint32_t fenv_gate_us;
+    uint8_t table[LAB_SOUND_TABLE_BYTES];
+    uint8_t table_pos[LIVE_VOICES];
+    uint8_t table_wait[LIVE_VOICES];
+    uint8_t table_frame;
+    uint8_t table_edit;
 } live;
 
 #define LIVE_PROFILE_NONE 0xffu
@@ -440,6 +446,9 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 uint32_t live_layers_set(live* l, uint32_t extra);
 void live_filter_env_set(live* l, uint32_t field, uint32_t value);
 uint32_t live_filter_env(const live* l, uint32_t field);
+void live_table_set(live* l, const uint8_t table[LAB_SOUND_TABLE_BYTES]);
+uint32_t live_table_voice(const live* l, uint32_t v);
+uint32_t live_table_playing(const live* l);
 uint8_t live_edit_control(const live* l);
 uint8_t live_layer_control_of(const live* l, uint32_t v);
 uint16_t live_edit_pulse_width(const live* l);

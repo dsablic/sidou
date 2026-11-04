@@ -531,3 +531,131 @@ fn a_kit_drum_pulls_with_what_was_approximated() {
     assert_eq!((d[1], d[2]), (kick[0], kick[1]));
     assert!(valid(&d));
 }
+
+fn tabled() -> Sound {
+    let mut s = plain();
+    crate::live_table::Table {
+        steps: vec![(0x80, 12), (0x20, 0), (0x40, 0x7d)],
+        loop_from: 2,
+        frames: 3,
+        layer: 0,
+    }
+    .put(&mut s);
+    assert!(valid(&s));
+    s
+}
+
+#[test]
+fn a_table_is_sent_as_the_wave_program_a_row_a_step_with_its_wait_and_loop() {
+    let o = encode(&tabled(), 0, [5, 1, 1, 1]);
+    assert_eq!(
+        rows(&o, 0),
+        [
+            (0x81, 12),
+            (1, 0x80),
+            (0x21, 0),
+            (1, 0x80),
+            (0x41, 0x7d),
+            (1, 0x80),
+            (0xff, 7)
+        ],
+        "each step, a delay row (GoatTracker's lasts its value plus one frame), a jump to step 2's row"
+    );
+    assert_eq!(o.instr[GT2_INS_FIRSTWAVE as usize], 0x81);
+    assert_eq!(u32::from(o.notes) & LAB_SONG_DROPPED, 0);
+    let mut once = tabled();
+    once[LAB_SOUND_TABLE_LOOP as usize] = 0;
+    once[LAB_SOUND_TABLE_RATE as usize] = 0;
+    let o = encode(&once, 0, [1, 1, 1, 1]);
+    assert_eq!(
+        rows(&o, 0),
+        [(0x81, 12), (0x21, 0), (0x41, 0x7d), (0xff, 0)],
+        "a rate of one frame has no delays; played once, the program stops on the last step"
+    );
+}
+
+#[test]
+fn a_table_the_instrument_cannot_carry_is_named_as_dropped() {
+    let mut arp = tabled();
+    arp[(LAB_SOUND_ARP + LIVE_ARP_ON) as usize] = 1;
+    let mut layered = tabled();
+    layered[LAB_SOUND_LAYERS as usize] = 1;
+    layered[LAB_SOUND_TABLE as usize] |= (1 << LAB_TABLE_LAYER_SHIFT) as u8;
+    for s in [arp, layered] {
+        let n = u32::from(encode(&s, 0, [1, 1, 1, 1]).notes);
+        assert_eq!(n & LAB_SONG_DROPPED, LAB_SONG_TABLE);
+        assert_eq!(words(n, true), "TABLE");
+    }
+}
+
+fn table_bytes(s: &Sound) -> &[u8] {
+    &s[LAB_SOUND_TABLE as usize..][..LAB_SOUND_TABLE_BYTES as usize]
+}
+
+#[test]
+fn an_edited_tabled_instrument_pulls_back_its_table() {
+    let s = tabled();
+    let (mut song, _) = sent_song(&s, 3, [4, 1, 1, 1]);
+    unsafe { (*song.ptr_mut()).instr[2][9] = b'X' };
+    let (d, notes) = pull(&song, 3);
+    assert_eq!(notes & (LAB_SONG_WAVE | LAB_SONG_DRUM), 0, "{notes:#x}");
+    assert_eq!(table_bytes(&d), table_bytes(&s));
+    assert_eq!(
+        d[LAB_SOUND_CONTROL as usize], 0x80,
+        "the first step's waveform"
+    );
+    assert!(valid(&d));
+}
+
+#[test]
+fn a_wave_program_with_uneven_waits_pulls_as_a_table_said_to_be_approximated() {
+    let mut song = Song::device();
+    let raw = unsafe { &mut *song.ptr_mut() };
+    raw.instr[0] = plain_instr();
+    let program = [(0x81u8, 0x0cu8), (0x41, 0), (3, 0x80), (0, 0x80), (0xff, 0)];
+    for (i, &(l, r)) in program.iter().enumerate() {
+        raw.ltable[0][i] = l;
+        raw.rtable[0][i] = r;
+    }
+    let (d, notes) = pull(&song, 1);
+    assert_eq!(notes & LAB_SONG_WAVE, LAB_SONG_WAVE);
+    assert_eq!(notes & LAB_SONG_DRUM, 0);
+    let t = table_bytes(&d);
+    assert_eq!(
+        &t[..3],
+        &[(LAB_TABLE_ON | 2) as u8, 0, 0],
+        "two steps, once, the first's rate"
+    );
+    assert_eq!(&t[3..7], &[0x80, 0x0c, 0x40, 0]);
+    assert!(valid(&d));
+}
+
+fn plain_instr() -> [u8; 25] {
+    encode(&plain(), 0, [1, 1, 1, 1]).instr
+}
+
+#[test]
+fn the_sent_table_plays_the_same_waveforms_frame_by_frame_as_the_keys() {
+    let s = tabled();
+    let regs = played(&encode(&s, 0, [1, 1, 1, 1]), 40);
+    let at = regs.iter().position(|r| r[4] & 0xf0 == 0x20).unwrap();
+    let song: Vec<u8> = regs[at..at + 20].iter().map(|r| r[4] & 0xf0).collect();
+    let mut rig = Rig::new(SID_MODEL_6581);
+    unsafe { live_sound_apply(&mut *rig.live, s.as_ptr()) };
+    rig.note_on(60);
+    for _ in 0..3 * 2 {
+        rig.tick();
+    }
+    let keys: Vec<u8> = (0..20)
+        .map(|_| {
+            let w = rig.control(0) & 0xf0;
+            rig.tick();
+            rig.tick();
+            w
+        })
+        .collect();
+    assert_eq!(
+        song, keys,
+        "from step 2 on (GoatTracker's first step has the instrument's first frame too)"
+    );
+}

@@ -2144,7 +2144,7 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         static const uint8_t LAB_HELP[LAB_PAGES] = {
             HELP_CARD_LAB_OSC, HELP_CARD_LAB_ENVELOPE, HELP_CARD_LAB_FILTER,
             HELP_CARD_LAB_FILTER_ENV, HELP_CARD_LAB_MOD, HELP_CARD_LAB_FX,
-            HELP_CARD_LAB_MACRO, HELP_CARD_LAB_LAYERS};
+            HELP_CARD_LAB_MACRO, HELP_CARD_LAB_LAYERS, HELP_CARD_LAB_TABLE};
         return v->lab.mode ? HELP_CARD_LAB_NAME : LAB_HELP[v->lab.page % LAB_PAGES];
     }
     if (top == &chip_view_view) {

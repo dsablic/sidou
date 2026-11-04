@@ -25,7 +25,8 @@ extern "C" {
 #define LAB_PAGE_FX 5u
 #define LAB_PAGE_MACRO 6u
 #define LAB_PAGE_LAYERS 7u
-#define LAB_PAGES 8u
+#define LAB_PAGE_TABLE 8u
+#define LAB_PAGES 9u
 #define LAB_VIEW_FRAME_CELLS 200u
 #define LAB_VIEW_NAME_ROW 2u
 #define LAB_VIEW_ART_ROW 4u

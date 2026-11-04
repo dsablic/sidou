@@ -122,9 +122,17 @@ fn the_filter_maps_its_type_cutoff_and_resonance() {
 fn what_lab_cannot_hold_is_reported() {
     let cases: Vec<(&str, Decoded, Loss)> = vec![
         (
-            "a table",
-            three().tables(&[&[0x40, 0x1E, 0xFF]]),
-            Loss::Table(1),
+            "a second oscillator's table",
+            three()
+                .osc(0, OSC_TABLE_SPEED, 2)
+                .osc(1, OSC_TABLE_SPEED, 2)
+                .tables(&[&[0x40, 0x1E, 0xFF], &[0x20, 0x30, 0xFF]]),
+            Loss::Table(2),
+        ),
+        (
+            "a table of more than sixteen steps",
+            three().osc(0, OSC_TABLE_SPEED, 2).tables(&[&long_table()]),
+            Loss::TableCut(1),
         ),
         (
             "a fixed note",
@@ -151,6 +159,7 @@ fn what_lab_cannot_hold_is_reported() {
 #[test]
 fn a_loss_reads_as_a_short_line() {
     assert_eq!(Loss::Table(2).to_string(), "OSC 2 TABLE: SONG INSTRUMENT");
+    assert_eq!(Loss::TableCut(1).to_string(), "OSC 1 TABLE CUT TO 16");
     assert_eq!(
         Loss::FixedNote(3).to_string(),
         "OSC 3 FIXED NOTE: PLAYS THE KEY"
@@ -176,4 +185,52 @@ fn the_filter_envelope_maps_its_depth_direction_and_rates() {
         s[LAB_SOUND_FILTER_ENV as usize] as i8, -50,
         "an inverted envelope sweeps down"
     );
+}
+
+fn long_table() -> Vec<u8> {
+    let mut t = [0x41u8, 0xC0].repeat(18);
+    t.push(0xFF);
+    t
+}
+
+fn table_of(s: &[u8]) -> &[u8] {
+    &s[LAB_SOUND_TABLE as usize..][..LAB_SOUND_TABLE_BYTES as usize]
+}
+
+#[test]
+fn the_first_tabled_oscillator_keeps_its_table_on_the_lab_sound() {
+    let (s, losses) = mapped(
+        three()
+            .osc(1, OSC_TABLE_SPEED, 4)
+            .set(SYNC_SPEED, 100)
+            .tables(&[&[0xFF], &[0x81, 0x3C, 0x40, 0xC7, 0x20, 0x83, 0xFE, 0x01]]),
+    );
+    let t = table_of(&s);
+    assert_eq!(
+        t[0],
+        (LAB_TABLE_ON | 1 << LAB_TABLE_LAYER_SHIFT | 3) as u8,
+        "on, on layer 2 (oscillator 2), three steps"
+    );
+    assert_eq!(t[1], 2, "loops back to the second step");
+    assert_eq!(t[2], 1, "speed 4 at 100 Hz is two frames of 50 Hz");
+    assert_eq!(
+        &t[3..9],
+        &[0x80, LAB_TABLE_NOTE_NONE as u8 + 60 - 12, 0x40, 7, 0x20, 0x80 - 3],
+        "the gate left to the key; an absolute C-4, +7, -3 (the layer's own transpose stays on the layer)"
+    );
+    assert!(
+        !losses.iter().any(|l| matches!(l, Loss::Table(_))),
+        "{losses:?}"
+    );
+}
+
+#[test]
+fn a_table_that_does_not_play_is_neither_kept_nor_reported() {
+    let (s, losses) = mapped(three().tables(&[&[0x40, 0x1E, 0xFF]]));
+    assert_eq!(
+        table_of(&s)[0],
+        0,
+        "speed 0: the SidStation does not run it"
+    );
+    assert!(!losses.iter().any(|l| matches!(l, Loss::Table(_))));
 }

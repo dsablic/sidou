@@ -75,7 +75,7 @@ pub(crate) fn choice(ui: &Ui) -> String {
 }
 
 #[test]
-fn select_steps_the_eight_pages_and_stops_at_the_ends() {
+fn select_steps_the_pages_and_stops_at_the_ends() {
     let mut ui = lab_ui();
     let names = [
         "OSC",
@@ -86,21 +86,22 @@ fn select_steps_the_eight_pages_and_stops_at_the_ends() {
         "FX",
         "MACRO",
         "LAYERS",
+        "TABLE",
     ];
     assert_eq!(ui.v.lab.page, 0, "LAB opens at OSC");
     for (i, name) in names.iter().enumerate() {
         settle(&mut ui);
         assert_eq!(usize::from(ui.v.lab.page), i);
         assert_eq!(ui.big(0, 0, 2, name.len()), *name, "the page's name at 2x");
-        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/8", i + 1), "its place");
+        assert_eq!(
+            ui.big(0, 24, 2, 3),
+            format!("{}/{LAB_PAGES}", i + 1),
+            "its place"
+        );
         ui.turn(PANEL_ENC_SELECT, 1);
     }
-    assert_eq!(
-        u32::from(ui.v.lab.page),
-        LAB_PAGE_LAYERS,
-        "clamped at LAYERS"
-    );
-    ui.turn(PANEL_ENC_SELECT, -9);
+    assert_eq!(u32::from(ui.v.lab.page), LAB_PAGE_TABLE, "clamped at TABLE");
+    ui.turn(PANEL_ENC_SELECT, -(LAB_PAGES as i32) - 1);
     assert_eq!(ui.v.lab.page, 0, "clamped at OSC");
 }
 
@@ -713,7 +714,19 @@ fn the_pages_match_their_goldens() {
         (LAB_PAGE_FILTER_ENV, "lab-filter-env"),
         (LAB_PAGE_MACRO, "lab-macro"),
         (LAB_PAGE_LAYERS, "lab-layers"),
+        (LAB_PAGE_TABLE, "lab-table"),
     ] {
+        if page == LAB_PAGE_TABLE {
+            to_page(&mut ui, page);
+            ui.turn(PANEL_ENC_ALGORITHM, 2);
+            for (k1, k2, k3) in [(0, 0, 12), (1, 0, -5), (1, 3, 7)] {
+                ui.turn(PANEL_ENC_K1, k1);
+                ui.turn(PANEL_ENC_K2, k2);
+                ui.turn(PANEL_ENC_K3, k3);
+            }
+            ui.turn(PANEL_ENC_K4, 2);
+            settle(&mut ui);
+        }
         if page == LAB_PAGE_FILTER_ENV {
             to_page(&mut ui, page);
             ui.turn(PANEL_ENC_ALGORITHM, 24);

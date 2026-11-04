@@ -329,6 +329,75 @@ static int32_t pair_db(const uint8_t s[LAB_SOUND_BYTES], const int32_t db[LIVE_V
     return partner != layer && gap > -SYNC_PAIR_GAP_DB && gap < SYNC_PAIR_GAP_DB ? SYNC_PAIR_DB : 0;
 }
 
+#define TABLE_FRAMES (LAB_SILENT_MS / 20u)
+#define TABLE_CLOSE_DB 3
+#define HALVING_DB 3
+#define TEST_BIT 0x08u
+#define TABLE_C0 12
+#define TABLE_C4 60
+#define TABLE_ABOVE_C4 67
+
+static uint32_t table_plays_on(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
+    uint32_t head = s[LAB_SOUND_TABLE];
+    if (!(head & LAB_TABLE_ON) || !(head & LAB_TABLE_COUNT_MASK)) {
+        return 0;
+    }
+    return !s[LAB_SOUND_LAYERS] || layer == (head & LAB_TABLE_LAYER_MASK) >> LAB_TABLE_LAYER_SHIFT;
+}
+
+static void table_frames(const uint8_t s[LAB_SOUND_BYTES], uint8_t count[LAB_TABLE_STEPS_MAX]) {
+    uint32_t steps = s[LAB_SOUND_TABLE] & LAB_TABLE_COUNT_MASK, loop = s[LAB_SOUND_TABLE_LOOP];
+    uint32_t pos = 0, wait = 0;
+    memset(count, 0, LAB_TABLE_STEPS_MAX);
+    for (uint32_t f = 0; f < TABLE_FRAMES; f++) {
+        count[pos]++;
+        if (++wait > s[LAB_SOUND_TABLE_RATE]) {
+            wait = 0;
+            pos = pos + 1u < steps ? pos + 1u : loop ? loop - 1u : steps - 1u;
+        }
+    }
+}
+
+static int32_t table_db(const uint8_t s[LAB_SOUND_BYTES], const uint8_t layer_sound[LAB_SOUND_BYTES],
+                        uint32_t model, uint32_t layer) {
+    uint8_t count[LAB_TABLE_STEPS_MAX];
+    int32_t db[LAB_TABLE_STEPS_MAX];
+    uint8_t step_sound[LAB_SOUND_BYTES];
+    table_frames(s, count);
+    int32_t loud = NONE;
+    uint8_t* tune = &step_sound[LAB_SOUND_LAYER_TUNING + layer * LAB_SOUND_LAYER_TUNING_BYTES];
+    for (uint32_t i = 0; i < LAB_TABLE_STEPS_MAX; i++) {
+        db[i] = NONE;
+        if (!count[i]) {
+            continue;
+        }
+        const uint8_t* st = &s[LAB_SOUND_TABLE_STEPS + 2u * i];
+        if (st[0] & TEST_BIT) {
+            continue;
+        }
+        memcpy(step_sound, layer_sound, LAB_SOUND_BYTES);
+        step_sound[LAB_SOUND_CONTROL] = st[0];
+        int32_t off = lab_table_absolute(st[1])
+                          ? (int32_t)(st[1] - LAB_TABLE_NOTE_NONE) + TABLE_C0 - TABLE_C4
+                          : (int8_t)tune[0] + lab_table_offset(st[1]);
+        tune[0] = (uint8_t)(int8_t)(off < -TABLE_C4 ? -TABLE_C4 : off > TABLE_ABOVE_C4 ? TABLE_ABOVE_C4 : off);
+        db[i] = level_db(step_sound, model, layer);
+        loud = db[i] > loud ? db[i] : loud;
+    }
+    if (loud == NONE) {
+        return NONE;
+    }
+    uint32_t near = 0;
+    for (uint32_t i = 0; i < LAB_TABLE_STEPS_MAX; i++) {
+        near += db[i] >= loud - TABLE_CLOSE_DB ? count[i] : 0u;
+    }
+    while (near < TABLE_FRAMES) {
+        near *= 2u;
+        loud -= HALVING_DB;
+    }
+    return loud - TABLE_CLOSE_DB;
+}
+
 uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
     int32_t db[LIVE_VOICES];
     uint8_t as_layer[LAB_SOUND_BYTES];
@@ -343,7 +412,7 @@ uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
             as_layer[LAB_SOUND_PULSE] = v[3];
             as_layer[LAB_SOUND_PULSE + 1u] = v[4];
         }
-        db[n] = level_db(as_layer, model, n);
+        db[n] = table_plays_on(s, n) ? table_db(s, as_layer, model, n) : level_db(as_layer, model, n);
     }
     for (uint32_t n = 0; n <= layers; n++) {
         if (db[n] + pair_db(s, db, n) >= LAB_AUDIBLE_DB) {

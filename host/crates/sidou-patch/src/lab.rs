@@ -5,6 +5,7 @@ use std::fmt;
 
 use sidou_sys::*;
 
+use crate::bank::{frames_per_step, has_table, right_of};
 use crate::model::{Oscillator, Patch, Unmapped, VoiceMode, OSCILLATORS};
 
 pub const BYTES: usize = LAB_SOUND_BYTES as usize;
@@ -20,6 +21,8 @@ const SIDSTATION_DEPTH_TO_LAB: i32 = 2;
 pub enum Loss {
     NoOscillator,
     Table(usize),
+    TableCut(usize),
+    TableRate(usize),
     FixedNote(usize),
     TransposeClamped(usize),
     DetuneClamped(usize),
@@ -31,6 +34,8 @@ impl fmt::Display for Loss {
         match self {
             Self::NoOscillator => f.write_str("NO OSC ACTIVE: OSC 1 KEPT"),
             Self::Table(n) => write!(f, "OSC {n} TABLE: SONG INSTRUMENT"),
+            Self::TableCut(n) => write!(f, "OSC {n} TABLE CUT TO {LAB_TABLE_STEPS_MAX}"),
+            Self::TableRate(n) => write!(f, "OSC {n} TABLE SPEED CLAMPED"),
             Self::FixedNote(n) => write!(f, "OSC {n} FIXED NOTE: PLAYS THE KEY"),
             Self::TransposeClamped(n) => write!(f, "OSC {n} TRANSPOSE CLAMPED"),
             Self::DetuneClamped(n) => write!(f, "OSC {n} DETUNE CLAMPED"),
@@ -110,16 +115,52 @@ fn voice(osc: &Oscillator) -> [u8; 5] {
     ]
 }
 
-fn report(patch: &Patch, layers: &[usize], losses: &mut Vec<Loss>) {
+fn report(patch: &Patch, layers: &[usize], carried: Option<usize>, losses: &mut Vec<Loss>) {
     for &n in layers {
         let osc = &patch.oscillators[n];
         if osc.track != 0 {
             losses.push(Loss::FixedNote(n + 1));
         }
-        if !patch.tables[n].steps.is_empty() {
+        if has_table(patch, n) && carried != Some(n) {
             losses.push(Loss::Table(n + 1));
         }
     }
+}
+
+const STEPS_MAX: usize = LAB_TABLE_STEPS_MAX as usize;
+const GATE: u8 = 0x01;
+
+fn table(
+    patch: &Patch,
+    layers: &[usize],
+    s: &mut [u8; BYTES],
+    losses: &mut Vec<Loss>,
+) -> Option<usize> {
+    let (layer, &n) = layers
+        .iter()
+        .enumerate()
+        .find(|&(_, &n)| has_table(patch, n))?;
+    let t = &patch.tables[n];
+    if t.steps.len() > STEPS_MAX {
+        losses.push(Loss::TableCut(n + 1));
+    }
+    let steps = t.steps.len().min(STEPS_MAX);
+    let frames = frames_per_step(patch, n);
+    if frames > LAB_TABLE_RATE_MAX {
+        losses.push(Loss::TableRate(n + 1));
+    }
+    let at = LAB_SOUND_TABLE as usize;
+    s[at] = (LAB_TABLE_ON | (layer as u32) << LAB_TABLE_LAYER_SHIFT) as u8 | steps as u8;
+    s[LAB_SOUND_TABLE_LOOP as usize] =
+        t.loop_to
+            .map_or(0, |l| if usize::from(l) < steps { l + 1 } else { 0 });
+    s[LAB_SOUND_TABLE_RATE as usize] = (frames.min(LAB_TABLE_RATE_MAX) - 1) as u8;
+    for (i, step) in t.steps.iter().take(steps).enumerate() {
+        let at = LAB_SOUND_TABLE_STEPS as usize + 2 * i;
+        s[at] = step.control & !GATE;
+        s[at + 1] = right_of(step.note, 0);
+    }
+    Some(n)
 }
 
 fn nibble(value: u8) -> u8 {
@@ -170,7 +211,8 @@ pub fn lab_sound(patch: &Patch) -> ([u8; BYTES], Vec<Loss>) {
         .min(LIVE_BEND_RANGE_MAX as u8);
     s[LAB_SOUND_ARP as usize + LIVE_ARP_SPAN as usize] = 1;
     filter_envelope(patch, &mut s);
-    report(patch, &layers, &mut losses);
+    let carried = table(patch, &layers, &mut s, &mut losses);
+    report(patch, &layers, carried, &mut losses);
     losses.extend(patch.unmapped.iter().copied().map(Loss::Unmapped));
     (s, losses)
 }
