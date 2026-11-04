@@ -3,7 +3,7 @@
 # LAB's sounds on the store
 
 LAB keeps a LIVE sound in one of sixteen USER slots, USER 1..16, and the sound playing as the
-unsaved edit, so it comes back at power-on ([the plan](../plans/2026-10-25-lab-plan.md)). Both
+unsaved edit, so it comes back at power-on ([the plan](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-25-lab-plan.md)). Both
 hold a sound in one packed image, `app/lab_sound.h`; the slots are one file of the
 [store](store-format.md), the unsaved edit one small value. Multibyte values are little-endian.
 

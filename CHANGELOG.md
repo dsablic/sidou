@@ -577,7 +577,7 @@ MIDI on the site.
   Felucca's 8 KB debug area, which is kept free until a device check shows it is the app's
   ([hardware-test.md section 17](docs/hardware-test.md#17-code-in-feluccas-debug-area-v040)).
   The digi drums cost the audio interrupt less than before (9.47 instructions a sample, was
-  10.42). [The study](docs/plans/2026-10-24-flash-space.md) has the numbers.
+  10.42). [The study](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-24-flash-space.md) has the numbers.
 
 ### Fixed
 - **A forced RESET says it reset.** When RESET's save had to be forced (the device was never
@@ -926,7 +926,7 @@ The first release to run on a real FM-1.
   device in Audio MIDI Setup to see the new one.
 - SysEx transfers no longer time out on TRS one packet in: their clock could step backwards
   within a main-loop pass.
-- From the end-of-M2 review ([docs/reviews/2026-10-22-m2-review.md](docs/reviews/2026-10-22-m2-review.md)):
+- From the end-of-M2 review ([docs/reviews/2026-10-22-m2-review.md](https://github.com/dsablic/sidou/blob/v1.6.0/docs/reviews/2026-10-22-m2-review.md)):
   - With KEYS A over a playing song, the song can no longer overwrite a key's note before the
     voice is handed over, and PLAY no longer silences the notes the keys hold.
   - REC and STEP stop at G#7, GoatTracker's last note; they wrote 93-95 as REST, KEYOFF and

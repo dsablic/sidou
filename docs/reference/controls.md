@@ -786,7 +786,7 @@ may get its own (a scale) later, and then the shortcut keeps EDIT + K1..K4.
 
 LAB (the menu's LAB, after SONG; `app/lab_view.h`; [the art page](../art/README.md#lab) draws
 it) is where one LIVE sound is shaped with every parameter in sight
-([LAB's design](../plans/2026-10-25-lab-design.md)). The menu's LAB takes the menu's place, so
+([LAB's design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-25-lab-design.md)). The menu's LAB takes the menu's place, so
 **HOME** goes back to LIVE, the sound kept as edited. It opens at OSC from the menu, and from
 LIVE at a page: **ENV** at ENVELOPE, **LFO** at MOD, **FX** at FX. A [lifted sound](#lift-a-sound)
 opens it over NOW PLAYING, and HOME goes back there.
@@ -905,7 +905,7 @@ the smallest moves; a roll 16 times); if none passes the sound stays and the toa
 ### Send a LAB sound to the song
 
 **REC** in LAB writes the sound into the song (1.5, the song bridge:
-[the design](../plans/2026-10-30-1.5-design.md#2-labs-song-bridge), `app/lab_song.h`) as a plain
+[the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-30-1.5-design.md#2-labs-song-bridge), `app/lab_song.h`) as a plain
 GoatTracker 2 instrument: into the song's **lowest free instrument** (all 25 bytes 0), its
 programs after each table's last row. The toast says where: `SENT AS I0F LAB 03` (the instrument
 in hex, the sound's name, which the instrument takes, all of LAB's 12 characters). It is written

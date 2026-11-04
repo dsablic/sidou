@@ -30,7 +30,8 @@ opened. The plugin takes MIDI only from its host, and the probe below passes MID
 
 The fm1-emu patch and the headless host are kept in `spikes/daw-plugin/` (the owner, 2026-11-04):
 `fm1-emu-sidou-edition.patch` applies to fm1-emu `9de1ef0` cloned into `build/ext/fm1-emu`, and
-`probe/` builds against that clone. The outputs stay in `build/ext/` (git-ignored).
+`probe/` builds against that clone. The outputs below were in `build/ext/` and went with the
+spike's worktree; `probe render` makes them again. The LAB screen is kept in `docs/media/`.
 
 | Piece | Where | What |
 |---|---|---|
