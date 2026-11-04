@@ -5987,9 +5987,13 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - `tools/sysex-roundtrip` sends only manufacturer `7D 'SD'` frames, and its disposable file uses
   store type 0x7F, one nothing on the device reads (1 is a song, 2 a .sid, whose header the
   device checks, 3 SysEx's instrument staging; `app/store.h`).
-- `tools/readme-check` enforces the Firmware Hub's rules for `fmhub.json`: "what" is plain
-  English, at most 300 characters, no HTML, code or links; "kinds" one of six; and a minor or
-  major release changes the card.
+- `tools/readme-check` enforces the Firmware Hub's rules for `fmhub.json`
+  (thefirmwarehub.com/fmhub.md): only its eight fields, any other makes the hub drop the whole
+  file; "what" is plain English, at most 300 characters, no HTML, code or links; "kinds" one of
+  six; `play`, `editor` and `cheat` https links; `image` a square PNG of 240 to 1024 pixels, at
+  most 300 KB, in the repository (the boot title, `docs/media/sidou-card-240.png`); and a minor
+  or major release changes the card. `author` is left out: the hub then shows the name it
+  recorded when SIDOU joined.
 - `tools/fm1-unbrick-mac`: `scsiio/__init__.py` raises ImportError on macOS before anything
   else, so the script registers the package without running it, so that its `common.py`
   imports as on Linux, and supplies the `SCSIDev` that `jltech/uboot.py` imports. Detaching

@@ -47,9 +47,21 @@ if hub is not None:
     kinds = hub.get("kinds")
     if not isinstance(kinds, list) or len(kinds) != 1 or kinds[0] not in {"synth", "groove", "drums", "chords", "tracker", "other"}:
         errors.append("fmhub.json's \"kinds\" must be one of synth, groove, drums, chords, tracker, other")
-    unknown = set(hub) - {"what", "kinds", "play", "editor"}
+    unknown = set(hub) - {"what", "author", "kinds", "play", "editor", "cheat", "image", "color"}
     if unknown:
         errors.append(f"fmhub.json has fields the hub does not read: {', '.join(sorted(unknown))}")
+    for link in ("play", "editor", "cheat"):
+        if link in hub and not str(hub[link]).startswith("https://"):
+            errors.append(f"fmhub.json's \"{link}\" must be an https:// link")
+    image = root / hub.get("image", "")
+    if "image" not in hub or not image.is_file():
+        errors.append("fmhub.json's \"image\" must name a picture in the repository")
+    else:
+        head = image.read_bytes()[:24]
+        side = int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+        if not head.startswith(b"\x89PNG") or side[0] != side[1] or not 240 <= side[0] <= 1024 \
+           or image.stat().st_size > 300 * 1024:
+            errors.append(f"fmhub.json's \"image\" must be a square PNG of 240 to 1024 pixels, 300 KB at most")
 releases = re.findall(r"^## \[(\d+)\.(\d+)\.(\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.M)
 if len(releases) > 1 and releases[0][2] == "0":
     prev = "v" + ".".join(releases[1])
