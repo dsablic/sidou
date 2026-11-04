@@ -92,6 +92,12 @@ is inside their spread, so the op-amp port is parked), and the title cards remov
   distance and the owner's ears; its RAMTEXT and instructions measured before anything is kept.
   S-M. The reSIDfp op-amp port stays parked for good (the owner, 2026-11-04): it would move SIDOU
   closer to reSIDfp, not to the chips, and the filter's SRAM, not flash, is what it lacks.
+- **The DAW plugin's design session** (the owner, 2026-11-04), after 1.7: the spike
+  ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
+  package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card, GPL-3.0-or-later.
+  A first release M, the whole edition L.
+- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): first
+  the RAMTEXT room in 1.7's performance pass, then the experiment in fm1-emu, off by default.
 
 ## 1.5
 
