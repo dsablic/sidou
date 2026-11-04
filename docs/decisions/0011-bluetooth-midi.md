@@ -43,5 +43,6 @@ core and sit below the audio interrupt.
 - The plan's steps 2 and 3 come first: a `SIDOU_BLE` build measures the real deltas, and SIDOU
   must boot in a radio-modelling emulator (it hangs in Optimist's today) or fm1-emu gains the
   radio model.
-- Every device step (the boot with the raised rails, a Mac and an iPad connecting, an hour of two
-  SIDs with Bluetooth MIDI) waits for the owner's yes for that step.
+- Every device step (the boot with the raised rails, a Mac and an iPad connecting, SIDOU
+  connecting out to the owner's Korg Air keyboard, which also shows whether a keyboard insists on
+  pairing, an hour of two SIDs with Bluetooth MIDI) waits for the owner's yes for that step.
