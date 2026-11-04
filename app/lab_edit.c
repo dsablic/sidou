@@ -167,30 +167,84 @@ static float layer_ratio(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
 }
 
 #define SYNC_SOURCE_STEP 2u
+#define SYNC_WHOLE_CYCLE 256u
+#define SYNC_HALF_CYCLE 128u
+#define SQRT2_Q7 181u
+#define SYNC_PULSE_SIDE_MIN 128
 
-static uint32_t pitch_layer(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
-    uint32_t source = (layer + SYNC_SOURCE_STEP) % LIVE_VOICES;
-    return s[LAB_SOUND_LAYERS] && (s[LAB_SOUND_CONTROL] & 0x02u) && source <= s[LAB_SOUND_LAYERS]
-               ? source
-               : layer;
-}
+#define FENV_POINTS 8u
 
 static uint32_t held_cutoff(const uint8_t s[LAB_SOUND_BYTES]) {
     int32_t fc = (int32_t)((uint32_t)(s[LAB_SOUND_CUTOFF] | s[LAB_SOUND_CUTOFF + 1u] << 8) & 2047u);
     int32_t depth = (int8_t)s[LAB_SOUND_FILTER_ENV];
     if (depth) {
-        uint32_t level = lab_draw_level(s[LAB_SOUND_FILTER_ENV_AD], s[LAB_SOUND_FILTER_ENV_SR],
-                                        LIVE_FENV_IDLE, LAB_SILENT_MS * 1000u);
-        fc += depth * (int32_t)LIVE_FENV_CUTOFF_UNIT * (int32_t)level / 255;
+        uint32_t level = 0;
+        for (uint32_t k = 0; k < FENV_POINTS; k++) {
+            level += lab_draw_level(s[LAB_SOUND_FILTER_ENV_AD], s[LAB_SOUND_FILTER_ENV_SR],
+                                    LIVE_FENV_IDLE,
+                                    (2u * k + 1u) * (LAB_SILENT_MS * 1000u / (2u * FENV_POINTS)));
+        }
+        fc +=
+            depth * (int32_t)LIVE_FENV_CUTOFF_UNIT * (int32_t)level / (255 * (int32_t)FENV_POINTS);
     }
     return (uint32_t)(fc < 0 ? 0 : fc > 2047 ? 2047 : fc);
 }
 
-static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, uint32_t layer) {
+#define SYNC_PAIR_DB (-4)
+#define SYNC_PAIR_GAP_DB 12
+#define SYNC_CANCEL_LO 128u
+#define SYNC_CANCEL_HI 384u
+
+static uint8_t layer_control(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
+    return layer ? s[LAB_SOUND_LAYER_VOICE + (layer - 1u) * LAB_SOUND_LAYER_VOICE_BYTES]
+                 : s[LAB_SOUND_CONTROL];
+}
+
+static uint32_t sync_q8(const uint8_t s[LAB_SOUND_BYTES], uint32_t synced, uint32_t source) {
+    return (uint32_t)((float)SYNC_WHOLE_CYCLE * layer_ratio(s, synced) / layer_ratio(s, source));
+}
+
+static int cancels(const uint8_t s[LAB_SOUND_BYTES], uint32_t synced) {
+    uint32_t source = (synced + SYNC_SOURCE_STEP) % LIVE_VOICES;
+    uint8_t c = layer_control(s, synced);
+    if (synced > s[LAB_SOUND_LAYERS] || source > s[LAB_SOUND_LAYERS] || !(c & 0x02u) || !(c >> 4) ||
+        !(layer_control(s, source) >> 4)) {
+        return 0;
+    }
+    uint32_t q8 = sync_q8(s, synced, source);
+    return q8 >= SYNC_CANCEL_LO && q8 < SYNC_CANCEL_HI;
+}
+
+static int32_t level_db(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, uint32_t layer) {
     uint32_t wave = s[LAB_SOUND_CONTROL] >> 4;
     int32_t db = WAVE_DB[model ? 1 : 0][wave];
     if (db == NONE) {
-        return 0;
+        return NONE;
+    }
+    uint32_t source = (layer + SYNC_SOURCE_STEP) % LIVE_VOICES;
+    uint32_t coupled = s[LAB_SOUND_LAYERS] && source <= s[LAB_SOUND_LAYERS];
+    uint32_t q8 = coupled && (s[LAB_SOUND_CONTROL] & 0x02u) ? sync_q8(s, layer, source) : 0u;
+    float own = layer_ratio(s, layer), partner = layer_ratio(s, source);
+    float note =
+        261.6f * (coupled && (s[LAB_SOUND_CONTROL] & 0x06u) && partner > own ? partner : own);
+    if (s[LAB_SOUND_MONO_SYNC]) {
+        int32_t semis = (int8_t)s[LAB_SOUND_SYNC_SEMIS];
+        semis = semis < -LIVE_RATIO_SEMIS  ? -LIVE_RATIO_SEMIS
+                : semis > LIVE_RATIO_SEMIS ? LIVE_RATIO_SEMIS
+                                           : semis;
+        uint32_t base = (uint32_t)(s[LAB_SOUND_SYNC_BASE] | s[LAB_SOUND_SYNC_BASE + 1u] << 8);
+        q8 = (uint32_t)(((uint64_t)base * live_ratio_q16[semis + LIVE_RATIO_SEMIS]) >> 16);
+        note *= (float)q8 * (1.0f / 256.0f);
+    }
+    uint32_t short_cycle = q8 && q8 < SYNC_WHOLE_CYCLE;
+    if (q8) {
+        if (q8 < 32u || (wave & (wave - 1u))) {
+            return NONE;
+        }
+        for (uint32_t q = q8; q < SYNC_WHOLE_CYCLE && (!(wave & 4u) || q8 < SYNC_HALF_CYCLE);
+             q = q * SQRT2_Q7 / 128u) {
+            db -= 3;
+        }
     }
     int32_t side = 2048;
     if (wave & 4u) {
@@ -199,26 +253,21 @@ static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, ui
         int32_t away = pw > 2048 ? pw - 2048 : 2048 - pw;
         depth += (int8_t)s[LAB_SOUND_PWM_LINK] * away / 8;
         depth = depth < 0 ? 0 : depth > (int32_t)LIVE_PWM_DEPTH_MAX ? (int32_t)LIVE_PWM_DEPTH_MAX : depth;
+        int32_t room = (pw > 2048 ? (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - pw : pw) - LIVE_PULSE_FIRST;
+        depth = depth < room ? depth : room < 0 ? 0 : room;
+        if (q8 && q8 < 2u * SYNC_WHOLE_CYCLE && pw > 2048) {
+            return NONE;
+        }
+        if (short_cycle) {
+            pw = pw * (int32_t)SYNC_WHOLE_CYCLE / (int32_t)q8;
+            depth = depth * (int32_t)SYNC_WHOLE_CYCLE / (int32_t)q8;
+        }
         side = (pw > 2048 ? 4096 - pw : pw) - depth / 2;
         int32_t p = pulse_db(side, 0);
-        if (p == NONE) {
-            return 0;
+        if (p == NONE || (q8 && side < SYNC_PULSE_SIDE_MIN)) {
+            return NONE;
         }
         db += p;
-    }
-    float note = 261.6f * layer_ratio(s, pitch_layer(s, layer));
-    if (s[LAB_SOUND_MONO_SYNC]) {
-        int32_t semis = (int8_t)s[LAB_SOUND_SYNC_SEMIS];
-        semis = semis < -LIVE_RATIO_SEMIS  ? -LIVE_RATIO_SEMIS
-                : semis > LIVE_RATIO_SEMIS ? LIVE_RATIO_SEMIS
-                                           : semis;
-        uint32_t base = (uint32_t)(s[LAB_SOUND_SYNC_BASE] | s[LAB_SOUND_SYNC_BASE + 1u] << 8);
-        uint32_t q8 = (uint32_t)(((uint64_t)base * live_ratio_q16[semis + LIVE_RATIO_SEMIS]) >> 16);
-        if (q8 < 32u) {
-            return 0;
-        }
-        db += q8 >= 256u ? -6 : q8 >= 128u ? -12 : q8 >= 64u ? -18 : -24;
-        note *= (float)q8 * (1.0f / 256.0f);
     }
     uint32_t a = s[LAB_SOUND_AD] >> 4, d = s[LAB_SOUND_AD] & 15u, su = s[LAB_SOUND_SR] >> 4;
     int32_t held = DECAY_DB[d];
@@ -235,7 +284,7 @@ static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, ui
     if (routed) {
         uint32_t mode = s[LAB_SOUND_FILTER_MODE] >> 4 & 7u;
         if (!mode) {
-            return 0;
+            return NONE;
         }
         uint32_t fc = held_cutoff(s);
         sid_model m = model ? SID_MODEL_8580 : SID_MODEL_6581;
@@ -262,30 +311,42 @@ static uint32_t audible_one(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, ui
             }
         }
         db += f;
-        if (low && (wave & 4u)) {
+        if (low && !q8 && (wave & 4u)) {
             db += pulse_db(side, 1) - pulse_db(side, 0);
         }
         if ((wave & (wave - 1u)) || (s[LAB_SOUND_CONTROL] & 0x04u)) {
             db -= 6;
         }
     }
-    return db >= LAB_AUDIBLE_DB;
+    return db;
+}
+
+static int32_t pair_db(const uint8_t s[LAB_SOUND_BYTES], const int32_t db[LIVE_VOICES],
+                       uint32_t layer) {
+    uint32_t source = (layer + SYNC_SOURCE_STEP) % LIVE_VOICES, synced = (layer + 1u) % LIVE_VOICES;
+    uint32_t partner = cancels(s, layer) ? source : cancels(s, synced) ? synced : layer;
+    int32_t gap = db[partner] - db[layer];
+    return partner != layer && gap > -SYNC_PAIR_GAP_DB && gap < SYNC_PAIR_GAP_DB ? SYNC_PAIR_DB : 0;
 }
 
 uint32_t lab_audible(const uint8_t s[LAB_SOUND_BYTES], uint32_t model) {
-    if (audible_one(s, model, 0u)) {
-        return 1;
+    int32_t db[LIVE_VOICES];
+    uint8_t as_layer[LAB_SOUND_BYTES];
+    memcpy(as_layer, s, LAB_SOUND_BYTES);
+    uint32_t layers = s[LAB_SOUND_LAYERS] < LIVE_LAYERS_MAX ? s[LAB_SOUND_LAYERS] : LIVE_LAYERS_MAX;
+    for (uint32_t n = 0; n <= layers; n++) {
+        if (n) {
+            const uint8_t* v = &s[LAB_SOUND_LAYER_VOICE + (n - 1u) * LAB_SOUND_LAYER_VOICE_BYTES];
+            as_layer[LAB_SOUND_CONTROL] = v[0];
+            as_layer[LAB_SOUND_AD] = v[1];
+            as_layer[LAB_SOUND_SR] = v[2];
+            as_layer[LAB_SOUND_PULSE] = v[3];
+            as_layer[LAB_SOUND_PULSE + 1u] = v[4];
+        }
+        db[n] = level_db(as_layer, model, n);
     }
-    uint8_t as_first[LAB_SOUND_BYTES];
-    for (uint32_t n = 0; n < s[LAB_SOUND_LAYERS] && n < LIVE_LAYERS_MAX; n++) {
-        const uint8_t* v = &s[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
-        memcpy(as_first, s, LAB_SOUND_BYTES);
-        as_first[LAB_SOUND_CONTROL] = v[0];
-        as_first[LAB_SOUND_AD] = v[1];
-        as_first[LAB_SOUND_SR] = v[2];
-        as_first[LAB_SOUND_PULSE] = v[3];
-        as_first[LAB_SOUND_PULSE + 1u] = v[4];
-        if (audible_one(as_first, model, n + 1u)) {
+    for (uint32_t n = 0; n <= layers; n++) {
+        if (db[n] + pair_db(s, db, n) >= LAB_AUDIBLE_DB) {
             return 1;
         }
     }
