@@ -818,20 +818,22 @@ characters of the large text's pieces: 2,700 bytes).
 
 ## LAB
 
-LAB (`app/lab_view.h`, from the menu's LAB) is one LIVE sound on six pages, OSC, ENVELOPE,
-FILTER, MOD, FX and MACRO, each with what it shapes drawn above four cards for K1..K4, on the theme's
+LAB (`app/lab_view.h`, from the menu's LAB) is one LIVE sound on eight pages, OSC, ENVELOPE,
+FILTER, FILTER ENV, MOD, FX, MACRO and LAYERS, each with what it shapes drawn above four cards for K1..K4, on the theme's
 colours ([the theme](#theme)). What is read while playing is at 2× or 3×: the sound's name, the
 choice, the cards' values.
 
 ![LAB's OSC page](../../tests/golden/lcd/lab-osc.png)
 ![LAB's ENVELOPE page](../../tests/golden/lcd/lab-envelope.png)
 ![LAB's FILTER page](../../tests/golden/lcd/lab-filter.png)
+![LAB's FILTER ENV page](../../tests/golden/lcd/lab-filter-env.png)
 ![LAB's MOD page](../../tests/golden/lcd/lab-mod.png)
 ![LAB's FX page](../../tests/golden/lcd/lab-fx.png)
 ![LAB's MACRO page](../../tests/golden/lcd/lab-macro.png)
+![LAB's LAYERS page](../../tests/golden/lcd/lab-layers.png)
 
 - **Rows 0-1:** the page's name at 2× in yellow (the `hot` role: the page in focus), and its
-  place `2/6` at 2× in the hint colour on the right.
+  place `2/8` at 2× in the hint colour on the right.
 - **Rows 2-3:** the sound's name at 2× in white, with `*` while it differs from its base (the
   sound as loaded or kept); A or B reversed on the right while EDIT's tap compares, A outlined
   (the hot colour on the background) during a peek. Yellow over white keeps the page and the sound apart where the two

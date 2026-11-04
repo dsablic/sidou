@@ -603,7 +603,7 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in S
   *Emulator:* `emu-gate/tests/screen.rs::the_status_screen_matches_its_golden_image`,
   `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back` (what is drawn);
   *Device-only:* readable on the real LCD.
-- [ ] **MENU, SETTINGS and the MIDI page**: the menu's eleven items and SETTINGS' seven at 2×
+- [ ] **MENU, SETTINGS and the MIDI page**: the menu's eleven items and SETTINGS' nine at 2×
   read from arm's length; the MIDI page (HOME, then MIDI) is small text in the theme's colours
   (the items white, the help lines grey): note whether you can read its ten items in the hand.
   *Emulator:*
@@ -2349,8 +2349,8 @@ their goldens and budgets, the store, undo and the rolls) is named under each it
 only what it cannot see: the LCD at arm's length, the ear, the flash across a real power cut and
 the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold.
 
-- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the six pages** (OSC,
-  ENVELOPE, FILTER, MOD, FX, MACRO); HOME goes back to LIVE.
+- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the eight pages** (OSC,
+  ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS); HOME goes back to LIVE.
   *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`,
   `emu-gate/tests/lab.rs::lab_opens_from_the_menu_and_home_goes_back_to_live`.
   *Device-only:* the pages' drawings readable at arm's length on the LCD, the lit card visible in

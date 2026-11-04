@@ -3733,7 +3733,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 ### Song bridge: pull and kept chunks
 
 - Exact round trip: a trailer chunk per sent instrument (`LB` and the instrument in hex) keeps the
-  48-byte sound and a CRC-32 of the instrument's 25 bytes and its programs' rows; pull restores the
+  sound (68 bytes since 1.6, 48 in 1.5) and a CRC-32 of the instrument's 25 bytes and its programs' rows; pull restores the
   sound exactly while the CRC matches.
 - The `LBnn` chunk keeps the LAB sound with a CRC of the instrument's bytes and its programs' rows:
   the sound comes back exactly while they are unedited and not once a byte, a row, the name or the

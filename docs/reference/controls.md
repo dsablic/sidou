@@ -798,7 +798,7 @@ through OFF once did). On every page:
 
 | Rows | Shows |
 |---|---|
-| 0-1 | the page's name at 2× in yellow, its place (`2/6`) on the right |
+| 0-1 | the page's name at 2× in yellow, its place (`2/8`) on the right |
 | 2-3 | the sound's name at 2× in white, `*` while it differs from the sound as loaded; **A** or **B** on the right, reversed, while EDIT's tap compares; **A** outlined during a peek (EDIT held + a key) |
 | 4-17 | the page's drawing |
 | 19-20 | ALGORITHM's choice at 2× (dark grey while it is off), ALG small on the right (ENVELOPE's also ALL SOUNDS) |
