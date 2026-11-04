@@ -38,6 +38,9 @@ Layered LAB sounds, a filter envelope, and SidStation and MIDIbox SID patch impo
   title screen stays. The settings record's byte 1, CARDS until now, is reserved: written as 0
   and ignored on read, so older records still load; the layout and schema version are unchanged.
 
+### Fixed
+- `sidou-sysex sid` and `import` make the `--out` folder when it does not exist yet.
+
 ## [1.5.0] - 2026-11-02
 
 LAB's song bridge (send a sound to the song, pull one back); a .sid voice lifted into LAB;
