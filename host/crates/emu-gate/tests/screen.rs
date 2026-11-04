@@ -950,7 +950,7 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
     assert!(over.is_empty(), "{over:#?}");
 }
 
-const POPUP_INPUT: u64 = 250;
+const POPUP_INPUT: u64 = 256;
 const POPUP_PASS: u64 = 70_000;
 const _: () = assert!(POPUP_INPUT + POPUP_PASS <= POLL_INSTRUCTIONS);
 

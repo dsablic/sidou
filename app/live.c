@@ -457,8 +457,8 @@ static int32_t lfo_swing(const live* l) {
 #define FENV_TICK_US 10000u
 #define FENV_TAIL_US 30000000u
 
-static int32_t fenv_swing(const live* l) {
-    if (!l->fenv_depth || l->fenv_t_us == LIVE_FENV_IDLE) {
+__attribute__((noinline)) LIVE_COLD static int32_t fenv_swing(const live* l) {
+    if (l->fenv_t_us == LIVE_FENV_IDLE) {
         return 0;
     }
     uint32_t level = lab_draw_level(l->fenv_ad, l->fenv_sr, l->fenv_gate_us, l->fenv_t_us);
@@ -485,7 +485,10 @@ static int any_gate(const live* l) {
 }
 
 static uint16_t cutoff_effective(const live* l) {
-    int32_t c = l->cutoff + fenv_swing(l);
+    int32_t c = l->cutoff;
+    if (l->fenv_depth) {
+        c += fenv_swing(l);
+    }
     if (l->filter_lfo) {
         c += lfo_swing(l);
     }

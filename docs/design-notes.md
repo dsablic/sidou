@@ -287,7 +287,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (at `-Os`) and `step_view.c` and `song_gen.c` (both at `-Oz`) also take `-fno-inline-functions
   -fno-jump-tables`, so their rendering and edit helpers stay outlined.
 - Measured and left at `-O2`: `live.c` (`ui_encoder` over `CHIP_PICK_INPUT` 400, K1 over
-  `POPUP_INPUT` 250), `views.c`
+  `POPUP_INPUT`), `views.c`
   at `-Oz` (880 bytes, but K1's popup input reaches 250 of 250; it stays `-Os`), `chip_view.c` at
   `-Oz` (240 bytes; CHIP K1 on DIST reaches 245 of `CHIP_INPUT` 245), `grid.c` (3,360 bytes, but
   the tile renderer's frame grows 15 %), `live_view.c`
@@ -4057,7 +4057,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   over LIVE, 12.5k over SCENE, about 0.15k elsewhere): `POPUP_WORST_POLL` 42,000,
   `POPUP_STATIC_EXTRA` 15,000.
 - A turn that asks for the popup: the input's call (`ui_encoder`, which stores the ask) within
-  `POPUP_INPUT`, 250, and the busiest pass after it (the frame asks the views for the text and draws
+  `POPUP_INPUT`, 256 (250 until 1.6: the filter envelope's check on the cutoff path brought K1 to
+  250 on LIVE and over the menu; raised by the owner's decision, 2026-11-04), and the busiest pass after it (the frame asks the views for the text and draws
   the popup's first rows) within `POPUP_PASS`, 70,000. Measured: K1 218 on LIVE and STATUS (234 over
   the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass 37.2k on the
   views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and is no popup's
