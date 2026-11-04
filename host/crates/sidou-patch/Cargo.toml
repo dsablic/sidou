@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "sidou-patch"
+description = "Host-only readers for other SID synths' patch files (the Elektron SidStation) into one patch model, with the mapping to SIDOU sounds"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sidou-sys = { path = "../sidou-sys" }

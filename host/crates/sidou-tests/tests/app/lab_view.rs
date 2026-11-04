@@ -56,7 +56,7 @@ pub(crate) fn open_lab(ui: &mut Ui) {
 }
 
 pub(crate) fn lab_ui() -> Ui {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_lab(&mut ui);
     ui
 }
@@ -68,25 +68,38 @@ pub(crate) fn to_page(ui: &mut Ui, page: u32) {
     assert_eq!(u32::from(ui.v.lab.page), page);
 }
 
-fn choice(ui: &Ui) -> String {
+pub(crate) fn choice(ui: &Ui) -> String {
     let mut out = [0 as std::os::raw::c_char; LAB_VIEW_TEXT as usize];
     unsafe { lab_view_choice(&ui.v.lab, u32::from(ui.v.lab.page), out.as_mut_ptr()) };
     c_text(out.as_ptr())
 }
 
 #[test]
-fn select_steps_the_six_pages_and_stops_at_the_ends() {
+fn select_steps_the_eight_pages_and_stops_at_the_ends() {
     let mut ui = lab_ui();
-    let names = ["OSC", "ENVELOPE", "FILTER", "MOD", "FX", "MACRO"];
+    let names = [
+        "OSC",
+        "ENVELOPE",
+        "FILTER",
+        "FILTER ENV",
+        "MOD",
+        "FX",
+        "MACRO",
+        "LAYERS",
+    ];
     assert_eq!(ui.v.lab.page, 0, "LAB opens at OSC");
     for (i, name) in names.iter().enumerate() {
         settle(&mut ui);
         assert_eq!(usize::from(ui.v.lab.page), i);
         assert_eq!(ui.big(0, 0, 2, name.len()), *name, "the page's name at 2x");
-        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/6", i + 1), "its place");
+        assert_eq!(ui.big(0, 24, 2, 3), format!("{}/8", i + 1), "its place");
         ui.turn(PANEL_ENC_SELECT, 1);
     }
-    assert_eq!(u32::from(ui.v.lab.page), LAB_PAGE_MACRO, "clamped at MACRO");
+    assert_eq!(
+        u32::from(ui.v.lab.page),
+        LAB_PAGE_LAYERS,
+        "clamped at LAYERS"
+    );
     ui.turn(PANEL_ENC_SELECT, -9);
     assert_eq!(ui.v.lab.page, 0, "clamped at OSC");
 }
@@ -364,7 +377,7 @@ fn a_link_lights_the_card_it_moves() {
 
 #[test]
 fn osc_k1_is_the_ratio_on_a_mono_sync_sound_without_pulse() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe { live_set_preset(&mut *ui.rig.live, 2) };
     open_lab(&mut ui);
     assert_eq!(ui.small(LAB_VIEW_LABEL_ROW as usize, 0, 5), "RATIO");
@@ -465,7 +478,7 @@ fn algorithm_steps_each_pages_choice() {
 
 #[test]
 fn a_turn_lights_its_card_and_opens_no_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     settle(&mut ui);
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_LAB as i32);
@@ -599,7 +612,7 @@ fn env_lfo_and_fx_open_their_page_in_lab() {
 
 #[test]
 fn env_lfo_and_fx_on_live_open_lab_at_their_page() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     settle(&mut ui);
     let algorithm = ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize];
     let model = ui.live().model_req;
@@ -655,7 +668,7 @@ fn home_goes_back_to_live_from_lab_and_from_the_menus_lab() {
 
 #[test]
 fn the_frame_stays_within_200_cells() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     menu_at_lab(&mut ui);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     let mut most = 0;
@@ -697,8 +710,23 @@ fn the_pages_match_their_goldens() {
         (LAB_PAGE_FILTER, "lab-filter"),
         (LAB_PAGE_MOD, "lab-mod"),
         (LAB_PAGE_FX, "lab-fx"),
+        (LAB_PAGE_FILTER_ENV, "lab-filter-env"),
         (LAB_PAGE_MACRO, "lab-macro"),
+        (LAB_PAGE_LAYERS, "lab-layers"),
     ] {
+        if page == LAB_PAGE_FILTER_ENV {
+            to_page(&mut ui, page);
+            ui.turn(PANEL_ENC_ALGORITHM, 24);
+            ui.turn(PANEL_ENC_K2, 4);
+            settle(&mut ui);
+        }
+        if page == LAB_PAGE_LAYERS {
+            to_page(&mut ui, page);
+            ui.turn(PANEL_ENC_ALGORITHM, 2);
+            ui.turn(PANEL_ENC_K1, 1);
+            ui.turn(PANEL_ENC_K2, 12);
+            settle(&mut ui);
+        }
         to_page(&mut ui, page);
         if page == LAB_PAGE_FX {
             ui.turn(PANEL_ENC_ALGORITHM, 2);
@@ -873,7 +901,7 @@ fn osc_draws_each_waveform() {
         settle_hint(&mut ui);
         golden(&ui, name);
     }
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe { live_set_preset(&mut *ui.rig.live, 1) };
     open_lab(&mut ui);
     settle_hint(&mut ui);
@@ -1006,7 +1034,7 @@ fn a_turned_card_lights_its_part() {
         settle(&mut ui);
         assert!(cells_in(&ui.g, th.knob[k as usize]).is_empty(), "and back");
     }
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     unsafe { live_set_preset(&mut *ui.rig.live, 1) };
     open_lab(&mut ui);
     ui.turn(PANEL_ENC_K1, 1);
@@ -1321,7 +1349,7 @@ struct Stored {
 
 impl Stored {
     fn new() -> Self {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let mut set = Box::<settings>::default();
         let mut ml = ui.attach_learn();
         let mut st = fresh(7, 256);
@@ -1330,7 +1358,6 @@ impl Stored {
                 &mut *set,
                 &mut *ui.rig.live,
                 &mut *ml,
-                &mut ui.v.cards,
                 &mut ui.v.song.scroll,
                 std::ptr::null_mut(),
                 &mut *st.st,
@@ -2563,10 +2590,11 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
     assert_eq!((e.steps, e.n), (10, 20), "ten steps of two bytes each");
     let all = vec![0xAAu8; n];
     unsafe { lab_edit_push(&mut *e, zero.as_ptr(), all.as_ptr(), 0) };
+    let small_left = (LAB_EDIT_ENTRIES - LAB_EDIT_BYTES) / 2;
     assert_eq!(
         (u32::from(e.steps), u32::from(e.n)),
-        (2, 2 + LAB_EDIT_BYTES),
-        "a step of every byte drops the oldest whole steps: the newest small one and the big one stay"
+        (small_left + 1, 2 * small_left + LAB_EDIT_BYTES),
+        "a step of every byte drops the oldest whole steps: the newest small ones that fit and the big one stay"
     );
     let mut more = all.clone();
     more[3] = 0x55;
@@ -2576,7 +2604,7 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
     );
     assert_eq!(
         u32::from(e.n),
-        2 + LAB_EDIT_BYTES,
+        2 * small_left + LAB_EDIT_BYTES,
         "a merge adds only what the newest step does not hold: byte 3 is in it"
     );
     assert_eq!(
@@ -2584,14 +2612,18 @@ fn a_big_step_drops_the_oldest_steps_it_needs_room_for() {
         0,
         "nothing changed and no merge: no step"
     );
-    assert_eq!(e.steps, 2);
+    assert_eq!(u32::from(e.steps), small_left + 1);
     let firsts = (0..e.n as usize)
         .filter(|k| {
             let i = (e.first as usize + k) % LAB_EDIT_ENTRIES as usize;
             e.at[i] & LAB_EDIT_FIRST as u8 != 0
         })
         .count();
-    assert_eq!(firsts, 2, "each step's first entry is marked");
+    assert_eq!(
+        firsts as u32,
+        small_left + 1,
+        "each step's first entry is marked"
+    );
 }
 
 #[test]
@@ -2712,7 +2744,7 @@ fn lab_presets_loads_and_resets_undo() {
 }
 
 fn learn_ui(preset: Option<u8>) -> (Ui, Box<midi_learn>) {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let ml = ui.attach_learn();
     unsafe {
         if let Some(p) = preset {

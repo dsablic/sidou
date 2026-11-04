@@ -18,7 +18,16 @@ void live_dice_roll(live* l, uint32_t seed) {
     live_sound_get(l, l->base);
 }
 
+static void shape(live* l, uint32_t s);
+
 void live_dice_shape(live* l, uint32_t s) {
+    uint8_t edit = l->layer_edit;
+    l->layer_edit = 0;
+    shape(l, s);
+    l->layer_edit = edit;
+}
+
+static void shape(live* l, uint32_t s) {
     s |= 1u;
     static const uint8_t WAVES[8] = {2, 2, 2, 4, 4, 1, 1, 8};
     uint32_t wave = WAVES[next(&s) % 8u];

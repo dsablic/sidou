@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 use crate::device::{panel, Dev};
 use crate::findings::{Finding, Sev};
-use crate::journeys::{run_script, view_depth};
+use crate::journeys::run_script;
 use crate::screen::text_runs;
 
 fn parameter_label_visible(param: &str, p: &crate::device::Params, text: &[String]) -> bool {
@@ -166,7 +166,7 @@ fn after(
     run_script(&mut d, setup);
     d.settle();
     let view0 = d.view();
-    let depth0 = i32::from(view_depth(&view0, d.depth()));
+    let depth0 = i32::from(d.depth());
     let fb0 = d.m.soc.lcd.fb.clone();
     let p0 = d.params();
     let mut popup = false;
@@ -198,7 +198,7 @@ fn after(
         screen: d.m.soc.lcd.fb != fb0,
         params,
         view_changed: view1 != view0,
-        depth_delta: i32::from(view_depth(&view1, d.depth())) - depth0,
+        depth_delta: i32::from(d.depth()) - depth0,
         popup,
     };
     (seen, e)

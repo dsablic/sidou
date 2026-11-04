@@ -41,6 +41,20 @@ extern "C" {
 #define LIVE_PWM_DEPTH_MAX 2048u
 #define LIVE_PWM_STEP_MAX 8356u
 #define LIVE_TUNE_CENTS 50
+#define LIVE_LAYERS_MAX 2u
+#define LIVE_TRANSPOSE_MAX 24
+#define LIVE_DETUNE_CENTS 99
+#define LIVE_FENV_DEPTH_MAX 63
+#define LIVE_FENV_CUTOFF_UNIT 32u
+#define LIVE_FENV_IDLE 0xffffffffu
+
+typedef enum {
+    LIVE_FENV_DEPTH = 0,
+    LIVE_FENV_ATTACK = 1,
+    LIVE_FENV_DECAY = 2,
+    LIVE_FENV_SUSTAIN = 3,
+    LIVE_FENV_RELEASE = 4
+} live_fenv_field;
 #define LIVE_PWM_RATE_MAX 255u
 #define LIVE_FILTER_LFO_MAX 32u
 #define LIVE_LINK_MAX 8
@@ -229,6 +243,11 @@ typedef struct {
 } live_voice;
 
 typedef struct {
+    uint8_t control, attack_decay, sustain_release;
+    uint16_t pulse_width;
+} live_layer;
+
+typedef struct {
     uint16_t cutoff, pulse_width;
     uint8_t resonance, control, attack_decay, sustain_release, filter_voices, filter_mode;
     uint8_t bend_range, velocity_target, mod_target, pressure_target;
@@ -240,6 +259,11 @@ typedef struct {
     int8_t tune;
     uint8_t filter_lfo;
     int8_t reso_link, pwm_link;
+    uint8_t layers;
+    int8_t transpose[LIVE_VOICES], detune[LIVE_VOICES];
+    live_layer layer[LIVE_LAYERS_MAX];
+    int8_t fenv_depth;
+    uint8_t fenv_ad, fenv_sr;
 } live_edit;
 
 typedef struct {
@@ -341,6 +365,16 @@ typedef struct {
     int8_t reso_link;
     int8_t pwm_link;
     uint8_t res_out;
+    uint8_t layers;
+    int8_t transpose[LIVE_VOICES];
+    int8_t detune[LIVE_VOICES];
+    live_layer layer[LIVE_LAYERS_MAX];
+    uint8_t layer_edit;
+    int8_t fenv_depth;
+    uint8_t fenv_ad;
+    uint8_t fenv_sr;
+    uint32_t fenv_t_us;
+    uint32_t fenv_gate_us;
 } live;
 
 #define LIVE_PROFILE_NONE 0xffu
@@ -403,6 +437,19 @@ uint32_t live_pwm_step(uint32_t rate);
 uint32_t live_pwm_rate(uint32_t step);
 
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
+uint32_t live_layers_set(live* l, uint32_t extra);
+void live_filter_env_set(live* l, uint32_t field, uint32_t value);
+uint32_t live_filter_env(const live* l, uint32_t field);
+uint8_t live_edit_control(const live* l);
+uint8_t live_layer_control_of(const live* l, uint32_t v);
+uint16_t live_edit_pulse_width(const live* l);
+uint8_t live_edit_attack_decay(const live* l);
+uint8_t live_edit_sustain_release(const live* l);
+void live_layer_edit_set(live* l, uint32_t n);
+void live_layer_transpose_set(live* l, int32_t semis);
+void live_layer_detune_set(live* l, int32_t cents);
+int32_t live_layer_transpose(const live* l);
+int32_t live_layer_detune(const live* l);
 uint8_t live_voice_control(const live* l, uint32_t v);
 void live_rewrite_voice(live* l, uint32_t v);
 void live_rewrite(live* l);

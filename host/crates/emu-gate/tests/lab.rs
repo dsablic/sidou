@@ -146,7 +146,6 @@ fn the_edit_comes_back_at_power_on() {
 }
 
 const FRAME_MS: u64 = common::UI_FRAME_MS;
-const LAB_OPENED_MS: u64 = 400;
 const ATTACK: u8 = K1;
 const DECAY: u8 = K1 + 1;
 const RELEASE: u8 = K1 + 3;
@@ -154,16 +153,6 @@ const NAME_PAGE_SLOT: u8 = K1;
 const F4_KEY: u8 = KEY0 + 12;
 const LAB_WORST_POLL: u64 = 90_000;
 const _: () = assert!(LAB_WORST_POLL <= common::POLL_INSTRUCTIONS);
-
-pub fn open_lab(m: &mut Machine, fw: &Firmware) {
-    press(m, HOME);
-    wait_for_view(m, fw, "views_menu");
-    select_menu_item(m, VIEWS_MENU_LAB as i32);
-    m.run_ms(DETENT_MS);
-    m.turn(ALGORITHM, 1);
-    wait_for_view(m, fw, "lab_view_view");
-    m.run_ms(LAB_OPENED_MS);
-}
 
 fn lab_page(m: &mut Machine, fw: &Firmware) -> u8 {
     m.soc
@@ -857,6 +846,13 @@ fn voice_fields(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
         (ilp32::live::pwm_depth, 2),
         (ilp32::live::pwm_rate, 2),
         (ilp32::live::tune, 1),
+        (ilp32::live::layers, 1),
+        (ilp32::live::transpose, 3),
+        (ilp32::live::detune, 3),
+        (ilp32::live::layer, ilp32::live_layer::SIZE as u32 * 2),
+        (ilp32::live::fenv_depth, 1),
+        (ilp32::live::fenv_ad, 1),
+        (ilp32::live::fenv_sr, 1),
     ] {
         for i in 0..n {
             out.push(m.soc.read8(live_at(fw, f) + i));
@@ -1040,18 +1036,6 @@ fn midi_learn_on_a_lab_card_over_trs() {
     assert_eq!(depth_of(&mut m), from_cc(0));
 }
 
-fn device_song(m: &mut Machine, fw: &Firmware) -> sidou_tests::song::Song {
-    let mut song = sidou_tests::song::Song::device();
-    let base = fw.symbol("__song_region");
-    let bytes = unsafe {
-        std::slice::from_raw_parts_mut(song.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
-    };
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = m.soc.read8(base + i as u32);
-    }
-    song
-}
-
 fn attack_decay(m: &mut Machine, fw: &Firmware) -> u8 {
     m.soc
         .read8(fw.symbol("instrument") + ilp32::live::attack_decay as u32)
@@ -1072,13 +1056,13 @@ fn rec_in_lab_sends_to_the_playing_song_and_env_on_instr_pulls_it_back() {
             != 0
     };
     assert!(playing(&mut m));
-    let free = unsafe { lab_song_free(device_song(&mut m, &fw).ptr()) };
+    let free = unsafe { lab_song_free(common::song_in_device(&mut m, &fw).ptr()) };
     assert!(free != 0, "the built-in song has a free instrument");
     let ad = attack_decay(&mut m, &fw);
     press(&mut m, PANEL_BTN_REC as u8);
     m.run_ms(1500);
     assert!(playing(&mut m), "the song played on");
-    let song = device_song(&mut m, &fw);
+    let song = common::song_in_device(&mut m, &fw);
     let ins = song.raw().instr[free as usize - 1];
     let want_ad = if ad & 0xf0 == 0 { ad | 0x10 } else { ad };
     assert_eq!(ins[GT2_INS_AD as usize], want_ad);
@@ -1108,4 +1092,55 @@ fn rec_in_lab_sends_to_the_playing_song_and_env_on_instr_pulls_it_back() {
     m.run_ms(400);
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("lab_view_view"));
     assert_eq!(attack_decay(&mut m, &fw), ad, "the sound sent, exactly");
+}
+
+#[test]
+fn a_layered_sound_built_on_layers_plays_three_oscillators_on_one_key() {
+    let Some(fw) = firmware("the LAB layers test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_lab(&mut m, &fw);
+    for (enc, detents) in [
+        (SELECT, LAB_PAGE_LAYERS as i32),
+        (ALGORITHM, 2),
+        (K1, 1),
+        (K1 + 1, 12),
+    ] {
+        turn(&mut m, enc, detents);
+    }
+    assert_eq!(u32::from(lab_page(&mut m, &fw)), LAB_PAGE_LAYERS);
+    m.key(F4_KEY, true);
+    m.run_ms(60);
+    let s = common::rendered_sid(&mut m, &fw, 0);
+    let osc = |v: u32, field: usize| {
+        s + (ilp32::sid::osc + v as usize * ilp32::sid_osc::SIZE + field) as u32
+    };
+    let gate = |m: &mut Machine, v: u32| {
+        let at =
+            s + (ilp32::sid::env + v as usize * ilp32::sid_env::SIZE + ilp32::sid_env::gate) as u32;
+        m.soc.read8(at)
+    };
+    for v in 0..3 {
+        assert_eq!(gate(&mut m, v), 1, "voice {v} plays the key");
+    }
+    let freq = |m: &mut Machine, v: u32| {
+        let at = osc(v, ilp32::sid_osc::freq);
+        f64::from(m.soc.read32(at))
+    };
+    let (first, second, third) = (freq(&mut m, 0), freq(&mut m, 1), freq(&mut m, 2));
+    assert!(
+        (second / first - 2.0).abs() < 0.01,
+        "layer 2 an octave up: {first} {second}"
+    );
+    assert!(
+        (third / first - 1.0).abs() < 0.01,
+        "layer 3 at the key's pitch: {third}"
+    );
+    m.key(F4_KEY, false);
+    m.run_ms(60);
+    assert!(
+        (0..3).all(|v| gate(&mut m, v) == 0),
+        "the key's release lets all three go"
+    );
 }

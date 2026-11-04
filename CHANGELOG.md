@@ -8,6 +8,39 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-04
+
+Layered LAB sounds, a filter envelope, and SidStation and MIDIbox SID patch import; the title cards are gone.
+
+### Added
+- **LAYERS in LAB.** A sound plays up to three oscillators on one key, one a voice, each with its
+  own waveform, envelope, pulse, transpose and detune. ALGORITHM sets how many; K1 picks the
+  layer OSC and ENVELOPE edit (their header says `L2`), K2 and K3 its transpose and detune, K4
+  its filter routing. A sound grows from 48 to 68 bytes; a 1.5 sound loads as one layer.
+- **FILTER ENV in LAB.** An envelope of its own sweeps the cutoff on every note: depth on
+  ALGORITHM, attack, decay, sustain and release on the cards, drawn as it plays.
+- **`sidou-sysex import`.** An Elektron SidStation or MIDIbox SID V2 bank becomes songs of
+  sixteen patches each, every instrument keeping its layered LAB sound to pull into LAB with ENV
+  on INSTR, plus a report of what each patch keeps. A SidStation table plays as a GoatTracker
+  wave program on its own instruments.
+- **Filter metrics against real chips** (host tests): a band-energy distance and a harmonic
+  probe; SIDOU's 6581 filter measures inside the spread between real chips.
+
+### Changed
+- The help card shows LAB F ENV and LAB LAYERS; LAB's audibility check counts each layer, its
+  pitch, sync source and filter routing, and the filter envelope.
+- `POPUP_INPUT` is 256 instructions (was 250), for the filter envelope's check on the cutoff.
+
+### Removed
+- **The title cards and SETTINGS' CARDS row.** CHIP and SCENE open at once from the menu and
+  HOME from the menu returns to LIVE directly; SETTINGS has nine items (KEYS, SOUNDS, ROWS,
+  STORE, THEME, REC, SPREAD, SID MODEL, RESET). The image is about 20 KB smaller. The boot's own
+  title screen stays. The settings record's byte 1, CARDS until now, is reserved: written as 0
+  and ignored on read, so older records still load; the layout and schema version are unchanged.
+
+### Fixed
+- `sidou-sysex sid` and `import` make the `--out` folder when it does not exist yet.
+
 ## [1.5.0] - 2026-11-02
 
 LAB's song bridge (send a sound to the song, pull one back); a .sid voice lifted into LAB;

@@ -156,7 +156,7 @@ impl Song {
     }
 
     pub(crate) fn playing(song: Option<sidou_tests::song::Song>) -> Self {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let mut f = Box::new(Fake {
             calls: Vec::new(),
             st: song_status {
@@ -305,7 +305,7 @@ fn the_bpm_follows_the_frame_rate_the_multispeed_and_the_rows_a_beat() {
 
 #[test]
 fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_tracker(&mut ui);
     for page in ["ORDER", "INSTR", "TABLE", "STEP", "TRACKER"] {
         ui.press(PANEL_BTN_SEQ);
@@ -332,7 +332,7 @@ fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
 
 #[test]
 fn seq_reopens_the_song_view_used_last() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_SEQ);
     settle(&mut ui);
     assert_eq!(ui.top(), "STEP", "the first time: STEP");
@@ -391,7 +391,7 @@ fn seq_steps_to_the_next_song_view_and_round() {
 
 #[test]
 fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_tracker(&mut ui);
     let alert = unsafe { (*theme_get(THEME_HIGH_CONTRAST)).alert };
     assert_eq!(ui.small(0, 26, 4), " ---");
@@ -605,7 +605,7 @@ fn glo_and_the_leftmost_keys_mute_and_solo_and_sound_nothing() {
 
 #[test]
 fn glo_lets_a_key_already_sounding_sound_on() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.note_keys(key(0), key(0));
     assert_eq!(gated(&ui), 1);
     ui.hold(PANEL_BTN_GLO, true);
@@ -733,7 +733,7 @@ fn a_key_held_into_a_song_view_plays_on_and_a_jam_key_releases_outside() {
 
 #[test]
 fn without_a_player_the_keys_play_the_instrument_in_a_song_view() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_tracker(&mut ui);
     ui.note_keys(key(16), key(16));
     assert_eq!(gated(&ui), 1);

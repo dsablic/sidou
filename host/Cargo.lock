@@ -270,6 +270,7 @@ dependencies = [
  "png",
  "residfp-sys",
  "serde_json",
+ "sidou-patch",
  "sidou-sys",
  "sidou-sysex",
  "sidou-tablegen",
@@ -724,6 +725,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sidou-patch"
+version = "0.0.0"
+dependencies = [
+ "sidou-sys",
+]
+
+[[package]]
 name = "sidou-sys"
 version = "0.0.0"
 dependencies = [
@@ -735,6 +743,7 @@ dependencies = [
 name = "sidou-sysex"
 version = "0.0.0"
 dependencies = [
+ "sidou-patch",
  "sidou-sys",
 ]
 

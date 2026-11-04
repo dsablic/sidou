@@ -18,6 +18,7 @@ extern "C" {
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
 #define SETTINGS_VERSION 9u
+#define SETTINGS_RESERVED 0u
 #define SETTINGS_VERSION_CHARS 14u
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_PARAMS_V8 3u
@@ -50,7 +51,6 @@ typedef enum {
 typedef struct {
     live* l;
     midi_learn* ml;
-    uint8_t* cards;
     uint8_t* tracker_rows;
     ui_sound* snd;
     store* st;
@@ -76,7 +76,7 @@ typedef struct {
     uint32_t edit_saved;
 } settings;
 
-void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t* tracker_rows, ui_sound* snd,
+void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* tracker_rows, ui_sound* snd,
                    store* st, const char* version, void (*force)(int on));
 void settings_sounds(settings* s, user_sounds* sounds);
 uint32_t settings_gather(const settings* s, uint8_t* out);

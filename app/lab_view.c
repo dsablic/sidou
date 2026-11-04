@@ -32,8 +32,9 @@ _Static_assert(LIVE_PARAM_ATTACK + 3 == LIVE_PARAM_RELEASE &&
                    LIVE_PARAM_VIBRATO_RATE + 2 == LIVE_PARAM_VIBRATO_DELAY,
                "ENVELOPE's and MOD's cards are consecutive parameters");
 
-static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "MOD", "FX",
-                                                  "MACRO"};
+static const char* const PAGE_NAMES[LAB_PAGES] = {"OSC", "ENVELOPE", "FILTER", "FILTER ENV",
+                                                  "MOD", "FX", "MACRO", "LAYERS"};
+static const char* const OSC_COUNT[LIVE_LAYERS_MAX + 1u] = {"ONE OSC", "TWO OSC", "THREE OSC"};
 
 static const uint8_t WAVES[LAB_VIEW_WAVES] = {0x10, 0x20, 0x40, 0x80, 0x30, 0x50,
                                               0x60, 0x70, 0x14, 0x22, 0x42};
@@ -136,7 +137,37 @@ static void pulse_percent(char* out, uint32_t pw) {
 
 static char* append(char* out, const char* s);
 static int ratio_card(const live* l) {
-    return l->mono_sync && !(l->control & 0x40u);
+    return l->mono_sync && !(live_edit_control(l) & 0x40u);
+}
+
+static int layers_card(const live* l, uint32_t k, char* name, char* value, uint32_t* fill,
+                       uint32_t* max) {
+    static const char* const NAMES[4] = {"EDIT", "TRANS", "DETUNE", "FILT"};
+    copy(name, NAMES[k & 3u]);
+    switch (k) {
+    case 0u:
+        value[0] = 'L';
+        value[1] = (char)('1' + l->layer_edit);
+        value[2] = 0;
+        *fill = l->layer_edit;
+        *max = l->layers;
+        return l->layers != 0u;
+    case 1u:
+        (void)number(value, live_layer_transpose(l), 1);
+        *fill = (uint32_t)(live_layer_transpose(l) + LIVE_TRANSPOSE_MAX);
+        *max = 2u * LIVE_TRANSPOSE_MAX;
+        return 1;
+    case 2u:
+        (void)number(value, live_layer_detune(l), 1);
+        *fill = (uint32_t)(live_layer_detune(l) + LIVE_DETUNE_CENTS);
+        *max = 2u * LIVE_DETUNE_CENTS;
+        return 1;
+    default:
+        *fill = l->filter_voices >> l->layer_edit & 1u;
+        *max = 1u;
+        copy(value, *fill ? "ON" : "OFF");
+        return 1;
+    }
 }
 
 int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, char* value,
@@ -182,9 +213,15 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
             (void)number(value, (int32_t)v - LIVE_TUNE_CENTS, 1);
         }
         return 1;
-    case LAB_PAGE_ENVELOPE: {
+    case LAB_PAGE_ENVELOPE:
+    case LAB_PAGE_FILTER_ENV: {
         static const char* const NAMES[4] = {"ATTACK", "DECAY", "SUS", "RELEASE"};
         copy(name, NAMES[k & 3u]);
+        if (page == LAB_PAGE_FILTER_ENV) {
+            v = live_filter_env(l, LIVE_FENV_ATTACK + k);
+            *fill = v;
+            *max = 15u;
+        }
         (void)number(value, (int32_t)v, 0);
         return 1;
     }
@@ -241,6 +278,8 @@ int lab_view_card(const lab_view* lv, uint32_t page, uint32_t k, char* name, cha
         copy(name, k ? "PWM LNK" : "RES LNK");
         (void)number(value, (int32_t)v - LIVE_LINK_MAX, 1);
         return 1;
+    case LAB_PAGE_LAYERS:
+        return layers_card(l, k, name, value, fill, max);
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
         char label[CHIP_VIEW_LABEL];
@@ -257,8 +296,8 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
     const live* l = lv->l;
     switch (page) {
     case LAB_PAGE_OSC: {
-        uint32_t c = l->control & WAVE_BITS;
-        uint32_t i = lab_view_wave_of(l->control);
+        uint32_t c = live_edit_control(l) & WAVE_BITS;
+        uint32_t i = lab_view_wave_of(live_edit_control(l));
         if (WAVES[i] == c) {
             copy(out, WAVE_NAMES[i]);
             return;
@@ -299,6 +338,16 @@ void lab_view_choice(const lab_view* lv, uint32_t page, char* out) {
         return;
     case LAB_PAGE_MACRO:
         copy(out, l->reso_link || l->pwm_link ? "LINKED" : "NO LINKS");
+        return;
+    case LAB_PAGE_LAYERS:
+        copy(out, l->mono_sync ? "ONE OSC: SYNC" : OSC_COUNT[l->layers]);
+        return;
+    case LAB_PAGE_FILTER_ENV:
+        if (!l->fenv_depth) {
+            copy(out, "ENV OFF");
+        } else {
+            *number(append(out, "DEPTH "), l->fenv_depth, 1) = 0;
+        }
         return;
     default: {
         uint32_t slot = l->fx_select % LIVE_SLOTS;
@@ -367,8 +416,19 @@ static int choice_off(const lab_view* lv) {
     case LAB_PAGE_MOD: return !l->arp_on;
     case LAB_PAGE_FX: return l->slot[l->fx_select % LIVE_SLOTS][LIVE_SLOT_ALGORITHM] == 0u;
     case LAB_PAGE_MACRO: return !l->reso_link && !l->pwm_link;
+    case LAB_PAGE_LAYERS: return !l->layers;
+    case LAB_PAGE_FILTER_ENV: return !l->fenv_depth;
     default: return 0;
     }
+}
+
+static void page_title(const live* l, uint32_t page, char* out) {
+    char* e = append(out, PAGE_NAMES[page]);
+    if (l->layer_edit && (page == LAB_PAGE_OSC || page == LAB_PAGE_ENVELOPE)) {
+        e = append(e, " L");
+        *e++ = (char)('1' + l->layer_edit);
+    }
+    *e = 0;
 }
 
 static void draw_card(const lab_view* lv, canvas* c, const theme* th, uint32_t k) {
@@ -497,7 +557,9 @@ static void build(lab_view* lv, uint32_t now) {
         lv->copying = 1;
         return;
     }
-    (void)grid_canvas_text_big(c, 0, 0, 2, PAGE_NAMES[lv->page], THEME_ATTR(th, hot));
+    char title[LAB_VIEW_TEXT];
+    page_title(l, lv->page, title);
+    (void)grid_canvas_text_big(c, 0, 0, 2, title, THEME_ATTR(th, hot));
     char place[4] = {(char)('1' + lv->page), '/', (char)('0' + LAB_PAGES), 0};
     (void)grid_canvas_text_big(c, PLACE_COL, 0, 2, place, THEME_ATTR(th, hint));
     char name[LIVE_PRESET_NAME_CHARS + 2u];
@@ -684,10 +746,25 @@ static void pulse_turn(live* l, int32_t d) {
         live_knob(l, LIVE_KNOB_TONE, d);
         return;
     }
-    int32_t pw = l->pulse_width > 2048u ? 4096 - (int32_t)l->pulse_width : (int32_t)l->pulse_width;
+    int32_t width = live_edit_pulse_width(l);
+    int32_t pw = width > 2048 ? 4096 - width : width;
     int32_t pos = pw < LIVE_PULSE_FIRST ? 0 : (pw - LIVE_PULSE_FIRST + LIVE_PULSE_STEP / 2) / LIVE_PULSE_STEP;
     pos = clamp(pos + d, 0, LIVE_PULSE_POSITIONS - 1);
     live_param_set(l, LIVE_PARAM_PULSE_WIDTH, (uint32_t)(LIVE_PULSE_FIRST + LIVE_PULSE_STEP * pos));
+}
+
+static void layers_turn(live* l, uint32_t k, int32_t d) {
+    switch (k) {
+    case 0u: live_layer_edit_set(l, (uint32_t)clamp((int32_t)l->layer_edit + d, 0, l->layers)); break;
+    case 1u: live_layer_transpose_set(l, live_layer_transpose(l) + d); break;
+    case 2u: live_layer_detune_set(l, live_layer_detune(l) + d); break;
+    default: {
+        uint32_t bit = 1u << l->layer_edit;
+        uint32_t voices = d > 0 ? l->filter_voices | bit : l->filter_voices & ~bit;
+        live_param_set(l, LIVE_PARAM_FILTER_VOICES, voices);
+        break;
+    }
+    }
 }
 
 static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
@@ -728,6 +805,12 @@ static void card_turn(lab_view* lv, uint32_t k, int32_t d) {
             add(l, LIVE_PARAM_RESO_LINK + k, d);
         }
         break;
+    case LAB_PAGE_LAYERS: layers_turn(l, k, d); break;
+    case LAB_PAGE_FILTER_ENV:
+        live_filter_env_set(
+            l, LIVE_FENV_ATTACK + k,
+            (uint32_t)clamp((int32_t)live_filter_env(l, LIVE_FENV_ATTACK + k) + d, 0, 15));
+        break;
     default: live_slot_turn(l, l->fx_select % LIVE_SLOTS, LIVE_SLOT_AMOUNT + k, d); break;
     }
 }
@@ -736,10 +819,10 @@ static void choice_turn(lab_view* lv, int32_t steps) {
     live* l = lv->l;
     switch (lv->page) {
     case LAB_PAGE_OSC: {
-        uint32_t i = (uint32_t)clamp((int32_t)lab_view_wave_of(l->control) + steps, 0,
+        uint32_t i = (uint32_t)clamp((int32_t)lab_view_wave_of(live_edit_control(l)) + steps, 0,
                                      LAB_VIEW_WAVES - 1);
         uint8_t w = WAVES[i];
-        if (w != (l->control & WAVE_BITS)) {
+        if (w != (live_edit_control(l) & WAVE_BITS)) {
             live_param_set(l, LIVE_PARAM_RING, w >> 2 & 1u);
             live_param_set(l, LIVE_PARAM_SYNC, w >> 1 & 1u);
             live_param_set(l, LIVE_PARAM_WAVEFORM, w >> 4);
@@ -750,6 +833,14 @@ static void choice_turn(lab_view* lv, int32_t steps) {
         live_param_set(l, LIVE_PARAM_ENVELOPE_MODE, (uint32_t)clamp(l->envelope_mode + steps, 0, 1));
         break;
     case LAB_PAGE_MACRO: break;
+    case LAB_PAGE_LAYERS:
+        (void)live_layers_set(l, (uint32_t)clamp((int32_t)l->layers + steps, 0, LIVE_LAYERS_MAX));
+        break;
+    case LAB_PAGE_FILTER_ENV:
+        live_filter_env_set(l, LIVE_FENV_DEPTH,
+                            (uint32_t)clamp(l->fenv_depth + steps, -LIVE_FENV_DEPTH_MAX,
+                                            LIVE_FENV_DEPTH_MAX) + LIVE_FENV_DEPTH_MAX);
+        break;
     case LAB_PAGE_FILTER: {
         int32_t mode = l->filter_mode >> 4 & 7u;
         int32_t at = -1;

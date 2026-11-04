@@ -5,7 +5,7 @@ mod common;
 
 use fm1_core::Bus;
 
-use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1, SELECT};
+use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1};
 use common::{
     firmware, max_diff, rendered_sid, top_view, ui_live, Firmware, Machine, HALF_FRAMES,
     SAMPLE_RATE,
@@ -512,17 +512,9 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
     press(&mut m, HOME);
     m.run_ms(MENU_WIPE_MS);
     m.turn(ALGORITHM, 1);
-    m.run_ms(300);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("title_card_view"));
-    m.turn(SELECT, 1);
     m.run_ms(700);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("chip_view_view"));
     let l = ui_live(&mut m, &fw);
-    assert_eq!(
-        m.soc.read8(l + ilp32::live::fx_select as u32),
-        0,
-        "SELECT on the card moved the focus"
-    );
     let halves = |m: &Machine| m.soc.periph.audio.len() / (2 * HALF_FRAMES);
     m.turn(K1, DETENTS);
     m.run_ms(300);

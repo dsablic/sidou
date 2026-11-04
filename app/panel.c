@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "panel.h"
 
+#include "lab_view.h"
+
 #include <stddef.h>
 
 void panel_init(panel* p) {
@@ -140,14 +142,16 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
 }
 
 uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
-    static const uint8_t CARDS[6][4] = {
+    static const uint8_t CARDS[8][4] = {
         {LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE},
         {LIVE_PARAM_ATTACK, LIVE_PARAM_DECAY, LIVE_PARAM_SUSTAIN, LIVE_PARAM_RELEASE},
         {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE, LIVE_PARAM_FILTER_VOICES, LIVE_PARAM_FILTER_LFO},
+        {LIVE_PARAM_COUNT, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT},
         {LIVE_PARAM_VIBRATO_RATE, LIVE_PARAM_VIBRATO_DEPTH, LIVE_PARAM_VIBRATO_DELAY,
          LIVE_PARAM_ARP_RATE},
         {0, 0, 0, 0},
         {LIVE_PARAM_RESO_LINK, LIVE_PARAM_PWM_LINK, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT},
+        {LIVE_PARAM_COUNT, LIVE_PARAM_COUNT, LIVE_PARAM_COUNT, LIVE_PARAM_FILTER_VOICES},
     };
     _Static_assert(PANEL_PAGE_LAB_END - PANEL_PAGE_LAB_FIRST == sizeof CARDS / sizeof CARDS[0],
                    "a row of cards a LAB page");
@@ -155,7 +159,7 @@ uint32_t panel_lab_param(const live* l, uint32_t page, uint32_t k) {
     if (page >= sizeof CARDS / sizeof CARDS[0] || k > 3u) {
         return LIVE_PARAM_COUNT;
     }
-    if (page == 4u) {
+    if (page == LAB_PAGE_FX) {
         return LIVE_PARAM_SLOT + l->fx_select * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT + k;
     }
     if (page == 0u && k == 0u && l->mono_sync && !(l->control & 0x40u)) {

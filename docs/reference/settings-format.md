@@ -20,7 +20,7 @@ same layout with a larger `T` (the filter LFO, the arpeggio's rate, the two macr
 | Offset | Bytes | Value |
 |---|---|---|
 | 0 | 1 | Schema version, `9` |
-| 1 | 1 | CARDS: `0` OFF, `1` ONCE (the default), `2` ALWAYS |
+| 1 | 1 | Reserved: written as `0`, ignored on read (it held CARDS `0` OFF, `1` ONCE, `2` ALWAYS until 1.6; a record that has it set still loads) |
 | 2 | 1 | SOUNDS: `0` off, `1` on |
 | 3 | 1 | KEYS: `0` AUTO, `1` A |
 | 4 | 1 | Preset: `0..4` a built-in or DICE, `5 + n` LAB's USER sound `n + 1` ([sound-format.md](sound-format.md); an empty slot loads SAW LEAD, an older firmware clamps it to DICE) |

@@ -6,7 +6,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SIDOU cheat sheet</title>
-<meta name="description" content="Every control of SIDOU 1.5.0, the C64 SID firmware for the M-VAVE FM-1, on one page: playing, sound, songs, saving, MIDI and USB.">
+<meta name="description" content="Every control of SIDOU 1.6.0, the C64 SID firmware for the M-VAVE FM-1, on one page: playing, sound, songs, saving, MIDI and USB.">
 <link rel="icon" href="data:,">
 <style>
   :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
@@ -75,7 +75,7 @@
   <header>
     <div class="brand">
       <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
-      <h1>Cheat sheet · SIDOU 1.5.0</h1>
+      <h1>Cheat sheet · SIDOU 1.6.0</h1>
     </div>
     <nav><a href="./">Play it in the browser</a> · <a href="videos.html">Videos</a> · <a href="library.html">Library</a> · <a href="songs.html">Songs for your FM-1</a> · <a href="midi.html">Songs to MIDI</a> · <a href="https://github.com/dsablic/sidou">Source</a> · <button type="button" class="print" onclick="print()">Print</button></nav>
   </header>
@@ -122,7 +122,7 @@
         <tr><td>Menu: ALGORITHM</td><td>on PRE / OCTAVE changes the value</td></tr>
         <tr><td>STATUS: SELECT</td><td>turns its 3 pages: knobs (6502 with a tune), chip + preset + notes, effects</td></tr>
         <tr><td>SEQ</td><td>opens the song view used last; again: STEP → TRACKER → ORDER → INSTR → TABLE → STEP</td></tr>
-        <tr><td>Any control</td><td>skips the boot or a title card (a note skips and plays)</td></tr>
+        <tr><td>Any control</td><td>skips the boot (a note skips and plays)</td></tr>
       </table>
       <h3>Lights</h3>
       <ul>
@@ -158,10 +158,12 @@
       </table>
       <h3>LAB (menu → LAB, or ENV · LFO · FX on LIVE)</h3>
       <table>
-        <tr><td>SELECT · ENV LFO FX</td><td>pages OSC, ENVELOPE, FILTER, MOD, FX, MACRO · straight to ENVELOPE, MOD, FX</td></tr>
+        <tr><td>SELECT · ENV LFO FX</td><td>pages OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS · straight to ENVELOPE, MOD, FX</td></tr>
         <tr><td>K1–K4 · ALGORITHM</td><td>the page's four cards · its choice (waveform, envelope mode, filter, ARP, the slot's algorithm)</td></tr>
         <tr><td>FILTER K4 · MOD K4</td><td>filter LFO (K1 detents each way, at PWM HZ's rate) · ARP's rate (<code>3FR</code>, <code>1/16</code>)</td></tr>
         <tr><td>MACRO K1 · K2</td><td>RES LNK: resonance follows the cutoff · PWM LNK: PWM follows the width (−8…+8)</td></tr>
+        <tr><td>FILTER ENV ALG · K1–K4</td><td>depth of the cutoff sweep (−63…+63) · its attack, decay, sustain, release</td></tr>
+        <tr><td>LAYERS ALG · K1–K4</td><td>one, two or three oscillators a note · the layer OSC and ENVELOPE edit, its transpose, detune, filter</td></tr>
         <tr><td>SAVE · E+ SAVE</td><td>keep the sound as USER 1–16 (<code>U01</code>, PRESETS after DICE) · name it on the keys</td></tr>
         <tr><td>tap EDIT · E+ LFO</td><td>A/B against the sound as loaded · undo (16 steps)</td></tr>
         <tr><td>hold EDIT + keys</td><td>peek: play the sound as loaded (A) while EDIT is held</td></tr>
@@ -275,7 +277,6 @@
         <tr><td>KEYS</td><td>AUTO (chip B during a song) / A</td></tr>
         <tr><td>SOUNDS</td><td>UI sounds OFF / ON</td></tr>
         <tr><td>ROWS</td><td>TRACKER rows: BAR / SCROLL</td></tr>
-        <tr><td>CARDS</td><td>title cards OFF / ONCE / ALWAYS</td></tr>
         <tr><td>STORE</td><td>free space (<code>193K</code>); FOREIGN / NEWER: SAVE asks (<code>FORMAT?</code>), SAVE again <b>formats: wipes all data</b></td></tr>
         <tr><td>THEME</td><td>HIGH (contrast) / C64</td></tr>
         <tr><td>REC</td><td>record quantise (not saved)</td></tr>
@@ -308,7 +309,7 @@
         <tr><td>Send songs</td><td>the <a href="songs.html">Songs page</a> sends the showcase songs over USB (Chrome or Edge)</td></tr>
         <tr><td>Your files</td><td>the <a href="library.html">Library</a> lists, sends, renames, deletes, backs up and restores the store; exports a song and its instruments</td></tr>
         <tr><td>Song → MIDI file</td><td>the <a href="midi.html">Songs to MIDI</a> page turns any <code>.sng</code> into a <code>.mid</code></td></tr>
-        <tr><td>Install / update</td><td>Felucca's installer: <code>fm1_install.py sidou-1.5.0.fwsc</code>; back to stock: M-VAVE's <code>FM-1.fwsc</code></td></tr>
+        <tr><td>Install / update</td><td>Felucca's installer: <code>fm1_install.py sidou-1.6.0.fwsc</code>; back to stock: M-VAVE's <code>FM-1.fwsc</code></td></tr>
       </table>
     </section>
 
@@ -330,7 +331,7 @@
       <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">the MIDI map</a> ·
       <a href="https://dsablic.github.io/sidou/">play it in the browser</a> · <a href="https://dsablic.github.io/sidou/videos.html">the how-to videos</a> ·
       <a href="https://github.com/dsablic/sidou/releases/latest">latest release</a></p>
-    <p>Checked against SIDOU 1.5.0. SIDOU · github.com/dsablic/sidou · the firmware is
+    <p>Checked against SIDOU 1.6.0. SIDOU · github.com/dsablic/sidou · the firmware is
       GPL-3.0-only, this page GPL-3.0-or-later · an independent project, not affiliated with M-VAVE or Commodore trademark holders.</p>
   </footer>
 </main>

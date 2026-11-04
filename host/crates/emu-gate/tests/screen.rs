@@ -10,8 +10,8 @@ use common::panel::{
     KEY0, LFO, MENU_ITEMS, OCT_UP, PLAY, PRESETS, REC, SAVE, SCL, SELECT, SEQ,
 };
 use common::{
-    booted, open_status, run_past_boot, screen_animating, screen_wiping, settings_item, tap_on,
-    to_mid_frame, top_view, Firmware, Machine, POLL_INSTRUCTIONS, UI_FRAME_MS,
+    booted, open_status, run_past_boot, screen_wiping, settings_item, tap_on, to_mid_frame,
+    top_view, Firmware, Machine, POLL_INSTRUCTIONS, UI_FRAME_MS,
 };
 use fm1_core::Bus;
 
@@ -132,10 +132,6 @@ fn ui_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
     m.soc.read8(sym.address() as u32 + offset as u32)
 }
 
-fn card_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
-    ui_byte(m, fw, sidou_sys::ilp32::views::card + field)
-}
-
 fn live_ptr(m: &mut Machine, fw: &Firmware) -> u32 {
     m.soc
         .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32)
@@ -146,45 +142,10 @@ fn live_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
     m.soc.read8(l + field as u32)
 }
 
-fn octave_and_model(m: &mut Machine, fw: &Firmware) -> (u8, u8) {
-    (
-        live_byte(m, fw, sidou_sys::ilp32::live::octave),
-        live_byte(m, fw, sidou_sys::ilp32::live::model),
-    )
-}
-
 fn song_on_chip_a(m: &mut Machine, fw: &Firmware) {
     m.soc.write8(
         fw.symbol("keys_router") + sidou_sys::ilp32::keys_route::song as u32,
         1,
-    );
-}
-
-fn showing_card(m: &mut Machine, fw: &Firmware) -> bool {
-    top_view(m, fw) == fw.symbol("title_card_view")
-}
-
-const CARD_TIMEOUT_MS: u64 = 4000;
-
-fn past_card(m: &mut Machine, fw: &Firmware) -> u64 {
-    let from = m.ms();
-    while showing_card(m, fw) || screen_animating(m, fw) {
-        assert!(
-            m.ms() < from + CARD_TIMEOUT_MS,
-            "the title card did not end"
-        );
-        m.run_ms(UI_FRAME_MS);
-    }
-    m.ms() - from
-}
-
-const CARDS_OFF: u8 = 0;
-const CARDS_ALWAYS: u8 = 2;
-
-fn set_cards(m: &mut Machine, fw: &Firmware, cards: u8) {
-    m.soc.write8(
-        fw.symbol("ui") + sidou_sys::ilp32::views::cards as u32,
-        cards,
     );
 }
 
@@ -196,17 +157,6 @@ fn settings_back_to_live_with_the_menu_cursor_on_top(m: &mut Machine) {
     m.turn(SELECT, -MENU_ITEMS);
     m.run_ms(turn_time(MENU_ITEMS));
     press(m, HOME);
-}
-
-fn cards_off(m: &mut Machine, fw: &Firmware) {
-    open_menu_settled(m, fw);
-    settings_item(m, sidou_sys::VIEWS_SETTINGS_CARDS);
-    m.turn(ALGORITHM, -1);
-    m.run_ms(100);
-    assert_eq!(ui_byte(m, fw, sidou_sys::ilp32::views::cards), CARDS_OFF);
-    settings_back_to_live_with_the_menu_cursor_on_top(m);
-    settle(m, fw);
-    assert_eq!(top_view(m, fw), fw.symbol("live_view_view"));
 }
 
 fn cell_rows(fb: &[u16]) -> Vec<&[u16]> {
@@ -1000,7 +950,7 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
     assert!(over.is_empty(), "{over:#?}");
 }
 
-const POPUP_INPUT: u64 = 250;
+const POPUP_INPUT: u64 = 256;
 const POPUP_PASS: u64 = 70_000;
 const _: () = assert!(POPUP_INPUT + POPUP_PASS <= POLL_INSTRUCTIONS);
 
@@ -1297,7 +1247,6 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
     compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
     press(&mut m, HOME);
     m.run_ms(2 * UI_FRAME_MS);
-    assert!(!showing_card(&mut m, &fw), "a card back to LIVE");
     settle(&mut m, &fw);
     assert!(m.soc.lcd.fb == live, "LIVE differs after the glyph sheet");
 }
@@ -1345,7 +1294,6 @@ fn a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom() {
         return;
     };
     let mut m = booted(&fw);
-    cards_off(&mut m, &fw);
     let status = m.soc.lcd.fb.clone();
     open_menu_settled(&mut m, &fw);
     let menu = m.soc.lcd.fb.clone();
@@ -2435,10 +2383,9 @@ fn a_chord_on_live_takes_a_voice_a_note_and_matches_its_golden_image() {
     }
 }
 
-const C64_GOLDEN_FRAME: u32 = 139;
+const C64_GOLDEN_FRAME: u32 = 90;
 
 fn c64_theme_and_back_to_live(m: &mut Machine, fw: &Firmware) {
-    cards_off(m, fw);
     open_menu_settled(m, fw);
     settings_item(m, sidou_sys::VIEWS_SETTINGS_THEME);
     m.turn(ALGORITHM, 1);
@@ -2588,11 +2535,8 @@ const SCENE_PIECES: [&str; 6] = ["fire", "plasma", "rule30", "stars", "ant", "rm
 const _: () = assert!(SCENE_PIECES.len() == sidou_sys::SCENE_PIECES as usize);
 const PIECE_NAME_TOAST_LEFT_MS: u64 = 1_000;
 
-fn open_view_past_its_card(m: &mut Machine, fw: &Firmware, item: i32, view: &str) {
+fn open_view(m: &mut Machine, fw: &Firmware, item: i32, view: &str) {
     enter_menu_item(m, fw, item);
-    m.run_ms(100);
-    assert!(showing_card(m, fw), "no card into {view}");
-    past_card(m, fw);
     settle(m, fw);
     assert_eq!(
         top_view(m, fw),
@@ -2602,7 +2546,7 @@ fn open_view_past_its_card(m: &mut Machine, fw: &Firmware, item: i32, view: &str
 }
 
 fn open_scene(m: &mut Machine, fw: &Firmware, piece: usize) {
-    open_view_past_its_card(m, fw, MENU_SCENE, "scene_view_view");
+    open_view(m, fw, MENU_SCENE, "scene_view_view");
     m.run_ms(PIECE_NAME_TOAST_LEFT_MS);
     for _ in 0..piece {
         m.turn(SELECT, 1);
@@ -2632,16 +2576,12 @@ fn fire_keeps_a_low_flame_in_silence() {
 }
 
 #[test]
-fn entering_scene_names_the_piece_once_its_card_is_gone() {
+fn entering_scene_names_the_piece() {
     let Some(fw) = common::firmware("the SCENE test") else {
         return;
     };
     let mut m = booted(&fw);
-    into_scene_card(&mut m, &fw);
-    m.run_ms(100);
-    assert!(showing_card(&mut m, &fw));
-    assert_ne!(toast_text(&mut m, &fw), "FIRE", "named under the card");
-    past_card(&mut m, &fw);
+    enter_menu_item(&mut m, &fw, MENU_SCENE);
     m.run_ms(100);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("scene_view_view"));
     assert_eq!(toast_text(&mut m, &fw), "FIRE");
@@ -2973,6 +2913,8 @@ const SCENE_BOUNDS: [SceneBound; 6] = [
 ];
 const SCENE_WORST_POLL: u64 = 62_000;
 const SCENE_INPUT: u64 = 230;
+const SCENE_OPEN_INPUT: u64 = 430;
+const SCENE_OPEN_MS: u64 = 1_000;
 const SCENE_START_PASS: u64 = 67_000;
 const RMR_INPUT: u64 = 1_050;
 const RMR_START_PASS: u64 = 65_000;
@@ -3007,7 +2949,6 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
         return;
     };
     let mut m = booted(&fw);
-    set_cards(&mut m, &fw, CARDS_ALWAYS);
     open_scene(&mut m, &fw, 0);
     m.watch_calls(fw.symbol("ui_encoder"));
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
@@ -3024,13 +2965,7 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
         press(&mut m, HOME);
         settle(&mut m, &fw);
         assert_eq!(top_view(&mut m, &fw), fw.symbol("views_menu"));
-        let calls = m.watched_calls.len();
-        m.turn(ALGORITHM, 1);
-        m.run_ms(100);
-        let input = m.watched_calls[calls..].iter().copied().max().unwrap_or(0);
-        to_held(&mut m, &fw);
-        let (_, pass) = start_cost(&mut m, CARD_TIMEOUT_MS, |_| {});
-        let c = (input, pass);
+        let c = start_cost(&mut m, SCENE_OPEN_MS, |m| m.turn(ALGORITHM, 1));
         assert_eq!(
             top_view(&mut m, &fw),
             fw.symbol("scene_view_view"),
@@ -3045,7 +2980,7 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
         } else if what.starts_with("SELECT") {
             SCENE_INPUT
         } else {
-            TITLE_CARD_INPUT
+            SCENE_OPEN_INPUT
         };
         let pass_bound = if what.ends_with("rmr") {
             RMR_START_PASS
@@ -3091,7 +3026,7 @@ const CHARACTER_AND_SLOTS_OVER_MIDI: [u8; 19 * 3] = {
 };
 
 fn open_chip(m: &mut Machine, fw: &Firmware) {
-    open_view_past_its_card(m, fw, MENU_CHIP, "chip_view_view");
+    open_view(m, fw, MENU_CHIP, "chip_view_view");
 }
 
 fn chip_focus(m: &mut Machine, fw: &Firmware) -> u8 {
@@ -3604,175 +3539,35 @@ fn a_dac_sweep_during_a_profile_step_holds_every_pass_within_the_allowance() {
     );
 }
 
-fn into_card_of(m: &mut Machine, fw: &Firmware, item: i32) {
-    open_menu_settled(m, fw);
-    select_menu_item(m, item);
-    m.run_ms(MENU_ITEM_SETTLE_MS);
-    to_mid_frame(m, fw);
-    m.turn(ALGORITHM, 1);
-}
-
-fn into_scene_card(m: &mut Machine, fw: &Firmware) {
-    into_card_of(m, fw, MENU_SCENE);
-}
-
-fn into_chip_card(m: &mut Machine, fw: &Firmware) {
-    into_card_of(m, fw, MENU_CHIP);
-}
-
-fn tap_to_oscillator_card(m: &mut Machine, fw: &Firmware) {
-    set_cards(m, fw, CARDS_ALWAYS);
-    open_menu_settled(m, fw);
-    to_mid_frame(m, fw);
-    m.key(HOME, true);
-    m.run_ms(30);
-    m.key(HOME, false);
-}
-
-fn into_oscillator_card(m: &mut Machine, fw: &Firmware) {
-    tap_to_oscillator_card(m, fw);
-    m.run_ms(2 * UI_FRAME_MS);
-}
-
-fn to_held(m: &mut Machine, fw: &Firmware) {
-    let from = m.ms();
-    while card_byte(m, fw, sidou_sys::ilp32::title_card::phase) != sidou_sys::TITLE_CARD_HOLD as u8
-    {
-        assert!(showing_card(m, fw), "the card ended before it held");
-        assert!(
-            m.ms() < from + CARD_TIMEOUT_MS,
-            "the card did not reach its hold"
-        );
-        m.run_ms(UI_FRAME_MS);
-    }
-    m.run_ms(UI_FRAME_MS);
-    to_mid_frame(m, fw);
-    assert!(showing_card(m, fw));
-}
-
-fn assert_shows_the_card_source(name: &str, fb: &[u16]) {
-    let src = sidou_tests::logo::load(&format!("title-{name}"));
-    let got = indexed(fb);
-    if let Some(i) = (0..W * W).find(|&i| got[i] != src.px[i]) {
-        panic!(
-            "THE {}: pixel ({}, {}) is colour {} where title-{name}.png has {}",
-            name.to_uppercase(),
-            i % W,
-            i / W,
-            got[i],
-            src.px[i]
-        );
-    }
-}
-
 #[test]
-fn title_cards_match_their_goldens_and_their_sources_and_cut_to_their_views() {
-    let Some((build, fw)) = common::build_and_firmware("the title card test") else {
+fn chip_and_scene_open_straight_from_the_menu_and_home_returns_to_live() {
+    let Some((build, fw)) = common::build_and_firmware("the view switch test") else {
         return;
     };
     let mut m = booted(&fw);
-    set_cards(&mut m, &fw, CARDS_ALWAYS);
-    into_chip_card(&mut m, &fw);
-    m.run_ms(UI_FRAME_MS);
-    assert!(showing_card(&mut m, &fw), "no card into CHIP");
-    assert_eq!(
-        card_byte(&mut m, &fw, sidou_sys::ilp32::title_card::id),
-        sidou_sys::TITLE_CARD_CHIP as u8
-    );
-    to_held(&mut m, &fw);
-    compare_golden(&build, "title-chip", &m.soc.lcd.fb, &[]);
-    assert_shows_the_card_source("chip", &m.soc.lcd.fb);
-    past_card(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("chip_view_view"));
-    press(&mut m, HOME);
-    settle(&mut m, &fw);
-    press(&mut m, HOME);
-    past_card(&mut m, &fw);
-    settle(&mut m, &fw);
-    into_scene_card(&mut m, &fw);
-    m.run_ms(UI_FRAME_MS);
-    assert!(showing_card(&mut m, &fw), "no card into SCENE");
-    assert_eq!(
-        card_byte(&mut m, &fw, sidou_sys::ilp32::title_card::id),
-        sidou_sys::TITLE_CARD_SCENE as u8
-    );
-    to_held(&mut m, &fw);
-    compare_golden(&build, "title-scene", &m.soc.lcd.fb, &[]);
-    assert_shows_the_card_source("scene", &m.soc.lcd.fb);
-    past_card(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("scene_view_view"));
-    press(&mut m, HOME);
-    settle(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("views_menu"));
-    press(&mut m, HOME);
-    m.run_ms(UI_FRAME_MS);
-    assert!(showing_card(&mut m, &fw), "no card back to LIVE");
-    assert_eq!(
-        card_byte(&mut m, &fw, sidou_sys::ilp32::title_card::id),
-        sidou_sys::TITLE_CARD_OSCILLATOR as u8
-    );
-    to_held(&mut m, &fw);
-    compare_golden(&build, "title-oscillator", &m.soc.lcd.fb, &[]);
-    assert_shows_the_card_source("oscillator", &m.soc.lcd.fb);
-    past_card(&mut m, &fw);
-    settle(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
-    compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
-}
-
-#[test]
-fn by_default_the_chips_card_plays_once_and_the_oscillators_never() {
-    let Some(fw) = common::firmware("the title card test") else {
-        return;
-    };
-    let mut m = booted(&fw);
-    into_chip_card(&mut m, &fw);
-    m.run_ms(UI_FRAME_MS);
-    assert!(showing_card(&mut m, &fw), "no card the first time");
-    past_card(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("chip_view_view"));
-    press(&mut m, HOME);
-    settle(&mut m, &fw);
-    m.turn(ALGORITHM, 1);
-    m.run_ms(2 * UI_FRAME_MS);
-    assert!(!showing_card(&mut m, &fw), "a card the second time");
-    settle(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("chip_view_view"));
-    press(&mut m, HOME);
-    settle(&mut m, &fw);
-    press(&mut m, HOME);
-    m.run_ms(2 * UI_FRAME_MS);
-    assert!(!showing_card(&mut m, &fw), "THE OSCILLATOR under ONCE");
-    settle(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
-}
-
-#[test]
-fn cards_always_plays_every_card_every_time_and_off_plays_none() {
-    let Some(fw) = common::firmware("the title card test") else {
-        return;
-    };
-    let mut m = booted(&fw);
-    set_cards(&mut m, &fw, CARDS_ALWAYS);
-    for _ in 0..2 {
-        into_chip_card(&mut m, &fw);
+    for (item, view) in [
+        (MENU_CHIP, "chip_view_view"),
+        (MENU_SCENE, "scene_view_view"),
+    ] {
+        open_menu_settled(&mut m, &fw);
+        select_menu_item(&mut m, item);
+        m.run_ms(MENU_ITEM_SETTLE_MS);
+        m.turn(ALGORITHM, 1);
         m.run_ms(2 * UI_FRAME_MS);
-        assert!(showing_card(&mut m, &fw), "ALWAYS: no THE CHIP");
-        past_card(&mut m, &fw);
-        press(&mut m, HOME);
+        assert_eq!(
+            top_view(&mut m, &fw),
+            fw.symbol(view),
+            "no view straight away"
+        );
         settle(&mut m, &fw);
         press(&mut m, HOME);
-        m.run_ms(2 * UI_FRAME_MS);
-        assert!(showing_card(&mut m, &fw), "ALWAYS: no THE OSCILLATOR");
-        past_card(&mut m, &fw);
+        settle(&mut m, &fw);
+        assert_eq!(top_view(&mut m, &fw), fw.symbol("views_menu"));
+        press(&mut m, HOME);
+        settle(&mut m, &fw);
+        assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
+        compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
     }
-    let mut m = booted(&fw);
-    set_cards(&mut m, &fw, CARDS_OFF);
-    into_scene_card(&mut m, &fw);
-    m.run_ms(2 * UI_FRAME_MS);
-    assert!(!showing_card(&mut m, &fw), "OFF: a card");
-    settle(&mut m, &fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("scene_view_view"));
 }
 
 fn showing_help(m: &mut Machine, fw: &Firmware) -> bool {
@@ -3883,13 +3678,10 @@ fn help_cards_match_their_goldens() {
             }
             "chip" | "scene" => {
                 if name == "chip" {
-                    into_chip_card(&mut m, &fw);
+                    open_chip(&mut m, &fw);
                 } else {
-                    into_scene_card(&mut m, &fw);
+                    open_view(&mut m, &fw, MENU_SCENE, "scene_view_view");
                 }
-                m.run_ms(2 * UI_FRAME_MS);
-                assert!(showing_card(&mut m, &fw));
-                past_card(&mut m, &fw);
             }
             "status" => open_status(&mut m, &fw),
             "midi" => enter_menu_item(&mut m, &fw, MENU_MIDI),
@@ -3952,9 +3744,7 @@ fn the_states_help_cards_match_their_goldens() {
                     m.turn(SELECT, -1);
                     m.run_ms(100);
                 }
-                into_chip_card(&mut m, &fw);
-                m.run_ms(2 * UI_FRAME_MS);
-                past_card(&mut m, &fw);
+                open_chip(&mut m, &fw);
                 m.turn(SELECT, -8);
                 m.run_ms(100);
                 let to = match name {
@@ -4034,194 +3824,6 @@ fn the_help_card_over_live_and_the_menu_stays_within_the_frame_budget_and_sends_
         assert_eq!(per.last().copied(), Some(0), "the drawn card still sends");
     }
 }
-
-#[test]
-fn a_control_skips_a_title_card_and_does_nothing_else() {
-    let Some(fw) = common::firmware("the title card test") else {
-        return;
-    };
-    for what in ["FX", "OCT+", "SELECT", "HOME"] {
-        let mut m = booted(&fw);
-        into_scene_card(&mut m, &fw);
-        m.run_ms(300);
-        assert!(showing_card(&mut m, &fw), "{what}: no card");
-        let which = sidou_sys::ilp32::views::scene + sidou_sys::ilp32::scene_view::which;
-        let before = (octave_and_model(&mut m, &fw), ui_byte(&mut m, &fw, which));
-        match what {
-            "FX" => press(&mut m, FX),
-            "OCT+" => press(&mut m, OCT_UP),
-            "SELECT" => {
-                m.turn(SELECT, 1);
-                m.run_ms(60);
-            }
-            _ => press(&mut m, HOME),
-        }
-        assert!(!showing_card(&mut m, &fw), "{what} did not skip the card");
-        settle(&mut m, &fw);
-        assert_eq!(
-            top_view(&mut m, &fw),
-            fw.symbol("scene_view_view"),
-            "{what}: not SCENE after the card"
-        );
-        assert_eq!(
-            (octave_and_model(&mut m, &fw), ui_byte(&mut m, &fw, which)),
-            before,
-            "{what} did something"
-        );
-    }
-}
-
-#[test]
-fn a_note_plays_through_a_title_card_and_ends_it() {
-    let Some(fw) = common::firmware("the title card test") else {
-        return;
-    };
-    for midi in [false, true] {
-        let mut m = booted(&fw);
-        into_oscillator_card(&mut m, &fw);
-        m.run_ms(200);
-        assert!(showing_card(&mut m, &fw), "no card");
-        let from = m.soc.periph.audio.len() / 2;
-        if midi {
-            m.midi(&[0x90, 69, 100]);
-        } else {
-            m.key(A4_KEY, true);
-        }
-        m.run_ms(60);
-        let peak = left_peak_since(&m, from);
-        assert!(
-            peak > AUDIBLE_PEAK,
-            "midi {midi}: the note did not play: peak {peak}"
-        );
-        assert!(
-            !showing_card(&mut m, &fw),
-            "midi {midi}: the note did not end the card"
-        );
-        settle(&mut m, &fw);
-        assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
-    }
-}
-
-#[test]
-fn title_cards_and_the_inputs_that_bring_them_stay_within_their_budgets() {
-    let Some(fw) = common::firmware("the title card budget test") else {
-        return;
-    };
-    let mut report = serde_json::Map::new();
-    for (name, input) in [
-        ("chip", "ui_encoder"),
-        ("scene", "ui_encoder"),
-        ("oscillator", "ui_buttons"),
-    ] {
-        let enter = |m: &mut Machine| match name {
-            "chip" => into_chip_card(m, &fw),
-            "scene" => into_scene_card(m, &fw),
-            _ => tap_to_oscillator_card(m, &fw),
-        };
-        let mut m = booted(&fw);
-        m.watch_calls(fw.symbol("ui_poll"));
-        m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-        enter(&mut m);
-        let from = (m.watched_calls.len(), m.passes.len());
-        let mut composes = Composes::new(&mut m, &fw);
-        let t0 = m.ms();
-        loop {
-            composes.run(&mut m, &fw, UI_FRAME_MS);
-            if !showing_card(&mut m, &fw) && !screen_animating(&mut m, &fw) {
-                break;
-            }
-            assert!(
-                m.ms() < t0 + CARD_TIMEOUT_MS,
-                "THE {name}: the card did not end"
-            );
-        }
-        let frames = composes.end(&mut m, &fw);
-        let c = Cost::of(&m.watched_calls[from.0..], frames);
-        let pass = m.passes[from.1..].iter().copied().max().unwrap_or(0);
-        let mut m = booted(&fw);
-        m.watch_calls(fw.symbol(input));
-        let bring_the_card_in = |m: &mut Machine| -> usize {
-            if name == "oscillator" {
-                set_cards(m, &fw, CARDS_ALWAYS);
-                open_menu_settled(m, &fw);
-                let n = m.watched_calls.len();
-                press(m, HOME);
-                n
-            } else {
-                open_menu_settled(m, &fw);
-                select_menu_item(
-                    m,
-                    if name == "scene" {
-                        MENU_SCENE
-                    } else {
-                        MENU_CHIP
-                    },
-                );
-                m.run_ms(MENU_ITEM_SETTLE_MS);
-                let n = m.watched_calls.len();
-                m.turn(ALGORITHM, 1);
-                n
-            }
-        };
-        let n = bring_the_card_in(&mut m);
-        m.run_ms(100);
-        assert!(showing_card(&mut m, &fw));
-        report.insert(
-            format!("{name}_input"),
-            serde_json::json!(m.watched_calls[n..].iter().max()),
-        );
-        let input_cost = report[&format!("{name}_input")].as_u64().unwrap_or(0);
-        let per = cells_sent(&c);
-        let most = per.iter().copied().max().unwrap_or(0);
-        println!(
-            "THE {}: {} frames, {:.1} cells a frame, at most {most}; worst {:.2} ms of SPI; \
-             {:.0} instructions a frame, busiest ui_poll {}; the input {input_cost}, the busiest \
-             pass {pass}, together {}",
-            name.to_uppercase(),
-            per.len(),
-            f64::from(per.iter().sum::<u32>()) / per.len() as f64,
-            c.worst_frame_ms(),
-            c.instructions_per_frame(),
-            c.worst_poll,
-            input_cost + pass
-        );
-        report.insert(name.to_string(), animated_json(&c));
-        assert!(
-            c.worst_frame_ms() <= SPI_BUDGET_MS,
-            "THE {name}: a frame took {:.1} ms of SPI",
-            c.worst_frame_ms()
-        );
-        assert!(
-            most <= sidou_sys::TITLE_CARD_FRAME_CELLS,
-            "THE {name}: a frame sent {most} cells"
-        );
-        assert!(
-            c.worst_poll < TITLE_CARD_WORST_POLL,
-            "THE {name}: a ui_poll took {} instructions",
-            c.worst_poll
-        );
-        assert!(
-            c.instructions_per_frame() < TITLE_CARD_PER_FRAME,
-            "THE {name}: {:.0} instructions a frame",
-            c.instructions_per_frame()
-        );
-        assert!(
-            input_cost < TITLE_CARD_INPUT && pass < TITLE_CARD_PASS,
-            "THE {name}: the input {input_cost}, the busiest pass {pass}"
-        );
-        assert!(
-            (60..=72).contains(&per.len()),
-            "THE {name}: {} frames",
-            per.len()
-        );
-    }
-    println!("{}", serde_json::Value::Object(report));
-}
-
-const TITLE_CARD_WORST_POLL: u64 = 79_000;
-const TITLE_CARD_PER_FRAME: f64 = 62_000.0;
-const TITLE_CARD_INPUT: u64 = 430;
-const TITLE_CARD_PASS: u64 = 80_000;
 
 fn song_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
     ui_byte(m, fw, sidou_sys::ilp32::views::song + field)
@@ -5195,10 +4797,9 @@ fn the_tracker_stays_within_its_budgets_while_a_song_plays() {
 const _: () = assert!(LIVE_WORST_POLL <= POLL_INSTRUCTIONS);
 const _: () = assert!(SCENE_WORST_POLL <= POLL_INSTRUCTIONS);
 const _: () = assert!(SCENE_INPUT + SCENE_START_PASS <= POLL_INSTRUCTIONS);
+const _: () = assert!(SCENE_OPEN_INPUT + SCENE_START_PASS <= POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL <= POLL_INSTRUCTIONS);
 const _: () = assert!(BOOT_WORST_POLL <= POLL_INSTRUCTIONS);
-const _: () = assert!(TITLE_CARD_WORST_POLL <= POLL_INSTRUCTIONS);
-const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS <= POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_WORST_POLL <= POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS <= POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_WORST_POLL <= POLL_INSTRUCTIONS);
@@ -5310,7 +4911,6 @@ const _: () = assert!(LIVE_WORST_POLL + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(SCENE_INPUT + SCENE_START_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(RMR_INPUT + RMR_START_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);
-const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(WIPE_WORST_POLL + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_INPUT + TRACKER_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);

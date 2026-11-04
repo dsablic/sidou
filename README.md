@@ -36,16 +36,22 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
-- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: six
-  pages (OSC, ENVELOPE, FILTER, MOD, FX, MACRO) draw what their four cards do, so you turn K1 to K4
-  and see it: a filter LFO on FILTER, the arpeggio's rate on MOD, and on MACRO links that make the
-  resonance follow the cutoff and the PWM follow the width. EDIT's tap compares A and B, holding
+- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: eight
+  pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS) draw what their four cards do,
+  so you turn K1 to K4 and see it: a filter LFO on FILTER, a filter envelope that sweeps the cutoff
+  on every note, the arpeggio's rate on MOD, links on MACRO that make the resonance follow the
+  cutoff and the PWM follow the width, and on LAYERS up to three oscillators on one key, each with
+  its own waveform, envelope, pulse, transpose and detune. EDIT's tap compares A and B, holding
   EDIT while you play peeks at A, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
   EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER
   sounds, which PRESETS plays after DICE; EDIT + SAVE names it on the keys. A slot turned to OFF
   on the FX page bypasses the effect ([shape a sound in LAB](docs/manual/lab.md)). REC in LAB
   sends the sound to the song as a GoatTracker instrument while it plays, and ENV on INSTR pulls
   one back into LAB.
+- **Bring SidStation and MIDIbox SID patches.** `sidou-sysex import` turns an Elektron
+  SidStation or MIDIbox SID V2 bank into songs of sixteen patches each, and a report of what
+  each keeps. On the FM-1, ENV on INSTR pulls a patch into LAB as a layered sound, filter
+  envelope and all, and SAVE keeps it ([import patches](docs/manual/import.md)).
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on

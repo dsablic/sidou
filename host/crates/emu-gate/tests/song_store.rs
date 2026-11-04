@@ -41,7 +41,6 @@ const GT2_TITLE: u32 = 4;
 const SERVICE_FORCE: u32 = 30;
 const SERVICE_HOLDING: u32 = 31;
 const SAVE_FAILS_WITHIN_MS: u64 = 500;
-const SETTINGS_REC_CARDS: usize = 1;
 const SETTINGS_REC_ROWS: usize = 106;
 const SETTINGS_REC_DISTORTION: usize = 22;
 const LOFI: i32 = SID_DIST_LOFI as i32;
@@ -808,40 +807,29 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
     let mut m = boot(&fw, None);
     complete(&mut m, &fw, SAVE_AS, "NIGHT");
     let (_, bytes) = stored_song_file(&m.soc.flash.mem, "NIGHT").expect("SAVE stored no song");
-    let cards = |m: &mut Machine| m.soc.read8(fw.symbol("ui") + ilp32::views::cards as u32);
     let rows = |m: &mut Machine| {
         m.soc
             .read8(fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::scroll) as u32)
     };
     press(&mut m, HOME);
     m.run_ms(700);
-    settings_item(&mut m, VIEWS_SETTINGS_CARDS);
-    m.turn(ALGORITHM, -1);
-    m.run_ms(100);
-    m.turn(
-        SELECT,
-        -((VIEWS_SETTINGS_CARDS - VIEWS_SETTINGS_ROWS) as i32),
-    );
-    m.run_ms(100);
+    settings_item(&mut m, VIEWS_SETTINGS_ROWS);
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
-    assert_eq!((cards(&mut m), rows(&mut m)), (0, 1));
+    assert_eq!(rows(&mut m), 1);
     m.run_ms(SETTINGS_DEBOUNCE_MS);
     let stored = stored_value(&m.soc.flash.mem, SETTINGS_KEY).expect("settings stored");
-    assert_eq!(
-        (stored[SETTINGS_REC_CARDS], stored[SETTINGS_REC_ROWS]),
-        (0, 1)
-    );
+    assert_eq!(stored[SETTINGS_REC_ROWS], 1);
     m.turn(SELECT, (VIEWS_SETTINGS_RESET - VIEWS_SETTINGS_ROWS) as i32);
     m.run_ms(150);
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
     press(&mut m, SAVE);
     m.run_ms(100);
-    assert_eq!((cards(&mut m), rows(&mut m)), (0, 1), "the first SAVE asks");
+    assert_eq!(rows(&mut m), 1, "the first SAVE asks");
     press(&mut m, HOME);
     m.run_ms(500);
-    assert_eq!((cards(&mut m), rows(&mut m)), (0, 1), "HOME cancelled");
+    assert_eq!(rows(&mut m), 1, "HOME cancelled");
     assert_eq!(
         stored_value(&m.soc.flash.mem, SETTINGS_KEY).as_ref(),
         Some(&stored),
@@ -852,7 +840,7 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
     m.run_ms(100);
     let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY).expect("settings stored");
     press(&mut m, SAVE);
-    assert_eq!((cards(&mut m), rows(&mut m)), (1, 0), "factory at once");
+    assert_eq!(rows(&mut m), 0, "factory at once");
     let start = m.ms();
     while stored_value(&m.soc.flash.mem, SETTINGS_KEY).as_ref() == Some(&before) {
         m.run_ms(10);
@@ -864,16 +852,12 @@ fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
     println!("reset stored after {} ms", m.ms() - start);
     m.run_ms(500);
     let rec = stored_value(&m.soc.flash.mem, SETTINGS_KEY).unwrap();
-    assert_eq!(
-        (rec[SETTINGS_REC_CARDS], rec[SETTINGS_REC_ROWS]),
-        (1, 0),
-        "CARDS ONCE, ROWS BAR stored"
-    );
+    assert_eq!(rec[SETTINGS_REC_ROWS], 0, "ROWS BAR stored");
     let (_, kept) = stored_song_file(&m.soc.flash.mem, "NIGHT").expect("RESET erased the song");
     assert_eq!(kept, bytes, "the song is untouched");
     let flash = m.soc.flash.mem.clone();
     let mut m = boot(&fw, Some(&flash));
-    assert_eq!((cards(&mut m), rows(&mut m)), (1, 0));
+    assert_eq!(rows(&mut m), 0);
     assert_eq!(name(&mut m, &fw), "NIGHT");
     assert_eq!(song(&mut m, &fw).write(true), bytes);
 }

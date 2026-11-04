@@ -5,7 +5,7 @@ use std::ffi::CStr;
 
 use sidou_sys::*;
 
-use crate::views::{ascii_or_hash, open_status, Ui, CARDS_OFF};
+use crate::views::{ascii_or_hash, open_status, Ui};
 use crate::{c_text, drain, PANEL_ENC_K2, PANEL_ENC_K3, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
@@ -19,7 +19,7 @@ const MENU_SPI_MS: f64 = 15.10;
 const POPUP_FRAME_CELLS: usize = 200;
 
 fn status_ui() -> Ui {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     open_status(&mut ui);
     ui.settle();
@@ -143,7 +143,7 @@ fn expert_formatter_uses_the_core_ranges_and_noise_tap_bands() {
 
 #[test]
 fn every_expert_knob_popup_has_its_name_and_physical_units() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
@@ -211,7 +211,7 @@ fn every_expert_knob_popup_has_its_name_and_physical_units() {
 
 #[test]
 fn the_midi_page_names_each_edited_value_in_the_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut route = Box::<midi_route>::default();
     let mut sync = Box::<midi_sync>::default();
     unsafe {
@@ -312,7 +312,7 @@ fn a_knob_turn_opens_the_popup_three_rows_a_frame_then_closes_a_second_after_the
 #[test]
 fn a_change_restores_the_view_beneath_cell_for_cell_once_the_popup_is_gone() {
     for view in ["LIVE", "STATUS", "MENU", "CHARSET", "CHIP"] {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         ui.settle();
         open_view(&mut ui, view);
         drain(&mut ui.g);
@@ -339,7 +339,7 @@ fn a_change_restores_the_view_beneath_cell_for_cell_once_the_popup_is_gone() {
 
 #[test]
 fn select_never_asks_and_nor_does_a_turn_with_nothing_to_show() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.turn(PANEL_ENC_SELECT, 2);
@@ -380,7 +380,7 @@ fn midi_changes_never_open_the_popup() {
 #[test]
 fn the_midi_switch_is_one_call_and_off_by_default() {
     assert_eq!(VIEWS_POPUP_MIDI, 0, "the default");
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     unsafe { views_popup_midi(&mut *ui.v, 1) };
     ui.frame();
@@ -403,7 +403,7 @@ fn the_midi_switch_is_one_call_and_off_by_default() {
 
 #[test]
 fn the_master_pot_asks_for_the_volume_when_it_moves() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     unsafe {
         panel_master(&mut *ui.p, &mut *ui.rig.live, 500);
@@ -488,7 +488,7 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
 
 #[test]
 fn the_menus_algorithm_shows_the_item_in_full_and_no_toast_says_it_again() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_PRESET as i32);
@@ -520,7 +520,7 @@ fn the_menus_algorithm_shows_the_item_in_full_and_no_toast_says_it_again() {
 
 #[test]
 fn the_chip_view_highlights_its_knobs_and_shows_its_choice_with_no_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
@@ -550,7 +550,7 @@ fn the_chip_view_highlights_its_knobs_and_shows_its_choice_with_no_popup() {
 }
 
 #[test]
-fn nothing_opens_under_the_boot_a_title_card_or_midi_learn() {
+fn nothing_opens_under_the_boot_or_midi_learn() {
     let mut ui = Ui::new();
     unsafe { views_boot(&mut *ui.v, 1, 0) };
     ui.frame();
@@ -559,15 +559,7 @@ fn nothing_opens_under_the_boot_a_title_card_or_midi_learn() {
     ui.frames(6);
     assert!(!shown(&ui), "the knob that ended the boot did nothing else");
     assert_eq!(ui.v.s.popup_ask, 0);
-    ui.press(PANEL_BTN_HOME);
-    ui.settle();
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.top(), "TITLE");
-    ui.turn(PANEL_ENC_K1, 1);
-    ui.frames(8);
-    assert!(!shown(&ui));
     let _ml = ui.attach_learn();
-    ui.v.cards = CARDS_OFF;
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.turn(PANEL_ENC_K1, 1);
@@ -583,7 +575,7 @@ fn nothing_opens_under_the_boot_a_title_card_or_midi_learn() {
 
 #[test]
 fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     move_the_master_pot(&mut ui, 300, 600);
     frames_until_whole(&mut ui);
@@ -598,7 +590,7 @@ fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
 
 #[test]
 fn the_popup_covers_its_rows_and_guards_them_from_the_views_large_text() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     let covered = |ui: &Ui, c: u32, r: u32| unsafe { screen_covered(&ui.v.s, c, r) } != 0;
@@ -635,7 +627,7 @@ fn the_popup_covers_its_rows_and_guards_them_from_the_views_large_text() {
 #[test]
 fn the_popup_costs_no_frame_more_than_the_budget_over_every_view() {
     for view in ["LIVE", "STATUS", "MENU", "CHARSET", "CHIP", "SCENE"] {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         ui.settle();
         open_view(&mut ui, view);
         ui.frames_sent(80);
@@ -670,7 +662,7 @@ fn the_popup_costs_no_frame_more_than_the_budget_over_every_view() {
 
 #[test]
 fn the_toast_is_large_text_on_two_rows_or_four_when_it_breaks_at_a_space() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     let row = SCREEN_TOAST_ROW as usize;
     let th = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
@@ -711,7 +703,7 @@ fn the_toast_is_large_text_on_two_rows_or_four_when_it_breaks_at_a_space() {
 
 #[test]
 fn a_large_toast_ends_and_gives_its_rows_back() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_status(&mut ui);
     let before = grid_copy(&ui);
     unsafe { screen_toast(&mut ui.v.s, c"NOT SAVED: FOREIGN STORE".as_ptr(), 1000) };
@@ -727,7 +719,7 @@ fn a_large_toast_ends_and_gives_its_rows_back() {
 fn a_delayed_menu_popup_keeps_the_item_that_algorithm_changed() {
     let octave = VIEWS_MENU_PRESET + 1;
     for target in [VIEWS_MENU_SETTINGS, VIEWS_MENU_CHIP] {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         ui.press(PANEL_BTN_HOME);
         ui.settle();
         drain(&mut ui.g);
@@ -750,7 +742,7 @@ fn a_delayed_menu_popup_keeps_the_item_that_algorithm_changed() {
 #[test]
 fn a_popup_open_waits_for_a_jump_between_uncovered_menu_bars() {
     let octave = VIEWS_MENU_PRESET + 1;
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.rig.live.theme = THEME_C64 as u8;
     ui.press(PANEL_BTN_HOME);
     ui.settle();
@@ -782,7 +774,7 @@ fn a_popup_open_waits_for_a_jump_between_uncovered_menu_bars() {
 
 #[test]
 fn a_fresh_popup_waits_for_a_menu_bar_move() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     drain(&mut ui.g);
@@ -802,7 +794,7 @@ fn a_fresh_popup_waits_for_a_menu_bar_move() {
 
 #[test]
 fn a_popup_delayed_by_continuous_menu_moves_does_not_expire_unseen() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     drain(&mut ui.g);
@@ -823,7 +815,7 @@ fn a_popup_delayed_by_continuous_menu_moves_does_not_expire_unseen() {
 
 #[test]
 fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     drain(&mut ui.g);
@@ -873,7 +865,7 @@ fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popu
 
 #[test]
 fn the_chip_views_user_profiles_and_save_target_are_named() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
@@ -902,7 +894,7 @@ fn the_chip_views_user_profiles_and_save_target_are_named() {
 
 #[test]
 fn a_knob_on_live_highlights_its_label_and_opens_no_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     assert_eq!(ui.top(), "LIVE");
     for k in 0..4u32 {
@@ -928,7 +920,7 @@ fn a_knob_on_live_highlights_its_label_and_opens_no_popup() {
 
 #[test]
 fn edit_and_a_knob_on_live_open_the_effects_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     unsafe { live_slot_pick(&mut *ui.rig.live, 0, SID_DIST_OVERDRIVE) };
     let names = ["DRIVE", "TONE", "BIAS", "MIX"];
@@ -983,7 +975,7 @@ fn edit_and_a_knob_on_live_open_the_effects_popup() {
 
 #[test]
 fn a_toast_closes_an_open_popup() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     move_the_master_pot(&mut ui, 200, 700);
     frames_until_whole(&mut ui);
@@ -1003,7 +995,7 @@ fn a_toast_closes_an_open_popup() {
 #[test]
 fn a_turn_after_boot_opens_the_master_popup_mid_travel() {
     for (boot, noise) in [(500, 0), (0, 3), (1023, 3), (500, 10), (500, 20)] {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let mut seed = 1u32;
         let mut rnd = |n: i32| {
             seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);

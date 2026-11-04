@@ -15,7 +15,6 @@ const MENU_WIPE_MS: u64 = 700;
 const CC_FREE: u8 = 14;
 const FOREIGN_BYTE: u8 = 0x5A;
 const CC_ENVELOPE: u8 = 26;
-const REC_CARDS: usize = 1;
 const REC_ENVELOPE: usize = 6 + LIVE_PARAM_ENVELOPE_MODE as usize + 2;
 
 fn power_on(fw: &Firmware, flash: &[u8]) -> Machine {
@@ -30,8 +29,9 @@ fn full_boot(m: &mut Machine, fw: &Firmware) -> bool {
     m.soc.read8(a) != 0
 }
 
-fn cards(m: &mut Machine, fw: &Firmware) -> u8 {
-    m.soc.read8(fw.symbol("ui") + ilp32::views::cards as u32)
+fn rows(m: &mut Machine, fw: &Firmware) -> u8 {
+    m.soc
+        .read8(fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::scroll) as u32)
 }
 
 fn envelope(m: &mut Machine, fw: &Firmware) -> u8 {
@@ -67,7 +67,7 @@ fn stored_within(m: &mut Machine, before: &Option<Vec<u8>>, ms: u64) -> Option<u
 }
 
 #[test]
-fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
+fn the_tracker_rows_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
     let Some(fw) = firmware("the settings test") else {
         return;
     };
@@ -77,11 +77,11 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
         "a second power-on plays the short boot"
     );
     assert_eq!(
-        (cards(&mut m, &fw), envelope(&mut m, &fw)),
-        (1, LIVE_ENVELOPE_INSTANT as u8)
+        (rows(&mut m, &fw), envelope(&mut m, &fw)),
+        (0, LIVE_ENVELOPE_INSTANT as u8)
     );
-    setting_item(&mut m, VIEWS_SETTINGS_CARDS);
-    m.turn(ALGORITHM, -1);
+    setting_item(&mut m, VIEWS_SETTINGS_ROWS);
+    m.turn(ALGORITHM, 1);
     m.run_ms(100);
     press(&mut m, HOME);
     m.run_ms(300);
@@ -97,11 +97,8 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
     m.run_ms(30);
     m.midi(&[0xB0, CC_FREE, 64]);
     m.run_ms(200);
-    let want = (0, LIVE_ENVELOPE_AUTHENTIC as u8, cc_free_row(&mut m, &fw));
-    assert_eq!(
-        (cards(&mut m, &fw), envelope(&mut m, &fw)),
-        (want.0, want.1)
-    );
+    let want = (1, LIVE_ENVELOPE_AUTHENTIC as u8, cc_free_row(&mut m, &fw));
+    assert_eq!((rows(&mut m, &fw), envelope(&mut m, &fw)), (want.0, want.1));
     assert_ne!(want.2, MIDI_LEARN_NONE as u8, "CC 14 not learned");
     let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY);
     let took = stored_within(&mut m, &before, 8_000).expect("never stored");
@@ -112,12 +109,12 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
     assert!(!full_boot(&mut m, &fw), "the short boot");
     assert_eq!(
         (
-            cards(&mut m, &fw),
+            rows(&mut m, &fw),
             envelope(&mut m, &fw),
             cc_free_row(&mut m, &fw)
         ),
         want,
-        "CARDS, the envelope mode and CC 14's binding are back"
+        "ROWS, the envelope mode and CC 14's binding are back"
     );
 }
 
@@ -142,16 +139,20 @@ fn the_full_boot_plays_once_after_an_install_then_the_short_one() {
     let v = SETTINGS_V1_BYTES as usize - SETTINGS_VERSION_CHARS as usize;
     old[v..].fill(0);
     old[v..v + 6].copy_from_slice(b"V0.0.1");
-    old[REC_CARDS] = 0;
+    old[REC_ENVELOPE] = LIVE_ENVELOPE_AUTHENTIC as u8;
     put_value(&mut flash, SETTINGS_KEY, SETTINGS_TYPE as u8, &old);
     let mut m = power_on(&fw, &flash);
     assert!(full_boot(&mut m, &fw), "a new version: the full boot");
-    assert_eq!(cards(&mut m, &fw), 0, "its settings still apply");
+    assert_eq!(
+        envelope(&mut m, &fw),
+        LIVE_ENVELOPE_AUTHENTIC as u8,
+        "its settings still apply"
+    );
     m.run_ms(common::SETTLE_MS);
     let flash = m.soc.flash.mem.clone();
     let mut m = power_on(&fw, &flash);
     assert!(!full_boot(&mut m, &fw), "once");
-    assert_eq!(cards(&mut m, &fw), 0);
+    assert_eq!(envelope(&mut m, &fw), LIVE_ENVELOPE_AUTHENTIC as u8);
 }
 
 #[test]

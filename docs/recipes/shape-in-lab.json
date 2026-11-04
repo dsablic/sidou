@@ -97,7 +97,7 @@
       "title": "The sound *as it is*"
     },
     {
-      "caption": "ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 6.",
+      "caption": "ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 8.",
       "control": "press ENV, then wait 1.0 s",
       "expect": [
         {
@@ -106,7 +106,7 @@
         },
         {
           "kind": "text",
-          "value": "2/6"
+          "value": "2/8"
         }
       ],
       "focus": {
@@ -237,7 +237,7 @@
         },
         {
           "kind": "text",
-          "value": "1/6"
+          "value": "1/8"
         },
         {
           "assert": "sounding",
@@ -419,8 +419,8 @@
       "title": "The *filter* page"
     },
     {
-      "caption": "The vibrato and the PWM as waves over a second: K2 deepens the vibrato.",
-      "control": "turn SELECT clockwise by 1 detent, then wait 0.7 s, then turn K2 slowly clockwise by 30 detents over 1.2 s, then play 7 notes at 120 BPM",
+      "caption": "SELECT past FILTER ENV to MOD: the vibrato and the PWM as waves over a second, and K2 deepens the vibrato.",
+      "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then turn K2 slowly clockwise by 30 detents over 1.2 s, then play 7 notes at 120 BPM",
       "expect": [
         {
           "kind": "text",
@@ -447,7 +447,7 @@
       "id": "mod",
       "inputs": [
         {
-          "detents": 1,
+          "detents": 2,
           "encoder": "SELECT",
           "op": "turn"
         },

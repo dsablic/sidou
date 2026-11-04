@@ -59,7 +59,7 @@ impl Xs {
 
 pub(crate) fn random_sound(r: &mut Xs) -> Sound {
     let mut s = [0u8; BYTES];
-    s[LAB_SOUND_CONTROL as usize] = (r.below(16) << 4 | r.below(2) << 2 | r.below(2) << 1) as u8;
+    s[LAB_SOUND_CONTROL as usize] = random_control(r);
     s[LAB_SOUND_AD as usize] = r.below(256) as u8;
     s[LAB_SOUND_SR as usize] = r.below(256) as u8;
     put16(&mut s, LAB_SOUND_PULSE, r.below(4096));
@@ -73,10 +73,10 @@ pub(crate) fn random_sound(r: &mut Xs) -> Sound {
         LAB_SOUND_SYNC_BASE,
         r.below(LAB_SOUND_SYNC_BASE_MAX + 1),
     );
-    s[LAB_SOUND_SYNC_SEMIS as usize] = (r.below(25) as i32 - 12) as i8 as u8;
+    s[LAB_SOUND_SYNC_SEMIS as usize] = signed_below(r, LIVE_RATIO_SEMIS);
     put16(&mut s, LAB_SOUND_PWM_DEPTH, r.below(LIVE_PWM_DEPTH_MAX + 1));
     put16(&mut s, LAB_SOUND_PWM_RATE, r.below(LIVE_PWM_STEP_MAX + 1));
-    s[LAB_SOUND_TUNE as usize] = (r.below(101) as i32 - 50) as i8 as u8;
+    s[LAB_SOUND_TUNE as usize] = signed_below(r, LIVE_TUNE_CENTS);
     s[LAB_SOUND_BEND_RANGE as usize] = r.below(LIVE_BEND_RANGE_MAX + 1) as u8;
     s[LAB_SOUND_VELOCITY as usize] = r.below(4) as u8;
     s[LAB_SOUND_MOD as usize] = r.below(3) as u8;
@@ -102,10 +102,41 @@ pub(crate) fn random_sound(r: &mut Xs) -> Sound {
     }
     s[LAB_SOUND_FILTER_LFO as usize] = r.below(LIVE_FILTER_LFO_MAX + 1) as u8;
     for f in [LAB_SOUND_RESO_LINK, LAB_SOUND_PWM_LINK] {
-        s[f as usize] = (r.below(2 * LIVE_LINK_MAX + 1) as i32 - LIVE_LINK_MAX as i32) as i8 as u8;
+        s[f as usize] = signed_below(r, LIVE_LINK_MAX);
     }
+    random_layers(r, &mut s);
     assert!(valid(&s), "{s:?}");
     s
+}
+
+fn signed_below(r: &mut Xs, max: u32) -> u8 {
+    (r.below(2 * max + 1) as i32 - max as i32) as i8 as u8
+}
+
+fn random_control(r: &mut Xs) -> u8 {
+    (r.below(16) << 4 | r.below(2) << 2 | r.below(2) << 1) as u8
+}
+
+fn random_layers(r: &mut Xs, s: &mut Sound) {
+    s[LAB_SOUND_LAYERS as usize] = r.below(LIVE_LAYERS_MAX + 1) as u8;
+    if s[LAB_SOUND_LAYERS as usize] != 0 {
+        s[LAB_SOUND_MONO_SYNC as usize] = 0;
+    }
+    for n in 0..LIVE_VOICES {
+        let at = (LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES) as usize;
+        s[at] = signed_below(r, LIVE_TRANSPOSE_MAX);
+        s[at + 1] = signed_below(r, LIVE_DETUNE_CENTS);
+    }
+    for n in 0..LIVE_LAYERS_MAX {
+        let at = LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES;
+        s[at as usize] = random_control(r);
+        s[at as usize + 1] = r.below(256) as u8;
+        s[at as usize + 2] = r.below(256) as u8;
+        put16(s, at + 3, r.below(LIVE_PULSE_WIDTH_MAX + 1));
+    }
+    s[LAB_SOUND_FILTER_ENV as usize] = signed_below(r, LIVE_FENV_DEPTH_MAX);
+    s[LAB_SOUND_FILTER_ENV_AD as usize] = r.below(256) as u8;
+    s[LAB_SOUND_FILTER_ENV_SR as usize] = r.below(256) as u8;
 }
 
 #[test]
@@ -199,9 +230,13 @@ fn the_base_is_the_preset_as_loaded() {
             "a built-in has no slots of its own: they stay as they are"
         );
         assert_eq!(
-            b[LAB_SOUND_BYTES_1_0 as usize..],
+            b[LAB_SOUND_BYTES_1_0 as usize..LAB_SOUND_BYTES_1_5 as usize],
             [0, 0, 0],
             "no filter LFO, no links"
+        );
+        assert!(
+            b[LAB_SOUND_BYTES_1_5 as usize..].iter().all(|&x| x == 0),
+            "one layer, untransposed"
         );
         assert_eq!(b, rig.sound(), "loaded, so not edited");
         assert!(!edited(&rig));

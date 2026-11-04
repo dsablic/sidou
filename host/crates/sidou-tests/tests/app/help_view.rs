@@ -109,7 +109,7 @@ fn close_with_k1(ui: &mut Ui) {
 
 #[test]
 fn a_tap_goes_home_and_a_hold_shows_the_help_card() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     drain(&mut ui.g);
     ui.down(PANEL_BTN_HOME);
@@ -157,7 +157,7 @@ fn the_card_is_the_one_of_the_view_that_shows() {
         ("STATUS", Open::Item(VIEWS_MENU_STATUS)),
         ("MIDI", Open::Item(VIEWS_MENU_MIDI)),
     ] {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         ui.settle();
         open(&mut ui, &how);
         ui.settle();
@@ -179,7 +179,7 @@ fn fill_the_stack_song_load_then_step(ui: &mut Ui) {
 }
 
 fn full_stack() -> Ui {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     fill_the_stack_song_load_then_step(&mut ui);
     assert_eq!(ui.top(), "STEP");
     ui
@@ -262,7 +262,7 @@ fn open(ui: &mut Ui, open: &Open) {
 
 #[test]
 fn a_held_home_in_the_menu_keeps_the_menu() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     hold_until_card(&mut ui);
@@ -289,7 +289,7 @@ fn the_song_views_cards_say_undo_is_one_step() {
 #[test]
 fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
     for what in ["OCT+", "FX", "K1", "ALGORITHM", "SAVE"] {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         ui.settle();
         hold_until_card_drawn(&mut ui);
         ui.up(PANEL_BTN_HOME);
@@ -322,7 +322,7 @@ fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
         );
         assert!(ui.toast().is_none(), "{what}: a toast");
     }
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     hold_until_card_drawn(&mut ui);
     ui.rig.note_on(69);
@@ -400,7 +400,7 @@ fn assert_page_drawn(ui: &Ui, what: &str) {
 #[test]
 fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
     for open in 0..4 {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         ui.settle();
         match open {
             1 => {
@@ -446,7 +446,7 @@ fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
 
 #[test]
 fn select_turns_a_card_of_two_pages_and_closes_one_of_one() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     hold_until_card_drawn(&mut ui);
     assert!(unsafe { help_cards[HELP_CARD_LIVE as usize].count } as u32 > HELP_LINES);
@@ -557,7 +557,7 @@ struct Ctx {
     _tune: Option<(Box<crate::sid_view::Tune>, crate::sid_view::Bound)>,
 }
 
-const CONTEXTS: [&str; 43] = [
+const CONTEXTS: [&str; 45] = [
     "LIVE",
     "LAB OSC",
     "LAB ENV",
@@ -565,6 +565,8 @@ const CONTEXTS: [&str; 43] = [
     "LAB MOD",
     "LAB FX",
     "LAB MACRO",
+    "LAB F ENV",
+    "LAB LAYERS",
     "LAB NAME",
     "LIVE SLOT",
     "MENU",
@@ -639,15 +641,18 @@ fn open_ctx(name: &str) -> Ctx {
         "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
         "RESET" => crate::views::open_setting(ui, VIEWS_SETTINGS_RESET),
         "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
-        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB MOD" | "LAB FX" | "LAB MACRO" | "LAB NAME" => {
+        "LAB OSC" | "LAB ENV" | "LAB FILTER" | "LAB F ENV" | "LAB MOD" | "LAB FX" | "LAB MACRO"
+        | "LAB LAYERS" | "LAB NAME" => {
             menu_item(ui, VIEWS_MENU_LAB);
             let page = [
                 "LAB OSC",
                 "LAB ENV",
                 "LAB FILTER",
+                "LAB F ENV",
                 "LAB MOD",
                 "LAB FX",
                 "LAB MACRO",
+                "LAB LAYERS",
             ]
             .iter()
             .position(|n| *n == name);
@@ -788,6 +793,8 @@ fn lab_help_cards_match_their_goldens() {
         ("LAB MOD", "help-lab-mod", 2),
         ("LAB FX", "help-lab-fx", 2),
         ("LAB MACRO", "help-lab-macro", 2),
+        ("LAB F ENV", "help-lab-filter-env", 2),
+        ("LAB LAYERS", "help-lab-layers", 2),
         ("LAB NAME", "help-lab-name", 1),
     ] {
         let mut c = open_ctx(name);
@@ -1176,7 +1183,7 @@ fn until_toast(ui: &mut Ui, text: &str, ms: u32) {
 
 #[test]
 fn the_tour_follows_the_first_boot_after_an_install() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     after_the_install_boot_without_home(&mut ui);
     until_toast(&mut ui, "TURN K1", 400);
     let start = ui.now;
@@ -1222,7 +1229,7 @@ fn the_tour_follows_the_first_boot_after_an_install() {
 
 #[test]
 fn an_unanswered_tour_runs_on_its_own_clock_and_ends() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     after_the_install_boot_without_home(&mut ui);
     until_toast(&mut ui, "TURN K1", 400);
     until_toast(&mut ui, "PRESS ENV", 12_000);
@@ -1240,7 +1247,7 @@ fn an_unanswered_tour_runs_on_its_own_clock_and_ends() {
 
 #[test]
 fn no_tour_when_home_asked_for_the_boot() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     drain(&mut ui.g);
     unsafe { views_boot(&mut *ui.v, 1, 1) };
     ui.hold(PANEL_BTN_HOME, true);
@@ -1255,7 +1262,7 @@ fn no_tour_when_home_asked_for_the_boot() {
 
 #[test]
 fn no_tour_on_a_normal_boot() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     drain(&mut ui.g);
     unsafe { views_boot(&mut *ui.v, 0, 0) };
     for _ in 0..1500 {
@@ -1267,7 +1274,7 @@ fn no_tour_on_a_normal_boot() {
 
 #[test]
 fn an_action_during_the_tour_keeps_its_own_toast() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     after_the_install_boot_without_home(&mut ui);
     until_toast(&mut ui, "TURN K1", 400);
     ui.press(PANEL_BTN_HOME);
@@ -1284,7 +1291,7 @@ fn an_action_during_the_tour_keeps_its_own_toast() {
 
 #[test]
 fn a_toast_waits_under_the_help_card_and_shows_after_it() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     hold_until_card(&mut ui);
     unsafe { screen_toast(&mut ui.v.s, c"SONG SAVED".as_ptr(), SCREEN_TOAST_MS) };

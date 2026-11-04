@@ -1273,3 +1273,18 @@ pub fn to_mid_frame(m: &mut Machine, fw: &Firmware) {
     }
     panic!("the UI's frames are not 40 ms apart");
 }
+
+pub fn song_in_device(m: &mut Machine, fw: &Firmware) -> sidou_tests::song::Song {
+    let mut song = sidou_tests::song::Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(
+            song.ptr_mut().cast::<u8>(),
+            sidou_sys::SONG_REGION_BYTES as usize,
+        )
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    song
+}

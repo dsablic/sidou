@@ -285,6 +285,9 @@ static void osc_col(const void* ctx, uint32_t x, lab_draw_col* out) {
 }
 
 static uint32_t live_pw(const live* l) {
+    if (l->layers) {
+        return l->voice[0].gate ? l->voice[l->layer_edit].pw_out : live_edit_pulse_width(l);
+    }
     for (uint32_t v = 0; v < LIVE_VOICES; v++) {
         if (l->voice[v].gate) {
             return l->voice[v].pw_out;
@@ -294,9 +297,9 @@ static uint32_t live_pw(const live* l) {
 }
 
 static void osc_init(osc_ctx* o, const live* l, uint32_t hl) {
-    o->control = l->control;
+    o->control = live_edit_control(l);
     o->pw = (uint16_t)live_pw(l);
-    o->mod = l->control & 0x04u ? 1u : l->control & 0x02u ? 2u : 0u;
+    o->mod = o->control & 0x04u ? 1u : o->control & 0x02u ? 2u : 0u;
     uint32_t r = l->mono_sync ? l->sync_q8 : o->mod ? OSC_RATIO : 256u;
     o->ratio = r < 256u ? 256u : r > 2048u ? 2048u : r;
     o->cycle = OSC_CYCLE * 65536u / (uint32_t)(65536 + l->tune * 38);
@@ -372,6 +375,25 @@ static void env_dot(env_ctx* c, const scope* sc) {
         t = t < last ? t : last;
     }
     c->dot_x = (uint8_t)lab_draw_x_of_us(t);
+    c->dot_y = y_of(level, ENV_TOP, ENV_SPAN);
+}
+
+static uint32_t fenv_now(const live* l) {
+    return l->fenv_t_us == LIVE_FENV_IDLE ? 0u : l->fenv_t_us / 10000u + 1u;
+}
+
+static void fenv_dot(env_ctx* c, const live* l) {
+    c->dot_x = LAB_DRAW_NONE;
+    if (!l->fenv_depth || l->fenv_t_us == LIVE_FENV_IDLE) {
+        return;
+    }
+    uint32_t level = lab_draw_level(l->fenv_ad, l->fenv_sr, l->fenv_gate_us, l->fenv_t_us);
+    uint32_t shown_gate = c->e.gate;
+    uint32_t t = l->fenv_gate_us == LIVE_FENV_IDLE
+                     ? (l->fenv_t_us < shown_gate ? l->fenv_t_us : shown_gate)
+                     : shown_gate + (l->fenv_t_us - l->fenv_gate_us);
+    uint32_t x = lab_draw_x_of_us(t);
+    c->dot_x = (uint8_t)(x < LAB_DRAW_W - 4u ? x : LAB_DRAW_W - 4u);
     c->dot_y = y_of(level, ENV_TOP, ENV_SPAN);
 }
 
@@ -755,16 +777,21 @@ static void none_col(const void* ctx, uint32_t x, lab_draw_col* out) {
 uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t hl) {
     uint32_t h = (page * 31u + hl) * 2654435761u ^ l->theme;
     if (page == LAB_PAGE_OSC) {
-        h = (h ^ l->control) * 16777619u;
+        h = (h ^ live_edit_control(l) ^ (uint32_t)l->layer_edit << 8) * 16777619u;
         h = (h ^ live_pw(l)) * 16777619u;
         h = (h ^ l->sync_q8 ^ (uint32_t)l->mono_sync << 16) * 16777619u;
         h = (h ^ (uint8_t)l->tune) * 16777619u;
     } else if (page == LAB_PAGE_ENVELOPE) {
-        h = (h ^ l->attack_decay ^ (uint32_t)l->sustain_release << 8) * 16777619u;
+        h = (h ^ live_edit_attack_decay(l) ^ (uint32_t)live_edit_sustain_release(l) << 8 ^
+             (uint32_t)l->layer_edit << 16) * 16777619u;
         int32_t v = loudest(sc);
         if (v >= 0) {
             h = (h ^ sc->env[v] ^ (uint32_t)sc->state[v] << 8) * 16777619u;
         }
+    } else if (page == LAB_PAGE_FILTER_ENV) {
+        h = (h ^ l->fenv_ad ^ (uint32_t)l->fenv_sr << 8 ^ (uint32_t)(uint8_t)l->fenv_depth << 16) *
+            16777619u;
+        h = (h ^ fenv_now(l)) * 16777619u;
     } else if (page == LAB_PAGE_FILTER) {
         h = (h ^ l->cutoff_out ^ (uint32_t)l->resonance << 12 ^ (uint32_t)l->filter_mode << 16 ^
              (uint32_t)l->model << 24) * 16777619u;
@@ -778,6 +805,13 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
              (uint32_t)(uint8_t)l->reso_link << 16 ^ (uint32_t)(uint8_t)l->pwm_link << 24) *
             16777619u;
         h = (h ^ l->pulse_width ^ (uint32_t)l->pwm_depth << 16) * 16777619u;
+    } else if (page == LAB_PAGE_LAYERS) {
+        h = (h ^ l->layers ^ (uint32_t)l->layer_edit << 8 ^ (uint32_t)l->filter_voices << 16) *
+            16777619u;
+        for (uint32_t v = 0; v < LIVE_VOICES; v++) {
+            h = (h ^ live_layer_control_of(l, v) ^ (uint32_t)(uint8_t)l->transpose[v] << 8 ^
+                 (uint32_t)(uint8_t)l->detune[v] << 16) * 16777619u;
+        }
     } else if (page != LAB_DRAW_BLANK) {
         const uint8_t* s = l->slot[l->fx_select % LIVE_SLOTS];
         h = (h ^ l->fx_select ^ (uint32_t)s[0] << 8 ^ (uint32_t)s[1] << 16 ^ (uint32_t)s[2] << 24) *
@@ -803,15 +837,22 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         osc_init(&o, l, hl);
         d.fn = osc_col;
         d.ctx = &o;
-        d.color[0] = live_view_wave_color(l->control);
+        d.color[0] = live_view_wave_color(o.control);
         d.color[LAB_DRAW_MARKER] = th->knob[3];
     } else if (page == LAB_PAGE_ENVELOPE) {
-        env_init(&e.e, l->attack_decay, l->sustain_release,
-                 lab_draw_gate_us(l->attack_decay, l->sustain_release));
+        uint8_t ad = live_edit_attack_decay(l), sr = live_edit_sustain_release(l);
+        env_init(&e.e, ad, sr, lab_draw_gate_us(ad, sr));
         e.hl = (uint8_t)(hl <= 4u ? hl : 0u);
         env_dot(&e, sc);
         d.fn = env_col;
         d.ctx = &e;
+    } else if (page == LAB_PAGE_FILTER_ENV) {
+        env_init(&e.e, l->fenv_ad, l->fenv_sr, lab_draw_gate_us(l->fenv_ad, l->fenv_sr));
+        e.hl = (uint8_t)(hl <= 4u ? hl : 0u);
+        fenv_dot(&e, l);
+        d.fn = env_col;
+        d.ctx = &e;
+        d.color[0] = l->fenv_depth ? th->value : th->dim;
     } else if (page == LAB_PAGE_FILTER) {
         filt_init(&f, l, hl);
         d.fn = filt_col;
@@ -832,7 +873,7 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         d.color[0] = l->reso_link ? th->value : th->dim;
         d.color[1] = l->pwm_link ? th->value : th->dim;
         d.color[LAB_DRAW_MARKER] = th->hot;
-    } else if (page != LAB_DRAW_BLANK) {
+    } else if (page != LAB_DRAW_BLANK && page != LAB_PAGE_LAYERS) {
         fx_init(&x, l, hl);
         d.fn = x.kind == FX_NONE ? none_col : fx_col;
         d.ctx = &x;
@@ -921,10 +962,72 @@ static void guides_page(grid_canvas* c, const live* l, uint32_t page, uint32_t h
     }
 }
 
+static void short_wave(uint8_t control, char* out) {
+    static const char LETTER[4] = {'T', 'S', 'P', 'N'};
+    static const char* const ONE[4] = {"TRI", "SAW", "PUL", "NOI"};
+    uint32_t w = control >> 4, n = 0, only = 0;
+    for (uint32_t b = 0; b < 4u; b++) {
+        if (w >> b & 1u) {
+            only = b;
+            n++;
+        }
+    }
+    char* e = out;
+    if (n == 1u) {
+        for (const char* p = ONE[only]; *p; p++) {
+            *e++ = *p;
+        }
+    } else if (n == 0u) {
+        *e++ = '-';
+    } else {
+        for (uint32_t b = 0; b < 4u; b++) {
+            if (w >> b & 1u) {
+                *e++ = LETTER[b];
+            }
+        }
+    }
+    if (control & 0x06u) {
+        *e++ = control & 0x04u ? 'R' : 'Y';
+    }
+    *e = 0;
+}
+
+static void signed_text(int32_t v, const char* unit, char* out) {
+    char* e = out;
+    *e++ = v < 0 ? '-' : '+';
+    uint32_t m = (uint32_t)(v < 0 ? -v : v);
+    if (m >= 10u) {
+        *e++ = (char)('0' + m / 10u);
+    }
+    *e++ = (char)('0' + m % 10u);
+    for (; *unit; unit++) {
+        *e++ = *unit;
+    }
+    *e = 0;
+}
+
+static void guides_layers(grid_canvas* c, const live* l, const theme* th, uint32_t row0) {
+    for (uint32_t v = 0; v < LIVE_VOICES; v++) {
+        uint32_t col = v * 10u;
+        int on = v <= l->layers;
+        uint8_t fg = on ? th->voice_text[v] : th->dim;
+        uint8_t attr = GRID_ATTR(fg, th->bg);
+        char text[8] = {'L', (char)('1' + v), 0};
+        (void)grid_canvas_text_big(c, col, row0 + 1u, 2,  text,
+                                   on && v == l->layer_edit ? GRID_ATTR(th->bg, fg) : attr);
+        short_wave(live_layer_control_of(l, v), text);
+        (void)grid_canvas_text_big(c, col, row0 + 4u, 2, text, attr);
+        signed_text(l->transpose[v], "", text);
+        (void)grid_canvas_text_big(c, col, row0 + 7u, 2, text, attr);
+        signed_text(l->detune[v], "C", text);
+        (void)grid_canvas_text_big(c, col, row0 + 10u, 2, text, attr);
+    }
+}
+
 void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, const theme* th,
                      uint32_t row0) {
-    if (page == LAB_PAGE_OSC && (l->control & 0x40u) && l->pwm_depth && !l->mono_sync &&
-        !(l->control & 0x06u)) {
+    if (page == LAB_PAGE_OSC && !l->layer_edit && (l->control & 0x40u) && l->pwm_depth &&
+        !l->mono_sync && !(l->control & 0x06u)) {
         uint32_t cycle = OSC_CYCLE * 65536u / (uint32_t)(65536 + l->tune * 38);
         int32_t a = (int32_t)l->pulse_width - (int32_t)l->pwm_depth;
         int32_t b = (int32_t)l->pulse_width + (int32_t)l->pwm_depth;
@@ -939,14 +1042,18 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
                 c->attr[row0 + r][col] = attr;
             }
         }
+    } else if (page == LAB_PAGE_LAYERS) {
+        guides_layers(c, l, th, row0);
     } else if (page == LAB_PAGE_MACRO) {
         uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
         gtext(c, row, 1, "CUT>RESO", THEME_ATTR(th, hint));
         gtext(c, row, 16, "WIDTH>PWM", THEME_ATTR(th, hint));
     } else if (page == LAB_PAGE_FILTER || page == LAB_PAGE_MOD || page == LAB_PAGE_FX) {
         guides_page(c, l, page, hl, th, row0);
-    } else if (page == LAB_PAGE_ENVELOPE) {
-        uint32_t x = lab_draw_x_of_us(lab_draw_gate_us(l->attack_decay, l->sustain_release));
+    } else if (page == LAB_PAGE_ENVELOPE || page == LAB_PAGE_FILTER_ENV) {
+        int filter = page == LAB_PAGE_FILTER_ENV;
+        uint32_t x = lab_draw_x_of_us(lab_draw_gate_us(filter ? l->fenv_ad : live_edit_attack_decay(l),
+                                                       filter ? l->fenv_sr : live_edit_sustain_release(l)));
         uint32_t key = (x + 4u) / 8u;
         for (uint32_t r = 0; r + 1u < LAB_DRAW_ROWS; r++) {
             c->ch[row0 + r][key] = FONT_H1;

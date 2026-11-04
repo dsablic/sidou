@@ -130,3 +130,15 @@ pub fn open_midi_page(m: &mut Machine) {
     turn(m, ALGORITHM, 1);
     m.run_ms(MENU_WIPE_MS);
 }
+
+pub const LAB_OPENED_MS: u64 = 400;
+
+pub fn open_lab(m: &mut Machine, fw: &Firmware) {
+    press(m, HOME);
+    wait_for_view(m, fw, "views_menu");
+    select_menu_item(m, sidou_sys::VIEWS_MENU_LAB as i32);
+    m.run_ms(DETENT_MS);
+    m.turn(ALGORITHM, 1);
+    wait_for_view(m, fw, "lab_view_view");
+    m.run_ms(LAB_OPENED_MS);
+}

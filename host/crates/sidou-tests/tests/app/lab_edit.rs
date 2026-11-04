@@ -97,18 +97,155 @@ fn audible(s: &[u8], model: sid_model) -> bool {
     unsafe { lab_audible(s.as_ptr(), model) != 0 }
 }
 
+#[derive(Default)]
+struct Tally {
+    n: u32,
+    passed: u32,
+    passed_silent: u32,
+    refused_heard: u32,
+}
+
+impl Tally {
+    fn add(&mut self, passed: bool, silent: bool) {
+        self.n += 1;
+        self.passed += u32::from(passed);
+        self.passed_silent += u32::from(passed && silent);
+        self.refused_heard += u32::from(!passed && !silent);
+    }
+}
+
+fn layer_control_at(layer: u32) -> usize {
+    match layer {
+        0 => LAB_SOUND_CONTROL as usize,
+        _ => (LAB_SOUND_LAYER_VOICE + (layer - 1) * LAB_SOUND_LAYER_VOICE_BYTES) as usize,
+    }
+}
+
+fn transpose_of(s: &[u8], layer: u32) -> i32 {
+    i32::from(s[(LAB_SOUND_LAYER_TUNING + layer * LAB_SOUND_LAYER_TUNING_BYTES) as usize] as i8)
+}
+
+fn layers_of(s: &[u8]) -> u32 {
+    u32::from(s[LAB_SOUND_LAYERS as usize])
+}
+
+fn alone(s: &[u8; BYTES], layer: u32) -> [u8; BYTES] {
+    let mut a = *s;
+    for other in (0..=layers_of(s)).filter(|&n| n != layer) {
+        a[layer_control_at(other)] &= 0x0F;
+    }
+    a
+}
+
+fn span(t: i32) -> &'static str {
+    match t {
+        ..=-13 => "-24..-13",
+        -12..=-1 => "-12..-1",
+        0 => "0",
+        1..=12 => "+1..+12",
+        _ => "+13..+24",
+    }
+}
+
+fn features(s: &[u8], layer: u32) -> [(&'static str, String); 7] {
+    let layers = layers_of(s);
+    let control = s[layer_control_at(layer)];
+    let source = (layer + 2) % LIVE_VOICES;
+    let layered_source = layers > 0 && source <= layers;
+    let synced = layered_source && control & 0x02 != 0;
+    let routed = match layers {
+        0 => s[LAB_SOUND_FILTER_VOICES as usize] & 7 != 0,
+        _ => s[LAB_SOUND_FILTER_VOICES as usize] >> layer & 1 != 0,
+    };
+    let modulation = match (
+        s[LAB_SOUND_MONO_SYNC as usize] != 0,
+        synced,
+        layered_source && control & 0x04 != 0,
+    ) {
+        (true, _, _) => "one-voice sync".into(),
+        (_, true, ring) => format!("sync{}", if ring { "+ring" } else { "" }),
+        (_, _, true) => "ring".into(),
+        _ => "none".into(),
+    };
+    let own = transpose_of(s, layer);
+    [
+        ("layers", format!("{}", layers + 1)),
+        ("wave", format!("{:X}", control >> 4)),
+        ("modulation", modulation),
+        ("transpose", span(own).into()),
+        (
+            "sync over source",
+            if synced {
+                span(own - transpose_of(s, source)).into()
+            } else {
+                "-".into()
+            },
+        ),
+        (
+            "filter env",
+            match (routed, (s[LAB_SOUND_FILTER_ENV as usize] as i8).signum()) {
+                (false, _) => "unrouted",
+                (_, 1) => "+",
+                (_, -1) => "-",
+                _ => "0",
+            }
+            .into(),
+        ),
+        (
+            "filter mode",
+            if routed {
+                format!("{}", s[LAB_SOUND_FILTER_MODE as usize] >> 4)
+            } else {
+                "unrouted".into()
+            },
+        ),
+    ]
+}
+
+fn report(tallies: &std::collections::BTreeMap<(&str, String), Tally>) {
+    eprintln!("feature       value       n   passed  passed-silent  refused-heard");
+    for ((f, v), t) in tallies {
+        eprintln!(
+            "{f:<12} {v:<10} {:>5} {:>7} {:>8} {:>5.2}% {:>8} {:>5.1}%",
+            t.n,
+            t.passed,
+            t.passed_silent,
+            100.0 * f64::from(t.passed_silent) / f64::from(t.passed.max(1)),
+            t.refused_heard,
+            100.0 * f64::from(t.refused_heard) / f64::from((t.n - t.passed).max(1)),
+        );
+    }
+}
+
 #[test]
 fn lab_audible_passes_no_silent_sound_and_every_built_in() {
     let mut r = Xs(env_or("LAB_SEED", 0x2468_ace1));
     let (mut passed, mut silent_refused, mut n) = (0, 0, 0);
     let mut wrong = Vec::new();
+    let mut tallies = std::collections::BTreeMap::new();
     let count: u32 = env_or("LAB_SOUNDS", 2000);
     for i in 0..count {
-        let s = random_sound(&mut r);
+        let whole = random_sound(&mut r);
         for model in [SID_MODEL_6581, SID_MODEL_8580] {
+            let db = held_c4_db(&whole, model, i % 2);
+            if layers_of(&whole) > 0 && audible(&whole, model) && silent(db) {
+                wrong.push(format!("{db:.1} dB, all layers, on {model:?}: {whole:?}"));
+            }
+        }
+        for (layer, model) in (0..=layers_of(&whole))
+            .flat_map(|layer| [(layer, SID_MODEL_6581), (layer, SID_MODEL_8580)])
+        {
+            let s = alone(&whole, layer);
             let db = held_c4_db(&s, model, i % 2);
+            let pass = audible(&s, model);
             n += 1;
-            if audible(&s, model) {
+            for key in features(&s, layer) {
+                tallies
+                    .entry(key)
+                    .or_insert_with(Tally::default)
+                    .add(pass, silent(db));
+            }
+            if pass {
                 passed += 1;
                 if silent(db) {
                     wrong.push(format!("{db:.1} dB on {model:?}: {s:?}"));
@@ -119,6 +256,7 @@ fn lab_audible_passes_no_silent_sound_and_every_built_in() {
         }
     }
     let heard = n - silent_refused;
+    report(&tallies);
     eprintln!("{passed} of {n} passed, of {heard} heard; {silent_refused} silent, refused");
     assert!(wrong.is_empty(), "passed but silent:\n{}", wrong.join("\n"));
     assert!(

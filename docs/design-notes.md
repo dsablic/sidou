@@ -287,10 +287,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (at `-Os`) and `step_view.c` and `song_gen.c` (both at `-Oz`) also take `-fno-inline-functions
   -fno-jump-tables`, so their rendering and edit helpers stay outlined.
 - Measured and left at `-O2`: `live.c` (`ui_encoder` over `CHIP_PICK_INPUT` 400, K1 over
-  `POPUP_INPUT` 250), `title_card.c` (THE CHIP's worst `ui_poll` 79,349 against 79,000), `views.c`
+  `POPUP_INPUT`), `views.c`
   at `-Oz` (880 bytes, but K1's popup input reaches 250 of 250; it stays `-Os`), `chip_view.c` at
   `-Oz` (240 bytes; CHIP K1 on DIST reaches 245 of `CHIP_INPUT` 245), `grid.c` (3,360 bytes, but
-  the tile renderer's frame grows 15 %: THE CHIP's `ui_poll` 79,774 over 79,000), `live_view.c`
+  the tile renderer's frame grows 15 %), `live_view.c`
   (the instrument's frame, nearest its noise-chord gate) and `reg_ring.c` (the audio interrupt's
   pops). `boot.c`, `sid_character.c` and `sid_dac.c` stay at `-O2`: at `-Os` they moved the thump
   stage over its 31 instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's
@@ -364,6 +364,28 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   pole, x = 2 pi `OUT_LP_HZ` / fs: within 5e-6 relative from 22.05 kHz up, 3e-5 at 16 kHz, 0.3% at 8
   kHz, and 27% low at `sid_init`'s lowest rate, 4 kHz, where exp(-x) is 1e-9. `out_c = 1 - exp_neg`
   is within 5 ULP of exact at every rate `sid_init` accepts.
+
+- The 6581's loud chord (three voices, resonance 0, cutoff swept above the chord): reSIDfp's
+  band-pass stays about 4.5 dB louder than SIDOU's and its low-pass about 3 dB quieter, a steady
+  offset over the sweep. Tried on 2026-11-03, each against the whole `filter` test, none kept:
+  - `SID_NL_M_MIN` 0.30, 0.25, 0.20: the chord band-pass only moves 4.37 to 4.25, 4.18, 4.13 dB,
+    and the noise3 high-pass and the chord high-pass leave their ceilings. The lower bound on the
+    load is not the cause.
+  - A soft saturation `x / (1 + K |x|)` on both integrator states: K 0.02 brings the chord
+    band-pass to 0.88 dB and the chord low-pass to 7.1 dB; the small-signal low-pass is 6.7 dB.
+  - The same on the band-pass state alone: K 0.08 gives chord band-pass 1.04 dB, low-pass 5.0 dB.
+    K 0.02 gives 2.71 and 4.75.
+  - On the filter's input (K 0.01, 0.03, 0.1): the chord band-pass does not improve (4.47, 4.66,
+    5.20 dB) and the chord high-pass leaves its ceiling.
+  Every cheap saturation moves the band-pass and low-pass errors in opposite directions. A fit
+  that holds all three modes needs the op-amp's transfer curve itself (reSIDfp's `opamp_rev`
+  table) and the integrator's gate-voltage dependence. Measured against reSIDfp's source and the
+  1.5 image on 2026-11-03, a port does not fit: the 6581 model's tables are about 11 MB (`mixer`
+  about 3.7 MB, `summer` 2.6 MB, `volume` and `resonance` 2 MB each, `vcr_n_Ids_term` 512 KB,
+  `opamp_rev` and `vcr_nVg` 128 KB each) against 10,080 bytes free below the image ceiling; reSIDfp clocks
+  the filter every SID cycle, about 22 times SIDOU's per-sample step; and the filter runs in the
+  audio path, whose RAMTEXT has 16 of 49,152 bytes free. Only a fitted curve could stand in, as the
+  present model does.
 
 ### Oscillator
 
@@ -650,6 +672,40 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   load). Target 3 dB; measured noise 2.44, 1.91, 2.81, chord 2.33, 4.37, 2.84. The chord's
   band-pass misses: reSIDfp's saturating op-amps keep it louder, which the bound on the load,
   `SID_NL_M_MIN`, stands in for at the headroom the 6581 must keep.
+
+### Tests: Real chips (filter-metrics)
+
+`band_energy.rs`, `alignment.rs` and `harmonics.rs` are tested in `tests/unit/filter_metrics.rs`.
+Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.md), "Measured".
+
+- **Why bands, not the envelope.** The sweeps' broadband RMS sees only the level contour. Real
+  chips differ in spectral shape (cutoff, resonance, distortion), so `band_energy` compares 26
+  1/3-octave bands, 49.6 Hz to 15.9 kHz, centred on 1 kHz.
+  - Windows are 8192 samples (186 ms) with a 4096-sample hop. That is long enough that the lowest
+    band has its own FFT bin, and short enough to follow the notes.
+  - Each window of the test is shifted to the reference's total level. Shape (the mean absolute
+    band difference) is therefore separate from level, and level is reported as the RMS of those
+    shifts around their mean. The mean is the least-squares gain in dB.
+  - Bands more than 60 dB below the window's total are clamped to that floor, so the recordings'
+    hiss and MP3 holes do not count.
+  - Windows more than 40 dB below the reference's loudest are skipped.
+- **Output stage.** The C64's output stage and the recording chain are unknown, so the test gets
+  a one-pole high-pass (0 to 160 Hz) and a one-pole low-pass (6 kHz to none). The fit runs on a
+  grid, in the band domain. It stops at 6 kHz so that it cannot absorb a filter's brightness
+  wholesale. Chip pairs get the same fit, so the chip spread and the emulator's distance are
+  measured alike.
+- **Alignment by spectrogram.** Envelope and onset cross-correlation locked onto the wrong bar of
+  repetitive music, and that moved a tune by up to 3 dB. `alignment` instead correlates the log
+  band energies: 2048-sample frames with a 256-sample hop, clamped to 70 dB below the loudest. It
+  then refines by waveform correlation within one hop and keeps the polarity (the 6581's filter
+  inverts).
+- **Harmonic probe.** A triangle has no even harmonics, so H2 and H4 show distortion alone, and
+  the DAC's kink sets the floor. Each tone is measured routed through the filter and also past it
+  ("direct"): the probe then tells the filter's distortion from the mixer's. The tone is placed
+  from reSIDfp's measured f0: f0/5 for the LP (H5 at the cutoff) and f0 for the BP. The probe
+  steps the level from one voice at sustain 4, 8 and 15 up to three voices in unison.
+- **`$D418` at cycle 0.** The harness writes `$0F` before the tune starts, as the recordings'
+  player did: a tune that never sets the volume (Parallax) is otherwise silent on SIDOU.
 
 ### Tests: Chip profiles (profiles.rs)
 
@@ -3428,7 +3484,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   shows, including under MIDI learn's frame over LIVE, and not under learn over the menu.
 - The tap's cost (emu-gate `ram_audio.rs`) is measured on the same build by turns: LIVE on top
   (the tap on) against the menu on top (the tap off), a chord held at its sustain level
-  throughout. LIVE behind THE OSCILLATOR's title card keeps the tap off until the card ends.
+  throughout.
 
 ### The LIVE view
 
@@ -3622,12 +3678,43 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `lab_audible` estimates in whole dB: the waveform's level on the model (none, noise with another
   waveform, the 6581's combinations that barely sound, the 8580's with the pulse when it falls away
   from 50 %), the pulse's narrowness (the PWM taking half its swing off, a side under 16 steps
-  refused), the envelope (the attack's ramp, the decay to sustain; an arpeggio 3 dB more), SYNC
-  LEAD's sync 6 dB (more below a ratio of 1, where the voice never ends a cycle), and the filter's
+  refused), the envelope (the attack's ramp, the decay to sustain; an arpeggio 3 dB more), sync by
+  its ratio (below), and the filter's
   loss at the cutoff's distance from the note (routed to no mode: refused; a narrow pulse under a
   low-pass near the note counts its fundamental alone; a combination or the ring 6 dB more). The
   resonance's gain, the chip's profile, the effect slots and the controllers are left out, each
   only louder or not the chip's. The estimate must reach `LAB_AUDIBLE_DB` (−38 dB).
+- Layers: each layer is estimated on its own (`level_db`), and the sound passes when one does.
+  The figures below come from the calibration in `lab_audible_passes_no_silent_sound_and_every_built_in`
+  (random sounds with layers and a filter envelope, each layer rendered alone and the whole
+  sound rendered too). Before this, the estimate called a layer audible when it rendered under
+  −40 dB 150 times in 4,299 passes. All 150 were layers synced to another layer, and 28 % of
+  the synced layers more than an octave under their source were wrong.
+- A synced layer's ratio to its source (`sync_q8`) and one-voice sync's ratio go through the
+  same weighting. Under its source the oscillator never ends a cycle: 3 dB per half octave (its swing shrinks as the
+  ratio does), a combination refused, a pulse's width scaled by the ratio. At or over its source
+  nothing is taken off, which the renders show is right: the old −6 dB left synced triangles,
+  saws and noise 5 to 18 dB under their render. A synced pulse over half width with a ratio
+  under 2 is refused (the high stretch is lost: −16 to −20 dB rendered at 3,663/4,096), and so
+  is one with a side under 128.
+- The filter weighs a synced or ring-modulated layer at the higher of its own and its source's
+  pitch. A layer synced two octaves over its source is heard at its own pitch. Under a low-pass,
+  weighing it at the source's pitch left it 4 to 13 dB louder than its render.
+- A synced layer and its sounding source can cancel each other's fundamental. Within −12 to +7
+  semitones of each other (`SYNC_CANCEL_LO`/`HI`) and with estimates within 12 dB, both lose
+  4 dB (`SYNC_PAIR_DB`). Without this, the whole sound rendered up to 6.1 dB under its best
+  layer's estimate, and 24 of 6,237 walked pair sounds were silent. With 4 dB taken off, the
+  2 dB headroom covers the worst case.
+- The PWM's swing is limited to the pulse's room above `LIVE_PULSE_FIRST`, as `pw_effective`
+  limits it. Without that limit, a wide PWM refused pulses that render at −21 dB.
+- The filter envelope counts at its mean over the 500 ms window (8 points of
+  `lab_draw_level`), not its level at the end. A slow positive sweep then counts as the little
+  it opens. Counting a positive sweep as nothing and a negative one at its deepest refused
+  too many sounds to keep rolls passing.
+- After the calibration, 20,000 random sounds (80,190 isolated layers plus each whole layered
+  sound) had no false audible. 37 % of the heard ones passed. The varies-and-rolls sweep
+  passes on 30 of 31 seeds. On seed 3, one walked result (noise through the 8580's low-pass,
+  a negative filter envelope) renders −40.5 dB. The flash cost is 560 bytes.
 
 ### Song bridge: send
 
@@ -3646,7 +3733,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Song bridge: pull and kept chunks
 
 - Exact round trip: a trailer chunk per sent instrument (`LB` and the instrument in hex) keeps the
-  48-byte sound and a CRC-32 of the instrument's 25 bytes and its programs' rows; pull restores the
+  sound (68 bytes since 1.6, 48 in 1.5) and a CRC-32 of the instrument's 25 bytes and its programs' rows; pull restores the
   sound exactly while the CRC matches.
 - The `LBnn` chunk keeps the LAB sound with a CRC of the instrument's bytes and its programs' rows:
   the sound comes back exactly while they are unedited and not once a byte, a row, the name or the
@@ -3711,7 +3798,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   plays a chord with the shortest envelope and lets it go, as a played instrument has them.
 - `lab_audible_passes_no_silent_sound_and_every_built_in` runs 2,000 random sounds on each model by
   default (`LAB_SOUNDS`, `LAB_SEED` run more or others; 30,000 on each of six seeds passed when the
-  predicate was made). It also asks the predicate to pass at least 12 % of the heard random
+  predicate was made). The random sounds carry layers and a filter envelope. Each layer is
+  checked alone (the others' waveforms cleared, their oscillators still running as sync and
+  ring sources), and the whole layered sound is checked too. A table by feature (layers,
+  waveform, sync or ring, transpose, sync ratio, the filter envelope's sign, mode) prints how
+  many passed silent and how many heard ones were refused. It also asks the predicate to pass at least 12 % of the heard random
   sounds, so it is not merely strict; the share is low because random sounds are odd and the
   predicate keeps a margin there.
 - The low-pass shut below the note is checked silent on the 8580 only: the 6581's filter stops at
@@ -3809,7 +3900,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   or when its words do not fit two lines, ordinary text on one row. The popup opens and closes
   `SCREEN_POPUP_STEP` rows a frame (3: 78 cells). The block cursor is on for `SCREEN_BLINK_FRAMES`
   frames, then off as long (8 frames: 320 ms at 25 fps).
-- A banded cut (`SCREEN_BANDS`, the title cards' end) reveals the view below `SCREEN_BAND_ROWS`
+- A banded cut (`SCREEN_BANDS`, the help card's close) reveals the view below `SCREEN_BAND_ROWS`
   rows a frame, top first, with no edge row. A reveal (`screen_reveal`, the boot's title card
   changing its whole look) wipes the same view in anew but keeps the stack, the focus and the
   capture.
@@ -3890,7 +3981,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   app/grid.c, and works large text out with divisions, so the composed frame is an independent
   reference (`Screen::composed_from_scratch`).
 - A region that grows or shrinks over the same bitmap cells sends only the cells it adds or leaves,
-  so a picture revealed a few columns a frame (a title card's wipe) sends each cell once.
+  so a picture revealed a few columns a frame (the boot title card's wipe) sends each cell once.
 - The overlay pool holds `GRID_OVERLAYS` slots, between 240 and 255: LIVE's three scopes of 20 x 4
   cells take 240, and a slot index still fits the u8 each cell keeps.
 
@@ -4001,7 +4092,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   over LIVE, 12.5k over SCENE, about 0.15k elsewhere): `POPUP_WORST_POLL` 42,000,
   `POPUP_STATIC_EXTRA` 15,000.
 - A turn that asks for the popup: the input's call (`ui_encoder`, which stores the ask) within
-  `POPUP_INPUT`, 250, and the busiest pass after it (the frame asks the views for the text and draws
+  `POPUP_INPUT`, 256 (250 until 1.6: the filter envelope's check on the cutoff path brought K1 to
+  250 on LIVE and over the menu; raised by the owner's decision, 2026-11-04), and the busiest pass after it (the frame asks the views for the text and draws
   the popup's first rows) within `POPUP_PASS`, 70,000. Measured: K1 218 on LIVE and STATUS (234 over
   the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass 37.2k on the
   views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and is no popup's
@@ -4066,9 +4158,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### View tests
 
-- `Ui::without_cards` (sidou-tests' views.rs) turns the title cards off for the routing and
-  transition tests, which the cards would sit over. `Ui::press` runs the frame's flow step after a
-  HOME tap, because HOME acts on its release. `Ui::frame` runs views_idle until it reports no work,
+- `Ui::press` runs the frame's flow step after a HOME tap, because HOME acts on its release. `Ui::frame` runs views_idle until it reports no work,
   as platform/fm1/ui.c does (RED MOON RITE's scan).
 
 ### The ergonomics harness
@@ -4742,14 +4832,15 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Settings record
 
 - The settings are one record on the store, versioned with schema 1 or later; a later schema only
-  appends fields. The record holds: CARDS, UI sounds, KEYS, the preset and every live parameter
+  appends fields. The record holds: UI sounds, KEYS, the preset and every live parameter
   (the keys' chip model, profile and character, effect slots, envelope mode and preset's edits—the
   instrument as it was left; not the MASTER volume, which is the pot), MIDI learn's bindings,
   firmware version last booted (for the full boot once after an install), TRACKER ROWS, THEME, the
   last song, SPREAD and SID MODEL. It does not hold the octave, held notes, controllers or view on
   screen.
-- Byte 1 of the record is CARDS: 0 is OFF, 1 is ONCE (an old record's ON), 2 is ALWAYS; anything
-  else reads as ONCE. The meaning was widened without a schema change.
+- Byte 1 of the record is reserved: it held CARDS (0 OFF, 1 ONCE, 2 ALWAYS) until the title cards
+  were removed. The firmware writes 0 and ignores it on read, so an older record still loads and
+  the layout and schema version stay as they were.
 - A later schema appends fields. This firmware reads a newer record's v1 part and skips a later
   schema's extra expert values before the learn bindings. Schema 6 appended SPREAD (a schema 5
   record, or a SPREAD over 100, loads 0); schema 7 appended SID MODEL (which loads as AUTO
@@ -5111,9 +5202,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   directly and its checkpoints are absolute byte offsets from the payload's start; coded mode reads
   runs through the pool's fifteen-byte codebook and its checkpoints count coded nibbles from the one
   before.
-- The logos' scenes and the title cards are coded bitmaps: Metal Chrome 9730 bytes (vs 28800
-  unpacked), Cracktro Chrome 3971 bytes, title cards 19754 bytes (17729 coded data, 1440 row
-  offsets, 360 cell bits, 225 glow levels). Generated by host tests from `assets/logo/*.png`.
+- The logos' scenes are coded bitmaps: Metal Chrome 9730 bytes (vs 28800
+  unpacked), Cracktro Chrome 3971 bytes. Generated by host tests from `assets/logo/*.png`.
 
 ### Tile compositor
 
@@ -5250,9 +5340,6 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   the menu's ALGORITHM 170 and 60.7k. Bounded about 10 % over: `SCENE_INPUT` 230,
   `SCENE_START_PASS` 67,000. PLASMA, the costliest start, drew its whole canvas in the input's
   call (48.8k) until the start moved into the frame (32.7k a pass).
-- With the title cards on, the menu's ALGORITHM pushes THE SCENE's card over SCENE as well (350,
-  within `TITLE_CARD_INPUT`) and the piece starts in the cut after the card; those passes are
-  measured from the card's hold.
 - SELECT from RED MOON RITE to FIRE clears its painter region, which marks every cell, and the
   busiest pass after SELECT to it, or the menu into it, is one of its `ui_poll`s (its start, or
   two runs of the compositor): `RMR_INPUT` 1,050 and `RMR_START_PASS` 65,000, about 10 % over the
@@ -5375,55 +5462,16 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   interrupts off, the watchdog resets it 8 s after the last feed, twice, and the third boot enters
   UBOOT. In that build `fm1_enter_uboot` is inlined into `fm1_cstart`.
 
-### Title cards
+### Title cards removed
 
-- Sequence: the glow fades in through ordered-dither levels (a purple and red glow drawn a cell at
-  a time with the font's dither glyphs in two neighbouring stops of black, blue, purple and red),
-  each level holding `TITLE_CARD_LEVEL_HOLD` frames (2, the page's preview) once all its cells are
-  out; the title wipes in from the left, `TITLE_CARD_WIPE_COLS` columns (3) a frame, the bitmap
-  growing over the same bitmap cells, so each frame sends the cells it adds and no others; it holds
-  `TITLE_CARD_HOLD_FRAMES` frames (25, 1 s); it ends.
-- Budget: every frame sends at most `TITLE_CARD_FRAME_CELLS` cells (200, about 17.5 ms of SPI,
-  inside the 20 ms budget). A step that changes more goes out in bands, top first, from where the
-  last frame stopped, until every cell of it is out. Ends on: a button or an encoder (swallows the
-  event and does nothing else), or a note from the keys or MIDI (which also plays).
-- The glow is drawn a cell at a time with the font's dither glyphs D0..D15 in two neighbouring
-  stops of its colours (black, blue, purple, red), at level L = 16 i + n (stop i, 0..`MAX_LEVEL`
-  47: red never shows whole). The firmware keeps a quarter of the level table (the glow is symmetric
-  about the centre) and fades in through k = 1..4 (floor(L * k / 4)).
-- A card's bitmap holds only the cells that differ from the glow (letters, halos, rule, glint,
-  stars), the glow's background stop flat in the others, and a bit a cell says which. `glow_levels`
-  reads a cell's background at pixel (0, 3) (`NEVER_DITHERED_X`/`Y`): Bayer's 15 there is never set
-  below D16.
-- The glow is brightest at the centre and black at the corners, and never goes past stop 2 (purple,
-  with red as its dither): the firmware's colours are a stop and the next one. The font's dither
-  glyphs D0..D16 are the 4 x 4 Bayer matrix the art dithers with (Dn sets a pixel where the matrix
-  is below n), so the glow drawn in glyphs is the art's.
-- All three cards, their glow from 225 bytes of levels, stay within `CARDS_FLASH_BYTES_MAX`
-  (27,087), under half the whole-PNG byte-run control (57,190 bytes when the ceiling was set).
-- The title glow sends each level's cells in frames of at most 200 cells; the first level changes
-  the whole menu (900 cells, 5 frames). The wipe adds 3 columns a frame (90 cells), the hold sends
-  nothing, and the cut to the view comes in bands.
-- The cards' setting defaults to ONCE (THE CHIP and THE SCENE the first time each, never THE
-  OSCILLATOR); the tests that need every card set ALWAYS in the views' RAM, the menu's walk to it
-  being the host tests'. THE OSCILLATOR's budget is counted from the frame after HOME is let go, so
-  its tap is not waited out.
-- A card's held frame is shot a frame after its phase reaches `TITLE_CARD_HOLD`, half way between
-  two frames, and compared with its golden and with its source PNG (assets/logo/title-<name>.png)
-  pixel for pixel.
-- A card from its start to the end of the cut under it (the glow, the wipe, the 1 s hold, the cut)
-  takes 60 to 72 frames. Bounds about 10 % over the cards' measurement: 64 to 66 frames, 68.7 to
-  72.4 cells a frame (200 at most: the glow's first level, and its scan of the screen's 900 cells
-  for those that differ), 17.14 ms of SPI at worst, 55.1k to 56.0k instructions a frame, busiest
-  `ui_poll` 71.2k to 71.6k, the input 350 to 387 (`ui_encoder` for CHIP and SCENE, `ui_buttons` for
-  HOME), the busiest pass 72.8k to 73.1k: `TITLE_CARD_WORST_POLL` 79,000, `TITLE_CARD_PER_FRAME`
-  62,000, `TITLE_CARD_INPUT` 430, `TITLE_CARD_PASS` 80,000 (host/crates/emu-gate/tests/screen.rs).
-- Any control on a card ends it at the next frame and does nothing else (FX would open LAB from
-  LIVE, OCT+ step the octave, SELECT pick a piece); a note on a card plays at once, from the keys or
-  MIDI, and ends it.
-- The title card is Metal Chrome's scene (assets/logo/metal-chrome.png) pixel for pixel but for the
-  version and PRESS ANY KEY rows (`BOOT_SCENE_VERSION_ROW`, `BOOT_SCENE_KEY_ROW`), which are black
-  in the scene so the text reads as on any black row.
+- The full-screen title cards (THE OSCILLATOR, THE SCENE, THE CHIP) and the CARDS setting are gone.
+  The owner decided they add little and slow down switching between views: CHIP and SCENE now open
+  at once from the menu and HOME from the menu returns to LIVE directly. Removing them frees about
+  20 KB of flash, their bitmaps, glow and tests included.
+- SETTINGS' byte 1 stays in the record as a reserved byte (written as 0, ignored on read), so the
+  layout and schema version are unchanged and every older record still loads.
+- The boot's own title card (the Metal Chrome scene with the version and PRESS ANY KEY) is not one
+  of them and stays, with the bitmap codec, the screen's reveal and its banded cut.
 
 ### Help card
 
@@ -5522,7 +5570,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   scroller) its busiest `ui_poll` measured 72k and 118k instructions a frame with the rendering of
   its 87 cells, 3.0M a second (1.2 % of 240 MHz): bounded at 80,000 and 130,000.
 - The wipe into About is started at every 5 ms phase against the firmware's frames. Revealing a
-  bitmap a few rows a frame (all of the title card, About's lettering band) costs no more than
+  bitmap a few rows a frame (all of the boot's title card, About's lettering band) costs no more than
   revealing cells: measured with Cracktro Chrome, About's wipe 65k busiest `ui_poll` and 118k a
   frame, the title card's 30k and 134k (4 rows of its scene and the edge a frame); bounded at
   `WIPE_WORST_POLL` 72,000 and `WIPE_PER_FRAME` 150,000 (host/crates/emu-gate/tests/screen.rs).
@@ -5580,7 +5628,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `bitmap_codec`'s run dictionary (a pool's first fifteen bytes are its codebook) and checkpointed
   row packets (docs/art/bitmap-codec.md) let any row or span decode without another row or a scratch
   buffer; a byte holds a run of at most 16 pixels; checkpoints at an interval each pool carries
-  (`GRID_BITMAP_SEEK`, 64, is the tools' default: the title cards use 64, the logos 256, RED MOON
+  (`GRID_BITMAP_SEEK`, 64, is the tools' default: the logos use 256, RED MOON
   RITE 32). Pools are shared across images or kept independent, whichever is smaller.
   `byte_run_size` is the original byte-run coding, kept as the size comparison's control.
 - Each logo's run pool is its own array, named after its first logo: the firmware links only the
@@ -5651,7 +5699,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - A second bindgen pass for `--target=i686-unknown-none` gives the structs' field offsets and
   sizes as the pi32v2 lays them out (ILP32: 4-byte pointers and ints, no 64-bit fields in them),
   from bindgen's layout assertions (`sidou_sys::ilp32`). The emulator tests read the firmware's
-  chips, MIDI state, the LIVE view's tap, the title card and the song transport from its RAM with
+  chips, MIDI state, the LIVE view's tap and the song transport from its RAM with
   them; the host's own layout differs wherever a struct holds a pointer.
 - The 6502 is built twice more for the tests only, with every operand access through the hooks
   (`CPU6502_HOOK_ALL`) so that Tom Harte's tests check each access's cycle stamp:
@@ -5939,9 +5987,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - `tools/sysex-roundtrip` sends only manufacturer `7D 'SD'` frames, and its disposable file uses
   store type 0x7F, one nothing on the device reads (1 is a song, 2 a .sid, whose header the
   device checks, 3 SysEx's instrument staging; `app/store.h`).
-- `tools/readme-check` enforces the Firmware Hub's rules for `fmhub.json`: "what" is plain
-  English, at most 300 characters, no HTML, code or links; "kinds" one of six; and a minor or
-  major release changes the card.
+- `tools/readme-check` enforces the Firmware Hub's rules for `fmhub.json`
+  (thefirmwarehub.com/fmhub.md): only its eight fields, any other makes the hub drop the whole
+  file; "what" is plain English, at most 300 characters, no HTML, code or links; "kinds" one of
+  six; `play`, `editor` and `cheat` https links; `image` a square PNG of 240 to 1024 pixels, at
+  most 300 KB, in the repository (the boot title, `docs/media/sidou-card-240.png`); and a minor
+  or major release changes the card. `author` is left out: the hub then shows the name it
+  recorded when SIDOU joined.
 - `tools/fm1-unbrick-mac`: `scsiio/__init__.py` raises ImportError on macOS before anything
   else, so the script registers the package without running it, so that its `common.py`
   imports as on Linux, and supplies the `SCSIDev` that `jltech/uboot.py` imports. Detaching
@@ -5958,7 +6010,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Generators and their checks
 
 - The generated C files (`app/font.c` and `font.h`, `credits.c`, `demo_song.c`,
-  `logo_bitmap.c`, `title_card_bitmap.c`, `scene_rmr_art.c`, `live_cutoff.c`, `live_freq.c`)
+  `logo_bitmap.c`, `scene_rmr_art.c`, `live_cutoff.c`, `live_freq.c`)
   carry only their SPDX header and one "Generated by ...; do not edit" line naming the generator.
   Their up-to-date tests compare the whole file, and each generator's update variable rewrites it
   (`check_or_write(update)` both generates and lists stale files). Generated lines stay within
@@ -5969,8 +6021,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   song region) are generated from `sidou_tests::song_embed` (`SIDOU_SONG_UPDATE=1`). The song is
   a canonical GTS5 file (decision record 0007): GoatTracker's own load and save give it back byte
   for byte, so it opens in GoatTracker unchanged.
-- `app/logo_bitmap.c` and `app/title_card_bitmap.c` come from `assets/logo/`
-  (`SIDOU_LOGO_UPDATE=1` rewrites both); `app/live_cutoff.c` and `app/live_freq.c` from
+- `app/logo_bitmap.c` comes from `assets/logo/` (`SIDOU_LOGO_UPDATE=1` rewrites it); `app/live_cutoff.c` and `app/live_freq.c` from
   `SIDOU_CUTOFF_TABLE_UPDATE=1` and `SIDOU_FREQ_TABLE_UPDATE=1`.
 
 ### sidou-sysex
@@ -5992,6 +6043,63 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   characters. `--pack` writes the tunes' uploads end to end into one `pack.syx` (the starter
   pack), a refused tune named on stderr and left out; emu-gate's `psid_store` loads the pack into
   an emulated store.
+
+### MIDIbox SID import
+
+`sidou-patch`'s `mbsid` reads MIDIbox SID V2 patch dumps into the shared patch model, and
+`sidou-sysex import` tells the two formats apart by the first message's header (`F0 00 00 7E 4B`
+is MIDIbox SID, anything else goes to the SidStation reader). The MIDIbox sources are "personal
+non-commercial use only", so they were read as a specification and no code was copied.
+
+Sources, each checked against the others:
+
+| Source | What it settles |
+|---|---|
+| [midibox/mios8](https://github.com/midibox/mios8) `apps/synthesizers/midibox_sid_v2/doc/mbsidv2_sysex_implementation.txt`, commit `98251ece` | The dump (`02`), the 512-byte layout, the Lead engine's fields |
+| the same tree's `src/app_defines.h` (`SID_Ix_*`) | Every offset, the same as the text, plus `OSC_DTM` at `0x0DE` |
+| the same tree's `src/sid_se.inc` (`SIDSE_Pitch_*`, `SIDSE_Filter`), `src/sid_se_l.inc` (`SIDSE_L_MOD`, `SIDSE_L_WT_*`) | Pitch and detune arithmetic, the 12-bit cutoff, a path at depth `0x80` doing nothing, a wavetable step's relative zero |
+| [midibox/mios32](https://github.com/midibox/mios32) `apps/synthesizers/midibox_sid_v3/core/MbSidStructs.h` (`sid_patch_t`), `MbSidSysEx.cpp`, `doc/mbsidv3_sysex_implementation.txt`, commit `44d8e6af` | The same layout as a C struct; the checksum and the low nibble first |
+| the same tree's `tools/v2_to_c.pl` and `core/sid_bank_preset_a.inc` | A second reader of the dump; the vintage bank decoded by hand matches the `.inc` byte for byte |
+| `mios8` `apps/synthesizers/midibox_sid_v2/presets/*.syx` (4 banks of 128) | Real data: every checksum matches, 1036 bytes a message |
+
+The dump: `F0 00 00 7E 4B <device> 02 <type> <bank> <patch>`, 1024 bytes holding the patch's
+512 bytes low nibble first, a checksum that brings the nibbles' sum to zero modulo 128, `F7`.
+Types `00` to `0F` are patches (`08` the edit buffer), `70` ensembles; other commands and types are
+skipped. Bytes `0x00` to `0x4F` are common to every engine; `0x10` bits 1:0 pick the engine.
+
+The Lead engine is two SIDs of three voices. SIDOU plays the left one:
+
+| MIDIbox SID (Lead) | Model |
+|---|---|
+| Name `0x00`, 16 characters | The name; a blank one is named after its slot (`B045`) |
+| `0x50` bit 0 | `legato`; every Lead patch layers its voices on one key (`VoiceMode::Single`) |
+| Voice `0x61` bits 3:0, 5, 6 (tri, saw, pulse, noise; sync; ring) | `control` in SID layout |
+| Voice `0x61` bit 4, filter `0x54` bit 7 (OSC3 off), no waveform | The oscillator is not active |
+| Voice `0x62`, `0x63` | ADSR (sustain in the high nibble, as the SID takes it) |
+| Voice `0x64`, `0x65` 12-bit pulse | `pulse_width_start`, to the nearest 32 |
+| Transpose `0x68` (`0x40` is zero), finetune `0x69`, pitch range `0x6A`, detune `0x51` | `transpose` and `detune`, folded: whole semitones in `transpose`, the rest in 64ths |
+| Pitch range `0x6A` | `bend_range` (semitones a full bend) |
+| Filter `0x54` bits 2:0, 6:4; `0x55`/`0x56` 12-bit cutoff; `0x57` | Routing, mode, cutoff (12 bits to the model's 7), resonance (its top nibble) |
+
+Pitch follows V2's engine: an offset of `pitchrange * (2 * (finetune - 0x80) + d) / 256`
+semitones, with d the detune `0x51`'s share for the voice (OSC1 `+d/4`, OSC2 `+d`, OSC3 `-d`),
+and no offset at all at pitch range 0. The V3 port scales finetune by a quarter of that; V2 is the
+engine these patches were made on, so V2 wins.
+
+Lost, and reported in the import's loss lines (`Unmapped` in the model, `Loss::Unmapped` in
+`lab.rs`): a modulation path with a non-zero operator, depth other than `0x80` and a target; a
+wavetable sequencer with an assignment and a step in its range other than `0x40`; an arpeggio or a
+portamento on a sounding voice; filter key tracking on a used filter; a right SID unlike the
+left. ENV1/ENV2 and the six LFOs act only through modulation paths, so the paths stand for them.
+Left out silently: volume, oscillator phase, `OSC_DTM`'s super-saw modes, the trigger matrix,
+knobs, external parameters, the SwinSID fields, the envelope delay, WTO and SusKey, the filter's
+interpolation bit and the hardware flags (the SID model is chosen with `--8580`). Bassline, Drum
+and Multi patches are refused with their slot, name and engine; a damaged checksum is refused
+the same way, and the rest of the bank still imports.
+
+A filter envelope is a modulation path from ENV1 or ENV2 to the cutoff on the MIDIbox, so it is a
+loss today; mapping that one shape of path to the model's filter envelope is the obvious next
+gain.
 
 ### sidou-pack
 

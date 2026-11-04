@@ -130,7 +130,8 @@ fn a_tunes_frames_are_put_data_and_end_with_its_length_crc_and_type() {
 fn the_cli_writes_one_syx_a_tune_and_refuses_the_rest_by_name() {
     let dir = std::env::temp_dir().join(format!("sidou-sysex-cli-{}", std::process::id()));
     let out = dir.join("out");
-    std::fs::create_dir_all(&out).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
     let a = tune(b"Same Title");
     let b = tune(b"same title");
     let mut rsid = tune(b"Real");

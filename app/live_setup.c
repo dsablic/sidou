@@ -126,6 +126,16 @@ static void load_preset(live* l, uint8_t index) {
     l->filter_lfo = 0;
     l->reso_link = 0;
     l->pwm_link = 0;
+    l->layers = 0;
+    l->layer_edit = 0;
+    l->fenv_depth = 0;
+    l->fenv_ad = 0;
+    l->fenv_sr = 0;
+    l->fenv_t_us = LIVE_FENV_IDLE;
+    l->fenv_gate_us = LIVE_FENV_IDLE;
+    memset(l->transpose, 0, sizeof l->transpose);
+    memset(l->detune, 0, sizeof l->detune);
+    memset(l->layer, 0, sizeof l->layer);
     l->lfo_phase = LFO_CENTRE;
     l->arp_on = 0;
     l->arp_rate = LIVE_ARP_RATE_DEFAULT;
@@ -372,6 +382,13 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->filter_lfo = l->filter_lfo;
     e->reso_link = l->reso_link;
     e->pwm_link = l->pwm_link;
+    e->layers = l->layers;
+    memcpy(e->transpose, l->transpose, sizeof e->transpose);
+    memcpy(e->detune, l->detune, sizeof e->detune);
+    memcpy(e->layer, l->layer, sizeof e->layer);
+    e->fenv_depth = l->fenv_depth;
+    e->fenv_ad = l->fenv_ad;
+    e->fenv_sr = l->fenv_sr;
     e->valid = 1;
 }
 
@@ -409,6 +426,13 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->filter_lfo = e->filter_lfo;
     l->reso_link = e->reso_link;
     l->pwm_link = e->pwm_link;
+    l->layers = e->layers;
+    memcpy(l->transpose, e->transpose, sizeof l->transpose);
+    memcpy(l->detune, e->detune, sizeof l->detune);
+    memcpy(l->layer, e->layer, sizeof l->layer);
+    l->fenv_depth = e->fenv_depth;
+    l->fenv_ad = e->fenv_ad;
+    l->fenv_sr = e->fenv_sr;
 }
 
 static void user_leave(live* l) {
@@ -550,6 +574,22 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_FILTER_LFO] = l->filter_lfo;
     out[LAB_SOUND_RESO_LINK] = (uint8_t)l->reso_link;
     out[LAB_SOUND_PWM_LINK] = (uint8_t)l->pwm_link;
+    out[LAB_SOUND_LAYERS] = l->layers;
+    for (uint32_t n = 0; n < LIVE_VOICES; n++) {
+        uint8_t* t = &out[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
+        t[0] = (uint8_t)l->transpose[n];
+        t[1] = (uint8_t)l->detune[n];
+    }
+    for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
+        uint8_t* v = &out[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
+        v[0] = l->layer[n].control;
+        v[1] = l->layer[n].attack_decay;
+        v[2] = l->layer[n].sustain_release;
+        put16(v, 3u, l->layer[n].pulse_width);
+    }
+    out[LAB_SOUND_FILTER_ENV] = (uint8_t)l->fenv_depth;
+    out[LAB_SOUND_FILTER_ENV_AD] = l->fenv_ad;
+    out[LAB_SOUND_FILTER_ENV_SR] = l->fenv_sr;
 }
 
 static const struct {
@@ -580,14 +620,51 @@ static int8_t link_of(uint8_t b) {
     return (int8_t)(v < -LIVE_LINK_MAX ? -LIVE_LINK_MAX : v > LIVE_LINK_MAX ? LIVE_LINK_MAX : v);
 }
 
+static int8_t clamped(uint8_t b, int32_t max) {
+    int32_t v = (int8_t)b;
+    return (int8_t)(v < -max ? -max : v > max ? max : v);
+}
+
+LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
+    for (uint32_t n = 0; n < LIVE_VOICES; n++) {
+        const uint8_t* t = &in[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
+        l->transpose[n] = clamped(t[0], LIVE_TRANSPOSE_MAX);
+        l->detune[n] = clamped(t[1], LIVE_DETUNE_CENTS);
+    }
+    for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
+        const uint8_t* v = &in[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
+        uint32_t pw = get16(v, 3u);
+        l->layer[n].control = (uint8_t)(v[0] & ~0x09u);
+        l->layer[n].attack_decay = v[1];
+        l->layer[n].sustain_release = v[2];
+        l->layer[n].pulse_width = (uint16_t)(pw < LIVE_PULSE_WIDTH_MAX ? pw : LIVE_PULSE_WIDTH_MAX);
+    }
+    l->fenv_depth = clamped(in[LAB_SOUND_FILTER_ENV], LIVE_FENV_DEPTH_MAX);
+    l->fenv_ad = in[LAB_SOUND_FILTER_ENV_AD];
+    l->fenv_sr = in[LAB_SOUND_FILTER_ENV_SR];
+}
+
+LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);
+
 LIVE_COLD void live_sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
+    uint8_t edit = l->layer_edit;
+    l->layer_edit = 0;
+    sound_apply(l, in);
+    live_layer_edit_set(l, edit);
+}
+
+LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->settings_dirty = 1;
     uint8_t mono = in[LAB_SOUND_MONO_SYNC] ? 1u : 0u;
-    if (mono != l->mono_sync) {
+    uint8_t layers = mono || in[LAB_SOUND_LAYERS] > LIVE_LAYERS_MAX ? 0u : in[LAB_SOUND_LAYERS];
+    layers_apply(l, in);
+    if (mono != l->mono_sync || layers != l->layers) {
         live_all_notes_off(l);
         l->mono_sync = mono;
+        l->layers = layers;
         li_write_controls(l);
     }
+    li_write_envelopes(l);
     uint32_t base = get16(in, LAB_SOUND_SYNC_BASE);
     int32_t semis = (int8_t)in[LAB_SOUND_SYNC_SEMIS];
     semis = semis < -LIVE_RATIO_SEMIS ? -LIVE_RATIO_SEMIS
@@ -891,6 +968,135 @@ __attribute__((noinline, unused)) static uint32_t expert_get(const live* l, uint
     return sid_character_expert_get(&c, l->model_req, f);
 }
 
+static uint8_t* edited_control(live* l) {
+    return l->layer_edit ? &l->layer[l->layer_edit - 1u].control : &l->control;
+}
+
+static uint8_t* edited_attack_decay(live* l) {
+    return l->layer_edit ? &l->layer[l->layer_edit - 1u].attack_decay : &l->attack_decay;
+}
+
+static uint8_t* edited_sustain_release(live* l) {
+    return l->layer_edit ? &l->layer[l->layer_edit - 1u].sustain_release : &l->sustain_release;
+}
+
+static void set_pulse_width(live* l, uint16_t value) {
+    if (!l->layer_edit) {
+        li_set_pulse_width(l, value);
+        return;
+    }
+    l->layer[l->layer_edit - 1u].pulse_width = value;
+    li_update_pws(l);
+}
+
+LIVE_COLD uint32_t live_layers_set(live* l, uint32_t extra) {
+    if (l->mono_sync || extra > LIVE_LAYERS_MAX) {
+        return 0;
+    }
+    if (extra == l->layers) {
+        return 1;
+    }
+    live_all_notes_off(l);
+    for (uint32_t n = l->layers; n < extra; n++) {
+        l->layer[n] = (live_layer){l->control, l->attack_decay, l->sustain_release, l->pulse_width};
+        l->transpose[n + 1u] = 0;
+        l->detune[n + 1u] = 0;
+    }
+    l->layers = (uint8_t)extra;
+    if (l->layer_edit > extra) {
+        l->layer_edit = (uint8_t)extra;
+    }
+    l->settings_dirty = 1;
+    li_write_envelopes(l);
+    li_write_controls(l);
+    li_update_pws(l);
+    return 1;
+}
+
+static uint8_t nibble_set(uint8_t byte, int high, uint32_t value) {
+    uint32_t v = value < 15u ? value : 15u;
+    return (uint8_t)(high ? (byte & 0x0fu) | v << 4 : (byte & 0xf0u) | v);
+}
+
+void live_filter_env_set(live* l, uint32_t field, uint32_t value) {
+    l->settings_dirty = 1;
+    switch (field) {
+    case LIVE_FENV_DEPTH: {
+        int32_t d = (int32_t)value - LIVE_FENV_DEPTH_MAX;
+        l->fenv_depth = (int8_t)(d > LIVE_FENV_DEPTH_MAX ? LIVE_FENV_DEPTH_MAX : d);
+        break;
+    }
+    case LIVE_FENV_ATTACK: l->fenv_ad = nibble_set(l->fenv_ad, 1, value); break;
+    case LIVE_FENV_DECAY: l->fenv_ad = nibble_set(l->fenv_ad, 0, value); break;
+    case LIVE_FENV_SUSTAIN: l->fenv_sr = nibble_set(l->fenv_sr, 1, value); break;
+    default: l->fenv_sr = nibble_set(l->fenv_sr, 0, value); break;
+    }
+    li_update_cutoff(l);
+}
+
+uint32_t live_filter_env(const live* l, uint32_t field) {
+    switch (field) {
+    case LIVE_FENV_DEPTH: return (uint32_t)(l->fenv_depth + LIVE_FENV_DEPTH_MAX);
+    case LIVE_FENV_ATTACK: return l->fenv_ad >> 4;
+    case LIVE_FENV_DECAY: return l->fenv_ad & 15u;
+    case LIVE_FENV_SUSTAIN: return l->fenv_sr >> 4;
+    default: return l->fenv_sr & 15u;
+    }
+}
+
+uint8_t live_layer_control_of(const live* l, uint32_t v) {
+    return layer_control(l, (int)v);
+}
+
+uint8_t live_edit_control(const live* l) {
+    return layer_control(l, l->layer_edit);
+}
+
+uint16_t live_edit_pulse_width(const live* l) {
+    return layer_pulse_width(l, l->layer_edit);
+}
+
+uint8_t live_edit_attack_decay(const live* l) {
+    return layer_attack_decay(l, l->layer_edit);
+}
+
+uint8_t live_edit_sustain_release(const live* l) {
+    return layer_sustain_release(l, l->layer_edit);
+}
+
+void live_layer_edit_set(live* l, uint32_t n) {
+    l->layer_edit = (uint8_t)(n < l->layers ? n : l->layers);
+}
+
+static int32_t clamp_signed(int32_t v, int32_t max) {
+    return v < -max ? -max : v > max ? max : v;
+}
+
+static void retune(live* l) {
+    l->settings_dirty = 1;
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        li_update_freq(l, v);
+    }
+}
+
+void live_layer_transpose_set(live* l, int32_t semis) {
+    l->transpose[l->layer_edit] = (int8_t)clamp_signed(semis, LIVE_TRANSPOSE_MAX);
+    retune(l);
+}
+
+void live_layer_detune_set(live* l, int32_t cents) {
+    l->detune[l->layer_edit] = (int8_t)clamp_signed(cents, LIVE_DETUNE_CENTS);
+    retune(l);
+}
+
+int32_t live_layer_transpose(const live* l) {
+    return l->transpose[l->layer_edit];
+}
+
+int32_t live_layer_detune(const live* l) {
+    return l->detune[l->layer_edit];
+}
+
 void live_param_set(live* l, uint32_t param, uint32_t value) {
     if (param == LIVE_PARAM_CUTOFF) {
         l->settings_dirty = 1;
@@ -909,40 +1115,40 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     }
     switch (param) {
     case LIVE_PARAM_RESONANCE: li_set_resonance(l, (uint8_t)value); break;
-    case LIVE_PARAM_PULSE_WIDTH: li_set_pulse_width(l, (uint16_t)value); break;
+    case LIVE_PARAM_PULSE_WIDTH: set_pulse_width(l, (uint16_t)value); break;
     case LIVE_PARAM_VOLUME: live_set_master(l, (uint16_t)value); break;
     case LIVE_PARAM_WAVEFORM:
-        if (set_bits(&l->control, CTRL_WAVEFORM, value << 4)) {
+        if (set_bits(edited_control(l), CTRL_WAVEFORM, value << 4)) {
             li_write_controls(l);
         }
         break;
     case LIVE_PARAM_RING:
-        if (set_bits(&l->control, CTRL_RING, value ? CTRL_RING : 0u)) {
+        if (set_bits(edited_control(l), CTRL_RING, value ? CTRL_RING : 0u)) {
             li_write_controls(l);
         }
         break;
     case LIVE_PARAM_SYNC:
-        if (set_bits(&l->control, CTRL_SYNC, value ? CTRL_SYNC : 0u)) {
+        if (set_bits(edited_control(l), CTRL_SYNC, value ? CTRL_SYNC : 0u)) {
             li_write_controls(l);
         }
         break;
     case LIVE_PARAM_ATTACK:
-        if (set_bits(&l->attack_decay, 0xf0u, value << 4)) {
+        if (set_bits(edited_attack_decay(l), 0xf0u, value << 4)) {
             li_write_envelopes(l);
         }
         break;
     case LIVE_PARAM_DECAY:
-        if (set_bits(&l->attack_decay, 0x0fu, value)) {
+        if (set_bits(edited_attack_decay(l), 0x0fu, value)) {
             li_write_envelopes(l);
         }
         break;
     case LIVE_PARAM_SUSTAIN:
-        if (set_bits(&l->sustain_release, 0xf0u, value << 4)) {
+        if (set_bits(edited_sustain_release(l), 0xf0u, value << 4)) {
             li_write_envelopes(l);
         }
         break;
     case LIVE_PARAM_RELEASE:
-        if (set_bits(&l->sustain_release, 0x0fu, value)) {
+        if (set_bits(edited_sustain_release(l), 0x0fu, value)) {
             li_write_envelopes(l);
         }
         break;
@@ -1055,15 +1261,15 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     switch (param) {
     case LIVE_PARAM_CUTOFF: return l->cutoff;
     case LIVE_PARAM_RESONANCE: return l->resonance;
-    case LIVE_PARAM_PULSE_WIDTH: return l->pulse_width;
+    case LIVE_PARAM_PULSE_WIDTH: return live_edit_pulse_width(l);
     case LIVE_PARAM_VOLUME: return l->master;
-    case LIVE_PARAM_WAVEFORM: return l->control >> 4;
-    case LIVE_PARAM_RING: return (l->control & CTRL_RING) ? 1u : 0u;
-    case LIVE_PARAM_SYNC: return (l->control & CTRL_SYNC) ? 1u : 0u;
-    case LIVE_PARAM_ATTACK: return l->attack_decay >> 4;
-    case LIVE_PARAM_DECAY: return l->attack_decay & 0x0fu;
-    case LIVE_PARAM_SUSTAIN: return l->sustain_release >> 4;
-    case LIVE_PARAM_RELEASE: return l->sustain_release & 0x0fu;
+    case LIVE_PARAM_WAVEFORM: return live_edit_control(l) >> 4;
+    case LIVE_PARAM_RING: return (live_edit_control(l) & CTRL_RING) ? 1u : 0u;
+    case LIVE_PARAM_SYNC: return (live_edit_control(l) & CTRL_SYNC) ? 1u : 0u;
+    case LIVE_PARAM_ATTACK: return layer_attack_decay(l, l->layer_edit) >> 4;
+    case LIVE_PARAM_DECAY: return layer_attack_decay(l, l->layer_edit) & 0x0fu;
+    case LIVE_PARAM_SUSTAIN: return layer_sustain_release(l, l->layer_edit) >> 4;
+    case LIVE_PARAM_RELEASE: return layer_sustain_release(l, l->layer_edit) & 0x0fu;
     case LIVE_PARAM_FILTER_MODE: return (l->filter_mode >> 4) & 7u;
     case LIVE_PARAM_FILTER_VOICES: return l->filter_voices & 7u;
     case LIVE_PARAM_MODEL: return l->model_req == SID_MODEL_8580 ? 1u : 0u;

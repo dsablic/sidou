@@ -82,7 +82,7 @@ struct Pages {
 
 impl Pages {
     fn new(v: &'static view) -> Self {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         let model = Model::device();
         let mut q = Box::<Queue>::default();
         let transport = Box::new(song_transport {

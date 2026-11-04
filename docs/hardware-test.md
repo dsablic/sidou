@@ -354,7 +354,7 @@ which printed control did it.
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] | *Emulator:* `sidou-tests/tests/app/fx_live.rs::edit_held_turns_k1_k4_into_the_selected_slots_controls` (SCL steps the slot and wraps), `sidou-tests/tests/app/live_view.rs::the_header_lanes_knobs_and_slots_show_the_instrument` (the slot line on LIVE); *device-only:* the printed control |
 | ENV (button 4) | on LIVE opens LAB at its ENVELOPE page (LFO, button 5, at MOD); in the other views but LAB nothing | | [ ] | *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`, `sidou-tests/tests/app/views.rs::the_panel_plays_the_instrument_as_before_in_every_view` (nothing outside LIVE and LAB); *device-only:* the printed control |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on; on LIVE the large popup names the effect over the control and its value (`OVERDRIVE`, `DRIVE 91`) with a bar | | [ ] | *Emulator:* `sidou-tests/tests/app/fx_live.rs::edit_held_turns_k1_k4_into_the_selected_slots_controls` (Amount, A, B, Mix, EDIT LED lit while the slot is on), `sidou-tests/tests/app/chip_view.rs::the_edit_shortcut_turns_the_selected_slot_in_every_view`, `emu-gate/tests/screen.rs::edit_held_relabels_the_knob_row`, `sidou-tests/tests/app/popup.rs::edit_and_a_knob_on_live_open_the_effects_popup`, `emu-gate/tests/screen.rs::edit_and_a_knob_on_live_open_the_effects_popup` (golden `live-edit-popup`); *device-only:* the printed control, the popup readable at arm's length |
-| HOME (button 8) | acts on its release: from LIVE, the menu (a wipe down from the top); held 600 ms it opens the help card of the view that shows instead (below); in the menu, back to LIVE (a wipe up from the bottom; behind THE OSCILLATOR's title card only with CARDS at ALWAYS, below) | | [ ] | *Emulator:* `emu-gate/tests/screen.rs::a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom`, `sidou-tests/tests/app/views.rs::home_opens_the_menu_and_goes_back_one_view`, `emu-gate/tests/screen.rs::holding_home_shows_the_help_card_and_a_tap_still_goes_home` (600 ms), `emu-gate/tests/screen.rs::cards_always_and_off` (THE OSCILLATOR's card only with ALWAYS); *device-only:* the printed control and the real key's hold timing |
+| HOME (button 8) | acts on its release: from LIVE, the menu (a wipe down from the top); held 600 ms it opens the help card of the view that shows instead (below); in the menu, back to LIVE directly (a wipe up from the bottom) | | [ ] | *Emulator:* `emu-gate/tests/screen.rs::a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom`, `sidou-tests/tests/app/views.rs::home_opens_the_menu_and_goes_back_one_view`, `emu-gate/tests/screen.rs::holding_home_shows_the_help_card_and_a_tap_still_goes_home` (600 ms), `emu-gate/tests/screen.rs::chip_and_scene_open_straight_from_the_menu_and_home_returns_to_live`; *device-only:* the printed control and the real key's hold timing |
 | SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] | *Emulator:* `sidou-tests/tests/app/save_key.rs::a_clean_press_and_release_saves_at_the_release`, `sidou-tests/tests/app/save_key.rs::another_button_or_a_knob_while_save_is_down_spoils_the_save`, `emu-gate/tests/midi.rs::midi_learn_over_trs_binds_cc_14_to_k1s_cutoff` (SAVE held + knob learns, SAVE alone does not), `emu-gate/tests/settings.rs::saves_press_on_live_stores_the_settings_within_a_second`; *device-only:* the printed control |
 | SEQ (button 11) | from any view, STEP the first time after power-on (later the song view used last); then TRACKER, ORDER, INSTR, TABLE and back to STEP. Each page's primary values are readable at 2×; HOME returns to the previous non-song view | | [ ] | *Emulator:* `sidou-tests/tests/app/song_view.rs::seq_reopens_the_song_view_used_last` (STEP the first time), `sidou-tests/tests/app/song_view.rs::seq_opens_the_tracker_from_any_view_and_home_goes_back` (TRACKER, ORDER, INSTR, TABLE, STEP; HOME goes back), `emu-gate/tests/first_use.rs::tracker_rec_enters_a_note_that_plays_and_seq_walks_every_song_view`; *device-only:* the printed control, readability at 2x at arm's length |
 | SELECT / ALGORITHM, in TRACKER | SELECT moves one row (EDIT held: an 8-row page); ALGORITHM shows V2 in cyan, V3 in light green, then V1 again; the cursor's voice and audition follow the voice shown | | [ ] | *Emulator:* `sidou-tests/tests/app/tracker_view.rs::select_moves_rows_and_edit_select_moves_a_readable_page` (a row, EDIT a page), `sidou-tests/tests/app/tracker_view.rs::algorithm_steps_the_shown_voice_and_round` (V2 in its colour, V3, V1), `sidou-tests/tests/app/tracker_view.rs::the_keys_audition_on_the_shown_voice`; *device-only:* the colours as seen on the LCD |
@@ -369,8 +369,8 @@ which printed control did it.
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 turns grey and says MUT in red beside the pattern (a muted voice shown as a strip: grey and short), LIVE's top line M1 in red in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL beside V1's pattern | | [ ] | *Emulator:* `emu-gate/tests/first_use.rs::glo_mutes_a_lane_and_only_that_lane_falls_silent` (muted lane silent, only that lane), `sidou-tests/tests/app/song_view.rs::glo_and_the_leftmost_keys_mute_and_solo_and_sound_nothing`, `sidou-tests/tests/app/tracker_view.rs::a_muted_voice_is_grey_in_the_header_and_its_strip_and_says_so`, `emu-gate/tests/screen.rs::live_shows_the_song_and_the_mutes` (M1 on LIVE); *device-only:* the printed control |
 | SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, SCENE, SONG, LAB, SIDS, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up`, `emu-gate/tests/screen.rs::the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink`, `sidou-tests/tests/app/views.rs::the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video`; *device-only:* the printed control |
 | SAVE (button 9), in the menu | the menu's OK: opens the item under the selection (CHIP, TRACKER, SCENE, SONG, LAB, SIDS, SETTINGS, STATUS, MIDI, CHARSET, ABOUT); on PRE or OCTAVE nothing happens and no SAVED toast shows | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::save_opens_the_menus_item_and_does_nothing_on_a_value`, `sidou-tests/tests/app/help_view.rs::save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`, `sidou-tests/tests/app/save_key.rs::saves_press_saves_the_settings_in_scene_status_and_chip_not_in_the_menu` (no SAVED toast) |
-| ALGORITHM (encoder 1), in SETTINGS | changes the item under the selection (KEYS, SOUNDS, ROWS, CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; STORE; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, SETTINGS included, changes colours at once; REC); HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::settings_draws_its_seven_items_like_the_menu_and_home_goes_back`, `sidou-tests/tests/app/title_card.rs::the_cards_option_steps_off_once_always` (CARDS), `sidou-tests/tests/app/theme.rs::the_menu_item_turns_the_theme_and_the_menu_follows_it` (THEME), `emu-gate/tests/screen.rs::live_matches_its_golden_image_in_the_c64_theme_and_back`, `sidou-tests/tests/app/tracker_view.rs::scroll_keeps_the_bar_on_the_windows_row_5` (ROWS), `sidou-tests/tests/app/save_key.rs::reset_asks_on_save_only_save_again_resets_and_saves_at_once_and_cancels_write_nothing`; *emulator (no test yet):* KEYS, SOUNDS, STORE and REC stepping one value a detent in one test; *device-only:* the colours of the C64 theme on the real LCD |
-| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_menu_changes_the_preset_and_octave`, `sidou-tests/tests/app/chip_view.rs::chip_opens_from_the_menu_behind_the_chip_card`, `emu-gate/tests/screen.rs::the_glyph_sheet_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::entering_scene_names_the_piece`, `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`; *device-only:* the About scroller and fades as seen on the LCD |
+| ALGORITHM (encoder 1), in SETTINGS | changes the item under the selection (KEYS, SOUNDS, ROWS; STORE; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, SETTINGS included, changes colours at once; REC); HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::settings_draws_its_seven_items_like_the_menu_and_home_goes_back`, `sidou-tests/tests/app/theme.rs::the_menu_item_turns_the_theme_and_the_menu_follows_it` (THEME), `emu-gate/tests/screen.rs::live_matches_its_golden_image_in_the_c64_theme_and_back`, `sidou-tests/tests/app/tracker_view.rs::scroll_keeps_the_bar_on_the_windows_row_5` (ROWS), `sidou-tests/tests/app/save_key.rs::reset_asks_on_save_only_save_again_resets_and_saves_at_once_and_cancels_write_nothing`; *emulator (no test yet):* KEYS, SOUNDS, STORE and REC stepping one value a detent in one test; *device-only:* the colours of the C64 theme on the real LCD |
+| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3); clockwise on CHIP opens the CHIP view at once, on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_menu_changes_the_preset_and_octave`, `sidou-tests/tests/app/chip_view.rs::chip_opens_from_the_menu`, `emu-gate/tests/screen.rs::the_glyph_sheet_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back`, `emu-gate/tests/screen.rs::entering_scene_names_the_piece`, `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`; *device-only:* the About scroller and fades as seen on the LCD |
 | SELECT (encoder 0), on STATUS | turns its three pages, either way round (`1/3`, `2/3`, `3/3` in the title): 1 the knobs with their bars (the 6502's rows with a tune loaded), 2 the chip, preset, octave and notes, 3 the effect slots; all at 2×; a new opening starts on page 1; the help card (hold HOME) names SELECT | | [ ] | *Emulator:* `sidou-tests/tests/app/views.rs::the_status_view_shows_the_instrument`, `sidou-tests/tests/app/sid_view.rs::status_shows_the_6502s_rows_while_a_tune_is_loaded`, `emu-gate/tests/screen.rs::the_status_screen_matches_its_golden_image`; *device-only:* the 2× text readable on the LCD |
 | SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves tabs, CHIP, DIST, MOD, FX, EXPERT and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] | *Emulator:* `sidou-tests/tests/app/chip_view.rs::select_moves_the_focus_and_selects_the_slot` (CHIP, DIST, MOD, FX, EXPERT, clamped, the slot follows), `sidou-tests/tests/app/chip_view.rs::expert_is_one_more_select_stop_without_changing_the_selected_slot`; *emulator (no test yet):* the toast SLOT DIST, MOD, FX on a slot change and none for the slot already selected |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, at 3× under the tabs | | [ ] | *Emulator:* `sidou-tests/tests/app/chip_view.rs::algorithm_steps_the_profile_and_the_model_follows` (every profile in order, MODEL follows), `sidou-tests/tests/app/chip_view.rs::algorithm_steps_the_focused_slots_algorithm`, `sidou-tests/tests/app/live_instrument.rs::a_profile_change_reattacks_the_held_notes_on_the_new_chip`, `emu-gate/tests/screen.rs::chip_matches_its_golden_images`; *emulator (no test yet):* the filled USER slots after WORN 6581 in the same walk |
@@ -603,7 +603,7 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in S
   *Emulator:* `emu-gate/tests/screen.rs::the_status_screen_matches_its_golden_image`,
   `emu-gate/tests/screen.rs::about_opens_from_the_menu_and_home_goes_back` (what is drawn);
   *Device-only:* readable on the real LCD.
-- [ ] **MENU, SETTINGS and the MIDI page**: the menu's eleven items and SETTINGS' seven at 2×
+- [ ] **MENU, SETTINGS and the MIDI page**: the menu's eleven items and SETTINGS' nine at 2×
   read from arm's length; the MIDI page (HOME, then MIDI) is small text in the theme's colours
   (the items white, the help lines grey): note whether you can read its ten items in the hand.
   *Emulator:*
@@ -618,64 +618,6 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in S
   `sidou-tests/tests/app/theme.rs::every_role_is_a_palette_colour_and_reads_on_the_background_and_the_cursor_row`
   (contrast as computed from the palette); *device-only:* which colour pairs vanish on the real
   panel, dark grey on black especially (colours as seen).
-
-Title cards ([controls](reference/controls.md#title-cards)):
-
-- [ ] With CARDS at ONCE (the default, set it first in SETTINGS), the first SCENE and the first
-  CHIP after power-on play their card and the second opening of either does not; the way back
-  to LIVE plays none. With ALWAYS every opening plays it, THE OSCILLATOR's included.
-  *Emulator:* `emu-gate/tests/screen.rs::a_card_plays_once_then_not`,
-  `emu-gate/tests/screen.rs::cards_always_and_off`,
-  `sidou-tests/tests/app/title_card.rs::a_card_plays_once_then_not`.
-- [ ] Menu, SCENE: THE SCENE's card first (as `assets/logo/title-scene.png`):
-  a dark blue to purple dithered glow fading in over about a second in four
-  steps, THE and SCENE in the metal lettering wiping in from the left, a
-  second held, then SCENE cutting in from the top in bands. Look for wrong
-  colours, torn cells, a shimmer in the dither or a step of the glow that
-  flashes. Time from the turn to SCENE (about 2.6 s):
-  *Emulator:* `emu-gate/tests/screen.rs::title_cards_match_their_goldens_and_their_sources`,
-  `sidou-tests/tests/app/title_card.rs::the_glow_fades_in_through_its_dither_levels`,
-  `sidou-tests/tests/app/title_card.rs::scene_from_the_menu_shows_its_card_then_cuts_to_scene`
-  (frames, glow steps, sequence into SCENE, cell and SPI budgets in
-  `emu-gate/tests/screen.rs::title_cards_stay_within_their_budgets`); *device-only:* wrong
-  colours, torn cells, dither shimmer and a flashing glow step as seen on the real LCD, and the
-  stopwatch time to SCENE (a record).
-- [ ] Menu, CHIP: THE CHIP's card (as `assets/logo/title-chip.png`), then the
-  CHIP view in bands.
-  *Emulator:* `emu-gate/tests/screen.rs::title_cards_match_their_goldens_and_their_sources`,
-  `sidou-tests/tests/app/title_card.rs::chip_from_the_menu_shows_its_card_then_cuts_to_chip`.
-- [ ] CARDS at ALWAYS, menu, HOME: THE OSCILLATOR's card, then LIVE. Not at power-on, not
-  after the boot, and not when MIDI learn's frame closes.
-  *Emulator:* `emu-gate/tests/screen.rs::cards_always_and_off`,
-  `sidou-tests/tests/app/title_card.rs::home_from_the_menu_to_live_shows_the_oscillator_card`,
-  `sidou-tests/tests/app/title_card.rs::power_on_the_boot_and_back_from_a_view_to_the_menu_show_no_card`
-  (card on HOME to LIVE, none at power-on); *emulator (no test yet):* no card when MIDI learn's
-  frame closes under ALWAYS.
-- [ ] OCT+, FX or SELECT on a card: the view comes in at once, and the
-  octave, the chip and SCENE's piece stay as they were.
-  *Emulator:* `emu-gate/tests/screen.rs::a_control_skips_a_title_card_and_does_nothing_else`,
-  `sidou-tests/tests/app/title_card.rs::a_button_or_a_knob_skips_and_does_nothing_else`.
-- [ ] A note key on a card, and a note over MIDI: it sounds at once (no
-  delay against playing on LIVE) and the view comes in.
-  *Emulator:* `emu-gate/tests/screen.rs::a_note_plays_through_a_title_card_and_ends_it`,
-  `sidou-tests/tests/app/title_card.rs::a_note_plays_and_ends_the_card`.
-- [ ] A chord held and played through a card: no click, crackle or late note.
-  *Emulator (no test yet):* a chord held through a card: the audio equals the same chord with no
-  card sample for sample, and every note-on is within the latency bound
-  (`emu-gate/tests/latency.rs::a_note_on_reaches_the_buffer_within_a_block_and_a_poll_while_the_screen_redraws`
-  covers redraws, not cards); *device-only:* a click or crackle heard (speaker).
-- [ ] SETTINGS, CARDS turned counter-clockwise to OFF: SCENE and HOME back to LIVE
-  now wipe in with no card. Clockwise: ONCE, then ALWAYS, and the cards are back. Set OFF,
-  wait at least 6 s with no further changes and the keys released, then power-cycle:
-  CARDS stays OFF; set ALWAYS and power-cycle: it stays ALWAYS. Restore ALWAYS or ONCE for the
-  remaining title-card checks (they need every card to play).
-  *Emulator:* `sidou-tests/tests/app/title_card.rs::the_cards_option_steps_off_once_always`,
-  `emu-gate/tests/settings.rs::cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle`
-  (OFF after a quiet save and a power cycle),
-  `sidou-tests/tests/app/save_key.rs::a_menu_cards_change_is_background_saved_without_save`;
-  ALWAYS surviving a power cycle:
-  `sidou-tests/tests/app/settings.rs::cards_byte_reads_old_and_new`,
-  `sidou-tests/tests/app/settings.rs::every_persisted_value_round_trips_and_the_volume_does_not`.
 
 Help card ([controls](reference/controls.md#help)):
 
@@ -1174,7 +1116,7 @@ pedal, binds that instead. Stop the transport and keep pedals still while learni
   value; power off and on: CC 14 still moves cutoff. Forget it, wait for another quiet save,
   power-cycle: the binding stays forgotten.
   *Emulator:*
-  `emu-gate/tests/settings.rs::cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle`,
+  `emu-gate/tests/settings.rs::the_tracker_rows_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle`,
   `sidou-tests/tests/app/save_key.rs::a_learned_binding_alone_is_background_saved_through_views_frame`,
   `sidou-tests/tests/app/settings.rs::binding_forgetting_and_clearing_are_background_saved`.
 
@@ -1187,22 +1129,25 @@ store's range reads as FOREIGN, not as a blank store. Read the destructive forma
 below before deciding whether to format; nothing persists until then. SIDOU never formats
 it without the menu's confirmation; preserve wanted data with the previous firmware first.
 
-- [ ] Change CARDS, KEYS, SOUNDS and ROWS (TRACKER ROWS), the preset and a preset edit, the
+- [ ] Change KEYS, SOUNDS and ROWS (TRACKER ROWS), the preset and a preset edit, the
   chip profile and a character control, an effect algorithm and Mix, and the envelope mode (CC 26). Release
   notes and wait at least 6 s after the last change, without further persisted changes:
   no background-save toast. Power-cycle: all those values and the learn binding return.
   Octave returns to 0, no notes are held, LIVE opens and volume follows MASTER.
   *Emulator:*
-  `emu-gate/tests/settings.rs::cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle`,
+  `emu-gate/tests/settings.rs::the_tracker_rows_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle`,
   `sidou-tests/tests/app/settings.rs::every_persisted_value_round_trips_and_the_volume_does_not`,
   `sidou-tests/tests/app/settings.rs::every_parameter_setter_marks_a_change_for_the_background_save`,
   `sidou-tests/tests/app/user_profile.rs::a_save_target_stores_the_chips_setup_without_changing_the_chip`
   (the stored fields and a power cycle; volume not stored).
+- [ ] A settings record saved by an older firmware, with its CARDS byte set to OFF, ONCE or
+  ALWAYS, loads as before: every other value returns, and no title card plays (they are gone).
+  *Emulator:* `sidou-tests/tests/app/settings.rs::the_reserved_byte_is_written_as_zero_and_ignored_on_read`.
 - [ ] Make several changes less than 5 s apart, then stop: the settings save follows the
   last change, not the first. After a quiet save and power-cycle, the final values return.
   *Emulator:*
   `sidou-tests/tests/app/settings.rs::a_burst_of_changes_is_one_write_five_seconds_after_the_last`.
-- [ ] Change CARDS, then press and hold SAVE: no frame and no save yet. Release without
+- [ ] Change ROWS, then press and hold SAVE: no frame and no save yet. Release without
   turning an encoder or pressing another button: SAVED appears when the write commits,
   without the 5 s debounce. Power-cycle after the toast: the new value returns.
   *Emulator:*
@@ -1219,7 +1164,7 @@ it without the menu's confirmation; preserve wanted data with the previous firmw
   `emu-gate/tests/store.rs::no_erase_while_it_plays`,
   `sidou-tests/tests/app/user_profile.rs::a_store_that_waits_for_quiet_is_asked_again_then_forced_and_says_gaps`
   (wait for quiet, forced path, SAVED (GAPS), no forced gaps by a background save).
-- [ ] In the menu, STORE is immediately after CARDS and shows nK (the kilobytes free), excluding the
+- [ ] In the menu, STORE is immediately after ROWS and shows nK (the kilobytes free), excluding the
   reserve pool. ALGORITHM on a writable SIDOU store does not format it.
   *Emulator:* `sidou-tests/tests/app/save_key.rs::the_menus_store_shows_the_free_space` (STORE
   shows nK); *emulator (no test yet):* ALGORITHM on a writable SIDOU store leaving it
@@ -2404,8 +2349,8 @@ their goldens and budgets, the store, undo and the rolls) is named under each it
 only what it cannot see: the LCD at arm's length, the ear, the flash across a real power cut and
 the feel. Set up: the build on the unit, LIVE after the boot, a note key to hold.
 
-- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the six pages** (OSC,
-  ENVELOPE, FILTER, MOD, FX, MACRO); HOME goes back to LIVE.
+- [ ] **ENV, LFO and FX on LIVE open ENVELOPE, MOD and FX; SELECT steps the eight pages** (OSC,
+  ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS); HOME goes back to LIVE.
   *Emulator:* `emu-gate/tests/lab.rs::env_lfo_and_fx_on_live_open_lab_at_their_pages`,
   `emu-gate/tests/lab.rs::lab_opens_from_the_menu_and_home_goes_back_to_live`.
   *Device-only:* the pages' drawings readable at arm's length on the LCD, the lit card visible in

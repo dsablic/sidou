@@ -8,9 +8,6 @@ use sidou_sys::*;
 use crate::{cutoff_after, drain, piece_part, printable, Rig, Sent};
 
 const COLS: usize = GRID_COLS as usize;
-pub(crate) const CARDS_OFF: u8 = 0;
-pub(crate) const CARDS_ONCE: u8 = 1;
-pub(crate) const CARDS_ALWAYS: u8 = 2;
 pub(crate) const FRAME_MS: u32 = 40;
 const SETTLE_FRAMES_MAX: usize = 40;
 const POPUP_CLOSE_FRAMES_MAX: usize = 80;
@@ -49,7 +46,7 @@ fn song_attr(ui: &Ui, row: usize, col: usize, width: usize, fg: u8, bg: u8) {
 
 #[test]
 fn song_root_rebuilds_its_theme_and_moves_selection_without_reopening() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_song(&mut ui);
     song_frames(&mut ui);
     for id in [THEME_HIGH_CONTRAST, THEME_C64, THEME_HIGH_CONTRAST] {
@@ -80,7 +77,7 @@ fn song_root_rebuilds_its_theme_and_moves_selection_without_reopening() {
 
 #[test]
 fn song_directory_selection_and_hints_follow_theme_changes_after_scanning() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut flash = crate::store::fresh(809, STORE_WINDOW_MAX);
     for name in ["FIRST", "SECOND"] {
         assert_eq!(flash.file_now(name, &[0]), STORE_OK);
@@ -115,7 +112,7 @@ fn song_directory_selection_and_hints_follow_theme_changes_after_scanning() {
 
 #[test]
 fn song_name_editor_and_confirmation_keep_distinct_roles_when_the_theme_changes() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut io = Box::new(song_io {
         dirty: 1,
         ..Default::default()
@@ -179,7 +176,7 @@ fn encoders_never_confirm(ui: &mut Ui, io: *const song_io) {
 
 #[test]
 fn seq_while_the_song_loads_keeps_the_screen_clean_and_says_loading() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut io = Box::<song_io>::default();
     unsafe { views_song_io(&mut *ui.v, &mut *io) };
     open_song(&mut ui);
@@ -195,7 +192,7 @@ fn seq_while_the_song_loads_keeps_the_screen_clean_and_says_loading() {
 
 #[test]
 fn song_menu_has_load_new_save_as_delete_and_home_cancels_a_page() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_song(&mut ui);
     song_frames(&mut ui);
     assert_eq!(ui.top(), "SONG");
@@ -217,7 +214,7 @@ fn song_menu_has_load_new_save_as_delete_and_home_cancels_a_page() {
 
 #[test]
 fn song_pages_use_large_labels_and_reverse_selection_without_losing_changed_glyphs() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     open_song(&mut ui);
     song_frames(&mut ui);
     assert_eq!(ui.row(2), ui.row(3), "the SONG heading is two rows tall");
@@ -255,7 +252,7 @@ fn song_pages_use_large_labels_and_reverse_selection_without_losing_changed_glyp
 
 #[test]
 fn save_in_an_unnamed_song_opens_the_name_editor_not_settings() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_SEQ);
     ui.press(SAVE_KEY_BUTTON);
     assert_eq!(ui.top(), "SONG");
@@ -278,7 +275,7 @@ fn save_in_an_unnamed_song_opens_the_name_editor_not_settings() {
 
 #[test]
 fn new_asks_on_save_no_encoder_confirms_and_home_keeps_the_unsaved_song() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut io = Box::new(song_io {
         dirty: 1,
         ..Default::default()
@@ -303,7 +300,7 @@ fn new_asks_on_save_no_encoder_confirms_and_home_keeps_the_unsaved_song() {
 
 #[test]
 fn song_header_shows_saving_and_returns_to_tracker_after_save() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut io = Box::<song_io>::default();
     unsafe { views_song_io(&mut *ui.v, &mut *io) };
     ui.press(PANEL_BTN_SEQ);
@@ -321,7 +318,7 @@ fn song_header_shows_saving_and_returns_to_tracker_after_save() {
 
 #[test]
 fn song_pages_share_the_canvas_without_leaking_it_into_tracker() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     drain(&mut ui.g);
     ui.press(PANEL_BTN_SEQ);
     ui.frames_sent(30);
@@ -347,7 +344,7 @@ fn song_pages_share_the_canvas_without_leaking_it_into_tracker() {
 
 #[test]
 fn unnamed_save_works_when_the_song_view_already_fills_the_stack() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.top(), "CHIP");
@@ -363,7 +360,7 @@ fn unnamed_save_works_when_the_song_view_already_fills_the_stack() {
 
 #[test]
 fn load_directory_pages_and_delete_waits_for_save_again() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut flash = crate::store::fresh(808, STORE_WINDOW_MAX);
     for i in (0..10).rev() {
         assert_eq!(flash.file_now(&format!("SONG {i:02}"), &[0]), STORE_OK);
@@ -408,7 +405,7 @@ fn load_directory_pages_and_delete_waits_for_save_again() {
 #[test]
 fn the_load_list_names_its_files_at_2x_the_selected_in_a_reverse_bar_a_long_one_ending_in_an_arrow()
 {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut flash = crate::store::fresh(809, STORE_WINDOW_MAX);
     for name in ["BEAT", "SIXTEEN CHARS OK"] {
         assert_eq!(flash.file_now(name, &[0]), STORE_OK);
@@ -447,7 +444,7 @@ unsafe extern "C" fn builtin_none(_: *mut std::ffi::c_void, _: u32, _: *mut u8, 
 
 #[test]
 fn load_lists_the_builtin_song_first_delete_does_not_and_save_as_offers_its_name() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut flash = crate::store::fresh(810, STORE_WINDOW_MAX);
     for i in (0..8).rev() {
         assert_eq!(flash.file_now(&format!("SONG {i:02}"), &[0]), STORE_OK);
@@ -499,7 +496,7 @@ fn load_lists_the_builtin_song_first_delete_does_not_and_save_as_offers_its_name
 
 #[test]
 fn model_revision_alone_requires_new_confirmation() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut model = Box::new(gt2_song {
         revision: 1,
         ..Default::default()
@@ -526,7 +523,7 @@ fn model_revision_alone_requires_new_confirmation() {
 
 #[test]
 fn song_page_home_still_cancels_after_midi_learn_closes() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let _ml = ui.attach_learn();
     open_song(&mut ui);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -542,7 +539,7 @@ fn song_page_home_still_cancels_after_midi_learn_closes() {
 
 #[test]
 fn save_routes_named_songs_to_io_and_save_as_accepts_all_sixteen_characters() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut model = Box::<gt2_song>::default();
     let mut ctl = Box::new(song_ctl {
         song: &mut *model,
@@ -624,12 +621,6 @@ impl Ui {
             held: 0,
         };
         ui.frame();
-        ui
-    }
-
-    pub(crate) fn without_cards() -> Self {
-        let mut ui = Self::new();
-        ui.v.cards = CARDS_OFF;
         ui
     }
 
@@ -886,7 +877,7 @@ pub(crate) fn open_charset(ui: &mut Ui) {
 
 #[test]
 fn home_opens_the_menu_and_goes_back_one_view() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     assert_eq!(ui.top(), "LIVE");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
@@ -909,7 +900,7 @@ fn home_opens_the_menu_and_goes_back_one_view() {
 
 #[test]
 fn the_views_open_with_a_wipe_down_and_close_with_a_wipe_up() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.v.s.wipe, SCREEN_WIPE_DOWN as u8);
     ui.settle();
@@ -1014,21 +1005,21 @@ fn settings_draws_its_seven_items_like_the_menu_and_home_goes_back() {
     let mut ui = Ui::new();
     open_setting(&mut ui, VIEWS_SETTINGS_KEYS);
     let heading = ascii_or_hash(ui.big(1, 1, 2, MENU_LINE_CHARS));
-    assert_eq!(heading, format!("SETTINGS #1/{VIEWS_SETTINGS_ITEMS}"));
+    assert_eq!(heading, format!("SETTINGS # 1/{VIEWS_SETTINGS_ITEMS}"));
     assert_eq!(
         (0..6).map(|i| ui.menu_line(i)).collect::<Vec<_>>(),
         [
             format!("{:<4}{:>10}", "KEYS", "AUTO"),
             format!("{:<6}{:>8}", "SOUNDS", "OFF"),
             format!("{:<4}{:>10}", "ROWS", "BAR"),
-            format!("{:<5}{:>9}", "CARDS", "ONCE"),
             format!("{:<5}{:>9}", "STORE", "NONE"),
             format!("{:<5}{:>9}", "THEME", "HIGH"),
+            format!("{:<3}{:>11}", "REC", "NEAREST"),
         ]
     );
     assert_eq!(ui.big(26, 1, 2, 12), "ALG   CHANGE");
-    open_setting(&mut ui, VIEWS_SETTINGS_REC);
-    assert_eq!(ui.menu_line(6), format!("{:<3}{:>11}", "REC", "NEAREST"));
+    open_setting(&mut ui, VIEWS_SETTINGS_SPREAD);
+    assert!(ui.menu_line(6).starts_with("SPREAD"));
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     assert_eq!(ui.top(), "MENU");
@@ -1037,7 +1028,7 @@ fn settings_draws_its_seven_items_like_the_menu_and_home_goes_back() {
 
 #[test]
 fn save_opens_the_menus_item_and_does_nothing_on_a_value() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
@@ -1065,12 +1056,12 @@ fn save_opens_the_menus_item_and_does_nothing_on_a_value() {
     ui.press(SAVE_KEY_BUTTON);
     ui.settle();
     assert_eq!(ui.top(), "SETTINGS");
-    let cards = ui.v.cards;
+    let rows = ui.v.song.scroll;
     ui.press(SAVE_KEY_BUTTON);
     ui.settle();
     assert_eq!(
-        (ui.top(), ui.v.cards),
-        ("SETTINGS".to_owned(), cards),
+        (ui.top(), ui.v.song.scroll),
+        ("SETTINGS".to_owned(), rows),
         "nothing here"
     );
 }
@@ -1141,7 +1132,7 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
 
 #[test]
 fn select_and_algorithm_do_nothing_outside_the_menu() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     for view in ["LIVE", "STATUS", "CHARSET"] {
         if view == "STATUS" {
             open_status(&mut ui);
@@ -1588,7 +1579,7 @@ fn the_update_box_shows_each_step_and_the_result() {
 
 #[test]
 fn the_midi_page_uses_six_large_rows_within_190_cells() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.frames_sent(20);
     ui.press(PANEL_BTN_HOME);
     ui.frames_sent(12);
@@ -1616,7 +1607,7 @@ fn the_midi_page_uses_six_large_rows_within_190_cells() {
 
 #[test]
 fn the_midi_page_builds_up_two_lines_a_frame_after_its_title_and_help() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.frames_sent(20);
     ui.press(PANEL_BTN_HOME);
     ui.frames_sent(12);
@@ -1655,7 +1646,7 @@ fn midi_line(ui: &mut Ui, item: usize) -> String {
 #[test]
 fn the_midi_page_sounds_moves_changes_and_refusals() {
     unsafe extern "C" fn silent(_: *mut std::ffi::c_void, _: u8, _: u8) {}
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut snd = Box::<ui_sound>::default();
     let mut route = Box::<midi_route>::default();
     unsafe {
@@ -1692,7 +1683,7 @@ fn the_midi_page_sounds_moves_changes_and_refusals() {
 
 #[test]
 fn the_midi_page_edits_midis_mode_clamped_and_shows_a_dash_without_a_router() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut route = Box::<midi_route>::default();
     unsafe {
         midi_route_init(
@@ -1761,7 +1752,7 @@ fn the_midi_page_edits_midis_mode_clamped_and_shows_a_dash_without_a_router() {
 
 #[test]
 fn the_midi_pages_clock_items_set_the_clock() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     let mut sync = Box::<midi_sync>::default();
     unsafe { midi_sync_init(&mut *sync) };
     open_once_the_menu_settles(&mut ui, VIEWS_MENU_MIDI);

@@ -186,7 +186,7 @@ fn to_theme_item(ui: &mut Ui) {
 
 #[test]
 fn the_menu_item_turns_the_theme_and_the_menu_follows_it() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     to_theme_item(&mut ui);
     ui.settle();
@@ -229,7 +229,7 @@ fn the_menu_item_turns_the_theme_and_the_menu_follows_it() {
 
 #[test]
 fn the_popup_names_the_theme_in_full() {
-    let mut ui = Ui::without_cards();
+    let mut ui = Ui::new();
     ui.settle();
     to_theme_item(&mut ui);
     ui.settle();
@@ -249,7 +249,7 @@ fn the_popup_bar_and_name_take_the_knobs_colour_in_both_themes() {
     let name_row = SCREEN_POPUP_ROW as usize + 1;
     for id in 0..THEME_COUNT {
         for k in 0..4u32 {
-            let mut ui = Ui::without_cards();
+            let mut ui = Ui::new();
             unsafe { live_set_theme(&mut *ui.rig.live, id) };
             ui.settle();
             open_status(&mut ui);
@@ -274,7 +274,7 @@ fn the_popup_bar_and_name_take_the_knobs_colour_in_both_themes() {
 #[test]
 fn the_toast_takes_the_themes_colours() {
     for id in 0..THEME_COUNT {
-        let mut ui = Ui::without_cards();
+        let mut ui = Ui::new();
         unsafe { live_set_theme(&mut *ui.rig.live, id) };
         ui.settle();
         unsafe { screen_toast(&mut ui.v.s, c"HELLO".as_ptr(), 600) };
