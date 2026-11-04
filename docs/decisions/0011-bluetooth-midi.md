@@ -11,7 +11,7 @@ The FM-1's Bluetooth was usable only through M-VAVE's and JieLi's closed librari
 firmware cannot ship. Optimist's stack (Henri David, `GPL-3.0-only OR MPL-2.0`) runs Bluetooth
 MIDI on felucca-bsp's radio drivers (MPL-2.0, the radio tables Apache-2.0) with nothing of
 JieLi's linked; fm1-base carries it as `ble_stack = "own"`. Every part is compatible with SIDOU's
-GPL-3.0-only image. Estimated for SIDOU: about 29-33 KB of flash, 6.5-8 KB of RAM (1.5 KB of it a
+GPL-3.0-only image. Estimated for SIDOU, as a peripheral only: about 29-33 KB of flash, 6.5-8 KB of RAM (1.5 KB of it a
 block the radio reads by DMA), 36-44 B of RAMTEXT; the radio's interrupts take about 0.02 % of the
 core and sit below the audio interrupt.
 
@@ -27,8 +27,11 @@ core and sit below the audio interrupt.
 4. **The power rails** that felucca-bsp raises at boot (`fm1_sys.h`, 1.60 V / 1.38 V, as M-VAVE's
    firmware sets them) are accepted with the felucca-bsp move, behind a device check with the
    owner's yes for that step.
-5. **No pairing at first** (macOS and iOS connect without it; no AES in the interrupt). Pairing
-   and the central role come later only if asked for.
+5. **The first Bluetooth release connects both ways** (the owner, 2026-11-04): a computer or a
+   tablet connects to SIDOU, and SIDOU connects out to a Bluetooth MIDI keyboard or controller
+   (the central role, Optimist's `BLE_CENTRAL`, about 12-20 KB of flash and 1.5-2.2 KB of RAM more,
+   and a devices page). **No pairing at first** (macOS and iOS connect without it; no AES in the
+   interrupt); a keyboard that insists on pairing is the first reason to add it (about 3.3-3.8 KB).
 6. **The stack is vendored from fm1-base's `bt/`** at the commit whose felucca-bsp pin SIDOU uses.
    Whether it could live in felucca-bsp itself goes in `docs/upstream-reports.md` for the next
    batch.

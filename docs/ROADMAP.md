@@ -87,9 +87,10 @@ is inside their spread, so the op-amp port is parked), and the title cards remov
 **After 1.6**
 - **Bluetooth MIDI: first after 1.7 and the felucca-bsp move** ([decision 0011](decisions/0011-bluetooth-midi.md),
   [the research](plans/2026-11-05-bluetooth-research.md)). Optimist's open stack from fm1-base's
-  `bt/`, MIDI in, out and clock, no pairing at first; a build option off by default, then the main
-  image. About 29-33 KB of flash (cold files at `-Oz` first), 6.5-8 KB of RAM (NOINIT), 36-44 B of
-  RAMTEXT. First the measurement build and SIDOU booting in a radio-modelling emulator. L.
+  `bt/`, MIDI in, out and clock, both ways: a computer or tablet connects to SIDOU, and SIDOU
+  connects out to a Bluetooth MIDI keyboard (a devices page); no pairing at first. A build option
+  off by default, then the main image. About 41-53 KB of flash (cold files at `-Oz` first), 8-10 KB
+  of RAM (NOINIT), 36-44 B of RAMTEXT. First the measurement build and SIDOU booting in a radio-modelling emulator. L.
   Bluetooth audio is dropped; Wi-Fi and Ableton Link are parked until Optimist runs Link on a
   real FM-1.
 - **The 8580 mixer's grit (a spike).** SIDOU's 8580 voice and mixer path is linear; reSIDfp's adds
