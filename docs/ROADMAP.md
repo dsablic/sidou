@@ -250,10 +250,14 @@ the decisions are in [design-notes.md](design-notes.md)).
   flash (about 25 KB left in the slot) and CPU measured first.
 - **Faster firmware switching from the site** (research): the Library page installs another
   firmware package and brings SIDOU back, keeping the songs and sounds on the FM-1.
-- **BLE MIDI as a user-built variant.** Source only (`SIDOU_WIRELESS=ble`), never published or
-  built by CI: M-VAVE's BLE library is closed, and linking it into a distributed image would
-  need every copyleft owner in the image to agree; a private build is allowed by the GPL. L.
-  [Why](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md). To ask again once SIDOU is on felucca-bsp (MPL-2.0).
+- **Bluetooth MIDI on an open stack** (research, 2026-11-04). The old blocker, M-VAVE's closed BLE
+  library, is gone: Optimist's stack (Henri David, `GPL-3.0-only OR MPL-2.0`) runs Bluetooth MIDI,
+  pairing and the FM-1 as central on felucca-bsp's radio drivers (MPL-2.0, the radio tables
+  Apache-2.0), with nothing of JieLi's linked; fm1-base (`ble_stack = "own"`) and CTL-1 ship it.
+  Every part is GPL-3.0 compatible, so a published SIDOU may carry it. Open: its flash, RAM and
+  RAMTEXT against SIDOU's (25 KB of flash, 16 B of RAMTEXT free; fm1-base says a radio fills most of
+  the FM-1), the radio's time beside two SIDs' audio, and the felucca-bsp move first. A measurement
+  spike first (BLE MIDI only, no A2DP). L.
 - **Layer mode.** Two sounds on one key. L; audio interrupt.
 - **FM-1 Live Link extras:** a tray app, a share link, iOS.
 - **RSID playback.** Not now (see below); revisit if there is demand.
@@ -267,4 +271,4 @@ the decisions are in [design-notes.md](design-notes.md)).
 - **Recording into a DAW with a plugin.** Superseded by USB audio out, which records over the
   cable.
 - **2× oversampling and an idle LED glow.** Rejected: cost against a gain nobody asked for.
-- **Our own BLE stack.** The radio's controller exists only in the closed library.
+- ~~**Our own BLE stack.**~~ Not needed: Optimist's open stack (above) has the radio's controller.
