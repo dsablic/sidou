@@ -26,6 +26,10 @@ All notable changes are documented here. The format follows
 - **An NRPN for every LAB card.** FILTER ENV, LAYERS, TABLE and LFO's cards, which had none, are NRPN
   group 7 (7/0..7/19), one a card, its value the card's position: a DAW can automate each.
 
+### Changed
+- GoatTracker's player runs from flash: the song's frame is called once a frame, so 6.3 KB of the
+  SRAM kept for code every sample needs is free again.
+
 ### Fixed
 - An imported SidStation table played each step a frame too long when a step lasted two frames or
   more (GoatTracker holds a delay row one frame past its value).

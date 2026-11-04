@@ -1312,7 +1312,8 @@ LIVE_COLD static void lfo_tick(live* l) {
         l->lfo_out[d] = out[d];
     }
     int32_t vol = (int32_t)LIVE_CHIP_VOLUME - out[LAB_LFO_VOLUME];
-    if ((uint8_t)(vol < 0 ? 0 : vol > (int32_t)LIVE_CHIP_VOLUME ? LIVE_CHIP_VOLUME : vol) != l->vol_out) {
+    vol = vol < 0 ? 0 : vol > (int32_t)LIVE_CHIP_VOLUME ? (int32_t)LIVE_CHIP_VOLUME : vol;
+    if ((uint8_t)vol != l->vol_out) {
         li_write_mode_vol(l);
     }
 }

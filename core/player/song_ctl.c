@@ -4,6 +4,8 @@
 
 #include <stddef.h>
 
+#include "far_call.h"
+
 #include "gen/digi.h"
 
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
@@ -79,7 +81,7 @@ __attribute__((noinline)) static void song_draft(song_ctl* sc, const song_cmd* c
     const uint32_t* from = (const uint32_t*)(const void*)&c->u.draft;
     for (uint32_t i = 0u; i < sizeof(gt2_draft) / 4u; i++)
         ((volatile uint32_t*)(void*)&sc->draft)[i] = from[i];
-    gt2_play_draft(&sc->player, &sc->draft);
+    SIDOU_FAR(gt2_play_draft)(&sc->player, &sc->draft);
 }
 
 __attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c) {
@@ -98,8 +100,8 @@ __attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c)
 static void song_apply(song_ctl* sc, const song_cmd* c) {
     switch (c->kind) {
     case SONG_CMD_PLAY:
-        gt2_play_start(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
-                       (const uint8_t*)&c->u.p.x);
+        SIDOU_FAR(gt2_play_start)(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
+                                  (const uint8_t*)&c->u.p.x);
         sc->calls = 0u;
         sc->next = c->c ? SONG_NEXT_HELD : 0u;
         sc->rem = 0u;
@@ -157,9 +159,9 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         break;
     case SONG_CMD_SHAPE:
         if (c->a)
-            gt2_play_retain_shape(&sc->player, (const gt2_shape*)c->u.p.ptr);
+            SIDOU_FAR(gt2_play_retain_shape)(&sc->player, (const gt2_shape*)c->u.p.ptr);
         else
-            gt2_play_set_shape(&sc->player, (const gt2_shape*)c->u.p.ptr);
+            SIDOU_FAR(gt2_play_set_shape)(&sc->player, (const gt2_shape*)c->u.p.ptr);
         break;
     case SONG_CMD_HANDOVER:
         sc->armed = 1u;
@@ -275,7 +277,7 @@ static void song_handover(song_ctl* sc) {
         sc->calls = sc->armed_call;
     for (uint32_t r = 0u; r < GT2_SID_REGS; r++)
         sc->shadow[r] = sc->player.regs[r];
-    song_rewrite(sc, sc->chip);
+    SIDOU_FAR(song_rewrite)(sc, sc->chip);
     sc->armed = 0u;
     sc->handover_ok = 1u;
     sc->handover_seq = sc->armed_seq;
@@ -370,7 +372,7 @@ static void song_lock_apply(song_ctl* sc) {
     uint32_t all = mask | sc->lock_regs;
     for (uint32_t g = 0u; all != 0u; g++, all >>= 1) {
         if (all & 1u)
-            sid_write(sc->chip, (uint8_t)g, ((mask >> g) & 1u) ? r[g] : sc->shadow[g]);
+            SIDOU_FAR(sid_write)(sc->chip, (uint8_t)g, ((mask >> g) & 1u) ? r[g] : sc->shadow[g]);
     }
     sc->lock_regs = mask;
 }
@@ -460,7 +462,7 @@ void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
     song_rewrite(sc, s);
     sid* was = sc->chip;
     sc->chip = s;
-    song_lock_apply(sc);
+    SIDOU_FAR(song_lock_apply)(sc);
     sc->chip = was;
     if (sc->song_gate != NO_GATE)
         sid_set_gate_reset(s, sc->song_gate);

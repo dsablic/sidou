@@ -41,7 +41,7 @@ function setBusy(busy) {
   const ready = !!state.lib && !busy;
   $("connect").disabled = busy;
   $("check").disabled = busy || !state.access || !$("out").value || !$("in").value;
-  for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1")) b.disabled = !ready;
+  for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1, #sounds .needs-fm1")) b.disabled = !ready;
   $("progress").hidden = !busy;
 }
 

@@ -3764,6 +3764,18 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   reader takes any sound of at least `LAB_SOUND_BYTES_1_0` bytes; the bytes it does not have are at
   their defaults (0).
 
+### Code in SRAM: room for 1.7 (the owner, 2026-11-04)
+
+- GoatTracker's player and the song frame's hooks run once a song frame, so they live in flash
+  (`app.ld`), the audio interrupt calling `song_ctl_call` through `SIDOU_FAR`; what runs every
+  sample or block (the SID core, `audio_fill`, the register ring, `song_ctl_block`, `song_sink`,
+  the flash driver) stays in SRAM. RAMTEXT 49,136 -> 42,704 bytes. `ram_audio.rs` names the
+  functions that run from flash by design (`FRAME_RATE_IN_FLASH`) and checks that the ones it
+  moved are in flash and the per-block ones in SRAM; audio is unchanged (the emulator's goldens).
+- Not done: `-Os` for the effects' ticks (not needed for the room asked), the `.sid` hooks (they
+  render inside the block), growing RAMTEXT into POOL (the owner's). The I-cache cost on the unit
+  is estimated in docs/hardware.md and is a device check.
+
 ### The step table (1.7)
 
 - One table a sound, on one layer (`LAB_SOUND_TABLE`, 35 bytes): three tables would take the sound

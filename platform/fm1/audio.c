@@ -16,6 +16,7 @@
 #include "scope.h"
 #include "tail_gate.h"
 #include "thump_out.h"
+#include "far_call.h"
 #include "sid/sid.h"
 #include "song/gt2_song.h"
 
@@ -342,7 +343,7 @@ static void render_a(sid* a, int16_t* s, int tapped) {
         if (at > 0u) {
             render_part(a, s, at, tapped);
         }
-        song_ctl_call(&song_transport);
+        SIDOU_FAR(song_ctl_call)(&song_transport);
         render_part(a, s + at, AUDIO_HALF_FRAMES - at, tapped);
     } else {
         render_part(a, s, AUDIO_HALF_FRAMES, tapped);

@@ -220,7 +220,7 @@ fn lfos(patch: &Patch, first: usize, s: &mut [u8; BYTES], losses: &mut Vec<Loss>
         .clamp(1, LAB_LFO_DEPTH_MAX as i32);
         let signed = if lfo.invert { -scaled } else { scaled };
         let at = (LAB_SOUND_LFO + n as u32 * LAB_SOUND_LFO_BYTES) as usize;
-        s[at] = (u32::from(lfo.shape) + LAB_LFO_TRIANGLE | dest << LAB_LFO_DEST_SHIFT) as u8;
+        s[at] = ((u32::from(lfo.shape) + LAB_LFO_TRIANGLE) | (dest << LAB_LFO_DEST_SHIFT)) as u8;
         s[at + 1] = (u32::from(lfo.speed).min(SIDSTATION_SPEED_MAX) * (LAB_LFO_RATES - 1)
             / SIDSTATION_SPEED_MAX) as u8;
         s[at + 2] = signed as i8 as u8;

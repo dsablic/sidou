@@ -356,7 +356,7 @@ typedef struct {
     int8_t tune;
     uint16_t sounds_valid;
     uint8_t user_sound;
-    uint8_t base[LAB_SOUND_BYTES];
+    _Alignas(4) uint8_t base[LAB_SOUND_BYTES];
     char base_name[LAB_SOUND_NAME + 1u];
     int (*user_load)(void* ctx, uint32_t n);
     void* user_ctx;

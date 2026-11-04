@@ -428,8 +428,8 @@ try {
   if (zipped.dels.join("|") !== "A TUNE|IRON RITE" || zipped.puts.join("|") !== "RITE") fail(`the store saw ${JSON.stringify(zipped)}`);
   await lib.locator("#send-sounds").click();
   await settle("send SIDOU's sounds", () => /SIDOU SOUNDS sent/.test(document.getElementById("store-state").textContent));
-  const sent = await lib.evaluate(() => window.__midi.puts.map((p) => p.name));
-  if (sent.at(-1) !== "SIDOU SOUNDS") fail(`the sounds went to the store as ${JSON.stringify(sent)}`);
+  const bankPuts = await lib.evaluate(() => window.__midi.puts.map((p) => p.name));
+  if (bankPuts.at(-1) !== "SIDOU SOUNDS") fail(`the sounds went to the store as ${JSON.stringify(bankPuts)}`);
   console.log("library page: sent SIDOU's sixteen sounds as SIDOU SOUNDS");
   await lib.locator('#files tr[data-name="RITE"] button', { hasText: "Open" }).click();
   try {

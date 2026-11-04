@@ -482,10 +482,25 @@ uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
            memcmp(now + after, l->base + after, LAB_SOUND_BYTES - after) != 0;
 }
 
+#define SOUND_WORDS (LAB_SOUND_BYTES / 4u)
+
 uint32_t live_preset_edited(const live* l) {
-    uint8_t now[LAB_SOUND_BYTES];
+    _Alignas(4) uint8_t now[LAB_SOUND_BYTES];
+    if (l->preset == LIVE_PRESET_DICE) {
+        return 0;
+    }
     live_sound_get(l, now);
-    return live_sound_edited(l, now);
+    if (l->bend_range_rpn) {
+        now[LAB_SOUND_BEND_RANGE] = l->base[LAB_SOUND_BEND_RANGE];
+    }
+    const uint32_t* a = (const uint32_t*)(const void*)now;
+    const uint32_t* b = (const uint32_t*)(const void*)l->base;
+    for (uint32_t i = 0; i < SOUND_WORDS; i++) {
+        if (a[i] != b[i]) {
+            return 1;
+        }
+    }
+    return memcmp(now + 4u * SOUND_WORDS, l->base + 4u * SOUND_WORDS, LAB_SOUND_BYTES % 4u) != 0;
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {

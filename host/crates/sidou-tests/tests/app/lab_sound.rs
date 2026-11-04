@@ -110,7 +110,7 @@ pub(crate) fn random_sound(r: &mut Xs) -> Sound {
         let at = (LAB_SOUND_LFO + n * LAB_SOUND_LFO_BYTES) as usize;
         s[at] = (r.below(LAB_LFO_SHAPES) | r.below(LAB_LFO_DESTS) << LAB_LFO_DEST_SHIFT) as u8;
         s[at + 1] = r.below(LAB_LFO_RATES) as u8;
-        s[at + 2] = signed_below(r, LAB_LFO_DEPTH_MAX as u32);
+        s[at + 2] = signed_below(r, LAB_LFO_DEPTH_MAX);
     }
     assert!(valid(&s), "{s:?}");
     s
