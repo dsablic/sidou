@@ -3678,12 +3678,43 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - `lab_audible` estimates in whole dB: the waveform's level on the model (none, noise with another
   waveform, the 6581's combinations that barely sound, the 8580's with the pulse when it falls away
   from 50 %), the pulse's narrowness (the PWM taking half its swing off, a side under 16 steps
-  refused), the envelope (the attack's ramp, the decay to sustain; an arpeggio 3 dB more), SYNC
-  LEAD's sync 6 dB (more below a ratio of 1, where the voice never ends a cycle), and the filter's
+  refused), the envelope (the attack's ramp, the decay to sustain; an arpeggio 3 dB more), sync by
+  its ratio (below), and the filter's
   loss at the cutoff's distance from the note (routed to no mode: refused; a narrow pulse under a
   low-pass near the note counts its fundamental alone; a combination or the ring 6 dB more). The
   resonance's gain, the chip's profile, the effect slots and the controllers are left out, each
   only louder or not the chip's. The estimate must reach `LAB_AUDIBLE_DB` (−38 dB).
+- Layers: each layer is estimated on its own (`level_db`), and the sound passes when one does.
+  The figures below come from the calibration in `lab_audible_passes_no_silent_sound_and_every_built_in`
+  (random sounds with layers and a filter envelope, each layer rendered alone and the whole
+  sound rendered too). Before this, the estimate called a layer audible when it rendered under
+  −40 dB 150 times in 4,299 passes. All 150 were layers synced to another layer, and 28 % of
+  the synced layers more than an octave under their source were wrong.
+- A synced layer's ratio to its source (`sync_q8`) and one-voice sync's ratio go through the
+  same weighting. Under its source the oscillator never ends a cycle: 3 dB per half octave (its swing shrinks as the
+  ratio does), a combination refused, a pulse's width scaled by the ratio. At or over its source
+  nothing is taken off, which the renders show is right: the old −6 dB left synced triangles,
+  saws and noise 5 to 18 dB under their render. A synced pulse over half width with a ratio
+  under 2 is refused (the high stretch is lost: −16 to −20 dB rendered at 3,663/4,096), and so
+  is one with a side under 128.
+- The filter weighs a synced or ring-modulated layer at the higher of its own and its source's
+  pitch. A layer synced two octaves over its source is heard at its own pitch. Under a low-pass,
+  weighing it at the source's pitch left it 4 to 13 dB louder than its render.
+- A synced layer and its sounding source can cancel each other's fundamental. Within −12 to +7
+  semitones of each other (`SYNC_CANCEL_LO`/`HI`) and with estimates within 12 dB, both lose
+  4 dB (`SYNC_PAIR_DB`). Without this, the whole sound rendered up to 6.1 dB under its best
+  layer's estimate, and 24 of 6,237 walked pair sounds were silent. With 4 dB taken off, the
+  2 dB headroom covers the worst case.
+- The PWM's swing is limited to the pulse's room above `LIVE_PULSE_FIRST`, as `pw_effective`
+  limits it. Without that limit, a wide PWM refused pulses that render at −21 dB.
+- The filter envelope counts at its mean over the 500 ms window (8 points of
+  `lab_draw_level`), not its level at the end. A slow positive sweep then counts as the little
+  it opens. Counting a positive sweep as nothing and a negative one at its deepest refused
+  too many sounds to keep rolls passing.
+- After the calibration, 20,000 random sounds (80,190 isolated layers plus each whole layered
+  sound) had no false audible. 37 % of the heard ones passed. The varies-and-rolls sweep
+  passes on 30 of 31 seeds. On seed 3, one walked result (noise through the 8580's low-pass,
+  a negative filter envelope) renders −40.5 dB. The flash cost is 560 bytes.
 
 ### Song bridge: send
 
@@ -3767,7 +3798,11 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   plays a chord with the shortest envelope and lets it go, as a played instrument has them.
 - `lab_audible_passes_no_silent_sound_and_every_built_in` runs 2,000 random sounds on each model by
   default (`LAB_SOUNDS`, `LAB_SEED` run more or others; 30,000 on each of six seeds passed when the
-  predicate was made). It also asks the predicate to pass at least 12 % of the heard random
+  predicate was made). The random sounds carry layers and a filter envelope. Each layer is
+  checked alone (the others' waveforms cleared, their oscillators still running as sync and
+  ring sources), and the whole layered sound is checked too. A table by feature (layers,
+  waveform, sync or ring, transpose, sync ratio, the filter envelope's sign, mode) prints how
+  many passed silent and how many heard ones were refused. It also asks the predicate to pass at least 12 % of the heard random
   sounds, so it is not merely strict; the share is low because random sounds are odd and the
   predicate keeps a margin there.
 - The low-pass shut below the note is checked silent on the 8580 only: the 6581's filter stops at
