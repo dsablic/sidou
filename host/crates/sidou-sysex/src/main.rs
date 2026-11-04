@@ -113,6 +113,13 @@ fn import_args(rest: Vec<String>) -> Result<Import, String> {
     Ok(i)
 }
 
+fn make_out(out: &Path) -> Result<(), ExitCode> {
+    std::fs::create_dir_all(out).map_err(|e| {
+        eprintln!("{}: {e}", out.display());
+        ExitCode::FAILURE
+    })
+}
+
 fn import_main(rest: Vec<String>) -> ExitCode {
     let i = match import_args(rest) {
         Ok(i) => i,
@@ -121,6 +128,9 @@ fn import_main(rest: Vec<String>) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Err(code) = make_out(&i.out) {
+        return code;
+    }
     let bank = match std::fs::read(&i.bank) {
         Ok(b) => b,
         Err(e) => {
@@ -197,6 +207,9 @@ fn sid_main(rest: Vec<String>) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Err(code) = make_out(&a.out) {
+        return code;
+    }
     let mut pack = Vec::new();
     let mut names = HashSet::new();
     let mut paths = HashSet::new();

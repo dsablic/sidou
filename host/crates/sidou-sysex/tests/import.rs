@@ -4,6 +4,7 @@
 use sidou_patch::mbsid::{patch_dump, PATCH_BYTES};
 use sidou_sysex::import::{bank_files, default_name, Model};
 use sidou_sysex::{Packet, FILE_SONG, PUT};
+use std::process::Command;
 
 const NAME_BYTES: usize = 10;
 const DECODED_BYTES: usize = 146;
@@ -99,4 +100,26 @@ fn a_midibox_sid_bank_with_no_lead_patch_is_refused_with_each_reason() {
         .err()
         .unwrap();
     assert!(err.contains("A001 Drum Kit: a Drum engine patch"), "{err}");
+}
+
+#[test]
+fn the_cli_makes_the_out_folder_it_writes_the_songs_into() {
+    let dir = std::env::temp_dir().join(format!("sidou-import-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("bank.syx"), dump("LEAD")).unwrap();
+    let run = Command::new(env!("CARGO_BIN_EXE_sidou-sysex"))
+        .args(["import", "bank.syx", "--out", "syx", "--name", "TEST"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    for file in ["TEST-1.syx", "TEST-1.sng", "TEST.txt"] {
+        assert!(dir.join("syx").join(file).is_file(), "{file}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
 }
