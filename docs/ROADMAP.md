@@ -85,14 +85,13 @@ is inside their spread, so the op-amp port is parked), and the title cards remov
 ([the design](plans/2026-11-03-patch-import-design.md)).
 
 **After 1.6**
-- **Bluetooth MIDI on an open stack: first after 1.7** (the owner, 2026-11-04, ahead of the plugin; research on branch `ble-research`). The old blocker, M-VAVE's closed BLE
-  library, is gone: Optimist's stack (Henri David, `GPL-3.0-only OR MPL-2.0`) runs Bluetooth MIDI,
-  pairing and the FM-1 as central on felucca-bsp's radio drivers (MPL-2.0, the radio tables
-  Apache-2.0), with nothing of JieLi's linked; fm1-base (`ble_stack = "own"`) and CTL-1 ship it.
-  Every part is GPL-3.0 compatible, so a published SIDOU may carry it. Open: its flash, RAM and
-  RAMTEXT against SIDOU's (25 KB of flash, 16 B of RAMTEXT free; fm1-base says a radio fills most of
-  the FM-1), the radio's time beside two SIDs' audio, and the felucca-bsp move first. A measurement
-  spike first (BLE MIDI only, no A2DP). L.
+- **Bluetooth MIDI: first after 1.7 and the felucca-bsp move** ([decision 0011](decisions/0011-bluetooth-midi.md),
+  [the research](plans/2026-11-05-bluetooth-research.md)). Optimist's open stack from fm1-base's
+  `bt/`, MIDI in, out and clock, no pairing at first; a build option off by default, then the main
+  image. About 29-33 KB of flash (cold files at `-Oz` first), 6.5-8 KB of RAM (NOINIT), 36-44 B of
+  RAMTEXT. First the measurement build and SIDOU booting in a radio-modelling emulator. L.
+  Bluetooth audio is dropped; Wi-Fi and Ableton Link are parked until Optimist runs Link on a
+  real FM-1.
 - **The 8580 mixer's grit (a spike).** SIDOU's 8580 voice and mixer path is linear; reSIDfp's adds
   a second harmonic of -52 to -30 dB, which may be why SIDOU's 8580 is 0.4 to 1.0 dB farther from
   the CSG8580R5 recordings on some tunes ([the measurements](plans/2026-11-03-filter-model-feasibility.md#measured)).
