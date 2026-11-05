@@ -82,7 +82,7 @@ Released in 1.6.0: layered LAB sounds (up to three oscillators on one key, the L
 page), FILTER ENV, `sidou-sysex import` for SidStation and MIDIbox SID V2 banks (songs of sixteen
 patches, tables as GoatTracker wave programs), filter metrics against real chips (the 6581 filter
 is inside their spread, so the op-amp port is parked), and the title cards removed
-([the design](plans/2026-11-03-patch-import-design.md)).
+([the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-11-03-patch-import-design.md)).
 
 **After 1.6**
 - **Bluetooth MIDI: first after 1.7 and the felucca-bsp move** ([decision 0011](decisions/0011-bluetooth-midi.md),
