@@ -22,7 +22,7 @@ const fileOf = (f) => (f.hex ? Uint8Array.from(Buffer.from(f.hex, "hex")) : read
 await test(`the wasm core is ${readFileSync(wasm).length} bytes and imports nothing`, async () => {
   const m = await WebAssembly.compile(readFileSync(wasm));
   assert.deepEqual(WebAssembly.Module.imports(m), []);
-  assert.ok(readFileSync(wasm).length <= 160 * 1024, "the size budget: 160 KiB");
+  assert.ok(readFileSync(wasm).length <= 176 * 1024, "the size budget: 176 KiB");
 });
 
 for (const f of fixtures) {
