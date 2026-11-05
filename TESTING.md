@@ -2100,7 +2100,8 @@ would be; nothing is sampled.
 
 1. Merge the last code change (full check).
 2. The release commit: CMakeLists.txt's version, CHANGELOG.md, README.md's status (which
-   `tools/readme-check` holds to the CHANGELOG), `docs/release-notes/vX.Y.Z.md`. Version-only
+   `tools/readme-check` holds to the CHANGELOG), `docs/release-notes/vX.Y.Z.md`, and the GitHub
+   repo's description (`gh repo view --json description`) reviewed with `fmhub.json`'s "what". Version-only
    check, 3 to 5 minutes: it also runs the release-only tests (`host/.config/nextest.toml`'s
    release profile), so nothing the everyday check leaves out goes untested into a release.
 3. Build the release package (`-DSIDOU_PRODUCT=FM-1_964`), `tools/preflash` it, and run it on a

@@ -8,6 +8,11 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **The site's 1.7 deploy.** The site's song core, built by CI's clang, came to 164,811 bytes, over
+  its 160 KiB budget (Apple's clang made 161,337); the budget is 176 KiB, the owner's call, and
+  the merge check now builds the core in the image as CI does.
+
 ## [1.7.0] - 2026-11-05
 
 A step table and two free LFOs in LAB, SLIDE and ACCENT in STEP, an NRPN for every LAB card, and SIDOU's own sounds on the site.
