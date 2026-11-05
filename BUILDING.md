@@ -287,9 +287,10 @@ and Apple's clang both have the target) and the Rust toolchain's own
 Flags as the host build's where results matter (`-ffp-contract=off`), the
 firmware's combined-waveform profiles, `-Oz` (which kept it within its budget
 once the effect slots came in; it still renders the song about 200 times faster
-than real time in Node). The module is 160,375 bytes (72 KB gzipped) and takes
+than real time in Node). The module is 164,811 bytes as CI builds it (73 KB gzipped; Apple's
+clang makes it about 3.5 KB smaller, so the merge check also builds it in the image) and takes
 2 MiB of memory (the effect slots' 128 KiB pool, a pattern preview's copy of the
-song); its budget is 160 KiB, which `web/core.test.mjs` checks. The
+song); its budget is 176 KiB, which `web/core.test.mjs` checks. The
 song region is the device's (64 KiB) and the reader has the device's
 multispeed cap, so the page refuses what the FM-1 refuses, with its messages;
 `web/core.test.mjs` and `web/editor.test.mjs` check every output against the

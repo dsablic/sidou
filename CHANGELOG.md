@@ -18,6 +18,9 @@ Newer FM-1s, with a UC25HQ80 flash, save and update.
   Puya, so on a newer unit nothing was saved (songs, LAB sounds and settings lasted until
   power-off) and an update from SIDOU was refused. Both parts are accepted now
   ([Felucca#320](https://github.com/hugelton/Felucca/issues/320)).
+- **The site's 1.7 deploy.** The site's song core, built by CI's clang, came to 164,811 bytes, over
+  its 160 KiB budget (Apple's clang made 161,337); the budget is 176 KiB, the owner's call, and
+  the merge check now builds the core in the image as CI does.
 
 ## [1.7.0] - 2026-11-05
 
