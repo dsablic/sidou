@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "sidou-edition-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+
+[dependencies]
+fm1-plugin = { path = "../../../build/ext/fm1-emu/crates/fm1-plugin" }
+fm1-soc = { path = "../../../build/ext/fm1-emu/crates/fm1-soc" }
+sidou-sys = { path = "../../../host/crates/sidou-sys" }
+object = "0.36"
+png = "0.17"
+rtrb = "0.3"
+serde_json = "1"
+
+[workspace]
+
+[profile.release]
+opt-level = 3

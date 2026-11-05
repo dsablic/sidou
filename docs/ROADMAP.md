@@ -34,7 +34,7 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 **LAB: shape one sound and keep it.** A view for experimenting on the go: five pages with
 drawings of the oscillator, envelope and more, one press to keep a sound, 16 USER sounds,
 A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
-[plans/2026-10-25-lab-design.md](plans/2026-10-25-lab-design.md). L. **Released** in 1.0
+[plans/2026-10-25-lab-design.md](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-25-lab-design.md). L. **Released** in 1.0
 (the manual page: [docs/manual/lab.md](manual/lab.md)).
 
 **Smaller things that make 1.0 feel finished**
@@ -72,7 +72,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
 
 ## 1.1
 
-Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows in a 1.1.x): [the 1.1 design](plans/2026-10-29-1.1-design.md)
+Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows in a 1.1.x): [the 1.1 design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-29-1.1-design.md)
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
@@ -85,6 +85,14 @@ is inside their spread, so the op-amp port is parked), and the title cards remov
 ([the design](plans/2026-11-03-patch-import-design.md)).
 
 **After 1.6**
+- **Bluetooth MIDI: first after 1.7 and the felucca-bsp move** ([decision 0011](decisions/0011-bluetooth-midi.md),
+  [the research](plans/2026-11-05-bluetooth-research.md)). Optimist's open stack from fm1-base's
+  `bt/`, MIDI in, out and clock, both ways: a computer or tablet connects to SIDOU, and SIDOU
+  connects out to a Bluetooth MIDI keyboard (a devices page); no pairing at first. A build option
+  off by default, then the main image. About 41-53 KB of flash (cold files at `-Oz` first), 8-10 KB
+  of RAM (NOINIT), 36-44 B of RAMTEXT. First the measurement build and SIDOU booting in a radio-modelling emulator. L.
+  Bluetooth audio is dropped; Wi-Fi and Ableton Link are parked until Optimist runs Link on a
+  real FM-1.
 - **The 8580 mixer's grit (a spike).** SIDOU's 8580 voice and mixer path is linear; reSIDfp's adds
   a second harmonic of -52 to -30 dB, which may be why SIDOU's 8580 is 0.4 to 1.0 dB farther from
   the CSG8580R5 recordings on some tunes ([the measurements](plans/2026-11-03-filter-model-feasibility.md#measured)).
@@ -92,6 +100,12 @@ is inside their spread, so the op-amp port is parked), and the title cards remov
   distance and the owner's ears; its RAMTEXT and instructions measured before anything is kept.
   S-M. The reSIDfp op-amp port stays parked for good (the owner, 2026-11-04): it would move SIDOU
   closer to reSIDfp, not to the chips, and the filter's SRAM, not flash, is what it lacks.
+- **The DAW plugin's design session** (the owner, 2026-11-04), after 1.7: the spike
+  ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
+  package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card, GPL-3.0-or-later.
+  A first release M, the whole edition L.
+- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): first
+  the RAMTEXT room in 1.7's performance pass, then the experiment in fm1-emu, off by default.
 
 ## 1.5
 
@@ -129,7 +143,7 @@ the decisions are in [design-notes.md](design-notes.md)).
   room in the audio interrupt, so a device check follows.~~ Done in 1.1: its cutoff, resonance,
   filter mode, route and pulse locks, pinned while held; the device check is section 23.
 - ~~**LAB's song bridge:** send a sound to a song as an instrument, pull one back. M-L. Its own
-  design first (the LAB design calls it the second step).~~ Done for 1.5 ([the design](plans/2026-10-30-1.5-design.md#2-labs-song-bridge)):
+  design first (the LAB design calls it the second step).~~ Done for 1.5 ([the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-30-1.5-design.md#2-labs-song-bridge)):
   REC in LAB sends, ENV / LFO / FX on INSTR pull, the `LBnn` chunk for the exact round trip; a
   device check follows (hardware-test.md section 26).
 - ~~**Instruments from a `.sid`.** Lift an instrument out of a tune you play. M-L; pairs with
@@ -167,7 +181,7 @@ the decisions are in [design-notes.md](design-notes.md)).
 - **A browser editor and librarian.** Edit instruments, tables and patterns, list the
   device's songs, export plain GoatTracker files; today the site sends songs and files over
   SysEx. L; no firmware change. In progress for 1.5
-  ([the design](plans/2026-10-30-1.5-design.md#5-browser-editor-and-librarian-site-only)):
+  ([the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-30-1.5-design.md#5-browser-editor-and-librarian-site-only)):
   done, the wasm core (SIDOU's song reader and writer, GTI5 export and player as
   `sidou-core.wasm`, `tools/wasm-core`), the Library page (list, download, send with an overwrite
   check, rename, delete, back up and restore) and export (`.sng` with the trailer, plain
@@ -181,7 +195,7 @@ the decisions are in [design-notes.md](design-notes.md)).
 - **Screen mirror (FM-1 Live Link).** The screen, scopes and remote controls in a browser
   over the USB cable, for the other FM-1 firmwares too. L; the design text is in the
   [old roadmap](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md)
-  and [1.5's design](plans/2026-10-30-1.5-design.md), section 6. In progress: the device's side
+  and [1.5's design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-30-1.5-design.md), section 6. In progress: the device's side
   (the session, the cells mirror, remote control), the [protocol](reference/live-link.md), the
   reference decoder and the browser viewer ([link.html](https://dsablic.github.io/sidou/link.html):
   the screen drawn by SIDOU's own `grid.c` and `font.c` in wasm, the buttons and encoders) are in;
@@ -244,10 +258,6 @@ the decisions are in [design-notes.md](design-notes.md)).
   flash (about 25 KB left in the slot) and CPU measured first.
 - **Faster firmware switching from the site** (research): the Library page installs another
   firmware package and brings SIDOU back, keeping the songs and sounds on the FM-1.
-- **BLE MIDI as a user-built variant.** Source only (`SIDOU_WIRELESS=ble`), never published or
-  built by CI: M-VAVE's BLE library is closed, and linking it into a distributed image would
-  need every copyleft owner in the image to agree; a private build is allowed by the GPL. L.
-  [Why](https://github.com/dsablic/sidou/blob/v0.5.0/docs/plans/2026-10-18-roadmap-after-m2.md). To ask again once SIDOU is on felucca-bsp (MPL-2.0).
 - **Layer mode.** Two sounds on one key. L; audio interrupt.
 - **FM-1 Live Link extras:** a tray app, a share link, iOS.
 - **RSID playback.** Not now (see below); revisit if there is demand.
@@ -257,8 +267,8 @@ the decisions are in [design-notes.md](design-notes.md)).
 - **RSID playback as built.** SIDOU refuses an RSID tune politely
   ([psid.md](reference/psid.md)): it needs a full C64 environment, not just the chips.
 - **Combined-waveform rows in POOL.** POOL has no room for them
-  ([flash-space plan](plans/2026-10-24-flash-space.md)).
+  ([flash-space plan](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-24-flash-space.md)).
 - **Recording into a DAW with a plugin.** Superseded by USB audio out, which records over the
   cable.
 - **2× oversampling and an idle LED glow.** Rejected: cost against a gain nobody asked for.
-- **Our own BLE stack.** The radio's controller exists only in the closed library.
+- ~~**Our own BLE stack.**~~ Not needed: Optimist's open stack (above) has the radio's controller.

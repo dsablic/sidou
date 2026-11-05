@@ -1,6 +1,9 @@
 # SIDOU — design
 
-Status: draft, agreed in brainstorming on 2026-10-14.
+Status: the founding design, agreed in brainstorming on 2026-10-14, kept as written. What was
+built has moved on: what shipped is in [CHANGELOG.md](../../CHANGELOG.md), why in
+[the decisions](../decisions/) and [design-notes.md](../design-notes.md), what is next in
+[the roadmap](../ROADMAP.md).
 
 SIDOU is a custom firmware for the M-VAVE FM-1 that turns it into a C64 SID
 instrument: a step sequencer with a tracker underneath, a live-play mode, a

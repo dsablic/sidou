@@ -581,7 +581,7 @@ budget, retaining the original per-tick instruction ceiling without queueing sta
 ## Amendment, 2026-10-23: DAC, thump and bleed made audible (review E11)
 
 On the FM-1 the user heard no difference across the whole travel of DAC, THUMP and BLEED, and
-the ergonomics harness agreed (`docs/reviews/2026-10-22-ergonomics-review.md`, E11). Why:
+the ergonomics harness agreed ([docs/reviews/2026-10-22-ergonomics-review.md](https://github.com/dsablic/sidou/blob/v1.6.0/docs/reviews/2026-10-22-ergonomics-review.md), E11). Why:
 
 - **DAC:** a 2R/R ratio 0.3 higher and six times the leakage only bend a saw's ramp: on SAW LEAD
   (a held saw through the low-pass) 0.65 dB and a brightness inside the capture's 6 % jitter.

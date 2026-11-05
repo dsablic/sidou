@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.5.0 release](https://github.com/dsablic/sidou/releases/tag/v1.5.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.6.0 release](https://github.com/dsablic/sidou/releases/tag/v1.6.0).
 
-- [SIDOU in 79 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.5](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [SIDOU in 78 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
+- [What's new in 1.6](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -48,19 +48,19 @@ marks.
 
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
-| [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.6 s, 7.9 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.5 highlights: a sound lifted from a .sid into LAB (REC asks which voice, key 2 answers: LIFTED V2; SAVE keeps it, REC sends it to the song), INSTR's pointer summaries, EDIT + SELECT a page at a time, LAB's song bridge, a lane's role (BASS+DRUMS, chords from DICE), the site's new tools | 74.3 s, 5.8 MB |
+| [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.4 s, 6.8 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.6 highlights: LAYERS (ALGORITHM: THREE OSC; K1 picks a layer, TRANS and DETUNE tune it; OSC L3 gives it its own waveform), FILTER ENV (depth on ALGORITHM, the envelope drawn as it plays), REC sends the layered sound (SENT AS I06), ENV on INSTR pulls it back exactly (PULLED I06), and `sidou-sysex import` for SidStation and MIDIbox SID banks | 46.0 s, 3.8 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
-| [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.2 s, 4.5 MB |
+| [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.3 s, 4.5 MB |
 | [send-to-song](recipes/send-to-song.json) | ![send-to-song](media/videos/send-to-song.webp) | LAB while SIDOU LOOP plays: shape SAW LEAD, REC sends it as SENT AS I06, the hint line's APPROX, INSTR shows it, ENV pulls it back exactly (PULLED I06), EDIT + REC replaces it after REPLACE I06? | 34.8 s, 3.5 MB |
 | [mute-and-solo](recipes/mute-and-solo.json) | ![mute-and-solo](media/videos/mute-and-solo.webp) | PLAY the built-in loop, GLO + a key mutes or solos a voice | 27.0 s, 2.8 MB |
 | [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a lane on STEP, KICK, SNARE and the hats picked by name, four pages with a tom fill, PLAY, a digi clap on every page | 51.2 s, 4.1 MB |
 | [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.6 MB |
 | [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 35.1 s, 2.5 MB |
 | [chord-arpeggio](recipes/chord-arpeggio.json) | ![chord-arpeggio](media/videos/chord-arpeggio.webp) | ARP on LIVE: a held chord as one voice stepping through its notes, ARP + K1, K2 and K3 for rate, order and span | 21.9 s, 2.1 MB |
-| [chip-spread](recipes/chip-spread.json) | ![chip-spread](media/videos/chip-spread.webp) | A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right | 28.6 s, 2.3 MB |
-| [chip-character](recipes/chip-character.json) | ![chip-character](media/videos/chip-character.webp) | CHIP: AGE, DAC, THUMP and BLEED, each heard on a riff | 28.5 s, 2.8 MB |
+| [chip-spread](recipes/chip-spread.json) | ![chip-spread](media/videos/chip-spread.webp) | A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right | 28.4 s, 2.3 MB |
+| [chip-character](recipes/chip-character.json) | ![chip-character](media/videos/chip-character.webp) | CHIP: AGE, DAC, THUMP and BLEED, each heard on a riff | 28.5 s, 2.3 MB |
 | [add-an-effect](recipes/add-an-effect.json) | ![add-an-effect](media/videos/add-an-effect.webp) | SELECT pages to FX, ALGORITHM its algorithm (DELAY, REVERB), EDIT + K1/K4 its amount and mix | 17.8 s, 2.1 MB |
 | [midi-learn](recipes/midi-learn.json) | ![midi-learn](media/videos/midi-learn.webp) | SAVE + K1 opens MIDI LEARN; a controller's CC 21 then turns the cutoff | 17.6 s, 1.8 MB |
 | [track-bass](recipes/track-bass.json) | ![track-bass](media/videos/track-bass.webp) | After the beat: TRACKER, REC with the song stopped, a bassline note by note (Am F C G) | 32.1 s, 2.7 MB |
@@ -69,7 +69,7 @@ marks.
 | [play-over-a-song](recipes/play-over-a-song.json) | ![play-over-a-song](media/videos/play-over-a-song.webp) | Load NEON HIGHWAY, play it on chip A, jam on chip B, K1, DELAY (SELECT, ALGORITHM), a mute, REC the jam | 46.4 s, 4.0 MB |
 | [remix-a-song](recipes/remix-a-song.json) | ![remix-a-song](media/videos/remix-a-song.webp) | Load PAPER LANTERNS, change it in STEP, a new instrument, a mute, SAVE AS PAPER LANTERNS 2 | 41.4 s, 3.0 MB |
 | [play-a-sid](recipes/play-a-sid.json) | ![play-a-sid](media/videos/play-a-sid.webp) | Menu, SIDS, a tune from the store, NOW PLAYING, ALGORITHM changes song, GLO mutes and solos a voice, EDIT + PLAY pauses, PLAY stops | 36.1 s, 2.5 MB |
-| [lift-a-sound](recipes/lift-a-sound.json) | ![lift-a-sound](media/videos/lift-a-sound.webp) | THE CONSULTANT in NOW PLAYING: REC asks LIFT WHICH VOICE?, key 2 opens voice 2's last note in LAB as LIFTED V2, the keys play it, K4 shapes it, SAVE keeps it as a USER sound, HOME back to the tune still playing | 26.2 s, 2.4 MB |
+| [lift-a-sound](recipes/lift-a-sound.json) | ![lift-a-sound](media/videos/lift-a-sound.webp) | THE CONSULTANT in NOW PLAYING: REC asks LIFT WHICH VOICE?, key 2 opens voice 2's last note in LAB as LIFTED V2, the keys play it, K4 shapes it, SAVE keeps it as a USER sound, HOME back to the tune still playing | 26.8 s, 2.4 MB |
 
 ## What a video is
 

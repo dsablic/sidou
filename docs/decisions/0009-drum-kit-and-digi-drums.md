@@ -131,7 +131,7 @@ material: SIDOU's own work, GPL-3.0-or-later (LICENSING.md).
 - 4-bit codes, the values a C64 player writes to `$D418`'s low nibble, rest at 8, **two a
   byte** since v0.4.0 (first a code a byte; packing them freed 2,430 bytes of the RAM region
   once RAMTEXT had room for the nibble's choice: [flash and RAMTEXT
-  space](../plans/2026-10-24-flash-space.md)).
+  space](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-10-24-flash-space.md)).
 - One code every 5 output samples: 44,118 / 5 = 8,824 Hz.
 - KICK 220 ms (1,942 codes), SNARE 117 ms (1,034), CLAP 185 ms (1,631), HAT 29 ms (253), each
   cut where it falls to the rest: 4,860 codes, 2,431 bytes after a pad code (index 0 means

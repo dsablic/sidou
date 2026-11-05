@@ -6082,6 +6082,9 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   most 300 KB, in the repository (the boot title, `docs/media/sidou-card-240.png`); and a minor
   or major release changes the card. `author` is left out: the hub then shows the name it
   recorded when SIDOU joined.
+- It also holds the whats-new video to the release: the recipe's title and the videos page name
+  CHANGELOG's newest minor (`SIDOU 1.6`), so a release cannot ship the last one's video, as
+  1.6.0 first did.
 - `tools/fm1-unbrick-mac`: `scsiio/__init__.py` raises ImportError on macOS before anything
   else, so the script registers the package without running it, so that its `common.py`
   imports as on Linux, and supplies the `SCSIDev` that `jltech/uboot.py` imports. Detaching

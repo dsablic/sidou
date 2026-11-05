@@ -62,6 +62,12 @@ if hub is not None:
         if not head.startswith(b"\x89PNG") or side[0] != side[1] or not 240 <= side[0] <= 1024 \
            or image.stat().st_size > 300 * 1024:
             errors.append(f"fmhub.json's \"image\" must be a square PNG of 240 to 1024 pixels, 300 KB at most")
+feature = ".".join(version.split(".")[:2])
+whats_new = json.loads((root / "docs/recipes/whats-new.json").read_text())["title"]
+if not whats_new.endswith(f"SIDOU {feature}"):
+    errors.append(f"the whats-new recipe is \"{whats_new}\": write it for SIDOU {feature}")
+if f"What&#x27;s new in {feature} " not in (root / "web/videos.html").read_text():
+    errors.append(f"web/videos.html's whats-new is not \"What's new in {feature}\"")
 releases = re.findall(r"^## \[(\d+)\.(\d+)\.(\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.M)
 if len(releases) > 1 and releases[0][2] == "0":
     prev = "v" + ".".join(releases[1])

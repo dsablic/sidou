@@ -514,8 +514,8 @@
       "title": "*MOD*: the vibrato"
     },
     {
-      "caption": "SELECT again: the three effect slots as a chain. SCL moves to the next slot, ALGORITHM picks its effect.",
-      "control": "turn SELECT clockwise by 1 detent, then wait 0.7 s, then press SCL, then wait 0.4 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then play 7 notes at 120 BPM",
+      "caption": "SELECT past LFO to FX: the three effect slots as a chain. SCL moves to the next slot, ALGORITHM picks its effect.",
+      "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then press SCL, then wait 0.4 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then play 7 notes at 120 BPM",
       "expect": [
         {
           "kind": "text",
@@ -542,7 +542,7 @@
       "id": "fx",
       "inputs": [
         {
-          "detents": 1,
+          "detents": 2,
           "encoder": "SELECT",
           "op": "turn"
         },
