@@ -3826,6 +3826,22 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   triangle, saw up, saw down, square and random (5, flat, skipped), speed 0..127 onto the 32 rates,
   the vibrato's depth 127 as about a semitone.
 
+### Slide and accent (1.7)
+
+- They ride the LOCK chunk (parameters 10 and 11) so they move with their rows as every lock does
+  (pattern edits, undo, the trailer), and they act in `song_lock_apply`, after the player's frame,
+  as the other locks do: the player is untouched (its GoatTracker match tests stay as they are).
+- A slide holds what GoatTracker's hard restart would let go: the gate, AD and SR, captured on the
+  slide's row, until the next note; that note's first frame keeps the waveform before it (no test-
+  bit restart) and the frequency glides 4 frames from the pitch before. The player writes a new
+  note's pitch the frame after its row, so the heard glide is 3 frames.
+- The cost of the chunk: an older firmware drops a LOCK chunk with a parameter it does not know
+  (`song_ext_locks_check`), so a 1.7 song with a slide or accent has no locks in 1.6. A chunk of its
+  own would have kept them, at the cost of a second lock path; the owner may prefer that.
+- "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A DICE
+  role that rolls slides and accents on a bass lane, or a built-in LIVE preset, was not done: a
+  fifth built-in moves the presets' numbers, MIDI program changes included.
+
 ### LAB cards over MIDI (1.7)
 
 - The cards that are no instrument parameter get NRPN group 7 (`midi_map.c`'s `LAB_ROW`, `lab_cards.c`):

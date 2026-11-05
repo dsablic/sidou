@@ -53,8 +53,8 @@ static const char* const STEP_LINES[] = {
 static const char* const STEP_HELD_LINES[] = {
     "K1\0CUTOFF LOCK", "K2\0RESO LOCK",  "K3\0PULSE LOCK", "K4\0WAVE SET",
     "E+K\0CHARACTER",  "PRESETS\0NOTE",  "LFO\0CLEAR LOCK", "KEY UP\0TOGGLE",
-    "SELECT\0LANE",    "ALG\0CHANCE",    "ARP\0GATE",      "E+LFO\0ONE UNDO",
-    "SEQ\0NEXT VIEW",  "SAVE\0SONG",     "HOME\0BACK"};
+    "SELECT\0LANE",    "ALG\0CHANCE",    "ARP\0GATE",      "FX\0SLIDE",
+    "ENV\0ACCENT",     "SEQ\0NEXT VIEW", "SAVE\0SONG",     "HOME\0BACK"};
 static const char* const STEP_REC_LINES[] = {
     "KEYS\0RECORD",   "K1\0CUTOFF LOCK", "K2\0RESO LOCK",   "QUANT\0\5",
     "SELECT\0LANE",   "ALG\0PAGE",       "PRESETS\0INSTR",  "ARP\0GATE",

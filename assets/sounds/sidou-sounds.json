@@ -3,7 +3,7 @@
   "name": "SIDOU SOUNDS",
   "sounds": [
     { "instrument": 1, "name": "PWM STRINGS", "about": "a slow pulse-width sweep through a soft low-pass" },
-    { "instrument": 2, "name": "ACID BITE", "about": "a resonant low-pass that snaps open on every note" },
+    { "instrument": 2, "name": "303 BASS", "about": "a resonant saw bass for STEP's SLIDE and ACCENT locks" },
     { "instrument": 3, "name": "WOBBLE BASS", "about": "a pulse bass with the cutoff wobbling at about 3 Hz" },
     { "instrument": 4, "name": "NOISE KICK", "about": "a noise click into a triangle that drops in pitch" },
     { "instrument": 5, "name": "CHIP CHORD", "about": "a major arpeggio on one key, the C64 way" },

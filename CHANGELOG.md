@@ -21,6 +21,10 @@ All notable changes are documented here. The format follows
   saw down, square or sample and hold, on the pitch, the pulse width, the cutoff or the chip's
   volume, 0.05 to 12.75 Hz, depth -63..+63, drawn side by side. The import maps a SidStation
   patch's vibrato, PWM and filter LFOs onto them. A sound grows to 109 bytes.
+- **SLIDE and ACCENT in STEP.** A held step and FX slides into the next note (the gate held
+  through the hard restart, a 4-frame glide); a held step and ENV accents it (cutoff, resonance
+  and sustain up for its row). They are LOCKs, saved with the song; the site's sounds include a
+  303 BASS for them. A song with either loses its locks in a 1.6 SIDOU.
 - **SIDOU's sounds on the site.** The Library page lists sixteen original LAB sounds and sends
   them to the FM-1 as one song, `SIDOU SOUNDS`; ENV on INSTR opens each in LAB as made.
 - **An NRPN for every LAB card.** FILTER ENV, LAYERS, TABLE and LFO's cards, which had none, are NRPN

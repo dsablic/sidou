@@ -749,3 +749,96 @@ fn a_held_steps_locks_go_at_its_release_and_leave_the_next_rows_alone() {
         "a later row 3 plays its own lock"
     );
 }
+
+fn per_call(s: &mut Song, calls: u32) -> Vec<(u32, u8, u32, u8, u8, u8)> {
+    let mut t = Transport::new(s);
+    assert!(t.play(0, 0));
+    let mut out = Vec::new();
+    while t.calls() < calls {
+        t.pass();
+        let c = t.calls();
+        t.block_silent();
+        if t.calls() != c {
+            out.push((
+                t.chip.fc,
+                t.chip.res,
+                t.chip.osc[0].freq,
+                t.chip.env[0].gate,
+                t.sc.row_row[0],
+                t.sc.shadow[6] >> 4,
+            ));
+        }
+    }
+    out
+}
+
+#[test]
+fn an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row() {
+    let base = per_call(&mut song(), 120);
+    let mut s = song();
+    put(&mut s, 0, 4, SONG_LOCK_ACCENT, 1);
+    let got = per_call(&mut s, 120);
+    let mut accented = 0;
+    for (k, (g, b)) in got.iter().zip(&base).enumerate() {
+        if g.4 == 4 {
+            assert_eq!(
+                g.0,
+                (b.0 + SONG_ACCENT_CUTOFF).min(2047),
+                "call {k}: the cutoff up"
+            );
+            assert_eq!(
+                u32::from(g.1),
+                (u32::from(b.1) + SONG_ACCENT_RESONANCE).min(15)
+            );
+            assert_eq!(g.5, b.5, "the shadow keeps the song's sustain");
+            accented += 1;
+        } else {
+            assert_eq!(
+                (g.0, g.1),
+                (b.0, b.1),
+                "call {k}: row {} the song's own",
+                g.4
+            );
+        }
+    }
+    assert!(accented > 3);
+}
+
+#[test]
+fn a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch() {
+    let plain = per_call(&mut song(), 60);
+    let gated = |v: &[(u32, u8, u32, u8, u8, u8)], row: u8| {
+        v.iter().filter(|c| c.4 == row).all(|c| c.3 == 1)
+    };
+    assert!(
+        !gated(&plain, 3),
+        "without a slide the hard restart lets the gate go before row 4"
+    );
+    let mut s = song();
+    put(&mut s, 0, 2, SONG_LOCK_SLIDE, 1);
+    let got = per_call(&mut s, 60);
+    for row in 2..4 {
+        assert!(gated(&got, row), "row {row}: the gate stays on");
+    }
+    let first = got.iter().position(|c| c.4 == 4).unwrap();
+    let (from, to) = (plain[first - 1].2, plain[first + 6].2);
+    let steps: Vec<u32> = got[first..first + SONG_GLIDE_FRAMES as usize + 1]
+        .iter()
+        .map(|c| c.2)
+        .collect();
+    assert!(from < to, "row 4's note is higher");
+    assert!(
+        steps.windows(2).all(|w| w[0] <= w[1]),
+        "a rising glide: {steps:?}"
+    );
+    let between = steps.iter().filter(|&&f| f > from && f < to).count();
+    assert!(
+        between >= 2,
+        "the pitch passes between the notes, the player's note a frame after its row: {steps:?}"
+    );
+    assert_eq!(
+        *steps.last().unwrap(),
+        to,
+        "at the new note after the glide"
+    );
+}

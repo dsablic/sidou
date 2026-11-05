@@ -22,8 +22,8 @@ _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
 #define LANES_ROWS 0x0001FFE0u
 #define LOWER_ROWS 0x3FFE0000u
 
-static const uint16_t LOCK_STEP[SONG_LOCK_PARAMS] = {32, 1, 1, 1, 64, 2, 2, 2, 2, 5};
-static const uint16_t LOCK_START[SONG_LOCK_PARAMS] = {1024, 8, 0, 0, 2048, 64, 64, 64, 64, 100};
+static const uint16_t LOCK_STEP[SONG_LOCK_PARAMS] = {32, 1, 1, 1, 64, 2, 2, 2, 2, 5, 1, 1};
+static const uint16_t LOCK_START[SONG_LOCK_PARAMS] = {1024, 8, 0, 0, 2048, 64, 64, 64, 64, 100, 0, 0};
 static const uint8_t WAVES[STEP_VIEW_WAVES] = {0u, 0x11u, 0x21u, 0x41u, 0x81u};
 static const char* const WAVE_NAMES[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PULSE", "NOISE"};
 static const char* const WAVE_SHORT[STEP_VIEW_WAVES] = {"OFF", "TRI", "SAW", "PUL", "NOI"};
@@ -840,6 +840,22 @@ static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, 
     }
 }
 
+static void toggle_lock(screen* s, step_view* st, const target* t, uint32_t param) {
+    static const char* const SAYS[2][2] = {{"SLIDE OFF", "SLIDE ON"}, {"ACCENT OFF", "ACCENT ON"}};
+    gt2_song* song = (gt2_song*)st->sv->song;
+    uint32_t value;
+    int on = !lock_get(song, t->pattern, t->row, param, &value);
+    int r = on ? song_lock_put(song, t->pattern, t->row, param, 1u)
+               : song_lock_remove(song, t->pattern, t->row, param);
+    if (r < 0) {
+        refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
+                  r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL" : "LOCKS FULL");
+        return;
+    }
+    st->rev++;
+    screen_toast(s, SAYS[param == SONG_LOCK_ACCENT][on], SCREEN_TOAST_MS);
+}
+
 static void clear_step(screen* s, step_view* st, const target* t) {
     gt2_song* song = (gt2_song*)st->sv->song;
     for (uint32_t p = 0; p < SONG_LOCK_PARAMS; p++) {
@@ -922,6 +938,13 @@ static int input(screen* s, void* state, const screen_event* e) {
         if (edit && st->held == STEP_VIEW_NONE && !song_view_recording(sv) &&
             e->id == PANEL_BTN_ARP) {
             gen_start(s, st, SONG_GEN_MUTATE);
+            return 1;
+        }
+        if ((e->id == PANEL_BTN_FX || e->id == PANEL_BTN_ENV) && !edit && st->held != STEP_VIEW_NONE) {
+            st->touched = st->down;
+            if (target_of(st, st->held, &t)) {
+                toggle_lock(s, st, &t, e->id == PANEL_BTN_FX ? SONG_LOCK_SLIDE : SONG_LOCK_ACCENT);
+            }
             return 1;
         }
         if (e->id == PANEL_BTN_LFO && st->held != STEP_VIEW_NONE) {

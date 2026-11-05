@@ -296,6 +296,13 @@ player's own state is not changed, so its tables run on underneath.
 | 4 pulse width | 0-4095 | the row's voice's `$D402`, `$D403`'s low nybble |
 | 5-8 age/heat, DAC sloppiness, thump, bleed | 0-127 | chip A's character, with chip_ctl's glide (0.32 s end to end: coarse by nature) |
 | 9 chance | 0-100 | no register: the step's chance to play, in percent (a step with no record plays always) |
+| 10 slide | 1 | the voice's gate (`$D404` bit 0), AD and SR held at the row's values up to the next note, so the player's hard restart does not cut it; that note's first frame keeps the waveform before it and its frequency (`$D400`, `$D401`) glides from the pitch before over 4 frames; since 1.7 |
+| 11 accent | 1 | `$D415`/`$D416` the song's cutoff + 384, `$D417`'s resonance + 4 (each clamped), the voice's `$D406` sustain nybble 15; since 1.7 |
+
+**Slide and accent and older firmware.** 1.6 and before check every record against the
+parameters they know, and a record of parameter 10 or 11 makes them drop the song's whole `LOCK`
+chunk (every lock of the song) when they read it. A song with a slide or an accent loses its locks
+in an older SIDOU; GoatTracker skips the chunk either way.
 
 **Chance.** A chance lock (parameter 9) gives its row a probability to play on each pass; the
 value is a percent, 100 is the default and STEP keeps no record for it. The roll is the main

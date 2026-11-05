@@ -125,12 +125,12 @@ pub fn sidou_sounds() -> Vec<Sound> {
                 "PWM STRINGS",
                 "a slow pulse-width sweep through a soft low-pass",
             ),
-        Shape::new(SAW, 0x09, 0x00)
+        Shape::new(SAW, 0x08, 0x88)
             .filter(LP, 300, 12, 1)
             .filter_env(40, 0x06, 0x00)
             .sound(
-                "ACID BITE",
-                "a resonant low-pass that snaps open on every note",
+                "303 BASS",
+                "a resonant saw bass for STEP's SLIDE and ACCENT locks",
             ),
         Shape::new(PUL, 0x00, 0xf9)
             .pulse(1536)

@@ -354,8 +354,8 @@ int song_ext_set_locks(gt2_song* s, const song_lock* locks, uint32_t n) {
 }
 
 uint32_t song_lock_max(uint32_t param) {
-    static const uint16_t max[SONG_LOCK_PARAMS] = {2047u, 15u, 7u, 1u, 4095u,
-                                                   127u,  127u, 127u, 127u, 100u};
+    static const uint16_t max[SONG_LOCK_PARAMS] = {2047u, 15u,  7u,   1u,   4095u, 127u,
+                                                   127u,  127u, 127u, 100u, 1u,    1u};
     return param < SONG_LOCK_PARAMS ? max[param] : 0u;
 }
 

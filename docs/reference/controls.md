@@ -318,7 +318,9 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + K4 | waveform **SET**: OFF, TRI, SAW, PULSE, NOISE |
 | Step held + EDIT + K1-K4 | the character's LOCKs: age/heat, DAC, thump, bleed (0-127) |
 | Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
-| Step held + LFO | clears that step's locks, its chance and its SET |
+| Step held + FX | **SLIDE** on that step, on and off (toast `SLIDE ON`, `SLIDE OFF`; a lock: the yellow notch): the note's gate is held through the rows up to the next note, GoatTracker's hard restart skipped, and the next note glides from this pitch over 4 frames, as a 303's slide |
+| Step held + ENV | **ACCENT** on that step, on and off (`ACCENT ON`, `ACCENT OFF`): for its row the cutoff is 384 higher, the resonance 4 higher (each clamped) and the voice's sustain full |
+| Step held + LFO | clears that step's locks, its chance, its SET, its slide and its accent |
 | EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED`. Either finger may land first (ARP first leaves the lane's gate as it was) |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
