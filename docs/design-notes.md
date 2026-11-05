@@ -1933,7 +1933,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   sample on the dearest synthetic block before this).
 - Cost: 326 bytes of RAMTEXT (the interrupt's write path 38, the block's check 66, the bend and
   the rewrite 222), against the design's estimate of 200; the .sid player's share
-  (`M3_RAMTEXT`, 1,536 since M3, 1,402 used) grows by the design's 200 to 1,736 (1,728 used).
+  (`M3_RAMTEXT`, 1,536 since M3, 1,402 used) grows by the design's 200 to 1,736 (1,728 used),
+  the owner's decision (2026-11-05).
   The dearest .sid block with no tweak: 100.6 instructions a sample, was 94.9, of
   `PSID_ISR_WORST`'s 120 (the raw byte and the test on every write); a turn adds the five
   rewrites to one block. 84 bytes of RAM in `psid_ctl` (the raw bytes of two chips, the tweak).
@@ -6056,7 +6057,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - A tune takes no state of its own outside the song's: audio.c's union fits the song
   transport's and the 6502's 64 KiB is the song's region. The .sid player's code in SRAM
   (psid_ctl's interrupt half, `sid_advance`, audio.c's player paths and its swap hook) stays
-  within 1,536 bytes.
+  within 1,736 bytes: M3's 1,536 and 200 for 1.8's live tweaks, the owner's decision
+  (2026-11-05).
 
 ### The decode gate (decode_gate.rs)
 
