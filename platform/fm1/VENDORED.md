@@ -193,26 +193,18 @@ is unchanged: **no fork of `usb.c`**; everything SIDOU needs goes in `midi.c`, a
 ### USB audio out (`FELUCCA_UAC`, since 2026-10-23)
 
 `usb.c`'s audio input is on, as in Felucca's own firmware: a class-compliant
-UAC1 input, 16-bit stereo at 44.1 kHz or 48 kHz (the host's choice, SET_CUR),
-on an isochronous asynchronous IN endpoint (EP4), beside USB-MIDI in one
-device (bcdDevice 3.28; the configuration descriptor grows from 101 to 178
-bytes). Nothing in `usb.c` is SIDOU's: its producer (`uac_render_start`, then
-`uac_tap` a block at a time, which at 48 kHz resamples through
-`src/uac_fir.h`'s polyphase FIR) fills a ring that its consumer
-(`uac_service`, one packet a USB frame) empties.
+UAC1 input, 16-bit stereo at 44.1 kHz, on an isochronous asynchronous IN endpoint (EP4), beside
+USB-MIDI in one device (the configuration descriptor grows from 101 to 175 bytes). Since 1.8
+`FELUCCA_UAC_48K` is 0 (decision 0011, the owner): no 48 kHz choice, no resampler and no
+`uac_fir.h`, 8 KB less flash. Nothing in `usb.c` is SIDOU's: its producer (`uac_render_start`,
+then `uac_tap` a block at a time) fills a ring that its consumer (`uac_service`, one packet a USB
+frame) empties.
 
-- **`src/uac_fir.h`**, the resampler's table, which `usb.c` includes with
-  `FELUCCA_UAC_48K`: Felucca's file as it is, from Felucca's tree at `5738617`
-  (2026-10-16, the copy at hand; felucca-bsp does not carry it). Felucca's own
-  test (below) checks every tap against the prototype computed in double
-  precision. Felucca's `tests/uac_test.c` is the one from Felucca's main at `a4f007c`
-  (2026-11-04), written for felucca-bsp's `chip/usb.c` (it feeds 24-bit words).
 - **Who calls the producer.** Felucca calls it from its audio interrupt
   (`audio.c`: `uac_render_start` before a render, `uac_tap` after each 32-frame
   block). SIDOU's audio interrupt runs from `.ram_text` and reads no flash
   (`app.ld`; emu-gate `tests/ram_audio.rs`), and the producer does not fit
-  there: it is about 800 bytes of code (432 of them the resampler) against
-  RAMTEXT's last bytes, and its 7,680-byte table would have to move to RAM. Nothing
+  there: it is a few hundred bytes of code against RAMTEXT's last bytes. Nothing
   of it must run during a flash operation (those mask every interrupt). So the
   audio interrupt does nothing for USB audio, and SIDOU's `usb_audio.c`
   (included after `usb.c`, its interface `usb_audio.h`) runs the producer from
@@ -225,8 +217,7 @@ bytes). Nothing in `usb.c` is SIDOU's: its producer (`uac_render_start`, then
     takes them so since `6a1fd30`; Felucca 1.6.1's took 16-bit samples), into a buffer in POOL;
   - `usb_audio_tick`, every tick, runs `usb.c`'s producer on it:
     `uac_render_start`, then `uac_tap` on a quarter of the block (32 frames,
-    Felucca's own block size) a tick, so no tick is long (at 48 kHz about
-    11,000 instructions);
+    Felucca's own block size) a tick, so no tick is long;
   - TIMER5 calls `uac_service` nested in a render at the USB poll's tick
     (`usb_audio_isr`), as Felucca's `fm1_timer5_irq` does: `usb_poll` waits for
     the render's end, and a render can outlast a USB frame.
@@ -238,18 +229,14 @@ bytes). Nothing in `usb.c` is SIDOU's: its producer (`uac_render_start`, then
   budget the ring never runs dry (host-tested,
   `host/crates/sidou-pack/tests/usb_audio.rs`).
 - **RAM:** in POOL the ring (2,048 bytes, placed by `app.ld`) and the block
-  (1,036); in the RAM region the resampler's history (264), EP4's IN buffer (196)
-  and `uac` (72), which the compiler merges into globals no linker rule can name
-  (emu-gate `tests/usb.rs` checks EP4's buffer is on an 8-byte boundary, as EP1's
-  must be). RAMTEXT: none. The table stays in flash.
-- **Tests.** Felucca's `tests/uac_test.c`, as it is, from the same tree
-  (`host/crates/sidou-pack/harness/felucca/uac_test.c`; only its `main` is
-  renamed, by a define), runs on SIDOU's `usb.c` without CDC: the descriptors as
-  a host parses them, the ring against packets, the rates, the resampler against
-  a double-precision one, the 48 kHz stream. SIDOU's own (`tests/usb_audio.rs`)
-  check SIDOU's descriptors and the hand-over in time against Felucca's producer
-  fed directly; emu-gate `tests/usb.rs` records the DAC's output through a model
-  of EP4, bit for bit at 44.1 kHz.
+  (1,036); in the RAM region EP4's IN buffer (184 since 1.8: 46 frames at most, 196 with 48 kHz) and `uac` (72), which the compiler merges
+  into globals no linker rule can name (emu-gate `tests/usb.rs` checks EP4's buffer is on an
+  8-byte boundary, as EP1's must be). RAMTEXT: none.
+- **Tests.** SIDOU's own (`host/crates/sidou-pack/tests/usb_audio.rs`) check SIDOU's descriptors
+  (one rate, 44.1 kHz) and the hand-over in time against the producer fed directly; emu-gate
+  `tests/usb.rs` records the DAC's output through a model of EP4, bit for bit at 44.1 kHz, and
+  checks no other rate is offered. Felucca's `uac_test.c`, which tested the 48 kHz resampler
+  too, left with it.
 
 ### How `midi.c` is built (the flags rule)
 

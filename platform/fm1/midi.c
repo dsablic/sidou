@@ -34,7 +34,7 @@ _Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room
 _Static_assert(SIDOU_MIDI_OUT_CHANNEL >= 1 && SIDOU_MIDI_OUT_CHANNEL <= 16,
                "SIDOU_MIDI_OUT_CHANNEL is 1..16");
 
-static midi_ring in_ring;
+static midi_ring in_ring __attribute__((section(".noinit.midi_in")));
 static midi_rx rx;
 static midi_learn learned __attribute__((used, section(".pool")));
 static midi_route routing __attribute__((used));
@@ -285,6 +285,7 @@ void midi_link_run(const grid* g, uint32_t now_ms) {
 }
 
 void midi_init(live* l, keys_route* kr) {
+    __builtin_memset((void*)&in_ring, 0, sizeof in_ring);
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
     midi_route_init(&routing, l, kr, NULL);

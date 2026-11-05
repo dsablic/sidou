@@ -968,11 +968,8 @@ pub mod harness {
         pub ring_r: u32,
         pub maxf: u32,
         pub prime: u32,
-        pub prime48: u32,
         pub lo: u32,
         pub hi: u32,
-        pub lo48: u32,
-        pub hi48: u32,
         pub ring_n: u32,
     }
 
@@ -990,7 +987,6 @@ pub mod harness {
         pub fn uac_h_direct_tap(out: *const i32, n: u32);
         pub fn uac_h_get() -> UacState;
         pub fn uac_h_drain(d: *mut u32, max: u32) -> u32;
-        pub fn felucca_uac_test_main() -> i32;
     }
 }
 

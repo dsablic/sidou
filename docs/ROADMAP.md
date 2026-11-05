@@ -71,7 +71,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   byte, on 0x1209:0x0002.
 - **The ergo baseline refreshed** after LAB, with the accepted findings reviewed. Done.
 - **A device session gates 1.0.** USB audio recording, the first-run tour, unplugging the
-  cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, and a long 48 kHz recording, left to users (the CPU erratum in Felucca's resampler, [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16); if it fails, 48 kHz goes off until a fix).
+  cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, left to users. The long 48 kHz recording is moot: 1.8 records at 44.1 kHz only (decision 0011), so the resampler's CPU erratum ([felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16)) no longer reaches SIDOU.
 
 ## 1.1
 

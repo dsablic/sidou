@@ -4,9 +4,9 @@
 use std::sync::{Mutex, MutexGuard};
 
 use sidou_pack::harness::{
-    felucca_uac_test_main, uac_h_desc, uac_h_direct_start, uac_h_direct_tap, uac_h_drain,
-    uac_h_flowing, uac_h_get, uac_h_packet, uac_h_rate, uac_h_reset, uac_h_skip, uac_h_stream,
-    uac_h_take, uac_h_tick, UacState,
+    uac_h_desc, uac_h_direct_start, uac_h_direct_tap, uac_h_drain, uac_h_flowing, uac_h_get,
+    uac_h_packet, uac_h_rate, uac_h_reset, uac_h_skip, uac_h_stream, uac_h_take, uac_h_tick,
+    UacState,
 };
 
 static HARNESS: Mutex<()> = Mutex::new(());
@@ -51,14 +51,6 @@ fn string(i: u32) -> String {
 }
 
 #[test]
-fn feluccas_own_usb_audio_test_passes_on_sidous_usb_c() {
-    let _g = exclusive();
-    // SAFETY: the test's own main; its state is its own translation unit's.
-    let fails = unsafe { felucca_uac_test_main() };
-    assert_eq!(fails, 0, "Felucca's uac_test failed (its output above)");
-}
-
-#[test]
 fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
     let _g = exclusive();
     let dev = desc(0x0100);
@@ -70,7 +62,11 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
         "class per interface (no IAD)"
     );
     assert_eq!((le16(&dev[8..]), le16(&dev[10..])), (0x1209, 0x0001));
-    assert_eq!(le16(&dev[12..]), 0x0328);
+    assert_eq!(
+        le16(&dev[12..]),
+        0x0318,
+        "bcdDevice: MIDI, the audio input at 44.1 kHz, its streams first"
+    );
     assert_eq!(string(dev[15] as u32), "SIDOU FM-1");
     assert_eq!(string(dev[14] as u32), "SIDOU contributors");
 
@@ -159,7 +155,7 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
     }
     assert_eq!(
         eps_detail,
-        vec![(0x01, 2, 64, 0), (0x81, 2, 64, 0), (0x84, 0x05, 196, 1)]
+        vec![(0x01, 2, 64, 0), (0x81, 2, 64, 0), (0x84, 0x05, 184, 1)]
     );
     let h = ac_header.expect("no AC header");
     assert_eq!(le16(&h[3..]), 0x0100, "UAC 1.0");
@@ -189,11 +185,11 @@ fn the_device_is_one_composite_usb_midi_and_class_compliant_audio_input() {
     let f = fmt.expect("no format type I");
     assert_eq!(
         &f[3..8],
-        &[1, 2, 2, 16, 2],
-        "type I, 2 ch, 2-byte subframes, 16 bit, 2 rates"
+        &[1, 2, 2, 16, 1],
+        "type I, 2 ch, 2-byte subframes, 16 bit, one rate"
     );
     let rate = |i: usize| u32::from(f[i]) | u32::from(f[i + 1]) << 8 | u32::from(f[i + 2]) << 16;
-    assert_eq!((rate(8), rate(11)), (44_100, 48_000));
+    assert_eq!((f.len(), rate(8)), (11, 44_100), "44.1 kHz only");
     assert_eq!(
         cs_ep.expect("no CS endpoint")[3] & 1,
         1,
@@ -368,7 +364,7 @@ fn check_recording(hz: u32, render: Render, label: &str) {
     let after = run.recorded.len() - at;
     let packets: u32 = run.sizes.iter().sum();
     let mean = run.recorded.len() as f64 / f64::from(packets);
-    let (lo, hi) = if hz == 48_000 { (47, 49) } else { (43, 46) };
+    let (lo, hi) = (43, 46);
     println!(
         "{label}: {} frames recorded in {packets} packets (mean {mean:.4}), {} produced; \
          fill at the hand-over {}..{}; adj up {} down {}; underruns {} overruns {} skipped {}",
@@ -435,14 +431,6 @@ fn a_host_records_every_frame_in_order_at_44_1_khz_bit_for_bit() {
     check_recording(44_100, Render::Steady, "44.1 kHz, steady renders");
     check_recording(44_100, Render::Budget, "44.1 kHz, renders of 7..50 %");
     check_recording(44_100, Render::Random, "44.1 kHz, renders of 7..85 %");
-}
-
-#[test]
-fn a_host_records_every_resampled_frame_in_order_at_48_khz() {
-    let _g = exclusive();
-    check_recording(48_000, Render::Steady, "48 kHz, steady renders");
-    check_recording(48_000, Render::Budget, "48 kHz, renders of 7..50 %");
-    check_recording(48_000, Render::Random, "48 kHz, renders of 7..85 %");
 }
 
 #[test]

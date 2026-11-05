@@ -14,6 +14,9 @@ All notable changes are documented here. The format follows
   hash. A firmware update's first request is answered even when it comes right behind one of
   SIDOU's own SysEx frames (it was dropped before).
 
+- **USB audio records at 44.1 kHz only.** The 48 kHz choice and its resampler are gone (about 8 KB
+  of flash, the owner's call, for Bluetooth): a DAW records at 44.1 kHz, the rate SIDOU plays at.
+
 ### Fixed
 - **The site's 1.7 deploy.** The site's song core, built by CI's clang, came to 164,811 bytes, over
   its 160 KiB budget (Apple's clang made 161,337); the budget is 176 KiB, the owner's call, and

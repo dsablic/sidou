@@ -32,10 +32,10 @@ set_source_files_properties(player/gt2_play.c PROPERTIES COMPILE_OPTIONS "-Os;-f
 set_source_files_properties(player/song_ctl.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
 set_source_files_properties(song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
 set_source_files_properties(song/gt2_stream.c PROPERTIES COMPILE_OPTIONS -Oz)
-set_source_files_properties(song/gt2_sng.c PROPERTIES COMPILE_OPTIONS -Os)
+set_source_files_properties(song/gt2_sng.c PROPERTIES COMPILE_OPTIONS -Oz)
 set_source_files_properties(song/gt2_song.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")
 set_source_files_properties(song/song_ext.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-jump-tables")
-set_source_files_properties(player/gt2_shape.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
+set_source_files_properties(player/gt2_shape.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
 set_source_files_properties(cpu6502/cpu6502.c PROPERTIES
     COMPILE_OPTIONS -Os COMPILE_DEFINITIONS CPU6502_SMALL)
 set_source_files_properties(psid/psid_env.c PROPERTIES COMPILE_OPTIONS -Os)

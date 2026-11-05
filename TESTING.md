@@ -1478,7 +1478,7 @@ What fm1-emu does not do, so what only the device can tell. Each has a device ch
   MUSB core behind JieLi's window) and a full-speed host on the cable, independent of Felucca's
   driver. `crates/emu-gate/tests/usb.rs` drives that host a frame at a time
   (`tests/common/usb_host.rs`): enumeration, the update handshake and step 1, K1's and K4's MIDI
-  out, SysEx transfers, USB audio at 44.1 and 48 kHz. Its SIE takes an estimated 1 µs a round
+  out, SysEx transfers, USB audio at 44.1 kHz. Its SIE takes an estimated 1 µs a round
   trip, which the USB tests' costs include. What its host cannot do (a control request of the
   test's own, more than one bulk OUT a frame, the core reset into the update loader) is
   upstream-reports.md row 11. The chip's DMA against a sleeping core and real USB timing stay

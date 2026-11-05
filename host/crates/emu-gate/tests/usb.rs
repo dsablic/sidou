@@ -14,7 +14,7 @@ use fm1_soc::usb::UsbEvent;
 const CC_CUTOFF: u8 = 74;
 const IDENTITY: &str = "FM-1_900";
 const IN_MAX: usize = 64;
-const CONFIG_LEN: usize = 178;
+const CONFIG_LEN: usize = 175;
 
 fn host(m: &mut Machine) -> &mut UsbHost {
     m.usb.as_mut().expect("a host")
@@ -1988,7 +1988,7 @@ fn rms(x: impl Iterator<Item = i16>) -> f64 {
 const A4_KEY: u8 = 30;
 
 #[test]
-fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
+fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate() {
     let Some(fw) = firmware("the USB audio test") else {
         return;
     };
@@ -2056,47 +2056,14 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
         "no sound recorded"
     );
 
-    record(&mut m, 48_000);
-    let u48_from = uac(&mut m, &fw);
-    let empty = ep4_empty(&m);
-    let dac_from = m.left().len();
-    m.usb_frames(1000);
-    let u48 = uac(&mut m, &fw);
-    let packets = host(&mut m).ep4_in.clone();
-    let (lo, hi, mean) = packet_sizes(&packets[100..]);
-    let usb = frames(&packets[100..]);
-    let dac = m.left();
-    let (level, dac_level) = (
-        rms(usb.iter().map(|f| f.0)),
-        rms(dac[dac_from + 4410..].iter().copied()),
-    );
-    println!(
-        "48 kHz: {} packets, {lo}..{hi} frames (mean {mean:.4}); fill {}..{}; level {level:.0} \
-         against the DAC's {dac_level:.0}",
-        packets.len(),
-        u48.fill_lo,
-        u48.fill_hi
-    );
-    assert_eq!((u48.r48, u48.rate_sets, u48.go), (1, u.rate_sets + 1, 1));
-    assert!(lo >= 47 && hi <= 49, "packet sizes {lo}..{hi}");
-    assert!((mean - 48.0).abs() < 0.1, "mean packet {mean}");
-    assert!(
-        (level / dac_level - 1.0).abs() < 0.03,
-        "48 kHz level {level:.0}, the DAC's {dac_level:.0}"
-    );
-    assert_eq!(
-        (
-            u48.underruns - u48_from.underruns,
-            u48.overruns - u48_from.overruns,
-            u48.stalls - u48_from.stalls,
-            u48.missed - u48_from.missed
-        ),
-        (0, 0, 0, 0),
-        "a glitch at 48 kHz"
-    );
-    assert!(u48.pkts >= 995, "{} packets counted at 48 kHz", u48.pkts);
-    assert_eq!(ep4_empty(&m), empty, "an IN token found no packet");
-    assert_eq!(hand_over(&mut m, &fw).3, 0, "a block skipped");
+    let stream = m
+        .soc
+        .usb
+        .audio_stream
+        .clone()
+        .expect("an audio streaming interface");
+    assert_eq!(stream.rates, [44_100], "the rates offered");
+    assert!(!stream.offers(48_000));
 
     host(&mut m).replug();
     let unplugged = m.ms();

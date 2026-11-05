@@ -228,9 +228,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Flash budget and ceiling
 
-- The image ceiling is 568,000 bytes (`IMAGE_CEILING` in emu-gate's `tests/flash_plan/mod.rs`),
-  checked by `flash_budget.rs` and `psid_budget.rs`. A compile-time assertion keeps 13,564 bytes of
-  the app slot free above the ceiling for felucca-bsp and later. A raise is the owner's decision.
+- The image ceiling is 579,516 bytes since 1.8 (`IMAGE_CEILING` in emu-gate's
+  `tests/flash_plan/mod.rs`), checked by `flash_budget.rs` and `psid_budget.rs`. It was 568,000,
+  with 13,564 bytes of the app slot (581,564, the loader's fixed `[0, 0x93000)` flash.bin) kept
+  above it; the owner released that reserve for the felucca-bsp move and Bluetooth (decision 0011,
+  2026-11-05) but for 2,048 bytes, which a compile-time assertion keeps under the slot. The ceiling
+  sits at that limit because both ways needed all of it: the plan measured both ways 1.2-2.7 KB short
+  of the room with every listed win. A raise beyond it is not possible without a smaller loader.
 
 ### SRAM audio path
 
@@ -303,10 +307,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   take the flag too. `cpu6502.c` keeps
   its jump table: the 6502 never runs in the interrupt.
 - Main-loop and boot work at `-Oz`: `gt2_stream.c` (240 bytes), `song_ext.c` (416), `psid_file.c`
-  (1,344), `psid_lift.c`. At `-Os`: `gt2_ins.c`, `gt2_sng.c` (the boot reads its song in the
+  (1,344), `psid_lift.c`, `gt2_sng.c` (since 1.8). At `-Os`: `gt2_ins.c`, `gt2_sng.c` until 1.8 (the boot reads its song in the
   LCD's reset wait), `psid_env.c`, `psid_ctl.c` (its main half; its interrupt half,
   `psid_ctl_isr.c`, is `-O2` as the render's callers are).
-- `gt2_shape.c` is `-Os -fno-inline-functions`: bounded main-loop analysis; the size build costs
+- `gt2_shape.c` is `-Oz -fno-inline-functions` (`-Os` until 1.8): bounded main-loop analysis; the size build costs
   more per analysis unit, which `SONG_SLICE_UNITS` (`song_ctl.h`) accounts for.
 - `cpu6502.c` is `-Os` with `CPU6502_SMALL` (the I/O page's accesses out of line): about 7 % more
   instructions per 6502 cycle than `-O2` with them inline, and about 2,900 bytes smaller.
@@ -335,6 +339,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   pops). `boot.c`, `sid_character.c` and `sid_dac.c` stay at `-O2`: at `-Os` they moved the thump
   stage over its 31 instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's
   pause.
+
+- **1.8, room for Bluetooth** (the plan's R4 and R5), measured one file at a time on the image
+  (16-byte steps): to `-Os` from `-O2` `lab_table.c` 496, `platform/fm1/lcd.c` 352, `ui.c` 176,
+  `ui_sound.c` 112; to `-Oz` from `-Os` `lab_song.c` 416, `gt2_shape.c` 176, `chip_ctl.c` 144,
+  `scene.c` 128, `screen.c` 128, `gt2_sng.c` 112. Together 2,256 bytes. `core/fx/fx.c` at `-Os`
+  saved nothing (0) and stays `-O2`.
 
 ### `gt2_song.c` at `-Oz`: timing only
 
@@ -4599,7 +4609,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 ### USB configuration
 
 - The configuration defines switches for usb.c: `FELUCCA_CDC` 0 (no CDC console), `FELUCCA_UAC`
-  1 (USB audio on).
+  1 (USB audio on), `FELUCCA_UAC_48K` 0 (44.1 kHz only since 1.8: the owner traded the 48 kHz
+  choice, its resampler and its 7,680-byte table, for Bluetooth; decision 0011).
 - The strings `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` are felucca-bsp's build
   settings (`platform/fm1/bsp/chip/usb.c` builds the descriptors from them on request), and
   `FELUCCA_UAC_AS_FIRST` is 1, as Felucca 1.6.1 had it.
@@ -4614,17 +4625,16 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   frames each) over 4 ticks.
 - The linker script app.ld places the ring in POOL (2,048 bytes), plus the block buffer (1,036
   bytes).
-- The resampler history (264 bytes), EP4 IN buffer (196 bytes), and uac struct (72 bytes) live
-  in the RAM region.
-- The resampler table stays in flash (approximately 7,680 bytes).
+- The EP4 IN buffer (184 bytes, 46 frames) and the uac struct (72 bytes) live in the RAM region. Since 1.8
+  there is no resampler (44.1 kHz only), so neither its history nor its table.
 
 ### OTA flash and update
 
-- Flash hooks implement step 1 of the update protocol for platform/fm1/src/ota.c.
+- Flash hooks implement step 1 of the update protocol for platform/fm1/bsp/chip/ota.c.
 - Erase and write operations happen only inside the staging area 0xE0000-0xE5000.
 - The operations run in interrupt-off windows, only while audio is stopped; otherwise they
   return -16.
-- The update protocol uses Felucca's src/ota.c (full details in platform/fm1/VENDORED.md).
+- The update protocol uses felucca-bsp's chip/ota.c (full details in platform/fm1/VENDORED.md).
 
 ### Live Link protocol
 
@@ -6237,8 +6247,6 @@ gain.
 
 ### sidou-pack
 
-- `harness/felucca/uac_test.c` is Felucca's upstream test code (GPL-3.0-only), kept byte for
-  byte, comments included.
 - `sidou-pack` is a port of Felucca's GPL-3.0-only packer. The files it fetches on first use
   (`inputs.toml`, never committed, pinned by SHA-256, cached in `build/ac79/`) are JieLi's AC79
   SDK (Apache-2.0) at tag AC79NN_SDK_V1.2.1_2023-12-13, as Felucca's `tools/build.py` pins them:

@@ -102,7 +102,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   presets and songs, and an NRPN for every LAB card, so a DAW can automate each
   ([midi.md](docs/reference/midi.md)).
 - **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an
-  iPad: a DAW records what the line out plays, in stereo at 44.1 or 48 kHz, over the same cable
+  iPad: a DAW records what the line out plays, in stereo at 44.1 kHz, over the same cable
   as USB-MIDI.
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
