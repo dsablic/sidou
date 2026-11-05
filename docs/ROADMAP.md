@@ -88,30 +88,40 @@ receive only), sixteen original SIDOU sounds on the site's Library page, and Goa
 moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` were designed
 ([the plan](plans/2026-11-05-sid-tweaks.md)) and moved to 1.8.
 
-**After 1.7**
-- **Bluetooth MIDI: first, after the felucca-bsp move** ([decision 0011](decisions/0011-bluetooth-midi.md),
-  [the research](plans/2026-11-05-bluetooth-research.md)). Optimist's open stack from fm1-base's
-  `bt/`, MIDI in, out and clock, both ways: a computer or tablet connects to SIDOU, and SIDOU
-  connects out to a Bluetooth MIDI keyboard (a devices page); no pairing at first. A build option
-  off by default, then the main image. About 41-53 KB of flash (cold files at `-Oz` first), 8-10 KB
-  of RAM (NOINIT), 36-44 B of RAMTEXT. First the measurement build and SIDOU booting in a radio-modelling emulator. L.
-  Bluetooth audio is dropped; Wi-Fi and Ableton Link are parked until Optimist runs Link on a
-  real FM-1.
-- **The 8580 mixer's grit: parked (measured, not kept).** The spike (branch `mixer-8580`, not
-  merged) puts a quadratic on the 8580's output: its second harmonic lands within 0.8 dB of
-  reSIDfp's, but the distance to the CSG8580R5 recordings does not move (0.04 dB at most on every
-  tune), for 80 bytes of RAMTEXT and 11 instructions a sample. Kept on the branch for an A/B by ear;
-  the reSIDfp op-amp port stays parked for good (the owner, 2026-11-04).
-- **The DAW plugin's design session** (the owner, 2026-11-04): the spike
-  ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
-  package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card, GPL-3.0-or-later.
-  A first release M, the whole edition L.
-- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): the
-  RAMTEXT room is there since 1.7; next, the experiment in fm1-emu, off by default.
-- **1.8: live tweaks on a playing `.sid`** ([the design](plans/2026-11-05-sid-tweaks.md)): K1 bends
-  the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, each with its popup; about 200
-  bytes of RAMTEXT. **And a layer's level in LAB**: a gain per voice in the audio interrupt
-  ([the LFO plan](plans/2026-11-05-lab-lfos.md)). M each.
+**After 1.7** (the plan the owner agreed, 2026-11-05)
+
+- **1.8, Bluetooth.**
+  - **First the felucca-bsp move**, a prerequisite: Felucca's radio and second-core drivers come
+    from [felucca-bsp](https://github.com/hugelton/felucca-bsp) byte for byte (the Platform item
+    below).
+  - **Then Bluetooth MIDI both ways** ([decision 0011](decisions/0011-bluetooth-midi.md),
+    [the research](plans/2026-11-05-bluetooth-research.md)): SIDOU as a peripheral that a
+    computer or tablet connects to, and SIDOU connecting out to Bluetooth MIDI keyboards (a devices
+    page), with the owner's Korg microKEY Air as the test keyboard; no pairing at first. Optimist's
+    open stack from fm1-base's `bt/`, MIDI in, out and clock. A build option, off by default,
+    starting with a measurement build. It needs about 41-53 KB of flash against the 15.6 KB free,
+    so finding room comes first (cold files at `-Oz`); any budget change is the owner's call. 8-10
+    KB of RAM (NOINIT), 36-44 B of RAMTEXT. L.
+  - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
+    K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
+    RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
+    [the LFO plan](plans/2026-11-05-lab-lfos.md)); a DICE bass role that rolls slides and accents;
+    and ear checks of the site's sixteen sounds on a device.
+- **2.0.**
+  - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
+    default, falling back to one core; the RAMTEXT room is there since 1.7.
+  - **The DAW plugin**, starting from its design session (the owner, 2026-11-04): the spike
+    ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
+    package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card,
+    GPL-3.0-or-later. A first release M, the whole edition L.
+- **Parked.**
+  - **The 8580 mixer's grit** (measured, not kept): the spike (branch `mixer-8580`, not merged)
+    puts a quadratic on the 8580's output; its second harmonic lands within 0.8 dB of reSIDfp's,
+    but the distance to the CSG8580R5 recordings does not move (0.04 dB at most on every tune), for
+    80 bytes of RAMTEXT and 11 instructions a sample. The reSIDfp op-amp port stays parked for good
+    (the owner, 2026-11-04).
+  - **Wi-Fi and Ableton Link** ([decision 0011](decisions/0011-bluetooth-midi.md)): until Optimist
+    runs Link on a real FM-1. Bluetooth audio is dropped.
 
 ## 1.6
 
