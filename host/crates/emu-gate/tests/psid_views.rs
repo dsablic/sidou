@@ -4,8 +4,8 @@
 mod common;
 
 use common::panel::{
-    chord, press, wait_for_within, ALGORITHM, EDIT, GLO, HOME, K1, KEY0, PLAY, PRESETS, REC, SAVE,
-    SELECT,
+    chord, press, wait_for_within, ALGORITHM, EDIT, GLO, HOME, K1, K4, KEY0, PLAY, PRESETS, REC,
+    SAVE, SELECT,
 };
 use common::screen_animating;
 use common::*;
@@ -70,6 +70,12 @@ const LIFTED_V2: &str = "LIFTED V2";
 const LATE_VOICE_AD: u8 = 0x09;
 const LATE_VOICE_SR: u8 = 0xa0;
 const TUNE_PLAYS_A_WHILE_MS: u64 = 500;
+const CUT_DETENTS: i32 = 3;
+const SAW_DETENTS: i32 = 2;
+const REG_CONTROL_V1: usize = 0x04;
+const REG_CUTOFF_LO: usize = 0x15;
+const REG_CUTOFF_HI: usize = 0x16;
+const CUTOFF_HI_MAX: u32 = 0xff;
 
 fn until(m: &mut Machine, what: &str, done: impl FnMut(&mut Machine) -> bool) {
     wait_for_within(m, WAIT_MS, what, done);
@@ -498,6 +504,69 @@ fn a_tune_from_the_menu_plays_mutes_solos_steps_pauses_and_stops() {
         &cells,
         "MENU, SIDS, a tune, GLO, a song step, pause, stop",
     );
+}
+
+fn bent_cutoff(tunes: u32, bend: u32) -> u32 {
+    ((tunes >> 3) + (bend >> 3)).min(CUTOFF_HI_MAX) << 3 | (tunes & 7)
+}
+
+struct Heard {
+    cutoff: u32,
+    control: u8,
+    tunes_cutoff: u32,
+    tunes_control: u8,
+}
+
+fn heard(m: &mut Machine, fw: &Firmware) -> Heard {
+    let raw =
+        |m: &mut Machine, reg: usize| m.soc.read8(ctl(fw) + (ilp32::psid_ctl::raw + reg) as u32);
+    let chip = chip_a(m, fw);
+    Heard {
+        cutoff: m.soc.read32(chip + ilp32::sid::fc as u32),
+        control: m
+            .soc
+            .read8(chip + (ilp32::sid::osc + ilp32::sid_osc::control) as u32),
+        tunes_cutoff: u32::from(raw(m, REG_CUTOFF_LO) & 7) | u32::from(raw(m, REG_CUTOFF_HI)) << 3,
+        tunes_control: raw(m, REG_CONTROL_V1),
+    }
+}
+
+#[test]
+fn k1_and_k4_bend_a_playing_tunes_cutoff_and_waveform_and_home_gives_them_back() {
+    let Some(fw) = firmware("the SID tweak test") else {
+        return;
+    };
+    let file = consultant();
+    let mut m = booted_with(&fw, &[("CONSULTANT", &file)]);
+    ui_play_tune(&mut m, &fw, 0);
+    until(&mut m, "the tune plays", |m| {
+        tune_state(m, &fw) == TUNE_ON && writes(m, &fw) > PLAYING_WRITES
+    });
+    let bend = (CUT_DETENTS as u32) * PSID_TWEAK_CUT_STEP;
+    m.turn(K1, CUT_DETENTS);
+    until(&mut m, "the cutoff bent", |m| {
+        let h = heard(m, &fw);
+        h.cutoff == bent_cutoff(h.tunes_cutoff, bend) && h.cutoff != h.tunes_cutoff
+    });
+    m.turn(K4, SAW_DETENTS);
+    until(&mut m, "voice 1 on the sawtooth, its own gate kept", |m| {
+        let h = heard(m, &fw);
+        h.control == (h.tunes_control & 0x0f) | SID_CTRL_SAW as u8
+    });
+    m.run_ms(TUNE_PLAYS_A_WHILE_MS);
+    let h = heard(&mut m, &fw);
+    assert_eq!(
+        h.cutoff,
+        bent_cutoff(h.tunes_cutoff, bend),
+        "the tune's writes stay bent"
+    );
+    press(&mut m, HOME);
+    until(&mut m, "the tune's own cutoff and waveform", |m| {
+        let h = heard(m, &fw);
+        top_view(m, &fw) == fw.symbol("sid_view_browser")
+            && h.cutoff == h.tunes_cutoff
+            && h.control == h.tunes_control
+    });
 }
 
 #[test]

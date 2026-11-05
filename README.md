@@ -71,7 +71,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
   the device's flash: the menu's SIDS lists them, NOW PLAYING shows the tune, its songs and its
   voices, with mute and solo, pause and stop, and MIDI start, stop and continue
-  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). Press REC and a voice's key
+  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). K1-K4 bend a playing tune
+  live: its cutoff, its resonance, and a voice's waveform. Press REC and a voice's key
   to lift its last note into LAB, where SAVE keeps it as a sound of your own
   ([lift a sound](docs/manual/sid-tunes.md#5-lift-a-sound)).
 - **Keep the FM-1's store from a browser.** The site's [Library](https://dsablic.github.io/sidou/library.html)

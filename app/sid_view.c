@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "font.h"
+#include "sid/sid_osc.h"
 #include "sid_io.h"
 #include "song_io.h"
 
@@ -15,12 +16,15 @@ typedef song_view_canvas canvas;
 #define ZONE_PLAY 2u
 #define ZONE_LANES 4u
 #define ZONE_COUNT 8u
-#define ZONES_ALL 15u
-#define ZONE_REST 16u
+#define ZONE_TWEAK 16u
+#define ZONES_ALL 31u
+#define ZONE_REST 32u
+#define ZONES 5u
 #define HEAD_ROWS 0x000000ffu
 #define PLAY_ROWS 0x0001ff00u
 #define LANE_ROWS 0x01fe0000u
 #define COUNT_ROWS 0x06000000u
+#define TWEAK_ROWS 0x38000000u
 #define LOOK_HEAD 0u
 #define LOOK_HEAD_N 4u
 #define LOOK_PLAY 4u
@@ -30,7 +34,9 @@ typedef song_view_canvas canvas;
 #define LOOK_COUNT 21u
 #define LOOK_COUNT_N 4u
 #define LOOK_THEME 25u
-_Static_assert(LOOK_THEME < SID_VIEW_LOOK, "NOW PLAYING's look");
+#define LOOK_TWEAK 26u
+#define LOOK_TWEAK_N 1u
+_Static_assert(LOOK_TWEAK + LOOK_TWEAK_N <= SID_VIEW_LOOK, "NOW PLAYING's look");
 #define TITLE_ROW 1u
 #define AUTHOR_ROW 6u
 #define SONG_ROW 9u
@@ -39,6 +45,15 @@ _Static_assert(LOOK_THEME < SID_VIEW_LOOK, "NOW PLAYING's look");
 #define LANE_ROW 18u
 #define BAR_COL 14u
 #define COUNT_ROW 25u
+#define TWEAK_ROW 27u
+#define TWEAK_CUT 1u
+#define TWEAK_RES 2u
+#define TWEAK_WAVE 4u
+#define TWEAK_WAVES 5u
+#define TWEAK_POPUP_BAR_NONE 0u
+#define KNOB_CUT PANEL_ENC_K1
+#define KNOB_RES (PANEL_ENC_K1 + 1u)
+#define KNOB_VOICE (PANEL_ENC_K1 + 2u)
 #define FILE_ROW 6u
 #define BROWSE_STATUS_ROW 22u
 #define LEGEND_ROW 24u
@@ -398,6 +413,131 @@ static uint32_t song_of(const sid_status* st) {
     return st->song ? st->song : st->h ? st->h->start : 0u;
 }
 
+static const uint8_t WAVE_OF[TWEAK_WAVES] = {PSID_TWEAK_TUNES_WAVE, SID_CTRL_TRI, SID_CTRL_SAW,
+                                             SID_CTRL_PULSE, SID_CTRL_NOISE};
+static const char* const WAVE_NAMES[TWEAK_WAVES] = {"TUNE'S", "TRI", "SAW", "PUL", "NOI"};
+static const char* const TWEAK_WORDS[] = {"CUT", "RES", "WAVE"};
+
+static uint32_t wave_detent(uint8_t wave) {
+    for (uint32_t i = 0; i < TWEAK_WAVES; i++) {
+        if (WAVE_OF[i] == wave) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+static uint32_t tweaks_on(const psid_tweak* t) {
+    uint32_t on = (t->cut ? TWEAK_CUT : 0u) | (t->res ? TWEAK_RES : 0u);
+    for (uint32_t v = 0; v < PSID_TWEAK_VOICES; v++) {
+        if (t->wave[v] != PSID_TWEAK_TUNES_WAVE) {
+            on |= TWEAK_WAVE;
+        }
+    }
+    return on;
+}
+
+static int tweakable(const sid_view* sd, const sid_status* st) {
+    return sd->t && sd->t->tweak && st->h && !sd->lift_ask &&
+           (st->state == SID_T_PLAYING || st->state == SID_T_PAUSED);
+}
+
+static int32_t within(int32_t x, int32_t lo, int32_t hi) {
+    return x < lo ? lo : x > hi ? hi : x;
+}
+
+static int tweak_turn(sid_view* sd, const screen_event* e) {
+    sid_status st;
+    status_of(sd, &st);
+    if ((e->held >> PANEL_BTN_EDIT & 1u) || !tweakable(sd, &st)) {
+        return 0;
+    }
+    psid_tweak t = st.tweak;
+    const uint32_t v = sd->tweak_voice;
+    switch (e->id) {
+    case KNOB_CUT:
+        t.cut = (int16_t)within(t.cut + e->steps * PSID_TWEAK_CUT_STEP, -PSID_TWEAK_CUT_MAX,
+                                PSID_TWEAK_CUT_MAX);
+        break;
+    case KNOB_RES:
+        t.res = (int8_t)within(t.res + e->steps, -PSID_TWEAK_RES_MAX, PSID_TWEAK_RES_MAX);
+        break;
+    case KNOB_VOICE:
+        sd->tweak_voice =
+            (uint8_t)within((int32_t)v + e->steps, 0, (int32_t)PSID_TWEAK_VOICES - 1);
+        return 1;
+    default:
+        t.wave[v] = WAVE_OF[within((int32_t)wave_detent(t.wave[v]) + e->steps, 0,
+                                   (int32_t)TWEAK_WAVES - 1)];
+        break;
+    }
+    (void)sd->t->tweak(sd->t->ctx, &t);
+    return 1;
+}
+
+static void signed_text(char* out, int32_t x) {
+    if (x) {
+        *out++ = x > 0 ? '+' : '-';
+    }
+    screen_decimal(out, (uint32_t)(x < 0 ? -x : x));
+}
+
+static void join_text(char* out, const char* a, const char* b) {
+    uint32_t n = 0;
+    for (; *a && n < SCREEN_POPUP_CHARS; a++) {
+        out[n++] = *a;
+    }
+    for (; *b && n < SCREEN_POPUP_CHARS; b++) {
+        out[n++] = *b;
+    }
+    out[n] = 0;
+}
+
+int sid_view_popup(const sid_view* sd, uint32_t enc, char name[SCREEN_POPUP_TEXT],
+                   char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
+    sid_status st;
+    status_of(sd, &st);
+    if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4 || !tweakable(sd, &st)) {
+        return 0;
+    }
+    const psid_tweak* t = &st.tweak;
+    const uint32_t v = sd->tweak_voice;
+    char number[8];
+    *fill = 0;
+    *max = TWEAK_POPUP_BAR_NONE;
+    screen_popup_copy(name, "TWEAK");
+    if (enc == KNOB_CUT) {
+        signed_text(number, t->cut);
+        join_text(value, "CUT ", number);
+        *fill = (uint32_t)(t->cut + PSID_TWEAK_CUT_MAX);
+        *max = 2u * PSID_TWEAK_CUT_MAX;
+    } else if (enc == KNOB_RES) {
+        signed_text(number, t->res);
+        join_text(value, "RESO ", number);
+        *fill = (uint32_t)(t->res + PSID_TWEAK_RES_MAX);
+        *max = 2u * PSID_TWEAK_RES_MAX;
+    } else if (enc == KNOB_VOICE) {
+        const char digit[2] = {(char)('1' + v), 0};
+        join_text(value, "VOICE ", digit);
+    } else {
+        char voice[] = "V1 ";
+        voice[1] = (char)('1' + v);
+        join_text(value, voice, WAVE_NAMES[wave_detent(t->wave[v])]);
+    }
+    return 1;
+}
+
+static void tweak_line(uint32_t on, char line[SID_VIEW_NAME_CELLS + 1u]) {
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < sizeof TWEAK_WORDS / sizeof TWEAK_WORDS[0]; i++) {
+        for (const char* w = TWEAK_WORDS[i]; *w; w++) {
+            line[n++] = on >> i & 1u ? *w : ' ';
+        }
+        line[n++] = ' ';
+    }
+    line[n - 1u] = 0;
+}
+
 static uint32_t capped(uint32_t n) {
     return n > COUNT_MAX ? COUNT_MAX : n;
 }
@@ -439,6 +579,7 @@ static void playing_look(const sid_view* sd, const sid_status* st, uint8_t out[S
     k[2] = (uint8_t)late;
     k[3] = (uint8_t)(late >> 8);
     out[LOOK_THEME] = sd->sv->l->theme;
+    out[LOOK_TWEAK] = (uint8_t)(st->state == SID_T_NONE ? 0u : tweaks_on(&st->tweak));
 }
 
 static void build_head(sid_view* sd, const sid_status* st, const theme* th) {
@@ -577,6 +718,18 @@ static void build_count(sid_view* sd, const sid_status* st, const theme* th) {
     }
 }
 
+static void build_tweak(sid_view* sd, uint32_t on, const theme* th) {
+    canvas* c = &sd->sv->cv;
+    blank(c, TWEAK_ROWS, THEME_ATTR(th, value));
+    if (!on) {
+        return;
+    }
+    char line[SID_VIEW_NAME_CELLS + 1u];
+    tweak_line(on, line);
+    grid_canvas_text(c, 2, TWEAK_ROW, "TWEAKED", THEME_ATTR(th, label));
+    big(c, 2, TWEAK_ROW + 1u, line, THEME_ATTR(th, hot));
+}
+
 static int playing_changed(screen* s, void* state) {
     (void)s;
     sid_view* sd = state;
@@ -608,11 +761,12 @@ static void playing_compose(screen* s, void* state, grid* g) {
         sd->zones = 0;
     }
     uint32_t reach = screen_animating(s) ? screen_reach(s) : GRID_ROWS;
-    static const uint8_t AT[4] = {LOOK_HEAD, LOOK_PLAY, LOOK_LANES, LOOK_COUNT};
-    static const uint8_t N[4] = {LOOK_HEAD_N, LOOK_PLAY_N, LOOK_LANES_N, LOOK_COUNT_N};
-    static const uint8_t FIRST[4] = {0u, 8u, 17u, 25u};
-    static const uint32_t ROWS[4] = {HEAD_ROWS, PLAY_ROWS, LANE_ROWS, COUNT_ROWS};
-    for (uint32_t z = 0; z < 4u; z++) {
+    static const uint8_t AT[ZONES] = {LOOK_HEAD, LOOK_PLAY, LOOK_LANES, LOOK_COUNT, LOOK_TWEAK};
+    static const uint8_t N[ZONES] = {LOOK_HEAD_N, LOOK_PLAY_N, LOOK_LANES_N, LOOK_COUNT_N,
+                                     LOOK_TWEAK_N};
+    static const uint8_t FIRST[ZONES] = {0u, 8u, 17u, 25u, TWEAK_ROW};
+    static const uint32_t ROWS[ZONES] = {HEAD_ROWS, PLAY_ROWS, LANE_ROWS, COUNT_ROWS, TWEAK_ROWS};
+    for (uint32_t z = 0; z < ZONES; z++) {
         uint32_t bit = 1u << z;
         if (FIRST[z] >= reach || ((sd->zones & bit) && (reach < GRID_ROWS ||
                                    memcmp(now + AT[z], sd->drawn + AT[z], N[z]) == 0))) {
@@ -624,15 +778,18 @@ static void playing_compose(screen* s, void* state, grid* g) {
             build_play(sd, &st, th);
         } else if (z == 2u) {
             build_lanes(sd, &st, th);
-        } else {
+        } else if (z == 3u) {
             build_count(sd, &st, th);
+        } else {
+            build_tweak(sd, now[LOOK_TWEAK], th);
         }
         memcpy(sd->drawn + AT[z], now + AT[z], N[z]);
         sd->zones |= (uint8_t)bit;
         sv->dirty |= ROWS[z];
     }
     if (!(sd->zones & ZONE_REST)) {
-        uint32_t rest = ~(HEAD_ROWS | PLAY_ROWS | LANE_ROWS | COUNT_ROWS) & ((1u << GRID_ROWS) - 1u);
+        uint32_t rest =
+            ~(HEAD_ROWS | PLAY_ROWS | LANE_ROWS | COUNT_ROWS | TWEAK_ROWS) & ((1u << GRID_ROWS) - 1u);
         blank(&sv->cv, rest, THEME_ATTR(th, value));
         sv->dirty |= rest;
         sd->zones |= ZONE_REST;
@@ -644,6 +801,9 @@ static void playing_compose(screen* s, void* state, grid* g) {
 static int playing_input(screen* s, void* state, const screen_event* e) {
     (void)s;
     sid_view* sd = state;
+    if (e->kind == SCREEN_TURN && e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
+        return tweak_turn(sd, e);
+    }
     if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_ALGORITHM) {
         return 0;
     }
@@ -666,7 +826,19 @@ static void playing_enter(screen* s, void* state) {
     sd->zones = 0;
 }
 
-const view sid_view_playing = {"NOW PLAYING", playing_enter, NULL, playing_input,
+static void playing_exit(screen* s, void* state) {
+    (void)s;
+    sid_view* sd = state;
+    sid_status st;
+    status_of(sd, &st);
+    sd->tweak_voice = 0;
+    if (sd->t && sd->t->tweak && tweaks_on(&st.tweak)) {
+        static const psid_tweak none;
+        (void)sd->t->tweak(sd->t->ctx, &none);
+    }
+}
+
+const view sid_view_playing = {"NOW PLAYING", playing_enter, playing_exit, playing_input,
                                playing_compose, playing_changed};
 
 static int lift_off(sid_view* sd, const sid_status* st) {

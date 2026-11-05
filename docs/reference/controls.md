@@ -51,7 +51,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view, but for PLAY while a `.sid` tune is loaded: it is the tune's
    ([SIDS and NOW PLAYING](#sids-and-now-playing));
-3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT and ALGORITHM;
+3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT and ALGORITHM; NOW PLAYING takes ALGORITHM and, while a tune plays or is paused, K1-K4 without EDIT (the [tweaks](#sids-and-now-playing));
    LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen takes SELECT (its page); the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
@@ -1472,6 +1472,8 @@ on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). 
 |---|---|---|
 | **SELECT** | moves through the tunes, eight a page at 2× by their store names (a longer one ends in an arrow); past the eighth the next page, before the first the one before | nothing |
 | **ALGORITHM** clockwise, or **SAVE** | plays the highlighted tune from its start song and opens NOW PLAYING; on the tune that is loaded, opens NOW PLAYING as it is | turned either way: the song before or after (clamped at 1 and the last), which plays from its init |
+| **K1**, **K2** | (LIVE's knobs) | while the tune plays or is paused: bends its filter cutoff, 32 a detent within -1024..+1024 (`TWEAK` / `CUT +96`, a bar), and its resonance within -15..+15 (`RESO -2`); on the chip the cutoff's high byte moves by a detent's 4, its low three bits stay the tune's, and both clamp at the register's ends |
+| **K3**, **K4** | (LIVE's knobs) | K3 picks the voice K4 acts on (`VOICE 2`); K4 its waveform: `TUNE'S` (the tune's own), `TRI`, `SAW`, `PUL`, `NOI`, replacing the control register's waveform bits on every write while the tune's gate, sync, ring and test bits stay (`V2 SAW`); on a 2SID tune the voice of both chips |
 | **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
 | **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
 | **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune. They are the tune's: a tune starts with every voice on, and when it ends for good the song comes back with its own mutes and solos |
@@ -1501,7 +1503,8 @@ song's SAVE still writes them into its file, and LOAD and NEW still ask before r
 released at 1×, **SONG 2/5**, the time since the song started and its state (PLAYING,
 PAUSED, STOPPED, FAILED, LOADING), PAL or NTSC and each chip's model (as SID MODEL gives it,
 in SETTINGS), **2SID** for a tune of two chips, **3SID: 3RD SILENT** for one of three (the third's
-writes are dropped), the three voices with GLO's mutes and solos (as TRACKER's header: the voice's
+writes are dropped), **TWEAKED** at 1× and what K1-K4 bend at 2× (**CUT RES WAVE**, each in
+its place) while any tweak is on, the three voices with GLO's mutes and solos (as TRACKER's header: the voice's
 colour, dark grey while silent, reversed while soloed, MUT and SOL) and chip A's envelopes as
 bars, and the overruns (play calls that ran past their frame) and late writes when not zero.
 

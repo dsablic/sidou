@@ -482,6 +482,116 @@ fn a_2sid_tune_places_both_chips_writes_and_mutes_both() {
     assert_eq!((p.chips[0].mute, p.chips[1].mute), (0, 0));
 }
 
+const TUNES_CUTOFF: u32 = 0x205;
+const TUNES_RES: u8 = 7;
+const TUNES_ROUTE: u8 = 1;
+const TUNES_CONTROL: u8 = 0x41;
+
+fn a_filtered_pulse_rewritten_every_frame(sid2: Option<u8>) -> Vec<u8> {
+    let frame = "lda #$05\nsta $d415\nlda #$40\nsta $d416\nlda #$71\nsta $d417\n\
+                 lda #$41\nsta $d404\nsta $d424\n";
+    let init = format!("lda #$0f\nsta $d418\nsta $d438\n{frame}rts\n");
+    let play = format!("{frame}rts\n");
+    let t = Psid::new(&[(INIT, &init), (PLAY, &play)]);
+    match sid2 {
+        Some(at) => t.sid2(at).bytes(),
+        None => t.bytes(),
+    }
+}
+
+fn heard(s: &sid) -> (u32, u8, u8, u8) {
+    (s.fc, s.res, s.routing, s.osc[0].control)
+}
+
+fn tune_as_written() -> (u32, u8, u8, u8) {
+    (TUNES_CUTOFF, TUNES_RES, TUNES_ROUTE, TUNES_CONTROL)
+}
+
+const A_FRAME_AND_MORE: usize = 400;
+
+#[test]
+fn a_tweak_bends_the_tunes_filter_and_waveform_and_zero_gives_them_back() {
+    let file = a_filtered_pulse_rewritten_every_frame(None);
+    let mut p = Player::new(&file);
+    assert!(p.play(1));
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert_eq!(heard(&p.chips[0]), tune_as_written());
+    let saw = SID_CTRL_SAW as u8;
+    p.tweak(psid_tweak {
+        cut: 96,
+        res: 3,
+        wave: [saw, 0, 0],
+    });
+    p.run(1, PASSES);
+    let bent = (TUNES_CUTOFF + 96, TUNES_RES + 3, TUNES_ROUTE, saw | 1);
+    assert_eq!(heard(&p.chips[0]), bent, "heard within a block");
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert_eq!(heard(&p.chips[0]), bent, "the tune's own writes stay bent");
+    p.tweak(psid_tweak {
+        cut: -(PSID_TWEAK_CUT_MAX as i16),
+        res: PSID_TWEAK_RES_MAX as i8,
+        wave: [0; 3],
+    });
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert_eq!(
+        heard(&p.chips[0]),
+        (
+            TUNES_CUTOFF & 7,
+            PSID_TWEAK_RES_MAX as u8,
+            TUNES_ROUTE,
+            TUNES_CONTROL
+        ),
+        "clamped at the registers' ends, the cutoff's low bits the tune's"
+    );
+    p.tweak(psid_tweak::default());
+    p.run(1, PASSES);
+    assert_eq!(heard(&p.chips[0]), tune_as_written(), "back at once");
+}
+
+#[test]
+fn a_song_change_or_a_stop_forgets_the_tweak() {
+    let file = a_filtered_pulse_rewritten_every_frame(None);
+    let mut p = Player::new(&file);
+    assert!(p.play(1));
+    p.run(A_FRAME_AND_MORE, PASSES);
+    let bend = psid_tweak {
+        cut: 64,
+        res: -2,
+        wave: [SID_CTRL_NOISE as u8, 0, 0],
+    };
+    p.tweak(bend);
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert_ne!(heard(&p.chips[0]), tune_as_written());
+    assert!(p.subtune(1));
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert_eq!(heard(&p.chips[0]), tune_as_written(), "a song change");
+    p.tweak(bend);
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert!(p.stop());
+    p.run(4, PASSES);
+    assert!(p.play(1));
+    p.run(A_FRAME_AND_MORE, PASSES);
+    assert_eq!(heard(&p.chips[0]), tune_as_written(), "a stop");
+}
+
+#[test]
+fn a_2sid_tune_is_tweaked_on_both_chips() {
+    let file = a_filtered_pulse_rewritten_every_frame(Some(0x42));
+    let mut p = Player::new(&file);
+    assert!(p.play(1));
+    p.run(A_FRAME_AND_MORE, PASSES);
+    p.tweak(psid_tweak {
+        cut: 32,
+        res: 0,
+        wave: [SID_CTRL_TRI as u8, 0, 0],
+    });
+    p.run(A_FRAME_AND_MORE, PASSES);
+    for (k, s) in p.chips.iter().enumerate() {
+        assert_eq!(s.osc[0].control, SID_CTRL_TRI as u8 | 1, "chip {k}");
+    }
+    assert_eq!(p.chips[0].fc, TUNES_CUTOFF + 32);
+}
+
 #[test]
 fn a_1sid_tune_leaves_chip_b_alone() {
     let file = song_file(2, 0xD400);
@@ -582,7 +692,7 @@ fn the_structs_fit_the_overlays() {
         PSID_RING * 6,
         ilp32::psid_work::SIZE
     );
-    assert_eq!(ilp32::psid_ctl::SIZE, 6256);
+    assert_eq!(ilp32::psid_ctl::SIZE, 6340);
     assert_eq!(
         ilp32::psid_work::SIZE,
         ilp32::psid_env::SIZE + 2 * ilp32::sid_shadow::SIZE

@@ -8,6 +8,7 @@
 #include "psid/psid_env.h"
 #include "psid/psid_file.h"
 #include "psid/psid_lift.h"
+#include "psid/psid_tweak.h"
 #include "sid/sid.h"
 #include "sid/sid_shadow.h"
 
@@ -28,6 +29,7 @@ extern "C" {
 #define PSID_SLICE_ROOM (PSID_SLICE_WORK / PSID_WORK_ACCESS + 1u + PSID_SUB_CYCLES / 3u + 2u)
 #define PSID_SPLITS 24u
 #define PSID_BLOCK_ENTRIES 80u
+#define PSID_RAW_REGS 32u
 
 #define PSID_RING_ENTRY(chip, reg, value) \
     ((uint16_t)((uint32_t)(chip) << 13 | ((uint32_t)(reg) & 0x1fu) << 8 | ((uint32_t)(value) & 0xffu)))
@@ -76,6 +78,12 @@ typedef struct psid_ctl {
     uint8_t mode;
     uint8_t fade_in;
     uint32_t splits_max;
+    psid_tweak tweak;
+    volatile uint32_t tweak_seq;
+    uint32_t tweak_done;
+    volatile uint8_t tweaking;
+    uint8_t bent;
+    uint8_t raw[2][PSID_RAW_REGS];
     psid_work* w;
     uint8_t* mem;
     const psid_header* h;
@@ -105,6 +113,7 @@ int psid_ctl_pause(psid_ctl* c);
 int psid_ctl_resume(psid_ctl* c);
 int psid_ctl_subtune(psid_ctl* c, uint32_t song);
 int psid_ctl_mute(psid_ctl* c, uint32_t mask);
+void psid_ctl_tweak(psid_ctl* c, const psid_tweak* t);
 int psid_ctl_poll(psid_ctl* c);
 uint32_t psid_ctl_state(const psid_ctl* c);
 uint32_t psid_ctl_ahead(const psid_ctl* c);

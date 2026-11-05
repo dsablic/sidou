@@ -1908,6 +1908,41 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   A write-only SID register reads the bus until its lifetime is up: 0x1d00 cycles on a 6581,
   0xa2000 on an 8580.
 
+### Live tweaks (1.8)
+
+- K1-K4 in NOW PLAYING bend the tune as it plays ([the design](plans/2026-11-05-sid-tweaks.md)):
+  the cutoff, the resonance and a voice's waveform. The audio interrupt keeps each chip's raw
+  register bytes (`psid_ctl.raw`, every ring write stores its byte) and, while a tweak is on,
+  writes the bent value; a tweak's change (`tweak_seq`, bumped by `psid_ctl_tweak` in the main
+  loop) rewrites the five tweakable registers from the raw bytes at the next block, so a turn is
+  heard within a block (2.9 ms) even when the tune never writes them again.
+- The cutoff bend moves the high byte only (`$D416`, a detent of 32 on the 11 bits being 4 of
+  it) and the tune's low three bits pass: one register in, one register out, with no carry
+  between two writes to keep right. It clamps at 0 and 255, so the ends keep the tune's low bits.
+- The interrupt reads the tweak where the main loop writes it, with no copy: each field is one
+  store, so a block that sees half a change bends with old and new fields alike, and the
+  rewrite at the next block makes it whole. `tweaking` goes on before the fields change and off
+  after they are zero, so a write never misses a bend nor bends with a stale one.
+- The raw bytes are zeroed by `begin` (the interrupt is off then), not by the interrupt's stop:
+  a new tune's first tweak never rewrites the last tune's gate on a voice it does not use.
+- A song change (`begin`) and a stop (`halt`) forget the tweak; the view gives it back when it
+  is popped (HOME). LAB or a help card over NOW PLAYING keeps it. The lift takes the tune's own
+  writes from the ring, unbent.
+- The rewrite runs only when a tweak is on or was on (`bent`): the tweak a new song forgets
+  costs a fresh tune's first block nothing (five rewrites at block 0 put 11.7 instructions a
+  sample on the dearest synthetic block before this).
+- Cost: 326 bytes of RAMTEXT (the interrupt's write path 38, the block's check 66, the bend and
+  the rewrite 222), against the design's estimate of 200; the .sid player's share
+  (`M3_RAMTEXT`, 1,536 since M3, 1,402 used) grows by the design's 200 to 1,736 (1,728 used).
+  The dearest .sid block with no tweak: 100.6 instructions a sample, was 94.9, of
+  `PSID_ISR_WORST`'s 120 (the raw byte and the test on every write); a turn adds the five
+  rewrites to one block. 84 bytes of RAM in `psid_ctl` (the raw bytes of two chips, the tweak).
+- The popup's name is TWEAK for all four knobs, in one accent: a knob's popup in its own colour
+  repaints the whole box when another knob turns (229 cells, over the 200 a frame), while one
+  name and accent repaints only the value.
+- TWEAKED (1×) and the words CUT RES WAVE (2×) each have their place on the line, so turning one
+  more tweak on draws one word, not the line.
+
 ### Instrument lift
 
 - Lifting a sound is taking a voice into LAB (the owner, 2026-11-02, after the first device try of

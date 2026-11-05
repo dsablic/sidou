@@ -50,7 +50,7 @@ SECTIONS
         *(.text.song_draft .text.song_held)
         *(.text.render_a .text.render_part .text.play_a)
         *(.text.gt2_edit_apply)
-        *(.text.psid_ctl_block .text.psid_isr_chip .text.psid_isr_ramp .text.psid_isr_clear)
+        *(.text.psid_ctl_block .text.psid_isr_*)
         *(.text.psid_swapped .text.psid_rewrite)
         . = ALIGN(16);
         _rt_end = .;

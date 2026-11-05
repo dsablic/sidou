@@ -113,6 +113,13 @@ opens **NOW PLAYING**: the tune's title, author and year, which of its songs pla
 the time, PAL or NTSC, its chips, and its three voices.
 
 - **ALGORITHM** in NOW PLAYING steps to the next or the previous song, from its start.
+- **K1** bends the tune's filter cutoff (32 a detent, up to 1024 either way) and **K2** its
+  resonance (up to 15 either way); **K3** picks a voice and **K4** gives it another waveform:
+  **TRI**, **SAW**, **PUL** or **NOI**, or **TUNE'S**, its own. The tune keeps its notes, its
+  gate and its sync and ring. Each turn shows the value large (**TWEAK / CUT +96**), and
+  **TWEAKED** under the voices says what is bent. Back at 0 a knob gives the tune its own value
+  at once; leaving NOW PLAYING, another song or a stop gives everything back. EDIT held with a
+  knob is still the effect slot's.
 - **PLAY** stops the tune, and plays it again from the start; **EDIT held + PLAY** pauses it and
   goes on.
 - **GLO held + the first three keys** mutes a voice, **+ the next three** solos one, as for a song.

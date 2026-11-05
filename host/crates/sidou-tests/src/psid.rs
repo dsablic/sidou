@@ -152,6 +152,10 @@ impl Player {
         unsafe { psid_ctl_mute(&mut *self.ctl, mask) != 0 }
     }
 
+    pub fn tweak(&mut self, t: psid_tweak) {
+        unsafe { psid_ctl_tweak(&mut *self.ctl, &t) };
+    }
+
     pub fn state(&self) -> u32 {
         unsafe { psid_ctl_state(&*self.ctl) }
     }

@@ -2851,6 +2851,24 @@ the last item, which does not exist yet.
 
 Notes:
 
+## 33. 1.8: the small items, by ear
+
+What it decides: what fm1-emu cannot judge of 1.8's small items. Set up: SIDOU 1.8 on the unit,
+the starter pack on it (section 22), headphones on the line out.
+
+- [ ] **Live tweaks on a `.sid`:** SIDS, THE CONSULTANT. In NOW PLAYING turn K1 up and down
+  through its range (`CUT +1024` to `CUT -1024`), then K2 (`RESO +15` to `-15`): the tune's
+  filter opens and closes with each detent, no click, and at 0 it is the tune again. K3 to a
+  voice, K4 through TRI, SAW, PUL and NOI and back to TUNE'S: the voice keeps its notes and
+  rhythm in each waveform. HOME: the tune is its own again at once. **Pass:** no click or
+  dropout at any turn, and the tune exactly back at 0 and after HOME:
+  *Emulator:* `emu-gate/tests/psid_views.rs::k1_and_k4_bend_a_playing_tunes_cutoff_and_waveform_and_home_gives_them_back`,
+  `sidou-tests/tests/psid_ctl.rs::a_tweak_bends_the_tunes_filter_and_waveform_and_zero_gives_them_back`,
+  `sidou-tests/tests/app/sid_view.rs::k1_to_k4_tweak_a_playing_tune_each_with_its_popup_and_the_tweak_line_says_what_is_bent`.
+  *Device-only:* the bend on the real filter and the waveforms by ear; clicks at a turn.
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2889,3 +2907,4 @@ Notes:
 | 30 Chords and time-shared drums from DICE | | |
 | 31 The site's editor and Live Link page | | |
 | 32 1.7: the player from flash, and by ear | | |
+| 33 1.8: the small items, by ear | | |

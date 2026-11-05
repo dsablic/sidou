@@ -195,10 +195,7 @@ struct Voice {
 }
 
 fn chip_a_voice(m: &mut Machine, fw: &Firmware, v: usize) -> Voice {
-    let chips = fw.chips();
-    let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
-    let chip =
-        chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+    let chip = chip_a(m, fw);
     let o = chip + (ilp32::sid::osc + v * ilp32::sid_osc::SIZE) as u32;
     let e = chip + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
     let env = |m: &mut Machine, f: usize| m.soc.read8(e + f as u32);

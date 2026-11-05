@@ -1936,6 +1936,7 @@ static void tb_status(void* ctx, sid_status* out) {
         out->cycles = sid_tune.cycles;
         out->load = sid_tune.load;
         out->ticks_k = sid_tune.ticks_k;
+        out->tweak = c->tweak;
     }
     out->chips = sid_tune.chips;
     out->shadow = 1u;
@@ -1971,8 +1972,17 @@ static int tb_lift(void* ctx, uint32_t voice) {
     return 1;
 }
 
-static const sid_transport tune_binding = {tb_play, tb_start, tb_stop,   tb_pause, tb_resume,
-                                           tb_end,  tb_mute,  tb_status, tb_lift,  NULL};
+static int tb_tweak(void* ctx, const psid_tweak* t) {
+    (void)ctx;
+    if (sid_tune.state != TUNE_ON) {
+        return 0;
+    }
+    psid_ctl_tweak(audio_psid(), t);
+    return 1;
+}
+
+static const sid_transport tune_binding = {tb_play, tb_start,  tb_stop,  tb_pause, tb_resume, tb_end,
+                                           tb_mute, tb_status, tb_lift, tb_tweak, NULL};
 
 static int tune_midi(void* ctx, uint32_t b) {
     (void)ctx;
