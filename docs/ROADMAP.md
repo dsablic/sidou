@@ -107,6 +107,20 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
     [the LFO plan](plans/2026-11-05-lab-lfos.md)); a DICE bass role that rolls slides and accents;
     and ear checks of the site's sixteen sounds on a device.
+  - **Prompt to patch** (the owner, 2026-11-05): a page on the site turns a few words ("a squelchy
+    acid bass with a fast filter envelope") into a LAB sound and sends it to the FM-1. The user
+    signs in with OpenRouter's PKCE flow from the static page, with no client secret and no
+    server: the key stays in the user's tab and SIDOU stores nothing. OpenRouter's free models
+    give a user 50 requests a day (1,000 after $10 of credits once); a paid model, Claude among
+    them, is the user's choice and cost. The model writes the sound's settings as JSON, never
+    audio; the site's wasm core checks every answer (a valid sound, not silent), with one retry
+    that hands the model the error, so only a valid sound is sent; the sixteen site sounds are
+    the prompt's examples. A new SysEx target, a LAB sound, opens it in LAB at once without
+    touching the song, and SAVE keeps it (until then, a one-instrument song). First: a prompt,
+    Make, Try again and a tweak word ("darker"); no audio-to-patch, no chat. It starts with a
+    design session: the JSON shape, the prompt, test prompts judged by ear, and OpenRouter's
+    current docs and limits. GitHub Models was ruled out (no OAuth a static page can finish, its
+    future unclear). M.
 - **2.0.**
   - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
     default, falling back to one core; the RAMTEXT room is there since 1.7.
