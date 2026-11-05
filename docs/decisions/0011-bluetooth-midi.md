@@ -38,6 +38,29 @@ core and sit below the audio interrupt.
 7. **Bluetooth audio (A2DP) is dropped** for SIDOU (about 37 KB of flash and 21 KB of RAM). **Wi-Fi
    and Ableton Link are parked** until Optimist has a Link session working on a real FM-1.
 
+## The owner's decisions on the measured plan (2026-11-05)
+
+From [the 1.8 Bluetooth plan](../plans/2026-11-05-bluetooth-1.8-plan.md), which measured both ways
+at 39,312 bytes of flash against 15,616 free. These revise points 2 and 3 above where they differ.
+
+1. **Flash: the reserve is released.** The 13,564 bytes between the 568,000-byte image ceiling
+   and the app slot (581,564, fixed by the loader) go to the felucca-bsp move and Bluetooth, but
+   at least 2,048 bytes stay under the slot. The new ceiling is set from what the move and
+   Bluetooth need ([the design notes](../design-notes.md#flash-budget-and-ceiling)).
+2. **USB audio at 44.1 kHz only** (`FELUCCA_UAC_48K 0`, a setting of the vendored `usb.c`): about
+   8,256 bytes. Every doc and page that offers 48 kHz says 44.1 kHz.
+3. **Both ways in 1.8:** SIDOU as a peripheral, and connecting out (central) to BLE MIDI
+   keyboards, the owner's Korg microKEY Air as the test. The last 1.2-2.7 KB come from the plan's
+   options: the radio driver at plain `-Os` (an upstream change; its pull request text prepared in
+   [upstream-reports.md](../upstream-reports.md), nothing filed), a hot/cold file split, or
+   `-Os`/`-Oz` on cold code. No pairing at first.
+4. **RAM:** `midi.c`'s MIDI input ring (3,088 bytes, the CPU's only) moves to NOINIT, so the RAM
+   region keeps its 5,120-byte floor (`REGION_FREE_MIN`, unchanged).
+5. **The update loader keeps Felucca 1.6.1's HAL**, so its pinned SHA-256 is unchanged; the app
+   moves to felucca-bsp.
+6. **The radio is tested on the device.** fm1-emu is asked for a radio model in
+   [upstream-reports.md](../upstream-reports.md); nothing is filed.
+
 ## Consequences
 
 - The plan's steps 2 and 3 come first: a `SIDOU_BLE` build measures the real deltas, and SIDOU

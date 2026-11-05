@@ -10,7 +10,7 @@ static void fm1_delay_ms(uint32_t ms) {
     (void)ms;
 }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
-#include "src/usb.c"
+#include "bsp/chip/usb.c"
 static uint32_t ota_now_ms(void) {
     return 0;
 }

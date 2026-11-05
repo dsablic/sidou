@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* FM-1 TIMER5: the 10 kHz system tick (input scan, USB poll, ms count).
  * TIMER4 is the free-running time base (fm1_time.h); both are unused by the

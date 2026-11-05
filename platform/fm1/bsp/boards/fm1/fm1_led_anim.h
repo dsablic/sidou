@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The power-on LED sweep (Felucca 1.1, Discussion #135): its picture, frame by frame. Pure (no hardware): the
  * driver (hal/fm1_input.h fm1_led_anim_start, from the TIMER5 scan) and the browser emulator (web/emu) show it.

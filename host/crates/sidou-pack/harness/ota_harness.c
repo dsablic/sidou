@@ -79,7 +79,7 @@ static int ldr_erase(uint32_t off);
 static int ldr_prog(uint32_t off, const void* p, uint32_t n);
 static void ldr_record_clear(void);
 static void ldr_progress(uint32_t done, uint32_t total);
-#include "../loader/ldr_core.c"
+#include "loader/ldr_core.c"
 static int ldr_fread(uint32_t off, void* p, uint32_t n) {
     return ota_fread(off, p, n);
 }

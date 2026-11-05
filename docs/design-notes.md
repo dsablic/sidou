@@ -44,6 +44,33 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   run stepped in `boot.rs`. With the draft copy's alignment removed, the gate fails at once on
   its word store (`song_draft`).
 
+### Board support (felucca-bsp)
+
+- Since 1.8 the app builds from felucca-bsp (`f8788009`, MPL-2.0) byte for byte, in
+  `platform/fm1/bsp/` (`chip/`, `boards/fm1/`); Felucca 1.6.1's copies stay for the update loader
+  alone, whose SHA-256 is pinned (decision 0011, the owner, 2026-11-05). `platform/fm1/VENDORED.md`
+  lists the files and who includes what.
+- SIDOU's two hooks in 1.6.1's `usb.c` are upstream settings now (`FELUCCA_MIDI_IN_RAW`, PR #21;
+  the USB strings as ASCII). `FELUCCA_UAC_AS_FIRST` is set to 1 to keep 1.6.1's interface order.
+- **SysEx frames are queued** (felucca-bsp#20, 648 bytes, back-pressure on EP1). `update_poll`
+  frees every SIDOU frame at the queue's head and, in a pass where it took one, leaves the updater
+  alone: `ota_service` would take the next frame and drop it if it were not its own (#20's rule,
+  as fm1-base#15). SIDOU's parser gets SysEx from the raw stream, so the queue only feeds the
+  updater; what matters is that it drains, or the host is NAKed.
+- **The updater's 2,176 bytes of buffers** (`ota_dec`, `ota_stage`'s two) lost 1.6.1's `.pool`
+  attribute upstream; `app.ld` puts them in POOL by section name, so the RAM region keeps its room
+  without a local change.
+- **The audio start checks the PLL** the stock boot leaves (`fm1_audio_init_checked`); fm1-emu
+  reads 0 there, so emu-gate's machine writes the stock values before the first instruction
+  (upstream report 19). The sample format is the same: Q23 in the low 24 bits, SIDOU's 16-bit
+  samples times 256, and `usb_audio.c` hands those words to `uac_tap` as they are.
+- **Step 1 takes another board's package now** (felucca-bsp's `ota.c` checks a foreign writer's
+  boot area instead of the size); SIDOU's writer, Felucca 1.6.1's loader, still refuses it before
+  erasing anything (-14). Host-tested in `ota_step1.rs`.
+- The move costs 4,128 bytes of flash (+2,368 `.text`, +1,760 RAMTEXT: the flash driver's split
+  erase, `fl_erase4k_begin_ram`/`_end_ram`, which upstream marks `used`), 112 bytes of the RAM
+  region and 320 of NOINIT (`fm1_crash_ctx`, the fault record).
+
 ### Image layout
 
 - The FM-1's app slot is 581,564 bytes (0x8DFBC). `platform/fm1/app.ld` maps RAMTEXT to 48 KB
@@ -3544,7 +3571,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - The voices' oscillators run from the machine's boot (no note before), so their phases follow
   from the blocks the notes land in, and the shot is a fixed 517 blocks (1.5 s) after the note.
 - fm1-emu's audio block is 128 samples of 5,440 cycles (240 MHz, 24 MHz / 544 a sample); the key
-  scan's frame is 11 TIMER5 ticks of 100 µs (`platform/fm1/hal/fm1_input.h`), and
+  scan's frame is 11 TIMER5 ticks of 100 µs (`platform/fm1/bsp/boards/fm1/fm1_input.h`), and
   `fm1_in.frames`, the scan frames closed, sits at offset 276 in its struct.
 - The chord's notes (A3, E4, E5) go in two blocks (5.8 ms) apart, more than a key scan frame
   (about 1.1 ms) and its debounce: each is its own note-on, in order, and live's voice
@@ -4560,8 +4587,9 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 
 - The configuration defines switches for usb.c: `FELUCCA_CDC` 0 (no CDC console), `FELUCCA_UAC`
   1 (USB audio on).
-- String descriptors `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` are hooks into
-  platform/fm1/src/usb.c.
+- The strings `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` are felucca-bsp's build
+  settings (`platform/fm1/bsp/chip/usb.c` builds the descriptors from them on request), and
+  `FELUCCA_UAC_AS_FIRST` is 1, as Felucca 1.6.1 had it.
 - The host harness includes this configuration to test the same descriptors the device has.
 
 ### USB audio

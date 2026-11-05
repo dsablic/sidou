@@ -38,7 +38,7 @@
 #define FELUCCA_UAC 1
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"   /* SIE register macros (never touched here) */
-#include "../firmware/src/usb.c"
+#include "../firmware/bsp/chip/usb.c"
 
 static int fails;
 static int check(const char *what, int ok)
@@ -192,8 +192,8 @@ static void render_block(void)
 {
     uint32_t i;
     for (i = 0; i < 32u; i++, prod_n++) {
-        blk[2 * i] = (int16_t)prod_n;
-        blk[2 * i + 1] = (int16_t)~prod_n;
+        blk[2 * i] = (int16_t)prod_n * 256;              /* uac_tap takes 24-bit samples, as the I2S */
+        blk[2 * i + 1] = (int16_t)~prod_n * 256;
     }
     uac_tap(blk, 32);
 }
@@ -428,8 +428,11 @@ static void rs_reset(void)
 
 static uint32_t rs_block(const int32_t *in, uint32_t n, int32_t *l, int32_t *r)
 {
-    uint32_t k = 0;
-    uac_tap(in, n);
+    uint32_t k = 0, i;
+    static int32_t in24[2 * 256];                       /* uac_tap takes 24-bit samples, as the I2S */
+    for (i = 0; i < 2u * n; i++)
+        in24[i] = in[i] * 256;
+    uac_tap(in24, n);
     while (ua_r != ua_w) {
         uint32_t f = ua_ring[ua_r++ & (UA_N - 1u)];
         if (l)

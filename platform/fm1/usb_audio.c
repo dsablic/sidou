@@ -17,7 +17,7 @@ void usb_audio_take(const int32_t* half) {
         return;
     }
     for (uint32_t i = 0; i < 2u * USB_AUDIO_FRAMES; i++) {
-        b->frames[i] = half[i] >> 8;
+        b->frames[i] = half[i];
     }
     b->blocks++;
     b->left = USB_AUDIO_CHUNKS;

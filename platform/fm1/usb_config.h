@@ -8,8 +8,7 @@
 #define FELUCCA_CDC 0
 #define FELUCCA_UAC 1
 #define HALF_FRAMES AUDIO_HALF_FRAMES
-#define FELUCCA_USB_MANUFACTURER                                                                   \
-    38, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'c', 0, 'o', 0, 'n', 0, 't', 0, 'r', 0, \
-        'i', 0, 'b', 0, 'u', 0, 't', 0, 'o', 0, 'r', 0, 's', 0
-#define FELUCCA_USB_PRODUCT 22, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0
+#define FELUCCA_UAC_AS_FIRST 1
+#define FELUCCA_USB_MANUFACTURER "SIDOU contributors"
+#define FELUCCA_USB_PRODUCT "SIDOU FM-1"
 #endif

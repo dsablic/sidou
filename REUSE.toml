@@ -168,3 +168,9 @@ path = ["third_party/fm1-sid-player/psid.c", "third_party/fm1-sid-player/psid.h"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Joakim Eriksson"
 SPDX-License-Identifier = "BSD-2-Clause"
+
+# felucca-bsp's own licence text and notice, vendored with its files (platform/fm1/VENDORED.md).
+[[annotations]]
+path = ["platform/fm1/bsp/LICENSE", "platform/fm1/bsp/NOTICE"]
+SPDX-FileCopyrightText = ["2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments", "2026 felucca-bsp contributors"]
+SPDX-License-Identifier = "MPL-2.0"

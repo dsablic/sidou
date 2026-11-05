@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 enable_language(ASM)
 
+set(bsp ${CMAKE_CURRENT_SOURCE_DIR}/bsp)
 add_library(fm1_hal INTERFACE)
-target_include_directories(fm1_hal SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/hal)
+target_include_directories(fm1_hal SYSTEM INTERFACE ${bsp}/chip ${bsp}/boards/fm1)
 
-add_library(fm1_hal_check OBJECT hal_check.c hal/fm1_isr.S hal/fm1_vec.S)
-target_include_directories(fm1_hal_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hal)
+add_library(fm1_hal_check OBJECT hal_check.c bsp/chip/fm1_isr.S bsp/chip/fm1_vec.S)
+target_link_libraries(fm1_hal_check PRIVATE fm1_hal)
 target_compile_options(fm1_hal_check PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unused-function>)
 
 set(t sidou_app)
 add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c store_fm1.c ui.c libc_min.c build_options.c
-    hal/fm1_isr.S
-    hal/fm1_vec.S)
+    bsp/chip/fm1_isr.S
+    bsp/chip/fm1_vec.S)
 set_target_properties(${t} PROPERTIES SUFFIX ".elf")
 target_link_libraries(${t} PRIVATE fm1_hal sidou_live sidou_core)
 target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -45,7 +46,7 @@ if(SIDOU_FLASH_SPIKE)
 endif()
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
 option(SIDOU_USB_FIX "midi.c (the USB stack) with Felucca's build flags" ON)
-set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -fdata-sections)
+set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -fdata-sections -I${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_property(SOURCE main.c APPEND PROPERTY COMPILE_OPTIONS -Os -mllvm -inline-threshold=225)
 if(SIDOU_USB_FIX)
     set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -mcpu=generic -mno-fprev1 -Os)

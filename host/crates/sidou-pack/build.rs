@@ -9,7 +9,7 @@ include!("../../build-support/sanitize.rs");
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let usb = manifest
-        .join("../../../platform/fm1/src")
+        .join("../../../platform/fm1/bsp/chip")
         .canonicalize()
         .unwrap();
     let fm1 = manifest
@@ -60,9 +60,10 @@ fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
         println!("cargo:rerun-if-changed={f}");
     }
     for f in [
-        "src/usb.c",
+        "bsp/chip/usb.c",
+        "bsp/chip/usb_host.c",
+        "bsp/chip/fm1_usb.h",
         "src/uac_fir.h",
-        "hal/fm1_usb.h",
         "usb_config.h",
         "usb_audio.h",
         "usb_audio.c",
@@ -73,6 +74,7 @@ fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
     sidou
         .file(manifest.join("harness/uac_harness.c"))
         .include(fm1)
+        .include(fm1.join("src"))
         .flag("-std=c11")
         .opt_level(2)
         .warnings(true)
@@ -85,6 +87,7 @@ fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
     felucca
         .file(manifest.join("harness/felucca/uac_test.c"))
         .flag(format!("-iquote{}", tests.display()))
+        .include(fm1.join("src"))
         .define("T_CDC", "0")
         .define("HALF_FRAMES", "128")
         .define("main", "felucca_uac_test_main")

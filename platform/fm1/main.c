@@ -3,10 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define FM1_CPU1_USED 1
 #include "fm1_sys.h"
-#undef FM1_CPU1_USED
-#define FM1_CPU1_USED 0
 
 #include "fm1_audio.h"
 #include "fm1_irq.h"
@@ -2242,7 +2239,7 @@ static void uboot_gesture(void) {
 
 void fm1_cstart(void) {
     uint32_t *d, *s;
-    fm1_cpu1_halt();
+    fm1_cpu1_stop();
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
 #if !defined(SIDOU_TEST_DEATH_MS)

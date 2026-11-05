@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* FM-1 UART1 as MIDI IN: PH8 -> input
  * channel 1 -> UART1 RX, 31250 baud, RX DMA into a ring, polled (no IRQ).

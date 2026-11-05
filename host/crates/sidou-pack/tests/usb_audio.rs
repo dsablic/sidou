@@ -245,8 +245,8 @@ fn reference(hz: u32, sig: Signal, frames: u32) -> Vec<u32> {
             let mut blk = [0i32; 2 * CHUNK];
             for i in 0..CHUNK {
                 let (l, r) = frame(sig, n + i as u32);
-                blk[2 * i] = i32::from(l);
-                blk[2 * i + 1] = i32::from(r);
+                blk[2 * i] = i32::from(l) * 256;
+                blk[2 * i + 1] = i32::from(r) * 256;
             }
             uac_h_direct_tap(blk.as_ptr(), CHUNK as u32);
             let k = uac_h_drain(d.as_mut_ptr(), 1024);

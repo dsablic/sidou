@@ -139,6 +139,8 @@ const RAM_SIZE: usize = 1 << 20;
 const IRQ_ALNK0: u8 = 11;
 const MASTER_POT_ADC_CHANNEL: u8 = 4;
 const SPL_ENTERS_IN_USER_MODE: bool = true;
+const AUDIO_PLL_AS_THE_STOCK_BOOT_LEAVES_IT: [(u32, u32); 2] =
+    [(0x0001_19A0, 0x4540_0203), (0x0001_19A4, 0x3F50_3026)];
 
 pub const USER_STACK: std::ops::Range<u32> = 0x01C7_8000..0x01C7_A000;
 pub const SYSTEM_STACK: std::ops::Range<u32> = 0x01C7_A100..0x01C7_C000;
@@ -555,6 +557,9 @@ impl Machine {
 
     fn start(mut soc: Soc, entry: u32, r0: u32) -> Self {
         soc.periph.skip_idle = true;
+        for (reg, value) in AUDIO_PLL_AS_THE_STOCK_BOOT_LEAVES_IT {
+            soc.write32(reg, value);
+        }
         for a in USER_STACK.step_by(4).chain(SYSTEM_STACK.step_by(4)) {
             soc.write32(a, STACK_PAINT);
         }

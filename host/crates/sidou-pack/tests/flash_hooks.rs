@@ -139,7 +139,7 @@ fn the_harness_range_check_is_the_hals() {
     };
     let root = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../platform/fm1/hal/fm1_flash.h"
+        "/../../../platform/fm1/bsp/chip/fm1_flash_policy.h"
     );
     let hal = std::fs::read_to_string(root).unwrap();
     let harness = include_str!("../harness/flash_hooks.c");

@@ -317,8 +317,15 @@ fn a_package_stages_its_loader_and_commits() {
         .all(|&b| b == 0xFF));
 }
 
+const STAGING: std::ops::Range<usize> = OTA_AREA..OTA_AREA + 0x5000;
+
+fn only_the_staging_area_changed(before: &[u8], after: &[u8]) -> bool {
+    before[..STAGING.start] == after[..STAGING.start]
+        && before[STAGING.end..] == after[STAGING.end..]
+}
+
 #[test]
-fn another_boards_package_is_refused_before_anything_is_erased() {
+fn step_one_stages_another_boards_package_without_touching_the_app() {
     let _one = exclusive();
     let inputs = inputs();
     let mut flash = sidou_pack::flash_image(&inputs, &app()).unwrap();
@@ -327,9 +334,11 @@ fn another_boards_package_is_refused_before_anything_is_erased() {
     let mut inst = Installer::new(&pkg);
     let mut dev = Device::new(&synthetic_head(), &mut inst);
     let before = dev.flash.clone();
-    assert_eq!(dev.session(), -15);
-    assert_eq!(dev.host.committed, 0);
-    assert!(dev.flash == before, "flash written");
+    assert_eq!(dev.session(), 0);
+    assert!(
+        only_the_staging_area_changed(&before, &dev.flash),
+        "step 1 wrote outside its staging area"
+    );
 }
 
 #[test]
@@ -356,7 +365,7 @@ fn the_loader_refuses_another_boards_package_before_anything_is_erased() {
 }
 
 #[test]
-fn a_loader_without_the_marker_is_refused() {
+fn a_foreign_writer_with_an_unbootable_boot_area_is_refused() {
     let _one = exclusive();
     let mut ota = wrap_loader(&loader()).unwrap();
     let at = ota
@@ -369,7 +378,7 @@ fn a_loader_without_the_marker_is_refused() {
     let mut inst = Installer::new(&pkg);
     let mut dev = Device::new(&synthetic_head(), &mut inst);
     let before = dev.flash.clone();
-    assert_eq!(dev.session(), -7);
+    assert_eq!(dev.session(), -5);
     assert!(dev.flash == before, "flash written");
 }
 
@@ -455,7 +464,7 @@ fn the_built_loader_is_felucca_1_6_1s() {
 }
 
 #[test]
-fn a_wrong_size_package_with_the_built_loader_is_refused_before_anything_is_erased() {
+fn a_wrong_size_package_is_staged_and_the_built_loader_refuses_it_before_anything_is_erased() {
     let _one = exclusive();
     let Some(l) = built_loader() else {
         return;
@@ -475,9 +484,11 @@ fn a_wrong_size_package_with_the_built_loader_is_refused_before_anything_is_eras
         let mut inst = Installer::new(&pkg);
         let mut dev = Device::new(&synthetic_head(), &mut inst);
         let before = dev.flash.clone();
-        assert_eq!(dev.session(), -15, "step 1, flash.bin of {len} bytes");
-        assert_eq!(dev.host.committed, 0);
-        assert!(dev.flash == before, "step 1 wrote the flash");
+        assert_eq!(dev.session(), 0, "step 1, flash.bin of {len} bytes");
+        assert!(
+            only_the_staging_area_changed(&before, &dev.flash),
+            "step 1 wrote outside its staging area"
+        );
         let mut inst = Installer::new(&pkg);
         let mut dev = Device::new(&synthetic_head(), &mut inst);
         let before = dev.flash.clone();

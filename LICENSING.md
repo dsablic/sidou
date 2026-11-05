@@ -8,9 +8,12 @@ or is covered by [REUSE.toml](REUSE.toml). Full licence texts live in
 [LICENSES/](LICENSES/). We follow the [REUSE](https://reuse.software/)
 specification, and CI runs `reuse lint`.
 
-The firmware image links Felucca's GPL-3.0-only HAL (`platform/fm1/hal/`)
-and USB stack (`platform/fm1/src/usb.c`) and the TRS MIDI driver (`platform/fm1/usb/`), so the firmware image as a whole is distributed under **GPL-3.0-only**. Our
-own files keep their GPL-3.0-or-later licence.
+The firmware image links felucca-bsp's MPL-2.0 chip and board code (`platform/fm1/bsp/`: the HAL,
+the USB stack and step 1 of the update protocol), Felucca's GPL-3.0-only TRS MIDI driver
+(`platform/fm1/usb/`) and the files adapted from Felucca, so the firmware image as a whole is
+distributed under **GPL-3.0-only**. MPL-2.0 has no "Incompatible With Secondary Licenses" notice,
+so its files combine with the GPL; each keeps its MPL-2.0 licence, and a change to one would be
+published under it. Our own files keep their GPL-3.0-or-later licence.
 
 ## Third-party components
 
@@ -19,12 +22,12 @@ component. "Use" says whether a component ends up in the firmware image.
 
 | Component | Origin | Licence | Use | Status |
 |---|---|---|---|---|
-| Felucca HAL @ `a53ecf42` (Felucca 1.6.1; `platform/fm1/hal/`, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
-| Felucca USB stack @ `a53ecf42` (`platform/fm1/src/usb.c`, two marked hooks; its USB audio input's resampler table `platform/fm1/src/uac_fir.h`, unmodified, from Felucca's tree at `5738617`) and TRS MIDI driver (`platform/fm1/usb/midi_uart.c`, adapted), see [VENDORED.md](platform/fm1/VENDORED.md) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
-| Felucca's USB audio input test (`host/crates/sidou-pack/harness/felucca/uac_test.c`), unmodified, from Felucca's `tests/` at `5738617` | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | host test only | in use |
+| felucca-bsp @ `f8788009` (`platform/fm1/bsp/`: `chip/` and `boards/fm1/`, the HAL, the USB stack `chip/usb.c` and step 1 of the update protocol `chip/ota.c`, unmodified; its `LICENSE` and `NOTICE`; see [VENDORED.md](platform/fm1/VENDORED.md)) | felucca-bsp, © 2026 Leo Kuroshita, Hügelton Instruments, Kerem Kilic, Julius Vitkauskas, Charles Vestal and its contributors (each file's header) | MPL-2.0 | linked into the firmware | in use |
+| Felucca's USB audio resampler table (`platform/fm1/src/uac_fir.h`, unmodified, from Felucca's tree at `5738617`) and TRS MIDI driver (`platform/fm1/usb/midi_uart.c`, adapted), see [VENDORED.md](platform/fm1/VENDORED.md) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
+| Felucca's USB audio input test (`host/crates/sidou-pack/harness/felucca/uac_test.c`), unmodified, from Felucca's `tests/` at `a4f007c` | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | host test only | in use |
 | `host/crates/sidou-pack` (`.fwsc` format, loader wrapping, LZ4 compressor) | a port of Felucca's `tools/fm1pkg_make.py`, `tools/build.py` and `tools/lz4blk.py` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | host tool | in use |
 | JieLi AC79 SDK `uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin` @ `AC79NN_SDK_V1.2.1_2023-12-13` | JieLi Technology | Apache-2.0 (`LICENSES/Apache-2.0.txt`, ship it with every package) | in every `.fwsc` package (the SPL in the head, the other two in the app area); fetched by `sidou-pack` into `build/ac79/`, never committed | in use |
-| Felucca update loader and the sources it includes @ `a53ecf42` (Felucca 1.6.1; `platform/fm1/loader/`, `platform/fm1/src/`, unmodified but for `usb.c`'s two hooks, inert in the loader, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | the package's update loader (`ota.bin`), byte-identical to Felucca's, and to the loader in Felucca's own `felucca-1.6.1.fwsc` | in use |
+| Felucca update loader and the sources it includes @ `a53ecf42` (Felucca 1.6.1; `platform/fm1/loader/`, `platform/fm1/src/`, the six headers in `platform/fm1/hal/`, unmodified, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | the package's update loader (`ota.bin`), byte-identical to Felucca's, and to the loader in Felucca's own `felucca-1.6.1.fwsc` | in use |
 | `platform/fm1/crt0.S`, `platform/fm1/app.ld`, `platform/fm1/lcd.c` | adapted from Felucca's `firmware/crt0.S`, `firmware/app.ld` and `firmware/src/lcd.c` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | linked into the firmware | in use |
 | The update protocol's flash hooks (`platform/fm1/ota_flash.h`) | adapted from Felucca's `firmware/src/ota_hw.c` @ `a53ecf42` (the staging-area guards, the erase and program calls), © 2026 Leo Kuroshita | GPL-3.0-only | linked into the firmware | in use |
 | Light reverb (`core/fx/fx_reverb.h`, `core/fx/fx_reverb.c`), a C port of `rings/dsp/fx/reverb.h` and `fx_engine.h` | [pichenettes/eurorack](https://github.com/pichenettes/eurorack) @ `f4cfa769`, © 2014 Emilie Gillet | MIT | compiled into the firmware | in use |

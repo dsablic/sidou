@@ -80,10 +80,12 @@ fn enumerate(m: &mut Machine, fw: &Firmware) {
                 .cloned()
                 .unwrap_or_default()
         } else {
-            let at = fw.symbol("STR1");
-            (0..want.len() as u32)
-                .map(|i| m.soc.read8(at + i))
-                .collect()
+            let ascii = [text.as_bytes(), &[0u8]].concat();
+            assert!(
+                fw.elf.windows(ascii.len()).any(|w| w == &ascii[..]),
+                "the manufacturer's ASCII string in the image"
+            );
+            want.clone()
         };
         assert_eq!(d, want, "string {index}: {d:02x?}");
     }
@@ -1081,6 +1083,105 @@ fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
     for key in [30, 34, 37] {
         m.key(key, false);
     }
+}
+
+const DUMPS: usize = 32;
+const DUMP_LEN: usize = 154;
+const SIDOU_INQ: [u8; 8] = [0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7];
+
+fn patch_dump(n: usize) -> Vec<u8> {
+    let body = (0..DUMP_LEN - 4).map(|i| ((i * 7 + n * 13) % 128) as u8);
+    [0xF0, 0x43, 0x00]
+        .into_iter()
+        .chain(body)
+        .chain([0xF7])
+        .collect()
+}
+
+fn usb_event_packets(frame: &[u8]) -> u32 {
+    frame.len().div_ceil(3) as u32
+}
+
+fn updater_identity_answered(m: &mut Machine) -> bool {
+    host(m).ep1_in.clear();
+    send(m, &sysex_packets(&message(0x11, &[])));
+    m.usb_frames(50);
+    replies(&host(m).ep1_in).iter().any(|r| r[0] == 0x11)
+}
+
+#[test]
+fn thirty_two_patch_dumps_sent_back_to_back_all_arrive() {
+    use sidou_sys::ilp32::midi_ring as ring;
+    let Some(fw) = firmware("32 SysEx patch dumps back to back") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    let in_ring = fw.symbol("in_ring");
+    let (head, lost) = (in_ring + ring::head as u32, in_ring + ring::lost as u32);
+    let (made, taken) = (fw.symbol("sx_made"), fw.symbol("sx_taken"));
+    let before = (m.soc.read32(head), m.soc.read32(lost), m.soc.read32(made));
+    let dumps: Vec<Vec<u8>> = (0..DUMPS).map(patch_dump).collect();
+    for d in &dumps {
+        UsbHost::send(&mut m.soc, d);
+    }
+    let start = m.ms();
+    while UsbHost::pending(&m.soc) > 0 {
+        assert!(m.ms() - start < 2_000, "the host still has bytes after 2 s");
+        m.usb_frames(1);
+    }
+    m.usb_frames(100);
+    let packets: u32 = dumps.iter().map(|d| usb_event_packets(d)).sum();
+    let queued = m.soc.read32(made) - before.2;
+    println!(
+        "{DUMPS} dumps of {DUMP_LEN} bytes in {} ms: {} event packets into SIDOU's ring, {queued} frames through the updater's queue",
+        m.ms() - start - 100,
+        m.soc.read32(head) - before.0
+    );
+    assert_eq!(
+        m.soc.read32(lost),
+        before.1,
+        "SIDOU's MIDI-in ring lost events"
+    );
+    assert_eq!(
+        m.soc.read32(head) - before.0,
+        packets,
+        "every packet of every dump reached SIDOU's parser"
+    );
+    assert_eq!(
+        queued, DUMPS as u32,
+        "every dump went through the queue whole"
+    );
+    assert_eq!(
+        m.soc.read32(taken),
+        m.soc.read32(made),
+        "a frame left in the queue"
+    );
+    assert!(
+        updater_identity_answered(&mut m),
+        "the updater did not answer after the dumps"
+    );
+}
+
+#[test]
+fn the_updater_answers_a_frame_that_follows_one_sidou_took() {
+    let Some(fw) = firmware("the updater after a frame SIDOU took") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    host(&mut m).ep1_in.clear();
+    let mut both = sysex_packets(&SIDOU_INQ);
+    both.extend(sysex_packets(&message(0x11, &[])));
+    send(&mut m, &both);
+    m.usb_frames(50);
+    let in1 = host(&mut m).ep1_in.clone();
+    assert!(
+        sidou_frames(&in1).iter().any(|f| f[..5] == SIDOU_INQ[..5]),
+        "no INQ reply from SIDOU: {in1:02x?}"
+    );
+    assert!(
+        replies(&in1).iter().any(|r| r[0] == 0x11),
+        "the updater dropped the frame after SIDOU's: {in1:02x?}"
+    );
 }
 
 #[test]

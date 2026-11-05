@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* IRQ entry wrappers: save what a C call may
  * clobber, call the plain C body, restore, csync, rti. Our clang never emits

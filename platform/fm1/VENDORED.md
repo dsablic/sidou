@@ -2,88 +2,92 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Vendored code in `platform/fm1/`
 
-## Felucca HAL (`hal/`)
+## felucca-bsp (`bsp/`)
 
-- **Source:** <https://github.com/hugelton/Felucca>, `firmware/hal/`
-- **Commit:** `a53ecf428c29c780108fd70a31b71a32a6b5c313` (Felucca 1.6.1,
-  2026-10-15 +0900)
-- **Licence:** GPL-3.0-only, © 2026 Leo Kuroshita (@kurogedelic), Hügelton
-  Instruments. Each file keeps its original header.
-- **Local changes:** none. The files are byte-identical to upstream.
+- **Source:** <https://github.com/hugelton/felucca-bsp>, `chip/` and `boards/fm1/`
+- **Commit:** `f8788009` (main, 2026-11-05: our PR #21's raw MIDI-in hook and PR #20's SysEx
+  queue merged)
+- **Licence:** MPL-2.0, each file with its own header; `bsp/LICENSE` and `bsp/NOTICE` are
+  felucca-bsp's. MPL-2.0 has no "Incompatible With Secondary Licenses" notice, so the files combine
+  with SIDOU's GPL-3.0 image.
+- **Local changes:** none. The files are byte-identical to upstream, laid out as upstream lays
+  them out (`bsp/chip/`, `bsp/boards/fm1/`), only the ones SIDOU builds.
 
 | File | What it is |
 |---|---|
-| `fm1_adc.h` | SARADC: MASTER pot and battery (PB1, analog only) |
-| `fm1_audio.h` | ALNK0 I2S audio out, double-buffered DMA |
-| `fm1_cc.h` | `FM1_INLINE` |
-| `fm1_flash.h` | SPI NOR erase/program from `.ram_text` |
-| `fm1_gpio.h` | GPIO port registers |
-| `fm1_input.h` | key/button/encoder matrix and LEDs (TIMER5 scan) |
-| `fm1_irq.h` | interrupt controller, vector table, fault record |
-| `fm1_isr.S` | IRQ entry wrappers `isr_timer5`, `isr_alnk0` |
-| `fm1_lcd_hw.h` | LCD SPI1 wiring and backlight |
-| `fm1_led_anim.h` | power-on LED sweep frames |
-| `fm1_sys.h` | P33, watchdog, reset reason, reboot, UBOOT entry |
-| `fm1_time.h` | TIMER4 24 MHz time base |
-| `fm1_timer.h` | TIMER5 10 kHz tick |
-| `fm1_uart.h` | UART1 MIDI IN |
-| `fm1_usb.h` | USB0 device controller registers |
-| `fm1_vec.S` | the 128 fatal-vector stubs |
-| `fm1_xip.h` | XIP window addressing |
+| `chip/fm1_cc.h` | `FM1_INLINE` |
+| `chip/fm1_cpu1_stop.h` | holds the second core (`fm1_cpu1_stop`, Felucca 1.6.1's `fm1_cpu1_halt`) |
+| `chip/fm1_flash.h`, `fm1_flash_access.h`, `fm1_flash_api.h`, `fm1_flash_policy.h`, `fm1_flash_wait.h` | SPI NOR erase/program from `.ram_text`, its write regions, its access gate (core 0, interrupts off), the busy-safe wait |
+| `chip/fm1_gpio.h` | GPIO port registers |
+| `chip/fm1_irq.h` | interrupt controller, vector table, fault record (`fm1_crash_ctx`, NOINIT) |
+| `chip/fm1_isr.S`, `chip/fm1_vec.S` | IRQ entry wrappers `isr_timer5`, `isr_alnk0`; the 128 fatal-vector stubs |
+| `chip/fm1_sys.h` | P33, the rails, watchdog, reset reason, reboot, UBOOT entry |
+| `chip/fm1_time.h`, `chip/fm1_timer.h` | TIMER4 24 MHz time base, TIMER5 10 kHz tick |
+| `chip/fm1_uart.h`, `chip/fm1_usb.h` | UART1 MIDI IN, USB0 device controller registers |
+| `chip/fm1_xip.h` | XIP window addressing |
+| `chip/usb.c`, `chip/usb_host.c`, `chip/usb_host_desc.h` | the USB device (MIDI, audio in); `usb.c` includes the host part, which stays off (`FELUCCA_USB_HOST` 0) |
+| `chip/ota.c` | step 1 of the update protocol (the app's) |
+| `boards/fm1/fm1_adc.h`, `fm1_audio.h`, `fm1_input.h`, `fm1_lcd_hw.h`, `fm1_led_anim.h` | SARADC, ALNK0 I2S audio (the checked start), the key matrix and LEDs, the LCD's SPI1 wiring, the power-on LED sweep |
 
-Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core; `main.c` only
-holds it, with `fm1_sys.h`'s `fm1_cpu1_halt`) and
-`fm1_guard.h` (optional, can be added later).
+Not vendored: the radio (`fm1_ble*.h`, `fm1_rf_*.h`; Bluetooth, 1.8's later steps), the second
+core (`fm1_cpu1.{h,S}`), `fm1_guard.h`, `fm1_clock.h`, `fm1_cache_ram.h`, `fm1_flash_ext.h`, the
+panel driver `fm1_lcd.h` (SIDOU's `lcd.c` drives the panel), `fm1_jack.h`, and felucca-bsp's
+loader: the update loader stays Felucca 1.6.1's (below).
 
-### Using the HAL
+### Using the BSP
 
-- The headers define `static` functions and state and are meant to be
-  included by one translation unit each. `fm1_irq.h` also defines two
-  non-static symbols, `fm1_crash` and `fm1_fault_c`, so a second
-  translation unit that includes it (directly or through `fm1_audio.h`
-  or `fm1_timer.h`) fails to link.
-- Who includes what:
-  - `main.c`: `fm1_sys.h`, `fm1_irq.h`, `fm1_audio.h`, `fm1_time.h`,
-    `fm1_timer.h`;
-  - `input.c`: `fm1_input.h` (with `fm1_time.h`, `fm1_gpio.h` and
-    `fm1_led_anim.h`) and `fm1_adc.h`. The scan state `fm1_in` is static
-    there, so the TIMER5 interrupt in `main.c` reaches `fm1_input_tick`
-    through `input_tick_isr`. `input_raw_keys`, for `main.c`'s power-on
-    UBOOT gesture before memory is set up, repeats `fm1_input_init`'s pin
-    setup and uses `fm1__sr_word`, `fm1__rows` and `FM1_KEYMAP` without the
-    scan state;
+- The headers define `static` functions and state and are meant to be included by one
+  translation unit each. `fm1_irq.h` also defines two non-static symbols, `fm1_crash` and
+  `fm1_fault_c`, so a second translation unit that includes it (directly or through
+  `fm1_audio.h` or `fm1_timer.h`) fails to link.
+- Built with `bsp/chip` and `bsp/boards/fm1` on the include path (`fm1_hal` in CMake), as
+  felucca-bsp says. Who includes what:
+  - `main.c`: `fm1_sys.h`, `fm1_irq.h`, `fm1_audio.h`, `fm1_time.h`, `fm1_timer.h`;
+  - `input.c`: `fm1_input.h` (with `fm1_time.h`, `fm1_gpio.h`, `fm1_adc.h` and
+    `fm1_led_anim.h`). The scan state `fm1_in` is static there, so the TIMER5 interrupt in
+    `main.c` reaches `fm1_input_tick` through `input_tick_isr`. `input_raw_keys`, for `main.c`'s
+    power-on UBOOT gesture before memory is set up, repeats `fm1_input_init`'s pin setup and uses
+    `fm1__sr_word`, `fm1__rows` and `FM1_KEYMAP` without the scan state;
   - `lcd.c`: `fm1_lcd_hw.h` and `fm1_time.h`;
-  - `midi.c`: `fm1_sys.h`, `fm1_time.h` and `fm1_flash.h` (the update
-    protocol's flash access), and `fm1_usb.h` and `fm1_uart.h` through
-    Felucca's `src/usb.c` and the adapted `usb/midi_uart.c`, which it includes
-    with `src/ota.c` and its flash hooks `ota_flash.h` (see below). The TIMER5 interrupt in `main.c` calls their
-    polls through `midi_usb_isr` and `midi_uart_isr`; as in Felucca, never
-    the USB poll nested in the audio interrupt (it waits for the render's end). `fm1_flash.h`'s
-    `RAMFN` code lands in `.ram_text` (`app.ld` keeps it), and is called
-    through `FL_FAR` pointers: flash and SRAM code are out of each other's
-    branch reach ([docs/hardware.md](../../docs/hardware.md));
-  - `flash_spike.c`, only in the flash timing spike's build
-    (`-DSIDOU_FLASH_SPIKE=ON`, never released): `fm1_sys.h`, `fm1_time.h`
-    and a second copy of `fm1_flash.h`, whose `FL_RANGE_OK` there is the
-    spike's two sectors (`flash_spike_guard.h`) instead of the staging
-    area. Its `RAMFN` code is static to that file, so the copies don't
-    clash;
-  - the loader (`loader/loader.c`, its own image, Felucca's unmodified):
-    `fm1_time.h`, `fm1_sys.h`, `fm1_flash.h`, and Felucca's own
-    `src/libc.c`, `src/usb.c` and `src/ota.c`.
+  - `midi.c`: `fm1_sys.h`, `fm1_time.h` and `fm1_flash.h` (the update protocol's and the store's
+    flash access, `FL_RANGE_OK` SIDOU's: the staging area and the store), and `fm1_usb.h` and
+    `fm1_uart.h` through `bsp/chip/usb.c` and the adapted `usb/midi_uart.c`, which it includes
+    with `bsp/chip/ota.c` and its flash hooks `ota_flash.h` (see below). The TIMER5 interrupt in
+    `main.c` calls their polls through `midi_usb_isr` and `midi_uart_isr`; never the USB poll
+    nested in the audio interrupt (it waits for the render's end). `fm1_flash.h`'s `RAMFN` code
+    lands in `.ram_text` (`app.ld` keeps it), and is called through `FL_FAR` pointers: flash and
+    SRAM code are out of each other's branch reach ([docs/hardware.md](../../docs/hardware.md));
+  - `flash_spike.c`, only in the flash timing spike's build (`-DSIDOU_FLASH_SPIKE=ON`, never
+    released): `fm1_sys.h`, `fm1_time.h` and a second copy of `fm1_flash.h`, whose `FL_RANGE_OK`
+    there is the spike's two sectors (`flash_spike_guard.h`). Its `RAMFN` code is static to that
+    file, so the copies don't clash.
 
-  None of `input.c`'s, `lcd.c`'s or `midi.c`'s headers includes `fm1_irq.h`;
-  `fm1_time.h` holds only `static inline` helpers and no state, so several
-  files may include it.
-- Include `fm1_sys.h` before `fm1_irq.h`: `fm1_irq.h` uses its
-  `FM1_RESET_PREP`.
+  None of `input.c`'s, `lcd.c`'s or `midi.c`'s headers includes `fm1_irq.h`; `fm1_time.h` holds
+  only `static inline` helpers and no state, so several files may include it.
 - The including file defines `static void fm1_fault(const fm1_crash_t *)`.
 - `fm1_isr.S` calls the C bodies `fm1_timer5_irq` and `fm1_alnk0_irq`.
-- PA2 is the LCD backlight and the key matrix's `/OE`, and the TIMER5 scan
-  writes port A: `lcd_init` and `input_init` run before interrupts are
-  enabled, and nothing else writes port A from the main loop.
-- `hal_check.c` (target `fm1_hal_check`) compiles every header and both
-  `.S` files in the fm1 build.
+- PA2 is the LCD backlight and the key matrix's `/OE`, and the TIMER5 scan writes port A:
+  `lcd_init` and `input_init` run before interrupts are enabled, and nothing else writes port A
+  from the main loop.
+- **The second core** is held first thing at every boot (`fm1_cpu1_stop`), and `fm1_sys.h` holds
+  it again on every reboot and update; there is no `FM1_CPU1_USED` any more. SIDOU never starts
+  it, so the flash gate is built without `FM1_CPU1` and checks core 0 and the interrupts only.
+- **The audio start checks the clock:** `fm1_audio_init` starts the DMA only when the audio PLL
+  is the one M-VAVE's boot leaves running (`FM1_AUDIO_PLL_STOCK0/1`), and returns an error, with
+  silence, otherwise. fm1-emu does not model that PLL, so emu-gate's machine writes the stock
+  values before the first instruction, as the boot does ([upstream reports](../../docs/upstream-reports.md)).
+- **The updater's buffers** (`ota.c`'s `ota_dec` and `ota_stage`'s two, 2,176 bytes) carried
+  Felucca 1.6.1's `.pool` section; felucca-bsp's copy leaves them in `.bss`. `app.ld` puts them
+  in POOL by name, so the RAM region keeps its room.
+- `hal_check.c` (target `fm1_hal_check`) compiles every header and both `.S` files in the fm1
+  build.
+
+### Updating
+
+Copy the files above from the new commit, update the commit here and in
+[LICENSING.md](../../LICENSING.md), and describe any local change in this file (there is none).
+For `usb/midi_uart.c`, diff Felucca's `firmware/src/midi_uart.c` at its new commit against the one
+it came from and carry the changes over onto SIDOU's version.
 
 ### Adapted from Felucca (not vendored)
 
@@ -104,55 +108,31 @@ the UI's first picture, and windows of any size from two buffers (one filled
 while the other is sent) instead of Felucca's layers, with counters of the
 windows and SPI bytes sent.
 
-### Updating
+## felucca-bsp's USB stack (`bsp/chip/usb.c`) and the TRS MIDI driver (`usb/`)
 
-Copy the HAL files above from the new commit, update the commit here and in
-[LICENSING.md](../../LICENSING.md), and describe any local change in this
-file. Copy `src/usb.c` as it is, then put back its two SIDOU hooks if upstream has not taken them (see below). For
-`usb/midi_uart.c`, diff the new upstream file against this commit's and carry
-the changes over onto SIDOU's version.
+Since the felucca-bsp move (1.8), the app uses felucca-bsp's `chip/usb.c` byte for byte, with no
+hook of SIDOU's: what SIDOU's two marked hooks in Felucca 1.6.1's copy did is upstream now.
+Felucca's own 1.6.1 `src/usb.c` stays, unmodified, for the update loader only (below). The rule
+is unchanged: **no fork of `usb.c`**; everything SIDOU needs goes in `midi.c`, around the file.
 
-## Felucca USB stack (`src/usb.c`, two hooks) and TRS MIDI driver (`usb/`)
-
-Since the USB-MIDI out fix (2026-10-19), the app uses Felucca's USB stack
-`src/usb.c`. It is the same copy the update loader builds from (below), byte
-for byte but for two marked hooks. SIDOU's adapted copy (`usb/usb.c`) is gone.
-The fork could not send USB-MIDI out on the FM-1, and the reasons were not in
-its source ([docs/hardware-results/usb-out-diagnosis.md](../../docs/hardware-results/usb-out-diagnosis.md)).
-
-The rule now: **no fork of `usb.c`**. The file stays Felucca's, with at most
-one or two hooks, each:
-
-- marked `/* SIDOU hook (upstream candidate): … */`;
-- inert when its macro is undefined;
-- proposed upstream ([docs/upstream-reports.md](../../docs/upstream-reports.md), item 8).
-
-Everything else SIDOU needs goes in `midi.c`, around the file.
-
-### The hooks in `src/usb.c`
-
-| Hook | Where | Undefined (Felucca, the loader) | SIDOU's `midi.c` |
-|---|---|---|---|
-| `FELUCCA_USB_MANUFACTURER`, `FELUCCA_USB_PRODUCT`: the bytes of a whole string descriptor each | `STR1`, `STR2` | "Hügelton Instruments", "Felucca" (the loader keeps "Felucca Update") | "SIDOU contributors", "SIDOU FM-1" (the installers find a port by "FM-1") |
-| `FELUCCA_MIDI_IN_RAW(pkt)`: every EP1 OUT event packet, before `midi_in_event`'s filter | `midi_in_event`, first | nothing | `usb_raw_in`: the packet into SIDOU's ring |
-
-The loader builds from the same file with neither macro defined. Its
-`loader.bin`, and so the package's `ota.bin`, is byte-identical with or
-without the hooks (checked 2026-10-20).
+| Upstream setting | felucca-bsp's default | SIDOU's (`usb_config.h`) |
+|---|---|---|
+| `FELUCCA_USB_MANUFACTURER`, `FELUCCA_USB_PRODUCT`: ASCII strings, the descriptors built on request | "Hügelton Instruments", "Felucca" | "SIDOU contributors", "SIDOU FM-1" (the installers find a port by "FM-1") |
+| `FELUCCA_MIDI_IN_RAW(pkt)`: every EP1 OUT event packet, before `midi_in_event`'s filter (our PR #21) | nothing | `usb_raw_in`: the packet into SIDOU's ring |
+| `FELUCCA_UAC_AS_FIRST`: the audio interfaces before MIDI's | 0 | 1, as 1.6.1 had it (macOS names the device by its first interface) |
 
 ### Use
 
-- **Including it:** `midi.c` defines the hooks, then includes `src/usb.c`,
-  SIDOU's `usb_audio.c` (below), SIDOU's `usb/midi_uart.c` and `src/ota.c` into
-  one translation unit. The hooks are:
+- **Including it:** `midi.c` sets the switches, then includes `bsp/chip/usb.c`,
+  SIDOU's `usb_audio.c` (below), SIDOU's `usb/midi_uart.c` and `bsp/chip/ota.c` into
+  one translation unit. The switches are:
   - `RING_PUBLISH()`, `FELUCCA_OTA 1` and `FELUCCA_ID`;
-  - `FELUCCA_CDC 0` and `FELUCCA_UAC 1`: Felucca's own switches, MIDI
-    streaming on EP1 and the USB audio input on EP4 (since 2026-10-23, below), with
-    no CDC console; `FELUCCA_UAC_48K` and `FELUCCA_UAC_AS_FIRST` at `usb.c`'s
-    defaults (on); `HALF_FRAMES`, Felucca's block, is SIDOU's (128);
-  - the two above.
+  - `FELUCCA_CDC 0` and `FELUCCA_UAC 1`: MIDI streaming on EP1 and the USB audio input on EP4
+    (since 2026-10-23, below), with no CDC console; `FELUCCA_UAC_48K` at `usb.c`'s default
+    (on); `HALF_FRAMES`, the block, is SIDOU's (128);
+  - the three in the table above.
 
-  The switches and the two string hooks are in `usb_config.h`, which the host
+  The switches and the strings are in `usb_config.h`, which the host
   harness includes too (`host/crates/sidou-pack/harness/uac_harness.c`), so the
   descriptors it tests are the device's.
 
@@ -177,9 +157,16 @@ without the hooks (checked 2026-10-20).
   packet. That way `usb.c`'s back-pressure (`ep1_take` NAKs while its own ring
   is nearly full) also holds the host off when SIDOU's ring fills.
 - **SysEx in:** SIDOU's frames reach its parser in the raw stream. `usb.c` also
-  collects each SysEx frame for the update protocol. `update_poll` frees SIDOU's
-  frames from there (`F0 7D 53 44 …` and universal `F0 7E …`), so the
-  updater's frame is free for its next request.
+  queues each SysEx frame for the update protocol (felucca-bsp#20: as many as fit in its
+  648 bytes, each its length and its bytes; `ep1_take` NAKs the host while the frames waiting
+  leave no room for the next packet). `update_poll` frees SIDOU's frames from the queue's
+  head (`F0 7D 53 44 …` and universal `F0 7E …`), all that wait, so the queue drains and the
+  host is never held off for long. **The rule from #20:** in a pass where it took a frame, it
+  does not call `ota_service`, which would take the next frame and drop it if it is not the
+  updater's; the updater sees a frame only in a pass where no one else took one (fm1-base#15
+  does the same). emu-gate `tests/usb.rs`: 32 patch dumps of 154 bytes sent back to back all
+  reach SIDOU's parser and the queue, and an updater query sent right behind a SIDOU frame is
+  answered.
 - **Kept as Felucca has it:** VID/PID 0x1209:0x0001. `sysex_byte` sets `usb.uboot_req` on the stock UBOOT
   soft key `F0 22 24 35 7D F7`; nothing in SIDOU reads it, and SIDOU never
   sends that SysEx.
@@ -209,17 +196,17 @@ without the hooks (checked 2026-10-20).
 UAC1 input, 16-bit stereo at 44.1 kHz or 48 kHz (the host's choice, SET_CUR),
 on an isochronous asynchronous IN endpoint (EP4), beside USB-MIDI in one
 device (bcdDevice 3.28; the configuration descriptor grows from 101 to 178
-bytes). Nothing in `usb.c` changed: its producer (`uac_render_start`, then
+bytes). Nothing in `usb.c` is SIDOU's: its producer (`uac_render_start`, then
 `uac_tap` a block at a time, which at 48 kHz resamples through
 `src/uac_fir.h`'s polyphase FIR) fills a ring that its consumer
 (`uac_service`, one packet a USB frame) empties.
 
 - **`src/uac_fir.h`**, the resampler's table, which `usb.c` includes with
   `FELUCCA_UAC_48K`: Felucca's file as it is, from Felucca's tree at `5738617`
-  (2026-10-16, the copy at hand; its changes after 1.6.1 do not touch it, nor
-  `usb.c`, which is byte-identical there but for SIDOU's hooks). Felucca's own
+  (2026-10-16, the copy at hand; felucca-bsp does not carry it). Felucca's own
   test (below) checks every tap against the prototype computed in double
-  precision.
+  precision. Felucca's `tests/uac_test.c` is the one from Felucca's main at `a4f007c`
+  (2026-11-04), written for felucca-bsp's `chip/usb.c` (it feeds 24-bit words).
 - **Who calls the producer.** Felucca calls it from its audio interrupt
   (`audio.c`: `uac_render_start` before a render, `uac_tap` after each 32-frame
   block). SIDOU's audio interrupt runs from `.ram_text` and reads no flash
@@ -234,7 +221,8 @@ bytes). Nothing in `usb.c` changed: its producer (`uac_render_start`, then
     render open), the block is still in the I2S half buffer the render wrote,
     the DMA's free half, until the DMA moves on (which raises the half's
     pending flag; then the block is counted as skipped). While a host records,
-    `usb_audio_take` copies it (int16 << 8 back to int16) into a buffer in POOL;
+    `usb_audio_take` copies it, the I2S's 24-bit words as they are (felucca-bsp's `uac_tap`
+    takes them so since `6a1fd30`; Felucca 1.6.1's took 16-bit samples), into a buffer in POOL;
   - `usb_audio_tick`, every tick, runs `usb.c`'s producer on it:
     `uac_render_start`, then `uac_tap` on a quarter of the block (32 frames,
     Felucca's own block size) a tick, so no tick is long (at 48 kHz about
@@ -306,16 +294,18 @@ From Felucca's `firmware/src/midi_uart.c` (90 lines) at the HAL's commit:
   parser's state and setting `midi_in_overflow`; `um.msgs` is gone.
 - The header comment describes the SIDOU version.
 
-## Felucca's sources for the update path (`src/`, `loader/`), unmodified
+## Felucca 1.6.1's sources for the update loader (`hal/`, `src/`, `loader/`), unmodified
 
 Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
-(`../src/…`, `../hal/…`) resolve as there.
+(`../src/…`, `../hal/…`) resolve as there. Since the felucca-bsp move they are the loader's alone
+(decision 0011, the owner, 2026-11-05: the loader keeps Felucca 1.6.1's HAL, so its pinned hash is
+unchanged); the app builds from `bsp/`.
 
-- **Source:** Felucca's `firmware/src/usb.c`, `src/ota.c`, `src/libc.c` and
-  `firmware/loader/` (`crt0_ldr.S`, `ldr_core.c`, `loader.c`, `loader.ld`)
-  at the same commit, byte for byte. The one exception is `src/usb.c`'s two
-  SIDOU hooks (above). They are inert in the loader's build, whose
-  `loader.bin` is unchanged by them.
+- **Source:** Felucca's `firmware/src/usb.c`, `src/ota.c`, `src/libc.c`, `firmware/loader/`
+  (`crt0_ldr.S`, `ldr_core.c`, `loader.c`, `loader.ld`) and the six HAL headers the loader
+  includes (`hal/fm1_cc.h`, `fm1_flash.h`, `fm1_sys.h`, `fm1_time.h`, `fm1_usb.h`, `fm1_xip.h`),
+  at the commit above, byte for byte. `src/usb.c` no longer carries SIDOU's two hooks: it is
+  1.6.1's file exactly (the loader built them inert; its `loader.bin` is the same).
 - **Licence:** GPL-3.0-only, © 2026 Leo Kuroshita, Hügelton Instruments.
 - **The update loader** is built from them unmodified, with exactly the
   commands of Felucca's `tools/build.py` `build_loader()` (CMake target
@@ -330,8 +320,8 @@ Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
   the marker `FELUCCA-LOADER-1` (which Felucca, sloop and melodee look for),
   and its own fallback to UBOOT on the stock soft key (the app never sends
   that SysEx, and never handles it).
-- **`src/ota.c`, step 1 of the update protocol,** is also the app's:
-  `midi.c` includes it after `src/usb.c` and supplies its hooks, adapted
+- **Step 1 of the update protocol** is felucca-bsp's `chip/ota.c` in the app:
+  `midi.c` includes it after `bsp/chip/usb.c` and supplies its hooks, adapted
   from Felucca's `src/ota_hw.c`: the clock (TIMER4), the watchdog, the
   flash hooks in `ota_flash.h` (erases and writes inside the staging area
   `0xE0000..0xE5000` only, in interrupt-off windows and only while the
@@ -340,7 +330,14 @@ Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
   `fm1_enter_update`). `FELUCCA_ID` is SIDOU's identity, `SIDOU_PRODUCT`
   (`FM-1_900` for development builds, the same as Felucca's development
   builds; distinct digits are for later, with the community).
-- `src/usb.c` is also the app's own USB stack, with its two hooks (above).
+- **What felucca-bsp's step 1 changed** against 1.6.1's: it answers M-UPGRADE 3.11's handshake
+  (the identity cut to its name and three digits for the plain query), and it takes a package
+  from any well-made writer (M-VAVE's, Felucca's, m-bootloader's), checking a foreign writer's
+  boot area is one the ROM boots (-5 otherwise) instead of refusing it (-7). It no longer refuses
+  a flash.bin of another size (1.6.1's -15): such a package is staged, and its writer refuses it.
+  SIDOU's writer, Felucca 1.6.1's loader, refuses it with -14 before it erases anything
+  (`ota_step1.rs`: `step_one_stages_another_boards_package_without_touching_the_app`, and
+  `a_wrong_size_package_is_staged_and_the_built_loader_refuses_it_before_anything_is_erased`).
 
 ### Checked against the v1.6.1 tag (2026-10-18)
 
@@ -363,6 +360,7 @@ loader's `ldr_session` on `harness/ota_harness.c`, which includes the unmodified
 `loader/ldr_core.c` with counting flash hooks: a flash.bin 4 KiB short and 4 KiB over give
 -14 with zero erases, programs and record clears; the right size, as the control, writes).
 Felucca commits after the tag (to 2026-10-16) change only `eng_phase.c` and `ui_menu.c`, which SIDOU does not vendor.
+Step 1's half of this went with the felucca-bsp move (above); the loader's stands.
 
 ### Checked again (2026-10-22, pre-flash safety)
 

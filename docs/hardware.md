@@ -14,7 +14,7 @@ copyrighted, so we link to them rather than copy them into this repo.
 | [JieLi AC79 documentation](https://doc.zh-jieli.com/AC79/zh-cn/release_v1.0.3/getting_started/overview/index.html) | SDK overview and peripherals (Chinese) |
 | AC79 SDK `cpu/wl82` headers | Register definitions. There is no public register manual. |
 | [fm1-emu](https://github.com/joakimeriksson/fm1-emu) `docs/recon.md`, `docs/isa-notes.md` | SoC identification, pi32v2 instruction set, peripheral behaviour as modelled |
-| Felucca HAL (`platform/fm1/hal/`, see `VENDORED.md`) | Pin assignments and peripheral use, proven on hardware |
+| felucca-bsp (`platform/fm1/bsp/`, Felucca's HAL moved there; see `VENDORED.md`) | Pin assignments and peripheral use, proven on hardware |
 | [aroum/fm1-custom-fw](https://github.com/aroum/fm1-custom-fw) `photos/`, `REVERSE_ENGINEERING.md` | Teardown photos of the board (`DX7 MB V07`), recovery notes |
 | [AL-255/FM-1-RE](https://github.com/AL-255/FM-1-RE) `docs/architecture.md` | Stock boot chain and clock setup |
 | [Melodee](https://github.com/keremimo/melodee) `BUILDING.md` | Clock and second-core measurements on real units |
@@ -650,8 +650,8 @@ ECC would need a format rework into 16-byte units each programmed once
 All three are open checks below.
 
 Sources: `platform/fm1/loader/ldr_core.c` (`LDR_APP_*`, `LDR_REC_*`,
-`LDR_DATA_*` and the record scan), `platform/fm1/src/ota.c` (`OTA_AREA`,
-`OTA_RES`), `platform/fm1/hal/fm1_flash.h` (Felucca's ranges and
+`LDR_DATA_*` and the record scan), `platform/fm1/bsp/chip/ota.c` (`OTA_AREA`,
+`OTA_RES`), `platform/fm1/bsp/chip/fm1_flash_policy.h` and `fm1_flash.h` (Felucca's ranges and
 `fl_plain_window_init`), `host/crates/sidou-pack/src/lib.rs` (the region
 descriptors), `platform/fm1/app.ld` (the app slot).
 

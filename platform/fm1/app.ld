@@ -73,7 +73,7 @@ SECTIONS
         *(.pool.song_noinit)
         . = ALIGN(4);
         _pool_start = .;
-        *midi.c.obj(.bss.ua_ring)
+        *midi.c.obj(.bss.ua_ring .bss.ota_dec .bss.ota_stage.*)
         *(.pool*)
         _pool_dac_start = .;
         *sid_dac.c.obj(.bss*)

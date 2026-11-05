@@ -100,7 +100,7 @@ static void usb_raw_in(uint32_t pkt);
 /* clang-format off */
 #define sysex_byte ota_sysex_byte
 #define fm1_delay_ms usb_reset_wait
-#include "src/usb.c"
+#include "bsp/chip/usb.c"
 #undef sysex_byte
 #undef fm1_delay_ms
 /* clang-format on */
@@ -179,7 +179,7 @@ static void trs_lost(uint32_t n) {
 #include "usb/midi_uart.c"
 #undef midi_enqueue
 #undef midi_lost
-#include "src/ota.c"
+#include "bsp/chip/ota.c"
 /* clang-format on */
 
 _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "USB packets are 1, TRS bytes 2");
@@ -550,15 +550,28 @@ int flash_store_ok(void) {
     return flash_ok;
 }
 
-int update_poll(void) {
-    if (!sx_ready && !usb.ota_req) {
-        return 0;
-    }
-    if (sx_ready && sx_frame_len && (sx_frame[0] == 0x7Eu || sx_frame[0] == 0x7Du)) {
+static int sidou_frame(const uint8_t* p, uint32_t n) {
+    return n && (p[0] == 0x7Eu || p[0] == 0x7Du);
+}
+
+static int sidou_frames_taken(void) {
+    const uint8_t* p;
+    uint32_t n;
+    int took = 0;
+    while (ota_frame_get(&p, &n) && sidou_frame(p, n)) {
         ota_frame_done();
-        if (!usb.ota_req) {
-            return 0;
-        }
+        took = 1;
+    }
+    return took;
+}
+
+static int frame_waiting(void) {
+    return sx_made != sx_taken;
+}
+
+int update_poll(void) {
+    if (sidou_frames_taken() || (!frame_waiting() && !usb.ota_req)) {
+        return 0;
     }
     if (sidou_sysex.tx_active) {
         return 0;
