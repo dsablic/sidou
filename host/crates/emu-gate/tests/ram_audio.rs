@@ -48,6 +48,65 @@ fn the_boot_copies_the_audio_path_to_sram() {
     );
 }
 
+const FRAME_RATE_IN_FLASH: &[&str] = &[
+    "song_ctl_call",
+    "song_handover",
+    "song_push_events",
+    "song_lock_row",
+    "song_lock_apply",
+    "gt2_play_frame",
+    "gt2_play_jam",
+    "gt2_play_start",
+    "gt2_play_draft",
+    "gt2_play_set_shape",
+    "gt2_play_retain_shape",
+    "exec_channel",
+    "effect",
+    "freq_byte",
+    "getnewnote",
+    "ghost_copy",
+    "loadregs",
+    "note_start",
+    "pulse_right",
+    "set_ad",
+    "set_sr",
+    "set_note_freq",
+    "table_encoding",
+    "tick0_cmd",
+    "wave_left",
+    "wr",
+    "wt",
+];
+
+fn in_flash_by_design(name: &str) -> bool {
+    FRAME_RATE_IN_FLASH.contains(&name)
+}
+
+#[test]
+fn goattrackers_player_runs_from_flash_and_rams_audio_path_calls_it_by_pointer() {
+    let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
+        return;
+    };
+    let sram = ram_text(&fw);
+    for name in [
+        "song_ctl_call",
+        "gt2_play_frame",
+        "exec_channel",
+        "song_lock_apply",
+    ] {
+        assert!(
+            !sram.contains(&fw.symbol(name)),
+            "{name} is in flash, once a song frame"
+        );
+    }
+    for name in ["song_ctl_block", "render_part", "sid_write", "song_sink"] {
+        assert!(
+            sram.contains(&fw.symbol(name)),
+            "{name} stays in SRAM, every block or sample"
+        );
+    }
+}
+
 #[test]
 fn the_audio_interrupt_runs_only_from_sram() {
     let Some((_, fw)) = build_and_firmware("the SRAM audio test") else {
@@ -69,6 +128,7 @@ fn the_audio_interrupt_runs_only_from_sram() {
         .alnk_pcs_outside
         .iter()
         .map(|&pc| fw.function_at(pc))
+        .filter(|f| !in_flash_by_design(f.split('+').next().unwrap_or_default()))
         .collect();
     println!(
         "{} audio blocks watched; {} instructions at the ALNK0 level from SRAM, {} distinct PCs \
@@ -245,6 +305,9 @@ fn the_audio_path_reads_no_data_from_flash() {
                 .find(|s| (s.address()..s.address() + s.size()).contains(&target))
                 .and_then(|s| s.name().ok())
                 .unwrap_or("?");
+            if in_flash_by_design(name) {
+                continue;
+            }
             in_flash.push(format!(
                 "{} -> {name} ({target:#010x})",
                 fw.function_at(offset as u32)

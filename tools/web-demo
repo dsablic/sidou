@@ -87,6 +87,7 @@ cp "$root/web/link.html" "$root/web/link.js" "$root/web/link-keyboard.js" "$out/
 "$root/tools/wasm-link" "$out/sidou-link.wasm"
 mkdir -p "$out/songs"
 cp "$root"/assets/songs/*.sng "$out/songs/"
+mkdir -p "$out/sounds" && cp "$root"/assets/sounds/sidou-sounds.sng "$root"/assets/sounds/sidou-sounds.json "$out/sounds/"
 cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"
 mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && cp "$root/web/videos.html" "$root/web/cheatsheet.html" "$out/"
 mkdir -p "$out/licenses"

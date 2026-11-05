@@ -206,4 +206,18 @@ await test("file types and store names from file names", () => {
   assert.equal(storeName("   .sng"), "FILE");
 });
 
+await test("SIDOU's sounds: sixteen named instruments of one song, sent like any song", async () => {
+  const bank = JSON.parse(readFileSync(`${here}../assets/sounds/sidou-sounds.json`, "utf8"));
+  const sng = Uint8Array.from(readFileSync(`${here}../assets/sounds/${bank.song}`));
+  assert.equal(bank.sounds.length, 16);
+  assert.deepEqual(bank.sounds.map((s) => s.instrument), [...Array(16).keys()].map((i) => i + 1));
+  const text = new TextDecoder("latin1").decode(sng);
+  for (const s of bank.sounds) assert.ok(text.includes(s.name), `${s.name} is an instrument of the song`);
+  const { device, lib } = fm1();
+  await lib.refresh();
+  await lib.send(bank.name, sng, { type: 1 });
+  assert.equal(device.files.find((f) => f.name === bank.name).crc, crc32(sng));
+  assert.deepEqual(device.stored.get(bank.name), sng);
+});
+
 console.log(`library.test.mjs: ${n} tests passed`);

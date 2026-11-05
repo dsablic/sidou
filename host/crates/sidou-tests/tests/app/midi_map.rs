@@ -44,6 +44,9 @@ impl Row {
     fn setting(&self) -> bool {
         u32::from(self.param) == MIDI_MAP_SPREAD
     }
+    fn lab_card(&self) -> bool {
+        (MIDI_MAP_LAB_FIRST..MIDI_MAP_LAB_FIRST + LAB_CARDS).contains(&u32::from(self.param))
+    }
 }
 
 fn entry(i: u32) -> &'static midi_map_entry {
@@ -142,7 +145,7 @@ fn every_parameter_has_exactly_one_row() {
     assert!(unsafe { midi_map_for_param(LIVE_PARAM_COUNT) }.is_null());
     for r in &rows {
         assert!(
-            r.reserved() || r.setting() || u32::from(r.param) < LIVE_PARAM_COUNT,
+            r.reserved() || r.setting() || r.lab_card() || u32::from(r.param) < LIVE_PARAM_COUNT,
             "{}: parameter {}",
             r.name,
             r.param
@@ -404,7 +407,10 @@ fn each_entry_round_trips_through_its_cc() {
 
 #[test]
 fn each_entry_round_trips_through_its_nrpn_at_full_resolution() {
-    for r in rows().iter().filter(|r| r.has_nrpn() && !r.reserved()) {
+    for r in rows()
+        .iter()
+        .filter(|r| r.has_nrpn() && !r.reserved() && !r.lab_card())
+    {
         let mut m = Midi::new();
         fill_every_user_slot_with_a_profile(&mut m.rig);
         let (msb, lsb) = ((r.nrpn >> 7) as u8, (r.nrpn & 0x7f) as u8);
@@ -1078,7 +1084,9 @@ edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
 the bend range, three expression targets, the expert layer, the PWM, the fine tune and the macro links also
-have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. The map uses the same numbers on every channel, on TRS and USB. Notes
+have a fixed CC (7-bit): the filter LFO's is 31. MIDI learn can bind a CC to any of them. LAB's cards that are
+no instrument parameter (FILTER ENV, LAYERS, TABLE, LFO) have an NRPN each in group 7, LAB, numbered by card, the card's
+own position as its value (LAB, below the map's group 6). The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..{last} selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
@@ -1097,7 +1105,7 @@ high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 c
 mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the chord
 arpeggio in 27..30 and the filter LFO in 31, the character layer in 85..87 and 89..90, the effect slots in 102..116, the output's spread in
 117. NRPNs are grouped by MSB: 0 the performance controls, the spread, the PWM, the fine
-tune, the filter LFO, the arpeggio's rate and the macro links, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression. The spread
+tune, the filter LFO, the arpeggio's rate and the macro links, 1 the SID, 2 the character layer, 3..5 the effect slots, 6 expression, 7 LAB's cards. The spread
 (SETTINGS' SPREAD) is a setting, not the instrument's: no preset holds it, MIDI learn does not
 bind it and SIDOU does not send it (Output, below).
 
@@ -1819,8 +1827,95 @@ fn the_rows_without_a_cc_are_the_ones_the_reference_names() {
     expected.extend(LIVE_PARAM_EXPERT..LIVE_PARAM_EXPERT + SID_EXPERT_COUNT);
     expected.extend([LIVE_PARAM_PWM_DEPTH, LIVE_PARAM_PWM_RATE, LIVE_PARAM_TUNE]);
     expected.extend([LIVE_PARAM_RESO_LINK, LIVE_PARAM_PWM_LINK]);
+    expected.extend((0..LAB_CARDS).map(lab_param));
     assert_eq!(no_cc, expected);
     assert!(intro().contains(
         "the expert layer, the PWM, the fine tune and the macro links also\nhave a fixed CC"
     ));
+}
+
+fn lab_param(card: u32) -> u32 {
+    MIDI_MAP_LAB_FIRST + card
+}
+
+fn lab_card_nrpn(m: &mut Midi, card: u32, value: u32) -> u32 {
+    m.trs(&[0xB0, 99, 7, 98, card as u8]);
+    m.trs(&[6, (value >> 7) as u8, 38, (value & 0x7f) as u8]);
+    get(&m.rig, lab_param(card))
+}
+
+#[test]
+fn every_lab_card_without_a_parameter_has_an_nrpn_in_group_7_by_card() {
+    for card in 0..LAB_CARDS {
+        let r = row_for(lab_param(card));
+        assert_eq!(r.nrpn, nrpn(7, card as u8), "{}", r.name);
+        assert_eq!(r.group, "LAB");
+        assert!(!r.has_cc(), "{}: NRPN only", r.name);
+    }
+}
+
+#[test]
+fn a_lab_cards_nrpn_sets_what_the_card_shows_across_its_range() {
+    let mut m = Midi::new();
+    for card in [LAB_CARD_LAYERS, LAB_CARD_LAYER_EDIT] {
+        assert_eq!(lab_card_nrpn(&mut m, card, 2), 2);
+    }
+    m.trs(&[0xB0, 99, 7, 98, LAB_CARD_TABLE_END as u8, 6, 0, 38, 1]);
+    let ranged = (0..LAB_CARDS).filter(|&c| c != LAB_CARD_TABLE_END && c != LAB_CARD_TABLE_WAVE);
+    for card in ranged {
+        let max = unsafe { midi_map_param_max(lab_param(card)) };
+        for v in (0..=max).rev().chain(0..=max) {
+            if card == LAB_CARD_TABLE_STEP && v > 0 {
+                continue;
+            }
+            assert_eq!(lab_card_nrpn(&mut m, card, v), v, "card {card} to {v}");
+        }
+    }
+}
+
+#[test]
+fn the_table_cards_nrpns_build_a_table_as_the_cards_do() {
+    let mut m = Midi::new();
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_STEP, 5),
+        0,
+        "no table: no step to pick"
+    );
+    assert_eq!(lab_card_nrpn(&mut m, LAB_CARD_TABLE_END, 1), 1, "play once");
+    assert_eq!(lab_card_nrpn(&mut m, LAB_CARD_TABLE_NOTE, 36), 36, "+12");
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_STEP, 9),
+        1,
+        "NEW, one past the end"
+    );
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_WAVE, 5),
+        5,
+        "a noise step added"
+    );
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_END, 2),
+        2,
+        "loop from 1"
+    );
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_END, 17),
+        3,
+        "no loop past the steps"
+    );
+    let t = &m.rig.live.table;
+    assert_eq!(t[0], (LAB_TABLE_ON | 2) as u8);
+    assert_eq!(t[3 + 1], 12);
+    assert_eq!(t[3 + 2], 0x80, "step 2's noise");
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_WAVE, 0),
+        1,
+        "END only from OFF"
+    );
+    assert_eq!(
+        lab_card_nrpn(&mut m, LAB_CARD_TABLE_WAVE, 0),
+        0,
+        "the step cut: NEW again"
+    );
+    assert_eq!(m.rig.live.table[0] & LAB_TABLE_COUNT_MASK as u8, 1);
 }

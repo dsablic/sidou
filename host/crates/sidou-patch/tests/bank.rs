@@ -54,16 +54,26 @@ fn a_table_becomes_wave_rows_with_its_notes_delays_and_loop() {
         rows,
         vec![
             (0x41, 0x80 + 48),
-            (0x02, 0x80),
+            (0x01, 0x80),
             (0x81, 8),
-            (0x02, 0x80),
+            (0x01, 0x80),
             (0x21, 0x80 - 7),
-            (0x02, 0x80),
+            (0x01, 0x80),
             (0xE0, 5),
-            (0x02, 0x80),
+            (0x01, 0x80),
             (0xFF, 10 + 2),
         ],
-        "C-4 absolute; +3 and -12 relative with the transpose of +5 folded in; a silent step; a jump back to step 2"
+        "C-4 absolute; +3 and -12 relative with the transpose of +5 folded in; a silent step; a jump back to step 2; \
+         each step its row's frame and a delay row of 1, which GoatTracker holds for 2"
+    );
+    let slow = Table {
+        steps: vec![step(0x20, TableNote::Up(0))],
+        loop_to: None,
+    };
+    assert_eq!(
+        wave_rows(&slow, 0, 20, 1),
+        vec![(0x21, 0), (0x0F, 0x80), (0x02, 0x80), (0xFF, 0)],
+        "20 frames: the row, then delays of 16 and 3 frames"
     );
     let ends = Table {
         steps: vec![step(0x20, TableNote::Up(0))],

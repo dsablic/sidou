@@ -72,7 +72,17 @@ The FM-1's private files are never listed by the FM-1, so the page never reads, 
 touches them: a song or an instrument it is importing over USB (`MIDI SONG`,
 `MIDI INSTRUMENT`), and the copy of an imported song it keeps until you SAVE AS.
 
-## 4. Export a song
+## 4. SIDOU's sounds
+
+The section **3. SIDOU's sounds** lists sixteen LAB sounds made with SIDOU's own pages (they use
+the step table, the LFOs, the layers and the filter envelope; none comes from another synth's
+bank). **Send to FM-1** sends them as one song, `SIDOU SOUNDS`, as any song is sent (an identical
+one is left alone). On the FM-1: menu, SONG, LOAD it, SEQ to INSTR, PRESETS to a sound and **ENV**:
+LAB opens with the sound exactly as made (`PULLED I03`), and SAVE keeps it as a USER sound. The
+song is also there to download. The sounds are defined in `host/crates/sidou-patch/src/sounds.rs`,
+and the song in `assets/sounds` is written from them (its test, `SIDOU_SOUNDS_UPDATE=1`).
+
+## 5. Export a song
 
 Drop a `.sng` on the page, choose one, press **Open** next to a song on the FM-1, or **Open the
 FM-1's current song** (what it has loaded now, with the changes you have not saved). The panel

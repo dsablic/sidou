@@ -41,7 +41,7 @@ function setBusy(busy) {
   const ready = !!state.lib && !busy;
   $("connect").disabled = busy;
   $("check").disabled = busy || !state.access || !$("out").value || !$("in").value;
-  for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1")) b.disabled = !ready;
+  for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1, #sounds .needs-fm1")) b.disabled = !ready;
   $("progress").hidden = !busy;
 }
 
@@ -350,6 +350,21 @@ const drop = $("drop");
 for (const type of ["dragenter", "dragover"]) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add("over"); });
 for (const type of ["dragleave", "drop"]) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.remove("over"); });
 drop.addEventListener("drop", (e) => pickSong(e.dataTransfer.files[0]));
+
+const SOUNDS = "sounds/sidou-sounds.json";
+
+async function showSounds() {
+  const bank = await (await fetch(SOUNDS)).json();
+  $("sound-list").replaceChildren(...bank.sounds.map((s) =>
+    el("li", {}, el("b", { textContent: s.name }), ` ${s.about} (instrument ${String(s.instrument).padStart(2, "0")})`)));
+  $("send-sounds").onclick = async () => {
+    const bytes = new Uint8Array(await (await fetch(new URL(bank.song, new URL(SOUNDS, location.href)))).arrayBuffer());
+    await sendBytes(bank.name, bytes, 1);
+  };
+  state.sounds = bank;
+}
+
+showSounds().catch((e) => say($("sounds-state"), `The sounds could not be listed: ${e.message}`, "error"));
 
 if (!navigator.requestMIDIAccess) {
   $("support").hidden = false;

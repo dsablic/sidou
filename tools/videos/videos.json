@@ -12,10 +12,12 @@
   "whats-new": {
     "teaser": false,
     "bed": [
-      "send",
-      "pull"
+      "table",
+      "step",
+      "slide",
+      "accent"
     ],
-    "preview_step": "layers"
+    "preview_step": "lfo"
   },
   "rec-over-loop": {
     "bpm": 125

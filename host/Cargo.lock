@@ -766,6 +766,7 @@ dependencies = [
  "residfp-sys",
  "sha2",
  "sidou-pack",
+ "sidou-patch",
  "sidou-sys",
  "sidou-sysex",
  "sidou-tablegen",

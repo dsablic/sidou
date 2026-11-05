@@ -54,7 +54,9 @@ typedef enum {
     HELP_CARD_LIFT = 39,
     HELP_CARD_LAB_FILTER_ENV = 40,
     HELP_CARD_LAB_LAYERS = 41,
-    HELP_CARDS = 42
+    HELP_CARD_LAB_TABLE = 42,
+    HELP_CARD_LAB_LFO = 43,
+    HELP_CARDS = 44
 } help_card_id;
 
 #define HELP_LINES 8u

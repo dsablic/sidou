@@ -4,6 +4,8 @@
 
 #include <stddef.h>
 
+#include "far_call.h"
+
 #include "gen/digi.h"
 
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
@@ -22,6 +24,11 @@ _Static_assert(offsetof(gt2_player, draft) % 4u == 0u, "a hand-over copies the p
 _Static_assert(offsetof(song_ctl, draft) % 4u == 0u && _Alignof(gt2_draft) >= 4u,
                "song_draft copies a draft in words: the FM-1 faults on a misaligned one");
 _Static_assert(SONG_DIGI_SAMPLES == SONG_DIGI_KINDS - 1u, "a built-in sample for each DIGI kind");
+
+#define PLAYER_LOCKS                                                                             \
+    (((1u << (SONG_LOCK_PULSE + 1u)) - 1u) | 1u << SONG_LOCK_CHANCE | 1u << SONG_LOCK_SLIDE |     \
+     1u << SONG_LOCK_ACCENT)
+#define IS_PLAYER_LOCK(param) ((PLAYER_LOCKS >> (param)) & 1u)
 
 static void song_sink(void* ctx, uint8_t reg, uint8_t value) {
     song_ctl* sc = ctx;
@@ -79,7 +86,7 @@ __attribute__((noinline)) static void song_draft(song_ctl* sc, const song_cmd* c
     const uint32_t* from = (const uint32_t*)(const void*)&c->u.draft;
     for (uint32_t i = 0u; i < sizeof(gt2_draft) / 4u; i++)
         ((volatile uint32_t*)(void*)&sc->draft)[i] = from[i];
-    gt2_play_draft(&sc->player, &sc->draft);
+    SIDOU_FAR(gt2_play_draft)(&sc->player, &sc->draft);
 }
 
 __attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c) {
@@ -98,8 +105,8 @@ __attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c)
 static void song_apply(song_ctl* sc, const song_cmd* c) {
     switch (c->kind) {
     case SONG_CMD_PLAY:
-        gt2_play_start(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
-                       (const uint8_t*)&c->u.p.x);
+        SIDOU_FAR(gt2_play_start)(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
+                                  (const uint8_t*)&c->u.p.x);
         sc->calls = 0u;
         sc->next = c->c ? SONG_NEXT_HELD : 0u;
         sc->rem = 0u;
@@ -108,8 +115,11 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->period.den = (uint32_t)(uintptr_t)c->u.p.ptr2;
         sc->armed = 0u;
         sc->lock_regs = 0u;
+        sc->slide_now = 0u;
+        sc->gliding = 0u;
         for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
             sc->jam[ch][0] = 0u;
+            sc->glide_left[ch] = 0u;
             sc->lock_n[ch] = 0u;
             sc->row_pat[ch] = 0xffu;
         }
@@ -157,9 +167,9 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         break;
     case SONG_CMD_SHAPE:
         if (c->a)
-            gt2_play_retain_shape(&sc->player, (const gt2_shape*)c->u.p.ptr);
+            SIDOU_FAR(gt2_play_retain_shape)(&sc->player, (const gt2_shape*)c->u.p.ptr);
         else
-            gt2_play_set_shape(&sc->player, (const gt2_shape*)c->u.p.ptr);
+            SIDOU_FAR(gt2_play_set_shape)(&sc->player, (const gt2_shape*)c->u.p.ptr);
         break;
     case SONG_CMD_HANDOVER:
         sc->armed = 1u;
@@ -275,7 +285,7 @@ static void song_handover(song_ctl* sc) {
         sc->calls = sc->armed_call;
     for (uint32_t r = 0u; r < GT2_SID_REGS; r++)
         sc->shadow[r] = sc->player.regs[r];
-    song_rewrite(sc, sc->chip);
+    SIDOU_FAR(song_rewrite)(sc, sc->chip);
     sc->armed = 0u;
     sc->handover_ok = 1u;
     sc->handover_seq = sc->armed_seq;
@@ -301,9 +311,30 @@ static void song_push_events(song_ctl* sc) {
     sc->ev_head = h;
 }
 
+__attribute__((noinline)) static void slide_row(song_ctl* sc, uint32_t ch, const gt2_event* e,
+                                                uint32_t has) {
+    uint32_t bit = 1u << ch, x = ch * 7u;
+    int note = (e->flags & GT2_EV_NOTE) != 0u;
+    if (note && (sc->slide_now & bit)) {
+        sc->glide_from[ch] = sc->prev_freq[ch];
+        sc->glide_ctrl[ch] = (uint8_t)(sc->prev_ctrl[ch] | 1u);
+        sc->glide_left[ch] = SONG_GLIDE_FRAMES;
+        sc->gliding |= (uint8_t)bit;
+    }
+    if (has && (note || !(sc->slide_now & bit))) {
+        sc->slide_ad[ch] = sc->shadow[x + 5u];
+        sc->slide_sr[ch] = sc->shadow[x + 6u];
+    }
+    if (has) {
+        sc->slide_now |= (uint8_t)bit;
+    } else if (note) {
+        sc->slide_now &= (uint8_t)~bit;
+    }
+}
+
 __attribute__((noinline)) static void song_lock_row(song_ctl* sc, uint32_t ch, const gt2_event* e) {
     const song_lock_set* set = &sc->lock_next[ch][sc->lock_pub[ch] & 1u];
-    uint32_t n = 0u;
+    uint32_t n = 0u, slides = 0u;
     if ((sc->lock_pin >> ch) & 1u)
         goto pinned;
     for (uint32_t i = 0u; i < set->n && i < SONG_ROW_LOCKS; i++) {
@@ -315,10 +346,13 @@ __attribute__((noinline)) static void song_lock_row(song_ctl* sc, uint32_t ch, c
             d->param = l->param;
             d->lo = l->lo;
             d->hi = l->hi;
+            slides |= l->param == SONG_LOCK_SLIDE && l->lo;
         }
     }
     sc->lock_n[ch] = (uint8_t)n;
 pinned:
+    if (slides | (sc->slide_now >> ch & 1u))
+        slide_row(sc, ch, e, slides);
     sc->row_pat[ch] = e->pattern;
     sc->row_row[ch] = e->row;
     sc->row_ord[ch] = e->order_pos;
@@ -326,7 +360,47 @@ pinned:
     sc->row_seq[ch] = (uint8_t)(sc->row_seq[ch] + 1u);
 }
 
+__attribute__((noinline)) static uint32_t accent(uint8_t r[GT2_SID_REGS], uint32_t x) {
+    uint32_t fc = ((uint32_t)r[0x16] << 3 | (r[0x15] & 7u)) + SONG_ACCENT_CUTOFF;
+    fc = fc > 2047u ? 2047u : fc;
+    r[0x15] = (uint8_t)((r[0x15] & 0xf8u) | (fc & 7u));
+    r[0x16] = (uint8_t)(fc >> 3);
+    uint32_t res = (r[0x17] >> 4) + SONG_ACCENT_RESONANCE;
+    r[0x17] = (uint8_t)((r[0x17] & 0x0fu) | (res > 15u ? 15u : res) << 4);
+    r[x + 6u] = (uint8_t)(r[x + 6u] | 0xf0u);
+    return 3u << 0x15 | 1u << 0x17 | 1u << (x + 6u);
+}
+
+__attribute__((noinline)) static uint32_t slide(song_ctl* sc, uint8_t r[GT2_SID_REGS], uint32_t ch) {
+    uint32_t x = ch * 7u, mask = 0u;
+    if ((sc->slide_now >> ch) & 1u) {
+        r[x + 4u] = (uint8_t)(r[x + 4u] | 1u);
+        r[x + 5u] = sc->slide_ad[ch];
+        r[x + 6u] = sc->slide_sr[ch];
+        mask |= 7u << (x + 4u);
+    }
+    uint32_t left = sc->glide_left[ch];
+    if (left) {
+        if (left == SONG_GLIDE_FRAMES) {
+            r[x + 4u] = sc->glide_ctrl[ch];
+            mask |= 1u << (x + 4u);
+        }
+        int32_t to = (int32_t)(sc->shadow[x] | sc->shadow[x + 1u] << 8);
+        int32_t f = to + ((int32_t)sc->glide_from[ch] - to) * (int32_t)(left - 1u) / (int32_t)SONG_GLIDE_FRAMES;
+        r[x] = (uint8_t)f;
+        r[x + 1u] = (uint8_t)(f >> 8);
+        mask |= 3u << x;
+        sc->glide_left[ch] = (uint8_t)(left - 1u);
+        if (left == 1u) {
+            sc->gliding &= (uint8_t)~(1u << ch);
+        }
+    }
+    return mask;
+}
+
 static void song_lock_apply(song_ctl* sc) {
+    if (!(sc->lock_n[0] | sc->lock_n[1] | sc->lock_n[2] | sc->lock_regs | sc->slide_now | sc->gliding))
+        return;
     uint8_t r[GT2_SID_REGS];
     uint32_t mask = 0u;
     uint8_t drop = (uint8_t)(sc->mute | sc->taken);
@@ -362,15 +436,25 @@ static void song_lock_apply(song_ctl* sc) {
                 r[x + 3u] = (uint8_t)((sc->shadow[x + 3u] & 0xf0u) | (v >> 8));
                 mask |= 3u << (x + 2u);
                 break;
+            case SONG_LOCK_ACCENT:
+                if (v && !((drop >> ch) & 1u)) {
+                    mask |= accent(r, x);
+                }
+                break;
             default:
                 break;
             }
         }
     }
+    for (uint32_t ch = 0u; (sc->slide_now | sc->gliding) && ch < GT2_PLAY_CHANNELS; ch++) {
+        if (!((drop >> ch) & 1u)) {
+            mask |= slide(sc, r, ch);
+        }
+    }
     uint32_t all = mask | sc->lock_regs;
     for (uint32_t g = 0u; all != 0u; g++, all >>= 1) {
         if (all & 1u)
-            sid_write(sc->chip, (uint8_t)g, ((mask >> g) & 1u) ? r[g] : sc->shadow[g]);
+            SIDOU_FAR(sid_write)(sc->chip, (uint8_t)g, ((mask >> g) & 1u) ? r[g] : sc->shadow[g]);
     }
     sc->lock_regs = mask;
 }
@@ -392,6 +476,11 @@ void song_ctl_call(song_ctl* sc) {
         }
     }
     sc->call_sample = sc->samples + sc->next;
+    for (uint32_t ch = 0u; sc->slide_now && ch < GT2_PLAY_CHANNELS; ch++) {
+        uint32_t x = ch * 7u;
+        sc->prev_freq[ch] = (uint16_t)(sc->shadow[x] | sc->shadow[x + 1u] << 8);
+        sc->prev_ctrl[ch] = sc->shadow[x + 4u];
+    }
     gt2_play_frame(&sc->player, song_sink, sc);
     sc->past_b7 |= sc->player.freq_unknown;
     song_push_events(sc);
@@ -460,7 +549,7 @@ void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
     song_rewrite(sc, s);
     sid* was = sc->chip;
     sc->chip = s;
-    song_lock_apply(sc);
+    SIDOU_FAR(song_lock_apply)(sc);
     sc->chip = was;
     if (sc->song_gate != NO_GATE)
         sid_set_gate_reset(s, sc->song_gate);
@@ -1429,7 +1518,7 @@ static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t patter
     uint32_t n = 0u;
     const uint8_t* rec = empty ? 0 : song_locks_row(sc->song, pattern, source, &n);
     for (uint32_t i = 0u; i < n && set->n < SONG_ROW_LOCKS; i++, rec += SONG_LOCK_BYTES) {
-        if (rec[2] > SONG_LOCK_PULSE && rec[2] != SONG_LOCK_CHANCE)
+        if (!IS_PLAYER_LOCK(rec[2]))
             continue;
         song_row_lock* l = &set->e[set->n++];
         l->pattern = rec[0];
@@ -1441,8 +1530,7 @@ static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t patter
     if (edit) {
         for (uint32_t i = 0u; i < sc->edit_restore_n && set->n < SONG_ROW_LOCKS; i++) {
             rec = sc->edit_restore + i * SONG_LOCK_BYTES;
-            if (rec[0] != pattern || rec[1] != row ||
-                (rec[2] > SONG_LOCK_PULSE && rec[2] != SONG_LOCK_CHANCE))
+            if (rec[0] != pattern || rec[1] != row || !IS_PLAYER_LOCK(rec[2]))
                 continue;
             song_row_lock* l = &set->e[set->n++];
             l->pattern = rec[0];

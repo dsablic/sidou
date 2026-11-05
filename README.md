@@ -36,12 +36,14 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
-- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: eight
-  pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, FX, MACRO, LAYERS) draw what their four cards do,
+- **Shape a sound and keep it (LAB).** ENV, LFO and FX on LIVE open LAB: ten
+  pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, LFO, FX, MACRO, LAYERS, TABLE) draw what their four cards do,
   so you turn K1 to K4 and see it: a filter LFO on FILTER, a filter envelope that sweeps the cutoff
-  on every note, the arpeggio's rate on MOD, links on MACRO that make the resonance follow the
+  on every note, the arpeggio's rate on MOD, two free LFOs on LFO (triangle, saws, square or sample and hold, on
+  the pitch, pulse width, cutoff or volume), links on MACRO that make the resonance follow the
   cutoff and the PWM follow the width, and on LAYERS up to three oscillators on one key, each with
-  its own waveform, envelope, pulse, transpose and detune. EDIT's tap compares A and B, holding
+  its own waveform, envelope, pulse, transpose and detune, and on TABLE a step table of up to 16
+  waveform and pitch steps that plays on every note. EDIT's tap compares A and B, holding
   EDIT while you play peeks at A, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
   EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER
   sounds, which PRESETS plays after DICE; EDIT + SAVE names it on the keys. A slot turned to OFF
@@ -51,14 +53,15 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Bring SidStation and MIDIbox SID patches.** `sidou-sysex import` turns an Elektron
   SidStation or MIDIbox SID V2 bank into songs of sixteen patches each, and a report of what
   each keeps. On the FM-1, ENV on INSTR pulls a patch into LAB as a layered sound, filter
-  envelope and all, and SAVE keeps it ([import patches](docs/manual/import.md)).
+  envelope and step table and all, and SAVE keeps it ([import patches](docs/manual/import.md)).
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
   with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
   its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
   the rest, and INSTR says what each table pointer plays (`PUL +0 +4 +7`). REC records the keys and the filter knobs while the song plays, each note where you
   played it against what you heard, and parameter locks are on STEP, with a chance for each step;
-  a held step sounds with its locks. TABLE's ARP helper writes arpeggios as wavetable rows, and the
+  a held step sounds with its locks, and a held step and FX slides it into the next note, a held
+  step and ENV accents it. TABLE's ARP helper writes arpeggios as wavetable rows, and the
   keys play the draft before you save it. MUTATE, DICE (density, range, scale, rhythm and a root
   for each lane) and a filter sweep write patterns in STEP and TRACKER; a lane given the ARP role
   rolls chords (shared wavetable chord programs, C64 style), and a BASS+DRUMS lane the kit's kick
@@ -78,7 +81,9 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   `.zip` and restores it. It exports any song, from the FM-1 or a file, as a `.sng` with SIDOU's
   settings or as a plain GoatTracker file, and each instrument as a GoatTracker `.ins`, with SIDOU's
   own song code compiled to WebAssembly, so it accepts and refuses what the FM-1 does
-  ([the manual](docs/manual/library.md)).
+  ([the manual](docs/manual/library.md)). It also offers SIDOU's own sixteen LAB sounds (a table
+  kick and snare, a chip chord, wobble and acid basses, LFO strings, layered saws and more) as one
+  song to send: ENV on INSTR opens each in LAB.
 - **Edit a song in the browser.** The site's [editor](https://dsablic.github.io/sidou/editor.html)
   opens a song from a file or the connected FM-1 and edits its instruments, tables, patterns and
   orderlists with the FM-1's own song code (an edit the FM-1 would refuse is refused, parameter
@@ -94,7 +99,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where
   GoatTracker's player puts them, wavetable arpeggios included.
 - **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for
-  presets and songs ([midi.md](docs/reference/midi.md)).
+  presets and songs, and an NRPN for every LAB card, so a DAW can automate each
+  ([midi.md](docs/reference/midi.md)).
 - **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an
   iPad: a DAW records what the line out plays, in stereo at 44.1 or 48 kHz, over the same cable
   as USB-MIDI.

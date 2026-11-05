@@ -105,8 +105,33 @@ pub(crate) fn random_sound(r: &mut Xs) -> Sound {
         s[f as usize] = signed_below(r, LIVE_LINK_MAX);
     }
     random_layers(r, &mut s);
+    random_table(r, &mut s);
+    for n in 0..LAB_SOUND_LFOS {
+        let at = (LAB_SOUND_LFO + n * LAB_SOUND_LFO_BYTES) as usize;
+        s[at] = (r.below(LAB_LFO_SHAPES) | r.below(LAB_LFO_DESTS) << LAB_LFO_DEST_SHIFT) as u8;
+        s[at + 1] = r.below(LAB_LFO_RATES) as u8;
+        s[at + 2] = signed_below(r, LAB_LFO_DEPTH_MAX);
+    }
     assert!(valid(&s), "{s:?}");
     s
+}
+
+fn random_table(r: &mut Xs, s: &mut Sound) {
+    let steps = r.below(LAB_TABLE_STEPS_MAX + 1);
+    let on = if steps != 0 && r.below(2) == 1 {
+        LAB_TABLE_ON
+    } else {
+        0
+    };
+    let layer = r.below(LIVE_LAYERS_MAX + 1) << LAB_TABLE_LAYER_SHIFT;
+    s[LAB_SOUND_TABLE as usize] = (on | layer | steps) as u8;
+    s[LAB_SOUND_TABLE_LOOP as usize] = r.below(steps + 1) as u8;
+    s[LAB_SOUND_TABLE_RATE as usize] = r.below(LAB_TABLE_RATE_MAX) as u8;
+    for n in 0..LAB_TABLE_STEPS_MAX {
+        let at = (LAB_SOUND_TABLE_STEPS + 2 * n) as usize;
+        s[at] = (random_control(r) | (r.below(2) << 3) as u8) & 0xfe;
+        s[at + 1] = r.below(LAB_TABLE_NOTE_LAST + 1) as u8;
+    }
 }
 
 fn signed_below(r: &mut Xs, max: u32) -> u8 {
@@ -340,6 +365,11 @@ fn one_field_changes() -> Vec<(&'static str, Sound)> {
     for (i, name) in SLOT_FIELD.iter().enumerate() {
         with(name, &|s| s[LAB_SOUND_SLOTS as usize + i] = 1);
     }
+    with("lfo", &|s| s[LAB_SOUND_LFO as usize + 2] = 5);
+    with("table", &|s| {
+        s[LAB_SOUND_TABLE as usize] = (LAB_TABLE_ON | 1) as u8;
+        s[LAB_SOUND_TABLE_STEPS as usize] = 0x80;
+    });
     out
 }
 
@@ -570,6 +600,27 @@ fn an_invalid_sound_is_refused() {
             bad("a slot's control", &|s| s[at + f] = LIVE_SLOT_MAX as u8 + 1);
         }
     }
+    let table = LAB_SOUND_TABLE as usize;
+    bad("table steps", &|s| s[table] = LAB_TABLE_STEPS_MAX as u8 + 1);
+    bad("a table on with no steps", &|s| {
+        s[table] = LAB_TABLE_ON as u8
+    });
+    bad("a table's layer", &|s| {
+        s[table] = (LAB_TABLE_ON | 3 << LAB_TABLE_LAYER_SHIFT | 1) as u8
+    });
+    bad("a loop past the steps", &|s| {
+        s[table] = (LAB_TABLE_ON | 2) as u8;
+        s[LAB_SOUND_TABLE_LOOP as usize] = 3;
+    });
+    bad("a table's rate", &|s| {
+        s[LAB_SOUND_TABLE_RATE as usize] = LAB_TABLE_RATE_MAX as u8
+    });
+    bad("a step's gate", &|s| {
+        s[LAB_SOUND_TABLE_STEPS as usize] = 0x41
+    });
+    bad("a step's note", &|s| {
+        s[LAB_SOUND_TABLE_STEPS as usize + 1] = LAB_TABLE_NOTE_LAST as u8 + 1
+    });
     let mut other = base;
     let equal = |a: &Sound, b: &Sound| unsafe { lab_sound_equal(a.as_ptr(), b.as_ptr()) } != 0;
     assert!(equal(&base, &other));

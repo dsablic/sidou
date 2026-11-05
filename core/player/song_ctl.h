@@ -87,6 +87,9 @@ enum {
 };
 
 #define SONG_ROW_LOCKS (2u * (SONG_LOCK_PULSE + 2u))
+#define SONG_GLIDE_FRAMES 4u
+#define SONG_ACCENT_CUTOFF 384u
+#define SONG_ACCENT_RESONANCE 4u
 typedef struct {
     uint8_t pattern, row, param, lo, hi;
 } song_row_lock;
@@ -217,6 +220,11 @@ typedef struct song_ctl {
     uint8_t draft_rows[2u * GT2_DRAFT_ROWS];
     uint8_t draft_n, draft_grow;
     uint32_t draft_cov;
+    uint8_t slide_now, gliding;
+    uint8_t slide_ad[GT2_PLAY_CHANNELS], slide_sr[GT2_PLAY_CHANNELS];
+    uint8_t glide_left[GT2_PLAY_CHANNELS], glide_ctrl[GT2_PLAY_CHANNELS];
+    uint16_t glide_from[GT2_PLAY_CHANNELS], prev_freq[GT2_PLAY_CHANNELS];
+    uint8_t prev_ctrl[GT2_PLAY_CHANNELS];
 } song_ctl;
 
 void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* shape1,

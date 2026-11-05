@@ -675,6 +675,25 @@ fn lfo_on_a_held_step_clears_its_locks_and_its_set() {
 }
 
 #[test]
+fn fx_and_env_on_a_held_step_toggle_its_slide_and_accent() {
+    let mut s = step();
+    hold(&mut s, 2);
+    s.ui.press(PANEL_BTN_FX);
+    assert_eq!(s.ui.toast().as_deref(), Some("SLIDE ON"));
+    s.ui.press(PANEL_BTN_ENV);
+    assert_eq!(s.ui.toast().as_deref(), Some("ACCENT ON"));
+    release(&mut s);
+    let want = |p| (0u8, 2u8, p as u8, 1u16);
+    assert_eq!(locks(&s), [want(SONG_LOCK_SLIDE), want(SONG_LOCK_ACCENT)]);
+    assert_eq!(pattern(&s, 0)[2], R, "the step's note is left as it was");
+    hold(&mut s, 2);
+    s.ui.press(PANEL_BTN_FX);
+    assert_eq!(s.ui.toast().as_deref(), Some("SLIDE OFF"));
+    release(&mut s);
+    assert_eq!(locks(&s), [want(SONG_LOCK_ACCENT)]);
+}
+
+#[test]
 fn the_keys_above_the_sixteen_steps_audition_and_a_step_key_auditions_its_note() {
     let mut s = step();
     s.calls();

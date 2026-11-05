@@ -8,6 +8,9 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.7.0](https://github.com/dsablic/sidou/releases/tag/v1.7.0)** (2026-11-05): LAB's step
+  table and two free LFOs, SLIDE and ACCENT in STEP, an NRPN for every LAB card, SIDOU's sounds
+  on the site.
 - **[1.6.0](https://github.com/dsablic/sidou/releases/tag/v1.6.0)** (2026-11-04): layered LAB
   sounds, LAB's filter envelope, SidStation and MIDIbox SID patch import, no title cards.
 - **[1.5.0](https://github.com/dsablic/sidou/releases/tag/v1.5.0)** (2026-11-02): LAB's
@@ -76,36 +79,57 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
+## 1.7
+
+Released in 1.7.0: LAB's TABLE page (a step table on a sound, sent and pulled as a GoatTracker
+wave program; an imported SidStation patch keeps its first table), two free LFOs on MOD's second
+page (LAB has ten pages), SLIDE and ACCENT as STEP locks, an NRPN for every LAB card (group 7,
+receive only), sixteen original SIDOU sounds on the site's Library page, and GoatTracker's player
+moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` were designed
+([the plan](plans/2026-11-05-sid-tweaks.md)) and moved to 1.8.
+
+**After 1.7** (the plan the owner agreed, 2026-11-05)
+
+- **1.8, Bluetooth.**
+  - **First the felucca-bsp move**, a prerequisite: Felucca's radio and second-core drivers come
+    from [felucca-bsp](https://github.com/hugelton/felucca-bsp) byte for byte (the Platform item
+    below).
+  - **Then Bluetooth MIDI both ways** ([decision 0011](decisions/0011-bluetooth-midi.md),
+    [the research](plans/2026-11-05-bluetooth-research.md)): SIDOU as a peripheral that a
+    computer or tablet connects to, and SIDOU connecting out to Bluetooth MIDI keyboards (a devices
+    page), with the owner's Korg microKEY Air as the test keyboard; no pairing at first. Optimist's
+    open stack from fm1-base's `bt/`, MIDI in, out and clock. A build option, off by default,
+    starting with a measurement build. It needs about 41-53 KB of flash against the 15.6 KB free,
+    so finding room comes first (cold files at `-Oz`); any budget change is the owner's call. 8-10
+    KB of RAM (NOINIT), 36-44 B of RAMTEXT. L.
+  - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
+    K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
+    RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
+    [the LFO plan](plans/2026-11-05-lab-lfos.md)); a DICE bass role that rolls slides and accents;
+    and ear checks of the site's sixteen sounds on a device.
+- **2.0.**
+  - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
+    default, falling back to one core; the RAMTEXT room is there since 1.7.
+  - **The DAW plugin**, starting from its design session (the owner, 2026-11-04): the spike
+    ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
+    package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card,
+    GPL-3.0-or-later. A first release M, the whole edition L.
+- **Parked.**
+  - **The 8580 mixer's grit** (measured, not kept): the spike (branch `mixer-8580`, not merged)
+    puts a quadratic on the 8580's output; its second harmonic lands within 0.8 dB of reSIDfp's,
+    but the distance to the CSG8580R5 recordings does not move (0.04 dB at most on every tune), for
+    80 bytes of RAMTEXT and 11 instructions a sample. The reSIDfp op-amp port stays parked for good
+    (the owner, 2026-11-04).
+  - **Wi-Fi and Ableton Link** ([decision 0011](decisions/0011-bluetooth-midi.md)): until Optimist
+    runs Link on a real FM-1. Bluetooth audio is dropped.
+
 ## 1.6
 
 Released in 1.6.0: layered LAB sounds (up to three oscillators on one key, the LAYERS
 page), FILTER ENV, `sidou-sysex import` for SidStation and MIDIbox SID V2 banks (songs of sixteen
 patches, tables as GoatTracker wave programs), filter metrics against real chips (the 6581 filter
 is inside their spread, so the op-amp port is parked), and the title cards removed
-([the design](plans/2026-11-03-patch-import-design.md)).
-
-**After 1.6**
-- **Bluetooth MIDI: first after 1.7 and the felucca-bsp move** ([decision 0011](decisions/0011-bluetooth-midi.md),
-  [the research](plans/2026-11-05-bluetooth-research.md)). Optimist's open stack from fm1-base's
-  `bt/`, MIDI in, out and clock, both ways: a computer or tablet connects to SIDOU, and SIDOU
-  connects out to a Bluetooth MIDI keyboard (a devices page); no pairing at first. A build option
-  off by default, then the main image. About 41-53 KB of flash (cold files at `-Oz` first), 8-10 KB
-  of RAM (NOINIT), 36-44 B of RAMTEXT. First the measurement build and SIDOU booting in a radio-modelling emulator. L.
-  Bluetooth audio is dropped; Wi-Fi and Ableton Link are parked until Optimist runs Link on a
-  real FM-1.
-- **The 8580 mixer's grit (a spike).** SIDOU's 8580 voice and mixer path is linear; reSIDfp's adds
-  a second harmonic of -52 to -30 dB, which may be why SIDOU's 8580 is 0.4 to 1.0 dB farther from
-  the CSG8580R5 recordings on some tunes ([the measurements](plans/2026-11-03-filter-model-feasibility.md#measured)).
-  A short interpolated curve, a few hundred bytes, judged by the harmonic probe, the real-chip
-  distance and the owner's ears; its RAMTEXT and instructions measured before anything is kept.
-  S-M. The reSIDfp op-amp port stays parked for good (the owner, 2026-11-04): it would move SIDOU
-  closer to reSIDfp, not to the chips, and the filter's SRAM, not flash, is what it lacks.
-- **The DAW plugin's design session** (the owner, 2026-11-04), after 1.7: the spike
-  ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
-  package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card, GPL-3.0-or-later.
-  A first release M, the whole edition L.
-- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): first
-  the RAMTEXT room in 1.7's performance pass, then the experiment in fm1-emu, off by default.
+([the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-11-03-patch-import-design.md)).
 
 ## 1.5
 

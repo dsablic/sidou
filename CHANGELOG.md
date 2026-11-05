@@ -8,11 +8,43 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-05
+
+A step table and two free LFOs in LAB, SLIDE and ACCENT in STEP, an NRPN for every LAB card, and SIDOU's own sounds on the site.
+
+### Added
+- **TABLE in LAB.** A sound carries a step table: up to 16 steps, each a waveform and a pitch
+  (relative to the key or a fixed note), so many frames a step, played once or looped from a step,
+  on every note (on a layered sound, on one layer). REC sends it as the instrument's GoatTracker
+  wave program and ENV on INSTR reads a wave program back as a table. A 1.6 sound loads with its table off.
+- **Imported table patches keep their table.** `sidou-sysex import` puts the first playing
+  oscillator's SidStation table on the LAB sound; the others still play from their song
+  instruments, and the report names them.
+
+- **LFO in LAB.** Two free LFOs on MOD's second page (LFO on MOD goes there): triangle, saw up,
+  saw down, square or sample and hold, on the pitch, the pulse width, the cutoff or the chip's
+  volume, 0.05 to 12.75 Hz, depth -63..+63, drawn side by side. The import maps a SidStation
+  patch's vibrato, PWM and filter LFOs onto them. A sound grows to 109 bytes.
+- **SLIDE and ACCENT in STEP.** A held step and FX slides into the next note (the gate held
+  through the hard restart, a 4-frame glide); a held step and ENV accents it (cutoff, resonance
+  and sustain up for its row). They are LOCKs, saved with the song; the site's sounds include a
+  303 BASS for them. A song with either loses its locks in a 1.6 SIDOU.
+- **SIDOU's sounds on the site.** The Library page lists sixteen original LAB sounds and sends
+  them to the FM-1 as one song, `SIDOU SOUNDS`; ENV on INSTR opens each in LAB as made.
+- **An NRPN for every LAB card.** FILTER ENV, LAYERS, TABLE and LFO's cards, which had none, are NRPN
+  group 7 (7/0..7/19), one a card, its value the card's position: a DAW can automate each.
+
+### Changed
+- GoatTracker's player runs from flash: the song's frame is called once a frame, so 6.3 KB of the
+  SRAM kept for code every sample needs is free again.
+
 ### Fixed
 - **The 1.6 videos.** "What's new in 1.6" (layers, FILTER ENV, the layered sound sent to the song
   and pulled back exactly, the import) replaces 1.5's, every video is re-rendered on 1.6 (LAB's
   eight pages, no title cards), and the v1.6.0 release carries them. `tools/readme-check` fails a
   release whose whats-new video names an earlier one.
+- An imported SidStation table played each step a frame too long when a step lasted two frames or
+  more (GoatTracker holds a delay row one frame past its value).
 
 ## [1.6.0] - 2026-11-04
 

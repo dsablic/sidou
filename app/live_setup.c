@@ -130,6 +130,8 @@ static void load_preset(live* l, uint8_t index) {
     l->layer_edit = 0;
     l->fenv_depth = 0;
     l->fenv_ad = 0;
+    memset(l->table, 0, sizeof l->table);
+    memset(l->lfo, 0, sizeof l->lfo);
     l->fenv_sr = 0;
     l->fenv_t_us = LIVE_FENV_IDLE;
     l->fenv_gate_us = LIVE_FENV_IDLE;
@@ -389,6 +391,8 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->fenv_depth = l->fenv_depth;
     e->fenv_ad = l->fenv_ad;
     e->fenv_sr = l->fenv_sr;
+    memcpy(e->table, l->table, sizeof e->table);
+    memcpy(e->lfo, l->lfo, sizeof e->lfo);
     e->valid = 1;
 }
 
@@ -433,6 +437,8 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->fenv_depth = e->fenv_depth;
     l->fenv_ad = e->fenv_ad;
     l->fenv_sr = e->fenv_sr;
+    memcpy(l->table, e->table, sizeof l->table);
+    memcpy(l->lfo, e->lfo, sizeof l->lfo);
 }
 
 static void user_leave(live* l) {
@@ -468,18 +474,33 @@ uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
     if (l->preset == LIVE_PRESET_DICE) {
         return 0;
     }
-    for (uint32_t i = 0; i < LAB_SOUND_BYTES; i++) {
-        if (now[i] != l->base[i] && (i != LAB_SOUND_BEND_RANGE || !l->bend_range_rpn)) {
+    if (!l->bend_range_rpn) {
+        return memcmp(now, l->base, LAB_SOUND_BYTES) != 0;
+    }
+    const uint32_t after = LAB_SOUND_BEND_RANGE + 1u;
+    return memcmp(now, l->base, LAB_SOUND_BEND_RANGE) != 0 ||
+           memcmp(now + after, l->base + after, LAB_SOUND_BYTES - after) != 0;
+}
+
+#define SOUND_WORDS (LAB_SOUND_BYTES / 4u)
+
+uint32_t live_preset_edited(const live* l) {
+    _Alignas(4) uint8_t now[LAB_SOUND_BYTES];
+    if (l->preset == LIVE_PRESET_DICE) {
+        return 0;
+    }
+    live_sound_get(l, now);
+    if (l->bend_range_rpn) {
+        now[LAB_SOUND_BEND_RANGE] = l->base[LAB_SOUND_BEND_RANGE];
+    }
+    const uint32_t* a = (const uint32_t*)(const void*)now;
+    const uint32_t* b = (const uint32_t*)(const void*)l->base;
+    for (uint32_t i = 0; i < SOUND_WORDS; i++) {
+        if (a[i] != b[i]) {
             return 1;
         }
     }
-    return 0;
-}
-
-uint32_t live_preset_edited(const live* l) {
-    uint8_t now[LAB_SOUND_BYTES];
-    live_sound_get(l, now);
-    return live_sound_edited(l, now);
+    return memcmp(now + 4u * SOUND_WORDS, l->base + 4u * SOUND_WORDS, LAB_SOUND_BYTES % 4u) != 0;
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
@@ -590,6 +611,8 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_FILTER_ENV] = (uint8_t)l->fenv_depth;
     out[LAB_SOUND_FILTER_ENV_AD] = l->fenv_ad;
     out[LAB_SOUND_FILTER_ENV_SR] = l->fenv_sr;
+    memcpy(&out[LAB_SOUND_TABLE], l->table, LAB_SOUND_TABLE_BYTES);
+    memcpy(&out[LAB_SOUND_LFO], l->lfo, sizeof l->lfo);
 }
 
 static const struct {
@@ -642,6 +665,8 @@ LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
     l->fenv_depth = clamped(in[LAB_SOUND_FILTER_ENV], LIVE_FENV_DEPTH_MAX);
     l->fenv_ad = in[LAB_SOUND_FILTER_ENV_AD];
     l->fenv_sr = in[LAB_SOUND_FILTER_ENV_SR];
+    memcpy(l->table, &in[LAB_SOUND_TABLE], LAB_SOUND_TABLE_BYTES);
+    memcpy(l->lfo, &in[LAB_SOUND_LFO], sizeof l->lfo);
 }
 
 LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]);

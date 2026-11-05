@@ -296,6 +296,13 @@ player's own state is not changed, so its tables run on underneath.
 | 4 pulse width | 0-4095 | the row's voice's `$D402`, `$D403`'s low nybble |
 | 5-8 age/heat, DAC sloppiness, thump, bleed | 0-127 | chip A's character, with chip_ctl's glide (0.32 s end to end: coarse by nature) |
 | 9 chance | 0-100 | no register: the step's chance to play, in percent (a step with no record plays always) |
+| 10 slide | 1 | the voice's gate (`$D404` bit 0), AD and SR held at the row's values up to the next note, so the player's hard restart does not cut it; that note's first frame keeps the waveform before it and its frequency (`$D400`, `$D401`) glides from the pitch before over 4 frames; since 1.7 |
+| 11 accent | 1 | `$D415`/`$D416` the song's cutoff + 384, `$D417`'s resonance + 4 (each clamped), the voice's `$D406` sustain nybble 15; since 1.7 |
+
+**Slide and accent and older firmware.** 1.6 and before check every record against the
+parameters they know, and a record of parameter 10 or 11 makes them drop the song's whole `LOCK`
+chunk (every lock of the song) when they read it. A song with a slide or an accent loses its locks
+in an older SIDOU; GoatTracker skips the chunk either way.
 
 **Chance.** A chance lock (parameter 9) gives its row a probability to play on each pass; the
 value is a percent, 100 is the default and STEP keeps no record for it. The roll is the main
@@ -426,7 +433,7 @@ writes 3 bytes back: the rhythm and the range go back to their defaults and lane
 lane 1's scale. GoatTracker skips the chunk. A lane's root (the note DICE rolls on) is not saved:
 every lane starts at C-3 when a song loads.
 
-**`LBnn`** (9 + 68 bytes): the LAB sound sent as instrument nn (two upper-case hex digits,
+**`LBnn`** (9 + 109 bytes): the LAB sound sent as instrument nn (two upper-case hex digits,
 `01`..`3F`; [controls](controls.md#send-a-lab-sound-to-the-song): REC in LAB), so that the
 instrument pulled back into LAB, unedited, is that sound exactly (`app/lab_song.h`). One chunk
 an instrument, written when the sound is sent.
@@ -436,11 +443,11 @@ an instrument, written when the sound is sent.
 | 0 | 1 | version, 1 |
 | 1 | 4 | the rows of the wave, pulse, filter and speed programs the send wrote, from the instrument's pointer into each table (0: none) |
 | 5 | 4 | CRC-32 (as the trailer's) of the instrument's 25 bytes, then, table by table, each of those rows' left and right bytes |
-| 9 | 68 | the sound, as a USER sound's ([sound-format.md](sound-format.md#a-sound)); at least 45 bytes, the missing tail its defaults |
+| 9 | 109 | the sound, as a USER sound's ([sound-format.md](sound-format.md#a-sound)); at least 45 bytes, the missing tail its defaults |
 
 A pull uses the sound only while the CRC of the song's bytes matches: an instrument, row or name
 edited since (here or in GoatTracker) is decoded instead, and a chunk whose sound is not valid
-counts for nothing. SIDOU keeps at most 16 of them (1,040 bytes of the area's 4,096): a send past
+counts for nothing. SIDOU keeps at most 16 of them (2,016 bytes of the area's 4,096, each with its chunk header): a send past
 that removes a chunk whose CRC no longer matches, and when none does it keeps no chunk (the
 instrument is sent all the same; its pull decodes). GoatTracker skips the chunks; an older SIDOU
 keeps them.

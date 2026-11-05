@@ -6,6 +6,8 @@
 
 #include "font.h"
 #include "fx/fx_slots.h"
+#include "lab_lfo.h"
+#include "lab_table.h"
 #include "lab_view.h"
 #include "live_view.h"
 #include "sid/sid_filter.h"
@@ -767,6 +769,110 @@ static void mac_init(mac_ctx* m, const live* l, uint32_t hl) {
     m->hl = (uint8_t)hl;
 }
 
+#define TBL_STEP_W 15u
+#define TBL_BAR_FROM 4u
+#define TBL_BAR_TO 10u
+#define TBL_MID (LAB_DRAW_H / 2u)
+#define TBL_PX_A_SEMI 2
+#define TBL_DOT 3u
+#define TBL_C4 48
+
+typedef struct {
+    uint8_t y[LAB_TABLE_STEPS_MAX];
+    uint8_t steps, edit, playing, pos, hl;
+} tbl_ctx;
+
+static void tbl_init(tbl_ctx* t, const live* l, uint32_t hl) {
+    t->steps = (uint8_t)(lab_table_on(l) ? lab_table_steps(l) : 0u);
+    t->edit = l->table_edit;
+    uint32_t v = live_table_playing(l);
+    t->playing = (uint8_t)v;
+    t->pos = v ? l->table_pos[v - 1u] : 0u;
+    t->hl = (uint8_t)hl;
+    for (uint32_t n = 0; n < t->steps; n++) {
+        uint8_t note = l->table[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 2u * n + 1u];
+        int32_t off = lab_table_absolute(note) ? (int32_t)(note - LAB_TABLE_NOTE_NONE) - TBL_C4
+                                                : lab_table_offset(note);
+        off = off < -LAB_TABLE_NOTE_SPAN ? -LAB_TABLE_NOTE_SPAN
+              : off > LAB_TABLE_NOTE_SPAN ? LAB_TABLE_NOTE_SPAN
+                                          : off;
+        t->y[n] = (uint8_t)((int32_t)TBL_MID - off * TBL_PX_A_SEMI);
+    }
+}
+
+static void tbl_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const tbl_ctx* t = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = 0;
+    uint32_t n = x / TBL_STEP_W, in = x % TBL_STEP_W;
+    if (n >= t->steps || in < TBL_BAR_FROM || in > TBL_BAR_TO) {
+        return;
+    }
+    uint32_t y = t->y[n];
+    uint32_t layer = n == t->edit ? 1u : 0u;
+    out->lo[layer] = (uint8_t)(y < TBL_MID ? y : TBL_MID);
+    out->hi[layer] = (uint8_t)(y > TBL_MID ? y : TBL_MID + 1u);
+    out->lit = (uint8_t)((t->hl >= 2u && t->hl <= 3u && layer) << 1);
+    if (t->playing && n == t->pos) {
+        uint32_t top = out->lo[layer];
+        out->lo[2] = (uint8_t)(top > 2u * TBL_DOT ? top - 2u * TBL_DOT : 0u);
+        out->hi[2] = (uint8_t)(out->lo[2] + TBL_DOT);
+    }
+}
+
+#define LFO_PANEL_W 120u
+#define LFO_PANEL_PAD 6u
+#define LFO_AMP 44
+#define LFO_SH_STEPS 6u
+
+typedef struct {
+    uint8_t shape[LAB_SOUND_LFOS];
+    uint8_t edit, hl;
+    uint16_t phase[LAB_SOUND_LFOS];
+} lfo_ctx;
+
+static int32_t lfo_shape_at(uint32_t shape, uint32_t p) {
+    static const int8_t HOLD[LFO_SH_STEPS] = {40, -70, 90, -20, 60, -100};
+    switch (shape) {
+    case LAB_LFO_TRIANGLE: return (int32_t)(p < 32768u ? 2u * p : 2u * (65535u - p)) - 32768;
+    case LAB_LFO_SAW_UP: return (int32_t)p - 32768;
+    case LAB_LFO_SAW_DOWN: return 32767 - (int32_t)p;
+    case LAB_LFO_SQUARE: return p < 32768u ? 32767 : -32768;
+    case LAB_LFO_SAMPLE_HOLD: return HOLD[p * LFO_SH_STEPS >> 16] * 327;
+    default: return 0;
+    }
+}
+
+static void lfo_init(lfo_ctx* c, const live* l, uint32_t hl) {
+    for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+        c->shape[n] = (uint8_t)lab_lfo_shape_of(l, n);
+        c->phase[n] = l->lfo_phase_n[n];
+    }
+    c->edit = l->lfo_edit;
+    c->hl = (uint8_t)hl;
+}
+
+static void lfo_col(const void* ctx, uint32_t x, lab_draw_col* out) {
+    const lfo_ctx* c = ctx;
+    out->lo[0] = out->lo[1] = out->lo[2] = LAB_DRAW_NONE;
+    out->lit = 0;
+    uint32_t n = x / LFO_PANEL_W, in = x % LFO_PANEL_W;
+    if (n >= LAB_SOUND_LFOS || in < LFO_PANEL_PAD || in >= LFO_PANEL_W - LFO_PANEL_PAD) {
+        return;
+    }
+    uint32_t w = LFO_PANEL_W - 2u * LFO_PANEL_PAD;
+    uint32_t p = (in - LFO_PANEL_PAD) * 65536u / w;
+    int32_t y = (int32_t)(LAB_DRAW_H / 2u) - lfo_shape_at(c->shape[n], p) * LFO_AMP / 32768;
+    uint32_t layer = n == c->edit ? 0u : 1u;
+    out->lo[layer] = out->hi[layer] = (uint8_t)y;
+    out->lit = (uint8_t)(layer == 0u && c->hl >= 1u && c->hl <= 4u);
+    uint32_t at = LFO_PANEL_PAD + (uint32_t)c->phase[n] * w / 65536u;
+    if (c->shape[n] && (in & ~1u) == (at & ~1u)) {
+        out->lo[2] = (uint8_t)(y > 4 ? y - 4 : 0);
+        out->hi[2] = (uint8_t)(y + 4);
+    }
+}
+
 static void none_col(const void* ctx, uint32_t x, lab_draw_col* out) {
     (void)ctx;
     (void)x;
@@ -812,6 +918,19 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
             h = (h ^ live_layer_control_of(l, v) ^ (uint32_t)(uint8_t)l->transpose[v] << 8 ^
                  (uint32_t)(uint8_t)l->detune[v] << 16) * 16777619u;
         }
+    } else if (page == LAB_PAGE_LFO) {
+        for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+            h = (h ^ l->lfo[n][0] ^ (uint32_t)l->lfo[n][1] << 8 ^ (uint32_t)l->lfo[n][2] << 16 ^
+                 (uint32_t)(l->lfo_phase_n[n] >> 11) << 24) * 16777619u;
+        }
+        h = (h ^ l->lfo_edit) * 16777619u;
+    } else if (page == LAB_PAGE_TABLE) {
+        for (uint32_t i = 0; i < LAB_SOUND_TABLE_BYTES; i++) {
+            h = (h ^ l->table[i]) * 16777619u;
+        }
+        uint32_t v = live_table_playing(l);
+        h = (h ^ l->table_edit ^ v << 8 ^ (uint32_t)(v ? l->table_pos[v - 1u] : 0u) << 16 ^
+             (uint32_t)l->layers << 24) * 16777619u;
     } else if (page != LAB_DRAW_BLANK) {
         const uint8_t* s = l->slot[l->fx_select % LIVE_SLOTS];
         h = (h ^ l->fx_select ^ (uint32_t)s[0] << 8 ^ (uint32_t)s[1] << 16 ^ (uint32_t)s[2] << 24) *
@@ -830,6 +949,8 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
     mod_ctx m;
     fx_ctx x;
     mac_ctx mc;
+    tbl_ctx tb;
+    lfo_ctx lc;
     if (hl >= 1u && hl <= 4u) {
         d.lit_color = th->knob[hl - 1u];
     }
@@ -872,6 +993,20 @@ int lab_draw_page(const live* l, const scope* sc, uint32_t page, uint32_t hl, co
         d.ctx = &mc;
         d.color[0] = l->reso_link ? th->value : th->dim;
         d.color[1] = l->pwm_link ? th->value : th->dim;
+        d.color[LAB_DRAW_MARKER] = th->hot;
+    } else if (page == LAB_PAGE_LFO) {
+        lfo_init(&lc, l, hl);
+        d.fn = lfo_col;
+        d.ctx = &lc;
+        d.color[0] = lc.shape[lc.edit] ? th->value : th->dim;
+        d.color[1] = th->dim;
+        d.color[LAB_DRAW_MARKER] = th->hot;
+    } else if (page == LAB_PAGE_TABLE) {
+        tbl_init(&tb, l, hl);
+        d.fn = tbl_col;
+        d.ctx = &tb;
+        d.color[0] = th->value;
+        d.color[1] = th->knob[0];
         d.color[LAB_DRAW_MARKER] = th->hot;
     } else if (page != LAB_DRAW_BLANK && page != LAB_PAGE_LAYERS) {
         fx_init(&x, l, hl);
@@ -1024,6 +1159,16 @@ static void guides_layers(grid_canvas* c, const live* l, const theme* th, uint32
     }
 }
 
+static void guides_table(grid_canvas* c, const live* l, const theme* th, uint32_t row0) {
+    uint32_t steps = lab_table_on(l) ? lab_table_steps(l) : 0u;
+    uint32_t loop = l->table[LAB_SOUND_TABLE_LOOP - LAB_SOUND_TABLE];
+    if (steps && loop) {
+        uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
+        uint32_t col = ((loop - 1u) * TBL_STEP_W + TBL_BAR_FROM) / 8u;
+        gtext(c, row, col, "^LOOP", THEME_ATTR(th, hint));
+    }
+}
+
 void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, const theme* th,
                      uint32_t row0) {
     if (page == LAB_PAGE_OSC && !l->layer_edit && (l->control & 0x40u) && l->pwm_depth &&
@@ -1044,6 +1189,20 @@ void lab_draw_guides(grid_canvas* c, const live* l, uint32_t page, uint32_t hl, 
         }
     } else if (page == LAB_PAGE_LAYERS) {
         guides_layers(c, l, th, row0);
+    } else if (page == LAB_PAGE_TABLE) {
+        guides_table(c, l, th, row0);
+    } else if (page == LAB_PAGE_LFO) {
+        uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
+        for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
+            char t[6] = {(char)('1' + n), ' ', 0};
+            const char* code = lab_lfo_shape_of(l, n) ? lab_lfo_dest_code(lab_lfo_dest_of(l, n)) : "OFF";
+            for (uint32_t i = 0; code[i]; i++) {
+                t[2u + i] = code[i];
+                t[3u + i] = 0;
+            }
+            gtext(c, row, 1u + n * (LFO_PANEL_W / 8u), t,
+                  n == l->lfo_edit ? THEME_ATTR(th, value) : THEME_ATTR(th, hint));
+        }
     } else if (page == LAB_PAGE_MACRO) {
         uint32_t row = row0 + LAB_DRAW_ROWS - 1u;
         gtext(c, row, 1, "CUT>RESO", THEME_ATTR(th, hint));

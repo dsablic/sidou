@@ -22,10 +22,12 @@ extern "C" {
 #define LAB_PAGE_FILTER 2u
 #define LAB_PAGE_FILTER_ENV 3u
 #define LAB_PAGE_MOD 4u
-#define LAB_PAGE_FX 5u
-#define LAB_PAGE_MACRO 6u
-#define LAB_PAGE_LAYERS 7u
-#define LAB_PAGES 8u
+#define LAB_PAGE_LFO 5u
+#define LAB_PAGE_FX 6u
+#define LAB_PAGE_MACRO 7u
+#define LAB_PAGE_LAYERS 8u
+#define LAB_PAGE_TABLE 9u
+#define LAB_PAGES 10u
 #define LAB_VIEW_FRAME_CELLS 200u
 #define LAB_VIEW_NAME_ROW 2u
 #define LAB_VIEW_ART_ROW 4u

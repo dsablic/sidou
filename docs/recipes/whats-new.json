@@ -1,30 +1,33 @@
 {
-  "goal": "See SIDOU 1.6's highlights, one at a time: three oscillators layered on one key in LAB, a filter envelope of its own, the layered sound sent to the song and pulled back whole, and SidStation and MIDIbox SID banks imported as songs.",
+  "goal": "See SIDOU 1.7's highlights, one at a time: a step table on a LAB sound, two free LFOs on MOD's second page, SLIDE and ACCENT on STEP, and SIDOU's own sounds on the site.",
   "id": "whats-new",
   "prerequisites": {
     "start": "live",
-    "text": "On LIVE after the boot, SIDOU LOOP the song loaded: its lowest free instrument is 06."
+    "text": "On LIVE after the boot, SIDOU LOOP the song loaded."
   },
   "related": [
     "shape-in-lab",
-    "send-to-song",
-    "lift-a-sound"
+    "step-a-beat",
+    "send-to-song"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "LAB's LAYERS page",
-    "ALGORITHM sets the oscillators",
-    "K1 picks the layer OSC and ENVELOPE edit",
-    "TRANS and DETUNE",
-    "FILTER ENV",
-    "REC in LAB sends to the song",
-    "ENV on INSTR pulls into LAB",
-    "sidou-sysex import"
+    "LAB's TABLE page",
+    "ALGORITHM loops the table",
+    "K1 adds a step",
+    "K3 its pitch",
+    "K4 frames a step",
+    "LAB's LFO page",
+    "K2 the destination",
+    "K4 the depth",
+    "a held step + FX slides",
+    "a held step + ENV accents",
+    "the site's Library page"
   ],
   "steps": [
     {
-      "caption": "SAW LEAD, one saw. ENV opens LAB; SELECT to the last page, LAYERS.",
-      "control": "press ENV, then wait 0.8 s, then play 4 notes at 120 BPM, then turn SELECT clockwise by 6 detents, then wait 0.9 s",
+      "caption": "SAW LEAD, one saw. ENV opens LAB; SELECT on to TABLE, the last page.",
+      "control": "press ENV, then wait 0.8 s, then play 4 notes at 120 BPM, then turn SELECT clockwise by 8 detents, then wait 0.9 s",
       "expect": [
         {
           "kind": "view",
@@ -32,11 +35,11 @@
         },
         {
           "kind": "text",
-          "value": "LAYERS"
+          "value": "TABLE"
         },
         {
           "kind": "text",
-          "value": "8/8"
+          "value": "10/10"
         },
         {
           "assert": "sounding",
@@ -97,7 +100,7 @@
           "op": "play"
         },
         {
-          "detents": 6,
+          "detents": 8,
           "encoder": "SELECT",
           "op": "turn"
         },
@@ -110,91 +113,16 @@
       "title": "*ENV* opens LAB"
     },
     {
-      "caption": "ALGORITHM: THREE OSC. Each key now plays three oscillators, one a voice.",
-      "control": "turn ALGORITHM clockwise by 2 detents, then wait 0.9 s, then play 4 notes at 120 BPM",
+      "caption": "ALGORITHM loops it. K1 to NEW adds a step and K3 lifts it an octave; one more, a fifth up.",
+      "control": "turn ALGORITHM clockwise by 2 detents, then wait 0.7 s, then turn K1 clockwise by 1 detent, then wait 0.3 s, then turn K3 clockwise by 12 detents, then wait 0.7 s, then turn K1 clockwise by 1 detent, then wait 0.3 s, then turn K3 counter-clockwise by 5 detents, then wait 1.2 s",
       "expect": [
         {
           "kind": "text",
-          "value": "THREE OSC"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
+          "value": "LOOP FROM 1"
         }
       ],
       "focus": {
-        "callout": "TURN ALGORITHM",
-        "control": "ALGORITHM"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "layers",
-      "inputs": [
-        {
-          "detents": 2,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 900,
-          "op": "wait"
-        },
-        {
-          "bpm": 120,
-          "events": [
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
-        }
-      ],
-      "needs": [],
-      "title": "*Three* oscillators, one key"
-    },
-    {
-      "caption": "K1 picks the layer: L2 up an octave with TRANS, L3 detuned against L1 with DETUNE.",
-      "control": "turn K1 slowly clockwise by 1 detents over 0.3 s, then turn K2 slowly clockwise by 12 detents over 0.9 s, then turn K1 slowly clockwise by 1 detents over 0.3 s, then turn K3 slowly clockwise by 14 detents over 0.9 s, then play 7 notes at 120 BPM",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "L3"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "K1 THE LAYER, K2 TRANS, K3 DETUNE",
+        "callout": "ALGORITHM, K1, K3",
         "control": "K1"
       },
       "harness": {
@@ -206,31 +134,89 @@
         "remember": false,
         "task": null
       },
-      "id": "tune",
+      "id": "table",
       "inputs": [
+        {
+          "detents": 2,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
         {
           "detents": 1,
           "encoder": "K1",
+          "op": "turn"
+        },
+        {
           "ms": 300,
-          "op": "sweep"
+          "op": "wait"
         },
         {
           "detents": 12,
-          "encoder": "K2",
-          "ms": 900,
-          "op": "sweep"
+          "encoder": "K3",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
         },
         {
           "detents": 1,
           "encoder": "K1",
-          "ms": 300,
-          "op": "sweep"
+          "op": "turn"
         },
         {
-          "detents": 14,
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": -5,
           "encoder": "K3",
-          "ms": 900,
-          "op": "sweep"
+          "op": "turn"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *step table*"
+    },
+    {
+      "caption": "K4: two frames a step. Every key plays the table, round and round.",
+      "control": "turn K4 clockwise by 1 detent, then wait 0.5 s, then play 5 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "K4, THEN THE KEYS",
+        "control": "K4"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "hear",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "K4",
+          "op": "turn"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
         },
         {
           "bpm": 120,
@@ -239,58 +225,54 @@
               "notes": [
                 "A3"
               ],
-              "sixteenths": 2
+              "sixteenths": 4
             },
             {
               "notes": [
                 "C4"
               ],
-              "sixteenths": 2
+              "sixteenths": 4
             },
             {
               "notes": [
                 "E4"
               ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 2
+              "sixteenths": 4
             },
             {
               "notes": [
                 "G4"
               ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
-              ],
               "sixteenths": 4
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 8
             }
           ],
           "op": "play"
         }
       ],
       "needs": [],
-      "title": "Tune *each* layer"
+      "title": "One key, an *arpeggio*"
     },
     {
-      "caption": "SELECT back to OSC: the header says L3, and ALGORITHM gives that layer its own waveform.",
-      "control": "turn SELECT counter-clockwise by 7 detents, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.6 s, then play 4 notes at 120 BPM",
+      "caption": "SELECT back to LFO, MOD's second page. ALGORITHM: TRIANGLE; K2 sends it to the cutoff, K4 deepens it.",
+      "control": "turn SELECT counter-clockwise by 4 detents, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.5 s, then turn K2 clockwise by 2 detents, then wait 0.5 s, then turn K4 slowly clockwise by 30 detents over 0.9 s, then play 3 notes at 120 BPM",
       "expect": [
         {
           "kind": "text",
-          "value": "OSC L3"
+          "value": "LFO"
+        },
+        {
+          "kind": "text",
+          "value": "TRIANGLE"
+        },
+        {
+          "kind": "text",
+          "value": "CUT"
         },
         {
           "assert": "sounding",
@@ -298,152 +280,7 @@
         }
       ],
       "focus": {
-        "callout": "TURN SELECT, ALGORITHM",
-        "control": "SELECT"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "osc",
-      "inputs": [
-        {
-          "detents": -7,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 900,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "bpm": 120,
-          "events": [
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
-        }
-      ],
-      "needs": [],
-      "title": "Its *own* oscillator"
-    },
-    {
-      "caption": "SELECT to FILTER, and K1 closes it, dark.",
-      "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then turn K1 slowly counter-clockwise by 45 detents over 1.4 s, then play 2 notes at 120 BPM",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "FILTER"
-        },
-        {
-          "assert": "darker",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "TURN SELECT, TURN K1",
-        "control": "K1"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "filter",
-      "inputs": [
-        {
-          "detents": 2,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 700,
-          "op": "wait"
-        },
-        {
-          "detents": -45,
-          "encoder": "K1",
-          "ms": 1400,
-          "op": "sweep"
-        },
-        {
-          "bpm": 120,
-          "events": [
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
-        }
-      ],
-      "needs": [],
-      "title": "Close the *filter*"
-    },
-    {
-      "caption": "The filter's own envelope: ALGORITHM its depth, K2 its decay. The cutoff opens on each note and falls back, drawn as it plays.",
-      "control": "turn SELECT clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 32 detents, then wait 0.5 s, then turn K2 slowly clockwise by 6 detents over 0.6 s, then turn K3 slowly counter-clockwise by 10 detents over 0.6 s, then play 7 notes at 120 BPM",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "FILTER ENV"
-        },
-        {
-          "assert": "brighter",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "TURN ALGORITHM, K2",
+        "callout": "ALGORITHM, K2, K4",
         "control": "ALGORITHM"
       },
       "harness": {
@@ -455,10 +292,10 @@
         "remember": false,
         "task": null
       },
-      "id": "fenv",
+      "id": "lfo",
       "inputs": [
         {
-          "detents": 1,
+          "detents": -4,
           "encoder": "SELECT",
           "op": "turn"
         },
@@ -467,7 +304,7 @@
           "op": "wait"
         },
         {
-          "detents": 32,
+          "detents": 1,
           "encoder": "ALGORITHM",
           "op": "turn"
         },
@@ -476,15 +313,18 @@
           "op": "wait"
         },
         {
-          "detents": 6,
+          "detents": 2,
           "encoder": "K2",
-          "ms": 600,
-          "op": "sweep"
+          "op": "turn"
         },
         {
-          "detents": -10,
-          "encoder": "K3",
-          "ms": 600,
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": 30,
+          "encoder": "K4",
+          "ms": 900,
           "op": "sweep"
         },
         {
@@ -494,107 +334,43 @@
               "notes": [
                 "A3"
               ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 2
+              "sixteenths": 8
             },
             {
               "notes": [
                 "E4"
               ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "G4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 2
+              "sixteenths": 8
             },
             {
               "notes": [
                 "C4"
               ],
-              "sixteenths": 4
+              "sixteenths": 8
             }
           ],
           "op": "play"
         }
       ],
       "needs": [],
-      "title": "*FILTER ENV*"
+      "title": "Two free *LFOs*"
     },
     {
-      "caption": "REC sends it to the song as I06: GoatTracker's instrument comes as close as it can, the hint line says where, and the whole sound goes with it.",
-      "control": "press REC, then wait 4.5 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "APPROX"
-        }
-      ],
-      "focus": {
-        "callout": "PRESS REC",
-        "control": "REC"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "send",
-      "inputs": [
-        {
-          "button": "REC",
-          "op": "press"
-        },
-        {
-          "ms": 4500,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "Into the *song*"
-    },
-    {
-      "caption": "SEQ round to INSTR, on 06. ENV pulls it back into LAB exactly, three oscillators and all: the header still says L3.",
-      "control": "press HOME, then wait 0.6 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.8 s, then turn SELECT clockwise by 2 detents, then wait 0.9 s, then press ENV, then wait 1.0 s",
+      "caption": "HOME, then SEQ: STEP shows SIDOU LOOP's first pattern, voice 1 on top.",
+      "control": "press HOME, then wait 0.6 s, then press SEQ, then wait 2.8 s",
       "expect": [
         {
           "kind": "view",
-          "value": "lab"
+          "value": "step"
         },
         {
           "kind": "text",
-          "value": "PULLED I06"
-        },
-        {
-          "kind": "text",
-          "value": "L3"
+          "value": "PAT 04"
         }
       ],
       "focus": {
-        "callout": "SEQ TO INSTR, ENV",
-        "control": "ENV"
+        "callout": "HOME, SEQ",
+        "control": "SEQ"
       },
       "harness": {
         "clip_ms": null,
@@ -605,7 +381,7 @@
         "remember": false,
         "task": null
       },
-      "id": "pull",
+      "id": "step",
       "inputs": [
         {
           "button": "HOME",
@@ -620,40 +396,103 @@
           "op": "press"
         },
         {
-          "ms": 500,
+          "ms": 2800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*STEP*"
+    },
+    {
+      "caption": "Hold step 1 and press FX: SLIDE ON. Its gate stays held, and the next note glides in from its pitch.",
+      "control": "hold note key F3, then wait 0.3 s, then press FX, then wait 0.3 s, then let go of note key F3, then wait 3.4 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "kind": "text",
+          "value": "PAT 04"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD STEP 1 + FX",
+        "control": "FX"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "slide",
+      "inputs": [
+        {
+          "note": "F3",
+          "op": "down"
+        },
+        {
+          "ms": 300,
           "op": "wait"
         },
         {
-          "button": "SEQ",
+          "button": "FX",
           "op": "press"
         },
         {
-          "ms": 500,
+          "ms": 300,
           "op": "wait"
         },
         {
-          "button": "SEQ",
-          "op": "press"
+          "note": "F3",
+          "op": "up"
         },
         {
-          "ms": 500,
+          "ms": 3400,
           "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SLIDE* into the next note"
+    },
+    {
+      "caption": "Hold step 5 and press ENV: ACCENT ON. Its row plays with the cutoff, resonance and sustain up.",
+      "control": "hold note key A3, then wait 0.3 s, then press ENV, then wait 0.3 s, then let go of note key A3, then wait 3.4 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
         },
         {
-          "button": "SEQ",
-          "op": "press"
+          "kind": "text",
+          "value": "PAT 04"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD STEP 5 + ENV",
+        "control": "ENV"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "accent",
+      "inputs": [
+        {
+          "note": "A3",
+          "op": "down"
         },
         {
-          "ms": 800,
-          "op": "wait"
-        },
-        {
-          "detents": 2,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 900,
+          "ms": 300,
           "op": "wait"
         },
         {
@@ -661,24 +500,36 @@
           "op": "press"
         },
         {
-          "ms": 1000,
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "note": "A3",
+          "op": "up"
+        },
+        {
+          "ms": 3400,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Back *whole*"
+      "title": "*ACCENT* a step"
     },
     {
-      "caption": "PLAY: SIDOU LOOP plays, and the keys play the layered sound over it.",
-      "control": "press PLAY, then wait 1.0 s, then wait for the song's next pattern, then play 6 notes at 125 BPM",
+      "caption": "PLAY: SIDOU LOOP plays, step 1 sliding into step 5, and step 5 accented.",
+      "control": "press PLAY, then wait 5.2 s",
       "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
         {
           "assert": "sounding",
           "kind": "audio"
         }
       ],
       "focus": {
-        "callout": "PLAY, THEN THE KEYS",
+        "callout": "PRESS PLAY",
         "control": "PLAY"
       },
       "harness": {
@@ -697,60 +548,15 @@
           "op": "press"
         },
         {
-          "ms": 1000,
+          "ms": 5200,
           "op": "wait"
-        },
-        {
-          "op": "sync"
-        },
-        {
-          "bpm": 125,
-          "events": [
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E5"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "D5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C5"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
         }
       ],
       "needs": [],
-      "title": "Over the *song*"
+      "title": "*Hear* them"
     },
     {
-      "caption": "sidou-sysex import turns a SidStation or MIDIbox SID bank into songs. Each patch an instrument: ENV opens it in LAB, layers and all.",
+      "caption": "The site's Library page sends sixteen original LAB sounds to the FM-1 as one song. ENV on INSTR opens each in LAB.",
       "control": "wait 5.0 s",
       "expect": [
         {
@@ -759,7 +565,7 @@
         }
       ],
       "focus": {
-        "callout": "SIDSTATION <> SIDOU-SYSEX IMPORT <> LAB",
+        "callout": "LIBRARY PAGE <> SIDOU SOUNDS <> LAB",
         "control": "card"
       },
       "harness": {
@@ -771,7 +577,7 @@
         "remember": false,
         "task": null
       },
-      "id": "import",
+      "id": "sounds",
       "inputs": [
         {
           "ms": 5000,
@@ -779,7 +585,7 @@
         }
       ],
       "needs": [],
-      "title": "*SidStation* patches"
+      "title": "SIDOU's own *sounds*"
     },
     {
       "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
@@ -810,8 +616,8 @@
         }
       ],
       "needs": [],
-      "title": "Get *SIDOU 1.6*"
+      "title": "Get *SIDOU 1.7*"
     }
   ],
-  "title": "What's new in SIDOU 1.6"
+  "title": "What's new in SIDOU 1.7"
 }

@@ -3764,6 +3764,96 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   reader takes any sound of at least `LAB_SOUND_BYTES_1_0` bytes; the bytes it does not have are at
   their defaults (0).
 
+### Code in SRAM: room for 1.7 (the owner, 2026-11-04)
+
+- GoatTracker's player and the song frame's hooks run once a song frame, so they live in flash
+  (`app.ld`), the audio interrupt calling `song_ctl_call` through `SIDOU_FAR`; what runs every
+  sample or block (the SID core, `audio_fill`, the register ring, `song_ctl_block`, `song_sink`,
+  the flash driver) stays in SRAM. RAMTEXT 49,136 -> 42,704 bytes. `ram_audio.rs` names the
+  functions that run from flash by design (`FRAME_RATE_IN_FLASH`) and checks that the ones it
+  moved are in flash and the per-block ones in SRAM; audio is unchanged (the emulator's goldens).
+- Not done: `-Os` for the effects' ticks (not needed for the room asked), the `.sid` hooks (they
+  render inside the block), growing RAMTEXT into POOL (the owner's). The I-cache cost on the unit
+  is estimated in docs/hardware.md and is a device check.
+
+### The step table (1.7)
+
+- One table a sound, on one layer (`LAB_SOUND_TABLE`, 35 bytes): three tables would take the sound
+  past 127 bytes, which the undo ring's positions (`LAB_EDIT_FIRST`) cannot address, and cost 70
+  more bytes in each of the nine copies of a sound in RAM. Of the SidStation factory bank's 13
+  patches with a playing table, 9 have it on their first oscillator; the importer carries the first
+  playing one and leaves the others to their song instruments.
+- The rows are GoatTracker's encoding (the wave program's left control and right note byte), so a
+  table goes to a wave program and back with no translation of its notes. GoatTracker's player
+  (`gt2_play.c`) is not what runs it: it lives in RAMTEXT, which has 16 bytes free, and runs per
+  song channel. `live_tick` runs the table every second tick (a 50 Hz frame), per voice, from flash.
+- GoatTracker holds a delay row of value `d` for `d + 1` frames (its `wavetime` counts to `d` and the
+  row advances on the next frame), so a step of `n` frames is its row and a delay row of `n - 2`; a
+  `00 80` row is a one-frame wait on the way back. 1.6's import wrote `n - 1`, a frame too long a
+  step for every table slower than one frame; `wave_rows` writes `n - 2` since 1.7.
+- The card values are three characters at most (the codes `T+S`, `TRR`, `SAS`), so the TABLE page
+  keeps LAB's rule and lights its cards instead of opening the popup.
+- `lab_audible` with a table: the steps a held C4 plays in the first 500 ms are each estimated as
+  the layer with that step's control and pitch (a step with the test bit is silent); the level is
+  the loudest step's less 3 dB for each halving of the time the steps within 3 dB of it play, and
+  a 3 dB margin: the estimate errs quiet, as the random sounds' worst cases showed it must.
+- The margin is only for a table whose first 500 ms play more than one step: a table of one step
+  plays as its layer with another waveform or pitch, which the layer's own estimate covers, and the
+  margin there refused borderline sounds that sounded as before. A step that mixes noise with
+  another waveform counts as silent (on the chip the mix locks the noise to near zero). Known gap:
+  the default seed passes, and so do most others, but a few random tables with ring or sync steps
+  on a layered sound pass the estimate and render under -40 dB on other seeds (`LAB_SEED=1`, `9`,
+  `5`, `123456`); the partner model reads the layers' own controls, not their tables'. The
+  variations and rolls in LAB never make such steps themselves except by turning WAVE to `TRR`,
+  `SAS` or `PUS`.
+- A roll rests (turns off) the table on the layer it reshapes: the table would replace the rolled
+  waveform, and a table varied silent would leave every roll refused. A variation of a table that
+  is off starts a new one-step table, so EDIT + ARP on TABLE always has something to move.
+
+### The free LFOs (1.7)
+
+- MOD's four cards are taken, so the LFOs are MOD's second page, reached by LFO again on MOD:
+  one button for both, no new gesture.
+- A layer's level is not a destination: the SID has no per-voice volume, a gain per voice would be
+  in the audio interrupt (RAMTEXT, 16 bytes free), and the sustain level cannot stand in (the
+  envelope only falls to a lower sustain). VOL is the chip's volume (`$d418`), every layer at once.
+- They run free (no restart at a note-on), so `lab_audible` takes the worst of each moving LFO's
+  two extremes (pitch, width, cutoff) and a volume LFO at its trough (`VOLUME_LOSS_DB`): a note can
+  land anywhere in a slow cycle. A roll that finds nothing audible tries again with the LFOs resting,
+  and a variation on LFO tries a smaller depth. Known gap: the default seed and most others pass;
+  `LAB_SEED=1` and `4242` still find a variation the estimate passes that renders under -40 dB.
+- The import's mapping is best known (the SidStation format is not documented): shapes 0..4 as
+  triangle, saw up, saw down, square and random (5, flat, skipped), speed 0..127 onto the 32 rates,
+  the vibrato's depth 127 as about a semitone.
+
+### Slide and accent (1.7)
+
+- They ride the LOCK chunk (parameters 10 and 11) so they move with their rows as every lock does
+  (pattern edits, undo, the trailer), and they act in `song_lock_apply`, after the player's frame,
+  as the other locks do: the player is untouched (its GoatTracker match tests stay as they are).
+- A slide holds what GoatTracker's hard restart would let go: the gate, AD and SR, captured on the
+  slide's row, until the next note; that note's first frame keeps the waveform before it (no test-
+  bit restart) and the frequency glides 4 frames from the pitch before. The player writes a new
+  note's pitch the frame after its row, so the heard glide is 3 frames.
+- The cost of the chunk: an older firmware drops a LOCK chunk with a parameter it does not know
+  (`song_ext_locks_check`), so a 1.7 song with a slide or accent has no locks in 1.6. A chunk of its
+  own would have kept them, at the cost of a second lock path. The owner accepted the drop for 1.7
+  (2026-11-05): one lock path, and the release notes say that a 1.6 SIDOU plays such a song without
+  its locks.
+- "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A DICE
+  role that rolls slides and accents on a bass lane, or a built-in LIVE preset, was not done: a
+  fifth built-in moves the presets' numbers, MIDI program changes included.
+
+### LAB cards over MIDI (1.7)
+
+- The cards that are no instrument parameter get NRPN group 7 (`midi_map.c`'s `LAB_ROW`, `lab_cards.c`):
+  numbered by card, not by page, so a page added later moves no number; the value is the card's
+  bar position and a set is the card turned by the difference, so an NRPN clamps exactly as the
+  knob does (EDIT past the count, a step past the end, END only from OFF). They are not
+  `live_param`s: MIDI out's masks hold 64 parameters and are full (62), and its floods are at 98 %
+  of their budget. MIDI out does not send them and MIDI learn does not bind them; the maxima
+  live in the map's rows alone (`lab_card_max` reads them).
+
 ### View composition
 
 - LAB composes as CHIP does: the text is built in the canvas when what it shows changed (a hash of

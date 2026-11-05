@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 
-#define LAB_SONG_ROWS 10u
+#define LAB_SONG_ROWS (2u * LAB_TABLE_STEPS_MAX + 1u)
 
 enum {
     LAB_SONG_ATTACK = 1u << 0,
@@ -30,8 +30,9 @@ enum {
     LAB_SONG_TUNE = 1u << 11,
     LAB_SONG_PLAY = 1u << 12,
     LAB_SONG_FX = 1u << 13,
-    LAB_SONG_DROPPED = 15u << 10,
-    LAB_SONG_EXACT = 1u << 14
+    LAB_SONG_TABLE = 1u << 14,
+    LAB_SONG_DROPPED = 31u << 10,
+    LAB_SONG_EXACT = 1u << 15
 };
 
 typedef struct {
