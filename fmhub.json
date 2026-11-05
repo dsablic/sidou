@@ -1,5 +1,5 @@
 {
-  "what": "Turns the FM-1 into a C64 SID machine: two SIDs modelled on reSIDfp and measured against real 6581 and 8580 chips, a GoatTracker 2 tracker and step sequencer, .sid playback, LAB for layered sounds with a filter envelope, SidStation and MIDIbox SID patch import, and Live Link in a browser.",
+  "what": "Turns the FM-1 into a C64 SID machine: two SIDs measured against real 6581 and 8580 chips, a GoatTracker 2 tracker and step sequencer with slide and accent, .sid playback, LAB for layered sounds with step tables and free LFOs, SidStation patch import, and Live Link in a browser.",
   "kinds": ["tracker"],
   "play": "https://dsablic.github.io/sidou/",
   "editor": "https://dsablic.github.io/sidou/editor.html",
