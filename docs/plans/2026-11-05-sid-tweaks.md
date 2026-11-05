@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Live tweaks on a playing .sid: design
 
-**Status:** design for 1.7, 2026-11-05. **Parked, not implemented**: the session that built 1.7's other items ran out of room for it; nothing of it is in the firmware. The RAMTEXT it needs exists since 1.7 moved the GoatTracker player to flash.
+**Status:** designed for 1.7, 2026-11-05; **moved to 1.8** (the owner, 2026-11-05), not implemented: the session that built 1.7's other items ran out of room for it; nothing of it is in the firmware. The RAMTEXT it needs exists since 1.7 moved the GoatTracker player to flash.
 
 ## What the player does
 

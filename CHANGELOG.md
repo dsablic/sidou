@@ -8,6 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-05
+
+A step table and two free LFOs in LAB, SLIDE and ACCENT in STEP, an NRPN for every LAB card, and SIDOU's own sounds on the site.
+
 ### Added
 - **TABLE in LAB.** A sound carries a step table: up to 16 steps, each a waveform and a pitch
   (relative to the key or a fixed note), so many frames a step, played once or looped from a step,

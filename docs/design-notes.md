@@ -3837,7 +3837,9 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   note's pitch the frame after its row, so the heard glide is 3 frames.
 - The cost of the chunk: an older firmware drops a LOCK chunk with a parameter it does not know
   (`song_ext_locks_check`), so a 1.7 song with a slide or accent has no locks in 1.6. A chunk of its
-  own would have kept them, at the cost of a second lock path; the owner may prefer that.
+  own would have kept them, at the cost of a second lock path. The owner accepted the drop for 1.7
+  (2026-11-05): one lock path, and the release notes say that a 1.6 SIDOU plays such a song without
+  its locks.
 - "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A DICE
   role that rolls slides and accents on a bass lane, or a built-in LIVE preset, was not done: a
   fifth built-in moves the presets' numbers, MIDI program changes included.
