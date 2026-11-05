@@ -179,8 +179,9 @@ The `.sid` path's `psid_ctl_block` and `psid_isr_chip` stay in SRAM: they interl
 inside each block. Expected cost on the unit (fm1-emu has no I-cache): a frame executes about
 2 KB of the player's 5.3 KB, about 70 lines of 32 bytes when cold, 400-600 cycles each, so up to
 about 40,000 cycles (110 us at 360 MHz) once a frame in the interrupt, about 4 % of a 2.9 ms
-block, less when the lines stay cached between frames (the cache is 32 KB). A device measurement
-(cycles per block with a song playing, `IF_UACNT`) is the owner's step.
+block, less when the lines stay cached between frames (the cache is 32 KB). The device check is
+[hardware-test.md](hardware-test.md) section 32: a recording under the heaviest song load (no
+click passes), and the cycles in a checklist build that times the interrupt with TIMER4 (none yet).
 
 The expert layer does not reset either SID: constants and completed tables change at
 audio-block boundaries. Filter rows use leased existing SID backing (no new row arrays),

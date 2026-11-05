@@ -2771,6 +2771,86 @@ The Live Link page:
 
 Notes:
 
+## 32. 1.7: the player from flash, and by ear
+
+What it decides: whether GoatTracker's player, which 1.7 runs from flash (docs/hardware.md, "1.7:
+GoatTracker's player back in flash"), costs the audio interrupt anything a player hears; and, by
+ear, what fm1-emu cannot judge of 1.7's sounds. fm1-emu has no I-cache: the estimate is up to
+about 40,000 cycles (110 us at 360 MHz) of cache misses once a song frame, about 4 % of a 2.9 ms
+audio block. Set up: SIDOU 1.7 on the unit, the showcase songs on it (the site's Songs page), a
+computer recording the unit's USB audio input in a DAW at **48 kHz** (the resampler is the
+costlier rate), headphones on the line out.
+
+**What the release can show, and what it cannot.** 1.7 has no meter for the audio interrupt:
+STATUS's `CPU` row is the `.sid` 6502's (section 21) and reads `--` while a GoatTracker song
+plays, and the core's performance counters (`TL_CKCNT`, `IF_UACNT`, docs/hardware.md "Open
+checks") are read by no SIDOU build. So the release check is the outcome: an audio block that
+misses its deadline replays the other half of the double buffer, a 2.9 ms repeat heard as a click
+or a buzz on the line out and in the recording. The number in cycles needs the checklist build of
+the last item, which does not exist yet.
+
+- [ ] **The heaviest song load, by ear and recorded:** SONG, LOAD NEON HIGHWAY, PLAY (chip A). On
+  LIVE, ENV to LAB, SELECT to FX: the three slots at their heaviest, as section 19 has them
+  (FLANGER, PHASER, REVERB); HOME. Record two minutes at 48 kHz while you hold a three-note chord on the keys (chip B, KEYS
+  AUTO), turn K1 and K2 all the way and back, turn ALGORITHM on LAB's FX page to switch an effect
+  every few seconds, and change views (SEQ to TRACKER and back to LIVE, the menu, CHIP). **Pass:
+  0** clicks, buzzes or gaps in the two minutes, on the headphones and in the recording (listen
+  to it, and look at it zoomed in where anything sounds off: a repeat is 128 frames copied).
+  Then the same two minutes with the song stopped (the keys and the effects only): if only the
+  run with the song clicks, the player from flash is the cause. Record each click's time:
+  *Emulator:* `emu-gate/tests/ram_audio.rs::goattrackers_player_runs_from_flash_and_rams_audio_path_calls_it_by_pointer`,
+  `emu-gate/tests/ram_audio.rs::the_audio_interrupt_runs_only_from_sram` (all but the player and
+  the frame's hooks stay in SRAM), `emu-gate/tests/song.rs` (the player's worst block, 6,488 of
+  6,500 instructions), the emulator goldens unchanged by the move.
+  *Device-only:* the I-cache misses of flash code in the interrupt (real silicon, a real host
+  recording).
+- [ ] **The same with a `.sid` tune** (THE CONSULTANT or a starter-pack tune from SIDS) for two
+  minutes: no click. Its path stays in SRAM, so a click here and none with a song points away from
+  the player:
+  *Emulator:* `emu-gate/tests/ram_audio.rs::the_audio_interrupt_runs_only_from_sram_while_a_tune_plays`.
+- [ ] **The cycles, with a checklist build** (when one is made; not part of 1.7): a build that
+  reads TIMER4 (24 MHz, `fm1_ticks`) on entry to and exit from `fm1_alnk0_irq` and shows on
+  STATUS the worst block's ticks over the last second, and the worst block with a song frame in it
+  against the worst without. The first item's setup, 60 s. **Pass:** the worst block **at most
+  34,560 ticks** (1.44 ms, half the 69,632-tick block: the share the emulator's budgets give the
+  interrupt, 2,700 instructions a sample at 240 MHz), and the song frame's blocks **at most 2,700
+  ticks** (112 us, the estimate) above the others. Over either, the owner decides between the
+  player back in SRAM (the 6.4 KB 1.7 freed) and its hot part only. Record both:
+- [ ] **TABLE, by ear:** LAB's TABLE on SAW LEAD, `LOOP FROM 1`, steps at 0, +12, +7, two frames a
+  step (What's new in 1.7's table): an even arpeggio on both chip models, no click at a step;
+  then a noise first step of one frame into a pulse (a drum or a pluck). REC sends it, ENV on
+  INSTR pulls it back with the same steps:
+  *Emulator:* `emu-gate/tests/lab.rs::a_table_built_on_table_steps_the_keys_pitch_on_the_device`.
+  *Device-only:* how it sounds on the chip (ear).
+- [ ] **LFO, by ear:** LAB's LFO page, LFO 1 TRIANGLE to `CUT` and to `PCH`, then `S&H` to `CUT`,
+  across the rates: the sweep is smooth (no zipper) at 12.75 Hz and steady at 0.05 Hz; `VOL` is a
+  tremolo with no click:
+  *Emulator:* `emu-gate/tests/lab.rs::an_lfo_built_on_lfo_swings_the_keys_pitch_on_the_device`.
+  *Device-only:* zipper and clicks on the chip's real filter and volume (ear).
+- [ ] **SLIDE and ACCENT, by ear:** SIDOU LOOP, STEP, the song stopped: hold step 1 + FX
+  (`SLIDE ON`), hold step 5 + ENV (`ACCENT ON`), PLAY: step 1 glides into step 5 with no restart
+  click, and step 5 stands out, brighter, its neighbours unchanged. The site's 303 BASS (SIDOU
+  SOUNDS) on a lane with slides and accents sounds like an acid line. SAVE AS, power off and on,
+  LOAD: both are still there:
+  *Emulator:* `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
+  `sidou-tests/tests/song_locks.rs::an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row`,
+  the ergo journey `whats-new`.
+  *Device-only:* the glide and the accent on the chip (ear).
+- [ ] **The site's sixteen sounds:** the Library page sends SIDOU SOUNDS; INSTR, each instrument,
+  ENV: each opens in LAB under its name and sounds as its name says, on the 6581 and the 8580.
+  Note any that is too quiet, harsh or not what its name promises:
+  *Emulator:* `sidou-patch/tests/sidou_sounds.rs::every_sound_is_valid_audible_on_both_chips_and_named_for_the_fm1`,
+  `sidou-patch/tests/sidou_sounds.rs::the_bank_song_pulls_back_every_sound_exactly`, `web/check.mjs`.
+  *Device-only:* none of them is ear-checked yet (ear, the real chip).
+- [ ] **A SidStation patch's LFO:** import the factory bank (`sidou-sysex import`), send its
+  first song, pull a patch with vibrato or a filter sweep into LAB: the LFO page shows it, and its
+  speed and depth sound like the SidStation's (a recording or a memory of it). The mapping is a
+  best guess; note any patch clearly too fast, slow, deep or shallow:
+  *Emulator:* `sidou-patch/tests/lab.rs::the_first_oscillators_vibrato_pwm_and_filter_lfos_take_labs_two`.
+  *Device-only:* the comparison with a real SidStation (ear).
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2808,3 +2888,4 @@ Notes:
 | 29 The site's Library page | | |
 | 30 Chords and time-shared drums from DICE | | |
 | 31 The site's editor and Live Link page | | |
+| 32 1.7: the player from flash, and by ear | | |
