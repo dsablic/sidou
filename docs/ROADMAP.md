@@ -99,9 +99,11 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     computer or tablet connects to, and SIDOU connecting out to Bluetooth MIDI keyboards (a devices
     page), with the owner's Korg microKEY Air as the test keyboard; no pairing at first. Optimist's
     open stack from fm1-base's `bt/`, MIDI in, out and clock. A build option, off by default,
-    starting with a measurement build. It needs about 41-53 KB of flash against the 15.6 KB free,
-    so finding room comes first (cold files at `-Oz`); any budget change is the owner's call. 8-10
-    KB of RAM (NOINIT), 36-44 B of RAMTEXT. L.
+    starting with a measurement build, now built ([the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
+    both ways 39,312 bytes of flash (the peripheral alone 30,704) against the 15,616 free, 3,060 of
+    the RAM region, 3,928 of NOINIT, 32 of RAMTEXT, and the audio interrupt unchanged. The cold
+    files at `-Oz` have about 1.3 KB left, so the room is the owner's call first: the ceiling's
+    reserve, USB audio at 44.1 kHz only, or the peripheral first. L.
   - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
     K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
     RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
@@ -141,9 +143,11 @@ the decisions are in [design-notes.md](design-notes.md)).
 
 **1.5.x**
 - **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341.
-- **The move to felucca-bsp**: waits for felucca-bsp's PR #21 (the raw MIDI-in hook, our patch);
-  #14 and #16 are fixed upstream. SIDOU's USB audio hand-over needs adapting to its newer
-  recording path (found in the trial: 22 of 23 USB tests pass).
+- **The move to felucca-bsp**: waits for felucca-bsp's PR #21 (the raw MIDI-in hook, our patch;
+  to be rebased, it conflicts with main in a comment); #14 and #16 are fixed upstream. Retried on
+  2026-11-05: 23 of 23 USB tests pass with `usb_audio.c` handing the recording 24-bit words (one
+  line) and the test helper reading the sent string descriptor
+  ([the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md#3-the-felucca-bsp-trial)).
 
 - **The quality pass**: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of 250, the
   MIDI floods at 98 % of their budget, the SID views' UI poll 452 under its budget after the
