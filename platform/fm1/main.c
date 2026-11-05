@@ -41,6 +41,10 @@
 #include "update.h"
 #include "usb_audio.h"
 
+#if defined(SIDOU_BLE)
+#include "ble_radio.c"
+#endif
+
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 typedef void (*ctor_fn)(void);
@@ -2207,6 +2211,9 @@ static void sidou_main(void) {
             ui_link(now);
         }
         midi_service(now);
+#if defined(SIDOU_BLE)
+        ble_radio_poll(now);
+#endif
         bootguard_poll(&boot_guard, now);
 #if defined(SIDOU_TEST_DEATH_MS)
         test_death(now);

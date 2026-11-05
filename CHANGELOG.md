@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Bluetooth MIDI's measurement build (`-DSIDOU_BLE=ON`, never released): SIDOU with Optimist's
+  open stack linked in, both roles, to measure its flash, RAM and RAMTEXT
+  ([the 1.8 plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.
+  `sidou-pack --verify` now also fails a package whose option record names an option a release
+  never records.
+
 ## [1.7.0] - 2026-11-05
 
 A step table and two free LFOs in LAB, SLIDE and ACCENT in STEP, an NRPN for every LAB card, and SIDOU's own sounds on the site.

@@ -296,6 +296,35 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   stage over its 31 instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's
   pause.
 
+### Bluetooth's measurement build (`SIDOU_BLE`)
+
+- The stack's host side (fm1-base `bt/ble`: link layer, host, ATT, BLE-MIDI, the central's scan
+  and client) is its own unit, `platform/fm1/ble_stack_unit.c`, at fm1-base's `-Os`, with
+  `BLE_API` left empty (extern) as fm1-base's host tests build it. Inside `main.c`'s unit the stack
+  came out 6,784 bytes larger at `main.c`'s `-mllvm -inline-threshold=225`, and clang's global
+  merge mixed its state with `main.c`'s, so no `app.ld` rule could place it.
+- The radio driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`) and SIDOU's glue
+  (`ble_radio.c`) are part of `main.c`'s unit: `fm1_ble.h` needs `fm1_irq.h`, whose two non-static
+  definitions keep it to one unit (Felucca's HAL rule, `VENDORED.md`). At `main.c`'s threshold the
+  driver costs 3,264 bytes more than at plain `-Os`.
+- The four radio headers and the start-up tables are copied byte for byte into the build directory
+  (`ble_radio/`, the tables as `ble_rf_tables.h`, as fm1-base's build does). Taken from
+  felucca-bsp's `chip/`, their quoted `#include "fm1_irq.h"` would find felucca-bsp's copy beside
+  them; with `#pragma once` both copies would be included.
+- RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section
+  `.noinit.ble_radio`) go to NOINIT, which `ble_radio_start` zeroes before `ble_init`. The radio's
+  DMA reads `bb` (1,508 bytes) and the PLL table (972; its address goes into a register), so the
+  driver's state stays in the RAM region. `fm1_crash` and felucca-bsp's `fm1_ble_bc` keep their
+  `.noinit` places and are not zeroed. The rules match nothing in the default build.
+- The radio never starts in this build (`ble_radio_wanted` is never set). Started at boot in
+  fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up holds the main loop
+  past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
+- The image is over the app slot, so the build links against a copy of `app.ld` with a larger
+  XIP region; CMake fails if `app.ld`'s length changes under it.
+- The option record names `SIDOU_BLE` only when it is on, so the default image keeps its bytes.
+  `sidou-pack` fails any record that names an option outside `DEFAULT_OPTIONS`; the options that
+  are absent when off are listed in `ABSENT_WHEN_OFF`.
+
 ### `gt2_song.c` at `-Oz`: timing only
 
 - At `-Oz`, `gt2_song.c` is 384 bytes smaller and four LCD goldens move (`live-c64`, `live-keys-b`,
