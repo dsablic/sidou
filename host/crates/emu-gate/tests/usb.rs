@@ -1896,14 +1896,12 @@ struct Uac {
     r48: u8,
     go: u8,
     flowing: u8,
-    pkts: u32,
     underruns: u32,
     overruns: u32,
     missed: u32,
     stalls: u32,
     fill_lo: u32,
     fill_hi: u32,
-    rate_sets: u32,
 }
 
 fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
@@ -1914,14 +1912,12 @@ fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
         r48: m.soc.read8(a + 1),
         go: m.soc.read8(a + 3),
         flowing: m.soc.read8(a + 4),
-        pkts: w(m, 4),
         underruns: w(m, 6),
         overruns: w(m, 7),
         missed: w(m, 8),
         stalls: w(m, 9),
         fill_lo: w(m, 12),
         fill_hi: w(m, 13),
-        rate_sets: w(m, 14),
     }
 }
 
@@ -2112,7 +2108,8 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
     ] {
         let mut quiet = chord(None, sie);
         let off: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut quiet, 400)).collect();
-        for hz in [44_100, 48_000] {
+        {
+            let hz = 44_100;
             let mut m = chord(Some(hz), sie);
             let on: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut m, 400)).collect();
             let alnk = mean(&on, |x| x.0) - mean(&off, |x| x.0);

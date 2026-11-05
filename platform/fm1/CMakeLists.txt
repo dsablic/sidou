@@ -48,7 +48,6 @@ target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshad
 option(SIDOU_USB_FIX "midi.c (the USB stack) with Felucca's build flags" ON)
 set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -fdata-sections)
 set_property(SOURCE main.c APPEND PROPERTY COMPILE_OPTIONS -Os -mllvm -inline-threshold=225)
-set_property(SOURCE lcd.c ui.c APPEND PROPERTY COMPILE_OPTIONS -Os)
 if(SIDOU_USB_FIX)
     set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -mcpu=generic -mno-fprev1 -Os)
 else()

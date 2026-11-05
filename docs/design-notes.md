@@ -73,7 +73,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   checks `sx_made != sx_taken` before it calls `ota_frame_get`, which is not inlined; calling it
   every pass cost the idle main loop 150,000 instructions a second and broke four of `midi.rs`'s
   main-loop budgets.
-- **Timing moved a little:** the BSP's key scan does more in TIMER5 (`input_tick_isr` +514 bytes)
+- **Timing moved a little** (and again with 1.8's room): the BSP's key scan does more in TIMER5 (`input_tick_isr` +514 bytes)
   and the audio start zeroes both halves, so three golden screens whose content follows the clock
   (LIVE's meters with a song on chip A, SCENE's stars and rule 30) were taken again, and
   `fx_live.rs`'s overdrive test compares the drive with the slot at no drive (the dry chord's
@@ -341,10 +341,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   pause.
 
 - **1.8, room for Bluetooth** (the plan's R4 and R5), measured one file at a time on the image
-  (16-byte steps): to `-Os` from `-O2` `lab_table.c` 496, `platform/fm1/lcd.c` 352, `ui.c` 176,
-  `ui_sound.c` 112; to `-Oz` from `-Os` `lab_song.c` 416, `gt2_shape.c` 176, `chip_ctl.c` 144,
-  `scene.c` 128, `screen.c` 128, `gt2_sng.c` 112. Together 2,256 bytes. `core/fx/fx.c` at `-Os`
-  saved nothing (0) and stays `-O2`.
+  (16-byte steps). Taken: to `-Os` from `-O2` `lab_table.c` 496, `ui_sound.c` 112; to `-Oz` from
+  `-Os` `lab_song.c` 416, `gt2_shape.c` 176, `screen.c` 128, `gt2_sng.c` 112: 1,440 bytes
+  together (the image 546,768). Measured and left: `platform/fm1/lcd.c` (352) and `ui.c` (176) at
+  `-Os` and `chip_ctl.c` (144) at `-Oz` put the main loop over `midi.rs`'s CC flood bound (5.009M/s
+  of 5.0M) and LIVE's full-speed flood (6.33M/s of 6.3M); `scene.c` at `-Oz` (128) put SCENE's
+  fire over its frame budget (109,591 instructions); `core/fx/fx.c` at `-Os` saved nothing.
 
 ### `gt2_song.c` at `-Oz`: timing only
 

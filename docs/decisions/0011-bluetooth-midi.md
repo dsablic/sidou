@@ -59,7 +59,7 @@ at 39,312 bytes of flash against 15,616 free. These revise points 2 and 3 above 
 5. **The update loader keeps Felucca 1.6.1's HAL**, so its pinned SHA-256 is unchanged; the app
    moves to felucca-bsp.
    Done in 1.8's step 2: the ceiling is 579,516 (the slot less 2,048), 44.1 kHz only saved
-   8,256 bytes, ten cold files at `-Os`/`-Oz` 2,256, and the ring left the RAM region for NOINIT
+   8,256 bytes, six cold files at `-Os`/`-Oz` 1,440 (four more failed their gates), and the ring left the RAM region for NOINIT
    (the region 10,528 free).
 6. **The radio is tested on the device.** fm1-emu is asked for a radio model in
    [upstream-reports.md](../upstream-reports.md); nothing is filed.
