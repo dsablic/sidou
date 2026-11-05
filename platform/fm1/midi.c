@@ -570,7 +570,7 @@ static int frame_waiting(void) {
 }
 
 int update_poll(void) {
-    if (sidou_frames_taken() || (!frame_waiting() && !usb.ota_req)) {
+    if ((!frame_waiting() && !usb.ota_req) || sidou_frames_taken()) {
         return 0;
     }
     if (sidou_sysex.tx_active) {

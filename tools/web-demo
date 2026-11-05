@@ -56,6 +56,7 @@ if [ "$(git -C "$emu" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$rev"
 fi
 git -C "$emu" checkout -q -f --detach "$rev"
 [ "$(git -C "$emu" rev-parse HEAD)" = "$rev" ]
+"$root/web/patch-emu.sh" "$emu/crates/fm1-web/src/lib.rs"
 
 say "fm1-web to wasm (fm1-emu's web/build.sh)"
 if command -v rustup >/dev/null && [ -z "${SIDOU_BUILD_IMAGE:-}" ]; then

@@ -61,12 +61,25 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   attribute upstream; `app.ld` puts them in POOL by section name, so the RAM region keeps its room
   without a local change.
 - **The audio start checks the PLL** the stock boot leaves (`fm1_audio_init_checked`); fm1-emu
-  reads 0 there, so emu-gate's machine writes the stock values before the first instruction
-  (upstream report 19). The sample format is the same: Q23 in the low 24 bits, SIDOU's 16-bit
+  reads 0 there, so emu-gate's machine writes the stock values before the first instruction, and
+  the site's player is built from fm1-web with the same two writes (`web/patch-emu.sh`, applied by
+  `tools/web-demo` the way `web/patch-main.sh` patches its page): without them the demo is silent
+  and stops at the title card (upstream report 19). The sample format is the same: Q23 in the low 24 bits, SIDOU's 16-bit
   samples times 256, and `usb_audio.c` hands those words to `uac_tap` as they are.
 - **Step 1 takes another board's package now** (felucca-bsp's `ota.c` checks a foreign writer's
   boot area instead of the size); SIDOU's writer, Felucca 1.6.1's loader, still refuses it before
   erasing anything (-14). Host-tested in `ota_step1.rs`.
+- **The updater's look at the queue** costs a pass two loads when nothing waits: `update_poll`
+  checks `sx_made != sx_taken` before it calls `ota_frame_get`, which is not inlined; calling it
+  every pass cost the idle main loop 150,000 instructions a second and broke four of `midi.rs`'s
+  main-loop budgets.
+- **Timing moved a little:** the BSP's key scan does more in TIMER5 (`input_tick_isr` +514 bytes)
+  and the audio start zeroes both halves, so three golden screens whose content follows the clock
+  (LIVE's meters with a song on chip A, SCENE's stars and rule 30) were taken again, and
+  `fx_live.rs`'s overdrive test compares the drive with the slot at no drive (the dry chord's
+  highs moved with its timing; the drive's own rise is what the test is about).
+- **The flash driver's own polls** take a few microseconds in fm1-emu, whose flash is
+  instantaneous: the flash spike's timings are bounded at 20 us instead of 0.
 - The move costs 4,128 bytes of flash (+2,368 `.text`, +1,760 RAMTEXT: the flash driver's split
   erase, `fl_erase4k_begin_ram`/`_end_ram`, which upstream marks `used`), 112 bytes of the RAM
   region and 320 of NOINIT (`fm1_crash_ctx`, the fault record).

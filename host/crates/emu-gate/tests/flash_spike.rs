@@ -19,6 +19,7 @@ fn spike_skip(what: &str) {
     );
 }
 
+const DRIVER_OWN_US_MAX: u32 = 20;
 const FLASH: usize = 1 << 20;
 const PATTERN: usize = 0xDE000;
 const MEASURE: usize = 0xDF000;
@@ -202,10 +203,9 @@ fn the_spike_runs_to_its_result_screen_and_writes_only_its_two_sectors() {
     for (at, name, runs) in STATS {
         let (n, min, max, sum) = (r[at], r[at + 1], r[at + 2], r[at + 3]);
         assert_eq!(n, runs, "{name}: runs");
-        assert_eq!(
-            (min, max, sum),
-            (0, 0, 0),
-            "{name}: fm1-emu's flash is instantaneous"
+        assert!(
+            min <= max && max <= DRIVER_OWN_US_MAX && sum <= runs * max,
+            "{name}: fm1-emu's flash is instantaneous, so only the driver's own polls take time: {min}..{max} us"
         );
     }
     assert_eq!(r[PAGE_ERASE_WORKS], PAGE_ERASE_IGNORED_BY_FM1_EMU);

@@ -121,17 +121,18 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     let (cd, c0, cw) = (crest(&dry), crest(&undriven), crest(&wet));
     println!(
         "overdrive from the panel: crest factor {cd:.2} dry, {c0:.2} at no drive -> {cw:.2}, \
-         rms {:.0} -> {:.0}, power above 2 kHz {:.3} -> {:.3}",
+         rms {:.0} -> {:.0}, power above 2 kHz {:.3} dry, {:.3} at no drive -> {:.3}",
         rms(&dry),
         rms(&wet),
         power_above(&dry, 2000.0),
+        power_above(&undriven, 2000.0),
         power_above(&wet, 2000.0)
     );
     assert_eq!(dry, dry_r, "dry is mono");
     assert_eq!(wet, wet_r, "the distortion slot is mono");
     assert!(cw < 0.8 * c0, "no clipping: crest factor {c0} -> {cw}");
     assert!(
-        power_above(&wet, 2000.0) > 2.0 * power_above(&dry, 2000.0),
+        power_above(&wet, 2000.0) > 2.0 * power_above(&undriven, 2000.0),
         "the drive's harmonics did not come up"
     );
     assert!(
