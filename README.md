@@ -64,7 +64,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   step and ENV accents it. TABLE's ARP helper writes arpeggios as wavetable rows, and the
   keys play the draft before you save it. MUTATE, DICE (density, range, scale, rhythm and a root
   for each lane) and a filter sweep write patterns in STEP and TRACKER; a lane given the ARP role
-  rolls chords (shared wavetable chord programs, C64 style), and a BASS+DRUMS lane the kit's kick
+  rolls chords (shared wavetable chord programs, C64 style), an ACID lane a bassline with
+  slides and accents, and a BASS+DRUMS lane the kit's kick
   and snare time-shared with a bass on one voice.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.

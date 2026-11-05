@@ -327,7 +327,7 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
 | EDIT + SCL held + K3 | the selected lane's DICE **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. Each lane has its own (a lane never set has V1's) |
 | EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
-| EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
+| EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ACID`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
 | EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
 | EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO); either finger may land first |
@@ -389,7 +389,10 @@ when none does). The first ARP roll writes the four programs after the wavetable
 rows through the batch writer, then the cells; later rolls find them by their rows, wherever they
 are. With no room the roll says `TABLE FULL` and writes nothing. A hit's command is its chord's; a
 row without a hit loses an `8XX` an earlier roll left there. TRACKER's command line names the chord
-of the cursor's row (`V1 8 07 CHORD A MIN`). A **BASS+DRUMS** lane is one voice time-shared
+of the cursor's row (`V1 8 07 CHORD A MIN`). An **ACID** lane rolls as a melodic lane and puts
+[SLIDE and ACCENT](#step) locks on its notes, as a 303 line: a SLIDE on a note the next row's note
+follows, three times in ten, an ACCENT on a note, about a third of them; a row the roll leaves
+without a note loses both. A **BASS+DRUMS** lane is one voice time-shared
 between the drums and a bass: the NEW song's **KICK** and **SNARE** (instruments 03 and 04, found
 by their bytes; a song without them says `NO DRUM KIT`) on the rhythm's strong rows of each bar of
 16 rows, four a beat (`STRAIGHT` and `OFFBEAT` a kick on beats 1 and 3, the snare on 2 and 4;
@@ -1007,7 +1010,7 @@ The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
 starts with noise is the drums (a kick under MIDI note 100, a hat from 106, a snare between,
 by the first wavetable step's note), the lowest of the others the bass, the rest the arp. A
 BASS+DRUMS voice (1.5; set in DICE's frame) is the drums where it plays the NEW song's KICK or
-SNARE and the bass elsewhere.
+SNARE and the bass elsewhere; an ACID voice (1.8) is the bass.
 A row is each row of voice 1; the bar has 4 beats of the `MIDI` chunk's rows a beat (4 by
 default). The bass is high above the middle of its range over the current and the last bar.
 A muted voice plays no part: muted drums stop the chops and parries.

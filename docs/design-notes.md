@@ -2822,6 +2822,14 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   tresillo's kicks, FOUR a kick on every beat, BROKEN a breakbeat. The kit is found by its bytes, NO
   DRUM KIT without it. The role is kept in the SCNE chunk, which firmware without roles reads as
   written.
+- On an ACID lane (1.8): the notes as on a melodic lane, and on each a SLIDE lock
+  (`ACID_SLIDE_PERCENT`, 30, only when the next row is a hit: a slide into a rest glides nowhere)
+  and an ACCENT lock (`ACID_ACCENT_PERCENT`, 35), each from its own hash of the row's, so they do
+  not follow the note picked. The 303's accent comes on fewer than half its notes and the slide
+  on fewer; more and nothing stands out. A row without a hit loses both, so a roll replaces the
+  last roll's. The locks are written before the cell, while the editor has nothing pending, and a
+  refusal (WAITING, LOCKS FULL) stops the roll as a cell's does. The role comes after BASS+DRUMS
+  on PRESETS, the bass roles together.
 - The filter sweep writes a C command (FILTER CUTOFF) every `SONG_GEN_SWEEP_EVERY` (2) rows from
   `SONG_GEN_SWEEP_LOW` (0x10) to `SONG_GEN_SWEEP_HIGH` (0xF0) or back, where the row has no command.
 - `FROZEN_MELODIC` and `FROZEN_DRUMS` (sidou-tests `tests/app/step_view.rs`) are DICE's rolls with
@@ -5434,7 +5442,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   bass, the others the arp, and a free clock makes a row every `SCENE_SONG_FREE_FRAMES` frames.
 - A BASS+DRUMS voice (DICE's time-shared kit and bass) gives its kit's kick and snare as drums and
   its other notes as the bass; an older SIDOU reads the role as none of its own, so the voice
-  plays no part. An SCNE chunk without the drum table reads as no drums.
+  plays no part. An SCNE chunk without the drum table reads as no drums. An ACID voice (1.8) is
+  the bass.
 
 ### Tests: SCENE pieces
 

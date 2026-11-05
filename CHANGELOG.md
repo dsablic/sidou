@@ -15,6 +15,10 @@ All notable changes are documented here. The format follows
   test bits kept. Each turn shows the TWEAK popup; a TWEAKED line says what is bent. Back at 0
   each gives the tune its own value at once, and leaving NOW PLAYING, another song or a stop
   gives everything back. EDIT + a knob is still the effect slot's.
+- **An ACID lane for DICE.** A lane's role can be ACID (after BASS+DRUMS): DICE writes a bassline
+  as on a melodic lane and rolls 1.7's SLIDE and ACCENT locks with it, a slide on about three in
+  ten notes followed by a note, an accent on about a third; a new roll clears them where a note
+  went. SCENE hears the lane as the bass; an older SIDOU rolls it as a melodic lane.
 
 ### Fixed
 - **The site's 1.7 deploy.** The site's song core, built by CI's clang, came to 164,811 bytes, over

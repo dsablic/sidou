@@ -22,6 +22,7 @@ const SONG_SAVE_AS: i32 = 2;
 const WIPE_MS: u64 = 700;
 const IO_TIMEOUT_MS: u64 = 15_000;
 const ROW_MS: f64 = 120.0;
+const PRESETS_TO_ARP: i32 = 5;
 const LANE_NOTE: u32 = 36;
 const CHIP_HZ: f64 = SID_CLOCK_PAL as f64;
 
@@ -1419,7 +1420,7 @@ fn an_arp_lane_rolls_chords_in_tracker() {
     m.key(EDIT, true);
     m.run_ms(40);
     m.key(SCL, true);
-    turn(&mut m, PRESETS, 4);
+    turn(&mut m, PRESETS, PRESETS_TO_ARP);
     m.run_ms(100);
     m.key(SCL, false);
     m.key(EDIT, false);

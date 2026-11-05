@@ -23,11 +23,11 @@ static const char* const DICE_LABELS[4] = {"DENS", "RANGE", "SCALE", "RHYTHM"};
 static const char* const DICE_NAMES[4] = {"DENSITY", "RANGE", "SCALE", "RHYTHM"};
 static const uint8_t DICE_TOPS[4] = {SONG_DICE_DENSITIES - 1u, SONG_DICE_RANGES - 1u,
                                      SONG_DICE_SCALES - 1u, SONG_DICE_RHYTHMS - 1u};
-static const uint8_t ROLE_ORDER[SONG_ROLES] = {SONG_ROLE_AUTO, SONG_ROLE_DRUMS, SONG_ROLE_BASS,
-                                               SONG_ROLE_BASS_DRUMS, SONG_ROLE_ARP, SONG_ROLE_LEAD,
-                                               SONG_ROLE_NONE};
-static const char* const ROLE_NAMES[SONG_ROLES] = {"AUTO", "DRUMS", "BASS", "ARP",
-                                                   "LEAD", "NONE", "BASS+DRUMS"};
+static const uint8_t ROLE_ORDER[SONG_ROLES] = {SONG_ROLE_AUTO,       SONG_ROLE_DRUMS, SONG_ROLE_BASS,
+                                               SONG_ROLE_BASS_DRUMS, SONG_ROLE_ACID,
+                                               SONG_ROLE_ARP,        SONG_ROLE_LEAD,  SONG_ROLE_NONE};
+static const char* const ROLE_NAMES[SONG_ROLES] = {"AUTO", "DRUMS", "BASS",       "ARP",
+                                                   "LEAD", "NONE",  "BASS+DRUMS", "ACID"};
 static const uint8_t CHORD_TONES[SONG_GEN_CHORDS][SONG_GEN_CHORD_ROWS - 2u] = {
     {4, 7}, {3, 7}, {5, 7}, {4, 7, 10}};
 static const char CHORD_NAMES[SONG_GEN_CHORDS][5] = {"MAJ", "MIN", "SUS4", "7"};
@@ -50,6 +50,9 @@ static const uint8_t RHYTHMS[SONG_DICE_RHYTHMS - 1u][8] = {
 static const uint8_t RHYTHM_MUL[SONG_DICE_DENSITIES] = {50, 75, 100, 100, 100};
 static const uint8_t RHYTHM_ADD[SONG_DICE_DENSITIES] = {0, 0, 0, 20, 100};
 #define GEN_PHI 0x9e3779b9u
+#define ACID_SLIDE_PERCENT 30u
+#define ACID_ACCENT_PERCENT 35u
+#define ACID_LOCK_ON 1u
 #define CMD_CUTOFF 0x0Cu
 
 void song_gen_init(song_gen* g, const uint8_t* gate) {
@@ -279,6 +282,35 @@ static uint32_t chord_pick(const song_gen* g, uint32_t h, uint32_t* note) {
     return c;
 }
 
+static int acid_lock(screen* s, song_view* sv, uint32_t r, uint32_t param, int on) {
+    gt2_song* song = (gt2_song*)sv->song;
+    uint32_t value;
+    int was = song_lock_get(song, sv->gen.pattern, r, param, &value);
+    if (on == was) {
+        return 0;
+    }
+    int ok = on ? song_lock_put(song, sv->gen.pattern, r, param, ACID_LOCK_ON)
+                : song_lock_remove(song, sv->gen.pattern, r, param);
+    if (ok < 0) {
+        refuse(s, song_view_lock_refusal(ok));
+        sv->gen.run = 0u;
+    }
+    return 1;
+}
+
+static int acid_locks(screen* s, song_view* sv, uint32_t r, uint32_t kind, uint32_t h) {
+    const song_gen* g = &sv->gen;
+    uint32_t roll = song_mix(h ^ GEN_PHI);
+    int next = r + 1u < g->rows && hit_kind(g, r + 1u);
+    int slide = kind && next && roll % 100u < ACID_SLIDE_PERCENT;
+    int accent = kind && (roll >> 8) % 100u < ACID_ACCENT_PERCENT;
+    int changed = acid_lock(s, sv, r, SONG_LOCK_SLIDE, slide);
+    if (sv->gen.run) {
+        changed |= acid_lock(s, sv, r, SONG_LOCK_ACCENT, accent);
+    }
+    return changed;
+}
+
 static int dice_row(screen* s, song_view* sv, uint32_t r) {
     song_gen* g = &sv->gen;
     uint8_t cell[4], was[4];
@@ -303,8 +335,12 @@ static int dice_row(screen* s, song_view* sv, uint32_t r) {
               : r && !g->legato && hit_kind(g, r - 1u) ? GT2_KEYOFF
                                                        : GT2_REST;
     cell[1] = kind == 1u ? g->instr : kind == 2u ? g->kick : kind == 3u ? g->snare : 0u;
+    int locked = g->role == SONG_ROLE_ACID && acid_locks(s, sv, r, kind, h);
+    if (!g->run) {
+        return 1;
+    }
     if (!memcmp(cell, was, 4u)) {
-        return 0;
+        return locked;
     }
     if (!write_cell(s, sv, r, cell)) {
         g->run = 0u;

@@ -139,6 +139,7 @@ uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
                          uint32_t rows_beat);
 void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32_t* row);
 void song_view_copy(song_view* sv, screen* s, grid* g);
+const char* song_view_lock_refusal(int r);
 void song_view_away(song_view* sv, int on);
 int song_view_away_changed(const song_view* sv);
 void song_view_away_compose(song_view* sv, screen* s, grid* g);

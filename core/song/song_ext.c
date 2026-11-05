@@ -453,6 +453,19 @@ int song_ext_locks_check(gt2_song* s) {
     return 1;
 }
 
+int song_lock_get(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param,
+                  uint32_t* value) {
+    uint32_t n = 0u;
+    const uint8_t* r = song_locks_row(s, pattern, row, &n);
+    for (uint32_t i = 0; r && i < n; i++, r += SONG_LOCK_BYTES) {
+        if (r[2] == param) {
+            *value = (uint32_t)r[3] | (uint32_t)r[4] << 8;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 const uint8_t* song_locks_row(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t* n) {
     int32_t at;
     uint32_t count = 0;

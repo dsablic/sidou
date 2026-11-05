@@ -2866,6 +2866,13 @@ the starter pack on it (section 22), headphones on the line out.
   `sidou-tests/tests/psid_ctl.rs::a_tweak_bends_the_tunes_filter_and_waveform_and_zero_gives_them_back`,
   `sidou-tests/tests/app/sid_view.rs::k1_to_k4_tweak_a_playing_tune_each_with_its_popup_and_the_tweak_line_says_what_is_bent`.
   *Device-only:* the bend on the real filter and the waveforms by ear; clicks at a turn.
+- [ ] **An ACID lane, by ear:** NEW, STEP, lane 1: EDIT + SCL held, PRESETS to `ACID`, let go;
+  PRESETS to the site's 303 BASS (SIDOU SOUNDS) or BASS; EDIT + SCL a few times, PLAY each roll.
+  **Pass:** each roll sounds like an acid line: some notes glide into the next with no restart,
+  some stand out brighter, and most do neither:
+  *Emulator:* `sidou-tests/tests/app/song_gen_roles.rs::dice_on_an_acid_lane_slides_only_into_a_next_note_and_accents_only_notes`,
+  `sidou-tests/tests/app/scene_song.rs::an_acid_voice_is_the_bass_and_no_other_is`.
+  *Device-only:* whether the rolled lines sound musical (ear).
 
 Notes:
 
