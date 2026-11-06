@@ -37,6 +37,14 @@ pub const DEFAULT_OPTIONS: [(&str, &str); 10] = [
     ("SIDOU_TEST_DEATH_MS", "1000"),
     ("CMAKE_BUILD_TYPE", "Release"),
 ];
+pub const ABSENT_WHEN_OFF: [(&str, &str); 3] = [
+    ("SIDOU_BLE", "OFF"),
+    ("SIDOU_BLE_CENTRAL", "3"),
+    (
+        "SIDOU_BLE_SOURCE",
+        "${PROJECT_SOURCE_DIR}/build/ext/fm1-base",
+    ),
+];
 
 const LOADER_NAME: &[u8; 16] = b"usb_hid_ota.bin\0";
 const UFW_CHIP: &[u8] = b"AC791N";
@@ -596,6 +604,13 @@ pub fn option_problems(options: &[(String, String)]) -> Vec<String> {
                  (a stale or changed CMake cache? build from a fresh build directory)"
             )),
             None => out.push(format!("the option record lacks {name}")),
+        }
+    }
+    for (name, value) in options {
+        if name != "SIDOU_PRODUCT" && !DEFAULT_OPTIONS.iter().any(|(k, _)| k == name) {
+            out.push(format!(
+                "build option {name}={value} is never in a release build: not a release build"
+            ));
         }
     }
     out

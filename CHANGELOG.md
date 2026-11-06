@@ -8,12 +8,18 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Bluetooth MIDI's measurement build (`-DSIDOU_BLE=ON`, never released): SIDOU with Optimist's
+  open stack linked in, both roles, to measure its flash, RAM and RAMTEXT
+  ([the 1.8 plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.
+  `sidou-pack --verify` now also fails a package whose option record names an option a release
+  never records.
+
 ### Changed
 - **felucca-bsp.** SIDOU builds on felucca-bsp's chip and board code (MPL-2.0) byte for byte, in
   place of the copies of Felucca 1.6.1 it carried; the update loader stays Felucca 1.6.1's, by its
   hash. A firmware update's first request is answered even when it comes right behind one of
   SIDOU's own SysEx frames (it was dropped before).
-
 - **USB audio records at 44.1 kHz only.** The 48 kHz choice and its resampler are gone (about 8 KB
   of flash, the owner's call, for Bluetooth): a DAW records at 44.1 kHz, the rate SIDOU plays at.
 
