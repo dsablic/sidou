@@ -247,7 +247,13 @@ async function openSong(bytes, source) {
       : `Could not open the song: ${e.message}.`;
     return;
   }
-  state.song = { bytes, source, info, model: state.core.song() };
+  const model = state.core.song();
+  const patches = new Map();
+  for (const i of model.instruments) {
+    const kept = state.core.kept(i.index);
+    if (kept) patches.set(i.index, (await patcher()).write(kept.sound, kept.name));
+  }
+  state.song = { bytes, source, info, model, patches };
   showSong();
 }
 
@@ -336,7 +342,8 @@ function showSong() {
     return el("tr", {}, el("td", { className: "num", textContent: i.index.toString(16).toUpperCase().padStart(2, "0") }),
       el("td", { className: "name", textContent: i.name || "(no name)" }),
       el("td", { className: "crc", textContent: i.bytes.slice(0, 2).map((x) => x.toString(16).toUpperCase().padStart(2, "0")).join(" ") }),
-      el("td", { className: "acts" }, b));
+      el("td", { className: "acts" }, ...(state.song.patches.has(i.index)
+        ? [button("Patch", () => openPatch(state.song.patches.get(i.index)), { title: "Open its LAB sound as a patch, to see or change it" })] : []), b));
   });
   $("instruments").replaceChildren(...ins);
   $("song-panel").hidden = false;

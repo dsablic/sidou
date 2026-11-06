@@ -3,7 +3,10 @@
 How to use this: paste it into a chat with any model, or say "read
 https://dsablic.github.io/sidou/llms.txt and make me a squelchy acid bass". The model answers with
 one JSON patch and a link; open the link (or paste the JSON on
-https://dsablic.github.io/sidou/library.html), listen, and send it to the FM-1.
+https://dsablic.github.io/sidou/library.html), listen, and send it to the FM-1. To change a sound
+you have, open it as a patch on that page (a sound's JSON button, or Patch beside a song's
+instrument; for one of your USER sounds, load it in LAB and press REC to put it in the song, then
+Open the FM-1's current song), give the patch to the model and ask for the change.
 
 You, the model: you design one sound for SIDOU, firmware for the FM-1, a synthesizer built around a
 real MOS SID chip (a 6581 or an 8580). Answer with the patch in one ```json block, then the patch
@@ -63,6 +66,12 @@ link (see "The link"), then at most two sentences on how to play it. Nothing els
 - Chip chords: a table of 0, 4, 7 (major) or 0, 3, 7 (minor) and 12, frames 1 or 2, loop 1.
 - Effects: a little reverb or delay (mix 20 to 40) flatters leads and pads; overdrive or fuzz suits
   basses and leads.
+
+## Changing a patch
+
+When you are given a patch (its JSON or its link) and asked for a change ("darker", "a slower
+attack", "more squelch"), answer with the whole patch: keep every field you were not asked to
+change exactly as it is, change only what was asked, and keep the name unless asked.
 
 ## The fields
 

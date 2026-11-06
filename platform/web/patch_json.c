@@ -1293,7 +1293,14 @@ uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name
     memcpy(ref, DEFAULTS, LAB_SOUND_BYTES);
     ref[LAB_SOUND_LAYERS] = sound[LAB_SOUND_LAYERS];
     fill(ref, none, sound, list_count(&LFOS, sound));
-    writer w = {{out, 0, max}, sound, ref, name ? name : PATCH_JSON_NAME};
+    char shown_name[LAB_SOUND_NAME + 1u];
+    uint32_t n = 0;
+    for (; name && name[n] && n < LAB_SOUND_NAME; n++) {
+        char c = name[n];
+        shown_name[n] = c >= 'a' && c <= 'z' ? (char)(c - 32) : c < NAME_FIRST || c > NAME_LAST ? ' ' : c;
+    }
+    shown_name[n] = 0;
+    writer w = {{out, 0, max}, sound, ref, n ? shown_name : PATCH_JSON_NAME};
     write_object(&w, ROOT, 0, LAB_SOUND_LAYER_TUNING, SHOW_MARKED, 2);
     add_char(&w.t, '\n');
     return w.t.n + 1u < max ? w.t.n : 0u;
@@ -1363,4 +1370,14 @@ int patch_json_song(gt2_song* s, const uint8_t sound[LAB_SOUND_BYTES], const cha
     }
     gt2_saved_recount(s);
     return lab_song_keep(s, 1u, &in, sound);
+}
+
+uint32_t patch_json_song_sound(const gt2_song* s, uint32_t instr, char* out, uint32_t max) {
+    uint8_t rows[GT2_TABLES], sound[LAB_SOUND_BYTES];
+    char name[LAB_SOUND_NAME + 1u];
+    if (instr < 1u || instr > GT2_MAX_INSTR || !lab_song_kept(s, instr, rows, sound)) {
+        return 0;
+    }
+    lab_song_name(s, instr, name);
+    return patch_json_write(sound, name, out, max);
 }

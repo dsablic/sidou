@@ -322,8 +322,8 @@ tools/wasm-patch                # build/wasm-patch/sidou-patch.wasm
 tools/wasm-patch OUT.wasm       # elsewhere (tools/web-demo builds it into build/web)
 ```
 
-The toolchain is the wasm core's. The module is about 46 KB; its budget is 64 KiB, which
-`web/patch.test.mjs` checks against `web/patch-fixtures.json` (TESTING.md).
+The toolchain is the wasm core's. The module is about 46 KB; its budget is 64 KiB (the owner's
+call, 2026-11-06), which `web/patch.test.mjs` checks against `web/patch-fixtures.json` (TESTING.md).
 
 ### The Live Link viewer's wasm (`tools/wasm-link`)
 

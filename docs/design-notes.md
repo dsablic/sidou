@@ -6520,7 +6520,8 @@ gain.
   generated docs, so the JavaScript holds no rule. It sits in `platform/web`, outside the firmware's
   build: the firmware images are byte for byte as before. Rust (`sidou-patch`'s `json.rs`) is a
   thin wrapper for the tests, the docs and `sidou-sysex patch`.
-- **Its own wasm** (`tools/wasm-patch`, about 46 KB): in the core it took 185,311 bytes against the
+- **Its own wasm** (`tools/wasm-patch`, about 46 KB; its budget 64 KiB, the owner's call
+  2026-11-06, `web/patch.test.mjs`): in the core it took 185,311 bytes against the
   core's 176 KiB budget (the rules' C alone is 10.6 KB: the audibility estimate 4.9 KB, the song
   encoder and its keep 4.8 KB). The patch module loads only when a patch is checked, so the core's
   pages load as before; it hands the song's bytes to the core for the preview.
@@ -6541,6 +6542,11 @@ gain.
   user's. A patch neither chip would hear is refused; one only the 8580 hears (two waves together
   on a 6581) is taken with a warning. The estimate is the rolls' and is strict (a saw at sustain 4
   under a 1.5 kHz low-pass is under its -38 dB): the instructions give numbers that pass.
+- **An existing sound as a patch:** the core reads a song's kept LAB sound (`sc_kept`, LAB's own
+  `lab_song_kept`, about 1.9 KB of the core) and the patch module writes it (`sp_write`): reading the
+  song in the patch module too would have cost it 11.7 KB more. Only a kept sound is exact, so an
+  instrument without one has no Patch button. USER sounds stay on the FM-1: SysEx refuses their
+  file's name, and LAB's REC into the song is the way to one.
 - **Errors a model can act on**: `path: what is wrong. Allowed: what is.`, the allowed text the
   same the docs show. Text before the patch's `{` and after it is skipped, so a whole answer pastes.
 - **The link** is the compact JSON, percent-encoded, after `#patch=`. Not base64: a model writes a

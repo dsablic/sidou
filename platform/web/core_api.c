@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "fx/fx_slots.h"
+#include "lab_song.h"
 #include "player/gt2_shape.h"
 #include "player/song_ctl.h"
 #include "sid/sid.h"
@@ -469,6 +470,18 @@ EXPORT(sc_render_out) uint32_t sc_render_out(uint32_t blocks) {
 }
 EXPORT(sc_pcm_out) int16_t* sc_pcm_out(void) {
     return pcm_out;
+}
+
+EXPORT(sc_kept) int32_t sc_kept(uint32_t instr) {
+    uint8_t rows[GT2_TABLES];
+    char name[LAB_SOUND_NAME + 1u];
+    if (!song || instr < 1u || instr > GT2_MAX_INSTR || !lab_song_kept(song, instr, rows, out_buf)) {
+        return 0;
+    }
+    lab_song_name(song, instr, name);
+    memset(out_buf + LAB_SOUND_BYTES, 0, LAB_SOUND_NAME);
+    memcpy(out_buf + LAB_SOUND_BYTES, name, LAB_SOUND_NAME);
+    return 1;
 }
 
 EXPORT(sc_calls) uint32_t sc_calls(void) {

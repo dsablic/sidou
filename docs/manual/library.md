@@ -107,7 +107,11 @@ warning.
 A patch link carries the patch after its `#`, which the browser never sends to a server. Opening
 one fills the box, checks and previews the patch, and sends nothing until you press Send to FM-1.
 Each of SIDOU's sixteen sounds above has a **JSON** button that opens it here as a patch, to see
-the format or to change it. `sidou-sysex patch FILE.json --out DIR` makes the same song (and its
+the format or to change it, and an instrument of an open song that holds a LAB sound (one LAB's
+REC sent, or one of the sixteen) has **Patch** beside it. Give the patch to the model with the
+change you want ("darker"): the instructions tell it to keep everything else. The FM-1 does not
+share its USER sounds over SysEx; to change one, load it in LAB on the FM-1, press **REC** (it goes
+into the song), and here press **Open the FM-1's current song**, then Patch. `sidou-sysex patch FILE.json --out DIR` makes the same song (and its
 `.syx`) on a computer.
 
 ## 6. Export a song

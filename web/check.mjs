@@ -458,6 +458,13 @@ try {
   const sentPatch = await lib.evaluate(() => { const p = window.__midi.puts.at(-1); const s = window.__library.patch.sng; return { name: p.name, type: p.type, same: p.data.length === s.length && p.data.every((b, i) => b === s[i]) }; });
   if (sentPatch.name !== "ACID TEST" || sentPatch.type !== 1 || !sentPatch.same) fail(`the patch went to the FM-1 wrong: ${JSON.stringify(sentPatch)}`);
   console.log("library page: refused a bad patch, previewed and sent ACID TEST");
+  const bankSong = new Uint8Array(await (await fetch(new URL("sounds/sidou-sounds.sng", url))).arrayBuffer());
+  await lib.setInputFiles("#file", { name: "sidou-sounds.sng", mimeType: "application/octet-stream", buffer: Buffer.from(bankSong) });
+  await lib.waitForFunction(() => document.getElementById("s-name").textContent === "SIDOU SOUNDS" && document.querySelectorAll("#instruments button").length > 16, null, { timeout: 10_000 })
+    .catch(() => fail("the Library page did not open the sounds' song with its Patch buttons"));
+  await lib.locator("#instruments tr").nth(1).locator("button", { hasText: "Patch" }).click();
+  await lib.waitForFunction(() => /"name": "303 BASS"/.test(document.getElementById("patch-text").value) && /303 BASS is a sound/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`a song's Patch button did not open its LAB sound: ${await patchState()}`));
   await lib.locator("#sound-list li", { hasText: "RING BELL" }).locator("button").click();
   await lib.waitForFunction(() => /RING BELL is a sound/.test(document.getElementById("patch-state").textContent) && /"name": "RING BELL"/.test(document.getElementById("patch-text").value), null, { timeout: 10_000 })
     .catch(async () => fail(`a sound's JSON button did not open it as a patch: ${await patchState()}`));

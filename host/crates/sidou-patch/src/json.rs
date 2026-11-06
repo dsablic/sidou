@@ -102,3 +102,11 @@ pub fn song(sound: &Sound, name: &str, model: u32) -> Option<Vec<u8>> {
     let r = unsafe { patch_json_song(song.ptr_mut(), sound.as_ptr(), c.as_ptr(), model) };
     (r == 0).then(|| song.write(true))
 }
+
+pub fn song_patch(song: &Song, instr: u32) -> Option<String> {
+    let mut out = vec![0u8; OUT_MAX];
+    let n = unsafe {
+        patch_json_song_sound(song.ptr(), instr, out.as_mut_ptr().cast(), OUT_MAX as u32)
+    } as usize;
+    (n > 0).then(|| String::from_utf8_lossy(&out[..n]).into_owned())
+}

@@ -131,6 +131,8 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     that opens in the site's editor.
   - **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx
     can reach it.
+  - **Read USER sounds over SysEx:** the Library page lists the sixteen USER sounds and opens one
+    as a patch (today SysEx refuses `USER SOUNDS`; LAB's REC into the song is the way round).
 - **2.0.**
   - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
     default, falling back to one core; the RAMTEXT room is there since 1.7.

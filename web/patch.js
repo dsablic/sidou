@@ -22,6 +22,16 @@ export class Patcher {
     this.x = x;
   }
 
+  write(sound, name) {
+    const x = this.x;
+    const at = new Uint8Array(x.memory.buffer, x.sp_in(), sound.length + 12);
+    at.fill(0);
+    at.set(sound);
+    at.set(new TextEncoder().encode(name).subarray(0, 12), sound.length);
+    const n = x.sp_write();
+    return new TextDecoder().decode(new Uint8Array(x.memory.buffer, x.sp_out(), n));
+  }
+
   check(text) {
     const x = this.x;
     const bytes = new TextEncoder().encode(text);

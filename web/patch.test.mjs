@@ -51,6 +51,18 @@ await test("the sixteen sounds' patch files are the sixteen, each a one-instrume
   }
 });
 
+await test("a song's LAB sounds are written as the host writes them, and a plain instrument has none", async () => {
+  const core = await loadCore(readFileSync(corePath));
+  core.read(readFileSync(`${root}assets/sounds/sidou-sounds.sng`));
+  for (const [i, s] of bank.sounds.entries()) {
+    const kept = core.kept(i + 1);
+    assert.equal(patcher.write(kept.sound, kept.name), readFileSync(`${root}assets/sounds/${s.patch}`, "utf8"), s.name);
+  }
+  assert.equal(core.kept(17), null);
+  core.read(readFileSync(`${root}assets/songs/chrome-comet.sng`));
+  assert.equal(core.kept(1), null);
+});
+
 await test("a link carries each of the sixteen and comes back as the same patch", () => {
   for (const s of bank.sounds) {
     const text = readFileSync(`${root}assets/sounds/${s.patch}`, "utf8");

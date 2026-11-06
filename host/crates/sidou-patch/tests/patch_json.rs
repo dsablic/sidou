@@ -381,3 +381,45 @@ fn a_patch_goes_to_the_fm1_as_a_one_instrument_song_that_pulls_back_exactly() {
         assert_eq!((notes, got), (LAB_SONG_EXACT, s.bytes), "{}", s.name);
     }
 }
+
+#[test]
+fn a_songs_lab_sound_is_written_as_its_patch_and_a_plain_instrument_has_none() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+    let mut bank = Song::device();
+    bank.read(
+        &std::fs::read(root.join("sounds/sidou-sounds.sng")).unwrap(),
+        0,
+    )
+    .unwrap();
+    for (i, s) in sidou_sounds().iter().enumerate() {
+        assert_eq!(
+            json::song_patch(&bank, i as u32 + 1),
+            Some(json::write(&s.bytes, s.name)),
+            "{}",
+            s.name
+        );
+    }
+    assert_eq!(json::song_patch(&bank, 17), None);
+    let mut plain = Song::device();
+    plain
+        .read(
+            &std::fs::read(root.join("songs/chrome-comet.sng")).unwrap(),
+            0,
+        )
+        .unwrap();
+    assert_eq!(json::song_patch(&plain, 1), None);
+}
+
+#[test]
+fn a_songs_sound_named_in_lower_case_or_signs_reads_back() {
+    let s = sidou_sounds().remove(1);
+    let sng = json::song(&s.bytes, "acid~bass", SID_MODEL_6581).unwrap();
+    let mut song = Song::device();
+    song.read(&sng, 0).unwrap();
+    let text = json::song_patch(&song, 1).unwrap();
+    assert_eq!(
+        json::read(&text),
+        Ok((s.bytes, "ACID BASS".to_string())),
+        "{text}"
+    );
+}

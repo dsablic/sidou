@@ -30,6 +30,7 @@ int patch_json_read(patch_json* p, const char* text, uint32_t len);
 uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name, char* out,
                           uint32_t max);
 uint32_t patch_json_fields(char* out, uint32_t max);
+uint32_t patch_json_song_sound(const gt2_song* s, uint32_t instr, char* out, uint32_t max);
 int patch_json_song(gt2_song* s, const uint8_t sound[LAB_SOUND_BYTES], const char* name,
                     uint32_t model);
 

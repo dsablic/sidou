@@ -63,3 +63,11 @@ EXPORT(sp_song_bytes) uint32_t sp_song_bytes(void) {
 EXPORT(sp_sound) const uint8_t* sp_sound(void) {
     return patch.sound;
 }
+
+EXPORT(sp_write) uint32_t sp_write(void) {
+    char name[LAB_SOUND_NAME + 1u];
+    memcpy(name, in_buf + LAB_SOUND_BYTES, LAB_SOUND_NAME);
+    name[LAB_SOUND_NAME] = 0;
+    out_len = patch_json_write((const uint8_t*)in_buf, name, (char*)out_buf, OUT_MAX);
+    return out_len;
+}

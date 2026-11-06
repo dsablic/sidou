@@ -15,8 +15,10 @@ All notable changes are documented here. The format follows
   Schema beside it): named fields in musical units, everything a LAB sound holds, any field left
   out. The Library page reads a pasted patch or a `#patch=` link, checks it with the FM-1's rules
   (the ranges, `lab_sound_valid`, the audibility estimate), says what is wrong in one line a model
-  can fix from, previews it and sends it as a one-instrument song; the sixteen sounds open as
-  patches. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
+  can fix from, previews it and sends it as a one-instrument song. An existing sound opens as a patch to
+  change: each of the sixteen, and any LAB sound in an open song (Patch beside its instrument; a
+  USER sound gets there by LAB's REC); the instructions tell a model to change only what it is
+  asked. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
   the host tests; `sidou-sysex patch FILE.json` writes the song and its `.syx`. The firmware is
   unchanged.
 - **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a

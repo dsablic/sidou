@@ -1853,7 +1853,7 @@ rename (GET, PUT, DEL), a backup `.zip` with its manifest and an Open of a store
 box: the served `llms.txt` and `patch.schema.json` are the repository's (`web/check.sh` copies
 them next to `check.mjs`), Copy instructions copies `llms.txt`, a bad patch is refused in its one
 line and cannot be sent, a good one previews in the AudioWorklet with nothing sent and Send to
-FM-1 PUTs its song byte for byte, a sound's JSON button opens it as a patch, a `#patch=` link
+FM-1 PUTs its song byte for byte, a song's Patch button opens its LAB sound, a sound's JSON button opens it as a patch, a `#patch=` link
 opens and checks its patch with no MIDI used, and a damaged link says so. It fails on any of
 those, on a frame to the other port, or on a sideways scroll at phone width.
 
@@ -1883,7 +1883,8 @@ the committed file is not what the host build makes), `node web/patch.test.mjs` 
 `sidou-patch.wasm` against `web/patch-fixtures.json`, which `sidou-patch`'s `patch_docs` test
 writes: the sixteen sounds, refusals, a warning and three patches written from the instructions
 alone, each the same song or the same words as the host build; each of the sixteen's patch files a
-one-instrument song the core plays and hears, and its link back to the same patch; a damaged or
+one-instrument song the core plays and hears, and its link back to the same patch; each sound
+of the sixteen's song, read by the core, written as its patch file; a damaged or
 oversized link in plain words) and `node web/editor.test.mjs` (the editor's
 edits, previews and saving, against the same fixtures and `web/fake-fm1.mjs`). It also runs `node web/sysex.test.mjs`, which needs no browser: the
 page's SysEx encoder and decoder (`web/sysex.js`) against `web/sysex-vectors.txt` (the frames
