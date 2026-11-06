@@ -192,3 +192,18 @@ fn a_gap_carries_the_sources_it_lost() {
     unsafe { midi_ring_lose(&mut *r, 0, 1) };
     assert_eq!((epoch(&r), r.in_gap), (3, 0xFF));
 }
+
+#[test]
+fn a_break_starts_a_new_epoch_for_its_source_and_loses_nothing() {
+    const BLE: u8 = MIDI_SRC_BLE as u8;
+    let mut r = ring();
+    assert!(push(&mut r, BLE, 1, 0));
+    let before = epoch(&r);
+    unsafe { midi_ring_break(&mut *r, BLE) };
+    assert!(push(&mut r, USB, 2, 0));
+    assert_eq!(lost(&r), 0, "a break is no loss");
+    assert_eq!(pop_epoch(&mut r), Some(before));
+    let mut e = midi_ring_entry::default();
+    assert_eq!(unsafe { midi_ring_pop(&mut *r, &mut e) }, 1);
+    assert_eq!((e.epoch, e.gap), (before.wrapping_add(1), BLE));
+}

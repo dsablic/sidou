@@ -49,6 +49,10 @@ void midi_ring_lose(midi_ring* r, uint8_t source, uint32_t n) {
     }
 }
 
+void midi_ring_break(midi_ring* r, uint8_t source) {
+    lose(r, source, 0u);
+}
+
 int midi_ring_pop(midi_ring* r, midi_ring_entry* out) {
     uint32_t t = r->tail;
     if (t == r->head) {

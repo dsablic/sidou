@@ -31,6 +31,7 @@ static volatile uint32_t ble_radio_in_w, ble_radio_in_r;
 static volatile uint8_t ble_radio_role;
 static uint8_t ble_radio_state;
 static uint8_t ble_radio_addr[6];
+static uint8_t ble_radio_was_linked;
 volatile uint8_t ble_radio_wanted;
 
 static const struct ble_rf_trims BLE_RADIO_TRIMS = {{0x0B, 0x0B}, {1, 7, 4, 7, 11, 1, 7}, {0}, {0}};
@@ -190,7 +191,16 @@ void ble_radio_scan(int on) {
 }
 #endif
 
+static void ble_radio_link_watch(void) {
+    uint8_t linked = ble_radio_role != BLE_ROLE_NONE;
+    if (ble_radio_was_linked && !linked) {
+        midi_ble_dropped();
+    }
+    ble_radio_was_linked = linked;
+}
+
 void ble_radio_poll(uint32_t now_ms) {
+    ble_radio_link_watch();
     if (ble_radio_state == BLE_RADIO_OFF) {
         if (ble_radio_wanted) {
             ble_radio_start();

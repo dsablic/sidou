@@ -363,6 +363,18 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   whose felucca-bsp pin is SIDOU's) and the radio headers sit in `platform/fm1/bsp/chip` beside the
   `fm1_irq.h` they include, so nothing is fetched or copied at build time. `fm1_ble_rf.h` includes
   `ble_rf_tables.h`; SIDOU's `platform/fm1/ble_rf_tables.h` includes the v15 table.
+- **Bluetooth is a MIDI port of its own** (`MIDI_SRC_BLE`, 4): its packets go into `midi.c`'s
+  input ring like USB's, but through their own parser and map (`midi_rx.ble`, `ble_map`), so a
+  SysEx or NRPN cut on one port never mixes with another's. A link that drops leaves a break in
+  the ring for its source (`midi_ring_break`: a new epoch, nothing counted lost), so the receiver
+  releases every held note and restarts only the Bluetooth parser; SIDOU's SysEx protocol stays on
+  USB and TRS, and a Bluetooth break aborts neither. The port costs the default image 160 bytes
+  and the RAM region 128.
+- **The emulator gate** (`emu-gate/tests/ble.rs`, with `SIDOU_FM1_BLE_BUILD`): notes written into
+  `ble_radio_in` by symbol play, and a link set down (`ble_radio_role`) releases them; the stack's
+  state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,340 bytes free);
+  the image fits the ceiling (it does not yet: 585,488 bytes both ways, 5,972 over). With the radio
+  off the audio interrupt is the default build's to the instruction (396.67 a sample, a chord held).
 - The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
   both ways.
 - RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section

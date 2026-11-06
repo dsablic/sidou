@@ -22,8 +22,10 @@ typedef struct {
     uint8_t looked;
     midi_in trs;
     midi_in usb;
+    midi_in ble;
     midi_map_port trs_map;
     midi_map_port usb_map;
+    midi_map_port ble_map;
     uint32_t restarts;
     midi_out* out;
     midi_learn* learn;

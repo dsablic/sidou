@@ -108,6 +108,11 @@ static void on_usb(void* ctx, const midi_msg* msg) {
     take(rx, &rx->usb_map, msg);
 }
 
+static void on_ble(void* ctx, const midi_msg* msg) {
+    midi_rx* rx = ctx;
+    take(rx, &rx->ble_map, msg);
+}
+
 static void port_init(midi_rx* rx, midi_in* in, midi_map_port* map, midi_msg_fn on_msg) {
     midi_sysex_fn on_sysex = in->on_sysex;
     midi_map_port_init(map, rx->l);
@@ -119,12 +124,15 @@ static void port_init(midi_rx* rx, midi_in* in, midi_map_port* map, midi_msg_fn 
 static void restart(midi_rx* rx, uint8_t epoch, uint8_t sources) {
     rx->epoch = epoch;
     rx->restarts++;
-    sources = sources & (MIDI_SRC_USB | MIDI_SRC_TRS) ? sources : MIDI_SRC_USB | MIDI_SRC_TRS;
+    sources = sources & MIDI_SRC_ALL ? sources : MIDI_SRC_ALL;
     if (sources & MIDI_SRC_TRS) {
         port_init(rx, &rx->trs, &rx->trs_map, on_trs);
     }
     if (sources & MIDI_SRC_USB) {
         port_init(rx, &rx->usb, &rx->usb_map, on_usb);
+    }
+    if (sources & MIDI_SRC_BLE) {
+        port_init(rx, &rx->ble, &rx->ble_map, on_ble);
     }
     live_all_notes_off(rx->l);
     live_reset_controllers(rx->l);
@@ -147,8 +155,10 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->entry = NULL;
     rx->trs.on_sysex = NULL;
     rx->usb.on_sysex = NULL;
+    rx->ble.on_sysex = NULL;
     port_init(rx, &rx->trs, &rx->trs_map, on_trs);
     port_init(rx, &rx->usb, &rx->usb_map, on_usb);
+    port_init(rx, &rx->ble, &rx->ble_map, on_ble);
 }
 
 void midi_rx_sync(midi_rx* rx, struct midi_sync* sync) {
@@ -160,16 +170,29 @@ void midi_rx_route(midi_rx* rx, struct midi_route* route) {
     rx->fast = route ? route->fast : UNROUTED;
     rx->trs_map.banks = route ? route->bank : NULL;
     rx->usb_map.banks = rx->trs_map.banks;
+    rx->ble_map.banks = rx->trs_map.banks;
 }
 
 void midi_rx_learn(midi_rx* rx, midi_learn* learn) {
     rx->learn = learn;
     rx->trs_map.learn = learn;
     rx->usb_map.learn = learn;
+    rx->ble_map.learn = learn;
 }
 
 void midi_rx_watch(midi_rx* rx, midi_out* out) {
     rx->out = out;
+}
+
+static void packet_in(midi_in* in, uint32_t p) {
+    uint32_t cin = p & 0x0fu;
+    if (cin >= 0x8u && cin <= 0xeu && (p >> 12 & 0x0fu) == cin && !(p & 0x80800000u)) {
+        midi_in_channel(in, (uint8_t)(p >> 8), (uint8_t)(p >> 16), (uint8_t)(p >> 24));
+        return;
+    }
+    uint8_t b[3];
+    uint32_t n = midi_usb_bytes(p, b);
+    midi_in_feed(in, b, n);
 }
 
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
@@ -180,16 +203,9 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     if (e->source == MIDI_SRC_TRS) {
         midi_in_byte(&rx->trs, (uint8_t)e->data);
     } else if (e->source == MIDI_SRC_USB) {
-        uint32_t p = e->data;
-        uint32_t cin = p & 0x0fu;
-        if (cin >= 0x8u && cin <= 0xeu && (p >> 12 & 0x0fu) == cin && !(p & 0x80800000u)) {
-            midi_in_channel(&rx->usb, (uint8_t)(p >> 8), (uint8_t)(p >> 16),
-                            (uint8_t)(p >> 24));
-            return;
-        }
-        uint8_t b[3];
-        uint32_t n = midi_usb_bytes(p, b);
-        midi_in_feed(&rx->usb, b, n);
+        packet_in(&rx->usb, e->data);
+    } else if (e->source == MIDI_SRC_BLE) {
+        packet_in(&rx->ble, e->data);
     }
 }
 

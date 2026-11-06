@@ -371,7 +371,7 @@ uint32_t midi_inputs(void) {
 }
 
 static void sysex_gap(uint8_t sources) {
-    sources = sources & (MIDI_SRC_USB | MIDI_SRC_TRS) ? sources : MIDI_SRC_USB | MIDI_SRC_TRS;
+    sources = sources & MIDI_SRC_ALL ? sources : MIDI_SRC_ALL;
     if (sources & MIDI_SRC_USB) {
         sysex_lost(&sidou_sysex, SYSEX_USB);
     }
@@ -424,9 +424,15 @@ static void ble_in_pump(void) {
     uint32_t pkt;
     while (in_room() > EP1_ROOM && ble_radio_take(&pkt)) {
         uint32_t f = irq_save();
-        (void)midi_ring_push(&in_ring, MIDI_SRC_USB, pkt, fm1_ticks());
+        (void)midi_ring_push(&in_ring, MIDI_SRC_BLE, pkt, fm1_ticks());
         irq_restore(f);
     }
+}
+
+void midi_ble_dropped(void) {
+    uint32_t f = irq_save();
+    midi_ring_break(&in_ring, MIDI_SRC_BLE);
+    irq_restore(f);
 }
 #endif
 
