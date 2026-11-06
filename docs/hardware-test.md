@@ -2832,8 +2832,11 @@ the last item, which does not exist yet.
   click, and step 5 stands out, brighter, its neighbours unchanged. The site's 303 BASS (SIDOU
   SOUNDS) on a lane with slides and accents sounds like an acid line. SAVE AS, power off and on,
   LOAD: both are still there:
-  *Emulator:* `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
+  *Emulator:* `emu-gate/tests/first_use.rs::a_held_step_with_fx_slides_into_the_next_note_and_with_env_accents_it_as_heard`
+  (the gestures on the panel, the gate and the sustain on the chip),
+  `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
   `sidou-tests/tests/song_locks.rs::an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row`,
+  `sidou-tests/tests/song_locks.rs::a_step_that_slides_and_is_accented_keeps_the_accents_full_sustain`,
   the ergo journey `whats-new`.
   *Device-only:* the glide and the accent on the chip (ear).
 - [ ] **The site's sixteen sounds:** the Library page sends SIDOU SOUNDS; INSTR, each instrument,

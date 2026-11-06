@@ -21,6 +21,9 @@ All notable changes are documented here. The format follows
   went. SCENE hears the lane as the bass; an older SIDOU rolls it as a melodic lane.
 
 ### Fixed
+- **A step that slides and is accented keeps the accent's sustain.** In 1.7 the slide's held SR
+  came after the accent, so such a step played at the song's sustain; the accent's cutoff and
+  resonance were right.
 - **The site's 1.7 deploy.** The site's song core, built by CI's clang, came to 164,811 bytes, over
   its 160 KiB budget (Apple's clang made 161,337); the budget is 176 KiB, the owner's call, and
   the merge check now builds the core in the image as CI does.
