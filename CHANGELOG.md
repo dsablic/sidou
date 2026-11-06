@@ -48,6 +48,9 @@ All notable changes are documented here. The format follows
   of flash, the owner's call, for Bluetooth): a DAW records at 44.1 kHz, the rate SIDOU plays at.
 
 ### Fixed
+- **STEP's held step shows its chance and nothing after it.** With a chance lock on a held step,
+  the `95%` beside HELD STEP could be followed by stray characters (whatever the memory held);
+  the text now ends at the percent sign.
 - **A step that slides and is accented keeps the accent's sustain.** In 1.7 the slide's held SR
   came after the accent, so such a step played at the song's sustain; the accent's cutoff and
   resonance were right.

@@ -1074,6 +1074,25 @@ fn pattern_ok(p: &[[u8; 4]]) {
     }
 }
 
+#[inline(never)]
+fn scribble_stack(byte: u8) {
+    let junk = [byte; 1 << 17];
+    std::hint::black_box(&junk);
+}
+
+#[test]
+fn a_held_steps_chance_ends_at_its_percent_whatever_the_stack_held() {
+    let mut s = step();
+    hold(&mut s, 3);
+    settle(&mut s.ui);
+    let after = s.ui.small(17, 25, 3);
+    scribble_stack(b'Z');
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.small(17, 22, 3), "95%");
+    assert_eq!(s.ui.small(17, 25, 3), after, "nothing after the percent");
+}
+
 #[test]
 fn algorithm_with_a_step_held_is_its_chance_a_lock_that_is_gone_at_one_hundred() {
     let mut s = step();

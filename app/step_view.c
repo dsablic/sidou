@@ -471,7 +471,7 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
             screen_note_text(cell[0] - GT2_FIRSTNOTE, nn);
             grid_canvas_text(c, 17, 17u, nn, THEME_ATTR(th, value));
         }
-        char pc[6];
+        char pc[6] = {0};
         uint32_t chance = 100u;
         if (song_lock_get(s, ln->pattern, at, SONG_LOCK_CHANCE, &chance)) {
             pc[screen_decimal(pc, chance)] = '%';
