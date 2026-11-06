@@ -1,0 +1,15 @@
+{
+  "format": "sidou-step/1",
+  "name": "STEP",
+  "voice": 2,
+  "role": "auto",
+  "gate": "legato",
+  "pages": 1,
+  "instrument": "pulse",
+  "steps": [
+    {"step": 1, "note": "E4"},
+    {"step": 5, "note": "G4"},
+    {"step": 9, "note": "A4"},
+    {"step": 13, "note": "B4"}
+  ]
+}

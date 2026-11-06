@@ -35,7 +35,7 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 # SIDOU's sounds: original LAB sounds, the song, its listing and each sound's patch written from
 # host/crates/sidou-patch/src/sounds.rs.
 [[annotations]]
-path = ["assets/sounds/*.sng", "assets/sounds/*.json", "assets/sounds/patches/*.json"]
+path = ["assets/sounds/*.sng", "assets/sounds/*.json", "assets/sounds/patches/*.json", "assets/steps/*.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 

@@ -173,3 +173,28 @@ pub fn bank_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
         _ => Err("the bank's song could not be made".to_string()),
     }
 }
+
+pub fn kind(json: &str) -> u32 {
+    unsafe { patch_json_kind(json.as_ptr().cast(), json.len() as u32) as u32 }
+}
+
+pub fn step_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
+    let mut st = Box::<patch_step>::default();
+    let r = unsafe { patch_json_read_step(&mut *st, json.as_ptr().cast(), json.len() as u32) };
+    if r < 0 {
+        return Err(c_text(&st.error));
+    }
+    let mut song = Song::device();
+    match unsafe { patch_json_step_song(song.ptr_mut(), &mut *st, model) } {
+        0 => Ok(song.write(true)),
+        _ => Err("the pattern's song could not be made".to_string()),
+    }
+}
+
+pub fn write_step(song: &Song, voice: u32) -> Option<String> {
+    let mut out = vec![0u8; 4 * OUT_MAX];
+    let n = unsafe {
+        patch_json_write_step(song.ptr(), voice, out.as_mut_ptr().cast(), out.len() as u32)
+    } as usize;
+    (n > 0).then(|| String::from_utf8_lossy(&out[..n]).into_owned())
+}

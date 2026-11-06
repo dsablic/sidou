@@ -7,6 +7,10 @@
 #include "lab_edit.h"
 #include "lab_song.h"
 #include "live.h"
+#include "player/song_ctl.h"
+#include "song/gt2_sng.h"
+#include "song/song_ext.h"
+#include "song_io.h"
 #include "sid/sid_filter.h"
 
 enum {
@@ -23,7 +27,8 @@ enum {
     K_FORMAT,
     K_GROUP,
     K_ALSO,
-    K_LIST
+    K_LIST,
+    K_PITCH
 };
 
 enum { F_TUNING = 1, F_WIDE = 2, F_ALWAYS = 4, F_PLUS1 = 8 };
@@ -453,6 +458,7 @@ static void allowed(text* t, const field* f) {
         return;
     case K_NAME: add(t, "up to 12 characters: A to Z, 0 to 9, space and !\"#$%&'()*+,-./:;<=>?@[\\]^_"); return;
     case K_FORMAT: add(t, "\"" PATCH_JSON_FORMAT "\""); return;
+    case K_PITCH: add(t, "a note \"C0\" to \"G#7\" (\"C3\" is the middle of STEP's range)"); return;
     case K_LIST:
         add(t, "a list of up to ");
         add_milli(t, (int64_t)((const list*)f->more)->max * MILLI);
@@ -719,6 +725,17 @@ static int set_bits(const char* names, const char* text_in) {
     return bits ? bits : -1;
 }
 
+static int pitch_of(const char* s) {
+    char name[3] = {s[0], s[1] == '#' ? '#' : 0, 0};
+    int i = names_index(NOTE_NAMES, name);
+    const char* o = s + 1 + (s[1] == '#' || s[1] == '-');
+    if (i < 0 || o[0] < '0' || o[0] > '9' || o[1]) {
+        return -1;
+    }
+    int n = (o[0] - '0') * 12 + i;
+    return n <= (int)GT2_NOTE_MAX ? n : -1;
+}
+
 static int note_of(const char* s) {
     if (!strcmp(s, "hold")) {
         return NOTE_HOLD;
@@ -742,7 +759,7 @@ static int value(reader* r, const field* f, uint32_t a, uint32_t b) {
     int64_t milli = 0;
     int whole = 1;
     if (c == '"' && (f->kind == K_ENUM || f->kind == K_SET || f->kind == K_NOTE || f->kind == K_NAME ||
-                     f->kind == K_FORMAT)) {
+                     f->kind == K_FORMAT || f->kind == K_PITCH)) {
         if (string(r, str, sizeof str) < 0) {
             return -1;
         }
@@ -824,6 +841,17 @@ static int value(reader* r, const field* f, uint32_t a, uint32_t b) {
             r->p->name[k] = ch;
         }
         r->p->name[n] = 0;
+        return 0;
+    }
+    case K_PITCH: {
+        if (need(r, f, c, c == '"', "must be text")) {
+            return -1;
+        }
+        int n = pitch_of(str);
+        if (n < 0) {
+            return not_allowed(r, f, str);
+        }
+        put(s, r->touched, f, a, b, (uint32_t)n);
         return 0;
     }
     case K_FORMAT:
@@ -1563,10 +1591,453 @@ uint32_t patch_json_write_bank(const patch_bank* b, char* out, uint32_t max) {
     return t.n + 1u < max ? t.n : 0u;
 }
 
+static const char ROLES[] = "auto\0drums\0bass\0arp\0lead\0none\0bass+drums\0acid\0";
+static const char GATES[] = "staccato\0legato\0";
+static const char INSTRUMENTS[] = "pulse\0bass\0kit\0";
+static const char DRUMS[] = "none\0kick\0snare\0closed_hat\0open_hat\0clap\0low_tom\0high_tom\0rim\0"
+                            "digi_kick\0digi_snare\0digi_clap\0digi_hat\0";
+#define STEP_C3 36u
+#define STEP_DRUMS 12u
+
+enum { TOP_VOICE, TOP_PAGES, TOP_ROLE, TOP_GATE };
+static const field STEP_TOP[] = {
+    {"voice", K_INT, TOP_VOICE, 0xFF, F_PLUS1, 1, LIVE_VOICES, 0},
+    {"pages", K_INT, TOP_PAGES, 0xFF, 0, 1, PATCH_STEP_PAGES, 0},
+    {"role", K_ENUM, TOP_ROLE, 0xFF, 0, 0, 0, ROLES},
+    {"gate", K_ENUM, TOP_GATE, 0xFF, 0, 0, 0, GATES},
+    {0},
+};
+
+enum { CELL_STEP, CELL_NOTE, CELL_DRUM, CELL_SLIDE, CELL_ACCENT, CELL_CHANCE };
+static const field STEP_CELL[] = {
+    {"step", K_INT, CELL_STEP, 0xFF, F_PLUS1, 1, PATCH_STEP_MAX, 0},
+    {"note", K_PITCH, CELL_NOTE, 0xFF, 0, 0, 0, 0},
+    {"drum", K_ENUM, CELL_DRUM, 0xFF, 0, 0, 0, DRUMS},
+    {"slide", K_BOOL, CELL_SLIDE, 0x01, 0, 0, 0, 0},
+    {"accent", K_BOOL, CELL_ACCENT, 0x01, 0, 0, 0, 0},
+    {"chance", K_INT, CELL_CHANCE, 0xFF, 0, 0, 100, 0},
+    {0},
+};
+
+
+static int step_cells(reader* r, patch_step* st) {
+    if (eat(r, '[', "a [")) {
+        return -1;
+    }
+    while (peek(r) != ']') {
+        if (st->count == PATCH_STEP_MAX) {
+            return bank_fail(r, "has too many", "a list of up to 64 steps");
+        }
+        char prefix[16];
+        text t = {prefix, 0, sizeof prefix};
+        add(&t, "steps[");
+        add_milli(&t, (int64_t)st->count * MILLI);
+        add(&t, "]");
+        uint32_t keep = r->path_n;
+        r->path_n = 0;
+        push(r, prefix, -1);
+        uint8_t* c = st->scratch.sound;
+        memset(c, 0, 8);
+        memset(r->touched, 0, 8);
+        c[CELL_NOTE] = STEP_C3;
+        c[CELL_CHANCE] = 100;
+        if (peek(r) != '{') {
+            return fail(r, "must be an object { }", NULL);
+        }
+        if (object(r, STEP_CELL, 0, 0)) {
+            return -1;
+        }
+        if (!(r->touched[CELL_STEP])) {
+            return fail(r, "has no step. Allowed: \"step\": 1 to 64", NULL);
+        }
+        patch_step_cell* cell = &st->steps[st->count];
+        cell->row = c[CELL_STEP];
+        cell->note = c[CELL_NOTE];
+        cell->drum = c[CELL_DRUM];
+        cell->slide = c[CELL_SLIDE];
+        cell->accent = c[CELL_ACCENT];
+        cell->chance = c[CELL_CHANCE];
+        for (uint32_t k = 0; k < st->count; k++) {
+            if (st->steps[k].row == cell->row) {
+                return fail(r, "is a step already given: one entry a step", NULL);
+            }
+        }
+        st->count++;
+        r->path_n = keep;
+        r->path[keep] = 0;
+        if (peek(r) == ',') {
+            r->i++;
+        } else if (peek(r) != ']') {
+            return syntax(r, "a , or ]");
+        }
+    }
+    r->i++;
+    return 0;
+}
+
+static int step_instrument(reader* r, patch_step* st) {
+    char c = peek(r);
+    if (c == '{') {
+        uint32_t start = r->i;
+        if (skip_value(r)) {
+            return -1;
+        }
+        int got = read_part(&st->patch, r->s, start, r->i, "instrument", st->patch.error);
+        if (got < 0) {
+            memcpy(r->err.out, st->patch.error, PATCH_JSON_ERROR_MAX);
+            r->err.n = length(r->err.out);
+            return -1;
+        }
+        st->kind = PATCH_STEP_PATCH;
+        return 0;
+    }
+    char word_in[16];
+    if (c != '"') {
+        return bank_fail(r, "must be a patch { } or text", "a patch, or \"pulse\", \"bass\" or \"kit\"");
+    }
+    if (string(r, word_in, sizeof word_in) < 0) {
+        return -1;
+    }
+    int k = names_index(INSTRUMENTS, word_in);
+    if (k < 0) {
+        return bank_fail(r, "is not one", "a patch, or \"pulse\", \"bass\" or \"kit\"");
+    }
+    st->kind = (uint8_t)k;
+    return 0;
+}
+
+static int step_checked(reader* r, patch_step* st, int format) {
+    if (!format) {
+        return whole_fail(r, "format", "is missing. Allowed: \"" PATCH_STEP_FORMAT "\"");
+    }
+    for (uint32_t k = 0; k < st->count; k++) {
+        const patch_step_cell* c = &st->steps[k];
+        char prefix[16];
+        text t = {prefix, 0, sizeof prefix};
+        add(&t, "steps[");
+        add_milli(&t, (int64_t)k * MILLI);
+        add(&t, "]");
+        if (c->row >= st->pages * PATCH_STEP_ROWS) {
+            return whole_fail(r, prefix, st->pages < PATCH_STEP_PAGES
+                                             ? "is past the last page: add pages (16 steps each)"
+                                             : "is past step 64");
+        }
+        if ((st->kind == PATCH_STEP_KIT) != (c->drum != 0)) {
+            return whole_fail(r, prefix, st->kind == PATCH_STEP_KIT
+                                             ? "needs a drum: the instrument is the kit"
+                                             : "names a drum: a drum needs \"instrument\": \"kit\"");
+        }
+    }
+    return 0;
+}
+
+int patch_json_read_step(patch_step* st, const char* s, uint32_t len) {
+    reader r;
+    int format = 0;
+    reader_init(&r, &st->scratch, s, 0, len, st->error);
+    memset(st->steps, 0, sizeof st->steps);
+    st->count = 0;
+    st->kind = PATCH_STEP_PULSE;
+    memcpy(st->name, PATCH_STEP_NAME_DEFAULT, sizeof PATCH_STEP_NAME_DEFAULT);
+    uint8_t top[4] = {0, 1, SONG_ROLE_AUTO, 0};
+    while (r.i < r.n && s[r.i] != '{') {
+        r.i++;
+    }
+    if (eat(&r, '{', "a { to start the pattern")) {
+        return -1;
+    }
+    while (peek(&r) != '}') {
+        char key[32];
+        if (string(&r, key, sizeof key) < 0 || eat(&r, ':', "a :")) {
+            return -1;
+        }
+        r.path_n = 0;
+        push(&r, key, -1);
+        const field* f = find(STEP_TOP, key);
+        if (f) {
+            memcpy(st->scratch.sound, top, sizeof top);
+            if (value(&r, f, 0, 0)) {
+                return -1;
+            }
+            memcpy(top, st->scratch.sound, sizeof top);
+        } else if (!strcmp(key, "format")) {
+            char fm[24];
+            if (string(&r, fm, sizeof fm) < 0) {
+                return -1;
+            }
+            if (strcmp(fm, PATCH_STEP_FORMAT)) {
+                return bank_fail(&r, "is not this format", "\"" PATCH_STEP_FORMAT "\"");
+            }
+            format = 1;
+        } else if (!strcmp(key, "name")) {
+            char name[64];
+            int n = string(&r, name, sizeof name);
+            if (n < 0) {
+                return -1;
+            }
+            if (n < 1 || n > (int)PATCH_BANK_NAME || name[0] == ' ') {
+                return bank_fail(&r, n > (int)PATCH_BANK_NAME ? "is too long" : "is not a name", BANK_NAME);
+            }
+            for (int k = 0; k <= n; k++) {
+                char ch = name[k] >= 'a' && name[k] <= 'z' ? (char)(name[k] - 32) : name[k];
+                if (k < n && (ch < NAME_FIRST || ch > NAME_LAST)) {
+                    return bank_fail(&r, "has a character the FM-1 cannot show", BANK_NAME);
+                }
+                st->name[k] = ch;
+            }
+        } else if (!strcmp(key, "instrument")) {
+            if (step_instrument(&r, st)) {
+                return -1;
+            }
+        } else if (!strcmp(key, "steps")) {
+            if (step_cells(&r, st)) {
+                return -1;
+            }
+        } else {
+            return fail(&r, "no such field. Allowed here: format, name, voice, role, gate, pages, "
+                            "instrument, steps", NULL);
+        }
+        if (peek(&r) == ',') {
+            r.i++;
+        } else if (peek(&r) != '}') {
+            return syntax(&r, "a , or }");
+        }
+    }
+    st->voice = top[TOP_VOICE];
+    st->pages = top[TOP_PAGES];
+    st->role = top[TOP_ROLE];
+    st->gate = top[TOP_GATE];
+    return step_checked(&r, st, format);
+}
+
+int patch_json_kind(const char* s, uint32_t len) {
+    char error[PATCH_JSON_ERROR_MAX];
+    char format[24];
+    reader r;
+    reader_init(&r, NULL, s, 0, len, error);
+    if (top_format(&r, format, sizeof format)) {
+        return PATCH_JSON_PATCH_TEXT;
+    }
+    return !strcmp(format, PATCH_BANK_FORMAT)   ? PATCH_JSON_BANK_TEXT
+           : !strcmp(format, PATCH_STEP_FORMAT) ? PATCH_JSON_STEP_TEXT
+                                                : PATCH_JSON_PATCH_TEXT;
+}
+
+static uint32_t template_read(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
+    return song_io_template(ctx, off, p, n);
+}
+
+static int edited(gt2_song* s, gt2_err e, gt2_edit* ed) {
+    if (e != GT2_OK) {
+        return -1;
+    }
+    gt2_edit_commit(s, ed);
+    return 0;
+}
+
+static uint32_t lane_pattern(const gt2_song* s, uint32_t voice) {
+    const uint8_t* o = gt2_order_data(s, 0, voice);
+    uint32_t n = gt2_order_entries(s, 0, voice);
+    for (uint32_t k = 0; o && k < n; k++) {
+        if (o[k] < GT2_MAX_PATTERNS) {
+            return o[k];
+        }
+    }
+    return GT2_MAX_PATTERNS;
+}
+
+static int place_patch(gt2_song* s, const patch_json* p, uint32_t model, uint32_t* instr) {
+    lab_song_instr in;
+    uint8_t first[GT2_TABLES];
+    uint32_t i = lab_song_free(s);
+    if (!i) {
+        return -1;
+    }
+    for (uint32_t t = 0; t < GT2_TABLES; t++) {
+        first[t] = (uint8_t)(lab_song_table_end(s, t) + 1u);
+    }
+    lab_song_encode(p->sound, p->name, 0, model, first, &in);
+    for (uint32_t t = 0; t < GT2_TABLES; t++) {
+        if (first[t] - 1u + in.rows[t] > GT2_TABLE_ROWS) {
+            return -1;
+        }
+        memcpy(&s->ltable[t][first[t] - 1u], in.left[t], in.rows[t]);
+        memcpy(&s->rtable[t][first[t] - 1u], in.right[t], in.rows[t]);
+    }
+    memcpy(s->instr[i - 1u], in.instr, GT2_INSTR_BYTES);
+    gt2_saved_recount(s);
+    *instr = i;
+    return lab_song_keep(s, i, &in, p->sound);
+}
+
+int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
+    gt2_caps caps = {SONG_MULTISPEED_MAX};
+    gt2_read_info info;
+    gt2_edit e;
+    memset(&info, 0, sizeof info);
+    if (gt2_sng_read(s, template_read, NULL, &caps, &info)) {
+        return -1;
+    }
+    uint32_t p = lane_pattern(s, st->voice), rows = st->pages * PATCH_STEP_ROWS;
+    uint32_t instr = st->kind == PATCH_STEP_BASS ? 2u : 1u;
+    if (p >= GT2_MAX_PATTERNS) {
+        return -1;
+    }
+    memset(&e, 0, sizeof e);
+    if (gt2_pattern_rows(s, p) - 1u != rows && edited(s, gt2_pattern_resize(s, p, rows, &e), &e)) {
+        return -1;
+    }
+    if (st->kind == PATCH_STEP_PATCH && place_patch(s, &st->patch, model, &instr)) {
+        return -1;
+    }
+    uint8_t cells[PATCH_STEP_MAX][4];
+    for (uint32_t r = 0; r < rows; r++) {
+        cells[r][0] = GT2_REST;
+        cells[r][1] = cells[r][2] = cells[r][3] = 0;
+    }
+    for (uint32_t k = 0; k < st->count; k++) {
+        const patch_step_cell* c = &st->steps[k];
+        cells[c->row][0] = (uint8_t)(GT2_FIRSTNOTE + c->note);
+        cells[c->row][1] = (uint8_t)(c->drum ? SONG_IO_KIT + c->drum - 1u : instr);
+    }
+    for (uint32_t r = 0; !st->gate && r + 1u < rows; r++) {
+        if (cells[r][0] < GT2_REST && cells[r + 1u][0] == GT2_REST) {
+            cells[r + 1u][0] = GT2_KEYOFF;
+        }
+    }
+    for (uint32_t r = 0; r < rows; r++) {
+        memset(&e, 0, sizeof e);
+        if (edited(s, gt2_set_row(s, p, r, cells[r], &e), &e)) {
+            return -1;
+        }
+    }
+    for (uint32_t k = 0; k < st->count; k++) {
+        const patch_step_cell* c = &st->steps[k];
+        if ((c->slide && song_lock_put(s, p, c->row, SONG_LOCK_SLIDE, 1u)) ||
+            (c->accent && song_lock_put(s, p, c->row, SONG_LOCK_ACCENT, 1u)) ||
+            (c->chance < 100u && song_lock_put(s, p, c->row, SONG_LOCK_CHANCE, c->chance))) {
+            return -1;
+        }
+    }
+    song_scene sc;
+    if (!song_ext_get_scene(s, &sc)) {
+        memset(&sc, 0, sizeof sc);
+        sc.count = LIVE_VOICES;
+    }
+    sc.role[st->voice] = st->role;
+    memset(s->name, 0, sizeof s->name);
+    memcpy(s->name, st->name, length(st->name));
+    gt2_saved_recount(s);
+    return song_ext_set_scene(s, &sc) ? -1 : 0;
+}
+
+static void kv(text* t, const char* key, const char* v, int quote) {
+    add(t, ",\n  \"");
+    add(t, key);
+    add(t, "\": ");
+    if (quote) {
+        quoted(t, v);
+    } else {
+        add(t, v);
+    }
+}
+
+uint32_t patch_json_write_step(const gt2_song* s, uint32_t voice, char* out, uint32_t max) {
+    uint32_t p = lane_pattern(s, voice);
+    if (voice >= LIVE_VOICES || p >= GT2_MAX_PATTERNS) {
+        return 0;
+    }
+    uint32_t rows = gt2_pattern_rows(s, p) - 1u;
+    const uint8_t* d = gt2_pattern_data(s, p);
+    if (!d || rows % PATCH_STEP_ROWS || rows > PATCH_STEP_MAX) {
+        return 0;
+    }
+    uint32_t kind = PATCH_STEP_PULSE, instr = 0, stac = 0;
+    for (uint32_t r = 0; r < rows; r++) {
+        const uint8_t* c = d + r * GT2_ROW_BYTES;
+        if (c[0] >= GT2_REST) {
+            stac |= c[0] == GT2_KEYOFF;
+            continue;
+        }
+        uint32_t i = c[1], drum = i >= SONG_IO_KIT && i < SONG_IO_KIT + STEP_DRUMS;
+        if (instr && (drum ? kind != PATCH_STEP_KIT : i != instr)) {
+            return 0;
+        }
+        instr = drum ? instr ? instr : i : i;
+        kind = drum ? PATCH_STEP_KIT : i == 1u ? PATCH_STEP_PULSE : i == 2u ? PATCH_STEP_BASS : PATCH_STEP_PATCH;
+    }
+    uint8_t sound[LAB_SOUND_BYTES], kept_rows[GT2_TABLES];
+    char name[LAB_SOUND_NAME + 1u];
+    if (kind == PATCH_STEP_PATCH && !lab_song_kept(s, instr, kept_rows, sound)) {
+        return 0;
+    }
+    song_scene sc;
+    uint32_t role = song_ext_get_scene(s, &sc) && voice < sc.count ? sc.role[voice] : SONG_ROLE_AUTO;
+    char num[8], song_name[PATCH_BANK_NAME + 1u];
+    text t = {out, 0, max}, nt = {num, 0, sizeof num};
+    memset(song_name, 0, sizeof song_name);
+    for (uint32_t k = 0; k < PATCH_BANK_NAME && s->name[k]; k++) {
+        song_name[k] = s->name[k];
+    }
+    add(&t, "{\n  \"format\": \"" PATCH_STEP_FORMAT "\"");
+    kv(&t, "name", song_name[0] ? song_name : PATCH_STEP_NAME_DEFAULT, 1);
+    add_char(&nt, (char)('1' + voice));
+    kv(&t, "voice", num, 0);
+    kv(&t, "role", nth(ROLES, role % SONG_ROLES), 1);
+    kv(&t, "gate", stac ? "staccato" : "legato", 1);
+    nt.n = 0;
+    add_milli(&nt, (int64_t)(rows / PATCH_STEP_ROWS) * MILLI);
+    kv(&t, "pages", num, 0);
+    if (kind == PATCH_STEP_PATCH) {
+        lab_song_name(s, instr, name);
+        add(&t, ",\n  \"instrument\": ");
+        write_patch(&t, sound, name, 4);
+    } else {
+        kv(&t, "instrument", nth(INSTRUMENTS, kind), 1);
+    }
+    add(&t, ",\n  \"steps\": [");
+    for (uint32_t r = 0, first = 1; r < rows; r++) {
+        const uint8_t* c = d + r * GT2_ROW_BYTES;
+        if (c[0] >= GT2_REST) {
+            continue;
+        }
+        uint32_t v = 0;
+        add(&t, first ? "\n    {\"step\": " : ",\n    {\"step\": ");
+        first = 0;
+        add_milli(&t, (int64_t)(r + 1u) * MILLI);
+        uint32_t note = c[0] - GT2_FIRSTNOTE;
+        if (note != STEP_C3) {
+            char nn[5];
+            text nb = {nn, 0, sizeof nn};
+            add(&nb, nth(NOTE_NAMES, note % 12u));
+            add_char(&nb, (char)('0' + note / 12u));
+            add(&t, ", \"note\": ");
+            quoted(&t, nn);
+        }
+        if (kind == PATCH_STEP_KIT) {
+            add(&t, ", \"drum\": ");
+            quoted(&t, nth(DRUMS, c[1] - SONG_IO_KIT + 1u));
+        }
+        if (song_lock_get(s, p, r, SONG_LOCK_SLIDE, &v) && v) {
+            add(&t, ", \"slide\": true");
+        }
+        if (song_lock_get(s, p, r, SONG_LOCK_ACCENT, &v) && v) {
+            add(&t, ", \"accent\": true");
+        }
+        if (song_lock_get(s, p, r, SONG_LOCK_CHANCE, &v) && v < 100u) {
+            add(&t, ", \"chance\": ");
+            add_milli(&t, (int64_t)v * MILLI);
+        }
+        add_char(&t, '}');
+    }
+    add(&t, "\n  ]\n}\n");
+    return t.n + 1u < max ? t.n : 0u;
+}
+
 static const char* json_type(const field* f) {
     static const char* const KINDS[] = {"integer", "number", "boolean", "enum",   "set",
                                         "voices",  "number", "number",  "note",   "name",
-                                        "format",  "object", "object",  "list"};
+                                        "format",  "object", "object",  "list",   "pitch"};
     return KINDS[f->kind];
 }
 

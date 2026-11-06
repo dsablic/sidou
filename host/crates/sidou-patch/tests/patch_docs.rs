@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+
+mod common;
 use sidou_patch::json::{self, Field};
 use sidou_patch::sounds::{patch_file, sidou_sounds, Sound};
 use sidou_sys::SID_MODEL_6581;
@@ -230,6 +232,17 @@ fn examples() -> String {
         .join("\n\n")
 }
 
+fn step_text(src: &str) -> String {
+    let voice = serde_json::from_str::<Value>(src).unwrap()["voice"]
+        .as_u64()
+        .unwrap_or(1) as u32
+        - 1;
+    let mut song = sidou_sys::song::Song::device();
+    song.read(&json::step_song(src, SID_MODEL_6581).unwrap(), 0)
+        .unwrap();
+    json::write_step(&song, voice).unwrap()
+}
+
 fn instructions() -> String {
     let template = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/prompt-to-patch.md"),
@@ -239,6 +252,7 @@ fn instructions() -> String {
     template
         .replace("{{FIELDS}}", &field_lines(&fields))
         .replace("{{EXAMPLES}}", &examples())
+        .replace("{{STEP_EXAMPLE}}", &step_text(common::ACID))
 }
 
 fn bounds(allowed: &str) -> (Value, Value) {
@@ -364,6 +378,7 @@ const FIXTURE_CASES: [&str; 5] = [
     "{\"format\": \"sidou-patch/1\",\n \"wave\": \"saw\"\n}}",
 ];
 
+const STEP_REFUSED: &str = r#"{"format": "sidou-step/1", "steps": [{"step": 1, "drum": "kick"}]}"#;
 const BANK_REFUSED: &str =
     r#"{"format": "sidou-bank/1", "name": "TWO", "patches": [{}, {"wave": "sawtooth"}]}"#;
 
@@ -394,6 +409,12 @@ fn fixtures() -> String {
     let all = sidou_sounds();
     let patches: Vec<(json::Sound, &str)> = all.iter().map(|s| (s.bytes, s.name)).collect();
     let sixteen = json::write_bank("SIDOU SOUNDS", &patches);
+    for (_, src) in common::STEPS {
+        let text = step_text(src);
+        cases.push(json!({"text": text, "ok": true, "quiet": "", "name": serde_json::from_str::<Value>(&text).unwrap()["name"],
+            "sng": hashed(&json::step_song(&text, SID_MODEL_6581).unwrap())}));
+    }
+    cases.push(json!({"text": STEP_REFUSED, "ok": false, "error": json::step_song(STEP_REFUSED, SID_MODEL_6581).unwrap_err()}));
     for text in [sixteen.as_str(), BANK_REFUSED] {
         cases.push(match json::read_bank(text) {
             Ok(b) => json!({"text": text, "ok": true, "quiet": b.quiet.unwrap_or_default(), "name": b.name,
@@ -424,6 +445,9 @@ fn the_instructions_schema_reference_and_examples_are_current() {
         json::write_bank("SIDOU SOUNDS", &patches),
     ));
     files.push((r.join("docs/reference/bank.schema.json"), bank_schema()));
+    for (name, src) in common::STEPS {
+        files.push((r.join(format!("assets/steps/{name}.json")), step_text(src)));
+    }
     for s in sidou_sounds() {
         files.push((
             r.join("assets/sounds").join(patch_file(s.name)),
@@ -441,12 +465,22 @@ fn the_instructions_schema_reference_and_examples_are_current() {
 #[test]
 fn every_example_in_the_instructions_converts_and_its_link_is_the_patch() {
     let text = instructions();
-    let blocks: Vec<&str> = text
-        .split("```json\n")
+    let all: Vec<&str> = text
+        .split("\n```json\n")
         .skip(1)
         .map(|b| b.split("```").next().unwrap())
         .collect();
-    assert_eq!(blocks.len(), EXAMPLES.len());
+    let (steps, blocks): (Vec<&str>, Vec<&str>) =
+        all.iter().partition(|b| b.contains("\"sidou-step/1\""));
+    assert_eq!((steps.len(), blocks.len()), (1, EXAMPLES.len()));
+    let mut song = sidou_sys::song::Song::device();
+    song.read(&json::step_song(steps[0], SID_MODEL_6581).unwrap(), 0)
+        .unwrap();
+    assert_eq!(
+        json::write_step(&song, 0).as_deref(),
+        Some(steps[0]),
+        "the STEP example round-trips"
+    );
     for (block, name) in blocks.iter().zip(EXAMPLES) {
         assert_eq!(
             json::read(block),

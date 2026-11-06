@@ -390,12 +390,12 @@ async function checkPatch() {
     return showPatch();
   }
   const p = state.patch;
-  const what = p.ok && p.bank ? `${p.name} is a bank of ${p.sounds.length} sounds` : `${p.name} is a sound`;
+  const what = p.ok && p.bank ? `${p.name} is a bank of ${p.sounds.length} sounds` : p.ok && p.step ? `${p.name} is a STEP pattern` : `${p.name} is a sound`;
   $("patch-pick").hidden = !(p.ok && p.bank);
   $("patch-pick").replaceChildren(...(p.ok ? p.sounds : []).map((n, i) => el("option", { value: String(i + 1), textContent: `${String(i + 1).padStart(2, "0")} ${n}` })));
   if (!p.ok) say($("patch-state"), `Not a sound yet:\n${p.error}\nPaste that line back to the model and ask it to fix the patch.`, "error");
   else if (p.quiet) say($("patch-state"), `${what}, with a warning:\n${p.quiet}\nPreview it; on the other chip it plays.`);
-  else say($("patch-state"), p.bank ? `${what} the FM-1 can play: preview one, or send them as one song.` : `${what} the FM-1 can play: preview it, or send it.`, "ok");
+  else say($("patch-state"), p.bank ? `${what} the FM-1 can play: preview one, or send them as one song.` : p.step ? `${what} the FM-1 can play: preview it, or send it as a song that opens on STEP.` : `${what} the FM-1 can play: preview it, or send it.`, "ok");
   if (p.ok) state.preview?.setSong(p.sng);
   showPatch();
 }
@@ -408,6 +408,16 @@ async function previewPatch() {
       state.preview = new Preview(wasm, { onMessage: (m) => { if (m.type === "error") say($("patch-state"), `The preview failed: ${m.message}.`, "error"); else if (m.type === "state" && m.state !== "idle") state.previewed = m; } });
     }
     state.preview.setSong(state.patch.sng);
+    if (state.patch.step) {
+      if (state.previewing) {
+        state.previewing = false;
+        state.preview.stop();
+        return;
+      }
+      state.previewing = true;
+      await state.preview.play();
+      return;
+    }
     await state.preview.note(0, PREVIEW_NOTE, Number($("patch-pick").value) || 1);
     setTimeout(() => state.preview.release(0), PREVIEW_MS);
   } catch (e) {

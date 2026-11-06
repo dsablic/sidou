@@ -109,6 +109,12 @@ patches and a song name: the page checks each (a refusal names the patch, `patch
 menu beside Preview picks the one to hear, and Send to FM-1 sends them as one song, an instrument
 each. **All sixteen as a bank (JSON)** above shows SIDOU's sounds that way.
 
+Ask for a pattern ("a 16-step acid line", "a breakbeat") and the model answers with a **STEP
+pattern**: one lane of up to four pages, its notes or drums, slides, accents and chances, and its
+instrument (a patch, or the NEW song's kit). Preview plays it (press again to stop); Send to FM-1
+sends it as a song, the NEW song with that lane written: on the FM-1, SONG, LOAD it, and SEQ
+opens STEP on it.
+
 A patch link carries the patch after its `#`, which the browser never sends to a server. Opening
 one fills the box, checks and previews the patch, and sends nothing until you press Send to FM-1.
 Each of SIDOU's sixteen sounds above has a **JSON** button that opens it here as a patch, to see

@@ -17,7 +17,8 @@ static uint8_t out_buf[OUT_MAX];
 static uint32_t out_len;
 static patch_json patch;
 static patch_bank bank;
-static uint32_t is_bank;
+static patch_step step;
+static uint32_t kind;
 
 EXPORT(sp_in) char* sp_in(void) {
     return in_buf;
@@ -29,10 +30,10 @@ EXPORT(sp_out) uint8_t* sp_out(void) {
     return out_buf;
 }
 EXPORT(sp_error) const char* sp_error(void) {
-    return is_bank ? bank.error : patch.error;
+    return kind == PATCH_JSON_BANK_TEXT ? bank.error : kind == PATCH_JSON_STEP_TEXT ? step.error : patch.error;
 }
 EXPORT(sp_name) const char* sp_name(void) {
-    return is_bank ? bank.name : patch.name;
+    return kind == PATCH_JSON_BANK_TEXT ? bank.name : kind == PATCH_JSON_STEP_TEXT ? step.name : patch.name;
 }
 
 static int write_out(void* ctx, const uint8_t* buf, uint32_t len) {
@@ -48,8 +49,10 @@ static int write_out(void* ctx, const uint8_t* buf, uint32_t len) {
 EXPORT(sp_patch) int32_t sp_patch(uint32_t len) {
     out_len = 0;
     len = len > IN_MAX ? IN_MAX : len;
-    is_bank = (uint32_t)patch_json_is_bank(in_buf, len);
-    int r = is_bank ? patch_json_read_bank(&bank, in_buf, len) : patch_json_read(&patch, in_buf, len);
+    kind = (uint32_t)patch_json_kind(in_buf, len);
+    int r = kind == PATCH_JSON_BANK_TEXT   ? patch_json_read_bank(&bank, in_buf, len)
+            : kind == PATCH_JSON_STEP_TEXT ? patch_json_read_step(&step, in_buf, len)
+                                           : patch_json_read(&patch, in_buf, len);
     if (r < 0) {
         return r;
     }
@@ -57,8 +60,9 @@ EXPORT(sp_patch) int32_t sp_patch(uint32_t len) {
     if (!s) {
         return -2;
     }
-    int made = is_bank ? patch_json_bank_song(s, &bank, SID_MODEL_6581)
-                       : patch_json_song(s, patch.sound, patch.name, SID_MODEL_6581);
+    int made = kind == PATCH_JSON_BANK_TEXT   ? patch_json_bank_song(s, &bank, SID_MODEL_6581)
+               : kind == PATCH_JSON_STEP_TEXT ? patch_json_step_song(s, &step, SID_MODEL_6581)
+                                              : patch_json_song(s, patch.sound, patch.name, SID_MODEL_6581);
     if (made > 0) {
         return -1;
     }
@@ -69,7 +73,10 @@ EXPORT(sp_patch) int32_t sp_patch(uint32_t len) {
 }
 
 EXPORT(sp_bank) uint32_t sp_bank(void) {
-    return is_bank ? bank.count : 0u;
+    return kind == PATCH_JSON_BANK_TEXT ? bank.count : 0u;
+}
+EXPORT(sp_kind) uint32_t sp_kind(void) {
+    return kind;
 }
 EXPORT(sp_bank_name) const char* sp_bank_name(uint32_t k) {
     return k < bank.count ? bank.names[k] : bank.name;

@@ -82,6 +82,28 @@ gets them as one song, an instrument each.
 https://dsablic.github.io/sidou/bank.schema.json; all sixteen of SIDOU's sounds as a bank are
 https://dsablic.github.io/sidou/sounds/sidou-sounds-bank.json.
 
+## A STEP pattern
+
+Asked for a pattern, a groove or a bassline ("a 16-step acid line"), answer with one STEP pattern:
+the FM-1 gets it as a song that opens on STEP (its 16 step keys) and plays. One lane, up to four
+pages of 16 steps:
+
+- `format` "sidou-step/1"; `name` the song's name (1 to 16 characters); `voice` 1 to 3, the lane;
+  `role` auto, drums, bass, arp, lead, none, bass+drums or acid (what DICE and the SCENE hear it
+  as); `gate` staccato (a key off after each note, the default) or legato; `pages` 1 to 4.
+- `instrument`: a patch (as above, its `format` optional), or "pulse" or "bass" (the new song's
+  own), or "kit" (the new song's drums).
+- `steps`: one entry a step that plays, `step` 1 to 64; `note` "C0" to "G#7" (default "C3"); with
+  the kit, `drum` kick, snare, closed_hat, open_hat, clap, low_tom, high_tom, rim, digi_kick,
+  digi_snare, digi_clap or digi_hat; `slide` true (the gate held to the next note, which glides
+  from this one, a 303's slide); `accent` true (brighter and louder for its step); `chance` 0 to
+  100 (the step's chance to play each pass). Steps left out are rests.
+
+Its link starts `https://dsablic.github.io/sidou/library.html#step=`. An acid line:
+
+```json
+{{STEP_EXAMPLE}}```
+
 ## Changing a patch
 
 When you are given a patch (its JSON or its link) and asked for a change ("darker", "a slower

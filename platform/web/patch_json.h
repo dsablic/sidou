@@ -39,12 +39,38 @@ typedef struct {
     patch_json part;
 } patch_bank;
 
+#define PATCH_STEP_FORMAT "sidou-step/1"
+#define PATCH_STEP_ROWS 16u
+#define PATCH_STEP_PAGES 4u
+#define PATCH_STEP_MAX (PATCH_STEP_ROWS * PATCH_STEP_PAGES)
+#define PATCH_STEP_NAME_DEFAULT "STEP"
+
+enum { PATCH_STEP_PULSE, PATCH_STEP_BASS, PATCH_STEP_KIT, PATCH_STEP_PATCH };
+enum { PATCH_JSON_PATCH_TEXT, PATCH_JSON_BANK_TEXT, PATCH_JSON_STEP_TEXT };
+
+typedef struct {
+    uint8_t row, note, drum, slide, accent, chance;
+} patch_step_cell;
+
+typedef struct {
+    char name[PATCH_BANK_NAME + 1u];
+    uint8_t voice, role, gate, pages, kind, count;
+    patch_step_cell steps[PATCH_STEP_MAX];
+    char error[PATCH_JSON_ERROR_MAX];
+    patch_json patch;
+    patch_json scratch;
+} patch_step;
+
 void patch_json_defaults(uint8_t sound[LAB_SOUND_BYTES]);
 int patch_json_read(patch_json* p, const char* text, uint32_t len);
 uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name, char* out,
                           uint32_t max);
 uint32_t patch_json_fields(char* out, uint32_t max);
 int patch_json_is_bank(const char* text, uint32_t len);
+int patch_json_kind(const char* text, uint32_t len);
+int patch_json_read_step(patch_step* st, const char* text, uint32_t len);
+int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model);
+uint32_t patch_json_write_step(const gt2_song* s, uint32_t voice, char* out, uint32_t max);
 int patch_json_read_bank(patch_bank* b, const char* text, uint32_t len);
 int patch_json_bank_song(gt2_song* s, patch_bank* b, uint32_t model);
 uint32_t patch_json_write_bank(const patch_bank* b, char* out, uint32_t max);

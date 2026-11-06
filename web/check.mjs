@@ -473,6 +473,16 @@ try {
   await lib.locator("#patch-send").click();
   await settle("send the bank", () => /SIDOU SOUNDS is already on the FM-1, identical/.test(document.getElementById("store-state").textContent));
   console.log("library page: the sixteen as a bank are the song already sent, byte for byte");
+  const acidLine = await (await fetch(new URL("steps/acid-line.json", url))).text();
+  await lib.locator("#patch-text").fill(acidLine);
+  await lib.locator("#patch-check").click();
+  await lib.waitForFunction(() => /ACID LINE is a STEP pattern the FM-1 can play/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`the Library page did not take a STEP pattern: ${await patchState()}`));
+  await lib.locator("#patch-preview").click();
+  await lib.locator("#patch-preview").click();
+  await lib.locator("#patch-send").click();
+  await settle("send a STEP pattern", () => /ACID LINE sent/.test(document.getElementById("store-state").textContent));
+  console.log("library page: a STEP pattern checked, previewed and sent as ACID LINE");
   await lib.locator("#sound-list li", { hasText: "RING BELL" }).locator("button").click();
   await lib.waitForFunction(() => /RING BELL is a sound/.test(document.getElementById("patch-state").textContent) && /"name": "RING BELL"/.test(document.getElementById("patch-text").value), null, { timeout: 10_000 })
     .catch(async () => fail(`a sound's JSON button did not open it as a patch: ${await patchState()}`));

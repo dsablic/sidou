@@ -6520,8 +6520,8 @@ gain.
   generated docs, so the JavaScript holds no rule. It sits in `platform/web`, outside the firmware's
   build: the firmware images are byte for byte as before. Rust (`sidou-patch`'s `json.rs`) is a
   thin wrapper for the tests, the docs and `sidou-sysex patch`.
-- **Its own wasm** (`tools/wasm-patch`, about 46 KB; its budget 64 KiB, the owner's call
-  2026-11-06, `web/patch.test.mjs`): in the core it took 185,311 bytes against the
+- **Its own wasm** (`tools/wasm-patch`, about 77 KB; its budget 80 KiB, the owner's call
+  2026-11-06, raised from 64 KiB for STEP patterns, which need the song reader; `web/patch.test.mjs`): in the core it took 185,311 bytes against the
   core's 176 KiB budget (the rules' C alone is 10.6 KB: the audibility estimate 4.9 KB, the song
   encoder and its keep 4.8 KB). The patch module loads only when a patch is checked, so the core's
   pages load as before; it hands the song's bytes to the core for the preview.
@@ -6553,6 +6553,11 @@ gain.
   test holds the sixteen's bank to `assets/sounds/sidou-sounds.sng` byte for byte. Nothing in the
   converter is `static`: the host tests run on several threads (a static scratch array of
   instruments made the songs differ one run in three).
+- **STEP patterns** (`sidou-step/1`) start from the NEW song's template (`song_io_template`, read
+  by the FM-1's own reader), resize the lane's pattern and write its cells with `gt2_set_row` and
+  its locks with `song_lock_put`, so the song is what the FM-1 makes; `step_view.rs` drives STEP's
+  keys on a NEW song and holds the converter's pattern and locks to theirs. The reader is why
+  the patch module's budget went to 80 KiB (the owner, 2026-11-06).
 - **Errors a model can act on**: `path: what is wrong. Allowed: what is.`, the allowed text the
   same the docs show. Text before the patch's `{` and after it is skipped, so a whole answer pastes.
 - **The link** is the compact JSON, percent-encoded, after `#patch=`. Not base64: a model writes a

@@ -1763,3 +1763,68 @@ fn a_held_step_gives_the_player_its_locks_and_its_release_takes_them_back() {
     tap(&mut s, 1);
     assert_eq!(s.f.held_step_locks[n..], [(0, vec![]), (0, vec![])]);
 }
+
+fn new_song() -> sidou_tests::song::Song {
+    let mut bytes = Vec::new();
+    let mut buf = [0u8; 256];
+    loop {
+        let n = unsafe {
+            song_io_template(
+                std::ptr::null_mut(),
+                bytes.len() as u32,
+                buf.as_mut_ptr(),
+                256,
+            )
+        };
+        if n == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&buf[..n as usize]);
+    }
+    let mut song = sidou_tests::song::Song::device();
+    song.read(&bytes, 0).unwrap();
+    song
+}
+
+#[test]
+fn a_sidou_step_pattern_is_the_lane_steps_keys_make() {
+    let mut s = Song::playing(Some(new_song()));
+    open_step(&mut s);
+    for k in [0, 2, 4, 7] {
+        tap(&mut s, k);
+    }
+    hold(&mut s, 0);
+    s.ui.press(PANEL_BTN_ENV);
+    release(&mut s);
+    hold(&mut s, 2);
+    s.ui.press(PANEL_BTN_FX);
+    release(&mut s);
+    hold(&mut s, 4);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -5);
+    settle(&mut s.ui);
+    release(&mut s);
+    let keys = pattern(&s, 0);
+    let instrument = ["", "pulse", "bass"][usize::from(keys[0][1])];
+    let text = format!(
+        r#"{{"format": "sidou-step/1", "pages": 4, "instrument": "{instrument}", "steps": [{{"step": 1, "accent": true}}, {{"step": 3, "slide": true}}, {{"step": 5, "chance": 75}}, {{"step": 8}}]}}"#
+    );
+    let mut made = sidou_tests::song::Song::device();
+    made.read(
+        &sidou_patch::json::step_song(&text, SID_MODEL_6581).unwrap(),
+        0,
+    )
+    .unwrap();
+    let rows = |song: &sidou_tests::song::Song| {
+        let mut r = song.pattern(0).unwrap();
+        r.pop();
+        r
+    };
+    assert_eq!(rows(&made), keys);
+    let mut out = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
+    let n = unsafe { song_ext_get_locks(made.ptr(), out.as_mut_ptr(), SONG_LOCKS_MAX) } as usize;
+    let made_locks: Vec<_> = out[..n]
+        .iter()
+        .map(|l| (l.pattern, l.row, l.param, l.value))
+        .collect();
+    assert_eq!(made_locks, locks(&s));
+}

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 export const LINK_KEY = "#patch=";
 export const BANK_KEY = "#bank=";
+export const STEP_KEY = "#step=";
+const STEP_TEXT = 2;
 export const LINK_MAX = 8192;
 
 const QUIET = 1;
@@ -48,6 +50,7 @@ export class Patcher {
       name: cstr(x.memory, x.sp_name()),
       sounds: count ? Array.from({ length: count }, (_, k) => cstr(x.memory, x.sp_bank_name(k))) : [cstr(x.memory, x.sp_name())],
       bank: count > 0,
+      step: x.sp_kind() === STEP_TEXT,
       sng: new Uint8Array(x.memory.buffer, x.sp_out(), x.sp_song_bytes()).slice(),
     };
   }
@@ -66,12 +69,13 @@ export function patchOf(text) {
 export function linkOf(page, text) {
   const compact = patchOf(text);
   if (compact === null) return null;
-  const key = JSON.parse(compact).format === "sidou-bank/1" ? BANK_KEY : LINK_KEY;
+  const format = JSON.parse(compact).format;
+  const key = format === "sidou-bank/1" ? BANK_KEY : format === "sidou-step/1" ? STEP_KEY : LINK_KEY;
   return `${page}${key}${encodeURIComponent(compact)}`;
 }
 
 export function fromLink(hash) {
-  const key = [LINK_KEY, BANK_KEY].find((k) => hash.startsWith(k));
+  const key = [LINK_KEY, BANK_KEY, STEP_KEY].find((k) => hash.startsWith(k));
   if (!key) return null;
   const raw = hash.slice(key.length);
   if (raw.length > LINK_MAX) {

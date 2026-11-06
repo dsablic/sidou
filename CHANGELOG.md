@@ -20,7 +20,11 @@ All notable changes are documented here. The format follows
   USER sound gets there by LAB's REC); the instructions tell a model to change only what it is
   asked. A bank, `sidou-bank/1`, carries up to sixteen patches and a song name, sent as one song
   (the sixteen as a bank make the site's `SIDOU SOUNDS` byte for byte), pasted or by a `#bank=`
-  link; `sidou-sysex bank FILE.json` writes it. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
+  link; `sidou-sysex bank FILE.json` writes it. A STEP pattern, `sidou-step/1`, is one lane of up
+  to four pages: notes, the NEW song's drum kit by name, SLIDE, ACCENT and chance, the lane's role,
+  and its instrument as a patch or the kit; it becomes the NEW song with that lane written as
+  STEP's keys write it, so it opens on STEP and plays (checked, previewed and sent on the Library
+  page, or by a `#step=` link). One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
   the host tests; `sidou-sysex patch FILE.json` writes the song and its `.syx`. The firmware is
   unchanged.
 - **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a

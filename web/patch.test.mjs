@@ -22,7 +22,7 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok - ${name}`);
 await test(`the patch converter is ${readFileSync(wasm).length} bytes and imports nothing`, async () => {
   const m = await WebAssembly.compile(readFileSync(wasm));
   assert.deepEqual(WebAssembly.Module.imports(m), []);
-  assert.ok(readFileSync(wasm).length <= 64 * 1024, "the size budget: 64 KiB");
+  assert.ok(readFileSync(wasm).length <= 80 * 1024, "the size budget: 80 KiB");
 });
 
 await test("every case reads as the host build reads it: the same song, warning or refusal", () => {
@@ -92,6 +92,21 @@ await test("the sixteen as a bank are the sixteen's song byte for byte, and fit 
   assert.ok(link.includes("#bank=") && link.length - link.indexOf("#") < LINK_MAX, `${link.length}`);
   assert.deepEqual(patcher.check(fromLink(link.slice(link.indexOf("#"))).text).sng, got.sng);
   console.log(`  the sixteen's bank link: ${link.length} characters`);
+});
+
+await test("each STEP pattern is a song the core plays from its first row, and its link carries it", async () => {
+  const core = await loadCore(readFileSync(corePath));
+  for (const name of ["acid-line", "beat", "tune"]) {
+    const text = readFileSync(`${root}assets/steps/${name}.json`, "utf8");
+    const got = patcher.check(text);
+    assert.equal(got.step, true, name);
+    core.read(got.sng);
+    const pcm = core.renderSong({ seconds: 2 });
+    assert.ok(pcm.some((v) => Math.abs(v) > 512), `${name} is heard`);
+    const link = linkOf(page, text);
+    assert.ok(link.includes("#step="));
+    assert.deepEqual(patcher.check(fromLink(link.slice(link.indexOf("#"))).text).sng, got.sng);
+  }
 });
 
 await test("a whole answer around the patch is read", () => {

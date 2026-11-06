@@ -161,6 +161,25 @@ byte). Its schema is [bank.schema.json](bank.schema.json).
 - Its link is `library.html#bank=`, made as a patch's; the sixteen are a 6.8 KB link, inside the
   page's 8 KB.
 
+## STEP patterns: `sidou-step/1`
+
+One STEP lane as a song: the FM-1's NEW song (`app/song_io.c`'s template, with its drum kit) with
+the lane's pattern written as STEP's keys write it (a test plays the keys and compares the
+pattern and its locks), so it opens on STEP and plays. Examples: `assets/steps/*.json`.
+
+- `format` (required), `name` (the song's, as a bank's, `STEP` when left out), `voice` 1 to 3
+  (1), `role` auto, drums, bass, arp, lead, none, bass+drums, acid (the `SCNE` chunk; auto),
+  `gate` staccato (a key off after a note when the next row is empty) or legato (staccato),
+  `pages` 1 to 4 (1; the pattern is 16 rows a page).
+- `instrument`: a patch (placed in the first free instrument, kept so ENV pulls it back exactly),
+  `"pulse"` or `"bass"` (the NEW song's instruments 1 and 2), or `"kit"` (its drums, instruments
+  3 to 14).
+- `steps`: `step` 1 to 64 (required, once each, inside the pages), `note` `"C0"` to `"G#7"`
+  (`"C3"`), `drum` (with the kit only, and then required), `slide`, `accent` (true; the locks 10
+  and 11) and `chance` 0 to 100 (lock 9; 100 keeps none).
+- Writing a song back as a pattern takes the lane's notes, the instrument (one patch, the pulse,
+  the bass, or the kit), staccato when a key off follows a note, the locks and the role.
+
 ## The link
 
 `library.html#patch=` followed by the patch's JSON, percent-encoded (what `encodeURIComponent`
