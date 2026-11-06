@@ -114,9 +114,9 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     Schema beside it) and a `#patch=` link. The Library page checks a pasted patch or a link with
     the FM-1's rules, says what is wrong in one line to paste back, previews it, and sends it as a
     one-instrument song that ENV on INSTR opens in LAB; the sixteen show as patches. One converter
-    in C, in its own wasm and the host tests; `sidou-sysex patch`. Done in the 1.8 tree. Next in
-    1.8: an existing sound (a song's, a USER sound) as a patch to edit, banks of up to sixteen
-    patches, and STEP patterns as text, with a CLI for coding agents. Later, if users ask: a
+    in C, in its own wasm and the host tests; `sidou-sysex patch`. Done in the 1.8 tree, with a
+    song's LAB sound as a patch to change and banks of up to sixteen (`sidou-bank/1`). Next in
+    1.8: STEP patterns as text, and a CLI for coding agents. Later, if users ask: a
     one-button page that calls a model itself (OpenRouter's PKCE sign-in was the first plan), and
     an MCP server (a local one through npx, never on Pages).
 - **Next, Bluetooth connecting out** (moved from 1.8 by the owner, 2026-11-06): SIDOU connects to

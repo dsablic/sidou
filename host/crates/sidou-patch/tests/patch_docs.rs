@@ -304,6 +304,25 @@ fn schema() -> String {
     serde_json::to_string_pretty(&Value::Object(head)).unwrap() + "\n"
 }
 
+fn bank_schema() -> String {
+    let v = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": format!("{SITE}bank.schema.json"),
+        "title": "Up to sixteen SIDOU LAB sounds, sent as one song (sidou-bank/1)",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["format", "patches"],
+        "properties": {
+            "format": {"const": "sidou-bank/1"},
+            "name": {"type": "string", "pattern": "^[!-_a-z][ -_a-z]{0,15}$", "description": "the song's name on the FM-1"},
+            "patches": {"type": "array", "minItems": 1, "maxItems": 16,
+                "items": {"$ref": format!("{SITE}patch.schema.json")},
+                "description": "each a sidou-patch/1 patch, its format optional"}
+        }
+    });
+    serde_json::to_string_pretty(&v).unwrap() + "\n"
+}
+
 fn reference_doc(current: &str) -> String {
     let fields = json::fields();
     let rows: Vec<String> = fields
@@ -345,6 +364,9 @@ const FIXTURE_CASES: [&str; 5] = [
     "{\"format\": \"sidou-patch/1\",\n \"wave\": \"saw\"\n}}",
 ];
 
+const BANK_REFUSED: &str =
+    r#"{"format": "sidou-bank/1", "name": "TWO", "patches": [{}, {"wave": "sawtooth"}]}"#;
+
 fn hashed(b: &[u8]) -> Value {
     let h: String = Sha256::digest(b)[..8]
         .iter()
@@ -369,6 +391,16 @@ fn fixtures() -> String {
         .map(|s| fixture(&json::write(&s.bytes, s.name)))
         .collect();
     cases.extend(FIXTURE_CASES.iter().chain(&TRIALS).map(|t| fixture(t)));
+    let all = sidou_sounds();
+    let patches: Vec<(json::Sound, &str)> = all.iter().map(|s| (s.bytes, s.name)).collect();
+    let sixteen = json::write_bank("SIDOU SOUNDS", &patches);
+    for text in [sixteen.as_str(), BANK_REFUSED] {
+        cases.push(match json::read_bank(text) {
+            Ok(b) => json!({"text": text, "ok": true, "quiet": b.quiet.unwrap_or_default(), "name": b.name,
+                "sng": hashed(&json::bank_song(text, SID_MODEL_6581).unwrap())}),
+            Err(e) => json!({"text": text, "ok": false, "error": e}),
+        });
+    }
     let rows: Vec<String> = cases.iter().map(|c| format!("  {c}")).collect();
     format!("{{\"patches\": [\n{}\n]}}\n", rows.join(",\n"))
 }
@@ -385,6 +417,13 @@ fn the_instructions_schema_reference_and_examples_are_current() {
         (reference, doc),
         (r.join("web/patch-fixtures.json"), fixtures()),
     ];
+    let all = sidou_sounds();
+    let patches: Vec<(json::Sound, &str)> = all.iter().map(|s| (s.bytes, s.name)).collect();
+    files.push((
+        r.join("assets/sounds/sidou-sounds-bank.json"),
+        json::write_bank("SIDOU SOUNDS", &patches),
+    ));
+    files.push((r.join("docs/reference/bank.schema.json"), bank_schema()));
     for s in sidou_sounds() {
         files.push((
             r.join("assets/sounds").join(patch_file(s.name)),

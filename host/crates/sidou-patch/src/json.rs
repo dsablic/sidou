@@ -110,3 +110,66 @@ pub fn song_patch(song: &Song, instr: u32) -> Option<String> {
     } as usize;
     (n > 0).then(|| String::from_utf8_lossy(&out[..n]).into_owned())
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Bank {
+    pub name: String,
+    pub patches: Vec<(Sound, String)>,
+    pub quiet: Option<String>,
+}
+
+fn c_text(chars: &[std::os::raw::c_char]) -> String {
+    text(&chars.iter().map(|&c| c as u8).collect::<Vec<_>>())
+}
+
+fn bank_of(json: &str) -> Result<Box<patch_bank>, String> {
+    let mut b = Box::<patch_bank>::default();
+    let r = unsafe { patch_json_read_bank(&mut *b, json.as_ptr().cast(), json.len() as u32) };
+    if r < 0 {
+        return Err(c_text(&b.error));
+    }
+    Ok(b)
+}
+
+pub fn is_bank(json: &str) -> bool {
+    unsafe { patch_json_is_bank(json.as_ptr().cast(), json.len() as u32) != 0 }
+}
+
+pub fn read_bank(json: &str) -> Result<Bank, String> {
+    let b = bank_of(json)?;
+    let quiet = c_text(&b.error);
+    Ok(Bank {
+        name: c_text(&b.name),
+        patches: (0..b.count as usize)
+            .map(|k| (b.sounds[k], c_text(&b.names[k])))
+            .collect(),
+        quiet: (!quiet.is_empty()).then_some(quiet),
+    })
+}
+
+pub fn write_bank(name: &str, patches: &[(Sound, &str)]) -> String {
+    let mut b = Box::<patch_bank>::default();
+    for (d, c) in b.name.iter_mut().zip(name.bytes()) {
+        *d = c as std::os::raw::c_char;
+    }
+    for (k, (sound, n)) in patches.iter().enumerate() {
+        b.sounds[k] = *sound;
+        for (d, c) in b.names[k].iter_mut().zip(n.bytes()) {
+            *d = c as std::os::raw::c_char;
+        }
+    }
+    b.count = patches.len() as u32;
+    let mut out = vec![0u8; 16 * OUT_MAX];
+    let n = unsafe { patch_json_write_bank(&*b, out.as_mut_ptr().cast(), out.len() as u32) };
+    String::from_utf8_lossy(&out[..n as usize]).into_owned()
+}
+
+pub fn bank_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
+    let mut b = bank_of(json)?;
+    let mut song = Song::device();
+    match unsafe { patch_json_bank_song(song.ptr_mut(), &mut *b, model) } {
+        0 => Ok(song.write(true)),
+        r if r > 0 => Err(c_text(&b.error)),
+        _ => Err("the bank's song could not be made".to_string()),
+    }
+}

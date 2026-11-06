@@ -83,6 +83,17 @@ await test("a model's link of raw or encoded JSON reads; a damaged or oversized 
   assert.equal(linkOf(page, "no patch here"), null);
 });
 
+await test("the sixteen as a bank are the sixteen's song byte for byte, and fit a link", () => {
+  const text = readFileSync(`${root}assets/sounds/${bank.bank}`, "utf8");
+  const got = patcher.check(text);
+  assert.deepEqual([got.bank, got.name, got.sounds], [true, bank.name, bank.sounds.map((s) => s.name)]);
+  assert.deepEqual(got.sng, Uint8Array.from(readFileSync(`${root}assets/sounds/${bank.song}`)));
+  const link = linkOf(page, text);
+  assert.ok(link.includes("#bank=") && link.length - link.indexOf("#") < LINK_MAX, `${link.length}`);
+  assert.deepEqual(patcher.check(fromLink(link.slice(link.indexOf("#"))).text).sng, got.sng);
+  console.log(`  the sixteen's bank link: ${link.length} characters`);
+});
+
 await test("a whole answer around the patch is read", () => {
   const text = readFileSync(`${root}assets/sounds/${bank.sounds[1].patch}`, "utf8");
   const answer = `Here you go:\n\`\`\`json\n${text}\`\`\`\nPlay it low.`;

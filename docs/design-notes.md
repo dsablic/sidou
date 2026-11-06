@@ -6547,6 +6547,12 @@ gain.
   song in the patch module too would have cost it 11.7 KB more. Only a kept sound is exact, so an
   instrument without one has no Patch button. USER sounds stay on the FM-1: SysEx refuses their
   file's name, and LAB's REC into the song is the way to one.
+- **Banks** (`sidou-bank/1`): each element is read by the patch reader over its span of the text
+  (so syntax errors keep their line and column), its errors prefixed `patches[n]`; the song places
+  the sounds as `sidou-patch`'s Rust `sound_song` does (tables end to end, then each kept), and a
+  test holds the sixteen's bank to `assets/sounds/sidou-sounds.sng` byte for byte. Nothing in the
+  converter is `static`: the host tests run on several threads (a static scratch array of
+  instruments made the songs differ one run in three).
 - **Errors a model can act on**: `path: what is wrong. Allowed: what is.`, the allowed text the
   same the docs show. Text before the patch's `{` and after it is skipped, so a whole answer pastes.
 - **The link** is the compact JSON, percent-encoded, after `#patch=`. Not base64: a model writes a

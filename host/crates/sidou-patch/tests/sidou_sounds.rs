@@ -40,7 +40,7 @@ fn listing(sounds: &[Sound]) -> String {
         })
         .collect();
     format!(
-        "{{\n  \"song\": \"sidou-sounds.sng\",\n  \"name\": \"{SONG_NAME}\",\n  \"sounds\": [\n{}\n  ]\n}}\n",
+        "{{\n  \"song\": \"sidou-sounds.sng\",\n  \"bank\": \"sidou-sounds-bank.json\",\n  \"name\": \"{SONG_NAME}\",\n  \"sounds\": [\n{}\n  ]\n}}\n",
         rows.join(",\n")
     )
 }

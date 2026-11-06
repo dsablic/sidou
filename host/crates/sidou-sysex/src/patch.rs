@@ -26,3 +26,19 @@ pub fn patch_file(text: &str, model: Model) -> Result<PatchFile, String> {
         quiet: c.quiet,
     })
 }
+
+pub fn bank_file(text: &str, model: Model) -> Result<PatchFile, String> {
+    let b = json::read_bank(text)?;
+    let sng = json::bank_song(text, model.sid())?;
+    let syx = put_frames(&b.name, FILE_SONG, &sng)
+        .map_err(|e| format!("{}: {e}", b.name))?
+        .concat();
+    Ok(PatchFile {
+        song: SongFile {
+            name: b.name,
+            sng,
+            syx,
+        },
+        quiet: b.quiet,
+    })
+}

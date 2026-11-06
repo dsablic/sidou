@@ -67,6 +67,21 @@ link (see "The link"), then at most two sentences on how to play it. Nothing els
 - Effects: a little reverb or delay (mix 20 to 40) flatters leads and pads; overdrive or fuzz suits
   basses and leads.
 
+## Several sounds: a bank
+
+Asked for several sounds at once ("a drum kit", "four basses"), answer with one bank: the FM-1
+gets them as one song, an instrument each.
+
+```
+{"format": "sidou-bank/1", "name": "ACID KIT", "patches": [{...}, {...}]}
+```
+
+`name` is the song's name on the FM-1 (1 to 16 characters, as a patch's name but four longer);
+`patches` holds 1 to 16 patches, each as above, its `format` optional. Its link starts
+`https://dsablic.github.io/sidou/library.html#bank=` and is made the same way. The schema is
+https://dsablic.github.io/sidou/bank.schema.json; all sixteen of SIDOU's sounds as a bank are
+https://dsablic.github.io/sidou/sounds/sidou-sounds-bank.json.
+
 ## Changing a patch
 
 When you are given a patch (its JSON or its link) and asked for a change ("darker", "a slower

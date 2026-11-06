@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 export const LINK_KEY = "#patch=";
+export const BANK_KEY = "#bank=";
 export const LINK_MAX = 8192;
 
 const QUIET = 1;
@@ -40,10 +41,13 @@ export class Patcher {
     const r = x.sp_patch(bytes.length);
     const message = cstr(x.memory, x.sp_error());
     if (r < 0) return { ok: false, error: message || `the patch was refused (${r})` };
+    const count = x.sp_bank();
     return {
       ok: true,
       quiet: r === QUIET ? message : "",
       name: cstr(x.memory, x.sp_name()),
+      sounds: count ? Array.from({ length: count }, (_, k) => cstr(x.memory, x.sp_bank_name(k))) : [cstr(x.memory, x.sp_name())],
+      bank: count > 0,
       sng: new Uint8Array(x.memory.buffer, x.sp_out(), x.sp_song_bytes()).slice(),
     };
   }
@@ -61,12 +65,15 @@ export function patchOf(text) {
 
 export function linkOf(page, text) {
   const compact = patchOf(text);
-  return compact === null ? null : `${page}${LINK_KEY}${encodeURIComponent(compact)}`;
+  if (compact === null) return null;
+  const key = JSON.parse(compact).format === "sidou-bank/1" ? BANK_KEY : LINK_KEY;
+  return `${page}${key}${encodeURIComponent(compact)}`;
 }
 
 export function fromLink(hash) {
-  if (!hash.startsWith(LINK_KEY)) return null;
-  const raw = hash.slice(LINK_KEY.length);
+  const key = [LINK_KEY, BANK_KEY].find((k) => hash.startsWith(k));
+  if (!key) return null;
+  const raw = hash.slice(key.length);
   if (raw.length > LINK_MAX) {
     return { error: `This patch link is too long (${raw.length} characters; a patch link is under ${LINK_MAX / 1024} KB). Paste the patch's JSON in the box instead.` };
   }

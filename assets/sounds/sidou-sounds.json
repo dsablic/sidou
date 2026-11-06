@@ -1,5 +1,6 @@
 {
   "song": "sidou-sounds.sng",
+  "bank": "sidou-sounds-bank.json",
   "name": "SIDOU SOUNDS",
   "sounds": [
     { "instrument": 1, "name": "PWM STRINGS", "about": "a slow pulse-width sweep through a soft low-pass", "patch": "patches/pwm-strings.json" },

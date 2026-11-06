@@ -465,6 +465,14 @@ try {
   await lib.locator("#instruments tr").nth(1).locator("button", { hasText: "Patch" }).click();
   await lib.waitForFunction(() => /"name": "303 BASS"/.test(document.getElementById("patch-text").value) && /303 BASS is a sound/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
     .catch(async () => fail(`a song's Patch button did not open its LAB sound: ${await patchState()}`));
+  await lib.locator("#sounds-bank").click();
+  await lib.waitForFunction(() => /SIDOU SOUNDS is a bank of 16 sounds/.test(document.getElementById("patch-state").textContent) && !document.getElementById("patch-pick").hidden, null, { timeout: 10_000 })
+    .catch(async () => fail(`the sixteen as a bank did not open: ${await patchState()}`));
+  await lib.locator("#patch-pick").selectOption("8");
+  await lib.locator("#patch-preview").click();
+  await lib.locator("#patch-send").click();
+  await settle("send the bank", () => /SIDOU SOUNDS is already on the FM-1, identical/.test(document.getElementById("store-state").textContent));
+  console.log("library page: the sixteen as a bank are the song already sent, byte for byte");
   await lib.locator("#sound-list li", { hasText: "RING BELL" }).locator("button").click();
   await lib.waitForFunction(() => /RING BELL is a sound/.test(document.getElementById("patch-state").textContent) && /"name": "RING BELL"/.test(document.getElementById("patch-text").value), null, { timeout: 10_000 })
     .catch(async () => fail(`a sound's JSON button did not open it as a patch: ${await patchState()}`));

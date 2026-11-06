@@ -467,7 +467,7 @@ typedef struct {
     uint32_t i, n, lfos, depth, format;
     uint8_t touched[LAB_SOUND_BYTES];
     char path[96];
-    uint32_t path_n;
+    uint32_t path_n, base_n;
     text err;
 } reader;
 
@@ -998,8 +998,8 @@ static void fill(uint8_t* s, const uint8_t* touched, const uint8_t* from, uint32
 }
 
 static int whole_fail(reader* r, const char* path, const char* what) {
-    r->path_n = 0;
-    r->path[0] = 0;
+    r->path_n = r->base_n;
+    r->path[r->base_n] = 0;
     if (path) {
         push(r, path, -1);
     }
@@ -1040,16 +1040,67 @@ static int checked(reader* r) {
     return heard ? PATCH_JSON_QUIET : -1;
 }
 
-int patch_json_read(patch_json* p, const char* s, uint32_t len) {
+static int skip_value(reader* r) {
+    char c = peek(r), junk[2];
+    int64_t milli;
+    int whole;
+    if (c == '"') {
+        return string(r, junk, sizeof junk) < 0 ? -1 : 0;
+    }
+    if (is_number(c)) {
+        return number(r, &milli, &whole);
+    }
+    if (word(r, "true") || word(r, "false") || word(r, "null")) {
+        return 0;
+    }
+    if (c != '{' && c != '[') {
+        return syntax(r, "a value");
+    }
+    char end = c == '{' ? '}' : ']';
+    r->i++;
+    if (peek(r) == end) {
+        r->i++;
+        return 0;
+    }
+    for (;;) {
+        if (c == '{' && (string(r, junk, sizeof junk) < 0 || eat(r, ':', "a :"))) {
+            return -1;
+        }
+        if (skip_value(r)) {
+            return -1;
+        }
+        if (peek(r) == end) {
+            r->i++;
+            return 0;
+        }
+        if (eat(r, ',', end == '}' ? "a , or }" : "a , or ]")) {
+            return -1;
+        }
+    }
+}
+
+static void reader_init(reader* r, patch_json* p, const char* s, uint32_t start, uint32_t end,
+                        char* error) {
+    memset(r, 0, sizeof *r);
+    r->p = p;
+    r->s = s;
+    r->i = start;
+    r->n = end;
+    r->err = (text){error, 0, PATCH_JSON_ERROR_MAX};
+    error[0] = 0;
+}
+
+static int read_part(patch_json* p, const char* s, uint32_t start, uint32_t end, const char* prefix,
+                     char* error) {
     reader r;
-    memset(&r, 0, sizeof r);
-    r.p = p;
-    r.s = s;
-    r.n = len;
-    r.err = (text){p->error, 0, sizeof p->error};
-    p->error[0] = 0;
+    reader_init(&r, p, s, start, end, error);
     memcpy(p->sound, DEFAULTS, LAB_SOUND_BYTES);
     memcpy(p->name, PATCH_JSON_NAME, sizeof PATCH_JSON_NAME);
+    if (prefix) {
+        push(&r, prefix, -1);
+        r.base_n = r.path_n;
+        r.format = 1;
+    }
     while (r.i < r.n && s[r.i] != '{') {
         r.i++;
     }
@@ -1064,10 +1115,197 @@ int patch_json_read(patch_json* p, const char* s, uint32_t len) {
     return checked(&r);
 }
 
+int patch_json_read(patch_json* p, const char* s, uint32_t len) {
+    return read_part(p, s, 0, len, NULL, p->error);
+}
+
+static int top_format(reader* r, char* format, uint32_t max) {
+    format[0] = 0;
+    while (r->i < r->n && r->s[r->i] != '{') {
+        r->i++;
+    }
+    if (eat(r, '{', "a { to start the bank")) {
+        return -1;
+    }
+    if (peek(r) == '}') {
+        return 0;
+    }
+    for (;;) {
+        char key[32];
+        if (string(r, key, sizeof key) < 0 || eat(r, ':', "a :")) {
+            return -1;
+        }
+        if (!strcmp(key, "format") && peek(r) == '"') {
+            if (string(r, format, max) < 0) {
+                return -1;
+            }
+        } else if (skip_value(r)) {
+            return -1;
+        }
+        if (peek(r) == '}') {
+            return 0;
+        }
+        if (eat(r, ',', "a , or }")) {
+            return -1;
+        }
+    }
+}
+
+int patch_json_is_bank(const char* s, uint32_t len) {
+    char error[PATCH_JSON_ERROR_MAX];
+    char format[24];
+    reader r;
+    reader_init(&r, NULL, s, 0, len, error);
+    return !top_format(&r, format, sizeof format) && !strcmp(format, PATCH_BANK_FORMAT);
+}
+
+#define BANK_NAME                                                                                  \
+    "1 to 16 characters: A to Z, 0 to 9, space and !\"#$%&'()*+,-./:;<=>?@[\\]^_, not starting with "  \
+    "a space"
+#define BANK_PATCHES "a list of 1 to 16 patches"
+
+static int bank_fail(reader* r, const char* what, const char* allowed_text) {
+    char w[PATCH_JSON_ERROR_MAX];
+    text m = {w, 0, sizeof w};
+    add(&m, what);
+    add(&m, ". Allowed: ");
+    add(&m, allowed_text);
+    return fail(r, w, NULL);
+}
+
+static int bank_name(reader* r, patch_bank* b) {
+    char name[64];
+    int n = string(r, name, sizeof name);
+    if (n < 0) {
+        return -1;
+    }
+    if (n < 1 || n > (int)PATCH_BANK_NAME || name[0] == ' ') {
+        return bank_fail(r, n > (int)PATCH_BANK_NAME ? "is too long" : "is not a name", BANK_NAME);
+    }
+    for (int k = 0; k < n; k++) {
+        char c = name[k] >= 'a' && name[k] <= 'z' ? (char)(name[k] - 32) : name[k];
+        if (c < NAME_FIRST || c > NAME_LAST) {
+            return bank_fail(r, "has a character the FM-1 cannot show", BANK_NAME);
+        }
+        b->name[k] = c;
+    }
+    b->name[n] = 0;
+    return 0;
+}
+
+static int bank_patches(reader* r, patch_bank* b, int* quiet) {
+    if (eat(r, '[', "a [")) {
+        return -1;
+    }
+    if (peek(r) == ']') {
+        r->i++;
+        return 0;
+    }
+    for (;;) {
+        if (b->count == PATCH_BANK_MAX) {
+            return bank_fail(r, "has too many", BANK_PATCHES);
+        }
+        char prefix[16];
+        text t = {prefix, 0, sizeof prefix};
+        add(&t, "patches[");
+        add_milli(&t, (int64_t)b->count * MILLI);
+        add(&t, "]");
+        uint32_t start = r->i;
+        if (peek(r) != '{') {
+            return fail(r, "must list objects { }", NULL);
+        }
+        if (skip_value(r)) {
+            return -1;
+        }
+        int got = read_part(&b->part, r->s, start, r->i, prefix, b->part.error);
+        if (got < 0 || (got == PATCH_JSON_QUIET && !*quiet)) {
+            memcpy(r->err.out, b->part.error, PATCH_JSON_ERROR_MAX);
+            r->err.n = length(r->err.out);
+        }
+        if (got < 0) {
+            return -1;
+        }
+        *quiet |= got == PATCH_JSON_QUIET;
+        memcpy(b->sounds[b->count], b->part.sound, LAB_SOUND_BYTES);
+        memcpy(b->names[b->count], b->part.name, sizeof b->names[0]);
+        b->count++;
+        if (peek(r) == ']') {
+            r->i++;
+            return 0;
+        }
+        if (eat(r, ',', "a , or ]")) {
+            return -1;
+        }
+    }
+}
+
+int patch_json_read_bank(patch_bank* b, const char* s, uint32_t len) {
+    reader r;
+    int format = 0, quiet = 0;
+    reader_init(&r, &b->part, s, 0, len, b->error);
+    b->count = 0;
+    memcpy(b->name, PATCH_BANK_NAME_DEFAULT, sizeof PATCH_BANK_NAME_DEFAULT);
+    while (r.i < r.n && s[r.i] != '{') {
+        r.i++;
+    }
+    if (eat(&r, '{', "a { to start the bank")) {
+        return -1;
+    }
+    while (peek(&r) != '}') {
+        char key[32];
+        if (string(&r, key, sizeof key) < 0 || eat(&r, ':', "a :")) {
+            return -1;
+        }
+        r.path_n = 0;
+        push(&r, key, -1);
+        if (!strcmp(key, "format")) {
+            char f[24];
+            if (string(&r, f, sizeof f) < 0) {
+                return -1;
+            }
+            if (strcmp(f, PATCH_BANK_FORMAT)) {
+                char w[48];
+                text m = {w, 0, sizeof w};
+                add(&m, "\"");
+                add(&m, f);
+                add(&m, "\" is not allowed");
+                return bank_fail(&r, w, "\"" PATCH_BANK_FORMAT "\"");
+            }
+            format = 1;
+        } else if (!strcmp(key, "name")) {
+            if (bank_name(&r, b)) {
+                return -1;
+            }
+        } else if (!strcmp(key, "patches")) {
+            if (bank_patches(&r, b, &quiet)) {
+                return -1;
+            }
+        } else {
+            return fail(&r, "no such field. Allowed here: format, name, patches", NULL);
+        }
+        if (peek(&r) == ',') {
+            r.i++;
+        } else if (peek(&r) != '}') {
+            return syntax(&r, "a , or }");
+        }
+    }
+    if (!format) {
+        return whole_fail(&r, "format", "is missing. Allowed: \"" PATCH_BANK_FORMAT "\"");
+    }
+    if (!b->count) {
+        return whole_fail(&r, "patches", "is empty. Allowed: " BANK_PATCHES);
+    }
+    if (!quiet) {
+        b->error[0] = 0;
+    }
+    return quiet ? PATCH_JSON_QUIET : PATCH_JSON_OK;
+}
+
 typedef struct {
     text t;
     const uint8_t *s, *ref;
     const char* name;
+    int in_bank;
 } writer;
 
 static uint32_t list_count(const list* l, const uint8_t* s) {
@@ -1267,7 +1505,7 @@ static void write_fields(writer* w, const field* f, uint32_t a, uint32_t b, int 
             write_fields(w, f->more, a, b, force, indent, first);
             continue;
         }
-        if (!shown(w, f, a, b, force)) {
+        if (!shown(w, f, a, b, force) || (f->kind == K_FORMAT && w->in_bank)) {
             continue;
         }
         add(&w->t, *first ? "" : indent < 0 ? ", " : ",");
@@ -1287,8 +1525,7 @@ static void write_object(writer* w, const field* t, uint32_t a, uint32_t b, int 
     add_char(&w->t, '}');
 }
 
-uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name, char* out,
-                          uint32_t max) {
+static void write_patch(text* t, const uint8_t sound[LAB_SOUND_BYTES], const char* name, int indent) {
     uint8_t ref[LAB_SOUND_BYTES], none[LAB_SOUND_BYTES] = {0};
     memcpy(ref, DEFAULTS, LAB_SOUND_BYTES);
     ref[LAB_SOUND_LAYERS] = sound[LAB_SOUND_LAYERS];
@@ -1300,10 +1537,30 @@ uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name
         shown_name[n] = c >= 'a' && c <= 'z' ? (char)(c - 32) : c < NAME_FIRST || c > NAME_LAST ? ' ' : c;
     }
     shown_name[n] = 0;
-    writer w = {{out, 0, max}, sound, ref, n ? shown_name : PATCH_JSON_NAME};
-    write_object(&w, ROOT, 0, LAB_SOUND_LAYER_TUNING, SHOW_MARKED, 2);
-    add_char(&w.t, '\n');
-    return w.t.n + 1u < max ? w.t.n : 0u;
+    writer w = {*t, sound, ref, n ? shown_name : PATCH_JSON_NAME, indent > 2};
+    write_object(&w, ROOT, 0, LAB_SOUND_LAYER_TUNING, SHOW_MARKED, indent);
+    *t = w.t;
+}
+
+uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name, char* out,
+                          uint32_t max) {
+    text t = {out, 0, max};
+    write_patch(&t, sound, name, 2);
+    add_char(&t, '\n');
+    return t.n + 1u < max ? t.n : 0u;
+}
+
+uint32_t patch_json_write_bank(const patch_bank* b, char* out, uint32_t max) {
+    text t = {out, 0, max};
+    add(&t, "{\n  \"format\": \"" PATCH_BANK_FORMAT "\",\n  \"name\": ");
+    quoted(&t, b->name);
+    add(&t, ",\n  \"patches\": [");
+    for (uint32_t k = 0; k < b->count; k++) {
+        add(&t, k ? ",\n    " : "\n    ");
+        write_patch(&t, b->sounds[k], b->names[k], 6);
+    }
+    add(&t, "\n  ]\n}\n");
+    return t.n + 1u < max ? t.n : 0u;
 }
 
 static const char* json_type(const field* f) {
@@ -1351,25 +1608,60 @@ uint32_t patch_json_fields(char* out, uint32_t max) {
     return t.n + 1u < max ? t.n : 0u;
 }
 
-int patch_json_song(gt2_song* s, const uint8_t sound[LAB_SOUND_BYTES], const char* name,
-                    uint32_t model) {
-    static const uint8_t first[GT2_TABLES] = {1u, 1u, 1u, 1u};
-    lab_song_instr in;
+static int place_all(gt2_song* s, const uint8_t (*sounds)[LAB_SOUND_BYTES], const char (*names)[LAB_SOUND_NAME + 1u],
+                     uint32_t count, const char* song_name, uint32_t model) {
+    lab_song_instr in[PATCH_BANK_MAX];
+    uint32_t end[GT2_TABLES] = {0};
     if (gt2_song_clear(s)) {
         return -1;
     }
-    lab_song_encode(sound, name, 0, model, first, &in);
-    memcpy(s->instr[0], in.instr, GT2_INSTR_BYTES);
-    for (uint32_t t = 0; t < GT2_TABLES; t++) {
-        memcpy(s->ltable[t], in.left[t], in.rows[t]);
-        memcpy(s->rtable[t], in.right[t], in.rows[t]);
+    for (uint32_t k = 0; k < count; k++) {
+        uint8_t first[GT2_TABLES];
+        for (uint32_t t = 0; t < GT2_TABLES; t++) {
+            first[t] = (uint8_t)(end[t] + 1u);
+        }
+        lab_song_encode(sounds[k], names[k], 0, model, first, &in[k]);
+        for (uint32_t t = 0; t < GT2_TABLES; t++) {
+            if (end[t] + in[k].rows[t] > GT2_TABLE_ROWS) {
+                return (int)(k + 1u);
+            }
+            memcpy(&s->ltable[t][end[t]], in[k].left[t], in[k].rows[t]);
+            memcpy(&s->rtable[t][end[t]], in[k].right[t], in[k].rows[t]);
+            end[t] += in[k].rows[t];
+        }
+        memcpy(s->instr[k], in[k].instr, GT2_INSTR_BYTES);
     }
     memset(s->name, 0, sizeof s->name);
-    for (uint32_t k = 0; k < LAB_SOUND_NAME && name[k]; k++) {
-        s->name[k] = name[k];
+    for (uint32_t k = 0; k < GT2_STR - 1u && song_name[k]; k++) {
+        s->name[k] = song_name[k];
     }
     gt2_saved_recount(s);
-    return lab_song_keep(s, 1u, &in, sound);
+    for (uint32_t k = 0; k < count; k++) {
+        if (lab_song_keep(s, k + 1u, &in[k], sounds[k])) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int patch_json_song(gt2_song* s, const uint8_t sound[LAB_SOUND_BYTES], const char* name,
+                    uint32_t model) {
+    char names[1][LAB_SOUND_NAME + 1u] = {{0}};
+    for (uint32_t k = 0; k < LAB_SOUND_NAME && name[k]; k++) {
+        names[0][k] = name[k];
+    }
+    return place_all(s, (const uint8_t(*)[LAB_SOUND_BYTES])sound, (const char(*)[LAB_SOUND_NAME + 1u])names, 1u, names[0], model);
+}
+
+int patch_json_bank_song(gt2_song* s, patch_bank* b, uint32_t model) {
+    int r = place_all(s, (const uint8_t(*)[LAB_SOUND_BYTES])b->sounds, (const char(*)[LAB_SOUND_NAME + 1u])b->names, b->count, b->name, model);
+    if (r > 0) {
+        text t = {b->error, 0, sizeof b->error};
+        add(&t, "patches[");
+        add_milli(&t, (int64_t)(r - 1) * MILLI);
+        add(&t, "]: the bank's tables are full here: a song holds 255 rows of each table. Drop a patch or shorten the tables.");
+    }
+    return r;
 }
 
 uint32_t patch_json_song_sound(const gt2_song* s, uint32_t instr, char* out, uint32_t max) {

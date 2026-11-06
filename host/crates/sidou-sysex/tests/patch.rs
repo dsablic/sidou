@@ -7,7 +7,7 @@ use sidou_patch::json;
 use sidou_patch::sounds::sidou_sounds;
 use sidou_sys::{SID_MODEL_6581, SID_MODEL_8580};
 use sidou_sysex::import::Model;
-use sidou_sysex::patch::patch_file;
+use sidou_sysex::patch::{bank_file, patch_file};
 use sidou_sysex::{Packet, FILE_SONG, PUT};
 
 #[test]
@@ -86,5 +86,49 @@ fn the_cli_writes_the_song_and_its_syx_and_refuses_with_the_field() {
     assert!(!bad.status.success());
     assert!(String::from_utf8_lossy(&bad.stderr)
         .contains("wave: \"sawtooth\" is not allowed. Allowed: triangle, saw"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_bank_file_is_the_sixteen_s_song_and_its_put() {
+    let text = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../assets/sounds/sidou-sounds-bank.json"),
+    )
+    .unwrap();
+    let f = bank_file(&text, Model::Mos6581).unwrap();
+    let site = std::fs::read(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../assets/sounds/sidou-sounds.sng"),
+    )
+    .unwrap();
+    assert_eq!((f.song.name.as_str(), f.song.sng), ("SIDOU SOUNDS", site));
+    let refused = bank_file(
+        r#"{"format": "sidou-bank/1", "patches": [{"wave": "sawtooth"}]}"#,
+        Model::Mos6581,
+    );
+    assert!(refused
+        .err()
+        .unwrap()
+        .starts_with("patches[0].wave: \"sawtooth\" is not allowed"));
+    let dir = std::env::temp_dir().join(format!("sidou-bank-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("kit.json"),
+        r#"{"format": "sidou-bank/1", "name": "kit", "patches": [{}, {"wave": "noise"}]}"#,
+    )
+    .unwrap();
+    let run = Command::new(env!("CARGO_BIN_EXE_sidou-sysex"))
+        .args(["bank", "kit.json", "--out", "out"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(dir.join("out/KIT.sng").is_file() && dir.join("out/KIT.syx").is_file());
     std::fs::remove_dir_all(&dir).unwrap();
 }

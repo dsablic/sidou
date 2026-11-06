@@ -92,7 +92,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   musical units ([the format](docs/reference/patch-json.md)) and a patch link. The Library page
   checks it with the FM-1's own rules (each refusal one line naming the field, to paste back),
   plays it, and sends it as a one-instrument song LAB opens with ENV; no sign-in, nothing stored.
-  Any of the sixteen sounds shows as a patch to start from; `sidou-sysex patch` does the same on
+  Any of the sixteen sounds, or a LAB sound in a song, shows as a patch to change; several at once
+  come as a bank of up to sixteen, sent as one song; `sidou-sysex patch` and `bank` do the same on
   a computer.
 - **Edit a song in the browser.** The site's [editor](https://dsablic.github.io/sidou/editor.html)
   opens a song from a file or the connected FM-1 and edits its instruments, tables, patterns and

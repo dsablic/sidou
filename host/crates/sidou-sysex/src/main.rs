@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
-use sidou_sysex::patch::patch_file;
+use sidou_sysex::patch::{bank_file, patch_file, PatchFile};
 use sidou_sysex::sid;
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -141,7 +141,7 @@ fn write_song(out: &Path, song: &SongFile) -> Result<(), ExitCode> {
     Ok(())
 }
 
-fn patch_main(rest: Vec<String>) -> ExitCode {
+fn patch_main(rest: Vec<String>, read: fn(&str, Model) -> Result<PatchFile, String>) -> ExitCode {
     let i = match import_args(rest) {
         Ok(i) if i.name.is_none() => i,
         Ok(_) => {
@@ -160,7 +160,7 @@ fn patch_main(rest: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let file = match patch_file(&text, i.model) {
+    let file = match read(&text, i.model) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("{}: {e}", i.bank.display());
@@ -173,7 +173,7 @@ fn patch_main(rest: Vec<String>) -> ExitCode {
     if let Err(code) = make_out(&i.out).and_then(|()| write_song(&i.out, &file.song)) {
         return code;
     }
-    println!("On the FM-1: SONG, LOAD {}, SEQ to INSTR, instrument 01, ENV opens it in LAB, SAVE keeps it", file.song.name);
+    println!("On the FM-1: SONG, LOAD {}, SEQ to INSTR, an instrument, ENV opens it in LAB, SAVE keeps it", file.song.name);
     ExitCode::SUCCESS
 }
 
@@ -227,7 +227,8 @@ fn main() -> ExitCode {
     let rest: Vec<String> = all.collect();
     match command.as_deref() {
         Some("import") => import_main(rest),
-        Some("patch") => patch_main(rest),
+        Some("patch") => patch_main(rest, patch_file),
+        Some("bank") => patch_main(rest, bank_file),
         Some("sid") => sid_main(rest),
         _ => {
             eprintln!("{USAGE}");
