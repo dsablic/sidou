@@ -82,7 +82,35 @@ LAB opens with the sound exactly as made (`PULLED I03`), and SAVE keeps it as a 
 song is also there to download. The sounds are defined in `host/crates/sidou-patch/src/sounds.rs`,
 and the song in `assets/sounds` is written from them (its test, `SIDOU_SOUNDS_UPDATE=1`).
 
-## 5. Export a song
+## 5. A sound from a prompt
+
+Any language model can design a LAB sound for you: ChatGPT, Claude, Gemini or one on your own
+computer. **Copy instructions** puts SIDOU's instructions for it on the clipboard (they are also at
+[dsablic.github.io/sidou/llms.txt](https://dsablic.github.io/sidou/llms.txt), so you can tell a
+model that reads the web "read dsablic.github.io/sidou/llms.txt and make me a squelchy acid
+bass"). Paste them into a chat and ask for a sound. The model answers with a patch, a short JSON
+text ([the format](../reference/patch-json.md)), and a link.
+
+Paste the answer in the box (all of it: the page finds the patch in it) and press **Check**, or
+open the link. The page checks the patch with the FM-1's own rules: every field's range, a sound
+LAB can hold, and one LAB's audibility estimate hears. A refusal is one line naming the field,
+what is wrong and what is allowed (`filter.resonance: 20 is too high. Allowed: 0 to 15.`): paste
+it back to the model and it fixes the patch. A sound only one chip would hear is taken, with a
+warning.
+
+- **Preview** plays it here, as the song player plays it (LAB plays all of it, its effects too).
+- **Send to FM-1** sends it as a one-instrument song named after the sound. On the FM-1: menu,
+  SONG, LOAD it, SEQ to INSTR, PRESETS to instrument 01 and **ENV**: it opens in LAB; SAVE keeps
+  it as a USER sound.
+- **Copy link** gives the patch as a link to share; **Download .sng** saves the song.
+
+A patch link carries the patch after its `#`, which the browser never sends to a server. Opening
+one fills the box, checks and previews the patch, and sends nothing until you press Send to FM-1.
+Each of SIDOU's sixteen sounds above has a **JSON** button that opens it here as a patch, to see
+the format or to change it. `sidou-sysex patch FILE.json --out DIR` makes the same song (and its
+`.syx`) on a computer.
+
+## 6. Export a song
 
 Drop a `.sng` on the page, choose one, press **Open** next to a song on the FM-1, or **Open the
 FM-1's current song** (what it has loaded now, with the changes you have not saved). The panel

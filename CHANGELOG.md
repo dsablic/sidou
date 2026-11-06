@@ -9,6 +9,16 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **A sound from a prompt.** SIDOU's instructions for language models
+  ([docs/prompt-to-patch.md](docs/prompt-to-patch.md), on the site as `llms.txt`) and a text
+  format for one LAB sound, `sidou-patch/1` ([the reference](docs/reference/patch-json.md), a JSON
+  Schema beside it): named fields in musical units, everything a LAB sound holds, any field left
+  out. The Library page reads a pasted patch or a `#patch=` link, checks it with the FM-1's rules
+  (the ranges, `lab_sound_valid`, the audibility estimate), says what is wrong in one line a model
+  can fix from, previews it and sends it as a one-instrument song; the sixteen sounds open as
+  patches. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
+  the host tests; `sidou-sysex patch FILE.json` writes the song and its `.syx`. The firmware is
+  unchanged.
 - **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a
   Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs and clock
   both ways, SETTINGS BLUETOOTH OFF / ON, the setting and SIDOU's address kept. A dropped link

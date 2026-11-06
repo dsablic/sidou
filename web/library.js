@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { CoreError, loadCore } from "./core.js";
+import { fromLink, linkOf, loadPatcher } from "./patch.js";
+import { Preview } from "./preview.js";
 import { Library, extOf, storeName, typeLabel, typeOfFile } from "./store.js";
 import { Client } from "./sysex.js";
 
@@ -33,7 +35,7 @@ function save(bytes, filename, type = "application/octet-stream") {
   state.saved.push({ filename, bytes });
 }
 
-const state = { access: null, lib: null, busy: false, core: null, song: null, saved: [] };
+const state = { access: null, lib: null, busy: false, core: null, song: null, saved: [], patch: null, patcher: null, preview: null, copied: null };
 window.__library = state;
 
 function setBusy(busy) {
@@ -42,6 +44,7 @@ function setBusy(busy) {
   $("connect").disabled = busy;
   $("check").disabled = busy || !state.access || !$("out").value || !$("in").value;
   for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1, #sounds .needs-fm1")) b.disabled = !ready;
+  $("patch-send").disabled = !ready || !state.patch?.ok;
   $("progress").hidden = !busy;
 }
 
@@ -352,11 +355,108 @@ for (const type of ["dragleave", "drop"]) drop.addEventListener(type, (e) => { e
 drop.addEventListener("drop", (e) => pickSong(e.dataTransfer.files[0]));
 
 const SOUNDS = "sounds/sidou-sounds.json";
+const PREVIEW_NOTE = 48, PREVIEW_MS = 900;
+
+async function patcher() {
+  if (!state.patcher) state.patcher = await loadPatcher("sidou-patch.wasm");
+  return state.patcher;
+}
+
+function showPatch() {
+  const p = state.patch, ok = !!p?.ok;
+  for (const id of ["patch-preview", "patch-link", "patch-save"]) $(id).disabled = !ok;
+  setBusy(state.busy);
+}
+
+async function checkPatch() {
+  const text = $("patch-text").value;
+  if (!text.trim()) {
+    state.patch = null;
+    say($("patch-state"), "Paste a patch first: the JSON a model answered with.", "error");
+    return showPatch();
+  }
+  try {
+    state.patch = (await patcher()).check(text);
+  } catch (e) {
+    state.patch = null;
+    say($("patch-state"), `The patch could not be checked: ${e.message}.`, "error");
+    return showPatch();
+  }
+  const p = state.patch;
+  if (!p.ok) say($("patch-state"), `Not a sound yet:\n${p.error}\nPaste that line back to the model and ask it to fix the patch.`, "error");
+  else if (p.quiet) say($("patch-state"), `${p.name} is a sound, with a warning:\n${p.quiet}\nPreview it; on the other chip it plays.`);
+  else say($("patch-state"), `${p.name} is a sound the FM-1 can play: preview it, or send it.`, "ok");
+  if (p.ok) state.preview?.setSong(p.sng);
+  showPatch();
+}
+
+async function previewPatch() {
+  if (!state.patch?.ok) return;
+  try {
+    if (!state.preview) {
+      const wasm = new Uint8Array(await (await fetch("sidou-core.wasm")).arrayBuffer());
+      state.preview = new Preview(wasm, { onMessage: (m) => { if (m.type === "error") say($("patch-state"), `The preview failed: ${m.message}.`, "error"); else if (m.type === "state" && m.state !== "idle") state.previewed = m; } });
+    }
+    state.preview.setSong(state.patch.sng);
+    await state.preview.note(0, PREVIEW_NOTE, 1);
+    setTimeout(() => state.preview.release(0), PREVIEW_MS);
+  } catch (e) {
+    say($("patch-state"), `The preview failed: ${e.message}.`, "error");
+  }
+}
+
+async function copyText(text) {
+  state.copied = text;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function copyInstructions() {
+  const text = await (await fetch("llms.txt")).text();
+  say($("patch-state"), (await copyText(text)) ? `The instructions are copied (${text.split(/\s+/).length} words): paste them into a chat, then ask for a sound.` : "The browser did not allow copying: open the instructions link and copy them from there.", "ok");
+}
+
+async function copyLink() {
+  const link = linkOf(new URL("library.html", location.href).href, $("patch-text").value);
+  if (!link) return;
+  say($("patch-state"), (await copyText(link)) ? `The patch link is copied (${link.length} characters).` : `The patch link: ${link}`, "ok");
+}
+
+function sendPatch() {
+  const p = state.patch;
+  if (p?.ok) sendBytes(p.name, p.sng, 1);
+}
+
+async function openPatch(text) {
+  $("patch-text").value = text;
+  await checkPatch();
+  $("patch").scrollIntoView({ block: "nearest" });
+}
+
+async function openLink() {
+  const got = fromLink(location.hash);
+  if (!got) return;
+  if (got.error) {
+    say($("patch-state"), got.error, "error");
+    $("patch").scrollIntoView({ block: "nearest" });
+    return;
+  }
+  let text = got.text;
+  try {
+    text = `${JSON.stringify(JSON.parse(text), null, 2)}\n`;
+  } catch {}
+  await openPatch(text);
+}
 
 async function showSounds() {
   const bank = await (await fetch(SOUNDS)).json();
   $("sound-list").replaceChildren(...bank.sounds.map((s) =>
-    el("li", {}, el("b", { textContent: s.name }), ` ${s.about} (instrument ${String(s.instrument).padStart(2, "0")})`)));
+    el("li", {}, el("b", { textContent: s.name }), ` ${s.about} (instrument ${String(s.instrument).padStart(2, "0")})`,
+      button("JSON", async () => openPatch(await (await fetch(new URL(s.patch, new URL(SOUNDS, location.href)))).text()), { title: `${s.name} as a patch` }))));
   $("send-sounds").onclick = async () => {
     const bytes = new Uint8Array(await (await fetch(new URL(bank.song, new URL(SOUNDS, location.href)))).arrayBuffer());
     await sendBytes(bank.name, bytes, 1);
@@ -365,6 +465,15 @@ async function showSounds() {
 }
 
 showSounds().catch((e) => say($("sounds-state"), `The sounds could not be listed: ${e.message}`, "error"));
+$("patch-check").addEventListener("click", checkPatch);
+$("patch-preview").addEventListener("click", previewPatch);
+$("patch-send").addEventListener("click", sendPatch);
+$("patch-link").addEventListener("click", copyLink);
+$("patch-save").addEventListener("click", () => state.patch?.ok && save(state.patch.sng, `${stemOf(state.patch.name)}.sng`));
+$("patch-text").addEventListener("input", () => { state.patch = null; showPatch(); say($("patch-state"), ""); });
+$("copy-instructions").addEventListener("click", copyInstructions);
+window.addEventListener("hashchange", openLink);
+openLink();
 
 if (!navigator.requestMIDIAccess) {
   $("support").hidden = false;

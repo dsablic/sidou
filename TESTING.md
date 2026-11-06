@@ -44,6 +44,8 @@ lists the prerequisites.
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 | Songs page's SysEx code, in Node (no browser, no MIDI) | `node web/sysex.test.mjs` (`tools/web-demo --check` runs it first) | `web/sysex.test.mjs`, `web/sysex.js`, `web/sysex-vectors.txt` |
 | Library page's store work and backups, in Node (a simulated FM-1, no MIDI) | `node web/library.test.mjs` (`tools/web-demo --check` runs it first) | `web/library.test.mjs`, `web/store.js`, `web/zip.js`, `web/fake-fm1.mjs` |
+| The `sidou-patch/1` converter, on the host (`platform/web/patch_json.c` through `sidou-sys`): the sixteen sounds as patches read back to their bytes, every field's range and refusal words, every register of each converted field back exactly, the defaults and what a part leaves out, silent patches refused and one-chip-quiet ones warned, the one-instrument song pulled back exactly; LAB's starting sound as the defaults; the instructions, schema, reference table, patch files and web fixtures current, every example in the instructions read back to its sound and its link, three patches written from the instructions alone; `sidou-sysex patch` | `cargo test -p sidou-patch --test patch_json --test patch_docs` (`SIDOU_PATCH_DOC_UPDATE=1` rewrites the generated files), `cargo test -p sidou-sysex --test patch`, `cargo test --release -p sidou-tests --test app a_patch_leaves_out` | `crates/sidou-patch/tests/patch_json.rs`, `patch_docs.rs`, `tests/data/prompt-to-patch.md` (the instructions' template), `crates/sidou-sysex/tests/patch.rs` |
+| The site's patch converter against the host build | `tools/wasm-patch && node web/patch.test.mjs` | `web/patch.test.mjs`, `web/patch.js`, `platform/web/patch_api.c` |
 | The site's wasm core against the host build (every song in `assets/songs` and GoatTracker's examples, cut files, an ambiguous mono/stereo file: the read, the `.sng` with and without the trailer, the plain file's check and GoatTracker 2.77 loading it unchanged, every GTI5, two seconds of the player and an instrument at a note, byte for byte) | `tools/wasm-core && node web/core.test.mjs`; the fixtures: `cargo test --release -p sidou-tests --test web_core` (`SIDOU_WEB_CORE_FIXTURE_UPDATE=1` rewrites `web/core-fixtures.json`) | `web/core.test.mjs`, `web/core.js`, `platform/web/core_api.c`, `crates/sidou-tests/tests/web_core.rs` |
 | The editor's work against the host build and a simulated FM-1: a script of edits through the FM-1's primitives (refusals among them), each step's `.sng` byte for byte; both save-size refusals (`FULL`, `SONG FULL`); the parameter locks following INS, DEL, inserted and deleted rows and a cut; undo and redo; the previews' samples (the song from a position through the effect slots, a pattern on one voice, an instrument at a note; the chip's setup applied); the resampler; the FM-1's words for cells, orderlist entries and table rows against the C; saving (PUT target 0 with the overwrite check, Load now's PUT target 2 and SAVE AS FIRST's BUSY) | `tools/wasm-core && node web/editor.test.mjs`; the fixtures as above (`core-fixtures.json`'s `editor`) | `web/editor.test.mjs`, `web/song-edit.js`, `web/preview.js`, `web/core.js`, `platform/web/core_api.c`, `crates/sidou-tests/tests/web_core.rs` |
 | Live Link viewer, in Node (a simulated FM-1 answering with SIDOU's own frames, fake time, no MIDI): the frames against the spec's test vectors, the session (START, the heartbeat, STOP on stop and when the page is hidden, the device's auto-stop and a restart, silence), the wasm viewer's picture of the device's frames against the panel's (RGB565 CRC-32), the font and palette fetched only when HELLO's CRCs differ and then cached, a keyframe after a bad frame, PANEL for held, re-sent and released buttons and encoder steps | `tools/wasm-link && node web/link.test.mjs`; the fixtures: `cargo test --release -p sidou-tests --test web_link` (`SIDOU_WEB_LINK_FIXTURE_UPDATE=1` rewrites `web/link-fixtures.json`) | `web/link.test.mjs`, `web/link.js`, `web/fake-fm1.mjs`, `platform/web/link_api.c`, `crates/sidou-tests/tests/web_link.rs` |
@@ -1847,8 +1849,13 @@ carry the four `.sng` files byte for byte (CRC included).
 The same run covers the Library page (`web/library.html`) with the same fake MIDI: a song picked
 from a file opens through the wasm core with no MIDI used, and its exports are the FM-1's save
 byte for byte, a plain GoatTracker file and a GTI5; then, connected, the listing, a delete, a
-rename (GET, PUT, DEL), a backup `.zip` with its manifest and an Open of a stored song. It fails
-on any of those, on a frame to the other port, or on a sideways scroll at phone width.
+rename (GET, PUT, DEL), a backup `.zip` with its manifest and an Open of a stored song. Its patch
+box: the served `llms.txt` and `patch.schema.json` are the repository's (`web/check.sh` copies
+them next to `check.mjs`), Copy instructions copies `llms.txt`, a bad patch is refused in its one
+line and cannot be sent, a good one previews in the AudioWorklet with nothing sent and Send to
+FM-1 PUTs its song byte for byte, a sound's JSON button opens it as a patch, a `#patch=` link
+opens and checks its patch with no MIDI used, and a damaged link says so. It fails on any of
+those, on a frame to the other port, or on a sideways scroll at phone width.
 
 The same run covers the editor (`web/editor.html`) at phone width with the same fake MIDI: a song
 from a file opens as the FM-1 saves it, an instrument byte typed and a note played from the
@@ -1872,7 +1879,12 @@ Before the browser, `web/check.sh` runs `node web/library.test.mjs` (the Library
 overwrite check, delete, rename, backup and restore round trips, the refusals; the `.zip` opened by
 `unzip` and a deflated one read) and `node web/core.test.mjs` (the built `sidou-core.wasm` against
 `web/core-fixtures.json`, which the host build writes: `sidou-tests`' `web_core` test fails when
-the committed file is not what the host build makes) and `node web/editor.test.mjs` (the editor's
+the committed file is not what the host build makes), `node web/patch.test.mjs` (the built
+`sidou-patch.wasm` against `web/patch-fixtures.json`, which `sidou-patch`'s `patch_docs` test
+writes: the sixteen sounds, refusals, a warning and three patches written from the instructions
+alone, each the same song or the same words as the host build; each of the sixteen's patch files a
+one-instrument song the core plays and hears, and its link back to the same patch; a damaged or
+oversized link in plain words) and `node web/editor.test.mjs` (the editor's
 edits, previews and saving, against the same fixtures and `web/fake-fm1.mjs`). It also runs `node web/sysex.test.mjs`, which needs no browser: the
 page's SysEx encoder and decoder (`web/sysex.js`) against `web/sysex-vectors.txt` (the frames
 Rust's `sidou-sysex` also encodes and decodes: its test `web_vectors_match_the_canonical_encoder_and_decoder`

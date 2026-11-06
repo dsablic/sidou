@@ -309,6 +309,22 @@ multispeed cap, so the page refuses what the FM-1 refuses, with its messages;
 `web/core.test.mjs` and `web/editor.test.mjs` check every output against the
 host build (`web/core-fixtures.json`, TESTING.md).
 
+### The patch converter's wasm (`tools/wasm-patch`)
+
+The Library page's patch box (`web/patch.js`) reads a `sidou-patch/1` patch with SIDOU's own
+converter (`platform/web/patch_json.c`) and LAB's rules (`app/lab_sound.c`, `app/lab_edit.c`'s
+audibility estimate, `app/lab_song.c`'s song encoder) into a one-instrument `.sng`, through
+`platform/web/patch_api.c`, as its own module with no imports, `sidou-patch.wasm`: it loads only
+when a patch is checked, so the wasm core stays inside its budget.
+
+```sh
+tools/wasm-patch                # build/wasm-patch/sidou-patch.wasm
+tools/wasm-patch OUT.wasm       # elsewhere (tools/web-demo builds it into build/web)
+```
+
+The toolchain is the wasm core's. The module is about 46 KB; its budget is 64 KiB, which
+`web/patch.test.mjs` checks against `web/patch-fixtures.json` (TESTING.md).
+
 ### The Live Link viewer's wasm (`tools/wasm-link`)
 
 The Live Link page (`web/link.html`) draws the FM-1's screen with the FM-1's own

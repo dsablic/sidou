@@ -105,20 +105,20 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
     RAMTEXT); a DICE bass role that rolls slides and accents; and ear checks of the site's sixteen
     sounds on a device.
-  - **Prompt to patch** (the owner, 2026-11-05): a page on the site turns a few words ("a squelchy
-    acid bass with a fast filter envelope") into a LAB sound and sends it to the FM-1. The user
-    signs in with OpenRouter's PKCE flow from the static page, with no client secret and no
-    server: the key stays in the user's tab and SIDOU stores nothing. OpenRouter's free models
-    give a user 50 requests a day (1,000 after $10 of credits once); a paid model, Claude among
-    them, is the user's choice and cost. The model writes the sound's settings as JSON, never
-    audio; the site's wasm core checks every answer (a valid sound, not silent), with one retry
-    that hands the model the error, so only a valid sound is sent; the sixteen site sounds are
-    the prompt's examples. A new SysEx target, a LAB sound, opens it in LAB at once without
-    touching the song, and SAVE keeps it (until then, a one-instrument song). First: a prompt,
-    Make, Try again and a tweak word ("darker"); no audio-to-patch, no chat. It starts with a
-    design session: the JSON shape, the prompt, test prompts judged by ear, and OpenRouter's
-    current docs and limits. GitHub Models was ruled out (no OAuth a static page can finish, its
-    future unclear). M.
+  - **Prompt to patch** (the owner, 2026-11-06; first planned 2026-11-05): a sound from any
+    language model, with no sign-in, no service and no new SysEx target. SIDOU's instructions
+    ([docs/prompt-to-patch.md](prompt-to-patch.md), on the site as `llms.txt`, one source with the
+    Copy instructions button) tell a model what the engine can and can't do, the format and its
+    ranges, how to make SID sounds sound good, with six of the site's sixteen sounds as examples;
+    it answers with one `sidou-patch/1` JSON patch ([the format](reference/patch-json.md), a JSON
+    Schema beside it) and a `#patch=` link. The Library page checks a pasted patch or a link with
+    the FM-1's rules, says what is wrong in one line to paste back, previews it, and sends it as a
+    one-instrument song that ENV on INSTR opens in LAB; the sixteen show as patches. One converter
+    in C, in its own wasm and the host tests; `sidou-sysex patch`. Done in the 1.8 tree. Next in
+    1.8: an existing sound (a song's, a USER sound) as a patch to edit, banks of up to sixteen
+    patches, and STEP patterns as text, with a CLI for coding agents. Later, if users ask: a
+    one-button page that calls a model itself (OpenRouter's PKCE sign-in was the first plan), and
+    an MCP server (a local one through npx, never on Pages).
 - **Next, Bluetooth connecting out** (moved from 1.8 by the owner, 2026-11-06): SIDOU connects to
   Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device remembered), the
   owner's Korg microKEY Air as the test; pairing if the keyboard asks for it. Its room, about
@@ -126,6 +126,11 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
   2026-11-06) and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`,
   `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before).
   M-L.
+- **1.9** (the owner, 2026-11-06), each starting with a short design:
+  - **Whole songs as text:** a text form of a GoatTracker song, a model's or a coding agent's,
+    that opens in the site's editor.
+  - **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx
+    can reach it.
 - **2.0.**
   - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
     default, falling back to one core; the RAMTEXT room is there since 1.7.

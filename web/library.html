@@ -6,7 +6,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SIDOU library</title>
-<meta name="description" content="The FM-1's songs, .sid tunes and instruments from the browser: list, download, send, rename, delete, back up and restore; export a song for GoatTracker and its instruments as .ins.">
+<meta name="description" content="The FM-1's songs, .sid tunes and instruments from the browser: list, download, send, rename, delete, back up and restore; a sound from a language model's patch, checked, played and sent; export a song for GoatTracker and its instruments as .ins.">
 <link rel="icon" href="data:,">
 <style>
   :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
@@ -66,6 +66,9 @@
   #s-plain-note { margin: 0; color: var(--yellow); }
   #s-plain-note:empty, #song-error:empty { display: none; }
   #song-error { color: var(--bad); margin: 8px 0 0; }
+  #patch-text { width: 100%; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; resize: vertical; }
+  #patch-state { min-height: 1.5em; white-space: pre-wrap; }
+  #sound-list button { padding: 1px 8px; margin-left: 6px; font-size: 12.5px; }
   footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; }
   @media (max-width: 600px) { .brand img { width: 160px; } th.crc, td.crc { display: none; } }
 </style>
@@ -147,8 +150,38 @@
     <p id="sounds-state" role="status" aria-live="polite"></p>
   </section>
 
+  <section id="patch">
+    <h2>4. A sound from a prompt</h2>
+    <p>Ask any language model for a sound: copy SIDOU's instructions into ChatGPT, Claude, Gemini or a
+      model on your computer (or tell it to read <a href="llms.txt">dsablic.github.io/sidou/llms.txt</a>),
+      then ask for what you hear in your head, like "a squelchy acid bass". It answers with a patch:
+      paste the answer here, or open the link it gives. The page checks the patch with the FM-1's own
+      rules, plays it, and sends it as a one-instrument song.</p>
+    <div class="row">
+      <button type="button" id="copy-instructions" class="primary">Copy instructions</button>
+      <a href="llms.txt">The instructions</a>
+      <a href="patch.schema.json">The JSON Schema</a>
+    </div>
+    <textarea id="patch-text" rows="12" spellcheck="false" aria-label="The patch (JSON)" placeholder='{"format": "sidou-patch/1", "name": "ACID BASS", ...}'></textarea>
+    <div class="row" style="margin-top:10px">
+      <button type="button" id="patch-check">Check</button>
+      <button type="button" id="patch-preview" disabled>Preview</button>
+      <button type="button" id="patch-send" class="primary needs-fm1 needs-patch" disabled>Send to FM-1</button>
+      <button type="button" id="patch-link" disabled>Copy link</button>
+      <button type="button" id="patch-save" disabled>Download .sng</button>
+    </div>
+    <p id="patch-state" role="status" aria-live="polite"></p>
+    <p>On the FM-1, after Send: menu, SONG, LOAD the song named after the sound, SEQ to INSTR, PRESETS
+      to instrument 01 and ENV: it opens in LAB; SAVE keeps it as one of your USER sounds. The preview
+      is the sound as the song player plays it; LAB plays all of it, its effects too. A patch link
+      carries the patch after its <code>#</code>, which the browser never sends to a server; opening one
+      checks and previews the patch here and sends nothing until you press Send to FM-1. Any of
+      SIDOU's sounds above opens here as a patch with its JSON button. The format:
+      <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/patch-json.md">docs/reference/patch-json.md</a>.</p>
+  </section>
+
   <section id="song">
-    <h2>4. A song: export</h2>
+    <h2>5. A song: export</h2>
     <label class="drop" id="drop">
       <input type="file" id="file" accept=".sng,application/octet-stream">
       <b>Drop a <code>.sng</code> here</b>, or press to choose one; or <b>Open</b> one on the FM-1 above.

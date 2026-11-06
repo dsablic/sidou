@@ -6237,7 +6237,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   compiled; GoatTracker's own files are compiled with their warnings silenced (gt2-ref's
   `build.rs`). `uac_harness.c` builds at `-O2`, as its `build.rs` builds it: `usb.c`'s unused SIE
   functions hold pi32v2 instructions.
-- `tools/wasm-core` and `tools/wasm-link` build the site's two WebAssembly modules with no
+- `tools/wasm-core`, `tools/wasm-link` and `tools/wasm-patch` build the site's three WebAssembly modules with no
   imports and no libc (`platform/fm1/libc_min.c`, as on the device), compiled by the image's
   clang and linked by the Rust toolchain's `rust-lld -flavor wasm` (or a `wasm-ld` on PATH;
   `SIDOU_WASM_LD`, `SIDOU_WASM_RUST_LLD=1`). The core has a 64 KiB stack and about 1.1 MiB of
@@ -6507,6 +6507,50 @@ gain.
   second. After a stop the tails ring `TAIL_SECONDS` (2, in `preview-worklet.js`). Play reads the
   song afresh. A preview's effect slot is proven heard by the output's two sides differing (the
   chorus spreads it).
+
+### Prompt to patch (1.8)
+
+- The owner's decision (2026-11-06): no service, no sign-in, no SysEx target. A model is given
+  instructions and answers with text; the site checks the text with the FM-1's rules. Any model
+  works, local ones too, and nothing is stored anywhere.
+- **One converter, in C** (`platform/web/patch_json.c`): `sidou-patch/1` JSON to the 109 bytes and
+  back, with its own small JSON reader. C because the rules it must apply are C (`lab_sound_valid`,
+  `lab_audible`, `lab_song_encode` and `lab_song_keep`), and the site and the host tests already
+  share the C (`sidou-sys`): one field table drives reading, writing, the error words and the
+  generated docs, so the JavaScript holds no rule. It sits in `platform/web`, outside the firmware's
+  build: the firmware images are byte for byte as before. Rust (`sidou-patch`'s `json.rs`) is a
+  thin wrapper for the tests, the docs and `sidou-sysex patch`.
+- **Its own wasm** (`tools/wasm-patch`, about 46 KB): in the core it took 185,311 bytes against the
+  core's 176 KiB budget (the rules' C alone is 10.6 KB: the audibility estimate 4.9 KB, the song
+  encoder and its keep 4.8 KB). The patch module loads only when a patch is checked, so the core's
+  pages load as before; it hands the song's bytes to the core for the preview.
+- **Musical units, exact both ways.** A field is in the unit LAB's card shows where that is already
+  musical (the envelope's 0..15, cents, semitones, 0..127 effect knobs) and converted where the
+  byte is a register: the cutoff in Hz on the 8580's curve (monotonic, 3.4 Hz a step or more, so
+  whole Hz name every register; the 6581's flat bottom would not), the pulse width and PWM depth
+  in percent, the PWM and LFO rates and the sync ratio as decimals. Writing gives the shortest
+  decimal, up to three places, that reads back as the same byte, so every sound comes back
+  exactly (a test runs every register of each converted field).
+- **Defaults are LAB's.** A field left out is SAW LEAD as the FM-1 loads it at power-on (a test
+  holds `patch_json_defaults` to `live_sound_get` after `live_init`). Parts follow the sound: a
+  layer copies the top-level oscillator, a table step its layer's wave, an effect its type's own
+  settings (`live_fx_defaults`), an LFO is a triangle. Reading marks every bit a patch names and
+  fills only the rest; writing builds the same fill as its reference and leaves out what equals
+  it, so a short patch and a full one are the same sound.
+- **Silent means silent on both chips.** `lab_audible` takes a chip; the site does not know the
+  user's. A patch neither chip would hear is refused; one only the 8580 hears (two waves together
+  on a 6581) is taken with a warning. The estimate is the rolls' and is strict (a saw at sustain 4
+  under a 1.5 kHz low-pass is under its -38 dB): the instructions give numbers that pass.
+- **Errors a model can act on**: `path: what is wrong. Allowed: what is.`, the allowed text the
+  same the docs show. Text before the patch's `{` and after it is skipped, so a whole answer pastes.
+- **The link** is the compact JSON, percent-encoded, after `#patch=`. Not base64: a model writes a
+  percent-encoding character by character, while base64 needs arithmetic models get wrong. The
+  longest of the sixteen is under 2 KB; a fragment over 8 KB or with a broken `%` code is refused
+  in plain words. A fragment never leaves the browser.
+- **The instructions** are generated (`patch_docs.rs`, `SIDOU_PATCH_DOC_UPDATE=1`) from a template,
+  the field table and six of the sixteen sounds; a test reads every example back to its sound.
+  `tools/web-demo` copies `docs/prompt-to-patch.md` to the site as `llms.txt` and the schema as
+  `patch.schema.json`, and the browser check compares them with the repository's.
 
 ### Library backups
 

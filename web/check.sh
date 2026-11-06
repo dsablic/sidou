@@ -12,6 +12,7 @@ node "$root/web/songmidi.test.mjs"
 node "$root/web/library.test.mjs"
 node "$root/web/core.test.mjs" "$site/sidou-core.wasm"
 node "$root/web/editor.test.mjs" "$site/sidou-core.wasm"
+node "$root/web/patch.test.mjs" "$site/sidou-patch.wasm" "$site/sidou-core.wasm"
 node "$root/web/link.test.mjs" "$site/sidou-link.wasm"
 node "$root/web/link-keyboard.test.mjs"
 mkdir -p "$dir"
@@ -23,6 +24,8 @@ deps=()
 (cd "$dir" && npx --no-install playwright install "${deps[@]}" --only-shell chromium)
 cp "$root/web/check.mjs" "$dir/check.mjs"
 cp "$root/web/link-fixtures.json" "$dir/link-fixtures.json"
+cp "$root/docs/prompt-to-patch.md" "$dir/llms.txt"
+cp "$root/docs/reference/patch.schema.json" "$dir/patch.schema.json"
 
 log="$dir/serve.log"
 python3 "$root/web/serve.py" "$site" 0 >"$log" 2>&1 &

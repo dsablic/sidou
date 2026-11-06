@@ -86,6 +86,14 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   ([the manual](docs/manual/library.md)). It also offers SIDOU's own sixteen LAB sounds (a table
   kick and snare, a chip chord, wobble and acid basses, LFO strings, layered saws and more) as one
   song to send: ENV on INSTR opens each in LAB.
+- **A sound from a prompt.** Any language model (ChatGPT, Claude, Gemini or a local one) designs
+  a LAB sound from a few words with SIDOU's [instructions](docs/prompt-to-patch.md) (served as
+  [llms.txt](https://dsablic.github.io/sidou/llms.txt)): it answers with a short JSON patch in
+  musical units ([the format](docs/reference/patch-json.md)) and a patch link. The Library page
+  checks it with the FM-1's own rules (each refusal one line naming the field, to paste back),
+  plays it, and sends it as a one-instrument song LAB opens with ENV; no sign-in, nothing stored.
+  Any of the sixteen sounds shows as a patch to start from; `sidou-sysex patch` does the same on
+  a computer.
 - **Edit a song in the browser.** The site's [editor](https://dsablic.github.io/sidou/editor.html)
   opens a song from a file or the connected FM-1 and edits its instruments, tables, patterns and
   orderlists with the FM-1's own song code (an edit the FM-1 would refuse is refused, parameter
