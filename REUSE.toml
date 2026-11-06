@@ -174,3 +174,17 @@ SPDX-License-Identifier = "BSD-2-Clause"
 path = ["platform/fm1/bsp/LICENSE", "platform/fm1/bsp/NOTICE"]
 SPDX-FileCopyrightText = ["2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments", "2026 felucca-bsp contributors"]
 SPDX-License-Identifier = "MPL-2.0"
+
+# Optimist's open Bluetooth stack, from fm1-base's bt/ble, and felucca-bsp's radio drivers from the
+# same offer (third_party/fm1-base-ble/VENDORED.md): their files carry the licence, not the author.
+[[annotations]]
+path = ["third_party/fm1-base-ble/**", "platform/fm1/bsp/chip/fm1_ble.h", "platform/fm1/bsp/chip/fm1_ble_rf.h"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Henri David (hdavid), Optimist"
+SPDX-License-Identifier = "GPL-3.0-only OR MPL-2.0"
+
+[[annotations]]
+path = ["platform/fm1/bsp/chip/ble_rf_tables_v15.h"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = ["2024-2026 Zhuhai Jieli Technology Co., Ltd.", "2026 Zhuhai Shengke / M-VAVE", "2026 Henri David (hdavid), Optimist"]
+SPDX-License-Identifier = "Apache-2.0"

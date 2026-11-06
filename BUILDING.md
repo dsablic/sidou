@@ -142,15 +142,13 @@ cargo run --release -p sidou-pack -- \
 
 **Bluetooth MIDI's measurement build** (1.8, `SIDOU_BLE`, never to be handed out): SIDOU with
 Optimist's open Bluetooth stack linked in, to measure what it costs
-([the plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The stack and the radio's headers are
-not in this repository: `tools/ble-fetch` clones fm1-base and felucca-bsp at the pinned commits
-into `build/ext/fm1-base`. `SIDOU_BLE_CENTRAL` is 0 (a computer connects to SIDOU), 3 (SIDOU also
+([the plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The stack is vendored in
+`third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`. `SIDOU_BLE_CENTRAL` is 0 (a computer connects to SIDOU), 3 (SIDOU also
 connects out, no pairing; the default) or 1 (with pairing). The radio never starts in this build.
 The image does not fit the app slot, so it links against a copy of `app.ld` with a larger flash
 region; there is no package of it.
 
 ```sh
-tools/ble-fetch
 tools/fm1-docker cmake --preset fm1 -B build/fm1-ble -DSIDOU_BLE=ON
 tools/fm1-docker cmake --build build/fm1-ble
 ```

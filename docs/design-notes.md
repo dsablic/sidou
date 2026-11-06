@@ -351,7 +351,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Bluetooth's measurement build (`SIDOU_BLE`)
 
 - The stack's host side (fm1-base `bt/ble`: link layer, host, ATT, BLE-MIDI, the central's scan
-  and client) is its own unit, `platform/fm1/ble_stack_unit.c`, at fm1-base's `-Os`, with
+  and client) is its own unit, `platform/fm1/ble_stack_unit.c`, at `-Oz` (below), with
   `BLE_API` left empty (extern) as fm1-base's host tests build it. Inside `main.c`'s unit the stack
   came out 6,784 bytes larger at `main.c`'s `-mllvm -inline-threshold=225`, and clang's global
   merge mixed its state with `main.c`'s, so no `app.ld` rule could place it.
@@ -359,10 +359,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (`ble_radio.c`) are part of `main.c`'s unit: `fm1_ble.h` needs `fm1_irq.h`, whose two non-static
   definitions keep it to one unit (Felucca's HAL rule, `VENDORED.md`). At `main.c`'s threshold the
   driver costs 3,264 bytes more than at plain `-Os`.
-- The four radio headers and the start-up tables are copied byte for byte into the build directory
-  (`ble_radio/`, the tables as `ble_rf_tables.h`, as fm1-base's build does). Taken from
-  felucca-bsp's `chip/`, their quoted `#include "fm1_irq.h"` would find felucca-bsp's copy beside
-  them; with `#pragma once` both copies would be included.
+- Since the felucca-bsp move the stack is vendored (`third_party/fm1-base-ble`, fm1-base `698e2cb`,
+  whose felucca-bsp pin is SIDOU's) and the radio headers sit in `platform/fm1/bsp/chip` beside the
+  `fm1_irq.h` they include, so nothing is fetched or copied at build time. `fm1_ble_rf.h` includes
+  `ble_rf_tables.h`; SIDOU's `platform/fm1/ble_rf_tables.h` includes the v15 table.
+- The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
+  both ways.
 - RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section
   `.noinit.ble_radio`) go to NOINIT, which `ble_radio_start` zeroes before `ble_init`. The radio's
   DMA reads `bb` (1,508 bytes) and the PLL table (972; its address goes into a register), so the
