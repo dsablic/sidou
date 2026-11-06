@@ -104,12 +104,16 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     KB of RAM (NOINIT), 36-44 B of RAMTEXT. L.
   - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
     K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
-    RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
-    [the LFO plan](plans/2026-11-05-lab-lfos.md)); a DICE bass role that rolls slides and accents;
-    and ear checks of the site's sixteen sounds on a device.
+    RAMTEXT); a DICE bass role that rolls slides and accents; and ear checks of the site's sixteen
+    sounds on a device.
 - **2.0.**
   - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
     default, falling back to one core; the RAMTEXT room is there since 1.7.
+  - **A layer's level in LAB**, after it (the owner, 2026-11-06): a gain per voice in both render
+    loops costs about 7 instructions a sample per chip, leaving 7.1 of the two-chip worst block's
+    1,426 (1,418.9 measured on 1.8's small items), and 160 bytes of RAMTEXT; chip B on its own core
+    gives that budget back. It also needs a place on LAYERS (its four cards are taken), 3 bytes of
+    the sound and the import ([the measurement](https://github.com/dsablic/sidou/blob/main/docs/plans/2026-11-05-lab-lfos.md)).
   - **The DAW plugin**, starting from its design session (the owner, 2026-11-04): the spike
     ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
     package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card,
