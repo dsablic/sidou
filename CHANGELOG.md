@@ -18,6 +18,16 @@ All notable changes are documented here. The format follows
   ([the 1.8 plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.
   `sidou-pack --verify` now also fails a package whose option record names an option a release
   never records.
+- **Live tweaks on a playing `.sid`.** In NOW PLAYING K1 bends the tune's filter cutoff
+  (-1024..+1024, 32 a detent), K2 its resonance (-15..+15), K3 picks a voice and K4 gives it
+  another waveform (TRI, SAW, PUL or NOI; TUNE'S is its own), the tune's gate, sync, ring and
+  test bits kept. Each turn shows the TWEAK popup; a TWEAKED line says what is bent. Back at 0
+  each gives the tune its own value at once, and leaving NOW PLAYING, another song or a stop
+  gives everything back. EDIT + a knob is still the effect slot's.
+- **An ACID lane for DICE.** A lane's role can be ACID (after BASS+DRUMS): DICE writes a bassline
+  as on a melodic lane and rolls 1.7's SLIDE and ACCENT locks with it, a slide on about three in
+  ten notes followed by a note, an accent on about a third; a new roll clears them where a note
+  went. SCENE hears the lane as the bass; an older SIDOU rolls it as a melodic lane.
 
 ### Changed
 - **felucca-bsp.** SIDOU builds on felucca-bsp's chip and board code (MPL-2.0) byte for byte, in
@@ -28,6 +38,9 @@ All notable changes are documented here. The format follows
   of flash, the owner's call, for Bluetooth): a DAW records at 44.1 kHz, the rate SIDOU plays at.
 
 ### Fixed
+- **A step that slides and is accented keeps the accent's sustain.** In 1.7 the slide's held SR
+  came after the accent, so such a step played at the song's sustain; the accent's cutoff and
+  resonance were right.
 - **The site's 1.7 deploy.** The site's song core, built by CI's clang, came to 164,811 bytes, over
   its 160 KiB budget (Apple's clang made 161,337); the budget is 176 KiB, the owner's call, and
   the merge check now builds the core in the image as CI does.

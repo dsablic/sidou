@@ -406,6 +406,11 @@ static void song_lock_apply(song_ctl* sc) {
     uint8_t drop = (uint8_t)(sc->mute | sc->taken);
     for (uint32_t g = 0u; g < GT2_SID_REGS; g++)
         r[g] = sc->shadow[g];
+    for (uint32_t ch = 0u; (sc->slide_now | sc->gliding) && ch < GT2_PLAY_CHANNELS; ch++) {
+        if (!((drop >> ch) & 1u)) {
+            mask |= slide(sc, r, ch);
+        }
+    }
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
         uint32_t x = ch * 7u;
         for (uint32_t i = 0u; i < sc->lock_n[ch]; i++) {
@@ -444,11 +449,6 @@ static void song_lock_apply(song_ctl* sc) {
             default:
                 break;
             }
-        }
-    }
-    for (uint32_t ch = 0u; (sc->slide_now | sc->gliding) && ch < GT2_PLAY_CHANNELS; ch++) {
-        if (!((drop >> ch) & 1u)) {
-            mask |= slide(sc, r, ch);
         }
     }
     uint32_t all = mask | sc->lock_regs;

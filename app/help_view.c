@@ -111,9 +111,10 @@ static const char* const CONFIRM_LINES[] = {"SAVE\0YES", "HOME\0NO", "HOLD HOME\
 static const char* const SIDS_LINES[] = {"SELECT\0TUNE",    "SAVE\0CHOOSE",  "ALG\0CHOOSE",
                                          "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "HOME\0BACK",
                                          "HOLD HOME\0HELP"};
-static const char* const PLAYING_LINES[] = {"ALG\0SONG",      "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE",
-                                            "GLO+KEY\0MUTE",  "REC\0LIFT VOICE", "KEYS\0PLAY",
-                                            "HOME\0BACK",     "HOLD HOME\0HELP"};
+static const char* const PLAYING_LINES[] = {
+    "ALG\0SONG",      "K1\0TUNE CUTOFF", "K2\0TUNE RESO", "K3\0TWEAK VOICE",
+    "K4\0VOICE WAVE", "PLAY\0PLAY/STOP", "E+PLAY\0PAUSE", "GLO+KEY\0MUTE",
+    "REC\0LIFT VOICE", "KEYS\0PLAY",      "HOME\0BACK",   "HOLD HOME\0HELP"};
 static const char* const LIFT_LINES[] = {"KEY 1-3\0VOICE", "REC\0CANCEL", "HOME\0CANCEL",
                                          "HOLD HOME\0HELP"};
 static const char* const UNSAVED_LINES[] = {"SAVE\0DISCARD", "HOME\0BACK", "HOLD HOME\0HELP"};

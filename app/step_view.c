@@ -135,19 +135,6 @@ static uint32_t lock_first(const uint8_t* recs, uint32_t n, uint32_t pattern, ui
     return lo;
 }
 
-static int lock_get(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param,
-                    uint32_t* value) {
-    uint32_t n = 0u;
-    const uint8_t* r = song_locks_row(s, pattern, row, &n);
-    for (uint32_t i = 0; r && i < n; i++, r += SONG_LOCK_BYTES) {
-        if (r[2] == param) {
-            *value = (uint32_t)r[3] | (uint32_t)r[4] << 8;
-            return 1;
-        }
-    }
-    return 0;
-}
-
 static void put32(uint8_t* out, uint32_t v) {
     out[0] = (uint8_t)v;
     out[1] = (uint8_t)(v >> 8);
@@ -379,7 +366,7 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     if (held) {
         if (k < 3u) {
             uint32_t p = k == 0u ? SONG_LOCK_CUTOFF : k == 1u ? SONG_LOCK_RESONANCE : SONG_LOCK_PULSE;
-            tagged = lock_get(s, ln->pattern, at, p, &value);
+            tagged = song_lock_get(s, ln->pattern, at, p, &value);
             max = song_lock_max(p);
             if (tagged) {
                 screen_decimal(text, k == 1u ? value : (value * 100u + max / 2u) / max);
@@ -486,7 +473,7 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
         }
         char pc[6];
         uint32_t chance = 100u;
-        if (lock_get(s, ln->pattern, at, SONG_LOCK_CHANCE, &chance)) {
+        if (song_lock_get(s, ln->pattern, at, SONG_LOCK_CHANCE, &chance)) {
             pc[screen_decimal(pc, chance)] = '%';
             grid_canvas_text(c, 22, 17u, pc, THEME_ATTR(th, hot));
         }
@@ -821,7 +808,7 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
 static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, int32_t steps) {
     uint32_t value;
     gt2_song* song = (gt2_song*)st->sv->song;
-    if (!lock_get(song, t->pattern, t->row, param, &value)) {
+    if (!song_lock_get(song, t->pattern, t->row, param, &value)) {
         value = LOCK_START[param];
     }
     int32_t v = (int32_t)value + steps * (int32_t)LOCK_STEP[param];
@@ -835,8 +822,7 @@ static void set_lock(screen* s, step_view* st, const target* t, uint32_t param, 
             hear_locks(st, t);
         }
     } else {
-        refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
-                  r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL" : "LOCKS FULL");
+        refuse(s, song_view_lock_refusal(r));
     }
 }
 
@@ -844,12 +830,11 @@ static void toggle_lock(screen* s, step_view* st, const target* t, uint32_t para
     static const char* const SAYS[2][2] = {{"SLIDE OFF", "SLIDE ON"}, {"ACCENT OFF", "ACCENT ON"}};
     gt2_song* song = (gt2_song*)st->sv->song;
     uint32_t value;
-    int on = !lock_get(song, t->pattern, t->row, param, &value);
+    int on = !song_lock_get(song, t->pattern, t->row, param, &value);
     int r = on ? song_lock_put(song, t->pattern, t->row, param, 1u)
                : song_lock_remove(song, t->pattern, t->row, param);
     if (r < 0) {
-        refuse(s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
-                  r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL" : "LOCKS FULL");
+        refuse(s, song_view_lock_refusal(r));
         return;
     }
     st->rev++;
@@ -1047,7 +1032,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     } else if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
         label = "CHANCE";
         cur = 100u;
-        (void)lock_get(sv->song, ln->pattern, at, SONG_LOCK_CHANCE, &cur);
+        (void)song_lock_get(sv->song, ln->pattern, at, SONG_LOCK_CHANCE, &cur);
         top = 100u;
         text[screen_decimal(text, cur)] = '%';
     } else if (encoder == PANEL_ENC_ALGORITHM) {
@@ -1089,7 +1074,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
         if (edit) {
             label = CHAR_NAMES[k];
             uint32_t p = SONG_LOCK_AGE + k;
-            if (!lock_get(sv->song, ln->pattern, at, p, &cur)) {
+            if (!song_lock_get(sv->song, ln->pattern, at, p, &cur)) {
                 cur = LOCK_START[p];
             }
             top = song_lock_max(p);
@@ -1105,7 +1090,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
         } else {
             label = KNOB_NAMES[k];
             uint32_t p = k == 0u ? SONG_LOCK_CUTOFF : k == 1u ? SONG_LOCK_RESONANCE : SONG_LOCK_PULSE;
-            if (!lock_get(sv->song, ln->pattern, at, p, &cur)) {
+            if (!song_lock_get(sv->song, ln->pattern, at, p, &cur)) {
                 cur = LOCK_START[p];
             }
             top = song_lock_max(p);

@@ -2493,6 +2493,10 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
             return 0;
         }
     }
+    if (shows(v) == &sid_view_playing && !(ask & ASK_EDIT) &&
+        sid_view_popup(&v->sids, enc, name, value, fill, max)) {
+        return 1;
+    }
     if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
         *accent = theme_get(l->theme)->knob[enc - PANEL_ENC_K1];
         uint32_t held = ask & ASK_EDIT ? 1u << PANEL_BTN_EDIT : 0u;

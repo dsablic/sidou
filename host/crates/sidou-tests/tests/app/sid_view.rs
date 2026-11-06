@@ -25,6 +25,7 @@ pub(crate) enum TuneCall {
     End,
     Mute(u32),
     Lift(u32),
+    Tweak(i16, i8, [u8; 3]),
 }
 
 pub(crate) struct Tune {
@@ -115,6 +116,14 @@ unsafe extern "C" fn t_lift(ctx: *mut c_void, voice: u32) -> i32 {
     t.st.lift_voice = if lifting { voice as u8 } else { 0 };
     t.st.lift_gti = std::ptr::null();
     t.st.lift_len = 0;
+    1
+}
+
+unsafe extern "C" fn t_tweak(ctx: *mut c_void, w: *const psid_tweak) -> i32 {
+    let t = tune(ctx);
+    let w = unsafe { *w };
+    t.calls.push(TuneCall::Tweak(w.cut, w.res, w.wave));
+    t.st.tweak = w;
     1
 }
 
@@ -209,6 +218,7 @@ pub(crate) fn bind(ui: &mut Ui, names: &[&str]) -> (Box<Tune>, Bound) {
         mute: Some(t_mute),
         status: Some(t_status),
         lift: Some(t_lift),
+        tweak: Some(t_tweak),
         ctx: ctx.cast(),
     });
     unsafe { views_set_tune(&mut *ui.v, &*t) };
@@ -655,6 +665,100 @@ fn algorithm_steps_and_restarts_the_song_on_now_playing_within_the_headers_songs
     assert_eq!(
         s.calls(),
         vec![TuneCall::Start(2), TuneCall::Start(3), TuneCall::Start(1)]
+    );
+}
+
+const TWEAK_ROW: usize = 27;
+const SAW: u8 = SID_CTRL_SAW as u8;
+const K2_RES: u32 = PANEL_ENC_K1 + 1;
+const K3_VOICE: u32 = PANEL_ENC_K1 + 2;
+
+fn turned(s: &mut Sids, enc: u32, steps: i32) -> (String, String) {
+    s.ui.turn(enc, steps);
+    settle(&mut s.ui);
+    let text = |b: &[c_char]| {
+        unsafe { CStr::from_ptr(b.as_ptr()) }
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+    (text(&s.ui.v.popup.name), text(&s.ui.v.popup.value))
+}
+
+fn says(name: &str, value: &str) -> (String, String) {
+    (name.to_owned(), value.to_owned())
+}
+
+fn tweak_line(s: &Sids) -> String {
+    let words = s.ui.big(TWEAK_ROW + 1, 2, 2, 14);
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let label = s.ui.small(TWEAK_ROW, 2, 7);
+    assert_eq!(
+        label == "TWEAKED",
+        !words.is_empty(),
+        "the label with the words"
+    );
+    words
+}
+
+#[test]
+fn k1_to_k4_tweak_a_playing_tune_each_with_its_popup_and_the_tweak_line_says_what_is_bent() {
+    let mut s = Sids::new(&["NIGHT DRIVE"]);
+    now_playing(&mut s);
+    assert_eq!(tweak_line(&s), "");
+    assert_eq!(turned(&mut s, PANEL_ENC_K1, 3), says("TWEAK", "CUT +96"));
+    assert_eq!(tweak_line(&s), "CUT");
+    assert_eq!(turned(&mut s, K2_RES, -2), says("TWEAK", "RESO -2"));
+    assert_eq!(tweak_line(&s), "CUT RES");
+    assert_eq!(turned(&mut s, K3_VOICE, 1), says("TWEAK", "VOICE 2"));
+    assert_eq!(turned(&mut s, PANEL_ENC_K4, 2), says("TWEAK", "V2 SAW"));
+    assert_eq!(tweak_line(&s), "CUT RES WAVE");
+    s.ui.popup_gone();
+    drain(&mut s.ui.g);
+    settle(&mut s.ui);
+    golden(&s.ui, "playing-tweak");
+    assert_eq!(
+        s.calls(),
+        vec![
+            TuneCall::Tweak(96, 0, [0; 3]),
+            TuneCall::Tweak(96, -2, [0; 3]),
+            TuneCall::Tweak(96, -2, [0, SAW, 0]),
+        ]
+    );
+    assert_eq!(turned(&mut s, PANEL_ENC_K4, -9), says("TWEAK", "V2 TUNE'S"));
+    assert_eq!(turned(&mut s, PANEL_ENC_K1, 99), says("TWEAK", "CUT +1024"));
+    turned(&mut s, PANEL_ENC_K1, -32);
+    turned(&mut s, K2_RES, 2);
+    assert_eq!(tweak_line(&s), "", "every tweak back at 0");
+    assert_eq!(s.calls().last(), Some(&TuneCall::Tweak(0, 0, [0; 3])));
+}
+
+#[test]
+fn edit_with_a_knob_and_a_stopped_tune_leave_the_knobs_to_live() {
+    let mut s = Sids::new(&["NIGHT DRIVE"]);
+    now_playing(&mut s);
+    s.ui.down(PANEL_BTN_EDIT);
+    s.ui.turn(PANEL_ENC_K1, 1);
+    s.ui.up(PANEL_BTN_EDIT);
+    s.tune.st.state = SID_T_STOPPED as u8;
+    s.ui.turn(K2_RES, 1);
+    assert!(s.calls().is_empty());
+}
+
+#[test]
+fn leaving_now_playing_gives_the_tune_its_own_back() {
+    let mut s = Sids::new(&["NIGHT DRIVE"]);
+    now_playing(&mut s);
+    turned(&mut s, PANEL_ENC_K1, 1);
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "SIDS");
+    assert_eq!(
+        s.calls(),
+        vec![
+            TuneCall::Tweak(32, 0, [0; 3]),
+            TuneCall::Tweak(0, 0, [0; 3])
+        ]
     );
 }
 

@@ -1157,6 +1157,16 @@ pub fn open_sids(m: &mut Machine, fw: &Firmware) {
     });
 }
 
+pub fn chip_a(m: &mut Machine, fw: &Firmware) -> u32 {
+    let chips = fw.chips();
+    let active = m
+        .soc
+        .read8(chips + sidou_sys::ilp32::reg_ring_chips::active as u32);
+    chips
+        + (sidou_sys::ilp32::reg_ring_chips::chip
+            + usize::from(active) * sidou_sys::ilp32::sid::SIZE) as u32
+}
+
 pub fn ui_play_tune(m: &mut Machine, fw: &Firmware, index: u32) {
     open_sids(m, fw);
     m.turn(SELECT, -(sidou_sys::SID_VIEW_FILES as i32));

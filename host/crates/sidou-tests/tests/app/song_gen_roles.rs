@@ -329,6 +329,59 @@ fn dice_on_a_bass_and_drums_lane_puts_the_kit_on_the_strong_beats_and_the_bass_b
     }
 }
 
+fn is_note(n: u8) -> bool {
+    (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n)
+}
+
+fn locked(s: &Song, row: usize, param: u32) -> bool {
+    crate::step_view::locks(s)
+        .iter()
+        .any(|&(p, r, q, _)| p == 0 && usize::from(r) == row && u32::from(q) == param)
+}
+
+#[test]
+fn dice_on_an_acid_lane_slides_only_into_a_next_note_and_accents_only_notes() {
+    let mut s = stepping(song(false, 0));
+    set_role(&mut s, 0, SONG_ROLE_ACID);
+    set_dice_all(&mut s, DENSITY_BUSY, SCALE_MINOR_PENTATONIC, 0, RANGE_BASS);
+    let (mut notes, mut slides, mut accents) = (0, 0, 0);
+    for seed in 1..=12 {
+        assert_eq!(
+            roll_with_seed_at_a_fixed_time(&mut s, seed).as_deref(),
+            Some("NEW PATTERN")
+        );
+        let p = pattern(&s, 0);
+        for (r, c) in p.iter().enumerate() {
+            let note = is_note(c[0]);
+            let next = p.get(r + 1).is_some_and(|n| is_note(n[0]));
+            let (slide, accent) = (
+                locked(&s, r, SONG_LOCK_SLIDE),
+                locked(&s, r, SONG_LOCK_ACCENT),
+            );
+            assert!(
+                !slide || (note && next),
+                "seed {seed}: row {r} slides into no note"
+            );
+            assert!(!accent || note, "seed {seed}: row {r} accents a rest");
+            if note {
+                assert!(c[0] < C3 + 12, "seed {seed}: row {r} BASS's octaves");
+            }
+            notes += usize::from(note);
+            slides += usize::from(slide);
+            accents += usize::from(accent);
+        }
+    }
+    println!("{notes} notes, {slides} slides, {accents} accents over 12 rolls");
+    assert!(
+        slides > 0 && slides < notes / 2,
+        "some notes slide, not most"
+    );
+    assert!(
+        accents > 0 && accents < notes / 2,
+        "some notes are accented, not most"
+    );
+}
+
 #[test]
 fn a_bass_and_drums_roll_without_the_kit_says_no_drum_kit() {
     let mut s = stepping(song(false, 0));
@@ -365,8 +418,11 @@ fn presets_with_edit_and_scl_held_sets_the_lanes_role_into_the_scene_chunk() {
     assert_eq!(s.ui.small(top + 10, 19, 10), "BASS+DRUMS");
     assert_eq!(
         popup(&s, PANEL_ENC_PRESETS, true),
-        Some(("ROLE".into(), "BASS+DRUMS".into(), 3, 6))
+        Some(("ROLE".into(), "BASS+DRUMS".into(), 3, 7))
     );
+    s.ui.turn(PANEL_ENC_PRESETS, 1);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.small(top + 10, 19, 10), "ACID      ");
     s.ui.turn(PANEL_ENC_PRESETS, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.small(top + 10, 19, 10), "ARP       ");
@@ -377,7 +433,7 @@ fn presets_with_edit_and_scl_held_sets_the_lanes_role_into_the_scene_chunk() {
         "NONE      ",
         "it stops at the end"
     );
-    s.ui.turn(PANEL_ENC_PRESETS, -3);
+    s.ui.turn(PANEL_ENC_PRESETS, -4);
     let song = s.ui.v.song.song.cast_mut();
     unsafe { (*song).pending = 1 };
     s.ui.turn(PANEL_ENC_PRESETS, 1);

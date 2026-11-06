@@ -2832,8 +2832,11 @@ the last item, which does not exist yet.
   click, and step 5 stands out, brighter, its neighbours unchanged. The site's 303 BASS (SIDOU
   SOUNDS) on a lane with slides and accents sounds like an acid line. SAVE AS, power off and on,
   LOAD: both are still there:
-  *Emulator:* `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
+  *Emulator:* `emu-gate/tests/first_use.rs::a_held_step_with_fx_slides_into_the_next_note_and_with_env_accents_it_as_heard`
+  (the gestures on the panel, the gate and the sustain on the chip),
+  `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
   `sidou-tests/tests/song_locks.rs::an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row`,
+  `sidou-tests/tests/song_locks.rs::a_step_that_slides_and_is_accented_keeps_the_accents_full_sustain`,
   the ergo journey `whats-new`.
   *Device-only:* the glide and the accent on the chip (ear).
 - [ ] **The site's sixteen sounds:** the Library page sends SIDOU SOUNDS; INSTR, each instrument,
@@ -2851,7 +2854,32 @@ the last item, which does not exist yet.
 
 Notes:
 
-## 33. 1.8: felucca-bsp and Bluetooth MIDI
+## 33. 1.8: the small items, by ear
+
+What it decides: what fm1-emu cannot judge of 1.8's small items. Set up: SIDOU 1.8 on the unit,
+the starter pack on it (section 22), headphones on the line out.
+
+- [ ] **Live tweaks on a `.sid`:** SIDS, THE CONSULTANT. In NOW PLAYING turn K1 up and down
+  through its range (`CUT +1024` to `CUT -1024`), then K2 (`RESO +15` to `-15`): the tune's
+  filter opens and closes with each detent, no click, and at 0 it is the tune again. K3 to a
+  voice, K4 through TRI, SAW, PUL and NOI and back to TUNE'S: the voice keeps its notes and
+  rhythm in each waveform. HOME: the tune is its own again at once. **Pass:** no click or
+  dropout at any turn, and the tune exactly back at 0 and after HOME:
+  *Emulator:* `emu-gate/tests/psid_views.rs::k1_and_k4_bend_a_playing_tunes_cutoff_and_waveform_and_home_gives_them_back`,
+  `sidou-tests/tests/psid_ctl.rs::a_tweak_bends_the_tunes_filter_and_waveform_and_zero_gives_them_back`,
+  `sidou-tests/tests/app/sid_view.rs::k1_to_k4_tweak_a_playing_tune_each_with_its_popup_and_the_tweak_line_says_what_is_bent`.
+  *Device-only:* the bend on the real filter and the waveforms by ear; clicks at a turn.
+- [ ] **An ACID lane, by ear:** NEW, STEP, lane 1: EDIT + SCL held, PRESETS to `ACID`, let go;
+  PRESETS to the site's 303 BASS (SIDOU SOUNDS) or BASS; EDIT + SCL a few times, PLAY each roll.
+  **Pass:** each roll sounds like an acid line: some notes glide into the next with no restart,
+  some stand out brighter, and most do neither:
+  *Emulator:* `sidou-tests/tests/app/song_gen_roles.rs::dice_on_an_acid_lane_slides_only_into_a_next_note_and_accents_only_notes`,
+  `sidou-tests/tests/app/scene_song.rs::an_acid_voice_is_the_bass_and_no_other_is`.
+  *Device-only:* whether the rolled lines sound musical (ear).
+
+Notes:
+
+## 34. 1.8: felucca-bsp and Bluetooth MIDI
 
 What it decides: whether SIDOU on felucca-bsp (`f8788009`, docs/design-notes.md "Board support")
 behaves on the unit as 1.7 did, and whether Bluetooth MIDI works on real radio, which fm1-emu
@@ -2932,4 +2960,5 @@ Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
 | 30 Chords and time-shared drums from DICE | | |
 | 31 The site's editor and Live Link page | | |
 | 32 1.7: the player from flash, and by ear | | |
-| 33 1.8: felucca-bsp and Bluetooth MIDI | | |
+| 33 1.8: the small items, by ear | | |
+| 34 1.8: felucca-bsp and Bluetooth MIDI | | |

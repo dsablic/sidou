@@ -36,6 +36,7 @@ typedef struct {
     char chosen[STORE_NAME_MAX + 1u];
     uint8_t drawn[SID_VIEW_LOOK];
     uint8_t lift_ask;
+    uint8_t tweak_voice;
 } sid_view;
 
 extern const view sid_view_browser;
@@ -52,6 +53,8 @@ uint32_t sid_view_lift_keys(const sid_view* sd);
 uint32_t sid_view_lift_pick(sid_view* sd, screen* s, uint32_t pressed);
 int sid_view_lifted(const sid_view* sd, sid_status* st);
 int sid_view_play(sid_view* sd, int edit, int here);
+int sid_view_popup(const sid_view* sd, uint32_t enc, char name[SCREEN_POPUP_TEXT],
+                   char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max);
 int sid_view_home(sid_view* sd);
 void sid_view_save(sid_view* sd, screen* s);
 #define STATUS_LINES 8u

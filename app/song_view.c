@@ -527,8 +527,7 @@ int song_view_record_knob(song_view* sv, screen* s, uint32_t knob, int32_t steps
     int r = song_lock_put((gt2_song*)sv->song, pattern, row,
                           knob ? SONG_LOCK_RESONANCE : SONG_LOCK_CUTOFF, (uint32_t)v);
     if (r != 0) {
-        rec_toast(sv, s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
-                      r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL" : "LOCKS FULL");
+        rec_toast(sv, s, song_view_lock_refusal(r));
         return 0;
     }
     if (knob) {
@@ -622,6 +621,13 @@ int song_view_acquire_canvas(song_view* sv, uint32_t owner) {
 
 static int border(uint32_t c, uint32_t r) {
     return r == 0 || r == GRID_ROWS - 1u || c == 0 || c == GRID_COLS - 1u;
+}
+
+const char* song_view_lock_refusal(int r) {
+    return r == -(int)GT2_ERR_SAVING      ? "SAVING"
+           : r == -(int)GT2_ERR_PENDING   ? "WAITING"
+           : r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL"
+                                          : "LOCKS FULL";
 }
 
 void song_view_copy(song_view* sv, screen* s, grid* g) {

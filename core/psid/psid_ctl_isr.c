@@ -2,9 +2,57 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "psid_ctl.h"
 
+#include <stddef.h>
+
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
 #define PSID_ISR_LAST_REG 0x18u
+#define VOICE_REGS 7u
+#define REG_CONTROL 4u
+#define REG_CUTOFF_HI 0x16u
+#define REG_RES_ROUTE 0x17u
+#define CUTOFF_LO_BITS 3
+#define CUTOFF_HI_MAX 0xff
+#define RES_SHIFT 4u
+#define ROUTE_MASK 0x0fu
+#define WAVE_BITS 0xf0u
+#if defined(__clang__)
+#define TWEAK __attribute__((minsize, noinline))
+#else
+#define TWEAK __attribute__((optimize("Os"), noinline))
+#endif
+
+_Static_assert(PSID_RAW_REGS == 32u, "a raw byte for each of the ring's 5-bit registers");
+_Static_assert(PSID_TWEAK_CUT_STEP % (1 << CUTOFF_LO_BITS) == 0,
+               "a cutoff bend moves the high byte only");
+
+static TWEAK uint32_t psid_isr_bent(const psid_ctl* c, uint32_t reg, uint32_t v)
+{
+    int32_t x;
+    if (reg == REG_CUTOFF_HI) {
+        x = (int32_t)v + (c->tweak.cut >> CUTOFF_LO_BITS);
+        return x < 0 ? 0u : x > CUTOFF_HI_MAX ? (uint32_t)CUTOFF_HI_MAX : (uint32_t)x;
+    }
+    if (reg == REG_RES_ROUTE) {
+        x = (int32_t)(v >> RES_SHIFT) + c->tweak.res;
+        x = x < 0 ? 0 : x > PSID_TWEAK_RES_MAX ? PSID_TWEAK_RES_MAX : x;
+        return (uint32_t)x << RES_SHIFT | (v & ROUTE_MASK);
+    }
+    uint32_t voice = reg / VOICE_REGS;
+    if (voice < PSID_TWEAK_VOICES && reg % VOICE_REGS == REG_CONTROL && c->tweak.wave[voice])
+        return (v & ~WAVE_BITS) | c->tweak.wave[voice];
+    return v;
+}
+
+static TWEAK void psid_isr_retweak(psid_ctl* c, sid* a, sid* b)
+{
+    for (uint32_t k = 0; k < 2u; k++) {
+        sid* s = k ? b : a;
+        for (uint32_t r = REG_CONTROL; s && r <= REG_RES_ROUTE; r++)
+            if (r % VOICE_REGS == REG_CONTROL || r >= REG_CUTOFF_HI)
+                sid_write(s, (uint8_t)r, (uint8_t)psid_isr_bent(c, r, c->raw[k][r]));
+    }
+}
 
 _Static_assert(PSID_BLOCK == 128u, "psid_isr_ramp's shift");
 static void psid_isr_ramp(int16_t* x, int down)
@@ -22,6 +70,8 @@ static void psid_isr_chip(psid_ctl* c, uint32_t k, sid* s, int16_t* out, int tap
     uint32_t now = c->clock[k];
     const uint32_t end = now + ((s->cycle_frac_q16 + PSID_BLOCK * cps) >> 16);
     uint32_t n = PSID_BLOCK, parts = 0, late = 0, i;
+    uint8_t* raw = c->raw[k];
+    const int tweaking = c->tweaking;
     if ((uint32_t)(head - c->cur[k]) > window)
         head = c->cur[k] + window;
     for (i = c->cur[k]; i != head; i++) {
@@ -65,7 +115,11 @@ static void psid_isr_chip(psid_ctl* c, uint32_t k, sid* s, int16_t* out, int tap
             }
             late++;
         }
-        sid_write(s, (uint8_t)PSID_RING_REG(e), (uint8_t)PSID_RING_VALUE(e));
+        uint32_t reg = PSID_RING_REG(e), v = PSID_RING_VALUE(e);
+        raw[reg] = (uint8_t)v;
+        if (tweaking)
+            v = psid_isr_bent(c, reg, v);
+        sid_write(s, (uint8_t)reg, (uint8_t)v);
     }
     if (n) {
         render(s, out, n, tapped);
@@ -119,6 +173,15 @@ uint32_t psid_ctl_block(psid_ctl* c, sid* a, sid* b, int16_t* sa, int16_t* sb, u
     if (c->mode == PSID_ISR_PLAY) {
         uint32_t head = c->head;
         COMPILER_FENCE();
+        const uint32_t tweak_seq = c->tweak_seq;
+        if (tweak_seq != c->tweak_done) {
+            c->tweak_done = tweak_seq;
+            COMPILER_FENCE();
+            const uint8_t on = c->tweaking;
+            if (on || c->bent)
+                psid_isr_retweak(c, a, two ? b : NULL);
+            c->bent = on;
+        }
         const uint32_t window = two ? PSID_BLOCK_ENTRIES / 2u : PSID_BLOCK_ENTRIES;
         psid_isr_chip(c, 0, a, sa, (int)(tapped & 1u), render, head, window);
         rendered = 1;

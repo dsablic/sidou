@@ -2022,6 +2022,42 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   A write-only SID register reads the bus until its lifetime is up: 0x1d00 cycles on a 6581,
   0xa2000 on an 8580.
 
+### Live tweaks (1.8)
+
+- K1-K4 in NOW PLAYING bend the tune as it plays ([the design](plans/2026-11-05-sid-tweaks.md)):
+  the cutoff, the resonance and a voice's waveform. The audio interrupt keeps each chip's raw
+  register bytes (`psid_ctl.raw`, every ring write stores its byte) and, while a tweak is on,
+  writes the bent value; a tweak's change (`tweak_seq`, bumped by `psid_ctl_tweak` in the main
+  loop) rewrites the five tweakable registers from the raw bytes at the next block, so a turn is
+  heard within a block (2.9 ms) even when the tune never writes them again.
+- The cutoff bend moves the high byte only (`$D416`, a detent of 32 on the 11 bits being 4 of
+  it) and the tune's low three bits pass: one register in, one register out, with no carry
+  between two writes to keep right. It clamps at 0 and 255, so the ends keep the tune's low bits.
+- The interrupt reads the tweak where the main loop writes it, with no copy: each field is one
+  store, so a block that sees half a change bends with old and new fields alike, and the
+  rewrite at the next block makes it whole. `tweaking` goes on before the fields change and off
+  after they are zero, so a write never misses a bend nor bends with a stale one.
+- The raw bytes are zeroed by `begin` (the interrupt is off then), not by the interrupt's stop:
+  a new tune's first tweak never rewrites the last tune's gate on a voice it does not use.
+- A song change (`begin`) and a stop (`halt`) forget the tweak; the view gives it back when it
+  is popped (HOME). LAB or a help card over NOW PLAYING keeps it. The lift takes the tune's own
+  writes from the ring, unbent.
+- The rewrite runs only when a tweak is on or was on (`bent`): the tweak a new song forgets
+  costs a fresh tune's first block nothing (five rewrites at block 0 put 11.7 instructions a
+  sample on the dearest synthetic block before this).
+- Cost: 326 bytes of RAMTEXT (the interrupt's write path 38, the block's check 66, the bend and
+  the rewrite 222), against the design's estimate of 200; the .sid player's share
+  (`M3_RAMTEXT`, 1,536 since M3, 1,402 used) grows by the design's 200 to 1,736 (1,728 used),
+  the owner's decision (2026-11-05).
+  The dearest .sid block with no tweak: 100.6 instructions a sample, was 94.9, of
+  `PSID_ISR_WORST`'s 120 (the raw byte and the test on every write); a turn adds the five
+  rewrites to one block. 84 bytes of RAM in `psid_ctl` (the raw bytes of two chips, the tweak).
+- The popup's name is TWEAK for all four knobs, in one accent: a knob's popup in its own colour
+  repaints the whole box when another knob turns (229 cells, over the 200 a frame), while one
+  name and accent repaints only the value.
+- TWEAKED (1×) and the words CUT RES WAVE (2×) each have their place on the line, so turning one
+  more tweak on draws one word, not the line.
+
 ### Instrument lift
 
 - Lifting a sound is taking a voice into LAB (the owner, 2026-11-02, after the first device try of
@@ -2900,6 +2936,14 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   tresillo's kicks, FOUR a kick on every beat, BROKEN a breakbeat. The kit is found by its bytes, NO
   DRUM KIT without it. The role is kept in the SCNE chunk, which firmware without roles reads as
   written.
+- On an ACID lane (1.8): the notes as on a melodic lane, and on each a SLIDE lock
+  (`ACID_SLIDE_PERCENT`, 30, only when the next row is a hit: a slide into a rest glides nowhere)
+  and an ACCENT lock (`ACID_ACCENT_PERCENT`, 35), each from its own hash of the row's, so they do
+  not follow the note picked. The 303's accent comes on fewer than half its notes and the slide
+  on fewer; more and nothing stands out. A row without a hit loses both, so a roll replaces the
+  last roll's. The locks are written before the cell, while the editor has nothing pending, and a
+  refusal (WAITING, LOCKS FULL) stops the roll as a cell's does. The role comes after BASS+DRUMS
+  on PRESETS, the bass roles together.
 - The filter sweep writes a C command (FILTER CUTOFF) every `SONG_GEN_SWEEP_EVERY` (2) rows from
   `SONG_GEN_SWEEP_LOW` (0x10) to `SONG_GEN_SWEEP_HIGH` (0xF0) or back, where the row has no command.
 - `FROZEN_MELODIC` and `FROZEN_DRUMS` (sidou-tests `tests/app/step_view.rs`) are DICE's rolls with
@@ -3949,14 +3993,17 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   slide's row, until the next note; that note's first frame keeps the waveform before it (no test-
   bit restart) and the frequency glides 4 frames from the pitch before. The player writes a new
   note's pitch the frame after its row, so the heard glide is 3 frames.
+- The slide's registers are written before the locks' (1.8): an ACCENT on a sliding step ORs its
+  full sustain onto the SR the slide holds. In 1.7 the slide came after and a step that slid and was
+  accented played at the song's sustain; the accent's test checked the song's shadow, not the chip.
 - The cost of the chunk: an older firmware drops a LOCK chunk with a parameter it does not know
   (`song_ext_locks_check`), so a 1.7 song with a slide or accent has no locks in 1.6. A chunk of its
   own would have kept them, at the cost of a second lock path. The owner accepted the drop for 1.7
   (2026-11-05): one lock path, and the release notes say that a 1.6 SIDOU plays such a song without
   its locks.
-- "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A DICE
-  role that rolls slides and accents on a bass lane, or a built-in LIVE preset, was not done: a
-  fifth built-in moves the presets' numbers, MIDI program changes included.
+- "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A
+  built-in LIVE preset was not done: a fifth built-in moves the presets' numbers, MIDI program
+  changes included. The DICE role that rolls slides and accents is 1.8's ACID.
 
 ### LAB cards over MIDI (1.7)
 
@@ -5513,7 +5560,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   bass, the others the arp, and a free clock makes a row every `SCENE_SONG_FREE_FRAMES` frames.
 - A BASS+DRUMS voice (DICE's time-shared kit and bass) gives its kit's kick and snare as drums and
   its other notes as the bass; an older SIDOU reads the role as none of its own, so the voice
-  plays no part. An SCNE chunk without the drum table reads as no drums.
+  plays no part. An SCNE chunk without the drum table reads as no drums. An ACID voice (1.8) is
+  the bass.
 
 ### Tests: SCENE pieces
 
@@ -6136,7 +6184,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - A tune takes no state of its own outside the song's: audio.c's union fits the song
   transport's and the 6502's 64 KiB is the song's region. The .sid player's code in SRAM
   (psid_ctl's interrupt half, `sid_advance`, audio.c's player paths and its swap hook) stays
-  within 1,536 bytes.
+  within 1,736 bytes: M3's 1,536 and 200 for 1.8's live tweaks, the owner's decision
+  (2026-11-05).
 
 ### The decode gate (decode_gate.rs)
 
