@@ -2851,6 +2851,49 @@ the last item, which does not exist yet.
 
 Notes:
 
+## 33. 1.8: felucca-bsp and Bluetooth MIDI
+
+What it decides: whether SIDOU on felucca-bsp (`f8788009`, docs/design-notes.md "Board support")
+behaves on the unit as 1.7 did, and whether Bluetooth MIDI works on real radio, which fm1-emu
+cannot model (docs/upstream-reports.md). 1.8's Bluetooth is the peripheral only: a Mac, an iPad
+or a phone connects to SIDOU; connecting out to a keyboard is the next release's (decision 0011).
+Every item waits for the owner's yes for that step: nothing is flashed, connected or scanned
+before it. Set up: the 1.8 build installed over 1.7 (the felucca-bsp items), then a
+`SIDOU_BLE=ON` build (the Bluetooth items; it stays a test build until they pass), a Mac with
+Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
+
+**felucca-bsp**
+
+- [ ] **An install over 1.7 with SIDOU's installer:** it finishes, SIDOU boots, settings and songs
+  are kept. *Emulator:* `usb.rs::the_running_firmware_serves_an_updates_whole_step_one`.
+- [ ] **A firmware install while SysEx flows:** send a bank of 32 dumps from a librarian, then
+  start an install at once: it answers and finishes. *Emulator:*
+  `usb.rs::thirty_two_patch_dumps_sent_back_to_back_all_arrive`,
+  `usb.rs::the_updater_answers_a_frame_that_follows_one_sidou_took`.
+- [ ] **USB-MIDI both ways and USB audio at 44.1 kHz:** "SIDOU FM-1" in a DAW, notes in and K1's
+  CC out; the audio input offers 44.1 kHz only and records the line out clean for two minutes.
+  *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`.
+- [ ] **The audio starts at every boot** (felucca-bsp's start checks the stock audio PLL; a
+  refused start is silence): ten power-ons, a note each time.
+
+**Bluetooth MIDI, the peripheral (`SIDOU_BLE=ON`)**
+
+- [ ] **BLUETOOTH ON** (SETTINGS, the last item, ALGORITHM clockwise): within a few seconds the
+  radio starts, the sound keeps playing, no reboot; OFF stops it; a power cycle keeps the setting.
+  *Emulator (no radio):* `ble.rs::bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising`,
+  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`.
+- [ ] **SIDOU in the Mac's Audio MIDI Setup:** Window, Show MIDI Studio, the Bluetooth button: the
+  window lists `SIDOU XXXX`; Connect. After a power cycle the Mac finds the same SIDOU.
+- [ ] **Notes both ways:** notes from GarageBand or Logic play SIDOU; SIDOU's keys and knobs arrive
+  in the DAW; SIDOU follows the DAW's clock and start / stop. Disconnect while a note is held:
+  **no stuck note**. *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`.
+- [ ] **No audio glitch while connected:** two minutes of a three-note chord with K1 turning and
+  notes coming in over Bluetooth: 0 clicks on the headphones; then an hour of two SIDs with
+  Bluetooth MIDI in from the Mac: no clicks, no reboot. A save during the link (the store's erase
+  holds up to 35 ms): the link survives or comes back. *Emulator (radio off):* the audio
+  interrupt is the default build's to the instruction (`ram_audio.rs` on the Bluetooth build).
+- [ ] **A firmware install still works** with BLUETOOTH ON: SIDOU's installer over USB finishes.
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2889,3 +2932,4 @@ Notes:
 | 30 Chords and time-shared drums from DICE | | |
 | 31 The site's editor and Live Link page | | |
 | 32 1.7: the player from flash, and by ear | | |
+| 33 1.8: felucca-bsp and Bluetooth MIDI | | |

@@ -1777,3 +1777,57 @@ fn the_midi_pages_clock_items_set_the_clock() {
     ui.frame();
     assert!(midi_line(&mut ui, 9).trim_end().ends_with("ON"));
 }
+
+static RADIO_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+unsafe extern "C" fn radio_on(_: *mut std::ffi::c_void) -> i32 {
+    i32::from(RADIO_ON.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+unsafe extern "C" fn radio_set(_: *mut std::ffi::c_void, on: i32) {
+    RADIO_ON.store(on != 0, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn radio() -> Box<views_radio> {
+    Box::new(views_radio {
+        ctx: std::ptr::null_mut(),
+        on: Some(radio_on),
+        set: Some(radio_set),
+    })
+}
+
+#[test]
+fn bluetooth_is_the_last_setting_only_with_a_radio_and_algorithm_switches_it() {
+    let mut ui = Ui::new();
+    open_setting(&mut ui, VIEWS_SETTINGS_RESET);
+    assert_eq!(
+        u32::from(ui.v.setup.count),
+        VIEWS_SETTINGS_ITEMS,
+        "no radio, no row"
+    );
+    let radio = radio();
+    unsafe { views_radio_bind(&mut *ui.v, &*radio) };
+    RADIO_ON.store(false, std::sync::atomic::Ordering::Relaxed);
+    open_setting(&mut ui, VIEWS_SETTINGS_BLUETOOTH);
+    let heading = ascii_or_hash(ui.big(1, 1, 2, MENU_LINE_CHARS));
+    let items = VIEWS_SETTINGS_ITEMS + 1;
+    assert!(
+        heading.starts_with("SETTINGS") && heading.ends_with(&format!("{items}/{items}")),
+        "{heading}"
+    );
+    let row = VIEWS_SETTINGS_BLUETOOTH;
+    assert_eq!(
+        ui.menu_line(row as usize),
+        format!("{:<9}{:>5}", "BLUETOOTH", "OFF")
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    settings_settle(&mut ui);
+    assert!(RADIO_ON.load(std::sync::atomic::Ordering::Relaxed));
+    assert_eq!(
+        ui.menu_line(row as usize),
+        format!("{:<9}{:>5}", "BLUETOOTH", "ON")
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, -1);
+    settings_settle(&mut ui);
+    assert!(!RADIO_ON.load(std::sync::atomic::Ordering::Relaxed));
+}

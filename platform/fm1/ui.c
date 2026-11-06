@@ -10,6 +10,12 @@
 #include "store_fm1.h"
 #include "views.h"
 
+#if defined(SIDOU_BLE)
+#include "ble_radio.h"
+
+static const views_radio radio = {NULL, ble_radio_on, ble_radio_set};
+#endif
+
 #ifndef SIDOU_VERSION
 #define SIDOU_VERSION "0.0.0"
 #endif
@@ -178,6 +184,9 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     settings_sounds(&persisted, &ui.sounds);
     int known = settings_load(&persisted, now_ms);
     views_settings(&ui, &persisted);
+#if defined(SIDOU_BLE)
+    views_radio_bind(&ui, &radio);
+#endif
     views_boot(&ui, !known, home_held);
     last_compose = now_ms;
     next_at = now_ms + UI_PERIOD_MS / 2u;

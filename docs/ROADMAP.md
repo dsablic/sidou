@@ -94,16 +94,13 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
   - **First the felucca-bsp move**, a prerequisite: Felucca's radio and second-core drivers come
     from [felucca-bsp](https://github.com/hugelton/felucca-bsp) byte for byte (the Platform item
     below).
-  - **Then Bluetooth MIDI both ways** ([decision 0011](decisions/0011-bluetooth-midi.md),
-    [the research](plans/2026-11-05-bluetooth-research.md)): SIDOU as a peripheral that a
-    computer or tablet connects to, and SIDOU connecting out to Bluetooth MIDI keyboards (a devices
-    page), with the owner's Korg microKEY Air as the test keyboard; no pairing at first. Optimist's
-    open stack from fm1-base's `bt/`, MIDI in, out and clock. A build option, off by default,
-    starting with a measurement build, now built ([the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
-    both ways 39,312 bytes of flash (the peripheral alone 30,704) against the 15,616 free, 3,060 of
-    the RAM region, 3,928 of NOINIT, 32 of RAMTEXT, and the audio interrupt unchanged. The cold
-    files at `-Oz` have about 1.3 KB left, so the room is the owner's call first: the ceiling's
-    reserve, USB audio at 44.1 kHz only, or the peripheral first. L.
+  - **Then Bluetooth MIDI as a peripheral** (the owner, 2026-11-06, [decision 0011](decisions/0011-bluetooth-midi.md),
+    [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)): SIDOU seen by a Mac, an iPad or a
+    phone, notes, CCs and clock both ways, no pairing; SETTINGS BLUETOOTH OFF / ON. Optimist's
+    open stack vendored from fm1-base's `bt/ble`. A build option (`SIDOU_BLE`) until the device
+    test passes. The room: the ceiling at the slot less 2 KB, USB audio at 44.1 kHz only, the MIDI
+    ring in NOINIT and six cold files smaller. Both ways did not fit (5.7 KB over before its UI).
+    L.
   - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
     K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
     RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
@@ -123,6 +120,13 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     design session: the JSON shape, the prompt, test prompts judged by ear, and OpenRouter's
     current docs and limits. GitHub Models was ruled out (no OAuth a static page can finish, its
     future unclear). M.
+- **Next, Bluetooth connecting out** (moved from 1.8 by the owner, 2026-11-06): SIDOU connects to
+  Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device remembered), the
+  owner's Korg microKEY Air as the test; pairing if the keyboard asks for it. Its room, about
+  9-10 KB with its page: the radio driver at plain `-Os` (3,264 bytes, felucca-bsp#31, filed
+  2026-11-06) and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`,
+  `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before).
+  M-L.
 - **2.0.**
   - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
     default, falling back to one core; the RAMTEXT room is there since 1.7.

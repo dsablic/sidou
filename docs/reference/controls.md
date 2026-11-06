@@ -1382,7 +1382,16 @@ setup; **KEYS** plays every tune on the keys' setup (the chip, profile and chara
 have). ALGORITHM clockwise is KEYS, counter-clockwise AUTO; it counts from the next tune that
 loads (or restarts), and is saved with the settings (schema 7).
 
-SETTINGS' last item, **RESET**, puts everything that is not a song back to factory: every
+In the Bluetooth test build (`SIDOU_BLE`, 1.8, until the device test passes; not in a release),
+SETTINGS has one more item after RESET, **BLUETOOTH**: **OFF** (the default) or **ON**,
+ALGORITHM clockwise ON, counter-clockwise OFF. ON starts the radio (3 s after power-on at the
+earliest) and SIDOU advertises as `SIDOU XXXX` for a Mac, an iPad or a phone to connect to
+(Bluetooth MIDI, no pairing); OFF stops advertising and drops a link (held notes are released).
+The setting and SIDOU's Bluetooth address are kept in the store (key `0x10A`) two seconds after
+the change, so a computer finds the same SIDOU after a power cycle. Connecting out to a
+Bluetooth keyboard comes in the next release.
+
+SETTINGS' **RESET** puts everything that is not a song back to factory: every
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting
 that is saved (KEYS, SOUNDS, TRACKER ROWS, THEME, SPREAD, SID MODEL, the playing preset, the chip
 model, profile and character, the EXPERT overrides, the effect slots, and the envelope mode).

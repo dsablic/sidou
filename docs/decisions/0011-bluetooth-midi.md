@@ -64,6 +64,19 @@ at 39,312 bytes of flash against 15,616 free. These revise points 2 and 3 above 
 6. **The radio is tested on the device.** fm1-emu is asked for a radio model in
    [upstream-reports.md](../upstream-reports.md); nothing is filed.
 
+## The owner's decision on the measured fit (2026-11-06)
+
+Measured on the felucca-bsp move with step 2's room: both ways came to 585,232 bytes before its
+views, 5,716 over the 579,516 ceiling (the move cost 4,128 bytes, not the 784 the plan assumed,
+and four of the ten cold-file changes failed their gates), so about 8-10 KB short with the
+DEVICES page. The owner chose **the peripheral first: 1.8 ships Bluetooth MIDI as a peripheral
+only** (SIDOU seen by a Mac, an iPad or a phone), and point 5's connecting out moves to the next
+release, which finds its room with the radio driver at plain `-Os` (felucca-bsp#31) and hot/cold
+splits of the gate-bound files. The central role's code is not built into 1.8's image
+(`SIDOU_BLE_CENTRAL` 0), so nothing of it is half-shipped. 1.8's device test is SIDOU in a Mac's
+Audio MIDI Setup, notes both ways, no audio glitch while connected, and a firmware install still
+working.
+
 ## Consequences
 
 - The plan's steps 2 and 3 come first: a `SIDOU_BLE` build measures the real deltas, and SIDOU

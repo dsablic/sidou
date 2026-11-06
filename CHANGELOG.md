@@ -9,6 +9,10 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a
+  Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs and clock
+  both ways, SETTINGS BLUETOOTH OFF / ON, the setting and SIDOU's address kept. A dropped link
+  releases the held notes. Connecting out to a Bluetooth keyboard is the next release's.
 - Bluetooth MIDI's measurement build (`-DSIDOU_BLE=ON`, never released): SIDOU with Optimist's
   open stack linked in, both roles, to measure its flash, RAM and RAMTEXT
   ([the 1.8 plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.

@@ -561,6 +561,18 @@ static void sid_model_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void bluetooth_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, !v->radio ? "-" : v->radio->on(v->radio->ctx) ? "ON" : "OFF", "");
+}
+
+static void bluetooth_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0 && v->radio) {
+        v->radio->set(v->radio->ctx, steps > 0);
+    }
+}
+
 static const view* shows(const views* v);
 
 static int song_refused(views* v) {
@@ -1130,20 +1142,21 @@ _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_S
                    VIEWS_MENU_MIDI == 10u && VIEWS_MENU_CHARSET == 11u &&
                    VIEWS_MENU_ABOUT == 12u,
                "the menu's items");
-static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
+static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS + 1u] = {
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
     {"ROWS", rows_value, rows_turn},       {"STORE", store_value, NULL},
     {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
     {"SID MODEL", sid_model_value, sid_model_turn},
     {"RESET", reset_value, NULL},
+    {"BLUETOOTH", bluetooth_value, bluetooth_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_STORE == 3u &&
                    VIEWS_SETTINGS_THEME == 4u && VIEWS_SETTINGS_REC == 5u &&
                    VIEWS_SETTINGS_SPREAD == 6u && VIEWS_SETTINGS_SID_MODEL == 7u &&
-                   VIEWS_SETTINGS_RESET == 8u,
-               "the settings' items");
+                   VIEWS_SETTINGS_RESET == 8u && VIEWS_SETTINGS_BLUETOOTH == VIEWS_SETTINGS_ITEMS,
+               "the settings' items, BLUETOOTH last and only with a radio");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
@@ -1976,6 +1989,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->setup.lines = MIDI_LINES;
     v->route = NULL;
     v->sync = NULL;
+    v->radio = NULL;
     remember(v);
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
@@ -2007,6 +2021,11 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
 
 void views_learn(views* v, midi_learn* ml) {
     learn_view_init(&v->learn, v->l, ml);
+}
+
+void views_radio_bind(views* v, const views_radio* radio) {
+    v->radio = radio;
+    v->setup.count = (uint8_t)(VIEWS_SETTINGS_ITEMS + (radio != NULL));
 }
 
 void views_settings(views* v, settings* set) {

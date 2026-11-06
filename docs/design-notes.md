@@ -374,10 +374,25 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   releases every held note and restarts only the Bluetooth parser; SIDOU's SysEx protocol stays on
   USB and TRS, and a Bluetooth break aborts neither. The port costs the default image 160 bytes
   and the RAM region 128.
+- **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` is 0, so the central's
+  scan table, client and DEVICES code are not built. The image with Bluetooth and its SETTINGS row
+  is 578,016 bytes, 1,500 under the ceiling.
+- **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with a radio:
+  `views_radio_bind` hands the views the radio's hooks and adds the item, so the default image's
+  SETTINGS, its golden screens and its ergonomics baseline are unchanged. The setting and SIDOU's
+  random static address are their own store record (key `0x10A`), not the settings record: the
+  default build never writes it, and its schema stays 9. It is saved two seconds after a change,
+  from a static buffer (the store writes from the caller's memory over later polls).
+- **Starting the radio:** never before 3 s after power-on (the boot's waits; in fm1-emu, where
+  the start's waits time out, it holds the main loop 2.2 ms, `ble.rs` bounds it at 600 ms), then
+  whenever BLUETOOTH is ON. OFF stops advertising and drops a link (`ble_enable(0)`), and ON again
+  advertises without a second start. The address is drawn once and kept, so a Mac finds the same
+  SIDOU after a power cycle.
 - **The emulator gate** (`emu-gate/tests/ble.rs`, with `SIDOU_FM1_BLE_BUILD`): notes written into
   `ble_radio_in` by symbol play, and a link set down (`ble_radio_role`) releases them; the stack's
   state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,340 bytes free);
-  the image fits the ceiling (it does not yet: 585,488 bytes both ways, 5,972 over). With the radio
+  the image fits the ceiling (the peripheral, 578,016); the setting is saved with an address and
+  kept across a power cycle; the start comes after the boot's waits. With the radio
   off the audio interrupt is the default build's to the instruction (396.67 a sample, a chord held).
 - The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
   both ways.
