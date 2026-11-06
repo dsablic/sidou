@@ -3,8 +3,11 @@
 
 use std::fmt;
 
+#[cfg(target_os = "macos")]
+pub mod coremidi;
 pub mod import;
 pub mod patch;
+pub mod send;
 pub mod sid;
 
 pub const INQ: u8 = 0x01;
@@ -166,6 +169,15 @@ impl Packet {
 }
 
 pub fn put_frames(name: &str, file_type: u8, data: &[u8]) -> Result<Vec<Vec<u8>>, Error> {
+    put_frames_at(name, file_type, data, 0)
+}
+
+pub fn put_frames_at(
+    name: &str,
+    file_type: u8,
+    data: &[u8],
+    first: u8,
+) -> Result<Vec<Vec<u8>>, Error> {
     if data.len() > MAX_FILE_LEN {
         return Err(Error::TooLong);
     }
@@ -178,7 +190,7 @@ pub fn put_frames(name: &str, file_type: u8, data: &[u8]) -> Result<Vec<Vec<u8>>
     put.extend((data.len() as u32).to_le_bytes());
     put.extend(crc32(data).to_le_bytes());
     let mut frames = Vec::with_capacity(data.len().div_ceil(MAX_DATA_LEN) + 2);
-    let mut sequence = 0u8;
+    let mut sequence = first & 0x7f;
     let mut push = |command, data: Vec<u8>| -> Result<(), Error> {
         frames.push(
             Packet {

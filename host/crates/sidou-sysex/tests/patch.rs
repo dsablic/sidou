@@ -132,3 +132,30 @@ fn a_bank_file_is_the_sixteen_s_song_and_its_put() {
     assert!(dir.join("out/KIT.sng").is_file() && dir.join("out/KIT.syx").is_file());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_cli_makes_a_step_song_and_send_refuses_what_is_not_a_store_file() {
+    let dir = std::env::temp_dir().join(format!("sidou-step-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("beat.json"), r#"{"format": "sidou-step/1", "name": "beat", "instrument": "kit", "steps": [{"step": 1, "drum": "kick"}]}"#).unwrap();
+    std::fs::write(dir.join("sidou.fwsc"), b"FWSC firmware").unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_sidou-sysex"))
+            .args(args)
+            .current_dir(&dir)
+            .output()
+            .unwrap()
+    };
+    let step = run(&["step", "beat.json", "--out", "out"]);
+    assert!(
+        step.status.success(),
+        "{}",
+        String::from_utf8_lossy(&step.stderr)
+    );
+    assert!(dir.join("out/BEAT.sng").is_file() && dir.join("out/BEAT.syx").is_file());
+    let send = run(&["send", "sidou.fwsc", "--port", "NO SUCH PORT"]);
+    assert!(!send.status.success());
+    assert!(String::from_utf8_lossy(&send.stderr).contains("never a firmware package or update"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}

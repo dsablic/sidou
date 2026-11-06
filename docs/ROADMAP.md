@@ -116,7 +116,7 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     one-instrument song that ENV on INSTR opens in LAB; the sixteen show as patches. One converter
     in C, in its own wasm and the host tests; `sidou-sysex patch`. Done in the 1.8 tree, with a
     song's LAB sound as a patch to change, banks of up to sixteen (`sidou-bank/1`) and STEP
-    patterns (`sidou-step/1`). Next in 1.8: a CLI for coding agents. Later, if users ask: a
+    patterns (`sidou-step/1`), and `sidou-sysex` for coding agents ([docs/ai](ai/README.md)). Later, if users ask: a
     one-button page that calls a model itself (OpenRouter's PKCE sign-in was the first plan), and
     an MCP server (a local one through npx, never on Pages).
 - **Next, Bluetooth connecting out** (moved from 1.8 by the owner, 2026-11-06): SIDOU connects to

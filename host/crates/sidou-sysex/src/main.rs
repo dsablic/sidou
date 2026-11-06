@@ -6,10 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
-use sidou_sysex::patch::{bank_file, patch_file, PatchFile};
+use sidou_sysex::patch::{bank_file, patch_file, step_file, PatchFile};
+use sidou_sysex::send::{file_type_of, store_name, Client, Port, Sent, Timing, DEFAULT_PORT};
 use sidou_sysex::sid;
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -177,6 +178,108 @@ fn patch_main(rest: Vec<String>, read: fn(&str, Model) -> Result<PatchFile, Stri
     ExitCode::SUCCESS
 }
 
+struct Send {
+    file: PathBuf,
+    port: String,
+    name: Option<String>,
+    replace: bool,
+}
+
+fn send_args(rest: Vec<String>) -> Result<Send, String> {
+    let mut it = rest.into_iter();
+    let mut file = None;
+    let mut a = Send {
+        file: PathBuf::new(),
+        port: DEFAULT_PORT.to_string(),
+        name: None,
+        replace: false,
+    };
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--port" => a.port = it.next().ok_or(USAGE)?,
+            "--name" => a.name = Some(it.next().ok_or(USAGE)?.to_ascii_uppercase()),
+            "--replace" => a.replace = true,
+            _ if arg.starts_with("--") => return Err(format!("unknown option {arg}\n{USAGE}")),
+            _ if file.is_none() => file = Some(PathBuf::from(arg)),
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    a.file = file.ok_or(USAGE)?;
+    Ok(a)
+}
+
+fn send_to(
+    port: impl Port,
+    a: &Send,
+    bytes: &[u8],
+    file_type: u8,
+    name: &str,
+) -> Result<Sent, String> {
+    let mut c = Client::new(port, Timing::default());
+    let d = c.inquire()?;
+    println!(
+        "{} is SIDOU {}.{}.{}, {} bytes free",
+        c.port.name(),
+        d.version[0],
+        d.version[1],
+        d.version[2],
+        d.free
+    );
+    c.send_file(name, file_type, bytes, a.replace, &mut |w| {
+        eprintln!("the FM-1 is busy: sending again in {} s", w.as_secs());
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn open_port(name: &str) -> Result<sidou_sysex::coremidi::MidiPort, String> {
+    sidou_sysex::coremidi::MidiPort::open(name)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_port(_name: &str) -> Result<sidou_sysex::send::NoPort, String> {
+    Err("send talks to MIDI ports on macOS only: elsewhere use the Library page".to_string())
+}
+
+fn send_main(rest: Vec<String>) -> ExitCode {
+    let a = match send_args(rest) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let bytes = match std::fs::read(&a.file) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: {e}", a.file.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(file_type) = file_type_of(&bytes) else {
+        eprintln!("{}: not a song (.sng), a .sid tune or an instrument (.ins): send sends nothing else, never a firmware package or update", a.file.display());
+        return ExitCode::FAILURE;
+    };
+    let name = a
+        .name
+        .clone()
+        .unwrap_or_else(|| store_name(&a.file.display().to_string()));
+    println!(
+        "sending {} as {name} to the MIDI port \"{}\"",
+        a.file.display(),
+        a.port
+    );
+    let done = open_port(&a.port).and_then(|p| send_to(p, &a, &bytes, file_type, &name));
+    match done {
+        Ok(Sent::Same) => println!("{name} is already on the FM-1, identical: left alone"),
+        Ok(Sent::Sent) => println!("{name} sent ({} bytes)", bytes.len()),
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 fn import_main(rest: Vec<String>) -> ExitCode {
     let i = match import_args(rest) {
         Ok(i) => i,
@@ -229,6 +332,8 @@ fn main() -> ExitCode {
         Some("import") => import_main(rest),
         Some("patch") => patch_main(rest, patch_file),
         Some("bank") => patch_main(rest, bank_file),
+        Some("step") => patch_main(rest, step_file),
+        Some("send") => send_main(rest),
         Some("sid") => sid_main(rest),
         _ => {
             eprintln!("{USAGE}");

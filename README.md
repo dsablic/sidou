@@ -95,7 +95,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   Any of the sixteen sounds, or a LAB sound in a song, shows as a patch to change; several at once
   come as a bank of up to sixteen, sent as one song; and a STEP pattern (a bassline or a beat with
   slides, accents and chances) comes as a song that opens on STEP and plays. `sidou-sysex` does
-  the same on a computer.
+  the same on a computer and sends to the FM-1, for coding agents too ([docs/ai](docs/ai/README.md)).
 - **Edit a song in the browser.** The site's [editor](https://dsablic.github.io/sidou/editor.html)
   opens a song from a file or the connected FM-1 and edits its instruments, tables, patterns and
   orderlists with the FM-1's own song code (an edit the FM-1 would refuse is refused, parameter

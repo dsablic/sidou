@@ -24,7 +24,10 @@ All notable changes are documented here. The format follows
   to four pages: notes, the NEW song's drum kit by name, SLIDE, ACCENT and chance, the lane's role,
   and its instrument as a patch or the kit; it becomes the NEW song with that lane written as
   STEP's keys write it, so it opens on STEP and plays (checked, previewed and sent on the Library
-  page, or by a `#step=` link). One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
+  page, or by a `#step=` link). For coding agents ([docs/ai](docs/ai/README.md)): `sidou-sysex
+  patch|bank|step FILE.json --out DIR` writes the song and its `.syx` with the same converter,
+  and `sidou-sysex send FILE` (macOS) uploads a song, tune or instrument to the FM-1 with the
+  stop-and-wait protocol after checking that the port answers as SIDOU, never a firmware package. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
   the host tests; `sidou-sysex patch FILE.json` writes the song and its `.syx`. The firmware is
   unchanged.
 - **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a

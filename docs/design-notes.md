@@ -6558,6 +6558,11 @@ gain.
   its locks with `song_lock_put`, so the song is what the FM-1 makes; `step_view.rs` drives STEP's
   keys on a NEW song and holds the converter's pattern and locks to theirs. The reader is why
   the patch module's budget went to 80 KiB (the owner, 2026-11-06).
+- **`sidou-sysex send`** ports the site's SysEx client (`web/sysex.js`: INQ, DIR, stop-and-wait
+  PUT, WAIT, BUSY's whole-PUT retries) over a `Port` trait: the tests drive it against a fake FM-1
+  in `tests/send.rs`, and the one real port is CoreMIDI on macOS, linked by hand (two frameworks,
+  `MIDIPacketListAdd` for the layout) so the build needs no crate and no system library. It is
+  never run against a device by tests; it sends store files only, chosen by their content.
 - **Errors a model can act on**: `path: what is wrong. Allowed: what is.`, the allowed text the
   same the docs show. Text before the patch's `{` and after it is skipped, so a whole answer pastes.
 - **The link** is the compact JSON, percent-encoded, after `#patch=`. Not base64: a model writes a

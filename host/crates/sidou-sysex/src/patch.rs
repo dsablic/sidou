@@ -42,3 +42,17 @@ pub fn bank_file(text: &str, model: Model) -> Result<PatchFile, String> {
         quiet: b.quiet,
     })
 }
+
+pub fn step_file(text: &str, model: Model) -> Result<PatchFile, String> {
+    let sng = json::step_song(text, model.sid())?;
+    let name = String::from_utf8_lossy(&sng[4..36])
+        .trim_end_matches('\0')
+        .to_string();
+    let syx = put_frames(&name, FILE_SONG, &sng)
+        .map_err(|e| format!("{name}: {e}"))?
+        .concat();
+    Ok(PatchFile {
+        song: SongFile { name, sng, syx },
+        quiet: None,
+    })
+}
