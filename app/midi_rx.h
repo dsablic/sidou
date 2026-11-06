@@ -16,16 +16,16 @@
 extern "C" {
 #endif
 
+#define MIDI_RX_PACKET_PORTS 8u
+
 typedef struct {
     live* l;
     uint8_t epoch;
     uint8_t looked;
     midi_in trs;
     midi_in usb;
-    midi_in ble;
     midi_map_port trs_map;
     midi_map_port usb_map;
-    midi_map_port ble_map;
     uint32_t restarts;
     midi_out* out;
     midi_learn* learn;
@@ -34,6 +34,9 @@ typedef struct {
     const uint8_t* fast;
     struct midi_sync* sync;
     const midi_ring_entry* entry;
+    midi_in ble;
+    midi_map_port ble_map;
+    midi_in* packet_port[MIDI_RX_PACKET_PORTS];
 } midi_rx;
 
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch);

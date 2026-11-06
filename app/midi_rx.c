@@ -159,6 +159,11 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     port_init(rx, &rx->trs, &rx->trs_map, on_trs);
     port_init(rx, &rx->usb, &rx->usb_map, on_usb);
     port_init(rx, &rx->ble, &rx->ble_map, on_ble);
+    for (uint32_t i = 0; i < MIDI_RX_PACKET_PORTS; i++) {
+        rx->packet_port[i] = NULL;
+    }
+    rx->packet_port[MIDI_SRC_USB] = &rx->usb;
+    rx->packet_port[MIDI_SRC_BLE] = &rx->ble;
 }
 
 void midi_rx_sync(midi_rx* rx, struct midi_sync* sync) {
@@ -184,7 +189,7 @@ void midi_rx_watch(midi_rx* rx, midi_out* out) {
     rx->out = out;
 }
 
-static void packet_in(midi_in* in, uint32_t p) {
+static inline __attribute__((always_inline)) void packet_in(midi_in* in, uint32_t p) {
     uint32_t cin = p & 0x0fu;
     if (cin >= 0x8u && cin <= 0xeu && (p >> 12 & 0x0fu) == cin && !(p & 0x80800000u)) {
         midi_in_channel(in, (uint8_t)(p >> 8), (uint8_t)(p >> 16), (uint8_t)(p >> 24));
@@ -202,10 +207,11 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     rx->entry = e;
     if (e->source == MIDI_SRC_TRS) {
         midi_in_byte(&rx->trs, (uint8_t)e->data);
-    } else if (e->source == MIDI_SRC_USB) {
-        packet_in(&rx->usb, e->data);
-    } else if (e->source == MIDI_SRC_BLE) {
-        packet_in(&rx->ble, e->data);
+        return;
+    }
+    midi_in* in = e->source < MIDI_RX_PACKET_PORTS ? rx->packet_port[e->source] : NULL;
+    if (in) {
+        packet_in(in, e->data);
     }
 }
 

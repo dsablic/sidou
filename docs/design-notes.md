@@ -365,7 +365,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `ble_rf_tables.h`; SIDOU's `platform/fm1/ble_rf_tables.h` includes the v15 table.
 - **Bluetooth is a MIDI port of its own** (`MIDI_SRC_BLE`, 4): its packets go into `midi.c`'s
   input ring like USB's, but through their own parser and map (`midi_rx.ble`, `ble_map`), so a
-  SysEx or NRPN cut on one port never mixes with another's. A link that drops leaves a break in
+  SysEx or NRPN cut on one port never mixes with another's. The packet ports are found by a table indexed by source
+  (`midi_rx.packet_port`): two compares in `midi_rx_entry` instead of one put `midi.rs`'s TRS CC
+  flood at 5.002M/s of its 5.0M bound and a USB drain pass at 8,006 of 8,000; with the table they
+  are 4.996M/s and 7,974, as before the port. The Bluetooth parser's fields sit at the struct's
+  end, so the others keep their offsets. A link that drops leaves a break in
   the ring for its source (`midi_ring_break`: a new epoch, nothing counted lost), so the receiver
   releases every held note and restarts only the Bluetooth parser; SIDOU's SysEx protocol stays on
   USB and TRS, and a Bluetooth break aborts neither. The port costs the default image 160 bytes

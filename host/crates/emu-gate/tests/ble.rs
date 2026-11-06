@@ -5,7 +5,7 @@ mod common;
 mod flash_plan;
 
 use common::{Firmware, Machine, REGION_FREE_MIN};
-use flash_plan::IMAGE_CEILING;
+use flash_plan::{IMAGE_CEILING, PLAN};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, LIVE_VOICES};
 
@@ -62,7 +62,7 @@ fn the_bluetooth_build_fits_the_ceiling() {
     let size = std::fs::metadata(build.join("platform/fm1/sidou_app.bin"))
         .expect("the Bluetooth build's image")
         .len() as usize;
-    println!("Bluetooth image {size} bytes, the ceiling {IMAGE_CEILING}");
+    println!("Bluetooth image {size} bytes, {PLAN}'s ceiling {IMAGE_CEILING}");
     assert!(
         size <= IMAGE_CEILING,
         "the Bluetooth image is {size} bytes, {} over the ceiling",
