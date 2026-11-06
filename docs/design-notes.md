@@ -330,6 +330,15 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   pieces are size-built within their gates (POLL_INSTRUCTIONS, the scene budgets). `song_pages.c`
   (at `-Os`) and `step_view.c` and `song_gen.c` (both at `-Oz`) also take `-fno-inline-functions
   -fno-jump-tables`, so their rendering and edit helpers stay outlined.
+- **`sid_character.c`'s cold half** (1.8, for the Bluetooth build's room): `sid_character_cold.c`
+  at `-Oz` holds the DAC-table builders (`sid_character_dac_custom`, `_dac_job`, `_build_dac`
+  and their parameter helpers) and `sid_character_macro_changed`; everything that a tick, a
+  slice or the audio path runs stays in `sid_character.c` at `-O2`. 784 bytes (the default image
+  549,056 -> 548,272). The expert filter's `sid_character_expert_cutoff_hz` was tried in the cold
+  half too and went back: it runs inside the filter build's slices, which grew from 27,409 to
+  45,840 instructions against `REG_RING_PREPARE_SLICE` 40,000 (`character.rs`). With the split
+  the slices are the same as before to the instruction (the busiest, 34,130 of 40,000); a chip
+  reset's busiest pass 64,563 -> 64,636.
 - Measured and left at `-O2`: `live.c` (`ui_encoder` over `CHIP_PICK_INPUT` 400, K1 over
   `POPUP_INPUT`), `views.c`
   at `-Oz` (880 bytes, but K1's popup input reaches 250 of 250; it stays `-Os`), `chip_view.c` at
@@ -404,6 +413,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The radio never starts in this build (`ble_radio_wanted` is never set). Started at boot in
   fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up holds the main loop
   past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
+- The copy of `app.ld` is written at configure time and `app.ld` is a configure dependency, so a
+  change to `app.ld` (rel180 moved `psid_isr_*` into RAMTEXT) reaches the Bluetooth build; a stale
+  copy put `psid_isr_retweak` in flash, out of branch reach of `sid_write` in SRAM.
 - The image is over the app slot, so the build links against a copy of `app.ld` with a larger
   XIP region; CMake fails if `app.ld`'s length changes under it.
 - The option record names `SIDOU_BLE` only when it is on, so the default image keeps its bytes.

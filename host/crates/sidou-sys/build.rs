@@ -8,6 +8,7 @@ const SOURCES: &[&str] = &[
     "core/sid/sid.c",
     "core/sid/sid_shadow.c",
     "core/sid/sid_character.c",
+    "core/sid/sid_character_cold.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
     "core/fx/fx_slots.c",

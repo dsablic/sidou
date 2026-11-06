@@ -58,6 +58,7 @@ if(SIDOU_BLE)
     set_property(SOURCE main.c midi.c ui.c APPEND PROPERTY COMPILE_DEFINITIONS SIDOU_BLE=1)
     message(WARNING
         "SIDOU_BLE=ON: Bluetooth MIDI's measurement build (central ${SIDOU_BLE_CENTRAL}), not a release")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
     file(READ ${CMAKE_CURRENT_SOURCE_DIR}/app.ld app_ld)
     string(REPLACE "LENGTH = 0x8DFBC" "LENGTH = 0x100000" app_ld_measure "${app_ld}")
     if(app_ld_measure STREQUAL app_ld)

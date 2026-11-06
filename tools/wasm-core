@@ -27,7 +27,7 @@ sources=(
     core/song/gt2_song.c core/song/gt2_sng.c core/song/gt2_stream.c core/song/gt2_ins.c
     core/song/song_ext.c
     core/player/gt2_play.c core/player/gt2_shape.c core/player/song_ctl.c
-    core/sid/sid.c core/sid/sid_shadow.c core/sid/sid_character.c core/sid/sid_dac.c
+    core/sid/sid.c core/sid/sid_shadow.c core/sid/sid_character.c core/sid/sid_character_cold.c core/sid/sid_dac.c
     core/sid/sid_filter.c
     core/fx/fx.c core/fx/fx_slots.c core/fx/fx_slots_init.c core/fx/fx_reverb.c core/fx/fx_plate.c
     core/fx/fx_limit.c
