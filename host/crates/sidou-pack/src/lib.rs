@@ -39,7 +39,7 @@ pub const DEFAULT_OPTIONS: [(&str, &str); 10] = [
 ];
 pub const ABSENT_WHEN_OFF: [(&str, &str); 3] = [
     ("SIDOU_BLE", "OFF"),
-    ("SIDOU_BLE_CENTRAL", "3"),
+    ("SIDOU_BLE_CENTRAL", "0"),
     (
         "SIDOU_BLE_SOURCE",
         "${PROJECT_SOURCE_DIR}/build/ext/fm1-base",
