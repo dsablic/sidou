@@ -116,6 +116,16 @@ impl Shape {
     }
 }
 
+pub fn patch_file(name: &str) -> String {
+    let stem: Vec<String> = name
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    format!("patches/{}.json", stem.join("-"))
+}
+
 pub fn sidou_sounds() -> Vec<Sound> {
     vec![
         Shape::new(PUL, 0x08, 0xa8)
@@ -138,7 +148,7 @@ pub fn sidou_sounds() -> Vec<Sound> {
             .filter(LP, 1000, 10, 1)
             .sound(
                 "WOBBLE BASS",
-                "a pulse bass with the cutoff wobbling at about 3 Hz",
+                "a pulse bass with the cutoff wobbling just under 1 Hz",
             ),
         Shape::new(TRI, 0x00, 0xa0)
             .table(&[(NOI, 40), (TRI, 0), (TRI, DOWN(5))], 1, 0)

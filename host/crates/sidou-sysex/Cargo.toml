@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "sidou-sysex"
-description = "Host-only SIDOU SysEx packet encoding and decoding, and a CLI that writes .sid tunes and imported SidStation banks as .syx files, without device access"
+description = "Host-only SIDOU SysEx packet encoding and decoding, and a CLI that writes .sid tunes, imported SidStation banks and sidou-patch/1 patches as .syx files, without device access"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

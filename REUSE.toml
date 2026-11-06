@@ -32,10 +32,10 @@ path = ["assets/songs/*.sng"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# SIDOU's sounds: original LAB sounds, the song and its listing written from
+# SIDOU's sounds: original LAB sounds, the song, its listing and each sound's patch written from
 # host/crates/sidou-patch/src/sounds.rs.
 [[annotations]]
-path = ["assets/sounds/*.sng", "assets/sounds/*.json"]
+path = ["assets/sounds/*.sng", "assets/sounds/*.json", "assets/sounds/patches/*.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
@@ -57,6 +57,14 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 # picture CRC, made by host/crates/sidou-tests/tests/web_link.rs for web/link.test.mjs and web/check.mjs.
 [[annotations]]
 path = ["web/link-fixtures.json"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# What the host build of SIDOU's patch converter makes of the sixteen sounds' patches and a few
+# others, made by host/crates/sidou-patch/tests/patch_docs.rs for web/patch.test.mjs; and the
+# template of the instructions it writes (docs/prompt-to-patch.md, the site's llms.txt).
+[[annotations]]
+path = ["web/patch-fixtures.json", "host/crates/sidou-patch/tests/data/prompt-to-patch.md"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 

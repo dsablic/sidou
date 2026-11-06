@@ -1,0 +1,11 @@
+{
+  "format": "sidou-patch/1",
+  "name": "PWM STRINGS",
+  "wave": "pulse",
+  "envelope": {"attack": 0, "decay": 8, "sustain": 10, "release": 8},
+  "filter": {"cutoff_hz": 9078, "resonance": 4, "voices": [1]},
+  "vibrato": {"rate_hz": 0},
+  "lfos": [
+    {"to": "pulse_width", "rate_hz": 0.4, "depth": 28}
+  ]
+}

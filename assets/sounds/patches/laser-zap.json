@@ -1,0 +1,19 @@
+{
+  "format": "sidou-patch/1",
+  "name": "LASER ZAP",
+  "wave": "pulse",
+  "pulse_width": 12.5,
+  "envelope": {"attack": 0, "decay": 0, "sustain": 8, "release": 0},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "table": {
+    "steps": [
+      {"note": 24},
+      {"note": 19},
+      {"note": 14},
+      {"note": 9},
+      {"note": 4},
+      {}
+    ]
+  }
+}

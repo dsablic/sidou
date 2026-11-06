@@ -1,0 +1,13 @@
+{
+  "format": "sidou-patch/1",
+  "name": "RING BELL",
+  "wave": "triangle",
+  "ring": true,
+  "envelope": {"attack": 0, "decay": 10, "sustain": 0, "release": 8},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "layers": [
+    {"ring": false},
+    {"ring": false, "transpose": 19}
+  ]
+}

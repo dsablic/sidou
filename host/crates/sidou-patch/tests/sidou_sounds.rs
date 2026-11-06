@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use sidou_patch::bank::sound_song;
-use sidou_patch::sounds::{sidou_sounds, Sound};
+use sidou_patch::sounds::{patch_file, sidou_sounds, Sound};
 use sidou_sys::song::Song;
 use sidou_sys::*;
 
@@ -31,10 +31,11 @@ fn listing(sounds: &[Sound]) -> String {
         .enumerate()
         .map(|(i, s)| {
             format!(
-                "    {{ \"instrument\": {}, \"name\": \"{}\", \"about\": \"{}\" }}",
+                "    {{ \"instrument\": {}, \"name\": \"{}\", \"about\": \"{}\", \"patch\": \"{}\" }}",
                 i + 1,
                 s.name,
-                s.about
+                s.about,
+                patch_file(s.name)
             )
         })
         .collect();

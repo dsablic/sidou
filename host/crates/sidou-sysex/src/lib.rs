@@ -4,6 +4,7 @@
 use std::fmt;
 
 pub mod import;
+pub mod patch;
 pub mod sid;
 
 pub const INQ: u8 = 0x01;

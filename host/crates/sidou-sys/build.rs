@@ -114,9 +114,10 @@ const SOURCES: &[&str] = &[
     "bench/workload_fx.c",
     "bench/workload_slots.c",
     "bench/workload_scene.c",
+    "platform/web/patch_json.c",
 ];
 
-const INCLUDES: [&str; 3] = ["core", "bench", "app"];
+const INCLUDES: [&str; 4] = ["core", "bench", "app", "platform/web"];
 
 const MIDI_MAP_DOC: &str = "SIDOU_MIDI_MAP_DOC";
 
@@ -210,6 +211,10 @@ fn main() {
     println!("cargo:rerun-if-changed={}", root.join("app").display());
     println!(
         "cargo:rerun-if-changed={}",
+        root.join("platform/web").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
         root.join("bench/workload_fx.h").display()
     );
     println!(
@@ -235,11 +240,11 @@ fn main() {
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|chip_view_.*|chip_mix|chip_spread_.*|master_.*|tail_gate_.*|thump_out_.*|chip_ctl_.*|chip_setup_.*|",
                 "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*|user_sound_.*|user_sounds_.*|",
-                "sid_view_.*|lab_.*|link_.*",
+                "sid_view_.*|lab_.*|link_.*|patch_json_.*",
             ),
         )
         .allowlist_type(
-            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*",
+            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*|patch_json",
         )
         .allowlist_var(
             concat!(
@@ -249,7 +254,7 @@ fn main() {
                 "SCENE_.*|scene_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
                 "demo_song_.*|gt2_kit_.*|gt2_freq_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
-                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*",
+                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*",
             ),
         )
         .blocklist_item(HEADER_PRIVATE_TABLES)

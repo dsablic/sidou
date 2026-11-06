@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod bank;
+pub mod json;
 pub mod lab;
 pub mod mbsid;
 pub mod model;
