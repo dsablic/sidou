@@ -8,6 +8,9 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.8.0](https://github.com/dsablic/sidou/releases/tag/v1.8.0)** (2026-11-07): a sound from a
+  prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at
+  44.1 kHz only.
 - **[1.7.1](https://github.com/dsablic/sidou/releases/tag/v1.7.1)** (2026-11-07): newer FM-1s,
   with a UC25HQ80 flash, save and update.
 - **[1.7.0](https://github.com/dsablic/sidou/releases/tag/v1.7.0)** (2026-11-05): LAB's step
@@ -73,7 +76,7 @@ A/B, undo and variation rolls. ENV, LFO and FX on LIVE open it. Design:
   byte, on 0x1209:0x0002.
 - **The ergo baseline refreshed** after LAB, with the accepted findings reviewed. Done.
 - **A device session gates 1.0.** USB audio recording, the first-run tour, unplugging the
-  cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, and a long 48 kHz recording, left to users (the CPU erratum in Felucca's resampler, [felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16); if it fails, 48 kHz goes off until a fix).
+  cable during playback, REC timing, LAB's readability and keep flow, a 2SID tune, left to users. The long 48 kHz recording is moot: 1.8 records at 44.1 kHz only (decision 0011), so the resampler's CPU erratum ([felucca-bsp#16](https://github.com/hugelton/felucca-bsp/issues/16)) no longer reaches SIDOU.
 
 ## 1.1
 
@@ -81,51 +84,46 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
-## 1.7
+## 1.8
 
-Released in 1.7.0: LAB's TABLE page (a step table on a sound, sent and pulled as a GoatTracker
-wave program; an imported SidStation patch keeps its first table), two free LFOs on MOD's second
-page (LAB has ten pages), SLIDE and ACCENT as STEP locks, an NRPN for every LAB card (group 7,
-receive only), sixteen original SIDOU sounds on the site's Library page, and GoatTracker's player
-moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` were designed
-([the plan](plans/2026-11-05-sid-tweaks.md)) and moved to 1.8.
+Released in 1.8.0: a sound from a prompt (SIDOU's instructions for language models, the
+`sidou-patch/1` format, the Library page's patch preview and send, and `sidou-sysex` for coding
+agents), live tweaks on playing `.sid` tunes (K1 bends the cutoff, K2 the resonance, K3 and K4 a
+voice's waveform), the ACID lane role (DICE rolls slides and accents), the felucca-bsp move
+(back-to-back SysEx now works, and the radio drivers are ready), USB audio at 44.1 kHz only (the
+48 kHz resampler is gone), and five filter routing fixes on the site's sounds. Bluetooth MIDI is
+tested but not shipped in this release: the test build is 452 bytes over the release ceiling until
+felucca-bsp#31 lands, and three device checks (the hour of two SIDs, the save during the link, and
+the DAW clock) are still open.
 
-**After 1.7** (the plan the owner agreed, 2026-11-05)
+**After 1.8**
 
-- **1.8, Bluetooth.**
-  - **First the felucca-bsp move**, a prerequisite: Felucca's radio and second-core drivers come
-    from [felucca-bsp](https://github.com/hugelton/felucca-bsp) byte for byte (the Platform item
-    below).
-  - **Then Bluetooth MIDI both ways** ([decision 0011](decisions/0011-bluetooth-midi.md),
-    [the research](plans/2026-11-05-bluetooth-research.md)): SIDOU as a peripheral that a
-    computer or tablet connects to, and SIDOU connecting out to Bluetooth MIDI keyboards (a devices
-    page), with the owner's Korg microKEY Air as the test keyboard; no pairing at first. Optimist's
-    open stack from fm1-base's `bt/`, MIDI in, out and clock. A build option, off by default,
-    starting with a measurement build. It needs about 41-53 KB of flash against the 15.6 KB free,
-    so finding room comes first (cold files at `-Oz`); any budget change is the owner's call. 8-10
-    KB of RAM (NOINIT), 36-44 B of RAMTEXT. L.
-  - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
-    K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
-    RAMTEXT); a layer's level in LAB (a gain per voice in the audio interrupt,
-    [the LFO plan](plans/2026-11-05-lab-lfos.md)); a DICE bass role that rolls slides and accents;
-    and ear checks of the site's sixteen sounds on a device.
-  - **Prompt to patch** (the owner, 2026-11-05): a page on the site turns a few words ("a squelchy
-    acid bass with a fast filter envelope") into a LAB sound and sends it to the FM-1. The user
-    signs in with OpenRouter's PKCE flow from the static page, with no client secret and no
-    server: the key stays in the user's tab and SIDOU stores nothing. OpenRouter's free models
-    give a user 50 requests a day (1,000 after $10 of credits once); a paid model, Claude among
-    them, is the user's choice and cost. The model writes the sound's settings as JSON, never
-    audio; the site's wasm core checks every answer (a valid sound, not silent), with one retry
-    that hands the model the error, so only a valid sound is sent; the sixteen site sounds are
-    the prompt's examples. A new SysEx target, a LAB sound, opens it in LAB at once without
-    touching the song, and SAVE keeps it (until then, a one-instrument song). First: a prompt,
-    Make, Try again and a tweak word ("darker"); no audio-to-patch, no chat. It starts with a
-    design session: the JSON shape, the prompt, test prompts judged by ear, and OpenRouter's
-    current docs and limits. GitHub Models was ruled out (no OAuth a static page can finish, its
-    future unclear). M.
+- **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
+  SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
+  and clock both ways, SETTINGS BLUETOOTH OFF / ON. **Waits for:** felucca-bsp#31 (the radio driver
+  at plain `-Os`, about 3.2 KB) or another 452 bytes of room, and the three open device checks (the
+  hour of two SIDs over Bluetooth, a save during the link, and the DAW clock). L.
+- **Bluetooth connecting out**: SIDOU connects to Bluetooth MIDI keyboards (the central role, a
+  DEVICES page, the last device remembered), the owner's Korg microKEY Air as the test; pairing if
+  the keyboard asks for it. Its room, about 9-10 KB with its page: the radio driver at plain `-Os`
+  (3,264 bytes, felucca-bsp#31, filed 2026-11-06) and hot/cold splits of the gate-bound `-O2` files
+  (`sid_character.c`, `live.c`, `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each
+  refused by a gate before). M-L.
+- **1.9** (the owner, 2026-11-06), each starting with a short design:
+  - **Whole songs as text:** a text form of a GoatTracker song, a model's or a coding agent's,
+    that opens in the site's editor.
+  - **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx
+    can reach it.
+  - **Read USER sounds over SysEx:** the Library page lists the sixteen USER sounds and opens one
+    as a patch (today SysEx refuses `USER SOUNDS`; LAB's REC into the song is the way round).
 - **2.0.**
   - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
     default, falling back to one core; the RAMTEXT room is there since 1.7.
+  - **A layer's level in LAB**, after it (the owner, 2026-11-06): a gain per voice in both render
+    loops costs about 7 instructions a sample per chip, leaving 7.1 of the two-chip worst block's
+    1,426 (1,418.9 measured on 1.8's small items), and 160 bytes of RAMTEXT; chip B on its own core
+    gives that budget back. It also needs a place on LAYERS (its four cards are taken), 3 bytes of
+    the sound and the import ([the measurement](https://github.com/dsablic/sidou/blob/v1.7.1/docs/plans/2026-11-05-lab-lfos.md)).
   - **The DAW plugin**, starting from its design session (the owner, 2026-11-04): the spike
     ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
     package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card,
@@ -157,9 +155,11 @@ the decisions are in [design-notes.md](design-notes.md)).
 
 **1.5.x**
 - **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341.
-- **The move to felucca-bsp**: waits for felucca-bsp's PR #21 (the raw MIDI-in hook, our patch);
-  #14 and #16 are fixed upstream. SIDOU's USB audio hand-over needs adapting to its newer
-  recording path (found in the trial: 22 of 23 USB tests pass).
+- **The move to felucca-bsp**: waits for felucca-bsp's PR #21 (the raw MIDI-in hook, our patch;
+  to be rebased, it conflicts with main in a comment); #14 and #16 are fixed upstream. Retried on
+  2026-11-05: 23 of 23 USB tests pass with `usb_audio.c` handing the recording 24-bit words (one
+  line) and the test helper reading the sent string descriptor
+  ([the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md#3-the-felucca-bsp-trial)).
 
 - **The quality pass**: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of 250, the
   MIDI floods at 98 % of their budget, the SID views' UI poll 452 under its budget after the

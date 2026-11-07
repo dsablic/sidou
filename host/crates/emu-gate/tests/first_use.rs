@@ -22,6 +22,7 @@ const SONG_SAVE_AS: i32 = 2;
 const WIPE_MS: u64 = 700;
 const IO_TIMEOUT_MS: u64 = 15_000;
 const ROW_MS: f64 = 120.0;
+const PRESETS_TO_ARP: i32 = 5;
 const LANE_NOTE: u32 = 36;
 const CHIP_HZ: f64 = SID_CLOCK_PAL as f64;
 
@@ -195,10 +196,7 @@ struct Voice {
 }
 
 fn chip_a_voice(m: &mut Machine, fw: &Firmware, v: usize) -> Voice {
-    let chips = fw.chips();
-    let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
-    let chip =
-        chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+    let chip = chip_a(m, fw);
     let o = chip + (ilp32::sid::osc + v * ilp32::sid_osc::SIZE) as u32;
     let e = chip + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
     let env = |m: &mut Machine, f: usize| m.soc.read8(e + f as u32);
@@ -1422,7 +1420,7 @@ fn an_arp_lane_rolls_chords_in_tracker() {
     m.key(EDIT, true);
     m.run_ms(40);
     m.key(SCL, true);
-    turn(&mut m, PRESETS, 4);
+    turn(&mut m, PRESETS, PRESETS_TO_ARP);
     m.run_ms(100);
     m.key(SCL, false);
     m.key(EDIT, false);
@@ -1673,4 +1671,86 @@ fn play_is_quiet_until_the_first_note() {
         loudest < SILENT_RMS,
         "PLAY sounds before its first note: {loudest:.0} over 10 ms"
     );
+}
+
+const HELD_STEP_MS: u64 = 80;
+const TOAST_MS: u64 = 150;
+const SLID_ROWS: u32 = 2;
+const LISTEN_EXTRA_ROWS: u32 = 4;
+const INTO_THE_NEXT_NOTE_MS: usize = 30;
+
+fn held_step_press(m: &mut Machine, fw: &Firmware, step: u8, button: u8) -> String {
+    m.key(KEY0 + step, true);
+    m.run_ms(HELD_STEP_MS);
+    press(m, button);
+    m.run_ms(TOAST_MS);
+    let said = toast_text(m, fw);
+    m.key(KEY0 + step, false);
+    step_settled(m, fw);
+    said
+}
+
+fn slide_and_accent_locks(m: &mut Machine, fw: &Firmware) -> Vec<(u8, u8, u8, u16)> {
+    let s = song(m, fw);
+    let mut locks = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
+    let n = unsafe { song_ext_get_locks(s.ptr(), locks.as_mut_ptr(), SONG_LOCKS_MAX) } as usize;
+    locks[..n]
+        .iter()
+        .filter(|l| matches!(u32::from(l.param), SONG_LOCK_SLIDE | SONG_LOCK_ACCENT))
+        .map(|l| (l.pattern, l.row, l.param, l.value))
+        .collect()
+}
+
+fn mid_row(h: &Heard, row: u32) -> usize {
+    first_gate(h) as usize + rows_ms(row) as usize + rows_ms(1) as usize / 2
+}
+
+fn gated_through_the_slide(h: &Heard) -> bool {
+    let from = first_gate(h) as usize;
+    let to = from + rows_ms(1) as usize + INTO_THE_NEXT_NOTE_MS;
+    h.gates[from..to].iter().all(|&g| g & 1 != 0)
+}
+
+#[test]
+fn a_held_step_with_fx_slides_into_the_next_note_and_with_env_accents_it_as_heard() {
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
+    let mut m = new_song_on_step(&fw);
+    toggle_row(&mut m, &fw, 0, 0);
+    toggle_row(&mut m, &fw, 0, 1);
+    let plain = play_for(&mut m, &fw, rows_ms(SLID_ROWS + LISTEN_EXTRA_ROWS), 0);
+    stop(&mut m, &fw);
+    assert!(
+        !gated_through_the_slide(&plain),
+        "two notes retrigger without a slide"
+    );
+
+    assert_eq!(held_step_press(&mut m, &fw, 0, FX), "SLIDE ON");
+    assert_eq!(held_step_press(&mut m, &fw, 0, ENV), "ACCENT ON");
+    assert_eq!(
+        slide_and_accent_locks(&mut m, &fw),
+        [
+            (0, 0, SONG_LOCK_SLIDE as u8, 1),
+            (0, 0, SONG_LOCK_ACCENT as u8, 1)
+        ]
+    );
+    m.run_ms(AUDITION_HANDS_CHIP_A_BACK_MS);
+    let slid = play_for(&mut m, &fw, rows_ms(SLID_ROWS + LISTEN_EXTRA_ROWS), 0);
+    stop(&mut m, &fw);
+    assert!(
+        gated_through_the_slide(&slid),
+        "the slide holds the gate into the next note"
+    );
+    let sustain = |h: &Heard, row: u32| h.regs[mid_row(h, row)].sr >> 4;
+    assert_eq!(sustain(&slid, 0), 0xf, "the accented row at full sustain");
+    assert_eq!(
+        sustain(&slid, 1),
+        sustain(&plain, 1),
+        "the next row as it was"
+    );
+
+    assert_eq!(held_step_press(&mut m, &fw, 0, FX), "SLIDE OFF");
+    assert_eq!(held_step_press(&mut m, &fw, 0, ENV), "ACCENT OFF");
+    assert!(slide_and_accent_locks(&mut m, &fw).is_empty());
 }

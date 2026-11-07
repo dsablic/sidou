@@ -1,0 +1,21 @@
+{
+  "format": "sidou-step/1",
+  "name": "BEAT",
+  "voice": 3,
+  "role": "drums",
+  "gate": "staccato",
+  "pages": 2,
+  "instrument": "kit",
+  "steps": [
+    {"step": 1, "drum": "kick"},
+    {"step": 5, "drum": "snare"},
+    {"step": 7, "drum": "closed_hat", "chance": 50},
+    {"step": 9, "drum": "kick"},
+    {"step": 13, "drum": "snare"},
+    {"step": 17, "drum": "kick"},
+    {"step": 21, "drum": "clap"},
+    {"step": 25, "drum": "kick"},
+    {"step": 29, "drum": "digi_snare"},
+    {"step": 32, "drum": "open_hat"}
+  ]
+}

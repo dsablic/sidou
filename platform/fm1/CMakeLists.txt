@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 enable_language(ASM)
 
+set(bsp ${CMAKE_CURRENT_SOURCE_DIR}/bsp)
 add_library(fm1_hal INTERFACE)
-target_include_directories(fm1_hal SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/hal)
+target_include_directories(fm1_hal SYSTEM INTERFACE ${bsp}/chip ${bsp}/boards/fm1)
 
-add_library(fm1_hal_check OBJECT hal_check.c hal/fm1_isr.S hal/fm1_vec.S)
-target_include_directories(fm1_hal_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hal)
+add_library(fm1_hal_check OBJECT hal_check.c bsp/chip/fm1_isr.S bsp/chip/fm1_vec.S)
+target_link_libraries(fm1_hal_check PRIVATE fm1_hal)
 target_compile_options(fm1_hal_check PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unused-function>)
 
 set(t sidou_app)
 add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c store_fm1.c ui.c libc_min.c build_options.c
-    hal/fm1_isr.S
-    hal/fm1_vec.S)
+    bsp/chip/fm1_isr.S
+    bsp/chip/fm1_vec.S)
 set_target_properties(${t} PROPERTIES SUFFIX ".elf")
 target_link_libraries(${t} PRIVATE fm1_hal sidou_live sidou_core)
 target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -42,6 +43,33 @@ if(SIDOU_FLASH_SPIKE)
     target_sources(${t} PRIVATE flash_spike.c)
     set_property(SOURCE flash_spike.c APPEND PROPERTY COMPILE_OPTIONS -fno-data-sections)
     target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
+endif()
+option(SIDOU_BLE "Bluetooth MIDI on Optimist's open stack (measurement build, never released)" OFF)
+if(SIDOU_BLE)
+    set(SIDOU_BLE_CENTRAL "0" CACHE STRING
+        "Connecting out (the next release): 0 peripheral only (1.8), 3 without pairing, 1 with")
+    set(ble_stack ${PROJECT_SOURCE_DIR}/third_party/fm1-base-ble)
+    target_sources(${t} PRIVATE ble_stack_unit.c ble_setting.c)
+    set_property(SOURCE ble_setting.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
+    set_property(SOURCE ble_stack_unit.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
+    set_property(SOURCE main.c ble_stack_unit.c APPEND PROPERTY INCLUDE_DIRECTORIES
+        ${ble_stack})
+    set_property(SOURCE main.c ble_stack_unit.c APPEND PROPERTY COMPILE_DEFINITIONS
+        BLE_DIAG=0 BLE_CENTRAL=${SIDOU_BLE_CENTRAL} BLE_DEVICE_NAME="SIDOU")
+    set_property(SOURCE main.c midi.c ui.c APPEND PROPERTY COMPILE_DEFINITIONS SIDOU_BLE=1)
+    target_compile_definitions(sidou_live PRIVATE SIDOU_BLE=1)
+    message(WARNING
+        "SIDOU_BLE=ON: Bluetooth MIDI's measurement build (central ${SIDOU_BLE_CENTRAL}), not a release")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/app.ld app_ld)
+    string(REPLACE "LENGTH = 0x8DFBC" "LENGTH = 0x100000" app_ld_measure "${app_ld}")
+    if(app_ld_measure STREQUAL app_ld)
+        message(FATAL_ERROR "SIDOU_BLE: app.ld's XIP length is not 0x8DFBC any more")
+    endif()
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/app_ble.ld "${app_ld_measure}")
+    set(sidou_app_ld ${CMAKE_CURRENT_BINARY_DIR}/app_ble.ld)
+else()
+    set(sidou_app_ld ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
 endif()
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
 option(SIDOU_USB_FIX "midi.c (the USB stack) with Felucca's build flags" ON)
@@ -84,6 +112,13 @@ foreach(entry IN LISTS sidou_option_defaults)
     endif()
     string(APPEND sidou_options " ${name}=${value}")
 endforeach()
+if(SIDOU_BLE)
+    string(APPEND sidou_options " SIDOU_BLE=ON")
+    if(NOT SIDOU_BLE_CENTRAL STREQUAL "0")
+        string(APPEND sidou_options " SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL}")
+    endif()
+    string(APPEND sidou_options_off "\n    SIDOU_BLE=ON (default OFF), central ${SIDOU_BLE_CENTRAL}")
+endif()
 if(NOT sidou_options_off STREQUAL "")
     message(WARNING "\n"
         "************************************************************************\n"
@@ -95,9 +130,9 @@ if(NOT sidou_options_off STREQUAL "")
         "************************************************************************")
 endif()
 target_compile_definitions(${t} PRIVATE SIDOU_BUILD_OPTIONS="SIDOU-OPTIONS 1${sidou_options}")
-target_link_options(${t} PRIVATE -T ${CMAKE_CURRENT_SOURCE_DIR}/app.ld -e _start
+target_link_options(${t} PRIVATE -T ${sidou_app_ld} -e _start
     --orphan-handling=error --gc-sections --emit-relocs)
-set_property(TARGET ${t} APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
+set_property(TARGET ${t} APPEND PROPERTY LINK_DEPENDS ${sidou_app_ld})
 add_custom_command(TARGET ${t} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary -j .entry $<TARGET_FILE:${t}> ${t}.entry.bin
     COMMAND ${CMAKE_OBJCOPY} -O binary -j .ram_text $<TARGET_FILE:${t}> ${t}.ram_text.bin

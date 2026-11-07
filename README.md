@@ -64,14 +64,16 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   step and ENV accents it. TABLE's ARP helper writes arpeggios as wavetable rows, and the
   keys play the draft before you save it. MUTATE, DICE (density, range, scale, rhythm and a root
   for each lane) and a filter sweep write patterns in STEP and TRACKER; a lane given the ARP role
-  rolls chords (shared wavetable chord programs, C64 style), and a BASS+DRUMS lane the kit's kick
+  rolls chords (shared wavetable chord programs, C64 style), an ACID lane a bassline with
+  slides and accents, and a BASS+DRUMS lane the kit's kick
   and snare time-shared with a bass on one voice.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
   the device's flash: the menu's SIDS lists them, NOW PLAYING shows the tune, its songs and its
   voices, with mute and solo, pause and stop, and MIDI start, stop and continue
-  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). Press REC and a voice's key
+  ([put a tune on the FM-1 and play it](docs/manual/sid-tunes.md)). K1-K4 bend a playing tune
+  live: its cutoff, its resonance, and a voice's waveform. Press REC and a voice's key
   to lift its last note into LAB, where SAVE keeps it as a sound of your own
   ([lift a sound](docs/manual/sid-tunes.md#5-lift-a-sound)).
 - **Keep the FM-1's store from a browser.** The site's [Library](https://dsablic.github.io/sidou/library.html)
@@ -84,6 +86,16 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   ([the manual](docs/manual/library.md)). It also offers SIDOU's own sixteen LAB sounds (a table
   kick and snare, a chip chord, wobble and acid basses, LFO strings, layered saws and more) as one
   song to send: ENV on INSTR opens each in LAB.
+- **A sound from a prompt.** Any language model (ChatGPT, Claude, Gemini or a local one) designs
+  a LAB sound from a few words with SIDOU's [instructions](docs/prompt-to-patch.md) (served as
+  [llms.txt](https://dsablic.github.io/sidou/llms.txt)): it answers with a short JSON patch in
+  musical units ([the format](docs/reference/patch-json.md)) and a patch link. The Library page
+  checks it with the FM-1's own rules (each refusal one line naming the field, to paste back),
+  plays it, and sends it as a one-instrument song LAB opens with ENV; no sign-in, nothing stored.
+  Any of the sixteen sounds, or a LAB sound in a song, shows as a patch to change; several at once
+  come as a bank of up to sixteen, sent as one song; and a STEP pattern (a bassline or a beat with
+  slides, accents and chances) comes as a song that opens on STEP and plays. `sidou-sysex` does
+  the same on a computer and sends to the FM-1, for coding agents too ([docs/ai](docs/ai/README.md)).
 - **Edit a song in the browser.** The site's [editor](https://dsablic.github.io/sidou/editor.html)
   opens a song from a file or the connected FM-1 and edits its instruments, tables, patterns and
   orderlists with the FM-1's own song code (an edit the FM-1 would refuse is refused, parameter
@@ -102,7 +114,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   presets and songs, and an NRPN for every LAB card, so a DAW can automate each
   ([midi.md](docs/reference/midi.md)).
 - **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an
-  iPad: a DAW records what the line out plays, in stereo at 44.1 or 48 kHz, over the same cable
+  iPad: a DAW records what the line out plays, in stereo at 44.1 kHz, over the same cable
   as USB-MIDI.
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
@@ -124,6 +136,7 @@ flash.
 
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
+SIDOU runs on every FM-1, including newer units with the UC25HQ80 flash ([Felucca#320](https://github.com/hugelton/Felucca/issues/320)).
 
 1. Download the `sidou-<version>.fwsc` file from the [latest release](https://github.com/dsablic/sidou/releases/latest).
 2. Install it with Felucca's installer (`fm1_install.py sidou-<version>.fwsc`). The unit then shows

@@ -8,6 +8,77 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-07
+
+A sound from a prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at 44.1 kHz only.
+
+### Added
+- **A sound from a prompt.** SIDOU's instructions for language models
+  ([docs/prompt-to-patch.md](docs/prompt-to-patch.md), on the site as `llms.txt`) and a text
+  format for one LAB sound, `sidou-patch/1` ([the reference](docs/reference/patch-json.md), a JSON
+  Schema beside it): named fields in musical units, everything a LAB sound holds, any field left
+  out. The Library page reads a pasted patch or a `#patch=` link, checks it with the FM-1's rules
+  (the ranges, `lab_sound_valid`, and playing it on both chips), says what is wrong in one line a model
+  can fix from, previews it and sends it as a one-instrument song. An existing sound opens as a patch to
+  change: each of the sixteen, and any LAB sound in an open song (Patch beside its instrument; a
+  USER sound gets there by LAB's REC); the instructions tell a model to change only what it is
+  asked. A bank, `sidou-bank/1`, carries up to sixteen patches and a song name, sent as one song
+  (the sixteen as a bank make the site's `SIDOU SOUNDS` byte for byte), pasted or by a `#bank=`
+  link; `sidou-sysex bank FILE.json` writes it. A STEP pattern, `sidou-step/1`, is one lane of up
+  to four pages: notes, the NEW song's drum kit by name, SLIDE, ACCENT and chance, the lane's role,
+  and its instrument as a patch or the kit; it becomes the NEW song with that lane written as
+  STEP's keys write it, so it opens on STEP and plays (checked, previewed and sent on the Library
+  page, or by a `#step=` link). For coding agents ([docs/ai](docs/ai/README.md)): `sidou-sysex
+  patch|bank|step FILE.json --out DIR` writes the song and its `.syx` with the same converter,
+  and `sidou-sysex send FILE` (macOS) uploads a song, tune or instrument to the FM-1 with the
+  stop-and-wait protocol after checking that the port answers as SIDOU, never a firmware package. The
+  instructions are a short `llms.txt` with its depth in linked files and all of it in
+  `llms-full.txt`, which the page copies; a model's answer ends with two to four things to turn in
+  LAB, by LAB's own page and card names. `send` stores a song under the song's own name. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
+  the host tests; `sidou-sysex patch FILE.json` writes the song and its `.syx`. The firmware is
+  unchanged.
+- **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a
+  Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs and clock
+  both ways, SETTINGS BLUETOOTH OFF / ON, the setting and SIDOU's address kept. A dropped link
+  releases the held notes. Connecting out to a Bluetooth keyboard is the next release's.
+- Bluetooth MIDI's measurement build (`-DSIDOU_BLE=ON`, never released): SIDOU with Optimist's
+  open stack linked in, both roles, to measure its flash, RAM and RAMTEXT
+  ([the 1.8 plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.
+  `sidou-pack --verify` now also fails a package whose option record names an option a release
+  never records.
+- **Live tweaks on a playing `.sid`.** In NOW PLAYING K1 bends the tune's filter cutoff
+  (-1024..+1024, 32 a detent), K2 its resonance (-15..+15), K3 picks a voice and K4 gives it
+  another waveform (TRI, SAW, PUL or NOI; TUNE'S is its own), the tune's gate, sync, ring and
+  test bits kept. Each turn shows the TWEAK popup; a TWEAKED line says what is bent. Back at 0
+  each gives the tune its own value at once, and leaving NOW PLAYING, another song or a stop
+  gives everything back. EDIT + a knob is still the effect slot's.
+- **An ACID lane for DICE.** A lane's role can be ACID (after BASS+DRUMS): DICE writes a bassline
+  as on a melodic lane and rolls 1.7's SLIDE and ACCENT locks with it, a slide on about three in
+  ten notes followed by a note, an accent on about a third; a new roll clears them where a note
+  went. SCENE hears the lane as the bass; an older SIDOU rolls it as a melodic lane.
+
+### Changed
+- **felucca-bsp.** SIDOU builds on felucca-bsp's chip and board code (MPL-2.0) byte for byte, in
+  place of the copies of Felucca 1.6.1 it carried; the update loader stays Felucca 1.6.1's, by its
+  hash. A firmware update's first request is answered even when it comes right behind one of
+  SIDOU's own SysEx frames (it was dropped before).
+- **USB audio records at 44.1 kHz only.** The 48 kHz choice and its resampler are gone (about 8 KB
+  of flash, the owner's call, for Bluetooth): a DAW records at 44.1 kHz, the rate SIDOU plays at.
+
+### Fixed
+- **Five of the site's sixteen sounds filter every voice.** PWM STRINGS, 303 BASS, WOBBLE BASS,
+  S&H BLIPS and SWEEP PAD filtered voice 1 only, so the notes LAB played on voices 2 and 3 were
+  unfiltered; a patch can no longer do that on a one-oscillator sound.
+- **A patch is refused as silent only when it is.** The page and `sidou-sysex` play it through
+  the song player on both chips instead of estimating, so a classic acid bass (low cutoff, high
+  resonance, the filter envelope doing the work) is taken.
+- **STEP's held step shows its chance and nothing after it.** With a chance lock on a held step,
+  the `95%` beside HELD STEP could be followed by stray characters (whatever the memory held);
+  the text now ends at the percent sign.
+- **A step that slides and is accented keeps the accent's sustain.** In 1.7 the slide's held SR
+  came after the accent, so such a step played at the song's sustain; the accent's cutoff and
+  resonance were right.
+
 ## [1.7.1] - 2026-11-07
 
 Newer FM-1s, with a UC25HQ80 flash, save and update.

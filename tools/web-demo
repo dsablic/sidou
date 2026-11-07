@@ -56,6 +56,7 @@ if [ "$(git -C "$emu" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$rev"
 fi
 git -C "$emu" checkout -q -f --detach "$rev"
 [ "$(git -C "$emu" rev-parse HEAD)" = "$rev" ]
+"$root/web/patch-emu.sh" "$emu/crates/fm1-web/src/lib.rs"
 
 say "fm1-web to wasm (fm1-emu's web/build.sh)"
 if command -v rustup >/dev/null && [ -z "${SIDOU_BUILD_IMAGE:-}" ]; then
@@ -78,16 +79,23 @@ EOF
 sed "s/@VERSION@/$version/" "$root/web/firmwares.json" >"$out/firmwares.json"
 cp "$root/build/fm1/sidou.fwsc" "$out/sidou.fwsc"
 cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web/songs.js" "$root/web/sysex.js" "$root/web/midi.html" "$root/web/midi.js" "$root/web/songmidi.js" "$out/"
-cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$out/"
+cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$root/web/patch.js" "$out/"
 cp "$root/web/editor.html" "$root/web/editor.js" "$root/web/song-edit.js" "$root/web/preview.js" "$root/web/preview-worklet.js" "$out/"
 say "the Library page's wasm core (tools/wasm-core)"
 "$root/tools/wasm-core" "$out/sidou-core.wasm"
+say "the Library page's patch converter (tools/wasm-patch)"
+"$root/tools/wasm-patch" "$out/sidou-patch.wasm"
+cp "$root/docs/prompt-to-patch.md" "$out/llms.txt"
+for part in fields lab examples full; do cp "$root/docs/prompt-to-patch-$part.md" "$out/llms-$part.txt"; done
+cp "$root/docs/reference/patch.schema.json" "$root/docs/reference/bank.schema.json" "$out/"
 say "the Live Link page's viewer (tools/wasm-link)"
 cp "$root/web/link.html" "$root/web/link.js" "$root/web/link-keyboard.js" "$out/"
 "$root/tools/wasm-link" "$out/sidou-link.wasm"
 mkdir -p "$out/songs"
 cp "$root"/assets/songs/*.sng "$out/songs/"
-mkdir -p "$out/sounds" && cp "$root"/assets/sounds/sidou-sounds.sng "$root"/assets/sounds/sidou-sounds.json "$out/sounds/"
+mkdir -p "$out/sounds" && cp "$root"/assets/sounds/sidou-sounds.sng "$root"/assets/sounds/*.json "$out/sounds/"
+mkdir -p "$out/sounds/patches" && cp "$root"/assets/sounds/patches/*.json "$out/sounds/patches/"
+mkdir -p "$out/steps" && cp "$root"/assets/steps/*.json "$out/steps/"
 cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"
 mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && cp "$root/web/videos.html" "$root/web/cheatsheet.html" "$out/"
 mkdir -p "$out/licenses"

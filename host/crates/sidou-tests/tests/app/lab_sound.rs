@@ -197,6 +197,18 @@ fn a_sound_round_trips_through_live() {
 }
 
 #[test]
+fn a_patch_leaves_out_what_lab_starts_with() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let rig = Rig::new(model);
+        assert_eq!(
+            rig.sound(),
+            sidou_patch::json::defaults(),
+            "SAW LEAD on {model}"
+        );
+    }
+}
+
+#[test]
 fn the_base_is_the_preset_as_loaded() {
     let mut rig = Rig::new(SID_MODEL_6581);
     assert_eq!(rig.live.base, rig.sound(), "SAW LEAD at power-on");

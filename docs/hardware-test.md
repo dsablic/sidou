@@ -2832,8 +2832,11 @@ the last item, which does not exist yet.
   click, and step 5 stands out, brighter, its neighbours unchanged. The site's 303 BASS (SIDOU
   SOUNDS) on a lane with slides and accents sounds like an acid line. SAVE AS, power off and on,
   LOAD: both are still there:
-  *Emulator:* `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
+  *Emulator:* `emu-gate/tests/first_use.rs::a_held_step_with_fx_slides_into_the_next_note_and_with_env_accents_it_as_heard`
+  (the gestures on the panel, the gate and the sustain on the chip),
+  `sidou-tests/tests/song_locks.rs::a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch`,
   `sidou-tests/tests/song_locks.rs::an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row`,
+  `sidou-tests/tests/song_locks.rs::a_step_that_slides_and_is_accented_keeps_the_accents_full_sustain`,
   the ergo journey `whats-new`.
   *Device-only:* the glide and the accent on the chip (ear).
 - [ ] **The site's sixteen sounds:** the Library page sends SIDOU SOUNDS; INSTR, each instrument,
@@ -2851,6 +2854,74 @@ the last item, which does not exist yet.
 
 Notes:
 
+## 33. 1.8: the small items, by ear
+
+What it decides: what fm1-emu cannot judge of 1.8's small items. Set up: SIDOU 1.8 on the unit,
+the starter pack on it (section 22), headphones on the line out.
+
+- [ ] **Live tweaks on a `.sid`:** SIDS, THE CONSULTANT. In NOW PLAYING turn K1 up and down
+  through its range (`CUT +1024` to `CUT -1024`), then K2 (`RESO +15` to `-15`): the tune's
+  filter opens and closes with each detent, no click, and at 0 it is the tune again. K3 to a
+  voice, K4 through TRI, SAW, PUL and NOI and back to TUNE'S: the voice keeps its notes and
+  rhythm in each waveform. HOME: the tune is its own again at once. **Pass:** no click or
+  dropout at any turn, and the tune exactly back at 0 and after HOME:
+  *Emulator:* `emu-gate/tests/psid_views.rs::k1_and_k4_bend_a_playing_tunes_cutoff_and_waveform_and_home_gives_them_back`,
+  `sidou-tests/tests/psid_ctl.rs::a_tweak_bends_the_tunes_filter_and_waveform_and_zero_gives_them_back`,
+  `sidou-tests/tests/app/sid_view.rs::k1_to_k4_tweak_a_playing_tune_each_with_its_popup_and_the_tweak_line_says_what_is_bent`.
+  *Device-only:* the bend on the real filter and the waveforms by ear; clicks at a turn.
+- [ ] **An ACID lane, by ear:** NEW, STEP, lane 1: EDIT + SCL held, PRESETS to `ACID`, let go;
+  PRESETS to the site's 303 BASS (SIDOU SOUNDS) or BASS; EDIT + SCL a few times, PLAY each roll.
+  **Pass:** each roll sounds like an acid line: some notes glide into the next with no restart,
+  some stand out brighter, and most do neither:
+  *Emulator:* `sidou-tests/tests/app/song_gen_roles.rs::dice_on_an_acid_lane_slides_only_into_a_next_note_and_accents_only_notes`,
+  `sidou-tests/tests/app/scene_song.rs::an_acid_voice_is_the_bass_and_no_other_is`.
+  *Device-only:* whether the rolled lines sound musical (ear).
+
+Notes:
+
+## 34. 1.8: felucca-bsp and Bluetooth MIDI
+
+What it decides: whether SIDOU on felucca-bsp (`f8788009`, docs/design-notes.md "Board support")
+behaves on the unit as 1.7 did, and whether Bluetooth MIDI works on real radio, which fm1-emu
+cannot model (docs/upstream-reports.md). 1.8's Bluetooth is the peripheral only: a Mac, an iPad
+or a phone connects to SIDOU; connecting out to a keyboard is the next release's (decision 0011).
+Every item waits for the owner's yes for that step: nothing is flashed, connected or scanned
+before it. Set up: the 1.8 build installed over 1.7 (the felucca-bsp items), then a
+`SIDOU_BLE=ON` build (the Bluetooth items; it stays a test build until they pass), a Mac with
+Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
+
+**felucca-bsp**
+
+- [x] **An install over 1.7 with SIDOU's installer:** it finishes, SIDOU boots, settings and songs
+  are kept. *Emulator:* `usb.rs::the_running_firmware_serves_an_updates_whole_step_one`. *Result:* Passed 2026-11-07 (the default test build over 1.7.0).
+- [x] **A firmware install while SysEx flows:** send a bank of 32 dumps from a librarian, then
+  start an install at once: it answers and finishes. *Emulator:*
+  `usb.rs::thirty_two_patch_dumps_sent_back_to_back_all_arrive`,
+  `usb.rs::the_updater_answers_a_frame_that_follows_one_sidou_took`. *Result:* Passed 2026-11-07: 32 dumps in 2 ms, then the install at once.
+- [x] **USB-MIDI both ways and USB audio at 44.1 kHz:** "SIDOU FM-1" in a DAW, notes in and K1's
+  CC out; the audio input offers 44.1 kHz only and records the line out clean for two minutes.
+  *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`. *Result:* Passed 2026-11-07: notes in, 296 CC 74 out; the input offers 44,100 Hz only; a held chord at -26 dBFS, no gap.
+- [x] **The audio starts at every boot** (felucca-bsp's start checks the stock audio PLL; a
+  refused start is silence): ten power-ons, a note each time. *Result:* Passed 2026-11-07: ten power-ons.
+
+**Bluetooth MIDI, the peripheral (`SIDOU_BLE=ON`)**
+
+- [x] **BLUETOOTH ON** (SETTINGS, the last item, ALGORITHM clockwise): within a few seconds the
+  radio starts, the sound keeps playing, no reboot; OFF stops it; a power cycle keeps the setting.
+  *Emulator (no radio):* `ble.rs::bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising`,
+  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`. *Result:* Failed 2026-11-07 (a reset at once, no fault screen, back OFF), then passed with the rails raised (STATUS `P 03 0B 07 0F 01 01 06`); a power cycle kept ON.
+- [x] **SIDOU in the Mac's Audio MIDI Setup:** Window, Show MIDI Studio, the Bluetooth button: the
+  window lists `SIDOU XXXX`; Connect. After a power cycle the Mac finds the same SIDOU. *Result:* Passed 2026-11-07: `SIDOU D84A`, and again after a power cycle.
+- [x] **Notes both ways:** notes from GarageBand or Logic play SIDOU; SIDOU's keys and knobs arrive
+  in the DAW; SIDOU follows the DAW's clock and start / stop. Disconnect while a note is held:
+  **no stuck note**. *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`. *Result:* Passed 2026-11-07: notes from the Mac, 348 CC 74 to the Mac; the link dropped with a note held: no stuck note. The DAW clock not checked.
+- [ ] **No audio glitch while connected:** two minutes of a three-note chord with K1 turning and
+  notes coming in over Bluetooth: 0 clicks on the headphones; then an hour of two SIDs with
+  Bluetooth MIDI in from the Mac: no clicks, no reboot. A save during the link (the store's erase
+  holds up to 35 ms): the link survives or comes back. *Emulator (radio off):* the audio
+  interrupt is the default build's to the instruction (`ram_audio.rs` on the Bluetooth build). *Result:* Two minutes passed 2026-11-07 (458 notes over Bluetooth, the USB recording clean); the hour of two SIDs and the save during the link are still open.
+- [x] **A firmware install still works** with BLUETOOTH ON: SIDOU's installer over USB finishes.
+ *Result:* Passed 2026-11-07.
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2889,3 +2960,5 @@ Notes:
 | 30 Chords and time-shared drums from DICE | | |
 | 31 The site's editor and Live Link page | | |
 | 32 1.7: the player from flash, and by ear | | |
+| 33 1.8: the small items, by ear | | |
+| 34 1.8: felucca-bsp and Bluetooth MIDI | | |

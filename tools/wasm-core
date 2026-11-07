@@ -27,14 +27,16 @@ sources=(
     core/song/gt2_song.c core/song/gt2_sng.c core/song/gt2_stream.c core/song/gt2_ins.c
     core/song/song_ext.c
     core/player/gt2_play.c core/player/gt2_shape.c core/player/song_ctl.c
-    core/sid/sid.c core/sid/sid_shadow.c core/sid/sid_character.c core/sid/sid_dac.c
+    core/sid/sid.c core/sid/sid_shadow.c core/sid/sid_character.c core/sid/sid_character_cold.c core/sid/sid_dac.c
     core/sid/sid_filter.c
     core/fx/fx.c core/fx/fx_slots.c core/fx/fx_slots_init.c core/fx/fx_reverb.c core/fx/fx_plate.c
     core/fx/fx_limit.c
+    app/lab_song.c app/lab_sound.c app/live.c
+    platform/web/patch_level.c
 )
 flags=(--target=wasm32-unknown-unknown -std=c11 -Oz -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory
        -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Wno-unused-parameter
-       -isystem "$root/platform/web/include" -I"$root/core")
+       -isystem "$root/platform/web/include" -I"$root/core" -I"$root/app" -I"$root/platform/web")
 objs=()
 for s in "${sources[@]}"; do
     o="$obj/$(echo "$s" | tr / _).o"

@@ -181,3 +181,18 @@ impl MbPatch {
         sidou_patch::mbsid::patch_dump(&self.0, 0, 0)
     }
 }
+
+pub const ACID: &str = r#"{"format": "sidou-step/1", "name": "acid line", "role": "acid", "pages": 1,
+  "instrument": {"name": "303", "wave": "saw", "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
+    "filter": {"cutoff_hz": 2077, "resonance": 12, "voices": [1, 2, 3], "envelope": {"depth": 40, "decay": 6}}, "vibrato": {"rate_hz": 0}},
+  "steps": [{"step": 1, "note": "C2", "accent": true}, {"step": 3, "note": "C2", "slide": true},
+    {"step": 4, "note": "D#2"}, {"step": 7, "note": "C3", "accent": true}, {"step": 9, "note": "G2", "chance": 75},
+    {"step": 11, "note": "A#2", "slide": true}, {"step": 12, "note": "C3"}, {"step": 15, "note": "F2"}]}"#;
+pub const BEAT: &str = r#"{"format": "sidou-step/1", "name": "BEAT", "voice": 3, "role": "drums", "pages": 2, "instrument": "kit",
+  "steps": [{"step": 1, "drum": "kick"}, {"step": 5, "drum": "snare"}, {"step": 7, "drum": "closed_hat", "chance": 50},
+    {"step": 9, "drum": "kick"}, {"step": 13, "drum": "snare"}, {"step": 17, "drum": "kick"}, {"step": 21, "drum": "clap"},
+    {"step": 25, "drum": "kick"}, {"step": 29, "drum": "digi_snare"}, {"step": 32, "drum": "open_hat"}]}"#;
+pub const TUNE: &str = r#"{"format": "sidou-step/1", "voice": 2, "gate": "legato", "instrument": "pulse",
+  "steps": [{"step": 1, "note": "E4"}, {"step": 5, "note": "G4"}, {"step": 9, "note": "A4"}, {"step": 13, "note": "B4"}]}"#;
+
+pub const STEPS: [(&str, &str); 3] = [("acid-line", ACID), ("beat", BEAT), ("tune", TUNE)];

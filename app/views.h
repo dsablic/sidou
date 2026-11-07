@@ -63,7 +63,15 @@ extern "C" {
 #define VIEWS_SETTINGS_SPREAD 6u
 #define VIEWS_SETTINGS_SID_MODEL 7u
 #define VIEWS_SETTINGS_RESET 8u
+#define VIEWS_SETTINGS_BLUETOOTH 9u
 #define VIEWS_SETTINGS_LOOK 12u
+
+typedef struct {
+    void* ctx;
+    int (*on)(void* ctx);
+    void (*set)(void* ctx, int on);
+    void (*report)(void* ctx, char* buf);
+} views_radio;
 #define VIEWS_MIDI_ITEMS 10u
 #define VIEWS_MIDI_LOOK 14u
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
@@ -104,6 +112,7 @@ typedef struct {
     views_song_menu songs;
     ui_sound* snd;
     settings* set;
+    const views_radio* radio;
     uint8_t formatting;
     user_profiles users;
     uint16_t watched[4];
@@ -164,6 +173,7 @@ void views_set_tune(views* v, const sid_transport* t);
 void views_song_io(views* v, song_io* io);
 void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed);
 void views_settings(views* v, settings* set);
+void views_radio_bind(views* v, const views_radio* radio);
 void views_sounds(views* v, store* st);
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);

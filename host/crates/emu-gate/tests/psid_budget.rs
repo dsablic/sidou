@@ -21,7 +21,9 @@ const WRITTEN_REGISTERS: [(&str, u32); 3] = [
     ("the volume", 0x18),
 ];
 const SID_VOLUME: u32 = 0x18;
-const M3_RAMTEXT: u64 = 1_536;
+const M3_PLAYER_RAMTEXT: u64 = 1_536;
+const SID_TWEAKS_RAMTEXT: u64 = 200;
+const M3_RAMTEXT: u64 = M3_PLAYER_RAMTEXT + SID_TWEAKS_RAMTEXT;
 
 struct Blocks {
     blocks: Vec<(u64, u64)>,

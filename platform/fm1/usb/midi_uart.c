@@ -9,7 +9,7 @@
  * (app/midi_in.c) handles running status, real time and SysEx. Felucca's
  * parser into USB-MIDI packets is gone. Bytes the DMA ring overwrote before
  * a poll took them are reported to midi_lost(n). */
-#include "../hal/fm1_uart.h"   /* registers; relative, so the host tests find it too */
+#include "../bsp/chip/fm1_uart.h"
 
 #define UM_RING 128u
 static volatile uint8_t um_ring[UM_RING] __attribute__((aligned(16)));

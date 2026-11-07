@@ -1,0 +1,10 @@
+{
+  "format": "sidou-patch/1",
+  "name": "ARP LEAD",
+  "wave": "pulse",
+  "pulse_width": 37.5,
+  "envelope": {"attack": 0, "decay": 0, "sustain": 10, "release": 4},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "arp": {"on": true, "rate": "2fr", "order": "up_down"}
+}

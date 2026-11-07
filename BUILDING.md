@@ -140,6 +140,19 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
+**Bluetooth MIDI's measurement build** (1.8, `SIDOU_BLE`, never to be handed out): SIDOU with
+Optimist's open Bluetooth stack linked in, to measure what it costs
+([the plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The stack is vendored in
+`third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`. `SIDOU_BLE_CENTRAL` is 0 (a computer connects to SIDOU), 3 (SIDOU also
+connects out, no pairing; the default) or 1 (with pairing). The radio never starts in this build.
+The image does not fit the app slot, so it links against a copy of `app.ld` with a larger flash
+region; there is no package of it.
+
+```sh
+tools/fm1-docker cmake --preset fm1 -B build/fm1-ble -DSIDOU_BLE=ON
+tools/fm1-docker cmake --build build/fm1-ble
+```
+
 **The SysEx gap variants** (1.1 item 13, only for the ear check in
 [docs/hardware-test.md](docs/hardware-test.md#8c-sysex-files-instruments-and-songs-m2e-task-5),
 never to be handed out): while only the keys sound, an upload's flash writes dip the sound
@@ -295,6 +308,22 @@ song region is the device's (64 KiB) and the reader has the device's
 multispeed cap, so the page refuses what the FM-1 refuses, with its messages;
 `web/core.test.mjs` and `web/editor.test.mjs` check every output against the
 host build (`web/core-fixtures.json`, TESTING.md).
+
+### The patch converter's wasm (`tools/wasm-patch`)
+
+The Library page's patch box (`web/patch.js`) reads a `sidou-patch/1` patch with SIDOU's own
+converter (`platform/web/patch_json.c`) and LAB's rules (`app/lab_sound.c`, `app/lab_edit.c`'s
+audibility estimate, `app/lab_song.c`'s song encoder) into a one-instrument `.sng`, through
+`platform/web/patch_api.c`, as its own module with no imports, `sidou-patch.wasm`: it loads only
+when a patch is checked, so the wasm core stays inside its budget.
+
+```sh
+tools/wasm-patch                # build/wasm-patch/sidou-patch.wasm
+tools/wasm-patch OUT.wasm       # elsewhere (tools/web-demo builds it into build/web)
+```
+
+The toolchain is the wasm core's. The module is about 77 KB; its budget is 80 KiB (the owner's
+call, 2026-11-06, raised from 64 KiB for STEP patterns), which `web/patch.test.mjs` checks against `web/patch-fixtures.json` (TESTING.md).
 
 ### The Live Link viewer's wasm (`tools/wasm-link`)
 

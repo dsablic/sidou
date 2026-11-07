@@ -1,0 +1,8 @@
+{
+  "format": "sidou-patch/1",
+  "name": "SWEEP PAD",
+  "wave": "saw",
+  "envelope": {"attack": 8, "decay": 10, "sustain": 10, "release": 9},
+  "filter": {"cutoff_hz": 1383, "resonance": 8, "envelope": {"depth": 30, "attack": 10, "decay": 10, "sustain": 6, "release": 10}},
+  "vibrato": {"rate_hz": 4, "depth": 12, "delay": 40}
+}

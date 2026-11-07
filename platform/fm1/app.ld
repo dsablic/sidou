@@ -50,7 +50,7 @@ SECTIONS
         *(.text.song_draft .text.song_held)
         *(.text.render_a .text.render_part .text.play_a)
         *(.text.gt2_edit_apply)
-        *(.text.psid_ctl_block .text.psid_isr_chip .text.psid_isr_ramp .text.psid_isr_clear)
+        *(.text.psid_ctl_block .text.psid_isr_*)
         *(.text.psid_swapped .text.psid_rewrite)
         . = ALIGN(16);
         _rt_end = .;
@@ -73,7 +73,7 @@ SECTIONS
         *(.pool.song_noinit)
         . = ALIGN(4);
         _pool_start = .;
-        *midi.c.obj(.bss.ua_ring)
+        *midi.c.obj(.bss.ua_ring .bss.ota_dec .bss.ota_stage.*)
         *(.pool*)
         _pool_dac_start = .;
         *sid_dac.c.obj(.bss*)
@@ -86,12 +86,22 @@ SECTIONS
         . = ALIGN(64); *(.bss.ep1tx)
         . = ALIGN(8); *(.bss.ep0buf)
         . = ALIGN(8); *(.bss.ep1rx)
-        *(EXCLUDE_FILE(*sid_dac.c.obj) .bss*) *(.sbss*) *(COMMON)
+        *(EXCLUDE_FILE(*sid_dac.c.obj *ble_stack_unit.c.obj) .bss*) *(.sbss*)
+        *(EXCLUDE_FILE(*ble_stack_unit.c.obj) COMMON)
         . = ALIGN(4);
         _bss_end = .;
     } > RAM
     .song_ram (NOLOAD) : ALIGN(4) { *(.song_noinit) . = ALIGN(4); } > RAM
-    .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
+    .noinit (NOLOAD) : {
+        *(.noinit .noinit.ble)
+        . = ALIGN(4);
+        _ble_noinit_start = .;
+        *(.noinit.ble_radio)
+        *ble_stack_unit.c.obj(.bss* COMMON)
+        . = ALIGN(4);
+        _ble_noinit_end = .;
+        *(.noinit*)
+    } > NOINIT
     _guard0 = 0x01C77F00; _ustack_lo = 0x01C78000; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
     /DISCARD/ : { *(.comment) *(.note*) }

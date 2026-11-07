@@ -1,0 +1,16 @@
+{
+  "format": "sidou-patch/1",
+  "name": "SID SNARE",
+  "wave": "noise",
+  "envelope": {"attack": 0, "decay": 0, "sustain": 9, "release": 0},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "table": {
+    "frames": 2,
+    "steps": [
+      {},
+      {"wave": "triangle", "note": 12},
+      {}
+    ]
+  }
+}

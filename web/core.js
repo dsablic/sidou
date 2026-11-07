@@ -8,6 +8,7 @@ export class CoreError extends Error {
   }
 }
 
+export const LAB_SOUND_BYTES = 109, LAB_SOUND_NAME = 12;
 export const TRAILER = ["none", "read", "dropped", "locks-dropped"];
 const GT2_ERR = ["OK", "RANGE", "ORDER RULE", "ORDER FULL", "ROWS", "PATTERNS", "IN USE", "FULL",
   "FRAGMENTED", "REGION", "PENDING", "SONG FULL", "SAVING"];
@@ -95,6 +96,14 @@ export class Core {
       if (c !== 0) warning = text(this.mem, this.x.sc_info(), 32) || "SNG: SAVED FILE UNREADABLE";
     }
     return { bytes, warning };
+  }
+
+  kept(i) {
+    this.#need();
+    if (!this.x.sc_kept(i)) return null;
+    const b = new Uint8Array(this.mem.buffer, this.x.sc_out(), LAB_SOUND_BYTES + LAB_SOUND_NAME).slice();
+    const end = b.indexOf(0, LAB_SOUND_BYTES);
+    return { sound: b.slice(0, LAB_SOUND_BYTES), name: String.fromCharCode(...b.subarray(LAB_SOUND_BYTES, end < 0 ? b.length : end)) };
   }
 
   exportInstrument(i) {

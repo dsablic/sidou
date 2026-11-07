@@ -1,0 +1,12 @@
+{
+  "format": "sidou-patch/1",
+  "name": "FAT SAW",
+  "wave": "saw",
+  "envelope": {"attack": 0, "decay": 0, "sustain": 14, "release": 6},
+  "filter": {"cutoff_hz": 10486},
+  "vibrato": {"rate_hz": 0},
+  "layers": [
+    {"detune": 12},
+    {"transpose": -12, "detune": -8}
+  ]
+}

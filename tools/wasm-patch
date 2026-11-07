@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+out="${1:-$root/build/wasm-patch/sidou-patch.wasm}"
+obj="$root/build/wasm-patch/obj"
+mkdir -p "$obj" "$(dirname "$out")"
+
+cc="${SIDOU_WASM_CC:-clang}"
+ld="${SIDOU_WASM_LD:-}"
+if [ -z "$ld" ]; then
+    if [ -z "${SIDOU_WASM_RUST_LLD:-}" ] && command -v wasm-ld >/dev/null; then
+        ld=wasm-ld
+    else
+        sysroot=$(rustc --print sysroot)
+        host=$(rustc -vV | sed -n 's/^host: //p')
+        export LD_LIBRARY_PATH="$sysroot/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export DYLD_LIBRARY_PATH="$sysroot/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+        ld="$sysroot/lib/rustlib/$host/bin/rust-lld -flavor wasm"
+    fi
+fi
+
+sources=(
+    platform/web/patch_api.c platform/web/patch_json.c
+    platform/fm1/libc_min.c platform/web/libm_min.c
+    core/song/gt2_song.c core/song/gt2_sng.c core/song/gt2_stream.c core/song/song_ext.c core/song/gt2_kit.c
+    core/sid/sid_filter.c
+    app/lab_sound.c app/lab_song.c app/song_pages.c
+    app/live.c app/live_setup.c app/live_cutoff.c app/live_walk.c app/fx_defaults.c app/song_io.c
+)
+flags=(--target=wasm32-unknown-unknown -std=c11 -Oz -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory
+       -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Wno-unused-parameter
+       -isystem "$root/platform/web/include" -I"$root/core" -I"$root/app")
+objs=()
+for s in "${sources[@]}"; do
+    o="$obj/$(echo "$s" | tr / _).o"
+    "$cc" "${flags[@]}" -c "$root/$s" -o "$o"
+    objs+=("$o")
+done
+$ld --no-entry --gc-sections --strip-all -z stack-size=65536 --initial-memory=1048576 \
+    "${objs[@]}" -o "$out"
+echo "wasm-patch: $out ($(wc -c <"$out" | tr -d ' ') bytes)"

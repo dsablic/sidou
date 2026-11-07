@@ -29,6 +29,34 @@ static void ask(psid_ctl* c, uint8_t want)
     c->want_seq = c->want_seq + 1u;
 }
 
+void psid_ctl_tweak(psid_ctl* c, const psid_tweak* t)
+{
+    uint32_t on = (uint32_t)(t->cut | t->res);
+    for (uint32_t v = 0; v < PSID_TWEAK_VOICES; v++)
+        on |= t->wave[v];
+    if (on)
+        c->tweaking = 1;
+    COMPILER_FENCE();
+    c->tweak = *t;
+
+    COMPILER_FENCE();
+    c->tweaking = on != 0;
+    c->tweak_seq = c->tweak_seq + 1u;
+}
+
+static void forget_tweak(psid_ctl* c)
+{
+    static const psid_tweak none;
+    psid_ctl_tweak(c, &none);
+}
+
+static void forget_raw(psid_ctl* c)
+{
+    for (uint32_t k = 0; k < 2u; k++)
+        for (uint32_t r = 0; r < PSID_RAW_REGS; r++)
+            c->raw[k][r] = 0;
+}
+
 static void mute_chips(psid_ctl* c, uint32_t mask)
 {
     if (!c->hooks.mute)
@@ -51,6 +79,12 @@ void psid_ctl_init(psid_ctl* c, psid_work* w, uint8_t* mem, const psid_ctl_hooks
     c->mode = PSID_ISR_OFF;
     c->fade_in = 0;
     c->splits_max = 0;
+    c->tweak_seq = c->tweak_done = 0;
+    c->tweaking = 0;
+    c->bent = 0;
+    forget_raw(c);
+    forget_tweak(c);
+    c->tweak_done = c->tweak_seq;
     c->w = w;
     c->mem = mem;
     c->h = NULL;
@@ -132,6 +166,8 @@ static int begin(psid_ctl* c, uint32_t song)
     c->error = 0;
     c->state = PSID_INIT;
     mute_chips(c, c->mute);
+    forget_raw(c);
+    forget_tweak(c);
     return 1;
 }
 
@@ -158,6 +194,7 @@ static void halt(psid_ctl* c, uint8_t state)
     c->stop_wait = c->started;
     c->started = 0;
     c->state = state;
+    forget_tweak(c);
     if (!c->stop_wait)
         mute_chips(c, 0);
 }

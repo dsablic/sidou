@@ -24,6 +24,7 @@ void midi_usb_isr(void);
 void midi_uart_isr(void);
 int midi_drain(void);
 void midi_send(void);
+void midi_ble_dropped(void);
 void midi_service(uint32_t now_ms);
 int midi_usb_live(void);
 uint32_t midi_inputs(void);

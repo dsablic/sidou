@@ -1,0 +1,30 @@
+{
+  "$id": "https://dsablic.github.io/sidou/bank.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "sidou-bank/1"
+    },
+    "name": {
+      "description": "the song's name on the FM-1",
+      "pattern": "^[!-_a-z][ -_a-z]{0,15}$",
+      "type": "string"
+    },
+    "patches": {
+      "description": "each a sidou-patch/1 patch, its format optional",
+      "items": {
+        "$ref": "https://dsablic.github.io/sidou/patch.schema.json"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "format",
+    "patches"
+  ],
+  "title": "Up to sixteen SIDOU LAB sounds, sent as one song (sidou-bank/1)",
+  "type": "object"
+}

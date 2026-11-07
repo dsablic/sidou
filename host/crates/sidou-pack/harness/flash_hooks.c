@@ -7,8 +7,9 @@
 #define FELUCCA_OTA_DRYRUN 0
 #define section(x) aligned(4)
 
-#define FL_IN(off, n, lo, hi) ((uint32_t)(off) >= (lo) && (uint32_t)(off) <= (hi) && \
-                               (uint32_t)(n) <= (hi) - (uint32_t)(off))
+#define FL_IN(off, n, lo, hi) ((uint32_t)(hi) >= (uint32_t)(lo) && \
+    (uint32_t)(off) >= (uint32_t)(lo) && (uint32_t)(off) <= (uint32_t)(hi) && \
+    (uint32_t)(n) <= (uint32_t)(hi) - (uint32_t)(off))
 #define FL_FAR(fn) (fn)
 
 #define FLASH_SIZE (1u << 20)

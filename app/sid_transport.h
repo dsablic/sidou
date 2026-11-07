@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "psid/psid_file.h"
+#include "psid/psid_tweak.h"
 #include "store.h"
 
 #ifdef __cplusplus
@@ -46,6 +47,7 @@ typedef struct {
     uint8_t lift_voice;
     uint16_t lift_len;
     const uint8_t* lift_gti;
+    psid_tweak tweak;
 } sid_status;
 
 typedef struct {
@@ -58,6 +60,7 @@ typedef struct {
     int (*mute)(void* ctx, uint32_t mask);
     void (*status)(void* ctx, sid_status* out);
     int (*lift)(void* ctx, uint32_t voice);
+    int (*tweak)(void* ctx, const psid_tweak* t);
     void* ctx;
 } sid_transport;
 

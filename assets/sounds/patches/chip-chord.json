@@ -1,0 +1,19 @@
+{
+  "format": "sidou-patch/1",
+  "name": "CHIP CHORD",
+  "wave": "pulse",
+  "pulse_width": 25,
+  "envelope": {"attack": 0, "decay": 0, "sustain": 12, "release": 4},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "table": {
+    "loop": 1,
+    "frames": 2,
+    "steps": [
+      {},
+      {"note": 4},
+      {"note": 7},
+      {"note": 12}
+    ]
+  }
+}

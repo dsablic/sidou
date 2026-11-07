@@ -44,6 +44,46 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   run stepped in `boot.rs`. With the draft copy's alignment removed, the gate fails at once on
   its word store (`song_draft`).
 
+### Board support (felucca-bsp)
+
+- Since 1.8 the app builds from felucca-bsp (`f8788009`, MPL-2.0) byte for byte, in
+  `platform/fm1/bsp/` (`chip/`, `boards/fm1/`); Felucca 1.6.1's copies stay for the update loader
+  alone, whose SHA-256 is pinned (decision 0011, the owner, 2026-11-05). `platform/fm1/VENDORED.md`
+  lists the files and who includes what.
+- SIDOU's two hooks in 1.6.1's `usb.c` are upstream settings now (`FELUCCA_MIDI_IN_RAW`, PR #21;
+  the USB strings as ASCII). `FELUCCA_UAC_AS_FIRST` is set to 1 to keep 1.6.1's interface order.
+- **SysEx frames are queued** (felucca-bsp#20, 648 bytes, back-pressure on EP1). `update_poll`
+  frees every SIDOU frame at the queue's head and, in a pass where it took one, leaves the updater
+  alone: `ota_service` would take the next frame and drop it if it were not its own (#20's rule,
+  as fm1-base#15). SIDOU's parser gets SysEx from the raw stream, so the queue only feeds the
+  updater; what matters is that it drains, or the host is NAKed.
+- **The updater's 2,176 bytes of buffers** (`ota_dec`, `ota_stage`'s two) lost 1.6.1's `.pool`
+  attribute upstream; `app.ld` puts them in POOL by section name, so the RAM region keeps its room
+  without a local change.
+- **The audio start checks the PLL** the stock boot leaves (`fm1_audio_init_checked`); fm1-emu
+  reads 0 there, so emu-gate's machine writes the stock values before the first instruction, and
+  the site's player is built from fm1-web with the same two writes (`web/patch-emu.sh`, applied by
+  `tools/web-demo` the way `web/patch-main.sh` patches its page): without them the demo is silent
+  and stops at the title card (upstream report 19). The sample format is the same: Q23 in the low 24 bits, SIDOU's 16-bit
+  samples times 256, and `usb_audio.c` hands those words to `uac_tap` as they are.
+- **Step 1 takes another board's package now** (felucca-bsp's `ota.c` checks a foreign writer's
+  boot area instead of the size); SIDOU's writer, Felucca 1.6.1's loader, still refuses it before
+  erasing anything (-14). Host-tested in `ota_step1.rs`.
+- **The updater's look at the queue** costs a pass two loads when nothing waits: `update_poll`
+  checks `sx_made != sx_taken` before it calls `ota_frame_get`, which is not inlined; calling it
+  every pass cost the idle main loop 150,000 instructions a second and broke four of `midi.rs`'s
+  main-loop budgets.
+- **Timing moved a little** (and again with 1.8's room): the BSP's key scan does more in TIMER5 (`input_tick_isr` +514 bytes)
+  and the audio start zeroes both halves, so three golden screens whose content follows the clock
+  (LIVE's meters with a song on chip A, SCENE's stars and rule 30) were taken again, and
+  `fx_live.rs`'s overdrive test compares the drive with the slot at no drive (the dry chord's
+  highs moved with its timing; the drive's own rise is what the test is about).
+- **The flash driver's own polls** take a few microseconds in fm1-emu, whose flash is
+  instantaneous: the flash spike's timings are bounded at 20 us instead of 0.
+- The move costs 4,128 bytes of flash (+2,368 `.text`, +1,760 RAMTEXT: the flash driver's split
+  erase, `fl_erase4k_begin_ram`/`_end_ram`, which upstream marks `used`), 112 bytes of the RAM
+  region and 320 of NOINIT (`fm1_crash_ctx`, the fault record).
+
 ### Image layout
 
 - The FM-1's app slot is 581,564 bytes (0x8DFBC). `platform/fm1/app.ld` maps RAMTEXT to 48 KB
@@ -188,9 +228,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Flash budget and ceiling
 
-- The image ceiling is 568,000 bytes (`IMAGE_CEILING` in emu-gate's `tests/flash_plan/mod.rs`),
-  checked by `flash_budget.rs` and `psid_budget.rs`. A compile-time assertion keeps 13,564 bytes of
-  the app slot free above the ceiling for felucca-bsp and later. A raise is the owner's decision.
+- The image ceiling is 579,516 bytes since 1.8 (`IMAGE_CEILING` in emu-gate's
+  `tests/flash_plan/mod.rs`), checked by `flash_budget.rs` and `psid_budget.rs`. It was 568,000,
+  with 13,564 bytes of the app slot (581,564, the loader's fixed `[0, 0x93000)` flash.bin) kept
+  above it; the owner released that reserve for the felucca-bsp move and Bluetooth (decision 0011,
+  2026-11-05) but for 2,048 bytes, which a compile-time assertion keeps under the slot. The ceiling
+  sits at that limit because both ways needed all of it: the plan measured both ways 1.2-2.7 KB short
+  of the room with every listed win. A raise beyond it is not possible without a smaller loader.
 
 ### SRAM audio path
 
@@ -263,10 +307,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   take the flag too. `cpu6502.c` keeps
   its jump table: the 6502 never runs in the interrupt.
 - Main-loop and boot work at `-Oz`: `gt2_stream.c` (240 bytes), `song_ext.c` (416), `psid_file.c`
-  (1,344), `psid_lift.c`. At `-Os`: `gt2_ins.c`, `gt2_sng.c` (the boot reads its song in the
+  (1,344), `psid_lift.c`, `gt2_sng.c` (since 1.8). At `-Os`: `gt2_ins.c`, `gt2_sng.c` until 1.8 (the boot reads its song in the
   LCD's reset wait), `psid_env.c`, `psid_ctl.c` (its main half; its interrupt half,
   `psid_ctl_isr.c`, is `-O2` as the render's callers are).
-- `gt2_shape.c` is `-Os -fno-inline-functions`: bounded main-loop analysis; the size build costs
+- `gt2_shape.c` is `-Oz -fno-inline-functions` (`-Os` until 1.8): bounded main-loop analysis; the size build costs
   more per analysis unit, which `SONG_SLICE_UNITS` (`song_ctl.h`) accounts for.
 - `cpu6502.c` is `-Os` with `CPU6502_SMALL` (the I/O page's accesses out of line): about 7 % more
   instructions per 6502 cycle than `-O2` with them inline, and about 2,900 bytes smaller.
@@ -286,6 +330,15 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   pieces are size-built within their gates (POLL_INSTRUCTIONS, the scene budgets). `song_pages.c`
   (at `-Os`) and `step_view.c` and `song_gen.c` (both at `-Oz`) also take `-fno-inline-functions
   -fno-jump-tables`, so their rendering and edit helpers stay outlined.
+- **`sid_character.c`'s cold half** (1.8, for the Bluetooth build's room): `sid_character_cold.c`
+  at `-Oz` holds the DAC-table builders (`sid_character_dac_custom`, `_dac_job`, `_build_dac`
+  and their parameter helpers) and `sid_character_macro_changed`; everything that a tick, a
+  slice or the audio path runs stays in `sid_character.c` at `-O2`. 784 bytes (the default image
+  549,056 -> 548,272). The expert filter's `sid_character_expert_cutoff_hz` was tried in the cold
+  half too and went back: it runs inside the filter build's slices, which grew from 27,409 to
+  45,840 instructions against `REG_RING_PREPARE_SLICE` 40,000 (`character.rs`). With the split
+  the slices are the same as before to the instruction (the busiest, 34,130 of 40,000); a chip
+  reset's busiest pass 64,563 -> 64,636.
 - Measured and left at `-O2`: `live.c` (`ui_encoder` over `CHIP_PICK_INPUT` 400, K1 over
   `POPUP_INPUT`), `views.c`
   at `-Oz` (880 bytes, but K1's popup input reaches 250 of 250; it stays `-Os`), `chip_view.c` at
@@ -295,6 +348,105 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   pops). `boot.c`, `sid_character.c` and `sid_dac.c` stay at `-O2`: at `-Os` they moved the thump
   stage over its 31 instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's
   pause.
+
+- **1.8, room for Bluetooth** (the plan's R4 and R5), measured one file at a time on the image
+  (16-byte steps). Taken: to `-Os` from `-O2` `lab_table.c` 496, `ui_sound.c` 112; to `-Oz` from
+  `-Os` `lab_song.c` 416, `gt2_shape.c` 176, `screen.c` 128, `gt2_sng.c` 112: 1,440 bytes
+  together (the image 546,768). Measured and left: `platform/fm1/lcd.c` (352) and `ui.c` (176) at
+  `-Os` and `chip_ctl.c` (144) at `-Oz` put the main loop over `midi.rs`'s CC flood bound (5.009M/s
+  of 5.0M) and LIVE's full-speed flood (6.33M/s of 6.3M); `scene.c` at `-Oz` (128) put SCENE's
+  fire over its frame budget (109,591 instructions); `core/fx/fx.c` at `-Os` saved nothing.
+
+### Bluetooth's measurement build (`SIDOU_BLE`)
+
+- The stack's host side (fm1-base `bt/ble`: link layer, host, ATT, BLE-MIDI, the central's scan
+  and client) is its own unit, `platform/fm1/ble_stack_unit.c`, at `-Oz` (below), with
+  `BLE_API` left empty (extern) as fm1-base's host tests build it. Inside `main.c`'s unit the stack
+  came out 6,784 bytes larger at `main.c`'s `-mllvm -inline-threshold=225`, and clang's global
+  merge mixed its state with `main.c`'s, so no `app.ld` rule could place it.
+- The radio driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`) and SIDOU's glue
+  (`ble_radio.c`) are part of `main.c`'s unit: `fm1_ble.h` needs `fm1_irq.h`, whose two non-static
+  definitions keep it to one unit (Felucca's HAL rule, `VENDORED.md`). At `main.c`'s threshold the
+  driver costs 3,264 bytes more than at plain `-Os`.
+- Since the felucca-bsp move the stack is vendored (`third_party/fm1-base-ble`, fm1-base `698e2cb`,
+  whose felucca-bsp pin is SIDOU's) and the radio headers sit in `platform/fm1/bsp/chip` beside the
+  `fm1_irq.h` they include, so nothing is fetched or copied at build time. `fm1_ble_rf.h` includes
+  `ble_rf_tables.h`; SIDOU's `platform/fm1/ble_rf_tables.h` includes the v15 table.
+- **Bluetooth is a MIDI port of its own** (`MIDI_SRC_BLE`, 4): its packets go into `midi.c`'s
+  input ring like USB's, but through their own parser and map (`midi_rx.ble`, `ble_map`), so a
+  SysEx or NRPN cut on one port never mixes with another's. The packet ports are found by a table indexed by source
+  (`midi_rx.packet_port`): two compares in `midi_rx_entry` instead of one put `midi.rs`'s TRS CC
+  flood at 5.002M/s of its 5.0M bound and a USB drain pass at 8,006 of 8,000; with the table they
+  are 4.996M/s and 7,974, as before the port. The Bluetooth parser's fields sit at the struct's
+  end, so the others keep their offsets. A link that drops leaves a break in
+  the ring for its source (`midi_ring_break`: a new epoch, nothing counted lost), so the receiver
+  releases every held note and restarts only the Bluetooth parser; SIDOU's SysEx protocol stays on
+  USB and TRS, and a Bluetooth break aborts neither. The port costs the default image 160 bytes
+  and the RAM region 128.
+- **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` is 0, so the central's
+  scan table, client and DEVICES code are not built. The image with Bluetooth and its SETTINGS row
+  is 578,016 bytes, 1,500 under the ceiling.
+- **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with a radio:
+  `views_radio_bind` hands the views the radio's hooks and adds the item, so the default image's
+  SETTINGS, its golden screens and its ergonomics baseline are unchanged. The setting and SIDOU's
+  random static address are their own store record (key `0x10A`), not the settings record: the
+  default build never writes it, and its schema stays 9. It is saved two seconds after a change,
+  from a static buffer (the store writes from the caller's memory over later polls).
+- **The stock power setup before the radio** (2026-11-07, after the first device test reset at
+  BLUETOOTH ON): the Bluetooth build runs fm1-base's boot sequence first thing in `sidou_main`,
+  interrupts off, before anything can start the radio (`ble_setting.c`, `-Oz`): VDC14 up to 7
+  (1.60 V) and SYSVDD to 15 (1.38 V) with a read-back and up to three tries, then
+  `fm1_power_stock` (the 1.3 V supply on its DC-DC, VDDIO 3.2 V, WiFi's regulator automatic). At the
+  boot loader's levels flash fetches can come back wrong under the radio trim's current, which
+  resets the chip with no fault screen (fm1-base's note; CTL-1 0.6 s into a start). The always-on
+  P33 keeps whatever ran last, and an FM-1 that has run SIDOU for weeks has none of V15's setup.
+  The default build calls none of it (`ble.rs` checks both). `fm1_clock_stock` is not copied:
+  SIDOU sets no clock of its own and is always started by the SDK's SPL, which leaves M-VAVE's
+  360 MHz; the system clock's source byte is recorded so the device test can confirm it (6).
+  STATUS shows the record on its READY line in the Bluetooth build: `P` (or `!` after a start
+  that reset), then VDC14 and SYSVDD at boot, after, the tries, whether the DC-DC was moved, the
+  clock byte, in hex.
+- **The Bluetooth test build's own ceiling** (the owner, 2026-11-07): 580,016 bytes, 1.8's ceiling
+  (579,516) plus 500 of the slot's 2 KB reserve, for the device test only (`ble.rs`'s
+  `BLE_TEST_CEILING`). The power setup made the image 580,016, 500 over, and nothing cheap was left
+  (a second split reached about 250-370 bytes). The default build's ceiling stays 579,516, and
+  before Bluetooth ships in a release the Bluetooth build must fit 579,516 again (felucca-bsp#31,
+  about 3.2 KB, or another saving; the roadmap).
+- **BLUETOOTH ON is saved only after the radio started cleanly**, and a start that resets cannot
+  loop: a word in NOINIT marks the start's dangerous part; found set at the next boot, the radio
+  is not started, BLUETOOTH is saved OFF and STATUS shows `!`. A kept ON that fails at a later
+  boot therefore costs one reset and comes back OFF; nothing has to be held at power-on. NOINIT
+  survives a reset, not a power cut, so a power cut in the middle of a start leaves ON (the next
+  start is tried again). `ble.rs` pins both orders.
+- **Starting the radio:** never before 3 s after power-on (the boot's waits; in fm1-emu, where
+  the start's waits time out, it holds the main loop 2.2 ms, `ble.rs` bounds it at 600 ms), then
+  whenever BLUETOOTH is ON. OFF stops advertising and drops a link (`ble_enable(0)`), and ON again
+  advertises without a second start. The address is drawn once and kept, so a Mac finds the same
+  SIDOU after a power cycle.
+- **The emulator gate** (`emu-gate/tests/ble.rs`, with `SIDOU_FM1_BLE_BUILD`): notes written into
+  `ble_radio_in` by symbol play, and a link set down (`ble_radio_role`) releases them; the stack's
+  state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,340 bytes free);
+  the image fits the ceiling (the peripheral, 578,016); the setting is saved with an address and
+  kept across a power cycle; the start comes after the boot's waits. With the radio
+  off the audio interrupt is the default build's to the instruction (396.67 a sample, a chord held).
+- The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
+  both ways.
+- RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section
+  `.noinit.ble_radio`) go to NOINIT, which `ble_radio_start` zeroes before `ble_init`. The radio's
+  DMA reads `bb` (1,508 bytes) and the PLL table (972; its address goes into a register), so the
+  driver's state stays in the RAM region. `fm1_crash` and felucca-bsp's `fm1_ble_bc` keep their
+  `.noinit` places and are not zeroed. The rules match nothing in the default build.
+- The radio never starts in this build (`ble_radio_wanted` is never set). Started at boot in
+  fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up holds the main loop
+  past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
+- The copy of `app.ld` is written at configure time and `app.ld` is a configure dependency, so a
+  change to `app.ld` (rel180 moved `psid_isr_*` into RAMTEXT) reaches the Bluetooth build; a stale
+  copy put `psid_isr_retweak` in flash, out of branch reach of `sid_write` in SRAM.
+- The image is over the app slot, so the build links against a copy of `app.ld` with a larger
+  XIP region; CMake fails if `app.ld`'s length changes under it.
+- The option record names `SIDOU_BLE` only when it is on, so the default image keeps its bytes.
+  `sidou-pack` fails any record that names an option outside `DEFAULT_OPTIONS`; the options that
+  are absent when off are listed in `ABSENT_WHEN_OFF`.
 
 ### `gt2_song.c` at `-Oz`: timing only
 
@@ -1908,6 +2060,42 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   A write-only SID register reads the bus until its lifetime is up: 0x1d00 cycles on a 6581,
   0xa2000 on an 8580.
 
+### Live tweaks (1.8)
+
+- K1-K4 in NOW PLAYING bend the tune as it plays ([the design](https://github.com/dsablic/sidou/blob/v1.7.1/docs/plans/2026-11-05-sid-tweaks.md)):
+  the cutoff, the resonance and a voice's waveform. The audio interrupt keeps each chip's raw
+  register bytes (`psid_ctl.raw`, every ring write stores its byte) and, while a tweak is on,
+  writes the bent value; a tweak's change (`tweak_seq`, bumped by `psid_ctl_tweak` in the main
+  loop) rewrites the five tweakable registers from the raw bytes at the next block, so a turn is
+  heard within a block (2.9 ms) even when the tune never writes them again.
+- The cutoff bend moves the high byte only (`$D416`, a detent of 32 on the 11 bits being 4 of
+  it) and the tune's low three bits pass: one register in, one register out, with no carry
+  between two writes to keep right. It clamps at 0 and 255, so the ends keep the tune's low bits.
+- The interrupt reads the tweak where the main loop writes it, with no copy: each field is one
+  store, so a block that sees half a change bends with old and new fields alike, and the
+  rewrite at the next block makes it whole. `tweaking` goes on before the fields change and off
+  after they are zero, so a write never misses a bend nor bends with a stale one.
+- The raw bytes are zeroed by `begin` (the interrupt is off then), not by the interrupt's stop:
+  a new tune's first tweak never rewrites the last tune's gate on a voice it does not use.
+- A song change (`begin`) and a stop (`halt`) forget the tweak; the view gives it back when it
+  is popped (HOME). LAB or a help card over NOW PLAYING keeps it. The lift takes the tune's own
+  writes from the ring, unbent.
+- The rewrite runs only when a tweak is on or was on (`bent`): the tweak a new song forgets
+  costs a fresh tune's first block nothing (five rewrites at block 0 put 11.7 instructions a
+  sample on the dearest synthetic block before this).
+- Cost: 326 bytes of RAMTEXT (the interrupt's write path 38, the block's check 66, the bend and
+  the rewrite 222), against the design's estimate of 200; the .sid player's share
+  (`M3_RAMTEXT`, 1,536 since M3, 1,402 used) grows by the design's 200 to 1,736 (1,728 used),
+  the owner's decision (2026-11-05).
+  The dearest .sid block with no tweak: 100.6 instructions a sample, was 94.9, of
+  `PSID_ISR_WORST`'s 120 (the raw byte and the test on every write); a turn adds the five
+  rewrites to one block. 84 bytes of RAM in `psid_ctl` (the raw bytes of two chips, the tweak).
+- The popup's name is TWEAK for all four knobs, in one accent: a knob's popup in its own colour
+  repaints the whole box when another knob turns (229 cells, over the 200 a frame), while one
+  name and accent repaints only the value.
+- TWEAKED (1×) and the words CUT RES WAVE (2×) each have their place on the line, so turning one
+  more tweak on draws one word, not the line.
+
 ### Instrument lift
 
 - Lifting a sound is taking a voice into LAB (the owner, 2026-11-02, after the first device try of
@@ -2786,6 +2974,14 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   tresillo's kicks, FOUR a kick on every beat, BROKEN a breakbeat. The kit is found by its bytes, NO
   DRUM KIT without it. The role is kept in the SCNE chunk, which firmware without roles reads as
   written.
+- On an ACID lane (1.8): the notes as on a melodic lane, and on each a SLIDE lock
+  (`ACID_SLIDE_PERCENT`, 30, only when the next row is a hit: a slide into a rest glides nowhere)
+  and an ACCENT lock (`ACID_ACCENT_PERCENT`, 35), each from its own hash of the row's, so they do
+  not follow the note picked. The 303's accent comes on fewer than half its notes and the slide
+  on fewer; more and nothing stands out. A row without a hit loses both, so a roll replaces the
+  last roll's. The locks are written before the cell, while the editor has nothing pending, and a
+  refusal (WAITING, LOCKS FULL) stops the roll as a cell's does. The role comes after BASS+DRUMS
+  on PRESETS, the bass roles together.
 - The filter sweep writes a C command (FILTER CUTOFF) every `SONG_GEN_SWEEP_EVERY` (2) rows from
   `SONG_GEN_SWEEP_LOW` (0x10) to `SONG_GEN_SWEEP_HIGH` (0xF0) or back, where the row has no command.
 - `FROZEN_MELODIC` and `FROZEN_DRUMS` (sidou-tests `tests/app/step_view.rs`) are DICE's rolls with
@@ -3544,7 +3740,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - The voices' oscillators run from the machine's boot (no note before), so their phases follow
   from the blocks the notes land in, and the shot is a fixed 517 blocks (1.5 s) after the note.
 - fm1-emu's audio block is 128 samples of 5,440 cycles (240 MHz, 24 MHz / 544 a sample); the key
-  scan's frame is 11 TIMER5 ticks of 100 µs (`platform/fm1/hal/fm1_input.h`), and
+  scan's frame is 11 TIMER5 ticks of 100 µs (`platform/fm1/bsp/boards/fm1/fm1_input.h`), and
   `fm1_in.frames`, the scan frames closed, sits at offset 276 in its struct.
 - The chord's notes (A3, E4, E5) go in two blocks (5.8 ms) apart, more than a key scan frame
   (about 1.1 ms) and its debounce: each is its own note-on, in order, and live's voice
@@ -3835,14 +4031,17 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   slide's row, until the next note; that note's first frame keeps the waveform before it (no test-
   bit restart) and the frequency glides 4 frames from the pitch before. The player writes a new
   note's pitch the frame after its row, so the heard glide is 3 frames.
+- The slide's registers are written before the locks' (1.8): an ACCENT on a sliding step ORs its
+  full sustain onto the SR the slide holds. In 1.7 the slide came after and a step that slid and was
+  accented played at the song's sustain; the accent's test checked the song's shadow, not the chip.
 - The cost of the chunk: an older firmware drops a LOCK chunk with a parameter it does not know
   (`song_ext_locks_check`), so a 1.7 song with a slide or accent has no locks in 1.6. A chunk of its
   own would have kept them, at the cost of a second lock path. The owner accepted the drop for 1.7
   (2026-11-05): one lock path, and the release notes say that a 1.6 SIDOU plays such a song without
   its locks.
-- "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A DICE
-  role that rolls slides and accents on a bass lane, or a built-in LIVE preset, was not done: a
-  fifth built-in moves the presets' numbers, MIDI program changes included.
+- "A BASS preset": a 303 BASS in the site's sounds (a resonant saw for slides and accents). A
+  built-in LIVE preset was not done: a fifth built-in moves the presets' numbers, MIDI program
+  changes included. The DICE role that rolls slides and accents is 1.8's ACID.
 
 ### LAB cards over MIDI (1.7)
 
@@ -4559,9 +4758,11 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 ### USB configuration
 
 - The configuration defines switches for usb.c: `FELUCCA_CDC` 0 (no CDC console), `FELUCCA_UAC`
-  1 (USB audio on).
-- String descriptors `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` are hooks into
-  platform/fm1/src/usb.c.
+  1 (USB audio on), `FELUCCA_UAC_48K` 0 (44.1 kHz only since 1.8: the owner traded the 48 kHz
+  choice, its resampler and its 7,680-byte table, for Bluetooth; decision 0011).
+- The strings `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` are felucca-bsp's build
+  settings (`platform/fm1/bsp/chip/usb.c` builds the descriptors from them on request), and
+  `FELUCCA_UAC_AS_FIRST` is 1, as Felucca 1.6.1 had it.
 - The host harness includes this configuration to test the same descriptors the device has.
 
 ### USB audio
@@ -4573,17 +4774,16 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   frames each) over 4 ticks.
 - The linker script app.ld places the ring in POOL (2,048 bytes), plus the block buffer (1,036
   bytes).
-- The resampler history (264 bytes), EP4 IN buffer (196 bytes), and uac struct (72 bytes) live
-  in the RAM region.
-- The resampler table stays in flash (approximately 7,680 bytes).
+- The EP4 IN buffer (184 bytes, 46 frames) and the uac struct (72 bytes) live in the RAM region. Since 1.8
+  there is no resampler (44.1 kHz only), so neither its history nor its table.
 
 ### OTA flash and update
 
-- Flash hooks implement step 1 of the update protocol for platform/fm1/src/ota.c.
+- Flash hooks implement step 1 of the update protocol for platform/fm1/bsp/chip/ota.c.
 - Erase and write operations happen only inside the staging area 0xE0000-0xE5000.
 - The operations run in interrupt-off windows, only while audio is stopped; otherwise they
   return -16.
-- The update protocol uses Felucca's src/ota.c (full details in platform/fm1/VENDORED.md).
+- The update protocol uses felucca-bsp's chip/ota.c (full details in platform/fm1/VENDORED.md).
 
 ### Live Link protocol
 
@@ -5408,7 +5608,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   bass, the others the arp, and a free clock makes a row every `SCENE_SONG_FREE_FRAMES` frames.
 - A BASS+DRUMS voice (DICE's time-shared kit and bass) gives its kit's kick and snare as drums and
   its other notes as the bass; an older SIDOU reads the role as none of its own, so the voice
-  plays no part. An SCNE chunk without the drum table reads as no drums.
+  plays no part. An SCNE chunk without the drum table reads as no drums. An ACID voice (1.8) is
+  the bass.
 
 ### Tests: SCENE pieces
 
@@ -6031,7 +6232,8 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 - A tune takes no state of its own outside the song's: audio.c's union fits the song
   transport's and the 6502's 64 KiB is the song's region. The .sid player's code in SRAM
   (psid_ctl's interrupt half, `sid_advance`, audio.c's player paths and its swap hook) stays
-  within 1,536 bytes.
+  within 1,736 bytes: M3's 1,536 and 200 for 1.8's live tweaks, the owner's decision
+  (2026-11-05).
 
 ### The decode gate (decode_gate.rs)
 
@@ -6071,7 +6273,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
   compiled; GoatTracker's own files are compiled with their warnings silenced (gt2-ref's
   `build.rs`). `uac_harness.c` builds at `-O2`, as its `build.rs` builds it: `usb.c`'s unused SIE
   functions hold pi32v2 instructions.
-- `tools/wasm-core` and `tools/wasm-link` build the site's two WebAssembly modules with no
+- `tools/wasm-core`, `tools/wasm-link` and `tools/wasm-patch` build the site's three WebAssembly modules with no
   imports and no libc (`platform/fm1/libc_min.c`, as on the device), compiled by the image's
   clang and linked by the Rust toolchain's `rust-lld -flavor wasm` (or a `wasm-ld` on PATH;
   `SIDOU_WASM_LD`, `SIDOU_WASM_RUST_LLD=1`). The core has a 64 KiB stack and about 1.1 MiB of
@@ -6206,8 +6408,6 @@ gain.
 
 ### sidou-pack
 
-- `harness/felucca/uac_test.c` is Felucca's upstream test code (GPL-3.0-only), kept byte for
-  byte, comments included.
 - `sidou-pack` is a port of Felucca's GPL-3.0-only packer. The files it fetches on first use
   (`inputs.toml`, never committed, pinned by SHA-256, cached in `build/ac79/`) are JieLi's AC79
   SDK (Apache-2.0) at tag AC79NN_SDK_V1.2.1_2023-12-13, as Felucca's `tools/build.py` pins them:
@@ -6343,6 +6543,98 @@ gain.
   second. After a stop the tails ring `TAIL_SECONDS` (2, in `preview-worklet.js`). Play reads the
   song afresh. A preview's effect slot is proven heard by the output's two sides differing (the
   chorus spreads it).
+
+### Prompt to patch (1.8)
+
+- The owner's decision (2026-11-06): no service, no sign-in, no SysEx target. A model is given
+  instructions and answers with text; the site checks the text with the FM-1's rules. Any model
+  works, local ones too, and nothing is stored anywhere.
+- **One converter, in C** (`platform/web/patch_json.c`): `sidou-patch/1` JSON to the 109 bytes and
+  back, with its own small JSON reader. C because the rules it must apply are C (`lab_sound_valid`,
+  `lab_audible`, `lab_song_encode` and `lab_song_keep`), and the site and the host tests already
+  share the C (`sidou-sys`): one field table drives reading, writing, the error words and the
+  generated docs, so the JavaScript holds no rule. It sits in `platform/web`, outside the firmware's
+  build: the firmware images are byte for byte as before. Rust (`sidou-patch`'s `json.rs`) is a
+  thin wrapper for the tests, the docs and `sidou-sysex patch`.
+- **Its own wasm** (`tools/wasm-patch`, about 77 KB; its budget 80 KiB, the owner's call
+  2026-11-06, raised from 64 KiB for STEP patterns, which need the song reader; `web/patch.test.mjs`): in the core it took 185,311 bytes against the
+  core's 176 KiB budget (the rules' C alone is 10.6 KB: the audibility estimate 4.9 KB, the song
+  encoder and its keep 4.8 KB). The patch module loads only when a patch is checked, so the core's
+  pages load as before; it hands the song's bytes to the core for the preview.
+- **Musical units, exact both ways.** A field is in the unit LAB's card shows where that is already
+  musical (the envelope's 0..15, cents, semitones, 0..127 effect knobs) and converted where the
+  byte is a register: the cutoff in Hz on the 8580's curve (monotonic, 3.4 Hz a step or more, so
+  whole Hz name every register; the 6581's flat bottom would not), the pulse width and PWM depth
+  in percent, the PWM and LFO rates and the sync ratio as decimals. Writing gives the shortest
+  decimal, up to three places, that reads back as the same byte, so every sound comes back
+  exactly (a test runs every register of each converted field).
+- **Defaults are LAB's.** A field left out is SAW LEAD as the FM-1 loads it at power-on (a test
+  holds `patch_json_defaults` to `live_sound_get` after `live_init`). Parts follow the sound: a
+  layer copies the top-level oscillator, a table step its layer's wave, an effect its type's own
+  settings (`live_fx_defaults`), an LFO is a triangle. Reading marks every bit a patch names and
+  fills only the rest; writing builds the same fill as its reference and leaves out what equals
+  it, so a short patch and a full one are the same sound.
+- **Silent is heard, not estimated** (2026-11-07, after the owner's first live test). The import
+  first used `lab_audible`, the rolls' estimate; it ignores the filter envelope, so it refused a
+  classic acid bass (cutoff 500 Hz, resonance 14, sustain 0, the filter envelope at 50) and the
+  instructions taught models bland numbers to pass it. Now `patch_level.c` plays the song: the song
+  player on each chip, C2, C3 and C4 held 0.3 s each (the first as long as the attack, so an 8 s
+  attack is heard) and let go, in 128-sample blocks with each block's mean taken out (the 6581's
+  DC moves with the envelope), and a chip hears the sound when the eighth loudest block's RMS is
+  512 or more (a click of a few blocks does not count). The sixteen, the three trial patches and
+  SQUELCH 2 measure 931 (NOISE HAT on the 8580) and up; wave none, a closed envelope, a high-pass
+  at 14 kHz, a pulse of width 0 and a routed filter with no mode measure 299 and below; a saw and
+  a triangle together on a 6581, 416, a warning. Neither chip hearing it refuses the patch, one
+  chip warns. It runs in the core (`sc_level`, about 1.8 KB) and on the host, one C file for the
+  site, `sidou-sysex` and the tests; the patch module dropped `lab_audible` (4.9 KB).
+  The firmware keeps `lab_audible` for its rolls and variations: those need an answer in
+  microseconds on the device, not a second of rendering, and are not changed. The two can differ:
+  a sound the rolls would call silent can be imported, and is heard.
+- **The filter on a one-oscillator sound takes all three voices or none.** LAB plays each new key
+  on the next free voice, so `"voices": [1]` filtered some notes and not others (the owner heard
+  "randomly a flat sound"). The reader refuses it; a layered sound routes its layers apart. Five
+  of the sixteen (PWM STRINGS, 303 BASS, WOBBLE BASS, S&H BLIPS, SWEEP PAD) had voice 1 alone and
+  now take all three, the rest of each sound as it was.
+- **An existing sound as a patch:** the core reads a song's kept LAB sound (`sc_kept`, LAB's own
+  `lab_song_kept`, about 1.9 KB of the core) and the patch module writes it (`sp_write`): reading the
+  song in the patch module too would have cost it 11.7 KB more. Only a kept sound is exact, so an
+  instrument without one has no Patch button. USER sounds stay on the FM-1: SysEx refuses their
+  file's name, and LAB's REC into the song is the way to one.
+- **Banks** (`sidou-bank/1`): each element is read by the patch reader over its span of the text
+  (so syntax errors keep their line and column), its errors prefixed `patches[n]`; the song places
+  the sounds as `sidou-patch`'s Rust `sound_song` does (tables end to end, then each kept), and a
+  test holds the sixteen's bank to `assets/sounds/sidou-sounds.sng` byte for byte. Nothing in the
+  converter is `static`: the host tests run on several threads (a static scratch array of
+  instruments made the songs differ one run in three).
+- **STEP patterns** (`sidou-step/1`) start from the NEW song's template (`song_io_template`, read
+  by the FM-1's own reader), resize the lane's pattern and write its cells with `gt2_set_row` and
+  its locks with `song_lock_put`, so the song is what the FM-1 makes; `step_view.rs` drives STEP's
+  keys on a NEW song and holds the converter's pattern and locks to theirs. The reader is why
+  the patch module's budget went to 80 KiB (the owner, 2026-11-06).
+- **`sidou-sysex send`** ports the site's SysEx client (`web/sysex.js`: INQ, DIR, stop-and-wait
+  PUT, WAIT, BUSY's whole-PUT retries) over a `Port` trait: the tests drive it against a fake FM-1
+  in `tests/send.rs`, and the one real port is CoreMIDI on macOS, linked by hand (two frameworks,
+  `MIDIPacketListAdd` for the layout) so the build needs no crate and no system library. It is
+  never run against a device by tests; it sends store files only, chosen by their content.
+- **Errors a model can act on**: `path: what is wrong. Allowed: what is.`, the allowed text the
+  same the docs show. Text before the patch's `{` and after it is skipped, so a whole answer pastes.
+- **The link** is the compact JSON, percent-encoded, after `#patch=`. Not base64: a model writes a
+  percent-encoding character by character, while base64 needs arithmetic models get wrong. The
+  longest of the sixteen is under 2 KB; a fragment over 8 KB or with a broken `%` code is refused
+  in plain words. A fragment never leaves the browser.
+- **The instructions** are generated (`patch_docs.rs`, `SIDOU_PATCH_DOC_UPDATE=1`) from a template,
+  the field table and six of the sixteen sounds; a test reads every example back to its sound.
+  They follow the prompt-writing guidance the owner chose (2026-11-07): written for the weakest
+  model that may read them (two worked examples, since the format is new), a reference tree (the
+  core, `llms.txt`, keeps what a model needs to decide and write: the engine, the routing rule
+  with its reason, the sound-design notes, the core fields, the answer's shape; every field, LAB's
+  controls and more examples are files it opens on demand, and `llms-full.txt` is all of it for
+  pasting), the schema as the contract, and a line saying where their knowledge ends. An answer
+  ends with two to four things to turn in LAB, named as LAB names them; a test holds every page
+  and card the files name to `lab_view_page_name` and `lab_view_card`.
+  `tools/web-demo` copies `docs/prompt-to-patch.md` to the site as `llms.txt` (and its four
+  companions as `llms-*.txt`) and the schema as
+  `patch.schema.json`, and the browser check compares them with the repository's.
 
 ### Library backups
 

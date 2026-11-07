@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "fx/fx_slots.h"
+#include "lab_song.h"
+#include "patch_level.h"
 #include "player/gt2_shape.h"
 #include "player/song_ctl.h"
 #include "sid/sid.h"
@@ -469,6 +471,29 @@ EXPORT(sc_render_out) uint32_t sc_render_out(uint32_t blocks) {
 }
 EXPORT(sc_pcm_out) int16_t* sc_pcm_out(void) {
     return pcm_out;
+}
+
+EXPORT(sc_kept) int32_t sc_kept(uint32_t instr) {
+    uint8_t rows[GT2_TABLES];
+    char name[LAB_SOUND_NAME + 1u];
+    if (!song || instr < 1u || instr > GT2_MAX_INSTR || !lab_song_kept(song, instr, rows, out_buf)) {
+        return 0;
+    }
+    lab_song_name(song, instr, name);
+    memset(out_buf + LAB_SOUND_BYTES, 0, LAB_SOUND_NAME);
+    memcpy(out_buf + LAB_SOUND_BYTES, name, LAB_SOUND_NAME);
+    return 1;
+}
+
+static patch_level_rig level_rig;
+
+EXPORT(sc_level) int32_t sc_level(uint32_t first, uint32_t count, uint32_t style) {
+    out_buf[0] = 0;
+    playing = NULL;
+    if (!song) {
+        return -2;
+    }
+    return patch_level_check(&level_rig, song, first, count, style, (char*)out_buf, PATCH_LEVEL_ERROR_MAX);
 }
 
 EXPORT(sc_calls) uint32_t sc_calls(void) {

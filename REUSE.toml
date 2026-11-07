@@ -32,10 +32,10 @@ path = ["assets/songs/*.sng"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# SIDOU's sounds: original LAB sounds, the song and its listing written from
+# SIDOU's sounds: original LAB sounds, the song, its listing and each sound's patch written from
 # host/crates/sidou-patch/src/sounds.rs.
 [[annotations]]
-path = ["assets/sounds/*.sng", "assets/sounds/*.json"]
+path = ["assets/sounds/*.sng", "assets/sounds/*.json", "assets/sounds/patches/*.json", "assets/steps/*.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
@@ -57,6 +57,14 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 # picture CRC, made by host/crates/sidou-tests/tests/web_link.rs for web/link.test.mjs and web/check.mjs.
 [[annotations]]
 path = ["web/link-fixtures.json"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# What the host build of SIDOU's patch converter makes of the sixteen sounds' patches and a few
+# others, made by host/crates/sidou-patch/tests/patch_docs.rs for web/patch.test.mjs; and the
+# template of the instructions it writes (docs/prompt-to-patch.md, the site's llms.txt).
+[[annotations]]
+path = ["web/patch-fixtures.json", "host/crates/sidou-patch/tests/data/prompt-to-patch.md", "host/crates/sidou-patch/tests/data/trials/*"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
@@ -168,3 +176,23 @@ path = ["third_party/fm1-sid-player/psid.c", "third_party/fm1-sid-player/psid.h"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Joakim Eriksson"
 SPDX-License-Identifier = "BSD-2-Clause"
+
+# felucca-bsp's own licence text and notice, vendored with its files (platform/fm1/VENDORED.md).
+[[annotations]]
+path = ["platform/fm1/bsp/LICENSE", "platform/fm1/bsp/NOTICE"]
+SPDX-FileCopyrightText = ["2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments", "2026 felucca-bsp contributors"]
+SPDX-License-Identifier = "MPL-2.0"
+
+# Optimist's open Bluetooth stack, from fm1-base's bt/ble, and felucca-bsp's radio drivers from the
+# same offer (third_party/fm1-base-ble/VENDORED.md): their files carry the licence, not the author.
+[[annotations]]
+path = ["third_party/fm1-base-ble/**", "platform/fm1/bsp/chip/fm1_ble.h", "platform/fm1/bsp/chip/fm1_ble_rf.h"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Henri David (hdavid), Optimist"
+SPDX-License-Identifier = "GPL-3.0-only OR MPL-2.0"
+
+[[annotations]]
+path = ["platform/fm1/bsp/chip/ble_rf_tables_v15.h"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = ["2024-2026 Zhuhai Jieli Technology Co., Ltd.", "2026 Zhuhai Shengke / M-VAVE", "2026 Henri David (hdavid), Optimist"]
+SPDX-License-Identifier = "Apache-2.0"

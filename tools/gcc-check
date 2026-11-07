@@ -37,7 +37,7 @@ gcc -O3 -std=c11 -Wall -Wextra -Werror -Ithird_party/fm1-sid-player -Ithird_part
     -c host/crates/psid-ref/c/psid_oracle.c -o /dev/null
 
 for f in ota_harness flash_hooks flash_spike_guard; do
-    gcc -std=c11 -Wall -Wextra -Wno-unused-function -Iplatform/fm1/src -Iplatform/fm1 \
+    gcc -std=c11 -Wall -Wextra -Wno-unused-function -Iplatform/fm1/bsp/chip -Iplatform/fm1 \
         -c "host/crates/sidou-pack/harness/$f.c" -o /dev/null
 done
 gcc -O2 -std=c11 -Wall -Wextra -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \

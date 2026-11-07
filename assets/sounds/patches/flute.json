@@ -1,0 +1,8 @@
+{
+  "format": "sidou-patch/1",
+  "name": "FLUTE",
+  "wave": "triangle",
+  "envelope": {"attack": 4, "decay": 0, "sustain": 10, "release": 6},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 5.5, "depth": 18, "delay": 25}
+}

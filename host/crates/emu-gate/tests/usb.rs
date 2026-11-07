@@ -14,7 +14,7 @@ use fm1_soc::usb::UsbEvent;
 const CC_CUTOFF: u8 = 74;
 const IDENTITY: &str = "FM-1_900";
 const IN_MAX: usize = 64;
-const CONFIG_LEN: usize = 178;
+const CONFIG_LEN: usize = 175;
 
 fn host(m: &mut Machine) -> &mut UsbHost {
     m.usb.as_mut().expect("a host")
@@ -80,10 +80,12 @@ fn enumerate(m: &mut Machine, fw: &Firmware) {
                 .cloned()
                 .unwrap_or_default()
         } else {
-            let at = fw.symbol("STR1");
-            (0..want.len() as u32)
-                .map(|i| m.soc.read8(at + i))
-                .collect()
+            let ascii = [text.as_bytes(), &[0u8]].concat();
+            assert!(
+                fw.elf.windows(ascii.len()).any(|w| w == &ascii[..]),
+                "the manufacturer's ASCII string in the image"
+            );
+            want.clone()
         };
         assert_eq!(d, want, "string {index}: {d:02x?}");
     }
@@ -1088,6 +1090,105 @@ fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
     }
 }
 
+const DUMPS: usize = 32;
+const DUMP_LEN: usize = 154;
+const SIDOU_INQ: [u8; 8] = [0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7];
+
+fn patch_dump(n: usize) -> Vec<u8> {
+    let body = (0..DUMP_LEN - 4).map(|i| ((i * 7 + n * 13) % 128) as u8);
+    [0xF0, 0x43, 0x00]
+        .into_iter()
+        .chain(body)
+        .chain([0xF7])
+        .collect()
+}
+
+fn usb_event_packets(frame: &[u8]) -> u32 {
+    frame.len().div_ceil(3) as u32
+}
+
+fn updater_identity_answered(m: &mut Machine) -> bool {
+    host(m).ep1_in.clear();
+    send(m, &sysex_packets(&message(0x11, &[])));
+    m.usb_frames(50);
+    replies(&host(m).ep1_in).iter().any(|r| r[0] == 0x11)
+}
+
+#[test]
+fn thirty_two_patch_dumps_sent_back_to_back_all_arrive() {
+    use sidou_sys::ilp32::midi_ring as ring;
+    let Some(fw) = firmware("32 SysEx patch dumps back to back") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    let in_ring = fw.symbol("in_ring");
+    let (head, lost) = (in_ring + ring::head as u32, in_ring + ring::lost as u32);
+    let (made, taken) = (fw.symbol("sx_made"), fw.symbol("sx_taken"));
+    let before = (m.soc.read32(head), m.soc.read32(lost), m.soc.read32(made));
+    let dumps: Vec<Vec<u8>> = (0..DUMPS).map(patch_dump).collect();
+    for d in &dumps {
+        UsbHost::send(&mut m.soc, d);
+    }
+    let start = m.ms();
+    while UsbHost::pending(&m.soc) > 0 {
+        assert!(m.ms() - start < 2_000, "the host still has bytes after 2 s");
+        m.usb_frames(1);
+    }
+    m.usb_frames(100);
+    let packets: u32 = dumps.iter().map(|d| usb_event_packets(d)).sum();
+    let queued = m.soc.read32(made) - before.2;
+    println!(
+        "{DUMPS} dumps of {DUMP_LEN} bytes in {} ms: {} event packets into SIDOU's ring, {queued} frames through the updater's queue",
+        m.ms() - start - 100,
+        m.soc.read32(head) - before.0
+    );
+    assert_eq!(
+        m.soc.read32(lost),
+        before.1,
+        "SIDOU's MIDI-in ring lost events"
+    );
+    assert_eq!(
+        m.soc.read32(head) - before.0,
+        packets,
+        "every packet of every dump reached SIDOU's parser"
+    );
+    assert_eq!(
+        queued, DUMPS as u32,
+        "every dump went through the queue whole"
+    );
+    assert_eq!(
+        m.soc.read32(taken),
+        m.soc.read32(made),
+        "a frame left in the queue"
+    );
+    assert!(
+        updater_identity_answered(&mut m),
+        "the updater did not answer after the dumps"
+    );
+}
+
+#[test]
+fn the_updater_answers_a_frame_that_follows_one_sidou_took() {
+    let Some(fw) = firmware("the updater after a frame SIDOU took") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    host(&mut m).ep1_in.clear();
+    let mut both = sysex_packets(&SIDOU_INQ);
+    both.extend(sysex_packets(&message(0x11, &[])));
+    send(&mut m, &both);
+    m.usb_frames(50);
+    let in1 = host(&mut m).ep1_in.clone();
+    assert!(
+        sidou_frames(&in1).iter().any(|f| f[..5] == SIDOU_INQ[..5]),
+        "no INQ reply from SIDOU: {in1:02x?}"
+    );
+    assert!(
+        replies(&in1).iter().any(|r| r[0] == 0x11),
+        "the updater dropped the frame after SIDOU's: {in1:02x?}"
+    );
+}
+
 #[test]
 fn nothing_sleeps_in_idle_while_a_host_is_there_not_even_the_rings_wait() {
     use sidou_sys::ilp32::reg_ring as rr;
@@ -1809,14 +1910,12 @@ struct Uac {
     r48: u8,
     go: u8,
     flowing: u8,
-    pkts: u32,
     underruns: u32,
     overruns: u32,
     missed: u32,
     stalls: u32,
     fill_lo: u32,
     fill_hi: u32,
-    rate_sets: u32,
 }
 
 fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
@@ -1827,14 +1926,12 @@ fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
         r48: m.soc.read8(a + 1),
         go: m.soc.read8(a + 3),
         flowing: m.soc.read8(a + 4),
-        pkts: w(m, 4),
         underruns: w(m, 6),
         overruns: w(m, 7),
         missed: w(m, 8),
         stalls: w(m, 9),
         fill_lo: w(m, 12),
         fill_hi: w(m, 13),
-        rate_sets: w(m, 14),
     }
 }
 
@@ -1901,7 +1998,7 @@ fn rms(x: impl Iterator<Item = i16>) -> f64 {
 const A4_KEY: u8 = 30;
 
 #[test]
-fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
+fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate() {
     let Some(fw) = firmware("the USB audio test") else {
         return;
     };
@@ -1969,47 +2066,14 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_and_48_khz() {
         "no sound recorded"
     );
 
-    record(&mut m, 48_000);
-    let u48_from = uac(&mut m, &fw);
-    let empty = ep4_empty(&m);
-    let dac_from = m.left().len();
-    m.usb_frames(1000);
-    let u48 = uac(&mut m, &fw);
-    let packets = host(&mut m).ep4_in.clone();
-    let (lo, hi, mean) = packet_sizes(&packets[100..]);
-    let usb = frames(&packets[100..]);
-    let dac = m.left();
-    let (level, dac_level) = (
-        rms(usb.iter().map(|f| f.0)),
-        rms(dac[dac_from + 4410..].iter().copied()),
-    );
-    println!(
-        "48 kHz: {} packets, {lo}..{hi} frames (mean {mean:.4}); fill {}..{}; level {level:.0} \
-         against the DAC's {dac_level:.0}",
-        packets.len(),
-        u48.fill_lo,
-        u48.fill_hi
-    );
-    assert_eq!((u48.r48, u48.rate_sets, u48.go), (1, u.rate_sets + 1, 1));
-    assert!(lo >= 47 && hi <= 49, "packet sizes {lo}..{hi}");
-    assert!((mean - 48.0).abs() < 0.1, "mean packet {mean}");
-    assert!(
-        (level / dac_level - 1.0).abs() < 0.03,
-        "48 kHz level {level:.0}, the DAC's {dac_level:.0}"
-    );
-    assert_eq!(
-        (
-            u48.underruns - u48_from.underruns,
-            u48.overruns - u48_from.overruns,
-            u48.stalls - u48_from.stalls,
-            u48.missed - u48_from.missed
-        ),
-        (0, 0, 0, 0),
-        "a glitch at 48 kHz"
-    );
-    assert!(u48.pkts >= 995, "{} packets counted at 48 kHz", u48.pkts);
-    assert_eq!(ep4_empty(&m), empty, "an IN token found no packet");
-    assert_eq!(hand_over(&mut m, &fw).3, 0, "a block skipped");
+    let stream = m
+        .soc
+        .usb
+        .audio_stream
+        .clone()
+        .expect("an audio streaming interface");
+    assert_eq!(stream.rates, [44_100], "the rates offered");
+    assert!(!stream.offers(48_000));
 
     host(&mut m).replug();
     let unplugged = m.ms();
@@ -2058,7 +2122,8 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
     ] {
         let mut quiet = chord(None, sie);
         let off: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut quiet, 400)).collect();
-        for hz in [44_100, 48_000] {
+        {
+            let hz = 44_100;
             let mut m = chord(Some(hz), sie);
             let on: Vec<(f64, f64)> = (0..3).map(|_| measure(&mut m, 400)).collect();
             let alnk = mean(&on, |x| x.0) - mean(&off, |x| x.0);

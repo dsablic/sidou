@@ -1,0 +1,14 @@
+{
+  "format": "sidou-patch/1",
+  "name": "TREM ORGAN",
+  "wave": "triangle",
+  "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 2},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "layers": [
+    {"wave": "pulse", "transpose": 12}
+  ],
+  "lfos": [
+    {"to": "volume", "rate_hz": 1.2, "depth": 24}
+  ]
+}

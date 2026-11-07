@@ -1,0 +1,8 @@
+{
+  "format": "sidou-patch/1",
+  "name": "303 BASS",
+  "wave": "saw",
+  "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
+  "filter": {"cutoff_hz": 2077, "resonance": 12, "envelope": {"depth": 40, "decay": 6}},
+  "vibrato": {"rate_hz": 0}
+}

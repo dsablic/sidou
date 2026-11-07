@@ -13,6 +13,8 @@ extern "C" {
 
 #define MIDI_SRC_USB 1u
 #define MIDI_SRC_TRS 2u
+#define MIDI_SRC_BLE 4u
+#define MIDI_SRC_ALL (MIDI_SRC_USB | MIDI_SRC_TRS | MIDI_SRC_BLE)
 
 typedef struct {
     uint32_t stamp;
@@ -33,6 +35,7 @@ typedef struct {
 
 void midi_ring_init(midi_ring* r);
 int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp);
+void midi_ring_break(midi_ring* r, uint8_t source);
 uint32_t midi_ring_room(const midi_ring* r);
 void midi_ring_lose(midi_ring* r, uint8_t source, uint32_t n);
 int midi_ring_pop(midi_ring* r, midi_ring_entry* out);

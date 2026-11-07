@@ -1,0 +1,12 @@
+{
+  "format": "sidou-patch/1",
+  "name": "WOBBLE BASS",
+  "wave": "pulse",
+  "pulse_width": 37.5,
+  "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 9},
+  "filter": {"cutoff_hz": 6966, "resonance": 10},
+  "vibrato": {"rate_hz": 0},
+  "lfos": [
+    {"to": "cutoff", "rate_hz": 0.9, "depth": 40}
+  ]
+}

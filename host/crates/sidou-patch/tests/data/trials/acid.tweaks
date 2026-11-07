@@ -1,0 +1,4 @@
+FILTER ENV, ALGORITHM (depth) up toward +63: a wider squelch on each note.
+FILTER ENV, DECAY (K2) up: the wow falls more slowly, a rounder pluck.
+FILTER, RESO (K2) down: less ringing, a softer acid.
+FX, MIX (K4) up: more overdrive bite.

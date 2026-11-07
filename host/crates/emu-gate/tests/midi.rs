@@ -126,6 +126,33 @@ fn a_trs_note_on_during_the_title_card_plays_and_ends_the_boot() {
     );
 }
 
+const NOINIT: std::ops::Range<u32> = 0x01C7_C000..0x01C7_FD50;
+const POWER_ON_GARBAGE: u32 = 0xA5C3_5A3C;
+
+#[test]
+fn the_midi_input_ring_lives_in_noinit_and_starts_empty_over_power_on_garbage() {
+    let Some(fw) = firmware("the MIDI ring in NOINIT") else {
+        return;
+    };
+    let ring = fw.symbol("in_ring");
+    let size = ilp32::midi_ring::SIZE as u32;
+    assert!(
+        NOINIT.contains(&ring) && NOINIT.contains(&(ring + size - 1)),
+        "in_ring at {ring:#x}, outside NOINIT"
+    );
+    let mut m = Machine::boot(&fw.image);
+    for a in (ring..ring + size).step_by(4) {
+        m.soc.write32(a, POWER_ON_GARBAGE);
+    }
+    m.run_ms(BOOT_MS);
+    m.midi(&[0x90, C4, 0x64]);
+    m.run_ms(100);
+    let held = voice1(&mut m, &fw);
+    let s = stats(&mut m, &fw);
+    assert_eq!(held.control & 1, 1, "the note did not play");
+    assert_eq!((s.entries, s.lost, s.restarts), (3, 0, 0));
+}
+
 #[test]
 fn a_trs_note_on_plays_c4_and_the_note_off_releases_it() {
     let Some(fw) = firmware("the MIDI test") else {

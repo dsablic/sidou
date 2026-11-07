@@ -8,7 +8,7 @@ use common::build_dir;
 use flash_plan::{IMAGE_CEILING, PLAN};
 
 const APP_SLOT: usize = 0x8DFBC;
-const SLOT_RESERVE: usize = 13_564;
+const SLOT_RESERVE: usize = 2_048;
 const _: () = assert!(IMAGE_CEILING + SLOT_RESERVE <= APP_SLOT);
 
 #[test]

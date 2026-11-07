@@ -10,7 +10,7 @@ static void fm1_delay_ms(uint32_t ms) {
     (void)ms;
 }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
-#include "src/usb.c"
+#include "bsp/chip/usb.c"
 static uint32_t ota_now_ms(void) {
     return 0;
 }
@@ -33,7 +33,6 @@ uint32_t uac_h_desc(uint32_t wvalue, const uint8_t** d) {
 void uac_h_reset(void) {
     memset(&usb, 0, sizeof usb);
     memset(&uac, 0, sizeof uac);
-    memset(&rs, 0, sizeof rs);
     memset(ua_ring, 0, sizeof ua_ring);
     memset(&usb_audio_in, 0, sizeof usb_audio_in);
     ua_w = ua_r = 0;
@@ -88,7 +87,7 @@ typedef struct {
     uint32_t want, left, blocks, skipped;
     uint32_t go, feed, r48, fill_min, fill_lo, fill_hi;
     uint32_t underruns, overruns, adj_up, adj_down, pkts, frames;
-    uint32_t ring_w, ring_r, maxf, prime, prime48, lo, hi, lo48, hi48, ring_n;
+    uint32_t ring_w, ring_r, maxf, prime, lo, hi, ring_n;
 } uac_h_state;
 
 uac_h_state uac_h_get(void) {
@@ -98,8 +97,7 @@ uac_h_state uac_h_get(void) {
         uac.fill_lo,       uac.fill_hi,          uac.underruns,       uac.overruns,
         uac.adj_up,        uac.adj_down,         uac.pkts,            uac.frames,
         ua_w,              ua_r,                 UA_MAXF,             UA_PRIME,
-        UA_PRIME48,        UA_LO,                UA_HI,               UA_LO48,
-        UA_HI48,           UA_N,
+        UA_LO,             UA_HI,                UA_N,
     };
     return s;
 }

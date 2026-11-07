@@ -116,17 +116,27 @@ impl Shape {
     }
 }
 
+pub fn patch_file(name: &str) -> String {
+    let stem: Vec<String> = name
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    format!("patches/{}.json", stem.join("-"))
+}
+
 pub fn sidou_sounds() -> Vec<Sound> {
     vec![
         Shape::new(PUL, 0x08, 0xa8)
             .lfo(0, LAB_LFO_TRIANGLE, LAB_LFO_PULSE, 12, 28)
-            .filter(LP, 1300, 4, 1)
+            .filter(LP, 1300, 4, 7)
             .sound(
                 "PWM STRINGS",
                 "a slow pulse-width sweep through a soft low-pass",
             ),
         Shape::new(SAW, 0x08, 0x88)
-            .filter(LP, 300, 12, 1)
+            .filter(LP, 300, 12, 7)
             .filter_env(40, 0x06, 0x00)
             .sound(
                 "303 BASS",
@@ -135,10 +145,10 @@ pub fn sidou_sounds() -> Vec<Sound> {
         Shape::new(PUL, 0x00, 0xf9)
             .pulse(1536)
             .lfo(0, LAB_LFO_TRIANGLE, LAB_LFO_CUTOFF, 16, 40)
-            .filter(LP, 1000, 10, 1)
+            .filter(LP, 1000, 10, 7)
             .sound(
                 "WOBBLE BASS",
-                "a pulse bass with the cutoff wobbling at about 3 Hz",
+                "a pulse bass with the cutoff wobbling just under 1 Hz",
             ),
         Shape::new(TRI, 0x00, 0xa0)
             .table(&[(NOI, 40), (TRI, 0), (TRI, DOWN(5))], 1, 0)
@@ -176,7 +186,7 @@ pub fn sidou_sounds() -> Vec<Sound> {
         Shape::new(PUL, 0x00, 0xf0)
             .pulse(2048)
             .lfo(0, LAB_LFO_SAMPLE_HOLD, LAB_LFO_CUTOFF, 20, 30)
-            .filter(LP, 1100, 12, 1)
+            .filter(LP, 1100, 12, 7)
             .sound(
                 "S&H BLIPS",
                 "random resonant low-pass steps, a new level each cycle",
@@ -196,7 +206,7 @@ pub fn sidou_sounds() -> Vec<Sound> {
             ),
         Shape::new(NOI, 0x00, 0x62).sound("NOISE HAT", "a short burst of noise"),
         Shape::new(SAW, 0x8a, 0xa9)
-            .filter(LP, 200, 8, 1)
+            .filter(LP, 200, 8, 7)
             .filter_env(30, 0xaa, 0x6a)
             .vibrato(40, 12, 40)
             .sound(

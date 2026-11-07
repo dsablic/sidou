@@ -1,0 +1,16 @@
+{
+  "format": "sidou-patch/1",
+  "name": "SYNC SCREAM",
+  "wave": "triangle",
+  "sync": true,
+  "envelope": {"attack": 0, "decay": 0, "sustain": 11, "release": 8},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "layers": [
+    {"wave": "saw", "transpose": 7},
+    {"sync": false}
+  ],
+  "lfos": [
+    {"rate_hz": 0.1, "depth": 2}
+  ]
+}

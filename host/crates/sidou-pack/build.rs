@@ -9,7 +9,7 @@ include!("../../build-support/sanitize.rs");
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let usb = manifest
-        .join("../../../platform/fm1/src")
+        .join("../../../platform/fm1/bsp/chip")
         .canonicalize()
         .unwrap();
     let fm1 = manifest
@@ -48,21 +48,11 @@ fn main() {
 }
 
 fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
-    let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("felucca");
-    let tests = out.join("tests");
-    std::fs::create_dir_all(&tests).unwrap();
-    let firmware = out.join("firmware");
-    if std::fs::read_link(&firmware).ok().as_deref() != Some(fm1) {
-        let _ = std::fs::remove_file(&firmware);
-        std::os::unix::fs::symlink(fm1, &firmware).unwrap();
-    }
-    for f in ["harness/uac_harness.c", "harness/felucca/uac_test.c"] {
-        println!("cargo:rerun-if-changed={f}");
-    }
+    println!("cargo:rerun-if-changed=harness/uac_harness.c");
     for f in [
-        "src/usb.c",
-        "src/uac_fir.h",
-        "hal/fm1_usb.h",
+        "bsp/chip/usb.c",
+        "bsp/chip/usb_host.c",
+        "bsp/chip/fm1_usb.h",
         "usb_config.h",
         "usb_audio.h",
         "usb_audio.c",
@@ -81,16 +71,5 @@ fn uac_harnesses(manifest: &std::path::Path, fm1: &std::path::Path) {
         .flag_if_supported("-Wno-unused-parameter");
     sanitize::apply_sanitizer(&mut sidou);
     sidou.compile("uac_harness");
-    let mut felucca = cc::Build::new();
-    felucca
-        .file(manifest.join("harness/felucca/uac_test.c"))
-        .flag(format!("-iquote{}", tests.display()))
-        .define("T_CDC", "0")
-        .define("HALF_FRAMES", "128")
-        .define("main", "felucca_uac_test_main")
-        .opt_level(2)
-        .warnings(false);
-    sanitize::apply_sanitizer(&mut felucca);
-    felucca.compile("felucca_uac_test");
     println!("cargo:rustc-link-lib=m");
 }

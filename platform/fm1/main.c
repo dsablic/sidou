@@ -3,10 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define FM1_CPU1_USED 1
 #include "fm1_sys.h"
-#undef FM1_CPU1_USED
-#define FM1_CPU1_USED 0
 
 #include "fm1_audio.h"
 #include "fm1_irq.h"
@@ -40,6 +37,10 @@
 #include "ui_sound.h"
 #include "update.h"
 #include "usb_audio.h"
+
+#if defined(SIDOU_BLE)
+#include "ble_radio.c"
+#endif
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
@@ -1936,6 +1937,7 @@ static void tb_status(void* ctx, sid_status* out) {
         out->cycles = sid_tune.cycles;
         out->load = sid_tune.load;
         out->ticks_k = sid_tune.ticks_k;
+        out->tweak = c->tweak;
     }
     out->chips = sid_tune.chips;
     out->shadow = 1u;
@@ -1971,8 +1973,17 @@ static int tb_lift(void* ctx, uint32_t voice) {
     return 1;
 }
 
-static const sid_transport tune_binding = {tb_play, tb_start, tb_stop,   tb_pause, tb_resume,
-                                           tb_end,  tb_mute,  tb_status, tb_lift,  NULL};
+static int tb_tweak(void* ctx, const psid_tweak* t) {
+    (void)ctx;
+    if (sid_tune.state != TUNE_ON) {
+        return 0;
+    }
+    psid_ctl_tweak(audio_psid(), t);
+    return 1;
+}
+
+static const sid_transport tune_binding = {tb_play, tb_start,  tb_stop,  tb_pause, tb_resume, tb_end,
+                                           tb_mute, tb_status, tb_lift, tb_tweak, NULL};
 
 static int tune_midi(void* ctx, uint32_t b) {
     (void)ctx;
@@ -2139,6 +2150,9 @@ static void while_lcd_wakes(void) {
 }
 
 static void sidou_main(void) {
+#if defined(SIDOU_BLE)
+    ble_power_boot();
+#endif
     lcd_init(while_lcd_resets, while_lcd_wakes);
     audio_init();
     keys_route_init(&keys_router, &instrument, reg_ring_sink, reg_ring_prepare_step,
@@ -2207,6 +2221,9 @@ static void sidou_main(void) {
             ui_link(now);
         }
         midi_service(now);
+#if defined(SIDOU_BLE)
+        ble_radio_poll(now);
+#endif
         bootguard_poll(&boot_guard, now);
 #if defined(SIDOU_TEST_DEATH_MS)
         test_death(now);
@@ -2242,7 +2259,7 @@ static void uboot_gesture(void) {
 
 void fm1_cstart(void) {
     uint32_t *d, *s;
-    fm1_cpu1_halt();
+    fm1_cpu1_stop();
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
 #if !defined(SIDOU_TEST_DEATH_MS)

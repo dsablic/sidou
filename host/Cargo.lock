@@ -728,6 +728,8 @@ dependencies = [
 name = "sidou-patch"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
+ "sha2",
  "sidou-sys",
 ]
 

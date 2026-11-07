@@ -431,6 +431,65 @@ try {
   const bankPuts = await lib.evaluate(() => window.__midi.puts.map((p) => p.name));
   if (bankPuts.at(-1) !== "SIDOU SOUNDS") fail(`the sounds went to the store as ${JSON.stringify(bankPuts)}`);
   console.log("library page: sent SIDOU's sixteen sounds as SIDOU SOUNDS");
+  const patchState = () => lib.locator("#patch-state").textContent();
+  const { readFileSync: readFixture } = await import("node:fs");
+  const llms = readFixture(new URL("llms.txt", import.meta.url), "utf8");
+  if (await (await fetch(new URL("llms.txt", url))).text() !== llms) fail("the site's llms.txt is not docs/prompt-to-patch.md");
+  for (const part of ["fields", "lab", "examples", "full"]) {
+    if (await (await fetch(new URL(`llms-${part}.txt`, url))).text() !== readFixture(new URL(`llms-${part}.txt`, import.meta.url), "utf8")) fail(`the site's llms-${part}.txt is not the repo's`);
+  }
+  const llmsFull = readFixture(new URL("llms-full.txt", import.meta.url), "utf8");
+  if (await (await fetch(new URL("patch.schema.json", url))).text() !== readFixture(new URL("patch.schema.json", import.meta.url), "utf8")) fail("the site's patch.schema.json is not the repo's");
+  await lib.locator("#copy-instructions").click();
+  await lib.waitForFunction(() => window.__library.copied !== null, null, { timeout: 10_000 }).catch(() => fail("Copy instructions copied nothing"));
+  if (await lib.evaluate(() => window.__library.copied) !== llmsFull) fail("Copy instructions did not copy llms-full.txt");
+  await lib.locator("#patch-text").fill('{"format": "sidou-patch/1", "filter": {"resonance": 20}}');
+  await lib.locator("#patch-check").click();
+  await lib.waitForFunction(() => /filter\.resonance: 20 is too high\. Allowed: 0 to 15\./.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`the Library page did not refuse a bad patch in plain words: ${await patchState()}`));
+  if (!(await lib.locator("#patch-send").isDisabled())) fail("a refused patch can be sent");
+  const acid = '{"format": "sidou-patch/1", "name": "Acid Test", "wave": "saw", "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 6}, "filter": {"cutoff_hz": 2200, "resonance": 12, "voices": [1, 2, 3], "envelope": {"depth": 40, "decay": 6}}}';
+  await lib.locator("#patch-text").fill(acid);
+  await lib.locator("#patch-check").click();
+  await lib.waitForFunction(() => /ACID TEST is a sound the FM-1 can play/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`the Library page did not take a patch: ${await patchState()}`));
+  const putsBefore = await lib.evaluate(() => window.__midi.puts.length);
+  await lib.locator("#patch-preview").click();
+  await lib.waitForFunction(() => window.__library.previewed, null, { timeout: 10_000 }).catch(async () => fail(`the patch's preview did not play: ${await patchState()}`));
+  if (await lib.evaluate(() => window.__midi.puts.length) !== putsBefore) fail("the preview sent something to the FM-1");
+  await lib.locator("#patch-send").click();
+  await settle("send a patch", () => /ACID TEST sent/.test(document.getElementById("store-state").textContent));
+  const sentPatch = await lib.evaluate(() => { const p = window.__midi.puts.at(-1); const s = window.__library.patch.sng; return { name: p.name, type: p.type, same: p.data.length === s.length && p.data.every((b, i) => b === s[i]) }; });
+  if (sentPatch.name !== "ACID TEST" || sentPatch.type !== 1 || !sentPatch.same) fail(`the patch went to the FM-1 wrong: ${JSON.stringify(sentPatch)}`);
+  console.log("library page: refused a bad patch, previewed and sent ACID TEST");
+  const bankSong = new Uint8Array(await (await fetch(new URL("sounds/sidou-sounds.sng", url))).arrayBuffer());
+  await lib.setInputFiles("#file", { name: "sidou-sounds.sng", mimeType: "application/octet-stream", buffer: Buffer.from(bankSong) });
+  await lib.waitForFunction(() => document.getElementById("s-name").textContent === "SIDOU SOUNDS" && document.querySelectorAll("#instruments button").length > 16, null, { timeout: 10_000 })
+    .catch(() => fail("the Library page did not open the sounds' song with its Patch buttons"));
+  await lib.locator("#instruments tr").nth(1).locator("button", { hasText: "Patch" }).click();
+  await lib.waitForFunction(() => /"name": "303 BASS"/.test(document.getElementById("patch-text").value) && /303 BASS is a sound/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`a song's Patch button did not open its LAB sound: ${await patchState()}`));
+  await lib.locator("#sounds-bank").click();
+  await lib.waitForFunction(() => /SIDOU SOUNDS is a bank of 16 sounds/.test(document.getElementById("patch-state").textContent) && !document.getElementById("patch-pick").hidden, null, { timeout: 10_000 })
+    .catch(async () => fail(`the sixteen as a bank did not open: ${await patchState()}`));
+  await lib.locator("#patch-pick").selectOption("8");
+  await lib.locator("#patch-preview").click();
+  await lib.locator("#patch-send").click();
+  await settle("send the bank", () => /SIDOU SOUNDS is already on the FM-1, identical/.test(document.getElementById("store-state").textContent));
+  console.log("library page: the sixteen as a bank are the song already sent, byte for byte");
+  const acidLine = await (await fetch(new URL("steps/acid-line.json", url))).text();
+  await lib.locator("#patch-text").fill(acidLine);
+  await lib.locator("#patch-check").click();
+  await lib.waitForFunction(() => /ACID LINE is a STEP pattern the FM-1 can play/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`the Library page did not take a STEP pattern: ${await patchState()}`));
+  await lib.locator("#patch-preview").click();
+  await lib.locator("#patch-preview").click();
+  await lib.locator("#patch-send").click();
+  await settle("send a STEP pattern", () => /ACID LINE sent/.test(document.getElementById("store-state").textContent));
+  console.log("library page: a STEP pattern checked, previewed and sent as ACID LINE");
+  await lib.locator("#sound-list li", { hasText: "RING BELL" }).locator("button").click();
+  await lib.waitForFunction(() => /RING BELL is a sound/.test(document.getElementById("patch-state").textContent) && /"name": "RING BELL"/.test(document.getElementById("patch-text").value), null, { timeout: 10_000 })
+    .catch(async () => fail(`a sound's JSON button did not open it as a patch: ${await patchState()}`));
   await lib.locator('#files tr[data-name="RITE"] button', { hasText: "Open" }).click();
   try {
     await lib.waitForFunction(() => document.getElementById("s-name").textContent === "IRON RITE", null, { timeout: 10_000 });
@@ -502,6 +561,20 @@ try {
   if (await ed.evaluate(() => window.__editor.saved.at(-1)?.filename) !== "CHROME-COMET.sng") fail("the editor's .sng download is missing");
   if (!(await ed.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the editor scrolls sideways at phone width");
   await ed.close();
+  const linked = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  linked.on("pageerror", (e) => fail(`patch link page error: ${e.message}`));
+  await linked.addInitScript(fakeMidi);
+  const bellPatch = await (await fetch(new URL("sounds/patches/ring-bell.json", url))).text();
+  await linked.goto(`${new URL("library.html", url).href}#patch=${encodeURIComponent(JSON.stringify(JSON.parse(bellPatch)))}`);
+  await linked.waitForFunction(() => /RING BELL is a sound/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`a patch link did not open its patch: ${await linked.locator("#patch-state").textContent()}`));
+  if (!(await linked.locator("#patch-preview").isEnabled())) fail("a patch link's sound cannot be previewed");
+  if (await linked.evaluate(() => window.__midi.fm1.length + window.__midi.other.length + (window.__midi.requested ? 1 : 0)) !== 0) fail("a patch link used MIDI by itself");
+  await linked.goto(`${new URL("library.html", url).href}#patch=%7B%22format%22%3A%E0%A4%A`);
+  await linked.waitForFunction(() => /damaged/.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`a damaged patch link did not say so: ${await linked.locator("#patch-state").textContent()}`));
+  console.log("library page: a patch link opened RING BELL and sent nothing; a damaged link said so");
+  await linked.close();
   const handoff = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   handoff.on("pageerror", (e) => fail(`library to editor page error: ${e.message}`));
   await handoff.goto(new URL("library.html", url).href);

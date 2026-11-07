@@ -1,0 +1,98 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * Copyright (C) 2026 Kerem Kilic (Ellic Studio): the transport's status, register hook */
+/* FM-1 LCD wiring: SPI1 on PC9 CLK, PC10 DO, PC7 CS,
+ * PC8 D/C; backlight PA2, active low. Panel protocol: fm1_lcd.h.
+ *
+ *   fm1_lcd_hw_init()          pins, backlight on, SPI1 master at BAUD 4
+ *   fm1_lcd_baud(b)            SPI1 clock = lsb / (b + 1)
+ *   fm1_lcd_send_cmd(c)        D/C low, CS low, one byte (then fm1_lcd_wait)
+ *   fm1_lcd_send_data(p, n)    D/C high, CS low, DMA n bytes from RAM p
+ *   fm1_lcd_wait()             0 done, -1 timeout (counted); pending cleared, the SPI left on either way
+ *   fm1_lcd_spi_off()          SPI1 off (fm1_lcd.h after a timeout; fm1_lcd_hw_init turns it on again)
+ *   fm1_lcd_deselect()         CS high
+ *   fm1_lcd_backlight(on)      PA2 low (on) / high (off); the TIMER5 scan writes port A too: IRQs off around it
+ */
+#pragma once
+#include <stdint.h>
+#include "fm1_cc.h"
+
+#ifndef FM1_LCD_REG
+#define FM1_LCD_REG(addr) (*(volatile uint32_t *)(addr))
+#endif
+#define FM1_LCD_PC_OUT FM1_LCD_REG(0x50080u)
+#define FM1_LCD_PC_DIR FM1_LCD_REG(0x50088u)
+#define FM1_LCD_IOMAP_CON1 FM1_LCD_REG(0x51020u)
+#define FM1_LCD_SPI_CON FM1_LCD_REG(0x11D00u)
+#define FM1_LCD_SPI_BAUD FM1_LCD_REG(0x11D04u)
+#define FM1_LCD_SPI_BUF FM1_LCD_REG(0x11D08u)
+#define FM1_LCD_SPI_ADR FM1_LCD_REG(0x11D0Cu)
+#define FM1_LCD_SPI_CNT FM1_LCD_REG(0x11D10u)
+#define FM1_LCD_PA_OUT FM1_LCD_REG(0x50000u)
+#define FM1_LCD_PA_DIR FM1_LCD_REG(0x50008u)
+#define FM1_LCD_BL (1u << 2)
+#define FM1_LCD_CS (1u << 7)
+#define FM1_LCD_DC (1u << 8)
+#define FM1_LCD_CLK (1u << 9)
+#define FM1_LCD_DO (1u << 10)
+
+static uint32_t fm1_lcd_timeouts;
+
+FM1_INLINE void fm1_lcd_hw_init(void)
+{
+    FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
+    FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
+    FM1_LCD_IOMAP_CON1 |= 0x10u;
+    FM1_LCD_PC_OUT |= FM1_LCD_CS;
+    FM1_LCD_PC_OUT &= ~(FM1_LCD_DC | FM1_LCD_CLK | FM1_LCD_DO);
+    FM1_LCD_PC_DIR &= ~(FM1_LCD_CS | FM1_LCD_DC | FM1_LCD_CLK | FM1_LCD_DO);
+    FM1_LCD_SPI_CON = 0x4021u;
+    FM1_LCD_SPI_BAUD = 4u;
+}
+
+FM1_INLINE void fm1_lcd_backlight(uint32_t on)
+{
+    if (on)
+        FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
+    else
+        FM1_LCD_PA_OUT |= FM1_LCD_BL;
+}
+
+FM1_INLINE void fm1_lcd_baud(uint32_t b) { FM1_LCD_SPI_BAUD = b; }
+
+/* A timeout is counted and reported, and the SPI stays on: callers that init once and ignore the result (fm1-base's
+ * device/lcd.c, loader/ldr_screen.c) go on drawing, as before. Switching it off is fm1_lcd.h's, which re-inits. */
+static int fm1_lcd_wait(void)
+{
+    uint32_t n;
+    int rc = 0;
+    for (n = 0; n < 4000000u && !(FM1_LCD_SPI_CON & 0x8000u); n++)
+        ;
+    if (n == 4000000u) {
+        fm1_lcd_timeouts++;
+        rc = -1;
+    }
+    FM1_LCD_SPI_CON |= 0x4000u;
+    return rc;
+}
+
+FM1_INLINE void fm1_lcd_spi_off(void) { FM1_LCD_SPI_CON &= ~1u; }
+
+FM1_INLINE void fm1_lcd_deselect(void) { FM1_LCD_PC_OUT |= FM1_LCD_CS; }
+
+FM1_INLINE void fm1_lcd_send_cmd(uint8_t c)
+{
+    FM1_LCD_PC_OUT &= ~FM1_LCD_DC;
+    FM1_LCD_PC_OUT &= ~FM1_LCD_CS;
+    FM1_LCD_SPI_CON |= 0x4000u;
+    FM1_LCD_SPI_BUF = c;
+}
+
+FM1_INLINE void fm1_lcd_send_data(const void *p, uint32_t n)
+{
+    FM1_LCD_PC_OUT |= FM1_LCD_DC;
+    FM1_LCD_PC_OUT &= ~FM1_LCD_CS;
+    FM1_LCD_SPI_CON |= 0x4000u;
+    FM1_LCD_SPI_ADR = (uint32_t)(uintptr_t)p;
+    FM1_LCD_SPI_CNT = n;
+}

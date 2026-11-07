@@ -1,0 +1,1 @@
+{"format": "sidou-patch/1", "name": "ACID 303", "wave": "saw", "envelope": {"attack": 0, "decay": 6, "sustain": 0, "release": 3}, "filter": {"mode": "low", "cutoff_hz": 450, "resonance": 14, "voices": [1, 2, 3], "envelope": {"depth": 55, "attack": 0, "decay": 5, "sustain": 0, "release": 3}}, "vibrato": {"rate_hz": 0}, "fx": {"distortion": {"type": "overdrive", "mix": 65}}}

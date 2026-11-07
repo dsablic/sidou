@@ -7,6 +7,7 @@ use crate::Rig;
 
 const USB: u8 = MIDI_SRC_USB as u8;
 const TRS: u8 = MIDI_SRC_TRS as u8;
+const BLE: u8 = MIDI_SRC_BLE as u8;
 const C4: u8 = 60;
 const E4: u8 = 64;
 
@@ -43,6 +44,10 @@ impl Midi {
 
     fn usb(&mut self, cin: u8, m: [u8; 3]) {
         self.entry(USB, u32::from_le_bytes([cin, m[0], m[1], m[2]]));
+    }
+
+    fn ble(&mut self, cin: u8, m: [u8; 3]) {
+        self.entry(BLE, u32::from_le_bytes([cin, m[0], m[1], m[2]]));
     }
 
     fn live(&self) -> &live {
@@ -364,6 +369,14 @@ unsafe extern "C" fn trs_sysex(_: *mut std::ffi::c_void, event: midi_sysex_event
     SYSEX.with(|s| s.borrow_mut().push((true, event, byte)));
 }
 
+unsafe extern "C" fn ble_sysex(_: *mut std::ffi::c_void, event: midi_sysex_event, byte: u8) {
+    BLE_SYSEX.with(|s| s.borrow_mut().push((event, byte)));
+}
+
+thread_local! {
+    static BLE_SYSEX: std::cell::RefCell<Vec<(u32, u8)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 unsafe extern "C" fn usb_sysex(_: *mut std::ffi::c_void, event: midi_sysex_event, byte: u8) {
     SYSEX.with(|s| s.borrow_mut().push((false, event, byte)));
 }
@@ -495,4 +508,37 @@ fn midi_notes_arpeggiate_and_the_clock_steps_a_clock_rate() {
         m.usb(0x0F, [0xF8, 0, 0]);
         assert_eq!(note(&m), E4, "the sixth: a step");
     }
+}
+
+#[test]
+fn bluetooth_packets_play_notes_on_their_own_port() {
+    let mut m = Midi::new();
+    m.ble(0x9, [0x90, C4, 100]);
+    m.usb(0x9, [0x90, E4, 100]);
+    let mut held = m.held();
+    held.sort_unstable();
+    assert_eq!(held, [C4, E4]);
+    m.ble(0x8, [0x80, C4, 0]);
+    assert_eq!(m.held(), [E4]);
+}
+
+#[test]
+fn a_dropped_bluetooth_link_releases_the_notes_and_restarts_only_its_parser() {
+    let mut m = Midi::with_sysex();
+    m.rx.ble.on_sysex = Some(ble_sysex);
+    BLE_SYSEX.with(|s| s.borrow_mut().clear());
+    m.usb(0x4, [0xF0, 0x7D, 0x53]);
+    m.ble(0x4, [0xF0, 0x7D, 0x01]);
+    m.ble(0x9, [0x90, C4, 100]);
+    m.gap_entry(BLE, u32::from_le_bytes([0xF, 0xFE, 0, 0]), BLE);
+    assert_eq!(m.held(), [] as [u8; 0], "the dropped link's note released");
+    m.usb(0x4, [0x44, 0x01, 0x00]);
+    m.usb(0x6, [0x7F, 0xF7, 0]);
+    assert_eq!(
+        m.sysex(false),
+        (vec![0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7], true),
+        "USB's frame, whole, across the Bluetooth gap"
+    );
+    let ended = BLE_SYSEX.with(|s| s.borrow().iter().any(|e| e.0 == MIDI_SYSEX_END));
+    assert!(!ended, "the cut Bluetooth frame never ended as if whole");
 }

@@ -51,7 +51,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view, but for PLAY while a `.sid` tune is loaded: it is the tune's
    ([SIDS and NOW PLAYING](#sids-and-now-playing));
-3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT and ALGORITHM;
+3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT and ALGORITHM; NOW PLAYING takes ALGORITHM and, while a tune plays or is paused, K1-K4 without EDIT (the [tweaks](#sids-and-now-playing));
    LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen takes SELECT (its page); the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
@@ -327,7 +327,7 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
 | EDIT + SCL held + K3 | the selected lane's DICE **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. Each lane has its own (a lane never set has V1's) |
 | EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
-| EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
+| EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ACID`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
 | EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
 | EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
 | EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO); either finger may land first |
@@ -389,7 +389,10 @@ when none does). The first ARP roll writes the four programs after the wavetable
 rows through the batch writer, then the cells; later rolls find them by their rows, wherever they
 are. With no room the roll says `TABLE FULL` and writes nothing. A hit's command is its chord's; a
 row without a hit loses an `8XX` an earlier roll left there. TRACKER's command line names the chord
-of the cursor's row (`V1 8 07 CHORD A MIN`). A **BASS+DRUMS** lane is one voice time-shared
+of the cursor's row (`V1 8 07 CHORD A MIN`). An **ACID** lane rolls as a melodic lane and puts
+[SLIDE and ACCENT](#step) locks on its notes, as a 303 line: a SLIDE on a note the next row's note
+follows, three times in ten, an ACCENT on a note, about a third of them; a row the roll leaves
+without a note loses both. A **BASS+DRUMS** lane is one voice time-shared
 between the drums and a bass: the NEW song's **KICK** and **SNARE** (instruments 03 and 04, found
 by their bytes; a song without them says `NO DRUM KIT`) on the rhythm's strong rows of each bar of
 16 rows, four a beat (`STRAIGHT` and `OFFBEAT` a kick on beats 1 and 3, the snare on 2 and 4;
@@ -1007,7 +1010,7 @@ The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
 starts with noise is the drums (a kick under MIDI note 100, a hat from 106, a snare between,
 by the first wavetable step's note), the lowest of the others the bass, the rest the arp. A
 BASS+DRUMS voice (1.5; set in DICE's frame) is the drums where it plays the NEW song's KICK or
-SNARE and the bass elsewhere.
+SNARE and the bass elsewhere; an ACID voice (1.8) is the bass.
 A row is each row of voice 1; the bar has 4 beats of the `MIDI` chunk's rows a beat (4 by
 default). The bass is high above the middle of its range over the current and the last bar.
 A muted voice plays no part: muted drums stop the chops and parries.
@@ -1382,7 +1385,16 @@ setup; **KEYS** plays every tune on the keys' setup (the chip, profile and chara
 have). ALGORITHM clockwise is KEYS, counter-clockwise AUTO; it counts from the next tune that
 loads (or restarts), and is saved with the settings (schema 7).
 
-SETTINGS' last item, **RESET**, puts everything that is not a song back to factory: every
+In the Bluetooth test build (`SIDOU_BLE`, 1.8, until the device test passes; not in a release),
+SETTINGS has one more item after RESET, **BLUETOOTH**: **OFF** (the default) or **ON**,
+ALGORITHM clockwise ON, counter-clockwise OFF. ON starts the radio (3 s after power-on at the
+earliest) and SIDOU advertises as `SIDOU XXXX` for a Mac, an iPad or a phone to connect to
+(Bluetooth MIDI, no pairing); OFF stops advertising and drops a link (held notes are released).
+The setting and SIDOU's Bluetooth address are kept in the store (key `0x10A`) two seconds after
+the change, so a computer finds the same SIDOU after a power cycle. Connecting out to a
+Bluetooth keyboard comes in the next release.
+
+SETTINGS' **RESET** puts everything that is not a song back to factory: every
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting
 that is saved (KEYS, SOUNDS, TRACKER ROWS, THEME, SPREAD, SID MODEL, the playing preset, the chip
 model, profile and character, the EXPERT overrides, the effect slots, and the envelope mode).
@@ -1472,6 +1484,8 @@ on the chips; [the manual](../manual/sid-tunes.md) says how a tune gets there). 
 |---|---|---|
 | **SELECT** | moves through the tunes, eight a page at 2× by their store names (a longer one ends in an arrow); past the eighth the next page, before the first the one before | nothing |
 | **ALGORITHM** clockwise, or **SAVE** | plays the highlighted tune from its start song and opens NOW PLAYING; on the tune that is loaded, opens NOW PLAYING as it is | turned either way: the song before or after (clamped at 1 and the last), which plays from its init |
+| **K1**, **K2** | (LIVE's knobs) | while the tune plays or is paused: bends its filter cutoff, 32 a detent within -1024..+1024 (`TWEAK` / `CUT +96`, a bar), and its resonance within -15..+15 (`RESO -2`); on the chip the cutoff's high byte moves by a detent's 4, its low three bits stay the tune's, and both clamp at the register's ends |
+| **K3**, **K4** | (LIVE's knobs) | K3 picks the voice K4 acts on (`VOICE 2`); K4 its waveform: `TUNE'S` (the tune's own), `TRI`, `SAW`, `PUL`, `NOI`, replacing the control register's waveform bits on every write while the tune's gate, sync, ring and test bits stay (`V2 SAW`); on a 2SID tune the voice of both chips |
 | **PLAY** | (as in NOW PLAYING while a tune is loaded) | stops a playing or paused tune (its block fades); plays a stopped one's song from init |
 | **EDIT held + PLAY** | (as in NOW PLAYING) | pauses (its block fades; the 6502 and chip A stand still) and resumes; on a stopped tune, plays it |
 | **GLO held + note key 1-3 / 4-6** | | mutes / solos the tune's voices, as for a song: on the chip (the tune keeps every write), and on voice 1-3 of both chips for a 2SID tune. They are the tune's: a tune starts with every voice on, and when it ends for good the song comes back with its own mutes and solos |
@@ -1501,7 +1515,8 @@ song's SAVE still writes them into its file, and LOAD and NEW still ask before r
 released at 1×, **SONG 2/5**, the time since the song started and its state (PLAYING,
 PAUSED, STOPPED, FAILED, LOADING), PAL or NTSC and each chip's model (as SID MODEL gives it,
 in SETTINGS), **2SID** for a tune of two chips, **3SID: 3RD SILENT** for one of three (the third's
-writes are dropped), the three voices with GLO's mutes and solos (as TRACKER's header: the voice's
+writes are dropped), **TWEAKED** at 1× and what K1-K4 bend at 2× (**CUT RES WAVE**, each in
+its place) while any tweak is on, the three voices with GLO's mutes and solos (as TRACKER's header: the voice's
 colour, dark grey while silent, reversed while soloed, MUT and SOL) and chip A's envelopes as
 bars, and the overruns (play calls that ran past their frame) and late writes when not zero.
 

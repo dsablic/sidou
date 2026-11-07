@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use sidou_pack::{build_options, option_problems, DEFAULT_OPTIONS};
+use sidou_pack::{build_options, option_problems, ABSENT_WHEN_OFF, DEFAULT_OPTIONS};
 
 fn record(edit: impl Fn(&str, &str) -> String) -> Vec<u8> {
     let mut r = b"..SIDOU-OPTIONS 1".to_vec();
@@ -34,6 +34,19 @@ fn every_option_off_its_default_is_named() {
         assert_eq!(p.len(), 1, "{name}: {p:?}");
         assert!(p[0].contains(name), "{name}: {p:?}");
     }
+}
+
+#[test]
+fn an_option_a_release_never_records_is_named() {
+    let mut r = record(|_, v| v.to_owned());
+    let at = r.iter().position(|&b| b == 0).unwrap();
+    r.splice(at..at, b" SIDOU_BLE=ON".iter().copied());
+    let p = option_problems(&build_options(&r).unwrap());
+    assert_eq!(p.len(), 1, "{p:?}");
+    assert!(
+        p[0].contains("build option SIDOU_BLE=ON "),
+        "the option and the value it records: {p:?}"
+    );
 }
 
 #[test]
@@ -108,8 +121,11 @@ fn the_defaults_agree_with_the_cmake_files() {
             } else {
                 default
             };
+            let absent = ABSENT_WHEN_OFF
+                .iter()
+                .any(|(k, v)| *k == name && *v == default);
             assert!(
-                want.contains(&(name.clone(), default.clone())),
+                absent || want.contains(&(name.clone(), default.clone())),
                 "{file}: {name} (default {default}) is not in DEFAULT_OPTIONS: add it to it and to \
                  sidou_option_defaults"
             );

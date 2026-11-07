@@ -19,6 +19,9 @@
 #include "ui.h"
 #include "update.h"
 #include "store_fm1.h"
+#if defined(SIDOU_BLE)
+#include "ble_radio.h"
+#endif
 
 #define MIDI_ENTRY_WRITES (3u * 25u + LIVE_VOICES)
 #define MIDI_LOST_WRITES LIVE_VOICES
@@ -34,7 +37,7 @@ _Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room
 _Static_assert(SIDOU_MIDI_OUT_CHANNEL >= 1 && SIDOU_MIDI_OUT_CHANNEL <= 16,
                "SIDOU_MIDI_OUT_CHANNEL is 1..16");
 
-static midi_ring in_ring;
+static midi_ring in_ring __attribute__((section(".noinit.midi_in")));
 static midi_rx rx;
 static midi_learn learned __attribute__((used, section(".pool")));
 static midi_route routing __attribute__((used));
@@ -100,7 +103,7 @@ static void usb_raw_in(uint32_t pkt);
 /* clang-format off */
 #define sysex_byte ota_sysex_byte
 #define fm1_delay_ms usb_reset_wait
-#include "src/usb.c"
+#include "bsp/chip/usb.c"
 #undef sysex_byte
 #undef fm1_delay_ms
 /* clang-format on */
@@ -179,7 +182,7 @@ static void trs_lost(uint32_t n) {
 #include "usb/midi_uart.c"
 #undef midi_enqueue
 #undef midi_lost
-#include "src/ota.c"
+#include "bsp/chip/ota.c"
 /* clang-format on */
 
 _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "USB packets are 1, TRS bytes 2");
@@ -285,6 +288,7 @@ void midi_link_run(const grid* g, uint32_t now_ms) {
 }
 
 void midi_init(live* l, keys_route* kr) {
+    __builtin_memset((void*)&in_ring, 0, sizeof in_ring);
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
     midi_route_init(&routing, l, kr, NULL);
@@ -367,7 +371,7 @@ uint32_t midi_inputs(void) {
 }
 
 static void sysex_gap(uint8_t sources) {
-    sources = sources & (MIDI_SRC_USB | MIDI_SRC_TRS) ? sources : MIDI_SRC_USB | MIDI_SRC_TRS;
+    sources = sources & MIDI_SRC_ALL ? sources : MIDI_SRC_ALL;
     if (sources & MIDI_SRC_USB) {
         sysex_lost(&sidou_sysex, SYSEX_USB);
     }
@@ -415,7 +419,27 @@ __attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
     return n != 0;
 }
 
+#if defined(SIDOU_BLE)
+static void ble_in_pump(void) {
+    uint32_t pkt;
+    while (in_room() > EP1_ROOM && ble_radio_take(&pkt)) {
+        uint32_t f = irq_save();
+        (void)midi_ring_push(&in_ring, MIDI_SRC_BLE, pkt, fm1_ticks());
+        irq_restore(f);
+    }
+}
+
+void midi_ble_dropped(void) {
+    uint32_t f = irq_save();
+    midi_ring_break(&in_ring, MIDI_SRC_BLE);
+    irq_restore(f);
+}
+#endif
+
 int midi_drain(void) {
+#if defined(SIDOU_BLE)
+    ble_in_pump();
+#endif
     usb_in_pump();
     uint8_t epoch = in_ring.epoch;
     if (in_ring.head == in_ring.tail && epoch == rx.epoch) {
@@ -437,6 +461,9 @@ void midi_send(void) {
     uint32_t n = midi_out_tick(&midi_tx, rx.l, room, pkt);
     for (uint32_t i = 0; i < n; i++) {
         midi_out_event(pkt[i]);
+#if defined(SIDOU_BLE)
+        (void)ble_radio_send(pkt[i], fm1_micros() / 1000u);
+#endif
     }
 }
 
@@ -555,15 +582,28 @@ int flash_store_ok(void) {
     return flash_ok;
 }
 
-int update_poll(void) {
-    if (!sx_ready && !usb.ota_req) {
-        return 0;
-    }
-    if (sx_ready && sx_frame_len && (sx_frame[0] == 0x7Eu || sx_frame[0] == 0x7Du)) {
+static int sidou_frame(const uint8_t* p, uint32_t n) {
+    return n && (p[0] == 0x7Eu || p[0] == 0x7Du);
+}
+
+static int sidou_frames_taken(void) {
+    const uint8_t* p;
+    uint32_t n;
+    int took = 0;
+    while (ota_frame_get(&p, &n) && sidou_frame(p, n)) {
         ota_frame_done();
-        if (!usb.ota_req) {
-            return 0;
-        }
+        took = 1;
+    }
+    return took;
+}
+
+static int frame_waiting(void) {
+    return sx_made != sx_taken;
+}
+
+int update_poll(void) {
+    if ((!frame_waiting() && !usb.ota_req) || sidou_frames_taken()) {
+        return 0;
     }
     if (sidou_sysex.tx_active) {
         return 0;

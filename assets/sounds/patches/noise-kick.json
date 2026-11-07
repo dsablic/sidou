@@ -1,0 +1,15 @@
+{
+  "format": "sidou-patch/1",
+  "name": "NOISE KICK",
+  "wave": "triangle",
+  "envelope": {"attack": 0, "decay": 0, "sustain": 10, "release": 0},
+  "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+  "vibrato": {"rate_hz": 0},
+  "table": {
+    "steps": [
+      {"wave": "noise", "note": 40},
+      {},
+      {"note": -5}
+    ]
+  }
+}

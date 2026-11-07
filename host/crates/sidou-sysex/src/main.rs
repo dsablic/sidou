@@ -5,10 +5,12 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use sidou_sysex::import::{bank_files, default_name, Model};
+use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
+use sidou_sysex::patch::{bank_file, patch_file, step_file, PatchFile};
+use sidou_sysex::send::{file_type_of, sent_name, Client, Port, Sent, Timing, DEFAULT_PORT};
 use sidou_sysex::sid;
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -120,6 +122,164 @@ fn make_out(out: &Path) -> Result<(), ExitCode> {
     })
 }
 
+fn stem(name: &str) -> String {
+    name.replace(' ', "-")
+}
+
+fn write_song(out: &Path, song: &SongFile) -> Result<(), ExitCode> {
+    for (ext, bytes) in [("sng", &song.sng), ("syx", &song.syx)] {
+        let path = out.join(format!("{}.{ext}", stem(&song.name)));
+        std::fs::write(&path, bytes).map_err(|e| {
+            eprintln!("{}: {e}", path.display());
+            ExitCode::FAILURE
+        })?;
+    }
+    println!(
+        "{} -> {}.syx",
+        song.name,
+        out.join(stem(&song.name)).display()
+    );
+    Ok(())
+}
+
+fn patch_main(rest: Vec<String>, read: fn(&str, Model) -> Result<PatchFile, String>) -> ExitCode {
+    let i = match import_args(rest) {
+        Ok(i) if i.name.is_none() => i,
+        Ok(_) => {
+            eprintln!("--name is the patch's own \"name\"\n{USAGE}");
+            return ExitCode::from(2);
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let text = match std::fs::read_to_string(&i.bank) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{}: {e}", i.bank.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let file = match read(&text, i.model) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("{}: {e}", i.bank.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Some(warning) = &file.quiet {
+        eprintln!("{}: warning: {warning}", i.bank.display());
+    }
+    if let Err(code) = make_out(&i.out).and_then(|()| write_song(&i.out, &file.song)) {
+        return code;
+    }
+    println!("On the FM-1: SONG, LOAD {}, SEQ to INSTR, an instrument, ENV opens it in LAB, SAVE keeps it", file.song.name);
+    ExitCode::SUCCESS
+}
+
+struct Send {
+    file: PathBuf,
+    port: String,
+    name: Option<String>,
+    replace: bool,
+}
+
+fn send_args(rest: Vec<String>) -> Result<Send, String> {
+    let mut it = rest.into_iter();
+    let mut file = None;
+    let mut a = Send {
+        file: PathBuf::new(),
+        port: DEFAULT_PORT.to_string(),
+        name: None,
+        replace: false,
+    };
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--port" => a.port = it.next().ok_or(USAGE)?,
+            "--name" => a.name = Some(it.next().ok_or(USAGE)?.to_ascii_uppercase()),
+            "--replace" => a.replace = true,
+            _ if arg.starts_with("--") => return Err(format!("unknown option {arg}\n{USAGE}")),
+            _ if file.is_none() => file = Some(PathBuf::from(arg)),
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    a.file = file.ok_or(USAGE)?;
+    Ok(a)
+}
+
+fn send_to(
+    port: impl Port,
+    a: &Send,
+    bytes: &[u8],
+    file_type: u8,
+    name: &str,
+) -> Result<Sent, String> {
+    let mut c = Client::new(port, Timing::default());
+    let d = c.inquire()?;
+    println!(
+        "{} is SIDOU {}.{}.{}, {} bytes free",
+        c.port.name(),
+        d.version[0],
+        d.version[1],
+        d.version[2],
+        d.free
+    );
+    c.send_file(name, file_type, bytes, a.replace, &mut |w| {
+        eprintln!("the FM-1 is busy: sending again in {} s", w.as_secs());
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn open_port(name: &str) -> Result<sidou_sysex::coremidi::MidiPort, String> {
+    sidou_sysex::coremidi::MidiPort::open(name)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_port(_name: &str) -> Result<sidou_sysex::send::NoPort, String> {
+    Err("send talks to MIDI ports on macOS only: elsewhere use the Library page".to_string())
+}
+
+fn send_main(rest: Vec<String>) -> ExitCode {
+    let a = match send_args(rest) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let bytes = match std::fs::read(&a.file) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}: {e}", a.file.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(file_type) = file_type_of(&bytes) else {
+        eprintln!("{}: not a song (.sng), a .sid tune or an instrument (.ins): send sends nothing else, never a firmware package or update", a.file.display());
+        return ExitCode::FAILURE;
+    };
+    let name = a
+        .name
+        .clone()
+        .unwrap_or_else(|| sent_name(&a.file.display().to_string(), &bytes));
+    println!(
+        "sending {} as {name} to the MIDI port \"{}\"",
+        a.file.display(),
+        a.port
+    );
+    let done = open_port(&a.port).and_then(|p| send_to(p, &a, &bytes, file_type, &name));
+    match done {
+        Ok(Sent::Same) => println!("{name} is already on the FM-1, identical: left alone"),
+        Ok(Sent::Sent) => println!("{name} sent ({} bytes)", bytes.len()),
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 fn import_main(rest: Vec<String>) -> ExitCode {
     let i = match import_args(rest) {
         Ok(i) => i,
@@ -146,20 +306,10 @@ fn import_main(rest: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let stem = |name: &str| name.replace(' ', "-");
     for song in &files.songs {
-        for (ext, bytes) in [("sng", &song.sng), ("syx", &song.syx)] {
-            let path = i.out.join(format!("{}.{ext}", stem(&song.name)));
-            if let Err(e) = std::fs::write(&path, bytes) {
-                eprintln!("{}: {e}", path.display());
-                return ExitCode::FAILURE;
-            }
+        if let Err(code) = write_song(&i.out, song) {
+            return code;
         }
-        println!(
-            "{} -> {}.syx",
-            song.name,
-            i.out.join(stem(&song.name)).display()
-        );
     }
     let report = i.out.join(format!("{}.txt", stem(&name)));
     if let Err(e) = std::fs::write(&report, &files.report) {
@@ -180,6 +330,10 @@ fn main() -> ExitCode {
     let rest: Vec<String> = all.collect();
     match command.as_deref() {
         Some("import") => import_main(rest),
+        Some("patch") => patch_main(rest, patch_file),
+        Some("bank") => patch_main(rest, bank_file),
+        Some("step") => patch_main(rest, step_file),
+        Some("send") => send_main(rest),
         Some("sid") => sid_main(rest),
         _ => {
             eprintln!("{USAGE}");

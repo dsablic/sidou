@@ -13,7 +13,7 @@ pub enum Model {
 }
 
 impl Model {
-    fn sid(self) -> u32 {
+    pub fn sid(self) -> u32 {
         match self {
             Self::Mos6581 => sidou_sys::SID_MODEL_6581,
             Self::Csg8580 => sidou_sys::SID_MODEL_8580,

@@ -750,7 +750,7 @@ fn a_held_steps_locks_go_at_its_release_and_leave_the_next_rows_alone() {
     );
 }
 
-fn per_call(s: &mut Song, calls: u32) -> Vec<(u32, u8, u32, u8, u8, u8)> {
+fn per_call(s: &mut Song, calls: u32) -> Vec<(u32, u8, u32, u8, u8, u8, u8)> {
     let mut t = Transport::new(s);
     assert!(t.play(0, 0));
     let mut out = Vec::new();
@@ -766,6 +766,7 @@ fn per_call(s: &mut Song, calls: u32) -> Vec<(u32, u8, u32, u8, u8, u8)> {
                 t.chip.env[0].gate,
                 t.sc.row_row[0],
                 t.sc.shadow[6] >> 4,
+                t.chip.env[0].sustain >> 4,
             ));
         }
     }
@@ -791,6 +792,7 @@ fn an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row() {
                 (u32::from(b.1) + SONG_ACCENT_RESONANCE).min(15)
             );
             assert_eq!(g.5, b.5, "the shadow keeps the song's sustain");
+            assert_eq!(g.6, FULL_SUSTAIN, "call {k}: the chip at full sustain");
             accented += 1;
         } else {
             assert_eq!(
@@ -804,10 +806,28 @@ fn an_accent_lifts_its_rows_cutoff_resonance_and_sustain_and_only_its_row() {
     assert!(accented > 3);
 }
 
+const FULL_SUSTAIN: u8 = 0xf;
+
+#[test]
+fn a_step_that_slides_and_is_accented_keeps_the_accents_full_sustain() {
+    let mut s = song();
+    put(&mut s, 0, 2, SONG_LOCK_SLIDE, 1);
+    put(&mut s, 0, 2, SONG_LOCK_ACCENT, 1);
+    let got = per_call(&mut s, 60);
+    let row = got.iter().filter(|c| c.4 == 2).collect::<Vec<_>>();
+    assert!(row.len() > 3);
+    for c in row {
+        assert_eq!(
+            c.6, FULL_SUSTAIN,
+            "the accented row slides at full sustain: {c:?}"
+        );
+    }
+}
+
 #[test]
 fn a_slide_holds_the_gate_into_the_next_note_and_glides_to_its_pitch() {
     let plain = per_call(&mut song(), 60);
-    let gated = |v: &[(u32, u8, u32, u8, u8, u8)], row: u8| {
+    let gated = |v: &[(u32, u8, u32, u8, u8, u8, u8)], row: u8| {
         v.iter().filter(|c| c.4 == row).all(|c| c.3 == 1)
     };
     assert!(

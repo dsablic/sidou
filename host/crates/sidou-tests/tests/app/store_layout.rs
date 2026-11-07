@@ -59,7 +59,7 @@ fn the_store_is_whole_sectors_of_the_range_the_loader_never_touches() {
         define_value(&ldr, "LDR_REC_LO") <= STORE_LO
             && STORE_HI <= define_value(&ldr, "LDR_REC_HI")
     );
-    let hal = repo("platform/fm1/hal/fm1_flash.h");
+    let hal = repo("platform/fm1/bsp/chip/fm1_flash_policy.h");
     assert_eq!(STORE_LO, define_value(&hal, "FL_DATA_LO"));
     assert_eq!(STORE_HI, define_value(&hal, "FL_DATA_HI"));
 }
@@ -70,7 +70,7 @@ fn the_guard_band_is_the_last_page_of_every_sector_and_can_never_hold_a_record()
     assert_eq!(STORE_PAGE, 0x100);
     assert_eq!(STORE_SECTOR_USE % STORE_PAGE, 0);
     assert_eq!(STORE_SECTOR - STORE_SECTOR_USE, STORE_PAGE);
-    let ota = repo("platform/fm1/src/ota.c");
+    let ota = repo("platform/fm1/bsp/chip/ota.c");
     let res = define_value(&ota, "OTA_AREA") + define_value(&ota, "OTA_AREA_LEN")
         - OTA_RECORD_BELOW_BOUNDARY;
     assert_eq!(
@@ -88,7 +88,7 @@ fn the_guard_band_is_the_last_page_of_every_sector_and_can_never_hold_a_record()
 
 #[test]
 fn the_store_ends_where_the_update_protocols_staging_area_begins() {
-    let ota = repo("platform/fm1/src/ota.c");
+    let ota = repo("platform/fm1/bsp/chip/ota.c");
     let (area, len) = (
         define_value(&ota, "OTA_AREA"),
         define_value(&ota, "OTA_AREA_LEN"),
@@ -98,7 +98,7 @@ fn the_store_ends_where_the_update_protocols_staging_area_begins() {
         STORE_HI, area,
         "the store and the staging area touch, never overlap"
     );
-    let hal = repo("platform/fm1/hal/fm1_flash.h");
+    let hal = repo("platform/fm1/bsp/chip/fm1_flash_policy.h");
     assert_eq!(define_value(&hal, "FL_OTA_LO"), area);
     assert_eq!(define_value(&hal, "FL_OTA_HI"), area + len);
 }
@@ -153,7 +153,7 @@ fn the_store_and_the_staging_area_lie_inside_the_packages_vm_descriptor() {
     let (lo, hi) = (vm.offset as u32, (vm.offset + vm.size) as u32);
     assert_eq!((lo, hi - lo), (0x93000, 352_256), "the VM descriptor moved");
     assert!(lo <= STORE_LO && STORE_HI <= hi);
-    let ota = repo("platform/fm1/src/ota.c");
+    let ota = repo("platform/fm1/bsp/chip/ota.c");
     let (area, len) = (
         define_value(&ota, "OTA_AREA"),
         define_value(&ota, "OTA_AREA_LEN"),

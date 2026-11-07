@@ -221,6 +221,30 @@ fn a_bass_and_drums_voice_is_the_kits_drums_and_the_bass() {
 }
 
 #[test]
+fn an_acid_voice_is_the_bass_and_no_other_is() {
+    let mut song = crate::song_gen_roles::song(true, 0);
+    let mut v = song_scene {
+        count: 3,
+        ..Default::default()
+    };
+    v.role[1] = SONG_ROLE_ACID as u8;
+    assert_eq!(unsafe { song_ext_set_scene(song.ptr_mut(), &v) }, 0);
+    let sc = playing(&mut song);
+    let mut e = Ears::new();
+    e.feed(&sc, &row_call(0, 0, [Some((24, 1)), Some((48, 1)), None]));
+    let out = e.frame();
+    let b = &out.beat[0];
+    assert_ne!(
+        b.bass, SCENE_RMR_BASS_NONE as u8,
+        "the ACID voice is the bass"
+    );
+    assert_eq!(
+        b.hits, SCENE_RMR_ARP as u8,
+        "the lower AUTO voice is the arp, the song having its bass"
+    );
+}
+
+#[test]
 fn the_fill_is_the_last_beat_of_every_fourth_bar() {
     let mut song = sidou_loop();
     let sc = playing(&mut song);

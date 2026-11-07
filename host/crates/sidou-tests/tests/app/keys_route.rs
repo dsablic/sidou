@@ -938,6 +938,7 @@ fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
     let end = main[start..].find("static void song_boot(void)").unwrap() + start;
     let chip_ctl = fs::read_to_string(root.join("app/chip_ctl.c")).unwrap();
     let character = fs::read_to_string(root.join("core/sid/sid_character.c")).unwrap();
+    let character_cold = fs::read_to_string(root.join("core/sid/sid_character_cold.c")).unwrap();
     let keys_route = fs::read_to_string(root.join("app/keys_route.c")).unwrap();
     let setup_control = between(&chip_ctl, "void chip_setup_control(", "void chip_ctl_init(");
     let character_init = between(
@@ -948,6 +949,11 @@ fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
     let character_edits = between(
         &character,
         "void sid_character_expert_set(",
+        "void sid_character_filter(sid* s",
+    );
+    let macro_changed = between(
+        &character_cold,
+        "void sid_character_macro_changed(",
         "static void dac_params_for(",
     );
     let song_wants = between(
@@ -973,6 +979,7 @@ static void ui_toast(const char* text, uint32_t ms) {{
 }}
 {character_init}
 {character_edits}
+{macro_changed}
 {setup_control}
 {song_wants}
 {}

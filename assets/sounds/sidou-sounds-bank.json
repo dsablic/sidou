@@ -1,0 +1,190 @@
+{
+  "format": "sidou-bank/1",
+  "name": "SIDOU SOUNDS",
+  "patches": [
+    {
+      "name": "PWM STRINGS",
+      "wave": "pulse",
+      "envelope": {"attack": 0, "decay": 8, "sustain": 10, "release": 8},
+      "filter": {"cutoff_hz": 9078, "resonance": 4},
+      "vibrato": {"rate_hz": 0},
+      "lfos": [
+        {"to": "pulse_width", "rate_hz": 0.4, "depth": 28}
+      ]
+    },
+    {
+      "name": "303 BASS",
+      "wave": "saw",
+      "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
+      "filter": {"cutoff_hz": 2077, "resonance": 12, "envelope": {"depth": 40, "decay": 6}},
+      "vibrato": {"rate_hz": 0}
+    },
+    {
+      "name": "WOBBLE BASS",
+      "wave": "pulse",
+      "pulse_width": 37.5,
+      "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 9},
+      "filter": {"cutoff_hz": 6966, "resonance": 10},
+      "vibrato": {"rate_hz": 0},
+      "lfos": [
+        {"to": "cutoff", "rate_hz": 0.9, "depth": 40}
+      ]
+    },
+    {
+      "name": "NOISE KICK",
+      "wave": "triangle",
+      "envelope": {"attack": 0, "decay": 0, "sustain": 10, "release": 0},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "table": {
+        "steps": [
+          {"wave": "noise", "note": 40},
+          {},
+          {"note": -5}
+        ]
+      }
+    },
+    {
+      "name": "CHIP CHORD",
+      "wave": "pulse",
+      "pulse_width": 25,
+      "envelope": {"attack": 0, "decay": 0, "sustain": 12, "release": 4},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "table": {
+        "loop": 1,
+        "frames": 2,
+        "steps": [
+          {},
+          {"note": 4},
+          {"note": 7},
+          {"note": 12}
+        ]
+      }
+    },
+    {
+      "name": "FAT SAW",
+      "wave": "saw",
+      "envelope": {"attack": 0, "decay": 0, "sustain": 14, "release": 6},
+      "filter": {"cutoff_hz": 10486},
+      "vibrato": {"rate_hz": 0},
+      "layers": [
+        {"detune": 12},
+        {"transpose": -12, "detune": -8}
+      ]
+    },
+    {
+      "name": "SYNC SCREAM",
+      "wave": "triangle",
+      "sync": true,
+      "envelope": {"attack": 0, "decay": 0, "sustain": 11, "release": 8},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "layers": [
+        {"wave": "saw", "transpose": 7},
+        {"sync": false}
+      ],
+      "lfos": [
+        {"rate_hz": 0.1, "depth": 2}
+      ]
+    },
+    {
+      "name": "RING BELL",
+      "wave": "triangle",
+      "ring": true,
+      "envelope": {"attack": 0, "decay": 10, "sustain": 0, "release": 8},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "layers": [
+        {"ring": false},
+        {"ring": false, "transpose": 19}
+      ]
+    },
+    {
+      "name": "S&H BLIPS",
+      "wave": "pulse",
+      "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 0},
+      "filter": {"cutoff_hz": 7668, "resonance": 12},
+      "vibrato": {"rate_hz": 0},
+      "lfos": [
+        {"shape": "sample_hold", "to": "cutoff", "rate_hz": 1.8, "depth": 30}
+      ]
+    },
+    {
+      "name": "TREM ORGAN",
+      "wave": "triangle",
+      "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 2},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "layers": [
+        {"wave": "pulse", "transpose": 12}
+      ],
+      "lfos": [
+        {"to": "volume", "rate_hz": 1.2, "depth": 24}
+      ]
+    },
+    {
+      "name": "SID SNARE",
+      "wave": "noise",
+      "envelope": {"attack": 0, "decay": 0, "sustain": 9, "release": 0},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "table": {
+        "frames": 2,
+        "steps": [
+          {},
+          {"wave": "triangle", "note": 12},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "NOISE HAT",
+      "wave": "noise",
+      "envelope": {"attack": 0, "decay": 0, "sustain": 6, "release": 2},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0}
+    },
+    {
+      "name": "SWEEP PAD",
+      "wave": "saw",
+      "envelope": {"attack": 8, "decay": 10, "sustain": 10, "release": 9},
+      "filter": {"cutoff_hz": 1383, "resonance": 8, "envelope": {"depth": 30, "attack": 10, "decay": 10, "sustain": 6, "release": 10}},
+      "vibrato": {"rate_hz": 4, "depth": 12, "delay": 40}
+    },
+    {
+      "name": "FLUTE",
+      "wave": "triangle",
+      "envelope": {"attack": 4, "decay": 0, "sustain": 10, "release": 6},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 5.5, "depth": 18, "delay": 25}
+    },
+    {
+      "name": "LASER ZAP",
+      "wave": "pulse",
+      "pulse_width": 12.5,
+      "envelope": {"attack": 0, "decay": 0, "sustain": 8, "release": 0},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "table": {
+        "steps": [
+          {"note": 24},
+          {"note": 19},
+          {"note": 14},
+          {"note": 9},
+          {"note": 4},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "ARP LEAD",
+      "wave": "pulse",
+      "pulse_width": 37.5,
+      "envelope": {"attack": 0, "decay": 0, "sustain": 10, "release": 4},
+      "filter": {"cutoff_hz": 14298, "resonance": 0, "voices": []},
+      "vibrato": {"rate_hz": 0},
+      "arp": {"on": true, "rate": "2fr", "order": "up_down"}
+    }
+  ]
+}

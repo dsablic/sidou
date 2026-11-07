@@ -1,45 +1,42 @@
 {
-  "goal": "See SIDOU 1.7's highlights, one at a time: a step table on a LAB sound, two free LFOs on MOD's second page, SLIDE and ACCENT on STEP, and SIDOU's own sounds on the site.",
+  "goal": "See SIDOU 1.8's highlights: live tweaks on a playing .sid, an ACID lane that rolls slides and accents, a sound from a prompt, and sidou-sysex for coding agents.",
   "id": "whats-new",
   "prerequisites": {
     "start": "live",
-    "text": "On LIVE after the boot, SIDOU LOOP the song loaded."
+    "text": "On LIVE after the boot, SIDOU LOOP the song loaded; THE CONSULTANT, a GoatTracker tune, in the store.",
+    "tunes": [
+      "consultant"
+    ]
   },
   "related": [
-    "shape-in-lab",
-    "step-a-beat",
-    "send-to-song"
+    "play-a-sid",
+    "lift-a-sound",
+    "step-generative"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "LAB's TABLE page",
-    "ALGORITHM loops the table",
-    "K1 adds a step",
-    "K3 its pitch",
-    "K4 frames a step",
-    "LAB's LFO page",
-    "K2 the destination",
-    "K4 the depth",
-    "a held step + FX slides",
-    "a held step + ENV accents",
-    "the site's Library page"
+    "NOW PLAYING",
+    "K1 bends a tune's cutoff",
+    "K3 picks a voice and K4 its waveform",
+    "HOME gives the tune back",
+    "the ACID lane role",
+    "DICE",
+    "the site's Library page",
+    "llms.txt",
+    "sidou-sysex"
   ],
   "steps": [
     {
-      "caption": "SAW LEAD, one saw. ENV opens LAB; SELECT on to TABLE, the last page.",
-      "control": "press ENV, then wait 0.8 s, then play 4 notes at 120 BPM, then turn SELECT clockwise by 8 detents, then wait 0.9 s",
+      "caption": "The menu's SIDS: THE CONSULTANT, by Cadaver. ALGORITHM plays it.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then press SAVE, then wait 1.2 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.6 s",
       "expect": [
         {
           "kind": "view",
-          "value": "lab"
+          "value": "sid_view_playing"
         },
         {
           "kind": "text",
-          "value": "TABLE"
-        },
-        {
-          "kind": "text",
-          "value": "10/10"
+          "value": "PLAYING"
         },
         {
           "assert": "sounding",
@@ -47,240 +44,7 @@
         }
       ],
       "focus": {
-        "callout": "ENV, TURN SELECT",
-        "control": "SELECT"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "open",
-      "inputs": [
-        {
-          "button": "ENV",
-          "op": "press"
-        },
-        {
-          "ms": 800,
-          "op": "wait"
-        },
-        {
-          "bpm": 120,
-          "events": [
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "A4"
-              ],
-              "sixteenths": 4
-            }
-          ],
-          "op": "play"
-        },
-        {
-          "detents": 8,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 900,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*ENV* opens LAB"
-    },
-    {
-      "caption": "ALGORITHM loops it. K1 to NEW adds a step and K3 lifts it an octave; one more, a fifth up.",
-      "control": "turn ALGORITHM clockwise by 2 detents, then wait 0.7 s, then turn K1 clockwise by 1 detent, then wait 0.3 s, then turn K3 clockwise by 12 detents, then wait 0.7 s, then turn K1 clockwise by 1 detent, then wait 0.3 s, then turn K3 counter-clockwise by 5 detents, then wait 1.2 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "LOOP FROM 1"
-        }
-      ],
-      "focus": {
-        "callout": "ALGORITHM, K1, K3",
-        "control": "K1"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "table",
-      "inputs": [
-        {
-          "detents": 2,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 700,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "K1",
-          "op": "turn"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "detents": 12,
-          "encoder": "K3",
-          "op": "turn"
-        },
-        {
-          "ms": 700,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "K1",
-          "op": "turn"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "detents": -5,
-          "encoder": "K3",
-          "op": "turn"
-        },
-        {
-          "ms": 1200,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A *step table*"
-    },
-    {
-      "caption": "K4: two frames a step. Every key plays the table, round and round.",
-      "control": "turn K4 clockwise by 1 detent, then wait 0.5 s, then play 5 notes at 120 BPM",
-      "expect": [
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "K4, THEN THE KEYS",
-        "control": "K4"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "hear",
-      "inputs": [
-        {
-          "detents": 1,
-          "encoder": "K4",
-          "op": "turn"
-        },
-        {
-          "ms": 500,
-          "op": "wait"
-        },
-        {
-          "bpm": 120,
-          "events": [
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "G4"
-              ],
-              "sixteenths": 4
-            },
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 8
-            }
-          ],
-          "op": "play"
-        }
-      ],
-      "needs": [],
-      "title": "One key, an *arpeggio*"
-    },
-    {
-      "caption": "SELECT back to LFO, MOD's second page. ALGORITHM: TRIANGLE; K2 sends it to the cutoff, K4 deepens it.",
-      "control": "turn SELECT counter-clockwise by 4 detents, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.5 s, then turn K2 clockwise by 2 detents, then wait 0.5 s, then turn K4 slowly clockwise by 30 detents over 0.9 s, then play 3 notes at 120 BPM",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "LFO"
-        },
-        {
-          "kind": "text",
-          "value": "TRIANGLE"
-        },
-        {
-          "kind": "text",
-          "value": "CUT"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "ALGORITHM, K2, K4",
+        "callout": "MENU > SIDS, ALGORITHM",
         "control": "ALGORITHM"
       },
       "harness": {
@@ -292,15 +56,26 @@
         "remember": false,
         "task": null
       },
-      "id": "lfo",
+      "id": "sids",
       "inputs": [
         {
-          "detents": -4,
-          "encoder": "SELECT",
-          "op": "turn"
+          "button": "HOME",
+          "op": "press"
         },
         {
-          "ms": 700,
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SIDS"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
           "op": "wait"
         },
         {
@@ -309,68 +84,29 @@
           "op": "turn"
         },
         {
-          "ms": 500,
+          "ms": 2600,
           "op": "wait"
-        },
-        {
-          "detents": 2,
-          "encoder": "K2",
-          "op": "turn"
-        },
-        {
-          "ms": 500,
-          "op": "wait"
-        },
-        {
-          "detents": 30,
-          "encoder": "K4",
-          "ms": 900,
-          "op": "sweep"
-        },
-        {
-          "bpm": 120,
-          "events": [
-            {
-              "notes": [
-                "A3"
-              ],
-              "sixteenths": 8
-            },
-            {
-              "notes": [
-                "E4"
-              ],
-              "sixteenths": 8
-            },
-            {
-              "notes": [
-                "C4"
-              ],
-              "sixteenths": 8
-            }
-          ],
-          "op": "play"
         }
       ],
       "needs": [],
-      "title": "Two free *LFOs*"
+      "title": "A *.sid* tune"
     },
     {
-      "caption": "HOME, then SEQ: STEP shows SIDOU LOOP's first pattern, voice 1 on top.",
-      "control": "press HOME, then wait 0.6 s, then press SEQ, then wait 2.8 s",
+      "caption": "Turn K1 while it plays: the tune's cutoff moves, and TWEAKED says what is changed.",
+      "control": "turn K1 slowly clockwise by 20 detents over 1.2 s, then wait 2.0 s",
       "expect": [
         {
-          "kind": "view",
-          "value": "step"
+          "kind": "text",
+          "value": "TWEAKED"
         },
         {
-          "kind": "text",
-          "value": "PAT 04"
+          "assert": "sounding",
+          "kind": "audio"
         }
       ],
       "focus": {
-        "callout": "HOME, SEQ",
-        "control": "SEQ"
+        "callout": "TURN K1",
+        "control": "K1"
       },
       "harness": {
         "clip_ms": null,
@@ -381,8 +117,150 @@
         "remember": false,
         "task": null
       },
-      "id": "step",
+      "id": "tweak-cut",
       "inputs": [
+        {
+          "detents": 20,
+          "encoder": "K1",
+          "ms": 1200,
+          "op": "sweep"
+        },
+        {
+          "ms": 2000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*K1* bends its *filter*"
+    },
+    {
+      "caption": "K3 picks a voice, K4 gives it another waveform: the voice keeps its notes.",
+      "control": "turn K3 clockwise by 1 detent, then wait 0.7 s, then turn K4 clockwise by 1 detent, then wait 2.6 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "TWEAKED"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "K3 A VOICE, K4 ITS WAVE",
+        "control": "K4"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "tweak-voice",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "K3",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "K4",
+          "op": "turn"
+        },
+        {
+          "ms": 2600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A voice's *waveform*"
+    },
+    {
+      "caption": "HOME back to the list: the tune plays on as its own, untouched.",
+      "control": "press HOME, then wait 2.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS HOME",
+        "control": "HOME"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "home",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*HOME* gives it back"
+    },
+    {
+      "caption": "PLAY stops the tune; HOME, then SONG, NEW: SAVE AGAIN lets the old one go. SEQ round to STEP.",
+      "control": "press PLAY, then wait 0.6 s, then press HOME, then wait 0.6 s, then press HOME, then wait 2.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.1 s, then press SAVE, then wait 4.2 s, then press SEQ, then wait 0.8 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        }
+      ],
+      "focus": {
+        "callout": "SONG > NEW, SEQ TO STEP",
+        "control": "SEQ",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "new-song",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
         {
           "button": "HOME",
           "op": "press"
@@ -392,33 +270,89 @@
           "op": "wait"
         },
         {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SONG"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1100,
+          "op": "wait"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 4200,
+          "op": "wait"
+        },
+        {
           "button": "SEQ",
           "op": "press"
         },
         {
-          "ms": 2800,
+          "ms": 800,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*STEP*"
+      "title": "A new *song*"
     },
     {
-      "caption": "Hold step 1 and press FX: SLIDE ON. Its gate stays held, and the next note glides in from its pitch.",
-      "control": "hold note key F3, then wait 0.3 s, then press FX, then wait 0.3 s, then let go of note key F3, then wait 3.4 s",
+      "caption": "Hold EDIT, then SCL, and turn PRESETS: the lane's role, ACID. A roll writes a bassline with slides and accents.",
+      "control": "hold EDIT and SCL and turn PRESETS clockwise by 4 detents, then wait 1.3 s, then hold EDIT and press SCL, then wait 2.6 s",
       "expect": [
         {
-          "kind": "view",
-          "value": "step"
-        },
-        {
-          "kind": "text",
-          "value": "PAT 04"
+          "kind": "screen_changes"
         }
       ],
       "focus": {
-        "callout": "HOLD STEP 1 + FX",
-        "control": "FX"
+        "callout": "HOLD EDIT + SCL, TURN PRESETS",
+        "control": "PRESETS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
       },
       "harness": {
         "clip_ms": null,
@@ -429,100 +363,36 @@
         "remember": false,
         "task": null
       },
-      "id": "slide",
+      "id": "acid",
       "inputs": [
         {
-          "note": "F3",
-          "op": "down"
+          "button": "EDIT",
+          "button2": "SCL",
+          "detents": 4,
+          "encoder": "PRESETS",
+          "op": "hold2_turn"
         },
         {
-          "ms": 300,
+          "ms": 1300,
           "op": "wait"
         },
         {
-          "button": "FX",
-          "op": "press"
+          "button": "EDIT",
+          "op": "hold_press",
+          "press": "SCL"
         },
         {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "note": "F3",
-          "op": "up"
-        },
-        {
-          "ms": 3400,
+          "ms": 2600,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*SLIDE* into the next note"
+      "title": "An *ACID* lane"
     },
     {
-      "caption": "Hold step 5 and press ENV: ACCENT ON. Its row plays with the cutoff, resonance and sustain up.",
-      "control": "hold note key A3, then wait 0.3 s, then press ENV, then wait 0.3 s, then let go of note key A3, then wait 3.4 s",
+      "caption": "PLAY: the slid notes glide into the next, the accented ones stand out.",
+      "control": "press PLAY, then wait 5.0 s",
       "expect": [
-        {
-          "kind": "view",
-          "value": "step"
-        },
-        {
-          "kind": "text",
-          "value": "PAT 04"
-        }
-      ],
-      "focus": {
-        "callout": "HOLD STEP 5 + ENV",
-        "control": "ENV"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "accent",
-      "inputs": [
-        {
-          "note": "A3",
-          "op": "down"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "button": "ENV",
-          "op": "press"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "note": "A3",
-          "op": "up"
-        },
-        {
-          "ms": 3400,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*ACCENT* a step"
-    },
-    {
-      "caption": "PLAY: SIDOU LOOP plays, step 1 sliding into step 5, and step 5 accented.",
-      "control": "press PLAY, then wait 5.2 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "step"
-        },
         {
           "assert": "sounding",
           "kind": "audio"
@@ -530,7 +400,13 @@
       ],
       "focus": {
         "callout": "PRESS PLAY",
-        "control": "PLAY"
+        "control": "PLAY",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
       },
       "harness": {
         "clip_ms": null,
@@ -541,23 +417,23 @@
         "remember": false,
         "task": null
       },
-      "id": "play",
+      "id": "play-acid",
       "inputs": [
         {
           "button": "PLAY",
           "op": "press"
         },
         {
-          "ms": 5200,
+          "ms": 5000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*Hear* them"
+      "title": "And *play* it"
     },
     {
-      "caption": "The site's Library page sends sixteen original LAB sounds to the FM-1 as one song. ENV on INSTR opens each in LAB.",
-      "control": "wait 5.0 s",
+      "caption": "Ask any AI chat: \"read dsablic.github.io/sidou/llms.txt and make me an acid bass\". It answers with a patch link: the Library page checks it, plays it and sends it to the FM-1.",
+      "control": "wait 5.6 s",
       "expect": [
         {
           "assert": "sounding",
@@ -565,7 +441,7 @@
         }
       ],
       "focus": {
-        "callout": "LIBRARY PAGE <> SIDOU SOUNDS <> LAB",
+        "callout": "ANY AI CHAT <> PATCH LINK <> FM-1",
         "control": "card"
       },
       "harness": {
@@ -577,15 +453,47 @@
         "remember": false,
         "task": null
       },
-      "id": "sounds",
+      "id": "prompt",
       "inputs": [
         {
-          "ms": 5000,
+          "ms": 5600,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "SIDOU's own *sounds*"
+      "title": "A sound from a *prompt*"
+    },
+    {
+      "caption": "sidou-sysex patch turns the JSON into a song; sidou-sysex send puts it on a connected FM-1.",
+      "control": "wait 4.2 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PATCH.JSON <> SIDOU-SYSEX SEND <> FM-1",
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "sysex",
+      "inputs": [
+        {
+          "ms": 4200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*sidou-sysex* for coding agents"
     },
     {
       "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
@@ -616,8 +524,8 @@
         }
       ],
       "needs": [],
-      "title": "Get *SIDOU 1.7*"
+      "title": "Get *SIDOU 1.8*"
     }
   ],
-  "title": "What's new in SIDOU 1.7"
+  "title": "What's new in SIDOU 1.8"
 }

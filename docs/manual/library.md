@@ -82,7 +82,50 @@ LAB opens with the sound exactly as made (`PULLED I03`), and SAVE keeps it as a 
 song is also there to download. The sounds are defined in `host/crates/sidou-patch/src/sounds.rs`,
 and the song in `assets/sounds` is written from them (its test, `SIDOU_SOUNDS_UPDATE=1`).
 
-## 5. Export a song
+## 5. A sound from a prompt
+
+Any language model can design a LAB sound for you: ChatGPT, Claude, Gemini or one on your own
+computer. **Copy instructions** puts SIDOU's instructions for it on the clipboard (they are also at
+[dsablic.github.io/sidou/llms.txt](https://dsablic.github.io/sidou/llms.txt), so you can tell a
+model that reads the web "read dsablic.github.io/sidou/llms.txt and make me a squelchy acid
+bass"). Paste them into a chat and ask for a sound. The model answers with a patch, a short JSON
+text ([the format](../reference/patch-json.md)), and a link.
+
+Paste the answer in the box (all of it: the page finds the patch in it) and press **Check**, or
+open the link. The page checks the patch with the FM-1's own rules: every field's range, a sound
+LAB can hold, and heard when played. A refusal is one line naming the field,
+what is wrong and what is allowed (`filter.resonance: 20 is too high. Allowed: 0 to 15.`): paste
+it back to the model and it fixes the patch. The page plays every sound on both chip models before
+taking it: one neither makes heard is refused, one only one chip hears is taken with a warning.
+
+- **Preview** plays it here, as the song player plays it (LAB plays all of it, its effects too).
+- **Send to FM-1** sends it as a one-instrument song named after the sound. On the FM-1: menu,
+  SONG, LOAD it, SEQ to INSTR, PRESETS to instrument 01 and **ENV**: it opens in LAB; SAVE keeps
+  it as a USER sound.
+- **Copy link** gives the patch as a link to share; **Download .sng** saves the song.
+
+Ask for several sounds at once ("a drum kit") and the model answers with a **bank**, up to sixteen
+patches and a song name: the page checks each (a refusal names the patch, `patches[2].…`), the
+menu beside Preview picks the one to hear, and Send to FM-1 sends them as one song, an instrument
+each. **All sixteen as a bank (JSON)** above shows SIDOU's sounds that way.
+
+Ask for a pattern ("a 16-step acid line", "a breakbeat") and the model answers with a **STEP
+pattern**: one lane of up to four pages, its notes or drums, slides, accents and chances, and its
+instrument (a patch, or the NEW song's kit). Preview plays it (press again to stop); Send to FM-1
+sends it as a song, the NEW song with that lane written: on the FM-1, SONG, LOAD it, and SEQ
+opens STEP on it.
+
+A patch link carries the patch after its `#`, which the browser never sends to a server. Opening
+one fills the box, checks and previews the patch, and sends nothing until you press Send to FM-1.
+Each of SIDOU's sixteen sounds above has a **JSON** button that opens it here as a patch, to see
+the format or to change it, and an instrument of an open song that holds a LAB sound (one LAB's
+REC sent, or one of the sixteen) has **Patch** beside it. Give the patch to the model with the
+change you want ("darker"): the instructions tell it to keep everything else. The FM-1 does not
+share its USER sounds over SysEx; to change one, load it in LAB on the FM-1, press **REC** (it goes
+into the song), and here press **Open the FM-1's current song**, then Patch. `sidou-sysex patch FILE.json --out DIR` makes the same song (and its
+`.syx`) on a computer.
+
+## 6. Export a song
 
 Drop a `.sng` on the page, choose one, press **Open** next to a song on the FM-1, or **Open the
 FM-1's current song** (what it has loaded now, with the changes you have not saved). The panel
