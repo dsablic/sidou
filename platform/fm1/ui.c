@@ -13,7 +13,7 @@
 #if defined(SIDOU_BLE)
 #include "ble_radio.h"
 
-static const views_radio radio = {NULL, ble_radio_on, ble_radio_set};
+static const views_radio radio = {NULL, ble_radio_on, ble_radio_set, ble_radio_report};
 #endif
 
 #ifndef SIDOU_VERSION

@@ -70,6 +70,7 @@ typedef struct {
     void* ctx;
     int (*on)(void* ctx);
     void (*set)(void* ctx, int on);
+    void (*report)(void* ctx, char* buf);
 } views_radio;
 #define VIEWS_MIDI_ITEMS 10u
 #define VIEWS_MIDI_LOOK 14u

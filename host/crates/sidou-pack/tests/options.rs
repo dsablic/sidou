@@ -40,10 +40,11 @@ fn every_option_off_its_default_is_named() {
 fn an_option_a_release_never_records_is_named() {
     let mut r = record(|_, v| v.to_owned());
     let at = r.iter().position(|&b| b == 0).unwrap();
-    r.splice(at..at, b" SIDOU_BLE=3".iter().copied());
+    r.splice(at..at, b" SIDOU_BLE=ON SIDOU_BLE_CENTRAL=0".iter().copied());
     let p = option_problems(&build_options(&r).unwrap());
-    assert_eq!(p.len(), 1, "{p:?}");
-    assert!(p[0].contains("SIDOU_BLE=3"), "{p:?}");
+    assert_eq!(p.len(), 2, "{p:?}");
+    assert!(p[0].contains("build option SIDOU_BLE=ON "), "the option and the value it records: {p:?}");
+    assert!(p[1].contains("build option SIDOU_BLE_CENTRAL=0 "), "{p:?}");
 }
 
 #[test]

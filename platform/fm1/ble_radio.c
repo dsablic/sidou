@@ -12,16 +12,10 @@
 #include "ble_hw_wl82.c"
 
 #define BLE_RADIO_RING 64u
-#define BLE_RADIO_ADDR_STATIC 0xC0u
 
-#define BLE_RADIO_KEY 0x10Au
-#define BLE_RADIO_TYPE 1u
-#define BLE_RADIO_RECORD_VERSION 1u
 #define BLE_RADIO_START_AFTER_MS 3000u
-#define BLE_RADIO_SAVE_AFTER_MS 2000u
 
 enum { BLE_RADIO_OFF, BLE_RADIO_READY, BLE_RADIO_QUIET };
-enum { BLE_RECORD_VERSION, BLE_RECORD_ON, BLE_RECORD_ADDR, BLE_RECORD_BYTES = BLE_RECORD_ADDR + 6 };
 enum { BLE_ROLE_NONE, BLE_ROLE_PERIPHERAL, BLE_ROLE_CENTRAL };
 
 typedef struct {
@@ -37,14 +31,8 @@ static uint32_t ble_radio_in[BLE_RADIO_RING] BLE_RADIO_ZEROED;
 static volatile uint32_t ble_radio_in_w, ble_radio_in_r;
 static volatile uint8_t ble_radio_role;
 static uint8_t ble_radio_state;
-static uint8_t ble_radio_addr[6];
 static uint8_t ble_radio_was_linked;
-static uint8_t ble_radio_loaded;
-static uint8_t ble_radio_dirty;
-static uint32_t ble_radio_changed_at;
-static uint8_t ble_radio_touched;
-static uint8_t ble_radio_record[BLE_RECORD_BYTES];
-volatile uint8_t ble_radio_wanted;
+
 
 static const struct ble_rf_trims BLE_RADIO_TRIMS = {{0x0B, 0x0B}, {1, 7, 4, 7, 11, 1, 7}, {0}, {0}};
 
@@ -117,23 +105,13 @@ static void ble_radio_held(int hold) {
     fm1_ble_irqs_hold(hold);
 }
 
-static void ble_radio_address(uint8_t a[6]) {
-    uint32_t h = fm1_ticks() * 2654435761u;
-    uint32_t g = (fm1_ticks() ^ h) * 2246822519u;
-    a[0] = (uint8_t)h;
-    a[1] = (uint8_t)(h >> 8);
-    a[2] = (uint8_t)g;
-    a[3] = (uint8_t)(g >> 8);
-    a[4] = (uint8_t)(g >> 16);
-    a[5] = (uint8_t)(g >> 24) | BLE_RADIO_ADDR_STATIC;
-}
-
 extern uint32_t _ble_noinit_start[], _ble_noinit_end[];
 
 static void ble_radio_start(void) {
     for (uint32_t* p = _ble_noinit_start; p < _ble_noinit_end; p++) {
         *p = 0;
     }
+    ble_setting_starting();
     ble_init(ble_radio_addr, 1);
     fm1_irq_off();
     fm1_ble_irq_attach(BLE_HW_IRQ_PRIO);
@@ -145,56 +123,7 @@ static void ble_radio_start(void) {
     ble_enable(1);
     ble_radio_held(0);
     ble_radio_state = BLE_RADIO_READY;
-}
-
-static int ble_radio_addressed(void) {
-    return (ble_radio_addr[5] & BLE_RADIO_ADDR_STATIC) == BLE_RADIO_ADDR_STATIC;
-}
-
-static void ble_radio_load(void) {
-    uint8_t rec[BLE_RECORD_BYTES];
-    int n = store_get(store_fm1(), BLE_RADIO_KEY, rec, sizeof rec, 0);
-    if (n == (int)sizeof rec && rec[BLE_RECORD_VERSION] == BLE_RADIO_RECORD_VERSION) {
-        ble_radio_wanted = rec[BLE_RECORD_ON] != 0;
-        for (uint32_t i = 0; i < 6u; i++) {
-            ble_radio_addr[i] = rec[BLE_RECORD_ADDR + i];
-        }
-    }
-    if (!ble_radio_addressed()) {
-        ble_radio_address(ble_radio_addr);
-    }
-}
-
-static void ble_radio_save(uint32_t now_ms) {
-    store* st = store_fm1();
-    if (!ble_radio_dirty || now_ms - ble_radio_changed_at < BLE_RADIO_SAVE_AFTER_MS ||
-        store_busy(st)) {
-        return;
-    }
-    uint8_t* rec = ble_radio_record;
-    rec[BLE_RECORD_VERSION] = BLE_RADIO_RECORD_VERSION;
-    rec[BLE_RECORD_ON] = ble_radio_wanted;
-    for (uint32_t i = 0; i < 6u; i++) {
-        rec[BLE_RECORD_ADDR + i] = ble_radio_addr[i];
-    }
-    int rc = store_put(st, BLE_RADIO_KEY, BLE_RADIO_TYPE, rec, BLE_RECORD_BYTES);
-    ble_radio_dirty = rc != STORE_OK && rc != STORE_FOREIGN && rc != STORE_FULL &&
-                      rc != STORE_INVALID;
-    ble_radio_changed_at = now_ms;
-}
-
-int ble_radio_on(void* ctx) {
-    (void)ctx;
-    return ble_radio_wanted;
-}
-
-void ble_radio_set(void* ctx, int on) {
-    (void)ctx;
-    if (ble_radio_wanted != (on != 0)) {
-        ble_radio_wanted = (uint8_t)(on != 0);
-        ble_radio_dirty = 1;
-        ble_radio_touched = 1;
-    }
+    ble_setting_started();
 }
 
 static void ble_radio_follow(void) {
@@ -274,15 +203,7 @@ static void ble_radio_link_watch(void) {
 }
 
 void ble_radio_poll(uint32_t now_ms) {
-    if (!ble_radio_loaded) {
-        ble_radio_loaded = 1;
-        ble_radio_load();
-    }
-    if (ble_radio_touched) {
-        ble_radio_touched = 0;
-        ble_radio_changed_at = now_ms;
-    }
-    ble_radio_save(now_ms);
+    ble_setting_poll(now_ms);
     ble_radio_link_watch();
     if (ble_radio_state == BLE_RADIO_OFF) {
         if (ble_radio_wanted && now_ms >= BLE_RADIO_START_AFTER_MS) {

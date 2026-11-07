@@ -2150,6 +2150,9 @@ static void while_lcd_wakes(void) {
 }
 
 static void sidou_main(void) {
+#if defined(SIDOU_BLE)
+    ble_power_boot();
+#endif
     lcd_init(while_lcd_resets, while_lcd_wakes);
     audio_init();
     keys_route_init(&keys_router, &instrument, reg_ring_sink, reg_ring_prepare_step,

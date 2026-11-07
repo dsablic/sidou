@@ -392,6 +392,26 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   random static address are their own store record (key `0x10A`), not the settings record: the
   default build never writes it, and its schema stays 9. It is saved two seconds after a change,
   from a static buffer (the store writes from the caller's memory over later polls).
+- **The stock power setup before the radio** (2026-11-07, after the first device test reset at
+  BLUETOOTH ON): the Bluetooth build runs fm1-base's boot sequence first thing in `sidou_main`,
+  interrupts off, before anything can start the radio (`ble_setting.c`, `-Oz`): VDC14 up to 7
+  (1.60 V) and SYSVDD to 15 (1.38 V) with a read-back and up to three tries, then
+  `fm1_power_stock` (the 1.3 V supply on its DC-DC, VDDIO 3.2 V, WiFi's regulator automatic). At the
+  boot loader's levels flash fetches can come back wrong under the radio trim's current, which
+  resets the chip with no fault screen (fm1-base's note; CTL-1 0.6 s into a start). The always-on
+  P33 keeps whatever ran last, and an FM-1 that has run SIDOU for weeks has none of V15's setup.
+  The default build calls none of it (`ble.rs` checks both). `fm1_clock_stock` is not copied:
+  SIDOU sets no clock of its own and is always started by the SDK's SPL, which leaves M-VAVE's
+  360 MHz; the system clock's source byte is recorded so the device test can confirm it (6).
+  STATUS shows the record on its READY line in the Bluetooth build: `P` (or `!` after a start
+  that reset), then VDC14 and SYSVDD at boot, after, the tries, whether the DC-DC was moved, the
+  clock byte, in hex.
+- **BLUETOOTH ON is saved only after the radio started cleanly**, and a start that resets cannot
+  loop: a word in NOINIT marks the start's dangerous part; found set at the next boot, the radio
+  is not started, BLUETOOTH is saved OFF and STATUS shows `!`. A kept ON that fails at a later
+  boot therefore costs one reset and comes back OFF; nothing has to be held at power-on. NOINIT
+  survives a reset, not a power cut, so a power cut in the middle of a start leaves ON (the next
+  start is tried again). `ble.rs` pins both orders.
 - **Starting the radio:** never before 3 s after power-on (the boot's waits; in fm1-emu, where
   the start's waits time out, it holds the main loop 2.2 ms, `ble.rs` bounds it at 600 ms), then
   whenever BLUETOOTH is ON. OFF stops advertising and drops a link (`ble_enable(0)`), and ON again

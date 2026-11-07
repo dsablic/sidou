@@ -25,6 +25,15 @@ const RADIO_READY: u8 = 1;
 const START_HOLD_MS_MAX: f64 = 600.0;
 const CPU_HZ: f64 = 240e6;
 const MENU_WIPE_MS: u64 = 700;
+const P3_ANA_CON0: u16 = 0x00;
+const P3_ANA_CON6: u16 = 0x06;
+const P3_ANA_CON7: u16 = 0x07;
+const P3_ANA_CON9: u16 = 0x09;
+const BOOT_LOADER_VDC14: u8 = 3;
+const BOOT_LOADER_SYSVDD: u8 = 11;
+const DCDC13_EN: u8 = 0x08;
+const STOCK_DCDC_TUNE: u8 = 0xA5;
+const START_MARK: u32 = 0x4254_5354;
 
 fn ble_build() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("SIDOU_FM1_BLE_BUILD").filter(|d| !d.is_empty());
@@ -185,4 +194,126 @@ fn bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising() {
         RADIO_READY,
         "OFF left it advertising"
     );
+}
+
+fn p33_set(m: &mut Machine, reg: u16, value: u8) {
+    use fm1_soc::p33::P33;
+    const SELECT_AND_SHIFT: u32 = 0x11;
+    for b in [((reg >> 8) & 3) as u8, reg as u8, value] {
+        m.soc.p33.write(P33::DAT, u32::from(b));
+        m.soc.p33.write(P33::CON, SELECT_AND_SHIFT);
+    }
+    m.soc.p33.write(P33::CON, 0);
+}
+
+fn as_the_boot_loader_leaves_the_rails(m: &mut Machine) {
+    p33_set(m, P3_ANA_CON6, BOOT_LOADER_VDC14);
+    p33_set(m, P3_ANA_CON9, BOOT_LOADER_SYSVDD);
+    p33_set(m, P3_ANA_CON0, 0x04);
+}
+
+fn rails(m: &Machine) -> (u8, u8, u8, u8) {
+    let r = |a| m.soc.p33.reg(a, false);
+    (
+        r(P3_ANA_CON6) & 7,
+        r(P3_ANA_CON9) & 15,
+        r(P3_ANA_CON0) & DCDC13_EN,
+        r(P3_ANA_CON7),
+    )
+}
+
+#[test]
+fn the_bluetooth_build_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start() {
+    let Some(build) = ble_build() else { return };
+    let fw = Firmware::load(&build);
+    let mut m = power_on(&fw, &settled_flash(&fw.image));
+    as_the_boot_loader_leaves_the_rails(&mut m);
+    m.run_ms(100);
+    assert_eq!(
+        m.soc.read8(fw.symbol("ble_radio_state")),
+        0,
+        "the radio is not started yet"
+    );
+    assert_eq!(
+        rails(&m),
+        (7, 15, DCDC13_EN, STOCK_DCDC_TUNE),
+        "VDC14 7, SYSVDD 15, the DC-DC on and tuned"
+    );
+    let report: Vec<u8> = (0..4)
+        .map(|i| m.soc.read8(fw.symbol("ble_power_report") + i))
+        .collect();
+    assert_eq!(
+        report,
+        [BOOT_LOADER_VDC14, BOOT_LOADER_SYSVDD, 7, 15],
+        "the rails read at boot, before and after"
+    );
+}
+
+#[test]
+fn the_default_build_leaves_the_rails_as_the_boot_loader_set_them() {
+    let Some(fw) = common::firmware("the default build's rails") else {
+        return;
+    };
+    let mut m = power_on(&fw, &settled_flash(&fw.image));
+    as_the_boot_loader_leaves_the_rails(&mut m);
+    m.run_ms(1000);
+    assert_eq!(rails(&m), (BOOT_LOADER_VDC14, BOOT_LOADER_SYSVDD, 0, 0));
+}
+
+#[test]
+fn bluetooth_on_is_saved_only_after_the_radio_started() {
+    let Some(build) = ble_build() else { return };
+    let fw = Firmware::load(&build);
+    let mut m = power_on(&fw, &settled_flash(&fw.image));
+    common::run_past_boot(&mut m, &fw);
+    m.run_ms(START_AFTER_MS);
+    press(&mut m, HOME);
+    m.run_ms(MENU_WIPE_MS);
+    common::settings_item(&mut m, VIEWS_SETTINGS_BLUETOOTH);
+    let state = fw.symbol("ble_radio_state");
+    m.turn(ALGORITHM, 1);
+    let mut started_at = None;
+    for _ in 0..4000 {
+        m.run_ms(1);
+        let saved = stored_value(&m.soc.flash.mem, RADIO_KEY).is_some_and(|r| r[1] == 1);
+        if started_at.is_none() && m.soc.read8(state) == RADIO_READY {
+            started_at = Some(m.ms());
+        }
+        if saved {
+            assert!(
+                started_at.is_some(),
+                "ON was saved before the radio had started"
+            );
+            return;
+        }
+    }
+    panic!("ON was never saved");
+}
+
+#[test]
+fn a_reset_during_the_radio_start_boots_with_bluetooth_off() {
+    let Some(build) = ble_build() else { return };
+    let fw = Firmware::load(&build);
+    let mut flash = settled_flash(&fw.image);
+    put_value(
+        &mut flash,
+        RADIO_KEY,
+        RADIO_TYPE,
+        &[1, 1, 1, 2, 3, 4, 5, 0xC6],
+    );
+    let mut m = power_on(&fw, &flash);
+    m.soc.write32(fw.symbol("ble_radio_start_mark"), START_MARK);
+    m.run_ms(START_AFTER_MS + 3000);
+    assert_ne!(
+        m.soc.read8(fw.symbol("ble_radio_state")),
+        RADIO_READY,
+        "the radio started again"
+    );
+    let rec = stored_value(&m.soc.flash.mem, RADIO_KEY).expect("the radio's record");
+    assert_eq!(
+        rec[..2],
+        [1, 0],
+        "BLUETOOTH saved OFF after the start that reset"
+    );
+    assert_eq!(rec[2..], ADDRESS, "the address kept");
 }

@@ -1788,11 +1788,17 @@ unsafe extern "C" fn radio_set(_: *mut std::ffi::c_void, on: i32) {
     RADIO_ON.store(on != 0, std::sync::atomic::Ordering::Relaxed);
 }
 
+unsafe extern "C" fn radio_report(_: *mut std::ffi::c_void, buf: *mut std::ffi::c_char) {
+    let text = c"P 03 0B 07 0F 01 01 06";
+    unsafe { std::ptr::copy_nonoverlapping(text.as_ptr(), buf, text.count_bytes() + 1) };
+}
+
 fn radio() -> Box<views_radio> {
     Box::new(views_radio {
         ctx: std::ptr::null_mut(),
         on: Some(radio_on),
         set: Some(radio_set),
+        report: Some(radio_report),
     })
 }
 
@@ -1830,4 +1836,13 @@ fn bluetooth_is_the_last_setting_only_with_a_radio_and_algorithm_switches_it() {
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     settings_settle(&mut ui);
     assert!(!RADIO_ON.load(std::sync::atomic::Ordering::Relaxed));
+}
+
+#[test]
+fn a_radio_build_shows_its_power_report_where_status_says_ready() {
+    let mut ui = Ui::new();
+    let radio = radio();
+    unsafe { views_radio_bind(&mut *ui.v, &*radio) };
+    open_status(&mut ui);
+    assert_eq!(&ui.row(28)[2..24], "P 03 0B 07 0F 01 01 06");
 }
