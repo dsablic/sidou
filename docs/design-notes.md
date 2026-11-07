@@ -2062,7 +2062,7 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 
 ### Live tweaks (1.8)
 
-- K1-K4 in NOW PLAYING bend the tune as it plays ([the design](plans/2026-11-05-sid-tweaks.md)):
+- K1-K4 in NOW PLAYING bend the tune as it plays ([the design](https://github.com/dsablic/sidou/blob/v1.8.0/docs/plans/2026-11-05-sid-tweaks.md)):
   the cutoff, the resonance and a voice's waveform. The audio interrupt keeps each chip's raw
   register bytes (`psid_ctl.raw`, every ring write stores its byte) and, while a tweak is on,
   writes the bent value; a tweak's change (`tweak_seq`, bumped by `psid_ctl_tweak` in the main
