@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.7.0 release](https://github.com/dsablic/sidou/releases/tag/v1.7.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.8.0 release](https://github.com/dsablic/sidou/releases/tag/v1.8.0).
 
 - [SIDOU in 78 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.7](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 1.8](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -49,7 +49,7 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.4 s, 6.8 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.7 highlights: LAB's TABLE page (ALGORITHM: LOOP FROM 1; K1 adds steps, K3 sets them an octave and a fifth up, K4 two frames a step: one key, an arpeggio), an LFO on MOD's second page (TRIANGLE, K2 to the cutoff, K4 its depth), STEP's SLIDE (a held step + FX) and ACCENT (a held step + ENV) heard as SIDOU LOOP plays, and a card for SIDOU's sixteen sounds on the site's Library page | 44.7 s, 3.6 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.8 highlights: THE CONSULTANT tweaked live in NOW PLAYING (K1: TWEAK CUT, the TWEAKED line; K3 and K4: V2 TRI), HOME gives it back; a NEW song's ACID lane (ROLE ACID, a roll, PLAY); cards for a sound from a prompt (llms.txt, a patch link) and `sidou-sysex send` | 56.5 s, 3.4 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.3 s, 4.5 MB |
