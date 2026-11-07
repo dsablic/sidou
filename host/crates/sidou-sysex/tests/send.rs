@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-use sidou_sysex::send::{file_type_of, store_name, Client, Port, Sent, Timing};
+use sidou_sysex::send::{file_type_of, sent_name, store_name, Client, Port, Sent, Timing};
 use sidou_sysex::{crc32, Packet, ACK, DATA, DIR, END, FILE_SONG, INQ, NAK, PUT, WAIT};
 
 #[derive(Default)]
@@ -236,6 +236,25 @@ fn only_songs_tunes_and_instruments_are_sent() {
         "never raw SysEx, update frames included"
     );
     assert_eq!(store_name("out/Acid Line.sng"), "ACID LINE");
+    let mut squelch = b"GTS5SQUELCH 2".to_vec();
+    squelch.resize(36, 0);
+    assert_eq!(
+        sent_name("out/SQUELCH-2.sng", &squelch),
+        "SQUELCH 2",
+        "a song goes under its own name"
+    );
+    assert_eq!(
+        sent_name("tune.sid", b"PSID...."),
+        "TUNE",
+        "anything else under its file's"
+    );
+    let mut unnamed = b"GTS5".to_vec();
+    unnamed.resize(36, 0);
+    assert_eq!(
+        sent_name("x/My Song.sng", &unnamed),
+        "MY SONG",
+        "a song with no name under its file's"
+    );
     assert_eq!(
         store_name("a-very-long-file-name-indeed.sng"),
         "A-VERY-LONG-FILE"

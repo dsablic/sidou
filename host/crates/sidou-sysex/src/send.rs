@@ -120,6 +120,24 @@ pub fn store_name(file_name: &str) -> String {
     }
 }
 
+const SONG_NAME: std::ops::Range<usize> = 4..36;
+
+pub fn sent_name(file_name: &str, bytes: &[u8]) -> String {
+    if file_type_of(bytes) == Some(FILE_SONG) {
+        if let Some(head) = bytes.get(SONG_NAME) {
+            let own: String = head
+                .iter()
+                .take_while(|&&c| c != 0)
+                .map(|&c| c as char)
+                .collect();
+            if !own.trim().is_empty() {
+                return store_name(&format!("{own}.sng"));
+            }
+        }
+    }
+    store_name(file_name)
+}
+
 fn le32(d: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([d[at], d[at + 1], d[at + 2], d[at + 3]])
 }

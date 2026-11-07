@@ -7,7 +7,8 @@ envelope as the 0..15 steps LAB's cards show. It is what a language model writes
 [the instructions](../prompt-to-patch.md), what the site's [Library](https://dsablic.github.io/sidou/library.html)
 reads, checks, previews and sends to the FM-1, and what it shows any of SIDOU's sixteen sounds as.
 The JSON Schema is [patch.schema.json](patch.schema.json); the site serves both as
-`llms.txt` and `patch.schema.json` at its root, and the sixteen as `sounds/patches/*.json`.
+`llms.txt` (with `llms-fields.txt`, `llms-lab.txt`, `llms-examples.txt` it links, and
+`llms-full.txt`, all of them in one) and `patch.schema.json` at its root, and the sixteen as `sounds/patches/*.json`.
 
 ```json
 {

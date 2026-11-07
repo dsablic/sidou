@@ -25,6 +25,7 @@ deps=()
 cp "$root/web/check.mjs" "$dir/check.mjs"
 cp "$root/web/link-fixtures.json" "$dir/link-fixtures.json"
 cp "$root/docs/prompt-to-patch.md" "$dir/llms.txt"
+for part in fields lab examples full; do cp "$root/docs/prompt-to-patch-$part.md" "$dir/llms-$part.txt"; done
 cp "$root/docs/reference/patch.schema.json" "$dir/patch.schema.json"
 
 log="$dir/serve.log"

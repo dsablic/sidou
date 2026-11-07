@@ -86,6 +86,7 @@ say "the Library page's wasm core (tools/wasm-core)"
 say "the Library page's patch converter (tools/wasm-patch)"
 "$root/tools/wasm-patch" "$out/sidou-patch.wasm"
 cp "$root/docs/prompt-to-patch.md" "$out/llms.txt"
+for part in fields lab examples full; do cp "$root/docs/prompt-to-patch-$part.md" "$out/llms-$part.txt"; done
 cp "$root/docs/reference/patch.schema.json" "$root/docs/reference/bank.schema.json" "$out/"
 say "the Live Link page's viewer (tools/wasm-link)"
 cp "$root/web/link.html" "$root/web/link.js" "$root/web/link-keyboard.js" "$out/"

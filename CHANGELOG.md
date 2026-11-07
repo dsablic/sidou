@@ -27,7 +27,10 @@ All notable changes are documented here. The format follows
   page, or by a `#step=` link). For coding agents ([docs/ai](docs/ai/README.md)): `sidou-sysex
   patch|bank|step FILE.json --out DIR` writes the song and its `.syx` with the same converter,
   and `sidou-sysex send FILE` (macOS) uploads a song, tune or instrument to the FM-1 with the
-  stop-and-wait protocol after checking that the port answers as SIDOU, never a firmware package. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
+  stop-and-wait protocol after checking that the port answers as SIDOU, never a firmware package. The
+  instructions are a short `llms.txt` with its depth in linked files and all of it in
+  `llms-full.txt`, which the page copies; a model's answer ends with two to four things to turn in
+  LAB, by LAB's own page and card names. `send` stores a song under the song's own name. One converter, `platform/web/patch_json.c`, in its own wasm (`tools/wasm-patch`) and in
   the host tests; `sidou-sysex patch FILE.json` writes the song and its `.syx`. The firmware is
   unchanged.
 - **Bluetooth MIDI, in a test build** (`SIDOU_BLE`, until the device test passes): SIDOU as a

@@ -1,16 +1,28 @@
 # SIDOU: make a sound as a patch (sidou-patch/1)
 
 How to use this: paste it into a chat with any model, or say "read
-https://dsablic.github.io/sidou/llms.txt and make me a squelchy acid bass". The model answers with
-one JSON patch and a link; open the link (or paste the JSON on
-https://dsablic.github.io/sidou/library.html), listen, and send it to the FM-1. To change a sound
-you have, open it as a patch on that page (a sound's JSON button, or Patch beside a song's
-instrument; for one of your USER sounds, load it in LAB and press REC to put it in the song, then
-Open the FM-1's current song), give the patch to the model and ask for the change.
+https://dsablic.github.io/sidou/llms.txt and make me a squelchy acid bass". The model answers with a
+patch and a link; open the link (or paste the answer on https://dsablic.github.io/sidou/library.html),
+listen, and send it to the FM-1. To change a sound you have, open it as a patch on that page (a
+sound's JSON button, or Patch beside a song's instrument; for one of your USER sounds, load it in LAB
+and press REC to put it in the song, then Open the FM-1's current song), give the patch to the model
+and ask for the change.
 
-You, the model: you design one sound for SIDOU, firmware for the FM-1, a synthesizer built around a
-real MOS SID chip (a 6581 or an 8580). Answer with the patch in one ```json block, then the patch
-link (see "The link"), then at most two sentences on how to play it. Nothing else.
+You design sounds for SIDOU, firmware for the FM-1, a synthesizer built around a real MOS SID chip
+(a 6581 or an 8580). This text describes SIDOU as of this release; where it and
+https://dsablic.github.io/sidou/patch.schema.json or the page disagree, the schema and the page are
+right. More depth, to open when you need it:
+https://dsablic.github.io/sidou/llms-fields.txt (every field and its range),
+https://dsablic.github.io/sidou/llms-lab.txt (what each of LAB's controls does),
+https://dsablic.github.io/sidou/llms-examples.txt (more patches, banks and STEP patterns).
+
+## Your answer
+
+1. The patch in one ```json block.
+2. Its link (see "The link").
+3. Two to four things to turn on the FM-1 for this sound, each as the LAB page, then the control,
+   then what it does to this sound, named as LAB shows them (the table below), for example:
+   "FILTER ENV, ALGORITHM (depth) up toward +63: more squelch on each note".
 
 ## What the sound engine can and can't do
 
@@ -21,126 +33,91 @@ link (see "The link"), then at most two sentences on how to play it. Nothing els
   `pulse_width` 50 is square, 10 to 25 thin and nasal) or noise (drums, wind). Waves joined with `+`
   play together and are very quiet on a 6581. `ring` (ring modulation, bells and metal) and `sync`
   (hard sync, screaming leads) take the oscillator before it as the modulator: layer 1 takes layer 3,
-  layer 2 takes layer 1, layer 3 takes layer 2. Use them with three layers, or `sync_lead`.
-- **The SID envelope** per oscillator, 0 to 15 each. Attack: 0 = 2 ms, 2 = 16 ms, 4 = 38 ms,
-  6 = 68 ms, 8 = 100 ms, 9 = 250 ms, 10 = 500 ms, 11 = 800 ms, 12 = 1 s, 13 = 3 s, 15 = 8 s.
-  Decay and release are three times longer (0 = 6 ms, 8 = 300 ms, 9 = 750 ms, 10 = 1.5 s,
-  12 = 3 s, 15 = 24 s). Sustain is a level (0 silent, 15 full).
+  layer 2 takes layer 1, layer 3 takes layer 2, so they need three layers (or `sync_lead`).
+- **The SID envelope** per oscillator, 0 to 15 each. Attack: 0 = 2 ms, 4 = 38 ms, 8 = 100 ms,
+  9 = 250 ms, 10 = 500 ms, 12 = 1 s, 15 = 8 s. Decay and release are three times longer (8 = 300 ms,
+  9 = 750 ms, 10 = 1.5 s, 12 = 3 s). Sustain is a level (0 silent, 15 full).
 - **One analog filter for the whole chip:** `mode` low, band or high (low+high is a notch),
-  `cutoff_hz`, `resonance`, and `voices`, the chip voices that pass through it: a one-oscillator
-  sound plays each key on the next free voice, so it filters all three or none; on a layered sound
-  layer n is voice n and the layers route apart.
-  The filter has its own envelope, in cutoff steps, plus `lfo_depth`. `cutoff_hz` is as an 8580
-  plays it; a 6581's filter is darker below 300 Hz and brighter above.
-- **Movement:** PWM (the pulse width swept by its own LFO), vibrato with a delay, two LFOs
-  (each to pitch, pulse width, cutoff or volume), an arpeggio of the keys held, and a step table: each
-  step a wave and a note, one step every few 50 Hz frames, for drums, chip chords and zaps.
+  `cutoff_hz`, `resonance`, its own envelope, and `voices`, the chip voices through it. A
+  one-oscillator sound filters all three voices or none (`[1, 2, 3]` or `[]`), because LAB plays
+  each key on the next free voice: a voice left out would play some notes unfiltered. A layered
+  sound may route layers apart, since layer n is voice n. `cutoff_hz` is as an 8580 plays it; a
+  6581 is darker below 300 Hz and brighter above.
+- **Movement:** PWM, vibrato with a delay, two LFOs (to pitch, pulse width, cutoff or volume), an
+  arpeggio of the keys held, and a step table (a wave and a note a step, for drums, chip chords and
+  zaps).
 - **Effects after the chip**, one of each: distortion (tape, overdrive, fuzz, crush, lofi),
   modulation (chorus, flanger, phaser, tremolo, autopan, wow) and an effect (delay, pingpong,
-  reverb, lush, a longer reverb). Knobs 0 to 127: `amount`, `a`, `b`, `mix` (dry to wet). Tape:
-  amount drive. Overdrive and fuzz: amount drive, a tone (fuzz: octave), b bias. Crush: amount bits,
-  a rate. Lofi: amount tone, a hum, b noise. Chorus: amount depth, a rate, b ensemble. Flanger and
-  phaser: depth, rate, feedback. Tremolo: depth, rate, shape. Autopan: width, rate, shape. Wow:
-  wow, flutter. Delay and pingpong: amount feedback, a time, b damping. Reverb and lush: amount
-  decay, a damping, b diffusion (lush: band). Give only `type` for the type's own settings.
-- **It can't:** play samples, play more than three voices, filter voices separately, or hold more
-  than one sound per patch. It is a SID: thin, raw and bright is its charm.
+  reverb, lush). Give only `type` for the type's own settings; `mix` 0 to 127 is dry to wet.
+- **It can't** play samples, more than three voices, or a filter per voice. It is a SID: thin, raw
+  and bright is its charm.
 
 ## Making it sound good
 
-The page plays every sound before taking it and refuses one neither chip makes heard (a wave of
-`none`, a closed envelope, a filter far from the notes with nothing to open it). Otherwise write
-the sound you mean.
+The page plays every sound on both chips before taking it, and refuses only one neither makes
+heard (a wave of `none`, a closed envelope, a filter far from the notes with nothing to open it).
+So write the sound you mean.
 
-- **Acid bass:** saw, attack 0, decay 5 to 7, sustain 0, release 2 to 4; low-pass with a low
-  cutoff (300 to 700 Hz) and high resonance (12 to 15), and the filter envelope doing the work
-  (depth 40 to 60, attack 0, decay 4 to 6, sustain 0). The squelch is the resonant peak sweeping
-  down after each note. Overdrive (mix 50 to 80) adds bite; play it as a STEP pattern with slides
-  and accents.
-- **Pads:** attack 8 to 10, decay 10, sustain 10 to 14, release 9 to 11; pulse 30 to 45 with slow
-  PWM (depth 10 to 25, 0.2 to 0.8 Hz), or a slow LFO on the cutoff; a soft low-pass (2000 to
-  4000 Hz, resonance 2 to 6); chorus and lush. Layers (two saws detuned 5 to 15 cents) make it
-  fatter, but one note at a time.
-- **Bells and metal:** triangle layers with ring, the modulator at a non-octave interval
-  (transpose 7, 15 or 19), attack 0, decay 9 to 11, sustain 0, release 8 to 10; reverb.
+- **Acid bass:** saw, attack 0, decay 5 to 7, sustain 0, release 2 to 4; low-pass with a low cutoff
+  (300 to 700 Hz) and high resonance (12 to 15), the filter envelope doing the work (depth 40 to 60,
+  attack 0, decay 4 to 6, sustain 0): the squelch is the resonant peak sweeping down after each
+  note. Overdrive (mix 50 to 80) adds bite.
+- **Pads:** attack 8 to 10, sustain 10 to 14, release 9 to 11; pulse 30 to 45 with slow PWM (depth
+  10 to 25, 0.2 to 0.8 Hz) or a slow LFO on the cutoff; a soft low-pass (2000 to 4000 Hz,
+  resonance 2 to 6); chorus and lush. Layers make it fatter but one note at a time.
+- **Bells and metal:** triangle layers with ring, the modulator at a non-octave interval (transpose
+  7, 15 or 19), attack 0, decay 9 to 11, sustain 0, release 8 to 10; reverb.
 - **Leads:** pulse 30 to 45 with PWM (depth 10 to 25, 0.5 to 3 Hz), or saw; vibrato 5 to 6 Hz,
-  depth 10 to 20, delay 20 to 40 (hundredths of a second); `sync_lead` for a sync scream; a delay
-  (mix 20 to 30).
-- **The filter on a one-oscillator sound takes all three voices or none** (`"voices": [1, 2, 3]`
-  or `[]`): each key plays on the next free voice, so a voice left out plays some notes unfiltered.
-  Only a layered sound routes layers apart (layer n is voice n).
-- Drums: a table. Kick: noise then triangle falling (`"note": -5` and lower), frames 1. Snare:
-  noise, a triangle hit, noise. Hats: noise alone, decay 0 to 2.
-- Chip chords: a table of 0, 4, 7 (major) or 0, 3, 7 (minor) and 12, frames 1 or 2, loop 1.
+  depth 10 to 20, delay 20 to 40; `sync_lead` for a sync scream; a delay at mix 20 to 30.
+- **Drums:** a table (noise, then a triangle falling, frames 1); **chip chords:** a table of 0, 4, 7
+  and 12, frames 1 or 2, loop 1. See the examples file.
 
-## Several sounds: a bank
+## The core fields
 
-Asked for several sounds at once ("a drum kit", "four basses"), answer with one bank: the FM-1
-gets them as one song, an instrument each.
+`format` is required (`"sidou-patch/1"`); every other field may be left out and is then LAB's own
+starting sound (a saw, attack 0, decay 9, sustain 10, release 6, low-pass 1200 Hz, resonance 6, all
+voices filtered). A layer copies the top-level oscillator but what it names. The common fields:
 
-```
-{"format": "sidou-bank/1", "name": "ACID KIT", "patches": [{...}, {...}]}
-```
+- `name` up to 12 characters; `wave`; `ring`, `sync`; `pulse_width` 0 to 100;
+  `envelope` {`attack`, `decay`, `sustain`, `release` 0 to 15}; `transpose` (semitones), `detune`
+  (cents)
+- `filter` {`mode`, `cutoff_hz` 0 to 14298, `resonance` 0 to 15, `voices`, `envelope` {`depth` -63
+  to 63, `attack`, `decay`, `sustain`, `release`}}
+- `pwm` {`depth` 0 to 50, `rate_hz`}; `vibrato` {`rate_hz`, `depth` 0 to 127, `delay`}; `lfos` up
+  to 2 of {`shape`, `to`, `rate_hz`, `depth` -63 to 63}; `layers` up to 2 of {the oscillator
+  fields}; `table` {`frames`, `loop`, `steps` of {`wave`, `note`}}
+- `fx` {`distortion`, `modulation`, `effect`: {`type`, `amount`, `a`, `b`, `mix`}}
 
-`name` is the song's name on the FM-1 (1 to 16 characters, as a patch's name but four longer);
-`patches` holds 1 to 16 patches, each as above, its `format` optional. Its link starts
-`https://dsablic.github.io/sidou/library.html#bank=` and is made the same way. The schema is
-https://dsablic.github.io/sidou/bank.schema.json; all sixteen of SIDOU's sounds as a bank are
-https://dsablic.github.io/sidou/sounds/sidou-sounds-bank.json.
+Every field, its range and what each knob of each effect is: llms-fields.txt and the schema.
 
-## A STEP pattern
+## LAB's controls, for your suggestions
 
-Asked for a pattern, a groove or a bassline ("a 16-step acid line"), answer with one STEP pattern:
-the FM-1 gets it as a song that opens on STEP (its 16 step keys) and plays. One lane, up to four
-pages of 16 steps:
+SELECT steps LAB's pages; K1 to K4 turn the four cards; ALGORITHM is the page's choice.
 
-- `format` "sidou-step/1"; `name` the song's name (1 to 16 characters); `voice` 1 to 3, the lane;
-  `role` auto, drums, bass, arp, lead, none, bass+drums or acid (what DICE and the SCENE hear it
-  as); `gate` staccato (a key off after each note, the default) or legato; `pages` 1 to 4.
-- `instrument`: a patch (as above, its `format` optional), or "pulse" or "bass" (the new song's
-  own), or "kit" (the new song's drums).
-- `steps`: one entry a step that plays, `step` 1 to 64; `note` "C0" to "G#7" (default "C3"); with
-  the kit, `drum` kick, snare, closed_hat, open_hat, clap, low_tom, high_tom, rim, digi_kick,
-  digi_snare, digi_clap or digi_hat; `slide` true (the gate held to the next note, which glides
-  from this one, a 303's slide); `accent` true (brighter and louder for its step); `chance` 0 to
-  100 (the step's chance to play each pass). Steps left out are rests.
-
-Its link starts `https://dsablic.github.io/sidou/library.html#step=`. An acid line:
-
-```json
-{{STEP_EXAMPLE}}```
-
-## Changing a patch
-
-When you are given a patch (its JSON or its link) and asked for a change ("darker", "a slower
-attack", "more squelch"), answer with the whole patch: keep every field you were not asked to
-change exactly as it is, change only what was asked, and keep the name unless asked.
-
-## The fields
-
-Every field may be left out; what is left out is LAB's own starting sound (a saw, attack 0,
-decay 9, sustain 10, release 6, low-pass 1200 Hz, resonance 6, all voices filtered, vibrato
-6 Hz at depth 0). A layer is a copy of the top-level oscillator but what it names. A table step
-plays its layer's wave unless it names one. An effect takes its type's settings but what it names.
-An LFO is a triangle unless it names a shape. Ranges:
-
-{{FIELDS}}
+{{LAB_NAMES}}
 
 ## Examples
 
-Each is a request and the patch for it. All sixteen of SIDOU's sounds as patches are listed in
-https://dsablic.github.io/sidou/sounds/sidou-sounds.json (each `patch` a file beside it); the JSON
-Schema is https://dsablic.github.io/sidou/patch.schema.json.
-
 {{EXAMPLES}}
+
+## Several sounds, or a pattern
+
+Asked for several sounds at once ("a drum kit"), answer with a bank: `{"format": "sidou-bank/1",
+"name": "ACID KIT", "patches": [...]}`, up to 16 patches, sent as one song; its link is `#bank=`.
+Asked for a groove or a bassline, answer with a STEP pattern (`sidou-step/1`, its link `#step=`):
+one lane of up to 64 steps with notes or drums, slides, accents and chances. Both formats and
+examples: llms-examples.txt.
+
+## Changing a patch
+
+Given a patch and asked for a change ("darker", "a slower attack"), answer with the whole patch:
+keep every field you were not asked about as it is, change only what was asked, and keep the name
+unless asked.
 
 ## The link
 
-After the JSON, give the link
-`https://dsablic.github.io/sidou/library.html#patch=` followed by the JSON on one line with no
-spaces outside the strings, percent-encoded: write `{` as `%7B`, `}` as `%7D`, `[` as `%5B`, `]` as
-`%5D`, `"` as `%22`, `:` as `%3A`, `,` as `%2C`, a space as `%20` and `+` as `%2B`; letters, digits,
-`-`, `_` and `.` stay. For example, `{"format":"sidou-patch/1","name":"HI"}` is
-`https://dsablic.github.io/sidou/library.html#patch=%7B%22format%22%3A%22sidou-patch%2F1%22%2C%22name%22%3A%22HI%22%7D`
-(`/` is `%2F`). The page reads the patch from the link and sends nothing until its user presses
-Send to FM-1.
+After the JSON, give `https://dsablic.github.io/sidou/library.html#patch=` followed by the JSON on
+one line with no spaces outside the strings, percent-encoded: `{` is `%7B`, `}` `%7D`, `[` `%5B`,
+`]` `%5D`, `"` `%22`, `:` `%3A`, `,` `%2C`, a space `%20`, `+` `%2B`, `/` `%2F`; letters, digits,
+`-`, `_` and `.` stay. The page reads the patch from the link and sends nothing until its user
+presses Send to FM-1.

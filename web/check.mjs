@@ -435,10 +435,14 @@ try {
   const { readFileSync: readFixture } = await import("node:fs");
   const llms = readFixture(new URL("llms.txt", import.meta.url), "utf8");
   if (await (await fetch(new URL("llms.txt", url))).text() !== llms) fail("the site's llms.txt is not docs/prompt-to-patch.md");
+  for (const part of ["fields", "lab", "examples", "full"]) {
+    if (await (await fetch(new URL(`llms-${part}.txt`, url))).text() !== readFixture(new URL(`llms-${part}.txt`, import.meta.url), "utf8")) fail(`the site's llms-${part}.txt is not the repo's`);
+  }
+  const llmsFull = readFixture(new URL("llms-full.txt", import.meta.url), "utf8");
   if (await (await fetch(new URL("patch.schema.json", url))).text() !== readFixture(new URL("patch.schema.json", import.meta.url), "utf8")) fail("the site's patch.schema.json is not the repo's");
   await lib.locator("#copy-instructions").click();
   await lib.waitForFunction(() => window.__library.copied !== null, null, { timeout: 10_000 }).catch(() => fail("Copy instructions copied nothing"));
-  if (await lib.evaluate(() => window.__library.copied) !== llms) fail("Copy instructions did not copy llms.txt");
+  if (await lib.evaluate(() => window.__library.copied) !== llmsFull) fail("Copy instructions did not copy llms-full.txt");
   await lib.locator("#patch-text").fill('{"format": "sidou-patch/1", "filter": {"resonance": 20}}');
   await lib.locator("#patch-check").click();
   await lib.waitForFunction(() => /filter\.resonance: 20 is too high\. Allowed: 0 to 15\./.test(document.getElementById("patch-state").textContent), null, { timeout: 10_000 })

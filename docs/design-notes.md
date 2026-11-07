@@ -6588,7 +6588,16 @@ gain.
   in plain words. A fragment never leaves the browser.
 - **The instructions** are generated (`patch_docs.rs`, `SIDOU_PATCH_DOC_UPDATE=1`) from a template,
   the field table and six of the sixteen sounds; a test reads every example back to its sound.
-  `tools/web-demo` copies `docs/prompt-to-patch.md` to the site as `llms.txt` and the schema as
+  They follow the prompt-writing guidance the owner chose (2026-11-07): written for the weakest
+  model that may read them (two worked examples, since the format is new), a reference tree (the
+  core, `llms.txt`, keeps what a model needs to decide and write: the engine, the routing rule
+  with its reason, the sound-design notes, the core fields, the answer's shape; every field, LAB's
+  controls and more examples are files it opens on demand, and `llms-full.txt` is all of it for
+  pasting), the schema as the contract, and a line saying where their knowledge ends. An answer
+  ends with two to four things to turn in LAB, named as LAB names them; a test holds every page
+  and card the files name to `lab_view_page_name` and `lab_view_card`.
+  `tools/web-demo` copies `docs/prompt-to-patch.md` to the site as `llms.txt` (and its four
+  companions as `llms-*.txt`) and the schema as
   `patch.schema.json`, and the browser check compares them with the repository's.
 
 ### Library backups

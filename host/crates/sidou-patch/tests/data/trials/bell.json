@@ -1,0 +1,1 @@
+{"format": "sidou-patch/1", "name": "CRYSTAL BELL", "wave": "triangle", "ring": true, "envelope": {"attack": 0, "decay": 10, "sustain": 0, "release": 9}, "filter": {"voices": []}, "vibrato": {"rate_hz": 0}, "layers": [{"ring": false, "detune": 5}, {"ring": false, "transpose": 15}], "fx": {"effect": {"type": "reverb", "mix": 40}}}

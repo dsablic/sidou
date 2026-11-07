@@ -436,7 +436,7 @@ async function copyText(text) {
 }
 
 async function copyInstructions() {
-  const text = await (await fetch("llms.txt")).text();
+  const text = await (await fetch("llms-full.txt")).text();
   say($("patch-state"), (await copyText(text)) ? `The instructions are copied (${text.split(/\s+/).length} words): paste them into a chat, then ask for a sound.` : "The browser did not allow copying: open the instructions link and copy them from there.", "ok");
 }
 

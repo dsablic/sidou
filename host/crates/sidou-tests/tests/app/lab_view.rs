@@ -2908,3 +2908,87 @@ fn a_learned_cc_turns_the_card_and_the_drawing() {
     assert_ne!(value(&ui), card, "the card moved");
     assert_ne!(canvas_glyphs(&ui), drawing, "and the band");
 }
+
+fn card_name(ui: &Ui, page: u32, k: u32) -> String {
+    let (mut name, mut value) = (
+        [0 as std::os::raw::c_char; LAB_VIEW_TEXT as usize],
+        [0 as std::os::raw::c_char; LAB_VIEW_TEXT as usize],
+    );
+    let (mut fill, mut max) = (0, 0);
+    unsafe {
+        lab_view_card(
+            &ui.v.lab,
+            page,
+            k,
+            name.as_mut_ptr(),
+            value.as_mut_ptr(),
+            &mut fill,
+            &mut max,
+        )
+    };
+    name.iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8 as char)
+        .collect()
+}
+
+#[test]
+fn every_page_and_card_the_instructions_name_is_labs() {
+    let ui = lab_ui();
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let pages: Vec<String> = (0..LAB_PAGES)
+        .map(|p| {
+            unsafe { std::ffi::CStr::from_ptr(lab_view_page_name(p)) }
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let page_of = |name: &str| {
+        pages
+            .iter()
+            .position(|p| p == name)
+            .unwrap_or_else(|| panic!("no LAB page {name}")) as u32
+    };
+    let core = std::fs::read_to_string(root.join("docs/prompt-to-patch.md")).unwrap();
+    let section = core
+        .split("## LAB's controls")
+        .nth(1)
+        .unwrap()
+        .split("\n## ")
+        .next()
+        .unwrap();
+    let mut rows = 0;
+    for line in section.lines().filter_map(|l| l.strip_prefix("- ")) {
+        let (page, rest) = line.split_once(": ").unwrap();
+        let p = page_of(page);
+        let cards = rest.split(';').next().unwrap();
+        for (k, card) in cards.split(", ").enumerate() {
+            assert!(
+                card_name(&ui, p, k as u32).starts_with(card),
+                "{page} K{}: {card} is {}",
+                k + 1,
+                card_name(&ui, p, k as u32)
+            );
+        }
+        rows += 1;
+    }
+    assert_eq!(rows, LAB_PAGES as usize, "every page");
+    let lab = std::fs::read_to_string(root.join("docs/prompt-to-patch-lab.md")).unwrap();
+    for line in lab
+        .lines()
+        .filter(|l| l.starts_with("| ") && !l.starts_with("| Page"))
+    {
+        let cells: Vec<&str> = line.split(" | ").collect();
+        let page = cells[0].trim_start_matches("| ");
+        let p = page_of(page);
+        if let Some((k, card)) = cells[1].strip_prefix('K').and_then(|c| c.split_once(' ')) {
+            let k: u32 = k.parse().unwrap();
+            assert!(
+                card_name(&ui, p, k - 1).starts_with(card),
+                "{page} K{k}: {card}"
+            );
+        } else {
+            assert_eq!(cells[1], "ALGORITHM");
+        }
+    }
+}

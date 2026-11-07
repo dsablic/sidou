@@ -7,7 +7,7 @@ use std::process::ExitCode;
 
 use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
 use sidou_sysex::patch::{bank_file, patch_file, step_file, PatchFile};
-use sidou_sysex::send::{file_type_of, store_name, Client, Port, Sent, Timing, DEFAULT_PORT};
+use sidou_sysex::send::{file_type_of, sent_name, Client, Port, Sent, Timing, DEFAULT_PORT};
 use sidou_sysex::sid;
 
 const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
@@ -262,7 +262,7 @@ fn send_main(rest: Vec<String>) -> ExitCode {
     let name = a
         .name
         .clone()
-        .unwrap_or_else(|| store_name(&a.file.display().to_string()));
+        .unwrap_or_else(|| sent_name(&a.file.display().to_string(), &bytes));
     println!(
         "sending {} as {name} to the MIDI port \"{}\"",
         a.file.display(),
