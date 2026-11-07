@@ -2892,36 +2892,36 @@ Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
 
 **felucca-bsp**
 
-- [ ] **An install over 1.7 with SIDOU's installer:** it finishes, SIDOU boots, settings and songs
-  are kept. *Emulator:* `usb.rs::the_running_firmware_serves_an_updates_whole_step_one`.
-- [ ] **A firmware install while SysEx flows:** send a bank of 32 dumps from a librarian, then
+- [x] **An install over 1.7 with SIDOU's installer:** it finishes, SIDOU boots, settings and songs
+  are kept. *Emulator:* `usb.rs::the_running_firmware_serves_an_updates_whole_step_one`. *Result:* Passed 2026-11-07 (the default test build over 1.7.0).
+- [x] **A firmware install while SysEx flows:** send a bank of 32 dumps from a librarian, then
   start an install at once: it answers and finishes. *Emulator:*
   `usb.rs::thirty_two_patch_dumps_sent_back_to_back_all_arrive`,
-  `usb.rs::the_updater_answers_a_frame_that_follows_one_sidou_took`.
-- [ ] **USB-MIDI both ways and USB audio at 44.1 kHz:** "SIDOU FM-1" in a DAW, notes in and K1's
+  `usb.rs::the_updater_answers_a_frame_that_follows_one_sidou_took`. *Result:* Passed 2026-11-07: 32 dumps in 2 ms, then the install at once.
+- [x] **USB-MIDI both ways and USB audio at 44.1 kHz:** "SIDOU FM-1" in a DAW, notes in and K1's
   CC out; the audio input offers 44.1 kHz only and records the line out clean for two minutes.
-  *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`.
-- [ ] **The audio starts at every boot** (felucca-bsp's start checks the stock audio PLL; a
-  refused start is silence): ten power-ons, a note each time.
+  *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`. *Result:* Passed 2026-11-07: notes in, 296 CC 74 out; the input offers 44,100 Hz only; a held chord at -26 dBFS, no gap.
+- [x] **The audio starts at every boot** (felucca-bsp's start checks the stock audio PLL; a
+  refused start is silence): ten power-ons, a note each time. *Result:* Passed 2026-11-07: ten power-ons.
 
 **Bluetooth MIDI, the peripheral (`SIDOU_BLE=ON`)**
 
-- [ ] **BLUETOOTH ON** (SETTINGS, the last item, ALGORITHM clockwise): within a few seconds the
+- [x] **BLUETOOTH ON** (SETTINGS, the last item, ALGORITHM clockwise): within a few seconds the
   radio starts, the sound keeps playing, no reboot; OFF stops it; a power cycle keeps the setting.
   *Emulator (no radio):* `ble.rs::bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising`,
-  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`.
-- [ ] **SIDOU in the Mac's Audio MIDI Setup:** Window, Show MIDI Studio, the Bluetooth button: the
-  window lists `SIDOU XXXX`; Connect. After a power cycle the Mac finds the same SIDOU.
-- [ ] **Notes both ways:** notes from GarageBand or Logic play SIDOU; SIDOU's keys and knobs arrive
+  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`. *Result:* Failed 2026-11-07 (a reset at once, no fault screen, back OFF), then passed with the rails raised (STATUS `P 03 0B 07 0F 01 01 06`); a power cycle kept ON.
+- [x] **SIDOU in the Mac's Audio MIDI Setup:** Window, Show MIDI Studio, the Bluetooth button: the
+  window lists `SIDOU XXXX`; Connect. After a power cycle the Mac finds the same SIDOU. *Result:* Passed 2026-11-07: `SIDOU D84A`, and again after a power cycle.
+- [x] **Notes both ways:** notes from GarageBand or Logic play SIDOU; SIDOU's keys and knobs arrive
   in the DAW; SIDOU follows the DAW's clock and start / stop. Disconnect while a note is held:
-  **no stuck note**. *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`.
+  **no stuck note**. *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`. *Result:* Passed 2026-11-07: notes from the Mac, 348 CC 74 to the Mac; the link dropped with a note held: no stuck note. The DAW clock not checked.
 - [ ] **No audio glitch while connected:** two minutes of a three-note chord with K1 turning and
   notes coming in over Bluetooth: 0 clicks on the headphones; then an hour of two SIDs with
   Bluetooth MIDI in from the Mac: no clicks, no reboot. A save during the link (the store's erase
   holds up to 35 ms): the link survives or comes back. *Emulator (radio off):* the audio
-  interrupt is the default build's to the instruction (`ram_audio.rs` on the Bluetooth build).
-- [ ] **A firmware install still works** with BLUETOOTH ON: SIDOU's installer over USB finishes.
-
+  interrupt is the default build's to the instruction (`ram_audio.rs` on the Bluetooth build). *Result:* Two minutes passed 2026-11-07 (458 notes over Bluetooth, the USB recording clean); the hour of two SIDs and the save during the link are still open.
+- [x] **A firmware install still works** with BLUETOOTH ON: SIDOU's installer over USB finishes.
+ *Result:* Passed 2026-11-07.
 ## Result
 
 | Section | Pass / fail | Notes |
