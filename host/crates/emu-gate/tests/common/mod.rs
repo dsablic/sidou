@@ -1253,6 +1253,18 @@ pub fn booted(fw: &Firmware) -> Machine {
     m
 }
 
+pub const FLASH_PARTS: [(&str, [u8; 3]); 2] = [
+    ("Puya P25Q80", [0x85, 0x60, 0x14]),
+    ("UC25HQ80", [0xB3, 0x60, 0x14]),
+];
+
+pub fn booted_on(fw: &Firmware, jedec: [u8; 3]) -> Machine {
+    let mut m = Machine::boot(&fw.image);
+    m.soc.flash.jedec = jedec;
+    run_past_boot(&mut m, fw);
+    m
+}
+
 pub fn assert_within_budget<T: PartialOrd + std::fmt::Display>(what: &str, cost: T, budget: T) {
     assert!(
         cost <= budget,

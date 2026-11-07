@@ -491,7 +491,10 @@ TIMER5 runs meanwhile, so the store's write windows and held erases (M2a
 Task 4) are sized from the part's real times. fm1-emu can't give them: its
 flash is instantaneous.
 
-**The part.** The unit answers JEDEC `85 60 14`. The id table of Puya's
+**The part.** The unit answers JEDEC `85 60 14`; newer units (sold since late 2026) carry a
+UC25HQ80, `B3 60 14`, the same 1 MiB with the same commands, and SIDOU accepts both since 1.7.1
+([Felucca#320](https://github.com/hugelton/Felucca/issues/320); its timings are taken to be the
+Puya's, unmeasured). The id table of Puya's
 P25Q80H datasheet (8 Mbit, January 2021) lists exactly that id. Its figures,
 typical / maximum:
 
