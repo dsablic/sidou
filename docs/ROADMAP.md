@@ -100,7 +100,9 @@ moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` w
     open stack vendored from fm1-base's `bt/ble`. A build option (`SIDOU_BLE`) until the device
     test passes. The room: the ceiling at the slot less 2 KB, USB audio at 44.1 kHz only, the MIDI
     ring in NOINIT and six cold files smaller. Both ways did not fit (5.7 KB over before its UI).
-    L.
+    The device test's build takes 500 bytes of the slot's reserve (580,016, the owner's call for a
+    test build, decision 0011); **before it ships in a release it must fit 579,516 again**, through
+    felucca-bsp#31 (the radio driver at plain `-Os`, about 3.2 KB) or another saving. L.
   - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
     K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
     RAMTEXT); a DICE bass role that rolls slides and accents; and ear checks of the site's sixteen

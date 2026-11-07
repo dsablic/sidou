@@ -77,6 +77,14 @@ splits of the gate-bound files. The central role's code is not built into 1.8's 
 Audio MIDI Setup, notes both ways, no audio glitch while connected, and a firmware install still
 working.
 
+## The owner's decision on the test build (2026-11-07)
+
+The first device test reset the FM-1 at BLUETOOTH ON; the fix (the stock power setup before the
+radio, as fm1-base's boot does it) put the Bluetooth image at 580,016 bytes, 500 over 1.8's
+579,516. The owner allowed **the `SIDOU_BLE` test build up to 500 bytes of the slot's 2 KB
+reserve, for the device test only**: its ceiling is 580,016. The default build's stays 579,516, and
+the Bluetooth build must fit 579,516 again before Bluetooth ships in a release.
+
 ## Consequences
 
 - The plan's steps 2 and 3 come first: a `SIDOU_BLE` build measures the real deltas, and SIDOU

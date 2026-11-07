@@ -368,11 +368,15 @@ static void status_compose(screen* s, void* state, grid* g) {
     } else {
         status_page_effects(g, th, l);
     }
+#if defined(SIDOU_BLE)
     char report[GRID_COLS];
     if (v->radio) {
         v->radio->report(v->radio->ctx, report);
     }
     put(g, lbl, STATUS_READY_ROW, 2, v->radio ? report : "READY.");
+#else
+    put(g, lbl, STATUS_READY_ROW, 2, "READY.");
+#endif
     status_store(g, th, v->drawn[VIEWS_LOOK - 3u], v->drawn[VIEWS_LOOK - 2u]);
 }
 

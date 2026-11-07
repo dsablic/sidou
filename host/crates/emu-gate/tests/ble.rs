@@ -11,6 +11,8 @@ use fm1_core::Bus;
 use sidou_sys::{ilp32, LIVE_VOICES, VIEWS_SETTINGS_BLUETOOTH};
 
 const C4: u8 = 60;
+const TEST_BUILD_RESERVE_TAKEN: usize = 500;
+const BLE_TEST_CEILING: usize = IMAGE_CEILING + TEST_BUILD_RESERVE_TAKEN;
 const NOINIT: std::ops::Range<u32> = 0x01C7_C000..0x01C7_FD50;
 const RAM_START: u32 = 0x01C0_E000;
 const POOL_START: u32 = 0x01C1_E000;
@@ -75,16 +77,17 @@ fn note_on(note: u8) -> u32 {
 }
 
 #[test]
-fn the_bluetooth_build_fits_the_ceiling() {
+fn the_bluetooth_test_build_fits_its_own_ceiling() {
     let Some(build) = ble_build() else { return };
     let size = std::fs::metadata(build.join("platform/fm1/sidou_app.bin"))
         .expect("the Bluetooth build's image")
         .len() as usize;
-    println!("Bluetooth image {size} bytes, {PLAN}'s ceiling {IMAGE_CEILING}");
+    println!(
+        "Bluetooth image {size} bytes: {PLAN}'s ceiling {IMAGE_CEILING}, the test build's {BLE_TEST_CEILING}"
+    );
     assert!(
-        size <= IMAGE_CEILING,
-        "the Bluetooth image is {size} bytes, {} over the ceiling",
-        size - IMAGE_CEILING
+        size <= BLE_TEST_CEILING,
+        "the Bluetooth image is {size} bytes, over the test build's {BLE_TEST_CEILING}"
     );
 }
 

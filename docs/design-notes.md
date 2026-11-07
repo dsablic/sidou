@@ -406,6 +406,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   STATUS shows the record on its READY line in the Bluetooth build: `P` (or `!` after a start
   that reset), then VDC14 and SYSVDD at boot, after, the tries, whether the DC-DC was moved, the
   clock byte, in hex.
+- **The Bluetooth test build's own ceiling** (the owner, 2026-11-07): 580,016 bytes, 1.8's ceiling
+  (579,516) plus 500 of the slot's 2 KB reserve, for the device test only (`ble.rs`'s
+  `BLE_TEST_CEILING`). The power setup made the image 580,016, 500 over, and nothing cheap was left
+  (a second split reached about 250-370 bytes). The default build's ceiling stays 579,516, and
+  before Bluetooth ships in a release the Bluetooth build must fit 579,516 again (felucca-bsp#31,
+  about 3.2 KB, or another saving; the roadmap).
 - **BLUETOOTH ON is saved only after the radio started cleanly**, and a start that resets cannot
   loop: a word in NOINIT marks the start's dangerous part; found set at the next boot, the radio
   is not started, BLUETOOTH is saved OFF and STATUS shows `!`. A kept ON that fails at a later

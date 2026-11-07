@@ -175,6 +175,7 @@ fn c_build(root: &Path) -> cc::Build {
         .define(MIDI_MAP_DOC, None)
         .define(RACE_HOOK, None)
         .define("SIDOU_FONT_CHECK", None)
+        .define("SIDOU_BLE", None)
         .warnings_into_errors(true);
     sanitize::apply_sanitizer(&mut build);
     build
