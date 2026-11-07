@@ -4747,6 +4747,16 @@ Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.
 
 ## Store and settings
 
+### The flash part
+
+- The store and the updater run only on a flash part SIDOU knows (`flash_known`, `midi.c`): the
+  Puya P25Q80 (`0x856014`) and, since 1.7.1, the UC25HQ80 (`0xB36014`) of newer units
+  ([Felucca#320](https://github.com/hugelton/Felucca/issues/320)): both 1 MiB, the same SPI NOR
+  commands. Any other ID keeps the store off (saves refused, the update session -17), so an
+  unknown part is never written. emu-gate boots both IDs (`common::FLASH_PARTS`): SAVE stores the
+  settings and an update's step 1 runs on each. The UC25HQ80's timings are taken to be the
+  Puya's, unmeasured.
+
 ### Format and versioning
 
 - The store is format version 1 (`STORE_FORMAT`); every erase header carries it. Settings use
