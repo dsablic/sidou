@@ -26,7 +26,7 @@ sources=(
     platform/fm1/libc_min.c platform/web/libm_min.c
     core/song/gt2_song.c core/song/gt2_sng.c core/song/gt2_stream.c core/song/song_ext.c core/song/gt2_kit.c
     core/sid/sid_filter.c
-    app/lab_sound.c app/lab_edit.c app/lab_song.c app/lab_draw.c app/song_pages.c
+    app/lab_sound.c app/lab_song.c app/song_pages.c
     app/live.c app/live_setup.c app/live_cutoff.c app/live_walk.c app/fx_defaults.c app/song_io.c
 )
 flags=(--target=wasm32-unknown-unknown -std=c11 -Oz -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory

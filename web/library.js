@@ -365,7 +365,7 @@ const SOUNDS = "sounds/sidou-sounds.json";
 const PREVIEW_NOTE = 48, PREVIEW_MS = 900;
 
 async function patcher() {
-  if (!state.patcher) state.patcher = await loadPatcher("sidou-patch.wasm");
+  if (!state.patcher) state.patcher = await loadPatcher("sidou-patch.wasm", "sidou-core.wasm");
   return state.patcher;
 }
 

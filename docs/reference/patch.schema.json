@@ -166,7 +166,7 @@
           "type": "integer"
         },
         "voices": {
-          "description": "a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter)",
+          "description": "a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter: all three or none on a one-oscillator sound)",
           "items": {
             "maximum": 3,
             "minimum": 1,

@@ -6,7 +6,7 @@
       "name": "PWM STRINGS",
       "wave": "pulse",
       "envelope": {"attack": 0, "decay": 8, "sustain": 10, "release": 8},
-      "filter": {"cutoff_hz": 9078, "resonance": 4, "voices": [1]},
+      "filter": {"cutoff_hz": 9078, "resonance": 4},
       "vibrato": {"rate_hz": 0},
       "lfos": [
         {"to": "pulse_width", "rate_hz": 0.4, "depth": 28}
@@ -16,7 +16,7 @@
       "name": "303 BASS",
       "wave": "saw",
       "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
-      "filter": {"cutoff_hz": 2077, "resonance": 12, "voices": [1], "envelope": {"depth": 40, "decay": 6}},
+      "filter": {"cutoff_hz": 2077, "resonance": 12, "envelope": {"depth": 40, "decay": 6}},
       "vibrato": {"rate_hz": 0}
     },
     {
@@ -24,7 +24,7 @@
       "wave": "pulse",
       "pulse_width": 37.5,
       "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 9},
-      "filter": {"cutoff_hz": 6966, "resonance": 10, "voices": [1]},
+      "filter": {"cutoff_hz": 6966, "resonance": 10},
       "vibrato": {"rate_hz": 0},
       "lfos": [
         {"to": "cutoff", "rate_hz": 0.9, "depth": 40}
@@ -104,7 +104,7 @@
       "name": "S&H BLIPS",
       "wave": "pulse",
       "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 0},
-      "filter": {"cutoff_hz": 7668, "resonance": 12, "voices": [1]},
+      "filter": {"cutoff_hz": 7668, "resonance": 12},
       "vibrato": {"rate_hz": 0},
       "lfos": [
         {"shape": "sample_hold", "to": "cutoff", "rate_hz": 1.8, "depth": 30}
@@ -149,7 +149,7 @@
       "name": "SWEEP PAD",
       "wave": "saw",
       "envelope": {"attack": 8, "decay": 10, "sustain": 10, "release": 9},
-      "filter": {"cutoff_hz": 1383, "resonance": 8, "voices": [1], "envelope": {"depth": 30, "attack": 10, "decay": 10, "sustain": 6, "release": 10}},
+      "filter": {"cutoff_hz": 1383, "resonance": 8, "envelope": {"depth": 30, "attack": 10, "decay": 10, "sustain": 6, "release": 10}},
       "vibrato": {"rate_hz": 4, "depth": 12, "delay": 40}
     },
     {

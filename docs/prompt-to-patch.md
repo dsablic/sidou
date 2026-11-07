@@ -27,8 +27,9 @@ link (see "The link"), then at most two sentences on how to play it. Nothing els
   Decay and release are three times longer (0 = 6 ms, 8 = 300 ms, 9 = 750 ms, 10 = 1.5 s,
   12 = 3 s, 15 = 24 s). Sustain is a level (0 silent, 15 full).
 - **One analog filter for the whole chip:** `mode` low, band or high (low+high is a notch),
-  `cutoff_hz`, `resonance`, and `voices`, the chip voices that pass through it (a one-oscillator
-  sound plays its notes on voices 1, 2 and 3; layer n is voice n). Voices left out are unfiltered.
+  `cutoff_hz`, `resonance`, and `voices`, the chip voices that pass through it: a one-oscillator
+  sound plays each key on the next free voice, so it filters all three or none; on a layered sound
+  layer n is voice n and the layers route apart.
   The filter has its own envelope, in cutoff steps, plus `lfo_depth`. `cutoff_hz` is as an 8580
   plays it; a 6581's filter is darker below 300 Hz and brighter above.
 - **Movement:** PWM (the pulse width swept by its own LFO), vibrato with a delay, two LFOs
@@ -47,25 +48,30 @@ link (see "The link"), then at most two sentences on how to play it. Nothing els
 
 ## Making it sound good
 
-- **The FM-1 refuses a sound its estimate calls silent on both chips** (and warns when one chip
-  would not hear it). Keep it clearly audible: sustain 8 or
-  more, or with sustain 0 a decay of 9 or more; a low-pass cutoff at least two octaves above the
-  notes (2000 Hz or more), or a filter envelope that opens it (depth 25 to 50); no `none` wave;
-  pulse width between 10 and 90.
-- Bass: saw or pulse 25 to 40, attack 0, decay 6 to 9, sustain 6 to 10, low-pass 2000 to 3000 Hz
-  with resonance 10 to 13 and a filter envelope (depth 30 to 50, decay 5 to 8, sustain 0): that is
-  the squelch. Voices [1] keeps the filter on the first note only, the 303 way.
-- Leads: pulse 30 to 45 with PWM (depth 10 to 25, rate 0.5 to 3 Hz), or saw; vibrato rate 5 to 6 Hz,
-  depth 10 to 20, delay 20 to 40 (hundredths of a second); `sync_lead` for a classic sync scream.
-- Pads: attack 8 to 10, release 9 to 11, sustain 10 to 14, slow PWM or a slow LFO on the cutoff.
-  Layers make a pad fatter (two saws detuned 5 to 15 cents) but one note at a time.
-- Bells and metal: triangle layers with ring, the modulator at a non-octave interval (transpose 7,
-  15 or 19), decay 9 to 11, sustain 0, release 8 to 10.
+The page plays every sound before taking it and refuses one neither chip makes heard (a wave of
+`none`, a closed envelope, a filter far from the notes with nothing to open it). Otherwise write
+the sound you mean.
+
+- **Acid bass:** saw, attack 0, decay 5 to 7, sustain 0, release 2 to 4; low-pass with a low
+  cutoff (300 to 700 Hz) and high resonance (12 to 15), and the filter envelope doing the work
+  (depth 40 to 60, attack 0, decay 4 to 6, sustain 0). The squelch is the resonant peak sweeping
+  down after each note. Overdrive (mix 50 to 80) adds bite; play it as a STEP pattern with slides
+  and accents.
+- **Pads:** attack 8 to 10, decay 10, sustain 10 to 14, release 9 to 11; pulse 30 to 45 with slow
+  PWM (depth 10 to 25, 0.2 to 0.8 Hz), or a slow LFO on the cutoff; a soft low-pass (2000 to
+  4000 Hz, resonance 2 to 6); chorus and lush. Layers (two saws detuned 5 to 15 cents) make it
+  fatter, but one note at a time.
+- **Bells and metal:** triangle layers with ring, the modulator at a non-octave interval
+  (transpose 7, 15 or 19), attack 0, decay 9 to 11, sustain 0, release 8 to 10; reverb.
+- **Leads:** pulse 30 to 45 with PWM (depth 10 to 25, 0.5 to 3 Hz), or saw; vibrato 5 to 6 Hz,
+  depth 10 to 20, delay 20 to 40 (hundredths of a second); `sync_lead` for a sync scream; a delay
+  (mix 20 to 30).
+- **The filter on a one-oscillator sound takes all three voices or none** (`"voices": [1, 2, 3]`
+  or `[]`): each key plays on the next free voice, so a voice left out plays some notes unfiltered.
+  Only a layered sound routes layers apart (layer n is voice n).
 - Drums: a table. Kick: noise then triangle falling (`"note": -5` and lower), frames 1. Snare:
   noise, a triangle hit, noise. Hats: noise alone, decay 0 to 2.
 - Chip chords: a table of 0, 4, 7 (major) or 0, 3, 7 (minor) and 12, frames 1 or 2, loop 1.
-- Effects: a little reverb or delay (mix 20 to 40) flatters leads and pads; overdrive or fuzz suits
-  basses and leads.
 
 ## Several sounds: a bank
 
@@ -113,7 +119,7 @@ Its link starts `https://dsablic.github.io/sidou/library.html#step=`. An acid li
     "name": "303",
     "wave": "saw",
     "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
-    "filter": {"cutoff_hz": 2077, "resonance": 12, "voices": [1], "envelope": {"depth": 40, "decay": 6}},
+    "filter": {"cutoff_hz": 2077, "resonance": 12, "envelope": {"depth": 40, "decay": 6}},
     "vibrato": {"rate_hz": 0}
   },
   "steps": [
@@ -153,7 +159,7 @@ An LFO is a triangle unless it names a shape. Ranges:
 - `transpose` -24 to 24 (semitones)
 - `detune` -99 to 99 (cents)
 - `fine_tune` -50 to 50 (cents, the whole sound)
-- `filter` {`mode` low, band and high, one or several joined with + (like "low+band"), or off; `cutoff_hz` 0 to 14298 (Hz, as an 8580 plays it); `resonance` 0 to 15; `voices` a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter); `resonance_link` -8 to 8 (the resonance follows the cutoff knob); `lfo_depth` 0 to 32 (a cutoff wobble at the PWM rate, 0 off); `envelope` {`depth` -63 to 63 (cutoff steps of 32 at the peak, below 0 closes); `attack`, `decay`, `sustain`, `release` 0 to 15}}
+- `filter` {`mode` low, band and high, one or several joined with + (like "low+band"), or off; `cutoff_hz` 0 to 14298 (Hz, as an 8580 plays it); `resonance` 0 to 15; `voices` a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter: all three or none on a one-oscillator sound); `resonance_link` -8 to 8 (the resonance follows the cutoff knob); `lfo_depth` 0 to 32 (a cutoff wobble at the PWM rate, 0 off); `envelope` {`depth` -63 to 63 (cutoff steps of 32 at the peak, below 0 closes); `attack`, `decay`, `sustain`, `release` 0 to 15}}
 - `pwm` {`depth` 0 to 50 (percent of the cycle swept); `rate_hz` 0 to 12.75; `link` -8 to 8 (the PWM depth follows the pulse width knob)}
 - `sync_lead` {`on` true or false (oscillator 1 hard-synced to a silent one; one note at a time); `ratio` 0 to 15.996 (the synced pitch over the note's, 2.75 is SYNC LEAD's); `semitones` -12 to 12 (added to the ratio)}
 - `vibrato` {`rate_hz` 0 to 12.7; `depth` 0 to 127 (127 is about a semitone each way); `delay` 0 to 127 (hundredths of a second after the note starts)}
@@ -173,20 +179,20 @@ Each is a request and the patch for it. All sixteen of SIDOU's sounds as patches
 https://dsablic.github.io/sidou/sounds/sidou-sounds.json (each `patch` a file beside it); the JSON
 Schema is https://dsablic.github.io/sidou/patch.schema.json.
 
-"a resonant saw bass for STEP's SLIDE and ACCENT locks":
+"a squelchy acid bass":
 
 ```json
 {
   "format": "sidou-patch/1",
-  "name": "303 BASS",
+  "name": "SQUELCH 2",
   "wave": "saw",
-  "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
-  "filter": {"cutoff_hz": 2077, "resonance": 12, "voices": [1], "envelope": {"depth": 40, "decay": 6}},
-  "vibrato": {"rate_hz": 0}
+  "envelope": {"attack": 0, "decay": 6, "sustain": 0, "release": 3},
+  "filter": {"cutoff_hz": 497, "resonance": 14, "envelope": {"depth": 50, "decay": 5, "release": 3}},
+  "fx": {"distortion": {"type": "overdrive", "mix": 70}}
 }
 ```
 
-https://dsablic.github.io/sidou/library.html#patch=%7B%22format%22%3A%22sidou-patch%2F1%22%2C%22name%22%3A%22303%20BASS%22%2C%22wave%22%3A%22saw%22%2C%22envelope%22%3A%7B%22attack%22%3A0%2C%22decay%22%3A8%2C%22sustain%22%3A8%2C%22release%22%3A8%7D%2C%22filter%22%3A%7B%22cutoff_hz%22%3A2077%2C%22resonance%22%3A12%2C%22voices%22%3A%5B1%5D%2C%22envelope%22%3A%7B%22depth%22%3A40%2C%22decay%22%3A6%7D%7D%2C%22vibrato%22%3A%7B%22rate_hz%22%3A0%7D%7D
+https://dsablic.github.io/sidou/library.html#patch=%7B%22format%22%3A%22sidou-patch%2F1%22%2C%22name%22%3A%22SQUELCH%202%22%2C%22wave%22%3A%22saw%22%2C%22envelope%22%3A%7B%22attack%22%3A0%2C%22decay%22%3A6%2C%22sustain%22%3A0%2C%22release%22%3A3%7D%2C%22filter%22%3A%7B%22cutoff_hz%22%3A497%2C%22resonance%22%3A14%2C%22envelope%22%3A%7B%22depth%22%3A50%2C%22decay%22%3A5%2C%22release%22%3A3%7D%7D%2C%22fx%22%3A%7B%22distortion%22%3A%7B%22type%22%3A%22overdrive%22%2C%22mix%22%3A70%7D%7D%7D
 
 "a pulse bass with the cutoff wobbling just under 1 Hz":
 
@@ -197,7 +203,7 @@ https://dsablic.github.io/sidou/library.html#patch=%7B%22format%22%3A%22sidou-pa
   "wave": "pulse",
   "pulse_width": 37.5,
   "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 9},
-  "filter": {"cutoff_hz": 6966, "resonance": 10, "voices": [1]},
+  "filter": {"cutoff_hz": 6966, "resonance": 10},
   "vibrato": {"rate_hz": 0},
   "lfos": [
     {"to": "cutoff", "rate_hz": 0.9, "depth": 40}
@@ -213,7 +219,7 @@ https://dsablic.github.io/sidou/library.html#patch=%7B%22format%22%3A%22sidou-pa
   "name": "SWEEP PAD",
   "wave": "saw",
   "envelope": {"attack": 8, "decay": 10, "sustain": 10, "release": 9},
-  "filter": {"cutoff_hz": 1383, "resonance": 8, "voices": [1], "envelope": {"depth": 30, "attack": 10, "decay": 10, "sustain": 6, "release": 10}},
+  "filter": {"cutoff_hz": 1383, "resonance": 8, "envelope": {"depth": 30, "attack": 10, "decay": 10, "sustain": 6, "release": 10}},
   "vibrato": {"rate_hz": 4, "depth": 12, "delay": 40}
 }
 ```

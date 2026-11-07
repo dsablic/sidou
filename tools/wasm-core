@@ -32,10 +32,11 @@ sources=(
     core/fx/fx.c core/fx/fx_slots.c core/fx/fx_slots_init.c core/fx/fx_reverb.c core/fx/fx_plate.c
     core/fx/fx_limit.c
     app/lab_song.c app/lab_sound.c app/live.c
+    platform/web/patch_level.c
 )
 flags=(--target=wasm32-unknown-unknown -std=c11 -Oz -ffp-contract=off -nostdlib -fno-builtin -mbulk-memory
        -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Wno-unused-parameter
-       -isystem "$root/platform/web/include" -I"$root/core" -I"$root/app")
+       -isystem "$root/platform/web/include" -I"$root/core" -I"$root/app" -I"$root/platform/web")
 objs=()
 for s in "${sources[@]}"; do
     o="$obj/$(echo "$s" | tr / _).o"

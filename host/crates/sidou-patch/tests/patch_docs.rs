@@ -13,8 +13,11 @@ use sidou_sys::SID_MODEL_6581;
 
 const UPDATE: &str = "SIDOU_PATCH_DOC_UPDATE";
 const SITE: &str = "https://dsablic.github.io/sidou/";
-const EXAMPLES: [&str; 6] = [
-    "303 BASS",
+const ACID: (&str, &str) = (
+    "a squelchy acid bass",
+    r#"{"format": "sidou-patch/1", "name": "SQUELCH 2", "wave": "saw", "envelope": {"attack": 0, "decay": 6, "sustain": 0, "release": 3}, "filter": {"mode": "low", "cutoff_hz": 500, "resonance": 14, "voices": [1, 2, 3], "envelope": {"depth": 50, "attack": 0, "decay": 5, "sustain": 0, "release": 3}}, "fx": {"distortion": {"type": "overdrive", "mix": 70}}}"#,
+);
+const EXAMPLES: [&str; 5] = [
     "WOBBLE BASS",
     "SWEEP PAD",
     "RING BELL",
@@ -30,7 +33,10 @@ const HINTS: [(&str, &str); 27] = [
     ("detune", "cents"),
     ("fine_tune", "cents, the whole sound"),
     ("filter.cutoff_hz", "Hz, as an 8580 plays it"),
-    ("filter.voices", "the chip voices through the filter"),
+    (
+        "filter.voices",
+        "the chip voices through the filter: all three or none on a one-oscillator sound",
+    ),
     (
         "filter.resonance_link",
         "the resonance follows the cutoff knob",
@@ -214,20 +220,24 @@ fn sound(name: &str) -> Sound {
         .expect(name)
 }
 
+fn acid_text() -> String {
+    let (sound, name) = json::read(ACID.1).unwrap();
+    json::write(&sound, &name)
+}
+
 fn examples() -> String {
-    EXAMPLES
-        .iter()
-        .enumerate()
-        .map(|(i, name)| {
-            let s = sound(name);
-            let text = json::write(&s.bytes, s.name);
-            let tail = if i == 0 {
-                format!("\n\n{}", link(&text))
-            } else {
-                String::new()
-            };
-            format!("\"{}\":\n\n```json\n{}```{tail}", s.about, text)
-        })
+    let acid = acid_text();
+    let first = format!("\"{}\":\n\n```json\n{acid}```\n\n{}", ACID.0, link(&acid));
+    let rest = EXAMPLES.iter().map(|name| {
+        let s = sound(name);
+        format!(
+            "\"{}\":\n\n```json\n{}```",
+            s.about,
+            json::write(&s.bytes, s.name)
+        )
+    });
+    std::iter::once(first)
+        .chain(rest)
         .collect::<Vec<_>>()
         .join("\n\n")
 }
@@ -365,7 +375,7 @@ fn committed(path: PathBuf, want: &str) -> bool {
 }
 
 const TRIALS: [&str; 3] = [
-    r#"{"format": "sidou-patch/1", "name": "SQUELCH", "wave": "saw", "envelope": {"attack": 0, "decay": 7, "sustain": 8, "release": 4}, "filter": {"mode": "low", "cutoff_hz": 2200, "resonance": 13, "voices": [1], "envelope": {"depth": 45, "attack": 0, "decay": 6, "sustain": 0, "release": 4}}, "bend_range": 12, "fx": {"distortion": {"type": "overdrive", "mix": 90}}}"#,
+    r#"{"format": "sidou-patch/1", "name": "SQUELCH", "wave": "saw", "envelope": {"attack": 0, "decay": 7, "sustain": 8, "release": 4}, "filter": {"mode": "low", "cutoff_hz": 2200, "resonance": 13, "voices": [1, 2, 3], "envelope": {"depth": 45, "attack": 0, "decay": 6, "sustain": 0, "release": 4}}, "bend_range": 12, "fx": {"distortion": {"type": "overdrive", "mix": 90}}}"#,
     r#"{"format": "sidou-patch/1", "name": "GLASS BELL", "wave": "triangle", "ring": true, "envelope": {"attack": 0, "decay": 10, "sustain": 0, "release": 9}, "filter": {"voices": []}, "layers": [{"ring": false, "detune": 4}, {"ring": false, "transpose": 19}], "fx": {"effect": {"type": "reverb", "mix": 35}}}"#,
     r#"{"format": "sidou-patch/1", "name": "DUSK PAD", "wave": "pulse", "pulse_width": 40, "envelope": {"attack": 9, "decay": 10, "sustain": 12, "release": 10}, "filter": {"mode": "low", "cutoff_hz": 3000, "resonance": 4, "voices": [1, 2, 3]}, "pwm": {"depth": 20, "rate_hz": 0.4}, "vibrato": {"rate_hz": 5, "depth": 8, "delay": 60}, "lfos": [{"to": "cutoff", "rate_hz": 0.2, "depth": 15}], "fx": {"modulation": {"type": "chorus"}, "effect": {"type": "lush", "mix": 40}}}"#,
 ];
@@ -416,9 +426,9 @@ fn fixtures() -> String {
     }
     cases.push(json!({"text": STEP_REFUSED, "ok": false, "error": json::step_song(STEP_REFUSED, SID_MODEL_6581).unwrap_err()}));
     for text in [sixteen.as_str(), BANK_REFUSED] {
-        cases.push(match json::read_bank(text) {
-            Ok(b) => json!({"text": text, "ok": true, "quiet": b.quiet.unwrap_or_default(), "name": b.name,
-                "sng": hashed(&json::bank_song(text, SID_MODEL_6581).unwrap())}),
+        cases.push(match json::check_bank(text, SID_MODEL_6581) {
+            Ok((b, sng)) => json!({"text": text, "ok": true, "quiet": b.quiet.unwrap_or_default(), "name": b.name,
+                "sng": hashed(&sng)}),
             Err(e) => json!({"text": text, "ok": false, "error": e}),
         });
     }
@@ -472,7 +482,7 @@ fn every_example_in_the_instructions_converts_and_its_link_is_the_patch() {
         .collect();
     let (steps, blocks): (Vec<&str>, Vec<&str>) =
         all.iter().partition(|b| b.contains("\"sidou-step/1\""));
-    assert_eq!((steps.len(), blocks.len()), (1, EXAMPLES.len()));
+    assert_eq!((steps.len(), blocks.len()), (1, EXAMPLES.len() + 1));
     let mut song = sidou_sys::song::Song::device();
     song.read(&json::step_song(steps[0], SID_MODEL_6581).unwrap(), 0)
         .unwrap();
@@ -481,7 +491,13 @@ fn every_example_in_the_instructions_converts_and_its_link_is_the_patch() {
         Some(steps[0]),
         "the STEP example round-trips"
     );
-    for (block, name) in blocks.iter().zip(EXAMPLES) {
+    assert_eq!(blocks[0], acid_text());
+    assert_eq!(
+        json::check(blocks[0]).map(|c| c.quiet),
+        Ok(None),
+        "the acid example is heard"
+    );
+    for (block, name) in blocks[1..].iter().zip(EXAMPLES) {
         assert_eq!(
             json::read(block),
             Ok((sound(name).bytes, name.to_string())),

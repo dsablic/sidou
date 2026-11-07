@@ -6538,10 +6538,27 @@ gain.
   settings (`live_fx_defaults`), an LFO is a triangle. Reading marks every bit a patch names and
   fills only the rest; writing builds the same fill as its reference and leaves out what equals
   it, so a short patch and a full one are the same sound.
-- **Silent means silent on both chips.** `lab_audible` takes a chip; the site does not know the
-  user's. A patch neither chip would hear is refused; one only the 8580 hears (two waves together
-  on a 6581) is taken with a warning. The estimate is the rolls' and is strict (a saw at sustain 4
-  under a 1.5 kHz low-pass is under its -38 dB): the instructions give numbers that pass.
+- **Silent is heard, not estimated** (2026-11-07, after the owner's first live test). The import
+  first used `lab_audible`, the rolls' estimate; it ignores the filter envelope, so it refused a
+  classic acid bass (cutoff 500 Hz, resonance 14, sustain 0, the filter envelope at 50) and the
+  instructions taught models bland numbers to pass it. Now `patch_level.c` plays the song: the song
+  player on each chip, C2, C3 and C4 held 0.3 s each (the first as long as the attack, so an 8 s
+  attack is heard) and let go, in 128-sample blocks with each block's mean taken out (the 6581's
+  DC moves with the envelope), and a chip hears the sound when the eighth loudest block's RMS is
+  512 or more (a click of a few blocks does not count). The sixteen, the three trial patches and
+  SQUELCH 2 measure 931 (NOISE HAT on the 8580) and up; wave none, a closed envelope, a high-pass
+  at 14 kHz, a pulse of width 0 and a routed filter with no mode measure 299 and below; a saw and
+  a triangle together on a 6581, 416, a warning. Neither chip hearing it refuses the patch, one
+  chip warns. It runs in the core (`sc_level`, about 1.8 KB) and on the host, one C file for the
+  site, `sidou-sysex` and the tests; the patch module dropped `lab_audible` (4.9 KB).
+  The firmware keeps `lab_audible` for its rolls and variations: those need an answer in
+  microseconds on the device, not a second of rendering, and are not changed. The two can differ:
+  a sound the rolls would call silent can be imported, and is heard.
+- **The filter on a one-oscillator sound takes all three voices or none.** LAB plays each new key
+  on the next free voice, so `"voices": [1]` filtered some notes and not others (the owner heard
+  "randomly a flat sound"). The reader refuses it; a layered sound routes its layers apart. Five
+  of the sixteen (PWM STRINGS, 303 BASS, WOBBLE BASS, S&H BLIPS, SWEEP PAD) had voice 1 alone and
+  now take all three, the rest of each sound as it was.
 - **An existing sound as a patch:** the core reads a song's kept LAB sound (`sc_kept`, LAB's own
   `lab_song_kept`, about 1.9 KB of the core) and the patch module writes it (`sp_write`): reading the
   song in the patch module too would have cost it 11.7 KB more. Only a kept sound is exact, so an

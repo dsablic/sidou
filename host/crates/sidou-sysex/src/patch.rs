@@ -28,8 +28,7 @@ pub fn patch_file(text: &str, model: Model) -> Result<PatchFile, String> {
 }
 
 pub fn bank_file(text: &str, model: Model) -> Result<PatchFile, String> {
-    let b = json::read_bank(text)?;
-    let sng = json::bank_song(text, model.sid())?;
+    let (b, sng) = json::check_bank(text, model.sid())?;
     let syx = put_frames(&b.name, FILE_SONG, &sng)
         .map_err(|e| format!("{}: {e}", b.name))?
         .concat();
@@ -44,7 +43,7 @@ pub fn bank_file(text: &str, model: Model) -> Result<PatchFile, String> {
 }
 
 pub fn step_file(text: &str, model: Model) -> Result<PatchFile, String> {
-    let sng = json::step_song(text, model.sid())?;
+    let (sng, quiet) = json::check_step(text, model.sid())?;
     let name = String::from_utf8_lossy(&sng[4..36])
         .trim_end_matches('\0')
         .to_string();
@@ -53,6 +52,6 @@ pub fn step_file(text: &str, model: Model) -> Result<PatchFile, String> {
         .concat();
     Ok(PatchFile {
         song: SongFile { name, sng, syx },
-        quiet: None,
+        quiet,
     })
 }

@@ -40,22 +40,65 @@ pub struct Checked {
     pub quiet: Option<String>,
 }
 
+pub fn level(sng: &[u8], instr: u32, model: u32) -> u32 {
+    let mut song = Song::device();
+    if song.read(sng, 0).is_err() {
+        return 0;
+    }
+    let mut rig = Box::<patch_level_rig>::default();
+    unsafe { patch_level_rms(&mut *rig, song.ptr_mut(), instr, model) }
+}
+
+pub fn heard(sng: &[u8], first: u32, count: u32, style: u32) -> Result<Option<String>, String> {
+    let mut song = Song::device();
+    song.read(sng, 0)
+        .map_err(|_| "the song could not be read".to_string())?;
+    let mut rig = Box::<patch_level_rig>::default();
+    let mut error = vec![0u8; PATCH_LEVEL_ERROR_MAX as usize];
+    let r = unsafe {
+        patch_level_check(
+            &mut *rig,
+            song.ptr_mut(),
+            first,
+            count,
+            style,
+            error.as_mut_ptr().cast(),
+            error.len() as u32,
+        )
+    };
+    match r {
+        0 => Ok(None),
+        1 => Ok(Some(text(&error))),
+        _ => Err(text(&error)),
+    }
+}
+
 pub fn check(json: &str) -> Result<Checked, String> {
     let mut p = patch_json::default();
     let r = unsafe { patch_json_read(&mut p, json.as_ptr().cast(), json.len() as u32) };
-    let error = text(&p.error.iter().map(|&c| c as u8).collect::<Vec<_>>());
     if r < 0 {
-        return Err(error);
+        return Err(text(&p.error.iter().map(|&c| c as u8).collect::<Vec<_>>()));
     }
+    let name = text(&p.name.iter().map(|&c| c as u8).collect::<Vec<_>>());
+    let sng = song(&p.sound, &name, SID_MODEL_6581).ok_or("the song could not be made")?;
+    let quiet = heard(&sng, 1, 1, PATCH_LEVEL_PATCH)?;
     Ok(Checked {
         sound: p.sound,
-        name: text(&p.name.iter().map(|&c| c as u8).collect::<Vec<_>>()),
-        quiet: (r == PATCH_JSON_QUIET as i32).then_some(error),
+        name,
+        quiet,
     })
 }
 
 pub fn read(json: &str) -> Result<(Sound, String), String> {
-    check(json).map(|c| (c.sound, c.name))
+    let mut p = patch_json::default();
+    let r = unsafe { patch_json_read(&mut p, json.as_ptr().cast(), json.len() as u32) };
+    if r < 0 {
+        return Err(text(&p.error.iter().map(|&c| c as u8).collect::<Vec<_>>()));
+    }
+    Ok((
+        p.sound,
+        text(&p.name.iter().map(|&c| c as u8).collect::<Vec<_>>()),
+    ))
 }
 
 pub fn write(sound: &Sound, name: &str) -> String {
@@ -178,7 +221,7 @@ pub fn kind(json: &str) -> u32 {
     unsafe { patch_json_kind(json.as_ptr().cast(), json.len() as u32) as u32 }
 }
 
-pub fn step_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
+fn step_made(json: &str, model: u32) -> Result<(Vec<u8>, u32), String> {
     let mut st = Box::<patch_step>::default();
     let r = unsafe { patch_json_read_step(&mut *st, json.as_ptr().cast(), json.len() as u32) };
     if r < 0 {
@@ -186,9 +229,30 @@ pub fn step_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
     }
     let mut song = Song::device();
     match unsafe { patch_json_step_song(song.ptr_mut(), &mut *st, model) } {
-        0 => Ok(song.write(true)),
+        0 => Ok((song.write(true), u32::from(st.instr))),
         _ => Err("the pattern's song could not be made".to_string()),
     }
+}
+
+pub fn step_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
+    step_made(json, model).map(|(sng, _)| sng)
+}
+
+pub fn check_step(json: &str, model: u32) -> Result<(Vec<u8>, Option<String>), String> {
+    let (sng, instr) = step_made(json, model)?;
+    let quiet = if instr > 0 {
+        heard(&sng, instr, 1, PATCH_LEVEL_STEP)?
+    } else {
+        None
+    };
+    Ok((sng, quiet))
+}
+
+pub fn check_bank(json: &str, model: u32) -> Result<(Bank, Vec<u8>), String> {
+    let mut b = read_bank(json)?;
+    let sng = bank_song(json, model)?;
+    b.quiet = heard(&sng, 1, b.patches.len() as u32, PATCH_LEVEL_BANK)?;
+    Ok((b, sng))
 }
 
 pub fn write_step(song: &Song, voice: u32) -> Option<String> {

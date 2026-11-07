@@ -3,7 +3,7 @@
   "name": "S&H BLIPS",
   "wave": "pulse",
   "envelope": {"attack": 0, "decay": 0, "sustain": 15, "release": 0},
-  "filter": {"cutoff_hz": 7668, "resonance": 12, "voices": [1]},
+  "filter": {"cutoff_hz": 7668, "resonance": 12},
   "vibrato": {"rate_hz": 0},
   "lfos": [
     {"shape": "sample_hold", "to": "cutoff", "rate_hz": 1.8, "depth": 30}

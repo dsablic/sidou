@@ -184,7 +184,7 @@ impl MbPatch {
 
 pub const ACID: &str = r#"{"format": "sidou-step/1", "name": "acid line", "role": "acid", "pages": 1,
   "instrument": {"name": "303", "wave": "saw", "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
-    "filter": {"cutoff_hz": 2077, "resonance": 12, "voices": [1], "envelope": {"depth": 40, "decay": 6}}, "vibrato": {"rate_hz": 0}},
+    "filter": {"cutoff_hz": 2077, "resonance": 12, "voices": [1, 2, 3], "envelope": {"depth": 40, "decay": 6}}, "vibrato": {"rate_hz": 0}},
   "steps": [{"step": 1, "note": "C2", "accent": true}, {"step": 3, "note": "C2", "slide": true},
     {"step": 4, "note": "D#2"}, {"step": 7, "note": "C3", "accent": true}, {"step": 9, "note": "G2", "chance": 75},
     {"step": 11, "note": "A#2", "slide": true}, {"step": 12, "note": "C3"}, {"step": 15, "note": "F2"}]}"#;

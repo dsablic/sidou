@@ -93,10 +93,10 @@ text ([the format](../reference/patch-json.md)), and a link.
 
 Paste the answer in the box (all of it: the page finds the patch in it) and press **Check**, or
 open the link. The page checks the patch with the FM-1's own rules: every field's range, a sound
-LAB can hold, and one LAB's audibility estimate hears. A refusal is one line naming the field,
+LAB can hold, and heard when played. A refusal is one line naming the field,
 what is wrong and what is allowed (`filter.resonance: 20 is too high. Allowed: 0 to 15.`): paste
-it back to the model and it fixes the patch. A sound only one chip would hear is taken, with a
-warning.
+it back to the model and it fixes the patch. The page plays every sound on both chip models before
+taking it: one neither makes heard is refused, one only one chip hears is taken with a warning.
 
 - **Preview** plays it here, as the song player plays it (LAB plays all of it, its effects too).
 - **Send to FM-1** sends it as a one-instrument song named after the sound. On the FM-1: menu,

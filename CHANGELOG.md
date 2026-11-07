@@ -14,7 +14,7 @@ All notable changes are documented here. The format follows
   format for one LAB sound, `sidou-patch/1` ([the reference](docs/reference/patch-json.md), a JSON
   Schema beside it): named fields in musical units, everything a LAB sound holds, any field left
   out. The Library page reads a pasted patch or a `#patch=` link, checks it with the FM-1's rules
-  (the ranges, `lab_sound_valid`, the audibility estimate), says what is wrong in one line a model
+  (the ranges, `lab_sound_valid`, and playing it on both chips), says what is wrong in one line a model
   can fix from, previews it and sends it as a one-instrument song. An existing sound opens as a patch to
   change: each of the sixteen, and any LAB sound in an open song (Patch beside its instrument; a
   USER sound gets there by LAB's REC); the instructions tell a model to change only what it is
@@ -59,6 +59,12 @@ All notable changes are documented here. The format follows
   of flash, the owner's call, for Bluetooth): a DAW records at 44.1 kHz, the rate SIDOU plays at.
 
 ### Fixed
+- **Five of the site's sixteen sounds filter every voice.** PWM STRINGS, 303 BASS, WOBBLE BASS,
+  S&H BLIPS and SWEEP PAD filtered voice 1 only, so the notes LAB played on voices 2 and 3 were
+  unfiltered; a patch can no longer do that on a one-oscillator sound.
+- **A patch is refused as silent only when it is.** The page and `sidou-sysex` play it through
+  the song player on both chips instead of estimating, so a classic acid bass (low cutoff, high
+  resonance, the filter envelope doing the work) is taken.
 - **STEP's held step shows its chance and nothing after it.** With a chance lock on a held step,
   the `95%` beside HELD STEP could be followed by stray characters (whatever the memory held);
   the text now ends at the percent sign.

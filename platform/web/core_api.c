@@ -6,6 +6,7 @@
 
 #include "fx/fx_slots.h"
 #include "lab_song.h"
+#include "patch_level.h"
 #include "player/gt2_shape.h"
 #include "player/song_ctl.h"
 #include "sid/sid.h"
@@ -482,6 +483,17 @@ EXPORT(sc_kept) int32_t sc_kept(uint32_t instr) {
     memset(out_buf + LAB_SOUND_BYTES, 0, LAB_SOUND_NAME);
     memcpy(out_buf + LAB_SOUND_BYTES, name, LAB_SOUND_NAME);
     return 1;
+}
+
+static patch_level_rig level_rig;
+
+EXPORT(sc_level) int32_t sc_level(uint32_t first, uint32_t count, uint32_t style) {
+    out_buf[0] = 0;
+    playing = NULL;
+    if (!song) {
+        return -2;
+    }
+    return patch_level_check(&level_rig, song, first, count, style, (char*)out_buf, PATCH_LEVEL_ERROR_MAX);
 }
 
 EXPORT(sc_calls) uint32_t sc_calls(void) {

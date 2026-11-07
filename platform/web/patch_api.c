@@ -75,6 +75,9 @@ EXPORT(sp_patch) int32_t sp_patch(uint32_t len) {
 EXPORT(sp_bank) uint32_t sp_bank(void) {
     return kind == PATCH_JSON_BANK_TEXT ? bank.count : 0u;
 }
+EXPORT(sp_step_instr) uint32_t sp_step_instr(void) {
+    return kind == PATCH_JSON_STEP_TEXT ? step.instr : 0u;
+}
 EXPORT(sp_kind) uint32_t sp_kind(void) {
     return kind;
 }

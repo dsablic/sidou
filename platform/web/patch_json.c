@@ -4,7 +4,6 @@
 
 #include <string.h>
 
-#include "lab_edit.h"
 #include "lab_song.h"
 #include "live.h"
 #include "player/song_ctl.h"
@@ -1040,6 +1039,12 @@ static int checked(reader* r) {
     if (!r->format) {
         return whole_fail(r, "format", "is missing. Allowed: \"" PATCH_JSON_FORMAT "\"");
     }
+    uint32_t voices = s[LAB_SOUND_FILTER_VOICES] & 0x07u;
+    if (!s[LAB_SOUND_LAYERS] && voices && voices != 0x07u) {
+        return whole_fail(r, "filter.voices",
+                          "a one-oscillator sound plays each key on the next free voice, so the filter "
+                          "takes all three voices or none. Allowed: [1, 2, 3] or []");
+    }
     if (s[LAB_SOUND_LAYERS] && s[LAB_SOUND_MONO_SYNC]) {
         return whole_fail(r, "layers", "cannot be used with sync_lead on: remove one of them");
     }
@@ -1053,19 +1058,7 @@ static int checked(reader* r) {
         return whole_fail(r, NULL, "is not a sound LAB can hold");
     }
 
-    uint32_t heard = lab_audible(s, SID_MODEL_6581) | lab_audible(s, SID_MODEL_8580) << 1;
-    if (heard == 3u) {
-        return PATCH_JSON_OK;
-    }
-    char w[PATCH_JSON_ERROR_MAX];
-    text m = {w, 0, sizeof w};
-    add(&m, heard ? "is silent on the " : "is silent on both chips");
-    add(&m, heard == 1u ? "8580" : heard == 2u ? "6581" : "");
-    add(&m, ": nothing would be heard. Check the wave (none plays nothing; on a 6581 two waves "
-            "together are very quiet), the envelope (a sustain of 0 needs a decay), the filter (a "
-            "cutoff far from the notes), the pulse width (0 or 100 is silent) and a volume LFO");
-    whole_fail(r, NULL, w);
-    return heard ? PATCH_JSON_QUIET : -1;
+    return PATCH_JSON_OK;
 }
 
 static int skip_value(reader* r) {
@@ -1880,6 +1873,7 @@ int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
     }
     uint32_t p = lane_pattern(s, st->voice), rows = st->pages * PATCH_STEP_ROWS;
     uint32_t instr = st->kind == PATCH_STEP_BASS ? 2u : 1u;
+    st->instr = 0;
     if (p >= GT2_MAX_PATTERNS) {
         return -1;
     }
@@ -1887,8 +1881,11 @@ int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
     if (gt2_pattern_rows(s, p) - 1u != rows && edited(s, gt2_pattern_resize(s, p, rows, &e), &e)) {
         return -1;
     }
-    if (st->kind == PATCH_STEP_PATCH && place_patch(s, &st->patch, model, &instr)) {
-        return -1;
+    if (st->kind == PATCH_STEP_PATCH) {
+        if (place_patch(s, &st->patch, model, &instr)) {
+            return -1;
+        }
+        st->instr = (uint8_t)instr;
     }
     uint8_t cells[PATCH_STEP_MAX][4];
     for (uint32_t r = 0; r < rows; r++) {

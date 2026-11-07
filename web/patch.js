@@ -14,15 +14,28 @@ const cstr = (mem, ptr) => {
   return new TextDecoder().decode(b.subarray(0, end < 0 ? 0 : end));
 };
 
-export async function loadPatcher(source) {
+import { loadCore } from "./core.js";
+
+const LEVEL = { patch: 0, bank: 1, step: 2 };
+
+export async function loadPatcher(source, coreSource) {
   const bytes = source instanceof ArrayBuffer || ArrayBuffer.isView(source) ? source : await (await fetch(source)).arrayBuffer();
   const { instance } = await WebAssembly.instantiate(bytes, {});
-  return new Patcher(instance.exports);
+  return new Patcher(instance.exports, await loadCore(coreSource));
 }
 
 export class Patcher {
-  constructor(x) {
+  constructor(x, core) {
     this.x = x;
+    this.core = core;
+  }
+
+  heard(sng, first, count, style) {
+    const c = this.core;
+    c.read(sng);
+    const r = c.x.sc_level(first, count, style);
+    const message = cstr(c.mem, c.x.sc_out());
+    return { r, message };
   }
 
   write(sound, name) {
@@ -44,14 +57,19 @@ export class Patcher {
     const message = cstr(x.memory, x.sp_error());
     if (r < 0) return { ok: false, error: message || `the patch was refused (${r})` };
     const count = x.sp_bank();
+    const sng = new Uint8Array(x.memory.buffer, x.sp_out(), x.sp_song_bytes()).slice();
+    const step = x.sp_kind() === STEP_TEXT, instr = x.sp_step_instr();
+    const level = step ? (instr ? this.heard(sng, instr, 1, LEVEL.step) : { r: 0, message: "" })
+      : this.heard(sng, 1, count || 1, count ? LEVEL.bank : LEVEL.patch);
+    if (level.r < 0) return { ok: false, error: level.message };
     return {
       ok: true,
-      quiet: r === QUIET ? message : "",
+      quiet: level.r === QUIET ? level.message : "",
       name: cstr(x.memory, x.sp_name()),
       sounds: count ? Array.from({ length: count }, (_, k) => cstr(x.memory, x.sp_bank_name(k))) : [cstr(x.memory, x.sp_name())],
       bank: count > 0,
-      step: x.sp_kind() === STEP_TEXT,
-      sng: new Uint8Array(x.memory.buffer, x.sp_out(), x.sp_song_bytes()).slice(),
+      step,
+      sng,
     };
   }
 }

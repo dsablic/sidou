@@ -54,7 +54,7 @@ typedef struct {
 
 typedef struct {
     char name[PATCH_BANK_NAME + 1u];
-    uint8_t voice, role, gate, pages, kind, count;
+    uint8_t voice, role, gate, pages, kind, count, instr;
     patch_step_cell steps[PATCH_STEP_MAX];
     char error[PATCH_JSON_ERROR_MAX];
     patch_json patch;

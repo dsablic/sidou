@@ -92,7 +92,7 @@ fn round_trips(s: &Sound, name: &str) {
 fn heard_or_silent(r: &Result<Sound, String>, what: &str) {
     match r {
         Ok(s) => round_trips(s, json::read(BASE).unwrap().1.as_str()),
-        Err(e) => assert!(e.starts_with("the patch is silent"), "{what}: {e}"),
+        Err(e) => panic!("{what}: {e}"),
     }
 }
 
@@ -328,28 +328,6 @@ fn a_patch_around_other_text_is_read() {
 }
 
 #[test]
-fn a_valid_but_silent_patch_is_refused() {
-    let quiet = [
-        with(
-            "envelope",
-            json!({"attack": 0, "decay": 0, "sustain": 0, "release": 0}),
-        ),
-        with("wave", json!("none")),
-        with(
-            "filter",
-            json!({"mode": "high", "cutoff_hz": 14000, "resonance": 0, "voices": [1, 2, 3]}),
-        ),
-    ];
-    for v in quiet {
-        let e = read(&v).unwrap_err();
-        assert!(
-            e.starts_with("the patch is silent on both chips: nothing would be heard."),
-            "{v}: {e}"
-        );
-    }
-}
-
-#[test]
 fn a_patch_silent_on_one_chip_only_is_taken_with_a_warning() {
     let c = json::check(&with("wave", json!("saw+triangle")).to_string()).unwrap();
     assert_eq!(c.sound[0], 0x30);
@@ -357,7 +335,7 @@ fn a_patch_silent_on_one_chip_only_is_taken_with_a_warning() {
         c.quiet
             .as_deref()
             .unwrap_or_default()
-            .starts_with("the patch is silent on the 6581: nothing would be heard."),
+            .starts_with("the patch is silent on the 6581: nothing was heard playing it."),
         "{c:?}"
     );
     assert_eq!(json::check(BASE).unwrap().quiet, None);
@@ -421,5 +399,64 @@ fn a_songs_sound_named_in_lower_case_or_signs_reads_back() {
         json::read(&text),
         Ok((s.bytes, "ACID BASS".to_string())),
         "{text}"
+    );
+}
+
+#[test]
+fn a_one_oscillator_sound_filters_all_three_voices_or_none() {
+    let want = "filter.voices: a one-oscillator sound plays each key on the next free voice, so the filter takes all three voices or none. Allowed: [1, 2, 3] or [].";
+    for voices in [json!([1]), json!([2, 3]), json!([1, 3])] {
+        assert_eq!(
+            read(&with("filter.voices", voices.clone())),
+            Err(want.to_string()),
+            "{voices}"
+        );
+    }
+    for voices in [json!([1, 2, 3]), json!([])] {
+        read(&with("filter.voices", voices.clone())).unwrap_or_else(|e| panic!("{voices}: {e}"));
+    }
+    let mut layered = with("filter.voices", json!([1]));
+    set(&mut layered, "layers", json!([{}]));
+    assert_eq!(
+        read(&layered).map(|s| s[LAB_SOUND_FILTER_VOICES as usize]),
+        Ok(1),
+        "layer n is voice n"
+    );
+}
+
+#[test]
+fn the_render_hears_every_made_sound_and_none_of_the_silent_ones() {
+    let made: Vec<String> = sidou_sounds()
+        .iter()
+        .map(|s| json::write(&s.bytes, s.name))
+        .collect();
+    let squelch2 = r#"{"format":"sidou-patch/1","name":"SQUELCH 2","wave":"saw","envelope":{"attack":0,"decay":6,"sustain":0,"release":3},"filter":{"mode":"low","cutoff_hz":500,"resonance":14,"voices":[1,2,3],"envelope":{"depth":50,"attack":0,"decay":5,"sustain":0,"release":3}},"fx":{"distortion":{"type":"overdrive","mix":70}}}"#;
+    let slow = r#"{"format":"sidou-patch/1","envelope":{"attack":15,"decay":0,"sustain":15,"release":5},"filter":{"voices":[]}}"#;
+    for text in made.iter().map(String::as_str).chain([squelch2, slow]) {
+        assert_eq!(json::check(text).map(|c| c.quiet), Ok(None), "{text}");
+    }
+    let silent = [
+        r#"{"format":"sidou-patch/1","wave":"none"}"#,
+        r#"{"format":"sidou-patch/1","envelope":{"attack":0,"decay":0,"sustain":0,"release":0}}"#,
+        r#"{"format":"sidou-patch/1","filter":{"mode":"high","cutoff_hz":14000,"resonance":0,"voices":[1,2,3]}}"#,
+        r#"{"format":"sidou-patch/1","wave":"pulse","pulse_width":0,"filter":{"voices":[]}}"#,
+        r#"{"format":"sidou-patch/1","filter":{"mode":"off","voices":[1,2,3]}}"#,
+    ];
+    for text in silent {
+        assert!(
+            json::check(text)
+                .unwrap_err()
+                .starts_with("the patch is silent on both chips"),
+            "{text}"
+        );
+    }
+    let low = r#"{"format":"sidou-patch/1","filter":{"mode":"low","cutoff_hz":0,"resonance":0,"voices":[1,2,3]}}"#;
+    assert!(
+        json::check(low)
+            .unwrap()
+            .quiet
+            .unwrap()
+            .starts_with("the patch is silent on the 8580"),
+        "a 6581's filter never closes"
     );
 }
