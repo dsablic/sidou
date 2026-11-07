@@ -267,21 +267,22 @@ journey lift-a-sound | Lift a sound from a .sid
   step keep | *SAVE* keeps it | SAVE: a USER sound under its name, for PRESETS to find later. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
   step back | *HOME*: back to the tune | HOME: NOW PLAYING, the tune still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
-journey whats-new | What's new in SIDOU 1.7
-  goal See SIDOU 1.7's highlights, one at a time: a step table on a LAB sound, two free LFOs on MOD's second page, SLIDE and ACCENT on STEP, and SIDOU's own sounds on the site.
-  prereq On LIVE after the boot, SIDOU LOOP the song loaded.
-  skills LAB's TABLE page; ALGORITHM loops the table; K1 adds a step; K3 its pitch; K4 frames a step; LAB's LFO page; K2 the destination; K4 the depth; a held step + FX slides; a held step + ENV accents; the site's Library page
-  related shape-in-lab; step-a-beat; send-to-song
-  step open | *ENV* opens LAB | SAW LEAD, one saw. ENV opens LAB; SELECT on to TABLE, the last page. | press ENV; wait 800; play 120 A3:2 C4:2 E4:2 A4:4; turn SELECT 8; wait 900 | view lab; text TABLE; text 10/10; sound; focus SELECT; callout ENV, TURN SELECT
-  step table | A *step table* | ALGORITHM loops it. K1 to NEW adds a step and K3 lifts it an octave; one more, a fifth up. | turn ALGORITHM 2; wait 700; turn K1 1; wait 300; turn K3 12; wait 700; turn K1 1; wait 300; turn K3 -5; wait 1200 | text LOOP FROM 1; focus K1; callout ALGORITHM, K1, K3
-  step hear | One key, an *arpeggio* | K4: two frames a step. Every key plays the table, round and round. | turn K4 1; wait 500; play 120 A3:4 C4:4 E4:4 G4:4 A3:8 | sound; focus K4; callout K4, THEN THE KEYS
-  step lfo | Two free *LFOs* | SELECT back to LFO, MOD's second page. ALGORITHM: TRIANGLE; K2 sends it to the cutoff, K4 deepens it. | turn SELECT -4; wait 700; turn ALGORITHM 1; wait 500; turn K2 2; wait 500; sweep K4 30 900; play 120 A3:8 E4:8 C4:8 | text LFO; text TRIANGLE; text CUT; sound; focus ALGORITHM; callout ALGORITHM, K2, K4
-  step step | *STEP* | HOME, then SEQ: STEP shows SIDOU LOOP's first pattern, voice 1 on top. | press HOME; wait 600; press SEQ; wait 2800 | view step; text PAT 04; focus SEQ; callout HOME, SEQ
-  step slide | *SLIDE* into the next note | Hold step 1 and press FX: SLIDE ON. Its gate stays held, and the next note glides in from its pitch. | down F3; wait 300; press FX; wait 300; up F3; wait 3400 | view step; text PAT 04; focus FX; callout HOLD STEP 1 + FX
-  step accent | *ACCENT* a step | Hold step 5 and press ENV: ACCENT ON. Its row plays with the cutoff, resonance and sustain up. | down A3; wait 300; press ENV; wait 300; up A3; wait 3400 | view step; text PAT 04; focus ENV; callout HOLD STEP 5 + ENV
-  step play | *Hear* them | PLAY: SIDOU LOOP plays, step 1 sliding into step 5, and step 5 accented. | press PLAY; wait 5200 | view step; sound; focus PLAY; callout PRESS PLAY
-  step sounds | SIDOU's own *sounds* | The site's Library page sends sixteen original LAB sounds to the FM-1 as one song. ENV on INSTR opens each in LAB. | wait 5000 | sound; focus card; callout LIBRARY PAGE <> SIDOU SOUNDS <> LAB
-  step get-it | Get *SIDOU 1.7* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
+journey whats-new | What's new in SIDOU 1.8
+  goal See SIDOU 1.8's highlights: live tweaks on a playing .sid, an ACID lane with slides and accents, a sound from a prompt, and sidou-sysex for coding agents.
+  prereq On LIVE after the boot, SIDOU LOOP the song loaded; THE CONSULTANT in the store.
+  skills NOW PLAYING; K1 bends a tune's cutoff; K3 picks a voice; K4 changes a voice's waveform; HOME gives the tune back; STEP; the ACID lane role; DICE; PLAY; the site's Library page; llms.txt; sidou-sysex
+  related sid-tune-show; step-a-beat; send-to-song
+  songs the-consultant
+  step sids | SIDS, *THE CONSULTANT* | In the menu, SIDS: the .sid tunes on the store. SAVE plays THE CONSULTANT. | press HOME; wait 500; select-item SIDS; press SAVE; wait 2800 | view sid_now_playing; text THE CONSULTANT; sound; focus screen; callout SIDS, SAVE
+  step tweak-cut | *K1* bends the *cutoff* | Turn K1 up and down: the tune's filter opens and closes, each detent. Back at 0 it is the tune's own. | sweep K1 40 1000; wait 500; sweep K1 -40 1000; wait 1500 | sound; text CUT; focus K1; callout TURN K1
+  step tweak-voice | K3 picks a *voice*, K4 its *waveform* | K3 to voice 2; K4 through TRI, SAW, PUL, NOI, back to TUNE'S: the voice keeps its notes in each waveform. | turn K3 1; wait 600; turn K4 1; wait 800; turn K4 1; wait 800; turn K4 1; wait 800; turn K4 1; wait 800; turn K4 1; wait 1200 | sound; text V2; text TUNE.S; focus K3; callout K3, K4
+  step home | *HOME* gives it back | HOME: the tune is its own again at once. | press HOME; wait 2500 | sound; text THE CONSULTANT; focus HOME; callout PRESS HOME
+  step new-acid | A *NEW* song, an *ACID* lane | SONG, NEW. SEQ to STEP; SELECT to lane 1; EDIT + SCL held, PRESETS to ACID. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 900; press SEQ; wait 900; turn SELECT 0; wait 600; down EDIT; down SCL; wait 300; turn PRESETS 6; wait 300; up SCL; up EDIT; wait 1200 | view step; text ACID; screen 0 2 30 13; focus PRESETS; callout NEW, STEP, ACID
+  step roll-acid | DICE *rolls* a bassline | PRESETS to 303 BASS. EDIT + SCL a few times: each roll writes slides and accents with the notes. | turn PRESETS 5; wait 800; down EDIT; down SCL; wait 300; up SCL; up EDIT; wait 600; down EDIT; down SCL; wait 300; up SCL; up EDIT; wait 600; down EDIT; down SCL; wait 300; up SCL; up EDIT; wait 1500 | screen 0 2 30 13; focus SCL; callout PRESETS 303 BASS, DICE
+  step play-acid | *PLAY* the acid line | PLAY: the bassline glides and stands out, as an acid bass does. | press PLAY; wait 4500 | sound; focus PLAY; callout PRESS PLAY
+  step prompt | A sound from a *prompt* | "Read dsablic.github.io/sidou/llms.txt and make me an acid bass": the model answers with a patch link. The Library page checks it, plays it and sends it to the FM-1. | wait 5000 | sound; focus card; callout READ LLMS.TXT <> PATCH LINK <> LIBRARY PAGE
+  step sysex | *sidou-sysex* for coding agents | `sidou-sysex patch FILE.json` writes the song and the .syx; `sidou-sysex send FILE` uploads it to the FM-1 over USB. | wait 3500 | focus card; callout SIDOU-SYSEX PATCH <> SIDOU-SYSEX SEND
+  step get-it | Get *SIDOU 1.8* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.

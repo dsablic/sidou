@@ -136,6 +136,7 @@ flash.
 
 Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
 install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
+SIDOU runs on every FM-1, including newer units with the UC25HQ80 flash ([Felucca#320](https://github.com/hugelton/Felucca/issues/320)).
 
 1. Download the `sidou-<version>.fwsc` file from the [latest release](https://github.com/dsablic/sidou/releases/latest).
 2. Install it with Felucca's installer (`fm1_install.py sidou-<version>.fwsc`). The unit then shows
