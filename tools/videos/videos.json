@@ -12,12 +12,10 @@
   "whats-new": {
     "teaser": false,
     "bed": [
-      "table",
-      "step",
-      "slide",
-      "accent"
+      "prompt",
+      "sysex"
     ],
-    "preview_step": "lfo"
+    "preview_step": "tweak-voice"
   },
   "rec-over-loop": {
     "bpm": 125
