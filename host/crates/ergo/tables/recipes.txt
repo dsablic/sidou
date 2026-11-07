@@ -272,7 +272,7 @@ journey whats-new | What's new in SIDOU 1.8
   prereq On LIVE after the boot, SIDOU LOOP the song loaded; THE CONSULTANT in the store.
   skills NOW PLAYING; K1 bends a tune's cutoff; K3 picks a voice; K4 changes a voice's waveform; HOME gives the tune back; STEP; the ACID lane role; DICE; PLAY; the site's Library page; llms.txt; sidou-sysex
   related sid-tune-show; step-a-beat; send-to-song
-  songs the-consultant
+  tunes consultant
   step sids | SIDS, *THE CONSULTANT* | In the menu, SIDS: the .sid tunes on the store. SAVE plays THE CONSULTANT. | press HOME; wait 500; select-item SIDS; press SAVE; wait 2800 | view sid_now_playing; text THE CONSULTANT; sound; focus screen; callout SIDS, SAVE
   step tweak-cut | *K1* bends the *cutoff* | Turn K1 up and down: the tune's filter opens and closes, each detent. Back at 0 it is the tune's own. | sweep K1 40 1000; wait 500; sweep K1 -40 1000; wait 1500 | sound; text CUT; focus K1; callout TURN K1
   step tweak-voice | K3 picks a *voice*, K4 its *waveform* | K3 to voice 2; K4 through TRI, SAW, PUL, NOI, back to TUNE'S: the voice keeps its notes in each waveform. | turn K3 1; wait 600; turn K4 1; wait 800; turn K4 1; wait 800; turn K4 1; wait 800; turn K4 1; wait 800; turn K4 1; wait 1200 | sound; text V2; text TUNE.S; focus K3; callout K3, K4
