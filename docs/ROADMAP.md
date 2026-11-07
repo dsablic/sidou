@@ -8,6 +8,9 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.8.0](https://github.com/dsablic/sidou/releases/tag/v1.8.0)** (2026-11-07): a sound from a
+  prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at
+  44.1 kHz only.
 - **[1.7.1](https://github.com/dsablic/sidou/releases/tag/v1.7.1)** (2026-11-07): newer FM-1s,
   with a UC25HQ80 flash, save and update.
 - **[1.7.0](https://github.com/dsablic/sidou/releases/tag/v1.7.0)** (2026-11-05): LAB's step
@@ -81,55 +84,31 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
-## 1.7
+## 1.8
 
-Released in 1.7.0: LAB's TABLE page (a step table on a sound, sent and pulled as a GoatTracker
-wave program; an imported SidStation patch keeps its first table), two free LFOs on MOD's second
-page (LAB has ten pages), SLIDE and ACCENT as STEP locks, an NRPN for every LAB card (group 7,
-receive only), sixteen original SIDOU sounds on the site's Library page, and GoatTracker's player
-moved to flash (6.4 KB of RAMTEXT free again). Live tweaks on a playing `.sid` were designed
-([the plan](plans/2026-11-05-sid-tweaks.md)) and moved to 1.8.
+Released in 1.8.0: a sound from a prompt (SIDOU's instructions for language models, the
+`sidou-patch/1` format, the Library page's patch preview and send, and `sidou-sysex` for coding
+agents), live tweaks on playing `.sid` tunes (K1 bends the cutoff, K2 the resonance, K3 and K4 a
+voice's waveform), the ACID lane role (DICE rolls slides and accents), the felucca-bsp move
+(back-to-back SysEx now works, and the radio drivers are ready), USB audio at 44.1 kHz only (the
+48 kHz resampler is gone), and five filter routing fixes on the site's sounds. Bluetooth MIDI is
+tested but not shipped in this release: the test build is 452 bytes over the release ceiling until
+felucca-bsp#31 lands, and three device checks (the hour of two SIDs, the save during the link, and
+the DAW clock) are still open.
 
-**After 1.7** (the plan the owner agreed, 2026-11-05)
+**After 1.8**
 
-- **1.8, Bluetooth.**
-  - **First the felucca-bsp move**, a prerequisite: Felucca's radio and second-core drivers come
-    from [felucca-bsp](https://github.com/hugelton/felucca-bsp) byte for byte (the Platform item
-    below).
-  - **Then Bluetooth MIDI as a peripheral** (the owner, 2026-11-06, [decision 0011](decisions/0011-bluetooth-midi.md),
-    [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)): SIDOU seen by a Mac, an iPad or a
-    phone, notes, CCs and clock both ways, no pairing; SETTINGS BLUETOOTH OFF / ON. Optimist's
-    open stack vendored from fm1-base's `bt/ble`. A build option (`SIDOU_BLE`) until the device
-    test passes. The room: the ceiling at the slot less 2 KB, USB audio at 44.1 kHz only, the MIDI
-    ring in NOINIT and six cold files smaller. Both ways did not fit (5.7 KB over before its UI).
-    The device test's build takes 500 bytes of the slot's reserve (580,016, the owner's call for a
-    test build, decision 0011); **before it ships in a release it must fit 579,516 again**, through
-    felucca-bsp#31 (the radio driver at plain `-Os`, about 3.2 KB) or another saving. L.
-  - **The small items:** live tweaks on a playing `.sid` ([the design](plans/2026-11-05-sid-tweaks.md):
-    K1 bends the tune's cutoff, K2 its resonance, K3 and K4 a voice's waveform, about 200 bytes of
-    RAMTEXT); a DICE bass role that rolls slides and accents; and ear checks of the site's sixteen
-    sounds on a device.
-  - **Prompt to patch** (the owner, 2026-11-06; first planned 2026-11-05): a sound from any
-    language model, with no sign-in, no service and no new SysEx target. SIDOU's instructions
-    ([docs/prompt-to-patch.md](prompt-to-patch.md), on the site as `llms.txt`, one source with the
-    Copy instructions button) tell a model what the engine can and can't do, the format and its
-    ranges, how to make SID sounds sound good, with six of the site's sixteen sounds as examples;
-    it answers with one `sidou-patch/1` JSON patch ([the format](reference/patch-json.md), a JSON
-    Schema beside it) and a `#patch=` link. The Library page checks a pasted patch or a link with
-    the FM-1's rules, says what is wrong in one line to paste back, previews it, and sends it as a
-    one-instrument song that ENV on INSTR opens in LAB; the sixteen show as patches. One converter
-    in C, in its own wasm and the host tests; `sidou-sysex patch`. Done in the 1.8 tree, with a
-    song's LAB sound as a patch to change, banks of up to sixteen (`sidou-bank/1`) and STEP
-    patterns (`sidou-step/1`), and `sidou-sysex` for coding agents ([docs/ai](ai/README.md)). Later, if users ask: a
-    one-button page that calls a model itself (OpenRouter's PKCE sign-in was the first plan), and
-    an MCP server (a local one through npx, never on Pages).
-- **Next, Bluetooth connecting out** (moved from 1.8 by the owner, 2026-11-06): SIDOU connects to
-  Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device remembered), the
-  owner's Korg microKEY Air as the test; pairing if the keyboard asks for it. Its room, about
-  9-10 KB with its page: the radio driver at plain `-Os` (3,264 bytes, felucca-bsp#31, filed
-  2026-11-06) and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`,
-  `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before).
-  M-L.
+- **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](https://github.com/dsablic/sidou/blob/v1.8.0/docs/plans/2026-11-05-bluetooth-1.8-plan.md)):
+  SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
+  and clock both ways, SETTINGS BLUETOOTH OFF / ON. **Waits for:** felucca-bsp#31 (the radio driver
+  at plain `-Os`, about 3.2 KB) or another 452 bytes of room, and the three open device checks (the
+  hour of two SIDs over Bluetooth, a save during the link, and the DAW clock). L.
+- **Bluetooth connecting out**: SIDOU connects to Bluetooth MIDI keyboards (the central role, a
+  DEVICES page, the last device remembered), the owner's Korg microKEY Air as the test; pairing if
+  the keyboard asks for it. Its room, about 9-10 KB with its page: the radio driver at plain `-Os`
+  (3,264 bytes, felucca-bsp#31, filed 2026-11-06) and hot/cold splits of the gate-bound `-O2` files
+  (`sid_character.c`, `live.c`, `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each
+  refused by a gate before). M-L.
 - **1.9** (the owner, 2026-11-06), each starting with a short design:
   - **Whole songs as text:** a text form of a GoatTracker song, a model's or a coding agent's,
     that opens in the site's editor.

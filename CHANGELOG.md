@@ -8,6 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-07
+
+A sound from a prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at 44.1 kHz only.
+
 ### Added
 - **A sound from a prompt.** SIDOU's instructions for language models
   ([docs/prompt-to-patch.md](docs/prompt-to-patch.md), on the site as `llms.txt`) and a text
