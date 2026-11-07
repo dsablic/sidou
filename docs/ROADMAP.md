@@ -98,7 +98,7 @@ the DAW clock) are still open.
 
 **After 1.8**
 
-- **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](https://github.com/dsablic/sidou/blob/v1.8.0/docs/plans/2026-11-05-bluetooth-1.8-plan.md)):
+- **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
   SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
   and clock both ways, SETTINGS BLUETOOTH OFF / ON. **Waits for:** felucca-bsp#31 (the radio driver
   at plain `-Os`, about 3.2 KB) or another 452 bytes of room, and the three open device checks (the
@@ -123,7 +123,7 @@ the DAW clock) are still open.
     loops costs about 7 instructions a sample per chip, leaving 7.1 of the two-chip worst block's
     1,426 (1,418.9 measured on 1.8's small items), and 160 bytes of RAMTEXT; chip B on its own core
     gives that budget back. It also needs a place on LAYERS (its four cards are taken), 3 bytes of
-    the sound and the import ([the measurement](https://github.com/dsablic/sidou/blob/main/docs/plans/2026-11-05-lab-lfos.md)).
+    the sound and the import ([the measurement](https://github.com/dsablic/sidou/blob/v1.7.1/docs/plans/2026-11-05-lab-lfos.md)).
   - **The DAW plugin**, starting from its design session (the owner, 2026-11-04): the spike
     ([its plan](plans/2026-11-05-daw-plugin-spike.md), code in `spikes/daw-plugin/`) runs SIDOU's
     package in fm1-emu's plugin at 17.6x real time; stable parameters a LAB card,
