@@ -8,6 +8,8 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.7.1](https://github.com/dsablic/sidou/releases/tag/v1.7.1)** (2026-11-07): newer FM-1s,
+  with a UC25HQ80 flash, save and update.
 - **[1.7.0](https://github.com/dsablic/sidou/releases/tag/v1.7.0)** (2026-11-05): LAB's step
   table and two free LFOs, SLIDE and ACCENT in STEP, an NRPN for every LAB card, SIDOU's sounds
   on the site.

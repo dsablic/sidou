@@ -160,17 +160,20 @@ fn saves_press_on_live_stores_the_settings_within_a_second() {
     let Some(fw) = firmware("the settings test") else {
         return;
     };
-    let mut m = booted(&fw);
-    assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
-    m.midi(&[0xB0, CC_ENVELOPE, 127]);
-    m.run_ms(50);
-    let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY);
-    assert_eq!(before.as_ref().unwrap()[REC_ENVELOPE], 0);
-    press(&mut m, SAVE);
-    let took = stored_within(&mut m, &before, 1_000).expect("not stored within a second");
-    println!("SAVE stored the settings in {took} ms");
-    let after = stored_value(&m.soc.flash.mem, SETTINGS_KEY).unwrap();
-    assert_eq!(after[REC_ENVELOPE], LIVE_ENVELOPE_AUTHENTIC as u8);
+    for (part, jedec) in common::FLASH_PARTS {
+        let mut m = common::booted_on(&fw, jedec);
+        assert_eq!(top_view(&mut m, &fw), fw.symbol("live_view_view"));
+        m.midi(&[0xB0, CC_ENVELOPE, 127]);
+        m.run_ms(50);
+        let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY);
+        assert_eq!(before.as_ref().unwrap()[REC_ENVELOPE], 0);
+        press(&mut m, SAVE);
+        let took = stored_within(&mut m, &before, 1_000)
+            .unwrap_or_else(|| panic!("{part}: not stored within a second"));
+        println!("{part}: SAVE stored the settings in {took} ms");
+        let after = stored_value(&m.soc.flash.mem, SETTINGS_KEY).unwrap();
+        assert_eq!(after[REC_ENVELOPE], LIVE_ENVELOPE_AUTHENTIC as u8, "{part}");
+    }
 }
 
 #[test]

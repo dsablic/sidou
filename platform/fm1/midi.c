@@ -505,13 +505,18 @@ static void ota_commit(const uint8_t* parm) {
     fm1_enter_update(parm);
 }
 
-#define FLASH_JEDEC 0x856014u
+#define FLASH_JEDEC_PUYA_P25Q80 0x856014u
+#define FLASH_JEDEC_UC25HQ80 0xB36014u
+
+static uint8_t flash_known(uint32_t id) {
+    return id == FLASH_JEDEC_PUYA_P25Q80 || id == FLASH_JEDEC_UC25HQ80;
+}
 
 void update_boot(void) {
     uint32_t f = irq_save();
     uint32_t id = FL_FAR(fl_jedec_ram)();
     irq_restore(f);
-    flash_ok = id == FLASH_JEDEC;
+    flash_ok = flash_known(id);
     if (flash_ok) {
         ota_boot_cleanup();
     }
@@ -546,7 +551,7 @@ int flash_store_ok(void) {
     uint32_t f = irq_save();
     uint32_t id = FL_FAR(fl_jedec_ram)();
     irq_restore(f);
-    flash_ok = id == FLASH_JEDEC;
+    flash_ok = flash_known(id);
     return flash_ok;
 }
 

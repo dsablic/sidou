@@ -418,7 +418,12 @@ fn usb_machine(fw: &Firmware) -> Machine {
 }
 
 fn usb_machine_sie(fw: &Firmware, sie_cycles: Option<u64>) -> Machine {
+    usb_machine_on(fw, sie_cycles, common::FLASH_PARTS[0].1)
+}
+
+fn usb_machine_on(fw: &Firmware, sie_cycles: Option<u64>, jedec: [u8; 3]) -> Machine {
     let mut m = Machine::boot(&fw.image);
+    m.soc.flash.jedec = jedec;
     m.usb = Some(UsbHost::plug(&mut m.soc));
     if let Some(n) = sie_cycles {
         m.soc.usb.sie_cycles = n;
@@ -1612,6 +1617,15 @@ fn the_running_firmware_serves_an_updates_whole_step_one() {
     let package = std::fs::read(build.join("sidou.fwsc"))
         .expect("sidou.fwsc in the fm1 build directory: run sidou-pack (TESTING.md)");
     let image = logical_image(&package);
+    for (part, jedec) in common::FLASH_PARTS[1..].iter().copied() {
+        let mut m = usb_machine_on(&fw, None, jedec);
+        let (served, finished) = installer_step_one(&mut m, &fw, &image);
+        assert!(
+            finished,
+            "{part}: the device stopped asking after {} reads",
+            served.len()
+        );
+    }
     let mut m = usb_machine(&fw);
     let (served, finished) = installer_step_one(&mut m, &fw, &image);
     println!("step 1: {} reads, {served:x?}", served.len());
