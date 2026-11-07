@@ -76,8 +76,7 @@ static void ble_radio_save(uint32_t now_ms) {
         rec[BLE_RECORD_ADDR + i] = ble_radio_addr[i];
     }
     int rc = store_put(st, BLE_RADIO_KEY, BLE_RADIO_TYPE, rec, BLE_RECORD_BYTES);
-    ble_radio_dirty = rc != STORE_OK && rc != STORE_FOREIGN && rc != STORE_FULL &&
-                      rc != STORE_INVALID;
+    ble_radio_dirty = rc == STORE_BUSY || rc == STORE_ERROR;
     ble_radio_changed_at = now_ms;
 }
 

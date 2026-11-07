@@ -127,16 +127,12 @@ static void ble_radio_start(void) {
 }
 
 static void ble_radio_follow(void) {
-    if (ble_radio_state == BLE_RADIO_READY && !ble_radio_wanted) {
+    uint8_t up = ble_radio_state == BLE_RADIO_READY;
+    if (up != ble_radio_wanted) {
         ble_radio_held(1);
-        ble_enable(0);
+        ble_enable(ble_radio_wanted);
         ble_radio_held(0);
-        ble_radio_state = BLE_RADIO_QUIET;
-    } else if (ble_radio_state == BLE_RADIO_QUIET && ble_radio_wanted) {
-        ble_radio_held(1);
-        ble_enable(1);
-        ble_radio_held(0);
-        ble_radio_state = BLE_RADIO_READY;
+        ble_radio_state = ble_radio_wanted ? BLE_RADIO_READY : BLE_RADIO_QUIET;
     }
 }
 
