@@ -2938,7 +2938,7 @@ fn every_page_and_card_the_instructions_name_is_labs() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let pages: Vec<String> = (0..LAB_PAGES)
         .map(|p| {
-            unsafe { std::ffi::CStr::from_ptr(lab_view_page_name(p)) }
+            unsafe { CStr::from_ptr(lab_view_page_name(p)) }
                 .to_string_lossy()
                 .into_owned()
         })
