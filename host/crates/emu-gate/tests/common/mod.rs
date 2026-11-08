@@ -1276,6 +1276,21 @@ pub fn assert_within_budget<T: PartialOrd + std::fmt::Display>(what: &str, cost:
     );
 }
 
+const BLOCK_WATCH_STEP_CYCLES: u64 = 2_000;
+
+pub fn costliest_watched_block(m: &mut Machine, ms: u64) -> u64 {
+    let end = m.soc.periph.cycles + m.soc.periph.cycle_of_ms(ms);
+    let (mut blocks, mut inside, mut costliest) = (m.alnk_blocks.len(), m.alnk_pcs_inside, 0);
+    while m.soc.periph.cycles < end {
+        m.run_cycles(BLOCK_WATCH_STEP_CYCLES);
+        if m.alnk_blocks.len() != blocks {
+            costliest = costliest.max(m.alnk_pcs_inside - inside);
+            (blocks, inside) = (m.alnk_blocks.len(), m.alnk_pcs_inside);
+        }
+    }
+    costliest
+}
+
 pub const BOOT_TIMEOUT_MS: u64 = 12_000;
 pub const UI_FRAME_MS: u64 = 40;
 const MID_FRAME_AGE_MS: u32 = 20;

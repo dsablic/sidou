@@ -520,7 +520,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
     total from 138,256 to 154,620 instructions). The audio interrupt pays it, but no block is
     heavier than at the bound's phase. A budget set at one phase: the honest worst over the sweep
     is 35.53 a sample over the window; a phase-free measure is the per-block peak (5,845) or a
-    note's total until the stage idles.
+    note's total until the stage idles. **The budget is per block since 2026-11-08** (the owner):
+    `character.rs` bounds the stage's costliest audio block during a note's thump at 5,845
+    instructions, 1.8.0's, the same at every boot offset. What the audio interrupt must fit is a
+    block, so a block is the unit; an average over a fixed window depended on where the window cut
+    the thump, and could pass a heavier block or fail a lighter one.
   - *The PUT gap*: every packet-to-packet interval is 257 to 270 ms at every offset; the store's
     hold gap (`hold_ready`: 250 ms since the last hold's program, on the firmware's millisecond)
     is kept. `up` divides 16 packets by a window that holds 15 full gaps plus the first packet,
