@@ -253,7 +253,7 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 The releases and what each brought: [CHANGELOG.md](CHANGELOG.md). What comes next:
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
-Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit, and so has Bluetooth MIDI (notes both ways, a link dropped with a note held); the first-run tour, and an hour of Bluetooth MIDI with a save during the link, are still to be checked there. See the
+Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit, and so has Bluetooth MIDI (notes in and CCs out, a link dropped with a note held, an hour of two SIDs with saves during the link); the first-run tour is still to be checked there. See the
 [roadmap](docs/ROADMAP.md) and the
 [design document](docs/plans/2026-10-14-sidou-design.md).
 
