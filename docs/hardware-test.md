@@ -2617,7 +2617,7 @@ FM-1's MIDI port). Never send anything else to the FM-1 while you test.
   a playing song with and without a session).
 - [ ] **MIDI out and clock out are unchanged:** with CLOCK OUT on and a DAW following, PLAY, stop,
   EDIT + PLAY, while the mirror streams; K1 swept on LIVE with the DAW recording CCs.
-  *Emulator:* `emu-gate/tests/link.rs::clock_outs_song_position_goes_as_without_a_session`,
+  *Emulator:* `emu-gate/tests/link.rs::transport_out_goes_as_without_a_session_at_most_a_usb_frame_later`,
   `emu-gate/tests/link.rs::midi_outs_ccs_go_as_without_a_session`.
   *Device-only:* the DAW follows as without a session, records every CC, and its MIDI monitor shows
   no broken SysEx.

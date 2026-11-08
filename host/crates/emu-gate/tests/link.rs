@@ -574,104 +574,36 @@ fn midi_outs_ccs_go_as_without_a_session() {
     assert_eq!(deferred_with, deferred_alone, "MIDI out deferred for room");
 }
 
-#[test]
-fn clock_outs_song_position_goes_as_without_a_session() {
-    let Some(fw) = firmware("the Live Link clock out test") else {
-        return;
-    };
-    let run = |with: bool| {
-        let mut m = usb_machine(&fw);
-        let mut h = Host::new();
-        let syncing = fw.symbol("syncing");
-        m.soc
-            .write8(syncing + ilp32::midi_sync::clock_out as u32, 1);
-        if with {
-            h.start(&mut m);
-        }
-        h.press(&mut m, SEQ);
-        h.press(&mut m, SEQ);
-        h.run(&mut m, 700);
-        let calls = fw.symbol("song_transport") + ilp32::song_ctl::calls as u32;
-        let go = |h: &mut Host, m: &mut Machine, keys: &[u8], bytes: &[u8]| {
-            let c0 = m.soc.read32(calls);
-            let from = m.ms();
-            for &k in keys {
-                m.key(k, true);
-            }
-            let mut began = None;
-            for _ in 0..60 {
-                h.run(m, 1);
-                if began.is_none() && m.soc.read32(calls) != c0 {
-                    began = Some(m.ms());
-                }
-            }
-            for &k in keys {
-                m.key(k, false);
-            }
-            let began = began.expect("the song never moved");
-            let arrived: Vec<i64> = bytes
-                .iter()
-                .map(|&b| {
-                    let t = h.others.iter().find(|(t, p)| *t >= from && p[1] == b);
-                    t.expect("never reached the host").0 as i64 - began as i64
-                })
-                .collect();
-            arrived
-        };
-        let start = go(&mut h, &mut m, &[PLAY], &[0xfa]);
-        let from = m.ms();
-        h.run(&mut m, 2000);
-        let clocks: Vec<u64> = h
-            .others
-            .iter()
-            .filter(|(t, p)| *t >= from && p[1] == 0xf8)
-            .map(|e| e.0)
-            .collect();
-        let gaps: Vec<i64> = clocks.windows(2).map(|w| (w[1] - w[0]) as i64).collect();
-        let mut sorted = gaps.clone();
-        sorted.sort_unstable();
-        let median = sorted[sorted.len() / 2];
-        let jitter = gaps.iter().map(|g| (g - median).abs()).max().unwrap();
-        let frames = h.cell_traffic(from).1;
-        h.press(&mut m, PLAY);
-        h.run(&mut m, 300);
-        m.key(EDIT, true);
-        h.run(&mut m, 10);
-        let cont = go(&mut h, &mut m, &[PLAY], &[0xf2, 0xfb]);
-        m.key(EDIT, false);
-        (start, cont, jitter, median, frames)
-    };
-    let alone = run(false);
-    let with = run(true);
-    println!(
-        "start, song position and continue after the song moved: {:?} {:?} ms alone, {:?} {:?} \
-         with; clocks {} ms apart, at most {} / {} off; {} cell frames while playing",
-        alone.0, alone.1, with.0, with.1, alone.3, alone.2, with.2, with.4
-    );
-    assert!(with.4 > 20, "nothing streamed while the song played");
-    for (w, a) in with
-        .0
-        .iter()
-        .chain(&with.1)
-        .zip(alone.0.iter().chain(&alone.1))
-    {
-        assert!(
-            *w <= a + 1,
-            "a transport message {w} ms after the song moved, {a} alone"
-        );
-    }
-    assert!(
-        with.2 <= alone.2 + 1,
-        "the clocks' jitter {} against {}",
-        with.2,
-        alone.2
-    );
-}
-
 const USB_FRAME_MS: u64 = 1;
 const TRANSPORT: [u8; 5] = [0xf8, 0xfa, 0xfb, 0xfc, 0xf2];
 
-fn transport_waits(fw: &Firmware, with: bool) -> (u64, usize, usize) {
+const CLOCK: u8 = 0xf8;
+
+struct TransportOut {
+    waited: u64,
+    messages: Vec<u8>,
+    clocks_off: i64,
+    clocks_apart: i64,
+    frames: usize,
+}
+
+fn trace_ring(h: &mut Host, m: &mut Machine, fw: &Firmware, ms: u64, queued: &mut Vec<(u64, u8)>) {
+    let (ring, w) = (fw.symbol("midi_out_q"), fw.symbol("mo_w"));
+    let mut seen = m.soc.read32(w);
+    for _ in 0..ms {
+        h.run(m, 1);
+        let now = m.soc.read32(w);
+        for i in seen..now {
+            let status = (m.soc.read32(ring + 4 * (i % 64)) >> 8) as u8;
+            if TRANSPORT.contains(&status) {
+                queued.push((m.ms(), status));
+            }
+        }
+        seen = now;
+    }
+}
+
+fn transport_out(fw: &Firmware, with: bool) -> TransportOut {
     let mut m = usb_machine(fw);
     let mut h = Host::new();
     m.soc
@@ -682,30 +614,35 @@ fn transport_waits(fw: &Firmware, with: bool) -> (u64, usize, usize) {
     h.press(&mut m, SEQ);
     h.press(&mut m, SEQ);
     h.run(&mut m, 700);
-    let (ring, w) = (fw.symbol("midi_out_q"), fw.symbol("mo_w"));
     let from = m.ms();
     let mut queued = Vec::new();
-    let mut seen = m.soc.read32(w);
     m.key(PLAY, true);
-    for _ in 0..2000 {
-        h.run(&mut m, 1);
-        let now = m.soc.read32(w);
-        for i in seen..now {
-            let status = (m.soc.read32(ring + 4 * (i % 64)) >> 8) as u8;
-            if TRANSPORT.contains(&status) {
-                queued.push((m.ms(), status));
-            }
-        }
-        seen = now;
-    }
+    trace_ring(&mut h, &mut m, fw, 2000, &mut queued);
     m.key(PLAY, false);
+    let playing = m.ms();
+    trace_ring(&mut h, &mut m, fw, 10, &mut queued);
+    m.key(PLAY, true);
+    trace_ring(&mut h, &mut m, fw, 10, &mut queued);
+    m.key(PLAY, false);
+    trace_ring(&mut h, &mut m, fw, 300, &mut queued);
+    m.key(EDIT, true);
+    trace_ring(&mut h, &mut m, fw, 10, &mut queued);
+    m.key(PLAY, true);
+    trace_ring(&mut h, &mut m, fw, 60, &mut queued);
+    m.key(PLAY, false);
+    m.key(EDIT, false);
     let arrived: Vec<(u64, u8)> = h
         .others
         .iter()
         .filter(|(t, p)| *t >= from && TRANSPORT.contains(&p[1]))
         .map(|(t, p)| (*t, p[1]))
         .collect();
-    let latest = queued
+    assert_eq!(
+        arrived.len(),
+        queued.len(),
+        "every transport message queued reaches the host"
+    );
+    let waited = queued
         .iter()
         .zip(&arrived)
         .map(|(q, a)| {
@@ -714,23 +651,66 @@ fn transport_waits(fw: &Firmware, with: bool) -> (u64, usize, usize) {
         })
         .max()
         .expect("no transport message went out");
-    (latest, queued.len(), h.cell_traffic(from).1)
+    let clocks: Vec<u64> = arrived
+        .iter()
+        .filter(|(t, s)| *s == CLOCK && *t < playing)
+        .map(|a| a.0)
+        .collect();
+    let mut apart: Vec<i64> = clocks.windows(2).map(|w| (w[1] - w[0]) as i64).collect();
+    let gaps = apart.clone();
+    apart.sort_unstable();
+    let clocks_apart = apart[apart.len() / 2];
+    TransportOut {
+        waited,
+        messages: arrived
+            .iter()
+            .map(|a| a.1)
+            .filter(|&s| s != CLOCK)
+            .collect(),
+        clocks_off: gaps.iter().map(|g| (g - clocks_apart).abs()).max().unwrap(),
+        clocks_apart,
+        frames: h.cell_traffic(from).1,
+    }
 }
 
 #[test]
-fn a_transport_message_waits_at_most_a_usb_frame_behind_live_links_frames() {
-    let Some(fw) = firmware("the Live Link transport wait test") else {
+fn transport_out_goes_as_without_a_session_at_most_a_usb_frame_later() {
+    let Some(fw) = firmware("the Live Link transport test") else {
         return;
     };
-    let (alone, sent, _) = transport_waits(&fw, false);
-    let (with, _, frames) = transport_waits(&fw, true);
+    let alone = transport_out(&fw, false);
+    let with = transport_out(&fw, true);
     println!(
-        "{sent} transport messages: at most {alone} ms from the ring to the host alone, {with} \
-         with Live Link ({frames} cell frames in 2 s)"
+        "transport out {:02x?}: at most {} ms from the ring to the host alone, {} with Live Link; \
+         clocks {} ms apart, at most {} / {} off; {} cell frames",
+        alone.messages,
+        alone.waited,
+        with.waited,
+        alone.clocks_apart,
+        alone.clocks_off,
+        with.clocks_off,
+        with.frames
     );
-    assert!(frames > 20, "nothing streamed");
+    assert!(with.frames > 20, "nothing streamed while the song played");
+    assert_eq!(
+        alone.messages,
+        [0xfa, 0xfc, 0xf2, 0xfb],
+        "start, stop, then song position and continue"
+    );
+    assert_eq!(
+        with.messages, alone.messages,
+        "the same messages under a session"
+    );
     assert!(
-        with <= alone + USB_FRAME_MS,
-        "a transport message waited {with} ms with Live Link, {alone} alone"
+        with.waited <= alone.waited + USB_FRAME_MS,
+        "a transport message waited {} ms with Live Link, {} alone",
+        with.waited,
+        alone.waited
+    );
+    assert!(
+        with.clocks_off <= alone.clocks_off + USB_FRAME_MS as i64,
+        "the clocks' jitter {} against {}",
+        with.clocks_off,
+        alone.clocks_off
     );
 }
