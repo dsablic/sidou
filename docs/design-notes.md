@@ -530,7 +530,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
     is kept. `up` divides 16 packets by a window that holds 15 full gaps plus the first packet,
     which comes 17-18 ms or 275 ms after the metadata depending on when the last hold was, so it
     reads 246.7 or 263. A host never sees packets closer than 250 ms. The test measures the
-    window: the smallest interval between consecutive packets' ACKs measures the gap itself.
+    window: the smallest interval between consecutive packets' ACKs measures the gap itself, and
+    `usb.rs` asserts it is 250 ms or more since 2026-11-08 (259 on the default build).
   - *MIDI out*: nothing is lost. A three-detent turn glides the cutoff in steps about 8 ms apart;
     MIDI out sends the current value once a 10 ms tick, so some steps fall between ticks, with or
     without a session. Every CC sent is a value the parameter held, within a tick, and the last

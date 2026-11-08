@@ -450,11 +450,16 @@ fn name16(name: &str) -> Vec<u8> {
         .collect()
 }
 
-const SYSEX_GAP_MS: f64 = 250.0;
+const SYSEX_GAP_MS: u64 = 250;
 
 const OTHER_TYPE: u8 = 0x7F;
 
-fn put_file(m: &mut Machine, link: &mut Link, name: &str, data: &[u8]) -> (Vec<u8>, f64) {
+struct PutTiming {
+    per_packet: f64,
+    closest: u64,
+}
+
+fn put_file(m: &mut Machine, link: &mut Link, name: &str, data: &[u8]) -> (Vec<u8>, PutTiming) {
     let mut meta = vec![0, 0];
     meta.extend(name16(name));
     meta.push(OTHER_TYPE);
@@ -466,19 +471,28 @@ fn put_file(m: &mut Machine, link: &mut Link, name: &str, data: &[u8]) -> (Vec<u
     link.ack(m, seq);
     let packets = data.len().div_ceil(256);
     let start = m.ms();
+    let mut acked = Vec::new();
     for chunk in data.chunks(256) {
         seq += 1;
         link.send(m, 5, seq, chunk);
         link.ack(m, seq);
+        acked.push(m.ms());
     }
-    let up = (m.ms() - start) as f64 / packets as f64;
+    let up = PutTiming {
+        per_packet: (m.ms() - start) as f64 / packets as f64,
+        closest: acked
+            .windows(2)
+            .map(|w| w[1] - w[0])
+            .min()
+            .unwrap_or(u64::MAX),
+    };
     seq += 1;
     link.send(m, 6, seq, &[]);
     link.ack(m, seq);
     (meta, up)
 }
 
-fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (f64, f64) {
+fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (PutTiming, f64) {
     let mut link = Link::default();
     let (meta, up) = put_file(m, &mut link, name, data);
     let packets = data.len().div_ceil(256);
@@ -510,7 +524,7 @@ fn transfer_file() -> Vec<u8> {
     (0..4096u32).map(|i| (i * 31 + i / 256) as u8).collect()
 }
 
-fn timed_round_trip(fw: &Firmware, name: &str, chord: bool) -> (f64, f64) {
+fn timed_round_trip(fw: &Firmware, name: &str, chord: bool) -> (PutTiming, f64) {
     let mut m = usb_machine(fw);
     assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
     if chord {
@@ -531,9 +545,11 @@ fn timed_round_trip(fw: &Firmware, name: &str, chord: bool) -> (f64, f64) {
     let service = *m.watched_calls.iter().max().expect("store_fm1_service ran");
     let pass = *m.passes.iter().max().expect("passes ran");
     println!(
-        "USB SysEx ({}): {up:.1} ms a DATA and its ACK up, {down:.1} ms down; {progs} programs, \
-         all held: {holds}; store_fm1_service {service} at most, a pass {pass}",
-        if chord { "a chord sounding" } else { "silent" }
+        "USB SysEx ({}): {:.1} ms a DATA and its ACK up, {} at the closest, {down:.1} ms down; \
+         {progs} programs, all held: {holds}; store_fm1_service {service} at most, a pass {pass}",
+        if chord { "a chord sounding" } else { "silent" },
+        up.per_packet,
+        up.closest
     );
     assert_eq!(progs, holds, "every production program is held");
     assert!(service <= STORE_POLL_WORST, "store_fm1_service {service}");
@@ -559,6 +575,7 @@ fn a_silent_usb_put_and_get_move_a_256_byte_packet_quickly() {
         return;
     };
     let (up, down) = timed_round_trip(&fw, "USB TIMING", false);
+    let up = up.per_packet;
     assert!(up <= 51.6, "PUT: {up:.1} ms a packet");
     assert!(down <= 12.0, "GET: {down:.1} ms a packet");
 }
@@ -570,10 +587,15 @@ fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     };
     let (up, down) = timed_round_trip(&fw, "USB CHORD", true);
     assert!(
-        up >= SYSEX_GAP_MS,
-        "PUT: {up:.1} ms a packet, under the gap"
+        up.closest >= SYSEX_GAP_MS,
+        "PUT: two packets {} ms apart, under the gap",
+        up.closest
     );
-    assert!(up <= 290.0, "PUT: {up:.1} ms a packet");
+    assert!(
+        up.per_packet <= 290.0,
+        "PUT: {:.1} ms a packet",
+        up.per_packet
+    );
     assert!(down <= 11.4, "GET: {down:.1} ms a packet");
 }
 
@@ -1513,7 +1535,7 @@ fn put_while_the_store_waits(pending: Pending, how: Sound) {
     assert!(claim <= claim_max, "the PUT's claim took {claim} ms");
     assert!(up <= up_max, "PUT: {up:.1} ms a packet");
     assert!(
-        song || up >= SYSEX_GAP_MS,
+        song || up >= SYSEX_GAP_MS as f64,
         "PUT: {up:.1} ms a packet, under the gap"
     );
     m.usb_frames(10);
