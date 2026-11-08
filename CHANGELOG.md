@@ -14,6 +14,10 @@ All notable changes are documented here. The format follows
   steered by at most one frame a render, so a host that follows the device's rate closely (iOS's
   Camera) no longer hears a run of short or long packets as a dropout. The recorded samples are
   the same, bit for bit.
+- **The Bluetooth build fits the release ceiling.** The radio driver builds in its own unit at
+  `-Os` (felucca-bsp#31's `FM1_IRQ_DEFS 0`): the `-DSIDOU_BLE=ON` image is 577,008 bytes, 2,508
+  under 579,516, held to that ceiling like the default, and it links against `app.ld` itself. The
+  test build's 500-byte exception is gone.
 
 ## [1.8.0] - 2026-11-07
 

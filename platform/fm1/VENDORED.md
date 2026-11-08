@@ -5,7 +5,7 @@
 ## felucca-bsp (`bsp/`)
 
 - **Source:** <https://github.com/hugelton/felucca-bsp>, `chip/` and `boards/fm1/`
-- **Commit:** `7e09895c` (main, 2026-11-07: our PR #31's `FM1_IRQ_DEFS`, #32's `FELUCCA_UAC_CH`,
+- **Commit:** `7e09895c` (main, 2026-11-08: our PR #31's `FM1_IRQ_DEFS`, #32's `FELUCCA_UAC_CH`,
   #33's `FELUCCA_UAC_STALL_POLLS`, `5b0879b`'s USB audio packets on the I2S clock, and the Pocket
   AMP's board headers, which SIDOU does not vendor). Before it, `f8788009` (1.8.0).
 - **Licence:** MPL-2.0, each file with its own header; `bsp/LICENSE` and `bsp/NOTICE` are
@@ -39,12 +39,19 @@ loader: the update loader stays Felucca 1.6.1's (below).
 ### Using the BSP
 
 - The headers define `static` functions and state and are meant to be included by one
-  translation unit each. `fm1_irq.h` also defines two non-static symbols, `fm1_crash` and
-  `fm1_fault_c`, so a second translation unit that includes it (directly or through
-  `fm1_audio.h` or `fm1_timer.h`) fails to link.
+  translation unit each. `fm1_irq.h` also defines three non-static symbols, `fm1_crash`,
+  `fm1_crash_ctx` and `fm1_fault_c`, in the unit that owns the HAL (`main.c`). A second unit that
+  includes it (directly or through `fm1_audio.h`, `fm1_timer.h` or the radio's `fm1_ble.h`) sets
+  `FM1_IRQ_DEFS 0` first, which declares them instead (felucca-bsp#31); without it, it fails to
+  link. `fm1_irq.h` holds no state of its own, so both units' copies of its helpers drive the
+  same registers.
 - Built with `bsp/chip` and `bsp/boards/fm1` on the include path (`fm1_hal` in CMake), as
   felucca-bsp says. Who includes what:
   - `main.c`: `fm1_sys.h`, `fm1_irq.h`, `fm1_audio.h`, `fm1_time.h`, `fm1_timer.h`;
+  - `ble_radio.c`, only in the Bluetooth build (`SIDOU_BLE`), compiled alone at `-Os` with
+    `FM1_IRQ_DEFS 0`: `fm1_ble.h` (with `fm1_irq.h`), `fm1_ble_rf.h`, `fm1_rf_cal.h` and
+    `fm1_rf_regs.h`, through the stack's driver `ble_hw_wl82.c`, which it includes;
+    `ble_setting.c` there: `fm1_sys.h` and `fm1_flash_access.h`;
   - `input.c`: `fm1_input.h` (with `fm1_time.h`, `fm1_gpio.h`, `fm1_adc.h` and
     `fm1_led_anim.h`). The scan state `fm1_in` is static there, so the TIMER5 interrupt in
     `main.c` reaches `fm1_input_tick` through `input_tick_isr`. `input_raw_keys`, for `main.c`'s

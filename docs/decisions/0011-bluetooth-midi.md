@@ -85,6 +85,12 @@ radio, as fm1-base's boot does it) put the Bluetooth image at 580,016 bytes, 500
 reserve, for the device test only**: its ceiling is 580,016. The default build's stays 579,516, and
 the Bluetooth build must fit 579,516 again before Bluetooth ships in a release.
 
+Done 2026-11-08: with felucca-bsp `7e09895c` (felucca-bsp#31, `FM1_IRQ_DEFS 0`) the radio driver
+builds in its own unit at plain `-Os`, and the Bluetooth image is 577,008 bytes, 2,508 under
+579,516 (2,992 saved, of the plan's 3.2 KB). The 580,016 exception is withdrawn: the Bluetooth
+build is held to 579,516 like the default (`ble.rs`) and links against `app.ld` itself. Whether a
+release ships Bluetooth built in, or as a second package, is still the owner's to decide.
+
 ## Consequences
 
 - The plan's steps 2 and 3 come first: a `SIDOU_BLE` build measures the real deltas, and SIDOU

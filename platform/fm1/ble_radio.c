@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ble_radio.h"
+#include "midi.h"
 
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #include "ble.h"

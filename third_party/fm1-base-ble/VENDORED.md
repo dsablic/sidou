@@ -17,8 +17,9 @@
   the rest of the BSP. `fm1_ble_rf.h` includes `ble_rf_tables.h` (fm1-base's build copies the
   table under that name); SIDOU's `platform/fm1/ble_rf_tables.h` includes the v15 table instead.
 - **How SIDOU builds it** (`-DSIDOU_BLE=ON`, `platform/fm1/CMakeLists.txt`): the host side in
-  `platform/fm1/ble_stack_unit.c` at `-Os`, the driver and SIDOU's glue (`ble_radio.c`) in
-  `main.c`'s unit, which owns the BSP's `fm1_irq.h` (the design notes, "Bluetooth").
+  `platform/fm1/ble_stack_unit.c` at `-Oz`, the driver in SIDOU's glue `platform/fm1/ble_radio.c`,
+  its own unit at `-Os` with `FM1_IRQ_DEFS 0`, so `main.c` keeps the BSP's `fm1_irq.h`
+  definitions (the design notes, "Bluetooth").
 
 ## Updating
 

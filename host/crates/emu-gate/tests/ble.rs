@@ -4,15 +4,15 @@
 mod common;
 mod flash_plan;
 
-use common::panel::{press, ALGORITHM, HOME};
-use common::{put_value, settled_flash, stored_value, Firmware, Machine, REGION_FREE_MIN};
+use common::panel::{note_key, press, ALGORITHM, HOME};
+use common::{
+    booted, firmware, put_value, settled_flash, stored_value, Firmware, Machine, REGION_FREE_MIN,
+};
 use flash_plan::{IMAGE_CEILING, PLAN};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, LIVE_VOICES, VIEWS_SETTINGS_BLUETOOTH};
 
 const C4: u8 = 60;
-const TEST_BUILD_RESERVE_TAKEN: usize = 500;
-const BLE_TEST_CEILING: usize = IMAGE_CEILING + TEST_BUILD_RESERVE_TAKEN;
 const NOINIT: std::ops::Range<u32> = 0x01C7_C000..0x01C7_FD50;
 const RAM_START: u32 = 0x01C0_E000;
 const POOL_START: u32 = 0x01C1_E000;
@@ -77,17 +77,71 @@ fn note_on(note: u8) -> u32 {
 }
 
 #[test]
-fn the_bluetooth_test_build_fits_its_own_ceiling() {
+fn the_bluetooth_build_fits_the_release_ceiling() {
     let Some(build) = ble_build() else { return };
     let size = std::fs::metadata(build.join("platform/fm1/sidou_app.bin"))
         .expect("the Bluetooth build's image")
         .len() as usize;
     println!(
-        "Bluetooth image {size} bytes: {PLAN}'s ceiling {IMAGE_CEILING}, the test build's {BLE_TEST_CEILING}"
+        "Bluetooth image {size} bytes: {PLAN}'s ceiling {IMAGE_CEILING}, {} to spare",
+        IMAGE_CEILING as i64 - size as i64
     );
     assert!(
-        size <= BLE_TEST_CEILING,
-        "the Bluetooth image is {size} bytes, over the test build's {BLE_TEST_CEILING}"
+        size <= IMAGE_CEILING,
+        "the Bluetooth image is {size} bytes, over the ceiling {IMAGE_CEILING}"
+    );
+}
+
+const CHORD: [u8; 3] = [note_key(57), note_key(64), note_key(76)];
+const STEP_CYCLES: u64 = 2000;
+const BLOCKS: u64 = 1000;
+const BLOCK_FRAMES: u64 = 128;
+
+fn block_end(m: &mut Machine) -> u64 {
+    let n = m.alnk_blocks.len();
+    while m.alnk_blocks.len() == n {
+        m.run_cycles(STEP_CYCLES);
+    }
+    m.alnk_pcs_inside
+}
+
+fn chord_from_a_block_end(fw: &Firmware) -> u64 {
+    let mut m = booted(fw);
+    m.watch_alnk_pcs(fw.symbol("_rt_start")..fw.symbol("_rt_end"));
+    let start = block_end(&mut m);
+    for k in CHORD {
+        m.key(k, true);
+    }
+    let mut end = start;
+    for _ in 0..BLOCKS {
+        end = block_end(&mut m);
+    }
+    assert!(
+        m.alnk_pcs_outside.is_empty(),
+        "the audio interrupt left SRAM"
+    );
+    end - start
+}
+
+#[test]
+fn with_the_radio_off_the_audio_interrupt_is_the_default_builds() {
+    let Some(build) = ble_build() else { return };
+    let Some(default) = firmware("the default build, beside the Bluetooth build") else {
+        return;
+    };
+    let ble = chord_from_a_block_end(&Firmware::load(&build));
+    let plain = chord_from_a_block_end(&default);
+    let per_sample = |n: u64| n as f64 / (BLOCKS * BLOCK_FRAMES) as f64;
+    println!(
+        "the audio interrupt, a chord held for {BLOCKS} blocks: {ble} instructions with Bluetooth \
+         ({:.2} a sample), {plain} without ({:.2})",
+        per_sample(ble),
+        per_sample(plain)
+    );
+    assert!(
+        ble.abs_diff(plain) < BLOCKS / 10,
+        "{} instructions apart in {BLOCKS} blocks",
+        ble.abs_diff(plain)
     );
 }
 
@@ -254,7 +308,7 @@ fn the_bluetooth_build_raises_the_rails_and_sets_the_power_up_before_the_radio_c
 
 #[test]
 fn the_default_build_leaves_the_rails_as_the_boot_loader_set_them() {
-    let Some(fw) = common::firmware("the default build's rails") else {
+    let Some(fw) = firmware("the default build's rails") else {
         return;
     };
     let mut m = power_on(&fw, &settled_flash(&fw.image));

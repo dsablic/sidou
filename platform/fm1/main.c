@@ -39,7 +39,7 @@
 #include "usb_audio.h"
 
 #if defined(SIDOU_BLE)
-#include "ble_radio.c"
+#include "ble_radio.h"
 #endif
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];

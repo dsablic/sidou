@@ -100,13 +100,17 @@ the DAW clock) are still open.
 
 - **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
   SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
-  and clock both ways, SETTINGS BLUETOOTH OFF / ON. **Waits for:** felucca-bsp#31 (the radio driver
-  at plain `-Os`, about 3.2 KB) or another 452 bytes of room, and the three open device checks (the
-  hour of two SIDs over Bluetooth, a save during the link, and the DAW clock). L.
+  and clock both ways, SETTINGS BLUETOOTH OFF / ON. The room is found (2026-11-08): with
+  felucca-bsp#31 the radio driver builds alone at plain `-Os`, and the Bluetooth image is 577,008
+  bytes, 2,508 under the release ceiling it is now held to. **Waits for:** the owner's choice of
+  one package with Bluetooth built in or two packages, and the open device checks (the hour of
+  two SIDs over Bluetooth, a save during the link, the DAW clock, §34's items again on this
+  build). L.
 - **Bluetooth connecting out**: SIDOU connects to Bluetooth MIDI keyboards (the central role, a
   DEVICES page, the last device remembered), the owner's Korg microKEY Air as the test; pairing if
-  the keyboard asks for it. Its room, about 9-10 KB with its page: the radio driver at plain `-Os`
-  (3,264 bytes, felucca-bsp#31, filed 2026-11-06) and hot/cold splits of the gate-bound `-O2` files
+  the keyboard asks for it. Its room, about 9-10 KB with its page: the 2,508 bytes the peripheral
+  leaves under the ceiling (the radio driver at plain `-Os` is done, 2,992 bytes; `-Oz` would give
+  880 more, untried on the device) and hot/cold splits of the gate-bound `-O2` files
   (`sid_character.c`, `live.c`, `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each
   refused by a gate before). M-L.
 - **1.9** (the owner, 2026-11-06), each starting with a short design:

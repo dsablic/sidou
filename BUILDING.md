@@ -140,13 +140,15 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
-**Bluetooth MIDI's measurement build** (1.8, `SIDOU_BLE`, never to be handed out): SIDOU with
-Optimist's open Bluetooth stack linked in, to measure what it costs
-([the plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The stack is vendored in
-`third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`. `SIDOU_BLE_CENTRAL` is 0 (a computer connects to SIDOU), 3 (SIDOU also
-connects out, no pairing; the default) or 1 (with pairing). The radio never starts in this build.
-The image does not fit the app slot, so it links against a copy of `app.ld` with a larger flash
-region; there is no package of it.
+**The Bluetooth build** (`SIDOU_BLE`, off by default, not in a release yet): SIDOU with
+Optimist's open Bluetooth MIDI stack, the peripheral (a Mac, an iPad or a phone connects to
+SIDOU), and BLUETOOTH in SETTINGS, off until it is turned on
+([decision 0011](docs/decisions/0011-bluetooth-midi.md)). The stack is vendored in
+`third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`.
+`SIDOU_BLE_CENTRAL` is 0 (the default: a computer connects to SIDOU), 3 (SIDOU also connects
+out, no pairing) or 1 (with pairing). The image fits the release ceiling and links against
+`app.ld` as the default build does; `sidou-pack` packages it, and `--verify` and `tools/preflash`
+report it as not a release build (its option record names `SIDOU_BLE=ON`).
 
 ```sh
 tools/fm1-docker cmake --preset fm1 -B build/fm1-ble -DSIDOU_BLE=ON

@@ -376,10 +376,16 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `BLE_API` left empty (extern) as fm1-base's host tests build it. Inside `main.c`'s unit the stack
   came out 6,784 bytes larger at `main.c`'s `-mllvm -inline-threshold=225`, and clang's global
   merge mixed its state with `main.c`'s, so no `app.ld` rule could place it.
-- The radio driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`) and SIDOU's glue
-  (`ble_radio.c`) are part of `main.c`'s unit: `fm1_ble.h` needs `fm1_irq.h`, whose two non-static
-  definitions keep it to one unit (Felucca's HAL rule, `VENDORED.md`). At `main.c`'s threshold the
-  driver costs 3,264 bytes more than at plain `-Os`.
+- **The radio driver is its own unit** (2026-11-08): SIDOU's glue `ble_radio.c`, which includes
+  the driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`), is compiled alone at plain `-Os`
+  with `FM1_IRQ_DEFS 0` (felucca-bsp#31, vendored with `7e09895c`): its `fm1_irq.h` declares the
+  fault record and `fm1_fault_c` instead of defining them, and `main.c`, the HAL's unit, still
+  defines them once. Until then the driver had to sit in `main.c`'s unit, whose
+  `-mllvm -inline-threshold=225` made it 3,264 bytes larger (the 1.8 plan's R6). The move saved
+  2,992 bytes (580,000 to 577,008, 93 % of the plan's 3.2 KB; `-Oz` would save 880 more, untried
+  on the radio's timing). `main.c` now includes only `ble_radio.h`, and the stack's include path
+  and `BLE_*` settings go to `ble_radio.c` and `ble_stack_unit.c` alone. `fm1_irq.h` holds no
+  state of its own (registers only), so the second unit's copy of its helpers is safe.
 - Since the felucca-bsp move the stack is vendored (`third_party/fm1-base-ble`, fm1-base `698e2cb`,
   whose felucca-bsp pin is SIDOU's) and the radio headers sit in `platform/fm1/bsp/chip` beside the
   `fm1_irq.h` they include, so nothing is fetched or copied at build time. `fm1_ble_rf.h` includes
@@ -418,12 +424,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   STATUS shows the record on its READY line in the Bluetooth build: `P` (or `!` after a start
   that reset), then VDC14 and SYSVDD at boot, after, the tries, whether the DC-DC was moved, the
   clock byte, in hex.
-- **The Bluetooth test build's own ceiling** (the owner, 2026-11-07): 580,016 bytes, 1.8's ceiling
-  (579,516) plus 500 of the slot's 2 KB reserve, for the device test only (`ble.rs`'s
-  `BLE_TEST_CEILING`). The power setup made the image 580,016, 500 over, and nothing cheap was left
-  (a second split reached about 250-370 bytes). The default build's ceiling stays 579,516, and
-  before Bluetooth ships in a release the Bluetooth build must fit 579,516 again (felucca-bsp#31,
-  about 3.2 KB, or another saving; the roadmap).
+- **The Bluetooth build is held to the release ceiling** (579,516, `ble.rs`), as the default
+  build is, and links against `app.ld` itself. From 2026-11-07 to 2026-11-08 the owner allowed
+  the test build 500 bytes of the slot's 2 KB reserve (580,016) for the device test, after the
+  power setup put it 500 over; the radio driver's own unit (above) brought it to 577,008, 2,508
+  under, and the exception is gone.
 - **BLUETOOTH ON is saved only after the radio started cleanly**, and a start that resets cannot
   loop: a word in NOINIT marks the start's dangerous part; found set at the next boot, the radio
   is not started, BLUETOOTH is saved OFF and STATUS shows `!`. A kept ON that fails at a later
@@ -437,10 +442,16 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   SIDOU after a power cycle.
 - **The emulator gate** (`emu-gate/tests/ble.rs`, with `SIDOU_FM1_BLE_BUILD`): notes written into
   `ble_radio_in` by symbol play, and a link set down (`ble_radio_role`) releases them; the stack's
-  state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,340 bytes free);
-  the image fits the ceiling (the peripheral, 578,016); the setting is saved with an address and
-  kept across a power cycle; the start comes after the boot's waits. With the radio
-  off the audio interrupt is the default build's to the instruction (396.67 a sample, a chord held).
+  state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,348 bytes free);
+  the image fits the release ceiling (577,008); the setting is saved with an address and
+  kept across a power cycle; the start comes after the boot's waits. With the radio off the
+  audio interrupt is the default build's: a chord pressed at a block's end, then 1,000 blocks
+  counted at the audio interrupt's own level in both builds, must come out less than one
+  instruction in ten blocks apart (49,806,293 and 49,806,306, 389.11 a sample each). Block by
+  block they differ: a 78-instruction item lands a block earlier or later with the main loop's
+  timing (the Bluetooth build polls the radio each pass, and `fm1_rf_burst_run` moves RAMTEXT
+  36 bytes), so equal totals over the same blocks are the strict statement. One instruction added
+  to every block would be 1,000 apart.
 - The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
   both ways.
 - RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section
@@ -451,11 +462,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The radio never starts in this build (`ble_radio_wanted` is never set). Started at boot in
   fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up holds the main loop
   past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
-- The copy of `app.ld` is written at configure time and `app.ld` is a configure dependency, so a
-  change to `app.ld` (rel180 moved `psid_isr_*` into RAMTEXT) reaches the Bluetooth build; a stale
-  copy put `psid_isr_retweak` in flash, out of branch reach of `sid_write` in SRAM.
-- The image is over the app slot, so the build links against a copy of `app.ld` with a larger
-  XIP region; CMake fails if `app.ld`'s length changes under it.
+- The build links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,
+  it linked against a copy with a larger XIP region, written at configure time.
 - The option record names `SIDOU_BLE` only when it is on, so the default image keeps its bytes.
   `sidou-pack` fails any record that names an option outside `DEFAULT_OPTIONS`; the options that
   are absent when off are listed in `ABSENT_WHEN_OFF`.
