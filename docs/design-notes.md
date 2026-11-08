@@ -951,7 +951,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 ### Tests: Real chips (filter-metrics)
 
 `band_energy.rs`, `alignment.rs` and `harmonics.rs` are tested in `tests/unit/filter_metrics.rs`.
-Results are in [the feasibility plan](plans/2026-11-03-filter-model-feasibility.md), "Measured".
+Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9.0/docs/plans/2026-11-03-filter-model-feasibility.md), "Measured".
 
 - **Why bands, not the envelope.** The sweeps' broadband RMS sees only the level contour. Real
   chips differ in spectral shape (cutoff, resonance, distortion), so `band_energy` compares 26

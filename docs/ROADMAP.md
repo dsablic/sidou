@@ -8,6 +8,8 @@ in [CHANGELOG.md](../CHANGELOG.md). Sizes: S is under a day of work, M a few day
 
 ## Released
 
+- **[1.9.0](https://github.com/dsablic/sidou/releases/tag/v1.9.0)** (2026-11-08): Bluetooth MIDI
+  in the one package (OFF until turned on), and USB audio on the FM-1's own clock.
 - **[1.8.0](https://github.com/dsablic/sidou/releases/tag/v1.8.0)** (2026-11-07): a sound from a
   prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at
   44.1 kHz only.
@@ -84,6 +86,34 @@ Every small and medium item of 1.x below (released in 1.1.0; the USB ID follows 
 (the user's choices, flash plan, order). The large ones (LAB's song bridge, instruments from a
 `.sid`, the browser editor, Live Link, felucca-bsp) get their own designs after it.
 
+## 1.5
+
+Released in 1.5.0: LAB's song bridge, instruments lifted from a `.sid`, chords and time-shared
+drums from DICE, a popup for every small-print edit (with a check that enforces it), page jumps
+and INSTR's pointer summaries, FM-1 Live Link with the computer keyboard, the site's library,
+song editor and preview, MIDI controller maps, and the test and code cleanup (no code comments:
+the decisions are in [design-notes.md](design-notes.md)).
+
+**1.5.x**
+- **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341.
+- **The move to felucca-bsp**: done in 1.8.0 (PR #21 merged upstream on 2026-11-05; SIDOU
+  vendors felucca-bsp `7e09895c` since 1.9.0).
+
+- **The quality pass**: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of 250, the
+  MIDI floods at 98 % of their budget, the SID views' UI poll 452 under its budget after the
+  lift), the faster ergonomics gate, suggested automations, knob-curve follow-ups from the device
+  sessions, and the two `-Oz` puzzles (`gt2_song.c`'s goldens, `fx_slots_init.c`'s timing).
+- **Small fixes**: a pulled LAB name comes back after a power cycle (today the sound does, the
+  name not); the Live Link smoke test's HOME hold no longer depends on wall-clock timing.
+
+## 1.6
+
+Released in 1.6.0: layered LAB sounds (up to three oscillators on one key, the LAYERS
+page), FILTER ENV, `sidou-sysex import` for SidStation and MIDIbox SID V2 banks (songs of sixteen
+patches, tables as GoatTracker wave programs), filter metrics against real chips (the 6581 filter
+is inside their spread, so the op-amp port is parked), and the title cards removed
+([the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-11-03-patch-import-design.md)).
+
 ## 1.8
 
 Released in 1.8.0: a sound from a prompt (SIDOU's instructions for language models, the
@@ -142,37 +172,6 @@ packets follow the FM-1's own clock (felucca-bsp `5b0879b`). Tested on the devic
     (the owner, 2026-11-04).
   - **Wi-Fi and Ableton Link** ([decision 0011](decisions/0011-bluetooth-midi.md)): until Optimist
     runs Link on a real FM-1. Bluetooth audio is dropped.
-
-## 1.6
-
-Released in 1.6.0: layered LAB sounds (up to three oscillators on one key, the LAYERS
-page), FILTER ENV, `sidou-sysex import` for SidStation and MIDIbox SID V2 banks (songs of sixteen
-patches, tables as GoatTracker wave programs), filter metrics against real chips (the 6581 filter
-is inside their spread, so the op-amp port is parked), and the title cards removed
-([the design](https://github.com/dsablic/sidou/blob/v1.6.0/docs/plans/2026-11-03-patch-import-design.md)).
-
-## 1.5
-
-Released in 1.5.0: LAB's song bridge, instruments lifted from a `.sid`, chords and time-shared
-drums from DICE, a popup for every small-print edit (with a check that enforces it), page jumps
-and INSTR's pointer summaries, FM-1 Live Link with the computer keyboard, the site's library,
-song editor and preview, MIDI controller maps, and the test and code cleanup (no code comments:
-the decisions are in [design-notes.md](design-notes.md)).
-
-**1.5.x**
-- **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341.
-- **The move to felucca-bsp**: waits for felucca-bsp's PR #21 (the raw MIDI-in hook, our patch;
-  to be rebased, it conflicts with main in a comment); #14 and #16 are fixed upstream. Retried on
-  2026-11-05: 23 of 23 USB tests pass with `usb_audio.c` handing the recording 24-bit words (one
-  line) and the test helper reading the sent string descriptor
-  ([the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md#3-the-felucca-bsp-trial)).
-
-- **The quality pass**: performance headroom (RAMTEXT 80 bytes free, K1's input 246 of 250, the
-  MIDI floods at 98 % of their budget, the SID views' UI poll 452 under its budget after the
-  lift), the faster ergonomics gate, suggested automations, knob-curve follow-ups from the device
-  sessions, and the two `-Oz` puzzles (`gt2_song.c`'s goldens, `fx_slots_init.c`'s timing).
-- **Small fixes**: a pulled LAB name comes back after a power cycle (today the sound does, the
-  name not); the Live Link smoke test's HOME hold no longer depends on wall-clock timing.
 
 ## 1.x
 

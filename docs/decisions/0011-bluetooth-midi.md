@@ -3,7 +3,10 @@
 # 0011: Bluetooth MIDI on the open stack
 
 **Status:** accepted, 2026-11-04 (the owner), from
-[the Bluetooth research](../plans/2026-11-05-bluetooth-research.md).
+[the Bluetooth research](https://github.com/dsablic/sidou/blob/v1.9.0/docs/plans/2026-11-05-bluetooth-research.md). The peripheral shipped in
+1.9.0 (2026-11-08), in the one package, after the device checks of
+[hardware-test §35](../hardware-test.md#35-bluetooth-midi-in-a-release-sized-build-felucca-bsp-7e09895c);
+connecting out to Bluetooth keyboards is next.
 
 ## Context
 
@@ -40,7 +43,7 @@ core and sit below the audio interrupt.
 
 ## The owner's decisions on the measured plan (2026-11-05)
 
-From [the 1.8 Bluetooth plan](../plans/2026-11-05-bluetooth-1.8-plan.md), which measured both ways
+From [the 1.8 Bluetooth plan](https://github.com/dsablic/sidou/blob/v1.9.0/docs/plans/2026-11-05-bluetooth-1.8-plan.md), which measured both ways
 at 39,312 bytes of flash against 15,616 free. These revise points 2 and 3 above where they differ.
 
 1. **Flash: the reserve is released.** The 13,564 bytes between the 568,000-byte image ceiling

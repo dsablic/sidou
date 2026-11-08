@@ -994,7 +994,7 @@ writes all 24 files.
 
 The recordings have no licence, so they are never committed, and CI downloads nothing. The method
 is in design-notes, "Tests: Real chips (filter-metrics)". The results and how to fetch the
-recordings are in `docs/plans/2026-11-03-filter-model-feasibility.md`.
+recordings are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9.0/docs/plans/2026-11-03-filter-model-feasibility.md).
 
 ### Host benchmark
 

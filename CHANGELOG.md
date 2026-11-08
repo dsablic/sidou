@@ -71,7 +71,7 @@ A sound from a prompt, live tweaks on playing `.sid` tunes, the ACID lane role, 
   releases the held notes. Connecting out to a Bluetooth keyboard is the next release's.
 - Bluetooth MIDI's measurement build (`-DSIDOU_BLE=ON`, never released): SIDOU with Optimist's
   open stack linked in, both roles, to measure its flash, RAM and RAMTEXT
-  ([the 1.8 plan](docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.
+  ([the 1.8 plan](https://github.com/dsablic/sidou/blob/v1.9.0/docs/plans/2026-11-05-bluetooth-1.8-plan.md)). The default image is unchanged.
   `sidou-pack --verify` now also fails a package whose option record names an option a release
   never records.
 - **Live tweaks on a playing `.sid`.** In NOW PLAYING K1 bends the tune's filter cutoff
