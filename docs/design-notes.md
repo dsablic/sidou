@@ -548,6 +548,17 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
     could keep Live Link's frames to one USB frame of the ring (at most 1 ms ahead of a transport
     message; fewer cell frames a second), without touching the vendored `usb.c`; or the test
     takes the queue's bound.
+    *Corrected 2026-11-08, measured from the ring:* `link.rs`'s
+    `a_transport_message_waits_at_most_a_usb_frame_behind_live_links_frames` times each of 101
+    transport messages (2 s of a song with CLOCK OUT) from the moment it enters `usb.c`'s ring to
+    the host: at most 2 ms alone (the millisecond the test resolves and the USB frame), 3 with a
+    session, at every boot offset from 0 to 13 ms. A Live Link frame already holds its packets
+    back unless the ring has room for them and `LINK_RING_KEEP` (at most 10 waiting), and the
+    queue adds one USB frame at most. The 2 to 3 ms the older test reports come from its
+    reference: it times arrival from the millisecond it sees `song_transport`'s call count move,
+    which lands a millisecond before or after the packet is queued depending on the run (alone,
+    queued at 19 ms and seen at 20; with a session, queued and seen at 15). No firmware change is
+    needed for "at most 1 ms later"; the older test's reference is the owner's to decide.
 - Started at boot in fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up
   holds the main loop past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
 - The image links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,

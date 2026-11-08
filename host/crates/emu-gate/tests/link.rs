@@ -667,3 +667,70 @@ fn clock_outs_song_position_goes_as_without_a_session() {
         alone.2
     );
 }
+
+const USB_FRAME_MS: u64 = 1;
+const TRANSPORT: [u8; 5] = [0xf8, 0xfa, 0xfb, 0xfc, 0xf2];
+
+fn transport_waits(fw: &Firmware, with: bool) -> (u64, usize, usize) {
+    let mut m = usb_machine(fw);
+    let mut h = Host::new();
+    m.soc
+        .write8(fw.symbol("syncing") + ilp32::midi_sync::clock_out as u32, 1);
+    if with {
+        h.start(&mut m);
+    }
+    h.press(&mut m, SEQ);
+    h.press(&mut m, SEQ);
+    h.run(&mut m, 700);
+    let (ring, w) = (fw.symbol("midi_out_q"), fw.symbol("mo_w"));
+    let from = m.ms();
+    let mut queued = Vec::new();
+    let mut seen = m.soc.read32(w);
+    m.key(PLAY, true);
+    for _ in 0..2000 {
+        h.run(&mut m, 1);
+        let now = m.soc.read32(w);
+        for i in seen..now {
+            let status = (m.soc.read32(ring + 4 * (i % 64)) >> 8) as u8;
+            if TRANSPORT.contains(&status) {
+                queued.push((m.ms(), status));
+            }
+        }
+        seen = now;
+    }
+    m.key(PLAY, false);
+    let arrived: Vec<(u64, u8)> = h
+        .others
+        .iter()
+        .filter(|(t, p)| *t >= from && TRANSPORT.contains(&p[1]))
+        .map(|(t, p)| (*t, p[1]))
+        .collect();
+    let latest = queued
+        .iter()
+        .zip(&arrived)
+        .map(|(q, a)| {
+            assert_eq!(q.1, a.1, "the host got another transport message");
+            a.0 - q.0
+        })
+        .max()
+        .expect("no transport message went out");
+    (latest, queued.len(), h.cell_traffic(from).1)
+}
+
+#[test]
+fn a_transport_message_waits_at_most_a_usb_frame_behind_live_links_frames() {
+    let Some(fw) = firmware("the Live Link transport wait test") else {
+        return;
+    };
+    let (alone, sent, _) = transport_waits(&fw, false);
+    let (with, _, frames) = transport_waits(&fw, true);
+    println!(
+        "{sent} transport messages: at most {alone} ms from the ring to the host alone, {with} \
+         with Live Link ({frames} cell frames in 2 s)"
+    );
+    assert!(frames > 20, "nothing streamed");
+    assert!(
+        with <= alone + USB_FRAME_MS,
+        "a transport message waited {with} ms with Live Link, {alone} alone"
+    );
+}
