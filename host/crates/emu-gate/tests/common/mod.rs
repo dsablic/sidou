@@ -259,6 +259,7 @@ pub struct Machine {
     pub steps: u64,
     pub isr_steps: u64,
     pub alnk_blocks: Vec<u64>,
+    pub audio_started_at: Option<u64>,
     alnk_open: Option<(usize, u64)>,
     pub watched_calls: Vec<u64>,
     pub watched_starts: Vec<u64>,
@@ -572,6 +573,7 @@ impl Machine {
             steps: 0,
             isr_steps: 0,
             alnk_blocks: Vec::new(),
+            audio_started_at: None,
             alnk_open: None,
             watched_calls: Vec::new(),
             watched_starts: Vec::new(),
@@ -629,6 +631,7 @@ impl Machine {
         self.open_call = None;
         self.pass_start = None;
         self.long_pass_until = None;
+        self.audio_started_at = None;
     }
 
     pub fn stack_use(&mut self) -> (u32, u32) {
@@ -818,6 +821,7 @@ impl Machine {
             if let Some((depth, start)) = self.alnk_open {
                 if self.cpu.irq_levels.len() <= depth {
                     self.alnk_blocks.push(self.steps - start);
+                    self.audio_started_at.get_or_insert(self.soc.periph.cycles);
                     self.alnk_open = None;
                     if let Some((addr, words)) = self.snapshot {
                         let w = (0..words)
@@ -1276,9 +1280,28 @@ pub const BOOT_TIMEOUT_MS: u64 = 12_000;
 pub const UI_FRAME_MS: u64 = 40;
 const MID_FRAME_AGE_MS: u32 = 20;
 
+const FRAME_AFTER_AUDIO_START_CYCLES: u64 = 1_580_909;
+
+fn catch_up_with_the_audio(m: &mut Machine) {
+    let Some(start) = m.audio_started_at else {
+        return;
+    };
+    let frame = m.soc.periph.cycle_of_ms(UI_FRAME_MS);
+    let now = m.soc.periph.cycles;
+    let late = (now + frame - (start + FRAME_AFTER_AUDIO_START_CYCLES) % frame) % frame;
+    if late > frame / 2 {
+        m.run_cycles(frame - late);
+    }
+}
+
 pub fn run_past_boot(m: &mut Machine, fw: &Firmware) -> u64 {
     let boot = fw.symbol("boot_view");
+    let mut waiting_for_audio = m.audio_started_at.is_none();
     while m.ms() < BOOT_TIMEOUT_MS {
+        if waiting_for_audio && m.audio_started_at.is_some() {
+            waiting_for_audio = false;
+            catch_up_with_the_audio(m);
+        }
         let ui = fw.symbol("ui");
         let started = m.soc.read8(ui + SCREEN_DEPTH) != 0;
         if started && top_view(m, fw) != boot && !screen_animating(m, fw) {

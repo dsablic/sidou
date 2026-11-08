@@ -483,6 +483,25 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   DMA reads `bb` (1,508 bytes) and the PLL table (972; its address goes into a register), so the
   driver's state stays in the RAM region. `fm1_crash` and felucca-bsp's `fm1_ble_bc` keep their
   `.noinit` places and are not zeroed. A `-DSIDOU_BLE=OFF` build has nothing they match.
+- **The emulator gate's boot is anchored to the audio** (2026-11-08). `common::run_past_boot`
+  steps 40 ms frames from reset until the boot screen is gone, and every test that boots through
+  it measures from there. The stock power-up's waits (`ble_power_boot`: the rails a step per
+  100 us, the DC-DC's three 1 ms waits) cost 5,063 instructions but start the audio 5.23 ms later
+  (95,673,454 cycles against 94,419,091), so six tests moved by phase alone. A build without the
+  radio and a 5 ms delay at boot reproduced four of them to the digit, so neither the radio nor its
+  code was the cause. The Machine now records the cycle its first audio block ends, and
+  `run_past_boot` catches up once with the audio, onto the frame grid the gate has always had:
+  1,580,909 cycles after the first block, where the build without Bluetooth has it. A build whose
+  audio starts on time steps exactly as before, to the cycle; one that starts later reaches LIVE
+  at the same audio phase. Fixed this way: the USER profile's render match and `midi.rs`'s map
+  CC flood (4.9985M/s of 5.0, 4.9957 before Bluetooth). Not fixable this way: the firmware's own
+  clock (`uptime_ms`, the input scan, the ticks) counts from reset, so a later audio start moves
+  the audio against the firmware's own timers, and no anchor lines up both. Four tests depend on
+  that phase, and fail the same on the Bluetooth build and on a build without the radio delayed
+  5 ms at boot: the thump stage (32.14 instructions a sample of 31; 30.86 before), a sounding USB
+  PUT (247.4 ms a packet, under the 250 ms gap; 263.2 before), Live Link's MIDI out (8 CCs with a
+  session against 12 alone; the test allows one fewer) and its clock out (a transport message
+  2 ms later with a session). They wait for the owner's decision; no bound is raised.
 - Started at boot in fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up
   holds the main loop past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
 - The image links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,
