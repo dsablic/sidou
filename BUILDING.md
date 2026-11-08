@@ -140,20 +140,15 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
-**The Bluetooth build** (`SIDOU_BLE`, off by default, not in a release yet): SIDOU with
-Optimist's open Bluetooth MIDI stack, the peripheral (a Mac, an iPad or a phone connects to
-SIDOU), and BLUETOOTH in SETTINGS, off until it is turned on
-([decision 0011](docs/decisions/0011-bluetooth-midi.md)). The stack is vendored in
-`third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`.
+**Bluetooth MIDI** (`SIDOU_BLE`, on by default): SIDOU with Optimist's open Bluetooth MIDI
+stack, the peripheral (a Mac, an iPad or a phone connects to SIDOU), and BLUETOOTH in SETTINGS,
+off until it is turned on ([decision 0011](docs/decisions/0011-bluetooth-midi.md)). The stack is
+vendored in `third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`.
 `SIDOU_BLE_CENTRAL` is 0 (the default: a computer connects to SIDOU), 3 (SIDOU also connects
-out, no pairing) or 1 (with pairing). The image fits the release ceiling and links against
-`app.ld` as the default build does; `sidou-pack` packages it, and `--verify` and `tools/preflash`
-report it as not a release build (its option record names `SIDOU_BLE=ON`).
-
-```sh
-tools/fm1-docker cmake --preset fm1 -B build/fm1-ble -DSIDOU_BLE=ON
-tools/fm1-docker cmake --build build/fm1-ble
-```
+out, no pairing) or 1 (with pairing); anything but 0 is not a release build. A build directory
+configured before Bluetooth became the default keeps `SIDOU_BLE=OFF` in its cache and warns:
+`-USIDOU_BLE` (or a fresh directory) takes the default. `-DSIDOU_BLE=OFF` builds SIDOU without
+the radio, which no release is.
 
 **The SysEx gap variants** (1.1 item 13, only for the ear check in
 [docs/hardware-test.md](docs/hardware-test.md#8c-sysex-files-instruments-and-songs-m2e-task-5),

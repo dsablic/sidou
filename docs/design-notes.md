@@ -369,7 +369,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   of 5.0M) and LIVE's full-speed flood (6.33M/s of 6.3M); `scene.c` at `-Oz` (128) put SCENE's
   fire over its frame budget (109,591 instructions); `core/fx/fx.c` at `-Os` saved nothing.
 
-### Bluetooth's measurement build (`SIDOU_BLE`)
+### Bluetooth MIDI (`SIDOU_BLE`)
+
+- **One package** (the owner, 2026-11-08, decision 0011): `SIDOU_BLE` is on in the default and
+  release build, and SETTINGS' BLUETOOTH is OFF by default. The image is 577,136 bytes, 2,380
+  under the ceiling; RAMTEXT 44,864. `-DSIDOU_BLE=OFF` still builds SIDOU without the radio, which
+  no release is and no gate builds. A build directory configured before the change keeps OFF in
+  its cache (`option()` never overrides a cached value): configure warns, and the merge check
+  configures with `-USIDOU_BLE`.
 
 - The stack's host side (fm1-base `bt/ble`: link layer, host, ATT, BLE-MIDI, the central's scan
   and client) is its own unit, `platform/fm1/ble_stack_unit.c`, at `-Oz` (below), with
@@ -404,28 +411,30 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` is 0, so the central's
   scan table, client and DEVICES code are not built. The image with Bluetooth and its SETTINGS row
   is 578,016 bytes, 1,500 under the ceiling.
-- **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with a radio:
-  `views_radio_bind` hands the views the radio's hooks and adds the item, so the default image's
-  SETTINGS, its golden screens and its ergonomics baseline are unchanged. The setting and SIDOU's
-  random static address are their own store record (key `0x10A`), not the settings record: the
-  default build never writes it, and its schema stays 9. It is saved two seconds after a change,
+- **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with the
+  radio: `views_radio_bind` hands the views the radio's hooks and adds the item. The setting and
+  SIDOU's random static address are their own store record (key `0x10A`), not the settings
+  record, so the settings schema stays 9; a unit whose BLUETOOTH never changes never writes it. It is saved two seconds after a change,
   from a static buffer (the store writes from the caller's memory over later polls).
 - **The stock power setup before the radio** (2026-11-07, after the first device test reset at
-  BLUETOOTH ON): the Bluetooth build runs fm1-base's boot sequence first thing in `sidou_main`,
+  BLUETOOTH ON): SIDOU runs fm1-base's boot sequence first thing in `sidou_main`,
   interrupts off, before anything can start the radio (`ble_setting.c`, `-Oz`): VDC14 up to 7
   (1.60 V) and SYSVDD to 15 (1.38 V) with a read-back and up to three tries, then
   `fm1_power_stock` (the 1.3 V supply on its DC-DC, VDDIO 3.2 V, WiFi's regulator automatic). At the
   boot loader's levels flash fetches can come back wrong under the radio trim's current, which
   resets the chip with no fault screen (fm1-base's note; CTL-1 0.6 s into a start). The always-on
   P33 keeps whatever ran last, and an FM-1 that has run SIDOU for weeks has none of V15's setup.
-  The default build calls none of it (`ble.rs` checks both). `fm1_clock_stock` is not copied:
+  Every boot runs it, BLUETOOTH ON or OFF (`ble.rs` checks the rails and the record). Until
+  Bluetooth was in the default build, the default left the boot loader's rails alone and a test
+  pinned that; with one build that test had nothing left to prove, and the one that replaced it
+  pins what OFF must leave alone: the radio and the main loop's time. `fm1_clock_stock` is not copied:
   SIDOU sets no clock of its own and is always started by the SDK's SPL, which leaves M-VAVE's
   360 MHz; the system clock's source byte is recorded so the device test can confirm it (6).
-  STATUS shows the record on its READY line in the Bluetooth build: `P` (or `!` after a start
+  STATUS shows the record on its READY line: `P` (or `!` after a start
   that reset), then VDC14 and SYSVDD at boot, after, the tries, whether the DC-DC was moved, the
   clock byte, in hex.
-- **The Bluetooth build is held to the release ceiling** (579,516, `ble.rs`), as the default
-  build is, and links against `app.ld` itself. From 2026-11-07 to 2026-11-08 the owner allowed
+- **The image with Bluetooth is held to the release ceiling** (579,516, `flash_budget.rs`) and
+  links against `app.ld` itself. From 2026-11-07 to 2026-11-08 the owner allowed
   the test build 500 bytes of the slot's 2 KB reserve (580,016) for the device test, after the
   power setup put it 500 over; the radio driver's own unit (above) brought it to 577,008, 2,508
   under, and the exception is gone.
@@ -453,33 +462,35 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   whenever BLUETOOTH is ON. OFF stops advertising and drops a link (`ble_enable(0)`), and ON again
   advertises without a second start. The address is drawn once and kept, so a Mac finds the same
   SIDOU after a power cycle.
-- **The emulator gate** (`emu-gate/tests/ble.rs`, with `SIDOU_FM1_BLE_BUILD`): notes written into
+- **The emulator gate** (`emu-gate/tests/ble.rs`, on the default build since 2026-11-08; before,
+  on a second build named by `SIDOU_FM1_BLE_BUILD`): notes written into
   `ble_radio_in` by symbol play, and a link set down (`ble_radio_role`) releases them; the stack's
   state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,348 bytes free);
-  the image fits the release ceiling (577,008); the setting is saved with an address and
-  kept across a power cycle; the start comes after the boot's waits. With the radio off the
-  audio interrupt is the default build's: a chord pressed at a block's end, then 1,000 blocks
+  the setting is saved with an address and kept across a power cycle; the start comes after the
+  boot's waits; with BLUETOOTH OFF the main loop never polls the radio. While there were two
+  builds, the audio interrupt with the radio off was shown to be the default build's: a chord pressed at a block's end, then 1,000 blocks
   counted at the audio interrupt's own level in both builds, must come out less than one
   instruction in ten blocks apart (49,806,293 and 49,806,306, 389.11 a sample each). Block by
   block they differ: a 78-instruction item lands a block earlier or later with the main loop's
   timing (the Bluetooth build polled the radio each pass then, and `fm1_rf_burst_run` moves
   RAMTEXT 36 bytes), so equal totals over the same blocks are the strict statement. One instruction added
-  to every block would be 1,000 apart.
+  to every block would be 1,000 apart. With one build the audio interrupt's own budgets
+  (`ram_audio.rs`, `sid_budget.rs`) hold the build that carries the radio.
 - The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
   both ways.
 - RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section
   `.noinit.ble_radio`) go to NOINIT, which `ble_radio_start` zeroes before `ble_init`. The radio's
   DMA reads `bb` (1,508 bytes) and the PLL table (972; its address goes into a register), so the
   driver's state stays in the RAM region. `fm1_crash` and felucca-bsp's `fm1_ble_bc` keep their
-  `.noinit` places and are not zeroed. The rules match nothing in the default build.
-- The radio never starts in this build (`ble_radio_wanted` is never set). Started at boot in
-  fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up holds the main loop
-  past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
-- The build links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,
-  it linked against a copy with a larger XIP region, written at configure time.
-- The option record names `SIDOU_BLE` only when it is on, so the default image keeps its bytes.
-  `sidou-pack` fails any record that names an option outside `DEFAULT_OPTIONS`; the options that
-  are absent when off are listed in `ABSENT_WHEN_OFF`.
+  `.noinit` places and are not zeroed. A `-DSIDOU_BLE=OFF` build has nothing they match.
+- Started at boot in fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up
+  holds the main loop past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
+- The image links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,
+  the Bluetooth build linked against a copy with a larger XIP region, written at configure time.
+- The option record names `SIDOU_BLE=ON` as it names every default (`DEFAULT_OPTIONS`,
+  `sidou_option_defaults`). `SIDOU_BLE_CENTRAL` is recorded only when it is not 0
+  (`ABSENT_WHEN_OFF`), and `sidou-pack` fails any record that names an option outside
+  `DEFAULT_OPTIONS`.
 
 ### `gt2_song.c` at `-Oz`: timing only
 

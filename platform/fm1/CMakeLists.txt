@@ -44,7 +44,7 @@ if(SIDOU_FLASH_SPIKE)
     set_property(SOURCE flash_spike.c APPEND PROPERTY COMPILE_OPTIONS -fno-data-sections)
     target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
 endif()
-option(SIDOU_BLE "Bluetooth MIDI on Optimist's open stack (not in a release yet)" OFF)
+option(SIDOU_BLE "Bluetooth MIDI on Optimist's open stack" ON)
 if(SIDOU_BLE)
     set(SIDOU_BLE_CENTRAL "0" CACHE STRING
         "Connecting out (the next release): 0 peripheral only (1.8), 3 without pairing, 1 with")
@@ -60,8 +60,6 @@ if(SIDOU_BLE)
         BLE_DIAG=0 BLE_CENTRAL=${SIDOU_BLE_CENTRAL} BLE_DEVICE_NAME="SIDOU")
     set_property(SOURCE main.c midi.c ui.c APPEND PROPERTY COMPILE_DEFINITIONS SIDOU_BLE=1)
     target_compile_definitions(sidou_live PRIVATE SIDOU_BLE=1)
-    message(WARNING
-        "SIDOU_BLE=ON: Bluetooth MIDI (central ${SIDOU_BLE_CENTRAL}), a test build, not a release")
 endif()
 set(sidou_app_ld ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
@@ -77,7 +75,7 @@ set(sidou_option_defaults
     "SIDOU_ALL_COMBINED_PROFILES=ON" "SIDOU_ALL_COMBINED_PROFILES_8580=ON"
     "SIDOU_FLASH_SPIKE=OFF" "SIDOU_USB_FIX=ON" "SIDOU_MIDI_OUT_NRPN=OFF"
     "SIDOU_MIDI_OUT_CHANNEL=1" "SIDOU_SYSEX_GAP_MS=250" "SIDOU_TEST_DEATH="
-    "SIDOU_TEST_DEATH_MS=1000"
+    "SIDOU_TEST_DEATH_MS=1000" "SIDOU_BLE=ON"
     "SIDOU_PRODUCT=FM-1_900" "CMAKE_BUILD_TYPE=Release")
 set(sidou_options "")
 set(sidou_options_off "")
@@ -105,12 +103,9 @@ foreach(entry IN LISTS sidou_option_defaults)
     endif()
     string(APPEND sidou_options " ${name}=${value}")
 endforeach()
-if(SIDOU_BLE)
-    string(APPEND sidou_options " SIDOU_BLE=ON")
-    if(NOT SIDOU_BLE_CENTRAL STREQUAL "0")
-        string(APPEND sidou_options " SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL}")
-    endif()
-    string(APPEND sidou_options_off "\n    SIDOU_BLE=ON (default OFF), central ${SIDOU_BLE_CENTRAL}")
+if(SIDOU_BLE AND NOT SIDOU_BLE_CENTRAL STREQUAL "0")
+    string(APPEND sidou_options " SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL}")
+    string(APPEND sidou_options_off "\n    SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL} (default 0)")
 endif()
 if(NOT sidou_options_off STREQUAL "")
     message(WARNING "\n"

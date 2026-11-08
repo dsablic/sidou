@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod common;
-mod flash_plan;
 
-use common::panel::{note_key, press, ALGORITHM, HOME};
+use common::panel::{press, ALGORITHM, HOME};
 use common::{
-    booted, firmware, put_value, settled_flash, stored_value, Firmware, Machine, REGION_FREE_MIN,
+    firmware, put_value, settled_flash, stored_value, Firmware, Machine, REGION_FREE_MIN,
 };
-use flash_plan::{IMAGE_CEILING, PLAN};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, LIVE_VOICES, VIEWS_SETTINGS_BLUETOOTH};
 
@@ -36,14 +34,6 @@ const BOOT_LOADER_SYSVDD: u8 = 11;
 const DCDC13_EN: u8 = 0x08;
 const STOCK_DCDC_TUNE: u8 = 0xA5;
 const START_MARK: u32 = 0x4254_5354;
-
-fn ble_build() -> Option<std::path::PathBuf> {
-    let dir = std::env::var_os("SIDOU_FM1_BLE_BUILD").filter(|d| !d.is_empty());
-    if dir.is_none() {
-        common::skip_message("the Bluetooth build (SIDOU_FM1_BLE_BUILD)");
-    }
-    dir.map(std::path::PathBuf::from)
-}
 
 fn section(fw: &Firmware, name: &str) -> (u32, u64) {
     use object::{Object, ObjectSection};
@@ -77,78 +67,10 @@ fn note_on(note: u8) -> u32 {
 }
 
 #[test]
-fn the_bluetooth_build_fits_the_release_ceiling() {
-    let Some(build) = ble_build() else { return };
-    let size = std::fs::metadata(build.join("platform/fm1/sidou_app.bin"))
-        .expect("the Bluetooth build's image")
-        .len() as usize;
-    println!(
-        "Bluetooth image {size} bytes: {PLAN}'s ceiling {IMAGE_CEILING}, {} to spare",
-        IMAGE_CEILING as i64 - size as i64
-    );
-    assert!(
-        size <= IMAGE_CEILING,
-        "the Bluetooth image is {size} bytes, over the ceiling {IMAGE_CEILING}"
-    );
-}
-
-const CHORD: [u8; 3] = [note_key(57), note_key(64), note_key(76)];
-const STEP_CYCLES: u64 = 2000;
-const BLOCKS: u64 = 1000;
-const BLOCK_FRAMES: u64 = 128;
-
-fn block_end(m: &mut Machine) -> u64 {
-    let n = m.alnk_blocks.len();
-    while m.alnk_blocks.len() == n {
-        m.run_cycles(STEP_CYCLES);
-    }
-    m.alnk_pcs_inside
-}
-
-fn chord_from_a_block_end(fw: &Firmware) -> u64 {
-    let mut m = booted(fw);
-    m.watch_alnk_pcs(fw.symbol("_rt_start")..fw.symbol("_rt_end"));
-    let start = block_end(&mut m);
-    for k in CHORD {
-        m.key(k, true);
-    }
-    let mut end = start;
-    for _ in 0..BLOCKS {
-        end = block_end(&mut m);
-    }
-    assert!(
-        m.alnk_pcs_outside.is_empty(),
-        "the audio interrupt left SRAM"
-    );
-    end - start
-}
-
-#[test]
-fn with_the_radio_off_the_audio_interrupt_is_the_default_builds() {
-    let Some(build) = ble_build() else { return };
-    let Some(default) = firmware("the default build, beside the Bluetooth build") else {
+fn the_stack_lives_in_noinit_and_the_ram_region_keeps_its_floor() {
+    let Some(fw) = firmware("the Bluetooth test") else {
         return;
     };
-    let ble = chord_from_a_block_end(&Firmware::load(&build));
-    let plain = chord_from_a_block_end(&default);
-    let per_sample = |n: u64| n as f64 / (BLOCKS * BLOCK_FRAMES) as f64;
-    println!(
-        "the audio interrupt, a chord held for {BLOCKS} blocks: {ble} instructions with Bluetooth \
-         ({:.2} a sample), {plain} without ({:.2})",
-        per_sample(ble),
-        per_sample(plain)
-    );
-    assert!(
-        ble.abs_diff(plain) < BLOCKS / 10,
-        "{} instructions apart in {BLOCKS} blocks",
-        ble.abs_diff(plain)
-    );
-}
-
-#[test]
-fn the_stack_lives_in_noinit_and_the_ram_region_keeps_its_floor() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
     let (lo, hi) = (fw.symbol("_ble_noinit_start"), fw.symbol("_ble_noinit_end"));
     assert!(NOINIT.contains(&lo) && hi <= NOINIT.end && hi > lo);
     for ring in ["ble_radio_in", "ble_radio_out", "in_ring"] {
@@ -169,8 +91,9 @@ fn the_stack_lives_in_noinit_and_the_ram_region_keeps_its_floor() {
 
 #[test]
 fn notes_from_the_air_play_and_a_dropped_link_releases_them() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
+    let Some(fw) = firmware("the Bluetooth test") else {
+        return;
+    };
     let mut m = Machine::boot(&fw.image);
     m.run_ms(BOOT_MS);
     let role = fw.symbol("ble_radio_role");
@@ -195,8 +118,9 @@ fn power_on(fw: &Firmware, flash: &[u8]) -> Machine {
 
 #[test]
 fn bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
+    let Some(fw) = firmware("the Bluetooth test") else {
+        return;
+    };
     let mut flash = settled_flash(&fw.image);
     put_value(
         &mut flash,
@@ -233,8 +157,9 @@ fn bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_bri
 
 #[test]
 fn bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
+    let Some(fw) = firmware("the Bluetooth test") else {
+        return;
+    };
     let mut m = power_on(&fw, &settled_flash(&fw.image));
     common::run_past_boot(&mut m, &fw);
     press(&mut m, HOME);
@@ -281,9 +206,10 @@ fn rails(m: &Machine) -> (u8, u8, u8, u8) {
 }
 
 #[test]
-fn the_bluetooth_build_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
+fn the_boot_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start() {
+    let Some(fw) = firmware("the Bluetooth test") else {
+        return;
+    };
     let mut m = power_on(&fw, &settled_flash(&fw.image));
     as_the_boot_loader_leaves_the_rails(&mut m);
     m.run_ms(100);
@@ -308,20 +234,10 @@ fn the_bluetooth_build_raises_the_rails_and_sets_the_power_up_before_the_radio_c
 }
 
 #[test]
-fn the_default_build_leaves_the_rails_as_the_boot_loader_set_them() {
-    let Some(fw) = firmware("the default build's rails") else {
+fn with_bluetooth_off_the_main_loop_leaves_the_radio_alone() {
+    let Some(fw) = firmware("the Bluetooth test") else {
         return;
     };
-    let mut m = power_on(&fw, &settled_flash(&fw.image));
-    as_the_boot_loader_leaves_the_rails(&mut m);
-    m.run_ms(1000);
-    assert_eq!(rails(&m), (BOOT_LOADER_VDC14, BOOT_LOADER_SYSVDD, 0, 0));
-}
-
-#[test]
-fn with_bluetooth_off_the_main_loop_leaves_the_radio_alone() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
     let mut m = power_on(&fw, &settled_flash(&fw.image));
     common::run_past_boot(&mut m, &fw);
     m.run_ms(START_AFTER_MS);
@@ -341,8 +257,9 @@ fn with_bluetooth_off_the_main_loop_leaves_the_radio_alone() {
 
 #[test]
 fn bluetooth_on_is_saved_only_after_the_radio_started() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
+    let Some(fw) = firmware("the Bluetooth test") else {
+        return;
+    };
     let mut m = power_on(&fw, &settled_flash(&fw.image));
     common::run_past_boot(&mut m, &fw);
     m.run_ms(START_AFTER_MS);
@@ -371,8 +288,9 @@ fn bluetooth_on_is_saved_only_after_the_radio_started() {
 
 #[test]
 fn a_reset_during_the_radio_start_boots_with_bluetooth_off() {
-    let Some(build) = ble_build() else { return };
-    let fw = Firmware::load(&build);
+    let Some(fw) = firmware("the Bluetooth test") else {
+        return;
+    };
     let mut flash = settled_flash(&fw.image);
     put_value(
         &mut flash,

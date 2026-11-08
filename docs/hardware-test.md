@@ -2925,21 +2925,24 @@ Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
 
 ## 35. Bluetooth MIDI in a release-sized build (felucca-bsp `7e09895c`)
 
-What it decides: whether the Bluetooth build that fits the release ceiling is ready to ship. It is
-built on felucca-bsp `7e09895c`, with the radio driver in its own unit at `-Os` and the image
-577,008 bytes (docs/design-notes.md "Board support" and "Bluetooth"). The section covers what §34
+What it decides: whether Bluetooth MIDI is ready to ship in the one package (the owner,
+2026-11-08: Bluetooth is in the default build, BLUETOOTH OFF until it is turned on). It is
+built on felucca-bsp `7e09895c`, with the radio driver in its own unit at `-Os` (577,008 bytes as
+a `-DSIDOU_BLE=ON` build, `build/rble-964`; 577,136 as the default with the radio-off gate,
+docs/design-notes.md "Board support" and "Bluetooth"). The section covers what §34
 left open, §34's Bluetooth items again on this build, and USB audio after upstream's new packet
 pattern. fm1-emu models no radio, so these checks are the device's. Every item waits for the
 owner's yes for that step: nothing is flashed, connected or scanned before it.
 
 Set up:
 
-- **The build:** `tools/fm1-docker cmake --preset fm1 -B build/fm1-ble -DSIDOU_BLE=ON
-  -DSIDOU_PRODUCT=FM-1_900`, then `tools/fm1-docker cmake --build build/fm1-ble`, then from
-  `host/`: `cargo run --release -p sidou-pack -- --app ../build/fm1-ble/platform/fm1/sidou_app.bin
-  --loader ../build/fm1-ble/platform/fm1/loader/loader.bin -o ../build/fm1-ble/sidou.fwsc`.
-  `tools/preflash` reports one failure, the option record's `SIDOU_BLE=ON` (not a release build
-  until the owner decides how Bluetooth ships). Nothing else may fail.
+- **The build:** the default, from a fresh build directory (or `-USIDOU_BLE` on one configured
+  before Bluetooth was the default): `tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=FM-1_900`,
+  then `tools/fm1-docker cmake --build --preset fm1`, then from `host/`: `cargo run --release -p
+  sidou-pack -- --app ../build/fm1/platform/fm1/sidou_app.bin --loader
+  ../build/fm1/platform/fm1/loader/loader.bin -o ../build/fm1/sidou.fwsc`. `tools/preflash`
+  passes it: the option record's `SIDOU_BLE=ON` is the default. (`build/rble-964`, the
+  `-DSIDOU_BLE=ON` package the owner started this section with, reports that one failure.)
 - **Installed over 1.8.0** with SIDOU's installer: the songs and settings are kept. Then BLUETOOTH
   ON: HOME, SETTINGS, SELECT to BLUETOOTH (the last item), ALGORITHM clockwise. STATUS's READY
   line shows `P` and the power record, as in §34 (`P 03 0B 07 0F 01 01 06` there).
@@ -2953,7 +2956,7 @@ Set up:
   again advertises. A power cycle keeps ON. *Emulator (no radio):*
   `ble.rs::bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising`,
   `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`,
-  `ble.rs::the_bluetooth_build_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start`.
+  `ble.rs::the_boot_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start`.
   *Result:*
 - [ ] **SIDOU in Audio MIDI Setup:** the Bluetooth window lists `SIDOU XXXX`; Connect. Power cycle
   the FM-1: the Mac finds the same name, and Connect works again. *Result:*
@@ -2962,8 +2965,9 @@ Set up:
   *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`. *Result:*
 - [ ] **Two minutes, no glitch:** a three-note chord held on SIDOU's keys, K1 turning, notes
   coming in over Bluetooth: no click on the headphones. *Emulator (radio off):* the audio
-  interrupt is the default build's (`ble.rs::with_the_radio_off_the_audio_interrupt_is_the_default_builds`,
-  and `ram_audio.rs` on the Bluetooth build). *Result:*
+  interrupt holds its budgets in the build that carries the radio (`ram_audio.rs`,
+  `sid_budget.rs`), and the main loop leaves the radio alone
+  (`ble.rs::with_bluetooth_off_the_main_loop_leaves_the_radio_alone`). *Result:*
 - [ ] **A firmware install with BLUETOOTH ON:** run SIDOU's installer over USB with the same
   package again. It finishes, and SIDOU boots with BLUETOOTH still ON. *Result:*
 

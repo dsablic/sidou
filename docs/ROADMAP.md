@@ -100,10 +100,10 @@ the DAW clock) are still open.
 
 - **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
   SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
-  and clock both ways, SETTINGS BLUETOOTH OFF / ON. The room is found (2026-11-08): with
-  felucca-bsp#31 the radio driver builds alone at plain `-Os`, and the Bluetooth image is 577,008
-  bytes, 2,508 under the release ceiling it is now held to. **Waits for:** the owner's choice of
-  one package with Bluetooth built in or two packages, and the device checks of
+  and clock in, SETTINGS BLUETOOTH OFF / ON. In the one package since 2026-11-08 (the owner's
+  choice): the default build carries the radio, BLUETOOTH is OFF by default, and with it off the
+  main loop costs what it did without Bluetooth. The image is 577,136 bytes, 2,380 under the
+  release ceiling. **Waits for:** the device checks of
   [hardware-test §35](hardware-test.md#35-bluetooth-midi-in-a-release-sized-build-felucca-bsp-7e09895c)
   (the hour of two SIDs over Bluetooth, a save during the link, the DAW clock, §34's items again
   on this build, and a USB audio recording). L.

@@ -48,7 +48,7 @@ loader: the update loader stays Felucca 1.6.1's (below).
 - Built with `bsp/chip` and `bsp/boards/fm1` on the include path (`fm1_hal` in CMake), as
   felucca-bsp says. Who includes what:
   - `main.c`: `fm1_sys.h`, `fm1_irq.h`, `fm1_audio.h`, `fm1_time.h`, `fm1_timer.h`;
-  - `ble_radio.c`, only in the Bluetooth build (`SIDOU_BLE`), compiled alone at `-Os` with
+  - `ble_radio.c`, with Bluetooth (`SIDOU_BLE`, on by default), compiled alone at `-Os` with
     `FM1_IRQ_DEFS 0`: `fm1_ble.h` (with `fm1_irq.h`), `fm1_ble_rf.h`, `fm1_rf_cal.h` and
     `fm1_rf_regs.h`, through the stack's driver `ble_hw_wl82.c`, which it includes;
     `ble_setting.c` there: `fm1_sys.h` and `fm1_flash_access.h`;

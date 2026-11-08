@@ -287,6 +287,7 @@
         <tr><td>REC</td><td>record quantise (not saved)</td></tr>
         <tr><td>SPREAD</td><td>OFF, 10 %…100 %</td></tr>
         <tr><td>RESET</td><td>SAVE asks (<code>RESET?</code>), SAVE again resets every preset and setting. Keeps songs, USER profiles, MIDI learn</td></tr>
+        <tr><td>BLUETOOTH</td><td>OFF / ON: Bluetooth MIDI (below); OFF by default</td></tr>
       </table>
       <p class="note">Only STORE and RESET ask first: SAVE asks, SAVE again does it, HOME or moving away cancels; no knob confirms. The rest save themselves.</p>
     </section>
@@ -294,14 +295,15 @@
     <section>
       <h2>MIDI</h2>
       <table>
-        <tr><td>Notes</td><td>every channel (OMNI) on TRS and USB; menu → MIDI sets MODE (LIVE, MULTI, WHOLE A/B, OMNI), CHANNEL, CLOCK, CLOCK OUT… (not saved)</td></tr>
+        <tr><td>Notes</td><td>every channel (OMNI) on TRS, USB and Bluetooth; menu → MIDI sets MODE (LIVE, MULTI, WHOLE A/B, OMNI), CHANNEL, CLOCK, CLOCK OUT… (not saved)</td></tr>
         <tr><td>Program change</td><td>0–3 the presets (bank 0); bank 1 (CC 0=0, 32=1) loads song <i>n</i> in name order; bank 2 picks the profile 0–12</td></tr>
         <tr><td>Main CCs</td><td>74 cutoff · 71 reso · 1 pulse width · 7 volume · 73/75/79/72 A D S R · 25 chip model · 85 profile · 86 87 89 90 age DAC thump bleed · 117 spread</td></tr>
         <tr><td>More CCs</td><td>20 wave · 21 ring · 22 sync · 23 filter mode · 24 routing · 26 envelope mode · 27–30 arp on/rate/order/span · 76–78 vibrato · 120/123 all notes off</td></tr>
         <tr><td>Effect slots</td><td>Dist 102–106 · Mod 107–111 · FX 112–116 (algorithm, Amount, A, B, Mix)</td></tr>
         <tr><td>SAVE + turn a knob</td><td>MIDI learn: send a CC to bind it (<code>LEARNED CC 21 → CUTOFF</code>); SAVE again in the frame forgets it; HOME cancels</td></tr>
-        <tr><td>MIDI out</td><td>USB only, channel 1: the panel's knobs, MASTER, the chip profile and slots as CCs, PRESETS as a program change; MIDI input is never echoed</td></tr>
+        <tr><td>MIDI out</td><td>USB and Bluetooth, channel 1: the panel's knobs, MASTER, the chip profile and slots as CCs, PRESETS as a program change; MIDI input is never echoed</td></tr>
         <tr><td>Clock</td><td>the song follows MIDI clock and start/stop (CLOCK AUTO); CLOCK OUT ON sends it over USB</td></tr>
+        <tr><td>Bluetooth</td><td>SETTINGS → BLUETOOTH ON: <b>SIDOU XXXX</b> shows up as a Bluetooth MIDI device for a Mac, an iPad or a phone (no pairing); notes, CCs and clock in, the panel out as over USB. A dropped link releases the held notes</td></tr>
       </table>
       <p class="note">Every parameter also has an NRPN: the full map is <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">midi.md</a>.</p>
     </section>
