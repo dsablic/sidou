@@ -502,6 +502,44 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   PUT (247.4 ms a packet, under the 250 ms gap; 263.2 before), Live Link's MIDI out (8 CCs with a
   session against 12 alone; the test allows one fewer) and its clock out (a transport message
   2 ms later with a session). They wait for the owner's decision; no bound is raised.
+- **The four predate Bluetooth** (2026-11-08): 1.8.0's own image (main `348a77c7`, no radio)
+  with 0 to 13 ms of delay at boot fails each of them at some offsets; it passes all four only at
+  0 ms, the offset their bounds were set at.
+
+  | Boot delay, ms | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | Thump, a sample (31.0) | 30.86 | 35.53 | 34.52 | 34.52 | 35.53 | 31.76 | 31.76 | 31.76 | 30.86 | 31.76 | 33.07 | 32.14 | 33.07 | 34.52 |
+  | PUT, ms a packet (250) | 263.2 | 263.4 | 246.8 | 263.2 | 262.4 | 247.5 | 262.7 | 247.5 | 247.5 | 262.9 | 247.6 | 262.5 | 263.1 | 246.7 |
+  | MIDI out CCs, alone / with (with + 1 >= alone) | 8/12 | 8/9 | 11/8 | 12/8 | 12/8 | 12/11 | 12/12 | 12/12 | 10/12 | 8/12 | 8/12 | 8/9 | 11/8 | 12/8 |
+  | Clock out, worst ms late with / alone (+1) | -1/1 | 0/0 | 0/0 | 0/0 | 0/0 | 0/0 | 2/0 | 2/0 | 3/1 | 3/1 | 2/1 | 2/1 | 2/1 | 2/1 |
+
+  - *The thump*: the stage's cost per block peaks at 5,845 instructions (45.7 a sample) at every
+    offset; a note's thump runs 27 to 30 blocks at about 5,000-5,850, then 48 a block idle. The
+    phase moves how many blocks pay the first-block cost (1 or 3) and how many blocks the 100 ms
+    window holds (34 or 35), so the average over the window runs from 30.86 to 35.53 (a note's
+    total from 138,256 to 154,620 instructions). The audio interrupt pays it, but no block is
+    heavier than at the bound's phase. A budget set at one phase: the honest worst over the sweep
+    is 35.53 a sample over the window; a phase-free measure is the per-block peak (5,845) or a
+    note's total until the stage idles.
+  - *The PUT gap*: every packet-to-packet interval is 257 to 270 ms at every offset; the store's
+    hold gap (`hold_ready`: 250 ms since the last hold's program, on the firmware's millisecond)
+    is kept. `up` divides 16 packets by a window that holds 15 full gaps plus the first packet,
+    which comes 17-18 ms or 275 ms after the metadata depending on when the last hold was, so it
+    reads 246.7 or 263. A host never sees packets closer than 250 ms. The test measures the
+    window: the smallest interval between consecutive packets' ACKs measures the gap itself.
+  - *MIDI out*: nothing is lost. A three-detent turn glides the cutoff in steps about 8 ms apart;
+    MIDI out sends the current value once a 10 ms tick, so some steps fall between ticks, with or
+    without a session. Every CC sent is a value the parameter held, within a tick, and the last
+    (0x7F) always goes. The count (8 to 12) is that aliasing. Phase-free: every sent CC is a value
+    held at its tick, within one tick of the change, and the last value arrives, in both runs.
+  - *Clock out*: nothing is lost; with a Live Link session a start, song position or continue
+    reaches the host up to 3 ms later. Transport packets and Live Link's cell frames share
+    `usb.c`'s FIFO (`mo`); Live Link leaves `MIDI_SYNC_OUT_MAX` packets of room, so a transport
+    packet is never refused, but it queues behind a frame's packets already there, and the host
+    takes 16 a 1 ms frame. The bound is (MQ - `MIDI_SYNC_OUT_MAX`) / 16, 4 ms. A firmware change
+    could keep Live Link's frames to one USB frame of the ring (at most 1 ms ahead of a transport
+    message; fewer cell frames a second), without touching the vendored `usb.c`; or the test
+    takes the queue's bound.
 - Started at boot in fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up
   holds the main loop past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
 - The image links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,
