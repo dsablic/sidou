@@ -8,6 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-08
+
+Bluetooth MIDI in the one package, OFF until you turn it on, and USB audio on the FM-1's own clock.
+
 ### Added
 - **Bluetooth MIDI, in the one package.** SIDOU is a Bluetooth MIDI device a Mac, an iPad or a
   phone connects to (`SIDOU XXXX`, no pairing): notes, CCs and clock in, the panel's CCs and
@@ -19,6 +23,8 @@ All notable changes are documented here. The format follows
   polling the radio every pass had cost 0.6M. Every boot now sets the FM-1's stock power-up (the
   rails, the DC-DC), and STATUS's READY line shows its record. The image is 577,136 bytes of
   579,516.
+- *What's new in 1.9*: SIDOU LOOP playing, BLUETOOTH ON in SETTINGS, and cards for connecting
+  from a Mac, an iPad or a phone; every video re-rendered on 1.9.
 
 ### Changed
 - **USB audio packets keep the FM-1's own clock.** felucca-bsp `7e09895c` (from `f8788009`): the

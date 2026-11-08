@@ -267,22 +267,16 @@ journey lift-a-sound | Lift a sound from a .sid
   step keep | *SAVE* keeps it | SAVE: a USER sound under its name, for PRESETS to find later. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
   step back | *HOME*: back to the tune | HOME: NOW PLAYING, the tune still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
-journey whats-new | What's new in SIDOU 1.8
-  goal See SIDOU 1.8's highlights: live tweaks on a playing .sid, an ACID lane that rolls slides and accents, a sound from a prompt, and sidou-sysex for coding agents.
-  prereq On LIVE after the boot, SIDOU LOOP the song loaded; THE CONSULTANT, a GoatTracker tune, in the store.
-  skills NOW PLAYING; K1 bends a tune's cutoff; K3 picks a voice and K4 its waveform; HOME gives the tune back; the ACID lane role; DICE; the site's Library page; llms.txt; sidou-sysex
-  related play-a-sid; lift-a-sound; step-generative
-  tunes consultant
-  step sids | A *.sid* tune | The menu's SIDS: THE CONSULTANT, by Cadaver. ALGORITHM plays it. | press HOME; wait 500; select-item SIDS; press SAVE; wait 1200; turn ALGORITHM 1; wait 2600 | view sid_view_playing; text PLAYING; sound; focus ALGORITHM; callout MENU > SIDS, ALGORITHM
-  step tweak-cut | *K1* bends its *filter* | Turn K1 while it plays: the tune's cutoff moves, and TWEAKED says what is changed. | sweep K1 20 1200; wait 2000 | text TWEAKED; sound; focus K1; callout TURN K1
-  step tweak-voice | A voice's *waveform* | K3 picks a voice, K4 gives it another waveform: the voice keeps its notes. | turn K3 1; wait 700; turn K4 1; wait 2600 | text TWEAKED; sound; focus K4; callout K3 A VOICE, K4 ITS WAVE
-  step home | *HOME* gives it back | HOME back to the list: the tune plays on as its own, untouched. | press HOME; wait 2500 | sound; focus HOME; callout PRESS HOME
-  step new-song | A new *song* | PLAY stops the tune; HOME, then SONG, NEW: SAVE AGAIN lets the old one go. SEQ round to STEP. | press PLAY; wait 600; press HOME; wait 600; press HOME; wait 2500; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1100; press SAVE; wait 4200; press SEQ; wait 800 | view step; absent BUSY; screen 0 2 30 13; focus SEQ; callout SONG > NEW, SEQ TO STEP
-  step acid | An *ACID* lane | Hold EDIT, then SCL, and turn PRESETS: the lane's role, ACID. A roll writes a bassline with slides and accents. | hold2turn EDIT SCL PRESETS 4; wait 1300; holdpress EDIT SCL; wait 2600 | change; screen 0 2 30 13; focus PRESETS; callout HOLD EDIT + SCL, TURN PRESETS
-  step play-acid | And *play* it | PLAY: the slid notes glide into the next, the accented ones stand out. | press PLAY; wait 5000 | sound; screen 0 2 30 13; focus PLAY; callout PRESS PLAY
-  step prompt | A sound from a *prompt* | Ask any AI chat: "read dsablic.github.io/sidou/llms.txt and make me an acid bass". It answers with a patch link: the Library page checks it, plays it and sends it to the FM-1. | wait 5600 | sound; focus card; callout ANY AI CHAT <> PATCH LINK <> FM-1
-  step sysex | *sidou-sysex* for coding agents | sidou-sysex patch turns the JSON into a song; sidou-sysex send puts it on a connected FM-1. | wait 4200 | sound; focus card; callout PATCH.JSON <> SIDOU-SYSEX SEND <> FM-1
-  step get-it | Get *SIDOU 1.8* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
+journey whats-new | What's new in SIDOU 1.9
+  goal See SIDOU 1.9's highlight: Bluetooth MIDI, turned on in SETTINGS, with a Mac, an iPad or a phone connecting to SIDOU.
+  prereq On LIVE after the boot, SIDOU LOOP the song loaded.
+  skills opening the song views; PLAY; SETTINGS; BLUETOOTH; Audio MIDI Setup's Bluetooth window
+  related mute-and-solo; play-over-a-song; chip-spread
+  step play | The song *plays* | SEQ twice opens the TRACKER, PLAY plays SIDOU LOOP. It plays on through what follows. | press SEQ; wait 900; press SEQ; wait 900; press PLAY; wait 2500 | view tracker; sound; focus PLAY; callout SEQ TWICE, PLAY
+  step bluetooth | *BLUETOOTH* in SETTINGS | HOME twice, SETTINGS, the last item: BLUETOOTH. ALGORITHM turns it ON; it stays on after a power cycle. | press HOME; wait 500; press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 1; wait 2500 | view settings; text BLUETOOTH; text ON; sound; focus ALGORITHM; callout SETTINGS > BLUETOOTH ON
+  step connect | *Connect*, no pairing | On a Mac: Audio MIDI Setup, Window, Show MIDI Studio, the Bluetooth button, SIDOU XXXX, Connect. On an iPad or a phone, a music app's Bluetooth MIDI list. | wait 5600 | sound; focus card; callout MAC OR IPAD <> BLUETOOTH <> SIDOU XXXX
+  step play-it | Play it from the *air* | Notes, CCs and a DAW's clock come in, the panel's knobs go out, as over USB. A dropped link lets go of held notes. | wait 5000 | sound; focus card; callout NOTES, CCS, CLOCK <> SIDOU
+  step get-it | Get *SIDOU 1.9* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.

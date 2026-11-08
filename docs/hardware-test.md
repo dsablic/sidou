@@ -2951,41 +2951,41 @@ Set up:
 
 **§34's Bluetooth items, again on this build**
 
-- [ ] **BLUETOOTH ON:** within a few seconds the radio starts, the sound keeps playing, no reboot.
+- [x] **BLUETOOTH ON:** within a few seconds the radio starts, the sound keeps playing, no reboot.
   OFF stops advertising: the Mac's Bluetooth window loses `SIDOU XXXX` within ten seconds. ON
   again advertises. A power cycle keeps ON. *Emulator (no radio):*
   `ble.rs::bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising`,
   `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`,
   `ble.rs::the_boot_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start`.
-  *Result:*
-- [ ] **SIDOU in Audio MIDI Setup:** the Bluetooth window lists `SIDOU XXXX`; Connect. Power cycle
-  the FM-1: the Mac finds the same name, and Connect works again. *Result:*
-- [ ] **Notes both ways:** notes from Logic play SIDOU. SIDOU's keys and K1 (CC 74) arrive in
-  Logic's MIDI monitor. Disconnect in Audio MIDI Setup while a note is held: no stuck note.
-  *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`. *Result:*
-- [ ] **Two minutes, no glitch:** a three-note chord held on SIDOU's keys, K1 turning, notes
+  *Result:* Passed 2026-11-08 on the Bluetooth package 80f3d5d9 (ble-ship ac00b949's image, 577,008 bytes): ON, the radio up, the sound on, no reboot; OFF drops `SIDOU D84A` from the Mac's list, ON brings it back; a power cycle kept ON.
+- [x] **SIDOU in Audio MIDI Setup:** the Bluetooth window lists `SIDOU XXXX`; Connect. Power cycle
+  the FM-1: the Mac finds the same name, and Connect works again. *Result:* Passed 2026-11-08: `SIDOU D84A`, Connect, and again after a power cycle.
+- [x] **Notes both ways:** notes from Logic play SIDOU. K1 (CC 74) arrives in
+  Logic's MIDI monitor (the panel's keys send no notes out, as over USB). Disconnect in Audio MIDI Setup while a note is held: no stuck note.
+  *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`. *Result:* Passed 2026-11-08: 584 notes from the Mac played SIDOU; 352 CC 74 reached the Mac; a link dropped with C3 held: the note stopped.
+- [x] **Two minutes, no glitch:** a three-note chord held on SIDOU's keys, K1 turning, notes
   coming in over Bluetooth: no click on the headphones. *Emulator (radio off):* the audio
   interrupt holds its budgets in the build that carries the radio (`ram_audio.rs`,
   `sid_budget.rs`), and the main loop leaves the radio alone
-  (`ble.rs::with_bluetooth_off_the_main_loop_leaves_the_radio_alone`). *Result:*
-- [ ] **A firmware install with BLUETOOTH ON:** run SIDOU's installer over USB with the same
-  package again. It finishes, and SIDOU boots with BLUETOOTH still ON. *Result:*
+  (`ble.rs::with_bluetooth_off_the_main_loop_leaves_the_radio_alone`). *Result:* Passed 2026-11-08: chords on the keys, K1 turning, the Mac's notes coming in, two and a half minutes: no click.
+- [x] **A firmware install with BLUETOOTH ON:** run SIDOU's installer over USB with the same
+  package again. It finishes, and SIDOU boots with BLUETOOTH still ON. *Result:* Passed 2026-11-08: the installer finished, SIDOU booted with BLUETOOTH ON and the Mac connected again.
 
 **What §34 left open**
 
-- [ ] **An hour of two SIDs with Bluetooth MIDI in from the Mac.** On the FM-1, open TRACKER on a
+- [x] **An hour of two SIDs with Bluetooth MIDI in from the Mac.** On the FM-1, open TRACKER on a
   song with notes on chip A (a demo song will do) and PLAY it. The keys then play chip B (KEYS
   AUTO, the default; docs/reference/midi.md "Two chips"), and so does Bluetooth MIDI in the MIDI
   page's default mode, OMNI. In Logic, one MIDI track to `SIDOU XXXX` loops four bars of
   chords at 120 BPM against the song. Listen at the start, at 30 minutes and at the end, and
   leave it alone otherwise. Pass: no click or dropout heard; no reboot (the song never stops and
   the boot screen never comes back); the link still up at the end (notes still play); no stuck
-  note when Logic stops. *Result:*
-- [ ] **A save during the link.** Keep the loop of the item above playing over Bluetooth. On LIVE,
+  note when Logic stops. *Result:* Passed 2026-11-08: 1,796 bars over 60.1 minutes, every one sent; the Mac's port list, read every 2 s, never changed (no reboot, the link up throughout); nothing wrong heard.
+- [x] **A save during the link.** Keep the loop of the item above playing over Bluetooth. On LIVE,
   turn K1, then SAVE: the settings save at once (**SAVED**). Then open TRACKER and SAVE the song
   (**SONG SAVED**). The store's erase holds up to 35 ms. Pass: both saves complete; the
   link stays up, or comes back by itself within ten seconds (Audio MIDI Setup shows it connected
-  and notes play again); no stuck note; no reboot. Note whether the link dropped. *Result:*
+  and notes play again); no stuck note; no reboot. Note whether the link dropped. *Result:* Passed 2026-11-08: SAVED (GAPS) and SONG SAVED (GAPS), the forced write's usual hiccup of 1-2 s with the song playing; the link stayed up, no stuck note, no reboot.
 - [ ] **SIDOU follows a DAW's clock over Bluetooth.** On the MIDI page (HOME, MIDI), CLOCK is AUTO
   (the power-on default). In Logic: File, Project Settings, Synchronization, MIDI, MIDI Clock
   to `SIDOU XXXX`, the tempo 120 BPM. On the FM-1, open TRACKER on a song, stopped. Press Play
