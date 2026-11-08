@@ -2986,7 +2986,7 @@ Set up:
   (**SONG SAVED**). The store's erase holds up to 35 ms. Pass: both saves complete; the
   link stays up, or comes back by itself within ten seconds (Audio MIDI Setup shows it connected
   and notes play again); no stuck note; no reboot. Note whether the link dropped. *Result:* Passed 2026-11-08: SAVED (GAPS) and SONG SAVED (GAPS), the forced write's usual hiccup of 1-2 s with the song playing; the link stayed up, no stuck note, no reboot.
-- [ ] **SIDOU follows a DAW's clock over Bluetooth.** On the MIDI page (HOME, MIDI), CLOCK is AUTO
+- [x] **SIDOU follows a DAW's clock over Bluetooth.** On the MIDI page (HOME, MIDI), CLOCK is AUTO
   (the power-on default). In Logic: File, Project Settings, Synchronization, MIDI, MIDI Clock
   to `SIDOU XXXX`, the tempo 120 BPM. On the FM-1, open TRACKER on a song, stopped. Press Play
   in Logic: SIDOU's song starts with Logic. Change Logic's tempo to 90, then to 140: SIDOU
@@ -2997,16 +2997,16 @@ Set up:
   are stamped when the main loop takes them from the radio, not when they arrived (the BLE-MIDI
   timestamps are not used), so listen for drift or wobble that USB does not have. *Emulator:*
   clock and transport over USB and TRS (`midi_transport.rs`); Bluetooth packets into the parser
-  (`ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`). *Result:*
+  (`ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`). *Result:* Passed 2026-11-08 on the 1.9.0 package (f88bbead): the Mac sent the clock over Bluetooth in Logic's place (GarageBand sends none): start at 120 BPM, 90, 140, stop, a song position and continue, stop and start from the top, then two minutes at 120 BPM with a click on every beat on chip B: SIDOU followed each change, went on from where it stopped, and kept time with the clicks, by ear.
 
 **USB audio after felucca-bsp `5b0879b`** (the packets follow the I2S clock; docs/design-notes.md
 "Board support")
 
-- [ ] **Two minutes of recording on the Mac:** "SIDOU FM-1" as Logic's input at 44.1 kHz. Record
+- [x] **Two minutes of recording on the Mac:** "SIDOU FM-1" as Logic's input at 44.1 kHz. Record
   a held chord for two minutes. Pass: no gap or click in the waveform over the whole take, and the
   level as before (§34: a held chord at -26 dBFS). *Emulator:*
   `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`,
-  `usb.rs::the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`. *Result:*
+  `usb.rs::the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`. *Result:* Passed 2026-11-08 on the 1.9.0 package (f88bbead): two minutes over USB with a song playing: 5,292,000 frames in 120.3 s of recording (the rate the FM-1's), no silence of 1 ms or more, no 100 ms block below -60 dBFS, no click; -45 dBFS RMS at the master volume used.
 - [ ] **On iOS, if an iPhone or iPad is at hand** (the case upstream's change fixes): connect the
   FM-1 by USB-C, or through Apple's camera adapter. Record one minute of video in the Camera app,
   with the FM-1 as the microphone and a held chord. Pass: no dropout about once a second.
