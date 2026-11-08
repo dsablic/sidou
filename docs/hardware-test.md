@@ -2617,7 +2617,7 @@ FM-1's MIDI port). Never send anything else to the FM-1 while you test.
   a playing song with and without a session).
 - [ ] **MIDI out and clock out are unchanged:** with CLOCK OUT on and a DAW following, PLAY, stop,
   EDIT + PLAY, while the mirror streams; K1 swept on LIVE with the DAW recording CCs.
-  *Emulator:* `emu-gate/tests/link.rs::clock_outs_song_position_goes_as_without_a_session`,
+  *Emulator:* `emu-gate/tests/link.rs::transport_out_goes_as_without_a_session_at_most_a_usb_frame_later`,
   `emu-gate/tests/link.rs::midi_outs_ccs_go_as_without_a_session`.
   *Device-only:* the DAW follows as without a session, records every CC, and its MIDI monitor shows
   no broken SysEx.
@@ -2922,6 +2922,96 @@ Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
   interrupt is the default build's to the instruction (`ram_audio.rs` on the Bluetooth build). *Result:* Two minutes passed 2026-11-07 (458 notes over Bluetooth, the USB recording clean); the hour of two SIDs and the save during the link are still open.
 - [x] **A firmware install still works** with BLUETOOTH ON: SIDOU's installer over USB finishes.
  *Result:* Passed 2026-11-07.
+
+## 35. Bluetooth MIDI in a release-sized build (felucca-bsp `7e09895c`)
+
+What it decides: whether Bluetooth MIDI is ready to ship in the one package (the owner,
+2026-11-08: Bluetooth is in the default build, BLUETOOTH OFF until it is turned on). It is
+built on felucca-bsp `7e09895c`, with the radio driver in its own unit at `-Os` (577,008 bytes as
+a `-DSIDOU_BLE=ON` build, `build/rble-964`; 577,136 as the default with the radio-off gate,
+docs/design-notes.md "Board support" and "Bluetooth"). The section covers what §34
+left open, §34's Bluetooth items again on this build, and USB audio after upstream's new packet
+pattern. fm1-emu models no radio, so these checks are the device's. Every item waits for the
+owner's yes for that step: nothing is flashed, connected or scanned before it.
+
+Set up:
+
+- **The build:** the default, from a fresh build directory (or `-USIDOU_BLE` on one configured
+  before Bluetooth was the default): `tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=FM-1_900`,
+  then `tools/fm1-docker cmake --build --preset fm1`, then from `host/`: `cargo run --release -p
+  sidou-pack -- --app ../build/fm1/platform/fm1/sidou_app.bin --loader
+  ../build/fm1/platform/fm1/loader/loader.bin -o ../build/fm1/sidou.fwsc`. `tools/preflash`
+  passes it: the option record's `SIDOU_BLE=ON` is the default. (`build/rble-964`, the
+  `-DSIDOU_BLE=ON` package the owner started this section with, reports that one failure.)
+- **Installed over 1.8.0** with SIDOU's installer: the songs and settings are kept. Then BLUETOOTH
+  ON: HOME, SETTINGS, SELECT to BLUETOOTH (the last item), ALGORITHM clockwise. STATUS's READY
+  line shows `P` and the power record, as in §34 (`P 03 0B 07 0F 01 01 06` there).
+- **A Mac** with Audio MIDI Setup (Window, Show MIDI Studio, the Bluetooth button), Logic or
+  GarageBand, and a USB cable for the USB audio items. Headphones on the line out.
+
+**§34's Bluetooth items, again on this build**
+
+- [x] **BLUETOOTH ON:** within a few seconds the radio starts, the sound keeps playing, no reboot.
+  OFF stops advertising: the Mac's Bluetooth window loses `SIDOU XXXX` within ten seconds. ON
+  again advertises. A power cycle keeps ON. *Emulator (no radio):*
+  `ble.rs::bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising`,
+  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`,
+  `ble.rs::the_boot_raises_the_rails_and_sets_the_power_up_before_the_radio_can_start`.
+  *Result:* Passed 2026-11-08 on the Bluetooth package 80f3d5d9 (ble-ship ac00b949's image, 577,008 bytes): ON, the radio up, the sound on, no reboot; OFF drops `SIDOU D84A` from the Mac's list, ON brings it back; a power cycle kept ON.
+- [x] **SIDOU in Audio MIDI Setup:** the Bluetooth window lists `SIDOU XXXX`; Connect. Power cycle
+  the FM-1: the Mac finds the same name, and Connect works again. *Result:* Passed 2026-11-08: `SIDOU D84A`, Connect, and again after a power cycle.
+- [x] **Notes both ways:** notes from Logic play SIDOU. K1 (CC 74) arrives in
+  Logic's MIDI monitor (the panel's keys send no notes out, as over USB). Disconnect in Audio MIDI Setup while a note is held: no stuck note.
+  *Emulator:* `ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`. *Result:* Passed 2026-11-08: 584 notes from the Mac played SIDOU; 352 CC 74 reached the Mac; a link dropped with C3 held: the note stopped.
+- [x] **Two minutes, no glitch:** a three-note chord held on SIDOU's keys, K1 turning, notes
+  coming in over Bluetooth: no click on the headphones. *Emulator (radio off):* the audio
+  interrupt holds its budgets in the build that carries the radio (`ram_audio.rs`,
+  `sid_budget.rs`), and the main loop leaves the radio alone
+  (`ble.rs::with_bluetooth_off_the_main_loop_leaves_the_radio_alone`). *Result:* Passed 2026-11-08: chords on the keys, K1 turning, the Mac's notes coming in, two and a half minutes: no click.
+- [x] **A firmware install with BLUETOOTH ON:** run SIDOU's installer over USB with the same
+  package again. It finishes, and SIDOU boots with BLUETOOTH still ON. *Result:* Passed 2026-11-08: the installer finished, SIDOU booted with BLUETOOTH ON and the Mac connected again.
+
+**What §34 left open**
+
+- [x] **An hour of two SIDs with Bluetooth MIDI in from the Mac.** On the FM-1, open TRACKER on a
+  song with notes on chip A (a demo song will do) and PLAY it. The keys then play chip B (KEYS
+  AUTO, the default; docs/reference/midi.md "Two chips"), and so does Bluetooth MIDI in the MIDI
+  page's default mode, OMNI. In Logic, one MIDI track to `SIDOU XXXX` loops four bars of
+  chords at 120 BPM against the song. Listen at the start, at 30 minutes and at the end, and
+  leave it alone otherwise. Pass: no click or dropout heard; no reboot (the song never stops and
+  the boot screen never comes back); the link still up at the end (notes still play); no stuck
+  note when Logic stops. *Result:* Passed 2026-11-08: 1,796 bars over 60.1 minutes, every one sent; the Mac's port list, read every 2 s, never changed (no reboot, the link up throughout); nothing wrong heard.
+- [x] **A save during the link.** Keep the loop of the item above playing over Bluetooth. On LIVE,
+  turn K1, then SAVE: the settings save at once (**SAVED**). Then open TRACKER and SAVE the song
+  (**SONG SAVED**). The store's erase holds up to 35 ms. Pass: both saves complete; the
+  link stays up, or comes back by itself within ten seconds (Audio MIDI Setup shows it connected
+  and notes play again); no stuck note; no reboot. Note whether the link dropped. *Result:* Passed 2026-11-08: SAVED (GAPS) and SONG SAVED (GAPS), the forced write's usual hiccup of 1-2 s with the song playing; the link stayed up, no stuck note, no reboot.
+- [x] **SIDOU follows a DAW's clock over Bluetooth.** On the MIDI page (HOME, MIDI), CLOCK is AUTO
+  (the power-on default). In Logic: File, Project Settings, Synchronization, MIDI, MIDI Clock
+  to `SIDOU XXXX`, the tempo 120 BPM. On the FM-1, open TRACKER on a song, stopped. Press Play
+  in Logic: SIDOU's song starts with Logic. Change Logic's tempo to 90, then to 140: SIDOU
+  follows within a bar. Stop in Logic stops SIDOU. Back to the start (Return) and Play: SIDOU
+  starts from the top. Stop part way, then Play without moving the playhead (Logic sends a song
+  position and continue): SIDOU goes on from there. Then five minutes at 120 BPM: SIDOU stays in time with
+  Logic's metronome, by ear. Bluetooth's packets reach the same parser as USB's and TRS's, but
+  are stamped when the main loop takes them from the radio, not when they arrived (the BLE-MIDI
+  timestamps are not used), so listen for drift or wobble that USB does not have. *Emulator:*
+  clock and transport over USB and TRS (`midi_transport.rs`); Bluetooth packets into the parser
+  (`ble.rs::notes_from_the_air_play_and_a_dropped_link_releases_them`). *Result:* Passed 2026-11-08 on the 1.9.0 package (f88bbead): the Mac sent the clock over Bluetooth in Logic's place (GarageBand sends none): start at 120 BPM, 90, 140, stop, a song position and continue, stop and start from the top, then two minutes at 120 BPM with a click on every beat on chip B: SIDOU followed each change, went on from where it stopped, and kept time with the clicks, by ear.
+
+**USB audio after felucca-bsp `5b0879b`** (the packets follow the I2S clock; docs/design-notes.md
+"Board support")
+
+- [x] **Two minutes of recording on the Mac:** "SIDOU FM-1" as Logic's input at 44.1 kHz. Record
+  a held chord for two minutes. Pass: no gap or click in the waveform over the whole take, and the
+  level as before (§34: a held chord at -26 dBFS). *Emulator:*
+  `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`,
+  `usb.rs::the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`. *Result:* Passed 2026-11-08 on the 1.9.0 package (f88bbead): two minutes over USB with a song playing: 5,292,000 frames in 120.3 s of recording (the rate the FM-1's), no silence of 1 ms or more, no 100 ms block below -60 dBFS, no click; -45 dBFS RMS at the master volume used.
+- [ ] **On iOS, if an iPhone or iPad is at hand** (the case upstream's change fixes): connect the
+  FM-1 by USB-C, or through Apple's camera adapter. Record one minute of video in the Camera app,
+  with the FM-1 as the microphone and a held chord. Pass: no dropout about once a second.
+  *Result:*
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -2962,3 +3052,4 @@ Audio MIDI Setup and GarageBand or Logic, headphones on the line out.
 | 32 1.7: the player from flash, and by ear | | |
 | 33 1.8: the small items, by ear | | |
 | 34 1.8: felucca-bsp and Bluetooth MIDI | | |
+| 35 Bluetooth MIDI in a release-sized build | | |

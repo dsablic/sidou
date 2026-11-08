@@ -46,7 +46,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Board support (felucca-bsp)
 
-- Since 1.8 the app builds from felucca-bsp (`f8788009`, MPL-2.0) byte for byte, in
+- Since 1.8 the app builds from felucca-bsp (`7e09895c` since 2026-11-08, `f8788009` in 1.8.0;
+  MPL-2.0) byte for byte, in
   `platform/fm1/bsp/` (`chip/`, `boards/fm1/`); Felucca 1.6.1's copies stay for the update loader
   alone, whose SHA-256 is pinned (decision 0011, the owner, 2026-11-05). `platform/fm1/VENDORED.md`
   lists the files and who includes what.
@@ -83,6 +84,17 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The move costs 4,128 bytes of flash (+2,368 `.text`, +1,760 RAMTEXT: the flash driver's split
   erase, `fl_erase4k_begin_ram`/`_end_ram`, which upstream marks `used`), 112 bytes of the RAM
   region and 320 of NOINIT (`fm1_crash_ctx`, the fault record).
+- **`f8788009` to `7e09895c`** (2026-11-08) changed two of the files SIDOU vendors, and none of
+  SIDOU's hooks: `fm1_irq.h` gained `FM1_IRQ_DEFS` (our #31; the default, 1, is the header as it
+  was) and `usb.c` three things. `FELUCCA_UAC_CH` (#32) and `FELUCCA_UAC_STALL_POLLS` (#33) keep
+  their defaults: SIDOU's input is the stereo master, and it services the stream at 2 kHz, where
+  40 polls are upstream's 20 ms. `5b0879b` cuts the packets on the I2S clock's own pattern and
+  steers at most one frame a render, instead of 44.1 kHz's pattern steered every packet: a host
+  records the same samples, bit for bit, in packets that no longer come three long in a row
+  (`usb.rs`; `VENDORED.md`, "USB audio out"). The hand-over (`usb_audio.c`), the update path
+  (`ota.c`, unchanged) and `midi.c` needed nothing; emu-gate reads `uac`'s counters 4 bytes
+  further on (the new `fresh` byte). The default image grew 32 bytes (548,320 to 548,352), RAMTEXT,
+  the RAM region and NOINIT not at all.
 
 ### Image layout
 
@@ -357,17 +369,30 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   of 5.0M) and LIVE's full-speed flood (6.33M/s of 6.3M); `scene.c` at `-Oz` (128) put SCENE's
   fire over its frame budget (109,591 instructions); `core/fx/fx.c` at `-Os` saved nothing.
 
-### Bluetooth's measurement build (`SIDOU_BLE`)
+### Bluetooth MIDI (`SIDOU_BLE`)
+
+- **One package** (the owner, 2026-11-08, decision 0011): `SIDOU_BLE` is on in the default and
+  release build, and SETTINGS' BLUETOOTH is OFF by default. The image is 577,136 bytes, 2,380
+  under the ceiling; RAMTEXT 44,864. `-DSIDOU_BLE=OFF` still builds SIDOU without the radio, which
+  no release is and no gate builds. A build directory configured before the change keeps OFF in
+  its cache (`option()` never overrides a cached value): configure warns, and the merge check
+  configures with `-USIDOU_BLE`.
 
 - The stack's host side (fm1-base `bt/ble`: link layer, host, ATT, BLE-MIDI, the central's scan
   and client) is its own unit, `platform/fm1/ble_stack_unit.c`, at `-Oz` (below), with
   `BLE_API` left empty (extern) as fm1-base's host tests build it. Inside `main.c`'s unit the stack
   came out 6,784 bytes larger at `main.c`'s `-mllvm -inline-threshold=225`, and clang's global
   merge mixed its state with `main.c`'s, so no `app.ld` rule could place it.
-- The radio driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`) and SIDOU's glue
-  (`ble_radio.c`) are part of `main.c`'s unit: `fm1_ble.h` needs `fm1_irq.h`, whose two non-static
-  definitions keep it to one unit (Felucca's HAL rule, `VENDORED.md`). At `main.c`'s threshold the
-  driver costs 3,264 bytes more than at plain `-Os`.
+- **The radio driver is its own unit** (2026-11-08): SIDOU's glue `ble_radio.c`, which includes
+  the driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`), is compiled alone at plain `-Os`
+  with `FM1_IRQ_DEFS 0` (felucca-bsp#31, vendored with `7e09895c`): its `fm1_irq.h` declares the
+  fault record and `fm1_fault_c` instead of defining them, and `main.c`, the HAL's unit, still
+  defines them once. Until then the driver had to sit in `main.c`'s unit, whose
+  `-mllvm -inline-threshold=225` made it 3,264 bytes larger (the 1.8 plan's R6). The move saved
+  2,992 bytes (580,000 to 577,008, 93 % of the plan's 3.2 KB; `-Oz` would save 880 more, untried
+  on the radio's timing). `main.c` now includes only `ble_radio.h`, and the stack's include path
+  and `BLE_*` settings go to `ble_radio.c` and `ble_stack_unit.c` alone. `fm1_irq.h` holds no
+  state of its own (registers only), so the second unit's copy of its helpers is safe.
 - Since the felucca-bsp move the stack is vendored (`third_party/fm1-base-ble`, fm1-base `698e2cb`,
   whose felucca-bsp pin is SIDOU's) and the radio headers sit in `platform/fm1/bsp/chip` beside the
   `fm1_irq.h` they include, so nothing is fetched or copied at build time. `fm1_ble_rf.h` includes
@@ -386,67 +411,165 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` is 0, so the central's
   scan table, client and DEVICES code are not built. The image with Bluetooth and its SETTINGS row
   is 578,016 bytes, 1,500 under the ceiling.
-- **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with a radio:
-  `views_radio_bind` hands the views the radio's hooks and adds the item, so the default image's
-  SETTINGS, its golden screens and its ergonomics baseline are unchanged. The setting and SIDOU's
-  random static address are their own store record (key `0x10A`), not the settings record: the
-  default build never writes it, and its schema stays 9. It is saved two seconds after a change,
+- **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with the
+  radio: `views_radio_bind` hands the views the radio's hooks and adds the item. The setting and
+  SIDOU's random static address are their own store record (key `0x10A`), not the settings
+  record, so the settings schema stays 9; a unit whose BLUETOOTH never changes never writes it. It is saved two seconds after a change,
   from a static buffer (the store writes from the caller's memory over later polls).
 - **The stock power setup before the radio** (2026-11-07, after the first device test reset at
-  BLUETOOTH ON): the Bluetooth build runs fm1-base's boot sequence first thing in `sidou_main`,
+  BLUETOOTH ON): SIDOU runs fm1-base's boot sequence first thing in `sidou_main`,
   interrupts off, before anything can start the radio (`ble_setting.c`, `-Oz`): VDC14 up to 7
   (1.60 V) and SYSVDD to 15 (1.38 V) with a read-back and up to three tries, then
   `fm1_power_stock` (the 1.3 V supply on its DC-DC, VDDIO 3.2 V, WiFi's regulator automatic). At the
   boot loader's levels flash fetches can come back wrong under the radio trim's current, which
   resets the chip with no fault screen (fm1-base's note; CTL-1 0.6 s into a start). The always-on
   P33 keeps whatever ran last, and an FM-1 that has run SIDOU for weeks has none of V15's setup.
-  The default build calls none of it (`ble.rs` checks both). `fm1_clock_stock` is not copied:
+  Every boot runs it, BLUETOOTH ON or OFF (`ble.rs` checks the rails and the record). Until
+  Bluetooth was in the default build, the default left the boot loader's rails alone and a test
+  pinned that; with one build that test had nothing left to prove, and the one that replaced it
+  pins what OFF must leave alone: the radio and the main loop's time. `fm1_clock_stock` is not copied:
   SIDOU sets no clock of its own and is always started by the SDK's SPL, which leaves M-VAVE's
   360 MHz; the system clock's source byte is recorded so the device test can confirm it (6).
-  STATUS shows the record on its READY line in the Bluetooth build: `P` (or `!` after a start
+  STATUS shows the record on its READY line: `P` (or `!` after a start
   that reset), then VDC14 and SYSVDD at boot, after, the tries, whether the DC-DC was moved, the
   clock byte, in hex.
-- **The Bluetooth test build's own ceiling** (the owner, 2026-11-07): 580,016 bytes, 1.8's ceiling
-  (579,516) plus 500 of the slot's 2 KB reserve, for the device test only (`ble.rs`'s
-  `BLE_TEST_CEILING`). The power setup made the image 580,016, 500 over, and nothing cheap was left
-  (a second split reached about 250-370 bytes). The default build's ceiling stays 579,516, and
-  before Bluetooth ships in a release the Bluetooth build must fit 579,516 again (felucca-bsp#31,
-  about 3.2 KB, or another saving; the roadmap).
+- **The image with Bluetooth is held to the release ceiling** (579,516, `flash_budget.rs`) and
+  links against `app.ld` itself. From 2026-11-07 to 2026-11-08 the owner allowed
+  the test build 500 bytes of the slot's 2 KB reserve (580,016) for the device test, after the
+  power setup put it 500 over; the radio driver's own unit (above) brought it to 577,008, 2,508
+  under, and the exception is gone.
 - **BLUETOOTH ON is saved only after the radio started cleanly**, and a start that resets cannot
   loop: a word in NOINIT marks the start's dangerous part; found set at the next boot, the radio
   is not started, BLUETOOTH is saved OFF and STATUS shows `!`. A kept ON that fails at a later
   boot therefore costs one reset and comes back OFF; nothing has to be held at power-on. NOINIT
   survives a reset, not a power cut, so a power cut in the middle of a start leaves ON (the next
   start is tried again). `ble.rs` pins both orders.
+- **With the radio off the main loop leaves it alone** (2026-11-08, the owner: no MIDI budget is
+  raised for Bluetooth). Polling the radio every pass, pumping its input ring in every
+  `midi_drain` and offering every outgoing packet to it cost the main loop about 0.6M
+  instructions a second with BLUETOOTH OFF (`midi.rs`: idle 2.40 to 3.00M/s, the CC flood 4.98 to
+  5.73M/s of 5.0, LIVE's full-speed TRS flood 6.24 to 7.00M/s of 6.3). Now one byte,
+  `ble_radio_awake`, gates all three: the poll clears it once the setting is loaded and saved, the
+  radio is neither wanted nor started and no link is left to drop; BLUETOOTH set ON sets it. The
+  poll and the input pump run once an input frame (about 1.1 ms, `play`), not every pass: three
+  instructions a frame when off, and Bluetooth's notes wait at most a frame, well inside a BLE
+  connection interval (7.5 ms or more). The outgoing packets are offered once a tick, after the
+  USB ones. Off, the loop costs what the build without Bluetooth costs to within 4,000
+  instructions a second (idle 2.401M/s against 2.397). `ble.rs` pins it: with BLUETOOTH OFF, 3 s
+  past the radio's start time, the main loop never calls `ble_radio_poll`.
 - **Starting the radio:** never before 3 s after power-on (the boot's waits; in fm1-emu, where
   the start's waits time out, it holds the main loop 2.2 ms, `ble.rs` bounds it at 600 ms), then
   whenever BLUETOOTH is ON. OFF stops advertising and drops a link (`ble_enable(0)`), and ON again
   advertises without a second start. The address is drawn once and kept, so a Mac finds the same
   SIDOU after a power cycle.
-- **The emulator gate** (`emu-gate/tests/ble.rs`, with `SIDOU_FM1_BLE_BUILD`): notes written into
+- **The emulator gate** (`emu-gate/tests/ble.rs`, on the default build since 2026-11-08; before,
+  on a second build named by `SIDOU_FM1_BLE_BUILD`): notes written into
   `ble_radio_in` by symbol play, and a link set down (`ble_radio_role`) releases them; the stack's
-  state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,340 bytes free);
-  the image fits the ceiling (the peripheral, 578,016); the setting is saved with an address and
-  kept across a power cycle; the start comes after the boot's waits. With the radio
-  off the audio interrupt is the default build's to the instruction (396.67 a sample, a chord held).
+  state and the rings lie in NOINIT and the RAM region keeps `REGION_FREE_MIN` (7,348 bytes free);
+  the setting is saved with an address and kept across a power cycle; the start comes after the
+  boot's waits; with BLUETOOTH OFF the main loop never polls the radio. While there were two
+  builds, the audio interrupt with the radio off was shown to be the default build's: a chord pressed at a block's end, then 1,000 blocks
+  counted at the audio interrupt's own level in both builds, must come out less than one
+  instruction in ten blocks apart (49,806,293 and 49,806,306, 389.11 a sample each). Block by
+  block they differ: a 78-instruction item lands a block earlier or later with the main loop's
+  timing (the Bluetooth build polled the radio each pass then, and `fm1_rf_burst_run` moves
+  RAMTEXT 36 bytes), so equal totals over the same blocks are the strict statement. One instruction added
+  to every block would be 1,000 apart. With one build the audio interrupt's own budgets
+  (`ram_audio.rs`, `sid_budget.rs`) hold the build that carries the radio.
 - The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
   both ways.
 - RAM placement: the stack's unit's `.bss` and the glue's rings and scan table (section
   `.noinit.ble_radio`) go to NOINIT, which `ble_radio_start` zeroes before `ble_init`. The radio's
   DMA reads `bb` (1,508 bytes) and the PLL table (972; its address goes into a register), so the
   driver's state stays in the RAM region. `fm1_crash` and felucca-bsp's `fm1_ble_bc` keep their
-  `.noinit` places and are not zeroed. The rules match nothing in the default build.
-- The radio never starts in this build (`ble_radio_wanted` is never set). Started at boot in
-  fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up holds the main loop
-  past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
-- The copy of `app.ld` is written at configure time and `app.ld` is a configure dependency, so a
-  change to `app.ld` (rel180 moved `psid_isr_*` into RAMTEXT) reaches the Bluetooth build; a stale
-  copy put `psid_isr_retweak` in flash, out of branch reach of `sid_write` in SRAM.
-- The image is over the app slot, so the build links against a copy of `app.ld` with a larger
-  XIP region; CMake fails if `app.ld`'s length changes under it.
-- The option record names `SIDOU_BLE` only when it is on, so the default image keeps its bytes.
-  `sidou-pack` fails any record that names an option outside `DEFAULT_OPTIONS`; the options that
-  are absent when off are listed in `ABSENT_WHEN_OFF`.
+  `.noinit` places and are not zeroed. A `-DSIDOU_BLE=OFF` build has nothing they match.
+- **The emulator gate's boot is anchored to the audio** (2026-11-08). `common::run_past_boot`
+  steps 40 ms frames from reset until the boot screen is gone, and every test that boots through
+  it measures from there. The stock power-up's waits (`ble_power_boot`: the rails a step per
+  100 us, the DC-DC's three 1 ms waits) cost 5,063 instructions but start the audio 5.23 ms later
+  (95,673,454 cycles against 94,419,091), so six tests moved by phase alone. A build without the
+  radio and a 5 ms delay at boot reproduced four of them to the digit, so neither the radio nor its
+  code was the cause. The Machine now records the cycle its first audio block ends, and
+  `run_past_boot` catches up once with the audio, onto the frame grid the gate has always had:
+  1,580,909 cycles after the first block, where the build without Bluetooth has it. A build whose
+  audio starts on time steps exactly as before, to the cycle; one that starts later reaches LIVE
+  at the same audio phase. Fixed this way: the USER profile's render match and `midi.rs`'s map
+  CC flood (4.9985M/s of 5.0, 4.9957 before Bluetooth). Not fixable this way: the firmware's own
+  clock (`uptime_ms`, the input scan, the ticks) counts from reset, so a later audio start moves
+  the audio against the firmware's own timers, and no anchor lines up both. Four tests depend on
+  that phase, and fail the same on the Bluetooth build and on a build without the radio delayed
+  5 ms at boot: the thump stage (32.14 instructions a sample of 31; 30.86 before), a sounding USB
+  PUT (247.4 ms a packet, under the 250 ms gap; 263.2 before), Live Link's MIDI out (8 CCs with a
+  session against 12 alone; the test allows one fewer) and its clock out (a transport message
+  2 ms later with a session). They wait for the owner's decision; no bound is raised.
+- **The four predate Bluetooth** (2026-11-08): 1.8.0's own image (main `348a77c7`, no radio)
+  with 0 to 13 ms of delay at boot fails each of them at some offsets; it passes all four only at
+  0 ms, the offset their bounds were set at.
+
+  | Boot delay, ms | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | Thump, a sample (31.0) | 30.86 | 35.53 | 34.52 | 34.52 | 35.53 | 31.76 | 31.76 | 31.76 | 30.86 | 31.76 | 33.07 | 32.14 | 33.07 | 34.52 |
+  | PUT, ms a packet (250) | 263.2 | 263.4 | 246.8 | 263.2 | 262.4 | 247.5 | 262.7 | 247.5 | 247.5 | 262.9 | 247.6 | 262.5 | 263.1 | 246.7 |
+  | MIDI out CCs, alone / with (with + 1 >= alone) | 8/12 | 8/9 | 11/8 | 12/8 | 12/8 | 12/11 | 12/12 | 12/12 | 10/12 | 8/12 | 8/12 | 8/9 | 11/8 | 12/8 |
+  | Clock out, worst ms late with / alone (+1) | -1/1 | 0/0 | 0/0 | 0/0 | 0/0 | 0/0 | 2/0 | 2/0 | 3/1 | 3/1 | 2/1 | 2/1 | 2/1 | 2/1 |
+
+  - *The thump*: the stage's cost per block peaks at 5,845 instructions (45.7 a sample) at every
+    offset; a note's thump runs 27 to 30 blocks at about 5,000-5,850, then 48 a block idle. The
+    phase moves how many blocks pay the first-block cost (1 or 3) and how many blocks the 100 ms
+    window holds (34 or 35), so the average over the window runs from 30.86 to 35.53 (a note's
+    total from 138,256 to 154,620 instructions). The audio interrupt pays it, but no block is
+    heavier than at the bound's phase. A budget set at one phase: the honest worst over the sweep
+    is 35.53 a sample over the window; a phase-free measure is the per-block peak (5,845) or a
+    note's total until the stage idles. **The budget is per block since 2026-11-08** (the owner):
+    `character.rs` bounds the stage's costliest audio block during a note's thump at 5,845
+    instructions, 1.8.0's, the same at every boot offset. What the audio interrupt must fit is a
+    block, so a block is the unit; an average over a fixed window depended on where the window cut
+    the thump, and could pass a heavier block or fail a lighter one.
+  - *The PUT gap*: every packet-to-packet interval is 257 to 270 ms at every offset; the store's
+    hold gap (`hold_ready`: 250 ms since the last hold's program, on the firmware's millisecond)
+    is kept. `up` divides 16 packets by a window that holds 15 full gaps plus the first packet,
+    which comes 17-18 ms or 275 ms after the metadata depending on when the last hold was, so it
+    reads 246.7 or 263. A host never sees packets closer than 250 ms. The test measures the
+    window: the smallest interval between consecutive packets' ACKs measures the gap itself, and
+    `usb.rs` asserts it is 250 ms or more since 2026-11-08 (259 on the default build).
+  - *MIDI out*: nothing is lost. A three-detent turn glides the cutoff in steps about 8 ms apart;
+    MIDI out sends the current value once a 10 ms tick, so some steps fall between ticks, with or
+    without a session. Every CC sent is a value the parameter held, within a tick, and the last
+    (0x7F) always goes. The count (8 to 12) is that aliasing. Phase-free: every sent CC is a value
+    held at its tick, within one tick of the change, and the last value arrives, in both runs.
+    `link.rs` asserts that since 2026-11-08: each CC the host gets is a value the cutoff held, at
+    most 12 ms after the cutoff took it (the 10 ms tick, the USB frame it waits for, and the
+    millisecond the trace resolves), and the last is 0x7F; the count is no longer compared.
+  - *Clock out*: nothing is lost; with a Live Link session a start, song position or continue
+    reaches the host up to 3 ms later. Transport packets and Live Link's cell frames share
+    `usb.c`'s FIFO (`mo`); Live Link leaves `MIDI_SYNC_OUT_MAX` packets of room, so a transport
+    packet is never refused, but it queues behind a frame's packets already there, and the host
+    takes 16 a 1 ms frame. The bound is (MQ - `MIDI_SYNC_OUT_MAX`) / 16, 4 ms. A firmware change
+    could keep Live Link's frames to one USB frame of the ring (at most 1 ms ahead of a transport
+    message; fewer cell frames a second), without touching the vendored `usb.c`; or the test
+    takes the queue's bound.
+    *Corrected 2026-11-08, measured from the ring:* `link.rs`'s
+    `transport_out_goes_as_without_a_session_at_most_a_usb_frame_later` times each of 101
+    transport messages (2 s of a song with CLOCK OUT) from the moment it enters `usb.c`'s ring to
+    the host: at most 2 ms alone (the millisecond the test resolves and the USB frame), 3 with a
+    session, at every boot offset from 0 to 13 ms. A Live Link frame already holds its packets
+    back unless the ring has room for them and `LINK_RING_KEEP` (at most 10 waiting), and the
+    queue adds one USB frame at most. The 2 to 3 ms the older test reports come from its
+    reference: it times arrival from the millisecond it sees `song_transport`'s call count move,
+    which lands a millisecond before or after the packet is queued depending on the run (alone,
+    queued at 19 ms and seen at 20; with a session, queued and seen at 15). No firmware change is
+    needed for "at most 1 ms later". The older test's timing is retired (the owner, 2026-11-08);
+    the one test now also checks what it guarded besides: start, stop, song position and
+    continue reach the host in that order with a session as without, and the clocks' jitter
+    grows by a millisecond at most.
+- Started at boot in fm1-emu, which models no radio, SIDOU still boots and plays, but the start-up
+  holds the main loop past `boot.rs`'s 900 ms window: a real start comes after the boot's waits.
+- The image links against `app.ld` itself since it fits (2026-11-08). Before, over the app slot,
+  the Bluetooth build linked against a copy with a larger XIP region, written at configure time.
+- The option record names `SIDOU_BLE=ON` as it names every default (`DEFAULT_OPTIONS`,
+  `sidou_option_defaults`). `SIDOU_BLE_CENTRAL` is recorded only when it is not 0
+  (`ABSENT_WHEN_OFF`), and `sidou-pack` fails any record that names an option outside
+  `DEFAULT_OPTIONS`.
 
 ### `gt2_song.c` at `-Oz`: timing only
 

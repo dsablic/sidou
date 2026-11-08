@@ -155,8 +155,8 @@
     <section>
       <h2>What this is</h2>
       <p><b>SIDOU</b> is free firmware that turns the M-VAVE FM-1 pocket synth into a Commodore 64 SID
-        instrument: an emulated SID chip (6581 or 8580) played from the FM-1's keys and knobs and over MIDI,
-        with three effect slots after the chip. It also plays and edits GoatTracker 2 songs with a step
+        instrument: an emulated SID chip (6581 or 8580) played from the FM-1's keys and knobs and over MIDI
+        (USB, the TRS jack, and Bluetooth once SETTINGS' BLUETOOTH is on), with three effect slots after the chip. It also plays and edits GoatTracker 2 songs with a step
         sequencer and a tracker (<kbd>0</kbd> SEQ, <kbd>Space</kbd> PLAY): a new song comes with a SID drum
         kit and sampled digi drums, STEP can play a step by chance and a held step sounds with its
         locks (held with FX it slides into the next note, with ENV it is accented), and TABLE's ARP helper plays its arpeggio on the keys before you save it; STEP and the tracker roll a new
@@ -254,6 +254,9 @@
           sound to a computer as a USB audio input; this page's player has no USB (fm1-emu emulates the
           FM-1's USB only in its desktop player, <code>fm1-live --usb</code>). MIDI from this page reaches
           SIDOU through the emulated TRS MIDI IN jack, and the panel's MIDI out goes nowhere.</li>
+        <li><b>No Bluetooth on this page.</b> fm1-emu models no radio: SETTINGS' BLUETOOTH turns on, but
+          nothing can connect. On a real FM-1 a Mac, an iPad or a phone finds SIDOU as a Bluetooth MIDI
+          device.</li>
         <li><b>No watchdog.</b> The power and reset block's registers (P33) keep what SIDOU writes, but
           nothing acts on them, so a hang is not reset as it would be on the chip.</li>
         <li><b>Instructions, not cycles.</b> The emulator counts instructions; the clock setting is

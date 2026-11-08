@@ -8,6 +8,34 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-08
+
+Bluetooth MIDI in the one package, OFF until you turn it on, and USB audio on the FM-1's own clock.
+
+### Added
+- **Bluetooth MIDI, in the one package.** SIDOU is a Bluetooth MIDI device a Mac, an iPad or a
+  phone connects to (`SIDOU XXXX`, no pairing): notes, CCs and clock in, the panel's CCs and
+  program changes out as over USB, and a dropped link releases the held notes. SETTINGS' last item, BLUETOOTH, turns it
+  on; it is OFF by default, and the setting and SIDOU's address are kept. Bluetooth is no longer
+  a separate test build (`SIDOU_BLE` is on by default; `sidou-pack --verify` and
+  `tools/preflash` expect it). With BLUETOOTH OFF the radio never starts and the main loop leaves
+  it alone: it costs what it cost without Bluetooth to within 4,000 instructions a second, where
+  polling the radio every pass had cost 0.6M. Every boot now sets the FM-1's stock power-up (the
+  rails, the DC-DC), and STATUS's READY line shows its record. The image is 577,136 bytes of
+  579,516.
+- *What's new in 1.9*: SIDOU LOOP playing, BLUETOOTH ON in SETTINGS, and cards for connecting
+  from a Mac, an iPad or a phone; every video re-rendered on 1.9.
+
+### Changed
+- **USB audio packets keep the FM-1's own clock.** felucca-bsp `7e09895c` (from `f8788009`): the
+  packets carry 44 frames a millisecond and one more every 8 or 9, the I2S clock's rate, and are
+  steered by at most one frame a render, so a host that follows the device's rate closely (iOS's
+  Camera) no longer hears a run of short or long packets as a dropout. The recorded samples are
+  the same, bit for bit.
+- **Bluetooth fits the release ceiling.** The radio driver builds in its own unit at `-Os`
+  (felucca-bsp#31's `FM1_IRQ_DEFS 0`), 2,992 bytes smaller, and the image links against `app.ld`
+  itself. The test build's 500-byte exception is gone.
+
 ## [1.8.0] - 2026-11-07
 
 A sound from a prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at 44.1 kHz only.

@@ -7,8 +7,8 @@ use fm1_core::Bus;
 
 use common::panel::{press, A4, A4_KEY, ALGORITHM, HOME, K1};
 use common::{
-    firmware, max_diff, rendered_sid, top_view, ui_live, Firmware, Machine, HALF_FRAMES,
-    SAMPLE_RATE,
+    costliest_watched_block, firmware, max_diff, rendered_sid, top_view, ui_live, Firmware,
+    Machine, HALF_FRAMES, SAMPLE_RATE,
 };
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
@@ -31,7 +31,7 @@ const CCS: [(u8, u8); 5] = [
     (CC_BLEED, 90),
 ];
 
-const THUMP_PER_SAMPLE: f64 = 31.0;
+const THUMP_BLOCK_MAX: u64 = 5_845;
 
 const GRIT_PER_SAMPLE: f64 = 19.2;
 
@@ -221,18 +221,15 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         "something between the stage's functions"
     );
     m.watch_alnk_pcs(stage);
-    let from = m.alnk_blocks.len();
     m.key(A4_KEY, true);
-    m.run_ms(100);
-    let n = (m.alnk_blocks.len() - from) as f64 * HALF_FRAMES as f64;
-    let thump = m.alnk_pcs_inside as f64 / n;
+    let thump = costliest_watched_block(&mut m, 100);
     println!(
         "{}",
-        serde_json::json!({ "thump_out_instructions_per_sample": thump })
+        serde_json::json!({ "thump_out_instructions_costliest_block": thump })
     );
     assert!(
-        thump <= THUMP_PER_SAMPLE,
-        "the thump's stage costs {thump:.2} a sample"
+        thump > 0 && thump <= THUMP_BLOCK_MAX,
+        "the thump's stage costs {thump} instructions in a block"
     );
     m.alnk_pcs_inside = 0;
     m.watch_alnk_pcs(fw.function_range("grit"));

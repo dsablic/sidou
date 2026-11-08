@@ -85,6 +85,28 @@ radio, as fm1-base's boot does it) put the Bluetooth image at 580,016 bytes, 500
 reserve, for the device test only**: its ceiling is 580,016. The default build's stays 579,516, and
 the Bluetooth build must fit 579,516 again before Bluetooth ships in a release.
 
+Done 2026-11-08: with felucca-bsp `7e09895c` (felucca-bsp#31, `FM1_IRQ_DEFS 0`) the radio driver
+builds in its own unit at plain `-Os`, and the Bluetooth image is 577,008 bytes, 2,508 under
+579,516 (2,992 saved, of the plan's 3.2 KB). The 580,016 exception is withdrawn: the Bluetooth
+build is held to 579,516 like the default (`ble.rs`) and links against `app.ld` itself. Whether a
+release ships Bluetooth built in, or as a second package, is still the owner's to decide.
+
+## The owner's decision on how Bluetooth ships (2026-11-08)
+
+1. **One package.** `SIDOU_BLE` is on in the default and release build, and SETTINGS' BLUETOOTH
+   is OFF by default. There is no separate Bluetooth build or package; `sidou-pack`'s defaults
+   name `SIDOU_BLE=ON`, and only `SIDOU_BLE_CENTRAL` (0) stays out of the option record while it
+   is at its default.
+2. **No MIDI budget is raised.** With the radio off the main loop must cost what it cost before
+   Bluetooth. Polling the radio every pass cost about 0.6M instructions a second; a byte that
+   says whether the radio needs the main loop at all, checked once an input frame, brings it to
+   within 4,000 ([the design notes](../design-notes.md#bluetooth-midi-sidou_ble)).
+
+Done 2026-11-08: the default image is 577,136 bytes, 2,380 under 579,516. Every boot sets the
+stock power-up (item 4 above), so the test that the default build leaves the boot loader's rails
+alone is replaced by one that the main loop leaves the radio alone with BLUETOOTH OFF; the merge
+check builds and gates the one build.
+
 ## Consequences
 
 - The plan's steps 2 and 3 come first: a `SIDOU_BLE` build measures the real deltas, and SIDOU

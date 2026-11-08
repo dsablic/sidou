@@ -420,7 +420,7 @@ __attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
 }
 
 #if defined(SIDOU_BLE)
-static void ble_in_pump(void) {
+void midi_ble_in(void) {
     uint32_t pkt;
     while (in_room() > EP1_ROOM && ble_radio_take(&pkt)) {
         uint32_t f = irq_save();
@@ -437,9 +437,6 @@ void midi_ble_dropped(void) {
 #endif
 
 int midi_drain(void) {
-#if defined(SIDOU_BLE)
-    ble_in_pump();
-#endif
     usb_in_pump();
     uint8_t epoch = in_ring.epoch;
     if (in_ring.head == in_ring.tail && epoch == rx.epoch) {
@@ -461,10 +458,15 @@ void midi_send(void) {
     uint32_t n = midi_out_tick(&midi_tx, rx.l, room, pkt);
     for (uint32_t i = 0; i < n; i++) {
         midi_out_event(pkt[i]);
-#if defined(SIDOU_BLE)
-        (void)ble_radio_send(pkt[i], fm1_micros() / 1000u);
-#endif
     }
+#if defined(SIDOU_BLE)
+    if (ble_radio_awake) {
+        uint32_t ms = fm1_micros() / 1000u;
+        for (uint32_t i = 0; i < n; i++) {
+            (void)ble_radio_send(pkt[i], ms);
+        }
+    }
+#endif
 }
 
 void midi_service(uint32_t now_ms) {

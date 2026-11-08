@@ -44,33 +44,24 @@ if(SIDOU_FLASH_SPIKE)
     set_property(SOURCE flash_spike.c APPEND PROPERTY COMPILE_OPTIONS -fno-data-sections)
     target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
 endif()
-option(SIDOU_BLE "Bluetooth MIDI on Optimist's open stack (measurement build, never released)" OFF)
+option(SIDOU_BLE "Bluetooth MIDI on Optimist's open stack" ON)
 if(SIDOU_BLE)
     set(SIDOU_BLE_CENTRAL "0" CACHE STRING
         "Connecting out (the next release): 0 peripheral only (1.8), 3 without pairing, 1 with")
     set(ble_stack ${PROJECT_SOURCE_DIR}/third_party/fm1-base-ble)
-    target_sources(${t} PRIVATE ble_stack_unit.c ble_setting.c)
+    target_sources(${t} PRIVATE ble_stack_unit.c ble_radio.c ble_setting.c)
     set_property(SOURCE ble_setting.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
     set_property(SOURCE ble_stack_unit.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
-    set_property(SOURCE main.c ble_stack_unit.c APPEND PROPERTY INCLUDE_DIRECTORIES
+    set_property(SOURCE ble_radio.c APPEND PROPERTY COMPILE_OPTIONS -Os)
+    set_property(SOURCE ble_radio.c APPEND PROPERTY COMPILE_DEFINITIONS FM1_IRQ_DEFS=0)
+    set_property(SOURCE ble_radio.c ble_stack_unit.c APPEND PROPERTY INCLUDE_DIRECTORIES
         ${ble_stack})
-    set_property(SOURCE main.c ble_stack_unit.c APPEND PROPERTY COMPILE_DEFINITIONS
+    set_property(SOURCE ble_radio.c ble_stack_unit.c APPEND PROPERTY COMPILE_DEFINITIONS
         BLE_DIAG=0 BLE_CENTRAL=${SIDOU_BLE_CENTRAL} BLE_DEVICE_NAME="SIDOU")
     set_property(SOURCE main.c midi.c ui.c APPEND PROPERTY COMPILE_DEFINITIONS SIDOU_BLE=1)
     target_compile_definitions(sidou_live PRIVATE SIDOU_BLE=1)
-    message(WARNING
-        "SIDOU_BLE=ON: Bluetooth MIDI's measurement build (central ${SIDOU_BLE_CENTRAL}), not a release")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
-    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/app.ld app_ld)
-    string(REPLACE "LENGTH = 0x8DFBC" "LENGTH = 0x100000" app_ld_measure "${app_ld}")
-    if(app_ld_measure STREQUAL app_ld)
-        message(FATAL_ERROR "SIDOU_BLE: app.ld's XIP length is not 0x8DFBC any more")
-    endif()
-    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/app_ble.ld "${app_ld_measure}")
-    set(sidou_app_ld ${CMAKE_CURRENT_BINARY_DIR}/app_ble.ld)
-else()
-    set(sidou_app_ld ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
 endif()
+set(sidou_app_ld ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
 option(SIDOU_USB_FIX "midi.c (the USB stack) with Felucca's build flags" ON)
 set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -fdata-sections)
@@ -84,7 +75,7 @@ set(sidou_option_defaults
     "SIDOU_ALL_COMBINED_PROFILES=ON" "SIDOU_ALL_COMBINED_PROFILES_8580=ON"
     "SIDOU_FLASH_SPIKE=OFF" "SIDOU_USB_FIX=ON" "SIDOU_MIDI_OUT_NRPN=OFF"
     "SIDOU_MIDI_OUT_CHANNEL=1" "SIDOU_SYSEX_GAP_MS=250" "SIDOU_TEST_DEATH="
-    "SIDOU_TEST_DEATH_MS=1000"
+    "SIDOU_TEST_DEATH_MS=1000" "SIDOU_BLE=ON"
     "SIDOU_PRODUCT=FM-1_900" "CMAKE_BUILD_TYPE=Release")
 set(sidou_options "")
 set(sidou_options_off "")
@@ -112,12 +103,9 @@ foreach(entry IN LISTS sidou_option_defaults)
     endif()
     string(APPEND sidou_options " ${name}=${value}")
 endforeach()
-if(SIDOU_BLE)
-    string(APPEND sidou_options " SIDOU_BLE=ON")
-    if(NOT SIDOU_BLE_CENTRAL STREQUAL "0")
-        string(APPEND sidou_options " SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL}")
-    endif()
-    string(APPEND sidou_options_off "\n    SIDOU_BLE=ON (default OFF), central ${SIDOU_BLE_CENTRAL}")
+if(SIDOU_BLE AND NOT SIDOU_BLE_CENTRAL STREQUAL "0")
+    string(APPEND sidou_options " SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL}")
+    string(APPEND sidou_options_off "\n    SIDOU_BLE_CENTRAL=${SIDOU_BLE_CENTRAL} (default 0)")
 endif()
 if(NOT sidou_options_off STREQUAL "")
     message(WARNING "\n"

@@ -1,42 +1,31 @@
 {
-  "goal": "See SIDOU 1.8's highlights: live tweaks on a playing .sid, an ACID lane that rolls slides and accents, a sound from a prompt, and sidou-sysex for coding agents.",
+  "goal": "See SIDOU 1.9's highlight: Bluetooth MIDI, turned on in SETTINGS, with a Mac, an iPad or a phone connecting to SIDOU.",
   "id": "whats-new",
   "prerequisites": {
     "start": "live",
-    "text": "On LIVE after the boot, SIDOU LOOP the song loaded; THE CONSULTANT, a GoatTracker tune, in the store.",
-    "tunes": [
-      "consultant"
-    ]
+    "text": "On LIVE after the boot, SIDOU LOOP the song loaded."
   },
   "related": [
-    "play-a-sid",
-    "lift-a-sound",
-    "step-generative"
+    "mute-and-solo",
+    "play-over-a-song",
+    "chip-spread"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "NOW PLAYING",
-    "K1 bends a tune's cutoff",
-    "K3 picks a voice and K4 its waveform",
-    "HOME gives the tune back",
-    "the ACID lane role",
-    "DICE",
-    "the site's Library page",
-    "llms.txt",
-    "sidou-sysex"
+    "opening the song views",
+    "PLAY",
+    "SETTINGS",
+    "BLUETOOTH",
+    "Audio MIDI Setup's Bluetooth window"
   ],
   "steps": [
     {
-      "caption": "The menu's SIDS: THE CONSULTANT, by Cadaver. ALGORITHM plays it.",
-      "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then press SAVE, then wait 1.2 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.6 s",
+      "caption": "SEQ twice opens the TRACKER, PLAY plays SIDOU LOOP. It plays on through what follows.",
+      "control": "press SEQ, then wait 0.9 s, then press SEQ, then wait 0.9 s, then press PLAY, then wait 2.5 s",
       "expect": [
         {
           "kind": "view",
-          "value": "sid_view_playing"
-        },
-        {
-          "kind": "text",
-          "value": "PLAYING"
+          "value": "tracker"
         },
         {
           "assert": "sounding",
@@ -44,7 +33,71 @@
         }
       ],
       "focus": {
-        "callout": "MENU > SIDS, ALGORITHM",
+        "callout": "SEQ TWICE, PLAY",
+        "control": "PLAY"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The song *plays*"
+    },
+    {
+      "caption": "HOME twice, SETTINGS, the last item: BLUETOOTH. ALGORITHM turns it ON; it stays on after a power cycle.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until BLUETOOTH is selected, then turn ALGORITHM clockwise by 1 detent, then wait 2.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "settings"
+        },
+        {
+          "kind": "text",
+          "value": "BLUETOOTH"
+        },
+        {
+          "kind": "text",
+          "value": "ON"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SETTINGS > BLUETOOTH ON",
         "control": "ALGORITHM"
       },
       "harness": {
@@ -56,7 +109,7 @@
         "remember": false,
         "task": null
       },
-      "id": "sids",
+      "id": "bluetooth",
       "inputs": [
         {
           "button": "HOME",
@@ -64,217 +117,6 @@
         },
         {
           "ms": 500,
-          "op": "wait"
-        },
-        {
-          "op": "select_item",
-          "text": "SIDS"
-        },
-        {
-          "button": "SAVE",
-          "op": "press"
-        },
-        {
-          "ms": 1200,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 2600,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A *.sid* tune"
-    },
-    {
-      "caption": "Turn K1 while it plays: the tune's cutoff moves, and TWEAKED says what is changed.",
-      "control": "turn K1 slowly clockwise by 20 detents over 1.2 s, then wait 2.0 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "TWEAKED"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "TURN K1",
-        "control": "K1"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "tweak-cut",
-      "inputs": [
-        {
-          "detents": 20,
-          "encoder": "K1",
-          "ms": 1200,
-          "op": "sweep"
-        },
-        {
-          "ms": 2000,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*K1* bends its *filter*"
-    },
-    {
-      "caption": "K3 picks a voice, K4 gives it another waveform: the voice keeps its notes.",
-      "control": "turn K3 clockwise by 1 detent, then wait 0.7 s, then turn K4 clockwise by 1 detent, then wait 2.6 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "TWEAKED"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "K3 A VOICE, K4 ITS WAVE",
-        "control": "K4"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "tweak-voice",
-      "inputs": [
-        {
-          "detents": 1,
-          "encoder": "K3",
-          "op": "turn"
-        },
-        {
-          "ms": 700,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "K4",
-          "op": "turn"
-        },
-        {
-          "ms": 2600,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A voice's *waveform*"
-    },
-    {
-      "caption": "HOME back to the list: the tune plays on as its own, untouched.",
-      "control": "press HOME, then wait 2.5 s",
-      "expect": [
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "PRESS HOME",
-        "control": "HOME"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "home",
-      "inputs": [
-        {
-          "button": "HOME",
-          "op": "press"
-        },
-        {
-          "ms": 2500,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*HOME* gives it back"
-    },
-    {
-      "caption": "PLAY stops the tune; HOME, then SONG, NEW: SAVE AGAIN lets the old one go. SEQ round to STEP.",
-      "control": "press PLAY, then wait 0.6 s, then press HOME, then wait 0.6 s, then press HOME, then wait 2.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.1 s, then press SAVE, then wait 4.2 s, then press SEQ, then wait 0.8 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "step"
-        },
-        {
-          "kind": "text_absent",
-          "value": "BUSY"
-        }
-      ],
-      "focus": {
-        "callout": "SONG > NEW, SEQ TO STEP",
-        "control": "SEQ",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 2,
-          "rows": 13
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "new-song",
-      "inputs": [
-        {
-          "button": "PLAY",
-          "op": "press"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "button": "HOME",
-          "op": "press"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "button": "HOME",
-          "op": "press"
-        },
-        {
-          "ms": 2500,
           "op": "wait"
         },
         {
@@ -287,152 +129,35 @@
         },
         {
           "op": "select_item",
-          "text": "SONG"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "SELECT",
-          "op": "turn"
-        },
-        {
-          "ms": 300,
-          "op": "wait"
-        },
-        {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
-        },
-        {
-          "ms": 1100,
-          "op": "wait"
+          "text": "SETTINGS"
         },
         {
           "button": "SAVE",
           "op": "press"
         },
         {
-          "ms": 4200,
+          "ms": 500,
           "op": "wait"
         },
         {
-          "button": "SEQ",
-          "op": "press"
+          "op": "select_item",
+          "text": "BLUETOOTH"
         },
         {
-          "ms": 800,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A new *song*"
-    },
-    {
-      "caption": "Hold EDIT, then SCL, and turn PRESETS: the lane's role, ACID. A roll writes a bassline with slides and accents.",
-      "control": "hold EDIT and SCL and turn PRESETS clockwise by 4 detents, then wait 1.3 s, then hold EDIT and press SCL, then wait 2.6 s",
-      "expect": [
-        {
-          "kind": "screen_changes"
-        }
-      ],
-      "focus": {
-        "callout": "HOLD EDIT + SCL, TURN PRESETS",
-        "control": "PRESETS",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 2,
-          "rows": 13
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "acid",
-      "inputs": [
-        {
-          "button": "EDIT",
-          "button2": "SCL",
-          "detents": 4,
-          "encoder": "PRESETS",
-          "op": "hold2_turn"
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
         },
         {
-          "ms": 1300,
-          "op": "wait"
-        },
-        {
-          "button": "EDIT",
-          "op": "hold_press",
-          "press": "SCL"
-        },
-        {
-          "ms": 2600,
+          "ms": 2500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "An *ACID* lane"
+      "title": "*BLUETOOTH* in SETTINGS"
     },
     {
-      "caption": "PLAY: the slid notes glide into the next, the accented ones stand out.",
-      "control": "press PLAY, then wait 5.0 s",
-      "expect": [
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "PRESS PLAY",
-        "control": "PLAY",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 2,
-          "rows": 13
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "play-acid",
-      "inputs": [
-        {
-          "button": "PLAY",
-          "op": "press"
-        },
-        {
-          "ms": 5000,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "And *play* it"
-    },
-    {
-      "caption": "Ask any AI chat: \"read dsablic.github.io/sidou/llms.txt and make me an acid bass\". It answers with a patch link: the Library page checks it, plays it and sends it to the FM-1.",
+      "caption": "On a Mac: Audio MIDI Setup, Window, Show MIDI Studio, the Bluetooth button, SIDOU XXXX, Connect. On an iPad or a phone, a music app's Bluetooth MIDI list.",
       "control": "wait 5.6 s",
       "expect": [
         {
@@ -441,7 +166,7 @@
         }
       ],
       "focus": {
-        "callout": "ANY AI CHAT <> PATCH LINK <> FM-1",
+        "callout": "MAC OR IPAD <> BLUETOOTH <> SIDOU XXXX",
         "control": "card"
       },
       "harness": {
@@ -453,7 +178,7 @@
         "remember": false,
         "task": null
       },
-      "id": "prompt",
+      "id": "connect",
       "inputs": [
         {
           "ms": 5600,
@@ -461,11 +186,11 @@
         }
       ],
       "needs": [],
-      "title": "A sound from a *prompt*"
+      "title": "*Connect*, no pairing"
     },
     {
-      "caption": "sidou-sysex patch turns the JSON into a song; sidou-sysex send puts it on a connected FM-1.",
-      "control": "wait 4.2 s",
+      "caption": "Notes, CCs and a DAW's clock come in, the panel's knobs go out, as over USB. A dropped link lets go of held notes.",
+      "control": "wait 5.0 s",
       "expect": [
         {
           "assert": "sounding",
@@ -473,7 +198,7 @@
         }
       ],
       "focus": {
-        "callout": "PATCH.JSON <> SIDOU-SYSEX SEND <> FM-1",
+        "callout": "NOTES, CCS, CLOCK <> SIDOU",
         "control": "card"
       },
       "harness": {
@@ -485,15 +210,15 @@
         "remember": false,
         "task": null
       },
-      "id": "sysex",
+      "id": "play-it",
       "inputs": [
         {
-          "ms": 4200,
+          "ms": 5000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*sidou-sysex* for coding agents"
+      "title": "Play it from the *air*"
     },
     {
       "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
@@ -524,8 +249,8 @@
         }
       ],
       "needs": [],
-      "title": "Get *SIDOU 1.8*"
+      "title": "Get *SIDOU 1.9*"
     }
   ],
-  "title": "What's new in SIDOU 1.8"
+  "title": "What's new in SIDOU 1.9"
 }

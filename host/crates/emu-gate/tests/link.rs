@@ -456,6 +456,67 @@ fn a_hosts_panel_frame_presses_turns_and_is_let_go() {
     assert!((500..=510).contains(&let_go), "{let_go} ms");
 }
 
+const TICK_MS: u64 = 10;
+const CC_LATE_MS: u64 = TICK_MS + 2;
+const CC_TOP: u8 = 0x7f;
+const CC_CUTOFF: u8 = 74;
+
+fn cutoff_cc(m: &mut Machine, fw: &Firmware) -> u8 {
+    let cutoff = fw.symbol("instrument") + ilp32::live::cutoff as u32;
+    let value = u32::from(m.soc.read16(cutoff));
+    unsafe {
+        sidou_sys::midi_map_to_cc(
+            std::ptr::null(),
+            sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
+            value,
+        )
+    }
+}
+
+fn run_tracing_cutoff(
+    h: &mut Host,
+    m: &mut Machine,
+    fw: &Firmware,
+    ms: u64,
+    held: &mut Vec<(u64, u8)>,
+) {
+    for _ in 0..ms {
+        h.run(m, 1);
+        let cc = cutoff_cc(m, fw);
+        if held.last().map(|h| h.1) != Some(cc) {
+            held.push((m.ms(), cc));
+        }
+    }
+}
+
+fn each_cc_was_held_and_went_within_a_tick(
+    sent: &[(u64, u8)],
+    held: &[(u64, u8)],
+    run: &str,
+) -> u64 {
+    let mut latest = 0;
+    for &(at, cc) in sent {
+        let began = held
+            .iter()
+            .rev()
+            .find(|(t, v)| *v == cc && *t <= at)
+            .unwrap_or_else(|| panic!("{run}: CC {cc:#04x} at {at} ms was never the cutoff's"))
+            .0;
+        assert!(
+            at - began <= CC_LATE_MS,
+            "{run}: CC {cc:#04x} went {} ms after the cutoff took it",
+            at - began
+        );
+        latest = latest.max(at - began);
+    }
+    assert_eq!(
+        sent.last().map(|s| s.1),
+        Some(CC_TOP),
+        "{run}: the last value"
+    );
+    latest
+}
+
 #[test]
 fn midi_outs_ccs_go_as_without_a_session() {
     let Some(fw) = firmware("the Live Link MIDI out test") else {
@@ -469,135 +530,187 @@ fn midi_outs_ccs_go_as_without_a_session() {
         }
         h.run(&mut m, 500);
         let from = m.ms();
+        let mut held = vec![(from, cutoff_cc(&mut m, &fw))];
         for step in 0..20u8 {
             m.key(A4_KEY + (step + 3) % 4 * 2, false);
             m.key(A4_KEY + step % 4 * 2, true);
             m.turn(K1, 3);
-            h.run(&mut m, 40);
+            run_tracing_cutoff(&mut h, &mut m, &fw, 40, &mut held);
         }
-        h.run(&mut m, 300);
+        run_tracing_cutoff(&mut h, &mut m, &fw, 300, &mut held);
         let out = fw.symbol("midi_tx");
         let deferred = m.soc.read32(out + ilp32::midi_out::deferred as u32);
-        let ccs: Vec<[u8; 4]> = h
+        let ccs: Vec<(u64, [u8; 4])> = h
             .others
             .iter()
             .filter(|(t, p)| *t >= from && p[0] & 15 == 0xb)
-            .map(|e| e.1)
+            .copied()
             .collect();
         let frames = h.cell_traffic(from).1;
-        (ccs, deferred, frames)
+        (ccs, held, deferred, frames)
     };
-    let (alone, deferred_alone, _) = cc(false);
-    let (with, deferred_with, frames) = cc(true);
+    let (alone, held_alone, deferred_alone, _) = cc(false);
+    let (with, held_with, deferred_with, frames) = cc(true);
+    assert!(frames > 50, "the scopes streamed only {frames} frames");
+    assert!(
+        alone.iter().chain(&with).all(|(_, p)| p[2] == CC_CUTOFF),
+        "only the cutoff's CC"
+    );
+    let values = |ccs: &[(u64, [u8; 4])]| ccs.iter().map(|(t, p)| (*t, p[3])).collect::<Vec<_>>();
+    let late_alone = each_cc_was_held_and_went_within_a_tick(&values(&alone), &held_alone, "alone");
+    let late_with =
+        each_cc_was_held_and_went_within_a_tick(&values(&with), &held_with, "with a session");
     println!(
-        "{} CCs alone, {} with {frames} cell frames; deferred {deferred_alone} / {deferred_with}",
+        "{} CCs alone, {} with {frames} cell frames, at most {late_alone} / {late_with} ms after \
+         the cutoff moved; deferred {deferred_alone} / {deferred_with}",
         alone.len(),
         with.len()
     );
-    assert!(frames > 50, "the scopes streamed only {frames} frames");
-    assert!(!alone.is_empty());
     assert_eq!(
-        with.last(),
-        alone.last(),
+        with.last().map(|c| c.1),
+        alone.last().map(|c| c.1),
         "MIDI out's last CC changed under a session"
-    );
-    assert!(
-        with.len() + 1 >= alone.len(),
-        "{with:02x?} against {alone:02x?}"
     );
     assert_eq!(deferred_with, deferred_alone, "MIDI out deferred for room");
 }
 
+const USB_FRAME_MS: u64 = 1;
+const TRANSPORT: [u8; 5] = [0xf8, 0xfa, 0xfb, 0xfc, 0xf2];
+
+const CLOCK: u8 = 0xf8;
+
+struct TransportOut {
+    waited: u64,
+    messages: Vec<u8>,
+    clocks_off: i64,
+    clocks_apart: i64,
+    frames: usize,
+}
+
+fn trace_ring(h: &mut Host, m: &mut Machine, fw: &Firmware, ms: u64, queued: &mut Vec<(u64, u8)>) {
+    let (ring, w) = (fw.symbol("midi_out_q"), fw.symbol("mo_w"));
+    let mut seen = m.soc.read32(w);
+    for _ in 0..ms {
+        h.run(m, 1);
+        let now = m.soc.read32(w);
+        for i in seen..now {
+            let status = (m.soc.read32(ring + 4 * (i % 64)) >> 8) as u8;
+            if TRANSPORT.contains(&status) {
+                queued.push((m.ms(), status));
+            }
+        }
+        seen = now;
+    }
+}
+
+fn transport_out(fw: &Firmware, with: bool) -> TransportOut {
+    let mut m = usb_machine(fw);
+    let mut h = Host::new();
+    m.soc
+        .write8(fw.symbol("syncing") + ilp32::midi_sync::clock_out as u32, 1);
+    if with {
+        h.start(&mut m);
+    }
+    h.press(&mut m, SEQ);
+    h.press(&mut m, SEQ);
+    h.run(&mut m, 700);
+    let from = m.ms();
+    let mut queued = Vec::new();
+    m.key(PLAY, true);
+    trace_ring(&mut h, &mut m, fw, 2000, &mut queued);
+    m.key(PLAY, false);
+    let playing = m.ms();
+    trace_ring(&mut h, &mut m, fw, 10, &mut queued);
+    m.key(PLAY, true);
+    trace_ring(&mut h, &mut m, fw, 10, &mut queued);
+    m.key(PLAY, false);
+    trace_ring(&mut h, &mut m, fw, 300, &mut queued);
+    m.key(EDIT, true);
+    trace_ring(&mut h, &mut m, fw, 10, &mut queued);
+    m.key(PLAY, true);
+    trace_ring(&mut h, &mut m, fw, 60, &mut queued);
+    m.key(PLAY, false);
+    m.key(EDIT, false);
+    let arrived: Vec<(u64, u8)> = h
+        .others
+        .iter()
+        .filter(|(t, p)| *t >= from && TRANSPORT.contains(&p[1]))
+        .map(|(t, p)| (*t, p[1]))
+        .collect();
+    assert_eq!(
+        arrived.len(),
+        queued.len(),
+        "every transport message queued reaches the host"
+    );
+    let waited = queued
+        .iter()
+        .zip(&arrived)
+        .map(|(q, a)| {
+            assert_eq!(q.1, a.1, "the host got another transport message");
+            a.0 - q.0
+        })
+        .max()
+        .expect("no transport message went out");
+    let clocks: Vec<u64> = arrived
+        .iter()
+        .filter(|(t, s)| *s == CLOCK && *t < playing)
+        .map(|a| a.0)
+        .collect();
+    let mut apart: Vec<i64> = clocks.windows(2).map(|w| (w[1] - w[0]) as i64).collect();
+    let gaps = apart.clone();
+    apart.sort_unstable();
+    let clocks_apart = apart[apart.len() / 2];
+    TransportOut {
+        waited,
+        messages: arrived
+            .iter()
+            .map(|a| a.1)
+            .filter(|&s| s != CLOCK)
+            .collect(),
+        clocks_off: gaps.iter().map(|g| (g - clocks_apart).abs()).max().unwrap(),
+        clocks_apart,
+        frames: h.cell_traffic(from).1,
+    }
+}
+
 #[test]
-fn clock_outs_song_position_goes_as_without_a_session() {
-    let Some(fw) = firmware("the Live Link clock out test") else {
+fn transport_out_goes_as_without_a_session_at_most_a_usb_frame_later() {
+    let Some(fw) = firmware("the Live Link transport test") else {
         return;
     };
-    let run = |with: bool| {
-        let mut m = usb_machine(&fw);
-        let mut h = Host::new();
-        let syncing = fw.symbol("syncing");
-        m.soc
-            .write8(syncing + ilp32::midi_sync::clock_out as u32, 1);
-        if with {
-            h.start(&mut m);
-        }
-        h.press(&mut m, SEQ);
-        h.press(&mut m, SEQ);
-        h.run(&mut m, 700);
-        let calls = fw.symbol("song_transport") + ilp32::song_ctl::calls as u32;
-        let go = |h: &mut Host, m: &mut Machine, keys: &[u8], bytes: &[u8]| {
-            let c0 = m.soc.read32(calls);
-            let from = m.ms();
-            for &k in keys {
-                m.key(k, true);
-            }
-            let mut began = None;
-            for _ in 0..60 {
-                h.run(m, 1);
-                if began.is_none() && m.soc.read32(calls) != c0 {
-                    began = Some(m.ms());
-                }
-            }
-            for &k in keys {
-                m.key(k, false);
-            }
-            let began = began.expect("the song never moved");
-            let arrived: Vec<i64> = bytes
-                .iter()
-                .map(|&b| {
-                    let t = h.others.iter().find(|(t, p)| *t >= from && p[1] == b);
-                    t.expect("never reached the host").0 as i64 - began as i64
-                })
-                .collect();
-            arrived
-        };
-        let start = go(&mut h, &mut m, &[PLAY], &[0xfa]);
-        let from = m.ms();
-        h.run(&mut m, 2000);
-        let clocks: Vec<u64> = h
-            .others
-            .iter()
-            .filter(|(t, p)| *t >= from && p[1] == 0xf8)
-            .map(|e| e.0)
-            .collect();
-        let gaps: Vec<i64> = clocks.windows(2).map(|w| (w[1] - w[0]) as i64).collect();
-        let mut sorted = gaps.clone();
-        sorted.sort_unstable();
-        let median = sorted[sorted.len() / 2];
-        let jitter = gaps.iter().map(|g| (g - median).abs()).max().unwrap();
-        let frames = h.cell_traffic(from).1;
-        h.press(&mut m, PLAY);
-        h.run(&mut m, 300);
-        m.key(EDIT, true);
-        h.run(&mut m, 10);
-        let cont = go(&mut h, &mut m, &[PLAY], &[0xf2, 0xfb]);
-        m.key(EDIT, false);
-        (start, cont, jitter, median, frames)
-    };
-    let alone = run(false);
-    let with = run(true);
+    let alone = transport_out(&fw, false);
+    let with = transport_out(&fw, true);
     println!(
-        "start, song position and continue after the song moved: {:?} {:?} ms alone, {:?} {:?} \
-         with; clocks {} ms apart, at most {} / {} off; {} cell frames while playing",
-        alone.0, alone.1, with.0, with.1, alone.3, alone.2, with.2, with.4
+        "transport out {:02x?}: at most {} ms from the ring to the host alone, {} with Live Link; \
+         clocks {} ms apart, at most {} / {} off; {} cell frames",
+        alone.messages,
+        alone.waited,
+        with.waited,
+        alone.clocks_apart,
+        alone.clocks_off,
+        with.clocks_off,
+        with.frames
     );
-    assert!(with.4 > 20, "nothing streamed while the song played");
-    for (w, a) in with
-        .0
-        .iter()
-        .chain(&with.1)
-        .zip(alone.0.iter().chain(&alone.1))
-    {
-        assert!(
-            *w <= a + 1,
-            "a transport message {w} ms after the song moved, {a} alone"
-        );
-    }
+    assert!(with.frames > 20, "nothing streamed while the song played");
+    assert_eq!(
+        alone.messages,
+        [0xfa, 0xfc, 0xf2, 0xfb],
+        "start, stop, then song position and continue"
+    );
+    assert_eq!(
+        with.messages, alone.messages,
+        "the same messages under a session"
+    );
     assert!(
-        with.2 <= alone.2 + 1,
+        with.waited <= alone.waited + USB_FRAME_MS,
+        "a transport message waited {} ms with Live Link, {} alone",
+        with.waited,
+        alone.waited
+    );
+    assert!(
+        with.clocks_off <= alone.clocks_off + USB_FRAME_MS as i64,
         "the clocks' jitter {} against {}",
-        with.2,
-        alone.2
+        with.clocks_off,
+        alone.clocks_off
     );
 }

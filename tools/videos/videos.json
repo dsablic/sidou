@@ -11,11 +11,8 @@
   },
   "whats-new": {
     "teaser": false,
-    "bed": [
-      "prompt",
-      "sysex"
-    ],
-    "preview_step": "tweak-voice"
+    "bed": [],
+    "preview_step": "bluetooth"
   },
   "rec-over-loop": {
     "bpm": 125

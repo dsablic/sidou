@@ -5,8 +5,9 @@
 ## felucca-bsp (`bsp/`)
 
 - **Source:** <https://github.com/hugelton/felucca-bsp>, `chip/` and `boards/fm1/`
-- **Commit:** `f8788009` (main, 2026-11-05: our PR #21's raw MIDI-in hook and PR #20's SysEx
-  queue merged)
+- **Commit:** `7e09895c` (main, 2026-11-08: our PR #31's `FM1_IRQ_DEFS`, #32's `FELUCCA_UAC_CH`,
+  #33's `FELUCCA_UAC_STALL_POLLS`, `5b0879b`'s USB audio packets on the I2S clock, and the Pocket
+  AMP's board headers, which SIDOU does not vendor). Before it, `f8788009` (1.8.0).
 - **Licence:** MPL-2.0, each file with its own header; `bsp/LICENSE` and `bsp/NOTICE` are
   felucca-bsp's. MPL-2.0 has no "Incompatible With Secondary Licenses" notice, so the files combine
   with SIDOU's GPL-3.0 image.
@@ -19,17 +20,18 @@
 | `chip/fm1_cpu1_stop.h` | holds the second core (`fm1_cpu1_stop`, Felucca 1.6.1's `fm1_cpu1_halt`) |
 | `chip/fm1_flash.h`, `fm1_flash_access.h`, `fm1_flash_api.h`, `fm1_flash_policy.h`, `fm1_flash_wait.h` | SPI NOR erase/program from `.ram_text`, its write regions, its access gate (core 0, interrupts off), the busy-safe wait |
 | `chip/fm1_gpio.h` | GPIO port registers |
-| `chip/fm1_irq.h` | interrupt controller, vector table, fault record (`fm1_crash_ctx`, NOINIT) |
+| `chip/fm1_irq.h` | interrupt controller, vector table, fault record (`fm1_crash_ctx`, NOINIT); `FM1_IRQ_DEFS 0` leaves the record and `fm1_fault_c` to another unit |
 | `chip/fm1_isr.S`, `chip/fm1_vec.S` | IRQ entry wrappers `isr_timer5`, `isr_alnk0`; the 128 fatal-vector stubs |
 | `chip/fm1_sys.h` | P33, the rails, watchdog, reset reason, reboot, UBOOT entry |
 | `chip/fm1_time.h`, `chip/fm1_timer.h` | TIMER4 24 MHz time base, TIMER5 10 kHz tick |
 | `chip/fm1_uart.h`, `chip/fm1_usb.h` | UART1 MIDI IN, USB0 device controller registers |
 | `chip/fm1_xip.h` | XIP window addressing |
 | `chip/usb.c`, `chip/usb_host.c`, `chip/usb_host_desc.h` | the USB device (MIDI, audio in); `usb.c` includes the host part, which stays off (`FELUCCA_USB_HOST` 0) |
+| `chip/fm1_ble.h`, `fm1_ble_rf.h`, `fm1_rf_cal.h`, `fm1_rf_regs.h`, `ble_rf_tables_v15.h` | the radio: its registers and interrupts, the RF set-up and calibration, the v15 table (only the `SIDOU_BLE` build) |
 | `chip/ota.c` | step 1 of the update protocol (the app's) |
 | `boards/fm1/fm1_adc.h`, `fm1_audio.h`, `fm1_input.h`, `fm1_lcd_hw.h`, `fm1_led_anim.h` | SARADC, ALNK0 I2S audio (the checked start), the key matrix and LEDs, the LCD's SPI1 wiring, the power-on LED sweep |
 
-Not vendored: the radio (`fm1_ble*.h`, `fm1_rf_*.h`; Bluetooth, 1.8's later steps), the second
+Not vendored: the second
 core (`fm1_cpu1.{h,S}`), `fm1_guard.h`, `fm1_clock.h`, `fm1_cache_ram.h`, `fm1_flash_ext.h`, the
 panel driver `fm1_lcd.h` (SIDOU's `lcd.c` drives the panel), `fm1_jack.h`, and felucca-bsp's
 loader: the update loader stays Felucca 1.6.1's (below).
@@ -37,12 +39,19 @@ loader: the update loader stays Felucca 1.6.1's (below).
 ### Using the BSP
 
 - The headers define `static` functions and state and are meant to be included by one
-  translation unit each. `fm1_irq.h` also defines two non-static symbols, `fm1_crash` and
-  `fm1_fault_c`, so a second translation unit that includes it (directly or through
-  `fm1_audio.h` or `fm1_timer.h`) fails to link.
+  translation unit each. `fm1_irq.h` also defines three non-static symbols, `fm1_crash`,
+  `fm1_crash_ctx` and `fm1_fault_c`, in the unit that owns the HAL (`main.c`). A second unit that
+  includes it (directly or through `fm1_audio.h`, `fm1_timer.h` or the radio's `fm1_ble.h`) sets
+  `FM1_IRQ_DEFS 0` first, which declares them instead (felucca-bsp#31); without it, it fails to
+  link. `fm1_irq.h` holds no state of its own, so both units' copies of its helpers drive the
+  same registers.
 - Built with `bsp/chip` and `bsp/boards/fm1` on the include path (`fm1_hal` in CMake), as
   felucca-bsp says. Who includes what:
   - `main.c`: `fm1_sys.h`, `fm1_irq.h`, `fm1_audio.h`, `fm1_time.h`, `fm1_timer.h`;
+  - `ble_radio.c`, with Bluetooth (`SIDOU_BLE`, on by default), compiled alone at `-Os` with
+    `FM1_IRQ_DEFS 0`: `fm1_ble.h` (with `fm1_irq.h`), `fm1_ble_rf.h`, `fm1_rf_cal.h` and
+    `fm1_rf_regs.h`, through the stack's driver `ble_hw_wl82.c`, which it includes;
+    `ble_setting.c` there: `fm1_sys.h` and `fm1_flash_access.h`;
   - `input.c`: `fm1_input.h` (with `fm1_time.h`, `fm1_gpio.h`, `fm1_adc.h` and
     `fm1_led_anim.h`). The scan state `fm1_in` is static there, so the TIMER5 interrupt in
     `main.c` reaches `fm1_input_tick` through `input_tick_isr`. `input_raw_keys`, for `main.c`'s
@@ -120,6 +129,8 @@ is unchanged: **no fork of `usb.c`**; everything SIDOU needs goes in `midi.c`, a
 | `FELUCCA_USB_MANUFACTURER`, `FELUCCA_USB_PRODUCT`: ASCII strings, the descriptors built on request | "Hügelton Instruments", "Felucca" | "SIDOU contributors", "SIDOU FM-1" (the installers find a port by "FM-1") |
 | `FELUCCA_MIDI_IN_RAW(pkt)`: every EP1 OUT event packet, before `midi_in_event`'s filter (our PR #21) | nothing | `usb_raw_in`: the packet into SIDOU's ring |
 | `FELUCCA_UAC_AS_FIRST`: the audio interfaces before MIDI's | 0 | 1, as 1.6.1 had it (macOS names the device by its first interface) |
+| `FELUCCA_UAC_CH`: the audio input's channels, the app's own on 3..N (#32) | 2 | 2 (the default: the stereo master, the code path and descriptors as before) |
+| `FELUCCA_UAC_STALL_POLLS`: the `uac_service` calls a queued packet may wait before the host counts as gone (#33) | 40 (20 ms at 2 kHz) | 40: SIDOU calls `uac_service` at 2 kHz too (every fifth 10 kHz tick, from `usb_poll` or `usb_audio_isr`) |
 
 ### Use
 
@@ -228,14 +239,23 @@ frame) empties.
   block (Felucca's taps spread over the render move it less). Within SIDOU's audio
   budget the ring never runs dry (host-tested,
   `host/crates/sidou-pack/tests/usb_audio.rs`).
+- **The packets follow the I2S clock** (felucca-bsp `5b0879b`, with the move to `7e09895c`): 44
+  frames a millisecond and one more every 8 or 9 (the I2S's 44,117.6 Hz), and the ring's fill
+  steers by one frame a render at most. Before it the packets made 44.1 kHz's pattern (a 45 every
+  10 ms) and the fill steered every packet until the next render measured it: in fm1-emu, three
+  packets in a row one frame long about every 200 ms, the kind of run iOS's Camera recorded as a
+  dropout. The samples a host records are the same, bit for bit and in order; only where the
+  packets cut them changed (emu-gate `usb.rs`,
+  `the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`).
 - **RAM:** in POOL the ring (2,048 bytes, placed by `app.ld`) and the block
-  (1,036); in the RAM region EP4's IN buffer (184 since 1.8: 46 frames at most, 196 with 48 kHz) and `uac` (72), which the compiler merges
+  (1,036); in the RAM region EP4's IN buffer (184 since 1.8: 46 frames at most, 196 with 48 kHz) and `uac` (76 since
+  `5b0879b`'s steering flag), which the compiler merges
   into globals no linker rule can name (emu-gate `tests/usb.rs` checks EP4's buffer is on an
   8-byte boundary, as EP1's must be). RAMTEXT: none.
 - **Tests.** SIDOU's own (`host/crates/sidou-pack/tests/usb_audio.rs`) check SIDOU's descriptors
   (one rate, 44.1 kHz) and the hand-over in time against the producer fed directly; emu-gate
-  `tests/usb.rs` records the DAC's output through a model of EP4, bit for bit at 44.1 kHz, and
-  checks no other rate is offered. Felucca's `uac_test.c`, which tested the 48 kHz resampler
+  `tests/usb.rs` records the DAC's output through a model of EP4, bit for bit at 44.1 kHz,
+  checks no other rate is offered, and that the packets keep the I2S clock's pattern. Felucca's `uac_test.c`, which tested the 48 kHz resampler
   too, left with it.
 
 ### How `midi.c` is built (the flags rule)

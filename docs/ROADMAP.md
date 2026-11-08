@@ -96,20 +96,26 @@ tested but not shipped in this release: the test build is 452 bytes over the rel
 felucca-bsp#31 lands, and three device checks (the hour of two SIDs, the save during the link, and
 the DAW clock) are still open.
 
-**After 1.8**
+## 1.9
 
-- **Bluetooth MIDI** ([decision 0011](decisions/0011-bluetooth-midi.md), [the 1.8 plan](plans/2026-11-05-bluetooth-1.8-plan.md)):
-  SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
-  and clock both ways, SETTINGS BLUETOOTH OFF / ON. **Waits for:** felucca-bsp#31 (the radio driver
-  at plain `-Os`, about 3.2 KB) or another 452 bytes of room, and the three open device checks (the
-  hour of two SIDs over Bluetooth, a save during the link, and the DAW clock). L.
+Released in 1.9.0: Bluetooth MIDI in the one package ([decision 0011](decisions/0011-bluetooth-midi.md)):
+SIDOU as a Bluetooth MIDI device a Mac, an iPad or a phone connects to (no pairing), notes, CCs
+and clock in, the panel's CCs out, SETTINGS BLUETOOTH OFF by default. With it off, the main loop
+costs what it did without Bluetooth. The radio driver builds at `-Os` on felucca-bsp `7e09895c`
+(felucca-bsp#31), and the image is 577,136 bytes, 2,380 under the release ceiling. USB audio's
+packets follow the FM-1's own clock (felucca-bsp `5b0879b`). Tested on the device in
+[hardware-test §35](hardware-test.md#35-bluetooth-midi-in-a-release-sized-build-felucca-bsp-7e09895c).
+
+**After 1.9**
+
 - **Bluetooth connecting out**: SIDOU connects to Bluetooth MIDI keyboards (the central role, a
   DEVICES page, the last device remembered), the owner's Korg microKEY Air as the test; pairing if
-  the keyboard asks for it. Its room, about 9-10 KB with its page: the radio driver at plain `-Os`
-  (3,264 bytes, felucca-bsp#31, filed 2026-11-06) and hot/cold splits of the gate-bound `-O2` files
+  the keyboard asks for it. Its room, about 9-10 KB with its page: the 2,380 bytes the peripheral
+  leaves under the ceiling (the radio driver at plain `-Os` is done, 2,992 bytes; `-Oz` would give
+  880 more, untried on the device) and hot/cold splits of the gate-bound `-O2` files
   (`sid_character.c`, `live.c`, `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each
   refused by a gate before). M-L.
-- **1.9** (the owner, 2026-11-06), each starting with a short design:
+- **1.10** (the owner, 2026-11-06, planned as 1.9 before Bluetooth shipped), each starting with a short design:
   - **Whole songs as text:** a text form of a GoatTracker song, a model's or a coding agent's,
     that opens in the site's editor.
   - **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx

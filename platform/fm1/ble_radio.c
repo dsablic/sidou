@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ble_radio.h"
+#include "midi.h"
 
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #include "ble.h"
@@ -32,6 +33,7 @@ static volatile uint32_t ble_radio_in_w, ble_radio_in_r;
 static volatile uint8_t ble_radio_role;
 static uint8_t ble_radio_state;
 static uint8_t ble_radio_was_linked;
+uint8_t ble_radio_awake = 1;
 
 
 static const struct ble_rf_trims BLE_RADIO_TRIMS = {{0x0B, 0x0B}, {1, 7, 4, 7, 11, 1, 7}, {0}, {0}};
@@ -198,6 +200,11 @@ static void ble_radio_link_watch(void) {
     ble_radio_was_linked = linked;
 }
 
+static int ble_radio_needed(void) {
+    return ble_radio_wanted || ble_radio_state == BLE_RADIO_READY || ble_radio_was_linked ||
+           ble_setting_pending();
+}
+
 void ble_radio_poll(uint32_t now_ms) {
     ble_setting_poll(now_ms);
     ble_radio_link_watch();
@@ -205,13 +212,14 @@ void ble_radio_poll(uint32_t now_ms) {
         if (ble_radio_wanted && now_ms >= BLE_RADIO_START_AFTER_MS) {
             ble_radio_start();
         }
-        return;
+    } else {
+        ble_radio_follow();
+        ble_radio_devices(now_ms);
+        if (!ble_radio_midi_up()) {
+            ble_radio_out_r = ble_radio_out_w;
+        }
     }
-    ble_radio_follow();
-    ble_radio_devices(now_ms);
-    if (!ble_radio_midi_up()) {
-        ble_radio_out_r = ble_radio_out_w;
-    }
+    ble_radio_awake = (uint8_t)ble_radio_needed();
 }
 
 int ble_radio_take(uint32_t* pkt) {
