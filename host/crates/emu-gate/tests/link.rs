@@ -456,6 +456,67 @@ fn a_hosts_panel_frame_presses_turns_and_is_let_go() {
     assert!((500..=510).contains(&let_go), "{let_go} ms");
 }
 
+const TICK_MS: u64 = 10;
+const CC_LATE_MS: u64 = TICK_MS + 2;
+const CC_TOP: u8 = 0x7f;
+const CC_CUTOFF: u8 = 74;
+
+fn cutoff_cc(m: &mut Machine, fw: &Firmware) -> u8 {
+    let cutoff = fw.symbol("instrument") + ilp32::live::cutoff as u32;
+    let value = u32::from(m.soc.read16(cutoff));
+    unsafe {
+        sidou_sys::midi_map_to_cc(
+            std::ptr::null(),
+            sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
+            value,
+        )
+    }
+}
+
+fn run_tracing_cutoff(
+    h: &mut Host,
+    m: &mut Machine,
+    fw: &Firmware,
+    ms: u64,
+    held: &mut Vec<(u64, u8)>,
+) {
+    for _ in 0..ms {
+        h.run(m, 1);
+        let cc = cutoff_cc(m, fw);
+        if held.last().map(|h| h.1) != Some(cc) {
+            held.push((m.ms(), cc));
+        }
+    }
+}
+
+fn each_cc_was_held_and_went_within_a_tick(
+    sent: &[(u64, u8)],
+    held: &[(u64, u8)],
+    run: &str,
+) -> u64 {
+    let mut latest = 0;
+    for &(at, cc) in sent {
+        let began = held
+            .iter()
+            .rev()
+            .find(|(t, v)| *v == cc && *t <= at)
+            .unwrap_or_else(|| panic!("{run}: CC {cc:#04x} at {at} ms was never the cutoff's"))
+            .0;
+        assert!(
+            at - began <= CC_LATE_MS,
+            "{run}: CC {cc:#04x} went {} ms after the cutoff took it",
+            at - began
+        );
+        latest = latest.max(at - began);
+    }
+    assert_eq!(
+        sent.last().map(|s| s.1),
+        Some(CC_TOP),
+        "{run}: the last value"
+    );
+    latest
+}
+
 #[test]
 fn midi_outs_ccs_go_as_without_a_session() {
     let Some(fw) = firmware("the Live Link MIDI out test") else {
@@ -469,41 +530,46 @@ fn midi_outs_ccs_go_as_without_a_session() {
         }
         h.run(&mut m, 500);
         let from = m.ms();
+        let mut held = vec![(from, cutoff_cc(&mut m, &fw))];
         for step in 0..20u8 {
             m.key(A4_KEY + (step + 3) % 4 * 2, false);
             m.key(A4_KEY + step % 4 * 2, true);
             m.turn(K1, 3);
-            h.run(&mut m, 40);
+            run_tracing_cutoff(&mut h, &mut m, &fw, 40, &mut held);
         }
-        h.run(&mut m, 300);
+        run_tracing_cutoff(&mut h, &mut m, &fw, 300, &mut held);
         let out = fw.symbol("midi_tx");
         let deferred = m.soc.read32(out + ilp32::midi_out::deferred as u32);
-        let ccs: Vec<[u8; 4]> = h
+        let ccs: Vec<(u64, [u8; 4])> = h
             .others
             .iter()
             .filter(|(t, p)| *t >= from && p[0] & 15 == 0xb)
-            .map(|e| e.1)
+            .copied()
             .collect();
         let frames = h.cell_traffic(from).1;
-        (ccs, deferred, frames)
+        (ccs, held, deferred, frames)
     };
-    let (alone, deferred_alone, _) = cc(false);
-    let (with, deferred_with, frames) = cc(true);
+    let (alone, held_alone, deferred_alone, _) = cc(false);
+    let (with, held_with, deferred_with, frames) = cc(true);
+    assert!(frames > 50, "the scopes streamed only {frames} frames");
+    assert!(
+        alone.iter().chain(&with).all(|(_, p)| p[2] == CC_CUTOFF),
+        "only the cutoff's CC"
+    );
+    let values = |ccs: &[(u64, [u8; 4])]| ccs.iter().map(|(t, p)| (*t, p[3])).collect::<Vec<_>>();
+    let late_alone = each_cc_was_held_and_went_within_a_tick(&values(&alone), &held_alone, "alone");
+    let late_with =
+        each_cc_was_held_and_went_within_a_tick(&values(&with), &held_with, "with a session");
     println!(
-        "{} CCs alone, {} with {frames} cell frames; deferred {deferred_alone} / {deferred_with}",
+        "{} CCs alone, {} with {frames} cell frames, at most {late_alone} / {late_with} ms after \
+         the cutoff moved; deferred {deferred_alone} / {deferred_with}",
         alone.len(),
         with.len()
     );
-    assert!(frames > 50, "the scopes streamed only {frames} frames");
-    assert!(!alone.is_empty());
     assert_eq!(
-        with.last(),
-        alone.last(),
+        with.last().map(|c| c.1),
+        alone.last().map(|c| c.1),
         "MIDI out's last CC changed under a session"
-    );
-    assert!(
-        with.len() + 1 >= alone.len(),
-        "{with:02x?} against {alone:02x?}"
     );
     assert_eq!(deferred_with, deferred_alone, "MIDI out deferred for room");
 }

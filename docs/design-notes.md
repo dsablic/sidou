@@ -537,6 +537,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
     without a session. Every CC sent is a value the parameter held, within a tick, and the last
     (0x7F) always goes. The count (8 to 12) is that aliasing. Phase-free: every sent CC is a value
     held at its tick, within one tick of the change, and the last value arrives, in both runs.
+    `link.rs` asserts that since 2026-11-08: each CC the host gets is a value the cutoff held, at
+    most 12 ms after the cutoff took it (the 10 ms tick, the USB frame it waits for, and the
+    millisecond the trace resolves), and the last is 0x7F; the count is no longer compared.
   - *Clock out*: nothing is lost; with a Live Link session a start, song position or continue
     reaches the host up to 3 ms later. Transport packets and Live Link's cell frames share
     `usb.c`'s FIFO (`mo`); Live Link leaves `MIDI_SYNC_OUT_MAX` packets of room, so a transport
