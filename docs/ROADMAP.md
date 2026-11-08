@@ -103,9 +103,10 @@ the DAW clock) are still open.
   and clock both ways, SETTINGS BLUETOOTH OFF / ON. The room is found (2026-11-08): with
   felucca-bsp#31 the radio driver builds alone at plain `-Os`, and the Bluetooth image is 577,008
   bytes, 2,508 under the release ceiling it is now held to. **Waits for:** the owner's choice of
-  one package with Bluetooth built in or two packages, and the open device checks (the hour of
-  two SIDs over Bluetooth, a save during the link, the DAW clock, §34's items again on this
-  build). L.
+  one package with Bluetooth built in or two packages, and the device checks of
+  [hardware-test §35](hardware-test.md#35-bluetooth-midi-in-a-release-sized-build-felucca-bsp-7e09895c)
+  (the hour of two SIDs over Bluetooth, a save during the link, the DAW clock, §34's items again
+  on this build, and a USB audio recording). L.
 - **Bluetooth connecting out**: SIDOU connects to Bluetooth MIDI keyboards (the central role, a
   DEVICES page, the last device remembered), the owner's Korg microKEY Air as the test; pairing if
   the keyboard asks for it. Its room, about 9-10 KB with its page: the 2,508 bytes the peripheral
