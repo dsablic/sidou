@@ -1918,20 +1918,22 @@ struct Uac {
     fill_hi: u32,
 }
 
+const UAC_ACC: u32 = 20;
+
 fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
     let a = fw.symbol("uac");
-    let w = |m: &mut Machine, i: u32| m.soc.read32(a + 12 + 4 * i);
+    let w = |m: &mut Machine, i: u32| m.soc.read32(a + UAC_ACC + 4 * i);
     Uac {
         alt: m.soc.read8(a),
         r48: m.soc.read8(a + 1),
         go: m.soc.read8(a + 3),
         flowing: m.soc.read8(a + 4),
-        underruns: w(m, 6),
-        overruns: w(m, 7),
-        missed: w(m, 8),
-        stalls: w(m, 9),
-        fill_lo: w(m, 12),
-        fill_hi: w(m, 13),
+        underruns: w(m, 5),
+        overruns: w(m, 6),
+        missed: w(m, 7),
+        stalls: w(m, 8),
+        fill_lo: w(m, 11),
+        fill_hi: w(m, 12),
     }
 }
 
@@ -2086,6 +2088,44 @@ fn a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate() {
     assert!(host(&mut m).ep4_in.is_empty(), "packets after alt 0");
     let (want, left, ..) = hand_over(&mut m, &fw);
     assert_eq!((want, left), (0, 0), "the hand-over goes on after alt 0");
+}
+
+const I2S_FRAMES_PER_MS: f64 = 24e6 / 544.0 / 1000.0;
+const PACKETS_A_RENDER: usize = 3;
+
+#[test]
+fn the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most() {
+    let Some(fw) = firmware("the USB audio pattern test") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    m.key(A4_KEY, true);
+    m.usb_frames(300);
+    record(&mut m, 44_100);
+    m.usb_frames(2000);
+    let sizes: Vec<usize> = host(&mut m).ep4_in[200..]
+        .iter()
+        .map(|p| p.len() / 4)
+        .collect();
+    let mean = sizes.iter().sum::<usize>() as f64 / sizes.len() as f64;
+    let pattern = 44 * PACKETS_A_RENDER..=44 * PACKETS_A_RENDER + 1;
+    let off: Vec<(usize, &[usize])> = sizes
+        .windows(PACKETS_A_RENDER)
+        .enumerate()
+        .filter(|(_, w)| {
+            let n: usize = w.iter().sum();
+            n + 1 < *pattern.start() || n > pattern.end() + 1
+        })
+        .collect();
+    println!(
+        "{} packets of {:?} frames, mean {mean:.5} (the I2S clock {I2S_FRAMES_PER_MS:.5})",
+        sizes.len(),
+        sizes.iter().min()..=sizes.iter().max()
+    );
+    assert!(
+        off.is_empty(),
+        "steered more than a frame within a render (at, packets): {off:?}"
+    );
 }
 
 #[test]

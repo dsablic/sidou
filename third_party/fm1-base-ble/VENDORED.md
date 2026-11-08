@@ -3,8 +3,10 @@
 # Optimist's Bluetooth LE stack (from fm1-base's `bt/ble`)
 
 - **Source:** <https://github.com/charlesvestal/fm1-base>, `bt/ble/`, commit `698e2cb`
-  (2026-11-05), the first whose felucca-bsp pin is `f878800`, the one SIDOU vendors
-  (`platform/fm1/VENDORED.md`). The stack is Optimist's (<https://github.com/w0ts/optimist>), by
+  (2026-11-05), the first whose felucca-bsp pin was `f878800`, the one SIDOU vendored then.
+  SIDOU's BSP is `7e09895c` now (`platform/fm1/VENDORED.md`): the radio headers are the same
+  bytes in both, and fm1-base's `bt/ble/` is unchanged to `b0976f2` (2026-11-07, pinning
+  felucca-bsp `5b0879b`), so the copy stands. The stack is Optimist's (<https://github.com/w0ts/optimist>), by
   Henri David.
 - **Licence:** `GPL-3.0-only OR MPL-2.0` (each file's header; offered under either licence,
   w0ts/optimist#55). SIDOU takes it under GPL-3.0-only, which its firmware image already is.

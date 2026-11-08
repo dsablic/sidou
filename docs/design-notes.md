@@ -46,7 +46,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Board support (felucca-bsp)
 
-- Since 1.8 the app builds from felucca-bsp (`f8788009`, MPL-2.0) byte for byte, in
+- Since 1.8 the app builds from felucca-bsp (`7e09895c` since 2026-11-08, `f8788009` in 1.8.0;
+  MPL-2.0) byte for byte, in
   `platform/fm1/bsp/` (`chip/`, `boards/fm1/`); Felucca 1.6.1's copies stay for the update loader
   alone, whose SHA-256 is pinned (decision 0011, the owner, 2026-11-05). `platform/fm1/VENDORED.md`
   lists the files and who includes what.
@@ -83,6 +84,17 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - The move costs 4,128 bytes of flash (+2,368 `.text`, +1,760 RAMTEXT: the flash driver's split
   erase, `fl_erase4k_begin_ram`/`_end_ram`, which upstream marks `used`), 112 bytes of the RAM
   region and 320 of NOINIT (`fm1_crash_ctx`, the fault record).
+- **`f8788009` to `7e09895c`** (2026-11-08) changed two of the files SIDOU vendors, and none of
+  SIDOU's hooks: `fm1_irq.h` gained `FM1_IRQ_DEFS` (our #31; the default, 1, is the header as it
+  was) and `usb.c` three things. `FELUCCA_UAC_CH` (#32) and `FELUCCA_UAC_STALL_POLLS` (#33) keep
+  their defaults: SIDOU's input is the stereo master, and it services the stream at 2 kHz, where
+  40 polls are upstream's 20 ms. `5b0879b` cuts the packets on the I2S clock's own pattern and
+  steers at most one frame a render, instead of 44.1 kHz's pattern steered every packet: a host
+  records the same samples, bit for bit, in packets that no longer come three long in a row
+  (`usb.rs`; `VENDORED.md`, "USB audio out"). The hand-over (`usb_audio.c`), the update path
+  (`ota.c`, unchanged) and `midi.c` needed nothing; emu-gate reads `uac`'s counters 4 bytes
+  further on (the new `fresh` byte). The default image grew 32 bytes (548,320 to 548,352), RAMTEXT,
+  the RAM region and NOINIT not at all.
 
 ### Image layout
 

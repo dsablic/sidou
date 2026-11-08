@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **USB audio packets keep the FM-1's own clock.** felucca-bsp `7e09895c` (from `f8788009`): the
+  packets carry 44 frames a millisecond and one more every 8 or 9, the I2S clock's rate, and are
+  steered by at most one frame a render, so a host that follows the device's rate closely (iOS's
+  Camera) no longer hears a run of short or long packets as a dropout. The recorded samples are
+  the same, bit for bit.
+
 ## [1.8.0] - 2026-11-07
 
 A sound from a prompt, live tweaks on playing `.sid` tunes, the ACID lane role, felucca-bsp, and USB audio at 44.1 kHz only.
