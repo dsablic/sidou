@@ -435,6 +435,19 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   boot therefore costs one reset and comes back OFF; nothing has to be held at power-on. NOINIT
   survives a reset, not a power cut, so a power cut in the middle of a start leaves ON (the next
   start is tried again). `ble.rs` pins both orders.
+- **With the radio off the main loop leaves it alone** (2026-11-08, the owner: no MIDI budget is
+  raised for Bluetooth). Polling the radio every pass, pumping its input ring in every
+  `midi_drain` and offering every outgoing packet to it cost the main loop about 0.6M
+  instructions a second with BLUETOOTH OFF (`midi.rs`: idle 2.40 to 3.00M/s, the CC flood 4.98 to
+  5.73M/s of 5.0, LIVE's full-speed TRS flood 6.24 to 7.00M/s of 6.3). Now one byte,
+  `ble_radio_awake`, gates all three: the poll clears it once the setting is loaded and saved, the
+  radio is neither wanted nor started and no link is left to drop; BLUETOOTH set ON sets it. The
+  poll and the input pump run once an input frame (about 1.1 ms, `play`), not every pass: three
+  instructions a frame when off, and Bluetooth's notes wait at most a frame, well inside a BLE
+  connection interval (7.5 ms or more). The outgoing packets are offered once a tick, after the
+  USB ones. Off, the loop costs what the build without Bluetooth costs to within 4,000
+  instructions a second (idle 2.401M/s against 2.397). `ble.rs` pins it: with BLUETOOTH OFF, 3 s
+  past the radio's start time, the main loop never calls `ble_radio_poll`.
 - **Starting the radio:** never before 3 s after power-on (the boot's waits; in fm1-emu, where
   the start's waits time out, it holds the main loop 2.2 ms, `ble.rs` bounds it at 600 ms), then
   whenever BLUETOOTH is ON. OFF stops advertising and drops a link (`ble_enable(0)`), and ON again
@@ -449,8 +462,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   counted at the audio interrupt's own level in both builds, must come out less than one
   instruction in ten blocks apart (49,806,293 and 49,806,306, 389.11 a sample each). Block by
   block they differ: a 78-instruction item lands a block earlier or later with the main loop's
-  timing (the Bluetooth build polls the radio each pass, and `fm1_rf_burst_run` moves RAMTEXT
-  36 bytes), so equal totals over the same blocks are the strict statement. One instruction added
+  timing (the Bluetooth build polled the radio each pass then, and `fm1_rf_burst_run` moves
+  RAMTEXT 36 bytes), so equal totals over the same blocks are the strict statement. One instruction added
   to every block would be 1,000 apart.
 - The stack's unit builds at `-Oz` (fm1-base's `unity_opt = "z"`): 912 bytes less than `-Os`
   both ways.

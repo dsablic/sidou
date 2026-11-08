@@ -175,6 +175,7 @@ fn notes_from_the_air_play_and_a_dropped_link_releases_them() {
     m.run_ms(BOOT_MS);
     let role = fw.symbol("ble_radio_role");
     m.soc.write8(role, ROLE_PERIPHERAL);
+    m.soc.write8(fw.symbol("ble_radio_awake"), 1);
     from_the_air(&mut m, &fw, note_on(C4));
     m.run_ms(50);
     assert_eq!(held(&mut m, &fw), [C4], "the note from Bluetooth");
@@ -315,6 +316,27 @@ fn the_default_build_leaves_the_rails_as_the_boot_loader_set_them() {
     as_the_boot_loader_leaves_the_rails(&mut m);
     m.run_ms(1000);
     assert_eq!(rails(&m), (BOOT_LOADER_VDC14, BOOT_LOADER_SYSVDD, 0, 0));
+}
+
+#[test]
+fn with_bluetooth_off_the_main_loop_leaves_the_radio_alone() {
+    let Some(build) = ble_build() else { return };
+    let fw = Firmware::load(&build);
+    let mut m = power_on(&fw, &settled_flash(&fw.image));
+    common::run_past_boot(&mut m, &fw);
+    m.run_ms(START_AFTER_MS);
+    m.watch_calls(fw.symbol("ble_radio_poll"));
+    m.run_ms(START_AFTER_MS);
+    assert!(
+        m.watched_calls.is_empty(),
+        "the main loop polled the radio {} times with BLUETOOTH OFF",
+        m.watched_calls.len()
+    );
+    assert_eq!(
+        m.soc.read8(fw.symbol("ble_radio_state")),
+        0,
+        "the radio started"
+    );
 }
 
 #[test]

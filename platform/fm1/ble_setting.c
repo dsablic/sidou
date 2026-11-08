@@ -91,6 +91,7 @@ void ble_radio_set(void* ctx, int on) {
         ble_radio_wanted = (uint8_t)(on != 0);
         ble_radio_dirty = !on || ble_radio_ran;
         ble_radio_touched = ble_radio_dirty;
+        ble_radio_awake = 1;
     }
 }
 
@@ -145,6 +146,10 @@ void ble_setting_poll(uint32_t now_ms) {
         ble_radio_changed_at = now_ms;
     }
     ble_radio_save(now_ms);
+}
+
+int ble_setting_pending(void) {
+    return !ble_radio_loaded || ble_radio_dirty || ble_radio_touched;
 }
 
 void ble_setting_starting(void) {

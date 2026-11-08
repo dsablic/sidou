@@ -17,6 +17,7 @@ enum {
 };
 
 extern volatile uint8_t ble_radio_wanted;
+extern uint8_t ble_radio_awake;
 extern uint8_t ble_radio_addr[6];
 
 void ble_radio_poll(uint32_t now_ms);
@@ -27,6 +28,7 @@ int ble_radio_on(void* ctx);
 void ble_radio_report(void* ctx, char* buf);
 void ble_power_boot(void);
 void ble_setting_poll(uint32_t now_ms);
+int ble_setting_pending(void);
 void ble_setting_starting(void);
 void ble_setting_started(void);
 void ble_radio_set(void* ctx, int on);

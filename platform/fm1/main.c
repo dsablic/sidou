@@ -2037,6 +2037,12 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     }
     *last_frame = frame;
     input_poll(&front, &instrument);
+#if defined(SIDOU_BLE)
+    if (ble_radio_awake) {
+        ble_radio_poll(now);
+        midi_ble_in();
+    }
+#endif
     for (uint32_t n = 0; n < TICK_CATCH_UP && (int32_t)(now - *next_tick) >= 0; n++) {
         *next_tick += TICK_MS;
         panel_master(&front, &instrument, input_master());
@@ -2221,9 +2227,6 @@ static void sidou_main(void) {
             ui_link(now);
         }
         midi_service(now);
-#if defined(SIDOU_BLE)
-        ble_radio_poll(now);
-#endif
         bootguard_poll(&boot_guard, now);
 #if defined(SIDOU_TEST_DEATH_MS)
         test_death(now);
