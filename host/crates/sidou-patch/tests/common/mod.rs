@@ -207,19 +207,7 @@ pub const GROOVE: &str = r#"{"format": "sidou-song/1", "name": "GROOVE", "bpm": 
     null]}},
   "order": ["A"]}"#;
 
-pub const THREE_PARTS: &str = r#"{"format": "sidou-song/1", "name": "THREE PARTS", "bpm": 116,
-  "instruments": {"lead": {"name": "LEAD", "wave": "pulse"}},
-  "sections": {
-    "A": {"rows": 8, "voices": [
-      {"instrument": "bass", "notes": "C2 - . C2 D#2 - . G1"},
-      {"instrument": "kit", "notes": "k . s . k k s ."},
-      {"instrument": "lead", "notes": "C4 - - - D#4 - - -"}]},
-    "B": {"rows": 8, "voices": [
-      {"instrument": "bass", "notes": "F2 - . F2 G#2 - . C2"},
-      {"instrument": "kit", "notes": "k . s . k k s ."},
-      {"instrument": "lead", "notes": "F4 - - - G#4 - G4 -"}]},
-    "C": {"rows": 4, "voices": [null, {"instrument": "kit", "notes": "s s s s"}, null]}},
-  "order": ["A", "A", "B", "A", "C"]}"#;
+pub const THREE_PARTS: &str = include_str!("../data/three-parts.json");
 
 pub fn with(text: &str, from: &str, to: &str) -> String {
     assert!(text.contains(from), "{from} is not in {text}");

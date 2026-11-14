@@ -21,8 +21,6 @@ const TUNE_ON: u8 = 5;
 const AUDIO_PSID: u8 = 1;
 const IO_SAVE: u32 = 2;
 const IO_LOAD: u32 = 3;
-const SONG_IO_HOOK_NAME: u32 = 4;
-const SONG_IO_HOOK_RESULT: u32 = 24;
 const SONG_HOOK_WRITE_ROW: u32 = 1;
 const SONG_HOOK_PATTERN: u32 = 4;
 const SONG_HOOK_ROW: u32 = 8;
@@ -144,32 +142,6 @@ fn booted_with(fw: &Firmware, files: &[(&str, &[u8])]) -> Machine {
     let mut m = powered_on_with(fw, files);
     past_boot_and_song_load(&mut m, fw);
     m
-}
-
-fn song_idle(m: &mut Machine, fw: &Firmware) {
-    let state = fw.symbol("songs") + ilp32::song_io::state as u32;
-    until(m, "song I/O idle", |m| {
-        m.soc.read8(state) == SONG_IO_IDLE as u8
-    });
-}
-
-fn song_io(m: &mut Machine, fw: &Firmware, op: u32, name: &str) {
-    let hook = fw.symbol("song_io_test_hook");
-    for i in 0..=STORE_NAME_MAX {
-        let b = name.as_bytes().get(i as usize).copied().unwrap_or(0);
-        m.soc.write8(hook + SONG_IO_HOOK_NAME + i, b);
-    }
-    m.soc.write32(hook + SONG_IO_HOOK_RESULT, u32::MAX);
-    m.soc.write32(hook, op);
-    until(m, "the main loop takes the song request", |m| {
-        m.soc.read32(hook) == 0
-    });
-    assert_eq!(
-        m.soc.read32(hook + SONG_IO_HOOK_RESULT) as i32,
-        1,
-        "song I/O op {op}"
-    );
-    song_idle(m, fw);
 }
 
 fn device_song(m: &mut Machine, fw: &Firmware) -> Song {

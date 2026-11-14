@@ -17,6 +17,7 @@ const SETTINGS_DEBOUNCE_MS: u64 = 6_000;
 const JAM_ROOT_NOTE: u8 = 48;
 const SONG_LOAD: i32 = 0;
 const SONG_NEW: i32 = 1;
+const IO_LOAD: u32 = 3;
 const SONG_SAVE_AS: i32 = 2;
 
 const WIPE_MS: u64 = 700;
@@ -1753,4 +1754,116 @@ fn a_held_step_with_fx_slides_into_the_next_note_and_with_env_accents_it_as_hear
     assert_eq!(held_step_press(&mut m, &fw, 0, FX), "SLIDE OFF");
     assert_eq!(held_step_press(&mut m, &fw, 0, ENV), "ACCENT OFF");
     assert!(slide_and_accent_locks(&mut m, &fw).is_empty());
+}
+
+const THREE_PARTS: &str = include_str!("../../sidou-patch/tests/data/three-parts.json");
+const LEAD_VOICE: usize = 2;
+const LEAD_ROWS: [(u32, u32); 8] = [
+    (0, 48),
+    (4, 51),
+    (8, 48),
+    (12, 51),
+    (16, 53),
+    (20, 56),
+    (22, 55),
+    (24, 48),
+];
+const SECTION_C_ROW: u32 = 32;
+const SONG_ROWS: u32 = 36;
+const PLAYED_VOICES: [u8; 2] = [0b001, 0b100];
+const NOTE_TO_ROW_MS: f64 = 60.0;
+const TONE_WINDOW_MS: f64 = 80.0;
+const ONSET_SEARCH_MS: f64 = 120.0;
+const ONSET_SEARCH_LEAD_MS: f64 = 40.0;
+const NOTE_AFTER_ITS_ROW_MS: f64 = 20.0;
+const KEY_OFF_FRAMES_MS: usize = 40;
+
+fn tone_rms(x: &[f32], hz: f64) -> f64 {
+    let w = 2.0 * std::f64::consts::PI * hz / FS;
+    let (re, im) = x.iter().enumerate().fold((0.0, 0.0), |(re, im), (i, &s)| {
+        (
+            re + f64::from(s) * (w * i as f64).cos(),
+            im + f64::from(s) * (w * i as f64).sin(),
+        )
+    });
+    (re * re + im * im).sqrt() * std::f64::consts::SQRT_2 / x.len().max(1) as f64
+}
+
+fn pitch_arrives(h: &Heard, from_ms: f64, hz: f64) -> Option<f64> {
+    (from_ms.max(0.0) as usize..(from_ms + ONSET_SEARCH_MS) as usize)
+        .find(|&ms| {
+            let r = h.regs[ms];
+            r.gate != 0 && r.freq != 0 && cents_off(hz_of_freq(r.freq), hz).abs() < 25.0
+        })
+        .map(|ms| ms as f64)
+}
+
+fn samples(h: &Heard, from_ms: f64, len_ms: f64) -> &[f32] {
+    let from = (from_ms * FS / 1000.0) as usize;
+    &h.audio[from..from + (len_ms * FS / 1000.0) as usize]
+}
+
+#[test]
+fn a_whole_song_text_stored_and_played_is_heard_at_pitch_on_time_and_silent_where_a_voice_rests() {
+    let Some(fw) = firmware("the first-use tests") else {
+        return;
+    };
+    let made = sidou_patch::json::check_song(THREE_PARTS, SID_MODEL_6581).unwrap();
+    let row_ms = 150_000.0 / f64::from(made.bpm_played10);
+    let mut flash = settled_flash(&fw.image);
+    put_file(&mut flash, "THREE PARTS", STORE_FILE_SONG, &made.sng);
+    let mut m = Machine::boot_blank(&fw.image);
+    m.soc.flash.mem.copy_from_slice(&flash);
+    run_past_boot(&mut m, &fw);
+    idle(&mut m, &fw);
+    song_io(&mut m, &fw, IO_LOAD, "THREE PARTS");
+    home_to_live(&mut m, &fw);
+    let h = play_for(
+        &mut m,
+        &fw,
+        (f64::from(SONG_ROWS) * row_ms) as u64 + 200,
+        LEAD_VOICE,
+    );
+    stop(&mut m, &fw);
+    let t0 = first_gate(&h);
+    let at = |row: u32| t0 + f64::from(row) * row_ms;
+    for (row, note) in LEAD_ROWS {
+        let want = hz_of_note(note);
+        let held = at(row) + NOTE_TO_ROW_MS;
+        let tone = tone_rms(samples(&h, held, TONE_WINDOW_MS), want);
+        assert!(
+            tone > AUDIBLE_RMS,
+            "lead row {row}: {want:.1} Hz is not heard ({tone:.0})"
+        );
+        let on_chip = &h.regs[held as usize..(held + TONE_WINDOW_MS) as usize];
+        let pitch = hz_of_freq(on_chip.last().unwrap().freq);
+        assert!(
+            cents_off(pitch, want).abs() < 25.0,
+            "lead row {row}: the chip plays {pitch:.1} Hz, want {want:.1}"
+        );
+        let onset = pitch_arrives(&h, at(row) - ONSET_SEARCH_LEAD_MS, want);
+        assert!(
+            onset.is_some_and(|t| (t - at(row) - NOTE_AFTER_ITS_ROW_MS).abs() <= ON_TIME_MS),
+            "lead row {row}: its note starts at {onset:?} ms, its row is at {}",
+            at(row)
+        );
+    }
+    let rests = at(SECTION_C_ROW) + KEY_OFF_FRAMES_MS as f64..at(SONG_ROWS);
+    for ms in rests.start as usize..rests.end as usize {
+        for gate in PLAYED_VOICES {
+            assert_eq!(
+                h.gates[ms] & gate,
+                0,
+                "section C leaves the voice out, yet it is gated at {} ms after its row",
+                ms as f64 - at(SECTION_C_ROW)
+            );
+        }
+    }
+    let snares = rms_windows(samples(&h, rests.start, rests.end - rests.start))
+        .into_iter()
+        .fold(0.0, f64::max);
+    assert!(
+        snares > AUDIBLE_RMS,
+        "section C's snares are not heard ({snares:.0})"
+    );
 }

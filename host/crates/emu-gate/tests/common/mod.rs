@@ -1353,3 +1353,36 @@ pub fn song_in_device(m: &mut Machine, fw: &Firmware) -> sidou_tests::song::Song
     }
     song
 }
+
+const SONG_IO_WAIT_MS: u64 = 15_000;
+const SONG_IO_HOOK_NAME: u32 = 4;
+const SONG_IO_HOOK_RESULT: u32 = 24;
+
+pub fn song_idle(m: &mut Machine, fw: &Firmware) {
+    let state = fw.symbol("songs") + sidou_sys::ilp32::song_io::state as u32;
+    wait_for_within(m, SONG_IO_WAIT_MS, "song I/O idle", |m| {
+        m.soc.read8(state) == sidou_sys::SONG_IO_IDLE as u8
+    });
+}
+
+pub fn song_io(m: &mut Machine, fw: &Firmware, op: u32, name: &str) {
+    let hook = fw.symbol("song_io_test_hook");
+    for i in 0..=sidou_sys::STORE_NAME_MAX {
+        let b = name.as_bytes().get(i as usize).copied().unwrap_or(0);
+        m.soc.write8(hook + SONG_IO_HOOK_NAME + i, b);
+    }
+    m.soc.write32(hook + SONG_IO_HOOK_RESULT, u32::MAX);
+    m.soc.write32(hook, op);
+    wait_for_within(
+        m,
+        SONG_IO_WAIT_MS,
+        "the main loop takes the song request",
+        |m| m.soc.read32(hook) == 0,
+    );
+    assert_eq!(
+        m.soc.read32(hook + SONG_IO_HOOK_RESULT) as i32,
+        1,
+        "song I/O op {op}"
+    );
+    song_idle(m, fw);
+}

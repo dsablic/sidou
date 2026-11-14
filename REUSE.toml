@@ -64,7 +64,7 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 # others, made by host/crates/sidou-patch/tests/patch_docs.rs for web/patch.test.mjs; and the
 # template of the instructions it writes (docs/prompt-to-patch.md, the site's llms.txt).
 [[annotations]]
-path = ["web/patch-fixtures.json", "host/crates/sidou-patch/tests/data/prompt-to-patch.md", "host/crates/sidou-patch/tests/data/trials/*"]
+path = ["web/patch-fixtures.json", "host/crates/sidou-patch/tests/data/prompt-to-patch.md", "host/crates/sidou-patch/tests/data/three-parts.json", "host/crates/sidou-patch/tests/data/trials/*"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
