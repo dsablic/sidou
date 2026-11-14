@@ -372,6 +372,7 @@ async function patcher() {
 function showPatch() {
   const p = state.patch, ok = !!p?.ok;
   for (const id of ["patch-preview", "patch-link", "patch-save"]) $(id).disabled = !ok;
+  $("patch-edit").hidden = !(ok && p.song);
   setBusy(state.busy);
 }
 
@@ -390,12 +391,12 @@ async function checkPatch() {
     return showPatch();
   }
   const p = state.patch;
-  const what = p.ok && p.bank ? `${p.name} is a bank of ${p.sounds.length} sounds` : p.ok && p.step ? `${p.name} is a STEP pattern` : `${p.name} is a sound`;
+  const what = p.ok && p.bank ? `${p.name} is a bank of ${p.sounds.length} sounds` : p.ok && p.step ? `${p.name} is a STEP pattern` : p.ok && p.song ? `${p.name} is a whole song, played at ${p.bpm10 / 10} BPM` : `${p.name} is a sound`;
   $("patch-pick").hidden = !(p.ok && p.bank);
   $("patch-pick").replaceChildren(...(p.ok ? p.sounds : []).map((n, i) => el("option", { value: String(i + 1), textContent: `${String(i + 1).padStart(2, "0")} ${n}` })));
   if (!p.ok) say($("patch-state"), `Not a sound yet:\n${p.error}\nPaste that line back to the model and ask it to fix the patch.`, "error");
   else if (p.quiet) say($("patch-state"), `${what}, with a warning:\n${p.quiet}\nPreview it; on the other chip it plays.`);
-  else say($("patch-state"), p.bank ? `${what} the FM-1 can play: preview one, or send them as one song.` : p.step ? `${what} the FM-1 can play: preview it, or send it as a song that opens on STEP.` : `${what} the FM-1 can play: preview it, or send it.`, "ok");
+  else say($("patch-state"), p.bank ? `${what} the FM-1 can play: preview one, or send them as one song.` : p.step ? `${what} the FM-1 can play: preview it, or send it as a song that opens on STEP.` : p.song ? `${what} the FM-1 can play: preview it, edit it in the editor, or send it.` : `${what} the FM-1 can play: preview it, or send it.`, "ok");
   if (p.ok) state.preview?.setSong(p.sng);
   showPatch();
 }
@@ -408,7 +409,7 @@ async function previewPatch() {
       state.preview = new Preview(wasm, { onMessage: (m) => { if (m.type === "error") say($("patch-state"), `The preview failed: ${m.message}.`, "error"); else if (m.type === "state" && m.state !== "idle") state.previewed = m; } });
     }
     state.preview.setSong(state.patch.sng);
-    if (state.patch.step) {
+    if (state.patch.step || state.patch.song) {
       if (state.previewing) {
         state.previewing = false;
         state.preview.stop();
@@ -490,6 +491,7 @@ $("patch-check").addEventListener("click", checkPatch);
 $("patch-preview").addEventListener("click", previewPatch);
 $("patch-send").addEventListener("click", sendPatch);
 $("patch-link").addEventListener("click", copyLink);
+$("patch-edit").addEventListener("click", () => state.patch?.song && editSong(state.patch.sng, { name: state.patch.name }));
 $("patch-save").addEventListener("click", () => state.patch?.ok && save(state.patch.sng, `${stemOf(state.patch.name)}.sng`));
 $("patch-text").addEventListener("input", () => { state.patch = null; showPatch(); say($("patch-state"), ""); });
 $("copy-instructions").addEventListener("click", copyInstructions);

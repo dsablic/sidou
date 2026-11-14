@@ -593,6 +593,7 @@ const FIXTURE_CASES: [&str; 5] = [
 ];
 
 const STEP_REFUSED: &str = r#"{"format": "sidou-step/1", "steps": [{"step": 1, "drum": "kick"}]}"#;
+const SONG_REFUSED: &str = r#"{"format": "sidou-song/1", "bpm": 400}"#;
 const BANK_REFUSED: &str =
     r#"{"format": "sidou-bank/1", "name": "TWO", "patches": [{}, {"wave": "sawtooth"}]}"#;
 
@@ -630,6 +631,12 @@ fn fixtures() -> String {
             "sng": hashed(&json::step_song(&text, SID_MODEL_6581).unwrap())}));
     }
     cases.push(json!({"text": STEP_REFUSED, "ok": false, "error": json::step_song(STEP_REFUSED, SID_MODEL_6581).unwrap_err()}));
+    for text in [common::GROOVE, common::THREE_PARTS] {
+        let made = json::check_song(text, SID_MODEL_6581).unwrap();
+        cases.push(json!({"text": text, "ok": true, "quiet": "", "name": serde_json::from_str::<Value>(text).unwrap()["name"],
+            "sng": hashed(&made.sng), "bpm10": made.bpm_played10}));
+    }
+    cases.push(json!({"text": SONG_REFUSED, "ok": false, "error": json::check_song(SONG_REFUSED, SID_MODEL_6581).unwrap_err()}));
     for text in [sixteen.as_str(), BANK_REFUSED] {
         cases.push(match json::check_bank(text, SID_MODEL_6581) {
             Ok((b, sng)) => json!({"text": text, "ok": true, "quiet": b.quiet.unwrap_or_default(), "name": b.name,

@@ -3,7 +3,9 @@
 export const LINK_KEY = "#patch=";
 export const BANK_KEY = "#bank=";
 export const STEP_KEY = "#step=";
+export const SONG_KEY = "#song=";
 const STEP_TEXT = 2;
+const SONG_TEXT = 3;
 export const LINK_MAX = 8192;
 
 const QUIET = 1;
@@ -16,6 +18,7 @@ const cstr = (mem, ptr) => {
 
 import { loadCore } from "./core.js";
 
+const LINK_KEYS = { "sidou-bank/1": BANK_KEY, "sidou-step/1": STEP_KEY, "sidou-song/1": SONG_KEY };
 const LEVEL = { patch: 0, bank: 1, step: 2 };
 
 export async function loadPatcher(source, coreSource) {
@@ -58,8 +61,9 @@ export class Patcher {
     if (r < 0) return { ok: false, error: message || `the patch was refused (${r})` };
     const count = x.sp_bank();
     const sng = new Uint8Array(x.memory.buffer, x.sp_out(), x.sp_song_bytes()).slice();
+    const song = x.sp_kind() === SONG_TEXT;
     const step = x.sp_kind() === STEP_TEXT, instr = x.sp_step_instr();
-    const level = step ? (instr ? this.heard(sng, instr, 1, LEVEL.step) : { r: 0, message: "" })
+    const level = song ? { r: 0, message: "" } : step ? (instr ? this.heard(sng, instr, 1, LEVEL.step) : { r: 0, message: "" })
       : this.heard(sng, 1, count || 1, count ? LEVEL.bank : LEVEL.patch);
     if (level.r < 0) return { ok: false, error: level.message };
     return {
@@ -69,6 +73,8 @@ export class Patcher {
       sounds: count ? Array.from({ length: count }, (_, k) => cstr(x.memory, x.sp_bank_name(k))) : [cstr(x.memory, x.sp_name())],
       bank: count > 0,
       step,
+      song,
+      bpm10: x.sp_song_bpm10(),
       sng,
     };
   }
@@ -88,12 +94,12 @@ export function linkOf(page, text) {
   const compact = patchOf(text);
   if (compact === null) return null;
   const format = JSON.parse(compact).format;
-  const key = format === "sidou-bank/1" ? BANK_KEY : format === "sidou-step/1" ? STEP_KEY : LINK_KEY;
+  const key = LINK_KEYS[format] ?? LINK_KEY;
   return `${page}${key}${encodeURIComponent(compact)}`;
 }
 
 export function fromLink(hash) {
-  const key = [LINK_KEY, BANK_KEY, STEP_KEY].find((k) => hash.startsWith(k));
+  const key = [LINK_KEY, BANK_KEY, STEP_KEY, SONG_KEY].find((k) => hash.startsWith(k));
   if (!key) return null;
   const raw = hash.slice(key.length);
   if (raw.length > LINK_MAX) {

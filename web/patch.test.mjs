@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadCore } from "./core.js";
-import { LINK_KEY, LINK_MAX, fromLink, linkOf, loadPatcher, patchOf } from "./patch.js";
+import { LINK_KEY, LINK_MAX, SONG_KEY, fromLink, linkOf, loadPatcher, patchOf } from "./patch.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const root = `${here}../`;
@@ -22,7 +22,7 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok - ${name}`);
 await test(`the patch converter is ${readFileSync(wasm).length} bytes and imports nothing`, async () => {
   const m = await WebAssembly.compile(readFileSync(wasm));
   assert.deepEqual(WebAssembly.Module.imports(m), []);
-  assert.ok(readFileSync(wasm).length <= 80 * 1024, "the size budget: 80 KiB");
+  assert.ok(readFileSync(wasm).length <= 88 * 1024, "the size budget: 88 KiB");
 });
 
 await test("every case reads as the host build reads it: the same song, warning or refusal", () => {
@@ -34,6 +34,7 @@ await test("every case reads as the host build reads it: the same song, warning 
     }
     assert.equal(got.ok, true, got.error);
     assert.deepEqual([got.name, got.quiet, [got.sng.length, sum(got.sng)]], [c.name, c.quiet, c.sng], c.text);
+    if (c.bpm10) assert.equal(got.bpm10, c.bpm10, `${c.name}: the BPM it plays`);
   }
 });
 
@@ -105,6 +106,19 @@ await test("each STEP pattern is a song the core plays from its first row, and i
     assert.ok(pcm.some((v) => Math.abs(v) > 512), `${name} is heard`);
     const link = linkOf(page, text);
     assert.ok(link.includes("#step="));
+    assert.deepEqual(patcher.check(fromLink(link.slice(link.indexOf("#"))).text).sng, got.sng);
+  }
+});
+
+await test("a whole song reads as a song, its link carries it, and the core plays it", async () => {
+  const core = await loadCore(readFileSync(corePath));
+  for (const c of cases.filter((x) => x.bpm10)) {
+    const got = patcher.check(c.text);
+    assert.equal(got.song, true, c.name);
+    core.read(got.sng);
+    assert.ok(core.renderSong({ seconds: 2 }).some((v) => Math.abs(v) > 512), `${c.name} is heard`);
+    const link = linkOf(page, c.text);
+    assert.ok(link.includes(SONG_KEY), c.name);
     assert.deepEqual(patcher.check(fromLink(link.slice(link.indexOf("#"))).text).sng, got.sng);
   }
 });
