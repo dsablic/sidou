@@ -53,6 +53,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   lists the files and who includes what.
 - SIDOU's two hooks in 1.6.1's `usb.c` are upstream settings now (`FELUCCA_MIDI_IN_RAW`, PR #21;
   the USB strings as ASCII). `FELUCCA_UAC_AS_FIRST` is set to 1 to keep 1.6.1's interface order.
+- **felucca-bsp `d18879ba`'s USB audio drift does not reach SIDOU** (checked 2026-11-14 on 1.10.0).
+  Upstream's packets ran +0.39 % fast when a render ran long and landed late: the ring's fill,
+  read at a render's start, read high and added a frame every render. SIDOU renders in the audio
+  interrupt; `usb_audio.c` copies a finished block there and the main loop taps it into the ring,
+  starting the render's pattern (`uac_render_start`) when it takes the block. In fm1-emu, a host
+  recording for 6 s gets packets within 4 ppm of the I2S clock (44.1178 frames a ms against
+  44.1176) with no underrun, with a chord on the keys, a song and the keys, and a .sid tune (its
+  6502 in the main loop) and the keys. The fix comes with the next felucca-bsp update, not alone.
 - **SysEx frames are queued** (felucca-bsp#20, 648 bytes, back-pressure on EP1). `update_poll`
   frees every SIDOU frame at the queue's head and, in a pass where it took one, leaves the updater
   alone: `ota_service` would take the next frame and drop it if it were not its own (#20's rule,
