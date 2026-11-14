@@ -131,8 +131,34 @@ emu_key() {
     {
         sha256sum build/fm1/platform/fm1/sidou_app.bin build/fm1/platform/fm1/loader/loader.bin \
             build/fm1/sidou.fwsc build/fm1-spike/platform/fm1/sidou_app.bin | cut -d' ' -f1
-        for dir in host core app bench platform assets third_party tests; do git rev-parse "HEAD:$dir"; done
+        for dir in core app bench platform assets third_party tests host/Cargo.toml host/Cargo.lock host/.config; do
+            git rev-parse "HEAD:$dir"
+        done
+        emu_gate_crates | while read -r crate; do
+            if [ "$crate" = crates/emu-gate ]; then git rev-parse "HEAD:host/$crate"; continue; fi
+            git ls-tree HEAD "host/$crate/" | grep -Ev $'\t[^\t]*/(tests|benches)$'
+        done
     } | sha256sum | cut -d' ' -f1
+}
+
+emu_gate_crates() {
+    in_host cargo metadata --format-version 1 --locked | python3 -c '
+import json, os, sys
+m = json.load(sys.stdin)
+root = m["workspace_root"]
+packages = {p["id"]: p for p in m["packages"]}
+deps = {n["id"]: [d["pkg"] for d in n["deps"]] for n in m["resolve"]["nodes"]}
+todo = [i for i, p in packages.items() if p["name"] == "emu-gate"]
+seen = set()
+while todo:
+    i = todo.pop()
+    if i not in seen:
+        seen.add(i)
+        todo += deps[i]
+for i in sorted(seen):
+    if packages[i]["source"] is None:
+        print(os.path.relpath(os.path.dirname(packages[i]["manifest_path"]), root))
+'
 }
 
 emu_with_cache() {
