@@ -1613,6 +1613,47 @@ static const field STEP_CELL[] = {
 };
 
 
+static int part_failed(reader* r, const char* error) {
+    memcpy(r->err.out, error, PATCH_JSON_ERROR_MAX);
+    r->err.n = length(r->err.out);
+    return -1;
+}
+
+static int format_is(reader* r, const char* format, int* seen) {
+    char got[24], quoted_format[24];
+    text q = {quoted_format, 0, sizeof quoted_format};
+    if (string(r, got, sizeof got) < 0) {
+        return -1;
+    }
+    if (strcmp(got, format)) {
+        add_char(&q, '"');
+        add(&q, format);
+        add_char(&q, '"');
+        return bank_fail(r, "is not this format", quoted_format);
+    }
+    *seen = 1;
+    return 0;
+}
+
+static int top_name(reader* r, char* out) {
+    char name[64];
+    int n = string(r, name, sizeof name);
+    if (n < 0) {
+        return -1;
+    }
+    if (n < 1 || n > (int)PATCH_BANK_NAME || name[0] == ' ') {
+        return bank_fail(r, n > (int)PATCH_BANK_NAME ? "is too long" : "is not a name", BANK_NAME);
+    }
+    for (int k = 0; k <= n; k++) {
+        char ch = name[k] >= 'a' && name[k] <= 'z' ? (char)(name[k] - 32) : name[k];
+        if (k < n && (ch < NAME_FIRST || ch > NAME_LAST)) {
+            return bank_fail(r, "has a character the FM-1 cannot show", BANK_NAME);
+        }
+        out[k] = ch;
+    }
+    return 0;
+}
+
 static int step_cells(reader* r, patch_step* st) {
     if (eat(r, '[', "a [")) {
         return -1;
@@ -1675,11 +1716,8 @@ static int step_instrument(reader* r, patch_step* st) {
         if (skip_value(r)) {
             return -1;
         }
-        int got = read_part(&st->patch, r->s, start, r->i, "instrument", st->patch.error);
-        if (got < 0) {
-            memcpy(r->err.out, st->patch.error, PATCH_JSON_ERROR_MAX);
-            r->err.n = length(r->err.out);
-            return -1;
+        if (read_part(&st->patch, r->s, start, r->i, "instrument", st->patch.error) < 0) {
+            return part_failed(r, st->patch.error);
         }
         st->kind = PATCH_STEP_PATCH;
         return 0;
@@ -1754,29 +1792,12 @@ int patch_json_read_step(patch_step* st, const char* s, uint32_t len) {
             }
             memcpy(top, st->scratch.sound, sizeof top);
         } else if (!strcmp(key, "format")) {
-            char fm[24];
-            if (string(&r, fm, sizeof fm) < 0) {
+            if (format_is(&r, PATCH_STEP_FORMAT, &format)) {
                 return -1;
             }
-            if (strcmp(fm, PATCH_STEP_FORMAT)) {
-                return bank_fail(&r, "is not this format", "\"" PATCH_STEP_FORMAT "\"");
-            }
-            format = 1;
         } else if (!strcmp(key, "name")) {
-            char name[64];
-            int n = string(&r, name, sizeof name);
-            if (n < 0) {
+            if (top_name(&r, st->name)) {
                 return -1;
-            }
-            if (n < 1 || n > (int)PATCH_BANK_NAME || name[0] == ' ') {
-                return bank_fail(&r, n > (int)PATCH_BANK_NAME ? "is too long" : "is not a name", BANK_NAME);
-            }
-            for (int k = 0; k <= n; k++) {
-                char ch = name[k] >= 'a' && name[k] <= 'z' ? (char)(name[k] - 32) : name[k];
-                if (k < n && (ch < NAME_FIRST || ch > NAME_LAST)) {
-                    return bank_fail(&r, "has a character the FM-1 cannot show", BANK_NAME);
-                }
-                st->name[k] = ch;
             }
         } else if (!strcmp(key, "instrument")) {
             if (step_instrument(&r, st)) {
@@ -1803,6 +1824,436 @@ int patch_json_read_step(patch_step* st, const char* s, uint32_t len) {
     return step_checked(&r, st, format);
 }
 
+#define SONG_FIELDS "format, name, bpm, instruments, sections, order"
+#define SONG_LABEL "1 to 8 characters"
+#define SONG_ORDER "a list of 1 to 64 section names"
+#define SONG_INSTRUMENT "the name of one of instruments, or \"pulse\", \"bass\" or \"kit\""
+#define SONG_BPM_DEFAULT 125u
+
+static const char SONG_PARTS[] = "instruments\0sections\0order\0";
+enum { PART_INSTRUMENTS, PART_SECTIONS, PART_ORDER, PARTS };
+static const char VOICE_FIELDS[] = "instrument\0notes\0";
+enum { VOICE_INSTRUMENT, VOICE_NOTES, VOICE_FIELD_COUNT };
+
+static const field SONG_BPM = {"bpm", K_INT, 0, 0xFF, F_WIDE, PATCH_SONG_BPM_MIN, PATCH_SONG_BPM_MAX, 0};
+static const field SONG_ROWS = {"rows", K_INT, 0, 0xFF, 0, 1, PATCH_SONG_ROWS, 0};
+
+typedef int (*member_fn)(reader* r, const char* key, void* ctx);
+typedef int (*visit_fn)(reader* r, void* ctx);
+
+typedef struct {
+    patch_song* sg;
+    uint32_t at[PARTS];
+    int format;
+} song_read;
+
+typedef struct {
+    patch_song_section* sec;
+    uint32_t voices_at;
+} section_read;
+
+typedef struct {
+    const patch_song* sg;
+    patch_song_section* sec;
+    uint32_t voice;
+    uint32_t at[VOICE_FIELD_COUNT];
+} voice_read;
+
+typedef struct {
+    patch_song* sg;
+    patch_song_section* sec;
+} voices_read;
+
+static void path_back(reader* r, uint32_t keep) {
+    r->path_n = keep;
+    r->path[keep] = 0;
+}
+
+static int members(reader* r, member_fn each, void* ctx) {
+    if (eat(r, '{', "a {")) {
+        return -1;
+    }
+    while (peek(r) != '}') {
+        char key[32];
+        uint32_t keep = r->path_n;
+        if (string(r, key, sizeof key) < 0 || eat(r, ':', "a :")) {
+            return -1;
+        }
+        push(r, key, -1);
+        if (each(r, key, ctx)) {
+            return -1;
+        }
+        path_back(r, keep);
+        if (peek(r) == ',') {
+            r->i++;
+        } else if (peek(r) != '}') {
+            return syntax(r, "a , or }");
+        }
+    }
+    r->i++;
+    return 0;
+}
+
+static int visit(reader* r, uint32_t at, const char* name, visit_fn read, void* ctx) {
+    uint32_t end = r->i, keep = r->path_n;
+    if (!at) {
+        return 0;
+    }
+    r->i = at;
+    push(r, name, -1);
+    if (read(r, ctx)) {
+        return -1;
+    }
+    r->i = end;
+    path_back(r, keep);
+    return 0;
+}
+
+static int deferred(reader* r, uint32_t* at) {
+    peek(r);
+    *at = r->i;
+    return skip_value(r);
+}
+
+static int whole_value(reader* r, const field* f, uint32_t* out) {
+    if (value(r, f, 0, 0)) {
+        return -1;
+    }
+    *out = get(r->p->sound, f, 0, 0);
+    return 0;
+}
+
+static int instrument_index(const patch_song* sg, const char* name) {
+    for (uint32_t k = 0; k < sg->instruments; k++) {
+        if (!strcmp(sg->labels[k], name)) {
+            return (int)k;
+        }
+    }
+    return -1;
+}
+
+static int section_index(const patch_song* sg, const char* name) {
+    for (uint32_t k = 0; k < sg->sections; k++) {
+        if (!strcmp(sg->section[k].label, name)) {
+            return (int)k;
+        }
+    }
+    return -1;
+}
+
+static int label_ok(reader* r, const char* key, int given) {
+    uint32_t n = length(key);
+    if (!n || n > PATCH_SONG_LABEL) {
+        return bank_fail(r, n ? "is too long a name" : "is not a name", SONG_LABEL);
+    }
+    return given >= 0 ? fail(r, "is a name already given", NULL) : 0;
+}
+
+static void add_list(text* t, const char* const* names, uint32_t n) {
+    for (uint32_t k = 0; k < n; k++) {
+        add(t, k ? ", " : "");
+        add(t, names[k]);
+    }
+}
+
+static int not_named(reader* r, const char* what, const char* name, const char* listed,
+                     const char* const* names, uint32_t n) {
+    char w[PATCH_JSON_ERROR_MAX];
+    text m = {w, 0, sizeof w};
+    add(&m, "no ");
+    add(&m, what);
+    add(&m, " \"");
+    add(&m, name);
+    add(&m, "\". ");
+    add(&m, listed);
+    add_list(&m, names, n);
+    return fail(r, w, NULL);
+}
+
+static int no_instrument(reader* r, const patch_song* sg, const char* name) {
+    const char* names[PATCH_SONG_INSTRUMENTS + PATCH_STEP_PATCH];
+    uint32_t n = 0;
+    for (uint32_t k = 0; k < sg->instruments; k++) {
+        names[n++] = sg->labels[k];
+    }
+    for (uint32_t b = 0; b < PATCH_STEP_PATCH; b++) {
+        if (instrument_index(sg, nth(INSTRUMENTS, b)) < 0) {
+            names[n++] = nth(INSTRUMENTS, b);
+        }
+    }
+    for (uint32_t k = 1; k < n; k++) {
+        for (uint32_t j = k; j && strcmp(names[j - 1u], names[j]) > 0; j--) {
+            const char* swap = names[j];
+            names[j] = names[j - 1u];
+            names[j - 1u] = swap;
+        }
+    }
+    return not_named(r, "instrument", name, "Instruments: ", names, n);
+}
+
+static int no_section(reader* r, const patch_song* sg, const char* name) {
+    const char* names[PATCH_SONG_SECTIONS];
+    for (uint32_t k = 0; k < sg->sections; k++) {
+        names[k] = sg->section[k].label;
+    }
+    return not_named(r, "section", name, "Sections: ", names, sg->sections);
+}
+
+static int song_instrument(reader* r, const char* key, void* ctx) {
+    patch_song* sg = ctx;
+    if (sg->instruments == PATCH_SONG_INSTRUMENTS) {
+        return whole_fail(r, "instruments", "has too many. Allowed: up to 16 patches");
+    }
+    if (label_ok(r, key, instrument_index(sg, key))) {
+        return -1;
+    }
+    if (peek(r) != '{') {
+        return fail(r, "must be a patch { }", NULL);
+    }
+    patch_json* p = &sg->patches[sg->instruments];
+    uint32_t start = r->i;
+    if (skip_value(r)) {
+        return -1;
+    }
+    if (read_part(p, r->s, start, r->i, r->path, p->error) < 0) {
+        return part_failed(r, p->error);
+    }
+    memcpy(sg->labels[sg->instruments++], key, length(key) + 1u);
+    return 0;
+}
+
+static int song_instruments(reader* r, void* ctx) {
+    if (peek(r) != '{') {
+        return bank_fail(r, "must be an object", "up to 16 named patches, like \"lead\": {\"wave\": \"pulse\"}");
+    }
+    return members(r, song_instrument, ctx);
+}
+
+static int voice_instrument(reader* r, void* ctx) {
+    voice_read* vr = ctx;
+    char name[32];
+    if (string(r, name, sizeof name) < 0) {
+        return -1;
+    }
+    int k = instrument_index(vr->sg, name), b = names_index(INSTRUMENTS, name);
+    if (k < 0 && b < 0) {
+        return no_instrument(r, vr->sg, name);
+    }
+    vr->sec->instr[vr->voice] = (uint8_t)(k >= 0 ? k : (int)PATCH_SONG_BUILTIN + b);
+    return 0;
+}
+
+static int voice_notes(reader* r, void* ctx) {
+    (void)ctx;
+    return skip_value(r);
+}
+
+static int voice_field(reader* r, const char* key, void* ctx) {
+    voice_read* vr = ctx;
+    int k = names_index(VOICE_FIELDS, key);
+    if (k < 0) {
+        return fail(r, "no such field. Allowed here: instrument, notes", NULL);
+    }
+    if (peek(r) != '"') {
+        return fail(r, "must be text", NULL);
+    }
+    return deferred(r, &vr->at[k]);
+}
+
+static int song_voice(reader* r, voices_read* vs, uint32_t voice) {
+    voice_read vr = {vs->sg, vs->sec, voice, {0}};
+    if (peek(r) != '{') {
+        return fail(r, "must be a voice { } or null", NULL);
+    }
+    if (members(r, voice_field, &vr)) {
+        return -1;
+    }
+    if (!vr.at[VOICE_INSTRUMENT]) {
+        return fail(r, "has no instrument. Allowed: " SONG_INSTRUMENT, NULL);
+    }
+    if (!vr.at[VOICE_NOTES]) {
+        return fail(r, "has no notes. Allowed: one token a row, separated by spaces", NULL);
+    }
+    return visit(r, vr.at[VOICE_INSTRUMENT], "instrument", voice_instrument, &vr) ||
+                   visit(r, vr.at[VOICE_NOTES], "notes", voice_notes, &vr)
+               ? -1
+               : 0;
+}
+
+static int section_voices(reader* r, void* ctx) {
+    voices_read* vs = ctx;
+    if (peek(r) != '[') {
+        return bank_fail(r, "must be a list", "up to 3 voices, the first chip's");
+    }
+    r->i++;
+    for (uint32_t v = 0; peek(r) != ']'; v++) {
+        uint32_t keep = r->path_n;
+        if (v == PATCH_SONG_VOICES) {
+            return bank_fail(r, "has too many", "up to 3 voices, the first chip's");
+        }
+        push(r, NULL, (int)v);
+        if (!(peek(r) == 'n' && word(r, "null")) && song_voice(r, vs, v)) {
+            return -1;
+        }
+        path_back(r, keep);
+        if (peek(r) == ',') {
+            r->i++;
+        } else if (peek(r) != ']') {
+            return syntax(r, "a , or ]");
+        }
+    }
+    r->i++;
+    return 0;
+}
+
+static int section_field(reader* r, const char* key, void* ctx) {
+    section_read* sr = ctx;
+    uint32_t rows;
+    if (!strcmp(key, "rows")) {
+        if (whole_value(r, &SONG_ROWS, &rows)) {
+            return -1;
+        }
+        sr->sec->rows = (uint8_t)rows;
+        return 0;
+    }
+    if (!strcmp(key, "voices")) {
+        return deferred(r, &sr->voices_at);
+    }
+    return fail(r, "no such field. Allowed here: rows, voices", NULL);
+}
+
+static int song_section(reader* r, const char* key, void* ctx) {
+    patch_song* sg = ctx;
+    if (sg->sections == PATCH_SONG_SECTIONS) {
+        return whole_fail(r, "sections", "has too many. Allowed: up to 16 sections");
+    }
+    if (label_ok(r, key, section_index(sg, key))) {
+        return -1;
+    }
+    patch_song_section* sec = &sg->section[sg->sections];
+    section_read sr = {sec, 0};
+    voices_read vs = {sg, sec};
+    memset(sec, 0, sizeof *sec);
+    memset(sec->instr, PATCH_SONG_REST_VOICE, sizeof sec->instr);
+    if (peek(r) != '{') {
+        return fail(r, "must be an object { }", NULL);
+    }
+    if (members(r, section_field, &sr)) {
+        return -1;
+    }
+    if (!sec->rows) {
+        return fail(r, "has no rows. Allowed: \"rows\": 1 to 128", NULL);
+    }
+    if (visit(r, sr.voices_at, "voices", section_voices, &vs)) {
+        return -1;
+    }
+    memcpy(sec->label, key, length(key) + 1u);
+    sg->sections++;
+    return 0;
+}
+
+static int song_sections(reader* r, void* ctx) {
+    if (peek(r) != '{') {
+        return bank_fail(r, "must be an object", "up to 16 named sections, like \"A\": {\"rows\": 16, \"voices\": []}");
+    }
+    return members(r, song_section, ctx);
+}
+
+static int song_order(reader* r, void* ctx) {
+    patch_song* sg = ctx;
+    if (peek(r) != '[') {
+        return bank_fail(r, "must be a list", SONG_ORDER);
+    }
+    r->i++;
+    while (peek(r) != ']') {
+        uint32_t keep = r->path_n;
+        char name[32];
+        if (sg->order_len == PATCH_SONG_ORDER) {
+            return bank_fail(r, "has too many", SONG_ORDER);
+        }
+        push(r, NULL, (int)sg->order_len);
+        if (peek(r) != '"') {
+            return fail(r, "must be a section's name, as text", NULL);
+        }
+        if (string(r, name, sizeof name) < 0) {
+            return -1;
+        }
+        int k = section_index(sg, name);
+        if (k < 0) {
+            return no_section(r, sg, name);
+        }
+        sg->order[sg->order_len++] = (uint8_t)k;
+        path_back(r, keep);
+        if (peek(r) == ',') {
+            r->i++;
+        } else if (peek(r) != ']') {
+            return syntax(r, "a , or ]");
+        }
+    }
+    r->i++;
+    return 0;
+}
+
+static int song_top(reader* r, const char* key, void* ctx) {
+    song_read* sr = ctx;
+    uint32_t bpm;
+    int part = names_index(SONG_PARTS, key);
+    if (part >= 0) {
+        return deferred(r, &sr->at[part]);
+    }
+    if (!strcmp(key, "format")) {
+        return format_is(r, PATCH_SONG_FORMAT, &sr->format);
+    }
+    if (!strcmp(key, "name")) {
+        return top_name(r, sr->sg->name);
+    }
+    if (!strcmp(key, "bpm")) {
+        if (whole_value(r, &SONG_BPM, &bpm)) {
+            return -1;
+        }
+        sr->sg->bpm = (uint16_t)bpm;
+        return 0;
+    }
+    return fail(r, "no such field. Allowed here: " SONG_FIELDS, NULL);
+}
+
+int patch_json_read_song(patch_song* sg, const char* s, uint32_t len) {
+    patch_json scratch;
+    song_read sr = {sg, {0}, 0};
+    reader r;
+    reader_init(&r, &scratch, s, 0, len, sg->error);
+    sg->sections = sg->order_len = sg->instruments = 0;
+    sg->bpm = SONG_BPM_DEFAULT;
+    sg->bpm_played10 = 0;
+    memcpy(sg->name, PATCH_SONG_NAME_DEFAULT, sizeof PATCH_SONG_NAME_DEFAULT);
+    while (r.i < r.n && s[r.i] != '{') {
+        r.i++;
+    }
+    if (r.i == r.n) {
+        return syntax(&r, "a { to start the song");
+    }
+    if (members(&r, song_top, &sr)) {
+        return -1;
+    }
+    if (!sr.format) {
+        return whole_fail(&r, "format", "is missing. Allowed: \"" PATCH_SONG_FORMAT "\"");
+    }
+    if (visit(&r, sr.at[PART_INSTRUMENTS], "instruments", song_instruments, sg) ||
+        visit(&r, sr.at[PART_SECTIONS], "sections", song_sections, sg)) {
+        return -1;
+    }
+    if (!sg->sections) {
+        return whole_fail(&r, "sections", "is empty. Allowed: 1 to 16 named sections");
+    }
+    if (visit(&r, sr.at[PART_ORDER], "order", song_order, sg)) {
+        return -1;
+    }
+    if (!sg->order_len) {
+        return whole_fail(&r, "order", "is empty. Allowed: " SONG_ORDER);
+    }
+    return PATCH_JSON_OK;
+}
+
 int patch_json_kind(const char* s, uint32_t len) {
     char error[PATCH_JSON_ERROR_MAX];
     char format[24];
@@ -1819,13 +2270,6 @@ int patch_json_kind(const char* s, uint32_t len) {
 
 static uint32_t template_read(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
     return song_io_template(ctx, off, p, n);
-}
-
-int patch_json_read_song(patch_song* sg, const char* s, uint32_t len) {
-    (void)s;
-    (void)len;
-    sg->error[0] = 0;
-    return -1;
 }
 
 int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model) {

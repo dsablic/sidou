@@ -220,3 +220,8 @@ pub const THREE_PARTS: &str = r#"{"format": "sidou-song/1", "name": "THREE PARTS
       {"instrument": "lead", "notes": "F4 - - - G#4 - G4 -"}]},
     "C": {"rows": 4, "voices": [null, {"instrument": "kit", "notes": "s s s s"}, null]}},
   "order": ["A", "A", "B", "A", "C"]}"#;
+
+pub fn with(text: &str, from: &str, to: &str) -> String {
+    assert!(text.contains(from), "{from} is not in {text}");
+    text.replacen(from, to, 1)
+}
