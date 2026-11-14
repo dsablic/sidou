@@ -322,16 +322,16 @@ dependencies = [
 
 [[package]]
 name = "fm1-core"
-version = "0.3.0"
-source = "git+https://github.com/joakimeriksson/fm1-emu?rev=93cb7ee3f7008b27959ba73073b864e37efd7289#93cb7ee3f7008b27959ba73073b864e37efd7289"
+version = "0.5.1"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=c7e47c4fcbdaafb4beffa40493da1b2b07ffa263#c7e47c4fcbdaafb4beffa40493da1b2b07ffa263"
 dependencies = [
  "fm1-isa",
 ]
 
 [[package]]
 name = "fm1-isa"
-version = "0.3.0"
-source = "git+https://github.com/joakimeriksson/fm1-emu?rev=93cb7ee3f7008b27959ba73073b864e37efd7289#93cb7ee3f7008b27959ba73073b864e37efd7289"
+version = "0.5.1"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=c7e47c4fcbdaafb4beffa40493da1b2b07ffa263#c7e47c4fcbdaafb4beffa40493da1b2b07ffa263"
 
 [[package]]
 name = "fm1-live-link"
@@ -339,8 +339,8 @@ version = "0.0.0"
 
 [[package]]
 name = "fm1-soc"
-version = "0.3.0"
-source = "git+https://github.com/joakimeriksson/fm1-emu?rev=93cb7ee3f7008b27959ba73073b864e37efd7289#93cb7ee3f7008b27959ba73073b864e37efd7289"
+version = "0.5.1"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=c7e47c4fcbdaafb4beffa40493da1b2b07ffa263#c7e47c4fcbdaafb4beffa40493da1b2b07ffa263"
 dependencies = [
  "fm1-core",
 ]

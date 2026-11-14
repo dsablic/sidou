@@ -222,9 +222,9 @@ fn every_instruction_of_the_image_decodes() {
 fn the_gate_sees_what_it_should() {
     assert_eq!(fm1_core::decode_info(u64::MAX, XIP_BASE), None);
     let mut xip = vec![0u8; 64];
-    xip[..4].copy_from_slice(&[0x70, 0xe8, 0x00, 0x00]);
+    xip[..2].copy_from_slice(&[0xa0, 0x00]);
     let mut soc = Soc::new(256 * 1024, xip);
     let mut cpu = Cpu::new(XIP_BASE);
-    let why = exec_status(&mut soc, &mut cpu, XIP_BASE).expect_err("trigger has no semantics");
-    assert!(why.contains("trigger"), "{why}");
+    let why = exec_status(&mut soc, &mut cpu, XIP_BASE).expect_err("swi has no semantics");
+    assert!(why.contains("swi"), "{why}");
 }
