@@ -13,6 +13,10 @@ repository; nothing needs a network.
 - Up to sixteen sounds as one song: `sidou-bank/1` (same page), schema
   [bank.schema.json](../reference/bank.schema.json).
 - One STEP lane as a song: `sidou-step/1` (same page). Examples: `assets/steps/*.json`.
+- A whole song: `sidou-song/1`, sections of step-grid strings with patches as instruments and a
+  play order, schema [song.schema.json](../reference/song.schema.json), instructions
+  [docs/prompt-to-patch-song.md](../prompt-to-patch-song.md) (the site's `llms-song.txt`, with
+  the tempos that play).
 - What the engine can do, the ranges and how to make SID sounds sound good:
   [docs/prompt-to-patch.md](../prompt-to-patch.md) (the site's `llms.txt`). Read it before writing
   a patch. SIDOU's sixteen sounds as patches: `assets/sounds/patches/*.json`.
@@ -30,6 +34,7 @@ cd host && cargo build --release -p sidou-sysex
 sidou-sysex patch acid.json --out out    # out/ACID.sng and out/ACID.syx, a one-instrument song
 sidou-sysex bank kit.json --out out      # the bank's name: out/<NAME>.sng and .syx
 sidou-sysex step line.json --out out     # a song that opens on STEP
+sidou-sysex song song.json --out out     # a whole song; it says the BPM that plays
 ```
 
 Each runs the converter the FM-1's site runs (`platform/web/patch_json.c`). A refusal exits 1 and

@@ -8,6 +8,22 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+Whole songs as text for models and coding agents: a `sidou-song/1` is a song a Library page previews, edits and sends.
+
+### Added
+- **Whole songs as text (`sidou-song/1`).** A model or a coding agent writes a song as sections of
+  step-grid strings (a token a row: a note, `-` hold, `.` rest, `!` accent, `~` slide, drum letters
+  with the kit), patches as its instruments, a BPM and a play order; the converter lays it out as
+  GoatTracker patterns and orderlists in the FM-1's NEW song, equal patterns stored once. It opens
+  as a `#song=` link or a paste on the Library page, which previews it, sends it, or opens it in
+  the editor; `sidou-sysex song FILE.json` writes the `.sng` and says the BPM that plays. The BPM
+  (60 to 250) plays as the nearest of the FM-1's tempos in half-speed steps, and the page and the
+  tool say "asked 120, plays 115.7". The instructions for models gain `llms-song.txt` (in
+  `llms-full.txt`) and the schema `song.schema.json`.
+
+### Changed
+- **The patch wasm's budget is 88 KiB** (the owner, 2026-11-14), for the song converter: 83,119 bytes.
+
 ## [1.9.0] - 2026-11-08
 
 Bluetooth MIDI in the one package, OFF until you turn it on, and USB audio on the FM-1's own clock.

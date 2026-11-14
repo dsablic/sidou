@@ -6735,6 +6735,23 @@ gain.
   its locks with `song_lock_put`, so the song is what the FM-1 makes; `step_view.rs` drives STEP's
   keys on a NEW song and holds the converter's pattern and locks to theirs. The reader is why
   the patch module's budget went to 80 KiB (the owner, 2026-11-06).
+- **Songs as text** (`sidou-song/1`, 2026-11-14) start from the NEW song's template as STEP patterns
+  do. Each section's voice becomes a pattern written with `gt2_set_row`, accent and slide as
+  STEP's locks, and a pattern identical to one already written (compared as a whole lane, locks
+  included) is stored once, so a repeated or shared part costs no pattern of the 208. A voice
+  left out or `null` rests: a key off on the section's first row and holds after, so what played
+  before is cut at the section's start. An instrument a song names as a built-in (`pulse`, `bass`)
+  takes precedence over the built-in, since a name a model chose on purpose should win; `kit`
+  is always the drum kit, and drum tokens take no `!` or `~` (the locks are for a pitched
+  note's glide and accent, and a kit drum is a fixed sound). Tempo: `bpm` is taken to the nearest speed pair `(a, b)`
+  with `b` at most `a + 1`, speeds 3 to 32, by `song_tempo_bpm10` (PAL, four rows a beat, funktempo's
+  two speeds averaged), so tempos come in half-speed steps (107.4, 115.7, 125.3, 136.7, 150.4 ...
+  250.6). Multispeed would be finer but runs the instruments' tables faster, so it is not used.
+  A pair other than the NEW song's 6 and 6 is a speedtable row (left `a`, right `b`) and the first
+  row of the first section's first voice carries the funktempo command `E` with that row; the
+  reported BPM is the one that plays, which a test measures from the played frames. The limit
+  of 250 is speed 3 twice; the docs list the played values, generated from the converter by
+  `patch_docs.rs`, so a model chooses one. The wasm's 88 KiB budget is noted above.
 - **`sidou-sysex send`** ports the site's SysEx client (`web/sysex.js`: INQ, DIR, stop-and-wait
   PUT, WAIT, BUSY's whole-PUT retries) over a `Port` trait: the tests drive it against a fake FM-1
   in `tests/send.rs`, and the one real port is CoreMIDI on macOS, linked by hand (two frameworks,

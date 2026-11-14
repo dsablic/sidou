@@ -186,6 +186,27 @@ pattern and its locks), so it opens on STEP and plays. Examples: `assets/steps/*
 - Writing a song back as a pattern takes the lane's notes, the instrument (one patch, the pulse,
   the bass, or the kit), staccato when a key off follows a note, the locks and the role.
 
+## Whole songs: `sidou-song/1`
+
+A song as sections of step-grid strings, patches as its instruments and a play order, laid out in
+the FM-1's NEW song as GoatTracker patterns and orderlists. Its schema is
+[song.schema.json](song.schema.json), its instructions for models [prompt-to-patch-song.md](../prompt-to-patch-song.md)
+(the site's `llms-song.txt`), its examples `GROOVE` and `THREE_PARTS` in `sidou-patch`'s tests.
+
+- `format` (required), `name` (1 to 16 characters), `bpm` 60 to 250 (125; plays as the nearest
+  tempo, 107.4, 115.7, 125.3, 136.7, 150.4 and so on up to 250.6, and the Library page and
+  `sidou-sysex song` report the one that plays).
+- `instruments`: up to 16 patches named 1 to 8 characters, `format` optional; `"kit"`, `"pulse"` and
+  `"bass"` are the NEW song's own and need no entry (a song's instrument of that name wins).
+- `sections`: up to 16 named, each `rows` 1 to 128 and `voices`, up to three, each
+  `{"instrument", "notes"}` or `null`; a voice left out or null rests for the section.
+- `notes`: one token a row, separated by any whitespace, as many as `rows`: `C0` to `G#7` with `!`
+  (accent) or `~` (slide) after it, `-` hold, `.` rest (a key off); with the kit `k s h o c t T r dk
+  ds dc dh`, no `!` or `~`.
+- `order`: 1 to 64 section names, looped from the start.
+- A song that does not fit is refused in the FM-1's words (208 patterns, 64 KiB, 512 accents and
+  slides, 255 rows of each table). Its link is `library.html#song=`, made as a patch's.
+
 ## The link
 
 `library.html#patch=` followed by the patch's JSON, percent-encoded (what `encodeURIComponent`

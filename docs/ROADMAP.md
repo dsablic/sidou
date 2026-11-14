@@ -21,8 +21,6 @@ enough, SCENE's RED MOON RITE art is the reserve (about 45 KB), only with the ow
 
 The owner's list of 2026-11-06, each starting with a short design:
 
-- **Whole songs as text:** a text form of a GoatTracker song, a model's or a coding agent's, that
-  opens in the site's editor.
 - **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx
   can reach it.
 - **Read USER sounds over SysEx:** the Library page lists the sixteen USER sounds and opens one as
