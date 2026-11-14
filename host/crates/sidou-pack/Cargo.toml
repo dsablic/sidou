@@ -19,4 +19,4 @@ sha2 = "0.10"
 cc = { version = "1", features = ["parallel"] }
 
 [dev-dependencies]
-fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "40ec155075d2f555795a7c3252b8e3f8cd70288a" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c7e47c4fcbdaafb4beffa40493da1b2b07ffa263" }

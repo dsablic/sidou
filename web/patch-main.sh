@@ -5,4 +5,4 @@ set -eu
 f="$1"
 . "$(dirname "$0")/patch-edit.sh"
 edit 'stored("fm1.mhz") || 100)' 'stored("fm1.mhz") || 240)'
-edit 'startBtn.addEventListener("click", async () => {' 'startBtn.disabled = false; startBtn.addEventListener("click", async () => {'
+edit 'startBtn.addEventListener("click", () => start());' 'startBtn.disabled = false; startBtn.addEventListener("click", () => start());'
