@@ -57,6 +57,13 @@ preflight() {
     git rev-parse -q --verify "$base_ref^{commit}" >/dev/null || die "no base $base_ref"
     command -v cargo-nextest >/dev/null || cargo nextest --version >/dev/null 2>&1 || die "cargo-nextest missing (cargo install --locked cargo-nextest)"
     docker info >/dev/null 2>&1 || die "Docker is not running (the firmware builds and the GCC check run in the build image)"
+    share_stock_package
+}
+
+share_stock_package() {
+    main_stock=$(dirname "$common")/build/stock
+    [ -e "$root/build/stock" ] || [ ! -d "$main_stock" ] || { mkdir -p "$root/build" && ln -s "$main_stock" "$root/build/stock"; }
+    [ -e "$root/build/stock/FM-1.fwsc" ] || echo "merge-check: no build/stock/FM-1.fwsc: the tests of the way back to V15 will skip" >&2
 }
 
 changed_files() { git diff --name-only "$(git merge-base "$base_ref" HEAD)" HEAD; }

@@ -420,9 +420,11 @@ fn the_way_back_to_stock_v15_stays_open() {
     let mut inst = Installer::new(&stock);
     let other = sidou_pack::head(&[0x33; 14536], CHIP_KEY).unwrap();
     let mut dev = Device::new(&other, &mut inst);
-    let before = dev.flash.clone();
-    assert_eq!(dev.session(), -5);
-    assert!(dev.flash == before, "flash written");
+    assert_eq!(
+        (dev.session(), dev.host.committed),
+        (0, 1),
+        "V15 refused over another boot area, though its own is bootable"
+    );
 }
 
 fn built_loader() -> Option<Vec<u8>> {
