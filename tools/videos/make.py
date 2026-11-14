@@ -75,11 +75,16 @@ def capture(rid: str, source: Path, key_parts: list) -> Path:
     return cap
 
 
+def song_source(name: str) -> Path:
+    text_song = ROOT / f"assets/text-songs/{name}.json"
+    return text_song if text_song.exists() else ROOT / f"assets/songs/{name}.sng"
+
+
 def recipe_capture(rid: str) -> Path:
     chain = recipe_chain(rid)
     songs = sorted({s for v in chain for s in v["prerequisites"].get("songs", [])})
     parts = [json.dumps(v, sort_keys=True).encode() for v in chain]
-    parts += [(ROOT / f"assets/songs/{s}.sng").read_bytes() for s in songs]
+    parts += [song_source(s).read_bytes() for s in songs]
     tunes = sorted({s for v in chain for s in v["prerequisites"].get("tunes", [])})
     parts += [(ROOT / f"assets/starter/{s}.sid").read_bytes() for s in tunes]
     return capture(rid, RECIPES, parts)

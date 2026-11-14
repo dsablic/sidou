@@ -12,7 +12,7 @@
   "whats-new": {
     "teaser": false,
     "bed": [],
-    "preview_step": "bluetooth"
+    "preview_step": "play"
   },
   "rec-over-loop": {
     "bpm": 125

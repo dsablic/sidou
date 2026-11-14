@@ -615,13 +615,24 @@ pub fn showcase_song(name: &str) -> Result<Vec<u8>, String> {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     {
         return Err(format!(
-            "song {name}: a file name of assets/songs, without .sng"
+            "song {name}: a file name of assets/songs, without .sng, or of assets/text-songs, without .json"
         ));
     }
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../assets/songs")
-        .join(format!("{name}.sng"));
+    let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
+    let text_song = assets.join("text-songs").join(format!("{name}.json"));
+    if text_song.exists() {
+        return song_from_text(name, &text_song);
+    }
+    let path = assets.join("songs").join(format!("{name}.sng"));
     std::fs::read(&path).map_err(|e| format!("song {name}: {}: {e}", path.display()))
+}
+
+fn song_from_text(name: &str, path: &Path) -> Result<Vec<u8>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("song {name}: {}: {e}", path.display()))?;
+    sidou_sysex::patch::song_file(&text, sidou_sysex::import::Model::Mos6581)
+        .map(|made| made.song.sng)
+        .map_err(|e| format!("song {name}: {}: {e}", path.display()))
 }
 
 pub fn starter_tune(name: &str) -> Result<Vec<u8>, String> {
