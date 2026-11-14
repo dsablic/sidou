@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { CoreError, loadCore } from "./core.js";
-import { fromLink, linkOf, loadPatcher } from "./patch.js";
+import { fromLink, loadPatcher, shareableLink } from "./patch.js";
 import { Preview } from "./preview.js";
 import { Library, extOf, storeName, typeLabel, typeOfFile } from "./store.js";
 import { Client } from "./sysex.js";
@@ -442,9 +442,11 @@ async function copyInstructions() {
 }
 
 async function copyLink() {
-  const link = linkOf(new URL("library.html", location.href).href, $("patch-text").value);
-  if (!link) return;
-  say($("patch-state"), (await copyText(link)) ? `The patch link is copied (${link.length} characters).` : `The patch link: ${link}`, "ok");
+  const made = shareableLink(new URL("library.html", location.href).href, $("patch-text").value);
+  if (!made) return;
+  if (made.error) return say($("patch-state"), made.error, "error");
+  const { link } = made;
+  say($("patch-state"), (await copyText(link)) ? `The link is copied (${link.length} characters).` : `The link: ${link}`, "ok");
 }
 
 function sendPatch() {

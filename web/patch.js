@@ -94,8 +94,19 @@ export function linkOf(page, text) {
   const compact = patchOf(text);
   if (compact === null) return null;
   const format = JSON.parse(compact).format;
-  const key = LINK_KEYS[format] ?? LINK_KEY;
+  const key = Object.hasOwn(LINK_KEYS, format) ? LINK_KEYS[format] : LINK_KEY;
   return `${page}${key}${encodeURIComponent(compact)}`;
+}
+
+export function shareableLink(page, text) {
+  const link = linkOf(page, text);
+  if (link === null) return null;
+  const hash = link.slice(link.indexOf("#"));
+  const length = hash.length - hash.indexOf("=") - 1;
+  if (length > LINK_MAX) {
+    return { error: `This is too long for a link (${length} characters; a link is under ${LINK_MAX / 1024} KB). Copy the JSON itself and paste it where you share it instead.` };
+  }
+  return { link };
 }
 
 export function fromLink(hash) {
@@ -103,7 +114,7 @@ export function fromLink(hash) {
   if (!key) return null;
   const raw = hash.slice(key.length);
   if (raw.length > LINK_MAX) {
-    return { error: `This patch link is too long (${raw.length} characters; a patch link is under ${LINK_MAX / 1024} KB). Paste the patch's JSON in the box instead.` };
+    return { error: `This link is too long (${raw.length} characters; a link is under ${LINK_MAX / 1024} KB). Paste the JSON in the box instead.` };
   }
   try {
     return { text: decodeURIComponent(raw) };

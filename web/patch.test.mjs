@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadCore } from "./core.js";
-import { LINK_KEY, LINK_MAX, SONG_KEY, fromLink, linkOf, loadPatcher, patchOf } from "./patch.js";
+import { LINK_KEY, LINK_MAX, SONG_KEY, fromLink, linkOf, loadPatcher, patchOf, shareableLink } from "./patch.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const root = `${here}../`;
@@ -79,9 +79,24 @@ await test("a model's link of raw or encoded JSON reads; a damaged or oversized 
   const raw = `${LINK_KEY}{"format":"sidou-patch/1","name":"HI"}`;
   assert.equal(patcher.check(fromLink(raw).text).name, "HI");
   assert.match(fromLink(`${LINK_KEY}%7B%22format%22%3A%E0%A4%A`).error, /damaged.*Paste the patch's JSON/);
-  assert.match(fromLink(`${LINK_KEY}${"%20".repeat(LINK_MAX)}`).error, /too long.*Paste the patch's JSON/);
+  assert.match(fromLink(`${LINK_KEY}${"%20".repeat(LINK_MAX)}`).error, /too long.*Paste the JSON/);
   assert.equal(fromLink("#other"), null);
   assert.equal(linkOf(page, "no patch here"), null);
+});
+
+await test("a format that is an inherited name is a patch link, not a crash or a foreign key", () => {
+  for (const format of ["constructor", "toString", "__proto__"]) {
+    assert.ok(linkOf(page, JSON.stringify({ format })).includes(`${LINK_KEY}`), format);
+  }
+});
+
+await test("a song too long for a link is not handed out as one; a short one is", () => {
+  const song = (rows) => JSON.stringify({ format: "sidou-song/1", sections: { A: { rows: 1, voices: [{ instrument: "kit", notes: rows }] } }, order: ["A"] });
+  assert.ok(shareableLink(page, song("k")).link.includes(SONG_KEY));
+  const refused = shareableLink(page, song(". ".repeat(LINK_MAX / 2)));
+  assert.equal(refused.link, undefined);
+  assert.match(refused.error, /too long for a link.*JSON/);
+  assert.equal(shareableLink(page, "no patch here"), null);
 });
 
 await test("the sixteen as a bank are the sixteen's song byte for byte, and fit a link", () => {
