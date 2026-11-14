@@ -159,3 +159,39 @@ fn the_cli_makes_a_step_song_and_send_refuses_what_is_not_a_store_file() {
     assert!(String::from_utf8_lossy(&send.stderr).contains("never a firmware package or update"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_cli_makes_a_song_from_text_and_says_the_bpm_it_plays() {
+    let text = r#"{"format": "sidou-song/1", "name": "night", "bpm": 120,
+      "sections": {"A": {"rows": 4, "voices": [{"instrument": "bass", "notes": "C2! - . G1"}]}},
+      "order": ["A", "A"]}"#;
+    let dir = std::env::temp_dir().join(format!("sidou-song-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("night.json"), text).unwrap();
+    std::fs::write(dir.join("bad.json"), text.replace("G1", "H1")).unwrap();
+    let run = |file: &str| {
+        Command::new(env!("CARGO_BIN_EXE_sidou-sysex"))
+            .args(["song", file, "--out", "out"])
+            .current_dir(&dir)
+            .output()
+            .unwrap()
+    };
+    let ok = run("night.json");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    assert!(String::from_utf8_lossy(&ok.stdout).contains("asked 120, plays 115.7"));
+    assert_eq!(
+        std::fs::read(dir.join("out/NIGHT.sng")).unwrap(),
+        json::song_song(text, SID_MODEL_6581).unwrap()
+    );
+    assert!(dir.join("out/NIGHT.syx").is_file());
+    let bad = run("bad.json");
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stderr)
+        .contains("sections.A.voices[0].notes: token 4 \"H1\" is not a note."));
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
-use sidou_sysex::patch::{bank_file, patch_file, step_file, PatchFile};
+use sidou_sysex::patch::{bank_file, patch_file, song_file, step_file, PatchFile};
 use sidou_sysex::send::{file_type_of, sent_name, Client, Port, Sent, Timing, DEFAULT_PORT};
 use sidou_sysex::sid;
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex song FILE.json [--out DIR] [--8580]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -170,6 +170,9 @@ fn patch_main(rest: Vec<String>, read: fn(&str, Model) -> Result<PatchFile, Stri
     };
     if let Some(warning) = &file.quiet {
         eprintln!("{}: warning: {warning}", i.bank.display());
+    }
+    if let Some(tempo) = &file.tempo {
+        println!("{}: {tempo} BPM", i.bank.display());
     }
     if let Err(code) = make_out(&i.out).and_then(|()| write_song(&i.out, &file.song)) {
         return code;
@@ -333,6 +336,7 @@ fn main() -> ExitCode {
         Some("patch") => patch_main(rest, patch_file),
         Some("bank") => patch_main(rest, bank_file),
         Some("step") => patch_main(rest, step_file),
+        Some("song") => patch_main(rest, song_file),
         Some("send") => send_main(rest),
         Some("sid") => sid_main(rest),
         _ => {

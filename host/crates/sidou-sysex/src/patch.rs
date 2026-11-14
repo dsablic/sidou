@@ -9,6 +9,7 @@ use crate::{put_frames, FILE_SONG};
 pub struct PatchFile {
     pub song: SongFile,
     pub quiet: Option<String>,
+    pub tempo: Option<String>,
 }
 
 pub fn patch_file(text: &str, model: Model) -> Result<PatchFile, String> {
@@ -24,6 +25,7 @@ pub fn patch_file(text: &str, model: Model) -> Result<PatchFile, String> {
             syx,
         },
         quiet: c.quiet,
+        tempo: None,
     })
 }
 
@@ -39,11 +41,15 @@ pub fn bank_file(text: &str, model: Model) -> Result<PatchFile, String> {
             syx,
         },
         quiet: b.quiet,
+        tempo: None,
     })
 }
 
-pub fn step_file(text: &str, model: Model) -> Result<PatchFile, String> {
-    let (sng, quiet) = json::check_step(text, model.sid())?;
+fn named_song(
+    sng: Vec<u8>,
+    quiet: Option<String>,
+    tempo: Option<String>,
+) -> Result<PatchFile, String> {
     let name = String::from_utf8_lossy(&sng[4..36])
         .trim_end_matches('\0')
         .to_string();
@@ -53,5 +59,22 @@ pub fn step_file(text: &str, model: Model) -> Result<PatchFile, String> {
     Ok(PatchFile {
         song: SongFile { name, sng, syx },
         quiet,
+        tempo,
     })
+}
+
+pub fn step_file(text: &str, model: Model) -> Result<PatchFile, String> {
+    let (sng, quiet) = json::check_step(text, model.sid())?;
+    named_song(sng, quiet, None)
+}
+
+pub fn song_file(text: &str, model: Model) -> Result<PatchFile, String> {
+    let made = json::check_song(text, model.sid())?;
+    let tempo = format!(
+        "asked {}, plays {}.{}",
+        made.bpm,
+        made.bpm_played10 / 10,
+        made.bpm_played10 % 10
+    );
+    named_song(made.sng, None, Some(tempo))
 }
