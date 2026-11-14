@@ -14,7 +14,7 @@
     "patches": {
       "description": "each a sidou-patch/1 patch, its format optional",
       "items": {
-        "$ref": "https://dsablic.github.io/sidou/patch.schema.json"
+        "$ref": "https://dsablic.github.io/sidou/patch.schema.json#/$defs/sound"
       },
       "maxItems": 16,
       "minItems": 1,

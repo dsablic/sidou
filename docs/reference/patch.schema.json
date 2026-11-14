@@ -1,109 +1,68 @@
 {
-  "$id": "https://dsablic.github.io/sidou/patch.schema.json",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "aftertouch": {
-      "description": "off, vibrato, pulse_width or cutoff (what pressure moves)",
-      "enum": [
-        "off",
-        "vibrato",
-        "pulse_width",
-        "cutoff"
-      ]
-    },
-    "arp": {
+  "$defs": {
+    "sound": {
       "additionalProperties": false,
-      "description": "an object { }",
       "properties": {
-        "octaves": {
-          "description": "1 to 2",
-          "maximum": 2,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "on": {
-          "description": "true or false",
-          "type": "boolean"
-        },
-        "order": {
-          "description": "up, down, up_down or played",
+        "aftertouch": {
+          "description": "off, vibrato, pulse_width or cutoff (what pressure moves)",
           "enum": [
-            "up",
-            "down",
-            "up_down",
-            "played"
+            "off",
+            "vibrato",
+            "pulse_width",
+            "cutoff"
           ]
         },
-        "rate": {
-          "description": "1fr, 2fr, 3fr, 4fr, 6fr, 8fr, 1/32, 1/16 or 1/8 (50 Hz frames a note, or a MIDI clock division)",
-          "enum": [
-            "1fr",
-            "2fr",
-            "3fr",
-            "4fr",
-            "6fr",
-            "8fr",
-            "1/32",
-            "1/16",
-            "1/8"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "bend_range": {
-      "description": "0 to 24 (semitones)",
-      "maximum": 24,
-      "minimum": 0,
-      "type": "integer"
-    },
-    "detune": {
-      "description": "-99 to 99 (cents)",
-      "maximum": 99,
-      "minimum": -99,
-      "type": "integer"
-    },
-    "envelope": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "attack": {
-          "description": "0 to 15",
-          "maximum": 15,
+        "arp": {
+          "additionalProperties": false,
+          "description": "an object { }",
+          "properties": {
+            "octaves": {
+              "description": "1 to 2",
+              "maximum": 2,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "on": {
+              "description": "true or false",
+              "type": "boolean"
+            },
+            "order": {
+              "description": "up, down, up_down or played",
+              "enum": [
+                "up",
+                "down",
+                "up_down",
+                "played"
+              ]
+            },
+            "rate": {
+              "description": "1fr, 2fr, 3fr, 4fr, 6fr, 8fr, 1/32, 1/16 or 1/8 (50 Hz frames a note, or a MIDI clock division)",
+              "enum": [
+                "1fr",
+                "2fr",
+                "3fr",
+                "4fr",
+                "6fr",
+                "8fr",
+                "1/32",
+                "1/16",
+                "1/8"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "bend_range": {
+          "description": "0 to 24 (semitones)",
+          "maximum": 24,
           "minimum": 0,
           "type": "integer"
         },
-        "decay": {
-          "description": "0 to 15",
-          "maximum": 15,
-          "minimum": 0,
+        "detune": {
+          "description": "-99 to 99 (cents)",
+          "maximum": 99,
+          "minimum": -99,
           "type": "integer"
-        },
-        "release": {
-          "description": "0 to 15",
-          "maximum": 15,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "sustain": {
-          "description": "0 to 15",
-          "maximum": 15,
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "filter": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "cutoff_hz": {
-          "description": "0 to 14298 (Hz, as an 8580 plays it)",
-          "maximum": 14298,
-          "minimum": 0,
-          "type": "number"
         },
         "envelope": {
           "additionalProperties": false,
@@ -121,12 +80,6 @@
               "minimum": 0,
               "type": "integer"
             },
-            "depth": {
-              "description": "-63 to 63 (cutoff steps of 32 at the peak, below 0 closes)",
-              "maximum": 63,
-              "minimum": -63,
-              "type": "integer"
-            },
             "release": {
               "description": "0 to 15",
               "maximum": 15,
@@ -142,420 +95,279 @@
           },
           "type": "object"
         },
-        "lfo_depth": {
-          "description": "0 to 32 (a cutoff wobble at the PWM rate, 0 off)",
-          "maximum": 32,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "mode": {
-          "description": "low, band and high, one or several joined with + (like \"low+band\"), or off",
-          "pattern": "^(off|(low|band|high)( ?\\+ ?(low|band|high))*)$",
-          "type": "string"
-        },
-        "resonance": {
-          "description": "0 to 15",
-          "maximum": 15,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "resonance_link": {
-          "description": "-8 to 8 (the resonance follows the cutoff knob)",
-          "maximum": 8,
-          "minimum": -8,
-          "type": "integer"
-        },
-        "voices": {
-          "description": "a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter: all three or none on a one-oscillator sound)",
-          "items": {
-            "maximum": 3,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "type": "array",
-          "uniqueItems": true
-        }
-      },
-      "type": "object"
-    },
-    "fine_tune": {
-      "description": "-50 to 50 (cents, the whole sound)",
-      "maximum": 50,
-      "minimum": -50,
-      "type": "integer"
-    },
-    "format": {
-      "const": "sidou-patch/1",
-      "description": "\"sidou-patch/1\""
-    },
-    "fx": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "distortion": {
+        "filter": {
           "additionalProperties": false,
           "description": "an object { }",
           "properties": {
-            "a": {
-              "description": "0 to 127",
-              "maximum": 127,
+            "cutoff_hz": {
+              "description": "0 to 14298 (Hz, as an 8580 plays it)",
+              "maximum": 14298,
+              "minimum": 0,
+              "type": "number"
+            },
+            "envelope": {
+              "additionalProperties": false,
+              "description": "an object { }",
+              "properties": {
+                "attack": {
+                  "description": "0 to 15",
+                  "maximum": 15,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "decay": {
+                  "description": "0 to 15",
+                  "maximum": 15,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "depth": {
+                  "description": "-63 to 63 (cutoff steps of 32 at the peak, below 0 closes)",
+                  "maximum": 63,
+                  "minimum": -63,
+                  "type": "integer"
+                },
+                "release": {
+                  "description": "0 to 15",
+                  "maximum": 15,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sustain": {
+                  "description": "0 to 15",
+                  "maximum": 15,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "lfo_depth": {
+              "description": "0 to 32 (a cutoff wobble at the PWM rate, 0 off)",
+              "maximum": 32,
               "minimum": 0,
               "type": "integer"
             },
-            "amount": {
-              "description": "0 to 127",
-              "maximum": 127,
+            "mode": {
+              "description": "low, band and high, one or several joined with + (like \"low+band\"), or off",
+              "pattern": "^(off|(low|band|high)( ?\\+ ?(low|band|high))*)$",
+              "type": "string"
+            },
+            "resonance": {
+              "description": "0 to 15",
+              "maximum": 15,
               "minimum": 0,
               "type": "integer"
             },
-            "b": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
+            "resonance_link": {
+              "description": "-8 to 8 (the resonance follows the cutoff knob)",
+              "maximum": 8,
+              "minimum": -8,
               "type": "integer"
             },
-            "mix": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "type": {
-              "description": "off, tape, overdrive, fuzz, crush or lofi",
-              "enum": [
-                "off",
-                "tape",
-                "overdrive",
-                "fuzz",
-                "crush",
-                "lofi"
-              ]
+            "voices": {
+              "description": "a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter: all three or none on a one-oscillator sound)",
+              "items": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "type": "array",
+              "uniqueItems": true
             }
           },
           "type": "object"
         },
-        "effect": {
-          "additionalProperties": false,
-          "description": "an object { }",
-          "properties": {
-            "a": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "amount": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "b": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "mix": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "type": {
-              "description": "off, delay, pingpong, reverb or lush",
-              "enum": [
-                "off",
-                "delay",
-                "pingpong",
-                "reverb",
-                "lush"
-              ]
-            }
-          },
-          "type": "object"
-        },
-        "modulation": {
-          "additionalProperties": false,
-          "description": "an object { }",
-          "properties": {
-            "a": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "amount": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "b": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "mix": {
-              "description": "0 to 127",
-              "maximum": 127,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "type": {
-              "description": "off, chorus, flanger, phaser, tremolo, autopan or wow",
-              "enum": [
-                "off",
-                "chorus",
-                "flanger",
-                "phaser",
-                "tremolo",
-                "autopan",
-                "wow"
-              ]
-            }
-          },
-          "type": "object"
-        }
-      },
-      "type": "object"
-    },
-    "layers": {
-      "description": "a list of up to 2",
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "detune": {
-            "description": "-99 to 99",
-            "maximum": 99,
-            "minimum": -99,
-            "type": "integer"
-          },
-          "envelope": {
-            "additionalProperties": false,
-            "description": "an object { }",
-            "properties": {
-              "attack": {
-                "description": "0 to 15",
-                "maximum": 15,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "decay": {
-                "description": "0 to 15",
-                "maximum": 15,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "release": {
-                "description": "0 to 15",
-                "maximum": 15,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "sustain": {
-                "description": "0 to 15",
-                "maximum": 15,
-                "minimum": 0,
-                "type": "integer"
-              }
-            },
-            "type": "object"
-          },
-          "pulse_width": {
-            "description": "0 to 100",
-            "maximum": 100,
-            "minimum": 0,
-            "type": "number"
-          },
-          "ring": {
-            "description": "true or false",
-            "type": "boolean"
-          },
-          "sync": {
-            "description": "true or false",
-            "type": "boolean"
-          },
-          "transpose": {
-            "description": "-24 to 24",
-            "maximum": 24,
-            "minimum": -24,
-            "type": "integer"
-          },
-          "wave": {
-            "description": "triangle, saw, pulse and noise, one or several joined with + (like \"triangle+saw\"), or none",
-            "pattern": "^(none|(triangle|saw|pulse|noise)( ?\\+ ?(triangle|saw|pulse|noise))*)$",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "maxItems": 2,
-      "type": "array"
-    },
-    "lfos": {
-      "description": "a list of up to 2",
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "depth": {
-            "description": "-63 to 63 (below 0 inverts; 63 on pitch is an octave)",
-            "maximum": 63,
-            "minimum": -63,
-            "type": "integer"
-          },
-          "rate_hz": {
-            "description": "0.05 to 12.75 (snapped to the nearest of 32 rates)",
-            "maximum": 12.75,
-            "minimum": 0.05,
-            "type": "number"
-          },
-          "shape": {
-            "description": "off, triangle, saw_up, saw_down, square or sample_hold",
-            "enum": [
-              "off",
-              "triangle",
-              "saw_up",
-              "saw_down",
-              "square",
-              "sample_hold"
-            ]
-          },
-          "to": {
-            "description": "pitch, pulse_width, cutoff or volume",
-            "enum": [
-              "pitch",
-              "pulse_width",
-              "cutoff",
-              "volume"
-            ]
-          }
-        },
-        "type": "object"
-      },
-      "maxItems": 2,
-      "type": "array"
-    },
-    "mod_wheel": {
-      "description": "pulse_width, vibrato or cutoff (what the wheel moves)",
-      "enum": [
-        "pulse_width",
-        "vibrato",
-        "cutoff"
-      ]
-    },
-    "name": {
-      "description": "up to 12 characters: A to Z, 0 to 9, space and !\"#$%&'()*+,-./:;<=>?@[\\]^_",
-      "pattern": "^[ -_a-z]{0,12}$",
-      "type": "string"
-    },
-    "pulse_width": {
-      "description": "0 to 100 (percent of the cycle, 50 is square)",
-      "maximum": 100,
-      "minimum": 0,
-      "type": "number"
-    },
-    "pwm": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "depth": {
-          "description": "0 to 50 (percent of the cycle swept)",
+        "fine_tune": {
+          "description": "-50 to 50 (cents, the whole sound)",
           "maximum": 50,
-          "minimum": 0,
-          "type": "number"
-        },
-        "link": {
-          "description": "-8 to 8 (the PWM depth follows the pulse width knob)",
-          "maximum": 8,
-          "minimum": -8,
+          "minimum": -50,
           "type": "integer"
         },
-        "rate_hz": {
-          "description": "0 to 12.75",
-          "maximum": 12.75,
-          "minimum": 0,
-          "type": "number"
-        }
-      },
-      "type": "object"
-    },
-    "ring": {
-      "description": "true or false",
-      "type": "boolean"
-    },
-    "sync": {
-      "description": "true or false",
-      "type": "boolean"
-    },
-    "sync_lead": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "on": {
-          "description": "true or false (oscillator 1 hard-synced to a silent one; one note at a time)",
-          "type": "boolean"
+        "format": {
+          "const": "sidou-patch/1",
+          "description": "\"sidou-patch/1\""
         },
-        "ratio": {
-          "description": "0 to 15.996 (the synced pitch over the note's, 2.75 is SYNC LEAD's)",
-          "maximum": 15.996,
-          "minimum": 0,
-          "type": "number"
+        "fx": {
+          "additionalProperties": false,
+          "description": "an object { }",
+          "properties": {
+            "distortion": {
+              "additionalProperties": false,
+              "description": "an object { }",
+              "properties": {
+                "a": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "amount": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "b": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mix": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "description": "off, tape, overdrive, fuzz, crush or lofi",
+                  "enum": [
+                    "off",
+                    "tape",
+                    "overdrive",
+                    "fuzz",
+                    "crush",
+                    "lofi"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "effect": {
+              "additionalProperties": false,
+              "description": "an object { }",
+              "properties": {
+                "a": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "amount": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "b": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mix": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "description": "off, delay, pingpong, reverb or lush",
+                  "enum": [
+                    "off",
+                    "delay",
+                    "pingpong",
+                    "reverb",
+                    "lush"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "modulation": {
+              "additionalProperties": false,
+              "description": "an object { }",
+              "properties": {
+                "a": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "amount": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "b": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mix": {
+                  "description": "0 to 127",
+                  "maximum": 127,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": {
+                  "description": "off, chorus, flanger, phaser, tremolo, autopan or wow",
+                  "enum": [
+                    "off",
+                    "chorus",
+                    "flanger",
+                    "phaser",
+                    "tremolo",
+                    "autopan",
+                    "wow"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
         },
-        "semitones": {
-          "description": "-12 to 12 (added to the ratio)",
-          "maximum": 12,
-          "minimum": -12,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "table": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "frames": {
-          "description": "1 to 16 (50 Hz frames a step)",
-          "maximum": 16,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "layer": {
-          "description": "1 to 3 (the layer it plays on; a one-oscillator sound plays it on every note)",
-          "maximum": 3,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "loop": {
-          "description": "0 to 16 (0 plays once and holds the last step, n goes back to step n)",
-          "maximum": 16,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "on": {
-          "description": "true or false",
-          "type": "boolean"
-        },
-        "steps": {
-          "description": "a list of up to 16",
+        "layers": {
+          "description": "a list of up to 2",
           "items": {
             "additionalProperties": false,
             "properties": {
-              "note": {
-                "description": "-32 to 95 semitones from the key played, a fixed note \"C#0\" to \"B7\", or \"hold\"",
-                "oneOf": [
-                  {
-                    "maximum": 95,
-                    "minimum": -32,
+              "detune": {
+                "description": "-99 to 99",
+                "maximum": 99,
+                "minimum": -99,
+                "type": "integer"
+              },
+              "envelope": {
+                "additionalProperties": false,
+                "description": "an object { }",
+                "properties": {
+                  "attack": {
+                    "description": "0 to 15",
+                    "maximum": 15,
+                    "minimum": 0,
                     "type": "integer"
                   },
-                  {
-                    "pattern": "^(hold|[A-G]#?[0-7]|[A-G]-[0-7])$",
-                    "type": "string"
+                  "decay": {
+                    "description": "0 to 15",
+                    "maximum": 15,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "release": {
+                    "description": "0 to 15",
+                    "maximum": 15,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "sustain": {
+                    "description": "0 to 15",
+                    "maximum": 15,
+                    "minimum": 0,
+                    "type": "integer"
                   }
-                ]
+                },
+                "type": "object"
+              },
+              "pulse_width": {
+                "description": "0 to 100",
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
               },
               "ring": {
                 "description": "true or false",
@@ -565,9 +377,11 @@
                 "description": "true or false",
                 "type": "boolean"
               },
-              "test": {
-                "description": "true or false (the SID's test bit: silences and resets the oscillator)",
-                "type": "boolean"
+              "transpose": {
+                "description": "-24 to 24",
+                "maximum": 24,
+                "minimum": -24,
+                "type": "integer"
               },
               "wave": {
                 "description": "triangle, saw, pulse and noise, one or several joined with + (like \"triangle+saw\"), or none",
@@ -577,61 +391,252 @@
             },
             "type": "object"
           },
-          "maxItems": 16,
+          "maxItems": 2,
           "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "transpose": {
-      "description": "-24 to 24 (semitones)",
-      "maximum": 24,
-      "minimum": -24,
-      "type": "integer"
-    },
-    "velocity": {
-      "description": "off, sustain, cutoff or pulse_width (what the key velocity moves)",
-      "enum": [
-        "off",
-        "sustain",
-        "cutoff",
-        "pulse_width"
-      ]
-    },
-    "vibrato": {
-      "additionalProperties": false,
-      "description": "an object { }",
-      "properties": {
-        "delay": {
-          "description": "0 to 127 (hundredths of a second after the note starts)",
-          "maximum": 127,
-          "minimum": 0,
-          "type": "integer"
         },
-        "depth": {
-          "description": "0 to 127 (127 is about a semitone each way)",
-          "maximum": 127,
-          "minimum": 0,
-          "type": "integer"
+        "lfos": {
+          "description": "a list of up to 2",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "depth": {
+                "description": "-63 to 63 (below 0 inverts; 63 on pitch is an octave)",
+                "maximum": 63,
+                "minimum": -63,
+                "type": "integer"
+              },
+              "rate_hz": {
+                "description": "0.05 to 12.75 (snapped to the nearest of 32 rates)",
+                "maximum": 12.75,
+                "minimum": 0.05,
+                "type": "number"
+              },
+              "shape": {
+                "description": "off, triangle, saw_up, saw_down, square or sample_hold",
+                "enum": [
+                  "off",
+                  "triangle",
+                  "saw_up",
+                  "saw_down",
+                  "square",
+                  "sample_hold"
+                ]
+              },
+              "to": {
+                "description": "pitch, pulse_width, cutoff or volume",
+                "enum": [
+                  "pitch",
+                  "pulse_width",
+                  "cutoff",
+                  "volume"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "maxItems": 2,
+          "type": "array"
         },
-        "rate_hz": {
-          "description": "0 to 12.7",
-          "maximum": 12.7,
+        "mod_wheel": {
+          "description": "pulse_width, vibrato or cutoff (what the wheel moves)",
+          "enum": [
+            "pulse_width",
+            "vibrato",
+            "cutoff"
+          ]
+        },
+        "name": {
+          "description": "up to 12 characters: A to Z, 0 to 9, space and !\"#$%&'()*+,-./:;<=>?@[\\]^_",
+          "pattern": "^[ -_a-z]{0,12}$",
+          "type": "string"
+        },
+        "pulse_width": {
+          "description": "0 to 100 (percent of the cycle, 50 is square)",
+          "maximum": 100,
           "minimum": 0,
           "type": "number"
+        },
+        "pwm": {
+          "additionalProperties": false,
+          "description": "an object { }",
+          "properties": {
+            "depth": {
+              "description": "0 to 50 (percent of the cycle swept)",
+              "maximum": 50,
+              "minimum": 0,
+              "type": "number"
+            },
+            "link": {
+              "description": "-8 to 8 (the PWM depth follows the pulse width knob)",
+              "maximum": 8,
+              "minimum": -8,
+              "type": "integer"
+            },
+            "rate_hz": {
+              "description": "0 to 12.75",
+              "maximum": 12.75,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "ring": {
+          "description": "true or false",
+          "type": "boolean"
+        },
+        "sync": {
+          "description": "true or false",
+          "type": "boolean"
+        },
+        "sync_lead": {
+          "additionalProperties": false,
+          "description": "an object { }",
+          "properties": {
+            "on": {
+              "description": "true or false (oscillator 1 hard-synced to a silent one; one note at a time)",
+              "type": "boolean"
+            },
+            "ratio": {
+              "description": "0 to 15.996 (the synced pitch over the note's, 2.75 is SYNC LEAD's)",
+              "maximum": 15.996,
+              "minimum": 0,
+              "type": "number"
+            },
+            "semitones": {
+              "description": "-12 to 12 (added to the ratio)",
+              "maximum": 12,
+              "minimum": -12,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "table": {
+          "additionalProperties": false,
+          "description": "an object { }",
+          "properties": {
+            "frames": {
+              "description": "1 to 16 (50 Hz frames a step)",
+              "maximum": 16,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "layer": {
+              "description": "1 to 3 (the layer it plays on; a one-oscillator sound plays it on every note)",
+              "maximum": 3,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "loop": {
+              "description": "0 to 16 (0 plays once and holds the last step, n goes back to step n)",
+              "maximum": 16,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "on": {
+              "description": "true or false",
+              "type": "boolean"
+            },
+            "steps": {
+              "description": "a list of up to 16",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "note": {
+                    "description": "-32 to 95 semitones from the key played, a fixed note \"C#0\" to \"B7\", or \"hold\"",
+                    "oneOf": [
+                      {
+                        "maximum": 95,
+                        "minimum": -32,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^(hold|[A-G]#?[0-7]|[A-G]-[0-7])$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "ring": {
+                    "description": "true or false",
+                    "type": "boolean"
+                  },
+                  "sync": {
+                    "description": "true or false",
+                    "type": "boolean"
+                  },
+                  "test": {
+                    "description": "true or false (the SID's test bit: silences and resets the oscillator)",
+                    "type": "boolean"
+                  },
+                  "wave": {
+                    "description": "triangle, saw, pulse and noise, one or several joined with + (like \"triangle+saw\"), or none",
+                    "pattern": "^(none|(triangle|saw|pulse|noise)( ?\\+ ?(triangle|saw|pulse|noise))*)$",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "maxItems": 16,
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "transpose": {
+          "description": "-24 to 24 (semitones)",
+          "maximum": 24,
+          "minimum": -24,
+          "type": "integer"
+        },
+        "velocity": {
+          "description": "off, sustain, cutoff or pulse_width (what the key velocity moves)",
+          "enum": [
+            "off",
+            "sustain",
+            "cutoff",
+            "pulse_width"
+          ]
+        },
+        "vibrato": {
+          "additionalProperties": false,
+          "description": "an object { }",
+          "properties": {
+            "delay": {
+              "description": "0 to 127 (hundredths of a second after the note starts)",
+              "maximum": 127,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "depth": {
+              "description": "0 to 127 (127 is about a semitone each way)",
+              "maximum": 127,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rate_hz": {
+              "description": "0 to 12.7",
+              "maximum": 12.7,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "wave": {
+          "description": "triangle, saw, pulse and noise, one or several joined with + (like \"triangle+saw\"), or none",
+          "pattern": "^(none|(triangle|saw|pulse|noise)( ?\\+ ?(triangle|saw|pulse|noise))*)$",
+          "type": "string"
         }
       },
       "type": "object"
-    },
-    "wave": {
-      "description": "triangle, saw, pulse and noise, one or several joined with + (like \"triangle+saw\"), or none",
-      "pattern": "^(none|(triangle|saw|pulse|noise)( ?\\+ ?(triangle|saw|pulse|noise))*)$",
-      "type": "string"
     }
   },
+  "$id": "https://dsablic.github.io/sidou/patch.schema.json",
+  "$ref": "#/$defs/sound",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "required": [
     "format"
   ],
-  "title": "A SIDOU LAB sound (sidou-patch/1)",
-  "type": "object"
+  "title": "A SIDOU LAB sound (sidou-patch/1)"
 }

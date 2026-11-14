@@ -13,6 +13,7 @@ use sidou_sys::SID_MODEL_6581;
 
 const UPDATE: &str = "SIDOU_PATCH_DOC_UPDATE";
 const SITE: &str = "https://dsablic.github.io/sidou/";
+const SOUND_REF: &str = "https://dsablic.github.io/sidou/patch.schema.json#/$defs/sound";
 const ACID: (&str, &str) = (
     "a squelchy acid bass",
     r#"{"format": "sidou-patch/1", "name": "SQUELCH 2", "wave": "saw", "envelope": {"attack": 0, "decay": 6, "sustain": 0, "release": 3}, "filter": {"mode": "low", "cutoff_hz": 500, "resonance": 14, "voices": [1, 2, 3], "envelope": {"depth": 50, "attack": 0, "decay": 5, "sustain": 0, "release": 3}}, "fx": {"distortion": {"type": "overdrive", "mix": 70}}}"#,
@@ -553,20 +554,15 @@ fn object_schema(fields: &[Field], parent: &str) -> Value {
 }
 
 fn schema() -> String {
-    let mut s = object_schema(&json::fields(), "");
-    let o = s.as_object_mut().unwrap();
-    o.insert("required".into(), json!(["format"]));
-    let mut head = Map::new();
-    head.insert(
-        "$schema".into(),
-        json!("https://json-schema.org/draft/2020-12/schema"),
-    );
-    head.insert("$id".into(), json!(format!("{SITE}patch.schema.json")));
-    head.insert("title".into(), json!("A SIDOU LAB sound (sidou-patch/1)"));
-    for (k, v) in o.iter() {
-        head.insert(k.clone(), v.clone());
-    }
-    serde_json::to_string_pretty(&Value::Object(head)).unwrap() + "\n"
+    let v = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": format!("{SITE}patch.schema.json"),
+        "title": "A SIDOU LAB sound (sidou-patch/1)",
+        "$ref": "#/$defs/sound",
+        "required": ["format"],
+        "$defs": {"sound": object_schema(&json::fields(), "")}
+    });
+    serde_json::to_string_pretty(&v).unwrap() + "\n"
 }
 
 fn bank_schema() -> String {
@@ -581,7 +577,7 @@ fn bank_schema() -> String {
             "format": {"const": "sidou-bank/1"},
             "name": {"type": "string", "pattern": "^[!-_a-z][ -_a-z]{0,15}$", "description": "the song's name on the FM-1"},
             "patches": {"type": "array", "minItems": 1, "maxItems": 16,
-                "items": {"$ref": format!("{SITE}patch.schema.json")},
+                "items": {"$ref": SOUND_REF},
                 "description": "each a sidou-patch/1 patch, its format optional"}
         }
     });
@@ -612,7 +608,7 @@ fn song_schema() -> String {
                 "description": "plays as the nearest of the tempos in llms-song.txt"},
             "instruments": {"type": "object", "maxProperties": 16,
                 "propertyNames": {"minLength": 1, "maxLength": 8},
-                "additionalProperties": {"$ref": format!("{SITE}patch.schema.json"),
+                "additionalProperties": {"$ref": SOUND_REF,
                     "description": "a sidou-patch/1 sound, its format optional"}},
             "sections": {"type": "object", "minProperties": 1, "maxProperties": 16,
                 "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["rows", "voices"],
@@ -836,6 +832,105 @@ fn every_example_in_the_song_instructions_converts_and_its_link_is_the_song() {
         assert!(played_tempos().contains(&made.bpm_played10), "{block}");
         assert!(text.contains(&link_to("song", block)), "{block}");
     }
+}
+
+fn valid(schema: &Value, value: &Value, files: &Value, file: &str) -> bool {
+    let at = |k: &str| schema.get(k);
+    if let Some(target) = at("$ref").and_then(Value::as_str) {
+        let (name, pointer) = target.split_once('#').unwrap_or((target, ""));
+        let name = if name.is_empty() { file } else { name.strip_prefix(SITE).unwrap() };
+        let root = &files[name];
+        let target = if pointer.is_empty() { root } else { root.pointer(pointer).unwrap() };
+        if !valid(target, value, files, name) {
+            return false;
+        }
+    }
+    let size = |v: &Value| v.as_array().map(Vec::len).or(v.as_object().map(Map::len)).or(v.as_str().map(|s| s.chars().count()));
+    let number = value.as_f64();
+    let type_ok = at("type").and_then(Value::as_str).is_none_or(|t| match t {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "null" => value.is_null(),
+        "integer" => value.is_i64() || value.is_u64() || number.is_some_and(|n| n.fract() == 0.0),
+        _ => value.is_number(),
+    });
+    let bound = |key: &str, ok: fn(usize, u64) -> bool, of: Option<usize>| {
+        at(key).and_then(Value::as_u64).is_none_or(|b| of.is_none_or(|n| ok(n, b)))
+    };
+    let length_ok = bound("minItems", |n, b| n as u64 >= b, value.as_array().map(Vec::len))
+        && bound("maxItems", |n, b| n as u64 <= b, value.as_array().map(Vec::len))
+        && bound("minProperties", |n, b| n as u64 >= b, value.as_object().map(Map::len))
+        && bound("maxProperties", |n, b| n as u64 <= b, value.as_object().map(Map::len))
+        && bound("minLength", |n, b| n as u64 >= b, value.as_str().map(|_| size(value).unwrap()))
+        && bound("maxLength", |n, b| n as u64 <= b, value.as_str().map(|_| size(value).unwrap()));
+    let range_ok = number.is_none_or(|n| {
+        at("minimum").and_then(Value::as_f64).is_none_or(|m| n >= m)
+            && at("maximum").and_then(Value::as_f64).is_none_or(|m| n <= m)
+    });
+    let literal_ok = at("const").is_none_or(|c| c == value)
+        && at("enum").and_then(Value::as_array).is_none_or(|e| e.contains(value));
+    let pattern_ok = match (at("pattern").and_then(Value::as_str), value.as_str()) {
+        (Some(p), Some(s)) => regex::Regex::new(p).unwrap().is_match(s),
+        _ => true,
+    };
+    let one_of_ok = at("oneOf").and_then(Value::as_array).is_none_or(|c| c.iter().filter(|s| valid(s, value, files, file)).count() == 1);
+    let array_ok = value.as_array().is_none_or(|items| {
+        at("items").is_none_or(|s| items.iter().all(|i| valid(s, i, files, file)))
+            && (at("uniqueItems") != Some(&json!(true)) || items.iter().enumerate().all(|(n, i)| !items[..n].contains(i)))
+    });
+    let object_ok = value.as_object().is_none_or(|map| {
+        let required = at("required").and_then(Value::as_array).is_none_or(|r| r.iter().all(|k| map.contains_key(k.as_str().unwrap())));
+        let declared = at("properties").and_then(Value::as_object);
+        let others = at("additionalProperties");
+        let names_ok = at("propertyNames").is_none_or(|s| map.keys().all(|k| valid(s, &json!(k), files, file)));
+        let members_ok = map.iter().all(|(k, v)| match declared.and_then(|d| d.get(k)) {
+            Some(s) => valid(s, v, files, file),
+            None => match others {
+                Some(Value::Bool(allowed)) => *allowed,
+                Some(s) => valid(s, v, files, file),
+                None => true,
+            },
+        });
+        required && names_ok && members_ok
+    });
+    type_ok && length_ok && range_ok && literal_ok && pattern_ok && one_of_ok && array_ok && object_ok
+}
+
+fn published_schemas() -> Value {
+    let read = |name: &str| serde_json::from_str::<Value>(&std::fs::read_to_string(root().join("docs/reference").join(name)).unwrap()).unwrap();
+    json!({
+        "patch.schema.json": read("patch.schema.json"),
+        "bank.schema.json": read("bank.schema.json"),
+        "song.schema.json": read("song.schema.json"),
+    })
+}
+
+fn rejected_by(schema: &str, text: &str) -> bool {
+    let files = published_schemas();
+    !valid(&files[schema], &serde_json::from_str(text).unwrap(), &files, schema)
+}
+
+#[test]
+fn the_published_schemas_accept_the_examples_and_refuse_what_the_converter_refuses() {
+    let songs: Vec<String> = json_blocks(&song_doc()).iter().map(|b| b.to_string()).collect();
+    assert_eq!(songs.len(), 2);
+    for text in &songs {
+        assert!(!rejected_by("song.schema.json", text), "{text}");
+    }
+    let examples = more_examples();
+    let bank = json_blocks(&examples)[MORE_EXAMPLES.len()];
+    assert!(!rejected_by("bank.schema.json", bank), "{bank}");
+    let acid = acid_text();
+    assert!(!rejected_by("patch.schema.json", &acid));
+    let mut without_format: Value = serde_json::from_str(&acid).unwrap();
+    without_format.as_object_mut().unwrap().remove("format");
+    assert!(rejected_by("patch.schema.json", &without_format.to_string()), "a lone patch names its format");
+    let bad_instrument = songs[0].replacen("\"wave\"", "\"wavee\"", 1);
+    assert!(rejected_by("song.schema.json", &bad_instrument), "an instrument still obeys the patch rules");
+    let bad_bank = bank.replacen("\"wave\"", "\"wavee\"", 1);
+    assert!(rejected_by("bank.schema.json", &bad_bank), "a bank's patch still obeys the patch rules");
 }
 
 #[test]

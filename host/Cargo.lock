@@ -728,6 +728,7 @@ dependencies = [
 name = "sidou-patch"
 version = "0.0.0"
 dependencies = [
+ "regex",
  "serde_json",
  "sha2",
  "sidou-sys",

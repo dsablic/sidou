@@ -14,7 +14,7 @@
     },
     "instruments": {
       "additionalProperties": {
-        "$ref": "https://dsablic.github.io/sidou/patch.schema.json",
+        "$ref": "https://dsablic.github.io/sidou/patch.schema.json#/$defs/sound",
         "description": "a sidou-patch/1 sound, its format optional"
       },
       "maxProperties": 16,
