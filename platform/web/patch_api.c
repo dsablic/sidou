@@ -5,6 +5,7 @@
 
 #include "patch_json.h"
 #include "sid/sid_defs.h"
+#include "user_sounds.h"
 #include "song/gt2_sng.h"
 
 #define EXPORT(name) __attribute__((export_name(#name)))
@@ -20,6 +21,8 @@ static patch_bank bank;
 static patch_step step;
 static patch_song song;
 static uint32_t kind;
+static uint32_t user_length;
+static char user_name[LAB_SOUND_NAME + 1u];
 
 EXPORT(sp_in) char* sp_in(void) {
     return in_buf;
@@ -110,4 +113,30 @@ EXPORT(sp_write) uint32_t sp_write(void) {
     name[LAB_SOUND_NAME] = 0;
     out_len = patch_json_write((const uint8_t*)in_buf, name, (char*)out_buf, OUT_MAX);
     return out_len;
+}
+
+#define USER_SLOTS 16u
+
+EXPORT(sp_user_open) uint32_t sp_user_open(uint32_t len) {
+    user_length = len > IN_MAX ? IN_MAX : len;
+    uint8_t sound[LAB_SOUND_BYTES];
+    uint32_t used = 0;
+    for (uint32_t slot = 0; slot < USER_SLOTS; slot++) {
+        used |= (uint32_t)user_sounds_file_read((const uint8_t*)in_buf, user_length, slot,
+                                                user_name, sound) << slot;
+    }
+    return used;
+}
+
+EXPORT(sp_user_patch) uint32_t sp_user_patch(uint32_t slot) {
+    uint8_t sound[LAB_SOUND_BYTES];
+    if (!user_sounds_file_read((const uint8_t*)in_buf, user_length, slot, user_name, sound)) {
+        return 0;
+    }
+    out_len = patch_json_write(sound, user_name, (char*)out_buf, OUT_MAX);
+    return out_len;
+}
+
+EXPORT(sp_user_name) const char* sp_user_name(void) {
+    return user_name;
 }

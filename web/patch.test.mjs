@@ -64,6 +64,47 @@ await test("a song's LAB sounds are written as the host writes them, and a plain
   assert.equal(core.kept(1), null);
 });
 
+const storeFile = (slots) => {
+  const file = new Uint8Array(3 + 16 * 122);
+  file.set([1, 109, 16]);
+  for (const [slot, name, sound] of slots) {
+    const at = 3 + slot * 122;
+    file[at] = 1;
+    file.set(new TextEncoder().encode(name), at + 1);
+    file.set(sound, at + 13);
+  }
+  return file;
+};
+
+await test("the USER sounds file reads as sixteen slots, each used one a patch the converter wrote", async () => {
+  const core = await loadCore(readFileSync(corePath));
+  core.read(readFileSync(`${root}assets/sounds/sidou-sounds.sng`));
+  const kept = [core.kept(1), core.kept(2), core.kept(3)];
+  const file = storeFile([[0, kept[0].name, kept[0].sound], [4, "MY LEAD", kept[1].sound], [15, kept[2].name, kept[2].sound]]);
+  const slots = patcher.userSounds(file);
+  assert.equal(slots.length, 16);
+  assert.deepEqual(slots.map((s, i) => (s ? i : null)).filter((i) => i !== null), [0, 4, 15]);
+  assert.deepEqual(slots[0], { name: kept[0].name, text: patcher.write(kept[0].sound, kept[0].name) });
+  assert.deepEqual(slots[4], { name: "MY LEAD", text: patcher.write(kept[1].sound, "MY LEAD") });
+  assert.equal(patcher.check(slots[15].text).name, kept[2].name);
+});
+
+await test("a damaged USER sounds file, a damaged slot and a cut file read as empty slots", async () => {
+  const core = await loadCore(readFileSync(corePath));
+  core.read(readFileSync(`${root}assets/sounds/sidou-sounds.sng`));
+  const a = core.kept(1), b = core.kept(2);
+  const file = storeFile([[1, "BAD NAME", a.sound], [2, "GOOD", b.sound]]);
+  file[3 + 122 + 1] = 7;
+  const slots = patcher.userSounds(file);
+  assert.deepEqual([slots[1], slots[2]?.name], [null, "GOOD"]);
+  const cut = file.slice(0, file.length - 1);
+  const versionless = file.slice();
+  versionless[0] = 0;
+  for (const damaged of [cut, versionless, new Uint8Array(0)]) {
+    assert.deepEqual(patcher.userSounds(damaged), Array(16).fill(null));
+  }
+});
+
 await test("a link carries each of the sixteen and comes back as the same patch", () => {
   for (const s of bank.sounds) {
     const text = readFileSync(`${root}assets/sounds/${s.patch}`, "utf8");

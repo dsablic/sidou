@@ -22,7 +22,7 @@ if [ -z "$ld" ]; then
 fi
 
 sources=(
-    platform/web/patch_api.c platform/web/patch_json.c
+    platform/web/patch_api.c platform/web/patch_json.c platform/web/user_sounds.c
     platform/fm1/libc_min.c platform/web/libm_min.c
     core/song/gt2_song.c core/song/gt2_sng.c core/song/gt2_stream.c core/song/song_ext.c core/song/gt2_kit.c
     core/sid/sid_filter.c

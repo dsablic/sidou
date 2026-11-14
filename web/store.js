@@ -5,6 +5,8 @@ import { unzip, zip } from "./zip.js";
 
 export const MANIFEST = "sidou-backup.json";
 export const MAX_FILE = 65536;
+export const USER_SOUNDS = "USER SOUNDS";
+const NAK_NOT_FOUND = 6;
 
 export const TYPES = {
   1: { label: "song", ext: ".sng" },
@@ -72,6 +74,15 @@ export class Library {
   async download(name, { onProgress } = {}) {
     if (!this.find(name)) throw new LibraryError(`the FM-1 has no file named ${name}`, "missing");
     return this.client.get({ target: 0, name }, { onProgress });
+  }
+
+  async userSounds({ onProgress } = {}) {
+    try {
+      return await this.client.get({ target: 0, name: USER_SOUNDS }, { onProgress });
+    } catch (e) {
+      if (e.nak === NAK_NOT_FOUND) return null;
+      throw e;
+    }
   }
 
   async send(name, bytes, { type = 1, replace = false, onProgress, onBusy, onWait } = {}) {

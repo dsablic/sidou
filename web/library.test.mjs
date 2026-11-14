@@ -206,6 +206,18 @@ await test("file types and store names from file names", () => {
   assert.equal(storeName("   .sng"), "FILE");
 });
 
+await test("the USER sounds file is read with a GET, is never listed, and none yet is null", async () => {
+  const kept = Uint8Array.from({ length: 1955 }, (_, i) => (i * 7 + 3) & 255);
+  const { device, lib } = fm1([{ name: "CHROME COMET", type: 1, bytes: comet }], { userSounds: kept });
+  await lib.refresh();
+  assert.deepEqual(lib.files.map((f) => f.name), ["CHROME COMET"]);
+  assert.deepEqual(await lib.userSounds(), kept);
+  assert.ok(device.sent.length > 1);
+  const empty = fm1([{ name: "CHROME COMET", type: 1, bytes: comet }]);
+  await empty.lib.refresh();
+  assert.equal(await empty.lib.userSounds(), null);
+});
+
 await test("SIDOU's sounds: sixteen named instruments of one song, sent like any song", async () => {
   const bank = JSON.parse(readFileSync(`${here}../assets/sounds/sidou-sounds.json`, "utf8"));
   const sng = Uint8Array.from(readFileSync(`${here}../assets/sounds/${bank.song}`));

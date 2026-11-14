@@ -99,10 +99,10 @@ function fakeMidi() {
     if (d[0] === 2) file = "chrome-comet.sng";
     else {
       const n = String.fromCharCode(...d.slice(2, 18)).replace(/\0+$/, "");
-      const there = files.find((x) => x.name === n);
+      const there = n === "USER SOUNDS" && log.userSounds ? { type: 4 } : files.find((x) => x.name === n);
       if (!there) return reply(0x7f, f.sequence, [6, 0]);
       type = there.type;
-      bytes = stored.get(n);
+      bytes = n === "USER SOUNDS" ? log.userSounds : stored.get(n);
       file = bytes ? n : n.toLowerCase().replace(/ /g, "-") + ".sng";
       name = Array.from(d.slice(2, 18));
     }
@@ -410,6 +410,33 @@ try {
       fail(`the Library page did not ${what}: ${await lib.locator("#store-state").textContent()}`);
     }
   };
+  await lib.locator("#user-sounds").click();
+  await settle("say there are no USER sounds", () => /No USER sounds yet: keep one with SAVE in LAB\./.test(document.getElementById("store-state").textContent));
+  if (!(await lib.locator("#user-panel").isHidden())) fail("the USER sounds list shows with no file");
+  await lib.evaluate(async () => {
+    const { loadCore } = await import("./core.js");
+    const core = await loadCore("sidou-core.wasm");
+    core.read(new Uint8Array(await (await fetch("sounds/sidou-sounds.sng")).arrayBuffer()));
+    const file = new Uint8Array(3 + 16 * 122);
+    file.set([1, 109, 16]);
+    for (const [slot, instrument] of [[0, 1], [3, 2]]) {
+      const kept = core.kept(instrument);
+      file[3 + slot * 122] = 1;
+      file.set(new TextEncoder().encode(kept.name), 3 + slot * 122 + 1);
+      file.set(kept.sound, 3 + slot * 122 + 13);
+    }
+    window.__midi.userSounds = file;
+  });
+  await lib.locator("#user-sounds").click();
+  await settle("list the USER sounds", () => /2 USER sounds read/.test(document.getElementById("store-state").textContent));
+  const userRows = await lib.locator("#user-list li").allTextContents();
+  if (userRows.length !== 16 || userRows[1] !== "U02 empty" || !userRows[3].startsWith("U04 ")) fail(`the USER sounds list is ${JSON.stringify(userRows)}`);
+  const userPatch = await lib.locator("#user-list button").nth(1).textContent();
+  await lib.locator("#user-list button").nth(1).click();
+  await lib.waitForFunction(() => window.__library.patch?.ok, null, { timeout: 10_000 }).catch(async () => fail(`a USER sound did not open as a patch: ${await lib.locator("#patch-state").textContent()}`));
+  if (!(await lib.locator("#patch-text").inputValue()).includes(`"name": "${userPatch.slice(4)}"`)) fail("the opened USER sound is not the one pressed");
+  if (await lib.evaluate(() => window.__midi.puts?.length ?? 0) !== 0) fail("reading the USER sounds sent a file");
+  console.log(`library page: read two USER sounds and opened ${userPatch} as a patch`);
   await lib.locator('#files tr[data-name="A TUNE"] button', { hasText: "Delete" }).click();
   await settle("delete", () => /A TUNE deleted/.test(document.getElementById("store-state").textContent));
   prompts.push("RITE");

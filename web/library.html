@@ -42,6 +42,11 @@
   [data-state="error"] { color: var(--bad); }
   #device { margin: 0; font-variant-numeric: tabular-nums; }
   #store[hidden], #song-panel[hidden] { display: none; }
+  #user-panel[hidden] { display: none; }
+  #user-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+  #user-list li { display: flex; }
+  #user-list button, #user-list span { flex: 1; text-align: left; padding: 5px 10px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  #user-list span { border: 1px dashed var(--rule); color: var(--dim); opacity: .6; }
   #store-state { min-height: 1.5em; margin: 6px 0 0; }
   progress { width: 100%; height: 6px; accent-color: var(--accent); }
   progress[hidden] { display: none; }
@@ -114,6 +119,7 @@
     <h2>2. On the FM-1</h2>
     <div class="row">
       <button type="button" id="refresh">Refresh</button>
+      <button type="button" id="user-sounds" title="Read the sixteen sounds LAB kept on the FM-1 (read only)">USER sounds</button>
       <label class="button">Send files… <input type="file" id="send" multiple accept=".sng,.sid,.ins,application/octet-stream"></label>
       <button type="button" id="backup" class="primary">Back up all</button>
       <label class="button">Restore a backup… <input type="file" id="restore" accept=".zip,application/zip"></label>
@@ -123,6 +129,12 @@
         <thead><tr><th>Name</th><th>Type</th><th>Size</th><th class="crc">CRC-32</th><th></th></tr></thead>
         <tbody id="files"></tbody>
       </table>
+    </div>
+    <div id="user-panel" hidden>
+      <h3>USER sounds</h3>
+      <p>The sixteen sounds LAB kept on the FM-1, read only. Press one to open it as a patch: listen to it,
+        copy its link, edit it as text, or put it in a bank or a song.</p>
+      <ol id="user-list"></ol>
     </div>
     <progress id="progress" max="1" value="0" hidden></progress>
     <p id="store-state" role="status" aria-live="polite"></p>

@@ -9,6 +9,7 @@ const SONG_TEXT = 3;
 export const LINK_MAX = 8192;
 
 const QUIET = 1;
+const USER_SLOTS = 16;
 
 const cstr = (mem, ptr) => {
   const b = new Uint8Array(mem.buffer, ptr);
@@ -49,6 +50,18 @@ export class Patcher {
     at.set(new TextEncoder().encode(name).subarray(0, 12), sound.length);
     const n = x.sp_write();
     return new TextDecoder().decode(new Uint8Array(x.memory.buffer, x.sp_out(), n));
+  }
+
+  userSounds(file) {
+    const x = this.x;
+    const bytes = file.subarray(0, Math.min(file.length, x.sp_in_max()));
+    new Uint8Array(x.memory.buffer, x.sp_in(), bytes.length).set(bytes);
+    const used = x.sp_user_open(bytes.length);
+    return Array.from({ length: USER_SLOTS }, (_, slot) => {
+      if (!((used >>> slot) & 1)) return null;
+      const n = x.sp_user_patch(slot);
+      return { name: cstr(x.memory, x.sp_user_name()), text: new TextDecoder().decode(new Uint8Array(x.memory.buffer, x.sp_out(), n)) };
+    });
   }
 
   check(text) {

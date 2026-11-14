@@ -3,9 +3,11 @@
 import assert from "node:assert/strict";
 import { ACK, ABORT, Client, DATA, DEL, DIR, END, GET, INQ, NAK, PUT, WAIT, crc32, decodeFrame, encodeFrame, validName } from "./sysex.js";
 
+const USER_SOUNDS = "USER SOUNDS", USER_SOUNDS_TYPE = 4;
 const hex = (b) => Buffer.from(b).toString("hex");
 export class Device {
-  constructor({ files = [], free = 40000, nak = null, mute = null, waitForQuiet = null, current = null, nakEveryGet = null, chunk = 256, corruptDataByte = null, saveAsFirst = false } = {}) {
+  constructor({ files = [], free = 40000, nak = null, mute = null, waitForQuiet = null, current = null, nakEveryGet = null, chunk = 256, corruptDataByte = null, saveAsFirst = false, userSounds = null } = {}) {
+    this.userSounds = userSounds;
     this.saveAsFirst = saveAsFirst;
     this.corruptDataByte = corruptDataByte;
     this.current = current;
@@ -137,9 +139,9 @@ export class Device {
     } else {
       assert.equal(d[0], 0);
       const n = Buffer.from(d.slice(2, 18)).toString("latin1").replace(/\0+$/, "");
-      const file = this.files.find((x) => x.name === n);
-      if (!file || !this.stored.has(n)) return this.reply(NAK, f.sequence, Uint8Array.from([6, 0]));
-      bytes = this.stored.get(n);
+      const file = n === USER_SOUNDS && this.userSounds ? { type: USER_SOUNDS_TYPE } : this.files.find((x) => x.name === n);
+      if (!file || !(this.stored.has(n) || (n === USER_SOUNDS && this.userSounds))) return this.reply(NAK, f.sequence, Uint8Array.from([6, 0]));
+      bytes = n === USER_SOUNDS ? this.userSounds : this.stored.get(n);
       type = file.type;
       name = d.slice(2, 18);
     }

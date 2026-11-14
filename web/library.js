@@ -64,6 +64,7 @@ function fillPorts() {
 function forget() {
   state.lib = null;
   $("store").hidden = true;
+  $("user-panel").hidden = true;
   $("files").replaceChildren();
   setBusy(false);
 }
@@ -279,6 +280,29 @@ function editFromFm1(name) {
     const bytes = await state.lib.download(name, { onProgress: progress });
     editSong(bytes, { name, fm1: true });
     return "";
+  });
+}
+
+const slotLabel = (i) => `U${String(i + 1).padStart(2, "0")}`;
+const NO_USER_SOUNDS = "No USER sounds yet: keep one with SAVE in LAB.";
+
+function showUserSounds(slots) {
+  $("user-list").replaceChildren(...slots.map((s, i) => el("li", {}, s
+    ? button(`${slotLabel(i)} ${s.name || "(no name)"}`, () => openPatch(s.text), { title: `${s.name} as a patch` })
+    : el("span", { textContent: `${slotLabel(i)} empty` }))));
+  $("user-panel").hidden = false;
+  setBusy(state.busy);
+}
+
+function readUserSounds() {
+  return run("Reading the USER sounds", async (progress) => {
+    const bytes = await state.lib.userSounds({ onProgress: progress });
+    const slots = bytes ? (await patcher()).userSounds(bytes) : [];
+    const kept = slots.filter(Boolean).length;
+    $("user-panel").hidden = !kept;
+    if (!kept) return NO_USER_SOUNDS;
+    showUserSounds(slots);
+    return `${kept} USER sound${kept === 1 ? "" : "s"} read: press one to open it as a patch.`;
   });
 }
 
@@ -512,6 +536,7 @@ if (!navigator.requestMIDIAccess) {
   $("refresh").addEventListener("click", () => run("Listing", async () => { await state.lib.refresh(); return ""; }));
   $("backup").addEventListener("click", backup);
   $("current").addEventListener("click", openCurrent);
+  $("user-sounds").addEventListener("click", readUserSounds);
   $("restore").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) restore(f); });
   $("send").addEventListener("change", (e) => { const fs = [...e.target.files]; e.target.value = ""; sendFiles(fs); });
 }
