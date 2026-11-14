@@ -288,3 +288,66 @@ fn a_song_too_big_for_the_fm1_is_refused_naming_where() {
         "{err}"
     );
 }
+
+const ROWS_A_BEAT: u32 = 4;
+const PAL: u32 = 0;
+const ONE_CALL_A_FRAME: u32 = 1;
+const GROOVE_ROWS: u32 = 16;
+const SPEEDS: std::ops::RangeInclusive<u32> = 3..=32;
+
+unsafe extern "C" fn discard(_: *mut std::ffi::c_void, _: u8, _: u8) {}
+
+fn bpm10(speed_sum: u32) -> u32 {
+    unsafe { song_view_bpm10(speed_sum, ONE_CALL_A_FRAME, PAL, ROWS_A_BEAT) }
+}
+
+fn frames_for_rows(sng: &[u8], rows: u32) -> u32 {
+    let mut song = Song::device();
+    song.read(sng, 0).unwrap();
+    let mut options = gt2_options::default();
+    let mut analysis = Box::<gt2_analysis>::default();
+    let mut shape = Box::<gt2_shape>::default();
+    let mut player = Box::<gt2_player>::default();
+    unsafe {
+        gt2_options_default(&mut options);
+        assert_eq!(
+            gt2_shape_analyse(&mut *analysis, song.ptr(), 0, &options, &mut *shape),
+            0
+        );
+        gt2_play_start(&mut *player, song.ptr(), &*shape, std::ptr::null());
+    }
+    let (mut read, mut first, mut last) = (0, None, player.chn[0].pattptr);
+    for frame in 0..4000 {
+        unsafe { gt2_play_frame(&mut *player, Some(discard), std::ptr::null_mut()) };
+        if player.chn[0].pattptr != last {
+            last = player.chn[0].pattptr;
+            let start = *first.get_or_insert(frame);
+            if read == rows {
+                return frame - start;
+            }
+            read += 1;
+        }
+    }
+    panic!("the song did not play {rows} rows");
+}
+
+#[test]
+fn the_bpm_plays_as_the_nearest_speed_pair_and_is_reported() {
+    let pairs: Vec<u32> = SPEEDS.flat_map(|a| [2 * a, 2 * a + 1]).map(bpm10).collect();
+    for bpm in (60..=300).step_by(5) {
+        let made = json::check_song(
+            &with(GROOVE, r#""bpm": 125"#, &format!(r#""bpm": {bpm}"#)),
+            SID_MODEL_6581,
+        )
+        .unwrap();
+        let frames = frames_for_rows(&made.sng, GROOVE_ROWS);
+        let played = bpm10(2 * frames / GROOVE_ROWS);
+        let nearest = pairs.iter().map(|&p| p.abs_diff(bpm * 10)).min().unwrap();
+        assert_eq!((made.bpm, made.bpm_played10), (bpm, played), "asked {bpm}");
+        assert_eq!(
+            played.abs_diff(bpm * 10),
+            nearest,
+            "asked {bpm}, plays {played}"
+        );
+    }
+}

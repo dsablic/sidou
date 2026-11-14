@@ -10,16 +10,12 @@
 #include "step_view.h"
 #include "tracker_view.h"
 #include "song_pages.h"
+#include "song_tempo.h"
 
 #define WANT_NONE 0u
 #define WANT_PLAY 1u
 #define WANT_STOP 2u
 #define WANT_RESUME 3u
-
-#define PAL_HZ 985248u
-#define NTSC_HZ 1022727u
-#define PAL_CIA 0x4cc7u
-#define NTSC_CIA 0x42c6u
 
 #define ALL_VOICES ((1u << SONG_T_VOICES) - 1u)
 #define ALL_KEYS ((1u << PANEL_NOTE_KEYS) - 1u)
@@ -570,15 +566,7 @@ void song_view_frame(song_view* sv, int shows) {
 
 uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
                          uint32_t rows_beat) {
-    if (speed_sum == 0u || rows_beat == 0u) {
-        return 0;
-    }
-    uint32_t cia = ntsc ? NTSC_CIA : PAL_CIA;
-    uint32_t period = multispeed ? cia / (multispeed > 4u ? 4u : multispeed) + 1u : 2u * cia + 1u;
-    uint32_t num = 1200u * (ntsc ? NTSC_HZ : PAL_HZ);
-    uint32_t x = num / period * 256u + num % period * 256u / period;
-    uint32_t d = speed_sum * rows_beat;
-    return (x + d * 128u) / (d * 256u);
+    return song_tempo_bpm10(speed_sum, multispeed, ntsc, rows_beat);
 }
 
 void song_view_position(const song_view* sv, uint32_t v, uint32_t* order_pos, uint32_t* row) {

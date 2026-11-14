@@ -10,6 +10,7 @@
 #include "song/gt2_sng.h"
 #include "song/song_ext.h"
 #include "song_io.h"
+#include "song_tempo.h"
 #include "sid/sid_filter.h"
 
 enum {
@@ -2496,6 +2497,13 @@ int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
 #define SONG_NEW_PULSE 1u
 #define SONG_NEW_BASS 2u
 #define SONG_UNMADE 0xFFu
+#define SONG_SPEED_MIN 3u
+#define SONG_SPEED_MAX 32u
+#define SONG_NEW_SPEED 6u
+#define SONG_ROWS_A_BEAT 4u
+#define SONG_ONE_CALL_A_FRAME 1u
+#define SONG_PAL 0u
+#define SONG_FUNKTEMPO 0x0Eu
 #define SONG_FULL                                                                                  \
     "SONG FULL here: a song holds 208 patterns, 64 KiB and 512 accents and slides. Use fewer or "  \
     "shorter sections, or fewer accents and slides"
@@ -2515,6 +2523,7 @@ typedef struct {
     uint8_t made[PATCH_SONG_SECTIONS][PATCH_SONG_VOICES];
     uint8_t from[GT2_MAX_PATTERNS][2];
     uint32_t patterns;
+    uint32_t tempo_row;
 } song_build;
 
 static int song_fail(patch_song* sg, const char* part, const char* label, int voice, const char* what) {
@@ -2535,6 +2544,45 @@ static int song_fail(patch_song* sg, const char* part, const char* label, int vo
     return -1;
 }
 
+typedef struct {
+    uint32_t first, second, bpm10;
+} song_speeds;
+
+static uint32_t speeds_bpm10(uint32_t speed_sum) {
+    return song_tempo_bpm10(speed_sum, SONG_ONE_CALL_A_FRAME, SONG_PAL, SONG_ROWS_A_BEAT);
+}
+
+static song_speeds speeds_of(uint32_t bpm) {
+    song_speeds best = {SONG_NEW_SPEED, SONG_NEW_SPEED, speeds_bpm10(2u * SONG_NEW_SPEED)};
+    uint32_t want = bpm * 10u;
+    for (uint32_t a = SONG_SPEED_MIN; a <= SONG_SPEED_MAX; a++) {
+        for (uint32_t b = a; b <= a + 1u; b++) {
+            uint32_t got = speeds_bpm10(a + b);
+            uint32_t gap = got > want ? got - want : want - got;
+            uint32_t best_gap = best.bpm10 > want ? best.bpm10 - want : want - best.bpm10;
+            if (gap < best_gap) {
+                best = (song_speeds){a, b, got};
+            }
+        }
+    }
+    return best;
+}
+
+static int song_tempo(gt2_song* s, song_build* b, patch_song* sg) {
+    song_speeds sp = speeds_of(sg->bpm);
+    sg->bpm_played10 = (uint16_t)sp.bpm10;
+    if (sp.first == SONG_NEW_SPEED && sp.second == SONG_NEW_SPEED) {
+        return 0;
+    }
+    b->tempo_row = lab_song_table_end(s, GT2_STBL) + 1u;
+    if (b->tempo_row > GT2_TABLE_ROWS) {
+        return song_fail(sg, "bpm", NULL, -1, SONG_TABLES_FULL);
+    }
+    s->ltable[GT2_STBL][b->tempo_row - 1u] = (uint8_t)sp.first;
+    s->rtable[GT2_STBL][b->tempo_row - 1u] = (uint8_t)sp.second;
+    return 0;
+}
+
 static void lane_of(const song_build* b, uint32_t section, uint32_t voice, song_lane* lane) {
     const patch_song_section* sec = &b->sg->section[section];
     uint32_t instr = sec->instr[voice];
@@ -2553,6 +2601,10 @@ static void lane_of(const song_build* b, uint32_t section, uint32_t voice, song_
             lane->accent[r] = c->accent;
             lane->slide[r] = c->slide;
         }
+    }
+    if (b->tempo_row && section == b->sg->order[0] && voice == 0u) {
+        lane->row[0][2] = SONG_FUNKTEMPO;
+        lane->row[0][3] = (uint8_t)b->tempo_row;
     }
 }
 
@@ -2641,7 +2693,7 @@ int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model) {
     memset(b.made, SONG_UNMADE, sizeof b.made);
     b.sg = sg;
     sg->error[0] = 0;
-    if (template_song(s) || song_instruments_placed(s, &b, sg, model)) {
+    if (template_song(s) || song_instruments_placed(s, &b, sg, model) || song_tempo(s, &b, sg)) {
         return -1;
     }
     if (template_cleared(s)) {
