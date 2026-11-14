@@ -85,6 +85,8 @@ fn every_mistake_is_refused_in_words_a_model_can_act_on() {
         (GROOVE, "G2 .", "C#9 .", "sections.A.voices[0].notes: token 7 \"C#9\" is not a note. Allowed: C0 to G#7, - . and ! or ~ after a note."),
         (GROOVE, "C2! .", "C2!! .", "sections.A.voices[0].notes: token 1 \"C2!!\" is not a note."),
         (GROOVE, "C2! .", "k .", "sections.A.voices[0].notes: token 1 \"k\" is a drum, and drums need the kit."),
+        (GROOVE, "k . h", "k~ . h", "sections.A.voices[1].notes: token 1 \"k~\" is not a drum. Allowed with the kit: k kick"),
+        (GROOVE, "k . h", "k!! . h", "sections.A.voices[1].notes: token 1 \"k!!\" is not a drum."),
         (GROOVE, "k . h", "C2 . h", "sections.A.voices[1].notes: token 1 \"C2\" is not a drum. Allowed with the kit: k kick, s snare, h closed hat"),
         (GROOVE, "C2 .\"}", "C2\"}", "sections.A.voices[0].notes: 15 tokens, rows is 16."),
         (GROOVE, "h dh\"}", "h dh k\"}", "sections.A.voices[1].notes: 17 tokens, rows is 16."),
@@ -176,6 +178,18 @@ fn each_token_writes_its_row_and_accent_and_slide_are_steps_locks() {
     );
 }
 
+fn locks_of_the_section_that_is_the_lane_step_writes(step: &str, song: &str) -> Vec<(bool, bool)> {
+    let mut lane = Song::device();
+    lane.read(&json::step_song(step, SID_MODEL_6581).unwrap(), 0)
+        .unwrap();
+    let section = song_of(song);
+    let (sp, step_rows) = played(&lane, 1, 0);
+    let (p, rows) = played(&section, 1, 0);
+    assert_eq!(rows, step_rows);
+    assert_eq!(locks(&section, p, 16), locks(&lane, sp, 16));
+    locks(&section, p, 16)
+}
+
 #[test]
 fn a_lane_as_a_song_section_is_the_lane_step_writes() {
     let sound = r#"{"name": "303", "wave": "saw", "filter": {"cutoff_hz": 2077, "resonance": 12}}"#;
@@ -190,15 +204,24 @@ fn a_lane_as_a_song_section_is_the_lane_step_writes() {
           {{"instrument": "acid", "notes": "C2! - C2~ D#2!~ - - - - - - A#1 - - - - -"}}]}}}},
         "order": ["A"]}}"#
     );
-    let mut lane = Song::device();
-    lane.read(&json::step_song(&step, SID_MODEL_6581).unwrap(), 0)
-        .unwrap();
-    let section = song_of(&song);
-    let (sp, step_rows) = played(&lane, 1, 0);
-    let (p, rows) = played(&section, 1, 0);
-    assert_eq!(rows, step_rows);
-    assert_eq!(locks(&section, p, 16), locks(&lane, sp, 16));
-    assert!(locks(&section, p, 16)[3] == (true, true));
+    let locked = locks_of_the_section_that_is_the_lane_step_writes(&step, &song);
+    assert_eq!(locked[3], (true, true));
+}
+
+#[test]
+fn an_accented_drum_is_the_kit_lane_step_writes() {
+    let step = r#"{"format": "sidou-step/1", "voice": 2, "gate": "legato", "instrument": "kit",
+        "steps": [{"step": 1, "drum": "kick", "accent": true}, {"step": 5, "drum": "snare"},
+          {"step": 9, "drum": "digi_hat", "accent": true}]}"#;
+    let song = r#"{"format": "sidou-song/1",
+        "sections": {"A": {"rows": 16, "voices": [null,
+          {"instrument": "kit", "notes": "k! - - - s - - - dh! - - - - - - -"}]}},
+        "order": ["A"]}"#;
+    let locked = locks_of_the_section_that_is_the_lane_step_writes(step, song);
+    assert_eq!(
+        (locked[0], locked[4], locked[8]),
+        ((true, false), (false, false), (true, false))
+    );
 }
 
 #[test]
@@ -301,7 +324,7 @@ fn bpm10(speed_sum: u32) -> u32 {
     unsafe { song_view_bpm10(speed_sum, ONE_CALL_A_FRAME, PAL, ROWS_A_BEAT) }
 }
 
-fn frames_for_rows(sng: &[u8], rows: u32) -> u32 {
+fn row_lengths_after_the_first(sng: &[u8], rows: u32) -> Vec<u32> {
     let mut song = Song::device();
     song.read(sng, 0).unwrap();
     let mut options = gt2_options::default();
@@ -316,16 +339,15 @@ fn frames_for_rows(sng: &[u8], rows: u32) -> u32 {
         );
         gt2_play_start(&mut *player, song.ptr(), &*shape, std::ptr::null());
     }
-    let (mut read, mut first, mut last) = (0, None, player.chn[0].pattptr);
+    let (mut starts, mut last) = (Vec::new(), player.chn[0].pattptr);
     for frame in 0..4000 {
         unsafe { gt2_play_frame(&mut *player, Some(discard), std::ptr::null_mut()) };
         if player.chn[0].pattptr != last {
             last = player.chn[0].pattptr;
-            let start = *first.get_or_insert(frame);
-            if read == rows {
-                return frame - start;
+            starts.push(frame);
+            if starts.len() > rows as usize {
+                return starts.windows(2).map(|w| w[1] - w[0]).collect();
             }
-            read += 1;
         }
     }
     panic!("the song did not play {rows} rows");
@@ -340,7 +362,9 @@ fn the_bpm_plays_as_the_nearest_speed_pair_and_is_reported() {
             SID_MODEL_6581,
         )
         .unwrap();
-        let frames = frames_for_rows(&made.sng, GROOVE_ROWS);
+        let frames: u32 = row_lengths_after_the_first(&made.sng, GROOVE_ROWS)
+            .iter()
+            .sum();
         let played = bpm10(2 * frames / GROOVE_ROWS);
         let nearest = pairs.iter().map(|&p| p.abs_diff(bpm * 10)).min().unwrap();
         assert_eq!((made.bpm, made.bpm_played10), (bpm, played), "asked {bpm}");
@@ -350,4 +374,15 @@ fn the_bpm_plays_as_the_nearest_speed_pair_and_is_reported() {
             "asked {bpm}, plays {played}"
         );
     }
+}
+
+#[test]
+fn bpm_60_plays_rows_of_twelve_then_thirteen_frames() {
+    let made = json::check_song(
+        &with(GROOVE, r#""bpm": 125"#, r#""bpm": 60"#),
+        SID_MODEL_6581,
+    )
+    .unwrap();
+    let lengths = row_lengths_after_the_first(&made.sng, GROOVE_ROWS);
+    assert_eq!(lengths[..4], [12, 13, 12, 13]);
 }

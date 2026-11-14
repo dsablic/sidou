@@ -6742,14 +6742,17 @@ gain.
   left out or `null` rests: a key off on the section's first row and holds after, so what played
   before is cut at the section's start. An instrument a song names as a built-in (`pulse`, `bass`)
   takes precedence over the built-in, since a name a model chose on purpose should win; `kit`
-  is always the drum kit, and drum tokens take no `!` or `~` (the locks are for a pitched
-  note's glide and accent, and a kit drum is a fixed sound). Tempo: `bpm` is taken to the nearest speed pair `(a, b)`
+  is always the drum kit, and a drum token takes `!` (an accent, as STEP's drum step
+  does) but no `~`, since a slide glides a pitch and a kit drum is a fixed sound. Tempo: `bpm` is taken to the nearest speed pair `(a, b)`
   with `b` at most `a + 1`, speeds 3 to 32, by `song_tempo_bpm10` (PAL, four rows a beat, funktempo's
   two speeds averaged), so tempos come in half-speed steps (107.4, 115.7, 125.3, 136.7, 150.4 ...
   250.6). Multispeed would be finer but runs the instruments' tables faster, so it is not used.
   A pair other than the NEW song's 6 and 6 is a speedtable row (left `a`, right `b`) and the first
   row of the first section's first voice carries the funktempo command `E` with that row; the
-  reported BPM is the one that plays, which a test measures from the played frames. The limit
+  reported BPM is the one that plays, which a test measures from the played frames (the rows after
+  the first: the player starts the song's very first row at the default speed 6, and funktempo
+  takes over from the second, so the first pass's first row is short; the test reads each row's
+  length and pins bpm 60 to 12 then 13). The limit
   of 250 is speed 3 twice; the docs list the played values, generated from the converter by
   `patch_docs.rs`, so a model chooses one. The wasm's 88 KiB budget is noted above.
 - **`sidou-sysex send`** ports the site's SysEx client (`web/sysex.js`: INQ, DIR, stop-and-wait

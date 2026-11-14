@@ -202,7 +202,7 @@ the FM-1's NEW song as GoatTracker patterns and orderlists. Its schema is
   `{"instrument", "notes"}` or `null`; a voice left out or null rests for the section.
 - `notes`: one token a row, separated by any whitespace, as many as `rows`: `C0` to `G#7` with `!`
   (accent) or `~` (slide) after it, `-` hold, `.` rest (a key off); with the kit `k s h o c t T r dk
-  ds dc dh`, no `!` or `~`.
+  ds dc dh`, each with `!` after it for an accent, no `~`.
 - `order`: 1 to 64 section names, looped from the start.
 - A song that does not fit is refused in the FM-1's words (208 patterns, 64 KiB, 512 accents and
   slides, 255 rows of each table). Its link is `library.html#song=`, made as a patch's.

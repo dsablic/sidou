@@ -1835,11 +1835,14 @@ int patch_json_read_step(patch_step* st, const char* s, uint32_t len) {
 #define SONG_NOT_A_NOTE "is not a note. Allowed: " SONG_NOTES
 #define SONG_NOT_A_DRUM                                                                             \
     "is not a drum. Allowed with the kit: k kick, s snare, h closed hat, o open hat, c clap, t low "  \
-    "tom, T high tom, r rim, dk ds dc dh the digi kick, snare, clap and hat, - and ."
+    "tom, T high tom, r rim, dk ds dc dh the digi kick, snare, clap and hat, each with ! after it "   \
+    "for an accent, - and ."
 #define SONG_HOLD "-"
 #define SONG_REST "."
 #define SONG_ACCENT '!'
 #define SONG_SLIDE '~'
+#define SONG_FLAGS "!~"
+#define SONG_ACCENT_ONLY "!"
 #define SONG_TOKEN_MAX 8u
 #define SONG_NOTE_MIN_CHARS 2u
 #define SONG_NOTES_MAX (PATCH_SONG_ROWS * 12u)
@@ -2075,21 +2078,45 @@ static int token_fail(reader* r, uint32_t n, const char* token, const char* what
     return fail(r, w, NULL);
 }
 
+static int is_flag(const char* flags, char c) {
+    for (; *flags; flags++) {
+        if (*flags == c) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static uint32_t strip_flags(char* token, const char* flags, patch_song_cell* c, int* twice) {
+    uint32_t n = length(token);
+    while (n && is_flag(flags, token[n - 1u])) {
+        uint8_t* flag = token[n - 1u] == SONG_ACCENT ? &c->accent : &c->slide;
+        *twice |= *flag;
+        *flag = 1;
+        token[--n] = 0;
+    }
+    return n;
+}
+
 static int note_cell(const char* token, patch_song_cell* c) {
     char base[SONG_TOKEN_MAX + 1u];
-    uint32_t n = length(token);
-    memcpy(base, token, n + 1u);
-    while (n && (base[n - 1u] == SONG_ACCENT || base[n - 1u] == SONG_SLIDE)) {
-        uint8_t* flag = base[n - 1u] == SONG_ACCENT ? &c->accent : &c->slide;
-        if (*flag) {
-            return -1;
-        }
-        *flag = 1;
-        base[--n] = 0;
-    }
+    memcpy(base, token, length(token) + 1u);
+    int twice = 0;
+    uint32_t n = strip_flags(base, SONG_FLAGS, c, &twice);
     int pitch = n >= SONG_NOTE_MIN_CHARS ? pitch_of(base) : -1;
     c->note = (uint8_t)pitch;
-    return pitch < 0 ? -1 : 0;
+    return pitch < 0 || twice ? -1 : 0;
+}
+
+static int drum_cell(const char* token, patch_song_cell* c) {
+    char base[SONG_TOKEN_MAX + 1u];
+    memcpy(base, token, length(token) + 1u);
+    int twice = 0;
+    strip_flags(base, SONG_ACCENT_ONLY, c, &twice);
+    int drum = names_index(SONG_DRUMS, base);
+    c->drum = (uint8_t)(drum + 1);
+    c->note = STEP_C3;
+    return drum < 0 || twice ? -1 : 0;
 }
 
 static int token_cell(reader* r, uint32_t n, const char* token, int kit, patch_song_cell* c) {
@@ -2104,9 +2131,7 @@ static int token_cell(reader* r, uint32_t n, const char* token, int kit, patch_s
         return 0;
     }
     if (kit) {
-        c->drum = (uint8_t)(drum + 1);
-        c->note = STEP_C3;
-        return drum < 0 ? token_fail(r, n, token, SONG_NOT_A_DRUM) : 0;
+        return drum_cell(token, c) ? token_fail(r, n, token, SONG_NOT_A_DRUM) : 0;
     }
     if (drum >= 0) {
         return token_fail(r, n, token, "is a drum, and drums need the kit. Allowed here: " SONG_NOTES);

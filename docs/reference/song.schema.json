@@ -61,7 +61,7 @@
                       "type": "string"
                     },
                     "notes": {
-                      "description": "one token a row, separated by spaces: C0 to G#7 (! accent or ~ slide after it), - hold, . rest; with kit: k s h o c t T r dk ds dc dh",
+                      "description": "one token a row, separated by spaces: C0 to G#7 (! accent or ~ slide after it), - hold, . rest; with kit: k s h o c t T r dk ds dc dh (! accent after it)",
                       "type": "string"
                     }
                   },

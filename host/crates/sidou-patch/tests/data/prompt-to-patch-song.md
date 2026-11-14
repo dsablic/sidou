@@ -46,7 +46,7 @@ One token for each row, tokens separated by spaces, exactly as many tokens as `r
 - `-` holds: the sound goes on, nothing new starts. `.` is a rest: the sound is let go.
 - After a note, `!` is an accent (brighter and louder) and `~` a slide (the gate stays held and the
   next note glides from this one, an acid bass's slide). One of them at most: `C2!` or `C2~`.
-- With the instrument `"kit"` the tokens are drums, and no `!` or `~`: `k` kick, `s` snare,
+- With the instrument `"kit"` the tokens are drums, each with an optional `!` for an accent but no `~`: `k` kick, `s` snare,
   `h` closed hat, `o` open hat, `c` clap, `t` low tom, `T` high tom, `r` rim, and the sampled digi
   drums `dk` kick, `ds` snare, `dc` clap, `dh` hat. Drum notes are not pitched: no note names on
   the kit, no drum letters on another instrument.

@@ -56,7 +56,8 @@ Agreed with the owner on 2026-11-14.
   - `-`: hold (nothing written; at a section's start it holds whatever plays);
   - `.`: rest (a key-off);
   - with `"kit"`: `k` kick, `s` snare, `h` closed hat, `o` open hat, `c` clap, `t` low tom,
-    `T` high tom, `r` rim, `dk` `ds` `dc` `dh` the digi kick, snare, clap and hat.
+    `T` high tom, `r` rim, `dk` `ds` `dc` `dh` the digi kick, snare, clap and hat; `!` after a drum
+    is an accent as in STEP, `~` is refused (a slide means nothing on a drum).
 - `order`: the sections in play order, looped from the start.
 
 Not in 1.10: the second chip's voices (Stereo songs), raw tracker commands, per-step chance.

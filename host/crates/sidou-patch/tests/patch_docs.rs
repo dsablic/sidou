@@ -500,11 +500,21 @@ fn song_doc() -> String {
         .replace("{{GROOVE}}", &format!("{}\n", common::GROOVE))
         .replace("{{GROOVE_LINK}}", &link_to("song", common::GROOVE))
         .replace("{{THREE_PARTS}}", common::THREE_PARTS)
-        .replace("{{THREE_PARTS_LINK}}", &link_to("song", common::THREE_PARTS))
+        .replace(
+            "{{THREE_PARTS_LINK}}",
+            &link_to("song", common::THREE_PARTS),
+        )
 }
 
 fn full() -> String {
-    [instructions(), fields_doc(), lab_doc(), more_examples(), song_doc()].join("\n")
+    [
+        instructions(),
+        fields_doc(),
+        lab_doc(),
+        more_examples(),
+        song_doc(),
+    ]
+    .join("\n")
 }
 
 fn bounds(allowed: &str) -> (Value, Value) {
@@ -591,7 +601,7 @@ fn song_schema() -> String {
             {"type": "object", "additionalProperties": false, "required": ["instrument", "notes"],
              "properties": {
                 "instrument": {"type": "string", "description": "a name from instruments, or kit, pulse or bass"},
-                "notes": {"type": "string", "description": "one token a row, separated by spaces: C0 to G#7 (! accent or ~ slide after it), - hold, . rest; with kit: k s h o c t T r dk ds dc dh"}}}
+                "notes": {"type": "string", "description": "one token a row, separated by spaces: C0 to G#7 (! accent or ~ slide after it), - hold, . rest; with kit: k s h o c t T r dk ds dc dh (! accent after it)"}}}
         ]
     });
     let v = json!({
@@ -827,7 +837,8 @@ fn every_example_in_the_song_instructions_converts_and_its_link_is_the_song() {
     let blocks = json_blocks(&text);
     assert_eq!(blocks.len(), 2);
     for (block, bpm) in blocks.iter().zip([125, 116]) {
-        let made = json::check_song(block, SID_MODEL_6581).unwrap_or_else(|e| panic!("{e}: {block}"));
+        let made =
+            json::check_song(block, SID_MODEL_6581).unwrap_or_else(|e| panic!("{e}: {block}"));
         assert_eq!(made.bpm, bpm);
         assert!(played_tempos().contains(&made.bpm_played10), "{block}");
         assert!(text.contains(&link_to("song", block)), "{block}");
@@ -838,14 +849,27 @@ fn valid(schema: &Value, value: &Value, files: &Value, file: &str) -> bool {
     let at = |k: &str| schema.get(k);
     if let Some(target) = at("$ref").and_then(Value::as_str) {
         let (name, pointer) = target.split_once('#').unwrap_or((target, ""));
-        let name = if name.is_empty() { file } else { name.strip_prefix(SITE).unwrap() };
+        let name = if name.is_empty() {
+            file
+        } else {
+            name.strip_prefix(SITE).unwrap()
+        };
         let root = &files[name];
-        let target = if pointer.is_empty() { root } else { root.pointer(pointer).unwrap() };
+        let target = if pointer.is_empty() {
+            root
+        } else {
+            root.pointer(pointer).unwrap()
+        };
         if !valid(target, value, files, name) {
             return false;
         }
     }
-    let size = |v: &Value| v.as_array().map(Vec::len).or(v.as_object().map(Map::len)).or(v.as_str().map(|s| s.chars().count()));
+    let size = |v: &Value| {
+        v.as_array()
+            .map(Vec::len)
+            .or(v.as_object().map(Map::len))
+            .or(v.as_str().map(|s| s.chars().count()))
+    };
     let number = value.as_f64();
     let type_ok = at("type").and_then(Value::as_str).is_none_or(|t| match t {
         "object" => value.is_object(),
@@ -857,49 +881,95 @@ fn valid(schema: &Value, value: &Value, files: &Value, file: &str) -> bool {
         _ => value.is_number(),
     });
     let bound = |key: &str, ok: fn(usize, u64) -> bool, of: Option<usize>| {
-        at(key).and_then(Value::as_u64).is_none_or(|b| of.is_none_or(|n| ok(n, b)))
+        at(key)
+            .and_then(Value::as_u64)
+            .is_none_or(|b| of.is_none_or(|n| ok(n, b)))
     };
-    let length_ok = bound("minItems", |n, b| n as u64 >= b, value.as_array().map(Vec::len))
-        && bound("maxItems", |n, b| n as u64 <= b, value.as_array().map(Vec::len))
-        && bound("minProperties", |n, b| n as u64 >= b, value.as_object().map(Map::len))
-        && bound("maxProperties", |n, b| n as u64 <= b, value.as_object().map(Map::len))
-        && bound("minLength", |n, b| n as u64 >= b, value.as_str().map(|_| size(value).unwrap()))
-        && bound("maxLength", |n, b| n as u64 <= b, value.as_str().map(|_| size(value).unwrap()));
+    let length_ok = bound(
+        "minItems",
+        |n, b| n as u64 >= b,
+        value.as_array().map(Vec::len),
+    ) && bound(
+        "maxItems",
+        |n, b| n as u64 <= b,
+        value.as_array().map(Vec::len),
+    ) && bound(
+        "minProperties",
+        |n, b| n as u64 >= b,
+        value.as_object().map(Map::len),
+    ) && bound(
+        "maxProperties",
+        |n, b| n as u64 <= b,
+        value.as_object().map(Map::len),
+    ) && bound(
+        "minLength",
+        |n, b| n as u64 >= b,
+        value.as_str().map(|_| size(value).unwrap()),
+    ) && bound(
+        "maxLength",
+        |n, b| n as u64 <= b,
+        value.as_str().map(|_| size(value).unwrap()),
+    );
     let range_ok = number.is_none_or(|n| {
         at("minimum").and_then(Value::as_f64).is_none_or(|m| n >= m)
             && at("maximum").and_then(Value::as_f64).is_none_or(|m| n <= m)
     });
     let literal_ok = at("const").is_none_or(|c| c == value)
-        && at("enum").and_then(Value::as_array).is_none_or(|e| e.contains(value));
+        && at("enum")
+            .and_then(Value::as_array)
+            .is_none_or(|e| e.contains(value));
     let pattern_ok = match (at("pattern").and_then(Value::as_str), value.as_str()) {
         (Some(p), Some(s)) => regex::Regex::new(p).unwrap().is_match(s),
         _ => true,
     };
-    let one_of_ok = at("oneOf").and_then(Value::as_array).is_none_or(|c| c.iter().filter(|s| valid(s, value, files, file)).count() == 1);
+    let one_of_ok = at("oneOf")
+        .and_then(Value::as_array)
+        .is_none_or(|c| c.iter().filter(|s| valid(s, value, files, file)).count() == 1);
     let array_ok = value.as_array().is_none_or(|items| {
         at("items").is_none_or(|s| items.iter().all(|i| valid(s, i, files, file)))
-            && (at("uniqueItems") != Some(&json!(true)) || items.iter().enumerate().all(|(n, i)| !items[..n].contains(i)))
+            && (at("uniqueItems") != Some(&json!(true))
+                || items
+                    .iter()
+                    .enumerate()
+                    .all(|(n, i)| !items[..n].contains(i)))
     });
     let object_ok = value.as_object().is_none_or(|map| {
-        let required = at("required").and_then(Value::as_array).is_none_or(|r| r.iter().all(|k| map.contains_key(k.as_str().unwrap())));
+        let required = at("required")
+            .and_then(Value::as_array)
+            .is_none_or(|r| r.iter().all(|k| map.contains_key(k.as_str().unwrap())));
         let declared = at("properties").and_then(Value::as_object);
         let others = at("additionalProperties");
-        let names_ok = at("propertyNames").is_none_or(|s| map.keys().all(|k| valid(s, &json!(k), files, file)));
-        let members_ok = map.iter().all(|(k, v)| match declared.and_then(|d| d.get(k)) {
-            Some(s) => valid(s, v, files, file),
-            None => match others {
-                Some(Value::Bool(allowed)) => *allowed,
+        let names_ok = at("propertyNames")
+            .is_none_or(|s| map.keys().all(|k| valid(s, &json!(k), files, file)));
+        let members_ok = map
+            .iter()
+            .all(|(k, v)| match declared.and_then(|d| d.get(k)) {
                 Some(s) => valid(s, v, files, file),
-                None => true,
-            },
-        });
+                None => match others {
+                    Some(Value::Bool(allowed)) => *allowed,
+                    Some(s) => valid(s, v, files, file),
+                    None => true,
+                },
+            });
         required && names_ok && members_ok
     });
-    type_ok && length_ok && range_ok && literal_ok && pattern_ok && one_of_ok && array_ok && object_ok
+    type_ok
+        && length_ok
+        && range_ok
+        && literal_ok
+        && pattern_ok
+        && one_of_ok
+        && array_ok
+        && object_ok
 }
 
 fn published_schemas() -> Value {
-    let read = |name: &str| serde_json::from_str::<Value>(&std::fs::read_to_string(root().join("docs/reference").join(name)).unwrap()).unwrap();
+    let read = |name: &str| {
+        serde_json::from_str::<Value>(
+            &std::fs::read_to_string(root().join("docs/reference").join(name)).unwrap(),
+        )
+        .unwrap()
+    };
     json!({
         "patch.schema.json": read("patch.schema.json"),
         "bank.schema.json": read("bank.schema.json"),
@@ -909,12 +979,20 @@ fn published_schemas() -> Value {
 
 fn rejected_by(schema: &str, text: &str) -> bool {
     let files = published_schemas();
-    !valid(&files[schema], &serde_json::from_str(text).unwrap(), &files, schema)
+    !valid(
+        &files[schema],
+        &serde_json::from_str(text).unwrap(),
+        &files,
+        schema,
+    )
 }
 
 #[test]
 fn the_published_schemas_accept_the_examples_and_refuse_what_the_converter_refuses() {
-    let songs: Vec<String> = json_blocks(&song_doc()).iter().map(|b| b.to_string()).collect();
+    let songs: Vec<String> = json_blocks(&song_doc())
+        .iter()
+        .map(|b| b.to_string())
+        .collect();
     assert_eq!(songs.len(), 2);
     for text in &songs {
         assert!(!rejected_by("song.schema.json", text), "{text}");
@@ -926,17 +1004,29 @@ fn the_published_schemas_accept_the_examples_and_refuse_what_the_converter_refus
     assert!(!rejected_by("patch.schema.json", &acid));
     let mut without_format: Value = serde_json::from_str(&acid).unwrap();
     without_format.as_object_mut().unwrap().remove("format");
-    assert!(rejected_by("patch.schema.json", &without_format.to_string()), "a lone patch names its format");
+    assert!(
+        rejected_by("patch.schema.json", &without_format.to_string()),
+        "a lone patch names its format"
+    );
     let bad_instrument = songs[0].replacen("\"wave\"", "\"wavee\"", 1);
-    assert!(rejected_by("song.schema.json", &bad_instrument), "an instrument still obeys the patch rules");
+    assert!(
+        rejected_by("song.schema.json", &bad_instrument),
+        "an instrument still obeys the patch rules"
+    );
     let bad_bank = bank.replacen("\"wave\"", "\"wavee\"", 1);
-    assert!(rejected_by("bank.schema.json", &bad_bank), "a bank's patch still obeys the patch rules");
+    assert!(
+        rejected_by("bank.schema.json", &bad_bank),
+        "a bank's patch still obeys the patch rules"
+    );
 }
 
 #[test]
 fn the_tempos_listed_are_the_ones_every_asked_bpm_plays_as() {
     let listed = tempo_steps();
-    assert!(listed.starts_with("60.1, ") && listed.ends_with(", 250.6"), "{listed}");
+    assert!(
+        listed.starts_with("60.1, ") && listed.ends_with(", 250.6"),
+        "{listed}"
+    );
     for bpm in [60, 100, 120, 125, 180, 250] {
         let made = json::check_song(
             &common::with(common::GROOVE, r#""bpm": 125"#, &format!(r#""bpm": {bpm}"#)),
@@ -944,14 +1034,23 @@ fn the_tempos_listed_are_the_ones_every_asked_bpm_plays_as() {
         )
         .unwrap();
         let played = format!("{}.{}", made.bpm_played10 / 10, made.bpm_played10 % 10);
-        assert!(listed.split(", ").any(|t| t == played), "asked {bpm}, plays {played}");
+        assert!(
+            listed.split(", ").any(|t| t == played),
+            "asked {bpm}, plays {played}"
+        );
     }
 }
 
 #[test]
 fn the_full_instructions_are_the_core_and_every_linked_file() {
     let full = full();
-    for part in [instructions(), fields_doc(), lab_doc(), more_examples(), song_doc()] {
+    for part in [
+        instructions(),
+        fields_doc(),
+        lab_doc(),
+        more_examples(),
+        song_doc(),
+    ] {
         assert!(full.contains(&part));
     }
     for linked in [
