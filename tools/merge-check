@@ -8,7 +8,7 @@ usage() {
 The merge check: what a branch must pass before it reaches main (TESTING.md, "What runs when").
   tools/merge-check            check this checkout's HEAD against main, running what the change can affect
   tools/merge-check --full     every stage, whatever the change
-  tools/merge-check --base REF compare against REF instead of main
+  tools/merge-check --base REF compare against REF instead of main (on main itself: its upstream)
 One check at a time across every worktree (a lock in the shared git directory; a second run waits).
 Logs and results: build/scratch/mc/ (one log per stage) and build/scratch/mc.results, whose last
 line is "GREEN <commit>" or "RED <commit>". Exit 0 green, 1 red, 2 could not run.
@@ -55,6 +55,9 @@ take_lock() {
 preflight() {
     [ -z "$(git status --porcelain --untracked-files=no)" ] || die "uncommitted changes: commit them, the check names a commit"
     git rev-parse -q --verify "$base_ref^{commit}" >/dev/null || die "no base $base_ref"
+    if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$base_ref")" ] && [ "$full" = 0 ]; then
+        base_ref=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null) || die "HEAD is $base_ref: name a --base or run --full"
+    fi
     command -v cargo-nextest >/dev/null || cargo nextest --version >/dev/null 2>&1 || die "cargo-nextest missing (cargo install --locked cargo-nextest)"
     docker info >/dev/null 2>&1 || die "Docker is not running (the firmware builds and the GCC check run in the build image)"
     share_stock_package
