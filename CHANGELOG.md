@@ -8,7 +8,7 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-Whole songs as text for models and coding agents: a `sidou-song/1` is a song a Library page previews, edits and sends.
+Whole songs as text for models and coding agents: a `sidou-song/1` is a song a Library page previews, edits and sends; and the sounds LAB kept read back from the FM-1 as patches.
 
 ### Added
 - **Whole songs as text (`sidou-song/1`).** A model or a coding agent writes a song as sections of
@@ -20,6 +20,14 @@ Whole songs as text for models and coding agents: a `sidou-song/1` is a song a L
   (60 to 250) plays as the nearest of the FM-1's tempos in half-speed steps, and the page and the
   tool say "asked 120, plays 115.7". The instructions for models gain `llms-song.txt` (in
   `llms-full.txt`) and the schema `song.schema.json`.
+
+- **Read the USER sounds over SysEx (read only).** GET of the name `USER SOUNDS` returns the file
+  LAB keeps (DIR still never lists it; PUT and DEL still refuse it; an FM-1 with none answers NOT
+  FOUND, 16 bytes of flash). The Library page's **USER sounds** button lists U01 to U16 by name
+  (empty slots greyed) and opens one as a patch, with a patch's listen, link, edit as text and
+  bank or song; `sidou-sysex user-sounds [--out DIR] [--file PATH]` writes one `U01-NAME.json` per
+  used slot. Older files (1.0, 1.1 to 1.5, 1.6) read with the missing bytes at their defaults, as
+  the firmware reads them.
 
 ### Changed
 - **The patch wasm's budget is 88 KiB** (the owner, 2026-11-14), for the song converter: 83,119 bytes.

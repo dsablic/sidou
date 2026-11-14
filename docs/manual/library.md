@@ -120,9 +120,13 @@ one fills the box, checks and previews the patch, and sends nothing until you pr
 Each of SIDOU's sixteen sounds above has a **JSON** button that opens it here as a patch, to see
 the format or to change it, and an instrument of an open song that holds a LAB sound (one LAB's
 REC sent, or one of the sixteen) has **Patch** beside it. Give the patch to the model with the
-change you want ("darker"): the instructions tell it to keep everything else. The FM-1 does not
-share its USER sounds over SysEx; to change one, load it in LAB on the FM-1, press **REC** (it goes
-into the song), and here press **Open the FM-1's current song**, then Patch. `sidou-sysex patch FILE.json --out DIR` makes the same song (and its
+change you want ("darker"): the instructions tell it to keep everything else. For one of your
+USER sounds, press **USER sounds** beside Refresh in section 2: the page reads the sixteen sounds
+LAB kept (read only; the FM-1 never lists that file) and lists U01 to U16 by name, empty slots
+greyed; pressing one opens it here as a patch, with Preview, Copy link and the text to edit or give
+to the model. With none kept it says "No USER sounds yet: keep one with SAVE in LAB."
+`sidou-sysex user-sounds [--out DIR]` writes them as one `.json` patch per used slot
+(`--file PATH` reads a saved file instead); `sidou-sysex patch FILE.json --out DIR` makes the same song (and its
 `.syx`) on a computer.
 
 ## 6. Export a song

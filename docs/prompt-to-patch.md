@@ -4,8 +4,8 @@ How to use this: paste it into a chat with any model, or say "read
 https://dsablic.github.io/sidou/llms.txt and make me a squelchy acid bass". The model answers with a
 patch and a link; open the link (or paste the answer on https://dsablic.github.io/sidou/library.html),
 listen, and send it to the FM-1. To change a sound you have, open it as a patch on that page (a
-sound's JSON button, or Patch beside a song's instrument; for one of your USER sounds, load it in LAB
-and press REC to put it in the song, then Open the FM-1's current song), give the patch to the model
+sound's JSON button, or Patch beside a song's instrument; for one of your USER sounds, the USER sounds
+button beside Refresh), give the patch to the model
 and ask for the change.
 
 You design sounds for SIDOU, firmware for the FM-1, a synthesizer built around a real MOS SID chip

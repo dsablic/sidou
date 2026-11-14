@@ -68,7 +68,17 @@ sidou-sysex send out/ACID.sng --port "SIDOU FM-1" --name "ACID 2"
 - Elsewhere than macOS, `send` says so: use the Library page (https://dsablic.github.io/sidou/library.html)
   in Chrome or Edge.
 
+## Read the USER sounds
+
+```sh
+sidou-sysex user-sounds --out sounds        # the FM-1's USER sounds: sounds/U01-NAME.json, one per used slot
+sidou-sysex user-sounds --file saved.bin    # a saved USER SOUNDS file instead of a port
+```
+
+This reads (GET) and never writes; with none kept it says so. Ask the user before it opens their
+FM-1's port, as for `send`.
+
 ## Change an existing sound
 
-A song's LAB sounds and SIDOU's sixteen open as patches on the Library page (Patch, JSON). Keep
+A song's LAB sounds, SIDOU's sixteen and the FM-1's USER sounds open as patches on the Library page (Patch, JSON, USER sounds; or `sidou-sysex user-sounds`). Keep
 every field you were not asked to change, change only what was asked, and keep the name.

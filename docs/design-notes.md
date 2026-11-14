@@ -3773,6 +3773,24 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   preset byte is the settings record's: 0..`LIVE_PRESET_SLOTS` − 1 a built-in or DICE,
   `LIVE_PRESET_SLOTS` + n USER n + 1.
 
+### Reading the USER sounds
+
+- The site and `sidou-sysex user-sounds` read the file with SysEx's GET and decode it themselves:
+  `platform/web/user_sounds.c` takes the file's bytes and gives a slot's name and sound. It is a
+  second reader beside `user_sound.c`'s because that one reads through the store (it would pull the
+  store into the wasm). Their agreement is a test, not a promise: the firmware's `user_sound.rs`
+  tests (a file the firmware wrote, the 45, 48 and 68-byte sounds of older files, a later
+  version's extra bytes, damaged headers and slots) assert the web reader's answer for every slot
+  equals `user_sound_read`'s.
+- An older file's missing sound bytes read as `0`, exactly as the firmware reads them (its
+  filter LFO off, no links); a sound is then a patch with `patch_json_write`, so a USER sound opens
+  as the same `sidou-patch/1` text as any LAB sound.
+- Read only on purpose: a write would need the keep's rules (one write at a time, the forced
+  holds, the file's atomic commit) over a protocol, and a USER sound already has a way in (a
+  patch sent as a song, then ENV on INSTR opens it in LAB and SAVE keeps it).
+- The command's files are `U01-NAME.json`: the slot, then the name with every run of characters
+  outside A-Z and 0-9 as one `-` (a name of only those is the slot alone).
+
 ### The scope tap
 
 - The ring (`app/scope.h`) is a history, not a queue: single producer (the audio interrupt),
@@ -4868,8 +4886,12 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   song.
 - A .sid PUT whose claim waits for a record holds its first DATA; a byte of another frame while
   it is held is BUSY and never written over the held packet.
-- LAB's USER sounds file is the firmware's own: SysEx never lists, fetches, replaces or deletes
-  it.
+- LAB's USER sounds file is the firmware's own: SysEx never lists, replaces or deletes it, and
+  fetches it with GET alone (read only; see "USER sounds" above and "Reading the USER sounds").
+  `reserved()` takes whether the command reads: `MIDI INSTRUMENT` and `MIDI SONG` are refused for
+  every command, `USER SOUNDS` for every one but GET (a 16-byte flash cost, so the image's
+  ceiling stayed). A GET of it is the generic store read, so it is byte for byte the file the
+  firmware keeps, and an FM-1 with none answers NOT FOUND as for any name.
 - Wait for quiet: while held programs must wait (a song plays, a computer records the USB
   audio), a DATA's ACK waits; a STILL with that DATA's sequence goes out at once and every
   `SYSEX_WAIT_EVERY_MS` (2000 ms), with the toast UPLOAD WAITS FOR QUIET. The wait ends

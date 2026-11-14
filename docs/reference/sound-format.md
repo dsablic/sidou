@@ -63,7 +63,9 @@ a reader treats it as an empty slot.
 ## The USER sounds
 
 A store file named `USER SOUNDS`, type `4`, 1,955 bytes. It is the firmware's own: no list shows
-it, and SAVE AS and SysEx refuse its name.
+it, and SAVE AS, PUT and DEL refuse its name. SysEx's GET reads it, read only
+([the SysEx reference](sysex.md#commands)): the Library page's USER sounds button and
+`sidou-sysex user-sounds` open each used slot as a [patch](patch-json.md).
 
 | Offset | Bytes | Value |
 |---|---|---|

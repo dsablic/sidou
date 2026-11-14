@@ -68,6 +68,12 @@ Temporary imports use the reserved names `MIDI INSTRUMENT` and `MIDI SONG`;
 ordinary file operations cannot use those names, and DIR omits them. Type 1
 on target 0 labels a file as a song; it does not validate its contents or load it.
 
+The firmware's own `USER SOUNDS` file (type 4, LAB's kept sounds;
+[its layout](sound-format.md#the-user-sounds)) is read only: GET of that name on target 0 returns the
+file like any other (an FM-1 with none answers NAK 6, not found), DIR never lists it, and PUT and
+DEL refuse it as malformed. The `sidou-sysex user-sounds` command and the Library page's USER
+sounds button read it.
+
 ### `.sid` tunes (type 2)
 
 A PUT of type 2 to target 0 is a PSID tune, and SIDOU checks its header before anything of it

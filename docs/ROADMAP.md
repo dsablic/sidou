@@ -23,8 +23,6 @@ The owner's list of 2026-11-06, each starting with a short design:
 
 - **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx
   can reach it.
-- **Read USER sounds over SysEx:** the Library page lists the sixteen USER sounds and opens one as
-  a patch (today SysEx refuses `USER SOUNDS`; LAB's REC into the song is the way round).
 
 ## 2.0
 
