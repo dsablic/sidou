@@ -270,3 +270,5 @@ M-VAVE or with Commodore trademark holders.
 SIDOU is free software under the GNU General Public License v3.0 or later.
 Third-party components keep their own licences. See [LICENSING.md](LICENSING.md)
 and [CREDITS.md](CREDITS.md).
+
+You can also try SIDOU in the browser, no flashing needed, in the free community [FM-1 Emulator](https://fm1-emulator.atst.tools/).
