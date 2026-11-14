@@ -3788,6 +3788,18 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - Read only on purpose: a write would need the keep's rules (one write at a time, the forced
   holds, the file's atomic commit) over a protocol, and a USER sound already has a way in (a
   patch sent as a song, then ENV on INSTR opens it in LAB and SAVE keeps it).
+
+### MIDI LEARN's table stays on the device
+
+- 1.10 meant to write MIDI LEARN's table as text, if SysEx could reach it. It cannot: SysEx's
+  commands address named store files only, and the table lives in the settings record
+  (`SETTINGS_KEY`, `app/settings.c`), a keyed record with no name. The firmware also holds it in
+  RAM and rewrites the record on its own debounce, so a record written behind its back would be
+  overwritten at the next save.
+- Reaching it would take new firmware (a command, or a named file applied and then deleted, with
+  settings' rules for when it is taken), paid from the flash Bluetooth connecting out needs.
+  Dropped on 2026-11-14; MIDI learn on the device (SAVE held and a knob turned, then the
+  controller's knob) stays the way to map a controller.
 - The command's files are `U01-NAME.json`: the slot, then the name with every run of characters
   outside A-Z and 0-9 as one `-` (a name of only those is the slot alone).
 

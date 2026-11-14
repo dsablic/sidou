@@ -17,13 +17,6 @@ and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`, 
 `sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before). If that is not
 enough, SCENE's RED MOON RITE art is the reserve (about 45 KB), only with the owner's yes. M-L.
 
-## 1.10
-
-The owner's list of 2026-11-06, each starting with a short design:
-
-- **MIDI controller maps as text:** writing MIDI LEARN's table, once it is checked whether SysEx
-  can reach it.
-
 ## 2.0
 
 - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
