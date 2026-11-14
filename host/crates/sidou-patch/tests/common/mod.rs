@@ -196,3 +196,27 @@ pub const TUNE: &str = r#"{"format": "sidou-step/1", "voice": 2, "gate": "legato
   "steps": [{"step": 1, "note": "E4"}, {"step": 5, "note": "G4"}, {"step": 9, "note": "A4"}, {"step": 13, "note": "B4"}]}"#;
 
 pub const STEPS: [(&str, &str); 3] = [("acid-line", ACID), ("beat", BEAT), ("tune", TUNE)];
+
+pub const GROOVE: &str = r#"{"format": "sidou-song/1", "name": "GROOVE", "bpm": 125,
+  "instruments": {"bass": {"name": "303", "wave": "saw",
+    "envelope": {"attack": 0, "decay": 8, "sustain": 8, "release": 8},
+    "filter": {"cutoff_hz": 2077, "resonance": 12, "envelope": {"depth": 40, "decay": 6}}}},
+  "sections": {"A": {"rows": 16, "voices": [
+    {"instrument": "bass", "notes": "C2! . C2~ D#2 . . G2 . C2 . . . A#1 . C2 ."},
+    {"instrument": "kit", "notes": "k . h . s . h . k k h . s . h dh"},
+    null]}},
+  "order": ["A"]}"#;
+
+pub const THREE_PARTS: &str = r#"{"format": "sidou-song/1", "name": "THREE PARTS", "bpm": 116,
+  "instruments": {"lead": {"name": "LEAD", "wave": "pulse"}},
+  "sections": {
+    "A": {"rows": 8, "voices": [
+      {"instrument": "bass", "notes": "C2 - . C2 D#2 - . G1"},
+      {"instrument": "kit", "notes": "k . s . k k s ."},
+      {"instrument": "lead", "notes": "C4 - - - D#4 - - -"}]},
+    "B": {"rows": 8, "voices": [
+      {"instrument": "bass", "notes": "F2 - . F2 G#2 - . C2"},
+      {"instrument": "kit", "notes": "k . s . k k s ."},
+      {"instrument": "lead", "notes": "F4 - - - G#4 - G4 -"}]},
+    "C": {"rows": 4, "voices": [null, {"instrument": "kit", "notes": "s s s s"}, null]}},
+  "order": ["A", "A", "B", "A", "C"]}"#;
