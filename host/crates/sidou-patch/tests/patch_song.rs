@@ -104,3 +104,187 @@ fn tokens_are_separated_by_any_run_of_spaces_tabs_and_newlines() {
     );
     assert!(json::song_song(GROOVE, SID_MODEL_6581).is_ok());
 }
+
+const OFF: u8 = GT2_KEYOFF as u8;
+const HOLD: [u8; 4] = [GT2_REST as u8, 0, 0, 0];
+const KEY_OFF: [u8; 4] = [OFF, 0, 0, 0];
+
+fn note(n: u8) -> u8 {
+    GT2_FIRSTNOTE as u8 + n
+}
+
+fn played(song: &Song, voice: u32, at: usize) -> (u32, Vec<[u8; 4]>) {
+    let p = u32::from(song.order(0, voice).unwrap().0[at]);
+    let mut rows = song.pattern(p).unwrap();
+    rows.pop();
+    (p, rows)
+}
+
+fn locks(song: &Song, p: u32, rows: usize) -> Vec<(bool, bool)> {
+    let mut v = 0;
+    let lock = |row: usize, param: u32, v: &mut u32| unsafe {
+        song_lock_get(song.ptr(), p, row as u32, param, v) != 0 && *v != 0
+    };
+    (0..rows)
+        .map(|r| {
+            (
+                lock(r, SONG_LOCK_ACCENT, &mut v),
+                lock(r, SONG_LOCK_SLIDE, &mut v),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn each_token_writes_its_row_and_accent_and_slide_are_steps_locks() {
+    let groove = song_of(GROOVE);
+    let (p, bass) = played(&groove, 0, 0);
+    let instr = bass[0][1];
+    assert!(instr > 0);
+    assert_eq!(
+        &bass[..4],
+        &[
+            [note(24), instr, 0, 0],
+            KEY_OFF,
+            [note(24), instr, 0, 0],
+            [note(27), instr, 0, 0]
+        ]
+    );
+    assert_eq!(bass[12], [note(22), instr, 0, 0], "A#1");
+    let mut want = vec![(false, false); 16];
+    want[0].0 = true;
+    want[2].1 = true;
+    assert_eq!(locks(&groove, p, 16), want);
+    let (_, kit) = played(&groove, 1, 0);
+    assert_eq!(
+        (kit[0], kit[2][1], kit[4][1], kit[15][1], kit[1]),
+        (
+            [note(36), SONG_IO_KIT as u8, 0, 0],
+            SONG_IO_KIT as u8 + 2,
+            SONG_IO_KIT as u8 + 1,
+            SONG_IO_KIT as u8 + 11,
+            KEY_OFF
+        ),
+        "KICK, CLOSED HAT, SNARE and DG HAT of the NEW song's kit"
+    );
+    let three = song_of(THREE_PARTS);
+    let (_, bass) = played(&three, 0, 0);
+    assert_eq!(
+        (bass[0][1], bass[1], bass[2]),
+        (2, HOLD, KEY_OFF),
+        "the NEW song's BASS; - holds, . is a key off"
+    );
+}
+
+#[test]
+fn a_lane_as_a_song_section_is_the_lane_step_writes() {
+    let sound = r#"{"name": "303", "wave": "saw", "filter": {"cutoff_hz": 2077, "resonance": 12}}"#;
+    let step = format!(
+        r#"{{"format": "sidou-step/1", "voice": 2, "gate": "legato", "instrument": {sound},
+        "steps": [{{"step": 1, "note": "C2", "accent": true}}, {{"step": 3, "note": "C2", "slide": true}},
+          {{"step": 4, "note": "D#2", "accent": true, "slide": true}}, {{"step": 11, "note": "A#1"}}]}}"#
+    );
+    let song = format!(
+        r#"{{"format": "sidou-song/1", "instruments": {{"acid": {sound}}},
+        "sections": {{"A": {{"rows": 16, "voices": [null,
+          {{"instrument": "acid", "notes": "C2! - C2~ D#2!~ - - - - - - A#1 - - - - -"}}]}}}},
+        "order": ["A"]}}"#
+    );
+    let mut lane = Song::device();
+    lane.read(&json::step_song(&step, SID_MODEL_6581).unwrap(), 0)
+        .unwrap();
+    let section = song_of(&song);
+    let (sp, step_rows) = played(&lane, 1, 0);
+    let (p, rows) = played(&section, 1, 0);
+    assert_eq!(rows, step_rows);
+    assert_eq!(locks(&section, p, 16), locks(&lane, sp, 16));
+    assert!(locks(&section, p, 16)[3] == (true, true));
+}
+
+#[test]
+fn sections_follow_the_order_share_equal_patterns_and_loop() {
+    let song = song_of(THREE_PARTS);
+    let orders: Vec<(Vec<u8>, u8)> = (0..3).map(|v| song.order(0, v).unwrap()).collect();
+    for (entries, restart) in &orders {
+        assert_eq!(
+            (entries.len(), *restart),
+            (5, 0),
+            "five sections played, looped to the first"
+        );
+        assert_eq!(
+            (entries[0], entries[1], entries[3]),
+            (entries[0], entries[0], entries[0]),
+            "A each time"
+        );
+        assert_ne!(entries[0], entries[4]);
+    }
+    let kit = &orders[1].0;
+    assert_eq!(kit[0], kit[2], "the kit lane is the same in A and B");
+    assert_ne!(orders[0].0[0], orders[0].0[2], "the bass lane is not");
+    assert_eq!(
+        orders[0].0[4], orders[2].0[4],
+        "C's two voices left out share one pattern"
+    );
+    let (_, rest) = played(&song, 0, 4);
+    assert_eq!(
+        rest,
+        vec![KEY_OFF, HOLD, HOLD, HOLD],
+        "a voice left out rests"
+    );
+    let used: std::collections::BTreeSet<u8> = orders.iter().flat_map(|o| o.0.clone()).collect();
+    assert_eq!(
+        used.into_iter().collect::<Vec<_>>(),
+        (0..7).collect::<Vec<_>>(),
+        "seven patterns, numbered from 0"
+    );
+    assert!(song.pattern(7).is_none());
+}
+
+#[test]
+fn the_song_is_named_as_written_in_capitals() {
+    let song = song_of(&with(THREE_PARTS, "THREE PARTS", "three parts"));
+    let name: Vec<u8> = song
+        .raw()
+        .name
+        .iter()
+        .map(|&c| c as u8)
+        .take_while(|&c| c != 0)
+        .collect();
+    assert_eq!(name, b"THREE PARTS");
+}
+
+#[test]
+fn a_song_too_big_for_the_fm1_is_refused_naming_where() {
+    let names = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    let section = |s: usize| {
+        let voice = |v: usize| {
+            let notes: Vec<String> = (0..128)
+                .map(|r| format!("{}{}!", names[(r + v) % 12], (s + r) % 7))
+                .collect();
+            format!(
+                r#"{{"instrument": "pulse", "notes": "{}"}}"#,
+                notes.join(" ")
+            )
+        };
+        format!(
+            r#""S{s}": {{"rows": 128, "voices": [{}, {}, {}]}}"#,
+            voice(0),
+            voice(1),
+            voice(2)
+        )
+    };
+    let sections: Vec<String> = (0..16).map(section).collect();
+    let order: Vec<String> = (0..16).map(|s| format!(r#""S{s}""#)).collect();
+    let text = format!(
+        r#"{{"format": "sidou-song/1", "sections": {{{}}}, "order": [{}]}}"#,
+        sections.join(", "),
+        order.join(", ")
+    );
+    let err = refusal(&text);
+    assert!(
+        err.starts_with("sections.S") && err.contains("SONG FULL"),
+        "{err}"
+    );
+}

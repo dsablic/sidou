@@ -2381,13 +2381,6 @@ static uint32_t template_read(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
     return song_io_template(ctx, off, p, n);
 }
 
-int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model) {
-    (void)s;
-    (void)sg;
-    (void)model;
-    return -1;
-}
-
 static int edited(gt2_song* s, gt2_err e, gt2_edit* ed) {
     if (e != GT2_OK) {
         return -1;
@@ -2431,12 +2424,16 @@ static int place_patch(gt2_song* s, const patch_json* p, uint32_t model, uint32_
     return lab_song_keep(s, i, &in, p->sound);
 }
 
-int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
+static int template_song(gt2_song* s) {
     gt2_caps caps = {SONG_MULTISPEED_MAX};
     gt2_read_info info;
-    gt2_edit e;
     memset(&info, 0, sizeof info);
-    if (gt2_sng_read(s, template_read, NULL, &caps, &info)) {
+    return gt2_sng_read(s, template_read, NULL, &caps, &info) ? -1 : 0;
+}
+
+int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
+    gt2_edit e;
+    if (template_song(s)) {
         return -1;
     }
     uint32_t p = lane_pattern(s, st->voice), rows = st->pages * PATCH_STEP_ROWS;
@@ -2494,6 +2491,180 @@ int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
     memcpy(s->name, st->name, length(st->name));
     gt2_saved_recount(s);
     return song_ext_set_scene(s, &sc) ? -1 : 0;
+}
+
+#define SONG_NEW_PULSE 1u
+#define SONG_NEW_BASS 2u
+#define SONG_UNMADE 0xFFu
+#define SONG_FULL                                                                                  \
+    "SONG FULL here: a song holds 208 patterns, 64 KiB and 512 accents and slides. Use fewer or "  \
+    "shorter sections, or fewer accents and slides"
+#define SONG_TABLES_FULL                                                                           \
+    "the song's tables are full here: a song holds 255 rows of each table. Drop a patch or "      \
+    "shorten its tables"
+
+typedef struct {
+    uint32_t rows;
+    uint8_t row[PATCH_SONG_ROWS][GT2_ROW_BYTES];
+    uint8_t accent[PATCH_SONG_ROWS], slide[PATCH_SONG_ROWS];
+} song_lane;
+
+typedef struct {
+    const patch_song* sg;
+    uint8_t instr[PATCH_SONG_BUILTIN + PATCH_STEP_PATCH];
+    uint8_t made[PATCH_SONG_SECTIONS][PATCH_SONG_VOICES];
+    uint8_t from[GT2_MAX_PATTERNS][2];
+    uint32_t patterns;
+} song_build;
+
+static int song_fail(patch_song* sg, const char* part, const char* label, int voice, const char* what) {
+    text t = {sg->error, 0, PATCH_JSON_ERROR_MAX};
+    add(&t, part);
+    if (label) {
+        add_char(&t, '.');
+        add(&t, label);
+    }
+    if (voice >= 0) {
+        add(&t, ".voices[");
+        add_milli(&t, (int64_t)voice * MILLI);
+        add_char(&t, ']');
+    }
+    add(&t, ": ");
+    add(&t, what);
+    add_char(&t, '.');
+    return -1;
+}
+
+static void lane_of(const song_build* b, uint32_t section, uint32_t voice, song_lane* lane) {
+    const patch_song_section* sec = &b->sg->section[section];
+    uint32_t instr = sec->instr[voice];
+    memset(lane, 0, sizeof *lane);
+    lane->rows = sec->rows;
+    for (uint32_t r = 0; r < sec->rows; r++) {
+        const patch_song_cell* c = &sec->cells[voice][r];
+        uint8_t* row = lane->row[r];
+        if (instr == PATCH_SONG_REST_VOICE) {
+            row[0] = r ? GT2_REST : GT2_KEYOFF;
+        } else if (c->hold || c->rest) {
+            row[0] = c->hold ? GT2_REST : GT2_KEYOFF;
+        } else {
+            row[0] = (uint8_t)(GT2_FIRSTNOTE + c->note);
+            row[1] = (uint8_t)(c->drum ? SONG_IO_KIT + c->drum - 1u : b->instr[instr]);
+            lane->accent[r] = c->accent;
+            lane->slide[r] = c->slide;
+        }
+    }
+}
+
+static int lane_made(const song_build* b, const song_lane* lane, uint32_t* pattern) {
+    song_lane other;
+    for (uint32_t p = 0; p < b->patterns; p++) {
+        lane_of(b, b->from[p][0], b->from[p][1], &other);
+        if (!memcmp(&other, lane, sizeof other)) {
+            *pattern = p;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int lane_write(gt2_song* s, const song_lane* lane, uint32_t* pattern) {
+    gt2_edit e;
+    memset(&e, 0, sizeof e);
+    if (edited(s, gt2_pattern_add(s, lane->rows, pattern, &e), &e)) {
+        return -1;
+    }
+    for (uint32_t r = 0; r < lane->rows; r++) {
+        memset(&e, 0, sizeof e);
+        if (edited(s, gt2_set_row(s, *pattern, r, lane->row[r], &e), &e) ||
+            (lane->accent[r] && song_lock_put(s, *pattern, r, SONG_LOCK_ACCENT, 1u)) ||
+            (lane->slide[r] && song_lock_put(s, *pattern, r, SONG_LOCK_SLIDE, 1u))) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int section_patterns(gt2_song* s, song_build* b, patch_song* sg, uint32_t section) {
+    song_lane lane;
+    for (uint32_t v = 0; v < PATCH_SONG_VOICES; v++) {
+        uint32_t p = 0;
+        lane_of(b, section, v, &lane);
+        if (!lane_made(b, &lane, &p)) {
+            if (lane_write(s, &lane, &p) || p != b->patterns) {
+                return song_fail(sg, "sections", sg->section[section].label, (int)v, SONG_FULL);
+            }
+            b->from[p][0] = (uint8_t)section;
+            b->from[p][1] = (uint8_t)v;
+            b->patterns++;
+        }
+        b->made[section][v] = (uint8_t)p;
+    }
+    return 0;
+}
+
+static int template_cleared(gt2_song* s) {
+    gt2_edit e;
+    for (uint32_t v = 0; v < PATCH_SONG_VOICES; v++) {
+        memset(&e, 0, sizeof e);
+        if (edited(s, gt2_order_replace(s, 0, v, NULL, 0, 0, &e), &e)) {
+            return -1;
+        }
+    }
+    for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++) {
+        memset(&e, 0, sizeof e);
+        if (gt2_pattern_data(s, p) && edited(s, gt2_pattern_remove(s, p, &e), &e)) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int song_instruments_placed(gt2_song* s, song_build* b, patch_song* sg, uint32_t model) {
+    b->instr[PATCH_SONG_BUILTIN + PATCH_STEP_PULSE] = SONG_NEW_PULSE;
+    b->instr[PATCH_SONG_BUILTIN + PATCH_STEP_BASS] = SONG_NEW_BASS;
+    for (uint32_t k = 0; k < sg->instruments; k++) {
+        uint32_t instr = 0;
+        if (place_patch(s, &sg->patches[k], model, &instr)) {
+            return song_fail(sg, "instruments", sg->labels[k], -1, SONG_TABLES_FULL);
+        }
+        b->instr[k] = (uint8_t)instr;
+    }
+    return 0;
+}
+
+int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model) {
+    song_build b;
+    uint8_t entries[PATCH_SONG_ORDER];
+    gt2_edit e;
+    memset(&b, 0, sizeof b);
+    memset(b.made, SONG_UNMADE, sizeof b.made);
+    b.sg = sg;
+    sg->error[0] = 0;
+    if (template_song(s) || song_instruments_placed(s, &b, sg, model)) {
+        return -1;
+    }
+    if (template_cleared(s)) {
+        return song_fail(sg, "sections", NULL, -1, SONG_FULL);
+    }
+    for (uint32_t k = 0; k < sg->order_len; k++) {
+        if (b.made[sg->order[k]][0] == SONG_UNMADE && section_patterns(s, &b, sg, sg->order[k])) {
+            return -1;
+        }
+    }
+    for (uint32_t v = 0; v < PATCH_SONG_VOICES; v++) {
+        for (uint32_t k = 0; k < sg->order_len; k++) {
+            entries[k] = b.made[sg->order[k]][v];
+        }
+        memset(&e, 0, sizeof e);
+        if (edited(s, gt2_order_replace(s, 0, v, entries, sg->order_len, 0, &e), &e)) {
+            return song_fail(sg, "order", NULL, -1, SONG_FULL);
+        }
+    }
+    memset(s->name, 0, sizeof s->name);
+    memcpy(s->name, sg->name, length(sg->name));
+    gt2_saved_recount(s);
+    return 0;
 }
 
 static void kv(text* t, const char* key, const char* v, int quote) {
