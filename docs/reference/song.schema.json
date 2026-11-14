@@ -1,0 +1,98 @@
+{
+  "$id": "https://dsablic.github.io/sidou/song.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bpm": {
+      "description": "plays as the nearest of the tempos in llms-song.txt",
+      "maximum": 250,
+      "minimum": 60,
+      "type": "integer"
+    },
+    "format": {
+      "const": "sidou-song/1"
+    },
+    "instruments": {
+      "additionalProperties": {
+        "$ref": "https://dsablic.github.io/sidou/patch.schema.json",
+        "description": "a sidou-patch/1 sound, its format optional"
+      },
+      "maxProperties": 16,
+      "propertyNames": {
+        "maxLength": 8,
+        "minLength": 1
+      },
+      "type": "object"
+    },
+    "name": {
+      "description": "the song's name on the FM-1",
+      "pattern": "^[!-_a-z][ -_a-z]{0,15}$",
+      "type": "string"
+    },
+    "order": {
+      "description": "section names, played in this order and looped",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "type": "array"
+    },
+    "sections": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "maximum": 128,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "voices": {
+            "items": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "instrument": {
+                      "description": "a name from instruments, or kit, pulse or bass",
+                      "type": "string"
+                    },
+                    "notes": {
+                      "description": "one token a row, separated by spaces: C0 to G#7 (! accent or ~ slide after it), - hold, . rest; with kit: k s h o c t T r dk ds dc dh",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "instrument",
+                    "notes"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "voices"
+        ],
+        "type": "object"
+      },
+      "maxProperties": 16,
+      "minProperties": 1,
+      "type": "object"
+    }
+  },
+  "required": [
+    "format",
+    "sections",
+    "order"
+  ],
+  "title": "A whole SIDOU song as step grids (sidou-song/1)",
+  "type": "object"
+}

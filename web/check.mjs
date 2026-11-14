@@ -435,7 +435,7 @@ try {
   const { readFileSync: readFixture } = await import("node:fs");
   const llms = readFixture(new URL("llms.txt", import.meta.url), "utf8");
   if (await (await fetch(new URL("llms.txt", url))).text() !== llms) fail("the site's llms.txt is not docs/prompt-to-patch.md");
-  for (const part of ["fields", "lab", "examples", "full"]) {
+  for (const part of ["fields", "lab", "examples", "song", "full"]) {
     if (await (await fetch(new URL(`llms-${part}.txt`, url))).text() !== readFixture(new URL(`llms-${part}.txt`, import.meta.url), "utf8")) fail(`the site's llms-${part}.txt is not the repo's`);
   }
   const llmsFull = readFixture(new URL("llms-full.txt", import.meta.url), "utf8");

@@ -14,7 +14,8 @@ https://dsablic.github.io/sidou/patch.schema.json or the page disagree, the sche
 right. More depth, to open when you need it:
 https://dsablic.github.io/sidou/llms-fields.txt (every field and its range),
 https://dsablic.github.io/sidou/llms-lab.txt (what each of LAB's controls does),
-https://dsablic.github.io/sidou/llms-examples.txt (more patches, banks and STEP patterns).
+https://dsablic.github.io/sidou/llms-examples.txt (more patches, banks and STEP patterns),
+https://dsablic.github.io/sidou/llms-song.txt (a whole song: sections of notes and drums, and their order).
 
 ## Your answer
 
@@ -106,7 +107,9 @@ Asked for several sounds at once ("a drum kit"), answer with a bank: `{"format":
 "name": "ACID KIT", "patches": [...]}`, up to 16 patches, sent as one song; its link is `#bank=`.
 Asked for a groove or a bassline, answer with a STEP pattern (`sidou-step/1`, its link `#step=`):
 one lane of up to 64 steps with notes or drums, slides, accents and chances. Both formats and
-examples: llms-examples.txt.
+examples: llms-examples.txt. Asked for a whole song (a verse, a chorus, bass, drums and a lead),
+answer with a song (`sidou-song/1`, its link `#song=`): sections of step-grid strings, patches as its
+instruments, and a play order; read llms-song.txt first.
 
 ## Changing a patch
 

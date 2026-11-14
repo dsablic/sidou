@@ -250,6 +250,10 @@ fn compact(text: &str) -> String {
 }
 
 fn link(text: &str) -> String {
+    link_to("patch", text)
+}
+
+fn link_to(key: &str, text: &str) -> String {
     let encoded: String = compact(text)
         .bytes()
         .map(|b| {
@@ -260,7 +264,7 @@ fn link(text: &str) -> String {
             }
         })
         .collect();
-    format!("{SITE}library.html#patch={encoded}")
+    format!("{SITE}library.html#{key}={encoded}")
 }
 
 fn hint(path: &str) -> Option<&'static str> {
@@ -462,8 +466,44 @@ fn instructions() -> String {
         .replace("{{EXAMPLES}}", &examples())
 }
 
+fn played_tempos() -> Vec<u32> {
+    let mut tempos: Vec<u32> = (60..=250)
+        .map(|bpm| {
+            json::check_song(
+                &common::with(common::GROOVE, r#""bpm": 125"#, &format!(r#""bpm": {bpm}"#)),
+                SID_MODEL_6581,
+            )
+            .unwrap()
+            .bpm_played10
+        })
+        .collect();
+    tempos.dedup();
+    tempos
+}
+
+fn tempo_steps() -> String {
+    played_tempos()
+        .iter()
+        .map(|t| format!("{}.{}", t / 10, t % 10))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn song_doc() -> String {
+    let template = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/prompt-to-patch-song.md"),
+    )
+    .unwrap();
+    template
+        .replace("{{BPM_STEPS}}", &tempo_steps())
+        .replace("{{GROOVE}}", &format!("{}\n", common::GROOVE))
+        .replace("{{GROOVE_LINK}}", &link_to("song", common::GROOVE))
+        .replace("{{THREE_PARTS}}", common::THREE_PARTS)
+        .replace("{{THREE_PARTS_LINK}}", &link_to("song", common::THREE_PARTS))
+}
+
 fn full() -> String {
-    [instructions(), fields_doc(), lab_doc(), more_examples()].join("\n")
+    [instructions(), fields_doc(), lab_doc(), more_examples(), song_doc()].join("\n")
 }
 
 fn bounds(allowed: &str) -> (Value, Value) {
@@ -543,6 +583,44 @@ fn bank_schema() -> String {
             "patches": {"type": "array", "minItems": 1, "maxItems": 16,
                 "items": {"$ref": format!("{SITE}patch.schema.json")},
                 "description": "each a sidou-patch/1 patch, its format optional"}
+        }
+    });
+    serde_json::to_string_pretty(&v).unwrap() + "\n"
+}
+
+fn song_schema() -> String {
+    let voice = json!({
+        "oneOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false, "required": ["instrument", "notes"],
+             "properties": {
+                "instrument": {"type": "string", "description": "a name from instruments, or kit, pulse or bass"},
+                "notes": {"type": "string", "description": "one token a row, separated by spaces: C0 to G#7 (! accent or ~ slide after it), - hold, . rest; with kit: k s h o c t T r dk ds dc dh"}}}
+        ]
+    });
+    let v = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": format!("{SITE}song.schema.json"),
+        "title": "A whole SIDOU song as step grids (sidou-song/1)",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["format", "sections", "order"],
+        "properties": {
+            "format": {"const": "sidou-song/1"},
+            "name": {"type": "string", "pattern": "^[!-_a-z][ -_a-z]{0,15}$", "description": "the song's name on the FM-1"},
+            "bpm": {"type": "integer", "minimum": 60, "maximum": 250,
+                "description": "plays as the nearest of the tempos in llms-song.txt"},
+            "instruments": {"type": "object", "maxProperties": 16,
+                "propertyNames": {"minLength": 1, "maxLength": 8},
+                "additionalProperties": {"$ref": format!("{SITE}patch.schema.json"),
+                    "description": "a sidou-patch/1 sound, its format optional"}},
+            "sections": {"type": "object", "minProperties": 1, "maxProperties": 16,
+                "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["rows", "voices"],
+                    "properties": {
+                        "rows": {"type": "integer", "minimum": 1, "maximum": 128},
+                        "voices": {"type": "array", "maxItems": 3, "items": voice}}}},
+            "order": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string"},
+                "description": "section names, played in this order and looped"}
         }
     });
     serde_json::to_string_pretty(&v).unwrap() + "\n"
@@ -659,6 +737,7 @@ fn the_instructions_schema_reference_and_examples_are_current() {
         (r.join("docs/prompt-to-patch-fields.md"), fields_doc()),
         (r.join("docs/prompt-to-patch-lab.md"), lab_doc()),
         (r.join("docs/prompt-to-patch-examples.md"), more_examples()),
+        (r.join("docs/prompt-to-patch-song.md"), song_doc()),
         (r.join("docs/prompt-to-patch-full.md"), full()),
         (r.join("docs/reference/patch.schema.json"), schema()),
         (reference, doc),
@@ -671,6 +750,7 @@ fn the_instructions_schema_reference_and_examples_are_current() {
         json::write_bank("SIDOU SOUNDS", &patches),
     ));
     files.push((r.join("docs/reference/bank.schema.json"), bank_schema()));
+    files.push((r.join("docs/reference/song.schema.json"), song_schema()));
     for (name, src) in common::STEPS {
         files.push((r.join(format!("assets/steps/{name}.json")), step_text(src)));
     }
@@ -746,15 +826,44 @@ fn every_example_in_the_examples_file_converts_back_to_itself() {
 }
 
 #[test]
+fn every_example_in_the_song_instructions_converts_and_its_link_is_the_song() {
+    let text = song_doc();
+    let blocks = json_blocks(&text);
+    assert_eq!(blocks.len(), 2);
+    for (block, bpm) in blocks.iter().zip([125, 116]) {
+        let made = json::check_song(block, SID_MODEL_6581).unwrap_or_else(|e| panic!("{e}: {block}"));
+        assert_eq!(made.bpm, bpm);
+        assert!(played_tempos().contains(&made.bpm_played10), "{block}");
+        assert!(text.contains(&link_to("song", block)), "{block}");
+    }
+}
+
+#[test]
+fn the_tempos_listed_are_the_ones_every_asked_bpm_plays_as() {
+    let listed = tempo_steps();
+    assert!(listed.starts_with("60.1, ") && listed.ends_with(", 250.6"), "{listed}");
+    for bpm in [60, 100, 120, 125, 180, 250] {
+        let made = json::check_song(
+            &common::with(common::GROOVE, r#""bpm": 125"#, &format!(r#""bpm": {bpm}"#)),
+            SID_MODEL_6581,
+        )
+        .unwrap();
+        let played = format!("{}.{}", made.bpm_played10 / 10, made.bpm_played10 % 10);
+        assert!(listed.split(", ").any(|t| t == played), "asked {bpm}, plays {played}");
+    }
+}
+
+#[test]
 fn the_full_instructions_are_the_core_and_every_linked_file() {
     let full = full();
-    for part in [instructions(), fields_doc(), lab_doc(), more_examples()] {
+    for part in [instructions(), fields_doc(), lab_doc(), more_examples(), song_doc()] {
         assert!(full.contains(&part));
     }
     for linked in [
         "llms-fields.txt",
         "llms-lab.txt",
         "llms-examples.txt",
+        "llms-song.txt",
         "patch.schema.json",
     ] {
         assert!(
