@@ -14,7 +14,7 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.9.0 release](https://github.com/dsablic/sidou/releases/tag/v1.9.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.10.0 release](https://github.com/dsablic/sidou/releases/tag/v1.10.0).
 
 - [SIDOU in 78 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
 - [What's new in 1.9](https://dsablic.github.io/sidou/videos.html#whats-new)

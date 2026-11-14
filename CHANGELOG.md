@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-14
+
 Whole songs as text for models and coding agents: a `sidou-song/1` is a song a Library page previews, edits and sends; and the sounds LAB kept read back from the FM-1 as patches.
 
 ### Added
@@ -30,7 +32,8 @@ Whole songs as text for models and coding agents: a `sidou-song/1` is a song a L
   the firmware reads them.
 
 ### Changed
-- **The patch wasm's budget is 88 KiB** (the owner, 2026-11-14), for the song converter: 83,119 bytes.
+- **The patch wasm's budget is 88 KiB** (the owner, 2026-11-14), for the song converter: 83,921 bytes.
+- *What's new in 1.10*, and every video re-rendered on 1.10.
 
 ## [1.9.0] - 2026-11-08
 
