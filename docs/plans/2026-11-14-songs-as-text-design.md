@@ -44,7 +44,8 @@ Agreed with the owner on 2026-11-14.
 
 - `name`: the song's name on the FM-1, 1 to 16 characters.
 - `bpm`: 60 to 300. The converter picks the nearest tempo or funktempo pair and reports the BPM
-  that plays ("asked 120, plays 120.3").
+  that plays. At four rows a beat these come in half-speed steps (125.3, 115.7, 136.7, 107.4 ...),
+  so "asked 120" plays 115.7 or 125.3; the docs list the steps.
 - `instruments`: up to 16 named `sidou-patch/1` sounds (`format` optional). The names `"kit"` (the
   NEW song's drum kit), `"pulse"` and `"bass"` (its own two sounds) are built in, as in
   `sidou-step/1`.
