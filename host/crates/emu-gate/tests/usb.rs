@@ -2323,8 +2323,9 @@ fn get_returns_the_kept_sounds_file_byte_for_byte_and_dir_never_lists_it() {
     let stored = user_sounds_file(&m).expect("LAB kept the file");
     assert_eq!(stored.len(), sidou_sys::USER_SOUND_FILE_BYTES as usize);
     let mut link = Link::default();
+    put_file(&mut m, &mut link, "ORDINARY", &[7; 40]);
     assert_eq!(download(&mut m, &mut link, USER_SOUNDS_NAME), Ok(stored));
-    assert!(!listed_names(&mut m, &mut link).contains(&USER_SOUNDS_NAME.to_string()));
+    assert_eq!(listed_names(&mut m, &mut link), ["ORDINARY"]);
 }
 
 #[test]

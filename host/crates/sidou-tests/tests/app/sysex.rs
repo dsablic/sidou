@@ -1445,22 +1445,25 @@ fn sysex_serves_the_user_sounds_file_but_never_lists_replaces_or_deletes_it() {
     let mut e = Engine::new(true);
     let bytes = vec![0x3c; USER_SOUND_FILE_BYTES as usize];
     e.rig.maintain();
-    let name = c"USER SOUNDS";
-    assert_eq!(
-        e.rig.api(|st| unsafe {
-            store_file_begin(
-                st,
-                name.as_ptr(),
-                STORE_FILE_SOUNDS as u8,
-                bytes.len() as u32,
-            )
-        }),
-        STORE_OK
-    );
-    assert_eq!(e.rig.file_stream(&bytes, 256, None), STORE_OK);
+    for (name, file_type, data) in [
+        (c"ORDINARY", 1, vec![7u8; 40]),
+        (c"USER SOUNDS", STORE_FILE_SOUNDS as u8, bytes.clone()),
+    ] {
+        assert_eq!(
+            e.rig.api(|st| unsafe {
+                store_file_begin(st, name.as_ptr(), file_type, data.len() as u32)
+            }),
+            STORE_OK
+        );
+        assert_eq!(e.rig.file_stream(&data, 256, None), STORE_OK);
+    }
     e.request(2, 1, &[]);
-    assert_eq!(e.response(), (6, 1, vec![]), "DIR lists nothing");
+    let (command, seq, listed) = e.response();
+    assert_eq!((command, seq), (2, 1));
+    assert_eq!(&listed[..8], b"ORDINARY", "DIR lists the ordinary file");
     e.request(0x7e, 1, &[]);
+    assert_eq!(e.response(), (6, 2, vec![]), "and nothing after it");
+    e.request(0x7e, 2, &[]);
     let (metadata, served) = e.download("USER SOUNDS", 2);
     assert_eq!(metadata[18], STORE_FILE_SOUNDS as u8);
     assert_eq!(served, bytes, "GET serves the file");
