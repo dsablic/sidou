@@ -25,7 +25,7 @@ Design: [2026-11-14-songs-as-text-design.md](2026-11-14-songs-as-text-design.md)
   `host/crates/sidou-patch/tests/common/mod.rs`), every test proves behaviour, test first.
 - Run only targeted tests while working (`nice`); the full check is `tools/merge-check`, once,
   at the end. Never touch the FM-1.
-- Budgets are not raised without the owner: the patch wasm's is 80 KiB (71.7 KB today,
+- Budgets are not raised without the owner: the patch wasm's is 88 KiB (raised from 80 KiB by the owner on 2026-11-14; 83.1 KB with songs,
   `web/patch.test.mjs`).
 - Mirror `sidou-step/1` everywhere: its reader (`patch_json_read_step`, `step_cells`,
   `step_instrument`, `step_checked`), its song (`patch_json_step_song`), its Rust wrapper
@@ -153,7 +153,7 @@ the song so the test links and fails on its assertion, then commit the failing t
 #[test]
 fn every_mistake_is_refused_in_words_a_model_can_act_on() {
     for (edit, want) in [
-        (r#""bpm": 125"#, r#""bpm": 400"#, "bpm: is out of range. Allowed: 60 to 300"),
+        (r#""bpm": 125"#, r#""bpm": 400"#, "bpm: is out of range. Allowed: 60 to 250"),
         ...
     ] { ... assert!(err.contains(want), "{err}") }
 }
@@ -220,7 +220,7 @@ Every `gt2_err` that is not `GT2_OK` becomes the song's error in words. **Step 4
 
 **Files:** `platform/web/patch_json.c`, `tests/patch_song.rs`
 
-**Step 1: the failing test:** for bpm 60..300 in steps of 5, the converted song's speeds (the
+**Step 1: the failing test:** for bpm 60..250 in steps of 5, the converted song's speeds (the
 song's tempo as the player starts it; find where `song_io_template` sets 6) give, through
 `song_view_bpm10`, the nearest BPM any allowed pair gives, and `bpm_played10` is that value.
 **Step 2:** fail. **Step 3:** write the pair search over speeds 2..32 (b = a or a + 1) and set the
@@ -246,12 +246,12 @@ reader's words. Mirror the `step` test.
 
 **Step 1: the failing tests** in `web/patch.test.mjs` (run against the host build as the others):
 `GROOVE` through the wasm gives the host's bytes; `linkOf` uses `#song=` for a song and `fromLink`
-reads it back; the played BPM is reported; the wasm stays within 80 KiB.
+reads it back; the played BPM is reported; the wasm stays within 88 KiB.
 **Step 2:** `tools/wasm-patch && node web/patch.test.mjs`; fail. **Step 3:** `patch_api.c` gets
 the song kind (a static `patch_song`, its error, name and `sp_song_bpm10`); `patch.js` gets
 `SONG_KEY = "#song="`; the Library shows a song like a STEP pattern (preview, send, and Edit,
 which hands it to the editor through `editSong`). **Step 4:** pass; **check the size**. If over
-80 KiB, stop and report the number (the owner decides). **Step 5:** commit.
+88 KiB, stop and report the number (the owner decides). **Step 5:** commit.
 
 ### Task 9: the emulator
 

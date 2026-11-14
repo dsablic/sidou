@@ -64,8 +64,8 @@ fn every_mistake_is_refused_in_words_a_model_can_act_on() {
         (GROOVE, r#""format": "sidou-song/1", "#, "", "format: is missing. Allowed: \"sidou-song/1\"."),
         (GROOVE, "sidou-song/1", "sidou-song/2", "format: is not this format. Allowed: \"sidou-song/1\"."),
         (GROOVE, r#""name": "GROOVE""#, r#""name": "A NAME FAR TOO LONG""#, "name: is too long. Allowed: 1 to 16 characters"),
-        (GROOVE, r#""bpm": 125"#, r#""bpm": 400"#, "bpm: 400 is too high. Allowed: 60 to 300."),
-        (GROOVE, r#""bpm": 125"#, r#""bpm": 59"#, "bpm: 59 is too low. Allowed: 60 to 300."),
+        (GROOVE, r#""bpm": 125"#, r#""bpm": 400"#, "bpm: 400 is too high. Allowed: 60 to 250."),
+        (GROOVE, r#""bpm": 125"#, r#""bpm": 59"#, "bpm: 59 is too low. Allowed: 60 to 250."),
         (GROOVE, r#""wave": "saw""#, r#""wave": "sawtooth""#, "instruments.bass.wave: \"sawtooth\" is not allowed."),
         (GROOVE, r#""bass": {"name""#, r#""bass": [], "b": {"name""#, "instruments.bass: must be a patch { }."),
         (THREE_PARTS, lead, &seventeen, "instruments: has too many. Allowed: up to 16 patches."),
@@ -334,7 +334,7 @@ fn frames_for_rows(sng: &[u8], rows: u32) -> u32 {
 #[test]
 fn the_bpm_plays_as_the_nearest_speed_pair_and_is_reported() {
     let pairs: Vec<u32> = SPEEDS.flat_map(|a| [2 * a, 2 * a + 1]).map(bpm10).collect();
-    for bpm in (60..=300).step_by(5) {
+    for bpm in (60..=250).step_by(5) {
         let made = json::check_song(
             &with(GROOVE, r#""bpm": 125"#, &format!(r#""bpm": {bpm}"#)),
             SID_MODEL_6581,

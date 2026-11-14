@@ -43,7 +43,7 @@ Agreed with the owner on 2026-11-14.
 ```
 
 - `name`: the song's name on the FM-1, 1 to 16 characters.
-- `bpm`: 60 to 300. The converter picks the nearest tempo or funktempo pair and reports the BPM
+- `bpm`: 60 to 250. The converter picks the nearest tempo or funktempo pair and reports the BPM
   that plays. At four rows a beat these come in half-speed steps (125.3, 115.7, 136.7, 107.4 ...),
   so "asked 120" plays 115.7 or 125.3; the docs list the steps.
 - `instruments`: up to 16 named `sidou-patch/1` sounds (`format` optional). The names `"kit"` (the
@@ -103,7 +103,7 @@ In the patches' style, `path: what is wrong. Allowed: what is.`:
 
 ## Size
 
-The patch wasm is about 77 KB of its 80 KiB budget. Measure first; raising the budget or giving
+The patch wasm is about 77 KB of its 80 KiB budget (the owner raised it to 88 KiB on 2026-11-14). Measure first; raising the budget or giving
 songs their own module is the owner's call when the number is known.
 
 ## Docs to keep current

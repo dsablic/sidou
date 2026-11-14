@@ -6679,8 +6679,9 @@ gain.
   generated docs, so the JavaScript holds no rule. It sits in `platform/web`, outside the firmware's
   build: the firmware images are byte for byte as before. Rust (`sidou-patch`'s `json.rs`) is a
   thin wrapper for the tests, the docs and `sidou-sysex patch`.
-- **Its own wasm** (`tools/wasm-patch`, about 77 KB; its budget 80 KiB, the owner's call
-  2026-11-06, raised from 64 KiB for STEP patterns, which need the song reader; `web/patch.test.mjs`): in the core it took 185,311 bytes against the
+- **Its own wasm** (`tools/wasm-patch`, about 83 KB; its budget 88 KiB, the owner's call
+  2026-11-06, raised from 64 KiB for STEP patterns, which need the song reader, and on 2026-11-14
+  from 80 KiB for `sidou-song/1`, which took it to 83,119 bytes; `web/patch.test.mjs`): in the core it took 185,311 bytes against the
   core's 176 KiB budget (the rules' C alone is 10.6 KB: the audibility estimate 4.9 KB, the song
   encoder and its keep 4.8 KB). The patch module loads only when a patch is checked, so the core's
   pages load as before; it hands the song's bytes to the core for the preview.
