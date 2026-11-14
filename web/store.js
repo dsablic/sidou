@@ -6,7 +6,14 @@ import { unzip, zip } from "./zip.js";
 export const MANIFEST = "sidou-backup.json";
 export const MAX_FILE = 65536;
 export const USER_SOUNDS = "USER SOUNDS";
+const NAK_MALFORMED = 1;
 const NAK_NOT_FOUND = 6;
+const NAK_IO = 7;
+const STORE_FILE_SOUNDS = 4;
+const USER_SOUNDS_NAK_WORDS = {
+  [NAK_MALFORMED]: "this FM-1's SIDOU is too old to read USER sounds: update SIDOU on the FM-1",
+  [NAK_IO]: "the FM-1 was saving a sound: try again",
+};
 
 export const TYPES = {
   1: { label: "song", ext: ".sng" },
@@ -78,9 +85,12 @@ export class Library {
 
   async userSounds({ onProgress } = {}) {
     try {
-      return await this.client.get({ target: 0, name: USER_SOUNDS }, { onProgress });
+      const { type, bytes } = await this.client.getFile({ target: 0, name: USER_SOUNDS }, { onProgress });
+      if (type !== STORE_FILE_SOUNDS) throw new LibraryError(`${USER_SOUNDS} on the FM-1 is not a USER sounds file`, "type");
+      return bytes;
     } catch (e) {
       if (e.nak === NAK_NOT_FOUND) return null;
+      if (USER_SOUNDS_NAK_WORDS[e.nak]) throw new LibraryError(USER_SOUNDS_NAK_WORDS[e.nak], "user-sounds");
       throw e;
     }
   }

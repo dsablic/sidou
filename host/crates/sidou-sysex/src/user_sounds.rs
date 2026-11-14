@@ -4,7 +4,7 @@
 use sidou_patch::json;
 use sidou_patch::user_sounds::{self, NAME};
 
-use crate::send::{Client, Port, FILE_USER_SOUNDS};
+use crate::send::{Client, GetRefusal, Port, FILE_USER_SOUNDS, NAK_IO, NAK_MALFORMED};
 
 pub struct PatchText {
     pub slot: String,
@@ -14,10 +14,20 @@ pub struct PatchText {
 }
 
 pub fn fetch<P: Port>(client: &mut Client<P>) -> Result<Option<Vec<u8>>, String> {
-    match client.get(NAME)? {
+    match client.get_refusing(NAME).map_err(refusal_words)? {
         None => Ok(None),
         Some((FILE_USER_SOUNDS, bytes)) => Ok(Some(bytes)),
         Some(_) => Err(format!("{NAME} on the FM-1 is not a USER sounds file")),
+    }
+}
+
+fn refusal_words((reason, words): GetRefusal) -> String {
+    match reason {
+        Some(NAK_MALFORMED) => {
+            "this FM-1's SIDOU is too old to read USER sounds: update SIDOU on the FM-1".to_string()
+        }
+        Some(NAK_IO) => "the FM-1 was saving a sound: try again".to_string(),
+        _ => words,
     }
 }
 

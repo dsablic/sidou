@@ -6,8 +6,9 @@ import { ACK, ABORT, Client, DATA, DEL, DIR, END, GET, INQ, NAK, PUT, WAIT, crc3
 const USER_SOUNDS = "USER SOUNDS", USER_SOUNDS_TYPE = 4;
 const hex = (b) => Buffer.from(b).toString("hex");
 export class Device {
-  constructor({ files = [], free = 40000, nak = null, mute = null, waitForQuiet = null, current = null, nakEveryGet = null, chunk = 256, corruptDataByte = null, saveAsFirst = false, userSounds = null } = {}) {
+  constructor({ files = [], free = 40000, nak = null, mute = null, waitForQuiet = null, current = null, nakEveryGet = null, chunk = 256, corruptDataByte = null, saveAsFirst = false, userSounds = null, userSoundsType = USER_SOUNDS_TYPE } = {}) {
     this.userSounds = userSounds;
+    this.userSoundsType = userSoundsType;
     this.saveAsFirst = saveAsFirst;
     this.corruptDataByte = corruptDataByte;
     this.current = current;
@@ -139,7 +140,7 @@ export class Device {
     } else {
       assert.equal(d[0], 0);
       const n = Buffer.from(d.slice(2, 18)).toString("latin1").replace(/\0+$/, "");
-      const file = n === USER_SOUNDS && this.userSounds ? { type: USER_SOUNDS_TYPE } : this.files.find((x) => x.name === n);
+      const file = n === USER_SOUNDS && this.userSounds ? { type: this.userSoundsType } : this.files.find((x) => x.name === n);
       if (!file || !(this.stored.has(n) || (n === USER_SOUNDS && this.userSounds))) return this.reply(NAK, f.sequence, Uint8Array.from([6, 0]));
       bytes = n === USER_SOUNDS ? this.userSounds : this.stored.get(n);
       type = file.type;

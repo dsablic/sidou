@@ -235,7 +235,11 @@ export class Client {
     }
   }
 
-  async get({ target = 0, name = "" } = {}, { onProgress = () => {} } = {}) {
+  async get(source, options) {
+    return (await this.getFile(source, options)).bytes;
+  }
+
+  async getFile({ target = 0, name = "" } = {}, { onProgress = () => {} } = {}) {
     this.drain();
     const request = new Uint8Array(18);
     request[0] = target;
@@ -252,6 +256,7 @@ export class Client {
       if (meta.command !== PUT || meta.data.length !== 27 || meta.data[0] !== target) {
         throw new SysexError("a damaged reply to the FM-1's GET");
       }
+      const type = meta.data[18];
       const total = le32(meta.data, 19), crc = le32(meta.data, 23);
       if (total > 65536) throw new SysexError("the FM-1 announced a file over 64 KiB");
       this.send(encodeFrame(ACK, meta.sequence));
@@ -275,7 +280,7 @@ export class Client {
       }
       if (got !== total) throw new SysexError(`the FM-1 sent ${got} bytes of the ${total} it announced`);
       if (crc32(out) !== crc) throw new SysexError("the song arrived damaged (its checksum does not match): try again");
-      return out;
+      return { type, bytes: out };
     } catch (e) {
       if (e.nak == null) this.send(encodeFrame(ABORT, this.next()));
       throw e;

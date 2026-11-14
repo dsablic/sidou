@@ -218,6 +218,15 @@ await test("the USER sounds file is read with a GET, is never listed, and none y
   assert.equal(await empty.lib.userSounds(), null);
 });
 
+await test("a USER sounds read says in words what an old SIDOU or a file being rewritten means, and a wrong file type is refused", async () => {
+  for (const [nakEveryGet, words] of [[1, /update SIDOU on the FM-1/], [7, /the FM-1 was saving a sound: try again/]]) {
+    const { lib } = fm1([], { nakEveryGet });
+    await assert.rejects(lib.userSounds(), (e) => e instanceof LibraryError && words.test(e.message));
+  }
+  const { lib } = fm1([], { userSounds: new Uint8Array(8), userSoundsType: 1 });
+  await assert.rejects(lib.userSounds(), (e) => e.code === "type" && /not a USER sounds file/.test(e.message));
+});
+
 await test("SIDOU's sounds: sixteen named instruments of one song, sent like any song", async () => {
   const bank = JSON.parse(readFileSync(`${here}../assets/sounds/sidou-sounds.json`, "utf8"));
   const sng = Uint8Array.from(readFileSync(`${here}../assets/sounds/${bank.song}`));

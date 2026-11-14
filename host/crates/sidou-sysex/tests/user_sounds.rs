@@ -61,6 +61,26 @@ fn an_fm1_with_no_file_answers_not_found_which_is_no_sounds_yet() {
 }
 
 #[test]
+fn what_an_old_sidou_and_a_file_being_rewritten_mean_is_said_in_words() {
+    let file = store_file(&[(0, "FIRST", 0)]);
+    const OLD: &str = "update SIDOU on the FM-1";
+    const SAVING: &str = "the FM-1 was saving a sound: try again";
+    let cases = [(1, false, OLD), (7, false, SAVING), (7, true, SAVING)];
+    for (reason, after_meta, words) in cases {
+        let mut fake = fm1_holding(&file);
+        if after_meta {
+            fake.nak_after_meta = Some(reason);
+        } else {
+            fake.nak_get = Some(reason);
+        }
+        let mut c = client(fake);
+        c.inquire().unwrap();
+        let e = fetch(&mut c).unwrap_err();
+        assert!(e.contains(words), "{e}");
+    }
+}
+
+#[test]
 fn a_damaged_transfer_is_refused_by_its_crc() {
     let mut fake = fm1_holding(&store_file(&[(0, "FIRST", 0)]));
     fake.corrupt = true;

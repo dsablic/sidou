@@ -37,6 +37,8 @@ pub struct Fake {
     pub silent: bool,
     pub corrupt: bool,
     pub stream: VecDeque<(u8, u8, Vec<u8>)>,
+    pub nak_get: Option<u8>,
+    pub nak_after_meta: Option<u8>,
 }
 
 impl Fake {
@@ -117,6 +119,9 @@ impl Fake {
     }
 
     fn serve(&mut self, p: &Packet) {
+        if let Some(reason) = self.nak_get {
+            return self.reply(NAK, p.sequence, vec![reason, 0]);
+        }
         let name = text_of(&p.data[2..18]);
         let Some((file_type, bytes)) = self.stored.get(&name).cloned() else {
             return self.reply(NAK, p.sequence, vec![6, 0]);
@@ -132,6 +137,11 @@ impl Fake {
             served[0] ^= 1;
         }
         self.stream.push_back((PUT, seq, meta));
+        if let Some(reason) = self.nak_after_meta {
+            self.stream
+                .push_back((NAK, (seq + 1) & 0x7f, vec![reason, 0]));
+            return self.next_stream();
+        }
         for chunk in served.chunks(MAX_DATA_LEN) {
             seq = (seq + 1) & 0x7f;
             self.stream.push_back((DATA, seq, chunk.to_vec()));
