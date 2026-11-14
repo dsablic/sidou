@@ -9,6 +9,7 @@ pub mod import;
 pub mod patch;
 pub mod send;
 pub mod sid;
+pub mod user_sounds;
 
 pub const INQ: u8 = 0x01;
 pub const DIR: u8 = 0x02;

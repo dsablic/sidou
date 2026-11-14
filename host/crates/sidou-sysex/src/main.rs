@@ -9,8 +9,9 @@ use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
 use sidou_sysex::patch::{bank_file, patch_file, song_file, step_file, PatchFile};
 use sidou_sysex::send::{file_type_of, sent_name, Client, Port, Sent, Timing, DEFAULT_PORT};
 use sidou_sysex::sid;
+use sidou_sysex::user_sounds::{fetch, patch_files};
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex song FILE.json [--out DIR] [--8580]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex song FILE.json [--out DIR] [--8580]\n       sidou-sysex user-sounds [--out DIR] [--file PATH] [--port NAME]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -283,6 +284,76 @@ fn send_main(rest: Vec<String>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+struct UserSounds {
+    out: PathBuf,
+    file: Option<PathBuf>,
+    port: String,
+}
+
+fn user_sounds_args(rest: Vec<String>) -> Result<UserSounds, String> {
+    let mut it = rest.into_iter();
+    let mut a = UserSounds {
+        out: PathBuf::from("."),
+        file: None,
+        port: DEFAULT_PORT.to_string(),
+    };
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--out" => a.out = it.next().ok_or(USAGE)?.into(),
+            "--file" => a.file = Some(it.next().ok_or(USAGE)?.into()),
+            "--port" => a.port = it.next().ok_or(USAGE)?,
+            _ => return Err(format!("unknown option {arg}\n{USAGE}")),
+        }
+    }
+    Ok(a)
+}
+
+fn user_sounds_bytes(a: &UserSounds) -> Result<Option<Vec<u8>>, String> {
+    if let Some(path) = &a.file {
+        return std::fs::read(path)
+            .map(Some)
+            .map_err(|e| format!("{}: {e}", path.display()));
+    }
+    let port = open_port(&a.port)?;
+    let mut c = Client::new(port, Timing::default());
+    c.inquire()?;
+    fetch(&mut c)
+}
+
+fn user_sounds_main(rest: Vec<String>) -> ExitCode {
+    let a = match user_sounds_args(rest) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let bytes = match user_sounds_bytes(&a) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let files = bytes.as_deref().map(patch_files).unwrap_or_default();
+    if files.is_empty() {
+        println!("No USER sounds yet: keep one with SAVE in LAB.");
+        return ExitCode::SUCCESS;
+    }
+    if let Err(code) = make_out(&a.out) {
+        return code;
+    }
+    for f in &files {
+        let path = a.out.join(&f.file_name);
+        if let Err(e) = std::fs::write(&path, &f.json) {
+            eprintln!("{}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("{} {} -> {}", f.slot, f.name, path.display());
+    }
+    ExitCode::SUCCESS
+}
+
 fn import_main(rest: Vec<String>) -> ExitCode {
     let i = match import_args(rest) {
         Ok(i) => i,
@@ -338,6 +409,7 @@ fn main() -> ExitCode {
         Some("step") => patch_main(rest, step_file),
         Some("song") => patch_main(rest, song_file),
         Some("send") => send_main(rest),
+        Some("user-sounds") => user_sounds_main(rest),
         Some("sid") => sid_main(rest),
         _ => {
             eprintln!("{USAGE}");

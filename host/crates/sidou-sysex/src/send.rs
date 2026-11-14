@@ -3,10 +3,16 @@
 
 use std::time::Duration;
 
-use crate::{crc32, put_frames_at, Packet, ABORT, ACK, DIR, END, FILE_SONG, INQ, NAK, WAIT};
+use crate::{
+    crc32, put_frames_at, Packet, ABORT, ACK, DATA, DIR, END, FILE_SONG, GET, INQ, NAK, PUT, WAIT,
+};
 
 pub const DEFAULT_PORT: &str = "SIDOU FM-1";
 pub const FILE_INSTRUMENT: u8 = 3;
+pub const FILE_USER_SOUNDS: u8 = 4;
+const NAK_NOT_FOUND: u8 = 6;
+const META_BYTES: usize = 27;
+const NAME_BYTES: usize = 16;
 const INQ_BYTES: usize = 13;
 const DIR_BYTES: usize = 25;
 const NAK_BUSY: u8 = 4;
@@ -236,6 +242,49 @@ impl<P: Port> Client<P> {
                 crc: le32(&p.data, 21),
             });
         }
+    }
+
+    pub fn get(&mut self, name: &str) -> Result<Option<(u8, Vec<u8>)>, String> {
+        self.drain();
+        let seq = self.next();
+        let mut target = vec![0, 0];
+        target.extend((0..NAME_BYTES).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
+        self.send(GET, seq, target)?;
+        let meta = self.recv(self.timing.answer)?;
+        if meta.command == NAK {
+            return match meta.data.first().copied().unwrap_or(0) {
+                NAK_NOT_FOUND => Ok(None),
+                reason => Err(format!("the FM-1 refused it: {}", nak_words(reason))),
+            };
+        }
+        if meta.command != PUT || meta.data.len() != META_BYTES {
+            return Err("a damaged answer from the FM-1".to_string());
+        }
+        let (file_type, length, crc) = (meta.data[18], le32(&meta.data, 19), le32(&meta.data, 23));
+        self.send(ACK, meta.sequence, Vec::new())?;
+        let mut bytes = Vec::new();
+        loop {
+            let p = self.recv(self.timing.ack)?;
+            if p.command == NAK {
+                let reason = p.data.first().copied().unwrap_or(0);
+                return Err(format!("the FM-1 stopped sending: {}", nak_words(reason)));
+            }
+            if p.command != DATA && p.command != END {
+                return Err("a damaged answer from the FM-1".to_string());
+            }
+            self.send(ACK, p.sequence, Vec::new())?;
+            self.seq = (p.sequence + 1) & 0x7f;
+            if p.command == END {
+                break;
+            }
+            bytes.extend(p.data);
+        }
+        if bytes.len() != length as usize || crc32(&bytes) != crc {
+            return Err(format!(
+                "{name} came over damaged (its length or CRC is wrong): read it again"
+            ));
+        }
+        Ok(Some((file_type, bytes)))
     }
 
     fn expect_ack(&mut self, sequence: u8, waited: &mut bool) -> Result<(), Refusal> {
