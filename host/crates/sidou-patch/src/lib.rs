@@ -9,6 +9,7 @@ pub mod model;
 pub mod sidstation;
 pub mod sounds;
 mod sysex;
+pub mod user_sounds;
 
 pub use model::{
     Controller, Filter, Lfo, Oscillator, Patch, Table, TableNote, TableStep, Unmapped, VoiceMode,

@@ -152,6 +152,31 @@ impl Unit {
     }
 }
 
+fn web_read(file: &[u8], n: u32) -> Option<(String, Sound)> {
+    let mut name = [0 as std::ffi::c_char; LAB_SOUND_NAME as usize + 1];
+    let mut s = [0u8; BYTES];
+    let used = unsafe {
+        user_sounds_file_read(
+            file.as_ptr(),
+            file.len() as u32,
+            n,
+            name.as_mut_ptr(),
+            s.as_mut_ptr(),
+        )
+    };
+    (used != 0).then(|| {
+        let name = unsafe { CStr::from_ptr(name.as_ptr()) };
+        (name.to_str().unwrap().to_owned(), s)
+    })
+}
+
+fn assert_the_web_reader_agrees(u: &Unit) {
+    let file = u.st.file("USER SOUNDS").expect("the file");
+    for n in 0..=USER_SOUNDS {
+        assert_eq!(web_read(&file, n), u.read(n), "slot {n}");
+    }
+}
+
 fn put_user_sounds_file(st: &mut Store, typ: u32, bytes: &[u8]) {
     st.maintain();
     assert_eq!(
@@ -202,6 +227,7 @@ fn a_slot_saves_and_reads_back() {
     assert_eq!(u.tick_until_written(), (USER_SOUND_SAVED, 2));
     assert_eq!(u.read(2), Some(("LAB 03".to_owned(), kept)));
     assert_eq!(u.read(1), None);
+    assert_the_web_reader_agrees(&u);
     let file = u.st.file("USER SOUNDS").expect("the file");
     assert_eq!(file.len(), USER_SOUND_FILE_BYTES as usize);
     assert_eq!(file[..HEADER], [1, BYTES as u8, USER_SOUNDS as u8]);
@@ -239,6 +265,7 @@ fn sixteen_slots_and_a_rewrite_keep_the_others() {
         assert_eq!(u.read(n as u32), Some(want), "slot {n}");
     }
     assert_eq!(u.read(USER_SOUNDS), None);
+    assert_the_web_reader_agrees(&u);
     assert_eq!(u.save(USER_SOUNDS, "X", &all[0]), -1);
     u.st.assert_clean();
 }
@@ -494,6 +521,7 @@ fn a_later_chunk_version_is_read_and_its_extra_bytes_skipped() {
     );
     assert_eq!(u.read(0), Some(("LATER A".to_owned(), s[0])));
     assert_eq!(u.read(3), Some(("LATER B".to_owned(), s[1])));
+    assert_the_web_reader_agrees(&u);
     u.keep(5, "NOW", &s[2]);
     let file = u.st.file("USER SOUNDS").unwrap();
     assert_eq!(file.len(), USER_SOUND_FILE_BYTES as usize);
@@ -542,6 +570,7 @@ fn older_file_reads(old: usize) {
         Some(("OLD LAST".to_owned(), s[1])),
         "the file's last slot"
     );
+    assert_the_web_reader_agrees(&u);
     let mut new = s[2];
     new[LAB_SOUND_FILTER_LFO as usize] = 9;
     new[LAB_SOUND_RESO_LINK as usize] = -3i8 as u8;
@@ -611,6 +640,7 @@ fn a_bad_slot_reads_as_empty() {
         assert_eq!(unsafe { user_sound_load(&mut *u.sounds, n) }, 0);
     }
     assert_eq!(u.read(7), Some(("GOOD".to_owned(), s[1])));
+    assert_the_web_reader_agrees(&u);
     for (typ, bytes) in [
         (STORE_FILE_SOUNDS, chunk(0, 0, 16, &[(1, "A", s[0])])),
         (STORE_FILE_SOUNDS, chunk(1, 0, 15, &[(1, "A", s[0])])),
@@ -621,6 +651,9 @@ fn a_bad_slot_reads_as_empty() {
         let mut u = Unit::new(st);
         u.boot();
         assert_eq!(u.rig.live.sounds_valid, 0, "type {typ}: {:?}", &bytes[..3]);
+        if typ == STORE_FILE_SOUNDS {
+            assert_the_web_reader_agrees(&u);
+        }
     }
 }
 

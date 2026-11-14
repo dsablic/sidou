@@ -116,6 +116,7 @@ const SOURCES: &[&str] = &[
     "bench/workload_scene.c",
     "platform/web/patch_json.c",
     "platform/web/patch_level.c",
+    "platform/web/user_sounds.c",
 ];
 
 const INCLUDES: [&str; 4] = ["core", "bench", "app", "platform/web"];

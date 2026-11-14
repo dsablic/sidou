@@ -51,6 +51,7 @@
 #include "lab_sound.h"
 #include "patch_json.h"
 #include "patch_level.h"
+#include "user_sounds.h"
 #include "live.h"
 #include "live_dice.h"
 #include "live_view.h"
