@@ -255,6 +255,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   2026-11-05) but for 2,048 bytes, which a compile-time assertion keeps under the slot. The ceiling
   sits at that limit because both ways needed all of it: the plan measured both ways 1.2-2.7 KB short
   of the room with every listed win. A raise beyond it is not possible without a smaller loader.
+- **felucca-bsp's resource region (`18eadadb`) is not used** (looked at 2026-11-14, for SCENE's
+  art as room for Bluetooth connecting out). The loader writes a package's `res.bin` in whole
+  sectors of `[0x97000, 0xE0000)`, which is SIDOU's whole store: 42 KB of art would take 11 of its
+  73 sectors (a fifth of the songs' room), and the loader keeps a sector only if it starts with
+  Melodee's commit record (`X0X0`), so on an FM-1 already holding SIDOU's songs an install would
+  overwrite them. It would also replace Felucca 1.6.1's pinned loader. The art is already
+  run-length coded (`scene_rmr_art.c`, 34,538 bytes of runs).
 
 ### SRAM audio path
 
