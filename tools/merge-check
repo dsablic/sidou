@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# shellcheck disable=SC2329
+set -uo pipefail
+usage() {
+    cat <<'USAGE'
+The merge check: what a branch must pass before it reaches main (TESTING.md, "What runs when").
+  tools/merge-check            check this checkout's HEAD against main, running what the change can affect
+  tools/merge-check --full     every stage, whatever the change
+  tools/merge-check --base REF compare against REF instead of main
+One check at a time across every worktree (a lock in the shared git directory; a second run waits).
+Logs and results: build/scratch/mc/ (one log per stage) and build/scratch/mc.results, whose last
+line is "GREEN <commit>" or "RED <commit>". Exit 0 green, 1 red, 2 could not run.
+USAGE
+}
+root=$(cd "$(dirname "$0")/.." && pwd)
+base_ref=main full=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --full) full=1 ;;
+        --base) base_ref=$2; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "merge-check: unknown option $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+export PATH="/opt/homebrew/opt/rustup/bin:$PATH" CARGO_TERM_COLOR=never
+cd "$root" || exit 2
+common=$(cd "$(git rev-parse --git-common-dir)" && pwd)
+out=$root/build/scratch/mc
+results=$root/build/scratch/mc.results
+lock=$common/merge-check.lock
+emu_cache=$common/merge-check-emu-pass.txt
+slow_secs=1800
+
+die() { echo "merge-check: $*" >&2; exit 2; }
+
+take_lock() {
+    while ! mkdir "$lock" 2>/dev/null; do
+        holder=$(cat "$lock/pid" 2>/dev/null || true)
+        if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+            rm -rf "$lock"
+            continue
+        fi
+        echo "merge-check: waiting for the check running in $(cat "$lock/where" 2>/dev/null || echo '?') (pid ${holder:-?})"
+        sleep 30
+    done
+    echo $$ > "$lock/pid"
+    echo "$root" > "$lock/where"
+    trap 'rm -rf "$lock"' EXIT
+}
+
+preflight() {
+    [ -z "$(git status --porcelain --untracked-files=no)" ] || die "uncommitted changes: commit them, the check names a commit"
+    git rev-parse -q --verify "$base_ref^{commit}" >/dev/null || die "no base $base_ref"
+    command -v cargo-nextest >/dev/null || cargo nextest --version >/dev/null 2>&1 || die "cargo-nextest missing (cargo install --locked cargo-nextest)"
+    docker info >/dev/null 2>&1 || die "Docker is not running (the firmware builds and the GCC check run in the build image)"
+}
+
+changed_files() { git diff --name-only "$(git merge-base "$base_ref" HEAD)" HEAD; }
+
+is_doc() { grep -Eq '(\.md$|^docs/|^LICENSES/|^\.github/)'; }
+
+only_version_line_changed() {
+    git diff -U0 "$(git merge-base "$base_ref" HEAD)" HEAD -- CMakeLists.txt \
+        | grep -E '^[-+][^-+]' | grep -Evq 'VERSION [0-9]+\.[0-9]+\.[0-9]+' && return 1
+    return 0
+}
+
+scope() {
+    [ "$full" = 1 ] && { echo full; return; }
+    files=$(changed_files)
+    [ -n "$files" ] || { echo full; return; }
+    rest=$(printf '%s\n' "$files" | while read -r f; do printf '%s\n' "$f" | is_doc || printf '%s\n' "$f"; done)
+    [ -z "$rest" ] && { echo docs; return; }
+    if [ "$rest" = CMakeLists.txt ] && only_version_line_changed; then echo version; return; fi
+    echo full
+}
+
+failed=0
+stage() {
+    name=$1; shift
+    start=$(date +%s)
+    if "$@" > "$out/$name.log" 2>&1; then verdict=PASS; else verdict=FAIL; failed=1; fi
+    line="$name $verdict $(( $(date +%s) - start ))s"
+    echo "$line" | tee -a "$results"
+    [ "$verdict" = PASS ]
+}
+skip() { echo "$1 SKIP $2" | tee -a "$results"; }
+
+in_host() { (cd "$root/host" && "$@"); }
+fm1() { "$root/tools/fm1-docker" "$@"; }
+emu_env() { SIDOU_FM1_BUILD=$root/build/fm1 SIDOU_FM1_SPIKE_BUILD=$root/build/fm1-spike "$@"; }
+
+build_fm1() { fm1 cmake --preset fm1 && fm1 cmake --build --preset fm1; }
+build_spike() {
+    fm1 cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON && fm1 cmake --build build/fm1-spike
+}
+package() {
+    in_host cargo run --locked --release -p sidou-pack -- \
+        --app ../build/fm1/platform/fm1/sidou_app.bin \
+        --loader ../build/fm1/platform/fm1/loader/loader.bin \
+        -o ../build/fm1/sidou.fwsc
+}
+fmt_clippy() {
+    in_host cargo fmt --all --check && in_host cargo clippy --locked --workspace --all-targets -- -D warnings
+}
+host_tests() { in_host cargo nextest run --locked --release --workspace --no-fail-fast -E 'not package(emu-gate)'; }
+ubsan_tests() {
+    SIDOU_SANITIZE=undefined CARGO_TARGET_DIR=$root/build/target-ubsan \
+        in_host cargo nextest run --locked --release --workspace --no-fail-fast -E 'not package(emu-gate)'
+}
+emu_gate() { emu_env in_host cargo nextest run --locked --release -p emu-gate --no-fail-fast; }
+emu_release_only() {
+    emu_env in_host cargo nextest run --locked --release --workspace --no-fail-fast \
+        --ignore-default-filter -E 'not default()'
+}
+package_boots() { emu_env in_host cargo test --locked --release -p emu-gate --test package; }
+reuse_lint() { uvx --from 'reuse[charset-normalizer]' reuse lint; }
+
+emu_key() {
+    {
+        sha256sum build/fm1/platform/fm1/sidou_app.bin build/fm1/platform/fm1/loader/loader.bin \
+            build/fm1/sidou.fwsc build/fm1-spike/platform/fm1/sidou_app.bin | cut -d' ' -f1
+        for dir in host core app bench platform assets third_party tests; do git rev-parse "HEAD:$dir"; done
+    } | sha256sum | cut -d' ' -f1
+}
+
+emu_with_cache() {
+    key=$(emu_key)
+    if grep -qx "$key" "$emu_cache" 2>/dev/null; then
+        skip emu-gate "same firmware, package and test inputs passed before ($key)"
+        return 0
+    fi
+    stage emu-gate emu_gate && echo "$key" >> "$emu_cache"
+}
+
+run_docs() {
+    stage reuse reuse_lint
+    stage readme-check tools/readme-check
+}
+
+run_version() {
+    stage fm1-build build_fm1 && stage package package \
+        && { stage package-boots package_boots; stage emu-release-only emu_release_only; }
+    run_docs
+}
+
+run_full() {
+    stage fm1-build build_fm1 & firmware=$!
+    stage fm1-spike-build build_spike & spike=$!
+    stage fmt-clippy fmt_clippy
+    stage gcc-check tools/gcc-check
+    wait "$firmware"; fw_ok=$?
+    wait "$spike"; spike_ok=$?
+    [ "$fw_ok" = 0 ] && [ "$spike_ok" = 0 ] || failed=1
+    if [ "$fw_ok" = 0 ] && stage package package; then
+        if [ "$spike_ok" = 0 ]; then
+            emu_with_cache & emu=$!
+            stage ergo-gate tools/ergo-gate build/fm1
+            wait "$emu" || failed=1
+        else
+            skip emu-gate "the spike build failed"
+            skip ergo-gate "the spike build failed"
+        fi
+        stage web-demo tools/web-demo --check --skip-firmware
+    else
+        for s in package emu-gate ergo-gate web-demo; do skip "$s" "the firmware build failed"; done
+    fi
+    stage host-tests host_tests
+    stage ubsan ubsan_tests
+    run_docs
+}
+
+preflight
+take_lock
+mkdir -p "$out"
+rm -f "$out"/*.log
+commit=$(git rev-parse --short=8 HEAD)
+kind=$(scope)
+began=$(date +%s)
+echo "merge-check $commit against $base_ref: $kind ($(date '+%Y-%m-%d %H:%M'))" | tee "$results"
+case $kind in
+    docs) run_docs ;;
+    version) run_version ;;
+    full) run_full ;;
+esac
+took=$(( $(date +%s) - began ))
+[ "$took" -gt "$slow_secs" ] && echo "SLOW: ${took}s, over $((slow_secs / 60)) min: look at the load and other runs" | tee -a "$results"
+if [ "$failed" = 0 ]; then echo "GREEN $commit ${took}s" | tee -a "$results"; exit 0; fi
+echo "RED $commit ${took}s (logs in build/scratch/mc/)" | tee -a "$results"
+exit 1

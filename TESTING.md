@@ -2099,9 +2099,12 @@ Linux, and booted in fm1-emu.
 
 ### What runs when (no run that tests nothing new)
 
-The merge check looks at what a change touches against main and runs only what that can affect
-(the user, 2026-10-23: no endless test runs). Every result is the same as the full suite's
-would be; nothing is sampled.
+`tools/merge-check` is the merge check: it looks at what a change touches against main and runs
+only what that can affect (the user, 2026-10-23: no endless test runs). Every result is the same
+as the full suite's would be; nothing is sampled. One runs at a time across every worktree (a
+second waits for the lock); each stage's log is in `build/scratch/mc/`, and
+`build/scratch/mc.results` ends in `GREEN <commit>` or `RED <commit>`. `--full` runs every stage
+whatever the change.
 
 | The change touches | The merge check runs | About |
 |---|---|---|
