@@ -14,6 +14,10 @@ use fm1_soc::usb::UsbEvent;
 const CC_CUTOFF: u8 = 74;
 const IDENTITY: &str = "FM-1_900";
 const IN_MAX: usize = 64;
+const ACK: u8 = 0x7e;
+const NAK: u8 = 0x7f;
+const SYSEX_MALFORMED: u8 = sidou_sys::SYSEX_MALFORMED as u8;
+const SYSEX_NOT_FOUND: u8 = sidou_sys::SYSEX_NOT_FOUND as u8;
 const CONFIG_LEN: usize = 175;
 
 fn host(m: &mut Machine) -> &mut UsbHost {
@@ -2212,3 +2216,147 @@ fn recording_over_usb_audio_costs_the_audio_interrupt_little() {
 }
 
 const SIE_MODEL_PER_SAMPLE: f64 = 3.0;
+
+const USER_SOUNDS_NAME: &str = "USER SOUNDS";
+const KEEP_MS: u64 = 20_000;
+
+const SECOND_SLOT: usize = 4;
+
+fn slot_used(m: &Machine, slot: usize) -> bool {
+    user_sounds_file(m).is_some_and(|file| {
+        file[sidou_sys::USER_SOUND_HEADER as usize + slot * sidou_sys::USER_SOUND_STRIDE as usize]
+            == 1
+    })
+}
+
+fn kept(m: &mut Machine, slot: usize) {
+    let end = m.ms() + KEEP_MS;
+    while !slot_used(m, slot) {
+        assert!(m.ms() < end, "slot {slot} never reached the flash");
+        m.run_ms(200);
+    }
+}
+
+fn keep_sounds(m: &mut Machine, fw: &Firmware, count: usize) {
+    open_lab(m, fw);
+    press(m, ENV);
+    m.turn(K1, 2);
+    m.run_ms(100);
+    press(m, SAVE);
+    kept(m, 0);
+    if count > 1 {
+        m.turn(K1, 3);
+        m.run_ms(100);
+        chord(m, EDIT, SAVE);
+        m.run_ms(100);
+        m.turn(K1, SECOND_SLOT as i32);
+        m.run_ms(60);
+        press(m, SAVE);
+        kept(m, SECOND_SLOT);
+    }
+    m.run_ms(common::SETTLE_MS);
+}
+
+fn user_sounds_file(m: &Machine) -> Option<Vec<u8>> {
+    common::stored_file(&m.soc.flash.mem, USER_SOUNDS_NAME).map(|(_, file)| file)
+}
+
+fn name_request(name: &str) -> Vec<u8> {
+    let mut request = vec![0, 0];
+    request.extend(name16(name));
+    request
+}
+
+fn download(m: &mut Machine, link: &mut Link, name: &str) -> Result<Vec<u8>, u8> {
+    let sequence = 60;
+    link.send(m, 3, sequence, &name_request(name));
+    let (command, s, payload) = link.recv(m, 2_000);
+    if command == NAK {
+        return Err(payload[0]);
+    }
+    assert_eq!((command, s), (4, sequence), "GET's metadata");
+    link.send(m, ACK, s, &[]);
+    let mut data = Vec::new();
+    loop {
+        let (command, s, payload) = link.recv(m, 2_000);
+        link.send(m, ACK, s, &[]);
+        match command {
+            5 => data.extend(payload),
+            6 => return Ok(data),
+            _ => panic!("GET: command {command:#x} {payload:02x?}"),
+        }
+    }
+}
+
+fn listed_names(m: &mut Machine, link: &mut Link) -> Vec<String> {
+    link.send(m, 2, 70, &[]);
+    let mut names = Vec::new();
+    loop {
+        let (command, s, payload) = link.recv(m, 2_000);
+        link.send(m, ACK, s, &[]);
+        match command {
+            2 => names.push(
+                String::from_utf8_lossy(&payload[..16])
+                    .trim_end_matches('\0')
+                    .to_string(),
+            ),
+            6 => return names,
+            _ => panic!("DIR: command {command:#x} {payload:02x?}"),
+        }
+    }
+}
+
+fn refused(m: &mut Machine, link: &mut Link, command: u8, data: &[u8]) -> u8 {
+    link.send(m, command, 80, data);
+    let (reply, s, payload) = link.recv(m, 2_000);
+    assert_eq!((reply, s), (NAK, 80), "{payload:02x?}");
+    payload[0]
+}
+
+#[test]
+fn get_returns_the_kept_sounds_file_byte_for_byte_and_dir_never_lists_it() {
+    let Some(fw) = firmware("the USER sounds GET test") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    keep_sounds(&mut m, &fw, 2);
+    let stored = user_sounds_file(&m).expect("LAB kept the file");
+    assert_eq!(stored.len(), sidou_sys::USER_SOUND_FILE_BYTES as usize);
+    let mut link = Link::default();
+    assert_eq!(download(&mut m, &mut link, USER_SOUNDS_NAME), Ok(stored));
+    assert!(!listed_names(&mut m, &mut link).contains(&USER_SOUNDS_NAME.to_string()));
+}
+
+#[test]
+fn put_and_del_still_refuse_the_user_sounds_file_and_change_nothing() {
+    let Some(fw) = firmware("the USER sounds PUT test") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    keep_sounds(&mut m, &fw, 1);
+    let before = m.soc.flash.mem.clone();
+    let mut link = Link::default();
+    let mut put = name_request(USER_SOUNDS_NAME);
+    put.push(sidou_sys::STORE_FILE_SOUNDS as u8);
+    put.extend(4u32.to_le_bytes());
+    put.extend(0u32.to_le_bytes());
+    assert_eq!(refused(&mut m, &mut link, 4, &put), SYSEX_MALFORMED);
+    assert_eq!(
+        refused(&mut m, &mut link, 7, &name16(USER_SOUNDS_NAME)),
+        SYSEX_MALFORMED
+    );
+    m.run_ms(common::SETTLE_MS);
+    assert_eq!(m.soc.flash.mem, before);
+}
+
+#[test]
+fn get_of_the_user_sounds_without_a_file_is_not_found() {
+    let Some(fw) = firmware("the USER sounds NOT FOUND test") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    assert_eq!(
+        download(&mut m, &mut Link::default(), USER_SOUNDS_NAME),
+        Err(SYSEX_NOT_FOUND)
+    );
+}

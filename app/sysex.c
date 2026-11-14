@@ -33,12 +33,12 @@ static uint8_t reason(int result) {
     }
 }
 
-static int reserved(const char* name) {
+static int reserved(const char* name, int reading) {
     return !strcmp(name, instrument_name) || !strcmp(name, song_name) ||
-           !strcmp(name, STORE_SOUNDS_NAME);
+           (!reading && !strcmp(name, STORE_SOUNDS_NAME));
 }
 
-static int name_read(const uint8_t* p, char* name) {
+static int name_read(const uint8_t* p, char* name, int reading) {
     unsigned i = 0;
     if (!p[0] || p[0] == ' ') return 0;
     while (i < 16 && p[i]) {
@@ -48,7 +48,7 @@ static int name_read(const uint8_t* p, char* name) {
     }
     name[i] = 0;
     while (i < 16) if (p[i++]) return 0;
-    return !reserved(name);
+    return !reserved(name, reading);
 }
 
 static int zeroes(const uint8_t* p, unsigned n) {
@@ -280,7 +280,7 @@ static int target_read(sysex* s, int writing, uint32_t length) {
     s->target = p[0];
     s->index = p[1];
     if (!s->target) {
-        if (s->index || !name_read(p + 2, s->file.name)) return SYSEX_MALFORMED;
+        if (s->index || !name_read(p + 2, s->file.name, !writing)) return SYSEX_MALFORMED;
     } else {
         if (s->target > 2 || !zeroes(p + 2, 16) ||
             (s->target == 1 ? !s->index || s->index > 63 : s->index != 0))
@@ -444,7 +444,7 @@ static void command(sysex* s, sysex_parser* p) {
         }
         s->last = s->now;
     } else if (cmd == DEL && n == 16) {
-        if (!name_read(s->buffer, s->file.name)) fail(s, SYSEX_MALFORMED, seq);
+        if (!name_read(s->buffer, s->file.name, 0)) fail(s, SYSEX_MALFORMED, seq);
         else {
             s->expected_crc = s->storage->errors;
             int result = store_file_delete(s->storage, s->file.name);
@@ -704,7 +704,7 @@ void sysex_poll(sysex* s, uint32_t now_ms) {
     } else if (s->state == DIRECTORY) {
         int result;
         do result = store_dir_next(s->storage, &s->file);
-        while (result == 1 && reserved(s->file.name));
+        while (result == 1 && reserved(s->file.name, 0));
         if (result < 0) fail(s, SYSEX_IO, s->sequence);
         else if (!result) {
             queue(s, END, s->sequence, 0, 1);

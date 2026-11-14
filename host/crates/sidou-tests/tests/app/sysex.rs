@@ -262,6 +262,28 @@ impl Engine {
         assert_eq!(self.hooks.toasts.last(), Some(&(reason as u8)));
     }
 
+    fn download(&mut self, name: &str, sequence: u8) -> (Vec<u8>, Vec<u8>) {
+        self.request(3, sequence, &named(name));
+        let (command, got, metadata) = self.response();
+        assert_eq!((command, got), (4, sequence));
+        self.request(0x7e, sequence, &[]);
+        let mut data = Vec::new();
+        let mut seq = (sequence + 1) & 127;
+        loop {
+            let (cmd, got_seq, payload) = self.response();
+            assert_eq!(got_seq, seq);
+            self.request(0x7e, seq, &[]);
+            seq = (seq + 1) & 127;
+            if cmd == 6 {
+                assert!(payload.is_empty());
+                return (metadata, data);
+            }
+            assert_eq!(cmd, 5);
+            assert!(!payload.is_empty() && payload.len() <= 256);
+            data.extend(payload);
+        }
+    }
+
     fn active(&self) -> bool {
         unsafe { sysex_active(&*self.engine) != 0 }
     }
@@ -380,27 +402,8 @@ fn store_upload_download_directory_and_delete_roundtrip() {
     let data: Vec<u8> = (0..4097).map(|n| (n * 137 + 19) as u8).collect();
     e.upload(named("ROUNDTRIP"), &data, 256);
     assert_eq!(e.rig.file("ROUNDTRIP"), Some(data.clone()));
-    e.request(3, 127, &named("ROUNDTRIP"));
-    assert_eq!(
-        e.response(),
-        (4, 127, upload_metadata(named("ROUNDTRIP"), &data))
-    );
-    e.request(0x7e, 127, &[]);
-    let mut decoded = Vec::new();
-    let mut seq = 0;
-    loop {
-        let (cmd, got_seq, payload) = e.response();
-        assert_eq!(got_seq, seq);
-        e.request(0x7e, seq, &[]);
-        seq = (seq + 1) & 127;
-        if cmd == 6 {
-            assert!(payload.is_empty());
-            break;
-        }
-        assert_eq!(cmd, 5);
-        assert!(!payload.is_empty() && payload.len() <= 256);
-        decoded.extend(payload);
-    }
+    let (metadata, decoded) = e.download("ROUNDTRIP", 127);
+    assert_eq!(metadata, upload_metadata(named("ROUNDTRIP"), &data));
     assert_eq!(decoded, data);
     assert!(!e.active());
     e.request(2, 12, &[]);
@@ -1438,7 +1441,7 @@ fn mutated_sid_uploads_store_only_tunes_and_refusals_program_nothing() {
 }
 
 #[test]
-fn sysex_never_lists_fetches_replaces_or_deletes_the_user_sounds_file() {
+fn sysex_serves_the_user_sounds_file_but_never_lists_replaces_or_deletes_it() {
     let mut e = Engine::new(true);
     let bytes = vec![0x3c; USER_SOUND_FILE_BYTES as usize];
     e.rig.maintain();
@@ -1458,8 +1461,9 @@ fn sysex_never_lists_fetches_replaces_or_deletes_the_user_sounds_file() {
     e.request(2, 1, &[]);
     assert_eq!(e.response(), (6, 1, vec![]), "DIR lists nothing");
     e.request(0x7e, 1, &[]);
-    e.request(3, 2, &named("USER SOUNDS"));
-    e.nak(2, SYSEX_MALFORMED);
+    let (metadata, served) = e.download("USER SOUNDS", 2);
+    assert_eq!(metadata[18], STORE_FILE_SOUNDS as u8);
+    assert_eq!(served, bytes, "GET serves the file");
     e.request(7, 3, &named("USER SOUNDS")[2..]);
     e.nak(3, SYSEX_MALFORMED);
     e.request(4, 4, &upload_metadata(named("USER SOUNDS"), &[1; 16]));
