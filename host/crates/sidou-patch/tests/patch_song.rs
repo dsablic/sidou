@@ -82,9 +82,25 @@ fn every_mistake_is_refused_in_words_a_model_can_act_on() {
         (GROOVE, r#""order": ["A"]"#, r#""order": []"#, "order: is empty. Allowed: a list of 1 to 64 section names."),
         (THREE_PARTS, r#""A", "C"]"#, r#""A", "D"]"#, "order[4]: no section \"D\". Sections: A, B, C."),
         (GROOVE, r#""order": ["A"]"#, &sixty_five, "order: has too many. Allowed: a list of 1 to 64 section names."),
+        (GROOVE, "G2 .", "C#9 .", "sections.A.voices[0].notes: token 7 \"C#9\" is not a note. Allowed: C0 to G#7, - . and ! or ~ after a note."),
+        (GROOVE, "C2! .", "C2!! .", "sections.A.voices[0].notes: token 1 \"C2!!\" is not a note."),
+        (GROOVE, "C2! .", "k .", "sections.A.voices[0].notes: token 1 \"k\" is a drum, and drums need the kit."),
+        (GROOVE, "k . h", "C2 . h", "sections.A.voices[1].notes: token 1 \"C2\" is not a drum. Allowed with the kit: k kick, s snare, h closed hat"),
+        (GROOVE, "C2 .\"}", "C2\"}", "sections.A.voices[0].notes: 15 tokens, rows is 16."),
+        (GROOVE, "h dh\"}", "h dh k\"}", "sections.A.voices[1].notes: 17 tokens, rows is 16."),
     ];
     for (text, from, to, want) in cases {
         let err = refusal(&with(text, from, to));
         assert!(err.contains(want), "{to}: {err}");
     }
+}
+
+#[test]
+fn tokens_are_separated_by_any_run_of_spaces_tabs_and_newlines() {
+    let spaced = with(GROOVE, "C2! . C2~", r"  C2!\t.\n C2~ ");
+    assert_eq!(
+        json::song_song(&spaced, SID_MODEL_6581),
+        json::song_song(GROOVE, SID_MODEL_6581)
+    );
+    assert!(json::song_song(GROOVE, SID_MODEL_6581).is_ok());
 }

@@ -59,6 +59,7 @@ struct field {
 #define NAME_LAST '_'
 #define NOTE_DOWN_MIN (-32)
 #define NOTE_HOLD LAB_TABLE_NOTE_NONE
+#define ESCAPED_CONTROL '\x01'
 
 static const char WAVES[] = "none\0triangle\0saw\0pulse\0noise\0";
 static const char MODES[] = "off\0low\0band\0high\0";
@@ -550,7 +551,7 @@ static int string(reader* r, char* out, uint32_t max) {
                 }
                 c = code < 0x80u ? (char)code : '\x7f';
             } else if (c == 'n' || c == 't' || c == 'r' || c == 'b' || c == 'f') {
-                c = '\x01';
+                c = ESCAPED_CONTROL;
             }
         }
         if (n + 1u < max) {
@@ -1829,6 +1830,20 @@ int patch_json_read_step(patch_step* st, const char* s, uint32_t len) {
 #define SONG_ORDER "a list of 1 to 64 section names"
 #define SONG_INSTRUMENT "the name of one of instruments, or \"pulse\", \"bass\" or \"kit\""
 #define SONG_BPM_DEFAULT 125u
+#define SONG_NOTES "C0 to G#7, - . and ! or ~ after a note"
+#define SONG_NOT_A_NOTE "is not a note. Allowed: " SONG_NOTES
+#define SONG_NOT_A_DRUM                                                                             \
+    "is not a drum. Allowed with the kit: k kick, s snare, h closed hat, o open hat, c clap, t low "  \
+    "tom, T high tom, r rim, dk ds dc dh the digi kick, snare, clap and hat, - and ."
+#define SONG_HOLD "-"
+#define SONG_REST "."
+#define SONG_ACCENT '!'
+#define SONG_SLIDE '~'
+#define SONG_TOKEN_MAX 8u
+#define SONG_NOTE_MIN_CHARS 2u
+#define SONG_NOTES_MAX (PATCH_SONG_ROWS * 12u)
+
+static const char SONG_DRUMS[] = "k\0s\0h\0o\0c\0t\0T\0r\0dk\0ds\0dc\0dh\0";
 
 static const char SONG_PARTS[] = "instruments\0sections\0order\0";
 enum { PART_INSTRUMENTS, PART_SECTIONS, PART_ORDER, PARTS };
@@ -2043,9 +2058,103 @@ static int voice_instrument(reader* r, void* ctx) {
     return 0;
 }
 
+static int separator(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ESCAPED_CONTROL;
+}
+
+static int token_fail(reader* r, uint32_t n, const char* token, const char* what) {
+    char w[PATCH_JSON_ERROR_MAX];
+    text m = {w, 0, sizeof w};
+    add(&m, "token ");
+    add_milli(&m, (int64_t)n * MILLI);
+    add(&m, " \"");
+    add(&m, token);
+    add(&m, "\" ");
+    add(&m, what);
+    return fail(r, w, NULL);
+}
+
+static int note_cell(const char* token, patch_song_cell* c) {
+    char base[SONG_TOKEN_MAX + 1u];
+    uint32_t n = length(token);
+    memcpy(base, token, n + 1u);
+    while (n && (base[n - 1u] == SONG_ACCENT || base[n - 1u] == SONG_SLIDE)) {
+        uint8_t* flag = base[n - 1u] == SONG_ACCENT ? &c->accent : &c->slide;
+        if (*flag) {
+            return -1;
+        }
+        *flag = 1;
+        base[--n] = 0;
+    }
+    int pitch = n >= SONG_NOTE_MIN_CHARS ? pitch_of(base) : -1;
+    c->note = (uint8_t)pitch;
+    return pitch < 0 ? -1 : 0;
+}
+
+static int token_cell(reader* r, uint32_t n, const char* token, int kit, patch_song_cell* c) {
+    int drum = names_index(SONG_DRUMS, token);
+    memset(c, 0, sizeof *c);
+    if (!strcmp(token, SONG_HOLD)) {
+        c->hold = 1;
+        return 0;
+    }
+    if (!strcmp(token, SONG_REST)) {
+        c->rest = 1;
+        return 0;
+    }
+    if (kit) {
+        c->drum = (uint8_t)(drum + 1);
+        c->note = STEP_C3;
+        return drum < 0 ? token_fail(r, n, token, SONG_NOT_A_DRUM) : 0;
+    }
+    if (drum >= 0) {
+        return token_fail(r, n, token, "is a drum, and drums need the kit. Allowed here: " SONG_NOTES);
+    }
+    return note_cell(token, c) ? token_fail(r, n, token, SONG_NOT_A_NOTE) : 0;
+}
+
 static int voice_notes(reader* r, void* ctx) {
-    (void)ctx;
-    return skip_value(r);
+    voice_read* vr = ctx;
+    char notes[SONG_NOTES_MAX];
+    int len = string(r, notes, sizeof notes);
+    if (len < 0) {
+        return -1;
+    }
+    if ((uint32_t)len >= sizeof notes) {
+        return fail(r, "is too long. Allowed: one token a row, separated by spaces", NULL);
+    }
+    uint32_t rows = vr->sec->rows, count = 0;
+    int kit = vr->sec->instr[vr->voice] == PATCH_SONG_BUILTIN + PATCH_STEP_KIT;
+    patch_song_cell* cells = vr->sec->cells[vr->voice];
+    patch_song_cell beyond;
+    for (const char* at = notes; *at;) {
+        char token[SONG_TOKEN_MAX + 1u];
+        uint32_t n = 0;
+        if (separator(*at)) {
+            at++;
+            continue;
+        }
+        for (; *at && !separator(*at); at++, n++) {
+            token[n < SONG_TOKEN_MAX ? n : SONG_TOKEN_MAX] = *at;
+        }
+        token[n < SONG_TOKEN_MAX ? n : SONG_TOKEN_MAX] = 0;
+        count++;
+        if (n > SONG_TOKEN_MAX) {
+            return token_fail(r, count, token, kit ? SONG_NOT_A_DRUM : SONG_NOT_A_NOTE);
+        }
+        if (token_cell(r, count, token, kit, count <= rows ? &cells[count - 1u] : &beyond)) {
+            return -1;
+        }
+    }
+    if (count != rows) {
+        char w[48];
+        text m = {w, 0, sizeof w};
+        add_milli(&m, (int64_t)count * MILLI);
+        add(&m, count == 1u ? " token, rows is " : " tokens, rows is ");
+        add_milli(&m, (int64_t)rows * MILLI);
+        return fail(r, w, NULL);
+    }
+    return 0;
 }
 
 static int voice_field(reader* r, const char* key, void* ctx) {
