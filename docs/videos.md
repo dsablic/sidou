@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.9.0 release](https://github.com/dsablic/sidou/releases/tag/v1.9.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.10.0 release](https://github.com/dsablic/sidou/releases/tag/v1.10.0).
 
 - [SIDOU in 78 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.9](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 1.10](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -49,13 +49,13 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.4 s, 6.7 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.9 highlight: SIDOU LOOP playing while BLUETOOTH goes ON in SETTINGS; cards for connecting from a Mac, an iPad or a phone (no pairing) and for notes, CCs and a DAW's clock over the air | 30.2 s, 1.9 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.10 highlight: THREE PARTS, a song written as text (sidou-song/1), loaded with SONG and played in the TRACKER; cards for the Library page previewing and sending it, and for the USER sounds read back over USB as patches | 33.7 s, 1.8 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.3 s, 4.5 MB |
 | [send-to-song](recipes/send-to-song.json) | ![send-to-song](media/videos/send-to-song.webp) | LAB while SIDOU LOOP plays: shape SAW LEAD, REC sends it as SENT AS I06, the hint line's APPROX, INSTR shows it, ENV pulls it back exactly (PULLED I06), EDIT + REC replaces it after REPLACE I06? | 34.8 s, 3.5 MB |
 | [mute-and-solo](recipes/mute-and-solo.json) | ![mute-and-solo](media/videos/mute-and-solo.webp) | PLAY the built-in loop, GLO + a key mutes or solos a voice | 27.0 s, 2.8 MB |
-| [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a lane on STEP, KICK, SNARE and the hats picked by name, four pages with a tom fill, PLAY, a digi clap on every page | 51.2 s, 4.1 MB |
+| [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a lane on STEP, KICK, SNARE and the hats picked by name, four pages with a tom fill, PLAY, a digi clap on every page | 51.2 s, 4.0 MB |
 | [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.6 MB |
 | [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 35.1 s, 2.5 MB |
 | [chord-arpeggio](recipes/chord-arpeggio.json) | ![chord-arpeggio](media/videos/chord-arpeggio.webp) | ARP on LIVE: a held chord as one voice stepping through its notes, ARP + K1, K2 and K3 for rate, order and span | 21.9 s, 2.1 MB |

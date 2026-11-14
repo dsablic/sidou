@@ -3012,6 +3012,38 @@ Set up:
   with the FM-1 as the microphone and a held chord. Pass: no dropout about once a second.
   *Result:*
 
+## 36. 1.10: songs as text and the USER sounds read back
+
+What it decides: whether the 1.10.0 package ships. The firmware's only change is SysEx's GET of
+`USER SOUNDS` (16 bytes); the rest is the site's and `sidou-sysex`'s, so this section checks the
+package installs over 1.9.0 and that the two new ways in reach a real FM-1 over USB. Every item
+waits for the owner's yes for that step: nothing is flashed, sent or read before it.
+
+Set up: the 1.10.0 package (`build/fm1/sidou.fwsc` from the release branch, `tools/preflash`
+passing), an FM-1 on 1.9.0 with at least two sounds kept in LAB (SAVE), a Mac with Chrome on
+the [Library page](https://dsablic.github.io/sidou/library.html) or `sidou-sysex` built from the
+branch, headphones on the line out.
+
+- [x] **Install over 1.9.0** with Felucca's installer: it finishes; SIDOU boots; STATUS shows
+  1.10.0; the songs, the settings and the USER sounds (PRESETS after DICE) are kept.
+  *Emulator:* `package.rs` (the package boots in fm1-emu). *Result:* Passed 2026-11-14 with the
+  1.10.0 package (identity FM-1_964, `5b044329`) and Felucca 1.6.1's `fm1_install.py`: the install
+  finished, the FM-1 came back as FM-1_964 and answered as SIDOU 1.10.0; the owner found the songs,
+  the settings and the four USER sounds kept.
+- [ ] **The USER sounds read back:** `sidou-sysex user-sounds --out DIR` (or the Library's USER
+  sounds button). Pass: one `.json` per kept sound, named as on the FM-1; one opened on the
+  Library page sounds like the kept sound on the FM-1, by ear; nothing on the FM-1 changes
+  (PRESETS lists the same sounds). *Emulator:* `usb.rs`'s USER SOUNDS tests. *Result:* Passed
+  2026-11-14: `sidou-sysex user-sounds` wrote U01 to U04 (LAB 01 to LAB 04); LAB 01 on the
+  Library page sounds the same as on the FM-1, by ear.
+- [ ] **A song written as text, sent and played:** `docs/prompt-to-patch-song.md`'s example
+  (`sidou-sysex song FILE.json`, then `sidou-sysex send`, or the Library's Send). Pass: SONG,
+  LOAD lists it; PLAY in TRACKER plays it, at the BPM `sidou-sysex song` reported, the voices as
+  written. *Emulator:* `first_use.rs::a_whole_song_text_stored_and_played_is_heard_at_pitch_on_time_and_silent_where_a_voice_rests`.
+  *Result:* Passed 2026-11-14: `sidou-sysex song` said "asked 116, plays 115.7 BPM"; `sidou-sysex
+  send` put THREE PARTS (1,244 bytes) on the FM-1; loaded and played in TRACKER, it played as
+  written, by ear.
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -3053,3 +3085,4 @@ Set up:
 | 33 1.8: the small items, by ear | | |
 | 34 1.8: felucca-bsp and Bluetooth MIDI | | |
 | 35 Bluetooth MIDI in a release-sized build | | |
+| 36 1.10: songs as text, the USER sounds read back | Pass | 2026-11-14, the 1.10.0 package |

@@ -267,16 +267,17 @@ journey lift-a-sound | Lift a sound from a .sid
   step keep | *SAVE* keeps it | SAVE: a USER sound under its name, for PRESETS to find later. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
   step back | *HOME*: back to the tune | HOME: NOW PLAYING, the tune still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
-journey whats-new | What's new in SIDOU 1.9
-  goal See SIDOU 1.9's highlight: Bluetooth MIDI, turned on in SETTINGS, with a Mac, an iPad or a phone connecting to SIDOU.
-  prereq On LIVE after the boot, SIDOU LOOP the song loaded.
-  skills opening the song views; PLAY; SETTINGS; BLUETOOTH; Audio MIDI Setup's Bluetooth window
-  related mute-and-solo; play-over-a-song; chip-spread
-  step play | The song *plays* | SEQ twice opens the TRACKER, PLAY plays SIDOU LOOP. It plays on through what follows. | press SEQ; wait 900; press SEQ; wait 900; press PLAY; wait 2500 | view tracker; sound; focus PLAY; callout SEQ TWICE, PLAY
-  step bluetooth | *BLUETOOTH* in SETTINGS | HOME twice, SETTINGS, the last item: BLUETOOTH. ALGORITHM turns it ON; it stays on after a power cycle. | press HOME; wait 500; press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 1; wait 2500 | view settings; text BLUETOOTH; text ON; sound; focus ALGORITHM; callout SETTINGS > BLUETOOTH ON
-  step connect | *Connect*, no pairing | On a Mac: Audio MIDI Setup, Window, Show MIDI Studio, the Bluetooth button, SIDOU XXXX, Connect. On an iPad or a phone, a music app's Bluetooth MIDI list. | wait 5600 | sound; focus card; callout MAC OR IPAD <> BLUETOOTH <> SIDOU XXXX
-  step play-it | Play it from the *air* | Notes, CCs and a DAW's clock come in, the panel's knobs go out, as over USB. A dropped link lets go of held notes. | wait 5000 | sound; focus card; callout NOTES, CCS, CLOCK <> SIDOU
-  step get-it | Get *SIDOU 1.9* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
+journey whats-new | What's new in SIDOU 1.10
+  goal See SIDOU 1.10's highlight: a whole song written as text, loaded and played on the FM-1, and the USER sounds read back as patches on the Library page.
+  prereq On LIVE after the boot; THREE PARTS, a song written as text (sidou-song/1), in the store.
+  skills SONG LOAD; SEQ opens the song views; PLAY; sidou-song/1; the Library page; USER sounds read over USB
+  related mute-and-solo; play-over-a-song; save-and-load; shape-in-lab
+  songs three-parts
+  step load | A song from *text* | HOME, SONG, LOAD: THREE PARTS, written as text, is in the store like any other song. | press HOME; wait 500; select-item SONG; press SAVE; wait 700; press SAVE; wait 1500; turn SELECT 1; wait 500; press SAVE; wait 2500 | view song_menu; absent BUSY; absent SNG:; focus SAVE; callout HOME, SONG, SAVE, SAVE
+  step play | It *plays* | SEQ twice opens the TRACKER, PLAY plays the song: bass, drums and a lead, three sections in order. | press SEQ; wait 900; press SEQ; wait 900; press PLAY; wait 6000 | view tracker; sound; focus PLAY; callout SEQ TWICE, PLAY
+  step text | Written as *text* | A model or coding agent writes the song as step-grid strings, sidou-song/1. The Library page previews it, sends it to the FM-1 or opens it in the editor; sidou-sysex song makes the file. | wait 5600 | sound; focus card; callout A MODEL WRITES sidou-song/1 <> LIBRARY: PREVIEW, SEND, EDIT
+  step user-sounds | *USER sounds*, read back | The Library page's USER sounds button reads the sounds LAB kept, over USB, and opens each as a patch. sidou-sysex user-sounds saves them as JSON. Read only. | wait 5000 | sound; focus card; callout FM-1 > USER SOUNDS > LIBRARY AS PATCHES
+  step get-it | Get *SIDOU 1.10* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.

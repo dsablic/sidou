@@ -10,6 +10,7 @@ pub struct PatchFile {
     pub song: SongFile,
     pub quiet: Option<String>,
     pub tempo: Option<String>,
+    pub plays: bool,
 }
 
 pub fn patch_file(text: &str, model: Model) -> Result<PatchFile, String> {
@@ -26,6 +27,7 @@ pub fn patch_file(text: &str, model: Model) -> Result<PatchFile, String> {
         },
         quiet: c.quiet,
         tempo: None,
+        plays: false,
     })
 }
 
@@ -42,6 +44,7 @@ pub fn bank_file(text: &str, model: Model) -> Result<PatchFile, String> {
         },
         quiet: b.quiet,
         tempo: None,
+        plays: false,
     })
 }
 
@@ -60,6 +63,7 @@ fn named_song(
         song: SongFile { name, sng, syx },
         quiet,
         tempo,
+        plays: true,
     })
 }
 

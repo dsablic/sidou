@@ -196,3 +196,10 @@ path = ["platform/fm1/bsp/chip/ble_rf_tables_v15.h"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = ["2024-2026 Zhuhai Jieli Technology Co., Ltd.", "2026 Zhuhai Shengke / M-VAVE", "2026 Henri David (hdavid), Optimist"]
 SPDX-License-Identifier = "Apache-2.0"
+
+# Songs written as text (sidou-song/1), the example in docs/prompt-to-patch-song.md: the videos
+# turn them into .sng files when they put them in the store.
+[[annotations]]
+path = ["assets/text-songs/*.json"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"

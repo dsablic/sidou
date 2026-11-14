@@ -53,3 +53,25 @@ fn the_recipes_run_in_the_emulator_and_meet_their_expectations() {
     }
     std::fs::remove_dir_all(&out).ok();
 }
+
+#[test]
+fn the_text_song_the_videos_store_is_the_docs_example() {
+    let doc = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../docs/prompt-to-patch-song.md"),
+    )
+    .unwrap();
+    let start = doc
+        .find("{\"format\": \"sidou-song/1\", \"name\": \"THREE PARTS\"")
+        .unwrap();
+    let block = &doc[start..start + doc[start..].find("```").unwrap()];
+    let file = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/text-songs/three-parts.json"),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(block).unwrap(),
+        serde_json::from_str::<serde_json::Value>(&file).unwrap()
+    );
+    let sng = ergo::device::showcase_song("three-parts").unwrap();
+    assert!(sng.starts_with(b"GTS5"));
+}
