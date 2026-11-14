@@ -1813,11 +1813,26 @@ int patch_json_kind(const char* s, uint32_t len) {
     }
     return !strcmp(format, PATCH_BANK_FORMAT)   ? PATCH_JSON_BANK_TEXT
            : !strcmp(format, PATCH_STEP_FORMAT) ? PATCH_JSON_STEP_TEXT
+           : !strcmp(format, PATCH_SONG_FORMAT) ? PATCH_JSON_SONG_TEXT
                                                 : PATCH_JSON_PATCH_TEXT;
 }
 
 static uint32_t template_read(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
     return song_io_template(ctx, off, p, n);
+}
+
+int patch_json_read_song(patch_song* sg, const char* s, uint32_t len) {
+    (void)s;
+    (void)len;
+    sg->error[0] = 0;
+    return -1;
+}
+
+int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model) {
+    (void)s;
+    (void)sg;
+    (void)model;
+    return -1;
 }
 
 static int edited(gt2_song* s, gt2_err e, gt2_edit* ed) {

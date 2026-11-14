@@ -61,6 +61,41 @@ typedef struct {
     patch_json scratch;
 } patch_step;
 
+#define PATCH_SONG_FORMAT "sidou-song/1"
+#define PATCH_SONG_NAME_DEFAULT "SONG"
+#define PATCH_SONG_SECTIONS 16u
+#define PATCH_SONG_ROWS 128u
+#define PATCH_SONG_VOICES GT2_MONO_CHANNELS
+#define PATCH_SONG_ORDER 64u
+#define PATCH_SONG_INSTRUMENTS 16u
+#define PATCH_SONG_LABEL 8u
+#define PATCH_SONG_BPM_MIN 60u
+#define PATCH_SONG_BPM_MAX 300u
+enum { PATCH_JSON_SONG_TEXT = PATCH_JSON_STEP_TEXT + 1 };
+enum { PATCH_SONG_BUILTIN = PATCH_SONG_INSTRUMENTS, PATCH_SONG_REST_VOICE = 0xFF };
+
+typedef struct {
+    uint8_t note, drum, accent, slide, hold, rest;
+} patch_song_cell;
+
+typedef struct {
+    char label[PATCH_SONG_LABEL + 1u];
+    uint8_t rows;
+    uint8_t instr[PATCH_SONG_VOICES];
+    patch_song_cell cells[PATCH_SONG_VOICES][PATCH_SONG_ROWS];
+} patch_song_section;
+
+typedef struct {
+    char name[PATCH_BANK_NAME + 1u];
+    uint16_t bpm, bpm_played10;
+    uint8_t sections, order_len, instruments;
+    uint8_t order[PATCH_SONG_ORDER];
+    char labels[PATCH_SONG_INSTRUMENTS][PATCH_SONG_LABEL + 1u];
+    patch_json patches[PATCH_SONG_INSTRUMENTS];
+    patch_song_section section[PATCH_SONG_SECTIONS];
+    char error[PATCH_JSON_ERROR_MAX];
+} patch_song;
+
 void patch_json_defaults(uint8_t sound[LAB_SOUND_BYTES]);
 int patch_json_read(patch_json* p, const char* text, uint32_t len);
 uint32_t patch_json_write(const uint8_t sound[LAB_SOUND_BYTES], const char* name, char* out,
@@ -71,6 +106,8 @@ int patch_json_kind(const char* text, uint32_t len);
 int patch_json_read_step(patch_step* st, const char* text, uint32_t len);
 int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model);
 uint32_t patch_json_write_step(const gt2_song* s, uint32_t voice, char* out, uint32_t max);
+int patch_json_read_song(patch_song* sg, const char* text, uint32_t len);
+int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model);
 int patch_json_read_bank(patch_bank* b, const char* text, uint32_t len);
 int patch_json_bank_song(gt2_song* s, patch_bank* b, uint32_t model);
 uint32_t patch_json_write_bank(const patch_bank* b, char* out, uint32_t max);

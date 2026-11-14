@@ -262,3 +262,31 @@ pub fn write_step(song: &Song, voice: u32) -> Option<String> {
     } as usize;
     (n > 0).then(|| String::from_utf8_lossy(&out[..n]).into_owned())
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SongMade {
+    pub sng: Vec<u8>,
+    pub bpm: u32,
+    pub bpm_played10: u32,
+}
+
+pub fn check_song(json: &str, model: u32) -> Result<SongMade, String> {
+    let mut sg = Box::<patch_song>::default();
+    let r = unsafe { patch_json_read_song(&mut *sg, json.as_ptr().cast(), json.len() as u32) };
+    if r < 0 {
+        return Err(c_text(&sg.error));
+    }
+    let mut song = Song::device();
+    match unsafe { patch_json_song_song(song.ptr_mut(), &mut *sg, model) } {
+        0 => Ok(SongMade {
+            sng: song.write(true),
+            bpm: u32::from(sg.bpm),
+            bpm_played10: u32::from(sg.bpm_played10),
+        }),
+        _ => Err(c_text(&sg.error)),
+    }
+}
+
+pub fn song_song(json: &str, model: u32) -> Result<Vec<u8>, String> {
+    check_song(json, model).map(|made| made.sng)
+}
