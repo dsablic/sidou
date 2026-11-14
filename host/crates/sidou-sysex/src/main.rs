@@ -178,7 +178,11 @@ fn patch_main(rest: Vec<String>, read: fn(&str, Model) -> Result<PatchFile, Stri
     if let Err(code) = make_out(&i.out).and_then(|()| write_song(&i.out, &file.song)) {
         return code;
     }
-    println!("On the FM-1: SONG, LOAD {}, SEQ to INSTR, an instrument, ENV opens it in LAB, SAVE keeps it", file.song.name);
+    if file.plays {
+        println!("On the FM-1: SONG, LOAD {}, then PLAY", file.song.name);
+    } else {
+        println!("On the FM-1: SONG, LOAD {}, SEQ to INSTR, an instrument, ENV opens it in LAB, SAVE keeps it", file.song.name);
+    }
     ExitCode::SUCCESS
 }
 

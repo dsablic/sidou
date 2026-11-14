@@ -183,7 +183,13 @@ fn the_cli_makes_a_song_from_text_and_says_the_bpm_it_plays() {
         "{}",
         String::from_utf8_lossy(&ok.stderr)
     );
-    assert!(String::from_utf8_lossy(&ok.stdout).contains("asked 120, plays 115.7"));
+    let said = String::from_utf8_lossy(&ok.stdout);
+    assert!(said.contains("asked 120, plays 115.7"));
+    assert!(
+        said.contains("On the FM-1: SONG, LOAD NIGHT, then PLAY"),
+        "{said}"
+    );
+    assert!(!said.contains("LAB"), "{said}");
     assert_eq!(
         std::fs::read(dir.join("out/NIGHT.sng")).unwrap(),
         json::song_song(text, SID_MODEL_6581).unwrap()
