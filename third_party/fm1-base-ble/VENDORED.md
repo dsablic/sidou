@@ -18,8 +18,10 @@
   table under that name); SIDOU's `platform/fm1/ble_rf_tables.h` includes the v15 table instead.
 - **How SIDOU builds it** (`SIDOU_BLE`, on by default, `platform/fm1/CMakeLists.txt`): the host side in
   `platform/fm1/ble_stack_unit.c` at `-Oz`, the driver in SIDOU's glue `platform/fm1/ble_radio.c`,
-  its own unit at `-Os` with `FM1_IRQ_DEFS 0`, so `main.c` keeps the BSP's `fm1_irq.h`
-  definitions (the design notes, "Bluetooth").
+  its own unit at `-Oz` with `FM1_IRQ_DEFS 0`, so `main.c` keeps the BSP's `fm1_irq.h`
+  definitions; the central at level 3 (`BLE_CENTRAL=3`, no pairing). The emulator gate's
+  `-DSIDOU_BLE_FAKE=ON` image builds only `ble_scan.c` and `ble_midi.c` of it, with SIDOU's fake
+  radio in place of the driver and the rest (the design notes, "Bluetooth").
 
 ## Updating
 

@@ -374,7 +374,7 @@ user confirms a format; M2a Task 5's format screen must expect it.
 | `0x100` | 1 | the [settings record](settings-format.md) |
 | `0x101`..`0x108` | 2 | the eight [USER chip profiles](profile-format.md) |
 | `0x109` | 4 | LAB's [unsaved edit](sound-format.md#the-unsaved-edit) |
-| `0x10A` | 1 | the Bluetooth record (SETTINGS BLUETOOTH, written the first time it is turned on): version `1`, BLUETOOTH `0` OFF / `1` ON, then SIDOU's random static address, 6 bytes, least significant first |
+| `0x10A` | 1 | the Bluetooth record (SETTINGS BLUETOOTH, written the first time it is turned on), 32 bytes: version `2`, BLUETOOTH `0` OFF / `1` ON / `2` KEYBOARD, SIDOU's random static address (6 bytes, least significant first), then the remembered keyboard: its address (6 bytes, least significant first), its type (`0` none, `1` public, `2` random) and its name (16 characters and a terminating zero). 1.9 and 1.10 wrote version `1`, 8 bytes (version, `0` OFF / `1` ON, the address), which reads as OFF or ON with no keyboard |
 | `0x80000000 \| slot` | `0x82` | a file: a song (type 1, M2c), a `.sid` tune (type 2, M3), a GTI5 instrument (type 3: SysEx's `MIDI INSTRUMENT` staging, a 1.5 preview build's `LIFTED SOUND`), LAB's [USER sounds](sound-format.md) (type 4, `USER SOUNDS`) |
 
 Keys below `0x100` belong to the emulator tests (`platform/fm1/store_fm1.c`'s hook). The

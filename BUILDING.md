@@ -154,8 +154,11 @@ tools/fm1-docker cmake --build build/fm1-cpu2
 stack, the peripheral (a Mac, an iPad or a phone connects to SIDOU), and BLUETOOTH in SETTINGS,
 off until it is turned on ([decision 0011](docs/decisions/0011-bluetooth-midi.md)). The stack is
 vendored in `third_party/fm1-base-ble` and the radio's headers in `platform/fm1/bsp/chip`.
-`SIDOU_BLE_CENTRAL` is 0 (the default: a computer connects to SIDOU), 3 (SIDOU also connects
-out, no pairing) or 1 (with pairing); anything but 0 is not a release build. A build directory
+SIDOU also connects out to Bluetooth MIDI keyboards, without pairing (the stack's central at
+level 3; there is no build option for it). `-DSIDOU_BLE_FAKE=ON` builds the emulator gate's test
+image instead (`build/fm1-blefake`, `SIDOU_FM1_BLE_FAKE_BUILD`): a fake radio stands in for the
+driver and the link layer, so emu-gate can play a keyboard that is heard, connects, plays, goes
+and asks for pairing; it is never released, and its option record says so. A build directory
 configured before Bluetooth became the default keeps `SIDOU_BLE=OFF` in its cache and warns:
 `-USIDOU_BLE` (or a fresh directory) takes the default. `-DSIDOU_BLE=OFF` builds SIDOU without
 the radio, which no release is.
