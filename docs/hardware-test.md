@@ -3110,7 +3110,7 @@ Set up:
   PAIRING` instead, stop here: the keyboard insists on pairing (decision 0011's reason to add it),
   and the remaining items wait. *Emulator:*
   `ble_keyboard.rs::devices_lists_the_ble_midi_keyboards_heard_and_save_connects_and_keeps_the_chosen_one`,
-  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_says_so_and_is_not_tried_again`.
+  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_says_so_and_is_not_tried_again`. *Result:* Failed 2026-11-15 as the item foresees, on the test package from main 0259add4 (FM-1_964, app 579,232 B, SHA-256 86792f0a…0f0a48): the microKEY Air was found on DEVICES and answered `NEEDS PAIRING`. It insists on pairing; the remaining items wait for pairing (`BLE_CENTRAL` level 1).
 - [ ] **Notes, knobs and clock:** play chords and fast runs, bend and modulate, turn the
   microKEY Air's knobs (set to CC 74 and 71 if its editor allows; otherwise MIDI learn one: hold
   SAVE, turn K1, turn the keyboard's knob). The microKEY Air sends no clock: the clock over
