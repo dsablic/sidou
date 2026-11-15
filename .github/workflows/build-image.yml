@@ -3,7 +3,8 @@
 name: build-image
 # Builds and publishes the build image (tools/docker/Dockerfile) that ci.yml and
 # tools/fm1-docker run in: ghcr.io/dsablic/sidou-build, :latest and :<commit>.
-# When the digest changes, put it in tools/docker/image.digest and in ci.yml.
+# When the digest changes, put it in tools/docker/image.digest (check.yml reads it there) and in
+# ci.yml and pages.yml.
 on:
   push:
     branches: [main]
@@ -45,5 +46,5 @@ jobs:
           {
             echo "ghcr.io/dsablic/sidou-build@${{ steps.build.outputs.digest }}"
             echo
-            echo 'Put it in tools/docker/image.digest and in .github/workflows/ci.yml.'
+            echo 'Put it in tools/docker/image.digest and in .github/workflows/ci.yml and pages.yml.'
           } | tee -a "$GITHUB_STEP_SUMMARY"

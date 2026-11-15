@@ -6463,6 +6463,61 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   walk that does not land exactly on its function's end or a jump table's start means a length
   disagrees with the compiler's.
 
+### CI (check.yml)
+
+- **Parity with the local check is the rule** (decision 0012): the same stages, the same tests per
+  binary, the same skips. So `SIDOU_FM1_BUILD` is set only in the emulator jobs, as
+  `tools/merge-check` sets it only for its emulator stages: the host tests and UBSan run with
+  `build/fm1` present (the packager's built-loader tests read it by default) and the variable
+  unset, so ergo's firmware tests (its recipes, lists, menu and capture tests: about 20 minutes on
+  a runner) skip there as they do locally. The recipes are still checked, by ergo-gate. Each test
+  job fails on any other `skipping` line, so a missing build or input cannot pass as green.
+- **One build, many runners.** The build job builds both firmwares, the package, the `ergo`
+  binary and the emulator gate's 41 test binaries once (`cargo nextest archive -p emu-gate`, about
+  2 minutes warm) and hands them on in one tar (mtimes kept: `emu-gate`'s package test compares
+  them). The shards extract the archive into `host/target`, the path the binaries were built at,
+  so the paths compiled into them (`CARGO_BIN_EXE_*`, `OUT_DIR`) hold. The host tests and UBSan
+  build their own (`--exclude emu-gate`) from the start, beside the build job, which shortens it.
+  A release bump archives the whole workspace instead, for its release-only tests.
+- **Twenty runners, four cores each.** GitHub runs twenty jobs of a public repository at once;
+  the rest queue, and a queued shard adds its whole wait to the run. After the build (about 2
+  minutes) the emulator gate is about 65 runner-minutes and the ergonomics gate about 35, while
+  the host tests and UBSan still hold two runners, so there are eighteen jobs after the build
+  (eleven emulator shards, seven ergonomics shards) of about 6 minutes each: about 10 minutes in
+  all. Twelve and eight shards queued four of them and took 13. Runners differ in speed by up to
+  1.7x for the same tests (2026-11-15), which no partition removes.
+- **Emulator shards** (`tools/emu-shards`): nextest runs four tests at once on a runner, so a
+  shard's time is its longest test or about a third of its total, whichever is more. The thirty
+  longest tests are dealt into five groups by their CI times, longest first into the lightest, a
+  test that spreads over every core counted for each core; the rest go into six slices
+  (`--partition slice:K/N`: every Nth test of the whole list; `count:` deals each binary out from
+  shard 1 and gave 64 tests to the first and 28 to the last). Two tests that each spread over
+  every core do not share a group: the TRACKER and RED MOON RITE budgets in one took 245 and
+  367 s, apart 121 and 123 s.
+- **The long budget tests run their independent runs side by side** (`common::par_map`, ergo's,
+  now shared): the TRACKER budget's four runs, the STEP budget's two, RED MOON RITE's measured
+  minute beside its three busiest-call runs, as the player's budget already did. The assertions
+  are the same; the TRACKER budget went from 526 s to 121 s on a runner.
+- **ergo-gate shards** (`tools/ergo-gate --only PART --shard K/N`): every finding comes from one
+  section, and the consistency check's from one control across the views (drift and kind per
+  view and control, inert per control, the K1 families from K1 alone), so splitting the sections,
+  the consistency controls and the recipes keeps each shard's verdict the whole run's for its
+  part. The fixed-since-baseline list, which does not gate, is printed only by a whole run.
+- **Caches**: `Swatinem/rust-cache` (dependencies only; the workspace crates build every run)
+  under one key each for the emulator build, the host tests, UBSan, clippy and the demo, and
+  sidou-pack's downloaded inputs by `inputs.toml`'s hash. A cache is saved only by a job that
+  passes.
+- **Linux finds what the Mac cannot.** The first CI runs failed twice where the Mac passed. The
+  zero-voice copy of `sid.c` in the test binaries renamed its functions but not the six `*_far`
+  pointers the voice shadow calls through; Mach-O's linker kept one definition, rust-lld refuses
+  the duplicates (`sidou-sys/build.rs` now renames them too). And GCC at `-O0` emits a header's
+  unused `noinline, unused` static functions, which need `sid.c`'s tables, so the two tests that
+  compile a C snippet with `cc` failed to link; `sidou_tests::c_program::run` builds them at
+  `-O2`, as the host builds all C.
+- **Until the build image is published again** with rustfmt, clippy and cargo-nextest
+  (`tools/docker/Dockerfile`), `.github/actions/image-tools` adds them to the pinned image; in an
+  image that has them it does nothing, and it goes once `image.digest` names such an image.
+
 ## Tools and the site
 
 ### tools/ scripts

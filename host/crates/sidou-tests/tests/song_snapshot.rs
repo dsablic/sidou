@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{fs, path::Path, process::Command};
+use std::fs;
 
 #[test]
 fn the_device_song_snapshot_keeps_wide_values_and_raw_expert_defaults() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let root = sidou_tests::c_program::repo_root();
     let main = fs::read_to_string(root.join("platform/fm1/main.c")).unwrap();
     let start = main
         .find("typedef struct {\n    song_chip_setup chip;")
@@ -45,38 +45,5 @@ int main(void) {{
 "#,
         &main[start..end]
     );
-    let scratch = root.join("build/scratch");
-    fs::create_dir_all(&scratch).unwrap();
-    let file = scratch.join(format!("schema5-song-snapshot-{}.c", std::process::id()));
-    let exe = file.with_extension("test");
-    fs::write(&file, source).unwrap();
-    let build = Command::new("cc")
-        .args(["-std=c11", "-Werror", "-I"])
-        .arg(root.join("app"))
-        .arg("-I")
-        .arg(root.join("core"))
-        .arg(&file)
-        .arg("-o")
-        .arg(&exe)
-        .output()
-        .unwrap();
-    let run = build
-        .status
-        .success()
-        .then(|| Command::new(&exe).output().unwrap());
-    fs::remove_file(&file).unwrap();
-    if exe.exists() {
-        fs::remove_file(&exe).unwrap();
-    }
-    assert!(
-        build.status.success(),
-        "{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let run = run.unwrap();
-    assert!(
-        run.status.success(),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    sidou_tests::c_program::run("schema5-song-snapshot", &source);
 }

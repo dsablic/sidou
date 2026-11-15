@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 FROM ubuntu:24.04
 LABEL org.opencontainers.image.title="sidou-build" \
-      org.opencontainers.image.description="Build image for SIDOU, the FM-1 firmware: JieLi pi32v2 toolchain, CMake, Ninja, Rust (+wasm32), GCC 13, clang, Node and Playwright's Chromium for the browser demo" \
+      org.opencontainers.image.description="Build image for SIDOU, the FM-1 firmware: JieLi pi32v2 toolchain, CMake, Ninja, Rust (+wasm32, rustfmt, clippy, cargo-nextest), GCC 13, clang, Node and Playwright's Chromium for the browser demo" \
       org.opencontainers.image.source="https://github.com/dsablic/sidou" \
       org.opencontainers.image.licenses="GPL-3.0-or-later"
 ENV DEBIAN_FRONTEND=noninteractive
@@ -14,8 +14,15 @@ RUN apt-get update \
 ARG RUST_VERSION=1.99.0
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
 RUN curl -fsSL --retry 3 https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_VERSION" \
-      --target wasm32-unknown-unknown \
+      --target wasm32-unknown-unknown --component rustfmt,clippy \
  && chmod -R a+rwX /usr/local/rustup /usr/local/cargo
+ARG NEXTEST_VERSION=0.9.151
+ARG NEXTEST_SHA256=1d4ce302b820c41f4b89c5fb9bce45f0f0c94882c1cf08fc360caf08be6e7df4
+RUN curl -fL --retry 3 -o /tmp/nextest.tar.gz \
+      "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$NEXTEST_VERSION/cargo-nextest-$NEXTEST_VERSION-x86_64-unknown-linux-gnu.tar.gz" \
+ && echo "$NEXTEST_SHA256  /tmp/nextest.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/nextest.tar.gz -C /usr/local/cargo/bin \
+ && rm /tmp/nextest.tar.gz
 ARG TOOLCHAIN_SHA256
 RUN test -n "$TOOLCHAIN_SHA256" \
  && curl -fL --retry 3 -o /tmp/tc.tar.xz https://pkgman.jieliapp.com/s/linux-toolchain \

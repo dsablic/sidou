@@ -20,31 +20,33 @@ pub mod metrics;
 pub mod readability;
 pub mod screen;
 
-pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
-    let next = AtomicUsize::new(0);
-    let out: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
-    let threads = std::thread::available_parallelism()
-        .map_or(2, |n| n.get())
-        .min(items.len().max(1));
-    std::thread::scope(|sc| {
-        for _ in 0..threads {
-            sc.spawn(|| loop {
-                let i = next.fetch_add(1, Ordering::SeqCst);
-                if i >= items.len() {
-                    break;
-                }
-                let r = f(&items[i]);
-                out.lock().unwrap()[i] = Some(r);
-            });
+pub use common::par_map;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shard {
+    index: usize,
+    count: usize,
+}
+
+impl Shard {
+    pub const ALL: Shard = Shard { index: 0, count: 1 };
+
+    pub fn parse(text: &str) -> Result<Shard, String> {
+        let bad = || format!("--shard takes K/N with 1 <= K <= N, not {text}");
+        let (k, n) = text.split_once('/').ok_or_else(bad)?;
+        let (k, n): (usize, usize) = (k.parse().map_err(|_| bad())?, n.parse().map_err(|_| bad())?);
+        if k == 0 || k > n {
+            return Err(bad());
         }
-    });
-    out.into_inner()
-        .unwrap()
-        .into_iter()
-        .map(|r| r.expect("every item ran"))
-        .collect()
+        Ok(Shard {
+            index: k - 1,
+            count: n,
+        })
+    }
+
+    pub fn takes(self, i: usize) -> bool {
+        i % self.count == self.index
+    }
 }
 
 pub fn slug(s: &str) -> String {
@@ -63,7 +65,7 @@ pub fn slug(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{par_map, slug};
+    use super::{par_map, slug, Shard};
 
     #[test]
     fn par_map_keeps_the_order() {
@@ -73,6 +75,20 @@ mod tests {
             (0..50).map(|x| x * 2).collect::<Vec<_>>()
         );
         assert!(par_map(&Vec::<u32>::new(), |x| *x).is_empty());
+    }
+
+    #[test]
+    fn the_shards_of_a_split_take_every_item_once() {
+        let shards: Vec<Shard> = (1..=3)
+            .map(|k| Shard::parse(&format!("{k}/3")).unwrap())
+            .collect();
+        for i in 0..20 {
+            assert_eq!(shards.iter().filter(|s| s.takes(i)).count(), 1, "item {i}");
+        }
+        assert!((0..20).all(|i| Shard::ALL.takes(i)));
+        for bad in ["0/3", "4/3", "3", "a/b", "1/0"] {
+            assert!(Shard::parse(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

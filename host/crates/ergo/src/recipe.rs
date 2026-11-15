@@ -714,6 +714,7 @@ pub fn validate(
     build: &Path,
     cfg: &Config,
     out: &Path,
+    shard: crate::Shard,
 ) -> Result<Vec<RecipeReport>, String> {
     let recipes = load_dir(dir)?;
     let features = crate::journeys::detect_features(build);
@@ -729,7 +730,13 @@ pub fn validate(
             *j = r.clone();
         }
     }
-    let items: Vec<_> = recipes.iter().zip(parsed).collect();
+    let items: Vec<_> = recipes
+        .iter()
+        .zip(parsed)
+        .enumerate()
+        .filter(|&(i, _)| shard.takes(i))
+        .map(|(_, item)| item)
+        .collect();
     let reports = crate::par_map(&items, |((file, _), parsed)| {
         let mut rep = RecipeReport {
             id: file

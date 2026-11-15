@@ -55,3 +55,11 @@ priority = 80
 [[profile.default.overrides]]
 filter = 'package(emu-gate) & binary(usb)'
 priority = 70
+
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "60s" }
+
+[profile.ci.junit]
+path = "junit.xml"
+store-success-output = true

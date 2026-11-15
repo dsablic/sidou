@@ -349,10 +349,16 @@ fn view_static(s: &str) -> &'static str {
     VIEWS.iter().find(|(n, _)| *n == s).map_or("?", |(n, _)| *n)
 }
 
-pub fn run_all(build: &Path) -> ConsistencyResult {
+pub fn run_all(build: &Path, shard: crate::Shard) -> ConsistencyResult {
+    let controls: Vec<(&str, u8)> = CONTROLS
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| shard.takes(i))
+        .map(|(_, &c)| c)
+        .collect();
     let jobs: Vec<(&str, &str, &str, u8)> = VIEWS
         .iter()
-        .flat_map(|(v, s)| CONTROLS.iter().map(move |(n, id)| (*v, *s, *n, *id)))
+        .flat_map(|(v, s)| controls.iter().map(move |(n, id)| (*v, *s, *n, *id)))
         .collect();
     let done = crate::par_map(&jobs, |(v, setup, n, id)| {
         eprintln!("  consistency {v} {n}");

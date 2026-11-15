@@ -2012,9 +2012,16 @@ the console; `--fail-on-regression` makes that the exit status.
 ### Ergonomics gate (`tools/ergo-gate`)
 
 ```sh
-tools/ergo-gate build/fm1            # the merge check's command: the whole harness and the recipes
+tools/ergo-gate build/fm1            # the local merge check's command: the whole harness and the recipes
 tools/ergo-gate --quick build/fm1    # readability, journeys (the tour) and the recipes only
+tools/ergo-gate --only consistency --shard 1/2 build/fm1    # one of CI's shards
 ```
+
+`--only` takes any of `readability`, `journeys`, `knobs`, `feedback`, `consistency`, `defaults`
+and `recipes`; `--shard K/N` (ergo's own option) runs every Nth control of the consistency check
+and every Nth recipe. A shard's findings are judged on their own: each finding comes from one
+section, and each consistency finding from one control, so the shards' verdicts together are the
+whole run's. `--ergo BIN` runs a prebuilt `ergo` (CI's, from the build job).
 
 It runs the harness (`--baseline docs/ergo-baseline/metrics.json`) and `--check-recipes docs/recipes`
 side by side, and exits 1 on any **new** finding (above info), any finding whose **severity rose**, or
@@ -2091,36 +2098,66 @@ line.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs only on a release tag (`v*`) or when started by
-hand from the Actions tab, never on ordinary pushes or pull requests. It is deliberately
-small (2026-10-23): the in-depth testing happens before a change merges, where every merge
-passes the full local check (both firmware builds, fmt, clippy, the workspace tests, UBSan,
-the GCC check, the packager and its tests, the whole emulator gate, REUSE, the browser demo).
-CI adds only what the local check cannot: the release package built clean from the tag on
-Linux, and booted in fm1-emu.
+Two workflows test the code. `.github/workflows/check.yml` runs on every push to any branch
+(and by hand from the Actions tab) and is **the merge gate** (the owner, 2026-11-15): a branch
+merges into main once its `check` job is green. It runs every stage of the local merge check,
+split over GitHub's Linux runners, in about 10 to 12 minutes. `.github/workflows/ci.yml` runs
+only on a release tag (`v*`) or by hand: it builds the release package clean from the tag and
+boots it in fm1-emu (below).
 
 ### What runs when (no run that tests nothing new)
 
-`tools/merge-check` is the merge check: it looks at what a change touches against main and runs
-only what that can affect (the user, 2026-10-23: no endless test runs). Every result is the same
-as the full suite's would be; nothing is sampled. One runs at a time across every worktree (a
-second waits for the lock); each stage's log is in `build/scratch/mc/`, and
-`build/scratch/mc.results` ends in `GREEN <commit>` or `RED <commit>`. `--full` runs every stage
-whatever the change.
+`tools/change-scope` decides what a change can affect, from the files it touches against the
+merge base with main (on main itself: the previous head), and both CI and `tools/merge-check`
+run only that (the user, 2026-10-23: no endless test runs). Every result is the same as the full
+suite's would be; nothing is sampled.
 
-| The change touches | The merge check runs | About |
+| The change touches | `check.yml` runs | About |
 |---|---|---|
-| only docs: `*.md`, `docs/`, `LICENSES/`, `.github/` (workflows run on GitHub, not here) | REUSE and `tools/readme-check` | seconds |
-| docs and CMakeLists.txt's version line, nothing else (a release bump) | the `fm1` build, the package, the package boot test in fm1-emu, the release-only emulator tests the everyday profile leaves out (`--ignore-default-filter -E 'not default()'`: today the ten-minute clock-drift test), REUSE, `tools/readme-check` | 3 to 5 min |
-| anything else | everything; the emulator gate is skipped when the same firmware, package and test inputs already passed it (fm1-emu is deterministic) | 15 to 20 min |
+| only docs: `*.md`, `docs/`, `LICENSES/` | `docs`: REUSE and `tools/readme-check` | under a minute |
+| docs and CMakeLists.txt's version line, nothing else (a release bump) | `docs`, `build`, and `release-only`: the package boot test in fm1-emu and the release-only tests the everyday profile leaves out (`--ignore-default-filter -E 'not default()'`: today the ten-minute clock-drift test) | the build and the drift test's ten minutes |
+| anything else, `.github/` included (the workflows are what changed) | every job below | 10 to 12 min |
+
+| Job | What it runs |
+|---|---|
+| `scope` | `tools/change-scope --ci`, the emulator shards (`tools/emu-shards --matrix`) and the build image's digest (`tools/docker/image.digest`) for the other jobs |
+| `docs` | REUSE (`fsfe/reuse-action`) and `tools/readme-check` (with the tags, for the hub card's check) |
+| `build` | both firmware builds (`fm1`, `fm1-spike`), the emulator gate's test binaries once (`cargo nextest archive -p emu-gate`; for a release bump the whole workspace's), the package and the `ergo` binary, handed on as the `build` artifact |
+| `emu-gate` (11 shards) | the emulator gate from the archive: the thirty longest tests dealt into five groups by their CI times, the rest in six slices (`tools/emu-shards`; `SIDOU_FM1_BUILD` and `SIDOU_FM1_SPIKE_BUILD` set) |
+| `ergo-gate` (7 shards) | `tools/ergo-gate --only PART --shard K/N` with the prebuilt `ergo`: journeys and readability; knobs, feedback and defaults; consistency in halves; the recipes in thirds |
+| `host-tests` | the workspace tests but the emulator gate (`--workspace --exclude emu-gate`), built beside the `build` job, with `build/fm1` present and `SIDOU_FM1_BUILD` unset, as locally |
+| `ubsan` | the same set built and run with `SIDOU_SANITIZE=undefined` |
+| `fmt-clippy` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` |
+| `gcc-check` | `tools/gcc-check` (GCC 13 is the image's compiler) |
+| `web-demo` | `tools/web-demo --check` |
+| `release-only` | the version scope's tests (above) |
+| `check` | green only when every other job passed or was left out by the scope: the one required check |
+
+Every job runs in the build image (BUILDING.md, "The build image") but `docs`. The test jobs use
+nextest's `ci` profile (`host/.config/nextest.toml`: no fail-fast, a JUnit report), and each
+puts its tests per binary in the run's summary, uploads the report (`junit-*`, whose times
+balance the shards) and fails when a test printed a `skipping` line, except those that skip
+locally too: the return to V15 (M-VAVE's stock package is not redistributable, so CI has none;
+`build/stock/FM-1.fwsc` locally), the watchdog death test (`SIDOU_FM1_DEATH_BUILD`) and ergo's
+firmware tests in the host-test run (`SIDOU_FM1_BUILD` unset there, as in the merge check).
+The Rust builds are cached (`Swatinem/rust-cache`, one cache each for the release build, UBSan,
+clippy and the demo), and so are sidou-pack's downloaded inputs.
+
+**`tools/merge-check`** is the same check on the local machine, one at a time across every
+worktree (a lock; each stage's log in `build/scratch/mc/`, `build/scratch/mc.results` ending in
+`GREEN <commit>` or `RED <commit>`; `--full` runs every stage whatever the change). It is no
+longer the gate. Run it when GitHub cannot: offline, when Actions is down, or to run the two V15
+tests (with `build/stock/FM-1.fwsc`) after changing the packager's way back to stock. Its
+emulator gate is skipped when the same firmware, package and test inputs already passed it
+(fm1-emu is deterministic); CI runs it every time.
 
 **A release** therefore costs one full run, on the change that brings the code, and no more:
 
-1. Merge the last code change (full check).
+1. Merge the last code change (green `check`).
 2. The release commit: CMakeLists.txt's version, CHANGELOG.md, README.md's status (which
    `tools/readme-check` holds to the CHANGELOG), `docs/release-notes/vX.Y.Z.md`, and the GitHub
    repo's description (`gh repo view --json description`) reviewed with `fmhub.json`'s "what". Version-only
-   check, 3 to 5 minutes: it also runs the release-only tests (`host/.config/nextest.toml`'s
+   check: it also runs the release-only tests (`host/.config/nextest.toml`'s
    release profile), so nothing the everyday check leaves out goes untested into a release.
 3. Build the release package (`-DSIDOU_PRODUCT=FM-1_964`), `tools/preflash` it, and run it on a
    real unit (an install over the previous release and over Felucca at least).
@@ -2130,7 +2167,7 @@ whatever the change.
 Do not run the full suite again before tagging: the code it would test has already passed it. `.github/workflows/pages.yml` has
 the same triggers; it builds, smoke-tests and deploys the browser demo.
 
-CI is one job, `fm1`, that runs in the prebuilt build image `ghcr.io/dsablic/sidou-build`
+`ci.yml` is one job, `fm1`, that runs in the prebuilt build image `ghcr.io/dsablic/sidou-build`
 (pinned by digest; BUILDING.md, "The build image"), so nothing is installed during a run:
 
 | Step | What it runs |
@@ -2140,11 +2177,13 @@ CI is one job, `fm1`, that runs in the prebuilt build image `ghcr.io/dsablic/sid
 | boot | the package boots in fm1-emu (`emu-gate --test package`), and a check that its report exists |
 | result | the package's SHA-256 in the run summary; the package is uploaded with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc`: the release's file, published once its SHA-256 matches the locally tested package |
 
-**The GCC check** (`tools/gcc-check`) used to be a CI job. It compiles every C file the host
-tests build (the `SOURCES` of `sidou-sys/build.rs`, the gt2-ref shim, the packager's harnesses)
-with GCC 13 in the build image, with the cc crate's release flags and warnings as errors, as
-macOS's clang hides some errors GCC reports. It takes under a minute and is a stage of the
-merge check; run it by hand after changing C.
+**The GCC check** (`tools/gcc-check`) compiles every C file the host tests build (the `SOURCES`
+of `sidou-sys/build.rs`, the gt2-ref shim, the packager's harnesses) with GCC 13 in the build
+image, with the cc crate's release flags and warnings as errors, as macOS's clang hides some
+errors GCC reports. It takes under a minute and is a job of `check.yml` and a stage of the
+local check. On CI the whole workspace is also built and linked on Linux (GCC and rust-lld),
+which macOS's toolchain cannot stand in for: two Linux-only failures were found that way
+(design notes, "CI").
 
 The ASan run (nightly Rust, above) and the MSRV check (`cargo +1.88 check --workspace
 --all-targets`) are not in CI; run them by hand when the C/C++ code or the Rust

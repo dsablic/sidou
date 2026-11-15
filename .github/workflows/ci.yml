@@ -3,10 +3,11 @@
 name: ci
 # Only on a release tag (v1.2.3) or when started by hand (Actions, Run workflow).
 #
-# The in-depth testing happens before a change merges: every merge passes the full local check
+# The in-depth testing happens before a change merges: check.yml runs every stage on every push
 # (both firmware builds, fmt, clippy, the workspace tests, UBSan, the packager, the whole
-# emulator gate, REUSE, the GCC check, the browser demo; TESTING.md). CI adds only what that
-# check cannot: the release package built clean from the tag on Linux, and booted in fm1-emu.
+# emulator gate, the ergonomics gate, REUSE, the GCC check, the browser demo; TESTING.md), and
+# its green `check` is the merge gate. This workflow adds the release package built clean from
+# the tag, booted in fm1-emu, and uploaded.
 # One job, in the prebuilt build image (tools/docker, build-image.yml): nothing is installed.
 on:
   push:

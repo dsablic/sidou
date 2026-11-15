@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -euo pipefail
+usage() {
+    cat <<'USAGE'
+What a change can affect, for the merge check and CI (TESTING.md, "What runs when").
+  tools/change-scope BASE        print docs, version or full for HEAD against BASE's merge base
+  tools/change-scope --ci BASE   the same, with .github/ counted as code (CI runs the workflows)
+docs: only *.md, docs/, LICENSES/ (and .github/ without --ci); version: those and CMakeLists.txt's
+VERSION line, nothing else; full: anything else, or no difference at all.
+USAGE
+}
+docs_pattern='(\.md$|^docs/|^LICENSES/|^\.github/)'
+base=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ci) docs_pattern='(\.md$|^docs/|^LICENSES/)' ;;
+        -h|--help) usage; exit 0 ;;
+        -*) echo "change-scope: unknown option $1" >&2; exit 2 ;;
+        *) base=$1 ;;
+    esac
+    shift
+done
+[ -n "$base" ] || { usage >&2; exit 2; }
+fork=$(git merge-base "$base" HEAD)
+
+only_version_line_changed() {
+    ! git diff -U0 "$fork" HEAD -- CMakeLists.txt | grep -E '^[-+][^-+]' | grep -Evq 'VERSION [0-9]+\.[0-9]+\.[0-9]+'
+}
+
+files=$(git diff --name-only "$fork" HEAD)
+[ -n "$files" ] || { echo full; exit 0; }
+rest=$(printf '%s\n' "$files" | grep -Ev "$docs_pattern" || true)
+[ -z "$rest" ] && { echo docs; exit 0; }
+if [ "$rest" = CMakeLists.txt ] && only_version_line_changed; then echo version; exit 0; fi
+echo full

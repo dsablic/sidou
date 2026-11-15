@@ -970,31 +970,11 @@ fn the_players_worst_block_fits_its_budget() {
         }
     }
     let runs = jobs.len();
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-    let mut results: Vec<(usize, Bench)> = std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..threads)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let Some(j) = jobs.get(i) else {
-                            return done;
-                        };
-                        done.push((i, bench_bytes(&build, &j.song, j.sub, j.blocks, j.kind)));
-                    }
-                })
-            })
-            .collect();
-        workers
-            .into_iter()
-            .flat_map(|w| w.join().expect("a bench thread"))
-            .collect()
+    let results = par_map(&jobs, |j| {
+        bench_bytes(&build, &j.song, j.sub, j.blocks, j.kind)
     });
-    results.sort_by_key(|&(i, _)| i);
-    for (i, b) in &results {
-        let Job { name, kind, .. } = &jobs[*i];
+    for (j, b) in jobs.iter().zip(&results) {
+        let Job { name, kind, .. } = j;
         let a_subtune_the_packed_song_does_not_hold = b.error != 0;
         if a_subtune_the_packed_song_does_not_hold {
             continue;
