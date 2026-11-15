@@ -745,6 +745,31 @@ static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t
 static const uint32_t PAIR_MASK[4] = {PAIR(0u, 0u), PAIR(0u, 0xFFFFu), PAIR(0xFFFFu, 0u),
                                       PAIR(0xFFFFu, 0xFFFFu)};
 
+static uint32_t big_src(uint32_t p, uint32_t scale) {
+    return scale == 1u ? p : scale == 2u ? p >> 1 : p * 11u >> 5;
+}
+
+__attribute__((noinline, unused)) static void render_piece(const grid* g, uint32_t i,
+                                                           uint32_t piece, uint16_t fg,
+                                                           uint16_t bg, uint16_t* o,
+                                                           uint32_t w) {
+    uint32_t scale = piece < 4u ? 2u : piece < 13u ? 3u : 1u;
+    uint32_t q = piece < 4u ? piece : piece < 13u ? piece - 4u : 0u;
+    uint32_t y0 = big_src(q, scale) * 8u;
+    uint32_t x0 = (q - big_src(q, scale) * scale) * 8u;
+    const uint8_t* glyph = font_glyph(g->src[i]);
+    uint32_t sx[8];
+    for (uint32_t j = 0; j < 8u; j++) {
+        sx[j] = 7u - big_src(x0 + j, scale);
+    }
+    for (uint32_t y = 0; y < 8u; y++, o += w) {
+        uint32_t bits = glyph[big_src(y0 + y, scale)];
+        for (uint32_t j = 0; j < 8u; j++) {
+            o[j] = bits >> sx[j] & 1u ? fg : bg;
+        }
+    }
+}
+
 static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint32_t k1,
                           const uint16_t pal[16], uint16_t* px) {
     uint32_t w = run->len * GRID_CELL_PX;
@@ -779,8 +804,13 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
     }
     uint32_t i = run->row * GRID_COLS + run->col + k0;
     for (uint32_t k = k0; k < k1; k++, i++) {
-        const uint8_t* glyph = font_glyph(g->ch[i]);
         uint16_t fg = pal[g->attr[i] & 15u];
+        uint32_t piece = (uint32_t)g->ch[i] - GRID_BIG_FIRST;
+        if (piece < GRID_BIG_PIECES) {
+            render_piece(g, i, piece, fg, pal[g->attr[i] >> 4], px + k * GRID_CELL_PX, w);
+            continue;
+        }
+        const uint8_t* glyph = font_glyph(g->ch[i]);
         static const uint8_t none[8];
         const uint8_t* mask = none;
         uint16_t oc = 0;
@@ -804,31 +834,6 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
                     o[j] = fg;
                 }
             }
-        }
-    }
-}
-
-static uint32_t big_src(uint32_t p, uint32_t scale) {
-    return scale == 1u ? p : scale == 2u ? p >> 1 : p * 11u >> 5;
-}
-
-__attribute__((noinline, unused)) static void render_piece(const grid* g, uint32_t i,
-                                                           uint32_t piece, uint16_t fg,
-                                                           uint16_t bg, uint16_t* o,
-                                                           uint32_t w) {
-    uint32_t scale = piece < 4u ? 2u : piece < 13u ? 3u : 1u;
-    uint32_t q = piece < 4u ? piece : piece < 13u ? piece - 4u : 0u;
-    uint32_t y0 = big_src(q, scale) * 8u;
-    uint32_t x0 = (q - big_src(q, scale) * scale) * 8u;
-    const uint8_t* glyph = font_glyph(g->src[i]);
-    uint32_t sx[8];
-    for (uint32_t j = 0; j < 8u; j++) {
-        sx[j] = 7u - big_src(x0 + j, scale);
-    }
-    for (uint32_t y = 0; y < 8u; y++, o += w) {
-        uint32_t bits = glyph[big_src(y0 + y, scale)];
-        for (uint32_t j = 0; j < 8u; j++) {
-            o[j] = bits >> sx[j] & 1u ? fg : bg;
         }
     }
 }

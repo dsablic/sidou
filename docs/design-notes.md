@@ -4645,6 +4645,11 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - The cover (`screen_cover`, what the view on top draws over the view under it) and a showing
   toast's text are left out of a view's budget (`screen_pending`); the cover's cells count with the
   layers' (`screen_layer_cells`) for the frame it was set in, and a toast of no time covers nothing.
+- Text over a pixel region (a painter's, SCENE's RED MOON RITE, or a bitmap) is drawn by the
+  region's run like text anywhere else, big text's pieces included. Until 1.20 the region's run drew
+  only the 8 x 8 font's glyphs, and a big piece's code has a blank one: a two- or four-row toast
+  over RED MOON RITE (its name, the art hint) showed as a box of its background colour, black on
+  yellow read as yellow on yellow (the owner, on the device, 2026-11-15).
 
 ### View dispatch and budgets
 

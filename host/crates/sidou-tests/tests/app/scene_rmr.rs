@@ -487,6 +487,49 @@ fn shows_the_logo(ui: &crate::views::Ui) -> bool {
         .all(|(x, y)| screen[y * W + x] == logo_pixel(x, y))
 }
 
+fn toast_pixels(ui: &crate::views::Ui, g: &grid) -> Vec<u8> {
+    let s = &ui.v.s;
+    let lcd = crate::pixels(g);
+    let (c0, r0) = (SCREEN_TOAST_COL as usize, SCREEN_TOAST_ROW as usize);
+    let first = if s.toast_h == 4 { r0 - 2 } else { r0 };
+    (first * 8..(first + s.toast_h as usize) * 8)
+        .flat_map(|y| (c0 * 8..(c0 + s.toast_w as usize) * 8).map(move |x| (x, y)))
+        .map(|(x, y)| lcd[y * W + x])
+        .collect()
+}
+
+#[test]
+fn red_moon_rites_toasts_show_their_big_text_over_the_scene_in_every_theme() {
+    for id in 0..THEME_COUNT {
+        let th = unsafe { &*theme_get(id) };
+        assert_ne!(th.toast_fg, th.toast_bg, "theme {id}");
+        let fresh = crate::store::fresh(0xa27, STORE_WINDOW_MAX);
+        let shown = [
+            (&*fresh.st as *const store, hint()),
+            (crate::art_store(), String::from("RED MOON RITE")),
+        ];
+        for (st, text) in shown {
+            let mut ui = crate::views::Ui::new();
+            unsafe { live_set_theme(&mut *ui.rig.live, id) };
+            crate::scene::open_scene(&mut ui);
+            ui.v.scene.st = st;
+            ui.turn(PANEL_ENC_SELECT, -1);
+            ui.frame();
+            ui.frame();
+            assert_eq!(ui.toast().as_deref(), Some(text.as_str()));
+            assert!(ui.g.region_painter.is_some());
+            let mut plain = ui.g.clone();
+            plain.region_painter = None;
+            let shown = toast_pixels(&ui, &ui.g);
+            assert!(shown.contains(&th.toast_fg), "theme {id}, {text}: no text");
+            assert!(
+                shown == toast_pixels(&ui, &plain),
+                "theme {id}, {text}: the toast over the scene differs from the toast elsewhere"
+            );
+        }
+    }
+}
+
 fn hint() -> String {
     String::from_utf8(SCENE_VIEW_ART_HINT.split_last().unwrap().1.to_vec()).unwrap()
 }
