@@ -33,3 +33,9 @@ sidou_bench(sid_bench_song bench_song_main.c 1 sidou_core)
 sidou_bench(sid_bench_6502 bench_6502_main.c 1 sidou_core)
 # The pixel scene (one build: it has no chips).
 sidou_bench(sid_bench_scene bench_scene_main.c 1 sidou_workload_scene)
+# Chip B on the second core (felucca-bsp's fm1_cpu1.h, its flags): the spike's bench, never the app.
+sidou_bench(sid_bench_cpu1 bench_cpu1_main.c 2 sidou_workload fm1_hal)
+target_sources(sid_bench_cpu1 PRIVATE ${PROJECT_SOURCE_DIR}/platform/fm1/bsp/chip/fm1_cpu1.S
+    ${PROJECT_SOURCE_DIR}/platform/fm1/bsp/chip/fm1_vec.S)
+target_compile_definitions(sid_bench_cpu1 PRIVATE FM1_CPU1=1 FM1_CPU1_FALLBACK=1
+    FM1_CPU1_TIMEOUT_US=1000u)
