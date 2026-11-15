@@ -7,6 +7,9 @@ usage() {
 The ergonomics harness as a merge gate: it fails on anything the accepted baseline does not have.
   tools/ergo-gate BUILD_DIR            the whole harness, then the recipes (a few minutes)
   tools/ergo-gate --quick BUILD_DIR    readability, journeys (the tour) and the recipes only
+  tools/ergo-gate --only PARTS ...     only these of readability, journeys, knobs, feedback,
+                                       consistency, defaults and recipes (comma-separated; CI's shards)
+  tools/ergo-gate --ergo BIN ...       run this prebuilt ergo binary instead of building it
   tools/ergo-gate --out DIR ...        where the run's files go (default BUILD_DIR/../ergo-gate)
 Exit 0: no new finding, no finding whose severity rose, every recipe passes. Exit 1: one of them
 (the new ones are printed). Exit 2: the harness could not run. The baseline is
@@ -14,10 +17,12 @@ docs/ergo-baseline/metrics.json; accepting a change is refreshing it (TESTING.md
 USAGE
 }
 root=$(cd "$(dirname "$0")/.." && pwd)
-quick=0 out="" build=""
+parts="" out="" build="" ergo=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --quick) quick=1 ;;
+        --quick) parts=readability,journeys,recipes ;;
+        --only) parts=$2; shift ;;
+        --ergo) ergo=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift ;;
         --out) out=$2; shift ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "ergo-gate: unknown option $1" >&2; exit 2 ;;
@@ -25,7 +30,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-[ -n "$build" ] || { echo "usage: tools/ergo-gate [--quick] [--out DIR] BUILD_DIR" >&2; exit 2; }
+[ -n "$build" ] || { echo "usage: tools/ergo-gate [--quick | --only PARTS] [--ergo BIN] [--out DIR] BUILD_DIR" >&2; exit 2; }
 build=$(cd "$build" 2>/dev/null && pwd) || { echo "ergo-gate: no build directory $build" >&2; exit 2; }
 [ -f "$build/platform/fm1/sidou_app.bin" ] || { echo "ergo-gate: $build is not an fm1 build" >&2; exit 2; }
 out=${out:-$build/../ergo-gate}
@@ -34,14 +39,31 @@ out=$(cd "$out" && pwd)
 baseline="$root/docs/ergo-baseline/metrics.json"
 export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
 cd "$root/host"
-only=()
-[ "$quick" = 1 ] && only=(--only readability,journeys)
+partial=0 harness_parts=$parts recipes_wanted=1
+if [ -n "$parts" ]; then
+    partial=1
+    harness_parts=$(printf '%s\n' "${parts//,/$'\n'}" | grep -vx recipes | paste -sd, - || true)
+    printf '%s\n' "${parts//,/$'\n'}" | grep -qx recipes || recipes_wanted=0
+fi
 start=$(date +%s)
-echo "ergo-gate: harness$([ "$quick" = 1 ] && echo ' (quick: readability, journeys)') and recipes, side by side"
-cargo build --release --locked -q -p ergo
-run() { cargo run --release --locked -q -p ergo -- --build "$build" "$@"; }
-(run --out "$out/run" --baseline "$baseline" ${only[@]+"${only[@]}"} > "$out/harness.log" 2>&1; echo $? > "$out/harness.exit") &
-(run --out "$out/recipes" --check-recipes "$root/docs/recipes" > "$out/recipes.log" 2>&1; echo $? > "$out/recipes.exit") &
+echo "ergo-gate: ${parts:-the whole harness and the recipes}, side by side"
+if [ -z "$ergo" ]; then
+    cargo build --release --locked -q -p ergo
+    ergo=$(cargo metadata --format-version 1 --no-deps | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')/release/ergo
+fi
+run() { "$ergo" --build "$build" "$@"; }
+only=()
+[ -n "$harness_parts" ] && only=(--only "$harness_parts")
+harness_wanted=1
+[ "$partial" = 1 ] && [ -z "$harness_parts" ] && harness_wanted=0
+echo 0 > "$out/harness.exit"
+echo 0 > "$out/recipes.exit"
+if [ "$harness_wanted" = 1 ]; then
+    (run --out "$out/run" --baseline "$baseline" ${only[@]+"${only[@]}"} > "$out/harness.log" 2>&1; echo $? > "$out/harness.exit") &
+fi
+if [ "$recipes_wanted" = 1 ]; then
+    (run --out "$out/recipes" --check-recipes "$root/docs/recipes" > "$out/recipes.log" 2>&1; echo $? > "$out/recipes.exit") &
+fi
 wait
 if [ "$(cat "$out/harness.exit")" != 0 ]; then
     cat "$out/harness.log" >&2; echo "ergo-gate: the harness failed" >&2; exit 2
@@ -51,9 +73,11 @@ if [ "$recipes" -ne 0 ]; then
     grep -A3 '^FAIL' "$out/recipes.log" || cat "$out/recipes.log"
 fi
 status=0
-python3 -I - "$baseline" "$out/run/findings.json" "$quick" <<'PY' || status=$?
+check_findings() {
+    python3 -I - "$baseline" "$out/run/findings.json" "$partial" <<'PY'
+
 import json, sys
-base_path, run_path, quick = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+base_path, run_path, partial = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
 rank = {"info": 0, "low": 1, "medium": 2, "high": 3}
 base = json.load(open(base_path))["findings"]
 run = json.load(open(run_path))
@@ -66,7 +90,7 @@ for f in run["findings"]:
     elif old is not None and rank[old] < rank[sev]:
         bad.append(f"ROSE     {f['id']} {old} -> {sev}: {f['title']}")
 gone = sorted(set(base) - {f["id"] for f in run["findings"]})
-if quick:
+if partial:
     gone = []
 for line in bad:
     print(line)
@@ -81,5 +105,7 @@ if notes:
 print(f"{len(run['findings'])} findings, {len(bad)} new or risen against the baseline")
 sys.exit(1 if bad else 0)
 PY
+}
+if [ "$harness_wanted" = 1 ]; then check_findings || status=$?; fi
 echo "ergo-gate: $(( $(date +%s) - start )) s; findings $([ "$status" = 0 ] && echo ok || echo FAILED), recipes $([ "$recipes" = 0 ] && echo ok || echo FAILED); report $out/run/report.html"
 [ "$status" = 0 ] && [ "$recipes" = 0 ]

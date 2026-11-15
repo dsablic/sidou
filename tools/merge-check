@@ -69,24 +69,8 @@ share_stock_package() {
     [ -e "$root/build/stock/FM-1.fwsc" ] || echo "merge-check: no build/stock/FM-1.fwsc: the tests of the way back to V15 will skip" >&2
 }
 
-changed_files() { git diff --name-only "$(git merge-base "$base_ref" HEAD)" HEAD; }
-
-is_doc() { grep -Eq '(\.md$|^docs/|^LICENSES/|^\.github/)'; }
-
-only_version_line_changed() {
-    git diff -U0 "$(git merge-base "$base_ref" HEAD)" HEAD -- CMakeLists.txt \
-        | grep -E '^[-+][^-+]' | grep -Evq 'VERSION [0-9]+\.[0-9]+\.[0-9]+' && return 1
-    return 0
-}
-
 scope() {
-    [ "$full" = 1 ] && { echo full; return; }
-    files=$(changed_files)
-    [ -n "$files" ] || { echo full; return; }
-    rest=$(printf '%s\n' "$files" | while read -r f; do printf '%s\n' "$f" | is_doc || printf '%s\n' "$f"; done)
-    [ -z "$rest" ] && { echo docs; return; }
-    if [ "$rest" = CMakeLists.txt ] && only_version_line_changed; then echo version; return; fi
-    echo full
+    if [ "$full" = 1 ]; then echo full; else "$root/tools/change-scope" "$base_ref"; fi
 }
 
 failed=0

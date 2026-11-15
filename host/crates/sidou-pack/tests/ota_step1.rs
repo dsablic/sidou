@@ -243,7 +243,7 @@ fn stock_v15() -> Option<Vec<u8>> {
         Ok(d) if sha256_hex(&d) == STOCK_V15_SHA256 => Some(d),
         _ => {
             println!(
-                "skipping: no V15 package at {} (CI fetches it)",
+                "skipping: no V15 package at {} (M-VAVE's stock image; not redistributable, so CI has none)",
                 path.display()
             );
             None

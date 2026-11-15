@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: ran
+description: >-
+  Proves the tests ran: counts them per binary from nextest's JUnit report into the run summary,
+  fails on a test that printed "skipping" unless its line matches allowed-skips, and uploads the
+  report (its times balance the shards).
+inputs:
+  name:
+    required: true
+  allowed-skips:
+    default: '^$'
+runs:
+  using: composite
+  steps:
+    - name: Tests run, per binary
+      if: always()
+      shell: bash
+      env:
+        ALLOWED: ${{ inputs.allowed-skips }}
+      run: python3 -I "$GITHUB_ACTION_PATH/ran.py" host/target/nextest/ci/junit.xml "${{ inputs.name }}" | tee -a "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: junit-${{ inputs.name }}
+        path: host/target/nextest/ci/junit.xml
+        retention-days: 14

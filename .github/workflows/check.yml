@@ -1,0 +1,303 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: check
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
+  SIDOU_FM1_SPIKE_BUILD: ${{ github.workspace }}/build/fm1-spike
+  ARCHIVE: ${{ github.workspace }}/build/nextest.tar.zst
+
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    outputs:
+      kind: ${{ steps.scope.outputs.kind }}
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" != push ]; then kind=full
+          elif [ "${{ github.ref }}" != refs/heads/main ]; then kind=$(tools/change-scope --ci origin/main)
+          elif git rev-parse -q --verify "$BEFORE^{commit}" >/dev/null; then kind=$(tools/change-scope --ci "$BEFORE")
+          else kind=full
+          fi
+          echo "kind=$kind" | tee -a "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"
+      - id: image
+        run: echo "image=ghcr.io/dsablic/sidou-build@$(sed -n '1s/^\(sha256:[0-9a-f]\{64\}\).*/\1/p' tools/docker/image.digest)" >> "$GITHUB_OUTPUT"
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: REUSE
+        uses: fsfe/reuse-action@v5
+      - name: README is current
+        run: tools/readme-check
+
+  build:
+    needs: scope
+    if: needs.scope.outputs.kind != 'docs'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/actions/image-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+          shared-key: release
+      - uses: actions/cache@v4
+        with:
+          path: build/ac79
+          key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - name: Firmware, production and spike
+        run: |
+          cmake --preset fm1 && cmake --build --preset fm1 &
+          production=$!
+          cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON && cmake --build build/fm1-spike
+          wait "$production"
+      - name: Test binaries
+        working-directory: host
+        run: cargo nextest archive --locked --release --workspace --archive-file "$ARCHIVE"
+      - name: Package and the ergonomics harness
+        working-directory: host
+        run: |
+          cargo run --locked --release -p sidou-pack -- \
+            --app ../build/fm1/platform/fm1/sidou_app.bin \
+            --loader ../build/fm1/platform/fm1/loader/loader.bin \
+            -o ../build/fm1/sidou.fwsc
+          cargo build --locked --release -p ergo
+          cp target/release/ergo ../build/ergo
+      - run: tar -cf build.tar build/fm1 build/fm1-spike build/ergo build/nextest.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build.tar
+          retention-days: 3
+          compression-level: 1
+
+  emu-gate:
+    needs: [scope, build]
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/actions/image-tools
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+      - run: tar -xf build.tar
+      - name: emu-gate ${{ matrix.shard }}/12
+        working-directory: host
+        run: >-
+          cargo nextest run --archive-file "$ARCHIVE" --extract-to . --extract-overwrite --profile ci
+          -E 'package(emu-gate)' --partition hash:${{ matrix.shard }}/12
+      - uses: ./.github/actions/ran
+        with:
+          name: emu-gate-${{ matrix.shard }}
+
+  ergo-gate:
+    needs: [scope, build]
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ['journeys,readability', knobs, feedback, consistency, defaults, recipes]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+      - run: tar -xf build.tar build/fm1 build/ergo
+      - name: ergo-gate ${{ matrix.part }}
+        run: tools/ergo-gate --only '${{ matrix.part }}' --ergo build/ergo build/fm1
+
+  host-tests:
+    needs: [scope, build]
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/actions/image-tools
+      - uses: actions/cache@v4
+        with:
+          path: build/ac79
+          key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+      - run: tar -xf build.tar build/nextest.tar.zst
+      - name: Workspace tests
+        working-directory: host
+        run: >-
+          cargo nextest run --archive-file "$ARCHIVE" --extract-to . --extract-overwrite --profile ci
+          -E 'not package(emu-gate)'
+      - uses: ./.github/actions/ran
+        with:
+          name: host-tests
+          allowed-skips: 'no V15 package'
+
+  release-only:
+    needs: [scope, build]
+    if: needs.scope.outputs.kind == 'version'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/actions/image-tools
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+      - run: tar -xf build.tar
+      - name: The package boots and the release-only tests
+        working-directory: host
+        run: >-
+          cargo nextest run --archive-file "$ARCHIVE" --extract-to . --extract-overwrite --profile ci
+          --ignore-default-filter -E 'not default() | (package(emu-gate) & binary(package))'
+      - uses: ./.github/actions/ran
+        with:
+          name: release-only
+
+  ubsan:
+    needs: scope
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    env:
+      SIDOU_SANITIZE: undefined
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/actions/image-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+          shared-key: ubsan
+      - uses: actions/cache@v4
+        with:
+          path: build/ac79
+          key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - name: Workspace tests under UBSan
+        working-directory: host
+        run: cargo nextest run --locked --release --workspace --profile ci -E 'not package(emu-gate)'
+      - uses: ./.github/actions/ran
+        with:
+          name: ubsan
+          allowed-skips: 'no V15 package'
+
+  fmt-clippy:
+    needs: scope
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/actions/image-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+          shared-key: clippy
+      - name: rustfmt
+        working-directory: host
+        run: cargo fmt --all --check
+      - name: clippy
+        working-directory: host
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+  gcc-check:
+    needs: scope
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: tools/gcc-check
+
+  web-demo:
+    needs: [scope, build]
+    if: needs.scope.outputs.kind == 'full'
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            host
+            build/fm1-emu -> target/wasm
+          shared-key: web
+      - uses: actions/cache@v4
+        with:
+          path: build/ac79
+          key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+      - run: tar -xf build.tar build/fm1
+      - run: tools/web-demo --check --skip-firmware
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: web-demo-screenshot
+          path: build/web-check/screenshot.png
+          if-no-files-found: ignore
+
+  check:
+    if: always()
+    needs: [scope, docs, build, emu-gate, ergo-gate, host-tests, release-only, ubsan, fmt-clippy, gcc-check, web-demo]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every needed job passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"' | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' >/dev/null
