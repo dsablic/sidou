@@ -22,7 +22,9 @@ Sizes: S is under a day of work, M a few days, L more.
   into the store as an [art pack](reference/art-pack.md), sent from the site (the owner,
   2026-11-15), the image 39,328 bytes smaller; without it the piece plays SIDOU's logo intro. M-L. *Built 2026-11-15 on `connect-out`, without pairing
   ([the plan](plans/2026-11-15-bluetooth-connect-out.md)): the default image 579,232 bytes, 284
-  under the ceiling; it waits for hardware-test §38 on the owner's FM-1.*
+  under the ceiling; it waits for hardware-test §38 on the owner's FM-1. Pairing built 2026-11-15
+  on `rmr-pairing` (`BLE_CENTRAL` 1, the bond kept, a passkey shown): the default image 545,908
+  bytes, 33,608 under the ceiling.*
 - **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a
   start-up self-test, proven in fm1-emu ([the spike](plans/2026-11-15-second-core-spike.md)):
   nothing changes for players until 2.0. M.
@@ -43,12 +45,9 @@ What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, 
 ## 2.0
 
 - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on,
-  after the device check, falling back to one core; built in 1.11 behind `SIDOU_CPU2`. It needs
-  room first: with connecting out the ON image is 581,120 bytes, 1,604 over the 579,516 ceiling
-  (the second core adds about 1,890 bytes to the default image's 284 spare). The room comes from
-  more hot/cold splits, or SCENE's RED MOON RITE art moved into the store (the owner's reserve,
-  only with the owner's yes). Until then the ON image's size gate is deferred (the owner,
-  2026-11-15; `flash_plan::assert_fits`).
+  after the device check, falling back to one core; built in 1.11 behind `SIDOU_CPU2`. Its room
+  is there since RED MOON RITE's art moved into the store (1.20): with pairing the ON image is
+  547,796 bytes, 31,720 under the 579,516 ceiling, and its size gate is checked again.
 - **A layer's level in LAB**, after it (the owner, 2026-11-06): a gain per voice in both render
   loops costs about 7 instructions a sample per chip, leaving 7.1 of the two-chip worst block's
   1,426, and 160 bytes of RAMTEXT; chip B on its own core gives that budget back. It also needs a

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #if SIDOU_BLE_FAKE
+#include "ble_aes.c"
 #include "ble_scan.c"
 #include "ble_midi.c"
 #else

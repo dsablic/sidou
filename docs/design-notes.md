@@ -539,8 +539,43 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   NEED_PAIR as `ble_central.c` sets them) and calls the glue's callbacks as the stack does
   (`ble_app_state` on every link change, `ble_app_midi_in` through the vendored BLE-MIDI decoder
   as `ble_att.c` does). The scan table and its listing are the vendored `ble_scan.c`. emu-gate
-  writes the air into symbols: advertising PDUs, a keyboard gone, one asking for security, a
-  computer, a BLE-MIDI packet. The glue's own code is the same in both builds.
+  writes the air into symbols: advertising PDUs, a keyboard gone, one asking for Just Works
+  pairing or a passkey, the passkey typed, a bond forgotten, a computer, a BLE-MIDI packet. The glue's own code is the same in both builds.
+- **Pairing (1.20, `BLE_CENTRAL` 1)**, on the room RED MOON RITE's art left (the owner,
+  2026-11-15, after §38: the microKEY Air answered `NEEDS PAIRING`). The stack's FULL level pairs
+  as initiator, Just Works or a passkey SIDOU displays, encrypts with a bond and pairs again with
+  MITM on the link when a Just Works key is refused. It cost 5,972 bytes with SIDOU's side (the
+  default image 539,936 to 545,908, 33,608 under the ceiling; the measure on 1.11's image was
+  5,512 for the stack); RAMTEXT did not move; the RAM region keeps 5,560 bytes free, NOINIT 8,248.
+  - **The bond** is the keyboard's: the keys `ble_app_central_keys` hands over (in the BLE
+    interrupts' context, copied and flagged; the main loop keeps them) go into record `0x10A`
+    version 3, after the keyboard: what it holds (`BLE_KEYS_LTK`, `BLE_KEYS_AUTH`), LTK, Rand,
+    EDIV. Each connect hands the stack the bond (`bonded`, `BLE_PEER_AUTH` for a passkey's), so a
+    link after LOST or a power cycle is encrypted at once, as Apple's peripherals want (QA1831).
+    The identity (IRK) is not kept: a keyboard behind a resolvable private address would not be
+    found again (the initiator waits for the address it was picked at, as before); none is known
+    to SIDOU's users.
+  - **What is tried again**: `BLE_CF_KEY` (the keyboard left while the bond's encryption started:
+    it lost the bond) drops the bond and connects once more, to pair afresh; `BLE_CF_NEED_MITM`
+    (Just Works refused, a passkey needed) connects once more with `BLE_PEER_MITM`. Anything else
+    that ends a link before READY (a pairing failed, a passkey typed wrong, authentication
+    refused) is `NEEDS PAIRING`, not tried again until the keyboard is picked, the mode changes or
+    the power is cycled, as before: NEEDS PAIRING's "not tried again" stays where pairing cannot
+    help. A connection that reaches READY resets the "once". A pick forgets the bond.
+  - **The passkey** is shown as a toast, `PASSKEY` and six digits on two large lines, for up to
+    30 s (SMP's own timeout), from the first poll that sees `ble_central_passkey` while
+    `ble_central_pairing`; the connection's toast, or `NEEDS PAIRING`, replaces it. A toast and not
+    a popup: it is what the screen already shows large, without a new view.
+  - **The peripheral** gets LL encryption and SMP as responder with the level (the stack's
+    `BLE_SMP_LEGACY`): a Mac that asks to pair is paired; its bond is not kept (`ble_app_bond`
+    stays empty), as BLE-MIDI to a computer needs none.
+  - **What the fake radio proves**: the glue's whole pairing logic on the stack's API, with the
+    keys made by the stack's own primitives (`ble_aes.c` is built into the fake image: the fake
+    keyboard checks the confirm values with `ble_smp_c1`, so a wrong passkey fails as it would on
+    the air, derives the STK with `ble_smp_s1` and the TK with `ble_smp_passkey_tk`). What it
+    cannot: the stack's SMP state machine (`ble_smp_init.c`), the LL's encryption start and
+    AES-CCM on the link, the timing over the air and a real keyboard's choices; those are
+    hardware-test §38's.
 - **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with the
   radio: `views_radio_bind` hands the views the radio's hooks and adds the item. The setting and
   SIDOU's random static address are their own store record (key `0x10A`), not the settings
@@ -709,14 +744,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
   (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
   Players see nothing: no menu entry, no setting.
-- **The ON image's size gate is deferred to 2.0** (the owner, 2026-11-15). With Bluetooth
-  connecting out the ON image is 581,120 bytes, 1,604 over the 579,516 ceiling: the second core
-  adds about 1,890 bytes and the default image has 284 to spare. The cpu2 shard still runs every
-  gate it ran on the ON image, but `flash_budget.rs` and `psid_budget.rs`'s check of the image's
-  size against the ceiling print the overrun and pass for an image whose option record names
-  `SIDOU_CPU2=ON` (`flash_plan::assert_fits`, `SIZE_DEFERRED_TO`). The default image's size
-  gates are unchanged. 2.0 finds the room before turning it on: more hot/cold splits, or SCENE's
-  RED MOON RITE art moved into the store (the owner's reserve, with the owner's yes).
+- **The ON image's size gate.** Deferred to 2.0 on 2026-11-15 (the owner) while the ON image was
+  581,120 bytes, 1,604 over the 579,516 ceiling (the second core adds about 1,890 bytes, and the
+  default image had 284 to spare). Restored in 1.20 once RED MOON RITE's art left the image: with
+  pairing, the ON image is 547,796 bytes, 31,720 under the ceiling, and `flash_budget.rs` and
+  `psid_budget.rs` check it as they check the default image (`flash_plan::assert_fits`).
 - **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
   core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
   chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).

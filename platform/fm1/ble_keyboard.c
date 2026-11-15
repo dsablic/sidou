@@ -12,21 +12,26 @@ static void ble_copy(uint8_t* to, const uint8_t* from, uint32_t n) {
     }
 }
 
-_Static_assert(sizeof(ble_setting_kept) == 1u + 6u + 6u + 1u + BLE_KEYBOARD_NAME + 1u,
+_Static_assert(sizeof(ble_setting_kept) ==
+                   1u + 6u + 6u + 1u + BLE_KEYBOARD_NAME + 1u + 1u + 16u + 8u + 2u,
                "the record is the setting's bytes as they lie");
 
 int ble_record_read(ble_setting_kept* out, const uint8_t* rec, uint32_t n) {
     uint32_t version = n ? rec[0] : 0u;
+    out->bond.has = 0;
     if (version == BLE_RECORD_VERSION_ON_OFF && n == BLE_RECORD_BYTES_ON_OFF) {
         out->mode = rec[1] != 0;
         ble_copy(out->own, rec + 2, 6);
         out->keyboard.type = BLE_ADDR_NONE;
         return 1;
     }
-    if (version != BLE_RECORD_VERSION || n != BLE_RECORD_BYTES) {
+    uint32_t bytes = version == BLE_RECORD_VERSION_UNBONDED ? BLE_RECORD_BYTES_UNBONDED
+                     : version == BLE_RECORD_VERSION        ? BLE_RECORD_BYTES
+                                                            : 0u;
+    if (!bytes || n != bytes) {
         return 0;
     }
-    ble_copy((uint8_t*)out, rec + 1, sizeof *out);
+    ble_copy((uint8_t*)out, rec + 1, bytes - 1u);
     out->keyboard.name[BLE_KEYBOARD_NAME] = 0;
     if (out->mode >= BLE_MODES) {
         out->mode = BLE_MODE_OFF;

@@ -43,13 +43,15 @@ algorithm, Amount, A, B and Mix) and 117 the chip spread.
 
 ## A Bluetooth keyboard
 
-A Bluetooth MIDI keyboard or controller that needs no pairing (the Korg microKEY Air, for one)
-plays SIDOU without a cable:
+A Bluetooth MIDI keyboard or controller (the Korg microKEY Air, for one) plays SIDOU without a
+cable:
 
 1. Switch the keyboard on. On the FM-1, **HOME**, **SETTINGS**, SELECT to **BLUETOOTH** (the last
    item) and turn ALGORITHM clockwise until the popup says **KEYBOARD**.
 2. Press **SAVE**: **DEVICES** lists the Bluetooth MIDI devices nearby with their signal bars.
-   SELECT to yours and press **SAVE**. The toast says **KEYBOARD** and its name, and the
+   SELECT to yours and press **SAVE**. A keyboard that asks to pair is paired on the spot (nothing
+   to confirm on most); one that needs a passkey has it shown large on the FM-1 (**PASSKEY** and
+   six digits): type it on the keyboard. The toast says **KEYBOARD** and its name, and the
    BLUETOOTH row shows the name.
 3. Play: its notes, knobs and clock reach SIDOU as from USB. The map above and MIDI learn work
    the same.
@@ -57,8 +59,10 @@ plays SIDOU without a cable:
 SIDOU remembers the keyboard: after a power cycle it connects again by itself, and if the
 keyboard goes off or out of range the toast says **KEYBOARD LOST** (held notes stop) and SIDOU
 connects again when it is back. While KEYBOARD is chosen a computer cannot connect to SIDOU over
-Bluetooth; turn BLUETOOTH back to ON for that. A keyboard that insists on pairing shows **NEEDS
-PAIRING**: SIDOU does not pair. The details: [docs/reference/controls.md](../reference/controls.md),
+Bluetooth; turn BLUETOOTH back to ON for that. SIDOU keeps the pairing with the keyboard, so it
+connects again without pairing after a power cycle; a keyboard that has forgotten it is paired
+again once. **NEEDS PAIRING** means the pairing failed (a passkey typed wrong, or the keyboard
+refused): pick the keyboard in DEVICES again to try again. The details: [docs/reference/controls.md](../reference/controls.md),
 SETTINGS.
 
 ## Parameters with no CC of their own

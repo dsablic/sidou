@@ -21,11 +21,17 @@ All notable changes are documented here. The format follows
   is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
   with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it
   again after a power cycle or when it comes back in range. Its notes, knobs and clock play as
-  from USB. Toasts say when it connects, when it is lost (held notes stop) and when it needs
-  pairing, which SIDOU does not do. One link at a time: with KEYBOARD a computer cannot connect.
-  A 1.9 or 1.10 setting reads as it was. The image grew 9,488 bytes to 579,232, 284 under the
-  ceiling; RAMTEXT did not change. `SIDOU_BLE_CENTRAL` is gone (the central is always built,
-  without pairing), and `-DSIDOU_BLE_FAKE=ON` builds the emulator gate's fake-radio image.
+  from USB. Toasts say when it connects and when it is lost (held notes stop). A keyboard that
+  asks to pair is paired (Just Works, or a passkey SIDOU shows large for its user to type), and
+  the bond is kept, so it connects again encrypted after LOST or a power cycle; one that forgot
+  the bond is paired again once; a failed pairing says NEEDS PAIRING. One link at a time: with
+  KEYBOARD a computer cannot connect. A 1.9, 1.10 or 1.11 setting reads as it was (the record is
+  version 3, with the bond). With RED MOON RITE's art out of the image (above), the image is
+  545,908 bytes, 33,608 under the ceiling; RAMTEXT did not change. `SIDOU_BLE_CENTRAL` is gone
+  (the central is always built, with pairing), and `-DSIDOU_BLE_FAKE=ON` builds the emulator
+  gate's fake-radio image.
+- **The second core's image** fits again (547,796 bytes with pairing): its size gate, deferred to
+  2.0 on 2026-11-15, is back.
 - **`-DSIDOU_CPU2=ON`**, a build option off by default: chip B's render on the FM-1's second core,
   for the device check; the default image is unchanged and players see nothing.
 - **felucca-bsp `18eadadb`** (from `7e09895c`): USB audio packets are sized by the FM-1's crystal
