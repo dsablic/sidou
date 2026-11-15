@@ -196,9 +196,10 @@ To run the firmware benchmark in the emulator, see "Emulator gate" in
 
 `ghcr.io/dsablic/sidou-build` (public, `linux/amd64`) holds everything a build needs: JieLi's
 pi32v2 toolchain (pinned by SHA-256 in `tools/docker/toolchain.sha256`), CMake, Ninja, GCC 13,
-clang and libclang (bindgen), a pinned Rust (`RUST_VERSION` in `tools/docker/Dockerfile`), git
-and jq. The release CI (`.github/workflows/ci.yml`) runs in it, pinned by digest, so a run
-installs nothing. Inside it `SIDOU_BUILD_IMAGE` is set, and `tools/fm1-docker` then runs its
+clang and libclang (bindgen), a pinned Rust (`RUST_VERSION` in `tools/docker/Dockerfile`) with
+rustfmt and clippy, cargo-nextest (`NEXTEST_VERSION`, pinned by SHA-256), Node and Playwright's
+Chromium, git and jq. The CI workflows (`check.yml`, `ci.yml`, `pages.yml`) run in it, pinned
+by digest, so a run installs nothing (`check.yml` reads the digest from `tools/docker/image.digest`). Inside it `SIDOU_BUILD_IMAGE` is set, and `tools/fm1-docker` then runs its
 command directly instead of starting Docker.
 
 **Locally**, `tools/fm1-docker` pulls the image once: the digest in `tools/docker/image.digest`
@@ -214,8 +215,8 @@ docker build --platform linux/amd64 -t sidou-build:local \
 **Publishing.** `.github/workflows/build-image.yml` builds and pushes `:latest` and `:<commit>`
 with the repository's `GITHUB_TOKEN` when `tools/docker/**` changes on `main`, or when run by
 hand (Actions, Run workflow). Its summary prints the digest. Then:
-1. put the digest (`sha256:...`) in `tools/docker/image.digest`, and in `ci.yml`'s `container.image`
-   (`...sidou-build@sha256:...`; it reads `IMAGE_DIGEST_PLACEHOLDER` until the first publish);
+1. put the digest (`sha256:...`) in `tools/docker/image.digest`, and in `ci.yml`'s and
+   `pages.yml`'s `container.image` (`...sidou-build@sha256:...`);
 2. the first time only: make the package public (GitHub, the package's settings, Change
    visibility), so CI and everyone else can pull it without a login.
 

@@ -23,9 +23,11 @@
   literal, restates the code, or can't fail when the behaviour breaks is removed, not written.
 - Test first for every behaviour change; firmware behaviour is proven in fm1-emu (emu-gate), the
   host C in sidou-tests, the site with node tests and `tools/web-demo --check`.
-- Run targeted tests while working (`nice`, a few threads); the full merge check runs every stage
-  before anything reaches `main`. Budgets (flash, RAMTEXT, instruction counts) are not raised to
-  make a change fit without the owner's decision.
+- Run targeted tests while working (`nice`, a few threads); push the branch and its green `check`
+  on GitHub (every stage, about 10 minutes) is what lets it reach `main`. `tools/merge-check`
+  runs the same stages locally, for offline work and what CI cannot run (TESTING.md). Budgets
+  (flash, RAMTEXT, instruction counts) are not raised to make a change fit without the owner's
+  decision.
 
 ## Docs and releases
 

@@ -79,9 +79,11 @@ jobs:
           production=$!
           cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON && cmake --build build/fm1-spike
           wait "$production"
-      - name: Test binaries
+      - name: Test binaries, the emulator gate's (and for a release, every one)
         working-directory: host
-        run: cargo nextest archive --locked --release --workspace --archive-file "$ARCHIVE"
+        run: >-
+          cargo nextest archive --locked --release --archive-file "$ARCHIVE"
+          ${{ needs.scope.outputs.kind == 'version' && '--workspace' || '-p emu-gate' }}
       - name: Package and the ergonomics harness
         working-directory: host
         run: |
@@ -159,7 +161,7 @@ jobs:
         run: tools/ergo-gate --only '${{ matrix.part }}' --shard '${{ matrix.shard || '1/1' }}' --ergo build/ergo build/fm1
 
   host-tests:
-    needs: [scope, build]
+    needs: scope
     if: needs.scope.outputs.kind == 'full'
     runs-on: ubuntu-24.04
     container:
@@ -169,19 +171,19 @@ jobs:
         with:
           submodules: true
       - uses: ./.github/actions/image-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+          shared-key: host
       - uses: actions/cache@v4
         with:
           path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: build
-      - run: tar -xf build.tar build/nextest.tar.zst build/fm1
+      - name: Firmware, for the packager's tests of the built loader
+        run: cmake --preset fm1 && cmake --build --preset fm1
       - name: Workspace tests
         working-directory: host
-        run: >-
-          cargo nextest run --archive-file "$ARCHIVE" --extract-to . --extract-overwrite --profile ci
-          -E 'not package(emu-gate)'
+        run: cargo nextest run --locked --release --workspace --exclude emu-gate --profile ci
       - uses: ./.github/actions/ran
         with:
           name: host-tests
@@ -239,7 +241,7 @@ jobs:
         run: cmake --preset fm1 && cmake --build --preset fm1
       - name: Workspace tests under UBSan
         working-directory: host
-        run: cargo nextest run --locked --release --workspace --profile ci -E 'not package(emu-gate)'
+        run: cargo nextest run --locked --release --workspace --exclude emu-gate --profile ci
       - uses: ./.github/actions/ran
         with:
           name: ubsan

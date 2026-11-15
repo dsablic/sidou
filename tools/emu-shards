@@ -14,10 +14,8 @@ emulator test goes into the REST shards by slice (every Nth test of the whole li
 
 GROUPS = [
     ["the_players_worst_block_fits_its_budget"],
-    [
-        "the_tracker_stays_within_its_budgets_while_a_song_plays",
-        "red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song",
-    ],
+    ["the_tracker_stays_within_its_budgets_while_a_song_plays"],
+    ["red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song"],
     [
         "the_boot_and_about_stay_within_their_budgets",
         "the_song_and_a_tune_switch_both_ways_twenty_times_with_the_keys_routed_and_the_song_back_byte_for_byte",
@@ -27,9 +25,12 @@ GROUPS = [
         "a_cut_after_any_operation_leaves_the_old_value_or_the_new",
         "character_ccs_reach_the_chip_and_match_the_host_sample_exact",
         "clock_outs_start_goes_out_during_a_sysex_reply",
+        "the_mirror_follows_live_tracker_the_menu_and_scene",
+        "midi_learn_over_scene_and_live_stays_within_the_budget_from_opening_to_closing",
+        "a_note_on_reaches_the_buffer_within_a_block_and_a_poll_while_the_screen_redraws",
     ],
 ]
-REST = 8
+REST = 7
 
 
 def tests(names):
