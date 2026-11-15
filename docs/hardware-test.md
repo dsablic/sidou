@@ -3104,7 +3104,7 @@ Set up:
   position, the LED blinking until a link is up). **A Mac** with Audio MIDI Setup's Bluetooth
   window, for the last items. Headphones on the line out.
 
-- [ ] **Find and connect the microKEY Air:** HOME, SETTINGS, SELECT to BLUETOOTH, ALGORITHM
+- [x] **Find and connect the microKEY Air:** HOME, SETTINGS, SELECT to BLUETOOTH, ALGORITHM
   clockwise until the popup says KEYBOARD; the row reads `KEYBOARD NONE`. SAVE: DEVICES opens,
   `SCANNING`, then the microKEY Air within a few seconds, with signal bars (other BLE-MIDI devices
   nearby may be listed too; nothing that is not BLE-MIDI). SELECT to it, SAVE: back on SETTINGS,
@@ -3115,34 +3115,34 @@ Set up:
   note what the keyboard did. *Emulator:*
   `ble_keyboard.rs::devices_lists_the_ble_midi_keyboards_heard_and_save_connects_and_keeps_the_chosen_one`,
   `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_pairs_connects_and_keeps_the_bond`,
-  `ble_keyboard.rs::a_keyboard_that_needs_a_passkey_shows_it_large_and_pairs_once_it_is_typed`. *Result:* Failed 2026-11-15 as the item foresees, on the test package from main 0259add4 (FM-1_964, app 579,232 B, SHA-256 86792f0a…0f0a48): the microKEY Air was found on DEVICES and answered `NEEDS PAIRING`. It insists on pairing; the remaining items wait for pairing (`BLE_CENTRAL` level 1).
-- [ ] **Notes, knobs and clock:** play chords and fast runs, bend and modulate, turn the
+  `ble_keyboard.rs::a_keyboard_that_needs_a_passkey_shows_it_large_and_pairs_once_it_is_typed`. *Result:* Failed 2026-11-15 as the item foresees, on the test package from main 0259add4 (FM-1_964, app 579,232 B, SHA-256 86792f0a…0f0a48): the microKEY Air was found on DEVICES and answered `NEEDS PAIRING`. It insists on pairing; the remaining items wait for pairing (`BLE_CENTRAL` level 1). *Result:* Passed 2026-11-15 on the test package from main 75d7e02d (FM-1_964, app 545,908 B, SHA-256 c7a3ca55…d2f806c): picked again on DEVICES, the microKEY Air paired (Just Works, nothing to confirm) and connected, the toast and the row with its name.
+- [x] **Notes, knobs and clock:** play chords and fast runs, bend and modulate, turn the
   microKEY Air's knobs (set to CC 74 and 71 if its editor allows; otherwise MIDI learn one: hold
   SAVE, turn K1, turn the keyboard's knob). The microKEY Air sends no clock: the clock over
   Bluetooth is checked from the Mac in the last item. Pass: every note sounds and stops, no stuck
   note, the knobs move cutoff and resonance smoothly, no audio click while playing. *Emulator:*
-  `ble_keyboard.rs::the_keyboards_notes_and_ccs_play_as_any_midi_input`.
-- [ ] **The keyboard off and on:** hold a chord and switch the microKEY Air off. Pass: within about
+  `ble_keyboard.rs::the_keyboards_notes_and_ccs_play_as_any_midi_input`. *Result:* Passed 2026-11-15: notes, pitch bend and octave fine. The mod wheel seemed to do nothing: its default target was the pulse width, silent on a saw sound and, left at the bottom, silencing PWM BASS (only the thump heard); the owner made vibrato the default, with a WHEEL row, and the PULSE target keeps an audible range (1.20).
+- [x] **The keyboard off and on:** hold a chord and switch the microKEY Air off. Pass: within about
   two seconds the toast `KEYBOARD LOST`, the held notes stop, the row reads `LOOKING`. Switch it
   on: within a few seconds the toast `KEYBOARD microKEY Air` and it plays again, with no step on
   the FM-1. *Emulator:*
-  `ble_keyboard.rs::a_keyboard_gone_releases_its_notes_says_lost_and_reconnects_by_itself`.
-- [ ] **A power cycle reconnects, and the bond survives it:** with the keyboard on, power the
+  `ble_keyboard.rs::a_keyboard_gone_releases_its_notes_says_lost_and_reconnects_by_itself`. *Result:* Passed 2026-11-15: LOST, the chord released, connected again by itself; a chord still held on the keyboard is not heard until pressed again (the keyboard was off when it was pressed: expected).
+- [x] **A power cycle reconnects, and the bond survives it:** with the keyboard on, power the
   FM-1 off and on. Pass: a few seconds after the boot the toast `KEYBOARD microKEY Air` and the
   keyboard plays, with no pairing asked again (the link is encrypted with the kept bond: no
   `PASSKEY`, and the keyboard shows no new pairing); SETTINGS still says KEYBOARD and its name.
   *Emulator:* `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`,
-  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_pairs_connects_and_keeps_the_bond`.
-- [ ] **Back to ON, the Mac connects:** BLUETOOTH to ON (ALGORITHM counter-clockwise once). Pass:
+  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_pairs_connects_and_keeps_the_bond`. *Result:* Passed 2026-11-15: connected after the boot with no pairing asked again.
+- [x] **Back to ON, the Mac connects:** BLUETOOTH to ON (ALGORITHM counter-clockwise once). Pass:
   the keyboard's link drops without a `KEYBOARD LOST` toast; the Mac's Bluetooth window lists
   `SIDOU XXXX` again and connects; notes both ways as in §35. KEYBOARD again drops the Mac and
   the keyboard comes back. *Emulator:*
-  `ble_keyboard.rs::keyboard_drops_a_computers_link_never_advertises_and_on_lets_it_back`.
+  `ble_keyboard.rs::keyboard_drops_a_computers_link_never_advertises_and_on_lets_it_back`. *Result:* Passed 2026-11-15: with ON the Mac connects (with KEYBOARD it shows SIDOU offline: the one link); back to KEYBOARD the microKEY Air connects by itself. Notes were checked in the next item.
 - [ ] **The peripheral path again** (the radio driver is now `-Oz`): with ON and the Mac
   connected, §35's items once more: a minute of notes from Logic to SIDOU and from SIDOU's keys to
   Logic, Logic's MIDI clock to SIDOU over Bluetooth with a song following it (CLOCK on FOLLOW),
   no audio glitch, OFF and ON, a power cycle keeps ON, and a firmware install with BLUETOOTH ON
-  still finishes. Pass: as in §35, the song in time with Logic.
+  still finishes. Pass: as in §35, the song in time with Logic. *Result:* Partly passed 2026-11-15 (GarageBand has no MIDI clock or MIDI out, so this Mac sent and listened over `SIDOU D84A Bluetooth` with the owner's yes, as in §35): K1 turned, 605 CC 74 reached the Mac (35-127); notes from the Mac played SIDOU (the first try sent the moment the port opened and the owner had no headphones in; sent again after 2 s, heard); a song on FOLLOW started with the clock, followed 120, 90 and 140 BPM (961, 541, 841 ticks) evenly and stopped. Not yet run: OFF and ON, a power cycle keeps ON, an install with BLUETOOTH ON (with the next test package).
 
 ## 39. 1.20: RED MOON RITE's art from the store, and the logo intro
 
