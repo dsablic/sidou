@@ -7,7 +7,11 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## 1.11: Bluetooth connecting out
+## 1.20: Bluetooth keyboards and art packs
+
+The owner, 2026-11-15: what was 1.11 (connecting out) and the art packs, with their builder, in one
+release.
+
 
 - **felucca-bsp to its head** first (from `7e09895c`: `usb.c`'s packets sized by the crystal,
   byte for byte), with a USB audio device check and §35's iOS minute if a phone is at hand. S.
@@ -22,16 +26,24 @@ Sizes: S is under a day of work, M a few days, L more.
   (about 42 KB) is the reserve, only with the owner's yes: kept as a file in the store, sent from
   the site, rather than cut. M-L. *Built 2026-11-15 on `connect-out`, without pairing
   ([the plan](plans/2026-11-15-bluetooth-connect-out.md)): the default image 579,232 bytes, 284
-  under the ceiling; it waits for hardware-test §38 on the owner's FM-1.*
+  under the ceiling. §38: the microKEY Air is found and asks for pairing, so pairing (level 1)
+  comes in, on the room the art packs free (the owner, 2026-11-15).*
+- **Art packs:** SCENE's RED MOON RITE draws its art from a file in the store, sent from the
+  Library or `sidou-sysex art`: today's art is the first pack, and a pack reskins the scene (the
+  same images, sizes and frame counts; the choreography stays the firmware's). It frees about
+  40 KB of the app for pairing and the second core. One pack on the FM-1 at a time. M.
+- **The art pack builder** on the site: PNGs per image slot, checked against the pack's sizes and
+  frame counts, reduced to the screen's palette, previewed in the browser emulator, sent or shared
+  as a link. Site only. M.
 - **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a
   start-up self-test, proven in fm1-emu ([the spike](plans/2026-11-15-second-core-spike.md)):
   nothing changes for players until 2.0. M.
 - The small fixes below.
 
-## 1.12: groove
+## After 1.20: groove
 
 What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, sized to the room
-1.11's flash find leaves:
+1.20 leaves:
 
 - **Swing:** a song's shuffle on a knob (GoatTracker's funktempo may carry it with no format
   change). S.
