@@ -2531,7 +2531,8 @@ const LIVE_IDLE_PER_FRAME: f64 = 15_500.0;
 const LIVE_CHORD_PER_FRAME: f64 = 53_000.0;
 const LIVE_NOISE_PER_FRAME: f64 = 155_000.0;
 
-const SCENE_PIECES: [&str; 6] = ["fire", "plasma", "rule30", "stars", "ant", "rmr"];
+const SCENE_PIECES: [&str; 5] = ["fire", "plasma", "scope", "demo", "rmr"];
+const SCENE_PETSCII: usize = sidou_sys::SCENE_PETSCII as usize;
 const _: () = assert!(SCENE_PIECES.len() == sidou_sys::SCENE_PIECES as usize);
 const PIECE_NAME_TOAST_LEFT_MS: u64 = 1_000;
 
@@ -2651,18 +2652,13 @@ fn scene_plasma_matches_its_golden_image() {
 }
 
 #[test]
-fn scene_rule30_matches_its_golden_image() {
-    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(2);
+fn scene_scope_matches_its_golden_image() {
+    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(SCENE_SCOPE);
 }
 
 #[test]
-fn scene_stars_matches_its_golden_image() {
-    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(3);
-}
-
-#[test]
-fn scene_ant_matches_its_golden_image() {
-    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(4);
+fn scene_demo_matches_its_golden_image() {
+    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(SCENE_DEMO);
 }
 
 #[test]
@@ -2897,7 +2893,7 @@ fn scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets() {
         assert!(avg <= cells_bound, "{name}: {avg:.1} cells a frame");
         assert!(most <= most_bound, "{name}: {most} cells in a frame");
         let poll_bound = |k: usize| {
-            if k == SCENE_RMR {
+            if k >= SCENE_PETSCII {
                 RMR_WORST_POLL
             } else {
                 SCENE_WORST_POLL
@@ -2995,13 +2991,12 @@ const fn scene_bound(cells_average: f64, cells_most: u32, instructions_a_frame: 
     }
 }
 
-const SCENE_BOUNDS: [SceneBound; 6] = [
+const SCENE_BOUNDS: [SceneBound; 5] = [
     scene_bound(138.0, 175, 108_000.0),
     scene_bound(152.0, sidou_sys::SCENE_VIEW_FRAME_CELLS, 152_000.0),
-    scene_bound(21.0, 84, 33_500.0),
-    scene_bound(44.0, 75, 79_000.0),
-    scene_bound(3.0, 10, 30_000.0),
-    scene_bound(133.0, 136, 1_140_000.0),
+    scene_bound(98.0, 153, 830_000.0),
+    INTRO_BOUND,
+    scene_bound(73.0, 186, 715_000.0),
 ];
 const INTRO_BOUND: SceneBound = scene_bound(64.0, 100, 192_000.0);
 const SCENE_WORST_POLL: u64 = 62_000;
@@ -3067,15 +3062,16 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
         costs.push((format!("the menu into {name}"), c));
     }
     let mut over = Vec::new();
+    let painted = |name: &str| SCENE_PIECES[SCENE_PETSCII..].iter().any(|p| name.ends_with(p));
     for (what, cost) in &costs {
-        let input_bound = if what == "SELECT to fire" || what == "SELECT to rmr" {
+        let input_bound = if what.starts_with("SELECT") && (painted(what) || what.ends_with("fire")) {
             RMR_INPUT
         } else if what.starts_with("SELECT") {
             SCENE_INPUT
         } else {
             SCENE_OPEN_INPUT
         };
-        let pass_bound = if what.ends_with("rmr") {
+        let pass_bound = if painted(what) {
             RMR_START_PASS
         } else {
             SCENE_START_PASS
@@ -5013,6 +5009,8 @@ const _: () = assert!(ABOUT_WORST_POLL + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_INPUT + TRACKER_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);
 
 const SCENE_RMR: usize = sidou_sys::SCENE_RMR as usize;
+const SCENE_SCOPE: usize = sidou_sys::SCENE_SCOPE as usize;
+const SCENE_DEMO: usize = sidou_sys::SCENE_DEMO as usize;
 
 fn scene_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
     ui_byte(m, fw, sidou_sys::ilp32::views::scene + offset)
@@ -5265,3 +5263,4 @@ fn red_moon_rite_sends_nothing_once_the_stopped_songs_releases_have_rung_out() {
     assert!(sum(&playing) > 1000);
     assert_eq!(sum(&after), 0, "{after:?}");
 }
+

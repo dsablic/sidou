@@ -5,7 +5,7 @@
 #include "live_view.h"
 
 #define W SCENE_PX_W
-#define LANE SCENE_SCOPE_LANE_H
+#define LANE ((int32_t)SCENE_SCOPE_LANE_H)
 #define TILE ((int32_t)GRID_CELL_PX)
 #define FULL_SWING (128 * 255)
 
@@ -45,9 +45,14 @@ static int lane_trace(const scene_scope* so, const scope* tap, const live* l, ui
     uint32_t t = scene_scope_trigger(wave);
     uint32_t cycles = live_view_scope_cycles(l->voice[v].note);
     uint32_t moved = 0;
+    uint32_t at = t, part = 0;
+    const int32_t gain_q16 = env * SCENE_SCOPE_AMP * 65536 / FULL_SWING;
     for (uint32_t x = 0; x < W; x++) {
-        int32_t w = (int32_t)wave[(t + x * SCOPE_W * cycles / W) % SCOPE_W] - 128;
-        int32_t y = SCENE_SCOPE_MID - w * env * SCENE_SCOPE_AMP / FULL_SWING;
+        int32_t y = SCENE_SCOPE_MID - (((int32_t)wave[at] - 128) * gain_q16 >> 16);
+        part += SCOPE_W * cycles;
+        for (; part >= W; part -= W) {
+            at = at + 1u < SCOPE_W ? at + 1u : 0u;
+        }
         int32_t d = y - (int32_t)so->y[v][x];
         moved += d > SCENE_SCOPE_STILL || d < -SCENE_SCOPE_STILL || (!env && d);
         now[x] = (uint8_t)y;
@@ -76,33 +81,41 @@ static void touch_changes(scene_px* sp, uint32_t lane, const uint8_t* was, const
     }
 }
 
-static int32_t span_lo(const uint8_t* ys, uint32_t x) {
-    uint8_t a = ys[x], b = ys[x ? x - 1u : 0u];
-    return a < b ? a : b;
-}
-
-static int32_t span_hi(const uint8_t* ys, uint32_t x) {
-    uint8_t a = ys[x], b = ys[x ? x - 1u : 0u];
-    return a > b ? a : b;
-}
-
-static int on_span(const uint8_t* ys, uint32_t x, int32_t y, int32_t grow) {
-    return span_lo(ys, x) - grow <= y && y <= span_hi(ys, x) + grow;
+static void spans(const uint8_t* ys, int32_t from, uint32_t n, int16_t* lo, int16_t* hi) {
+    for (uint32_t k = 0; k < n; k++) {
+        int32_t x = from + (int32_t)k;
+        if (x < 0 || x >= W) {
+            lo[k] = LANE;
+            hi[k] = -LANE;
+            continue;
+        }
+        uint8_t a = ys[x], b = ys[x ? x - 1 : 0];
+        lo[k] = a < b ? a : b;
+        hi[k] = a < b ? b : a;
+    }
 }
 
 static void lane_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
     const scene_scope* so = ctx;
-    const uint8_t* ys = so->y[y / LANE];
     const uint8_t* colour = scene_scope_colour[so->chip];
     const int32_t ly = (int32_t)(y % LANE);
+    int16_t lo[TILE + 2], hi[TILE + 2];
+    spans(so->y[y / LANE], (int32_t)x - 1, n + 2u, lo, hi);
+    int32_t top = LANE, bottom = -LANE;
+    for (uint32_t k = 0; k < n + 2u; k++) {
+        top = lo[k] < top ? lo[k] : top;
+        bottom = hi[k] > bottom ? hi[k] : bottom;
+    }
+    int near = ly >= top - 1 && ly <= bottom + 1;
     for (uint32_t i = 0; i < n; i++) {
-        uint32_t px = x + i;
-        if (on_span(ys, px, ly, 0)) {
+        const int16_t* l = lo + i;
+        const int16_t* h = hi + i;
+        if (near && l[1] <= ly && ly <= h[1]) {
             out[i] = colour[SCENE_SCOPE_CORE];
-        } else if (on_span(ys, px, ly, 1) || (px > 0u && on_span(ys, px - 1u, ly, 0)) ||
-                   (px + 1u < W && on_span(ys, px + 1u, ly, 0))) {
+        } else if (near && ((l[1] - 1 <= ly && ly <= h[1] + 1) || (l[0] <= ly && ly <= h[0]) ||
+                            (l[2] <= ly && ly <= h[2]))) {
             out[i] = colour[SCENE_SCOPE_HALO];
-        } else if (ly == SCENE_SCOPE_MID && px % SCENE_SCOPE_DOTS == 0u) {
+        } else if (ly == SCENE_SCOPE_MID && (x + i) % SCENE_SCOPE_DOTS == 0u) {
             out[i] = GRID_DARK_GREY;
         }
     }
@@ -111,10 +124,12 @@ static void lane_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_
 void scene_scope_frame(scene_scope* so, const scope* tap, const live* l, scene_px* sp) {
     so->chip = (uint8_t)(l->two_chips && l->keys_chip ? SCENE_SCOPE_CHIP_B : SCENE_SCOPE_CHIP_A);
     int sounding = 0;
+    so->lane = (uint8_t)((so->lane + SCENE_SCOPE_LANES_A_FRAME) % SCENE_SCOPE_LANES);
     for (uint32_t v = 0; v < SCENE_SCOPE_LANES; v++) {
         uint8_t now[W];
         sounding |= tap && tap->env[v];
-        if (lane_trace(so, tap, l, v, now)) {
+        uint32_t turn = (v + SCENE_SCOPE_LANES - so->lane) % SCENE_SCOPE_LANES;
+        if (turn < SCENE_SCOPE_LANES_A_FRAME && lane_trace(so, tap, l, v, now)) {
             touch_changes(sp, v, so->y[v], now);
             for (uint32_t x = 0; x < W; x++) {
                 so->y[v][x] = now[x];

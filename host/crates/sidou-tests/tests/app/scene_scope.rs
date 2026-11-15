@@ -52,9 +52,13 @@ impl Scope {
     }
 
     fn frame(&mut self) {
-        let freq = std::array::from_fn(|v| self.keys.live.voice[v].freq_out);
-        feed_the_tap(&mut self.tap, &mut self.acc, freq);
-        unsafe { scene_scope_frame(&mut *self.so, &*self.tap, &*self.keys.live, &mut *self.px.sp) };
+        for _ in 0..SCENE_SCOPE_LANES {
+            let freq = std::array::from_fn(|v| self.keys.live.voice[v].freq_out);
+            feed_the_tap(&mut self.tap, &mut self.acc, freq);
+            unsafe {
+                scene_scope_frame(&mut *self.so, &*self.tap, &*self.keys.live, &mut *self.px.sp)
+            };
+        }
     }
 
     fn sent(&mut self) -> Vec<(usize, usize)> {

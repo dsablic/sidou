@@ -524,3 +524,223 @@ fn a_damaged_pack_falls_back_to_the_intro() {
         assert!(shows_the_logo(&ui), "{what}");
     }
 }
+
+const HIGH: u8 = SCENE_RMR_HIGH_NOTE as u8 + 12;
+const LOW: u8 = SCENE_RMR_HIGH_NOTE as u8 - 12;
+const MEDIUM: u8 = SCENE_RMR_SOFT as u8;
+const HARD: u8 = SCENE_RMR_HARD as u8;
+const SKY_CUTOFF: u32 = 1200;
+
+fn on(chip: u8, pitch: u8, velocity: u8) -> scene_rmr_note {
+    scene_rmr_note {
+        chip,
+        pitch,
+        velocity,
+    }
+}
+
+struct Duel {
+    r: Box<scene_rmr>,
+    poses: Vec<[u8; 2]>,
+}
+
+impl Duel {
+    fn new() -> Duel {
+        let mut r = Box::<scene_rmr>::default();
+        unsafe { scene_rmr_init(&mut *r) };
+        Duel {
+            r,
+            poses: Vec::new(),
+        }
+    }
+
+    fn frame(&mut self, notes: &[scene_rmr_note], held: bool) {
+        let sounding = held || !notes.is_empty();
+        unsafe {
+            scene_rmr_notes(&mut *self.r, notes.as_ptr(), notes.len() as u32, i32::from(sounding));
+            scene_rmr_frame(&mut *self.r, SKY_CUTOFF, i32::from(sounding));
+        }
+        self.poses.push(self.r.pose);
+    }
+
+    fn rest(&mut self, frames: u32, held: bool) {
+        for _ in 0..frames {
+            self.frame(&[], held);
+        }
+    }
+
+    fn saw(&self, k: usize, pose: u32) -> bool {
+        self.poses.iter().any(|p| u32::from(p[k]) == pose)
+    }
+}
+
+#[test]
+fn a_note_on_chip_a_is_the_left_fighters_attack_and_on_chip_b_the_rights() {
+    for chip in 0..2u8 {
+        let mut d = Duel::new();
+        d.frame(&[on(chip, HIGH, MEDIUM)], true);
+        d.rest(SCENE_RMR_PARRY_FRAMES + 8, false);
+        let k = usize::from(chip);
+        assert_eq!(u32::from(d.poses[0][k]), SCENE_RMR_RAISE, "chip {chip}");
+        assert!(d.saw(k, SCENE_RMR_CHOP), "chip {chip}: no chop");
+        assert!(!d.saw(1 - k, SCENE_RMR_RAISE) && !d.saw(1 - k, SCENE_RMR_BLOCK));
+        assert_eq!(u32::from(d.r.lead), u32::from(chip), "the attacker presses on");
+    }
+}
+
+#[test]
+fn high_notes_chop_overhead_and_low_notes_sweep_low() {
+    let first_poses = |pitch: u8| {
+        let mut d = Duel::new();
+        d.frame(&[on(0, pitch, MEDIUM)], true);
+        d.rest(10, true);
+        let mut seen: Vec<u32> = d.poses.iter().map(|p| u32::from(p[0])).collect();
+        seen.dedup();
+        seen
+    };
+    let guard = SCENE_RMR_GUARD;
+    assert_eq!(first_poses(HIGH)[..3], [SCENE_RMR_RAISE, SCENE_RMR_CHOP, guard]);
+    assert_eq!(first_poses(LOW)[..3], [SCENE_RMR_SPIN_A, SCENE_RMR_SPIN_B, guard]);
+}
+
+#[test]
+fn a_second_note_soon_after_is_the_others_parry_its_spark_and_shake_by_velocity() {
+    for (velocity, spark, shake) in [(1, 1, 0), (MEDIUM, 2, 0), (HARD, 3, 3)] {
+        let mut d = Duel::new();
+        d.frame(&[on(0, HIGH, MEDIUM)], true);
+        d.rest(SCENE_RMR_PARRY_FRAMES / 2, true);
+        unsafe {
+            scene_rmr_notes(&mut *d.r, &on(0, HIGH, velocity), 1, 1);
+        }
+        assert_eq!(u32::from(d.r.pose[1]), SCENE_RMR_BLOCK, "velocity {velocity}");
+        assert_eq!(u32::from(d.r.spark), spark, "velocity {velocity}: the spark");
+        assert_eq!(u32::from(d.r.shake), shake, "velocity {velocity}: the shake");
+        assert_eq!(u32::from(d.r.hp[0]), SCENE_RMR_HP - 1, "the parried attacker tires");
+    }
+    let mut late = Duel::new();
+    late.frame(&[on(0, HIGH, MEDIUM)], true);
+    late.rest(SCENE_RMR_PARRY_FRAMES + 1, true);
+    late.frame(&[on(1, HIGH, MEDIUM)], true);
+    assert!(!late.saw(0, SCENE_RMR_BLOCK), "a late note parries");
+    assert_eq!(u32::from(late.r.pose[1]), SCENE_RMR_RAISE, "a late note is an attack");
+}
+
+#[test]
+fn a_chord_flares_the_torches() {
+    let mut d = Duel::new();
+    d.frame(&[on(0, HIGH, MEDIUM), on(0, HIGH + 4, MEDIUM)], true);
+    assert_eq!(d.r.flame_big, 0, "two notes are not a chord");
+    d.rest(SCENE_RMR_RUN_GAP + 1, false);
+    d.frame(
+        &[on(0, HIGH, MEDIUM), on(0, HIGH + 4, MEDIUM), on(0, HIGH + 7, MEDIUM)],
+        true,
+    );
+    assert_eq!(d.r.flame_big, 1);
+}
+
+#[test]
+fn a_held_note_sets_the_pair_circling() {
+    let mut d = Duel::new();
+    d.frame(&[on(0, HIGH, MEDIUM)], true);
+    d.rest(SCENE_RMR_HOLD_FRAMES, true);
+    let rest_x = d.r.x;
+    let stance = d.r.stance;
+    let mut xs = Vec::new();
+    for _ in 0..4 * SCENE_RMR_STANCE_FRAMES {
+        d.frame(&[], true);
+        xs.push(d.r.x);
+    }
+    let (lo, hi) = (*xs.iter().min().unwrap(), *xs.iter().max().unwrap());
+    assert!(hi - lo >= SCENE_RMR_SWAY as i16, "the pair sways {lo}..{hi}");
+    assert!(xs.iter().any(|&x| x != rest_x));
+    assert!(d.r.stance != stance || d.poses.iter().any(|p| u32::from(p[0]) == SCENE_RMR_GUARD2));
+    let mut still = Duel::new();
+    still.frame(&[on(0, HIGH, MEDIUM)], true);
+    still.rest(SCENE_RMR_HOLD_FRAMES + 4 * SCENE_RMR_STANCE_FRAMES, false);
+    assert_eq!(still.r.sway, 0, "let go, the pair stands");
+}
+
+fn run(d: &mut Duel, notes: u32, gap: u32) {
+    for i in 0..notes {
+        let pitch = if i % 2 == 0 { HIGH } else { LOW };
+        d.frame(&[on(0, pitch, MEDIUM)], true);
+        d.rest(gap - 1, true);
+    }
+}
+
+#[test]
+fn a_fast_run_is_a_flurry_of_quick_strikes_each_met_by_a_block() {
+    let mut d = Duel::new();
+    run(&mut d, SCENE_RMR_FLURRY - 1, SCENE_RMR_RUN_GAP);
+    let before = d.poses.len();
+    d.frame(&[on(0, HIGH, MEDIUM)], true);
+    assert_eq!(u32::from(d.r.pose[0]), SCENE_RMR_CHOP, "no wind-up in a flurry");
+    assert_eq!(u32::from(d.r.pose[1]), SCENE_RMR_BLOCK);
+    assert!(d.r.spark > 0);
+    d.rest(SCENE_RMR_RUN_GAP + 1, false);
+    d.frame(&[on(0, HIGH, MEDIUM)], true);
+    assert_eq!(
+        u32::from(d.r.pose[0]),
+        SCENE_RMR_RAISE,
+        "a pause ends the run: {:?}",
+        &d.poses[before..]
+    );
+}
+
+#[test]
+fn a_long_run_is_the_spinning_attack_and_the_disarm_and_the_sword_is_taken_back() {
+    let mut d = Duel::new();
+    run(&mut d, SCENE_RMR_RUN_LONG, 3);
+    assert!(d.r.spin > 0 || d.saw(0, SCENE_RMR_SPIN_A), "no spin");
+    d.rest(5 * SCENE_RMR_SPIN_FRAMES, true);
+    assert_eq!(d.r.unarmed, 1, "the right fighter is disarmed");
+    assert_eq!(d.r.sword, 1);
+    assert!(d.saw(1, SCENE_RMR_HIT));
+    let flight = unsafe { scene_rmr_flights[1].frames };
+    d.rest(u32::from(flight) + SCENE_RMR_STUCK_FRAMES + 10, false);
+    assert!(d.saw(1, SCENE_RMR_REACH), "the sword is never taken back");
+    assert_eq!((d.r.unarmed, d.r.sword), (-1, 0));
+}
+
+#[test]
+fn while_one_is_unarmed_nobody_attacks_or_parries() {
+    let mut d = Duel::new();
+    run(&mut d, SCENE_RMR_RUN_LONG, 3);
+    d.rest(5 * SCENE_RMR_SPIN_FRAMES, true);
+    assert_eq!(d.r.unarmed, 1);
+    let from = d.poses.len();
+    d.rest(SCENE_RMR_RUN_GAP + 1, false);
+    for _ in 0..3 {
+        d.frame(&[on(0, HIGH, HARD), on(1, LOW, HARD)], true);
+        d.rest(3, true);
+    }
+    let attacked = d.poses[from..]
+        .iter()
+        .flatten()
+        .any(|&p| [SCENE_RMR_RAISE, SCENE_RMR_CHOP, SCENE_RMR_BLOCK].contains(&u32::from(p)));
+    assert!(!attacked);
+}
+
+#[test]
+fn the_same_notes_play_the_same_duel() {
+    let play = || {
+        let mut d = Duel::new();
+        let mut rng = 0x51d0_u32;
+        let mut states = Vec::new();
+        for _ in 0..600 {
+            let r = unsafe { scene_random(&mut rng) };
+            let notes: Vec<scene_rmr_note> = (0..r % 7 / 2)
+                .map(|i| on((r >> 8) as u8 & 1, 36 + (r >> (10 + i)) as u8 % 48, (r >> 16) as u8 & 127))
+                .collect();
+            d.frame(&notes, r & 0x300 != 0);
+            states.push(state_of(&d.r));
+        }
+        states
+    };
+    let first = play();
+    assert_eq!(first, play());
+    let mut kinds: Vec<&str> = first.iter().map(|s| s.as_str()).collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    assert!(kinds.len() > 100, "{} different states", kinds.len());
+}

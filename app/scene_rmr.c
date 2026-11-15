@@ -211,12 +211,13 @@ void scene_rmr_notes(scene_rmr* r, const scene_rmr_note* n, uint32_t count, int 
         spin_start(r, n[0].chip & 1u);
         return;
     }
+    int flurry = r->run >= SCENE_RMR_FLURRY;
     for (uint32_t i = 0; i < count; i++) {
-        if (r->parry) {
+        if (r->parry && !flurry) {
             r->parry = 0;
             block(r, &n[i], 1);
         } else {
-            strike(r, &n[i], r->run >= SCENE_RMR_FLURRY);
+            strike(r, &n[i], flurry);
         }
     }
 }

@@ -454,3 +454,68 @@ fn with_no_song_the_instrument_plays_the_parts_on_a_free_clock() {
         "a noise note under SCENE_SONG_KICK_BELOW is a kick"
     );
 }
+
+fn with_roles(song: &mut Song, roles: [u32; 3]) {
+    let mut v = song_scene {
+        count: 3,
+        ..Default::default()
+    };
+    for (k, r) in roles.into_iter().enumerate() {
+        v.role[k] = r as u8;
+    }
+    assert_eq!(unsafe { song_ext_set_scene(song.ptr_mut(), &v) }, 0);
+}
+
+fn notes(out: &scene_song_frame_out) -> Vec<(u8, u8, u8)> {
+    out.note[..out.notes as usize]
+        .iter()
+        .map(|n| (n.chip, n.pitch, n.velocity))
+        .collect()
+}
+
+#[test]
+fn a_song_with_the_kit_drives_the_duel_by_its_beats_and_one_without_by_its_notes() {
+    let a_row = row_call(0, 0, [Some((40, LEAD)), Some((30, BASS)), None]);
+    let velocity = SCENE_SONG_VELOCITY as u8;
+    for (roles, kit) in [
+        ([SONG_ROLE_AUTO; 3], true),
+        ([SONG_ROLE_DRUMS, SONG_ROLE_BASS, SONG_ROLE_LEAD], true),
+        ([SONG_ROLE_BASS_DRUMS, SONG_ROLE_NONE, SONG_ROLE_LEAD], true),
+        ([SONG_ROLE_LEAD, SONG_ROLE_BASS, SONG_ROLE_ARP], false),
+    ] {
+        let mut song = sidou_loop();
+        with_roles(&mut song, roles);
+        let sc = playing(&mut song);
+        let mut e = Ears::new();
+        e.feed(&sc, &a_row);
+        e.feed(&sc, &row_call(1, 1, [None; 3]));
+        let out = e.frame();
+        assert_eq!(out.kit != 0, kit, "{roles:?}");
+        let expect = if kit {
+            vec![]
+        } else {
+            vec![(0, 40 + 12, velocity), (0, 30 + 12, velocity)]
+        };
+        assert_eq!(notes(&out), expect, "{roles:?}: the song's notes, on chip A");
+        assert!(out.n > 0, "{roles:?}: the beats still light the intro's glow");
+    }
+}
+
+#[test]
+fn the_keys_notes_carry_their_chip_and_velocity() {
+    let mut e = Ears::new();
+    e.rig.note_on(64);
+    let out = e.frame();
+    assert_eq!((out.kit, notes(&out)), (0, vec![(0, 64, 100)]));
+    assert_eq!(notes(&e.frame()), vec![], "a held note is heard once");
+    e.rig.live.two_chips = 1;
+    e.rig.live.keys_chip = 1;
+    e.rig.note_on(67);
+    assert_eq!(notes(&e.frame()), vec![(1, 67, 100)], "the keys on chip B");
+    let mut song = sidou_loop();
+    let sc = playing(&mut song);
+    e.feed(&sc, &row_call(0, 0, [None; 3]));
+    e.rig.note_on(69);
+    let out = e.frame();
+    assert_eq!((out.kit, notes(&out)), (1, vec![]), "a kit song plays the duel alone");
+}

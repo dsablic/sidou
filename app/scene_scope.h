@@ -22,6 +22,7 @@ extern "C" {
 #define SCENE_SCOPE_CALM_FRAMES 25u
 #define SCENE_SCOPE_STILL 1
 #define SCENE_SCOPE_EDGE_JITTER 2u
+#define SCENE_SCOPE_LANES_A_FRAME 1u
 
 enum { SCENE_SCOPE_CHIP_A, SCENE_SCOPE_CHIP_B, SCENE_SCOPE_CHIPS };
 enum { SCENE_SCOPE_CORE, SCENE_SCOPE_HALO };
@@ -30,6 +31,7 @@ typedef struct {
     uint8_t y[SCENE_SCOPE_LANES][SCENE_PX_W];
     uint8_t chip;
     uint8_t quiet;
+    uint8_t lane;
 } scene_scope;
 
 extern const uint8_t scene_scope_colour[SCENE_SCOPE_CHIPS][2];
