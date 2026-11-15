@@ -4240,8 +4240,9 @@ fn the_step_view_stays_within_its_budgets_while_a_song_plays() {
     };
     let fast = tempo_3_song();
     let mut over = Vec::new();
-    for (name, song) in [("loop", None), ("tempo3", Some(&fast))] {
-        let (c, held) = step_run(&fw, song, 30_000);
+    let runs = [("loop", None), ("tempo3", Some(&fast))];
+    let costs = common::par_map(&runs, |&(_, song)| step_run(&fw, song, 30_000));
+    for (&(name, _), (c, held)) in runs.iter().zip(costs) {
         let per: Vec<u32> = c.frames.iter().map(cells).collect();
         let most = per.iter().copied().max().unwrap_or(0);
         let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;

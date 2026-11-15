@@ -15,8 +15,6 @@ concurrency:
   cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
-  SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
-  SIDOU_FM1_SPIKE_BUILD: ${{ github.workspace }}/build/fm1-spike
   ARCHIVE: ${{ github.workspace }}/build/nextest.tar.zst
 
 jobs:
@@ -111,6 +109,9 @@ jobs:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(needs.scope.outputs.emu-shards) }}
+    env:
+      SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
+      SIDOU_FM1_SPIKE_BUILD: ${{ github.workspace }}/build/fm1-spike
     steps:
       - uses: actions/checkout@v4
         with:
@@ -142,12 +143,12 @@ jobs:
         include:
           - part: journeys,readability
           - part: knobs,feedback,defaults
-          - {part: consistency, shard: 1/3}
-          - {part: consistency, shard: 2/3}
-          - {part: consistency, shard: 3/3}
-          - {part: recipes, shard: 1/3}
-          - {part: recipes, shard: 2/3}
-          - {part: recipes, shard: 3/3}
+          - {part: consistency, shard: 1/2}
+          - {part: consistency, shard: 2/2}
+          - {part: recipes, shard: 1/4}
+          - {part: recipes, shard: 2/4}
+          - {part: recipes, shard: 3/4}
+          - {part: recipes, shard: 4/4}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -184,7 +185,7 @@ jobs:
       - uses: ./.github/actions/ran
         with:
           name: host-tests
-          allowed-skips: 'no V15 package'
+          allowed-skips: 'no V15 package|set SIDOU_FM1_BUILD'
 
   release-only:
     needs: [scope, build]
@@ -192,6 +193,9 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ${{ needs.scope.outputs.image }}
+    env:
+      SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
+      SIDOU_FM1_SPIKE_BUILD: ${{ github.workspace }}/build/fm1-spike
     steps:
       - uses: actions/checkout@v4
         with:
@@ -231,7 +235,7 @@ jobs:
         with:
           path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
-      - name: Firmware, for the ergonomics harness's tests
+      - name: Firmware, for the packager's tests of the built loader
         run: cmake --preset fm1 && cmake --build --preset fm1
       - name: Workspace tests under UBSan
         working-directory: host
@@ -239,7 +243,7 @@ jobs:
       - uses: ./.github/actions/ran
         with:
           name: ubsan
-          allowed-skips: 'no V15 package'
+          allowed-skips: 'no V15 package|set SIDOU_FM1_BUILD'
 
   fmt-clippy:
     needs: scope
@@ -276,7 +280,7 @@ jobs:
       - run: tools/gcc-check
 
   web-demo:
-    needs: [scope, build]
+    needs: scope
     if: needs.scope.outputs.kind == 'full'
     runs-on: ubuntu-24.04
     container:
@@ -295,11 +299,7 @@ jobs:
         with:
           path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: build
-      - run: tar -xf build.tar build/fm1
-      - run: tools/web-demo --check --skip-firmware
+      - run: tools/web-demo --check
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
