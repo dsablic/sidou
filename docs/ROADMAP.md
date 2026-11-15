@@ -14,12 +14,13 @@ Sizes: S is under a day of work, M a few days, L more.
 - **Connecting out:** SIDOU connects to Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device
   remembered and looked for at power-on), the owner's Korg microKEY Air as the test; one link at
   a time; pairing if the keyboard asks for it ([decision 0011](decisions/0011-bluetooth-midi.md)).
-  Melodee, Hortator and fm1-base do it on the same stack. Its room, about 9-10 KB with its page:
-  the 2,364 bytes left under the ceiling, `-Oz` for the radio driver (880 bytes, untried on the
-  device) and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`,
-  `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before).
-  If that is not enough, SCENE's RED MOON RITE art (about 45 KB) is the reserve, only with the
-  owner's yes: kept as a file in the store, sent from the site, rather than cut. M-L.
+  Melodee, Hortator and fm1-base do it on the same stack. Its room, found 2026-11-15
+  (design-notes, "Per-file optimisation"): the default image 577,536 to 569,744 bytes, 9,772 under
+  the ceiling. Connecting out without pairing (`SIDOU_BLE_CENTRAL` 3) measures 7,408 bytes,
+  leaving 2,364 for the DEVICES page; with pairing (1) 12,920, 3,148 over before the page. The
+  radio driver at `-Oz` needs its device check. If pairing is wanted, SCENE's RED MOON RITE art
+  (about 42 KB) is the reserve, only with the owner's yes: kept as a file in the store, sent from
+  the site, rather than cut. M-L.
 - **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a
   start-up self-test, proven in fm1-emu ([the spike](plans/2026-11-15-second-core-spike.md)):
   nothing changes for players until 2.0. M.
