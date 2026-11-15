@@ -992,7 +992,13 @@ grey), as on LIVE.
 
 The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
 ([art](../art/README.md#red-moon-rite)), played by the song while one plays (PLAY, button
-12), else by the keys. What moves it (`app/scene_song.h`, `app/scene_rmr.h`):
+12), else by the keys. Its pictures are an [art pack](art-pack.md) in the store, sent from the
+Library page (**RED MOON RITE art**, [library.md](../manual/library.md#2-the-files-on-the-fm-1)).
+Without them the piece is SIDOU's logo intro, played by the same music: the SIDOU logo over three
+raster bars, one above it and two below, that swing wider as the cutoff opens and flash white on
+a snare, an arp note or the fill; its toast says `RED MOON RITE ART: LIBRARY`. The art takes over
+within a third of a second of arriving, and the intro comes back if the pack is deleted or the
+store formatted. What moves it (`app/scene_song.h`, `app/scene_rmr.h`):
 
 | The music | The duel |
 |---|---|

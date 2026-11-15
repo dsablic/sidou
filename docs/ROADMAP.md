@@ -18,9 +18,9 @@ Sizes: S is under a day of work, M a few days, L more.
   (design-notes, "Per-file optimisation"): the default image 577,536 to 569,744 bytes, 9,772 under
   the ceiling. Connecting out without pairing (the central's level 3) measures 7,408 bytes,
   leaving 2,364 for the DEVICES page; with pairing (1) 12,920, 3,148 over before the page. The
-  radio driver at `-Oz` needs its device check. If pairing is wanted, SCENE's RED MOON RITE art
-  (about 42 KB) is the reserve, only with the owner's yes: kept as a file in the store, sent from
-  the site, rather than cut. M-L. *Built 2026-11-15 on `connect-out`, without pairing
+  radio driver at `-Oz` needs its device check. Pairing's room: SCENE's RED MOON RITE art moved
+  into the store as an [art pack](reference/art-pack.md), sent from the site (the owner,
+  2026-11-15), the image 39,328 bytes smaller; without it the piece plays SIDOU's logo intro. M-L. *Built 2026-11-15 on `connect-out`, without pairing
   ([the plan](plans/2026-11-15-bluetooth-connect-out.md)): the default image 579,232 bytes, 284
   under the ceiling; it waits for hardware-test §38 on the owner's FM-1.*
 - **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a

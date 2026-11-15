@@ -375,11 +375,13 @@ user confirms a format; M2a Task 5's format screen must expect it.
 | `0x101`..`0x108` | 2 | the eight [USER chip profiles](profile-format.md) |
 | `0x109` | 4 | LAB's [unsaved edit](sound-format.md#the-unsaved-edit) |
 | `0x10A` | 1 | the Bluetooth record (SETTINGS BLUETOOTH, written the first time it is turned on), 32 bytes: version `2`, BLUETOOTH `0` OFF / `1` ON / `2` KEYBOARD, SIDOU's random static address (6 bytes, least significant first), then the remembered keyboard: its address (6 bytes, least significant first), its type (`0` none, `1` public, `2` random) and its name (16 characters and a terminating zero). 1.9 and 1.10 wrote version `1`, 8 bytes (version, `0` OFF / `1` ON, the address), which reads as OFF or ON with no keyboard |
-| `0x80000000 \| slot` | `0x82` | a file: a song (type 1, M2c), a `.sid` tune (type 2, M3), a GTI5 instrument (type 3: SysEx's `MIDI INSTRUMENT` staging, a 1.5 preview build's `LIFTED SOUND`), LAB's [USER sounds](sound-format.md) (type 4, `USER SOUNDS`) |
+| `0x80000000 \| slot` | `0x82` | a file: a song (type 1, M2c), a `.sid` tune (type 2, M3), a GTI5 instrument (type 3: SysEx's `MIDI INSTRUMENT` staging, a 1.5 preview build's `LIFTED SOUND`), LAB's [USER sounds](sound-format.md) (type 4, `USER SOUNDS`), SCENE's [art pack](art-pack.md) (type 5, `RED MOON RITE`) |
 
 Keys below `0x100` belong to the emulator tests (`platform/fm1/store_fm1.c`'s hook). The
 files of types 3 and 4 are the firmware's own: no list shows them, and SAVE AS and SysEx
-refuse their names (`MIDI INSTRUMENT`, `MIDI SONG` for SysEx's, `USER SOUNDS`). An older
+refuse their names (`MIDI INSTRUMENT`, `MIDI SONG` for SysEx's, `USER SOUNDS`). The art pack
+(type 5) is listed by DIR; SAVE AS refuses its name, and SysEx takes it only as type 5. RED MOON
+RITE draws it in place from its chunks, a page a chunk ([art-pack.md](art-pack.md#pages)). An older
 firmware never reads key `0x109` and lists no file of type 4.
 
 ## The test fixture

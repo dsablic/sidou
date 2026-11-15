@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **RED MOON RITE's art is a file on the FM-1** (waiting for its device check, hardware-test §39):
+  the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
+  the pictures SCENE's sixth piece draws, an [art pack](docs/reference/art-pack.md)
+  (`assets/art/red-moon-rite.sidart`, 41,037 bytes), which the FM-1 keeps in its store and draws
+  from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo over raster bars that
+  swing with the cutoff and flash on the beat, with the hint `RED MOON RITE ART: LIBRARY`. A pack
+  sent later takes over at once; FORMAT erases it with the rest. The browser demo's store starts
+  with it. The image is 39,328 bytes smaller (539,904); RAMTEXT did not change; SCENE's state
+  holds 1,196 bytes more RAM. SysEx's new refusal 17 is a pack that is not RED MOON RITE's.
 - **Bluetooth keyboards** (waiting for its device check, hardware-test §38): SETTINGS' BLUETOOTH
   is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
   with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it

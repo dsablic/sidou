@@ -3137,6 +3137,48 @@ Set up:
   no audio glitch, OFF and ON, a power cycle keeps ON, and a firmware install with BLUETOOTH ON
   still finishes. Pass: as in §35, the song in time with Logic.
 
+## 39. 1.20: RED MOON RITE's art from the store, and the logo intro
+
+What it decides: whether RED MOON RITE drawing its art from a file in the store (an
+[art pack](reference/art-pack.md), read in place from flash) and the logo intro that plays without
+it are ready to ship. The image is 539,904 bytes, 39,328 smaller than §38's; the art pack is
+41,037 bytes in the store. fm1-emu runs both (the goldens `scene-rmr` with the pack, `scene-intro`
+without), so here the real flash and the Library over USB are checked. Every item waits for the
+owner's yes for that step: nothing is flashed or sent before it.
+
+Set up:
+
+- **The build:** the default, from a fresh build directory, packaged as in §35.
+- **Installed over the §38 test package** with SIDOU's installer. A Mac or PC with Chrome and the
+  Library page (`tools/web-demo`, or the site), the FM-1 on USB. Headphones on the line out.
+
+- [ ] **Songs kept, the intro plays:** after the install, SONG lists the songs it had. HOME,
+  SCENE, SELECT to RED MOON RITE. Pass: the toast `RED MOON RITE ART: LIBRARY`, then the SIDOU logo
+  over raster bars, one above it and two below; hold a chord and open K1: the bars swing wider,
+  and they move while the music plays and hold still a moment after it stops; PLAY: the bars
+  flash white on the song's snares and fills. No stall, no audio click. *Emulator:*
+  `screen.rs::without_its_art_red_moon_rite_is_the_logo_intro_of_its_golden_image`,
+  `screen.rs::scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets` (intro).
+- [ ] **Send the art from the Library:** Library page, Connect, section 2: press **RED MOON RITE
+  art**. Pass: the page says it sent `RED MOON RITE` (41,037 bytes) and lists it as
+  `RED MOON RITE art`; the FM-1 toasts `RECEIVING` then `SAVED`. *Emulator:*
+  `sysex.rs::an_art_pack_put_is_checked_at_its_first_data_and_only_under_its_own_name` (host),
+  `library.test.mjs`.
+- [ ] **RED MOON RITE as before:** on SCENE's RED MOON RITE (open it again, or wait: the art takes
+  over within a third of a second). Pass: the duel, the moon and the arena exactly as in the §38
+  build (compare a photo with `tests/golden/lcd/scene-rmr.png`); a minute of the demo song (PLAY)
+  with its chops, parries, the disarm and the stuck sword, no stall or click. *Emulator:*
+  `screen.rs::scene_rmr_matches_its_golden_image`,
+  `screen.rs::red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song`.
+- [ ] **A power cycle keeps it:** power the FM-1 off and on, SCENE, RED MOON RITE. Pass: the duel,
+  no hint toast.
+- [ ] **A broken pack is refused:** with `sidou-sysex art` refusing a pack edited by hand (a byte
+  of its slot table changed), and the Library's **Send files…** with the same file. Pass: the page
+  refuses it in words before sending; nothing changes on the FM-1. *Emulator:* `art.rs` (sidou-sysex).
+- [ ] **FORMAT takes it:** only with the songs backed up (Library, Back up all) and the owner's yes:
+  SETTINGS, STORE, FORMAT, SAVE then SAVE AGAIN. Pass: RED MOON RITE plays the intro again with the
+  hint toast; restoring the backup brings the songs and the art back (the backup holds the pack).
+
 ## Result
 
 | Section | Pass / fail | Notes |

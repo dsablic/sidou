@@ -9,7 +9,7 @@ use sidou_sys::*;
 use sidou_tests::font::repo_root;
 use sidou_tests::scene_art::{self, Picture, CLEAR};
 
-use crate::STATUS_BAR_H;
+use crate::{rmr_frame, shipped_art, STATUS_BAR_H};
 
 const W: usize = 240;
 const TILES: usize = (GRID_COLS * GRID_ROWS) as usize;
@@ -130,19 +130,7 @@ fn image(s: &'static scene_image, x: i16, y: i16, mirror: bool) -> scene_px_laye
 }
 
 fn images() -> Vec<(&'static scene_image, Picture)> {
-    let mut out: Vec<&'static scene_image> = Vec::new();
-    unsafe {
-        out.extend((*std::ptr::addr_of!(scene_rmr_barb)).iter().flatten());
-        out.extend(
-            (*std::ptr::addr_of!(scene_rmr_barb_unarmed))
-                .iter()
-                .flatten(),
-        );
-        out.extend(scene_rmr_sword.iter());
-        out.push(&scene_rmr_sword_stuck);
-        out.extend(scene_rmr_sky.iter());
-        out.push(&scene_rmr_arena);
-    }
+    let out: Vec<&'static scene_image> = shipped_art().frame.iter().collect();
     out.into_iter()
         .zip(scene_art::sources().into_iter().map(|s| s.frame))
         .collect()
@@ -396,7 +384,7 @@ fn random_layers_composite_as_the_model_draws_them() {
 fn mirroring_transparency_order_and_remaps() {
     let imgs = images();
     let model = Model { images: &imgs };
-    let guard = unsafe { &scene_rmr_barb[0][SCENE_RMR_GUARD as usize] };
+    let guard = rmr_frame(SCENE_RMR_ART_BARB + SCENE_RMR_GUARD);
     let k = imgs
         .iter()
         .position(|(s, _)| std::ptr::eq(*s, guard))
@@ -487,7 +475,7 @@ fn the_hash_marks_every_change_and_nothing_else() {
 #[test]
 fn an_unchanged_frame_scans_and_sends_nothing() {
     let mut rig = Rig::new();
-    let arena = unsafe { &scene_rmr_arena };
+    let arena = rmr_frame(SCENE_RMR_ART_ARENA);
     rig.set(0, Some(&full_screen(GRID_PURPLE)));
     rig.set(1, Some(&image(arena, 0, 0, false)));
     rig.scan_all_and_send();
@@ -786,7 +774,7 @@ fn stack_golden_layers(rig: &mut Rig, f: &Golden, marks: &mut Vec<Vec<scene_px_m
             },
         );
         let mut sky = image(
-            unsafe { &scene_rmr_sky[i] },
+            rmr_frame(SCENE_RMR_ART_SKY + i as u32),
             0,
             SCENE_RMR_SKY_Y as i16,
             false,
@@ -795,7 +783,7 @@ fn stack_golden_layers(rig: &mut Rig, f: &Golden, marks: &mut Vec<Vec<scene_px_m
         push(rig, sky);
         r0 = r1;
     }
-    push(rig, image(unsafe { &scene_rmr_arena }, 0, 0, false));
+    push(rig, image(rmr_frame(SCENE_RMR_ART_ARENA), 0, 0, false));
     let mut ops = f.ops.iter().peekable();
     while let Some(op) = ops.next() {
         let n = |k: usize| op[k].parse::<i16>().unwrap();

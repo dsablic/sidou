@@ -71,13 +71,39 @@ static void cover(scene_view_rite* rt, const screen* s) {
     scene_px_set(&rt->px, SCENE_RMR_SLOT_COVER, &l);
 }
 
+static void rite_draw(scene_view_rite* rt) {
+    if (rt->has_art) {
+        scene_rmr_draw(&rt->rmr, &rt->art, &rt->px);
+    } else {
+        scene_rmr_intro(&rt->rmr, &rt->px);
+    }
+}
+
 static void rite_reset(scene_view* sv, grid* g) {
     scene_view_rite* rt = &sv->u.rite;
     rt->g = g;
     scene_px_init(&rt->px, g);
     rt->px.fresh = 1;
-    scene_rmr_draw(&rt->rmr, &rt->px);
+    rite_draw(rt);
     rt->px.fresh = 0;
+}
+
+static int rite_art(scene_view* sv) {
+    scene_view_rite* rt = &sv->u.rite;
+    rt->has_art = (uint8_t)(art_pack_open(&rt->art, sv->st, &rt->pack) == ART_PACK_OK);
+    return rt->has_art;
+}
+
+static int rite_art_changed(scene_view* sv) {
+    scene_view_rite* rt = &sv->u.rite;
+    if (rt->has_art) {
+        if (store_file_same(sv->st, &rt->pack)) {
+            return 0;
+        }
+        rite_art(sv);
+        return 1;
+    }
+    return rt->rmr.frame % SCENE_VIEW_ART_LOOK_FRAMES == 0u && rite_art(sv);
 }
 
 static void rite_start(scene_view* sv, grid* g) {
@@ -97,12 +123,12 @@ static void rite_step(scene_view* sv) {
         scene_rmr_step(&rt->rmr, &m.beat[i]);
     }
     scene_rmr_frame(&rt->rmr, m.cutoff, m.sounding);
-    scene_rmr_draw(&rt->rmr, &rt->px);
+    rite_draw(rt);
 }
 
 static void rite_compose(screen* s, scene_view* sv, grid* g) {
     scene_view_rite* rt = &sv->u.rite;
-    if (g->region_ctx != &rt->px) {
+    if (g->region_ctx != &rt->px || rite_art_changed(sv)) {
         rite_reset(sv, g);
     }
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
@@ -238,7 +264,8 @@ static void compose(screen* s, void* state, grid* g) {
     scene_view* sv = state;
     if (sv->say && screen_top(s) == &scene_view_view) {
         sv->say = 0;
-        screen_toast(s, scene_names[sv->which], SCREEN_TOAST_MS);
+        int hint = sv->which == SCENE_RMR && !rite_art(sv);
+        screen_toast(s, hint ? SCENE_VIEW_ART_HINT : scene_names[sv->which], SCREEN_TOAST_MS);
     }
     if (sv->starting) {
         sv->starting = 0;

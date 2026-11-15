@@ -856,6 +856,7 @@ static void midi_sysex_toast(void* ctx, uint8_t reason) {
     case SYSEX_MUS: text = sid_io_message(SID_IO_MUS); break;
     case SYSEX_BROKEN: text = sid_io_message(SID_IO_BROKEN); break;
     case SYSEX_TOO_LONG: text = sid_io_message(SID_IO_TOO_LONG); break;
+    case SYSEX_NOT_ART: text = "NOT RED MOON RITE ART"; break;
     default: break;
     }
     if (reason == SYSEX_BUSY && midi_object.staging_busy) {

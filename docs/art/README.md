@@ -1461,10 +1461,12 @@ eight square pips a side were replaced after the review below.
 
 ### In flash
 
-`host/crates/sidou-tests/src/scene_art.rs` converts the PNGs into `app/scene_rmr_art.c`
-(`SIDOU_SCENE_UPDATE=1` regenerates it; a test fails while it is stale), a `scene_image`
-(`app/scene_art.h`) each, decoded a row span at a time by `scene_image_row`, or drawn over a
-tile a run at a time by `scene_image_blend`:
+`host/crates/sidou-tests/src/scene_art.rs` converts the PNGs into the art pack
+`assets/art/red-moon-rite.sidart` ([format](../reference/art-pack.md)), which the FM-1 keeps in
+its store and draws from in place, and the motion tables into `app/scene_rmr_motion.c`
+(`SIDOU_SCENE_UPDATE=1` regenerates both; a test fails while either is stale). Each picture is a
+`scene_image` (`app/scene_art.h`), decoded a row span at a time by `scene_image_row`, or drawn
+over a tile a run at a time by `scene_image_blend`:
 
 - **Run-length rows with transparency.** Each image is cropped to the rectangle its pixels
   cover inside its frame; each row uses the logos' [row format](bitmap-codec.md), with one

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 add_library(sidou_live STATIC
     about.c
+    art_pack.c
     boot.c
     bootguard.c
     chip_mix.c
@@ -53,7 +54,7 @@ add_library(sidou_live STATIC
     scene_art.c
     scene_px.c
     scene_rmr.c
-    scene_rmr_art.c
+    scene_rmr_motion.c
     scene_song.c
     scene_view.c
     save_key.c
@@ -113,7 +114,7 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(screen.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(live_setup.c live_walk.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(scene.c PROPERTIES COMPILE_OPTIONS -Os)
-    set_source_files_properties(scene_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
+    set_source_files_properties(scene_view.c art_pack.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(scene_px.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(widget.c grid_cold.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(midi_out.c PROPERTIES COMPILE_OPTIONS "-Oz")

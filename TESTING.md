@@ -1295,7 +1295,10 @@ SELECT, ALGORITHM):
   runs the busiest scan slice, run and tile, each tied to the poll allowance
   with a song's analysis slice; a muted drum voice stops the chops and
   parries; and once the song stops the duel calms and sends nothing.
-  `song.rs` checks the song bit-exact with the host while it shows.
+  `song.rs` checks the song bit-exact with the host while it shows. These boot with the art pack
+  in the store (`Machine::boot_with_art`); without it, RED MOON RITE's logo intro has its golden
+  (`scene-intro`) and its own entry in the SCENE budget check (cells, SPI, instructions, the
+  busiest `ui_poll`). `scene_budget.rs`'s bench reads the shipped pack from RAM.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
@@ -1324,7 +1327,13 @@ back after the screen drew over it, RED MOON RITE among them);
 `scene_rmr.rs` (RED MOON RITE's state machine frame for frame against
 `assets/scene/red-moon-rite.js`'s trace, `tests/golden/scene/rmr-trace.tsv`;
 its layers against the script's golden frames; its painter region, toast and
-MIDI learn's frame in SCENE), `scene_song.rs` (its music hooks: roles and
+MIDI learn's frame in SCENE; the logo intro's logo, bars, beat flash and cutoff swing, one bar a
+frame and none under the logo; a fresh store playing the intro, a sent pack taking over and a
+deleted one letting go; damaged packs falling back), `scene_art.rs` (the shipped pack and the
+motion file up to date, every frame decoding to its PNG, every row inside one page),
+`sysex.rs` (an art pack's PUT checked at its first DATA and only under its own name),
+sidou-sysex `art.rs` (each refusal, the upload, the demo's store seed) and
+`web/library.test.mjs` (the page's pack check), `scene_song.rs` (its music hooks: roles and
 drums guessed and from the `SCNE` chunk, the place in the bar and the fill,
 the bass, mutes, SIDOU LOOP through the transport, and the keys);
 `midi_learn.rs` has learn's state machine and its bindings through MIDI in and out.

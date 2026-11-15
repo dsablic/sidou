@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include "art_pack.h"
 #include "psid/psid_file.h"
 
 enum {
@@ -154,17 +155,25 @@ static void claim(sysex* s) {
     acknowledge(s, seq);
 }
 
-static void sid_first(sysex* s, unsigned n, uint8_t seq) {
+static uint8_t sid_refused(const sysex* s) {
     psid_header h;
+    int why = psid_parse(s->buffer, s->length, &h);
+    return why == PSID_OK ? 0 : why == PSID_E_RSID ? SYSEX_RSID : why == PSID_E_MUS ? SYSEX_MUS :
+           why == PSID_E_TOO_LONG ? SYSEX_TOO_LONG : SYSEX_BROKEN;
+}
+
+static void head_first(sysex* s, unsigned n, uint8_t seq) {
+    int art = s->file.type == STORE_FILE_ART;
+    uint32_t head = art ? ART_PACK_TABLES : 128u;
     s->checking = 0;
-    if (n < (s->length < 128u ? s->length : 128u)) {
+    if (n < (s->length < head ? s->length : head)) {
         fail(s, SYSEX_MALFORMED, seq);
         return;
     }
-    int why = psid_parse(s->buffer, s->length, &h);
-    if (why != PSID_OK) {
-        fail(s, why == PSID_E_RSID ? SYSEX_RSID : why == PSID_E_MUS ? SYSEX_MUS :
-                why == PSID_E_TOO_LONG ? SYSEX_TOO_LONG : SYSEX_BROKEN, seq);
+    uint8_t why = art ? (art_pack_head(s->buffer, n, s->length) ? SYSEX_NOT_ART : 0) :
+                        sid_refused(s);
+    if (why) {
+        fail(s, why, seq);
         return;
     }
     int result = store_file_begin(s->storage, s->file.name, s->file.type, s->length);
@@ -348,7 +357,7 @@ static void command(sysex* s, sysex_parser* p) {
             s->written = 0;
             s->crc = store_crc32(s->crc, s->buffer, n);
             s->offset += n;
-            if (s->checking) sid_first(s, n, seq);
+            if (s->checking) head_first(s, n, seq);
             else s->state = PROGRAM;
             return;
         }
@@ -407,9 +416,15 @@ static void command(sysex* s, sysex_parser* p) {
         s->expected_crc = crc;
         if (writing) {
             s->file.type = s->target == 1 ? STORE_FILE_GTI : type;
-            if (!s->target && type == STORE_FILE_SID) {
-                if (length < PSID_HEADER_SIZE_V1) {
-                    fail(s, SYSEX_BROKEN, seq);
+            int art = !strcmp(s->file.name, ART_PACK_RMR_NAME);
+            if (!s->target && art != (type == STORE_FILE_ART)) {
+                fail(s, SYSEX_MALFORMED, seq);
+                return;
+            }
+            if (!s->target && (type == STORE_FILE_SID || art)) {
+                uint32_t least = art ? ART_PACK_FRAMES_END + ART_PACK_CRC : PSID_HEADER_SIZE_V1;
+                if (length < least) {
+                    fail(s, art ? SYSEX_NOT_ART : SYSEX_BROKEN, seq);
                     return;
                 }
                 s->checking = 1;

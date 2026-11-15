@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "grid.h"
+#include "logo.h"
 #include "sine.h"
 
 _Static_assert(SCENE_RMR_REACH == SCENE_RMR_POSES, "reach follows the armed poses");
@@ -35,6 +36,9 @@ void scene_rmr_init(scene_rmr* r) {
         r->sky[i] = 1;
     }
     r->sky_row = 0xffu;
+    for (uint32_t i = 0; i < SCENE_RMR_BARS; i++) {
+        r->bar[i].ramp = 0xffu;
+    }
 }
 
 uint32_t scene_rmr_sky_of(uint32_t cutoff) {
@@ -121,6 +125,7 @@ void scene_rmr_frame(scene_rmr* r, uint32_t cutoff, int sounding) {
         }
     }
     r->frame++;
+    r->cutoff = cutoff;
     if (sounding) {
         r->quiet = 0;
     } else if (r->quiet < SCENE_RMR_CALM_FRAMES) {
@@ -227,7 +232,8 @@ static void sky_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_t
     uint32_t i = (row < 16u ? row : 16u) - SCENE_RMR_SKY_ROW0;
     uint32_t p = r->sky[i];
     scene_gradient_row(&scene_rmr_sky_gradient[p], x, y, n, out);
-    scene_image_blend(&scene_rmr_sky[p], x, y - SCENE_RMR_SKY_Y, n, 1, n, 0, NULL, out);
+    scene_image_blend(&r->art->frame[SCENE_RMR_ART_SKY + p], x, y - SCENE_RMR_SKY_Y, n, 1, n, 0,
+                      NULL, out);
 }
 
 static const uint8_t FLAME[6] = {GRID_YELLOW, GRID_WHITE, GRID_ORANGE,
@@ -332,20 +338,21 @@ static scene_px_layer sword(const scene_rmr* r, int stuck) {
     if (!scene_rmr_sword_at(r, &gx, &gy, &k) || (k == SCENE_RMR_SWORD_FRAMES) != stuck) {
         return NONE;
     }
-    const scene_image* s = stuck ? &scene_rmr_sword_stuck : &scene_rmr_sword[k];
+    const scene_image* s = &r->art->frame[stuck ? SCENE_RMR_ART_STUCK : SCENE_RMR_ART_SWORD + k];
     return image(s, gx - s->ax, gy - s->ay, 0);
 }
 
 static const scene_image* fighter_image(const scene_rmr* r, uint32_t k) {
     uint32_t pose = r->pose[k];
     if (r->unarmed != (int8_t)k) {
-        return &scene_rmr_barb[k][pose < SCENE_RMR_POSES ? pose : SCENE_RMR_GUARD];
+        return &r->art->frame[SCENE_RMR_ART_BARB + k * SCENE_RMR_POSES +
+                              (pose < SCENE_RMR_POSES ? pose : SCENE_RMR_GUARD)];
     }
     uint32_t u = pose == SCENE_RMR_GUARD2 ? SCENE_RMR_UNARMED_GUARD2
                  : pose == SCENE_RMR_HIT ? SCENE_RMR_UNARMED_HIT
                  : pose == SCENE_RMR_REACH ? SCENE_RMR_UNARMED_REACH
                                            : SCENE_RMR_UNARMED_GUARD;
-    return &scene_rmr_barb_unarmed[k][u];
+    return &r->art->frame[SCENE_RMR_ART_UNARMED + k * SCENE_RMR_UNARMED_POSES + u];
 }
 
 static scene_px_layer fighter(const scene_rmr* r, uint32_t k) {
@@ -366,23 +373,25 @@ static scene_px_layer shadow(const scene_rmr* r, uint32_t k) {
 static void meter(const scene_rmr* r, scene_px* sp, uint32_t side) {
     int32_t end = SCENE_RMR_BLADE_X + SCENE_RMR_BLADE_N * (int32_t)r->hp[side];
     uint32_t slot = side ? SCENE_RMR_SLOT_EMPTY1 : SCENE_RMR_SLOT_EMPTY0;
-    scene_px_layer l = image(&scene_rmr_blade_empty, 0, 0, (int)side);
+    const scene_image* art = r->art->frame;
+    scene_px_layer l = image(&art[SCENE_RMR_ART_BLADE_EMPTY], 0, 0, (int)side);
     scene_px_set(sp, slot, &l);
-    l = image(&scene_rmr_blade_full, 0, 0, (int)side);
+    l = image(&art[SCENE_RMR_ART_BLADE_FULL], 0, 0, (int)side);
     if (side) {
         l.x0 = (int16_t)(W - end);
     } else {
         l.x1 = (int16_t)end;
     }
     scene_px_set(sp, slot + 1u, &l);
-    const scene_image* tip = &scene_rmr_blade_tip;
+    const scene_image* tip = &art[SCENE_RMR_ART_BLADE_TIP];
     l = r->hp[side] ? image(tip, side ? W - end - tip->fw : end, SCENE_RMR_BLADE_Y, (int)side)
                     : NONE;
     scene_px_set(sp, slot + 2u, &l);
 }
 
-void scene_rmr_draw(scene_rmr* r, scene_px* sp) {
-    scene_px_layer l = image(&scene_rmr_hud, 0, 0, 0);
+void scene_rmr_draw(scene_rmr* r, const scene_rmr_art* art, scene_px* sp) {
+    r->art = art;
+    scene_px_layer l = image(&art->frame[SCENE_RMR_ART_HUD], 0, 0, 0);
     scene_px_set(sp, SCENE_RMR_SLOT_HUD, &l);
     meter(r, sp, 0);
     meter(r, sp, 1);
@@ -394,7 +403,7 @@ void scene_rmr_draw(scene_rmr* r, scene_px* sp) {
         scene_px_touch(sp, 0, y0, W, y0 + rows * (int32_t)GRID_CELL_PX);
         r->sky_row = 0xffu;
     }
-    l = image(&scene_rmr_arena, 0, 0, 0);
+    l = image(&art->frame[SCENE_RMR_ART_ARENA], 0, 0, 0);
     scene_px_set(sp, SCENE_RMR_SLOT_ARENA, &l);
     l = flame(r, 0);
     scene_px_set(sp, SCENE_RMR_SLOT_FLAME0, &l);
@@ -417,4 +426,63 @@ void scene_rmr_draw(scene_rmr* r, scene_px* sp) {
     scene_px_set(sp, SCENE_RMR_SLOT_STUCK_OVER, &l);
     l = sword(r, 0);
     scene_px_set(sp, SCENE_RMR_SLOT_SWORD, &l);
+}
+
+static const uint8_t BAR_RAMP[SCENE_RMR_BARS][SCENE_RMR_BAR_H / 2 + 1] = {
+    {GRID_BROWN, GRID_RED, GRID_ORANGE, GRID_LIGHT_RED, GRID_YELLOW, GRID_WHITE},
+    {GRID_BLUE, GRID_PURPLE, GRID_LIGHT_BLUE, GRID_CYAN, GRID_LIGHT_GREY, GRID_WHITE},
+    {GRID_DARK_GREY, GRID_GREEN, GRID_LIGHT_GREEN, GRID_YELLOW, GRID_LIGHT_GREY, GRID_WHITE},
+};
+
+#define TOP_RANGE ((SCENE_RMR_LOGO_Y0 - SCENE_RMR_BARS_TOP - SCENE_RMR_BAR_H) / 2)
+#define LOW_RANGE ((SCENE_RMR_BARS_END - SCENE_RMR_LOGO_Y1 - SCENE_RMR_BAR_H) / 2)
+
+static const uint8_t BAR_ZONE[SCENE_RMR_BARS][2] = {
+    {SCENE_RMR_BARS_TOP + TOP_RANGE, TOP_RANGE},
+    {SCENE_RMR_LOGO_Y1 + LOW_RANGE, LOW_RANGE},
+    {SCENE_RMR_LOGO_Y1 + LOW_RANGE, LOW_RANGE},
+};
+
+static void bar_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
+    (void)x;
+    const scene_rmr_bar* b = ctx;
+    uint32_t d = y - (uint32_t)b->y;
+    uint32_t level = d < SCENE_RMR_BAR_H / 2 ? d : SCENE_RMR_BAR_H - 1u - d;
+    uint8_t c = BAR_RAMP[b->ramp][level + b->glow];
+    for (uint32_t i = 0; i < n; i++) {
+        out[i] = c;
+    }
+}
+
+static void logo_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
+    (void)ctx;
+    uint8_t px[W];
+    grid_bitmap_row(&logo_metal_chrome_bitmap, x, y, n, px);
+    for (uint32_t i = 0; i < n; i++) {
+        if (px[i] != GRID_BLACK) {
+            out[i] = px[i];
+        }
+    }
+}
+
+void scene_rmr_intro(scene_rmr* r, scene_px* sp) {
+    uint8_t glow = (uint8_t)(r->spark_shown || r->flame_big || r->shake);
+    uint32_t open = r->cutoff < SCENE_RMR_CUTOFF_TOP ? r->cutoff : SCENE_RMR_CUTOFF_TOP - 1u;
+    uint32_t turn = r->frame % (SCENE_RMR_BARS + 1u);
+    for (uint32_t i = 0; i < SCENE_RMR_BARS; i++) {
+        scene_rmr_bar* b = &r->bar[i];
+        if (i == turn || b->ramp != i) {
+            uint32_t phase = r->anim * SCENE_RMR_BAR_SPEED + i * (SINE_TURN / SCENE_RMR_BARS);
+            int32_t amp = (int32_t)(BAR_ZONE[i][1] * (SCENE_RMR_CUTOFF_TOP + open) /
+                                    (2u * SCENE_RMR_CUTOFF_TOP));
+            b->y = (int16_t)(BAR_ZONE[i][0] + sine_scaled(phase, amp));
+            b->ramp = (uint8_t)i;
+            b->glow = glow;
+        }
+        scene_px_layer l =
+            call(bar_row, b, 0, b->y, W, b->y + SCENE_RMR_BAR_H, (uint32_t)b->y << 1 | glow);
+        scene_px_set(sp, SCENE_RMR_SLOT_BAR0 + i, &l);
+    }
+    scene_px_layer l = call(logo_row, NULL, 0, SCENE_RMR_LOGO_Y0, W, SCENE_RMR_LOGO_Y1, 0);
+    scene_px_set(sp, SCENE_RMR_SLOT_LOGO, &l);
 }

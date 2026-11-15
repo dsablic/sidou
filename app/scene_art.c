@@ -6,14 +6,19 @@
 
 static const uint8_t BAYER[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
 
+__attribute__((always_inline)) static inline const uint8_t* packet(const scene_image* s,
+                                                                   uint32_t off) {
+    return s->page[off / SCENE_ART_PAGE] + off % SCENE_ART_PAGE;
+}
+
 __attribute__((always_inline)) static inline const uint8_t* seek_run(
     const scene_image* s, uint32_t r, uint32_t from, uint32_t* at) {
     uint32_t j = (from - s->x) / SCENE_ART_SEEK;
     uint32_t k = ((uint32_t)s->w - 1u) / SCENE_ART_SEEK;
-    uint32_t row = s->rows[r];
-    const uint8_t* p = s->data + row + k;
+    const uint8_t* row = packet(s, s->rows[r]);
+    const uint8_t* p = row + k;
     if (j) {
-        p += s->data[row + j - 1u];
+        p += row[j - 1u];
     }
     uint32_t a = (uint32_t)s->x + j * SCENE_ART_SEEK;
     uint32_t len = (uint32_t)(*p >> 4) + 1u;
@@ -144,14 +149,13 @@ static void blend_rows(const scene_image* s, uint32_t u0, uint32_t u1, uint32_t 
     uint32_t j = (from - r0) / SCENE_ART_SEEK;
     uint32_t k = ((uint32_t)s->w - 1u) / SCENE_ART_SEEK;
     uint32_t start = r0 + j * SCENE_ART_SEEK;
-    const uint8_t* data = s->data;
     const uint16_t* rows = s->rows;
     out += (ya - y) * b->stride;
     for (uint32_t r = ya - s->y; r < yb - s->y; r++, out += b->stride) {
-        uint32_t row = rows[r];
-        const uint8_t* p = data + row + k;
+        const uint8_t* row = packet(s, rows[r]);
+        const uint8_t* p = row + k;
         if (j) {
-            p += data[row + j - 1u];
+            p += row[j - 1u];
         }
         blend_runs(s, p, start, from, to, b, out);
     }

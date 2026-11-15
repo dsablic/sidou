@@ -3,7 +3,7 @@
 import { CoreError, loadCore } from "./core.js";
 import { fromLink, loadPatcher, shareableLink } from "./patch.js";
 import { Preview } from "./preview.js";
-import { Library, extOf, storeName, typeLabel, typeOfFile } from "./store.js";
+import { ART_NAME, Library, STORE_FILE_ART, artRefusal, extOf, storeName, typeLabel, typeOfFile } from "./store.js";
 import { Client } from "./sysex.js";
 
 const DEVICE_PORT = "SIDOU FM-1";
@@ -179,7 +179,11 @@ async function sendFiles(list) {
   for (const file of list) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const type = typeOfFile(file.name, bytes);
-    if (!type) { say($("store-state"), `${file.name} is not a song (.sng), a .sid tune or an instrument (.ins): not sent.`, "error"); return; }
+    if (!type) { say($("store-state"), `${file.name} is not a song (.sng), a .sid tune, an instrument (.ins) or RED MOON RITE art (.sidart): not sent.`, "error"); return; }
+    if (type === STORE_FILE_ART) {
+      await sendArt(bytes, file.name);
+      continue;
+    }
     if (type === 1) {
       try {
         (await core()).read(bytes);
@@ -194,6 +198,20 @@ async function sendFiles(list) {
   }
 }
 
+async function sendArt(bytes, from) {
+  const why = artRefusal(bytes);
+  if (why) { say($("store-state"), `${from} was not sent: ${why}.`, "error"); return; }
+  await sendBytes(ART_NAME, bytes, STORE_FILE_ART);
+}
+
+async function sendShippedArt() {
+  const r = await fetch("art/red-moon-rite.sidart");
+  if (!r.ok) { say($("store-state"), `RED MOON RITE's art could not be fetched (HTTP ${r.status}).`, "error"); return; }
+  await sendArt(new Uint8Array(await r.arrayBuffer()), "RED MOON RITE's art");
+}
+
+const AFTER_SENDING = { 1: " On the FM-1: menu, SONG, LOAD.", [STORE_FILE_ART]: " On the FM-1: menu, SCENE, RED MOON RITE." };
+
 async function sendBytes(name, bytes, type) {
   const s = state.lib.status(name, bytes);
   if (s === "replace" && !window.confirm(`${name} is already on the FM-1 with different content. Replace it?`)) {
@@ -202,7 +220,7 @@ async function sendBytes(name, bytes, type) {
   }
   await run(`Sending ${name}`, async (progress) => {
     const r = await state.lib.send(name, bytes, { type, replace: s === "replace", onProgress: progress, ...waits($("store-state")) });
-    return r === "same" ? `${name} is already on the FM-1, identical: left alone.` : `${name} sent (${kb(bytes.length)}).${type === 1 ? " On the FM-1: menu, SONG, LOAD." : ""}`;
+    return r === "same" ? `${name} is already on the FM-1, identical: left alone.` : `${name} sent (${kb(bytes.length)}).${AFTER_SENDING[type] ?? ""}`;
   });
 }
 
@@ -537,6 +555,7 @@ if (!navigator.requestMIDIAccess) {
   $("backup").addEventListener("click", backup);
   $("current").addEventListener("click", openCurrent);
   $("user-sounds").addEventListener("click", readUserSounds);
+  $("send-art").addEventListener("click", sendShippedArt);
   $("restore").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) restore(f); });
   $("send").addEventListener("change", (e) => { const fs = [...e.target.files]; e.target.value = ""; sendFiles(fs); });
 }

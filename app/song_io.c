@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include "art_pack.h"
 #include "song/gt2_kit.h"
 #include "song/gt2_stream.h"
 
@@ -33,7 +34,7 @@ static int name_copy(char out[STORE_NAME_MAX + 1u], const char* in) {
         }
         next[i] = in[i];
     }
-    if (in[i] || !strcmp(next, STORE_SOUNDS_NAME)) {
+    if (in[i] || !strcmp(next, STORE_SOUNDS_NAME) || !strcmp(next, ART_PACK_RMR_NAME)) {
         return 0;
     }
     memcpy(out, next, sizeof next);

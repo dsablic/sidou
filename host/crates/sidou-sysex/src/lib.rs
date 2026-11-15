@@ -4,6 +4,7 @@
 use std::fmt;
 
 #[cfg(target_os = "macos")]
+pub mod art;
 pub mod coremidi;
 pub mod import;
 pub mod patch;
@@ -27,10 +28,12 @@ pub const MAX_DATA_LEN: usize = 256;
 pub const MAX_FILE_LEN: usize = 65_536;
 pub const FILE_SONG: u8 = 1;
 pub const FILE_SID: u8 = 2;
+pub const FILE_ART: u8 = 5;
 pub const NAK_RSID: u8 = 12;
 pub const NAK_MUS: u8 = 13;
 pub const NAK_BROKEN: u8 = 14;
 pub const NAK_TOO_LONG: u8 = 15;
+pub const NAK_NOT_ART: u8 = 17;
 const HEADER: [u8; 4] = [0xf0, 0x7d, 0x53, 0x44];
 const MAX_PACKED_LEN: usize = MAX_DATA_LEN + MAX_DATA_LEN.div_ceil(7);
 
@@ -157,7 +160,9 @@ impl Packet {
             END | ABORT | ACK | WAIT if data.is_empty() => Ok(()),
             DEL if data.len() == 16 => validate_name(data),
             NAK if data.len() == 2
-                && ((1..=9).contains(&data[0]) || (12..=15).contains(&data[0])) =>
+                && ((1..=9).contains(&data[0])
+                    || (12..=15).contains(&data[0])
+                    || data[0] == NAK_NOT_ART) =>
             {
                 Ok(())
             }

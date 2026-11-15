@@ -280,7 +280,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   73 sectors (a fifth of the songs' room), and the loader keeps a sector only if it starts with
   Melodee's commit record (`X0X0`), so on an FM-1 already holding SIDOU's songs an install would
   overwrite them. It would also replace Felucca 1.6.1's pinned loader. The art is already
-  run-length coded (`scene_rmr_art.c`, 34,538 bytes of runs).
+  run-length coded (34,538 bytes of runs).
+- **RED MOON RITE's art is a file in the store** (1.20, the owner, 2026-11-15: room for
+  Bluetooth pairing): `assets/art/red-moon-rite.sidart`, sent from the Library, 41,037 bytes. It
+  left the image 39,328 bytes smaller (579,232 to 539,904) with its loader and the logo intro that
+  replaces it when there is none; [the pack's notes](#red-moon-rites-art-pack) say how.
 
 ### SRAM audio path
 
@@ -5965,10 +5969,56 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   hills), smaller than the whole sky (`skies_both_ways` measures the other choice). The three
   palettes follow red-moon-rite.js's PALS from row 16 to 140 with 6-row seams. A row wider than
   32 pixels has a run start every 32, with checkpoints in its row packets.
-- The flash estimate uses the pi32v2 (ILP32) struct sizes: `scene_image` 24 bytes (ten bytes, two
-  of padding, three pointers), `scene_gradient` four bytes and a pointer, a stop 2.
-- The art in flash is held to a 48 KiB ceiling (`CEILING`); the skies
-  are stored as gradients plus overlays because that is smaller than whole images.
+- The skies are stored as gradients plus overlays because that is smaller than whole images.
+
+### RED MOON RITE's art pack
+
+- **Why a file.** Pairing as a central (BLE_CENTRAL level 1) costs about 5.5 KB more than
+  connecting out without it, and the image had 284 bytes left under its ceiling. The owner chose
+  (2026-11-15) to move the art, the image's largest table, into the store as the first art pack,
+  general enough that a site pack builder can make others later. What stays in the app is
+  choreography, not pictures: the motion tables, the skies' gradients and the torches' boxes
+  (`scene_rmr_motion.c`, 834 bytes of tables), and the shadows, flames, sparks and arc drawn by code.
+- **The format** ([art-pack.md](reference/art-pack.md)) is the art's own run-length rows,
+  unchanged, so the scene's goldens and instruction counts stay as they were: a header, a slot
+  table (the piece's pictures, each a size and a frame count, which a pack must match exactly), a
+  frame table (each frame's rectangle, scale, transparent colour, anchor, base and row table),
+  then row tables and shared row packets, and a CRC. The firmware's checks are `art_pack_head`
+  (the header and slots, which the SysEx PUT also runs on its first DATA, as a `.sid`'s header
+  is) and `art_pack_load` (every frame, row table and row offset).
+- **Drawn in place, by pages.** The store keeps a file in 1,248-byte chunks, three to a sector
+  with record headers between them, so a file is not contiguous in flash. Rather than copy 40 KB
+  into RAM (there is none to spare) or make the store contiguous (a new store format), the pack
+  is laid out in pages of the chunk's size and nothing read in one piece crosses one: the tables,
+  each row table, each row packet. A packet that would cross starts on the next page (the
+  shipped pack is 41,037 bytes, 33 pages). A row offset is a file offset, and the decoder
+  maps it with one table look-up (`page[off / 1248] + off % 1248`); `scene_image` points at the
+  page table where it pointed at the runs. The RAM is 41 frames of 24 bytes and 53 page
+  pointers, 1,196 bytes in SCENE's state (the RAM region keeps 5,668 bytes free, over its 5,120
+  floor).
+- **No read of the whole pack.** Its trailing CRC covers every byte before it, so the CRC-32 of
+  the whole file is the fixed residue `0x2144DF1C`, and the store already keeps the whole file's
+  CRC (checked against the PUT's at END, each chunk under its record's own CRC): the loader
+  compares that number and never reads the 40 KB. It decodes no row either: a wrong run draws
+  wrong pixels and nothing else, since every write is clipped to the span asked for.
+- **Swapped while drawn.** The view holds the store file it opened; each frame it asks the store
+  whether that file is still the same (its key's record, its id) and opens the pack again if not,
+  repainting the whole screen, so a pack replaced or deleted is let go before its chunks can be
+  erased. With none, it looks for one every 16 frames (a third of a second).
+- **The intro.** Without a valid pack RED MOON RITE must not be blank (the owner): it plays a
+  demo-style intro made of what the firmware already has, the Metal Chrome logo bitmap's lettering
+  rows (64-160, black left transparent) over three raster bars of the C64 palette's ramps, one
+  above the logo and two below. The duel's state machine runs as ever and drives them: the bars
+  swing on its animation clock, half their room with the filter closed and all of it open, and
+  flash a white core on a parry, an arp flare or the fill. The bars never pass under the logo:
+  re-rendering the logo's tiles costs a bitmap seek a tile row (`grid_bitmap_row`), and bars
+  behind it took a ui_poll to 95,727 instructions, over the 62,000 allowance; kept clear of it,
+  the busiest is 25,263. One bar moves a frame (the frame's number picks it), so a frame repaints
+  at most one bar's rows: in the emulator with the band, 58.5 cells and 174,044 instructions a
+  frame, 91 cells at most, the busiest ui_poll 25,263 (the duel: 120.5, 1,057,204, 123, 45,506). Its code is 336 bytes
+  (`scene_rmr_intro`, its two row painters, the ramps); the loader and the store's two helpers
+  840 more.
+- **FORMAT** takes the pack with the rest of the store; the intro plays until it is sent again.
 
 ### RED MOON RITE music
 
@@ -6756,7 +6806,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 ### Generators and their checks
 
 - The generated C files (`app/font.c` and `font.h`, `credits.c`, `demo_song.c`,
-  `logo_bitmap.c`, `scene_rmr_art.c`, `live_cutoff.c`, `live_freq.c`)
+  `logo_bitmap.c`, `scene_rmr_motion.c`, `live_cutoff.c`, `live_freq.c`; and one binary,
+  `assets/art/red-moon-rite.sidart`)
   carry only their SPDX header and one "Generated by ...; do not edit" line naming the generator.
   Their up-to-date tests compare the whole file, and each generator's update variable rewrites it
   (`check_or_write(update)` both generates and lists stale files). Generated lines stay within

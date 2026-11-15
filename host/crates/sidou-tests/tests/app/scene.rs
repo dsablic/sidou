@@ -962,11 +962,17 @@ fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
     }
 }
 
+const INTRO: u32 = SCENE_PIECES;
+
 fn piece_name(k: u32) -> String {
+    if k == INTRO {
+        return "RED MOON RITE's intro".to_string();
+    }
     c_text(unsafe { scene_names[k as usize] })
 }
 
 pub(crate) fn open_scene(ui: &mut Ui) {
+    ui.v.scene.st = crate::art_store();
     ui.press(PANEL_BTN_HOME);
     ui.choose_menu_item(VIEWS_MENU_SCENE);
     ui.settle();
@@ -1147,7 +1153,10 @@ impl Band {
 fn scene_on(piece: u32) -> Ui {
     let mut ui = Ui::new();
     open_scene(&mut ui);
-    for _ in 0..piece {
+    if piece == INTRO {
+        ui.v.scene.st = std::ptr::null();
+    }
+    for _ in 0..piece.min(SCENE_RMR) {
         ui.turn(PANEL_ENC_SELECT, 1);
         ui.settle();
     }
@@ -1163,7 +1172,7 @@ fn scene_on(piece: u32) -> Ui {
 
 #[test]
 fn every_piece_stays_within_the_budget_while_the_band_plays() {
-    for piece in 0..SCENE_PIECES {
+    for piece in 0..=INTRO {
         let mut ui = scene_on(piece);
         let mut band = Band::new();
         let sent: Vec<Sent> = (0..400).map(|_| band.frame(&mut ui, true)).collect();
@@ -1190,7 +1199,7 @@ fn every_piece_stays_within_the_budget_while_the_band_plays() {
 
 #[test]
 fn a_note_moves_the_scene_and_silence_calms_it() {
-    for piece in 0..SCENE_PIECES {
+    for piece in 0..=INTRO {
         let mut ui = scene_on(piece);
         let mut band = Band::new();
         let quiet: usize = (0..50).map(|_| band.frame(&mut ui, false).cells).sum();
@@ -1289,8 +1298,8 @@ fn the_wipes_into_scene_send_only_their_rows() {
 
 #[test]
 fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
-    for piece in 0..=SCENE_PIECES {
-        let (mut ui, name) = if piece < SCENE_PIECES {
+    for piece in 0..=INTRO + 1 {
+        let (mut ui, name) = if piece <= INTRO {
             (scene_on(piece), piece_name(piece))
         } else {
             let mut ui = Ui::new();

@@ -46,6 +46,7 @@ extern "C" {
 typedef struct {
     grid g;
     scene_px sp;
+    const scene_rmr_art* art;
     uint32_t phase[2];
     scene_px_mark spark[12];
     uint16_t px[GRID_RUN_PIXELS] __attribute__((aligned(4)));
@@ -53,7 +54,8 @@ typedef struct {
 
 /* Runs the steps, calling mark() before and after each, and writes the log; returns its
  * length. */
-uint32_t workload_scene_run(workload_scene* w, void (*mark)(void), int16_t* log);
+uint32_t workload_scene_run(workload_scene* w, const scene_rmr_art* art, void (*mark)(void),
+                            int16_t* log);
 
 #ifdef __cplusplus
 }

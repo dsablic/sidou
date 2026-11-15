@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 
+#include "art_pack.h"
 #include "live.h"
 #include "scene.h"
 #include "scene_px.h"
@@ -18,16 +19,22 @@ extern "C" {
 #endif
 
 #define SCENE_VIEW_FRAME_CELLS 200u
+#define SCENE_VIEW_ART_LOOK_FRAMES 16u
+#define SCENE_VIEW_ART_HINT "RED MOON RITE ART: LIBRARY"
 
 typedef struct {
     scene_px px;
     scene_rmr rmr;
+    scene_rmr_art art;
+    store_file pack;
     grid* g;
     uint16_t left;
+    uint8_t has_art;
 } scene_view_rite;
 
 typedef struct {
     const live* l;
+    const store* st;
     scope* tap;
     uint8_t on;
     uint8_t which;
