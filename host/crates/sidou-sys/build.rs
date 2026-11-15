@@ -47,6 +47,7 @@ const SOURCES: &[&str] = &[
     "app/fx_defaults.c",
     "app/fx_live.c",
     "app/grid.c",
+    "app/grid_cold.c",
     "app/help_view.c",
     "app/keys_route.c",
     "app/lab_draw.c",
