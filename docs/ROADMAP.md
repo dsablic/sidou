@@ -7,20 +7,40 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## Next: Bluetooth connecting out
+## 1.11: Bluetooth connecting out
 
-SIDOU connects to Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device
-remembered), the owner's Korg microKEY Air as the test; pairing if the keyboard asks for it
-([decision 0011](decisions/0011-bluetooth-midi.md)). Its room, about 9-10 KB with its page: the
-2,380 bytes left under the ceiling, `-Oz` for the radio driver (880 bytes, untried on the device)
-and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`, `live_view.c`,
-`sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before). If that is not
-enough, SCENE's RED MOON RITE art is the reserve (about 45 KB), only with the owner's yes. M-L.
+- **felucca-bsp to its head** first (from `7e09895c`: `usb.c`'s packets sized by the crystal,
+  byte for byte), with a USB audio device check and §35's iOS minute if a phone is at hand. S.
+- **Connecting out:** SIDOU connects to Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device
+  remembered and looked for at power-on), the owner's Korg microKEY Air as the test; one link at
+  a time; pairing if the keyboard asks for it ([decision 0011](decisions/0011-bluetooth-midi.md)).
+  Melodee, Hortator and fm1-base do it on the same stack. Its room, about 9-10 KB with its page:
+  the 2,364 bytes left under the ceiling, `-Oz` for the radio driver (880 bytes, untried on the
+  device) and hot/cold splits of the gate-bound `-O2` files (`sid_character.c`, `live.c`,
+  `live_view.c`, `sid_dac.c`, `input.c`; up to 13 KB whole-file, each refused by a gate before).
+  If that is not enough, SCENE's RED MOON RITE art (about 45 KB) is the reserve, only with the
+  owner's yes: kept as a file in the store, sent from the site, rather than cut. M-L.
+- **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a
+  start-up self-test, proven in fm1-emu ([the spike](plans/2026-11-15-second-core-spike.md)):
+  nothing changes for players until 2.0. M.
+- The small fixes below.
+
+## 1.12: groove
+
+What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, sized to the room
+1.11's flash find leaves:
+
+- **Swing:** a song's shuffle on a knob (GoatTracker's funktempo may carry it with no format
+  change). S.
+- **Ratchets in STEP:** a step played 2-4 times in its length, as a lock. S-M.
+- **Euclidean rhythms in DICE:** one more rhythm when DICE rolls a pattern. S.
+- **A `.sid` tune to a SIDOU song on the site:** a C64 tune, RSID included, turned into an
+  editable song with its instruments. Site only. M.
 
 ## 2.0
 
-- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): off by
-  default, falling back to one core; the RAMTEXT room is there since 1.7.
+- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on,
+  after the device check, falling back to one core; built in 1.11 behind `SIDOU_CPU2`.
 - **A layer's level in LAB**, after it (the owner, 2026-11-06): a gain per voice in both render
   loops costs about 7 instructions a sample per chip, leaving 7.1 of the two-chip worst block's
   1,426, and 160 bytes of RAMTEXT; chip B on its own core gives that budget back. It also needs a
@@ -70,7 +90,7 @@ enough, SCENE's RED MOON RITE art is the reserve (about 45 KB), only with the ow
 
 ## Parked
 
-- **The 8580 mixer's grit** (measured, not kept): the spike (branch `mixer-8580`, not merged) puts
+- **The 8580 mixer's grit** (measured, not kept): the spike (its branch `mixer-8580` no longer exists; the measurements are here) puts
   a quadratic on the 8580's output; its second harmonic lands within 0.8 dB of reSIDfp's, but the
   distance to the CSG8580R5 recordings does not move (0.04 dB at most on every tune), for 80 bytes
   of RAMTEXT and 11 instructions a sample. The reSIDfp op-amp port stays parked for good (the
@@ -81,7 +101,7 @@ enough, SCENE's RED MOON RITE art is the reserve (about 45 KB), only with the ow
 ## Later and ideas
 
 - **A second engine on the FM-1's second core** (research): users want SID beside polyphonic
-  synthesis without re-flashing. Flash is the limit (2,380 bytes left in the slot), so it needs
+  synthesis without re-flashing. Flash is the limit (2,364 bytes left in the slot), so it needs
   room found first.
 - **Faster firmware switching from the site** (research): the Library page installs another
   firmware package and brings SIDOU back, keeping the songs and sounds on the FM-1.
