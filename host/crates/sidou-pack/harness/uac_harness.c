@@ -6,6 +6,8 @@
 #define AUDIO_HALF_FRAMES 128u
 #include "usb_config.h"
 #define USB_AUDIO_POOL
+static uint32_t uac_h_clock_ticks;
+#define FELUCCA_UAC_CLOCK() uac_h_clock_ticks
 static void fm1_delay_ms(uint32_t ms) {
     (void)ms;
 }
@@ -60,6 +62,10 @@ void uac_h_tick(void) {
     usb_audio_tick();
 }
 
+void uac_h_set_clock(uint32_t ticks) {
+    uac_h_clock_ticks = ticks;
+}
+
 uint32_t uac_h_packet(uint32_t* d) {
     return uac_packet(d);
 }
@@ -85,19 +91,18 @@ uint32_t uac_h_drain(uint32_t* d, uint32_t max) {
 
 typedef struct {
     uint32_t want, left, blocks, skipped;
-    uint32_t go, feed, r48, fill_min, fill_lo, fill_hi;
+    uint32_t go, feed, r48, fill_lo, fill_hi;
     uint32_t underruns, overruns, adj_up, adj_down, pkts, frames;
-    uint32_t ring_w, ring_r, maxf, prime, lo, hi, ring_n;
+    uint32_t ring_w, ring_r, maxf, prime, ring_n;
 } uac_h_state;
 
 uac_h_state uac_h_get(void) {
     uac_h_state s = {
         usb_audio_in.want, usb_audio_in.left,    usb_audio_in.blocks, usb_audio_in.skipped,
-        uac.go,            uac.feed,             uac.r48,             uac.fill_min,
-        uac.fill_lo,       uac.fill_hi,          uac.underruns,       uac.overruns,
-        uac.adj_up,        uac.adj_down,         uac.pkts,            uac.frames,
-        ua_w,              ua_r,                 UA_MAXF,             UA_PRIME,
-        UA_LO,             UA_HI,                UA_N,
+        uac.go,            uac.feed,             uac.r48,             uac.fill_lo,
+        uac.fill_hi,       uac.underruns,        uac.overruns,        uac.adj_up,
+        uac.adj_down,      uac.pkts,             uac.frames,          ua_w,
+        ua_r,              UA_MAXF,              UA_PRIME,            UA_N,
     };
     return s;
 }

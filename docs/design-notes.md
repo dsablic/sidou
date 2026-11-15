@@ -46,21 +46,40 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Board support (felucca-bsp)
 
-- Since 1.8 the app builds from felucca-bsp (`7e09895c` since 2026-11-08, `f8788009` in 1.8.0;
+- Since 1.8 the app builds from felucca-bsp (`18eadadb` since 2026-11-15, `7e09895c` from 2026-11-08, `f8788009` in 1.8.0;
   MPL-2.0) byte for byte, in
   `platform/fm1/bsp/` (`chip/`, `boards/fm1/`); Felucca 1.6.1's copies stay for the update loader
   alone, whose SHA-256 is pinned (decision 0011, the owner, 2026-11-05). `platform/fm1/VENDORED.md`
   lists the files and who includes what.
 - SIDOU's two hooks in 1.6.1's `usb.c` are upstream settings now (`FELUCCA_MIDI_IN_RAW`, PR #21;
   the USB strings as ASCII). `FELUCCA_UAC_AS_FIRST` is set to 1 to keep 1.6.1's interface order.
-- **felucca-bsp `d18879ba`'s USB audio drift does not reach SIDOU** (checked 2026-11-14 on 1.10.0).
-  Upstream's packets ran +0.39 % fast when a render ran long and landed late: the ring's fill,
-  read at a render's start, read high and added a frame every render. SIDOU renders in the audio
-  interrupt; `usb_audio.c` copies a finished block there and the main loop taps it into the ring,
-  starting the render's pattern (`uac_render_start`) when it takes the block. In fm1-emu, a host
-  recording for 6 s gets packets within 4 ppm of the I2S clock (44.1178 frames a ms against
-  44.1176) with no underrun, with a chord on the keys, a song and the keys, and a .sid tune (its
-  6502 in the main loop) and the keys. The fix comes with the next felucca-bsp update, not alone.
+- **felucca-bsp `d18879ba`: the USB audio packets are sized by the crystal alone** (vendored
+  2026-11-15 with the move to `18eadadb`). Upstream's packets ran +0.39 % fast when a render ran
+  long and landed late: the ring's fill, read at a render's start, read high and added a frame
+  every render. SIDOU was not hit (checked 2026-11-14 on 1.10.0: `usb_audio.c` copies a finished
+  block in the audio interrupt, and the main loop taps it into the ring, starting the render's
+  pattern (`uac_render_start`) when it takes the block; in fm1-emu a 6 s recording got packets
+  within 4 ppm of the I2S clock, 44.1178 frames a ms against 44.1176, with no underrun, under a
+  chord, a song and a .sid tune), and takes the new `usb.c` to stay in sync. The size of a
+  packet is now the whole I2S frames that TIMER4 (the crystal, `fm1_ticks`, 544 ticks a frame)
+  counted since the last packet; the ring's fill steers nothing but a short window's correction
+  loop, and `uac_render_start`, `uac_tap` and `uac_service` keep their signatures, so the hooks
+  needed nothing. `FELUCCA_UAC_CLOCK` stays at its default, `fm1_ticks()`, which `midi.c` has
+  from `fm1_time.h`; the host harness (`uac_harness.c`) sets it to a clock the test drives. In
+  fm1-emu a ten-second recording with a chord held is 441,176 frames against the crystal's
+  441,176.5 (`usb.rs::a_long_recording_gets_the_crystals_frames_whatever_the_rings_fill`); the
+  ring's fill moves over 118 to 242 frames meanwhile, which no longer moves the packets. The
+  image grew 400 bytes (577,152 to 577,552, 1,964 under the 579,516 ceiling); RAMTEXT did not
+  (44,864 of 49,152). emu-gate reads `uac`'s counters at new offsets (the struct gained the
+  loop's state).
+- **`7e09895c` to `18eadadb`'s other commits** (2026-11-13): `fm1_input.h` makes the scan's rate
+  `FM1_INPUT_HZ` (`e36cb7c`; every count of ticks derives from it, and `fm1_timer.h`'s
+  `FM1_T5_PERIOD` from it); SIDOU leaves it at the default 10000, at which every value is what it
+  was, and drives the tick from TIMER5 at 10 kHz as before; `input.c`'s `input_raw_keys` still
+  matches `fm1_input_init`'s pin set-up, which that commit left alone. `fm1_clock.h`'s
+  `fm1_clock_pll1` (`d61bfcb`), `fm1_rescue`'s message (`e79a1f8`) and the loader's resource
+  region (`18eadad`) are files SIDOU does not vendor: its loader stays Felucca 1.6.1's.
+  `fm1_cpu1.h`, `fm1_cpu1.S` and `fm1_guard.h` (the spike's bench image) did not change.
 - **SysEx frames are queued** (felucca-bsp#20, 648 bytes, back-pressure on EP1). `update_poll`
   frees every SIDOU frame at the queue's head and, in a pass where it took one, leaves the updater
   alone: `ota_service` would take the next frame and drop it if it were not its own (#20's rule,

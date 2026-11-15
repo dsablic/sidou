@@ -5,8 +5,8 @@ use std::sync::{Mutex, MutexGuard};
 
 use sidou_pack::harness::{
     uac_h_desc, uac_h_direct_start, uac_h_direct_tap, uac_h_drain, uac_h_flowing, uac_h_get,
-    uac_h_packet, uac_h_rate, uac_h_reset, uac_h_skip, uac_h_stream, uac_h_take, uac_h_tick,
-    UacState,
+    uac_h_packet, uac_h_rate, uac_h_reset, uac_h_set_clock, uac_h_skip, uac_h_stream, uac_h_take,
+    uac_h_tick, UacState,
 };
 
 static HARNESS: Mutex<()> = Mutex::new(());
@@ -20,6 +20,7 @@ const CHUNK: usize = 32;
 const FS_DEV: f64 = 24.0e6 / 544.0;
 const TICK_NS: u64 = 100_000;
 const MS: u64 = 1_000_000;
+const TICKS_PER_US: u64 = 24;
 
 fn state() -> UacState {
     // SAFETY: the harness's state, read under `exclusive`.
@@ -333,7 +334,10 @@ fn record(hz: u32, sig: Signal, render: Render, ms: u64, starve: Option<(u64, u6
             next_tick += TICK_NS;
         } else if now == next_pkt {
             // SAFETY: d holds the largest packet.
-            let n = unsafe { uac_h_packet(d.as_mut_ptr()) } as usize;
+            let n = unsafe {
+                uac_h_set_clock((now * TICKS_PER_US / 1000) as u32);
+                uac_h_packet(d.as_mut_ptr())
+            } as usize;
             run.sizes[n] += 1;
             run.recorded.extend_from_slice(&d[..n]);
             next_pkt = (now / MS + 1) * MS + rnd(MS / 2);
