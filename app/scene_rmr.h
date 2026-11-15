@@ -32,14 +32,6 @@ enum { SCENE_RMR_BASS_NONE, SCENE_RMR_BASS_LOW, SCENE_RMR_BASS_HIGH };
 #define SCENE_RMR_ARC_MARKS 14u
 #define SCENE_RMR_SPARK_UP 92
 #define SCENE_RMR_ARC_UP 60
-#define SCENE_RMR_BARS 3u
-#define SCENE_RMR_BAR_H 10
-#define SCENE_RMR_BAR_SPEED 3u
-#define SCENE_RMR_BARS_TOP 8
-#define SCENE_RMR_LOGO_Y0 64
-#define SCENE_RMR_LOGO_Y1 160
-#define SCENE_RMR_BARS_END 232
-#define SCENE_RMR_CUTOFF_TOP 2048u
 
 enum {
     SCENE_RMR_SLOT_HUD,
@@ -65,14 +57,6 @@ enum {
     SCENE_RMR_SLOT_COVER,
     SCENE_RMR_SLOTS
 };
-
-enum { SCENE_RMR_SLOT_BAR0, SCENE_RMR_SLOT_LOGO = SCENE_RMR_SLOT_BAR0 + SCENE_RMR_BARS };
-
-typedef struct {
-    int16_t y;
-    uint8_t ramp;
-    uint8_t glow;
-} scene_rmr_bar;
 
 typedef struct {
     uint8_t row;
@@ -111,7 +95,6 @@ typedef struct {
     uint32_t anim;
     uint32_t cutoff;
     const scene_rmr_art* art;
-    scene_rmr_bar bar[SCENE_RMR_BARS];
     scene_px_mark arc_marks[SCENE_RMR_ARC_MARKS];
 } scene_rmr;
 
@@ -120,7 +103,6 @@ void scene_rmr_step(scene_rmr* r, const scene_rmr_beat* e);
 void scene_rmr_frame(scene_rmr* r, uint32_t cutoff, int sounding);
 uint32_t scene_rmr_sky_of(uint32_t cutoff);
 void scene_rmr_draw(scene_rmr* r, const scene_rmr_art* art, scene_px* sp);
-void scene_rmr_intro(scene_rmr* r, scene_px* sp);
 int scene_rmr_sword_at(const scene_rmr* r, int32_t* gx, int32_t* gy, uint32_t* k);
 
 #ifdef __cplusplus

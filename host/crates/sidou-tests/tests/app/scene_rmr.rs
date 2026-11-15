@@ -9,7 +9,7 @@ use sidou_tests::scene_art;
 
 use crate::{shipped_art, STATUS_BAR_H};
 
-const W: usize = 240;
+pub(crate) const W: usize = 240;
 const POSE_NAMES: [&str; 9] = [
     "guard", "guard2", "raise", "chop", "block", "spinA", "spinB", "hit", "reach",
 ];
@@ -172,23 +172,23 @@ fn the_sky_takes_the_cutoffs_palette() {
     assert!(r.sky.iter().all(|&p| p == 2));
 }
 
-struct Rig {
-    _g: Box<grid>,
-    sp: Box<scene_px>,
+pub(crate) struct Rig {
+    pub(crate) g: Box<grid>,
+    pub(crate) sp: Box<scene_px>,
 }
 
 impl Rig {
-    fn new() -> Rig {
+    pub(crate) fn new() -> Rig {
         let mut g = Box::<grid>::default();
         let mut sp = Box::<scene_px>::default();
         unsafe {
             grid_init(&mut *g, b' ', 0);
             scene_px_init(&mut *sp, &mut *g);
         }
-        Rig { _g: g, sp }
+        Rig { g, sp }
     }
 
-    fn screen(&self) -> Vec<u8> {
+    pub(crate) fn screen(&self) -> Vec<u8> {
         let mut px = vec![0u8; W * W];
         for t in 0..900usize {
             let mut tile = [0u8; 64];
@@ -331,7 +331,7 @@ fn red_moon_rite_is_scenes_sixth_piece_and_paints_under_the_screens_overlays() {
     assert_eq!(u32::from(crate::petscii(&ui.v.scene).piece), SCENE_FIRE);
 }
 
-fn logo_pixel(x: usize, y: usize) -> u8 {
+pub(crate) fn logo_pixel(x: usize, y: usize) -> u8 {
     let mut px = [0u8; 1];
     unsafe {
         grid_bitmap_row(
@@ -343,115 +343,6 @@ fn logo_pixel(x: usize, y: usize) -> u8 {
         )
     };
     px[0]
-}
-
-fn intro_screen(r: &mut scene_rmr) -> Vec<u8> {
-    let mut rig = Rig::new();
-    unsafe { scene_rmr_intro(r, &mut *rig.sp) };
-    rig.screen()
-}
-
-fn bar_middle(r: &scene_rmr, k: usize) -> (usize, usize) {
-    let y = r.bar[k].y as usize + SCENE_RMR_BAR_H as usize / 2 - 1;
-    let x = (0..W)
-        .find(|&x| {
-            !(SCENE_RMR_LOGO_Y0 as usize..SCENE_RMR_LOGO_Y1 as usize).contains(&y)
-                || logo_pixel(x, y) == GRID_BLACK as u8
-        })
-        .expect("a bar shows somewhere along its row");
-    (x, y)
-}
-
-fn bar_rows(cutoff: u32) -> Vec<(i32, i32)> {
-    let mut r = Box::<scene_rmr>::default();
-    unsafe { scene_rmr_init(&mut *r) };
-    r.cutoff = cutoff;
-    let mut span = vec![(i32::MAX, i32::MIN); SCENE_RMR_BARS as usize];
-    for anim in 0..SINE_TURN {
-        r.anim = anim;
-        for frame in 0..=SCENE_RMR_BARS {
-            r.frame = frame;
-            let mut rig = Rig::new();
-            unsafe { scene_rmr_intro(&mut *r, &mut *rig.sp) };
-        }
-        for (k, s) in span.iter_mut().enumerate() {
-            let y = i32::from(r.bar[k].y);
-            *s = (s.0.min(y), s.1.max(y + SCENE_RMR_BAR_H as i32));
-        }
-    }
-    span
-}
-
-#[test]
-fn the_intro_moves_one_bar_a_frame_so_a_frame_repaints_at_most_one_bar() {
-    let mut r = Box::<scene_rmr>::default();
-    unsafe { scene_rmr_init(&mut *r) };
-    r.cutoff = 2047;
-    intro_screen(&mut r);
-    for frame in 1..40u32 {
-        let before: Vec<i16> = r.bar.iter().map(|b| b.y).collect();
-        r.frame = frame;
-        r.anim += 2;
-        intro_screen(&mut r);
-        let moved: Vec<usize> = (0..SCENE_RMR_BARS as usize)
-            .filter(|&k| r.bar[k].y != before[k])
-            .collect();
-        assert!(moved.len() <= 1, "frame {frame}: bars {moved:?} moved");
-        assert!(moved
-            .iter()
-            .all(|&k| k as u32 == frame % (SCENE_RMR_BARS + 1)));
-    }
-}
-
-#[test]
-fn the_intro_is_sidous_logo_over_bars_that_swing_with_the_cutoff_and_flash_on_the_beat() {
-    let mut r = Box::<scene_rmr>::default();
-    unsafe { scene_rmr_init(&mut *r) };
-    let screen = intro_screen(&mut r);
-    let mut logo = 0;
-    for y in SCENE_RMR_LOGO_Y0 as usize..SCENE_RMR_LOGO_Y1 as usize {
-        for x in 0..W {
-            let p = logo_pixel(x, y);
-            if p != GRID_BLACK as u8 {
-                assert_eq!(screen[y * W + x], p, "the logo at ({x}, {y})");
-                logo += 1;
-            }
-        }
-    }
-    assert!(logo > 4000, "{logo} pixels of the logo");
-    for k in 0..SCENE_RMR_BARS as usize {
-        let (x, y) = bar_middle(&r, k);
-        let lit = screen[y * W + x];
-        r.frame = k as u32;
-        r.spark_shown = 1;
-        let flash = intro_screen(&mut r)[y * W + x];
-        r.spark_shown = 0;
-        intro_screen(&mut r);
-        assert_ne!(lit, GRID_BLACK as u8, "bar {k}");
-        assert_eq!(flash, GRID_WHITE as u8, "bar {k}'s core on the beat");
-        assert_ne!(lit, flash, "bar {k} without the beat");
-    }
-    let (closed, open) = (bar_rows(0), bar_rows(SCENE_RMR_CUTOFF_TOP * 4));
-    println!("the bars' rows with the filter closed {closed:?}, wide open {open:?}");
-    let logo = SCENE_RMR_LOGO_Y0 as i32..SCENE_RMR_LOGO_Y1 as i32;
-    for (k, (c, o)) in closed.iter().zip(&open).enumerate() {
-        assert!(
-            o.1 - o.0 >= 2 * (c.1 - c.0) - SCENE_RMR_BAR_H as i32,
-            "bar {k}: {c:?} {o:?}"
-        );
-        assert!(
-            o.0 < c.0 && o.1 > c.1,
-            "bar {k} swings wider with the filter open"
-        );
-        assert!(
-            o.0 >= SCENE_RMR_BARS_TOP as i32 && o.1 <= SCENE_RMR_BARS_END as i32,
-            "bar {k}: {o:?}"
-        );
-        assert!(
-            o.1 <= logo.start || o.0 >= logo.end,
-            "bar {k} {o:?} runs under the logo"
-        );
-    }
 }
 
 fn open_rmr(st: *const store) -> crate::views::Ui {
@@ -481,10 +372,94 @@ fn shown_screen(ui: &crate::views::Ui) -> Vec<u8> {
 
 fn shows_the_logo(ui: &crate::views::Ui) -> bool {
     let screen = shown_screen(ui);
-    (SCENE_RMR_LOGO_Y0 as usize..SCENE_RMR_LOGO_Y1 as usize)
+    (SCENE_INTRO_LOGO_Y0 as usize..SCENE_INTRO_LOGO_Y1 as usize)
         .flat_map(|y| (0..W).map(move |x| (x, y)))
         .filter(|&(x, y)| logo_pixel(x, y) != GRID_BLACK as u8)
         .all(|(x, y)| screen[y * W + x] == logo_pixel(x, y))
+}
+
+struct ToastBox {
+    text: Vec<u8>,
+    rest: Vec<(usize, usize)>,
+}
+
+fn toast_box(ui: &crate::views::Ui, g: &grid) -> ToastBox {
+    let s = &ui.v.s;
+    let lcd = crate::pixels(g);
+    let words = ui.toast().unwrap_or_default();
+    let brk = if s.toast_h == 4 {
+        s.toast_brk as usize
+    } else {
+        words.len()
+    };
+    let lines = [brk, words.len().saturating_sub(brk + 1)];
+    let (c0, r0) = (SCREEN_TOAST_COL as usize, SCREEN_TOAST_ROW as usize);
+    let first = if s.toast_h == 4 { r0 - 2 } else { r0 };
+    let mut b = ToastBox {
+        text: Vec::new(),
+        rest: Vec::new(),
+    };
+    for y in first * 8..(first + s.toast_h as usize) * 8 {
+        let line = lines[(y / 8 - first) / 2];
+        for x in c0 * 8..(c0 + s.toast_w as usize) * 8 {
+            if (x / 8 - c0) < 2 * line {
+                b.text.push(lcd[y * W + x]);
+            } else {
+                b.rest.push((x, y));
+            }
+        }
+    }
+    b
+}
+
+#[test]
+fn red_moon_rites_toasts_show_their_big_text_over_the_scene_in_every_theme() {
+    for id in 0..THEME_COUNT {
+        let th = unsafe { &*theme_get(id) };
+        assert_ne!(th.toast_fg, th.toast_bg, "theme {id}");
+        let fresh = crate::store::fresh(0xa27, STORE_WINDOW_MAX);
+        let shown = [
+            (&*fresh.st as *const store, hint()),
+            (crate::art_store(), String::from("RED MOON RITE")),
+        ];
+        for (st, text) in shown {
+            let mut ui = crate::views::Ui::new();
+            unsafe { live_set_theme(&mut *ui.rig.live, id) };
+            crate::scene::open_scene(&mut ui);
+            ui.v.scene.st = st;
+            for _ in 1..SCENE_RMR {
+                ui.turn(PANEL_ENC_SELECT, 1);
+                ui.frames_sent(40);
+            }
+            ui.turn(PANEL_ENC_SELECT, 1);
+            ui.frames_sent(20);
+            assert_eq!(ui.toast().as_deref(), Some(text.as_str()));
+            assert!(ui.g.region_painter.is_some());
+            let mut plain = ui.g.clone();
+            plain.region_painter = None;
+            let b = toast_box(&ui, &ui.g);
+            assert!(b.text.contains(&th.toast_fg), "theme {id}, {text}: no text");
+            assert!(
+                b.text.iter().all(|&p| p == th.toast_fg || p == th.toast_bg),
+                "theme {id}, {text}: the toast's text holds other colours"
+            );
+            assert!(
+                b.text == toast_box(&ui, &plain).text,
+                "theme {id}, {text}: the toast over the scene differs from the toast elsewhere"
+            );
+            let stale: std::collections::BTreeSet<(usize, usize, u8, u8)> = b
+                .rest
+                .iter()
+                .map(|&(x, y)| (x / 8, y / 8))
+                .map(|(c, r)| (c, r, ui.g.ch[r * 30 + c], ui.g.attr[r * 30 + c]))
+                .filter(|&(_, _, ch, attr)| ch != b' ' || attr != 0)
+                .collect();
+            assert!(
+                stale.is_empty(),
+                "theme {id}, {text}: cells beside a short line hold {stale:?}"
+            );
+        }
+    }
 }
 
 fn hint() -> String {

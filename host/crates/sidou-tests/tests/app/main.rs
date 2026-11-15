@@ -57,6 +57,7 @@ mod reg_ring;
 mod save_key;
 mod scene;
 mod scene_art;
+mod scene_intro;
 mod scene_px;
 mod scene_rmr;
 mod scene_rmr_drawing;
