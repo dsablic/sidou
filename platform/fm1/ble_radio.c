@@ -41,6 +41,11 @@ static uint8_t ble_radio_following;
 static uint8_t ble_radio_central_was;
 static uint8_t ble_radio_keyboard_up;
 static uint8_t ble_radio_refused;
+static uint8_t ble_radio_paired_again;
+static uint8_t ble_radio_mitm;
+static uint32_t ble_radio_shown_passkey;
+static struct ble_keys ble_radio_keys;
+static volatile uint8_t ble_radio_keys_new;
 static uint32_t ble_radio_now, ble_radio_browsed_at, ble_radio_aged_at;
 uint8_t ble_radio_awake = 1;
 
@@ -101,6 +106,12 @@ BLE_API void ble_app_state(void) {
                                                         : BLE_ROLE_NONE;
 }
 
+BLE_API void ble_app_central_keys(const struct ble_keys* k) {
+    ble_radio_keys = *k;
+    RING_PUBLISH();
+    ble_radio_keys_new = 1;
+}
+
 #if BLE_SMP_LEGACY
 BLE_API void ble_app_bond(const uint8_t rand[8], uint16_t ediv, const uint8_t ltk[16]) {
     (void)rand;
@@ -125,6 +136,7 @@ static void ble_radio_follow(void) {
     ble_radio_following = mode;
     ble_radio_keyboard_up = 0;
     ble_radio_refused = 0;
+    ble_radio_paired_again = 0;
     ble_radio_held(1);
     ble_central_cancel();
     ble_ll_scan(mode == BLE_MODE_KEYBOARD);
@@ -170,6 +182,51 @@ static void ble_radio_heard(int keep) {
     }
 }
 
+static void ble_radio_bond_kept(void) {
+    if (!ble_radio_keys_new) {
+        return;
+    }
+    ble_radio_keys_new = 0;
+    ble_bond* b = &ble_radio_setting.bond;
+    const struct ble_keys* k = &ble_radio_keys;
+    b->has = (uint8_t)(k->has & (BLE_KEYS_LTK | BLE_KEYS_AUTH));
+    ble_cpy(b->ltk, k->ltk, sizeof b->ltk);
+    ble_cpy(b->rand, k->rand, sizeof b->rand);
+    b->ediv[0] = (uint8_t)k->ediv;
+    b->ediv[1] = (uint8_t)(k->ediv >> 8);
+    ble_setting_bonded();
+}
+
+static void ble_radio_passkey(void) {
+    uint32_t key = ble_central_pairing() ? ble_central_passkey() : BLE_NO_PASSKEY;
+    if (key == ble_radio_shown_passkey) {
+        return;
+    }
+    ble_radio_shown_passkey = key;
+    if (key != BLE_NO_PASSKEY) {
+        char digits[7];
+        for (uint32_t i = 6; i-- > 0; key /= 10u) {
+            digits[i] = (char)('0' + key % 10u);
+        }
+        digits[6] = 0;
+        ble_radio_tell(BLE_KEYBOARD_PASSKEY, digits);
+    }
+}
+
+static int ble_radio_pair_again(uint8_t fail) {
+    if (fail == BLE_CF_NEED_MITM && !ble_radio_mitm) {
+        ble_radio_mitm = 1;
+        ble_setting_forget_bond();
+        return 1;
+    }
+    if (fail == BLE_CF_KEY && !ble_radio_paired_again) {
+        ble_radio_paired_again = 1;
+        ble_setting_forget_bond();
+        return 1;
+    }
+    return 0;
+}
+
 static void ble_radio_central_watch(void) {
     uint8_t now = ble_central_state();
     if (now == ble_radio_central_was) {
@@ -178,13 +235,17 @@ static void ble_radio_central_watch(void) {
     ble_radio_central_was = now;
     if (now == BLE_CS_READY) {
         ble_radio_keyboard_up = 1;
+        ble_radio_paired_again = 0;
         ble_radio_tell(BLE_KEYBOARD_CONNECTED, ble_radio_setting.keyboard.name);
     } else if (now == BLE_CS_IDLE) {
-        if (ble_central_fail() == BLE_CF_NEED_PAIR) {
+        uint8_t fail = ble_central_fail();
+        if (fail == BLE_CF_LOST || fail == BLE_CF_NONE) {
+            if (ble_radio_keyboard_up) {
+                ble_radio_tell(BLE_KEYBOARD_LOST, ble_radio_setting.keyboard.name);
+            }
+        } else if (!ble_radio_pair_again(fail)) {
             ble_radio_refused = 1;
             ble_radio_tell(BLE_KEYBOARD_PAIRING, ble_radio_setting.keyboard.name);
-        } else if (ble_radio_keyboard_up) {
-            ble_radio_tell(BLE_KEYBOARD_LOST, ble_radio_setting.keyboard.name);
         }
         ble_radio_keyboard_up = 0;
     }
@@ -196,8 +257,15 @@ static void ble_radio_look(void) {
         ble_radio_browsing() || ble_central_state() != BLE_CS_IDLE) {
         return;
     }
+    const ble_bond* b = &ble_radio_setting.bond;
     ble_cpy(ble_radio_peer.addr, k->addr, 6);
     ble_radio_peer.addr_rand = k->type == BLE_ADDR_RANDOM;
+    ble_radio_peer.bonded = (uint8_t)(b->has & BLE_BOND_LTK);
+    ble_radio_peer.sec = (uint8_t)((b->has & BLE_BOND_AUTH ? BLE_PEER_AUTH : 0u) |
+                                   (ble_radio_mitm ? BLE_PEER_MITM : 0u));
+    ble_cpy(ble_radio_peer.ltk, b->ltk, sizeof b->ltk);
+    ble_cpy(ble_radio_peer.rand, b->rand, sizeof b->rand);
+    ble_radio_peer.ediv = (uint16_t)(b->ediv[0] | b->ediv[1] << 8);
     ble_radio_held(1);
     (void)ble_central_connect(&ble_radio_peer);
     ble_radio_held(0);
@@ -228,6 +296,8 @@ void ble_radio_poll(uint32_t now_ms) {
         ble_radio_air(now_ms);
         ble_radio_follow();
         ble_radio_heard(ble_radio_browsing());
+        ble_radio_bond_kept();
+        ble_radio_passkey();
         ble_radio_central_watch();
         ble_radio_look();
         if (!ble_radio_midi_up()) {
@@ -275,6 +345,8 @@ uint32_t ble_radio_devices(void* ctx, int fresh, const char** names, uint8_t* ba
 void ble_radio_pick(void* ctx, uint32_t i) {
     (void)ctx;
     ble_radio_refused = 0;
+    ble_radio_paired_again = 0;
+    ble_radio_mitm = 0;
     ble_radio_browsed_at = ble_radio_now - BLE_RADIO_BROWSE_MS;
     ble_setting_remember(&ble_radio_listed[i]);
 }

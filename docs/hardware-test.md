@@ -3081,9 +3081,11 @@ adapter.
 ## 38. 1.11: Bluetooth connecting out to a keyboard
 
 What it decides: whether SIDOU connecting out to a Bluetooth MIDI keyboard (BLUETOOTH's
-KEYBOARD, DEVICES, the toasts; the stack's central without pairing) is ready to ship, and
+KEYBOARD, DEVICES, the toasts; the stack's central with pairing, `BLE_CENTRAL` 1, since 1.20) is
+ready to ship, and
 whether the radio driver at `-Oz` (since the flash find, untried on the device) still runs the
-peripheral. The default image is 579,232 bytes, 284 under the 579,516 ceiling. fm1-emu has no
+peripheral. The default image is 545,908 bytes, 33,608 under the 579,516 ceiling (with
+pairing, RED MOON RITE's art in the store, §39). fm1-emu has no
 radio: the emulator gate runs these flows on a fake radio (`ble_keyboard.rs` on
 `build/fm1-blefake`), so here the radio itself is checked. Every item waits for the owner's yes
 for that step: nothing is flashed, connected or scanned before it. README, the demo page, the
@@ -3093,8 +3095,9 @@ Set up:
 
 - **The build:** the default, from a fresh build directory, packaged as in §35 (`tools/preflash`
   passes it: the option record is the default's).
-- **Installed over 1.10.0** with SIDOU's installer: the songs and settings are kept; a 1.10
-  BLUETOOTH ON or OFF stays as it was. *Emulator:* `package.rs`;
+- **Installed over 1.10.0** with SIDOU's installer, or over the first §38 package: the songs and
+  settings are kept; a 1.10 BLUETOOTH ON or OFF stays as it was, a §38 package's KEYBOARD and
+  microKEY Air too (its record, version 2, reads with no bond). *Emulator:* `package.rs`;
   `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`
   reads a 1.10 record.
 - **The owner's Korg microKEY Air**, charged, set to Bluetooth (its power switch at the Bluetooth
@@ -3105,12 +3108,14 @@ Set up:
   clockwise until the popup says KEYBOARD; the row reads `KEYBOARD NONE`. SAVE: DEVICES opens,
   `SCANNING`, then the microKEY Air within a few seconds, with signal bars (other BLE-MIDI devices
   nearby may be listed too; nothing that is not BLE-MIDI). SELECT to it, SAVE: back on SETTINGS,
-  the toast `KEYBOARD microKEY Air` and the row shows its name; the keyboard's LED stops
-  blinking. Pass: as written, no reboot, the sound uninterrupted. If the toast says `NEEDS
-  PAIRING` instead, stop here: the keyboard insists on pairing (decision 0011's reason to add it),
-  and the remaining items wait. *Emulator:*
+  the microKEY Air asks to pair and SIDOU pairs with it (Just Works: nothing to confirm; if a
+  `PASSKEY` toast shows six digits instead, type them on the keyboard), then the toast
+  `KEYBOARD microKEY Air` and the row shows its name; the keyboard's LED stops blinking. Pass: as
+  written, no reboot, the sound uninterrupted. If the toast says `NEEDS PAIRING`, stop here and
+  note what the keyboard did. *Emulator:*
   `ble_keyboard.rs::devices_lists_the_ble_midi_keyboards_heard_and_save_connects_and_keeps_the_chosen_one`,
-  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_says_so_and_is_not_tried_again`. *Result:* Failed 2026-11-15 as the item foresees, on the test package from main 0259add4 (FM-1_964, app 579,232 B, SHA-256 86792f0a…0f0a48): the microKEY Air was found on DEVICES and answered `NEEDS PAIRING`. It insists on pairing; the remaining items wait for pairing (`BLE_CENTRAL` level 1).
+  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_pairs_connects_and_keeps_the_bond`,
+  `ble_keyboard.rs::a_keyboard_that_needs_a_passkey_shows_it_large_and_pairs_once_it_is_typed`. *Result:* Failed 2026-11-15 as the item foresees, on the test package from main 0259add4 (FM-1_964, app 579,232 B, SHA-256 86792f0a…0f0a48): the microKEY Air was found on DEVICES and answered `NEEDS PAIRING`. It insists on pairing; the remaining items wait for pairing (`BLE_CENTRAL` level 1).
 - [ ] **Notes, knobs and clock:** play chords and fast runs, bend and modulate, turn the
   microKEY Air's knobs (set to CC 74 and 71 if its editor allows; otherwise MIDI learn one: hold
   SAVE, turn K1, turn the keyboard's knob). The microKEY Air sends no clock: the clock over
@@ -3122,10 +3127,12 @@ Set up:
   on: within a few seconds the toast `KEYBOARD microKEY Air` and it plays again, with no step on
   the FM-1. *Emulator:*
   `ble_keyboard.rs::a_keyboard_gone_releases_its_notes_says_lost_and_reconnects_by_itself`.
-- [ ] **A power cycle reconnects:** with the keyboard on, power the FM-1 off and on. Pass: a few
-  seconds after the boot the toast `KEYBOARD microKEY Air` and the keyboard plays; SETTINGS still
-  says KEYBOARD and its name. *Emulator:*
-  `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`.
+- [ ] **A power cycle reconnects, and the bond survives it:** with the keyboard on, power the
+  FM-1 off and on. Pass: a few seconds after the boot the toast `KEYBOARD microKEY Air` and the
+  keyboard plays, with no pairing asked again (the link is encrypted with the kept bond: no
+  `PASSKEY`, and the keyboard shows no new pairing); SETTINGS still says KEYBOARD and its name.
+  *Emulator:* `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`,
+  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_pairs_connects_and_keeps_the_bond`.
 - [ ] **Back to ON, the Mac connects:** BLUETOOTH to ON (ALGORITHM counter-clockwise once). Pass:
   the keyboard's link drops without a `KEYBOARD LOST` toast; the Mac's Bluetooth window lists
   `SIDOU XXXX` again and connects; notes both ways as in §35. KEYBOARD again drops the Mac and
@@ -3136,6 +3143,48 @@ Set up:
   Logic, Logic's MIDI clock to SIDOU over Bluetooth with a song following it (CLOCK on FOLLOW),
   no audio glitch, OFF and ON, a power cycle keeps ON, and a firmware install with BLUETOOTH ON
   still finishes. Pass: as in §35, the song in time with Logic.
+
+## 39. 1.20: RED MOON RITE's art from the store, and the logo intro
+
+What it decides: whether RED MOON RITE drawing its art from a file in the store (an
+[art pack](reference/art-pack.md), read in place from flash) and the logo intro that plays without
+it are ready to ship. The image is 539,904 bytes, 39,328 smaller than §38's; the art pack is
+41,037 bytes in the store. fm1-emu runs both (the goldens `scene-rmr` with the pack, `scene-intro`
+without), so here the real flash and the Library over USB are checked. Every item waits for the
+owner's yes for that step: nothing is flashed or sent before it.
+
+Set up:
+
+- **The build:** the default, from a fresh build directory, packaged as in §35.
+- **Installed over the §38 test package** with SIDOU's installer. A Mac or PC with Chrome and the
+  Library page (`tools/web-demo`, or the site), the FM-1 on USB. Headphones on the line out.
+
+- [ ] **Songs kept, the intro plays:** after the install, SONG lists the songs it had. HOME,
+  SCENE, SELECT to RED MOON RITE. Pass: the toast `RED MOON RITE ART: LIBRARY`, then the SIDOU logo
+  over raster bars, one above it and two below; hold a chord and open K1: the bars swing wider,
+  and they move while the music plays and hold still a moment after it stops; PLAY: the bars
+  flash white on the song's snares and fills. No stall, no audio click. *Emulator:*
+  `screen.rs::without_its_art_red_moon_rite_is_the_logo_intro_of_its_golden_image`,
+  `screen.rs::scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets` (intro).
+- [ ] **Send the art from the Library:** Library page, Connect, section 2: press **RED MOON RITE
+  art**. Pass: the page says it sent `RED MOON RITE` (41,037 bytes) and lists it as
+  `RED MOON RITE art`; the FM-1 toasts `RECEIVING` then `SAVED`. *Emulator:*
+  `sysex.rs::an_art_pack_put_is_checked_at_its_first_data_and_only_under_its_own_name` (host),
+  `library.test.mjs`.
+- [ ] **RED MOON RITE as before:** on SCENE's RED MOON RITE (open it again, or wait: the art takes
+  over within a third of a second). Pass: the duel, the moon and the arena exactly as in the §38
+  build (compare a photo with `tests/golden/lcd/scene-rmr.png`); a minute of the demo song (PLAY)
+  with its chops, parries, the disarm and the stuck sword, no stall or click. *Emulator:*
+  `screen.rs::scene_rmr_matches_its_golden_image`,
+  `screen.rs::red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song`.
+- [ ] **A power cycle keeps it:** power the FM-1 off and on, SCENE, RED MOON RITE. Pass: the duel,
+  no hint toast.
+- [ ] **A broken pack is refused:** with `sidou-sysex art` refusing a pack edited by hand (a byte
+  of its slot table changed), and the Library's **Send files…** with the same file. Pass: the page
+  refuses it in words before sending; nothing changes on the FM-1. *Emulator:* `art.rs` (sidou-sysex).
+- [ ] **FORMAT takes it:** only with the songs backed up (Library, Back up all) and the owner's yes:
+  SETTINGS, STORE, FORMAT, SAVE then SAVE AGAIN. Pass: RED MOON RITE plays the intro again with the
+  hint toast; restoring the backup brings the songs and the art back (the backup holds the pack).
 
 ## Result
 

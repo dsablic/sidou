@@ -993,7 +993,13 @@ grey), as on LIVE.
 
 The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
 ([art](../art/README.md#red-moon-rite)), played by the song while one plays (PLAY, button
-12), else by the keys. What moves it (`app/scene_song.h`, `app/scene_rmr.h`):
+12), else by the keys. Its pictures are an [art pack](art-pack.md) in the store, sent from the
+Library page (**RED MOON RITE art**, [library.md](../manual/library.md#2-the-files-on-the-fm-1)).
+Without them the piece is SIDOU's logo intro, played by the same music: the SIDOU logo over three
+raster bars, one above it and two below, that swing wider as the cutoff opens and flash white on
+a snare, an arp note or the fill; its toast says `RED MOON RITE ART: LIBRARY`. The art takes over
+within a third of a second of arriving, and the intro comes back if the pack is deleted or the
+store formatted. What moves it (`app/scene_song.h`, `app/scene_rmr.h`):
 
 | The music | The duel |
 |---|---|
@@ -1389,7 +1395,7 @@ loads (or restarts), and is saved with the settings (schema 7).
 SETTINGS' last item, after RESET, is **BLUETOOTH**: **OFF** (the default), **ON** or
 **KEYBOARD**, a detent of ALGORITHM a step (clockwise toward KEYBOARD); the popup reads
 BLUETOOTH and the mode. With BLUETOOTH OFF the radio never starts; ON or KEYBOARD starts it, 3 s
-after power-on at the earliest. One Bluetooth link at a time, no pairing.
+after power-on at the earliest. One Bluetooth link at a time.
 
 - **ON**: SIDOU advertises as `SIDOU XXXX` for a Mac, an iPad or a phone to connect to
   (Bluetooth MIDI). OFF stops advertising and drops a link (held notes are released).
@@ -1397,8 +1403,14 @@ after power-on at the earliest. One Bluetooth link at a time, no pairing.
   visible to computers (a computer's link drops when KEYBOARD is chosen). The row says where it
   is: **KEYBOARD NONE** (none picked yet), **LOOKING** (picked, not connected: SIDOU waits for
   it to advertise and connects, however long that takes), the keyboard's name (connected, cut
-  to fit), or **NEEDS PAIRING** (it asked for security, which SIDOU does not do: SIDOU stops
-  trying until a keyboard is picked in DEVICES, the mode changes or the power is cycled).
+  to fit), or **NEEDS PAIRING** (the pairing failed: SIDOU stops trying until a keyboard is
+  picked in DEVICES, the mode changes or the power is cycled).
+- **Pairing**: a keyboard that asks for security is paired as SIDOU connects (Just Works:
+  nothing to confirm), and the bond is kept with the keyboard, so later links (after LOST, after
+  a power cycle) are encrypted with it and need no pairing. One that needs a passkey gets one: the
+  toast **PASSKEY** and six digits stays up to 30 seconds while the keyboard's user types them. A
+  keyboard that no longer knows the bond is paired again once; a keyboard picked in DEVICES
+  starts with no bond, and pairs afresh if it asks.
 - **DEVICES**: **SAVE** on the row while it is KEYBOARD opens it. It lists up to 8 nearby
   devices that advertise Bluetooth MIDI, in the order they were first heard, each with its name
   (cut to 10 characters; a device without one shows `MIDI` and the last four hex digits of its
@@ -1410,13 +1422,13 @@ after power-on at the earliest. One Bluetooth link at a time, no pairing.
 - **Playing**: the keyboard is one more MIDI input, through the same parser and routing as USB
   and TRS (channels, MIDI learn, the clock).
 - **Toasts**: **KEYBOARD** and its name when it connects, **KEYBOARD LOST** when the link goes
-  (held notes are released and SIDOU looks for it again), **NEEDS PAIRING** when it refuses a
-  link without pairing.
+  (held notes are released and SIDOU looks for it again), **PASSKEY** and six digits while a
+  pairing waits for them, **NEEDS PAIRING** when the pairing fails.
 
-The mode, the remembered keyboard and SIDOU's Bluetooth address are kept in the store (key
-`0x10A`) two seconds after a change, so a computer finds the same SIDOU after a power cycle and,
+The mode, the remembered keyboard, its bond and SIDOU's Bluetooth address are kept in the store
+(key `0x10A`) two seconds after a change, so a computer finds the same SIDOU after a power cycle and,
 with KEYBOARD, SIDOU looks for its keyboard after power-on until it connects. A setting kept by
-1.9 or 1.10 reads as OFF or ON with no keyboard.
+1.11 reads with its keyboard and no bond; one kept by 1.9 or 1.10 as OFF or ON with no keyboard.
 
 SETTINGS' **RESET** puts everything that is not a song back to factory: every
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting

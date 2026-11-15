@@ -103,6 +103,41 @@ pub(crate) const NOISE_PERC: u8 = 3;
 pub(crate) const PANEL_ENC_K2: u32 = PANEL_ENC_K1 + 1;
 pub(crate) const PANEL_ENC_K3: u32 = PANEL_ENC_K1 + 2;
 pub(crate) const STATUS_BAR_H: usize = 16;
+
+thread_local! {
+    static SHIPPED_ART: &'static sidou_sysex::art::Pack = {
+        let bytes = std::fs::read(sidou_tests::scene_art::pack_path()).expect("the shipped art pack");
+        let pack = sidou_sysex::art::check(bytes)
+            .unwrap_or_else(|why| panic!("the shipped art pack is refused: {why}"));
+        Box::leak(Box::new(pack))
+    };
+}
+
+pub(crate) fn shipped_pack() -> &'static sidou_sysex::art::Pack {
+    SHIPPED_ART.with(|p| *p)
+}
+
+pub(crate) fn shipped_art() -> &'static scene_rmr_art {
+    shipped_pack().art()
+}
+
+thread_local! {
+    static ART_STORE: &'static store::Rig = Box::leak(Box::new(store_with_art(shipped_pack().bytes())));
+}
+
+pub(crate) fn store_with_art(bytes: &[u8]) -> store::Rig {
+    let mut rig = store::fresh(0x5eed_a127, STORE_WINDOW_MAX);
+    sid_io::put(&mut rig, sidou_sysex::art::NAME, STORE_FILE_ART, bytes);
+    rig
+}
+
+pub(crate) fn art_store() -> *const sidou_sys::store {
+    ART_STORE.with(|r| &*r.st as *const sidou_sys::store)
+}
+
+pub(crate) fn rmr_frame(i: u32) -> &'static scene_image {
+    &shipped_art().frame[i as usize]
+}
 pub(crate) const CHARACTER: usize = LIVE_CHAR_FIELDS as usize;
 pub(crate) const RELEASE_TO_ZERO_MS: [u32; 16] = [
     6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000,

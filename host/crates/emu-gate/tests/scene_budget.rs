@@ -3,8 +3,10 @@
 
 mod common;
 
+use fm1_core::Bus;
 use sidou_sys::{SCENE_PX_RUN_CELLS, SCENE_PX_SCAN_SLICE};
 
+const BENCH_PACK: u32 = 0x01CA_0000;
 const TILE_AVERAGE: f64 = 2_150.0;
 const TILE_WORST: u64 = 5_300;
 const CELL_WORST: u64 = 6_200;
@@ -145,9 +147,14 @@ fn the_pixel_scene_fits_its_budgets_and_matches_host() {
         common::skip_message("the pixel scene's emulator gate");
         return;
     };
-    let host = emu_gate::render_host_scene();
+    let pack = sidou_sysex::art::check(common::shipped_art()).expect("the shipped art pack");
+    let host = emu_gate::render_host_scene(pack.art());
     let steps = parse(&host, &[]).steps;
-    let r = common::run(&build, "sid_bench_scene", 2 * steps);
+    let r = common::run_with(&build, "sid_bench_scene", 2 * steps, |soc| {
+        for (i, &b) in pack.bytes().iter().enumerate() {
+            soc.write8(BENCH_PACK + i as u32, b);
+        }
+    });
     let log = &r.samples;
     assert_eq!(log.len(), host.len(), "the log's length");
     if let Some(i) = log.iter().zip(&host).position(|(a, b)| a != b) {

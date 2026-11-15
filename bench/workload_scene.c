@@ -39,6 +39,10 @@ static scene_px_layer image(const scene_image* s, int16_t x, int16_t y, uint8_t 
     return l;
 }
 
+static const scene_image* barb(const workload_scene* w, uint32_t who, uint32_t pose) {
+    return &w->art->frame[SCENE_RMR_ART_BARB + who * SCENE_RMR_POSES + pose];
+}
+
 static scene_px_layer fill(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8_t colour) {
     scene_px_layer l = screen_layer(SCENE_PX_FILL);
     l.x0 = x0, l.y0 = y0, l.x1 = x1, l.y1 = y1;
@@ -46,13 +50,13 @@ static scene_px_layer fill(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint8
     return l;
 }
 
-static scene_px_layer sky(uint32_t k, int gradient) {
+static scene_px_layer sky(const workload_scene* w, uint32_t k, int gradient) {
     scene_px_layer l;
     if (gradient) {
         l = screen_layer(SCENE_PX_GRADIENT);
         l.src = &scene_rmr_sky_gradient[k];
     } else {
-        l = image(&scene_rmr_sky[k], 0, SCENE_RMR_SKY_Y, 0);
+        l = image(&w->art->frame[SCENE_RMR_ART_SKY + k], 0, SCENE_RMR_SKY_Y, 0);
     }
     l.y0 = 16;
     l.y1 = 140;
@@ -72,11 +76,11 @@ static void set_up(workload_scene* w) {
     l = screen_layer(SCENE_PX_TEXT);
     l.x = 112, l.y = 4, l.n = 2, l.colour = GRID_WHITE, l.src = VS;
     scene_px_set(sp, TEXT, &l);
-    l = sky(1, 1);
+    l = sky(w, 1, 1);
     scene_px_set(sp, GRADIENT, &l);
-    l = sky(1, 0);
+    l = sky(w, 1, 0);
     scene_px_set(sp, SKY, &l);
-    l = image(&scene_rmr_arena, 0, 0, 0);
+    l = image(&w->art->frame[SCENE_RMR_ART_ARENA], 0, 0, 0);
     scene_px_set(sp, ARENA, &l);
     for (uint32_t f = 0; f < 2u; f++) {
         const uint8_t* b = scene_rmr_flames[f];
@@ -89,13 +93,13 @@ static void set_up(workload_scene* w) {
     }
     l = fill(73, 230, 109, 232, GRID_BLACK);
     scene_px_set(sp, SHADOW0, &l);
-    l = image(&scene_rmr_barb[0][SCENE_RMR_GUARD], 33, 116, 0);
+    l = image(barb(w, 0, SCENE_RMR_GUARD), 33, 116, 0);
     scene_px_set(sp, FIGHTER0, &l);
     l = fill(133, 230, 169, 232, GRID_BLACK);
     scene_px_set(sp, SHADOW1, &l);
-    l = image(&scene_rmr_barb[1][SCENE_RMR_GUARD], 81, 116, 1);
+    l = image(barb(w, 1, SCENE_RMR_GUARD), 81, 116, 1);
     scene_px_set(sp, FIGHTER1, &l);
-    l = image(&scene_rmr_sword[3], 100, 40, 0);
+    l = image(&w->art->frame[SCENE_RMR_ART_SWORD + 3u], 100, 40, 0);
     scene_px_set(sp, SWORD, &l);
     for (uint32_t i = 0; i < 12u; i++) {
         w->spark[i].x = (int16_t)(116 + (int)(i % 4u) * 2);
@@ -150,8 +154,10 @@ static void scan(workload_scene* w, void (*mark)(void), int16_t* log) {
     put(log, grid_pending(&w->g));
 }
 
-uint32_t workload_scene_run(workload_scene* w, void (*mark)(void), int16_t* log) {
+uint32_t workload_scene_run(workload_scene* w, const scene_rmr_art* art, void (*mark)(void),
+                            int16_t* log) {
     log_at = 0;
+    w->art = art;
     scene_px* sp = &w->sp;
     w->phase[0] = w->phase[1] = 0;
     mark();
@@ -174,18 +180,18 @@ uint32_t workload_scene_run(workload_scene* w, void (*mark)(void), int16_t* log)
 
     scene_px_layer l;
     mark();
-    l = image(&scene_rmr_barb[0][SCENE_RMR_GUARD2], 37, 116, 0);
+    l = image(barb(w, 0, SCENE_RMR_GUARD2), 37, 116, 0);
     scene_px_set(sp, FIGHTER0, &l);
-    l = image(&scene_rmr_barb[1][SCENE_RMR_GUARD2], 77, 116, 1);
+    l = image(barb(w, 1, SCENE_RMR_GUARD2), 77, 116, 1);
     scene_px_set(sp, FIGHTER1, &l);
     mark();
     scan(w, mark, log);
     send(w, mark, log);
 
     mark();
-    l = sky(2, 1);
+    l = sky(w, 2, 1);
     scene_px_set(sp, GRADIENT, &l);
-    l = sky(2, 0);
+    l = sky(w, 2, 0);
     scene_px_set(sp, SKY, &l);
     mark();
     scan(w, mark, log);
@@ -208,9 +214,9 @@ uint32_t workload_scene_run(workload_scene* w, void (*mark)(void), int16_t* log)
     send(w, mark, log);
 
     /* The sky back, scanned in slices as a view does between its frames. */
-    l = sky(1, 1);
+    l = sky(w, 1, 1);
     scene_px_set(sp, GRADIENT, &l);
-    l = sky(1, 0);
+    l = sky(w, 1, 0);
     scene_px_set(sp, SKY, &l);
     put(log, sp->ncand);
     uint32_t slices = 0;

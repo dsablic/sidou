@@ -60,23 +60,7 @@ fn encode_pool(rows: &[Vec<Vec<u8>>], seeks: &[usize], raw: bool) -> (Vec<Vec<u1
     let rows: Vec<Vec<Vec<u8>>> = rows
         .iter()
         .zip(seeks)
-        .map(|(set, &seek)| {
-            set.iter()
-                .map(|row| {
-                    let (mut out, mut pixel) = (Vec::new(), 0);
-                    for &run in row {
-                        let mut left = usize::from(run >> 4) + 1;
-                        while left != 0 {
-                            let len = left.min(seek - pixel % seek);
-                            out.push((((len - 1) << 4) as u8) | (run & 15));
-                            pixel += len;
-                            left -= len;
-                        }
-                    }
-                    out
-                })
-                .collect()
-        })
+        .map(|(set, &seek)| set.iter().map(|row| split_runs(row, seek)).collect())
         .collect();
     let mut counts = [0usize; 256];
     let mut unique = HashSet::new();
@@ -173,6 +157,34 @@ fn encode_pool(rows: &[Vec<Vec<u8>>], seeks: &[usize], raw: bool) -> (Vec<Vec<u1
     (offsets, data)
 }
 
+pub fn split_runs(row: &[u8], seek: usize) -> Vec<u8> {
+    let (mut out, mut pixel) = (Vec::new(), 0);
+    for &run in row {
+        let mut left = usize::from(run >> 4) + 1;
+        while left != 0 {
+            let len = left.min(seek - pixel % seek);
+            out.push((((len - 1) << 4) as u8) | (run & 15));
+            pixel += len;
+            left -= len;
+        }
+    }
+    out
+}
+
+pub fn raw_packet(row: &[u8], seek: usize) -> Vec<u8> {
+    let runs = split_runs(row, seek);
+    let mut packet = Vec::new();
+    let mut pixel = 0;
+    for (i, &run) in runs.iter().enumerate() {
+        if pixel != 0 && pixel % seek == 0 {
+            packet.push(u8::try_from(i).expect("a checkpoint within one byte"));
+        }
+        pixel += usize::from(run >> 4) + 1;
+    }
+    packet.extend(runs);
+    packet
+}
+
 fn pack(packets: &[Vec<u8>], order: &[usize]) -> (Vec<u16>, Vec<u8>) {
     let mut stream: Vec<u8> = Vec::new();
     let mut offsets = vec![0; packets.len()];
@@ -220,14 +232,6 @@ pub fn nibbles(dictionary: &[u8], run: u8) -> usize {
         1
     } else {
         3
-    }
-}
-
-pub fn data_ref(base: usize) -> String {
-    if base == 0 {
-        "RUNS".into()
-    } else {
-        format!("RUNS + {base}")
     }
 }
 

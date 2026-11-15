@@ -35,7 +35,7 @@ const BOOT_LOADER_SYSVDD: u8 = 11;
 const DCDC13_EN: u8 = 0x08;
 const STOCK_DCDC_TUNE: u8 = 0xA5;
 const START_MARK: u32 = 0x4254_5354;
-const RECORD_VERSION: u8 = 2;
+const RECORD_VERSION: u8 = 3;
 const OWN_AT: u32 = 1;
 const RECORD_OWN: std::ops::Range<usize> = 2..8;
 

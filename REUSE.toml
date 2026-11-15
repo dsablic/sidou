@@ -19,9 +19,10 @@ SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 # RED MOON RITE, SCENE's first vignette: original art made for SIDOU, and its motion tables,
-# exported from its source, assets/scene/red-moon-rite.js (docs/art/README.md "RED MOON RITE").
+# exported from its source, assets/scene/red-moon-rite.js (docs/art/README.md "RED MOON RITE"),
+# and its art pack, the PNGs run-length coded by host/crates/sidou-tests/src/scene_art.rs.
 [[annotations]]
-path = ["assets/scene/*.png", "assets/scene/red-moon-rite-motion.txt"]
+path = ["assets/scene/*.png", "assets/scene/red-moon-rite-motion.txt", "assets/art/*.sidart"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 

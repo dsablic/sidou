@@ -1313,6 +1313,91 @@ fn rsid_mus_and_broken_sid_puts_are_refused_before_any_claim_or_program() {
     e.rig.assert_clean();
 }
 
+fn typed_metadata(name: &str, data: &[u8], file_type: u32) -> Vec<u8> {
+    let mut p = upload_metadata(named(name), data);
+    p[18] = file_type as u8;
+    p
+}
+
+fn sent_art(e: &mut Engine, name: &str, pack: &[u8], first: u8) {
+    e.request(4, first, &typed_metadata(name, pack, STORE_FILE_ART));
+    e.ack(first);
+    let mut seq = (first + 1) & 0x7f;
+    for part in pack.chunks(256) {
+        e.request(5, seq, part);
+        e.ack(seq);
+        seq = (seq + 1) & 0x7f;
+    }
+    e.request(6, seq, &[]);
+    e.ack(seq);
+}
+
+#[test]
+fn an_art_pack_put_is_checked_at_its_first_data_and_only_under_its_own_name() {
+    let mut e = Engine::new(true);
+    let pack = crate::shipped_pack().bytes().to_vec();
+    let name = sidou_sysex::art::NAME;
+    let spoilt = |at: usize, value: u8| {
+        let mut p = pack.clone();
+        p[at] = value;
+        p
+    };
+    let refused = [
+        ("magic", spoilt(0, b'X')),
+        ("version", spoilt(8, 2)),
+        ("scene", spoilt(9, 2)),
+        ("a slot's width", spoilt(33, 63)),
+        ("a slot's frames", spoilt(35, 7)),
+    ];
+    for (what, file) in &refused {
+        let programs = e.rig.sim.progs;
+        let pool = e.rig.stats().pool;
+        e.hooks.writing.clear();
+        e.request(4, 7, &typed_metadata(name, file, STORE_FILE_ART));
+        e.ack(7);
+        e.request(5, 8, &file[..256]);
+        e.nak(8, SYSEX_NOT_ART);
+        assert!(e.hooks.writing.is_empty(), "{what}: no program owner");
+        assert_eq!(e.rig.sim.progs, programs, "{what}: programmed");
+        assert_eq!(e.rig.stats().pool, pool, "{what}: claimed");
+        assert!(e.rig.file(name).is_none(), "{what}");
+    }
+    e.request(4, 9, &typed_metadata(name, &pack[..200], STORE_FILE_ART));
+    e.nak(9, SYSEX_NOT_ART);
+    e.request(4, 10, &typed_metadata(name, &pack, STORE_FILE_SONG));
+    e.nak(10, SYSEX_MALFORMED);
+    e.request(4, 11, &typed_metadata("MY ART", &pack, STORE_FILE_ART));
+    e.nak(11, SYSEX_MALFORMED);
+    e.request(4, 12, &typed_metadata(name, &pack, STORE_FILE_ART));
+    e.ack(12);
+    e.request(5, 13, &pack[..64]);
+    e.nak(13, SYSEX_MALFORMED);
+    assert!(e.rig.file(name).is_none());
+    sent_art(&mut e, name, &pack, 20);
+    assert_eq!(e.rig.file(name), Some(pack.clone()));
+    assert_eq!(
+        u32::from(e.rig.file_open(name).unwrap().type_),
+        STORE_FILE_ART
+    );
+    let mut other = pack.clone();
+    other[16..30].copy_from_slice(b"SECOND PACK\0\0\0");
+    let n = other.len() - 4;
+    let crc = sidou_tests::scene_art::crc32(&other[..n]);
+    other[n..].copy_from_slice(&crc.to_le_bytes());
+    e.rig.maintain();
+    sent_art(&mut e, name, &other, 60);
+    assert_eq!(e.rig.file(name), Some(other), "a PUT replaces the one pack");
+    assert_eq!(
+        e.rig
+            .dir()
+            .iter()
+            .filter(|f| f.1 == STORE_FILE_ART as u8)
+            .count(),
+        1
+    );
+    e.rig.assert_clean();
+}
+
 #[test]
 fn a_sid_put_with_the_store_keys_used_up_answers_full_at_its_first_data() {
     let mut e = Engine::new(true);

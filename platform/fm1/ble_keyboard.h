@@ -9,8 +9,11 @@
 
 #define BLE_KEYBOARD_NAME BLE_NAME_MAX
 #define BLE_RECORD_VERSION_ON_OFF 1u
-#define BLE_RECORD_VERSION 2u
+#define BLE_RECORD_VERSION_UNBONDED 2u
+#define BLE_RECORD_VERSION 3u
 #define BLE_RECORD_BYTES_ON_OFF 8u
+#define BLE_BOND_LTK 1u
+#define BLE_BOND_AUTH 4u
 
 enum { BLE_MODE_OFF, BLE_MODE_ON, BLE_MODE_KEYBOARD, BLE_MODES };
 enum { BLE_ADDR_NONE, BLE_ADDR_PUBLIC, BLE_ADDR_RANDOM };
@@ -22,15 +25,26 @@ typedef struct {
 } ble_keyboard;
 
 typedef struct {
+    uint8_t has;
+    uint8_t ltk[16];
+    uint8_t rand[8];
+    uint8_t ediv[2];
+} ble_bond;
+
+typedef struct {
     uint8_t mode;
     uint8_t own[6];
     ble_keyboard keyboard;
+    ble_bond bond;
 } ble_setting_kept;
 
 #define BLE_RECORD_BYTES (1u + sizeof(ble_setting_kept))
+#define BLE_RECORD_BYTES_UNBONDED (BLE_RECORD_BYTES - sizeof(ble_bond))
 
 extern ble_setting_kept ble_radio_setting;
 void ble_setting_remember(const ble_keyboard* k);
+void ble_setting_bonded(void);
+void ble_setting_forget_bond(void);
 
 int ble_record_read(ble_setting_kept* out, const uint8_t* rec, uint32_t n);
 void ble_record_write(const ble_setting_kept* in, uint8_t* rec);

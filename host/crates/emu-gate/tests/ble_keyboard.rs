@@ -31,6 +31,13 @@ const ADDR_PUBLIC: u8 = 1;
 const RECORD_KEYBOARD: std::ops::Range<usize> = 8..14;
 const RECORD_TYPE: usize = 14;
 const RECORD_NAME: usize = 15;
+const RECORD_VERSION: u8 = 3;
+const RECORD_BOND: std::ops::Range<usize> = 32..59;
+const BOND_LTK: u8 = 1;
+const BOND_AUTH: u8 = 4;
+const FAKE_JUST_WORKS: u8 = 1;
+const FAKE_PASSKEY: u8 = 2;
+const NO_PASSKEY_TYPED_RIGHT: u32 = 999_999_999;
 const ROLE_NONE: u8 = 0;
 const ROLE_PERIPHERAL: u8 = 1;
 const ROLE_CENTRAL: u8 = 2;
@@ -290,20 +297,33 @@ fn a_keyboard_gone_releases_its_notes_says_lost_and_reconnects_by_itself() {
     assert_eq!(role(&mut m, &fw), ROLE_CENTRAL);
 }
 
-#[test]
-fn a_keyboard_that_asks_for_pairing_says_so_and_is_not_tried_again() {
-    let Some(fw) = fake_build("a keyboard that needs pairing") else {
-        return;
-    };
-    let mut m = keyboard_mode(&fw);
-    nearby(&mut m, &fw);
-    set(&mut m, &fw, "ble_fake_secure", 1);
-    open_devices(&mut m, &fw);
-    toasted(&mut m, &fw);
-    pick_the_korg(&mut m, &fw);
-    assert_eq!(toasted(&mut m, &fw), "NEEDS PAIRING");
-    m.run_ms(POPUP_GONE_MS);
-    assert_eq!(bluetooth_row(&mut m, &fw), "NEEDS PAIRING");
+fn read32(m: &mut Machine, fw: &Firmware, name: &str) -> u32 {
+    m.soc.read32(fw.symbol(name))
+}
+
+fn kept_bond(m: &mut Machine) -> Vec<u8> {
+    m.run_ms(SAVED_MS);
+    let rec = stored_value(&m.soc.flash.mem, RADIO_KEY).expect("the radio's record");
+    assert_eq!(rec[0], RECORD_VERSION, "a bonded record");
+    rec[RECORD_BOND].to_vec()
+}
+
+fn the_fakes_ltk(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
+    let at = fw.symbol("ble_fake_ltk");
+    (0..16).map(|i| m.soc.read8(at + i)).collect()
+}
+
+fn paired_with(fw: &Firmware, how: u8) -> Machine {
+    let mut m = keyboard_mode(fw);
+    nearby(&mut m, fw);
+    set(&mut m, fw, "ble_fake_secure", how);
+    open_devices(&mut m, fw);
+    toasted(&mut m, fw);
+    pick_the_korg(&mut m, fw);
+    m
+}
+
+fn assert_not_tried_again(m: &mut Machine, fw: &Firmware) {
     for _ in 0..NOT_RETRIED_MS / 10 {
         m.run_ms(10);
         let ll = m.soc.read8(fw.symbol("ble_fake_ll"));
@@ -313,6 +333,128 @@ fn a_keyboard_that_asks_for_pairing_says_so_and_is_not_tried_again() {
             m.ms()
         );
     }
+}
+
+fn away_and_back(m: &mut Machine, fw: &Firmware) {
+    set(m, fw, "ble_fake_away", 1);
+    m.run_ms(LINK_MS);
+    set(m, fw, "ble_fake_away", 0);
+    m.run_ms(LINK_MS);
+}
+
+#[test]
+fn a_keyboard_that_asks_for_pairing_pairs_connects_and_keeps_the_bond() {
+    let Some(fw) = fake_build("a Just Works keyboard") else {
+        return;
+    };
+    let mut m = paired_with(&fw, FAKE_JUST_WORKS);
+    assert_eq!(toasted(&mut m, &fw), format!("KEYBOARD {KORG_NAME}"));
+    assert_eq!(role(&mut m, &fw), ROLE_CENTRAL);
+    assert_eq!(read32(&mut m, &fw, "ble_fake_pairings"), 1);
+    let bond = kept_bond(&mut m);
+    assert_eq!(bond[0], BOND_LTK, "a Just Works bond, not authenticated");
+    assert_eq!(
+        bond[1..17],
+        the_fakes_ltk(&mut m, &fw),
+        "the keyboard's LTK"
+    );
+    away_and_back(&mut m, &fw);
+    assert_eq!(role(&mut m, &fw), ROLE_CENTRAL, "back after LOST");
+    assert_eq!(
+        (
+            read32(&mut m, &fw, "ble_fake_pairings"),
+            read32(&mut m, &fw, "ble_fake_encryptions")
+        ),
+        (1, 1),
+        "encrypted with the bond, not paired again"
+    );
+    let flash = m.soc.flash.mem.clone();
+    let mut m = power_on(&fw, &flash);
+    run_past_boot(&mut m, &fw);
+    nearby(&mut m, &fw);
+    set(&mut m, &fw, "ble_fake_secure", FAKE_JUST_WORKS);
+    set(&mut m, &fw, "ble_fake_bonded", 1);
+    let at = fw.symbol("ble_fake_ltk");
+    for (i, b) in bond[1..17].iter().enumerate() {
+        m.soc.write8(at + i as u32, *b);
+    }
+    m.run_ms(RADIO_STARTED_MS.saturating_sub(m.ms()) + LINK_MS);
+    assert_eq!(role(&mut m, &fw), ROLE_CENTRAL, "after a power cycle");
+    assert_eq!(
+        (
+            read32(&mut m, &fw, "ble_fake_pairings"),
+            read32(&mut m, &fw, "ble_fake_encryptions")
+        ),
+        (0, 1),
+        "the kept bond encrypts the link after the power cycle"
+    );
+}
+
+#[test]
+fn a_keyboard_that_lost_the_bond_is_paired_again_once_then_needs_pairing() {
+    let Some(fw) = fake_build("a stale bond") else {
+        return;
+    };
+    let mut m = paired_with(&fw, FAKE_JUST_WORKS);
+    let first = kept_bond(&mut m);
+    toasted(&mut m, &fw);
+    set(&mut m, &fw, "ble_fake_forgot", 1);
+    away_and_back(&mut m, &fw);
+    m.run_ms(LINK_MS);
+    assert_eq!(role(&mut m, &fw), ROLE_CENTRAL, "paired again");
+    assert_eq!(read32(&mut m, &fw, "ble_fake_pairings"), 2);
+    let second = kept_bond(&mut m);
+    assert_ne!(first[1..17], second[1..17], "the new bond kept");
+    toasted(&mut m, &fw);
+    set(&mut m, &fw, "ble_fake_forgot", 1);
+    set(&mut m, &fw, "ble_fake_secure", FAKE_PASSKEY);
+    m.soc
+        .write32(fw.symbol("ble_fake_typed"), NO_PASSKEY_TYPED_RIGHT);
+    away_and_back(&mut m, &fw);
+    m.run_ms(3 * LINK_MS);
+    assert_eq!(read32(&mut m, &fw, "ble_fake_pairings"), 2, "no third bond");
+    assert_eq!(toasted(&mut m, &fw), "NEEDS PAIRING");
+    assert_eq!(bluetooth_row(&mut m, &fw), "NEEDS PAIRING");
+    assert_not_tried_again(&mut m, &fw);
+}
+
+#[test]
+fn a_keyboard_that_needs_a_passkey_shows_it_large_and_pairs_once_it_is_typed() {
+    let Some(fw) = fake_build("a passkey keyboard") else {
+        return;
+    };
+    let mut m = paired_with(&fw, FAKE_PASSKEY);
+    m.run_ms(LINK_MS);
+    let shown = read32(&mut m, &fw, "ble_fake_shown");
+    assert!(shown < 1_000_000, "a passkey waits: {shown:#x}");
+    assert_eq!(toasted(&mut m, &fw), format!("PASSKEY {shown:06}"));
+    assert_eq!(
+        role(&mut m, &fw),
+        ROLE_CENTRAL,
+        "the link waits for the passkey"
+    );
+    m.run_ms(NOT_RETRIED_MS);
+    m.soc.write32(fw.symbol("ble_fake_typed"), shown);
+    m.run_ms(LINK_MS);
+    assert_eq!(toasted(&mut m, &fw), format!("KEYBOARD {KORG_NAME}"));
+    let bond = kept_bond(&mut m);
+    assert_eq!(bond[0], BOND_LTK | BOND_AUTH, "an authenticated bond");
+}
+
+#[test]
+fn a_passkey_typed_wrong_says_needs_pairing_and_is_not_tried_again() {
+    let Some(fw) = fake_build("a passkey typed wrong") else {
+        return;
+    };
+    let mut m = paired_with(&fw, FAKE_PASSKEY);
+    m.run_ms(LINK_MS);
+    let shown = read32(&mut m, &fw, "ble_fake_shown");
+    toasted(&mut m, &fw);
+    m.soc
+        .write32(fw.symbol("ble_fake_typed"), (shown + 1) % 1_000_000);
+    m.run_ms(LINK_MS);
+    assert_eq!(toasted(&mut m, &fw), "NEEDS PAIRING");
+    assert_not_tried_again(&mut m, &fw);
 }
 
 #[test]

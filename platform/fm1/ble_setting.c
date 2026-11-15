@@ -90,7 +90,19 @@ void ble_radio_set(void* ctx, int mode) {
 
 void ble_setting_remember(const ble_keyboard* k) {
     ble_radio_setting.keyboard = *k;
+    ble_radio_setting.bond.has = 0;
     ble_radio_changed();
+}
+
+void ble_setting_bonded(void) {
+    ble_radio_changed();
+}
+
+void ble_setting_forget_bond(void) {
+    if (ble_radio_setting.bond.has) {
+        ble_radio_setting.bond.has = 0;
+        ble_radio_changed();
+    }
 }
 
 #define BLE_REPORT_HEX "0123456789ABCDEF"

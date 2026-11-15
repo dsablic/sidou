@@ -1737,10 +1737,18 @@ int store_file_open(const store* s, const char* name, store_file* f) {
     return STORE_OK;
 }
 
-int store_file_read(const store* s, const store_file* f, uint32_t off, void* p, uint32_t n) {
+int store_file_same(const store* s, const store_file* f) {
     const store_key* e = writable(s) ? find_c(s, f->key) : 0;
     const uint8_t* rec = e ? at(s, e->sec, e->off) : 0;
-    if (!rec || rec[0] != STORE_TYPE_FILE || rd32(file_data(rec)) != f->fid) {
+    return rec && rec[0] == STORE_TYPE_FILE && rd32(file_data(rec)) == f->fid;
+}
+
+const uint8_t* store_file_page(const store* s, const store_file* f, uint32_t i) {
+    return at(s, f->sectors[i / 3u], chunk_off(i) + STORE_REC_HEADER);
+}
+
+int store_file_read(const store* s, const store_file* f, uint32_t off, void* p, uint32_t n) {
+    if (!store_file_same(s, f)) {
         return STORE_NOT_FOUND;
     }
     if (off >= f->length) {
@@ -1752,7 +1760,7 @@ int store_file_read(const store* s, const store_file* f, uint32_t off, void* p, 
         uint32_t i = (off + done) / STORE_CHUNK, o = (off + done) % STORE_CHUNK;
         uint32_t k = chunk_len(f->length, i) - o;
         k = k > n - done ? n - done : k;
-        memcpy(out + done, at(s, f->sectors[i / 3u], chunk_off(i) + STORE_REC_HEADER + o), k);
+        memcpy(out + done, store_file_page(s, f, i) + o, k);
         done += k;
     }
     return (int)n;
