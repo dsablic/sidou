@@ -4392,6 +4392,26 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   border; not while the boot shows, which nothing draws over. A control's own popup says what it
   changed: no toast then.
 
+### The views' files
+
+- `app/views.c` is the router: init, the setters, `views_flow` (boot, HOME, the first-run tour),
+  `views_buttons`, `views_note_keys`, `views_encoder`, `views_frame`, `views_update`,
+  `views_leds`, the menu's rows and the SAVE and GLO gestures. The pages and the popup's words
+  live beside it and share internals through `app/views_int.h`, the way `live_int.h` does for
+  `live.c`: `views_menu.c` (the home menu's input and drawing, and `views_big_menu_compose`,
+  which SETTINGS and MIDI reuse), `views_status.c` (STATUS and the `views_look` snapshot the
+  menu and STATUS compare each frame), `views_settings.c` (SETTINGS' rows and page),
+  `views_midi.c` (the MIDI page's rows and page), `views_song_menu.c` (the song menu's pages,
+  canvas drawing and load/new/save/delete steps, `song_refused`) and `views_popup.c` (the
+  popup's name, value and bar for every control and menu row).
+- Code the router calls from one place stays in `views.c`, where it was inlined before the
+  split (`settings_save`, the format and reset steps, `song_step`): across files the toolchain
+  cannot inline, and those calls cost 60 to 130 bytes. `song_state` and `views_octave_text` are
+  `static inline` in the header for the same reason. `views_song_menu.c` and `views_popup.c` are
+  built at `-Oz` and the other new files at `-Os` like `views.c`; the image is 16 bytes smaller
+  than before the split (577,136 against 577,152; `.text` 528,912 against 528,928; RAMTEXT
+  44,864 unchanged), and the popup's input budgets in `screen.rs` still pass.
+
 ### SPI and frame budgets
 
 - A frame's SPI is priced as the panel's bus runs: SPI1 at 60 MHz / (4 + 1) = 12 MHz
