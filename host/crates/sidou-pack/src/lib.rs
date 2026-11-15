@@ -38,7 +38,7 @@ pub const DEFAULT_OPTIONS: [(&str, &str); 11] = [
     ("SIDOU_BLE", "ON"),
     ("CMAKE_BUILD_TYPE", "Release"),
 ];
-pub const ABSENT_WHEN_OFF: [(&str, &str); 2] = [("SIDOU_BLE_CENTRAL", "0"), ("SIDOU_CPU2", "OFF")];
+pub const ABSENT_WHEN_OFF: [(&str, &str); 2] = [("SIDOU_BLE_FAKE", "OFF"), ("SIDOU_CPU2", "OFF")];
 
 const LOADER_NAME: &[u8; 16] = b"usb_hid_ota.bin\0";
 const UFW_CHIP: &[u8] = b"AC791N";

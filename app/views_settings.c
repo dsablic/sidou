@@ -154,16 +154,42 @@ static void sid_model_turn(void* ctx, int32_t steps) {
     }
 }
 
+static const char* const BLUETOOTH_MODES[VIEWS_RADIO_MODES] = {"OFF", "ON", "KEYBOARD"};
+static char bluetooth_row[VIEWS_DEVICE_LINE + 1u] = "BLUETOOTH";
+
+const char* views_bluetooth_mode(const views* v) {
+    return BLUETOOTH_MODES[v->radio->mode(v->radio->ctx)];
+}
+
+static uint32_t bluetooth_look(const views* v) {
+    if (!v->radio) {
+        return 0;
+    }
+    uint32_t mode = (uint32_t)v->radio->mode(v->radio->ctx);
+    const char* name = "";
+    uint32_t state = mode == VIEWS_RADIO_KEYBOARD ? v->radio->keyboard(v->radio->ctx, &name) : 0u;
+    static const char* const ROWS[] = {"KEYBOARD NONE", "LOOKING", "", "NEEDS PAIRING"};
+    views_join(bluetooth_row, sizeof bluetooth_row,
+               mode != VIEWS_RADIO_KEYBOARD ? "BLUETOOTH" : ROWS[state],
+               state == VIEWS_KEYBOARD_CONNECTED ? name : "");
+    return mode << 4 | state;
+}
+
 static void bluetooth_value(void* ctx, char* buf) {
     const views* v = ctx;
-    views_join(buf, MENU_VALUE_CHARS, !v->radio ? "-" : v->radio->on(v->radio->ctx) ? "ON" : "OFF", "");
+    int mode = v->radio ? v->radio->mode(v->radio->ctx) : VIEWS_RADIO_KEYBOARD;
+    views_join(buf, MENU_VALUE_CHARS, mode == VIEWS_RADIO_KEYBOARD ? "" : BLUETOOTH_MODES[mode],
+               "");
 }
 
 static void bluetooth_turn(void* ctx, int32_t steps) {
     views* v = ctx;
-    if (steps != 0 && v->radio) {
-        v->radio->set(v->radio->ctx, steps > 0);
+    if (steps == 0 || !v->radio) {
+        return;
     }
+    int32_t mode = v->radio->mode(v->radio->ctx) + (steps > 0 ? 1 : -1);
+    int32_t last = VIEWS_RADIO_MODES - 1;
+    v->radio->set(v->radio->ctx, mode < 0 ? VIEWS_RADIO_OFF : mode > last ? last : mode);
 }
 
 const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS + 1u] = {
@@ -173,7 +199,7 @@ const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS + 1u] = {
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
     {"SID MODEL", sid_model_value, sid_model_turn},
     {"RESET", reset_value, NULL},
-    {"BLUETOOTH", bluetooth_value, bluetooth_turn},
+    {bluetooth_row, bluetooth_value, bluetooth_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_STORE == 3u &&
@@ -198,6 +224,7 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[9] = v->setup.top;
     out[10] = v->format_arm;
     out[11] = v->set ? v->set->sid_model : 0xffu;
+    out[12] = (uint8_t)bluetooth_look(v);
 }
 
 static int settings_input(screen* s, void* state, const screen_event* e) {

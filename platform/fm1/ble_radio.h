@@ -16,21 +16,30 @@ enum {
     BLE_POWER_BYTES
 };
 
-extern volatile uint8_t ble_radio_wanted;
+enum {
+    BLE_KEYBOARD_NONE,
+    BLE_KEYBOARD_LOOKING,
+    BLE_KEYBOARD_CONNECTED,
+    BLE_KEYBOARD_PAIRING,
+    BLE_KEYBOARD_LOST
+};
+
 extern uint8_t ble_radio_awake;
-extern uint8_t ble_radio_addr[6];
 
 void ble_radio_poll(uint32_t now_ms);
 int ble_radio_take(uint32_t* pkt);
 int ble_radio_send(uint32_t pkt, uint32_t now_ms);
-void ble_radio_scan(int on);
-int ble_radio_on(void* ctx);
+int ble_radio_mode(void* ctx);
+uint32_t ble_radio_keyboard(void* ctx, const char** name);
+uint32_t ble_radio_devices(void* ctx, int fresh, const char** names, uint8_t* bars);
+void ble_radio_pick(void* ctx, uint32_t i);
+void ble_radio_tell(uint32_t event, const char* name);
 void ble_radio_report(void* ctx, char* buf);
 void ble_power_boot(void);
 void ble_setting_poll(uint32_t now_ms);
 int ble_setting_pending(void);
 void ble_setting_starting(void);
 void ble_setting_started(void);
-void ble_radio_set(void* ctx, int on);
+void ble_radio_set(void* ctx, int mode);
 
 #endif

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod about;
+mod ble_keyboard;
 mod boot;
 mod bootguard;
 mod chip_mix;
@@ -88,6 +89,7 @@ mod ui_sound;
 mod user_profile;
 mod user_sound;
 mod views;
+mod views_bluetooth;
 mod widget;
 
 use std::ffi::{c_char, c_void, CStr};

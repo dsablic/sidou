@@ -54,12 +54,14 @@ void views_big_menu_compose(screen* s, views* v, menu* m, const char* title, gri
     }
     if (parts & MENU_PART_TITLE) {
         char head[MENU_CHARS + 1u];
-        char pos[8];
+        char pos[8] = "";
         char num[4];
-        views_number_text(num, m->cursor + 1u);
-        views_join(pos, sizeof pos, num, "/");
-        views_number_text(num, m->count);
-        views_append(pos, sizeof pos, num);
+        if (m->count) {
+            views_number_text(num, m->cursor + 1u);
+            views_join(pos, sizeof pos, num, "/");
+            views_number_text(num, m->count);
+            views_append(pos, sizeof pos, num);
+        }
         views_join(head, sizeof head, title, "");
         uint32_t n = grid_text_length(head);
         while (n < sizeof head - 1u - grid_text_length(pos)) {

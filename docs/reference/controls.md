@@ -1385,13 +1385,37 @@ setup; **KEYS** plays every tune on the keys' setup (the chip, profile and chara
 have). ALGORITHM clockwise is KEYS, counter-clockwise AUTO; it counts from the next tune that
 loads (or restarts), and is saved with the settings (schema 7).
 
-SETTINGS' last item, after RESET, is **BLUETOOTH**: **OFF** (the default) or **ON**,
-ALGORITHM clockwise ON, counter-clockwise OFF. ON starts the radio (3 s after power-on at the
-earliest) and SIDOU advertises as `SIDOU XXXX` for a Mac, an iPad or a phone to connect to
-(Bluetooth MIDI, no pairing); OFF stops advertising and drops a link (held notes are released).
-The setting and SIDOU's Bluetooth address are kept in the store (key `0x10A`) two seconds after
-the change, so a computer finds the same SIDOU after a power cycle. With BLUETOOTH OFF the radio
-never starts. Connecting out to a Bluetooth keyboard comes in a later release.
+SETTINGS' last item, after RESET, is **BLUETOOTH**: **OFF** (the default), **ON** or
+**KEYBOARD**, a detent of ALGORITHM a step (clockwise toward KEYBOARD); the popup reads
+BLUETOOTH and the mode. With BLUETOOTH OFF the radio never starts; ON or KEYBOARD starts it, 3 s
+after power-on at the earliest. One Bluetooth link at a time, no pairing.
+
+- **ON**: SIDOU advertises as `SIDOU XXXX` for a Mac, an iPad or a phone to connect to
+  (Bluetooth MIDI). OFF stops advertising and drops a link (held notes are released).
+- **KEYBOARD**: SIDOU connects out to a Bluetooth MIDI keyboard or controller and is not
+  visible to computers (a computer's link drops when KEYBOARD is chosen). The row says where it
+  is: **KEYBOARD NONE** (none picked yet), **LOOKING** (picked, not connected: SIDOU waits for
+  it to advertise and connects, however long that takes), the keyboard's name (connected, cut
+  to fit), or **NEEDS PAIRING** (it asked for security, which SIDOU does not do: SIDOU stops
+  trying until a keyboard is picked in DEVICES, the mode changes or the power is cycled).
+- **DEVICES**: **SAVE** on the row while it is KEYBOARD opens it. It lists up to 8 nearby
+  devices that advertise Bluetooth MIDI, in the order they were first heard, each with its name
+  (cut to 10 characters; a device without one shows `MIDI` and the last four hex digits of its
+  address) and three signal bars, strongest relative to the others. It scans while it is open
+  (any keyboard connected is let go for it): **SCANNING** until a device is heard, **NO
+  KEYBOARDS FOUND** after 8 seconds of nothing. SELECT or ALGORITHM moves; **SAVE** connects to
+  the chosen one, remembers it and goes back to SETTINGS (an empty list: SAVE scans again);
+  **HOME** goes back with nothing changed.
+- **Playing**: the keyboard is one more MIDI input, through the same parser and routing as USB
+  and TRS (channels, MIDI learn, the clock).
+- **Toasts**: **KEYBOARD** and its name when it connects, **KEYBOARD LOST** when the link goes
+  (held notes are released and SIDOU looks for it again), **NEEDS PAIRING** when it refuses a
+  link without pairing.
+
+The mode, the remembered keyboard and SIDOU's Bluetooth address are kept in the store (key
+`0x10A`) two seconds after a change, so a computer finds the same SIDOU after a power cycle and,
+with KEYBOARD, SIDOU looks for its keyboard after power-on until it connects. A setting kept by
+1.9 or 1.10 reads as OFF or ON with no keyboard.
 
 SETTINGS' **RESET** puts everything that is not a song back to factory: every
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting

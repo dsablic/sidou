@@ -4,11 +4,12 @@
 mod common;
 
 use common::panel::{press, ALGORITHM, HOME};
+use common::radio::{held, power_on};
 use common::{
     firmware, put_value, settled_flash, stored_value, Firmware, Machine, REGION_FREE_MIN,
 };
 use fm1_core::Bus;
-use sidou_sys::{ilp32, LIVE_VOICES, VIEWS_SETTINGS_BLUETOOTH};
+use sidou_sys::VIEWS_SETTINGS_BLUETOOTH;
 
 const C4: u8 = 60;
 const NOINIT: std::ops::Range<u32> = 0x01C7_C000..0x01C7_FD50;
@@ -34,24 +35,15 @@ const BOOT_LOADER_SYSVDD: u8 = 11;
 const DCDC13_EN: u8 = 0x08;
 const STOCK_DCDC_TUNE: u8 = 0xA5;
 const START_MARK: u32 = 0x4254_5354;
+const RECORD_VERSION: u8 = 2;
+const OWN_AT: u32 = 1;
+const RECORD_OWN: std::ops::Range<usize> = 2..8;
 
 fn section(fw: &Firmware, name: &str) -> (u32, u64) {
     use object::{Object, ObjectSection};
     let file = object::File::parse(&*fw.elf).expect("the firmware ELF");
     file.section_by_name(name)
         .map_or((0, 0), |s| (s.address() as u32, s.size()))
-}
-
-fn held(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
-    let voices = fw.symbol("instrument") + ilp32::live::voice as u32;
-    let mut notes = Vec::new();
-    for i in 0..LIVE_VOICES {
-        let v = voices + i * ilp32::live_voice::SIZE as u32;
-        if m.soc.read8(v + ilp32::live_voice::gate as u32) != 0 {
-            notes.push(m.soc.read8(v + ilp32::live_voice::note as u32));
-        }
-    }
-    notes
 }
 
 fn from_the_air(m: &mut Machine, fw: &Firmware, pkt: u32) {
@@ -73,7 +65,14 @@ fn the_stack_lives_in_noinit_and_the_ram_region_keeps_its_floor() {
     };
     let (lo, hi) = (fw.symbol("_ble_noinit_start"), fw.symbol("_ble_noinit_end"));
     assert!(NOINIT.contains(&lo) && hi <= NOINIT.end && hi > lo);
-    for ring in ["ble_radio_in", "ble_radio_out", "in_ring"] {
+    for ring in [
+        "ble_radio_in",
+        "ble_radio_out",
+        "ble_radio_found",
+        "ble_radio_listed",
+        "ble_radio_peer",
+        "in_ring",
+    ] {
         let at = fw.symbol(ring);
         assert!(NOINIT.contains(&at), "{ring} at {at:#x}, outside NOINIT");
     }
@@ -110,12 +109,6 @@ fn notes_from_the_air_play_and_a_dropped_link_releases_them() {
     );
 }
 
-fn power_on(fw: &Firmware, flash: &[u8]) -> Machine {
-    let mut m = Machine::boot_blank(&fw.image);
-    m.soc.flash.mem.copy_from_slice(flash);
-    m
-}
-
 #[test]
 fn bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly() {
     let Some(fw) = firmware("the Bluetooth test") else {
@@ -144,7 +137,7 @@ fn bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_bri
         "BLUETOOTH ON did not start the radio"
     );
     let addr: Vec<u8> = (0..6)
-        .map(|i| m.soc.read8(fw.symbol("ble_radio_addr") + i))
+        .map(|i| m.soc.read8(fw.symbol("ble_radio_setting") + OWN_AT + i))
         .collect();
     assert_eq!(addr, ADDRESS, "the kept address");
     let hold = *m.watched_calls.iter().max().expect("the poll ran") as f64 / CPU_HZ * 1e3;
@@ -168,8 +161,12 @@ fn bluetooth_set_on_is_saved_with_an_address_and_off_stops_advertising() {
     m.turn(ALGORITHM, 1);
     m.run_ms(START_AFTER_MS + 2500);
     let rec = stored_value(&m.soc.flash.mem, RADIO_KEY).expect("the radio's record");
-    assert_eq!(rec[..2], [1, 1], "version 1, ON");
-    assert_eq!(rec[7] & 0xC0, 0xC0, "a random static address: {rec:02x?}");
+    assert_eq!(rec[..2], [RECORD_VERSION, 1], "ON");
+    assert_eq!(
+        rec[RECORD_OWN.end - 1] & 0xC0,
+        0xC0,
+        "a random static address: {rec:02x?}"
+    );
     m.turn(ALGORITHM, -1);
     m.run_ms(200);
     assert_ne!(
@@ -309,8 +306,8 @@ fn a_reset_during_the_radio_start_boots_with_bluetooth_off() {
     let rec = stored_value(&m.soc.flash.mem, RADIO_KEY).expect("the radio's record");
     assert_eq!(
         rec[..2],
-        [1, 0],
+        [RECORD_VERSION, 0],
         "BLUETOOTH saved OFF after the start that reset"
     );
-    assert_eq!(rec[2..], ADDRESS, "the address kept");
+    assert_eq!(rec[RECORD_OWN], ADDRESS, "the address kept");
 }

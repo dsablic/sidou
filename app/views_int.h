@@ -54,6 +54,7 @@ void views_number_text(char* buf, uint32_t n);
 void views_sound(views* v, ui_sound_id id);
 const view* views_shows(const views* v);
 int curtain(const views* v);
+const char* views_bluetooth_mode(const views* v);
 void views_big_menu_compose(screen* s, views* v, menu* m, const char* title, grid* g, uint32_t parts);
 
 void views_look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]);

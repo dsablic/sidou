@@ -64,13 +64,27 @@ extern "C" {
 #define VIEWS_SETTINGS_SID_MODEL 7u
 #define VIEWS_SETTINGS_RESET 8u
 #define VIEWS_SETTINGS_BLUETOOTH 9u
-#define VIEWS_SETTINGS_LOOK 12u
+#define VIEWS_SETTINGS_LOOK 13u
+#define VIEWS_DEVICES 8u
+#define VIEWS_DEVICE_LINE 14u
+
+enum { VIEWS_RADIO_OFF, VIEWS_RADIO_ON, VIEWS_RADIO_KEYBOARD, VIEWS_RADIO_MODES };
+enum {
+    VIEWS_KEYBOARD_NONE,
+    VIEWS_KEYBOARD_LOOKING,
+    VIEWS_KEYBOARD_CONNECTED,
+    VIEWS_KEYBOARD_PAIRING,
+    VIEWS_KEYBOARD_LOST
+};
 
 typedef struct {
     void* ctx;
-    int (*on)(void* ctx);
-    void (*set)(void* ctx, int on);
+    int (*mode)(void* ctx);
+    void (*set)(void* ctx, int mode);
     void (*report)(void* ctx, char* buf);
+    uint32_t (*keyboard)(void* ctx, const char** name);
+    uint32_t (*devices)(void* ctx, int fresh, const char** names, uint8_t* bars);
+    void (*pick)(void* ctx, uint32_t i);
 } views_radio;
 #define VIEWS_MIDI_ITEMS 10u
 #define VIEWS_MIDI_LOOK 14u
@@ -146,6 +160,12 @@ typedef struct {
     uint8_t tune_drawn[SID_VIEW_STATUS_LOOK];
     user_sounds sounds;
     lab_view lab;
+    menu devices;
+    menu_item device_items[VIEWS_DEVICES];
+    char device_lines[VIEWS_DEVICES][VIEWS_DEVICE_LINE + 1u];
+    uint32_t devices_at;
+    uint8_t devices_fresh;
+    uint8_t devices_empty;
 } views;
 
 extern const view views_status;
@@ -154,6 +174,7 @@ extern const view views_charset;
 extern const view views_midi;
 extern const view views_settings_view;
 extern const view views_song_menu_view;
+extern const view views_devices_view;
 
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
 void views_song_loaded(views* v);
@@ -174,6 +195,9 @@ void views_song_io(views* v, song_io* io);
 void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed);
 void views_settings(views* v, settings* set);
 void views_radio_bind(views* v, const views_radio* radio);
+void views_devices_open(views* v);
+void views_devices_save(views* v);
+void views_keyboard_event(views* v, uint32_t event, const char* name);
 void views_sounds(views* v, store* st);
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);

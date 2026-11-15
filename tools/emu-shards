@@ -12,7 +12,8 @@ reports), the longest first into the lightest group, a test that spreads over ev
 for each core it takes; every other emulator test goes into the REST shards by slice (every Nth
 test of the whole list). Deal them again when the times change much. The cpu2 shard runs the
 default build's gates that the two-core image (-DSIDOU_CPU2=ON) must pass too, CPU2_GATES, with
-SIDOU_FM1_BUILD pointing at that image (check.yml, tools/merge-check).
+SIDOU_FM1_BUILD pointing at that image (check.yml, tools/merge-check); their checks of the
+image's size against the ceiling are deferred to 2.0 for it (flash_plan::assert_fits).
 """
 
 GROUPS = [

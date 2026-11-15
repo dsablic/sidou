@@ -5,7 +5,7 @@ mod common;
 mod flash_plan;
 
 use common::build_dir;
-use flash_plan::{IMAGE_CEILING, PLAN};
+use flash_plan::{assert_fits, IMAGE_CEILING, PLAN};
 
 const APP_SLOT: usize = 0x8DFBC;
 const SLOT_RESERVE: usize = 2_048;
@@ -18,15 +18,12 @@ fn the_image_fits_the_ceiling_of_its_plan() {
         return;
     };
     let image = build.join("platform/fm1/sidou_app.bin");
-    let size = std::fs::metadata(&image)
-        .unwrap_or_else(|e| panic!("{}: {e}; build the fm1 preset", image.display()))
-        .len() as usize;
+    let bytes = std::fs::read(&image)
+        .unwrap_or_else(|e| panic!("{}: {e}; build the fm1 preset", image.display()));
+    let size = bytes.len();
     println!(
         "image {size} bytes, {PLAN}'s ceiling {IMAGE_CEILING} ({} left), the slot {APP_SLOT}",
         IMAGE_CEILING as i64 - size as i64
     );
-    assert!(
-        size <= IMAGE_CEILING,
-        "sidou_app.bin is {size} bytes, over {PLAN}'s ceiling of {IMAGE_CEILING}"
-    );
+    assert_fits("sidou_app.bin", &bytes);
 }

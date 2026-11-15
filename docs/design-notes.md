@@ -471,13 +471,72 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   releases every held note and restarts only the Bluetooth parser; SIDOU's SysEx protocol stays on
   USB and TRS, and a Bluetooth break aborts neither. The port costs the default image 160 bytes
   and the RAM region 128.
-- **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` is 0, so the central's
+- **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` was 0, so the central's
   scan table, client and DEVICES code are not built. The image with Bluetooth and its SETTINGS row
   is 578,016 bytes, 1,500 under the ceiling.
 - **What connecting out costs** (measured 2026-11-15 on the 1.11 room's image, 569,744 bytes):
   `SIDOU_BLE_CENTRAL` 3 (no pairing) adds 7,408 bytes and 1 (with pairing) 12,920, with
   `ble_radio_scan` kept by the linker (`-u`) as the DEVICES page will keep it; the page itself is
   not in that (about 1-2 KB). RAMTEXT does not move.
+- **Connecting out (1.11, `connect-out`)**, built from [the design](plans/2026-11-15-bluetooth-connect-out-design.md)
+  the owner agreed: the central at level 3 (no pairing) in the one build; `SIDOU_BLE_CENTRAL` is
+  no longer an option, as level 1 cannot fit and 0 would be a second product. The default image
+  is 579,232 bytes, 284 under the ceiling: the stack 7,408, SIDOU's side (the glue, the record,
+  the row, DEVICES, the toasts) 2,080. The first draft was 579,536, 20 over; 224 bytes came from
+  the record written as the setting's bytes as they lie (a version byte, then
+  `ble_setting_kept`, all bytes) instead of field by field, the page composed every frame it
+  shows instead of comparing its lines (the menu's own cell diff sends only what changed) and a
+  static peer for the connect, and 80 more from one setting struct for the mode, the address and
+  the keyboard. The signal bars (about 190 bytes with the stack's `ble_scan_bars`)
+  were the next to go and stayed. RAMTEXT is 44,864, unchanged; the RAM region has 6,932 bytes
+  free (the views' DEVICES menu and lines, 260 bytes), NOINIT 7,632 (the scan table, the listed
+  keyboards and the peer, beside the rings, zeroed with them at the radio's start).
+- **The mode** is one byte, OFF / ON / KEYBOARD, followed with one sequence whenever it changes:
+  the central let go (`ble_central_cancel`), the scan wish set for KEYBOARD, the radio off and on
+  (`ble_enable(0)` then `(1)` unless OFF). The stack's link layer scans instead of advertising
+  whenever the wish is on and no link is up, and goes back to it after a link ends, so KEYBOARD
+  never advertises and a computer's link drops when KEYBOARD comes. The radio's first enable
+  stays inside the start's guarded part (the start mark), as before.
+- **Looking for the keyboard is initiating to its address** (`ble_central_connect` while the
+  central is idle, KEYBOARD, a keyboard kept, not refused, DEVICES not open). The stack's
+  initiator waits for that address's advertisement for as long as it takes and connects on it,
+  which is what scanning for it and then connecting would do, in one step and without feeding the
+  scan table; no pairing means no resolvable private address to resolve, so the address it
+  advertised when picked is the one waited for. A device check (§38) shows whether the microKEY
+  Air keeps its address.
+- **Events from the central's state**: the glue compares `ble_central_state` each poll with the
+  last it saw. READY is `KEYBOARD <name>`; IDLE after READY is `KEYBOARD LOST` (held notes are
+  released by the link watch as for the peripheral); IDLE with `ble_central_fail` NEED_PAIR is
+  `NEEDS PAIRING`, and the keyboard is not tried again until it is picked, the mode changes or
+  the power is cycled, so a keyboard that refuses never loops. A link SIDOU lets go (DEVICES
+  opened, the mode changed) clears the "was up" flag first, so it is not called lost. Toasts go
+  from the glue to `ui.c` (`ble_radio_tell`) and the views' `views_keyboard_event`, so
+  `views_frame` gains nothing.
+- **DEVICES browses while it reads**: the page asks the radio for its list each frame it is
+  composed; the radio counts itself browsing for 500 ms after the last read, feeds the scan
+  table only then (the reports are drained and dropped otherwise), and does not look for the
+  keyboard while browsing. The page's first read clears the table and lets a connected keyboard
+  go, as the stack cannot scan with a link up. No exit hook is needed: HOME, a pick or anything
+  that covers the page ends the reads. The page scans for as long as it is open, not 8 s as
+  first written: with KEYBOARD a stopped scan would advertise; after 8 s with nothing heard it
+  says `NO KEYBOARDS FOUND`, and a keyboard switched on later still appears.
+- **The row** has 14 large characters, so `BLUETOOTH` (9) leaves 4 for a value: OFF and ON fit,
+  KEYBOARD's states do not. In KEYBOARD the row's whole text is the state: `KEYBOARD NONE`,
+  `LOOKING`, the keyboard's name (cut to 14) or `NEEDS PAIRING`; the popup always says BLUETOOTH
+  and the mode (OFF, ON, KEYBOARD) as a detent changes it. The design's `KEYBOARD LOOKING` and
+  `KEYBOARD <name>` (16 and up to 25) cannot fit a row. DEVICES' lines are the name cut to 10, a
+  space and three bars (`FONT_V2`, `V5`, `V8` lit, `V1` unlit); a device that advertises no name
+  shows `MIDI` and its address's last four hex digits.
+- **The fake radio** (`-DSIDOU_BLE_FAKE=ON`, `ble_radio_fake.c`) replaces only what fm1-emu
+  cannot run: the driver and the link layer, host and client. It answers the calls the glue
+  makes (`ble_init`, `ble_enable`, `ble_ll_scan`, `ble_ll_scan_take`, the central's connect,
+  cancel, state and fail, `ble_connected`, `ble_midi_ready`) with the link layer's rules (scan
+  instead of advertising while wished, a link's end asynchronous, the central's LOST and
+  NEED_PAIR as `ble_central.c` sets them) and calls the glue's callbacks as the stack does
+  (`ble_app_state` on every link change, `ble_app_midi_in` through the vendored BLE-MIDI decoder
+  as `ble_att.c` does). The scan table and its listing are the vendored `ble_scan.c`. emu-gate
+  writes the air into symbols: advertising PDUs, a keyboard gone, one asking for security, a
+  computer, a BLE-MIDI packet. The glue's own code is the same in both builds.
 - **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with the
   radio: `views_radio_bind` hands the views the radio's hooks and adds the item. The setting and
   SIDOU's random static address are their own store record (key `0x10A`), not the settings
@@ -646,6 +705,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
   (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
   Players see nothing: no menu entry, no setting.
+- **The ON image's size gate is deferred to 2.0** (the owner, 2026-11-15). With Bluetooth
+  connecting out the ON image is 581,120 bytes, 1,604 over the 579,516 ceiling: the second core
+  adds about 1,890 bytes and the default image has 284 to spare. The cpu2 shard still runs every
+  gate it ran on the ON image, but `flash_budget.rs` and `psid_budget.rs`'s check of the image's
+  size against the ceiling print the overrun and pass for an image whose option record names
+  `SIDOU_CPU2=ON` (`flash_plan::assert_fits`, `SIZE_DEFERRED_TO`). The default image's size
+  gates are unchanged. 2.0 finds the room before turning it on: more hot/cold splits, or SCENE's
+  RED MOON RITE art moved into the store (the owner's reserve, with the owner's yes).
 - **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
   core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
   chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).

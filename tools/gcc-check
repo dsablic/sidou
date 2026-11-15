@@ -27,6 +27,9 @@ done
 # shellcheck disable=SC2086
 gcc $cflags -DSID_TEST_ZERO_VOICE -c core/sid/sid.c -o /dev/null
 
+# shellcheck disable=SC2086
+gcc $cflags -Iplatform/fm1 -Ithird_party/fm1-base-ble -c platform/fm1/ble_keyboard.c -o /dev/null
+
 gt=third_party/goattracker2/src; shim=host/crates/gt2-ref/shim
 for f in gt2ref_shim.c gt2ref_asm.c gt2ref.c; do
     gcc -O3 -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Werror \

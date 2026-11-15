@@ -10,6 +10,7 @@ pub const PAL_CYCLES_PER_FRAME: u32 = 19_705;
 pub mod alignment;
 pub mod band_energy;
 pub mod bitmap_codec;
+pub mod ble_adverts;
 pub mod c_program;
 pub mod credits;
 pub mod filter_limits;

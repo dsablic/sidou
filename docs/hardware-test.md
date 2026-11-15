@@ -3078,6 +3078,65 @@ adapter.
   that was not before. *Emulator:* `keys.rs`, `latency.rs`, `boot.rs`. *Result:* Not run as a
   step (skipped by the owner's call 2026-11-15); the emulator's tests pass.
 
+## 38. 1.11: Bluetooth connecting out to a keyboard
+
+What it decides: whether SIDOU connecting out to a Bluetooth MIDI keyboard (BLUETOOTH's
+KEYBOARD, DEVICES, the toasts; the stack's central without pairing) is ready to ship, and
+whether the radio driver at `-Oz` (since the flash find, untried on the device) still runs the
+peripheral. The default image is 579,232 bytes, 284 under the 579,516 ceiling. fm1-emu has no
+radio: the emulator gate runs these flows on a fake radio (`ble_keyboard.rs` on
+`build/fm1-blefake`), so here the radio itself is checked. Every item waits for the owner's yes
+for that step: nothing is flashed, connected or scanned before it. README, the demo page, the
+cheat sheet and `fmhub.json` name connecting to a keyboard only once this section passes.
+
+Set up:
+
+- **The build:** the default, from a fresh build directory, packaged as in §35 (`tools/preflash`
+  passes it: the option record is the default's).
+- **Installed over 1.10.0** with SIDOU's installer: the songs and settings are kept; a 1.10
+  BLUETOOTH ON or OFF stays as it was. *Emulator:* `package.rs`;
+  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`
+  reads a 1.10 record.
+- **The owner's Korg microKEY Air**, charged, set to Bluetooth (its power switch at the Bluetooth
+  position, the LED blinking until a link is up). **A Mac** with Audio MIDI Setup's Bluetooth
+  window, for the last items. Headphones on the line out.
+
+- [ ] **Find and connect the microKEY Air:** HOME, SETTINGS, SELECT to BLUETOOTH, ALGORITHM
+  clockwise until the popup says KEYBOARD; the row reads `KEYBOARD NONE`. SAVE: DEVICES opens,
+  `SCANNING`, then the microKEY Air within a few seconds, with signal bars (other BLE-MIDI devices
+  nearby may be listed too; nothing that is not BLE-MIDI). SELECT to it, SAVE: back on SETTINGS,
+  the toast `KEYBOARD microKEY Air` and the row shows its name; the keyboard's LED stops
+  blinking. Pass: as written, no reboot, the sound uninterrupted. If the toast says `NEEDS
+  PAIRING` instead, stop here: the keyboard insists on pairing (decision 0011's reason to add it),
+  and the remaining items wait. *Emulator:*
+  `ble_keyboard.rs::devices_lists_the_ble_midi_keyboards_heard_and_save_connects_and_keeps_the_chosen_one`,
+  `ble_keyboard.rs::a_keyboard_that_asks_for_pairing_says_so_and_is_not_tried_again`.
+- [ ] **Notes, knobs and clock:** play chords and fast runs, bend and modulate, turn the
+  microKEY Air's knobs (set to CC 74 and 71 if its editor allows; otherwise MIDI learn one: hold
+  SAVE, turn K1, turn the keyboard's knob). The microKEY Air sends no clock: the clock over
+  Bluetooth is checked from the Mac in the last item. Pass: every note sounds and stops, no stuck
+  note, the knobs move cutoff and resonance smoothly, no audio click while playing. *Emulator:*
+  `ble_keyboard.rs::the_keyboards_notes_and_ccs_play_as_any_midi_input`.
+- [ ] **The keyboard off and on:** hold a chord and switch the microKEY Air off. Pass: within about
+  two seconds the toast `KEYBOARD LOST`, the held notes stop, the row reads `LOOKING`. Switch it
+  on: within a few seconds the toast `KEYBOARD microKEY Air` and it plays again, with no step on
+  the FM-1. *Emulator:*
+  `ble_keyboard.rs::a_keyboard_gone_releases_its_notes_says_lost_and_reconnects_by_itself`.
+- [ ] **A power cycle reconnects:** with the keyboard on, power the FM-1 off and on. Pass: a few
+  seconds after the boot the toast `KEYBOARD microKEY Air` and the keyboard plays; SETTINGS still
+  says KEYBOARD and its name. *Emulator:*
+  `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`.
+- [ ] **Back to ON, the Mac connects:** BLUETOOTH to ON (ALGORITHM counter-clockwise once). Pass:
+  the keyboard's link drops without a `KEYBOARD LOST` toast; the Mac's Bluetooth window lists
+  `SIDOU XXXX` again and connects; notes both ways as in §35. KEYBOARD again drops the Mac and
+  the keyboard comes back. *Emulator:*
+  `ble_keyboard.rs::keyboard_drops_a_computers_link_never_advertises_and_on_lets_it_back`.
+- [ ] **The peripheral path again** (the radio driver is now `-Oz`): with ON and the Mac
+  connected, §35's items once more: a minute of notes from Logic to SIDOU and from SIDOU's keys to
+  Logic, Logic's MIDI clock to SIDOU over Bluetooth with a song following it (CLOCK on FOLLOW),
+  no audio glitch, OFF and ON, a power cycle keeps ON, and a firmware install with BLUETOOTH ON
+  still finishes. Pass: as in §35, the song in time with Logic.
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -3121,3 +3180,4 @@ adapter.
 | 35 Bluetooth MIDI in a release-sized build | | |
 | 36 1.10: songs as text, the USER sounds read back | Pass | 2026-11-14, the 1.10.0 package |
 | 37 felucca-bsp `18eadadb`: USB audio by the crystal, the key scan's rate | | |
+| 38 1.11: Bluetooth connecting out to a keyboard | | |

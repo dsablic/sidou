@@ -79,6 +79,7 @@ add_library(sidou_live STATIC
     user_profile.c
     user_sound.c
     views.c
+    views_devices.c
     views_menu.c
     views_midi.c
     views_popup.c
@@ -101,7 +102,8 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(midi_route.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
     set_source_files_properties(views.c views_menu.c views_settings.c views_status.c chip_view.c learn_view.c tracker_view.c sid_view.c
         PROPERTIES COMPILE_OPTIONS -Os)
-    set_source_files_properties(views_popup.c views_song_menu.c views_midi.c PROPERTIES COMPILE_OPTIONS -Oz)
+    set_source_files_properties(views_popup.c views_song_menu.c views_midi.c views_devices.c
+        PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(lab_view.c lab_draw.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(song_pages.c step_view.c song_gen.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
     set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c

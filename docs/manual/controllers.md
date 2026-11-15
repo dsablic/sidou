@@ -2,7 +2,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Shape sounds from a MIDI controller
 
-SIDOU answers a fixed set of CCs on every channel, from the TRS jack or USB, and any knob's
+SIDOU answers a fixed set of CCs on every channel, from the TRS jack, USB or a Bluetooth MIDI
+keyboard, and any knob's
 parameter can also learn a CC of your choice. A controller with eight knobs is enough to shape a
 sound without reaching for the FM-1's encoders. The full map, with every range and curve, is
 [docs/reference/midi.md](../reference/midi.md); the CCs below are taken from it.
@@ -39,6 +40,26 @@ Switches and steps, if the controller has buttons or a second row: 20 waveform, 
 modulation, 22 sync, 23 filter mode, 24 filter routing, 25 chip model, 27 the chord arpeggio
 on or off, 29 its order, 30 its span. The effect slots answer 102 to 116 (each slot's
 algorithm, Amount, A, B and Mix) and 117 the chip spread.
+
+## A Bluetooth keyboard
+
+A Bluetooth MIDI keyboard or controller that needs no pairing (the Korg microKEY Air, for one)
+plays SIDOU without a cable:
+
+1. Switch the keyboard on. On the FM-1, **HOME**, **SETTINGS**, SELECT to **BLUETOOTH** (the last
+   item) and turn ALGORITHM clockwise until the popup says **KEYBOARD**.
+2. Press **SAVE**: **DEVICES** lists the Bluetooth MIDI devices nearby with their signal bars.
+   SELECT to yours and press **SAVE**. The toast says **KEYBOARD** and its name, and the
+   BLUETOOTH row shows the name.
+3. Play: its notes, knobs and clock reach SIDOU as from USB. The map above and MIDI learn work
+   the same.
+
+SIDOU remembers the keyboard: after a power cycle it connects again by itself, and if the
+keyboard goes off or out of range the toast says **KEYBOARD LOST** (held notes stop) and SIDOU
+connects again when it is back. While KEYBOARD is chosen a computer cannot connect to SIDOU over
+Bluetooth; turn BLUETOOTH back to ON for that. A keyboard that insists on pairing shows **NEEDS
+PAIRING**: SIDOU does not pair. The details: [docs/reference/controls.md](../reference/controls.md),
+SETTINGS.
 
 ## Parameters with no CC of their own
 
