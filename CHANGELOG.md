@@ -8,6 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **felucca-bsp `18eadadb`** (from `7e09895c`): USB audio packets are sized by the FM-1's crystal
+  alone (`d18879b`), and the key scan's rate is a setting, left at 10 kHz (`e36cb7c`). The image
+  grew 400 bytes; RAMTEXT did not change.
+
 ## [1.10.0] - 2026-11-14
 
 Whole songs as text for models and coding agents: a `sidou-song/1` is a song a Library page previews, edits and sends; and the sounds LAB kept read back from the FM-1 as patches.

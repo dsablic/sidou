@@ -5,9 +5,16 @@
 ## felucca-bsp (`bsp/`)
 
 - **Source:** <https://github.com/hugelton/felucca-bsp>, `chip/` and `boards/fm1/`
-- **Commit:** `7e09895c` (main, 2026-11-08: our PR #31's `FM1_IRQ_DEFS`, #32's `FELUCCA_UAC_CH`,
-  #33's `FELUCCA_UAC_STALL_POLLS`, `5b0879b`'s USB audio packets on the I2S clock, and the Pocket
-  AMP's board headers, which SIDOU does not vendor). Before it, `f8788009` (1.8.0).
+- **Commit:** `18eadadb` (main, 2026-11-13). Since the pin before it, `7e09895c` (2026-11-08), five
+  commits came in: `e79a1f8` (`fm1_rescue`'s message, a host tool SIDOU does not vendor),
+  `d61bfcb` (`fm1_clock.h`'s `fm1_clock_pll1`, not vendored), `e36cb7c` (`fm1_input.h`'s tick rate
+  `FM1_INPUT_HZ`, default 10000, with `fm1_timer.h`'s `FM1_T5_PERIOD` derived from it),
+  `d18879b` (`usb.c`'s audio packets sized by the crystal) and `18eadad` (felucca-bsp's loader
+  resource region, not vendored: the update loader stays Felucca 1.6.1's). The files that
+  changed are `chip/usb.c`, `chip/fm1_timer.h` and `boards/fm1/fm1_input.h`. Before it, `7e09895c`
+  (our PR #31's `FM1_IRQ_DEFS`, #32's `FELUCCA_UAC_CH`, #33's `FELUCCA_UAC_STALL_POLLS`, `5b0879b`'s
+  USB audio packets on the I2S clock, and the Pocket AMP's board headers, which SIDOU does not
+  vendor), and before that `f8788009` (1.8.0).
 - **Licence:** MPL-2.0, each file with its own header; `bsp/LICENSE` and `bsp/NOTICE` are
   felucca-bsp's. MPL-2.0 has no "Incompatible With Secondary Licenses" notice, so the files combine
   with SIDOU's GPL-3.0 image.
@@ -239,7 +246,8 @@ frame) empties.
   block (Felucca's taps spread over the render move it less). Within SIDOU's audio
   budget the ring never runs dry (host-tested,
   `host/crates/sidou-pack/tests/usb_audio.rs`).
-- **The packets follow the I2S clock** (felucca-bsp `5b0879b`, with the move to `7e09895c`): 44
+- **The packets follow the I2S clock** (felucca-bsp `5b0879b`, with the move to `7e09895c`; since `d18879b` the
+  packet's size is the crystal's alone: below): 44
   frames a millisecond and one more every 8 or 9 (the I2S's 44,117.6 Hz), and the ring's fill
   steers by one frame a render at most. Before it the packets made 44.1 kHz's pattern (a 45 every
   10 ms) and the fill steered every packet until the next render measured it: in fm1-emu, three
@@ -247,6 +255,11 @@ frame) empties.
   dropout. The samples a host records are the same, bit for bit and in order; only where the
   packets cut them changed (emu-gate `usb.rs`,
   `the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`).
+  Since `d18879b` (the move to `18eadadb`) the packet's size is the crystal's alone: the whole I2S
+  frames TIMER4 counted since the last packet (`FELUCCA_UAC_CLOCK`, default `fm1_ticks()`), and the
+  ring's fill moves nothing (emu-gate `usb.rs`,
+  `a_long_recording_gets_the_crystals_frames_whatever_the_rings_fill`). The host harness sets
+  `FELUCCA_UAC_CLOCK` to a clock its test drives.
 - **RAM:** in POOL the ring (2,048 bytes, placed by `app.ld`) and the block
   (1,036); in the RAM region EP4's IN buffer (184 since 1.8: 46 frames at most, 196 with 48 kHz) and `uac` (76 since
   `5b0879b`'s steering flag), which the compiler merges

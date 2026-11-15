@@ -964,7 +964,6 @@ pub mod harness {
         pub go: u32,
         pub feed: u32,
         pub r48: u32,
-        pub fill_min: u32,
         pub fill_lo: u32,
         pub fill_hi: u32,
         pub underruns: u32,
@@ -977,8 +976,6 @@ pub mod harness {
         pub ring_r: u32,
         pub maxf: u32,
         pub prime: u32,
-        pub lo: u32,
-        pub hi: u32,
         pub ring_n: u32,
     }
 
@@ -991,6 +988,7 @@ pub mod harness {
         pub fn uac_h_take(half: *const i32);
         pub fn uac_h_skip();
         pub fn uac_h_tick();
+        pub fn uac_h_set_clock(ticks: u32);
         pub fn uac_h_packet(d: *mut u32) -> u32;
         pub fn uac_h_direct_start();
         pub fn uac_h_direct_tap(out: *const i32, n: u32);
