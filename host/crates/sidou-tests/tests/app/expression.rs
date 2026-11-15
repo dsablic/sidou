@@ -368,9 +368,23 @@ fn the_vibrato_moves_at_most_4_times_depth_times_rate_over_100_cents_a_tick() {
 }
 
 #[test]
-fn the_wheel_sets_the_pulse_width_by_default() {
+fn the_wheel_adds_vibrato_depth_by_default_and_leaves_the_pulse_width() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    assert_eq!(rig.param(LIVE_PARAM_MOD_TARGET), LIVE_MOD_PULSE_WIDTH);
+    assert_eq!(rig.param(LIVE_PARAM_MOD_TARGET), LIVE_MOD_VIBRATO);
+    rig.note_on(C4);
+    let pw = rig.voice_pw(0);
+    rig.cc(LIVE_CC_MOD_WHEEL, 127);
+    assert_eq!(rig.live.mod_wheel, 127);
+    rig.tick();
+    rig.tick();
+    assert_ne!(rig.voice_freq(0), freq_at(C4, 0), "the wheel bends the pitch");
+    assert_eq!(rig.voice_pw(0), pw);
+}
+
+#[test]
+fn the_wheel_on_pulse_width_sets_it_across_its_range() {
+    let mut rig = Rig::new(SID_MODEL_8580);
+    rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
     rig.note_on(C4);
     rig.cc(LIVE_CC_MOD_WHEEL, 0);
     assert_eq!(rig.live.pulse_width, 0);
@@ -627,7 +641,7 @@ fn a_program_change_resets_the_expression_settings_and_keeps_the_controllers() {
     for (param, want) in [
         (LIVE_PARAM_BEND_RANGE, 2),
         (LIVE_PARAM_VELOCITY_TARGET, 0),
-        (LIVE_PARAM_MOD_TARGET, 0),
+        (LIVE_PARAM_MOD_TARGET, LIVE_MOD_VIBRATO),
         (LIVE_PARAM_PRESSURE_TARGET, 0),
         (LIVE_PARAM_VIBRATO_RATE, LIVE_VIBRATO_RATE_DEFAULT),
         (LIVE_PARAM_VIBRATO_DEPTH, 0),

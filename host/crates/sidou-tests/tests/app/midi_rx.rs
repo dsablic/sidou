@@ -124,6 +124,7 @@ fn a_usb_message_between_the_bytes_of_a_trs_message_leaves_both_whole() {
 #[test]
 fn ccs_follow_the_default_mapping() {
     let mut m = Midi::new();
+    m.rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
     m.trs(&[0xB0, 74, 0]);
     assert_eq!(m.live().cutoff, 0);
     m.usb(0xB, [0xB3, 74, 127]);

@@ -328,6 +328,7 @@ fn each_entry_round_trips_through_its_cc() {
     {
         let e = ptr_for(u32::from(r.param));
         let mut rig = Rig::new(SID_MODEL_6581);
+        rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
         fill_every_user_slot_with_a_profile(&mut rig);
         for v in 0..128u8 {
             let want = expect_from_cc(r, v);
@@ -1097,7 +1098,7 @@ chip model and character, the envelope mode, the effect slots, the controllers (
 a bend range set by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
-General MIDI's where they fit (1 modulation wheel: the pulse width by default, see
+General MIDI's where they fit (1 modulation wheel: the vibrato depth by default, see
 Expression; 7 volume; 71 resonance; 74 cutoff, i.e. brightness; 72, 73 and 75 release,
 attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alone where
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
@@ -1205,7 +1206,7 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   a note starts at the current bend. The sync lead's two oscillators take the same bend
   and vibrato, so their ratio, and the timbre, holds, up to the top of voice 1's register
   (from note 90, or lower bent up: [controls.md](controls.md), Presets).
-- **Control rate:** bend, aftertouch, the wheel (on a target other than the pulse width)
+- **Control rate:** bend, aftertouch, the wheel (on the vibrato or the cutoff)
   and the vibrato apply at the instrument's 100 Hz tick: up to 10 ms after the message,
   twice a C64 player's frame rate. A flood of messages costs one update per tick.
 - **Vibrato:** a triangle per voice, from 0 at each note-on once its delay is over. Rate
@@ -1216,10 +1217,11 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   vibrato, up to 127. Updated at 100 Hz, a triangle of +-d cents at f Hz moves 4 * d * f /
   100 cents a tick: 6 cents at +-25 cents and 6 Hz, 24 cents at the full depth. Above
   about 8 Hz a cycle has fewer than 12 steps and the vibrato starts to sound stepped.
-- **Modulation wheel (CC 1):** by default it sets the pulse width across its range, as
-  M1a did and the map's row says. The mod wheel target (NRPN 6/2) moves it to the vibrato
-  depth (it adds) or to the cutoff (it opens the filter above the cutoff that is set, 8
-  steps per value). A new target starts the wheel at 0.
+- **Modulation wheel (CC 1):** by default it adds to the vibrato depth, General MIDI's
+  meaning, audible on every sound. The mod wheel target (NRPN 6/2, and the WHEEL row on the
+  MIDI page, one setting kept with the others) moves it to the pulse width (it sets it
+  across its range, as M1a did and the map's row says) or to the cutoff (it opens the filter
+  above the cutoff that is set, 8 steps per value). A new target starts the wheel at 0.
 - **Aftertouch:** channel and polyphonic. A voice's pressure is the larger of the
   channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off
   (the default), the vibrato depth (it adds), the pulse width (it raises the voice's, 16

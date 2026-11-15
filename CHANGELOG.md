@@ -8,6 +8,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **The mod wheel adds vibrato by default**, audible on every sound (CC 1 set the pulse width,
+  which only a pulse sound shows). The MIDI page's new **WHEEL** row picks what it moves, VIBRATO,
+  PULSE or CUTOFF, the same setting as NRPN 6/2 (a new target starts the wheel at 0); it is kept
+  with the settings (record version 10: an older record's PULSE reads as VIBRATO). The factory
+  sounds and a patch without `mod_wheel` use VIBRATO. The pulse width keeps its NRPN 0/2 and
+  has CC 1 only while WHEEL says PULSE.
 - **RED MOON RITE's art is a file on the FM-1** (waiting for its device check, hardware-test §39):
   the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
   the pictures SCENE's sixth piece draws, an [art pack](docs/reference/art-pack.md)

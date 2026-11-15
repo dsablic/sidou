@@ -21,6 +21,14 @@ impl Out {
         Self::with(0, 0)
     }
 
+    fn with_pulse_wheel() -> Self {
+        let mut o = Self::new();
+        o.set(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
+        o.tick_until_quiet();
+        o.out.packets = 0;
+        o
+    }
+
     fn with(channel: u8, hires: u8) -> Self {
         let mut rig = Rig::new(SID_MODEL_6581);
         let mut rx = Box::<midi_rx>::default();
@@ -138,7 +146,7 @@ fn nothing_is_sent_at_rest() {
 
 #[test]
 fn a_knob_move_is_its_cc_once_a_tick_with_the_latest_value() {
-    let mut o = Out::new();
+    let mut o = Out::with_pulse_wheel();
     o.rig.knob(LIVE_KNOB_CUTOFF, 4);
     o.rig.knob(LIVE_KNOB_CUTOFF, 4);
     o.rig.knob(LIVE_KNOB_CUTOFF, -1);
@@ -289,7 +297,7 @@ fn the_pulse_width_leaves_cc_1_to_the_wheel_when_the_wheel_drives_another_target
 
 #[test]
 fn a_change_within_one_cc_step_or_back_again_sends_nothing() {
-    let mut o = Out::new();
+    let mut o = Out::with_pulse_wheel();
     let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
     o.set(LIVE_PARAM_PULSE_WIDTH, pw + 1);
     assert_eq!(
@@ -657,7 +665,7 @@ fn the_mod_target_goes_before_a_pulse_width_that_depends_on_it() {
 
 #[test]
 fn nrpn_data_entry_alone_is_midi_input_and_not_echoed() {
-    let mut o = Out::new();
+    let mut o = Out::with_pulse_wheel();
     o.trs(&[0xB0, 99, 0, 98, 0]);
     o.trs(&[0xB0, 6, 5, 38, 1]);
     assert_eq!(o.get(LIVE_PARAM_CUTOFF), 5 << 7 | 1);

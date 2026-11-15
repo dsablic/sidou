@@ -191,12 +191,35 @@ static void clock_out_turn(void* ctx, int32_t steps) {
     }
 }
 
+static const uint8_t WHEEL_ORDER[] = {LIVE_MOD_VIBRATO, LIVE_MOD_PULSE_WIDTH, LIVE_MOD_CUTOFF};
+static const char* const WHEEL_NAMES[] = {"VIBRATO", "PULSE", "CUTOFF"};
+
+static uint32_t wheel_position(const live* l) {
+    uint32_t i = 0;
+    while (i < LIVE_MOD_CUTOFF && WHEEL_ORDER[i] != l->mod_target) {
+        i++;
+    }
+    return i;
+}
+
+static void wheel_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    views_join(buf, MENU_VALUE_CHARS, WHEEL_NAMES[wheel_position(v->l)], "");
+}
+
+static void wheel_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    uint32_t to = stepped(wheel_position(v->l), steps, 0, LIVE_MOD_CUTOFF);
+    live_param_set(v->l, LIVE_PARAM_MOD_TARGET, WHEEL_ORDER[to]);
+    v->l->settings_dirty = 1;
+}
+
 const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {
     {"MODE", mode_value, mode_turn},         {"CHANNEL", channel_value, channel_turn},
     {"OPTION", option_value, option_turn},   {"LEGATO", legato_value, legato_turn},
     {"CHORD 2", chord2_value, chord2_turn},  {"CHORD 3", chord3_value, chord3_turn},
     {"ARP RATE", arp_value, arp_turn},       {"ROWS/BEAT", midi_rows_value, midi_rows_turn},
-    {"CLOCK", clock_value, clock_turn},      {"CLOCK OUT", clock_out_value, clock_out_turn},
+    {"WHEEL", wheel_value, wheel_turn},      {"CLOCK", clock_value, clock_turn},      {"CLOCK OUT", clock_out_value, clock_out_turn},
 };
 
 static void midi_look(const views* v, uint8_t out[VIEWS_MIDI_LOOK]) {
@@ -214,7 +237,7 @@ static void midi_look(const views* v, uint8_t out[VIEWS_MIDI_LOOK]) {
     out[7] = s.rows_per_beat;
     out[8] = v->midi.cursor;
     out[9] = v->midi.top;
-    out[10] = 0;
+    out[10] = v->l->mod_target;
     out[11] = v->route != NULL;
     out[12] = v->sync ? v->sync->mode : 0xffu;
     out[13] = v->sync ? v->sync->clock_out : 0xffu;

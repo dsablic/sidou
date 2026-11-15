@@ -20,7 +20,7 @@ Set your controller's knobs to these CCs (its own editor or learn mode does it o
 | 4 | 75 | Decay | ENVELOPE K2 |
 | 5 | 79 | Sustain | ENVELOPE K3 |
 | 6 | 72 | Release | ENVELOPE K4 |
-| 7 | 1 | Pulse width | LIVE's K3, OSC's K1 |
+| 7 | 1 | Mod wheel | vibrato depth; PULSE or CUTOFF with MIDI's WHEEL row |
 | 8 | 31 | Filter LFO | FILTER's K4 |
 
 A second bank, for movement and character:
@@ -69,6 +69,8 @@ SETTINGS.
 
 PWM depth, PWM rate, fine tune and MACRO's two links have an NRPN (0/5, 0/6, 0/7, 0/10, 0/11)
 and no CC. Give them one with MIDI learn: then a controller knob reaches them like the others.
+The pulse width is in the same case (NRPN 0/2) while CC 1 is the mod wheel's, which moves the
+vibrato depth unless the MIDI page's WHEEL row says PULSE.
 
 ## MIDI learn
 

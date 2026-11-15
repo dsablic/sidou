@@ -135,6 +135,10 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         if (wide(p)) {
             v |= (uint32_t)rec[n++] << 8;
         }
+        if (p == LIVE_PARAM_MOD_TARGET && rec[0] < SETTINGS_VERSION_WHEEL_VIBRATO &&
+            v == LIVE_MOD_PULSE_WIDTH) {
+            v = LIVE_MOD_VIBRATO;
+        }
         if (p != LIVE_PARAM_VOLUME && v <= live_param_max(p)) {
             live_param_set(l, p, v);
         }

@@ -678,6 +678,7 @@ fn master_leaves_the_chips_volume_register_at_full_and_shows_the_pots_travel() {
 #[test]
 fn ccs_drive_the_parameters() {
     let mut rig = Rig::new(SID_MODEL_8580);
+    rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
     rig.cc(LIVE_CC_CUTOFF, 0);
     assert_eq!(rig.live.cutoff, 0);
     rig.cc(LIVE_CC_RESONANCE, 127);
