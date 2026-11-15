@@ -674,6 +674,7 @@ const CARD_COLS: [(usize, usize); 4] = [(0, 7), (8, 6), (15, 6), (22, 7)];
 const GLOW_FIRST_ROW: usize = LAB_VIEW_LABEL_ROW as usize - 1;
 const GLOW_LAST_ROW: usize = LAB_VIEW_TAG_ROW as usize + 1;
 const GLOW_REACH_CELLS: usize = 1;
+const GLOW_WAIT_FRAMES: usize = 20;
 
 fn glow_cells(ui: &Ui) -> Vec<(usize, usize, u8)> {
     let mut out = Vec::new();
@@ -687,12 +688,22 @@ fn glow_cells(ui: &Ui) -> Vec<(usize, usize, u8)> {
     out
 }
 
+fn wait_for_glow(ui: &mut Ui, card: u32) {
+    for _ in 0..GLOW_WAIT_FRAMES {
+        if u32::from(ui.v.lab.glow_card) == card {
+            break;
+        }
+        ui.frame_sent();
+    }
+    two_steps(ui);
+}
+
 fn lit_card_ui(theme: u32, k: u32) -> Ui {
     let mut ui = lab_ui();
     unsafe { live_set_theme(&mut *ui.rig.live, theme) };
     to_page(&mut ui, LAB_PAGE_FILTER);
     ui.turn(PANEL_ENC_K1 + k, 1);
-    two_steps(&mut ui);
+    wait_for_glow(&mut ui, k + 1);
     ui
 }
 
@@ -760,7 +771,7 @@ fn the_halo_follows_the_selection_and_goes_out_with_the_light() {
     let first = glow_cells(&ui);
     assert!(first.iter().any(|&(col, _, _)| col <= CARD_COLS[0].1));
     ui.turn(PANEL_ENC_K1 + 3, 1);
-    two_steps(&mut ui);
+    wait_for_glow(&mut ui, 4);
     let moved = glow_cells(&ui);
     assert!(
         moved
@@ -770,6 +781,7 @@ fn the_halo_follows_the_selection_and_goes_out_with_the_light() {
     );
     assert!(!moved.is_empty());
     settle(&mut ui);
+    wait_for_glow(&mut ui, 0);
     assert!(
         glow_cells(&ui).is_empty(),
         "it goes out with the card's light"

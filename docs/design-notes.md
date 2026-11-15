@@ -4473,10 +4473,14 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   overlay cells, inside the 255 slots. The patterns run along `x + y`, not a Bayer matrix: a
   4 x 4 matrix gives a one-pixel line a density that depends on its column (a ring's side read 50 %
   or 100 % by where it fell), a diagonal pattern gives every straight edge the same density.
-- It is drawn when the lit card changes and not again: `lab_view.glow_card` remembers the card, so
-  a frame that only copies canvas cells does not sweep the halo's cells (about 70 cells of 64
-  pixels each), and a still screen sends nothing. A move sweeps the old halo's cells against the
-  new rectangle (what is not in it goes) and then the new halo's own.
+- It is drawn when the lit card changes and not again (`lab_view.glow_card` remembers the card),
+  and only in a frame that built no text and drew no art (`compose`): the halo's ring is about 30
+  cells, 60 on a move (the old ring goes), and a per-pixel version cost 330,000 instructions in the
+  frame it was drawn, where `POLL_INSTRUCTIONS` and LAB's 90,000 allow 90,000 in all. The ring is
+  nine 8-pixel masks (`glow.c`: four corners, four edges, none for the middle), the same for every
+  card because a card's origin is a multiple of 8 and the patterns repeat every 4 pixels; only the
+  ring's cells are visited. A lit card is drawn a frame or two later than its label while the page's
+  text or drawing is being built, which `changed` keeps asking for until it is.
 - It is static: a pulse was tried (the prototype's variants 3a and 3b) and kept the screen
   redrawing the halo's cells every frame for as long as a card is lit; the owner chose the still
   halo (2026-11-15).
@@ -4488,10 +4492,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - The halo's colour is the knob's own (`theme.knob`), which reads against the background in both
   themes: cyan K2 on the C64 blue and on black alike, yellow K1, light green K3; K4 is light red
   in the default theme and light grey in C64's. Goldens: `lab-card-glow` and `lab-card-glow-c64`.
-- Flash: 576 bytes (the image 579,232 to 579,808 against the ceiling 579,516), so it merges where
-  the art packs have freed room. `glow.c` is `-Oz`; a table-free ring (the
-  distance is `max(dx, dy) + 1` where both are nonzero, which equals the rounded Euclidean
-  distance out to three pixels) and a 75 % ring from `(x + y) & 3` instead of a divide by five.
+- Flash: `glow.c` is `-Oz` with a 72-byte table.
 
 ### Variation and rolling
 

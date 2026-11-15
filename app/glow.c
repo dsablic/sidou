@@ -2,64 +2,57 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "glow.h"
 
-#define GLOW_RING_SOLID 1
-#define GLOW_RING_DENSE 2
-#define GLOW_RING_SPARSE 3
+#define GLOW_KINDS_PER_SIDE 3
 
-static int gap(int v, int lo, int hi) {
-    return v < lo ? lo - v : v > hi ? v - hi : 0;
+static const uint8_t RING_CELL[GLOW_KINDS_PER_SIDE * GLOW_KINDS_PER_SIDE][8] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03},
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xDD, 0xFF},
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x80},
+    {0x07, 0x03, 0x05, 0x03, 0x07, 0x03, 0x05, 0x03},
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0xC0, 0xE0, 0xC0, 0xA0, 0xC0, 0xE0, 0xC0, 0xA0},
+    {0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0xFF, 0xEE, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0x40, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+};
+
+static uint32_t side_of(int v, int first, int size) {
+    return v < first + 1 ? 0u : v > first + size - 2 ? 2u : 1u;
 }
 
-static int ring(int dx, int dy) {
-    return (dx > dy ? dx : dy) + (dx && dy);
-}
-
-static int lit_pixel(int ring_at, int x, int y) {
-    return ring_at == GLOW_RING_SOLID ||
-           (ring_at == GLOW_RING_DENSE && ((x + y) & 3)) ||
-           (ring_at == GLOW_RING_SPARSE && ((x + y) & 1));
-}
-
-static int cell_mask(uint8_t mask[8], int col, int row, const glow_rect* r) {
-    int x0 = r->col * 8;
-    int y0 = r->row * 8;
-    int x1 = x0 + r->w * 8 - 1;
-    int y1 = y0 + r->h * 8 - 1;
-    int any = 0;
-    if (!r->w) {
-        return 0;
-    }
-    for (int y = row * 8; y < row * 8 + 8; y++) {
-        int bits = 0;
-        for (int x = col * 8; x < col * 8 + 8; x++) {
-            bits = bits << 1 | (lit_pixel(ring(gap(x, x0, x1), gap(y, y0, y1)), x, y));
-        }
-        *mask++ = (uint8_t)bits;
-        any |= bits;
-    }
-    return any;
-}
-
-static void sweep(grid* g, const glow_rect* area, const glow_rect* lit, uint8_t color) {
-    if (!area->w) {
+static void cell(grid* g, const glow_rect* r, int col, int row, uint8_t color, int on) {
+    if (col < 0 || row < 0 || col >= (int)GRID_COLS || row >= (int)GRID_ROWS) {
         return;
     }
-    int c0 = area->col > 0 ? area->col - 1 : 0;
-    int r0 = area->row > 0 ? area->row - 1 : 0;
-    for (int row = r0; row <= area->row + area->h && row < (int)GRID_ROWS; row++) {
-        for (int col = c0; col <= area->col + area->w && col < (int)GRID_COLS; col++) {
-            uint8_t mask[8];
-            if (cell_mask(mask, col, row, lit)) {
-                (void)grid_overlay(g, (uint32_t)col, (uint32_t)row, mask, color);
-            } else {
-                grid_overlay_clear(g, (uint32_t)col, (uint32_t)row);
-            }
-        }
+    if (on) {
+        (void)grid_overlay(g, (uint32_t)col, (uint32_t)row,
+                           RING_CELL[side_of(row, r->row - 1, r->h + 2) * GLOW_KINDS_PER_SIDE +
+                                     side_of(col, r->col - 1, r->w + 2)],
+                           color);
+    } else {
+        grid_overlay_clear(g, (uint32_t)col, (uint32_t)row);
+    }
+}
+
+static void ring(grid* g, const glow_rect* r, uint8_t color, int on) {
+    int last_col = r->col + r->w;
+    int last_row = r->row + r->h;
+    for (int col = r->col - 1; col <= last_col; col++) {
+        cell(g, r, col, r->row - 1, color, on);
+        cell(g, r, col, last_row, color, on);
+    }
+    for (int row = r->row; row < last_row; row++) {
+        cell(g, r, r->col - 1, row, color, on);
+        cell(g, r, last_col, row, color, on);
     }
 }
 
 void glow_set(grid* g, glow_rect* shown, const glow_rect* lit, uint8_t color) {
-    sweep(g, shown, lit, color);
-    sweep(g, lit, lit, color);
+    if (shown->w) {
+        ring(g, shown, 0, 0);
+    }
+    if (lit->w) {
+        ring(g, lit, color, 1);
+    }
     *shown = *lit;
 }

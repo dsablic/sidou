@@ -1366,33 +1366,36 @@ static int art_stale(const lab_view* lv) {
     return !lv->art_done || lab_draw_look(lv->l, lv->sc, art_page(lv), lv->hl) != lv->art;
 }
 
-static int changed(screen* s, void* state) {
-    lab_view* lv = state;
-    expire(lv, s);
-    sync(lv);
-    return lv->canvas->which != SONG_VIEW_CANVAS_LAB || !lv->built || lv->copying ||
-           look(lv, s->now) != lv->look || art_stale(lv);
-}
-
-static int border(uint32_t c, uint32_t r) {
-    return r == 0 || r == GRID_ROWS - 1u || c == 0 || c == GRID_COLS - 1u;
+static uint32_t glow_want(const lab_view* lv) {
+    uint32_t k = lv->mode ? 4u : (lv->hl ? lv->hl : lv->hl_link) - 1u;
+    return k < 4u ? k + 1u : 0u;
 }
 
 static void glow_card(lab_view* lv, grid* g) {
-    uint32_t k = lv->mode ? 4u : (lv->hl ? lv->hl : lv->hl_link) - 1u;
-    uint8_t lit_card = (uint8_t)(k < 4u ? k + 1u : 0u);
-    if (lit_card == lv->glow_card) {
-        return;
-    }
-    lv->glow_card = lit_card;
+    uint32_t want = glow_want(lv);
     glow_rect lit = {0, 0, 0, 0};
     uint8_t color = 0;
-    if (k < 4u) {
+    if (want) {
+        uint32_t k = want - 1u;
         lit = (glow_rect){KNOB_COL[k], LAB_VIEW_LABEL_ROW, (uint8_t)(KNOB_W[k] - 1u),
                           LAB_VIEW_TAG_ROW - LAB_VIEW_LABEL_ROW + 1u};
         color = theme_get(lv->l->theme)->knob[k];
     }
     glow_set(g, &lv->glowed, &lit, color);
+    lv->glow_card = (uint8_t)want;
+}
+
+static int changed(screen* s, void* state) {
+    lab_view* lv = state;
+    expire(lv, s);
+    sync(lv);
+    return lv->canvas->which != SONG_VIEW_CANVAS_LAB || !lv->built || lv->copying ||
+           look(lv, s->now) != lv->look || art_stale(lv) ||
+           glow_want(lv) != lv->glow_card;
+}
+
+static int border(uint32_t c, uint32_t r) {
+    return r == 0 || r == GRID_ROWS - 1u || c == 0 || c == GRID_COLS - 1u;
 }
 
 static void compose(screen* s, void* state, grid* g) {
@@ -1422,7 +1425,6 @@ static void compose(screen* s, void* state, grid* g) {
             grid_canvas_row(g, c, r);
         }
     }
-    glow_card(lv, g);
     int raster = s->raster_frames && s->wipe == SCREEN_CUT;
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < LAB_VIEW_FRAME_CELLS ? LAB_VIEW_FRAME_CELLS - used : 0u;
@@ -1455,6 +1457,9 @@ static void compose(screen* s, void* state, grid* g) {
         lv->art_done = (uint8_t)lab_draw_page(lv->l, lv->sc, art_page(lv), lv->hl,
                                               theme_get(lv->l->theme), g, s, LAB_VIEW_ART_ROW,
                                               &left);
+    }
+    if (!text && !art && glow_want(lv) != lv->glow_card) {
+        glow_card(lv, g);
     }
 }
 
