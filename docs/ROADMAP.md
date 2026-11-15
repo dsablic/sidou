@@ -55,7 +55,7 @@ What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, 
 ## 2.0
 
 - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on,
-  after the device check, falling back to one core; built in 1.11 behind `SIDOU_CPU2`. It needs
+  after the device check, falling back to one core; built for 1.20 behind `SIDOU_CPU2`. It needs
   room first: with connecting out the ON image is 581,120 bytes, 1,604 over the 579,516 ceiling
   (the second core adds about 1,890 bytes to the default image's 284 spare). The room comes from
   more hot/cold splits, or SCENE's RED MOON RITE art moved into the store (the owner's reserve,
