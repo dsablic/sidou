@@ -3010,7 +3010,7 @@ Set up:
 - [ ] **On iOS, if an iPhone or iPad is at hand** (the case upstream's change fixes): connect the
   FM-1 by USB-C, or through Apple's camera adapter. Record one minute of video in the Camera app,
   with the FM-1 as the microphone and a held chord. Pass: no dropout about once a second.
-  *Result:*
+  Moved to §37, which checks it on the build with `d18879b`. *Result:*
 
 ## 36. 1.10: songs as text and the USER sounds read back
 
@@ -3043,6 +3043,38 @@ branch, headphones on the line out.
   *Result:* Passed 2026-11-14: `sidou-sysex song` said "asked 116, plays 115.7 BPM"; `sidou-sysex
   send` put THREE PARTS (1,244 bytes) on the FM-1; loaded and played in TRACKER, it played as
   written, by ear.
+
+## 37. felucca-bsp `18eadadb`: USB audio by the crystal, the key scan's rate
+
+What it decides: whether the move from felucca-bsp `7e09895c` to `18eadadb` is safe to ship.
+Two changes reach the firmware: `usb.c` sizes the USB audio packets by the FM-1's crystal alone
+(`d18879b`: the fix for a drift SIDOU did not have, taken to stay in sync), and `fm1_input.h` has
+a settable scan rate (`e36cb7c`), left at the 10 kHz SIDOU runs. The default image is 577,552
+bytes (+400), under the 579,516 ceiling. Every item waits for the owner's yes for that step:
+nothing is flashed, connected or recorded before it.
+
+Set up: the default build from a fresh build directory, packaged as in §35 and installed over
+1.10.0 with SIDOU's installer (the songs and settings are kept); a Mac with Logic, a USB cable,
+headphones on the line out; for the iOS item, an iPhone or iPad with USB-C or Apple's camera
+adapter.
+
+- [ ] **Install over 1.10.0** with SIDOU's installer: it finishes, SIDOU boots, the songs and the
+  settings are kept. *Emulator:* `package.rs` (the package boots in fm1-emu). *Result:*
+- [ ] **Two minutes of recording on the Mac:** "SIDOU FM-1" as Logic's input at 44.1 kHz. Record
+  a held chord for two minutes, then again with a song playing. Pass: no gap or click in the
+  waveform over either take, the level as in §35, and the take's length matches the clock
+  (120 s of recording is 5,294,118 frames at the FM-1's 44,117.6 Hz, within a few hundred).
+  *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`,
+  `usb.rs::the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`,
+  `usb.rs::a_long_recording_gets_the_crystals_frames_whatever_the_rings_fill`. *Result:*
+- [ ] **On iOS, if an iPhone or iPad is at hand** (§35's open item, the case upstream's change
+  fixes): connect the FM-1 by USB-C, or through Apple's camera adapter. Record one minute of video
+  in the Camera app, with the FM-1 as the microphone and a held chord. Pass: no dropout about once
+  a second. *Result:*
+- [ ] **The keys and knobs feel as before** (the scan's code moved with `e36cb7c`; at 10 kHz every
+  value is as it was): play fast runs on the keys, turn each encoder slowly and fast, press the
+  buttons, watch the LEDs and the power-on sweep. Pass: nothing missed, doubled or flickering
+  that was not before. *Emulator:* `keys.rs`, `latency.rs`, `boot.rs`. *Result:*
 
 ## Result
 
@@ -3086,3 +3118,4 @@ branch, headphones on the line out.
 | 34 1.8: felucca-bsp and Bluetooth MIDI | | |
 | 35 Bluetooth MIDI in a release-sized build | | |
 | 36 1.10: songs as text, the USER sounds read back | Pass | 2026-11-14, the 1.10.0 package |
+| 37 felucca-bsp `18eadadb`: USB audio by the crystal, the key scan's rate | | |

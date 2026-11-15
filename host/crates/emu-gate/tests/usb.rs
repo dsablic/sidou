@@ -1954,12 +1954,12 @@ fn uac(m: &mut Machine, fw: &Firmware) -> Uac {
         r48: m.soc.read8(a + 1),
         go: m.soc.read8(a + 3),
         flowing: m.soc.read8(a + 4),
-        underruns: w(m, 5),
-        overruns: w(m, 6),
-        missed: w(m, 7),
-        stalls: w(m, 8),
-        fill_lo: w(m, 11),
-        fill_hi: w(m, 12),
+        underruns: w(m, 9),
+        overruns: w(m, 10),
+        missed: w(m, 11),
+        stalls: w(m, 12),
+        fill_lo: w(m, 15),
+        fill_hi: w(m, 16),
     }
 }
 
@@ -2152,6 +2152,40 @@ fn the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most() {
         off.is_empty(),
         "steered more than a frame within a render (at, packets): {off:?}"
     );
+}
+
+const LONG_RECORDING_MS: u64 = 10_000;
+const LONG_RECORDING_SLACK_FRAMES: f64 = 3.0;
+
+#[test]
+fn a_long_recording_gets_the_crystals_frames_whatever_the_rings_fill() {
+    let Some(fw) = firmware("the USB audio long-run test") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    for k in [18, 25, 37] {
+        m.key(k, true);
+    }
+    m.usb_frames(300);
+    record(&mut m, 44_100);
+    let from = m.ms();
+    m.usb_frames(LONG_RECORDING_MS);
+    let elapsed_ms = (m.ms() - from) as f64;
+    let packets = host(&mut m).ep4_in.clone();
+    let frames: usize = packets.iter().map(|p| p.len() / 4).sum();
+    let owed = elapsed_ms * I2S_FRAMES_PER_MS;
+    let u = uac(&mut m, &fw);
+    println!(
+        "{} packets, {frames} frames in {elapsed_ms} ms; the crystal owes {owed:.1}; fill {}..{}",
+        packets.len(),
+        u.fill_lo,
+        u.fill_hi
+    );
+    assert!(
+        (frames as f64 - owed).abs() <= LONG_RECORDING_SLACK_FRAMES,
+        "{frames} frames against the crystal's {owed:.1}"
+    );
+    assert_eq!((u.underruns, u.overruns, u.stalls), (0, 0, 0));
 }
 
 #[test]
