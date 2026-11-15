@@ -3076,8 +3076,7 @@ adapter.
   value is as it was): play fast runs on the keys, turn each encoder slowly and fast, press the
   buttons, watch the LEDs and the power-on sweep. Pass: nothing missed, doubled or flickering
   that was not before. *Emulator:* `keys.rs`, `latency.rs`, `boot.rs`. *Result:* Not run as a
-  step (skipped by the owner's call 2026-11-15); the emulator's tests pass and the owner used the
-  panel through steps 1-2 without a fault.
+  step (skipped by the owner's call 2026-11-15); the emulator's tests pass.
 
 ## Result
 
