@@ -3,7 +3,8 @@
 # The second core: the measuring spike
 
 **Status:** spike, 2026-11-15, branch `cpu2-spike` from `main` `806571c4`. Nothing ships: a bench
-image and emu-gate tests only; the app's default build is unchanged. It executes "The first
+image and emu-gate tests only; the app's default build is unchanged. **Built** the same day as the
+app's `SIDOU_CPU2` option, off by default, on branch `cpu2-option` (see "Built" at the end). It executes "The first
 experiment" of the [research](2026-11-05-second-core-research.md) under
 [decision 0010](../decisions/0010-second-core-reopened.md), so the owner can decide whether and
 when chip B's render goes to core 1, and order it against Bluetooth connect-out (about 9-10 KB of
@@ -223,3 +224,28 @@ cover (a start-up self-test closes most of it), and the FPU.
 | The start-up self-test, and core 1's fault path through `fm1_vec.S` (fm1-emu's `cpu1_survives`) | 1 |
 | Docs: design notes, decision 0010's follow-up, Felucca #267 and report 20 for the batch | 0.5 |
 | **Total** | **4-4.5**, then a device day |
+
+## Built (2026-11-15, `cpu2-option`)
+
+The recommendation's "do next" is done; the [design notes](../design-notes.md#second-core-sidou_cpu2)
+hold the details.
+
+- **`-DSIDOU_CPU2=ON`**, off by default; the default image is byte for byte the same (577,536).
+  The two-core image: 579,424 bytes (+1,888, 92 under the ceiling; the self-test is about 370 of
+  them), RAMTEXT +624, the RAM region +160, NOINIT +3,072 (core 1's stacks).
+- **Beyond the sizing build:** chip B goes to core 1 with the scope's tap on it too (LIVE's keys
+  on chip B while a song plays), not only in the plain case.
+- **The flash gate:** the interrupt-only rule, with the units as they are, proven in fm1-emu.
+- **The start-up self-test** ("Mitigation, not built" above): 100 blocks, core 1 against core 0.
+  Misreads only in the render at 1e-5 a load, 40 units: 18 reached the sound unseen and 20 more
+  damaged it before the timeout without it; all 40 retired clean at power-on with it. Misreads on
+  any load were caught clean by the mailbox check on all 40 units at 1e-5, 3e-6 and 1e-6 with or
+  without it: in the app core 1 polls most of each block, which the bench did not model.
+- **The fault path** through `fm1_vec.S` retires core 1, its first FPU instruction made to fault
+  (the debug unit's error on core 0, the way felucca-bsp describes the chip).
+- **emu-gate on the two-core image:** the app's runner steps core 1; sample for sample against the
+  default build with both chips played, core 0's worst block (788.5 to 417.9 instructions a sample
+  with two chips at their worst), every fallback with one core's samples; the default build's
+  RAM, RAMTEXT, image, SRAM-branch, chip B, keys and song gates run on it too (CI's `cpu2` shard).
+- **Still device-only:** the four items above.
+

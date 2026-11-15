@@ -40,3 +40,26 @@ community's dual-core code was GPL-3.0-only. The research of 2026-11-04
 - Felucca #267's ordering question goes to `docs/upstream-reports.md`.
 - Unverified until measured: whether core 1 has its own FPU, the hand-over cost, and whether the
   owner's unit misreads.
+
+## Follow-up (2026-11-15)
+
+- **The spike measured it** ([the plan](../plans/2026-11-15-second-core-spike.md)): chip B on core 1
+  plays the same samples, gives core 0 back nearly all of chip B's render, and falls back to one
+  core with the same samples. The SRAM concern is gone: 1.7 moved the song player to flash and
+  RAMTEXT had 4,288 bytes free.
+- **Built behind `-DSIDOU_CPU2=ON`, off by default** ([design notes](../design-notes.md#second-core-sidou_cpu2)):
+  felucca-bsp's `fm1_cpu1.{h,S}` byte for byte with `FM1_CPU1_FALLBACK 1`, core 1 started after
+  the RAM copy, chip B's render handed over in `audio_fill`, the bar per build. The default image
+  is byte for byte unchanged; the two-core image is 579,424 bytes, under the ceiling.
+- **The flash gate** keeps SIDOU's units: the driver's gate is built without `FM1_CPU1` and the
+  interrupt-only rule (a job only inside the audio interrupt or the boot's self-test, waited for
+  before either returns; flash writes only from the main loop, interrupts masked) keeps every
+  flash transaction beside an idle core 1, proven in fm1-emu.
+- **A start-up self-test** closes the gap the spike found (a misread inside the render, which the
+  mailbox's check word does not cover): core 1 and core 0 render the same fixed patch for 100
+  blocks and any difference retires core 1.
+- emu-gate builds and tests the two-core image beside the default one (`build/fm1-cpu2`, CI's
+  `cpu2` shard and `tests/cpu2.rs`); the "core 0 only" assertion holds for every other image.
+- **Next:** the device check, with the owner's yes for each step; shipping it to players is a
+  separate decision (1,888 bytes of flash against Bluetooth connect-out's flash find).
+
