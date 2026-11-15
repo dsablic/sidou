@@ -52,7 +52,7 @@ if(SIDOU_BLE)
     target_sources(${t} PRIVATE ble_stack_unit.c ble_radio.c ble_setting.c)
     set_property(SOURCE ble_setting.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
     set_property(SOURCE ble_stack_unit.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
-    set_property(SOURCE ble_radio.c APPEND PROPERTY COMPILE_OPTIONS -Os)
+    set_property(SOURCE ble_radio.c APPEND PROPERTY COMPILE_OPTIONS -Oz)
     set_property(SOURCE ble_radio.c APPEND PROPERTY COMPILE_DEFINITIONS FM1_IRQ_DEFS=0)
     set_property(SOURCE ble_radio.c ble_stack_unit.c APPEND PROPERTY INCLUDE_DIRECTORIES
         ${ble_stack})
