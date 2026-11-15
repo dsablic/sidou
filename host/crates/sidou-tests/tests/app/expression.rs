@@ -382,15 +382,33 @@ fn the_wheel_adds_vibrato_depth_by_default_and_leaves_the_pulse_width() {
 }
 
 #[test]
-fn the_wheel_on_pulse_width_sets_it_across_its_range() {
+fn the_wheel_on_pulse_width_sweeps_an_audible_range_and_never_silences_a_pulse() {
     let mut rig = Rig::new(SID_MODEL_8580);
+    rig.set_preset(PWM_BASS);
     rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
     rig.note_on(C4);
+    let thin = LIVE_PULSE_FIRST as u32;
+    let mut previous = 0;
+    for wheel in 0..=127u8 {
+        rig.cc(LIVE_CC_MOD_WHEEL, wheel);
+        rig.tick();
+        let width = rig.voice_pw(0);
+        assert!(
+            (thin..=LIVE_PULSE_WIDTH_MAX as u32 + 1 - thin).contains(&u32::from(width)),
+            "wheel {wheel}: width {width}"
+        );
+        let set = u32::from(rig.live.pulse_width);
+        assert!(set >= previous, "wheel {wheel}: monotone");
+        previous = set;
+        assert_eq!(rig.reg(0x04) & 0x40, 0x40, "the pulse stays on");
+    }
     rig.cc(LIVE_CC_MOD_WHEEL, 0);
-    assert_eq!(rig.live.pulse_width, 0);
-    assert_eq!(rig.voice_pw(0), 0, "at once, as M1a");
+    assert_eq!(u32::from(rig.live.pulse_width), thin);
     rig.cc(LIVE_CC_MOD_WHEEL, 127);
-    assert_eq!(rig.voice_pw(0), 4095);
+    assert_eq!(
+        u32::from(rig.live.pulse_width),
+        LIVE_PULSE_WIDTH_MAX as u32 + 1 - thin
+    );
     rig.clear();
     for _ in 0..10 {
         rig.tick();

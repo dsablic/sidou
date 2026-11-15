@@ -665,7 +665,7 @@ fn the_mod_target_goes_before_a_pulse_width_that_depends_on_it() {
 
 #[test]
 fn nrpn_data_entry_alone_is_midi_input_and_not_echoed() {
-    let mut o = Out::with_pulse_wheel();
+    let mut o = Out::new();
     o.trs(&[0xB0, 99, 0, 98, 0]);
     o.trs(&[0xB0, 6, 5, 38, 1]);
     assert_eq!(o.get(LIVE_PARAM_CUTOFF), 5 << 7 | 1);
@@ -673,9 +673,9 @@ fn nrpn_data_entry_alone_is_midi_input_and_not_echoed() {
     o.trs(&[0xB0, 97, 0]);
     o.trs(&[0xB0, 97, 0]);
     assert_eq!(o.get(LIVE_PARAM_CUTOFF), 5 << 7);
-    o.trs(&[0xB0, 1, 99]);
-    assert_eq!(o.get(LIVE_PARAM_PULSE_WIDTH), unsafe {
-        midi_map_from_cc(std::ptr::null(), map_entry(LIVE_PARAM_PULSE_WIDTH), 99)
+    o.trs(&[0xB0, LIVE_CC_RESONANCE as u8, 99]);
+    assert_eq!(o.get(LIVE_PARAM_RESONANCE), unsafe {
+        midi_map_from_cc(std::ptr::null(), map_entry(LIVE_PARAM_RESONANCE), 99)
     });
     assert_eq!(o.tick_until_quiet(), []);
 }

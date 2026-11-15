@@ -124,7 +124,6 @@ fn a_usb_message_between_the_bytes_of_a_trs_message_leaves_both_whole() {
 #[test]
 fn ccs_follow_the_default_mapping() {
     let mut m = Midi::new();
-    m.rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
     m.trs(&[0xB0, 74, 0]);
     assert_eq!(m.live().cutoff, 0);
     m.usb(0xB, [0xB3, 74, 127]);
@@ -138,9 +137,9 @@ fn ccs_follow_the_default_mapping() {
     assert_eq!(m.live().resonance, 0);
 
     m.trs(&[0xB0, 1, 127]);
-    assert_eq!(m.live().pulse_width, 4095);
+    assert_eq!(m.live().mod_wheel, 127);
     m.trs(&[0xB0, 1, 0]);
-    assert_eq!(m.live().pulse_width, 0);
+    assert_eq!(m.live().mod_wheel, 0);
 
     m.trs(&[0xB0, 7, 0]);
     assert_eq!(m.live().volume, 0);

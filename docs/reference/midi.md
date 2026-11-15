@@ -139,8 +139,10 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   about 8 Hz a cycle has fewer than 12 steps and the vibrato starts to sound stepped.
 - **Modulation wheel (CC 1):** by default it adds to the vibrato depth, General MIDI's
   meaning, audible on every sound. The mod wheel target (NRPN 6/2, and the WHEEL row on the
-  MIDI page, one setting kept with the others) moves it to the pulse width (it sets it
-  across its range, as M1a did and the map's row says) or to the cutoff (it opens the filter
+  MIDI page, one setting kept with the others) moves it to the pulse width (it sets it from
+  128 at the bottom to 3968 at the top of 4096, the thin edges the PWM keeps away from, so
+  no position silences a pulse sound; the pulse width's own NRPN 0/2 stays the SID's raw
+  0..4095) or to the cutoff (it opens the filter
   above the cutoff that is set, 8 steps per value). A new target starts the wheel at 0.
 - **Aftertouch:** channel and polyphonic. A voice's pressure is the larger of the
   channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off
