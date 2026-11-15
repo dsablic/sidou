@@ -75,7 +75,7 @@ static void rite_draw(scene_view_rite* rt) {
     if (rt->has_art) {
         scene_rmr_draw(&rt->rmr, &rt->art, &rt->px);
     } else {
-        scene_rmr_intro(&rt->rmr, &rt->px);
+        scene_intro_draw(&rt->intro, &rt->px, rt->g);
     }
 }
 
@@ -108,6 +108,7 @@ static int rite_art_changed(scene_view* sv) {
 
 static void rite_start(scene_view* sv, grid* g) {
     scene_rmr_init(&sv->u.rite.rmr);
+    scene_intro_init(&sv->u.rite.intro);
     sv->song.n = 0;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         sv->song.stamp[v] = sv->l->voice[v].stamp;
@@ -121,8 +122,10 @@ static void rite_step(scene_view* sv) {
     scene_song_frame(&sv->song, sv->l, &m);
     for (uint32_t i = 0; i < m.n; i++) {
         scene_rmr_step(&rt->rmr, &m.beat[i]);
+        scene_intro_beat(&rt->intro, &m.beat[i]);
     }
     scene_rmr_frame(&rt->rmr, m.cutoff, m.sounding);
+    scene_intro_frame(&rt->intro, m.cutoff, m.sounding);
     rite_draw(rt);
 }
 

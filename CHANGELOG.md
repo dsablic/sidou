@@ -12,11 +12,17 @@ All notable changes are documented here. The format follows
   the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
   the pictures SCENE's sixth piece draws, an [art pack](docs/reference/art-pack.md)
   (`assets/art/red-moon-rite.sidart`, 41,037 bytes), which the FM-1 keeps in its store and draws
-  from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo over raster bars that
-  swing with the cutoff and flash on the beat, with the hint `RED MOON RITE ART: LIBRARY`. A pack
+  from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo between two drifting
+  starfields at three depths, which speed up while notes sound and with the cutoff, and the logo's
+  glow sweeps into the colour of what is played (a kick red, a snare yellow, the bass orange, an
+  arp green, a hat cyan) and back to its calm purple in silence, with the hint
+  `RED MOON RITE ART: LIBRARY`. A pack
   sent later takes over at once; FORMAT erases it with the rest. The browser demo's store starts
   with it. The image is 39,328 bytes smaller (539,904); RAMTEXT did not change; SCENE's state
   holds 1,196 bytes more RAM. SysEx's new refusal 17 is a pack that is not RED MOON RITE's.
+- **SCENE's toasts over RED MOON RITE read again**: its name and the art hint showed as a yellow
+  box with no text (big text over the scene drew blank), and a short second line left a white
+  block beside it.
 - **A glow around the LAB card that turns**: for the second the card is lit, a halo in the knob's
   colour (three pixels, solid, then dithered fading) surrounds it as well as the name's reverse
   video, in both themes; it is drawn once when the lit card changes and the lists keep their bar.

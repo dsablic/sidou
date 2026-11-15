@@ -65,6 +65,8 @@ typedef struct {
 } scene_px;
 
 void scene_px_init(scene_px* sp, grid* g);
+scene_px_layer scene_px_call(scene_px_fn fn, const void* ctx, int32_t x0, int32_t y0, int32_t x1,
+                             int32_t y1, uint32_t param);
 void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l);
 void scene_px_touch(scene_px* sp, int32_t x0, int32_t y0, int32_t x1, int32_t y1);
 uint32_t scene_px_scan(scene_px* sp, grid* g, uint32_t most);

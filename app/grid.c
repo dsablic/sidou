@@ -542,26 +542,49 @@ __attribute__((always_inline)) static inline uint32_t bitmap_seek(
     return byte;
 }
 
-void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
+void grid_bitmap_span(const grid_bitmap* b, grid_bitmap_cursor* c, uint32_t x, uint32_t y,
+                      uint32_t n, uint8_t* out) {
     if (!n) {
         return;
     }
-    uint32_t at, left;
-    uint32_t byte = bitmap_seek(b, x, y, &at, &left, b->data[15] & 128u);
     const uint8_t* data = b->data;
-    for (;;) {
-        uint8_t c = (uint8_t)(byte & 15u);
-        uint32_t k = left < n ? left : n;
-        n -= k;
-        while (k--) {
-            *out++ = c;
-        }
-        if (!n) {
-            return;
-        }
-        byte = bitmap_run(data, &at);
-        left = (byte >> 4) + 1u;
+    int raw = data[15] & 128u;
+    uint32_t at, start;
+    if (c->y == y && c->x <= x) {
+        at = c->at;
+        start = c->x;
+    } else {
+        at = bitmap_row_mode(data, b->rows[y], b->w, x, &start, raw);
     }
+    uint32_t run_at = at;
+    uint32_t byte = bitmap_run_mode(data, &at, raw);
+    uint32_t end = start + (byte >> 4) + 1u;
+    for (;;) {
+        if (x < end) {
+            uint32_t k = end - x < n ? end - x : n;
+            uint8_t colour = (uint8_t)(byte & 15u);
+            n -= k;
+            x += k;
+            while (k--) {
+                *out++ = colour;
+            }
+            if (!n) {
+                break;
+            }
+        }
+        start = end;
+        run_at = at;
+        byte = bitmap_run_mode(data, &at, raw);
+        end += (byte >> 4) + 1u;
+    }
+    c->at = run_at;
+    c->x = (uint8_t)start;
+    c->y = (uint8_t)y;
+}
+
+void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
+    grid_bitmap_cursor c = {0, GRID_BITMAP_CURSOR_NONE, GRID_BITMAP_CURSOR_NONE};
+    grid_bitmap_span(b, &c, x, y, n, out);
 }
 
 uint32_t grid_pending(const grid* g) {

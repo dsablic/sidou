@@ -137,6 +137,17 @@ void scene_px_init(scene_px* sp, grid* g) {
     grid_invalidate(g);
 }
 
+scene_px_layer scene_px_call(scene_px_fn fn, const void* ctx, int32_t x0, int32_t y0, int32_t x1,
+                             int32_t y1, uint32_t param) {
+    scene_px_layer l = NONE;
+    l.kind = SCENE_PX_CALL;
+    l.fn = fn;
+    l.src = ctx;
+    l.x0 = (int16_t)x0, l.y0 = (int16_t)y0, l.x1 = (int16_t)x1, l.y1 = (int16_t)y1;
+    l.param = param;
+    return l;
+}
+
 void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
     if (i >= SCENE_PX_LAYERS) {
         return;

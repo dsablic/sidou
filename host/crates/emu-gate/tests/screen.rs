@@ -2675,6 +2675,74 @@ fn without_its_art_red_moon_rite_is_the_logo_intro_of_its_golden_image() {
     assert_scene_matches_its_golden(SCENE_RMR, booted, "intro");
 }
 
+const INTRO_STAR_ROWS: [std::ops::Range<usize>; 2] = [
+    0..sidou_sys::SCENE_INTRO_LOGO_Y0 as usize,
+    sidou_sys::SCENE_INTRO_LOGO_Y1 as usize..W,
+];
+
+fn intro_band(px: &[u8], rows: std::ops::Range<usize>) -> &[u8] {
+    &px[rows.start * W..rows.end * W]
+}
+
+fn intro_logo(px: &[u8]) -> &[u8] {
+    intro_band(
+        px,
+        sidou_sys::SCENE_INTRO_LOGO_Y0 as usize..sidou_sys::SCENE_INTRO_LOGO_Y1 as usize,
+    )
+}
+
+#[test]
+fn the_intros_hint_reads_its_logo_glows_with_a_chord_its_stars_drift_and_silence_calms_it() {
+    let Some((build, fw)) = common::build_and_firmware("the intro test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_scene(&mut m, &fw, SCENE_RMR - 1);
+    m.turn(SELECT, 1);
+    m.run_ms(500);
+    to_mid_frame(&mut m, &fw);
+    let hint = indexed(&m.soc.lcd.fb);
+    compare_golden(&build, "scene-intro-hint", &m.soc.lcd.fb, &[]);
+    let toast: Vec<u8> = (25 * 8..29 * 8)
+        .flat_map(|y| (2 * 8..28 * 8).map(move |x| (x, y)))
+        .map(|(x, y)| hint[y * W + x])
+        .collect();
+    for c in [sidou_sys::GRID_BLACK, sidou_sys::GRID_YELLOW] {
+        assert!(toast.contains(&(c as u8)), "the hint's colour {c}");
+    }
+    m.run_ms(TOAST_GONE_MS);
+    to_mid_frame(&mut m, &fw);
+    let calm = indexed(&m.soc.lcd.fb);
+    chord_keys(&mut m, true);
+    m.run_ms(1000);
+    to_mid_frame(&mut m, &fw);
+    let lit = indexed(&m.soc.lcd.fb);
+    m.run_ms(UI_FRAME_MS);
+    let next = indexed(&m.soc.lcd.fb);
+    chord_keys(&mut m, false);
+    m.run_ms(3000);
+    to_mid_frame(&mut m, &fw);
+    let calmed = indexed(&m.soc.lcd.fb);
+    compare_golden(&build, "scene-intro-calm", &m.soc.lcd.fb, &[]);
+    assert_ne!(
+        intro_logo(&lit),
+        intro_logo(&calm),
+        "the chord lights the glow"
+    );
+    assert_eq!(
+        intro_logo(&calmed),
+        intro_logo(&calm),
+        "silence calms the glow"
+    );
+    for rows in INTRO_STAR_ROWS {
+        assert_ne!(
+            intro_band(&lit, rows.clone()),
+            intro_band(&next, rows.clone()),
+            "the stars in rows {rows:?} drift from one frame to the next"
+        );
+    }
+}
+
 fn cells_sent(c: &Cost) -> Vec<u32> {
     c.frames.iter().map(cells).collect()
 }

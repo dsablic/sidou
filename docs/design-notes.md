@@ -4646,10 +4646,15 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   toast's text are left out of a view's budget (`screen_pending`); the cover's cells count with the
   layers' (`screen_layer_cells`) for the frame it was set in, and a toast of no time covers nothing.
 - Text over a pixel region (a painter's, SCENE's RED MOON RITE, or a bitmap) is drawn by the
-  region's run like text anywhere else, big text's pieces included. Until 1.20 the region's run drew
+  region's run like text anywhere else, big text's pieces included. Before, the region's run drew
   only the 8 x 8 font's glyphs, and a big piece's code has a blank one: a two- or four-row toast
-  over RED MOON RITE (its name, the art hint) showed as a box of its background colour, black on
-  yellow read as yellow on yellow (the owner, on the device, 2026-11-15).
+  over RED MOON RITE (its name, with its art or without, and the art hint) showed as a box of its
+  background colour, black on yellow read as yellow on yellow (the owner, on the device,
+  2026-11-15).
+- A four-row toast covers only its lines' cells: the second line's width is its own
+  (`toast_last_w`). It covered the first line's width on both, and a view that leaves covered
+  cells to the screen (RED MOON RITE) kept whatever the cells beside a shorter second line held:
+  the wipe's white edge, a block after `ART: LIBRARY`.
 
 ### View dispatch and budgets
 
@@ -6073,19 +6078,34 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   whether that file is still the same (its key's record, its id) and opens the pack again if not,
   repainting the whole screen, so a pack replaced or deleted is let go before its chunks can be
   erased. With none, it looks for one every 16 frames (a third of a second).
-- **The intro.** Without a valid pack RED MOON RITE must not be blank (the owner): it plays a
-  demo-style intro made of what the firmware already has, the Metal Chrome logo bitmap's lettering
-  rows (64-160, black left transparent) over three raster bars of the C64 palette's ramps, one
-  above the logo and two below. The duel's state machine runs as ever and drives them: the bars
-  swing on its animation clock, half their room with the filter closed and all of it open, and
-  flash a white core on a parry, an arp flare or the fill. The bars never pass under the logo:
-  re-rendering the logo's tiles costs a bitmap seek a tile row (`grid_bitmap_row`), and bars
-  behind it took a ui_poll to 95,727 instructions, over the 62,000 allowance; kept clear of it,
-  the busiest is 25,263. One bar moves a frame (the frame's number picks it), so a frame repaints
-  at most one bar's rows: in the emulator with the band, 58.5 cells and 174,044 instructions a
-  frame, 91 cells at most, the busiest ui_poll 25,263 (the duel: 120.5, 1,057,204, 123, 45,506). Its code is 336 bytes
-  (`scene_rmr_intro`, its two row painters, the ramps); the loader and the store's two helpers
-  840 more.
+- **The intro** (`scene_intro`, its own state and entry points so it can also be a piece of its
+  own). Without a valid pack RED MOON RITE must not be blank (the owner): it plays a demo-style
+  intro, the Metal Chrome logo (rows 64-160, black left transparent) between two starfields, with
+  the logo's glow in the colours of what is played. The first version's three raster bars were
+  plain on the device (the owner, 2026-11-15).
+- The stars: 24, one every 5 pixel rows above (10-60) and below (166-226) the logo, never behind
+  it, so a star's frame repaints only star tiles. Three depths (dark grey, light grey, white)
+  drift left at 1/8, 1/4 and 1/2 a pixel a frame in silence, and twice to eight times that while
+  notes sound, with the cutoff. A star that moves a pixel touches its old and new tiles; one that
+  has not moved touches nothing.
+- The glow is the logo's own halo, the bitmap's purple and blue pixels, remapped to a pair per
+  role: a kick light red and red, a snare yellow and orange, the bass orange and brown, an arp
+  light green and green, a hat cyan and light blue (the frame's strongest hit wins); 25 frames
+  after the last gate the calm pair, the bitmap's own. A new colour sweeps down the logo a tile row
+  every second frame (24 frames for the whole logo), so a changing glow paints bands of colour
+  downward. A sweep's row is marked to be sent (all 30 cells) rather than scanned: every row has
+  halo pixels, so a scan would composite each tile twice for nothing.
+- Repainting the logo's tiles is affordable because the logo's rows are read through a cursor per
+  pixel row (`grid_bitmap_span`, `grid_bitmap_cursor`): the logo has no checkpoints (one every 256
+  pixels), and a seek from the row's start to the right edge walked about a hundred runs a row
+  (a tile cost about 5,000 instructions; bars behind the logo once took a ui_poll to 95,727). A
+  tile row is drawn left to right, so each span resumes from the run where the last one ended.
+  Eight cursors (one per pixel row of a tile row, 64 bytes); checkpoints every 32 pixels instead
+  would have cost 1,397 bytes of flash and the logo's size bound.
+- In the emulator with the band: 45.8 cells and 175,494 instructions a frame, 65 cells at most,
+  the busiest ui_poll 29,106 (the bound 64 cells, 100, 192,000 instructions, 62,000). The image
+  grew 1,360 bytes (the intro, the cursor and the toast fixes; 32,248 left under the ceiling);
+  RAMTEXT did not move; the RAM region keeps 5,432 bytes free.
 - **FORMAT** takes the pack with the rest of the store; the intro plays until it is sent again.
 
 ### RED MOON RITE music

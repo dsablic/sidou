@@ -127,6 +127,7 @@ struct screen {
     uint8_t cover_col, cover_row, cover_w, cover_h;
     uint16_t cover_cells;
     char toast[SCREEN_TOAST_CHARS + 1u];
+    uint8_t toast_last_w;
     screen_capture_fn capture;
     void* capture_ctx;
     screen_capture_fn global;

@@ -28,8 +28,8 @@ store's.
 - **Drawn in place.** The firmware reads the pack straight from flash (XIP): it copies nothing but
   a 24-byte description of each frame and a pointer a page into RAM (1,196 bytes, inside SCENE's
   own state).
-- **Without a valid pack** RED MOON RITE plays SIDOU's logo intro instead (the SIDOU logo over
-  raster bars that swing with the filter cutoff and flash on the beat), and its toast says
+- **Without a valid pack** RED MOON RITE plays SIDOU's logo intro instead (the SIDOU logo between
+  drifting starfields, its glow in the colours of what is played), and its toast says
   `RED MOON RITE ART: LIBRARY`. A pack sent while the intro plays is picked up within 16 frames;
   one deleted or replaced while it is drawn is let go at the next frame.
 - **FORMAT** erases the store, the pack with it: RED MOON RITE plays the intro until the pack is

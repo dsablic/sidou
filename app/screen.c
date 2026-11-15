@@ -215,12 +215,13 @@ static void toast_layout(screen* s) {
     }
     if (!brk || n - brk - 1u > SCREEN_TOAST_LINE) {
         s->toast_h = 1;
-        s->toast_w = (uint8_t)n;
+        s->toast_w = s->toast_last_w = (uint8_t)n;
         return;
     }
     uint32_t second = n - brk - 1u;
     s->toast_brk = (uint8_t)brk;
     s->toast_w = (uint8_t)(2u * (brk > second ? brk : second));
+    s->toast_last_w = (uint8_t)(2u * second);
 }
 
 void screen_toast(screen* s, const char* text, uint32_t ms) {
@@ -237,6 +238,7 @@ void screen_toast(screen* s, const char* text, uint32_t ms) {
         s->toast_w = SCREEN_TOAST_CHARS;
         s->toast_brk = 0;
     }
+    s->toast_last_w = s->toast_w;
     s->toast_on = TOAST_WAITING;
     s->toast_until = ms;
     s->layers = 1;
@@ -579,8 +581,9 @@ static int in_cover(const screen* s, uint32_t col, uint32_t row) {
 }
 
 static int in_toast(const screen* s, uint32_t col, uint32_t row) {
-    return col - SCREEN_TOAST_COL < s->toast_w && row - toast_row(s) < s->toast_h &&
-           toast_shows(s);
+    uint32_t r = row - toast_row(s);
+    uint32_t w = r >= 2u ? s->toast_last_w : s->toast_w;
+    return col - SCREEN_TOAST_COL < w && r < s->toast_h && toast_shows(s);
 }
 
 int screen_covered(const screen* s, uint32_t col, uint32_t row) {

@@ -3160,12 +3160,16 @@ Set up:
   Library page (`tools/web-demo`, or the site), the FM-1 on USB. Headphones on the line out.
 
 - [ ] **Songs kept, the intro plays:** after the install, SONG lists the songs it had. HOME,
-  SCENE, SELECT to RED MOON RITE. Pass: the toast `RED MOON RITE ART: LIBRARY`, then the SIDOU logo
-  over raster bars, one above it and two below; hold a chord and open K1: the bars swing wider,
-  and they move while the music plays and hold still a moment after it stops; PLAY: the bars
-  flash white on the song's snares and fills. No stall, no audio click. *Emulator:*
+  SCENE, SELECT to RED MOON RITE. Pass: the toast `RED MOON RITE ART: LIBRARY` reads black on
+  yellow (in both themes: SETTINGS, THEME), then the SIDOU logo between two starfields drifting
+  left, slowly in silence; hold a chord: the logo's glow sweeps down into green and orange and the
+  stars speed up, more with K1 open; let go: the glow sweeps back to purple and the stars slow.
+  PLAY: the glow follows the song's kicks (red), snares (yellow) and hats (cyan). The other
+  pieces' names read too (SELECT round). No stall, no audio click. *Emulator:*
   `screen.rs::without_its_art_red_moon_rite_is_the_logo_intro_of_its_golden_image`,
-  `screen.rs::scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets` (intro).
+  `screen.rs::the_intros_hint_reads_its_logo_glows_with_a_chord_its_stars_drift_and_silence_calms_it`,
+  `screen.rs::scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets` (intro),
+  `scene_rmr.rs::red_moon_rites_toasts_show_their_big_text_over_the_scene_in_every_theme` (host).
 - [ ] **Send the art from the Library:** Library page, Connect, section 2: press **RED MOON RITE
   art**. Pass: the page says it sent `RED MOON RITE` (41,037 bytes) and lists it as
   `RED MOON RITE art`; the FM-1 toasts `RECEIVING` then `SAVED`. *Emulator:*
@@ -3178,7 +3182,7 @@ Set up:
   `screen.rs::scene_rmr_matches_its_golden_image`,
   `screen.rs::red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song`.
 - [ ] **A power cycle keeps it:** power the FM-1 off and on, SCENE, RED MOON RITE. Pass: the duel,
-  no hint toast.
+  no hint toast; the toast `RED MOON RITE` reads black on yellow.
 - [ ] **A broken pack is refused:** with `sidou-sysex art` refusing a pack edited by hand (a byte
   of its slot table changed), and the Library's **Send files…** with the same file. Pass: the page
   refuses it in words before sending; nothing changes on the FM-1. *Emulator:* `art.rs` (sidou-sysex).
