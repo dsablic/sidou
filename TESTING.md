@@ -2121,10 +2121,10 @@ suite's would be; nothing is sampled.
 |---|---|
 | `scope` | `tools/change-scope --ci`, the emulator shards (`tools/emu-shards --matrix`) and the build image's digest (`tools/docker/image.digest`) for the other jobs |
 | `docs` | REUSE (`fsfe/reuse-action`) and `tools/readme-check` (with the tags, for the hub card's check) |
-| `build` | both firmware builds (`fm1`, `fm1-spike`), every test binary once (`cargo nextest archive`), the package and the `ergo` binary, handed on as the `build` artifact |
-| `emu-gate` (12 shards) | the emulator gate from the archive: the long tests in groups of their own, the rest in slices (`tools/emu-shards`; `SIDOU_FM1_BUILD` and `SIDOU_FM1_SPIKE_BUILD` set) |
-| `ergo-gate` (8 shards) | `tools/ergo-gate --only PART --shard K/N` with the prebuilt `ergo`: journeys and readability; knobs, feedback and defaults; consistency in halves; the recipes in quarters |
-| `host-tests` | the workspace tests but the emulator gate, from the archive (`-E 'not package(emu-gate)'`), with `build/fm1` present and `SIDOU_FM1_BUILD` unset, as locally |
+| `build` | both firmware builds (`fm1`, `fm1-spike`), the emulator gate's test binaries once (`cargo nextest archive -p emu-gate`; for a release bump the whole workspace's), the package and the `ergo` binary, handed on as the `build` artifact |
+| `emu-gate` (11 shards) | the emulator gate from the archive: the thirty longest tests dealt into five groups by their CI times, the rest in six slices (`tools/emu-shards`; `SIDOU_FM1_BUILD` and `SIDOU_FM1_SPIKE_BUILD` set) |
+| `ergo-gate` (7 shards) | `tools/ergo-gate --only PART --shard K/N` with the prebuilt `ergo`: journeys and readability; knobs, feedback and defaults; consistency in halves; the recipes in thirds |
+| `host-tests` | the workspace tests but the emulator gate (`--workspace --exclude emu-gate`), built beside the `build` job, with `build/fm1` present and `SIDOU_FM1_BUILD` unset, as locally |
 | `ubsan` | the same set built and run with `SIDOU_SANITIZE=undefined` |
 | `fmt-clippy` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` |
 | `gcc-check` | `tools/gcc-check` (GCC 13 is the image's compiler) |

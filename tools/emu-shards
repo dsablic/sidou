@@ -7,30 +7,55 @@ import sys
 USAGE = """The emulator gate split into CI's shards (TESTING.md, "What runs when").
   tools/emu-shards --matrix   the shard names, as JSON, for check.yml's matrix
   tools/emu-shards SHARD      that shard's cargo-nextest filter arguments, one a line
-The long tests have shards of their own (a group's tests run side by side, one core each, so a
-group holds a few single-threaded tests or those that spread over every core); every other
-emulator test goes into the REST shards by slice (every Nth test of the whole list).
+The thirty longest tests are dealt into GROUPS by their times on CI (the junit-emu-gate-*
+reports), the longest first into the lightest group, a test that spreads over every core counted
+for each core it takes; every other emulator test goes into the REST shards by slice (every Nth
+test of the whole list). Deal them again when the times change much.
 """
 
 GROUPS = [
-    ["the_players_worst_block_fits_its_budget"],
-    ["the_tracker_stays_within_its_budgets_while_a_song_plays"],
-    ["red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song"],
+    [
+        "the_players_worst_block_fits_its_budget",
+        "recording_over_usb_audio_costs_the_audio_interrupt_little",
+        "a_usb_put_with_midi_notes_held_waits_out_a_collection_and_is_accepted",
+        "every_lab_input_and_pass_stays_within_poll_instructions",
+    ],
+    [
+        "red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song",
+        "a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted",
+        "the_starter_pack_goes_into_the_store_over_trs_whole_with_room_to_spare",
+        "a_usb_put_with_keys_held_waits_out_a_collection_and_is_accepted",
+        "a_playing_tune_holds_the_main_loops_budgets",
+    ],
     [
         "the_boot_and_about_stay_within_their_budgets",
-        "the_song_and_a_tune_switch_both_ways_twenty_times_with_the_keys_routed_and_the_song_back_byte_for_byte",
+        "a_cut_after_any_operation_leaves_the_old_value_or_the_new",
+        "a_note_on_keeps_its_bounds_while_the_character_sweeps",
+        "character_ccs_reach_the_chip_and_match_the_host_sample_exact",
         "the_step_view_stays_within_its_budgets_while_a_song_plays",
+        "every_template_instrument_auditions_on_step_heard_at_its_pitch_and_each_its_own",
+        "a_note_on_keeps_its_bounds_while_a_file_is_saved",
     ],
     [
-        "a_cut_after_any_operation_leaves_the_old_value_or_the_new",
-        "character_ccs_reach_the_chip_and_match_the_host_sample_exact",
-        "clock_outs_start_goes_out_during_a_sysex_reply",
-        "the_mirror_follows_live_tracker_the_menu_and_scene",
+        "the_song_and_a_tune_switch_both_ways_twenty_times_with_the_keys_routed_and_the_song_back_byte_for_byte",
         "midi_learn_over_scene_and_live_stays_within_the_budget_from_opening_to_closing",
+        "a_note_on_reaches_the_buffer_within_a_block_and_a_poll",
+        "help_cards_match_their_goldens",
+        "scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets",
+        "chip_input_and_its_profile_steps_hold_the_main_loop_within_the_poll_allowance",
+        "master_scales_a_playing_song_and_full_master_leaves_it_alone",
+    ],
+    [
         "a_note_on_reaches_the_buffer_within_a_block_and_a_poll_while_the_screen_redraws",
+        "the_mirror_follows_live_tracker_the_menu_and_scene",
+        "the_tracker_stays_within_its_budgets_while_a_song_plays",
+        "a_chords_note_ons_move_every_scene_piece_within_two_frames_and_silence_calms_it",
+        "the_states_help_cards_match_their_goldens",
+        "clock_outs_start_goes_out_during_a_sysex_reply",
+        "a_usb_put_with_a_song_playing_waits_out_a_collection_and_is_accepted",
     ],
 ]
-REST = 7
+REST = 6
 
 
 def tests(names):
