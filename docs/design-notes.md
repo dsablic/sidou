@@ -6514,9 +6514,6 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   unused `noinline, unused` static functions, which need `sid.c`'s tables, so the two tests that
   compile a C snippet with `cc` failed to link; `sidou_tests::c_program::run` builds them at
   `-O2`, as the host builds all C.
-- **Until the build image is published again** with rustfmt, clippy and cargo-nextest
-  (`tools/docker/Dockerfile`), `.github/actions/image-tools` adds them to the pinned image; in an
-  image that has them it does nothing, and it goes once `image.digest` names such an image.
 
 ## Tools and the site
 
