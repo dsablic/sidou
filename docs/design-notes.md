@@ -674,7 +674,7 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   about 3.7 MB, `summer` 2.6 MB, `volume` and `resonance` 2 MB each, `vcr_n_Ids_term` 512 KB,
   `opamp_rev` and `vcr_nVg` 128 KB each) against 10,080 bytes free below the image ceiling; reSIDfp clocks
   the filter every SID cycle, about 22 times SIDOU's per-sample step; and the filter runs in the
-  audio path, whose RAMTEXT has 16 of 49,152 bytes free. Only a fitted curve could stand in, as the
+  audio path, whose RAMTEXT had 16 of 49,152 bytes free then (4,288 since 1.7 moved the song player out). Only a fitted curve could stand in, as the
   present model does.
 
 ### Oscillator
@@ -4149,7 +4149,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   playing one and leaves the others to their song instruments.
 - The rows are GoatTracker's encoding (the wave program's left control and right note byte), so a
   table goes to a wave program and back with no translation of its notes. GoatTracker's player
-  (`gt2_play.c`) is not what runs it: it lives in RAMTEXT, which has 16 bytes free, and runs per
+  (`gt2_play.c`) is not what runs it: it lives in RAMTEXT, which had 16 bytes free then (4,288 since 1.7), and runs per
   song channel. `live_tick` runs the table every second tick (a 50 Hz frame), per voice, from flash.
 - GoatTracker holds a delay row of value `d` for `d + 1` frames (its `wavetime` counts to `d` and the
   row advances on the next frame), so a step of `n` frames is its row and a delay row of `n - 2`; a
@@ -4179,7 +4179,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - MOD's four cards are taken, so the LFOs are MOD's second page, reached by LFO again on MOD:
   one button for both, no new gesture.
 - A layer's level is not a destination: the SID has no per-voice volume, a gain per voice would be
-  in the audio interrupt (RAMTEXT, 16 bytes free), and the sustain level cannot stand in (the
+  in the audio interrupt (RAMTEXT, 16 bytes free then; 4,288 since 1.7), and the sustain level cannot stand in (the
   envelope only falls to a lower sustain). VOL is the chip's volume (`$d418`), every layer at once.
 - They run free (no restart at a note-on), so `lab_audible` takes the worst of each moving LFO's
   two extremes (pitch, width, cutoff) and a volume LFO at its trough (`VOLUME_LOSS_DB`): a note can
