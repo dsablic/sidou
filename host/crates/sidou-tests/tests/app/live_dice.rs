@@ -6,7 +6,7 @@ use sidou_sys::*;
 use crate::{preset, shown_preset_name, Rig, NOISE_PERC};
 
 const DICE: u8 = LIVE_PRESET_COUNT as u8;
-const DICE_HASH: u64 = 0x69a6_da44_3c00_9ef5;
+const DICE_HASH: u64 = 0x6c5e_800d_5883_b60d;
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x100_0000_01b3;
 

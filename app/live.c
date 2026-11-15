@@ -1012,6 +1012,11 @@ void live_set_master(live* l, uint16_t value) {
     l->volume = (uint8_t)((value * 100u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
 }
 
+static uint32_t wheel_pulse_width(uint8_t value) {
+    uint32_t span = LIVE_PULSE_WIDTH_MAX + 1u - 2u * LIVE_PULSE_FIRST;
+    return LIVE_PULSE_FIRST + ((uint32_t)value * span + 63u) / 127u;
+}
+
 void live_cc(live* l, uint8_t cc, uint8_t value) {
     if (value > 127) {
         return;
@@ -1030,8 +1035,12 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
         live_arp_set(l, f, (uint32_t)value * VALUES[f] / 128u + (f == LIVE_ARP_SPAN));
         return;
     }
-    if (cc == LIVE_CC_MOD_WHEEL && l->mod_target != LIVE_MOD_PULSE_WIDTH) {
-        l->mod_wheel = value;
+    if (cc == LIVE_CC_MOD_WHEEL) {
+        if (l->mod_target == LIVE_MOD_PULSE_WIDTH) {
+            live_param_set(l, LIVE_PARAM_PULSE_WIDTH, wheel_pulse_width(value));
+        } else {
+            l->mod_wheel = value;
+        }
         return;
     }
     const midi_map_entry* e = midi_map_for_cc(cc);

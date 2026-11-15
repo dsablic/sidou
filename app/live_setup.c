@@ -18,7 +18,7 @@ __attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t fi
 
 #define EXPRESSION_DEFAULTS                                                                        \
     .bend_range = LIVE_BEND_RANGE_DEFAULT, .velocity_target = LIVE_VELOCITY_OFF,                   \
-    .mod_target = LIVE_MOD_PULSE_WIDTH, .pressure_target = LIVE_PRESSURE_OFF,                      \
+    .mod_target = LIVE_MOD_VIBRATO, .pressure_target = LIVE_PRESSURE_OFF,                      \
     .vibrato_rate = LIVE_VIBRATO_RATE_DEFAULT, .vibrato_depth = 0, .vibrato_delay = 0
 
 static const live_preset presets[LIVE_PRESET_SLOTS] = {
@@ -205,7 +205,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->mod_wheel = 0;
     l->channel_pressure = 0;
     l->last_velocity = LIVE_EXPRESSION_MAX;
-    l->mod_target = LIVE_MOD_PULSE_WIDTH;
+    l->mod_target = LIVE_MOD_VIBRATO;
     l->bend_range_rpn = 0;
     l->envelope_mode = LIVE_ENVELOPE_INSTANT;
     l->profile = (uint8_t)sid_chip_default(model);

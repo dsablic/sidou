@@ -295,9 +295,9 @@
     <section>
       <h2>MIDI</h2>
       <table>
-        <tr><td>Notes</td><td>every channel (OMNI) on TRS, USB and Bluetooth; menu → MIDI sets MODE (LIVE, MULTI, WHOLE A/B, OMNI), CHANNEL, CLOCK, CLOCK OUT… (not saved)</td></tr>
+        <tr><td>Notes</td><td>every channel (OMNI) on TRS, USB and Bluetooth; menu → MIDI sets MODE (LIVE, MULTI, WHOLE A/B, OMNI), CHANNEL, WHEEL (what CC 1 moves: VIBRATO, PULSE, CUTOFF; saved), CLOCK, CLOCK OUT… (the rest not saved)</td></tr>
         <tr><td>Program change</td><td>0–3 the presets (bank 0); bank 1 (CC 0=0, 32=1) loads song <i>n</i> in name order; bank 2 picks the profile 0–12</td></tr>
-        <tr><td>Main CCs</td><td>74 cutoff · 71 reso · 1 pulse width · 7 volume · 73/75/79/72 A D S R · 25 chip model · 85 profile · 86 87 89 90 age DAC thump bleed · 117 spread</td></tr>
+        <tr><td>Main CCs</td><td>74 cutoff · 71 reso · 1 mod wheel (vibrato) · 7 volume · 73/75/79/72 A D S R · 25 chip model · 85 profile · 86 87 89 90 age DAC thump bleed · 117 spread</td></tr>
         <tr><td>More CCs</td><td>20 wave · 21 ring · 22 sync · 23 filter mode · 24 routing · 26 envelope mode · 27–30 arp on/rate/order/span · 76–78 vibrato · 120/123 all notes off</td></tr>
         <tr><td>Effect slots</td><td>Dist 102–106 · Mod 107–111 · FX 112–116 (algorithm, Amount, A, B, Mix)</td></tr>
         <tr><td>SAVE + turn a knob</td><td>MIDI learn: send a CC to bind it (<code>LEARNED CC 21 → CUTOFF</code>); SAVE again in the frame forgets it; HOME cancels</td></tr>

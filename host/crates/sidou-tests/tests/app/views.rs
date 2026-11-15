@@ -1587,7 +1587,7 @@ fn the_midi_page_uses_six_large_rows_within_190_cells() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.v.midi.scale, 2);
     assert_eq!(u32::from(ui.v.midi.rows), VIEWS_MENU_SHOWN);
-    for step in 0..10 {
+    for step in 0..VIEWS_MIDI_ITEMS {
         if step != 0 {
             ui.turn(PANEL_ENC_SELECT, 1);
         }
@@ -1602,7 +1602,7 @@ fn the_midi_page_uses_six_large_rows_within_190_cells() {
         assert_eq!(ui.v.midi.pending, 0);
     }
     assert!(ui.row(1).contains("MIDI"));
-    assert!(midi_line(&mut ui, 9).contains("CLOCK OUT"));
+    assert!(midi_line(&mut ui, 10).contains("CLOCK OUT"));
 }
 
 #[test]
@@ -1712,6 +1712,7 @@ fn the_midi_page_edits_midis_mode_clamped_and_shows_a_dash_without_a_router() {
         ("CHORD 3", "+7"),
         ("ARP RATE", "3 FR"),
         ("ROWS/BEAT", "4"),
+        ("WHEEL", "VIBRATO"),
     ];
     for (i, (label, v)) in want.iter().enumerate() {
         ui.turn(PANEL_ENC_SELECT, i as i32 - i32::from(ui.v.midi.cursor));
@@ -1751,18 +1752,44 @@ fn the_midi_page_edits_midis_mode_clamped_and_shows_a_dash_without_a_router() {
 }
 
 #[test]
+fn the_midi_pages_wheel_row_picks_the_wheels_target_in_its_order() {
+    let mut ui = Ui::new();
+    open_once_the_menu_settles(&mut ui, VIEWS_MENU_MIDI);
+    ui.turn(PANEL_ENC_SELECT, 8);
+    ui.frame();
+    assert_eq!(ui.rig.param(LIVE_PARAM_MOD_TARGET), LIVE_MOD_VIBRATO);
+    assert!(midi_line(&mut ui, 8).starts_with("WHEEL"));
+    ui.rig.cc(LIVE_CC_MOD_WHEEL, 90);
+    for (steps, name, target) in [
+        (1, "PULSE", LIVE_MOD_PULSE_WIDTH),
+        (1, "CUTOFF", LIVE_MOD_CUTOFF),
+        (1, "CUTOFF", LIVE_MOD_CUTOFF),
+        (-2, "VIBRATO", LIVE_MOD_VIBRATO),
+    ] {
+        ui.turn(PANEL_ENC_ALGORITHM, steps);
+        assert_eq!(ui.rig.param(LIVE_PARAM_MOD_TARGET), target, "{name}");
+        assert!(midi_line(&mut ui, 8).trim_end().ends_with(name), "{name}");
+    }
+    assert_eq!(
+        ui.rig.live.mod_wheel, 0,
+        "a new target starts the wheel at 0"
+    );
+    assert_ne!(ui.live().settings_dirty, 0, "kept with the settings");
+}
+
+#[test]
 fn the_midi_pages_clock_items_set_the_clock() {
     let mut ui = Ui::new();
     let mut sync = Box::<midi_sync>::default();
     unsafe { midi_sync_init(&mut *sync) };
     open_once_the_menu_settles(&mut ui, VIEWS_MENU_MIDI);
-    ui.turn(PANEL_ENC_SELECT, 8);
+    ui.turn(PANEL_ENC_SELECT, 9);
     ui.frame();
-    let row = midi_line(&mut ui, 8);
+    let row = midi_line(&mut ui, 9);
     assert!(row.starts_with("CLOCK") && row.trim_end().ends_with(" -"));
     unsafe { views_sync(&mut *ui.v, &mut *sync) };
     ui.frame();
-    assert!(midi_line(&mut ui, 8).trim_end().ends_with("AUTO"));
+    assert!(midi_line(&mut ui, 9).trim_end().ends_with("AUTO"));
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(u32::from(sync.mode), MIDI_SYNC_FOLLOW);
     ui.turn(PANEL_ENC_ALGORITHM, 5);
@@ -1770,10 +1797,10 @@ fn the_midi_pages_clock_items_set_the_clock() {
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.popup_gone();
     ui.frame();
-    assert!(midi_line(&mut ui, 9).trim_end().ends_with("OFF"));
+    assert!(midi_line(&mut ui, 10).trim_end().ends_with("OFF"));
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(sync.clock_out, 1);
     ui.popup_gone();
     ui.frame();
-    assert!(midi_line(&mut ui, 9).trim_end().ends_with("ON"));
+    assert!(midi_line(&mut ui, 10).trim_end().ends_with("ON"));
 }
