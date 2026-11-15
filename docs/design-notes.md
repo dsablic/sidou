@@ -658,9 +658,9 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   noise and the filter) for 100 blocks while core 0 renders its twin, compared block by block. A
   difference retires core 1 (`gave_up` 0x10, barred until power-off); a refused or late job retires
   it as the hand-over does. The two chips borrow the effect pool (128 KB, before `audio_init`; two
-  chips are 70 KB) and leave it zeroed. About 40 ms of boot (9 M instructions a core) and 264 bytes
-  of flash. It closes the spike's gap: a misread inside the render, which the mailbox's check word
-  cannot see. Measured in fm1-emu (`SIDOU_CPU2_SWEEP`, 40 units each): misreads only in core 1's
+  chips are 70 KB) and leave it zeroed. About 25 ms of boot (6.1 M instructions on core 0) and
+  about 370 bytes of flash. It closes the spike's gap: a misread inside the render, which the
+  mailbox's check word cannot see. Measured in fm1-emu (`SIDOU_CPU2_SWEEP`, 40 units each): misreads only in core 1's
   render at 1e-5 a load reached the sound unseen on 18 units without the self-test, damaged it on
   20 more before the timeout retired them, and left 2 clean; with it all 40 were retired at power-on
   and played one core's samples. Misreads on any load (1e-5, 3e-6, 1e-6) were caught clean on all
