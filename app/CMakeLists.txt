@@ -54,6 +54,7 @@ add_library(sidou_live STATIC
     scene.c
     scene_art.c
     scene_px.c
+    scene_intro.c
     scene_rmr.c
     scene_rmr_motion.c
     scene_song.c
@@ -90,7 +91,7 @@ add_library(sidou_live STATIC
     views_status.c
     widget.c)
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS "-Os")
+set_source_files_properties(scene_song.c scene_rmr.c scene_intro.c PROPERTIES COMPILE_OPTIONS "-Os")
 set_source_files_properties(lab_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
 set_source_files_properties(lab_edit.c user_sound.c lab_table.c ui_sound.c glow.c PROPERTIES COMPILE_OPTIONS "-Oz")
 set_source_files_properties(lab_song.c PROPERTIES COMPILE_OPTIONS "-Oz")
@@ -108,7 +109,7 @@ if(CMAKE_CROSSCOMPILING)
         PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(lab_view.c lab_draw.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(song_pages.c step_view.c song_gen.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
-    set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c
+    set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c scene_intro.c
         midi_learn.c about.c song_edit.c midi_map.c help_view.c logo.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(keys_route.c panel.c PROPERTIES COMPILE_OPTIONS -Os)
     set_source_files_properties(chip_ctl.c PROPERTIES COMPILE_OPTIONS -Os)

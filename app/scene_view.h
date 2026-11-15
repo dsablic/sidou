@@ -8,6 +8,7 @@
 #include "art_pack.h"
 #include "live.h"
 #include "scene.h"
+#include "scene_intro.h"
 #include "scene_px.h"
 #include "scene_rmr.h"
 #include "scene_song.h"
@@ -25,6 +26,7 @@ extern "C" {
 typedef struct {
     scene_px px;
     scene_rmr rmr;
+    scene_intro intro;
     scene_rmr_art art;
     store_file pack;
     grid* g;

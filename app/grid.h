@@ -52,6 +52,14 @@ typedef struct {
     const uint8_t* data;
 } grid_bitmap;
 
+typedef struct {
+    uint32_t at;
+    uint8_t x;
+    uint8_t y;
+} grid_bitmap_cursor;
+
+#define GRID_BITMAP_CURSOR_NONE 0xffu
+
 typedef void (*grid_painter)(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]);
 
 typedef struct {
@@ -134,6 +142,8 @@ int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_
                         grid_painter fn, void* ctx, uint32_t run);
 void grid_region_clear(grid* g);
 void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, uint8_t* out);
+void grid_bitmap_span(const grid_bitmap* b, grid_bitmap_cursor* c, uint32_t x, uint32_t y,
+                      uint32_t n, uint8_t* out);
 
 void grid_mark(grid* g, uint32_t col, uint32_t row);
 int grid_marked(const grid* g, uint32_t col, uint32_t row);

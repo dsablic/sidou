@@ -154,6 +154,25 @@ fn compiled_is_png(name: &str) {
             assert_eq!(part[n], 0xff, "row {y} from {x}: wrote past n");
         }
     }
+    let mut c = grid_bitmap_cursor {
+        at: 0,
+        x: GRID_BITMAP_CURSOR_NONE as u8,
+        y: GRID_BITMAP_CURSOR_NONE as u8,
+    };
+    let spans: Vec<(usize, usize)> = (0..img.w)
+        .step_by(8)
+        .map(|x| (x, 8))
+        .chain([(100, 37), (5, 3), (5, 30), (101, 2)])
+        .collect();
+    for y in [0, img.h / 3, img.h / 2, img.h - 1] {
+        for &(x, n) in &spans {
+            let mut part = vec![0xffu8; n + 1];
+            unsafe { grid_bitmap_span(b, &mut c, x as u32, y as u32, n as u32, part.as_mut_ptr()) };
+            let want = &img.px[y * img.w + x..y * img.w + x + n];
+            assert_eq!(part[..n], *want, "({x}, {y}) by the cursor");
+            assert_eq!(part[n], 0xff, "({x}, {y}): wrote past n");
+        }
+    }
 }
 
 #[test]

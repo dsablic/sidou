@@ -87,6 +87,7 @@ const SOURCES: &[&str] = &[
     "app/scene.c",
     "app/scene_art.c",
     "app/scene_px.c",
+    "app/scene_intro.c",
     "app/scene_rmr.c",
     "app/scene_rmr_motion.c",
     "app/scene_song.c",
