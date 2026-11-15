@@ -33,7 +33,7 @@ jobs:
     # The build image, as ci.yml (the same digest as tools/docker/image.digest): the toolchains,
     # Node and Playwright's Chromium are in it, so nothing is installed here.
     container:
-      image: ghcr.io/dsablic/sidou-build@sha256:c5d6a1d204a635f2b698ade0f07deb5843e6e001d5f74684bbc92a5d974766cf
+      image: ghcr.io/dsablic/sidou-build@sha256:beeeb1c792e4826f842c21ff9a7d976530f6701b0d1fdff7dcfd4a635ab5d5ae
     steps:
       - uses: actions/checkout@v4
         with:

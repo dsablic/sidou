@@ -86,12 +86,16 @@ skip() { echo "$1 SKIP $2" | tee -a "$results"; }
 
 in_host() { (cd "$root/host" && "$@"); }
 fm1() { "$root/tools/fm1-docker" "$@"; }
-emu_env() { SIDOU_FM1_BUILD=$root/build/fm1 SIDOU_FM1_SPIKE_BUILD=$root/build/fm1-spike "$@"; }
+emu_env() {
+    SIDOU_FM1_BUILD=$root/build/fm1 SIDOU_FM1_SPIKE_BUILD=$root/build/fm1-spike \
+        SIDOU_FM1_CPU2_BUILD=$root/build/fm1-cpu2 "$@"
+}
 
 build_fm1() { fm1 cmake --preset fm1 && fm1 cmake --build --preset fm1; }
 build_spike() {
     fm1 cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON && fm1 cmake --build build/fm1-spike
 }
+build_cpu2() { fm1 cmake --preset fm1 -B build/fm1-cpu2 -DSIDOU_CPU2=ON && fm1 cmake --build build/fm1-cpu2; }
 package() {
     in_host cargo run --locked --release -p sidou-pack -- \
         --app ../build/fm1/platform/fm1/sidou_app.bin \
@@ -106,7 +110,13 @@ ubsan_tests() {
     SIDOU_SANITIZE=undefined CARGO_TARGET_DIR=$root/build/target-ubsan \
         in_host cargo nextest run --locked --release --workspace --no-fail-fast -E 'not package(emu-gate)'
 }
-emu_gate() { emu_env in_host cargo nextest run --locked --release -p emu-gate --no-fail-fast; }
+emu_gate() {
+    local cpu2_gates
+    mapfile -t cpu2_gates < <("$root/tools/emu-shards" cpu2)
+    emu_env in_host cargo nextest run --locked --release -p emu-gate --no-fail-fast \
+        && SIDOU_FM1_BUILD=$root/build/fm1-cpu2 in_host cargo nextest run --locked --release \
+            --no-fail-fast "${cpu2_gates[@]}"
+}
 emu_release_only() {
     emu_env in_host cargo nextest run --locked --release --workspace --no-fail-fast \
         --ignore-default-filter -E 'not default()'
@@ -117,7 +127,8 @@ reuse_lint() { uvx --from 'reuse[charset-normalizer]' reuse lint; }
 emu_key() {
     {
         sha256sum build/fm1/platform/fm1/sidou_app.bin build/fm1/platform/fm1/loader/loader.bin \
-            build/fm1/sidou.fwsc build/fm1-spike/platform/fm1/sidou_app.bin | cut -d' ' -f1
+            build/fm1/sidou.fwsc build/fm1-spike/platform/fm1/sidou_app.bin \
+            build/fm1-cpu2/platform/fm1/sidou_app.bin | cut -d' ' -f1
         for dir in core app bench platform assets third_party tests host/Cargo.toml host/Cargo.lock host/.config; do
             git rev-parse "HEAD:$dir"
         done
@@ -171,10 +182,13 @@ run_version() {
 run_full() {
     stage fm1-build build_fm1 & firmware=$!
     stage fm1-spike-build build_spike & spike=$!
+    stage fm1-cpu2-build build_cpu2 & cpu2=$!
     stage fmt-clippy fmt_clippy
     stage gcc-check tools/gcc-check
     wait "$firmware"; fw_ok=$?
     wait "$spike"; spike_ok=$?
+    wait "$cpu2"; cpu2_ok=$?
+    [ "$cpu2_ok" = 0 ] || spike_ok=$cpu2_ok
     [ "$fw_ok" = 0 ] && [ "$spike_ok" = 0 ] || failed=1
     if [ "$fw_ok" = 0 ] && stage package package; then
         if [ "$spike_ok" = 0 ]; then
@@ -182,8 +196,8 @@ run_full() {
             stage ergo-gate tools/ergo-gate build/fm1
             wait "$emu" || failed=1
         else
-            skip emu-gate "the spike build failed"
-            skip ergo-gate "the spike build failed"
+            skip emu-gate "the spike or two-core build failed"
+            skip ergo-gate "the spike or two-core build failed"
         fi
         stage web-demo tools/web-demo --check --skip-firmware
     else

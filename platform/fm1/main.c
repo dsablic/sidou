@@ -41,6 +41,10 @@
 #if defined(SIDOU_BLE)
 #include "ble_radio.h"
 #endif
+#if defined(SIDOU_CPU2)
+#include "cpu2.h"
+#include "fm1_cpu1.h"
+#endif
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
@@ -142,6 +146,27 @@ static void fm1_fault(const fm1_crash_t* c) {
     fm1_audio_stop();
     fm1_reboot();
 }
+
+#if defined(SIDOU_CPU2)
+int cpu2_core1_run(cpu2_job job, uint32_t arg) {
+    return fm1_cpu1_run(job, arg);
+}
+
+int cpu2_core1_wait(void) {
+    return fm1_cpu1_wait();
+}
+
+void cpu2_core1_retire(uint32_t why) {
+    fm1_cpu1_retire(why);
+}
+
+static void cpu2_boot(void) {
+    fm1_cpu1_bar_build(SIDOU_CPU2_BUILD);
+    if (fm1_cpu1_start() == 0) {
+        cpu2_self_test(audio_boot_scratch());
+    }
+}
+#endif
 
 static uint8_t song_away;
 
@@ -2288,6 +2313,9 @@ void fm1_cstart(void) {
     for (ctor_fn* c = __init_array_start; c < __init_array_end; c++) {
         (*c)();
     }
+#if defined(SIDOU_CPU2)
+    cpu2_boot();
+#endif
     fm1_mailbox_clear();
     sidou_main();
 }

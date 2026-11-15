@@ -22,11 +22,134 @@ const C1_CON_HOLD: u32 = 2;
 const RAM_SIZE: usize = 1 << 20;
 const MAX_STEPS: u64 = 2_000_000_000;
 
+const DBG_C1_PC_LIMIT: u32 = 10;
+const POLLING_STEPS: u64 = 64;
+const FPU_PREFIX: [u8; 2] = [0x3f, 0xe5];
+const FPU_PREFIX_WIDE: [u8; 2] = [0x3f, 0xf5];
+
+#[derive(Clone, Copy, Default, PartialEq)]
+pub enum Misreads {
+    #[default]
+    Anywhere,
+    InJobs,
+    InTheLoop,
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct Core1Fate {
     pub flaky: Option<(f64, u64)>,
     pub misreads_mailbox_after_jobs: Option<u32>,
     pub stalls_after: Option<u64>,
+    pub misreads: Misreads,
+    pub flaky_after_jobs: Option<u32>,
+    pub stalls_after_jobs: Option<u32>,
+    pub faults_at_fpu: bool,
+}
+
+#[derive(Default)]
+pub struct Core1 {
+    cpu: Option<Cpu>,
+    pub fate: Core1Fate,
+    pub mailbox_loop: Range<u32>,
+    flaky: Option<FlakyCore1>,
+    armed: bool,
+    faulted: bool,
+    jobs: u32,
+    pub job_steps: u64,
+    idle_steps: u64,
+}
+
+fn is_fpu(soc: &mut Soc, pc: u32) -> bool {
+    let op = [soc.read8(pc), soc.read8(pc + 1)];
+    op == FPU_PREFIX || op == FPU_PREFIX_WIDE
+}
+
+impl Core1 {
+    pub fn in_job(&self) -> bool {
+        self.cpu
+            .as_ref()
+            .is_some_and(|c| !self.faulted && !self.mailbox_loop.contains(&c.pc))
+    }
+
+    pub fn reset(&mut self) {
+        self.cpu = None;
+        self.faulted = false;
+    }
+
+    pub fn cpu(&mut self) -> &mut Option<Cpu> {
+        &mut self.cpu
+    }
+
+    pub fn drop_if_held(&mut self, soc: &mut Soc) {
+        if self.cpu.is_some() && core1_held(soc) {
+            self.cpu = None;
+        }
+    }
+
+    fn arm(&mut self) {
+        if self.armed {
+            return;
+        }
+        let Some((rate, seed)) = self.fate.flaky else {
+            return;
+        };
+        if self.fate.flaky_after_jobs.is_none_or(|n| self.jobs >= n) {
+            self.armed = true;
+            self.flaky = Some(FlakyCore1::new(rate, seed));
+        }
+    }
+
+    pub fn step(&mut self, soc: &mut Soc) {
+        if self.cpu.is_none() {
+            if !soc.cpu1_release {
+                return;
+            }
+            self.cpu = released_cpu1(soc, RAM_SIZE);
+        }
+        self.arm();
+        let in_job = self.in_job();
+        if self.faulted
+            || core1_held(soc)
+            || (self.idle_steps >= POLLING_STEPS
+                && self.fate.stalls_after_jobs.is_some_and(|n| self.jobs >= n))
+        {
+            return;
+        }
+        let Some(c1) = self.cpu.as_mut() else { return };
+        if in_job && self.fate.faults_at_fpu && is_fpu(soc, c1.pc) {
+            self.faulted = true;
+            soc.guard_trip(DBG_C1_PC_LIMIT);
+            return;
+        }
+        let exposed = match self.fate.misreads {
+            Misreads::Anywhere => true,
+            Misreads::InJobs => in_job,
+            Misreads::InTheLoop => !in_job,
+        };
+        soc.flaky_core1 = if exposed { self.flaky.take() } else { None };
+        let mut bus = Core1Bus {
+            soc: &mut *soc,
+            budget: u64::MAX,
+            until: None,
+            spent: 0,
+        };
+        let stepped = c1.step(&mut bus);
+        if let Some(f) = soc.flaky_core1.take() {
+            self.flaky = Some(f);
+        }
+        if stepped.is_err() {
+            self.faulted = true;
+            return;
+        }
+        if in_job {
+            self.job_steps += 1;
+            self.idle_steps = 0;
+        } else if self.in_job() {
+            self.jobs += 1;
+        } else {
+            self.idle_steps += 1;
+        }
+    }
 }
 
 pub struct Boot {

@@ -56,5 +56,8 @@ void audio_peak_scan(int on);
 uint32_t audio_quiet_blocks(void);
 int audio_pass_sliced(void);
 void audio_fill(int32_t* out);
+#if defined(SIDOU_CPU2)
+sid* audio_boot_scratch(void);
+#endif
 
 #endif

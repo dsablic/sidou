@@ -52,6 +52,10 @@ SECTIONS
         *(.text.gt2_edit_apply)
         *(.text.psid_ctl_block .text.psid_isr_*)
         *(.text.psid_swapped .text.psid_rewrite)
+        KEEP(*(.c1_text))
+        *(.text.fm1_cpu1_run .text.fm1_cpu1_wait .text.fm1_cpu1_retire .text.fm1_cpu1_check)
+        *(.text.cpu2_core1_run .text.cpu2_core1_wait .text.cpu2_core1_retire)
+        *(.text.cpu2_chip_b_away .text.cpu2_chip_b_back .text.cpu2_render_job .text.cpu2_render)
         . = ALIGN(16);
         _rt_end = .;
     } > RAMTEXT AT > XIP
@@ -86,7 +90,7 @@ SECTIONS
         . = ALIGN(64); *(.bss.ep1tx)
         . = ALIGN(8); *(.bss.ep0buf)
         . = ALIGN(8); *(.bss.ep1rx)
-        *(EXCLUDE_FILE(*sid_dac.c.obj *ble_stack_unit.c.obj) .bss*) *(.sbss*)
+        *(EXCLUDE_FILE(*sid_dac.c.obj *ble_stack_unit.c.obj *fm1_cpu1.S.obj) .bss*) *(.sbss*)
         *(EXCLUDE_FILE(*ble_stack_unit.c.obj) COMMON)
         . = ALIGN(4);
         _bss_end = .;
@@ -101,6 +105,8 @@ SECTIONS
         . = ALIGN(4);
         _ble_noinit_end = .;
         *(.noinit*)
+        . = ALIGN(8);
+        *fm1_cpu1.S.obj(.bss*)
     } > NOINIT
     _guard0 = 0x01C77F00; _ustack_lo = 0x01C78000; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
