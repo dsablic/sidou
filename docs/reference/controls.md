@@ -811,7 +811,8 @@ through OFF once did). On every page:
 | 22-27 | the four cards in the knobs' places, as LIVE's knob row: the card's name small in the knob's colour, its value at 3× in white (2× when it takes three characters), a bar and the knob's name |
 | 29 | the hint line: LAB's gestures, a phrase every 2 s (`EDIT A/B  +LFO UNDO  +ARP VARY`, `EDIT +SCL ROLL  +SAVE NAME`, `SAVE KEEP  SELECT NEXT PAGE`, `EDIT+KEY PEEK A  REC SEND`); for 6 s after a send, what it [dropped or approximated](#send-a-lab-sound-to-the-song) (`NOT SENT: FX TUNE`, `APPROX: PWM FILTER`, by turns when both) |
 
-A card or the choice that turns is lit (its name in reverse video) for a second instead of the
+A card or the choice that turns is lit (its name in reverse video, and a card also with a glow of
+the knob's colour three pixels around it) for a second instead of the
 value popup; PRESETS opens no popup either (the header names the sound).
 
 **The macro links** belong to the sound (kept with it, undone and compared with it) and act wherever

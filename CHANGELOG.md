@@ -8,6 +8,9 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **A glow around the LAB card that turns**: for the second the card is lit, a halo in the knob's
+  colour (three pixels, solid, then dithered fading) surrounds it as well as the name's reverse
+  video, in both themes; it is drawn once when the lit card changes and the lists keep their bar. The image grew 576 bytes.
 - **Bluetooth keyboards** (waiting for its device check, hardware-test §38): SETTINGS' BLUETOOTH
   is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
   with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it

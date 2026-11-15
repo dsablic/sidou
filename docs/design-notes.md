@@ -4427,6 +4427,36 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   When both changed (a card turned while a note sounds), a frame builds one of them by turns, so
   that no frame's `ui_poll` pays for both.
 
+### The card glow
+
+- A LAB card that turns (or that a macro link moves) is lit for a second by its name in reverse
+  video and by a halo in the card's knob colour: three pixels around the card's cells, the first
+  ring solid, the second three pixels in four, the third every other pixel (a checkerboard), the
+  corners rounded as a distance would. `app/glow.c` draws it as `grid` overlays, so the card's
+  cells under it are not touched, and the halo cells are no more than the card's ring: about 30
+  overlay cells, inside the 255 slots. The patterns run along `x + y`, not a Bayer matrix: a
+  4 x 4 matrix gives a one-pixel line a density that depends on its column (a ring's side read 50 %
+  or 100 % by where it fell), a diagonal pattern gives every straight edge the same density.
+- It is drawn when the lit card changes and not again: `lab_view.glow_card` remembers the card, so
+  a frame that only copies canvas cells does not sweep the halo's cells (about 70 cells of 64
+  pixels each), and a still screen sends nothing. A move sweeps the old halo's cells against the
+  new rectangle (what is not in it goes) and then the new halo's own.
+- It is static: a pulse was tried (the prototype's variants 3a and 3b) and kept the screen
+  redrawing the halo's cells every frame for as long as a card is lit; the owner chose the still
+  halo (2026-11-15).
+- **Not on lists.** SETTINGS, the menus, DEVICES and the song views' cursors keep their
+  reverse-video bar: a list's selection is a whole row, so a halo would be a frame around text that
+  already reads, and a row is not a card. LIVE's knob row flashes a name in reverse video as LAB
+  does but its cards are not a selection (and the instrument's frame is the tightest of the
+  gates), so it keeps the flash alone; the value popup is a box, not a selected card.
+- The halo's colour is the knob's own (`theme.knob`), which reads against the background in both
+  themes: cyan K2 on the C64 blue and on black alike, yellow K1, light green K3; K4 is light red
+  in the default theme and light grey in C64's. Goldens: `lab-card-glow` and `lab-card-glow-c64`.
+- Flash: 576 bytes (the image 579,232 to 579,808 against the ceiling 579,516), so it merges where
+  the art packs have freed room. `glow.c` is `-Oz`; a table-free ring (the
+  distance is `max(dx, dy) + 1` where both are nonzero, which equals the rounded Euclidean
+  distance out to three pixels) and a 75 % ring from `(x + y) & 3` instead of a divide by five.
+
 ### Variation and rolling
 
 - EDIT + ARP varies: each card the page uses moves 1 to 3 detents either way (clamped) and, one time

@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 
+#include "glow.h"
 #include "grid.h"
 #include "lab_edit.h"
 #include "live.h"
@@ -74,6 +75,8 @@ typedef struct {
     uint8_t copying;
     uint8_t hl;
     uint8_t hl_link;
+    glow_rect glowed;
+    uint8_t glow_card;
     uint8_t art_done;
     uint8_t art_turn;
     uint32_t art;

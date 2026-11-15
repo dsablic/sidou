@@ -6,6 +6,7 @@
 
 #include "chip_view.h"
 #include "font.h"
+#include "glow.h"
 #include "lab_draw.h"
 #include "lab_song.h"
 #include "lab_lfo.h"
@@ -1377,6 +1378,23 @@ static int border(uint32_t c, uint32_t r) {
     return r == 0 || r == GRID_ROWS - 1u || c == 0 || c == GRID_COLS - 1u;
 }
 
+static void glow_card(lab_view* lv, grid* g) {
+    uint32_t k = lv->mode ? 4u : (lv->hl ? lv->hl : lv->hl_link) - 1u;
+    uint8_t lit_card = (uint8_t)(k < 4u ? k + 1u : 0u);
+    if (lit_card == lv->glow_card) {
+        return;
+    }
+    lv->glow_card = lit_card;
+    glow_rect lit = {0, 0, 0, 0};
+    uint8_t color = 0;
+    if (k < 4u) {
+        lit = (glow_rect){KNOB_COL[k], LAB_VIEW_LABEL_ROW, (uint8_t)(KNOB_W[k] - 1u),
+                          LAB_VIEW_TAG_ROW - LAB_VIEW_LABEL_ROW + 1u};
+        color = theme_get(lv->l->theme)->knob[k];
+    }
+    glow_set(g, &lv->glowed, &lit, color);
+}
+
 static void compose(screen* s, void* state, grid* g) {
     lab_view* lv = state;
     if (song_view_acquire_canvas(lv->canvas, SONG_VIEW_CANVAS_LAB)) {
@@ -1404,6 +1422,7 @@ static void compose(screen* s, void* state, grid* g) {
             grid_canvas_row(g, c, r);
         }
     }
+    glow_card(lv, g);
     int raster = s->raster_frames && s->wipe == SCREEN_CUT;
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < LAB_VIEW_FRAME_CELLS ? LAB_VIEW_FRAME_CELLS - used : 0u;

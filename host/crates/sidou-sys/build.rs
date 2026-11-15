@@ -44,6 +44,7 @@ const SOURCES: &[&str] = &[
     "app/credits.c",
     "app/demo_song.c",
     "app/font.c",
+    "app/glow.c",
     "app/fx_defaults.c",
     "app/fx_live.c",
     "app/grid.c",
@@ -276,7 +277,7 @@ fn main() {
                 "SCENE_.*|scene_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
                 "demo_song_.*|gt2_kit_.*|gt2_freq_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
-                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*|PATCH_LEVEL_.*|BLE_.*",
+                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|GLOW_.*|glow_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*|PATCH_LEVEL_.*|BLE_.*",
             ),
         )
         .blocklist_item(HEADER_PRIVATE_TABLES)
