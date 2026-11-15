@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 mod budgets;
+pub mod dual;
 mod host_render;
 pub mod panel;
 pub mod usb_host;

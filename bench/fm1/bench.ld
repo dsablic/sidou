@@ -9,10 +9,11 @@ MEMORY
 }
 SECTIONS
 {
-    .text : { KEEP(*(.text.crt0)) *(.text*) *(.rodata*) . = ALIGN(4); } > XIP
+    .text : { KEEP(*(.text.crt0)) *(.text*) *(.c1_text*) *(.rodata*) . = ALIGN(4); } > XIP
     .data : { . = ALIGN(4); __data_start = .; *(.data*) *(.sdata*) . = ALIGN(4); __data_end = .; } > RAM AT > XIP
     __data_load = LOADADDR(.data);
     .bss (NOLOAD) : { . = ALIGN(4); __bss_start = .; *(.bss*) *(.sbss*) *(COMMON) *(.pool*) . = ALIGN(4); __bss_end = .; } > RAM
+    .noinit (NOLOAD) : { . = ALIGN(4); *(.noinit*) } > RAM
     /DISCARD/ : { *(.comment) *(.note*) }
 }
 /* The .bin is .text and .data joined (bench/fm1/CMakeLists.txt); main() copies .data from

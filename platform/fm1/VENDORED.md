@@ -18,6 +18,7 @@
 |---|---|
 | `chip/fm1_cc.h` | `FM1_INLINE` |
 | `chip/fm1_cpu1_stop.h` | holds the second core (`fm1_cpu1_stop`, Felucca 1.6.1's `fm1_cpu1_halt`) |
+| `chip/fm1_cpu1.h`, `fm1_cpu1.S`, `fm1_guard.h` | the second core's worker (start, mailbox, wait, fallback, fault path) and the guards it includes: only the second-core spike's bench image (`bench/fm1` `sid_bench_cpu1`, built with `FM1_CPU1=1`, `FM1_CPU1_FALLBACK=1`, `FM1_CPU1_TIMEOUT_US=1000u`), never the app |
 | `chip/fm1_flash.h`, `fm1_flash_access.h`, `fm1_flash_api.h`, `fm1_flash_policy.h`, `fm1_flash_wait.h` | SPI NOR erase/program from `.ram_text`, its write regions, its access gate (core 0, interrupts off), the busy-safe wait |
 | `chip/fm1_gpio.h` | GPIO port registers |
 | `chip/fm1_irq.h` | interrupt controller, vector table, fault record (`fm1_crash_ctx`, NOINIT); `FM1_IRQ_DEFS 0` leaves the record and `fm1_fault_c` to another unit |
@@ -31,8 +32,7 @@
 | `chip/ota.c` | step 1 of the update protocol (the app's) |
 | `boards/fm1/fm1_adc.h`, `fm1_audio.h`, `fm1_input.h`, `fm1_lcd_hw.h`, `fm1_led_anim.h` | SARADC, ALNK0 I2S audio (the checked start), the key matrix and LEDs, the LCD's SPI1 wiring, the power-on LED sweep |
 
-Not vendored: the second
-core (`fm1_cpu1.{h,S}`), `fm1_guard.h`, `fm1_clock.h`, `fm1_cache_ram.h`, `fm1_flash_ext.h`, the
+Not vendored: `fm1_clock.h`, `fm1_cache_ram.h`, `fm1_flash_ext.h`, the
 panel driver `fm1_lcd.h` (SIDOU's `lcd.c` drives the panel), `fm1_jack.h`, and felucca-bsp's
 loader: the update loader stays Felucca 1.6.1's (below).
 

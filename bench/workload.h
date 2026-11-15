@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-#include "sid/sid_defs.h"
+#include "sid/sid.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +66,12 @@ void workload_begin_scenario(uint32_t chips, sid_model model, uint32_t scenario)
 /* NULL for an unknown scenario. */
 const char* workload_scenario_name(uint32_t scenario);
 void workload_render_samples(int16_t* out, uint32_t n);
+
+typedef struct {
+    int (*hand_over)(sid* chip, int16_t* out, uint32_t len);
+    int (*join)(void);
+} workload_second_core;
+void workload_render_two_cores(int16_t* out, uint32_t n, const workload_second_core* second);
 uint32_t workload_sample_count(void);
 
 #ifdef __cplusplus
