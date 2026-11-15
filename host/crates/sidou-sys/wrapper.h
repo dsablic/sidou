@@ -92,6 +92,7 @@
 #include "store.h"
 #include "sysex.h"
 #include "store_layout.h"
+#include "glow.h"
 #include "theme.h"
 #include "tracker_view.h"
 #include "ui_sound.h"

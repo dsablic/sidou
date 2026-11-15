@@ -17,6 +17,9 @@ All notable changes are documented here. The format follows
   sent later takes over at once; FORMAT erases it with the rest. The browser demo's store starts
   with it. The image is 39,328 bytes smaller (539,904); RAMTEXT did not change; SCENE's state
   holds 1,196 bytes more RAM. SysEx's new refusal 17 is a pack that is not RED MOON RITE's.
+- **A glow around the LAB card that turns**: for the second the card is lit, a halo in the knob's
+  colour (three pixels, solid, then dithered fading) surrounds it as well as the name's reverse
+  video, in both themes; it is drawn once when the lit card changes and the lists keep their bar.
 - **Bluetooth keyboards** (waiting for its device check, hardware-test §38): SETTINGS' BLUETOOTH
   is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
   with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it

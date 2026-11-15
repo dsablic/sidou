@@ -12,6 +12,7 @@ add_library(sidou_live STATIC
     credits.c
     demo_song.c
     font.c
+    glow.c
     fx_defaults.c
     fx_live.c
     grid.c
@@ -91,7 +92,7 @@ add_library(sidou_live STATIC
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS "-Os")
 set_source_files_properties(lab_sound.c PROPERTIES COMPILE_OPTIONS "-Os")
-set_source_files_properties(lab_edit.c user_sound.c lab_table.c ui_sound.c PROPERTIES COMPILE_OPTIONS "-Oz")
+set_source_files_properties(lab_edit.c user_sound.c lab_table.c ui_sound.c glow.c PROPERTIES COMPILE_OPTIONS "-Oz")
 set_source_files_properties(lab_song.c PROPERTIES COMPILE_OPTIONS "-Oz")
 set_source_files_properties(link.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_link_libraries(sidou_live PUBLIC sidou_core)

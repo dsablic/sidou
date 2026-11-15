@@ -670,6 +670,144 @@ fn home_goes_back_to_live_from_lab_and_from_the_menus_lab() {
     assert_eq!(ui.top(), "LIVE");
 }
 
+const CARD_COLS: [(usize, usize); 4] = [(0, 7), (8, 6), (15, 6), (22, 7)];
+const GLOW_FIRST_ROW: usize = LAB_VIEW_LABEL_ROW as usize - 1;
+const GLOW_LAST_ROW: usize = LAB_VIEW_TAG_ROW as usize + 1;
+const GLOW_REACH_CELLS: usize = 1;
+const GLOW_WAIT_FRAMES: usize = 20;
+
+fn glow_cells(ui: &Ui) -> Vec<(usize, usize, u8)> {
+    let mut out = Vec::new();
+    for row in LAB_VIEW_CHOICE_ROW as usize + 2..GRID_ROWS as usize {
+        for col in 0..COLS {
+            if let Some((_, color)) = overlay(&ui.g, col, row) {
+                out.push((col, row, color));
+            }
+        }
+    }
+    out
+}
+
+fn wait_for_glow(ui: &mut Ui, card: u32) {
+    for _ in 0..GLOW_WAIT_FRAMES {
+        if u32::from(ui.v.lab.glow_card) == card {
+            break;
+        }
+        ui.frame_sent();
+    }
+    two_steps(ui);
+}
+
+fn lit_card_ui(theme: u32, k: u32) -> Ui {
+    let mut ui = lab_ui();
+    unsafe { live_set_theme(&mut *ui.rig.live, theme) };
+    to_page(&mut ui, LAB_PAGE_FILTER);
+    ui.turn(PANEL_ENC_K1 + k, 1);
+    wait_for_glow(&mut ui, k + 1);
+    ui
+}
+
+#[test]
+fn a_turned_card_glows_in_its_knob_colour_and_nowhere_else() {
+    for theme in 0..THEME_COUNT {
+        for (k, &(first, width)) in CARD_COLS.iter().enumerate() {
+            let ui = lit_card_ui(theme, k as u32);
+            let knob = unsafe { (*theme_get(theme)).knob[k] };
+            let cells = glow_cells(&ui);
+            assert!(!cells.is_empty(), "theme {theme} K{}: a halo", k + 1);
+            for (col, row, color) in cells {
+                assert_eq!(color, knob, "theme {theme} K{}: the knob's colour", k + 1);
+                assert!(
+                    (first.saturating_sub(GLOW_REACH_CELLS)..=first + width - 1 + GLOW_REACH_CELLS)
+                        .contains(&col)
+                        && (GLOW_FIRST_ROW..=GLOW_LAST_ROW).contains(&row),
+                    "theme {theme} K{}: ({col}, {row}) is outside the card's surroundings",
+                    k + 1
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_halo_fades_in_three_dithered_rings() {
+    let ui = lit_card_ui(0, 1);
+    let (first, width) = CARD_COLS[1];
+    let lit = |x: usize, y: usize| {
+        let (mask, _) = overlay(&ui.g, x / 8, y / 8).unwrap_or(([0; 8], 0));
+        mask[y % 8] >> (7 - x % 8) & 1 != 0
+    };
+    let left = first * 8;
+    let top = LAB_VIEW_LABEL_ROW as usize * 8;
+    let middle = top + 20;
+    let density = |ring: usize| {
+        let x = left - ring;
+        (middle..middle + 16).filter(|&y| lit(x, y)).count()
+    };
+    assert_eq!(density(1), 16, "the first ring is solid");
+    assert!(
+        (12..=14).contains(&density(2)),
+        "the second ring is about 80 %"
+    );
+    assert!(
+        (7..=9).contains(&density(3)),
+        "the third ring is about 50 %"
+    );
+    assert_eq!(density(4), 0, "nothing beyond three pixels");
+    assert!(!lit(left, middle), "the card itself is not painted over");
+    assert!(!lit((first + width) * 8 - 1, middle), "nor its last pixel");
+}
+
+#[test]
+fn the_glow_matches_its_golden_in_each_theme() {
+    for (theme, name) in [(0, "lab-card-glow"), (1, "lab-card-glow-c64")] {
+        golden(&lit_card_ui(theme, 1), name);
+    }
+}
+
+#[test]
+fn the_halo_follows_the_selection_and_goes_out_with_the_light() {
+    let mut ui = lit_card_ui(0, 0);
+    let first = glow_cells(&ui);
+    assert!(first.iter().any(|&(col, _, _)| col <= CARD_COLS[0].1));
+    ui.turn(PANEL_ENC_K1 + 3, 1);
+    wait_for_glow(&mut ui, 4);
+    let moved = glow_cells(&ui);
+    assert!(
+        moved
+            .iter()
+            .all(|&(col, _, _)| col >= CARD_COLS[3].0 - GLOW_REACH_CELLS),
+        "K1's halo is gone, K4's is up"
+    );
+    assert!(!moved.is_empty());
+    settle(&mut ui);
+    wait_for_glow(&mut ui, 0);
+    assert!(
+        glow_cells(&ui).is_empty(),
+        "it goes out with the card's light"
+    );
+}
+
+#[test]
+fn a_selection_move_repaints_within_the_frame_limit_and_the_lit_card_sits_still() {
+    let mut ui = lit_card_ui(0, 0);
+    let mut sent = Vec::new();
+    for _ in 0..3 {
+        ui.frame_sent();
+    }
+    ui.turn(PANEL_ENC_K1 + 2, 1);
+    for _ in 0..6 {
+        sent.push(ui.frame_sent().cells);
+    }
+    assert!(
+        sent.iter().all(|&c| c <= LAB_VIEW_FRAME_CELLS as usize),
+        "{sent:?}"
+    );
+    for _ in 0..6 {
+        assert_eq!(ui.frame_sent().cells, 0, "a lit card is not redrawn");
+    }
+}
+
 #[test]
 fn the_frame_stays_within_200_cells() {
     let mut ui = Ui::new();
