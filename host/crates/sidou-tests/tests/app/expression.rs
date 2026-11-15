@@ -391,14 +391,14 @@ fn the_wheel_on_pulse_width_sweeps_an_audible_range_and_never_silences_a_pulse()
     rig.set_preset(PWM_BASS);
     rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
     rig.note_on(C4);
-    let thin = LIVE_PULSE_FIRST as u32;
+    let thin = LIVE_PULSE_FIRST;
     let mut previous = 0;
     for wheel in 0..=127u8 {
         rig.cc(LIVE_CC_MOD_WHEEL, wheel);
         rig.tick();
         let width = rig.voice_pw(0);
         assert!(
-            (thin..=LIVE_PULSE_WIDTH_MAX as u32 + 1 - thin).contains(&u32::from(width)),
+            (thin..=LIVE_PULSE_WIDTH_MAX + 1 - thin).contains(&u32::from(width)),
             "wheel {wheel}: width {width}"
         );
         let set = u32::from(rig.live.pulse_width);
@@ -411,7 +411,7 @@ fn the_wheel_on_pulse_width_sweeps_an_audible_range_and_never_silences_a_pulse()
     rig.cc(LIVE_CC_MOD_WHEEL, 127);
     assert_eq!(
         u32::from(rig.live.pulse_width),
-        LIVE_PULSE_WIDTH_MAX as u32 + 1 - thin
+        LIVE_PULSE_WIDTH_MAX + 1 - thin
     );
     rig.clear();
     for _ in 0..10 {
