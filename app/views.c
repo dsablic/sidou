@@ -908,6 +908,11 @@ static uint32_t settings_armable(const views* v) {
 }
 
 static void settings_save(views* v) {
+    if (v->setup.cursor == VIEWS_SETTINGS_BLUETOOTH && v->radio &&
+        v->radio->mode(v->radio->ctx) == VIEWS_RADIO_KEYBOARD) {
+        views_devices_open(v);
+        return;
+    }
     uint32_t armable = settings_armable(v);
     if (armable == ARMED_NONE) {
         return;
@@ -982,6 +987,10 @@ static void save(views* v, uint32_t held) {
     }
     if (views_shows(v) == &views_settings_view) {
         settings_save(v);
+        return;
+    }
+    if (views_shows(v) == &views_devices_view) {
+        views_devices_save(v);
         return;
     }
     if (v->set) {

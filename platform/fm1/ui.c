@@ -13,7 +13,20 @@
 #if defined(SIDOU_BLE)
 #include "ble_radio.h"
 
-static const views_radio radio = {NULL, ble_radio_on, ble_radio_set, ble_radio_report};
+_Static_assert(BLE_KEYBOARD_NONE == VIEWS_KEYBOARD_NONE &&
+                   BLE_KEYBOARD_LOOKING == VIEWS_KEYBOARD_LOOKING &&
+                   BLE_KEYBOARD_CONNECTED == VIEWS_KEYBOARD_CONNECTED &&
+                   BLE_KEYBOARD_PAIRING == VIEWS_KEYBOARD_PAIRING &&
+                   BLE_KEYBOARD_LOST == VIEWS_KEYBOARD_LOST,
+               "the radio's keyboard states are the views'");
+
+static const views_radio radio = {NULL,
+                                  ble_radio_mode,
+                                  ble_radio_set,
+                                  ble_radio_report,
+                                  ble_radio_keyboard,
+                                  ble_radio_devices,
+                                  ble_radio_pick};
 #endif
 
 #ifndef SIDOU_VERSION
@@ -259,6 +272,12 @@ void ui_leds(uint32_t now_ms, panel_led_in* out) {
 void ui_toast(const char* text, uint32_t ms) {
     screen_toast(&ui.s, text, ms);
 }
+
+#if defined(SIDOU_BLE)
+void ble_radio_tell(uint32_t event, const char* name) {
+    views_keyboard_event(&ui, event, name);
+}
+#endif
 
 void ui_note_keys(panel* p, uint32_t down, uint32_t pressed) {
     views_note_keys(&ui, p, down, pressed);

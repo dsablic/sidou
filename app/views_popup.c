@@ -141,12 +141,15 @@ static int menu_choice_text(const views* v, int set, char* name, char* value) {
     uint32_t i = v->menu_ask + (set ? VIEWS_MENU_ITEMS : 0u);
     views_join(name, SCREEN_POPUP_TEXT,
          i == VIEWS_MENU_PRESET ? "PRESET" : i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_ROWS ? "TRACKER ROWS" :
-         i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_REC ? "REC QUANTISE" : it->label,
+         i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_REC ? "REC QUANTISE" :
+         i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_BLUETOOTH ? "BLUETOOTH" : it->label,
          "");
     char text[MENU_VALUE_CHARS];
     text[0] = 0;
     if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_THEME) {
         views_join(text, sizeof text, theme_get(v->l->theme)->name, "");
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_BLUETOOTH) {
+        views_join(text, sizeof text, views_bluetooth_mode(v), "");
     } else if (set && v->format_arm) {
         views_join(name, SCREEN_POPUP_TEXT, v->format_arm == ARMED_RESET ? "RESET ALL?" : "WIPE STORE?", "");
         views_join(text, sizeof text, "SAVE AGAIN", "");

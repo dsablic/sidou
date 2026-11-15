@@ -112,6 +112,7 @@ const SOURCES: &[&str] = &[
     "app/user_profile.c",
     "app/user_sound.c",
     "app/views.c",
+    "app/views_devices.c",
     "app/views_menu.c",
     "app/views_midi.c",
     "app/views_popup.c",
@@ -127,7 +128,17 @@ const SOURCES: &[&str] = &[
     "platform/web/user_sounds.c",
 ];
 
-const INCLUDES: [&str; 4] = ["core", "bench", "app", "platform/web"];
+const INCLUDES: [&str; 6] = [
+    "core",
+    "bench",
+    "app",
+    "platform/web",
+    "platform/fm1",
+    "third_party/fm1-base-ble",
+];
+
+const BLE_KEYBOARD: &str = "platform/fm1/ble_keyboard.c";
+const BLE_SCAN: &str = "third_party/fm1-base-ble/ble_scan.c";
 
 const MIDI_MAP_DOC: &str = "SIDOU_MIDI_MAP_DOC";
 
@@ -251,11 +262,11 @@ fn main() {
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|chip_view_.*|chip_mix|chip_spread_.*|master_.*|tail_gate_.*|thump_out_.*|chip_ctl_.*|chip_setup_.*|",
                 "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*|user_sound_.*|user_sounds_.*|",
-                "sid_view_.*|lab_.*|link_.*|patch_json_.*|patch_level_.*",
+                "sid_view_.*|lab_.*|link_.*|patch_json_.*|patch_level_.*|ble_record_.*|ble_keyboard_.*|ble_scan_.*",
             ),
         )
         .allowlist_type(
-            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*|patch_json|patch_level.*",
+            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*|patch_json|patch_level.*|ble_keyboard|ble_setting_kept|ble_scan_tab|ble_found",
         )
         .allowlist_var(
             concat!(
@@ -265,7 +276,7 @@ fn main() {
                 "SCENE_.*|scene_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
                 "demo_song_.*|gt2_kit_.*|gt2_freq_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
-                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*|PATCH_LEVEL_.*",
+                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*|PATCH_LEVEL_.*|BLE_.*",
             ),
         )
         .blocklist_item(HEADER_PRIVATE_TABLES)
@@ -308,6 +319,23 @@ fn main() {
 
     compile_cpu6502_hook_all_builds(&root);
     compile_zero_voice_chip(&root);
+    compile_ble_keyboard(&root);
+}
+
+fn compile_ble_keyboard(root: &Path) {
+    for s in [BLE_KEYBOARD, BLE_SCAN] {
+        println!("cargo:rerun-if-changed={}", root.join(s).display());
+    }
+    c_build(root)
+        .file(root.join(BLE_KEYBOARD))
+        .compile("ble_keyboard");
+    let mut vendored = cc::Build::new();
+    vendored
+        .include(root.join("third_party/fm1-base-ble"))
+        .flag("-std=c11")
+        .file(root.join(BLE_SCAN));
+    sanitize::apply_sanitizer(&mut vendored);
+    vendored.compile("ble_scan");
 }
 
 fn compile_cpu6502_hook_all_builds(root: &Path) {

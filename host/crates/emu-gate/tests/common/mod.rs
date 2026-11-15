@@ -9,6 +9,7 @@ mod budgets;
 pub mod dual;
 mod host_render;
 pub mod panel;
+pub mod radio;
 pub mod ring;
 pub mod usb_host;
 

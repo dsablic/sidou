@@ -102,3 +102,4 @@
 #include "workload_slots.h"
 #include "workload_scene.h"
 #include "song/gt2_ins.h"
+#include "ble_keyboard.h"
