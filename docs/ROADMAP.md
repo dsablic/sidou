@@ -7,7 +7,11 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## 1.11: Bluetooth connecting out
+## 1.20: Bluetooth keyboards and art packs
+
+The owner, 2026-11-15: what was 1.11 (connecting out) and the art packs, with their builder, in one
+release.
+
 
 - **felucca-bsp to its head** first (from `7e09895c`: `usb.c`'s packets sized by the crystal,
   byte for byte), with a USB audio device check and §35's iOS minute if a phone is at hand. S.
@@ -22,18 +26,25 @@ Sizes: S is under a day of work, M a few days, L more.
   into the store as an [art pack](reference/art-pack.md), sent from the site (the owner,
   2026-11-15), the image 39,328 bytes smaller; without it the piece plays SIDOU's logo intro. M-L. *Built 2026-11-15 on `connect-out`, without pairing
   ([the plan](plans/2026-11-15-bluetooth-connect-out.md)): the default image 579,232 bytes, 284
-  under the ceiling; it waits for hardware-test §38 on the owner's FM-1. Pairing built 2026-11-15
+  under the ceiling; §38: the microKEY Air asks for pairing. Pairing built 2026-11-15
   on `rmr-pairing` (`BLE_CENTRAL` 1, the bond kept, a passkey shown): the default image 545,908
   bytes, 33,608 under the ceiling.*
+- **Art packs:** SCENE's RED MOON RITE draws its art from a file in the store, sent from the
+  Library or `sidou-sysex art`: today's art is the first pack, and a pack reskins the scene (the
+  same images, sizes and frame counts; the choreography stays the firmware's). It frees about
+  40 KB of the app for pairing and the second core. One pack on the FM-1 at a time; with none, RED MOON RITE plays SIDOU's logo intro. M. *Built 2026-11-15 on `rmr-pairing`: 39,328 bytes freed.*
+- **The art pack builder** on the site: PNGs per image slot, checked against the pack's sizes and
+  frame counts, reduced to the screen's palette, previewed in the browser emulator, sent or shared
+  as a link. Site only. M.
 - **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a
   start-up self-test, proven in fm1-emu ([the spike](plans/2026-11-15-second-core-spike.md)):
   nothing changes for players until 2.0. M.
 - The small fixes below.
 
-## 1.12: groove
+## After 1.20: groove
 
 What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, sized to the room
-1.11's flash find leaves:
+1.20 leaves:
 
 - **Swing:** a song's shuffle on a knob (GoatTracker's funktempo may carry it with no format
   change). S.
@@ -45,7 +56,7 @@ What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, 
 ## 2.0
 
 - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on,
-  after the device check, falling back to one core; built in 1.11 behind `SIDOU_CPU2`. Its room
+  after the device check, falling back to one core; built for 1.20 behind `SIDOU_CPU2`. Its room
   is there since RED MOON RITE's art moved into the store (1.20): with pairing the ON image is
   547,796 bytes, 31,720 under the 579,516 ceiling, and its size gate is checked again.
 - **A layer's level in LAB**, after it (the owner, 2026-11-06): a gain per voice in both render
