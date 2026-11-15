@@ -705,6 +705,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
   (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
   Players see nothing: no menu entry, no setting.
+- **The ON image's size gate is deferred to 2.0** (the owner, 2026-11-15). With Bluetooth
+  connecting out the ON image is 581,120 bytes, 1,604 over the 579,516 ceiling: the second core
+  adds about 1,890 bytes and the default image has 284 to spare. The cpu2 shard still runs every
+  gate it ran on the ON image, but `flash_budget.rs` and `psid_budget.rs`'s check of the image's
+  size against the ceiling print the overrun and pass for an image whose option record names
+  `SIDOU_CPU2=ON` (`flash_plan::assert_fits`, `SIZE_DEFERRED_TO`). The default image's size
+  gates are unchanged. 2.0 finds the room before turning it on: more hot/cold splits, or SCENE's
+  RED MOON RITE art moved into the store (the owner's reserve, with the owner's yes).
 - **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
   core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
   chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).

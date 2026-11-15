@@ -374,5 +374,5 @@ fn a_tunes_memory_fits_m3s_budgets() {
     assert!(ram_free >= REGION_FREE_MIN && pool_free >= REGION_FREE_MIN);
     assert!(ram_free + pool_free >= FREE_RAM_MIN);
     assert!(m3_text <= M3_RAMTEXT, "M3's RAMTEXT {m3_text}");
-    assert!(image <= IMAGE_CEILING);
+    flash_plan::assert_fits("the image", &fw.image);
 }
