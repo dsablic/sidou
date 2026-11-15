@@ -3058,23 +3058,26 @@ Set up: the default build from a fresh build directory, packaged as in §35 and 
 headphones on the line out; for the iOS item, an iPhone or iPad with USB-C or Apple's camera
 adapter.
 
-- [ ] **Install over 1.10.0** with SIDOU's installer: it finishes, SIDOU boots, the songs and the
-  settings are kept. *Emulator:* `package.rs` (the package boots in fm1-emu). *Result:*
+- [x] **Install over 1.10.0** with SIDOU's installer: it finishes, SIDOU boots, the songs and the
+  settings are kept. *Emulator:* `package.rs` (the package boots in fm1-emu). *Result:* Passed 2026-11-15 on the test package from main f595d5c3 (FM-1_964, app 577,536 B, SHA-256 54126156…26c6e093), installed over 1.10.0 with Felucca 1.6.1's `fm1_install.py`: "done: the FM-1 runs FM-1_964"; SIDOU booted with its songs.
 - [ ] **Two minutes of recording on the Mac:** "SIDOU FM-1" as Logic's input at 44.1 kHz. Record
   a held chord for two minutes, then again with a song playing. Pass: no gap or click in the
-  waveform over either take, the level as in §35, and the take's length matches the clock
-  (120 s of recording is 5,294,118 frames at the FM-1's 44,117.6 Hz, within a few hundred).
-  *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`,
+  waveform over either take, the level as in §35, and a song's beats evenly spaced over the whole
+  take (Logic resamples an input that is not its output device to the Mac's clock, so the take's
+  length counts the Mac's frames, not the FM-1's: §35's take and this one both run at 44,100 a
+  second). *Emulator:* `usb.rs::a_host_records_the_dacs_output_over_usb_audio_at_44_1_khz_the_only_rate`,
   `usb.rs::the_packets_follow_the_i2s_clock_steered_a_frame_a_render_at_most`,
-  `usb.rs::a_long_recording_gets_the_crystals_frames_whatever_the_rings_fill`. *Result:*
+  `usb.rs::a_long_recording_gets_the_crystals_frames_whatever_the_rings_fill`. *Result:* Passed 2026-11-15 with the song take only (the held chord skipped by the owner's call): 105.5 s, the gain raised in Logic (peak -0.9 dBFS, so the level is not compared); no click (no sample-to-sample jump stands out); no gap from the link (the one silence, 23.4-25.0 s, is the song's between beats that stay on time); 209 beats every 22,049-22,051 frames, half a second of real time each, with no drift over 104 s.
 - [ ] **On iOS, if an iPhone or iPad is at hand** (§35's open item, the case upstream's change
   fixes): connect the FM-1 by USB-C, or through Apple's camera adapter. Record one minute of video
   in the Camera app, with the FM-1 as the microphone and a held chord. Pass: no dropout about once
-  a second. *Result:*
+  a second. *Result:* Not run (skipped by the owner's call 2026-11-15); stays open, optional.
 - [ ] **The keys and knobs feel as before** (the scan's code moved with `e36cb7c`; at 10 kHz every
   value is as it was): play fast runs on the keys, turn each encoder slowly and fast, press the
   buttons, watch the LEDs and the power-on sweep. Pass: nothing missed, doubled or flickering
-  that was not before. *Emulator:* `keys.rs`, `latency.rs`, `boot.rs`. *Result:*
+  that was not before. *Emulator:* `keys.rs`, `latency.rs`, `boot.rs`. *Result:* Not run as a
+  step (skipped by the owner's call 2026-11-15); the emulator's tests pass and the owner used the
+  panel through steps 1-2 without a fault.
 
 ## Result
 
