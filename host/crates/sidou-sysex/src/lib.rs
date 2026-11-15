@@ -3,8 +3,8 @@
 
 use std::fmt;
 
-#[cfg(target_os = "macos")]
 pub mod art;
+#[cfg(target_os = "macos")]
 pub mod coremidi;
 pub mod import;
 pub mod patch;
