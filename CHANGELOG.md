@@ -8,15 +8,30 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **RED MOON RITE's art is a file on the FM-1** (waiting for its device check, hardware-test §39):
+  the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
+  the pictures SCENE's sixth piece draws, an [art pack](docs/reference/art-pack.md)
+  (`assets/art/red-moon-rite.sidart`, 41,037 bytes), which the FM-1 keeps in its store and draws
+  from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo over raster bars that
+  swing with the cutoff and flash on the beat, with the hint `RED MOON RITE ART: LIBRARY`. A pack
+  sent later takes over at once; FORMAT erases it with the rest. The browser demo's store starts
+  with it. The image is 39,328 bytes smaller (539,904); RAMTEXT did not change; SCENE's state
+  holds 1,196 bytes more RAM. SysEx's new refusal 17 is a pack that is not RED MOON RITE's.
 - **Bluetooth keyboards** (waiting for its device check, hardware-test §38): SETTINGS' BLUETOOTH
   is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
   with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it
   again after a power cycle or when it comes back in range. Its notes, knobs and clock play as
-  from USB. Toasts say when it connects, when it is lost (held notes stop) and when it needs
-  pairing, which SIDOU does not do. One link at a time: with KEYBOARD a computer cannot connect.
-  A 1.9 or 1.10 setting reads as it was. The image grew 9,488 bytes to 579,232, 284 under the
-  ceiling; RAMTEXT did not change. `SIDOU_BLE_CENTRAL` is gone (the central is always built,
-  without pairing), and `-DSIDOU_BLE_FAKE=ON` builds the emulator gate's fake-radio image.
+  from USB. Toasts say when it connects and when it is lost (held notes stop). A keyboard that
+  asks to pair is paired (Just Works, or a passkey SIDOU shows large for its user to type), and
+  the bond is kept, so it connects again encrypted after LOST or a power cycle; one that forgot
+  the bond is paired again once; a failed pairing says NEEDS PAIRING. One link at a time: with
+  KEYBOARD a computer cannot connect. A 1.9, 1.10 or 1.11 setting reads as it was (the record is
+  version 3, with the bond). With RED MOON RITE's art out of the image (above), the image is
+  545,908 bytes, 33,608 under the ceiling; RAMTEXT did not change. `SIDOU_BLE_CENTRAL` is gone
+  (the central is always built, with pairing), and `-DSIDOU_BLE_FAKE=ON` builds the emulator
+  gate's fake-radio image.
+- **The second core's image** fits again (547,796 bytes with pairing): its size gate, deferred to
+  2.0 on 2026-11-15, is back.
 - **`-DSIDOU_CPU2=ON`**, a build option off by default: chip B's render on the FM-1's second core,
   for the device check; the default image is unchanged and players see nothing.
 - **felucca-bsp `18eadadb`** (from `7e09895c`): USB audio packets are sized by the FM-1's crystal

@@ -31,8 +31,8 @@ much room is free. Free space is a guide: the FM-1 says when a file does not fit
 
 ## 2. The files on the FM-1
 
-Each file has its name (as the FM-1's menus show it), its type (song, `.sid` tune or
-instrument; a `LIFTED SOUND` file from a 1.5 preview build is an instrument), its size and its CRC-32 (the same number `crc32` or
+Each file has its name (as the FM-1's menus show it), its type (song, `.sid` tune,
+instrument or RED MOON RITE art; a `LIFTED SOUND` file from a 1.5 preview build is an instrument), its size and its CRC-32 (the same number `crc32` or
 zlib gives for the downloaded file). For each:
 
 - **Download** saves it: a song as `.sng`, a tune as `.sid`, an instrument as `.ins`.
@@ -50,6 +50,13 @@ FM-1 could not load is not sent, and the page says why. When the FM-1 already ha
 name, an identical one is left alone and a different one is replaced only after you confirm. A
 sent song is loaded on the FM-1 from the menu: **SONG, LOAD**. A sent tune plays from **SIDS**
 ([sid-tunes.md](sid-tunes.md#4-play-it)).
+
+**RED MOON RITE art** sends the pictures SCENE's sixth piece draws (an
+[art pack](../reference/art-pack.md), about 40 KB). An FM-1 without them plays SIDOU's logo intro
+in RED MOON RITE's place, and its toast says `RED MOON RITE ART: LIBRARY`; once they are sent,
+the duel is drawn: **SCENE**, then SELECT to RED MOON RITE. A store FORMAT erases them with the
+rest. **Send files…** takes another pack (`.sidart`) too, and sends it under the piece's name
+after checking it is RED MOON RITE's.
 
 While a song (or a tune) plays on the FM-1, or a computer records its USB audio, the FM-1 writes
 nothing, so the music never dips: the page says it is waiting for the FM-1 to be quiet until you

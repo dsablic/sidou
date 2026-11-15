@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "./fake-fm1.mjs";
-import { Library, LibraryError, MANIFEST, storeName, typeOfFile } from "./store.js";
+import { ART_NAME, Library, LibraryError, MANIFEST, STORE_FILE_ART, artRefusal, storeName, typeOfFile } from "./store.js";
 import { crc32 } from "./sysex.js";
 import { unzip, zip } from "./zip.js";
 
@@ -193,6 +193,29 @@ await test("the .zip opens in unzip, and a deflated .zip reads too", async () =>
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+const art = Uint8Array.from(readFileSync(`${here}../assets/art/red-moon-rite.sidart`));
+const resealed = (bytes) => {
+  const out = bytes.slice();
+  new DataView(out.buffer).setUint32(out.length - 4, crc32(out.subarray(0, out.length - 4)) >>> 0, true);
+  return out;
+};
+const artWith = (at, value) => { const b = art.slice(); b[at] = value; return resealed(b); };
+
+await test("RED MOON RITE's art: the shipped pack passes, each broken part is refused in words, and it goes as type 5", async () => {
+  assert.equal(artRefusal(art), null);
+  assert.equal(typeOfFile("whatever.bin", art), STORE_FILE_ART);
+  assert.equal(typeOfFile("skin.sidart", new Uint8Array(8)), STORE_FILE_ART);
+  const flipped = art.slice();
+  flipped[art.length >> 1] ^= 1;
+  for (const [bytes, words] of [[art.subarray(0, 100), /too short/], [artWith(0, 88), /not a SIDOU art pack/],
+    [artWith(8, 2), /newer/], [artWith(9, 2), /another scene/], [artWith(33, 63), /slots/], [artWith(35, 7), /slots/],
+    [flipped, /CRC/]]) assert.match(artRefusal(bytes), words);
+  const { lib } = fm1([], { free: 65536 });
+  await lib.refresh();
+  assert.equal(await lib.send(ART_NAME, art, { type: STORE_FILE_ART }), "sent");
+  assert.deepEqual(lib.files.map((f) => [f.name, f.type, f.length]), [[ART_NAME, STORE_FILE_ART, art.length]]);
 });
 
 await test("file types and store names from file names", () => {

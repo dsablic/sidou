@@ -169,6 +169,16 @@ holds the recipe: a fixed-seed noise generator, sines and exponential envelopes)
 no recorded or third-party material. Melodee's SID KIT and SID DIGI and SID-1's sample kit
 inspired the feature; nothing of theirs was used.
 
+## RED MOON RITE's art pack
+
+`assets/art/red-moon-rite.sidart`, the art pack SCENE's RED MOON RITE draws
+([format](docs/reference/art-pack.md)), is SIDOU's own art, GPL-3.0-or-later, by SIDOU
+contributors: the pictures of `assets/scene/` (made by `assets/scene/red-moon-rite.js`,
+[docs/art/README.md](docs/art/README.md#red-moon-rite)) run-length coded by
+`host/crates/sidou-tests/src/scene_art.rs`. It reaches an FM-1's store from the Library page or
+`sidou-sysex`, and the browser demo's store starts with it; the firmware image no longer holds it.
+Its licence and copyright are in `REUSE.toml`, as for the PNGs it is made from.
+
 ## Trademarks
 
 "Commodore", "C64", "SID" chip names and "M-VAVE" are used only to describe

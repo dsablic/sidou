@@ -5,13 +5,14 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use sidou_sysex::art;
 use sidou_sysex::import::{bank_files, default_name, Model, SongFile};
 use sidou_sysex::patch::{bank_file, patch_file, song_file, step_file, PatchFile};
 use sidou_sysex::send::{file_type_of, sent_name, Client, Port, Sent, Timing, DEFAULT_PORT};
 use sidou_sysex::sid;
 use sidou_sysex::user_sounds::{fetch, patch_files};
 
-const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex song FILE.json [--out DIR] [--8580]\n       sidou-sysex user-sounds [--out DIR] [--file PATH] [--port NAME]\n       sidou-sysex send FILE.sng|.sid|.ins [--port NAME] [--name NAME] [--replace]";
+const USAGE: &str = "usage: sidou-sysex sid FILE.sid|DIR... [--out DIR] [--trs] [--pack]\n       sidou-sysex art FILE.sidart [--out DIR] [--seed FILE]\n       sidou-sysex import BANK.syx [--out DIR] [--8580] [--name NAME]\n       sidou-sysex patch FILE.json [--out DIR] [--8580]\n       sidou-sysex bank FILE.json [--out DIR] [--8580]\n       sidou-sysex step FILE.json [--out DIR] [--8580]\n       sidou-sysex song FILE.json [--out DIR] [--8580]\n       sidou-sysex user-sounds [--out DIR] [--file PATH] [--port NAME]\n       sidou-sysex send FILE.sng|.sid|.ins|.sidart [--port NAME] [--name NAME] [--replace]";
 const IMPORT_NAME_MAX: usize = 13;
 
 const PACK_FILE_NAME: &str = "pack.syx";
@@ -264,7 +265,7 @@ fn send_main(rest: Vec<String>) -> ExitCode {
         }
     };
     let Some(file_type) = file_type_of(&bytes) else {
-        eprintln!("{}: not a song (.sng), a .sid tune or an instrument (.ins): send sends nothing else, never a firmware package or update", a.file.display());
+        eprintln!("{}: not a song (.sng), a .sid tune, an instrument (.ins) or an art pack (.sidart): send sends nothing else, never a firmware package or update", a.file.display());
         return ExitCode::FAILURE;
     };
     let name = a
@@ -415,11 +416,90 @@ fn main() -> ExitCode {
         Some("send") => send_main(rest),
         Some("user-sounds") => user_sounds_main(rest),
         Some("sid") => sid_main(rest),
+        Some("art") => art_main(rest),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
     }
+}
+
+struct Art {
+    file: PathBuf,
+    out: PathBuf,
+    seed: Option<PathBuf>,
+}
+
+fn art_args(rest: Vec<String>) -> Result<Art, String> {
+    let mut it = rest.into_iter();
+    let mut file = None;
+    let mut a = Art {
+        file: PathBuf::new(),
+        out: PathBuf::from("."),
+        seed: None,
+    };
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--out" => a.out = it.next().ok_or(USAGE)?.into(),
+            "--seed" => a.seed = Some(it.next().ok_or(USAGE)?.into()),
+            _ if arg.starts_with("--") => return Err(format!("unknown option {arg}\n{USAGE}")),
+            _ if file.is_none() => file = Some(PathBuf::from(arg)),
+            _ => return Err(USAGE.to_string()),
+        }
+    }
+    a.file = file.ok_or(USAGE)?;
+    Ok(a)
+}
+
+fn write_or_say(path: &Path, bytes: &[u8]) -> Result<(), ExitCode> {
+    std::fs::write(path, bytes).map_err(|e| {
+        eprintln!("{}: {e}", path.display());
+        ExitCode::FAILURE
+    })
+}
+
+fn art_main(rest: Vec<String>) -> ExitCode {
+    let a = match art_args(rest) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let pack = match std::fs::read(&a.file) {
+        Ok(b) => art::check(b),
+        Err(e) => {
+            eprintln!("{}: {e}", a.file.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let pack = match pack {
+        Ok(p) => p,
+        Err(why) => {
+            eprintln!("{}: refused: {why}", a.file.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Some(seed) = &a.seed {
+        return match write_or_say(seed, &art::seed(&pack)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(code) => code,
+        };
+    }
+    let path = target(&a.out, &a.file, &mut HashSet::new());
+    let syx = art::syx(&pack).expect("a checked pack's frames");
+    if let Err(code) = make_out(&a.out).and_then(|()| write_or_say(&path, &syx)) {
+        return code;
+    }
+    println!(
+        "{} ({}, {} bytes) -> {}: send it from the Library page or with sidou-sysex send; \
+         SCENE's RED MOON RITE then draws it",
+        art::NAME,
+        pack.name(),
+        pack.bytes().len(),
+        path.display()
+    );
+    ExitCode::SUCCESS
 }
 
 fn sid_main(rest: Vec<String>) -> ExitCode {

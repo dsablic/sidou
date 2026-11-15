@@ -76,11 +76,15 @@ void views_devices_save(views* v) {
 
 void views_keyboard_event(views* v, uint32_t event, const char* name) {
     char text[SCREEN_TOAST_CHARS + 1u];
-    views_join(text, sizeof text, event == VIEWS_KEYBOARD_PAIRING ? "NEEDS PAIRING" : "KEYBOARD ",
-               event == VIEWS_KEYBOARD_CONNECTED ? name
-               : event == VIEWS_KEYBOARD_LOST    ? "LOST"
-                                                 : "");
-    screen_toast(&v->s, text, SCREEN_TOAST_MS);
+    int passkey = event == VIEWS_KEYBOARD_PASSKEY;
+    views_join(text, sizeof text,
+               event == VIEWS_KEYBOARD_PAIRING ? "NEEDS PAIRING"
+               : passkey                       ? "PASSKEY "
+                                               : "KEYBOARD ",
+               event == VIEWS_KEYBOARD_CONNECTED || passkey ? name
+               : event == VIEWS_KEYBOARD_LOST               ? "LOST"
+                                                            : "");
+    screen_toast(&v->s, text, passkey ? VIEWS_PASSKEY_MS : SCREEN_TOAST_MS);
 }
 
 static int devices_input(screen* s, void* state, const screen_event* e) {

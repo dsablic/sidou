@@ -301,6 +301,28 @@ fn the_keyboards_events_are_toasts() {
 }
 
 #[test]
+fn a_passkey_stays_on_screen_large_while_the_pairing_waits_for_it() {
+    let mut b = bound();
+    unsafe { views_keyboard_event(&mut *b.ui.v, VIEWS_KEYBOARD_PASSKEY, c"012345".as_ptr()) };
+    assert_eq!(b.ui.toast().as_deref(), Some("PASSKEY 012345"));
+    let a_toasts_life = SCREEN_TOAST_MS.div_ceil(FRAME_MS) + 1;
+    b.ui.frames(a_toasts_life);
+    assert_eq!(
+        b.ui.toast().as_deref(),
+        Some("PASSKEY 012345"),
+        "the passkey outlives a toast"
+    );
+    unsafe {
+        views_keyboard_event(
+            &mut *b.ui.v,
+            VIEWS_KEYBOARD_CONNECTED,
+            c"microKEY Air".as_ptr(),
+        )
+    };
+    assert_eq!(b.ui.toast().as_deref(), Some("KEYBOARD microKEY Air"));
+}
+
+#[test]
 fn a_radio_build_shows_its_power_report_where_status_says_ready() {
     let mut b = bound();
     open_status(&mut b.ui);

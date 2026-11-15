@@ -10,8 +10,8 @@ use common::panel::{
     KEY0, LFO, MENU_ITEMS, OCT_UP, PLAY, PRESETS, REC, SAVE, SCL, SELECT, SEQ,
 };
 use common::{
-    booted, open_status, run_past_boot, screen_wiping, settings_item, tap_on, to_mid_frame,
-    top_view, Firmware, Machine, POLL_INSTRUCTIONS, UI_FRAME_MS,
+    booted, booted_with_art, open_status, run_past_boot, screen_wiping, settings_item, tap_on,
+    to_mid_frame, top_view, Firmware, Machine, POLL_INSTRUCTIONS, UI_FRAME_MS,
 };
 use fm1_core::Bus;
 
@@ -2560,7 +2560,7 @@ fn fire_keeps_a_low_flame_in_silence() {
     let Some(fw) = common::firmware("the SCENE test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     open_scene(&mut m, &fw, 0);
     m.run_ms(3000);
     to_mid_frame(&mut m, &fw);
@@ -2580,7 +2580,7 @@ fn entering_scene_names_the_piece() {
     let Some(fw) = common::firmware("the SCENE test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     enter_menu_item(&mut m, &fw, MENU_SCENE);
     m.run_ms(100);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("scene_view_view"));
@@ -2592,7 +2592,7 @@ fn algorithm_steps_scenes_piece_as_select_does() {
     let Some(fw) = common::firmware("the SCENE test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     open_scene(&mut m, &fw, 0);
     let which =
         |m: &mut Machine| usize::from(scene_byte(m, &fw, sidou_sys::ilp32::scene_view::which));
@@ -2609,13 +2609,17 @@ fn algorithm_steps_scenes_piece_as_select_does() {
 }
 
 fn assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(piece: usize) {
+    assert_scene_matches_its_golden(piece, booted_with_art, SCENE_PIECES[piece]);
+}
+
+fn assert_scene_matches_its_golden(piece: usize, boot: fn(&Firmware) -> Machine, golden: &str) {
     let Some((build, fw)) = common::build_and_firmware("the SCENE test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = boot(&fw);
     open_scene(&mut m, &fw, 0);
     assert!(tap_on(&mut m, &fw), "the tap is off under SCENE");
-    for (k, name) in SCENE_PIECES.iter().enumerate().take(piece + 1) {
+    for k in 0..=piece {
         if k > 0 {
             m.turn(SELECT, 1);
             m.run_ms(TOAST_GONE_MS);
@@ -2625,7 +2629,7 @@ fn assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(piece
         m.run_ms(1000);
         to_mid_frame(&mut m, &fw);
         if k == piece {
-            compare_golden(&build, &format!("scene-{name}"), &m.soc.lcd.fb, &[]);
+            compare_golden(&build, &format!("scene-{golden}"), &m.soc.lcd.fb, &[]);
         }
         chord_keys(&mut m, false);
         m.run_ms(1500);
@@ -2666,6 +2670,11 @@ fn scene_rmr_matches_its_golden_image() {
     assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(SCENE_RMR);
 }
 
+#[test]
+fn without_its_art_red_moon_rite_is_the_logo_intro_of_its_golden_image() {
+    assert_scene_matches_its_golden(SCENE_RMR, booted, "intro");
+}
+
 fn cells_sent(c: &Cost) -> Vec<u32> {
     c.frames.iter().map(cells).collect()
 }
@@ -2676,7 +2685,7 @@ fn a_chords_note_ons_move_every_scene_piece_within_two_frames_and_silence_calms_
         return;
     };
     for (piece, name) in SCENE_PIECES.iter().enumerate() {
-        let mut m = booted(&fw);
+        let mut m = booted_with_art(&fw);
         open_scene(&mut m, &fw, piece);
         let quiet = cells_sent(&measure(&mut m, &fw, 25, |_| {}));
         let chord = cells_sent(&measure(&mut m, &fw, 25, |m| chord_keys(m, true)));
@@ -2760,8 +2769,22 @@ fn scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets() {
         return;
     };
     let mut report = serde_json::Map::new();
-    for (piece, name) in SCENE_PIECES.iter().enumerate() {
-        let mut m = Machine::boot(&fw.image);
+    let intro = (
+        SCENE_RMR,
+        &"intro",
+        INTRO_BOUND,
+        Machine::boot as fn(&[u8]) -> Machine,
+    );
+    let shown = SCENE_PIECES.iter().enumerate().map(|(k, name)| {
+        (
+            k,
+            name,
+            SCENE_BOUNDS[k],
+            Machine::boot_with_art as fn(&[u8]) -> Machine,
+        )
+    });
+    for (piece, name, bound, boot) in shown.chain([intro]) {
+        let mut m = boot(&fw.image);
         m.watch_calls(fw.symbol("ui_poll"));
         run_past_boot(&mut m, &fw);
         open_scene(&mut m, &fw, piece);
@@ -2793,7 +2816,7 @@ fn scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets() {
             cells_average: cells_bound,
             cells_most: most_bound,
             instructions_a_frame: per_frame_bound,
-        } = SCENE_BOUNDS[piece];
+        } = bound;
         assert!(
             c.worst_frame_ms() <= SPI_BUDGET_MS,
             "{name}: a frame took {:.1} ms of SPI",
@@ -2835,7 +2858,7 @@ fn midi_learn_over_scene_and_live_stays_within_the_budget_from_opening_to_closin
     let mut over = Vec::new();
     let shown = SCENE_PIECES.iter().map(|&n| Some(n)).chain([None]);
     for (piece, name) in shown.enumerate() {
-        let mut m = booted(&fw);
+        let mut m = booted_with_art(&fw);
         if name.is_some() {
             open_scene(&mut m, &fw, piece);
         }
@@ -2889,6 +2912,7 @@ fn midi_learn_over_scene_and_live_stays_within_the_budget_from_opening_to_closin
     assert!(over.is_empty(), "{over:#?}");
 }
 
+#[derive(Clone, Copy)]
 struct SceneBound {
     cells_average: f64,
     cells_most: u32,
@@ -2911,6 +2935,7 @@ const SCENE_BOUNDS: [SceneBound; 6] = [
     scene_bound(3.0, 10, 30_000.0),
     scene_bound(133.0, 136, 1_140_000.0),
 ];
+const INTRO_BOUND: SceneBound = scene_bound(64.0, 100, 192_000.0);
 const SCENE_WORST_POLL: u64 = 62_000;
 const SCENE_INPUT: u64 = 230;
 const SCENE_OPEN_INPUT: u64 = 430;
@@ -2948,7 +2973,7 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
     let Some(fw) = common::firmware("the SCENE input test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     open_scene(&mut m, &fw, 0);
     m.watch_calls(fw.symbol("ui_encoder"));
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
@@ -4993,7 +5018,7 @@ fn red_moon_rite_plays_the_demo_songs_duel_disarm_and_stuck_sword_as_its_golden_
     let Some((build, fw)) = common::build_and_firmware("the RED MOON RITE test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     rmr_with_the_song(&mut m, &fw);
     m.run_ms(1000);
     to_mid_frame(&mut m, &fw);
@@ -5026,7 +5051,7 @@ fn red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song() {
         return;
     };
     let busiest = |f: &str| {
-        let mut m = Machine::boot(&fw.image);
+        let mut m = Machine::boot_with_art(&fw.image);
         m.watch_calls(fw.symbol(f));
         run_past_boot(&mut m, &fw);
         rmr_with_the_song(&mut m, &fw);
@@ -5044,7 +5069,7 @@ fn red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song() {
                     |f| busiest(f),
                 )
             });
-            let mut m = Machine::boot(&fw.image);
+            let mut m = Machine::boot_with_art(&fw.image);
             m.watch_calls(fw.symbol("ui_poll"));
             m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
             run_past_boot(&mut m, &fw);
@@ -5124,7 +5149,7 @@ fn a_muted_drum_voice_stops_red_moon_rites_chops_and_parries() {
     let Some(fw) = common::firmware("the RED MOON RITE mute test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     rmr_with_the_song(&mut m, &fw);
     let attacks = |m: &mut Machine, fw: &Firmware, frames: u32| {
         let mut n = 0;
@@ -5157,7 +5182,7 @@ fn red_moon_rite_sends_nothing_once_the_stopped_songs_releases_have_rung_out() {
     let Some(fw) = common::firmware("the RED MOON RITE calm test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_with_art(&fw);
     rmr_with_the_song(&mut m, &fw);
     let playing = cells_sent(&measure(&mut m, &fw, 50, |_| {}));
     press(&mut m, PLAY);

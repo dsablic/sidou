@@ -96,6 +96,7 @@ pub fn nak_words(reason: u8) -> &'static str {
         13 => "MUS (13): not supported",
         14 => "a broken .sid header (14)",
         15 => "data past $FFFF (15)",
+        17 => "not RED MOON RITE's art pack (17): its header or slots are wrong",
         _ => "refused",
     }
 }
@@ -105,6 +106,7 @@ pub fn file_type_of(bytes: &[u8]) -> Option<u8> {
         b"GTS2" | b"GTS3" | b"GTS4" | b"GTS5" => Some(FILE_SONG),
         b"PSID" | b"RSID" => Some(crate::FILE_SID),
         b"GTI2" | b"GTI3" | b"GTI4" | b"GTI5" => Some(FILE_INSTRUMENT),
+        b"SIDO" if bytes.starts_with(b"SIDOUART") => Some(crate::FILE_ART),
         _ => None,
     }
 }
@@ -133,6 +135,9 @@ pub fn store_name(file_name: &str) -> String {
 const SONG_NAME: std::ops::Range<usize> = 4..36;
 
 pub fn sent_name(file_name: &str, bytes: &[u8]) -> String {
+    if file_type_of(bytes) == Some(crate::FILE_ART) {
+        return crate::art::NAME.to_string();
+    }
     if file_type_of(bytes) == Some(FILE_SONG) {
         if let Some(head) = bytes.get(SONG_NAME) {
             let own: String = head

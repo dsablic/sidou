@@ -76,9 +76,8 @@ fn the_list_holds_only_ble_midi_devices_first_heard_first_with_names_cut_at_16_a
     );
 }
 
-#[test]
-fn a_kept_keyboard_reads_back_as_written() {
-    let kept = ble_setting_kept {
+fn kept_with(bond: ble_bond) -> ble_setting_kept {
+    ble_setting_kept {
         mode: BLE_MODE_KEYBOARD as u8,
         own: OWN,
         keyboard: ble_keyboard {
@@ -86,19 +85,59 @@ fn a_kept_keyboard_reads_back_as_written() {
             type_: BLE_ADDR_RANDOM as u8,
             name: name_bytes("SIXTEEN CHARS OK"),
         },
-    };
+        bond,
+    }
+}
+
+const BOND: ble_bond = ble_bond {
+    has: (BLE_BOND_LTK | BLE_BOND_AUTH) as u8,
+    ltk: [0xA5; 16],
+    rand: [1, 2, 3, 4, 5, 6, 7, 8],
+    ediv: [0x34, 0x12],
+};
+
+fn written(kept: &ble_setting_kept) -> [u8; RECORD] {
     let mut rec = [0u8; RECORD];
-    unsafe { ble_record_write(&kept, rec.as_mut_ptr()) };
+    unsafe { ble_record_write(kept, rec.as_mut_ptr()) };
+    rec
+}
+
+#[test]
+fn a_kept_keyboard_and_its_bond_read_back_as_written() {
+    let kept = kept_with(BOND);
+    let rec = written(&kept);
     assert_eq!(
         rec[..2],
         [BLE_RECORD_VERSION as u8, BLE_MODE_KEYBOARD as u8]
     );
-    let back = read(&rec).expect("a version 2 record");
+    let back = read(&rec).expect("a version 3 record");
     assert_eq!(
         (back.mode, back.own, back.keyboard.addr, back.keyboard.type_),
         (kept.mode, OWN, KORG, BLE_ADDR_RANDOM as u8)
     );
     assert_eq!(text(&back.keyboard.name), "SIXTEEN CHARS OK");
+    assert_eq!(
+        (back.bond.has, back.bond.ltk, back.bond.rand, back.bond.ediv),
+        (BOND.has, BOND.ltk, BOND.rand, BOND.ediv)
+    );
+}
+
+#[test]
+fn a_record_from_1_11_reads_its_keyboard_with_no_bond() {
+    let rec = written(&kept_with(BOND));
+    let unbonded = RECORD - size_of::<ble_bond>();
+    let old = [&[BLE_RECORD_VERSION_UNBONDED as u8][..], &rec[1..unbonded]].concat();
+    let mut back = kept_with(BOND);
+    assert_ne!(
+        unsafe { ble_record_read(&mut back, old.as_ptr(), old.len() as u32) },
+        0,
+        "the 1.11 record"
+    );
+    assert_eq!(
+        (back.mode, back.keyboard.addr, text(&back.keyboard.name)),
+        (BLE_MODE_KEYBOARD as u8, KORG, "SIXTEEN CHARS OK".to_owned())
+    );
+    assert_eq!(back.bond.has, 0, "no bond");
 }
 
 #[test]
@@ -119,6 +158,11 @@ fn a_record_of_another_length_or_version_is_not_read() {
     rec[0] = BLE_RECORD_VERSION as u8;
     assert!(read(&rec).is_some());
     assert!(read(&rec[..RECORD - 1]).is_none(), "cut short");
+    rec[0] = BLE_RECORD_VERSION_UNBONDED as u8;
+    assert!(
+        read(&rec).is_none(),
+        "a 1.11 record as long as a bonded one"
+    );
     rec[0] = BLE_RECORD_VERSION as u8 + 1;
     assert!(read(&rec).is_none(), "a newer version");
     assert!(read(&[]).is_none(), "empty");

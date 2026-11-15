@@ -187,7 +187,8 @@ try {
   };
   await start();
   const first = await page.evaluate(() => window.__sidou.bootSectors);
-  if (first !== 0) fail(`a fresh browser booted with ${first} saved flash sectors`);
+  const seeded = await page.evaluate(async () => (await (await fetch("store-seed.bin")).arrayBuffer()).byteLength / (4 + 4096));
+  if (!(seeded > 0) || first !== seeded) fail(`a fresh browser booted with ${first} flash sectors, not the ${seeded} holding RED MOON RITE's art`);
   const s = await page.evaluate(() => window.__sidou);
   if (s.errors.length) fail(`audio thread: ${s.errors.join("; ")}`);
   if (s.last) {

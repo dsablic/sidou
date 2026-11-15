@@ -4,29 +4,10 @@
 use sidou_sys::*;
 use sidou_tests::scene_art::{self, Picture, CLEAR, SKY_Y};
 
-use crate::STATUS_BAR_H;
+use crate::{rmr_frame, shipped_art, shipped_pack, STATUS_BAR_H};
 
 fn compiled() -> Vec<&'static scene_image> {
-    let mut out = Vec::new();
-    unsafe {
-        out.extend((*std::ptr::addr_of!(scene_rmr_barb)).iter().flatten());
-        out.extend(
-            (*std::ptr::addr_of!(scene_rmr_barb_unarmed))
-                .iter()
-                .flatten(),
-        );
-        out.extend(scene_rmr_sword.iter());
-        out.push(&scene_rmr_sword_stuck);
-        out.extend(scene_rmr_sky.iter());
-        out.push(&scene_rmr_arena);
-        out.extend([
-            &scene_rmr_hud,
-            &scene_rmr_blade_empty,
-            &scene_rmr_blade_full,
-            &scene_rmr_blade_tip,
-        ]);
-    }
-    out
+    shipped_art().frame.iter().collect()
 }
 
 fn frame_of(s: &scene_image, mirror: bool) -> Picture {
@@ -92,14 +73,8 @@ fn the_header_and_the_converter_agree_on_the_set() {
         );
         assert_eq!((s.gx, s.clear), (src.gx, clear), "{}", src.png);
         assert_eq!((s.ax, s.ay), src.anchor, "{}", src.png);
-        assert_eq!(
-            unsafe { *s.data.add(15) },
-            128 | SCENE_ART_SEEK_LOG2 as u8,
-            "{}: SCENE's fixed raw-run profile",
-            src.png
-        );
     }
-    let guard = unsafe { &scene_rmr_barb[1][SCENE_RMR_GUARD as usize] };
+    let guard = rmr_frame(SCENE_RMR_ART_BARB + SCENE_RMR_POSES + SCENE_RMR_GUARD);
     assert_eq!(
         (
             u32::from(guard.fw) * u32::from(guard.gx) - u32::from(guard.ax),
@@ -161,10 +136,10 @@ fn every_image_decodes_to_its_png_pixel_for_pixel() {
 
 #[test]
 fn each_sky_is_its_gradient_with_the_moon_wisps_and_hills_over_it() {
-    for i in 0..scene_art::SKIES.len() {
+    let gradients = unsafe { &*std::ptr::addr_of!(scene_rmr_sky_gradient) };
+    for (i, g) in gradients.iter().enumerate() {
         let want = scene_art::load(&format!("sky-{i}"));
-        let g = unsafe { &scene_rmr_sky_gradient[i] };
-        let over = frame_of(unsafe { &scene_rmr_sky[i] }, false);
+        let over = frame_of(rmr_frame(SCENE_RMR_ART_SKY + i as u32), false);
         for y in 0..want.h {
             let mut row = vec![0x55u8; want.w];
             unsafe {
@@ -236,15 +211,27 @@ fn the_flames_are_the_torches() {
 }
 
 #[test]
-fn the_art_fits_its_flash_ceiling() {
-    let (runs, offs, structs, total) = scene_art::flash();
+fn the_pack_fits_a_store_file_and_keeps_every_row_on_one_page() {
+    let bytes = shipped_pack().bytes();
+    let pages = bytes.len().div_ceil(scene_art::PACK_PAGE);
     println!(
-        "RED MOON RITE's art: {runs} bytes of runs + {offs} of row offsets + {structs} of \
-         tables = {total} ({:.1} KB of {} KB)",
-        total as f64 / 1024.0,
-        scene_art::CEILING / 1024
+        "RED MOON RITE's art pack: {} bytes, {pages} store chunks; the motion tables left in the \
+         app: {} bytes",
+        bytes.len(),
+        scene_art::motion_flash()
     );
-    assert!(total <= scene_art::CEILING, "{total} bytes");
+    assert!(bytes.len() <= STORE_FILE_MAX as usize);
+    assert_eq!(scene_art::crc32(bytes), ART_PACK_RESIDUE);
+    for (k, s) in compiled().iter().enumerate() {
+        for r in 0..usize::from(s.h) {
+            let at = usize::from(unsafe { *s.rows.add(r) });
+            let n = packet_len(s, r);
+            assert!(
+                scene_art::within_a_page(at, n),
+                "frame {k} row {r}: {n} bytes from {at} cross a page"
+            );
+        }
+    }
     let (whole, split) = scene_art::skies_both_ways();
     println!("the skies: {whole} bytes whole, {split} as gradients and overlays");
     assert!(split < whole, "the gradients and overlays are the smaller");
@@ -284,66 +271,52 @@ fn the_converter_takes_art_colours_and_full_transparency_only() {
     assert!(e.contains("art palette"), "{e}");
 }
 
+fn row_bytes(s: &scene_image, r: usize) -> *const u8 {
+    let off = usize::from(unsafe { *s.rows.add(r) });
+    let page = SCENE_ART_PAGE as usize;
+    unsafe { (*s.page.add(off / page)).add(off % page) }
+}
+
+fn checkpoints(s: &scene_image) -> usize {
+    (usize::from(s.w) - 1) / scene_art::SEEK
+}
+
 fn runs_of(s: &scene_image, r: usize) -> Vec<(usize, usize)> {
-    let row = usize::from(unsafe { *s.rows.add(r) });
-    let flags = unsafe { *s.data.add(15) };
-    let step = 1usize << (flags & 15);
-    let k = (usize::from(s.w) - 1) / step;
-    let begin = 2 * (row + k);
-    let (mut at, mut off, mut out) = (0, begin, Vec::new());
-    let nibble = |i: usize| (unsafe { *s.data.add(i / 2) } >> ((i & 1) * 4)) & 15;
+    let row = row_bytes(s, r);
+    let k = checkpoints(s);
+    let (mut at, mut out) = (0, Vec::new());
     while at < usize::from(s.w) {
-        out.push((off - begin, at));
-        let byte = if flags & 128 != 0 {
-            let byte = unsafe { *s.data.add(off / 2) };
-            off += 2;
-            byte
-        } else {
-            let code = nibble(off);
-            off += 1;
-            if code == 15 {
-                let byte = nibble(off) | (nibble(off + 1) << 4);
-                off += 2;
-                byte
-            } else {
-                unsafe { *s.data.add(usize::from(code)) }
-            }
-        };
-        at += usize::from(byte >> 4) + 1;
+        let i = out.len();
+        out.push((i, at));
+        at += usize::from(unsafe { *row.add(k + i) } >> 4) + 1;
     }
     assert_eq!(at, usize::from(s.w), "row {r}'s runs add up to w");
     out
 }
 
+fn packet_len(s: &scene_image, r: usize) -> usize {
+    checkpoints(s) + runs_of(s, r).len()
+}
+
 #[test]
 fn wide_rows_have_a_checkpoint_every_seek_pixels() {
-    assert_eq!(SCENE_ART_SEEK as usize, scene_art::SEEK);
     let mut wide = 0;
     for (src, s) in scene_art::sources().iter().zip(compiled()) {
-        let flags = unsafe { *s.data.add(15) };
-        let step = 1usize << (flags & 15);
-        assert!(step.is_power_of_two() && step <= scene_art::SEEK);
-        let k = (usize::from(s.w) - 1) / step;
+        let k = checkpoints(s);
         if k == 0 {
             continue;
         }
         wide += 1;
         for r in 0..usize::from(s.h) {
             let runs = runs_of(s, r);
-            let row = unsafe { s.data.add(usize::from(*s.rows.add(r))) };
-            let mut off = 0;
+            let row = row_bytes(s, r);
             for j in 1..=k {
-                let checkpoint = usize::from(unsafe { *row.add(j - 1) });
-                if flags & 128 != 0 {
-                    off = 2 * checkpoint;
-                } else {
-                    off += checkpoint;
-                }
+                let run = usize::from(unsafe { *row.add(j - 1) });
                 assert!(
-                    runs.contains(&(off, j * step)),
-                    "{} row {r}: checkpoint {j} at nibble {off} is not the run from {}",
+                    runs.contains(&(run, j * scene_art::SEEK)),
+                    "{} row {r}: checkpoint {j} names run {run}, not the run from {}",
                     src.png,
-                    j * step
+                    j * scene_art::SEEK
                 );
             }
         }

@@ -611,6 +611,7 @@ void views_settings(views* v, settings* set) {
     v->set = set;
     v->sids.st = set ? set->st : NULL;
     v->users.st = set ? set->st : NULL;
+    v->scene.st = set ? set->st : NULL;
     user_profiles_load(&v->users);
 }
 

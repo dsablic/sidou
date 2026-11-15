@@ -69,6 +69,7 @@
 #include "panel.h"
 #include "reg_ring.h"
 #include "scene.h"
+#include "art_pack.h"
 #include "scene_art.h"
 #include "scene_px.h"
 #include "scene_rmr.h"

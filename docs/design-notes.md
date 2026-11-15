@@ -280,7 +280,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   73 sectors (a fifth of the songs' room), and the loader keeps a sector only if it starts with
   Melodee's commit record (`X0X0`), so on an FM-1 already holding SIDOU's songs an install would
   overwrite them. It would also replace Felucca 1.6.1's pinned loader. The art is already
-  run-length coded (`scene_rmr_art.c`, 34,538 bytes of runs).
+  run-length coded (34,538 bytes of runs).
+- **RED MOON RITE's art is a file in the store** (1.20, the owner, 2026-11-15: room for
+  Bluetooth pairing): `assets/art/red-moon-rite.sidart`, sent from the Library, 41,037 bytes. It
+  left the image 39,328 bytes smaller (579,232 to 539,904) with its loader and the logo intro that
+  replaces it when there is none; [the pack's notes](#red-moon-rites-art-pack) say how.
 
 ### SRAM audio path
 
@@ -535,8 +539,43 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   NEED_PAIR as `ble_central.c` sets them) and calls the glue's callbacks as the stack does
   (`ble_app_state` on every link change, `ble_app_midi_in` through the vendored BLE-MIDI decoder
   as `ble_att.c` does). The scan table and its listing are the vendored `ble_scan.c`. emu-gate
-  writes the air into symbols: advertising PDUs, a keyboard gone, one asking for security, a
-  computer, a BLE-MIDI packet. The glue's own code is the same in both builds.
+  writes the air into symbols: advertising PDUs, a keyboard gone, one asking for Just Works
+  pairing or a passkey, the passkey typed, a bond forgotten, a computer, a BLE-MIDI packet. The glue's own code is the same in both builds.
+- **Pairing (1.20, `BLE_CENTRAL` 1)**, on the room RED MOON RITE's art left (the owner,
+  2026-11-15, after §38: the microKEY Air answered `NEEDS PAIRING`). The stack's FULL level pairs
+  as initiator, Just Works or a passkey SIDOU displays, encrypts with a bond and pairs again with
+  MITM on the link when a Just Works key is refused. It cost 5,972 bytes with SIDOU's side (the
+  default image 539,936 to 545,908, 33,608 under the ceiling; the measure on 1.11's image was
+  5,512 for the stack); RAMTEXT did not move; the RAM region keeps 5,560 bytes free, NOINIT 8,248.
+  - **The bond** is the keyboard's: the keys `ble_app_central_keys` hands over (in the BLE
+    interrupts' context, copied and flagged; the main loop keeps them) go into record `0x10A`
+    version 3, after the keyboard: what it holds (`BLE_KEYS_LTK`, `BLE_KEYS_AUTH`), LTK, Rand,
+    EDIV. Each connect hands the stack the bond (`bonded`, `BLE_PEER_AUTH` for a passkey's), so a
+    link after LOST or a power cycle is encrypted at once, as Apple's peripherals want (QA1831).
+    The identity (IRK) is not kept: a keyboard behind a resolvable private address would not be
+    found again (the initiator waits for the address it was picked at, as before); none is known
+    to SIDOU's users.
+  - **What is tried again**: `BLE_CF_KEY` (the keyboard left while the bond's encryption started:
+    it lost the bond) drops the bond and connects once more, to pair afresh; `BLE_CF_NEED_MITM`
+    (Just Works refused, a passkey needed) connects once more with `BLE_PEER_MITM`. Anything else
+    that ends a link before READY (a pairing failed, a passkey typed wrong, authentication
+    refused) is `NEEDS PAIRING`, not tried again until the keyboard is picked, the mode changes or
+    the power is cycled, as before: NEEDS PAIRING's "not tried again" stays where pairing cannot
+    help. A connection that reaches READY resets the "once". A pick forgets the bond.
+  - **The passkey** is shown as a toast, `PASSKEY` and six digits on two large lines, for up to
+    30 s (SMP's own timeout), from the first poll that sees `ble_central_passkey` while
+    `ble_central_pairing`; the connection's toast, or `NEEDS PAIRING`, replaces it. A toast and not
+    a popup: it is what the screen already shows large, without a new view.
+  - **The peripheral** gets LL encryption and SMP as responder with the level (the stack's
+    `BLE_SMP_LEGACY`): a Mac that asks to pair is paired; its bond is not kept (`ble_app_bond`
+    stays empty), as BLE-MIDI to a computer needs none.
+  - **What the fake radio proves**: the glue's whole pairing logic on the stack's API, with the
+    keys made by the stack's own primitives (`ble_aes.c` is built into the fake image: the fake
+    keyboard checks the confirm values with `ble_smp_c1`, so a wrong passkey fails as it would on
+    the air, derives the STK with `ble_smp_s1` and the TK with `ble_smp_passkey_tk`). What it
+    cannot: the stack's SMP state machine (`ble_smp_init.c`), the LL's encryption start and
+    AES-CCM on the link, the timing over the air and a real keyboard's choices; those are
+    hardware-test §38's.
 - **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with the
   radio: `views_radio_bind` hands the views the radio's hooks and adds the item. The setting and
   SIDOU's random static address are their own store record (key `0x10A`), not the settings
@@ -705,14 +744,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
   (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
   Players see nothing: no menu entry, no setting.
-- **The ON image's size gate is deferred to 2.0** (the owner, 2026-11-15). With Bluetooth
-  connecting out the ON image is 581,120 bytes, 1,604 over the 579,516 ceiling: the second core
-  adds about 1,890 bytes and the default image has 284 to spare. The cpu2 shard still runs every
-  gate it ran on the ON image, but `flash_budget.rs` and `psid_budget.rs`'s check of the image's
-  size against the ceiling print the overrun and pass for an image whose option record names
-  `SIDOU_CPU2=ON` (`flash_plan::assert_fits`, `SIZE_DEFERRED_TO`). The default image's size
-  gates are unchanged. 2.0 finds the room before turning it on: more hot/cold splits, or SCENE's
-  RED MOON RITE art moved into the store (the owner's reserve, with the owner's yes).
+- **The ON image's size gate.** Deferred to 2.0 on 2026-11-15 (the owner) while the ON image was
+  581,120 bytes, 1,604 over the 579,516 ceiling (the second core adds about 1,890 bytes, and the
+  default image had 284 to spare). Restored in 1.20 once RED MOON RITE's art left the image: with
+  pairing, the ON image is 547,796 bytes, 31,720 under the ceiling, and `flash_budget.rs` and
+  `psid_budget.rs` check it as they check the default image (`flash_plan::assert_fits`).
 - **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
   core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
   chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).
@@ -5965,10 +6001,56 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   hills), smaller than the whole sky (`skies_both_ways` measures the other choice). The three
   palettes follow red-moon-rite.js's PALS from row 16 to 140 with 6-row seams. A row wider than
   32 pixels has a run start every 32, with checkpoints in its row packets.
-- The flash estimate uses the pi32v2 (ILP32) struct sizes: `scene_image` 24 bytes (ten bytes, two
-  of padding, three pointers), `scene_gradient` four bytes and a pointer, a stop 2.
-- The art in flash is held to a 48 KiB ceiling (`CEILING`); the skies
-  are stored as gradients plus overlays because that is smaller than whole images.
+- The skies are stored as gradients plus overlays because that is smaller than whole images.
+
+### RED MOON RITE's art pack
+
+- **Why a file.** Pairing as a central (BLE_CENTRAL level 1) costs about 5.5 KB more than
+  connecting out without it, and the image had 284 bytes left under its ceiling. The owner chose
+  (2026-11-15) to move the art, the image's largest table, into the store as the first art pack,
+  general enough that a site pack builder can make others later. What stays in the app is
+  choreography, not pictures: the motion tables, the skies' gradients and the torches' boxes
+  (`scene_rmr_motion.c`, 834 bytes of tables), and the shadows, flames, sparks and arc drawn by code.
+- **The format** ([art-pack.md](reference/art-pack.md)) is the art's own run-length rows,
+  unchanged, so the scene's goldens and instruction counts stay as they were: a header, a slot
+  table (the piece's pictures, each a size and a frame count, which a pack must match exactly), a
+  frame table (each frame's rectangle, scale, transparent colour, anchor, base and row table),
+  then row tables and shared row packets, and a CRC. The firmware's checks are `art_pack_head`
+  (the header and slots, which the SysEx PUT also runs on its first DATA, as a `.sid`'s header
+  is) and `art_pack_load` (every frame, row table and row offset).
+- **Drawn in place, by pages.** The store keeps a file in 1,248-byte chunks, three to a sector
+  with record headers between them, so a file is not contiguous in flash. Rather than copy 40 KB
+  into RAM (there is none to spare) or make the store contiguous (a new store format), the pack
+  is laid out in pages of the chunk's size and nothing read in one piece crosses one: the tables,
+  each row table, each row packet. A packet that would cross starts on the next page (the
+  shipped pack is 41,037 bytes, 33 pages). A row offset is a file offset, and the decoder
+  maps it with one table look-up (`page[off / 1248] + off % 1248`); `scene_image` points at the
+  page table where it pointed at the runs. The RAM is 41 frames of 24 bytes and 53 page
+  pointers, 1,196 bytes in SCENE's state (the RAM region keeps 5,668 bytes free, over its 5,120
+  floor).
+- **No read of the whole pack.** Its trailing CRC covers every byte before it, so the CRC-32 of
+  the whole file is the fixed residue `0x2144DF1C`, and the store already keeps the whole file's
+  CRC (checked against the PUT's at END, each chunk under its record's own CRC): the loader
+  compares that number and never reads the 40 KB. It decodes no row either: a wrong run draws
+  wrong pixels and nothing else, since every write is clipped to the span asked for.
+- **Swapped while drawn.** The view holds the store file it opened; each frame it asks the store
+  whether that file is still the same (its key's record, its id) and opens the pack again if not,
+  repainting the whole screen, so a pack replaced or deleted is let go before its chunks can be
+  erased. With none, it looks for one every 16 frames (a third of a second).
+- **The intro.** Without a valid pack RED MOON RITE must not be blank (the owner): it plays a
+  demo-style intro made of what the firmware already has, the Metal Chrome logo bitmap's lettering
+  rows (64-160, black left transparent) over three raster bars of the C64 palette's ramps, one
+  above the logo and two below. The duel's state machine runs as ever and drives them: the bars
+  swing on its animation clock, half their room with the filter closed and all of it open, and
+  flash a white core on a parry, an arp flare or the fill. The bars never pass under the logo:
+  re-rendering the logo's tiles costs a bitmap seek a tile row (`grid_bitmap_row`), and bars
+  behind it took a ui_poll to 95,727 instructions, over the 62,000 allowance; kept clear of it,
+  the busiest is 25,263. One bar moves a frame (the frame's number picks it), so a frame repaints
+  at most one bar's rows: in the emulator with the band, 58.5 cells and 174,044 instructions a
+  frame, 91 cells at most, the busiest ui_poll 25,263 (the duel: 120.5, 1,057,204, 123, 45,506). Its code is 336 bytes
+  (`scene_rmr_intro`, its two row painters, the ramps); the loader and the store's two helpers
+  840 more.
+- **FORMAT** takes the pack with the rest of the store; the intro plays until it is sent again.
 
 ### RED MOON RITE music
 
@@ -6756,7 +6838,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 ### Generators and their checks
 
 - The generated C files (`app/font.c` and `font.h`, `credits.c`, `demo_song.c`,
-  `logo_bitmap.c`, `scene_rmr_art.c`, `live_cutoff.c`, `live_freq.c`)
+  `logo_bitmap.c`, `scene_rmr_motion.c`, `live_cutoff.c`, `live_freq.c`; and one binary,
+  `assets/art/red-moon-rite.sidart`)
   carry only their SPDX header and one "Generated by ...; do not edit" line naming the generator.
   Their up-to-date tests compare the whole file, and each generator's update variable rewrites it
   (`check_or_write(update)` both generates and lists stale files). Generated lines stay within

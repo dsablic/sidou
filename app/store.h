@@ -28,6 +28,7 @@
 #define STORE_FILE_GTI 3u
 #define STORE_FILE_SOUNDS 4u
 #define STORE_SOUNDS_NAME "USER SOUNDS"
+#define STORE_FILE_ART 5u
 #define STORE_WINDOW_MAX 256u
 #define STORE_FILE_MAX 65536u
 #define STORE_CHUNK 1248u
@@ -228,6 +229,8 @@ int store_file_result(const store* s);
 void store_file_idle(store* s, uint32_t ms);
 int store_file_open(const store* s, const char* name, store_file* f);
 int store_file_read(const store* s, const store_file* f, uint32_t off, void* p, uint32_t n);
+int store_file_same(const store* s, const store_file* f);
+const uint8_t* store_file_page(const store* s, const store_file* f, uint32_t i);
 int store_dir_next(const store* s, store_file* f);
 int store_file_delete(store* s, const char* name);
 int store_file_rename(store* s, const char* from, const char* to);

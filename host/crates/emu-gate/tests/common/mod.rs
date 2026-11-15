@@ -593,7 +593,32 @@ pub fn settled_flash(image: &[u8]) -> Vec<u8> {
     flash
 }
 
+pub fn shipped_art() -> Vec<u8> {
+    std::fs::read(sidou_tests::scene_art::pack_path()).expect("the shipped art pack")
+}
+
+pub fn flash_with_art(image: &[u8], pack: &[u8]) -> Vec<u8> {
+    let mut flash = settled_flash(image);
+    put_file(
+        &mut flash,
+        sidou_sysex::art::NAME,
+        sidou_sys::STORE_FILE_ART,
+        pack,
+    );
+    flash
+}
+
 impl Machine {
+    pub fn boot_with_flash(image: &[u8], flash: &[u8]) -> Self {
+        let mut m = Self::boot_blank(image);
+        m.soc.flash.mem.copy_from_slice(flash);
+        m
+    }
+
+    pub fn boot_with_art(image: &[u8]) -> Self {
+        Self::boot_with_flash(image, &flash_with_art(image, &shipped_art()))
+    }
+
     pub fn boot(image: &[u8]) -> Self {
         let flash = settled_flash(image);
         let mut m = Self::boot_blank(image);
@@ -1365,6 +1390,12 @@ pub fn firmware(what: &str) -> Option<Firmware> {
 
 pub fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, fw);
+    m
+}
+
+pub fn booted_with_art(fw: &Firmware) -> Machine {
+    let mut m = Machine::boot_with_art(&fw.image);
     run_past_boot(&mut m, fw);
     m
 }

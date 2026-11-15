@@ -58,7 +58,7 @@ while a transfer of this protocol (or its reply) is under way on USB. On TRS the
 Targets are 0: named store file, 1: instrument 1–63 of the current song, and
 2: current song. Unused instrument/name fields are zero. Files are at most
 65,536 bytes. A file's type is 1–127 (1 is a song, 2 a PSID `.sid` tune, below, 3 a GTI5
-instrument); targets 1 and 2 use type 1. A `LIFTED SOUND` file (a GTI5 instrument, type 3, which
+instrument, 5 an [art pack](#art-packs-type-5)); targets 1 and 2 use type 1. A `LIFTED SOUND` file (a GTI5 instrument, type 3, which
 a 1.5 preview build's lift wrote; 1.5.0 lifts into LAB instead, [controls](controls.md#lift-a-sound))
 is listed by DIR and read by GET like any file.
 Target 1 is GoatTracker's GTI5
@@ -92,7 +92,18 @@ is stored, with the parser that plays it ([psid.md](psid.md#what-sidou-refuses-a
   each DATA's ACK once it is programmed, END's once the file commits.
 
 The data and the rest of the file are not checked at PUT (a tune that runs wild is stopped when
-it plays). Type 2 means a tune only on target 0; a tune stored under any other type is never
+it plays).
+
+### Art packs (type 5)
+
+A PUT of type 5 to target 0 is SCENE's [art pack](art-pack.md), checked as a `.sid` is: the
+name must be `RED MOON RITE` and the type 5, either without the other refused as malformed (1);
+a declared length under 576 bytes (the header and tables, and the CRC) is refused at the PUT
+with 17; the first DATA must hold the header and the slot table (80 bytes), else malformed (1),
+and a header or slot table that is not RED MOON RITE's is refused with 17 before anything is
+claimed. From there it is any PUT, and it replaces the pack the FM-1 has. RED MOON RITE checks
+the rest when it opens the pack, and plays SIDOU's logo intro while there is no valid one.
+`sidou-sysex art` writes a pack's PUT as a `.syx`. Type 2 means a tune only on target 0; a tune stored under any other type is never
 offered as one. `sidou-sysex sid` writes a tune's PUT as a `.syx` (below), and
 [the manual](../manual/sid-tunes.md) says how to send one.
 
@@ -111,9 +122,11 @@ and revision, each 0–127. Free bytes are advisory: fragmentation, pool state
 and concurrent writes can prevent a claim even when that number is sufficient.
 
 NAK reasons are 1: malformed/range, 2: checksum, 3: sequence, 4: BUSY,
-5: FULL, 6: not found, 7: I/O or invalid content, 8: timeout, 9: aborted, and for a `.sid`
-12: RSID, 13: MUS, 14: broken header, 15: data past `$FFFF` (10 and 11 are never sent).
-The toasts for 12-15 are `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID` and `TOO LONG`.
+5: FULL, 6: not found, 7: I/O or invalid content, 8: timeout, 9: aborted, for a `.sid`
+12: RSID, 13: MUS, 14: broken header, 15: data past `$FFFF`, and for an art pack 17: not RED
+MOON RITE's art (10, 11 and 16 are never sent).
+The toasts for 12-15 and 17 are `RSID: NOT YET`, `MUS: NOT SUPPORTED`, `BROKEN .SID`, `TOO LONG`
+and `NOT RED MOON RITE ART`.
 Errors end the transfer and release its resources after any irrevocable store
 commit or already-started object import drains. A USB error produces a NAK; both ports report a toast. Unknown USB
 commands are malformed; TRS ignores commands outside its upload-only subset.

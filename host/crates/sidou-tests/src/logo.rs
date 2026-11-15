@@ -265,19 +265,20 @@ pub fn c_source() -> String {
 }
 
 pub fn check_or_write(update: bool) -> Vec<PathBuf> {
-    check_or_write_file(&generated_path(), &c_source(), update)
+    check_or_write_file(&generated_path(), c_source(), update)
 }
 
 pub(crate) fn check_or_write_file(
     path: &std::path::Path,
-    want: &str,
+    want: impl AsRef<[u8]>,
     update: bool,
 ) -> Vec<PathBuf> {
+    let want = want.as_ref();
     if update {
         std::fs::write(path, want).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
         return Vec::new();
     }
-    if std::fs::read_to_string(path).ok().as_deref() == Some(want) {
+    if std::fs::read(path).ok().as_deref() == Some(want) {
         Vec::new()
     } else {
         vec![path.to_path_buf()]

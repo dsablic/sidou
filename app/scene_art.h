@@ -12,6 +12,8 @@ extern "C" {
 #define SCENE_ART_CLEAR 0xffu
 #define SCENE_ART_SEEK_LOG2 5u
 #define SCENE_ART_SEEK (1u << SCENE_ART_SEEK_LOG2)
+#define SCENE_ART_PAGE 1248u
+#define SCENE_ART_PAGES 53u
 
 typedef struct scene_image scene_image;
 struct scene_image {
@@ -22,7 +24,7 @@ struct scene_image {
     uint8_t clear;
     uint8_t ax, ay;
     const uint16_t* rows;
-    const uint8_t* data;
+    const uint8_t* const* page;
     const scene_image* base;
 };
 
@@ -68,19 +70,29 @@ enum {
 #define SCENE_RMR_SKIES 3u
 #define SCENE_RMR_FEET 228u
 
-extern const scene_image scene_rmr_barb[2][SCENE_RMR_POSES];
-extern const scene_image scene_rmr_barb_unarmed[2][SCENE_RMR_UNARMED_POSES];
-extern const scene_image scene_rmr_sword[SCENE_RMR_SWORD_FRAMES];
-extern const scene_image scene_rmr_sword_stuck;
 extern const scene_gradient scene_rmr_sky_gradient[SCENE_RMR_SKIES];
-extern const scene_image scene_rmr_sky[SCENE_RMR_SKIES];
 #define SCENE_RMR_SKY_Y 16u
-extern const scene_image scene_rmr_arena;
 extern const uint8_t scene_rmr_flames[2][4];
-extern const scene_image scene_rmr_hud;
-extern const scene_image scene_rmr_blade_empty;
-extern const scene_image scene_rmr_blade_full;
-extern const scene_image scene_rmr_blade_tip;
+
+enum {
+    SCENE_RMR_ART_BARB = 0,
+    SCENE_RMR_ART_UNARMED = SCENE_RMR_ART_BARB + 2 * SCENE_RMR_POSES,
+    SCENE_RMR_ART_SWORD = SCENE_RMR_ART_UNARMED + 2 * SCENE_RMR_UNARMED_POSES,
+    SCENE_RMR_ART_STUCK = SCENE_RMR_ART_SWORD + SCENE_RMR_SWORD_FRAMES,
+    SCENE_RMR_ART_SKY,
+    SCENE_RMR_ART_ARENA = SCENE_RMR_ART_SKY + SCENE_RMR_SKIES,
+    SCENE_RMR_ART_HUD,
+    SCENE_RMR_ART_BLADE_EMPTY,
+    SCENE_RMR_ART_BLADE_FULL,
+    SCENE_RMR_ART_BLADE_TIP,
+    SCENE_RMR_ART_FRAMES
+};
+
+typedef struct {
+    scene_image frame[SCENE_RMR_ART_FRAMES];
+    const uint8_t* page[SCENE_ART_PAGES];
+} scene_rmr_art;
+
 #define SCENE_RMR_BLADE_X 17
 #define SCENE_RMR_BLADE_N 11
 #define SCENE_RMR_BLADE_Y 6

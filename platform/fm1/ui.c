@@ -17,7 +17,8 @@ _Static_assert(BLE_KEYBOARD_NONE == VIEWS_KEYBOARD_NONE &&
                    BLE_KEYBOARD_LOOKING == VIEWS_KEYBOARD_LOOKING &&
                    BLE_KEYBOARD_CONNECTED == VIEWS_KEYBOARD_CONNECTED &&
                    BLE_KEYBOARD_PAIRING == VIEWS_KEYBOARD_PAIRING &&
-                   BLE_KEYBOARD_LOST == VIEWS_KEYBOARD_LOST,
+                   BLE_KEYBOARD_LOST == VIEWS_KEYBOARD_LOST &&
+                   BLE_KEYBOARD_PASSKEY == VIEWS_KEYBOARD_PASSKEY,
                "the radio's keyboard states are the views'");
 
 static const views_radio radio = {NULL,
