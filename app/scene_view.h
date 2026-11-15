@@ -11,6 +11,7 @@
 #include "scene_intro.h"
 #include "scene_px.h"
 #include "scene_rmr.h"
+#include "scene_scope.h"
 #include "scene_song.h"
 #include "scope.h"
 #include "screen.h"
@@ -27,11 +28,15 @@ typedef struct {
     scene_px px;
     scene_rmr rmr;
     scene_intro intro;
-    scene_rmr_art art;
+    union {
+        scene_rmr_art art;
+        scene_scope scope;
+    } pic;
     store_file pack;
     grid* g;
     uint16_t left;
     uint8_t has_art;
+    uint8_t which;
 } scene_view_rite;
 
 typedef struct {

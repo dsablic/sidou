@@ -22,6 +22,8 @@ extern "C" {
 #define SCENE_SONG_CLOCK 0u
 #define SCENE_SONG_FREE_FRAMES 3u
 #define SCENE_SONG_NO_NOTE 0xffu
+#define SCENE_SONG_NOTES 8u
+#define SCENE_SONG_VELOCITY 100u
 
 typedef struct {
     const song_ctl* sc;
@@ -45,6 +47,9 @@ typedef struct {
     uint32_t lost;
     uint32_t stamp[SCENE_SONG_VOICES];
     uint8_t free;
+    uint8_t kit;
+    uint8_t heard;
+    scene_rmr_note hear[SCENE_SONG_NOTES];
 } scene_song;
 
 typedef struct {
@@ -52,6 +57,9 @@ typedef struct {
     uint32_t n;
     uint32_t cutoff;
     uint8_t sounding;
+    uint8_t kit;
+    uint32_t notes;
+    scene_rmr_note note[SCENE_SONG_NOTES];
 } scene_song_frame_out;
 
 void scene_song_init(scene_song* ss);

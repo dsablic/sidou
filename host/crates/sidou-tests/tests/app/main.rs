@@ -61,6 +61,7 @@ mod scene_intro;
 mod scene_px;
 mod scene_rmr;
 mod scene_rmr_drawing;
+mod scene_scope;
 mod scene_song;
 mod scope;
 mod screen;
