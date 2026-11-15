@@ -227,7 +227,9 @@ const WHEEL_AT: usize = 6 + LIVE_PARAM_MOD_TARGET as usize + 2;
 
 fn with_wheel_on_vibrato(old: &[u8]) -> Vec<u8> {
     let mut rec = old.to_vec();
-    if u32::from(rec[0]) < SETTINGS_VERSION_WHEEL_VIBRATO && rec[WHEEL_AT] == LIVE_MOD_PULSE_WIDTH as u8 {
+    if u32::from(rec[0]) < SETTINGS_VERSION_WHEEL_VIBRATO
+        && rec[WHEEL_AT] == LIVE_MOD_PULSE_WIDTH as u8
+    {
         rec[WHEEL_AT] = LIVE_MOD_VIBRATO as u8;
     }
     rec
@@ -656,7 +658,11 @@ fn schema_6_adds_spread_and_a_schema_5_or_unknown_spread_loads_as_mono() {
     v9[0] = SETTINGS_VERSION as u8;
     v9.push(SETTINGS_SID_AUTO as u8);
     v9.extend(schema_9_tail_with_nothing_learned());
-    assert_eq!(s.gather(), v9, "saved as the current schema, SID MODEL at AUTO");
+    assert_eq!(
+        s.gather(),
+        v9,
+        "saved as the current schema, SID MODEL at AUTO"
+    );
     for bad in [101u8, 255] {
         let mut rec = v6.clone();
         *rec.last_mut().unwrap() = bad;

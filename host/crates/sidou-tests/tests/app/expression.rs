@@ -377,7 +377,11 @@ fn the_wheel_adds_vibrato_depth_by_default_and_leaves_the_pulse_width() {
     assert_eq!(rig.live.mod_wheel, 127);
     rig.tick();
     rig.tick();
-    assert_ne!(rig.voice_freq(0), freq_at(C4, 0), "the wheel bends the pitch");
+    assert_ne!(
+        rig.voice_freq(0),
+        freq_at(C4, 0),
+        "the wheel bends the pitch"
+    );
     assert_eq!(rig.voice_pw(0), pw);
 }
 

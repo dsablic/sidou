@@ -1770,7 +1770,10 @@ fn the_midi_pages_wheel_row_picks_the_wheels_target_in_its_order() {
         assert_eq!(ui.rig.param(LIVE_PARAM_MOD_TARGET), target, "{name}");
         assert!(midi_line(&mut ui, 8).trim_end().ends_with(name), "{name}");
     }
-    assert_eq!(ui.rig.live.mod_wheel, 0, "a new target starts the wheel at 0");
+    assert_eq!(
+        ui.rig.live.mod_wheel, 0,
+        "a new target starts the wheel at 0"
+    );
     assert_ne!(ui.live().settings_dirty, 0, "kept with the settings");
 }
 

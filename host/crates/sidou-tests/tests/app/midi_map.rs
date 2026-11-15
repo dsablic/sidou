@@ -322,15 +322,9 @@ fn lookups_find_each_row_by_cc_and_by_nrpn() {
 
 #[test]
 fn each_entry_round_trips_through_its_cc() {
-    for r in rows()
-        .iter()
-        .filter(|r| {
-            r.has_cc()
-                && !r.reserved()
-                && !r.setting()
-                && u32::from(r.param) != LIVE_PARAM_PULSE_WIDTH
-        })
-    {
+    for r in rows().iter().filter(|r| {
+        r.has_cc() && !r.reserved() && !r.setting() && u32::from(r.param) != LIVE_PARAM_PULSE_WIDTH
+    }) {
         let e = ptr_for(u32::from(r.param));
         let mut rig = Rig::new(SID_MODEL_6581);
         fill_every_user_slot_with_a_profile(&mut rig);
