@@ -5,69 +5,15 @@ mod common;
 
 use fm1_core::Bus;
 
+use common::ring::{chip_b_use, note, push, settle, with_b, worst_on_both_chips};
 use common::{
-    booted, firmware, max_diff, render_host_chips, rendered_sid, ChipEvent, Firmware, Machine,
-    AUDIO_TARGET, HALF_FRAMES, ISR_OVERHEAD, SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
+    booted, firmware, max_diff, render_host_chips, rendered_sid, ChipEvent, Machine, AUDIO_TARGET,
+    HALF_FRAMES, ISR_OVERHEAD, SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
 };
 use sidou_sys::ilp32;
 
 const BLOCK_FRAMES: f64 = 128.0;
-const B: u8 = sidou_sys::REG_RING_CHIP_B as u8;
 const M1_CHORD_PER_SAMPLE: f64 = 397.87;
-
-fn settle(m: &mut Machine, fw: &Firmware) {
-    let r = fw.symbol("ring");
-    loop {
-        let head = m.soc.read32(r + ilp32::reg_ring::head as u32);
-        let stage = m.soc.read32(r + ilp32::reg_ring::stage as u32);
-        if head == stage && m.cpu.irq_levels.is_empty() {
-            return;
-        }
-        m.run_cycles(37);
-    }
-}
-
-fn push(m: &mut Machine, fw: &Firmware, entries: &[(u8, u8)]) {
-    let r = fw.symbol("ring");
-    let size = sidou_sys::REG_RING_SIZE;
-    let stage = m.soc.read32(r + ilp32::reg_ring::stage as u32);
-    let tail = m.soc.read32(r + ilp32::reg_ring::tail as u32);
-    assert!(
-        stage - tail + entries.len() as u32 <= size,
-        "the ring is full"
-    );
-    for (i, &(reg, value)) in entries.iter().enumerate() {
-        let at = r
-            + ilp32::reg_ring::e as u32
-            + ((stage + i as u32) % size) * ilp32::reg_ring_entry::SIZE as u32;
-        m.soc.write8(at + ilp32::reg_ring_entry::reg as u32, reg);
-        m.soc
-            .write8(at + ilp32::reg_ring_entry::value as u32, value);
-    }
-    let end = stage + entries.len() as u32;
-    m.soc.write32(r + ilp32::reg_ring::stage as u32, end);
-    m.soc.write32(r + ilp32::reg_ring::head as u32, end);
-}
-
-fn chip_b_use(m: &mut Machine, fw: &Firmware, on: bool) {
-    m.soc.write8(fw.symbol("b_want"), u8::from(on));
-}
-
-fn note(voice: u8, freq: u16, control: u8) -> Vec<(u8, u8)> {
-    let v = voice * 7;
-    vec![
-        (0x18, 0x0f),
-        (v, freq as u8),
-        (v + 1, (freq >> 8) as u8),
-        (v + 5, 0x09),
-        (v + 6, 0xa6),
-        (v + 4, control),
-    ]
-}
-
-fn with_b(w: &[(u8, u8)]) -> Vec<(u8, u8)> {
-    w.iter().map(|&(r, v)| (r | B, v)).collect()
-}
 
 #[test]
 fn the_zeroed_chip_b_is_never_rendered() {
@@ -134,11 +80,8 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         }
     }
     m.run_ms(500);
-    let worst: Vec<(u8, u8)> = (0..3u8).flat_map(|v| note(v, 0x0800, 0x95)).collect();
     settle(&mut m, &fw);
-    let mut both = worst.clone();
-    both.extend(with_b(&worst));
-    push(&mut m, &fw, &both);
+    push(&mut m, &fw, &worst_on_both_chips());
     chip_b_use(&mut m, &fw, true);
     m.watch_alnk_pcs(fw.function_range("chip_mix"));
     let from = m.alnk_blocks.len();
@@ -413,11 +356,8 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
         }
     }
     m.run_ms(500);
-    let worst: Vec<(u8, u8)> = (0..3u8).flat_map(|v| note(v, 0x0800, 0x95)).collect();
     settle(&mut m, &fw);
-    let mut both = worst.clone();
-    both.extend(with_b(&worst));
-    push(&mut m, &fw, &both);
+    push(&mut m, &fw, &worst_on_both_chips());
     let from = m.alnk_blocks.len();
     m.run_ms(1000);
     let (_, worst_block) = block_costs(&m, from);

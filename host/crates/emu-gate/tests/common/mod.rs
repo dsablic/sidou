@@ -9,6 +9,7 @@ mod budgets;
 pub mod dual;
 mod host_render;
 pub mod panel;
+pub mod ring;
 pub mod usb_host;
 
 #[allow(unused_imports, reason = "each test binary uses its own subset")]
@@ -18,6 +19,7 @@ pub use host_render::*;
 use panel::*;
 
 use fm1_core::{Bus, Cpu};
+use fm1_soc::flaky::FlakyCore1;
 use fm1_soc::Soc;
 use sidou_tests::signal_metrics::estimate_f0;
 
@@ -165,6 +167,8 @@ const BOOT_PARAMS_PLACEHOLDER: u32 = BOOT_PARAMS + 0x40;
 const PACKAGE_PARAMS: u32 = 0x01C7_FC00;
 const RAM_SIZE: usize = 1 << 20;
 const IRQ_ALNK0: u8 = 11;
+const IRQ_EXCEPTION: u8 = 1;
+const TWO_CORE_BUILD: &[u8] = b"SIDOU_CPU2=ON";
 const MASTER_POT_ADC_CHANNEL: u8 = 4;
 const SPL_ENTERS_IN_USER_MODE: bool = true;
 const AUDIO_PLL_AS_THE_STOCK_BOOT_LEAVES_IT: [(u32, u32); 2] =
@@ -240,6 +244,12 @@ impl Firmware {
             .find(|s| s.name() == Ok(name))
             .unwrap_or_else(|| panic!("no symbol {name} in the firmware ELF"));
         sym.address() as u32
+    }
+
+    pub fn has_symbol(&self, name: &str) -> bool {
+        use object::{Object, ObjectSymbol};
+        let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
+        file.symbols().any(|s| s.name() == Ok(name))
     }
 
     pub fn function_range(&self, name: &str) -> std::ops::Range<u32> {
@@ -320,6 +330,27 @@ pub struct Machine {
     jit_tick: bool,
     pub resets: Vec<(u64, u8)>,
     pub stop_at_reset: bool,
+    two_cores: bool,
+    pub core1: dual::Core1,
+    core1_jobs_at_entry: u64,
+    pub core1_alnk_jobs: Vec<u64>,
+    pub flash_watch: FlashWatch,
+}
+
+#[derive(Default)]
+pub struct FlashWatch {
+    pub busy_steps: u64,
+    pub busy_core1_in_job: u64,
+}
+
+fn step_core1(core1: &mut dual::Core1, soc: &mut Soc, watch: &mut FlashWatch) {
+    core1.step(soc);
+    if soc.flash.busy() {
+        watch.busy_steps += 1;
+        if core1.in_job() {
+            watch.busy_core1_in_job += 1;
+        }
+    }
 }
 
 pub const RST_WDT: u8 = fm1_soc::p33::P33::RST_WDT;
@@ -585,6 +616,10 @@ impl Machine {
     }
 
     fn start(mut soc: Soc, entry: u32, r0: u32) -> Self {
+        let two_cores = soc
+            .xip
+            .windows(TWO_CORE_BUILD.len())
+            .any(|w| w == TWO_CORE_BUILD);
         soc.periph.skip_idle = true;
         for (reg, value) in AUDIO_PLL_AS_THE_STOCK_BOOT_LEAVES_IT {
             soc.write32(reg, value);
@@ -634,6 +669,11 @@ impl Machine {
             jit_tick: false,
             resets: Vec::new(),
             stop_at_reset: false,
+            two_cores,
+            core1: dual::Core1::default(),
+            core1_jobs_at_entry: 0,
+            core1_alnk_jobs: Vec::new(),
+            flash_watch: FlashWatch::default(),
         }
     }
 
@@ -653,6 +693,7 @@ impl Machine {
         }
         let at = self.ms();
         self.soc.chip_reset(&mut self.cpu);
+        self.core1.reset();
         let cause = self.soc.p33.reg(fm1_soc::p33::P33::RST_SRC, false);
         self.resets.push((at, cause));
         self.alnk_open = None;
@@ -717,17 +758,50 @@ impl Machine {
         while self.soc.periph.cycles < end {
             let n = (end - self.soc.periph.cycles).min(JIT_SLICE_INSTRUCTIONS) as u32;
             let resets = self.soc.resets;
-            fm1_soc::machine::run_blocks(&mut self.cpu, &mut self.soc, n, &mut pending_tick)
-                .unwrap_or_else(|e| panic!("cpu fault: {e}"));
+            if self.two_cores {
+                self.run_two_cores_jit(n, &mut pending_tick);
+            } else {
+                fm1_soc::machine::run_blocks(&mut self.cpu, &mut self.soc, n, &mut pending_tick)
+                    .unwrap_or_else(|e| panic!("cpu fault: {e}"));
+            }
             if self.soc.resets != resets {
+                self.core1.reset();
                 let cause = self.soc.p33.reg(fm1_soc::p33::P33::RST_SRC, false);
                 self.resets.push((self.ms(), cause));
                 break;
             }
-            assert!(!self.soc.cpu1_release, "SIDOU runs on core 0 only");
+            assert!(
+                self.two_cores || !self.soc.cpu1_release,
+                "SIDOU runs on core 0 only"
+            );
         }
         self.jit_tick = pending_tick;
         self.cpu.jit_on = false;
+    }
+
+    fn run_two_cores_jit(&mut self, n: u32, pending_tick: &mut bool) {
+        let fate = self.core1.fate;
+        assert!(
+            fate.stalls_after_jobs.is_none()
+                && !fate.faults_at_fpu
+                && fate.misreads == dual::Misreads::Anywhere
+                && fate.flaky_after_jobs.is_none(),
+            "core 1's fates other than a flaky unit from power-on need run_ms"
+        );
+        if self.soc.flaky_core1.is_none() {
+            self.soc.flaky_core1 = fate.flaky.map(|(rate, seed)| FlakyCore1::new(rate, seed));
+        }
+        let cpu = &mut self.cpu;
+        fm1_soc::machine::run_dual(
+            self.core1.cpu(),
+            &mut self.soc,
+            n,
+            RAM_SIZE,
+            true,
+            |soc, k| fm1_soc::machine::run_blocks(cpu, soc, k, pending_tick),
+        )
+        .unwrap_or_else(|e| panic!("cpu fault: {e}"));
+        self.core1.drop_if_held(&mut self.soc);
     }
 
     pub fn run_cycles(&mut self, n: u64) {
@@ -753,6 +827,10 @@ impl Machine {
                         if irq == IRQ_ALNK0 && self.alnk_open.is_none() {
                             self.alnk_open = Some((cpu.irq_levels.len(), self.steps));
                             self.alnk_entry = soc.periph.cycles;
+                            self.core1_jobs_at_entry = self.core1.job_steps;
+                        }
+                        if irq == IRQ_EXCEPTION {
+                            soc.periph.exc_pending = false;
                         }
                         cpu.interrupt(handler, prio);
                     }
@@ -842,6 +920,9 @@ impl Machine {
             if !in_isr && soc.periph.skipped != skipped {
                 *self.idles.entry(pc).or_insert(0) += 1;
             }
+            if self.two_cores {
+                step_core1(&mut self.core1, soc, &mut self.flash_watch);
+            }
             if let Some(usb) = &mut self.usb {
                 usb.after_step(soc, self.alnk_open.is_some());
             }
@@ -849,6 +930,8 @@ impl Machine {
             if let Some((depth, start)) = self.alnk_open {
                 if self.cpu.irq_levels.len() <= depth {
                     self.alnk_blocks.push(self.steps - start);
+                    self.core1_alnk_jobs
+                        .push(self.core1.job_steps - self.core1_jobs_at_entry);
                     self.audio_started_at.get_or_insert(self.soc.periph.cycles);
                     self.alnk_open = None;
                     if let Some((addr, words)) = self.snapshot {

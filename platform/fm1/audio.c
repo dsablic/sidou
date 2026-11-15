@@ -6,6 +6,7 @@
 
 #include "chip_mix.h"
 #include "chip_spread.h"
+#include "cpu2.h"
 #include "fx/fx_slots.h"
 #include "fx_live.h"
 #include "live.h"
@@ -120,6 +121,15 @@ void audio_init(void) {
     chips.swapped = song_ctl_chip_swapped;
     chips.swapped_ctx = &song_transport;
 }
+
+#if defined(SIDOU_CPU2)
+_Static_assert(sizeof slot_pool >= 2u * sizeof(sid) && _Alignof(sid_slot_pool) >= _Alignof(sid),
+               "the boot's self-test borrows the effect pool for two chips");
+
+sid* audio_boot_scratch(void) {
+    return (sid*)(void*)&slot_pool;
+}
+#endif
 
 void audio_player(uint32_t player) {
     player_want = (uint8_t)player;
@@ -453,11 +463,13 @@ void audio_fill(int32_t* buf) {
         if (two) {
             play_a(player, a, b, s, sb, tap_chip ? 2u : 1u);
         } else if (tap_chip) {
+            int away = cpu2_chip_b_away(b, sb, &tap);
             play_a(player, a, 0, s, 0, 0u);
-            scope_render(&tap, b, sb, AUDIO_HALF_FRAMES);
+            cpu2_chip_b_back(away, b, sb, &tap);
         } else {
+            int away = cpu2_chip_b_away(b, sb, 0);
             play_a(player, a, 0, s, 0, 1u);
-            sid_render(b, sb, AUDIO_HALF_FRAMES);
+            cpu2_chip_b_back(away, b, sb, 0);
         }
         chip_mix_fade fade = want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT;
         if (spread) {

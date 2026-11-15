@@ -605,6 +605,84 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   (`ABSENT_WHEN_OFF`), and `sidou-pack` fails any record that names an option outside
   `DEFAULT_OPTIONS`.
 
+### Second core (`SIDOU_CPU2`)
+
+- **Off by default, the default image unchanged** ([decision 0010](decisions/0010-second-core-reopened.md),
+  [the spike](plans/2026-11-15-second-core-spike.md)). `-DSIDOU_CPU2=ON` builds chip B's render
+  on core 1 for the device check; nothing in the default build changes (577,536 bytes, the same
+  bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
+  (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
+  Players see nothing: no menu entry, no setting.
+- **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
+  core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
+  chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).
+  `fm1_cpu1.h`'s state is static and the fault handler (`fm1_irq.h`'s `fm1_fault_c`, which calls
+  `fm1_cpu1_fault_c` with `FM1_CPU1 1`) is `main.c`'s, so `main.c` includes it and gives three
+  wrappers, `cpu2_core1_run`, `_wait`, `_retire`; `cpu2.c` holds the job and the self-test.
+- **Started in `fm1_cstart`**, after the RAM copy and the constructors, before `sidou_main`:
+  interrupts off, no audio and no timers running, felucca-bsp's start that works. The bar
+  (`.noinit`) carries a build id, the first 32 bits of SHA-1 of the version, the product and the
+  option, so a new version lifts a bar an older one set; a rebuilt image of the same version keeps
+  it until power-off, as long as any bar lasts.
+- **What core 1 renders:** chip B in `audio_fill` whenever it plays beside a one-chip player (the
+  song or LIVE's keys on chip B, a one-SID tune), with the scope's tap on it or not
+  (`scope_render`). Core 0 hands it over, renders chip A, then waits (`cpu2_chip_b_back`); a job
+  refused or failed renders on core 0 from the same state (felucca-bsp drops a job before it runs,
+  never twice). A 2SID tune's chip B stays on core 0: `psid_ctl_block` renders both chips between
+  the 6502's writes.
+- **Layout:** `.c1_text` and the hand-over (`fm1_cpu1_run`, `_wait`, `_retire`, `_check`, the
+  wrappers, `cpu2_chip_b_*`, `cpu2_render*`) in `.ram_text`; the self-test in flash calls them
+  through `SIDOU_FAR` (no direct branch crosses, `ram_audio.rs`). `fm1_cpu1.S`'s stacks (3,072
+  bytes) go to `.noinit`, not `.bss`: in `.bss` the RAM region keeps under `REGION_FREE_MIN`, and
+  the start marks them anyway.
+- **Cost:** image 579,424 bytes (+1,888, 92 under the 1.8 ceiling of 579,516), RAMTEXT 45,488
+  (+624), the RAM region 7,172 bytes free (+160: the mailbox, the fault record, the job), NOINIT
+  +3,072 (6,408 left). Core 0's worst block with two chips at their worst (`chip_b.rs`'s patch):
+  788.5 instructions a sample on one core, 417.9 with chip B on core 1, whose job is 366.3.
+- **The flash gate: the interrupt-only rule, units unchanged.** felucca-bsp wants `fm1_cpu1.h` in
+  the flash driver's unit, so the gate sees core 1's idle word. SIDOU's driver is in `midi.c`, built
+  with Felucca's `usb.c` flags, and `ble_setting.c` and the flash spike have their own copies of
+  the gate; moving the worker and the fault handler there would build the worker under `usb.c`'s
+  flags and still leave the copies. So `midi.c` builds the gate without `FM1_CPU1`: it lets only
+  core 0 with its interrupts masked into a flash transaction. That is safe because a job is
+  outstanding only inside `audio_fill` (the audio interrupt) or the boot's self-test (before any
+  interrupt is on), and both wait for it or retire core 1 before they return; no interrupt writes
+  the flash (the store, the update and the settings write from the main loop). So whenever the
+  flash's chip select is low, core 1 polls in its RAM loop or is held. The render core 1 runs is
+  `.ram_text` and reads no flash data either (`the_audio_path_reads_no_data_from_flash`, run on the
+  two-core image). Proven in fm1-emu (`cpu2.rs`, `a_flash_write_never_runs_while_core_1_has_a_job`):
+  a song saved while chip B plays on core 1 holds the chip select low for 36,092 instructions,
+  none of them with core 1 outside its loop, and core 1 runs 349 jobs meanwhile.
+- **The start-up self-test** (the spike's mitigation): after the start, core 1 renders a fixed
+  patch (pulse, noise and a ring-modulated triangle through the resonant filter: the FPU, the
+  noise and the filter) for 100 blocks while core 0 renders its twin, compared block by block. A
+  difference retires core 1 (`gave_up` 0x10, barred until power-off); a refused or late job retires
+  it as the hand-over does. The two chips borrow the effect pool (128 KB, before `audio_init`; two
+  chips are 70 KB) and leave it zeroed. About 25 ms of boot (6.1 M instructions on core 0) and
+  about 370 bytes of flash. It closes the spike's gap: a misread inside the render, which the
+  mailbox's check word cannot see. Measured in fm1-emu (`SIDOU_CPU2_SWEEP`, 40 units each): misreads only in core 1's
+  render at 1e-5 a load reached the sound unseen on 18 units without the self-test, damaged it on
+  20 more before the timeout retired them, and left 2 clean; with it all 40 were retired at power-on
+  and played one core's samples. Misreads on any load (1e-5, 3e-6, 1e-6) were caught clean on all
+  40 units with and without it: in the app core 1 polls its mailbox most of each block, so a
+  unit's first misread almost always lands in the loop (the spike's bench, core 1 busy throughout,
+  overstated the gap).
+- **The fallbacks play one core's samples** in fm1-emu (`cpu2.rs`): a core 1 that misreads from
+  power-on, that misreads its mailbox as chip B plays, that stops answering after 250 jobs, and
+  one that faults at its first FPU instruction (the debug unit's error raised on core 0, through
+  `fm1_vec.S` and `fm1_cpu1_fault_c`, as felucca-bsp describes the chip). A core 1 that stops in
+  the middle of a job leaves chip B's state part-advanced: one wrong block, then on (inferred).
+- **In emu-gate** the app's runner steps core 1 one instruction after each of core 0's in
+  `run_ms` and through fm1-emu's `run_dual` in `run_ms_jit` (`common/dual.rs`'s `Core1`), holds it
+  while `C1_CON` says so (upstream report 20) and raises a core-1 fault on core 0 itself (report
+  21). Comparisons with the default build drive both chips through the register ring at cues on
+  the audio's block grid: the main loop's own timing differs between the builds (a song's first
+  note or a UI frame can land a block apart), so the song and the tunes are held to the host's
+  render on the two-core image instead (the `cpu2` shard, `tools/emu-shards`).
+- **Device-only:** whether core 1 has an FPU (a trap retires it at the self-test), whether this
+  unit misreads under SIDOU's load, the hand-over's real cost with both cores on the SRAM, and
+  whether the watchdog resets core 1.
+
 ### `gt2_song.c` at `-Oz`: timing only
 
 - At `-Oz`, `gt2_song.c` is 384 bytes smaller and four LCD goldens move (`live-c64`, `live-keys-b`,

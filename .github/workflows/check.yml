@@ -72,12 +72,14 @@ jobs:
         with:
           path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
-      - name: Firmware, production and spike
+      - name: Firmware, production, spike and two cores
         run: |
           cmake --preset fm1 && cmake --build --preset fm1 &
           production=$!
+          cmake --preset fm1 -B build/fm1-cpu2 -DSIDOU_CPU2=ON && cmake --build build/fm1-cpu2 &
+          cpu2=$!
           cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON && cmake --build build/fm1-spike
-          wait "$production"
+          wait "$production" && wait "$cpu2"
       - name: Test binaries, the emulator gate's (and for a release, every one)
         working-directory: host
         run: >-
@@ -92,7 +94,7 @@ jobs:
             -o ../build/fm1/sidou.fwsc
           cargo build --locked --release -p ergo
           cp target/release/ergo ../build/ergo
-      - run: tar -cf build.tar build/fm1 build/fm1-spike build/ergo build/nextest.tar.zst
+      - run: tar -cf build.tar build/fm1 build/fm1-spike build/fm1-cpu2 build/ergo build/nextest.tar.zst
       - uses: actions/upload-artifact@v4
         with:
           name: build
@@ -111,8 +113,9 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.scope.outputs.emu-shards) }}
     env:
-      SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
+      SIDOU_FM1_BUILD: ${{ github.workspace }}/build/${{ matrix.shard == 'cpu2' && 'fm1-cpu2' || 'fm1' }}
       SIDOU_FM1_SPIKE_BUILD: ${{ github.workspace }}/build/fm1-spike
+      SIDOU_FM1_CPU2_BUILD: ${{ github.workspace }}/build/fm1-cpu2
     steps:
       - uses: actions/checkout@v4
         with:

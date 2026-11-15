@@ -40,6 +40,7 @@ lists the prerequisites.
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package, flash budget) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate` | `crates/emu-gate/tests/` |
 | The second core's spike (a bench image, never the app: chip B rendered on core 1 by felucca-bsp's worker while core 0 renders chip A, on the two-chip worst block's scenario; sample for sample against one core, core 0's worst block and the hand-over's cost printed; the fallback to one core after the flaky-core-1 mode's misreads, after one misread of the mailbox mid-song and after a core 1 that stops answering, each with the same samples; core 1 held at a reset and started again at the next boot, or barred there after a fallback; [the plan](docs/plans/2026-11-15-second-core-spike.md)) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu1 -- --nocapture` | `crates/emu-gate/tests/cpu1.rs`, `common/dual.rs` (the dual-core bench runner), `bench/fm1/bench_cpu1_main.c` |
+| The two-core build (`-DSIDOU_CPU2=ON`, never released: chip B's render on core 1; [design notes](docs/design-notes.md#second-core-sidou_cpu2)): sample for sample against the default build with both chips played, core 0's worst block and core 1's job, every fallback (misreads from power-on or in the mailbox as chip B plays, a core 1 that stops answering or faults at its first FPU instruction) with one core's samples, the start-up self-test against misreads in the render (a sweep of seeded units; `SIDOU_CPU2_SWEEP=anywhere\|jobs:RATE:UNITS`, default `jobs:1e-5:8`), no flash transaction beside a job, core 1's code in SRAM and its stacks in NOINIT. The default build's gates that the two-core image must pass too run with `SIDOU_FM1_BUILD` pointing at it (`tools/emu-shards cpu2`) | build it into `build/fm1-cpu2` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_CPU2_BUILD=$PWD/../build/fm1-cpu2 cargo nextest run --release -p emu-gate --test cpu2`, and `SIDOU_FM1_BUILD=$PWD/../build/fm1-cpu2 cargo nextest run --release $(../tools/emu-shards cpu2)` (quote the filter) | `crates/emu-gate/tests/cpu2.rs`, `common/dual.rs` (`Core1`: core 1 beside the app's runner), `platform/fm1/cpu2.c` |
 | Flash timing spike (a test firmware, M2a Task 3b) | build it with `-DSIDOU_FLASH_SPIKE=ON` into `build/fm1-spike` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike cargo test --release -p emu-gate --test flash_spike -- --nocapture`; its bounds `cargo test --release -p sidou-pack --test flash_spike_guard` | `crates/emu-gate/tests/flash_spike.rs`, `crates/sidou-pack/tests/flash_spike_guard.rs` |
 | Ergonomics harness (readability, knob feel, effort per task, feedback speed, consistency, journeys; a report for review, not a gate) | `cargo run --release -p ergo -- --out ../build/ergo` (needs the fm1 build); its unit tests run with the workspace | `crates/ergo/`, [the section below](#the-ergonomics-harness-ergo) |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
@@ -333,7 +334,15 @@ After both firmware builds, run the complete emulator gate (not just these focus
 
 ```sh
 SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike \
+    SIDOU_FM1_CPU2_BUILD=$PWD/../build/fm1-cpu2 \
     cargo nextest run --locked --release -p emu-gate --no-fail-fast
+```
+
+and the default build's gates on the two-core image (`tools/merge-check` runs both):
+
+```sh
+mapfile -t gates < <(../tools/emu-shards cpu2)
+SIDOU_FM1_BUILD=$PWD/../build/fm1-cpu2 cargo nextest run --locked --release "${gates[@]}"
 ```
 
 That everyday run leaves out the ten-minute clock-drift test
@@ -2122,8 +2131,8 @@ suite's would be; nothing is sampled.
 |---|---|
 | `scope` | `tools/change-scope --ci`, the emulator shards (`tools/emu-shards --matrix`) and the build image's digest (`tools/docker/image.digest`) for the other jobs |
 | `docs` | REUSE (`fsfe/reuse-action`) and `tools/readme-check` (with the tags, for the hub card's check) |
-| `build` | both firmware builds (`fm1`, `fm1-spike`), the emulator gate's test binaries once (`cargo nextest archive -p emu-gate`; for a release bump the whole workspace's), the package and the `ergo` binary, handed on as the `build` artifact |
-| `emu-gate` (11 shards) | the emulator gate from the archive: the thirty longest tests dealt into five groups by their CI times, the rest in six slices (`tools/emu-shards`; `SIDOU_FM1_BUILD` and `SIDOU_FM1_SPIKE_BUILD` set) |
+| `build` | the three firmware builds (`fm1`, `fm1-spike`, `fm1-cpu2`), the emulator gate's test binaries once (`cargo nextest archive -p emu-gate`; for a release bump the whole workspace's), the package and the `ergo` binary, handed on as the `build` artifact |
+| `emu-gate` (12 shards) | the emulator gate from the archive: the thirty longest tests dealt into five groups by their CI times, the rest in six slices, and `cpu2`, the default build's gates on the two-core image (`tools/emu-shards`; `SIDOU_FM1_BUILD`, `SIDOU_FM1_SPIKE_BUILD` and `SIDOU_FM1_CPU2_BUILD` set, `SIDOU_FM1_BUILD` the two-core image's in `cpu2`) |
 | `ergo-gate` (7 shards) | `tools/ergo-gate --only PART --shard K/N` with the prebuilt `ergo`: journeys and readability; knobs, feedback and defaults; consistency in halves; the recipes in thirds |
 | `host-tests` | the workspace tests but the emulator gate (`--workspace --exclude emu-gate`), built beside the `build` job, with `build/fm1` present and `SIDOU_FM1_BUILD` unset, as locally |
 | `ubsan` | the same set built and run with `SIDOU_SANITIZE=undefined` |

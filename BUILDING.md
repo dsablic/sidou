@@ -140,6 +140,16 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
+**Chip B on the second core** (`SIDOU_CPU2`, off by default, never released yet; for the device
+check of [decision 0010](docs/decisions/0010-second-core-reopened.md)): core 1 renders chip B
+beside core 0, after a start-up self-test, and falls back to one core with the same sound. The
+default image has none of it, and `sidou-pack --verify` fails a package of it:
+
+```sh
+tools/fm1-docker cmake --preset fm1 -B build/fm1-cpu2 -DSIDOU_CPU2=ON
+tools/fm1-docker cmake --build build/fm1-cpu2
+```
+
 **Bluetooth MIDI** (`SIDOU_BLE`, on by default): SIDOU with Optimist's open Bluetooth MIDI
 stack, the peripheral (a Mac, an iPad or a phone connects to SIDOU), and BLUETOOTH in SETTINGS,
 off until it is turned on ([decision 0011](docs/decisions/0011-bluetooth-midi.md)). The stack is

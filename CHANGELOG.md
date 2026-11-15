@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **`-DSIDOU_CPU2=ON`**, a build option off by default: chip B's render on the FM-1's second core,
+  for the device check; the default image is unchanged and players see nothing.
 - **felucca-bsp `18eadadb`** (from `7e09895c`): USB audio packets are sized by the FM-1's crystal
   alone (`d18879b`), and the key scan's rate is a setting, left at 10 kHz (`e36cb7c`). The image
   grew 400 bytes; RAMTEXT did not change.
