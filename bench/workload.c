@@ -247,44 +247,70 @@ void workload_begin_scenario(uint32_t count, sid_model model, uint32_t which) {
     }
 }
 
+static uint32_t next_block(uint32_t n) {
+    uint32_t frame = position / SAMPLES_PER_FRAME;
+    while (next_write < current->count && current->writes[next_write].frame <= frame) {
+        const reg_write* w = &current->writes[next_write];
+        for (uint32_t c = 0; c < chip_count; ++c) {
+            uint8_t value = w->value;
+            if (c > 0 && w->reg == 0x01) {
+                value = (uint8_t)(value + 0x04u);
+            }
+            sid_write(&chips[c], w->reg, value);
+        }
+        ++next_write;
+    }
+    if (current->per_block) {
+        for (uint32_t c = 0; c < chip_count; ++c) {
+            current->per_block(&chips[c], blocks);
+        }
+    }
+    ++blocks;
+    uint32_t len = SAMPLES_PER_FRAME - position % SAMPLES_PER_FRAME;
+    if (len > BLOCK) {
+        len = BLOCK;
+    }
+    if (len > n) {
+        len = n;
+    }
+    position += len;
+    return len;
+}
+
+static void mix_in(int16_t* out, const int16_t* mix, uint32_t len) {
+    for (uint32_t i = 0; i < len; ++i) {
+        out[i] = (int16_t)(((int32_t)out[i] + mix[i]) / 2);
+    }
+}
+
 void workload_render_samples(int16_t* out, uint32_t n) {
     int16_t mix[BLOCK];
     while (n) {
-        uint32_t frame = position / SAMPLES_PER_FRAME;
-        while (next_write < current->count && current->writes[next_write].frame <= frame) {
-            const reg_write* w = &current->writes[next_write];
-            for (uint32_t c = 0; c < chip_count; ++c) {
-                uint8_t value = w->value;
-                if (c > 0 && w->reg == 0x01) {
-                    value = (uint8_t)(value + 0x04u);
-                }
-                sid_write(&chips[c], w->reg, value);
-            }
-            ++next_write;
-        }
-        if (current->per_block) {
-            for (uint32_t c = 0; c < chip_count; ++c) {
-                current->per_block(&chips[c], blocks);
-            }
-        }
-        ++blocks;
-        uint32_t len = SAMPLES_PER_FRAME - position % SAMPLES_PER_FRAME;
-        if (len > BLOCK) {
-            len = BLOCK;
-        }
-        if (len > n) {
-            len = n;
-        }
+        uint32_t len = next_block(n);
         sid_render(&chips[0], out, len);
         for (uint32_t c = 1; c < chip_count; ++c) {
             sid_render(&chips[c], mix, len);
-            for (uint32_t i = 0; i < len; ++i) {
-                out[i] = (int16_t)(((int32_t)out[i] + mix[i]) / 2);
-            }
+            mix_in(out, mix, len);
         }
         out += len;
         n -= len;
-        position += len;
+    }
+}
+
+void workload_render_two_cores(int16_t* out, uint32_t n, const workload_second_core* second) {
+    static int16_t mix[BLOCK] __attribute__((aligned(32)));
+    while (n) {
+        uint32_t len = next_block(n);
+        int away = chip_count > 1u && second->hand_over(&chips[1], mix, len);
+        sid_render(&chips[0], out, len);
+        if (chip_count > 1u) {
+            if (!away || second->join() != 0) {
+                sid_render(&chips[1], mix, len);
+            }
+            mix_in(out, mix, len);
+        }
+        out += len;
+        n -= len;
     }
 }
 
