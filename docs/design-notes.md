@@ -385,15 +385,17 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   45,840 instructions against `REG_RING_PREPARE_SLICE` 40,000 (`character.rs`). With the split
   the slices are the same as before to the instruction (the busiest, 34,130 of 40,000); a chip
   reset's busiest pass 64,563 -> 64,636.
+  Since 1.11 the whole of `sid_character.c` is `-Oz` and the lookup is its own unit at `-O2`
+  (below).
 - Measured and left at `-O2`: `live.c` (`ui_encoder` over `CHIP_PICK_INPUT` 400, K1 over
   `POPUP_INPUT`), `views.c`
   at `-Oz` (880 bytes, but K1's popup input reaches 250 of 250; it stays `-Os`), `chip_view.c` at
   `-Oz` (240 bytes; CHIP K1 on DIST reaches 245 of `CHIP_INPUT` 245), `grid.c` (3,360 bytes, but
   the tile renderer's frame grows 15 %), `live_view.c`
   (the instrument's frame, nearest its noise-chord gate) and `reg_ring.c` (the audio interrupt's
-  pops). `boot.c`, `sid_character.c` and `sid_dac.c` stay at `-O2`: at `-Os` they moved the thump
-  stage over its 31 instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's
-  pause.
+  pops). `boot.c` and `sid_dac.c` stay at `-O2`: at `-Os` they moved the thump stage over its 31
+  instructions a sample, the boot timeline (LIVE chip B's golden) and a tune's pause (`sid_dac.c`
+  again in 1.11, below).
 
 - **1.8, room for Bluetooth** (the plan's R4 and R5), measured one file at a time on the image
   (16-byte steps). Taken: to `-Os` from `-O2` `lab_table.c` 496, `ui_sound.c` 112; to `-Oz` from
@@ -402,6 +404,33 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `-Os` and `chip_ctl.c` (144) at `-Oz` put the main loop over `midi.rs`'s CC flood bound (5.009M/s
   of 5.0M) and LIVE's full-speed flood (6.33M/s of 6.3M); `scene.c` at `-Oz` (128) put SCENE's
   fire over its frame budget (109,591 instructions); `core/fx/fx.c` at `-Os` saved nothing.
+
+- **1.11, room for connecting out** (2026-11-15), measured one change at a time on the default
+  image (577,536 before), each through the emulator gates that bound it and CI. Taken: the radio
+  driver's unit `ble_radio.c` `-Os` to `-Oz` 880 (no emulator gate sees the radio: its interrupts
+  shrink too, `ble_wl82_rx_irq` 670 to 554 bytes, `ble_wl82_event_irq` 592 to 512, so it
+  needs a device check with BLUETOOTH ON, a link and notes both ways, before a release ships
+  it); `fx_slots_init.c` `-O2` to `-Oz` 1,856 (the boot's effect templates; no gate moved); `sid_character.c` to `-Oz` with
+  `sid_character_expert_cutoff_hz` and its interpolation moved to their own unit,
+  `sid_expert_hz.c`, at `-O2` 3,728 (the filter build's busiest slice 32,918 of 40,000; the whole
+  file at `-Oz` puts it at 45,205; the thump's costliest block stays 5,845, the grit 19.13 a
+  sample of 19.2); `grid_box` out of `grid.c` into `grid_cold.c` at `-Oz` 640 (the tile renderer
+  stays `-O2`); `views_midi.c`, `settings.c`, `lab_edit.c`, `lab_table.c`, `ui_sound.c` and
+  `user_sound.c` from `-Os` to `-Oz` 672. Together the image is 569,744 bytes, 9,772 under the
+  ceiling; `midi.rs`'s map CC flood ends at 4.9996M/s of 5.0M (4.9987M/s before).
+- Measured and refused in 1.11: `sid_dac.c` at `-Oz` (1,392): the default tables built at boot
+  move the audio's phase against the firmware's clock, and two gates that sit at that phase fail
+  with nothing else changed: `midi.rs`'s map CC flood 5.0017M/s of 5.0M (4.9987M/s without it)
+  and `link.rs`'s clock jitter with a session, 3 ms against 1. `live_view.c` at `-Oz` (2,224):
+  LIVE's frame costs the main loop 8,000 instructions a second more, the CC flood 5.007M/s of 5.0
+  and LIVE's full-speed flood 6.34M/s of 6.3; its savings are in `live_compose`, the frame
+  itself, so no cold half is left to split off. `live.c`'s cold writers (`li_write_all`,
+  `li_reset_chip`, the slot pick and turn, about 550 bytes) and the effect inits of
+  `fx_plate.c` and `fx_reverb.c` (658, the latter MIT-licensed) were not split: small for the
+  churn. The remaining `-O2` files have nothing cold to speak of (`reg_ring.c`'s prepare helpers
+  run in the gated slices, `input.c`'s LEDs every 10 ms of the main loop; `lcd.c` and `input.c`
+  are adapted from Felucca). Those two MIDI gates are the thin spot of any change that moves the
+  boot's length: `fx_slots_init.c` passed them, `sid_dac.c` did not.
 
 ### Bluetooth MIDI (`SIDOU_BLE`)
 
@@ -418,13 +447,13 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   came out 6,784 bytes larger at `main.c`'s `-mllvm -inline-threshold=225`, and clang's global
   merge mixed its state with `main.c`'s, so no `app.ld` rule could place it.
 - **The radio driver is its own unit** (2026-11-08): SIDOU's glue `ble_radio.c`, which includes
-  the driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`), is compiled alone at plain `-Os`
+  the driver (`ble_hw_wl82.c` with felucca-bsp's `fm1_ble.h`), is compiled alone (at `-Os` until 1.11)
   with `FM1_IRQ_DEFS 0` (felucca-bsp#31, vendored with `7e09895c`): its `fm1_irq.h` declares the
   fault record and `fm1_fault_c` instead of defining them, and `main.c`, the HAL's unit, still
   defines them once. Until then the driver had to sit in `main.c`'s unit, whose
   `-mllvm -inline-threshold=225` made it 3,264 bytes larger (the 1.8 plan's R6). The move saved
-  2,992 bytes (580,000 to 577,008, 93 % of the plan's 3.2 KB; `-Oz` would save 880 more, untried
-  on the radio's timing). `main.c` now includes only `ble_radio.h`, and the stack's include path
+  2,992 bytes (580,000 to 577,008, 93 % of the plan's 3.2 KB). Since 1.11 it is `-Oz` (880 bytes
+  more; untried on the device, above). `main.c` now includes only `ble_radio.h`, and the stack's include path
   and `BLE_*` settings go to `ble_radio.c` and `ble_stack_unit.c` alone. `fm1_irq.h` holds no
   state of its own (registers only), so the second unit's copy of its helpers is safe.
 - Since the felucca-bsp move the stack is vendored (`third_party/fm1-base-ble`, fm1-base `698e2cb`,
@@ -445,6 +474,10 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - **1.8 is the peripheral** (the owner, decision 0011): `SIDOU_BLE_CENTRAL` is 0, so the central's
   scan table, client and DEVICES code are not built. The image with Bluetooth and its SETTINGS row
   is 578,016 bytes, 1,500 under the ceiling.
+- **What connecting out costs** (measured 2026-11-15 on the 1.11 room's image, 569,744 bytes):
+  `SIDOU_BLE_CENTRAL` 3 (no pairing) adds 7,408 bytes and 1 (with pairing) 12,920, with
+  `ble_radio_scan` kept by the linker (`-u`) as the DEVICES page will keep it; the page itself is
+  not in that (about 1-2 KB). RAMTEXT does not move.
 - **BLUETOOTH in SETTINGS** is the menu's last item, after RESET, and only in a build with the
   radio: `views_radio_bind` hands the views the radio's hooks and adds the item. The setting and
   SIDOU's random static address are their own store record (key `0x10A`), not the settings
@@ -1609,8 +1642,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   device inits stay out of SRAM). Delay-line algorithms keep only what follows their line: start
   clears line and copies rest.
 - `fx_slots_init.c` holds the slots' start-up, run once at boot from flash, in its own file apart
-  from `fx_slots.c`, whose render is SRAM code. Neither has per-file flags: both build at the
-  default `-O2`.
+  from `fx_slots.c`, whose render is SRAM code. `fx_slots.c` builds at the default `-O2`,
+  `fx_slots_init.c` at `-Oz` since 1.11.
 - STARTS table and ALGORITHMS array marked for RAM on device (`__attribute__((section(".data.*")))`)
   because read by audio path.
 - Slot leaving path only on snap grid (32-sample boundaries), so where calls end cannot move that
