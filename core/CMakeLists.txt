@@ -45,7 +45,7 @@ set_source_files_properties(psid/psid_ctl.c PROPERTIES COMPILE_OPTIONS -Os)
 set_source_files_properties(psid/psid_ctl_isr.c PROPERTIES COMPILE_OPTIONS "-O2;-fno-jump-tables")
 set_source_files_properties(psid/psid_lift.c PROPERTIES COMPILE_OPTIONS -Oz)
 set_source_files_properties(sid/sid_shadow.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-function-sections")
-set_source_files_properties(sid/sid_character_cold.c fx/fx_slots_init.c PROPERTIES COMPILE_OPTIONS -Oz)
+set_source_files_properties(sid/sid_character_cold.c fx/fx_slots_init.c sid/sid_dac.c PROPERTIES COMPILE_OPTIONS -Oz)
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)
 
