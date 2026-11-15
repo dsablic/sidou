@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,6 +25,7 @@ jobs:
     outputs:
       kind: ${{ steps.scope.outputs.kind }}
       image: ${{ steps.image.outputs.image }}
+      emu-shards: ${{ steps.shards.outputs.emu }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +40,8 @@ jobs:
           else kind=full
           fi
           echo "kind=$kind" | tee -a "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"
+      - id: shards
+        run: echo "emu=$(tools/emu-shards --matrix)" >> "$GITHUB_OUTPUT"
       - id: image
         run: echo "image=ghcr.io/dsablic/sidou-build@$(sed -n '1s/^\(sha256:[0-9a-f]\{64\}\).*/\1/p' tools/docker/image.digest)" >> "$GITHUB_OUTPUT"
 
@@ -104,7 +110,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shard: ${{ fromJSON(needs.scope.outputs.emu-shards) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,14 +120,15 @@ jobs:
         with:
           name: build
       - run: tar -xf build.tar
-      - name: emu-gate ${{ matrix.shard }}/12
+      - name: emu-gate ${{ matrix.shard }}
         working-directory: host
-        run: >-
-          cargo nextest run --archive-file "$ARCHIVE" --extract-to . --extract-overwrite --profile ci
-          -E 'package(emu-gate)' --partition hash:${{ matrix.shard }}/12
+        run: |
+          mapfile -t shard < <(../tools/emu-shards '${{ matrix.shard }}')
+          cargo nextest run --archive-file "$ARCHIVE" --extract-to . --extract-overwrite --profile ci "${shard[@]}"
       - uses: ./.github/actions/ran
         with:
           name: emu-gate-${{ matrix.shard }}
+          allowed-skips: SIDOU_FM1_DEATH_BUILD
 
   ergo-gate:
     needs: [scope, build]
@@ -132,15 +139,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: ['journeys,readability', knobs, feedback, consistency, defaults, recipes]
+        include:
+          - part: journeys,readability
+          - part: knobs,feedback,defaults
+          - {part: consistency, shard: 1/3}
+          - {part: consistency, shard: 2/3}
+          - {part: consistency, shard: 3/3}
+          - {part: recipes, shard: 1/3}
+          - {part: recipes, shard: 2/3}
+          - {part: recipes, shard: 3/3}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: build
       - run: tar -xf build.tar build/fm1 build/ergo
-      - name: ergo-gate ${{ matrix.part }}
-        run: tools/ergo-gate --only '${{ matrix.part }}' --ergo build/ergo build/fm1
+      - name: ergo-gate ${{ matrix.part }} ${{ matrix.shard }}
+        run: tools/ergo-gate --only '${{ matrix.part }}' --shard '${{ matrix.shard || '1/1' }}' --ergo build/ergo build/fm1
 
   host-tests:
     needs: [scope, build]
@@ -160,7 +175,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build
-      - run: tar -xf build.tar build/nextest.tar.zst
+      - run: tar -xf build.tar build/nextest.tar.zst build/fm1
       - name: Workspace tests
         working-directory: host
         run: >-
@@ -216,6 +231,8 @@ jobs:
         with:
           path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - name: Firmware, for the ergonomics harness's tests
+        run: cmake --preset fm1 && cmake --build --preset fm1
       - name: Workspace tests under UBSan
         working-directory: host
         run: cargo nextest run --locked --release --workspace --profile ci -E 'not package(emu-gate)'

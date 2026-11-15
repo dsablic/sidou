@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 report, name = sys.argv[1], sys.argv[2]
 allowed = re.compile(os.environ.get("ALLOWED") or "^$")
+skip_line = re.compile(r"^\s*skipping\b")
 cases = ET.parse(report).getroot().iter("testcase")
 per_binary = collections.Counter()
 outcomes = collections.Counter()
@@ -18,7 +19,7 @@ for case in cases:
     outcomes[outcome] += 1
     out = "".join(c.text or "" for c in case if c.tag == "system-out")
     for line in out.splitlines():
-        if "skipping" in line and not allowed.search(line):
+        if skip_line.match(line) and not allowed.search(line):
             unexpected_skips.append(f"{case.get('classname')} {case.get('name')}: {line.strip()}")
 
 print(f"### {name}: {sum(per_binary.values())} tests, " + ", ".join(f"{n} {k}" for k, n in sorted(outcomes.items())))

@@ -4742,13 +4742,16 @@ fn the_tracker_stays_within_its_budgets_while_a_song_plays() {
     let fast = tempo_3_song();
     let mut report = serde_json::Map::new();
     let mut over = Vec::new();
-    for (name, song, scroll) in [
+    let runs = [
         ("loop_bar", None, false),
         ("loop_scroll", None, true),
         ("tempo3_bar", Some(&fast), false),
         ("tempo3_scroll", Some(&fast), true),
-    ] {
-        let (c, held) = tracker_run(&fw, song, scroll, 30_000);
+    ];
+    let costs = common::par_map(&runs, |&(_, song, scroll)| {
+        tracker_run(&fw, song, scroll, 30_000)
+    });
+    for (&(name, _, scroll), (c, held)) in runs.iter().zip(costs) {
         let per: Vec<u32> = c.frames.iter().map(cells).collect();
         let most = per.iter().copied().max().unwrap_or(0);
         let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
@@ -5021,17 +5024,6 @@ fn red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song() {
     let Some(fw) = common::firmware("the RED MOON RITE budget test") else {
         return;
     };
-    let mut m = Machine::boot(&fw.image);
-    m.watch_calls(fw.symbol("ui_poll"));
-    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    run_past_boot(&mut m, &fw);
-    rmr_with_the_song(&mut m, &fw);
-    let passes = m.passes.len();
-    let c = measure_frames(&mut m, &fw, 1500, |_, _| {});
-    let pass = m.passes[passes..].iter().copied().max().unwrap_or(0);
-    let per = cells_sent(&c);
-    let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
-    let most = per.iter().copied().max().unwrap_or(0);
     let busiest = |f: &str| {
         let mut m = Machine::boot(&fw.image);
         m.watch_calls(fw.symbol(f));
@@ -5043,9 +5035,32 @@ fn red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song() {
         let mean = calls.iter().sum::<u64>() as f64 / calls.len().max(1) as f64;
         (calls.iter().copied().max().unwrap_or(0), mean, calls.len())
     };
-    let (slice, slice_mean, slices) = busiest("scene_view_idle");
-    let (run, run_mean, runs) = busiest("grid_render_run");
-    let (tile, tile_mean, tiles) = busiest("scene_px_tile");
+    let (c, pass, [(slice, slice_mean, slices), (run, run_mean, runs), (tile, tile_mean, tiles)]) =
+        std::thread::scope(|scope| {
+            let others = scope.spawn(|| {
+                common::par_map(
+                    &["scene_view_idle", "grid_render_run", "scene_px_tile"],
+                    |f| busiest(f),
+                )
+            });
+            let mut m = Machine::boot(&fw.image);
+            m.watch_calls(fw.symbol("ui_poll"));
+            m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+            run_past_boot(&mut m, &fw);
+            rmr_with_the_song(&mut m, &fw);
+            let passes = m.passes.len();
+            let c = measure_frames(&mut m, &fw, 1500, |_, _| {});
+            let pass = m.passes[passes..].iter().copied().max().unwrap_or(0);
+            let others: [_; 3] = others
+                .join()
+                .expect("the busiest calls")
+                .try_into()
+                .unwrap();
+            (c, pass, others)
+        });
+    let per = cells_sent(&c);
+    let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
+    let most = per.iter().copied().max().unwrap_or(0);
     println!(
         "{}",
         serde_json::json!({

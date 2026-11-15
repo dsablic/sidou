@@ -47,7 +47,14 @@ fn the_recipes_run_in_the_emulator_and_meet_their_expectations() {
         return;
     };
     let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("ergo-recipes-run");
-    let reports = validate(&recipes_dir(), &build, &Config::default(), &out).unwrap();
+    let reports = validate(
+        &recipes_dir(),
+        &build,
+        &Config::default(),
+        &out,
+        ergo::Shard::ALL,
+    )
+    .unwrap();
     for r in &reports {
         assert!(r.problems.is_empty(), "{}: {:?}", r.id, r.problems);
     }

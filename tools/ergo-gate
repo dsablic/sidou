@@ -9,6 +9,7 @@ The ergonomics harness as a merge gate: it fails on anything the accepted baseli
   tools/ergo-gate --quick BUILD_DIR    readability, journeys (the tour) and the recipes only
   tools/ergo-gate --only PARTS ...     only these of readability, journeys, knobs, feedback,
                                        consistency, defaults and recipes (comma-separated; CI's shards)
+  tools/ergo-gate --shard K/N ...      the Kth of N parts of the consistency controls and recipes
   tools/ergo-gate --ergo BIN ...       run this prebuilt ergo binary instead of building it
   tools/ergo-gate --out DIR ...        where the run's files go (default BUILD_DIR/../ergo-gate)
 Exit 0: no new finding, no finding whose severity rose, every recipe passes. Exit 1: one of them
@@ -17,11 +18,12 @@ docs/ergo-baseline/metrics.json; accepting a change is refreshing it (TESTING.md
 USAGE
 }
 root=$(cd "$(dirname "$0")/.." && pwd)
-parts="" out="" build="" ergo=""
+parts="" out="" build="" ergo="" shard=() partial=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --quick) parts=readability,journeys,recipes ;;
         --only) parts=$2; shift ;;
+        --shard) shard=(--shard "$2"); partial=1; shift ;;
         --ergo) ergo=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift ;;
         --out) out=$2; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -30,7 +32,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-[ -n "$build" ] || { echo "usage: tools/ergo-gate [--quick | --only PARTS] [--ergo BIN] [--out DIR] BUILD_DIR" >&2; exit 2; }
+[ -n "$build" ] || { echo "usage: tools/ergo-gate [--quick | --only PARTS] [--shard K/N] [--ergo BIN] [--out DIR] BUILD_DIR" >&2; exit 2; }
 build=$(cd "$build" 2>/dev/null && pwd) || { echo "ergo-gate: no build directory $build" >&2; exit 2; }
 [ -f "$build/platform/fm1/sidou_app.bin" ] || { echo "ergo-gate: $build is not an fm1 build" >&2; exit 2; }
 out=${out:-$build/../ergo-gate}
@@ -39,7 +41,7 @@ out=$(cd "$out" && pwd)
 baseline="$root/docs/ergo-baseline/metrics.json"
 export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
 cd "$root/host"
-partial=0 harness_parts=$parts recipes_wanted=1
+harness_parts=$parts recipes_wanted=1
 if [ -n "$parts" ]; then
     partial=1
     harness_parts=$(printf '%s\n' "${parts//,/$'\n'}" | grep -vx recipes | paste -sd, - || true)
@@ -51,11 +53,11 @@ if [ -z "$ergo" ]; then
     cargo build --release --locked -q -p ergo
     ergo=$(cargo metadata --format-version 1 --no-deps | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')/release/ergo
 fi
-run() { "$ergo" --build "$build" "$@"; }
+run() { "$ergo" --build "$build" ${shard[@]+"${shard[@]}"} "$@"; }
 only=()
 [ -n "$harness_parts" ] && only=(--only "$harness_parts")
 harness_wanted=1
-[ "$partial" = 1 ] && [ -z "$harness_parts" ] && harness_wanted=0
+[ -n "$parts" ] && [ -z "$harness_parts" ] && harness_wanted=0
 echo 0 > "$out/harness.exit"
 echo 0 > "$out/recipes.exit"
 if [ "$harness_wanted" = 1 ]; then

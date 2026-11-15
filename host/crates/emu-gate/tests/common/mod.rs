@@ -20,6 +20,33 @@ use fm1_core::{Bus, Cpu};
 use fm1_soc::Soc;
 use sidou_tests::signal_metrics::estimate_f0;
 
+pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+    let next = AtomicUsize::new(0);
+    let out: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
+    let threads = std::thread::available_parallelism()
+        .map_or(2, |n| n.get())
+        .min(items.len().max(1));
+    std::thread::scope(|sc| {
+        for _ in 0..threads {
+            sc.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::SeqCst);
+                if i >= items.len() {
+                    break;
+                }
+                let r = f(&items[i]);
+                out.lock().unwrap()[i] = Some(r);
+            });
+        }
+    });
+    out.into_inner()
+        .unwrap()
+        .into_iter()
+        .map(|r| r.expect("every item ran"))
+        .collect()
+}
+
 pub fn build_dir() -> Option<PathBuf> {
     let dir = std::env::var_os("SIDOU_FM1_BUILD").filter(|d| !d.is_empty())?;
     Some(std::path::absolute(&dir).expect("resolve SIDOU_FM1_BUILD"))

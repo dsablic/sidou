@@ -3,8 +3,8 @@
 name: ran
 description: >-
   Proves the tests ran: counts them per binary from nextest's JUnit report into the run summary,
-  fails on a test that printed "skipping" unless its line matches allowed-skips, and uploads the
-  report (its times balance the shards).
+  fails on a test whose output has a line starting "skipping" unless that line matches
+  allowed-skips, and uploads the report (its times balance the shards).
 inputs:
   name:
     required: true

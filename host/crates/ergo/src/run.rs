@@ -24,6 +24,7 @@ pub struct Opts {
     pub capture: Option<String>,
     pub fail_on_regression: bool,
     pub knob_filter: Option<String>,
+    pub shard: crate::Shard,
 }
 
 fn fnv(b: &[u8]) -> u64 {
@@ -187,7 +188,7 @@ pub fn run(o: &Opts) -> Result<i32, String> {
     let mut cons_matrix = Vec::new();
     if wanted(o, "consistency") {
         eprintln!("consistency");
-        let c = consistency::run_all(&o.build);
+        let c = consistency::run_all(&o.build, o.shard);
         findings.extend(c.findings);
         cons_matrix = c.matrix;
     }

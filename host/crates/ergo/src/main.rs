@@ -10,7 +10,7 @@ use ergo::config::Config;
 use ergo::run::{default_build_dir, run, Opts};
 
 const USAGE: &str = "usage: ergo [--out DIR] [--build DIR] [--baseline FILE] [--journeys FILE]
-            [--readability FILE] [--config FILE] [--only CHECKS] [--knob ID]
+            [--readability FILE] [--config FILE] [--only CHECKS] [--knob ID] [--shard K/N]
             [--capture full --journey ID] [--fail-on-regression] [--print-config]
             [--check-recipes DIR] [--export-recipes DIR [--journeys FILE]]
             [--compare OLD NEW]
@@ -21,6 +21,7 @@ const USAGE: &str = "usage: ergo [--out DIR] [--build DIR] [--baseline FILE] [--
                    compare finding IDs in files or run directories; write compare.json next to NEW
   --only CHECKS    comma list of: journeys readability knobs feedback consistency defaults
   --knob ID        only the knob sweeps whose id contains ID (e.g. K1.live)
+  --shard K/N      the Kth of N parts of the consistency controls and of the recipes (CI)
   --check-recipes DIR
                    run every JSON recipe in DIR in the emulator; exit 1 if one fails
   --export-recipes DIR
@@ -44,6 +45,7 @@ fn main() {
         capture: None,
         fail_on_regression: false,
         knob_filter: None,
+        shard: ergo::Shard::ALL,
     };
     let mut capture_mode = None;
     let mut check_recipes: Option<PathBuf> = None;
@@ -70,6 +72,7 @@ fn main() {
             "--config" => o.config_file = Some(PathBuf::from(val("--config"))),
             "--only" => o.only = Some(val("--only").split(',').map(str::to_string).collect()),
             "--knob" => o.knob_filter = Some(val("--knob")),
+            "--shard" => o.shard = ergo::Shard::parse(&val("--shard")).unwrap_or_else(|e| die(&e)),
             "--capture" => capture_mode = Some(val("--capture")),
             "--journey" => journey = Some(val("--journey")),
             "--check-recipes" => check_recipes = Some(PathBuf::from(val("--check-recipes"))),
@@ -119,7 +122,7 @@ fn main() {
             die(&format!("no fm1 build at {}", o.build.display()));
         }
         let cfg = Config::default();
-        match ergo::recipe::validate(&dir, &o.build, &cfg, &o.out) {
+        match ergo::recipe::validate(&dir, &o.build, &cfg, &o.out, o.shard) {
             Ok(reports) => {
                 let mut failed = 0;
                 for r in &reports {
