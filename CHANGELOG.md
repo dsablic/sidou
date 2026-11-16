@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **Your own RED MOON RITE: the site's art pack builder** ([art.html](https://dsablic.github.io/sidou/art.html),
+  [the manual](docs/manual/art-packs.md)). It starts from SIDOU's art and shows the twelve slots
+  (the fighters armed and unarmed, the flying and the stuck sword, the three skies, the arena, the
+  status bar and the stamina blades); each has a template PNG, its frames side by side, to paint
+  over. A replaced slot is checked for its size and frame count, reduced to the screen's 16 colours
+  with a before and after, built into a pack with the format's rules (byte for byte the host
+  builder's: SIDOU's own art comes out as `red-moon-rite.sidart`), checked by the firmware's own
+  loader and played by RED MOON RITE's own code in the page. Name it, download the `.sidart`, or
+  send it to the FM-1 over Web MIDI. A pack is too big for a link: share the file.
 - **SCENE refreshed: SCOPE and DEMO join FIRE, PLASMA and RED MOON RITE; RULE 30, STARS and ANT
   are gone.** SELECT steps DEMO, FIRE, PLASMA, SCOPE, RED MOON RITE, and SCENE opens on DEMO, the logo between starfields. **SCOPE** draws the three
   voices of the chip the keys play, what the tap hears, as glowing oscilloscope traces (green

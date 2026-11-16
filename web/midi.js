@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { CHANGED, NO_FM1, clientFor, fillPorts, pairIsTheFm1, refusedWords } from "./ports.js";
 import { SongError, songToMidi } from "./songmidi.js";
-import { Client, songsIn } from "./sysex.js";
-
-const DEVICE_PORT = "SIDOU FM-1";
+import { songsIn } from "./sysex.js";
 
 const SONGS = [
   { file: "chrome-comet.sng", name: "CHROME COMET", about: "Mid-eighties game music in D minor at 150 BPM. 80 s." },
@@ -114,19 +113,6 @@ function setBusy(busy) {
   for (const b of $("fm1").querySelectorAll("button")) b.disabled = busy || !fm1.client;
 }
 
-function fillPorts() {
-  for (const [id, ports] of [["out", fm1.access.outputs], ["in", fm1.access.inputs]]) {
-    const select = $(id);
-    const previous = select.value;
-    const names = [...ports.values()];
-    select.replaceChildren(el("option", { value: "", textContent: "choose…" }),
-      ...names.map((p) => el("option", { value: p.id, textContent: p.name })));
-    const keep = names.find((p) => p.id === previous) ?? names.find((p) => p.name === DEVICE_PORT);
-    select.value = keep ? keep.id : "";
-    select.disabled = false;
-  }
-}
-
 function forget() {
   fm1.client = null;
   fm1.files = [];
@@ -173,34 +159,30 @@ async function connect() {
   try {
     fm1.access = await navigator.requestMIDIAccess({ sysex: true });
   } catch (e) {
-    say(`The browser refused MIDI access with SysEx (${e.message || e.name}). Allow it for this site and press Connect again.`, "error");
+    say(refusedWords(e), "error");
     setBusy(false);
     return;
   }
-  fm1.access.onstatechange = () => { fillPorts(); forget(); say("A MIDI device changed: pick the ports and press Check this pair.", ""); };
-  fillPorts();
+  fm1.access.onstatechange = () => { fillPorts(fm1.access, $("out"), $("in")); forget(); say(CHANGED, ""); };
+  fillPorts(fm1.access, $("out"), $("in"));
   setBusy(false);
-  const out = $("out").selectedOptions[0]?.textContent, inn = $("in").selectedOptions[0]?.textContent;
-  if (out === DEVICE_PORT && inn === DEVICE_PORT) await check();
-  else say(`No port named "${DEVICE_PORT}" found. Is the FM-1 plugged in and running SIDOU? Pick its output and input and press Check this pair; nothing is sent to other ports until you do.`, "error");
+  if (pairIsTheFm1($("out"), $("in"))) await check();
+  else say(NO_FM1, "error");
 }
 
 async function check() {
-  const output = fm1.access.outputs.get($("out").value);
-  const input = fm1.access.inputs.get($("in").value);
-  if (!output || !input) return;
+  const pair = clientFor(fm1.access, $("out"), $("in"));
+  if (!pair) return;
+  const { client, port } = pair;
   forget();
   setBusy(true);
-  for (const p of fm1.access.inputs.values()) p.onmidimessage = null;
-  const client = new Client((bytes) => output.send(bytes));
-  input.onmidimessage = (e) => client.push(e.data);
-  say(`Asking ${output.name}…`);
+  say(`Asking ${port}…`);
   try {
     const info = await client.inquire();
     if (info.protocol !== 1) throw new Error(`it speaks SysEx protocol ${info.protocol}; this page speaks 1`);
     fm1.files = await client.dir();
     fm1.client = client;
-    say(`SIDOU ${version(info.version)} on ${output.name}.`, "ok");
+    say(`SIDOU ${version(info.version)} on ${port}.`, "ok");
     listSongs();
   } catch (e) {
     say(e.message, "error");

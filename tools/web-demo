@@ -13,7 +13,8 @@ The browser demo: the working tree's firmware in fm1-emu's web page, built and s
 Steps: the fm1 firmware (tools/fm1-docker), its package (sidou-pack), fm1-emu's fm1-web crate
 to wasm at the revision host/crates/emu-gate pins (fetched into build/fm1-emu), then the site:
 upstream's web files at that revision, web/ on top, and SIDOU's own song code as wasm for the
-Library page and the editor (tools/wasm-core) (docs: BUILDING.md "Browser demo").
+Library page and the editor (tools/wasm-core), its RED MOON RITE for the art pack builder
+(tools/wasm-art) (docs: BUILDING.md "Browser demo").
 USAGE
 }
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -79,7 +80,8 @@ EOF
 sed "s/@VERSION@/$version/" "$root/web/firmwares.json" >"$out/firmwares.json"
 cp "$root/build/fm1/sidou.fwsc" "$out/sidou.fwsc"
 cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web/songs.js" "$root/web/sysex.js" "$root/web/midi.html" "$root/web/midi.js" "$root/web/songmidi.js" "$out/"
-cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$root/web/patch.js" "$out/"
+cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$root/web/patch.js" "$root/web/ports.js" "$out/"
+cp "$root/web/art.html" "$root/web/art.js" "$root/web/art-core.js" "$root/web/sidart.js" "$out/"
 cp "$root/web/editor.html" "$root/web/editor.js" "$root/web/song-edit.js" "$root/web/preview.js" "$root/web/preview-worklet.js" "$out/"
 say "the Library page's wasm core (tools/wasm-core)"
 "$root/tools/wasm-core" "$out/sidou-core.wasm"
@@ -98,6 +100,9 @@ mkdir -p "$out/sounds/patches" && cp "$root"/assets/sounds/patches/*.json "$out/
 mkdir -p "$out/steps" && cp "$root"/assets/steps/*.json "$out/steps/"
 cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"
 mkdir -p "$out/art" && cp "$root/assets/art/red-moon-rite.sidart" "$out/art/"
+cp "$root/tests/golden/scene/rmr-trace.tsv" "$out/art/rmr-pattern.tsv"
+say "the art pack builder's RED MOON RITE (tools/wasm-art)"
+"$root/tools/wasm-art" "$out/sidou-art.wasm"
 say "RED MOON RITE's art in a fresh browser's store (sidou-sysex art --seed)"
 (cd "$root/host" && cargo run --locked --release -p sidou-sysex -- art ../assets/art/red-moon-rite.sidart --seed "$out/store-seed.bin")
 mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && cp "$root/web/videos.html" "$root/web/cheatsheet.html" "$out/"

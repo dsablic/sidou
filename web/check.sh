@@ -15,6 +15,7 @@ node "$root/web/editor.test.mjs" "$site/sidou-core.wasm"
 node "$root/web/patch.test.mjs" "$site/sidou-patch.wasm" "$site/sidou-core.wasm"
 node "$root/web/link.test.mjs" "$site/sidou-link.wasm"
 node "$root/web/link-keyboard.test.mjs"
+node "$root/web/art.test.mjs" "$site/sidou-art.wasm"
 mkdir -p "$dir"
 if [ "$(node -p 'require(process.argv[1]).version' "$dir/node_modules/playwright/package.json" 2>/dev/null)" != "$playwright" ]; then
     (cd "$dir" && npm install --no-audit --no-fund --silent "playwright@$playwright")

@@ -147,8 +147,25 @@ The shipped pack is built from `assets/scene/`'s PNGs (made by `assets/scene/red
 writes it, and that test fails while it is stale. Another pack needs the same slots: the builder
 crops each frame, codes its rows, shares identical packets and lays them out by pages.
 
+**The site's [art pack builder](https://dsablic.github.io/sidou/art.html)** ([the manual](../manual/art-packs.md))
+makes one in the browser with the same choices (`web/sidart.js`; built from `assets/scene/`'s
+PNGs it gives the shipped pack byte for byte) and checks it with the firmware's own loader. It maps
+PNGs to slots as follows:
+
+- **One PNG a slot**, its frames side by side in one row in the slot's frame order, each at the
+  slot's width × height in stored pixels: a `w × frames` by `h` image (the left fighter armed:
+  512 × 124). Any other size is refused.
+- **Colours**: each pixel becomes the nearest of the 16 (squared RGB distance); alpha under 128 is
+  transparent. The pack's transparent code is the first colour no frame uses, or, when the frames
+  use all 16 between them, each frame's first unused colour; a frame of all 16 is refused.
+- **Frames**: each is cropped to its pixels' box. An unarmed pose (slots 3 and 4: guard, guard 2,
+  hit) is coded as a patch over the same fighter's armed pose when that is smaller.
+- **The skies** (slot 7) are painted whole: a pixel equal to the gradient the FM-1 draws for that
+  sky, or transparent, is left out of the overlay.
+
 ## Sending one
 
+- **The art pack builder** ([../../web/art.html](../../web/art.html)) sends the pack it built.
 - **The Library page** ([../../web/library.html](../../web/library.html)): **RED MOON RITE art**
   sends the shipped pack; **Send files…** takes a `.sidart` and sends it under its piece's name.
   The page checks the header, the slots and the CRC first.
