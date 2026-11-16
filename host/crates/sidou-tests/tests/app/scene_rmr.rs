@@ -325,7 +325,7 @@ fn red_moon_rite_is_scenes_sixth_piece_and_paints_under_the_screens_overlays() {
         view_tile(&ui, c, r).iter().any(|&p| p != bg),
         "the scene back under it"
     );
-    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_SELECT, 2);
     ui.frame();
     assert!(ui.g.region_painter.is_none());
     assert_eq!(u32::from(crate::petscii(&ui.v.scene).piece), SCENE_FIRE);

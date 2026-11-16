@@ -24,7 +24,6 @@ void scene_view_init(scene_view* sv, const live* l, scope* sc) {
     sv->l = l;
     sv->tap = sc;
     scene_song_init(&sv->song);
-    scene_start(&sv->u.piece, sv->which, NULL);
 }
 
 void scene_view_song(scene_view* sv, const song_ctl* sc, const song_event* ev, uint32_t n) {
@@ -212,7 +211,7 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
 }
 
 int scene_view_idle(scene_view* sv) {
-    if (!sv->on || sv->which < SCENE_PETSCII || sv->starting) {
+    if (!sv->on || SCENE_IS_PETSCII(sv->which) || sv->starting) {
         sv->idle = 0;
         return 0;
     }
@@ -265,7 +264,7 @@ static void step(scene_view* sv) {
 }
 
 void scene_view_prepare(scene_view* sv) {
-    if (sv->on && !sv->starting && sv->which < SCENE_PETSCII) {
+    if (sv->on && !sv->starting && SCENE_IS_PETSCII(sv->which)) {
         step(sv);
         sv->prepared = 1;
     }
@@ -301,7 +300,7 @@ static void compose(screen* s, void* state, grid* g) {
     }
     if (sv->starting) {
         sv->starting = 0;
-        if (sv->which >= SCENE_PETSCII) {
+        if (!SCENE_IS_PETSCII(sv->which)) {
             rite_start(sv, g);
         } else {
             if (g->region_painter) {
@@ -311,7 +310,7 @@ static void compose(screen* s, void* state, grid* g) {
             scene_begin(&sv->u.piece, sv->which);
         }
     }
-    if (sv->which >= SCENE_PETSCII) {
+    if (!SCENE_IS_PETSCII(sv->which)) {
         rite_compose(s, sv, g);
         return;
     }

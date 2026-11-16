@@ -972,7 +972,7 @@ fn a_popup_ask_keeps_the_input_and_the_passes_within_the_allowance() {
                 open_menu_settled(&mut m, &fw);
                 select_menu_item(&mut m, sidou_sys::VIEWS_MENU_OCTAVE as i32);
             }
-            "scene" => open_scene(&mut m, &fw, 0),
+            "scene" => open_scene(&mut m, &fw, SCENE_FIRE),
             _ => settle(&mut m, &fw),
         }
         m.watch_calls(fw.symbol("ui_encoder"));
@@ -2531,8 +2531,9 @@ const LIVE_IDLE_PER_FRAME: f64 = 15_500.0;
 const LIVE_CHORD_PER_FRAME: f64 = 53_000.0;
 const LIVE_NOISE_PER_FRAME: f64 = 155_000.0;
 
-const SCENE_PIECES: [&str; 5] = ["fire", "plasma", "scope", "demo", "rmr"];
-const SCENE_PETSCII: usize = sidou_sys::SCENE_PETSCII as usize;
+const SCENE_PIECES: [&str; 5] = ["demo", "fire", "plasma", "scope", "rmr"];
+const PETSCII_PIECES: std::ops::Range<usize> = sidou_sys::SCENE_FIRE as usize
+    ..(sidou_sys::SCENE_FIRE + sidou_sys::SCENE_PETSCII) as usize;
 const _: () = assert!(SCENE_PIECES.len() == sidou_sys::SCENE_PIECES as usize);
 const PIECE_NAME_TOAST_LEFT_MS: u64 = 1_000;
 
@@ -2562,7 +2563,7 @@ fn fire_keeps_a_low_flame_in_silence() {
         return;
     };
     let mut m = booted_with_art(&fw);
-    open_scene(&mut m, &fw, 0);
+    open_scene(&mut m, &fw, SCENE_FIRE);
     m.run_ms(3000);
     to_mid_frame(&mut m, &fw);
     let px = indexed(&m.soc.lcd.fb);
@@ -2585,7 +2586,7 @@ fn entering_scene_names_the_piece() {
     enter_menu_item(&mut m, &fw, MENU_SCENE);
     m.run_ms(100);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("scene_view_view"));
-    assert_eq!(toast_text(&mut m, &fw), "FIRE");
+    assert_eq!(toast_text(&mut m, &fw), "DEMO");
 }
 
 #[test]
@@ -2601,12 +2602,12 @@ fn algorithm_steps_scenes_piece_as_select_does() {
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
     assert_eq!(which(&mut m), 1);
-    assert_eq!(toast_text(&mut m, &fw), "PLASMA");
+    assert_eq!(toast_text(&mut m, &fw), "FIRE");
     m.run_ms(TOAST_GONE_MS);
     m.turn(ALGORITHM, -1);
     m.run_ms(100);
     assert_eq!(which(&mut m), 0);
-    assert_eq!(toast_text(&mut m, &fw), "FIRE");
+    assert_eq!(toast_text(&mut m, &fw), "DEMO");
 }
 
 fn assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(piece: usize) {
@@ -2643,12 +2644,12 @@ fn assert_scene_matches_its_golden(piece: usize, boot: fn(&Firmware) -> Machine,
 
 #[test]
 fn scene_fire_matches_its_golden_image() {
-    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(0);
+    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(SCENE_FIRE);
 }
 
 #[test]
 fn scene_plasma_matches_its_golden_image() {
-    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(1);
+    assert_scene_piece_matches_its_golden_and_the_tap_runs_only_under_scene(SCENE_PLASMA);
 }
 
 #[test]
@@ -2893,7 +2894,7 @@ fn scene_with_the_band_and_its_wipes_with_a_chord_stay_within_their_budgets() {
         assert!(avg <= cells_bound, "{name}: {avg:.1} cells a frame");
         assert!(most <= most_bound, "{name}: {most} cells in a frame");
         let poll_bound = |k: usize| {
-            if k >= SCENE_PETSCII {
+            if !PETSCII_PIECES.contains(&k) {
                 RMR_WORST_POLL
             } else {
                 SCENE_WORST_POLL
@@ -2992,10 +2993,10 @@ const fn scene_bound(cells_average: f64, cells_most: u32, instructions_a_frame: 
 }
 
 const SCENE_BOUNDS: [SceneBound; 5] = [
+    INTRO_BOUND,
     scene_bound(138.0, 175, 108_000.0),
     scene_bound(152.0, sidou_sys::SCENE_VIEW_FRAME_CELLS, 152_000.0),
     scene_bound(98.0, 153, 830_000.0),
-    INTRO_BOUND,
     scene_bound(73.0, 186, 715_000.0),
 ];
 const INTRO_BOUND: SceneBound = scene_bound(64.0, 100, 192_000.0);
@@ -3063,9 +3064,10 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
     }
     let mut over = Vec::new();
     let painted = |name: &str| {
-        SCENE_PIECES[SCENE_PETSCII..]
+        SCENE_PIECES
             .iter()
-            .any(|p| name.ends_with(p))
+            .enumerate()
+            .any(|(k, p)| !PETSCII_PIECES.contains(&k) && name.ends_with(p))
     };
     for (what, cost) in &costs {
         let input_bound = if what.starts_with("SELECT") && (painted(what) || what.ends_with("fire"))
@@ -5013,6 +5015,8 @@ const _: () = assert!(WIPE_WORST_POLL + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL + SONG_SLICE <= POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_INPUT + TRACKER_PASS + SONG_SLICE <= POLL_INSTRUCTIONS);
 
+const SCENE_FIRE: usize = sidou_sys::SCENE_FIRE as usize;
+const SCENE_PLASMA: usize = sidou_sys::SCENE_PLASMA as usize;
 const SCENE_RMR: usize = sidou_sys::SCENE_RMR as usize;
 const SCENE_SCOPE: usize = sidou_sys::SCENE_SCOPE as usize;
 const SCENE_DEMO: usize = sidou_sys::SCENE_DEMO as usize;
@@ -5397,7 +5401,7 @@ fn every_scene_piece_with_the_song_and_the_keys_stays_within_its_budgets() {
         let per = cells_sent(&c);
         let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
         let most = per.iter().copied().max().unwrap_or(0);
-        let poll = if piece >= SCENE_PETSCII {
+        let poll = if !PETSCII_PIECES.contains(&piece) {
             RMR_WORST_POLL
         } else {
             SCENE_WORST_POLL
