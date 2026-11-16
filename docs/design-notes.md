@@ -6910,12 +6910,13 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   compiled; GoatTracker's own files are compiled with their warnings silenced (gt2-ref's
   `build.rs`). `uac_harness.c` builds at `-O2`, as its `build.rs` builds it: `usb.c`'s unused SIE
   functions hold pi32v2 instructions.
-- `tools/wasm-core`, `tools/wasm-link` and `tools/wasm-patch` build the site's three WebAssembly modules with no
+- `tools/wasm-core`, `tools/wasm-link`, `tools/wasm-patch` and `tools/wasm-art` build the site's four WebAssembly modules with no
   imports and no libc (`platform/fm1/libc_min.c`, as on the device), compiled by the image's
   clang and linked by the Rust toolchain's `rust-lld -flavor wasm` (or a `wasm-ld` on PATH;
   `SIDOU_WASM_LD`, `SIDOU_WASM_RUST_LLD=1`). The core has a 64 KiB stack and about 1.1 MiB of
   static data (the song region, the buffers, the effect slots' pool and a preview's copy of the
-  song); the Live Link viewer a 16 KiB stack and about 0.4 MiB.
+  song); the Live Link viewer a 16 KiB stack and about 0.4 MiB; the art pack builder a 64 KiB stack and
+  about 0.2 MiB.
 - `tools/web-demo` builds fm1-emu's web crate at the revision emu-gate's `Cargo.toml` pins, one
   pin for the gate and the demo; its checkout is forced, which also undoes any edit to a tracked
   file in the fetched copy.
@@ -7093,6 +7094,10 @@ gain.
   overwrite the font `grid.c` draws from and COLOURS the palette; a code past HELLO's last font
   code (or past this font's) draws nothing, and `BLANK` (0x20, a space) is drawn in its
   background colour alone. Every call is synchronous and allocation-free.
+- `platform/web/art_api.c` is the art pack builder's side of the firmware (`tools/wasm-art`,
+  `web/art-core.js`): a pack buffer of `STORE_FILE_MAX` checked with `art_pack_bytes`, a frame's
+  row or a sky's gradient row as the device decodes it, and RED MOON RITE stepped and composited a
+  frame at a time into a 240 × 240 screen of colour codes, read tile by tile with `scene_px_tile`.
 - `platform/web/link_font.c` copies the built-in font to a modifiable font_glyphs array.
   `font_glyphs`: `FONT_LAST` + 1 glyphs, 8 bytes each, aligned(4). `link_font_init` copies from
   `font_glyphs_built` to runtime `font_glyphs`.
@@ -7345,6 +7350,47 @@ gain.
   panel's width less `AROUND_SCREEN_PX`. An encoder turns a detent per `DRAG_PX_PER_DETENT` (10)
   px dragged (up is clockwise) and per `WHEEL_DELTA_PER_DETENT` (40) of wheel delta. The note
   keys are an octave from `MIDI_C4` on MIDI channel 1 to the FM-1's output, not part of PANEL.
+
+### Art pack builder
+
+- **The page** (`web/art.html`, `web/art.js`) starts from the shipped pack, decoded in the page
+  (`web/sidart.js`), and keeps every frame as whole pixels; it builds the pack again at each change.
+  Its checks and preview are the firmware's code (`platform/web/art_api.c`, built by
+  `tools/wasm-art`): `art_pack_bytes` for every pack it offers, `scene_image_row` for the tests'
+  decoding, `scene_gradient_row` for the skies, `scene_rmr` and the tile compositor for the preview.
+- **One PNG a slot, its frames side by side in a row, in stored pixels.** A slot is one size and a
+  frame count, so a sheet of exactly `w × frames` by `h` cannot be mistaken; one file a frame would
+  be 41 uploads. Stored pixels, not screen pixels: a fighter painted at screen width would lose
+  every other column silently, so a sheet at the screen's width is refused with a hint to halve it.
+  The right fighter is stored as the left is drawn; the scene mirrors it.
+- **The 16 colours: the nearest by squared RGB distance, no dithering.** The art's palette is the
+  screen's; dithering would scatter single pixels, which cost a run each in the pack, and pixel art
+  is painted in the palette anyway (the templates are). Alpha under 128 is transparent. The page
+  shows the PNG and its reduction side by side and counts the pixels moved.
+- **The skies are painted whole.** A sky frame in the pack is an overlay on the gradient the FM-1
+  computes; the page composes the two for templates and previews, and a sky PNG's pixels that equal
+  the gradient (or are transparent) are left to it, as the host builder does with `sky-*.png`.
+- **The host builder's choices, exactly.** The encoder is `scene_art.rs`'s: each frame cropped to
+  its pixels' box, an unarmed pose coded as a patch over its armed pose when that is cheaper (a
+  pose drawn identical becomes a 1 × 1 patch), runs split at 32 pixels, packets with their
+  checkpoints, sorted longest first then bytewise, deduplicated, each placed at its first copy in
+  the data, else overlapping the data's tail, else after it, starting on the next page when it
+  would cross one. So building from `assets/scene/`'s PNGs gives `red-moon-rite.sidart` byte for
+  byte (`web/art.test.mjs`), and a pack of SIDOU's art built in the page is the shipped file.
+- **Transparency's colour.** The host builder codes it with the first colour no frame uses (cyan
+  today); a pack whose frames use all 16 between them gives each frame the first colour it does
+  not use, and a frame of all 16 is refused: the format has no colour left to mean transparent.
+- **A preview without the emulator.** Putting a pack in the browser demo's store would take the
+  TRS upload (no USB on the demo page: a second a frame, about 160 frames) or a store image made in
+  the page and a boot that sets aside the visitor's saved flash, then driving the menu into SCENE.
+  The firmware's RED MOON RITE compiled alone draws the same 240 × 240 pixels SCENE composites,
+  playing the arcade's pattern (`tests/golden/scene/rmr-trace.tsv`, served as
+  `art/rmr-pattern.tsv`) at 25 frames a second; what the screen draws over the scene (toasts,
+  MIDI learn's frame) is not part of it.
+- **No share link.** A pack is 30 to 64 KB, 40 to 87 KB as base64: too long for a link to paste,
+  so a pack is shared as its `.sidart`, which the page opens.
+- `web/ports.js` is the MIDI port picking every FM-1 page shared (the Library, the editor, the
+  showcase songs, Songs to MIDI, and this page).
 
 ### Songs to MIDI
 

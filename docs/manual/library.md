@@ -56,7 +56,8 @@ sent song is loaded on the FM-1 from the menu: **SONG, LOAD**. A sent tune plays
 in RED MOON RITE's place, and its toast says `RED MOON RITE ART: LIBRARY`; once they are sent,
 the duel is drawn: **SCENE**, then SELECT to RED MOON RITE. A store FORMAT erases them with the
 rest. **Send files…** takes another pack (`.sidart`) too, and sends it under the piece's name
-after checking it is RED MOON RITE's.
+after checking it is RED MOON RITE's. To make your own pack from PNGs, use the
+[art pack builder](art-packs.md).
 
 While a song (or a tune) plays on the FM-1, or a computer records its USB audio, the FM-1 writes
 nothing, so the music never dips: the page says it is waiting for the FM-1 to be quiet until you

@@ -128,7 +128,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Look at it.** SCENE plays along: FIRE, PLASMA, SCOPE (the chip's voices as glowing
   oscilloscope traces), DEMO (the logo between starfields) and RED MOON RITE, a barbarian duel
   that fights to a song's drums or to the notes you play. Its art is a file the Library page sends to the FM-1, and until it arrives SIDOU's logo intro
-  plays in its place.
+  plays in its place; the [art pack builder](https://dsablic.github.io/sidou/art.html) makes your
+  own from PNGs.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
 Eleven openly licensed tunes for the store, a starter pack, are in [assets/starter](assets/starter),
@@ -217,6 +218,10 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
   for GoatTracker 2 with its instruments ([docs/manual/library.md](docs/manual/library.md)); the
   [editor](https://dsablic.github.io/sidou/editor.html) edits a song and saves it back
   ([docs/manual/editor.md](docs/manual/editor.md)).
+- **Your own RED MOON RITE:** the [art pack builder](https://dsablic.github.io/sidou/art.html)
+  replaces the duel's fighters, swords, skies, arena and status bar with your PNGs (a template
+  per slot to paint over), previews them with the firmware's own drawing code, and downloads the
+  `.sidart` or sends it to the FM-1 ([docs/manual/art-packs.md](docs/manual/art-packs.md)).
 - **On your computer:** the `.sng` opens in GoatTracker 2, and a GoatTracker 2 song put on the
   device plays there if it fits the device's limits. The device refuses one it cannot play, with
   a message.

@@ -275,7 +275,8 @@ and git. `--check` also needs Node.js 20 or later. The wasm needs Rust's
    alone, the package served next to the page), the logo, the licence
    texts the package and the emulator need, `version.json` (the commit,
    its date, whether the tree had local changes), the other pages, and
-   `sidou-core.wasm` for the Library page (`tools/wasm-core`, below);
+   `sidou-core.wasm` for the Library page (`tools/wasm-core`, below) and
+   `sidou-art.wasm` for the art pack builder (`tools/wasm-art`, below);
 4. patches upstream's `main.js` with `web/patch-main.sh` (two lines: a
    default clock of 240 MHz, and Start enabled once its handler is attached;
    each edit must apply exactly once, so a new upstream revision that moves
@@ -335,6 +336,23 @@ tools/wasm-patch OUT.wasm       # elsewhere (tools/web-demo builds it into build
 
 The toolchain is the wasm core's. The module is about 83 KB; its budget is 88 KiB (the owner's
 call, 2026-11-06, raised from 64 KiB for STEP patterns), which `web/patch.test.mjs` checks against `web/patch-fixtures.json` (TESTING.md).
+
+### The art pack builder's wasm (`tools/wasm-art`)
+
+The art pack builder (`web/art.html`) checks every pack it builds with the firmware's own
+loader and previews it with the firmware's RED MOON RITE: `app/art_pack.c`, `app/scene_art.c`,
+`app/scene_px.c`, `app/scene_rmr.c` and what they need, with `platform/web/art_api.c`, as one
+small WebAssembly module with no imports, `sidou-art.wasm`; `web/art-core.js` is its JavaScript
+side and `web/sidart.js` the pack's encoder and decoder.
+
+```sh
+tools/wasm-art                  # build/wasm-art/sidou-art.wasm
+tools/wasm-art OUT.wasm         # elsewhere (tools/web-demo builds it into build/web)
+node web/art.test.mjs           # the encoder against the shipped pack, with that module
+```
+
+The toolchain is the wasm core's (above). The module is about 16 KB; its budget is 32 KiB, which
+`web/art.test.mjs` checks.
 
 ### The Live Link viewer's wasm (`tools/wasm-link`)
 
