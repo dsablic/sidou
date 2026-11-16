@@ -2532,8 +2532,8 @@ const LIVE_CHORD_PER_FRAME: f64 = 53_000.0;
 const LIVE_NOISE_PER_FRAME: f64 = 155_000.0;
 
 const SCENE_PIECES: [&str; 5] = ["demo", "fire", "plasma", "scope", "rmr"];
-const PETSCII_PIECES: std::ops::Range<usize> = sidou_sys::SCENE_FIRE as usize
-    ..(sidou_sys::SCENE_FIRE + sidou_sys::SCENE_PETSCII) as usize;
+const PETSCII_PIECES: std::ops::Range<usize> =
+    sidou_sys::SCENE_FIRE as usize..(sidou_sys::SCENE_FIRE + sidou_sys::SCENE_PETSCII) as usize;
 const _: () = assert!(SCENE_PIECES.len() == sidou_sys::SCENE_PIECES as usize);
 const PIECE_NAME_TOAST_LEFT_MS: u64 = 1_000;
 
