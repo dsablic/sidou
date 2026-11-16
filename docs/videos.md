@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.10.0 release](https://github.com/dsablic/sidou/releases/tag/v1.10.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.20.0 release](https://github.com/dsablic/sidou/releases/tag/v1.20.0).
 
 - [SIDOU in 78 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.10](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 1.20](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -49,7 +49,7 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 78.4 s, 6.7 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.10 highlight: THREE PARTS, a song written as text (sidou-song/1), loaded with SONG and played in the TRACKER; cards for the Library page previewing and sending it, and for the USER sounds read back over USB as patches | 33.7 s, 1.8 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.20 highlights: BLUETOOTH KEYBOARD in SETTINGS and DEVICES scanning, a card for pairing and reconnecting; SCENE opening on DEMO, SCOPE's traces of a held chord, RED MOON RITE with its art from the store fighting to the keys, a card for the art pack builder; LAB's glowing card; the MIDI page's WHEEL on VIBRATO with the mod wheel moved | 58.7 s, 0.0 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 49.3 s, 4.5 MB |

@@ -7,41 +7,7 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## 1.20: Bluetooth keyboards and art packs
-
-The owner, 2026-11-15: what was 1.11 (connecting out) and the art packs, with their builder, in one
-release.
-
-
-- **felucca-bsp to its head** first (from `7e09895c`: `usb.c`'s packets sized by the crystal,
-  byte for byte), with a USB audio device check and §35's iOS minute if a phone is at hand. S.
-- **Connecting out:** SIDOU connects to Bluetooth MIDI keyboards (the central role, a DEVICES page, the last device
-  remembered and looked for at power-on), the owner's Korg microKEY Air as the test; one link at
-  a time; pairing if the keyboard asks for it ([decision 0011](decisions/0011-bluetooth-midi.md)).
-  Melodee, Hortator and fm1-base do it on the same stack. Its room, found 2026-11-15
-  (design-notes, "Per-file optimisation"): the default image 577,536 to 569,744 bytes, 9,772 under
-  the ceiling. Connecting out without pairing (the central's level 3) measures 7,408 bytes,
-  leaving 2,364 for the DEVICES page; with pairing (1) 12,920, 3,148 over before the page. The
-  radio driver at `-Oz` needs its device check. Pairing's room: SCENE's RED MOON RITE art moved
-  into the store as an [art pack](reference/art-pack.md), sent from the site (the owner,
-  2026-11-15), the image 39,328 bytes smaller; without it the piece plays SIDOU's logo intro. M-L. *Built 2026-11-15 on `connect-out`, without pairing
-  ([the plan](plans/2026-11-15-bluetooth-connect-out.md)): the default image 579,232 bytes, 284
-  under the ceiling; §38: the microKEY Air asks for pairing. Pairing built 2026-11-15
-  on `rmr-pairing` (`BLE_CENTRAL` 1, the bond kept, a passkey shown): the default image 545,908
-  bytes, 33,608 under the ceiling.*
-- **Art packs:** SCENE's RED MOON RITE draws its art from a file in the store, sent from the
-  Library or `sidou-sysex art`: today's art is the first pack, and a pack reskins the scene (the
-  same images, sizes and frame counts; the choreography stays the firmware's). It frees about
-  40 KB of the app for pairing and the second core. One pack on the FM-1 at a time; with none, RED MOON RITE plays SIDOU's logo intro. M. *Built 2026-11-15 on `rmr-pairing`: 39,328 bytes freed.*
-- **The art pack builder** on the site: PNGs per image slot, checked against the pack's sizes and
-  frame counts, reduced to the screen's palette, previewed in the browser emulator, sent or shared
-  as a link. Site only. M.
-- **Chip B on the second core, built alongside** as `SIDOU_CPU2`, off by default, with a
-  start-up self-test, proven in fm1-emu ([the spike](plans/2026-11-15-second-core-spike.md)):
-  nothing changes for players until 2.0. M.
-- The small fixes below.
-
-## After 1.20: groove
+## Next: groove
 
 What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, sized to the room
 1.20 leaves:

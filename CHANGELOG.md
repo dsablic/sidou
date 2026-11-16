@@ -8,6 +8,36 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-16
+
+Bluetooth keyboards connect to SIDOU and stay paired; RED MOON RITE's art is a file on the FM-1 you can redraw on the site; SCENE opens on DEMO, with SCOPE new and RED MOON RITE fighting to the keys; the mod wheel adds vibrato.
+
+### Added
+- **Bluetooth keyboards**: SETTINGS' BLUETOOTH
+  is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
+  with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it
+  again after a power cycle or when it comes back in range. Its notes, knobs and clock play as
+  from USB. Toasts say when it connects and when it is lost (held notes stop). A keyboard that
+  asks to pair is paired (Just Works, or a passkey SIDOU shows large for its user to type), and
+  the bond is kept, so it connects again encrypted after LOST or a power cycle; one that forgot
+  the bond is paired again once; a failed pairing says NEEDS PAIRING. One link at a time: with
+  KEYBOARD a computer cannot connect. A 1.9, 1.10 or 1.11 setting reads as it was (the record is
+  version 3, with the bond). With RED MOON RITE's art out of the image (above), the image is
+  545,908 bytes, 33,608 under the ceiling; RAMTEXT did not change. `SIDOU_BLE_CENTRAL` is gone
+  (the central is always built, with pairing), and `-DSIDOU_BLE_FAKE=ON` builds the emulator
+  gate's fake-radio image.
+- **RED MOON RITE's art is a file on the FM-1**:
+  the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
+  the pictures SCENE's last piece draws, an [art pack](docs/reference/art-pack.md)
+  (`assets/art/red-moon-rite.sidart`, 41,037 bytes), which the FM-1 keeps in its store and draws
+  from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo between two drifting
+  starfields at three depths, which speed up while notes sound and with the cutoff, and the logo's
+  glow sweeps into the colour of what is played (a kick red, a snare yellow, the bass orange, an
+  arp green, a hat cyan) and back to its calm purple in silence, with the hint
+  `RED MOON RITE ART: LIBRARY`. A pack
+  sent later takes over at once; FORMAT erases it with the rest. The browser demo's store starts
+  with it. The image is 39,328 bytes smaller (539,904); RAMTEXT did not change; SCENE's state
+  holds 1,196 bytes more RAM. SysEx's new refusal 17 is a pack that is not RED MOON RITE's.
 - **Your own RED MOON RITE: the site's art pack builder** ([art.html](https://dsablic.github.io/sidou/art.html),
   [the manual](docs/manual/art-packs.md)). It starts from SIDOU's art and shows the twelve slots
   (the fighters armed and unarmed, the flying and the stuck sword, the three skies, the arena, the
@@ -28,6 +58,15 @@ All notable changes are documented here. The format follows
   its spark and a screen shake by velocity; a chord flares the torches; high notes chop
   overhead, low notes sweep low; a held note sets the pair circling; a fast run is a flurry, a
   long run the spinning attack and the disarm; the cutoff colours the sky as before).
+- **A glow around the LAB card that turns**: for the second the card is lit, a halo in the knob's
+  colour (three pixels, solid, then dithered fading) surrounds it as well as the name's reverse
+  video, in both themes; it is drawn once when the lit card changes and the lists keep their bar.
+- **`-DSIDOU_CPU2=ON`**, a build option off by default: chip B's render on the FM-1's second core,
+  for the device check; the default image is unchanged and players see nothing.
+- *What's new in 1.20*, and every video re-rendered on 1.20, the ones showing SCENE with RED MOON
+  RITE's art in the store (a recipe's `art` prerequisite).
+
+### Changed
 - **The mod wheel adds vibrato by default**, audible on every sound (CC 1 set the pulse width,
   which only a pulse sound shows). The MIDI page's new **WHEEL** row picks what it moves, VIBRATO,
   PULSE or CUTOFF, the same setting as NRPN 6/2 (a new target starts the wheel at 0); it is kept
@@ -35,44 +74,24 @@ All notable changes are documented here. The format follows
   sounds and a patch without `mod_wheel` use VIBRATO. The pulse width keeps its NRPN 0/2 and
   has CC 1 only while WHEEL says PULSE, where the wheel sweeps 128 to 3968 of 4095 (thin, never
   silent) instead of the SID's whole range, which at the bottom silenced a pulse sound.
-- **RED MOON RITE's art is a file on the FM-1** (waiting for its device check, hardware-test §39):
-  the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
-  the pictures SCENE's last piece draws, an [art pack](docs/reference/art-pack.md)
-  (`assets/art/red-moon-rite.sidart`, 41,037 bytes), which the FM-1 keeps in its store and draws
-  from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo between two drifting
-  starfields at three depths, which speed up while notes sound and with the cutoff, and the logo's
-  glow sweeps into the colour of what is played (a kick red, a snare yellow, the bass orange, an
-  arp green, a hat cyan) and back to its calm purple in silence, with the hint
-  `RED MOON RITE ART: LIBRARY`. A pack
-  sent later takes over at once; FORMAT erases it with the rest. The browser demo's store starts
-  with it. The image is 39,328 bytes smaller (539,904); RAMTEXT did not change; SCENE's state
-  holds 1,196 bytes more RAM. SysEx's new refusal 17 is a pack that is not RED MOON RITE's.
-- **SCENE's toasts over RED MOON RITE read again**: its name and the art hint showed as a yellow
-  box with no text (big text over the scene drew blank), and a short second line left a white
-  block beside it.
-- **A glow around the LAB card that turns**: for the second the card is lit, a halo in the knob's
-  colour (three pixels, solid, then dithered fading) surrounds it as well as the name's reverse
-  video, in both themes; it is drawn once when the lit card changes and the lists keep their bar.
-- **Bluetooth keyboards** (waiting for its device check, hardware-test §38): SETTINGS' BLUETOOTH
-  is OFF, ON or KEYBOARD. With KEYBOARD, SAVE opens DEVICES, the Bluetooth MIDI devices nearby
-  with signal bars; SAVE connects to the chosen one and remembers it, and SIDOU connects to it
-  again after a power cycle or when it comes back in range. Its notes, knobs and clock play as
-  from USB. Toasts say when it connects and when it is lost (held notes stop). A keyboard that
-  asks to pair is paired (Just Works, or a passkey SIDOU shows large for its user to type), and
-  the bond is kept, so it connects again encrypted after LOST or a power cycle; one that forgot
-  the bond is paired again once; a failed pairing says NEEDS PAIRING. One link at a time: with
-  KEYBOARD a computer cannot connect. A 1.9, 1.10 or 1.11 setting reads as it was (the record is
-  version 3, with the bond). With RED MOON RITE's art out of the image (above), the image is
-  545,908 bytes, 33,608 under the ceiling; RAMTEXT did not change. `SIDOU_BLE_CENTRAL` is gone
-  (the central is always built, with pairing), and `-DSIDOU_BLE_FAKE=ON` builds the emulator
-  gate's fake-radio image.
-- **The second core's image** fits again (547,796 bytes with pairing): its size gate, deferred to
-  2.0 on 2026-11-15, is back.
-- **`-DSIDOU_CPU2=ON`**, a build option off by default: chip B's render on the FM-1's second core,
-  for the device check; the default image is unchanged and players see nothing.
 - **felucca-bsp `18eadadb`** (from `7e09895c`): USB audio packets are sized by the FM-1's crystal
   alone (`d18879b`), and the key scan's rate is a setting, left at 10 kHz (`e36cb7c`). The image
   grew 400 bytes; RAMTEXT did not change.
+- **The flash find:** cold code built at `-Oz` where its timing allows (the radio driver's unit,
+  the boot's effect set-up, the DAC tables' build, the chip's character with its cutoff lookup
+  left at `-O2`, the grid's boxes, six cold UI files), about 9 KB in all, the room pairing took.
+  The radio driver at `-Oz` ran the peripheral on the device (§38).
+- `app/views.c` split into the menu, STATUS, SETTINGS, MIDI, SONG and popup files.
+- CI (`check.yml`) runs the merge check's stages on every branch push, over GitHub's runners.
+- **Measured:** the image is 548,228 bytes, 31,288 under its ceiling of 579,516 (1.10.0: 577,152);
+  RAMTEXT holds 44,864 bytes of its 48 KB; the site's patch module is 83,921 bytes of its 88 KiB.
+- **The second core's image** fits again (547,796 bytes with pairing): its size gate, deferred to
+  2.0 on 2026-11-15, is back.
+
+### Fixed
+- **SCENE's toasts over RED MOON RITE read again**: its name and the art hint showed as a yellow
+  box with no text (big text over the scene drew blank), and a short second line left a white
+  block beside it.
 
 ## [1.10.0] - 2026-11-14
 
