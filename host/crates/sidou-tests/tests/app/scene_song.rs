@@ -496,8 +496,15 @@ fn a_song_with_the_kit_drives_the_duel_by_its_beats_and_one_without_by_its_notes
         } else {
             vec![(0, 40 + 12, velocity), (0, 30 + 12, velocity)]
         };
-        assert_eq!(notes(&out), expect, "{roles:?}: the song's notes, on chip A");
-        assert!(out.n > 0, "{roles:?}: the beats still light the intro's glow");
+        assert_eq!(
+            notes(&out),
+            expect,
+            "{roles:?}: the song's notes, on chip A"
+        );
+        assert!(
+            out.n > 0,
+            "{roles:?}: the beats still light the intro's glow"
+        );
     }
 }
 
@@ -517,5 +524,9 @@ fn the_keys_notes_carry_their_chip_and_velocity() {
     e.feed(&sc, &row_call(0, 0, [None; 3]));
     e.rig.note_on(69);
     let out = e.frame();
-    assert_eq!((out.kit, notes(&out)), (1, vec![]), "a kit song plays the duel alone");
+    assert_eq!(
+        (out.kit, notes(&out)),
+        (1, vec![]),
+        "a kit song plays the duel alone"
+    );
 }

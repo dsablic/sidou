@@ -3062,9 +3062,14 @@ fn starting_a_scene_piece_by_select_or_from_the_menu_holds_the_main_loop_within_
         costs.push((format!("the menu into {name}"), c));
     }
     let mut over = Vec::new();
-    let painted = |name: &str| SCENE_PIECES[SCENE_PETSCII..].iter().any(|p| name.ends_with(p));
+    let painted = |name: &str| {
+        SCENE_PIECES[SCENE_PETSCII..]
+            .iter()
+            .any(|p| name.ends_with(p))
+    };
     for (what, cost) in &costs {
-        let input_bound = if what.starts_with("SELECT") && (painted(what) || what.ends_with("fire")) {
+        let input_bound = if what.starts_with("SELECT") && (painted(what) || what.ends_with("fire"))
+        {
             RMR_INPUT
         } else if what.starts_with("SELECT") {
             SCENE_INPUT
@@ -5264,7 +5269,6 @@ fn red_moon_rite_sends_nothing_once_the_stopped_songs_releases_have_rung_out() {
     assert_eq!(sum(&after), 0, "{after:?}");
 }
 
-
 fn colour_count(px: &[u8], c: u32) -> usize {
     px.iter().filter(|&&p| u32::from(p) == c).count()
 }
@@ -5281,14 +5285,21 @@ fn scopes_held_chord_stands_still_and_its_traces_glow_in_the_keys_chips_colours(
     to_mid_frame(&mut m, &fw);
     let held = indexed(&m.soc.lcd.fb);
     let sent = cells_sent(&measure(&mut m, &fw, 25, |_| {}));
-    assert_eq!(indexed(&m.soc.lcd.fb), held, "the held chord's traces moved");
+    assert_eq!(
+        indexed(&m.soc.lcd.fb),
+        held,
+        "the held chord's traces moved"
+    );
     assert!(
         sent.iter().all(|&n| n <= 1),
         "a held chord sends no more than the refresh sweep's tile: {sent:?}"
     );
     let [chip_a, chip_b] = unsafe { sidou_sys::scene_scope_colour };
     for c in chip_a {
-        assert!(colour_count(&held, u32::from(c)) > 200, "chip A's colour {c}");
+        assert!(
+            colour_count(&held, u32::from(c)) > 200,
+            "chip A's colour {c}"
+        );
     }
     assert_eq!(colour_count(&held, u32::from(chip_b[0])), 0);
     chord_keys(&mut m, false);
@@ -5348,7 +5359,11 @@ fn red_moon_rite_fights_to_the_keys_attack_parry_chord_and_a_long_run_disarms() 
     m.run_ms(1000);
     chord_keys(&mut m, true);
     m.run_ms(2 * UI_FRAME_MS);
-    assert_eq!(rmr_byte(&mut m, &fw, r::flame_big), 1, "the chord's torches");
+    assert_eq!(
+        rmr_byte(&mut m, &fw, r::flame_big),
+        1,
+        "the chord's torches"
+    );
     chord_keys(&mut m, false);
     m.run_ms(1000);
     let run = [60u8, 64, 67, 72];
@@ -5407,4 +5422,3 @@ fn every_scene_piece_with_the_song_and_the_keys_stays_within_its_budgets() {
     }
     assert!(over.is_empty(), "{over:#?}");
 }
-

@@ -56,7 +56,12 @@ impl Scope {
             let freq = std::array::from_fn(|v| self.keys.live.voice[v].freq_out);
             feed_the_tap(&mut self.tap, &mut self.acc, freq);
             unsafe {
-                scene_scope_frame(&mut *self.so, &*self.tap, &*self.keys.live, &mut *self.px.sp)
+                scene_scope_frame(
+                    &mut *self.so,
+                    &*self.tap,
+                    &*self.keys.live,
+                    &mut *self.px.sp,
+                )
             };
         }
     }
@@ -93,10 +98,16 @@ fn the_trigger_is_the_first_rising_crossing_of_the_middle() {
     for shift in [0, 17, 80, 159] {
         let saw: Vec<u8> = (0..w).map(|k| ((k + shift) % w * 256 / w) as u8).collect();
         let k = unsafe { scene_scope_trigger(saw.as_ptr()) } as usize;
-        assert!(saw[(k + w - 1) % w] < 128 && saw[k] >= 128, "shift {shift}: {k}");
+        assert!(
+            saw[(k + w - 1) % w] < 128 && saw[k] >= 128,
+            "shift {shift}: {k}"
+        );
         assert_eq!((k + shift) % w, w / 2, "shift {shift}");
     }
-    assert_eq!(unsafe { scene_scope_trigger([128u8; SCOPE_W as usize].as_ptr()) }, 0);
+    assert_eq!(
+        unsafe { scene_scope_trigger([128u8; SCOPE_W as usize].as_ptr()) },
+        0
+    );
 }
 
 #[test]
@@ -115,7 +126,10 @@ fn a_held_note_stands_still_whatever_its_phase() {
             assert_eq!(s.lane(v), held);
             assert!(swing(&held) > 40, "the saw's swing {}", swing(&held));
             for other in (0..3).filter(|&o| o != v) {
-                assert!(s.lane(other).iter().all(|&y| y == MID), "voice {other} is silent");
+                assert!(
+                    s.lane(other).iter().all(|&y| y == MID),
+                    "voice {other} is silent"
+                );
             }
             held
         })

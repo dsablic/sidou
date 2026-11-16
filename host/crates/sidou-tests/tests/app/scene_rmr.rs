@@ -557,7 +557,12 @@ impl Duel {
     fn frame(&mut self, notes: &[scene_rmr_note], held: bool) {
         let sounding = held || !notes.is_empty();
         unsafe {
-            scene_rmr_notes(&mut *self.r, notes.as_ptr(), notes.len() as u32, i32::from(sounding));
+            scene_rmr_notes(
+                &mut *self.r,
+                notes.as_ptr(),
+                notes.len() as u32,
+                i32::from(sounding),
+            );
             scene_rmr_frame(&mut *self.r, SKY_CUTOFF, i32::from(sounding));
         }
         self.poses.push(self.r.pose);
@@ -584,7 +589,11 @@ fn a_note_on_chip_a_is_the_left_fighters_attack_and_on_chip_b_the_rights() {
         assert_eq!(u32::from(d.poses[0][k]), SCENE_RMR_RAISE, "chip {chip}");
         assert!(d.saw(k, SCENE_RMR_CHOP), "chip {chip}: no chop");
         assert!(!d.saw(1 - k, SCENE_RMR_RAISE) && !d.saw(1 - k, SCENE_RMR_BLOCK));
-        assert_eq!(u32::from(d.r.lead), u32::from(chip), "the attacker presses on");
+        assert_eq!(
+            u32::from(d.r.lead),
+            u32::from(chip),
+            "the attacker presses on"
+        );
     }
 }
 
@@ -599,8 +608,14 @@ fn high_notes_chop_overhead_and_low_notes_sweep_low() {
         seen
     };
     let guard = SCENE_RMR_GUARD;
-    assert_eq!(first_poses(HIGH)[..3], [SCENE_RMR_RAISE, SCENE_RMR_CHOP, guard]);
-    assert_eq!(first_poses(LOW)[..3], [SCENE_RMR_SPIN_A, SCENE_RMR_SPIN_B, guard]);
+    assert_eq!(
+        first_poses(HIGH)[..3],
+        [SCENE_RMR_RAISE, SCENE_RMR_CHOP, guard]
+    );
+    assert_eq!(
+        first_poses(LOW)[..3],
+        [SCENE_RMR_SPIN_A, SCENE_RMR_SPIN_B, guard]
+    );
 }
 
 #[test]
@@ -612,17 +627,37 @@ fn a_second_note_soon_after_is_the_others_parry_its_spark_and_shake_by_velocity(
         unsafe {
             scene_rmr_notes(&mut *d.r, &on(0, HIGH, velocity), 1, 1);
         }
-        assert_eq!(u32::from(d.r.pose[1]), SCENE_RMR_BLOCK, "velocity {velocity}");
-        assert_eq!(u32::from(d.r.spark), spark, "velocity {velocity}: the spark");
-        assert_eq!(u32::from(d.r.shake), shake, "velocity {velocity}: the shake");
-        assert_eq!(u32::from(d.r.hp[0]), SCENE_RMR_HP - 1, "the parried attacker tires");
+        assert_eq!(
+            u32::from(d.r.pose[1]),
+            SCENE_RMR_BLOCK,
+            "velocity {velocity}"
+        );
+        assert_eq!(
+            u32::from(d.r.spark),
+            spark,
+            "velocity {velocity}: the spark"
+        );
+        assert_eq!(
+            u32::from(d.r.shake),
+            shake,
+            "velocity {velocity}: the shake"
+        );
+        assert_eq!(
+            u32::from(d.r.hp[0]),
+            SCENE_RMR_HP - 1,
+            "the parried attacker tires"
+        );
     }
     let mut late = Duel::new();
     late.frame(&[on(0, HIGH, MEDIUM)], true);
     late.rest(SCENE_RMR_PARRY_FRAMES + 1, true);
     late.frame(&[on(1, HIGH, MEDIUM)], true);
     assert!(!late.saw(0, SCENE_RMR_BLOCK), "a late note parries");
-    assert_eq!(u32::from(late.r.pose[1]), SCENE_RMR_RAISE, "a late note is an attack");
+    assert_eq!(
+        u32::from(late.r.pose[1]),
+        SCENE_RMR_RAISE,
+        "a late note is an attack"
+    );
 }
 
 #[test]
@@ -632,7 +667,11 @@ fn a_chord_flares_the_torches() {
     assert_eq!(d.r.flame_big, 0, "two notes are not a chord");
     d.rest(SCENE_RMR_RUN_GAP + 1, false);
     d.frame(
-        &[on(0, HIGH, MEDIUM), on(0, HIGH + 4, MEDIUM), on(0, HIGH + 7, MEDIUM)],
+        &[
+            on(0, HIGH, MEDIUM),
+            on(0, HIGH + 4, MEDIUM),
+            on(0, HIGH + 7, MEDIUM),
+        ],
         true,
     );
     assert_eq!(d.r.flame_big, 1);
@@ -651,7 +690,10 @@ fn a_held_note_sets_the_pair_circling() {
         xs.push(d.r.x);
     }
     let (lo, hi) = (*xs.iter().min().unwrap(), *xs.iter().max().unwrap());
-    assert!(hi - lo >= SCENE_RMR_SWAY as i16, "the pair sways {lo}..{hi}");
+    assert!(
+        hi - lo >= SCENE_RMR_SWAY as i16,
+        "the pair sways {lo}..{hi}"
+    );
     assert!(xs.iter().any(|&x| x != rest_x));
     assert!(d.r.stance != stance || d.poses.iter().any(|p| u32::from(p[0]) == SCENE_RMR_GUARD2));
     let mut still = Duel::new();
@@ -674,7 +716,11 @@ fn a_fast_run_is_a_flurry_of_quick_strikes_each_met_by_a_block() {
     run(&mut d, SCENE_RMR_FLURRY - 1, SCENE_RMR_RUN_GAP);
     let before = d.poses.len();
     d.frame(&[on(0, HIGH, MEDIUM)], true);
-    assert_eq!(u32::from(d.r.pose[0]), SCENE_RMR_CHOP, "no wind-up in a flurry");
+    assert_eq!(
+        u32::from(d.r.pose[0]),
+        SCENE_RMR_CHOP,
+        "no wind-up in a flurry"
+    );
     assert_eq!(u32::from(d.r.pose[1]), SCENE_RMR_BLOCK);
     assert!(d.r.spark > 0);
     d.rest(SCENE_RMR_RUN_GAP + 1, false);
@@ -730,7 +776,13 @@ fn the_same_notes_play_the_same_duel() {
         for _ in 0..600 {
             let r = unsafe { scene_random(&mut rng) };
             let notes: Vec<scene_rmr_note> = (0..r % 7 / 2)
-                .map(|i| on((r >> 8) as u8 & 1, 36 + (r >> (10 + i)) as u8 % 48, (r >> 16) as u8 & 127))
+                .map(|i| {
+                    on(
+                        (r >> 8) as u8 & 1,
+                        36 + (r >> (10 + i)) as u8 % 48,
+                        (r >> 16) as u8 & 127,
+                    )
+                })
                 .collect();
             d.frame(&notes, r & 0x300 != 0);
             states.push(state_of(&d.r));
